@@ -1,0 +1,14 @@
+## Interface: 120001, 120000
+## Title: FindIt
+## Notes: Search and locate UI elements and map locations with ease
+## Author: YourName
+## Version: 1.0.0
+## SavedVariables: FindItDB
+## DefaultState: enabled
+
+Core.lua
+Database.lua
+UI.lua
+Highlight.lua
+MapSearch.lua
+Options.lua
