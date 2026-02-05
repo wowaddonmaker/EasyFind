@@ -1,13 +1,14 @@
 ## Interface: 120001, 120000
-## Title: FindIt
+## Title: EasyFind
 ## Notes: Search and locate UI elements and map locations with ease
 ## Author: YourName
 ## Version: 1.0.0
-## SavedVariables: FindItDB
+## SavedVariables: EasyFindDB
 ## DefaultState: enabled
 
 Core.lua
 Database.lua
+StaticLocations.lua
 UI.lua
 Highlight.lua
 MapSearch.lua

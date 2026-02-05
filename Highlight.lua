@@ -18,7 +18,7 @@ function Highlight:Initialize()
 end
 
 function Highlight:CreateHighlightFrame()
-    highlightFrame = CreateFrame("Frame", "FindItHighlightFrame", UIParent)
+    highlightFrame = CreateFrame("Frame", "EasyFindHighlightFrame", UIParent)
     highlightFrame:SetFrameStrata("TOOLTIP")
     highlightFrame:SetFrameLevel(500)
     highlightFrame:Hide()
@@ -53,7 +53,7 @@ function Highlight:CreateHighlightFrame()
 end
 
 function Highlight:CreateArrowFrame()
-    arrowFrame = CreateFrame("Frame", "FindItArrowFrame", UIParent)
+    arrowFrame = CreateFrame("Frame", "EasyFindArrowFrame", UIParent)
     arrowFrame:SetSize(80, 80)  -- Large arrow for visibility
     arrowFrame:SetFrameStrata("TOOLTIP")
     arrowFrame:SetFrameLevel(501)
@@ -84,7 +84,7 @@ function Highlight:CreateArrowFrame()
 end
 
 function Highlight:CreateInstructionFrame()
-    instructionFrame = CreateFrame("Frame", "FindItInstructionFrame", UIParent, "BackdropTemplate")
+    instructionFrame = CreateFrame("Frame", "EasyFindInstructionFrame", UIParent, "BackdropTemplate")
     instructionFrame:SetSize(400, 90)
     instructionFrame:SetFrameStrata("TOOLTIP")
     instructionFrame:SetFrameLevel(502)
@@ -227,6 +227,32 @@ function Highlight:UpdateGuide()
         
         -- Side tab (like Dungeon Finder / Raid Finder / Premade Groups in Group Finder)
         if step.sideTabIndex then
+            -- First check: are we still on the correct main tab?
+            -- Look back through previous steps to find the required tabIndex
+            local requiredTabIndex = nil
+            for i = currentStepIndex - 1, 1, -1 do
+                local prevStep = currentGuide.steps[i]
+                if prevStep and prevStep.tabIndex then
+                    requiredTabIndex = prevStep.tabIndex
+                    break
+                end
+            end
+            
+            if requiredTabIndex then
+                local currentTab = self:GetCurrentTabIndex(step.waitForFrame)
+                if currentTab and currentTab ~= requiredTabIndex then
+                    -- User navigated to wrong tab - go back to the tab selection step
+                    for i = currentStepIndex - 1, 1, -1 do
+                        local prevStep = currentGuide.steps[i]
+                        if prevStep and prevStep.tabIndex == requiredTabIndex then
+                            currentStepIndex = i
+                            self:HideHighlight()
+                            return
+                        end
+                    end
+                end
+            end
+            
             -- Check if already on correct side tab
             if self:IsSideTabSelected(step.waitForFrame, step.sideTabIndex) then
                 -- Correct tab, advance to next step
@@ -236,18 +262,51 @@ function Highlight:UpdateGuide()
             
             -- Need to click side tab
             local sideBtn = self:GetSideTabButton(step.waitForFrame, step.sideTabIndex)
-            if sideBtn then
+            if sideBtn and sideBtn:IsShown() then
                 -- Highlight side tab, no text
                 self:HighlightFrame(sideBtn)
             elseif isLastStep then
                 -- Can't find side button on last step, show instruction
                 self:ShowInstruction(step.text or "Click the correct option on the left")
+            else
+                -- Button not found/visible - might be on wrong tab, go back
+                if currentStepIndex > 1 then
+                    currentStepIndex = currentStepIndex - 1
+                    self:HideHighlight()
+                end
             end
             return
         end
         
         -- PVP Side tab (Quick Match / Rated / Premade Groups / Training Grounds in PvP tab)
         if step.pvpSideTabIndex then
+            -- First check: are we still on the correct main tab (PvP tab = tab 2)?
+            -- Look back through previous steps to find the required tabIndex
+            local requiredTabIndex = nil
+            for i = currentStepIndex - 1, 1, -1 do
+                local prevStep = currentGuide.steps[i]
+                if prevStep and prevStep.tabIndex then
+                    requiredTabIndex = prevStep.tabIndex
+                    break
+                end
+            end
+            
+            if requiredTabIndex then
+                local currentTab = self:GetCurrentTabIndex(step.waitForFrame)
+                if currentTab and currentTab ~= requiredTabIndex then
+                    -- User navigated to wrong tab (e.g., clicked Dungeons & Raids instead of staying on PvP)
+                    -- Go back to the tab selection step
+                    for i = currentStepIndex - 1, 1, -1 do
+                        local prevStep = currentGuide.steps[i]
+                        if prevStep and prevStep.tabIndex == requiredTabIndex then
+                            currentStepIndex = i
+                            self:HideHighlight()
+                            return
+                        end
+                    end
+                end
+            end
+            
             -- Check if already on correct PvP side tab
             if self:IsPvPSideTabSelected(step.waitForFrame, step.pvpSideTabIndex) then
                 -- Correct tab, advance to next step
@@ -257,26 +316,64 @@ function Highlight:UpdateGuide()
             
             -- Need to click PvP side tab
             local pvpBtn = self:GetPvPSideTabButton(step.waitForFrame, step.pvpSideTabIndex)
-            if pvpBtn then
+            if pvpBtn and pvpBtn:IsShown() then
                 -- Highlight PvP side tab, no text
                 self:HighlightFrame(pvpBtn)
             elseif isLastStep then
                 -- Can't find side button on last step, show instruction
                 self:ShowInstruction(step.text or "Click the correct option on the left")
+            else
+                -- Button not found/visible - might be on wrong tab, go back
+                if currentStepIndex > 1 then
+                    currentStepIndex = currentStepIndex - 1
+                    self:HideHighlight()
+                end
             end
             return
         end
         
         -- Statistics category navigation (tree-based category selection)
         if step.statisticsCategory then
+            -- First check: are we still on the Statistics tab?
+            local currentTab = PanelTemplates_GetSelectedTab and PanelTemplates_GetSelectedTab(AchievementFrame)
+            if currentTab ~= 3 then
+                -- User clicked away to Achievements or Guild tab - go back to step 2 (the tab selection step)
+                -- Find the step that has tabIndex = 3
+                for i, s in ipairs(currentGuide.steps) do
+                    if s.tabIndex == 3 then
+                        currentStepIndex = i
+                        break
+                    end
+                end
+                self:HideHighlight()
+                return
+            end
+            
             -- Check if already on correct statistics category
-            if self:IsStatisticsCategorySelected(step.statisticsCategory) then
+            local isSelected = self:IsStatisticsCategorySelected(step.statisticsCategory)
+            
+            -- Also check if the user has clicked our highlighted button
+            -- by seeing if the button we were highlighting is now being moused over or was just clicked
+            if lastHighlightedCategoryButton and lastHighlightedCategoryName and 
+               lastHighlightedCategoryName:lower() == step.statisticsCategory:lower() then
+                -- Check if user's mouse is on the button (indicates they clicked it)
+                if lastHighlightedCategoryButton:IsMouseOver() then
+                    -- User is hovering/clicking the correct button - consider it selected after a brief moment
+                    isSelected = true
+                end
+            end
+            
+            if isSelected then
                 -- Correct category selected
                 if isLastStep then
                     -- Final step and we're there - dismiss the guide
+                    lastHighlightedCategoryButton = nil
+                    lastHighlightedCategoryName = nil
                     self:Cancel()
                 else
                     -- Advance to next step
+                    lastHighlightedCategoryButton = nil
+                    lastHighlightedCategoryName = nil
                     self:AdvanceStep()
                 end
                 return
@@ -285,9 +382,31 @@ function Highlight:UpdateGuide()
             -- Need to click category in tree - find and highlight the button
             local categoryBtn = self:GetStatisticsCategoryButton(step.statisticsCategory)
             if categoryBtn then
+                -- Track what we're highlighting for better click detection
+                lastHighlightedCategoryButton = categoryBtn
+                lastHighlightedCategoryName = step.statisticsCategory
                 self:HighlightFrame(categoryBtn)
             elseif isLastStep then
-                self:ShowInstruction(step.text or "Click the category in the list on the left")
+                -- Can't find button on last step
+                -- Check if the category is visible anywhere - if not, we might need to expand parent
+                local prevStepIndex = currentStepIndex - 1
+                if prevStepIndex >= 1 then
+                    local prevStep = currentGuide.steps[prevStepIndex]
+                    if prevStep and prevStep.statisticsCategory then
+                        -- Check if parent category is expanded
+                        local parentBtn = self:GetStatisticsCategoryButton(prevStep.statisticsCategory)
+                        if parentBtn then
+                            -- Parent exists, highlight it to expand
+                            lastHighlightedCategoryButton = parentBtn
+                            lastHighlightedCategoryName = prevStep.statisticsCategory
+                            self:HighlightFrame(parentBtn)
+                            return
+                        end
+                    end
+                end
+                
+                -- Last resort - show text instruction
+                self:ShowInstruction(step.text or "Click '" .. step.statisticsCategory .. "' in the category list")
             end
             return
         end
@@ -638,6 +757,56 @@ function Highlight:IsTabSelected(frameName, tabIndex)
     return false
 end
 
+-- Get the currently selected tab index for a frame
+function Highlight:GetCurrentTabIndex(frameName)
+    -- PVEFrame (Group Finder tabs at bottom: Dungeons & Raids, Player vs Player, Mythic+ Dungeons)
+    if frameName == "PVEFrame" then
+        local frame = PVEFrame
+        if frame and PanelTemplates_GetSelectedTab then
+            return PanelTemplates_GetSelectedTab(frame)
+        end
+        return nil
+    end
+    
+    -- AchievementFrame
+    if frameName == "AchievementFrame" then
+        local frame = AchievementFrame
+        if frame and PanelTemplates_GetSelectedTab then
+            return PanelTemplates_GetSelectedTab(frame)
+        end
+        return nil
+    end
+    
+    -- CharacterFrame
+    if frameName == "CharacterFrame" then
+        local frame = CharacterFrame
+        if frame and PanelTemplates_GetSelectedTab then
+            return PanelTemplates_GetSelectedTab(frame)
+        end
+        return nil
+    end
+    
+    -- CollectionsJournal
+    if frameName == "CollectionsJournal" then
+        local frame = CollectionsJournal
+        if frame and PanelTemplates_GetSelectedTab then
+            return PanelTemplates_GetSelectedTab(frame)
+        end
+        return nil
+    end
+    
+    -- EncounterJournal
+    if frameName == "EncounterJournal" then
+        local frame = EncounterJournal
+        if frame and PanelTemplates_GetSelectedTab then
+            return PanelTemplates_GetSelectedTab(frame)
+        end
+        return nil
+    end
+    
+    return nil
+end
+
 function Highlight:IsSideTabSelected(frameName, sideTabIndex)
     -- PVEFrame side buttons (Dungeon Finder, Raid Finder, Premade Groups)
     if frameName == "PVEFrame" then
@@ -769,6 +938,10 @@ function Highlight:GetPvPSideTabButton(frameName, sideTabIndex)
 end
 
 -- Statistics category navigation helpers
+-- Track which category button was last clicked/highlighted for better detection
+local lastHighlightedCategoryButton = nil
+local lastHighlightedCategoryName = nil
+
 function Highlight:IsStatisticsCategorySelected(categoryName)
     -- Check if the specified statistics category is currently selected/expanded
     if not AchievementFrame or not AchievementFrame:IsShown() then
@@ -801,46 +974,72 @@ function Highlight:IsStatisticsCategorySelected(categoryName)
         return nil
     end
     
-    -- Helper to check if a button appears selected
+    -- Helper to check if a button appears selected using multiple detection methods
     local function isButtonSelected(btn)
         if not btn then return false end
+        
         -- Check explicit selection properties
         if btn.isSelected then return true end
         if btn.selected then return true end
+        
         -- Check expanded state (for tree categories)
         if btn.collapsed == false then return true end
         if btn.isExpanded then return true end
         if btn.expanded then return true end
+        
         -- Check for highlight/selection texture being shown
         if btn.highlight and btn.highlight:IsShown() then return true end
         if btn.selectedTexture and btn.selectedTexture:IsShown() then return true end
         if btn.SelectedTexture and btn.SelectedTexture:IsShown() then return true end
+        
         -- Check background/selection highlight
         if btn.Selection and btn.Selection:IsShown() then return true end
         if btn.selection and btn.selection:IsShown() then return true end
+        
+        -- Modern WoW uses Background visibility for selection
+        if btn.Background and btn.Background:IsShown() then return true end
+        
+        -- Check if the button has an "isHeader" property and is expanded
+        if btn.element and btn.element.collapsed == false then return true end
+        
         return false
     end
     
-    -- Method 1: Try AchievementFrameCategories with ScrollBox (modern 10.x+ UI)
+    -- Method 1: Check if we previously highlighted this category and user clicked it
+    -- This is the most reliable - if we highlighted a button and it's no longer being highlighted
+    -- but we're now looking for this same category, user must have clicked it
+    if lastHighlightedCategoryName and lastHighlightedCategoryName:lower() == categoryNameLower then
+        if lastHighlightedCategoryButton then
+            -- The button we highlighted is the one we're checking - user likely clicked it
+            -- Check if the button is no longer in the highlight frame's position (user clicked it)
+            if not highlightFrame:IsShown() or not arrowFrame:IsShown() then
+                -- Highlights are hidden, user must have navigated
+                return true
+            end
+        end
+    end
+    
+    -- Method 2: Try AchievementFrameCategories with ScrollBox (modern 10.x+ UI)
     local categoriesFrame = _G["AchievementFrameCategories"]
     if categoriesFrame and categoriesFrame.ScrollBox then
         local scrollBox = categoriesFrame.ScrollBox
-        for _, btn in scrollBox:EnumerateFrames() do
-            if btn and btn:IsShown() then
-                local btnText = getButtonText(btn)
-                if btnText and btnText:lower() == categoryNameLower then
-                    if isButtonSelected(btn) then
-                        return true
+        if scrollBox.EnumerateFrames then
+            for _, btn in scrollBox:EnumerateFrames() do
+                if btn and btn:IsShown() then
+                    local btnText = getButtonText(btn)
+                    if btnText and btnText:lower() == categoryNameLower then
+                        if isButtonSelected(btn) then
+                            return true
+                        end
                     end
                 end
             end
         end
     end
     
-    -- Method 2: Check AchievementFrameAchievements.selectedCategory or similar
+    -- Method 3: Check AchievementFrameAchievements.selectedCategory or similar
     local statsFrame = AchievementFrameAchievements
     if statsFrame then
-        -- Some versions store the selected category
         if statsFrame.selectedCategory then
             local selName = statsFrame.selectedCategory
             if type(selName) == "string" and selName:lower() == categoryNameLower then
@@ -848,7 +1047,6 @@ function Highlight:IsStatisticsCategorySelected(categoryName)
             end
         end
         
-        -- Check categories array
         if statsFrame.categories then
             for _, btn in ipairs(statsFrame.categories) do
                 if btn and btn:IsShown() then
@@ -863,7 +1061,7 @@ function Highlight:IsStatisticsCategorySelected(categoryName)
         end
     end
     
-    -- Method 3: Look for numbered buttons
+    -- Method 4: Look for numbered buttons
     for i = 1, 40 do
         local btn = _G["AchievementFrameCategoriesContainerButton" .. i] or
                     _G["AchievementFrameStatsCategoriesContainerButton" .. i] or
@@ -880,25 +1078,65 @@ function Highlight:IsStatisticsCategorySelected(categoryName)
         end
     end
     
-    -- Method 4: Check the stats list header
-    local statsHeader = _G["AchievementFrameStatsHeader"]
-    if statsHeader and statsHeader.GetText then
-        local headerText = statsHeader:GetText()
-        if headerText and headerText:lower():find(categoryNameLower) then
-            return true
-        end
-    end
-    
-    -- Method 5: For parent categories, check if category is "open" by seeing if child categories are now visible
-    -- This handles the case where clicking "Player vs. Player" expands to show "World" but doesn't set selected flags
-    -- We consider a category "selected" if we're on the Statistics tab and we can see content related to it
+    -- Method 5: For parent categories, check if child categories are now visible
     if currentGuide and currentStepIndex then
         local nextStep = currentGuide.steps[currentStepIndex + 1]
         if nextStep and nextStep.statisticsCategory then
-            -- Check if the NEXT category we're looking for is now visible
-            -- If it is, then THIS category must be selected/expanded
             local nextBtn = self:GetStatisticsCategoryButton(nextStep.statisticsCategory)
             if nextBtn and nextBtn:IsShown() then
+                return true
+            end
+        end
+    end
+    
+    -- Method 6: Check if statistics content panel shows items related to this category
+    -- This is especially useful for leaf categories like "World" which show Duel stats
+    local contentFrame = _G["AchievementFrameAchievementsContainer"] or 
+                         _G["AchievementFrameStatsContainer"] or
+                         (AchievementFrame and AchievementFrame.Container)
+    
+    if contentFrame then
+        -- For "World" category (duel statistics), check if "Duels won" or "Duels lost" is visible
+        if categoryNameLower == "world" then
+            local function searchForDuelStats(frame, depth)
+                if not frame or depth > 8 then return false end
+                if frame.GetText then
+                    local text = frame:GetText()
+                    if text then
+                        local textLower = text:lower()
+                        if textLower:find("duels won") or textLower:find("duels lost") then
+                            return true
+                        end
+                    end
+                end
+                -- Check children
+                if frame.GetChildren then
+                    local children = {frame:GetChildren()}
+                    for _, child in ipairs(children) do
+                        if searchForDuelStats(child, depth + 1) then
+                            return true
+                        end
+                    end
+                end
+                -- Check regions (FontStrings)
+                if frame.GetRegions then
+                    local regions = {frame:GetRegions()}
+                    for _, region in ipairs(regions) do
+                        if region.GetText then
+                            local text = region:GetText()
+                            if text then
+                                local textLower = text:lower()
+                                if textLower:find("duels won") or textLower:find("duels lost") then
+                                    return true
+                                end
+                            end
+                        end
+                    end
+                end
+                return false
+            end
+            
+            if AchievementFrame and searchForDuelStats(AchievementFrame, 0) then
                 return true
             end
         end
@@ -1364,4 +1602,6 @@ function Highlight:Cancel()
     
     currentGuide = nil
     currentStepIndex = nil
+    lastHighlightedCategoryButton = nil
+    lastHighlightedCategoryName = nil
 end

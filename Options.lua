@@ -8,7 +8,7 @@ local isInitialized = false
 
 -- Helper to create a slider
 local function CreateSlider(parent, name, label, minVal, maxVal, step, yOffset, tooltipText)
-    local slider = CreateFrame("Slider", "FindItOptions" .. name .. "Slider", parent, "OptionsSliderTemplate")
+    local slider = CreateFrame("Slider", "EasyFindOptions" .. name .. "Slider", parent, "OptionsSliderTemplate")
     slider:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
     slider:SetWidth(200)
     slider:SetMinMaxValues(minVal, maxVal)
@@ -44,7 +44,7 @@ end
 
 -- Helper to create a checkbox
 local function CreateCheckbox(parent, name, label, yOffset, tooltipText)
-    local checkbox = CreateFrame("CheckButton", "FindItOptions" .. name .. "Checkbox", parent, "InterfaceOptionsCheckButtonTemplate")
+    local checkbox = CreateFrame("CheckButton", "EasyFindOptions" .. name .. "Checkbox", parent, "InterfaceOptionsCheckButtonTemplate")
     checkbox:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, yOffset)
     checkbox.Text:SetText(label)
     
@@ -66,7 +66,7 @@ function Options:Initialize()
     isInitialized = true
     
     -- Create the main options frame
-    optionsFrame = CreateFrame("Frame", "FindItOptionsFrame", UIParent, "BackdropTemplate")
+    optionsFrame = CreateFrame("Frame", "EasyFindOptionsFrame", UIParent, "BackdropTemplate")
     optionsFrame:SetSize(350, 400)
     optionsFrame:SetPoint("CENTER")
     optionsFrame:SetFrameStrata("DIALOG")
@@ -87,7 +87,7 @@ function Options:Initialize()
     -- Title
     local title = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", optionsFrame, "TOP", 0, -20)
-    title:SetText("FindIt Options")
+    title:SetText("EasyFind Options")
     
     -- Close button
     local closeBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelCloseButton")
@@ -96,10 +96,10 @@ function Options:Initialize()
     -- Map Icon Scale slider
     local mapIconSlider = CreateSlider(optionsFrame, "MapIcon", "Map Search Icon Size", 0.5, 2.0, 0.1, -70,
         "Adjusts the size of icons shown on the world map when searching for locations.")
-    mapIconSlider:SetValue(FindIt.db.mapIconScale or 1.0)
+    mapIconSlider:SetValue(EasyFind.db.mapIconScale or 1.0)
     mapIconSlider:SetScript("OnValueChanged", function(self, value)
         self.valueText:SetText(string.format("%.0f%%", value * 100))
-        FindIt.db.mapIconScale = value
+        EasyFind.db.mapIconScale = value
         if ns.MapSearch and ns.MapSearch.UpdateIconScales then
             ns.MapSearch:UpdateIconScales()
         end
@@ -109,10 +109,10 @@ function Options:Initialize()
     -- UI Search Bar Scale slider
     local uiSearchSlider = CreateSlider(optionsFrame, "UISearch", "UI Search Bar Size", 0.5, 1.5, 0.1, -140,
         "Adjusts the size of the UI search bar. Hold Shift and drag to move it.")
-    uiSearchSlider:SetValue(FindIt.db.uiSearchScale or 1.0)
+    uiSearchSlider:SetValue(EasyFind.db.uiSearchScale or 1.0)
     uiSearchSlider:SetScript("OnValueChanged", function(self, value)
         self.valueText:SetText(string.format("%.0f%%", value * 100))
-        FindIt.db.uiSearchScale = value
+        EasyFind.db.uiSearchScale = value
         if ns.UI and ns.UI.UpdateScale then
             ns.UI:UpdateScale()
         end
@@ -122,47 +122,112 @@ function Options:Initialize()
     -- Map Search Bar Scale slider
     local mapSearchSlider = CreateSlider(optionsFrame, "MapSearch", "Map Search Bar Size", 0.5, 1.5, 0.1, -210,
         "Adjusts the size of the map search bar. Hold Shift and drag to move it along the map edge.")
-    mapSearchSlider:SetValue(FindIt.db.mapSearchScale or 1.0)
+    mapSearchSlider:SetValue(EasyFind.db.mapSearchScale or 1.0)
     mapSearchSlider:SetScript("OnValueChanged", function(self, value)
         self.valueText:SetText(string.format("%.0f%%", value * 100))
-        FindIt.db.mapSearchScale = value
+        EasyFind.db.mapSearchScale = value
         if ns.MapSearch and ns.MapSearch.UpdateScale then
             ns.MapSearch:UpdateScale()
         end
     end)
     optionsFrame.mapSearchSlider = mapSearchSlider
     
-    -- Direct Open checkbox
-    local directOpenCheckbox = CreateCheckbox(optionsFrame, "DirectOpen", "Open Panels Directly", -280,
-        "When enabled, clicking a search result will immediately open the destination panel.\n\nWhen disabled (default), you will be guided step-by-step with highlights showing you where to click. This helps you learn where things are located in the UI.")
-    directOpenCheckbox:SetChecked(FindIt.db.directOpen or false)
+    -- Direct Open checkbox (UI Search)
+    local directOpenCheckbox = CreateCheckbox(optionsFrame, "DirectOpen", "Open Panels Directly", -250,
+        "When enabled, clicking a UI search result will immediately open the destination panel.\n\nWhen disabled (default), you will be guided step-by-step with highlights showing you where to click. This helps you learn where things are located in the UI.")
+    directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false)
     directOpenCheckbox:SetScript("OnClick", function(self)
-        FindIt.db.directOpen = self:GetChecked()
+        EasyFind.db.directOpen = self:GetChecked()
     end)
     optionsFrame.directOpenCheckbox = directOpenCheckbox
+    
+    -- Navigate to Zones Directly checkbox (Map Search)
+    local zoneNavCheckbox = CreateCheckbox(optionsFrame, "ZoneNav", "Navigate to Zones Directly", -275,
+        "When enabled, clicking a zone search result will immediately open that zone's map.\n\nWhen disabled (default), the zone will be highlighted on the current map so you can see where it is. This helps you learn the world's geography.")
+    zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly or false)
+    zoneNavCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.navigateToZonesDirectly = self:GetChecked()
+    end)
+    optionsFrame.zoneNavCheckbox = zoneNavCheckbox
+    
+    -- Dev Mode checkbox
+    local devModeCheckbox = CreateCheckbox(optionsFrame, "DevMode", "Dev Mode (show debug output)", -300,
+        "When enabled, debug messages will be printed to chat. Useful for addon developers and troubleshooting.")
+    devModeCheckbox:SetChecked(EasyFind.db.devMode or false)
+    devModeCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.devMode = self:GetChecked()
+        if self:GetChecked() then
+            EasyFind:Print("Dev mode enabled - debug messages will appear in chat.")
+        else
+            EasyFind:Print("Dev mode disabled.")
+        end
+    end)
+    optionsFrame.devModeCheckbox = devModeCheckbox
     
     -- Instructions text
     local instructionText = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     instructionText:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", 20, 50)
     instructionText:SetWidth(310)
     instructionText:SetJustifyH("LEFT")
-    instructionText:SetText("|cFFFFFF00Tips:|r\n• Hold |cFF00FF00Shift|r and drag the UI Search bar to reposition it\n• Hold |cFF00FF00Shift|r and drag the Map Search bar along the map edge\n• Type |cFF00FF00/findit o|r to open these options")
+    instructionText:SetText("|cFFFFFF00Tips:|r\n• Hold |cFF00FF00Shift|r and drag to reposition search bars\n• Type |cFF00FF00/ef o|r to open options")
     
     -- Reset Position button
-    local resetBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
-    resetBtn:SetSize(120, 22)
-    resetBtn:SetPoint("BOTTOM", optionsFrame, "BOTTOM", 0, 20)
-    resetBtn:SetText("Reset Positions")
-    resetBtn:SetScript("OnClick", function()
-        FindIt.db.uiSearchPosition = nil
-        FindIt.db.mapSearchPosition = nil
+    local resetPosBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
+    resetPosBtn:SetSize(120, 22)
+    resetPosBtn:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOM", 10, 20)
+    resetPosBtn:SetText("Reset Positions")
+    resetPosBtn:SetScript("OnClick", function()
+        EasyFind.db.uiSearchPosition = nil
+        EasyFind.db.mapSearchPosition = nil
         if ns.UI and ns.UI.ResetPosition then
             ns.UI:ResetPosition()
         end
         if ns.MapSearch and ns.MapSearch.ResetPosition then
             ns.MapSearch:ResetPosition()
         end
-        FindIt:Print("Search bar positions reset to defaults.")
+        EasyFind:Print("Search bar positions reset to defaults.")
+    end)
+    
+    -- Reset All Settings button
+    local resetAllBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
+    resetAllBtn:SetSize(120, 22)
+    resetAllBtn:SetPoint("BOTTOMRIGHT", optionsFrame, "BOTTOM", -10, 20)
+    resetAllBtn:SetText("Reset All Settings")
+    resetAllBtn:SetScript("OnClick", function()
+        -- Reset all settings to defaults
+        EasyFind.db.mapIconScale = 1.0
+        EasyFind.db.uiSearchScale = 1.0
+        EasyFind.db.mapSearchScale = 1.0
+        EasyFind.db.uiSearchPosition = nil
+        EasyFind.db.mapSearchPosition = nil
+        EasyFind.db.directOpen = false
+        EasyFind.db.navigateToZonesDirectly = false
+        
+        -- Update UI to reflect changes
+        optionsFrame.mapIconSlider:SetValue(1.0)
+        optionsFrame.uiSearchSlider:SetValue(1.0)
+        optionsFrame.mapSearchSlider:SetValue(1.0)
+        optionsFrame.directOpenCheckbox:SetChecked(false)
+        optionsFrame.zoneNavCheckbox:SetChecked(false)
+        
+        -- Apply the resets
+        if ns.UI and ns.UI.ResetPosition then
+            ns.UI:ResetPosition()
+        end
+        if ns.UI and ns.UI.UpdateScale then
+            ns.UI:UpdateScale()
+        end
+        if ns.MapSearch and ns.MapSearch.ResetPosition then
+            ns.MapSearch:ResetPosition()
+        end
+        if ns.MapSearch and ns.MapSearch.UpdateScale then
+            ns.MapSearch:UpdateScale()
+        end
+        if ns.MapSearch and ns.MapSearch.UpdateIconScales then
+            ns.MapSearch:UpdateIconScales()
+        end
+        
+        EasyFind:Print("All settings reset to defaults.")
     end)
     
     optionsFrame:Hide()
@@ -174,22 +239,22 @@ end
 function Options:RegisterWithBlizzardOptions()
     -- Create a panel for the Interface Options
     local panel = CreateFrame("Frame")
-    panel.name = "FindIt"
+    panel.name = "EasyFind"
     
     local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
     title:SetPoint("TOPLEFT", 16, -16)
-    title:SetText("FindIt")
+    title:SetText("EasyFind")
     
     local desc = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
     desc:SetWidth(550)
     desc:SetJustifyH("LEFT")
-    desc:SetText("FindIt helps you find UI elements and map locations.\n\nUse /findit to search, or /findit o to open options.")
+    desc:SetText("EasyFind helps you find UI elements and map locations.\n\nUse /ef to search, or /ef o to open options.")
     
     local openOptionsBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     openOptionsBtn:SetSize(150, 30)
     openOptionsBtn:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", 0, -20)
-    openOptionsBtn:SetText("Open FindIt Options")
+    openOptionsBtn:SetText("Open EasyFind Options")
     openOptionsBtn:SetScript("OnClick", function()
         Options:Show()
     end)
@@ -209,10 +274,11 @@ function Options:Show()
     end
     
     -- Refresh values from saved vars
-    optionsFrame.mapIconSlider:SetValue(FindIt.db.mapIconScale or 1.0)
-    optionsFrame.uiSearchSlider:SetValue(FindIt.db.uiSearchScale or 1.0)
-    optionsFrame.mapSearchSlider:SetValue(FindIt.db.mapSearchScale or 1.0)
-    optionsFrame.directOpenCheckbox:SetChecked(FindIt.db.directOpen or false)
+    optionsFrame.mapIconSlider:SetValue(EasyFind.db.mapIconScale or 1.0)
+    optionsFrame.uiSearchSlider:SetValue(EasyFind.db.uiSearchScale or 1.0)
+    optionsFrame.mapSearchSlider:SetValue(EasyFind.db.mapSearchScale or 1.0)
+    optionsFrame.directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false)
+    optionsFrame.zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly or false)
     
     optionsFrame:Show()
 end

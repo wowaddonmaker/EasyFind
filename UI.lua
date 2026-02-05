@@ -16,7 +16,7 @@ function UI:Initialize()
     self:CreateToggleButton()
     self:RegisterCombatEvents()
     
-    if FindIt.db.visible ~= false then
+    if EasyFind.db.visible ~= false then
         searchFrame:Show()
         toggleBtn:Hide()
     else
@@ -45,7 +45,7 @@ function UI:RegisterCombatEvents()
             searchFrame.editBox:ClearFocus()
         elseif event == "PLAYER_REGEN_ENABLED" then
             inCombat = false
-            if FindIt.db.visible ~= false then
+            if EasyFind.db.visible ~= false then
                 searchFrame:Show()
                 toggleBtn:Hide()
             else
@@ -56,7 +56,7 @@ function UI:RegisterCombatEvents()
 end
 
 function UI:CreateSearchFrame()
-    searchFrame = CreateFrame("Frame", "FindItSearchFrame", UIParent, "BackdropTemplate")
+    searchFrame = CreateFrame("Frame", "EasyFindSearchFrame", UIParent, "BackdropTemplate")
     searchFrame:SetSize(280, 36)
     searchFrame:SetFrameStrata("HIGH")
     searchFrame:SetMovable(true)
@@ -64,11 +64,11 @@ function UI:CreateSearchFrame()
     searchFrame:SetClampedToScreen(true)
     
     -- Apply saved position or default
-    if FindIt.db.uiSearchPosition then
-        local pos = FindIt.db.uiSearchPosition
+    if EasyFind.db.uiSearchPosition then
+        local pos = EasyFind.db.uiSearchPosition
         searchFrame:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4])
     else
-        searchFrame:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -220, -5)
+        searchFrame:SetPoint("TOP", UIParent, "TOP", 0, -5)
     end
     
     searchFrame:SetBackdrop({
@@ -85,8 +85,8 @@ function UI:CreateSearchFrame()
     searchIcon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
     
     -- Editbox
-    local editBox = CreateFrame("EditBox", "FindItSearchBox", searchFrame)
-    editBox:SetSize(200, 20)
+    local editBox = CreateFrame("EditBox", "EasyFindSearchBox", searchFrame)
+    editBox:SetSize(175, 20)
     editBox:SetPoint("LEFT", searchIcon, "RIGHT", 5, 0)
     editBox:SetFontObject("ChatFontNormal")
     editBox:SetAutoFocus(false)
@@ -133,7 +133,42 @@ function UI:CreateSearchFrame()
         UI:Hide()
     end)
     
+    -- Clear highlights button (red X)
+    local clearBtn = CreateFrame("Button", "EasyFindClearButton", searchFrame)
+    clearBtn:SetSize(20, 20)
+    clearBtn:SetPoint("RIGHT", hideBtn, "LEFT", -2, 0)
+    clearBtn:EnableMouse(true)
+    clearBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
+    
+    -- Use a simple red X texture
+    local normalTex = clearBtn:CreateTexture(nil, "ARTWORK")
+    normalTex:SetAllPoints()
+    normalTex:SetTexture("Interface\\Buttons\\UI-StopButton")
+    normalTex:SetVertexColor(1, 0.3, 0.3, 1)
+    clearBtn:SetNormalTexture(normalTex)
+    
+    local highlightTex = clearBtn:CreateTexture(nil, "HIGHLIGHT")
+    highlightTex:SetAllPoints()
+    highlightTex:SetTexture("Interface\\Buttons\\UI-StopButton")
+    highlightTex:SetVertexColor(1, 0.5, 0.5, 1)
+    highlightTex:SetBlendMode("ADD")
+    clearBtn:SetHighlightTexture(highlightTex)
+    
+    clearBtn:SetScript("OnClick", function()
+        if ns.Highlight then
+            ns.Highlight:Cancel()
+            print("|cFF00FF00EasyFind:|r Highlights cleared.")
+        end
+    end)
+    clearBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText("Clear all active highlights", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    clearBtn:SetScript("OnLeave", GameTooltip_Hide)
+    
     searchFrame.editBox = editBox
+    searchFrame.clearBtn = clearBtn
     
     -- Draggable with Shift key
     searchFrame:RegisterForDrag("LeftButton")
@@ -146,7 +181,7 @@ function UI:CreateSearchFrame()
         self:StopMovingOrSizing()
         -- Save position
         local point, _, relPoint, x, y = self:GetPoint()
-        FindIt.db.uiSearchPosition = {point, relPoint, x, y}
+        EasyFind.db.uiSearchPosition = {point, relPoint, x, y}
     end)
     
     -- Apply saved scale
@@ -154,7 +189,7 @@ function UI:CreateSearchFrame()
 end
 
 function UI:CreateToggleButton()
-    toggleBtn = CreateFrame("Button", "FindItToggleButton", UIParent, "BackdropTemplate")
+    toggleBtn = CreateFrame("Button", "EasyFindToggleButton", UIParent, "BackdropTemplate")
     toggleBtn:SetSize(28, 28)
     toggleBtn:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -220, -5)
     toggleBtn:SetFrameStrata("HIGH")
@@ -177,7 +212,7 @@ function UI:CreateToggleButton()
     
     toggleBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText("FindIt - UI Search")
+        GameTooltip:SetText("EasyFind - UI Search")
         GameTooltip:AddLine("Click to search for UI elements", 1, 1, 1)
         GameTooltip:Show()
     end)
@@ -187,7 +222,7 @@ function UI:CreateToggleButton()
 end
 
 function UI:CreateResultsFrame()
-    resultsFrame = CreateFrame("Frame", "FindItResultsFrame", searchFrame, "BackdropTemplate")
+    resultsFrame = CreateFrame("Frame", "EasyFindResultsFrame", searchFrame, "BackdropTemplate")
     resultsFrame:SetWidth(320)  -- Wider to accommodate indentation
     resultsFrame:SetPoint("TOP", searchFrame, "BOTTOM", 0, -2)
     resultsFrame:SetFrameStrata("HIGH")
@@ -209,7 +244,7 @@ function UI:CreateResultsFrame()
 end
 
 function UI:CreateResultButton(index)
-    local btn = CreateFrame("Button", "FindItResultButton"..index, resultsFrame)
+    local btn = CreateFrame("Button", "EasyFindResultButton"..index, resultsFrame)
     btn:SetSize(300, 22)
     btn:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 10, -8 - (index - 1) * 22)
     
@@ -383,12 +418,12 @@ function UI:SelectResult(data)
     end
     
     -- Check if direct open is enabled
-    if FindIt.db.directOpen and data.steps then
+    if EasyFind.db.directOpen and data.steps then
         -- Direct open mode - execute the navigation directly
         self:DirectOpen(data)
     elseif data.steps then
         -- Step-by-step guide mode
-        FindIt:StartGuide(data)
+        EasyFind:StartGuide(data)
     end
 end
 
@@ -720,7 +755,7 @@ function UI:Show()
     searchFrame:Show()
     toggleBtn:Hide()
     searchFrame.editBox:SetFocus()
-    FindIt.db.visible = true
+    EasyFind.db.visible = true
 end
 
 function UI:Hide()
@@ -730,7 +765,7 @@ function UI:Hide()
     end
     self:HideResults()
     searchFrame.editBox:ClearFocus()
-    FindIt.db.visible = false
+    EasyFind.db.visible = false
 end
 
 function UI:Toggle()
@@ -743,7 +778,7 @@ end
 
 function UI:UpdateScale()
     if searchFrame then
-        local scale = FindIt.db.uiSearchScale or 1.0
+        local scale = EasyFind.db.uiSearchScale or 1.0
         searchFrame:SetScale(scale)
         if resultsFrame then
             resultsFrame:SetScale(scale)
@@ -754,8 +789,8 @@ end
 function UI:ResetPosition()
     if searchFrame then
         searchFrame:ClearAllPoints()
-        searchFrame:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -220, -5)
-        FindIt.db.uiSearchPosition = nil
+        searchFrame:SetPoint("TOP", UIParent, "TOP", 0, -5)
+        EasyFind.db.uiSearchPosition = nil
     end
 end
 
