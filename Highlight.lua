@@ -6,6 +6,7 @@ ns.Highlight = Highlight
 local highlightFrame
 local arrowFrame
 local instructionFrame
+local contextTooltip
 local currentGuide
 local currentStepIndex
 local stepTicker
@@ -15,6 +16,7 @@ function Highlight:Initialize()
     self:CreateHighlightFrame()
     self:CreateArrowFrame()
     self:CreateInstructionFrame()
+    self:CreateContextTooltip()
 end
 
 function Highlight:CreateHighlightFrame()
@@ -125,6 +127,51 @@ function Highlight:CreateInstructionFrame()
     end)
 end
 
+function Highlight:CreateContextTooltip()
+    contextTooltip = CreateFrame("Frame", "EasyFindContextTooltip", UIParent, "BackdropTemplate")
+    contextTooltip:SetFrameStrata("TOOLTIP")
+    contextTooltip:SetFrameLevel(503)
+    contextTooltip:Hide()
+    
+    contextTooltip:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 }
+    })
+    contextTooltip:SetBackdropColor(0, 0, 0, 0.9)
+    contextTooltip:SetBackdropBorderColor(1, 0.82, 0, 1)
+    
+    local text = contextTooltip:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    text:SetPoint("CENTER", 0, 0)
+    text:SetTextColor(1, 1, 0)
+    text:SetJustifyH("CENTER")
+    contextTooltip.text = text
+end
+
+function Highlight:ShowContextTooltip(anchorFrame, msg, anchorPoint, relPoint, xOff, yOff)
+    if not contextTooltip or not anchorFrame then return end
+    contextTooltip.text:SetText(msg)
+    local textWidth = contextTooltip.text:GetStringWidth()
+    local textHeight = contextTooltip.text:GetStringHeight()
+    contextTooltip:SetSize(textWidth + 20, textHeight + 14)
+    contextTooltip:ClearAllPoints()
+    contextTooltip:SetPoint(
+        anchorPoint or "TOP",
+        anchorFrame,
+        relPoint or "BOTTOM",
+        xOff or 0,
+        yOff or -5
+    )
+    contextTooltip:Show()
+end
+
+function Highlight:HideContextTooltip()
+    if contextTooltip then
+        contextTooltip:Hide()
+    end
+end
+
 function Highlight:StartGuide(guideData)
     self:Cancel()
     
@@ -189,6 +236,55 @@ function Highlight:UpdateGuide()
             
             -- Still need to click button - highlight only, no text
             self:HighlightFrame(btn)
+        end
+        return
+    end
+    
+    -- Portrait menu step 1: highlight player portrait and tell user to right-click
+    if step.portraitMenu then
+        -- Check if the portrait menu is already open
+        if self:IsPortraitMenuOpen() then
+            -- Menu is open, advance to next step
+            self:HideContextTooltip()
+            self:AdvanceStep()
+            return
+        end
+        
+        -- Highlight the player frame portrait and show contextual tooltip
+        local portrait = PlayerFrame
+        if portrait and portrait:IsShown() then
+            self:HighlightFrame(portrait)
+            self:ShowContextTooltip(portrait, "Right-click", "LEFT", "RIGHT", 10, 0)
+        end
+        return
+    end
+    
+    -- Portrait menu step 2: find and highlight the correct menu option
+    if step.portraitMenuOption then
+        -- Check if portrait menu is still open
+        if not self:IsPortraitMenuOpen() then
+            -- Menu was closed, go back to portrait step
+            self:HideContextTooltip()
+            currentStepIndex = currentStepIndex - 1
+            self:HideHighlight()
+            return
+        end
+        
+        -- Find the menu option button and highlight it
+        local optionBtn = self:FindPortraitMenuOption(step.portraitMenuOption)
+        if optionBtn then
+            self:HighlightFrame(optionBtn)
+            -- Check for hover/click to dismiss
+            if optionBtn:IsMouseOver() then
+                self:Cancel()
+                return
+            end
+        else
+            -- Option not found in the open menu - it's not available in this context
+            self:HideHighlight()
+            self:ShowInstruction("'" .. step.portraitMenuOption .. "' is not available here")
+            C_Timer.After(2.5, function() self:Cancel() end)
+            return
         end
         return
     end
@@ -407,6 +503,140 @@ function Highlight:UpdateGuide()
                 
                 -- Last resort - show text instruction
                 self:ShowInstruction(step.text or "Click '" .. step.statisticsCategory .. "' in the category list")
+            end
+            return
+        end
+        
+        -- Achievement category navigation (tree-based category selection in Achievements/Guild tabs)
+        if step.achievementCategory then
+            -- First check: are we still on the correct tab?
+            -- Look back through steps to find the required tabIndex
+            local requiredTabIndex = nil
+            for i = currentStepIndex - 1, 1, -1 do
+                local prevStep = currentGuide.steps[i]
+                if prevStep and prevStep.tabIndex then
+                    requiredTabIndex = prevStep.tabIndex
+                    break
+                end
+            end
+            
+            if requiredTabIndex then
+                local currentTab = PanelTemplates_GetSelectedTab and PanelTemplates_GetSelectedTab(AchievementFrame)
+                if currentTab and currentTab ~= requiredTabIndex then
+                    -- User clicked away to wrong tab - go back to the tab selection step
+                    for i, s in ipairs(currentGuide.steps) do
+                        if s.tabIndex == requiredTabIndex then
+                            currentStepIndex = i
+                            break
+                        end
+                    end
+                    self:HideHighlight()
+                    return
+                end
+            end
+            
+            -- Check if already on correct category
+            local isSelected = self:IsAchievementCategorySelected(step.achievementCategory)
+            
+            -- Also check if the user has clicked our highlighted button
+            if lastHighlightedCategoryButton and lastHighlightedCategoryName and 
+               lastHighlightedCategoryName:lower() == step.achievementCategory:lower() then
+                if lastHighlightedCategoryButton:IsMouseOver() then
+                    isSelected = true
+                end
+            end
+            
+            if isSelected then
+                if isLastStep then
+                    lastHighlightedCategoryButton = nil
+                    lastHighlightedCategoryName = nil
+                    self:Cancel()
+                else
+                    lastHighlightedCategoryButton = nil
+                    lastHighlightedCategoryName = nil
+                    self:AdvanceStep()
+                end
+                return
+            end
+            
+            -- Need to click category in tree - find and highlight the button
+            local categoryBtn = self:GetAchievementCategoryButton(step.achievementCategory)
+            if categoryBtn then
+                lastHighlightedCategoryButton = categoryBtn
+                lastHighlightedCategoryName = step.achievementCategory
+                self:HighlightFrame(categoryBtn)
+            elseif isLastStep then
+                -- Can't find button on last step - try expanding parent
+                local prevStepIndex = currentStepIndex - 1
+                if prevStepIndex >= 1 then
+                    local prevStep = currentGuide.steps[prevStepIndex]
+                    if prevStep and prevStep.achievementCategory then
+                        local parentBtn = self:GetAchievementCategoryButton(prevStep.achievementCategory)
+                        if parentBtn then
+                            lastHighlightedCategoryButton = parentBtn
+                            lastHighlightedCategoryName = prevStep.achievementCategory
+                            self:HighlightFrame(parentBtn)
+                            return
+                        end
+                    end
+                end
+                self:ShowInstruction(step.text or "Click '" .. step.achievementCategory .. "' in the category list")
+            end
+            return
+        end
+        
+        -- Character Frame sidebar buttons (Character Stats, Titles, Equipment Manager)
+        if step.sidebarButtonFrame or step.sidebarIndex then
+            -- Check we're on the correct CharacterFrame tab first
+            local requiredTabIndex = nil
+            for i = currentStepIndex - 1, 1, -1 do
+                local prevStep = currentGuide.steps[i]
+                if prevStep and prevStep.tabIndex then
+                    requiredTabIndex = prevStep.tabIndex
+                    break
+                end
+            end
+            
+            if requiredTabIndex then
+                local currentTab = self:GetCurrentTabIndex(step.waitForFrame or "CharacterFrame")
+                if currentTab and currentTab ~= requiredTabIndex then
+                    for i = currentStepIndex - 1, 1, -1 do
+                        local prevStep = currentGuide.steps[i]
+                        if prevStep and prevStep.tabIndex == requiredTabIndex then
+                            currentStepIndex = i
+                            self:HideHighlight()
+                            return
+                        end
+                    end
+                end
+            end
+            
+            -- Check if the sidebar tab is already selected
+            if self:IsSidebarTabSelected(step.sidebarIndex) then
+                if isLastStep then
+                    self:Cancel()
+                else
+                    self:AdvanceStep()
+                end
+                return
+            end
+            
+            -- Highlight the sidebar tab button
+            local sidebarBtn = self:GetSidebarTabButton(step.sidebarIndex)
+            if sidebarBtn then
+                self:HighlightFrame(sidebarBtn)
+                -- Check for click/hover to advance
+                if sidebarBtn:IsMouseOver() then
+                    if isLastStep then
+                        self:Cancel()
+                    else
+                        self:AdvanceStep()
+                    end
+                end
+            elseif isLastStep then
+                local tabNames = {"Character Stats", "Titles", "Equipment Manager"}
+                local tabName = tabNames[step.sidebarIndex] or ("Sidebar Tab " .. (step.sidebarIndex or "?"))
+                self:ShowInstruction(step.text or "Click the '" .. tabName .. "' tab on the right side of the character panel")
             end
             return
         end
@@ -1270,6 +1500,246 @@ function Highlight:GetStatisticsCategoryButton(categoryName)
     return nil
 end
 
+-- Achievement category navigation helpers (works on any Achievement tab, not just Statistics)
+function Highlight:IsAchievementCategorySelected(categoryName)
+    if not AchievementFrame or not AchievementFrame:IsShown() then
+        return false
+    end
+    
+    local categoryNameLower = categoryName:lower()
+    
+    local function getButtonText(btn)
+        if not btn then return nil end
+        if btn.label and btn.label.GetText then return btn.label:GetText() end
+        if btn.Label and btn.Label.GetText then return btn.Label:GetText() end
+        if btn.text and btn.text.GetText then return btn.text:GetText() end
+        if btn.Text and btn.Text.GetText then return btn.Text:GetText() end
+        if btn.Name and btn.Name.GetText then return btn.Name:GetText() end
+        if btn.name and btn.name.GetText then return btn.name:GetText() end
+        if btn.GetText then return btn:GetText() end
+        local regions = {btn:GetRegions()}
+        for _, region in ipairs(regions) do
+            if region:GetObjectType() == "FontString" and region:GetText() then
+                return region:GetText()
+            end
+        end
+        return nil
+    end
+    
+    local function isButtonSelected(btn)
+        if not btn then return false end
+        if btn.isSelected then return true end
+        if btn.selected then return true end
+        if btn.collapsed == false then return true end
+        if btn.isExpanded then return true end
+        if btn.expanded then return true end
+        if btn.highlight and btn.highlight:IsShown() then return true end
+        if btn.selectedTexture and btn.selectedTexture:IsShown() then return true end
+        if btn.SelectedTexture and btn.SelectedTexture:IsShown() then return true end
+        if btn.Selection and btn.Selection:IsShown() then return true end
+        if btn.selection and btn.selection:IsShown() then return true end
+        if btn.Background and btn.Background:IsShown() then return true end
+        if btn.element and btn.element.collapsed == false then return true end
+        return false
+    end
+    
+    -- Check if we previously highlighted this category and user clicked it
+    if lastHighlightedCategoryName and lastHighlightedCategoryName:lower() == categoryNameLower then
+        if lastHighlightedCategoryButton then
+            if not highlightFrame:IsShown() or not arrowFrame:IsShown() then
+                return true
+            end
+        end
+    end
+    
+    -- Try AchievementFrameCategories with ScrollBox
+    local categoriesFrame = _G["AchievementFrameCategories"]
+    if categoriesFrame and categoriesFrame.ScrollBox then
+        local scrollBox = categoriesFrame.ScrollBox
+        if scrollBox.EnumerateFrames then
+            for _, btn in scrollBox:EnumerateFrames() do
+                if btn and btn:IsShown() then
+                    local btnText = getButtonText(btn)
+                    if btnText and btnText:lower() == categoryNameLower then
+                        if isButtonSelected(btn) then
+                            return true
+                        end
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Check numbered buttons
+    for i = 1, 40 do
+        local btn = _G["AchievementFrameCategoriesContainerButton" .. i] or
+                    _G["AchievementFrameCategoryButton" .. i]
+        
+        if btn and btn:IsShown() then
+            local btnText = getButtonText(btn)
+            if btnText and btnText:lower() == categoryNameLower then
+                if isButtonSelected(btn) then
+                    return true
+                end
+            end
+        end
+    end
+    
+    -- Check if the next step's category is now visible (parent must be expanded)
+    if currentGuide and currentStepIndex then
+        local nextStep = currentGuide.steps[currentStepIndex + 1]
+        if nextStep and nextStep.achievementCategory then
+            local nextBtn = self:GetAchievementCategoryButton(nextStep.achievementCategory)
+            if nextBtn and nextBtn:IsShown() then
+                return true
+            end
+        end
+    end
+    
+    return false
+end
+
+function Highlight:GetAchievementCategoryButton(categoryName)
+    -- Find the button for an achievement category by name (works on any tab)
+    if not AchievementFrame or not AchievementFrame:IsShown() then
+        return nil
+    end
+    
+    local categoryNameLower = categoryName:lower()
+    
+    local function getButtonText(btn)
+        if not btn then return nil end
+        if btn.label and btn.label.GetText then return btn.label:GetText() end
+        if btn.Label and btn.Label.GetText then return btn.Label:GetText() end
+        if btn.text and btn.text.GetText then return btn.text:GetText() end
+        if btn.Text and btn.Text.GetText then return btn.Text:GetText() end
+        if btn.Name and btn.Name.GetText then return btn.Name:GetText() end
+        if btn.name and btn.name.GetText then return btn.name:GetText() end
+        if btn.GetText then return btn:GetText() end
+        local regions = {btn:GetRegions()}
+        for _, region in ipairs(regions) do
+            if region and region.GetObjectType and region:GetObjectType() == "FontString" and region.GetText and region:GetText() then
+                return region:GetText()
+            end
+        end
+        return nil
+    end
+    
+    local function searchFrameTree(frame, depth)
+        if not frame or depth > 6 then return nil end
+        if frame:IsShown() then
+            local text = getButtonText(frame)
+            if text and text:lower() == categoryNameLower then
+                if frame.Click or (frame.IsMouseEnabled and frame:IsMouseEnabled()) then
+                    return frame
+                end
+            end
+        end
+        local children = {frame:GetChildren()}
+        for _, child in ipairs(children) do
+            local result = searchFrameTree(child, depth + 1)
+            if result then return result end
+        end
+        return nil
+    end
+    
+    -- Method 1: Try AchievementFrameCategories with ScrollBox
+    local categoriesFrame = _G["AchievementFrameCategories"]
+    if categoriesFrame then
+        if categoriesFrame.ScrollBox and categoriesFrame.ScrollBox.EnumerateFrames then
+            for _, btn in categoriesFrame.ScrollBox:EnumerateFrames() do
+                if btn and btn:IsShown() then
+                    local btnText = getButtonText(btn)
+                    if btnText and btnText:lower() == categoryNameLower then
+                        return btn
+                    end
+                end
+            end
+        end
+        local result = searchFrameTree(categoriesFrame, 0)
+        if result then return result end
+    end
+    
+    -- Method 2: Search the entire AchievementFrame tree
+    if AchievementFrame then
+        local result = searchFrameTree(AchievementFrame, 0)
+        if result then return result end
+    end
+    
+    -- Method 3: Try numbered category buttons
+    for i = 1, 50 do
+        local btn = _G["AchievementFrameCategoriesContainerButton" .. i] or
+                    _G["AchievementFrameCategoryButton" .. i]
+        
+        if btn and btn:IsShown() then
+            local btnText = getButtonText(btn)
+            if btnText and btnText:lower() == categoryNameLower then
+                return btn
+            end
+        end
+    end
+    
+    return nil
+end
+
+-- Character Frame sidebar tab helpers (Character Stats, Titles, Equipment Manager)
+function Highlight:IsSidebarTabSelected(sidebarIndex)
+    if not CharacterFrame or not CharacterFrame:IsShown() then
+        return false
+    end
+    
+    -- Check if the correct sidebar pane is shown
+    if sidebarIndex == 1 then
+        -- Character Stats - check if CharacterStatsPane or the default paperdoll stats view is shown
+        if CharacterStatsPane and CharacterStatsPane:IsShown() then return true end
+        -- Default view when Character tab is open and no other sidebar is active
+    elseif sidebarIndex == 2 then
+        -- Titles pane
+        if PaperDollTitlesPane and PaperDollTitlesPane:IsShown() then return true end
+    elseif sidebarIndex == 3 then
+        -- Equipment Manager pane
+        if PaperDollEquipmentManagerPane and PaperDollEquipmentManagerPane:IsShown() then return true end
+    end
+    
+    -- Also check the sidebar tab's visual selected state
+    local sidebarTab = _G["PaperDollSidebarTab" .. sidebarIndex]
+    if sidebarTab then
+        if sidebarTab.isSelected then return true end
+        if sidebarTab.selected then return true end
+        -- Check for checked/pressed state on buttons
+        if sidebarTab.GetChecked and sidebarTab:GetChecked() then return true end
+        if sidebarTab.IsChecked and sidebarTab:IsChecked() then return true end
+    end
+    
+    return false
+end
+
+function Highlight:GetSidebarTabButton(sidebarIndex)
+    if not CharacterFrame or not CharacterFrame:IsShown() then
+        return nil
+    end
+    
+    -- Try PaperDollSidebarTab buttons directly (confirmed via Frame Inspector)
+    local sidebarTab = _G["PaperDollSidebarTab" .. sidebarIndex]
+    if sidebarTab and sidebarTab:IsShown() then
+        return sidebarTab
+    end
+    
+    -- Try PaperDollSidebarTabs container children
+    local sidebarTabs = _G["PaperDollSidebarTabs"]
+    if not sidebarTabs and PaperDollFrame then
+        sidebarTabs = PaperDollFrame.SidebarTabs
+    end
+    if sidebarTabs then
+        local children = {sidebarTabs:GetChildren()}
+        if children[sidebarIndex] and children[sidebarIndex]:IsShown() then
+            return children[sidebarIndex]
+        end
+    end
+    
+    return nil
+end
+
 function Highlight:FindRatedPvPButton(buttonText)
     -- Search the PVEFrame for a button with matching text (for Solo Shuffle, 2v2, 3v3, etc.)
     if not PVEFrame or not PVEFrame:IsShown() then
@@ -1590,10 +2060,171 @@ function Highlight:HideHighlight()
     if instructionFrame then
         instructionFrame:Hide()
     end
+    if contextTooltip then
+        contextTooltip:Hide()
+    end
+end
+
+-- Portrait menu helpers
+function Highlight:IsPortraitMenuOpen()
+    -- Method 1: Check old-style DropDownList frames
+    for i = 1, 5 do
+        local dropdown = _G["DropDownList" .. i]
+        if dropdown and dropdown:IsShown() then
+            return true
+        end
+    end
+    
+    -- Method 2: Check modern Menu system (11.0+)
+    -- The Menu API creates frames managed by MenuManager
+    if Menu and Menu.GetManager then
+        local ok, manager = pcall(Menu.GetManager)
+        if ok and manager then
+            local openOk, openMenu = pcall(function() return manager:GetOpenMenu() end)
+            if openOk and openMenu then
+                return true
+            end
+        end
+    end
+    
+    -- Method 3: Check if UIDROPDOWNMENU is open
+    if UIDROPDOWNMENU_OPEN_MENU and UIDROPDOWNMENU_OPEN_MENU ~= "" then
+        return true
+    end
+    
+    -- Method 4: Check for any visible context menu frame by common naming patterns
+    local menuNames = {"PlayerFrameDropDown", "DropDownList1", "UnitPopupWindow"}
+    for _, name in ipairs(menuNames) do
+        local frame = _G[name]
+        if frame then
+            local ok, shown = pcall(function() return frame:IsShown() end)
+            if ok and shown then
+                return true
+            end
+        end
+    end
+    
+    return false
+end
+
+-- Find the visible portrait/context menu frame
+function Highlight:GetPortraitMenuFrame()
+    -- Check old-style DropDownList frames
+    for i = 1, 5 do
+        local dropdown = _G["DropDownList" .. i]
+        if dropdown and dropdown:IsShown() then
+            return dropdown
+        end
+    end
+    
+    -- Check modern Menu system
+    if Menu and Menu.GetManager then
+        local ok, manager = pcall(Menu.GetManager)
+        if ok and manager then
+            local openOk, openMenu = pcall(function() return manager:GetOpenMenu() end)
+            if openOk and openMenu then
+                return openMenu
+            end
+        end
+    end
+    
+    -- Fallback: check common frame names
+    local menuNames = {"UnitPopupWindow"}
+    for _, name in ipairs(menuNames) do
+        local frame = _G[name]
+        if frame then
+            local ok, shown = pcall(function() return frame:IsShown() end)
+            if ok and shown then
+                return frame
+            end
+        end
+    end
+    
+    return nil
+end
+
+function Highlight:FindPortraitMenuOption(optionName)
+    local optionNameLower = optionName:lower()
+    
+    local function getFrameText(frame)
+        if not frame then return nil end
+        if frame.GetText then
+            local ok, t = pcall(function() return frame:GetText() end)
+            if ok and t then return t end
+        end
+        local regOk, regions = pcall(function() return {frame:GetRegions()} end)
+        if regOk and regions then
+            for _, region in ipairs(regions) do
+                if region.GetText then
+                    local ok2, t2 = pcall(function() return region:GetText() end)
+                    if ok2 and t2 then return t2 end
+                end
+            end
+        end
+        return nil
+    end
+    
+    local function searchFrame(frame, depth)
+        if not frame or depth > 8 then return nil end
+        
+        local childOk, children = pcall(function() return {frame:GetChildren()} end)
+        if not childOk or not children then return nil end
+        for _, child in ipairs(children) do
+            local shownOk, shown = pcall(function() return child:IsShown() end)
+            if shownOk and shown then
+                local text = getFrameText(child)
+                if text and text:lower():find(optionNameLower, 1, true) then
+                    -- Found matching option - return it if clickable
+                    return child
+                end
+                
+                local result = searchFrame(child, depth + 1)
+                if result then return result end
+            end
+        end
+        return nil
+    end
+    
+    -- Search DropDownList frames (legacy)
+    for i = 1, 5 do
+        local dropdown = _G["DropDownList" .. i]
+        if dropdown and dropdown:IsShown() then
+            local result = searchFrame(dropdown, 0)
+            if result then return result end
+        end
+    end
+    
+    -- Search modern Menu system (11.0+)
+    if Menu and Menu.GetManager then
+        local ok, manager = pcall(Menu.GetManager)
+        if ok and manager then
+            local openOk, openMenu = pcall(function() return manager:GetOpenMenu() end)
+            if openOk and openMenu then
+                local result = searchFrame(openMenu, 0)
+                if result then return result end
+            end
+        end
+    end
+    
+    -- Fallback: search common menu frame names
+    local menuNames = {"UnitPopupWindow"}
+    for _, name in ipairs(menuNames) do
+        local frame = _G[name]
+        if frame then
+            local ok, shown = pcall(function() return frame:IsShown() end)
+            if ok and shown then
+                local result = searchFrame(frame, 0)
+                if result then return result end
+            end
+        end
+    end
+    
+    return nil
 end
 
 function Highlight:Cancel()
     self:HideHighlight()
+    self:HideContextTooltip()
     
     if stepTicker then
         stepTicker:Cancel()

@@ -36,7 +36,6 @@ local CATEGORY_ICONS = {
     trainer = "Interface\\Icons\\INV_Misc_Book_09",
     vendor = "Interface\\Icons\\INV_Misc_Bag_07",
     pvpvendor = "Interface\\Icons\\INV_BannerPVP_01",
-    pvpquest = "Interface\\Icons\\INV_BannerPVP_01",
     mailbox = "Interface\\Icons\\INV_Letter_15",
     stablemaster = "Interface\\Icons\\Ability_Hunter_BeastCall",
     repairvendor = "Interface\\Icons\\INV_Hammer_20",
@@ -48,9 +47,6 @@ local CATEGORY_ICONS = {
     greatvault = "Interface\\Icons\\INV_Misc_Lockbox_1",
     upgradevendor = "Interface\\Icons\\INV_10_GearUpgrade_Flightstone",
     voidstorage = "Interface\\Icons\\INV_Enchant_VoidCrystal",
-    trainingdummy = "Interface\\Icons\\INV_Misc_Head_Clockworkgnome_01",
-    chromie = "Interface\\Icons\\Achievement_Reputation_WyrmrestTemple",
-    mythicplus = "Interface\\Icons\\INV_Relics_Hourglass",
     areapoi = "Interface\\Icons\\INV_Misc_QuestionMark",
     unknown = "Interface\\Icons\\INV_Misc_QuestionMark",
 }
@@ -1404,19 +1400,36 @@ function MapSearch:GetStaticLocations()
     
     local results = {}
     
-    -- Get static locations from StaticLocations.lua
+    -- Get built-in static locations
     local locations = STATIC_LOCATIONS[mapID]
     if locations then
         for _, loc in ipairs(locations) do
             table.insert(results, {
                 name = loc.name,
                 category = loc.category,
-                icon = loc.icon,
+                icon = loc.icon,  -- nil is fine, GetCategoryIcon will handle it
                 isStatic = true,
                 x = loc.x,
                 y = loc.y,
                 keywords = loc.keywords,
             })
+        end
+    end
+    
+    -- Also check EasyFindDevDB for dev/testing (raw POIs from recorder)
+    if EasyFindDevDB and EasyFindDevDB.rawPOIs then
+        for _, poi in ipairs(EasyFindDevDB.rawPOIs) do
+            if poi.mapID == mapID then
+                table.insert(results, {
+                    name = poi.label,
+                    category = poi.category or "unknown",
+                    icon = nil,  -- Let category icon be used
+                    isStatic = true,
+                    x = poi.x,
+                    y = poi.y,
+                    keywords = {},
+                })
+            end
         end
     end
     

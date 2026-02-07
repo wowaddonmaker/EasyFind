@@ -419,8 +419,21 @@ function UI:SelectResult(data)
     
     -- Check if direct open is enabled
     if EasyFind.db.directOpen and data.steps then
-        -- Direct open mode - execute the navigation directly
-        self:DirectOpen(data)
+        -- Portrait menu entries can't be automated (secure frame restriction) - always use guide mode
+        local hasPortraitMenu = false
+        for _, step in ipairs(data.steps) do
+            if step.portraitMenu or step.portraitMenuOption then
+                hasPortraitMenu = true
+                break
+            end
+        end
+        
+        if hasPortraitMenu then
+            EasyFind:StartGuide(data)
+        else
+            -- Direct open mode - execute the navigation directly
+            self:DirectOpen(data)
+        end
     elseif data.steps then
         -- Step-by-step guide mode
         EasyFind:StartGuide(data)
@@ -499,7 +512,127 @@ function UI:DirectOpen(data)
             end)
             delay = delay + 0.2
         end
+        
+        -- Character Frame sidebar buttons (Character Stats, Titles, Equipment Manager)
+        if step.sidebarButtonFrame and step.sidebarIndex then
+            C_Timer.After(currentDelay + 0.1, function()
+                self:ClickCharacterSidebar(step.sidebarIndex)
+            end)
+            delay = delay + 0.15
+        end
+        
+        -- Achievement category navigation (tree-based category selection in Achievements tab)
+        if step.achievementCategory then
+            C_Timer.After(currentDelay + 0.15, function()
+                self:ClickAchievementCategory(step.achievementCategory)
+            end)
+            delay = delay + 0.3
+        end
+        
+        -- Currency header expansion/navigation
+        if step.currencyHeader then
+            C_Timer.After(currentDelay + 0.15, function()
+                self:ExpandCurrencyHeader(step.currencyHeader)
+            end)
+            delay = delay + 0.2
+        end
+        
+        -- Currency ID navigation (scroll to specific currency)
+        if step.currencyID then
+            C_Timer.After(currentDelay + 0.1, function()
+                self:ScrollToCurrency(step.currencyID)
+            end)
+            delay = delay + 0.2
+        end
+        
+        -- Portrait menu (right-click player frame)
+        if step.portraitMenu then
+            C_Timer.After(currentDelay, function()
+                self:OpenPortraitMenu()
+            end)
+            delay = delay + 0.2
+        end
+        
+        -- Portrait menu option selection
+        if step.portraitMenuOption then
+            C_Timer.After(currentDelay + 0.15, function()
+                self:ClickPortraitMenuOption(step.portraitMenuOption)
+            end)
+            delay = delay + 0.2
+        end
     end
+end
+
+-- Helper function to click Character Frame sidebar buttons
+function UI:ClickCharacterSidebar(sidebarIndex)
+    -- The sidebar buttons are PaperDollSidebarTab1/2/3 inside PaperDollSidebarTabs
+    -- (confirmed via Frame Inspector)
+    
+    if not CharacterFrame or not CharacterFrame:IsShown() then
+        return false
+    end
+    
+    -- Ensure we're on the Character tab (tab 1) first
+    if PanelTemplates_GetSelectedTab and PanelTemplates_GetSelectedTab(CharacterFrame) ~= 1 then
+        local tabBtn = _G["CharacterFrameTab1"]
+        if tabBtn and tabBtn.Click then
+            tabBtn:Click()
+        end
+    end
+    
+    -- Method 1: Try PaperDollSidebarTab buttons directly (Frame Inspector confirmed names)
+    local sidebarTabName = "PaperDollSidebarTab" .. sidebarIndex
+    local sidebarTab = _G[sidebarTabName]
+    if sidebarTab then
+        if sidebarTab:IsShown() then
+            if sidebarTab.Click then
+                sidebarTab:Click()
+                return true
+            elseif sidebarTab:GetScript("OnClick") then
+                sidebarTab:GetScript("OnClick")(sidebarTab, "LeftButton")
+                return true
+            end
+        else
+            -- Tab exists but isn't shown yet - try after a brief delay
+            C_Timer.After(0.2, function()
+                if sidebarTab:IsShown() then
+                    if sidebarTab.Click then
+                        sidebarTab:Click()
+                    elseif sidebarTab:GetScript("OnClick") then
+                        sidebarTab:GetScript("OnClick")(sidebarTab, "LeftButton")
+                    end
+                end
+            end)
+            return true
+        end
+    end
+    
+    -- Method 2: Search PaperDollSidebarTabs container children by index
+    local sidebarTabs = _G["PaperDollSidebarTabs"]
+    if not sidebarTabs and PaperDollFrame then
+        sidebarTabs = PaperDollFrame.SidebarTabs
+    end
+    if sidebarTabs then
+        local children = {sidebarTabs:GetChildren()}
+        if children[sidebarIndex] then
+            local tab = children[sidebarIndex]
+            if tab.Click then
+                tab:Click()
+                return true
+            elseif tab:GetScript("OnClick") then
+                tab:GetScript("OnClick")(tab, "LeftButton")
+                return true
+            end
+        end
+    end
+    
+    -- Method 3: Try the ToggleSidebarTab function if available
+    if PaperDollFrame and PaperDollFrame.ToggleSidebarTab then
+        PaperDollFrame:ToggleSidebarTab(sidebarIndex)
+        return true
+    end
+    
+    return false
 end
 
 -- Helper function to find and click a statistics category button
@@ -606,6 +739,106 @@ function UI:ClickStatisticsCategory(categoryName)
     if AchievementFrame_SelectStatisticsCategoryByName then
         AchievementFrame_SelectStatisticsCategoryByName(categoryName)
         return true
+    end
+    
+    return false
+end
+
+-- Helper function to click an achievement category button (works on any Achievement tab)
+function UI:ClickAchievementCategory(categoryName)
+    if not AchievementFrame or not AchievementFrame:IsShown() then
+        return false
+    end
+    
+    local categoryNameLower = categoryName:lower()
+    
+    -- Helper to get text from a button
+    local function getButtonText(btn)
+        if not btn then return nil end
+        if btn.label and btn.label.GetText then return btn.label:GetText() end
+        if btn.Label and btn.Label.GetText then return btn.Label:GetText() end
+        if btn.text and btn.text.GetText then return btn.text:GetText() end
+        if btn.Text and btn.Text.GetText then return btn.Text:GetText() end
+        if btn.Name and btn.Name.GetText then return btn.Name:GetText() end
+        if btn.name and btn.name.GetText then return btn.name:GetText() end
+        if btn.GetText then return btn:GetText() end
+        local regions = {btn:GetRegions()}
+        for _, region in ipairs(regions) do
+            if region and region.GetObjectType and region:GetObjectType() == "FontString" and region.GetText then
+                local text = region:GetText()
+                if text then return text end
+            end
+        end
+        return nil
+    end
+    
+    -- Helper to click a button
+    local function tryClick(btn)
+        if btn.Click then
+            btn:Click()
+            return true
+        elseif btn:GetScript("OnClick") then
+            btn:GetScript("OnClick")(btn, "LeftButton")
+            return true
+        end
+        return false
+    end
+    
+    -- Helper to recursively search frame tree
+    local function searchTree(frame, depth)
+        if not frame or depth > 6 then return nil end
+        
+        if frame:IsShown() and frame.IsMouseEnabled and frame:IsMouseEnabled() then
+            local text = getButtonText(frame)
+            if text and text:lower() == categoryNameLower then
+                return frame
+            end
+        end
+        
+        local children = {frame:GetChildren()}
+        for _, child in ipairs(children) do
+            local result = searchTree(child, depth + 1)
+            if result then return result end
+        end
+        
+        return nil
+    end
+    
+    -- Method 1: Try AchievementFrameCategories with ScrollBox (modern 10.x+ UI)
+    local categoriesFrame = _G["AchievementFrameCategories"]
+    if categoriesFrame then
+        if categoriesFrame.ScrollBox and categoriesFrame.ScrollBox.EnumerateFrames then
+            for _, btn in categoriesFrame.ScrollBox:EnumerateFrames() do
+                if btn and btn:IsShown() then
+                    local btnText = getButtonText(btn)
+                    if btnText and btnText:lower() == categoryNameLower then
+                        if tryClick(btn) then return true end
+                    end
+                end
+            end
+        end
+        
+        local btn = searchTree(categoriesFrame, 0)
+        if btn and tryClick(btn) then return true end
+    end
+    
+    -- Method 2: Search the entire AchievementFrame tree
+    if AchievementFrame then
+        local btn = searchTree(AchievementFrame, 0)
+        if btn and tryClick(btn) then return true end
+    end
+    
+    -- Method 3: Try numbered category buttons
+    for i = 1, 50 do
+        local btn = _G["AchievementFrameCategoriesContainerButton" .. i] or
+                    _G["AchievementFrameCategoryButton" .. i]
+        
+        if btn and btn:IsShown() then
+            local btnText = getButtonText(btn)
+            if btnText and btnText:lower() == categoryNameLower then
+                if tryClick(btn) then return true end
+            end
+        end
     end
     
     return false
@@ -766,6 +999,149 @@ function UI:Hide()
     self:HideResults()
     searchFrame.editBox:ClearFocus()
     EasyFind.db.visible = false
+end
+
+-- Helper function to expand a currency header by name
+function UI:ExpandCurrencyHeader(headerName)
+    if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return false end
+    
+    local headerNameLower = headerName:lower()
+    local size = C_CurrencyInfo.GetCurrencyListSize()
+    
+    for i = 1, size do
+        local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+        if info and info.isHeader and info.name and info.name:lower() == headerNameLower then
+            if not info.isHeaderExpanded then
+                C_CurrencyInfo.ExpandCurrencyList(i, true)
+            end
+            return true
+        end
+    end
+    return false
+end
+
+-- Helper function to scroll to a specific currency by ID
+function UI:ScrollToCurrency(currencyID)
+    if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return false end
+    
+    -- The currency list is a flat list; find the index of our target
+    local size = C_CurrencyInfo.GetCurrencyListSize()
+    for i = 1, size do
+        local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+        if info and not info.isHeader and info.currencyID == currencyID then
+            -- Found it - try to scroll the TokenFrame to this index
+            if TokenFrame and TokenFrame.ScrollBox then
+                -- Modern ScrollBox API
+                local dataProvider = TokenFrame.ScrollBox:GetDataProvider()
+                if dataProvider then
+                    local scrollData = dataProvider:FindByPredicate(function(data)
+                        return data and data.currencyIndex == i
+                    end)
+                    if scrollData then
+                        TokenFrame.ScrollBox:ScrollToElementData(scrollData)
+                    end
+                end
+            end
+            return true
+        end
+    end
+    return false
+end
+
+-- Helper function to open the player portrait right-click menu
+function UI:OpenPortraitMenu()
+    if not PlayerFrame then return end
+    
+    -- Method 1: Modern WoW - PlayerFrame has a dropdown system via PlayerFrameDropDown
+    local dropDown = _G["PlayerFrameDropDown"]
+    if dropDown then
+        if ToggleDropDownMenu then
+            ToggleDropDownMenu(1, nil, dropDown, "cursor", 0, 0)
+            return
+        end
+    end
+    
+    -- Method 2: Try the OnClick handler directly (simulates right-click)
+    local handler = PlayerFrame:GetScript("OnClick")
+    if handler then
+        handler(PlayerFrame, "RightButton")
+        return
+    end
+    
+    -- Method 3: Try UnitPopup API
+    if UnitPopup_ShowMenu then
+        UnitPopup_ShowMenu(PlayerFrame, "SELF", "player")
+        return
+    end
+    
+    -- Method 4: Modern Menu system
+    if PlayerFrame.unit and Menu and Menu.ModifyMenu then
+        -- Try to invoke the right-click behavior via secure handler
+        if PlayerFrame.ToggleMenu then
+            PlayerFrame:ToggleMenu()
+        end
+    end
+end
+
+-- Helper function to click a portrait menu option by name
+function UI:ClickPortraitMenuOption(optionName)
+    local optionNameLower = optionName:lower()
+    
+    -- Search through open dropdown frames for the matching button
+    -- Modern WoW uses the Menu system
+    local function searchFrame(frame, depth)
+        if not frame or depth > 5 then return false end
+        
+        local children = {frame:GetChildren()}
+        for _, child in ipairs(children) do
+            if child:IsShown() then
+                -- Check for text on this frame
+                local text = nil
+                if child.GetText then text = child:GetText() end
+                if not text then
+                    local regions = {child:GetRegions()}
+                    for _, region in ipairs(regions) do
+                        if region.GetText then
+                            local t = region:GetText()
+                            if t then text = t; break end
+                        end
+                    end
+                end
+                
+                if text and text:lower():find(optionNameLower) then
+                    if child.Click then
+                        child:Click()
+                        return true
+                    elseif child:GetScript("OnClick") then
+                        child:GetScript("OnClick")(child, "LeftButton")
+                        return true
+                    end
+                end
+                
+                if searchFrame(child, depth + 1) then return true end
+            end
+        end
+        return false
+    end
+    
+    -- Search common dropdown/menu frames
+    for i = 1, 5 do
+        local dropdown = _G["DropDownList" .. i]
+        if dropdown and dropdown:IsShown() then
+            if searchFrame(dropdown, 0) then return true end
+        end
+    end
+    
+    -- Also check UIParent children for modern menu frames
+    local children = {UIParent:GetChildren()}
+    for _, child in ipairs(children) do
+        if child:IsShown() and child:GetFrameStrata() == "FULLSCREEN_DIALOG" or
+           (child:IsShown() and child:GetFrameStrata() == "DIALOG") then
+            if searchFrame(child, 0) then return true end
+        end
+    end
+    
+    return false
 end
 
 function UI:Toggle()
