@@ -642,7 +642,7 @@ function Highlight:UpdateGuide()
         end
         
         -- Text-only final step (when we've navigated but can't highlight specific element)
-        if step.text and not step.regionFrames and not step.regionFrame then
+        if step.text and not step.regionFrames and not step.regionFrame and not step.searchButtonText then
             self:ShowInstruction(step.text)
             return
         end
@@ -659,6 +659,11 @@ function Highlight:UpdateGuide()
                     region = testFrame
                     break
                 end
+            end
+            
+            -- If path-based lookup failed, try text-based search as fallback
+            if not region and step.searchButtonText then
+                region = self:FindRatedPvPButton(step.searchButtonText)
             end
             
             if region then
@@ -1040,14 +1045,28 @@ end
 function Highlight:IsSideTabSelected(frameName, sideTabIndex)
     -- PVEFrame side buttons (Dungeon Finder, Raid Finder, Premade Groups)
     if frameName == "PVEFrame" then
-        local sideFrames = {
-            LFDParentFrame,  -- Tab 1: Dungeon Finder
-            RaidFinderFrame, -- Tab 2: Raid Finder
-            LFGListPVEStub,  -- Tab 3: Premade Groups
-        }
-        local targetFrame = sideFrames[sideTabIndex]
-        if targetFrame and targetFrame:IsShown() then
-            return true
+        if sideTabIndex == 1 then
+            return LFDParentFrame and LFDParentFrame:IsShown()
+        elseif sideTabIndex == 2 then
+            return RaidFinderFrame and RaidFinderFrame:IsShown()
+        elseif sideTabIndex == 3 then
+            -- Premade Groups: check LFGListPVEStub first, then LFGListFrame (modern WoW)
+            -- BUT only if Dungeon Finder and Raid Finder are NOT active (LFGListFrame is
+            -- a shared frame that may report IsShown even when another panel is on top)
+            if LFDParentFrame and LFDParentFrame:IsShown() then
+                return false
+            end
+            if RaidFinderFrame and RaidFinderFrame:IsShown() then
+                return false
+            end
+            if LFGListPVEStub and LFGListPVEStub:IsShown() then
+                return true
+            end
+            -- Check if LFGListFrame.CategorySelection is visible (the actual premade category list)
+            if LFGListFrame and LFGListFrame.CategorySelection and LFGListFrame.CategorySelection:IsShown() then
+                return true
+            end
+            return false
         end
         return false
     end
@@ -1058,43 +1077,42 @@ end
 function Highlight:IsPvPSideTabSelected(frameName, sideTabIndex)
     -- PVEFrame PvP side buttons (Quick Match, Rated, Premade Groups, Training Grounds)
     if frameName == "PVEFrame" then
-        -- These are the frames shown when each PvP side tab is selected
-        local pvpSideFrames = {
-            HonorFrame,          -- Tab 1: Quick Match (Random BG, Arena Skirmish)
-            ConquestFrame,       -- Tab 2: Rated (Solo Shuffle, 2v2, 3v3, RBG)
-            LFGListPVPStub,      -- Tab 3: Premade Groups (PvP)
-            PVPQueueFrame and PVPQueueFrame.NewPlayerBrawlFrame, -- Tab 4: Training Grounds (Brawl frame)
-        }
-        local targetFrame = pvpSideFrames[sideTabIndex]
-        if targetFrame and targetFrame:IsShown() then
-            return true
+        -- First check the known panel frames for tabs 1-3
+        local tab1Active = HonorFrame and HonorFrame:IsShown()
+        local tab2Active = ConquestFrame and ConquestFrame:IsShown()
+        local tab3Active = (LFGListPVPStub and LFGListPVPStub:IsShown()) or
+                           (LFGListFrame and LFGListFrame.CategorySelection and LFGListFrame.CategorySelection:IsShown() and
+                            PanelTemplates_GetSelectedTab and PanelTemplates_GetSelectedTab(PVEFrame) == 2)
+        
+        if sideTabIndex == 1 then
+            return tab1Active and true or false
+        elseif sideTabIndex == 2 then
+            return tab2Active and true or false
+        elseif sideTabIndex == 3 then
+            return tab3Active and true or false
+        elseif sideTabIndex == 4 then
+            -- Training Grounds: check TrainingGroundsFrame (confirmed via DevFrame)
+            if TrainingGroundsFrame and TrainingGroundsFrame:IsShown() then
+                return true
+            end
+            -- Fallback: we're on it if we're on PvP tab but none of the other 3 panels are active
+            local onPvPTab = PanelTemplates_GetSelectedTab and PanelTemplates_GetSelectedTab(PVEFrame) == 2
+            if onPvPTab and not tab1Active and not tab2Active and not tab3Active then
+                return true
+            end
+            return false
         end
         
-        -- Fallback check for PvP UI buttons selected state
+        -- Fallback: check button selected state for any tab
         local pvpButtons = self:GetPvPSideTabButtons()
         if pvpButtons and pvpButtons[sideTabIndex] then
             local btn = pvpButtons[sideTabIndex]
-            -- Check multiple selection indicators
-            if btn.GetSelectedState and btn:GetSelectedState() then
-                return true
-            end
-            if btn.IsSelected and btn:IsSelected() then
-                return true
-            end
-            if btn.selectedTex and btn.selectedTex:IsShown() then
-                return true
-            end
-            if btn.selectedTexture and btn.selectedTexture:IsShown() then
-                return true
-            end
-            -- Check for modern selected state visual
-            if btn.Selected and btn.Selected:IsShown() then
-                return true
-            end
-            -- Check if button is highlighted/active via texture atlas
-            if btn.isSelected then
-                return true
-            end
+            if btn.GetSelectedState and btn:GetSelectedState() then return true end
+            if btn.IsSelected and btn:IsSelected() then return true end
+            if btn.selectedTex and btn.selectedTex:IsShown() then return true end
+            if btn.selectedTexture and btn.selectedTexture:IsShown() then return true end
+            if btn.Selected and btn.Selected:IsShown() then return true end
+            if btn.isSelected then return true end
         end
         
         return false
@@ -1107,38 +1125,23 @@ function Highlight:GetPvPSideTabButtons()
     -- Find the PvP side tab buttons
     local buttons = {}
     
-    -- Modern PvP UI
-    if PVPQueueFrame then
-        local buttonNames = {
-            "HonorButton",           -- Quick Match
-            "ConquestButton",        -- Rated
-            "LFGListButton",         -- Premade Groups  
-            "NewPlayerBrawlButton",  -- Training Grounds (modern name)
-        }
-        for i, name in ipairs(buttonNames) do
+    if not PVPQueueFrame then return buttons end
+    
+    -- Primary: CategoryButton1-4 (confirmed via DevFrame)
+    -- CategoryButton1 = Quick Match, 2 = Rated, 3 = Premade Groups, 4 = Training Grounds
+    for i = 1, 4 do
+        local btn = PVPQueueFrame["CategoryButton" .. i]
+        if btn then
+            buttons[i] = btn
+        end
+    end
+    
+    -- Fallback: try legacy named buttons if CategoryButtons not found
+    if not buttons[1] then
+        local legacyNames = {"HonorButton", "ConquestButton", "LFGListButton", "TrainingGroundsButton"}
+        for i, name in ipairs(legacyNames) do
             if PVPQueueFrame[name] then
                 buttons[i] = PVPQueueFrame[name]
-            end
-        end
-        
-        -- Fallback: try alternate names
-        if not buttons[4] then
-            local trainingNames = {"TrainingButton", "BrawlButton", "TrainingGroundsButton"}
-            for _, name in ipairs(trainingNames) do
-                if PVPQueueFrame[name] then
-                    buttons[4] = PVPQueueFrame[name]
-                    break
-                end
-            end
-        end
-        
-        -- Fallback: iterate children
-        if #buttons == 0 and PVPQueueFrame.CategoryButton1 then
-            for i = 1, 4 do
-                local btn = PVPQueueFrame["CategoryButton" .. i]
-                if btn then
-                    buttons[i] = btn
-                end
             end
         end
     end
@@ -1748,25 +1751,39 @@ function Highlight:FindRatedPvPButton(buttonText)
     
     local searchText = buttonText:lower()
     
-    -- Helper to get text from a frame
-    local function getFrameText(frame)
+    -- Helper to get ALL text from a frame combined (main text + subtitles)
+    local function getAllFrameText(frame)
         if not frame then return nil end
-        if frame.Label and frame.Label.GetText then return frame.Label:GetText() end
-        if frame.label and frame.label.GetText then return frame.label:GetText() end
-        if frame.Text and frame.Text.GetText then return frame.Text:GetText() end
-        if frame.text and frame.text.GetText then return frame.text:GetText() end
-        if frame.Name and frame.Name.GetText then return frame.Name:GetText() end
-        if frame.GetText then return frame:GetText() end
+        local texts = {}
+        
+        -- Check named text children
+        local textKeys = {"Label", "label", "Text", "text", "Name", "name"}
+        for _, key in ipairs(textKeys) do
+            if frame[key] and frame[key].GetText then
+                local t = frame[key]:GetText()
+                if t then texts[#texts + 1] = t end
+            end
+        end
+        
+        -- GetText on the frame itself
+        if frame.GetText then
+            local t = frame:GetText()
+            if t then texts[#texts + 1] = t end
+        end
         
         -- Check all fontstring regions
         local regions = {frame:GetRegions()}
         for _, region in ipairs(regions) do
             if region and region.GetObjectType and region:GetObjectType() == "FontString" then
                 if region.GetText then
-                    local text = region:GetText()
-                    if text then return text end
+                    local t = region:GetText()
+                    if t then texts[#texts + 1] = t end
                 end
             end
+        end
+        
+        if #texts > 0 then
+            return table.concat(texts, " ")
         end
         return nil
     end
@@ -1777,11 +1794,15 @@ function Highlight:FindRatedPvPButton(buttonText)
         
         -- Check if this frame is a clickable button-like frame with matching text
         if frame:IsShown() then
-            local text = getFrameText(frame)
-            if text and text:lower():find(searchText) then
-                -- Check if it's interactable
-                if frame.Click or (frame.IsMouseEnabled and frame:IsMouseEnabled()) then
-                    return frame
+            -- Only consider frames of reasonable button size (not tiny icons or huge panels)
+            local w, h = frame:GetSize()
+            if w and h and w > 80 and h > 20 and w < 500 then
+                local text = getAllFrameText(frame)
+                if text and text:lower():find(searchText, 1, true) then
+                    -- Check if it's interactable
+                    if frame.Click or (frame.IsMouseEnabled and frame:IsMouseEnabled()) then
+                        return frame
+                    end
                 end
             end
         end

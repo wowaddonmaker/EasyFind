@@ -4428,6 +4428,88 @@ function Database:BuildUIDatabase()
         },
         
         -- =====================
+        -- PREMADE GROUPS - PVE CATEGORIES
+        -- =====================
+        {
+            name = "Questing (Premade)",
+            keywords = {"questing", "quest", "quest group", "quest lfg", "find quest group", "premade questing"},
+            category = "Group Finder",
+            buttonFrame = "LFDMicroButton",
+            path = {"Group Finder", "Dungeons & Raids", "Premade Groups"},
+            steps = {
+                { buttonFrame = "LFDMicroButton" },
+                { waitForFrame = "PVEFrame", tabIndex = 1 },
+                { waitForFrame = "PVEFrame", sideTabIndex = 3 },
+                { waitForFrame = "PVEFrame", searchButtonText = "Questing", text = "Select Questing from the Premade Groups list" }
+            }
+        },
+        {
+            name = "Delves (Premade)",
+            keywords = {"delves", "delve group", "delve lfg", "find delve group", "premade delves", "delve"},
+            category = "Group Finder",
+            buttonFrame = "LFDMicroButton",
+            path = {"Group Finder", "Dungeons & Raids", "Premade Groups"},
+            steps = {
+                { buttonFrame = "LFDMicroButton" },
+                { waitForFrame = "PVEFrame", tabIndex = 1 },
+                { waitForFrame = "PVEFrame", sideTabIndex = 3 },
+                { waitForFrame = "PVEFrame", searchButtonText = "Delves", text = "Select Delves from the Premade Groups list" }
+            }
+        },
+        {
+            name = "Dungeons (Premade)",
+            keywords = {"dungeons", "dungeon group", "dungeon lfg", "find dungeon group", "premade dungeons", "m+ group", "mythic group"},
+            category = "Group Finder",
+            buttonFrame = "LFDMicroButton",
+            path = {"Group Finder", "Dungeons & Raids", "Premade Groups"},
+            steps = {
+                { buttonFrame = "LFDMicroButton" },
+                { waitForFrame = "PVEFrame", tabIndex = 1 },
+                { waitForFrame = "PVEFrame", sideTabIndex = 3 },
+                { waitForFrame = "PVEFrame", searchButtonText = "Dungeons", text = "Select Dungeons from the Premade Groups list" }
+            }
+        },
+        {
+            name = "Raids - The War Within (Premade)",
+            keywords = {"raids", "raids the war within", "raid group", "raid lfg", "find raid group", "premade raids", "tww raid", "war within raid", "nerub-ar", "liberation of undermine"},
+            category = "Group Finder",
+            buttonFrame = "LFDMicroButton",
+            path = {"Group Finder", "Dungeons & Raids", "Premade Groups"},
+            steps = {
+                { buttonFrame = "LFDMicroButton" },
+                { waitForFrame = "PVEFrame", tabIndex = 1 },
+                { waitForFrame = "PVEFrame", sideTabIndex = 3 },
+                { waitForFrame = "PVEFrame", searchButtonText = "Raids - The War Within", text = "Select Raids - The War Within from the Premade Groups list" }
+            }
+        },
+        {
+            name = "Raids - Legacy (Premade)",
+            keywords = {"raids", "raids legacy", "legacy raid", "old raid", "legacy raid group", "legacy lfg", "transmog raid", "mount run"},
+            category = "Group Finder",
+            buttonFrame = "LFDMicroButton",
+            path = {"Group Finder", "Dungeons & Raids", "Premade Groups"},
+            steps = {
+                { buttonFrame = "LFDMicroButton" },
+                { waitForFrame = "PVEFrame", tabIndex = 1 },
+                { waitForFrame = "PVEFrame", sideTabIndex = 3 },
+                { waitForFrame = "PVEFrame", searchButtonText = "Raids - Legacy", text = "Select Raids - Legacy from the Premade Groups list" }
+            }
+        },
+        {
+            name = "Custom PvE Group",
+            keywords = {"custom", "custom pve", "custom group", "custom lfg", "pve custom"},
+            category = "Group Finder",
+            buttonFrame = "LFDMicroButton",
+            path = {"Group Finder", "Dungeons & Raids", "Premade Groups"},
+            steps = {
+                { buttonFrame = "LFDMicroButton" },
+                { waitForFrame = "PVEFrame", tabIndex = 1 },
+                { waitForFrame = "PVEFrame", sideTabIndex = 3 },
+                { waitForFrame = "PVEFrame", searchButtonText = "Custom", text = "Select Custom from the Premade Groups list" }
+            }
+        },
+        
+        -- =====================
         -- GROUP FINDER - PVP SECTION
         -- =====================
         {
@@ -4479,7 +4561,7 @@ function Database:BuildUIDatabase()
         },
         {
             name = "Training Grounds",
-            keywords = {"training", "training grounds", "practice", "brawl", "pvp"},
+            keywords = {"training", "training grounds", "practice", "pvp"},
             category = "Group Finder",
             buttonFrame = "LFDMicroButton",
             path = {"Group Finder", "Player vs. Player"},
@@ -4491,7 +4573,24 @@ function Database:BuildUIDatabase()
         },
         
         -- =====================
-        -- QUICK MATCH SPECIFICS (Arena Skirmish, Random BG)
+        -- TRAINING GROUNDS SPECIFICS
+        -- =====================
+        {
+            name = "Random Battlegrounds (Training Grounds)",
+            keywords = {"random bg", "random battleground", "random battlegrounds", "training battleground", "bonus battleground"},
+            category = "PvP",
+            buttonFrame = "LFDMicroButton",
+            path = {"Group Finder", "Player vs. Player", "Training Grounds"},
+            steps = {
+                { buttonFrame = "LFDMicroButton" },
+                { waitForFrame = "PVEFrame", tabIndex = 2 },
+                { waitForFrame = "PVEFrame", pvpSideTabIndex = 4 },
+                { waitForFrame = "PVEFrame", regionFrames = {"TrainingGroundsFrame.BonusTrainingGroundList.RandomTrainingGroundButton"}, searchButtonText = "Random Battlegrounds", text = "Select Random Battlegrounds in Training Grounds" }
+            }
+        },
+        
+        -- =====================
+        -- QUICK MATCH SPECIFICS (Arena Skirmish, Random BG, etc.)
         -- =====================
         {
             name = "Arena Skirmish",
@@ -4503,7 +4602,7 @@ function Database:BuildUIDatabase()
                 { buttonFrame = "LFDMicroButton" },
                 { waitForFrame = "PVEFrame", tabIndex = 2 },
                 { waitForFrame = "PVEFrame", pvpSideTabIndex = 1 },
-                { waitForFrame = "PVEFrame", text = "Select Arena Skirmish from the dropdown menu" }
+                { waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.SpecificFrame.ArenaSkirmish", "HonorFrame.ArenaSkirmish"}, searchButtonText = "Arena Skirmish", text = "Select Arena Skirmish from the list" }
             }
         },
         {
@@ -4516,7 +4615,33 @@ function Database:BuildUIDatabase()
                 { buttonFrame = "LFDMicroButton" },
                 { waitForFrame = "PVEFrame", tabIndex = 2 },
                 { waitForFrame = "PVEFrame", pvpSideTabIndex = 1 },
-                { waitForFrame = "PVEFrame", text = "Select Random Battleground from the dropdown menu" }
+                { waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.SpecificFrame.RandomBG", "HonorFrame.RandomBG"}, searchButtonText = "Random Battlegrounds", text = "Select Random Battlegrounds from the list" }
+            }
+        },
+        {
+            name = "Random Epic Battleground",
+            keywords = {"random epic bg", "random epic battleground", "epic bg", "epic battleground", "ashran", "alterac", "isle of conquest"},
+            category = "PvP",
+            buttonFrame = "LFDMicroButton",
+            path = {"Group Finder", "Player vs. Player", "Quick Match"},
+            steps = {
+                { buttonFrame = "LFDMicroButton" },
+                { waitForFrame = "PVEFrame", tabIndex = 2 },
+                { waitForFrame = "PVEFrame", pvpSideTabIndex = 1 },
+                { waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.SpecificFrame.RandomEpicBG", "HonorFrame.RandomEpicBG"}, searchButtonText = "Random Epic Battlegrounds", text = "Select Random Epic Battlegrounds from the list" }
+            }
+        },
+        {
+            name = "Brawl",
+            keywords = {"brawl", "pvp brawl", "weekly brawl", "packed house"},
+            category = "PvP",
+            buttonFrame = "LFDMicroButton",
+            path = {"Group Finder", "Player vs. Player", "Quick Match"},
+            steps = {
+                { buttonFrame = "LFDMicroButton" },
+                { waitForFrame = "PVEFrame", tabIndex = 2 },
+                { waitForFrame = "PVEFrame", pvpSideTabIndex = 1 },
+                { waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.SpecificFrame.Brawl", "HonorFrame.BonusFrame.BrawlButton"}, searchButtonText = "Brawl", text = "Select the Brawl option from the list" }
             }
         },
         
@@ -4533,7 +4658,7 @@ function Database:BuildUIDatabase()
                 { buttonFrame = "LFDMicroButton" },
                 { waitForFrame = "PVEFrame", tabIndex = 2 },
                 { waitForFrame = "PVEFrame", pvpSideTabIndex = 2 },
-                { waitForFrame = "PVEFrame", searchButtonText = "Solo Shuffle", text = "Solo Shuffle is the first option in the Rated panel" }
+                { waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.Arena1v1", "ConquestFrame.SoloShuffle"}, searchButtonText = "Solo Arena", text = "Solo Shuffle is the first option in the Rated panel" }
             }
         },
         {
@@ -4546,7 +4671,7 @@ function Database:BuildUIDatabase()
                 { buttonFrame = "LFDMicroButton" },
                 { waitForFrame = "PVEFrame", tabIndex = 2 },
                 { waitForFrame = "PVEFrame", pvpSideTabIndex = 2 },
-                { waitForFrame = "PVEFrame", searchButtonText = "2v2", text = "2v2 Arena is in the Rated panel" }
+                { waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.Arena2v2"}, searchButtonText = "2v2", text = "2v2 Arena is in the Rated panel" }
             }
         },
         {
@@ -4559,12 +4684,12 @@ function Database:BuildUIDatabase()
                 { buttonFrame = "LFDMicroButton" },
                 { waitForFrame = "PVEFrame", tabIndex = 2 },
                 { waitForFrame = "PVEFrame", pvpSideTabIndex = 2 },
-                { waitForFrame = "PVEFrame", searchButtonText = "3v3", text = "3v3 Arena is in the Rated panel" }
+                { waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.Arena3v3"}, searchButtonText = "3v3", text = "3v3 Arena is in the Rated panel" }
             }
         },
         {
             name = "Rated Battlegrounds",
-            keywords = {"rbg", "rated bg", "rated battleground", "rated battlegrounds", "10v10"},
+            keywords = {"rbg", "rated bg", "rated battleground", "rated battlegrounds", "10v10", "ten vs ten"},
             category = "PvP",
             buttonFrame = "LFDMicroButton",
             path = {"Group Finder", "Player vs. Player", "Rated"},
@@ -4572,7 +4697,89 @@ function Database:BuildUIDatabase()
                 { buttonFrame = "LFDMicroButton" },
                 { waitForFrame = "PVEFrame", tabIndex = 2 },
                 { waitForFrame = "PVEFrame", pvpSideTabIndex = 2 },
-                { waitForFrame = "PVEFrame", regionFrames = {"PVPQueueFrame.HonorInset.RatedPanel.RatedBGButton", "HonorFrame.BonusFrame.RatedBGButton"}, text = "Rated Battlegrounds is in the Rated panel" }
+                { waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.RatedBG", "PVPQueueFrame.HonorInset.RatedPanel.RatedBGButton", "HonorFrame.BonusFrame.RatedBGButton"}, text = "Rated Battlegrounds is in the Rated panel" }
+            }
+        },
+        {
+            name = "Solo Battlegrounds (Blitz)",
+            keywords = {"solo bg", "solo battleground", "solo battlegrounds", "solo rated bg", "battleground", "blitz", "rated battleground blitz", "battleground blitz"},
+            category = "PvP",
+            buttonFrame = "LFDMicroButton",
+            path = {"Group Finder", "Player vs. Player", "Rated"},
+            steps = {
+                { buttonFrame = "LFDMicroButton" },
+                { waitForFrame = "PVEFrame", tabIndex = 2 },
+                { waitForFrame = "PVEFrame", pvpSideTabIndex = 2 },
+                { waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.SoloBG", "ConquestFrame.Brawl1v1"}, searchButtonText = "Solo Battlegrounds", text = "Solo Battlegrounds (Blitz) is in the Rated panel" }
+            }
+        },
+        
+        -- =====================
+        -- PREMADE GROUPS - PVP CATEGORIES
+        -- =====================
+        {
+            name = "Arenas (Premade)",
+            keywords = {"arena premade", "arena group", "arena lfg", "find arena", "arena"},
+            category = "PvP",
+            buttonFrame = "LFDMicroButton",
+            path = {"Group Finder", "Player vs. Player", "Premade Groups"},
+            steps = {
+                { buttonFrame = "LFDMicroButton" },
+                { waitForFrame = "PVEFrame", tabIndex = 2 },
+                { waitForFrame = "PVEFrame", pvpSideTabIndex = 3 },
+                { waitForFrame = "PVEFrame", searchButtonText = "Arenas", text = "Select Arenas from the Premade Groups list" }
+            }
+        },
+        {
+            name = "Arena Skirmishes (Premade)",
+            keywords = {"arena skirmish premade", "skirmish group", "skirmish lfg", "skirmish"},
+            category = "PvP",
+            buttonFrame = "LFDMicroButton",
+            path = {"Group Finder", "Player vs. Player", "Premade Groups"},
+            steps = {
+                { buttonFrame = "LFDMicroButton" },
+                { waitForFrame = "PVEFrame", tabIndex = 2 },
+                { waitForFrame = "PVEFrame", pvpSideTabIndex = 3 },
+                { waitForFrame = "PVEFrame", searchButtonText = "Arena Skirmishes", text = "Select Arena Skirmishes from the Premade Groups list" }
+            }
+        },
+        {
+            name = "Battlegrounds (Premade)",
+            keywords = {"bg premade", "battleground group", "bg lfg", "find bg", "battleground"},
+            category = "PvP",
+            buttonFrame = "LFDMicroButton",
+            path = {"Group Finder", "Player vs. Player", "Premade Groups"},
+            steps = {
+                { buttonFrame = "LFDMicroButton" },
+                { waitForFrame = "PVEFrame", tabIndex = 2 },
+                { waitForFrame = "PVEFrame", pvpSideTabIndex = 3 },
+                { waitForFrame = "PVEFrame", searchButtonText = "Battlegrounds", text = "Select Battlegrounds from the Premade Groups list" }
+            }
+        },
+        {
+            name = "Rated Battlegrounds (Premade)",
+            keywords = {"rated bg premade", "rbg premade", "rbg group", "rbg lfg", "rated battleground"},
+            category = "PvP",
+            buttonFrame = "LFDMicroButton",
+            path = {"Group Finder", "Player vs. Player", "Premade Groups"},
+            steps = {
+                { buttonFrame = "LFDMicroButton" },
+                { waitForFrame = "PVEFrame", tabIndex = 2 },
+                { waitForFrame = "PVEFrame", pvpSideTabIndex = 3 },
+                { waitForFrame = "PVEFrame", searchButtonText = "Rated Battlegrounds", text = "Select Rated Battlegrounds from the Premade Groups list" }
+            }
+        },
+        {
+            name = "Custom PvP Group",
+            keywords = {"custom pvp", "custom group", "custom lfg", "pvp custom", "custom"},
+            category = "PvP",
+            buttonFrame = "LFDMicroButton",
+            path = {"Group Finder", "Player vs. Player", "Premade Groups"},
+            steps = {
+                { buttonFrame = "LFDMicroButton" },
+                { waitForFrame = "PVEFrame", tabIndex = 2 },
+                { waitForFrame = "PVEFrame", pvpSideTabIndex = 3 },
+                { waitForFrame = "PVEFrame", searchButtonText = "Custom", text = "Select Custom from the Premade Groups list" }
             }
         },
         

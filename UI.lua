@@ -7,7 +7,7 @@ local searchFrame
 local resultsFrame
 local toggleBtn
 local resultButtons = {}
-local MAX_RESULTS = 8
+local MAX_RESULTS = 12
 local inCombat = false
 
 function UI:Initialize()
