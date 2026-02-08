@@ -68,7 +68,7 @@ Both search bars can be repositioned:
 
 ## Requirements
 
-World of Warcraft Retail (Patch 12.0.0 or later)
+World of Warcraft Retail (Patch 12.0.1)
 
 ## Known Issues
 
