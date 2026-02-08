@@ -440,127 +440,134 @@ function UI:SelectResult(data)
     end
 end
 
--- Direct open mode - immediately opens the target panel
+-- Direct open mode - programmatically navigates to the target, then highlights the final step.
+-- Instead of duplicating all the button-finding logic, this executes intermediate steps
+-- (clicking buttons/tabs) and then hands off to the guide system for the final step,
+-- so the user still gets a highlight on what to click/look at.
 function UI:DirectOpen(data)
-    if not data or not data.steps then return end
-    
-    -- Collect all steps and their delays
-    local delay = 0
-    
-    -- Execute each step's action directly with proper sequencing
-    for stepIndex, step in ipairs(data.steps) do
-        local currentDelay = delay
-        
-        if step.buttonFrame then
-            C_Timer.After(currentDelay, function()
-                local btn = _G[step.buttonFrame]
-                if btn and btn.Click then
-                    btn:Click()
-                elseif btn and btn:GetScript("OnClick") then
-                    btn:GetScript("OnClick")(btn)
+    if not data or not data.steps or #data.steps == 0 then return end
+
+    local steps = data.steps
+    local totalSteps = #steps
+    local Highlight = ns.Highlight
+
+    -- If there's only one step, just start the guide normally (it will highlight the target)
+    if totalSteps == 1 then
+        EasyFind:StartGuide(data)
+        return
+    end
+
+    -- Execute steps 1 .. (totalSteps - 1) programmatically, then start the guide
+    -- at the last step so it gets the full highlight treatment.
+    -- We chain with timers, waiting for each frame to appear before proceeding.
+    local function executeStep(stepIndex)
+        -- Once we've executed all intermediate steps, start the guide at the final step
+        if stepIndex >= totalSteps then
+            -- Small delay to let the last programmatic click settle
+            C_Timer.After(0.15, function()
+                if Highlight then
+                    Highlight:StartGuideAtStep(data, totalSteps)
                 end
             end)
-            delay = delay + 0.1
+            return
         end
-        
+
+        local step = steps[stepIndex]
+        local nextDelay = 0.1
+
+        -- Click a micro menu button (like LFDMicroButton, CharacterMicroButton, etc.)
+        if step.buttonFrame then
+            local btn = _G[step.buttonFrame]
+            if btn then
+                if btn.Click then
+                    btn:Click()
+                elseif btn:GetScript("OnClick") then
+                    btn:GetScript("OnClick")(btn)
+                end
+            end
+            nextDelay = 0.15
+        end
+
+        -- Click a main tab (Dungeons & Raids / Player vs. Player / etc.)
         if step.waitForFrame and step.tabIndex then
-            C_Timer.After(currentDelay + 0.05, function()
-                local frameName = step.waitForFrame
-                local tabIndex = step.tabIndex
-                local frame = _G[frameName]
-                if frame then
-                    -- Try to click the tab
-                    local tabBtn = _G[frameName .. "Tab" .. tabIndex]
-                    if tabBtn and tabBtn.Click then
-                        tabBtn:Click()
-                    elseif PanelTemplates_SetTab then
-                        PanelTemplates_SetTab(frame, tabIndex)
+            -- Use Highlight's GetTabButton which knows all the correct frame names
+            local tabBtn = Highlight:GetTabButton(step.waitForFrame, step.tabIndex)
+            if tabBtn and tabBtn.Click then
+                tabBtn:Click()
+            elseif tabBtn and tabBtn:GetScript("OnClick") then
+                tabBtn:GetScript("OnClick")(tabBtn, "LeftButton")
+            end
+            nextDelay = 0.15
+        end
+
+        -- Click a PvE side tab (Dungeon Finder / Raid Finder / Premade Groups)
+        if step.sideTabIndex then
+            C_Timer.After(0.05, function()
+                local sideBtn = Highlight:GetSideTabButton(step.waitForFrame or "PVEFrame", step.sideTabIndex)
+                if sideBtn then
+                    if sideBtn.Click then
+                        sideBtn:Click()
+                    elseif sideBtn:GetScript("OnClick") then
+                        sideBtn:GetScript("OnClick")(sideBtn, "LeftButton")
                     end
                 end
             end)
-            delay = delay + 0.15
+            nextDelay = 0.2
         end
-        
-        -- Statistics category navigation (tree-based category selection in Statistics tab)
-        if step.statisticsCategory then
-            C_Timer.After(currentDelay + 0.15, function()
-                self:ClickStatisticsCategory(step.statisticsCategory)
-            end)
-            delay = delay + 0.3
-        end
-        
-        -- Side tab (like Dungeon Finder / Raid Finder in Group Finder)
-        if step.sideTabIndex then
-            C_Timer.After(currentDelay + 0.1, function()
-                self:ClickSideTab(step.waitForFrame, step.sideTabIndex)
-            end)
-            delay = delay + 0.15
-        end
-        
-        -- PvP side tab (Quick Match / Rated / Premade / Training in PvP tab)
+
+        -- Click a PvP side tab (Quick Match / Rated / Premade Groups / Training Grounds)
         if step.pvpSideTabIndex then
-            C_Timer.After(currentDelay + 0.1, function()
-                self:ClickPvPSideTab(step.waitForFrame, step.pvpSideTabIndex)
+            C_Timer.After(0.05, function()
+                local pvpBtn = Highlight:GetPvPSideTabButton(step.waitForFrame or "PVEFrame", step.pvpSideTabIndex)
+                if pvpBtn then
+                    if pvpBtn.Click then
+                        pvpBtn:Click()
+                    elseif pvpBtn:GetScript("OnClick") then
+                        pvpBtn:GetScript("OnClick")(pvpBtn, "LeftButton")
+                    end
+                end
             end)
-            delay = delay + 0.15
+            nextDelay = 0.2
         end
-        
-        -- Search for a button by text and click it
-        if step.searchButtonText then
-            C_Timer.After(currentDelay + 0.15, function()
-                self:ClickButtonByText(step.searchButtonText)
-            end)
-            delay = delay + 0.2
+
+        -- Click a Character Frame sidebar tab
+        if step.sidebarButtonFrame or step.sidebarIndex then
+            self:ClickCharacterSidebar(step.sidebarIndex)
+            nextDelay = 0.15
         end
-        
-        -- Character Frame sidebar buttons (Character Stats, Titles, Equipment Manager)
-        if step.sidebarButtonFrame and step.sidebarIndex then
-            C_Timer.After(currentDelay + 0.1, function()
-                self:ClickCharacterSidebar(step.sidebarIndex)
-            end)
-            delay = delay + 0.15
+
+        -- Click a statistics category
+        if step.statisticsCategory then
+            self:ClickStatisticsCategory(step.statisticsCategory)
+            nextDelay = 0.3
         end
-        
-        -- Achievement category navigation (tree-based category selection in Achievements tab)
+
+        -- Click an achievement category
         if step.achievementCategory then
-            C_Timer.After(currentDelay + 0.15, function()
-                self:ClickAchievementCategory(step.achievementCategory)
-            end)
-            delay = delay + 0.3
+            self:ClickAchievementCategory(step.achievementCategory)
+            nextDelay = 0.3
         end
-        
-        -- Currency header expansion/navigation
+
+        -- Expand a currency header
         if step.currencyHeader then
-            C_Timer.After(currentDelay + 0.15, function()
-                self:ExpandCurrencyHeader(step.currencyHeader)
-            end)
-            delay = delay + 0.2
+            self:ExpandCurrencyHeader(step.currencyHeader)
+            nextDelay = 0.2
         end
-        
-        -- Currency ID navigation (scroll to specific currency)
+
+        -- Scroll to a currency
         if step.currencyID then
-            C_Timer.After(currentDelay + 0.1, function()
-                self:ScrollToCurrency(step.currencyID)
-            end)
-            delay = delay + 0.2
+            self:ScrollToCurrency(step.currencyID)
+            nextDelay = 0.2
         end
-        
-        -- Portrait menu (right-click player frame)
-        if step.portraitMenu then
-            C_Timer.After(currentDelay, function()
-                self:OpenPortraitMenu()
-            end)
-            delay = delay + 0.2
-        end
-        
-        -- Portrait menu option selection
-        if step.portraitMenuOption then
-            C_Timer.After(currentDelay + 0.15, function()
-                self:ClickPortraitMenuOption(step.portraitMenuOption)
-            end)
-            delay = delay + 0.2
-        end
+
+        -- Chain to the next step after a delay
+        C_Timer.After(nextDelay, function()
+            executeStep(stepIndex + 1)
+        end)
     end
+
+    -- Start executing from step 1
+    executeStep(1)
 end
 
 -- Helper function to click Character Frame sidebar buttons
@@ -845,113 +852,6 @@ function UI:ClickAchievementCategory(categoryName)
 end
 
 -- Helper function to click a side tab (PvE Group Finder tabs)
-function UI:ClickSideTab(frameName, sideTabIndex)
-    if frameName == "PVEFrame" then
-        local sideButtons = {
-            GroupFinderFrame and GroupFinderFrame.DungeonFinderButton,
-            GroupFinderFrame and GroupFinderFrame.RaidFinderButton,
-            GroupFinderFrame and GroupFinderFrame.LFGListButton,
-        }
-        local btn = sideButtons[sideTabIndex]
-        if btn and btn:IsShown() then
-            if btn.Click then
-                btn:Click()
-            elseif btn:GetScript("OnClick") then
-                btn:GetScript("OnClick")(btn, "LeftButton")
-            end
-        end
-    end
-end
-
--- Helper function to click a PvP side tab
-function UI:ClickPvPSideTab(frameName, sideTabIndex)
-    if frameName == "PVEFrame" then
-        if PVPQueueFrame then
-            local buttonNames = {
-                "HonorButton",
-                "ConquestButton",
-                "LFGListButton",
-                "NewPlayerBrawlButton",
-            }
-            local btnName = buttonNames[sideTabIndex]
-            if btnName then
-                local btn = PVPQueueFrame[btnName]
-                if btn and btn:IsShown() then
-                    if btn.Click then
-                        btn:Click()
-                    elseif btn:GetScript("OnClick") then
-                        btn:GetScript("OnClick")(btn, "LeftButton")
-                    end
-                    return
-                end
-            end
-            
-            -- Fallback: try CategoryButton pattern
-            local btn = PVPQueueFrame["CategoryButton" .. sideTabIndex]
-            if btn and btn:IsShown() then
-                if btn.Click then
-                    btn:Click()
-                elseif btn:GetScript("OnClick") then
-                    btn:GetScript("OnClick")(btn, "LeftButton")
-                end
-            end
-        end
-    end
-end
-
--- Helper function to search for and click a button by text
-function UI:ClickButtonByText(buttonText)
-    if not PVEFrame or not PVEFrame:IsShown() then
-        return
-    end
-    
-    local searchText = buttonText:lower()
-    
-    local function getFrameText(frame)
-        if not frame then return nil end
-        if frame.Label and frame.Label.GetText then return frame.Label:GetText() end
-        if frame.label and frame.label.GetText then return frame.label:GetText() end
-        if frame.Text and frame.Text.GetText then return frame.Text:GetText() end
-        if frame.text and frame.text.GetText then return frame.text:GetText() end
-        if frame.GetText then return frame:GetText() end
-        local regions = {frame:GetRegions()}
-        for _, region in ipairs(regions) do
-            if region and region.GetObjectType and region:GetObjectType() == "FontString" and region.GetText then
-                local text = region:GetText()
-                if text then return text end
-            end
-        end
-        return nil
-    end
-    
-    local function searchTree(frame, depth)
-        if not frame or depth > 6 then return nil end
-        if frame:IsShown() then
-            local text = getFrameText(frame)
-            if text and text:lower():find(searchText) then
-                if frame.Click or (frame.IsMouseEnabled and frame:IsMouseEnabled()) then
-                    return frame
-                end
-            end
-        end
-        local children = {frame:GetChildren()}
-        for _, child in ipairs(children) do
-            local result = searchTree(child, depth + 1)
-            if result then return result end
-        end
-        return nil
-    end
-    
-    local btn = searchTree(PVEFrame, 0)
-    if btn then
-        if btn.Click then
-            btn:Click()
-        elseif btn:GetScript("OnClick") then
-            btn:GetScript("OnClick")(btn, "LeftButton")
-        end
-    end
-end
-
 -- Helper to extract text from various button types
 function UI:GetButtonText(btn)
     if not btn then return nil end

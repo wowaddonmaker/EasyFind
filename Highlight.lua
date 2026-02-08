@@ -192,6 +192,26 @@ function Highlight:StartGuide(guideData)
     end)
 end
 
+-- Start the guide at a specific step (used by DirectOpen to skip to final highlight)
+function Highlight:StartGuideAtStep(guideData, stepIndex)
+    self:Cancel()
+    
+    if not guideData or not guideData.steps or #guideData.steps == 0 then
+        return
+    end
+    
+    if stepIndex > #guideData.steps then
+        stepIndex = #guideData.steps
+    end
+    
+    currentGuide = guideData
+    currentStepIndex = stepIndex
+    
+    stepTicker = C_Timer.NewTicker(0.1, function()
+        self:UpdateGuide()
+    end)
+end
+
 function Highlight:UpdateGuide()
     if not currentGuide or not currentStepIndex then
         self:Cancel()
@@ -641,6 +661,59 @@ function Highlight:UpdateGuide()
             return
         end
         
+        -- =====================================================================
+        -- PREREQUISITE VALIDATION for final-destination steps (regionFrames,
+        -- searchButtonText, text-only).  Walk backwards through the step list
+        -- and make sure every earlier tab / side-tab prerequisite is still
+        -- satisfied.  If the user switched away (e.g. clicked Training Grounds
+        -- while we expect Premade Groups) we rewind to that step so the guide
+        -- re-highlights the correct side-tab button instead of pointing at
+        -- empty space.
+        -- =====================================================================
+        do
+            for i = currentStepIndex - 1, 1, -1 do
+                local prev = currentGuide.steps[i]
+                if not prev then break end
+
+                -- Validate main tab (tabIndex)
+                if prev.tabIndex and prev.waitForFrame then
+                    local currentTab = self:GetCurrentTabIndex(prev.waitForFrame)
+                    if currentTab and currentTab ~= prev.tabIndex then
+                        currentStepIndex = i
+                        self:HideHighlight()
+                        return
+                    end
+                end
+
+                -- Validate PvP side tab (pvpSideTabIndex)
+                if prev.pvpSideTabIndex and prev.waitForFrame then
+                    if not self:IsPvPSideTabSelected(prev.waitForFrame, prev.pvpSideTabIndex) then
+                        currentStepIndex = i
+                        self:HideHighlight()
+                        return
+                    end
+                end
+
+                -- Validate PvE side tab (sideTabIndex)
+                if prev.sideTabIndex and prev.waitForFrame then
+                    if not self:IsSideTabSelected(prev.waitForFrame, prev.sideTabIndex) then
+                        currentStepIndex = i
+                        self:HideHighlight()
+                        return
+                    end
+                end
+
+                -- Validate Character Frame sidebar tab (sidebarIndex)
+                if prev.sidebarIndex then
+                    if not self:IsSidebarTabSelected(prev.sidebarIndex) then
+                        currentStepIndex = i
+                        self:HideHighlight()
+                        return
+                    end
+                end
+            end
+        end
+
         -- Text-only final step (when we've navigated but can't highlight specific element)
         if step.text and not step.regionFrames and not step.regionFrame and not step.searchButtonText then
             self:ShowInstruction(step.text)
@@ -1077,12 +1150,21 @@ end
 function Highlight:IsPvPSideTabSelected(frameName, sideTabIndex)
     -- PVEFrame PvP side buttons (Quick Match, Rated, Premade Groups, Training Grounds)
     if frameName == "PVEFrame" then
-        -- First check the known panel frames for tabs 1-3
+        -- First check the known panel frames for each tab
         local tab1Active = HonorFrame and HonorFrame:IsShown()
         local tab2Active = ConquestFrame and ConquestFrame:IsShown()
-        local tab3Active = (LFGListPVPStub and LFGListPVPStub:IsShown()) or
-                           (LFGListFrame and LFGListFrame.CategorySelection and LFGListFrame.CategorySelection:IsShown() and
-                            PanelTemplates_GetSelectedTab and PanelTemplates_GetSelectedTab(PVEFrame) == 2)
+        local tab4Active = TrainingGroundsFrame and TrainingGroundsFrame:IsShown()
+        -- Tab 3 (Premade Groups): LFGListFrame is shared, so we must explicitly
+        -- rule out every other sub-panel before trusting it.
+        local tab3Active = false
+        if not tab1Active and not tab2Active and not tab4Active then
+            if LFGListPVPStub and LFGListPVPStub:IsShown() then
+                tab3Active = true
+            elseif LFGListFrame and LFGListFrame.CategorySelection and LFGListFrame.CategorySelection:IsShown() and
+                   PanelTemplates_GetSelectedTab and PanelTemplates_GetSelectedTab(PVEFrame) == 2 then
+                tab3Active = true
+            end
+        end
         
         if sideTabIndex == 1 then
             return tab1Active and true or false
@@ -1744,7 +1826,7 @@ function Highlight:GetSidebarTabButton(sidebarIndex)
 end
 
 function Highlight:FindRatedPvPButton(buttonText)
-    -- Search the PVEFrame for a button with matching text (for Solo Shuffle, 2v2, 3v3, etc.)
+    -- Search the ACTIVE sub-panel for a button with matching text (Solo Shuffle, 2v2, Arenas, etc.)
     if not PVEFrame or not PVEFrame:IsShown() then
         return nil
     end
@@ -1817,7 +1899,49 @@ function Highlight:FindRatedPvPButton(buttonText)
         return nil
     end
     
-    -- Start search from PVEFrame
+    -- Determine the active sub-panel and search only within it.
+    -- This prevents finding buttons on inactive sub-tabs (e.g. finding
+    -- "Random Battlegrounds" on Quick Match when looking for "Arena Skirmishes"
+    -- on Premade Groups).
+    local searchRoots = {}
+    
+    -- PvP sub-panels
+    if HonorFrame and HonorFrame:IsShown() then
+        searchRoots[#searchRoots + 1] = HonorFrame
+    end
+    if ConquestFrame and ConquestFrame:IsShown() then
+        searchRoots[#searchRoots + 1] = ConquestFrame
+    end
+    if LFGListPVPStub and LFGListPVPStub:IsShown() then
+        searchRoots[#searchRoots + 1] = LFGListPVPStub
+    end
+    if TrainingGroundsFrame and TrainingGroundsFrame:IsShown() then
+        searchRoots[#searchRoots + 1] = TrainingGroundsFrame
+    end
+    
+    -- PvE sub-panels
+    if LFDParentFrame and LFDParentFrame:IsShown() then
+        searchRoots[#searchRoots + 1] = LFDParentFrame
+    end
+    if RaidFinderFrame and RaidFinderFrame:IsShown() then
+        searchRoots[#searchRoots + 1] = RaidFinderFrame
+    end
+    if LFGListPVEStub and LFGListPVEStub:IsShown() then
+        searchRoots[#searchRoots + 1] = LFGListPVEStub
+    end
+    
+    -- LFGListFrame is shared between PvE and PvP premade groups
+    if LFGListFrame and LFGListFrame:IsShown() then
+        searchRoots[#searchRoots + 1] = LFGListFrame
+    end
+    
+    -- Search each active sub-panel
+    for _, root in ipairs(searchRoots) do
+        local result = searchTree(root, 0)
+        if result then return result end
+    end
+    
+    -- Fallback: search entire PVEFrame (for edge cases like Mythic+ or unknown layouts)
     return searchTree(PVEFrame, 0)
 end
 
