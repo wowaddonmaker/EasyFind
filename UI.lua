@@ -3,6 +3,15 @@ local ADDON_NAME, ns = ...
 local UI = {}
 ns.UI = UI
 
+local Utils = ns.Utils
+local GetButtonText    = Utils.GetButtonText
+local SearchFrameTree  = Utils.SearchFrameTree
+local DebugPrint       = Utils.DebugPrint
+local select, ipairs, pairs = Utils.select, Utils.ipairs, Utils.pairs
+local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
+local tinsert, tsort, tconcat = Utils.tinsert, Utils.tsort, Utils.tconcat
+local mmin, mmax = Utils.mmin, Utils.mmax
+
 local searchFrame
 local resultsFrame
 local toggleBtn
@@ -33,10 +42,9 @@ function UI:Initialize()
 end
 
 function UI:RegisterCombatEvents()
-    local eventFrame = CreateFrame("Frame")
-    eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
-    eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
-    eventFrame:SetScript("OnEvent", function(self, event)
+    ns.eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
+    ns.eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    ns.eventFrame:HookScript("OnEvent", function(self, event)
         if event == "PLAYER_REGEN_DISABLED" then
             inCombat = true
             searchFrame:Hide()
@@ -302,9 +310,9 @@ local function GetButtonIcon(frameName)
     end
     
     -- Fallback: iterate through regions
-    local regions = {frame:GetRegions()}
-    for _, region in ipairs(regions) do
-        if region:GetObjectType() == "Texture" then
+    for i = 1, select("#", frame:GetRegions()) do
+        local region = select(i, frame:GetRegions())
+        if region and region:GetObjectType() == "Texture" then
             local texture = region:GetTexture()
             if texture and type(texture) == "number" then
                 return texture
@@ -321,7 +329,7 @@ function UI:ShowHierarchicalResults(hierarchical)
         return
     end
     
-    local count = math.min(#hierarchical, MAX_RESULTS)
+    local count = mmin(#hierarchical, MAX_RESULTS)
     local INDENT_SIZE = 12
     
     for i = 1, MAX_RESULTS do
@@ -440,10 +448,10 @@ function UI:SelectResult(data)
     end
 end
 
--- Direct open mode - programmatically navigates to the target, then highlights the final step.
--- Instead of duplicating all the button-finding logic, this executes intermediate steps
--- (clicking buttons/tabs) and then hands off to the guide system for the final step,
--- so the user still gets a highlight on what to click/look at.
+-- Direct open mode - programmatically navigates to the target as far as possible.
+-- Executes ALL steps that represent clickable navigation (tabs, categories, buttons).
+-- Only falls back to highlighting when the final step is a non-navigable UI region
+-- that the user needs to visually locate (e.g. PvP Talents tray, War Mode button).
 function UI:DirectOpen(data)
     if not data or not data.steps or #data.steps == 0 then return end
 
@@ -451,24 +459,54 @@ function UI:DirectOpen(data)
     local totalSteps = #steps
     local Highlight = ns.Highlight
 
-    -- If there's only one step, just start the guide normally (it will highlight the target)
-    if totalSteps == 1 then
+    -- Determine whether a step is "navigable" (can be auto-executed) vs "highlight-only"
+    -- (just points at a UI region the user needs to see).
+    -- A step is navigable if it has any clickable action property.
+    local function isStepNavigable(step)
+        if step.buttonFrame then return true end
+        if step.tabIndex then return true end
+        if step.sideTabIndex then return true end
+        if step.pvpSideTabIndex then return true end
+        if step.sidebarButtonFrame or step.sidebarIndex then return true end
+        if step.statisticsCategory then return true end
+        if step.achievementCategory then return true end
+        if step.currencyHeader then return true end
+        if step.currencyID then return true end
+        if step.searchButtonText then return true end
+        if step.portraitMenuOption then return true end
+        -- regionFrames alone (no searchButtonText) = highlight-only (e.g. PvP Talents)
+        -- waitForFrame alone = just waiting for a frame to appear, not navigable
+        -- text alone = instruction text, not navigable
+        return false
+    end
+
+    local lastStep = steps[totalSteps]
+    local finalStepNavigable = isStepNavigable(lastStep)
+
+    -- How many steps to execute programmatically:
+    -- If final step is navigable, execute ALL steps (no highlight needed).
+    -- If final step is highlight-only, execute all but the last, then highlight it.
+    local executeCount = finalStepNavigable and totalSteps or (totalSteps - 1)
+
+    -- If there's nothing to execute programmatically (single highlight-only step),
+    -- just start the normal guide.
+    if executeCount == 0 then
         EasyFind:StartGuide(data)
         return
     end
 
-    -- Execute steps 1 .. (totalSteps - 1) programmatically, then start the guide
-    -- at the last step so it gets the full highlight treatment.
-    -- We chain with timers, waiting for each frame to appear before proceeding.
     local function executeStep(stepIndex)
-        -- Once we've executed all intermediate steps, start the guide at the final step
-        if stepIndex >= totalSteps then
-            -- Small delay to let the last programmatic click settle
-            C_Timer.After(0.15, function()
-                if Highlight then
-                    Highlight:StartGuideAtStep(data, totalSteps)
-                end
-            end)
+        -- Done executing — either finished completely or hand off to highlight
+        if stepIndex > executeCount then
+            if not finalStepNavigable then
+                -- Final step is highlight-only — show it to the user
+                C_Timer.After(0.15, function()
+                    if Highlight then
+                        Highlight:StartGuideAtStep(data, totalSteps)
+                    end
+                end)
+            end
+            -- If final step was navigable, we already executed it — nothing more to do
             return
         end
 
@@ -490,7 +528,6 @@ function UI:DirectOpen(data)
 
         -- Click a main tab (Dungeons & Raids / Player vs. Player / etc.)
         if step.waitForFrame and step.tabIndex then
-            -- Use Highlight's GetTabButton which knows all the correct frame names
             local tabBtn = Highlight:GetTabButton(step.waitForFrame, step.tabIndex)
             if tabBtn and tabBtn.Click then
                 tabBtn:Click()
@@ -560,6 +597,27 @@ function UI:DirectOpen(data)
             nextDelay = 0.2
         end
 
+        -- Click a button found by text search (Premade Groups categories, PvP queue buttons, etc.)
+        if step.searchButtonText then
+            C_Timer.After(0.05, function()
+                local SearchFrameTreeFuzzy = Utils.SearchFrameTreeFuzzy
+                local searchText = slower(step.searchButtonText)
+                -- Search within the relevant parent frame
+                local parentFrame = step.waitForFrame and _G[step.waitForFrame]
+                if parentFrame then
+                    local btn = SearchFrameTreeFuzzy(parentFrame, searchText)
+                    if btn then
+                        if btn.Click then
+                            btn:Click()
+                        elseif btn.GetScript and btn:GetScript("OnClick") then
+                            btn:GetScript("OnClick")(btn, "LeftButton")
+                        end
+                    end
+                end
+            end)
+            nextDelay = 0.3
+        end
+
         -- Chain to the next step after a delay
         C_Timer.After(nextDelay, function()
             executeStep(stepIndex + 1)
@@ -620,15 +678,17 @@ function UI:ClickCharacterSidebar(sidebarIndex)
         sidebarTabs = PaperDollFrame.SidebarTabs
     end
     if sidebarTabs then
-        local children = {sidebarTabs:GetChildren()}
-        if children[sidebarIndex] then
-            local tab = children[sidebarIndex]
-            if tab.Click then
-                tab:Click()
-                return true
-            elseif tab:GetScript("OnClick") then
-                tab:GetScript("OnClick")(tab, "LeftButton")
-                return true
+        local nTabs = select("#", sidebarTabs:GetChildren())
+        if sidebarIndex <= nTabs then
+            local tab = select(sidebarIndex, sidebarTabs:GetChildren())
+            if tab then
+                if tab.Click then
+                    tab:Click()
+                    return true
+                elseif tab:GetScript("OnClick") then
+                    tab:GetScript("OnClick")(tab, "LeftButton")
+                    return true
+                end
             end
         end
     end
@@ -648,104 +708,52 @@ function UI:ClickStatisticsCategory(categoryName)
         return false
     end
     
-    local categoryNameLower = categoryName:lower()
-    
-    -- Helper to get text from a button
-    local function getButtonText(btn)
-        if not btn then return nil end
-        if btn.label and btn.label.GetText then return btn.label:GetText() end
-        if btn.Label and btn.Label.GetText then return btn.Label:GetText() end
-        if btn.text and btn.text.GetText then return btn.text:GetText() end
-        if btn.Text and btn.Text.GetText then return btn.Text:GetText() end
-        if btn.Name and btn.Name.GetText then return btn.Name:GetText() end
-        if btn.name and btn.name.GetText then return btn.name:GetText() end
-        if btn.GetText then return btn:GetText() end
-        -- Check fontstrings
-        local regions = {btn:GetRegions()}
-        for _, region in ipairs(regions) do
-            if region and region.GetObjectType and region:GetObjectType() == "FontString" and region.GetText then
-                local text = region:GetText()
-                if text then return text end
-            end
-        end
-        return nil
-    end
+    local categoryNameLower = slower(categoryName)
     
     -- Helper to click a button
     local function tryClick(btn)
         if btn.Click then
             btn:Click()
             return true
-        elseif btn:GetScript("OnClick") then
+        elseif btn.GetScript and btn:GetScript("OnClick") then
             btn:GetScript("OnClick")(btn, "LeftButton")
             return true
         end
         return false
     end
     
-    -- Helper to recursively search frame tree
-    local function searchTree(frame, depth)
-        if not frame or depth > 5 then return nil end
-        
-        if frame:IsShown() and frame.IsMouseEnabled and frame:IsMouseEnabled() then
-            local text = getButtonText(frame)
-            if text and text:lower():find(categoryNameLower) then
-                return frame
-            end
-        end
-        
-        local children = {frame:GetChildren()}
-        for _, child in ipairs(children) do
-            local result = searchTree(child, depth + 1)
-            if result then return result end
-        end
-        
-        return nil
-    end
-    
-    -- Method 1: Search the entire AchievementFrame tree
-    if AchievementFrame then
-        local btn = searchTree(AchievementFrame, 0)
-        if btn and tryClick(btn) then return true end
-    end
-    
-    -- Method 2: Try AchievementFrameCategories with ScrollBox
+    -- Primary: use the data provider to find the category and select it via Blizzard API
     local categoriesFrame = _G["AchievementFrameCategories"]
-    if categoriesFrame then
-        if categoriesFrame.ScrollBox and categoriesFrame.ScrollBox.EnumerateFrames then
-            for _, btn in categoriesFrame.ScrollBox:EnumerateFrames() do
-                if btn and btn:IsShown() then
-                    local btnText = getButtonText(btn)
-                    if btnText and btnText:lower():find(categoryNameLower) then
-                        if tryClick(btn) then return true end
+    if categoriesFrame and categoriesFrame.ScrollBox then
+        local scrollBox = categoriesFrame.ScrollBox
+        local dataProvider = scrollBox.GetDataProvider and scrollBox:GetDataProvider()
+        if dataProvider then
+            local finder = dataProvider.FindElementDataByPredicate or dataProvider.FindByPredicate
+            if finder then
+                local elementData = finder(dataProvider, function(data)
+                    if not data then return false end
+                    local catID = data.id
+                    if not catID or type(catID) ~= "number" then return false end
+                    if GetCategoryInfo then
+                        local title = GetCategoryInfo(catID)
+                        if title and slower(title) == categoryNameLower then return true end
                     end
+                    return false
+                end)
+                if elementData then
+                    -- Try Blizzard's official selection function
+                    if AchievementFrameCategories_SelectElementData then
+                        AchievementFrameCategories_SelectElementData(elementData)
+                        return true
+                    end
+                    -- Fallback: scroll to it and click the visible button
+                    scrollBox:ScrollToElementData(elementData)
+                    local frame = scrollBox.FindFrame and scrollBox:FindFrame(elementData)
+                    if frame and tryClick(frame) then return true end
                 end
             end
         end
         
-        local btn = searchTree(categoriesFrame, 0)
-        if btn and tryClick(btn) then return true end
-    end
-    
-    -- Method 3: Try numbered category buttons
-    for i = 1, 50 do
-        local btn = _G["AchievementFrameCategoriesContainerButton" .. i] or
-                    _G["AchievementFrameStatsCategoriesContainerButton" .. i] or
-                    _G["AchievementFrameStatsCategoryButton" .. i] or
-                    _G["AchievementFrameCategoryButton" .. i]
-        
-        if btn and btn:IsShown() then
-            local btnText = getButtonText(btn)
-            if btnText and btnText:lower():find(categoryNameLower) then
-                if tryClick(btn) then return true end
-            end
-        end
-    end
-    
-    -- Method 4: Try API if available
-    if AchievementFrame_SelectStatisticsCategoryByName then
-        AchievementFrame_SelectStatisticsCategoryByName(categoryName)
-        return true
     end
     
     return false
@@ -757,95 +765,71 @@ function UI:ClickAchievementCategory(categoryName)
         return false
     end
     
-    local categoryNameLower = categoryName:lower()
-    
-    -- Helper to get text from a button
-    local function getButtonText(btn)
-        if not btn then return nil end
-        if btn.label and btn.label.GetText then return btn.label:GetText() end
-        if btn.Label and btn.Label.GetText then return btn.Label:GetText() end
-        if btn.text and btn.text.GetText then return btn.text:GetText() end
-        if btn.Text and btn.Text.GetText then return btn.Text:GetText() end
-        if btn.Name and btn.Name.GetText then return btn.Name:GetText() end
-        if btn.name and btn.name.GetText then return btn.name:GetText() end
-        if btn.GetText then return btn:GetText() end
-        local regions = {btn:GetRegions()}
-        for _, region in ipairs(regions) do
-            if region and region.GetObjectType and region:GetObjectType() == "FontString" and region.GetText then
-                local text = region:GetText()
-                if text then return text end
-            end
-        end
-        return nil
-    end
+    local categoryNameLower = slower(categoryName)
     
     -- Helper to click a button
     local function tryClick(btn)
         if btn.Click then
             btn:Click()
             return true
-        elseif btn:GetScript("OnClick") then
+        elseif btn.GetScript and btn:GetScript("OnClick") then
             btn:GetScript("OnClick")(btn, "LeftButton")
             return true
         end
         return false
     end
     
-    -- Helper to recursively search frame tree
-    local function searchTree(frame, depth)
-        if not frame or depth > 6 then return nil end
-        
-        if frame:IsShown() and frame.IsMouseEnabled and frame:IsMouseEnabled() then
-            local text = getButtonText(frame)
-            if text and text:lower() == categoryNameLower then
-                return frame
-            end
-        end
-        
-        local children = {frame:GetChildren()}
-        for _, child in ipairs(children) do
-            local result = searchTree(child, depth + 1)
-            if result then return result end
-        end
-        
-        return nil
-    end
-    
-    -- Method 1: Try AchievementFrameCategories with ScrollBox (modern 10.x+ UI)
+    -- Primary: use the data provider to find the category and select it via Blizzard API
     local categoriesFrame = _G["AchievementFrameCategories"]
-    if categoriesFrame then
-        if categoriesFrame.ScrollBox and categoriesFrame.ScrollBox.EnumerateFrames then
-            for _, btn in categoriesFrame.ScrollBox:EnumerateFrames() do
-                if btn and btn:IsShown() then
-                    local btnText = getButtonText(btn)
-                    if btnText and btnText:lower() == categoryNameLower then
-                        if tryClick(btn) then return true end
+    if categoriesFrame and categoriesFrame.ScrollBox then
+        local scrollBox = categoriesFrame.ScrollBox
+        local dataProvider = scrollBox.GetDataProvider and scrollBox:GetDataProvider()
+        if dataProvider then
+            local finder = dataProvider.FindElementDataByPredicate or dataProvider.FindByPredicate
+            if finder then
+                local elementData = finder(dataProvider, function(data)
+                    if not data then return false end
+                    local catID = data.id
+                    if not catID or type(catID) ~= "number" then return false end
+                    if GetCategoryInfo then
+                        local title = GetCategoryInfo(catID)
+                        if title and slower(title) == categoryNameLower then return true end
                     end
+                    return false
+                end)
+                if elementData then
+                    -- Expand parent if hidden
+                    if elementData.hidden and elementData.id and AchievementFrameCategories_ExpandToCategory then
+                        AchievementFrameCategories_ExpandToCategory(elementData.id)
+                        if AchievementFrameCategories_UpdateDataProvider then
+                            AchievementFrameCategories_UpdateDataProvider()
+                        end
+                        -- Re-find after expanding
+                        elementData = finder(dataProvider, function(data)
+                            if not data then return false end
+                            local catID = data.id
+                            if not catID or type(catID) ~= "number" then return false end
+                            if GetCategoryInfo then
+                                local title = GetCategoryInfo(catID)
+                                if title and slower(title) == categoryNameLower then return true end
+                            end
+                            return false
+                        end)
+                        if not elementData then return false end
+                    end
+                    -- Try Blizzard's official selection function
+                    if AchievementFrameCategories_SelectElementData then
+                        AchievementFrameCategories_SelectElementData(elementData)
+                        return true
+                    end
+                    -- Fallback: scroll to it and click the visible button
+                    scrollBox:ScrollToElementData(elementData)
+                    local frame = scrollBox.FindFrame and scrollBox:FindFrame(elementData)
+                    if frame and tryClick(frame) then return true end
                 end
             end
         end
         
-        local btn = searchTree(categoriesFrame, 0)
-        if btn and tryClick(btn) then return true end
-    end
-    
-    -- Method 2: Search the entire AchievementFrame tree
-    if AchievementFrame then
-        local btn = searchTree(AchievementFrame, 0)
-        if btn and tryClick(btn) then return true end
-    end
-    
-    -- Method 3: Try numbered category buttons
-    for i = 1, 50 do
-        local btn = _G["AchievementFrameCategoriesContainerButton" .. i] or
-                    _G["AchievementFrameCategoryButton" .. i]
-        
-        if btn and btn:IsShown() then
-            local btnText = getButtonText(btn)
-            if btnText and btnText:lower() == categoryNameLower then
-                if tryClick(btn) then return true end
-            end
-        end
     end
     
     return false
@@ -853,34 +837,8 @@ end
 
 -- Helper function to click a side tab (PvE Group Finder tabs)
 -- Helper to extract text from various button types
-function UI:GetButtonText(btn)
-    if not btn then return nil end
-    
-    -- Try common text patterns
-    if btn.label and btn.label.GetText then
-        return btn.label:GetText()
-    elseif btn.Label and btn.Label.GetText then
-        return btn.Label:GetText()
-    elseif btn.text and btn.text.GetText then
-        return btn.text:GetText()
-    elseif btn.Text and btn.Text.GetText then
-        return btn.Text:GetText()
-    elseif btn.Name and btn.Name.GetText then
-        return btn.Name:GetText()
-    elseif btn.name and btn.name.GetText then
-        return btn.name:GetText()
-    elseif btn.GetText then
-        return btn:GetText()
-    end
-    
-    -- Iterate through fontstrings
-    for _, region in ipairs({btn:GetRegions()}) do
-        if region:GetObjectType() == "FontString" and region:GetText() then
-            return region:GetText()
-        end
-    end
-    
-    return nil
+function UI:GetButtonText(frame)
+    return GetButtonText(frame)
 end
 
 function UI:Show()
@@ -905,12 +863,12 @@ end
 function UI:ExpandCurrencyHeader(headerName)
     if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return false end
     
-    local headerNameLower = headerName:lower()
+    local headerNameLower = slower(headerName)
     local size = C_CurrencyInfo.GetCurrencyListSize()
     
     for i = 1, size do
         local info = C_CurrencyInfo.GetCurrencyListInfo(i)
-        if info and info.isHeader and info.name and info.name:lower() == headerNameLower then
+        if info and info.isHeader and info.name and slower(info.name) == headerNameLower then
             if not info.isHeaderExpanded then
                 C_CurrencyInfo.ExpandCurrencyList(i, true)
             end
@@ -985,30 +943,30 @@ end
 
 -- Helper function to click a portrait menu option by name
 function UI:ClickPortraitMenuOption(optionName)
-    local optionNameLower = optionName:lower()
+    local optionNameLower = slower(optionName)
     
     -- Search through open dropdown frames for the matching button
     -- Modern WoW uses the Menu system
     local function searchFrame(frame, depth)
         if not frame or depth > 5 then return false end
         
-        local children = {frame:GetChildren()}
-        for _, child in ipairs(children) do
-            if child:IsShown() then
+        for i = 1, select("#", frame:GetChildren()) do
+            local child = select(i, frame:GetChildren())
+            if child and child:IsShown() then
                 -- Check for text on this frame
                 local text = nil
                 if child.GetText then text = child:GetText() end
                 if not text then
-                    local regions = {child:GetRegions()}
-                    for _, region in ipairs(regions) do
-                        if region.GetText then
+                    for j = 1, select("#", child:GetRegions()) do
+                        local region = select(j, child:GetRegions())
+                        if region and region.GetText then
                             local t = region:GetText()
                             if t then text = t; break end
                         end
                     end
                 end
                 
-                if text and text:lower():find(optionNameLower) then
+                if text and sfind(slower(text), optionNameLower) then
                     if child.Click then
                         child:Click()
                         return true
@@ -1033,11 +991,13 @@ function UI:ClickPortraitMenuOption(optionName)
     end
     
     -- Also check UIParent children for modern menu frames
-    local children = {UIParent:GetChildren()}
-    for _, child in ipairs(children) do
-        if child:IsShown() and child:GetFrameStrata() == "FULLSCREEN_DIALOG" or
-           (child:IsShown() and child:GetFrameStrata() == "DIALOG") then
-            if searchFrame(child, 0) then return true end
+    for i = 1, select("#", UIParent:GetChildren()) do
+        local child = select(i, UIParent:GetChildren())
+        if child and child:IsShown() then
+            local strata = child:GetFrameStrata()
+            if strata == "FULLSCREEN_DIALOG" or strata == "DIALOG" then
+                if searchFrame(child, 0) then return true end
+            end
         end
     end
     
