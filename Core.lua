@@ -1,33 +1,48 @@
+-- =============================================================================
+-- EasyFind Core
+-- Entry point: namespace setup, SavedVariables, slash commands, event dispatch.
+-- =============================================================================
 local ADDON_NAME, ns = ...
+
+local Utils   = ns.Utils
+local sformat = Utils.sformat
+local pairs   = Utils.pairs
 
 EasyFind = {}
 ns.EasyFind = EasyFind
 
+-- Single shared event frame for the entire addon
 local eventFrame = CreateFrame("Frame")
+ns.eventFrame = eventFrame
+
 EasyFind.db = {}
+
+-- SavedVariables defaults — new keys are auto-merged for existing users
+local DB_DEFAULTS = {
+    visible = true,
+    mapIconScale = 1.0,
+    uiSearchScale = 1.0,
+    mapSearchScale = 1.0,
+    uiSearchPosition = nil,    -- {point, relPoint, x, y}
+    mapSearchPosition = nil,   -- x offset from map edge
+    directOpen = false,        -- Open panels directly instead of step-by-step
+    navigateToZonesDirectly = false,  -- Clicking a zone goes directly to it
+}
 
 local function OnInitialize()
     if not EasyFindDB then
-        EasyFindDB = {
-            visible = true,
-            mapIconScale = 1.0,
-            uiSearchScale = 1.0,
-            mapSearchScale = 1.0,
-            uiSearchPosition = nil,  -- {point, relPoint, x, y}
-            mapSearchPosition = nil, -- {x offset from map edge}
-            directOpen = false,      -- If true, open panels directly instead of step-by-step
-            navigateToZonesDirectly = false,  -- If true, clicking a zone goes directly to it
-        }
+        EasyFindDB = {}
     end
-    -- Ensure new settings exist for existing users
-    if EasyFindDB.mapIconScale == nil then EasyFindDB.mapIconScale = 1.0 end
-    if EasyFindDB.uiSearchScale == nil then EasyFindDB.uiSearchScale = 1.0 end
-    if EasyFindDB.mapSearchScale == nil then EasyFindDB.mapSearchScale = 1.0 end
-    if EasyFindDB.directOpen == nil then EasyFindDB.directOpen = false end
-    if EasyFindDB.navigateToZonesDirectly == nil then EasyFindDB.navigateToZonesDirectly = false end
-    
+    -- Merge defaults — existing values are preserved
+    for k, v in pairs(DB_DEFAULTS) do
+        if EasyFindDB[k] == nil then
+            EasyFindDB[k] = v
+        end
+    end
+
     EasyFind.db = EasyFindDB
-    
+
+    -- Primary slash command
     SLASH_EASYFIND1 = "/ef"
     SlashCmdList["EASYFIND"] = function(msg)
         msg = msg and msg:lower():trim() or ""
@@ -37,91 +52,41 @@ local function OnInitialize()
             EasyFind:ToggleSearchUI()
         end
     end
-    
-    -- Debug command to find frame under cursor
-    SLASH_EASYFINDDEBUG1 = "/efdebug"
-    SlashCmdList["EASYFINDDEBUG"] = function(msg)
-        local frames = GetMouseFoci and GetMouseFoci() or { GetMouseFocus and GetMouseFocus() }
-        local frame = frames and frames[1]
-        if frame then
-            local name = frame:GetName()
-            local parent = frame:GetParent()
-            local parentName = parent and parent:GetName() or "nil"
-            local grandparent = parent and parent:GetParent()
-            local grandparentName = grandparent and grandparent:GetName() or "nil"
-            
-            print("|cFF00FF00EasyFind Debug:|r")
-            print("  Frame: " .. (name or "unnamed"))
-            print("  Parent: " .. parentName)
-            print("  Grandparent: " .. grandparentName)
-            
-            -- Try to build full path
-            local path = {}
-            local current = frame
-            while current do
-                local n = current:GetName()
-                if n then
-                    table.insert(path, 1, n)
-                end
-                current = current:GetParent()
-            end
-            if #path > 0 then
-                print("  Full path: " .. table.concat(path, " > "))
-            end
-        else
-            print("|cFF00FF00EasyFind Debug:|r No frame under cursor")
-        end
-    end
-    
-    -- Debug command for map search
-    SLASH_EASYFINDMAPSCAN1 = "/efmapscan"
-    SlashCmdList["EASYFINDMAPSCAN"] = function(msg)
-        if not WorldMapFrame:IsShown() then
-            print("|cFFFF0000EasyFind:|r Open the World Map first.")
-            return
-        end
-        if ns.MapSearch then
-            local pois = ns.MapSearch:ScanMapPOIs()
-            local static = ns.MapSearch:GetStaticLocations()
-            print("|cFF00FF00EasyFind Map Scan:|r")
-            print("  Dynamic POIs found: " .. #pois)
-            for i, poi in ipairs(pois) do
-                if i <= 10 then
-                    print("    - " .. (poi.name or "unnamed") .. " [" .. (poi.category or "?") .. "]")
-                end
-            end
-            if #pois > 10 then print("    ... and " .. (#pois - 10) .. " more") end
-            print("  Static locations: " .. #static)
-            for i, loc in ipairs(static) do
-                if i <= 10 then
-                    print("    - " .. (loc.name or "unnamed"))
-                end
-            end
-            if #static > 10 then print("    ... and " .. (#static - 10) .. " more") end
-        end
-    end
-    
+
     EasyFind:Print("EasyFind loaded! Use /ef to toggle UI search.")
 end
 
 local function OnPlayerLogin()
     C_Timer.After(0.5, function()
-        if ns.UI then ns.UI:Initialize() end
+        if ns.UI        then ns.UI:Initialize()        end
         if ns.Highlight then ns.Highlight:Initialize() end
-        if ns.MapSearch then ns.MapSearch:Initialize() end
+        if ns.MapSearch  then ns.MapSearch:Initialize()  end
+        if ns.Options    then ns.Options:Initialize()    end
+    end)
+    -- Populate dynamic currencies after a short delay (C_CurrencyInfo needs the character loaded)
+    C_Timer.After(2, function()
+        if ns.Database then ns.Database:PopulateDynamicCurrencies() end
     end)
 end
 
+-- =============================================================================
+-- EVENT DISPATCH — single frame, unregisters after one-time events
+-- =============================================================================
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:SetScript("OnEvent", function(self, event, arg1)
     if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
         OnInitialize()
+        self:UnregisterEvent("ADDON_LOADED")
     elseif event == "PLAYER_LOGIN" then
         OnPlayerLogin()
+        self:UnregisterEvent("PLAYER_LOGIN")
     end
 end)
 
+-- =============================================================================
+-- PUBLIC API
+-- =============================================================================
 function EasyFind:ToggleSearchUI()
     if ns.UI then ns.UI:Toggle() end
 end
@@ -137,5 +102,5 @@ function EasyFind:StartGuide(guideData)
 end
 
 function EasyFind:Print(msg)
-    print("|cFF00FF00EasyFind:|r " .. msg)
+    print(sformat("|cFF00FF00EasyFind:|r %s", msg))
 end
