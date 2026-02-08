@@ -77,7 +77,9 @@ World of Warcraft Retail (Patch 12.0.0 or later)
 
 ## Version
 
-1.0.0
+**Current:** 1.1.0
+
+See [CHANGELOG.md](CHANGELOG.md) for version history and updates.
 
 ## Author
 
