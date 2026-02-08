@@ -3,6 +3,9 @@ local ADDON_NAME, ns = ...
 local Options = {}
 ns.Options = Options
 
+local Utils   = ns.Utils
+local sformat = Utils.sformat
+
 local optionsFrame
 local isInitialized = false
 
@@ -19,14 +22,14 @@ local function CreateSlider(parent, name, label, minVal, maxVal, step, yOffset, 
     slider.Text:SetPoint("BOTTOM", slider, "TOP", 0, 5)
     slider.Text:SetText(label)
     
-    slider.Low:SetText(string.format("%.0f%%", minVal * 100))
-    slider.High:SetText(string.format("%.0f%%", maxVal * 100))
+    slider.Low:SetText(sformat("%.0f%%", minVal * 100))
+    slider.High:SetText(sformat("%.0f%%", maxVal * 100))
     
     slider.valueText = slider:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     slider.valueText:SetPoint("TOP", slider, "BOTTOM", 0, -2)
     
     slider:SetScript("OnValueChanged", function(self, value)
-        self.valueText:SetText(string.format("%.0f%%", value * 100))
+        self.valueText:SetText(sformat("%.0f%%", value * 100))
     end)
     
     if tooltipText then
@@ -98,7 +101,7 @@ function Options:Initialize()
         "Adjusts the size of icons shown on the world map when searching for locations.")
     mapIconSlider:SetValue(EasyFind.db.mapIconScale or 1.0)
     mapIconSlider:SetScript("OnValueChanged", function(self, value)
-        self.valueText:SetText(string.format("%.0f%%", value * 100))
+        self.valueText:SetText(sformat("%.0f%%", value * 100))
         EasyFind.db.mapIconScale = value
         if ns.MapSearch and ns.MapSearch.UpdateIconScales then
             ns.MapSearch:UpdateIconScales()
@@ -111,7 +114,7 @@ function Options:Initialize()
         "Adjusts the size of the UI search bar. Hold Shift and drag to move it.")
     uiSearchSlider:SetValue(EasyFind.db.uiSearchScale or 1.0)
     uiSearchSlider:SetScript("OnValueChanged", function(self, value)
-        self.valueText:SetText(string.format("%.0f%%", value * 100))
+        self.valueText:SetText(sformat("%.0f%%", value * 100))
         EasyFind.db.uiSearchScale = value
         if ns.UI and ns.UI.UpdateScale then
             ns.UI:UpdateScale()
@@ -124,7 +127,7 @@ function Options:Initialize()
         "Adjusts the size of the map search bar. Hold Shift and drag to move it along the map edge.")
     mapSearchSlider:SetValue(EasyFind.db.mapSearchScale or 1.0)
     mapSearchSlider:SetScript("OnValueChanged", function(self, value)
-        self.valueText:SetText(string.format("%.0f%%", value * 100))
+        self.valueText:SetText(sformat("%.0f%%", value * 100))
         EasyFind.db.mapSearchScale = value
         if ns.MapSearch and ns.MapSearch.UpdateScale then
             ns.MapSearch:UpdateScale()
@@ -301,11 +304,4 @@ function Options:Toggle()
     end
 end
 
--- Initialize when addon loads
-local initFrame = CreateFrame("Frame")
-initFrame:RegisterEvent("PLAYER_LOGIN")
-initFrame:SetScript("OnEvent", function()
-    C_Timer.After(1, function()
-        Options:Initialize()
-    end)
-end)
+-- Options:Initialize() is called from Core.lua OnPlayerLogin

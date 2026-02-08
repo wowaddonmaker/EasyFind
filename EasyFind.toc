@@ -6,6 +6,7 @@
 ## SavedVariables: EasyFindDB
 ## DefaultState: enabled
 
+Utils.lua
 Core.lua
 Database.lua
 StaticLocations.lua

@@ -3,12 +3,13 @@ local ADDON_NAME, ns = ...
 local MapSearch = {}
 ns.MapSearch = MapSearch
 
--- Debug print helper - only prints when dev mode is enabled
-local function DebugPrint(...)
-    if EasyFind and EasyFind.db and EasyFind.db.devMode then
-        print(...)
-    end
-end
+local Utils     = ns.Utils
+local DebugPrint = Utils.DebugPrint
+local pairs, ipairs, type, select = Utils.pairs, Utils.ipairs, Utils.type, Utils.select
+local tinsert, tsort, tconcat = Utils.tinsert, Utils.tsort, Utils.tconcat
+local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
+local mmin, mmax, mabs, mpi = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mpi
+local pcall, tostring = Utils.pcall, Utils.tostring
 
 local searchFrame
 local resultsFrame
@@ -149,7 +150,7 @@ function MapSearch:CreateSearchFrame()
             
             -- Constrain to map width
             local maxX = (mapRight - mapLeft) / scale - self:GetWidth()
-            newX = math.max(0, math.min(newX, maxX))
+            newX = mmax(0, mmin(newX, maxX))
             
             self:ClearAllPoints()
             self:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", newX, 0)
@@ -386,7 +387,7 @@ function MapSearch:CreateHighlightFrame()
     arrow:SetAllPoints()
     arrow:SetTexture("Interface\\MINIMAP\\MiniMap-QuestArrow")
     arrow:SetVertexColor(1, 1, 0, 1)
-    arrow:SetRotation(math.pi)  -- Point downward
+    arrow:SetRotation(mpi)  -- Point downward
     arrowFrame.arrow = arrow
     
     -- Add glow behind arrow for visibility
@@ -483,7 +484,7 @@ function MapSearch:CreateZoneHighlightFrame()
     arrowTex:SetAllPoints()
     arrowTex:SetTexture("Interface\\MINIMAP\\MiniMap-QuestArrow")  -- Proper arrow texture
     arrowTex:SetVertexColor(1, 1, 0, 1)
-    arrowTex:SetRotation(math.pi)  -- Point downward by default
+    arrowTex:SetRotation(mpi)  -- Point downward by default
     zoneArrow.arrow = arrowTex
     
     local arrowGlow = zoneArrow:CreateTexture(nil, "BACKGROUND")
@@ -520,7 +521,7 @@ function MapSearch:GetDirectChildZones(mapID)
         for _, child in ipairs(children) do
             if child.name and not seen[child.mapID] then
                 seen[child.mapID] = true
-                table.insert(zones, {
+                tinsert(zones, {
                     mapID = child.mapID,
                     name = child.name,
                     mapType = child.mapType,
@@ -542,7 +543,7 @@ function MapSearch:GetMapHierarchy(mapID)
     while currentID and maxDepth > 0 do
         local mapInfo = C_Map.GetMapInfo(currentID)
         if mapInfo then
-            table.insert(hierarchy, 1, {
+            tinsert(hierarchy, 1, {
                 mapID = currentID,
                 name = mapInfo.name,
                 mapType = mapInfo.mapType
@@ -583,13 +584,13 @@ function MapSearch:GetAllWorldZones(startMapID, depth, parentPath)
             -- Build the full path (copy parent path and add current parent)
             local fullPath = {}
             for _, p in ipairs(parentPath) do
-                table.insert(fullPath, {mapID = p.mapID, name = p.name})
+                tinsert(fullPath, {mapID = p.mapID, name = p.name})
             end
             if parentName ~= "" then
-                table.insert(fullPath, {mapID = startMapID, name = parentName})
+                tinsert(fullPath, {mapID = startMapID, name = parentName})
             end
             
-            table.insert(allZones, {
+            tinsert(allZones, {
                 mapID = child.mapID,
                 name = child.name,
                 mapType = child.mapType,
@@ -602,7 +603,7 @@ function MapSearch:GetAllWorldZones(startMapID, depth, parentPath)
             -- Recurse into children
             local subZones = self:GetAllWorldZones(child.mapID, depth + 1, fullPath)
             for _, subZone in ipairs(subZones) do
-                table.insert(allZones, subZone)
+                tinsert(allZones, subZone)
             end
         end
     end
@@ -614,7 +615,7 @@ end
 function MapSearch:SearchZones(query)
     if not query or query == "" then return {} end
     
-    query = string.lower(query)
+    query = slower(query)
     local zones
     
     if isGlobalSearch then
@@ -631,7 +632,7 @@ function MapSearch:SearchZones(query)
                 -- Get zones from each major world (Azeroth, Outland, Draenor, etc.)
                 local worldZones = self:GetAllWorldZones(child.mapID, 0, worldPath)
                 for _, z in ipairs(worldZones) do
-                    table.insert(zones, z)
+                    tinsert(zones, z)
                 end
             end
         end
@@ -643,25 +644,25 @@ function MapSearch:SearchZones(query)
     local matches = {}
     
     for _, zone in ipairs(zones) do
-        local nameLower = string.lower(zone.name)
+        local nameLower = slower(zone.name)
         local score = 0
         
         if nameLower == query then
             score = 100  -- Exact match
-        elseif string.find(nameLower, "^" .. query) then
+        elseif sfind(nameLower, "^" .. query) then
             score = 80   -- Starts with
-        elseif string.find(nameLower, query, 1, true) then
+        elseif sfind(nameLower, query, 1, true) then
             score = 60   -- Contains
         end
         
         if score > 0 then
             zone.score = score
-            table.insert(matches, zone)
+            tinsert(matches, zone)
         end
     end
     
     -- Sort by score, then by name
-    table.sort(matches, function(a, b)
+    tsort(matches, function(a, b)
         if a.score ~= b.score then
             return a.score > b.score
         end
@@ -679,9 +680,9 @@ function MapSearch:GroupZonesByParent(zones)
         if zone.path and #zone.path > 0 then
             local parts = {}
             for _, p in ipairs(zone.path) do
-                table.insert(parts, tostring(p.mapID))
+                tinsert(parts, tostring(p.mapID))
             end
-            return table.concat(parts, ">")
+            return tconcat(parts, ">")
         end
         return tostring(zone.parentMapID or 0)
     end
@@ -690,9 +691,9 @@ function MapSearch:GroupZonesByParent(zones)
         if zone.path and #zone.path > 0 then
             local parts = {}
             for _, p in ipairs(zone.path) do
-                table.insert(parts, p.name)
+                tinsert(parts, p.name)
             end
-            return table.concat(parts, " > ")
+            return tconcat(parts, " > ")
         end
         return zone.parentName or ""
     end
@@ -732,19 +733,19 @@ function MapSearch:GroupZonesByParent(zones)
             local groupZones = {}
             for _, z in ipairs(zones) do
                 if getPathKey(z) == pathKey then
-                    table.insert(groupZones, z)
+                    tinsert(groupZones, z)
                 end
             end
             
             -- Sort zones within the group alphabetically
-            table.sort(groupZones, function(a, b)
+            tsort(groupZones, function(a, b)
                 return a.name < b.name
             end)
             
             -- Only create a grouped header if there are 2+ zones with the same parent
             local isGrouped = #groupZones >= 2
             
-            table.insert(result, {
+            tinsert(result, {
                 parentMapID = pathParentMapID[pathKey],
                 parentPath = pathDisplay[pathKey],
                 zones = groupZones,
@@ -754,7 +755,7 @@ function MapSearch:GroupZonesByParent(zones)
     end
     
     -- Sort groups by their parent path alphabetically so related items appear together
-    table.sort(result, function(a, b)
+    tsort(result, function(a, b)
         return (a.parentPath or "") < (b.parentPath or "")
     end)
     
@@ -911,7 +912,7 @@ function MapSearch:HighlightZone(mapID)
         -- Check if there's room above the zone
         if zoneTopPx > margin + arrowSize then
             -- Place arrow above, pointing down
-            arrow.arrow:SetRotation(math.pi)  -- Point down
+            arrow.arrow:SetRotation(mpi)  -- Point down
             arrow:SetPoint("BOTTOM", canvas, "TOPLEFT", zoneCenterPxX, -(zoneTopPx - 10))
             DebugPrint("[EasyFind] Arrow placed ABOVE zone")
         -- Check if there's room below the zone
@@ -923,13 +924,13 @@ function MapSearch:HighlightZone(mapID)
         -- Check if there's room to the left
         elseif zoneLeftPx > margin + arrowSize then
             -- Place arrow to the left, pointing right
-            arrow.arrow:SetRotation(-math.pi/2)  -- Point right
+            arrow.arrow:SetRotation(-mpi/2)  -- Point right
             arrow:SetPoint("RIGHT", canvas, "TOPLEFT", zoneLeftPx - 10, -zoneCenterPxY)
             DebugPrint("[EasyFind] Arrow placed LEFT of zone")
         -- Place arrow to the right
         else
             -- Place arrow to the right, pointing left
-            arrow.arrow:SetRotation(math.pi/2)  -- Point left
+            arrow.arrow:SetRotation(mpi/2)  -- Point left
             arrow:SetPoint("LEFT", canvas, "TOPLEFT", zoneRightPx + 10, -zoneCenterPxY)
             DebugPrint("[EasyFind] Arrow placed RIGHT of zone")
         end
@@ -1059,7 +1060,7 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
     -- Find the DEEPEST common ancestor (DCA)
     local dcaIndex = 0
     local dcaMapID = nil
-    for i = 1, math.min(#targetParentPath, #currentPath) do
+    for i = 1, mmin(#targetParentPath, #currentPath) do
         if targetParentPath[i].mapID == currentPath[i].mapID then
             dcaIndex = i
             dcaMapID = targetParentPath[i].mapID
@@ -1116,7 +1117,7 @@ function MapSearch:GetMapPath(mapID)
     while currentID and maxDepth > 0 do
         local info = C_Map.GetMapInfo(currentID)
         if info then
-            table.insert(path, 1, {mapID = currentID, name = info.name, mapType = info.mapType})
+            tinsert(path, 1, {mapID = currentID, name = info.name, mapType = info.mapType})
             currentID = info.parentMapID
         else
             break
@@ -1184,7 +1185,8 @@ function MapSearch:FindBreadcrumbButton(navBar, mapID)
     
     -- The NavBar in WoW uses a different structure - buttons are direct children
     -- Let's iterate through children to find the right button
-    for i, child in ipairs({navBar:GetChildren()}) do
+    for i = 1, select("#", navBar:GetChildren()) do
+        local child = select(i, navBar:GetChildren())
         if child.GetID and child:GetID() == mapID then
             DebugPrint("[EasyFind] Found button via GetID:", mapID)
             return child
@@ -1271,7 +1273,7 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
         arrow:SetSize(48, 48)  -- Good size for breadcrumb buttons
         arrow:SetTexture("Interface\\MINIMAP\\MiniMap-QuestArrow")
         arrow:SetVertexColor(1, 1, 0, 1)
-        arrow:SetRotation(math.pi)  -- Point down
+        arrow:SetRotation(mpi)  -- Point down
         arrow:SetPoint("BOTTOM", hl, "TOP", 0, 8)
         hl.arrow = arrow
         
@@ -1350,17 +1352,17 @@ function MapSearch:HookWorldMap()
 end
 
 function MapSearch:GetCategoryMatch(query)
-    query = string.lower(query)
+    query = slower(query)
     local matchedCategory = nil
     local matchScore = 0
     local isExactCategoryMatch = false
     
     for catName, catData in pairs(CATEGORIES) do
         for _, keyword in ipairs(catData.keywords) do
-            local kw = string.lower(keyword)
+            local kw = slower(keyword)
             if kw == query then
                 return catName, 100, true
-            elseif string.find(kw, query, 1, true) and #query >= 3 then
+            elseif sfind(kw, query, 1, true) and #query >= 3 then
                 local score = #query / #kw * 50
                 if score > matchScore then
                     matchScore = score
@@ -1380,14 +1382,14 @@ function MapSearch:GetRelatedCategories(category)
     -- Only add parent, NOT siblings
     -- Siblings are only included when searching for the parent category itself
     if catData and catData.parent then
-        table.insert(related, catData.parent)
+        tinsert(related, catData.parent)
         -- Do NOT add sibling categories - that causes "pvp" to show "auction house"
     end
     
     -- Add children of this category (if searching for a parent like "service" or "travel")
     for catName, data in pairs(CATEGORIES) do
         if data.parent == category then
-            table.insert(related, catName)
+            tinsert(related, catName)
         end
     end
     
@@ -1404,7 +1406,7 @@ function MapSearch:GetStaticLocations()
     local locations = STATIC_LOCATIONS[mapID]
     if locations then
         for _, loc in ipairs(locations) do
-            table.insert(results, {
+            tinsert(results, {
                 name = loc.name,
                 category = loc.category,
                 icon = loc.icon,  -- nil is fine, GetCategoryIcon will handle it
@@ -1420,7 +1422,7 @@ function MapSearch:GetStaticLocations()
     if EasyFindDevDB and EasyFindDevDB.rawPOIs then
         for _, poi in ipairs(EasyFindDevDB.rawPOIs) do
             if poi.mapID == mapID then
-                table.insert(results, {
+                tinsert(results, {
                     name = poi.label,
                     category = poi.category or "unknown",
                     icon = nil,  -- Let category icon be used
@@ -1453,37 +1455,37 @@ function MapSearch:ScanMapPOIs()
             local poiInfo = C_AreaPoiInfo.GetAreaPOIInfo(mapID, poiID)
             if poiInfo and poiInfo.name then
                 local category = nil  -- Start with nil, only add if we categorize it
-                local poiName = string.lower(poiInfo.name or "")
-                local desc = string.lower(poiInfo.description or "")
+                local poiName = slower(poiInfo.name or "")
+                local desc = slower(poiInfo.description or "")
                 
                 -- Only categorize POIs we actually want to show
-                if string.find(poiName, "zeppelin") or string.find(poiName, "airship") or string.find(desc, "zeppelin") then
+                if sfind(poiName, "zeppelin") or sfind(poiName, "airship") or sfind(desc, "zeppelin") then
                     category = "zeppelin"
-                elseif string.find(poiName, "boat") or string.find(poiName, "ship") or string.find(poiName, "ferry") or string.find(desc, "boat") then
+                elseif sfind(poiName, "boat") or sfind(poiName, "ship") or sfind(poiName, "ferry") or sfind(desc, "boat") then
                     category = "boat"
-                elseif string.find(poiName, "portal") and not string.find(poiName, "dark portal") or string.find(desc, "teleport") then
+                elseif sfind(poiName, "portal") and not sfind(poiName, "dark portal") or sfind(desc, "teleport") then
                     -- Include portals but not "The Dark Portal" which is a landmark
                     category = "portal"
-                elseif string.find(poiName, "tram") or string.find(desc, "tram") then
+                elseif sfind(poiName, "tram") or sfind(desc, "tram") then
                     category = "tram"
-                elseif string.find(poiName, "great vault") then
+                elseif sfind(poiName, "great vault") then
                     category = "greatvault"
-                elseif string.find(poiName, "catalyst") then
+                elseif sfind(poiName, "catalyst") then
                     category = "catalyst"
-                elseif string.find(poiName, "auction") then
+                elseif sfind(poiName, "auction") then
                     category = "auctionhouse"
-                elseif string.find(poiName, "bank") and not string.find(poiName, "moat") then
+                elseif sfind(poiName, "bank") and not sfind(poiName, "moat") then
                     category = "bank"
-                elseif string.find(poiName, "innkeeper") or string.find(poiName, "inn") then
+                elseif sfind(poiName, "innkeeper") or sfind(poiName, "inn") then
                     category = "innkeeper"
-                elseif string.find(poiName, "flight master") or string.find(poiName, "flight point") then
+                elseif sfind(poiName, "flight master") or sfind(poiName, "flight point") then
                     category = "flightmaster"
                 end
                 
                 -- Only add POIs we've explicitly categorized
                 -- This filters out generic landmarks, zone markers, events, etc.
                 if category then
-                    table.insert(pois, {
+                    tinsert(pois, {
                         name = poiInfo.name,
                         pin = nil,  -- API-based, no pin reference
                         pinType = category,
@@ -1499,11 +1501,12 @@ function MapSearch:ScanMapPOIs()
     end
     
     -- Second: Scan all children of the map canvas for pins
-    for _, pin in pairs({canvas:GetChildren()}) do
+    for i = 1, select("#", canvas:GetChildren()) do
+        local pin = select(i, canvas:GetChildren())
         if pin and pin:IsShown() then
             local info = self:GetPinInfo(pin)
             if info then
-                table.insert(pois, info)
+                tinsert(pois, info)
             end
         end
     end
@@ -1532,21 +1535,21 @@ function MapSearch:GetPinInfo(pin)
         name = pin.areaPoiInfo.name or pin.areaPoiInfo.description
         pinType = "areapoi"
         
-        local poiName = string.lower(name or "")
-        local poiDesc = string.lower(pin.areaPoiInfo.description or "")
-        if string.find(poiName, "zeppelin") or string.find(poiName, "airship") then
+        local poiName = slower(name or "")
+        local poiDesc = slower(pin.areaPoiInfo.description or "")
+        if sfind(poiName, "zeppelin") or sfind(poiName, "airship") then
             category = "zeppelin"
             pinType = "zeppelin"
-        elseif string.find(poiName, "boat") or string.find(poiName, "ship") or string.find(poiName, "ferry") then
+        elseif sfind(poiName, "boat") or sfind(poiName, "ship") or sfind(poiName, "ferry") then
             category = "boat"
             pinType = "boat"
-        elseif string.find(poiName, "portal") then
+        elseif sfind(poiName, "portal") then
             category = "portal"
             pinType = "portal"
-        elseif string.find(poiName, "tram") then
+        elseif sfind(poiName, "tram") then
             category = "tram"
             pinType = "tram"
-        elseif string.find(poiName, "pvp") or string.find(poiName, "arena") or string.find(poiName, "battleground") or string.find(poiDesc, "pvp") or string.find(poiName, "conquest") or string.find(poiName, "honor") or string.find(poiName, "weekly") then
+        elseif sfind(poiName, "pvp") or sfind(poiName, "arena") or sfind(poiName, "battleground") or sfind(poiDesc, "pvp") or sfind(poiName, "conquest") or sfind(poiName, "honor") or sfind(poiName, "weekly") then
             category = "pvpvendor"
             pinType = "pvpvendor"
         else
@@ -1651,8 +1654,8 @@ function MapSearch:OnSearchTextChanged(text)
         local parentPath = group.parentPath
         
         for _, zone in ipairs(zonesInGroup) do
-            zoneNames[string.lower(zone.name)] = true
-            table.insert(allPOIs, {
+            zoneNames[slower(zone.name)] = true
+            tinsert(allPOIs, {
                 name = zone.name,
                 category = "zone",
                 icon = 237382,
@@ -1668,13 +1671,13 @@ function MapSearch:OnSearchTextChanged(text)
     
     -- Add POIs but skip any that match zone names (avoid duplicates)
     for _, poi in ipairs(dynamicPOIs) do
-        if not zoneNames[string.lower(poi.name)] then
-            table.insert(allPOIs, poi)
+        if not zoneNames[slower(poi.name)] then
+            tinsert(allPOIs, poi)
         end
     end
     for _, loc in ipairs(staticLocations) do
-        if not zoneNames[string.lower(loc.name)] then
-            table.insert(allPOIs, loc)
+        if not zoneNames[slower(loc.name)] then
+            tinsert(allPOIs, loc)
         end
     end
     
@@ -1683,7 +1686,7 @@ function MapSearch:OnSearchTextChanged(text)
 end
 
 function MapSearch:SearchPOIs(pois, query)
-    query = string.lower(query)
+    query = slower(query)
     local results = {}
     local seen = {}
     local duplicates = {}  -- Track all instances of duplicate POIs
@@ -1693,21 +1696,21 @@ function MapSearch:SearchPOIs(pois, query)
     
     -- First pass: name matches
     for _, poi in ipairs(pois) do
-        local nameLower = string.lower(poi.name)
+        local nameLower = slower(poi.name)
         local key = poi.name .. (poi.category or "")
         
         local score = 0
         
         if nameLower == query then
             score = 300
-        elseif string.find(nameLower, query, 1, true) then
+        elseif sfind(nameLower, query, 1, true) then
             score = 200
         end
         
         -- Also check custom keywords for static locations
         if poi.keywords and score == 0 then
             for _, kw in ipairs(poi.keywords) do
-                if string.find(string.lower(kw), query, 1, true) then
+                if sfind(slower(kw), query, 1, true) then
                     score = 180
                     break
                 end
@@ -1719,14 +1722,14 @@ function MapSearch:SearchPOIs(pois, query)
             if not duplicates[key] then
                 duplicates[key] = {}
             end
-            table.insert(duplicates[key], poi)
+            tinsert(duplicates[key], poi)
             
             -- Only add to results once (first instance)
             if not seen[key] then
                 seen[key] = true
                 poi.score = score
                 poi.duplicateKey = key  -- Track the key for looking up duplicates
-                table.insert(results, poi)
+                tinsert(results, poi)
             end
         end
     end
@@ -1760,13 +1763,13 @@ function MapSearch:SearchPOIs(pois, query)
                     if not duplicates[key] then
                         duplicates[key] = {}
                     end
-                    table.insert(duplicates[key], poi)
+                    tinsert(duplicates[key], poi)
                     
                     if not seen[key] then
                         seen[key] = true
                         poi.score = score
                         poi.duplicateKey = key
-                        table.insert(results, poi)
+                        tinsert(results, poi)
                     end
                 end
             end
@@ -1782,7 +1785,7 @@ function MapSearch:SearchPOIs(pois, query)
     
     -- Sort results by score, BUT keep zone groups intact
     -- Zone items have a groupOrder field that should be respected
-    table.sort(results, function(a, b)
+    tsort(results, function(a, b)
         -- If both have groupOrder, sort by that first (keeps headers with their children)
         if a.groupOrder and b.groupOrder then
             return a.groupOrder < b.groupOrder
@@ -1806,7 +1809,7 @@ function MapSearch:ShowResults(results)
         return
     end
     
-    local count = math.min(#results, MAX_RESULTS)
+    local count = mmin(#results, MAX_RESULTS)
     
     for i = 1, MAX_RESULTS do
         local btn = resultButtons[i]
@@ -1956,7 +1959,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
     if not canvas then return end
     
     local canvasWidth, canvasHeight = canvas:GetSize()
-    local scaleFactor = math.max(1, math.min(canvasWidth, canvasHeight) / 600)
+    local scaleFactor = mmax(1, mmin(canvasWidth, canvasHeight) / 600)
     local userScale = EasyFind.db.mapIconScale or 1.0
     scaleFactor = scaleFactor * userScale
     
@@ -2075,7 +2078,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
                     arrowTex:SetAllPoints()
                     arrowTex:SetTexture("Interface\\MINIMAP\\MiniMap-QuestArrow")
                     arrowTex:SetVertexColor(1, 1, 0, 1)
-                    arrowTex:SetRotation(math.pi)
+                    arrowTex:SetRotation(mpi)
                     extraArrow.arrow = arrowTex
                     
                     local arrowGlow = extraArrow:CreateTexture(nil, "BACKGROUND")
@@ -2151,7 +2154,7 @@ function MapSearch:ShowWaypointAt(x, y, icon, category)
     
     -- Scale elements based on canvas size - larger maps need bigger icons
     -- Base size assumes ~600px canvas, scale up for larger maps
-    local scaleFactor = math.max(1, math.min(canvasWidth, canvasHeight) / 600)
+    local scaleFactor = mmax(1, mmin(canvasWidth, canvasHeight) / 600)
     
     -- Apply user's icon scale preference
     local userScale = EasyFind.db.mapIconScale or 1.0
@@ -2218,15 +2221,15 @@ function MapSearch:HighlightPin(pin)
     if canvas then
         canvasWidth, canvasHeight = canvas:GetSize()
     end
-    local scaleFactor = math.max(1, math.min(canvasWidth, canvasHeight) / 600)
+    local scaleFactor = mmax(1, mmin(canvasWidth, canvasHeight) / 600)
     
     -- Apply user's icon scale preference
     local userScale = EasyFind.db.mapIconScale or 1.0
     scaleFactor = scaleFactor * userScale
     
     local width, height = pin:GetSize()
-    width = math.max(width or 24, 36 * scaleFactor)
-    height = math.max(height or 24, 36 * scaleFactor)
+    width = mmax(width or 24, 36 * scaleFactor)
+    height = mmax(height or 24, 36 * scaleFactor)
     
     -- ARROWS ARE FIXED SIZE - do not scale with map!
     local arrowSize = 128  -- FIXED
@@ -2311,7 +2314,7 @@ function MapSearch:UpdateIconScales()
     if not canvas then return end
     
     local canvasWidth, canvasHeight = canvas:GetSize()
-    local scaleFactor = math.max(1, math.min(canvasWidth, canvasHeight) / 600)
+    local scaleFactor = mmax(1, mmin(canvasWidth, canvasHeight) / 600)
     local userScale = EasyFind.db.mapIconScale or 1.0
     scaleFactor = scaleFactor * userScale
     
