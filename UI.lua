@@ -194,6 +194,7 @@ function UI:CreateSearchFrame()
     
     -- Apply saved scale
     self:UpdateScale()
+    self:UpdateOpacity()
 end
 
 function UI:CreateToggleButton()
@@ -251,12 +252,34 @@ function UI:CreateResultsFrame()
     end
 end
 
+-- Vibrant indent line colors for each depth level
+local INDENT_COLORS = {
+    {0.40, 0.85, 1.00, 0.80},   -- cyan
+    {1.00, 0.55, 0.10, 0.80},   -- orange
+    {0.55, 1.00, 0.35, 0.80},   -- lime green
+    {1.00, 0.40, 0.70, 0.80},   -- pink
+    {0.70, 0.55, 1.00, 0.80},   -- lavender
+    {1.00, 0.90, 0.20, 0.80},   -- yellow
+}
+
 function UI:CreateResultButton(index)
     local btn = CreateFrame("Button", "EasyFindResultButton"..index, resultsFrame)
     btn:SetSize(300, 22)
     btn:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 10, -8 - (index - 1) * 22)
     
     btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    
+    -- Create indent line textures (one per possible depth level)
+    btn.indentLines = {}
+    for d = 1, #INDENT_COLORS do
+        local line = btn:CreateTexture(nil, "BACKGROUND")
+        line:SetColorTexture(INDENT_COLORS[d][1], INDENT_COLORS[d][2], INDENT_COLORS[d][3], INDENT_COLORS[d][4])
+        line:SetWidth(2)
+        line:SetPoint("TOP", btn, "TOPLEFT", (d - 1) * 12 + 5, 2)
+        line:SetPoint("BOTTOM", btn, "BOTTOMLEFT", (d - 1) * 12 + 5, -2)
+        line:Hide()
+        btn.indentLines[d] = line
+    end
     
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetSize(16, 16)
@@ -342,6 +365,15 @@ function UI:ShowHierarchicalResults(hierarchical)
             btn.data = data
             btn.isPathNode = entry.isPathNode
             
+            -- Show/hide vertical indent lines for each depth level
+            for d = 1, #INDENT_COLORS do
+                if d <= depth then
+                    btn.indentLines[d]:Show()
+                else
+                    btn.indentLines[d]:Hide()
+                end
+            end
+            
             -- Move icon based on depth (indent icon with the text)
             local indentPixels = depth * 12
             btn.icon:ClearAllPoints()
@@ -389,6 +421,12 @@ function UI:ShowHierarchicalResults(hierarchical)
             btn:Show()
         else
             btn:Hide()
+            -- Hide all indent lines on hidden buttons
+            if btn.indentLines then
+                for d = 1, #INDENT_COLORS do
+                    btn.indentLines[d]:Hide()
+                end
+            end
         end
     end
     
@@ -1019,6 +1057,13 @@ function UI:UpdateScale()
         if resultsFrame then
             resultsFrame:SetScale(scale)
         end
+    end
+end
+
+function UI:UpdateOpacity()
+    if searchFrame then
+        local alpha = EasyFind.db.searchBarOpacity or 1.0
+        searchFrame:SetAlpha(alpha)
     end
 end
 
