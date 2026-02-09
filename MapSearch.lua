@@ -11,7 +11,9 @@ local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
 local mmin, mmax, mabs, mpi = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mpi
 local pcall, tostring = Utils.pcall, Utils.tostring
 
-local searchFrame
+local searchFrame       -- Local search bar (left)
+local globalSearchFrame -- Global search bar (right)
+local activeSearchFrame -- Which bar is currently active
 local resultsFrame
 local resultButtons = {}
 local MAX_RESULTS = 20  -- Increased for grouped results
@@ -20,7 +22,7 @@ local arrowFrame
 local currentHighlightedPin
 local waypointPin
 local zoneHighlightFrame  -- For highlighting zones on continent maps
-local isGlobalSearch = false  -- Toggle for local vs global zone search
+local isGlobalSearch = false  -- Tracks which search bar triggered the current search
 
 -- Category icons mapping
 local CATEGORY_ICONS = {
@@ -101,9 +103,13 @@ function MapSearch:Initialize()
     self:CreateZoneHighlightFrame()
     self:HookWorldMap()
     self:UpdateScale()
+    self:UpdateOpacity()
 end
 
 function MapSearch:CreateSearchFrame()
+    -- =====================================================================
+    -- LOCAL search bar (left side — searches current map's child zones + POIs)
+    -- =====================================================================
     searchFrame = CreateFrame("Frame", "EasyFindMapSearchFrame", WorldMapFrame, "BackdropTemplate")
     searchFrame:SetSize(250, 32)
     searchFrame:SetFrameStrata("DIALOG")
@@ -112,7 +118,7 @@ function MapSearch:CreateSearchFrame()
     searchFrame:EnableMouse(true)
     searchFrame:SetToplevel(true)
     
-    -- Apply saved position or default
+    -- Apply saved position or default (left side)
     if EasyFind.db.mapSearchPosition then
         searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", EasyFind.db.mapSearchPosition, 0)
     else
@@ -164,6 +170,7 @@ function MapSearch:CreateSearchFrame()
     searchIcon:SetSize(14, 14)
     searchIcon:SetPoint("LEFT", 10, 0)
     searchIcon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
+    searchIcon:SetVertexColor(1, 0.82, 0)  -- Gold tint to match local theme
     
     local editBox = CreateFrame("EditBox", "EasyFindMapSearchBox", searchFrame)
     editBox:SetSize(150, 20)
@@ -174,11 +181,19 @@ function MapSearch:CreateSearchFrame()
     
     local placeholder = editBox:CreateFontString(nil, "ARTWORK", "GameFontDisable")
     placeholder:SetPoint("LEFT", 2, 0)
-    placeholder:SetText("Search map locations...")
+    placeholder:SetText("Search this zone...")
     editBox.placeholder = placeholder
     
     editBox:SetScript("OnEditFocusGained", function(self)
         self.placeholder:Hide()
+        -- Clear the other search bar when focusing this one
+        if globalSearchFrame and globalSearchFrame.editBox then
+            globalSearchFrame.editBox:SetText("")
+            globalSearchFrame.editBox:ClearFocus()
+            globalSearchFrame.editBox.placeholder:Show()
+        end
+        isGlobalSearch = false
+        activeSearchFrame = searchFrame
     end)
     
     editBox:SetScript("OnEditFocusLost", function(self)
@@ -191,6 +206,8 @@ function MapSearch:CreateSearchFrame()
         if self:GetText() ~= "" then
             self.placeholder:Hide()
         end
+        isGlobalSearch = false
+        activeSearchFrame = searchFrame
         MapSearch:OnSearchTextChanged(self:GetText())
     end)
     
@@ -206,59 +223,6 @@ function MapSearch:CreateSearchFrame()
         MapSearch:ClearHighlight()
     end)
     
-    -- Global/Local toggle button - positioned to the RIGHT of the search frame
-    local toggleBtn = CreateFrame("Button", nil, searchFrame)
-    toggleBtn:SetSize(24, 24)
-    toggleBtn:SetPoint("LEFT", searchFrame, "RIGHT", 4, 0)
-    toggleBtn:EnableMouse(true)
-    
-    local toggleIcon = toggleBtn:CreateTexture(nil, "ARTWORK")
-    toggleIcon:SetAllPoints()
-    toggleIcon:SetTexture("Interface\\Icons\\INV_Misc_Map02")  -- Local map icon
-    toggleBtn.icon = toggleIcon
-    
-    -- Highlight on hover
-    local toggleHighlight = toggleBtn:CreateTexture(nil, "HIGHLIGHT")
-    toggleHighlight:SetAllPoints()
-    toggleHighlight:SetTexture("Interface\\Buttons\\ButtonHilight-Square")
-    toggleHighlight:SetBlendMode("ADD")
-    
-    local function UpdateToggleButton()
-        if isGlobalSearch then
-            toggleBtn.icon:SetTexture("Interface\\Icons\\INV_Misc_Map_01")  -- World map icon
-            toggleBtn.icon:SetVertexColor(0.4, 0.8, 1)  -- Blue tint for global
-        else
-            toggleBtn.icon:SetTexture("Interface\\Icons\\INV_Misc_Map02")  -- Local map icon
-            toggleBtn.icon:SetVertexColor(1, 0.82, 0)  -- Gold tint for local
-        end
-    end
-    
-    toggleBtn:SetScript("OnClick", function()
-        isGlobalSearch = not isGlobalSearch
-        UpdateToggleButton()
-        -- Re-run search with current text
-        local text = editBox:GetText()
-        if text and text ~= "" then
-            MapSearch:OnSearchTextChanged(text)
-        end
-    end)
-    
-    toggleBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        if isGlobalSearch then
-            GameTooltip:SetText("Global Search (click to switch to Local)")
-            GameTooltip:AddLine("Searches ALL zones in the world", 1, 1, 1)
-        else
-            GameTooltip:SetText("Local Search (click to switch to Global)")
-            GameTooltip:AddLine("Searches only zones within current map ", 1, 1, 1)
-        end
-        GameTooltip:Show()
-    end)
-    toggleBtn:SetScript("OnLeave", GameTooltip_Hide)
-    
-    UpdateToggleButton()
-    searchFrame.toggleBtn = toggleBtn
-    
     -- Clear button (inside the search frame on the right)
     local clearBtn = CreateFrame("Button", nil, searchFrame, "UIPanelButtonTemplate")
     clearBtn:SetSize(60, 22)
@@ -269,6 +233,11 @@ function MapSearch:CreateSearchFrame()
         editBox:SetText("")
         editBox:ClearFocus()
         editBox.placeholder:Show()
+        if globalSearchFrame and globalSearchFrame.editBox then
+            globalSearchFrame.editBox:SetText("")
+            globalSearchFrame.editBox:ClearFocus()
+            globalSearchFrame.editBox.placeholder:Show()
+        end
         MapSearch:HideResults()
         MapSearch:ClearHighlight()
         MapSearch:ClearZoneHighlight()
@@ -283,14 +252,186 @@ function MapSearch:CreateSearchFrame()
     
     searchFrame.editBox = editBox
     searchFrame:Hide()
+    
+    -- Tooltip on the local search bar background
+    searchFrame:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("|cFFFFD100This Zone|r Search")
+        GameTooltip:AddLine("Searches for POIs and sub-zones within the map you're currently viewing.", 1, 1, 1, true)
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    searchFrame:SetScript("OnLeave", GameTooltip_Hide)
+    
+    -- =====================================================================
+    -- GLOBAL search bar (right side — searches all zones in the world)
+    -- =====================================================================
+    globalSearchFrame = CreateFrame("Frame", "EasyFindMapGlobalSearchFrame", WorldMapFrame, "BackdropTemplate")
+    globalSearchFrame:SetSize(250, 32)
+    globalSearchFrame:SetFrameStrata("DIALOG")
+    globalSearchFrame:SetFrameLevel(9999)
+    globalSearchFrame:SetMovable(true)
+    globalSearchFrame:EnableMouse(true)
+    globalSearchFrame:SetToplevel(true)
+    
+    -- Position on the right side (anchored to bottom-right of the map scroll container)
+    if EasyFind.db.globalSearchPosition then
+        globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", EasyFind.db.globalSearchPosition, 0)
+    else
+        globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", 0, 0)
+    end
+    
+    globalSearchFrame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+    
+    -- Draggable with Shift key (constrained to map bottom edge)
+    globalSearchFrame:RegisterForDrag("LeftButton")
+    globalSearchFrame:SetScript("OnDragStart", function(self)
+        if IsShiftKeyDown() then
+            self.isDragging = true
+        end
+    end)
+    globalSearchFrame:SetScript("OnDragStop", function(self)
+        self.isDragging = false
+    end)
+    globalSearchFrame:SetScript("OnUpdate", function(self)
+        if self.isDragging and IsShiftKeyDown() then
+            local cursorX = GetCursorPosition()
+            local scale = UIParent:GetEffectiveScale()
+            local mapLeft = WorldMapFrame.ScrollContainer:GetLeft() * scale
+            local mapRight = WorldMapFrame.ScrollContainer:GetRight() * scale
+            
+            -- Calculate new X position relative to map RIGHT edge (negative offset)
+            local newX = (cursorX - mapRight) / scale + (self:GetWidth() / 2)
+            
+            -- Constrain
+            local maxNeg = -((mapRight - mapLeft) / scale - self:GetWidth())
+            newX = mmin(0, mmax(newX, maxNeg))
+            
+            self:ClearAllPoints()
+            self:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", newX, 0)
+            EasyFind.db.globalSearchPosition = newX
+        elseif self.isDragging then
+            self.isDragging = false
+        end
+    end)
+    
+    local globalSearchIcon = globalSearchFrame:CreateTexture(nil, "ARTWORK")
+    globalSearchIcon:SetSize(14, 14)
+    globalSearchIcon:SetPoint("LEFT", 10, 0)
+    globalSearchIcon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
+    globalSearchIcon:SetVertexColor(0.4, 0.8, 1)  -- Blue tint to match global theme
+    
+    local globalEditBox = CreateFrame("EditBox", "EasyFindMapGlobalSearchBox", globalSearchFrame)
+    globalEditBox:SetSize(150, 20)
+    globalEditBox:SetPoint("LEFT", globalSearchIcon, "RIGHT", 5, 0)
+    globalEditBox:SetFontObject("ChatFontNormal")
+    globalEditBox:SetAutoFocus(false)
+    globalEditBox:SetMaxLetters(50)
+    
+    local globalPlaceholder = globalEditBox:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+    globalPlaceholder:SetPoint("LEFT", 2, 0)
+    globalPlaceholder:SetText("Search all zones...")
+    globalEditBox.placeholder = globalPlaceholder
+    
+    globalEditBox:SetScript("OnEditFocusGained", function(self)
+        self.placeholder:Hide()
+        -- Clear the other search bar when focusing this one
+        if searchFrame and searchFrame.editBox then
+            searchFrame.editBox:SetText("")
+            searchFrame.editBox:ClearFocus()
+            searchFrame.editBox.placeholder:Show()
+        end
+        isGlobalSearch = true
+        activeSearchFrame = globalSearchFrame
+    end)
+    
+    globalEditBox:SetScript("OnEditFocusLost", function(self)
+        if self:GetText() == "" then
+            self.placeholder:Show()
+        end
+    end)
+    
+    globalEditBox:SetScript("OnTextChanged", function(self)
+        if self:GetText() ~= "" then
+            self.placeholder:Hide()
+        end
+        isGlobalSearch = true
+        activeSearchFrame = globalSearchFrame
+        MapSearch:OnSearchTextChanged(self:GetText())
+    end)
+    
+    globalEditBox:SetScript("OnEnterPressed", function(self)
+        MapSearch:SelectFirstResult()
+    end)
+    
+    globalEditBox:SetScript("OnEscapePressed", function(self)
+        self:ClearFocus()
+        self:SetText("")
+        self.placeholder:Show()
+        MapSearch:HideResults()
+        MapSearch:ClearHighlight()
+        MapSearch:ClearZoneHighlight()
+    end)
+    
+    -- Clear button for global search
+    local globalClearBtn = CreateFrame("Button", nil, globalSearchFrame, "UIPanelButtonTemplate")
+    globalClearBtn:SetSize(60, 22)
+    globalClearBtn:SetPoint("RIGHT", globalSearchFrame, "RIGHT", -6, 0)
+    globalClearBtn:SetText("Clear")
+    globalClearBtn:EnableMouse(true)
+    globalClearBtn:SetScript("OnClick", function()
+        globalEditBox:SetText("")
+        globalEditBox:ClearFocus()
+        globalEditBox.placeholder:Show()
+        if searchFrame and searchFrame.editBox then
+            searchFrame.editBox:SetText("")
+            searchFrame.editBox:ClearFocus()
+            searchFrame.editBox.placeholder:Show()
+        end
+        MapSearch:HideResults()
+        MapSearch:ClearHighlight()
+        MapSearch:ClearZoneHighlight()
+    end)
+    globalClearBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Clear all map icons and zone highlights")
+        GameTooltip:Show()
+    end)
+    globalClearBtn:SetScript("OnLeave", GameTooltip_Hide)
+    globalSearchFrame.clearBtn = globalClearBtn
+    
+    globalSearchFrame.editBox = globalEditBox
+    globalSearchFrame:Hide()
+    
+    -- Tooltip on the global search bar background
+    globalSearchFrame:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("|cFF66CCFFAll Zones|r Search")
+        GameTooltip:AddLine("Searches every zone in the entire world — continents, dungeons, and more.", 1, 1, 1, true)
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    globalSearchFrame:SetScript("OnLeave", GameTooltip_Hide)
+    
+    -- Set initial active frame
+    activeSearchFrame = searchFrame
 end
 
 function MapSearch:CreateResultsFrame()
-    resultsFrame = CreateFrame("Frame", "EasyFindMapResultsFrame", searchFrame, "BackdropTemplate")
+    resultsFrame = CreateFrame("Frame", "EasyFindMapResultsFrame", WorldMapFrame, "BackdropTemplate")
     resultsFrame:SetWidth(300)
-    resultsFrame:SetPoint("BOTTOMLEFT", searchFrame, "TOPLEFT", 0, 2)
     resultsFrame:SetFrameStrata("TOOLTIP")
     resultsFrame:SetFrameLevel(1001)
+    
+    -- Default anchor to local search bar; will be re-anchored dynamically
+    resultsFrame:SetPoint("BOTTOMLEFT", searchFrame, "TOPLEFT", 0, 2)
     
     resultsFrame:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
@@ -307,12 +448,24 @@ function MapSearch:CreateResultsFrame()
     end
 end
 
+-- Indent line color for map search grouped results
+local MAP_INDENT_COLOR = {0.40, 0.85, 1.00, 0.70}  -- cyan
+
 function MapSearch:CreateResultButton(index)
     local btn = CreateFrame("Button", "EasyFindMapResultButton"..index, resultsFrame)
     btn:SetSize(280, 24)
     btn:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 10, -10 - (index - 1) * 26)
     
     btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    
+    -- Vertical indent line for grouped children
+    local indentLine = btn:CreateTexture(nil, "BACKGROUND")
+    indentLine:SetColorTexture(MAP_INDENT_COLOR[1], MAP_INDENT_COLOR[2], MAP_INDENT_COLOR[3], MAP_INDENT_COLOR[4])
+    indentLine:SetWidth(2)
+    indentLine:SetPoint("TOP", btn, "TOPLEFT", 14, 2)
+    indentLine:SetPoint("BOTTOM", btn, "BOTTOMLEFT", 14, -2)
+    indentLine:Hide()
+    btn.indentLine = indentLine
     
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetSize(18, 18)
@@ -1307,10 +1460,12 @@ end
 function MapSearch:HookWorldMap()
     WorldMapFrame:HookScript("OnShow", function()
         searchFrame:Show()
+        globalSearchFrame:Show()
     end)
     
     WorldMapFrame:HookScript("OnHide", function()
         searchFrame:Hide()
+        globalSearchFrame:Hide()
         self:HideResults()
         self:ClearHighlight()
         self:ClearZoneHighlight()
@@ -1330,8 +1485,13 @@ function MapSearch:HookWorldMap()
             self.breadcrumbHighlight:Hide()
         end
         
+        -- Clear both search bars on map change
         searchFrame.editBox:SetText("")
         searchFrame.editBox.placeholder:Show()
+        if globalSearchFrame and globalSearchFrame.editBox then
+            globalSearchFrame.editBox:SetText("")
+            globalSearchFrame.editBox.placeholder:Show()
+        end
         
         -- Check if we have a pending zone to highlight (step-by-step navigation)
         if self.pendingZoneHighlight then
@@ -1827,6 +1987,7 @@ function MapSearch:ShowResults(results)
             btn.icon:SetVertexColor(1, 1, 1)
             btn.text:SetTextColor(1, 1, 1)
             if btn.prefixText then btn.prefixText:Hide() end
+            if btn.indentLine then btn.indentLine:Hide() end
             
             -- Format based on type
             if data.isZoneParent then
@@ -1853,6 +2014,8 @@ function MapSearch:ShowResults(results)
                     btn.icon:SetTexture(237382)
                     btn.icon:SetSize(16, 16)  -- Slightly smaller for children
                     btn.icon:Show()
+                    -- Show vertical indent line
+                    if btn.indentLine then btn.indentLine:Show() end
                     
                 elseif data.pathPrefix and data.pathPrefix ~= "" then
                     -- Global search with path - show "Path > Zone" format
@@ -1897,6 +2060,15 @@ function MapSearch:ShowResults(results)
     end
     
     resultsFrame:SetHeight(20 + count * 26)
+    
+    -- Anchor results dropdown to whichever search bar is active
+    resultsFrame:ClearAllPoints()
+    local anchor = activeSearchFrame or searchFrame
+    if isGlobalSearch and globalSearchFrame then
+        anchor = globalSearchFrame
+    end
+    resultsFrame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, 2)
+    
     resultsFrame:Show()
 end
 
@@ -2296,6 +2468,21 @@ function MapSearch:UpdateScale()
             resultsFrame:SetScale(scale)
         end
     end
+    if globalSearchFrame then
+        local scale = EasyFind.db.mapSearchScale or 1.0
+        globalSearchFrame:SetScale(scale)
+    end
+end
+
+function MapSearch:UpdateOpacity()
+    if searchFrame then
+        local alpha = EasyFind.db.searchBarOpacity or 1.0
+        searchFrame:SetAlpha(alpha)
+    end
+    if globalSearchFrame then
+        local alpha = EasyFind.db.searchBarOpacity or 1.0
+        globalSearchFrame:SetAlpha(alpha)
+    end
 end
 
 function MapSearch:ResetPosition()
@@ -2303,6 +2490,11 @@ function MapSearch:ResetPosition()
         searchFrame:ClearAllPoints()
         searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", 0, 0)
         EasyFind.db.mapSearchPosition = nil
+    end
+    if globalSearchFrame then
+        globalSearchFrame:ClearAllPoints()
+        globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", 0, 0)
+        EasyFind.db.globalSearchPosition = nil
     end
 end
 
