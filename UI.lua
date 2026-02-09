@@ -18,6 +18,7 @@ local toggleBtn
 local resultButtons = {}
 local MAX_RESULTS = 12
 local inCombat = false
+local selectedIndex = 0   -- 0 = none selected, 1..N = highlighted row
 
 function UI:Initialize()
     self:CreateSearchFrame()
@@ -28,9 +29,21 @@ function UI:Initialize()
     if EasyFind.db.visible ~= false then
         searchFrame:Show()
         toggleBtn:Hide()
+        -- Apply smart show on startup
+        if EasyFind.db.smartShow then
+            searchFrame.hoverZone:Show()
+            searchFrame:SetAlpha(0)
+            searchFrame.setSmartShowVisible(false)
+        end
     else
         searchFrame:Hide()
-        toggleBtn:Show()
+        if EasyFind.db.smartShow then
+            -- Smart Show + hidden: hover zone active, toggle hidden until hover
+            searchFrame.hoverZone:Show()
+            toggleBtn:Hide()
+        else
+            toggleBtn:Show()
+        end
     end
     
     -- Check if already in combat
@@ -48,6 +61,7 @@ function UI:RegisterCombatEvents()
         if event == "PLAYER_REGEN_DISABLED" then
             inCombat = true
             searchFrame:Hide()
+            searchFrame.hoverZone:Hide()
             toggleBtn:Hide()
             UI:HideResults()
             searchFrame.editBox:ClearFocus()
@@ -56,8 +70,18 @@ function UI:RegisterCombatEvents()
             if EasyFind.db.visible ~= false then
                 searchFrame:Show()
                 toggleBtn:Hide()
+                if EasyFind.db.smartShow then
+                    searchFrame.hoverZone:Show()
+                    searchFrame:SetAlpha(0)
+                    searchFrame.setSmartShowVisible(false)
+                end
             else
-                toggleBtn:Show()
+                if EasyFind.db.smartShow then
+                    searchFrame.hoverZone:Show()
+                    toggleBtn:Hide()
+                else
+                    toggleBtn:Show()
+                end
             end
         end
     end)
@@ -65,7 +89,7 @@ end
 
 function UI:CreateSearchFrame()
     searchFrame = CreateFrame("Frame", "EasyFindSearchFrame", UIParent, "BackdropTemplate")
-    searchFrame:SetSize(280, 36)
+    searchFrame:SetSize(300, 36)
     searchFrame:SetFrameStrata("HIGH")
     searchFrame:SetMovable(true)
     searchFrame:EnableMouse(true)
@@ -123,16 +147,15 @@ function UI:CreateSearchFrame()
     end)
     
     editBox:SetScript("OnEnterPressed", function(self)
-        UI:SelectFirstResult()
+        UI:ActivateSelected()
     end)
     
     editBox:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
-        self:SetText("")
-        UI:HideResults()
+        -- Text and results stay visible; user can click back in to resume
     end)
     
-    -- Hide button
+    -- Hide button (rightmost)
     local hideBtn = CreateFrame("Button", nil, searchFrame, "UIPanelButtonTemplate")
     hideBtn:SetSize(40, 20)
     hideBtn:SetPoint("RIGHT", searchFrame, "RIGHT", -8, 0)
@@ -141,42 +164,108 @@ function UI:CreateSearchFrame()
         UI:Hide()
     end)
     
-    -- Clear highlights button (red X)
-    local clearBtn = CreateFrame("Button", "EasyFindClearButton", searchFrame)
-    clearBtn:SetSize(20, 20)
-    clearBtn:SetPoint("RIGHT", hideBtn, "LEFT", -2, 0)
-    clearBtn:EnableMouse(true)
-    clearBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
+    -- Clear highlights button — yellow X, visually distinct from the grey text-clear X
+    local clearHLBtn = CreateFrame("Button", "EasyFindClearHLButton", searchFrame)
+    clearHLBtn:SetSize(16, 16)
+    clearHLBtn:SetPoint("RIGHT", hideBtn, "LEFT", -4, 0)
+    clearHLBtn:EnableMouse(true)
+    clearHLBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
     
-    -- Use a simple red X texture
-    local normalTex = clearBtn:CreateTexture(nil, "ARTWORK")
-    normalTex:SetAllPoints()
-    normalTex:SetTexture("Interface\\Buttons\\UI-StopButton")
-    normalTex:SetVertexColor(1, 0.3, 0.3, 1)
-    clearBtn:SetNormalTexture(normalTex)
+    local hlNormal = clearHLBtn:CreateTexture(nil, "ARTWORK")
+    hlNormal:SetAllPoints()
+    hlNormal:SetTexture("Interface\\Buttons\\UI-StopButton")
+    hlNormal:SetVertexColor(1, 0.82, 0, 1)
+    clearHLBtn:SetNormalTexture(hlNormal)
     
-    local highlightTex = clearBtn:CreateTexture(nil, "HIGHLIGHT")
-    highlightTex:SetAllPoints()
-    highlightTex:SetTexture("Interface\\Buttons\\UI-StopButton")
-    highlightTex:SetVertexColor(1, 0.5, 0.5, 1)
-    highlightTex:SetBlendMode("ADD")
-    clearBtn:SetHighlightTexture(highlightTex)
+    local hlHighlight = clearHLBtn:CreateTexture(nil, "HIGHLIGHT")
+    hlHighlight:SetAllPoints()
+    hlHighlight:SetTexture("Interface\\Buttons\\UI-StopButton")
+    hlHighlight:SetVertexColor(1, 1, 0.4, 1)
+    hlHighlight:SetBlendMode("ADD")
+    clearHLBtn:SetHighlightTexture(hlHighlight)
     
-    clearBtn:SetScript("OnClick", function()
+    clearHLBtn:SetScript("OnClick", function()
         if ns.Highlight then
             ns.Highlight:Cancel()
             print("|cFF00FF00EasyFind:|r Highlights cleared.")
         end
     end)
-    clearBtn:SetScript("OnEnter", function(self)
+    clearHLBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText("Clear all active highlights", 1, 1, 1)
+        GameTooltip:SetText("Clear Active Highlights")
+        GameTooltip:AddLine("Removes the yellow guide boxes from your UI.", 1, 1, 1, true)
         GameTooltip:Show()
     end)
-    clearBtn:SetScript("OnLeave", GameTooltip_Hide)
+    clearHLBtn:SetScript("OnLeave", GameTooltip_Hide)
+    
+    -- Clear-text X button (browser-style, inside the bar, right of typed text)
+    -- Only visible when there is text in the editbox.
+    local clearTextBtn = CreateFrame("Button", "EasyFindClearTextButton", searchFrame)
+    clearTextBtn:SetSize(16, 16)
+    clearTextBtn:SetPoint("RIGHT", clearHLBtn, "LEFT", -4, 0)
+    clearTextBtn:EnableMouse(true)
+    clearTextBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
+    clearTextBtn:Hide()  -- hidden until there is text
+    
+    local ctNormal = clearTextBtn:CreateTexture(nil, "ARTWORK")
+    ctNormal:SetAllPoints()
+    ctNormal:SetTexture("Interface\\Buttons\\UI-StopButton")
+    ctNormal:SetVertexColor(0.6, 0.6, 0.6, 1)
+    clearTextBtn:SetNormalTexture(ctNormal)
+    
+    local ctHighlight = clearTextBtn:CreateTexture(nil, "HIGHLIGHT")
+    ctHighlight:SetAllPoints()
+    ctHighlight:SetTexture("Interface\\Buttons\\UI-StopButton")
+    ctHighlight:SetVertexColor(1, 1, 1, 1)
+    ctHighlight:SetBlendMode("ADD")
+    clearTextBtn:SetHighlightTexture(ctHighlight)
+    
+    clearTextBtn:SetScript("OnClick", function()
+        editBox:SetText("")
+        editBox:ClearFocus()
+        editBox.placeholder:Show()
+        UI:HideResults()
+    end)
+    clearTextBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText("Clear search text")
+        GameTooltip:Show()
+    end)
+    clearTextBtn:SetScript("OnLeave", GameTooltip_Hide)
+    searchFrame.clearTextBtn = clearTextBtn
+    
+    -- Show/hide the clear-text X based on whether there's text
+    editBox:HookScript("OnTextChanged", function(self)
+        if self:GetText() ~= "" then
+            clearTextBtn:Show()
+        else
+            clearTextBtn:Hide()
+        end
+    end)
+    
+    -- Arrow key / Tab navigation for results dropdown.
+    -- IMPORTANT: Always block propagation while the editbox has focus so that
+    -- typed letters never trigger the player's game keybinds.
+    editBox:SetScript("OnKeyDown", function(self, key)
+        if resultsFrame and resultsFrame:IsShown() then
+            if key == "DOWN" then
+                UI:MoveSelection(1)
+            elseif key == "UP" then
+                UI:MoveSelection(-1)
+            elseif key == "TAB" then
+                if IsShiftKeyDown() then
+                    UI:MoveSelection(-1)
+                else
+                    UI:MoveSelection(1)
+                end
+            end
+        end
+        -- Never propagate keyboard input to game binds while the search box is focused
+        self:SetPropagateKeyboardInput(false)
+    end)
     
     searchFrame.editBox = editBox
-    searchFrame.clearBtn = clearBtn
+    searchFrame.clearHLBtn = clearHLBtn
     
     -- Draggable with Shift key
     searchFrame:RegisterForDrag("LeftButton")
@@ -195,12 +284,92 @@ function UI:CreateSearchFrame()
     -- Apply saved scale
     self:UpdateScale()
     self:UpdateOpacity()
+    
+    -- Smart Show: invisible hover zone that triggers show/hide
+    local hoverZone = CreateFrame("Frame", "EasyFindHoverZone", UIParent)
+    hoverZone:SetFrameStrata("HIGH")
+    hoverZone:SetFrameLevel(searchFrame:GetFrameLevel() - 1)
+    hoverZone:EnableMouse(true)
+    hoverZone:SetSize(340, 76)  -- larger than the search bar to catch the mouse nearby
+    hoverZone:SetPoint("CENTER", searchFrame, "CENTER", 0, 0)
+    hoverZone:Hide()
+    searchFrame.hoverZone = hoverZone
+    
+    -- Track whether the mouse is over the zone or the bar
+    local smartShowVisible = false
+    local smartShowTimer = nil
+    
+    local function SmartShowFadeIn()
+        if smartShowTimer then smartShowTimer:Cancel(); smartShowTimer = nil end
+        if EasyFind.db.visible == false then
+            -- Hidden state: show the toggle button instantly
+            if toggleBtn then
+                toggleBtn:SetAlpha(1)
+                toggleBtn:Show()
+            end
+            return
+        end
+        if not smartShowVisible then
+            smartShowVisible = true
+            toggleBtn:Hide()
+            UIFrameFadeIn(searchFrame, 0.15, searchFrame:GetAlpha(), EasyFind.db.searchBarOpacity or 1.0)
+            searchFrame:Show()
+        end
+    end
+    
+    local function SmartShowFadeOut()
+        if EasyFind.db.visible == false then
+            -- Hidden state: hide the toggle button after a delay
+            if smartShowTimer then smartShowTimer:Cancel() end
+            smartShowTimer = C_Timer.NewTimer(0.4, function()
+                smartShowTimer = nil
+                if hoverZone:IsMouseOver() then return end
+                if toggleBtn and toggleBtn:IsMouseOver() then return end
+                toggleBtn:Hide()
+            end)
+            return
+        end
+        -- Don't hide if the editbox has focus or contains text
+        if searchFrame.editBox:HasFocus() or searchFrame.editBox:GetText() ~= "" then return end
+        -- Don't hide if results are showing
+        if resultsFrame and resultsFrame:IsShown() then return end
+        if smartShowTimer then smartShowTimer:Cancel() end
+        smartShowTimer = C_Timer.NewTimer(0.4, function()
+            smartShowTimer = nil
+            -- Re-check conditions after the delay
+            if searchFrame.editBox:HasFocus() or searchFrame.editBox:GetText() ~= "" then return end
+            if resultsFrame and resultsFrame:IsShown() then return end
+            if hoverZone:IsMouseOver() or searchFrame:IsMouseOver() then return end
+            smartShowVisible = false
+            UIFrameFadeOut(searchFrame, 0.25, searchFrame:GetAlpha(), 0)
+            C_Timer.After(0.25, function()
+                if not smartShowVisible and EasyFind.db.smartShow then
+                    searchFrame:SetAlpha(0)
+                end
+            end)
+        end)
+    end
+    
+    hoverZone:SetScript("OnEnter", SmartShowFadeIn)
+    hoverZone:SetScript("OnLeave", SmartShowFadeOut)
+    searchFrame:HookScript("OnEnter", function()
+        if EasyFind.db.smartShow then SmartShowFadeIn() end
+    end)
+    searchFrame:HookScript("OnLeave", function()
+        if EasyFind.db.smartShow then SmartShowFadeOut() end
+    end)
+    
+    searchFrame.smartShowFadeIn = SmartShowFadeIn
+    searchFrame.smartShowFadeOut = SmartShowFadeOut
+    searchFrame.smartShowVisible = function() return smartShowVisible end
+    searchFrame.setSmartShowVisible = function(val) smartShowVisible = val end
 end
 
 function UI:CreateToggleButton()
     toggleBtn = CreateFrame("Button", "EasyFindToggleButton", UIParent, "BackdropTemplate")
     toggleBtn:SetSize(28, 28)
-    toggleBtn:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -220, -5)
+    -- Will be repositioned dynamically when shown; default fallback only
+    toggleBtn:SetPoint("TOP", UIParent, "TOP", 0, -5)
     toggleBtn:SetFrameStrata("HIGH")
     
     toggleBtn:SetBackdrop({
@@ -220,19 +389,28 @@ function UI:CreateToggleButton()
     end)
     
     toggleBtn:SetScript("OnEnter", function(self)
+        -- Keep toggle visible while hovering it (cancel any pending fade-out)
+        if EasyFind.db.smartShow and EasyFind.db.visible == false then
+            searchFrame.smartShowFadeIn()
+        end
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
         GameTooltip:SetText("EasyFind - UI Search")
         GameTooltip:AddLine("Click to search for UI elements", 1, 1, 1)
         GameTooltip:Show()
     end)
     
-    toggleBtn:SetScript("OnLeave", GameTooltip_Hide)
+    toggleBtn:SetScript("OnLeave", function(self)
+        GameTooltip_Hide()
+        if EasyFind.db.smartShow and EasyFind.db.visible == false then
+            searchFrame.smartShowFadeOut()
+        end
+    end)
     toggleBtn:Hide()
 end
 
 function UI:CreateResultsFrame()
     resultsFrame = CreateFrame("Frame", "EasyFindResultsFrame", searchFrame, "BackdropTemplate")
-    resultsFrame:SetWidth(320)  -- Wider to accommodate indentation
+    resultsFrame:SetWidth(380)  -- Wide to accommodate tree indentation
     resultsFrame:SetPoint("TOP", searchFrame, "BOTTOM", 0, -2)
     resultsFrame:SetFrameStrata("HIGH")
     resultsFrame:SetFrameLevel(searchFrame:GetFrameLevel() + 1)
@@ -262,23 +440,66 @@ local INDENT_COLORS = {
     {1.00, 0.90, 0.20, 0.80},   -- yellow
 }
 
+local INDENT_PX  = 20  -- pixels per depth level (icon 16 + 4 gap)
+local LINE_W     = 2   -- connector line thickness
+local MAX_DEPTH  = #INDENT_COLORS
+
+-- Session-only collapse state for path nodes (cleared on every new search)
+local collapsedNodes = {}   -- key = "name_depth", value = true
+local cachedHierarchical    -- last full hierarchical list for re-rendering after toggle
+
 function UI:CreateResultButton(index)
     local btn = CreateFrame("Button", "EasyFindResultButton"..index, resultsFrame)
-    btn:SetSize(300, 22)
+    btn:SetSize(360, 22)
     btn:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 10, -8 - (index - 1) * 22)
     
     btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
     
-    -- Create indent line textures (one per possible depth level)
-    btn.indentLines = {}
-    for d = 1, #INDENT_COLORS do
-        local line = btn:CreateTexture(nil, "BACKGROUND")
-        line:SetColorTexture(INDENT_COLORS[d][1], INDENT_COLORS[d][2], INDENT_COLORS[d][3], INDENT_COLORS[d][4])
-        line:SetWidth(2)
-        line:SetPoint("TOP", btn, "TOPLEFT", (d - 1) * 12 + 5, 2)
-        line:SetPoint("BOTTOM", btn, "BOTTOMLEFT", (d - 1) * 12 + 5, -2)
-        line:Hide()
-        btn.indentLines[d] = line
+    -- Persistent selection highlight (for keyboard navigation)
+    local selTex = btn:CreateTexture(nil, "BACKGROUND")
+    selTex:SetAllPoints()
+    selTex:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+    selTex:SetBlendMode("ADD")
+    selTex:SetVertexColor(0.3, 0.6, 1.0, 0.4)
+    selTex:Hide()
+    btn.selectionHighlight = selTex
+    
+    -- Tree connector textures per depth level
+    -- Each level gets: a vertical pass-through line AND a horizontal branch line
+    btn.treeVert   = {}   -- vertical │ lines (pass-through for ancestors)
+    btn.treeBranch = {}   -- horizontal ─ branch connector at this row's own depth
+    btn.treeElbow  = {}   -- vertical half-line for └ (last child) vs ├ (mid child)
+    
+    for d = 1, MAX_DEPTH do
+        local c = INDENT_COLORS[d]
+        local xCenter = (d - 1) * INDENT_PX + 5  -- center X of this depth's column
+        
+        -- Full-height vertical pass-through line (for ancestor depths still active)
+        local vert = btn:CreateTexture(nil, "BACKGROUND")
+        vert:SetColorTexture(c[1], c[2], c[3], c[4])
+        vert:SetWidth(LINE_W)
+        vert:SetPoint("TOP",    btn, "TOPLEFT",    xCenter, 2)
+        vert:SetPoint("BOTTOM", btn, "BOTTOMLEFT", xCenter, -2)
+        vert:Hide()
+        btn.treeVert[d] = vert
+        
+        -- Half-height vertical elbow (top half only — for ├ and └ at this row's depth)
+        local elbow = btn:CreateTexture(nil, "BACKGROUND")
+        elbow:SetColorTexture(c[1], c[2], c[3], c[4])
+        elbow:SetWidth(LINE_W)
+        elbow:SetPoint("TOP", btn, "TOPLEFT", xCenter, 2)
+        elbow:SetHeight(13)  -- half the row height + a bit
+        elbow:Hide()
+        btn.treeElbow[d] = elbow
+        
+        -- Horizontal branch line (goes from the vertical line rightward to the icon)
+        local branch = btn:CreateTexture(nil, "BACKGROUND")
+        branch:SetColorTexture(c[1], c[2], c[3], c[4])
+        branch:SetHeight(LINE_W)
+        branch:SetPoint("LEFT",  btn, "TOPLEFT", xCenter, -11)
+        branch:SetPoint("RIGHT", btn, "TOPLEFT", xCenter + INDENT_PX - 2, -11)
+        branch:Hide()
+        btn.treeBranch[d] = branch
     end
     
     local icon = btn:CreateTexture(nil, "ARTWORK")
@@ -287,13 +508,21 @@ function UI:CreateResultButton(index)
     btn.icon = icon
     
     local text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    text:SetPoint("LEFT", icon, "RIGHT", 5, 0)
+    text:SetPoint("LEFT", icon, "RIGHT", 4, 0)
     text:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
     text:SetJustifyH("LEFT")
     btn.text = text
     
     btn:SetScript("OnClick", function(self)
-        if self.data and not self.isPathNode then
+        if self.isPathNode then
+            -- Toggle collapse for this path node
+            local key = (self.pathNodeName or "") .. "_" .. (self.pathNodeDepth or 0)
+            collapsedNodes[key] = not collapsedNodes[key]
+            -- Re-render from cached data (no new search needed)
+            if cachedHierarchical then
+                UI:ShowHierarchicalResults(cachedHierarchical)
+            end
+        elseif self.data then
             UI:SelectResult(self.data)
         end
     end)
@@ -303,6 +532,8 @@ function UI:CreateResultButton(index)
 end
 
 function UI:OnSearchTextChanged(text)
+    -- Clear collapse state so every new search starts fully expanded
+    collapsedNodes = {}
     local results = ns.Database:SearchUI(text)
     local hierarchical = ns.Database:BuildHierarchicalResults(results)
     self:ShowHierarchicalResults(hierarchical)
@@ -352,45 +583,134 @@ function UI:ShowHierarchicalResults(hierarchical)
         return
     end
     
-    local count = mmin(#hierarchical, MAX_RESULTS)
-    local INDENT_SIZE = 12
+    -- Cache the FULL (unfiltered) list so collapse toggles can re-render
+    cachedHierarchical = hierarchical
     
+    -- ----------------------------------------------------------------
+    -- Build the visible list by filtering out children of collapsed nodes
+    -- ----------------------------------------------------------------
+    local visible = {}
+    local skipBelowDepth = nil  -- when set, skip entries deeper than this
+    
+    for _, entry in ipairs(hierarchical) do
+        local d = entry.depth or 0
+        
+        -- If we're skipping children of a collapsed node, check depth
+        if skipBelowDepth then
+            if d > skipBelowDepth then
+                -- Still inside collapsed subtree — skip
+            else
+                -- Back to same or higher depth — stop skipping
+                skipBelowDepth = nil
+            end
+        end
+        
+        if not skipBelowDepth then
+            tinsert(visible, entry)
+            
+            -- If this is a collapsed path node, start skipping its children
+            if entry.isPathNode then
+                local key = entry.name .. "_" .. d
+                if collapsedNodes[key] then
+                    skipBelowDepth = d
+                end
+            end
+        end
+    end
+    
+    local count = mmin(#visible, MAX_RESULTS)
+    
+    -- ----------------------------------------------------------------
+    -- Pre-compute last-child flags on the VISIBLE list
+    -- ----------------------------------------------------------------
+    local isLastChild = {}
+    for i = 1, count do
+        local d = visible[i].depth or 0
+        if d > 0 then
+            local foundSibling = false
+            for j = i + 1, count do
+                local dj = visible[j].depth or 0
+                if dj < d then break end
+                if dj == d then foundSibling = true; break end
+            end
+            isLastChild[i] = not foundSibling
+        end
+    end
+    
+    -- ----------------------------------------------------------------
+    -- Render visible rows
+    -- ----------------------------------------------------------------
     for i = 1, MAX_RESULTS do
         local btn = resultButtons[i]
         if i <= count then
-            local entry = hierarchical[i]
+            local entry = visible[i]
             local data = entry.data
             local depth = entry.depth or 0
             
             btn.data = data
             btn.isPathNode = entry.isPathNode
+            btn.pathNodeName = entry.isPathNode and entry.name or nil
+            btn.pathNodeDepth = entry.isPathNode and depth or nil
             
-            -- Show/hide vertical indent lines for each depth level
-            for d = 1, #INDENT_COLORS do
-                if d <= depth then
-                    btn.indentLines[d]:Show()
-                else
-                    btn.indentLines[d]:Hide()
+            -- ---- Tree connector drawing ----
+            for d = 1, MAX_DEPTH do
+                btn.treeVert[d]:Hide()
+                btn.treeElbow[d]:Hide()
+                btn.treeBranch[d]:Hide()
+            end
+            
+            if depth > 0 then
+                btn.treeBranch[depth]:Show()
+                btn.treeElbow[depth]:Show()
+                
+                if not isLastChild[i] then
+                    btn.treeVert[depth]:Show()
+                end
+                
+                for d = 1, depth - 1 do
+                    local stillActive = false
+                    for j = i + 1, count do
+                        local dj = visible[j].depth or 0
+                        if dj < d then break end
+                        if dj == d then stillActive = true; break end
+                    end
+                    if stillActive then
+                        btn.treeVert[d]:Show()
+                    end
                 end
             end
             
-            -- Move icon based on depth (indent icon with the text)
-            local indentPixels = depth * 12
+            -- ---- Position icon & text ----
+            local indentPixels = depth * INDENT_PX
             btn.icon:ClearAllPoints()
             btn.icon:SetPoint("LEFT", btn, "LEFT", indentPixels, 0)
             
             btn.text:SetText(entry.name)
             
-            -- Style: gray for path nodes, gold for actual results
+            -- Style: path nodes get a muted color; leaf results get gold
             if entry.isPathNode then
-                btn.text:SetTextColor(0.5, 0.5, 0.5)
+                btn.text:SetTextColor(0.7, 0.7, 0.7)
             else
                 btn.text:SetTextColor(1, 0.82, 0)
             end
             
-            -- Set icon
+            -- ---- Set icon ----
             local iconSet = false
-            if data and data.buttonFrame then
+            
+            -- Path nodes: show − when expanded, + when collapsed
+            if entry.isPathNode then
+                local key = entry.name .. "_" .. depth
+                if collapsedNodes[key] then
+                    btn.icon:SetTexture("Interface\\Buttons\\UI-PlusButton-Up")
+                else
+                    btn.icon:SetTexture("Interface\\Buttons\\UI-MinusButton-Up")
+                end
+                btn.icon:SetSize(14, 14)
+                btn.icon:Show()
+                iconSet = true
+            end
+            
+            if not iconSet and data and data.buttonFrame then
                 local texture, isAtlas = GetButtonIcon(data.buttonFrame)
                 if texture then
                     if isAtlas then
@@ -398,6 +718,7 @@ function UI:ShowHierarchicalResults(hierarchical)
                     else
                         btn.icon:SetTexture(texture)
                     end
+                    btn.icon:SetSize(16, 16)
                     btn.icon:Show()
                     iconSet = true
                 end
@@ -405,33 +726,34 @@ function UI:ShowHierarchicalResults(hierarchical)
             
             if not iconSet and data and data.icon then
                 btn.icon:SetTexture(data.icon)
+                btn.icon:SetSize(16, 16)
                 btn.icon:Show()
                 iconSet = true
             end
             
             if not iconSet then
-                if entry.isPathNode then
-                    btn.icon:SetTexture("Interface\\Icons\\INV_Misc_Folder_01") -- Folder icon
-                else
-                    btn.icon:SetTexture(134400)
-                end
+                btn.icon:SetTexture(134400)
+                btn.icon:SetSize(16, 16)
                 btn.icon:Show()
             end
             
             btn:Show()
         else
             btn:Hide()
-            -- Hide all indent lines on hidden buttons
-            if btn.indentLines then
-                for d = 1, #INDENT_COLORS do
-                    btn.indentLines[d]:Hide()
-                end
+            for d = 1, MAX_DEPTH do
+                btn.treeVert[d]:Hide()
+                btn.treeElbow[d]:Hide()
+                btn.treeBranch[d]:Hide()
             end
         end
     end
     
     resultsFrame:SetHeight(16 + count * 22)
     resultsFrame:Show()
+    
+    -- Reset keyboard selection whenever results change
+    selectedIndex = 0
+    self:UpdateSelectionHighlight()
 end
 
 function UI:ShowResults(results)
@@ -442,6 +764,8 @@ end
 
 function UI:HideResults()
     resultsFrame:Hide()
+    selectedIndex = 0
+    self:UpdateSelectionHighlight()
 end
 
 function UI:SelectFirstResult()
@@ -451,9 +775,68 @@ function UI:SelectFirstResult()
     end
 end
 
+function UI:MoveSelection(delta)
+    -- Count visible buttons
+    local visibleCount = 0
+    for i = 1, MAX_RESULTS do
+        if resultButtons[i]:IsShown() then
+            visibleCount = i
+        else
+            break
+        end
+    end
+    if visibleCount == 0 then return end
+    
+    local newIndex = selectedIndex + delta
+    -- Wrap around
+    if newIndex < 1 then
+        newIndex = visibleCount
+    elseif newIndex > visibleCount then
+        newIndex = 1
+    end
+    
+    selectedIndex = newIndex
+    self:UpdateSelectionHighlight()
+end
+
+function UI:UpdateSelectionHighlight()
+    for i = 1, MAX_RESULTS do
+        local btn = resultButtons[i]
+        if btn.selectionHighlight then
+            if i == selectedIndex then
+                btn.selectionHighlight:Show()
+            else
+                btn.selectionHighlight:Hide()
+            end
+        end
+    end
+end
+
+function UI:ActivateSelected()
+    if selectedIndex > 0 and selectedIndex <= MAX_RESULTS then
+        local btn = resultButtons[selectedIndex]
+        if btn:IsShown() then
+            if btn.isPathNode then
+                -- Toggle collapse for path nodes
+                local key = (btn.pathNodeName or "") .. "_" .. (btn.pathNodeDepth or 0)
+                collapsedNodes[key] = not collapsedNodes[key]
+                if cachedHierarchical then
+                    self:ShowHierarchicalResults(cachedHierarchical)
+                end
+            elseif btn.data then
+                self:SelectResult(btn.data)
+            end
+            return
+        end
+    end
+    -- Fallback: select first result if nothing is highlighted
+    self:SelectFirstResult()
+end
+
 function UI:SelectResult(data)
     searchFrame.editBox:SetText("")
     searchFrame.editBox:ClearFocus()
+    searchFrame.editBox.placeholder:Show()
     self:HideResults()
     
     if not data then return end
@@ -883,18 +1266,46 @@ function UI:Show()
     if inCombat then return end
     searchFrame:Show()
     toggleBtn:Hide()
-    searchFrame.editBox:SetFocus()
     EasyFind.db.visible = true
+    if EasyFind.db.smartShow then
+        searchFrame.hoverZone:Show()
+        -- If called explicitly (e.g. /ef), fade in immediately
+        searchFrame.smartShowFadeIn()
+    end
+    -- Delay focus by one frame so the keybind key-press that triggered
+    -- this Show() doesn't get typed into the editbox.
+    C_Timer.After(0, function()
+        if searchFrame:IsShown() then
+            searchFrame.editBox:SetFocus()
+        end
+    end)
 end
 
 function UI:Hide()
-    searchFrame:Hide()
-    if not inCombat then
-        toggleBtn:Show()
+    -- Position the toggle button at the search bar's current center before hiding
+    local cx, cy = searchFrame:GetCenter()
+    if cx and cy then
+        toggleBtn:ClearAllPoints()
+        toggleBtn:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cx, cy)
     end
+    searchFrame:Hide()
+    searchFrame.setSmartShowVisible(false)
     self:HideResults()
     searchFrame.editBox:ClearFocus()
+    searchFrame.editBox.placeholder:Show()
     EasyFind.db.visible = false
+    
+    if EasyFind.db.smartShow then
+        -- Smart Show + Hide: keep hover zone active but hide toggle button
+        -- (hovering the zone will fade it in)
+        searchFrame.hoverZone:Show()
+        toggleBtn:Hide()
+    else
+        searchFrame.hoverZone:Hide()
+        if not inCombat then
+            toggleBtn:Show()
+        end
+    end
 end
 
 -- Helper function to expand a currency header by name
@@ -1043,7 +1454,7 @@ function UI:ClickPortraitMenuOption(optionName)
 end
 
 function UI:Toggle()
-    if searchFrame:IsShown() then
+    if searchFrame:IsShown() and EasyFind.db.visible ~= false then
         self:Hide()
     else
         self:Show()
@@ -1063,7 +1474,35 @@ end
 function UI:UpdateOpacity()
     if searchFrame then
         local alpha = EasyFind.db.searchBarOpacity or 1.0
-        searchFrame:SetAlpha(alpha)
+        -- Only set full alpha if smart show isn't actively hiding
+        if not EasyFind.db.smartShow or (searchFrame.smartShowVisible and searchFrame.smartShowVisible()) then
+            searchFrame:SetAlpha(alpha)
+        end
+    end
+end
+
+function UI:UpdateSmartShow()
+    if not searchFrame then return end
+    local enabled = EasyFind.db.smartShow
+    if enabled then
+        -- Enable smart show: show hover zone, start hidden
+        searchFrame.hoverZone:Show()
+        if EasyFind.db.visible ~= false and not inCombat then
+            -- Start transparent — hover to reveal
+            searchFrame:SetAlpha(0)
+            searchFrame:Show()
+            searchFrame.setSmartShowVisible(false)
+            toggleBtn:Hide()
+        end
+    else
+        -- Disable smart show: hide hover zone, restore normal opacity
+        searchFrame.hoverZone:Hide()
+        searchFrame.setSmartShowVisible(true)
+        if EasyFind.db.visible ~= false and not inCombat then
+            searchFrame:SetAlpha(EasyFind.db.searchBarOpacity or 1.0)
+            searchFrame:Show()
+            toggleBtn:Hide()
+        end
     end
 end
 
