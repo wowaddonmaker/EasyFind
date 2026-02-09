@@ -11,6 +11,10 @@ local pairs   = Utils.pairs
 EasyFind = {}
 ns.EasyFind = EasyFind
 
+-- Binding localization strings (used by Bindings.xml)
+-- category="EasyFind" in Bindings.xml provides the header; no BINDING_HEADER_ global needed.
+BINDING_NAME_EASYFIND_TOGGLE = "Toggle UI Search Bar"
+
 -- Single shared event frame for the entire addon
 local eventFrame = CreateFrame("Frame")
 ns.eventFrame = eventFrame
@@ -29,6 +33,7 @@ local DB_DEFAULTS = {
     globalSearchPosition = nil, -- x offset from map right edge
     directOpen = false,        -- Open panels directly instead of step-by-step
     navigateToZonesDirectly = false,  -- Clicking a zone goes directly to it
+    smartShow = false,         -- Hide search bar until mouse hovers nearby
 }
 
 local function OnInitialize()
