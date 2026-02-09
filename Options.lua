@@ -70,7 +70,7 @@ function Options:Initialize()
     
     -- Create the main options frame
     optionsFrame = CreateFrame("Frame", "EasyFindOptionsFrame", UIParent, "BackdropTemplate")
-    optionsFrame:SetSize(350, 400)
+    optionsFrame:SetSize(350, 470)
     optionsFrame:SetPoint("CENTER")
     optionsFrame:SetFrameStrata("DIALOG")
     optionsFrame:SetMovable(true)
@@ -135,8 +135,24 @@ function Options:Initialize()
     end)
     optionsFrame.mapSearchSlider = mapSearchSlider
     
+    -- Search Bar Opacity slider
+    local opacitySlider = CreateSlider(optionsFrame, "Opacity", "Search Bar Opacity", 0.2, 1.0, 0.05, -280,
+        "Adjusts the opacity (transparency) of both the UI search bar and the map search bars.")
+    opacitySlider:SetValue(EasyFind.db.searchBarOpacity or 1.0)
+    opacitySlider:SetScript("OnValueChanged", function(self, value)
+        self.valueText:SetText(sformat("%.0f%%", value * 100))
+        EasyFind.db.searchBarOpacity = value
+        if ns.UI and ns.UI.UpdateOpacity then
+            ns.UI:UpdateOpacity()
+        end
+        if ns.MapSearch and ns.MapSearch.UpdateOpacity then
+            ns.MapSearch:UpdateOpacity()
+        end
+    end)
+    optionsFrame.opacitySlider = opacitySlider
+    
     -- Direct Open checkbox (UI Search)
-    local directOpenCheckbox = CreateCheckbox(optionsFrame, "DirectOpen", "Open Panels Directly", -250,
+    local directOpenCheckbox = CreateCheckbox(optionsFrame, "DirectOpen", "Open Panels Directly", -320,
         "When enabled, clicking a UI search result will immediately open the destination panel.\n\nWhen disabled (default), you will be guided step-by-step with highlights showing you where to click. This helps you learn where things are located in the UI.")
     directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false)
     directOpenCheckbox:SetScript("OnClick", function(self)
@@ -145,7 +161,7 @@ function Options:Initialize()
     optionsFrame.directOpenCheckbox = directOpenCheckbox
     
     -- Navigate to Zones Directly checkbox (Map Search)
-    local zoneNavCheckbox = CreateCheckbox(optionsFrame, "ZoneNav", "Navigate to Zones Directly", -275,
+    local zoneNavCheckbox = CreateCheckbox(optionsFrame, "ZoneNav", "Navigate to Zones Directly", -345,
         "When enabled, clicking a zone search result will immediately open that zone's map.\n\nWhen disabled (default), the zone will be highlighted on the current map so you can see where it is. This helps you learn the world's geography.")
     zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly or false)
     zoneNavCheckbox:SetScript("OnClick", function(self)
@@ -154,7 +170,7 @@ function Options:Initialize()
     optionsFrame.zoneNavCheckbox = zoneNavCheckbox
     
     -- Dev Mode checkbox
-    local devModeCheckbox = CreateCheckbox(optionsFrame, "DevMode", "Dev Mode (show debug output)", -300,
+    local devModeCheckbox = CreateCheckbox(optionsFrame, "DevMode", "Dev Mode (show debug output)", -370,
         "When enabled, debug messages will be printed to chat. Useful for addon developers and troubleshooting.")
     devModeCheckbox:SetChecked(EasyFind.db.devMode or false)
     devModeCheckbox:SetScript("OnClick", function(self)
@@ -201,8 +217,10 @@ function Options:Initialize()
         EasyFind.db.mapIconScale = 1.0
         EasyFind.db.uiSearchScale = 1.0
         EasyFind.db.mapSearchScale = 1.0
+        EasyFind.db.searchBarOpacity = 1.0
         EasyFind.db.uiSearchPosition = nil
         EasyFind.db.mapSearchPosition = nil
+        EasyFind.db.globalSearchPosition = nil
         EasyFind.db.directOpen = false
         EasyFind.db.navigateToZonesDirectly = false
         
@@ -210,6 +228,7 @@ function Options:Initialize()
         optionsFrame.mapIconSlider:SetValue(1.0)
         optionsFrame.uiSearchSlider:SetValue(1.0)
         optionsFrame.mapSearchSlider:SetValue(1.0)
+        optionsFrame.opacitySlider:SetValue(1.0)
         optionsFrame.directOpenCheckbox:SetChecked(false)
         optionsFrame.zoneNavCheckbox:SetChecked(false)
         
@@ -228,6 +247,12 @@ function Options:Initialize()
         end
         if ns.MapSearch and ns.MapSearch.UpdateIconScales then
             ns.MapSearch:UpdateIconScales()
+        end
+        if ns.UI and ns.UI.UpdateOpacity then
+            ns.UI:UpdateOpacity()
+        end
+        if ns.MapSearch and ns.MapSearch.UpdateOpacity then
+            ns.MapSearch:UpdateOpacity()
         end
         
         EasyFind:Print("All settings reset to defaults.")
@@ -280,6 +305,7 @@ function Options:Show()
     optionsFrame.mapIconSlider:SetValue(EasyFind.db.mapIconScale or 1.0)
     optionsFrame.uiSearchSlider:SetValue(EasyFind.db.uiSearchScale or 1.0)
     optionsFrame.mapSearchSlider:SetValue(EasyFind.db.mapSearchScale or 1.0)
+    optionsFrame.opacitySlider:SetValue(EasyFind.db.searchBarOpacity or 1.0)
     optionsFrame.directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false)
     optionsFrame.zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly or false)
     
