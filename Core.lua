@@ -23,8 +23,10 @@ local DB_DEFAULTS = {
     mapIconScale = 1.0,
     uiSearchScale = 1.0,
     mapSearchScale = 1.0,
+    searchBarOpacity = 1.0,
     uiSearchPosition = nil,    -- {point, relPoint, x, y}
-    mapSearchPosition = nil,   -- x offset from map edge
+    mapSearchPosition = nil,   -- x offset from map left edge
+    globalSearchPosition = nil, -- x offset from map right edge
     directOpen = false,        -- Open panels directly instead of step-by-step
     navigateToZonesDirectly = false,  -- Clicking a zone goes directly to it
 }
