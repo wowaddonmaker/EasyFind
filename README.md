@@ -1,6 +1,6 @@
 # EasyFind
 
-A World of Warcraft addon that helps you quickly find UI elements and map locations.
+EasyFind lets you search for any panel, tab, or setting in WoW's interface and any point of interest on the map. Type what you're looking for, and EasyFind walks you to it step by step, or if you prefer, opens it directly.
 
 ## Features
 
@@ -8,12 +8,13 @@ A World of Warcraft addon that helps you quickly find UI elements and map locati
 Find and navigate to any interface element:
 - Character panels (stats, reputation, currency)
 - Talents and spellbook
-- Group Finder (dungeons, raids, PvP)
+- Group Finder (dungeons, raids, PvP queues)
 - Collections (mounts, pets, toys, transmog)
-- Achievements and statistics (including nested categories like duel statistics)
+- Achievements and statistics (including nested categories)
 - Guild and social features
 - Professions
-- And more
+- All currencies from your character's Currency tab, including seasonal and legacy currencies
+- Coverage is always expanding. If a panel exists in the default UI, the goal is for EasyFind to reach it.
 
 ### Map Search
 Locate important places across Azeroth:
@@ -23,68 +24,66 @@ Locate important places across Azeroth:
 - Profession trainers
 - Quest hubs
 
-### Navigation Modes
-- **Guide Mode** (default): Step-by-step visual guidance with yellow highlights and arrows
-- **Direct Open Mode**: Instantly opens to your destination (can be enabled in options)
+### Two Navigation Modes
+- **Guide Mode** (default): Walks you through each step to reach your destination. Highlights the correct button or tab with a yellow pulsing border and an animated arrow so you learn where things live.
+- **Direct Open Mode**: For when you already know the UI and just want to get there. Opens panels and tabs directly with no extra steps.
 
-## Usage
+## How to Use
 
-### Opening EasyFind
-- Open by default. Type /ef in chat if it gets closed and you can't seem to recover it
-### Searching
-Type at least 2 characters to see results. The search shows a hierarchical list of matches. Click any result or press Enter to select the first one.
+Type at least 2 characters and results appear as you type. Click a result or press Enter to select the first match.
 
-**Search Examples:**
-- "talents" opens the Talents panel
-- "currency" opens the Currency tab in your character panel
-- "3v3" navigates to the 3v3 Arena queue in the Group Finder
-- "duel" finds duel statistics in the Achievements window
+**Examples:**
+- `talents` → opens the Talents panel
+- `currency` → opens the Currency tab
+- `3v3` → navigates to the 3v3 Arena queue in Group Finder
+- `duel` → finds duel statistics in Achievements
 
-### Result Display
-Results show their location path:
+Results show their full path so you always know where you're going:
 - Character Info > Currency
 - Group Finder > Player vs. Player > Rated
 
-Gray text indicates parent categories, gold text shows the actual destinations.
+Gray text = parent categories, gold text = your destination.
 
-### Visual Guidance
-When using guide mode, EasyFind shows:
-- Yellow pulsing border around the correct button or tab
-- Animated arrow pointing down at the target
-- Instructions for hard-to-reach elements
+## First-Time Setup
+
+When you install EasyFind for the first time, you'll see an interactive setup overlay that helps you position and resize the search bar. Simply drag the bar where you want it and use the corner handle to adjust the size, then click **Done** when ready. You can always reposition it later by holding **Shift** and dragging.
+
+## Slash Commands
+
+| Command | Description |
+| --- | --- |
+| `/ef` | Toggle the EasyFind search bar |
+| `/ef o` | Open the options panel |
+| `/ef hide` | Hide the search bar |
+| `/ef show` | Show the search bar |
+| `/ef clear` | Dismiss active highlights and guides |
+
+Options are also available via ESC > Interface > AddOns > EasyFind.
+
+## Keybinds
+
+EasyFind provides customizable keybinds (defaults shown):
+
+- **Toggle UI Search Bar** (default: `[`) — Show/hide the search bar
+- **Focus Search Bar** (default: `]`) — Jump to the search bar and start typing (or unfocus if already active)
+
+Configure these in the Options panel or via ESC > Keybinds > EasyFind.
 
 ## Options
 
-Access settings via /ef o or ESC > Interface > AddOns > EasyFind:
-- Toggle between Guide Mode and Direct Open Mode
-- Adjust UI search bar scale
-- Reset search bar position
+- **Open Panels Directly** (UI Search): When enabled, selecting a UI result opens the target panel immediately instead of guiding you through each step. Off by default.
+- **Navigate to Zones Directly** (Map Search): When enabled, selecting a map result jumps straight to the zone on the map instead of stepping through parent zones. Off by default.
+- **Smart Show**: Hide the search bar until you hover over it. Keeps your screen clean while staying accessible.
+- **Results Theme**: Choose between Classic (colorful tree lines) or Retail (quest log style) for the search results dropdown.
+- **Search Bar Opacity**: Adjust transparency to see through the search bar.
+- **Adjust search bar scale**: Resize the search bar to your preference.
+- **Reset search bar position**: Return the search bar to default top-center position.
 
-## Moving the UI
+## Moving the Search Bars
 
-Both search bars can be repositioned:
-- **UI Search**: Hold Shift and drag
-- **Map Search**: Hold Shift and drag (constrained to bottom of map)
+Both search bars can be repositioned by holding **Shift** and dragging. The map search bar stays constrained to the bottom of the map frame.
 
-## Requirements
+## Links
 
-World of Warcraft Retail (Patch 12.0.1)
-
-## Known Issues
-
-- Some protected frames cannot be highlighted due to API restrictions
-- Map locations are manually added and may not cover all zones
-
-## Version
-
-**Current:** 1.1.0
-
-See [CHANGELOG.md](CHANGELOG.md) for version history and updates.
-
-## Author
-
-justawower
-
----
-
-**Enjoy using EasyFind! Never lose track of your UI again!**
+- [GitHub](https://github.com/wowaddonmaker/EasyFind)
+- [Changelog](https://github.com/wowaddonmaker/EasyFind/blob/main/CHANGELOG.md)
