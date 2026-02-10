@@ -9,10 +9,9 @@ local sformat = Utils.sformat
 local optionsFrame
 local isInitialized = false
 
--- Helper to create a slider
-local function CreateSlider(parent, name, label, minVal, maxVal, step, yOffset, tooltipText)
+-- Helper to create a slider (anchored manually by caller)
+local function CreateSlider(parent, name, label, minVal, maxVal, step, tooltipText)
     local slider = CreateFrame("Slider", "EasyFindOptions" .. name .. "Slider", parent, "OptionsSliderTemplate")
-    slider:SetPoint("TOPLEFT", parent, "TOPLEFT", 20, yOffset)
     slider:SetWidth(200)
     slider:SetMinMaxValues(minVal, maxVal)
     slider:SetValueStep(step)
@@ -45,10 +44,9 @@ local function CreateSlider(parent, name, label, minVal, maxVal, step, yOffset, 
     return slider
 end
 
--- Helper to create a checkbox
-local function CreateCheckbox(parent, name, label, yOffset, tooltipText)
+-- Helper to create a checkbox (anchored manually by caller)
+local function CreateCheckbox(parent, name, label, tooltipText)
     local checkbox = CreateFrame("CheckButton", "EasyFindOptions" .. name .. "Checkbox", parent, "InterfaceOptionsCheckButtonTemplate")
-    checkbox:SetPoint("TOPLEFT", parent, "TOPLEFT", 16, yOffset)
     checkbox.Text:SetText(label)
     
     if tooltipText then
@@ -68,9 +66,15 @@ function Options:Initialize()
     if isInitialized then return end
     isInitialized = true
     
+    local FRAME_W = 570
+    local BASE_H  = 420
+    local ADV_H   = 30   -- extra height when Advanced Options expanded
+    local COL_LEFT  = 20
+    local COL_RIGHT = 300
+    
     -- Create the main options frame
     optionsFrame = CreateFrame("Frame", "EasyFindOptionsFrame", UIParent, "BackdropTemplate")
-    optionsFrame:SetSize(350, 530)
+    optionsFrame:SetSize(FRAME_W, BASE_H)
     optionsFrame:SetPoint("CENTER")
     optionsFrame:SetFrameStrata("DIALOG")
     optionsFrame:SetMovable(true)
@@ -86,6 +90,8 @@ function Options:Initialize()
         tile = true, tileSize = 32, edgeSize = 32,
         insets = { left = 11, right = 12, top = 12, bottom = 11 }
     })
+    optionsFrame.BASE_H = BASE_H
+    optionsFrame.ADV_H  = ADV_H
     
     -- Title
     local title = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -96,9 +102,12 @@ function Options:Initialize()
     local closeBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", optionsFrame, "TOPRIGHT", -5, -5)
     
-    -- Map Icon Scale slider
-    local mapIconSlider = CreateSlider(optionsFrame, "MapIcon", "Map Search Icon Size", 0.5, 2.0, 0.1, -70,
+    -- =====================================================================
+    -- LEFT COLUMN — Sliders
+    -- =====================================================================
+    local mapIconSlider = CreateSlider(optionsFrame, "MapIcon", "Map Search Icon Size", 0.5, 2.0, 0.1,
         "Adjusts the size of icons shown on the world map when searching for locations.")
+    mapIconSlider:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", COL_LEFT, -70)
     mapIconSlider:SetValue(EasyFind.db.mapIconScale or 1.0)
     mapIconSlider:SetScript("OnValueChanged", function(self, value)
         self.valueText:SetText(sformat("%.0f%%", value * 100))
@@ -109,9 +118,9 @@ function Options:Initialize()
     end)
     optionsFrame.mapIconSlider = mapIconSlider
     
-    -- UI Search Bar Scale slider
-    local uiSearchSlider = CreateSlider(optionsFrame, "UISearch", "UI Search Bar Size", 0.5, 1.5, 0.1, -140,
+    local uiSearchSlider = CreateSlider(optionsFrame, "UISearch", "UI Search Bar Size", 0.5, 1.5, 0.1,
         "Adjusts the size of the UI search bar. Hold Shift and drag to move it.")
+    uiSearchSlider:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", COL_LEFT, -140)
     uiSearchSlider:SetValue(EasyFind.db.uiSearchScale or 1.0)
     uiSearchSlider:SetScript("OnValueChanged", function(self, value)
         self.valueText:SetText(sformat("%.0f%%", value * 100))
@@ -122,9 +131,9 @@ function Options:Initialize()
     end)
     optionsFrame.uiSearchSlider = uiSearchSlider
     
-    -- Map Search Bar Scale slider
-    local mapSearchSlider = CreateSlider(optionsFrame, "MapSearch", "Map Search Bar Size", 0.5, 1.5, 0.1, -210,
+    local mapSearchSlider = CreateSlider(optionsFrame, "MapSearch", "Map Search Bar Size", 0.5, 1.5, 0.1,
         "Adjusts the size of the map search bar. Hold Shift and drag to move it along the map edge.")
+    mapSearchSlider:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", COL_LEFT, -210)
     mapSearchSlider:SetValue(EasyFind.db.mapSearchScale or 1.0)
     mapSearchSlider:SetScript("OnValueChanged", function(self, value)
         self.valueText:SetText(sformat("%.0f%%", value * 100))
@@ -135,9 +144,9 @@ function Options:Initialize()
     end)
     optionsFrame.mapSearchSlider = mapSearchSlider
     
-    -- Search Bar Opacity slider
-    local opacitySlider = CreateSlider(optionsFrame, "Opacity", "Search Bar Opacity", 0.2, 1.0, 0.05, -280,
+    local opacitySlider = CreateSlider(optionsFrame, "Opacity", "Search Bar Opacity", 0.2, 1.0, 0.05,
         "Adjusts the opacity (transparency) of both the UI search bar and the map search bars.")
+    opacitySlider:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", COL_LEFT, -280)
     opacitySlider:SetValue(EasyFind.db.searchBarOpacity or 1.0)
     opacitySlider:SetScript("OnValueChanged", function(self, value)
         self.valueText:SetText(sformat("%.0f%%", value * 100))
@@ -151,27 +160,30 @@ function Options:Initialize()
     end)
     optionsFrame.opacitySlider = opacitySlider
     
-    -- Direct Open checkbox (UI Search)
-    local directOpenCheckbox = CreateCheckbox(optionsFrame, "DirectOpen", "Open Panels Directly", -320,
-        "When enabled, clicking a UI search result will immediately open the destination panel.\n\nWhen disabled (default), you will be guided step-by-step with highlights showing you where to click. This helps you learn where things are located in the UI.")
+    -- =====================================================================
+    -- RIGHT COLUMN — Checkboxes, Theme, Keybinds
+    -- =====================================================================
+    local directOpenCheckbox = CreateCheckbox(optionsFrame, "DirectOpen", "Open Panels Directly",
+        "When enabled, clicking a UI search result will immediately open the destination panel.\n\nWhen disabled (default), you will be guided step-by-step with highlights showing you where to click.")
+    directOpenCheckbox:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", COL_RIGHT, -55)
     directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false)
     directOpenCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.directOpen = self:GetChecked()
     end)
     optionsFrame.directOpenCheckbox = directOpenCheckbox
     
-    -- Navigate to Zones Directly checkbox (Map Search)
-    local zoneNavCheckbox = CreateCheckbox(optionsFrame, "ZoneNav", "Navigate to Zones Directly", -345,
-        "When enabled, clicking a zone search result will immediately open that zone's map.\n\nWhen disabled (default), the zone will be highlighted on the current map so you can see where it is. This helps you learn the world's geography.")
+    local zoneNavCheckbox = CreateCheckbox(optionsFrame, "ZoneNav", "Navigate to Zones Directly",
+        "When enabled, clicking a zone search result will immediately open that zone's map.\n\nWhen disabled (default), the zone will be highlighted on the current map so you can see where it is.")
+    zoneNavCheckbox:SetPoint("TOPLEFT", directOpenCheckbox, "BOTTOMLEFT", 0, -4)
     zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly or false)
     zoneNavCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.navigateToZonesDirectly = self:GetChecked()
     end)
     optionsFrame.zoneNavCheckbox = zoneNavCheckbox
     
-    -- Smart Show checkbox (UI Search)
-    local smartShowCheckbox = CreateCheckbox(optionsFrame, "SmartShow", "Smart Show (auto-hide search bar)", -370,
-        "When enabled, the UI search bar hides itself until you move your mouse near its position. This keeps your screen uncluttered until you need to search.\n\nThe bar reappears when your mouse enters the area and fades away when you move away.")
+    local smartShowCheckbox = CreateCheckbox(optionsFrame, "SmartShow", "Smart Show (auto-hide)",
+        "When enabled, the UI search bar hides itself until you move your mouse near its position.\n\nThe bar reappears when your mouse enters the area and fades away when you move away.")
+    smartShowCheckbox:SetPoint("TOPLEFT", zoneNavCheckbox, "BOTTOMLEFT", 0, -4)
     smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
     smartShowCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.smartShow = self:GetChecked()
@@ -181,9 +193,232 @@ function Options:Initialize()
     end)
     optionsFrame.smartShowCheckbox = smartShowCheckbox
     
-    -- Dev Mode checkbox
-    local devModeCheckbox = CreateCheckbox(optionsFrame, "DevMode", "Dev Mode (show debug output)", -395,
+    -- Results Theme selector (custom, avoids UIDropDownMenu global state bugs)
+    local themeLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    themeLabel:SetPoint("TOPLEFT", smartShowCheckbox, "BOTTOMLEFT", 4, -12)
+    themeLabel:SetText("Theme:")
+    
+    local themeChoices = {"Classic", "Retail"}
+    
+    local themeBtnFrame = CreateFrame("Button", "EasyFindThemeButton", optionsFrame, "BackdropTemplate")
+    themeBtnFrame:SetSize(90, 22)
+    themeBtnFrame:SetPoint("LEFT", themeLabel, "RIGHT", 8, 0)
+    themeBtnFrame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 }
+    })
+    themeBtnFrame:SetBackdropColor(0.1, 0.1, 0.1, 0.8)
+    themeBtnFrame:SetBackdropBorderColor(0.6, 0.6, 0.6, 0.8)
+    
+    local themeBtnText = themeBtnFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    themeBtnText:SetPoint("CENTER")
+    themeBtnText:SetText(EasyFind.db.resultsTheme or "Retail")
+    
+    -- Simple flyout list
+    local themeFlyout = CreateFrame("Frame", "EasyFindThemeFlyout", themeBtnFrame, "BackdropTemplate")
+    themeFlyout:SetSize(90, #themeChoices * 20 + 6)
+    themeFlyout:SetPoint("TOP", themeBtnFrame, "BOTTOM", 0, -2)
+    themeFlyout:SetFrameStrata("FULLSCREEN_DIALOG")
+    themeFlyout:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 }
+    })
+    themeFlyout:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+    themeFlyout:Hide()
+    
+    for i, name in ipairs(themeChoices) do
+        local opt = CreateFrame("Button", nil, themeFlyout)
+        opt:SetSize(84, 18)
+        opt:SetPoint("TOPLEFT", themeFlyout, "TOPLEFT", 3, -3 - (i - 1) * 20)
+        opt:SetNormalFontObject("GameFontHighlightSmall")
+        opt:SetHighlightFontObject("GameFontNormalSmall")
+        opt:SetText(name)
+        opt:SetScript("OnClick", function()
+            EasyFind.db.resultsTheme = name
+            themeBtnText:SetText(name)
+            themeFlyout:Hide()
+            if ns.UI and ns.UI.RefreshResults then ns.UI:RefreshResults() end
+            if ns.MapSearch and ns.MapSearch.UpdateSearchBarTheme then ns.MapSearch:UpdateSearchBarTheme() end
+        end)
+    end
+    
+    themeBtnFrame:SetScript("OnClick", function()
+        if themeFlyout:IsShown() then
+            themeFlyout:Hide()
+        else
+            themeFlyout:Show()
+        end
+    end)
+    -- Hide flyout when clicking elsewhere
+    themeFlyout:SetScript("OnShow", function(self)
+        self:SetScript("OnUpdate", function(self)
+            if not self:IsMouseOver() and not themeBtnFrame:IsMouseOver() then
+                if IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton") then
+                    self:Hide()
+                end
+            end
+        end)
+    end)
+    themeFlyout:SetScript("OnHide", function(self)
+        self:SetScript("OnUpdate", nil)
+    end)
+    optionsFrame.themeBtnText = themeBtnText
+    optionsFrame.themeFlyout = themeFlyout
+    
+    -- ----------------------------------------------------------------
+    -- Keybind helpers (shared)
+    -- ----------------------------------------------------------------
+    local function GetCurrentKeybindText(action)
+        local key1, key2 = GetBindingKey(action)
+        if key1 then return key1 end
+        if key2 then return key2 end
+        return "Not Bound"
+    end
+    
+    local function StopCapture(btn, action)
+        btn.waitingForKey = false
+        btn:SetText(GetCurrentKeybindText(action))
+        btn:UnlockHighlight()
+        btn:EnableKeyboard(false)
+        btn:SetScript("OnKeyDown", nil)
+    end
+    
+    local function StartCapture(btn, action)
+        if btn.waitingForKey then
+            StopCapture(btn, action)
+        else
+            btn.waitingForKey = true
+            btn:SetText("Press a key...")
+            btn:LockHighlight()
+            btn:EnableKeyboard(true)
+            btn:SetScript("OnKeyDown", function(self, key)
+                if key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
+                   or key == "LALT" or key == "RALT" then
+                    return
+                end
+                if key == "ESCAPE" then
+                    StopCapture(self, action)
+                    return
+                end
+                local combo = ""
+                if IsAltKeyDown()   then combo = combo .. "ALT-"   end
+                if IsControlKeyDown() then combo = combo .. "CTRL-"  end
+                if IsShiftKeyDown() then combo = combo .. "SHIFT-" end
+                combo = combo .. key
+                local old1, old2 = GetBindingKey(action)
+                if old1 then SetBinding(old1) end
+                if old2 then SetBinding(old2) end
+                SetBinding(combo, action)
+                SaveBindings(GetCurrentBindingSet())
+                StopCapture(self, action)
+                EasyFind:Print("Keybind set to: " .. combo)
+            end)
+        end
+    end
+    
+    local function MakeKeybindTooltip(btn, titleText, line1, line2)
+        btn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(titleText)
+            GameTooltip:AddLine(line1, 1, 1, 1)
+            GameTooltip:AddLine("Right-click to clear. Escape to cancel.", 0.7, 0.7, 0.7)
+            GameTooltip:Show()
+        end)
+        btn:SetScript("OnLeave", GameTooltip_Hide)
+    end
+    
+    -- Toggle Search Bar keybind
+    local toggleLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    toggleLabel:SetPoint("TOPLEFT", themeLabel, "BOTTOMLEFT", 0, -18)
+    toggleLabel:SetText("Toggle Bar:")
+    
+    local keybindBtn = CreateFrame("Button", "EasyFindKeybindButton", optionsFrame, "UIPanelButtonTemplate")
+    keybindBtn:SetSize(110, 22)
+    keybindBtn:SetPoint("LEFT", toggleLabel, "RIGHT", 8, 0)
+    keybindBtn.waitingForKey = false
+    keybindBtn:SetText(GetCurrentKeybindText("EASYFIND_TOGGLE"))
+    
+    keybindBtn:SetScript("OnClick", function(self, button)
+        if button == "RightButton" then
+            local key1, key2 = GetBindingKey("EASYFIND_TOGGLE")
+            if key1 then SetBinding(key1) end
+            if key2 then SetBinding(key2) end
+            SaveBindings(GetCurrentBindingSet())
+            StopCapture(self, "EASYFIND_TOGGLE")
+            EasyFind:Print("Keybind cleared.")
+            return
+        end
+        StartCapture(self, "EASYFIND_TOGGLE")
+    end)
+    keybindBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    MakeKeybindTooltip(keybindBtn, "Toggle Search Bar", "Click to set a keybind. Shows/hides the search bar.")
+    keybindBtn:SetScript("OnHide", function(self) StopCapture(self, "EASYFIND_TOGGLE") end)
+    optionsFrame.keybindBtn = keybindBtn
+    
+    -- Focus Search Bar keybind
+    local focusLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    focusLabel:SetPoint("TOPLEFT", toggleLabel, "BOTTOMLEFT", 0, -10)
+    focusLabel:SetText("Focus Bar:")
+    
+    local focusBtn = CreateFrame("Button", "EasyFindFocusKeybindButton", optionsFrame, "UIPanelButtonTemplate")
+    focusBtn:SetSize(110, 22)
+    focusBtn:SetPoint("LEFT", focusLabel, "RIGHT", 8, 0)
+    focusBtn.waitingForKey = false
+    focusBtn:SetText(GetCurrentKeybindText("EASYFIND_FOCUS"))
+    
+    focusBtn:SetScript("OnClick", function(self, button)
+        if button == "RightButton" then
+            local key1, key2 = GetBindingKey("EASYFIND_FOCUS")
+            if key1 then SetBinding(key1) end
+            if key2 then SetBinding(key2) end
+            SaveBindings(GetCurrentBindingSet())
+            StopCapture(self, "EASYFIND_FOCUS")
+            EasyFind:Print("Focus keybind cleared.")
+            return
+        end
+        StartCapture(self, "EASYFIND_FOCUS")
+    end)
+    focusBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    MakeKeybindTooltip(focusBtn, "Focus Search Bar", "Click to set a keybind. Puts cursor in/out of the search box.")
+    focusBtn:SetScript("OnHide", function(self) StopCapture(self, "EASYFIND_FOCUS") end)
+    optionsFrame.focusBtn = focusBtn
+    
+    -- =====================================================================
+    -- BOTTOM — full-width: Tips, Advanced, Resets
+    -- =====================================================================
+    
+    -- Separator line
+    local sep = optionsFrame:CreateTexture(nil, "ARTWORK")
+    sep:SetHeight(1)
+    sep:SetColorTexture(0.5, 0.5, 0.5, 0.4)
+    sep:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, -320)
+    sep:SetPoint("TOPRIGHT", optionsFrame, "TOPRIGHT", -20, -320)
+    
+    -- Tips
+    local instructionText = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    instructionText:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 22, -328)
+    instructionText:SetWidth(FRAME_W - 44)
+    instructionText:SetJustifyH("LEFT")
+    instructionText:SetText("|cFFFFFF00Tips:|r  Hold |cFF00FF00Shift|r + drag to reposition bars  |cFF888888|||r  |cFF00FF00/ef o|r options\n|cFF00FF00/ef show|r  |cFF00FF00/ef hide|r toggle bar  |cFF888888|||r  |cFF00FF00/ef clear|r dismiss highlights")
+    
+    -- Advanced Options toggle
+    local advancedToggle = CreateFrame("Button", nil, optionsFrame)
+    advancedToggle:SetSize(200, 18)
+    advancedToggle:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, -350)
+    advancedToggle:SetNormalFontObject("GameFontNormalSmall")
+    advancedToggle:SetHighlightFontObject("GameFontHighlightSmall")
+    advancedToggle:SetText("|cFF888888> Advanced Options|r")
+    advancedToggle:GetFontString():SetJustifyH("LEFT")
+    advancedToggle.expanded = false
+    
+    -- Dev Mode checkbox (hidden by default)
+    local devModeCheckbox = CreateCheckbox(optionsFrame, "DevMode", "Dev Mode (show debug output)",
         "When enabled, debug messages will be printed to chat. Useful for addon developers and troubleshooting.")
+    devModeCheckbox:SetPoint("TOPLEFT", advancedToggle, "BOTTOMLEFT", -2, -4)
     devModeCheckbox:SetChecked(EasyFind.db.devMode or false)
     devModeCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.devMode = self:GetChecked()
@@ -193,126 +428,27 @@ function Options:Initialize()
             EasyFind:Print("Dev mode disabled.")
         end
     end)
+    devModeCheckbox:Hide()
     optionsFrame.devModeCheckbox = devModeCheckbox
     
-    -- ----------------------------------------------------------------
-    -- Keybind capture widget
-    -- ----------------------------------------------------------------
-    local keybindLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    keybindLabel:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, -425)
-    keybindLabel:SetText("Toggle Search Bar Keybind:")
-    
-    local keybindBtn = CreateFrame("Button", "EasyFindKeybindButton", optionsFrame, "UIPanelButtonTemplate")
-    keybindBtn:SetSize(140, 24)
-    keybindBtn:SetPoint("LEFT", keybindLabel, "RIGHT", 8, 0)
-    keybindBtn.waitingForKey = false
-    
-    local function GetCurrentKeybindText()
-        local key1, key2 = GetBindingKey("EASYFIND_TOGGLE")
-        if key1 then return key1 end
-        if key2 then return key2 end
-        return "Not Bound"
-    end
-    keybindBtn:SetText(GetCurrentKeybindText())
-    
-    local function StopCapture()
-        keybindBtn.waitingForKey = false
-        keybindBtn:SetText(GetCurrentKeybindText())
-        keybindBtn:UnlockHighlight()
-        keybindBtn:EnableKeyboard(false)
-        keybindBtn:SetScript("OnKeyDown", nil)
-    end
-    
-    keybindBtn:SetScript("OnClick", function(self, button)
-        if button == "RightButton" then
-            -- Right-click to unbind
-            local key1, key2 = GetBindingKey("EASYFIND_TOGGLE")
-            if key1 then SetBinding(key1) end
-            if key2 then SetBinding(key2) end
-            SaveBindings(GetCurrentBindingSet())
-            StopCapture()
-            EasyFind:Print("Keybind cleared.")
-            return
-        end
-        if self.waitingForKey then
-            StopCapture()
+    advancedToggle:SetScript("OnClick", function(self)
+        self.expanded = not self.expanded
+        if self.expanded then
+            self:SetText("|cFFCCCCCCv Advanced Options|r")
+            devModeCheckbox:Show()
+            optionsFrame:SetHeight(BASE_H + ADV_H)
         else
-            self.waitingForKey = true
-            self:SetText("Press a key...")
-            self:LockHighlight()
-            self:EnableKeyboard(true)
-            self:SetScript("OnKeyDown", function(self, key)
-                -- Ignore modifier-only keys
-                if key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
-                   or key == "LALT" or key == "RALT" then
-                    return
-                end
-                if key == "ESCAPE" then
-                    StopCapture()
-                    return
-                end
-                -- Build the full combo string
-                local combo = ""
-                if IsAltKeyDown()   then combo = combo .. "ALT-"   end
-                if IsControlKeyDown() then combo = combo .. "CTRL-"  end
-                if IsShiftKeyDown() then combo = combo .. "SHIFT-" end
-                combo = combo .. key
-                -- Clear any previous binding for this action
-                local old1, old2 = GetBindingKey("EASYFIND_TOGGLE")
-                if old1 then SetBinding(old1) end
-                if old2 then SetBinding(old2) end
-                -- Set the new binding
-                SetBinding(combo, "EASYFIND_TOGGLE")
-                SaveBindings(GetCurrentBindingSet())
-                StopCapture()
-                EasyFind:Print("Keybind set to: " .. combo)
-            end)
+            self:SetText("|cFF888888> Advanced Options|r")
+            devModeCheckbox:Hide()
+            optionsFrame:SetHeight(BASE_H)
         end
     end)
-    keybindBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    optionsFrame.advancedToggle = advancedToggle
     
-    keybindBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Toggle Search Bar Keybind")
-        GameTooltip:AddLine("Click to set a new keybind.", 1, 1, 1)
-        GameTooltip:AddLine("Right-click to clear the keybind.", 1, 1, 1)
-        GameTooltip:AddLine("Press Escape to cancel.", 0.7, 0.7, 0.7)
-        GameTooltip:Show()
-    end)
-    keybindBtn:SetScript("OnLeave", function(self)
-        GameTooltip_Hide()
-    end)
-    keybindBtn:SetScript("OnHide", StopCapture)
-    optionsFrame.keybindBtn = keybindBtn
-    
-    -- Instructions text
-    local instructionText = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    instructionText:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", 20, 50)
-    instructionText:SetWidth(310)
-    instructionText:SetJustifyH("LEFT")
-    instructionText:SetText("|cFFFFFF00Tips:|r\n• Hold |cFF00FF00Shift|r and drag to reposition search bars\n• Type |cFF00FF00/ef o|r to open options")
-    
-    -- Reset Position button
-    local resetPosBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
-    resetPosBtn:SetSize(120, 22)
-    resetPosBtn:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOM", 10, 20)
-    resetPosBtn:SetText("Reset Positions")
-    resetPosBtn:SetScript("OnClick", function()
-        EasyFind.db.uiSearchPosition = nil
-        EasyFind.db.mapSearchPosition = nil
-        if ns.UI and ns.UI.ResetPosition then
-            ns.UI:ResetPosition()
-        end
-        if ns.MapSearch and ns.MapSearch.ResetPosition then
-            ns.MapSearch:ResetPosition()
-        end
-        EasyFind:Print("Search bar positions reset to defaults.")
-    end)
-    
-    -- Reset All Settings button
+    -- Reset buttons (anchored to bottom)
     local resetAllBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
-    resetAllBtn:SetSize(120, 22)
-    resetAllBtn:SetPoint("BOTTOMRIGHT", optionsFrame, "BOTTOM", -10, 20)
+    resetAllBtn:SetSize(130, 22)
+    resetAllBtn:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", 30, 18)
     resetAllBtn:SetText("Reset All Settings")
     resetAllBtn:SetScript("OnClick", function()
         -- Reset all settings to defaults
@@ -326,6 +462,20 @@ function Options:Initialize()
         EasyFind.db.directOpen = false
         EasyFind.db.navigateToZonesDirectly = false
         EasyFind.db.smartShow = false
+        EasyFind.db.resultsTheme = "Retail"
+        EasyFind.db.devMode = false
+        
+        -- Reset keybinds to defaults
+        local old1, old2 = GetBindingKey("EASYFIND_TOGGLE")
+        if old1 then SetBinding(old1) end
+        if old2 then SetBinding(old2) end
+        SetBinding("[", "EASYFIND_TOGGLE")
+        
+        old1, old2 = GetBindingKey("EASYFIND_FOCUS")
+        if old1 then SetBinding(old1) end
+        if old2 then SetBinding(old2) end
+        SetBinding("]", "EASYFIND_FOCUS")
+        SaveBindings(GetCurrentBindingSet())
         
         -- Update UI to reflect changes
         optionsFrame.mapIconSlider:SetValue(1.0)
@@ -335,34 +485,36 @@ function Options:Initialize()
         optionsFrame.directOpenCheckbox:SetChecked(false)
         optionsFrame.zoneNavCheckbox:SetChecked(false)
         optionsFrame.smartShowCheckbox:SetChecked(false)
+        optionsFrame.devModeCheckbox:SetChecked(false)
+        optionsFrame.themeBtnText:SetText("Retail")
+        optionsFrame.keybindBtn:SetText("[")
+        optionsFrame.focusBtn:SetText("]")
         
         -- Apply the resets
-        if ns.UI and ns.UI.ResetPosition then
-            ns.UI:ResetPosition()
-        end
-        if ns.UI and ns.UI.UpdateScale then
-            ns.UI:UpdateScale()
-        end
-        if ns.MapSearch and ns.MapSearch.ResetPosition then
-            ns.MapSearch:ResetPosition()
-        end
-        if ns.MapSearch and ns.MapSearch.UpdateScale then
-            ns.MapSearch:UpdateScale()
-        end
-        if ns.MapSearch and ns.MapSearch.UpdateIconScales then
-            ns.MapSearch:UpdateIconScales()
-        end
-        if ns.UI and ns.UI.UpdateOpacity then
-            ns.UI:UpdateOpacity()
-        end
-        if ns.UI and ns.UI.UpdateSmartShow then
-            ns.UI:UpdateSmartShow()
-        end
-        if ns.MapSearch and ns.MapSearch.UpdateOpacity then
-            ns.MapSearch:UpdateOpacity()
-        end
+        if ns.UI and ns.UI.ResetPosition then ns.UI:ResetPosition() end
+        if ns.UI and ns.UI.UpdateScale then ns.UI:UpdateScale() end
+        if ns.UI and ns.UI.UpdateOpacity then ns.UI:UpdateOpacity() end
+        if ns.UI and ns.UI.UpdateSmartShow then ns.UI:UpdateSmartShow() end
+        if ns.UI and ns.UI.RefreshResults then ns.UI:RefreshResults() end
+        if ns.MapSearch and ns.MapSearch.UpdateSearchBarTheme then ns.MapSearch:UpdateSearchBarTheme() end
+        if ns.MapSearch and ns.MapSearch.ResetPosition then ns.MapSearch:ResetPosition() end
+        if ns.MapSearch and ns.MapSearch.UpdateScale then ns.MapSearch:UpdateScale() end
+        if ns.MapSearch and ns.MapSearch.UpdateIconScales then ns.MapSearch:UpdateIconScales() end
+        if ns.MapSearch and ns.MapSearch.UpdateOpacity then ns.MapSearch:UpdateOpacity() end
         
         EasyFind:Print("All settings reset to defaults.")
+    end)
+    
+    local resetPosBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
+    resetPosBtn:SetSize(130, 22)
+    resetPosBtn:SetPoint("BOTTOMRIGHT", optionsFrame, "BOTTOMRIGHT", -30, 18)
+    resetPosBtn:SetText("Reset Positions")
+    resetPosBtn:SetScript("OnClick", function()
+        EasyFind.db.uiSearchPosition = nil
+        EasyFind.db.mapSearchPosition = nil
+        if ns.UI and ns.UI.ResetPosition then ns.UI:ResetPosition() end
+        if ns.MapSearch and ns.MapSearch.ResetPosition then ns.MapSearch:ResetPosition() end
+        EasyFind:Print("Search bar positions reset to defaults.")
     end)
     
     optionsFrame:Hide()
@@ -416,10 +568,19 @@ function Options:Show()
     optionsFrame.directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false)
     optionsFrame.zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly or false)
     optionsFrame.smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
-    if optionsFrame.keybindBtn then
-        local key1 = GetBindingKey("EASYFIND_TOGGLE")
-        optionsFrame.keybindBtn:SetText(key1 or "Not Bound")
-    end
+    optionsFrame.devModeCheckbox:SetChecked(EasyFind.db.devMode or false)
+    optionsFrame.themeBtnText:SetText(EasyFind.db.resultsTheme or "Retail")
+    
+    local key1 = GetBindingKey("EASYFIND_TOGGLE")
+    optionsFrame.keybindBtn:SetText(key1 or "Not Bound")
+    local key2 = GetBindingKey("EASYFIND_FOCUS")
+    optionsFrame.focusBtn:SetText(key2 or "Not Bound")
+    
+    -- Collapse advanced options on open
+    optionsFrame.advancedToggle.expanded = false
+    optionsFrame.advancedToggle:SetText("|cFF888888> Advanced Options|r")
+    optionsFrame.devModeCheckbox:Hide()
+    optionsFrame:SetHeight(optionsFrame.BASE_H)
     
     optionsFrame:Show()
 end
