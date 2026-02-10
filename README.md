@@ -6,7 +6,7 @@ EasyFind lets you search for any panel, tab, or setting in WoW's interface and a
 
 ### UI Search
 Find and navigate to any interface element:
-- Character panels (stats, reputation, currency)
+- Character panels (titles, currency)
 - Talents and spellbook
 - Group Finder (dungeons, raids, PvP queues)
 - Collections (mounts, pets, toys, transmog)
@@ -14,17 +14,16 @@ Find and navigate to any interface element:
 - Guild and social features
 - Professions
 - All currencies from your character's Currency tab, including seasonal and legacy currencies
-- Coverage is always expanding. If a panel exists in the default UI, the goal is for EasyFind to reach it.
+- Coming soon: ability to search reputations
+- Coverage is always expanding. If a panel exists in the default UI, the goal is for EasyFind to reach it
 
 ### Map Search
 Locate important places across Azeroth:
-- Dungeon and raid entrances (uses Encounter Journal API — search globally or within current map)
 - Portals and transport
 - Banks and auction houses
 - Flight masters
-- Profession trainers
-- Vendors and services
-- Quest hubs
+- Dungeon and raid entrances (uses Encounter Journal API; search globally or within current map)
+- Coming soon: profession trainers, vendors and services, quest hubs, etc.
 
 **Zone Abbreviations**: Type common shortcuts like `sw` (Stormwind), `dal` (Dalaran), `org` (Orgrimmar), `if` (Ironforge), `orib` (Oribos), and more.
 
@@ -46,8 +45,6 @@ Results show their full path so you always know where you're going:
 - Character Info > Currency
 - Group Finder > Player vs. Player > Rated
 
-Gray text = parent categories, gold text = your destination.
-
 ## First-Time Setup
 
 When you install EasyFind for the first time, you'll see an interactive setup overlay that helps you position and resize the search bar. Simply drag the bar where you want it and use the corner handle to adjust the size, then click **Done** when ready. You can always reposition it later by holding **Shift** and dragging.
@@ -61,7 +58,6 @@ When you install EasyFind for the first time, you'll see an interactive setup ov
 | `/ef hide` | Hide the search bar |
 | `/ef show` | Show the search bar |
 | `/ef clear` | Dismiss active highlights and guides |
-| `/ef test <texture>` | Preview arrow textures (e.g., `/ef test Interface\\MINIMAP\\MiniMap-QuestArrow`) |
 
 Options are also available via ESC > Interface > AddOns > EasyFind.
 
@@ -75,7 +71,7 @@ EasyFind provides customizable keybinds (defaults shown):
 Configure these in the Options panel or via ESC > Keybinds > EasyFind.
 
 ## Options
-Arrow Style**: Choose from 4 arrow textures (EasyFind Arrow, Classic Quest Arrow, Minimap Player Arrow, Cursor Point). All arrows update in real-time.
+- **Arrow Style**: Choose from 4 arrow textures (EasyFind Arrow, Classic Quest Arrow, Minimap Player Arrow, Cursor Point). All arrows update in real-time.
 - **Arrow Color**: Pick from 8 color presets (Yellow, Gold, Orange, Red, Green, Blue, Purple, White).
 - **Icon Size**: Unified slider controls all search indicators (map pins, UI arrows, zone highlights) at once.
 - **Open Panels Directly** (UI Search): When enabled, selecting a UI result opens the target panel immediately instead of guiding you through each step. Off by default.
