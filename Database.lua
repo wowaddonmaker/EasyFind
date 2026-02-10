@@ -1719,6 +1719,8 @@ function Database:BuildHierarchicalResults(results)
     end
     
     -- Remove duplicates (where a path node is also an actual result)
+    -- If a node appears both as a leaf AND as a path node (has children),
+    -- it should be treated as a path node so it gets collapse/expand behavior
     local seen = {}
     local cleaned = {}
     for _, entry in ipairs(hierarchical) do
@@ -1726,11 +1728,17 @@ function Database:BuildHierarchicalResults(results)
         if not seen[key] then
             seen[key] = true
             cleaned[#cleaned + 1] = entry
-        elseif not entry.isPathNode then
-            -- Replace path node with actual entry
+        else
+            -- Duplicate found — merge: promote to path node if either is a path node
             for i, existing in ipairs(cleaned) do
                 if existing.name == entry.name and existing.depth == entry.depth then
-                    cleaned[i] = entry
+                    if entry.isPathNode then
+                        existing.isPathNode = true
+                    end
+                    -- Prefer whichever has richer data
+                    if entry.data and not existing.data then
+                        existing.data = entry.data
+                    end
                     break
                 end
             end
