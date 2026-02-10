@@ -461,7 +461,7 @@ function Options:Initialize()
         EasyFind.db.globalSearchPosition = nil
         EasyFind.db.directOpen = false
         EasyFind.db.navigateToZonesDirectly = false
-        EasyFind.db.smartShow = false
+        EasyFind.db.smartShow = true
         EasyFind.db.resultsTheme = "Retail"
         EasyFind.db.devMode = false
         

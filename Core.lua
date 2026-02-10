@@ -34,7 +34,7 @@ local DB_DEFAULTS = {
     globalSearchPosition = nil, -- x offset from map right edge
     directOpen = false,        -- Open panels directly instead of step-by-step
     navigateToZonesDirectly = false,  -- Clicking a zone goes directly to it
-    smartShow = false,         -- Hide search bar until mouse hovers nearby
+    smartShow = true,          -- Hide search bar until mouse hovers nearby
     resultsTheme = "Retail",  -- "Classic" or "Retail"
 }
 
