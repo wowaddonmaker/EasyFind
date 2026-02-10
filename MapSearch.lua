@@ -11,6 +11,18 @@ local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
 local mmin, mmax, mabs, mpi = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mpi
 local pcall, tostring = Utils.pcall, Utils.tostring
 
+local CreateFrame        = CreateFrame
+local C_Map              = C_Map
+local C_Timer            = C_Timer
+local GameTooltip        = GameTooltip
+local GameTooltip_Hide   = GameTooltip_Hide
+local UIParent           = UIParent
+local IsShiftKeyDown     = IsShiftKeyDown
+local IsMouseButtonDown  = IsMouseButtonDown
+local hooksecurefunc     = hooksecurefunc
+local wipe               = wipe
+local strsplit           = strsplit
+
 -- =============================================================================
 -- ARROW THEME DEFINITIONS
 -- =============================================================================
@@ -453,23 +465,7 @@ function MapSearch:CreateSearchFrame()
     end)
     
     -- Clear button (grey circle X, matching retail quest log style)
-    local clearBtn = CreateFrame("Button", nil, searchFrame)
-    clearBtn:SetSize(18, 18)
-    clearBtn:SetPoint("RIGHT", searchFrame, "RIGHT", -8, 0)
-    clearBtn:EnableMouse(true)
-    clearBtn:Hide()  -- hidden until there is text
-    
-    local cbNormal = clearBtn:CreateTexture(nil, "ARTWORK")
-    cbNormal:SetAllPoints()
-    cbNormal:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
-    clearBtn:SetNormalTexture(cbNormal)
-    
-    local cbHighlight = clearBtn:CreateTexture(nil, "HIGHLIGHT")
-    cbHighlight:SetAllPoints()
-    cbHighlight:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
-    cbHighlight:SetVertexColor(1.2, 1.2, 1.2, 1)
-    cbHighlight:SetBlendMode("ADD")
-    clearBtn:SetHighlightTexture(cbHighlight)
+    local clearBtn = Utils.CreateClearButton(searchFrame)
     
     clearBtn:SetScript("OnClick", function()
         editBox:SetText("")
@@ -494,11 +490,7 @@ function MapSearch:CreateSearchFrame()
     
     -- Show/hide clear button based on text
     editBox:HookScript("OnTextChanged", function(self)
-        if self:GetText() ~= "" then
-            clearBtn:Show()
-        else
-            clearBtn:Hide()
-        end
+        clearBtn:SetShown(self:GetText() ~= "")
     end)
     
     -- Click anywhere on the search frame to focus the editbox
@@ -650,23 +642,7 @@ function MapSearch:CreateSearchFrame()
     end)
     
     -- Clear button for global search (grey circle X)
-    local globalClearBtn = CreateFrame("Button", nil, globalSearchFrame)
-    globalClearBtn:SetSize(18, 18)
-    globalClearBtn:SetPoint("RIGHT", globalSearchFrame, "RIGHT", -8, 0)
-    globalClearBtn:EnableMouse(true)
-    globalClearBtn:Hide()  -- hidden until there is text
-    
-    local gcbNormal = globalClearBtn:CreateTexture(nil, "ARTWORK")
-    gcbNormal:SetAllPoints()
-    gcbNormal:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
-    globalClearBtn:SetNormalTexture(gcbNormal)
-    
-    local gcbHighlight = globalClearBtn:CreateTexture(nil, "HIGHLIGHT")
-    gcbHighlight:SetAllPoints()
-    gcbHighlight:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
-    gcbHighlight:SetVertexColor(1.2, 1.2, 1.2, 1)
-    gcbHighlight:SetBlendMode("ADD")
-    globalClearBtn:SetHighlightTexture(gcbHighlight)
+    local globalClearBtn = Utils.CreateClearButton(globalSearchFrame)
     
     globalClearBtn:SetScript("OnClick", function()
         globalEditBox:SetText("")
@@ -691,11 +667,7 @@ function MapSearch:CreateSearchFrame()
     
     -- Show/hide clear button based on text
     globalEditBox:HookScript("OnTextChanged", function(self)
-        if self:GetText() ~= "" then
-            globalClearBtn:Show()
-        else
-            globalClearBtn:Hide()
-        end
+        globalClearBtn:SetShown(self:GetText() ~= "")
     end)
     
     -- Click anywhere on the search frame to focus the editbox

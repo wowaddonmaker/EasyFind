@@ -12,6 +12,16 @@ local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
 local tinsert, tsort, tconcat = Utils.tinsert, Utils.tsort, Utils.tconcat
 local mmin, mmax = Utils.mmin, Utils.mmax
 
+local CreateFrame        = CreateFrame
+local C_Timer            = C_Timer
+local UIParent           = UIParent
+local GameTooltip        = GameTooltip
+local GameTooltip_Hide   = GameTooltip_Hide
+local IsShiftKeyDown     = IsShiftKeyDown
+local GetCursorPosition  = GetCursorPosition
+local hooksecurefunc     = hooksecurefunc
+local wipe               = wipe
+
 local searchFrame
 local resultsFrame
 local resultButtons = {}
@@ -285,24 +295,8 @@ function UI:CreateSearchFrame()
     
     -- Clear-text X button (grey circle X, matching retail quest log style)
     -- Only visible when there is text in the editbox.
-    local clearTextBtn = CreateFrame("Button", "EasyFindClearTextButton", searchFrame)
-    clearTextBtn:SetSize(18, 18)
-    clearTextBtn:SetPoint("RIGHT", searchFrame, "RIGHT", -8, 0)
-    clearTextBtn:EnableMouse(true)
+    local clearTextBtn = Utils.CreateClearButton(searchFrame, "EasyFindClearTextButton")
     clearTextBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
-    clearTextBtn:Hide()  -- hidden until there is text
-    
-    local ctNormal = clearTextBtn:CreateTexture(nil, "ARTWORK")
-    ctNormal:SetAllPoints()
-    ctNormal:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
-    clearTextBtn:SetNormalTexture(ctNormal)
-    
-    local ctHighlight = clearTextBtn:CreateTexture(nil, "HIGHLIGHT")
-    ctHighlight:SetAllPoints()
-    ctHighlight:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
-    ctHighlight:SetVertexColor(1.2, 1.2, 1.2, 1)
-    ctHighlight:SetBlendMode("ADD")
-    clearTextBtn:SetHighlightTexture(ctHighlight)
     
     clearTextBtn:SetScript("OnClick", function()
         editBox:SetText("")
@@ -329,11 +323,7 @@ function UI:CreateSearchFrame()
     
     -- Show/hide the clear-text X based on whether there's text
     editBox:HookScript("OnTextChanged", function(self)
-        if self:GetText() ~= "" then
-            clearTextBtn:Show()
-        else
-            clearTextBtn:Hide()
-        end
+        clearTextBtn:SetShown(self:GetText() ~= "")
     end)
     
     -- Arrow key / Tab navigation for results dropdown.
@@ -909,24 +899,21 @@ function UI:ShowHierarchicalResults(hierarchical)
             else
                 btn.headerTab:Hide()
                 -- Gradient header (Classic fallback)
-                if theme.showHeaderBar and entry.isPathNode then
+                local showGrad = theme.showHeaderBar and entry.isPathNode
+                if showGrad then
                     btn.headerGrad:SetAllPoints()
                     local gradAlpha = mmax(0.25, 0.6 - depth * 0.1)
                     btn.headerGrad:SetVertexColor(0.35, 0.27, 0.08, gradAlpha)
-                    btn.headerGrad:Show()
-                else
-                    btn.headerGrad:Hide()
                 end
+                btn.headerGrad:SetShown(showGrad)
             end
             
             -- Separator line between rows
             if theme.showSeparators then
                 local sc = theme.separatorColor
                 btn.separator:SetColorTexture(sc[1], sc[2], sc[3], sc[4])
-                btn.separator:Show()
-            else
-                btn.separator:Hide()
             end
+            btn.separator:SetShown(theme.showSeparators)
             
             -- ---- Position icon & text (non-tab rows) ----
             if not (theme.showHeaderTab and entry.isPathNode) then
@@ -1074,19 +1061,11 @@ function UI:UpdateSelectionHighlight()
     for i = 1, MAX_RESULTS do
         local btn = resultButtons[i]
         if btn.selectionHighlight then
-            if i == selectedIndex then
-                btn.selectionHighlight:Show()
-            else
-                btn.selectionHighlight:Hide()
-            end
+            btn.selectionHighlight:SetShown(i == selectedIndex)
         end
         -- Tab selection highlight (Retail theme)
         if btn.tabSelectionHighlight then
-            if i == selectedIndex and btn.headerTab:IsShown() then
-                btn.tabSelectionHighlight:Show()
-            else
-                btn.tabSelectionHighlight:Hide()
-            end
+            btn.tabSelectionHighlight:SetShown(i == selectedIndex and btn.headerTab:IsShown())
         end
     end
 end
@@ -1273,15 +1252,10 @@ function UI:DirectOpen(data)
             nextDelay = 0.15
         end
 
-        -- Click a statistics category
-        if step.statisticsCategory then
-            self:ClickStatisticsCategory(step.statisticsCategory)
-            nextDelay = 0.3
-        end
-
-        -- Click an achievement category
-        if step.achievementCategory then
-            self:ClickAchievementCategory(step.achievementCategory)
+        -- Click a statistics or achievement category
+        local categoryToClick = step.statisticsCategory or step.achievementCategory
+        if categoryToClick then
+            self:ClickAchievementCategory(categoryToClick)
             nextDelay = 0.3
         end
 
@@ -1402,64 +1376,7 @@ function UI:ClickCharacterSidebar(sidebarIndex)
     return false
 end
 
--- Helper function to find and click a statistics category button
-function UI:ClickStatisticsCategory(categoryName)
-    if not AchievementFrame or not AchievementFrame:IsShown() then
-        return false
-    end
-    
-    local categoryNameLower = slower(categoryName)
-    
-    -- Helper to click a button
-    local function tryClick(btn)
-        if btn.Click then
-            btn:Click()
-            return true
-        elseif btn.GetScript and btn:GetScript("OnClick") then
-            btn:GetScript("OnClick")(btn, "LeftButton")
-            return true
-        end
-        return false
-    end
-    
-    -- Primary: use the data provider to find the category and select it via Blizzard API
-    local categoriesFrame = _G["AchievementFrameCategories"]
-    if categoriesFrame and categoriesFrame.ScrollBox then
-        local scrollBox = categoriesFrame.ScrollBox
-        local dataProvider = scrollBox.GetDataProvider and scrollBox:GetDataProvider()
-        if dataProvider then
-            local finder = dataProvider.FindElementDataByPredicate or dataProvider.FindByPredicate
-            if finder then
-                local elementData = finder(dataProvider, function(data)
-                    if not data then return false end
-                    local catID = data.id
-                    if not catID or type(catID) ~= "number" then return false end
-                    if GetCategoryInfo then
-                        local title = GetCategoryInfo(catID)
-                        if title and slower(title) == categoryNameLower then return true end
-                    end
-                    return false
-                end)
-                if elementData then
-                    -- Try Blizzard's official selection function
-                    if AchievementFrameCategories_SelectElementData then
-                        AchievementFrameCategories_SelectElementData(elementData)
-                        return true
-                    end
-                    -- Fallback: scroll to it and click the visible button
-                    scrollBox:ScrollToElementData(elementData)
-                    local frame = scrollBox.FindFrame and scrollBox:FindFrame(elementData)
-                    if frame and tryClick(frame) then return true end
-                end
-            end
-        end
-        
-    end
-    
-    return false
-end
-
--- Helper function to click an achievement category button (works on any Achievement tab)
+-- Helper function to click an achievement or statistics category button
 function UI:ClickAchievementCategory(categoryName)
     if not AchievementFrame or not AchievementFrame:IsShown() then
         return false
@@ -1583,11 +1500,7 @@ function UI:Hide()
     searchFrame.editBox.placeholder:Show()
     EasyFind.db.visible = false
     
-    if EasyFind.db.smartShow then
-        searchFrame.hoverZone:Show()
-    else
-        searchFrame.hoverZone:Hide()
-    end
+    searchFrame.hoverZone:SetShown(EasyFind.db.smartShow)
 end
 
 -- Helper function to expand a currency header by name

@@ -10,6 +10,9 @@ local sfind, slower, ssub = Utils.sfind, Utils.slower, Utils.ssub
 local mmin, mmax, mabs = Utils.mmin, Utils.mmax, Utils.mabs
 local unpack = Utils.unpack
 
+local C_CurrencyInfo = C_CurrencyInfo
+local wipe           = wipe
+
 local uiSearchData = {}
 -- Track which currencyIDs are already in the static database
 local knownCurrencyIDs = {}

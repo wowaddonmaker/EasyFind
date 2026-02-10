@@ -261,3 +261,27 @@ function Utils.GetFrameByPath(path)
     end
     return current
 end
+
+-- Create a grey circle-X clear button (retail quest log style).
+-- Returns the button; caller must set OnClick and OnEnter scripts.
+function Utils.CreateClearButton(parent, globalName)
+    local btn = CreateFrame("Button", globalName, parent)
+    btn:SetSize(18, 18)
+    btn:SetPoint("RIGHT", parent, "RIGHT", -8, 0)
+    btn:EnableMouse(true)
+    btn:Hide()
+
+    local normal = btn:CreateTexture(nil, "ARTWORK")
+    normal:SetAllPoints()
+    normal:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
+    btn:SetNormalTexture(normal)
+
+    local highlight = btn:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetAllPoints()
+    highlight:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
+    highlight:SetVertexColor(1.2, 1.2, 1.2, 1)
+    highlight:SetBlendMode("ADD")
+    btn:SetHighlightTexture(highlight)
+
+    return btn
+end

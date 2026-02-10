@@ -14,6 +14,13 @@ local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
 local mmin, mmax, mabs, mpi = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mpi
 local pcall = Utils.pcall
 
+local CreateFrame        = CreateFrame
+local C_Timer            = C_Timer
+local UIParent           = UIParent
+local hooksecurefunc     = hooksecurefunc
+local wipe               = wipe
+local strsplit           = strsplit
+
 local highlightFrame
 local arrowFrame
 local instructionFrame
@@ -876,16 +883,7 @@ function Highlight:GetFrameByPath(path)
         return self:FindPvPTalentsTray()
     end
     
-    local parts = {strsplit(".", path)}
-    local current = _G[parts[1]]
-    for i = 2, #parts do
-        if current then
-            current = current[parts[i]]
-        else
-            return nil
-        end
-    end
-    return current
+    return Utils.GetFrameByPath(path)
 end
 
 function Highlight:FindPvPTalentsTray()
@@ -896,17 +894,13 @@ function Highlight:FindPvPTalentsTray()
     }
     
     for _, path in ipairs(paths) do
-        local frame = self:GetFrameByPathDirect(path)
+        local frame = Utils.GetFrameByPath(path)
         if frame and frame:IsShown() then
             return frame
         end
     end
     
     return nil
-end
-
-function Highlight:GetFrameByPathDirect(path)
-    return Utils.GetFrameByPath(path)
 end
 
 function Highlight:IsTabSelected(frameName, tabIndex)
@@ -1061,51 +1055,10 @@ end
 
 -- Get the currently selected tab index for a frame
 function Highlight:GetCurrentTabIndex(frameName)
-    -- PVEFrame (Group Finder tabs at bottom: Dungeons & Raids, Player vs Player, Mythic+ Dungeons)
-    if frameName == "PVEFrame" then
-        local frame = PVEFrame
-        if frame and PanelTemplates_GetSelectedTab then
-            return PanelTemplates_GetSelectedTab(frame)
-        end
-        return nil
+    local frame = _G[frameName]
+    if frame and PanelTemplates_GetSelectedTab then
+        return PanelTemplates_GetSelectedTab(frame)
     end
-    
-    -- AchievementFrame
-    if frameName == "AchievementFrame" then
-        local frame = AchievementFrame
-        if frame and PanelTemplates_GetSelectedTab then
-            return PanelTemplates_GetSelectedTab(frame)
-        end
-        return nil
-    end
-    
-    -- CharacterFrame
-    if frameName == "CharacterFrame" then
-        local frame = CharacterFrame
-        if frame and PanelTemplates_GetSelectedTab then
-            return PanelTemplates_GetSelectedTab(frame)
-        end
-        return nil
-    end
-    
-    -- CollectionsJournal
-    if frameName == "CollectionsJournal" then
-        local frame = CollectionsJournal
-        if frame and PanelTemplates_GetSelectedTab then
-            return PanelTemplates_GetSelectedTab(frame)
-        end
-        return nil
-    end
-    
-    -- EncounterJournal
-    if frameName == "EncounterJournal" then
-        local frame = EncounterJournal
-        if frame and PanelTemplates_GetSelectedTab then
-            return PanelTemplates_GetSelectedTab(frame)
-        end
-        return nil
-    end
-    
     return nil
 end
 
