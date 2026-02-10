@@ -886,8 +886,22 @@ function MapSearch:SearchZones(query)
             score = 100  -- Exact match
         elseif sfind(nameLower, "^" .. query) then
             score = 80   -- Starts with
+        elseif ns.Database:FindAtWordBoundary(nameLower, query) then
+            score = 70   -- Contains at word boundary
         elseif sfind(nameLower, query, 1, true) then
-            score = 60   -- Contains
+            score = 20   -- Mid-word substring (low)
+        end
+        
+        -- Initials matching for zone names
+        if score < 70 then
+            local initScore = ns.Database:ScoreInitials(nameLower, query)
+            if initScore > 0 then score = mmax(score, initScore - 40) end  -- scale down for zones
+        end
+        
+        -- Fuzzy matching for zone names (typo tolerance)
+        if score < 50 and #query >= 4 then
+            local fuzzyScore = ns.Database:ScoreFuzzy(nameLower, query, #query)
+            if fuzzyScore > 0 then score = mmax(score, fuzzyScore - 20) end
         end
         
         if score > 0 then
@@ -1946,17 +1960,39 @@ function MapSearch:SearchPOIs(pois, query)
         if nameLower == query then
             score = 300
         elseif sfind(nameLower, query, 1, true) then
-            score = 200
+            -- Distinguish word-boundary vs mid-word match
+            if ns.Database:FindAtWordBoundary(nameLower, query) then
+                score = 200
+            else
+                score = 80  -- mid-word match (low)
+            end
         end
         
         -- Also check custom keywords for static locations
         if poi.keywords and score == 0 then
             for _, kw in ipairs(poi.keywords) do
-                if sfind(slower(kw), query, 1, true) then
-                    score = 180
+                local kwLower = slower(kw)
+                if sfind(kwLower, query, 1, true) then
+                    if ns.Database:FindAtWordBoundary(kwLower, query) then
+                        score = 180
+                    else
+                        score = 60
+                    end
                     break
                 end
             end
+        end
+        
+        -- Initials matching for POI names
+        if score < 150 then
+            local initScore = ns.Database:ScoreInitials(nameLower, query)
+            if initScore > 0 then score = mmax(score, initScore) end
+        end
+        
+        -- Fuzzy matching for POI names
+        if score < 100 and #query >= 4 then
+            local fuzzyScore = ns.Database:ScoreFuzzy(nameLower, query, #query)
+            if fuzzyScore > 0 then score = mmax(score, fuzzyScore) end
         end
         
         if score > 0 then

@@ -7,6 +7,7 @@ local Utils   = ns.Utils
 local pairs, ipairs, type = Utils.pairs, Utils.ipairs, Utils.type
 local tinsert, tsort, tconcat = Utils.tinsert, Utils.tsort, Utils.tconcat
 local sfind, slower, ssub = Utils.sfind, Utils.slower, Utils.ssub
+local mmin, mmax, mabs = Utils.mmin, Utils.mmax, Utils.mabs
 local unpack = Utils.unpack
 
 local uiSearchData = {}
@@ -1580,6 +1581,156 @@ function Database:BuildUIDatabase()
     end
 end
 
+-- =============================================================================
+-- SEARCH SCORING HELPERS
+-- Word-boundary matching, initials matching, and fuzzy/typo tolerance.
+-- =============================================================================
+
+--- Check if `query` appears at a word boundary in `text`.
+--- A word boundary is the start of the string or right after a space/punctuation.
+--- Returns true if found at a boundary, false if only found mid-word or not at all.
+function Database:FindAtWordBoundary(text, query)
+    -- Check at start of string
+    if ssub(text, 1, #query) == query then return true end
+    -- Check after word boundaries (space, dash, parenthesis, colon, slash, dot)
+    local pos = 1
+    while true do
+        local found = sfind(text, query, pos, true)
+        if not found then return false end
+        if found > 1 then
+            local prev = ssub(text, found - 1, found - 1)
+            if prev == " " or prev == "-" or prev == "(" or prev == ":" or prev == "/" or prev == "." then
+                return true
+            end
+        else
+            return true  -- found at position 1
+        end
+        pos = found + 1
+    end
+end
+
+--- Score how well `query` matches as initials/abbreviation of words in `text`.
+--- "rb" → "rated battlegrounds" = 130 (each char matches a word start)
+--- "raba" → "random battleground" = 125 (prefix of words)
+--- "ranb" → "random battleground" = 115 (longer prefix matching)
+--- Returns 0 if no reasonable initials match found.
+function Database:ScoreInitials(text, query)
+    -- Split text into words
+    local words = {}
+    for w in text:gmatch("[%w]+") do
+        words[#words + 1] = slower(w)
+    end
+    if #words < 2 then return 0 end  -- initials only make sense for multi-word
+
+    local queryLen = #query
+    
+    -- Strategy 1: Pure initials — each query char matches the first letter of consecutive words
+    -- "rb" → R(ated) B(attlegrounds)
+    if queryLen <= #words then
+        local allMatch = true
+        for i = 1, queryLen do
+            if ssub(query, i, i) ~= ssub(words[i], 1, 1) then
+                allMatch = false
+                break
+            end
+        end
+        if allMatch then
+            -- Bonus for matching ALL words' initials (not partial)
+            local bonus = (queryLen == #words) and 135 or 130
+            return bonus
+        end
+    end
+    
+    -- Strategy 2: Prefix-of-words — each query segment matches the start of a word
+    -- "raba" → "ra(ndom) ba(ttleground)" — greedily consume query chars across words
+    local qi = 1  -- position in query
+    local wordsMatched = 0
+    for _, w in ipairs(words) do
+        if qi > queryLen then break end
+        -- How many chars from the start of this word match the query at position qi?
+        local matchLen = 0
+        while qi + matchLen <= queryLen and matchLen < #w do
+            if ssub(query, qi + matchLen, qi + matchLen) == ssub(w, matchLen + 1, matchLen + 1) then
+                matchLen = matchLen + 1
+            else
+                break
+            end
+        end
+        if matchLen > 0 then
+            qi = qi + matchLen
+            wordsMatched = wordsMatched + 1
+        end
+    end
+    -- Did we consume the entire query across multiple words?
+    if qi > queryLen and wordsMatched >= 2 then
+        -- Score based on how many words were matched (more = better abbreviation)
+        return 110 + mmin(wordsMatched * 3, 20)
+    end
+    
+    return 0
+end
+
+--- Score fuzzy/typo matching using Damerau-Levenshtein distance.
+--- Only applied to individual words in `text` that are similar in length to `query`.
+--- Returns a score > 0 if a close match is found, 0 otherwise.
+function Database:ScoreFuzzy(text, query, queryLen)
+    -- Check each word in the text for close matches
+    local bestScore = 0
+    for word in text:gmatch("[%w]+") do
+        word = slower(word)
+        local wordLen = #word
+        -- Only compare words of similar length (within ±1) to reduce false positives
+        if wordLen >= queryLen - 1 and wordLen <= queryLen + 1 then
+            local dist = Database:DamerauLevenshtein(query, word, queryLen, wordLen)
+            if dist == 1 then
+                -- One edit away: transposition, substitution, insertion, or deletion
+                bestScore = mmax(bestScore, 85)
+            elseif dist == 2 and queryLen >= 6 then
+                -- Two edits: only for longer queries (6+) to avoid false positives
+                bestScore = mmax(bestScore, 45)
+            end
+        end
+    end
+    return bestScore
+end
+
+--- Damerau-Levenshtein distance (supports transpositions).
+--- Capped: returns early if distance exceeds 2 (saves CPU).
+function Database:DamerauLevenshtein(s1, s2, len1, len2)
+    if mabs(len1 - len2) > 2 then return 3 end  -- too different, skip
+    
+    -- Use two rows instead of full matrix for memory efficiency
+    local prev2 = {}  -- row i-2
+    local prev  = {}  -- row i-1
+    local curr  = {}  -- row i
+    
+    for j = 0, len2 do prev[j] = j end
+    
+    for i = 1, len1 do
+        curr[0] = i
+        local minInRow = i
+        for j = 1, len2 do
+            local cost = (ssub(s1, i, i) == ssub(s2, j, j)) and 0 or 1
+            curr[j] = mmin(
+                prev[j] + 1,        -- deletion
+                curr[j - 1] + 1,    -- insertion
+                prev[j - 1] + cost  -- substitution
+            )
+            -- Transposition
+            if i > 1 and j > 1
+                and ssub(s1, i, i) == ssub(s2, j - 1, j - 1)
+                and ssub(s1, i - 1, i - 1) == ssub(s2, j, j) then
+                curr[j] = mmin(curr[j], prev2[j - 2] + cost)
+            end
+            if curr[j] < minInRow then minInRow = curr[j] end
+        end
+        -- Early exit if the best possible in this row already exceeds threshold
+        if minInRow > 2 then return 3 end
+        prev2, prev, curr = prev, curr, prev2  -- rotate rows
+    end
+    return prev[len2]
+end
+
 function Database:SearchUI(query)
     if not query or query == "" or #query < 2 then
         return {}
@@ -1603,23 +1754,58 @@ function Database:SearchUI(query)
         -- Name starts with query
         elseif ssub(nameLower, 1, queryLen) == query then
             score = 150
-        -- Name contains query
+        -- Name contains query at a word boundary (e.g. "battle" in "rated battlegrounds")
+        elseif Database:FindAtWordBoundary(nameLower, query) then
+            score = 120
+        -- Name contains query mid-word (e.g. "rb" in "herbalism") — low score
         elseif sfind(nameLower, query, 1, true) then
-            score = 100
+            score = 30
+        end
+        
+        -- Initials matching: "rb" → "Rated Battlegrounds", "raba" → "RAndom BAttleground"
+        if score < 130 then
+            local initialScore = Database:ScoreInitials(nameLower, query)
+            if initialScore > score then
+                score = initialScore
+            end
+        end
+        
+        -- Fuzzy/typo matching: "rtaed" → "rated" (only for queries ≥ 4 chars)
+        if score < 100 and queryLen >= 4 then
+            local fuzzyScore = Database:ScoreFuzzy(nameLower, query, queryLen)
+            if fuzzyScore > score then
+                score = fuzzyScore
+            end
         end
         
         -- Keyword matching
         if data.keywordsLower then
             for _, kw in ipairs(data.keywordsLower) do
+                local kwScore = 0
                 if kw == query then
-                    score = score + 80
-                elseif sfind(kw, query, 1, true) then
-                    score = score + 40
+                    kwScore = 80
+                elseif ssub(kw, 1, queryLen) == query then
+                    kwScore = 70
+                elseif Database:FindAtWordBoundary(kw, query) then
+                    kwScore = 55
                 end
+                -- Mid-word keyword substring deliberately excluded:
+                -- \"rated\" in \"unrated\" is not a relevant keyword match.
+                -- Initials on keywords
+                if kwScore < 60 then
+                    local ki = Database:ScoreInitials(kw, query)
+                    if ki > 0 then kwScore = mmax(kwScore, ki - 20) end  -- slightly lower than name initials
+                end
+                -- Fuzzy on keywords
+                if kwScore < 40 and queryLen >= 4 then
+                    local kf = Database:ScoreFuzzy(kw, query, queryLen)
+                    if kf > 0 then kwScore = mmax(kwScore, kf - 10) end
+                end
+                score = score + kwScore
             end
         end
         
-        if score > 0 then
+        if score > 25 then
             local result = {}
             for k, v in pairs(data) do
                 result[k] = v
@@ -1634,118 +1820,106 @@ function Database:SearchUI(query)
     return results
 end
 
--- Build a hierarchical tree from flat results for display
+-- Build a hierarchical tree from flat results for display.
+-- Uses a proper tree structure internally and DFS-flattens it, so children
+-- are always adjacent to their parent regardless of alphabetical ordering.
 function Database:BuildHierarchicalResults(results)
     if not results or #results == 0 then
         return {}
     end
-    
-    -- Group results by their top-level path (first element)
-    local byTopLevel = {}
-    local topLevelBestScore = {}
+
+    -- Step 1 — Build a virtual tree from all results.
+    -- Each node: { name, children (name→node), childOrder (list of names),
+    --              data (search result entry or nil), bestScore }
+    local root = { children = {}, childOrder = {} }
+
+    local function getOrCreateNode(pathParts)
+        local node = root
+        for _, part in ipairs(pathParts) do
+            if not node.children[part] then
+                node.children[part] = {
+                    name = part,
+                    children = {},
+                    childOrder = {},
+                    bestScore = 0,
+                }
+                node.childOrder[#node.childOrder + 1] = part
+            end
+            node = node.children[part]
+        end
+        return node
+    end
+
     for _, item in ipairs(results) do
         local path = item.path or {}
-        local topLevel = path[1] or "_root"
-        if not byTopLevel[topLevel] then
-            byTopLevel[topLevel] = {}
-            topLevelBestScore[topLevel] = 0
-        end
-        byTopLevel[topLevel][#byTopLevel[topLevel] + 1] = item
-        if (item.score or 0) > topLevelBestScore[topLevel] then
-            topLevelBestScore[topLevel] = item.score or 0
-        end
-    end
-    
-    -- Sort top-level groups by best score (descending), break ties alphabetically
-    local topLevels = {}
-    for k in pairs(byTopLevel) do
-        topLevels[#topLevels + 1] = k
-    end
-    tsort(topLevels, function(a, b)
-        local scoreA = topLevelBestScore[a] or 0
-        local scoreB = topLevelBestScore[b] or 0
-        if scoreA ~= scoreB then
-            return scoreA > scoreB
-        end
-        return a < b
-    end)
-    
-    -- Build the hierarchical list, processing one top-level branch at a time
-    local hierarchical = {}
-    local addedPaths = {}
-    
-    for _, topLevel in ipairs(topLevels) do
-        local items = byTopLevel[topLevel]
-        
-        -- Sort items within this branch by full path, then name
-        tsort(items, function(a, b)
-            local pathA = tconcat(a.path or {}, "/")
-            local pathB = tconcat(b.path or {}, "/")
-            if pathA ~= pathB then
-                return pathA < pathB
+        local parentNode = getOrCreateNode(path)
+        local itemScore = item.score or 0
+
+        if parentNode.children[item.name] then
+            -- Node already exists (created as a path ancestor of another result).
+            -- Attach the actual result data so it becomes navigable.
+            local existing = parentNode.children[item.name]
+            if not existing.data then existing.data = item end
+            if itemScore > existing.bestScore then
+                existing.bestScore = itemScore
             end
-            return a.name < b.name
-        end)
-        
-        -- Add each item with its path nodes
-        for _, item in ipairs(items) do
-            local path = item.path or {}
-            
-            -- Add parent path nodes if not already added
-            local currentPathKey = ""
-            for i, pathPart in ipairs(path) do
-                currentPathKey = currentPathKey .. "/" .. pathPart
-                
-                if not addedPaths[currentPathKey] then
-                    addedPaths[currentPathKey] = true
-                    local parentData = self:FindItemByName(pathPart)
-                    hierarchical[#hierarchical + 1] = {
-                        name = pathPart,
-                        depth = i - 1,
-                        isPathNode = true,
-                        data = parentData,
-                    }
-                end
-            end
-            
-            -- Add the actual item
-            hierarchical[#hierarchical + 1] = {
-                name = item.name,
-                depth = #path,
-                isPathNode = false,
-                data = item,
-            }
-        end
-    end
-    
-    -- Remove duplicates (where a path node is also an actual result)
-    -- If a node appears both as a leaf AND as a path node (has children),
-    -- it should be treated as a path node so it gets collapse/expand behavior
-    local seen = {}
-    local cleaned = {}
-    for _, entry in ipairs(hierarchical) do
-        local key = entry.name .. "_" .. entry.depth
-        if not seen[key] then
-            seen[key] = true
-            cleaned[#cleaned + 1] = entry
         else
-            -- Duplicate found — merge: promote to path node if either is a path node
-            for i, existing in ipairs(cleaned) do
-                if existing.name == entry.name and existing.depth == entry.depth then
-                    if entry.isPathNode then
-                        existing.isPathNode = true
-                    end
-                    -- Prefer whichever has richer data
-                    if entry.data and not existing.data then
-                        existing.data = entry.data
-                    end
-                    break
-                end
+            parentNode.children[item.name] = {
+                name = item.name,
+                children = {},
+                childOrder = {},
+                data = item,
+                bestScore = itemScore,
+            }
+            parentNode.childOrder[#parentNode.childOrder + 1] = item.name
+        end
+
+        -- Propagate best score upward so ancestor branches sort correctly.
+        local node = root
+        for _, part in ipairs(path) do
+            node = node.children[part]
+            if itemScore > node.bestScore then
+                node.bestScore = itemScore
             end
         end
     end
-    
-    return cleaned
+
+    -- Step 2 — Sort children at every level: best score desc, then name asc.
+    local function sortChildren(node)
+        tsort(node.childOrder, function(a, b)
+            local sa = node.children[a].bestScore or 0
+            local sb = node.children[b].bestScore or 0
+            if sa ~= sb then return sa > sb end
+            return a < b
+        end)
+        for _, childName in ipairs(node.childOrder) do
+            sortChildren(node.children[childName])
+        end
+    end
+    sortChildren(root)
+
+    -- Step 3 — DFS flatten into the display list.
+    local hierarchical = {}
+    local function flatten(node, depth)
+        for _, childName in ipairs(node.childOrder) do
+            local child = node.children[childName]
+            local hasChildren = #child.childOrder > 0
+
+            hierarchical[#hierarchical + 1] = {
+                name = child.name,
+                depth = depth,
+                isPathNode = hasChildren,
+                data = child.data or self:FindItemByName(child.name),
+            }
+
+            if hasChildren then
+                flatten(child, depth + 1)
+            end
+        end
+    end
+    flatten(root, 0)
+
+    return hierarchical
 end
 
 function Database:FindItemByName(name)
