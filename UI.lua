@@ -14,21 +14,131 @@ local mmin, mmax = Utils.mmin, Utils.mmax
 
 local searchFrame
 local resultsFrame
-local toggleBtn
 local resultButtons = {}
 local MAX_RESULTS = 12
 local inCombat = false
 local selectedIndex = 0   -- 0 = none selected, 1..N = highlighted row
 
+-- =============================================================================
+-- THEME DEFINITIONS
+-- =============================================================================
+local THEMES = {}
+
+-- Classic: colorful tree connectors, +/- icons, gold leaf text
+THEMES["Classic"] = {
+    rowHeight       = 22,
+    indentPx        = 20,
+    lineWidth       = 2,
+    resultsWidth    = 380,
+    resultsPadTop   = 8,
+    resultsPadBot   = 8,
+    btnWidth        = 360,
+    iconSize        = 16,
+    pathIconSize    = 14,
+    -- fonts
+    pathFont        = "GameFontNormal",
+    leafFont        = "GameFontNormal",
+    pathColor       = {0.7, 0.7, 0.7},
+    leafColor       = {1, 0.82, 0},
+    -- tree lines
+    showTreeLines   = true,
+    indentColors    = {
+        {0.40, 0.85, 1.00, 0.80},
+        {1.00, 0.55, 0.10, 0.80},
+        {0.55, 1.00, 0.35, 0.80},
+        {1.00, 0.40, 0.70, 0.80},
+        {0.70, 0.55, 1.00, 0.80},
+        {1.00, 0.90, 0.20, 0.80},
+    },
+    -- icons for collapse/expand
+    expandIcon      = "Interface\\Buttons\\UI-PlusButton-Up",
+    collapseIcon    = "Interface\\Buttons\\UI-MinusButton-Up",
+    -- highlight
+    highlightTex    = "Interface\\QuestFrame\\UI-QuestTitleHighlight",
+    selectionColor  = {0.3, 0.6, 1.0, 0.4},
+    -- header bar (disabled in classic)
+    showHeaderBar   = false,
+    -- results backdrop
+    resultsBackdrop = {
+        bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 20,
+        insets = { left = 5, right = 5, top = 5, bottom = 5 },
+    },
+}
+
+-- Retail: quest-log style — raised tab headers, golden tree lines, grey border
+THEMES["Retail"] = {
+    rowHeight       = 28,
+    indentPx        = 20,          -- matches INDENT_PX so tree lines align
+    lineWidth       = 2,
+    resultsWidth    = 390,
+    resultsPadTop   = 10,
+    resultsPadBot   = 10,
+    resultsPadLeft  = 12,
+    btnWidth        = 366,
+    iconSize        = 16,
+    pathIconSize    = 14,
+    -- fonts
+    pathFont        = "Game15Font_Shadow",   -- exact quest log font
+    leafFont        = "GameFontHighlight",
+    pathColor       = {0.65, 0.60, 0.55, 1.0},   -- muted gray-tan (normal state)
+    pathColorHover  = {1.0, 1.0, 1.0, 1.0},      -- white (hover state)
+    leafColor       = {0.9, 0.9, 0.9},           -- light grey items
+    -- tree lines — warm gold (single colour at every depth)
+    showTreeLines   = true,
+    indentColors    = {
+        {0.85, 0.65, 0.15, 0.80},
+        {0.85, 0.65, 0.15, 0.80},
+        {0.85, 0.65, 0.15, 0.80},
+        {0.85, 0.65, 0.15, 0.80},
+        {0.85, 0.65, 0.15, 0.80},
+        {0.85, 0.65, 0.15, 0.80},
+    },
+    -- icons for collapse/expand (Classic left-side only)
+    expandIcon      = "Interface\\Buttons\\UI-PlusButton-Up",
+    collapseIcon    = "Interface\\Buttons\\UI-MinusButton-Up",
+    -- highlight
+    highlightTex    = "Interface\\QuestFrame\\UI-QuestTitleHighlight",
+    selectionColor  = {0.25, 0.5, 0.9, 0.35},
+    -- header bar disabled (headerTab used instead)
+    showHeaderBar   = false,
+    -- header tab: quest-log style with atlas textures
+    showHeaderTab   = true,
+    headerTabAtlas  = "QuestLog-tab",             -- WoW atlas for tab background
+    headerHighlightAlpha = 0.40,                  -- highlight layer alpha
+    -- +/- button atlases
+    expandAtlas     = "QuestLog-icon-expand",     -- plus sign atlas
+    collapseAtlas   = "QuestLog-icon-shrink",     -- minus sign atlas
+    toggleNormalAlpha = 0.60,                     -- muted yellow (normal state)
+    toggleHoverAlpha  = 1.0,                      -- bright yellow (hover state)
+    -- separators off
+    showSeparators  = false,
+    separatorColor  = {0.5, 0.45, 0.3, 0.35},
+    -- results backdrop — grey tooltip border, quest log background
+    resultsBackdrop = {
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
+    },
+    resultsBgAtlas          = "QuestLog-main-background",    -- quest log dark background
+    resultsBackdropColor       = {0.12, 0.10, 0.08, 0.95},
+    resultsBackdropBorderColor = {0.50, 0.48, 0.45, 1.0},   -- grey
+    -- search bar style
+    searchBarRounded = true,   -- rounded Common-Input-Border style
+}
+
+local function GetActiveTheme()
+    return THEMES[EasyFind.db.resultsTheme or "Classic"] or THEMES["Classic"]
+end
+
 function UI:Initialize()
     self:CreateSearchFrame()
     self:CreateResultsFrame()
-    self:CreateToggleButton()
     self:RegisterCombatEvents()
     
     if EasyFind.db.visible ~= false then
         searchFrame:Show()
-        toggleBtn:Hide()
         -- Apply smart show on startup
         if EasyFind.db.smartShow then
             searchFrame.hoverZone:Show()
@@ -38,11 +148,7 @@ function UI:Initialize()
     else
         searchFrame:Hide()
         if EasyFind.db.smartShow then
-            -- Smart Show + hidden: hover zone active, toggle hidden until hover
             searchFrame.hoverZone:Show()
-            toggleBtn:Hide()
-        else
-            toggleBtn:Show()
         end
     end
     
@@ -50,7 +156,11 @@ function UI:Initialize()
     inCombat = InCombatLockdown()
     if inCombat then
         searchFrame:Hide()
-        toggleBtn:Hide()
+    end
+
+    -- First-time setup overlay for new installs
+    if EasyFind.db.firstInstall and not EasyFind.db.setupComplete then
+        C_Timer.After(0.3, function() self:ShowFirstTimeSetup() end)
     end
 end
 
@@ -62,14 +172,12 @@ function UI:RegisterCombatEvents()
             inCombat = true
             searchFrame:Hide()
             searchFrame.hoverZone:Hide()
-            toggleBtn:Hide()
             UI:HideResults()
             searchFrame.editBox:ClearFocus()
         elseif event == "PLAYER_REGEN_ENABLED" then
             inCombat = false
             if EasyFind.db.visible ~= false then
                 searchFrame:Show()
-                toggleBtn:Hide()
                 if EasyFind.db.smartShow then
                     searchFrame.hoverZone:Show()
                     searchFrame:SetAlpha(0)
@@ -78,9 +186,6 @@ function UI:RegisterCombatEvents()
             else
                 if EasyFind.db.smartShow then
                     searchFrame.hoverZone:Show()
-                    toggleBtn:Hide()
-                else
-                    toggleBtn:Show()
                 end
             end
         end
@@ -103,12 +208,25 @@ function UI:CreateSearchFrame()
         searchFrame:SetPoint("TOP", UIParent, "TOP", 0, -5)
     end
     
-    searchFrame:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 20,
-        insets = { left = 5, right = 5, top = 5, bottom = 5 }
-    })
+    -- Apply theme-appropriate backdrop
+    local theme = GetActiveTheme()
+    if theme.searchBarRounded then
+        searchFrame:SetBackdrop({
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 32, edgeSize = 16,
+            insets = { left = 4, right = 4, top = 4, bottom = 4 }
+        })
+        searchFrame:SetBackdropColor(0.45, 0.45, 0.45, 0.95)
+        searchFrame:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+    else
+        searchFrame:SetBackdrop({
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+            tile = true, tileSize = 32, edgeSize = 20,
+            insets = { left = 5, right = 5, top = 5, bottom = 5 }
+        })
+    end
     
     -- Search icon
     local searchIcon = searchFrame:CreateTexture(nil, "ARTWORK")
@@ -123,10 +241,20 @@ function UI:CreateSearchFrame()
     editBox:SetFontObject("ChatFontNormal")
     editBox:SetAutoFocus(false)
     editBox:SetMaxLetters(50)
+
+    -- Block focus when Shift is held (shift = drag, not type) unless already typing
+    editBox:HookScript("OnMouseDown", function(self)
+        if IsShiftKeyDown() and not self:HasFocus() then
+            C_Timer.After(0, function() self:ClearFocus() end)
+        end
+        if searchFrame.setupMode then
+            C_Timer.After(0, function() self:ClearFocus() end)
+        end
+    end)
     
     local placeholder = editBox:CreateFontString(nil, "ARTWORK", "GameFontDisable")
     placeholder:SetPoint("LEFT", 2, 0)
-    placeholder:SetText("Search your UI here...")
+    placeholder:SetText("Search your UI here")
     editBox.placeholder = placeholder
     
     editBox:SetScript("OnEditFocusGained", function(self)
@@ -155,68 +283,24 @@ function UI:CreateSearchFrame()
         -- Text and results stay visible; user can click back in to resume
     end)
     
-    -- Hide button (rightmost)
-    local hideBtn = CreateFrame("Button", nil, searchFrame, "UIPanelButtonTemplate")
-    hideBtn:SetSize(40, 20)
-    hideBtn:SetPoint("RIGHT", searchFrame, "RIGHT", -8, 0)
-    hideBtn:SetText("Hide")
-    hideBtn:SetScript("OnClick", function()
-        UI:Hide()
-    end)
-    
-    -- Clear highlights button — yellow X, visually distinct from the grey text-clear X
-    local clearHLBtn = CreateFrame("Button", "EasyFindClearHLButton", searchFrame)
-    clearHLBtn:SetSize(16, 16)
-    clearHLBtn:SetPoint("RIGHT", hideBtn, "LEFT", -4, 0)
-    clearHLBtn:EnableMouse(true)
-    clearHLBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
-    
-    local hlNormal = clearHLBtn:CreateTexture(nil, "ARTWORK")
-    hlNormal:SetAllPoints()
-    hlNormal:SetTexture("Interface\\Buttons\\UI-StopButton")
-    hlNormal:SetVertexColor(1, 0.82, 0, 1)
-    clearHLBtn:SetNormalTexture(hlNormal)
-    
-    local hlHighlight = clearHLBtn:CreateTexture(nil, "HIGHLIGHT")
-    hlHighlight:SetAllPoints()
-    hlHighlight:SetTexture("Interface\\Buttons\\UI-StopButton")
-    hlHighlight:SetVertexColor(1, 1, 0.4, 1)
-    hlHighlight:SetBlendMode("ADD")
-    clearHLBtn:SetHighlightTexture(hlHighlight)
-    
-    clearHLBtn:SetScript("OnClick", function()
-        if ns.Highlight then
-            ns.Highlight:Cancel()
-            print("|cFF00FF00EasyFind:|r Highlights cleared.")
-        end
-    end)
-    clearHLBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText("Clear Active Highlights")
-        GameTooltip:AddLine("Removes the yellow guide boxes from your UI.", 1, 1, 1, true)
-        GameTooltip:Show()
-    end)
-    clearHLBtn:SetScript("OnLeave", GameTooltip_Hide)
-    
-    -- Clear-text X button (browser-style, inside the bar, right of typed text)
+    -- Clear-text X button (grey circle X, matching retail quest log style)
     -- Only visible when there is text in the editbox.
     local clearTextBtn = CreateFrame("Button", "EasyFindClearTextButton", searchFrame)
-    clearTextBtn:SetSize(16, 16)
-    clearTextBtn:SetPoint("RIGHT", clearHLBtn, "LEFT", -4, 0)
+    clearTextBtn:SetSize(18, 18)
+    clearTextBtn:SetPoint("RIGHT", searchFrame, "RIGHT", -8, 0)
     clearTextBtn:EnableMouse(true)
     clearTextBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
     clearTextBtn:Hide()  -- hidden until there is text
     
     local ctNormal = clearTextBtn:CreateTexture(nil, "ARTWORK")
     ctNormal:SetAllPoints()
-    ctNormal:SetTexture("Interface\\Buttons\\UI-StopButton")
-    ctNormal:SetVertexColor(0.6, 0.6, 0.6, 1)
+    ctNormal:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
     clearTextBtn:SetNormalTexture(ctNormal)
     
     local ctHighlight = clearTextBtn:CreateTexture(nil, "HIGHLIGHT")
     ctHighlight:SetAllPoints()
-    ctHighlight:SetTexture("Interface\\Buttons\\UI-StopButton")
-    ctHighlight:SetVertexColor(1, 1, 1, 1)
+    ctHighlight:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
+    ctHighlight:SetVertexColor(1.2, 1.2, 1.2, 1)
     ctHighlight:SetBlendMode("ADD")
     clearTextBtn:SetHighlightTexture(ctHighlight)
     
@@ -233,6 +317,15 @@ function UI:CreateSearchFrame()
     end)
     clearTextBtn:SetScript("OnLeave", GameTooltip_Hide)
     searchFrame.clearTextBtn = clearTextBtn
+    
+    -- Click anywhere on the search frame to focus the editbox (enables blinking cursor)
+    -- Use HookScript to preserve SmartShow OnLeave handlers;
+    -- skip focus if SmartShow is active and editbox is empty (prevents the bar getting stuck visible)
+    searchFrame:HookScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" and not IsShiftKeyDown() and not self.setupMode then
+            editBox:SetFocus()
+        end
+    end)
     
     -- Show/hide the clear-text X based on whether there's text
     editBox:HookScript("OnTextChanged", function(self)
@@ -265,7 +358,6 @@ function UI:CreateSearchFrame()
     end)
     
     searchFrame.editBox = editBox
-    searchFrame.clearHLBtn = clearHLBtn
     
     -- Draggable with Shift key
     searchFrame:RegisterForDrag("LeftButton")
@@ -301,34 +393,16 @@ function UI:CreateSearchFrame()
     
     local function SmartShowFadeIn()
         if smartShowTimer then smartShowTimer:Cancel(); smartShowTimer = nil end
-        if EasyFind.db.visible == false then
-            -- Hidden state: show the toggle button instantly
-            if toggleBtn then
-                toggleBtn:SetAlpha(1)
-                toggleBtn:Show()
-            end
-            return
-        end
+        if EasyFind.db.visible == false then return end
         if not smartShowVisible then
             smartShowVisible = true
-            toggleBtn:Hide()
             UIFrameFadeIn(searchFrame, 0.15, searchFrame:GetAlpha(), EasyFind.db.searchBarOpacity or 1.0)
             searchFrame:Show()
         end
     end
     
     local function SmartShowFadeOut()
-        if EasyFind.db.visible == false then
-            -- Hidden state: hide the toggle button after a delay
-            if smartShowTimer then smartShowTimer:Cancel() end
-            smartShowTimer = C_Timer.NewTimer(0.4, function()
-                smartShowTimer = nil
-                if hoverZone:IsMouseOver() then return end
-                if toggleBtn and toggleBtn:IsMouseOver() then return end
-                toggleBtn:Hide()
-            end)
-            return
-        end
+        if EasyFind.db.visible == false then return end
         -- Don't hide if the editbox has focus or contains text
         if searchFrame.editBox:HasFocus() or searchFrame.editBox:GetText() ~= "" then return end
         -- Don't hide if results are showing
@@ -365,53 +439,12 @@ function UI:CreateSearchFrame()
     searchFrame.setSmartShowVisible = function(val) smartShowVisible = val end
 end
 
-function UI:CreateToggleButton()
-    toggleBtn = CreateFrame("Button", "EasyFindToggleButton", UIParent, "BackdropTemplate")
-    toggleBtn:SetSize(28, 28)
-    -- Will be repositioned dynamically when shown; default fallback only
-    toggleBtn:SetPoint("TOP", UIParent, "TOP", 0, -5)
-    toggleBtn:SetFrameStrata("HIGH")
-    
-    toggleBtn:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 }
-    })
-    
-    local icon = toggleBtn:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(18, 18)
-    icon:SetPoint("CENTER")
-    icon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
-    
-    toggleBtn:SetScript("OnClick", function()
-        UI:Show()
-    end)
-    
-    toggleBtn:SetScript("OnEnter", function(self)
-        -- Keep toggle visible while hovering it (cancel any pending fade-out)
-        if EasyFind.db.smartShow and EasyFind.db.visible == false then
-            searchFrame.smartShowFadeIn()
-        end
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText("EasyFind - UI Search")
-        GameTooltip:AddLine("Click to search for UI elements", 1, 1, 1)
-        GameTooltip:Show()
-    end)
-    
-    toggleBtn:SetScript("OnLeave", function(self)
-        GameTooltip_Hide()
-        if EasyFind.db.smartShow and EasyFind.db.visible == false then
-            searchFrame.smartShowFadeOut()
-        end
-    end)
-    toggleBtn:Hide()
-end
+
 
 function UI:CreateResultsFrame()
     resultsFrame = CreateFrame("Frame", "EasyFindResultsFrame", searchFrame, "BackdropTemplate")
     resultsFrame:SetWidth(380)  -- Wide to accommodate tree indentation
-    resultsFrame:SetPoint("TOP", searchFrame, "BOTTOM", 0, -2)
+    resultsFrame:SetPoint("TOP", searchFrame, "BOTTOM", 0, 5)
     resultsFrame:SetFrameStrata("HIGH")
     resultsFrame:SetFrameLevel(searchFrame:GetFrameLevel() + 1)
     
@@ -430,15 +463,8 @@ function UI:CreateResultsFrame()
     end
 end
 
--- Vibrant indent line colors for each depth level
-local INDENT_COLORS = {
-    {0.40, 0.85, 1.00, 0.80},   -- cyan
-    {1.00, 0.55, 0.10, 0.80},   -- orange
-    {0.55, 1.00, 0.35, 0.80},   -- lime green
-    {1.00, 0.40, 0.70, 0.80},   -- pink
-    {0.70, 0.55, 1.00, 0.80},   -- lavender
-    {1.00, 0.90, 0.20, 0.80},   -- yellow
-}
+-- Vibrant indent line colors for each depth level (used by Classic theme)
+local INDENT_COLORS = THEMES["Classic"].indentColors
 
 local INDENT_PX  = 20  -- pixels per depth level (icon 16 + 4 gap)
 local LINE_W     = 2   -- connector line thickness
@@ -463,6 +489,100 @@ function UI:CreateResultButton(index)
     selTex:SetVertexColor(0.3, 0.6, 1.0, 0.4)
     selTex:Hide()
     btn.selectionHighlight = selTex
+    
+    -- Retail theme: full-width dark gradient behind headers (Event Schedule style)
+    local headerGrad = btn:CreateTexture(nil, "BACKGROUND", nil, 1)
+    headerGrad:SetTexture("Interface\\QuestFrame\\UI-QuestLogTitleHighlight")
+    headerGrad:SetBlendMode("ADD")
+    headerGrad:SetVertexColor(0.35, 0.27, 0.08, 0.6)
+    headerGrad:SetAllPoints()
+    headerGrad:Hide()
+    btn.headerGrad = headerGrad
+    
+    -- Thin horizontal separator line at the bottom of each row
+    local separator = btn:CreateTexture(nil, "ARTWORK", nil, 0)
+    separator:SetColorTexture(0.5, 0.45, 0.3, 0.3)
+    separator:SetHeight(1)
+    separator:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 4, 0)
+    separator:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -4, 0)
+    separator:Hide()
+    btn.separator = separator
+    
+    -- Retail: raised tab header (quest-log style with atlas textures)
+    local headerTab = CreateFrame("Button", nil, btn)
+    headerTab:SetAllPoints()
+    headerTab:RegisterForClicks("LeftButtonUp")
+    headerTab:SetScript("OnClick", function(self)
+        local parent = self:GetParent()
+        parent:GetScript("OnClick")(parent)
+    end)
+    headerTab:Hide()
+    btn.headerTab = headerTab
+    
+    -- Background texture using QuestLog-tab atlas
+    local tabBg = headerTab:CreateTexture(nil, "BACKGROUND")
+    tabBg:SetAllPoints()
+    tabBg:SetAtlas("QuestLog-tab")
+    btn.tabBg = tabBg
+    
+    -- Hover overlay: same atlas, additive blend, manually shown/hidden
+    local tabHoverOverlay = headerTab:CreateTexture(nil, "ARTWORK", nil, -1)
+    tabHoverOverlay:SetAllPoints()
+    tabHoverOverlay:SetAtlas("QuestLog-tab")
+    tabHoverOverlay:SetBlendMode("ADD")
+    tabHoverOverlay:SetAlpha(0.40)
+    tabHoverOverlay:Hide()
+    btn.tabHoverOverlay = tabHoverOverlay
+    
+    -- +/- button texture on right side (using atlas)
+    local toggleIcon = headerTab:CreateTexture(nil, "ARTWORK")
+    toggleIcon:SetSize(18, 17)
+    toggleIcon:SetPoint("RIGHT", headerTab, "RIGHT", -8, 0)
+    toggleIcon:SetAtlas("QuestLog-icon-expand")
+    btn.toggleIcon = toggleIcon
+    
+    -- Header name text (child of headerTab)
+    local tabText = headerTab:CreateFontString(nil, "OVERLAY", "Game15Font_Shadow")
+    tabText:SetPoint("LEFT", headerTab, "LEFT", 10, 0)
+    tabText:SetPoint("RIGHT", toggleIcon, "LEFT", -4, 0)
+    tabText:SetJustifyH("LEFT")
+    tabText:SetTextColor(0.60, 0.58, 0.55, 1.0)    -- muted gray (normal state)
+    btn.tabText = tabText
+    
+    -- Hover handlers: brighten tab bg, text near-white, icon bright yellow
+    headerTab:SetScript("OnEnter", function(self)
+        local parent = self:GetParent()
+        if parent.tabHoverOverlay then
+            parent.tabHoverOverlay:Show()
+        end
+        if parent.tabText then
+            parent.tabText:SetTextColor(0.90, 0.88, 0.85, 1.0)  -- soft white (slightly muted)
+        end
+        if parent.toggleIcon then
+            parent.toggleIcon:SetVertexColor(1.0, 1.0, 0.0, 1.0)  -- bright pure yellow
+        end
+    end)
+    headerTab:SetScript("OnLeave", function(self)
+        local parent = self:GetParent()
+        if parent.tabHoverOverlay then
+            parent.tabHoverOverlay:Hide()
+        end
+        if parent.tabText then
+            parent.tabText:SetTextColor(0.60, 0.58, 0.55, 1.0)  -- back to gray
+        end
+        if parent.toggleIcon then
+            parent.toggleIcon:SetVertexColor(1.0, 1.0, 1.0, 1.0)  -- normal (atlas provides color)
+        end
+    end)
+    
+    -- Tab selection highlight (keyboard nav, child of headerTab)
+    local tabSelTex = headerTab:CreateTexture(nil, "BACKGROUND")
+    tabSelTex:SetAllPoints()
+    tabSelTex:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+    tabSelTex:SetBlendMode("ADD")
+    tabSelTex:SetVertexColor(0.3, 0.6, 1.0, 0.4)
+    tabSelTex:Hide()
+    btn.tabSelectionHighlight = tabSelTex
     
     -- Tree connector textures per depth level
     -- Each level gets: a vertical pass-through line AND a horizontal branch line
@@ -586,6 +706,45 @@ function UI:ShowHierarchicalResults(hierarchical)
     -- Cache the FULL (unfiltered) list so collapse toggles can re-render
     cachedHierarchical = hierarchical
     
+    local theme = GetActiveTheme()
+    local rowH  = theme.rowHeight
+    local indPx = theme.indentPx
+    local padT  = theme.resultsPadTop
+    
+    -- Apply theme backdrop to results frame
+    resultsFrame:SetBackdrop(theme.resultsBackdrop)
+    if theme.resultsBackdropColor then
+        resultsFrame:SetBackdropColor(unpack(theme.resultsBackdropColor))
+    end
+    if theme.resultsBackdropBorderColor then
+        resultsFrame:SetBackdropBorderColor(unpack(theme.resultsBackdropBorderColor))
+    end
+    resultsFrame:SetWidth(theme.resultsWidth)
+    
+    -- Apply background atlas if specified (e.g. quest log background)
+    if not resultsFrame.bgAtlasTex then
+        local tex = resultsFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
+        -- Stretch horizontally to fill frame, but keep native height (clipped by frame)
+        tex:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 4, -4)
+        tex:SetPoint("TOPRIGHT", resultsFrame, "TOPRIGHT", -4, -4)
+        resultsFrame.bgAtlasTex = tex
+    end
+    if theme.resultsBgAtlas then
+        local info = C_Texture.GetAtlasInfo(theme.resultsBgAtlas)
+        if info then
+            resultsFrame.bgAtlasTex:SetAtlas(theme.resultsBgAtlas, false)  -- false = allow stretching
+            resultsFrame.bgAtlasTex:SetHeight(info.height)  -- native height, clipped by frame
+        else
+            resultsFrame.bgAtlasTex:SetAtlas(theme.resultsBgAtlas, false)
+            resultsFrame.bgAtlasTex:SetHeight(468)  -- fallback
+        end
+        resultsFrame.bgAtlasTex:Show()
+        resultsFrame:SetClipsChildren(true)
+    else
+        resultsFrame.bgAtlasTex:Hide()
+        resultsFrame:SetClipsChildren(false)
+    end
+    
     -- ----------------------------------------------------------------
     -- Build the visible list by filtering out children of collapsed nodes
     -- ----------------------------------------------------------------
@@ -647,6 +806,15 @@ function UI:ShowHierarchicalResults(hierarchical)
             local data = entry.data
             local depth = entry.depth or 0
             
+            -- Reposition for theme row height
+            local padL = theme.resultsPadLeft or 10
+            btn:SetSize(theme.btnWidth, rowH)
+            btn:ClearAllPoints()
+            btn:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", padL, -padT - (i - 1) * rowH)
+            
+            -- Selection highlight color
+            btn.selectionHighlight:SetVertexColor(unpack(theme.selectionColor))
+            
             btn.data = data
             btn.isPathNode = entry.isPathNode
             btn.pathNodeName = entry.isPathNode and entry.name or nil
@@ -659,11 +827,26 @@ function UI:ShowHierarchicalResults(hierarchical)
                 btn.treeBranch[d]:Hide()
             end
             
-            if depth > 0 then
+            if theme.showTreeLines and depth > 0 then
+                local halfRow = rowH * 0.5
+                local tc = theme.indentColors[depth] or theme.indentColors[1] or INDENT_COLORS[depth]
+                local xCenter = (depth - 1) * INDENT_PX + 5
+                
+                -- Recolor + reposition branch/elbow for active theme's row height
+                btn.treeBranch[depth]:SetColorTexture(tc[1], tc[2], tc[3], tc[4])
+                btn.treeBranch[depth]:ClearAllPoints()
+                btn.treeBranch[depth]:SetPoint("LEFT",  btn, "TOPLEFT", xCenter, -halfRow)
+                btn.treeBranch[depth]:SetPoint("RIGHT", btn, "TOPLEFT", xCenter + INDENT_PX - 2, -halfRow)
                 btn.treeBranch[depth]:Show()
+                
+                btn.treeElbow[depth]:SetColorTexture(tc[1], tc[2], tc[3], tc[4])
+                btn.treeElbow[depth]:ClearAllPoints()
+                btn.treeElbow[depth]:SetPoint("TOP", btn, "TOPLEFT", xCenter, 2)
+                btn.treeElbow[depth]:SetHeight(halfRow + 2)
                 btn.treeElbow[depth]:Show()
                 
                 if not isLastChild[i] then
+                    btn.treeVert[depth]:SetColorTexture(tc[1], tc[2], tc[3], tc[4])
                     btn.treeVert[depth]:Show()
                 end
                 
@@ -675,37 +858,90 @@ function UI:ShowHierarchicalResults(hierarchical)
                         if dj == d then stillActive = true; break end
                     end
                     if stillActive then
+                        local ac = theme.indentColors[d] or theme.indentColors[1] or INDENT_COLORS[d]
+                        btn.treeVert[d]:SetColorTexture(ac[1], ac[2], ac[3], ac[4])
                         btn.treeVert[d]:Show()
                     end
                 end
             end
             
-            -- ---- Position icon & text ----
-            local indentPixels = depth * INDENT_PX
-            btn.icon:ClearAllPoints()
-            btn.icon:SetPoint("LEFT", btn, "LEFT", indentPixels, 0)
-            
-            btn.text:SetText(entry.name)
-            
-            -- Style: path nodes get a muted color; leaf results get gold
-            if entry.isPathNode then
-                btn.text:SetTextColor(0.7, 0.7, 0.7)
+            -- ---- Header styling ----
+            if theme.showHeaderTab and entry.isPathNode then
+                -- Quest-log raised tab header
+                local tabInset = depth * indPx
+                btn.headerTab:ClearAllPoints()
+                btn.headerTab:SetPoint("TOPLEFT", btn, "TOPLEFT", tabInset, 0)
+                btn.headerTab:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
+                btn.headerTab:Show()
+                -- Set +/- atlas and header name on the tab
+                local key = entry.name .. "_" .. depth
+                local isCollapsed = collapsedNodes[key]
+                local expandAtlas = theme.expandAtlas or "QuestLog-icon-expand"
+                local collapseAtlas = theme.collapseAtlas or "QuestLog-icon-shrink"
+                local toggleAtlas = isCollapsed and expandAtlas or collapseAtlas
+                btn.toggleIcon:SetAtlas(toggleAtlas)
+                btn.tabText:SetText(entry.name)
+                -- Colors set by OnEnter/OnLeave handlers (muted → bright on hover)
+                -- Hide normal icon/text (tab has its own)
+                btn.icon:Hide()
+                btn.text:SetText("")
+                btn.headerGrad:Hide()
             else
-                btn.text:SetTextColor(1, 0.82, 0)
+                btn.headerTab:Hide()
+                -- Gradient header (Classic fallback)
+                if theme.showHeaderBar and entry.isPathNode then
+                    btn.headerGrad:SetAllPoints()
+                    local gradAlpha = mmax(0.25, 0.6 - depth * 0.1)
+                    btn.headerGrad:SetVertexColor(0.35, 0.27, 0.08, gradAlpha)
+                    btn.headerGrad:Show()
+                else
+                    btn.headerGrad:Hide()
+                end
+            end
+            
+            -- Separator line between rows
+            if theme.showSeparators then
+                local sc = theme.separatorColor
+                btn.separator:SetColorTexture(sc[1], sc[2], sc[3], sc[4])
+                btn.separator:Show()
+            else
+                btn.separator:Hide()
+            end
+            
+            -- ---- Position icon & text (non-tab rows) ----
+            if not (theme.showHeaderTab and entry.isPathNode) then
+                local indentPixels = depth * indPx
+                btn.icon:ClearAllPoints()
+                btn.icon:SetPoint("LEFT", btn, "LEFT", indentPixels, 0)
+                
+                btn.text:SetText(entry.name)
+                
+                -- Style: path nodes vs leaf results, themed
+                if entry.isPathNode then
+                    btn.text:SetFontObject(theme.pathFont)
+                    btn.text:SetTextColor(unpack(theme.pathColor))
+                else
+                    btn.text:SetFontObject(theme.leafFont)
+                    btn.text:SetTextColor(unpack(theme.leafColor))
+                end
             end
             
             -- ---- Set icon ----
             local iconSet = false
             
-            -- Path nodes: show − when expanded, + when collapsed
-            if entry.isPathNode then
+            if theme.showHeaderTab and entry.isPathNode then
+                -- Icon hidden — +/- handled by toggleIcon atlas on tab
+                iconSet = true
+            elseif entry.isPathNode then
+                -- Classic: collapse/expand icon on left
                 local key = entry.name .. "_" .. depth
                 if collapsedNodes[key] then
-                    btn.icon:SetTexture("Interface\\Buttons\\UI-PlusButton-Up")
+                    btn.icon:SetTexture(theme.expandIcon)
                 else
-                    btn.icon:SetTexture("Interface\\Buttons\\UI-MinusButton-Up")
+                    btn.icon:SetTexture(theme.collapseIcon)
                 end
-                btn.icon:SetSize(14, 14)
+                btn.icon:SetTexCoord(0, 1, 0, 1)
+                btn.icon:SetSize(theme.pathIconSize, theme.pathIconSize)
                 btn.icon:Show()
                 iconSet = true
             end
@@ -718,7 +954,8 @@ function UI:ShowHierarchicalResults(hierarchical)
                     else
                         btn.icon:SetTexture(texture)
                     end
-                    btn.icon:SetSize(16, 16)
+                    btn.icon:SetTexCoord(0, 1, 0, 1)
+                    btn.icon:SetSize(theme.iconSize, theme.iconSize)
                     btn.icon:Show()
                     iconSet = true
                 end
@@ -726,20 +963,25 @@ function UI:ShowHierarchicalResults(hierarchical)
             
             if not iconSet and data and data.icon then
                 btn.icon:SetTexture(data.icon)
-                btn.icon:SetSize(16, 16)
+                btn.icon:SetTexCoord(0, 1, 0, 1)
+                btn.icon:SetSize(theme.iconSize, theme.iconSize)
                 btn.icon:Show()
                 iconSet = true
             end
             
             if not iconSet then
                 btn.icon:SetTexture(134400)
-                btn.icon:SetSize(16, 16)
+                btn.icon:SetTexCoord(0, 1, 0, 1)
+                btn.icon:SetSize(theme.iconSize, theme.iconSize)
                 btn.icon:Show()
             end
             
             btn:Show()
         else
             btn:Hide()
+            btn.headerGrad:Hide()
+            btn.headerTab:Hide()
+            btn.separator:Hide()
             for d = 1, MAX_DEPTH do
                 btn.treeVert[d]:Hide()
                 btn.treeElbow[d]:Hide()
@@ -748,7 +990,7 @@ function UI:ShowHierarchicalResults(hierarchical)
         end
     end
     
-    resultsFrame:SetHeight(16 + count * 22)
+    resultsFrame:SetHeight(padT + theme.resultsPadBot + count * rowH)
     resultsFrame:Show()
     
     -- Reset keyboard selection whenever results change
@@ -760,6 +1002,15 @@ function UI:ShowResults(results)
     -- Legacy function, redirects to hierarchical
     local hierarchical = ns.Database:BuildHierarchicalResults(results)
     self:ShowHierarchicalResults(hierarchical)
+end
+
+function UI:RefreshResults()
+    -- Re-render current results with the active theme (called when theme changes)
+    self:UpdateSearchBarTheme()
+    -- Only re-render if results are currently visible; don't resurrect old results
+    if cachedHierarchical and resultsFrame and resultsFrame:IsShown() then
+        self:ShowHierarchicalResults(cachedHierarchical)
+    end
 end
 
 function UI:HideResults()
@@ -807,6 +1058,14 @@ function UI:UpdateSelectionHighlight()
                 btn.selectionHighlight:Show()
             else
                 btn.selectionHighlight:Hide()
+            end
+        end
+        -- Tab selection highlight (Retail theme)
+        if btn.tabSelectionHighlight then
+            if i == selectedIndex and btn.headerTab:IsShown() then
+                btn.tabSelectionHighlight:Show()
+            else
+                btn.tabSelectionHighlight:Hide()
             end
         end
     end
@@ -1262,10 +1521,25 @@ function UI:GetButtonText(frame)
     return GetButtonText(frame)
 end
 
+function UI:Focus()
+    if not searchFrame or not searchFrame:IsShown() then return end
+    if inCombat then return end
+    -- Toggle: if already focused, unfocus; otherwise focus
+    if searchFrame.editBox:HasFocus() then
+        searchFrame.editBox:ClearFocus()
+    else
+        -- Delay by one frame so the keybind key-press doesn't get typed
+        C_Timer.After(0, function()
+            if searchFrame and searchFrame:IsShown() then
+                searchFrame.editBox:SetFocus()
+            end
+        end)
+    end
+end
+
 function UI:Show()
     if inCombat then return end
     searchFrame:Show()
-    toggleBtn:Hide()
     EasyFind.db.visible = true
     if EasyFind.db.smartShow then
         searchFrame.hoverZone:Show()
@@ -1282,12 +1556,6 @@ function UI:Show()
 end
 
 function UI:Hide()
-    -- Position the toggle button at the search bar's current center before hiding
-    local cx, cy = searchFrame:GetCenter()
-    if cx and cy then
-        toggleBtn:ClearAllPoints()
-        toggleBtn:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cx, cy)
-    end
     searchFrame:Hide()
     searchFrame.setSmartShowVisible(false)
     self:HideResults()
@@ -1296,15 +1564,9 @@ function UI:Hide()
     EasyFind.db.visible = false
     
     if EasyFind.db.smartShow then
-        -- Smart Show + Hide: keep hover zone active but hide toggle button
-        -- (hovering the zone will fade it in)
         searchFrame.hoverZone:Show()
-        toggleBtn:Hide()
     else
         searchFrame.hoverZone:Hide()
-        if not inCombat then
-            toggleBtn:Show()
-        end
     end
 end
 
@@ -1481,6 +1743,30 @@ function UI:UpdateOpacity()
     end
 end
 
+function UI:UpdateSearchBarTheme()
+    if not searchFrame then return end
+    local theme = GetActiveTheme()
+    if theme.searchBarRounded then
+        searchFrame:SetBackdrop({
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 32, edgeSize = 16,
+            insets = { left = 4, right = 4, top = 4, bottom = 4 }
+        })
+        searchFrame:SetBackdropColor(0.45, 0.45, 0.45, 0.95)
+        searchFrame:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+    else
+        searchFrame:SetBackdrop({
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+            tile = true, tileSize = 32, edgeSize = 20,
+            insets = { left = 5, right = 5, top = 5, bottom = 5 }
+        })
+        searchFrame:SetBackdropColor(1, 1, 1, 1)
+        searchFrame:SetBackdropBorderColor(1, 1, 1, 1)
+    end
+end
+
 function UI:UpdateSmartShow()
     if not searchFrame then return end
     local enabled = EasyFind.db.smartShow
@@ -1492,7 +1778,6 @@ function UI:UpdateSmartShow()
             searchFrame:SetAlpha(0)
             searchFrame:Show()
             searchFrame.setSmartShowVisible(false)
-            toggleBtn:Hide()
         end
     else
         -- Disable smart show: hide hover zone, restore normal opacity
@@ -1501,7 +1786,6 @@ function UI:UpdateSmartShow()
         if EasyFind.db.visible ~= false and not inCombat then
             searchFrame:SetAlpha(EasyFind.db.searchBarOpacity or 1.0)
             searchFrame:Show()
-            toggleBtn:Hide()
         end
     end
 end
@@ -1512,6 +1796,179 @@ function UI:ResetPosition()
         searchFrame:SetPoint("TOP", UIParent, "TOP", 0, -5)
         EasyFind.db.uiSearchPosition = nil
     end
+end
+
+-- =========================================================================
+-- FIRST-TIME SETUP OVERLAY
+-- Shown once on fresh install to let the user position & scale the search
+-- bar before normal use.  Persisted via EasyFind.db.setupComplete.
+-- =========================================================================
+function UI:ShowFirstTimeSetup()
+    if EasyFind.db.setupComplete then return end
+
+    -- Force search bar visible during setup (override SmartShow / hidden state)
+    EasyFind.db.visible = true
+    searchFrame:Show()
+    searchFrame:SetAlpha(1.0)
+    -- Dim just the search bar backdrop (not child frames like the overlay)
+    searchFrame:SetBackdropColor(0.2, 0.2, 0.2, 0.4)
+    searchFrame:SetBackdropBorderColor(0.3, 0.3, 0.3, 0.4)
+    if searchFrame.hoverZone then searchFrame.hoverZone:Hide() end
+    searchFrame.setSmartShowVisible(true)
+
+    -- Block editbox interaction during setup
+    searchFrame.setupMode = true
+    searchFrame.editBox:EnableMouse(false)
+
+    -- ── Golden glow overlay ─────────────────────────────────────────────
+    local glow = CreateFrame("Frame", "EasyFindSetupGlow", searchFrame, "BackdropTemplate")
+    glow:SetPoint("TOPLEFT", searchFrame, "TOPLEFT", -6, 6)
+    glow:SetPoint("BOTTOMRIGHT", searchFrame, "BOTTOMRIGHT", 6, -6)
+    glow:SetFrameStrata("DIALOG")
+    glow:SetFrameLevel(100)
+    glow:EnableMouse(false)  -- clicks pass through to search bar
+
+    glow:SetBackdrop({
+        bgFile   = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 16,
+        insets   = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+    glow:SetBackdropColor(1, 0.82, 0, 0.20)
+    glow:SetBackdropBorderColor(1, 0.78, 0, 1.0)
+
+    -- Gentle pulse on the gold fill
+    local pulseUp = true
+    local pulseAlpha = 0.20
+    glow:SetScript("OnUpdate", function(self, elapsed)
+        if pulseUp then
+            pulseAlpha = pulseAlpha + elapsed * 0.12
+            if pulseAlpha >= 0.35 then pulseAlpha = 0.35; pulseUp = false end
+        else
+            pulseAlpha = pulseAlpha - elapsed * 0.12
+            if pulseAlpha <= 0.12 then pulseAlpha = 0.12; pulseUp = true end
+        end
+        self:SetBackdropColor(1, 0.82, 0, pulseAlpha)
+    end)
+
+    -- "EasyFind" label overlaid on the glow (like edit-mode frame labels)
+    local setupLabel = glow:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    setupLabel:SetPoint("CENTER", glow, "CENTER", 0, 0)
+    setupLabel:SetText("EasyFind")
+    setupLabel:SetTextColor(1, 0.82, 0, 0.7)
+
+    -- ── Resize handle (bottom-left corner) ──────────────────────────────
+    local resizer = CreateFrame("Button", nil, glow)
+    resizer:SetSize(16, 16)
+    resizer:SetPoint("BOTTOMLEFT", glow, "BOTTOMLEFT", 0, 0)
+    resizer:EnableMouse(true)
+    resizer:RegisterForDrag("LeftButton")
+
+    resizer:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    resizer:GetNormalTexture():SetTexCoord(1, 0, 0, 1)   -- flip for bottom-left
+    resizer:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
+    resizer:GetHighlightTexture():SetTexCoord(1, 0, 0, 1)
+    resizer:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
+    resizer:GetPushedTexture():SetTexCoord(1, 0, 0, 1)
+
+    resizer:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Drag to resize")
+        GameTooltip:Show()
+    end)
+    resizer:SetScript("OnLeave", GameTooltip_Hide)
+
+    resizer.dragging = false
+    resizer.lastY = nil
+    resizer:SetScript("OnDragStart", function(self)
+        self.dragging = true
+        local _, cy = GetCursorPosition()
+        self.lastY = cy / UIParent:GetEffectiveScale()
+    end)
+    resizer:SetScript("OnDragStop", function(self)
+        self.dragging = false
+        self.lastY = nil
+    end)
+    resizer:SetScript("OnUpdate", function(self)
+        if not self.dragging then return end
+        local _, cy = GetCursorPosition()
+        cy = cy / UIParent:GetEffectiveScale()
+        if self.lastY then
+            local dy = self.lastY - cy   -- drag down = bigger for bottom-left handle
+            local curScale = EasyFind.db.uiSearchScale or 1.0
+            local newScale = curScale + dy * 0.005
+            newScale = mmax(0.5, mmin(2.0, newScale))
+            EasyFind.db.uiSearchScale = newScale
+            searchFrame:SetScale(newScale)
+            if resultsFrame then resultsFrame:SetScale(newScale) end
+        end
+        self.lastY = cy
+    end)
+
+    -- ── Instruction panel (anchored below the glow) ─────────────────────
+    local panel = CreateFrame("Frame", nil, glow, "BackdropTemplate")
+    panel:SetSize(320, 115)
+    panel:SetPoint("TOP", glow, "BOTTOM", 0, -6)
+    panel:SetFrameStrata("DIALOG")
+    panel:SetBackdrop({
+        bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 32, edgeSize = 16,
+        insets   = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+    panel:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+
+    local instructions = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    instructions:SetPoint("TOP", panel, "TOP", 0, -12)
+    instructions:SetWidth(290)
+    instructions:SetJustifyH("CENTER")
+    instructions:SetText(
+        "|cffffffffDrag the search bar to position it.|r\n" ..
+        "|cffffffffUse the corner handle to resize.|r\n\n" ..
+        "|cff999999Hold |cffFFD100Shift|r|cff999999 + drag to reposition later.|r\n" ..
+        "|cff999999Open Options with |cffFFD100/ef o|r|cff999999 to adjust size & more.|r"
+    )
+
+    -- Done button
+    local doneBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    doneBtn:SetSize(80, 22)
+    doneBtn:SetPoint("BOTTOM", panel, "BOTTOM", 0, 10)
+    doneBtn:SetText("Done")
+
+    -- ── During setup: allow drag WITHOUT holding Shift ───────────────────
+    searchFrame:SetScript("OnDragStart", function(self)
+        self:StartMoving()
+    end)
+
+    -- ── Done handler: persist, cleanup, restore normal drag ─────────────
+    doneBtn:SetScript("OnClick", function()
+        EasyFind.db.setupComplete = true
+
+        -- Save current position
+        local point, _, relPoint, x, y = searchFrame:GetPoint()
+        EasyFind.db.uiSearchPosition = {point, relPoint, x, y}
+
+        -- Destroy overlay & restore normal state
+        searchFrame.setupMode = nil
+        searchFrame.editBox:EnableMouse(true)
+        UI:UpdateSearchBarTheme()  -- restore proper backdrop colors
+        glow:SetScript("OnUpdate", nil)
+        resizer:SetScript("OnUpdate", nil)
+        glow:Hide()
+        panel:Hide()
+
+        -- Restore shift-only drag
+        searchFrame:SetScript("OnDragStart", function(self)
+            if IsShiftKeyDown() then
+                self:StartMoving()
+            end
+        end)
+
+        -- Restore SmartShow if it was enabled
+        if EasyFind.db.smartShow then
+            UI:UpdateSmartShow()
+        end
+    end)
 end
 
 -- Flash a label on the search frame (used for Currency hint)

@@ -125,12 +125,24 @@ function MapSearch:CreateSearchFrame()
         searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", 0, 0)
     end
     
-    searchFrame:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 }
-    })
+    -- Apply theme-appropriate backdrop
+    if (EasyFind.db.resultsTheme or "Classic") == "Retail" then
+        searchFrame:SetBackdrop({
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 32, edgeSize = 16,
+            insets = { left = 4, right = 4, top = 4, bottom = 4 }
+        })
+        searchFrame:SetBackdropColor(0.45, 0.45, 0.45, 0.95)
+        searchFrame:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+    else
+        searchFrame:SetBackdrop({
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+            tile = true, tileSize = 32, edgeSize = 16,
+            insets = { left = 4, right = 4, top = 4, bottom = 4 }
+        })
+    end
     
     -- Draggable with Shift key (constrained to map bottom edge)
     searchFrame:RegisterForDrag("LeftButton")
@@ -181,7 +193,7 @@ function MapSearch:CreateSearchFrame()
     
     local placeholder = editBox:CreateFontString(nil, "ARTWORK", "GameFontDisable")
     placeholder:SetPoint("LEFT", 2, 0)
-    placeholder:SetText("Search this zone...")
+    placeholder:SetText("Search this zone")
     editBox.placeholder = placeholder
     
     editBox:SetScript("OnEditFocusGained", function(self)
@@ -223,12 +235,25 @@ function MapSearch:CreateSearchFrame()
         MapSearch:ClearHighlight()
     end)
     
-    -- Clear button (inside the search frame on the right)
-    local clearBtn = CreateFrame("Button", nil, searchFrame, "UIPanelButtonTemplate")
-    clearBtn:SetSize(60, 22)
-    clearBtn:SetPoint("RIGHT", searchFrame, "RIGHT", -6, 0)
-    clearBtn:SetText("Clear")
+    -- Clear button (grey circle X, matching retail quest log style)
+    local clearBtn = CreateFrame("Button", nil, searchFrame)
+    clearBtn:SetSize(18, 18)
+    clearBtn:SetPoint("RIGHT", searchFrame, "RIGHT", -8, 0)
     clearBtn:EnableMouse(true)
+    clearBtn:Hide()  -- hidden until there is text
+    
+    local cbNormal = clearBtn:CreateTexture(nil, "ARTWORK")
+    cbNormal:SetAllPoints()
+    cbNormal:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
+    clearBtn:SetNormalTexture(cbNormal)
+    
+    local cbHighlight = clearBtn:CreateTexture(nil, "HIGHLIGHT")
+    cbHighlight:SetAllPoints()
+    cbHighlight:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
+    cbHighlight:SetVertexColor(1.2, 1.2, 1.2, 1)
+    cbHighlight:SetBlendMode("ADD")
+    clearBtn:SetHighlightTexture(cbHighlight)
+    
     clearBtn:SetScript("OnClick", function()
         editBox:SetText("")
         editBox:ClearFocus()
@@ -249,6 +274,22 @@ function MapSearch:CreateSearchFrame()
     end)
     clearBtn:SetScript("OnLeave", GameTooltip_Hide)
     searchFrame.clearBtn = clearBtn
+    
+    -- Show/hide clear button based on text
+    editBox:HookScript("OnTextChanged", function(self)
+        if self:GetText() ~= "" then
+            clearBtn:Show()
+        else
+            clearBtn:Hide()
+        end
+    end)
+    
+    -- Click anywhere on the search frame to focus the editbox
+    searchFrame:HookScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" and not IsShiftKeyDown() then
+            editBox:SetFocus()
+        end
+    end)
     
     searchFrame.editBox = editBox
     searchFrame:Hide()
@@ -282,12 +323,24 @@ function MapSearch:CreateSearchFrame()
         globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", 0, 0)
     end
     
-    globalSearchFrame:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 }
-    })
+    -- Apply theme-appropriate backdrop
+    if (EasyFind.db.resultsTheme or "Classic") == "Retail" then
+        globalSearchFrame:SetBackdrop({
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 32, edgeSize = 16,
+            insets = { left = 4, right = 4, top = 4, bottom = 4 }
+        })
+        globalSearchFrame:SetBackdropColor(0.45, 0.45, 0.45, 0.95)
+        globalSearchFrame:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+    else
+        globalSearchFrame:SetBackdrop({
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+            tile = true, tileSize = 32, edgeSize = 16,
+            insets = { left = 4, right = 4, top = 4, bottom = 4 }
+        })
+    end
     
     -- Draggable with Shift key (constrained to map bottom edge)
     globalSearchFrame:RegisterForDrag("LeftButton")
@@ -336,7 +389,7 @@ function MapSearch:CreateSearchFrame()
     
     local globalPlaceholder = globalEditBox:CreateFontString(nil, "ARTWORK", "GameFontDisable")
     globalPlaceholder:SetPoint("LEFT", 2, 0)
-    globalPlaceholder:SetText("Search all zones...")
+    globalPlaceholder:SetText("Search all zones")
     globalEditBox.placeholder = globalPlaceholder
     
     globalEditBox:SetScript("OnEditFocusGained", function(self)
@@ -379,12 +432,25 @@ function MapSearch:CreateSearchFrame()
         MapSearch:ClearZoneHighlight()
     end)
     
-    -- Clear button for global search
-    local globalClearBtn = CreateFrame("Button", nil, globalSearchFrame, "UIPanelButtonTemplate")
-    globalClearBtn:SetSize(60, 22)
-    globalClearBtn:SetPoint("RIGHT", globalSearchFrame, "RIGHT", -6, 0)
-    globalClearBtn:SetText("Clear")
+    -- Clear button for global search (grey circle X)
+    local globalClearBtn = CreateFrame("Button", nil, globalSearchFrame)
+    globalClearBtn:SetSize(18, 18)
+    globalClearBtn:SetPoint("RIGHT", globalSearchFrame, "RIGHT", -8, 0)
     globalClearBtn:EnableMouse(true)
+    globalClearBtn:Hide()  -- hidden until there is text
+    
+    local gcbNormal = globalClearBtn:CreateTexture(nil, "ARTWORK")
+    gcbNormal:SetAllPoints()
+    gcbNormal:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
+    globalClearBtn:SetNormalTexture(gcbNormal)
+    
+    local gcbHighlight = globalClearBtn:CreateTexture(nil, "HIGHLIGHT")
+    gcbHighlight:SetAllPoints()
+    gcbHighlight:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
+    gcbHighlight:SetVertexColor(1.2, 1.2, 1.2, 1)
+    gcbHighlight:SetBlendMode("ADD")
+    globalClearBtn:SetHighlightTexture(gcbHighlight)
+    
     globalClearBtn:SetScript("OnClick", function()
         globalEditBox:SetText("")
         globalEditBox:ClearFocus()
@@ -405,6 +471,22 @@ function MapSearch:CreateSearchFrame()
     end)
     globalClearBtn:SetScript("OnLeave", GameTooltip_Hide)
     globalSearchFrame.clearBtn = globalClearBtn
+    
+    -- Show/hide clear button based on text
+    globalEditBox:HookScript("OnTextChanged", function(self)
+        if self:GetText() ~= "" then
+            globalClearBtn:Show()
+        else
+            globalClearBtn:Hide()
+        end
+    end)
+    
+    -- Click anywhere on the search frame to focus the editbox
+    globalSearchFrame:HookScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" and not IsShiftKeyDown() then
+            globalEditBox:SetFocus()
+        end
+    end)
     
     globalSearchFrame.editBox = globalEditBox
     globalSearchFrame:Hide()
@@ -2482,6 +2564,34 @@ function MapSearch:UpdateOpacity()
     if globalSearchFrame then
         local alpha = EasyFind.db.searchBarOpacity or 1.0
         globalSearchFrame:SetAlpha(alpha)
+    end
+end
+
+function MapSearch:UpdateSearchBarTheme()
+    local isRetail = (EasyFind.db.resultsTheme or "Retail") == "Retail"
+    local frames = {searchFrame, globalSearchFrame}
+    for _, frame in ipairs(frames) do
+        if frame then
+            if isRetail then
+                frame:SetBackdrop({
+                    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+                    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                    tile = true, tileSize = 32, edgeSize = 16,
+                    insets = { left = 4, right = 4, top = 4, bottom = 4 }
+                })
+                frame:SetBackdropColor(0.45, 0.45, 0.45, 0.95)
+                frame:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+            else
+                frame:SetBackdrop({
+                    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+                    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+                    tile = true, tileSize = 32, edgeSize = 16,
+                    insets = { left = 4, right = 4, top = 4, bottom = 4 }
+                })
+                frame:SetBackdropColor(1, 1, 1, 1)
+                frame:SetBackdropBorderColor(1, 1, 1, 1)
+            end
+        end
     end
 end
 
