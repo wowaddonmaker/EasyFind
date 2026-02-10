@@ -4,5 +4,8 @@ nul
 # GitHub workflows (if you don't want to track them)
 .github/
 
-# Media assets (if managed separately)
+# Media assets folder (demos, screenshots, working files - not needed in game)
 media/
+
+# Images folder is tracked (contains game textures like arrow-hq.tga)
+# Do NOT ignore: Images/

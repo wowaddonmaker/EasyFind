@@ -21,7 +21,7 @@ local ARROW_STYLES = {
         preRotated = false,  -- Needs mpi rotation to point down
     },
     ["EasyFind Arrow"] = {
-        texture = "Interface\\AddOns\\EasyFind\\media\\arrow-hq",
+        texture = "Interface\\AddOns\\EasyFind\\Images\\arrow-hq",
         texCoord = nil,
         preRotated = true,   -- Already points down, no rotation needed
     },
