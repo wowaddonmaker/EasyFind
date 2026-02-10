@@ -1861,6 +1861,13 @@ function Highlight:HideHighlight()
     end
 end
 
+function Highlight:ClearAll()
+    self:HideHighlight()
+    currentGuide = nil
+    currentStepIndex = nil
+    if stepTicker then stepTicker:Cancel(); stepTicker = nil end
+end
+
 -- Portrait menu helpers
 function Highlight:IsPortraitMenuOpen()
     -- Method 1: Check old-style DropDownList frames

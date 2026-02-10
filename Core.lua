@@ -14,6 +14,7 @@ ns.EasyFind = EasyFind
 -- Binding localization strings (used by Bindings.xml)
 -- category="EasyFind" in Bindings.xml provides the header; no BINDING_HEADER_ global needed.
 BINDING_NAME_EASYFIND_TOGGLE = "Toggle UI Search Bar"
+BINDING_NAME_EASYFIND_FOCUS  = "Resume Typing in Search Bar"
 
 -- Single shared event frame for the entire addon
 local eventFrame = CreateFrame("Frame")
@@ -34,11 +35,12 @@ local DB_DEFAULTS = {
     directOpen = false,        -- Open panels directly instead of step-by-step
     navigateToZonesDirectly = false,  -- Clicking a zone goes directly to it
     smartShow = false,         -- Hide search bar until mouse hovers nearby
+    resultsTheme = "Retail",  -- "Classic" or "Retail"
 }
 
 local function OnInitialize()
     if not EasyFindDB then
-        EasyFindDB = {}
+        EasyFindDB = { firstInstall = true }
     end
     -- Merge defaults — existing values are preserved
     for k, v in pairs(DB_DEFAULTS) do
@@ -49,12 +51,30 @@ local function OnInitialize()
 
     EasyFind.db = EasyFindDB
 
+    -- Set default keybinds if nothing is bound yet (first install)
+    if not GetBindingKey("EASYFIND_TOGGLE") then
+        SetBinding("[", "EASYFIND_TOGGLE")
+    end
+    if not GetBindingKey("EASYFIND_FOCUS") then
+        SetBinding("]", "EASYFIND_FOCUS")
+    end
+    SaveBindings(GetCurrentBindingSet())
+
     -- Primary slash command
     SLASH_EASYFIND1 = "/ef"
     SlashCmdList["EASYFIND"] = function(msg)
         msg = msg and msg:lower():trim() or ""
         if msg == "o" or msg == "options" or msg == "config" or msg == "settings" then
             EasyFind:OpenOptions()
+        elseif msg == "hide" then
+            if ns.UI then ns.UI:Hide() end
+        elseif msg == "show" then
+            if ns.UI then ns.UI:Show() end
+        elseif msg == "clear" then
+            if ns.Highlight then
+                ns.Highlight:ClearAll()
+                EasyFind:Print("Active highlights cleared.")
+            end
         else
             EasyFind:ToggleSearchUI()
         end
@@ -96,6 +116,10 @@ end)
 -- =============================================================================
 function EasyFind:ToggleSearchUI()
     if ns.UI then ns.UI:Toggle() end
+end
+
+function EasyFind:FocusSearchUI()
+    if ns.UI then ns.UI:Focus() end
 end
 
 function EasyFind:OpenOptions()
