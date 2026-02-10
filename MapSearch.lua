@@ -11,12 +11,229 @@ local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
 local mmin, mmax, mabs, mpi = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mpi
 local pcall, tostring = Utils.pcall, Utils.tostring
 
+-- =============================================================================
+-- ARROW THEME DEFINITIONS
+-- =============================================================================
+local ARROW_STYLES = {
+    ["Classic Quest Arrow"] = {
+        texture = "Interface\\MINIMAP\\MiniMap-QuestArrow",
+        texCoord = nil,
+        preRotated = false,  -- Needs mpi rotation to point down
+    },
+    ["EasyFind Arrow"] = {
+        texture = "Interface\\AddOns\\EasyFind\\media\\arrow-hq",
+        texCoord = nil,
+        preRotated = true,   -- Already points down, no rotation needed
+    },
+    ["Minimap Player Arrow"] = {
+        texture = "Interface\\Minimap\\MinimapArrow",
+        texCoord = nil,
+        preRotated = false,
+    },
+    ["Cursor Point"] = {
+        texture = "Interface\\CURSOR\\Point",
+        texCoord = nil,
+        preRotated = true,
+        rotation = 2.356,
+        offsetX = 0,   -- Shift right to center fingertip
+        offsetY = 0,  -- Shift down to center fingertip
+    },
+}
+
+-- Arrow color presets
+local ARROW_COLORS = {
+    ["Yellow"]  = {1.0, 1.0, 0.0},
+    ["Gold"]    = {1.0, 0.82, 0.0},
+    ["Orange"]  = {1.0, 0.5, 0.0},
+    ["Red"]     = {1.0, 0.2, 0.2},
+    ["Green"]   = {0.2, 1.0, 0.2},
+    ["Blue"]    = {0.3, 0.6, 1.0},
+    ["Purple"]  = {0.7, 0.3, 1.0},
+    ["White"]   = {1.0, 1.0, 1.0},
+}
+
+local function GetArrowColor()
+    local colorName = EasyFind.db.arrowColor or "Yellow"
+    return ARROW_COLORS[colorName] or ARROW_COLORS["Yellow"]
+end
+
+-- Store in namespace so all modules can access it
+ns.GetArrowTexture = function()
+    local style = EasyFind.db.arrowStyle or "EasyFind Arrow"
+    return ARROW_STYLES[style] or ARROW_STYLES["EasyFind Arrow"]
+end
+ns.GetArrowColor = GetArrowColor
+ns.ARROW_STYLES = ARROW_STYLES
+ns.ARROW_COLORS = ARROW_COLORS
+
+local GetArrowTexture = ns.GetArrowTexture
+
+-- =============================================================================
+-- UNIFIED SIZING — all values are in UI coordinate units (same as UIParent).
+-- Map code converts to canvas units via ns.UIToCanvas() so visual size matches.
+-- Changing a value here changes BOTH map and UI icons uniformly.
+-- =============================================================================
+
+-- Single-pin group (the indicator icon + pin + highlight are always sized together)
+ns.ICON_SIZE         = 48   -- Indicator icon (arrow/pointer/cursor)
+ns.ICON_GLOW_SIZE    = 68   -- Glow behind indicator icon
+ns.PIN_SIZE          = 56   -- Map pin icon (category icon, e.g. auction house)
+ns.PIN_GLOW_SIZE     = 80   -- Map pin glow
+ns.HIGHLIGHT_SIZE    = 60   -- Yellow highlight border box
+
+-- Multi-pin (slightly smaller so clusters don't overlap)
+ns.MULTI_SCALE       = 0.85
+
+-- Zone indicator (continent maps)
+ns.ZONE_ICON_SIZE      = 48
+ns.ZONE_ICON_GLOW_SIZE = 68
+
+-- Breadcrumb indicator
+ns.BREADCRUMB_SIZE   = 24
+
+--- Convert a size in UI units to canvas units so it appears the same visual
+--- size as a same-valued element on UIParent.
+--- WoW's map zooms by making the canvas LARGER, not by changing scale.
+--- So the conversion is: canvasWidth / viewportWidth (canvas units per screen unit).
+--- @param uiSize number  size in UI coordinate units
+--- @return number  equivalent canvas coordinate units
+function ns.UIToCanvas(uiSize)
+    local sc = WorldMapFrame and WorldMapFrame.ScrollContainer
+    if not sc or not sc.Child then return uiSize end
+    local canvasW  = sc.Child:GetWidth()
+    local viewportW = sc:GetWidth()
+    if not canvasW or canvasW == 0 or not viewportW or viewportW == 0 then
+        return uiSize
+    end
+    return uiSize * (canvasW / viewportW)
+end
+
+-- =============================================================================
+-- SHARED ICON CREATION / UPDATE
+-- Every indicator icon in the addon (map search, zone search, UI search, breadcrumb)
+-- MUST use these two functions so they all look identical.
+-- =============================================================================
+
+--- Create icon + glow textures on a parent frame.
+--- Returns nothing; sets parentFrame.arrow and parentFrame.glow.
+--- @param parentFrame Frame  - the frame the icon sits in
+--- @param iconSize number|nil  - override size (defaults to ns.ICON_SIZE)
+--- @param glowSize number|nil  - override glow (defaults to ns.ICON_GLOW_SIZE; 0 = no glow)
+function ns.CreateArrowTextures(parentFrame, iconSize, glowSize)
+    iconSize = iconSize or ns.ICON_SIZE
+    glowSize = glowSize or ns.ICON_GLOW_SIZE
+    local style = GetArrowTexture()
+    local color = GetArrowColor()
+    local ox, oy = style.offsetX or 0, style.offsetY or 0
+
+    -- Icon texture
+    local arrow = parentFrame:CreateTexture(nil, "ARTWORK")
+    arrow:SetSize(iconSize, iconSize)
+    arrow:SetPoint("CENTER", parentFrame, "CENTER", ox, oy)
+    arrow:SetTexture(style.texture)
+    if style.texCoord then
+        arrow:SetTexCoord(unpack(style.texCoord))
+    end
+    arrow:SetVertexColor(color[1], color[2], color[3], 1)
+    if style.rotation then
+        arrow:SetRotation(style.rotation)
+    elseif not style.preRotated then
+        arrow:SetRotation(mpi)
+    end
+    parentFrame.arrow = arrow
+
+    -- Glow texture (optional)
+    if glowSize and glowSize > 0 then
+        local glow = parentFrame:CreateTexture(nil, "BACKGROUND")
+        glow:SetSize(glowSize, glowSize)
+        glow:SetPoint("CENTER")
+        glow:SetTexture("Interface\\Cooldown\\star4")
+        glow:SetVertexColor(color[1], color[2], color[3], 0.7)
+        glow:SetBlendMode("ADD")
+        parentFrame.glow = glow
+    end
+
+    -- Auto-update on every Show so arrows are ALWAYS in sync with settings.
+    parentFrame:HookScript("OnShow", function(self)
+        ns.UpdateArrow(self)
+    end)
+end
+
+--- Update an existing arrow (and optional glow) to match current settings.
+--- Works on any frame that was set up with ns.CreateArrowTextures.
+--- @param parentFrame Frame
+function ns.UpdateArrow(parentFrame)
+    if not parentFrame or not parentFrame.arrow then return end
+    local style = GetArrowTexture()
+    local color = GetArrowColor()
+    local tex = parentFrame.arrow
+    local ox, oy = style.offsetX or 0, style.offsetY or 0
+
+    tex:SetTexture(style.texture)
+    if style.texCoord then
+        tex:SetTexCoord(unpack(style.texCoord))
+    else
+        tex:SetTexCoord(0, 1, 0, 1)
+    end
+    -- Use directional override if set, otherwise use style default
+    if parentFrame.arrowDirection then
+        tex:SetRotation(ns.GetDirectionalRotation(parentFrame.arrowDirection))
+    elseif style.rotation then
+        tex:SetRotation(style.rotation)
+    elseif style.preRotated then
+        tex:SetRotation(0)
+    else
+        tex:SetRotation(mpi)
+    end
+    tex:SetVertexColor(color[1], color[2], color[3], 1)
+    tex:ClearAllPoints()
+    tex:SetPoint("CENTER", parentFrame, "CENTER", ox, oy)
+
+    -- Sync texture size to frame size (frame gets resized at show time;
+    -- the texture must match or it stays at its creation-time size).
+    local fw, fh = parentFrame:GetSize()
+    if fw and fw > 0 then
+        tex:SetSize(fw, fh)
+    end
+
+    if parentFrame.glow then
+        parentFrame.glow:SetVertexColor(color[1], color[2], color[3], 0.7)
+    end
+
+    -- Apply user icon scale to UI arrows (map arrows handle scale in their own sizing code)
+    if parentFrame.isUIArrow then
+        parentFrame:SetScale(EasyFind.db.iconScale or 1.0)
+    end
+end
+
+--- Compute the rotation for an arrow pointing in a given direction.
+--- Takes the style's own rotation into account so every style works correctly.
+--- @param direction string "down"|"up"|"left"|"right"
+--- @return number rotation in radians
+function ns.GetDirectionalRotation(direction)
+    local style = GetArrowTexture()
+    -- Base rotation is whatever points the arrow downward:
+    --   preRotated arrows already point down at rotation=0
+    --   non-preRotated arrows point down at rotation=mpi
+    local baseDown = style.rotation or (style.preRotated and 0 or mpi)
+    if direction == "down" then
+        return baseDown
+    elseif direction == "up" then
+        return baseDown + mpi      -- flip 180°
+    elseif direction == "right" then
+        return baseDown - mpi / 2  -- 90° CW
+    elseif direction == "left" then
+        return baseDown + mpi / 2  -- 90° CCW
+    end
+    return baseDown
+end
+
 local searchFrame       -- Local search bar (left)
 local globalSearchFrame -- Global search bar (right)
 local activeSearchFrame -- Which bar is currently active
 local resultsFrame
 local resultButtons = {}
-local MAX_RESULTS = 20  -- Increased for grouped results
+local MAX_RESULTS = 12
 local highlightFrame
 local arrowFrame
 local currentHighlightedPin
@@ -536,7 +753,7 @@ local MAP_INDENT_COLOR = {0.40, 0.85, 1.00, 0.70}  -- cyan
 function MapSearch:CreateResultButton(index)
     local btn = CreateFrame("Button", "EasyFindMapResultButton"..index, resultsFrame)
     btn:SetSize(280, 24)
-    btn:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 10, -10 - (index - 1) * 26)
+    -- No fixed SetPoint here; ShowResults positions dynamically
     
     btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
     
@@ -613,26 +830,11 @@ function MapSearch:CreateHighlightFrame()
     right:SetPoint("BOTTOMLEFT", highlightFrame, "BOTTOMRIGHT", 0, -5)
     highlightFrame.right = right
     
-    -- Arrow pointing down to the location - FIXED LARGE SIZE
+    -- Arrow pointing down to the location
     arrowFrame = CreateFrame("Frame", "EasyFindMapArrow", highlightFrame)
-    arrowFrame:SetSize(128, 128)  -- FIXED 128x128 arrow - same everywhere
+    arrowFrame:SetSize(ns.ICON_SIZE, ns.ICON_SIZE)
     arrowFrame:SetPoint("BOTTOM", highlightFrame, "TOP", 0, 2)
-    
-    local arrow = arrowFrame:CreateTexture(nil, "ARTWORK")
-    arrow:SetAllPoints()
-    arrow:SetTexture("Interface\\MINIMAP\\MiniMap-QuestArrow")
-    arrow:SetVertexColor(1, 1, 0, 1)
-    arrow:SetRotation(mpi)  -- Point downward
-    arrowFrame.arrow = arrow
-    
-    -- Add glow behind arrow for visibility
-    local arrowGlow = arrowFrame:CreateTexture(nil, "BACKGROUND")
-    arrowGlow:SetSize(180, 180)  -- FIXED 180x180 glow - same everywhere
-    arrowGlow:SetPoint("CENTER")
-    arrowGlow:SetTexture("Interface\\Cooldown\\star4")
-    arrowGlow:SetVertexColor(1, 1, 0, 0.7)
-    arrowGlow:SetBlendMode("ADD")
-    arrowFrame.glow = arrowGlow
+    ns.CreateArrowTextures(arrowFrame)
     
     local animGroup = highlightFrame:CreateAnimationGroup()
     animGroup:SetLooping("BOUNCE")
@@ -657,13 +859,19 @@ function MapSearch:CreateHighlightFrame()
     waypointPin:SetFrameLevel(2000)
     waypointPin:Hide()
     
+    -- Enable mouse so hovering over the final-location pin dismisses the highlight
+    waypointPin:EnableMouse(true)
+    waypointPin:SetScript("OnEnter", function()
+        MapSearch:ClearHighlight()
+    end)
+    
     local wpIcon = waypointPin:CreateTexture(nil, "ARTWORK")
     wpIcon:SetAllPoints()
     waypointPin.icon = wpIcon
     
-    -- Add a pulsing glow effect around the icon
+    -- Add a pulsing glow effect around the icon (ALWAYS YELLOW - this is a pin, not an arrow)
     local glow = waypointPin:CreateTexture(nil, "BACKGROUND")
-    glow:SetSize(100, 100)  -- Larger glow
+    glow:SetSize(100, 100)
     glow:SetPoint("CENTER")
     glow:SetTexture("Interface\\Cooldown\\star4")
     glow:SetVertexColor(1, 1, 0, 0.8)
@@ -691,7 +899,7 @@ function MapSearch:CreateZoneHighlightFrame()
     -- Store references to zone highlight textures
     zoneHighlightFrame.highlights = {}
     
-    -- Create a pool of highlight textures we can reuse
+    -- Create a pool of highlight textures we can reuse (ALWAYS YELLOW)
     for i = 1, 10 do
         local highlight = zoneHighlightFrame:CreateTexture("EasyFindZoneHighlight"..i, "OVERLAY")
         highlight:SetColorTexture(1, 1, 0, 0.5)
@@ -704,31 +912,17 @@ function MapSearch:CreateZoneHighlightFrame()
     local animGroup = zoneHighlightFrame:CreateAnimationGroup()
     animGroup:SetLooping("BOUNCE")
     local alpha = animGroup:CreateAnimation("Alpha")
-    alpha:SetFromAlpha(0.6)
-    alpha:SetToAlpha(0.3)
+    alpha:SetFromAlpha(0.75)
+    alpha:SetToAlpha(0.5)
     alpha:SetDuration(0.5)
     zoneHighlightFrame.animGroup = animGroup
     
-    -- Create arrow for zone highlighting - FIXED size, does not scale
+    -- Create arrow for zone highlighting
     local zoneArrow = CreateFrame("Frame", "EasyFindZoneArrow", WorldMapFrame.ScrollContainer.Child)
-    zoneArrow:SetSize(128, 128)  -- Fixed LARGE arrow
+    zoneArrow:SetSize(ns.ICON_SIZE, ns.ICON_SIZE)
     zoneArrow:SetFrameStrata("TOOLTIP")
-    zoneArrow:SetFrameLevel(500)  -- Very high to ensure visibility
-    
-    local arrowTex = zoneArrow:CreateTexture(nil, "OVERLAY")
-    arrowTex:SetAllPoints()
-    arrowTex:SetTexture("Interface\\MINIMAP\\MiniMap-QuestArrow")  -- Proper arrow texture
-    arrowTex:SetVertexColor(1, 1, 0, 1)
-    arrowTex:SetRotation(mpi)  -- Point downward by default
-    zoneArrow.arrow = arrowTex
-    
-    local arrowGlow = zoneArrow:CreateTexture(nil, "BACKGROUND")
-    arrowGlow:SetSize(180, 180)  -- Big glow
-    arrowGlow:SetPoint("CENTER")
-    arrowGlow:SetTexture("Interface\\Cooldown\\star4")
-    arrowGlow:SetVertexColor(1, 1, 0, 1)  -- Full opacity glow
-    arrowGlow:SetBlendMode("ADD")
-    zoneArrow.glow = arrowGlow
+    zoneArrow:SetFrameLevel(500)
+    ns.CreateArrowTextures(zoneArrow)
     
     local arrowAnimGroup = zoneArrow:CreateAnimationGroup()
     arrowAnimGroup:SetLooping("BOUNCE")
@@ -755,13 +949,17 @@ function MapSearch:GetDirectChildZones(mapID)
     if children then
         for _, child in ipairs(children) do
             if child.name and not seen[child.mapID] then
-                seen[child.mapID] = true
-                tinsert(zones, {
-                    mapID = child.mapID,
-                    name = child.name,
-                    mapType = child.mapType,
-                    parentMapID = mapID
-                })
+                -- Skip dungeon, micro, and orphan maps — only include navigable zones
+                local mt = child.mapType
+                if mt ~= Enum.UIMapType.Dungeon and mt ~= Enum.UIMapType.Micro and mt ~= Enum.UIMapType.Orphan then
+                    seen[child.mapID] = true
+                    tinsert(zones, {
+                        mapID = child.mapID,
+                        name = child.name,
+                        mapType = child.mapType,
+                        parentMapID = mapID
+                    })
+                end
             end
         end
     end
@@ -825,20 +1023,24 @@ function MapSearch:GetAllWorldZones(startMapID, depth, parentPath)
                 tinsert(fullPath, {mapID = startMapID, name = parentName})
             end
             
-            tinsert(allZones, {
-                mapID = child.mapID,
-                name = child.name,
-                mapType = child.mapType,
-                parentMapID = startMapID,
-                parentName = parentName,
-                path = fullPath,  -- Full hierarchy path
-                depth = depth
-            })
-            
-            -- Recurse into children
-            local subZones = self:GetAllWorldZones(child.mapID, depth + 1, fullPath)
-            for _, subZone in ipairs(subZones) do
-                tinsert(allZones, subZone)
+            -- Skip dungeon, micro, and orphan maps — only include navigable zones
+            local mt = child.mapType
+            if mt ~= Enum.UIMapType.Dungeon and mt ~= Enum.UIMapType.Micro and mt ~= Enum.UIMapType.Orphan then
+                tinsert(allZones, {
+                    mapID = child.mapID,
+                    name = child.name,
+                    mapType = child.mapType,
+                    parentMapID = startMapID,
+                    parentName = parentName,
+                    path = fullPath,  -- Full hierarchy path
+                    depth = depth
+                })
+                
+                -- Recurse into children
+                local subZones = self:GetAllWorldZones(child.mapID, depth + 1, fullPath)
+                for _, subZone in ipairs(subZones) do
+                    tinsert(allZones, subZone)
+                end
             end
         end
     end
@@ -846,7 +1048,45 @@ function MapSearch:GetAllWorldZones(startMapID, depth, parentPath)
     return allZones
 end
 
+-- Parent map overrides for guided navigation
+-- Some zones have incorrect parentMapID in the WoW API, causing guided navigation
+-- to route through maps where the target zone isn't clickable.
+-- Maps [childMapID] = correctedParentMapID
+local ZONE_PARENT_OVERRIDES = {
+    [2346] = 2274, -- Undermine → Khaz Algar (API incorrectly says The Ringing Deeps 2214)
+}
+
 -- Search for zones matching query
+-- Common abbreviations for major cities/zones
+-- Maps lowercase abbreviation → lowercase zone name
+local ZONE_ABBREVIATIONS = {
+    ["sw"] = "stormwind city",
+    ["stormwind"] = "stormwind city",
+    ["og"] = "orgrimmar",
+    ["org"] = "orgrimmar",
+    ["if"] = "ironforge",
+    ["tb"] = "thunder bluff",
+    ["uc"] = "undercity",
+    ["darn"] = "darnassus",
+    ["exo"] = "the exodar",
+    ["smc"] = "silvermoon city",
+    ["silvermoon"] = "silvermoon city",
+    ["dal"] = "dalaran",
+    ["bb"] = "booty bay",
+    ["sh"] = "shattrath city",
+    ["shatt"] = "shattrath city",
+    ["shat"] = "shattrath city",
+    ["daz"] = "dazar'alor",
+    ["bor"] = "boralus",
+    ["orib"] = "oribos",
+    ["vald"] = "valdrakken",
+    ["zand"] = "zandalar",
+    ["kt"] = "kul tiras",
+    ["ek"] = "eastern kingdoms",
+    ["kali"] = "kalimdor",
+    ["dk"] = "acherus: the ebon hold",
+}
+
 function MapSearch:SearchZones(query)
     if not query or query == "" then return {} end
     
@@ -877,34 +1117,18 @@ function MapSearch:SearchZones(query)
     end
     
     local matches = {}
+    local abbrevTarget = ZONE_ABBREVIATIONS[query]  -- check once outside loop
     
     for _, zone in ipairs(zones) do
         local nameLower = slower(zone.name)
-        local score = 0
+        local score = ns.Database:ScoreName(nameLower, query, #query)
         
-        if nameLower == query then
-            score = 100  -- Exact match
-        elseif sfind(nameLower, "^" .. query) then
-            score = 80   -- Starts with
-        elseif ns.Database:FindAtWordBoundary(nameLower, query) then
-            score = 70   -- Contains at word boundary
-        elseif sfind(nameLower, query, 1, true) then
-            score = 20   -- Mid-word substring (low)
+        -- Check abbreviation match (e.g. "sw" → "stormwind city")
+        if abbrevTarget and nameLower == abbrevTarget then
+            score = mmax(score, 200)  -- Treat as exact match
         end
         
-        -- Initials matching for zone names
-        if score < 70 then
-            local initScore = ns.Database:ScoreInitials(nameLower, query)
-            if initScore > 0 then score = mmax(score, initScore - 40) end  -- scale down for zones
-        end
-        
-        -- Fuzzy matching for zone names (typo tolerance)
-        if score < 50 and #query >= 4 then
-            local fuzzyScore = ns.Database:ScoreFuzzy(nameLower, query, #query)
-            if fuzzyScore > 0 then score = mmax(score, fuzzyScore - 20) end
-        end
-        
-        if score > 0 then
+        if score >= 50 then
             zone.score = score
             tinsert(matches, zone)
         end
@@ -1022,6 +1246,7 @@ function MapSearch:HighlightZone(mapID)
     
     -- Save pending navigation before clearing (we might be highlighting an intermediate zone)
     local savedPending = self.pendingZoneHighlight
+    local savedWaypoint = self.pendingWaypoint
     DebugPrint("[EasyFind] HighlightZone: saved pending:", savedPending)
     
     -- Hide previous highlights
@@ -1029,6 +1254,7 @@ function MapSearch:HighlightZone(mapID)
     
     -- Restore pending navigation
     self.pendingZoneHighlight = savedPending
+    self.pendingWaypoint = savedWaypoint
     DebugPrint("[EasyFind] HighlightZone: restored pending:", self.pendingZoneHighlight)
     
     local canvas = WorldMapFrame.ScrollContainer.Child
@@ -1100,10 +1326,7 @@ function MapSearch:HighlightZone(mapID)
     
     DebugPrint("[EasyFind] HighlightZone: texPercentX:", texPercentX, "texPercentY:", texPercentY, "texWidth:", texWidth, "texHeight:", texHeight)
     
-    -- TEMPORARILY force fallback to test if highlighting works at all
-    local useFallback = true  -- SET TO false TO USE ZONE TEXTURES
-    
-    if not useFallback and highlightSuccess and fileDataID and fileDataID > 0 and posX and posY and texPercentX and texPercentY then
+    if highlightSuccess and fileDataID and fileDataID > 0 and posX and posY and texPercentX and texPercentY then
         DebugPrint("[EasyFind] HighlightZone: Using actual zone texture")
         -- Use the actual zone shape texture with correct positioning!
         -- IMPORTANT: posX, posY, texWidth, texHeight are NORMALIZED (0-1), must convert to pixels!
@@ -1112,27 +1335,36 @@ function MapSearch:HighlightZone(mapID)
         local pixelWidth = texWidth * canvasWidth
         local pixelHeight = texHeight * canvasHeight
         
-        highlight:SetTexture(fileDataID)
-        highlight:SetTexCoord(0, texPercentX, 0, texPercentY)
-        highlight:SetVertexColor(1, 1, 0, 1)  -- Full bright yellow, full opacity
-        highlight:SetBlendMode("ADD")
-        highlight:SetPoint("TOPLEFT", canvas, "TOPLEFT", pixelPosX, -pixelPosY)
-        highlight:SetSize(pixelWidth, pixelHeight)
-        DebugPrint("[EasyFind] HighlightZone: texture set at", pixelPosX, pixelPosY, "size", pixelWidth, pixelHeight)
+        -- Stack multiple layers of the zone texture for a stronger highlight effect.
+        -- ADD blending is subtle on the light map, so layering 3x makes it really pop.
+        local layers = 4
+        for i = 1, layers do
+            local hl = zoneHighlightFrame.highlights[i]
+            if hl then
+                hl:ClearAllPoints()
+                hl:SetTexture(fileDataID)
+                hl:SetTexCoord(0, texPercentX, 0, texPercentY)
+                hl:SetVertexColor(1, 1, 0, 1)  -- Full bright yellow
+                hl:SetBlendMode("ADD")
+                hl:SetPoint("TOPLEFT", canvas, "TOPLEFT", pixelPosX, -pixelPosY)
+                hl:SetSize(pixelWidth, pixelHeight)
+                hl:Show()
+            end
+        end
+        DebugPrint("[EasyFind] HighlightZone: stacked", layers, "layers at", pixelPosX, pixelPosY, "size", pixelWidth, pixelHeight)
     else
         DebugPrint("[EasyFind] HighlightZone: Using fallback colored overlay")
         -- Fallback: use a simple colored overlay on the zone bounds
-        -- Make it VERY visible - bright yellow, high opacity
-        highlight:SetColorTexture(1, 1, 0, 0.6)  -- Bright yellow semi-transparent
+        -- Make it VERY visible - bright yellow, high opacity (ALWAYS YELLOW)
+        highlight:SetColorTexture(1, 1, 0, 0.75)
         highlight:SetBlendMode("BLEND")
         highlight:SetPoint("TOPLEFT", canvas, "TOPLEFT", zoneLeftPx, -zoneTopPx)
         highlight:SetSize(width, height)
+        highlight:Show()
         DebugPrint("[EasyFind] HighlightZone: fallback at", zoneLeftPx, zoneTopPx, "size", width, height)
     end
     
-    DebugPrint("[EasyFind] HighlightZone: About to show highlight")
-    highlight:Show()
-    DebugPrint("[EasyFind] HighlightZone: highlight:IsShown() =", highlight:IsShown())
+    DebugPrint("[EasyFind] HighlightZone: About to show frame")
     zoneHighlightFrame:Show()
     DebugPrint("[EasyFind] HighlightZone: zoneHighlightFrame:IsShown() =", zoneHighlightFrame:IsShown())
     zoneHighlightFrame.animGroup:Play()
@@ -1141,45 +1373,38 @@ function MapSearch:HighlightZone(mapID)
     -- Position arrow with smart bounds checking
     if zoneHighlightFrame.arrow then
         local arrow = zoneHighlightFrame.arrow
-        -- FORCE arrow to 128x128 every time - never trust cached size
-        arrow:SetSize(128, 128)
+        -- Convert UI-unit sizes to canvas units so it's visible on continent maps
+        local userScale = EasyFind.db.iconScale or 1.0
+        local arrowSize     = ns.UIToCanvas(ns.ZONE_ICON_SIZE)      * userScale
+        local arrowGlowSize = ns.UIToCanvas(ns.ZONE_ICON_GLOW_SIZE) * userScale
+        arrow:SetSize(arrowSize, arrowSize)
         arrow:SetFrameStrata("TOOLTIP")
         arrow:SetFrameLevel(500)
         if arrow.glow then
-            arrow.glow:SetSize(180, 180)
+            arrow.glow:SetSize(arrowGlowSize, arrowGlowSize)
         end
-        if arrow.arrow then
-            arrow.arrow:SetVertexColor(1, 1, 0, 1)  -- Ensure full brightness
-        end
-        local arrowSize = 128  -- Fixed LARGE arrow size
-        local margin = 50  -- Space needed above zone for arrow
+        -- DO NOT override color/texture here — OnShow hook handles it via ns.UpdateArrow
+        local margin = 50
         
         arrow:ClearAllPoints()
         
         DebugPrint("[EasyFind] HighlightZone: arrow positioning - zoneTopPx:", zoneTopPx, "margin+arrowSize:", margin + arrowSize)
         
-        -- Check if there's room above the zone
+        -- Set direction on the frame — ns.UpdateArrow (via OnShow hook) reads this
         if zoneTopPx > margin + arrowSize then
-            -- Place arrow above, pointing down
-            arrow.arrow:SetRotation(mpi)  -- Point down
+            arrow.arrowDirection = "down"
             arrow:SetPoint("BOTTOM", canvas, "TOPLEFT", zoneCenterPxX, -(zoneTopPx - 10))
             DebugPrint("[EasyFind] Arrow placed ABOVE zone")
-        -- Check if there's room below the zone
         elseif (canvasHeight - zoneBottomPx) > margin + arrowSize then
-            -- Place arrow below, pointing up
-            arrow.arrow:SetRotation(0)  -- Point up
+            arrow.arrowDirection = "up"
             arrow:SetPoint("TOP", canvas, "TOPLEFT", zoneCenterPxX, -(zoneBottomPx + 10))
             DebugPrint("[EasyFind] Arrow placed BELOW zone")
-        -- Check if there's room to the left
         elseif zoneLeftPx > margin + arrowSize then
-            -- Place arrow to the left, pointing right
-            arrow.arrow:SetRotation(-mpi/2)  -- Point right
+            arrow.arrowDirection = "right"
             arrow:SetPoint("RIGHT", canvas, "TOPLEFT", zoneLeftPx - 10, -zoneCenterPxY)
             DebugPrint("[EasyFind] Arrow placed LEFT of zone")
-        -- Place arrow to the right
         else
-            -- Place arrow to the right, pointing left
-            arrow.arrow:SetRotation(mpi/2)  -- Point left
+            arrow.arrowDirection = "left"
             arrow:SetPoint("LEFT", canvas, "TOPLEFT", zoneRightPx + 10, -zoneCenterPxY)
             DebugPrint("[EasyFind] Arrow placed RIGHT of zone")
         end
@@ -1193,19 +1418,7 @@ function MapSearch:HighlightZone(mapID)
         DebugPrint("[EasyFind] HighlightZone: no arrow frame!")
     end
     
-    -- Show zone name label
-    if not zoneHighlightFrame.label then
-        local label = zoneHighlightFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-        label:SetTextColor(1, 1, 0, 1)
-        zoneHighlightFrame.label = label
-    end
-    
-    zoneHighlightFrame.label:SetText(mapInfo.name)
-    zoneHighlightFrame.label:ClearAllPoints()
-    zoneHighlightFrame.label:SetPoint("CENTER", canvas, "TOPLEFT", zoneCenterPxX, -zoneCenterPxY)
-    zoneHighlightFrame.label:Show()
-    
-    DebugPrint("[EasyFind] HighlightZone: COMPLETE - label showing:", mapInfo.name)
+    DebugPrint("[EasyFind] HighlightZone: COMPLETE for zone:", mapInfo.name)
     
     return true
 end
@@ -1215,10 +1428,6 @@ function MapSearch:ClearZoneHighlight()
     
     for _, highlight in ipairs(zoneHighlightFrame.highlights) do
         highlight:Hide()
-    end
-    
-    if zoneHighlightFrame.label then
-        zoneHighlightFrame.label:Hide()
     end
     
     if zoneHighlightFrame.border then
@@ -1250,6 +1459,7 @@ function MapSearch:ClearZoneHighlight()
     
     -- Clear any pending navigation
     self.pendingZoneHighlight = nil
+    self.pendingWaypoint = nil
 end
 
 -- Highlight a zone with step-by-step navigation guidance (teaching mode)
@@ -1265,11 +1475,15 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
     
     DebugPrint("[EasyFind] Target zone:", targetInfo.name)
     
-    local targetParentMapID = targetInfo.parentMapID
+    local targetParentMapID = ZONE_PARENT_OVERRIDES[targetMapID] or targetInfo.parentMapID
     if not targetParentMapID then
         DebugPrint("[EasyFind] No parent, going directly to zone")
         WorldMapFrame:SetMapID(targetMapID)
         return
+    end
+    
+    if ZONE_PARENT_OVERRIDES[targetMapID] then
+        DebugPrint("[EasyFind] Using parent override for", targetMapID, "→", targetParentMapID)
     end
     
     local targetParentInfo = C_Map.GetMapInfo(targetParentMapID)
@@ -1287,6 +1501,10 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
     -- CASE 1: We're already on the target's parent map - just highlight the zone!
     if currentMapID == targetParentMapID then
         DebugPrint("[EasyFind] CASE 1: Already on target parent, highlighting zone")
+        -- Clear pendingZoneHighlight — this is the final zone-level step.
+        -- When the user clicks into the zone, OnMapChanged should fall through
+        -- to pendingWaypoint (if any) instead of re-triggering zone navigation.
+        self.pendingZoneHighlight = nil
         C_Timer.After(0.05, function()
             self:HighlightZone(targetMapID)
         end)
@@ -1367,7 +1585,7 @@ function MapSearch:GetMapPath(mapID)
         local info = C_Map.GetMapInfo(currentID)
         if info then
             tinsert(path, 1, {mapID = currentID, name = info.name, mapType = info.mapType})
-            currentID = info.parentMapID
+            currentID = ZONE_PARENT_OVERRIDES[currentID] or info.parentMapID
         else
             break
         end
@@ -1383,6 +1601,7 @@ function MapSearch:HighlightBreadcrumbForNavigation(dcaMapID, finalTargetMapID, 
     
     -- Save pending before clear
     local savedPending = finalTargetMapID
+    local savedWaypoint = self.pendingWaypoint
     self:ClearZoneHighlight()
     
     local navBar = WorldMapFrame.NavBar
@@ -1390,6 +1609,7 @@ function MapSearch:HighlightBreadcrumbForNavigation(dcaMapID, finalTargetMapID, 
         DebugPrint("[EasyFind] No NavBar found, direct nav to DCA")
         WorldMapFrame:SetMapID(dcaMapID)
         self.pendingZoneHighlight = savedPending
+        self.pendingWaypoint = savedWaypoint
         return
     end
     
@@ -1418,11 +1638,13 @@ function MapSearch:HighlightBreadcrumbForNavigation(dcaMapID, finalTargetMapID, 
     
     if buttonToHighlight and buttonToHighlight:IsShown() then
         DebugPrint("[EasyFind] Button found and shown, highlighting it")
+        self.pendingWaypoint = savedWaypoint
         self:ShowBreadcrumbHighlight(buttonToHighlight, savedPending)
     else
         DebugPrint("[EasyFind] No button found or not shown, navigating directly to DCA")
         -- CRITICAL: Set pending BEFORE SetMapID because SetMapID triggers OnMapChanged synchronously!
         self.pendingZoneHighlight = savedPending
+        self.pendingWaypoint = savedWaypoint
         DebugPrint("[EasyFind] Set pendingZoneHighlight BEFORE SetMapID:", savedPending)
         WorldMapFrame:SetMapID(dcaMapID)
     end
@@ -1517,14 +1739,14 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
         alpha:SetDuration(0.4)
         hl.animGroup = animGroup
         
-        -- Arrow pointing to button - smaller for UI elements but still visible
-        local arrow = hl:CreateTexture(nil, "OVERLAY")
-        arrow:SetSize(48, 48)  -- Good size for breadcrumb buttons
-        arrow:SetTexture("Interface\\MINIMAP\\MiniMap-QuestArrow")
-        arrow:SetVertexColor(1, 1, 0, 1)
-        arrow:SetRotation(mpi)  -- Point down
-        arrow:SetPoint("BOTTOM", hl, "TOP", 0, 8)
-        hl.arrow = arrow
+        -- Arrow pointing to button - uses a wrapper frame so shared helper works
+        local bcArrowFrame = CreateFrame("Frame", nil, hl)
+        bcArrowFrame:SetSize(ns.BREADCRUMB_SIZE, ns.BREADCRUMB_SIZE)
+        bcArrowFrame:SetPoint("BOTTOM", hl, "TOP", 0, 8)
+        ns.CreateArrowTextures(bcArrowFrame, ns.BREADCRUMB_SIZE, 0)
+        hl.arrowFrame = bcArrowFrame
+        -- Keep .arrow reference for compat
+        hl.arrow = bcArrowFrame.arrow
         
         self.breadcrumbHighlight = hl
     end
@@ -1573,6 +1795,12 @@ function MapSearch:HookWorldMap()
         DebugPrint("[EasyFind] OnMapChanged - new map:", newMapInfo and newMapInfo.name or "nil", "ID:", newMapID)
         DebugPrint("[EasyFind] OnMapChanged - pendingZoneHighlight:", self.pendingZoneHighlight)
         
+        -- Snapshot pending values BEFORE clearing anything.
+        -- SetText("") below fires OnTextChanged → OnSearchTextChanged("") → ClearZoneHighlight(),
+        -- which would wipe these if we didn't save them first.
+        local savedPendingZone = self.pendingZoneHighlight
+        local savedPendingWaypoint = self.pendingWaypoint
+        
         self:HideResults()
         self:ClearHighlight()
         
@@ -1590,15 +1818,22 @@ function MapSearch:HookWorldMap()
         end
         
         -- Check if we have a pending zone to highlight (step-by-step navigation)
-        if self.pendingZoneHighlight then
-            local targetMapID = self.pendingZoneHighlight
-            self.pendingZoneHighlight = nil
+        if savedPendingZone then
+            DebugPrint("[EasyFind] OnMapChanged - continuing navigation to:", savedPendingZone)
             
-            DebugPrint("[EasyFind] OnMapChanged - continuing navigation to:", targetMapID)
+            -- Restore waypoint so it survives through the rest of the navigation chain
+            self.pendingWaypoint = savedPendingWaypoint
             
             -- Continue the step-by-step navigation
             C_Timer.After(0.1, function()
-                self:HighlightZoneOnMap(targetMapID)
+                self:HighlightZoneOnMap(savedPendingZone)
+            end)
+        elseif savedPendingWaypoint then
+            -- We arrived at a zone with a pending waypoint (e.g. dungeon entrance)
+            DebugPrint("[EasyFind] OnMapChanged - showing pending waypoint at:", savedPendingWaypoint.x, savedPendingWaypoint.y)
+            
+            C_Timer.After(0.1, function()
+                self:ShowWaypointAt(savedPendingWaypoint.x, savedPendingWaypoint.y, savedPendingWaypoint.icon, savedPendingWaypoint.category)
             end)
         else
             DebugPrint("[EasyFind] OnMapChanged - no pending, clearing highlights")
@@ -1650,6 +1885,102 @@ function MapSearch:GetRelatedCategories(category)
     end
     
     return related
+end
+
+-- Scan dungeon/raid entrances for the given map using the Encounter Journal API
+-- Returns POI-style entries with name, position, category (dungeon/raid), and the zone mapID
+function MapSearch:ScanDungeonEntrances(mapID)
+    mapID = mapID or WorldMapFrame:GetMapID()
+    if not mapID then return {} end
+    if not C_EncounterJournal or not C_EncounterJournal.GetDungeonEntrancesForMap then return {} end
+    
+    local results = {}
+    local entrances = C_EncounterJournal.GetDungeonEntrancesForMap(mapID)
+    if not entrances then return results end
+    
+    for _, entrance in ipairs(entrances) do
+        if entrance.name and entrance.position then
+            -- Determine dungeon vs raid
+            local cat = "dungeon"
+            if entrance.journalInstanceID and EJ_GetInstanceInfo then
+                local _, _, _, _, _, _, _, _, _, _, entIsRaid = EJ_GetInstanceInfo(entrance.journalInstanceID)
+                if entIsRaid then
+                    cat = "raid"
+                end
+            end
+            
+            -- Build a parent zone label from the map this entrance is on
+            local mapInfo = C_Map.GetMapInfo(mapID)
+            local parentLabel = mapInfo and mapInfo.name or ""
+            
+            tinsert(results, {
+                name = entrance.name,
+                category = cat,
+                icon = nil,  -- use category icon
+                isStatic = true,
+                isDungeonEntrance = true,
+                entranceMapID = mapID,
+                x = entrance.position.x,
+                y = entrance.position.y,
+                pathPrefix = parentLabel,
+                keywords = {cat, "instance", "entrance", "portal"},
+            })
+        end
+    end
+    
+    return results
+end
+
+-- Scan dungeon entrances across ALL zone-type maps for global search
+-- This collects every dungeon/raid portal location in the game
+-- Results are cached since instance discovery doesn't change mid-session
+local cachedAllDungeonEntrances = nil
+
+function MapSearch:ScanAllDungeonEntrances()
+    if cachedAllDungeonEntrances then return cachedAllDungeonEntrances end
+    if not C_EncounterJournal or not C_EncounterJournal.GetDungeonEntrancesForMap then return {} end
+    
+    local allEntrances = {}
+    local seen = {}  -- Deduplicate by instance name + map
+    
+    -- Walk the full world tree collecting zone-type maps
+    local function collectZoneMaps(parentMapID, depth)
+        if depth > 6 then return end
+        local children = C_Map.GetMapChildrenInfo(parentMapID, nil, false)
+        if not children then return end
+        
+        for _, child in ipairs(children) do
+            if child.name then
+                local mt = child.mapType
+                -- Only scan Zone and Continent maps for dungeon entrances
+                if mt == Enum.UIMapType.Zone or mt == Enum.UIMapType.Continent then
+                    local entrances = self:ScanDungeonEntrances(child.mapID)
+                    for _, e in ipairs(entrances) do
+                        local key = e.name .. "|" .. child.mapID
+                        if not seen[key] then
+                            seen[key] = true
+                            tinsert(allEntrances, e)
+                        end
+                    end
+                end
+                -- Recurse into children (skip Dungeon/Micro/Orphan)
+                if mt ~= Enum.UIMapType.Dungeon and mt ~= Enum.UIMapType.Micro and mt ~= Enum.UIMapType.Orphan then
+                    collectZoneMaps(child.mapID, depth + 1)
+                end
+            end
+        end
+    end
+    
+    -- Start from Cosmic → all worlds
+    local cosmicChildren = C_Map.GetMapChildrenInfo(946, nil, false)
+    if cosmicChildren then
+        for _, child in ipairs(cosmicChildren) do
+            collectZoneMaps(child.mapID, 0)
+        end
+    end
+    
+    cachedAllDungeonEntrances = allEntrances
+    return allEntrances
 end
 
 function MapSearch:GetStaticLocations()
@@ -1881,8 +2212,9 @@ function MapSearch:OnSearchTextChanged(text)
         return
     end
     
-    -- Clear any previous zone highlights
+    -- Clear any previous zone highlights and POI highlights
     self:ClearZoneHighlight()
+    self:ClearHighlight()
     
     -- Search for zones (works for both local and global mode)
     local zoneMatches = {}
@@ -1895,6 +2227,14 @@ function MapSearch:OnSearchTextChanged(text)
     local dynamicPOIs = self:ScanMapPOIs()
     local staticLocations = self:GetStaticLocations()
     
+    -- Get dungeon/raid entrance locations
+    local dungeonEntrances = {}
+    if isGlobalSearch then
+        dungeonEntrances = self:ScanAllDungeonEntrances()
+    else
+        dungeonEntrances = self:ScanDungeonEntrances()
+    end
+    
     -- Combine them
     local allPOIs = {}
     
@@ -1902,7 +2242,6 @@ function MapSearch:OnSearchTextChanged(text)
     local groupedZones = self:GroupZonesByParent(zoneMatches)
     
     -- Add zone results - simple flat list with full path
-    local groupOrder = 1
     local zoneNames = {}  -- Track zone names to avoid duplicate POI entries
     
     for _, group in ipairs(groupedZones) do
@@ -1919,9 +2258,7 @@ function MapSearch:OnSearchTextChanged(text)
                 zoneMapID = zone.mapID,
                 pathPrefix = parentPath,
                 score = zone.score + 200,
-                groupOrder = groupOrder
             })
-            groupOrder = groupOrder + 1
         end
     end
     
@@ -1934,6 +2271,17 @@ function MapSearch:OnSearchTextChanged(text)
     for _, loc in ipairs(staticLocations) do
         if not zoneNames[slower(loc.name)] then
             tinsert(allPOIs, loc)
+        end
+    end
+    
+    -- Add dungeon/raid entrance locations (skip if already found by pin scanning)
+    local existingNames = {}
+    for _, poi in ipairs(allPOIs) do
+        existingNames[slower(poi.name)] = true
+    end
+    for _, entrance in ipairs(dungeonEntrances) do
+        if not existingNames[slower(entrance.name)] then
+            tinsert(allPOIs, entrance)
         end
     end
     
@@ -1955,47 +2303,25 @@ function MapSearch:SearchPOIs(pois, query)
         local nameLower = slower(poi.name)
         local key = poi.name .. (poi.category or "")
         
-        local score = 0
-        
-        if nameLower == query then
-            score = 300
-        elseif sfind(nameLower, query, 1, true) then
-            -- Distinguish word-boundary vs mid-word match
-            if ns.Database:FindAtWordBoundary(nameLower, query) then
-                score = 200
-            else
-                score = 80  -- mid-word match (low)
-            end
-        end
-        
-        -- Also check custom keywords for static locations
-        if poi.keywords and score == 0 then
-            for _, kw in ipairs(poi.keywords) do
-                local kwLower = slower(kw)
-                if sfind(kwLower, query, 1, true) then
-                    if ns.Database:FindAtWordBoundary(kwLower, query) then
-                        score = 180
-                    else
-                        score = 60
-                    end
-                    break
+        -- Zone results already scored by SearchZones — pass through directly
+        local score
+        if poi.isZone and poi.score then
+            score = poi.score
+        else
+            score = ns.Database:ScoreName(nameLower, query, #query)
+            
+            -- Also check custom keywords for static locations
+            if poi.keywords then
+                -- Build lowered keywords list for shared scorer
+                local kwLower = {}
+                for _, kw in ipairs(poi.keywords) do
+                    kwLower[#kwLower + 1] = slower(kw)
                 end
+                score = score + ns.Database:ScoreKeywords(kwLower, query, #query)
             end
         end
         
-        -- Initials matching for POI names
-        if score < 150 then
-            local initScore = ns.Database:ScoreInitials(nameLower, query)
-            if initScore > 0 then score = mmax(score, initScore) end
-        end
-        
-        -- Fuzzy matching for POI names
-        if score < 100 and #query >= 4 then
-            local fuzzyScore = ns.Database:ScoreFuzzy(nameLower, query, #query)
-            if fuzzyScore > 0 then score = mmax(score, fuzzyScore) end
-        end
-        
-        if score > 0 then
+        if score >= 50 then
             -- Track all instances in duplicates table
             if not duplicates[key] then
                 duplicates[key] = {}
@@ -2061,21 +2387,14 @@ function MapSearch:SearchPOIs(pois, query)
         end
     end
     
-    -- Sort results by score, BUT keep zone groups intact
-    -- Zone items have a groupOrder field that should be respected
+    -- Sort results by score
     tsort(results, function(a, b)
-        -- If both have groupOrder, sort by that first (keeps headers with their children)
-        if a.groupOrder and b.groupOrder then
-            return a.groupOrder < b.groupOrder
+        -- Zone results come before POI results at equal scores
+        if a.score == b.score then
+            if a.isZone and not b.isZone then return true end
+            if b.isZone and not a.isZone then return false end
+            return (a.name or "") < (b.name or "")
         end
-        -- Items with groupOrder come before items without (zones before POIs)
-        if a.groupOrder and not b.groupOrder then
-            return true
-        end
-        if b.groupOrder and not a.groupOrder then
-            return false
-        end
-        -- Otherwise sort by score
         return a.score > b.score
     end)
     return results
@@ -2088,6 +2407,7 @@ function MapSearch:ShowResults(results)
     end
     
     local count = mmin(#results, MAX_RESULTS)
+    local yOffset = -10  -- running vertical offset
     
     for i = 1, MAX_RESULTS do
         local btn = resultButtons[i]
@@ -2155,7 +2475,12 @@ function MapSearch:ShowResults(results)
                 
             else
                 -- Regular POI result
-                btn.text:SetText(data.name)
+                local displayText = data.name
+                -- For dungeon entrances from global search, show zone location
+                if data.isDungeonEntrance and data.pathPrefix and data.pathPrefix ~= "" then
+                    displayText = data.name .. " |cff666666(" .. data.pathPrefix .. ")|r"
+                end
+                btn.text:SetText(displayText)
                 btn.text:SetTextColor(1, 1, 1)
                 
                 local iconTexture = GetCategoryIcon(data.category)
@@ -2172,12 +2497,20 @@ function MapSearch:ShowResults(results)
             end
             
             btn:Show()
+            
+            -- Measure actual text height and size button to fit
+            local textHeight = btn.text:GetStringHeight() or 14
+            local rowHeight = mmax(24, textHeight + 8)  -- minimum 24, pad 8
+            btn:SetHeight(rowHeight)
+            btn:ClearAllPoints()
+            btn:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 10, yOffset)
+            yOffset = yOffset - rowHeight - 2
         else
             btn:Hide()
         end
     end
     
-    resultsFrame:SetHeight(20 + count * 26)
+    resultsFrame:SetHeight(-yOffset + 10)
     
     -- Anchor results dropdown to whichever search bar is active
     resultsFrame:ClearAllPoints()
@@ -2227,6 +2560,25 @@ function MapSearch:SelectResult(data)
             return
         end
         
+        -- Dungeon/raid entrance from global search: navigate to zone, then show waypoint
+        if data.isDungeonEntrance and data.entranceMapID then
+            local currentMapID = WorldMapFrame:GetMapID()
+            if currentMapID == data.entranceMapID then
+                -- Already on the right map, just show the waypoint
+                self:ShowWaypointAt(data.x, data.y, data.icon, data.category)
+            else
+                -- Store waypoint to show after we arrive at the zone
+                self.pendingWaypoint = {x = data.x, y = data.y, icon = data.icon, category = data.category}
+                if EasyFind.db.navigateToZonesDirectly then
+                    self:ClearZoneHighlight()
+                    WorldMapFrame:SetMapID(data.entranceMapID)
+                else
+                    self:HighlightZoneOnMap(data.entranceMapID, data.name)
+                end
+            end
+            return
+        end
+        
         -- Check if this POI has multiple instances (duplicates)
         if data.allInstances and #data.allInstances > 1 then
             -- Show ALL instances on the map
@@ -2249,16 +2601,14 @@ function MapSearch:ShowMultipleWaypoints(instances)
     if not canvas then return end
     
     local canvasWidth, canvasHeight = canvas:GetSize()
-    local scaleFactor = mmax(1, mmin(canvasWidth, canvasHeight) / 600)
-    local userScale = EasyFind.db.mapIconScale or 1.0
-    scaleFactor = scaleFactor * userScale
+    local userScale = EasyFind.db.iconScale or 1.0
+    local ms = ns.MULTI_SCALE  -- slightly smaller for clusters
     
-    local iconSize = 48 * scaleFactor
-    local glowSize = 72 * scaleFactor
-    local highlightSize = 60 * scaleFactor
-    -- ARROWS ARE FIXED SIZE - do not scale with map!
-    local arrowSize = 128  -- FIXED
-    local arrowGlowSize = 180  -- FIXED
+    local iconSize      = ns.UIToCanvas(ns.PIN_SIZE      * ms) * userScale
+    local glowSize      = ns.UIToCanvas(ns.PIN_GLOW_SIZE * ms) * userScale
+    local highlightSize = ns.UIToCanvas(ns.HIGHLIGHT_SIZE * ms) * userScale
+    local arrowSize     = ns.UIToCanvas(ns.ICON_SIZE     * ms) * userScale
+    local arrowGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE* ms) * userScale
     
     -- Create additional waypoint pins if needed
     if not self.extraPins then
@@ -2295,7 +2645,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
                     local glow = extraPin:CreateTexture(nil, "BACKGROUND")
                     glow:SetPoint("CENTER")
                     glow:SetTexture("Interface\\Cooldown\\star4")
-                    glow:SetVertexColor(1, 1, 0, 0.8)
+                    glow:SetVertexColor(1, 1, 0, 0.8)  -- Pin glow always yellow
                     glow:SetBlendMode("ADD")
                     extraPin.glow = glow
                     
@@ -2363,20 +2713,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
                     local extraArrow = CreateFrame("Frame", "EasyFindExtraArrow"..(i-1), canvas)
                     extraArrow:SetFrameStrata("HIGH")
                     extraArrow:SetFrameLevel(2001)
-                    
-                    local arrowTex = extraArrow:CreateTexture(nil, "ARTWORK")
-                    arrowTex:SetAllPoints()
-                    arrowTex:SetTexture("Interface\\MINIMAP\\MiniMap-QuestArrow")
-                    arrowTex:SetVertexColor(1, 1, 0, 1)
-                    arrowTex:SetRotation(mpi)
-                    extraArrow.arrow = arrowTex
-                    
-                    local arrowGlow = extraArrow:CreateTexture(nil, "BACKGROUND")
-                    arrowGlow:SetPoint("CENTER")
-                    arrowGlow:SetTexture("Interface\\Cooldown\\star4")
-                    arrowGlow:SetVertexColor(1, 1, 0, 0.7)
-                    arrowGlow:SetBlendMode("ADD")
-                    extraArrow.glow = arrowGlow
+                    ns.CreateArrowTextures(extraArrow)
                     
                     local animGroup = extraArrow:CreateAnimationGroup()
                     animGroup:SetLooping("BOUNCE")
@@ -2442,20 +2779,13 @@ function MapSearch:ShowWaypointAt(x, y, icon, category)
     
     local canvasWidth, canvasHeight = canvas:GetSize()
     
-    -- Scale elements based on canvas size - larger maps need bigger icons
-    -- Base size assumes ~600px canvas, scale up for larger maps
-    local scaleFactor = mmax(1, mmin(canvasWidth, canvasHeight) / 600)
-    
-    -- Apply user's icon scale preference
-    local userScale = EasyFind.db.mapIconScale or 1.0
-    scaleFactor = scaleFactor * userScale
-    
-    local iconSize = 56 * scaleFactor
-    local glowSize = 90 * scaleFactor
-    local highlightSize = 70 * scaleFactor
-    -- ARROWS ARE FIXED SIZE - do not scale with map!
-    local arrowSize = 128  -- FIXED
-    local arrowGlowSize = 180  -- FIXED
+    -- Convert UI-unit sizes to canvas units so they appear the same screen size
+    local userScale = EasyFind.db.iconScale or 1.0
+    local iconSize      = ns.UIToCanvas(ns.PIN_SIZE)       * userScale
+    local glowSize      = ns.UIToCanvas(ns.PIN_GLOW_SIZE)  * userScale
+    local highlightSize = ns.UIToCanvas(ns.HIGHLIGHT_SIZE)  * userScale
+    local arrowSize     = ns.UIToCanvas(ns.ICON_SIZE)       * userScale
+    local arrowGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE)  * userScale
     
     -- Resize the pin and glow
     waypointPin:SetSize(iconSize, iconSize)
@@ -2505,25 +2835,16 @@ function MapSearch:HighlightPin(pin)
     
     currentHighlightedPin = pin
     
-    -- Get canvas size for scaling
-    local canvas = WorldMapFrame.ScrollContainer.Child
-    local canvasWidth, canvasHeight = 700, 700
-    if canvas then
-        canvasWidth, canvasHeight = canvas:GetSize()
-    end
-    local scaleFactor = mmax(1, mmin(canvasWidth, canvasHeight) / 600)
-    
-    -- Apply user's icon scale preference
-    local userScale = EasyFind.db.mapIconScale or 1.0
-    scaleFactor = scaleFactor * userScale
+    -- Convert UI-unit sizes to canvas units
+    local userScale = EasyFind.db.iconScale or 1.0
     
     local width, height = pin:GetSize()
-    width = mmax(width or 24, 36 * scaleFactor)
-    height = mmax(height or 24, 36 * scaleFactor)
+    local minPinSize = ns.UIToCanvas(36) * userScale
+    width = mmax(width or 24, minPinSize)
+    height = mmax(height or 24, minPinSize)
     
-    -- ARROWS ARE FIXED SIZE - do not scale with map!
-    local arrowSize = 128  -- FIXED
-    local arrowGlowSize = 180  -- FIXED
+    local arrowSize     = ns.UIToCanvas(ns.ICON_SIZE)      * userScale
+    local arrowGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE) * userScale
     arrowFrame:SetSize(arrowSize, arrowSize)
     arrowFrame.glow:SetSize(arrowGlowSize, arrowGlowSize)
     
@@ -2645,52 +2966,58 @@ function MapSearch:ResetPosition()
 end
 
 function MapSearch:UpdateIconScales()
-    -- This function is called when the user changes the map icon scale setting
+    -- This function is called when the user changes the icon scale setting
     -- Update all visible pins, highlights, and arrows in real-time
     
     local canvas = WorldMapFrame.ScrollContainer.Child
     if not canvas then return end
     
-    local canvasWidth, canvasHeight = canvas:GetSize()
-    local scaleFactor = mmax(1, mmin(canvasWidth, canvasHeight) / 600)
-    local userScale = EasyFind.db.mapIconScale or 1.0
-    scaleFactor = scaleFactor * userScale
+    local userScale = EasyFind.db.iconScale or 1.0
     
-    local iconSize = 56 * scaleFactor
-    local glowSize = 90 * scaleFactor
-    local highlightSize = 70 * scaleFactor
-    -- ARROWS ARE FIXED SIZE - do not scale with map!
-    local arrowSize = 128  -- FIXED
-    local arrowGlowSize = 180  -- FIXED
+    local iconSize      = ns.UIToCanvas(ns.PIN_SIZE)       * userScale
+    local glowSize      = ns.UIToCanvas(ns.PIN_GLOW_SIZE)  * userScale
+    local highlightSize = ns.UIToCanvas(ns.HIGHLIGHT_SIZE)  * userScale
+    local arrowSize     = ns.UIToCanvas(ns.ICON_SIZE)       * userScale
+    local arrowGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE)  * userScale
     
-    -- Update main waypoint pin if visible
-    if waypointPin and waypointPin:IsShown() then
+    -- Helper: resize an arrow frame + its textures
+    local function resizeArrow(frame, aSize, gSize)
+        if not frame then return end
+        frame:SetSize(aSize, aSize)
+        if frame.arrow then frame.arrow:SetSize(aSize, aSize) end
+        if frame.glow then frame.glow:SetSize(gSize, gSize) end
+    end
+    
+    -- Update main waypoint pin
+    if waypointPin then
         waypointPin:SetSize(iconSize, iconSize)
         if waypointPin.glow then
             waypointPin.glow:SetSize(glowSize, glowSize)
         end
     end
     
-    -- Update main highlight frame if visible
+    -- Update main highlight frame
     if highlightFrame and highlightFrame:IsShown() then
         highlightFrame:SetSize(highlightSize, highlightSize)
     end
     
-    -- Update main arrow frame if visible
-    if arrowFrame and arrowFrame:IsShown() then
-        arrowFrame:SetSize(arrowSize, arrowSize)
-        if arrowFrame.glow then
-            arrowFrame.glow:SetSize(arrowGlowSize, arrowGlowSize)
-        end
+    -- Update main arrow
+    resizeArrow(arrowFrame, arrowSize, arrowGlowSize)
+    
+    -- Update zone arrow
+    local zoneArrowSize     = ns.UIToCanvas(ns.ZONE_ICON_SIZE)      * userScale
+    local zoneArrowGlowSize = ns.UIToCanvas(ns.ZONE_ICON_GLOW_SIZE) * userScale
+    if zoneHighlightFrame and zoneHighlightFrame.arrow then
+        resizeArrow(zoneHighlightFrame.arrow, zoneArrowSize, zoneArrowGlowSize)
     end
     
     -- Update extra pins for duplicates
-    local multiIconSize = 48 * scaleFactor
-    local multiGlowSize = 72 * scaleFactor
-    local multiHighlightSize = 60 * scaleFactor
-    -- ARROWS ARE FIXED SIZE - do not scale with map!
-    local multiArrowSize = 128  -- FIXED
-    local multiArrowGlowSize = 180  -- FIXED
+    local ms = ns.MULTI_SCALE
+    local multiIconSize      = ns.UIToCanvas(ns.PIN_SIZE      * ms) * userScale
+    local multiGlowSize      = ns.UIToCanvas(ns.PIN_GLOW_SIZE * ms) * userScale
+    local multiHighlightSize = ns.UIToCanvas(ns.HIGHLIGHT_SIZE * ms) * userScale
+    local multiArrowSize     = ns.UIToCanvas(ns.ICON_SIZE     * ms) * userScale
+    local multiArrowGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE* ms) * userScale
     
     if self.extraPins then
         for _, pin in ipairs(self.extraPins) do
@@ -2713,12 +3040,33 @@ function MapSearch:UpdateIconScales()
     
     if self.extraArrows then
         for _, arr in ipairs(self.extraArrows) do
-            if arr:IsShown() then
-                arr:SetSize(multiArrowSize, multiArrowSize)
-                if arr.glow then
-                    arr.glow:SetSize(multiArrowGlowSize, multiArrowGlowSize)
-                end
-            end
+            resizeArrow(arr, multiArrowSize, multiArrowGlowSize)
         end
     end
+end
+
+-- Refresh all arrow textures when style/color changes.
+-- Uses ns.UpdateArrow so every arrow looks identical.
+-- Highlight boxes, zone overlays, and pin glows are ALWAYS yellow and never change.
+function MapSearch:RefreshArrows()
+    -- Update main location arrow
+    ns.UpdateArrow(_G["EasyFindMapArrow"])
+    
+    -- Update zone arrow
+    ns.UpdateArrow(_G["EasyFindZoneArrow"])
+    
+    -- Update breadcrumb arrow (uses a wrapper frame now)
+    if self.breadcrumbHighlight and self.breadcrumbHighlight.arrowFrame then
+        ns.UpdateArrow(self.breadcrumbHighlight.arrowFrame)
+    end
+    
+    -- Update extra arrows
+    if self.extraArrows then
+        for _, arr in ipairs(self.extraArrows) do
+            ns.UpdateArrow(arr)
+        end
+    end
+    
+    -- Update UI highlight arrow (Highlight.lua)
+    ns.UpdateArrow(_G["EasyFindArrowFrame"])
 end

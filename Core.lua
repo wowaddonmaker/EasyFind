@@ -25,7 +25,7 @@ EasyFind.db = {}
 -- SavedVariables defaults — new keys are auto-merged for existing users
 local DB_DEFAULTS = {
     visible = true,
-    mapIconScale = 1.0,
+    iconScale = 1.0,
     uiSearchScale = 1.0,
     mapSearchScale = 1.0,
     searchBarOpacity = 1.0,
@@ -36,6 +36,8 @@ local DB_DEFAULTS = {
     navigateToZonesDirectly = false,  -- Clicking a zone goes directly to it
     smartShow = true,          -- Hide search bar until mouse hovers nearby
     resultsTheme = "Retail",  -- "Classic" or "Retail"
+    arrowStyle = "EasyFind Arrow",  -- Arrow texture style
+    arrowColor = "Yellow",  -- Arrow color preset
 }
 
 local function OnInitialize()
@@ -74,6 +76,15 @@ local function OnInitialize()
             if ns.Highlight then
                 ns.Highlight:ClearAll()
                 EasyFind:Print("Active highlights cleared.")
+            end
+        elseif msg:find("^test ") then
+            -- /ef test Interface\\Path\\To\\Texture
+            local texture = msg:match("^test%s+(.+)")
+            if texture then
+                EasyFind:TestArrowTexture(texture)
+            else
+                EasyFind:Print("Usage: /ef test <texture_path>")
+                EasyFind:Print("Example: /ef test Interface\\\\MINIMAP\\\\MiniMap-QuestArrow")
             end
         else
             EasyFind:ToggleSearchUI()
@@ -134,4 +145,44 @@ end
 
 function EasyFind:Print(msg)
     print(sformat("|cFF00FF00EasyFind:|r %s", msg))
+end
+
+function EasyFind:TestArrowTexture(texturePath)
+    -- Create a test frame to preview the texture
+    local testFrame = _G["EasyFindTextureTest"] or CreateFrame("Frame", "EasyFindTextureTest", UIParent, "BackdropTemplate")
+    testFrame:SetSize(256, 256)
+    testFrame:SetPoint("CENTER")
+    testFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+    testFrame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets = { left = 11, right = 12, top = 12, bottom = 11 }
+    })
+    testFrame:SetBackdropColor(0, 0, 0, 0.9)
+    
+    if not testFrame.texture then
+        testFrame.texture = testFrame:CreateTexture(nil, "ARTWORK")
+        testFrame.texture:SetSize(200, 200)
+        testFrame.texture:SetPoint("CENTER")
+    end
+    
+    if not testFrame.title then
+        testFrame.title = testFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+        testFrame.title:SetPoint("TOP", 0, -15)
+    end
+    
+    if not testFrame.closeBtn then
+        testFrame.closeBtn = CreateFrame("Button", nil, testFrame, "UIPanelCloseButton")
+        testFrame.closeBtn:SetPoint("TOPRIGHT", -5, -5)
+    end
+    
+    -- Try to load the texture
+    testFrame.texture:SetTexture(texturePath)
+    testFrame.texture:SetVertexColor(1, 1, 0, 1)  -- Yellow like arrows
+    testFrame.title:SetText("Testing: " .. texturePath)
+    testFrame:Show()
+    
+    EasyFind:Print("Testing texture: " .. texturePath)
+    EasyFind:Print("Close the preview window to dismiss.")
 end

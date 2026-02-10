@@ -1731,6 +1731,66 @@ function Database:DamerauLevenshtein(s1, s2, len1, len2)
     return prev[len2]
 end
 
+--- Unified name scoring: exact → starts-with → word-boundary → substring → initials → fuzzy.
+--- All search features (UI, map zone, map POI) use this single function.
+--- Returns a score ≥ 0. Caller decides the minimum threshold.
+function Database:ScoreName(nameLower, query, queryLen)
+    local score = 0
+
+    if nameLower == query then
+        score = 200
+    elseif ssub(nameLower, 1, queryLen) == query then
+        score = 150
+    elseif Database:FindAtWordBoundary(nameLower, query) then
+        score = 120
+    elseif sfind(nameLower, query, 1, true) then
+        score = 30   -- mid-word substring
+    end
+
+    -- Initials matching: "rb" → "Rated Battlegrounds"
+    if score < 130 then
+        local initScore = Database:ScoreInitials(nameLower, query)
+        if initScore > score then score = initScore end
+    end
+
+    -- Fuzzy/typo matching (queries ≥ 4 chars)
+    if score < 100 and queryLen >= 4 then
+        local fuzzyScore = Database:ScoreFuzzy(nameLower, query, queryLen)
+        if fuzzyScore > score then score = fuzzyScore end
+    end
+
+    return score
+end
+
+--- Unified keyword scoring: additive score from matching against a list of keywords.
+--- Returns a total score to ADD to the name score.
+function Database:ScoreKeywords(keywordsLower, query, queryLen)
+    if not keywordsLower then return 0 end
+    local total = 0
+    for _, kw in ipairs(keywordsLower) do
+        local kwScore = 0
+        if kw == query then
+            kwScore = 80
+        elseif ssub(kw, 1, queryLen) == query then
+            kwScore = 70
+        elseif Database:FindAtWordBoundary(kw, query) then
+            kwScore = 55
+        end
+        -- Initials on keywords
+        if kwScore < 60 then
+            local ki = Database:ScoreInitials(kw, query)
+            if ki > 0 then kwScore = mmax(kwScore, ki - 20) end
+        end
+        -- Fuzzy on keywords
+        if kwScore < 40 and queryLen >= 4 then
+            local kf = Database:ScoreFuzzy(kw, query, queryLen)
+            if kf > 0 then kwScore = mmax(kwScore, kf - 10) end
+        end
+        total = total + kwScore
+    end
+    return total
+end
+
 function Database:SearchUI(query)
     if not query or query == "" or #query < 2 then
         return {}
@@ -1745,67 +1805,13 @@ function Database:SearchUI(query)
         if data.available and not data.available() then
             -- Not available in current context, skip
         else
-        local score = 0
         local nameLower = data.nameLower
+        local score = Database:ScoreName(nameLower, query, queryLen)
+
+        -- Keyword matching (additive)
+        score = score + Database:ScoreKeywords(data.keywordsLower, query, queryLen)
         
-        -- Exact name match
-        if nameLower == query then
-            score = 200
-        -- Name starts with query
-        elseif ssub(nameLower, 1, queryLen) == query then
-            score = 150
-        -- Name contains query at a word boundary (e.g. "battle" in "rated battlegrounds")
-        elseif Database:FindAtWordBoundary(nameLower, query) then
-            score = 120
-        -- Name contains query mid-word (e.g. "rb" in "herbalism") — low score
-        elseif sfind(nameLower, query, 1, true) then
-            score = 30
-        end
-        
-        -- Initials matching: "rb" → "Rated Battlegrounds", "raba" → "RAndom BAttleground"
-        if score < 130 then
-            local initialScore = Database:ScoreInitials(nameLower, query)
-            if initialScore > score then
-                score = initialScore
-            end
-        end
-        
-        -- Fuzzy/typo matching: "rtaed" → "rated" (only for queries ≥ 4 chars)
-        if score < 100 and queryLen >= 4 then
-            local fuzzyScore = Database:ScoreFuzzy(nameLower, query, queryLen)
-            if fuzzyScore > score then
-                score = fuzzyScore
-            end
-        end
-        
-        -- Keyword matching
-        if data.keywordsLower then
-            for _, kw in ipairs(data.keywordsLower) do
-                local kwScore = 0
-                if kw == query then
-                    kwScore = 80
-                elseif ssub(kw, 1, queryLen) == query then
-                    kwScore = 70
-                elseif Database:FindAtWordBoundary(kw, query) then
-                    kwScore = 55
-                end
-                -- Mid-word keyword substring deliberately excluded:
-                -- \"rated\" in \"unrated\" is not a relevant keyword match.
-                -- Initials on keywords
-                if kwScore < 60 then
-                    local ki = Database:ScoreInitials(kw, query)
-                    if ki > 0 then kwScore = mmax(kwScore, ki - 20) end  -- slightly lower than name initials
-                end
-                -- Fuzzy on keywords
-                if kwScore < 40 and queryLen >= 4 then
-                    local kf = Database:ScoreFuzzy(kw, query, queryLen)
-                    if kf > 0 then kwScore = mmax(kwScore, kf - 10) end
-                end
-                score = score + kwScore
-            end
-        end
-        
-        if score > 25 then
+        if score >= 30 then
             local result = {}
             for k, v in pairs(data) do
                 result[k] = v

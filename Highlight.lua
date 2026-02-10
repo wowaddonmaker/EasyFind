@@ -38,6 +38,7 @@ function Highlight:CreateHighlightFrame()
     
     local borderSize = 4
     
+    -- Highlight border is ALWAYS yellow
     local top = highlightFrame:CreateTexture(nil, "OVERLAY")
     top:SetColorTexture(1, 1, 0, 1)
     highlightFrame.top = top
@@ -67,26 +68,25 @@ end
 
 function Highlight:CreateArrowFrame()
     arrowFrame = CreateFrame("Frame", "EasyFindArrowFrame", UIParent)
-    arrowFrame:SetSize(80, 80)  -- Large arrow for visibility
+    local aSize = ns.ICON_SIZE or 48
+    arrowFrame:SetSize(aSize, aSize)
     arrowFrame:SetFrameStrata("TOOLTIP")
     arrowFrame:SetFrameLevel(501)
+    arrowFrame.isUIArrow = true  -- flag so UpdateArrow applies iconScale
     arrowFrame:Hide()
     
-    local arrow = arrowFrame:CreateTexture(nil, "ARTWORK")
-    arrow:SetAllPoints()
-    arrow:SetTexture("Interface\\MINIMAP\\MiniMap-QuestArrow")
-    arrow:SetVertexColor(1, 1, 0, 1)
-    arrow:SetRotation(mpi)
-    arrowFrame.arrow = arrow
-    
-    -- Add glow behind arrow
-    local glow = arrowFrame:CreateTexture(nil, "BACKGROUND")
-    glow:SetSize(100, 100)
-    glow:SetPoint("CENTER")
-    glow:SetTexture("Interface\\Cooldown\\star4")
-    glow:SetVertexColor(1, 1, 0, 0.6)
-    glow:SetBlendMode("ADD")
-    arrowFrame.glow = glow
+    -- Use shared icon creation with UI-specific sizes (no canvas conversion needed)
+    if ns.CreateArrowTextures then
+        ns.CreateArrowTextures(arrowFrame, ns.ICON_SIZE, ns.ICON_GLOW_SIZE)
+    else
+        -- Fallback if MapSearch hasn't loaded yet (shouldn't happen per .toc order)
+        local arrow = arrowFrame:CreateTexture(nil, "ARTWORK")
+        arrow:SetSize(80, 80)
+        arrow:SetPoint("CENTER")
+        arrow:SetTexture("Interface\\MINIMAP\\MiniMap-QuestArrow")
+        arrow:SetRotation(mpi)
+        arrowFrame.arrow = arrow
+    end
     
     local animGroup = arrowFrame:CreateAnimationGroup()
     animGroup:SetLooping("BOUNCE")

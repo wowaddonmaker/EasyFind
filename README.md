@@ -18,11 +18,15 @@ Find and navigate to any interface element:
 
 ### Map Search
 Locate important places across Azeroth:
-- Portals
+- Dungeon and raid entrances (uses Encounter Journal API — search globally or within current map)
+- Portals and transport
 - Banks and auction houses
 - Flight masters
 - Profession trainers
+- Vendors and services
 - Quest hubs
+
+**Zone Abbreviations**: Type common shortcuts like `sw` (Stormwind), `dal` (Dalaran), `org` (Orgrimmar), `if` (Ironforge), `orib` (Oribos), and more.
 
 ### Two Navigation Modes
 - **Guide Mode** (default): Walks you through each step to reach your destination. Highlights the correct button or tab with a yellow pulsing border and an animated arrow so you learn where things live.
@@ -57,6 +61,7 @@ When you install EasyFind for the first time, you'll see an interactive setup ov
 | `/ef hide` | Hide the search bar |
 | `/ef show` | Show the search bar |
 | `/ef clear` | Dismiss active highlights and guides |
+| `/ef test <texture>` | Preview arrow textures (e.g., `/ef test Interface\\MINIMAP\\MiniMap-QuestArrow`) |
 
 Options are also available via ESC > Interface > AddOns > EasyFind.
 
@@ -70,13 +75,16 @@ EasyFind provides customizable keybinds (defaults shown):
 Configure these in the Options panel or via ESC > Keybinds > EasyFind.
 
 ## Options
-
+Arrow Style**: Choose from 4 arrow textures (EasyFind Arrow, Classic Quest Arrow, Minimap Player Arrow, Cursor Point). All arrows update in real-time.
+- **Arrow Color**: Pick from 8 color presets (Yellow, Gold, Orange, Red, Green, Blue, Purple, White).
+- **Icon Size**: Unified slider controls all search indicators (map pins, UI arrows, zone highlights) at once.
 - **Open Panels Directly** (UI Search): When enabled, selecting a UI result opens the target panel immediately instead of guiding you through each step. Off by default.
 - **Navigate to Zones Directly** (Map Search): When enabled, selecting a map result jumps straight to the zone on the map instead of stepping through parent zones. Off by default.
 - **Smart Show**: Hide the search bar until you hover over it. Keeps your screen clean while staying accessible.
 - **Results Theme**: Choose between Classic (colorful tree lines) or Retail (quest log style) for the search results dropdown.
 - **Search Bar Opacity**: Adjust transparency to see through the search bar.
-- **Adjust search bar scale**: Resize the search bar to your preference.
+- **UI/Map Search Bar Scales**: Resize each search bar independently.
+- **Reset search bar positions**: Return search bars to default positions
 - **Reset search bar position**: Return the search bar to default top-center position.
 
 ## Moving the Search Bars

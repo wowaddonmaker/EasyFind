@@ -105,15 +105,21 @@ function Options:Initialize()
     -- =====================================================================
     -- LEFT COLUMN — Sliders
     -- =====================================================================
-    local mapIconSlider = CreateSlider(optionsFrame, "MapIcon", "Map Search Icon Size", 0.5, 2.0, 0.1,
-        "Adjusts the size of icons shown on the world map when searching for locations.")
+    local mapIconSlider = CreateSlider(optionsFrame, "MapIcon", "Icon Size", 0.5, 2.0, 0.1,
+        "Adjusts the size of search icons on the world map and in UI search.")
     mapIconSlider:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", COL_LEFT, -70)
-    mapIconSlider:SetValue(EasyFind.db.mapIconScale or 1.0)
+    mapIconSlider:SetValue(EasyFind.db.iconScale or 1.0)
     mapIconSlider:SetScript("OnValueChanged", function(self, value)
         self.valueText:SetText(sformat("%.0f%%", value * 100))
-        EasyFind.db.mapIconScale = value
+        EasyFind.db.iconScale = value
         if ns.MapSearch and ns.MapSearch.UpdateIconScales then
             ns.MapSearch:UpdateIconScales()
+        end
+        -- Also update UI search arrow
+        local uiArrow = _G["EasyFindArrowFrame"]
+        if uiArrow then
+            local s = EasyFind.db.iconScale or 1.0
+            uiArrow:SetScale(s)
         end
     end)
     optionsFrame.mapIconSlider = mapIconSlider
@@ -269,6 +275,199 @@ function Options:Initialize()
     optionsFrame.themeBtnText = themeBtnText
     optionsFrame.themeFlyout = themeFlyout
     
+    -- =====================================================================
+    -- Arrow Style selector (same style as Theme selector)
+    -- =====================================================================
+    local arrowLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    arrowLabel:SetPoint("TOPLEFT", themeLabel, "BOTTOMLEFT", 0, -32)
+    arrowLabel:SetText("Arrow Style:")
+    
+    local arrowChoices = {"EasyFind Arrow", "Classic Quest Arrow", "Minimap Player Arrow", "Cursor Point"}
+    
+    local arrowBtnFrame = CreateFrame("Button", "EasyFindArrowButton", optionsFrame, "BackdropTemplate")
+    arrowBtnFrame:SetSize(160, 22)
+    arrowBtnFrame:SetPoint("LEFT", arrowLabel, "RIGHT", 8, 0)
+    arrowBtnFrame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 }
+    })
+    arrowBtnFrame:SetBackdropColor(0.1, 0.1, 0.1, 0.8)
+    arrowBtnFrame:SetBackdropBorderColor(0.6, 0.6, 0.6, 0.8)
+    
+    local arrowBtnText = arrowBtnFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    arrowBtnText:SetPoint("CENTER")
+    arrowBtnText:SetText(EasyFind.db.arrowStyle or "EasyFind Arrow")
+    
+    local arrowFlyout = CreateFrame("Frame", "EasyFindArrowFlyout", arrowBtnFrame, "BackdropTemplate")
+    arrowFlyout:SetSize(160, #arrowChoices * 20 + 6)
+    arrowFlyout:SetPoint("TOP", arrowBtnFrame, "BOTTOM", 0, -2)
+    arrowFlyout:SetFrameStrata("FULLSCREEN_DIALOG")
+    arrowFlyout:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 }
+    })
+    arrowFlyout:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+    arrowFlyout:Hide()
+    
+    for i, name in ipairs(arrowChoices) do
+        local opt = CreateFrame("Button", nil, arrowFlyout)
+        opt:SetSize(154, 18)
+        opt:SetPoint("TOPLEFT", arrowFlyout, "TOPLEFT", 3, -3 - (i - 1) * 20)
+        opt:SetNormalFontObject("GameFontHighlightSmall")
+        opt:SetHighlightFontObject("GameFontNormalSmall")
+        opt:SetText(name)
+        opt:SetScript("OnClick", function()
+            EasyFind.db.arrowStyle = name
+            arrowBtnText:SetText(name)
+            arrowFlyout:Hide()
+            if ns.MapSearch then
+                ns.MapSearch:RefreshArrows()
+            end
+        end)
+    end
+    
+    arrowBtnFrame:SetScript("OnClick", function()
+        if arrowFlyout:IsShown() then
+            arrowFlyout:Hide()
+        else
+            arrowFlyout:Show()
+        end
+    end)
+    
+    arrowFlyout:SetScript("OnShow", function(self)
+        self:SetScript("OnUpdate", function(self)
+            if not self:IsMouseOver() and not arrowBtnFrame:IsMouseOver() then
+                if IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton") then
+                    self:Hide()
+                end
+            end
+        end)
+    end)
+    arrowFlyout:SetScript("OnHide", function(self)
+        self:SetScript("OnUpdate", nil)
+    end)
+    optionsFrame.arrowBtnText = arrowBtnText
+    optionsFrame.arrowFlyout = arrowFlyout
+    
+    -- =====================================================================
+    -- Arrow Color selector
+    -- =====================================================================
+    local colorLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    colorLabel:SetPoint("TOPLEFT", arrowLabel, "BOTTOMLEFT", 0, -10)
+    colorLabel:SetText("Arrow Color:")
+    
+    local colorChoices = {"Yellow", "Gold", "Orange", "Red", "Green", "Blue", "Purple", "White"}
+    local colorRGB = {
+        ["Yellow"]  = {1.0, 1.0, 0.0},
+        ["Gold"]    = {1.0, 0.82, 0.0},
+        ["Orange"]  = {1.0, 0.5, 0.0},
+        ["Red"]     = {1.0, 0.2, 0.2},
+        ["Green"]   = {0.2, 1.0, 0.2},
+        ["Blue"]    = {0.3, 0.6, 1.0},
+        ["Purple"]  = {0.7, 0.3, 1.0},
+        ["White"]   = {1.0, 1.0, 1.0},
+    }
+    
+    local colorBtnFrame = CreateFrame("Button", "EasyFindColorButton", optionsFrame, "BackdropTemplate")
+    colorBtnFrame:SetSize(160, 22)
+    colorBtnFrame:SetPoint("LEFT", colorLabel, "RIGHT", 8, 0)
+    colorBtnFrame:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 }
+    })
+    colorBtnFrame:SetBackdropColor(0.1, 0.1, 0.1, 0.8)
+    colorBtnFrame:SetBackdropBorderColor(0.6, 0.6, 0.6, 0.8)
+    
+    local colorBtnText = colorBtnFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    colorBtnText:SetPoint("CENTER")
+    local currentColor = EasyFind.db.arrowColor or "Yellow"
+    local currentRGB = colorRGB[currentColor] or colorRGB["Yellow"]
+    colorBtnText:SetText(currentColor)
+    colorBtnText:SetTextColor(currentRGB[1], currentRGB[2], currentRGB[3])
+    
+    -- Color swatch next to text
+    local colorSwatch = colorBtnFrame:CreateTexture(nil, "ARTWORK")
+    colorSwatch:SetSize(14, 14)
+    colorSwatch:SetPoint("LEFT", colorBtnFrame, "LEFT", 6, 0)
+    colorSwatch:SetColorTexture(currentRGB[1], currentRGB[2], currentRGB[3], 1)
+    
+    local colorFlyout = CreateFrame("Frame", "EasyFindColorFlyout", colorBtnFrame, "BackdropTemplate")
+    colorFlyout:SetSize(160, #colorChoices * 20 + 6)
+    colorFlyout:SetPoint("TOP", colorBtnFrame, "BOTTOM", 0, -2)
+    colorFlyout:SetFrameStrata("FULLSCREEN_DIALOG")
+    colorFlyout:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 }
+    })
+    colorFlyout:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+    colorFlyout:Hide()
+    
+    for i, name in ipairs(colorChoices) do
+        local rgb = colorRGB[name]
+        local opt = CreateFrame("Button", nil, colorFlyout)
+        opt:SetSize(154, 18)
+        opt:SetPoint("TOPLEFT", colorFlyout, "TOPLEFT", 3, -3 - (i - 1) * 20)
+        
+        -- Color swatch in each option
+        local swatch = opt:CreateTexture(nil, "ARTWORK")
+        swatch:SetSize(12, 12)
+        swatch:SetPoint("LEFT", 2, 0)
+        swatch:SetColorTexture(rgb[1], rgb[2], rgb[3], 1)
+        
+        local label = opt:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetPoint("LEFT", swatch, "RIGHT", 4, 0)
+        label:SetText(name)
+        label:SetTextColor(rgb[1], rgb[2], rgb[3])
+        
+        opt:SetScript("OnEnter", function(self)
+            label:SetTextColor(1, 1, 1)
+        end)
+        opt:SetScript("OnLeave", function(self)
+            label:SetTextColor(rgb[1], rgb[2], rgb[3])
+        end)
+        opt:SetScript("OnClick", function()
+            EasyFind.db.arrowColor = name
+            colorBtnText:SetText(name)
+            colorBtnText:SetTextColor(rgb[1], rgb[2], rgb[3])
+            colorSwatch:SetColorTexture(rgb[1], rgb[2], rgb[3], 1)
+            colorFlyout:Hide()
+            if ns.MapSearch then
+                ns.MapSearch:RefreshArrows()
+            end
+        end)
+    end
+    
+    colorBtnFrame:SetScript("OnClick", function()
+        if colorFlyout:IsShown() then
+            colorFlyout:Hide()
+        else
+            colorFlyout:Show()
+        end
+    end)
+    
+    colorFlyout:SetScript("OnShow", function(self)
+        self:SetScript("OnUpdate", function(self)
+            if not self:IsMouseOver() and not colorBtnFrame:IsMouseOver() then
+                if IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton") then
+                    self:Hide()
+                end
+            end
+        end)
+    end)
+    colorFlyout:SetScript("OnHide", function(self)
+        self:SetScript("OnUpdate", nil)
+    end)
+    optionsFrame.colorBtnText = colorBtnText
+    optionsFrame.colorFlyout = colorFlyout
+    
     -- ----------------------------------------------------------------
     -- Keybind helpers (shared)
     -- ----------------------------------------------------------------
@@ -333,7 +532,7 @@ function Options:Initialize()
     
     -- Toggle Search Bar keybind
     local toggleLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    toggleLabel:SetPoint("TOPLEFT", themeLabel, "BOTTOMLEFT", 0, -18)
+    toggleLabel:SetPoint("TOPLEFT", colorLabel, "BOTTOMLEFT", 0, -18)
     toggleLabel:SetText("Toggle Bar:")
     
     local keybindBtn = CreateFrame("Button", "EasyFindKeybindButton", optionsFrame, "UIPanelButtonTemplate")
@@ -452,7 +651,7 @@ function Options:Initialize()
     resetAllBtn:SetText("Reset All Settings")
     resetAllBtn:SetScript("OnClick", function()
         -- Reset all settings to defaults
-        EasyFind.db.mapIconScale = 1.0
+        EasyFind.db.iconScale = 1.0
         EasyFind.db.uiSearchScale = 1.0
         EasyFind.db.mapSearchScale = 1.0
         EasyFind.db.searchBarOpacity = 1.0
@@ -500,6 +699,9 @@ function Options:Initialize()
         if ns.MapSearch and ns.MapSearch.ResetPosition then ns.MapSearch:ResetPosition() end
         if ns.MapSearch and ns.MapSearch.UpdateScale then ns.MapSearch:UpdateScale() end
         if ns.MapSearch and ns.MapSearch.UpdateIconScales then ns.MapSearch:UpdateIconScales() end
+        -- Reset UI arrow scale too
+        local uiArrow = _G["EasyFindArrowFrame"]
+        if uiArrow then uiArrow:SetScale(1.0) end
         if ns.MapSearch and ns.MapSearch.UpdateOpacity then ns.MapSearch:UpdateOpacity() end
         
         EasyFind:Print("All settings reset to defaults.")
@@ -561,7 +763,7 @@ function Options:Show()
     end
     
     -- Refresh values from saved vars
-    optionsFrame.mapIconSlider:SetValue(EasyFind.db.mapIconScale or 1.0)
+    optionsFrame.mapIconSlider:SetValue(EasyFind.db.iconScale or 1.0)
     optionsFrame.uiSearchSlider:SetValue(EasyFind.db.uiSearchScale or 1.0)
     optionsFrame.mapSearchSlider:SetValue(EasyFind.db.mapSearchScale or 1.0)
     optionsFrame.opacitySlider:SetValue(EasyFind.db.searchBarOpacity or 1.0)
