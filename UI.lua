@@ -633,14 +633,34 @@ function UI:CreateResultButton(index)
     text:SetJustifyH("LEFT")
     btn.text = text
     
-    btn:SetScript("OnClick", function(self)
+    btn:SetScript("OnClick", function(self, mouseButton, down)
         if self.isPathNode then
-            -- Toggle collapse for this path node
-            local key = (self.pathNodeName or "") .. "_" .. (self.pathNodeDepth or 0)
-            collapsedNodes[key] = not collapsedNodes[key]
-            -- Re-render from cached data (no new search needed)
-            if cachedHierarchical then
-                UI:ShowHierarchicalResults(cachedHierarchical)
+            -- Check if click was near the +/- toggle icon
+            local cursorX = GetCursorPosition()
+            local scale = self:GetEffectiveScale()
+            local isRetailHeader = self.headerTab and self.headerTab:IsShown()
+            local isToggleClick = false
+
+            if isRetailHeader then
+                -- Retail: toggle icon on right side — generous 55px zone
+                local btnRight = self:GetRight() * scale
+                isToggleClick = cursorX >= (btnRight - 55 * scale)
+            else
+                -- Classic: +/- icon on left side — 35px zone from icon start
+                local btnLeft = self:GetLeft() * scale
+                local depth = self.pathNodeDepth or 0
+                local iconLeft = btnLeft + depth * 20 * scale  -- INDENT_PX = 20
+                isToggleClick = cursorX <= (iconLeft + 35 * scale)
+            end
+
+            if isToggleClick then
+                local key = (self.pathNodeName or "") .. "_" .. (self.pathNodeDepth or 0)
+                collapsedNodes[key] = not collapsedNodes[key]
+                if cachedHierarchical then
+                    UI:ShowHierarchicalResults(cachedHierarchical)
+                end
+            elseif self.data then
+                UI:SelectResult(self.data)
             end
         elseif self.data then
             UI:SelectResult(self.data)
@@ -1907,7 +1927,7 @@ function UI:ShowFirstTimeSetup()
 
     -- ── Instruction panel (anchored below the glow) ─────────────────────
     local panel = CreateFrame("Frame", nil, glow, "BackdropTemplate")
-    panel:SetSize(320, 115)
+    panel:SetSize(340, 150)
     panel:SetPoint("TOP", glow, "BOTTOM", 0, -6)
     panel:SetFrameStrata("DIALOG")
     panel:SetBackdrop({
@@ -1918,21 +1938,31 @@ function UI:ShowFirstTimeSetup()
     })
     panel:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
 
-    local instructions = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    instructions:SetPoint("TOP", panel, "TOP", 0, -12)
-    instructions:SetWidth(290)
-    instructions:SetJustifyH("CENTER")
-    instructions:SetText(
+    -- Top header lines (centered)
+    local header = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    header:SetPoint("TOP", panel, "TOP", 0, -12)
+    header:SetWidth(310)
+    header:SetJustifyH("CENTER")
+    header:SetText(
         "|cffffffffDrag the search bar to position it.|r\n" ..
-        "|cffffffffUse the corner handle to resize.|r\n\n" ..
-        "|cff999999Hold |cffFFD100Shift|r|cff999999 + drag to reposition later.|r\n" ..
-        "|cff999999Open Options with |cffFFD100/ef o|r|cff999999 to adjust size & more.|r"
+        "|cffffffffUse the corner handle to resize.|r"
+    )
+
+    -- Bullet points (left-aligned, anchored below header)
+    local bullets = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    bullets:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -8)
+    bullets:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, -8)
+    bullets:SetJustifyH("LEFT")
+    bullets:SetText(
+        "\226\128\162 |cff999999Hold |cffFFD100Shift|r|cff999999 + drag to reposition later.|r\n" ..
+        "\226\128\162 |cff999999The bar auto-hides when not in use. To keep it|r\n" ..
+        "|cff999999  visible, open |cffFFD100/ef o|r|cff999999 and disable |cffFFD100Smart Show|r|cff999999.|r"
     )
 
     -- Done button
     local doneBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     doneBtn:SetSize(80, 22)
-    doneBtn:SetPoint("BOTTOM", panel, "BOTTOM", 0, 10)
+    doneBtn:SetPoint("BOTTOM", panel, "BOTTOM", 0, 30)
     doneBtn:SetText("Done")
 
     -- ── During setup: allow drag WITHOUT holding Shift ───────────────────
