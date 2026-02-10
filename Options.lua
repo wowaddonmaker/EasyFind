@@ -9,6 +9,78 @@ local sformat = Utils.sformat
 local optionsFrame
 local isInitialized = false
 
+-- Shared backdrop for selector buttons and flyout panels
+local SELECTOR_BACKDROP = {
+    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    tile = true, tileSize = 16, edgeSize = 12,
+    insets = { left = 2, right = 2, top = 2, bottom = 2 }
+}
+
+-- Helper to create a flyout selector (button + dropdown panel + toggle + click-away)
+-- Returns: btnFrame, btnText, flyout
+local function CreateFlyoutSelector(parent, globalPrefix, width, anchor, initialText)
+    local btnFrame = CreateFrame("Button", globalPrefix .. "Button", parent, "BackdropTemplate")
+    btnFrame:SetSize(width, 22)
+    btnFrame:SetPoint("LEFT", anchor, "RIGHT", 8, 0)
+    btnFrame:SetBackdrop(SELECTOR_BACKDROP)
+    btnFrame:SetBackdropColor(0.1, 0.1, 0.1, 0.8)
+    btnFrame:SetBackdropBorderColor(0.6, 0.6, 0.6, 0.8)
+
+    local btnText = btnFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    btnText:SetPoint("CENTER")
+    btnText:SetText(initialText)
+
+    return btnFrame, btnText
+end
+
+-- Create the flyout panel for a selector, with toggle and click-away behavior
+-- Returns: flyout frame
+local function CreateFlyoutPanel(btnFrame, globalPrefix, width, numChoices)
+    local flyout = CreateFrame("Frame", globalPrefix .. "Flyout", btnFrame, "BackdropTemplate")
+    flyout:SetSize(width, numChoices * 20 + 6)
+    flyout:SetPoint("TOP", btnFrame, "BOTTOM", 0, -2)
+    flyout:SetFrameStrata("FULLSCREEN_DIALOG")
+    flyout:SetBackdrop(SELECTOR_BACKDROP)
+    flyout:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+    flyout:Hide()
+
+    btnFrame:SetScript("OnClick", function()
+        flyout:SetShown(not flyout:IsShown())
+    end)
+
+    flyout:SetScript("OnShow", function(self)
+        self:SetScript("OnUpdate", function(self)
+            if not self:IsMouseOver() and not btnFrame:IsMouseOver() then
+                if IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton") then
+                    self:Hide()
+                end
+            end
+        end)
+    end)
+    flyout:SetScript("OnHide", function(self)
+        self:SetScript("OnUpdate", nil)
+    end)
+
+    return flyout
+end
+
+-- Add simple text options to a flyout panel
+local function AddFlyoutOptions(flyout, choices, itemWidth, onSelect)
+    for i, name in ipairs(choices) do
+        local opt = CreateFrame("Button", nil, flyout)
+        opt:SetSize(itemWidth, 18)
+        opt:SetPoint("TOPLEFT", flyout, "TOPLEFT", 3, -3 - (i - 1) * 20)
+        opt:SetNormalFontObject("GameFontHighlightSmall")
+        opt:SetHighlightFontObject("GameFontNormalSmall")
+        opt:SetText(name)
+        opt:SetScript("OnClick", function()
+            onSelect(name)
+            flyout:Hide()
+        end)
+    end
+end
+
 -- Helper to create a slider (anchored manually by caller)
 local function CreateSlider(parent, name, label, minVal, maxVal, step, tooltipText)
     local slider = CreateFrame("Slider", "EasyFindOptions" .. name .. "Slider", parent, "OptionsSliderTemplate")
@@ -206,71 +278,15 @@ function Options:Initialize()
     
     local themeChoices = {"Classic", "Retail"}
     
-    local themeBtnFrame = CreateFrame("Button", "EasyFindThemeButton", optionsFrame, "BackdropTemplate")
-    themeBtnFrame:SetSize(90, 22)
-    themeBtnFrame:SetPoint("LEFT", themeLabel, "RIGHT", 8, 0)
-    themeBtnFrame:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 }
-    })
-    themeBtnFrame:SetBackdropColor(0.1, 0.1, 0.1, 0.8)
-    themeBtnFrame:SetBackdropBorderColor(0.6, 0.6, 0.6, 0.8)
-    
-    local themeBtnText = themeBtnFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    themeBtnText:SetPoint("CENTER")
-    themeBtnText:SetText(EasyFind.db.resultsTheme or "Retail")
-    
-    -- Simple flyout list
-    local themeFlyout = CreateFrame("Frame", "EasyFindThemeFlyout", themeBtnFrame, "BackdropTemplate")
-    themeFlyout:SetSize(90, #themeChoices * 20 + 6)
-    themeFlyout:SetPoint("TOP", themeBtnFrame, "BOTTOM", 0, -2)
-    themeFlyout:SetFrameStrata("FULLSCREEN_DIALOG")
-    themeFlyout:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 }
-    })
-    themeFlyout:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
-    themeFlyout:Hide()
-    
-    for i, name in ipairs(themeChoices) do
-        local opt = CreateFrame("Button", nil, themeFlyout)
-        opt:SetSize(84, 18)
-        opt:SetPoint("TOPLEFT", themeFlyout, "TOPLEFT", 3, -3 - (i - 1) * 20)
-        opt:SetNormalFontObject("GameFontHighlightSmall")
-        opt:SetHighlightFontObject("GameFontNormalSmall")
-        opt:SetText(name)
-        opt:SetScript("OnClick", function()
-            EasyFind.db.resultsTheme = name
-            themeBtnText:SetText(name)
-            themeFlyout:Hide()
-            if ns.UI and ns.UI.RefreshResults then ns.UI:RefreshResults() end
-            if ns.MapSearch and ns.MapSearch.UpdateSearchBarTheme then ns.MapSearch:UpdateSearchBarTheme() end
-        end)
-    end
-    
-    themeBtnFrame:SetScript("OnClick", function()
-        if themeFlyout:IsShown() then
-            themeFlyout:Hide()
-        else
-            themeFlyout:Show()
-        end
-    end)
-    -- Hide flyout when clicking elsewhere
-    themeFlyout:SetScript("OnShow", function(self)
-        self:SetScript("OnUpdate", function(self)
-            if not self:IsMouseOver() and not themeBtnFrame:IsMouseOver() then
-                if IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton") then
-                    self:Hide()
-                end
-            end
-        end)
-    end)
-    themeFlyout:SetScript("OnHide", function(self)
-        self:SetScript("OnUpdate", nil)
+    local themeBtnFrame, themeBtnText = CreateFlyoutSelector(
+        optionsFrame, "EasyFindTheme", 90, themeLabel, EasyFind.db.resultsTheme or "Retail"
+    )
+    local themeFlyout = CreateFlyoutPanel(themeBtnFrame, "EasyFindTheme", 90, #themeChoices)
+    AddFlyoutOptions(themeFlyout, themeChoices, 84, function(name)
+        EasyFind.db.resultsTheme = name
+        themeBtnText:SetText(name)
+        if ns.UI and ns.UI.RefreshResults then ns.UI:RefreshResults() end
+        if ns.MapSearch and ns.MapSearch.UpdateSearchBarTheme then ns.MapSearch:UpdateSearchBarTheme() end
     end)
     optionsFrame.themeBtnText = themeBtnText
     optionsFrame.themeFlyout = themeFlyout
@@ -284,71 +300,16 @@ function Options:Initialize()
     
     local arrowChoices = {"EasyFind Arrow", "Classic Quest Arrow", "Minimap Player Arrow", "Cursor Point"}
     
-    local arrowBtnFrame = CreateFrame("Button", "EasyFindArrowButton", optionsFrame, "BackdropTemplate")
-    arrowBtnFrame:SetSize(160, 22)
-    arrowBtnFrame:SetPoint("LEFT", arrowLabel, "RIGHT", 8, 0)
-    arrowBtnFrame:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 }
-    })
-    arrowBtnFrame:SetBackdropColor(0.1, 0.1, 0.1, 0.8)
-    arrowBtnFrame:SetBackdropBorderColor(0.6, 0.6, 0.6, 0.8)
-    
-    local arrowBtnText = arrowBtnFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    arrowBtnText:SetPoint("CENTER")
-    arrowBtnText:SetText(EasyFind.db.arrowStyle or "EasyFind Arrow")
-    
-    local arrowFlyout = CreateFrame("Frame", "EasyFindArrowFlyout", arrowBtnFrame, "BackdropTemplate")
-    arrowFlyout:SetSize(160, #arrowChoices * 20 + 6)
-    arrowFlyout:SetPoint("TOP", arrowBtnFrame, "BOTTOM", 0, -2)
-    arrowFlyout:SetFrameStrata("FULLSCREEN_DIALOG")
-    arrowFlyout:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 }
-    })
-    arrowFlyout:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
-    arrowFlyout:Hide()
-    
-    for i, name in ipairs(arrowChoices) do
-        local opt = CreateFrame("Button", nil, arrowFlyout)
-        opt:SetSize(154, 18)
-        opt:SetPoint("TOPLEFT", arrowFlyout, "TOPLEFT", 3, -3 - (i - 1) * 20)
-        opt:SetNormalFontObject("GameFontHighlightSmall")
-        opt:SetHighlightFontObject("GameFontNormalSmall")
-        opt:SetText(name)
-        opt:SetScript("OnClick", function()
-            EasyFind.db.arrowStyle = name
-            arrowBtnText:SetText(name)
-            arrowFlyout:Hide()
-            if ns.MapSearch then
-                ns.MapSearch:RefreshArrows()
-            end
-        end)
-    end
-    
-    arrowBtnFrame:SetScript("OnClick", function()
-        if arrowFlyout:IsShown() then
-            arrowFlyout:Hide()
-        else
-            arrowFlyout:Show()
+    local arrowBtnFrame, arrowBtnText = CreateFlyoutSelector(
+        optionsFrame, "EasyFindArrow", 160, arrowLabel, EasyFind.db.arrowStyle or "EasyFind Arrow"
+    )
+    local arrowFlyout = CreateFlyoutPanel(arrowBtnFrame, "EasyFindArrow", 160, #arrowChoices)
+    AddFlyoutOptions(arrowFlyout, arrowChoices, 154, function(name)
+        EasyFind.db.arrowStyle = name
+        arrowBtnText:SetText(name)
+        if ns.MapSearch then
+            ns.MapSearch:RefreshArrows()
         end
-    end)
-    
-    arrowFlyout:SetScript("OnShow", function(self)
-        self:SetScript("OnUpdate", function(self)
-            if not self:IsMouseOver() and not arrowBtnFrame:IsMouseOver() then
-                if IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton") then
-                    self:Hide()
-                end
-            end
-        end)
-    end)
-    arrowFlyout:SetScript("OnHide", function(self)
-        self:SetScript("OnUpdate", nil)
     end)
     optionsFrame.arrowBtnText = arrowBtnText
     optionsFrame.arrowFlyout = arrowFlyout
@@ -361,34 +322,13 @@ function Options:Initialize()
     colorLabel:SetText("Arrow Color:")
     
     local colorChoices = {"Yellow", "Gold", "Orange", "Red", "Green", "Blue", "Purple", "White"}
-    local colorRGB = {
-        ["Yellow"]  = {1.0, 1.0, 0.0},
-        ["Gold"]    = {1.0, 0.82, 0.0},
-        ["Orange"]  = {1.0, 0.5, 0.0},
-        ["Red"]     = {1.0, 0.2, 0.2},
-        ["Green"]   = {0.2, 1.0, 0.2},
-        ["Blue"]    = {0.3, 0.6, 1.0},
-        ["Purple"]  = {0.7, 0.3, 1.0},
-        ["White"]   = {1.0, 1.0, 1.0},
-    }
+    local colorRGB = ns.ARROW_COLORS  -- Shared with MapSearch.lua
     
-    local colorBtnFrame = CreateFrame("Button", "EasyFindColorButton", optionsFrame, "BackdropTemplate")
-    colorBtnFrame:SetSize(160, 22)
-    colorBtnFrame:SetPoint("LEFT", colorLabel, "RIGHT", 8, 0)
-    colorBtnFrame:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 }
-    })
-    colorBtnFrame:SetBackdropColor(0.1, 0.1, 0.1, 0.8)
-    colorBtnFrame:SetBackdropBorderColor(0.6, 0.6, 0.6, 0.8)
-    
-    local colorBtnText = colorBtnFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    colorBtnText:SetPoint("CENTER")
+    local colorBtnFrame, colorBtnText = CreateFlyoutSelector(
+        optionsFrame, "EasyFindColor", 160, colorLabel, EasyFind.db.arrowColor or "Yellow"
+    )
     local currentColor = EasyFind.db.arrowColor or "Yellow"
-    local currentRGB = colorRGB[currentColor] or colorRGB["Yellow"]
-    colorBtnText:SetText(currentColor)
+    local currentRGB = colorRGB[currentColor] or colorRGB.Yellow
     colorBtnText:SetTextColor(currentRGB[1], currentRGB[2], currentRGB[3])
     
     -- Color swatch next to text
@@ -397,18 +337,7 @@ function Options:Initialize()
     colorSwatch:SetPoint("LEFT", colorBtnFrame, "LEFT", 6, 0)
     colorSwatch:SetColorTexture(currentRGB[1], currentRGB[2], currentRGB[3], 1)
     
-    local colorFlyout = CreateFrame("Frame", "EasyFindColorFlyout", colorBtnFrame, "BackdropTemplate")
-    colorFlyout:SetSize(160, #colorChoices * 20 + 6)
-    colorFlyout:SetPoint("TOP", colorBtnFrame, "BOTTOM", 0, -2)
-    colorFlyout:SetFrameStrata("FULLSCREEN_DIALOG")
-    colorFlyout:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 }
-    })
-    colorFlyout:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
-    colorFlyout:Hide()
+    local colorFlyout = CreateFlyoutPanel(colorBtnFrame, "EasyFindColor", 160, #colorChoices)
     
     for i, name in ipairs(colorChoices) do
         local rgb = colorRGB[name]
@@ -445,26 +374,6 @@ function Options:Initialize()
         end)
     end
     
-    colorBtnFrame:SetScript("OnClick", function()
-        if colorFlyout:IsShown() then
-            colorFlyout:Hide()
-        else
-            colorFlyout:Show()
-        end
-    end)
-    
-    colorFlyout:SetScript("OnShow", function(self)
-        self:SetScript("OnUpdate", function(self)
-            if not self:IsMouseOver() and not colorBtnFrame:IsMouseOver() then
-                if IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton") then
-                    self:Hide()
-                end
-            end
-        end)
-    end)
-    colorFlyout:SetScript("OnHide", function(self)
-        self:SetScript("OnUpdate", nil)
-    end)
     optionsFrame.colorBtnText = colorBtnText
     optionsFrame.colorFlyout = colorFlyout
     
@@ -683,7 +592,7 @@ function Options:Initialize()
         optionsFrame.opacitySlider:SetValue(1.0)
         optionsFrame.directOpenCheckbox:SetChecked(false)
         optionsFrame.zoneNavCheckbox:SetChecked(false)
-        optionsFrame.smartShowCheckbox:SetChecked(false)
+        optionsFrame.smartShowCheckbox:SetChecked(true)
         optionsFrame.devModeCheckbox:SetChecked(false)
         optionsFrame.themeBtnText:SetText("Retail")
         optionsFrame.keybindBtn:SetText("[")
