@@ -1,0 +1,8 @@
+# Development and build artifacts
+nul
+
+# GitHub workflows (if you don't want to track them)
+.github/
+
+# Media assets (if managed separately)
+media/
