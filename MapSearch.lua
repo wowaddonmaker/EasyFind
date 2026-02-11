@@ -147,11 +147,13 @@ function ns.CreateArrowTextures(parentFrame, iconSize, glowSize)
         arrow:SetTexCoord(unpack(style.texCoord))
     end
     arrow:SetVertexColor(color[1], color[2], color[3], 1)
+    local arrowRotation = 0
     if style.rotation then
-        arrow:SetRotation(style.rotation)
+        arrowRotation = style.rotation
     elseif not style.preRotated then
-        arrow:SetRotation(mpi)
+        arrowRotation = mpi
     end
+    arrow:SetRotation(arrowRotation)
     parentFrame.arrow = arrow
 
     -- Glow texture (optional)
@@ -160,7 +162,7 @@ function ns.CreateArrowTextures(parentFrame, iconSize, glowSize)
         glow:SetSize(glowSize, glowSize)
         glow:SetPoint("CENTER")
         glow:SetTexture("Interface\\Cooldown\\star4")
-        glow:SetVertexColor(color[1], color[2], color[3], 0.7)
+        glow:SetVertexColor(color[1], color[2], color[3], 0.35)
         glow:SetBlendMode("ADD")
         parentFrame.glow = glow
     end
@@ -188,15 +190,17 @@ function ns.UpdateArrow(parentFrame)
         tex:SetTexCoord(0, 1, 0, 1)
     end
     -- Use directional override if set, otherwise use style default
+    local arrowRotation = 0
     if parentFrame.arrowDirection then
-        tex:SetRotation(ns.GetDirectionalRotation(parentFrame.arrowDirection))
+        arrowRotation = ns.GetDirectionalRotation(parentFrame.arrowDirection)
     elseif style.rotation then
-        tex:SetRotation(style.rotation)
+        arrowRotation = style.rotation
     elseif style.preRotated then
-        tex:SetRotation(0)
+        arrowRotation = 0
     else
-        tex:SetRotation(mpi)
+        arrowRotation = mpi
     end
+    tex:SetRotation(arrowRotation)
     tex:SetVertexColor(color[1], color[2], color[3], 1)
     tex:ClearAllPoints()
     tex:SetPoint("CENTER", parentFrame, "CENTER", ox, oy)
@@ -209,7 +213,7 @@ function ns.UpdateArrow(parentFrame)
     end
 
     if parentFrame.glow then
-        parentFrame.glow:SetVertexColor(color[1], color[2], color[3], 0.7)
+        parentFrame.glow:SetVertexColor(color[1], color[2], color[3], 0.35)
     end
 
     -- Apply user icon scale to UI arrows (map arrows handle scale in their own sizing code)
@@ -842,7 +846,7 @@ function MapSearch:CreateHighlightFrame()
     local arrowAnimGroup = arrowFrame:CreateAnimationGroup()
     arrowAnimGroup:SetLooping("BOUNCE")
     local arrowMove = arrowAnimGroup:CreateAnimation("Translation")
-    arrowMove:SetOffset(0, 8)
+    arrowMove:SetOffset(0, -10)
     arrowMove:SetDuration(0.4)
     arrowFrame.animGroup = arrowAnimGroup
     
@@ -921,10 +925,10 @@ function MapSearch:CreateZoneHighlightFrame()
     local arrowAnimGroup = zoneArrow:CreateAnimationGroup()
     arrowAnimGroup:SetLooping("BOUNCE")
     local arrowMove = arrowAnimGroup:CreateAnimation("Translation")
-    arrowMove:SetOffset(0, 10)
-    arrowMove:SetDuration(0.35)
+    arrowMove:SetOffset(0, -10)
+    arrowMove:SetDuration(0.4)
     zoneArrow.animGroup = arrowAnimGroup
-    zoneArrow.defaultOffset = {0, 10}  -- Store default animation offset
+    zoneArrow.translateAnim = arrowMove
     
     zoneArrow:Hide()
     zoneHighlightFrame.arrow = zoneArrow
@@ -1403,6 +1407,19 @@ function MapSearch:HighlightZone(mapID)
             DebugPrint("[EasyFind] Arrow placed RIGHT of zone")
         end
         
+        -- Update bob direction to match arrow pointing direction
+        if arrow.translateAnim then
+            if arrow.arrowDirection == "down" then
+                arrow.translateAnim:SetOffset(0, -10)
+            elseif arrow.arrowDirection == "up" then
+                arrow.translateAnim:SetOffset(0, 10)
+            elseif arrow.arrowDirection == "right" then
+                arrow.translateAnim:SetOffset(10, 0)
+            elseif arrow.arrowDirection == "left" then
+                arrow.translateAnim:SetOffset(-10, 0)
+            end
+        end
+        
         arrow:Show()
         if arrow.animGroup then
             arrow.animGroup:Play()
@@ -1445,6 +1462,12 @@ function MapSearch:ClearZoneHighlight()
     
     -- Also clear breadcrumb highlight
     if self.breadcrumbHighlight then
+        if self.breadcrumbHighlight.arrowFrame then
+            self.breadcrumbHighlight.arrowFrame:Hide()
+            if self.breadcrumbHighlight.arrowFrame.animGroup then
+                self.breadcrumbHighlight.arrowFrame.animGroup:Stop()
+            end
+        end
         self.breadcrumbHighlight:Hide()
         if self.breadcrumbHighlight.animGroup then
             self.breadcrumbHighlight.animGroup:Stop()
@@ -1733,11 +1756,23 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
         alpha:SetDuration(0.4)
         hl.animGroup = animGroup
         
-        -- Arrow pointing to button - uses a wrapper frame so shared helper works
-        local bcArrowFrame = CreateFrame("Frame", nil, hl)
+        -- Arrow pointing to button — parented to UIParent so it's not clipped
+        -- by WorldMapFrame when extending above the map edge
+        local bcArrowFrame = CreateFrame("Frame", nil, UIParent)
+        bcArrowFrame:SetFrameStrata("TOOLTIP")
+        bcArrowFrame:SetFrameLevel(301)
         bcArrowFrame:SetSize(ns.BREADCRUMB_SIZE, ns.BREADCRUMB_SIZE)
         bcArrowFrame:SetPoint("BOTTOM", hl, "TOP", 0, 8)
-        ns.CreateArrowTextures(bcArrowFrame, ns.BREADCRUMB_SIZE, 0)
+        ns.CreateArrowTextures(bcArrowFrame, ns.BREADCRUMB_SIZE, ns.ICON_GLOW_SIZE)
+        
+        -- Bob animation matching all other arrows
+        local bcAnimGroup = bcArrowFrame:CreateAnimationGroup()
+        bcAnimGroup:SetLooping("BOUNCE")
+        local bcMove = bcAnimGroup:CreateAnimation("Translation")
+        bcMove:SetOffset(0, -10)
+        bcMove:SetDuration(0.4)
+        bcArrowFrame.animGroup = bcAnimGroup
+        
         hl.arrowFrame = bcArrowFrame
         -- Keep .arrow reference for compat
         hl.arrow = bcArrowFrame.arrow
@@ -1751,6 +1786,14 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
     hl:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 3, -3)
     hl:Show()
     hl.animGroup:Play()
+    
+    -- Play breadcrumb arrow bob animation
+    if hl.arrowFrame then
+        hl.arrowFrame:Show()
+        if hl.arrowFrame.animGroup then
+            hl.arrowFrame.animGroup:Play()
+        end
+    end
     
     -- Store the final destination for when user clicks the breadcrumb
     self.pendingZoneHighlight = finalTargetMapID
@@ -2712,7 +2755,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
                     local animGroup = extraArrow:CreateAnimationGroup()
                     animGroup:SetLooping("BOUNCE")
                     local arrowMove = animGroup:CreateAnimation("Translation")
-                    arrowMove:SetOffset(0, 8)
+                    arrowMove:SetOffset(0, -10)
                     arrowMove:SetDuration(0.4)
                     extraArrow.animGroup = animGroup
                     

@@ -4,6 +4,21 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [1.2.1] - 2026-02-10
+
+### Fixed
+- **`/ef clear` now clears everything**: Previously only dismissed UI search highlights; now also clears map POI highlights, zone highlights, and breadcrumb navigation indicators
+- **Breadcrumb arrow glow**: Glow was missing or clipped because the arrow frame was parented inside WorldMapFrame. Reparented to UIParent so the glow renders fully even when the arrow sits at the map edge
+- **Breadcrumb arrow brightness**: Arrow and glow were dimmed by the parent highlight's blinking alpha animation; arrow now renders at full brightness
+- **Arrow bob animations**: Standardized all arrow bob animations across the addon (UI search, map POI, zone, breadcrumb, multi-pin) to use consistent direction (toward target), offset (10px), and duration (0.4s)
+- **Zone arrow directional bob**: Zone highlight arrows now bob in the direction they point (down, up, left, or right) instead of always bobbing upward
+- **Breadcrumb arrow animation**: Breadcrumb arrow now bobs like all other arrows instead of being static
+- **Glow intensity**: Reduced glow alpha from 0.7 to 0.35 so bright arrow colors (Yellow, Gold, White) don't wash out the arrow shape into a blob, especially against yellow zone highlights
+- **Map search tooltip**: Tooltips now only appear when hovering the magnifying glass icon, not the entire search bar border
+- **Breadcrumb arrow size**: Increased from 24px to 48px to match all other arrow indicators
+
+---
+
 ## [1.2.0] - 2026-02-10
 
 ### Added

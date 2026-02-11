@@ -2,7 +2,7 @@
 ## Title: EasyFind
 ## Notes: Search and locate UI elements and map locations with ease
 ## Author: YourName
-## Version: 1.2.0
+## Version: 1.2.1
 ## SavedVariables: EasyFindDB
 ## DefaultState: enabled
 

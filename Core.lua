@@ -75,8 +75,12 @@ local function OnInitialize()
         elseif msg == "clear" then
             if ns.Highlight then
                 ns.Highlight:ClearAll()
-                EasyFind:Print("Active highlights cleared.")
             end
+            if ns.MapSearch then
+                ns.MapSearch:ClearHighlight()
+                ns.MapSearch:ClearZoneHighlight()
+            end
+            EasyFind:Print("Active highlights cleared.")
         elseif msg:find("^test ") then
             -- /ef test Interface\\Path\\To\\Texture
             local texture = msg:match("^test%s+(.+)")
