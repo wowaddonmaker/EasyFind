@@ -53,7 +53,6 @@ When you install EasyFind for the first time, you'll see an interactive setup ov
 
 | Command | Description |
 | --- | --- |
-| `/ef` | Toggle the EasyFind search bar |
 | `/ef o` | Open the options panel |
 | `/ef hide` | Hide the search bar |
 | `/ef show` | Show the search bar |

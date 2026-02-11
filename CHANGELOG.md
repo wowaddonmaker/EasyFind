@@ -15,7 +15,7 @@ All notable changes to EasyFind will be documented in this file.
 - **Breadcrumb arrow animation**: Breadcrumb arrow now bobs like all other arrows instead of being static
 - **Glow intensity**: Reduced glow alpha from 0.7 to 0.35 so bright arrow colors (Yellow, Gold, White) don't wash out the arrow shape into a blob, especially against yellow zone highlights
 - **Map search tooltip**: Tooltips now only appear when hovering the magnifying glass icon, not the entire search bar border
-- **Breadcrumb arrow size**: Increased from 24px to 48px to match all other arrow indicators
+- **Breadcrumb arrow size**: Increased default from 24px to 48px to match all other arrow indicators
 
 ---
 
