@@ -101,7 +101,7 @@ ns.ZONE_ICON_SIZE      = 48
 ns.ZONE_ICON_GLOW_SIZE = 68
 
 -- Breadcrumb indicator
-ns.BREADCRUMB_SIZE   = 24
+ns.BREADCRUMB_SIZE   = 48
 
 --- Convert a size in UI units to canvas units so it appears the same visual
 --- size as a same-valued element on UIParent.
@@ -500,11 +500,14 @@ function MapSearch:CreateSearchFrame()
         end
     end)
     
-    searchFrame.editBox = editBox
-    searchFrame:Hide()
-    
-    -- Tooltip on the local search bar background
-    searchFrame:SetScript("OnEnter", function(self)
+    -- Invisible button over the icon to capture hover for tooltip
+    local searchIconHitbox = CreateFrame("Button", nil, searchFrame)
+    searchIconHitbox:SetSize(22, 22)
+    searchIconHitbox:SetPoint("CENTER", searchIcon, "CENTER", 0, 0)
+    searchIconHitbox:SetFrameLevel(searchFrame:GetFrameLevel() + 2)
+    searchIconHitbox:EnableMouse(true)
+    searchIconHitbox:RegisterForClicks()
+    searchIconHitbox:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText("|cFFFFD100This Zone|r Search")
         GameTooltip:AddLine("Searches for POIs and sub-zones within the map you're currently viewing.", 1, 1, 1, true)
@@ -512,7 +515,15 @@ function MapSearch:CreateSearchFrame()
         GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
-    searchFrame:SetScript("OnLeave", GameTooltip_Hide)
+    searchIconHitbox:SetScript("OnLeave", GameTooltip_Hide)
+    searchIconHitbox:SetScript("OnMouseDown", function(_, button)
+        if button == "LeftButton" and not IsShiftKeyDown() then
+            editBox:SetFocus()
+        end
+    end)
+
+    searchFrame.editBox = editBox
+    searchFrame:Hide()
     
     -- =====================================================================
     -- GLOBAL search bar (right side — searches all zones in the world)
@@ -677,19 +688,30 @@ function MapSearch:CreateSearchFrame()
         end
     end)
     
-    globalSearchFrame.editBox = globalEditBox
-    globalSearchFrame:Hide()
-    
-    -- Tooltip on the global search bar background
-    globalSearchFrame:SetScript("OnEnter", function(self)
+    -- Invisible button over the icon to capture hover for tooltip
+    local globalIconHitbox = CreateFrame("Button", nil, globalSearchFrame)
+    globalIconHitbox:SetSize(22, 22)
+    globalIconHitbox:SetPoint("CENTER", globalSearchIcon, "CENTER", 0, 0)
+    globalIconHitbox:SetFrameLevel(globalSearchFrame:GetFrameLevel() + 2)
+    globalIconHitbox:EnableMouse(true)
+    globalIconHitbox:RegisterForClicks()
+    globalIconHitbox:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText("|cFF66CCFFAll Zones|r Search")
-        GameTooltip:AddLine("Searches every zone in the entire world — continents, dungeons, and more.", 1, 1, 1, true)
+        GameTooltip:AddLine("Searches every zone in the entire world \226\128\148 continents, dungeons, and more.", 1, 1, 1, true)
         GameTooltip:AddLine(" ")
         GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
-    globalSearchFrame:SetScript("OnLeave", GameTooltip_Hide)
+    globalIconHitbox:SetScript("OnLeave", GameTooltip_Hide)
+    globalIconHitbox:SetScript("OnMouseDown", function(_, button)
+        if button == "LeftButton" and not IsShiftKeyDown() then
+            globalEditBox:SetFocus()
+        end
+    end)
+
+    globalSearchFrame.editBox = globalEditBox
+    globalSearchFrame:Hide()
     
     -- Set initial active frame
     activeSearchFrame = searchFrame
