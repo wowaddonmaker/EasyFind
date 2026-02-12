@@ -25,9 +25,15 @@ local wipe               = wipe
 local searchFrame
 local resultsFrame
 local resultButtons = {}
-local MAX_RESULTS = 12
+local MAX_BUTTON_POOL = 24  -- Maximum buttons we'll ever create
 local inCombat = false
+
+-- Get the current max results setting (user-configurable)
+local function GetMaxResults()
+    return EasyFind.db.maxResults or 12
+end
 local selectedIndex = 0   -- 0 = none selected, 1..N = highlighted row
+local unearnedTooltip      -- Custom tooltip for unearned currencies
 
 -- =============================================================================
 -- THEME DEFINITIONS
@@ -142,11 +148,44 @@ local function GetActiveTheme()
     return THEMES[EasyFind.db.resultsTheme or "Classic"] or THEMES["Classic"]
 end
 
+function UI:CreateUnearnedTooltip()
+    -- Create simple tooltip frame
+    unearnedTooltip = CreateFrame("Frame", "EasyFindUnearnedTooltip", UIParent, "BackdropTemplate")
+    unearnedTooltip:SetFrameStrata("TOOLTIP")
+    unearnedTooltip:SetFrameLevel(9999)  -- Ensure it's on top
+    unearnedTooltip:SetClampedToScreen(true)
+
+    -- Simple black background with border
+    unearnedTooltip:SetBackdrop({
+        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 16, edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+    unearnedTooltip:SetBackdropColor(0, 0, 0, 0.95)
+    unearnedTooltip:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+
+    -- Text with larger font
+    local text = unearnedTooltip:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    text:SetPoint("CENTER", 0, 0)
+    text:SetText("Currency not yet earned")
+    text:SetTextColor(1, 1, 1, 1)
+    unearnedTooltip.text = text
+
+    -- Auto-size tooltip to fit text with padding
+    local textWidth = text:GetStringWidth()
+    local textHeight = text:GetStringHeight()
+    unearnedTooltip:SetSize(textWidth + 20, textHeight + 16)  -- Add padding
+
+    unearnedTooltip:Hide()
+end
+
 function UI:Initialize()
+    self:CreateUnearnedTooltip()
     self:CreateSearchFrame()
     self:CreateResultsFrame()
     self:RegisterCombatEvents()
-    
+
     if EasyFind.db.visible ~= false then
         searchFrame:Show()
         -- Apply smart show on startup
@@ -393,6 +432,8 @@ function UI:CreateSearchFrame()
     
     local function SmartShowFadeOut()
         if EasyFind.db.visible == false then return end
+        -- Don't hide during first-time setup (user is positioning the bar)
+        if searchFrame.setupMode then return end
         -- Don't hide if the editbox has focus or contains text
         if searchFrame.editBox:HasFocus() or searchFrame.editBox:GetText() ~= "" then return end
         -- Don't hide if results are showing
@@ -446,11 +487,28 @@ function UI:CreateResultsFrame()
     })
     
     resultsFrame:Hide()
-    
-    for i = 1, MAX_RESULTS do
+
+    for i = 1, MAX_BUTTON_POOL do
         local btn = self:CreateResultButton(i)
         resultButtons[i] = btn
     end
+
+    -- Truncation indicator separator line (golden, matching tree lines)
+    local truncSeparator = resultsFrame:CreateTexture(nil, "ARTWORK")
+    truncSeparator:SetColorTexture(1.0, 0.82, 0.0, 0.6)  -- Golden color matching tree lines
+    truncSeparator:SetHeight(1)
+    truncSeparator:SetPoint("BOTTOMLEFT", resultsFrame, "BOTTOMLEFT", 10, 30)
+    truncSeparator:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", -10, 30)
+    truncSeparator:Hide()
+    resultsFrame.truncSeparator = truncSeparator
+
+    -- Truncation indicator: shown when more results exist than can be displayed
+    local truncIndicator = resultsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    truncIndicator:SetPoint("BOTTOM", resultsFrame, "BOTTOM", 0, 12)
+    truncIndicator:SetTextColor(0.7, 0.7, 0.7, 1.0)
+    truncIndicator:SetText("More results available. Increase limit or hide this message in /ef o")
+    truncIndicator:Hide()
+    resultsFrame.truncIndicator = truncIndicator
 end
 
 -- Vibrant indent line colors for each depth level (used by Classic theme)
@@ -551,6 +609,22 @@ function UI:CreateResultButton(index)
         if parent.toggleIcon then
             parent.toggleIcon:SetVertexColor(1.0, 1.0, 0.0, 1.0)  -- bright pure yellow
         end
+
+        -- Show tooltip for unearned currencies
+        if parent.isUnearnedCurrency and unearnedTooltip then
+            local tooltipText = parent.isPathNode and "This tab does not exist on this character yet" or "Currency not yet earned"
+            unearnedTooltip.text:SetText(tooltipText)
+
+            local textWidth = unearnedTooltip.text:GetStringWidth()
+            local textHeight = unearnedTooltip.text:GetStringHeight()
+            unearnedTooltip:SetSize(textWidth + 20, textHeight + 16)
+
+            local scale = UIParent:GetEffectiveScale()
+            local x, y = GetCursorPosition()
+            unearnedTooltip:ClearAllPoints()
+            unearnedTooltip:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale + 10, y / scale + 10)
+            unearnedTooltip:Show()
+        end
     end)
     headerTab:SetScript("OnLeave", function(self)
         local parent = self:GetParent()
@@ -562,6 +636,11 @@ function UI:CreateResultButton(index)
         end
         if parent.toggleIcon then
             parent.toggleIcon:SetVertexColor(1.0, 1.0, 1.0, 1.0)  -- normal (atlas provides color)
+        end
+
+        -- Hide tooltip for unearned currencies
+        if unearnedTooltip then
+            unearnedTooltip:Hide()
         end
     end)
     
@@ -665,19 +744,30 @@ function UI:CreateResultButton(index)
     -- Tooltip for unearned currencies
     btn:SetScript("OnEnter", function(self)
         if self.isUnearnedCurrency then
-            GameTooltip:SetOwner(UIParent, "ANCHOR_NONE")
-            GameTooltip:ClearLines()
-            local x, y = GetCursorPosition()
-            local scale = UIParent:GetEffectiveScale()
-            GameTooltip:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale, y / scale)
-            GameTooltip:AddLine("You haven't earned any of this currency yet", 1, 1, 1, true)
-            GameTooltip:Show()
+            if unearnedTooltip then
+                -- Update tooltip text based on whether it's a parent tab or individual currency
+                local tooltipText = self.isPathNode and "This tab does not exist on this character yet" or "Currency not yet earned"
+                unearnedTooltip.text:SetText(tooltipText)
+
+                -- Resize tooltip to fit text
+                local textWidth = unearnedTooltip.text:GetStringWidth()
+                local textHeight = unearnedTooltip.text:GetStringHeight()
+                unearnedTooltip:SetSize(textWidth + 20, textHeight + 16)
+
+                -- Position tooltip at cursor
+                local scale = UIParent:GetEffectiveScale()
+                local x, y = GetCursorPosition()
+                unearnedTooltip:ClearAllPoints()
+                unearnedTooltip:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale + 10, y / scale + 10)
+                unearnedTooltip:Show()
+            end
         end
     end)
 
     btn:SetScript("OnLeave", function(self)
-        if GameTooltip:GetOwner() == self then
-            GameTooltip:Hide()
+        -- Only hide our custom tooltip - let WoW manage GameTooltip naturally
+        if unearnedTooltip then
+            unearnedTooltip:Hide()
         end
     end)
 
@@ -811,8 +901,9 @@ function UI:ShowHierarchicalResults(hierarchical)
         end
     end
     
-    local count = mmin(#visible, MAX_RESULTS)
-    
+    local maxResults = GetMaxResults()
+    local count = mmin(#visible, maxResults)
+
     -- ----------------------------------------------------------------
     -- Pre-compute last-child flags on the VISIBLE list
     -- ----------------------------------------------------------------
@@ -829,11 +920,11 @@ function UI:ShowHierarchicalResults(hierarchical)
             isLastChild[i] = not foundSibling
         end
     end
-    
+
     -- ----------------------------------------------------------------
     -- Render visible rows
     -- ----------------------------------------------------------------
-    for i = 1, MAX_RESULTS do
+    for i = 1, MAX_BUTTON_POOL do
         local btn = resultButtons[i]
         if i <= count then
             local entry = visible[i]
@@ -938,7 +1029,68 @@ function UI:ShowHierarchicalResults(hierarchical)
                 btn.separator:SetColorTexture(sc[1], sc[2], sc[3], sc[4])
             end
             btn.separator:SetShown(theme.showSeparators)
-            
+
+            -- Check if this is a currency that hasn't been discovered yet
+            -- (not just quantity == 0, but truly never earned/discovered)
+            -- This check must run for ALL currency nodes regardless of theme
+            local isUnearnedCurrency = false
+            if data and data.category == "Currency" then
+                if entry.isPathNode then
+                    -- For parent currency nodes, check if ALL children are unearned
+                    -- Look ahead in the visible list to find children
+                    local hasAnyEarnedChild = false
+                    local hasAnyChild = false
+                    for j = i + 1, count do
+                        local childEntry = visible[j]
+                        local childDepth = childEntry.depth or 0
+                        -- Stop when we leave this parent's subtree
+                        if childDepth <= depth then
+                            break
+                        end
+                        -- Only check immediate children at depth + 1
+                        if childDepth == depth + 1 and childEntry.data and childEntry.data.steps then
+                            hasAnyChild = true
+                            for _, step in ipairs(childEntry.data.steps) do
+                                if step.currencyID then
+                                    local currencyInfo = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(step.currencyID)
+                                    if currencyInfo and (currencyInfo.quantity > 0 or
+                                        (currencyInfo.totalEarned and currencyInfo.totalEarned > 0) or
+                                        currencyInfo.useTotalEarnedForMaxQty or
+                                        currencyInfo.discovered == true) then
+                                        hasAnyEarnedChild = true
+                                        break
+                                    end
+                                end
+                            end
+                            if hasAnyEarnedChild then break end
+                        end
+                    end
+                    -- If we found children but NONE are earned, mark parent as unearned
+                    if hasAnyChild and not hasAnyEarnedChild then
+                        isUnearnedCurrency = true
+                    end
+                elseif data.steps then
+                    -- For leaf currency nodes, check the currency itself
+                    for _, step in ipairs(data.steps) do
+                        if step.currencyID then
+                            local currencyInfo = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(step.currencyID)
+                            if currencyInfo and currencyInfo.quantity == 0 then
+                                -- Only mark as unearned if it's never been discovered
+                                local isDiscovered = (currencyInfo.totalEarned and currencyInfo.totalEarned > 0) or
+                                                     (currencyInfo.useTotalEarnedForMaxQty) or
+                                                     (currencyInfo.discovered == true)
+                                if not isDiscovered then
+                                    isUnearnedCurrency = true
+                                end
+                            end
+                            break
+                        end
+                    end
+                end
+            end
+            btn.isUnearnedCurrency = isUnearnedCurrency
+            btn.isPathNode = entry.isPathNode  -- Store for tooltip text
+
             -- ---- Position icon & text (non-tab rows) ----
             if not (theme.showHeaderTab and entry.isPathNode) then
                 local indentPixels = depth * indPx
@@ -946,22 +1098,6 @@ function UI:ShowHierarchicalResults(hierarchical)
                 btn.icon:SetPoint("LEFT", btn, "LEFT", indentPixels, 0)
 
                 btn.text:SetText(entry.name)
-
-                -- Check if this is a currency that hasn't been earned yet
-                local isUnearnedCurrency = false
-                if data and data.category == "Currency" and data.steps then
-                    -- Find the currencyID from the steps
-                    for _, step in ipairs(data.steps) do
-                        if step.currencyID then
-                            local currencyInfo = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(step.currencyID)
-                            if currencyInfo and currencyInfo.quantity == 0 then
-                                isUnearnedCurrency = true
-                            end
-                            break
-                        end
-                    end
-                end
-                btn.isUnearnedCurrency = isUnearnedCurrency
 
                 -- Style: path nodes vs leaf results, themed
                 if entry.isPathNode then
@@ -1041,9 +1177,39 @@ function UI:ShowHierarchicalResults(hierarchical)
         end
     end
     
-    resultsFrame:SetHeight(padT + theme.resultsPadBot + count * rowH)
+    -- Show/hide truncation indicator and separator
+    local showTruncation = #visible > maxResults and (EasyFind.db.showTruncationMessage ~= false)
+
+    -- Add extra padding for truncation message if it will be shown
+    local truncPadding = showTruncation and 25 or 0
+    resultsFrame:SetHeight(padT + theme.resultsPadBot + count * rowH + truncPadding)
+    if resultsFrame.truncIndicator then
+        if showTruncation then
+            resultsFrame.truncIndicator:Show()
+        else
+            resultsFrame.truncIndicator:Hide()
+        end
+    end
+    if resultsFrame.truncSeparator then
+        if showTruncation then
+            resultsFrame.truncSeparator:Show()
+        else
+            resultsFrame.truncSeparator:Hide()
+        end
+    end
+
+    -- Stretch background texture if the frame is taller than the texture's native height
+    if theme.resultsBgAtlas and resultsFrame.bgAtlasTex:IsShown() then
+        local frameHeight = resultsFrame:GetHeight()
+        local currentTexHeight = resultsFrame.bgAtlasTex:GetHeight()
+        -- Only stretch if frame is taller; never shrink below native height
+        if frameHeight > currentTexHeight then
+            resultsFrame.bgAtlasTex:SetHeight(frameHeight - 8)  -- Account for insets
+        end
+    end
+
     resultsFrame:Show()
-    
+
     -- Reset keyboard selection whenever results change
     selectedIndex = 0
     self:UpdateSelectionHighlight()
@@ -1066,6 +1232,12 @@ end
 
 function UI:HideResults()
     resultsFrame:Hide()
+    if resultsFrame.truncIndicator then
+        resultsFrame.truncIndicator:Hide()
+    end
+    if resultsFrame.truncSeparator then
+        resultsFrame.truncSeparator:Hide()
+    end
     selectedIndex = 0
     self:UpdateSelectionHighlight()
 end
@@ -1080,7 +1252,7 @@ end
 function UI:MoveSelection(delta)
     -- Count visible buttons
     local visibleCount = 0
-    for i = 1, MAX_RESULTS do
+    for i = 1, MAX_BUTTON_POOL do
         if resultButtons[i]:IsShown() then
             visibleCount = i
         else
@@ -1102,7 +1274,7 @@ function UI:MoveSelection(delta)
 end
 
 function UI:UpdateSelectionHighlight()
-    for i = 1, MAX_RESULTS do
+    for i = 1, MAX_BUTTON_POOL do
         local btn = resultButtons[i]
         if btn.selectionHighlight then
             btn.selectionHighlight:SetShown(i == selectedIndex)
@@ -1115,9 +1287,14 @@ function UI:UpdateSelectionHighlight()
 end
 
 function UI:ActivateSelected()
-    if selectedIndex > 0 and selectedIndex <= MAX_RESULTS then
+    if selectedIndex > 0 and selectedIndex <= MAX_BUTTON_POOL then
         local btn = resultButtons[selectedIndex]
         if btn:IsShown() then
+            -- Don't allow activating unearned currencies
+            if btn.isUnearnedCurrency then
+                return
+            end
+
             if btn.isPathNode then
                 -- Toggle collapse for path nodes
                 local key = (btn.pathNodeName or "") .. "_" .. (btn.pathNodeDepth or 0)
@@ -1182,6 +1359,30 @@ function UI:DirectOpen(data)
     local totalSteps = #steps
     local Highlight = ns.Highlight
 
+    -- Check if this is a reputation navigation - if so, collapse all headers first for clean state
+    local hasReputationSteps = false
+    for _, step in ipairs(steps) do
+        if step.factionHeader or step.factionID then
+            hasReputationSteps = true
+            break
+        end
+    end
+    if hasReputationSteps then
+        self:CollapseAllReputationHeaders()
+    end
+
+    -- Check if this is a currency navigation - if so, collapse all headers first for clean state
+    local hasCurrencySteps = false
+    for _, step in ipairs(steps) do
+        if step.currencyHeader or step.currencyID then
+            hasCurrencySteps = true
+            break
+        end
+    end
+    if hasCurrencySteps then
+        self:CollapseAllCurrencyHeaders()
+    end
+
     -- Determine whether a step is "navigable" (can be auto-executed) vs "highlight-only"
     -- (just points at a UI region the user needs to see).
     -- A step is navigable if it has any clickable action property.
@@ -1195,6 +1396,8 @@ function UI:DirectOpen(data)
         if step.achievementCategory then return true end
         if step.currencyHeader then return true end
         if step.currencyID then return true end
+        if step.factionHeader then return true end
+        if step.factionID then return true end
         if step.searchButtonText then return true end
         if step.portraitMenuOption then return true end
         -- regionFrames alone (no searchButtonText) = highlight-only (e.g. PvP Talents)
@@ -1305,14 +1508,80 @@ function UI:DirectOpen(data)
 
         -- Expand a currency header
         if step.currencyHeader then
-            self:ExpandCurrencyHeader(step.currencyHeader)
-            nextDelay = 0.2
+            -- Check if already expanded first
+            local isExpanded = Highlight:IsCurrencyHeaderExpanded(step.currencyHeader)
+            if isExpanded == false then
+                -- Need to expand it
+                self:ExpandCurrencyHeader(step.currencyHeader)
+                nextDelay = 0.15  -- Wait for UI to update
+            else
+                -- Already expanded, no need to wait
+                nextDelay = 0.05
+            end
         end
 
         -- Scroll to a currency
         if step.currencyID then
-            self:ScrollToCurrency(step.currencyID)
-            nextDelay = 0.2
+            Highlight:ScrollToCurrencyRow(step.currencyID)
+            -- If this is the last step, highlight it
+            if stepIndex == executeCount then
+                C_Timer.After(0.05, function()
+                    local btn = Highlight:GetCurrencyRowButton(step.currencyID)
+                    if btn then
+                        Highlight:HighlightFrame(btn, nil)
+                        -- Set up hover detection to clear highlight
+                        local checkHover
+                        checkHover = function()
+                            if btn:IsMouseOver() then
+                                Highlight:HideHighlight()
+                            else
+                                C_Timer.After(0.1, checkHover)
+                            end
+                        end
+                        C_Timer.After(0.1, checkHover)
+                    end
+                end)
+            end
+            nextDelay = 0.15
+        end
+
+        -- Expand a faction header
+        if step.factionHeader then
+            -- Check if already expanded first
+            local isExpanded = Highlight:IsFactionHeaderExpanded(step.factionHeader)
+            if isExpanded == false then
+                -- Need to expand it
+                self:ExpandFactionHeader(step.factionHeader)
+                nextDelay = 0.15  -- Wait for UI to update
+            else
+                -- Already expanded, no need to wait
+                nextDelay = 0.05
+            end
+        end
+
+        -- Scroll to a faction
+        if step.factionID then
+            Highlight:ScrollToFactionRow(step.factionID)
+            -- If this is the last step, highlight it
+            if stepIndex == executeCount then
+                C_Timer.After(0.05, function()
+                    local btn = Highlight:GetFactionRowButton(step.factionID)
+                    if btn then
+                        Highlight:HighlightFrame(btn, nil)
+                        -- Set up hover detection to clear highlight
+                        local checkHover
+                        checkHover = function()
+                            if btn:IsMouseOver() then
+                                Highlight:HideHighlight()
+                            else
+                                C_Timer.After(0.1, checkHover)
+                            end
+                        end
+                        C_Timer.After(0.1, checkHover)
+                    end
+                end)
+            end
+            nextDelay = 0.15
         end
 
         -- Click a button found by text search (Premade Groups categories, PvP queue buttons, etc.)
@@ -1585,6 +1854,134 @@ function UI:ScrollToCurrency(currencyID)
                     end)
                     if scrollData then
                         TokenFrame.ScrollBox:ScrollToElementData(scrollData)
+                        -- Highlight the row briefly
+                        C_Timer.After(0.1, function()
+                            if TokenFrame.ScrollBox then
+                                for _, frame in TokenFrame.ScrollBox:EnumerateFrames() do
+                                    if frame.currencyID == currencyID then
+                                        -- Flash the highlight
+                                        if frame.Highlight then
+                                            frame.Highlight:SetAlpha(0.3)
+                                            C_Timer.After(0.5, function()
+                                                if frame.Highlight then
+                                                    frame.Highlight:SetAlpha(0)
+                                                end
+                                            end)
+                                        end
+                                        break
+                                    end
+                                end
+                            end
+                        end)
+                    end
+                end
+            end
+            return true
+        end
+    end
+    return false
+end
+
+--- Helper function to collapse all reputation headers for a clean navigation state
+function UI:CollapseAllReputationHeaders()
+    if not C_Reputation or not C_Reputation.GetNumFactions then return end
+
+    -- Collapse all headers, iterating from the end to handle nested structures
+    for pass = 1, 50 do
+        local numFactions = C_Reputation.GetNumFactions()
+        local didCollapse = false
+        for i = numFactions, 1, -1 do
+            local factionData = C_Reputation.GetFactionDataByIndex(i)
+            if factionData and factionData.isHeader then
+                local isExpanded = factionData.isHeaderExpanded or (factionData.isCollapsed ~= nil and not factionData.isCollapsed)
+                if isExpanded then
+                    C_Reputation.CollapseFactionHeader(i)
+                    didCollapse = true
+                    break -- indices shift after collapse, restart
+                end
+            end
+        end
+        if not didCollapse then break end
+    end
+end
+
+--- Helper function to collapse all currency headers for a clean navigation state
+function UI:CollapseAllCurrencyHeaders()
+    if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return end
+
+    -- Collapse all headers, iterating from the end to handle nested structures
+    for pass = 1, 50 do
+        local size = C_CurrencyInfo.GetCurrencyListSize()
+        local didCollapse = false
+        for i = size, 1, -1 do
+            local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+            if info and info.isHeader and info.isHeaderExpanded then
+                C_CurrencyInfo.ExpandCurrencyList(i, false)
+                didCollapse = true
+                break -- indices shift after collapse, restart
+            end
+        end
+        if not didCollapse then break end
+    end
+end
+
+--- Helper function to expand a faction header by name
+function UI:ExpandFactionHeader(headerName)
+    if not C_Reputation or not C_Reputation.GetNumFactions then return false end
+
+    local headerNameLower = slower(headerName)
+    local numFactions = C_Reputation.GetNumFactions()
+
+    for i = 1, numFactions do
+        local factionData = C_Reputation.GetFactionDataByIndex(i)
+        if factionData and factionData.isHeader and factionData.name and slower(factionData.name) == headerNameLower then
+            if not factionData.isHeaderExpanded then
+                C_Reputation.ExpandFactionHeader(i)
+            end
+            return true
+        end
+    end
+    return false
+end
+
+--- Helper function to scroll to a specific faction by ID
+function UI:ScrollToFaction(factionID)
+    if not C_Reputation or not C_Reputation.GetNumFactions then return false end
+
+    -- Find the index of the target faction
+    local numFactions = C_Reputation.GetNumFactions()
+    for i = 1, numFactions do
+        local factionData = C_Reputation.GetFactionDataByIndex(i)
+        if factionData and not factionData.isHeader and factionData.factionID == factionID then
+            -- Found it - try to scroll the ReputationFrame to this index
+            if ReputationFrame and ReputationFrame.ScrollBox then
+                -- Modern ScrollBox API
+                local dataProvider = ReputationFrame.ScrollBox:GetDataProvider()
+                if dataProvider then
+                    local scrollData = dataProvider:FindByPredicate(function(data)
+                        return data and data.factionID == factionID
+                    end)
+                    if scrollData then
+                        ReputationFrame.ScrollBox:ScrollToElementData(scrollData)
+                        -- Highlight the row briefly
+                        C_Timer.After(0.1, function()
+                            if ReputationFrame.ScrollBox then
+                                for _, frame in ReputationFrame.ScrollBox:EnumerateFrames() do
+                                    if frame.factionID == factionID then
+                                        -- Flash the highlight
+                                        if frame.Content and frame.Content.Background then
+                                            frame.Content.Background:SetAlpha(0.3)
+                                            C_Timer.After(0.5, function()
+                                                if frame.Content and frame.Content.Background then
+                                                    frame.Content.Background:SetAlpha(0)
+                                                end
+                                            end)
+                                        end
+                                        break
+                                    end
+                                end
+                            end
+                        end)
                     end
                 end
             end

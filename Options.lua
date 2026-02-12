@@ -82,27 +82,102 @@ local function AddFlyoutOptions(flyout, choices, itemWidth, onSelect)
 end
 
 -- Helper to create a slider (anchored manually by caller)
-local function CreateSlider(parent, name, label, minVal, maxVal, step, tooltipText)
+local function CreateSlider(parent, name, label, minVal, maxVal, step, tooltipText, formatFunc)
     local slider = CreateFrame("Slider", "EasyFindOptions" .. name .. "Slider", parent, "OptionsSliderTemplate")
     slider:SetWidth(200)
     slider:SetMinMaxValues(minVal, maxVal)
     slider:SetValueStep(step)
     slider:SetObeyStepOnDrag(true)
-    
+
     slider.Text = slider:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     slider.Text:SetPoint("BOTTOM", slider, "TOP", 0, 5)
     slider.Text:SetText(label)
-    
-    slider.Low:SetText(sformat("%.0f%%", minVal * 100))
-    slider.High:SetText(sformat("%.0f%%", maxVal * 100))
-    
+
+    -- Use custom format function or default to percentage
+    local isPercentage = not formatFunc  -- Track if using percentage format
+    local defaultFormat = function(val) return sformat("%.0f%%", val * 100) end
+    formatFunc = formatFunc or defaultFormat
+
+    slider.Low:SetText(formatFunc(minVal))
+    slider.High:SetText(formatFunc(maxVal))
+
     slider.valueText = slider:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     slider.valueText:SetPoint("TOP", slider, "BOTTOM", 0, -2)
-    
-    slider:SetScript("OnValueChanged", function(self, value)
-        self.valueText:SetText(sformat("%.0f%%", value * 100))
+
+    -- Input box for precise value entry (shows just the number, no %)
+    local inputBox = CreateFrame("EditBox", nil, slider, "InputBoxTemplate")
+    inputBox:SetSize(30, 20)  -- Sized to fit 3 digits comfortably
+    inputBox:SetPoint("LEFT", slider, "RIGHT", 10, 0)
+    inputBox:SetAutoFocus(false)
+    inputBox:SetMaxLetters(3)
+    inputBox:SetTextInsets(3, 3, 0, 0)  -- Equal padding for centering
+    inputBox:SetJustifyH("CENTER")
+    -- Also set the font string justification directly
+    if inputBox.GetFontString then
+        local fs = inputBox:GetFontString()
+        if fs then fs:SetJustifyH("CENTER") end
+    end
+
+    -- Add % label next to input box for percentage sliders
+    local percentLabel
+    if isPercentage then
+        percentLabel = slider:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+        percentLabel:SetPoint("LEFT", inputBox, "RIGHT", 2, 0)
+        percentLabel:SetText("%")
+    end
+
+    -- Helper to get display value (for percentage: multiply by 100)
+    local function getDisplayValue(sliderValue)
+        if isPercentage then
+            return math.floor(sliderValue * 100 + 0.5)
+        else
+            return math.floor(sliderValue + 0.5)
+        end
+    end
+
+    -- Helper to convert display value to slider value
+    local function getSliderValue(displayValue)
+        if isPercentage then
+            return displayValue / 100
+        else
+            return displayValue
+        end
+    end
+
+    inputBox:SetScript("OnEnterPressed", function(self)
+        local val = tonumber(self:GetText())
+        if val then
+            -- Valid number: clamp to bounds and update slider
+            local sliderVal = getSliderValue(val)
+            sliderVal = math.max(minVal, math.min(maxVal, sliderVal))
+            slider:SetValue(sliderVal)
+            -- Update input box to show the actual clamped value
+            self:SetText(tostring(getDisplayValue(sliderVal)))
+        else
+            -- Invalid input: revert to current slider value
+            self:SetText(tostring(getDisplayValue(slider:GetValue())))
+        end
+        self:ClearFocus()
     end)
-    
+
+    inputBox:SetScript("OnEscapePressed", function(self)
+        self:SetText(tostring(getDisplayValue(slider:GetValue())))
+        self:ClearFocus()
+    end)
+
+    -- Update both valueText and input box when slider changes
+    slider:SetScript("OnValueChanged", function(self, value)
+        self.valueText:SetText(formatFunc(value))
+        if not inputBox:HasFocus() then
+            inputBox:SetText(tostring(getDisplayValue(value)))
+        end
+    end)
+
+    -- Set initial value
+    inputBox:SetText(tostring(getDisplayValue(slider:GetValue())))
+
+    slider.inputBox = inputBox
+
     if tooltipText then
         slider:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -112,7 +187,7 @@ local function CreateSlider(parent, name, label, minVal, maxVal, step, tooltipTe
         end)
         slider:SetScript("OnLeave", GameTooltip_Hide)
     end
-    
+
     return slider
 end
 
@@ -139,7 +214,7 @@ function Options:Initialize()
     isInitialized = true
     
     local FRAME_W = 570
-    local BASE_H  = 420
+    local BASE_H  = 480  -- Increased to accommodate all elements without overlap
     local ADV_H   = 30   -- extra height when Advanced Options expanded
     local COL_LEFT  = 20
     local COL_RIGHT = 300
@@ -181,8 +256,7 @@ function Options:Initialize()
         "Adjusts the size of search icons on the world map and in UI search.")
     mapIconSlider:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", COL_LEFT, -70)
     mapIconSlider:SetValue(EasyFind.db.iconScale or 1.0)
-    mapIconSlider:SetScript("OnValueChanged", function(self, value)
-        self.valueText:SetText(sformat("%.0f%%", value * 100))
+    mapIconSlider:HookScript("OnValueChanged", function(self, value)
         EasyFind.db.iconScale = value
         if ns.MapSearch and ns.MapSearch.UpdateIconScales then
             ns.MapSearch:UpdateIconScales()
@@ -195,39 +269,36 @@ function Options:Initialize()
         end
     end)
     optionsFrame.mapIconSlider = mapIconSlider
-    
+
     local uiSearchSlider = CreateSlider(optionsFrame, "UISearch", "UI Search Bar Size", 0.5, 1.5, 0.1,
         "Adjusts the size of the UI search bar. Hold Shift and drag to move it.")
     uiSearchSlider:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", COL_LEFT, -140)
     uiSearchSlider:SetValue(EasyFind.db.uiSearchScale or 1.0)
-    uiSearchSlider:SetScript("OnValueChanged", function(self, value)
-        self.valueText:SetText(sformat("%.0f%%", value * 100))
+    uiSearchSlider:HookScript("OnValueChanged", function(self, value)
         EasyFind.db.uiSearchScale = value
         if ns.UI and ns.UI.UpdateScale then
             ns.UI:UpdateScale()
         end
     end)
     optionsFrame.uiSearchSlider = uiSearchSlider
-    
+
     local mapSearchSlider = CreateSlider(optionsFrame, "MapSearch", "Map Search Bar Size", 0.5, 1.5, 0.1,
         "Adjusts the size of the map search bar. Hold Shift and drag to move it along the map edge.")
     mapSearchSlider:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", COL_LEFT, -210)
     mapSearchSlider:SetValue(EasyFind.db.mapSearchScale or 1.0)
-    mapSearchSlider:SetScript("OnValueChanged", function(self, value)
-        self.valueText:SetText(sformat("%.0f%%", value * 100))
+    mapSearchSlider:HookScript("OnValueChanged", function(self, value)
         EasyFind.db.mapSearchScale = value
         if ns.MapSearch and ns.MapSearch.UpdateScale then
             ns.MapSearch:UpdateScale()
         end
     end)
     optionsFrame.mapSearchSlider = mapSearchSlider
-    
+
     local opacitySlider = CreateSlider(optionsFrame, "Opacity", "Search Bar Opacity", 0.2, 1.0, 0.05,
         "Adjusts the opacity (transparency) of both the UI search bar and the map search bars.")
     opacitySlider:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", COL_LEFT, -280)
     opacitySlider:SetValue(EasyFind.db.searchBarOpacity or 1.0)
-    opacitySlider:SetScript("OnValueChanged", function(self, value)
-        self.valueText:SetText(sformat("%.0f%%", value * 100))
+    opacitySlider:HookScript("OnValueChanged", function(self, value)
         EasyFind.db.searchBarOpacity = value
         if ns.UI and ns.UI.UpdateOpacity then
             ns.UI:UpdateOpacity()
@@ -237,7 +308,22 @@ function Options:Initialize()
         end
     end)
     optionsFrame.opacitySlider = opacitySlider
-    
+
+    local maxResultsSlider = CreateSlider(optionsFrame, "MaxResults", "Max Search Results", 6, 24, 1,
+        "Maximum number of search results to display in the dropdown (6-24).",
+        function(val) return tostring(math.floor(val + 0.5)) end)  -- Show as integer, not percentage
+    maxResultsSlider:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", COL_LEFT, -350)
+    maxResultsSlider:SetValue(EasyFind.db.maxResults or 12)
+    maxResultsSlider:HookScript("OnValueChanged", function(self, value)
+        value = math.floor(value + 0.5)  -- Round to nearest integer
+        EasyFind.db.maxResults = value
+        -- Refresh the results display if currently showing
+        if ns.UI and ns.UI.RefreshResults then
+            ns.UI:RefreshResults()
+        end
+    end)
+    optionsFrame.maxResultsSlider = maxResultsSlider
+
     -- =====================================================================
     -- RIGHT COLUMN — Checkboxes, Theme, Keybinds
     -- =====================================================================
@@ -270,10 +356,22 @@ function Options:Initialize()
         end
     end)
     optionsFrame.smartShowCheckbox = smartShowCheckbox
-    
+
+    local truncMessageCheckbox = CreateCheckbox(optionsFrame, "TruncMessage", "Show \"More Results\" Message",
+        "When enabled, shows a message at the bottom of search results when more items exist than can be displayed.\n\nIncrease the max results slider on the left to see more items.")
+    truncMessageCheckbox:SetPoint("TOPLEFT", smartShowCheckbox, "BOTTOMLEFT", 0, -4)
+    truncMessageCheckbox:SetChecked(EasyFind.db.showTruncationMessage ~= false)
+    truncMessageCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.showTruncationMessage = self:GetChecked()
+        if ns.UI and ns.UI.RefreshResults then
+            ns.UI:RefreshResults()
+        end
+    end)
+    optionsFrame.truncMessageCheckbox = truncMessageCheckbox
+
     -- Results Theme selector (custom, avoids UIDropDownMenu global state bugs)
     local themeLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    themeLabel:SetPoint("TOPLEFT", smartShowCheckbox, "BOTTOMLEFT", 4, -12)
+    themeLabel:SetPoint("TOPLEFT", truncMessageCheckbox, "BOTTOMLEFT", 4, -12)
     themeLabel:SetText("Theme:")
     
     local themeChoices = {"Classic", "Retail"}
@@ -499,24 +597,24 @@ function Options:Initialize()
     -- BOTTOM — full-width: Tips, Advanced, Resets
     -- =====================================================================
     
-    -- Separator line
+    -- Separator line (moved down to avoid overlap with sliders)
     local sep = optionsFrame:CreateTexture(nil, "ARTWORK")
     sep:SetHeight(1)
     sep:SetColorTexture(0.5, 0.5, 0.5, 0.4)
-    sep:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, -320)
-    sep:SetPoint("TOPRIGHT", optionsFrame, "TOPRIGHT", -20, -320)
-    
+    sep:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, -385)
+    sep:SetPoint("TOPRIGHT", optionsFrame, "TOPRIGHT", -20, -385)
+
     -- Tips
     local instructionText = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    instructionText:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 22, -328)
+    instructionText:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 22, -393)
     instructionText:SetWidth(FRAME_W - 44)
     instructionText:SetJustifyH("LEFT")
     instructionText:SetText("|cFFFFFF00Tips:|r  Hold |cFF00FF00Shift|r + drag to reposition bars  |cFF888888|||r  |cFF00FF00/ef o|r options\n|cFF00FF00/ef show|r  |cFF00FF00/ef hide|r toggle bar  |cFF888888|||r  |cFF00FF00/ef clear|r dismiss highlights")
-    
+
     -- Advanced Options toggle
     local advancedToggle = CreateFrame("Button", nil, optionsFrame)
     advancedToggle:SetSize(200, 18)
-    advancedToggle:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, -350)
+    advancedToggle:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, -415)
     advancedToggle:SetNormalFontObject("GameFontNormalSmall")
     advancedToggle:SetHighlightFontObject("GameFontHighlightSmall")
     advancedToggle:SetText("|cFF888888> Advanced Options|r")
@@ -572,7 +670,9 @@ function Options:Initialize()
         EasyFind.db.smartShow = true
         EasyFind.db.resultsTheme = "Retail"
         EasyFind.db.devMode = false
-        
+        EasyFind.db.maxResults = 12
+        EasyFind.db.showTruncationMessage = true
+
         -- Clear keybinds (unbind)
         local old1, old2 = GetBindingKey("EASYFIND_TOGGLE")
         if old1 then SetBinding(old1) end
@@ -591,7 +691,9 @@ function Options:Initialize()
         optionsFrame.directOpenCheckbox:SetChecked(false)
         optionsFrame.zoneNavCheckbox:SetChecked(false)
         optionsFrame.smartShowCheckbox:SetChecked(true)
+        optionsFrame.truncMessageCheckbox:SetChecked(true)
         optionsFrame.devModeCheckbox:SetChecked(false)
+        optionsFrame.maxResultsSlider:SetValue(12)
         optionsFrame.themeBtnText:SetText("Retail")
         optionsFrame.keybindBtn:SetText("Not Bound")
         optionsFrame.focusBtn:SetText("Not Bound")

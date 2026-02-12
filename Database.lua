@@ -189,6 +189,197 @@ function Database:PopulateDynamicCurrencies()
     end
 end
 
+-- Called after PLAYER_LOGIN when C_Reputation is available
+-- Scans the WoW reputation list and injects factions as searchable entries
+function Database:PopulateDynamicReputations()
+    if not C_Reputation or not C_Reputation.GetNumFactions then return end
+
+    -- Expand all collapsed headers so we can see every faction
+    local headersWeExpanded = {}
+    for pass = 1, 50 do
+        local numFactions = C_Reputation.GetNumFactions()
+        local didExpand = false
+        for i = 1, numFactions do
+            local factionData = C_Reputation.GetFactionDataByIndex(i)
+            if factionData and factionData.isHeader then
+                -- Check if header is collapsed using both new and old property names
+                local isCollapsed = false
+                if factionData.isHeaderExpanded ~= nil then
+                    isCollapsed = not factionData.isHeaderExpanded
+                elseif factionData.isCollapsed ~= nil then
+                    isCollapsed = factionData.isCollapsed
+                end
+
+                if isCollapsed then
+                    C_Reputation.ExpandFactionHeader(i)
+                    headersWeExpanded[factionData.name] = true
+                    didExpand = true
+                    break -- indices shift after expand, restart
+                end
+            end
+        end
+        if not didExpand then break end
+    end
+
+    -- Read the full flat list and build entries
+    local numFactions = C_Reputation.GetNumFactions()
+    local injected = 0
+
+    -- Base steps that every reputation inherits (open Character frame + Reputation tab)
+    local baseSteps = {
+        { buttonFrame = "CharacterMicroButton" },
+        { waitForFrame = "CharacterFrame", tabIndex = 2 },
+    }
+
+    -- Track both expansion headers and faction-group headers (they do nest!)
+    local currentExpansion = nil
+    local currentFactionGroup = nil
+
+    -- Known expansion names to distinguish from faction-group headers
+    local expansionNames = {
+        ["The War Within"] = true,
+        ["Dragonflight"] = true,
+        ["Shadowlands"] = true,
+        ["Battle for Azeroth"] = true,
+        ["Legion"] = true,
+        ["Warlords of Draenor"] = true,
+        ["Mists of Pandaria"] = true,
+        ["Cataclysm"] = true,
+        ["Wrath of the Lich King"] = true,
+        ["Burning Crusade"] = true,
+        ["Classic"] = true,
+        ["Other"] = true,
+        ["Guild"] = true,
+    }
+
+    local function buildHeaderSteps()
+        local steps = {}
+        for _, s in ipairs(baseSteps) do steps[#steps + 1] = s end
+        -- Navigate through the header hierarchy: first expansion, then faction group
+        if currentExpansion then
+            steps[#steps + 1] = { waitForFrame = "CharacterFrame", factionHeader = currentExpansion }
+        end
+        if currentFactionGroup then
+            steps[#steps + 1] = { waitForFrame = "CharacterFrame", factionHeader = currentFactionGroup }
+        end
+        return steps
+    end
+
+    local function buildPath()
+        local path = {"Character Info", "Reputation"}
+        -- Build hierarchical path: Expansion -> Faction Group (if exists)
+        if currentExpansion then
+            path[#path + 1] = currentExpansion
+        end
+        if currentFactionGroup then
+            path[#path + 1] = currentFactionGroup
+        end
+        return path
+    end
+
+    for i = 1, numFactions do
+        local factionData = C_Reputation.GetFactionDataByIndex(i)
+        if factionData then
+            -- factionData has: name, factionID, isHeader, isHeaderExpanded, etc.
+            -- Note: factionData also has hasBonusRepGain, canToggleAtWar, etc.
+            -- We'll use the presence of factionID to determine if it's an actual faction
+
+            if factionData.isHeader then
+                -- Determine if this is an expansion header or faction-group header
+                if factionData.name then
+                    if expansionNames[factionData.name] then
+                        -- It's an expansion header
+                        currentExpansion = factionData.name
+                        currentFactionGroup = nil  -- Clear faction group when entering new expansion
+                    else
+                        -- It's a faction-group header
+                        currentFactionGroup = factionData.name
+                    end
+                end
+            else
+                -- It's an actual faction (non-header)
+                if factionData.factionID and factionData.name then
+                    -- Skip factions that haven't been discovered yet
+                    -- A faction is considered discovered if it has earned reputation or is actively watched
+                    local isDiscovered = (factionData.currentStanding and factionData.currentStanding > 0) or
+                                         (factionData.isWatched == true)
+
+                    -- Only process discovered factions (skip undiscovered ones like we do for undiscovered currencies)
+                    if isDiscovered then
+                        local steps = buildHeaderSteps()
+                        -- Add the final step to select this specific faction
+                        steps[#steps + 1] = { waitForFrame = "CharacterFrame", factionID = factionData.factionID }
+
+                        local path = buildPath()
+
+                        -- Create keywords from faction name words (like currency does)
+                        local keywords = {}
+                        local factionNameLower = slower(factionData.name)
+                        -- Split faction name into words and add each significant word
+                        for word in factionNameLower:gmatch("%S+") do
+                            if #word > 2 then  -- Skip very short words like "of", "the"
+                                keywords[#keywords + 1] = word
+                            end
+                        end
+                        -- Also add the full name as a keyword
+                        keywords[#keywords + 1] = factionNameLower
+
+                        local entry = {
+                            name = factionData.name,
+                            keywords = keywords,
+                            category = "Reputation",
+                            buttonFrame = "CharacterMicroButton",
+                            path = path,
+                            steps = steps,
+                            factionID = factionData.factionID,
+                        }
+
+                        -- Pre-lowercase for search performance
+                        entry.nameLower = slower(entry.name)
+                        entry.keywordsLower = {}
+                        for j, kw in ipairs(entry.keywords) do
+                            entry.keywordsLower[j] = kw  -- Already lowercased when created
+                        end
+
+                        uiSearchData[#uiSearchData + 1] = entry
+                        injected = injected + 1
+                    end
+                end
+            end
+        end
+    end
+
+    if injected > 0 then
+        Utils.DebugPrint("Injected", injected, "dynamic reputation entries from C_Reputation")
+    end
+
+    -- Collapse back any headers we expanded during scanning
+    for pass = 1, 50 do
+        local numFactions = C_Reputation.GetNumFactions()
+        local didCollapse = false
+        for i = numFactions, 1, -1 do
+            local factionData = C_Reputation.GetFactionDataByIndex(i)
+            if factionData and factionData.isHeader and headersWeExpanded[factionData.name] then
+                -- Check if header is expanded using both property names
+                local isExpanded = false
+                if factionData.isHeaderExpanded ~= nil then
+                    isExpanded = factionData.isHeaderExpanded
+                elseif factionData.isCollapsed ~= nil then
+                    isExpanded = not factionData.isCollapsed
+                end
+
+                if isExpanded then
+                    C_Reputation.CollapseFactionHeader(i)
+                    headersWeExpanded[factionData.name] = nil
+                    didCollapse = true
+                    break -- indices shift, restart from end
+                end
+            end
+        end
+        if not didCollapse then break end
+    end
+end
+
 -- =============================================================================
 -- TREE FLATTENER
 -- Walks the tree and produces flat entries for the search/highlight engines.
@@ -1769,28 +1960,74 @@ end
 --- Returns a total score to ADD to the name score.
 function Database:ScoreKeywords(keywordsLower, query, queryLen)
     if not keywordsLower then return 0 end
-    local total = 0
-    for _, kw in ipairs(keywordsLower) do
-        local kwScore = 0
-        if kw == query then
-            kwScore = 80
-        elseif ssub(kw, 1, queryLen) == query then
-            kwScore = 70
-        elseif Database:FindAtWordBoundary(kw, query) then
-            kwScore = 55
-        end
-        -- Initials on keywords
-        if kwScore < 60 then
-            local ki = Database:ScoreInitials(kw, query)
-            if ki > 0 then kwScore = mmax(kwScore, ki - 20) end
-        end
-        -- Fuzzy on keywords
-        if kwScore < 40 and queryLen >= 4 then
-            local kf = Database:ScoreFuzzy(kw, query, queryLen)
-            if kf > 0 then kwScore = mmax(kwScore, kf - 10) end
-        end
-        total = total + kwScore
+
+    -- Split query into words for better multi-word matching
+    local queryWords = {}
+    for word in query:gmatch("%S+") do
+        queryWords[#queryWords + 1] = word
     end
+
+    -- If single word, use original logic
+    if #queryWords == 1 then
+        local total = 0
+        for _, kw in ipairs(keywordsLower) do
+            local kwScore = 0
+            if kw == query then
+                kwScore = 80
+            elseif ssub(kw, 1, queryLen) == query then
+                kwScore = 70
+            elseif Database:FindAtWordBoundary(kw, query) then
+                kwScore = 55
+            end
+            -- Initials on keywords
+            if kwScore < 60 then
+                local ki = Database:ScoreInitials(kw, query)
+                if ki > 0 then kwScore = mmax(kwScore, ki - 20) end
+            end
+            -- Fuzzy on keywords
+            if kwScore < 40 and queryLen >= 4 then
+                local kf = Database:ScoreFuzzy(kw, query, queryLen)
+                if kf > 0 then kwScore = mmax(kwScore, kf) end
+            end
+            total = total + kwScore
+        end
+        return total
+    end
+
+    -- For multi-word queries, match each word separately and take best match per word
+    local total = 0
+    for _, queryWord in ipairs(queryWords) do
+        local queryWordLen = #queryWord
+        local bestScore = 0
+
+        for _, kw in ipairs(keywordsLower) do
+            local kwScore = 0
+            if kw == queryWord then
+                kwScore = 80
+            elseif ssub(kw, 1, queryWordLen) == queryWord then
+                kwScore = 70
+            elseif Database:FindAtWordBoundary(kw, queryWord) then
+                kwScore = 55
+            end
+            -- Initials on keywords
+            if kwScore < 60 then
+                local ki = Database:ScoreInitials(kw, queryWord)
+                if ki > 0 then kwScore = mmax(kwScore, ki - 20) end
+            end
+            -- Fuzzy on keywords
+            if kwScore < 40 and queryWordLen >= 4 then
+                local kf = Database:ScoreFuzzy(kw, queryWord, queryWordLen)
+                if kf > 0 then kwScore = mmax(kwScore, kf) end
+            end
+
+            if kwScore > bestScore then
+                bestScore = kwScore
+            end
+        end
+
+        total = total + bestScore
+    end
+
     return total
 end
 
@@ -1908,21 +2145,115 @@ function Database:BuildHierarchicalResults(results)
     sortChildren(root)
 
     -- Step 3 — DFS flatten into the display list.
+    -- Only include path nodes that have actual leaf content (not just empty descendants)
     local hierarchical = {}
+
+    -- Check if a node or any of its descendants has actual data that's available to the player
+    local function hasActualContent(node)
+        if node.data then
+            -- Check if this is a currency node (leaf or parent)
+            local isCurrencyNode = node.data.category == "Currency"
+
+            -- For non-currency items, use the availability function
+            if not isCurrencyNode then
+                if node.data.available and not node.data.available() then
+                    return false
+                end
+                return true
+            end
+
+            -- For currency items, check if it's a leaf node (has actual currency) vs parent node (just a header)
+            local hasCurrencyID = false
+            if node.data.steps and C_CurrencyInfo then
+                for _, step in ipairs(node.data.steps) do
+                    if step.currencyID then
+                        hasCurrencyID = true
+                        break
+                    end
+                end
+            end
+
+            -- Only process currency discovery checks for leaf nodes (nodes with actual currencyID)
+            if hasCurrencyID then
+                -- Check if this is under the Legacy tab
+                local isLegacyCurrency = false
+                for _, step in ipairs(node.data.steps) do
+                    if step.currencyHeader == "Legacy" then
+                        isLegacyCurrency = true
+                        break
+                    end
+                end
+
+                for _, step in ipairs(node.data.steps) do
+                    if step.currencyID then
+                        local currencyInfo = C_CurrencyInfo.GetCurrencyInfo(step.currencyID)
+                        -- If currency info doesn't exist, it's not available for this character
+                        if not currencyInfo then
+                            return false
+                        end
+                        -- Check if currency has been discovered
+                        if currencyInfo.quantity == 0 then
+                            local isDiscovered = (currencyInfo.totalEarned and currencyInfo.totalEarned > 0) or
+                                                 (currencyInfo.useTotalEarnedForMaxQty) or
+                                                 (currencyInfo.discovered == true)
+                            -- Only filter out undiscovered Legacy currencies
+                            -- Current content currencies are always shown (UI will grey them out)
+                            if isLegacyCurrency and not isDiscovered then
+                                return false
+                            end
+                        end
+                    end
+                end
+                -- Leaf node passed all checks
+                return true
+            end
+
+            -- For parent nodes (no currencyID), check if it's a non-Legacy currency tab
+            -- Non-Legacy currency tabs (D&R, Misc, PvP) should always show even with no children
+            if node.data.category == "Currency" and node.data.steps then
+                local isLegacyParent = false
+                for _, step in ipairs(node.data.steps) do
+                    if step.currencyHeader == "Legacy" then
+                        isLegacyParent = true
+                        break
+                    end
+                end
+                -- Non-Legacy currency parent tabs always show (UI will grey them out if needed)
+                if not isLegacyParent then
+                    return true
+                end
+            end
+            -- For Legacy parent nodes and non-currency nodes, fall through to check children
+        end
+
+        -- Check if any child has actual available content
+        for _, childName in ipairs(node.childOrder) do
+            if hasActualContent(node.children[childName]) then
+                return true
+            end
+        end
+        return false
+    end
+
     local function flatten(node, depth)
         for _, childName in ipairs(node.childOrder) do
             local child = node.children[childName]
             local hasChildren = #child.childOrder > 0
 
-            hierarchical[#hierarchical + 1] = {
-                name = child.name,
-                depth = depth,
-                isPathNode = hasChildren,
-                data = child.data or self:FindItemByName(child.name),
-            }
+            -- Skip empty path nodes (no data and no content in descendants)
+            if not hasActualContent(child) then
+                -- Skip this entire branch
+            else
+                hierarchical[#hierarchical + 1] = {
+                    name = child.name,
+                    depth = depth,
+                    isPathNode = hasChildren,
+                    data = child.data or self:FindItemByName(child.name),
+                }
 
-            if hasChildren then
-                flatten(child, depth + 1)
+                if hasChildren then
+                    flatten(child, depth + 1)
+                end
             end
         end
     end

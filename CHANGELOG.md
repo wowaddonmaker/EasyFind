@@ -4,23 +4,20 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
-## [1.2.2] - 2026-02-11
+## [1.2.2] - 2026-02-12
 
 ### Added
-- **Unearned Currency Detection**: Unearned currencies (quantity = 0) now display grayed out in search results with a tooltip
-  - Tooltip: "You haven't earned any of this currency yet" appears on hover
-  - Grayed-out currencies are non-clickable to prevent failed navigation attempts
-
+- **Reputation**: Reputation panel of character info window now included in search results
 ### Changed
 - **Default Keybinds**: No keybinds are set by default on new installs (previously `[` and `]`)
   - Users who want keybinds must configure them manually via Options panel
+- **Unearned Currency Detection**: Unearned currencies (quantity = 0) now display grayed out in search results with a tooltip
+  - Tooltip shows "Not yet earned" on hover using a custom tooltip frame (doesn't interfere with game tooltips)
+  - Grayed-out currencies are non-clickable to prevent failed navigation attempts
 
 ### Fixed
 - **Critical Keybind Bug**: Fixed addon automatically enabling character-specific keybinds and disabling all keybinds on characters without character-specific keybinds
 - **Nested Currency Navigation**: Fixed guide failing to highlight nested currency headers (e.g., "Warlords of Draenor" under "Legacy")
-- **Disabled Tab Hover Clearing**: Fixed hover detection incorrectly clearing highlights on currency headers
-  - Disabled tab hover logic now only applies to actual disabled buttons (like level-restricted PvP tabs)
-  - Currency headers properly show highlights until user clicks them
 
 ---
 

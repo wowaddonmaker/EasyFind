@@ -6,7 +6,7 @@ EasyFind lets you search for any panel, tab, or setting in WoW's interface and a
 
 ### UI Search
 Find and navigate to any interface element:
-- Character panels (titles, currency)
+- Character panels (titles, currency, reputation)
 - Talents and spellbook
 - Group Finder (dungeons, raids, PvP queues)
 - Collections (mounts, pets, toys, transmog)
@@ -14,7 +14,6 @@ Find and navigate to any interface element:
 - Guild and social features
 - Professions
 - All currencies from your character's Currency tab, including seasonal and legacy currencies
-- Coming soon: ability to search reputations
 - Coverage is always expanding. If a panel exists in the default UI, the goal is for EasyFind to reach it
 
 ### Map Search

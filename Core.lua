@@ -38,6 +38,8 @@ local DB_DEFAULTS = {
     resultsTheme = "Retail",  -- "Classic" or "Retail"
     arrowStyle = "EasyFind Arrow",  -- Arrow texture style
     arrowColor = "Yellow",  -- Arrow color preset
+    maxResults = 12,           -- Maximum number of search results to display (6-24)
+    showTruncationMessage = true,  -- Show "more results available" message when truncated
 }
 
 local function OnInitialize()
@@ -96,9 +98,12 @@ local function OnPlayerLogin()
         if ns.MapSearch  then ns.MapSearch:Initialize()  end
         if ns.Options    then ns.Options:Initialize()    end
     end)
-    -- Populate dynamic currencies after a short delay (C_CurrencyInfo needs the character loaded)
+    -- Populate dynamic currencies and reputations after a short delay (APIs need the character loaded)
     C_Timer.After(2, function()
-        if ns.Database then ns.Database:PopulateDynamicCurrencies() end
+        if ns.Database then
+            ns.Database:PopulateDynamicCurrencies()
+            ns.Database:PopulateDynamicReputations()
+        end
     end)
 end
 

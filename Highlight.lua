@@ -798,7 +798,164 @@ function Highlight:UpdateGuide()
             end
             return
         end
-        
+
+        -- Faction header expansion (expand a header section in the Reputation tab)
+        if step.factionHeader then
+            -- Check we're on the correct CharacterFrame tab (Reputation = tab 2)
+            local requiredTabIndex = nil
+            for i = currentStepIndex - 1, 1, -1 do
+                local prevStep = currentGuide.steps[i]
+                if prevStep and prevStep.tabIndex then
+                    requiredTabIndex = prevStep.tabIndex
+                    break
+                end
+            end
+
+            if requiredTabIndex then
+                local currentTab = self:GetCurrentTabIndex(step.waitForFrame or "CharacterFrame")
+                if currentTab and currentTab ~= requiredTabIndex then
+                    for i = currentStepIndex - 1, 1, -1 do
+                        local prevStep = currentGuide.steps[i]
+                        if prevStep and prevStep.tabIndex == requiredTabIndex then
+                            currentStepIndex = i
+                            self:HideHighlight()
+                            return
+                        end
+                    end
+                end
+            end
+
+            -- Check if header is already expanded, collapsed, or not in list (parent collapsed)
+            local headerState = self:IsFactionHeaderExpanded(step.factionHeader)
+
+            if headerState == true then
+                -- Header is expanded — advance to next step
+                if isLastStep then
+                    self:Cancel()
+                else
+                    self:AdvanceStep()
+                end
+                return
+            end
+
+            if headerState == nil then
+                -- Header not found — parent must be collapsed.
+                -- First, try to go back to previous factionHeader step
+                for i = currentStepIndex - 1, 1, -1 do
+                    local prevStep = currentGuide.steps[i]
+                    if prevStep and prevStep.factionHeader then
+                        currentStepIndex = i
+                        self:HideHighlight()
+                        return
+                    end
+                end
+
+                -- No previous step found - find and highlight first collapsed header from top
+                if C_Reputation and C_Reputation.GetNumFactions then
+                    local numFactions = C_Reputation.GetNumFactions()
+                    for i = 1, numFactions do
+                        local factionData = C_Reputation.GetFactionDataByIndex(i)
+                        if factionData and factionData.isHeader and not factionData.isHeaderExpanded then
+                            -- Try to find and highlight the button
+                            local btn = self:GetFactionHeaderButton(factionData.name)
+                            if btn then
+                                self:HighlightFrame(btn)
+                                return
+                            else
+                                -- Button not found - hide and retry
+                                self:HideHighlight()
+                                return
+                            end
+                        end
+                    end
+                end
+
+                -- No collapsed headers found — wait
+                self:HideHighlight()
+                return
+            end
+
+            -- headerState == false: header is visible but collapsed — find and highlight the button
+            local headerBtn = self:GetFactionHeaderButton(step.factionHeader)
+            if headerBtn then
+                -- Found the button - highlight it for user to click
+                self:HighlightFrame(headerBtn)
+                return
+            else
+                -- Button not found - hide highlight and retry on next tick
+                self:HideHighlight()
+                return
+            end
+        end
+
+        -- Faction row highlight (scroll to and highlight a specific faction by ID)
+        if step.factionID then
+            -- Check we're on the correct CharacterFrame tab (Reputation = tab 2)
+            local requiredTabIndex = nil
+            for i = currentStepIndex - 1, 1, -1 do
+                local prevStep = currentGuide.steps[i]
+                if prevStep and prevStep.tabIndex then
+                    requiredTabIndex = prevStep.tabIndex
+                    break
+                end
+            end
+
+            if requiredTabIndex then
+                local currentTab = self:GetCurrentTabIndex(step.waitForFrame or "CharacterFrame")
+                if currentTab and currentTab ~= requiredTabIndex then
+                    for i = currentStepIndex - 1, 1, -1 do
+                        local prevStep = currentGuide.steps[i]
+                        if prevStep and prevStep.tabIndex == requiredTabIndex then
+                            currentStepIndex = i
+                            self:HideHighlight()
+                            return
+                        end
+                    end
+                end
+            end
+
+            -- Check if ALL parent headers are still expanded; if any collapsed or missing, go back
+            for i = currentStepIndex - 1, 1, -1 do
+                local prevStep = currentGuide.steps[i]
+                if prevStep and prevStep.factionHeader then
+                    local state = self:IsFactionHeaderExpanded(prevStep.factionHeader)
+                    if state ~= true then
+                        -- Either collapsed (false) or parent not visible (nil) — go back
+                        currentStepIndex = i
+                        self:HideHighlight()
+                        return
+                    end
+                    -- Don't break — check ALL parent headers in the chain
+                end
+            end
+
+            -- Scroll to the faction and highlight its row
+            self:ScrollToFactionRow(step.factionID)
+            local factionBtn = self:GetFactionRowButton(step.factionID)
+            if factionBtn then
+                self:HighlightFrame(factionBtn)
+                if factionBtn:IsMouseOver() then
+                    self:Cancel()
+                    return
+                end
+            elseif isLastStep then
+                -- Last step but button not found — show instruction without highlight
+                local numFactions = C_Reputation and C_Reputation.GetNumFactions and C_Reputation.GetNumFactions()
+                local factionName = "Faction " .. step.factionID
+                if numFactions then
+                    for i = 1, numFactions do
+                        local factionData = C_Reputation.GetFactionDataByIndex(i)
+                        if factionData and factionData.factionID == step.factionID then
+                            factionName = factionData.name
+                            break
+                        end
+                    end
+                end
+                self:ShowInstruction(step.text or "Look for '" .. factionName .. "' in the reputation list")
+            end
+            return
+        end
+
         -- =====================================================================
         -- PREREQUISITE VALIDATION for final-destination steps (regionFrames,
         -- searchButtonText, text-only).  Walk backwards through the step list
@@ -2176,6 +2333,176 @@ function Highlight:GetCurrencyRowButton(currencyID)
         end
     end
     
+    return nil
+end
+
+-- =============================================================================
+-- REPUTATION HELPERS
+-- =============================================================================
+
+--- Check if a faction header is expanded
+--- Returns: true (expanded), false (collapsed), nil (not found/parent collapsed)
+function Highlight:IsFactionHeaderExpanded(headerName)
+    if not C_Reputation or not C_Reputation.GetNumFactions then return nil end
+
+    local headerNameLower = slower(headerName)
+    local numFactions = C_Reputation.GetNumFactions()
+
+    for i = 1, numFactions do
+        local factionData = C_Reputation.GetFactionDataByIndex(i)
+        if factionData and factionData.isHeader and factionData.name and slower(factionData.name) == headerNameLower then
+            -- Check both new and old property names for compatibility
+            if factionData.isHeaderExpanded ~= nil then
+                return factionData.isHeaderExpanded
+            elseif factionData.isCollapsed ~= nil then
+                return not factionData.isCollapsed  -- isCollapsed is inverse of isHeaderExpanded
+            end
+            -- Fallback: assume expanded if we can see it
+            return true
+        end
+    end
+    return nil -- header not visible, parent must be collapsed
+end
+
+--- Find the visible UI button for a faction header in the ReputationFrame ScrollBox
+function Highlight:GetFactionHeaderButton(headerName)
+    if not ReputationFrame or not ReputationFrame:IsShown() then return nil end
+
+    local headerNameLower = slower(headerName)
+
+    -- Modern retail: ReputationFrame.ScrollBox
+    if ReputationFrame.ScrollBox then
+        -- First try to scroll to the header's data element so it becomes visible
+        if ReputationFrame.ScrollBox.GetDataProvider then
+            local dataProvider = ReputationFrame.ScrollBox:GetDataProvider()
+            if dataProvider then
+                -- Find the header's flat-list index in C_Reputation
+                local headerIndex = nil
+                if C_Reputation and C_Reputation.GetNumFactions then
+                    local numFactions = C_Reputation.GetNumFactions()
+                    for i = 1, numFactions do
+                        local factionData = C_Reputation.GetFactionDataByIndex(i)
+                        if factionData and factionData.isHeader and factionData.name and slower(factionData.name) == headerNameLower then
+                            headerIndex = i
+                            break
+                        end
+                    end
+                end
+                if headerIndex then
+                    local scrollData = dataProvider:FindByPredicate(function(data)
+                        return data and data.factionIndex == headerIndex
+                    end)
+                    if scrollData then
+                        ReputationFrame.ScrollBox:ScrollToElementData(scrollData)
+                    end
+                end
+            end
+        end
+
+        -- Find the header's factionIndex first
+        local targetIndex = nil
+        if C_Reputation and C_Reputation.GetNumFactions then
+            local numFactions = C_Reputation.GetNumFactions()
+            for i = 1, numFactions do
+                local factionData = C_Reputation.GetFactionDataByIndex(i)
+                if factionData and factionData.isHeader and factionData.name and slower(factionData.name) == headerNameLower then
+                    targetIndex = i
+                    break
+                end
+            end
+        end
+
+        -- Now enumerate visible frames to find the button by factionIndex
+        if targetIndex and ReputationFrame.ScrollBox.EnumerateFrames then
+            for _, btn in ReputationFrame.ScrollBox:EnumerateFrames() do
+                if btn and btn:IsShown() then
+                    -- Check elementData.factionIndex
+                    local elementData = btn.elementData or (btn.GetElementData and btn:GetElementData())
+                    if elementData and elementData.factionIndex == targetIndex then
+                        return btn
+                    end
+                    -- Fallback: try text matching
+                    local text = GetButtonText(btn)
+                    if text and slower(text) == headerNameLower then
+                        return btn
+                    end
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
+--- Scroll the ReputationFrame ScrollBox to show a specific faction by ID
+function Highlight:ScrollToFactionRow(factionID)
+    if not ReputationFrame or not ReputationFrame:IsShown() then return end
+    if not C_Reputation or not C_Reputation.GetNumFactions then return end
+
+    -- Find the flat-list index for this factionID
+    local numFactions = C_Reputation.GetNumFactions()
+    for i = 1, numFactions do
+        local factionData = C_Reputation.GetFactionDataByIndex(i)
+        if factionData and not factionData.isHeader and factionData.factionID == factionID then
+            -- Found — scroll to it via the ScrollBox data provider
+            if ReputationFrame.ScrollBox then
+                local dataProvider = ReputationFrame.ScrollBox:GetDataProvider()
+                if dataProvider then
+                    local scrollData = dataProvider:FindByPredicate(function(data)
+                        return data and data.factionIndex == i
+                    end)
+                    if scrollData then
+                        ReputationFrame.ScrollBox:ScrollToElementData(scrollData)
+                    end
+                end
+            end
+            return
+        end
+    end
+end
+
+--- Find the visible UI button/row for a specific faction by ID in the ReputationFrame ScrollBox
+function Highlight:GetFactionRowButton(factionID)
+    if not ReputationFrame or not ReputationFrame:IsShown() then return nil end
+
+    -- Modern ScrollBox: enumerate visible frames and match by data
+    if ReputationFrame.ScrollBox and ReputationFrame.ScrollBox.EnumerateFrames then
+        for _, btn in ReputationFrame.ScrollBox:EnumerateFrames() do
+            if btn and btn:IsShown() then
+                -- Check if the button's element data contains our factionID
+                local data = btn.GetElementData and btn:GetElementData()
+                if data then
+                    -- Direct factionID match on data
+                    if data.factionID == factionID then
+                        return btn
+                    end
+                    -- May be stored as a factionIndex — resolve it
+                    if data.factionIndex then
+                        local factionData = C_Reputation and C_Reputation.GetFactionDataByIndex(data.factionIndex)
+                        if factionData and not factionData.isHeader and factionData.factionID == factionID then
+                            return btn
+                        end
+                    end
+                end
+
+                -- Fallback: match by faction name text
+                local numFactions = C_Reputation and C_Reputation.GetNumFactions and C_Reputation.GetNumFactions()
+                if numFactions then
+                    for i = 1, numFactions do
+                        local factionData = C_Reputation.GetFactionDataByIndex(i)
+                        if factionData and factionData.factionID == factionID and factionData.name then
+                            local text = GetButtonText(btn)
+                            if text and slower(text) == slower(factionData.name) then
+                                return btn
+                            end
+                            break
+                        end
+                    end
+                end
+            end
+        end
+    end
+
     return nil
 end
 
