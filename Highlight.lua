@@ -350,8 +350,15 @@ function Highlight:UpdateGuide()
             -- Need to click tab
             local tabBtn = self:GetTabButton(step.waitForFrame, step.tabIndex)
             if tabBtn then
-                -- Highlight tab, no text unless it's the last step and we can't find button
+                -- Highlight tab (even if disabled - show user where it is)
                 self:HighlightFrame(tabBtn)
+
+                -- If button is disabled and user hovers over it, clear the highlight
+                local isEnabled = not tabBtn.IsEnabled or tabBtn:IsEnabled()
+                if not isEnabled and tabBtn:IsMouseOver() then
+                    self:Cancel()
+                    return
+                end
             elseif isLastStep then
                 -- Can't find tab button on last step, show instruction
                 self:ShowInstruction(step.text or "Click the correct tab")
@@ -397,8 +404,15 @@ function Highlight:UpdateGuide()
             -- Need to click side tab
             local sideBtn = self:GetSideTabButton(step.waitForFrame, step.sideTabIndex)
             if sideBtn and sideBtn:IsShown() then
-                -- Highlight side tab, no text
+                -- Highlight side tab (even if disabled - show user where it is)
                 self:HighlightFrame(sideBtn)
+
+                -- If button is disabled and user hovers over it, clear the highlight
+                local isEnabled = not sideBtn.IsEnabled or sideBtn:IsEnabled()
+                if not isEnabled and sideBtn:IsMouseOver() then
+                    self:Cancel()
+                    return
+                end
             elseif isLastStep then
                 -- Can't find side button on last step, show instruction
                 self:ShowInstruction(step.text or "Click the correct option on the left")
@@ -451,8 +465,15 @@ function Highlight:UpdateGuide()
             -- Need to click PvP side tab
             local pvpBtn = self:GetPvPSideTabButton(step.waitForFrame, step.pvpSideTabIndex)
             if pvpBtn and pvpBtn:IsShown() then
-                -- Highlight PvP side tab, no text
+                -- Highlight PvP side tab (even if disabled - show user where it is)
                 self:HighlightFrame(pvpBtn)
+
+                -- If button is disabled and user hovers over it, clear the highlight
+                local isEnabled = not pvpBtn.IsEnabled or pvpBtn:IsEnabled()
+                if not isEnabled and pvpBtn:IsMouseOver() then
+                    self:Cancel()
+                    return
+                end
             elseif isLastStep then
                 -- Can't find side button on last step, show instruction
                 self:ShowInstruction(step.text or "Click the correct option on the left")
@@ -672,8 +693,8 @@ function Highlight:UpdateGuide()
             end
             
             if headerState == nil then
-                -- Header not found in the currency list at all — a parent header must be collapsed.
-                -- Go back to the nearest previous currencyHeader step so we can expand it first.
+                -- Header not found — parent must be collapsed.
+                -- First, try to go back to previous currencyHeader step
                 for i = currentStepIndex - 1, 1, -1 do
                     local prevStep = currentGuide.steps[i]
                     if prevStep and prevStep.currencyHeader then
@@ -682,20 +703,42 @@ function Highlight:UpdateGuide()
                         return
                     end
                 end
-                -- No previous header step found — show instruction as fallback
-                self:ShowInstruction(step.text or "Expand the '" .. step.currencyHeader .. "' section")
+
+                -- No previous step found - find and highlight first collapsed header from top
+                if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyListSize then
+                    local size = C_CurrencyInfo.GetCurrencyListSize()
+                    for i = 1, size do
+                        local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+                        if info and info.isHeader and not info.isHeaderExpanded then
+                            -- Try to find and highlight the button
+                            local btn = self:GetCurrencyHeaderButton(info.name)
+                            if btn then
+                                self:HighlightFrame(btn)
+                                return
+                            else
+                                -- Button not found - hide and retry
+                                self:HideHighlight()
+                                return
+                            end
+                        end
+                    end
+                end
+                -- All headers expanded but target still not found
+                self:HideHighlight()
                 return
             end
-            
-            -- headerState == false: header is visible but collapsed — find and highlight it
+
+            -- headerState == false: header is visible but collapsed — find and highlight the button
             local headerBtn = self:GetCurrencyHeaderButton(step.currencyHeader)
             if headerBtn then
+                -- Found the button - highlight it for user to click
                 self:HighlightFrame(headerBtn)
+                return
             else
-                -- Visible in API but not scrolled into view — try scrolling to it
-                self:ShowInstruction(step.text or "Expand the '" .. step.currencyHeader .. "' section")
+                -- Button not found - hide highlight and retry on next tick
+                self:HideHighlight()
+                return
             end
-            return
         end
         
         -- Currency row highlight (scroll to and highlight a specific currency by ID)
@@ -2035,10 +2078,29 @@ function Highlight:GetCurrencyHeaderButton(headerName)
             end
         end
         
-        -- Now enumerate visible frames to find the button
-        if TokenFrame.ScrollBox.EnumerateFrames then
+        -- Find the header's currencyIndex first
+        local targetIndex = nil
+        if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyListSize then
+            local size = C_CurrencyInfo.GetCurrencyListSize()
+            for i = 1, size do
+                local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+                if info and info.isHeader and info.name and slower(info.name) == headerNameLower then
+                    targetIndex = i
+                    break
+                end
+            end
+        end
+
+        -- Now enumerate visible frames to find the button by currencyIndex
+        if targetIndex and TokenFrame.ScrollBox.EnumerateFrames then
             for _, btn in TokenFrame.ScrollBox:EnumerateFrames() do
                 if btn and btn:IsShown() then
+                    -- Check elementData.currencyIndex
+                    local elementData = btn.elementData or (btn.GetElementData and btn:GetElementData())
+                    if elementData and elementData.currencyIndex == targetIndex then
+                        return btn
+                    end
+                    -- Fallback: try text matching
                     local text = GetButtonText(btn)
                     if text and slower(text) == headerNameLower then
                         return btn
@@ -2047,7 +2109,7 @@ function Highlight:GetCurrencyHeaderButton(headerName)
             end
         end
     end
-    
+
     return nil
 end
 

@@ -624,6 +624,11 @@ function UI:CreateResultButton(index)
     btn.text = text
     
     btn:SetScript("OnClick", function(self, mouseButton, down)
+        -- Don't allow clicking unearned currencies
+        if self.isUnearnedCurrency then
+            return
+        end
+
         if self.isPathNode then
             -- Check if click was near the +/- toggle icon
             local cursorX = GetCursorPosition()
@@ -656,7 +661,26 @@ function UI:CreateResultButton(index)
             UI:SelectResult(self.data)
         end
     end)
-    
+
+    -- Tooltip for unearned currencies
+    btn:SetScript("OnEnter", function(self)
+        if self.isUnearnedCurrency then
+            GameTooltip:SetOwner(UIParent, "ANCHOR_NONE")
+            GameTooltip:ClearLines()
+            local x, y = GetCursorPosition()
+            local scale = UIParent:GetEffectiveScale()
+            GameTooltip:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale, y / scale)
+            GameTooltip:AddLine("You haven't earned any of this currency yet", 1, 1, 1, true)
+            GameTooltip:Show()
+        end
+    end)
+
+    btn:SetScript("OnLeave", function(self)
+        if GameTooltip:GetOwner() == self then
+            GameTooltip:Hide()
+        end
+    end)
+
     btn:Hide()
     return btn
 end
@@ -920,13 +944,33 @@ function UI:ShowHierarchicalResults(hierarchical)
                 local indentPixels = depth * indPx
                 btn.icon:ClearAllPoints()
                 btn.icon:SetPoint("LEFT", btn, "LEFT", indentPixels, 0)
-                
+
                 btn.text:SetText(entry.name)
-                
+
+                -- Check if this is a currency that hasn't been earned yet
+                local isUnearnedCurrency = false
+                if data and data.category == "Currency" and data.steps then
+                    -- Find the currencyID from the steps
+                    for _, step in ipairs(data.steps) do
+                        if step.currencyID then
+                            local currencyInfo = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(step.currencyID)
+                            if currencyInfo and currencyInfo.quantity == 0 then
+                                isUnearnedCurrency = true
+                            end
+                            break
+                        end
+                    end
+                end
+                btn.isUnearnedCurrency = isUnearnedCurrency
+
                 -- Style: path nodes vs leaf results, themed
                 if entry.isPathNode then
                     btn.text:SetFontObject(theme.pathFont)
                     btn.text:SetTextColor(unpack(theme.pathColor))
+                elseif isUnearnedCurrency then
+                    -- Gray out unearned currencies
+                    btn.text:SetFontObject(theme.leafFont)
+                    btn.text:SetTextColor(0.5, 0.5, 0.5, 1.0)
                 else
                     btn.text:SetFontObject(theme.leafFont)
                     btn.text:SetTextColor(unpack(theme.leafColor))

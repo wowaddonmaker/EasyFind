@@ -573,16 +573,14 @@ function Options:Initialize()
         EasyFind.db.resultsTheme = "Retail"
         EasyFind.db.devMode = false
         
-        -- Reset keybinds to defaults
+        -- Clear keybinds (unbind)
         local old1, old2 = GetBindingKey("EASYFIND_TOGGLE")
         if old1 then SetBinding(old1) end
         if old2 then SetBinding(old2) end
-        SetBinding("[", "EASYFIND_TOGGLE")
-        
+
         old1, old2 = GetBindingKey("EASYFIND_FOCUS")
         if old1 then SetBinding(old1) end
         if old2 then SetBinding(old2) end
-        SetBinding("]", "EASYFIND_FOCUS")
         SaveBindings(GetCurrentBindingSet())
         
         -- Update UI to reflect changes
@@ -595,8 +593,8 @@ function Options:Initialize()
         optionsFrame.smartShowCheckbox:SetChecked(true)
         optionsFrame.devModeCheckbox:SetChecked(false)
         optionsFrame.themeBtnText:SetText("Retail")
-        optionsFrame.keybindBtn:SetText("[")
-        optionsFrame.focusBtn:SetText("]")
+        optionsFrame.keybindBtn:SetText("Not Bound")
+        optionsFrame.focusBtn:SetText("Not Bound")
         
         -- Apply the resets
         if ns.UI and ns.UI.ResetPosition then ns.UI:ResetPosition() end

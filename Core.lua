@@ -53,15 +53,6 @@ local function OnInitialize()
 
     EasyFind.db = EasyFindDB
 
-    -- Set default keybinds if nothing is bound yet (first install)
-    if not GetBindingKey("EASYFIND_TOGGLE") then
-        SetBinding("[", "EASYFIND_TOGGLE")
-    end
-    if not GetBindingKey("EASYFIND_FOCUS") then
-        SetBinding("]", "EASYFIND_FOCUS")
-    end
-    SaveBindings(GetCurrentBindingSet())
-
     -- Primary slash command
     SLASH_EASYFIND1 = "/ef"
     SlashCmdList["EASYFIND"] = function(msg)
