@@ -62,12 +62,12 @@ Options are also available via ESC > Interface > AddOns > EasyFind.
 
 ## Keybinds
 
-EasyFind provides customizable keybinds (defaults shown):
+EasyFind provides customizable keybinds:
 
-- **Toggle UI Search Bar** (default: `[`) — Show/hide the search bar
-- **Focus Search Bar** (default: `]`) — Jump to the search bar and start typing (or unfocus if already active)
+- **Toggle UI Search Bar**:  Show/hide the search bar
+- **Focus Search Bar**: Jump to the search bar and start typing (or unfocus if already active)
 
-Configure these in the Options panel or via ESC > Keybinds > EasyFind.
+**No keybinds are set by default.** Configure them in the Options panel or via ESC > Keybinds > EasyFind.
 
 ## Options
 - **Arrow Style**: Choose from 4 arrow textures (EasyFind Arrow, Classic Quest Arrow, Minimap Player Arrow, Cursor Point). All arrows update in real-time.
