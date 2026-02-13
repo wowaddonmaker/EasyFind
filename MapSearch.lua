@@ -462,15 +462,13 @@ function MapSearch:CreateSearchFrame()
     
     editBox:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
-        self:SetText("")
-        self.placeholder:Show()
-        MapSearch:HideResults()
-        MapSearch:ClearHighlight()
+        -- Text and results stay visible; user can click back in to resume
     end)
     
     -- Clear button (grey circle X, matching retail quest log style)
     local clearBtn = Utils.CreateClearButton(searchFrame)
-    
+    clearBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
+
     clearBtn:SetScript("OnClick", function()
         editBox:SetText("")
         editBox:ClearFocus()
@@ -649,16 +647,13 @@ function MapSearch:CreateSearchFrame()
     
     globalEditBox:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
-        self:SetText("")
-        self.placeholder:Show()
-        MapSearch:HideResults()
-        MapSearch:ClearHighlight()
-        MapSearch:ClearZoneHighlight()
+        -- Text and results stay visible; user can click back in to resume
     end)
     
     -- Clear button for global search (grey circle X)
     local globalClearBtn = Utils.CreateClearButton(globalSearchFrame)
-    
+    globalClearBtn:SetFrameLevel(globalSearchFrame:GetFrameLevel() + 10)
+
     globalClearBtn:SetScript("OnClick", function()
         globalEditBox:SetText("")
         globalEditBox:ClearFocus()
