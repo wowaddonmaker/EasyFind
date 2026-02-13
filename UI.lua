@@ -25,7 +25,7 @@ local wipe               = wipe
 local searchFrame
 local resultsFrame
 local resultButtons = {}
-local MAX_BUTTON_POOL = 24  -- Maximum buttons we'll ever create
+local MAX_BUTTON_POOL = 30  -- Maximum buttons we'll ever create (extra for smart cap extension)
 local inCombat = false
 
 -- Centralized icon setter — resets texture state before applying to prevent
@@ -423,6 +423,17 @@ function UI:CreateSearchFrame()
     self:UpdateScale()
     self:UpdateOpacity()
     
+    -- Movement fade: reduce opacity while player is moving (like the world map)
+    local MOVE_FADE_FACTOR = 0.4
+    local moveFading = false  -- true when alpha is reduced due to movement
+
+    local function GetEffectiveAlpha()
+        local base = EasyFind.db.searchBarOpacity or 1.0
+        if moveFading then return base * MOVE_FADE_FACTOR end
+        return base
+    end
+    searchFrame.getEffectiveAlpha = GetEffectiveAlpha
+
     -- Smart Show: invisible hover zone that triggers show/hide
     local hoverZone = CreateFrame("Frame", "EasyFindHoverZone", UIParent)
     hoverZone:SetFrameStrata("HIGH")
@@ -442,7 +453,7 @@ function UI:CreateSearchFrame()
         if EasyFind.db.visible == false then return end
         if not smartShowVisible then
             smartShowVisible = true
-            UIFrameFadeIn(searchFrame, 0.15, searchFrame:GetAlpha(), EasyFind.db.searchBarOpacity or 1.0)
+            UIFrameFadeIn(searchFrame, 0.15, searchFrame:GetAlpha(), GetEffectiveAlpha())
             searchFrame:Show()
         end
     end
@@ -485,6 +496,32 @@ function UI:CreateSearchFrame()
     searchFrame.smartShowFadeOut = SmartShowFadeOut
     searchFrame.smartShowVisible = function() return smartShowVisible end
     searchFrame.setSmartShowVisible = function(val) smartShowVisible = val end
+
+    -- OnUpdate: detect movement and adjust opacity accordingly
+    searchFrame:HookScript("OnUpdate", function(self)
+        -- Skip if user wants static opacity
+        if EasyFind.db.staticOpacity then
+            if moveFading then
+                moveFading = false
+                self:SetAlpha(EasyFind.db.searchBarOpacity or 1.0)
+            end
+            return
+        end
+        -- Don't interfere while SmartShow has the bar hidden
+        if EasyFind.db.smartShow and not smartShowVisible then return end
+
+        local speed = GetUnitSpeed("player")
+        local moving = speed > 0
+        local hovering = self:IsMouseOver()
+            or (resultsFrame and resultsFrame:IsShown() and resultsFrame:IsMouseOver())
+
+        local shouldFade = moving and not hovering
+
+        if shouldFade ~= moveFading then
+            moveFading = shouldFade
+            self:SetAlpha(GetEffectiveAlpha())
+        end
+    end)
 end
 
 
@@ -538,6 +575,64 @@ local MAX_DEPTH  = #INDENT_COLORS
 -- Session-only collapse state for path nodes (cleared on every new search)
 local collapsedNodes = {}   -- key = "name_depth", value = true
 local cachedHierarchical    -- last full hierarchical list for re-rendering after toggle
+local expandedContainers = {}  -- tracks which containers have had children injected
+
+-- Expand a container node: inject its database children into cachedHierarchical.
+local function ExpandContainer(entry, entryIndex)
+    if not entry or not entry.data or not entry.isContainer then return end
+    local key = entry.name .. "_" .. (entry.depth or 0)
+    if expandedContainers[key] then return end  -- already expanded
+
+    local children = ns.Database:GetContainerChildren(entry.data)
+    if #children == 0 then return end
+
+    local childDepth = (entry.depth or 0) + 1
+    -- Build child entries and insert right after the container in cachedHierarchical
+    local toInsert = {}
+    for _, childData in ipairs(children) do
+        -- Check if this child is itself a container
+        local childIsContainer = false
+        local fp = {}
+        if childData.path then
+            for _, p in ipairs(childData.path) do fp[#fp + 1] = p end
+        end
+        fp[#fp + 1] = childData.name
+        -- Quick check: any item in the DB has this as a path prefix?
+        for _, dbItem in ipairs(ns.Database.uiSearchData or {}) do
+            if dbItem.path then
+                local match = true
+                for i = 1, #fp do
+                    if not dbItem.path[i] or dbItem.path[i] ~= fp[i] then
+                        match = false; break
+                    end
+                end
+                if match and #dbItem.path >= #fp then
+                    childIsContainer = true; break
+                end
+            end
+        end
+
+        toInsert[#toInsert + 1] = {
+            name = childData.name,
+            depth = childDepth,
+            isPathNode = childIsContainer,
+            data = childData,
+            isContainer = childIsContainer or nil,
+        }
+        -- Start child containers collapsed too
+        if childIsContainer then
+            collapsedNodes[childData.name .. "_" .. childDepth] = true
+        end
+    end
+
+    -- Insert after entryIndex
+    for i = #toInsert, 1, -1 do
+        table.insert(cachedHierarchical, entryIndex + 1, toInsert[i])
+    end
+
+    expandedContainers[key] = true
+    entry.isContainer = nil  -- no longer needs lazy expansion
+end
 
 function UI:CreateResultButton(index)
     local btn = CreateFrame("Button", "EasyFindResultButton"..index, resultsFrame)
@@ -649,7 +744,11 @@ function UI:CreateResultButton(index)
             parent.tabHoverOverlay:Hide()
         end
         if parent.tabText then
-            parent.tabText:SetTextColor(0.60, 0.58, 0.55, 1.0)  -- back to gray
+            if parent._isMatch then
+                parent.tabText:SetTextColor(1.0, 0.82, 0.0, 1.0)   -- back to gold
+            else
+                parent.tabText:SetTextColor(0.60, 0.58, 0.55, 1.0) -- back to gray
+            end
         end
         if parent.toggleIcon then
             parent.toggleIcon:SetVertexColor(1.0, 1.0, 1.0, 1.0)  -- normal (atlas provides color)
@@ -713,9 +812,75 @@ function UI:CreateResultButton(index)
     icon:SetPoint("LEFT", 0, 0)
     btn.icon = icon
     
+    -- Right-aligned currency amount label
+    local amountText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    amountText:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+    amountText:SetJustifyH("RIGHT")
+    amountText:SetTextColor(0.9, 0.82, 0.65, 1.0)
+    amountText:Hide()
+    btn.amountText = amountText
+
+    -- Right-aligned reputation standing bar
+    -- Structure: repBar (dark bg + border) → repClip (clips fill) → repFillFrame (colored, same shape)
+    --            repBar → repTextOverlay (text on top of everything)
+    local REP_BAR_WIDTH = 100
+    local repBarBackdrop = {
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = true, tileSize = 8, edgeSize = 14,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    }
+
+    local repBar = CreateFrame("Frame", nil, btn, BackdropTemplateMixin and "BackdropTemplate")
+    repBar:SetSize(REP_BAR_WIDTH, 19)
+    repBar:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
+    if repBar.SetBackdrop then
+        repBar:SetBackdrop(repBarBackdrop)
+        repBar:SetBackdropColor(0.06, 0.06, 0.06, 1.0)
+        repBar:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.8)
+    end
+    repBar:Hide()
+    btn.repBar = repBar
+
+    -- Clip frame controls how much of the fill is visible (left→right)
+    local repClip = CreateFrame("Frame", nil, repBar)
+    repClip:SetPoint("TOPLEFT", repBar, "TOPLEFT", 0, 0)
+    repClip:SetPoint("BOTTOMLEFT", repBar, "BOTTOMLEFT", 0, 0)
+    repClip:SetWidth(REP_BAR_WIDTH)
+    repClip:SetClipsChildren(true)
+    btn.repClip = repClip
+
+    -- Fill frame: same rounded shape as repBar, but colored; clipped by repClip
+    local repFill = CreateFrame("Frame", nil, repClip, BackdropTemplateMixin and "BackdropTemplate")
+    repFill:SetPoint("TOPLEFT", repBar, "TOPLEFT", 0, 0)
+    repFill:SetPoint("BOTTOMRIGHT", repBar, "BOTTOMRIGHT", 0, 0)
+    if repFill.SetBackdrop then
+        repFill:SetBackdrop(repBarBackdrop)
+        repFill:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.8)
+    end
+    btn.repFill = repFill
+
+    -- Glossy bar texture (same as WoW default bars); backdrop bgColor matches fill
+    -- color so the flat corners blend seamlessly with the glossy center
+    local repBarTex = repFill:CreateTexture(nil, "ARTWORK")
+    repBarTex:SetPoint("TOPLEFT", repFill, "TOPLEFT", 3, -3)
+    repBarTex:SetPoint("BOTTOMRIGHT", repFill, "BOTTOMRIGHT", -3, 3)
+    repBarTex:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
+    btn.repBarTex = repBarTex
+
+    -- Text overlay above everything (not clipped)
+    local repTextOverlay = CreateFrame("Frame", nil, repBar)
+    repTextOverlay:SetAllPoints()
+    repTextOverlay:SetFrameLevel(repFill:GetFrameLevel() + 3)
+    local repBarText = repTextOverlay:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    repBarText:SetPoint("CENTER", repBar, "CENTER", 0, 0)
+    repBarText:SetTextColor(1.0, 1.0, 1.0, 1.0)
+    repBarText:SetShadowOffset(1, -1)
+    btn.repBarText = repBarText
+
     local text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     text:SetPoint("LEFT", icon, "RIGHT", 4, 0)
-    text:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
+    text:SetPoint("RIGHT", amountText, "LEFT", -4, 0)
     text:SetJustifyH("LEFT")
     btn.text = text
     
@@ -746,7 +911,17 @@ function UI:CreateResultButton(index)
 
             if isToggleClick then
                 local key = (self.pathNodeName or "") .. "_" .. (self.pathNodeDepth or 0)
+                local wasCollapsed = collapsedNodes[key]
                 collapsedNodes[key] = not collapsedNodes[key]
+                -- Lazy-expand container nodes on first open
+                if wasCollapsed and self._containerEntry and cachedHierarchical then
+                    for idx, entry in ipairs(cachedHierarchical) do
+                        if entry == self._containerEntry then
+                            ExpandContainer(entry, idx)
+                            break
+                        end
+                    end
+                end
                 if cachedHierarchical then
                     UI:ShowHierarchicalResults(cachedHierarchical)
                 end
@@ -795,8 +970,17 @@ end
 function UI:OnSearchTextChanged(text)
     -- Clear collapse state so every new search starts fully expanded
     collapsedNodes = {}
+    expandedContainers = {}
     local results = ns.Database:SearchUI(text)
     local hierarchical = ns.Database:BuildHierarchicalResults(results)
+    -- Container nodes (search results that have database children which didn't
+    -- match the query) start collapsed — user can expand to browse children.
+    for _, entry in ipairs(hierarchical) do
+        if entry.isContainer then
+            local key = entry.name .. "_" .. (entry.depth or 0)
+            collapsedNodes[key] = true
+        end
+    end
     self:ShowHierarchicalResults(hierarchical)
 end
 
@@ -927,6 +1111,29 @@ function UI:ShowHierarchicalResults(hierarchical)
     local maxResults = GetMaxResults()
     local count = mmin(#visible, maxResults)
 
+    -- Smart cap: if the last visible row is a group header with items beyond
+    -- the cap, extend to include its contents so the user never sees a
+    -- dangling header with nothing beneath it.  Applies to both gray
+    -- ancestors and gold match nodes that the user expanded.
+    if not EasyFind.db.hardResultsCap and count < #visible then
+        while count < #visible do
+            local last = visible[count]
+            -- Stop if the last row is a leaf — the result is complete
+            if not last.isPathNode then break end
+            -- Last row is a group header — extend to show its contents
+            local headerDepth = last.depth or 0
+            local extended = false
+            for j = count + 1, #visible do
+                local entry = visible[j]
+                local d = entry.depth or 0
+                if d <= headerDepth then break end -- left the group
+                count = j
+                extended = true
+            end
+            if not extended then break end
+        end
+    end
+
     -- ----------------------------------------------------------------
     -- Pre-compute last-child flags on the VISIBLE list
     -- ----------------------------------------------------------------
@@ -967,6 +1174,7 @@ function UI:ShowHierarchicalResults(hierarchical)
             btn.isPathNode = entry.isPathNode
             btn.pathNodeName = entry.isPathNode and entry.name or nil
             btn.pathNodeDepth = entry.isPathNode and depth or nil
+            btn._containerEntry = entry.isContainer and entry or nil
             
             -- ---- Tree connector drawing ----
             for d = 1, MAX_DEPTH do
@@ -1014,6 +1222,7 @@ function UI:ShowHierarchicalResults(hierarchical)
             end
             
             -- ---- Header styling ----
+            btn._isMatch = entry.isMatch and entry.isPathNode
             if theme.showHeaderTab and entry.isPathNode then
                 -- Quest-log raised tab header
                 local tabInset = depth * indPx
@@ -1029,7 +1238,12 @@ function UI:ShowHierarchicalResults(hierarchical)
                 local toggleAtlas = isCollapsed and expandAtlas or collapseAtlas
                 btn.toggleIcon:SetAtlas(toggleAtlas)
                 btn.tabText:SetText(entry.name)
-                -- Colors set by OnEnter/OnLeave handlers (muted → bright on hover)
+                -- Matched path nodes get gold text; non-matches stay muted gray
+                if btn._isMatch then
+                    btn.tabText:SetTextColor(1.0, 0.82, 0.0, 1.0)   -- gold
+                else
+                    btn.tabText:SetTextColor(0.60, 0.58, 0.55, 1.0) -- muted gray
+                end
                 -- Normal icon/text hidden — SetRowIcon("hidden") handles icon below
                 btn.text:SetText("")
                 btn.headerGrad:Hide()
@@ -1119,16 +1333,26 @@ function UI:ShowHierarchicalResults(hierarchical)
                 btn.icon:ClearAllPoints()
                 btn.icon:SetPoint("LEFT", btn, "LEFT", indentPixels, 0)
 
+                btn.text:ClearAllPoints()
+                btn.text:SetPoint("LEFT", btn.icon, "RIGHT", 4, 0)
+                btn.text:SetPoint("RIGHT", btn.amountText, "LEFT", -4, 0)
                 btn.text:SetText(entry.name)
 
                 -- Style: path nodes vs leaf results, themed
                 if entry.isPathNode then
                     btn.text:SetFontObject(theme.pathFont)
-                    btn.text:SetTextColor(unpack(theme.pathColor))
+                    if entry.isMatch then
+                        btn.text:SetTextColor(1.0, 0.82, 0.0, 1.0) -- gold for matches
+                    else
+                        btn.text:SetTextColor(unpack(theme.pathColor))
+                    end
                 elseif isUnearnedCurrency then
                     -- Gray out unearned currencies
                     btn.text:SetFontObject(theme.leafFont)
                     btn.text:SetTextColor(0.5, 0.5, 0.5, 1.0)
+                elseif entry.isMatch then
+                    btn.text:SetFontObject(theme.leafFont)
+                    btn.text:SetTextColor(1.0, 0.82, 0.0, 1.0) -- gold for matches
                 else
                     btn.text:SetFontObject(theme.leafFont)
                     btn.text:SetTextColor(unpack(theme.leafColor))
@@ -1138,6 +1362,8 @@ function UI:ShowHierarchicalResults(hierarchical)
             -- ---- Set icon ----
             local iconSet = false
             local isCurrencyItem = data and data.category == "Currency"
+            local isCurrencyLeaf = isCurrencyItem and not entry.isPathNode
+            local isReputationLeaf = data and data.category == "Reputation" and not entry.isPathNode
 
             if theme.showHeaderTab and entry.isPathNode then
                 SetRowIcon(btn, "hidden", nil, theme.iconSize)
@@ -1166,6 +1392,158 @@ function UI:ShowHierarchicalResults(hierarchical)
                 end
             end
 
+            -- Currency leaves: icon goes right of amount, not left of name
+            if isCurrencyLeaf and data and data.steps then
+                local quantity, iconFileID
+                for si = #data.steps, 1, -1 do
+                    local cid = data.steps[si].currencyID
+                    if cid and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+                        local ok, ci = pcall(C_CurrencyInfo.GetCurrencyInfo, cid)
+                        if ok and ci then
+                            quantity = ci.quantity
+                            iconFileID = data.icon or (ci.iconFileID ~= 0 and ci.iconFileID) or nil
+                        end
+                        break
+                    end
+                end
+
+                -- Amount text
+                if quantity then
+                    btn.amountText:SetText(tostring(quantity))
+                    if isUnearnedCurrency then
+                        btn.amountText:SetTextColor(0.5, 0.5, 0.5, 1.0)
+                    else
+                        btn.amountText:SetTextColor(0.9, 0.82, 0.65, 1.0)
+                    end
+                    btn.amountText:Show()
+                else
+                    btn.amountText:Hide()
+                end
+
+                -- Move icon to right side (right of amount text)
+                if iconFileID then
+                    btn.icon:SetTexture(nil)
+                    btn.icon:SetTexCoord(0, 1, 0, 1)
+                    btn.icon:SetTexture(iconFileID)
+                    btn.icon:SetSize(theme.iconSize or 16, theme.iconSize or 16)
+                    btn.icon:ClearAllPoints()
+                    btn.icon:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
+                    btn.icon:Show()
+                    -- Anchor amount text to left of icon
+                    btn.amountText:ClearAllPoints()
+                    btn.amountText:SetPoint("RIGHT", btn.icon, "LEFT", -3, 0)
+                else
+                    SetRowIcon(btn, "hidden", nil, theme.iconSize)
+                    btn.amountText:ClearAllPoints()
+                    btn.amountText:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+                end
+
+                -- Anchor name text from indent to amount (no left icon, tiny buffer)
+                local indentPixels = depth * indPx + 4
+                btn.text:ClearAllPoints()
+                btn.text:SetPoint("LEFT", btn, "LEFT", indentPixels, 0)
+                btn.text:SetPoint("RIGHT", btn.amountText, "LEFT", -4, 0)
+                iconSet = true
+
+            else
+                btn.amountText:Hide()
+                -- Reset amount text anchor for non-currency rows
+                btn.amountText:ClearAllPoints()
+                btn.amountText:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+            end
+
+            -- Reputation leaves: show standing bar on the right instead of icon
+            if isReputationLeaf and data and data.factionID then
+                local fill, standingText, barR, barG, barB
+                local fid = data.factionID
+
+                -- Priority 1: Renown factions (TWW, Dragonflight, Shadowlands)
+                if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
+                    local ok, md = pcall(C_MajorFactions.GetMajorFactionData, fid)
+                    if ok and md and md.renownLevel then
+                        local level = md.renownLevel or 0
+                        standingText = "Renown " .. level
+                        -- Check if at max renown (bar should be full)
+                        local atMax = C_MajorFactions.HasMaximumRenown
+                            and C_MajorFactions.HasMaximumRenown(fid)
+                        if atMax then
+                            fill = 1.0
+                        else
+                            local earned = md.renownReputationEarned or 0
+                            local threshold = md.renownLevelThreshold or 1
+                            fill = (threshold > 0) and (earned / threshold) or 1.0
+                        end
+                        barR, barG, barB = 0.0, 0.55, 0.78  -- teal/cyan like WoW renown bars
+                    end
+                end
+
+                -- Priority 2: Friendship factions (Sabellian, Wrathion, etc.)
+                if not standingText and C_GossipInfo and C_GossipInfo.GetFriendshipReputation then
+                    local ok, fd = pcall(C_GossipInfo.GetFriendshipReputation, fid)
+                    if ok and fd and fd.friendshipFactionID and fd.friendshipFactionID > 0 then
+                        standingText = fd.reaction or ""
+                        local cur = fd.standing or 0
+                        local minR = fd.reactionThreshold or 0
+                        local maxR = fd.nextThreshold or 0
+                        if maxR > minR then
+                            fill = (cur - minR) / (maxR - minR)
+                        elseif cur > 0 then
+                            fill = 1.0
+                        else
+                            fill = 0.0
+                        end
+                        barR, barG, barB = 0.0, 0.60, 0.0  -- green for friendship
+                    end
+                end
+
+                -- Priority 3: Traditional factions (Friendly, Honored, etc.)
+                if not standingText and C_Reputation and C_Reputation.GetFactionDataByID then
+                    local ok, rd = pcall(C_Reputation.GetFactionDataByID, fid)
+                    if ok and rd and rd.reaction then
+                        local standing = rd.reaction
+                        standingText = _G["FACTION_STANDING_LABEL" .. standing] or ""
+                        local cur  = rd.currentStanding or 0
+                        local minR = rd.currentReactionThreshold or 0
+                        local maxR = rd.nextReactionThreshold or 0
+                        if maxR > minR then
+                            fill = (cur - minR) / (maxR - minR)
+                        else
+                            fill = 1.0  -- Exalted or capped
+                        end
+                        local barColor = FACTION_BAR_COLORS and FACTION_BAR_COLORS[standing]
+                        if barColor then
+                            barR, barG, barB = barColor.r, barColor.g, barColor.b
+                        else
+                            barR, barG, barB = 0.5, 0.5, 0.5
+                        end
+                    end
+                end
+
+                if standingText then
+                    if fill < 0 then fill = 0 end
+                    if fill > 1 then fill = 1 end
+                    btn.repBarTex:SetVertexColor(barR, barG, barB, 1.0)
+                    if btn.repFill.SetBackdropColor then
+                        btn.repFill:SetBackdropColor(barR, barG, barB, 1.0)
+                    end
+                    btn.repClip:SetWidth(math.max(fill * 100, 0.1))
+                    btn.repBarText:SetText(standingText)
+                    btn.repBar:Show()
+                else
+                    btn.repBar:Hide()
+                end
+
+                -- Hide left icon, anchor text to left of bar
+                SetRowIcon(btn, "hidden", nil, theme.iconSize)
+                local indentPixels = depth * indPx + 4
+                btn.text:ClearAllPoints()
+                btn.text:SetPoint("LEFT", btn, "LEFT", indentPixels, 0)
+                btn.text:SetPoint("RIGHT", btn.repBar, "LEFT", -4, 0)
+                iconSet = true
+            else
+                btn.repBar:Hide()
+            end
+
             if not iconSet and data and data.icon then
                 SetRowIcon(btn, "file", data.icon, theme.iconSize)
                 iconSet = true
@@ -1192,6 +1570,7 @@ function UI:ShowHierarchicalResults(hierarchical)
             btn.headerGrad:Hide()
             btn.headerTab:Hide()
             btn.separator:Hide()
+            btn.repBar:Hide()
             for d = 1, MAX_DEPTH do
                 btn.treeVert[d]:Hide()
                 btn.treeElbow[d]:Hide()
@@ -1201,7 +1580,7 @@ function UI:ShowHierarchicalResults(hierarchical)
     end
     
     -- Show/hide truncation indicator and separator
-    local showTruncation = #visible > maxResults and (EasyFind.db.showTruncationMessage ~= false)
+    local showTruncation = #visible > count and (EasyFind.db.showTruncationMessage ~= false)
 
     -- Add extra padding for truncation message if it will be shown
     local truncPadding = showTruncation and 25 or 0
@@ -1321,7 +1700,16 @@ function UI:ActivateSelected()
             if btn.isPathNode then
                 -- Toggle collapse for path nodes
                 local key = (btn.pathNodeName or "") .. "_" .. (btn.pathNodeDepth or 0)
+                local wasCollapsed = collapsedNodes[key]
                 collapsedNodes[key] = not collapsedNodes[key]
+                if wasCollapsed and btn._containerEntry and cachedHierarchical then
+                    for idx, entry in ipairs(cachedHierarchical) do
+                        if entry == btn._containerEntry then
+                            ExpandContainer(entry, idx)
+                            break
+                        end
+                    end
+                end
                 if cachedHierarchical then
                     self:ShowHierarchicalResults(cachedHierarchical)
                 end
@@ -1810,22 +2198,29 @@ function UI:Focus()
     end
 end
 
-function UI:Show()
+function UI:Show(andFocus)
     if inCombat then return end
     searchFrame:Show()
     EasyFind.db.visible = true
     if EasyFind.db.smartShow then
         searchFrame.hoverZone:Show()
-        -- If called explicitly (e.g. /ef), fade in immediately
+        -- Briefly reveal the bar then let smart-show fade it back out
         searchFrame.smartShowFadeIn()
+        C_Timer.After(1.5, function()
+            if EasyFind.db.smartShow then
+                searchFrame.smartShowFadeOut()
+            end
+        end)
     end
-    -- Delay focus by one frame so the keybind key-press that triggered
-    -- this Show() doesn't get typed into the editbox.
-    C_Timer.After(0, function()
-        if searchFrame:IsShown() then
-            searchFrame.editBox:SetFocus()
-        end
-    end)
+    if andFocus then
+        -- Delay focus by one frame so the keybind key-press that triggered
+        -- this Show() doesn't get typed into the editbox.
+        C_Timer.After(0, function()
+            if searchFrame:IsShown() then
+                searchFrame.editBox:SetFocus()
+            end
+        end)
+    end
 end
 
 function UI:Hide()
@@ -2116,7 +2511,7 @@ function UI:Toggle()
     if searchFrame:IsShown() and EasyFind.db.visible ~= false then
         self:Hide()
     else
-        self:Show()
+        self:Show(true)
     end
 end
 
@@ -2132,8 +2527,9 @@ end
 
 function UI:UpdateOpacity()
     if searchFrame then
-        local alpha = EasyFind.db.searchBarOpacity or 1.0
-        -- Only set full alpha if smart show isn't actively hiding
+        local alpha = searchFrame.getEffectiveAlpha and searchFrame.getEffectiveAlpha()
+            or (EasyFind.db.searchBarOpacity or 1.0)
+        -- Only set alpha if smart show isn't actively hiding
         if not EasyFind.db.smartShow or (searchFrame.smartShowVisible and searchFrame.smartShowVisible()) then
             searchFrame:SetAlpha(alpha)
         end
@@ -2181,7 +2577,9 @@ function UI:UpdateSmartShow()
         searchFrame.hoverZone:Hide()
         searchFrame.setSmartShowVisible(true)
         if EasyFind.db.visible ~= false and not inCombat then
-            searchFrame:SetAlpha(EasyFind.db.searchBarOpacity or 1.0)
+            local alpha = searchFrame.getEffectiveAlpha and searchFrame.getEffectiveAlpha()
+                or (EasyFind.db.searchBarOpacity or 1.0)
+            searchFrame:SetAlpha(alpha)
             searchFrame:Show()
         end
     end
