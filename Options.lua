@@ -5,6 +5,9 @@ ns.Options = Options
 
 local Utils   = ns.Utils
 local sformat = Utils.sformat
+local mfloor, mmin, mmax = Utils.mfloor, Utils.mmin, Utils.mmax
+local tonumber, tostring = Utils.tonumber, Utils.tostring
+local IsMouseButtonDown = IsMouseButtonDown
 
 local optionsFrame
 local isInitialized = false
@@ -129,9 +132,9 @@ local function CreateSlider(parent, name, label, minVal, maxVal, step, tooltipTe
     -- Helper to get display value (for percentage: multiply by 100)
     local function getDisplayValue(sliderValue)
         if isPercentage then
-            return math.floor(sliderValue * 100 + 0.5)
+            return mfloor(sliderValue * 100 + 0.5)
         else
-            return math.floor(sliderValue + 0.5)
+            return mfloor(sliderValue + 0.5)
         end
     end
 
@@ -149,7 +152,7 @@ local function CreateSlider(parent, name, label, minVal, maxVal, step, tooltipTe
         if val then
             -- Valid number: clamp to bounds and update slider
             local sliderVal = getSliderValue(val)
-            sliderVal = math.max(minVal, math.min(maxVal, sliderVal))
+            sliderVal = mmax(minVal, mmin(maxVal, sliderVal))
             slider:SetValue(sliderVal)
             -- Update input box to show the actual clamped value
             self:SetText(tostring(getDisplayValue(sliderVal)))
@@ -311,11 +314,11 @@ function Options:Initialize()
 
     local maxResultsSlider = CreateSlider(optionsFrame, "MaxResults", "Max Search Results", 6, 24, 1,
         "Maximum number of search results to display in the dropdown (6-24).",
-        function(val) return tostring(math.floor(val + 0.5)) end)  -- Show as integer, not percentage
+        function(val) return tostring(mfloor(val + 0.5)) end)  -- Show as integer, not percentage
     maxResultsSlider:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", COL_LEFT, -350)
     maxResultsSlider:SetValue(EasyFind.db.maxResults or 12)
     maxResultsSlider:HookScript("OnValueChanged", function(self, value)
-        value = math.floor(value + 0.5)  -- Round to nearest integer
+        value = mfloor(value + 0.5)  -- Round to nearest integer
         EasyFind.db.maxResults = value
         -- Refresh the results display if currently showing
         if ns.UI and ns.UI.RefreshResults then
@@ -369,9 +372,33 @@ function Options:Initialize()
     end)
     optionsFrame.truncMessageCheckbox = truncMessageCheckbox
 
+    local hardCapCheckbox = CreateCheckbox(optionsFrame, "HardCap", "Hard Results Cap",
+        "When enabled, search results are strictly cut off at the max results limit, even if the last visible item is a group header with no results shown beneath it.\n\nWhen disabled (default), the list extends slightly past the cap to ensure every group header shows the results inside it.")
+    hardCapCheckbox:SetPoint("TOPLEFT", truncMessageCheckbox, "BOTTOMLEFT", 0, -4)
+    hardCapCheckbox:SetChecked(EasyFind.db.hardResultsCap or false)
+    hardCapCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.hardResultsCap = self:GetChecked()
+        if ns.UI and ns.UI.RefreshResults then
+            ns.UI:RefreshResults()
+        end
+    end)
+    optionsFrame.hardCapCheckbox = hardCapCheckbox
+
+    local staticOpacityCheckbox = CreateCheckbox(optionsFrame, "StaticOpacity", "Static Opacity",
+        "When enabled, the search bar keeps the same opacity at all times.\n\nWhen disabled (default), opacity is reduced while your character is moving so you can see the game world better, similar to how the World Map behaves.\n\nThis only applies to the main search bar. Map search bars follow the World Map's built-in fade behavior.")
+    staticOpacityCheckbox:SetPoint("TOPLEFT", hardCapCheckbox, "BOTTOMLEFT", 0, -4)
+    staticOpacityCheckbox:SetChecked(EasyFind.db.staticOpacity or false)
+    staticOpacityCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.staticOpacity = self:GetChecked()
+        if ns.UI and ns.UI.UpdateOpacity then
+            ns.UI:UpdateOpacity()
+        end
+    end)
+    optionsFrame.staticOpacityCheckbox = staticOpacityCheckbox
+
     -- Results Theme selector (custom, avoids UIDropDownMenu global state bugs)
     local themeLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    themeLabel:SetPoint("TOPLEFT", truncMessageCheckbox, "BOTTOMLEFT", 4, -12)
+    themeLabel:SetPoint("TOPLEFT", staticOpacityCheckbox, "BOTTOMLEFT", 4, -12)
     themeLabel:SetText("Theme:")
     
     local themeChoices = {"Classic", "Retail"}
@@ -473,6 +500,7 @@ function Options:Initialize()
     end
     
     optionsFrame.colorBtnText = colorBtnText
+    optionsFrame.colorSwatch = colorSwatch
     optionsFrame.colorFlyout = colorFlyout
     
     -- ----------------------------------------------------------------
@@ -672,6 +700,20 @@ function Options:Initialize()
         EasyFind.db.devMode = false
         EasyFind.db.maxResults = 12
         EasyFind.db.showTruncationMessage = true
+        EasyFind.db.hardResultsCap = false
+        EasyFind.db.staticOpacity = false
+        EasyFind.db.arrowStyle = "EasyFind Arrow"
+        EasyFind.db.arrowColor = "Yellow"
+        EasyFind.db.visible = true
+
+        -- Clear all active highlights
+        if ns.Highlight then
+            ns.Highlight:ClearAll()
+        end
+        if ns.MapSearch then
+            ns.MapSearch:ClearHighlight()
+            ns.MapSearch:ClearZoneHighlight()
+        end
 
         -- Clear keybinds (unbind)
         local old1, old2 = GetBindingKey("EASYFIND_TOGGLE")
@@ -692,9 +734,15 @@ function Options:Initialize()
         optionsFrame.zoneNavCheckbox:SetChecked(false)
         optionsFrame.smartShowCheckbox:SetChecked(true)
         optionsFrame.truncMessageCheckbox:SetChecked(true)
+        optionsFrame.hardCapCheckbox:SetChecked(false)
+        optionsFrame.staticOpacityCheckbox:SetChecked(false)
         optionsFrame.devModeCheckbox:SetChecked(false)
         optionsFrame.maxResultsSlider:SetValue(12)
         optionsFrame.themeBtnText:SetText("Retail")
+        optionsFrame.arrowBtnText:SetText("EasyFind Arrow")
+        optionsFrame.colorBtnText:SetText("Yellow")
+        optionsFrame.colorBtnText:SetTextColor(1.0, 1.0, 0.0)
+        optionsFrame.colorSwatch:SetColorTexture(1.0, 1.0, 0.0, 1)
         optionsFrame.keybindBtn:SetText("Not Bound")
         optionsFrame.focusBtn:SetText("Not Bound")
         
@@ -708,10 +756,13 @@ function Options:Initialize()
         if ns.MapSearch and ns.MapSearch.ResetPosition then ns.MapSearch:ResetPosition() end
         if ns.MapSearch and ns.MapSearch.UpdateScale then ns.MapSearch:UpdateScale() end
         if ns.MapSearch and ns.MapSearch.UpdateIconScales then ns.MapSearch:UpdateIconScales() end
+        if ns.MapSearch and ns.MapSearch.RefreshArrows then ns.MapSearch:RefreshArrows() end
         -- Reset UI arrow scale too
         local uiArrow = _G["EasyFindArrowFrame"]
         if uiArrow then uiArrow:SetScale(1.0) end
         if ns.MapSearch and ns.MapSearch.UpdateOpacity then ns.MapSearch:UpdateOpacity() end
+        -- Show the search bar
+        if ns.UI and ns.UI.Show then ns.UI:Show() end
         
         EasyFind:Print("All settings reset to defaults.")
     end)

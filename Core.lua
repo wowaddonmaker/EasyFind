@@ -40,6 +40,8 @@ local DB_DEFAULTS = {
     arrowColor = "Yellow",  -- Arrow color preset
     maxResults = 12,           -- Maximum number of search results to display (6-24)
     showTruncationMessage = true,  -- Show "more results available" message when truncated
+    hardResultsCap = false,    -- Hard cap on results (no "more results" message)
+    staticOpacity = false,     -- Keep opacity constant while moving
 }
 
 local function OnInitialize()
@@ -84,11 +86,11 @@ local function OnInitialize()
                 EasyFind:Print("Example: /ef test Interface\\\\MINIMAP\\\\MiniMap-QuestArrow")
             end
         else
-            EasyFind:ToggleSearchUI()
+            EasyFind:Print("Usage: /ef show | /ef hide | /ef clear | /ef options")
         end
     end
 
-    EasyFind:Print("EasyFind loaded! Use /ef to toggle UI search.")
+    EasyFind:Print("EasyFind loaded! Use /ef show, /ef hide, or /ef options.")
 end
 
 local function OnPlayerLogin()
