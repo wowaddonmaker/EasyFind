@@ -28,6 +28,23 @@ local resultButtons = {}
 local MAX_BUTTON_POOL = 24  -- Maximum buttons we'll ever create
 local inCombat = false
 
+-- Centralized icon setter — resets texture state before applying to prevent
+-- atlas/texture bleed between rows.
+local function SetRowIcon(btn, kind, value, iconSize)
+    btn.icon:SetTexture(nil)
+    btn.icon:SetTexCoord(0, 1, 0, 1)
+    if kind == "atlas" then
+        btn.icon:SetAtlas(value)
+    elseif kind == "file" or kind == "path" then
+        btn.icon:SetTexture(value)
+    elseif kind == "hidden" then
+        btn.icon:Hide()
+        return
+    end
+    btn.icon:SetSize(iconSize or 16, iconSize or 16)
+    btn.icon:Show()
+end
+
 -- Get the current max results setting (user-configurable)
 local function GetMaxResults()
     return EasyFind.db.maxResults or 12
@@ -787,14 +804,20 @@ end
 local function GetButtonIcon(frameName)
     local frame = _G[frameName]
     if not frame then return nil end
-    
+
     -- For MicroButtons - use the textureName property to build atlas
     -- Atlas format: "UI-HUD-MicroMenu-<textureName>-Up"
     if frame.textureName then
         local atlas = "UI-HUD-MicroMenu-" .. frame.textureName .. "-Up"
         return atlas, true -- true means it's an atlas
     end
-    
+
+    -- MicroButtons without textureName (e.g. CharacterMicroButton) use a portrait
+    -- render texture that produces garbage when captured. Skip region scanning for these.
+    if frame.IsMicroButton or (frameName and frameName:find("MicroButton")) then
+        return nil
+    end
+
     -- Try common icon region names
     local iconRegions = {"Icon", "icon", "NormalTexture", "normalTexture"}
     for _, regionName in ipairs(iconRegions) do
@@ -806,7 +829,7 @@ local function GetButtonIcon(frameName)
             end
         end
     end
-    
+
     -- Fallback: iterate through regions
     for i = 1, select("#", frame:GetRegions()) do
         local region = select(i, frame:GetRegions())
@@ -817,7 +840,7 @@ local function GetButtonIcon(frameName)
             end
         end
     end
-    
+
     return nil
 end
 
@@ -1007,8 +1030,7 @@ function UI:ShowHierarchicalResults(hierarchical)
                 btn.toggleIcon:SetAtlas(toggleAtlas)
                 btn.tabText:SetText(entry.name)
                 -- Colors set by OnEnter/OnLeave handlers (muted → bright on hover)
-                -- Hide normal icon/text (tab has its own)
-                btn.icon:Hide()
+                -- Normal icon/text hidden — SetRowIcon("hidden") handles icon below
                 btn.text:SetText("")
                 btn.headerGrad:Hide()
             else
@@ -1115,54 +1137,55 @@ function UI:ShowHierarchicalResults(hierarchical)
             
             -- ---- Set icon ----
             local iconSet = false
-            
+            local isCurrencyItem = data and data.category == "Currency"
+
             if theme.showHeaderTab and entry.isPathNode then
-                -- Icon hidden — +/- handled by toggleIcon atlas on tab
+                SetRowIcon(btn, "hidden", nil, theme.iconSize)
                 iconSet = true
+
             elseif entry.isPathNode then
-                -- Classic: collapse/expand icon on left
                 local key = entry.name .. "_" .. depth
-                if collapsedNodes[key] then
-                    btn.icon:SetTexture(theme.expandIcon)
-                else
-                    btn.icon:SetTexture(theme.collapseIcon)
-                end
-                btn.icon:SetTexCoord(0, 1, 0, 1)
-                btn.icon:SetSize(theme.pathIconSize, theme.pathIconSize)
-                btn.icon:Show()
+                local iconPath = collapsedNodes[key] and theme.expandIcon or theme.collapseIcon
+                SetRowIcon(btn, "path", iconPath, theme.pathIconSize)
                 iconSet = true
             end
-            
-            if not iconSet and data and data.buttonFrame then
+
+            -- Resolve currency icon on the fly if not cached
+            if not iconSet and isCurrencyItem and data and not data.icon and data.steps then
+                for si = #data.steps, 1, -1 do
+                    local cid = data.steps[si].currencyID
+                    if cid then
+                        if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo then
+                            local ok, ci = pcall(C_CurrencyInfo.GetCurrencyInfo, cid)
+                            if ok and ci and ci.iconFileID and ci.iconFileID ~= 0 then
+                                data.icon = ci.iconFileID
+                            end
+                        end
+                        break
+                    end
+                end
+            end
+
+            if not iconSet and data and data.icon then
+                SetRowIcon(btn, "file", data.icon, theme.iconSize)
+                iconSet = true
+            end
+
+            -- Skip buttonFrame fallback for currency items — their inherited
+            -- "CharacterMicroButton" produces a wrong MicroMenu atlas icon.
+            if not iconSet and not isCurrencyItem and data and data.buttonFrame then
                 local texture, isAtlas = GetButtonIcon(data.buttonFrame)
                 if texture then
-                    if isAtlas then
-                        btn.icon:SetAtlas(texture)
-                    else
-                        btn.icon:SetTexture(texture)
-                    end
-                    btn.icon:SetTexCoord(0, 1, 0, 1)
-                    btn.icon:SetSize(theme.iconSize, theme.iconSize)
-                    btn.icon:Show()
+                    local kind = isAtlas and "atlas" or "file"
+                    SetRowIcon(btn, kind, texture, theme.iconSize)
                     iconSet = true
                 end
             end
-            
-            if not iconSet and data and data.icon then
-                btn.icon:SetTexture(data.icon)
-                btn.icon:SetTexCoord(0, 1, 0, 1)
-                btn.icon:SetSize(theme.iconSize, theme.iconSize)
-                btn.icon:Show()
-                iconSet = true
-            end
-            
+
             if not iconSet then
-                btn.icon:SetTexture(134400)
-                btn.icon:SetTexCoord(0, 1, 0, 1)
-                btn.icon:SetSize(theme.iconSize, theme.iconSize)
-                btn.icon:Show()
+                SetRowIcon(btn, "file", 134400, theme.iconSize)
             end
-            
+
             btn:Show()
         else
             btn:Hide()

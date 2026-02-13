@@ -92,10 +92,18 @@ function Database:PopulateDynamicCurrencies()
         return path
     end
 
+    -- Build a currencyID → icon map from the list scan (GetCurrencyListInfo is reliable)
+    local currencyIconMap = {}
+
     for i = 1, size do
         local info = C_CurrencyInfo.GetCurrencyListInfo(i)
         if info then
             local depth = info.currencyListDepth or 0
+
+            -- Capture icon for every currency we see
+            if info.currencyID and info.iconFileID then
+                currencyIconMap[info.currencyID] = info.iconFileID
+            end
 
             if info.isHeader then
                 pushHeader(info.name, depth)
@@ -154,6 +162,7 @@ function Database:PopulateDynamicCurrencies()
                     path = buildPath(),
                     steps = currSteps,
                     flashLabel = "Currency",
+                    icon = info.iconFileID or nil,
                 }
                 entry.nameLower = slower(entry.name)
                 entry.keywordsLower = {}
@@ -169,6 +178,18 @@ function Database:PopulateDynamicCurrencies()
 
     if injected > 0 then
         Utils.DebugPrint("Injected", injected, "dynamic currency entries from C_CurrencyInfo")
+    end
+
+    -- Resolve icons for ALL currency entries (static + dynamic) using the map we just built
+    for _, item in ipairs(uiSearchData) do
+        if not item.icon and item.steps then
+            for _, step in ipairs(item.steps) do
+                if step.currencyID and currencyIconMap[step.currencyID] then
+                    item.icon = currencyIconMap[step.currencyID]
+                    break
+                end
+            end
+        end
     end
 
     -- Collapse back any headers we expanded during scanning
@@ -1497,7 +1518,7 @@ function Database:BuildUIDatabase()
         -- =====================
         {
             name = "Housing Dashboard",
-            keywords = {"housing", "house", "home", "dashboard", "player housing", "delves housing"},
+            keywords = {"housing", "house", "home", "dashboard", "player housing"},
             category = "Menu Bar",
             buttonFrame = "HousingMicroButton",
             steps = {{ buttonFrame = "HousingMicroButton" }},
