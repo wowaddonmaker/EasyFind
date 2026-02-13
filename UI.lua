@@ -1551,6 +1551,20 @@ function UI:ShowHierarchicalResults(hierarchical)
                 iconSet = true
             end
 
+            -- Portrait menu items: use the player portrait as the icon
+            if not iconSet and data and data.steps then
+                for _, step in ipairs(data.steps) do
+                    if step.portraitMenu or step.portraitMenuOption then
+                        SetPortraitTexture(btn.icon, "player")
+                        btn.icon:SetTexCoord(0, 1, 0, 1)
+                        btn.icon:SetSize(theme.iconSize or 16, theme.iconSize or 16)
+                        btn.icon:Show()
+                        iconSet = true
+                        break
+                    end
+                end
+            end
+
             -- Resolve sidebar tab icons at runtime (e.g. Equipment Manager, Titles)
             -- The tab textures are sprite sheets — copy the ARTWORK-layer texture
             -- along with its tex coords so only the icon portion is shown.
@@ -1565,6 +1579,10 @@ function UI:ShowHierarchicalResults(hierarchical)
                                 if region and region:GetObjectType() == "Texture"
                                    and region:GetDrawLayer() == "ARTWORK" then
                                     local tex = region:GetTexture()
+                                    -- Skip render targets (e.g. RTPortrait1 for the player model)
+                                    if tex and type(tex) == "string" and tex:find("^RT") then
+                                        break
+                                    end
                                     if tex then
                                         local ulX, ulY, llX, llY, urX, urY, lrX, lrY = region:GetTexCoord()
                                         btn.icon:SetTexture(tex)
@@ -1575,6 +1593,14 @@ function UI:ShowHierarchicalResults(hierarchical)
                                     end
                                     break
                                 end
+                            end
+                            -- Fallback for render target tabs: use player portrait
+                            if not iconSet then
+                                SetPortraitTexture(btn.icon, "player")
+                                btn.icon:SetTexCoord(0, 1, 0, 1)
+                                btn.icon:SetSize(theme.iconSize or 16, theme.iconSize or 16)
+                                btn.icon:Show()
+                                iconSet = true
                             end
                         end
                         break
