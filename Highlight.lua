@@ -520,12 +520,28 @@ function Highlight:UpdateGuide()
             if self:IsCategorySelectedByData(step.statisticsCategory) then
                 if isLastStep then
                     self:Cancel()
-                else
-                    self:AdvanceStep()
+                    return
                 end
-                return
+                -- Non-final: only advance if children are actually visible (parent expanded),
+                -- not just selected — clicking a collapsed parent selects it without showing children
+                local elementData = self:FindCategoryElementData(step.statisticsCategory)
+                if not elementData or not elementData.parent or not elementData.collapsed then
+                    self:AdvanceStep()
+                    return
+                end
+                -- Selected but collapsed — fall through to highlight so user expands it
             end
-            
+
+            -- For non-final steps: if the category is a parent that's expanded (children visible),
+            -- skip ahead — don't force the user to re-select a parent they've already drilled into
+            if not isLastStep then
+                local elementData = self:FindCategoryElementData(step.statisticsCategory)
+                if elementData and elementData.parent and not elementData.collapsed then
+                    self:AdvanceStep()
+                    return
+                end
+            end
+
             -- Not selected — find the button (scrolls into view automatically)
             local categoryBtn = self:GetStatisticsCategoryButton(step.statisticsCategory)
             if categoryBtn then
@@ -581,12 +597,28 @@ function Highlight:UpdateGuide()
             if self:IsCategorySelectedByData(step.achievementCategory) then
                 if isLastStep then
                     self:Cancel()
-                else
-                    self:AdvanceStep()
+                    return
                 end
-                return
+                -- Non-final: only advance if children are actually visible (parent expanded),
+                -- not just selected — clicking a collapsed parent selects it without showing children
+                local elementData = self:FindCategoryElementData(step.achievementCategory)
+                if not elementData or not elementData.parent or not elementData.collapsed then
+                    self:AdvanceStep()
+                    return
+                end
+                -- Selected but collapsed — fall through to highlight so user expands it
             end
-            
+
+            -- For non-final steps: if the category is a parent that's expanded (children visible),
+            -- skip ahead — don't force the user to re-select a parent they've already drilled into
+            if not isLastStep then
+                local elementData = self:FindCategoryElementData(step.achievementCategory)
+                if elementData and elementData.parent and not elementData.collapsed then
+                    self:AdvanceStep()
+                    return
+                end
+            end
+
             -- Not selected — find the button (scrolls into view automatically)
             local categoryBtn = self:GetAchievementCategoryButton(step.achievementCategory)
             if categoryBtn then
