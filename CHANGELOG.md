@@ -4,6 +4,28 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [1.2.3] - 2026-02-13
+
+### Added
+- **Reputation Search**: Search and navigate to any faction reputation; shows standing progress bar with renown level, friendship rank, or traditional standing (Honored, Exalted, etc.)
+- **Currency Amounts in Results**: Currency search results now display your current quantity inline
+- **Movement Fade**: Search bar fades to lower opacity while your character is moving (can be disabled with Static Opacity option)
+- **Match Highlighting**: Direct search matches are highlighted in gold to distinguish them from parent category context
+
+### Changed
+- **Search Abbreviations**: Common shorthand now works more consistently; "tww", "df", "bfa", "mop", "wod", "sl", "cata", "wotlk", "tbc", etc.
+- **Smart Result Cap**: Results no longer cut off mid-category. If a header is the last visible row, its children are included automatically
+- **`/ef show`**: No longer auto-focuses the search box. Bar appears without stealing your input
+- **`/ef` command**: Bare `/ef` now shows usage help instead of toggling the bar; use `/ef show` and `/ef hide` instead
+- **Escape in Map Search**: Pressing Escape now just unfocuses the search box instead of clearing your query, so you can click back in to resume
+- **Container Browsing**: Category headers in search results can now be expanded to browse all their contents, not just matched items
+
+### Fixed
+- **Search Icons**: Fixed icons not displaying correctly in currency search results
+- **Reset All Settings**: Properly resets everything to defaults
+
+---
+
 ## [1.2.2] - 2026-02-12
 
 ### Added

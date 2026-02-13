@@ -13,7 +13,8 @@ Find and navigate to any interface element:
 - Achievements and statistics (including nested categories)
 - Guild and social features
 - Professions
-- All currencies from your character's Currency tab, including seasonal and legacy currencies
+- All currencies from your character's Currency tab, including seasonal and legacy currencies (shows current amounts inline)
+- Faction reputations with visual progress bars showing renown level, friendship rank, or traditional standing
 - Coverage is always expanding. If a panel exists in the default UI, the goal is for EasyFind to reach it
 
 ### Map Search
@@ -77,9 +78,9 @@ EasyFind provides customizable keybinds:
 - **Smart Show**: Hide the search bar until you hover over it. Keeps your screen clean while staying accessible.
 - **Results Theme**: Choose between Classic (colorful tree lines) or Retail (quest log style) for the search results dropdown.
 - **Search Bar Opacity**: Adjust transparency to see through the search bar.
+- **Static Opacity**: Keep the search bar at constant opacity while moving (off by default; bar fades while moving).
 - **UI/Map Search Bar Scales**: Resize each search bar independently.
-- **Reset search bar positions**: Return search bars to default positions
-- **Reset search bar position**: Return the search bar to default top-center position.
+- **Reset All Settings / Reset Positions**: Return settings or search bar positions to defaults.
 
 ## Moving the Search Bars
 
