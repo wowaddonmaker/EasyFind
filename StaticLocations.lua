@@ -48,7 +48,7 @@ ns.STATIC_LOCATIONS = {
         { name = "PvP Gem Slot Vendor", category = "vendor", x = 0.5569498641934767, y = 0.769728885435647, keywords = { "vendor", "merchant", "shop" } },
         { name = "PvP Vendors", category = "pvpvendor", x = 0.5550135048785027, y = 0.7639816528008031, keywords = { "pvp", "honor", "conquest", "vendor" } },
         { name = "Elite PvP Vendor", category = "pvpvendor", x = 0.5963662845418573, y = 0.6990293269798803, keywords = { "pvp", "honor", "conquest", "vendor" } },
-        { name = "Item Upgrade Vendor", category = "upgradevendor", x = 0.5970605764920253, y = 0.7019097983403377, keywords = { "upgrade", "flightstone", "crest" } },
+        { name = "Item Upgrade Vendor", category = "upgradevendor", x = 0.5970605764920253, y = 0.7019097983403377, keywords = { "upgrade" } },
         { name = "Training Dummies", category = "mythicplus", x = 0.5925591383965814, y = 0.7207948306767711, keywords = { "mythic", "keystone", "m+" } },
         { name = "Weekly PvP Quests", category = "unknown", x = 0.589972801586991, y = 0.74928233676668 },
         { name = "The Catalyst", category = "catalyst", x = 0.5006916236516065, y = 0.5379032248184877, keywords = { "catalyst", "tier", "upgrade", "revival" } },
