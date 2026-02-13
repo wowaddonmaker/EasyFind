@@ -519,6 +519,8 @@ function UI:CreateSearchFrame()
 
         if shouldFade ~= moveFading then
             moveFading = shouldFade
+            -- Cancel any active UIFrameFade animation so it can't overwrite our alpha
+            UIFrameFadeRemoveFrame(self)
             self:SetAlpha(GetEffectiveAlpha())
         end
     end)
@@ -1547,6 +1549,37 @@ function UI:ShowHierarchicalResults(hierarchical)
             if not iconSet and data and data.icon then
                 SetRowIcon(btn, "file", data.icon, theme.iconSize)
                 iconSet = true
+            end
+
+            -- Resolve sidebar tab icons at runtime (e.g. Equipment Manager, Titles)
+            -- The tab textures are sprite sheets — copy the ARTWORK-layer texture
+            -- along with its tex coords so only the icon portion is shown.
+            if not iconSet and data and data.steps then
+                for _, step in ipairs(data.steps) do
+                    if step.sidebarIndex then
+                        local tab = _G["PaperDollSidebarTab" .. step.sidebarIndex]
+                        if tab then
+                            -- Find the ARTWORK-layer texture (the actual icon region)
+                            for ri = 1, select("#", tab:GetRegions()) do
+                                local region = select(ri, tab:GetRegions())
+                                if region and region:GetObjectType() == "Texture"
+                                   and region:GetDrawLayer() == "ARTWORK" then
+                                    local tex = region:GetTexture()
+                                    if tex then
+                                        local ulX, ulY, llX, llY, urX, urY, lrX, lrY = region:GetTexCoord()
+                                        btn.icon:SetTexture(tex)
+                                        btn.icon:SetTexCoord(ulX, ulY, llX, llY, urX, urY, lrX, lrY)
+                                        btn.icon:SetSize(theme.iconSize or 16, theme.iconSize or 16)
+                                        btn.icon:Show()
+                                        iconSet = true
+                                    end
+                                    break
+                                end
+                            end
+                        end
+                        break
+                    end
+                end
             end
 
             -- Skip buttonFrame fallback for currency items — their inherited
