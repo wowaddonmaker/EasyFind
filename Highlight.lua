@@ -22,7 +22,7 @@ local wipe               = wipe
 local strsplit           = strsplit
 
 local highlightFrame
-local arrowFrame
+local indicatorFrame
 local instructionFrame
 local contextTooltip
 local currentGuide
@@ -32,7 +32,7 @@ local stepTicker
 function Highlight:Initialize()
     if highlightFrame then return end
     self:CreateHighlightFrame()
-    self:CreateArrowFrame()
+    self:CreateIndicatorFrame()
     self:CreateInstructionFrame()
     self:CreateContextTooltip()
 end
@@ -73,34 +73,34 @@ function Highlight:CreateHighlightFrame()
     highlightFrame.animGroup = animGroup
 end
 
-function Highlight:CreateArrowFrame()
-    arrowFrame = CreateFrame("Frame", "EasyFindArrowFrame", UIParent)
+function Highlight:CreateIndicatorFrame()
+    indicatorFrame = CreateFrame("Frame", "EasyFindIndicatorFrame", UIParent)
     local aSize = ns.ICON_SIZE or 48
-    arrowFrame:SetSize(aSize, aSize)
-    arrowFrame:SetFrameStrata("TOOLTIP")
-    arrowFrame:SetFrameLevel(501)
-    arrowFrame.isUIArrow = true  -- flag so UpdateArrow applies iconScale
-    arrowFrame:Hide()
-    
+    indicatorFrame:SetSize(aSize, aSize)
+    indicatorFrame:SetFrameStrata("TOOLTIP")
+    indicatorFrame:SetFrameLevel(501)
+    indicatorFrame.isUIIndicator = true  -- flag so UpdateIndicator applies iconScale
+    indicatorFrame:Hide()
+
     -- Use shared icon creation with UI-specific sizes (no canvas conversion needed)
-    if ns.CreateArrowTextures then
-        ns.CreateArrowTextures(arrowFrame, ns.ICON_SIZE, ns.ICON_GLOW_SIZE)
+    if ns.CreateIndicatorTextures then
+        ns.CreateIndicatorTextures(indicatorFrame, ns.ICON_SIZE, ns.ICON_GLOW_SIZE)
     else
         -- Fallback if MapSearch hasn't loaded yet (shouldn't happen per .toc order)
-        local arrow = arrowFrame:CreateTexture(nil, "ARTWORK")
-        arrow:SetSize(80, 80)
-        arrow:SetPoint("CENTER")
-        arrow:SetTexture("Interface\\MINIMAP\\MiniMap-QuestArrow")
-        arrow:SetRotation(mpi)
-        arrowFrame.arrow = arrow
+        local ind = indicatorFrame:CreateTexture(nil, "ARTWORK")
+        ind:SetSize(80, 80)
+        ind:SetPoint("CENTER")
+        ind:SetTexture("Interface\\MINIMAP\\MiniMap-QuestArrow")
+        ind:SetRotation(mpi)
+        indicatorFrame.indicator = ind
     end
-    
-    local animGroup = arrowFrame:CreateAnimationGroup()
+
+    local animGroup = indicatorFrame:CreateAnimationGroup()
     animGroup:SetLooping("BOUNCE")
     local trans = animGroup:CreateAnimation("Translation")
     trans:SetOffset(0, -10)
     trans:SetDuration(0.4)
-    arrowFrame.animGroup = animGroup
+    indicatorFrame.animGroup = animGroup
 end
 
 function Highlight:CreateInstructionFrame()
@@ -2000,11 +2000,11 @@ function Highlight:HighlightFrame(frame, instructionText)
         highlightFrame.animGroup:Play()
     end
     
-    arrowFrame:ClearAllPoints()
-    arrowFrame:SetPoint("BOTTOM", frame, "TOP", 0, 10)
-    arrowFrame:Show()
-    if arrowFrame.animGroup and not arrowFrame.animGroup:IsPlaying() then
-        arrowFrame.animGroup:Play()
+    indicatorFrame:ClearAllPoints()
+    indicatorFrame:SetPoint("BOTTOM", frame, "TOP", 0, 10)
+    indicatorFrame:Show()
+    if indicatorFrame.animGroup and not indicatorFrame.animGroup:IsPlaying() then
+        indicatorFrame.animGroup:Play()
     end
     
     if instructionText then
@@ -2034,9 +2034,9 @@ function Highlight:HideHighlight()
         highlightFrame:Hide()
         if highlightFrame.animGroup then highlightFrame.animGroup:Stop() end
     end
-    if arrowFrame then
-        arrowFrame:Hide()
-        if arrowFrame.animGroup then arrowFrame.animGroup:Stop() end
+    if indicatorFrame then
+        indicatorFrame:Hide()
+        if indicatorFrame.animGroup then indicatorFrame.animGroup:Stop() end
     end
     if instructionFrame then
         instructionFrame:Hide()
