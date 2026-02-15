@@ -6,7 +6,7 @@ ns.MapSearch = MapSearch
 local Utils     = ns.Utils
 local DebugPrint = Utils.DebugPrint
 local pairs, ipairs, type, select = Utils.pairs, Utils.ipairs, Utils.type, Utils.select
-local tinsert, tsort, tconcat = Utils.tinsert, Utils.tsort, Utils.tconcat
+local tinsert, tsort, tconcat, tremove = Utils.tinsert, Utils.tsort, Utils.tconcat, Utils.tremove
 local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
 local mmin, mmax, mabs, mpi = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mpi
 local pcall, tostring = Utils.pcall, Utils.tostring
@@ -24,9 +24,9 @@ local wipe               = wipe
 local strsplit           = strsplit
 
 -- =============================================================================
--- ARROW THEME DEFINITIONS
+-- INDICATOR THEME DEFINITIONS
 -- =============================================================================
-local ARROW_STYLES = {
+local INDICATOR_STYLES = {
     ["Classic Quest Arrow"] = {
         texture = "Interface\\MINIMAP\\MiniMap-QuestArrow",
         texCoord = nil,
@@ -42,7 +42,7 @@ local ARROW_STYLES = {
         texCoord = nil,
         preRotated = false,
     },
-    ["Cursor Point"] = {
+    ["Low-res Gauntlet"] = {
         texture = "Interface\\CURSOR\\Point",
         texCoord = nil,
         preRotated = true,
@@ -50,10 +50,18 @@ local ARROW_STYLES = {
         offsetX = 0,   -- Shift right to center fingertip
         offsetY = 0,  -- Shift down to center fingertip
     },
+    ["HD Gauntlet"] = {
+        texture = 6116532,  -- interface/cursor/crosshair/uicastcrosshair2x.blp
+        texCoord = {0.000, 0.240, 0.000, 0.420},
+        preRotated = true,
+        rotation = 2.356,
+        offsetX = 0,
+        offsetY = 0,
+    },
 }
 
--- Arrow color presets
-local ARROW_COLORS = {
+-- Indicator color presets
+local INDICATOR_COLORS = {
     ["Yellow"]  = {1.0, 1.0, 0.0},
     ["Gold"]    = {1.0, 0.82, 0.0},
     ["Orange"]  = {1.0, 0.5, 0.0},
@@ -64,21 +72,21 @@ local ARROW_COLORS = {
     ["White"]   = {1.0, 1.0, 1.0},
 }
 
-local function GetArrowColor()
-    local colorName = EasyFind.db.arrowColor or "Yellow"
-    return ARROW_COLORS[colorName] or ARROW_COLORS["Yellow"]
+local function GetIndicatorColor()
+    local colorName = EasyFind.db.indicatorColor or "Yellow"
+    return INDICATOR_COLORS[colorName] or INDICATOR_COLORS["Yellow"]
 end
 
 -- Store in namespace so all modules can access it
-ns.GetArrowTexture = function()
-    local style = EasyFind.db.arrowStyle or "EasyFind Arrow"
-    return ARROW_STYLES[style] or ARROW_STYLES["EasyFind Arrow"]
+ns.GetIndicatorTexture = function()
+    local style = EasyFind.db.indicatorStyle or "EasyFind Arrow"
+    return INDICATOR_STYLES[style] or INDICATOR_STYLES["EasyFind Arrow"]
 end
-ns.GetArrowColor = GetArrowColor
-ns.ARROW_STYLES = ARROW_STYLES
-ns.ARROW_COLORS = ARROW_COLORS
+ns.GetIndicatorColor = GetIndicatorColor
+ns.INDICATOR_STYLES = INDICATOR_STYLES
+ns.INDICATOR_COLORS = INDICATOR_COLORS
 
-local GetArrowTexture = ns.GetArrowTexture
+local GetIndicatorTexture = ns.GetIndicatorTexture
 
 -- =============================================================================
 -- UNIFIED SIZING — all values are in UI coordinate units (same as UIParent).
@@ -127,34 +135,34 @@ end
 -- =============================================================================
 
 --- Create icon + glow textures on a parent frame.
---- Returns nothing; sets parentFrame.arrow and parentFrame.glow.
+--- Returns nothing; sets parentFrame.indicator and parentFrame.glow.
 --- @param parentFrame Frame  - the frame the icon sits in
 --- @param iconSize number|nil  - override size (defaults to ns.ICON_SIZE)
 --- @param glowSize number|nil  - override glow (defaults to ns.ICON_GLOW_SIZE; 0 = no glow)
-function ns.CreateArrowTextures(parentFrame, iconSize, glowSize)
+function ns.CreateIndicatorTextures(parentFrame, iconSize, glowSize)
     iconSize = iconSize or ns.ICON_SIZE
     glowSize = glowSize or ns.ICON_GLOW_SIZE
-    local style = GetArrowTexture()
-    local color = GetArrowColor()
+    local style = GetIndicatorTexture()
+    local color = GetIndicatorColor()
     local ox, oy = style.offsetX or 0, style.offsetY or 0
 
     -- Icon texture
-    local arrow = parentFrame:CreateTexture(nil, "ARTWORK")
-    arrow:SetSize(iconSize, iconSize)
-    arrow:SetPoint("CENTER", parentFrame, "CENTER", ox, oy)
-    arrow:SetTexture(style.texture)
+    local ind = parentFrame:CreateTexture(nil, "ARTWORK")
+    ind:SetSize(iconSize, iconSize)
+    ind:SetPoint("CENTER", parentFrame, "CENTER", ox, oy)
+    ind:SetTexture(style.texture)
     if style.texCoord then
-        arrow:SetTexCoord(unpack(style.texCoord))
+        ind:SetTexCoord(unpack(style.texCoord))
     end
-    arrow:SetVertexColor(color[1], color[2], color[3], 1)
-    local arrowRotation = 0
+    ind:SetVertexColor(color[1], color[2], color[3], 1)
+    local indicatorRotation = 0
     if style.rotation then
-        arrowRotation = style.rotation
+        indicatorRotation = style.rotation
     elseif not style.preRotated then
-        arrowRotation = mpi
+        indicatorRotation = mpi
     end
-    arrow:SetRotation(arrowRotation)
-    parentFrame.arrow = arrow
+    ind:SetRotation(indicatorRotation)
+    parentFrame.indicator = ind
 
     -- Glow texture (optional)
     if glowSize and glowSize > 0 then
@@ -167,20 +175,20 @@ function ns.CreateArrowTextures(parentFrame, iconSize, glowSize)
         parentFrame.glow = glow
     end
 
-    -- Auto-update on every Show so arrows are ALWAYS in sync with settings.
+    -- Auto-update on every Show so indicators are ALWAYS in sync with settings.
     parentFrame:HookScript("OnShow", function(self)
-        ns.UpdateArrow(self)
+        ns.UpdateIndicator(self)
     end)
 end
 
---- Update an existing arrow (and optional glow) to match current settings.
---- Works on any frame that was set up with ns.CreateArrowTextures.
+--- Update an existing indicator (and optional glow) to match current settings.
+--- Works on any frame that was set up with ns.CreateIndicatorTextures.
 --- @param parentFrame Frame
-function ns.UpdateArrow(parentFrame)
-    if not parentFrame or not parentFrame.arrow then return end
-    local style = GetArrowTexture()
-    local color = GetArrowColor()
-    local tex = parentFrame.arrow
+function ns.UpdateIndicator(parentFrame)
+    if not parentFrame or not parentFrame.indicator then return end
+    local style = GetIndicatorTexture()
+    local color = GetIndicatorColor()
+    local tex = parentFrame.indicator
     local ox, oy = style.offsetX or 0, style.offsetY or 0
 
     tex:SetTexture(style.texture)
@@ -190,17 +198,17 @@ function ns.UpdateArrow(parentFrame)
         tex:SetTexCoord(0, 1, 0, 1)
     end
     -- Use directional override if set, otherwise use style default
-    local arrowRotation = 0
-    if parentFrame.arrowDirection then
-        arrowRotation = ns.GetDirectionalRotation(parentFrame.arrowDirection)
+    local indicatorRotation = 0
+    if parentFrame.indicatorDirection then
+        indicatorRotation = ns.GetDirectionalRotation(parentFrame.indicatorDirection)
     elseif style.rotation then
-        arrowRotation = style.rotation
+        indicatorRotation = style.rotation
     elseif style.preRotated then
-        arrowRotation = 0
+        indicatorRotation = 0
     else
-        arrowRotation = mpi
+        indicatorRotation = mpi
     end
-    tex:SetRotation(arrowRotation)
+    tex:SetRotation(indicatorRotation)
     tex:SetVertexColor(color[1], color[2], color[3], 1)
     tex:ClearAllPoints()
     tex:SetPoint("CENTER", parentFrame, "CENTER", ox, oy)
@@ -216,21 +224,21 @@ function ns.UpdateArrow(parentFrame)
         parentFrame.glow:SetVertexColor(color[1], color[2], color[3], 0.35)
     end
 
-    -- Apply user icon scale to UI arrows (map arrows handle scale in their own sizing code)
-    if parentFrame.isUIArrow then
+    -- Apply user icon scale to UI indicators (map indicators handle scale in their own sizing code)
+    if parentFrame.isUIIndicator then
         parentFrame:SetScale(EasyFind.db.iconScale or 1.0)
     end
 end
 
---- Compute the rotation for an arrow pointing in a given direction.
+--- Compute the rotation for an indicator pointing in a given direction.
 --- Takes the style's own rotation into account so every style works correctly.
 --- @param direction string "down"|"up"|"left"|"right"
 --- @return number rotation in radians
 function ns.GetDirectionalRotation(direction)
-    local style = GetArrowTexture()
-    -- Base rotation is whatever points the arrow downward:
-    --   preRotated arrows already point down at rotation=0
-    --   non-preRotated arrows point down at rotation=mpi
+    local style = GetIndicatorTexture()
+    -- Base rotation is whatever points the indicator downward:
+    --   preRotated indicators already point down at rotation=0
+    --   non-preRotated indicators point down at rotation=mpi
     local baseDown = style.rotation or (style.preRotated and 0 or mpi)
     if direction == "down" then
         return baseDown
@@ -251,15 +259,97 @@ local resultsFrame
 local resultButtons = {}
 local MAX_RESULTS = 12
 local highlightFrame
-local arrowFrame
+local indicatorFrame
 local currentHighlightedPin
 local waypointPin
 local zoneHighlightFrame  -- For highlighting zones on continent maps
 local isGlobalSearch = false  -- Tracks which search bar triggered the current search
 
+-- =============================================================================
+-- PIN HELPERS
+-- =============================================================================
+
+local function GetMapPinKey(data)
+    if data.isZone and data.zoneMapID then
+        return "zone:" .. data.zoneMapID
+    end
+    return (data.category or "unknown") .. ":" .. (data.name or "") .. ":" .. (data.mapID or "")
+end
+
+local function CleanForStorage(data)
+    local clean = {}
+    for k, v in pairs(data) do
+        local t = type(v)
+        if t == "string" or t == "number" or t == "boolean" then
+            clean[k] = v
+        end
+    end
+    -- score and pin (frame ref) intentionally excluded
+    return clean
+end
+
+local function IsMapItemPinned(data)
+    local key = GetMapPinKey(data)
+    for _, pin in ipairs(EasyFind.db.pinnedMapItems) do
+        if GetMapPinKey(pin) == key then return true end
+    end
+    return false
+end
+
+local function PinMapItem(data)
+    if IsMapItemPinned(data) then return end
+    local clean = CleanForStorage(data)
+    clean.isPinned = true
+    tinsert(EasyFind.db.pinnedMapItems, clean)
+end
+
+local function UnpinMapItem(data)
+    local key = GetMapPinKey(data)
+    local items = EasyFind.db.pinnedMapItems
+    for i = #items, 1, -1 do
+        if GetMapPinKey(items[i]) == key then
+            tremove(items, i)
+            return
+        end
+    end
+end
+
+-- Simple pin context popup (BOTTOMLEFT anchored at cursor so it opens above)
+local pinPopup
+local function ShowPinPopup(btn, isPinned, onAction)
+    if not pinPopup then
+        pinPopup = CreateFrame("Button", "EasyFindMapPinPopup", UIParent, "BackdropTemplate")
+        pinPopup:SetSize(60, 22)
+        pinPopup:SetFrameStrata("TOOLTIP")
+        pinPopup:SetFrameLevel(10000)
+        pinPopup:SetBackdrop({
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 16, edgeSize = 12,
+            insets = { left = 2, right = 2, top = 2, bottom = 2 }
+        })
+        pinPopup:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+        local label = pinPopup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("CENTER")
+        pinPopup.label = label
+        pinPopup:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+        pinPopup:SetScript("OnLeave", function(self) self:Hide() end)
+    end
+    pinPopup.label:SetText(isPinned and "Unpin" or "Pin")
+    pinPopup:SetScript("OnClick", function(self)
+        self:Hide()
+        onAction()
+    end)
+    local scale = UIParent:GetEffectiveScale()
+    local x, y = GetCursorPosition()
+    pinPopup:ClearAllPoints()
+    pinPopup:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale, y / scale)
+    pinPopup:Show()
+end
+
 -- Category icons mapping
 local CATEGORY_ICONS = {
-    flightmaster = "Interface\\Icons\\Ability_Mount_GryphonRiding",
+    flightmaster = "atlas:TaxiNode_Neutral",
     zeppelin = "Interface\\Icons\\INV_Misc_AirshipPart_Propeller",
     boat = "Interface\\Icons\\Achievement_BG_captureflag_EOS",
     portal = "Interface\\Icons\\Spell_Arcane_PortalDalaran",
@@ -281,8 +371,9 @@ local CATEGORY_ICONS = {
     treasure = "Interface\\Icons\\INV_Misc_Bag_10",
     catalyst = "Interface\\Icons\\INV_10_GearUpgrade_Catalyst_Charged",
     greatvault = "Interface\\Icons\\INV_Misc_Lockbox_1",
-    upgradevendor = "Interface\\Icons\\INV_10_GearUpgrade_Flightstone",
+    upgradevendor = 463442, -- Reforge icon (FileDataID)
     voidstorage = "Interface\\Icons\\INV_Enchant_VoidCrystal",
+    tradingpost = "Interface\\Icons\\tradingpostcurrency",
     areapoi = "Interface\\Icons\\INV_Misc_QuestionMark",
     unknown = "Interface\\Icons\\INV_Misc_QuestionMark",
 }
@@ -291,11 +382,20 @@ local function GetCategoryIcon(category)
     return CATEGORY_ICONS[category] or CATEGORY_ICONS.unknown
 end
 
+-- Helper: set a texture to either a file path / fileDataID or an atlas name (prefixed "atlas:")
+local function SetIconTexture(textureObj, icon)
+    if type(icon) == "string" and sfind(icon, "^atlas:") then
+        textureObj:SetAtlas(icon:sub(7))
+    else
+        textureObj:SetTexture(icon)
+    end
+end
+
 -- Category definitions with hierarchy
 local CATEGORIES = {
     travel = { keywords = {"travel", "transport", "transportation", "getting around"} },
     instance = { keywords = {"instance", "instances", "group content"} },
-    service = { keywords = {"service", "services", "npc", "vendor"} },
+    service = { keywords = {"service", "services", "npc"} },
     
     flightmaster = { keywords = {"flight", "fly", "flight master", "flight point", "fp", "taxi"}, parent = "travel" },
     zeppelin = { keywords = {"zeppelin", "zep", "airship", "blimp"}, parent = "travel" },
@@ -312,7 +412,7 @@ local CATEGORIES = {
     trainer = { keywords = {"trainer", "training", "class trainer"}, parent = "service" },
     vendor = { keywords = {"vendor", "merchant", "shop", "buy", "sell"}, parent = "service" },
     pvpvendor = { keywords = {"pvp vendor", "honor vendor", "conquest vendor", "arena vendor", "battleground vendor", "pvp gear"}, parent = "service" },
-    mailbox = { keywords = {"mail", "mailbox", "post"}, parent = "service" },
+    mailbox = { keywords = {"mail", "mailbox"}, parent = "service" },
     stablemaster = { keywords = {"stable", "stable master", "pet"}, parent = "service" },
     repairvendor = { keywords = {"repair", "repairs", "anvil"}, parent = "service" },
     barber = { keywords = {"barber", "barbershop", "appearance", "haircut"}, parent = "service" },
@@ -323,6 +423,7 @@ local CATEGORIES = {
     catalyst = { keywords = {"catalyst", "tier", "tier set", "revival catalyst", "upgrade"}, parent = "service" },
     greatvault = { keywords = {"great vault", "vault", "weekly rewards", "weekly chest"}, parent = "service" },
     upgradevendor = { keywords = {"upgrade", "upgrade vendor", "flightstone", "crest"}, parent = "service" },
+    tradingpost = { keywords = {"trading post", "trader's tender", "tender", "tmog", "xmog"}, parent = "service" },
 }
 
 -- Static locations are loaded from StaticLocations.lua (generated by tools/ImportPOIs.ps1)
@@ -439,6 +540,10 @@ function MapSearch:CreateSearchFrame()
         end
         isGlobalSearch = false
         activeSearchFrame = searchFrame
+        -- Show pinned items when focusing with empty text
+        if self:GetText() == "" then
+            MapSearch:ShowPinnedItems()
+        end
     end)
     
     editBox:SetScript("OnEditFocusLost", function(self)
@@ -611,7 +716,7 @@ function MapSearch:CreateSearchFrame()
     
     local globalPlaceholder = globalEditBox:CreateFontString(nil, "ARTWORK", "GameFontDisable")
     globalPlaceholder:SetPoint("LEFT", 2, 0)
-    globalPlaceholder:SetText("Search all zones")
+    globalPlaceholder:SetText("Search for zones")
     globalEditBox.placeholder = globalPlaceholder
     
     globalEditBox:SetScript("OnEditFocusGained", function(self)
@@ -624,6 +729,10 @@ function MapSearch:CreateSearchFrame()
         end
         isGlobalSearch = true
         activeSearchFrame = globalSearchFrame
+        -- Show pinned items when focusing with empty text
+        if self:GetText() == "" then
+            MapSearch:ShowPinnedItems()
+        end
     end)
     
     globalEditBox:SetScript("OnEditFocusLost", function(self)
@@ -778,10 +887,38 @@ function MapSearch:CreateResultButton(index)
     text:SetJustifyH("LEFT")
     btn.text = text
     
-    btn:SetScript("OnClick", function(self)
+    -- Pin indicator (small map pin icon, shown for pinned items)
+    local pinIcon = btn:CreateTexture(nil, "OVERLAY")
+    pinIcon:SetSize(10, 10)
+    pinIcon:SetPoint("BOTTOMLEFT", icon, "BOTTOMRIGHT", -4, -1)
+    pinIcon:SetAtlas("Waypoint-MapPin-ChatIcon")
+    pinIcon:Hide()
+    btn.pinIcon = pinIcon
+
+    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    btn:SetScript("OnClick", function(self, mouseButton)
+        if mouseButton == "RightButton" and self.data then
+            local pinData = self.data
+            local isPinned = IsMapItemPinned(pinData)
+            ShowPinPopup(self, isPinned, function()
+                if isPinned then
+                    UnpinMapItem(pinData)
+                else
+                    PinMapItem(pinData)
+                end
+                local editBox = activeSearchFrame and activeSearchFrame.editBox
+                local text = editBox and editBox:GetText() or ""
+                if text == "" and editBox and editBox:HasFocus() then
+                    MapSearch:ShowPinnedItems()
+                else
+                    MapSearch:OnSearchTextChanged(text)
+                end
+            end)
+            return
+        end
         MapSearch:SelectResult(self.data)
     end)
-    
+
     btn:Hide()
     return btn
 end
@@ -823,11 +960,11 @@ function MapSearch:CreateHighlightFrame()
     right:SetPoint("BOTTOMLEFT", highlightFrame, "BOTTOMRIGHT", 0, -5)
     highlightFrame.right = right
     
-    -- Arrow pointing down to the location
-    arrowFrame = CreateFrame("Frame", "EasyFindMapArrow", highlightFrame)
-    arrowFrame:SetSize(ns.ICON_SIZE, ns.ICON_SIZE)
-    arrowFrame:SetPoint("BOTTOM", highlightFrame, "TOP", 0, 2)
-    ns.CreateArrowTextures(arrowFrame)
+    -- Indicator pointing down to the location
+    indicatorFrame = CreateFrame("Frame", "EasyFindMapIndicator", highlightFrame)
+    indicatorFrame:SetSize(ns.ICON_SIZE, ns.ICON_SIZE)
+    indicatorFrame:SetPoint("BOTTOM", highlightFrame, "TOP", 0, 2)
+    ns.CreateIndicatorTextures(indicatorFrame)
     
     local animGroup = highlightFrame:CreateAnimationGroup()
     animGroup:SetLooping("BOUNCE")
@@ -837,13 +974,13 @@ function MapSearch:CreateHighlightFrame()
     alpha:SetDuration(0.5)
     highlightFrame.animGroup = animGroup
     
-    -- Arrow bob animation
-    local arrowAnimGroup = arrowFrame:CreateAnimationGroup()
-    arrowAnimGroup:SetLooping("BOUNCE")
-    local arrowMove = arrowAnimGroup:CreateAnimation("Translation")
-    arrowMove:SetOffset(0, -10)
-    arrowMove:SetDuration(0.4)
-    arrowFrame.animGroup = arrowAnimGroup
+    -- Indicator bob animation
+    local indAnimGroup = indicatorFrame:CreateAnimationGroup()
+    indAnimGroup:SetLooping("BOUNCE")
+    local indMove = indAnimGroup:CreateAnimation("Translation")
+    indMove:SetOffset(0, -10)
+    indMove:SetDuration(0.4)
+    indicatorFrame.animGroup = indAnimGroup
     
     -- Create static location pin - shows the icon for locations from database
     waypointPin = CreateFrame("Frame", "EasyFindLocationPin", WorldMapFrame.ScrollContainer.Child)
@@ -910,23 +1047,23 @@ function MapSearch:CreateZoneHighlightFrame()
     alpha:SetDuration(0.5)
     zoneHighlightFrame.animGroup = animGroup
     
-    -- Create arrow for zone highlighting
-    local zoneArrow = CreateFrame("Frame", "EasyFindZoneArrow", WorldMapFrame.ScrollContainer.Child)
-    zoneArrow:SetSize(ns.ICON_SIZE, ns.ICON_SIZE)
-    zoneArrow:SetFrameStrata("TOOLTIP")
-    zoneArrow:SetFrameLevel(500)
-    ns.CreateArrowTextures(zoneArrow)
-    
-    local arrowAnimGroup = zoneArrow:CreateAnimationGroup()
-    arrowAnimGroup:SetLooping("BOUNCE")
-    local arrowMove = arrowAnimGroup:CreateAnimation("Translation")
-    arrowMove:SetOffset(0, -10)
-    arrowMove:SetDuration(0.4)
-    zoneArrow.animGroup = arrowAnimGroup
-    zoneArrow.translateAnim = arrowMove
-    
-    zoneArrow:Hide()
-    zoneHighlightFrame.arrow = zoneArrow
+    -- Create indicator for zone highlighting
+    local zoneInd = CreateFrame("Frame", "EasyFindZoneIndicator", WorldMapFrame.ScrollContainer.Child)
+    zoneInd:SetSize(ns.ICON_SIZE, ns.ICON_SIZE)
+    zoneInd:SetFrameStrata("TOOLTIP")
+    zoneInd:SetFrameLevel(500)
+    ns.CreateIndicatorTextures(zoneInd)
+
+    local zoneIndAnimGroup = zoneInd:CreateAnimationGroup()
+    zoneIndAnimGroup:SetLooping("BOUNCE")
+    local zoneIndMove = zoneIndAnimGroup:CreateAnimation("Translation")
+    zoneIndMove:SetOffset(0, -10)
+    zoneIndMove:SetDuration(0.4)
+    zoneInd.animGroup = zoneIndAnimGroup
+    zoneInd.translateAnim = zoneIndMove
+
+    zoneInd:Hide()
+    zoneHighlightFrame.indicator = zoneInd
 end
 
 -- Get direct child zones only (1 level deep) for local search
@@ -1363,65 +1500,65 @@ function MapSearch:HighlightZone(mapID)
     zoneHighlightFrame.animGroup:Play()
     DebugPrint("[EasyFind] HighlightZone: highlight and frame shown")
     
-    -- Position arrow with smart bounds checking
-    if zoneHighlightFrame.arrow then
-        local arrow = zoneHighlightFrame.arrow
+    -- Position indicator with smart bounds checking
+    if zoneHighlightFrame.indicator then
+        local zoneInd = zoneHighlightFrame.indicator
         -- Convert UI-unit sizes to canvas units so it's visible on continent maps
         local userScale = EasyFind.db.iconScale or 1.0
-        local arrowSize     = ns.UIToCanvas(ns.ZONE_ICON_SIZE)      * userScale
-        local arrowGlowSize = ns.UIToCanvas(ns.ZONE_ICON_GLOW_SIZE) * userScale
-        arrow:SetSize(arrowSize, arrowSize)
-        arrow:SetFrameStrata("TOOLTIP")
-        arrow:SetFrameLevel(500)
-        if arrow.glow then
-            arrow.glow:SetSize(arrowGlowSize, arrowGlowSize)
+        local indicatorSize     = ns.UIToCanvas(ns.ZONE_ICON_SIZE)      * userScale
+        local indicatorGlowSize = ns.UIToCanvas(ns.ZONE_ICON_GLOW_SIZE) * userScale
+        zoneInd:SetSize(indicatorSize, indicatorSize)
+        zoneInd:SetFrameStrata("TOOLTIP")
+        zoneInd:SetFrameLevel(500)
+        if zoneInd.glow then
+            zoneInd.glow:SetSize(indicatorGlowSize, indicatorGlowSize)
         end
-        -- DO NOT override color/texture here — OnShow hook handles it via ns.UpdateArrow
+        -- DO NOT override color/texture here — OnShow hook handles it via ns.UpdateIndicator
         local margin = 50
-        
-        arrow:ClearAllPoints()
-        
-        DebugPrint("[EasyFind] HighlightZone: arrow positioning - zoneTopPx:", zoneTopPx, "margin+arrowSize:", margin + arrowSize)
-        
-        -- Set direction on the frame — ns.UpdateArrow (via OnShow hook) reads this
-        if zoneTopPx > margin + arrowSize then
-            arrow.arrowDirection = "down"
-            arrow:SetPoint("BOTTOM", canvas, "TOPLEFT", zoneCenterPxX, -(zoneTopPx - 10))
-            DebugPrint("[EasyFind] Arrow placed ABOVE zone")
-        elseif (canvasHeight - zoneBottomPx) > margin + arrowSize then
-            arrow.arrowDirection = "up"
-            arrow:SetPoint("TOP", canvas, "TOPLEFT", zoneCenterPxX, -(zoneBottomPx + 10))
-            DebugPrint("[EasyFind] Arrow placed BELOW zone")
-        elseif zoneLeftPx > margin + arrowSize then
-            arrow.arrowDirection = "right"
-            arrow:SetPoint("RIGHT", canvas, "TOPLEFT", zoneLeftPx - 10, -zoneCenterPxY)
-            DebugPrint("[EasyFind] Arrow placed LEFT of zone")
+
+        zoneInd:ClearAllPoints()
+
+        DebugPrint("[EasyFind] HighlightZone: indicator positioning - zoneTopPx:", zoneTopPx, "margin+indicatorSize:", margin + indicatorSize)
+
+        -- Set direction on the frame — ns.UpdateIndicator (via OnShow hook) reads this
+        if zoneTopPx > margin + indicatorSize then
+            zoneInd.indicatorDirection = "down"
+            zoneInd:SetPoint("BOTTOM", canvas, "TOPLEFT", zoneCenterPxX, -(zoneTopPx - 10))
+            DebugPrint("[EasyFind] Indicator placed ABOVE zone")
+        elseif (canvasHeight - zoneBottomPx) > margin + indicatorSize then
+            zoneInd.indicatorDirection = "up"
+            zoneInd:SetPoint("TOP", canvas, "TOPLEFT", zoneCenterPxX, -(zoneBottomPx + 10))
+            DebugPrint("[EasyFind] Indicator placed BELOW zone")
+        elseif zoneLeftPx > margin + indicatorSize then
+            zoneInd.indicatorDirection = "right"
+            zoneInd:SetPoint("RIGHT", canvas, "TOPLEFT", zoneLeftPx - 10, -zoneCenterPxY)
+            DebugPrint("[EasyFind] Indicator placed LEFT of zone")
         else
-            arrow.arrowDirection = "left"
-            arrow:SetPoint("LEFT", canvas, "TOPLEFT", zoneRightPx + 10, -zoneCenterPxY)
-            DebugPrint("[EasyFind] Arrow placed RIGHT of zone")
+            zoneInd.indicatorDirection = "left"
+            zoneInd:SetPoint("LEFT", canvas, "TOPLEFT", zoneRightPx + 10, -zoneCenterPxY)
+            DebugPrint("[EasyFind] Indicator placed RIGHT of zone")
         end
-        
-        -- Update bob direction to match arrow pointing direction
-        if arrow.translateAnim then
-            if arrow.arrowDirection == "down" then
-                arrow.translateAnim:SetOffset(0, -10)
-            elseif arrow.arrowDirection == "up" then
-                arrow.translateAnim:SetOffset(0, 10)
-            elseif arrow.arrowDirection == "right" then
-                arrow.translateAnim:SetOffset(10, 0)
-            elseif arrow.arrowDirection == "left" then
-                arrow.translateAnim:SetOffset(-10, 0)
+
+        -- Update bob direction to match indicator pointing direction
+        if zoneInd.translateAnim then
+            if zoneInd.indicatorDirection == "down" then
+                zoneInd.translateAnim:SetOffset(0, -10)
+            elseif zoneInd.indicatorDirection == "up" then
+                zoneInd.translateAnim:SetOffset(0, 10)
+            elseif zoneInd.indicatorDirection == "right" then
+                zoneInd.translateAnim:SetOffset(10, 0)
+            elseif zoneInd.indicatorDirection == "left" then
+                zoneInd.translateAnim:SetOffset(-10, 0)
             end
         end
-        
-        arrow:Show()
-        if arrow.animGroup then
-            arrow.animGroup:Play()
+
+        zoneInd:Show()
+        if zoneInd.animGroup then
+            zoneInd.animGroup:Play()
         end
-        DebugPrint("[EasyFind] Arrow shown")
+        DebugPrint("[EasyFind] Indicator shown")
     else
-        DebugPrint("[EasyFind] HighlightZone: no arrow frame!")
+        DebugPrint("[EasyFind] HighlightZone: no indicator frame!")
     end
     
     DebugPrint("[EasyFind] HighlightZone: COMPLETE for zone:", mapInfo.name)
@@ -1442,10 +1579,10 @@ function MapSearch:ClearZoneHighlight()
         end
     end
     
-    if zoneHighlightFrame.arrow then
-        zoneHighlightFrame.arrow:Hide()
-        if zoneHighlightFrame.arrow.animGroup then
-            zoneHighlightFrame.arrow.animGroup:Stop()
+    if zoneHighlightFrame.indicator then
+        zoneHighlightFrame.indicator:Hide()
+        if zoneHighlightFrame.indicator.animGroup then
+            zoneHighlightFrame.indicator.animGroup:Stop()
         end
     end
     
@@ -1457,10 +1594,10 @@ function MapSearch:ClearZoneHighlight()
     
     -- Also clear breadcrumb highlight
     if self.breadcrumbHighlight then
-        if self.breadcrumbHighlight.arrowFrame then
-            self.breadcrumbHighlight.arrowFrame:Hide()
-            if self.breadcrumbHighlight.arrowFrame.animGroup then
-                self.breadcrumbHighlight.arrowFrame.animGroup:Stop()
+        if self.breadcrumbHighlight.indicatorFrame then
+            self.breadcrumbHighlight.indicatorFrame:Hide()
+            if self.breadcrumbHighlight.indicatorFrame.animGroup then
+                self.breadcrumbHighlight.indicatorFrame.animGroup:Stop()
             end
         end
         self.breadcrumbHighlight:Hide()
@@ -1751,26 +1888,25 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
         alpha:SetDuration(0.4)
         hl.animGroup = animGroup
         
-        -- Arrow pointing to button — parented to UIParent so it's not clipped
+        -- Indicator pointing to button — parented to UIParent so it's not clipped
         -- by WorldMapFrame when extending above the map edge
-        local bcArrowFrame = CreateFrame("Frame", nil, UIParent)
-        bcArrowFrame:SetFrameStrata("TOOLTIP")
-        bcArrowFrame:SetFrameLevel(301)
-        bcArrowFrame:SetSize(ns.BREADCRUMB_SIZE, ns.BREADCRUMB_SIZE)
-        bcArrowFrame:SetPoint("BOTTOM", hl, "TOP", 0, 8)
-        ns.CreateArrowTextures(bcArrowFrame, ns.BREADCRUMB_SIZE, ns.ICON_GLOW_SIZE)
-        
-        -- Bob animation matching all other arrows
-        local bcAnimGroup = bcArrowFrame:CreateAnimationGroup()
+        local bcIndFrame = CreateFrame("Frame", nil, UIParent)
+        bcIndFrame:SetFrameStrata("TOOLTIP")
+        bcIndFrame:SetFrameLevel(301)
+        bcIndFrame:SetSize(ns.BREADCRUMB_SIZE, ns.BREADCRUMB_SIZE)
+        bcIndFrame:SetPoint("BOTTOM", hl, "TOP", 0, 8)
+        ns.CreateIndicatorTextures(bcIndFrame, ns.BREADCRUMB_SIZE, ns.ICON_GLOW_SIZE)
+
+        -- Bob animation matching all other indicators
+        local bcAnimGroup = bcIndFrame:CreateAnimationGroup()
         bcAnimGroup:SetLooping("BOUNCE")
         local bcMove = bcAnimGroup:CreateAnimation("Translation")
         bcMove:SetOffset(0, -10)
         bcMove:SetDuration(0.4)
-        bcArrowFrame.animGroup = bcAnimGroup
-        
-        hl.arrowFrame = bcArrowFrame
-        -- Keep .arrow reference for compat
-        hl.arrow = bcArrowFrame.arrow
+        bcIndFrame.animGroup = bcAnimGroup
+
+        hl.indicatorFrame = bcIndFrame
+        hl.indicator = bcIndFrame.indicator
         
         self.breadcrumbHighlight = hl
     end
@@ -1782,11 +1918,11 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
     hl:Show()
     hl.animGroup:Play()
     
-    -- Play breadcrumb arrow bob animation
-    if hl.arrowFrame then
-        hl.arrowFrame:Show()
-        if hl.arrowFrame.animGroup then
-            hl.arrowFrame.animGroup:Play()
+    -- Play breadcrumb indicator bob animation
+    if hl.indicatorFrame then
+        hl.indicatorFrame:Show()
+        if hl.indicatorFrame.animGroup then
+            hl.indicatorFrame.animGroup:Play()
         end
     end
     
@@ -1963,6 +2099,87 @@ function MapSearch:ScanDungeonEntrances(mapID)
     return results
 end
 
+-- Scan flight masters for the given map using the TaxiMap API
+-- Returns POI-style entries with name, position, and flightmaster category
+function MapSearch:ScanFlightMasters(mapID)
+    mapID = mapID or WorldMapFrame:GetMapID()
+    if not mapID then return {} end
+    if not C_TaxiMap or not C_TaxiMap.GetTaxiNodesForMap then return {} end
+
+    local results = {}
+    local nodes = C_TaxiMap.GetTaxiNodesForMap(mapID)
+    if not nodes then return results end
+
+    for _, node in ipairs(nodes) do
+        if node.name and node.position then
+            local x, y = node.position.x, node.position.y
+            -- Only include nodes within the current map's bounds
+            if x >= 0 and x <= 1 and y >= 0 and y <= 1 then
+                tinsert(results, {
+                    name = node.name .. " (Flight Master)",
+                    category = "flightmaster",
+                    icon = "atlas:TaxiNode_Neutral",
+                    isStatic = true,
+                    x = x,
+                    y = y,
+                    keywords = {"flight", "fly", "taxi", "fp", "flight master"},
+                })
+            end
+        end
+    end
+    return results
+end
+
+-- Scan flight masters across ALL zone-type maps for global search
+-- Results are cached since flight point positions don't change mid-session
+local cachedAllFlightMasters = nil
+
+function MapSearch:ScanAllFlightMasters()
+    if cachedAllFlightMasters then return cachedAllFlightMasters end
+    if not C_TaxiMap or not C_TaxiMap.GetTaxiNodesForMap then return {} end
+
+    local allNodes = {}
+    local seen = {}
+
+    local function collectFromMaps(parentMapID, depth)
+        if depth > 6 then return end
+        local children = C_Map.GetMapChildrenInfo(parentMapID, nil, false)
+        if not children then return end
+
+        for _, child in ipairs(children) do
+            if child.name then
+                local mt = child.mapType
+                if mt == Enum.UIMapType.Zone or mt == Enum.UIMapType.Continent then
+                    local nodes = self:ScanFlightMasters(child.mapID)
+                    for _, node in ipairs(nodes) do
+                        local key = node.name .. "|" .. child.mapID
+                        if not seen[key] then
+                            seen[key] = true
+                            -- Add zone path prefix like dungeon entrances do
+                            local mapInfo = C_Map.GetMapInfo(child.mapID)
+                            node.pathPrefix = mapInfo and mapInfo.name or ""
+                            tinsert(allNodes, node)
+                        end
+                    end
+                end
+                if mt ~= Enum.UIMapType.Dungeon and mt ~= Enum.UIMapType.Micro and mt ~= Enum.UIMapType.Orphan then
+                    collectFromMaps(child.mapID, depth + 1)
+                end
+            end
+        end
+    end
+
+    local cosmicChildren = C_Map.GetMapChildrenInfo(946, nil, false)
+    if cosmicChildren then
+        for _, child in ipairs(cosmicChildren) do
+            collectFromMaps(child.mapID, 0)
+        end
+    end
+
+    cachedAllFlightMasters = allNodes
+    return allNodes
+end
+
 -- Scan dungeon entrances across ALL zone-type maps for global search
 -- This collects every dungeon/raid portal location in the game
 -- Results are cached since instance discovery doesn't change mid-session
@@ -2038,9 +2255,16 @@ function MapSearch:GetStaticLocations()
     end
     
     -- Also check EasyFindDevDB for dev/testing (raw POIs from recorder)
+    -- Skip dev POIs whose names already exist in built-in static locations
     if EasyFindDevDB and EasyFindDevDB.rawPOIs then
+        local staticNames = {}
+        if locations then
+            for _, loc in ipairs(locations) do
+                staticNames[slower(loc.name)] = true
+            end
+        end
         for _, poi in ipairs(EasyFindDevDB.rawPOIs) do
-            if poi.mapID == mapID then
+            if poi.mapID == mapID and not staticNames[slower(poi.label or "")] then
                 tinsert(results, {
                     name = poi.label,
                     category = poi.category or "unknown",
@@ -2099,6 +2323,8 @@ function MapSearch:ScanMapPOIs()
                     category = "innkeeper"
                 elseif sfind(poiName, "flight master") or sfind(poiName, "flight point") then
                     category = "flightmaster"
+                elseif sfind(poiName, "trading post") then
+                    category = "tradingpost"
                 end
                 
                 -- Only add POIs we've explicitly categorized
@@ -2171,6 +2397,9 @@ function MapSearch:GetPinInfo(pin)
         elseif sfind(poiName, "pvp") or sfind(poiName, "arena") or sfind(poiName, "battleground") or sfind(poiDesc, "pvp") or sfind(poiName, "conquest") or sfind(poiName, "honor") or sfind(poiName, "weekly") then
             category = "pvpvendor"
             pinType = "pvpvendor"
+        elseif sfind(poiName, "trading post") then
+            category = "tradingpost"
+            pinType = "tradingpost"
         else
             -- Generic area POI - skip it (these are usually landmarks, events, etc.)
             return nil
@@ -2222,25 +2451,31 @@ function MapSearch:GetPinInfo(pin)
         end
     end
     
-    if not name or name == "" then 
-        return nil 
+    if not name or name == "" then
+        return nil
     end
-    
+
     return {
         name = name,
         pin = pin,
         pinType = pinType,
         category = category,
-        icon = icon or 134400,
+        icon = icon,
         isStatic = false,
     }
 end
 
 function MapSearch:OnSearchTextChanged(text)
     if not text or text == "" or #text < 2 then
-        self:HideResults()
         self:ClearHighlight()
         self:ClearZoneHighlight()
+        -- Show pinned items only if search bar still has focus
+        local editBox = activeSearchFrame and activeSearchFrame.editBox
+        if text == "" and editBox and editBox:HasFocus() then
+            self:ShowPinnedItems()
+        else
+            self:HideResults()
+        end
         return
     end
     
@@ -2254,32 +2489,19 @@ function MapSearch:OnSearchTextChanged(text)
         zoneMatches = self:SearchZones(text)
         -- Don't auto-highlight - only highlight when user clicks a result
     end
-    
-    -- Get both dynamic pins and static locations for current map
-    local dynamicPOIs = self:ScanMapPOIs()
-    local staticLocations = self:GetStaticLocations()
-    
-    -- Get dungeon/raid entrance locations
-    local dungeonEntrances = {}
-    if isGlobalSearch then
-        dungeonEntrances = self:ScanAllDungeonEntrances()
-    else
-        dungeonEntrances = self:ScanDungeonEntrances()
-    end
-    
-    -- Combine them
+
     local allPOIs = {}
-    
+
     -- Group zone matches by parent for clean display
     local groupedZones = self:GroupZonesByParent(zoneMatches)
-    
+
     -- Add zone results - simple flat list with full path
     local zoneNames = {}  -- Track zone names to avoid duplicate POI entries
-    
+
     for _, group in ipairs(groupedZones) do
         local zonesInGroup = group.zones
         local parentPath = group.parentPath
-        
+
         for _, zone in ipairs(zonesInGroup) do
             zoneNames[slower(zone.name)] = true
             tinsert(allPOIs, {
@@ -2293,31 +2515,80 @@ function MapSearch:OnSearchTextChanged(text)
             })
         end
     end
-    
-    -- Add POIs but skip any that match zone names (avoid duplicates)
-    for _, poi in ipairs(dynamicPOIs) do
-        if not zoneNames[slower(poi.name)] then
-            tinsert(allPOIs, poi)
+
+    -- Global search: zones only — skip POIs, dungeons, flight masters
+    if not isGlobalSearch then
+        -- Get both dynamic pins and static locations for current map
+        local dynamicPOIs = self:ScanMapPOIs()
+        local staticLocations = self:GetStaticLocations()
+
+        -- Get dungeon/raid entrance locations for current map
+        local dungeonEntrances = self:ScanDungeonEntrances()
+
+        -- Get flight master locations for current map
+        local flightMasters = self:ScanFlightMasters()
+
+        -- Add POIs but skip any that match zone names (avoid duplicates)
+        for _, poi in ipairs(dynamicPOIs) do
+            if not zoneNames[slower(poi.name)] then
+                tinsert(allPOIs, poi)
+            end
         end
-    end
-    for _, loc in ipairs(staticLocations) do
-        if not zoneNames[slower(loc.name)] then
-            tinsert(allPOIs, loc)
+        for _, loc in ipairs(staticLocations) do
+            if not zoneNames[slower(loc.name)] then
+                tinsert(allPOIs, loc)
+            end
         end
-    end
-    
-    -- Add dungeon/raid entrance locations (skip if already found by pin scanning)
-    local existingNames = {}
-    for _, poi in ipairs(allPOIs) do
-        existingNames[slower(poi.name)] = true
-    end
-    for _, entrance in ipairs(dungeonEntrances) do
-        if not existingNames[slower(entrance.name)] then
-            tinsert(allPOIs, entrance)
+
+        -- Add dungeon/raid entrance locations (skip if already found by pin scanning)
+        local existingNames = {}
+        for _, poi in ipairs(allPOIs) do
+            existingNames[slower(poi.name)] = true
+        end
+        for _, entrance in ipairs(dungeonEntrances) do
+            if not existingNames[slower(entrance.name)] then
+                tinsert(allPOIs, entrance)
+                existingNames[slower(entrance.name)] = true
+            end
+        end
+
+        -- Add flight master locations (skip if already found by pin scanning or static locations)
+        for _, fm in ipairs(flightMasters) do
+            if not existingNames[slower(fm.name)] then
+                tinsert(allPOIs, fm)
+                existingNames[slower(fm.name)] = true
+            end
         end
     end
     
     local results = self:SearchPOIs(allPOIs, text)
+
+    -- Prepend pinned items (always shown at top regardless of query)
+    local pins = EasyFind.db.pinnedMapItems
+    if pins and #pins > 0 then
+        local pinnedKeys = {}
+        local pinned = {}
+        for _, pin in ipairs(pins) do
+            local copy = {}
+            for k, v in pairs(pin) do copy[k] = v end
+            copy.isPinned = true
+            tinsert(pinned, copy)
+            pinnedKeys[GetMapPinKey(pin)] = true
+        end
+        -- Remove duplicates from search results that match pinned items
+        local filtered = {}
+        for _, r in ipairs(results) do
+            if not pinnedKeys[GetMapPinKey(r)] then
+                tinsert(filtered, r)
+            end
+        end
+        -- Combine: pins first, then search results
+        for _, r in ipairs(filtered) do
+            tinsert(pinned, r)
+        end
+        results = pinned
+    end
+
     self:ShowResults(results)
 end
 
@@ -2458,7 +2729,8 @@ function MapSearch:ShowResults(results)
             btn.text:SetTextColor(1, 1, 1)
             if btn.prefixText then btn.prefixText:Hide() end
             if btn.indentLine then btn.indentLine:Hide() end
-            
+            if btn.pinIcon then btn.pinIcon:Hide() end
+
             -- Format based on type
             if data.isZoneParent then
                 -- Parent header - no icon, just gray text with arrow
@@ -2467,10 +2739,7 @@ function MapSearch:ShowResults(results)
                 btn.text:SetPoint("LEFT", btn, "LEFT", 8, 0)
                 btn.text:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
                 btn.text:SetText("|cff666666▼ " .. data.name .. "|r")
-                btn:SetScript("OnClick", function(self)
-                    MapSearch:SelectResult(self.data)  -- Can still click to navigate
-                end)
-                
+
             elseif data.isZone then
                 if data.isIndented then
                     -- Indented child zone - shift icon and text right
@@ -2486,13 +2755,13 @@ function MapSearch:ShowResults(results)
                     btn.icon:Show()
                     -- Show vertical indent line
                     if btn.indentLine then btn.indentLine:Show() end
-                    
+
                 elseif data.pathPrefix and data.pathPrefix ~= "" then
                     -- Global search with path - show "Path > Zone" format
                     btn.text:SetText("|cff666666" .. data.pathPrefix .. " >|r |cffffd100" .. data.name .. "|r")
                     btn.icon:SetTexture(237382)
                     btn.icon:Show()
-                    
+
                 else
                     -- Regular zone result
                     btn.text:SetText(data.name)
@@ -2500,11 +2769,7 @@ function MapSearch:ShowResults(results)
                     btn.icon:SetTexture(237382)
                     btn.icon:Show()
                 end
-                
-                btn:SetScript("OnClick", function(self)
-                    MapSearch:SelectResult(self.data)
-                end)
-                
+
             else
                 -- Regular POI result
                 local displayText = data.name
@@ -2514,18 +2779,19 @@ function MapSearch:ShowResults(results)
                 end
                 btn.text:SetText(displayText)
                 btn.text:SetTextColor(1, 1, 1)
-                
+
                 local iconTexture = GetCategoryIcon(data.category)
                 if data.icon then
                     iconTexture = data.icon
                 end
-                btn.icon:SetTexture(iconTexture)
+                SetIconTexture(btn.icon, iconTexture)
                 btn.icon:SetSize(18, 18)
                 btn.icon:Show()
-                
-                btn:SetScript("OnClick", function(self)
-                    MapSearch:SelectResult(self.data)
-                end)
+            end
+
+            -- Show pin indicator for pinned items
+            if data.isPinned and btn.pinIcon then
+                btn.pinIcon:Show()
             end
             
             btn:Show()
@@ -2557,6 +2823,23 @@ end
 
 function MapSearch:HideResults()
     resultsFrame:Hide()
+end
+
+function MapSearch:ShowPinnedItems()
+    local pins = EasyFind.db.pinnedMapItems
+    if not pins or #pins == 0 then
+        self:HideResults()
+        return
+    end
+    -- Mark each pin so ShowResults renders the indicator
+    local display = {}
+    for _, pin in ipairs(pins) do
+        local copy = {}
+        for k, v in pairs(pin) do copy[k] = v end
+        copy.isPinned = true
+        tinsert(display, copy)
+    end
+    self:ShowResults(display)
 end
 
 function MapSearch:SelectFirstResult()
@@ -2639,8 +2922,8 @@ function MapSearch:ShowMultipleWaypoints(instances)
     local iconSize      = ns.UIToCanvas(ns.PIN_SIZE      * ms) * userScale
     local glowSize      = ns.UIToCanvas(ns.PIN_GLOW_SIZE * ms) * userScale
     local highlightSize = ns.UIToCanvas(ns.HIGHLIGHT_SIZE * ms) * userScale
-    local arrowSize     = ns.UIToCanvas(ns.ICON_SIZE     * ms) * userScale
-    local arrowGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE* ms) * userScale
+    local indicatorSize     = ns.UIToCanvas(ns.ICON_SIZE     * ms) * userScale
+    local indicatorGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE* ms) * userScale
     
     -- Create additional waypoint pins if needed
     if not self.extraPins then
@@ -2649,20 +2932,20 @@ function MapSearch:ShowMultipleWaypoints(instances)
     if not self.extraHighlights then
         self.extraHighlights = {}
     end
-    if not self.extraArrows then
-        self.extraArrows = {}
+    if not self.extraIndicators then
+        self.extraIndicators = {}
     end
     
-    -- Show each instance with pin, highlight box, and arrow
+    -- Show each instance with pin, highlight box, and indicator
     for i, instance in ipairs(instances) do
         if instance.x and instance.y then
-            local pin, highlight, arrow
-            
+            local pin, highlight, ind
+
             if i == 1 then
                 -- Use the main frames for first instance
                 pin = waypointPin
                 highlight = highlightFrame
-                arrow = arrowFrame
+                ind = indicatorFrame
             else
                 -- Create or reuse extra pins
                 if not self.extraPins[i-1] then
@@ -2740,23 +3023,23 @@ function MapSearch:ShowMultipleWaypoints(instances)
                 end
                 highlight = self.extraHighlights[i-1]
                 
-                -- Create or reuse extra arrows
-                if not self.extraArrows[i-1] then
-                    local extraArrow = CreateFrame("Frame", "EasyFindExtraArrow"..(i-1), canvas)
-                    extraArrow:SetFrameStrata("HIGH")
-                    extraArrow:SetFrameLevel(2001)
-                    ns.CreateArrowTextures(extraArrow)
-                    
-                    local animGroup = extraArrow:CreateAnimationGroup()
+                -- Create or reuse extra indicators
+                if not self.extraIndicators[i-1] then
+                    local extraInd = CreateFrame("Frame", "EasyFindExtraIndicator"..(i-1), canvas)
+                    extraInd:SetFrameStrata("HIGH")
+                    extraInd:SetFrameLevel(2001)
+                    ns.CreateIndicatorTextures(extraInd)
+
+                    local animGroup = extraInd:CreateAnimationGroup()
                     animGroup:SetLooping("BOUNCE")
-                    local arrowMove = animGroup:CreateAnimation("Translation")
-                    arrowMove:SetOffset(0, -10)
-                    arrowMove:SetDuration(0.4)
-                    extraArrow.animGroup = animGroup
-                    
-                    self.extraArrows[i-1] = extraArrow
+                    local indMove = animGroup:CreateAnimation("Translation")
+                    indMove:SetOffset(0, -10)
+                    indMove:SetDuration(0.4)
+                    extraInd.animGroup = animGroup
+
+                    self.extraIndicators[i-1] = extraInd
                 end
-                arrow = self.extraArrows[i-1]
+                ind = self.extraIndicators[i-1]
             end
             
             -- Position and show the pin
@@ -2768,7 +3051,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
             if instance.icon then
                 iconTexture = instance.icon
             end
-            pin.icon:SetTexture(iconTexture)
+            SetIconTexture(pin.icon, iconTexture)
             
             if pin.glow then
                 pin.glow:SetSize(glowSize, glowSize)
@@ -2788,16 +3071,16 @@ function MapSearch:ShowMultipleWaypoints(instances)
                 highlight.animGroup:Play()
             end
             
-            -- Position and show the arrow
-            arrow:SetSize(arrowSize, arrowSize)
-            if arrow.glow then
-                arrow.glow:SetSize(arrowGlowSize, arrowGlowSize)
+            -- Position and show the indicator
+            ind:SetSize(indicatorSize, indicatorSize)
+            if ind.glow then
+                ind.glow:SetSize(indicatorGlowSize, indicatorGlowSize)
             end
-            arrow:ClearAllPoints()
-            arrow:SetPoint("BOTTOM", highlight, "TOP", 0, 2)
-            arrow:Show()
-            if arrow.animGroup then
-                arrow.animGroup:Play()
+            ind:ClearAllPoints()
+            ind:SetPoint("BOTTOM", highlight, "TOP", 0, 2)
+            ind:Show()
+            if ind.animGroup then
+                ind.animGroup:Play()
             end
         end
     end
@@ -2816,8 +3099,8 @@ function MapSearch:ShowWaypointAt(x, y, icon, category)
     local iconSize      = ns.UIToCanvas(ns.PIN_SIZE)       * userScale
     local glowSize      = ns.UIToCanvas(ns.PIN_GLOW_SIZE)  * userScale
     local highlightSize = ns.UIToCanvas(ns.HIGHLIGHT_SIZE)  * userScale
-    local arrowSize     = ns.UIToCanvas(ns.ICON_SIZE)       * userScale
-    local arrowGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE)  * userScale
+    local indicatorSize     = ns.UIToCanvas(ns.ICON_SIZE)       * userScale
+    local indicatorGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE)  * userScale
     
     -- Resize the pin and glow
     waypointPin:SetSize(iconSize, iconSize)
@@ -2828,7 +3111,7 @@ function MapSearch:ShowWaypointAt(x, y, icon, category)
     if icon then
         iconTexture = icon
     end
-    waypointPin.icon:SetTexture(iconTexture)
+    SetIconTexture(waypointPin.icon, iconTexture)
     waypointPin:ClearAllPoints()
     waypointPin:SetPoint("CENTER", canvas, "TOPLEFT", canvasWidth * x, -canvasHeight * y)
     waypointPin:Show()
@@ -2844,16 +3127,16 @@ function MapSearch:ShowWaypointAt(x, y, icon, category)
     highlightFrame:SetPoint("CENTER", waypointPin, "CENTER", 0, 0)
     highlightFrame:Show()
     
-    -- Resize arrow and its glow
-    arrowFrame:SetSize(arrowSize, arrowSize)
-    arrowFrame.glow:SetSize(arrowGlowSize, arrowGlowSize)
-    arrowFrame:Show()
+    -- Resize indicator and its glow
+    indicatorFrame:SetSize(indicatorSize, indicatorSize)
+    indicatorFrame.glow:SetSize(indicatorGlowSize, indicatorGlowSize)
+    indicatorFrame:Show()
     
     if highlightFrame.animGroup then
         highlightFrame.animGroup:Play()
     end
-    if arrowFrame.animGroup then
-        arrowFrame.animGroup:Play()
+    if indicatorFrame.animGroup then
+        indicatorFrame.animGroup:Play()
     end
 end
 
@@ -2875,40 +3158,40 @@ function MapSearch:HighlightPin(pin)
     width = mmax(width or 24, minPinSize)
     height = mmax(height or 24, minPinSize)
     
-    local arrowSize     = ns.UIToCanvas(ns.ICON_SIZE)      * userScale
-    local arrowGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE) * userScale
-    arrowFrame:SetSize(arrowSize, arrowSize)
-    arrowFrame.glow:SetSize(arrowGlowSize, arrowGlowSize)
+    local indicatorSize     = ns.UIToCanvas(ns.ICON_SIZE)      * userScale
+    local indicatorGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE) * userScale
+    indicatorFrame:SetSize(indicatorSize, indicatorSize)
+    indicatorFrame.glow:SetSize(indicatorGlowSize, indicatorGlowSize)
     
     highlightFrame:SetSize(width, height)
     highlightFrame:ClearAllPoints()
     highlightFrame:SetPoint("CENTER", pin, "CENTER", 0, 0)
     highlightFrame:Show()
-    arrowFrame:Show()
+    indicatorFrame:Show()
     
     if highlightFrame.animGroup then
         highlightFrame.animGroup:Play()
     end
-    if arrowFrame.animGroup then
-        arrowFrame.animGroup:Play()
+    if indicatorFrame.animGroup then
+        indicatorFrame.animGroup:Play()
     end
 end
 
 function MapSearch:ClearHighlight()
     highlightFrame:Hide()
-    arrowFrame:Hide()
+    indicatorFrame:Hide()
     waypointPin:Hide()
     if highlightFrame.animGroup then
         highlightFrame.animGroup:Stop()
     end
-    if arrowFrame.animGroup then
-        arrowFrame.animGroup:Stop()
+    if indicatorFrame.animGroup then
+        indicatorFrame.animGroup:Stop()
     end
     if waypointPin.animGroup then
         waypointPin.animGroup:Stop()
     end
     
-    -- Hide extra pins, highlights, and arrows for duplicate POIs
+    -- Hide extra pins, highlights, and indicators for duplicate POIs
     if self.extraPins then
         for _, pin in ipairs(self.extraPins) do
             pin:Hide()
@@ -2921,8 +3204,8 @@ function MapSearch:ClearHighlight()
             if hl.animGroup then hl.animGroup:Stop() end
         end
     end
-    if self.extraArrows then
-        for _, arr in ipairs(self.extraArrows) do
+    if self.extraIndicators then
+        for _, arr in ipairs(self.extraIndicators) do
             arr:Hide()
             if arr.animGroup then arr.animGroup:Stop() end
         end
@@ -3009,14 +3292,14 @@ function MapSearch:UpdateIconScales()
     local iconSize      = ns.UIToCanvas(ns.PIN_SIZE)       * userScale
     local glowSize      = ns.UIToCanvas(ns.PIN_GLOW_SIZE)  * userScale
     local highlightSize = ns.UIToCanvas(ns.HIGHLIGHT_SIZE)  * userScale
-    local arrowSize     = ns.UIToCanvas(ns.ICON_SIZE)       * userScale
-    local arrowGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE)  * userScale
+    local indicatorSize     = ns.UIToCanvas(ns.ICON_SIZE)       * userScale
+    local indicatorGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE)  * userScale
     
-    -- Helper: resize an arrow frame + its textures
-    local function resizeArrow(frame, aSize, gSize)
+    -- Helper: resize an indicator frame + its textures
+    local function resizeIndicator(frame, aSize, gSize)
         if not frame then return end
         frame:SetSize(aSize, aSize)
-        if frame.arrow then frame.arrow:SetSize(aSize, aSize) end
+        if frame.indicator then frame.indicator:SetSize(aSize, aSize) end
         if frame.glow then frame.glow:SetSize(gSize, gSize) end
     end
     
@@ -3033,14 +3316,14 @@ function MapSearch:UpdateIconScales()
         highlightFrame:SetSize(highlightSize, highlightSize)
     end
     
-    -- Update main arrow
-    resizeArrow(arrowFrame, arrowSize, arrowGlowSize)
-    
-    -- Update zone arrow
-    local zoneArrowSize     = ns.UIToCanvas(ns.ZONE_ICON_SIZE)      * userScale
-    local zoneArrowGlowSize = ns.UIToCanvas(ns.ZONE_ICON_GLOW_SIZE) * userScale
-    if zoneHighlightFrame and zoneHighlightFrame.arrow then
-        resizeArrow(zoneHighlightFrame.arrow, zoneArrowSize, zoneArrowGlowSize)
+    -- Update main indicator
+    resizeIndicator(indicatorFrame, indicatorSize, indicatorGlowSize)
+
+    -- Update zone indicator
+    local zoneIndSize     = ns.UIToCanvas(ns.ZONE_ICON_SIZE)      * userScale
+    local zoneIndGlowSize = ns.UIToCanvas(ns.ZONE_ICON_GLOW_SIZE) * userScale
+    if zoneHighlightFrame and zoneHighlightFrame.indicator then
+        resizeIndicator(zoneHighlightFrame.indicator, zoneIndSize, zoneIndGlowSize)
     end
     
     -- Update extra pins for duplicates
@@ -3048,8 +3331,8 @@ function MapSearch:UpdateIconScales()
     local multiIconSize      = ns.UIToCanvas(ns.PIN_SIZE      * ms) * userScale
     local multiGlowSize      = ns.UIToCanvas(ns.PIN_GLOW_SIZE * ms) * userScale
     local multiHighlightSize = ns.UIToCanvas(ns.HIGHLIGHT_SIZE * ms) * userScale
-    local multiArrowSize     = ns.UIToCanvas(ns.ICON_SIZE     * ms) * userScale
-    local multiArrowGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE* ms) * userScale
+    local multiIndSize     = ns.UIToCanvas(ns.ICON_SIZE     * ms) * userScale
+    local multiIndGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE* ms) * userScale
     
     if self.extraPins then
         for _, pin in ipairs(self.extraPins) do
@@ -3070,35 +3353,35 @@ function MapSearch:UpdateIconScales()
         end
     end
     
-    if self.extraArrows then
-        for _, arr in ipairs(self.extraArrows) do
-            resizeArrow(arr, multiArrowSize, multiArrowGlowSize)
+    if self.extraIndicators then
+        for _, arr in ipairs(self.extraIndicators) do
+            resizeIndicator(arr, multiIndSize, multiIndGlowSize)
         end
     end
 end
 
--- Refresh all arrow textures when style/color changes.
--- Uses ns.UpdateArrow so every arrow looks identical.
+-- Refresh all indicator textures when style/color changes.
+-- Uses ns.UpdateIndicator so every indicator looks identical.
 -- Highlight boxes, zone overlays, and pin glows are ALWAYS yellow and never change.
-function MapSearch:RefreshArrows()
-    -- Update main location arrow
-    ns.UpdateArrow(_G["EasyFindMapArrow"])
-    
-    -- Update zone arrow
-    ns.UpdateArrow(_G["EasyFindZoneArrow"])
-    
-    -- Update breadcrumb arrow (uses a wrapper frame now)
-    if self.breadcrumbHighlight and self.breadcrumbHighlight.arrowFrame then
-        ns.UpdateArrow(self.breadcrumbHighlight.arrowFrame)
+function MapSearch:RefreshIndicators()
+    -- Update main location indicator
+    ns.UpdateIndicator(_G["EasyFindMapIndicator"])
+
+    -- Update zone indicator
+    ns.UpdateIndicator(_G["EasyFindZoneIndicator"])
+
+    -- Update breadcrumb indicator
+    if self.breadcrumbHighlight and self.breadcrumbHighlight.indicatorFrame then
+        ns.UpdateIndicator(self.breadcrumbHighlight.indicatorFrame)
     end
-    
-    -- Update extra arrows
-    if self.extraArrows then
-        for _, arr in ipairs(self.extraArrows) do
-            ns.UpdateArrow(arr)
+
+    -- Update extra indicators
+    if self.extraIndicators then
+        for _, ind in ipairs(self.extraIndicators) do
+            ns.UpdateIndicator(ind)
         end
     end
-    
-    -- Update UI highlight arrow (Highlight.lua)
-    ns.UpdateArrow(_G["EasyFindArrowFrame"])
+
+    -- Update UI highlight indicator (Highlight.lua)
+    ns.UpdateIndicator(_G["EasyFindIndicatorFrame"])
 end
