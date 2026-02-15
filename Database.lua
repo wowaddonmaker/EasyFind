@@ -2052,28 +2052,30 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen)
         local queryWordLen = #queryWord
         local bestScore = 0
 
-        for _, kw in ipairs(keywordsLower) do
-            local kwScore = 0
-            if kw == queryWord then
-                kwScore = 80
-            elseif ssub(kw, 1, queryWordLen) == queryWord then
-                kwScore = 70
-            elseif Database:FindAtWordBoundary(kw, queryWord) then
-                kwScore = 55
-            end
-            -- Initials on keywords
-            if kwScore < 60 then
-                local ki = Database:ScoreInitials(kw, queryWord)
-                if ki > 0 then kwScore = mmax(kwScore, ki - 20) end
-            end
-            -- Fuzzy on keywords
-            if kwScore < 40 and queryWordLen >= 4 then
-                local kf = Database:ScoreFuzzy(kw, queryWord, queryWordLen)
-                if kf > 0 then kwScore = mmax(kwScore, kf) end
-            end
+        if queryWordLen >= 2 then  -- single-char words too ambiguous for keyword matching
+            for _, kw in ipairs(keywordsLower) do
+                local kwScore = 0
+                if kw == queryWord then
+                    kwScore = 80
+                elseif ssub(kw, 1, queryWordLen) == queryWord then
+                    kwScore = 70
+                elseif Database:FindAtWordBoundary(kw, queryWord) then
+                    kwScore = 55
+                end
+                -- Initials on keywords
+                if kwScore < 60 then
+                    local ki = Database:ScoreInitials(kw, queryWord)
+                    if ki > 0 then kwScore = mmax(kwScore, ki - 20) end
+                end
+                -- Fuzzy on keywords
+                if kwScore < 40 and queryWordLen >= 4 then
+                    local kf = Database:ScoreFuzzy(kw, queryWord, queryWordLen)
+                    if kf > 0 then kwScore = mmax(kwScore, kf) end
+                end
 
-            if kwScore > bestScore then
-                bestScore = kwScore
+                if kwScore > bestScore then
+                    bestScore = kwScore
+                end
             end
         end
 
