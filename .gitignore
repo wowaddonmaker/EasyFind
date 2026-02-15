@@ -1,4 +1,5 @@
 .github/
 release.sh
 *.zip
+CLAUDE.md
 media/
