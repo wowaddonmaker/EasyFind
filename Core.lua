@@ -36,12 +36,15 @@ local DB_DEFAULTS = {
     navigateToZonesDirectly = false,  -- Clicking a zone goes directly to it
     smartShow = true,          -- Hide search bar until mouse hovers nearby
     resultsTheme = "Retail",  -- "Classic" or "Retail"
-    arrowStyle = "EasyFind Arrow",  -- Arrow texture style
-    arrowColor = "Yellow",  -- Arrow color preset
+    indicatorStyle = "EasyFind Arrow",  -- Indicator texture style
+    indicatorColor = "Yellow",  -- Indicator color preset
     maxResults = 12,           -- Maximum number of search results to display (6-24)
     showTruncationMessage = true,  -- Show "more results available" message when truncated
     hardResultsCap = false,    -- Hard cap on results (no "more results" message)
     staticOpacity = false,     -- Keep opacity constant while moving
+    pinnedUIItems = {},        -- Pinned UI search results (persist across sessions)
+    pinnedMapItems = {},       -- Pinned map search results (persist across sessions)
+    pinsCollapsed = false,     -- Whether the "Pinned Paths" header is collapsed
 }
 
 local function OnInitialize()
@@ -80,7 +83,7 @@ local function OnInitialize()
             -- /ef test Interface\\Path\\To\\Texture
             local texture = msg:match("^test%s+(.+)")
             if texture then
-                EasyFind:TestArrowTexture(texture)
+                EasyFind:TestIndicatorTexture(texture)
             else
                 EasyFind:Print("Usage: /ef test <texture_path>")
                 EasyFind:Print("Example: /ef test Interface\\\\MINIMAP\\\\MiniMap-QuestArrow")
@@ -149,7 +152,7 @@ function EasyFind:Print(msg)
     print(sformat("|cFF00FF00EasyFind:|r %s", msg))
 end
 
-function EasyFind:TestArrowTexture(texturePath)
+function EasyFind:TestIndicatorTexture(texturePath)
     -- Create a test frame to preview the texture
     local testFrame = _G["EasyFindTextureTest"] or CreateFrame("Frame", "EasyFindTextureTest", UIParent, "BackdropTemplate")
     testFrame:SetSize(256, 256)
@@ -181,7 +184,7 @@ function EasyFind:TestArrowTexture(texturePath)
     
     -- Try to load the texture
     testFrame.texture:SetTexture(texturePath)
-    testFrame.texture:SetVertexColor(1, 1, 0, 1)  -- Yellow like arrows
+    testFrame.texture:SetVertexColor(1, 1, 0, 1)  -- Yellow like indicators
     testFrame.title:SetText("Testing: " .. texturePath)
     testFrame:Show()
     
