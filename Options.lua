@@ -221,6 +221,7 @@ function Options:Initialize()
     local ADV_H   = 30   -- extra height when Advanced Options expanded
     local COL_LEFT  = 20
     local COL_RIGHT = 300
+    local BTN_OFFSET = 105  -- fixed offset from label LEFT to button LEFT (aligns all right-col buttons)
     
     -- Create the main options frame
     optionsFrame = CreateFrame("Frame", "EasyFindOptionsFrame", UIParent, "BackdropTemplate")
@@ -264,11 +265,11 @@ function Options:Initialize()
         if ns.MapSearch and ns.MapSearch.UpdateIconScales then
             ns.MapSearch:UpdateIconScales()
         end
-        -- Also update UI search arrow
-        local uiArrow = _G["EasyFindArrowFrame"]
-        if uiArrow then
+        -- Also update UI search indicator
+        local uiInd = _G["EasyFindIndicatorFrame"]
+        if uiInd then
             local s = EasyFind.db.iconScale or 1.0
-            uiArrow:SetScale(s)
+            uiInd:SetScale(s)
         end
     end)
     optionsFrame.mapIconSlider = mapIconSlider
@@ -373,7 +374,7 @@ function Options:Initialize()
     optionsFrame.truncMessageCheckbox = truncMessageCheckbox
 
     local hardCapCheckbox = CreateCheckbox(optionsFrame, "HardCap", "Hard Results Cap",
-        "When enabled, search results are strictly cut off at the max results limit, even if the last visible item is a group header with no results shown beneath it.\n\nWhen disabled (default), the list extends slightly past the cap to ensure every group header shows the results inside it.")
+        "When enabled, search results are strictly cut off at the max results limit, even if the last visible item is a group header with no results shown beneath it. Pinned paths also count toward the limit when this is enabled.\n\nWhen disabled (default), the list extends slightly past the cap to ensure every group header shows the results inside it. Pinned paths do not count toward the result limit.")
     hardCapCheckbox:SetPoint("TOPLEFT", truncMessageCheckbox, "BOTTOMLEFT", 0, -4)
     hardCapCheckbox:SetChecked(EasyFind.db.hardResultsCap or false)
     hardCapCheckbox:SetScript("OnClick", function(self)
@@ -406,6 +407,8 @@ function Options:Initialize()
     local themeBtnFrame, themeBtnText = CreateFlyoutSelector(
         optionsFrame, "EasyFindTheme", 90, themeLabel, EasyFind.db.resultsTheme or "Retail"
     )
+    themeBtnFrame:ClearAllPoints()
+    themeBtnFrame:SetPoint("LEFT", themeLabel, "LEFT", BTN_OFFSET, 0)
     local themeFlyout = CreateFlyoutPanel(themeBtnFrame, "EasyFindTheme", 90, #themeChoices)
     AddFlyoutOptions(themeFlyout, themeChoices, 84, function(name)
         EasyFind.db.resultsTheme = name
@@ -417,42 +420,46 @@ function Options:Initialize()
     optionsFrame.themeFlyout = themeFlyout
     
     -- =====================================================================
-    -- Arrow Style selector (same style as Theme selector)
+    -- Indicator Style selector (same style as Theme selector)
     -- =====================================================================
-    local arrowLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    arrowLabel:SetPoint("TOPLEFT", themeLabel, "BOTTOMLEFT", 0, -32)
-    arrowLabel:SetText("Arrow Style:")
-    
-    local arrowChoices = {"EasyFind Arrow", "Classic Quest Arrow", "Minimap Player Arrow", "Cursor Point"}
-    
-    local arrowBtnFrame, arrowBtnText = CreateFlyoutSelector(
-        optionsFrame, "EasyFindArrow", 160, arrowLabel, EasyFind.db.arrowStyle or "EasyFind Arrow"
+    local indicatorLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    indicatorLabel:SetPoint("TOPLEFT", themeLabel, "BOTTOMLEFT", 0, -32)
+    indicatorLabel:SetText("Indicator Style:")
+
+    local indicatorChoices = {"EasyFind Arrow", "Classic Quest Arrow", "Minimap Player Arrow", "Low-res Gauntlet", "HD Gauntlet"}
+
+    local indicatorBtnFrame, indicatorBtnText = CreateFlyoutSelector(
+        optionsFrame, "EasyFindIndicator", 140, indicatorLabel, EasyFind.db.indicatorStyle or "EasyFind Arrow"
     )
-    local arrowFlyout = CreateFlyoutPanel(arrowBtnFrame, "EasyFindArrow", 160, #arrowChoices)
-    AddFlyoutOptions(arrowFlyout, arrowChoices, 154, function(name)
-        EasyFind.db.arrowStyle = name
-        arrowBtnText:SetText(name)
+    indicatorBtnFrame:ClearAllPoints()
+    indicatorBtnFrame:SetPoint("LEFT", indicatorLabel, "LEFT", BTN_OFFSET, 0)
+    local indicatorFlyout = CreateFlyoutPanel(indicatorBtnFrame, "EasyFindIndicator", 140, #indicatorChoices)
+    AddFlyoutOptions(indicatorFlyout, indicatorChoices, 134, function(name)
+        EasyFind.db.indicatorStyle = name
+        indicatorBtnText:SetText(name)
         if ns.MapSearch then
-            ns.MapSearch:RefreshArrows()
+            ns.MapSearch:RefreshIndicators()
         end
     end)
-    optionsFrame.arrowBtnText = arrowBtnText
-    optionsFrame.arrowFlyout = arrowFlyout
-    
+    optionsFrame.indicatorBtnText = indicatorBtnText
+    optionsFrame.indicatorFlyout = indicatorFlyout
+
     -- =====================================================================
-    -- Arrow Color selector
+    -- Indicator Color selector
     -- =====================================================================
     local colorLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    colorLabel:SetPoint("TOPLEFT", arrowLabel, "BOTTOMLEFT", 0, -10)
-    colorLabel:SetText("Arrow Color:")
+    colorLabel:SetPoint("TOPLEFT", indicatorLabel, "BOTTOMLEFT", 0, -10)
+    colorLabel:SetText("Indicator Color:")
     
     local colorChoices = {"Yellow", "Gold", "Orange", "Red", "Green", "Blue", "Purple", "White"}
-    local colorRGB = ns.ARROW_COLORS  -- Shared with MapSearch.lua
+    local colorRGB = ns.INDICATOR_COLORS  -- Shared with MapSearch.lua
     
     local colorBtnFrame, colorBtnText = CreateFlyoutSelector(
-        optionsFrame, "EasyFindColor", 160, colorLabel, EasyFind.db.arrowColor or "Yellow"
+        optionsFrame, "EasyFindColor", 140, colorLabel, EasyFind.db.indicatorColor or "Yellow"
     )
-    local currentColor = EasyFind.db.arrowColor or "Yellow"
+    colorBtnFrame:ClearAllPoints()
+    colorBtnFrame:SetPoint("LEFT", colorLabel, "LEFT", BTN_OFFSET, 0)
+    local currentColor = EasyFind.db.indicatorColor or "Yellow"
     local currentRGB = colorRGB[currentColor] or colorRGB.Yellow
     colorBtnText:SetTextColor(currentRGB[1], currentRGB[2], currentRGB[3])
     
@@ -462,12 +469,12 @@ function Options:Initialize()
     colorSwatch:SetPoint("LEFT", colorBtnFrame, "LEFT", 6, 0)
     colorSwatch:SetColorTexture(currentRGB[1], currentRGB[2], currentRGB[3], 1)
     
-    local colorFlyout = CreateFlyoutPanel(colorBtnFrame, "EasyFindColor", 160, #colorChoices)
-    
+    local colorFlyout = CreateFlyoutPanel(colorBtnFrame, "EasyFindColor", 140, #colorChoices)
+
     for i, name in ipairs(colorChoices) do
         local rgb = colorRGB[name]
         local opt = CreateFrame("Button", nil, colorFlyout)
-        opt:SetSize(154, 18)
+        opt:SetSize(134, 18)
         opt:SetPoint("TOPLEFT", colorFlyout, "TOPLEFT", 3, -3 - (i - 1) * 20)
         
         -- Color swatch in each option
@@ -488,13 +495,13 @@ function Options:Initialize()
             label:SetTextColor(rgb[1], rgb[2], rgb[3])
         end)
         opt:SetScript("OnClick", function()
-            EasyFind.db.arrowColor = name
+            EasyFind.db.indicatorColor = name
             colorBtnText:SetText(name)
             colorBtnText:SetTextColor(rgb[1], rgb[2], rgb[3])
             colorSwatch:SetColorTexture(rgb[1], rgb[2], rgb[3], 1)
             colorFlyout:Hide()
             if ns.MapSearch then
-                ns.MapSearch:RefreshArrows()
+                ns.MapSearch:RefreshIndicators()
             end
         end)
     end
@@ -572,7 +579,7 @@ function Options:Initialize()
     
     local keybindBtn = CreateFrame("Button", "EasyFindKeybindButton", optionsFrame, "UIPanelButtonTemplate")
     keybindBtn:SetSize(110, 22)
-    keybindBtn:SetPoint("LEFT", toggleLabel, "RIGHT", 8, 0)
+    keybindBtn:SetPoint("LEFT", toggleLabel, "LEFT", BTN_OFFSET, 0)
     keybindBtn.waitingForKey = false
     keybindBtn:SetText(GetCurrentKeybindText("EASYFIND_TOGGLE"))
     
@@ -600,7 +607,7 @@ function Options:Initialize()
     
     local focusBtn = CreateFrame("Button", "EasyFindFocusKeybindButton", optionsFrame, "UIPanelButtonTemplate")
     focusBtn:SetSize(110, 22)
-    focusBtn:SetPoint("LEFT", focusLabel, "RIGHT", 8, 0)
+    focusBtn:SetPoint("LEFT", focusLabel, "LEFT", BTN_OFFSET, 0)
     focusBtn.waitingForKey = false
     focusBtn:SetText(GetCurrentKeybindText("EASYFIND_FOCUS"))
     
@@ -701,9 +708,10 @@ function Options:Initialize()
         EasyFind.db.maxResults = 12
         EasyFind.db.showTruncationMessage = true
         EasyFind.db.hardResultsCap = false
+        EasyFind.db.pinsCollapsed = false
         EasyFind.db.staticOpacity = false
-        EasyFind.db.arrowStyle = "EasyFind Arrow"
-        EasyFind.db.arrowColor = "Yellow"
+        EasyFind.db.indicatorStyle = "EasyFind Arrow"
+        EasyFind.db.indicatorColor = "Yellow"
         EasyFind.db.visible = true
 
         -- Clear all active highlights
@@ -739,7 +747,7 @@ function Options:Initialize()
         optionsFrame.devModeCheckbox:SetChecked(false)
         optionsFrame.maxResultsSlider:SetValue(12)
         optionsFrame.themeBtnText:SetText("Retail")
-        optionsFrame.arrowBtnText:SetText("EasyFind Arrow")
+        optionsFrame.indicatorBtnText:SetText("EasyFind Arrow")
         optionsFrame.colorBtnText:SetText("Yellow")
         optionsFrame.colorBtnText:SetTextColor(1.0, 1.0, 0.0)
         optionsFrame.colorSwatch:SetColorTexture(1.0, 1.0, 0.0, 1)
@@ -756,10 +764,10 @@ function Options:Initialize()
         if ns.MapSearch and ns.MapSearch.ResetPosition then ns.MapSearch:ResetPosition() end
         if ns.MapSearch and ns.MapSearch.UpdateScale then ns.MapSearch:UpdateScale() end
         if ns.MapSearch and ns.MapSearch.UpdateIconScales then ns.MapSearch:UpdateIconScales() end
-        if ns.MapSearch and ns.MapSearch.RefreshArrows then ns.MapSearch:RefreshArrows() end
-        -- Reset UI arrow scale too
-        local uiArrow = _G["EasyFindArrowFrame"]
-        if uiArrow then uiArrow:SetScale(1.0) end
+        if ns.MapSearch and ns.MapSearch.RefreshIndicators then ns.MapSearch:RefreshIndicators() end
+        -- Reset UI indicator scale too
+        local uiInd = _G["EasyFindIndicatorFrame"]
+        if uiInd then uiInd:SetScale(1.0) end
         if ns.MapSearch and ns.MapSearch.UpdateOpacity then ns.MapSearch:UpdateOpacity() end
         -- Show the search bar
         if ns.UI and ns.UI.Show then ns.UI:Show() end
