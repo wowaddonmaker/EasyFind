@@ -9,7 +9,7 @@ local SearchFrameTree  = Utils.SearchFrameTree
 local DebugPrint       = Utils.DebugPrint
 local select, ipairs, pairs = Utils.select, Utils.ipairs, Utils.pairs
 local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
-local tinsert, tsort, tconcat = Utils.tinsert, Utils.tsort, Utils.tconcat
+local tinsert, tsort, tconcat, tremove = Utils.tinsert, Utils.tsort, Utils.tconcat, Utils.tremove
 local mmin, mmax = Utils.mmin, Utils.mmax
 
 local CreateFrame        = CreateFrame
@@ -27,6 +27,112 @@ local resultsFrame
 local resultButtons = {}
 local MAX_BUTTON_POOL = 30  -- Maximum buttons we'll ever create (extra for smart cap extension)
 local inCombat = false
+local selectingResult = false  -- guard: suppress OnTextChanged re-renders during SelectResult
+
+-- =============================================================================
+-- PIN HELPERS
+-- =============================================================================
+
+local function GetUIPinKey(data)
+    if not data or not data.name then return "" end
+    return data.name .. "|" .. tconcat(data.path or {}, ">")
+end
+
+local function CleanUIForStorage(data)
+    local clean = {}
+    for k, v in pairs(data) do
+        local t = type(v)
+        if t == "string" or t == "number" or t == "boolean" then
+            clean[k] = v
+        elseif t == "table" then
+            -- Deep-copy simple arrays (path, steps, keywords)
+            if k == "path" or k == "steps" or k == "keywords" then
+                local arr = {}
+                for i2, v2 in ipairs(v) do
+                    if type(v2) == "table" then
+                        local sub = {}
+                        for sk, sv in pairs(v2) do sub[sk] = sv end
+                        arr[i2] = sub
+                    else
+                        arr[i2] = v2
+                    end
+                end
+                clean[k] = arr
+            end
+        end
+    end
+    return clean
+end
+
+local function IsUIItemPinned(data)
+    local key = GetUIPinKey(data)
+    for _, pin in ipairs(EasyFind.db.pinnedUIItems) do
+        if GetUIPinKey(pin) == key then return true end
+    end
+    return false
+end
+
+local function PinUIItem(data)
+    if IsUIItemPinned(data) then return end
+    local clean = CleanUIForStorage(data)
+    clean.isPinned = true
+    tinsert(EasyFind.db.pinnedUIItems, clean)
+end
+
+local function UnpinUIItem(data)
+    local key = GetUIPinKey(data)
+    local items = EasyFind.db.pinnedUIItems
+    for i = #items, 1, -1 do
+        if GetUIPinKey(items[i]) == key then
+            tremove(items, i)
+            return
+        end
+    end
+end
+
+-- Simple pin context popup (BOTTOMLEFT anchored at cursor so it opens above)
+local pinPopup
+local function ShowPinPopup(btn, isPinned, onAction)
+    if not pinPopup then
+        pinPopup = CreateFrame("Button", "EasyFindPinPopup", UIParent, "BackdropTemplate")
+        pinPopup:SetSize(80, 28)
+        pinPopup:SetFrameStrata("TOOLTIP")
+        pinPopup:SetFrameLevel(10000)
+        pinPopup:SetBackdrop({
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            tile = true, tileSize = 16, edgeSize = 12,
+            insets = { left = 2, right = 2, top = 2, bottom = 2 }
+        })
+        pinPopup:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+        local label = pinPopup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        label:SetPoint("CENTER")
+        pinPopup.label = label
+        pinPopup:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+        -- Delayed hide: brief grace period so the popup doesn't vanish when
+        -- the cursor drifts a pixel outside the button
+        pinPopup:SetScript("OnLeave", function(self)
+            if self._hideTimer then self._hideTimer:Cancel() end
+            self._hideTimer = C_Timer.NewTimer(0.25, function()
+                if not self:IsMouseOver() then self:Hide() end
+            end)
+        end)
+        pinPopup:SetScript("OnEnter", function(self)
+            if self._hideTimer then self._hideTimer:Cancel(); self._hideTimer = nil end
+        end)
+    end
+    pinPopup.label:SetText(isPinned and "Unpin" or "Pin")
+    pinPopup:SetScript("OnClick", function(self)
+        self:Hide()
+        onAction()
+    end)
+    local scale = UIParent:GetEffectiveScale()
+    local x, y = GetCursorPosition()
+    pinPopup:ClearAllPoints()
+    pinPopup:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale, y / scale)
+    if pinPopup._hideTimer then pinPopup._hideTimer:Cancel(); pinPopup._hideTimer = nil end
+    pinPopup:Show()
+end
 
 -- Centralized icon setter — resets texture state before applying to prevent
 -- atlas/texture bleed between rows.
@@ -325,11 +431,31 @@ function UI:CreateSearchFrame()
     
     editBox:SetScript("OnEditFocusGained", function(self)
         self.placeholder:Hide()
+        -- Show pinned items when focusing with empty text
+        if self:GetText() == "" then
+            UI:ShowPinnedItems()
+        end
     end)
     
     editBox:SetScript("OnEditFocusLost", function(self)
-        if self:GetText() == "" then
+        -- Skip cleanup when SelectResult is actively clearing text/focus
+        if selectingResult then return end
+        if strtrim(self:GetText()) == "" then
+            self:SetText("")  -- Clear any stray whitespace
             self.placeholder:Show()
+            -- Defer hide by one frame so pending pin/result clicks (LeftButtonDown)
+            -- can fire before the results frame is hidden.  Without the delay the
+            -- parent frame hides and the child button never receives its OnClick.
+            C_Timer.After(0, function()
+                if selectingResult then return end
+                if searchFrame.editBox:HasFocus() then return end
+                if strtrim(searchFrame.editBox:GetText()) ~= "" then return end
+                UI:HideResults()
+                -- Now that results are hidden, let smart show fade the bar out
+                if EasyFind.db.smartShow then
+                    searchFrame.smartShowFadeOut()
+                end
+            end)
         end
     end)
     
@@ -548,6 +674,13 @@ function UI:CreateResultsFrame()
         local btn = self:CreateResultButton(i)
         resultButtons[i] = btn
     end
+
+    -- Pin section separator line (golden, shown between pinned items and search results)
+    local pinSeparator = resultsFrame:CreateTexture(nil, "ARTWORK")
+    pinSeparator:SetColorTexture(1.0, 0.82, 0.0, 0.4)
+    pinSeparator:SetHeight(1)
+    pinSeparator:Hide()
+    resultsFrame.pinSeparator = pinSeparator
 
     -- Truncation indicator separator line (golden, matching tree lines)
     local truncSeparator = resultsFrame:CreateTexture(nil, "ARTWORK")
@@ -813,7 +946,32 @@ function UI:CreateResultButton(index)
     icon:SetSize(16, 16)
     icon:SetPoint("LEFT", 0, 0)
     btn.icon = icon
-    
+
+    -- Pin indicator (small map pin badge on the icon)
+    local pinIcon = btn:CreateTexture(nil, "OVERLAY")
+    pinIcon:SetSize(10, 10)
+    pinIcon:SetPoint("BOTTOMLEFT", icon, "BOTTOMRIGHT", -4, -1)
+    pinIcon:SetAtlas("Waypoint-MapPin-ChatIcon")
+    pinIcon:Hide()
+    btn.pinIcon = pinIcon
+
+    -- Pin header toggle icon (expand/collapse, right-aligned on the button itself)
+    local pinToggle = btn:CreateTexture(nil, "ARTWORK")
+    pinToggle:SetSize(14, 14)
+    pinToggle:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+    pinToggle:SetAtlas("QuestLog-icon-shrink")
+    pinToggle:Hide()
+    btn.pinToggle = pinToggle
+
+    -- Pin header underline (thin golden line below the header text)
+    local pinHeaderLine = btn:CreateTexture(nil, "ARTWORK")
+    pinHeaderLine:SetHeight(1)
+    pinHeaderLine:SetColorTexture(1.0, 0.82, 0.0, 0.4)
+    pinHeaderLine:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 0, 0)
+    pinHeaderLine:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
+    pinHeaderLine:Hide()
+    btn.pinHeaderLine = pinHeaderLine
+
     -- Right-aligned currency amount label
     local amountText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     amountText:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
@@ -886,9 +1044,40 @@ function UI:CreateResultButton(index)
     text:SetJustifyH("LEFT")
     btn.text = text
     
+    btn:RegisterForClicks("LeftButtonDown", "RightButtonUp")
     btn:SetScript("OnClick", function(self, mouseButton, down)
+        -- Right-click: show pin/unpin popup
+        if mouseButton == "RightButton" and self.data then
+            local pinData = self.data
+            local isPinned = IsUIItemPinned(pinData)
+            ShowPinPopup(self, isPinned, function()
+                if isPinned then
+                    UnpinUIItem(pinData)
+                else
+                    PinUIItem(pinData)
+                end
+                local editBox = searchFrame and searchFrame.editBox
+                local text = editBox and editBox:GetText() or ""
+                if text == "" and editBox and editBox:HasFocus() then
+                    UI:ShowPinnedItems()
+                else
+                    UI:OnSearchTextChanged(text)
+                end
+            end)
+            return
+        end
+
         -- Don't allow clicking unearned currencies
         if self.isUnearnedCurrency then
+            return
+        end
+
+        -- Pin header: toggle collapse
+        if self.isPinHeader then
+            EasyFind.db.pinsCollapsed = not EasyFind.db.pinsCollapsed
+            if cachedHierarchical then
+                UI:ShowHierarchicalResults(cachedHierarchical)
+            end
             return
         end
 
@@ -970,6 +1159,21 @@ function UI:CreateResultButton(index)
 end
 
 function UI:OnSearchTextChanged(text)
+    -- Suppress re-renders while SelectResult is clearing text/focus
+    if selectingResult then return end
+    -- Treat whitespace-only as empty (pins show on focus, not on blank spaces)
+    if text then text = strtrim(text) end
+    if not text or text == "" then
+        -- Only show pins if the editbox still has focus (avoid re-showing
+        -- after SelectResult clears the text)
+        if searchFrame and searchFrame.editBox and searchFrame.editBox:HasFocus() then
+            self:ShowPinnedItems()
+        else
+            self:HideResults()
+        end
+        return
+    end
+
     -- Clear collapse state so every new search starts fully expanded
     collapsedNodes = {}
     expandedContainers = {}
@@ -983,6 +1187,39 @@ function UI:OnSearchTextChanged(text)
             collapsedNodes[key] = true
         end
     end
+
+    -- Prepend pinned items at the top (always visible regardless of query)
+    local pins = EasyFind.db.pinnedUIItems
+    if pins and #pins > 0 then
+        local pinnedEntries = {
+            -- "Pinned Paths" collapsible header
+            {
+                isPinHeader = true,
+                name = "Pinned Paths",
+                depth = 0,
+                isPathNode = true,
+                isMatch = false,
+            },
+        }
+        for _, pin in ipairs(pins) do
+            tinsert(pinnedEntries, {
+                name = pin.name,
+                depth = 0,
+                isPathNode = false,
+                isMatch = true,
+                isPinned = true,
+                data = pin,
+            })
+        end
+        -- Combine: pinned header + pins first, then all search results
+        -- (pinned items may also appear in results — intentional so the user
+        -- can see where the path stands in the full hierarchy)
+        for _, entry in ipairs(hierarchical) do
+            tinsert(pinnedEntries, entry)
+        end
+        hierarchical = pinnedEntries
+    end
+
     self:ShowHierarchicalResults(hierarchical)
 end
 
@@ -1083,10 +1320,11 @@ function UI:ShowHierarchicalResults(hierarchical)
     -- ----------------------------------------------------------------
     local visible = {}
     local skipBelowDepth = nil  -- when set, skip entries deeper than this
-    
+    local skipPins = false       -- when pin header is collapsed, skip pinned entries
+
     for _, entry in ipairs(hierarchical) do
         local d = entry.depth or 0
-        
+
         -- If we're skipping children of a collapsed node, check depth
         if skipBelowDepth then
             if d > skipBelowDepth then
@@ -1096,12 +1334,23 @@ function UI:ShowHierarchicalResults(hierarchical)
                 skipBelowDepth = nil
             end
         end
-        
-        if not skipBelowDepth then
+
+        -- Skip pinned items when pin header is collapsed
+        if skipPins and entry.isPinned then
+            -- skip this pinned entry
+        elseif not skipBelowDepth then
+            if skipPins and not entry.isPinned then
+                skipPins = false  -- past the pin section
+            end
             tinsert(visible, entry)
-            
-            -- If this is a collapsed path node, start skipping its children
-            if entry.isPathNode then
+
+            -- Pin header: check pinsCollapsed instead of collapsedNodes
+            if entry.isPinHeader then
+                if EasyFind.db.pinsCollapsed then
+                    skipPins = true
+                end
+            -- Regular collapsed path node
+            elseif entry.isPathNode then
                 local key = entry.name .. "_" .. d
                 if collapsedNodes[key] then
                     skipBelowDepth = d
@@ -1109,19 +1358,37 @@ function UI:ShowHierarchicalResults(hierarchical)
             end
         end
     end
-    
+
+    -- Count pin-related visible entries (header + pinned items)
+    local pinSlots = 0
+    for _, entry in ipairs(visible) do
+        if entry.isPinHeader or entry.isPinned then
+            pinSlots = pinSlots + 1
+        end
+    end
+
     local maxResults = GetMaxResults()
-    local count = mmin(#visible, maxResults)
+    local nonPinVisible = #visible - pinSlots
+    local count
+
+    if EasyFind.db.hardResultsCap then
+        -- Hard cap: pins count toward the limit
+        count = mmin(#visible, maxResults)
+    else
+        -- Default: pins don't count toward the limit
+        count = pinSlots + mmin(nonPinVisible, maxResults)
+    end
 
     -- Smart cap: if the last visible row is a group header with items beyond
     -- the cap, extend to include its contents so the user never sees a
     -- dangling header with nothing beneath it.  Applies to both gray
     -- ancestors and gold match nodes that the user expanded.
+    -- Only extends non-pin entries (pin section is always fully shown or collapsed).
     if not EasyFind.db.hardResultsCap and count < #visible then
         while count < #visible do
             local last = visible[count]
             -- Stop if the last row is a leaf — the result is complete
-            if not last.isPathNode then break end
+            if not last.isPathNode or last.isPinHeader then break end
             -- Last row is a group header — extend to show its contents
             local headerDepth = last.depth or 0
             local extended = false
@@ -1154,6 +1421,21 @@ function UI:ShowHierarchicalResults(hierarchical)
     end
 
     -- ----------------------------------------------------------------
+    -- Determine pin separator placement
+    -- ----------------------------------------------------------------
+    local PIN_SEP_HEIGHT = 9  -- 4px gap + 1px line + 4px gap
+    local lastPinIndex = 0
+    local hasResultsAfterPins = false
+    for i = 1, count do
+        if visible[i].isPinHeader or visible[i].isPinned then
+            lastPinIndex = i
+        end
+    end
+    if lastPinIndex > 0 and lastPinIndex < count then
+        hasResultsAfterPins = true
+    end
+
+    -- ----------------------------------------------------------------
     -- Render visible rows
     -- ----------------------------------------------------------------
     for i = 1, MAX_BUTTON_POOL do
@@ -1162,22 +1444,29 @@ function UI:ShowHierarchicalResults(hierarchical)
             local entry = visible[i]
             local data = entry.data
             local depth = entry.depth or 0
-            
+
+            -- Extra vertical offset for non-pin rows when separator is shown
+            local sepOffset = (hasResultsAfterPins and i > lastPinIndex) and PIN_SEP_HEIGHT or 0
+
             -- Reposition for theme row height
             local padL = theme.resultsPadLeft or 10
             btn:SetSize(theme.btnWidth, rowH)
             btn:ClearAllPoints()
-            btn:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", padL, -padT - (i - 1) * rowH)
-            
+            btn:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", padL, -padT - (i - 1) * rowH - sepOffset)
+
             -- Selection highlight color
             btn.selectionHighlight:SetVertexColor(unpack(theme.selectionColor))
-            
+
             btn.data = data
             btn.isPathNode = entry.isPathNode
+            btn.isPinHeader = entry.isPinHeader or false
             btn.pathNodeName = entry.isPathNode and entry.name or nil
             btn.pathNodeDepth = entry.isPathNode and depth or nil
             btn._containerEntry = entry.isContainer and entry or nil
-            
+            if btn.pinIcon then btn.pinIcon:Hide() end
+            if btn.pinToggle then btn.pinToggle:Hide() end
+            if btn.pinHeaderLine then btn.pinHeaderLine:Hide() end
+
             -- ---- Tree connector drawing ----
             for d = 1, MAX_DEPTH do
                 btn.treeVert[d]:Hide()
@@ -1225,7 +1514,24 @@ function UI:ShowHierarchicalResults(hierarchical)
             
             -- ---- Header styling ----
             btn._isMatch = entry.isMatch and entry.isPathNode
-            if theme.showHeaderTab and entry.isPathNode then
+            if entry.isPinHeader then
+                -- Pin header: plain text + toggle icon + underline (no tab/gradient)
+                btn.headerTab:Hide()
+                btn.headerGrad:Hide()
+                local isCollapsed = EasyFind.db.pinsCollapsed
+                local expandAtlas = theme.expandAtlas or "QuestLog-icon-expand"
+                local collapseAtlas = theme.collapseAtlas or "QuestLog-icon-shrink"
+                btn.pinToggle:SetAtlas(isCollapsed and expandAtlas or collapseAtlas)
+                btn.pinToggle:Show()
+                btn.pinHeaderLine:Show()
+                -- Position text: left-aligned, right-bounded by toggle
+                btn.text:ClearAllPoints()
+                btn.text:SetPoint("LEFT", btn, "LEFT", 2, 0)
+                btn.text:SetPoint("RIGHT", btn.pinToggle, "LEFT", -4, 0)
+                btn.text:SetText(entry.name)
+                btn.text:SetFontObject(theme.pathFont)
+                btn.text:SetTextColor(0.7, 0.7, 0.7, 1.0)
+            elseif theme.showHeaderTab and entry.isPathNode then
                 -- Quest-log raised tab header
                 local tabInset = depth * indPx
                 btn.headerTab:ClearAllPoints()
@@ -1261,12 +1567,14 @@ function UI:ShowHierarchicalResults(hierarchical)
                 btn.headerGrad:SetShown(showGrad)
             end
             
-            -- Separator line between rows
-            if theme.showSeparators then
+            -- Separator line between rows (skip for pin header which has its own underline)
+            if not entry.isPinHeader and theme.showSeparators then
                 local sc = theme.separatorColor
                 btn.separator:SetColorTexture(sc[1], sc[2], sc[3], sc[4])
+                btn.separator:Show()
+            else
+                btn.separator:Hide()
             end
-            btn.separator:SetShown(theme.showSeparators)
 
             -- Check if this is a currency that hasn't been discovered yet
             -- (not just quantity == 0, but truly never earned/discovered)
@@ -1329,8 +1637,10 @@ function UI:ShowHierarchicalResults(hierarchical)
             btn.isUnearnedCurrency = isUnearnedCurrency
             btn.isPathNode = entry.isPathNode  -- Store for tooltip text
 
-            -- ---- Position icon & text (non-tab rows) ----
-            if not (theme.showHeaderTab and entry.isPathNode) then
+            -- ---- Position icon & text (non-tab, non-pin-header rows) ----
+            if entry.isPinHeader then
+                -- Pin header: text already positioned in header styling; hide icon
+            elseif not (theme.showHeaderTab and entry.isPathNode) then
                 local indentPixels = depth * indPx
                 btn.icon:ClearAllPoints()
                 btn.icon:SetPoint("LEFT", btn, "LEFT", indentPixels, 0)
@@ -1367,13 +1677,19 @@ function UI:ShowHierarchicalResults(hierarchical)
             local isCurrencyLeaf = isCurrencyItem and not entry.isPathNode
             local isReputationLeaf = data and data.category == "Reputation" and not entry.isPathNode
 
-            if theme.showHeaderTab and entry.isPathNode then
+            if entry.isPinHeader then
+                -- Pin header: no row icon (toggle is handled by pinToggle)
+                SetRowIcon(btn, "hidden", nil, theme.iconSize)
+                iconSet = true
+
+            elseif theme.showHeaderTab and entry.isPathNode then
                 SetRowIcon(btn, "hidden", nil, theme.iconSize)
                 iconSet = true
 
             elseif entry.isPathNode then
                 local key = entry.name .. "_" .. depth
-                local iconPath = collapsedNodes[key] and theme.expandIcon or theme.collapseIcon
+                local nodeCollapsed = collapsedNodes[key]
+                local iconPath = nodeCollapsed and theme.expandIcon or theme.collapseIcon
                 SetRowIcon(btn, "path", iconPath, theme.pathIconSize)
                 iconSet = true
             end
@@ -1623,9 +1939,20 @@ function UI:ShowHierarchicalResults(hierarchical)
                 SetRowIcon(btn, "file", 134400, theme.iconSize)
             end
 
+            -- Show pin indicator for pinned entries
+            if entry.isPinned and btn.pinIcon then
+                btn.pinIcon:Show()
+                -- Pinned entries during search: show path prefix in name
+                if data and data.path and #data.path > 0 then
+                    local prefix = tconcat(data.path, " > ")
+                    btn.text:SetText("|cff888888" .. prefix .. " >|r " .. (data.name or ""))
+                end
+            end
+
             btn:Show()
         else
             btn:Hide()
+            btn.isPinHeader = false
             btn.headerGrad:Hide()
             btn.headerTab:Hide()
             btn.separator:Hide()
@@ -1638,12 +1965,26 @@ function UI:ShowHierarchicalResults(hierarchical)
         end
     end
     
+    -- Show/hide pin separator between pinned items and search results
+    local pinSepPadding = 0
+    if resultsFrame.pinSeparator then
+        if hasResultsAfterPins then
+            resultsFrame.pinSeparator:ClearAllPoints()
+            resultsFrame.pinSeparator:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 10, -padT - lastPinIndex * rowH - 4)
+            resultsFrame.pinSeparator:SetPoint("TOPRIGHT", resultsFrame, "TOPRIGHT", -10, -padT - lastPinIndex * rowH - 4)
+            resultsFrame.pinSeparator:Show()
+            pinSepPadding = PIN_SEP_HEIGHT
+        else
+            resultsFrame.pinSeparator:Hide()
+        end
+    end
+
     -- Show/hide truncation indicator and separator
     local showTruncation = #visible > count and (EasyFind.db.showTruncationMessage ~= false)
 
     -- Add extra padding for truncation message if it will be shown
     local truncPadding = showTruncation and 25 or 0
-    resultsFrame:SetHeight(padT + theme.resultsPadBot + count * rowH + truncPadding)
+    resultsFrame:SetHeight(padT + theme.resultsPadBot + count * rowH + pinSepPadding + truncPadding)
     if resultsFrame.truncIndicator then
         if showTruncation then
             resultsFrame.truncIndicator:Show()
@@ -1693,6 +2034,9 @@ end
 
 function UI:HideResults()
     resultsFrame:Hide()
+    if resultsFrame.pinSeparator then
+        resultsFrame.pinSeparator:Hide()
+    end
     if resultsFrame.truncIndicator then
         resultsFrame.truncIndicator:Hide()
     end
@@ -1701,6 +2045,40 @@ function UI:HideResults()
     end
     selectedIndex = 0
     self:UpdateSelectionHighlight()
+end
+
+function UI:ShowPinnedItems()
+    local pins = EasyFind.db.pinnedUIItems
+    if not pins or #pins == 0 then
+        self:HideResults()
+        return
+    end
+
+    -- Build synthetic hierarchical entries and delegate to the same renderer
+    -- used during search, so pinned items look identical in both cases.
+    collapsedNodes = {}
+    expandedContainers = {}
+    local entries = {
+        -- "Pinned Paths" collapsible header
+        {
+            isPinHeader = true,
+            name = "Pinned Paths",
+            depth = 0,
+            isPathNode = true,
+            isMatch = false,
+        },
+    }
+    for _, pin in ipairs(pins) do
+        tinsert(entries, {
+            name = pin.name,
+            depth = 0,
+            isPathNode = false,
+            isMatch = true,
+            isPinned = true,
+            data = pin,
+        })
+    end
+    self:ShowHierarchicalResults(entries)
 end
 
 function UI:SelectFirstResult()
@@ -1756,6 +2134,15 @@ function UI:ActivateSelected()
                 return
             end
 
+            -- Pin header: toggle collapse
+            if btn.isPinHeader then
+                EasyFind.db.pinsCollapsed = not EasyFind.db.pinsCollapsed
+                if cachedHierarchical then
+                    self:ShowHierarchicalResults(cachedHierarchical)
+                end
+                return
+            end
+
             if btn.isPathNode then
                 -- Toggle collapse for path nodes
                 local key = (btn.pathNodeName or "") .. "_" .. (btn.pathNodeDepth or 0)
@@ -1783,11 +2170,13 @@ function UI:ActivateSelected()
 end
 
 function UI:SelectResult(data)
+    selectingResult = true
     searchFrame.editBox:SetText("")
     searchFrame.editBox:ClearFocus()
     searchFrame.editBox.placeholder:Show()
+    selectingResult = false
     self:HideResults()
-    
+
     if not data then return end
     
     -- Flash label if specified (e.g., for Currency searches)
