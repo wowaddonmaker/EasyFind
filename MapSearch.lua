@@ -573,6 +573,20 @@ local CATEGORY_ICONS = {
     auctionhouse = "Interface\\Icons\\INV_Misc_Coin_01",
     innkeeper = "Interface\\Icons\\Spell_Holy_GreaterHeal",
     trainer = "Interface\\Icons\\INV_Misc_Book_09",
+    proftrainer = "Interface\\Icons\\INV_Misc_Book_09",
+    prof_alchemy = "Interface\\Icons\\Trade_Alchemy",
+    prof_blacksmithing = "Interface\\Icons\\Trade_BlackSmithing",
+    prof_cooking = "Interface\\Icons\\INV_Misc_Food_15",
+    prof_enchanting = "Interface\\Icons\\Trade_Engraving",
+    prof_engineering = "Interface\\Icons\\Trade_Engineering",
+    prof_fishing = "Interface\\Icons\\Trade_Fishing",
+    prof_herbalism = "Interface\\Icons\\Trade_Herbalism",
+    prof_inscription = "Interface\\Icons\\INV_Inscription_Tradeskill01",
+    prof_jewelcrafting = "Interface\\Icons\\INV_Misc_Gem_01",
+    prof_leatherworking = "Interface\\Icons\\Trade_LeatherWorking",
+    prof_mining = "Interface\\Icons\\Trade_Mining",
+    prof_skinning = "Interface\\Icons\\INV_Misc_Pelt_Wolf_01",
+    prof_tailoring = "Interface\\Icons\\Trade_Tailoring",
     vendor = "Interface\\Icons\\INV_Misc_Bag_07",
     pvpvendor = "Interface\\Icons\\INV_BannerPVP_01",
     mailbox = "Interface\\Icons\\INV_Letter_15",
@@ -1248,15 +1262,16 @@ function MapSearch:CreateHighlightFrame()
     waypointPin:SetScript("OnEnter", function(self)
         if self.isLocalSearch then
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText("Click to track on minimap")
+            GameTooltip:AddLine("Left-click to track on minimap")
+            GameTooltip:AddLine("Right-click to dismiss", 0.6, 0.6, 0.6)
             GameTooltip:Show()
         else
             MapSearch:ClearHighlight()
         end
     end)
     waypointPin:SetScript("OnLeave", GameTooltip_Hide)
-    waypointPin:SetScript("OnMouseUp", function(self)
-        if self.isLocalSearch and self.waypointX and self.waypointY then
+    waypointPin:SetScript("OnMouseUp", function(self, button)
+        if button == "LeftButton" and self.isLocalSearch and self.waypointX and self.waypointY then
             local mapID = WorldMapFrame:GetMapID()
             if mapID then
                 C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, self.waypointX, self.waypointY))

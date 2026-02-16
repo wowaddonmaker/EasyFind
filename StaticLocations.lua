@@ -1,4 +1,4 @@
--- EasyFind Static Locations (auto-generated 2026-02-15 02:11)
+-- EasyFind Static Locations (auto-generated 2026-02-16 03:59)
 local ADDON_NAME, ns = ...
 ns.STATIC_LOCATIONS = {
     [84] = { -- Stormwind City
@@ -92,6 +92,23 @@ ns.STATIC_LOCATIONS = {
         { name = "Transmogrifier", category = "transmogrifier", x = 0.583102822303772, y = 0.4878500103950501, keywords = {"transmog", "transmogrifier", "appearance"} },
         { name = "Training Dummies", category = "trainingdummy", x = 0.5925591383965814, y = 0.7207948306767711, keywords = {"training", "dummy", "dummies", "target", "practice"} },
         { name = "PvP Quest", category = "pvpquest", x = 0.589972801586991, y = 0.74928233676668, keywords = {"pvp", "quest", "weekly", "arena", "battleground"} },
+        { name = "Herbalism Trainer", category = "prof_herbalism", x = 0.4477216601371765, y = 0.6929000020027161, keywords = {"profession", "trainer", "herbalism", "herb"} },
+        { name = "Cooking Trainer", category = "prof_cooking", x = 0.4416361451148987, y = 0.4583285748958588, keywords = {"profession", "trainer", "cooking", "food"} },
+        { name = "Fishing Trainer", category = "prof_fishing", x = 0.5059075951576233, y = 0.2699499130249023, keywords = {"profession", "trainer", "fishing"} },
+        { name = "Tailoring Trainer", category = "prof_tailoring", x = 0.5470550656318665, y = 0.6364571452140808, keywords = {"profession", "trainer", "tailoring", "cloth"} },
+        { name = "Delver's Headquarters", category = "delve", x = 0.4788219332695007, y = 0.4439285695552826, keywords = {"delve", "delves"} },
+        { name = "Leatherworking Trainer", category = "prof_leatherworking", x = 0.5436408519744873, y = 0.5847784876823425, keywords = {"profession", "trainer", "leatherworking", "leather"} },
+        { name = "Inscription Trainer", category = "prof_inscription", x = 0.4868219494819641, y = 0.7115428447723389, keywords = {"profession", "trainer", "inscription", "glyph"} },
+        { name = "Battle Pet Trainer", category = "trainer", x = 0.5821124315261841, y = 0.6484856009483337, keywords = {"trainer", "class"} },
+        { name = "Blacksmithing Trainer", category = "prof_blacksmithing", x = 0.4917502403259277, y = 0.635771632194519, keywords = {"profession", "trainer", "blacksmithing"} },
+        { name = "Skinning Trainer", category = "prof_skinning", x = 0.5429025292396545, y = 0.5737999677658081, keywords = {"profession", "trainer", "skinning"} },
+        { name = "Jewelcrafting Trainer", category = "prof_jewelcrafting", x = 0.4953697025775909, y = 0.7115072011947632, keywords = {"profession", "trainer", "jewelcrafting", "gem"} },
+        { name = "Alchemy Trainer", category = "prof_alchemy", x = 0.4728884696960449, y = 0.7045073509216309, keywords = {"profession", "trainer", "alchemy", "potion", "flask"} },
+        { name = "Mining Trainer", category = "prof_mining", x = 0.526250422000885, y = 0.5255357027053833, keywords = {"profession", "trainer", "mining", "ore"} },
+        { name = "Enchanting Trainer", category = "prof_enchanting", x = 0.5272791385650635, y = 0.7128501534461975, keywords = {"profession", "trainer", "enchanting"} },
+        { name = "Engineering Trainer", category = "prof_engineering", x = 0.4908933043479919, y = 0.5615143775939941, keywords = {"profession", "trainer", "engineering"} },
+        { name = "Challenger's Rest", category = "innkeeper", x = 0.5356837511062622, y = 0.387307196855545, keywords = {"inn", "innkeeper", "hearth", "rest"} },
+        { name = "Black Market Auction House", category = "auctionhouse", x = 0.6463407278060913, y = 0.5241857171058655, keywords = {"auction", "ah"} },
     },
 }
 
