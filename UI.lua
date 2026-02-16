@@ -3042,6 +3042,86 @@ function UI:ResetPosition()
 end
 
 -- =========================================================================
+-- WHAT'S NEW POPUP
+-- Shown once per version update for returning users.
+-- =========================================================================
+function UI:ShowWhatsNew(version)
+    if _G["EasyFindWhatsNew"] then return end
+
+    local f = CreateFrame("Frame", "EasyFindWhatsNew", UIParent, "BackdropTemplate")
+    f:SetSize(410, 340)
+    f:SetPoint("CENTER")
+    f:SetFrameStrata("DIALOG")
+    f:SetFrameLevel(200)
+    f:SetBackdrop({
+        bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+        tile = true, tileSize = 32, edgeSize = 32,
+        insets   = { left = 11, right = 12, top = 12, bottom = 11 }
+    })
+    f:SetBackdropColor(0, 0, 0, 1)
+    f:EnableMouse(true)
+    f:SetMovable(true)
+    f:RegisterForDrag("LeftButton")
+    f:SetScript("OnDragStart", f.StartMoving)
+    f:SetScript("OnDragStop", f.StopMovingOrSizing)
+
+    -- Escape to close
+    tinsert(UISpecialFrames, "EasyFindWhatsNew")
+
+    -- Close button (X)
+    local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+    closeBtn:SetPoint("TOPRIGHT", -5, -5)
+
+    -- Title
+    local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    title:SetPoint("TOP", 0, -16)
+    title:SetText("|cffFFD100EasyFind|r — New Features")
+
+    -- Version subtitle
+    local verText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    verText:SetPoint("TOP", title, "BOTTOM", 0, -4)
+    verText:SetText("|cff999999v" .. (version or "?") .. "|r")
+
+    -- Feature body
+    local body = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    body:SetPoint("TOPLEFT", f, "TOPLEFT", 16, -58)
+    body:SetWidth(f:GetWidth() - 32)
+    body:SetJustifyH("LEFT")
+    body:SetSpacing(4)
+    body:SetText(
+        "|cffFFD100\226\128\162|r |cffffffffNavigation|r\n" ..
+        "        Click map pins to place a waypoint with minimap tracking\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffCurrencies & Reputations|r\n" ..
+        "        Now searchable with live values in results\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffPinned Paths|r\n" ..
+        "        Right-click any result to bookmark it\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffGlobal Map Search|r\n" ..
+        "        Repurposed for zone & instance lookup\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffMore Map POIs|r\n" ..
+        "        More points of interest for Dorn, many more coming soon\n\n" ..
+        "|cff999999Reminder from v1.2.3:|r\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffCurrency & reputation now searchable with quantities inline|r"
+    )
+
+    -- Footer — anchored below body so it can't overlap
+    local footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    footer:SetPoint("TOP", body, "BOTTOM", 0, -12)
+    footer:SetText("Full changelog on CurseForge and GitHub")
+
+    -- "Got it" button — anchored below footer
+    local okBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
+    okBtn:SetSize(90, 24)
+    okBtn:SetPoint("TOP", footer, "BOTTOM", 0, -8)
+    okBtn:SetText("Got it")
+    okBtn:SetScript("OnClick", function()
+        f:Hide()
+    end)
+
+    f:Show()
+end
+
+-- =========================================================================
 -- FIRST-TIME SETUP OVERLAY
 -- Shown once on fresh install to let the user position & scale the search
 -- bar before normal use.  Persisted via EasyFind.db.setupComplete.
