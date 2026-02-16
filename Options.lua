@@ -397,9 +397,18 @@ function Options:Initialize()
     end)
     optionsFrame.staticOpacityCheckbox = staticOpacityCheckbox
 
+    local blinkingPinsCheckbox = CreateCheckbox(optionsFrame, "BlinkingPins", "Blinking Map Pins",
+        "When enabled, map search pins and highlight boxes pulse/blink to draw attention.\n\nWhen disabled (default), pins and highlights are shown with a steady glow. The indicator arrow still bobs.")
+    blinkingPinsCheckbox:SetPoint("TOPLEFT", staticOpacityCheckbox, "BOTTOMLEFT", 0, -4)
+    blinkingPinsCheckbox:SetChecked(EasyFind.db.blinkingPins or false)
+    blinkingPinsCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.blinkingPins = self:GetChecked()
+    end)
+    optionsFrame.blinkingPinsCheckbox = blinkingPinsCheckbox
+
     -- Results Theme selector (custom, avoids UIDropDownMenu global state bugs)
     local themeLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    themeLabel:SetPoint("TOPLEFT", staticOpacityCheckbox, "BOTTOMLEFT", 4, -12)
+    themeLabel:SetPoint("TOPLEFT", blinkingPinsCheckbox, "BOTTOMLEFT", 4, -12)
     themeLabel:SetText("Theme:")
     
     local themeChoices = {"Classic", "Retail"}
@@ -712,6 +721,7 @@ function Options:Initialize()
         EasyFind.db.staticOpacity = false
         EasyFind.db.indicatorStyle = "EasyFind Arrow"
         EasyFind.db.indicatorColor = "Yellow"
+        EasyFind.db.blinkingPins = false
         EasyFind.db.visible = true
 
         -- Clear all active highlights
@@ -744,6 +754,7 @@ function Options:Initialize()
         optionsFrame.truncMessageCheckbox:SetChecked(true)
         optionsFrame.hardCapCheckbox:SetChecked(false)
         optionsFrame.staticOpacityCheckbox:SetChecked(false)
+        optionsFrame.blinkingPinsCheckbox:SetChecked(false)
         optionsFrame.devModeCheckbox:SetChecked(false)
         optionsFrame.maxResultsSlider:SetValue(12)
         optionsFrame.themeBtnText:SetText("Retail")
@@ -839,6 +850,7 @@ function Options:Show()
     optionsFrame.zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly or false)
     optionsFrame.smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
     optionsFrame.devModeCheckbox:SetChecked(EasyFind.db.devMode or false)
+    optionsFrame.blinkingPinsCheckbox:SetChecked(EasyFind.db.blinkingPins or false)
     optionsFrame.themeBtnText:SetText(EasyFind.db.resultsTheme or "Retail")
     
     local key1 = GetBindingKey("EASYFIND_TOGGLE")
