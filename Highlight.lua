@@ -1975,24 +1975,26 @@ function Highlight:HighlightFrame(frame, instructionText)
     highlightFrame:ClearAllPoints()
     highlightFrame:SetAllPoints(frame)
     
+    -- Top and bottom own the corners (full width including padding)
     highlightFrame.top:ClearAllPoints()
     highlightFrame.top:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", -pad, 0)
     highlightFrame.top:SetPoint("BOTTOMRIGHT", frame, "TOPRIGHT", pad, 0)
     highlightFrame.top:SetHeight(bs)
-    
+
     highlightFrame.bottom:ClearAllPoints()
     highlightFrame.bottom:SetPoint("TOPLEFT", frame, "BOTTOMLEFT", -pad, 0)
     highlightFrame.bottom:SetPoint("TOPRIGHT", frame, "BOTTOMRIGHT", pad, 0)
     highlightFrame.bottom:SetHeight(bs)
-    
+
+    -- Left and right fit between top and bottom (no corner overlap)
     highlightFrame.left:ClearAllPoints()
-    highlightFrame.left:SetPoint("TOPRIGHT", frame, "TOPLEFT", 0, pad)
-    highlightFrame.left:SetPoint("BOTTOMRIGHT", frame, "BOTTOMLEFT", 0, -pad)
+    highlightFrame.left:SetPoint("TOPLEFT", highlightFrame.top, "BOTTOMLEFT", 0, 0)
+    highlightFrame.left:SetPoint("BOTTOMLEFT", highlightFrame.bottom, "TOPLEFT", 0, 0)
     highlightFrame.left:SetWidth(bs)
-    
+
     highlightFrame.right:ClearAllPoints()
-    highlightFrame.right:SetPoint("TOPLEFT", frame, "TOPRIGHT", 0, pad)
-    highlightFrame.right:SetPoint("BOTTOMLEFT", frame, "BOTTOMRIGHT", 0, -pad)
+    highlightFrame.right:SetPoint("TOPRIGHT", highlightFrame.top, "BOTTOMRIGHT", 0, 0)
+    highlightFrame.right:SetPoint("BOTTOMRIGHT", highlightFrame.bottom, "TOPRIGHT", 0, 0)
     highlightFrame.right:SetWidth(bs)
     
     highlightFrame:Show()
