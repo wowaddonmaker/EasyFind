@@ -10,6 +10,7 @@ local pairs   = Utils.pairs
 
 EasyFind = {}
 ns.EasyFind = EasyFind
+EasyFind._ns = ns  -- Expose namespace for dev tools (EasyFindDev)
 
 -- Binding localization strings (used by Bindings.xml)
 -- category="EasyFind" in Bindings.xml provides the header; no BINDING_HEADER_ global needed.
@@ -45,6 +46,7 @@ local DB_DEFAULTS = {
     pinnedUIItems = {},        -- Pinned UI search results (persist across sessions)
     pinnedMapItems = {},       -- Pinned map search results (persist across sessions)
     pinsCollapsed = false,     -- Whether the "Pinned Paths" header is collapsed
+    blinkingPins = false,      -- Animate (blink/pulse) map pins and highlights
 }
 
 local function OnInitialize()
@@ -77,6 +79,7 @@ local function OnInitialize()
             if ns.MapSearch then
                 ns.MapSearch:ClearHighlight()
                 ns.MapSearch:ClearZoneHighlight()
+                ns.MapSearch.pendingWaypoint = nil
             end
             EasyFind:Print("Active highlights cleared.")
         elseif msg:find("^test ") then
