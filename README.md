@@ -15,15 +15,21 @@ Find and navigate to any interface element:
 - Professions
 - All currencies from your character's Currency tab, including seasonal and legacy currencies (shows current amounts inline)
 - Faction reputations with visual progress bars showing renown level, friendship rank, or traditional standing
+- Player portrait menu options (Set Focus, Loot Specialization, Dungeon/Raid Difficulty, Edit Mode, PvP Flag, etc.)
 - Coverage is always expanding. If a panel exists in the default UI, the goal is for EasyFind to reach it
+
+**Pinned Paths**: Right-click any search result to pin it as a bookmark. Pinned items always appear at the top of your results and persist across sessions.
 
 ### Map Search
 Locate important places across Azeroth:
 - Portals and transport
 - Banks and auction houses
 - Flight masters
-- Dungeon and raid entrances (uses Encounter Journal API; search globally or within current map)
-- Coming soon: profession trainers, vendors and services, quest hubs, etc.
+- Dungeon and raid entrances (search globally or within current map)
+- Profession trainers
+- Coming soon: all of the above for many more cities
+
+**Click-to-Navigate**: Click any local search pin on the map to place a waypoint and activate minimap tracking. A pulsing gold star appears on the minimap perimeter to guide you while far away, then transitions to a rotating ring indicator as you get close. The waypoint auto-clears when you arrive.
 
 **Zone Abbreviations**: Type common shortcuts like `sw` (Stormwind), `dal` (Dalaran), `org` (Orgrimmar), `if` (Ironforge), `orib` (Oribos), and more.
 
@@ -79,6 +85,7 @@ EasyFind provides customizable keybinds:
 - **Results Theme**: Choose between Classic (colorful tree lines) or Retail (quest log style) for the search results dropdown.
 - **Search Bar Opacity**: Adjust transparency to see through the search bar.
 - **Static Opacity**: Keep the search bar at constant opacity while moving (off by default; bar fades while moving).
+- **Blinking Map Pins**: Enable pulse animations on map search pins (off by default).
 - **UI/Map Search Bar Scales**: Resize each search bar independently.
 - **Reset All Settings / Reset Positions**: Return settings or search bar positions to defaults.
 

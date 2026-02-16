@@ -4,6 +4,28 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [1.2.4] - 2026-02-16
+
+### Added
+- **Pinned Paths**: Right-click any UI or map search result to pin it as a bookmark. Pinned items appear at the top of results and persist across sessions. Collapsible header keeps things tidy
+- **Click-to-Navigate Map Pins**: Click any local map search pin to place a native WoW waypoint and activate minimap tracking (no more Ctrl+clicking the map manually)
+  - **Two-stage** visual guidance system for the placed waypoints:
+    - **Far**: Pulsing gold star on the minimap perimeter over the standard Blizz arrow when waypoint is outside minimap range
+    - **Near**: Rotating gold ring with directional arrowhead when waypoint enters minimap range; ring smoothly shrinks as you approach to avoid map pin going inside circle
+  - Waypoint pin is automatically removed when the game reports "Reached Destination"
+
+### Changed
+- **Map Pin**
+  - **Default Map Pin Size**: Map pin icons and highlight boxes reduced to ~50% of previous size for less visual clutter on the world map
+  - **Map Pin Hover Behavior**: Local search pins now show a tooltip ("Click to track on minimap") instead of auto-dismissing on hover; global search pins retain the original hover-to-dismiss behavior
+    - Can still remove local search pins by either right clicking them, hitting the clear button on the search bar, or with /ef clear
+  - **Blinking Map Pins Option**: Map pins now solid by default, but there is a new toggle in Options panel to enable/disable the map pin pulse animations
+
+### Fixed
+- **Missing Icons**: Fixed missing icons for portrait menu items and other UI search results that previously showed blank
+
+---
+
 ## [1.2.3] - 2026-02-13
 
 ### Added

@@ -62,6 +62,9 @@ local function OnInitialize()
 
     EasyFind.db = EasyFindDB
 
+    -- Read version from TOC for What's New detection
+    ns.version = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version")
+
     -- Primary slash command
     SLASH_EASYFIND1 = "/ef"
     SlashCmdList["EASYFIND"] = function(msg)
@@ -91,6 +94,8 @@ local function OnInitialize()
                 EasyFind:Print("Usage: /ef test <texture_path>")
                 EasyFind:Print("Example: /ef test Interface\\\\MINIMAP\\\\MiniMap-QuestArrow")
             end
+        elseif msg == "whatsnew" then
+            if ns.UI then ns.UI:ShowWhatsNew(ns.version) end
         else
             EasyFind:Print("Usage: /ef show | /ef hide | /ef clear | /ef options")
         end
@@ -113,6 +118,19 @@ local function OnPlayerLogin()
             ns.Database:PopulateDynamicReputations()
         end
     end)
+
+    -- What's New popup: show once per version for returning users
+    local currentVersion = ns.version
+    local lastSeen = EasyFind.db.lastSeenVersion
+    if currentVersion and currentVersion ~= lastSeen then
+        -- Skip for brand-new installs (they get the first-time setup instead)
+        if lastSeen ~= nil or EasyFind.db.setupComplete then
+            C_Timer.After(1.5, function()
+                if ns.UI then ns.UI:ShowWhatsNew(currentVersion) end
+            end)
+        end
+        EasyFind.db.lastSeenVersion = currentVersion
+    end
 end
 
 -- =============================================================================
