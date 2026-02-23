@@ -1,4 +1,4 @@
--- EasyFind Static Locations (auto-generated 2026-02-16 03:59)
+-- EasyFind Static Locations (auto-generated 2026-02-17 00:01)
 local ADDON_NAME, ns = ...
 ns.STATIC_LOCATIONS = {
     [84] = { -- Stormwind City
@@ -42,6 +42,37 @@ ns.STATIC_LOCATIONS = {
         { name = "Ashran (WoD) Portal", category = "portal", x = 0.5579239322862988, y = 0.9161218756179945, keywords = {"portal", "teleport", "mage"} },
         { name = "Silvermoon City (TBC) Portal", category = "portal", x = 0.5534060347087141, y = 0.9048671105834006, keywords = {"portal", "teleport", "mage"} },
         { name = "Chromie", category = "chromie", x = 0.4049942125152197, y = 0.7963960938417369, keywords = {"chromie", "timewalking", "time", "leveling"} },
+    },
+    [111] = { -- Shattrath City
+        { name = "Inscription Trainer", category = "prof_inscription", x = 0.4373812079429627, y = 0.901329755783081, keywords = {"profession", "trainer", "inscription", "glyph"} },
+        { name = "Scryers Stable", category = "stablemaster", x = 0.5599451661109924, y = 0.7993670105934143, keywords = {"stable", "pet"} },
+        { name = "Herbalism Trainer", category = "prof_herbalism", x = 0.4373812079429627, y = 0.901329755783081, keywords = {"profession", "trainer", "herbalism", "herb"} },
+        { name = "Aldor Bank", category = "bank", x = 0.4876004159450531, y = 0.289349377155304, keywords = {"bank", "vault", "storage"} },
+        { name = "Alchemy Trainer", category = "prof_alchemy", x = 0.4350685477256775, y = 0.1962425112724304, keywords = {"profession", "trainer", "alchemy", "potion", "flask"} },
+        { name = "Cooking Trainer", category = "prof_cooking", x = 0.6265783905982971, y = 0.6817435622215271, keywords = {"profession", "trainer", "cooking", "food"} },
+        { name = "Scryers Inn", category = "innkeeper", x = 0.5609787106513977, y = 0.8151568174362183, keywords = {"inn", "innkeeper", "hearth", "rest"} },
+        { name = "Aldor Stable", category = "stablemaster", x = 0.2875014245510101, y = 0.4780189096927643, keywords = {"stable", "pet"} },
+        { name = "Scryers Bank", category = "bank", x = 0.5927804112434387, y = 0.6066201329231262, keywords = {"bank", "vault", "storage"} },
+        { name = "Leatherworking Trainer", category = "prof_leatherworking", x = 0.6727644205093384, y = 0.6741307377815247, keywords = {"profession", "trainer", "leatherworking", "leather"} },
+        { name = "Enchanting Trainer", category = "prof_enchanting", x = 0.4397998452186585, y = 0.8965153694152832, keywords = {"profession", "trainer", "enchanting"} },
+        { name = "Tailoring Trainer", category = "prof_tailoring", x = 0.4373812079429627, y = 0.901329755783081, keywords = {"profession", "trainer", "tailoring", "cloth"} },
+        { name = "Blacksmithing Trainer", category = "prof_blacksmithing", x = 0.6992068290710449, y = 0.4289746284484863, keywords = {"profession", "trainer", "blacksmithing"} },
+        { name = "Skinning Trainer", category = "prof_skinning", x = 0.6396015882492065, y = 0.6591441631317139, keywords = {"profession", "trainer", "skinning"} },
+        { name = "Alchemy Trainer", category = "prof_alchemy", x = 0.457522451877594, y = 0.2109183520078659, keywords = {"profession", "trainer", "alchemy", "potion", "flask"} },
+        { name = "Mining Trainer", category = "prof_mining", x = 0.4373812079429627, y = 0.901329755783081, keywords = {"profession", "trainer", "mining", "ore"} },
+        { name = "Class Trainer", category = "trainer", x = 0.5399067401885986, y = 0.4474839568138123, keywords = {"trainer", "class"} },
+        { name = "Scryer Gem Merchant", category = "vendor", x = 0.5457209944725037, y = 0.8272597193717957, keywords = {"vendor", "merchant", "shop"} },
+        { name = "Aldor Inn", category = "innkeeper", x = 0.2802973091602325, y = 0.4899273812770844, keywords = {"inn", "innkeeper", "hearth", "rest"} },
+        { name = "Engineering Trainer", category = "prof_engineering", x = 0.4373812079429627, y = 0.901329755783081, keywords = {"profession", "trainer", "engineering"} },
+        { name = "Jewelcrafting Trainer", category = "prof_jewelcrafting", x = 0.4373812079429627, y = 0.901329755783081, keywords = {"profession", "trainer", "jewelcrafting", "gem"} },
+        { name = "Aldor Gem Merchant", category = "vendor", x = 0.3565923571586609, y = 0.1950026601552963, keywords = {"vendor", "merchant", "shop"} },
+        { name = "Horde Battlemasters", category = "battlemasters", x = 0.6667931079864502, y = 0.5636268854141235, keywords = {"pvp", "battlemaster", "arena", "battleground", "bg"} },
+        { name = "Arena Battlemasters", category = "battlemasters", x = 0.7349962592124939, y = 0.5601934194564819, keywords = {"pvp", "battlemaster", "arena", "battleground", "bg"} },
+        { name = "First Aid Trainer", category = "prof_firstaid", x = 0.6676816940307617, y = 0.1342793703079224, keywords = {"profession", "trainer", "first aid", "bandage"} },
+        { name = "Alliance Battlemasters", category = "battlemasters", x = 0.6702150702476501, y = 0.3407713770866394, keywords = {"pvp", "battlemaster", "arena", "battleground", "bg"} },
+        { name = "Archaeology Trainer", category = "prof_archaeology", x = 0.6266931295394897, y = 0.7034234404563904, keywords = {"profession", "trainer", "archaeology", "artifact", "dig"} },
+        { name = "Guild Services", category = "guildservices", x = 0.5892795920372009, y = 0.4632092118263245, keywords = {"guild", "tabard", "registrar"} },
+        { name = "World's End Tavern", category = "innkeeper", x = 0.7443743944168091, y = 0.3264971375465393, keywords = {"inn", "innkeeper", "hearth", "rest", "tavern"} },
     },
     [1670] = { -- Oribos
         { name = "Appearance Agitator", category = "barber", x = 0.6418470740318298, y = 0.6455227732658386, keywords = {"barber", "appearance", "haircut"} },

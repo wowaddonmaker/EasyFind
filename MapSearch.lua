@@ -8,7 +8,7 @@ local DebugPrint = Utils.DebugPrint
 local pairs, ipairs, type, select = Utils.pairs, Utils.ipairs, Utils.type, Utils.select
 local tinsert, tsort, tconcat, tremove = Utils.tinsert, Utils.tsort, Utils.tconcat, Utils.tremove
 local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
-local mmin, mmax, mabs, mpi = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mpi
+local mmin, mmax, mabs, mpi, mfloor = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mpi, Utils.mfloor
 local pcall, tostring = Utils.pcall, Utils.tostring
 
 local CreateFrame        = CreateFrame
@@ -22,6 +22,20 @@ local IsMouseButtonDown  = IsMouseButtonDown
 local hooksecurefunc     = hooksecurefunc
 local wipe               = wipe
 local strsplit           = strsplit
+
+-- =============================================================================
+-- NAV DEBUG HELPER
+-- =============================================================================
+-- When ns.navDebug is true, prints colored diagnostic messages to chat.
+-- Activated via /devnav in EasyFindDev.
+local function NavDebug(...)
+    if not ns.navDebug then return end
+    local parts = {}
+    for i = 1, select("#", ...) do
+        parts[i] = tostring(select(i, ...))
+    end
+    print("|cFF00CCFFNav>|r " .. tconcat(parts, " "))
+end
 
 -- =============================================================================
 -- INDICATOR THEME DEFINITIONS
@@ -257,15 +271,19 @@ local globalSearchFrame -- Global search bar (right)
 local activeSearchFrame -- Which bar is currently active
 local resultsFrame
 local resultButtons = {}
-local MAX_RESULTS = 12
+local MAX_RESULTS_POOL = 24  -- pre-created button pool (matches slider max)
 local highlightFrame
 local indicatorFrame
 local currentHighlightedPin
 local waypointPin
 local zoneHighlightFrame  -- For highlighting zones on continent maps
+local gpsPin              -- GPS route pin (different icon from regular waypoint pin)
+local gpsPinState = nil   -- {mapID, x, y, label} — GPS pin state for map restore
 local isGlobalSearch = false  -- Tracks which search bar triggered the current search
+local activePinState = nil    -- {mapID, x, y, icon, category} — survives map close/reopen
 local superTrackGlow          -- Perimeter glow frame (far mode)
 local nearTrackFrame          -- Ring + arrow frame (near mode)
+local nearTrackMarker         -- Destination marker on minimap (near mode, internal waypoints only)
 local waypointController      -- Invisible controller that drives OnUpdate
 
 -- =============================================================================
@@ -276,10 +294,30 @@ local matan2, mcos, msin, msqrt = math.atan2, math.cos, math.sin, math.sqrt
 local GetPlayerFacing = GetPlayerFacing
 local NEAR_RING_RADIUS = 22   -- pixels from minimap center to ring edge
 
--- Minimap yard radius when native perimeter arrow disappears (25yd per zoom level)
+-- Minimap yard radius: use C_Minimap.GetViewRadius() (available 11.x+) for
+-- exact per-frame values. Falls back to HereBeDragons-style lookup tables
+-- for older clients (indoor/outdoor split, zoom 0–5).
+local MINIMAP_SIZE_INDOOR  = { [0]=300, [1]=240, [2]=180, [3]=120, [4]=80, [5]=50 }
+local MINIMAP_SIZE_OUTDOOR = { [0]=466.67, [1]=400, [2]=333.33, [3]=266.67, [4]=200, [5]=133.33 }
+
 local function GetMinimapYardRadius()
-    return 175 - Minimap:GetZoom() * 25
+    if C_Minimap and C_Minimap.GetViewRadius then
+        return C_Minimap.GetViewRadius()
+    end
+    -- Fallback for older clients
+    local zoom = Minimap:GetZoom()
+    local isIndoors = IsIndoors and IsIndoors()
+    local tbl = isIndoors and MINIMAP_SIZE_INDOOR or MINIMAP_SIZE_OUTDOOR
+    return tbl[zoom] or tbl[0]
 end
+
+-- Forward declarations (defined after CreateWaypointTracker but referenced inside its OnUpdate)
+local ShowSuperTrackGlow, HideSuperTrackGlow
+
+-- Internal waypoint — always used (we manage our own minimap marker/arrow
+-- rather than relying on the game's system waypoint).
+local internalWaypoint = nil  -- {uiMapID=number, position={x=number, y=number}}
+local ARRIVAL_DISTANCE = 5    -- yards — auto-clear waypoint when player is this close
 
 local function CreateWaypointTracker()
     -- Controller: invisible frame that runs the shared OnUpdate
@@ -289,18 +327,29 @@ local function CreateWaypointTracker()
         waypointController:Hide()
     end
 
-    -- Perimeter glow (shown when waypoint is outside minimap view)
+    -- Perimeter arrow (shown when waypoint is outside minimap view)
     if not superTrackGlow then
+        local arrowSize = 40
         superTrackGlow = CreateFrame("Frame", "EasyFindMinimapGlow", Minimap)
-        superTrackGlow:SetSize(44, 44)
+        superTrackGlow:SetSize(arrowSize, arrowSize)
         superTrackGlow:SetFrameStrata("HIGH")
         superTrackGlow:SetFrameLevel(100)
+        superTrackGlow.arrowSize = arrowSize
 
+        -- Glow behind the arrow (same star effect as Blizzard waypoint)
+        local glow = superTrackGlow:CreateTexture(nil, "BACKGROUND")
+        glow:SetSize(arrowSize * 2.2, arrowSize * 2.2)
+        glow:SetPoint("CENTER")
+        glow:SetTexture("Interface\\Cooldown\\star4")
+        glow:SetVertexColor(1, 1, 0, 0.7)
+        glow:SetBlendMode("ADD")
+        superTrackGlow.glow = glow
+
+        -- Directional arrow on top
         local tex = superTrackGlow:CreateTexture(nil, "ARTWORK")
         tex:SetAllPoints()
-        tex:SetTexture("Interface\\Cooldown\\star4")
+        tex:SetTexture("Interface\\MINIMAP\\MiniMap-QuestArrow")
         tex:SetVertexColor(1, 1, 0, 1)
-        tex:SetBlendMode("ADD")
         superTrackGlow.texture = tex
 
         local ag = superTrackGlow:CreateAnimationGroup()
@@ -349,11 +398,56 @@ local function CreateWaypointTracker()
         nearTrackFrame:Hide()
     end
 
+    -- Destination marker (shown on the minimap in near mode for internal waypoints)
+    if not nearTrackMarker then
+        local markerSize = EasyFind.db.minimapMarkerSize or 25
+        nearTrackMarker = CreateFrame("Frame", "EasyFindMinimapMarker", Minimap)
+        nearTrackMarker:SetSize(markerSize, markerSize)
+        nearTrackMarker:SetFrameStrata("HIGH")
+        nearTrackMarker:SetFrameLevel(101)
+
+        -- Glow behind marker (2x marker size)
+        local glow = nearTrackMarker:CreateTexture(nil, "BACKGROUND")
+        glow:SetSize(markerSize * 2, markerSize * 2)
+        glow:SetPoint("CENTER")
+        glow:SetTexture("Interface\\Cooldown\\star4")
+        glow:SetVertexColor(1, 1, 0, 0.8)
+        glow:SetBlendMode("ADD")
+        nearTrackMarker.glow = glow
+
+        -- Standard waypoint pin icon (from Blizzard atlas)
+        local tex = nearTrackMarker:CreateTexture(nil, "ARTWORK")
+        tex:SetAllPoints()
+        tex:SetAtlas("Waypoint-MapPin-Untracked")
+        nearTrackMarker.texture = tex
+
+        local ag = nearTrackMarker:CreateAnimationGroup()
+        ag:SetLooping("BOUNCE")
+        local alpha = ag:CreateAnimation("Alpha")
+        alpha:SetFromAlpha(1)
+        alpha:SetToAlpha(0.5)
+        alpha:SetDuration(0.8)
+        nearTrackMarker.animGroup = ag
+        nearTrackMarker:Hide()
+    end
+
     -- Shared OnUpdate: calculate angle + distance, toggle between far/near modes
     waypointController:SetScript("OnUpdate", function(self, elapsed)
-        if not C_Map.HasUserWaypoint() then
+        if not internalWaypoint then
+            if self.lastMode then
+                NavDebug("Minimap OnUpdate — waypoint gone, auto-hiding tracker")
+                self.lastMode = nil
+            end
             HideSuperTrackGlow()
             return
+        end
+        local wp = internalWaypoint
+
+        -- One-shot log on first tick with this waypoint
+        if not self.loggedWP then
+            self.loggedWP = true
+            NavDebug("Minimap OnUpdate — tracking waypoint: mapID=", wp.uiMapID,
+                sformat("pos=%.4f,%.4f", wp.position.x, wp.position.y))
         end
 
         local mapID = C_Map.GetBestMapForUnit("player")
@@ -362,10 +456,7 @@ local function CreateWaypointTracker()
         local playerPos = C_Map.GetPlayerMapPosition(mapID, "player")
         if not playerPos then return end
 
-        local wp = C_Map.GetUserWaypoint()
-        if not wp or not wp.position then return end
-
-        -- Convert to world coordinates for correct angle + distance
+        -- World coordinates for angle (works across continents)
         local pCont, pWorld = C_Map.GetWorldPosFromMapPos(mapID, playerPos)
         if not pWorld then return end
 
@@ -384,12 +475,58 @@ local function CreateWaypointTracker()
             end
         end
 
-        -- Distance in yards vs minimap view radius
-        local dist = msqrt(dx * dx + dy * dy)
+        -- Distance in actual yards via map coordinate projection
+        -- (GetWorldPosFromMapPos uses arbitrary continent units that differ per map)
+        local distMapID = mapID
+        local px, py = playerPos:GetXY()
+        local wx, wy = wp.position.x, wp.position.y
+        if mapID ~= wp.uiMapID then
+            local wpMapPlayerPos = C_Map.GetPlayerMapPosition(wp.uiMapID, "player")
+            if wpMapPlayerPos then
+                px, py = wpMapPlayerPos:GetXY()
+                distMapID = wp.uiMapID
+            end
+        end
+        local mapWidth, mapHeight = C_Map.GetMapWorldSize(distMapID)
+        local dxYards = (px - wx) * mapWidth
+        local dyYards = (py - wy) * mapHeight
+        local dist = msqrt(dxYards * dxYards + dyYards * dyYards)
         local viewRadius = GetMinimapYardRadius()
+
+        -- Debug overlay: only when navDebug is active
+        if ns.navDebug then
+            if not self.debugText then
+                self.debugText = Minimap:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+                self.debugText:SetPoint("TOP", Minimap, "BOTTOM", 0, -2)
+            end
+            self.debugText:SetText(sformat("dist=%.0fyd  vr=%dyd  pC=%d  z=%d  %s",
+                dist, viewRadius, pCont or -1, Minimap:GetZoom(),
+                dist < viewRadius and "|cFF00FF00NEAR|r" or "|cFFFF0000FAR|r"))
+            self.debugText:Show()
+        elseif self.debugText then
+            self.debugText:Hide()
+        end
+
+        -- Auto-clear when player arrives at destination
+        if dist < ARRIVAL_DISTANCE then
+            NavDebug("|cFF00FF00Arrived|r at waypoint (dist=", sformat("%.0fyd)", dist))
+            -- If GPS route is active, just clear the minimap indicator (step advancement
+            -- happens on PLAYER_ENTERING_WORLD, not on proximity)
+            if ns.RouteEngine and ns.RouteEngine:IsRouteActive() then
+                HideSuperTrackGlow()
+            else
+                MapSearch:ClearAll()
+            end
+            return
+        end
 
         if dist < viewRadius then
             -- NEAR MODE: ring around player + directional arrow
+            if not self.lastMode or self.lastMode ~= "NEAR" then
+                NavDebug("Minimap → |cFF00FF00NEAR|r mode (dist=",
+                    sformat("%.0fyd < vr=%dyd)", dist, viewRadius))
+                self.lastMode = "NEAR"
+            end
             if superTrackGlow:IsShown() then
                 superTrackGlow.animGroup:Stop()
                 superTrackGlow:Hide()
@@ -420,32 +557,83 @@ local function CreateWaypointTracker()
                 layer:SetRotation(rot)
                 layer:SetSize(sz, sz)
             end
+
+            -- Show destination marker on minimap for internal waypoints
+            if internalWaypoint then
+                -- Map coords: x increases east, y increases south
+                -- Minimap: +x = right (east), +y = up (north)
+                -- viewRadius now comes from C_Minimap.GetViewRadius() — exact
+                local yardsToPx = minimapPxRadius / viewRadius
+                local markerX = (wx - px) * mapWidth * yardsToPx
+                local markerY = -(wy - py) * mapHeight * yardsToPx  -- flip Y
+
+                -- Account for minimap rotation
+                if GetCVar("rotateMinimap") == "1" then
+                    local facing = GetPlayerFacing()
+                    if facing then
+                        local cf, sf = math.cos(facing), math.sin(facing)
+                        markerX, markerY = markerX * cf - markerY * sf,
+                                           markerX * sf + markerY * cf
+                    end
+                end
+
+                nearTrackMarker:ClearAllPoints()
+                nearTrackMarker:SetPoint("CENTER", Minimap, "CENTER", markerX, markerY)
+                if not nearTrackMarker:IsShown() then
+                    nearTrackMarker:Show()
+                    nearTrackMarker.animGroup:Play()
+                end
+            elseif nearTrackMarker:IsShown() then
+                nearTrackMarker.animGroup:Stop()
+                nearTrackMarker:Hide()
+            end
         else
             -- FAR MODE: perimeter glow
+            if not self.lastMode or self.lastMode ~= "FAR" then
+                NavDebug("Minimap → |cFFFF0000FAR|r mode (dist=",
+                    sformat("%.0fyd >= vr=%dyd)", dist, viewRadius))
+                self.lastMode = "FAR"
+            end
             if nearTrackFrame:IsShown() then
                 nearTrackFrame.animGroup:Stop()
                 nearTrackFrame:Hide()
+            end
+            if nearTrackMarker:IsShown() then
+                nearTrackMarker.animGroup:Stop()
+                nearTrackMarker:Hide()
             end
             if not superTrackGlow:IsShown() then
                 superTrackGlow:Show()
                 superTrackGlow.animGroup:Play()
             end
-            local radius = Minimap:GetWidth() / 2 - 4
+            -- Arrow tip is arrowSize/2 from frame center (top edge of texture,
+            -- rotated inward). Place frame center outward so tip lands on perimeter.
+            local perimeterRadius = Minimap:GetWidth() / 2
+            local radius = perimeterRadius - superTrackGlow.arrowSize / 2
             local glowX = msin(angle) * radius
             local glowY = mcos(angle) * radius
             superTrackGlow:ClearAllPoints()
             superTrackGlow:SetPoint("CENTER", Minimap, "CENTER", glowX, glowY)
+            -- Rotate arrow to point toward the waypoint (inward)
+            -- MiniMap-QuestArrow points up (north) by default; angle is east=0 CCW
+            local rot = -angle
+            superTrackGlow.texture:SetRotation(rot)
+            superTrackGlow.glow:SetRotation(rot)
         end
     end)
 end
 
-local function ShowSuperTrackGlow()
+ShowSuperTrackGlow = function()
+    NavDebug("ShowSuperTrackGlow — starting minimap waypoint tracker")
     CreateWaypointTracker()
     waypointController:Show()
 end
 
-local function HideSuperTrackGlow()
+HideSuperTrackGlow = function()
+    NavDebug("HideSuperTrackGlow — stopping minimap waypoint tracker")
+    internalWaypoint = nil
     if waypointController then
+        waypointController.loggedWP = nil
         waypointController:Hide()
     end
     if superTrackGlow and superTrackGlow:IsShown() then
@@ -456,21 +644,57 @@ local function HideSuperTrackGlow()
         nearTrackFrame.animGroup:Stop()
         nearTrackFrame:Hide()
     end
+    if nearTrackMarker and nearTrackMarker:IsShown() then
+        nearTrackMarker.animGroup:Stop()
+        nearTrackMarker:Hide()
+    end
 end
 
--- Auto-hide when supertracking stops; auto-clear pin on arrival
-local stGlowEvents = CreateFrame("Frame")
-stGlowEvents:RegisterEvent("SUPER_TRACKING_CHANGED")
-stGlowEvents:RegisterEvent("USER_WAYPOINT_UPDATED")
-stGlowEvents:SetScript("OnEvent", function()
-    if not waypointController or not waypointController:IsShown() then return end
-    if not C_SuperTrack.IsSuperTrackingUserWaypoint() then
-        HideSuperTrackGlow()
-        -- Game stopped tracking (e.g. "Reached Destination") — auto-clear the pin
-        if C_Map.HasUserWaypoint() then
-            C_Map.ClearUserWaypoint()
-        end
+-- Expose waypoint control on the namespace for RouteEngine
+ns.SetInternalWaypoint = function(mapID, x, y)
+    internalWaypoint = { uiMapID = mapID, position = { x = x, y = y } }
+    NavDebug("ns.SetInternalWaypoint — mapID=", mapID, sformat("pos=%.4f,%.4f", x, y))
+    ShowSuperTrackGlow()
+end
+ns.ClearInternalWaypoint = function()
+    NavDebug("ns.ClearInternalWaypoint")
+    HideSuperTrackGlow()
+end
+
+-- Auto-clear everything after a loading screen (teleport, hearthstone, portal, etc.)
+local loadingScreenFrame = CreateFrame("Frame")
+loadingScreenFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+loadingScreenFrame:SetScript("OnEvent", function(_, _, isInitialLogin, isReloadingUI)
+    if isInitialLogin or isReloadingUI then return end  -- skip login/reload
+
+    -- If GPS route is active, let the RouteEngine handle this zone change
+    if ns.RouteEngine and ns.RouteEngine:IsRouteActive() then
+        NavDebug("PLAYER_ENTERING_WORLD — route active, deferring to RouteEngine")
+        C_Timer.After(0, function()
+            if ns.RouteEngine and ns.RouteEngine:IsRouteActive() then
+                local consumed = ns.RouteEngine:OnZoneChanged()
+                if consumed then return end
+            end
+            -- Route didn't consume it — fall through to normal clear
+            NavDebug("RouteEngine did not consume zone change — clearing all")
+            if ns.MapSearch then
+                ns.MapSearch:ClearAll()
+                ns.MapSearch:ClearZoneHighlight()
+            end
+            if ns.Highlight then ns.Highlight:ClearAll() end
+        end)
+        return
     end
+
+    NavDebug("PLAYER_ENTERING_WORLD (zone change) — clearing all")
+    -- Defer slightly so the map system has settled
+    C_Timer.After(0, function()
+        if ns.MapSearch then
+            ns.MapSearch:ClearAll()
+            ns.MapSearch:ClearZoneHighlight()
+        end
+        if ns.Highlight then ns.Highlight:ClearAll() end
+    end)
 end)
 
 -- =============================================================================
@@ -587,8 +811,12 @@ local CATEGORY_ICONS = {
     prof_mining = "Interface\\Icons\\Trade_Mining",
     prof_skinning = "Interface\\Icons\\INV_Misc_Pelt_Wolf_01",
     prof_tailoring = "Interface\\Icons\\Trade_Tailoring",
+    prof_firstaid = "Interface\\Icons\\Spell_Holy_SealOfSacrifice",
+    prof_archaeology = "Interface\\Icons\\Trade_Archaeology",
     vendor = "Interface\\Icons\\INV_Misc_Bag_07",
-    pvpvendor = "Interface\\Icons\\INV_BannerPVP_01",
+    pvpvendor = 236396,
+    pvpquest = 236396,
+    battlemasters = 236396,
     mailbox = "Interface\\Icons\\INV_Letter_15",
     stablemaster = "Interface\\Icons\\Ability_Hunter_BeastCall",
     repairvendor = "Interface\\Icons\\INV_Hammer_20",
@@ -599,6 +827,7 @@ local CATEGORY_ICONS = {
     catalyst = "Interface\\Icons\\INV_10_GearUpgrade_Catalyst_Charged",
     greatvault = "Interface\\Icons\\INV_Misc_Lockbox_1",
     upgradevendor = 463442, -- Reforge icon (FileDataID)
+    guildservices = "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend",
     voidstorage = "Interface\\Icons\\INV_Enchant_VoidCrystal",
     tradingpost = "Interface\\Icons\\tradingpostcurrency",
     areapoi = "Interface\\Icons\\INV_Misc_QuestionMark",
@@ -698,30 +927,35 @@ function MapSearch:CreateSearchFrame()
     
     -- Apply saved position or default (left side)
     if EasyFind.db.mapSearchPosition then
-        searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", EasyFind.db.mapSearchPosition, 0)
+        searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", EasyFind.db.mapSearchPosition, 2)
     else
-        searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", 0, 0)
+        searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", 0, 2)
     end
     
-    -- Apply theme-appropriate backdrop
+    -- Apply theme-appropriate backdrop (border only — atlas fills the background)
     if (EasyFind.db.resultsTheme or "Classic") == "Retail" then
         searchFrame:SetBackdrop({
-            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
             edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = true, tileSize = 32, edgeSize = 16,
+            edgeSize = 16,
             insets = { left = 4, right = 4, top = 4, bottom = 4 }
         })
-        searchFrame:SetBackdropColor(0.45, 0.45, 0.45, 0.95)
-        searchFrame:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+        searchFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
     else
         searchFrame:SetBackdrop({
-            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
             edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-            tile = true, tileSize = 32, edgeSize = 16,
+            edgeSize = 16,
             insets = { left = 4, right = 4, top = 4, bottom = 4 }
         })
     end
-    
+
+    -- Quest-log atlas background, clipped to search bar height
+    local bgTex = searchFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
+    bgTex:SetPoint("TOPLEFT", 4, -4)
+    bgTex:SetPoint("BOTTOMRIGHT", -4, 4)
+    bgTex:SetAtlas("QuestLog-main-background", false)
+    searchFrame:SetClipsChildren(true)
+    searchFrame.bgTex = bgTex
+
     -- Draggable with Shift key (constrained to map bottom edge)
     searchFrame:RegisterForDrag("LeftButton")
     searchFrame:SetScript("OnDragStart", function(self)
@@ -749,7 +983,7 @@ function MapSearch:CreateSearchFrame()
             newX = mmax(0, mmin(newX, maxX))
             
             self:ClearAllPoints()
-            self:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", newX, 0)
+            self:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", newX, 2)
             EasyFind.db.mapSearchPosition = newX
         elseif self.isDragging then
             self.isDragging = false
@@ -828,7 +1062,7 @@ function MapSearch:CreateSearchFrame()
             globalSearchFrame.editBox.placeholder:Show()
         end
         MapSearch:HideResults()
-        MapSearch:ClearHighlight()
+        MapSearch:ClearAll()
         MapSearch:ClearZoneHighlight()
     end)
     clearBtn:SetScript("OnEnter", function(self)
@@ -889,30 +1123,36 @@ function MapSearch:CreateSearchFrame()
     
     -- Position on the right side (anchored to bottom-right of the map scroll container)
     if EasyFind.db.globalSearchPosition then
-        globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", EasyFind.db.globalSearchPosition, 0)
+        globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", EasyFind.db.globalSearchPosition, 2)
     else
-        globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", 0, 0)
+        globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", 0, 2)
     end
     
     -- Apply theme-appropriate backdrop
+    -- Apply theme-appropriate backdrop (border only — atlas fills the background)
     if (EasyFind.db.resultsTheme or "Classic") == "Retail" then
         globalSearchFrame:SetBackdrop({
-            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
             edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = true, tileSize = 32, edgeSize = 16,
+            edgeSize = 16,
             insets = { left = 4, right = 4, top = 4, bottom = 4 }
         })
-        globalSearchFrame:SetBackdropColor(0.45, 0.45, 0.45, 0.95)
-        globalSearchFrame:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+        globalSearchFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
     else
         globalSearchFrame:SetBackdrop({
-            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
             edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-            tile = true, tileSize = 32, edgeSize = 16,
+            edgeSize = 16,
             insets = { left = 4, right = 4, top = 4, bottom = 4 }
         })
     end
-    
+
+    -- Quest-log atlas background, clipped to search bar height
+    local bgTex = globalSearchFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
+    bgTex:SetPoint("TOPLEFT", 4, -4)
+    bgTex:SetPoint("BOTTOMRIGHT", -4, 4)
+    bgTex:SetAtlas("QuestLog-main-background", false)
+    globalSearchFrame:SetClipsChildren(true)
+    globalSearchFrame.bgTex = bgTex
+
     -- Draggable with Shift key (constrained to map bottom edge)
     globalSearchFrame:RegisterForDrag("LeftButton")
     globalSearchFrame:SetScript("OnDragStart", function(self)
@@ -938,7 +1178,7 @@ function MapSearch:CreateSearchFrame()
             newX = mmin(0, mmax(newX, maxNeg))
             
             self:ClearAllPoints()
-            self:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", newX, 0)
+            self:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", newX, 2)
             EasyFind.db.globalSearchPosition = newX
         elseif self.isDragging then
             self.isDragging = false
@@ -1017,7 +1257,7 @@ function MapSearch:CreateSearchFrame()
             searchFrame.editBox.placeholder:Show()
         end
         MapSearch:HideResults()
-        MapSearch:ClearHighlight()
+        MapSearch:ClearAll()
         MapSearch:ClearZoneHighlight()
     end)
     globalClearBtn:SetScript("OnEnter", function(self)
@@ -1076,7 +1316,7 @@ function MapSearch:CreateResultsFrame()
     resultsFrame:SetFrameLevel(1001)
     
     -- Default anchor to local search bar; will be re-anchored dynamically
-    resultsFrame:SetPoint("BOTTOMLEFT", searchFrame, "TOPLEFT", 0, 2)
+    resultsFrame:SetPoint("TOPLEFT", searchFrame, "BOTTOMLEFT", 0, -2)
     
     resultsFrame:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
@@ -1084,10 +1324,10 @@ function MapSearch:CreateResultsFrame()
         tile = true, tileSize = 32, edgeSize = 16,
         insets = { left = 4, right = 4, top = 4, bottom = 4 }
     })
-    
+
     resultsFrame:Hide()
     
-    for i = 1, MAX_RESULTS do
+    for i = 1, MAX_RESULTS_POOL do
         local btn = self:CreateResultButton(i)
         resultButtons[i] = btn
     end
@@ -1146,6 +1386,60 @@ function MapSearch:CreateResultButton(index)
     pinIcon:Hide()
     btn.pinIcon = pinIcon
 
+    -- Navigate button — shortcut: select result + auto-set waypoint in one click
+    local navBtn = CreateFrame("Button", nil, btn)
+    navBtn:SetSize(24, 24)
+    navBtn:SetPoint("RIGHT", btn, "RIGHT", -2, 0)
+    local navTex = navBtn:CreateTexture(nil, "ARTWORK")
+    navTex:SetSize(22, 22)
+    navTex:SetPoint("CENTER")
+    navTex:SetAtlas("Waypoint-MapPin-Untracked")
+    navBtn.texture = navTex
+    navBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    navBtn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Navigate")
+        GameTooltip:AddLine("Show pin and track on minimap", 0.6, 0.6, 0.6)
+        GameTooltip:Show()
+    end)
+    navBtn:SetScript("OnLeave", GameTooltip_Hide)
+    navBtn:SetScript("OnClick", function(self)
+        local data = btn.data
+        if not data then return end
+
+        -- GPS routing: for global zone/instance results, check if we need cross-zone navigation
+        if isGlobalSearch and ns.RouteEngine and ns.TransportGraph then
+            local destMapID = data.entranceMapID or data.zoneMapID
+            if destMapID then
+                local playerMapID = C_Map.GetBestMapForUnit("player")
+                local playerNode = playerMapID and ns.TransportGraph:ResolveNode(playerMapID)
+                local destNode = ns.TransportGraph:ResolveNode(destMapID)
+
+                -- Only route if player and dest resolve to DIFFERENT graph nodes
+                if playerNode and destNode and playerNode ~= destNode then
+                    local finalCoords = nil
+                    if data.isDungeonEntrance and data.x and data.y then
+                        finalCoords = { x = data.x, y = data.y, icon = data.icon, category = data.category }
+                    elseif data.entranceX and data.entranceY then
+                        finalCoords = { x = data.entranceX, y = data.entranceY, icon = data.entranceIcon, category = data.entranceCategory }
+                    end
+
+                    local started = ns.RouteEngine:StartRoute(destMapID, data.name, finalCoords)
+                    -- Always return for GPS-eligible items — don't fall through to map highlight
+                    searchFrame.editBox:ClearFocus()
+                    MapSearch:HideResults()
+                    return
+                end
+            end
+        end
+
+        -- Flag: auto-track once the pin is placed by ShowWaypointAt
+        MapSearch.autoTrackNextPin = true
+        MapSearch:SelectResult(data)
+    end)
+    navBtn:Hide()
+    btn.navBtn = navBtn
+
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     btn:SetScript("OnClick", function(self, mouseButton)
         if mouseButton == "RightButton" and self.data then
@@ -1168,6 +1462,41 @@ function MapSearch:CreateResultButton(index)
             return
         end
         MapSearch:SelectResult(self.data)
+    end)
+
+    -- Hover preview: show pin at result coordinates while hovering
+    btn:SetScript("OnEnter", function(self)
+        local data = self.data
+        if not data or isGlobalSearch then return end
+        -- Only preview results with coordinates on the current map
+        local coords = MapSearch:GetPreviewCoords(data)
+        if not coords then return end
+        -- Save current pin state before previewing
+        MapSearch._savedPinState = activePinState
+        MapSearch._previewing = true
+        if coords.instances then
+            MapSearch:ShowMultipleWaypoints(coords.instances)
+        else
+            MapSearch:ShowWaypointAt(coords.x, coords.y, coords.icon, coords.category)
+        end
+        -- Mark as preview so it doesn't become the persistent state
+        activePinState = MapSearch._savedPinState
+    end)
+    btn:SetScript("OnLeave", function(self)
+        if not MapSearch._previewing then return end
+        MapSearch._previewing = nil
+        -- Clear the preview pin
+        MapSearch:ClearHighlight()
+        -- Restore the previously active pin if it was on this map
+        local saved = MapSearch._savedPinState
+        MapSearch._savedPinState = nil
+        if saved and saved.mapID == WorldMapFrame:GetMapID() then
+            if saved.instances then
+                MapSearch:ShowMultipleWaypoints(saved.instances)
+            else
+                MapSearch:ShowWaypointAt(saved.x, saved.y, saved.icon, saved.category)
+            end
+        end
     end)
 
     btn:Hide()
@@ -1262,8 +1591,16 @@ function MapSearch:CreateHighlightFrame()
     waypointPin:SetScript("OnEnter", function(self)
         if self.isLocalSearch then
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:AddLine("Left-click to track on minimap")
-            GameTooltip:AddLine("Right-click to dismiss", 0.6, 0.6, 0.6)
+            -- Check if player is in the viewed zone (handles sub-zones like Dalaran shops)
+            local viewingMapID = WorldMapFrame:GetMapID()
+            local playerOnMap = viewingMapID and C_Map.GetPlayerMapPosition(viewingMapID, "player")
+            if playerOnMap then
+                GameTooltip:AddLine("Left-click to track on minimap")
+                GameTooltip:AddLine("Right-click to dismiss", 0.6, 0.6, 0.6)
+            else
+                GameTooltip:AddLine("Waypoint tracking requires being in this zone", 0.6, 0.6, 0.6)
+                GameTooltip:AddLine("Right-click to dismiss", 0.6, 0.6, 0.6)
+            end
             GameTooltip:Show()
         else
             MapSearch:ClearHighlight()
@@ -1271,15 +1608,34 @@ function MapSearch:CreateHighlightFrame()
     end)
     waypointPin:SetScript("OnLeave", GameTooltip_Hide)
     waypointPin:SetScript("OnMouseUp", function(self, button)
+        NavDebug("Pin click:", button, "isLocal=", tostring(self.isLocalSearch),
+            "wpXY=", tostring(self.waypointX), tostring(self.waypointY))
         if button == "LeftButton" and self.isLocalSearch and self.waypointX and self.waypointY then
-            local mapID = WorldMapFrame:GetMapID()
-            if mapID then
-                C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, self.waypointX, self.waypointY))
-                C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+            local viewingMapID = WorldMapFrame:GetMapID()
+            local playerOnMap = viewingMapID and C_Map.GetPlayerMapPosition(viewingMapID, "player")
+            NavDebug("  viewingMapID=", viewingMapID,
+                "playerOnMap=", tostring(playerOnMap and true or false))
+            if playerOnMap then
+                -- Clear any stale system waypoint so it doesn't interfere
+                if C_Map.HasUserWaypoint() then
+                    C_Map.ClearUserWaypoint()
+                end
+                internalWaypoint = {
+                    uiMapID = viewingMapID,
+                    position = { x = self.waypointX, y = self.waypointY },
+                }
+                NavDebug("  |cFF00FF00Internal waypoint set|r mapID=", viewingMapID,
+                    sformat("pos=%.4f,%.4f", self.waypointX, self.waypointY))
                 ShowSuperTrackGlow()
+            else
+                NavDebug("  |cFFFF0000Waypoint BLOCKED|r — player not on this map")
             end
         end
-        MapSearch:ClearHighlight()
+        -- Right-click = full dismiss; left-click = keep pin visible (tracking started)
+        if button == "RightButton" then
+            NavDebug("  → right-click dismiss (ClearAll)")
+            MapSearch:ClearAll()
+        end
     end)
     
     local wpIcon = waypointPin:CreateTexture(nil, "ARTWORK")
@@ -1303,6 +1659,52 @@ function MapSearch:CreateHighlightFrame()
     pinPulse:SetToAlpha(0.3)
     pinPulse:SetDuration(0.4)
     waypointPin.animGroup = pinAnimGroup
+
+    -- Create GPS route pin — distinct appearance from regular waypoint pin
+    gpsPin = CreateFrame("Frame", "EasyFindGPSPin", WorldMapFrame.ScrollContainer.Child)
+    gpsPin:SetSize(64, 64)
+    gpsPin:SetFrameStrata("HIGH")
+    gpsPin:SetFrameLevel(2001)
+    gpsPin:Hide()
+    gpsPin:EnableMouse(true)
+    gpsPin:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("|cFF00CCFFActive GPS Route|r")
+        if self.stepLabel then
+            GameTooltip:AddLine(self.stepLabel, 1, 1, 1)
+        end
+        GameTooltip:AddLine("Right-click to cancel route", 0.6, 0.6, 0.6)
+        GameTooltip:Show()
+    end)
+    gpsPin:SetScript("OnLeave", GameTooltip_Hide)
+    gpsPin:SetScript("OnMouseUp", function(self, button)
+        if button == "RightButton" and ns.RouteEngine then
+            ns.RouteEngine:CancelRoute("Cancelled from map")
+            MapSearch:HideGPSPin()
+        end
+    end)
+
+    local gpsIcon = gpsPin:CreateTexture(nil, "ARTWORK")
+    gpsIcon:SetAllPoints()
+    gpsIcon:SetTexture(450908)
+    gpsIcon:SetTexCoord(0.043, 0.957, 0.043, 0.957)
+    gpsPin.icon = gpsIcon
+
+    local gpsGlow = gpsPin:CreateTexture(nil, "BACKGROUND")
+    gpsGlow:SetSize(100, 100)
+    gpsGlow:SetPoint("CENTER")
+    gpsGlow:SetTexture("Interface\\Cooldown\\star4")
+    gpsGlow:SetVertexColor(0, 0.8, 1, 0.8)  -- Cyan glow to match GPS theme
+    gpsGlow:SetBlendMode("ADD")
+    gpsPin.glow = gpsGlow
+
+    local gpsAnimGroup = gpsPin:CreateAnimationGroup()
+    gpsAnimGroup:SetLooping("BOUNCE")
+    local gpsPulse = gpsAnimGroup:CreateAnimation("Alpha")
+    gpsPulse:SetFromAlpha(1)
+    gpsPulse:SetToAlpha(0.3)
+    gpsPulse:SetDuration(0.4)
+    gpsPin.animGroup = gpsAnimGroup
 
 end
 
@@ -2229,14 +2631,30 @@ function MapSearch:HookWorldMap()
     WorldMapFrame:HookScript("OnShow", function()
         searchFrame:Show()
         globalSearchFrame:Show()
+        -- Restore pins if we have a saved pin state on the current map
+        if activePinState then
+            local currentMapID = WorldMapFrame:GetMapID()
+            if currentMapID == activePinState.mapID then
+                C_Timer.After(0, function()
+                    if activePinState and activePinState.instances then
+                        self:ShowMultipleWaypoints(activePinState.instances)
+                    elseif activePinState then
+                        self:ShowWaypointAt(activePinState.x, activePinState.y,
+                            activePinState.icon, activePinState.category)
+                    end
+                end)
+            end
+        end
+        -- Restore GPS pin if a route is active
+        self:RestoreGPSPin()
     end)
     
     WorldMapFrame:HookScript("OnHide", function()
         searchFrame:Hide()
         globalSearchFrame:Hide()
         self:HideResults()
-        self:ClearHighlight()
-        self:ClearZoneHighlight()
+        -- Don't ClearHighlight here — pins persist through close/reopen.
+        -- They're children of the canvas so they're hidden automatically.
         self.pendingWaypoint = nil
     end)
     
@@ -2323,10 +2741,23 @@ function MapSearch:HookWorldMap()
                 self:ClearZoneHighlight()  -- Belt-and-suspenders: nuke any lingering zone highlight
                 self:ShowWaypointAt(wp.x, wp.y, wp.icon, wp.category)
             end)
+        elseif activePinState and activePinState.mapID == newMapID then
+            -- Navigated back to the map with our active pin — restore it
+            DebugPrint("[EasyFind] OnMapChanged - restoring active pin on mapID:", newMapID)
+            C_Timer.After(0.1, function()
+                if activePinState and activePinState.instances then
+                    self:ShowMultipleWaypoints(activePinState.instances)
+                elseif activePinState then
+                    self:ShowWaypointAt(activePinState.x, activePinState.y,
+                        activePinState.icon, activePinState.category)
+                end
+            end)
         else
             DebugPrint("[EasyFind] OnMapChanged - no pending, clearing highlights")
             self:ClearZoneHighlight()
         end
+        -- Always attempt to restore GPS pin on map change
+        self:RestoreGPSPin()
     end)
 end
 
@@ -2388,31 +2819,36 @@ function MapSearch:ScanDungeonEntrances(mapID)
     
     for _, entrance in ipairs(entrances) do
         if entrance.name and entrance.position then
-            -- Determine dungeon vs raid
-            local cat = "dungeon"
-            if entrance.journalInstanceID and EJ_GetInstanceInfo then
-                local _, _, _, _, _, _, _, _, _, _, _, entIsRaid = EJ_GetInstanceInfo(entrance.journalInstanceID)
-                if entIsRaid then
-                    cat = "raid"
+            -- Skip entrances that bleed over from adjacent zones
+            local ex, ey = entrance.position.x, entrance.position.y
+            local posInfo = C_Map.GetMapInfoAtPosition and C_Map.GetMapInfoAtPosition(mapID, ex, ey)
+            if not posInfo or posInfo.mapID == mapID then
+                -- Determine dungeon vs raid
+                local cat = "dungeon"
+                if entrance.journalInstanceID and EJ_GetInstanceInfo then
+                    local _, _, _, _, _, _, _, _, _, _, _, entIsRaid = EJ_GetInstanceInfo(entrance.journalInstanceID)
+                    if entIsRaid then
+                        cat = "raid"
+                    end
                 end
+
+                -- Build a parent zone label from the map this entrance is on
+                local mapInfo = C_Map.GetMapInfo(mapID)
+                local parentLabel = mapInfo and mapInfo.name or ""
+
+                tinsert(results, {
+                    name = entrance.name,
+                    category = cat,
+                    icon = nil,  -- use category icon
+                    isStatic = true,
+                    isDungeonEntrance = true,
+                    entranceMapID = mapID,
+                    x = ex,
+                    y = ey,
+                    pathPrefix = parentLabel,
+                    keywords = {cat, "instance", "entrance", "portal"},
+                })
             end
-            
-            -- Build a parent zone label from the map this entrance is on
-            local mapInfo = C_Map.GetMapInfo(mapID)
-            local parentLabel = mapInfo and mapInfo.name or ""
-            
-            tinsert(results, {
-                name = entrance.name,
-                category = cat,
-                icon = nil,  -- use category icon
-                isStatic = true,
-                isDungeonEntrance = true,
-                entranceMapID = mapID,
-                x = entrance.position.x,
-                y = entrance.position.y,
-                pathPrefix = parentLabel,
-                keywords = {cat, "instance", "entrance", "portal"},
-            })
         end
     end
     
@@ -2504,20 +2940,44 @@ function MapSearch:ScanFlightMasters(mapID)
     local nodes = C_TaxiMap.GetTaxiNodesForMap(mapID)
     if not nodes then return results end
 
+    local playerFaction = UnitFactionGroup("player")
+    local FPFaction = Enum.FlightPathFaction
+    local mapInfo = C_Map.GetMapInfo(mapID)
+    local mapName = mapInfo and mapInfo.name
+
     for _, node in ipairs(nodes) do
         if node.name and node.position then
-            local x, y = node.position.x, node.position.y
-            -- Only include nodes within the current map's bounds
-            if x >= 0 and x <= 1 and y >= 0 and y <= 1 then
-                tinsert(results, {
-                    name = node.name .. " (Flight Master)",
-                    category = "flightmaster",
-                    icon = "atlas:TaxiNode_Neutral",
-                    isStatic = true,
-                    x = x,
-                    y = y,
-                    keywords = {"flight", "fly", "taxi", "fp", "flight master"},
-                })
+            -- Skip flight paths restricted to the opposing faction
+            local skip = false
+            if node.faction and FPFaction then
+                if (node.faction == FPFaction.Horde and playerFaction ~= "Horde")
+                    or (node.faction == FPFaction.Alliance and playerFaction ~= "Alliance") then
+                    skip = true
+                end
+            end
+            if not skip then
+                local x, y = node.position.x, node.position.y
+                -- Filter by zone name embedded in the FP name ("Location, Zone Name")
+                local fpZone = node.name:match(",([^,]+)$")
+                if fpZone then fpZone = fpZone:match("^%s*(.-)%s*$") end  -- trim whitespace
+                local belongsToMap = false
+                if fpZone and mapName then
+                    belongsToMap = (fpZone == mapName)
+                elseif not fpZone and mapName then
+                    -- No zone suffix (city FP like "Dalaran") — include if name matches map
+                    belongsToMap = (node.name == mapName)
+                end
+                if x >= 0 and x <= 1 and y >= 0 and y <= 1 and belongsToMap then
+                    tinsert(results, {
+                        name = node.name .. " (Flight Master)",
+                        category = "flightmaster",
+                        icon = "atlas:TaxiNode_Neutral",
+                        isStatic = true,
+                        x = x,
+                        y = y,
+                        keywords = {"flight", "fly", "taxi", "fp", "flight master"},
+                    })
+                end
             end
         end
     end
@@ -3152,10 +3612,27 @@ function MapSearch:ShowResults(results)
         return
     end
     
-    local count = mmin(#results, MAX_RESULTS)
-    local yOffset = -10  -- running vertical offset
-    
-    for i = 1, MAX_RESULTS do
+    local maxResults = EasyFind.db.maxResults or 5
+    local count = mmin(#results, maxResults)
+
+    -- Clamp visible results to available screen space below the search bar
+    local anchor = activeSearchFrame or searchFrame
+    if isGlobalSearch and globalSearchFrame then
+        anchor = globalSearchFrame
+    end
+    local anchorBottom = anchor and anchor:GetBottom()
+    if anchorBottom then
+        local overlap = 8  -- border overlap offset
+        local padding = 12 + 10  -- top(6)+bottom(6) padding + screen margin
+        local availableHeight = anchorBottom + overlap - padding
+        local rowEstimate = 26  -- min row height(24) + spacing(2)
+        local maxFit = mmax(1, mfloor(availableHeight / rowEstimate))
+        count = mmin(count, maxFit)
+    end
+
+    local yOffset = -6  -- running vertical offset (top padding)
+
+    for i = 1, MAX_RESULTS_POOL do
         local btn = resultButtons[i]
         if i <= count then
             local data = results[i]
@@ -3173,6 +3650,7 @@ function MapSearch:ShowResults(results)
             if btn.prefixText then btn.prefixText:Hide() end
             if btn.indentLine then btn.indentLine:Hide() end
             if btn.pinIcon then btn.pinIcon:Hide() end
+            if btn.navBtn then btn.navBtn:Hide() end
 
             -- Format based on type
             if data.isZoneParent then
@@ -3232,11 +3710,39 @@ function MapSearch:ShowResults(results)
                 btn.icon:Show()
             end
 
+            -- Show navigate button for results that resolve to coordinates
+            -- Also show for global zone results that have a transport graph node (GPS routing)
+            local hasCoords = (data.x and data.y)
+                or data.isDungeonEntrance
+                or (data.isZone and data.entranceX and data.entranceY)
+            if not hasCoords and isGlobalSearch and data.isZone and data.zoneMapID and ns.TransportGraph then
+                hasCoords = (ns.TransportGraph:ResolveNode(data.zoneMapID) ~= nil)
+            end
+            if hasCoords and btn.navBtn then
+                -- Use GPS icon for global zone/instance results that will trigger routing
+                local isGPSEligible = isGlobalSearch and ns.TransportGraph
+                    and (data.isZone or data.isDungeonEntrance)
+                    and (data.zoneMapID or data.entranceMapID)
+                    and ns.TransportGraph:ResolveNode(data.zoneMapID or data.entranceMapID)
+                if isGPSEligible then
+                    btn.navBtn.texture:SetAtlas(nil)
+                    btn.navBtn.texture:SetTexture(450908)
+                    btn.navBtn.texture:SetTexCoord(0.043, 0.957, 0.043, 0.957)
+                else
+                    btn.navBtn.texture:SetTexture(nil)
+                    btn.navBtn.texture:SetTexCoord(0, 1, 0, 1)
+                    btn.navBtn.texture:SetAtlas("Waypoint-MapPin-Untracked")
+                end
+                btn.navBtn:Show()
+                -- Adjust text right edge to make room
+                btn.text:SetPoint("RIGHT", btn.navBtn, "LEFT", -2, 0)
+            end
+
             -- Show pin indicator for pinned items
             if data.isPinned and btn.pinIcon then
                 btn.pinIcon:Show()
             end
-            
+
             btn:Show()
             
             -- Measure actual text height and size button to fit
@@ -3251,7 +3757,7 @@ function MapSearch:ShowResults(results)
         end
     end
     
-    resultsFrame:SetHeight(-yOffset + 10)
+    resultsFrame:SetHeight(-yOffset + 6)  -- bottom padding
     
     -- Anchor results dropdown to whichever search bar is active
     resultsFrame:ClearAllPoints()
@@ -3259,7 +3765,7 @@ function MapSearch:ShowResults(results)
     if isGlobalSearch and globalSearchFrame then
         anchor = globalSearchFrame
     end
-    resultsFrame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, 2)
+    resultsFrame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, 8)
     
     resultsFrame:Show()
 end
@@ -3294,10 +3800,19 @@ function MapSearch:SelectFirstResult()
 end
 
 function MapSearch:SelectResult(data)
+    -- Clear preview state so OnLeave doesn't undo the real selection
+    self._previewing = nil
+    self._savedPinState = nil
     searchFrame.editBox:ClearFocus()
     self:HideResults()
 
     if data then
+        NavDebug("SelectResult:", data.name or "?",
+            sformat("| map=%s xy=%s,%s cat=%s isZone=%s isDungeon=%s",
+                tostring(WorldMapFrame:GetMapID()),
+                tostring(data.x), tostring(data.y),
+                tostring(data.category),
+                tostring(data.isZone), tostring(data.isDungeonEntrance)))
         DebugPrint("[EasyFind] SelectResult: name=", data.name,
             "isZone=", data.isZone, "zoneMapID=", data.zoneMapID,
             "isDungeonEntrance=", data.isDungeonEntrance,
@@ -3308,6 +3823,7 @@ function MapSearch:SelectResult(data)
 
         -- Handle parent zone header - always navigate to parent maps
         if data.isZoneParent and data.zoneMapID then
+            NavDebug("  → zone parent, navigating to mapID", data.zoneMapID)
             DebugPrint("[EasyFind] SelectResult → ZONE PARENT branch, navigating to", data.zoneMapID)
             self:ClearZoneHighlight()
             WorldMapFrame:SetMapID(data.zoneMapID)
@@ -3319,6 +3835,7 @@ function MapSearch:SelectResult(data)
             -- If this zone is also a dungeon/raid entrance, set a pending waypoint
             -- so the entrance gets highlighted after navigating to the zone
             if data.entranceX and data.entranceY and data.entranceMapID then
+                NavDebug("  → zone+entrance, entranceMapID=", data.entranceMapID)
                 DebugPrint("[EasyFind] SelectResult → ZONE+ENTRANCE branch, entranceMapID=", data.entranceMapID)
                 if EasyFind.db.navigateToZonesDirectly then
                     self:ClearZoneHighlight()
@@ -3349,8 +3866,10 @@ function MapSearch:SelectResult(data)
         -- Dungeon/raid entrance from global search: navigate to zone, then show waypoint
         if data.isDungeonEntrance and data.entranceMapID then
             local currentMapID = WorldMapFrame:GetMapID()
+            NavDebug("  → dungeon entrance, currentMap=", currentMapID, "entranceMapID=", data.entranceMapID)
             DebugPrint("[EasyFind] SelectResult → DUNGEON ENTRANCE branch, currentMap=", currentMapID, "entranceMapID=", data.entranceMapID)
             if currentMapID == data.entranceMapID then
+                NavDebug("  → already on entrance map, showing waypoint directly")
                 DebugPrint("[EasyFind] SelectResult → DUNGEON DIRECT waypoint")
                 -- Already on the right map, just show the waypoint
                 self:ShowWaypointAt(data.x, data.y, data.icon, data.category)
@@ -3392,12 +3911,15 @@ function MapSearch:SelectResult(data)
         
         -- Check if this POI has multiple instances (duplicates)
         if data.allInstances and #data.allInstances > 1 then
+            NavDebug("  → multi-pin:", #data.allInstances, "instances")
             -- Show ALL instances on the map
             self:ShowMultipleWaypoints(data.allInstances)
         elseif data.x and data.y then
+            NavDebug("  → single POI, showing waypoint at", sformat("%.4f, %.4f", data.x, data.y))
             -- Single POI with coordinates
             self:ShowWaypointAt(data.x, data.y, data.icon, data.category)
         elseif data.pin then
+            NavDebug("  → dynamic pin highlight (no coords)")
             -- Dynamic pin with no coords - highlight it directly
             self:HighlightPin(data.pin)
         end
@@ -3406,8 +3928,16 @@ end
 
 -- Show multiple waypoints for duplicate POIs (e.g., multiple auction houses)
 function MapSearch:ShowMultipleWaypoints(instances)
+    NavDebug("ShowMultipleWaypoints:", #instances, "pins, isLocal=", tostring(not isGlobalSearch))
     self:ClearHighlight()
-    
+
+    -- Save multi-pin state for restore after map close/reopen
+    activePinState = {
+        mapID = WorldMapFrame:GetMapID(),
+        instances = instances,
+        isLocal = not isGlobalSearch,
+    }
+
     local canvas = WorldMapFrame.ScrollContainer.Child
     if not canvas then return end
     
@@ -3471,24 +4001,44 @@ function MapSearch:ShowMultipleWaypoints(instances)
                     extraPin:EnableMouse(true)
                     extraPin:SetScript("OnEnter", function(self)
                         if self.isLocalSearch then
+                            local viewingMapID = WorldMapFrame:GetMapID()
+                            local playerOnMap = viewingMapID and C_Map.GetPlayerMapPosition(viewingMapID, "player")
                             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                             GameTooltip:SetText("Click to track on minimap")
+                            if not playerOnMap then
+                                GameTooltip:AddLine("Waypoint tracking requires being in this zone", 0.6, 0.6, 0.6)
+                            end
+                            GameTooltip:AddLine("Right-click to dismiss", 0.6, 0.6, 0.6)
                             GameTooltip:Show()
                         else
                             MapSearch:ClearHighlight()
                         end
                     end)
                     extraPin:SetScript("OnLeave", GameTooltip_Hide)
-                    extraPin:SetScript("OnMouseUp", function(self)
-                        if self.isLocalSearch and self.waypointX and self.waypointY then
-                            local mapID = WorldMapFrame:GetMapID()
-                            if mapID then
-                                C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, self.waypointX, self.waypointY))
-                                C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+                    extraPin:SetScript("OnMouseUp", function(self, button)
+                        NavDebug("ExtraPin click:", button, "isLocal=", tostring(self.isLocalSearch),
+                            "wpXY=", tostring(self.waypointX), tostring(self.waypointY))
+                        if button == "LeftButton" and self.isLocalSearch and self.waypointX and self.waypointY then
+                            local viewingMapID = WorldMapFrame:GetMapID()
+                            local playerOnMap = viewingMapID and C_Map.GetPlayerMapPosition(viewingMapID, "player")
+                            if playerOnMap then
+                                if C_Map.HasUserWaypoint() then
+                                    C_Map.ClearUserWaypoint()
+                                end
+                                internalWaypoint = {
+                                    uiMapID = viewingMapID,
+                                    position = { x = self.waypointX, y = self.waypointY },
+                                }
+                                NavDebug("  |cFF00FF00ExtraPin internal waypoint set|r mapID=", viewingMapID)
                                 ShowSuperTrackGlow()
+                            else
+                                NavDebug("  |cFFFF0000ExtraPin waypoint BLOCKED|r — player not on this map")
                             end
                         end
-                        MapSearch:ClearHighlight()
+                        if button == "RightButton" then
+                            NavDebug("  → right-click dismiss (ClearAll)")
+                            MapSearch:ClearAll()
+                        end
                     end)
 
                     self.extraPins[i-1] = extraPin
@@ -3594,10 +4144,26 @@ function MapSearch:ShowMultipleWaypoints(instances)
             end
         end
     end
+
+    -- Auto-track on minimap if requested by navigate button
+    if self.autoTrackNextPin then
+        self.autoTrackNextPin = nil
+        self:TrackActivePin()
+    end
 end
 
 function MapSearch:ShowWaypointAt(x, y, icon, category)
+    NavDebug("ShowWaypointAt:", sformat("%.4f, %.4f", x, y), "cat=", category or "nil",
+        "isLocal=", tostring(not isGlobalSearch), "mapID=", tostring(WorldMapFrame:GetMapID()))
     self:ClearHighlight()
+
+    -- Save pin state so it can be restored after map close/reopen or map change
+    activePinState = {
+        mapID = WorldMapFrame:GetMapID(),
+        x = x, y = y,
+        icon = icon, category = category,
+        isLocal = not isGlobalSearch,
+    }
 
     local canvas = WorldMapFrame.ScrollContainer.Child
     if not canvas then return end
@@ -3652,6 +4218,12 @@ function MapSearch:ShowWaypointAt(x, y, icon, category)
     if indicatorFrame.animGroup then
         indicatorFrame.animGroup:Play()
     end
+
+    -- Auto-track on minimap if requested by navigate button
+    if self.autoTrackNextPin then
+        self.autoTrackNextPin = nil
+        self:TrackActivePin()
+    end
 end
 
 function MapSearch:HighlightPin(pin)
@@ -3693,6 +4265,7 @@ function MapSearch:HighlightPin(pin)
 end
 
 function MapSearch:ClearHighlight()
+    NavDebug("ClearHighlight — hiding map pins/highlights (waypoint preserved)")
     highlightFrame:Hide()
     indicatorFrame:Hide()
     waypointPin:Hide()
@@ -3735,6 +4308,165 @@ function MapSearch:ClearHighlight()
     currentHighlightedPin = nil
 end
 
+-- =============================================================================
+-- GPS PIN — world map pin for active GPS route step (transport departure point)
+-- =============================================================================
+function MapSearch:ShowGPSPin(mapID, x, y, label)
+    if not gpsPin then return end
+    gpsPinState = { mapID = mapID, x = x, y = y, label = label }
+
+    -- Only show if the world map is showing the right zone
+    if not WorldMapFrame:IsShown() then return end
+    local currentMapID = WorldMapFrame:GetMapID()
+    if currentMapID ~= mapID then
+        gpsPin:Hide()
+        if highlightFrame then highlightFrame:Hide() end
+        if indicatorFrame then indicatorFrame:Hide() end
+        return
+    end
+
+    local canvas = WorldMapFrame.ScrollContainer.Child
+    if not canvas then return end
+    local canvasWidth, canvasHeight = canvas:GetSize()
+    local userScale = EasyFind.db.iconScale or 1.0
+    local pinSize = ns.UIToCanvas(ns.PIN_SIZE) * userScale
+    local glowSize = ns.UIToCanvas(ns.PIN_GLOW_SIZE) * userScale
+
+    gpsPin:SetSize(pinSize, pinSize)
+    gpsPin.glow:SetSize(glowSize, glowSize)
+    gpsPin.stepLabel = label
+    gpsPin:ClearAllPoints()
+    gpsPin:SetPoint("CENTER", canvas, "TOPLEFT", canvasWidth * x, -canvasHeight * y)
+    gpsPin:Show()
+    if gpsPin.animGroup and EasyFind.db.blinkingPins then
+        gpsPin.animGroup:Play()
+    end
+
+    -- Attach highlight box and bouncing arrow indicator
+    if highlightFrame then
+        local highlightSize = ns.UIToCanvas(ns.HIGHLIGHT_SIZE) * userScale
+        highlightFrame:SetSize(highlightSize, highlightSize)
+        highlightFrame:ClearAllPoints()
+        highlightFrame:SetPoint("CENTER", gpsPin, "CENTER", 0, 0)
+        ResizeHighlightBorders(highlightFrame)
+        highlightFrame:Show()
+        if highlightFrame.animGroup then highlightFrame.animGroup:Play() end
+    end
+    if indicatorFrame then
+        local indicatorSize = ns.UIToCanvas(ns.ICON_SIZE) * userScale
+        local indicatorGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE) * userScale
+        indicatorFrame:SetSize(indicatorSize, indicatorSize)
+        indicatorFrame.glow:SetSize(indicatorGlowSize, indicatorGlowSize)
+        indicatorFrame:Show()
+        if indicatorFrame.animGroup then indicatorFrame.animGroup:Play() end
+    end
+end
+
+function MapSearch:HideGPSPin()
+    gpsPinState = nil
+    if gpsPin then
+        gpsPin:Hide()
+        if gpsPin.animGroup then gpsPin.animGroup:Stop() end
+    end
+    if highlightFrame then
+        highlightFrame:Hide()
+        if highlightFrame.animGroup then highlightFrame.animGroup:Stop() end
+    end
+    if indicatorFrame then
+        indicatorFrame:Hide()
+        if indicatorFrame.animGroup then indicatorFrame.animGroup:Stop() end
+    end
+end
+
+function MapSearch:RestoreGPSPin()
+    if not gpsPinState then return end
+    -- Re-show if the map is viewing the GPS pin's zone
+    C_Timer.After(0, function()
+        if gpsPinState then
+            self:ShowGPSPin(gpsPinState.mapID, gpsPinState.x, gpsPinState.y, gpsPinState.label)
+        end
+    end)
+end
+
+-- Resolve preview-able coordinates for a search result on the current map.
+-- Returns {x, y, icon, category} or {instances} or nil if not previewable.
+function MapSearch:GetPreviewCoords(data)
+    local currentMapID = WorldMapFrame:GetMapID()
+    -- Multi-instance POIs
+    if data.allInstances and #data.allInstances > 1 then
+        return { instances = data.allInstances }
+    end
+    -- Direct POI coordinates
+    if data.x and data.y and not data.isZone then
+        -- Dungeon entrance on a different map — check EJ API for current map
+        if data.isDungeonEntrance and data.entranceMapID and data.entranceMapID ~= currentMapID then
+            if C_EncounterJournal and C_EncounterJournal.GetDungeonEntrancesForMap then
+                local entrances = C_EncounterJournal.GetDungeonEntrancesForMap(currentMapID)
+                if entrances then
+                    for _, ej in ipairs(entrances) do
+                        if ej.name == data.name and ej.position then
+                            return { x = ej.position.x, y = ej.position.y, icon = data.icon, category = data.category }
+                        end
+                    end
+                end
+            end
+            return nil  -- not visible on current map
+        end
+        return { x = data.x, y = data.y, icon = data.icon, category = data.category }
+    end
+    -- Zone with entrance on the current map
+    if data.isZone and data.entranceX and data.entranceY and data.entranceMapID == currentMapID then
+        return { x = data.entranceX, y = data.entranceY, icon = data.entranceIcon, category = data.entranceCategory }
+    end
+    return nil
+end
+
+-- Full clear: map visuals + minimap waypoint tracking
+-- Called by explicit dismiss actions (right-click pin, /ef clear, clear button)
+function MapSearch:ClearAll()
+    NavDebug("ClearAll — full dismiss (pins + waypoint + minimap tracker)")
+    activePinState = nil
+    self:ClearHighlight()
+    -- Only clear waypoint if EasyFind placed it (don't nuke manually placed waypoints)
+    if waypointController and waypointController:IsShown() then
+        HideSuperTrackGlow()
+        if C_Map.HasUserWaypoint() then
+            NavDebug("  clearing user waypoint")
+            C_Map.ClearUserWaypoint()
+        end
+    end
+end
+
+-- Auto-track the currently active pin on the minimap.
+-- Called by the navigate button to combine select + track in one action.
+function MapSearch:TrackActivePin()
+    if not activePinState then return end
+    local mapID = activePinState.mapID
+    local x, y
+    if activePinState.instances then
+        -- Multi-pin: track the first instance
+        local first = activePinState.instances[1]
+        if first then x, y = first.x, first.y end
+    else
+        x, y = activePinState.x, activePinState.y
+    end
+    if not mapID or not x or not y then return end
+
+    local playerOnMap = C_Map.GetPlayerMapPosition(mapID, "player")
+    if not playerOnMap then
+        NavDebug("TrackActivePin — player not on mapID", mapID, ", skipping")
+        return
+    end
+
+    if C_Map.HasUserWaypoint() then
+        C_Map.ClearUserWaypoint()
+    end
+    internalWaypoint = { uiMapID = mapID, position = { x = x, y = y } }
+    NavDebug("TrackActivePin — internal waypoint set mapID=", mapID,
+        sformat("pos=%.4f,%.4f", x, y))
+    ShowSuperTrackGlow()
+end
+
 function MapSearch:UpdateScale()
     if searchFrame then
         local scale = EasyFind.db.mapSearchScale or 1.0
@@ -3767,21 +4499,17 @@ function MapSearch:UpdateSearchBarTheme()
         if frame then
             if isRetail then
                 frame:SetBackdrop({
-                    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
                     edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-                    tile = true, tileSize = 32, edgeSize = 16,
+                    edgeSize = 16,
                     insets = { left = 4, right = 4, top = 4, bottom = 4 }
                 })
-                frame:SetBackdropColor(0.45, 0.45, 0.45, 0.95)
-                frame:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+                frame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
             else
                 frame:SetBackdrop({
-                    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
                     edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-                    tile = true, tileSize = 32, edgeSize = 16,
+                    edgeSize = 16,
                     insets = { left = 4, right = 4, top = 4, bottom = 4 }
                 })
-                frame:SetBackdropColor(1, 1, 1, 1)
                 frame:SetBackdropBorderColor(1, 1, 1, 1)
             end
         end
@@ -3791,12 +4519,12 @@ end
 function MapSearch:ResetPosition()
     if searchFrame then
         searchFrame:ClearAllPoints()
-        searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", 0, 0)
+        searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", 0, 2)
         EasyFind.db.mapSearchPosition = nil
     end
     if globalSearchFrame then
         globalSearchFrame:ClearAllPoints()
-        globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", 0, 0)
+        globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", 0, 2)
         EasyFind.db.globalSearchPosition = nil
     end
 end
@@ -3878,6 +4606,15 @@ function MapSearch:UpdateIconScales()
         for _, arr in ipairs(self.extraIndicators) do
             resizeIndicator(arr, multiIndSize, multiIndGlowSize)
         end
+    end
+end
+
+function MapSearch:UpdateMinimapMarkerSize()
+    if not nearTrackMarker then return end
+    local sz = EasyFind.db.minimapMarkerSize or 25
+    nearTrackMarker:SetSize(sz, sz)
+    if nearTrackMarker.glow then
+        nearTrackMarker.glow:SetSize(sz * 2, sz * 2)
     end
 end
 

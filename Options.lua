@@ -217,7 +217,7 @@ function Options:Initialize()
     isInitialized = true
     
     local FRAME_W = 570
-    local BASE_H  = 480  -- Increased to accommodate all elements without overlap
+    local BASE_H  = 550  -- Increased to accommodate all elements without overlap
     local ADV_H   = 30   -- extra height when Advanced Options expanded
     local COL_LEFT  = 20
     local COL_RIGHT = 300
@@ -313,8 +313,8 @@ function Options:Initialize()
     end)
     optionsFrame.opacitySlider = opacitySlider
 
-    local maxResultsSlider = CreateSlider(optionsFrame, "MaxResults", "Max Search Results", 6, 24, 1,
-        "Maximum number of search results to display in the dropdown (6-24).",
+    local maxResultsSlider = CreateSlider(optionsFrame, "MaxResults", "Max Search Results", 3, 24, 1,
+        "Maximum number of search results to display in the dropdown (3-24).",
         function(val) return tostring(mfloor(val + 0.5)) end)  -- Show as integer, not percentage
     maxResultsSlider:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", COL_LEFT, -350)
     maxResultsSlider:SetValue(EasyFind.db.maxResults or 12)
@@ -327,6 +327,20 @@ function Options:Initialize()
         end
     end)
     optionsFrame.maxResultsSlider = maxResultsSlider
+
+    local minimapMarkerSlider = CreateSlider(optionsFrame, "MinimapMarker", "Minimap Marker Size", 12, 36, 1,
+        "Adjusts the size of the destination marker shown on the minimap when tracking a location.",
+        function(val) return tostring(mfloor(val + 0.5)) .. "px" end)
+    minimapMarkerSlider:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", COL_LEFT, -420)
+    minimapMarkerSlider:SetValue(EasyFind.db.minimapMarkerSize or 25)
+    minimapMarkerSlider:HookScript("OnValueChanged", function(self, value)
+        value = mfloor(value + 0.5)
+        EasyFind.db.minimapMarkerSize = value
+        if ns.MapSearch and ns.MapSearch.UpdateMinimapMarkerSize then
+            ns.MapSearch:UpdateMinimapMarkerSize()
+        end
+    end)
+    optionsFrame.minimapMarkerSlider = minimapMarkerSlider
 
     -- =====================================================================
     -- RIGHT COLUMN — Checkboxes, Theme, Keybinds
@@ -645,12 +659,12 @@ function Options:Initialize()
     local sep = optionsFrame:CreateTexture(nil, "ARTWORK")
     sep:SetHeight(1)
     sep:SetColorTexture(0.5, 0.5, 0.5, 0.4)
-    sep:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, -385)
-    sep:SetPoint("TOPRIGHT", optionsFrame, "TOPRIGHT", -20, -385)
+    sep:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, -455)
+    sep:SetPoint("TOPRIGHT", optionsFrame, "TOPRIGHT", -20, -455)
 
     -- Tips
     local instructionText = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    instructionText:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 22, -393)
+    instructionText:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 22, -463)
     instructionText:SetWidth(FRAME_W - 44)
     instructionText:SetJustifyH("LEFT")
     instructionText:SetText("|cFFFFFF00Tips:|r  Hold |cFF00FF00Shift|r + drag to reposition bars  |cFF888888|||r  |cFF00FF00/ef o|r options\n|cFF00FF00/ef show|r  |cFF00FF00/ef hide|r toggle bar  |cFF888888|||r  |cFF00FF00/ef clear|r dismiss highlights")
@@ -658,38 +672,21 @@ function Options:Initialize()
     -- Advanced Options toggle
     local advancedToggle = CreateFrame("Button", nil, optionsFrame)
     advancedToggle:SetSize(200, 18)
-    advancedToggle:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, -415)
+    advancedToggle:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, -485)
     advancedToggle:SetNormalFontObject("GameFontNormalSmall")
     advancedToggle:SetHighlightFontObject("GameFontHighlightSmall")
     advancedToggle:SetText("|cFF888888> Advanced Options|r")
     advancedToggle:GetFontString():SetJustifyH("LEFT")
     advancedToggle.expanded = false
     
-    -- Dev Mode checkbox (hidden by default)
-    local devModeCheckbox = CreateCheckbox(optionsFrame, "DevMode", "Dev Mode (show debug output)",
-        "When enabled, debug messages will be printed to chat. Useful for addon developers and troubleshooting.")
-    devModeCheckbox:SetPoint("TOPLEFT", advancedToggle, "BOTTOMLEFT", -2, -4)
-    devModeCheckbox:SetChecked(EasyFind.db.devMode or false)
-    devModeCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.devMode = self:GetChecked()
-        if self:GetChecked() then
-            EasyFind:Print("Dev mode enabled - debug messages will appear in chat.")
-        else
-            EasyFind:Print("Dev mode disabled.")
-        end
-    end)
-    devModeCheckbox:Hide()
-    optionsFrame.devModeCheckbox = devModeCheckbox
-    
+    -- (Advanced section currently empty — placeholder for future options)
     advancedToggle:SetScript("OnClick", function(self)
         self.expanded = not self.expanded
         if self.expanded then
             self:SetText("|cFFCCCCCCv Advanced Options|r")
-            devModeCheckbox:Show()
             optionsFrame:SetHeight(BASE_H + ADV_H)
         else
             self:SetText("|cFF888888> Advanced Options|r")
-            devModeCheckbox:Hide()
             optionsFrame:SetHeight(BASE_H)
         end
     end)
@@ -713,8 +710,7 @@ function Options:Initialize()
         EasyFind.db.navigateToZonesDirectly = false
         EasyFind.db.smartShow = true
         EasyFind.db.resultsTheme = "Retail"
-        EasyFind.db.devMode = false
-        EasyFind.db.maxResults = 12
+        EasyFind.db.maxResults = 5
         EasyFind.db.showTruncationMessage = true
         EasyFind.db.hardResultsCap = false
         EasyFind.db.pinsCollapsed = false
@@ -722,6 +718,7 @@ function Options:Initialize()
         EasyFind.db.indicatorStyle = "EasyFind Arrow"
         EasyFind.db.indicatorColor = "Yellow"
         EasyFind.db.blinkingPins = false
+        EasyFind.db.minimapMarkerSize = 25
         EasyFind.db.visible = true
 
         -- Clear all active highlights
@@ -755,8 +752,8 @@ function Options:Initialize()
         optionsFrame.hardCapCheckbox:SetChecked(false)
         optionsFrame.staticOpacityCheckbox:SetChecked(false)
         optionsFrame.blinkingPinsCheckbox:SetChecked(false)
-        optionsFrame.devModeCheckbox:SetChecked(false)
-        optionsFrame.maxResultsSlider:SetValue(12)
+        optionsFrame.maxResultsSlider:SetValue(5)
+        optionsFrame.minimapMarkerSlider:SetValue(25)
         optionsFrame.themeBtnText:SetText("Retail")
         optionsFrame.indicatorBtnText:SetText("EasyFind Arrow")
         optionsFrame.colorBtnText:SetText("Yellow")
@@ -849,8 +846,8 @@ function Options:Show()
     optionsFrame.directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false)
     optionsFrame.zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly or false)
     optionsFrame.smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
-    optionsFrame.devModeCheckbox:SetChecked(EasyFind.db.devMode or false)
     optionsFrame.blinkingPinsCheckbox:SetChecked(EasyFind.db.blinkingPins or false)
+    optionsFrame.minimapMarkerSlider:SetValue(EasyFind.db.minimapMarkerSize or 25)
     optionsFrame.themeBtnText:SetText(EasyFind.db.resultsTheme or "Retail")
     
     local key1 = GetBindingKey("EASYFIND_TOGGLE")
@@ -861,7 +858,6 @@ function Options:Show()
     -- Collapse advanced options on open
     optionsFrame.advancedToggle.expanded = false
     optionsFrame.advancedToggle:SetText("|cFF888888> Advanced Options|r")
-    optionsFrame.devModeCheckbox:Hide()
     optionsFrame:SetHeight(optionsFrame.BASE_H)
     
     optionsFrame:Show()

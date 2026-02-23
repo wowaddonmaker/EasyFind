@@ -39,7 +39,7 @@ local DB_DEFAULTS = {
     resultsTheme = "Retail",  -- "Classic" or "Retail"
     indicatorStyle = "EasyFind Arrow",  -- Indicator texture style
     indicatorColor = "Yellow",  -- Indicator color preset
-    maxResults = 12,           -- Maximum number of search results to display (6-24)
+    maxResults = 5,            -- Maximum number of search results to display (3-24)
     showTruncationMessage = true,  -- Show "more results available" message when truncated
     hardResultsCap = false,    -- Hard cap on results (no "more results" message)
     staticOpacity = false,     -- Keep opacity constant while moving
@@ -47,6 +47,7 @@ local DB_DEFAULTS = {
     pinnedMapItems = {},       -- Pinned map search results (persist across sessions)
     pinsCollapsed = false,     -- Whether the "Pinned Paths" header is collapsed
     blinkingPins = false,      -- Animate (blink/pulse) map pins and highlights
+    minimapMarkerSize = 25,    -- Size (px) of the minimap destination marker
 }
 
 local function OnInitialize()
@@ -80,11 +81,32 @@ local function OnInitialize()
                 ns.Highlight:ClearAll()
             end
             if ns.MapSearch then
-                ns.MapSearch:ClearHighlight()
+                ns.MapSearch:ClearAll()
                 ns.MapSearch:ClearZoneHighlight()
                 ns.MapSearch.pendingWaypoint = nil
             end
+            if ns.RouteEngine and ns.RouteEngine:IsRouteActive() then
+                ns.RouteEngine:CancelRoute("User cleared")
+            end
             EasyFind:Print("Active highlights cleared.")
+        elseif msg == "route" or msg == "gps" then
+            if ns.RouteEngine then
+                ns.RouteEngine:PrintStatus()
+            else
+                EasyFind:Print("GPS navigation not loaded.")
+            end
+        elseif msg == "route cancel" or msg == "gps cancel" or msg == "gps stop" then
+            if ns.RouteEngine then
+                ns.RouteEngine:CancelRoute("Cancelled by user")
+            else
+                EasyFind:Print("GPS navigation not loaded.")
+            end
+        elseif msg == "route debug" or msg == "gps debug" then
+            if ns.TransportGraph then
+                ns.TransportGraph:DumpGraph()
+            else
+                EasyFind:Print("TransportGraph not loaded.")
+            end
         elseif msg:find("^test ") then
             -- /ef test Interface\\Path\\To\\Texture
             local texture = msg:match("^test%s+(.+)")
@@ -97,7 +119,7 @@ local function OnInitialize()
         elseif msg == "whatsnew" then
             if ns.UI then ns.UI:ShowWhatsNew(ns.version) end
         else
-            EasyFind:Print("Usage: /ef show | /ef hide | /ef clear | /ef options")
+            EasyFind:Print("Usage: /ef show | /ef hide | /ef clear | /ef options | /ef gps | /ef gps cancel")
         end
     end
 

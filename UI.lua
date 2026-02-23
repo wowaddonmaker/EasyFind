@@ -380,26 +380,31 @@ function UI:CreateSearchFrame()
         searchFrame:SetPoint("TOP", UIParent, "TOP", 0, -5)
     end
     
-    -- Apply theme-appropriate backdrop
+    -- Apply theme-appropriate backdrop (border only — atlas fills the background)
     local theme = GetActiveTheme()
     if theme.searchBarRounded then
         searchFrame:SetBackdrop({
-            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
             edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = true, tileSize = 32, edgeSize = 16,
+            edgeSize = 16,
             insets = { left = 4, right = 4, top = 4, bottom = 4 }
         })
-        searchFrame:SetBackdropColor(0.45, 0.45, 0.45, 0.95)
-        searchFrame:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+        searchFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
     else
         searchFrame:SetBackdrop({
-            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
             edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-            tile = true, tileSize = 32, edgeSize = 20,
+            edgeSize = 20,
             insets = { left = 5, right = 5, top = 5, bottom = 5 }
         })
     end
-    
+
+    -- Quest-log atlas background, clipped to search bar height
+    local bgTex = searchFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
+    bgTex:SetPoint("TOPLEFT", 4, -4)
+    bgTex:SetPoint("BOTTOMRIGHT", -4, 4)
+    bgTex:SetAtlas("QuestLog-main-background", false)
+    searchFrame:SetClipsChildren(true)
+    searchFrame.bgTex = bgTex
+
     -- Search icon
     local searchIcon = searchFrame:CreateTexture(nil, "ARTWORK")
     searchIcon:SetSize(16, 16)
@@ -2989,21 +2994,17 @@ function UI:UpdateSearchBarTheme()
     local theme = GetActiveTheme()
     if theme.searchBarRounded then
         searchFrame:SetBackdrop({
-            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
             edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-            tile = true, tileSize = 32, edgeSize = 16,
+            edgeSize = 16,
             insets = { left = 4, right = 4, top = 4, bottom = 4 }
         })
-        searchFrame:SetBackdropColor(0.45, 0.45, 0.45, 0.95)
-        searchFrame:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.8)
+        searchFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
     else
         searchFrame:SetBackdrop({
-            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
             edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-            tile = true, tileSize = 32, edgeSize = 20,
+            edgeSize = 20,
             insets = { left = 5, right = 5, top = 5, bottom = 5 }
         })
-        searchFrame:SetBackdropColor(1, 1, 1, 1)
         searchFrame:SetBackdropBorderColor(1, 1, 1, 1)
     end
 end
@@ -3300,6 +3301,13 @@ function UI:ShowFirstTimeSetup()
         -- Restore SmartShow if it was enabled
         if EasyFind.db.smartShow then
             UI:UpdateSmartShow()
+        end
+
+        -- Show What's New after first-time setup (skipped during PLAYER_LOGIN for new installs)
+        if ns.version then
+            C_Timer.After(0.5, function()
+                UI:ShowWhatsNew(ns.version)
+            end)
         end
     end)
 end
