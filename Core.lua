@@ -85,28 +85,7 @@ local function OnInitialize()
                 ns.MapSearch:ClearZoneHighlight()
                 ns.MapSearch.pendingWaypoint = nil
             end
-            if ns.RouteEngine and ns.RouteEngine:IsRouteActive() then
-                ns.RouteEngine:CancelRoute("User cleared")
-            end
             EasyFind:Print("Active highlights cleared.")
-        elseif msg == "route" or msg == "gps" then
-            if ns.RouteEngine then
-                ns.RouteEngine:PrintStatus()
-            else
-                EasyFind:Print("GPS navigation not loaded.")
-            end
-        elseif msg == "route cancel" or msg == "gps cancel" or msg == "gps stop" then
-            if ns.RouteEngine then
-                ns.RouteEngine:CancelRoute("Cancelled by user")
-            else
-                EasyFind:Print("GPS navigation not loaded.")
-            end
-        elseif msg == "route debug" or msg == "gps debug" then
-            if ns.TransportGraph then
-                ns.TransportGraph:DumpGraph()
-            else
-                EasyFind:Print("TransportGraph not loaded.")
-            end
         elseif msg:find("^test ") then
             -- /ef test Interface\\Path\\To\\Texture
             local texture = msg:match("^test%s+(.+)")
@@ -119,7 +98,7 @@ local function OnInitialize()
         elseif msg == "whatsnew" then
             if ns.UI then ns.UI:ShowWhatsNew(ns.version) end
         else
-            EasyFind:Print("Usage: /ef show | /ef hide | /ef clear | /ef options | /ef gps | /ef gps cancel")
+            EasyFind:Print("Usage: /ef show | /ef hide | /ef clear | /ef options")
         end
     end
 

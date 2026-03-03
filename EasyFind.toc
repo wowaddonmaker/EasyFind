@@ -10,8 +10,6 @@ Utils.lua
 Core.lua
 Database.lua
 StaticLocations.lua
-TransportGraph.lua
-RouteEngine.lua
 UI.lua
 Highlight.lua
 MapSearch.lua
