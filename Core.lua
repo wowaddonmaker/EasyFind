@@ -48,6 +48,7 @@ local DB_DEFAULTS = {
     pinsCollapsed = false,     -- Whether the "Pinned Paths" header is collapsed
     blinkingPins = false,      -- Animate (blink/pulse) map pins and highlights
     minimapMarkerSize = 25,    -- Size (px) of the minimap destination marker
+    arrivalDistance = 10,      -- Yards — auto-clear waypoint when player is this close
 }
 
 local function OnInitialize()

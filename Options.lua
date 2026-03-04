@@ -217,7 +217,7 @@ function Options:Initialize()
     isInitialized = true
     
     local FRAME_W = 570
-    local BASE_H  = 550  -- Increased to accommodate all elements without overlap
+    local BASE_H  = 620  -- Increased to accommodate all elements without overlap
     local ADV_H   = 30   -- extra height when Advanced Options expanded
     local COL_LEFT  = 20
     local COL_RIGHT = 300
@@ -341,6 +341,17 @@ function Options:Initialize()
         end
     end)
     optionsFrame.minimapMarkerSlider = minimapMarkerSlider
+
+    local arrivalSlider = CreateSlider(optionsFrame, "ArrivalDist", "Arrival Distance", 3, 20, 1,
+        "How close (in yards) you must be to a tracked location before the waypoint auto-clears.",
+        function(val) return tostring(mfloor(val + 0.5)) .. "yd" end)
+    arrivalSlider:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", COL_LEFT, -490)
+    arrivalSlider:SetValue(EasyFind.db.arrivalDistance or 10)
+    arrivalSlider:HookScript("OnValueChanged", function(self, value)
+        value = mfloor(value + 0.5)
+        EasyFind.db.arrivalDistance = value
+    end)
+    optionsFrame.arrivalSlider = arrivalSlider
 
     -- =====================================================================
     -- RIGHT COLUMN — Checkboxes, Theme, Keybinds
@@ -659,12 +670,12 @@ function Options:Initialize()
     local sep = optionsFrame:CreateTexture(nil, "ARTWORK")
     sep:SetHeight(1)
     sep:SetColorTexture(0.5, 0.5, 0.5, 0.4)
-    sep:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, -455)
-    sep:SetPoint("TOPRIGHT", optionsFrame, "TOPRIGHT", -20, -455)
+    sep:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, -525)
+    sep:SetPoint("TOPRIGHT", optionsFrame, "TOPRIGHT", -20, -525)
 
     -- Tips
     local instructionText = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    instructionText:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 22, -463)
+    instructionText:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 22, -533)
     instructionText:SetWidth(FRAME_W - 44)
     instructionText:SetJustifyH("LEFT")
     instructionText:SetText("|cFFFFFF00Tips:|r  Hold |cFF00FF00Shift|r + drag to reposition bars  |cFF888888|||r  |cFF00FF00/ef o|r options\n|cFF00FF00/ef show|r  |cFF00FF00/ef hide|r toggle bar  |cFF888888|||r  |cFF00FF00/ef clear|r dismiss highlights")
@@ -672,7 +683,7 @@ function Options:Initialize()
     -- Advanced Options toggle
     local advancedToggle = CreateFrame("Button", nil, optionsFrame)
     advancedToggle:SetSize(200, 18)
-    advancedToggle:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, -485)
+    advancedToggle:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, -555)
     advancedToggle:SetNormalFontObject("GameFontNormalSmall")
     advancedToggle:SetHighlightFontObject("GameFontHighlightSmall")
     advancedToggle:SetText("|cFF888888> Advanced Options|r")
@@ -719,6 +730,7 @@ function Options:Initialize()
         EasyFind.db.indicatorColor = "Yellow"
         EasyFind.db.blinkingPins = false
         EasyFind.db.minimapMarkerSize = 25
+        EasyFind.db.arrivalDistance = 10
         EasyFind.db.visible = true
 
         -- Clear all active highlights
@@ -754,6 +766,7 @@ function Options:Initialize()
         optionsFrame.blinkingPinsCheckbox:SetChecked(false)
         optionsFrame.maxResultsSlider:SetValue(5)
         optionsFrame.minimapMarkerSlider:SetValue(25)
+        optionsFrame.arrivalSlider:SetValue(10)
         optionsFrame.themeBtnText:SetText("Retail")
         optionsFrame.indicatorBtnText:SetText("EasyFind Arrow")
         optionsFrame.colorBtnText:SetText("Yellow")
@@ -848,6 +861,7 @@ function Options:Show()
     optionsFrame.smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
     optionsFrame.blinkingPinsCheckbox:SetChecked(EasyFind.db.blinkingPins or false)
     optionsFrame.minimapMarkerSlider:SetValue(EasyFind.db.minimapMarkerSize or 25)
+    optionsFrame.arrivalSlider:SetValue(EasyFind.db.arrivalDistance or 10)
     optionsFrame.themeBtnText:SetText(EasyFind.db.resultsTheme or "Retail")
     
     local key1 = GetBindingKey("EASYFIND_TOGGLE")

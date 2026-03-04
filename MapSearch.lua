@@ -301,7 +301,10 @@ local ShowSuperTrackGlow, HideSuperTrackGlow
 -- Internal waypoint — always used (we manage our own minimap marker/arrow
 -- rather than relying on the game's system waypoint).
 local internalWaypoint = nil  -- {uiMapID=number, position={x=number, y=number}}
-local ARRIVAL_DISTANCE = 5    -- yards — auto-clear waypoint when player is this close
+local DEFAULT_ARRIVAL_DISTANCE = 10
+local function GetArrivalDistance()
+    return EasyFind.db.arrivalDistance or DEFAULT_ARRIVAL_DISTANCE
+end
 
 local function CreateWaypointTracker()
     -- Controller: invisible frame that runs the shared OnUpdate
@@ -475,7 +478,7 @@ local function CreateWaypointTracker()
         local viewRadius = GetMinimapYardRadius()
 
         -- Auto-clear when player arrives at destination
-        if dist < ARRIVAL_DISTANCE then
+        if dist < GetArrivalDistance() then
             MapSearch:ClearAll()
             return
         end
