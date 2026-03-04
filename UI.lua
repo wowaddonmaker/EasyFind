@@ -397,12 +397,11 @@ function UI:CreateSearchFrame()
         })
     end
 
-    -- Quest-log atlas background, clipped to search bar height
+    -- Quest-log atlas background (anchored to insets so it doesn't spill past the border)
     local bgTex = searchFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
     bgTex:SetPoint("TOPLEFT", 4, -4)
     bgTex:SetPoint("BOTTOMRIGHT", -4, 4)
     bgTex:SetAtlas("QuestLog-main-background", false)
-    searchFrame:SetClipsChildren(true)
     searchFrame.bgTex = bgTex
 
     -- Search icon

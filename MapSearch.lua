@@ -2474,10 +2474,13 @@ function MapSearch:HookWorldMap()
     WorldMapFrame:HookScript("OnShow", function()
         searchFrame:Show()
         globalSearchFrame:Show()
-        -- Restore pins if we have a saved pin state on the current map
+        -- Restore pins only if the player is in the pin's zone.
+        -- Map opens to the player's current zone by default, so if they
+        -- left the zone the pin was in, it's gone.
         if activePinState then
             local currentMapID = WorldMapFrame:GetMapID()
-            if currentMapID == activePinState.mapID then
+            local playerMapID = C_Map.GetBestMapForUnit("player")
+            if currentMapID == activePinState.mapID and playerMapID == activePinState.mapID then
                 C_Timer.After(0, function()
                     if activePinState and activePinState.instances then
                         self:ShowMultipleWaypoints(activePinState.instances)
@@ -2486,6 +2489,8 @@ function MapSearch:HookWorldMap()
                             activePinState.icon, activePinState.category)
                     end
                 end)
+            else
+                activePinState = nil
             end
         end
     end)
@@ -2494,8 +2499,10 @@ function MapSearch:HookWorldMap()
         searchFrame:Hide()
         globalSearchFrame:Hide()
         self:HideResults()
-        -- Don't ClearHighlight here — pins persist through close/reopen.
-        -- They're children of the canvas so they're hidden automatically.
+        -- Hide ALL high-strata visuals that paint through the closed map.
+        -- activePinState is preserved so they restore on reopen.
+        self:ClearHighlight()
+        self:ClearZoneHighlight()
         self.pendingWaypoint = nil
     end)
     
@@ -2582,19 +2589,12 @@ function MapSearch:HookWorldMap()
                 self:ClearZoneHighlight()  -- Belt-and-suspenders: nuke any lingering zone highlight
                 self:ShowWaypointAt(wp.x, wp.y, wp.icon, wp.category)
             end)
-        elseif activePinState and activePinState.mapID == newMapID then
-            -- Navigated back to the map with our active pin — restore it
-            DebugPrint("[EasyFind] OnMapChanged - restoring active pin on mapID:", newMapID)
-            C_Timer.After(0.1, function()
-                if activePinState and activePinState.instances then
-                    self:ShowMultipleWaypoints(activePinState.instances)
-                elseif activePinState then
-                    self:ShowWaypointAt(activePinState.x, activePinState.y,
-                        activePinState.icon, activePinState.category)
-                end
-            end)
         else
             DebugPrint("[EasyFind] OnMapChanged - no pending, clearing highlights")
+            -- Navigated to a different map — discard any stale pin state
+            if activePinState and activePinState.mapID ~= newMapID then
+                activePinState = nil
+            end
             self:ClearZoneHighlight()
         end
     end)
@@ -2781,8 +2781,6 @@ function MapSearch:ScanFlightMasters(mapID)
 
     local playerFaction = UnitFactionGroup("player")
     local FPFaction = Enum.FlightPathFaction
-    local mapInfo = C_Map.GetMapInfo(mapID)
-    local mapName = mapInfo and mapInfo.name
 
     for _, node in ipairs(nodes) do
         if node.name and node.position then
@@ -2796,17 +2794,8 @@ function MapSearch:ScanFlightMasters(mapID)
             end
             if not skip then
                 local x, y = node.position.x, node.position.y
-                -- Filter by zone name embedded in the FP name ("Location, Zone Name")
-                local fpZone = node.name:match(",([^,]+)$")
-                if fpZone then fpZone = fpZone:match("^%s*(.-)%s*$") end  -- trim whitespace
-                local belongsToMap = false
-                if fpZone and mapName then
-                    belongsToMap = (fpZone == mapName)
-                elseif not fpZone and mapName then
-                    -- No zone suffix (city FP like "Dalaran") — include if name matches map
-                    belongsToMap = (node.name == mapName)
-                end
-                if x >= 0 and x <= 1 and y >= 0 and y <= 1 and belongsToMap then
+                -- Coordinate bounds: if the FP is within 0-1 on this map, it belongs here
+                if x >= 0 and x <= 1 and y >= 0 and y <= 1 then
                     tinsert(results, {
                         name = node.name .. " (Flight Master)",
                         category = "flightmaster",
@@ -3454,19 +3443,18 @@ function MapSearch:ShowResults(results)
     local maxResults = EasyFind.db.maxResults or 5
     local count = mmin(#results, maxResults)
 
-    -- Clamp visible results to available screen space below the search bar
+    -- Compute available height below the search bar for post-layout clamping
     local anchor = activeSearchFrame or searchFrame
     if isGlobalSearch and globalSearchFrame then
         anchor = globalSearchFrame
     end
     local anchorBottom = anchor and anchor:GetBottom()
+    local scale = anchor and anchor:GetEffectiveScale() or 1
+    local availableHeight  -- nil if we can't determine (skip clamping)
     if anchorBottom then
-        local overlap = 8  -- border overlap offset
-        local padding = 12 + 10  -- top(6)+bottom(6) padding + screen margin
-        local availableHeight = anchorBottom + overlap - padding
-        local rowEstimate = 26  -- min row height(24) + spacing(2)
-        local maxFit = mmax(1, mfloor(availableHeight / rowEstimate))
-        count = mmin(count, maxFit)
+        local overlap = 8   -- border overlap into the search bar
+        local margin  = 10  -- screen-edge margin
+        availableHeight = anchorBottom + overlap - margin
     end
 
     local yOffset = -6  -- running vertical offset (top padding)
@@ -3549,10 +3537,9 @@ function MapSearch:ShowResults(results)
                 btn.icon:Show()
             end
 
-            -- Show navigate button for results that resolve to coordinates
-            local hasCoords = (data.x and data.y)
-                or data.isDungeonEntrance
-                or (data.isZone and data.entranceX and data.entranceY)
+            -- Show navigate button only for local search results with coordinates
+            local hasCoords = not isGlobalSearch
+                and ((data.x and data.y) or (data.allInstances and #data.allInstances > 1))
             if hasCoords and btn.navBtn then
                 btn.navBtn.texture:SetTexture(nil)
                 btn.navBtn.texture:SetTexCoord(0, 1, 0, 1)
@@ -3568,10 +3555,25 @@ function MapSearch:ShowResults(results)
             end
 
             btn:Show()
-            
+
+            -- Force text width so GetStringHeight accounts for wrapping on first render
+            -- Button is inset 10px in a 300px results frame; icon(18)+pad(11)+rightPad(5) = 34
+            btn.text:SetWidth(resultsFrame:GetWidth() - 10 - 34)
+
             -- Measure actual text height and size button to fit
             local textHeight = btn.text:GetStringHeight() or 14
             local rowHeight = mmax(24, textHeight + 8)  -- minimum 24, pad 8
+
+            -- Clamp: hide this row (and all subsequent) if it would overflow the screen
+            if availableHeight and (-yOffset + rowHeight) > availableHeight then
+                btn:Hide()
+                -- Hide remaining buttons too
+                for j = i + 1, MAX_RESULTS_POOL do
+                    resultButtons[j]:Hide()
+                end
+                break
+            end
+
             btn:SetHeight(rowHeight)
             btn:ClearAllPoints()
             btn:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 10, yOffset)
@@ -3580,7 +3582,7 @@ function MapSearch:ShowResults(results)
             btn:Hide()
         end
     end
-    
+
     resultsFrame:SetHeight(-yOffset + 6)  -- bottom padding
     
     -- Anchor results dropdown to whichever search bar is active
