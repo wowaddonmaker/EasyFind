@@ -4,6 +4,29 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [1.2.5] - 2026-03-04
+
+### Added
+- **Arrival Distance Slider**: Waypoint auto-clear distance is now configurable (3–20 yards, default 10) via the Options panel
+- **Show Login Message Toggle**: Option to hide the "EasyFind loaded!" chat message on login
+
+### Changed
+- **Navigate Button**: Waypoint pin icon now only appears on local map search results (removed from zone/instance global search results where it didn't apply)
+- **Login Message**: Simplified to just mention `/ef o` for options
+
+### Fixed
+- **Results Dropdown Overflow**: Fixed search results spilling past the bottom of the screen; clamping now uses actual measured row heights instead of a fixed estimate
+- **First-Render Text Wrapping**: Fixed inconsistent result row heights on first search by explicitly setting text width before measuring
+- **Map Close Cleanup**: Fixed bouncing arrow indicator remaining visible after closing the world map
+- **Pin Persistence**: Map pins now auto-clear when you leave the zone; pins only restore on map reopen if you're still in the same zone
+- **Missing Flight Masters**: Fixed Stormwind, Redridge, and other flight masters not appearing due to overly strict zone-name filtering
+- **UI Search Results Hidden**: Fixed search results dropdown being invisible due to SetClipsChildren clipping child frames
+
+### Removed
+- **Advanced Options**: Removed empty placeholder section from Options panel
+
+---
+
 ## [1.2.4] - 2026-02-16
 
 ### Added
