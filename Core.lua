@@ -46,6 +46,7 @@ local DB_DEFAULTS = {
     pinnedUIItems = {},        -- Pinned UI search results (persist across sessions)
     pinnedMapItems = {},       -- Pinned map search results (persist across sessions)
     pinsCollapsed = false,     -- Whether the "Pinned Paths" header is collapsed
+    showLoginMessage = true,   -- Show "EasyFind loaded!" message on login
     blinkingPins = false,      -- Animate (blink/pulse) map pins and highlights
     minimapMarkerSize = 25,    -- Size (px) of the minimap destination marker
     arrivalDistance = 10,      -- Yards — auto-clear waypoint when player is this close
@@ -103,7 +104,9 @@ local function OnInitialize()
         end
     end
 
-    EasyFind:Print("EasyFind loaded! Use /ef show, /ef hide, or /ef options.")
+    if EasyFind.db.showLoginMessage ~= false then
+        EasyFind:Print("EasyFind loaded! Use /ef o to open options.")
+    end
 end
 
 local function OnPlayerLogin()

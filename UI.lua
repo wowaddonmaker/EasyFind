@@ -3049,7 +3049,7 @@ function UI:ShowWhatsNew(version)
     if _G["EasyFindWhatsNew"] then return end
 
     local f = CreateFrame("Frame", "EasyFindWhatsNew", UIParent, "BackdropTemplate")
-    f:SetSize(410, 340)
+    f:SetSize(410, 300)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetFrameLevel(200)
@@ -3099,9 +3099,7 @@ function UI:ShowWhatsNew(version)
         "|cffFFD100\226\128\162|r |cffffffffGlobal Map Search|r\n" ..
         "        Repurposed for zone & instance lookup\n" ..
         "|cffFFD100\226\128\162|r |cffffffffMore Map POIs|r\n" ..
-        "        More points of interest for Dorn, many more coming soon\n\n" ..
-        "|cff999999Reminder from v1.2.3:|r\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffCurrency & reputation now searchable with quantities inline|r"
+        "        More points of interest for Dorn, many more coming soon"
     )
 
     -- Footer — anchored below body so it can't overlap

@@ -218,7 +218,6 @@ function Options:Initialize()
     
     local FRAME_W = 570
     local BASE_H  = 620  -- Increased to accommodate all elements without overlap
-    local ADV_H   = 30   -- extra height when Advanced Options expanded
     local COL_LEFT  = 20
     local COL_RIGHT = 300
     local BTN_OFFSET = 105  -- fixed offset from label LEFT to button LEFT (aligns all right-col buttons)
@@ -431,9 +430,18 @@ function Options:Initialize()
     end)
     optionsFrame.blinkingPinsCheckbox = blinkingPinsCheckbox
 
+    local loginMessageCheckbox = CreateCheckbox(optionsFrame, "LoginMessage", "Show Login Message",
+        "When enabled, shows a short \"EasyFind loaded!\" message in chat when you log in.\n\nDisable to keep chat cleaner.")
+    loginMessageCheckbox:SetPoint("TOPLEFT", blinkingPinsCheckbox, "BOTTOMLEFT", 0, -4)
+    loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage ~= false)
+    loginMessageCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.showLoginMessage = self:GetChecked()
+    end)
+    optionsFrame.loginMessageCheckbox = loginMessageCheckbox
+
     -- Results Theme selector (custom, avoids UIDropDownMenu global state bugs)
     local themeLabel = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    themeLabel:SetPoint("TOPLEFT", blinkingPinsCheckbox, "BOTTOMLEFT", 4, -12)
+    themeLabel:SetPoint("TOPLEFT", loginMessageCheckbox, "BOTTOMLEFT", 4, -12)
     themeLabel:SetText("Theme:")
     
     local themeChoices = {"Classic", "Retail"}
@@ -680,29 +688,6 @@ function Options:Initialize()
     instructionText:SetJustifyH("LEFT")
     instructionText:SetText("|cFFFFFF00Tips:|r  Hold |cFF00FF00Shift|r + drag to reposition bars  |cFF888888|||r  |cFF00FF00/ef o|r options\n|cFF00FF00/ef show|r  |cFF00FF00/ef hide|r toggle bar  |cFF888888|||r  |cFF00FF00/ef clear|r dismiss highlights")
 
-    -- Advanced Options toggle
-    local advancedToggle = CreateFrame("Button", nil, optionsFrame)
-    advancedToggle:SetSize(200, 18)
-    advancedToggle:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, -555)
-    advancedToggle:SetNormalFontObject("GameFontNormalSmall")
-    advancedToggle:SetHighlightFontObject("GameFontHighlightSmall")
-    advancedToggle:SetText("|cFF888888> Advanced Options|r")
-    advancedToggle:GetFontString():SetJustifyH("LEFT")
-    advancedToggle.expanded = false
-    
-    -- (Advanced section currently empty — placeholder for future options)
-    advancedToggle:SetScript("OnClick", function(self)
-        self.expanded = not self.expanded
-        if self.expanded then
-            self:SetText("|cFFCCCCCCv Advanced Options|r")
-            optionsFrame:SetHeight(BASE_H + ADV_H)
-        else
-            self:SetText("|cFF888888> Advanced Options|r")
-            optionsFrame:SetHeight(BASE_H)
-        end
-    end)
-    optionsFrame.advancedToggle = advancedToggle
-    
     -- Reset buttons (anchored to bottom)
     local resetAllBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
     resetAllBtn:SetSize(130, 22)
@@ -729,6 +714,7 @@ function Options:Initialize()
         EasyFind.db.indicatorStyle = "EasyFind Arrow"
         EasyFind.db.indicatorColor = "Yellow"
         EasyFind.db.blinkingPins = false
+        EasyFind.db.showLoginMessage = true
         EasyFind.db.minimapMarkerSize = 25
         EasyFind.db.arrivalDistance = 10
         EasyFind.db.visible = true
@@ -764,6 +750,7 @@ function Options:Initialize()
         optionsFrame.hardCapCheckbox:SetChecked(false)
         optionsFrame.staticOpacityCheckbox:SetChecked(false)
         optionsFrame.blinkingPinsCheckbox:SetChecked(false)
+        optionsFrame.loginMessageCheckbox:SetChecked(true)
         optionsFrame.maxResultsSlider:SetValue(5)
         optionsFrame.minimapMarkerSlider:SetValue(25)
         optionsFrame.arrivalSlider:SetValue(10)
@@ -860,6 +847,7 @@ function Options:Show()
     optionsFrame.zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly or false)
     optionsFrame.smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
     optionsFrame.blinkingPinsCheckbox:SetChecked(EasyFind.db.blinkingPins or false)
+    optionsFrame.loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage ~= false)
     optionsFrame.minimapMarkerSlider:SetValue(EasyFind.db.minimapMarkerSize or 25)
     optionsFrame.arrivalSlider:SetValue(EasyFind.db.arrivalDistance or 10)
     optionsFrame.themeBtnText:SetText(EasyFind.db.resultsTheme or "Retail")
@@ -869,11 +857,7 @@ function Options:Show()
     local key2 = GetBindingKey("EASYFIND_FOCUS")
     optionsFrame.focusBtn:SetText(key2 or "Not Bound")
     
-    -- Collapse advanced options on open
-    optionsFrame.advancedToggle.expanded = false
-    optionsFrame.advancedToggle:SetText("|cFF888888> Advanced Options|r")
     optionsFrame:SetHeight(optionsFrame.BASE_H)
-    
     optionsFrame:Show()
 end
 
