@@ -3095,7 +3095,7 @@ function UI:ShowWhatsNew(version)
         "|cffFFD100\226\128\162|r |cffffffffCurrencies & Reputations|r\n" ..
         "        Now searchable with live values in results\n" ..
         "|cffFFD100\226\128\162|r |cffffffffPinned Paths|r\n" ..
-        "        Right-click any result to bookmark it\n" ..
+        "        Right-click any result and select pin to bookmark it\n" ..
         "|cffFFD100\226\128\162|r |cffffffffGlobal Map Search|r\n" ..
         "        Repurposed for zone & instance lookup\n" ..
         "|cffFFD100\226\128\162|r |cffffffffMore Map POIs|r\n" ..
