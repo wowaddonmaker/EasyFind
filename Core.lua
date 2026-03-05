@@ -118,6 +118,11 @@ local function OnInitialize()
                 EasyFind:Print("Usage: /ef test <texture_path>")
                 EasyFind:Print("Example: /ef test Interface\\\\MINIMAP\\\\MiniMap-QuestArrow")
             end
+        elseif msg == "setup" then
+            if ns.UI then
+                EasyFind.db.setupComplete = nil
+                ns.UI:ShowFirstTimeSetup()
+            end
         elseif msg == "whatsnew" then
             if ns.UI then ns.UI:ShowWhatsNew(ns.version) end
         else
@@ -171,13 +176,23 @@ end
 -- =============================================================================
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
-eventFrame:SetScript("OnEvent", function(self, event, arg1)
+eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
     if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
         OnInitialize()
         self:UnregisterEvent("ADDON_LOADED")
     elseif event == "PLAYER_LOGIN" then
         OnPlayerLogin()
+        self.loginHandled = true
         self:UnregisterEvent("PLAYER_LOGIN")
+    elseif event == "PLAYER_ENTERING_WORLD" then
+        -- arg1 = isInitialLogin, arg2 = isReloadingUI
+        -- PLAYER_LOGIN does not fire on UI reloads, so use PLAYER_ENTERING_WORLD
+        -- as a fallback to ensure modules initialize after /reload.
+        if arg2 and not self.loginHandled then
+            OnPlayerLogin()
+        end
+        self:UnregisterEvent("PLAYER_ENTERING_WORLD")
     end
 end)
 

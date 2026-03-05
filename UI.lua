@@ -3070,16 +3070,14 @@ function UI:ShowWhatsNew(version)
     body:SetJustifyH("LEFT")
     body:SetSpacing(4)
     body:SetText(
-        "|cffFFD100\226\128\162|r |cffffffffNavigation|r\n" ..
-        "        Click map pins to place a waypoint with minimap tracking\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffCurrencies & Reputations|r\n" ..
-        "        Now searchable with live values in results\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffPinned Paths|r\n" ..
-        "        Right-click any result and select pin to bookmark it\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffGlobal Map Search|r\n" ..
-        "        Repurposed for zone & instance lookup\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffMore Map POIs|r\n" ..
-        "        More points of interest for Dorn, many more coming soon"
+        "|cffFFD100\226\128\162|r |cffffffffMap Search Filters|r\n" ..
+        "        Filter global & local search by zones, dungeons, raids, and more\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffNative Waypoint Tracking|r\n" ..
+        "        Pins now place a real game waypoint\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffScrollable Results|r\n" ..
+        "        Search results are now scrollable (no more hard cutoff)\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffMinimap Button|r\n" ..
+        "        Optional minimap icon to quickly open or focus the search bar"
     )
 
     -- Footer — anchored below body so it can't overlap
