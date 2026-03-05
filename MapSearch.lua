@@ -1641,8 +1641,16 @@ function MapSearch:CreateHighlightFrame()
     waypointPin:EnableMouse(true)
     waypointPin:SetScript("OnEnter", function(self)
         if self.isLocalSearch then
+            local playerMapID = C_Map.GetBestMapForUnit("player")
+            local viewingMapID = WorldMapFrame:GetMapID()
+            local inZone = playerMapID and viewingMapID and playerMapID == viewingMapID
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:AddLine("Left-click to place waypoint and track")
+            if inZone then
+                GameTooltip:AddLine("Left-click to place waypoint and track")
+            else
+                GameTooltip:AddLine("Navigate not available", 0.6, 0.6, 0.6)
+                GameTooltip:AddLine("Only available when viewing your current zone", 0.5, 0.5, 0.5)
+            end
             GameTooltip:AddLine("Right-click to dismiss", 0.6, 0.6, 0.6)
             GameTooltip:Show()
         else
@@ -1652,8 +1660,9 @@ function MapSearch:CreateHighlightFrame()
     waypointPin:SetScript("OnLeave", GameTooltip_Hide)
     waypointPin:SetScript("OnMouseUp", function(self, button)
         if button == "LeftButton" and self.isLocalSearch and self.waypointX and self.waypointY then
+            local playerMapID = C_Map.GetBestMapForUnit("player")
             local viewingMapID = WorldMapFrame:GetMapID()
-            if viewingMapID then
+            if viewingMapID and playerMapID == viewingMapID then
                 C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(viewingMapID, self.waypointX, self.waypointY))
                 C_SuperTrack.SetSuperTrackedUserWaypoint(true)
                 efPlacedWaypoint = true
@@ -3938,7 +3947,7 @@ function MapSearch:ShowResults(results)
                 btn.navBtn.texture:SetAtlas("Waypoint-MapPin-Untracked")
                 btn.navBtn.disabled = not playerInZone
                 btn.navBtn.texture:SetDesaturated(not playerInZone)
-                btn.navBtn.texture:SetAlpha(playerInZone and 1 or 0.4)
+                btn.navBtn.texture:SetAlpha(1)
                 btn.navBtn:Show()
                 -- Adjust text right edge to make room
                 btn.text:SetPoint("RIGHT", btn.navBtn, "LEFT", -2, 0)
