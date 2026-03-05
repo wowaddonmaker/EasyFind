@@ -4,6 +4,21 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [1.2.6] - 2026-03-05
+
+### Added
+- **Map Search Filters**: Filter global and local search results by category - zones, dungeons, raids, delves, instances, travel, and services
+- **Minimap Button**: Optional minimap icon to toggle the search bar (left-click) or open options (right-click); draggable to reposition
+- **Player Housing and Scenario Zones**: Clicking these in global search now navigates directly to the zone instead of placing a pin at the screen corner
+- **`/ef setup`**: New command to re-trigger the first-time setup overlay
+
+### Changed
+- **Waypoint Tracking**: Map pins now place a native WoW waypoint; the supertrack arrow and TomTom work normally
+- **Search Results**: Results list is now scrollable with no hard cutoff
+- **UI Reload**: Modules now correctly initialize after `/reload` (PLAYER_LOGIN does not fire on UI reloads)
+
+---
+
 ## [1.2.5] - 2026-03-04
 
 ### Added
