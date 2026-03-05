@@ -2085,6 +2085,14 @@ function MapSearch:HighlightZone(mapID)
         return
     end
 
+    -- Instanced zones (player housing, scenarios) return 0,0,0,0 because they have
+    -- no physical position on the parent continent. Navigate directly instead.
+    if left == 0 and right == 0 and top == 0 and bottom == 0 then
+        DebugPrint("[EasyFind] HighlightZone: zero rect, navigating directly to zone")
+        WorldMapFrame:SetMapID(mapID)
+        return
+    end
+
     DebugPrint("[EasyFind] HighlightZone: bounds L/R/T/B:", left, right, top, bottom)
     
     local canvasWidth, canvasHeight = canvas:GetSize()
