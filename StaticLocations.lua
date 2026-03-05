@@ -1,4 +1,4 @@
--- EasyFind Static Locations (auto-generated 2026-02-17 00:01)
+-- EasyFind Static Locations (auto-generated 2026-03-05 12:52)
 local ADDON_NAME, ns = ...
 ns.STATIC_LOCATIONS = {
     [84] = { -- Stormwind City
@@ -140,6 +140,38 @@ ns.STATIC_LOCATIONS = {
         { name = "Engineering Trainer", category = "prof_engineering", x = 0.4908933043479919, y = 0.5615143775939941, keywords = {"profession", "trainer", "engineering"} },
         { name = "Challenger's Rest", category = "innkeeper", x = 0.5356837511062622, y = 0.387307196855545, keywords = {"inn", "innkeeper", "hearth", "rest"} },
         { name = "Black Market Auction House", category = "auctionhouse", x = 0.6463407278060913, y = 0.5241857171058655, keywords = {"auction", "ah"} },
+    },
+    [2393] = { -- Silvermoon City
+        { name = "Inscription Trainer", category = "prof_inscription", x = 0.4676788151264191, y = 0.5152018666267395, keywords = {"profession", "trainer", "inscription", "glyph"} },
+        { name = "PvP Vendors", category = "pvpvendor", x = 0.3420448303222656, y = 0.8110107183456421, keywords = {"pvp", "honor", "conquest", "vendor"} },
+        { name = "Trading Post", category = "tradingpost", x = 0.4898755550384522, y = 0.7817242741584778, keywords = {"tmog", "xmog", "trading post", "tender"} },
+        { name = "Leatherworking Trainer", category = "prof_leatherworking", x = 0.4316167831420898, y = 0.5585778951644897, keywords = {"profession", "trainer", "leatherworking", "leather"} },
+        { name = "Enchanting Trainer", category = "prof_enchanting", x = 0.4797841012477875, y = 0.5364164710044861, keywords = {"profession", "trainer", "enchanting"} },
+        { name = "Battle Pet Trainer", category = "trainer", x = 0.4177116751670837, y = 0.7630217671394348, keywords = {"trainer", "class"} },
+        { name = "Stable Master", category = "stablemaster", x = 0.4629036486148834, y = 0.555595338344574, keywords = {"stable", "pet"} },
+        { name = "Fishing Trainer", category = "prof_fishing", x = 0.4480544030666351, y = 0.6036379933357239, keywords = {"profession", "trainer", "fishing"} },
+        { name = "Great Vault", category = "greatvault", x = 0.5027613043785095, y = 0.6507132649421692, keywords = {"vault", "great vault", "weekly", "chest"} },
+        { name = "Engineering Trainer", category = "prof_engineering", x = 0.4352691471576691, y = 0.5402756333351135, keywords = {"profession", "trainer", "engineering"} },
+        { name = "Black Market Auction House", category = "auctionhouse", x = 0.5185973644256592, y = 0.485391229391098, keywords = {"auction", "ah"} },
+        { name = "Inn", category = "innkeeper", x = 0.5628485083580017, y = 0.7034760117530823, keywords = {"inn", "innkeeper", "hearth", "rest", "tavern"} },
+        { name = "Portal to the Timeways", category = "portal", x = 0.4210474193096161, y = 0.5829678773880005, keywords = {"portal", "teleport", "mage"} },
+        { name = "The Catalyst", category = "catalyst", x = 0.4013126194477081, y = 0.6528624296188354, keywords = {"catalyst", "tier", "upgrade", "revival"} },
+        { name = "Jewelcrafting Trainer", category = "prof_jewelcrafting", x = 0.4800084829330444, y = 0.5494590997695923, keywords = {"profession", "trainer", "jewelcrafting", "gem"} },
+        { name = "Main City Portals", category = "portal", x = 0.5271350741386414, y = 0.65330570936203, keywords = {"portal", "teleport", "mage"} },
+        { name = "Item Upgrades", category = "upgradevendor", x = 0.4862304031848908, y = 0.6188023090362549, keywords = {"upgrade", "flightstone", "crest"} },
+        { name = "Cooking Trainer", category = "prof_cooking", x = 0.5618972778320312, y = 0.701492965221405, keywords = {"profession", "trainer", "cooking", "food"} },
+        { name = "Training Dummies", category = "trainingdummy", x = 0.3625243604183197, y = 0.8449423909187317, keywords = {"training", "dummy", "dummies", "target", "practice"} },
+        { name = "Delver's Headquarters", category = "delve", x = 0.5247015357017517, y = 0.7814997434616089, keywords = {"delve", "delves"} },
+        { name = "Bank", category = "bank", x = 0.5057687759399414, y = 0.6555349230766296, keywords = {"bank", "vault", "storage"} },
+        { name = "Blacksmithing Trainer", category = "prof_blacksmithing", x = 0.4366551041603088, y = 0.5162171125411987, keywords = {"profession", "trainer", "blacksmithing"} },
+        { name = "Skinning Trainer", category = "prof_skinning", x = 0.4326215088367462, y = 0.5553494691848755, keywords = {"profession", "trainer", "skinning"} },
+        { name = "Alchemy Trainer", category = "prof_alchemy", x = 0.4702479541301727, y = 0.5187026858329773, keywords = {"profession", "trainer", "alchemy", "potion", "flask"} },
+        { name = "Mining Trainer", category = "prof_mining", x = 0.4265600442886353, y = 0.5290617346763611, keywords = {"profession", "trainer", "mining", "ore"} },
+        { name = "Barber", category = "barber", x = 0.4275752604007721, y = 0.789533793926239, keywords = {"barber", "appearance", "haircut"} },
+        { name = "Transmogrifier", category = "transmogrifier", x = 0.5277905464172363, y = 0.5755223035812378, keywords = {"transmog", "transmogrifier", "appearance"} },
+        { name = "Herbalism Trainer", category = "prof_herbalism", x = 0.4821820855140686, y = 0.5153673887252808, keywords = {"profession", "trainer", "herbalism", "herb"} },
+        { name = "Tailoring Trainer", category = "prof_tailoring", x = 0.4819965362548828, y = 0.5414250493049622, keywords = {"profession", "trainer", "tailoring", "cloth"} },
+        { name = "Auction House", category = "auctionhouse", x = 0.5084021687507629, y = 0.7571848034858704, keywords = {"auction", "ah"} },
     },
 }
 
