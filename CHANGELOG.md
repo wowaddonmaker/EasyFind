@@ -9,7 +9,6 @@ All notable changes to EasyFind will be documented in this file.
 ### Added
 - **Map Search Filters**: Filter global and local search results by category - zones, dungeons, raids, travel, services, etc.
 - **Minimap Button**: Optional minimap icon to toggle the search bar (left-click) or open options (right-click); draggable to reposition
-- **`/ef setup`**: New command to re-trigger the first-time setup overlay
 - **Search Results**: Results list is now scrollable with no hard cutoff
 
 ### Changed

@@ -64,7 +64,6 @@ When you install EasyFind for the first time, you'll see an interactive setup ov
 | `/ef hide` | Hide the search bar |
 | `/ef show` | Show the search bar |
 | `/ef clear` | Dismiss all active highlights and guides (UI search, map POI, zone, breadcrumb) |
-| `/ef setup` | Re-run the first-time setup overlay |
 
 Options are also available via ESC > Interface > AddOns > EasyFind.
 
