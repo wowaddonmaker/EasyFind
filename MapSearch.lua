@@ -1469,12 +1469,18 @@ function MapSearch:CreateResultButton(index)
     navBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
     navBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Navigate")
-        GameTooltip:AddLine("Place waypoint and track on minimap", 0.6, 0.6, 0.6)
+        if self.disabled then
+            GameTooltip:SetText("Navigate", 0.5, 0.5, 0.5)
+            GameTooltip:AddLine("Only available when viewing your current zone", 0.6, 0.6, 0.6)
+        else
+            GameTooltip:SetText("Navigate")
+            GameTooltip:AddLine("Place waypoint and track on minimap", 0.6, 0.6, 0.6)
+        end
         GameTooltip:Show()
     end)
     navBtn:SetScript("OnLeave", GameTooltip_Hide)
     navBtn:SetScript("OnClick", function(self)
+        if self.disabled then return end
         local data = btn.data
         if not data then return end
 
@@ -3930,8 +3936,9 @@ function MapSearch:ShowResults(results)
                 btn.navBtn.texture:SetTexture(nil)
                 btn.navBtn.texture:SetTexCoord(0, 1, 0, 1)
                 btn.navBtn.texture:SetAtlas("Waypoint-MapPin-Untracked")
-                btn.navBtn.texture:SetDesaturated(false)
-                btn.navBtn.texture:SetAlpha(1)
+                btn.navBtn.disabled = not playerInZone
+                btn.navBtn.texture:SetDesaturated(not playerInZone)
+                btn.navBtn.texture:SetAlpha(playerInZone and 1 or 0.4)
                 btn.navBtn:Show()
                 -- Adjust text right edge to make room
                 btn.text:SetPoint("RIGHT", btn.navBtn, "LEFT", -2, 0)
