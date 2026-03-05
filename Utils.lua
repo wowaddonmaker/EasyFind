@@ -262,6 +262,232 @@ function Utils.GetFrameByPath(path)
     return current
 end
 
+-- =============================================================================
+-- MINIMAL SCROLLBAR (Retail quest-log style)
+-- Builds a thin 7px scrollbar using minimal-scrollbar-* atlas textures.
+-- Overlays the right edge of `parent` — does NOT shrink content width.
+-- Returns the scrollbar frame. Call bar:SetShown(bool) to show/hide,
+-- and bar:UpdateThumb() after resizing the scroll child.
+-- =============================================================================
+function Utils.CreateMinimalScrollBar(scrollFrame, parent)
+    local BAR_W = 7
+    local CAP_H = 7
+    local ARROW_W, ARROW_H = 16, 11
+    local MIN_THUMB_H = 20
+
+    -- Container frame, anchored to right edge of parent
+    local bar = CreateFrame("Frame", nil, parent)
+    bar:SetWidth(ARROW_W)
+    bar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -4, -8)
+    bar:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -4, 8)
+    bar:SetFrameStrata(parent:GetFrameStrata())
+    bar:SetFrameLevel(parent:GetFrameLevel() + 5)
+
+    -- Up arrow
+    local backBtn = CreateFrame("Button", nil, bar)
+    backBtn:SetSize(ARROW_W, ARROW_H)
+    backBtn:SetPoint("TOP", bar, "TOP", 0, 0)
+    local backTex = backBtn:CreateTexture(nil, "BACKGROUND")
+    backTex:SetAtlas("minimal-scrollbar-arrow-top")
+    backTex:SetAllPoints()
+    backBtn:SetScript("OnEnter", function() backTex:SetAtlas("minimal-scrollbar-arrow-top-over") end)
+    backBtn:SetScript("OnLeave", function() backTex:SetAtlas("minimal-scrollbar-arrow-top") end)
+    backBtn:SetScript("OnClick", function()
+        local cur = scrollFrame:GetVerticalScroll()
+        scrollFrame:SetVerticalScroll(mmax(0, cur - 24))
+    end)
+
+    -- Down arrow
+    local fwdBtn = CreateFrame("Button", nil, bar)
+    fwdBtn:SetSize(ARROW_W, ARROW_H)
+    fwdBtn:SetPoint("BOTTOM", bar, "BOTTOM", 0, 0)
+    local fwdTex = fwdBtn:CreateTexture(nil, "BACKGROUND")
+    fwdTex:SetAtlas("minimal-scrollbar-arrow-bottom")
+    fwdTex:SetAllPoints()
+    fwdBtn:SetScript("OnEnter", function() fwdTex:SetAtlas("minimal-scrollbar-arrow-bottom-over") end)
+    fwdBtn:SetScript("OnLeave", function() fwdTex:SetAtlas("minimal-scrollbar-arrow-bottom") end)
+    fwdBtn:SetScript("OnClick", function()
+        local cur = scrollFrame:GetVerticalScroll()
+        local range = scrollFrame:GetVerticalScrollRange()
+        scrollFrame:SetVerticalScroll(mmin(range, cur + 24))
+    end)
+
+    -- Track (between arrows)
+    local track = CreateFrame("Frame", nil, bar)
+    track:SetWidth(BAR_W)
+    track:SetPoint("TOP", backBtn, "BOTTOM", 0, -1)
+    track:SetPoint("BOTTOM", fwdBtn, "TOP", 0, 1)
+
+    local trackTopTex = track:CreateTexture(nil, "BACKGROUND")
+    trackTopTex:SetAtlas("minimal-scrollbar-track-top")
+    trackTopTex:SetSize(BAR_W, CAP_H)
+    trackTopTex:SetPoint("TOP")
+
+    local trackBotTex = track:CreateTexture(nil, "BACKGROUND")
+    trackBotTex:SetAtlas("minimal-scrollbar-track-bottom")
+    trackBotTex:SetSize(BAR_W, CAP_H)
+    trackBotTex:SetPoint("BOTTOM")
+
+    local trackMidTex = track:CreateTexture(nil, "BACKGROUND")
+    trackMidTex:SetAtlas("!minimal-scrollbar-track-middle", true)
+    trackMidTex:SetWidth(BAR_W)
+    trackMidTex:SetPoint("TOP", trackTopTex, "BOTTOM")
+    trackMidTex:SetPoint("BOTTOM", trackBotTex, "TOP")
+
+    -- Thumb (draggable)
+    local thumb = CreateFrame("Button", nil, track)
+    thumb:SetWidth(BAR_W)
+    thumb:EnableMouse(true)
+
+    local thumbTopTex = thumb:CreateTexture(nil, "ARTWORK")
+    thumbTopTex:SetAtlas("minimal-scrollbar-small-thumb-top")
+    thumbTopTex:SetSize(BAR_W, CAP_H)
+    thumbTopTex:SetPoint("TOP")
+
+    local thumbBotTex = thumb:CreateTexture(nil, "ARTWORK")
+    thumbBotTex:SetAtlas("minimal-scrollbar-small-thumb-bottom")
+    thumbBotTex:SetSize(BAR_W, CAP_H)
+    thumbBotTex:SetPoint("BOTTOM")
+
+    local thumbMidTex = thumb:CreateTexture(nil, "ARTWORK")
+    thumbMidTex:SetAtlas("minimal-scrollbar-small-thumb-middle")
+    thumbMidTex:SetWidth(BAR_W)
+    thumbMidTex:SetPoint("TOP", thumbTopTex, "BOTTOM")
+    thumbMidTex:SetPoint("BOTTOM", thumbBotTex, "TOP")
+
+    local function SetThumbNormal()
+        thumbTopTex:SetAtlas("minimal-scrollbar-small-thumb-top")
+        thumbBotTex:SetAtlas("minimal-scrollbar-small-thumb-bottom")
+        thumbMidTex:SetAtlas("minimal-scrollbar-small-thumb-middle")
+    end
+    local function SetThumbOver()
+        thumbTopTex:SetAtlas("minimal-scrollbar-small-thumb-top-over")
+        thumbBotTex:SetAtlas("minimal-scrollbar-small-thumb-bottom-over")
+        thumbMidTex:SetAtlas("minimal-scrollbar-small-thumb-middle-over")
+    end
+
+    thumb:SetScript("OnEnter", SetThumbOver)
+    thumb:SetScript("OnLeave", function()
+        if not bar.isDragging then SetThumbNormal() end
+    end)
+
+    -- Thumb dragging
+    bar.isDragging = false
+    bar.dragOffset = 0
+
+    thumb:SetScript("OnMouseDown", function(self, button)
+        if button ~= "LeftButton" then return end
+        bar.isDragging = true
+        local _, cursorY = GetCursorPosition()
+        local scale = self:GetEffectiveScale()
+        bar.dragOffset = cursorY / scale - self:GetTop()
+        SetThumbOver()
+    end)
+
+    thumb:SetScript("OnMouseUp", function(self, button)
+        if button ~= "LeftButton" then return end
+        bar.isDragging = false
+        if not self:IsMouseOver() then SetThumbNormal() end
+    end)
+
+    bar:SetScript("OnUpdate", function(self)
+        if not self.isDragging then return end
+        local range = scrollFrame:GetVerticalScrollRange()
+        if range <= 0 then return end
+
+        local _, cursorY = GetCursorPosition()
+        local scale = track:GetEffectiveScale()
+        cursorY = cursorY / scale
+
+        local trackT = track:GetTop()
+        local thumbH = thumb:GetHeight()
+        local travel = track:GetHeight() - thumbH
+        if travel <= 0 then return end
+
+        local pos = trackT - (cursorY - self.dragOffset)
+        local ratio = mmax(0, mmin(1, pos / travel))
+        scrollFrame:SetVerticalScroll(ratio * range)
+    end)
+
+    -- Click track to jump
+    track:EnableMouse(true)
+    track:SetScript("OnMouseDown", function(self, button)
+        if button ~= "LeftButton" then return end
+        local range = scrollFrame:GetVerticalScrollRange()
+        if range <= 0 then return end
+
+        local _, cursorY = GetCursorPosition()
+        local scale = self:GetEffectiveScale()
+        cursorY = cursorY / scale
+
+        local trackT = self:GetTop()
+        local trackH = self:GetHeight()
+        if trackH <= 0 then return end
+
+        local ratio = (trackT - cursorY) / trackH
+        scrollFrame:SetVerticalScroll(mmax(0, mmin(range, ratio * range)))
+    end)
+
+    -- Update thumb position and size from current scroll state.
+    -- Optional explicit contentH/viewH avoid layout-timing issues on first render.
+    -- Values are cached so deferred calls (OnShow) can reuse them.
+    bar._contentH = nil
+    bar._viewH = nil
+
+    function bar:UpdateThumb(contentH, viewH)
+        if contentH then self._contentH = contentH end
+        if viewH then self._viewH = viewH end
+        contentH = contentH or self._contentH
+        viewH = viewH or self._viewH or scrollFrame:GetHeight()
+        local range = contentH and (contentH - viewH) or scrollFrame:GetVerticalScrollRange()
+        if not range or range <= 0 then
+            thumb:Hide()
+            return
+        end
+
+        local trackH = track:GetHeight()
+        if trackH <= 0 then
+            thumb:Hide()
+            return
+        end
+
+        contentH = contentH or (viewH + range)
+        local thumbH = mmax(MIN_THUMB_H, trackH * (viewH / contentH))
+        thumb:SetHeight(thumbH)
+
+        local travel = trackH - thumbH
+        local scrollPos = scrollFrame:GetVerticalScroll()
+        local ratio = (range > 0) and (scrollPos / range) or 0
+
+        thumb:ClearAllPoints()
+        thumb:SetPoint("TOP", track, "TOP", 0, -(ratio * travel))
+        thumb:Show()
+    end
+
+    -- Sync thumb when scroll position changes
+    scrollFrame:SetScript("OnVerticalScroll", function()
+        bar:UpdateThumb()
+    end)
+
+    -- Mouse wheel on the scrollbar itself
+    bar:EnableMouseWheel(true)
+    bar:SetScript("OnMouseWheel", function(_, delta)
+        local range = scrollFrame:GetVerticalScrollRange()
+        local cur = scrollFrame:GetVerticalScroll()
+        scrollFrame:SetVerticalScroll(mmax(0, mmin(range, cur - delta * 72)))
+    end)
+
+    -- Defer UpdateThumb on show so track layout is resolved first
+    bar:SetScript("OnShow", function(self)
+        C_Timer.After(0, function()
+            if self:IsShown() then self:UpdateThumb() end
+        end)
+    end)
+
+    bar:Hide()
+    return bar
+end
+
 -- Create a grey circle-X clear button (retail quest log style).
 -- Returns the button; caller must set OnClick and OnEnter scripts.
 function Utils.CreateClearButton(parent, globalName)

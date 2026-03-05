@@ -495,11 +495,11 @@ function Options:Initialize()
     -- =====================================================================
     -- SECTION 2: Search Results
     -- =====================================================================
-    local sec2 = CreateSection("Search Results", 140)
+    local sec2 = CreateSection("Search Results", 100)
 
-    -- Left column: slider + theme
-    local maxResultsSlider = CreateSlider(sec2, "MaxResults", "Max Search Results", 3, 24, 1,
-        "Maximum number of search results to display in the dropdown (3-24).",
+    -- Left column: slider
+    local maxResultsSlider = CreateSlider(sec2, "MaxResults", "Visible Rows", 3, 24, 1,
+        "Number of rows visible before scrolling (3-24). Results beyond this are accessible by scrolling.",
         function(val) return tostring(mfloor(val + 0.5)) end)
     maxResultsSlider:SetPoint("TOPLEFT", sec2, "TOPLEFT", COL_LEFT, -28)
     maxResultsSlider:SetValue(EasyFind.db.maxResults or 10)
@@ -511,28 +511,6 @@ function Options:Initialize()
         end
     end)
     optionsFrame.maxResultsSlider = maxResultsSlider
-
-    -- Theme selector (below slider on the left)
-    local themeLabel = sec2:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    themeLabel:SetPoint("TOPLEFT", sec2, "TOPLEFT", COL_LEFT + 4, -88)
-    themeLabel:SetText("Theme:")
-
-    local themeChoices = {"Classic", "Retail"}
-
-    local themeBtnFrame, themeBtnText = CreateFlyoutSelector(
-        sec2, "EasyFindTheme", 90, themeLabel, EasyFind.db.resultsTheme or "Retail"
-    )
-    themeBtnFrame:ClearAllPoints()
-    themeBtnFrame:SetPoint("LEFT", themeLabel, "LEFT", BTN_OFFSET, 0)
-    local themeFlyout = CreateFlyoutPanel(themeBtnFrame, "EasyFindTheme", 90, #themeChoices)
-    AddFlyoutOptions(themeFlyout, themeChoices, 84, function(name)
-        EasyFind.db.resultsTheme = name
-        themeBtnText:SetText(name)
-        if ns.UI and ns.UI.RefreshResults then ns.UI:RefreshResults() end
-        if ns.MapSearch and ns.MapSearch.UpdateSearchBarTheme then ns.MapSearch:UpdateSearchBarTheme() end
-    end)
-    optionsFrame.themeBtnText = themeBtnText
-    optionsFrame.themeFlyout = themeFlyout
 
     -- Right column: checkboxes
     local directOpenCheckbox = CreateCheckbox(sec2, "DirectOpen", "Open Panels Directly",
@@ -553,29 +531,6 @@ function Options:Initialize()
     end)
     optionsFrame.zoneNavCheckbox = zoneNavCheckbox
 
-    local truncMessageCheckbox = CreateCheckbox(sec2, "TruncMessage", "Show \"More Results\" Message",
-        "When enabled, shows a message at the bottom of search results when more items exist than can be displayed.\n\nIncrease the max results slider on the left to see more items.")
-    truncMessageCheckbox:SetPoint("TOPLEFT", zoneNavCheckbox, "BOTTOMLEFT", 0, -4)
-    truncMessageCheckbox:SetChecked(EasyFind.db.showTruncationMessage ~= false)
-    truncMessageCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.showTruncationMessage = self:GetChecked()
-        if ns.UI and ns.UI.RefreshResults then
-            ns.UI:RefreshResults()
-        end
-    end)
-    optionsFrame.truncMessageCheckbox = truncMessageCheckbox
-
-    local hardCapCheckbox = CreateCheckbox(sec2, "HardCap", "Hard Results Cap",
-        "When enabled, search results are strictly cut off at the max results limit, even if the last visible item is a group header with no results shown beneath it. Pinned paths also count toward the limit when this is enabled.\n\nWhen disabled (default), the list extends slightly past the cap to ensure every group header shows the results inside it. Pinned paths do not count toward the result limit.")
-    hardCapCheckbox:SetPoint("TOPLEFT", truncMessageCheckbox, "BOTTOMLEFT", 0, -4)
-    hardCapCheckbox:SetChecked(EasyFind.db.hardResultsCap or false)
-    hardCapCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.hardResultsCap = self:GetChecked()
-        if ns.UI and ns.UI.RefreshResults then
-            ns.UI:RefreshResults()
-        end
-    end)
-    optionsFrame.hardCapCheckbox = hardCapCheckbox
 
     -- =====================================================================
     -- SECTION 3: Map & Navigation
@@ -723,7 +678,7 @@ function Options:Initialize()
     -- =====================================================================
     -- SECTION 4: Keybinds & General
     -- =====================================================================
-    local sec4 = CreateSection("Keybinds & General", 110)
+    local sec4 = CreateSection("Keybinds & General", 105)
 
     -- Toggle Search Bar keybind
     local toggleLabel = sec4:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -781,6 +736,28 @@ function Options:Initialize()
     focusBtn:SetScript("OnHide", function(self) StopCapture(self, "EASYFIND_FOCUS") end)
     optionsFrame.focusBtn = focusBtn
 
+    -- Theme selector (below keybinds on the left)
+    local themeLabel = sec4:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    themeLabel:SetPoint("TOPLEFT", focusLabel, "BOTTOMLEFT", 0, -10)
+    themeLabel:SetText("Theme:")
+
+    local themeChoices = {"Classic", "Retail"}
+
+    local themeBtnFrame, themeBtnText = CreateFlyoutSelector(
+        sec4, "EasyFindTheme", 90, themeLabel, EasyFind.db.resultsTheme or "Retail"
+    )
+    themeBtnFrame:ClearAllPoints()
+    themeBtnFrame:SetPoint("LEFT", themeLabel, "LEFT", BTN_OFFSET, 0)
+    local themeFlyout = CreateFlyoutPanel(themeBtnFrame, "EasyFindTheme", 90, #themeChoices)
+    AddFlyoutOptions(themeFlyout, themeChoices, 84, function(name)
+        EasyFind.db.resultsTheme = name
+        themeBtnText:SetText(name)
+        if ns.UI and ns.UI.RefreshResults then ns.UI:RefreshResults() end
+        if ns.MapSearch and ns.MapSearch.UpdateSearchBarTheme then ns.MapSearch:UpdateSearchBarTheme() end
+    end)
+    optionsFrame.themeBtnText = themeBtnText
+    optionsFrame.themeFlyout = themeFlyout
+
     -- Login message checkbox (right column)
     local loginMessageCheckbox = CreateCheckbox(sec4, "LoginMessage", "Show Login Message",
         "When enabled, shows a short \"EasyFind loaded!\" message in chat when you log in.\n\nDisable to keep chat cleaner.")
@@ -831,8 +808,6 @@ function Options:Initialize()
         EasyFind.db.smartShow = false
         EasyFind.db.resultsTheme = "Retail"
         EasyFind.db.maxResults = 10
-        EasyFind.db.showTruncationMessage = true
-        EasyFind.db.hardResultsCap = false
         EasyFind.db.pinsCollapsed = false
         EasyFind.db.staticOpacity = false
         EasyFind.db.indicatorStyle = "EasyFind Arrow"
@@ -873,8 +848,6 @@ function Options:Initialize()
         optionsFrame.directOpenCheckbox:SetChecked(false)
         optionsFrame.zoneNavCheckbox:SetChecked(false)
         optionsFrame.smartShowCheckbox:SetChecked(true)
-        optionsFrame.truncMessageCheckbox:SetChecked(true)
-        optionsFrame.hardCapCheckbox:SetChecked(false)
         optionsFrame.staticOpacityCheckbox:SetChecked(false)
         optionsFrame.blinkingPinsCheckbox:SetChecked(false)
         optionsFrame.loginMessageCheckbox:SetChecked(true)
@@ -988,8 +961,6 @@ function Options:Show()
     optionsFrame.directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false)
     optionsFrame.zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly or false)
     optionsFrame.smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
-    optionsFrame.truncMessageCheckbox:SetChecked(EasyFind.db.showTruncationMessage ~= false)
-    optionsFrame.hardCapCheckbox:SetChecked(EasyFind.db.hardResultsCap or false)
     optionsFrame.staticOpacityCheckbox:SetChecked(EasyFind.db.staticOpacity or false)
     optionsFrame.blinkingPinsCheckbox:SetChecked(EasyFind.db.blinkingPins or false)
     optionsFrame.loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage ~= false)

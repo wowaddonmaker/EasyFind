@@ -25,7 +25,7 @@ local wipe               = wipe
 local searchFrame
 local resultsFrame
 local resultButtons = {}
-local MAX_BUTTON_POOL = 30  -- Maximum buttons we'll ever create (extra for smart cap extension)
+local MAX_BUTTON_POOL = 50  -- Maximum buttons (scroll handles overflow beyond this)
 local inCombat = false
 local selectingResult = false  -- guard: suppress OnTextChanged re-renders during SelectResult
 
@@ -151,10 +151,6 @@ local function SetRowIcon(btn, kind, value, iconSize)
     btn.icon:Show()
 end
 
--- Get the current max results setting (user-configurable)
-local function GetMaxResults()
-    return EasyFind.db.maxResults or 10
-end
 local selectedIndex = 0   -- 0 = none selected, 1..N = highlighted row
 local unearnedTooltip      -- Custom tooltip for unearned currencies
 
@@ -672,34 +668,34 @@ function UI:CreateResultsFrame()
     
     resultsFrame:Hide()
 
+    -- Plain ScrollFrame for clipping + mouse wheel
+    local scrollFrame = CreateFrame("ScrollFrame", nil, resultsFrame)
+    scrollFrame:EnableMouseWheel(true)
+    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        local range = self:GetVerticalScrollRange()
+        local cur = self:GetVerticalScroll()
+        self:SetVerticalScroll(mmax(0, mmin(range, cur - delta * 72)))
+    end)
+    resultsFrame.scrollFrame = scrollFrame
+
+    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    scrollFrame:SetScrollChild(scrollChild)
+    resultsFrame.scrollChild = scrollChild
+
+    -- Minimal retail-style scrollbar (overlays right edge, no content squish)
+    resultsFrame.scrollBar = ns.Utils.CreateMinimalScrollBar(scrollFrame, resultsFrame)
+
     for i = 1, MAX_BUTTON_POOL do
         local btn = self:CreateResultButton(i)
         resultButtons[i] = btn
     end
 
     -- Pin section separator line (golden, shown between pinned items and search results)
-    local pinSeparator = resultsFrame:CreateTexture(nil, "ARTWORK")
+    local pinSeparator = scrollChild:CreateTexture(nil, "ARTWORK")
     pinSeparator:SetColorTexture(1.0, 0.82, 0.0, 0.4)
     pinSeparator:SetHeight(1)
     pinSeparator:Hide()
     resultsFrame.pinSeparator = pinSeparator
-
-    -- Truncation indicator separator line (golden, matching tree lines)
-    local truncSeparator = resultsFrame:CreateTexture(nil, "ARTWORK")
-    truncSeparator:SetColorTexture(1.0, 0.82, 0.0, 0.6)  -- Golden color matching tree lines
-    truncSeparator:SetHeight(1)
-    truncSeparator:SetPoint("BOTTOMLEFT", resultsFrame, "BOTTOMLEFT", 10, 30)
-    truncSeparator:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", -10, 30)
-    truncSeparator:Hide()
-    resultsFrame.truncSeparator = truncSeparator
-
-    -- Truncation indicator: shown when more results exist than can be displayed
-    local truncIndicator = resultsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    truncIndicator:SetPoint("BOTTOM", resultsFrame, "BOTTOM", 0, 12)
-    truncIndicator:SetTextColor(0.7, 0.7, 0.7, 1.0)
-    truncIndicator:SetText("More results available. Increase limit or hide this message in /ef o")
-    truncIndicator:Hide()
-    resultsFrame.truncIndicator = truncIndicator
 end
 
 -- Vibrant indent line colors for each depth level (used by Classic theme)
@@ -772,9 +768,10 @@ local function ExpandContainer(entry, entryIndex)
 end
 
 function UI:CreateResultButton(index)
-    local btn = CreateFrame("Button", "EasyFindResultButton"..index, resultsFrame)
+    local scrollChild = resultsFrame.scrollChild
+    local btn = CreateFrame("Button", "EasyFindResultButton"..index, scrollChild)
     btn:SetSize(360, 22)
-    btn:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 10, -8 - (index - 1) * 22)
+    btn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 10, -8 - (index - 1) * 22)
     
     btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
     
@@ -1369,39 +1366,13 @@ function UI:ShowHierarchicalResults(hierarchical)
         end
     end
 
-    local maxResults = GetMaxResults()
-    local nonPinVisible = #visible - pinSlots
-    local count
+    -- Show all results (scroll handles overflow)
+    local count = mmin(#visible, MAX_BUTTON_POOL)
 
-    if EasyFind.db.hardResultsCap then
-        -- Hard cap: pins count toward the limit
-        count = mmin(#visible, maxResults)
-    else
-        -- Default: pins don't count toward the limit
-        count = pinSlots + mmin(nonPinVisible, maxResults)
-    end
-
-    -- Smart cap: if the last visible row is a group header, extend once to
-    -- include its immediate subtree so the user never sees a dangling header
-    -- with nothing beneath it.  Capped at maxResults*2 total to prevent
-    -- runaway extension when many headers sit near the boundary.
-    if not EasyFind.db.hardResultsCap and count < #visible then
-        local ceiling = mmin(#visible, pinSlots + maxResults * 2)
-        while count < ceiling do
-            local last = visible[count]
-            if not last.isPathNode or last.isPinHeader then break end
-            local headerDepth = last.depth or 0
-            local extended = false
-            for j = count + 1, #visible do
-                if j > ceiling then break end
-                local d = (visible[j].depth or 0)
-                if d <= headerDepth then break end
-                count = j
-                extended = true
-            end
-            if not extended then break end
-        end
-    end
+    -- Pre-compute whether scrolling will be needed so buttons can be narrower
+    local maxVisibleRows = EasyFind.db.maxResults or 10
+    local willScroll = count > maxVisibleRows
+    local scrollInset = willScroll and 10 or 0
 
     -- ----------------------------------------------------------------
     -- Pre-compute last-child flags on the VISIBLE list
@@ -1450,9 +1421,9 @@ function UI:ShowHierarchicalResults(hierarchical)
 
             -- Reposition for theme row height
             local padL = theme.resultsPadLeft or 10
-            btn:SetSize(theme.btnWidth, rowH)
+            btn:SetSize(theme.btnWidth - scrollInset, rowH)
             btn:ClearAllPoints()
-            btn:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", padL, -padT - (i - 1) * rowH - sepOffset)
+            btn:SetPoint("TOPLEFT", resultsFrame.scrollChild, "TOPLEFT", padL, -(i - 1) * rowH - sepOffset)
 
             -- Selection highlight color
             btn.selectionHighlight:SetVertexColor(unpack(theme.selectionColor))
@@ -1970,8 +1941,8 @@ function UI:ShowHierarchicalResults(hierarchical)
     if resultsFrame.pinSeparator then
         if hasResultsAfterPins then
             resultsFrame.pinSeparator:ClearAllPoints()
-            resultsFrame.pinSeparator:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 10, -padT - lastPinIndex * rowH - 4)
-            resultsFrame.pinSeparator:SetPoint("TOPRIGHT", resultsFrame, "TOPRIGHT", -10, -padT - lastPinIndex * rowH - 4)
+            resultsFrame.pinSeparator:SetPoint("TOPLEFT", resultsFrame.scrollChild, "TOPLEFT", 10, -lastPinIndex * rowH - 4)
+            resultsFrame.pinSeparator:SetPoint("TOPRIGHT", resultsFrame.scrollChild, "TOPRIGHT", -10, -lastPinIndex * rowH - 4)
             resultsFrame.pinSeparator:Show()
             pinSepPadding = PIN_SEP_HEIGHT
         else
@@ -1979,34 +1950,39 @@ function UI:ShowHierarchicalResults(hierarchical)
         end
     end
 
-    -- Show/hide truncation indicator and separator
-    local showTruncation = #visible > count and (EasyFind.db.showTruncationMessage ~= false)
+    -- Calculate total content height vs max visible height
+    local totalContentHeight = count * rowH + pinSepPadding
+    local maxVisibleHeight = maxVisibleRows * rowH
+    local hasScroll = totalContentHeight > maxVisibleHeight
+    local visibleHeight = hasScroll and maxVisibleHeight or totalContentHeight
 
-    -- Add extra padding for truncation message if it will be shown
-    local truncPadding = showTruncation and 25 or 0
-    resultsFrame:SetHeight(padT + theme.resultsPadBot + count * rowH + pinSepPadding + truncPadding)
-    if resultsFrame.truncIndicator then
-        if showTruncation then
-            resultsFrame.truncIndicator:Show()
-        else
-            resultsFrame.truncIndicator:Hide()
-        end
-    end
-    if resultsFrame.truncSeparator then
-        if showTruncation then
-            resultsFrame.truncSeparator:Show()
-        else
-            resultsFrame.truncSeparator:Hide()
+    -- Size the results frame and scroll child
+    resultsFrame:SetHeight(padT + theme.resultsPadBot + visibleHeight)
+    resultsFrame.scrollChild:SetWidth(resultsFrame:GetWidth() - scrollInset)
+    resultsFrame.scrollChild:SetHeight(totalContentHeight)
+
+    -- Position scroll frame inside results frame (accounting for padding)
+    resultsFrame.scrollFrame:ClearAllPoints()
+    resultsFrame.scrollFrame:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 0, -padT)
+    resultsFrame.scrollFrame:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", 0, theme.resultsPadBot)
+
+    -- Reset scroll position on new search
+    resultsFrame.scrollFrame:SetVerticalScroll(0)
+
+    -- Show/hide minimal scrollbar (overlays right edge)
+    if resultsFrame.scrollBar then
+        resultsFrame.scrollBar:SetShown(hasScroll)
+        if hasScroll then
+            resultsFrame.scrollBar:UpdateThumb(totalContentHeight, visibleHeight)
         end
     end
 
     -- Stretch background texture if the frame is taller than the texture's native height
-    if theme.resultsBgAtlas and resultsFrame.bgAtlasTex:IsShown() then
+    if theme.resultsBgAtlas and resultsFrame.bgAtlasTex and resultsFrame.bgAtlasTex:IsShown() then
         local frameHeight = resultsFrame:GetHeight()
         local currentTexHeight = resultsFrame.bgAtlasTex:GetHeight()
-        -- Only stretch if frame is taller; never shrink below native height
         if frameHeight > currentTexHeight then
-            resultsFrame.bgAtlasTex:SetHeight(frameHeight - 8)  -- Account for insets
+            resultsFrame.bgAtlasTex:SetHeight(frameHeight - 8)
         end
     end
 

@@ -257,7 +257,7 @@ local globalSearchFrame -- Global search bar (right)
 local activeSearchFrame -- Which bar is currently active
 local resultsFrame
 local resultButtons = {}
-local MAX_RESULTS_POOL = 24  -- pre-created button pool (matches slider max)
+local MAX_RESULTS_POOL = 50  -- pre-created button pool (scroll handles overflow)
 local highlightFrame
 local indicatorFrame
 local currentHighlightedPin
@@ -1252,7 +1252,24 @@ function MapSearch:CreateResultsFrame()
     })
 
     resultsFrame:Hide()
-    
+
+    -- Plain ScrollFrame for clipping + mouse wheel
+    local scrollFrame = CreateFrame("ScrollFrame", nil, resultsFrame)
+    scrollFrame:EnableMouseWheel(true)
+    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        local range = self:GetVerticalScrollRange()
+        local cur = self:GetVerticalScroll()
+        self:SetVerticalScroll(mmax(0, mmin(range, cur - delta * 72)))
+    end)
+    resultsFrame.scrollFrame = scrollFrame
+
+    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    scrollFrame:SetScrollChild(scrollChild)
+    resultsFrame.scrollChild = scrollChild
+
+    -- Minimal retail-style scrollbar (overlays right edge, no content squish)
+    resultsFrame.scrollBar = ns.Utils.CreateMinimalScrollBar(scrollFrame, resultsFrame)
+
     for i = 1, MAX_RESULTS_POOL do
         local btn = self:CreateResultButton(i)
         resultButtons[i] = btn
@@ -1263,7 +1280,8 @@ end
 local MAP_INDENT_COLOR = {0.40, 0.85, 1.00, 0.70}  -- cyan
 
 function MapSearch:CreateResultButton(index)
-    local btn = CreateFrame("Button", "EasyFindMapResultButton"..index, resultsFrame)
+    local scrollChild = resultsFrame.scrollChild
+    local btn = CreateFrame("Button", "EasyFindMapResultButton"..index, scrollChild)
     btn:SetSize(280, 24)
     -- No fixed SetPoint here; ShowResults positions dynamically
     
@@ -3528,31 +3546,33 @@ function MapSearch:ShowResults(results)
         return
     end
     
-    local maxResults = EasyFind.db.maxResults or 10
-    local count = mmin(#results, maxResults)
-
-    -- Compute available height for post-layout clamping
+    local count = mmin(#results, MAX_RESULTS_POOL)
     local resultsAbove = EasyFind.db.mapResultsAbove
-    local anchor = activeSearchFrame or searchFrame
+
+    -- Pre-compute whether scrolling will be needed so buttons can be narrower.
+    -- Must compute maxVisibleHeight (including screen-space clamping) BEFORE the
+    -- button loop, otherwise willScroll can be false while hasScroll ends up true
+    -- and the scrollbar overlaps full-width buttons.
+    local maxVisibleRows = EasyFind.db.maxResults or 10
+    local scrollBar = resultsFrame.scrollBar
+    local maxVisibleHeight = maxVisibleRows * 26 + 12
+    local preAnchor = activeSearchFrame or searchFrame
     if isGlobalSearch and globalSearchFrame then
-        anchor = globalSearchFrame
+        preAnchor = globalSearchFrame
     end
-    local availableHeight  -- nil if we can't determine (skip clamping)
-    local margin = 10  -- screen-edge margin
-    local overlap = 8  -- border overlap into the search bar
+    local screenH = UIParent:GetHeight()
     if resultsAbove then
-        local anchorTop = anchor and anchor:GetTop()
-        local scale = anchor and anchor:GetEffectiveScale() or 1
-        local screenH = UIParent:GetHeight() * UIParent:GetEffectiveScale() / scale
-        if anchorTop then
-            availableHeight = screenH - anchorTop + overlap - margin
+        local available = (preAnchor:GetTop() or (screenH / 2)) - 16
+        if available > 0 and maxVisibleHeight > available then
+            maxVisibleHeight = available
         end
     else
-        local anchorBottom = anchor and anchor:GetBottom()
-        if anchorBottom then
-            availableHeight = anchorBottom + overlap - margin
+        local available = (preAnchor:GetBottom() or (screenH / 2)) - 16
+        if available > 0 and maxVisibleHeight > available then
+            maxVisibleHeight = available
         end
     end
+    local willScroll = (count * 26 + 12) > maxVisibleHeight
 
     local yOffset = -6  -- running vertical offset (top padding)
 
@@ -3567,7 +3587,11 @@ function MapSearch:ShowResults(results)
             btn.icon:SetPoint("LEFT", 5, 0)
             btn.text:ClearAllPoints()
             btn.text:SetPoint("LEFT", btn.icon, "RIGHT", 6, 0)
-            btn.text:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
+            if willScroll then
+                btn.text:SetPoint("RIGHT", scrollBar, "LEFT", -4, 0)
+            else
+                btn.text:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
+            end
             btn.icon:Show()
             btn.icon:SetVertexColor(1, 1, 1)
             btn.text:SetTextColor(1, 1, 1)
@@ -3582,7 +3606,11 @@ function MapSearch:ShowResults(results)
                 btn.icon:Hide()
                 btn.text:ClearAllPoints()
                 btn.text:SetPoint("LEFT", btn, "LEFT", 8, 0)
-                btn.text:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
+                if willScroll then
+                    btn.text:SetPoint("RIGHT", scrollBar, "LEFT", -4, 0)
+                else
+                    btn.text:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
+                end
                 btn.text:SetText("|cff666666▼ " .. data.name .. "|r")
 
             elseif data.isZone then
@@ -3592,7 +3620,11 @@ function MapSearch:ShowResults(results)
                     btn.icon:SetPoint("LEFT", 25, 0)  -- Indent the icon
                     btn.text:ClearAllPoints()
                     btn.text:SetPoint("LEFT", btn.icon, "RIGHT", 6, 0)
-                    btn.text:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
+                    if willScroll then
+                        btn.text:SetPoint("RIGHT", scrollBar, "LEFT", -4, 0)
+                    else
+                        btn.text:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
+                    end
                     btn.text:SetText(data.displayName or data.name)
                     btn.text:SetTextColor(1, 0.82, 0)  -- Gold
                     btn.icon:SetTexture(237382)
@@ -3654,46 +3686,63 @@ function MapSearch:ShowResults(results)
             btn:Show()
 
             -- Force text width so GetStringHeight accounts for wrapping on first render
-            -- Button is inset 10px in a 300px results frame; icon(18)+pad(11)+rightPad(5) = 34
-            btn.text:SetWidth(resultsFrame:GetWidth() - 10 - 34)
+            -- Button is inset 10px in a 300px results frame; icon(18)+pad(11) = 29
+            local scrollGutter = willScroll and (scrollBar:GetWidth() + 7) or 0
+            local btnW = resultsFrame:GetWidth() - 10 - scrollGutter
+            btn:SetWidth(btnW)
+            local scrollBarW = willScroll and (scrollBar:GetWidth() + 4) or 5
+            btn.text:SetWidth(btnW - 29 - scrollBarW)
 
             -- Measure actual text height and size button to fit
             local textHeight = btn.text:GetStringHeight() or 14
             local rowHeight = mmax(24, textHeight + 8)  -- minimum 24, pad 8
 
-            -- Clamp: hide this row (and all subsequent) if it would overflow the screen
-            if availableHeight and (-yOffset + rowHeight) > availableHeight then
-                btn:Hide()
-                -- Hide remaining buttons too
-                for j = i + 1, MAX_RESULTS_POOL do
-                    resultButtons[j]:Hide()
-                end
-                break
-            end
-
             btn:SetHeight(rowHeight)
             btn:ClearAllPoints()
-            btn:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 10, yOffset)
+            btn:SetPoint("TOPLEFT", resultsFrame.scrollChild, "TOPLEFT", 10, yOffset)
             yOffset = yOffset - rowHeight - 2
         else
             btn:Hide()
         end
     end
 
-    resultsFrame:SetHeight(-yOffset + 6)  -- bottom padding
-    
+    -- Calculate total content height vs already-clamped maxVisibleHeight
+    local totalContentHeight = -yOffset + 6
+    local hasScroll = totalContentHeight > maxVisibleHeight
+    local visibleHeight = hasScroll and maxVisibleHeight or totalContentHeight
+
+    -- Size the results frame and scroll child
+    -- When not scrolling, add 12px for scrollFrame internal padding (6px top + 6px bottom)
+    -- so scrollChild matches viewport exactly and no unwanted scroll range is created.
+    -- When scrolling, maxVisibleHeight already includes +12 for this padding.
+    resultsFrame:SetHeight(visibleHeight + (hasScroll and 0 or 12))
+    resultsFrame.scrollChild:SetWidth(resultsFrame:GetWidth())
+    resultsFrame.scrollChild:SetHeight(totalContentHeight)
+
+    -- Position scroll frame inside results frame
+    resultsFrame.scrollFrame:ClearAllPoints()
+    resultsFrame.scrollFrame:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 0, -6)
+    resultsFrame.scrollFrame:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", 0, 6)
+
+    -- Reset scroll position on new search
+    resultsFrame.scrollFrame:SetVerticalScroll(0)
+
+    -- Show/hide minimal scrollbar (overlays right edge)
+    if resultsFrame.scrollBar then
+        resultsFrame.scrollBar:SetShown(hasScroll)
+        if hasScroll then
+            resultsFrame.scrollBar:UpdateThumb(totalContentHeight, visibleHeight)
+        end
+    end
+
     -- Anchor results dropdown to whichever search bar is active
     resultsFrame:ClearAllPoints()
-    local anchor = activeSearchFrame or searchFrame
-    if isGlobalSearch and globalSearchFrame then
-        anchor = globalSearchFrame
-    end
     if resultsAbove then
-        resultsFrame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, -8)
+        resultsFrame:SetPoint("BOTTOMLEFT", preAnchor, "TOPLEFT", 0, -8)
     else
-        resultsFrame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, 8)
+        resultsFrame:SetPoint("TOPLEFT", preAnchor, "BOTTOMLEFT", 0, 8)
     end
-    
+
     resultsFrame:Show()
 end
 
