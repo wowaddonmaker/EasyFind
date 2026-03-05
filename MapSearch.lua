@@ -1342,12 +1342,18 @@ function MapSearch:CreateResultButton(index)
     navBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
     navBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Navigate")
-        GameTooltip:AddLine("Show pin and track on minimap", 0.6, 0.6, 0.6)
+        if self.isDisabled then
+            GameTooltip:SetText("Navigate", 0.5, 0.5, 0.5)
+            GameTooltip:AddLine("You must be in this zone to track waypoints", 1, 0.5, 0.2)
+        else
+            GameTooltip:SetText("Navigate")
+            GameTooltip:AddLine("Show pin and track on minimap", 0.6, 0.6, 0.6)
+        end
         GameTooltip:Show()
     end)
     navBtn:SetScript("OnLeave", GameTooltip_Hide)
     navBtn:SetScript("OnClick", function(self)
+        if self.isDisabled then return end
         local data = btn.data
         if not data then return end
 
@@ -3656,6 +3662,11 @@ function MapSearch:ShowResults(results)
     end
     local willScroll = (count * 26 + 12) > maxVisibleHeight
 
+    -- Check if the player is in the zone being viewed (for navBtn disabled state)
+    local viewedMapID = WorldMapFrame:GetMapID()
+    local playerMapID = C_Map.GetBestMapForUnit("player")
+    local playerInZone = viewedMapID and playerMapID and viewedMapID == playerMapID
+
     local yOffset = -6  -- running vertical offset (top padding)
 
     for i = 1, MAX_RESULTS_POOL do
@@ -3755,6 +3766,15 @@ function MapSearch:ShowResults(results)
                 btn.navBtn.texture:SetTexture(nil)
                 btn.navBtn.texture:SetTexCoord(0, 1, 0, 1)
                 btn.navBtn.texture:SetAtlas("Waypoint-MapPin-Untracked")
+                if playerInZone then
+                    btn.navBtn.isDisabled = false
+                    btn.navBtn.texture:SetDesaturated(false)
+                    btn.navBtn.texture:SetAlpha(1)
+                else
+                    btn.navBtn.isDisabled = true
+                    btn.navBtn.texture:SetDesaturated(true)
+                    btn.navBtn.texture:SetAlpha(0.4)
+                end
                 btn.navBtn:Show()
                 -- Adjust text right edge to make room
                 btn.text:SetPoint("RIGHT", btn.navBtn, "LEFT", -2, 0)
