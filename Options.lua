@@ -554,24 +554,10 @@ function Options:Initialize()
     end)
     optionsFrame.mapIconSlider = mapIconSlider
 
-    local minimapMarkerSlider = CreateSlider(sec3, "MinimapMarker", "Minimap Marker Size", 12, 36, 1,
-        "Adjusts the size of the destination marker shown on the minimap when tracking a location.",
-        function(val) return tostring(mfloor(val + 0.5)) .. "px" end)
-    minimapMarkerSlider:SetPoint("TOPLEFT", sec3, "TOPLEFT", COL_LEFT, -93)
-    minimapMarkerSlider:SetValue(EasyFind.db.minimapMarkerSize or 25)
-    minimapMarkerSlider:HookScript("OnValueChanged", function(self, value)
-        value = mfloor(value + 0.5)
-        EasyFind.db.minimapMarkerSize = value
-        if ns.MapSearch and ns.MapSearch.UpdateMinimapMarkerSize then
-            ns.MapSearch:UpdateMinimapMarkerSize()
-        end
-    end)
-    optionsFrame.minimapMarkerSlider = minimapMarkerSlider
-
-    local arrivalSlider = CreateSlider(sec3, "ArrivalDist", "Arrival Distance", 3, 20, 1,
+    local arrivalSlider = CreateSlider(sec3, "ArrivalDist", "Arrival Distance", 3, 50, 1,
         "How close (in yards) you must be to a tracked location before the waypoint auto-clears.",
         function(val) return tostring(mfloor(val + 0.5)) .. "yd" end)
-    arrivalSlider:SetPoint("TOPLEFT", sec3, "TOPLEFT", COL_LEFT, -158)
+    arrivalSlider:SetPoint("TOPLEFT", sec3, "TOPLEFT", COL_LEFT, -93)
     arrivalSlider:SetValue(EasyFind.db.arrivalDistance or 10)
     arrivalSlider:HookScript("OnValueChanged", function(self, value)
         value = mfloor(value + 0.5)
@@ -817,7 +803,6 @@ function Options:Initialize()
         EasyFind.db.uiResultsAbove = false
         EasyFind.db.mapResultsAbove = false
         EasyFind.db.showMinimapButton = true
-        EasyFind.db.minimapMarkerSize = 25
         EasyFind.db.arrivalDistance = 10
         EasyFind.db.visible = true
 
@@ -855,7 +840,6 @@ function Options:Initialize()
         optionsFrame.mapResultsAboveCheckbox:SetChecked(false)
         optionsFrame.minimapBtnCheckbox:SetChecked(false)
         optionsFrame.maxResultsSlider:SetValue(10)
-        optionsFrame.minimapMarkerSlider:SetValue(25)
         optionsFrame.arrivalSlider:SetValue(10)
         optionsFrame.themeBtnText:SetText("Retail")
         optionsFrame.indicatorBtnText:SetText("EasyFind Arrow")
@@ -956,7 +940,6 @@ function Options:Show()
     optionsFrame.mapSearchSlider:SetValue(EasyFind.db.mapSearchScale or 1.0)
     optionsFrame.opacitySlider:SetValue(EasyFind.db.searchBarOpacity or 1.0)
     optionsFrame.maxResultsSlider:SetValue(EasyFind.db.maxResults or 10)
-    optionsFrame.minimapMarkerSlider:SetValue(EasyFind.db.minimapMarkerSize or 25)
     optionsFrame.arrivalSlider:SetValue(EasyFind.db.arrivalDistance or 10)
     optionsFrame.directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false)
     optionsFrame.zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly or false)

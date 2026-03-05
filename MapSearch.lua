@@ -267,7 +267,6 @@ local isGlobalSearch = false  -- Tracks which search bar triggered the current s
 local activePinState = nil    -- {mapID, x, y, icon, category} — survives map close/reopen
 local superTrackGlow          -- Perimeter glow frame (far mode)
 local nearTrackFrame          -- Ring + arrow frame (near mode)
-local nearTrackMarker         -- Destination marker on minimap (near mode, internal waypoints only)
 local waypointController      -- Invisible controller that drives OnUpdate
 
 -- =============================================================================
@@ -298,9 +297,10 @@ end
 -- Forward declarations (defined after CreateWaypointTracker but referenced inside its OnUpdate)
 local ShowSuperTrackGlow, HideSuperTrackGlow
 
--- Internal waypoint — always used (we manage our own minimap marker/arrow
--- rather than relying on the game's system waypoint).
-local internalWaypoint = nil  -- {uiMapID=number, position={x=number, y=number}}
+-- Blizzard waypoint integration — we place Blizzard's native waypoint and add
+-- our perimeter glow on top.  efPlacedWaypoint tracks whether we own the pin.
+local efPlacedWaypoint = false
+local cachedWPMapID, cachedWPx, cachedWPy  -- cached coords to avoid per-frame allocs
 local DEFAULT_ARRIVAL_DISTANCE = 10
 local function GetArrivalDistance()
     return EasyFind.db.arrivalDistance or DEFAULT_ARRIVAL_DISTANCE
@@ -314,30 +314,23 @@ local function CreateWaypointTracker()
         waypointController:Hide()
     end
 
-    -- Perimeter arrow (shown when waypoint is outside minimap view)
+    -- Perimeter glow (shown behind Blizzard's supertrack arrow when waypoint is far)
     if not superTrackGlow then
-        local arrowSize = 40
-        superTrackGlow = CreateFrame("Frame", "EasyFindMinimapGlow", Minimap)
-        superTrackGlow:SetSize(arrowSize, arrowSize)
+        local glowSize = 48
+        superTrackGlow = CreateFrame("Frame", "EasyFindMinimapGlow", UIParent)
+        superTrackGlow:SetSize(glowSize, glowSize)
         superTrackGlow:SetFrameStrata("HIGH")
         superTrackGlow:SetFrameLevel(100)
-        superTrackGlow.arrowSize = arrowSize
+        superTrackGlow.glowSize = glowSize
 
-        -- Glow behind the arrow (same star effect as Blizzard waypoint)
-        local glow = superTrackGlow:CreateTexture(nil, "BACKGROUND")
-        glow:SetSize(arrowSize * 2.2, arrowSize * 2.2)
+        -- Star glow effect (same as Blizzard waypoint glow)
+        local glow = superTrackGlow:CreateTexture(nil, "ARTWORK")
+        glow:SetSize(glowSize * 2.2, glowSize * 2.2)
         glow:SetPoint("CENTER")
         glow:SetTexture("Interface\\Cooldown\\star4")
         glow:SetVertexColor(1, 1, 0, 0.7)
         glow:SetBlendMode("ADD")
         superTrackGlow.glow = glow
-
-        -- Directional arrow on top
-        local tex = superTrackGlow:CreateTexture(nil, "ARTWORK")
-        tex:SetAllPoints()
-        tex:SetTexture("Interface\\MINIMAP\\MiniMap-QuestArrow")
-        tex:SetVertexColor(1, 1, 0, 1)
-        superTrackGlow.texture = tex
 
         local ag = superTrackGlow:CreateAnimationGroup()
         ag:SetLooping("BOUNCE")
@@ -356,9 +349,6 @@ local function CreateWaypointTracker()
         nearTrackFrame:SetFrameStrata("HIGH")
         nearTrackFrame:SetFrameLevel(100)
 
-        -- Ring+arrow texture: CURSORICONSNEW cell 7,1 (4x8 grid) with ADD blend
-        -- to make the black center transparent. Stacked 3x for brightness since
-        -- ADD blend is inherently transparent (each layer adds more intensity)
         local ringSize = (NEAR_RING_RADIUS * 2 + 6) * 0.8  -- 20% smaller
         local ringLayers = {}
         for i = 1, 2 do
@@ -385,53 +375,27 @@ local function CreateWaypointTracker()
         nearTrackFrame:Hide()
     end
 
-    -- Destination marker (shown on the minimap in near mode for internal waypoints)
-    if not nearTrackMarker then
-        local markerSize = EasyFind.db.minimapMarkerSize or 25
-        nearTrackMarker = CreateFrame("Frame", "EasyFindMinimapMarker", Minimap)
-        nearTrackMarker:SetSize(markerSize, markerSize)
-        nearTrackMarker:SetFrameStrata("HIGH")
-        nearTrackMarker:SetFrameLevel(101)
-
-        -- Glow behind marker (2x marker size)
-        local glow = nearTrackMarker:CreateTexture(nil, "BACKGROUND")
-        glow:SetSize(markerSize * 2, markerSize * 2)
-        glow:SetPoint("CENTER")
-        glow:SetTexture("Interface\\Cooldown\\star4")
-        glow:SetVertexColor(1, 1, 0, 0.8)
-        glow:SetBlendMode("ADD")
-        nearTrackMarker.glow = glow
-
-        -- Standard waypoint pin icon (from Blizzard atlas)
-        local tex = nearTrackMarker:CreateTexture(nil, "ARTWORK")
-        tex:SetAllPoints()
-        tex:SetAtlas("Waypoint-MapPin-Untracked")
-        nearTrackMarker.texture = tex
-
-        local ag = nearTrackMarker:CreateAnimationGroup()
-        ag:SetLooping("BOUNCE")
-        local alpha = ag:CreateAnimation("Alpha")
-        alpha:SetFromAlpha(1)
-        alpha:SetToAlpha(0.5)
-        alpha:SetDuration(0.8)
-        nearTrackMarker.animGroup = ag
-        nearTrackMarker:Hide()
-    end
-
-    -- Shared OnUpdate: calculate angle + distance, toggle between far/near modes
+    -- OnUpdate: calculate angle + distance, show perimeter glow when far, ring when near, auto-clear on arrival
     waypointController:SetScript("OnUpdate", function(self, elapsed)
-        if not internalWaypoint then
+        if not efPlacedWaypoint then
             if self.lastMode then
                 self.lastMode = nil
             end
             HideSuperTrackGlow()
             return
         end
-        local wp = internalWaypoint
 
-        -- One-shot log on first tick with this waypoint
-        if not self.loggedWP then
-            self.loggedWP = true
+        -- If user manually cleared the Blizzard waypoint, clean up
+        if not C_Map.HasUserWaypoint() then
+            HideSuperTrackGlow()
+            return
+        end
+
+        local wpMapID = cachedWPMapID
+        local wx, wy = cachedWPx, cachedWPy
+        if not wpMapID or not wx or not wy then
+            HideSuperTrackGlow()
+            return
         end
 
         local mapID = C_Map.GetBestMapForUnit("player")
@@ -444,7 +408,7 @@ local function CreateWaypointTracker()
         local pCont, pWorld = C_Map.GetWorldPosFromMapPos(mapID, playerPos)
         if not pWorld then return end
 
-        local wCont, wWorld = C_Map.GetWorldPosFromMapPos(wp.uiMapID, wp.position)
+        local wCont, wWorld = C_Map.GetWorldPosFromMapPos(wpMapID, CreateVector2D(wx, wy))
         if not wWorld then return end
 
         local dx = pWorld.x - wWorld.x
@@ -460,31 +424,34 @@ local function CreateWaypointTracker()
         end
 
         -- Distance in actual yards via map coordinate projection
-        -- (GetWorldPosFromMapPos uses arbitrary continent units that differ per map)
-        local distMapID = mapID
+        -- Both positions must be on the same map for a meaningful distance
+        local dist
         local px, py = playerPos:GetXY()
-        local wx, wy = wp.position.x, wp.position.y
-        if mapID ~= wp.uiMapID then
-            local wpMapPlayerPos = C_Map.GetPlayerMapPosition(wp.uiMapID, "player")
+        if mapID == wpMapID then
+            local mapWidth, mapHeight = C_Map.GetMapWorldSize(mapID)
+            local dxYards = (px - wx) * mapWidth
+            local dyYards = (py - wy) * mapHeight
+            dist = msqrt(dxYards * dxYards + dyYards * dyYards)
+        else
+            local wpMapPlayerPos = C_Map.GetPlayerMapPosition(wpMapID, "player")
             if wpMapPlayerPos then
-                px, py = wpMapPlayerPos:GetXY()
-                distMapID = wp.uiMapID
+                local wpPx, wpPy = wpMapPlayerPos:GetXY()
+                local mapWidth, mapHeight = C_Map.GetMapWorldSize(wpMapID)
+                local dxYards = (wpPx - wx) * mapWidth
+                local dyYards = (wpPy - wy) * mapHeight
+                dist = msqrt(dxYards * dxYards + dyYards * dyYards)
             end
         end
-        local mapWidth, mapHeight = C_Map.GetMapWorldSize(distMapID)
-        local dxYards = (px - wx) * mapWidth
-        local dyYards = (py - wy) * mapHeight
-        local dist = msqrt(dxYards * dxYards + dyYards * dyYards)
         local viewRadius = GetMinimapYardRadius()
 
-        -- Auto-clear when player arrives at destination
-        if dist < GetArrivalDistance() then
+        -- Auto-clear when player arrives at destination (skip if cross-map)
+        if dist and dist < GetArrivalDistance() then
             MapSearch:ClearAll()
             return
         end
 
-        if dist < viewRadius then
-            -- NEAR MODE: ring around player + directional arrow
+        if dist and dist < viewRadius then
+            -- NEAR MODE: ring around player (Blizzard's pin is visible on minimap)
             if not self.lastMode or self.lastMode ~= "NEAR" then
                 self.lastMode = "NEAR"
             end
@@ -497,12 +464,9 @@ local function CreateWaypointTracker()
                 nearTrackFrame.animGroup:Play()
             end
             -- Rotate ring so its built-in arrowhead points toward the waypoint
-            -- Default arrowhead is at ~135° from east (CCW) = ~NW direction
-            -- Formula: -(angle + π/4) rotates it to match compass angle
             local rot = -(angle + math.pi / 4)
 
-            -- Scale ring down when pin reaches the arrow tip on the ring
-            -- The arrow extends ~30% beyond the ring circle edge
+            -- Scale ring down as player approaches
             local minimapPxRadius = Minimap:GetWidth() / 2
             local pixelDist = (dist / viewRadius) * minimapPxRadius
             local baseSize = nearTrackFrame.ringBaseSize
@@ -510,43 +474,13 @@ local function CreateWaypointTracker()
             local scale = 1
             if pixelDist < arrowTipRadius then
                 scale = pixelDist / arrowTipRadius
-                if scale < 0.15 then scale = 0.15 end  -- minimum so it doesn't vanish
+                if scale < 0.15 then scale = 0.15 end
             end
             local sz = baseSize * scale
 
             for _, layer in ipairs(nearTrackFrame.ringLayers) do
                 layer:SetRotation(rot)
                 layer:SetSize(sz, sz)
-            end
-
-            -- Show destination marker on minimap for internal waypoints
-            if internalWaypoint then
-                -- Map coords: x increases east, y increases south
-                -- Minimap: +x = right (east), +y = up (north)
-                -- viewRadius now comes from C_Minimap.GetViewRadius() — exact
-                local yardsToPx = minimapPxRadius / viewRadius
-                local markerX = (wx - px) * mapWidth * yardsToPx
-                local markerY = -(wy - py) * mapHeight * yardsToPx  -- flip Y
-
-                -- Account for minimap rotation
-                if GetCVar("rotateMinimap") == "1" then
-                    local facing = GetPlayerFacing()
-                    if facing then
-                        local cf, sf = math.cos(facing), math.sin(facing)
-                        markerX, markerY = markerX * cf - markerY * sf,
-                                           markerX * sf + markerY * cf
-                    end
-                end
-
-                nearTrackMarker:ClearAllPoints()
-                nearTrackMarker:SetPoint("CENTER", Minimap, "CENTER", markerX, markerY)
-                if not nearTrackMarker:IsShown() then
-                    nearTrackMarker:Show()
-                    nearTrackMarker.animGroup:Play()
-                end
-            elseif nearTrackMarker:IsShown() then
-                nearTrackMarker.animGroup:Stop()
-                nearTrackMarker:Hide()
             end
         else
             -- FAR MODE: perimeter glow
@@ -557,27 +491,17 @@ local function CreateWaypointTracker()
                 nearTrackFrame.animGroup:Stop()
                 nearTrackFrame:Hide()
             end
-            if nearTrackMarker:IsShown() then
-                nearTrackMarker.animGroup:Stop()
-                nearTrackMarker:Hide()
-            end
             if not superTrackGlow:IsShown() then
                 superTrackGlow:Show()
                 superTrackGlow.animGroup:Play()
             end
-            -- Arrow tip is arrowSize/2 from frame center (top edge of texture,
-            -- rotated inward). Place frame center outward so tip lands on perimeter.
+            -- Position glow on minimap perimeter at the waypoint angle
             local perimeterRadius = Minimap:GetWidth() / 2
-            local radius = perimeterRadius - superTrackGlow.arrowSize / 2
-            local glowX = msin(angle) * radius
-            local glowY = mcos(angle) * radius
+            local glowX = msin(angle) * perimeterRadius
+            local glowY = mcos(angle) * perimeterRadius
             superTrackGlow:ClearAllPoints()
             superTrackGlow:SetPoint("CENTER", Minimap, "CENTER", glowX, glowY)
-            -- Rotate arrow to point toward the waypoint (inward)
-            -- MiniMap-QuestArrow points up (north) by default; angle is east=0 CCW
-            local rot = -angle
-            superTrackGlow.texture:SetRotation(rot)
-            superTrackGlow.glow:SetRotation(rot)
+            superTrackGlow.glow:SetRotation(-angle)
         end
     end)
 end
@@ -588,9 +512,11 @@ ShowSuperTrackGlow = function()
 end
 
 HideSuperTrackGlow = function()
-    internalWaypoint = nil
+    efPlacedWaypoint = false
+    cachedWPMapID = nil
+    cachedWPx = nil
+    cachedWPy = nil
     if waypointController then
-        waypointController.loggedWP = nil
         waypointController:Hide()
     end
     if superTrackGlow and superTrackGlow:IsShown() then
@@ -601,16 +527,21 @@ HideSuperTrackGlow = function()
         nearTrackFrame.animGroup:Stop()
         nearTrackFrame:Hide()
     end
-    if nearTrackMarker and nearTrackMarker:IsShown() then
-        nearTrackMarker.animGroup:Stop()
-        nearTrackMarker:Hide()
-    end
 end
 
 -- Auto-clear everything after a loading screen (teleport, hearthstone, portal, etc.)
 local loadingScreenFrame = CreateFrame("Frame")
 loadingScreenFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
-loadingScreenFrame:SetScript("OnEvent", function(_, _, isInitialLogin, isReloadingUI)
+loadingScreenFrame:RegisterEvent("USER_WAYPOINT_UPDATED")
+loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isReloadingUI)
+    if event == "USER_WAYPOINT_UPDATED" then
+        -- If we placed the waypoint and user cleared it externally, clean up glow
+        if efPlacedWaypoint and not C_Map.HasUserWaypoint() then
+            HideSuperTrackGlow()
+        end
+        return
+    end
+    -- PLAYER_ENTERING_WORLD
     if isInitialLogin or isReloadingUI then return end  -- skip login/reload
 
     -- Defer slightly so the map system has settled
@@ -1538,18 +1469,12 @@ function MapSearch:CreateResultButton(index)
     navBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
     navBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        if self.isDisabled then
-            GameTooltip:SetText("Navigate", 0.5, 0.5, 0.5)
-            GameTooltip:AddLine("You must be in this zone to track waypoints", 1, 0.5, 0.2)
-        else
-            GameTooltip:SetText("Navigate")
-            GameTooltip:AddLine("Show pin and track on minimap", 0.6, 0.6, 0.6)
-        end
+        GameTooltip:SetText("Navigate")
+        GameTooltip:AddLine("Place waypoint and track on minimap", 0.6, 0.6, 0.6)
         GameTooltip:Show()
     end)
     navBtn:SetScript("OnLeave", GameTooltip_Hide)
     navBtn:SetScript("OnClick", function(self)
-        if self.isDisabled then return end
         local data = btn.data
         if not data then return end
 
@@ -1711,16 +1636,8 @@ function MapSearch:CreateHighlightFrame()
     waypointPin:SetScript("OnEnter", function(self)
         if self.isLocalSearch then
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            -- Check if player is in the viewed zone (handles sub-zones like Dalaran shops)
-            local viewingMapID = WorldMapFrame:GetMapID()
-            local playerOnMap = viewingMapID and C_Map.GetPlayerMapPosition(viewingMapID, "player")
-            if playerOnMap then
-                GameTooltip:AddLine("Left-click to track on minimap")
-                GameTooltip:AddLine("Right-click to dismiss", 0.6, 0.6, 0.6)
-            else
-                GameTooltip:AddLine("Waypoint tracking requires being in this zone", 0.6, 0.6, 0.6)
-                GameTooltip:AddLine("Right-click to dismiss", 0.6, 0.6, 0.6)
-            end
+            GameTooltip:AddLine("Left-click to place waypoint and track")
+            GameTooltip:AddLine("Right-click to dismiss", 0.6, 0.6, 0.6)
             GameTooltip:Show()
         else
             MapSearch:ClearHighlight()
@@ -1730,21 +1647,16 @@ function MapSearch:CreateHighlightFrame()
     waypointPin:SetScript("OnMouseUp", function(self, button)
         if button == "LeftButton" and self.isLocalSearch and self.waypointX and self.waypointY then
             local viewingMapID = WorldMapFrame:GetMapID()
-            local playerOnMap = viewingMapID and C_Map.GetPlayerMapPosition(viewingMapID, "player")
-            if playerOnMap then
-                -- Clear any stale system waypoint so it doesn't interfere
-                if C_Map.HasUserWaypoint() then
-                    C_Map.ClearUserWaypoint()
-                end
-                internalWaypoint = {
-                    uiMapID = viewingMapID,
-                    position = { x = self.waypointX, y = self.waypointY },
-                }
+            if viewingMapID then
+                C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(viewingMapID, self.waypointX, self.waypointY))
+                C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+                efPlacedWaypoint = true
+                cachedWPMapID = viewingMapID
+                cachedWPx = self.waypointX
+                cachedWPy = self.waypointY
                 ShowSuperTrackGlow()
-            else
             end
         end
-        -- Right-click = full dismiss; left-click = keep pin visible (tracking started)
         if button == "RightButton" then
             MapSearch:ClearAll()
         end
@@ -2168,11 +2080,11 @@ function MapSearch:HighlightZone(mapID)
     
     DebugPrint("[EasyFind] HighlightZone: GetMapRectOnMap success:", success, "left:", left)
     
-    if not success or not left then 
+    if not success or not left then
         DebugPrint("[EasyFind] HighlightZone: GetMapRectOnMap failed!")
-        return 
+        return
     end
-    
+
     DebugPrint("[EasyFind] HighlightZone: bounds L/R/T/B:", left, right, top, bottom)
     
     local canvasWidth, canvasHeight = canvas:GetSize()
@@ -4010,15 +3922,8 @@ function MapSearch:ShowResults(results)
                 btn.navBtn.texture:SetTexture(nil)
                 btn.navBtn.texture:SetTexCoord(0, 1, 0, 1)
                 btn.navBtn.texture:SetAtlas("Waypoint-MapPin-Untracked")
-                if playerInZone then
-                    btn.navBtn.isDisabled = false
-                    btn.navBtn.texture:SetDesaturated(false)
-                    btn.navBtn.texture:SetAlpha(1)
-                else
-                    btn.navBtn.isDisabled = true
-                    btn.navBtn.texture:SetDesaturated(true)
-                    btn.navBtn.texture:SetAlpha(0.4)
-                end
+                btn.navBtn.texture:SetDesaturated(false)
+                btn.navBtn.texture:SetAlpha(1)
                 btn.navBtn:Show()
                 -- Adjust text right edge to make room
                 btn.text:SetPoint("RIGHT", btn.navBtn, "LEFT", -2, 0)
@@ -4309,13 +4214,8 @@ function MapSearch:ShowMultipleWaypoints(instances)
                     extraPin:EnableMouse(true)
                     extraPin:SetScript("OnEnter", function(self)
                         if self.isLocalSearch then
-                            local viewingMapID = WorldMapFrame:GetMapID()
-                            local playerOnMap = viewingMapID and C_Map.GetPlayerMapPosition(viewingMapID, "player")
                             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                            GameTooltip:SetText("Click to track on minimap")
-                            if not playerOnMap then
-                                GameTooltip:AddLine("Waypoint tracking requires being in this zone", 0.6, 0.6, 0.6)
-                            end
+                            GameTooltip:AddLine("Left-click to place waypoint and track")
                             GameTooltip:AddLine("Right-click to dismiss", 0.6, 0.6, 0.6)
                             GameTooltip:Show()
                         else
@@ -4326,17 +4226,14 @@ function MapSearch:ShowMultipleWaypoints(instances)
                     extraPin:SetScript("OnMouseUp", function(self, button)
                         if button == "LeftButton" and self.isLocalSearch and self.waypointX and self.waypointY then
                             local viewingMapID = WorldMapFrame:GetMapID()
-                            local playerOnMap = viewingMapID and C_Map.GetPlayerMapPosition(viewingMapID, "player")
-                            if playerOnMap then
-                                if C_Map.HasUserWaypoint() then
-                                    C_Map.ClearUserWaypoint()
-                                end
-                                internalWaypoint = {
-                                    uiMapID = viewingMapID,
-                                    position = { x = self.waypointX, y = self.waypointY },
-                                }
+                            if viewingMapID then
+                                C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(viewingMapID, self.waypointX, self.waypointY))
+                                C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+                                efPlacedWaypoint = true
+                                cachedWPMapID = viewingMapID
+                                cachedWPx = self.waypointX
+                                cachedWPy = self.waypointY
                                 ShowSuperTrackGlow()
-                            else
                             end
                         end
                         if button == "RightButton" then
@@ -4646,23 +4543,23 @@ end
 function MapSearch:ClearAll()
     activePinState = nil
     self:ClearHighlight()
-    -- Only clear waypoint if EasyFind placed it (don't nuke manually placed waypoints)
-    if waypointController and waypointController:IsShown() then
+    -- Only clear Blizzard waypoint if EasyFind placed it
+    if efPlacedWaypoint then
         HideSuperTrackGlow()
+        C_SuperTrack.SetSuperTrackedUserWaypoint(false)
         if C_Map.HasUserWaypoint() then
             C_Map.ClearUserWaypoint()
         end
     end
 end
 
--- Auto-track the currently active pin on the minimap.
+-- Auto-track the currently active pin on the minimap via Blizzard waypoint.
 -- Called by the navigate button to combine select + track in one action.
 function MapSearch:TrackActivePin()
     if not activePinState then return end
     local mapID = activePinState.mapID
     local x, y
     if activePinState.instances then
-        -- Multi-pin: track the first instance
         local first = activePinState.instances[1]
         if first then x, y = first.x, first.y end
     else
@@ -4670,15 +4567,12 @@ function MapSearch:TrackActivePin()
     end
     if not mapID or not x or not y then return end
 
-    local playerOnMap = C_Map.GetPlayerMapPosition(mapID, "player")
-    if not playerOnMap then
-        return
-    end
-
-    if C_Map.HasUserWaypoint() then
-        C_Map.ClearUserWaypoint()
-    end
-    internalWaypoint = { uiMapID = mapID, position = { x = x, y = y } }
+    C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, x, y))
+    C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+    efPlacedWaypoint = true
+    cachedWPMapID = mapID
+    cachedWPx = x
+    cachedWPy = y
     ShowSuperTrackGlow()
 end
 
@@ -4821,15 +4715,6 @@ function MapSearch:UpdateIconScales()
         for _, arr in ipairs(self.extraIndicators) do
             resizeIndicator(arr, multiIndSize, multiIndGlowSize)
         end
-    end
-end
-
-function MapSearch:UpdateMinimapMarkerSize()
-    if not nearTrackMarker then return end
-    local sz = EasyFind.db.minimapMarkerSize or 25
-    nearTrackMarker:SetSize(sz, sz)
-    if nearTrackMarker.glow then
-        nearTrackMarker.glow:SetSize(sz * 2, sz * 2)
     end
 end
 
