@@ -17,7 +17,8 @@ All notable changes to EasyFind will be documented in this file.
 
 ### Fixed
 - **Player Housing and Scenario Zones**: Clicking these in global search now navigates directly to the zone instead of placing a pin at the screen corner
-
+- **Navigate Button**: Grayed out and blocked when viewing a zone the player is not currently in
+- **UI Reload**: Modules now correctly initialize after `/reload`
 
 ---
 
