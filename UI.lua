@@ -153,7 +153,7 @@ end
 
 -- Get the current max results setting (user-configurable)
 local function GetMaxResults()
-    return EasyFind.db.maxResults or 12
+    return EasyFind.db.maxResults or 10
 end
 local selectedIndex = 0   -- 0 = none selected, 1..N = highlighted row
 local unearnedTooltip      -- Custom tooltip for unearned currencies
@@ -590,8 +590,6 @@ function UI:CreateSearchFrame()
     
     local function SmartShowFadeOut()
         if EasyFind.db.visible == false then return end
-        -- Don't hide during first-time setup (user is positioning the bar)
-        if searchFrame.setupMode then return end
         -- Don't hide if the editbox has focus or contains text
         if searchFrame.editBox:HasFocus() or searchFrame.editBox:GetText() ~= "" then return end
         -- Don't hide if results are showing
@@ -1383,23 +1381,21 @@ function UI:ShowHierarchicalResults(hierarchical)
         count = pinSlots + mmin(nonPinVisible, maxResults)
     end
 
-    -- Smart cap: if the last visible row is a group header with items beyond
-    -- the cap, extend to include its contents so the user never sees a
-    -- dangling header with nothing beneath it.  Applies to both gray
-    -- ancestors and gold match nodes that the user expanded.
-    -- Only extends non-pin entries (pin section is always fully shown or collapsed).
+    -- Smart cap: if the last visible row is a group header, extend once to
+    -- include its immediate subtree so the user never sees a dangling header
+    -- with nothing beneath it.  Capped at maxResults*2 total to prevent
+    -- runaway extension when many headers sit near the boundary.
     if not EasyFind.db.hardResultsCap and count < #visible then
-        while count < #visible do
+        local ceiling = mmin(#visible, pinSlots + maxResults * 2)
+        while count < ceiling do
             local last = visible[count]
-            -- Stop if the last row is a leaf — the result is complete
             if not last.isPathNode or last.isPinHeader then break end
-            -- Last row is a group header — extend to show its contents
             local headerDepth = last.depth or 0
             local extended = false
             for j = count + 1, #visible do
-                local entry = visible[j]
-                local d = entry.depth or 0
-                if d <= headerDepth then break end -- left the group
+                if j > ceiling then break end
+                local d = (visible[j].depth or 0)
+                if d <= headerDepth then break end
                 count = j
                 extended = true
             end
@@ -2012,6 +2008,14 @@ function UI:ShowHierarchicalResults(hierarchical)
         if frameHeight > currentTexHeight then
             resultsFrame.bgAtlasTex:SetHeight(frameHeight - 8)  -- Account for insets
         end
+    end
+
+    -- Anchor results above or below based on setting
+    resultsFrame:ClearAllPoints()
+    if EasyFind.db.uiResultsAbove then
+        resultsFrame:SetPoint("BOTTOM", searchFrame, "TOP", 0, -5)
+    else
+        resultsFrame:SetPoint("TOP", searchFrame, "BOTTOM", 0, 5)
     end
 
     resultsFrame:Show()
@@ -2963,7 +2967,7 @@ function UI:Toggle()
     if searchFrame:IsShown() and EasyFind.db.visible ~= false then
         self:Hide()
     else
-        self:Show(true)
+        self:Show(false)
     end
 end
 
@@ -3148,6 +3152,7 @@ function UI:ShowFirstTimeSetup()
     glow:SetFrameStrata("DIALOG")
     glow:SetFrameLevel(100)
     glow:EnableMouse(false)  -- clicks pass through to search bar
+    glow:SetIgnoreParentAlpha(true)  -- stay opaque when search bar fades
 
     glow:SetBackdrop({
         bgFile   = "Interface\\Buttons\\WHITE8x8",
@@ -3228,7 +3233,7 @@ function UI:ShowFirstTimeSetup()
 
     -- ── Instruction panel (anchored below the glow) ─────────────────────
     local panel = CreateFrame("Frame", nil, glow, "BackdropTemplate")
-    panel:SetSize(340, 150)
+    panel:SetSize(340, 260)
     panel:SetPoint("TOP", glow, "BOTTOM", 0, -6)
     panel:SetFrameStrata("DIALOG")
     panel:SetBackdrop({
@@ -3249,21 +3254,75 @@ function UI:ShowFirstTimeSetup()
         "|cffffffffUse the corner handle to resize.|r"
     )
 
-    -- Bullet points (left-aligned, anchored below header)
-    local bullets = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    bullets:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -8)
-    bullets:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, -8)
-    bullets:SetJustifyH("LEFT")
-    bullets:SetText(
-        "\226\128\162 |cff999999Hold |cffFFD100Shift|r|cff999999 + drag to reposition later.|r\n" ..
-        "\226\128\162 |cff999999The bar auto-hides when not in use. To keep it|r\n" ..
-        "|cff999999  visible, open |cffFFD100/ef o|r|cff999999 and disable |cffFFD100Smart Show|r|cff999999.|r"
+    -- Tip line (left-aligned, anchored below header)
+    local tip = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    tip:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -8)
+    tip:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, -8)
+    tip:SetJustifyH("LEFT")
+    tip:SetText(
+        "\226\128\162 |cff999999Hold |cffFFD100Shift|r|cff999999 + drag to reposition later.|r"
     )
+
+    -- Horizontal separator between tip and Smart Show section
+    local sep = panel:CreateTexture(nil, "ARTWORK")
+    sep:SetHeight(1)
+    sep:SetPoint("TOPLEFT", tip, "BOTTOMLEFT", 0, -6)
+    sep:SetPoint("TOPRIGHT", tip, "BOTTOMRIGHT", 0, -6)
+    sep:SetColorTexture(0.4, 0.4, 0.4, 0.6)
+
+    -- Smart Show checkbox (default checked — matches DB_DEFAULTS.smartShow = true)
+    local smartShowCheckbox = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
+    smartShowCheckbox:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", 0, -6)
+    smartShowCheckbox.Text:SetText("|cffFFD100Smart Show|r")
+    smartShowCheckbox:SetChecked(false)
+    smartShowCheckbox:SetScript("OnClick", function(self)
+        -- Update live so the user can see the hover behavior immediately
+        EasyFind.db.smartShow = self:GetChecked()
+        UI:UpdateSmartShow()
+    end)
+
+    -- Smart Show description — uses same font as checkbox text for consistency
+    local smartDesc = smartShowCheckbox:CreateFontString(nil, "OVERLAY")
+    smartDesc:SetFontObject(smartShowCheckbox.Text:GetFontObject())
+    smartDesc:SetPoint("TOPLEFT", smartShowCheckbox.Text, "BOTTOMLEFT", 0, -2)
+    smartDesc:SetWidth(284)
+    smartDesc:SetJustifyH("LEFT")
+    smartDesc:SetText(
+        "|cff999999If enabled, the bar hides when your mouse|r\n" ..
+        "|cff999999moves away and reappears when you hover near|r\n" ..
+        "|cff999999it. If kept unchecked, the bar stays visible and can be|r\n" ..
+        "|cff999999toggled with the minimap button or|r\n" ..
+        "|cffFFD100/ef show|r |cff999999and|r |cffFFD100/ef hide|r|cff999999.|r"
+    )
+
+    -- Fade While Moving checkbox (default checked — staticOpacity defaults to false, meaning fade IS active)
+    local fadeCheckbox = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
+    fadeCheckbox:SetPoint("TOPLEFT", smartShowCheckbox, "TOPLEFT", 0, -(26 + smartDesc:GetStringHeight() + 8))
+    fadeCheckbox.Text:SetText("|cffFFD100Fade While Moving|r")
+    fadeCheckbox:SetChecked(true)
+    fadeCheckbox:SetScript("OnClick", function(self)
+        -- Update live so the user can see the effect immediately
+        EasyFind.db.staticOpacity = not self:GetChecked()
+    end)
+
+    local fadeDesc = fadeCheckbox:CreateFontString(nil, "OVERLAY")
+    fadeDesc:SetFontObject(fadeCheckbox.Text:GetFontObject())
+    fadeDesc:SetPoint("TOPLEFT", fadeCheckbox.Text, "BOTTOMLEFT", 0, -2)
+    fadeDesc:SetWidth(284)
+    fadeDesc:SetJustifyH("LEFT")
+    fadeDesc:SetText("|cff999999Reduces bar opacity while your character is moving.|r")
+
+    -- Footer note
+    local footer = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    footer:SetPoint("BOTTOM", panel, "BOTTOM", 0, 36)
+    footer:SetWidth(310)
+    footer:SetJustifyH("CENTER")
+    footer:SetText("|cff666666These and more settings can be changed in |cffFFD100/ef o|r|cff666666.|r")
 
     -- Done button
     local doneBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     doneBtn:SetSize(80, 22)
-    doneBtn:SetPoint("BOTTOM", panel, "BOTTOM", 0, 30)
+    doneBtn:SetPoint("BOTTOM", panel, "BOTTOM", 0, 12)
     doneBtn:SetText("Done")
 
     -- ── During setup: allow drag WITHOUT holding Shift ───────────────────
@@ -3295,17 +3354,14 @@ function UI:ShowFirstTimeSetup()
             end
         end)
 
-        -- Restore SmartShow if it was enabled
-        if EasyFind.db.smartShow then
-            UI:UpdateSmartShow()
-        end
+        -- Apply preferences from setup checkboxes
+        EasyFind.db.smartShow = smartShowCheckbox:GetChecked()
+        EasyFind.db.staticOpacity = not fadeCheckbox:GetChecked()
+        UI:UpdateSmartShow()
 
-        -- Show What's New after first-time setup (skipped during PLAYER_LOGIN for new installs)
-        if ns.version then
-            C_Timer.After(0.5, function()
-                UI:ShowWhatsNew(ns.version)
-            end)
-        end
+        -- Record current version so What's New won't fire on next login
+        -- (brand-new users don't need to see it — all features are new for them)
+        EasyFind.db.lastSeenVersion = ns.version
     end)
 end
 

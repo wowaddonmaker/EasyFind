@@ -2321,11 +2321,29 @@ function MapSearch:HighlightBreadcrumbForNavigation(dcaMapID, finalTargetMapID, 
         DebugPrint("[EasyFind] Button found and shown, highlighting it")
         self:ShowBreadcrumbHighlight(buttonToHighlight, finalTargetMapID)
     else
-        DebugPrint("[EasyFind] No button found or not shown, navigating directly to DCA")
-        -- CRITICAL: Set pending BEFORE SetMapID because SetMapID triggers OnMapChanged synchronously!
-        self.pendingZoneHighlight = finalTargetMapID
-        DebugPrint("[EasyFind] Set pendingZoneHighlight BEFORE SetMapID:", finalTargetMapID)
-        WorldMapFrame:SetMapID(dcaMapID)
+        -- No exact breadcrumb found — try to highlight any visible breadcrumb
+        -- that helps the user navigate upward (avoid auto-navigating in teaching mode)
+        DebugPrint("[EasyFind] No button found, looking for any visible breadcrumb")
+        local fallbackButton = nil
+        local navChildren = {navBar:GetChildren()}
+        for i = 1, #navChildren do
+            local child = navChildren[i]
+            if child and child:IsShown() and child.GetText and child:GetText() then
+                fallbackButton = child
+                break  -- take the leftmost (highest ancestor) visible button
+            end
+        end
+        if fallbackButton then
+            DebugPrint("[EasyFind] Using fallback breadcrumb:", fallbackButton.GetText and fallbackButton:GetText() or "?")
+            self.pendingZoneHighlight = finalTargetMapID
+            self:ShowBreadcrumbHighlight(fallbackButton, finalTargetMapID)
+        else
+            DebugPrint("[EasyFind] No breadcrumb at all, navigating directly to DCA")
+            -- CRITICAL: Set pending BEFORE SetMapID because SetMapID triggers OnMapChanged synchronously!
+            self.pendingZoneHighlight = finalTargetMapID
+            DebugPrint("[EasyFind] Set pendingZoneHighlight BEFORE SetMapID:", finalTargetMapID)
+            WorldMapFrame:SetMapID(dcaMapID)
+        end
     end
 end
 
@@ -2383,7 +2401,7 @@ function MapSearch:FindBreadcrumbButton(navBar, mapID)
     end
     
     -- Last resort: look for WorldMapNavBarButton frames
-    local buttonName = "WorldMapNavBarButton" 
+    local buttonName = "WorldMapNavBarButton"
     for i = 1, 10 do
         local btn = _G[buttonName .. i]
         if btn and btn:IsShown() and btn.data and btn.data.id == mapID then
@@ -2391,7 +2409,23 @@ function MapSearch:FindBreadcrumbButton(navBar, mapID)
             return btn
         end
     end
-    
+
+    -- Text-based fallback: match button text to the map name
+    local targetName = C_Map.GetMapInfo(mapID)
+    targetName = targetName and targetName.name
+    if targetName then
+        for i = 1, select("#", navBar:GetChildren()) do
+            local child = select(i, navBar:GetChildren())
+            if child:IsShown() and child.GetText then
+                local text = child:GetText()
+                if text and text == targetName then
+                    DebugPrint("[EasyFind] Found button via text match:", text)
+                    return child
+                end
+            end
+        end
+    end
+
     return nil
 end
 
@@ -2658,13 +2692,26 @@ function MapSearch:ScanDungeonEntrances(mapID)
     local results = {}
     local entrances = C_EncounterJournal.GetDungeonEntrancesForMap(mapID)
     if not entrances then return results end
-    
+
+    -- Only filter adjacent-zone bleed on zone-level maps (parent is Continent).
+    -- Sub-zone/underground maps have unreliable GetMapInfoAtPosition (returns surface zone data).
+    local mapInfo = C_Map.GetMapInfo(mapID)
+    local parentInfo = mapInfo and mapInfo.parentMapID and C_Map.GetMapInfo(mapInfo.parentMapID)
+    local shouldFilter = parentInfo and parentInfo.mapType == Enum.UIMapType.Continent
+    local parentLabel = mapInfo and mapInfo.name or ""
+
     for _, entrance in ipairs(entrances) do
         if entrance.name and entrance.position then
-            -- Skip entrances that bleed over from adjacent zones
-            local ex, ey = entrance.position.x, entrance.position.y
-            local posInfo = C_Map.GetMapInfoAtPosition and C_Map.GetMapInfoAtPosition(mapID, ex, ey)
-            if not posInfo or posInfo.mapID == mapID then
+            local include = true
+            if shouldFilter then
+                local ex, ey = entrance.position.x, entrance.position.y
+                local posInfo = C_Map.GetMapInfoAtPosition and C_Map.GetMapInfoAtPosition(mapID, ex, ey)
+                if posInfo and posInfo.mapID ~= mapID and posInfo.parentMapID ~= mapID then
+                    include = false
+                end
+            end
+            if include then
+                local ex, ey = entrance.position.x, entrance.position.y
                 -- Determine dungeon vs raid
                 local cat = "dungeon"
                 if entrance.journalInstanceID and EJ_GetInstanceInfo then
@@ -2673,10 +2720,6 @@ function MapSearch:ScanDungeonEntrances(mapID)
                         cat = "raid"
                     end
                 end
-
-                -- Build a parent zone label from the map this entrance is on
-                local mapInfo = C_Map.GetMapInfo(mapID)
-                local parentLabel = mapInfo and mapInfo.name or ""
 
                 tinsert(results, {
                     name = entrance.name,
@@ -2785,6 +2828,11 @@ function MapSearch:ScanFlightMasters(mapID)
     local playerFaction = UnitFactionGroup("player")
     local FPFaction = Enum.FlightPathFaction
 
+    -- Only filter adjacent-zone bleed on zone-level maps (parent is Continent).
+    local fmMapInfo = C_Map.GetMapInfo(mapID)
+    local fmParentInfo = fmMapInfo and fmMapInfo.parentMapID and C_Map.GetMapInfo(fmMapInfo.parentMapID)
+    local fmShouldFilter = fmParentInfo and fmParentInfo.mapType == Enum.UIMapType.Continent
+
     for _, node in ipairs(nodes) do
         if node.name and node.position then
             -- Skip flight paths restricted to the opposing faction
@@ -2797,8 +2845,15 @@ function MapSearch:ScanFlightMasters(mapID)
             end
             if not skip then
                 local x, y = node.position.x, node.position.y
-                -- Coordinate bounds: if the FP is within 0-1 on this map, it belongs here
                 if x >= 0 and x <= 1 and y >= 0 and y <= 1 then
+                  local fmInclude = true
+                  if fmShouldFilter then
+                    local posInfo = C_Map.GetMapInfoAtPosition and C_Map.GetMapInfoAtPosition(mapID, x, y)
+                    if posInfo and posInfo.mapID ~= mapID and posInfo.parentMapID ~= mapID then
+                      fmInclude = false
+                    end
+                  end
+                  if fmInclude then
                     tinsert(results, {
                         name = node.name .. " (Flight Master)",
                         category = "flightmaster",
@@ -2808,6 +2863,7 @@ function MapSearch:ScanFlightMasters(mapID)
                         y = y,
                         keywords = {"flight", "fly", "taxi", "fp", "flight master"},
                     })
+                end
                 end
             end
         end
@@ -3010,6 +3066,8 @@ function MapSearch:ScanMapPOIs()
                     category = "flightmaster"
                 elseif sfind(poiName, "trading post") then
                     category = "tradingpost"
+                elseif sfind(poiName, "conquest") or sfind(poiName, "honor") or sfind(poiName, "pvp") or sfind(poiName, "quartermaster") then
+                    category = "pvpvendor"
                 end
                 
                 -- Only add POIs we've explicitly categorized
@@ -3052,12 +3110,9 @@ function MapSearch:GetPinInfo(pin)
     local pinType = "unknown"
     local category = nil
     
-    -- Flight masters
+    -- Flight masters — handled by ScanFlightMasters() with proper zone filtering
     if pin.taxiNodeData then
-        name = pin.taxiNodeData.name
-        pinType = "flightmaster"
-        category = "flightmaster"
-        icon = 135770
+        return nil
     end
     
     -- Area POIs (boats, zeppelins, portals, etc) - but NOT quests
@@ -3111,36 +3166,66 @@ function MapSearch:GetPinInfo(pin)
         return nil
     end
     
-    -- Dungeon/Raid instances
-    if pin.journalInstanceID and EJ_GetInstanceInfo then
-        local instanceName, _, _, _, _, _, _, _, _, _, _, isRaid = EJ_GetInstanceInfo(pin.journalInstanceID)
-        if instanceName then
-            name = instanceName
-            pinType = isRaid and "raid" or "dungeon"
-            category = isRaid and "raid" or "dungeon"
-            -- Set icon explicitly to prevent the generic fallback from grabbing
-            -- the raw atlas sprite-sheet texture ID (1121272)
-            icon = GetCategoryIcon(category)
-        end
+    -- Dungeon/Raid instances — handled by ScanDungeonEntrances() with proper zone filtering
+    if pin.journalInstanceID then
+        return nil
     end
     
-    -- Get icon from pin if we don't have one
+    -- Get icon from pin's actual textures if we don't have one
     if not icon then
-        if pin.Texture and pin.Texture.GetTexture then
-            local tex = pin.Texture:GetTexture()
-            if tex and type(tex) == "number" then
-                icon = tex
+        -- Scan pin regions for atlas-based icons (shows the real map pin icon)
+        local skipAtlas = { ["Waypoint-MapPin-Tracked"] = true, ["Waypoint-MapPin-Untracked"] = true, ["UI-QuestPoi-OuterGlow"] = true }
+        for _, region in pairs({pin:GetRegions()}) do
+            if region.GetAtlas then
+                local atlas = region:GetAtlas()
+                if atlas and atlas ~= "" and not skipAtlas[atlas] then
+                    local layer = region:GetDrawLayer()
+                    if layer == "ARTWORK" then
+                        icon = "atlas:" .. atlas
+                        break
+                    end
+                end
             end
-        elseif pin.Icon and pin.Icon.GetTexture then
-            local tex = pin.Icon:GetTexture()
-            if tex and type(tex) == "number" then
-                icon = tex
+        end
+        -- Fallback to raw texture if no atlas found
+        if not icon then
+            if pin.Texture and pin.Texture.GetTexture then
+                local tex = pin.Texture:GetTexture()
+                if tex and type(tex) == "number" then
+                    icon = tex
+                end
+            elseif pin.Icon and pin.Icon.GetTexture then
+                local tex = pin.Icon:GetTexture()
+                if tex and type(tex) == "number" then
+                    icon = tex
+                end
             end
         end
     end
     
     if not name or name == "" then
         return nil
+    end
+
+    -- Filter out pins from adjacent zones (visible on map but not in focused zone)
+    local mapID = WorldMapFrame:GetMapID()
+    if mapID and name then
+        local canvas = WorldMapFrame.ScrollContainer and WorldMapFrame.ScrollContainer.Child
+        if canvas then
+            local cW, cH = canvas:GetSize()
+            if cW > 0 and cH > 0 then
+                local pX, pY = pin:GetCenter()
+                local cX, cY = canvas:GetLeft(), canvas:GetTop()
+                if pX and pY and cX and cY then
+                    local normX = (pX - cX) / cW
+                    local normY = (cY - pY) / cH
+                    local posInfo = C_Map.GetMapInfoAtPosition and C_Map.GetMapInfoAtPosition(mapID, normX, normY)
+                    if posInfo and posInfo.mapID ~= mapID and posInfo.parentMapID ~= mapID then
+                        return nil  -- belongs to adjacent zone
+                    end
+                end
+            end
+        end
     end
 
     return {
@@ -3443,21 +3528,30 @@ function MapSearch:ShowResults(results)
         return
     end
     
-    local maxResults = EasyFind.db.maxResults or 5
+    local maxResults = EasyFind.db.maxResults or 10
     local count = mmin(#results, maxResults)
 
-    -- Compute available height below the search bar for post-layout clamping
+    -- Compute available height for post-layout clamping
+    local resultsAbove = EasyFind.db.mapResultsAbove
     local anchor = activeSearchFrame or searchFrame
     if isGlobalSearch and globalSearchFrame then
         anchor = globalSearchFrame
     end
-    local anchorBottom = anchor and anchor:GetBottom()
-    local scale = anchor and anchor:GetEffectiveScale() or 1
     local availableHeight  -- nil if we can't determine (skip clamping)
-    if anchorBottom then
-        local overlap = 8   -- border overlap into the search bar
-        local margin  = 10  -- screen-edge margin
-        availableHeight = anchorBottom + overlap - margin
+    local margin = 10  -- screen-edge margin
+    local overlap = 8  -- border overlap into the search bar
+    if resultsAbove then
+        local anchorTop = anchor and anchor:GetTop()
+        local scale = anchor and anchor:GetEffectiveScale() or 1
+        local screenH = UIParent:GetHeight() * UIParent:GetEffectiveScale() / scale
+        if anchorTop then
+            availableHeight = screenH - anchorTop + overlap - margin
+        end
+    else
+        local anchorBottom = anchor and anchor:GetBottom()
+        if anchorBottom then
+            availableHeight = anchorBottom + overlap - margin
+        end
     end
 
     local yOffset = -6  -- running vertical offset (top padding)
@@ -3594,7 +3688,11 @@ function MapSearch:ShowResults(results)
     if isGlobalSearch and globalSearchFrame then
         anchor = globalSearchFrame
     end
-    resultsFrame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, 8)
+    if resultsAbove then
+        resultsFrame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, -8)
+    else
+        resultsFrame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, 8)
+    end
     
     resultsFrame:Show()
 end

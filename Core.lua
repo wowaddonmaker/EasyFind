@@ -35,11 +35,11 @@ local DB_DEFAULTS = {
     globalSearchPosition = nil, -- x offset from map right edge
     directOpen = false,        -- Open panels directly instead of step-by-step
     navigateToZonesDirectly = false,  -- Clicking a zone goes directly to it
-    smartShow = true,          -- Hide search bar until mouse hovers nearby
+    smartShow = false,         -- Hide search bar until mouse hovers nearby
     resultsTheme = "Retail",  -- "Classic" or "Retail"
     indicatorStyle = "EasyFind Arrow",  -- Indicator texture style
     indicatorColor = "Yellow",  -- Indicator color preset
-    maxResults = 5,            -- Maximum number of search results to display (3-24)
+    maxResults = 10,           -- Maximum number of search results to display (3-24)
     showTruncationMessage = true,  -- Show "more results available" message when truncated
     hardResultsCap = false,    -- Hard cap on results (no "more results" message)
     staticOpacity = false,     -- Keep opacity constant while moving
@@ -50,6 +50,10 @@ local DB_DEFAULTS = {
     blinkingPins = false,      -- Animate (blink/pulse) map pins and highlights
     minimapMarkerSize = 25,    -- Size (px) of the minimap destination marker
     arrivalDistance = 10,      -- Yards — auto-clear waypoint when player is this close
+    uiResultsAbove = false,    -- Show UI search results above the search bar
+    mapResultsAbove = false,   -- Show map search results above the search bar
+    showMinimapButton = true,  -- Show toggle button on minimap
+    minimapButtonAngle = 220,  -- Position angle (degrees) around minimap edge
 }
 
 local function OnInitialize()
@@ -121,6 +125,13 @@ local function OnPlayerLogin()
         if ns.Database then
             ns.Database:PopulateDynamicCurrencies()
             ns.Database:PopulateDynamicReputations()
+        end
+    end)
+
+    -- Minimap button (delayed slightly so Minimap frame is ready)
+    C_Timer.After(0.6, function()
+        if EasyFind.db.showMinimapButton then
+            EasyFind:UpdateMinimapButton()
         end
     end)
 
@@ -216,4 +227,142 @@ function EasyFind:TestIndicatorTexture(texturePath)
     
     EasyFind:Print("Testing texture: " .. texturePath)
     EasyFind:Print("Close the preview window to dismiss.")
+end
+
+-- =============================================================================
+-- MINIMAP BUTTON
+-- =============================================================================
+local minimapButton
+
+-- Minimap shape quadrant table (matches LibDBIcon standard)
+local minimapShapes = {
+    ["ROUND"]                 = {true, true, true, true},
+    ["SQUARE"]                = {false, false, false, false},
+    ["CORNER-TOPLEFT"]        = {false, false, false, true},
+    ["CORNER-TOPRIGHT"]       = {false, false, true, false},
+    ["CORNER-BOTTOMLEFT"]     = {false, true, false, false},
+    ["CORNER-BOTTOMRIGHT"]    = {true, false, false, false},
+    ["SIDE-LEFT"]             = {false, true, false, true},
+    ["SIDE-RIGHT"]            = {true, false, true, false},
+    ["SIDE-TOP"]              = {false, false, true, true},
+    ["SIDE-BOTTOM"]           = {true, true, false, false},
+    ["TRICORNER-TOPLEFT"]     = {false, true, true, true},
+    ["TRICORNER-TOPRIGHT"]    = {true, false, true, true},
+    ["TRICORNER-BOTTOMLEFT"]  = {true, true, false, true},
+    ["TRICORNER-BOTTOMRIGHT"] = {true, true, true, false},
+}
+
+local function PositionMinimapButton(angle)
+    if not minimapButton then return end
+    local rad = math.rad(angle)
+    local cx, cy = math.cos(rad), math.sin(rad)
+
+    -- Determine quadrant (1-4)
+    local q = 1
+    if cx < 0 then q = q + 1 end
+    if cy > 0 then q = q + 2 end
+
+    local w = (Minimap:GetWidth()  / 2) + 5
+    local h = (Minimap:GetHeight() / 2) + 5
+
+    local shape = GetMinimapShape and GetMinimapShape() or "ROUND"
+    local quadTable = minimapShapes[shape] or minimapShapes["ROUND"]
+
+    local x, y
+    if quadTable[q] then
+        -- Rounded quadrant — place on circle
+        x, y = cx * w, cy * h
+    else
+        -- Squared quadrant — clamp to rectangle edge
+        local dw = math.sqrt(2 * w * w) - 10
+        local dh = math.sqrt(2 * h * h) - 10
+        x = math.max(-w, math.min(cx * dw, w))
+        y = math.max(-h, math.min(cy * dh, h))
+    end
+
+    minimapButton:ClearAllPoints()
+    minimapButton:SetPoint("CENTER", Minimap, "CENTER", x, y)
+end
+
+local function CreateMinimapButton()
+    if minimapButton then return minimapButton end
+
+    local btn = CreateFrame("Button", "EasyFindMinimapButton", Minimap)
+    btn:SetSize(31, 31)
+    btn:SetFrameStrata("MEDIUM")
+    btn:SetFrameLevel(8)
+
+    -- Border overlay (matches LibDBIcon exactly)
+    local border = btn:CreateTexture(nil, "OVERLAY")
+    border:SetSize(50, 50)
+    border:SetTexture(136430)  -- MiniMap-TrackingBorder
+    border:SetPoint("TOPLEFT")
+
+    -- Dark circular background disc
+    local bg = btn:CreateTexture(nil, "BACKGROUND")
+    bg:SetSize(24, 24)
+    bg:SetTexture(136467)  -- UI-Minimap-Background
+    bg:SetPoint("CENTER")
+
+    -- Icon
+    local icon = btn:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(18, 18)
+    icon:SetTexture(136460)  -- INV_Misc_Spyglass_02
+    icon:SetPoint("CENTER")
+
+    -- Highlight
+    btn:SetHighlightTexture(136477)  -- UI-Minimap-ZoomButton-Highlight
+
+    -- Click behavior
+    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    btn:SetScript("OnClick", function(self, button)
+        if button == "LeftButton" then
+            EasyFind:ToggleSearchUI()
+        elseif button == "RightButton" then
+            EasyFind:OpenOptions()
+        end
+    end)
+
+    -- Drag to reposition around minimap
+    btn:RegisterForDrag("LeftButton")
+    btn:SetScript("OnDragStart", function(self)
+        self:SetScript("OnUpdate", function(self)
+            local mx, my = Minimap:GetCenter()
+            local cx, cy = GetCursorPosition()
+            local scale = Minimap:GetEffectiveScale()
+            cx, cy = cx / scale, cy / scale
+            local angle = math.deg(math.atan2(cy - my, cx - mx))
+            EasyFind.db.minimapButtonAngle = angle
+            PositionMinimapButton(angle)
+        end)
+    end)
+    btn:SetScript("OnDragStop", function(self)
+        self:SetScript("OnUpdate", nil)
+    end)
+
+    -- Tooltip
+    btn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_LEFT")
+        GameTooltip:SetText("EasyFind")
+        GameTooltip:AddLine("Left-click: Toggle search bar", 1, 1, 1)
+        GameTooltip:AddLine("Right-click: Open options", 1, 1, 1)
+        GameTooltip:AddLine("Drag to reposition", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", GameTooltip_Hide)
+
+    minimapButton = btn
+    PositionMinimapButton(EasyFind.db.minimapButtonAngle or 220)
+    return btn
+end
+
+function EasyFind:UpdateMinimapButton()
+    if EasyFind.db.showMinimapButton then
+        if not minimapButton then
+            CreateMinimapButton()
+        end
+        minimapButton:Show()
+    elseif minimapButton then
+        minimapButton:Hide()
+    end
 end
