@@ -2700,61 +2700,145 @@ function MapSearch:GetRelatedCategories(category)
     return related
 end
 
--- Scan dungeon/raid entrances for the given map using the Encounter Journal API
--- Returns POI-style entries with name, position, category (dungeon/raid), and the zone mapID
+-- Continent-wide cache: maps lowercased instance name → owner zone mapID.
+-- Built once per continent by walking the map hierarchy.  Used to reject
+-- adjacent-zone bleed without a strict whitelist (entrances with no owner
+-- in the hierarchy are kept — benefit of the doubt).
+local continentInstanceOwners = {}  -- [continentID] = { [lowerName] = ownerZoneMapID }
+
+local function GetContinentInstanceOwners(continentID)
+    if continentInstanceOwners[continentID] then
+        return continentInstanceOwners[continentID]
+    end
+    local owners = {}
+    local function scan(parentID, ownerZoneID, depth)
+        if depth > 5 then return end
+        local children = C_Map.GetMapChildrenInfo(parentID, nil, false)
+        if children then
+            for _, child in ipairs(children) do
+                if child.name then
+                    local mt = child.mapType
+                    if mt == Enum.UIMapType.Dungeon or mt == Enum.UIMapType.Raid then
+                        if ownerZoneID then
+                            owners[slower(child.name)] = ownerZoneID
+                        end
+                        -- Don't recurse into dungeon/raid sub-floors
+                    else
+                        -- First Zone encountered becomes the owner; sub-zones inherit it
+                        local newOwner = ownerZoneID
+                        if not newOwner and mt == Enum.UIMapType.Zone then
+                            newOwner = child.mapID
+                        end
+                        scan(child.mapID, newOwner, depth + 1)
+                    end
+                end
+            end
+        end
+    end
+    scan(continentID, nil, 0)
+    continentInstanceOwners[continentID] = owners
+    return owners
+end
+
+-- Scan dungeon/raid entrances for the given map using the Encounter Journal API.
+-- Returns POI-style entries with name, position, category (dungeon/raid), and the zone mapID.
+--
+-- For zone-level maps (parent is Continent), two scans are performed:
+--   1) The zone itself — filtered by continent-wide instance ownership so entrances
+--      that belong to a DIFFERENT zone are rejected (e.g. Grim Batol appearing on
+--      the Wetlands map when it belongs to Twilight Highlands).  Entrances with no
+--      owner in the map hierarchy are kept (benefit of the doubt).
+--   2) The parent continent — to catch entrances the EJ API only returns for a
+--      neighboring zone.  Continent entrances owned by the current zone are included
+--      with coordinates projected to zone space.
 function MapSearch:ScanDungeonEntrances(mapID)
     mapID = mapID or WorldMapFrame:GetMapID()
     if not mapID then return {} end
     if not C_EncounterJournal or not C_EncounterJournal.GetDungeonEntrancesForMap then return {} end
-    
-    local results = {}
-    local entrances = C_EncounterJournal.GetDungeonEntrancesForMap(mapID)
-    if not entrances then return results end
 
-    -- Only filter adjacent-zone bleed on zone-level maps (parent is Continent).
-    -- Sub-zone/underground maps have unreliable GetMapInfoAtPosition (returns surface zone data).
+    local results = {}
+    local seen = {}  -- dedup by entrance name
     local mapInfo = C_Map.GetMapInfo(mapID)
     local parentInfo = mapInfo and mapInfo.parentMapID and C_Map.GetMapInfo(mapInfo.parentMapID)
-    local shouldFilter = parentInfo and parentInfo.mapType == Enum.UIMapType.Continent
     local parentLabel = mapInfo and mapInfo.name or ""
 
-    for _, entrance in ipairs(entrances) do
-        if entrance.name and entrance.position then
-            local include = true
-            if shouldFilter then
-                local ex, ey = entrance.position.x, entrance.position.y
-                local posInfo = C_Map.GetMapInfoAtPosition and C_Map.GetMapInfoAtPosition(mapID, ex, ey)
-                if posInfo and posInfo.mapID ~= mapID and posInfo.parentMapID ~= mapID then
-                    include = false
-                end
-            end
-            if include then
-                local ex, ey = entrance.position.x, entrance.position.y
-                -- Determine dungeon vs raid
-                local cat = "dungeon"
-                if entrance.journalInstanceID and EJ_GetInstanceInfo then
-                    local _, _, _, _, _, _, _, _, _, _, _, entIsRaid = EJ_GetInstanceInfo(entrance.journalInstanceID)
-                    if entIsRaid then
-                        cat = "raid"
+    -- For zone-level maps (parent is Continent), use the continent-wide ownership
+    -- map to filter adjacent-zone bleed.
+    local useContinent = parentInfo and parentInfo.mapType == Enum.UIMapType.Continent
+    local continentID = useContinent and parentInfo.mapID or nil
+    local owners = continentID and GetContinentInstanceOwners(continentID) or nil
+
+    -- Pre-compute zone ↔ continent projection rect (for pass 2 coordinate conversion)
+    local canProject = false
+    local zL, zR, zT, zB
+    if useContinent and continentID then
+        local ok
+        ok, zL, zR, zT, zB = pcall(C_Map.GetMapRectOnMap, mapID, continentID)
+        canProject = ok and zL and (zR - zL) > 0 and (zB - zT) > 0
+    end
+
+    -- Helper: classify and append an entrance
+    local function addEntrance(entrance, ex, ey)
+        if seen[entrance.name] then return end
+        seen[entrance.name] = true
+        local cat = "dungeon"
+        if entrance.journalInstanceID and EJ_GetInstanceInfo then
+            local _, _, _, _, _, _, _, _, _, _, _, entIsRaid = EJ_GetInstanceInfo(entrance.journalInstanceID)
+            if entIsRaid then cat = "raid" end
+        end
+        tinsert(results, {
+            name = entrance.name,
+            category = cat,
+            icon = nil,  -- use category icon
+            isStatic = true,
+            isDungeonEntrance = true,
+            entranceMapID = mapID,
+            x = ex,
+            y = ey,
+            pathPrefix = parentLabel,
+            keywords = {cat, "instance", "entrance", "portal"},
+        })
+    end
+
+    -- Pass 1: scan the zone directly; exclude entrances owned by a different zone
+    local zoneEntrances = C_EncounterJournal.GetDungeonEntrancesForMap(mapID)
+    if zoneEntrances then
+        for _, entrance in ipairs(zoneEntrances) do
+            if entrance.name and entrance.position then
+                local include = true
+                if owners then
+                    local ownerZone = owners[slower(entrance.name)]
+                    -- Exclude only if a DIFFERENT zone owns it; nil = no owner, keep it
+                    if ownerZone and ownerZone ~= mapID then
+                        include = false
                     end
                 end
-
-                tinsert(results, {
-                    name = entrance.name,
-                    category = cat,
-                    icon = nil,  -- use category icon
-                    isStatic = true,
-                    isDungeonEntrance = true,
-                    entranceMapID = mapID,
-                    x = ex,
-                    y = ey,
-                    pathPrefix = parentLabel,
-                    keywords = {cat, "instance", "entrance", "portal"},
-                })
+                if include then
+                    addEntrance(entrance, entrance.position.x, entrance.position.y)
+                end
             end
         end
     end
-    
+
+    -- Pass 2: scan the continent to pick up entrances the EJ API only returns
+    -- for a neighboring zone.  Project continent coords → zone coords.
+    if canProject and continentID and owners then
+        local contEntrances = C_EncounterJournal.GetDungeonEntrancesForMap(continentID)
+        if contEntrances then
+            for _, entrance in ipairs(contEntrances) do
+                if entrance.name and entrance.position and not seen[entrance.name] then
+                    local ownerZone = owners[slower(entrance.name)]
+                    if ownerZone == mapID then
+                        local cx, cy = entrance.position.x, entrance.position.y
+                        local zx = (cx - zL) / (zR - zL)
+                        local zy = (cy - zT) / (zB - zT)
+                        addEntrance(entrance, zx, zy)
+                    end
+                end
+            end
+        end
+    end
+
     return results
 end
 
@@ -2864,14 +2948,12 @@ function MapSearch:ScanFlightMasters(mapID)
             if not skip then
                 local x, y = node.position.x, node.position.y
                 if x >= 0 and x <= 1 and y >= 0 and y <= 1 then
-                  local fmInclude = true
-                  if fmShouldFilter then
-                    local posInfo = C_Map.GetMapInfoAtPosition and C_Map.GetMapInfoAtPosition(mapID, x, y)
-                    if posInfo and posInfo.mapID ~= mapID and posInfo.parentMapID ~= mapID then
-                      fmInclude = false
-                    end
-                  end
-                  if fmInclude then
+                                        local fmInclude = true
+                                        if fmShouldFilter then
+                                                local posInfo = C_Map.GetMapInfoAtPosition and C_Map.GetMapInfoAtPosition(mapID, x, y)
+                                                fmInclude = posInfo and (posInfo.mapID == mapID or posInfo.parentMapID == mapID)
+                                        end
+                                        if fmInclude then
                     tinsert(results, {
                         name = node.name .. " (Flight Master)",
                         category = "flightmaster",
@@ -2881,7 +2963,7 @@ function MapSearch:ScanFlightMasters(mapID)
                         y = y,
                         keywords = {"flight", "fly", "taxi", "fp", "flight master"},
                     })
-                end
+                    end
                 end
             end
         end
@@ -3238,7 +3320,7 @@ function MapSearch:GetPinInfo(pin)
                     local normX = (pX - cX) / cW
                     local normY = (cY - pY) / cH
                     local posInfo = C_Map.GetMapInfoAtPosition and C_Map.GetMapInfoAtPosition(mapID, normX, normY)
-                    if posInfo and posInfo.mapID ~= mapID and posInfo.parentMapID ~= mapID then
+                    if not posInfo or (posInfo.mapID ~= mapID and posInfo.parentMapID ~= mapID) then
                         return nil  -- belongs to adjacent zone
                     end
                 end
