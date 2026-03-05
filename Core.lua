@@ -54,6 +54,17 @@ local DB_DEFAULTS = {
     mapResultsAbove = false,   -- Show map search results above the search bar
     showMinimapButton = true,  -- Show toggle button on minimap
     minimapButtonAngle = 220,  -- Position angle (degrees) around minimap edge
+    globalSearchFilters = {    -- Global search category filters (all enabled by default)
+        zones = true,
+        dungeons = true,
+        raids = true,
+        delves = true,
+    },
+    localSearchFilters = {     -- Local (zone) search category filters (all enabled by default)
+        instances = true,
+        travel = true,
+        services = true,
+    },
 }
 
 local function OnInitialize()
@@ -64,6 +75,13 @@ local function OnInitialize()
     for k, v in pairs(DB_DEFAULTS) do
         if EasyFindDB[k] == nil then
             EasyFindDB[k] = v
+        elseif type(v) == "table" and type(EasyFindDB[k]) == "table" then
+            -- Sub-merge nested tables so new keys are added to existing tables
+            for sk, sv in pairs(v) do
+                if EasyFindDB[k][sk] == nil then
+                    EasyFindDB[k][sk] = sv
+                end
+            end
         end
     end
 

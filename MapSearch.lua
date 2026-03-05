@@ -839,6 +839,119 @@ function MapSearch:Initialize()
     self:UpdateOpacity()
 end
 
+-- =============================================================================
+-- SHARED FILTER DROPDOWN BUILDER — creates a tracking-menu-style checkbox panel
+-- =============================================================================
+function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, anchorFrame, searchEditBox)
+    local ROW_HEIGHT = 20
+    local DROPDOWN_WIDTH = 207
+    local PADDING_TOP = 8
+    local HEADER_HEIGHT = 19
+    local PADDING_BOTTOM = 8
+    local CHECK_SIZE = 16
+
+    local dropdown = CreateFrame("Frame", globalName, UIParent, "BackdropTemplate")
+    dropdown:SetFrameStrata("FULLSCREEN_DIALOG")
+    dropdown:SetFrameLevel(9999)
+    dropdown:Hide()
+    dropdown:EnableMouse(true)
+    dropdown:SetClampedToScreen(true)
+
+    dropdown:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
+    })
+
+    -- "Show:" header (gold text, matching WoW tracking menu)
+    local header = dropdown:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    header:SetPoint("TOPLEFT", 12, -PADDING_TOP)
+    header:SetText("Show:")
+    header:SetTextColor(1, 0.82, 0, 1)
+
+    local checkRows = {}
+    local yStart = -(PADDING_TOP + HEADER_HEIGHT)
+
+    for i, opt in ipairs(options) do
+        local row = CreateFrame("CheckButton", nil, dropdown)
+        row:SetSize(DROPDOWN_WIDTH - 16, ROW_HEIGHT)
+        row:SetPoint("TOPLEFT", 8, yStart - (i - 1) * ROW_HEIGHT)
+        row:SetHitRectInsets(0, 0, 0, 0)
+
+        -- Rounded square checkbox (standard WoW style)
+        row:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+        row:GetNormalTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
+        row:GetNormalTexture():ClearAllPoints()
+        row:GetNormalTexture():SetPoint("LEFT", 4, 0)
+
+        row:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+        row:GetCheckedTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
+        row:GetCheckedTexture():ClearAllPoints()
+        row:GetCheckedTexture():SetPoint("LEFT", 4, 0)
+
+        -- Label
+        local label = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        label:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
+        label:SetText(opt.label)
+
+        -- Highlight on hover
+        local highlight = row:CreateTexture(nil, "HIGHLIGHT")
+        highlight:SetAllPoints()
+        highlight:SetColorTexture(1, 1, 1, 0.1)
+
+        -- Start checked
+        row:SetChecked(true)
+
+        row:SetScript("OnClick", function(self)
+            local filters = EasyFind.db[dbKey]
+            filters[opt.key] = self:GetChecked()
+            if searchEditBox:GetText() ~= "" then
+                MapSearch:OnSearchTextChanged(searchEditBox:GetText())
+            end
+        end)
+
+        checkRows[opt.key] = row
+    end
+
+    local totalHeight = PADDING_TOP + HEADER_HEIGHT + #options * ROW_HEIGHT + PADDING_BOTTOM
+    dropdown:SetSize(DROPDOWN_WIDTH, totalHeight)
+
+    -- Sync checkmarks to saved state on show
+    dropdown:SetScript("OnShow", function()
+        local filters = EasyFind.db[dbKey]
+        for key, row in pairs(checkRows) do
+            row:SetChecked(filters[key] ~= false)
+        end
+    end)
+
+    -- Close when clicking outside
+    dropdown:SetScript("OnUpdate", function(self)
+        if self:IsShown() and IsMouseButtonDown("LeftButton") then
+            if not self:IsMouseOver() and not toggleBtn:IsMouseOver() then
+                self:Hide()
+            end
+        end
+    end)
+
+    -- Toggle on filter button click; position using screen coordinates
+    -- so scale differences between UIParent and the search bar don't cause gaps
+    toggleBtn:SetScript("OnClick", function(self)
+        if dropdown:IsShown() then
+            dropdown:Hide()
+        else
+            local scale = anchorFrame:GetEffectiveScale() / UIParent:GetEffectiveScale()
+            local right = anchorFrame:GetRight() * scale
+            local bottom = anchorFrame:GetBottom() * scale
+            dropdown:ClearAllPoints()
+            dropdown:SetPoint("TOPRIGHT", UIParent, "BOTTOMLEFT", right, bottom)
+            dropdown:Show()
+        end
+    end)
+
+    return dropdown
+end
+
 function MapSearch:CreateSearchFrame()
     -- =====================================================================
     -- LOCAL search bar (left side — searches current map's child zones + POIs)
@@ -974,8 +1087,34 @@ function MapSearch:CreateSearchFrame()
         -- Text and results stay visible; user can click back in to resume
     end)
     
+    -- Filter button (inside search bar, flush right — same as global bar)
+    local localFilterBtn = CreateFrame("Button", "EasyFindMapLocalFilterButton", searchFrame)
+    localFilterBtn:SetSize(34, 34)
+    localFilterBtn:SetPoint("RIGHT", searchFrame, "RIGHT", 1, -4)
+    localFilterBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
+
+    local localFilterIcon = localFilterBtn:CreateTexture(nil, "ARTWORK")
+    localFilterIcon:SetAllPoints()
+    localFilterIcon:SetAtlas("common-dropdown-a-button-hover")
+    localFilterBtn.icon = localFilterIcon
+
+    localFilterBtn:SetScript("OnEnter", function(self)
+        localFilterIcon:SetAlpha(1)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Filter Results")
+        GameTooltip:AddLine("Choose which result types to show.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    localFilterBtn:SetScript("OnLeave", function()
+        localFilterIcon:SetAlpha(0.7)
+        GameTooltip_Hide()
+    end)
+    localFilterIcon:SetAlpha(0.7)
+
     -- Clear button (grey circle X, matching retail quest log style)
     local clearBtn = Utils.CreateClearButton(searchFrame)
+    clearBtn:ClearAllPoints()
+    clearBtn:SetPoint("RIGHT", searchFrame, "RIGHT", -32, 0)
     clearBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
 
     clearBtn:SetScript("OnClick", function()
@@ -1033,9 +1172,24 @@ function MapSearch:CreateSearchFrame()
         end
     end)
 
+    -- Local filter dropdown
+    local LOCAL_FILTER_OPTIONS = {
+        { key = "instances", label = "Instances" },
+        { key = "travel",    label = "Travel" },
+        { key = "services",  label = "Services" },
+    }
+
+    local localFilterDropdown = MapSearch:CreateFilterDropdown(
+        "EasyFindMapLocalFilterDropdown", LOCAL_FILTER_OPTIONS,
+        "localSearchFilters", localFilterBtn, searchFrame, editBox
+    )
+
+    searchFrame.filterBtn = localFilterBtn
+    searchFrame.filterDropdown = localFilterDropdown
+
     searchFrame.editBox = editBox
     searchFrame:Hide()
-    
+
     -- =====================================================================
     -- GLOBAL search bar (right side — searches all zones in the world)
     -- =====================================================================
@@ -1169,8 +1323,34 @@ function MapSearch:CreateSearchFrame()
         -- Text and results stay visible; user can click back in to resume
     end)
     
-    -- Clear button for global search (grey circle X)
+    -- Filter button (inside search bar, flush right)
+    local filterBtn = CreateFrame("Button", "EasyFindMapFilterButton", globalSearchFrame)
+    filterBtn:SetSize(34, 34)
+    filterBtn:SetPoint("RIGHT", globalSearchFrame, "RIGHT", 1, -4)
+    filterBtn:SetFrameLevel(globalSearchFrame:GetFrameLevel() + 10)
+
+    local filterIcon = filterBtn:CreateTexture(nil, "ARTWORK")
+    filterIcon:SetAllPoints()
+    filterIcon:SetAtlas("common-dropdown-a-button-hover")
+    filterBtn.icon = filterIcon
+
+    filterBtn:SetScript("OnEnter", function(self)
+        filterIcon:SetAlpha(1)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:SetText("Filter Results")
+        GameTooltip:AddLine("Choose which result types to show.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    filterBtn:SetScript("OnLeave", function()
+        filterIcon:SetAlpha(0.7)
+        GameTooltip_Hide()
+    end)
+    filterIcon:SetAlpha(0.7)
+
+    -- Clear button for global search (grey circle X) — shifted left of filter button
     local globalClearBtn = Utils.CreateClearButton(globalSearchFrame)
+    globalClearBtn:ClearAllPoints()
+    globalClearBtn:SetPoint("RIGHT", globalSearchFrame, "RIGHT", -32, 0)
     globalClearBtn:SetFrameLevel(globalSearchFrame:GetFrameLevel() + 10)
 
     globalClearBtn:SetScript("OnClick", function()
@@ -1230,7 +1410,23 @@ function MapSearch:CreateSearchFrame()
 
     globalSearchFrame.editBox = globalEditBox
     globalSearchFrame:Hide()
-    
+
+    -- Filter dropdown (styled like WoW tracking menu)
+    local FILTER_OPTIONS = {
+        { key = "zones",    label = "Zones" },
+        { key = "dungeons", label = "Dungeons" },
+        { key = "raids",    label = "Raids" },
+        { key = "delves",   label = "Delves" },
+    }
+
+    local filterDropdown = MapSearch:CreateFilterDropdown(
+        "EasyFindMapFilterDropdown", FILTER_OPTIONS,
+        "globalSearchFilters", filterBtn, globalSearchFrame, globalEditBox
+    )
+
+    globalSearchFrame.filterBtn = filterBtn
+    globalSearchFrame.filterDropdown = filterDropdown
+
     -- Set initial active frame
     activeSearchFrame = searchFrame
 end
@@ -2559,6 +2755,12 @@ function MapSearch:HookWorldMap()
     WorldMapFrame:HookScript("OnHide", function()
         searchFrame:Hide()
         globalSearchFrame:Hide()
+        if searchFrame.filterDropdown then
+            searchFrame.filterDropdown:Hide()
+        end
+        if globalSearchFrame.filterDropdown then
+            globalSearchFrame.filterDropdown:Hide()
+        end
         self:HideResults()
         -- Hide ALL high-strata visuals that paint through the closed map.
         -- activePinState is preserved so they restore on reopen.
@@ -3487,6 +3689,48 @@ function MapSearch:OnSearchTextChanged(text)
     end
     
     local results = self:SearchPOIs(allPOIs, text)
+
+    -- Apply global search filters (zones / dungeons / raids / delves)
+    if isGlobalSearch then
+        local filters = EasyFind.db.globalSearchFilters
+        local filteredResults = {}
+        for _, r in ipairs(results) do
+            local dominated = false
+            if r.isZone and filters.zones == false then
+                dominated = true
+            elseif r.category == "dungeon" and filters.dungeons == false then
+                dominated = true
+            elseif r.category == "raid" and filters.raids == false then
+                dominated = true
+            elseif r.category == "delve" and filters.delves == false then
+                dominated = true
+            end
+            if not dominated then
+                tinsert(filteredResults, r)
+            end
+        end
+        results = filteredResults
+    else
+        -- Apply local search filters (instances / travel / services / rares / treasures)
+        local filters = EasyFind.db.localSearchFilters
+        local filteredResults = {}
+        for _, r in ipairs(results) do
+            local dominated = false
+            local cat = r.category
+            local parentCat = cat and CATEGORIES[cat] and CATEGORIES[cat].parent
+            if (cat == "dungeon" or cat == "raid" or cat == "delve" or parentCat == "instance") and filters.instances == false then
+                dominated = true
+            elseif (cat == "flightmaster" or cat == "zeppelin" or cat == "boat" or cat == "portal" or cat == "tram" or parentCat == "travel") and filters.travel == false then
+                dominated = true
+            elseif (parentCat == "service" or cat == "service") and filters.services == false then
+                dominated = true
+            end
+            if not dominated then
+                tinsert(filteredResults, r)
+            end
+        end
+        results = filteredResults
+    end
 
     -- Prepend pinned items (always shown at top regardless of query)
     local pins = EasyFind.db.pinnedMapItems
