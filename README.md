@@ -27,9 +27,10 @@ Locate important places across Azeroth:
 - Flight masters
 - Dungeon and raid entrances (search globally or within current map)
 - Profession trainers
-- Coming soon: all of the above for many more cities
 
-**Click-to-Navigate**: Click any local search pin on the map to place a waypoint and activate minimap tracking. A pulsing gold star appears on the minimap perimeter to guide you while far away, then transitions to a rotating ring indicator as you get close. The waypoint auto-clears when you arrive.
+**Two search bars**: The local bar searches your current zone. The global bar searches zones, dungeons, raids, and delves across all of Azeroth. Both support category filters to narrow results by type.
+
+**Click-to-Navigate**: Click any local search pin on the map to place a native WoW waypoint with minimap supertrack arrow. The waypoint auto-clears when you arrive. Navigate buttons are grayed out when you are viewing a zone your character is not in.
 
 **Zone Abbreviations**: Type common shortcuts like `sw` (Stormwind), `dal` (Dalaran), `org` (Orgrimmar), `if` (Ironforge), `orib` (Oribos), and more.
 
@@ -63,6 +64,7 @@ When you install EasyFind for the first time, you'll see an interactive setup ov
 | `/ef hide` | Hide the search bar |
 | `/ef show` | Show the search bar |
 | `/ef clear` | Dismiss all active highlights and guides (UI search, map POI, zone, breadcrumb) |
+| `/ef setup` | Re-run the first-time setup overlay |
 
 Options are also available via ESC > Interface > AddOns > EasyFind.
 
@@ -79,6 +81,8 @@ EasyFind provides customizable keybinds:
 - **Arrow Style**: Choose from 4 arrow textures (EasyFind Arrow, Classic Quest Arrow, Minimap Player Arrow, Cursor Point). All arrows update in real-time.
 - **Arrow Color**: Pick from 8 color presets (Yellow, Gold, Orange, Red, Green, Blue, Purple, White).
 - **Icon Size**: Unified slider controls all search indicators (map pins, UI arrows, zone highlights) at once.
+- **Max Results**: How many results to show before scrolling (3-24).
+- **Arrival Distance**: How close you need to be before a waypoint auto-clears (3-50 yards).
 - **Open Panels Directly** (UI Search): When enabled, selecting a UI result opens the target panel immediately instead of guiding you through each step. Off by default.
 - **Navigate to Zones Directly** (Map Search): When enabled, selecting a map result jumps straight to the zone on the map instead of stepping through parent zones. Off by default.
 - **Smart Show**: Hide the search bar until you hover over it. Keeps your screen clean while staying accessible.
@@ -86,6 +90,8 @@ EasyFind provides customizable keybinds:
 - **Search Bar Opacity**: Adjust transparency to see through the search bar.
 - **Static Opacity**: Keep the search bar at constant opacity while moving (off by default; bar fades while moving).
 - **Blinking Map Pins**: Enable pulse animations on map search pins (off by default).
+- **Minimap Button**: Show or hide the minimap icon.
+- **Show Login Message**: Show or hide the "EasyFind loaded!" chat message on login.
 - **UI/Map Search Bar Scales**: Resize each search bar independently.
 - **Reset All Settings / Reset Positions**: Return settings or search bar positions to defaults.
 
