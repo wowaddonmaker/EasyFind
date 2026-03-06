@@ -2275,10 +2275,7 @@ function MapSearch:ClearZoneHighlight()
                 self.breadcrumbHighlight.indicatorFrame.animGroup:Stop()
             end
         end
-        self.breadcrumbHighlight:Hide()
-        if self.breadcrumbHighlight.animGroup then
-            self.breadcrumbHighlight.animGroup:Stop()
-        end
+        self.breadcrumbHighlight:Hide()  -- OnHide unlocks the button highlight automatically
     end
     
     -- Clear pending zone navigation (but NOT pendingWaypoint - that's the final
@@ -2572,26 +2569,23 @@ end
 -- Show the highlight effect on a breadcrumb button
 function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
     DebugPrint("[EasyFind] ShowBreadcrumbHighlight, finalTarget:", finalTargetMapID)
-    
+
     if not self.breadcrumbHighlight then
         local hl = CreateFrame("Frame", "EasyFindBreadcrumbHighlight", WorldMapFrame)
         hl:SetFrameStrata("TOOLTIP")
         hl:SetFrameLevel(300)
-        
-        local border = hl:CreateTexture(nil, "OVERLAY")
-        border:SetAllPoints()
-        border:SetColorTexture(1, 1, 0, 0.5)
-        border:SetBlendMode("ADD")
-        hl.border = border
-        
-        local animGroup = hl:CreateAnimationGroup()
-        animGroup:SetLooping("BOUNCE")
-        local alpha = animGroup:CreateAnimation("Alpha")
-        alpha:SetFromAlpha(0.7)
-        alpha:SetToAlpha(0.3)
-        alpha:SetDuration(0.4)
-        hl.animGroup = animGroup
-        
+
+        -- Unlock the previous button's highlight when this frame hides,
+        -- regardless of which clear path triggered it.
+        hl:SetScript("OnHide", function(self)
+            if self.button then
+                if self.button.UnlockHighlight then self.button:UnlockHighlight() end
+                local hlTex = self.button.GetHighlightTexture and self.button:GetHighlightTexture()
+                if hlTex then hlTex:SetVertexColor(1, 1, 1, 1) end
+                self.button = nil
+            end
+        end)
+
         -- Indicator pointing to button - parented to UIParent so it's not clipped
         -- by WorldMapFrame when extending above the map edge
         local bcIndFrame = CreateFrame("Frame", nil, UIParent)
@@ -2601,7 +2595,6 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
         bcIndFrame:SetPoint("BOTTOM", hl, "TOP", 0, 8)
         ns.CreateIndicatorTextures(bcIndFrame, ns.BREADCRUMB_SIZE, ns.ICON_GLOW_SIZE)
 
-        -- Bob animation matching all other indicators
         local bcAnimGroup = bcIndFrame:CreateAnimationGroup()
         bcAnimGroup:SetLooping("BOUNCE")
         local bcMove = bcAnimGroup:CreateAnimation("Translation")
@@ -2611,26 +2604,39 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
 
         hl.indicatorFrame = bcIndFrame
         hl.indicator = bcIndFrame.indicator
-        
+
         self.breadcrumbHighlight = hl
     end
-    
-    local hl = self.breadcrumbHighlight
-    hl:ClearAllPoints()
-    hl:SetPoint("TOPLEFT", button, "TOPLEFT", -3, 3)
-    hl:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 3, -3)
-    hl:Show()
-    hl.animGroup:Play()
 
-    -- Play breadcrumb indicator bob animation
+    local hl = self.breadcrumbHighlight
+
+    -- Unlock previous button if we're switching to a different one
+    if hl.button and hl.button ~= button then
+        if hl.button.UnlockHighlight then hl.button:UnlockHighlight() end
+        local prevTex = hl.button.GetHighlightTexture and hl.button:GetHighlightTexture()
+        if prevTex then prevTex:SetVertexColor(1, 1, 1, 1) end
+    end
+    hl.button = button
+
+    -- Use the button's own shaped highlight texture with a gold tint.
+    -- LockHighlight() keeps it visible permanently regardless of mouse state,
+    -- and the highlight texture already conforms to the button's actual shape.
+    if button.LockHighlight then button:LockHighlight() end
+    local hlTex = button.GetHighlightTexture and button:GetHighlightTexture()
+    if hlTex then hlTex:SetVertexColor(1, 0.82, 0, 1) end
+
+    hl:ClearAllPoints()
+    hl:SetPoint("TOPLEFT", button, "TOPLEFT", 0, 0)
+    hl:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 0)
+    hl:Show()
+
     if hl.indicatorFrame then
         hl.indicatorFrame:Show()
         if hl.indicatorFrame.animGroup then
             hl.indicatorFrame.animGroup:Play()
         end
     end
-    
-    -- Store the final destination for when user clicks the breadcrumb
+
     self.pendingZoneHighlight = finalTargetMapID
     DebugPrint("[EasyFind] ShowBreadcrumbHighlight - SET pendingZoneHighlight to:", finalTargetMapID)
 end
