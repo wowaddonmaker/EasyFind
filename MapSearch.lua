@@ -655,6 +655,7 @@ local CATEGORY_ICONS = {
     innkeeper = "Interface\\Icons\\Spell_Holy_GreaterHeal",
     trainer = "Interface\\Icons\\INV_Misc_Book_09",
     proftrainer = "Interface\\Icons\\INV_Misc_Book_09",
+    classtrainer = { file = 131016, coords = { 0.000, 0.250, 0.375, 0.500 } },
     prof_alchemy = "Interface\\Icons\\Trade_Alchemy",
     prof_blacksmithing = "Interface\\Icons\\Trade_BlackSmithing",
     prof_cooking = "Interface\\Icons\\INV_Misc_Food_15",
@@ -687,6 +688,7 @@ local CATEGORY_ICONS = {
     guildservices = "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend",
     voidstorage = "Interface\\Icons\\INV_Enchant_VoidCrystal",
     tradingpost = "Interface\\Icons\\tradingpostcurrency",
+    chromie = "atlas:ChromieTime-32x32",
     areapoi = "Interface\\Icons\\INV_Misc_QuestionMark",
     unknown = "Interface\\Icons\\INV_Misc_QuestionMark",
 }
@@ -3311,6 +3313,8 @@ function MapSearch:ScanMapPOIs()
                     category = "tradingpost"
                 elseif sfind(poiName, "conquest") or sfind(poiName, "honor") or sfind(poiName, "pvp") or sfind(poiName, "quartermaster") then
                     category = "pvpvendor"
+                elseif sfind(poiName, "chromie") then
+                    category = "chromie"
                 end
                 
                 -- Only add POIs we've explicitly categorized
@@ -3383,6 +3387,10 @@ function MapSearch:GetPinInfo(pin)
         elseif sfind(poiName, "trading post") then
             category = "tradingpost"
             pinType = "tradingpost"
+        elseif sfind(poiName, "chromie") then
+            category = "chromie"
+            pinType = "chromie"
+            icon = "atlas:ChromieTime-32x32"
         else
             -- Generic area POI - skip it (these are usually landmarks, events, etc.)
             return nil
@@ -3414,34 +3422,48 @@ function MapSearch:GetPinInfo(pin)
         return nil
     end
     
-    -- Get icon from pin's actual textures if we don't have one
-    if not icon then
-        -- Scan pin regions for atlas-based icons (shows the real map pin icon)
-        local skipAtlas = { ["Waypoint-MapPin-Tracked"] = true, ["Waypoint-MapPin-Untracked"] = true, ["UI-QuestPoi-OuterGlow"] = true }
+    -- Scan pin regions for atlas-based icons (shows the real map pin icon)
+    -- Also used to identify unknown pin types by their atlas name
+    local skipAtlas = { ["Waypoint-MapPin-Tracked"] = true, ["Waypoint-MapPin-Untracked"] = true, ["UI-QuestPoi-OuterGlow"] = true }
+    -- Atlas names that identify specific known pin types when other data fields are absent
+    local atlasPinTypes = {
+        ["ChromieTime-32x32"] = { name = "Chromie", category = "chromie" },
+    }
+    do
         for _, region in pairs({pin:GetRegions()}) do
             if region.GetAtlas then
                 local atlas = region:GetAtlas()
                 if atlas and atlas ~= "" and not skipAtlas[atlas] then
                     local layer = region:GetDrawLayer()
                     if layer == "ARTWORK" then
-                        icon = "atlas:" .. atlas
-                        break
+                        if not icon then
+                            icon = "atlas:" .. atlas
+                        end
+                        if not name then
+                            local known = atlasPinTypes[atlas]
+                            if known then
+                                name     = known.name
+                                category = known.category
+                                pinType  = known.category
+                            end
+                        end
                     end
                 end
             end
         end
-        -- Fallback to raw texture if no atlas found
-        if not icon then
-            if pin.Texture and pin.Texture.GetTexture then
-                local tex = pin.Texture:GetTexture()
-                if tex and type(tex) == "number" then
-                    icon = tex
-                end
-            elseif pin.Icon and pin.Icon.GetTexture then
-                local tex = pin.Icon:GetTexture()
-                if tex and type(tex) == "number" then
-                    icon = tex
-                end
+    end
+
+    -- Fallback raw texture scan (only if atlas scan found nothing)
+    if not icon then
+        if pin.Texture and pin.Texture.GetTexture then
+            local tex = pin.Texture:GetTexture()
+            if tex and type(tex) == "number" then
+                icon = tex
+            end
+        elseif pin.Icon and pin.Icon.GetTexture then
+            local tex = pin.Icon:GetTexture()
+            if tex and type(tex) == "number" then
+                icon = tex
             end
         end
     end
