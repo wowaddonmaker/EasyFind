@@ -23,9 +23,7 @@ local hooksecurefunc     = hooksecurefunc
 local wipe               = wipe
 local strsplit           = strsplit
 
--- =============================================================================
 -- INDICATOR THEME DEFINITIONS
--- =============================================================================
 local INDICATOR_STYLES = {
     ["Classic Quest Arrow"] = {
         texture = "Interface\\MINIMAP\\MiniMap-QuestArrow",
@@ -88,11 +86,9 @@ ns.INDICATOR_COLORS = INDICATOR_COLORS
 
 local GetIndicatorTexture = ns.GetIndicatorTexture
 
--- =============================================================================
--- UNIFIED SIZING — all values are in UI coordinate units (same as UIParent).
+-- UNIFIED SIZING - all values are in UI coordinate units (same as UIParent).
 -- Map code converts to canvas units via ns.UIToCanvas() so visual size matches.
 -- Changing a value here changes BOTH map and UI icons uniformly.
--- =============================================================================
 
 -- Single-pin group (the indicator icon + pin + highlight are always sized together)
 ns.ICON_SIZE         = 48   -- Indicator icon (arrow/pointer/cursor)
@@ -128,11 +124,9 @@ function ns.UIToCanvas(uiSize)
     return uiSize * (canvasW / viewportW)
 end
 
--- =============================================================================
 -- SHARED ICON CREATION / UPDATE
 -- Every indicator icon in the addon (map search, zone search, UI search, breadcrumb)
 -- MUST use these two functions so they all look identical.
--- =============================================================================
 
 --- Create icon + glow textures on a parent frame.
 --- Returns nothing; sets parentFrame.indicator and parentFrame.glow.
@@ -264,14 +258,12 @@ local currentHighlightedPin
 local waypointPin
 local zoneHighlightFrame  -- For highlighting zones on continent maps
 local isGlobalSearch = false  -- Tracks which search bar triggered the current search
-local activePinState = nil    -- {mapID, x, y, icon, category} — survives map close/reopen
+local activePinState = nil    -- {mapID, x, y, icon, category} - survives map close/reopen
 local superTrackGlow          -- Perimeter glow frame (far mode)
 local nearTrackFrame          -- Ring + arrow frame (near mode)
 local waypointController      -- Invisible controller that drives OnUpdate
 
--- =============================================================================
--- MINIMAP WAYPOINT TRACKER — perimeter glow (far) + ring/arrow (near)
--- =============================================================================
+-- MINIMAP WAYPOINT TRACKER - perimeter glow (far) + ring/arrow (near)
 
 local matan2, mcos, msin, msqrt = math.atan2, math.cos, math.sin, math.sqrt
 local GetPlayerFacing = GetPlayerFacing
@@ -297,7 +289,7 @@ end
 -- Forward declarations (defined after CreateWaypointTracker but referenced inside its OnUpdate)
 local ShowSuperTrackGlow, HideSuperTrackGlow
 
--- Blizzard waypoint integration — we place Blizzard's native waypoint and add
+-- Blizzard waypoint integration - we place Blizzard's native waypoint and add
 -- our perimeter glow on top.  efPlacedWaypoint tracks whether we own the pin.
 local efPlacedWaypoint = false
 local cachedWPMapID, cachedWPx, cachedWPy  -- cached coords to avoid per-frame allocs
@@ -554,9 +546,7 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
     end)
 end)
 
--- =============================================================================
 -- PIN HELPERS
--- =============================================================================
 
 local function GetMapPinKey(data)
     if data.isZone and data.zoneMapID then
@@ -643,7 +633,7 @@ local CATEGORY_ICONS = {
     boat = "Interface\\Icons\\Achievement_BG_captureflag_EOS",
     portal = "Interface\\Icons\\Spell_Arcane_PortalDalaran",
     tram = "Interface\\Icons\\INV_Misc_Gear_01",
-    -- Cropped texCoords from atlas sprite sheet 1121272 — removes the built-in glow border
+    -- Cropped texCoords from atlas sprite sheet 1121272 - removes the built-in glow border
     -- Full atlas coords: Dungeon L=0.1982 R=0.2471 T=0.4404 B=0.4893
     --                     Raid    L=0.1982 R=0.2471 T=0.4912 B=0.5400
     --                     delves  L=0.0010 R=0.0635 T=0.3896 B=0.4521
@@ -772,9 +762,7 @@ function MapSearch:Initialize()
     self:UpdateOpacity()
 end
 
--- =============================================================================
--- SHARED FILTER DROPDOWN BUILDER — creates a tracking-menu-style checkbox panel
--- =============================================================================
+-- SHARED FILTER DROPDOWN BUILDER - creates a tracking-menu-style checkbox panel
 function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, anchorFrame, searchEditBox)
     local ROW_HEIGHT = 20
     local DROPDOWN_WIDTH = 207
@@ -886,9 +874,7 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
 end
 
 function MapSearch:CreateSearchFrame()
-    -- =====================================================================
-    -- LOCAL search bar (left side — searches current map's child zones + POIs)
-    -- =====================================================================
+    -- LOCAL search bar (left side - searches current map's child zones + POIs)
     searchFrame = CreateFrame("Frame", "EasyFindMapSearchFrame", WorldMapFrame, "BackdropTemplate")
     searchFrame:SetSize(250, 32)
     searchFrame:SetFrameStrata("DIALOG")
@@ -904,7 +890,7 @@ function MapSearch:CreateSearchFrame()
         searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", 0, 2)
     end
     
-    -- Apply theme-appropriate backdrop (border only — atlas fills the background)
+    -- Apply theme-appropriate backdrop (border only - atlas fills the background)
     if (EasyFind.db.resultsTheme or "Classic") == "Retail" then
         searchFrame:SetBackdrop({
             edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1020,7 +1006,7 @@ function MapSearch:CreateSearchFrame()
         -- Text and results stay visible; user can click back in to resume
     end)
     
-    -- Filter button (inside search bar, flush right — same as global bar)
+    -- Filter button (inside search bar, flush right - same as global bar)
     local localFilterBtn = CreateFrame("Button", "EasyFindMapLocalFilterButton", searchFrame)
     localFilterBtn:SetSize(34, 34)
     localFilterBtn:SetPoint("RIGHT", searchFrame, "RIGHT", 1, -4)
@@ -1123,9 +1109,7 @@ function MapSearch:CreateSearchFrame()
     searchFrame.editBox = editBox
     searchFrame:Hide()
 
-    -- =====================================================================
-    -- GLOBAL search bar (right side — searches all zones in the world)
-    -- =====================================================================
+    -- GLOBAL search bar (right side - searches all zones in the world)
     globalSearchFrame = CreateFrame("Frame", "EasyFindMapGlobalSearchFrame", WorldMapFrame, "BackdropTemplate")
     globalSearchFrame:SetSize(250, 32)
     globalSearchFrame:SetFrameStrata("DIALOG")
@@ -1142,7 +1126,7 @@ function MapSearch:CreateSearchFrame()
     end
     
     -- Apply theme-appropriate backdrop
-    -- Apply theme-appropriate backdrop (border only — atlas fills the background)
+    -- Apply theme-appropriate backdrop (border only - atlas fills the background)
     if (EasyFind.db.resultsTheme or "Classic") == "Retail" then
         globalSearchFrame:SetBackdrop({
             edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -1280,7 +1264,7 @@ function MapSearch:CreateSearchFrame()
     end)
     filterIcon:SetAlpha(0.7)
 
-    -- Clear button for global search (grey circle X) — shifted left of filter button
+    -- Clear button for global search (grey circle X) - shifted left of filter button
     local globalClearBtn = Utils.CreateClearButton(globalSearchFrame)
     globalClearBtn:ClearAllPoints()
     globalClearBtn:SetPoint("RIGHT", globalSearchFrame, "RIGHT", -32, 0)
@@ -1459,7 +1443,7 @@ function MapSearch:CreateResultButton(index)
     pinIcon:Hide()
     btn.pinIcon = pinIcon
 
-    -- Navigate button — shortcut: select result + auto-set waypoint in one click
+    -- Navigate button - shortcut: select result + auto-set waypoint in one click
     local navBtn = CreateFrame("Button", nil, btn)
     navBtn:SetSize(24, 24)
     navBtn:SetPoint("RIGHT", btn, "RIGHT", -2, 0)
@@ -1764,7 +1748,7 @@ function MapSearch:GetDirectChildZones(mapID)
     if children then
         for _, child in ipairs(children) do
             if child.name and not seen[child.mapID] then
-                -- Skip dungeon, micro, and orphan maps — only include navigable zones
+                -- Skip dungeon, micro, and orphan maps - only include navigable zones
                 local mt = child.mapType
                 if mt ~= Enum.UIMapType.Dungeon and mt ~= Enum.UIMapType.Micro and mt ~= Enum.UIMapType.Orphan then
                     seen[child.mapID] = true
@@ -1838,7 +1822,7 @@ function MapSearch:GetAllWorldZones(startMapID, depth, parentPath)
                 tinsert(fullPath, {mapID = startMapID, name = parentName})
             end
             
-            -- Skip dungeon, micro, and orphan maps — only include navigable zones
+            -- Skip dungeon, micro, and orphan maps - only include navigable zones
             local mt = child.mapType
             if mt ~= Enum.UIMapType.Dungeon and mt ~= Enum.UIMapType.Micro and mt ~= Enum.UIMapType.Orphan then
                 tinsert(allZones, {
@@ -2204,14 +2188,14 @@ function MapSearch:HighlightZone(mapID)
         if zoneInd.glow then
             zoneInd.glow:SetSize(indicatorGlowSize, indicatorGlowSize)
         end
-        -- DO NOT override color/texture here — OnShow hook handles it via ns.UpdateIndicator
+        -- DO NOT override color/texture here - OnShow hook handles it via ns.UpdateIndicator
         local margin = 50
 
         zoneInd:ClearAllPoints()
 
         DebugPrint("[EasyFind] HighlightZone: indicator positioning - zoneTopPx:", zoneTopPx, "margin+indicatorSize:", margin + indicatorSize)
 
-        -- Set direction on the frame — ns.UpdateIndicator (via OnShow hook) reads this
+        -- Set direction on the frame - ns.UpdateIndicator (via OnShow hook) reads this
         if zoneTopPx > margin + indicatorSize then
             zoneInd.indicatorDirection = "down"
             zoneInd:SetPoint("BOTTOM", canvas, "TOPLEFT", zoneCenterPxX, -(zoneTopPx - 10))
@@ -2297,13 +2281,12 @@ function MapSearch:ClearZoneHighlight()
         end
     end
     
-    -- Clear pending zone navigation (but NOT pendingWaypoint — that's the final
+    -- Clear pending zone navigation (but NOT pendingWaypoint - that's the final
     -- destination waypoint and must survive through the zone navigation chain)
     self.pendingZoneHighlight = nil
 end
 
 -- Highlight a zone with step-by-step navigation guidance (teaching mode)
--- This guides the user through breadcrumbs and map clicks to reach the target
 function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
     DebugPrint("[EasyFind] HighlightZoneOnMap called for targetMapID:", targetMapID)
     
@@ -2341,7 +2324,7 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
     -- CASE 1: We're already on the target's parent map - just highlight the zone!
     if currentMapID == targetParentMapID then
         DebugPrint("[EasyFind] CASE 1: Already on target parent, highlighting zone")
-        -- Clear pendingZoneHighlight — this is the final zone-level step.
+        -- Clear pendingZoneHighlight - this is the final zone-level step.
         -- When the user clicks into the zone, OnMapChanged should fall through
         -- to pendingWaypoint (if any) instead of re-triggering zone navigation.
         self.pendingZoneHighlight = nil
@@ -2478,7 +2461,7 @@ function MapSearch:HighlightBreadcrumbForNavigation(dcaMapID, finalTargetMapID, 
         DebugPrint("[EasyFind] Button found and shown, highlighting it")
         self:ShowBreadcrumbHighlight(buttonToHighlight, finalTargetMapID)
     else
-        -- No exact breadcrumb found — try to highlight any visible breadcrumb
+        -- No exact breadcrumb found - try to highlight any visible breadcrumb
         -- that helps the user navigate upward (avoid auto-navigating in teaching mode)
         DebugPrint("[EasyFind] No button found, looking for any visible breadcrumb")
         local fallbackButton = nil
@@ -2609,7 +2592,7 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
         alpha:SetDuration(0.4)
         hl.animGroup = animGroup
         
-        -- Indicator pointing to button — parented to UIParent so it's not clipped
+        -- Indicator pointing to button - parented to UIParent so it's not clipped
         -- by WorldMapFrame when extending above the map edge
         local bcIndFrame = CreateFrame("Frame", nil, UIParent)
         bcIndFrame:SetFrameStrata("TOOLTIP")
@@ -2718,7 +2701,7 @@ function MapSearch:HookWorldMap()
 
         self:HideResults()
         self:ClearHighlight()
-        self:ClearZoneHighlight()  -- Explicit clear — SetText below may not reliably fire OnTextChanged inside hooksecurefunc
+        self:ClearZoneHighlight()  -- Explicit clear - SetText below may not reliably fire OnTextChanged inside hooksecurefunc
 
         -- Clear breadcrumb highlight
         if self.breadcrumbHighlight then
@@ -2746,7 +2729,7 @@ function MapSearch:HookWorldMap()
                 if entrances then
                     for _, entrance in ipairs(entrances) do
                         if entrance.name and entrance.position then
-                            -- Match by proximity — entrance coords are in current map space
+                            -- Match by proximity - entrance coords are in current map space
                             -- Use GetMapRectOnMap to project wp coords to current map for comparison
                             local ok, left, right, top, bottom = pcall(C_Map.GetMapRectOnMap, wp.mapID, currentMapID)
                             if ok and left and (right - left) > 0 then
@@ -2791,7 +2774,7 @@ function MapSearch:HookWorldMap()
             end)
         else
             DebugPrint("[EasyFind] OnMapChanged - no pending, clearing highlights")
-            -- Navigated to a different map — discard any stale pin state
+            -- Navigated to a different map - discard any stale pin state
             if activePinState and activePinState.mapID ~= newMapID then
                 activePinState = nil
             end
@@ -2848,7 +2831,7 @@ end
 -- Continent-wide cache: maps lowercased instance name → owner zone mapID.
 -- Built once per continent by walking the map hierarchy.  Used to reject
 -- adjacent-zone bleed without a strict whitelist (entrances with no owner
--- in the hierarchy are kept — benefit of the doubt).
+-- in the hierarchy are kept - benefit of the doubt).
 local continentInstanceOwners = {}  -- [continentID] = { [lowerName] = ownerZoneMapID }
 
 local function GetContinentInstanceOwners(continentID)
@@ -2889,11 +2872,11 @@ end
 -- Returns POI-style entries with name, position, category (dungeon/raid), and the zone mapID.
 --
 -- For zone-level maps (parent is Continent), two scans are performed:
---   1) The zone itself — filtered by continent-wide instance ownership so entrances
+--   1) The zone itself - filtered by continent-wide instance ownership so entrances
 --      that belong to a DIFFERENT zone are rejected (e.g. Grim Batol appearing on
 --      the Wetlands map when it belongs to Twilight Highlands).  Entrances with no
 --      owner in the map hierarchy are kept (benefit of the doubt).
---   2) The parent continent — to catch entrances the EJ API only returns for a
+--   2) The parent continent - to catch entrances the EJ API only returns for a
 --      neighboring zone.  Continent entrances owned by the current zone are included
 --      with coordinates projected to zone space.
 function MapSearch:ScanDungeonEntrances(mapID)
@@ -3001,7 +2984,7 @@ function MapSearch:GetGlobalInstanceCache()
     -- Recursively collect all mapIDs from the Cosmic map (946).
     -- The recursion visits parent zones before their children, so the first
     -- entry discovered for a given dungeon name is always the shallowest
-    -- (most general) zone — e.g. Azj-Kahet before City of Threads.
+    -- (most general) zone - e.g. Azj-Kahet before City of Threads.
     -- We keep only that first entry to avoid duplicate search results and
     -- to maximise the chance that entranceMapID == the user's current map.
     local function collectMaps(parentMapID)
@@ -3166,9 +3149,8 @@ function MapSearch:ScanAllFlightMasters()
     return allNodes
 end
 
--- Scan dungeon entrances across ALL zone-type maps for global search
--- This collects every dungeon/raid portal location in the game
--- Results are cached since instance discovery doesn't change mid-session
+-- Scan dungeon entrances across ALL zone-type maps for global search.
+-- Results are cached since instance discovery doesn't change mid-session.
 local cachedAllDungeonEntrances = nil
 
 function MapSearch:ScanAllDungeonEntrances()
@@ -3317,8 +3299,7 @@ function MapSearch:ScanMapPOIs()
                     category = "chromie"
                 end
                 
-                -- Only add POIs we've explicitly categorized
-                -- This filters out generic landmarks, zone markers, events, etc.
+                -- Only add POIs we've explicitly categorized (skips generic landmarks, zone markers, events, etc.)
                 if category then
                     tinsert(pois, {
                         name = poiInfo.name,
@@ -3357,7 +3338,7 @@ function MapSearch:GetPinInfo(pin)
     local pinType = "unknown"
     local category = nil
     
-    -- Flight masters — handled by ScanFlightMasters() with proper zone filtering
+    -- Flight masters - handled by ScanFlightMasters() with proper zone filtering
     if pin.taxiNodeData then
         return nil
     end
@@ -3417,7 +3398,7 @@ function MapSearch:GetPinInfo(pin)
         return nil
     end
     
-    -- Dungeon/Raid instances — handled by ScanDungeonEntrances() with proper zone filtering
+    -- Dungeon/Raid instances - handled by ScanDungeonEntrances() with proper zone filtering
     if pin.journalInstanceID then
         return nil
     end
@@ -3734,7 +3715,7 @@ function MapSearch:SearchPOIs(pois, query)
         local nameLower = slower(poi.name)
         local key = poi.name .. (poi.category or "")
         
-        -- Zone results already scored by SearchZones — pass through directly
+        -- Zone results already scored by SearchZones - pass through directly
         local score
         if poi.isZone and poi.score then
             score = poi.score
@@ -3770,7 +3751,7 @@ function MapSearch:SearchPOIs(pois, query)
     end
     
     -- Second pass: ALWAYS include category matches when user typed a category keyword
-    -- This ensures typing "dungeon" shows ALL dungeons, not just name matches
+    -- (typing "dungeon" shows ALL dungeons, not just name matches)
     if matchedCategory then
         for _, poi in ipairs(pois) do
             local key = poi.name .. (poi.category or "")
@@ -4563,7 +4544,7 @@ function MapSearch:GetPreviewCoords(data)
     end
     -- Direct POI coordinates
     if data.x and data.y and not data.isZone then
-        -- Dungeon entrance on a different map — check EJ API for current map
+        -- Dungeon entrance on a different map - check EJ API for current map
         if data.isDungeonEntrance and data.entranceMapID and data.entranceMapID ~= currentMapID then
             if C_EncounterJournal and C_EncounterJournal.GetDungeonEntrancesForMap then
                 local entrances = C_EncounterJournal.GetDungeonEntrancesForMap(currentMapID)
@@ -4686,9 +4667,9 @@ function MapSearch:ResetPosition()
     end
 end
 
+-- Called when the user changes the icon scale setting.
 function MapSearch:UpdateIconScales()
-    -- This function is called when the user changes the icon scale setting
-    -- Update all visible pins, highlights, and arrows in real-time
+    -- Updates all visible pins, highlights, and arrows in real-time.
     
     local canvas = WorldMapFrame.ScrollContainer.Child
     if not canvas then return end

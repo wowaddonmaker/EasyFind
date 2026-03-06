@@ -1,7 +1,5 @@
--- =============================================================================
 -- EasyFind Core
 -- Entry point: namespace setup, SavedVariables, slash commands, event dispatch.
--- =============================================================================
 local ADDON_NAME, ns = ...
 
 local Utils   = ns.Utils
@@ -23,7 +21,7 @@ ns.eventFrame = eventFrame
 
 EasyFind.db = {}
 
--- SavedVariables defaults — new keys are auto-merged for existing users
+-- SavedVariables defaults - new keys are auto-merged for existing users
 local DB_DEFAULTS = {
     visible = true,
     iconScale = 1.0,
@@ -48,7 +46,7 @@ local DB_DEFAULTS = {
     pinsCollapsed = false,     -- Whether the "Pinned Paths" header is collapsed
     showLoginMessage = true,   -- Show "EasyFind loaded!" message on login
     blinkingPins = false,      -- Animate (blink/pulse) map pins and highlights
-    arrivalDistance = 10,      -- Yards — auto-clear waypoint when player is this close
+    arrivalDistance = 10,      -- Yards - auto-clear waypoint when player is this close
     uiResultsAbove = false,    -- Show UI search results above the search bar
     mapResultsAbove = false,   -- Show map search results above the search bar
     showMinimapButton = true,  -- Show toggle button on minimap
@@ -70,7 +68,7 @@ local function OnInitialize()
     if not EasyFindDB then
         EasyFindDB = { firstInstall = true }
     end
-    -- Merge defaults — existing values are preserved
+    -- Merge defaults - existing values are preserved
     for k, v in pairs(DB_DEFAULTS) do
         if EasyFindDB[k] == nil then
             EasyFindDB[k] = v
@@ -171,9 +169,7 @@ local function OnPlayerLogin()
     end
 end
 
--- =============================================================================
--- EVENT DISPATCH — single frame, unregisters after one-time events
--- =============================================================================
+-- EVENT DISPATCH - single frame, unregisters after one-time events
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -196,9 +192,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
     end
 end)
 
--- =============================================================================
 -- PUBLIC API
--- =============================================================================
 function EasyFind:ToggleSearchUI()
     if ns.UI then ns.UI:Toggle() end
 end
@@ -261,9 +255,7 @@ function EasyFind:TestIndicatorTexture(texturePath)
     EasyFind:Print("Close the preview window to dismiss.")
 end
 
--- =============================================================================
 -- MINIMAP BUTTON
--- =============================================================================
 local minimapButton
 
 -- Minimap shape quadrant table (matches LibDBIcon standard)
@@ -302,10 +294,10 @@ local function PositionMinimapButton(angle)
 
     local x, y
     if quadTable[q] then
-        -- Rounded quadrant — place on circle
+        -- Rounded quadrant - place on circle
         x, y = cx * w, cy * h
     else
-        -- Squared quadrant — clamp to rectangle edge
+        -- Squared quadrant - clamp to rectangle edge
         local dw = math.sqrt(2 * w * w) - 10
         local dh = math.sqrt(2 * h * h) - 10
         x = math.max(-w, math.min(cx * dw, w))

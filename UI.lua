@@ -31,9 +31,7 @@ local MAX_BUTTON_POOL = 50  -- Maximum buttons (scroll handles overflow beyond t
 local inCombat = false
 local selectingResult = false  -- guard: suppress OnTextChanged re-renders during SelectResult
 
--- =============================================================================
 -- PIN HELPERS
--- =============================================================================
 
 local function GetUIPinKey(data)
     if not data or not data.name then return "" end
@@ -136,7 +134,7 @@ local function ShowPinPopup(btn, isPinned, onAction)
     pinPopup:Show()
 end
 
--- Centralized icon setter — resets texture state before applying to prevent
+-- Centralized icon setter - resets texture state before applying to prevent
 -- atlas/texture bleed between rows.
 local function SetRowIcon(btn, kind, value, iconSize)
     btn.icon:SetTexture(nil)
@@ -156,9 +154,7 @@ end
 local selectedIndex = 0   -- 0 = none selected, 1..N = highlighted row
 local unearnedTooltip      -- Custom tooltip for unearned currencies
 
--- =============================================================================
 -- THEME DEFINITIONS
--- =============================================================================
 local THEMES = {}
 
 -- Classic: colorful tree connectors, +/- icons, gold leaf text
@@ -204,7 +200,7 @@ THEMES["Classic"] = {
     },
 }
 
--- Retail: quest-log style — raised tab headers, golden tree lines, grey border
+-- Retail: quest-log style - raised tab headers, golden tree lines, grey border
 THEMES["Retail"] = {
     rowHeight       = 28,
     indentPx        = 20,          -- matches INDENT_PX so tree lines align
@@ -222,7 +218,7 @@ THEMES["Retail"] = {
     pathColor       = {0.65, 0.60, 0.55, 1.0},   -- muted gray-tan (normal state)
     pathColorHover  = {1.0, 1.0, 1.0, 1.0},      -- white (hover state)
     leafColor       = {0.9, 0.9, 0.9},           -- light grey items
-    -- tree lines — warm gold (single colour at every depth)
+    -- tree lines - warm gold (single colour at every depth)
     showTreeLines   = true,
     indentColors    = {
         {0.85, 0.65, 0.15, 0.80},
@@ -252,7 +248,7 @@ THEMES["Retail"] = {
     -- separators off
     showSeparators  = false,
     separatorColor  = {0.5, 0.45, 0.3, 0.35},
-    -- results backdrop — grey tooltip border, quest log background
+    -- results backdrop - grey tooltip border, quest log background
     resultsBackdrop = {
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
         edgeSize = 16,
@@ -273,7 +269,7 @@ function UI:CreateUnearnedTooltip()
     -- Create simple tooltip frame
     unearnedTooltip = CreateFrame("Frame", "EasyFindUnearnedTooltip", UIParent, "BackdropTemplate")
     unearnedTooltip:SetFrameStrata("TOOLTIP")
-    unearnedTooltip:SetFrameLevel(9999)  -- Ensure it's on top
+    unearnedTooltip:SetFrameLevel(9999)
     unearnedTooltip:SetClampedToScreen(true)
 
     -- Simple black background with border
@@ -322,7 +318,6 @@ function UI:Initialize()
         end
     end
     
-    -- Check if already in combat
     inCombat = InCombatLockdown()
     if inCombat then
         searchFrame:Hide()
@@ -378,7 +373,7 @@ function UI:CreateSearchFrame()
         searchFrame:SetPoint("TOP", UIParent, "TOP", 0, -5)
     end
     
-    -- Apply theme-appropriate backdrop (border only — atlas fills the background)
+    -- Apply theme-appropriate backdrop (border only - atlas fills the background)
     local theme = GetActiveTheme()
     if theme.searchBarRounded then
         searchFrame:SetBackdrop({
@@ -652,8 +647,6 @@ function UI:CreateSearchFrame()
     end)
 end
 
-
-
 function UI:CreateResultsFrame()
     resultsFrame = CreateFrame("Frame", "EasyFindResultsFrame", searchFrame, "BackdropTemplate")
     resultsFrame:SetWidth(380)  -- Wide to accommodate tree indentation
@@ -924,7 +917,7 @@ function UI:CreateResultButton(index)
         vert:Hide()
         btn.treeVert[d] = vert
         
-        -- Half-height vertical elbow (top half only — for ├ and └ at this row's depth)
+        -- Half-height vertical elbow (top half only - for ├ and └ at this row's depth)
         local elbow = btn:CreateTexture(nil, "BACKGROUND")
         elbow:SetColorTexture(c[1], c[2], c[3], c[4])
         elbow:SetWidth(LINE_W)
@@ -1090,11 +1083,11 @@ function UI:CreateResultButton(index)
             local isToggleClick = false
 
             if isRetailHeader then
-                -- Retail: toggle icon on right side — generous 55px zone
+                -- Retail: toggle icon on right side - generous 55px zone
                 local btnRight = self:GetRight() * scale
                 isToggleClick = cursorX >= (btnRight - 55 * scale)
             else
-                -- Classic: +/- icon on left side — 35px zone from icon start
+                -- Classic: +/- icon on left side - 35px zone from icon start
                 local btnLeft = self:GetLeft() * scale
                 local depth = self.pathNodeDepth or 0
                 local iconLeft = btnLeft + depth * 20 * scale  -- INDENT_PX = 20
@@ -1181,7 +1174,7 @@ function UI:OnSearchTextChanged(text)
     local results = ns.Database:SearchUI(text)
     local hierarchical = ns.Database:BuildHierarchicalResults(results)
     -- Container nodes (search results that have database children which didn't
-    -- match the query) start collapsed — user can expand to browse children.
+    -- match the query) start collapsed - user can expand to browse children.
     for _, entry in ipairs(hierarchical) do
         if entry.isContainer then
             local key = entry.name .. "_" .. (entry.depth or 0)
@@ -1213,7 +1206,7 @@ function UI:OnSearchTextChanged(text)
             })
         end
         -- Combine: pinned header + pins first, then all search results
-        -- (pinned items may also appear in results — intentional so the user
+        -- (pinned items may also appear in results - intentional so the user
         -- can see where the path stands in the full hierarchy)
         for _, entry in ipairs(hierarchical) do
             tinsert(pinnedEntries, entry)
@@ -1329,9 +1322,9 @@ function UI:ShowHierarchicalResults(hierarchical)
         -- If we're skipping children of a collapsed node, check depth
         if skipBelowDepth then
             if d > skipBelowDepth then
-                -- Still inside collapsed subtree — skip
+                -- Still inside collapsed subtree - skip
             else
-                -- Back to same or higher depth — stop skipping
+                -- Back to same or higher depth - stop skipping
                 skipBelowDepth = nil
             end
         end
@@ -1525,7 +1518,7 @@ function UI:ShowHierarchicalResults(hierarchical)
                 else
                     btn.tabText:SetTextColor(0.60, 0.58, 0.55, 1.0) -- muted gray
                 end
-                -- Normal icon/text hidden — SetRowIcon("hidden") handles icon below
+                -- Normal icon/text hidden - SetRowIcon("hidden") handles icon below
                 btn.text:SetText("")
                 btn.headerGrad:Hide()
             else
@@ -1551,7 +1544,7 @@ function UI:ShowHierarchicalResults(hierarchical)
 
             -- Check if this is a currency that hasn't been discovered yet
             -- (not just quantity == 0, but truly never earned/discovered)
-            -- This check must run for ALL currency nodes regardless of theme
+            -- Runs for ALL currency nodes regardless of theme
             local isUnearnedCurrency = false
             if data and data.category == "Currency" then
                 if entry.isPathNode then
@@ -1855,7 +1848,7 @@ function UI:ShowHierarchicalResults(hierarchical)
             end
 
             -- Resolve sidebar tab icons at runtime (e.g. Equipment Manager, Titles)
-            -- The tab textures are sprite sheets — copy the ARTWORK-layer texture
+            -- The tab textures are sprite sheets - copy the ARTWORK-layer texture
             -- along with its tex coords so only the icon portion is shown.
             if not iconSet and data and data.steps then
                 for _, step in ipairs(data.steps) do
@@ -1897,7 +1890,7 @@ function UI:ShowHierarchicalResults(hierarchical)
                 end
             end
 
-            -- Skip buttonFrame fallback for currency items — their inherited
+            -- Skip buttonFrame fallback for currency items - their inherited
             -- "CharacterMicroButton" produces a wrong MicroMenu atlas icon.
             if not iconSet and not isCurrencyItem and data and data.buttonFrame then
                 local texture, isAtlas = GetButtonIcon(data.buttonFrame)
@@ -2170,7 +2163,6 @@ function UI:SelectResult(data)
         self:FlashLabel(data.flashLabel)
     end
     
-    -- Check if direct open is enabled
     if EasyFind.db.directOpen and data.steps then
         -- Portrait menu entries can't be automated (secure frame restriction) - always use guide mode
         local hasPortraitMenu = false
@@ -2204,7 +2196,7 @@ function UI:DirectOpen(data)
     local totalSteps = #steps
     local Highlight = ns.Highlight
 
-    -- Check if this is a reputation navigation - if so, collapse all headers first for clean state
+    -- Collapse all reputation headers first for a clean navigation state
     local hasReputationSteps = false
     for _, step in ipairs(steps) do
         if step.factionHeader or step.factionID then
@@ -2216,7 +2208,7 @@ function UI:DirectOpen(data)
         self:CollapseAllReputationHeaders()
     end
 
-    -- Check if this is a currency navigation - if so, collapse all headers first for clean state
+    -- Collapse all currency headers first for a clean navigation state
     local hasCurrencySteps = false
     for _, step in ipairs(steps) do
         if step.currencyHeader or step.currencyID then
@@ -2267,17 +2259,17 @@ function UI:DirectOpen(data)
     end
 
     local function executeStep(stepIndex)
-        -- Done executing — either finished completely or hand off to highlight
+        -- Done executing - either finished completely or hand off to highlight
         if stepIndex > executeCount then
             if not finalStepNavigable then
-                -- Final step is highlight-only — show it to the user
+                -- Final step is highlight-only - show it to the user
                 C_Timer.After(0.15, function()
                     if Highlight then
                         Highlight:StartGuideAtStep(data, totalSteps)
                     end
                 end)
             end
-            -- If final step was navigable, we already executed it — nothing more to do
+            -- If final step was navigable, we already executed it - nothing more to do
             return
         end
 
@@ -2423,7 +2415,7 @@ function UI:ClickCharacterSidebar(sidebarIndex)
         return false
     end
     
-    -- Ensure we're on the Character tab (tab 1) first
+    -- Switch to the Character tab (tab 1) first
     if PanelTemplates_GetSelectedTab and PanelTemplates_GetSelectedTab(CharacterFrame) ~= 1 then
         ClickButton(_G["CharacterFrameTab1"])
     end
@@ -2587,7 +2579,7 @@ end
 
 -- Helper function to expand a currency header by name
 function UI:ExpandCurrencyHeader(headerName)
-    -- Click the header button — this is what the game actually responds to.
+    -- Click the header button - this is what the game actually responds to.
     -- C_CurrencyInfo.ExpandCurrencyList exists but does not reliably trigger
     -- TokenFrame to rebuild its list in Midnight.
     local btn = ns.Highlight and ns.Highlight:GetCurrencyHeaderButton(headerName)
@@ -2609,7 +2601,6 @@ function UI:ExpandCurrencyHeader(headerName)
     end
     return false
 end
-
 
 --- Helper function to collapse all reputation headers for a clean navigation state
 function UI:CollapseAllReputationHeaders()
@@ -2672,7 +2663,6 @@ function UI:ExpandFactionHeader(headerName)
     end
     return false
 end
-
 
 -- Helper function to open the player portrait right-click menu
 function UI:OpenPortraitMenu()
@@ -2822,7 +2812,7 @@ function UI:UpdateSmartShow()
         -- Enable smart show: show hover zone, start hidden
         searchFrame.hoverZone:Show()
         if EasyFind.db.visible ~= false and not inCombat then
-            -- Start transparent — hover to reveal
+            -- Start transparent - hover to reveal
             searchFrame:SetAlpha(0)
             searchFrame:Show()
             searchFrame.setSmartShowVisible(false)
@@ -2848,10 +2838,8 @@ function UI:ResetPosition()
     end
 end
 
--- =========================================================================
 -- WHAT'S NEW POPUP
 -- Shown once per version update for returning users.
--- =========================================================================
 function UI:ShowWhatsNew(version)
     if _G["EasyFindWhatsNew"] then return end
 
@@ -2883,7 +2871,7 @@ function UI:ShowWhatsNew(version)
     -- Title
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", 0, -16)
-    title:SetText("|cffFFD100EasyFind|r — New Features")
+    title:SetText("|cffFFD100EasyFind|r - New Features")
 
     -- Version subtitle
     local verText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -2907,12 +2895,12 @@ function UI:ShowWhatsNew(version)
         "        Optional minimap icon to quickly open or focus the search bar"
     )
 
-    -- Footer — anchored below body so it can't overlap
+    -- Footer - anchored below body so it can't overlap
     local footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     footer:SetPoint("TOP", body, "BOTTOM", 0, -12)
     footer:SetText("Full changelog on CurseForge and GitHub")
 
-    -- "Got it" button — anchored below footer
+    -- "Got it" button - anchored below footer
     local okBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     okBtn:SetSize(90, 24)
     okBtn:SetPoint("TOP", footer, "BOTTOM", 0, -8)
@@ -2924,11 +2912,9 @@ function UI:ShowWhatsNew(version)
     f:Show()
 end
 
--- =========================================================================
 -- FIRST-TIME SETUP OVERLAY
 -- Shown once on fresh install to let the user position & scale the search
 -- bar before normal use.  Persisted via EasyFind.db.setupComplete.
--- =========================================================================
 function UI:ShowFirstTimeSetup()
     if EasyFind.db.setupComplete then return end
 
@@ -3071,7 +3057,7 @@ function UI:ShowFirstTimeSetup()
     sep:SetPoint("TOPRIGHT", tip, "BOTTOMRIGHT", 0, -6)
     sep:SetColorTexture(0.4, 0.4, 0.4, 0.6)
 
-    -- Smart Show checkbox (default checked — matches DB_DEFAULTS.smartShow = true)
+    -- Smart Show checkbox (default checked - matches DB_DEFAULTS.smartShow = true)
     local smartShowCheckbox = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
     smartShowCheckbox:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", 0, -6)
     smartShowCheckbox.Text:SetText("|cffFFD100Smart Show|r")
@@ -3082,7 +3068,7 @@ function UI:ShowFirstTimeSetup()
         UI:UpdateSmartShow()
     end)
 
-    -- Smart Show description — uses same font as checkbox text for consistency
+    -- Smart Show description - uses same font as checkbox text for consistency
     local smartDesc = smartShowCheckbox:CreateFontString(nil, "OVERLAY")
     smartDesc:SetFontObject(smartShowCheckbox.Text:GetFontObject())
     smartDesc:SetPoint("TOPLEFT", smartShowCheckbox.Text, "BOTTOMLEFT", 0, -2)
@@ -3096,7 +3082,7 @@ function UI:ShowFirstTimeSetup()
         "|cffFFD100/ef show|r |cff999999and|r |cffFFD100/ef hide|r|cff999999.|r"
     )
 
-    -- Fade While Moving checkbox (default checked — staticOpacity defaults to false, meaning fade IS active)
+    -- Fade While Moving checkbox (default checked - staticOpacity defaults to false, meaning fade IS active)
     local fadeCheckbox = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
     fadeCheckbox:SetPoint("TOPLEFT", smartShowCheckbox, "TOPLEFT", 0, -(26 + smartDesc:GetStringHeight() + 8))
     fadeCheckbox.Text:SetText("|cffFFD100Fade While Moving|r")
@@ -3161,7 +3147,7 @@ function UI:ShowFirstTimeSetup()
         UI:UpdateSmartShow()
 
         -- Record current version so What's New won't fire on next login
-        -- (brand-new users don't need to see it — all features are new for them)
+        -- (brand-new users don't need to see it - all features are new for them)
         EasyFind.db.lastSeenVersion = ns.version
     end)
 end

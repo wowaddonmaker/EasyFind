@@ -515,7 +515,7 @@ function Highlight:UpdateGuide()
             
             -- Prerequisite check: verify ALL earlier statisticsCategory steps are still
             -- expanded (children visible). A parent doesn't need to stay "selected" once
-            -- we've drilled into a child — it just needs to still be expanded.
+            -- we've drilled into a child - it just needs to still be expanded.
             for i = currentStepIndex - 1, 1, -1 do
                 local prevStep = currentGuide.steps[i]
                 if prevStep and prevStep.statisticsCategory then
@@ -534,17 +534,17 @@ function Highlight:UpdateGuide()
                     return
                 end
                 -- Non-final: only advance if children are actually visible (parent expanded),
-                -- not just selected — clicking a collapsed parent selects it without showing children
+                -- not just selected - clicking a collapsed parent selects it without showing children
                 local elementData = self:FindCategoryElementData(step.statisticsCategory)
                 if not elementData or not elementData.parent or not elementData.collapsed then
                     self:AdvanceStep()
                     return
                 end
-                -- Selected but collapsed — fall through to highlight so user expands it
+                -- Selected but collapsed - fall through to highlight so user expands it
             end
 
             -- For non-final steps: if the category is a parent that's expanded (children visible),
-            -- skip ahead — don't force the user to re-select a parent they've already drilled into
+            -- skip ahead - don't force the user to re-select a parent they've already drilled into
             if not isLastStep then
                 local elementData = self:FindCategoryElementData(step.statisticsCategory)
                 if elementData and elementData.parent and not elementData.collapsed then
@@ -553,7 +553,7 @@ function Highlight:UpdateGuide()
                 end
             end
 
-            -- Not selected — find the button (scrolls into view automatically)
+            -- Not selected - find the button (scrolls into view automatically)
             local categoryBtn = self:GetStatisticsCategoryButton(step.statisticsCategory)
             if categoryBtn then
                 self:HighlightFrame(categoryBtn)
@@ -592,7 +592,7 @@ function Highlight:UpdateGuide()
             
             -- Prerequisite check: verify ALL earlier achievementCategory steps are still
             -- expanded (children visible). A parent doesn't need to stay "selected" once
-            -- we've drilled into a child — it just needs to still be expanded.
+            -- we've drilled into a child - it just needs to still be expanded.
             for i = currentStepIndex - 1, 1, -1 do
                 local prevStep = currentGuide.steps[i]
                 if prevStep and prevStep.achievementCategory then
@@ -611,17 +611,17 @@ function Highlight:UpdateGuide()
                     return
                 end
                 -- Non-final: only advance if children are actually visible (parent expanded),
-                -- not just selected — clicking a collapsed parent selects it without showing children
+                -- not just selected - clicking a collapsed parent selects it without showing children
                 local elementData = self:FindCategoryElementData(step.achievementCategory)
                 if not elementData or not elementData.parent or not elementData.collapsed then
                     self:AdvanceStep()
                     return
                 end
-                -- Selected but collapsed — fall through to highlight so user expands it
+                -- Selected but collapsed - fall through to highlight so user expands it
             end
 
             -- For non-final steps: if the category is a parent that's expanded (children visible),
-            -- skip ahead — don't force the user to re-select a parent they've already drilled into
+            -- skip ahead - don't force the user to re-select a parent they've already drilled into
             if not isLastStep then
                 local elementData = self:FindCategoryElementData(step.achievementCategory)
                 if elementData and elementData.parent and not elementData.collapsed then
@@ -630,7 +630,7 @@ function Highlight:UpdateGuide()
                 end
             end
 
-            -- Not selected — find the button (scrolls into view automatically)
+            -- Not selected - find the button (scrolls into view automatically)
             local categoryBtn = self:GetAchievementCategoryButton(step.achievementCategory)
             if categoryBtn then
                 self:HighlightFrame(categoryBtn)
@@ -726,7 +726,7 @@ function Highlight:UpdateGuide()
             local headerState = self:IsCurrencyHeaderExpanded(step.currencyHeader)
             
             if headerState == true then
-                -- Header is expanded — advance to next step
+                -- Header is expanded - advance to next step
                 if isLastStep then
                     self:Cancel()
                 else
@@ -736,7 +736,7 @@ function Highlight:UpdateGuide()
             end
             
             if headerState == nil then
-                -- Header not found — parent must be collapsed.
+                -- Header not found - parent must be collapsed.
                 -- First, try to go back to previous currencyHeader step
                 for i = currentStepIndex - 1, 1, -1 do
                     local prevStep = currentGuide.steps[i]
@@ -771,7 +771,7 @@ function Highlight:UpdateGuide()
                 return
             end
 
-            -- headerState == false: header is visible but collapsed — find and highlight the button
+            -- headerState == false: header is visible but collapsed - find and highlight the button
             local headerBtn = self:GetCurrencyHeaderButton(step.currencyHeader)
             if headerBtn then
                 -- Found the button - highlight it for user to click
@@ -816,12 +816,12 @@ function Highlight:UpdateGuide()
                 if prevStep and prevStep.currencyHeader then
                     local state = self:IsCurrencyHeaderExpanded(prevStep.currencyHeader)
                     if state ~= true then
-                        -- Either collapsed (false) or parent not visible (nil) — go back
+                        -- Either collapsed (false) or parent not visible (nil) - go back
                         currentStepIndex = i
                         self:HideHighlight()
                         return
                     end
-                    -- Don't break — check ALL parent headers in the chain
+                    -- Don't break - check ALL parent headers in the chain
                 end
             end
             
@@ -872,7 +872,7 @@ function Highlight:UpdateGuide()
             local headerState = self:IsFactionHeaderExpanded(step.factionHeader)
 
             if headerState == true then
-                -- Header is expanded — advance to next step
+                -- Header is expanded - advance to next step
                 if isLastStep then
                     self:Cancel()
                 else
@@ -882,7 +882,7 @@ function Highlight:UpdateGuide()
             end
 
             if headerState == nil then
-                -- Header not found — parent must be collapsed.
+                -- Header not found - parent must be collapsed.
                 -- First, try to go back to previous factionHeader step
                 for i = currentStepIndex - 1, 1, -1 do
                     local prevStep = currentGuide.steps[i]
@@ -913,12 +913,12 @@ function Highlight:UpdateGuide()
                     end
                 end
 
-                -- No collapsed headers found — wait
+                -- No collapsed headers found - wait
                 self:HideHighlight()
                 return
             end
 
-            -- headerState == false: header is visible but collapsed — find and highlight the button
+            -- headerState == false: header is visible but collapsed - find and highlight the button
             local headerBtn = self:GetFactionHeaderButton(step.factionHeader)
             if headerBtn then
                 -- Found the button - highlight it for user to click
@@ -963,12 +963,12 @@ function Highlight:UpdateGuide()
                 if prevStep and prevStep.factionHeader then
                     local state = self:IsFactionHeaderExpanded(prevStep.factionHeader)
                     if state ~= true then
-                        -- Either collapsed (false) or parent not visible (nil) — go back
+                        -- Either collapsed (false) or parent not visible (nil) - go back
                         currentStepIndex = i
                         self:HideHighlight()
                         return
                     end
-                    -- Don't break — check ALL parent headers in the chain
+                    -- Don't break - check ALL parent headers in the chain
                 end
             end
 
@@ -988,7 +988,6 @@ function Highlight:UpdateGuide()
             return
         end
 
-        -- =====================================================================
         -- PREREQUISITE VALIDATION for final-destination steps (regionFrames,
         -- searchButtonText, text-only).  Walk backwards through the step list
         -- and make sure every earlier tab / side-tab prerequisite is still
@@ -996,7 +995,6 @@ function Highlight:UpdateGuide()
         -- while we expect Premade Groups) we rewind to that step so the guide
         -- re-highlights the correct side-tab button instead of pointing at
         -- empty space.
-        -- =====================================================================
         do
             for i = currentStepIndex - 1, 1, -1 do
                 local prev = currentGuide.steps[i]
@@ -1431,12 +1429,10 @@ function Highlight:GetPvPSideTabButton(frameName, sideTabIndex)
     return nil
 end
 
--- =============================================================================
 -- ACHIEVEMENT/STATISTICS CATEGORY NAVIGATION HELPERS
 -- All three tabs (Achievements, Guild, Statistics) share AchievementFrameCategories.ScrollBox.
 -- Element data: { id = <categoryID>, selected = true/false, parent = ..., isChild = ..., ... }
 -- Category names are resolved via GetCategoryInfo(elementData.id).
--- =============================================================================
 
 -- Shared helper: find element data in the ScrollBox data provider by category name.
 -- Returns (elementData, scrollBox) or (nil, nil).
@@ -1529,7 +1525,7 @@ function Highlight:IsCategorySelectedByData(categoryName)
 end
 
 -- Shared helper: check if a category is expanded (its children visible) OR selected.
--- Used for prerequisite validation — a parent category doesn't need to be "selected"
+-- Used for prerequisite validation - a parent category doesn't need to be "selected"
 -- once its child is selected; it only needs to still be expanded.
 function Highlight:IsCategoryExpandedOrSelected(categoryName)
     local elementData = self:FindCategoryElementData(categoryName)
@@ -1539,7 +1535,7 @@ function Highlight:IsCategoryExpandedOrSelected(categoryName)
     if elementData.selected then return true end
 
     -- If it's a parent (has children) and is expanded (not collapsed), it's satisfied
-    -- This covers the case where a child category is selected — the parent is no longer
+    -- This covers the case where a child category is selected - the parent is no longer
     -- "selected" but it IS expanded, meaning the prerequisite is still met.
     if elementData.parent == true and not elementData.collapsed then
         return true
@@ -1578,9 +1574,7 @@ function Highlight:ScrollToCategoryButton(categoryName)
     return self:FindVisibleCategoryButton(categoryName)
 end
 
--- =====================
 -- STATISTICS CATEGORY
--- =====================
 
 function Highlight:IsStatisticsCategorySelected(categoryName)
     if not AchievementFrame or not AchievementFrame:IsShown() then
@@ -1625,9 +1619,7 @@ function Highlight:GetStatisticsCategoryButton(categoryName)
     return self:ScrollToCategoryButton(categoryName)
 end
 
--- =====================
 -- ACHIEVEMENT/GUILD CATEGORY
--- =====================
 
 function Highlight:IsAchievementCategorySelected(categoryName)
     if not AchievementFrame or not AchievementFrame:IsShown() then
@@ -2220,12 +2212,10 @@ function Highlight:FindPortraitMenuOption(optionName)
     return nil
 end
 
--- =============================================================================
 -- Currency navigation helpers
--- =============================================================================
 
 -- Check if a currency header is currently expanded
--- Returns: true (expanded), false (collapsed), nil (not in list — parent collapsed)
+-- Returns: true (expanded), false (collapsed), nil (not in list - parent collapsed)
 function Highlight:IsCurrencyHeaderExpanded(headerName)
     if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return nil end
     
@@ -2324,9 +2314,7 @@ function Highlight:GetCurrencyRowButton(currencyID)
     end)
 end
 
--- =============================================================================
 -- REPUTATION HELPERS
--- =============================================================================
 
 --- Check if a faction header is expanded
 --- Returns: true (expanded), false (collapsed), nil (not found/parent collapsed)

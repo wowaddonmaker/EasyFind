@@ -254,9 +254,7 @@ function Options:Initialize()
     local closeBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", optionsFrame, "TOPRIGHT", -5, -5)
 
-    -- =====================================================================
     -- Collapsible section infrastructure
-    -- =====================================================================
     local sections = {}
     local sep, instructionText  -- forward-declared for RelayoutSections
 
@@ -342,9 +340,7 @@ function Options:Initialize()
     end
     optionsFrame.sections = sections
 
-    -- =====================================================================
     -- Keybind helpers (defined early since Section 4 needs them)
-    -- =====================================================================
     local function GetCurrentKeybindText(action)
         local key1, key2 = GetBindingKey(action)
         if key1 then return key1 end
@@ -404,9 +400,7 @@ function Options:Initialize()
         btn:SetScript("OnLeave", GameTooltip_Hide)
     end
 
-    -- =====================================================================
     -- SECTION 1: Search Bars
-    -- =====================================================================
     local sec1 = CreateSection("Search Bars", 200)
 
     -- Left column: sliders
@@ -492,9 +486,7 @@ function Options:Initialize()
     end)
     optionsFrame.mapResultsAboveCheckbox = mapResultsAboveCheckbox
 
-    -- =====================================================================
     -- SECTION 2: Search Results
-    -- =====================================================================
     local sec2 = CreateSection("Search Results", 100)
 
     -- Left column: slider
@@ -531,10 +523,7 @@ function Options:Initialize()
     end)
     optionsFrame.zoneNavCheckbox = zoneNavCheckbox
 
-
-    -- =====================================================================
     -- SECTION 3: Map & Navigation
-    -- =====================================================================
     local sec3 = CreateSection("Map & Navigation", 200)
 
     -- Left column: sliders
@@ -661,9 +650,7 @@ function Options:Initialize()
     end)
     optionsFrame.blinkingPinsCheckbox = blinkingPinsCheckbox
 
-    -- =====================================================================
     -- SECTION 4: Keybinds & General
-    -- =====================================================================
     local sec4 = CreateSection("Keybinds & General", 105)
 
     -- Toggle Search Bar keybind
@@ -764,9 +751,7 @@ function Options:Initialize()
     end)
     optionsFrame.minimapBtnCheckbox = minimapBtnCheckbox
 
-    -- =====================================================================
-    -- BOTTOM — Separator, Tips, Reset buttons
-    -- =====================================================================
+    -- BOTTOM - Separator, Tips, Reset buttons
     sep = optionsFrame:CreateTexture(nil, "ARTWORK")
     sep:SetHeight(1)
     sep:SetColorTexture(0.5, 0.5, 0.5, 0.4)
