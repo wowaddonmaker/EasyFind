@@ -2352,7 +2352,7 @@ function UI:DirectOpen(data)
                                 C_Timer.After(0.1, checkHover)
                             end
                         end
-                        C_Timer.After(0.1, checkHover)
+                        C_Timer.After(1.0, checkHover)
                     end
                 end)
             end
@@ -2386,7 +2386,7 @@ function UI:DirectOpen(data)
                                 C_Timer.After(0.1, checkHover)
                             end
                         end
-                        C_Timer.After(0.1, checkHover)
+                        C_Timer.After(1.0, checkHover)
                     end
                 end)
             end

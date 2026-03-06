@@ -19,10 +19,13 @@ local pcall = Utils.pcall
 
 local CreateFrame        = CreateFrame
 local C_Timer            = C_Timer
+local GetTime            = GetTime
 local UIParent           = UIParent
 local hooksecurefunc     = hooksecurefunc
 local wipe               = wipe
 local strsplit           = strsplit
+
+local HOVER_MIN_DISPLAY  = 1.0  -- seconds the highlight must be visible before hover clears it
 
 local highlightFrame
 local indicatorFrame
@@ -31,6 +34,11 @@ local contextTooltip
 local currentGuide
 local currentStepIndex
 local stepTicker
+local highlightShownAt   -- GetTime() when the current highlight was first shown
+
+local function canHoverDismiss()
+    return not highlightShownAt or (GetTime() - highlightShownAt) >= HOVER_MIN_DISPLAY
+end
 
 function Highlight:Initialize()
     if highlightFrame then return end
@@ -269,7 +277,7 @@ function Highlight:UpdateGuide()
                 end
             elseif not nextStep then
                 -- Single step guide - dismiss on hover
-                if btn:IsMouseOver() then
+                if canHoverDismiss() and btn:IsMouseOver() then
                     self:Cancel()
                     return
                 end
@@ -316,7 +324,7 @@ function Highlight:UpdateGuide()
         if optionBtn then
             self:HighlightFrame(optionBtn)
             -- Check for hover/click to dismiss
-            if optionBtn:IsMouseOver() then
+            if canHoverDismiss() and optionBtn:IsMouseOver() then
                 self:Cancel()
                 return
             end
@@ -358,7 +366,7 @@ function Highlight:UpdateGuide()
 
                 -- If button is disabled and user hovers over it, clear the highlight
                 local isEnabled = not tabBtn.IsEnabled or tabBtn:IsEnabled()
-                if not isEnabled and tabBtn:IsMouseOver() then
+                if canHoverDismiss() and not isEnabled and tabBtn:IsMouseOver() then
                     self:Cancel()
                     return
                 end
@@ -412,7 +420,7 @@ function Highlight:UpdateGuide()
 
                 -- If button is disabled and user hovers over it, clear the highlight
                 local isEnabled = not sideBtn.IsEnabled or sideBtn:IsEnabled()
-                if not isEnabled and sideBtn:IsMouseOver() then
+                if canHoverDismiss() and not isEnabled and sideBtn:IsMouseOver() then
                     self:Cancel()
                     return
                 end
@@ -473,7 +481,7 @@ function Highlight:UpdateGuide()
 
                 -- If button is disabled and user hovers over it, clear the highlight
                 local isEnabled = not pvpBtn.IsEnabled or pvpBtn:IsEnabled()
-                if not isEnabled and pvpBtn:IsMouseOver() then
+                if canHoverDismiss() and not isEnabled and pvpBtn:IsMouseOver() then
                     self:Cancel()
                     return
                 end
@@ -673,7 +681,7 @@ function Highlight:UpdateGuide()
             if sidebarBtn then
                 self:HighlightFrame(sidebarBtn)
                 -- Check for click/hover to advance
-                if sidebarBtn:IsMouseOver() then
+                if canHoverDismiss() and sidebarBtn:IsMouseOver() then
                     if isLastStep then
                         self:Cancel()
                     else
@@ -822,7 +830,7 @@ function Highlight:UpdateGuide()
             local currencyBtn = self:GetCurrencyRowButton(step.currencyID)
             if currencyBtn then
                 self:HighlightFrame(currencyBtn)
-                if currencyBtn:IsMouseOver() then
+                if canHoverDismiss() and currencyBtn:IsMouseOver() then
                     self:Cancel()
                     return
                 end
@@ -972,7 +980,7 @@ function Highlight:UpdateGuide()
             local factionBtn = self:GetFactionRowButton(step.factionID)
             if factionBtn then
                 self:HighlightFrame(factionBtn)
-                if factionBtn:IsMouseOver() then
+                if canHoverDismiss() and factionBtn:IsMouseOver() then
                     self:Cancel()
                     return
                 end
@@ -1062,7 +1070,7 @@ function Highlight:UpdateGuide()
                 -- Found the region, highlight it (no text needed)
                 self:HighlightFrame(region)
                 -- Check for hover to dismiss
-                if region:IsMouseOver() then
+                if canHoverDismiss() and region:IsMouseOver() then
                     self:Cancel()
                     return
                 end
@@ -1078,7 +1086,7 @@ function Highlight:UpdateGuide()
             local btn = self:FindRatedPvPButton(step.searchButtonText)
             if btn then
                 self:HighlightFrame(btn)
-                if btn:IsMouseOver() then
+                if canHoverDismiss() and btn:IsMouseOver() then
                     self:Cancel()
                     return
                 end
@@ -1989,6 +1997,9 @@ function Highlight:HighlightFrame(frame, instructionText)
     highlightFrame.right:SetPoint("BOTTOMRIGHT", highlightFrame.bottom, "TOPRIGHT", 0, 0)
     highlightFrame.right:SetWidth(bs)
     
+    if not highlightFrame:IsShown() then
+        highlightShownAt = GetTime()
+    end
     highlightFrame:Show()
     if highlightFrame.animGroup and not highlightFrame.animGroup:IsPlaying() then
         highlightFrame.animGroup:Play()
@@ -2026,6 +2037,7 @@ function Highlight:ShowInstruction(text)
 end
 
 function Highlight:HideHighlight()
+    highlightShownAt = nil
     if highlightFrame then
         highlightFrame:Hide()
         if highlightFrame.animGroup then highlightFrame.animGroup:Stop() end
