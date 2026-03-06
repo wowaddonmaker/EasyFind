@@ -8,7 +8,7 @@ local DebugPrint = Utils.DebugPrint
 local pairs, ipairs, type, select = Utils.pairs, Utils.ipairs, Utils.type, Utils.select
 local tinsert, tsort, tconcat, tremove = Utils.tinsert, Utils.tsort, Utils.tconcat, Utils.tremove
 local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
-local mmin, mmax, mabs, mpi, mfloor = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mpi, Utils.mfloor
+local mmin, mmax, mabs, mpi, mfloor, msin = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mpi, Utils.mfloor, math.sin
 local pcall, tostring = Utils.pcall, Utils.tostring
 
 local CreateFrame        = CreateFrame
@@ -2275,6 +2275,9 @@ function MapSearch:ClearZoneHighlight()
                 self.breadcrumbHighlight.indicatorFrame.animGroup:Stop()
             end
         end
+        if self.breadcrumbHighlight.glowAnim then
+            self.breadcrumbHighlight.glowAnim:Stop()
+        end
         self.breadcrumbHighlight:Hide()  -- OnHide unlocks the button highlight automatically
     end
     
@@ -2575,13 +2578,34 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
         hl:SetFrameStrata("TOOLTIP")
         hl:SetFrameLevel(300)
 
+        -- Circular star4 glow centered on the button - same texture used by indicator
+        -- glows, so it's proven to look good. ADD blend at high alpha = bright with
+        -- no rectangular artifacts since the texture is circular/star-shaped.
+        local starGlow = hl:CreateTexture(nil, "OVERLAY")
+        starGlow:SetSize(64, 64)
+        starGlow:SetPoint("CENTER")
+        starGlow:SetTexture("Interface\\Cooldown\\star4")
+        starGlow:SetVertexColor(1, 0.82, 0, 1)
+        starGlow:SetBlendMode("ADD")
+
+        local glowAnim = hl:CreateAnimationGroup()
+        glowAnim:SetLooping("BOUNCE")
+        local glowAlpha = glowAnim:CreateAnimation("Alpha")
+        glowAlpha:SetFromAlpha(0.65)
+        glowAlpha:SetToAlpha(0.15)
+        glowAlpha:SetDuration(0.6)
+        hl.glowAnim = glowAnim
+
         -- Unlock the previous button's highlight when this frame hides,
         -- regardless of which clear path triggered it.
         hl:SetScript("OnHide", function(self)
             if self.button then
                 if self.button.UnlockHighlight then self.button:UnlockHighlight() end
                 local hlTex = self.button.GetHighlightTexture and self.button:GetHighlightTexture()
-                if hlTex then hlTex:SetVertexColor(1, 1, 1, 1) end
+                if hlTex then
+                    hlTex:SetBlendMode("BLEND")
+                    hlTex:SetVertexColor(1, 1, 1, 1)
+                end
                 self.button = nil
             end
         end)
@@ -2614,21 +2638,25 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
     if hl.button and hl.button ~= button then
         if hl.button.UnlockHighlight then hl.button:UnlockHighlight() end
         local prevTex = hl.button.GetHighlightTexture and hl.button:GetHighlightTexture()
-        if prevTex then prevTex:SetVertexColor(1, 1, 1, 1) end
+        if prevTex then
+            prevTex:SetBlendMode("BLEND")
+            prevTex:SetVertexColor(1, 1, 1, 1)
+        end
     end
     hl.button = button
 
-    -- Use the button's own shaped highlight texture with a gold tint.
-    -- LockHighlight() keeps it visible permanently regardless of mouse state,
-    -- and the highlight texture already conforms to the button's actual shape.
     if button.LockHighlight then button:LockHighlight() end
     local hlTex = button.GetHighlightTexture and button:GetHighlightTexture()
-    if hlTex then hlTex:SetVertexColor(1, 0.82, 0, 1) end
+    if hlTex then
+        hlTex:SetBlendMode("ADD")
+        hlTex:SetVertexColor(1, 0.82, 0, 1)
+    end
 
     hl:ClearAllPoints()
     hl:SetPoint("TOPLEFT", button, "TOPLEFT", 0, 0)
     hl:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 0)
     hl:Show()
+    if hl.glowAnim then hl.glowAnim:Play() end
 
     if hl.indicatorFrame then
         hl.indicatorFrame:Show()
