@@ -4,9 +4,11 @@ local UI = {}
 ns.UI = UI
 
 local Utils = ns.Utils
-local GetButtonText    = Utils.GetButtonText
-local SearchFrameTree  = Utils.SearchFrameTree
-local DebugPrint       = Utils.DebugPrint
+local GetButtonText         = Utils.GetButtonText
+local SearchFrameTree       = Utils.SearchFrameTree
+local SearchFrameTreeFuzzy  = Utils.SearchFrameTreeFuzzy
+local ClickButton           = Utils.ClickButton
+local DebugPrint            = Utils.DebugPrint
 local select, ipairs, pairs = Utils.select, Utils.ipairs, Utils.pairs
 local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
 local tinsert, tsort, tconcat, tremove = Utils.tinsert, Utils.tsort, Utils.tconcat, Utils.tremove
@@ -2284,45 +2286,20 @@ function UI:DirectOpen(data)
 
         -- Click a micro menu button (like LFDMicroButton, CharacterMicroButton, etc.)
         if step.buttonFrame then
-            local btn = _G[step.buttonFrame]
-            if btn then
-                if btn.Click then
-                    btn:Click()
-                elseif btn:GetScript("OnClick") then
-                    btn:GetScript("OnClick")(btn)
-                end
-            end
+            ClickButton(_G[step.buttonFrame])
             nextDelay = 0.15
         end
 
         -- Click a main tab (Dungeons & Raids / Player vs. Player / etc.)
         if step.waitForFrame and step.tabIndex then
-            local tabBtn = Highlight:GetTabButton(step.waitForFrame, step.tabIndex)
-            if tabBtn then
-                -- Prefer calling the Lua OnClick handler directly over Button:Click(),
-                -- since some frames (e.g. EncounterJournal) use protected C methods
-                -- internally that trigger ADDON_ACTION_FORBIDDEN when click is simulated.
-                local onClick = tabBtn:GetScript("OnClick")
-                if onClick then
-                    onClick(tabBtn, "LeftButton")
-                elseif tabBtn.Click then
-                    tabBtn:Click()
-                end
-            end
+            ClickButton(Highlight:GetTabButton(step.waitForFrame, step.tabIndex))
             nextDelay = 0.15
         end
 
         -- Click a PvE side tab (Dungeon Finder / Raid Finder / Premade Groups)
         if step.sideTabIndex then
             C_Timer.After(0.05, function()
-                local sideBtn = Highlight:GetSideTabButton(step.waitForFrame or "PVEFrame", step.sideTabIndex)
-                if sideBtn then
-                    if sideBtn.Click then
-                        sideBtn:Click()
-                    elseif sideBtn:GetScript("OnClick") then
-                        sideBtn:GetScript("OnClick")(sideBtn, "LeftButton")
-                    end
-                end
+                ClickButton(Highlight:GetSideTabButton(step.waitForFrame or "PVEFrame", step.sideTabIndex))
             end)
             nextDelay = 0.2
         end
@@ -2330,14 +2307,7 @@ function UI:DirectOpen(data)
         -- Click a PvP side tab (Quick Match / Rated / Premade Groups / Training Grounds)
         if step.pvpSideTabIndex then
             C_Timer.After(0.05, function()
-                local pvpBtn = Highlight:GetPvPSideTabButton(step.waitForFrame or "PVEFrame", step.pvpSideTabIndex)
-                if pvpBtn then
-                    if pvpBtn.Click then
-                        pvpBtn:Click()
-                    elseif pvpBtn:GetScript("OnClick") then
-                        pvpBtn:GetScript("OnClick")(pvpBtn, "LeftButton")
-                    end
-                end
+                ClickButton(Highlight:GetPvPSideTabButton(step.waitForFrame or "PVEFrame", step.pvpSideTabIndex))
             end)
             nextDelay = 0.2
         end
@@ -2391,16 +2361,11 @@ function UI:DirectOpen(data)
 
         -- Expand a faction header
         if step.factionHeader then
-            -- Check if already expanded first
             local isExpanded = Highlight:IsFactionHeaderExpanded(step.factionHeader)
-            if isExpanded == false then
-                -- Need to expand it
+            if isExpanded ~= true then
                 self:ExpandFactionHeader(step.factionHeader)
-                nextDelay = 0.15  -- Wait for UI to update
-            else
-                -- Already expanded, no need to wait
-                nextDelay = 0.05
             end
+            nextDelay = 0.15
         end
 
         -- Scroll to a faction
@@ -2431,19 +2396,9 @@ function UI:DirectOpen(data)
         -- Click a button found by text search (Premade Groups categories, PvP queue buttons, etc.)
         if step.searchButtonText then
             C_Timer.After(0.05, function()
-                local SearchFrameTreeFuzzy = Utils.SearchFrameTreeFuzzy
-                local searchText = slower(step.searchButtonText)
-                -- Search within the relevant parent frame
                 local parentFrame = step.waitForFrame and _G[step.waitForFrame]
                 if parentFrame then
-                    local btn = SearchFrameTreeFuzzy(parentFrame, searchText)
-                    if btn then
-                        if btn.Click then
-                            btn:Click()
-                        elseif btn.GetScript and btn:GetScript("OnClick") then
-                            btn:GetScript("OnClick")(btn, "LeftButton")
-                        end
-                    end
+                    ClickButton(SearchFrameTreeFuzzy(parentFrame, slower(step.searchButtonText)))
                 end
             end)
             nextDelay = 0.3
@@ -2470,39 +2425,23 @@ function UI:ClickCharacterSidebar(sidebarIndex)
     
     -- Ensure we're on the Character tab (tab 1) first
     if PanelTemplates_GetSelectedTab and PanelTemplates_GetSelectedTab(CharacterFrame) ~= 1 then
-        local tabBtn = _G["CharacterFrameTab1"]
-        if tabBtn and tabBtn.Click then
-            tabBtn:Click()
-        end
+        ClickButton(_G["CharacterFrameTab1"])
     end
-    
+
     -- Method 1: Try PaperDollSidebarTab buttons directly (Frame Inspector confirmed names)
-    local sidebarTabName = "PaperDollSidebarTab" .. sidebarIndex
-    local sidebarTab = _G[sidebarTabName]
+    local sidebarTab = _G["PaperDollSidebarTab" .. sidebarIndex]
     if sidebarTab then
         if sidebarTab:IsShown() then
-            if sidebarTab.Click then
-                sidebarTab:Click()
-                return true
-            elseif sidebarTab:GetScript("OnClick") then
-                sidebarTab:GetScript("OnClick")(sidebarTab, "LeftButton")
-                return true
-            end
+            return ClickButton(sidebarTab)
         else
             -- Tab exists but isn't shown yet - try after a brief delay
             C_Timer.After(0.2, function()
-                if sidebarTab:IsShown() then
-                    if sidebarTab.Click then
-                        sidebarTab:Click()
-                    elseif sidebarTab:GetScript("OnClick") then
-                        sidebarTab:GetScript("OnClick")(sidebarTab, "LeftButton")
-                    end
-                end
+                if sidebarTab:IsShown() then ClickButton(sidebarTab) end
             end)
             return true
         end
     end
-    
+
     -- Method 2: Search PaperDollSidebarTabs container children by index
     local sidebarTabs = _G["PaperDollSidebarTabs"]
     if not sidebarTabs and PaperDollFrame then
@@ -2511,16 +2450,7 @@ function UI:ClickCharacterSidebar(sidebarIndex)
     if sidebarTabs then
         local nTabs = select("#", sidebarTabs:GetChildren())
         if sidebarIndex <= nTabs then
-            local tab = select(sidebarIndex, sidebarTabs:GetChildren())
-            if tab then
-                if tab.Click then
-                    tab:Click()
-                    return true
-                elseif tab:GetScript("OnClick") then
-                    tab:GetScript("OnClick")(tab, "LeftButton")
-                    return true
-                end
-            end
+            return ClickButton(select(sidebarIndex, sidebarTabs:GetChildren()))
         end
     end
     
@@ -2540,19 +2470,7 @@ function UI:ClickAchievementCategory(categoryName)
     end
     
     local categoryNameLower = slower(categoryName)
-    
-    -- Helper to click a button
-    local function tryClick(btn)
-        if btn.Click then
-            btn:Click()
-            return true
-        elseif btn.GetScript and btn:GetScript("OnClick") then
-            btn:GetScript("OnClick")(btn, "LeftButton")
-            return true
-        end
-        return false
-    end
-    
+
     -- Primary: use the data provider to find the category and select it via Blizzard API
     local categoriesFrame = _G["AchievementFrameCategories"]
     if categoriesFrame and categoriesFrame.ScrollBox then
@@ -2599,7 +2517,7 @@ function UI:ClickAchievementCategory(categoryName)
                     -- Fallback: scroll to it and click the visible button
                     scrollBox:ScrollToElementData(elementData)
                     local frame = scrollBox.FindFrame and scrollBox:FindFrame(elementData)
-                    if frame and tryClick(frame) then return true end
+                    if frame and ClickButton(frame) then return true end
                 end
             end
         end
@@ -2674,13 +2592,7 @@ function UI:ExpandCurrencyHeader(headerName)
     -- TokenFrame to rebuild its list in Midnight.
     local btn = ns.Highlight and ns.Highlight:GetCurrencyHeaderButton(headerName)
     if btn then
-        local onClick = btn:GetScript("OnClick")
-        if onClick then
-            onClick(btn, "LeftButton")
-        elseif btn.Click then
-            btn:Click()
-        end
-        return true
+        return ClickButton(btn)
     end
     -- Fallback: try the API directly
     if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return false end
@@ -2698,53 +2610,6 @@ function UI:ExpandCurrencyHeader(headerName)
     return false
 end
 
--- Helper function to scroll to a specific currency by ID
-function UI:ScrollToCurrency(currencyID)
-    if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return false end
-    
-    -- The currency list is a flat list; find the index of our target
-    local size = C_CurrencyInfo.GetCurrencyListSize()
-    for i = 1, size do
-        local info = C_CurrencyInfo.GetCurrencyListInfo(i)
-        if info and not info.isHeader and info.currencyID == currencyID then
-            -- Found it - try to scroll the TokenFrame to this index
-            if TokenFrame and TokenFrame.ScrollBox then
-                -- Modern ScrollBox API
-                local dataProvider = TokenFrame.ScrollBox:GetDataProvider()
-                if dataProvider then
-                    local finder = dataProvider.FindElementDataByPredicate or dataProvider.FindByPredicate
-                    local scrollData = finder and finder(dataProvider, function(data)
-                        return data and data.currencyIndex == i
-                    end)
-                    if scrollData then
-                        TokenFrame.ScrollBox:ScrollToElementData(scrollData)
-                        -- Highlight the row briefly
-                        C_Timer.After(0.1, function()
-                            if TokenFrame.ScrollBox then
-                                for _, frame in TokenFrame.ScrollBox:EnumerateFrames() do
-                                    if frame.currencyID == currencyID then
-                                        -- Flash the highlight
-                                        if frame.Highlight then
-                                            frame.Highlight:SetAlpha(0.3)
-                                            C_Timer.After(0.5, function()
-                                                if frame.Highlight then
-                                                    frame.Highlight:SetAlpha(0)
-                                                end
-                                            end)
-                                        end
-                                        break
-                                    end
-                                end
-                            end
-                        end)
-                    end
-                end
-            end
-            return true
-        end
-    end
-    return false
-end
 
 --- Helper function to collapse all reputation headers for a clean navigation state
 function UI:CollapseAllReputationHeaders()
@@ -2808,52 +2673,6 @@ function UI:ExpandFactionHeader(headerName)
     return false
 end
 
---- Helper function to scroll to a specific faction by ID
-function UI:ScrollToFaction(factionID)
-    if not C_Reputation or not C_Reputation.GetNumFactions then return false end
-
-    -- Find the index of the target faction
-    local numFactions = C_Reputation.GetNumFactions()
-    for i = 1, numFactions do
-        local factionData = C_Reputation.GetFactionDataByIndex(i)
-        if factionData and not factionData.isHeader and factionData.factionID == factionID then
-            -- Found it - try to scroll the ReputationFrame to this index
-            if ReputationFrame and ReputationFrame.ScrollBox then
-                -- Modern ScrollBox API
-                local dataProvider = ReputationFrame.ScrollBox:GetDataProvider()
-                if dataProvider then
-                    local scrollData = dataProvider:FindByPredicate(function(data)
-                        return data and data.factionID == factionID
-                    end)
-                    if scrollData then
-                        ReputationFrame.ScrollBox:ScrollToElementData(scrollData)
-                        -- Highlight the row briefly
-                        C_Timer.After(0.1, function()
-                            if ReputationFrame.ScrollBox then
-                                for _, frame in ReputationFrame.ScrollBox:EnumerateFrames() do
-                                    if frame.factionID == factionID then
-                                        -- Flash the highlight
-                                        if frame.Content and frame.Content.Background then
-                                            frame.Content.Background:SetAlpha(0.3)
-                                            C_Timer.After(0.5, function()
-                                                if frame.Content and frame.Content.Background then
-                                                    frame.Content.Background:SetAlpha(0)
-                                                end
-                                            end)
-                                        end
-                                        break
-                                    end
-                                end
-                            end
-                        end)
-                    end
-                end
-            end
-            return true
-        end
-    end
-    return false
-end
 
 -- Helper function to open the player portrait right-click menu
 function UI:OpenPortraitMenu()
@@ -2916,13 +2735,7 @@ function UI:ClickPortraitMenuOption(optionName)
                 end
                 
                 if text and sfind(slower(text), optionNameLower) then
-                    if child.Click then
-                        child:Click()
-                        return true
-                    elseif child:GetScript("OnClick") then
-                        child:GetScript("OnClick")(child, "LeftButton")
-                        return true
-                    end
+                    if ClickButton(child) then return true end
                 end
                 
                 if searchFrame(child, depth + 1) then return true end

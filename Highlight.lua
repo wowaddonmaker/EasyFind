@@ -4,11 +4,14 @@ local Highlight = {}
 ns.Highlight = Highlight
 
 local Utils = ns.Utils
-local GetButtonText      = Utils.GetButtonText
-local IsButtonSelected   = Utils.IsButtonSelected
-local SearchFrameTree    = Utils.SearchFrameTree
+local GetButtonText        = Utils.GetButtonText
+local IsButtonSelected     = Utils.IsButtonSelected
+local SearchFrameTree      = Utils.SearchFrameTree
 local SearchFrameTreeFuzzy = Utils.SearchFrameTreeFuzzy
-local GetAllFrameText    = Utils.GetAllFrameText
+local GetAllFrameText      = Utils.GetAllFrameText
+local ScrollBoxScrollTo    = Utils.ScrollBoxScrollTo
+local ScrollBoxFindButton  = Utils.ScrollBoxFindButton
+local ClickButton          = Utils.ClickButton
 local select, ipairs, pairs = Utils.select, Utils.ipairs, Utils.pairs
 local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
 local mmin, mmax, mabs, mpi = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mpi
@@ -2229,68 +2232,32 @@ end
 -- Find the visible UI button for a currency header in the TokenFrame ScrollBox
 function Highlight:GetCurrencyHeaderButton(headerName)
     if not TokenFrame or not TokenFrame:IsShown() then return nil end
-    
-    local headerNameLower = slower(headerName)
-    
-    if TokenFrame.ScrollBox then
-        -- First try to scroll to the header's data element so it becomes visible
-        if TokenFrame.ScrollBox.GetDataProvider then
-            local dataProvider = TokenFrame.ScrollBox:GetDataProvider()
-            if dataProvider then
-                -- Find the header's flat-list index in C_CurrencyInfo
-                local headerIndex = nil
-                if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyListSize then
-                    local size = C_CurrencyInfo.GetCurrencyListSize()
-                    for i = 1, size do
-                        local info = C_CurrencyInfo.GetCurrencyListInfo(i)
-                        if info and info.isHeader and info.name and slower(info.name) == headerNameLower then
-                            headerIndex = i
-                            break
-                        end
-                    end
-                end
-                if headerIndex then
-                    local finder = dataProvider.FindElementDataByPredicate or dataProvider.FindByPredicate
-                    local scrollData = finder and finder(dataProvider, function(data)
-                        return data and data.currencyIndex == headerIndex
-                    end)
-                    if scrollData then
-                        TokenFrame.ScrollBox:ScrollToElementData(scrollData)
-                    end
-                end
-            end
-        end
-        
-        -- Find the header's currencyIndex first
-        local targetIndex = nil
-        if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyListSize then
-            local size = C_CurrencyInfo.GetCurrencyListSize()
-            for i = 1, size do
-                local info = C_CurrencyInfo.GetCurrencyListInfo(i)
-                if info and info.isHeader and info.name and slower(info.name) == headerNameLower then
-                    targetIndex = i
-                    break
-                end
-            end
-        end
 
-        -- Now enumerate visible frames to find the button by currencyIndex
-        if targetIndex and TokenFrame.ScrollBox.EnumerateFrames then
-            for _, btn in TokenFrame.ScrollBox:EnumerateFrames() do
-                if btn and btn:IsShown() then
-                    -- Check elementData.currencyIndex
-                    local elementData = btn.elementData or (btn.GetElementData and btn:GetElementData())
-                    if elementData and elementData.currencyIndex == targetIndex then
-                        return btn
-                    end
-                    -- Fallback: try text matching
-                    local text = GetButtonText(btn)
-                    if text and slower(text) == headerNameLower then
-                        return btn
-                    end
-                end
+    local headerNameLower = slower(headerName)
+
+    local targetIndex = nil
+    if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyListSize then
+        local size = C_CurrencyInfo.GetCurrencyListSize()
+        for i = 1, size do
+            local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+            if info and info.isHeader and info.name and slower(info.name) == headerNameLower then
+                targetIndex = i
+                break
             end
         end
+    end
+    if not targetIndex then return nil end
+
+    if TokenFrame.ScrollBox then
+        ScrollBoxScrollTo(TokenFrame.ScrollBox, function(data)
+            return data and data.currencyIndex == targetIndex
+        end)
+        return ScrollBoxFindButton(TokenFrame.ScrollBox, function(btn)
+            local elementData = btn.elementData or (btn.GetElementData and btn:GetElementData())
+            if elementData and elementData.currencyIndex == targetIndex then return true end
+            local text = GetButtonText(btn)
+            return text and slower(text) == headerNameLower
+        end)
     end
 
     return nil
@@ -2313,69 +2280,36 @@ function Highlight:ScrollToCurrencyRow(currencyID)
     end
     if not targetIndex then return end
 
-    -- Try ScrollToElementData via data provider
-    local dataProvider = TokenFrame.ScrollBox:GetDataProvider()
-    if dataProvider then
-        local finder = dataProvider.FindElementDataByPredicate or dataProvider.FindByPredicate
-        if finder then
-            local scrollData = finder(dataProvider, function(data)
-                if not data then return false end
-                if data.currencyID == currencyID then return true end
-                if data.currencyIndex == targetIndex then return true end
-                return false
-            end)
-            if scrollData then
-                local alignCenter = ScrollBoxConstants and ScrollBoxConstants.AlignCenter
-                TokenFrame.ScrollBox:ScrollToElementData(scrollData, alignCenter)
-                return
-            end
-        end
-    end
-
-    -- Fallback: scroll by flat-list position percentage
-    if TokenFrame.ScrollBox.SetScrollPercentage then
-        local fraction = (targetIndex - 1) / math.max(1, size - 1)
-        TokenFrame.ScrollBox:SetScrollPercentage(fraction)
-    end
+    local fraction = (targetIndex - 1) / math.max(1, size - 1)
+    ScrollBoxScrollTo(TokenFrame.ScrollBox, function(data)
+        if not data then return false end
+        if data.currencyID == currencyID then return true end
+        if data.currencyIndex == targetIndex then return true end
+        return false
+    end, fraction)
 end
 
 -- Find the visible UI button/row for a specific currency by ID in the TokenFrame ScrollBox
 function Highlight:GetCurrencyRowButton(currencyID)
     if not TokenFrame or not TokenFrame:IsShown() then return nil end
-    
-    -- Modern ScrollBox: enumerate visible frames and match by data
-    if TokenFrame.ScrollBox and TokenFrame.ScrollBox.EnumerateFrames then
-        for _, btn in TokenFrame.ScrollBox:EnumerateFrames() do
-            if btn and btn:IsShown() then
-                -- Check if the button's element data contains our currencyID
-                local data = btn.GetElementData and btn:GetElementData()
-                if data then
-                    -- Direct currencyID match on data
-                    if data.currencyID == currencyID then
-                        return btn
-                    end
-                    -- May be stored as a currencyIndex — resolve it
-                    if data.currencyIndex then
-                        local info = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyListInfo(data.currencyIndex)
-                        if info and not info.isHeader and info.currencyID == currencyID then
-                            return btn
-                        end
-                    end
-                end
-                
-                -- Fallback: match by currency name text
-                local currencyInfo = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(currencyID)
-                if currencyInfo and currencyInfo.name then
-                    local text = GetButtonText(btn)
-                    if text and slower(text) == slower(currencyInfo.name) then
-                        return btn
-                    end
-                end
+    if not TokenFrame.ScrollBox then return nil end
+
+    local currencyInfo = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(currencyID)
+    return ScrollBoxFindButton(TokenFrame.ScrollBox, function(btn)
+        local data = btn.GetElementData and btn:GetElementData()
+        if data then
+            if data.currencyID == currencyID then return true end
+            if data.currencyIndex then
+                local info = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyListInfo(data.currencyIndex)
+                if info and not info.isHeader and info.currencyID == currencyID then return true end
             end
         end
-    end
-    
-    return nil
+        if currencyInfo and currencyInfo.name then
+            local text = GetButtonText(btn)
+            if text and slower(text) == slower(currencyInfo.name) then return true end
+        end
+        return false
+    end)
 end
 
 -- =============================================================================
@@ -2412,65 +2346,29 @@ function Highlight:GetFactionHeaderButton(headerName)
 
     local headerNameLower = slower(headerName)
 
-    -- Modern retail: ReputationFrame.ScrollBox
+    local targetIndex = nil
+    if C_Reputation and C_Reputation.GetNumFactions then
+        local numFactions = C_Reputation.GetNumFactions()
+        for i = 1, numFactions do
+            local factionData = C_Reputation.GetFactionDataByIndex(i)
+            if factionData and factionData.isHeader and factionData.name and slower(factionData.name) == headerNameLower then
+                targetIndex = i
+                break
+            end
+        end
+    end
+    if not targetIndex then return nil end
+
     if ReputationFrame.ScrollBox then
-        -- First try to scroll to the header's data element so it becomes visible
-        if ReputationFrame.ScrollBox.GetDataProvider then
-            local dataProvider = ReputationFrame.ScrollBox:GetDataProvider()
-            if dataProvider then
-                -- Find the header's flat-list index in C_Reputation
-                local headerIndex = nil
-                if C_Reputation and C_Reputation.GetNumFactions then
-                    local numFactions = C_Reputation.GetNumFactions()
-                    for i = 1, numFactions do
-                        local factionData = C_Reputation.GetFactionDataByIndex(i)
-                        if factionData and factionData.isHeader and factionData.name and slower(factionData.name) == headerNameLower then
-                            headerIndex = i
-                            break
-                        end
-                    end
-                end
-                if headerIndex then
-                    local scrollData = dataProvider:FindByPredicate(function(data)
-                        return data and data.factionIndex == headerIndex
-                    end)
-                    if scrollData then
-                        ReputationFrame.ScrollBox:ScrollToElementData(scrollData)
-                    end
-                end
-            end
-        end
-
-        -- Find the header's factionIndex first
-        local targetIndex = nil
-        if C_Reputation and C_Reputation.GetNumFactions then
-            local numFactions = C_Reputation.GetNumFactions()
-            for i = 1, numFactions do
-                local factionData = C_Reputation.GetFactionDataByIndex(i)
-                if factionData and factionData.isHeader and factionData.name and slower(factionData.name) == headerNameLower then
-                    targetIndex = i
-                    break
-                end
-            end
-        end
-
-        -- Now enumerate visible frames to find the button by factionIndex
-        if targetIndex and ReputationFrame.ScrollBox.EnumerateFrames then
-            for _, btn in ReputationFrame.ScrollBox:EnumerateFrames() do
-                if btn and btn:IsShown() then
-                    -- Check elementData.factionIndex
-                    local elementData = btn.elementData or (btn.GetElementData and btn:GetElementData())
-                    if elementData and elementData.factionIndex == targetIndex then
-                        return btn
-                    end
-                    -- Fallback: try text matching
-                    local text = GetButtonText(btn)
-                    if text and slower(text) == headerNameLower then
-                        return btn
-                    end
-                end
-            end
-        end
+        ScrollBoxScrollTo(ReputationFrame.ScrollBox, function(data)
+            return data and data.factionIndex == targetIndex
+        end)
+        return ScrollBoxFindButton(ReputationFrame.ScrollBox, function(btn)
+            local elementData = btn.elementData or (btn.GetElementData and btn:GetElementData())
+            if elementData and elementData.factionIndex == targetIndex then return true end
+            local text = GetButtonText(btn)
+            return text and slower(text) == headerNameLower
+        end)
     end
 
     return nil
@@ -2493,75 +2391,47 @@ function Highlight:ScrollToFactionRow(factionID)
     end
     if not targetIndex then return end
 
-    -- Try ScrollToElementData via data provider
-    local dataProvider = ReputationFrame.ScrollBox:GetDataProvider()
-    if dataProvider then
-        local finder = dataProvider.FindElementDataByPredicate or dataProvider.FindByPredicate
-        if finder then
-            local scrollData = finder(dataProvider, function(data)
-                if not data then return false end
-                if data.factionID == factionID then return true end
-                if data.factionIndex == targetIndex then return true end
-                return false
-            end)
-            if scrollData then
-                local alignCenter = ScrollBoxConstants and ScrollBoxConstants.AlignCenter
-                ReputationFrame.ScrollBox:ScrollToElementData(scrollData, alignCenter)
-                return
-            end
-        end
-    end
-
-    -- Fallback: scroll by flat-list position percentage
-    if ReputationFrame.ScrollBox.SetScrollPercentage then
-        local fraction = (targetIndex - 1) / math.max(1, numFactions - 1)
-        ReputationFrame.ScrollBox:SetScrollPercentage(fraction)
-    end
+    local fraction = (targetIndex - 1) / math.max(1, numFactions - 1)
+    ScrollBoxScrollTo(ReputationFrame.ScrollBox, function(data)
+        if not data then return false end
+        if data.factionID == factionID then return true end
+        if data.factionIndex == targetIndex then return true end
+        return false
+    end, fraction)
 end
 
 --- Find the visible UI button/row for a specific faction by ID in the ReputationFrame ScrollBox
 function Highlight:GetFactionRowButton(factionID)
     if not ReputationFrame or not ReputationFrame:IsShown() then return nil end
+    if not ReputationFrame.ScrollBox then return nil end
 
-    -- Modern ScrollBox: enumerate visible frames and match by data
-    if ReputationFrame.ScrollBox and ReputationFrame.ScrollBox.EnumerateFrames then
-        for _, btn in ReputationFrame.ScrollBox:EnumerateFrames() do
-            if btn and btn:IsShown() then
-                -- Check if the button's element data contains our factionID
-                local data = btn.GetElementData and btn:GetElementData()
-                if data then
-                    -- Direct factionID match on data
-                    if data.factionID == factionID then
-                        return btn
-                    end
-                    -- May be stored as a factionIndex — resolve it
-                    if data.factionIndex then
-                        local factionData = C_Reputation and C_Reputation.GetFactionDataByIndex(data.factionIndex)
-                        if factionData and not factionData.isHeader and factionData.factionID == factionID then
-                            return btn
-                        end
-                    end
-                end
-
-                -- Fallback: match by faction name text
-                local numFactions = C_Reputation and C_Reputation.GetNumFactions and C_Reputation.GetNumFactions()
-                if numFactions then
-                    for i = 1, numFactions do
-                        local factionData = C_Reputation.GetFactionDataByIndex(i)
-                        if factionData and factionData.factionID == factionID and factionData.name then
-                            local text = GetButtonText(btn)
-                            if text and slower(text) == slower(factionData.name) then
-                                return btn
-                            end
-                            break
-                        end
-                    end
-                end
+    local factionNameLower = nil
+    if C_Reputation and C_Reputation.GetNumFactions then
+        local numFactions = C_Reputation.GetNumFactions()
+        for i = 1, numFactions do
+            local fd = C_Reputation.GetFactionDataByIndex(i)
+            if fd and fd.factionID == factionID and fd.name then
+                factionNameLower = slower(fd.name)
+                break
             end
         end
     end
 
-    return nil
+    return ScrollBoxFindButton(ReputationFrame.ScrollBox, function(btn)
+        local data = btn.GetElementData and btn:GetElementData()
+        if data then
+            if data.factionID == factionID then return true end
+            if data.factionIndex then
+                local fd = C_Reputation and C_Reputation.GetFactionDataByIndex(data.factionIndex)
+                if fd and not fd.isHeader and fd.factionID == factionID then return true end
+            end
+        end
+        if factionNameLower then
+            local text = GetButtonText(btn)
+            if text and slower(text) == factionNameLower then return true end
+        end
+        return false
+    end)
 end
 
 function Highlight:Cancel()

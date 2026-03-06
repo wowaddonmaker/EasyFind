@@ -488,6 +488,74 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
     return bar
 end
 
+-- =============================================================================
+-- SCROLLBOX HELPERS
+-- Shared patterns for WoW modern ScrollBox frames (virtual scroll lists).
+-- Used by currency, reputation, and achievement panels, all of which use
+-- the same ScrollBox API but different underlying data models.
+-- =============================================================================
+
+--- Scroll a ScrollBox to the first element matching matchFn.
+--- Tries FindElementDataByPredicate → ScrollToElementData first.
+--- Falls back to SetScrollPercentage(fallbackFraction) if the data provider
+--- returns nothing (virtual providers with no stored collection).
+--- @param scrollBox  ScrollBox frame
+--- @param matchFn    function(elementData) -> bool
+--- @param fallbackFraction  number 0-1 or nil (skip fallback)
+function Utils.ScrollBoxScrollTo(scrollBox, matchFn, fallbackFraction)
+    if not scrollBox then return end
+
+    local dataProvider = scrollBox.GetDataProvider and scrollBox:GetDataProvider()
+    if dataProvider then
+        local finder = dataProvider.FindElementDataByPredicate or dataProvider.FindByPredicate
+        if finder then
+            local scrollData = finder(dataProvider, matchFn)
+            if scrollData then
+                local alignCenter = ScrollBoxConstants and ScrollBoxConstants.AlignCenter
+                scrollBox:ScrollToElementData(scrollData, alignCenter)
+                return
+            end
+        end
+    end
+
+    if fallbackFraction and scrollBox.SetScrollPercentage then
+        scrollBox:SetScrollPercentage(fallbackFraction)
+    end
+end
+
+--- Find the first visible frame in a ScrollBox whose element data satisfies matchFn.
+--- @param scrollBox  ScrollBox frame
+--- @param matchFn    function(btn) -> bool  (receives the visible frame, not raw element data)
+--- @return Frame or nil
+function Utils.ScrollBoxFindButton(scrollBox, matchFn)
+    if not scrollBox or not scrollBox.EnumerateFrames then return nil end
+    for _, btn in scrollBox:EnumerateFrames() do
+        if btn and btn:IsShown() and matchFn(btn) then
+            return btn
+        end
+    end
+    return nil
+end
+
+--- Click a button using the safest available method.
+--- Prefers calling the Lua OnClick handler directly (avoids secure-template
+--- restrictions that cause ADDON_ACTION_FORBIDDEN on some protected frames).
+--- @param btn        Frame with Click or OnClick
+--- @param mouseButton string  default "LeftButton"
+function Utils.ClickButton(btn, mouseButton)
+    if not btn then return false end
+    mouseButton = mouseButton or "LeftButton"
+    local onClick = btn.GetScript and btn:GetScript("OnClick")
+    if onClick then
+        onClick(btn, mouseButton)
+        return true
+    elseif btn.Click then
+        btn:Click()
+        return true
+    end
+    return false
+end
+
 -- Create a grey circle-X clear button (retail quest log style).
 -- Returns the button; caller must set OnClick and OnEnter scripts.
 function Utils.CreateClearButton(parent, globalName)
