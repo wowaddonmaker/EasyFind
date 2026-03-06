@@ -2298,10 +2298,16 @@ function UI:DirectOpen(data)
         -- Click a main tab (Dungeons & Raids / Player vs. Player / etc.)
         if step.waitForFrame and step.tabIndex then
             local tabBtn = Highlight:GetTabButton(step.waitForFrame, step.tabIndex)
-            if tabBtn and tabBtn.Click then
-                tabBtn:Click()
-            elseif tabBtn and tabBtn:GetScript("OnClick") then
-                tabBtn:GetScript("OnClick")(tabBtn, "LeftButton")
+            if tabBtn then
+                -- Prefer calling the Lua OnClick handler directly over Button:Click(),
+                -- since some frames (e.g. EncounterJournal) use protected C methods
+                -- internally that trigger ADDON_ACTION_FORBIDDEN when click is simulated.
+                local onClick = tabBtn:GetScript("OnClick")
+                if onClick then
+                    onClick(tabBtn, "LeftButton")
+                elseif tabBtn.Click then
+                    tabBtn:Click()
+                end
             end
             nextDelay = 0.15
         end
@@ -2351,16 +2357,11 @@ function UI:DirectOpen(data)
 
         -- Expand a currency header
         if step.currencyHeader then
-            -- Check if already expanded first
             local isExpanded = Highlight:IsCurrencyHeaderExpanded(step.currencyHeader)
-            if isExpanded == false then
-                -- Need to expand it
+            if isExpanded ~= true then
                 self:ExpandCurrencyHeader(step.currencyHeader)
-                nextDelay = 0.15  -- Wait for UI to update
-            else
-                -- Already expanded, no need to wait
-                nextDelay = 0.05
             end
+            nextDelay = 0.15
         end
 
         -- Scroll to a currency
@@ -2668,11 +2669,23 @@ end
 
 -- Helper function to expand a currency header by name
 function UI:ExpandCurrencyHeader(headerName)
+    -- Click the header button — this is what the game actually responds to.
+    -- C_CurrencyInfo.ExpandCurrencyList exists but does not reliably trigger
+    -- TokenFrame to rebuild its list in Midnight.
+    local btn = ns.Highlight and ns.Highlight:GetCurrencyHeaderButton(headerName)
+    if btn then
+        local onClick = btn:GetScript("OnClick")
+        if onClick then
+            onClick(btn, "LeftButton")
+        elseif btn.Click then
+            btn:Click()
+        end
+        return true
+    end
+    -- Fallback: try the API directly
     if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return false end
-    
     local headerNameLower = slower(headerName)
     local size = C_CurrencyInfo.GetCurrencyListSize()
-    
     for i = 1, size do
         local info = C_CurrencyInfo.GetCurrencyListInfo(i)
         if info and info.isHeader and info.name and slower(info.name) == headerNameLower then
@@ -2699,7 +2712,8 @@ function UI:ScrollToCurrency(currencyID)
                 -- Modern ScrollBox API
                 local dataProvider = TokenFrame.ScrollBox:GetDataProvider()
                 if dataProvider then
-                    local scrollData = dataProvider:FindByPredicate(function(data)
+                    local finder = dataProvider.FindElementDataByPredicate or dataProvider.FindByPredicate
+                    local scrollData = finder and finder(dataProvider, function(data)
                         return data and data.currencyIndex == i
                     end)
                     if scrollData then

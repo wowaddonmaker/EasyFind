@@ -961,7 +961,10 @@ function Highlight:UpdateGuide()
                 end
             end
 
-            -- Scroll to the faction and highlight its row
+            -- Scroll to the faction and highlight its row.
+            -- ScrollToFactionRow issues the scroll command; the ScrollBox may need one
+            -- render frame to update, so GetFactionRowButton can return nil on the first
+            -- tick. Returning without showing any instruction lets the 0.1s ticker retry.
             self:ScrollToFactionRow(step.factionID)
             local factionBtn = self:GetFactionRowButton(step.factionID)
             if factionBtn then
@@ -970,20 +973,6 @@ function Highlight:UpdateGuide()
                     self:Cancel()
                     return
                 end
-            elseif isLastStep then
-                -- Last step but button not found — show instruction without highlight
-                local numFactions = C_Reputation and C_Reputation.GetNumFactions and C_Reputation.GetNumFactions()
-                local factionName = "Faction " .. step.factionID
-                if numFactions then
-                    for i = 1, numFactions do
-                        local factionData = C_Reputation.GetFactionDataByIndex(i)
-                        if factionData and factionData.factionID == step.factionID then
-                            factionName = factionData.name
-                            break
-                        end
-                    end
-                end
-                self:ShowInstruction(step.text or "Look for '" .. factionName .. "' in the reputation list")
             end
             return
         end
@@ -2011,6 +2000,8 @@ function Highlight:HighlightFrame(frame, instructionText)
     
     if instructionText then
         self:ShowInstruction(instructionText)
+    elseif instructionFrame then
+        instructionFrame:Hide()
     end
 end
 
@@ -2259,7 +2250,8 @@ function Highlight:GetCurrencyHeaderButton(headerName)
                     end
                 end
                 if headerIndex then
-                    local scrollData = dataProvider:FindByPredicate(function(data)
+                    local finder = dataProvider.FindElementDataByPredicate or dataProvider.FindByPredicate
+                    local scrollData = finder and finder(dataProvider, function(data)
                         return data and data.currencyIndex == headerIndex
                     end)
                     if scrollData then
@@ -2307,27 +2299,43 @@ end
 -- Scroll the TokenFrame ScrollBox to show a specific currency by ID
 function Highlight:ScrollToCurrencyRow(currencyID)
     if not TokenFrame or not TokenFrame:IsShown() then return end
+    if not TokenFrame.ScrollBox then return end
     if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return end
-    
-    -- Find the flat-list index for this currencyID
+
     local size = C_CurrencyInfo.GetCurrencyListSize()
+    local targetIndex = nil
     for i = 1, size do
         local info = C_CurrencyInfo.GetCurrencyListInfo(i)
         if info and not info.isHeader and info.currencyID == currencyID then
-            -- Found — scroll to it via the ScrollBox data provider
-            if TokenFrame.ScrollBox then
-                local dataProvider = TokenFrame.ScrollBox:GetDataProvider()
-                if dataProvider then
-                    local scrollData = dataProvider:FindByPredicate(function(data)
-                        return data and data.currencyIndex == i
-                    end)
-                    if scrollData then
-                        TokenFrame.ScrollBox:ScrollToElementData(scrollData)
-                    end
-                end
-            end
-            return
+            targetIndex = i
+            break
         end
+    end
+    if not targetIndex then return end
+
+    -- Try ScrollToElementData via data provider
+    local dataProvider = TokenFrame.ScrollBox:GetDataProvider()
+    if dataProvider then
+        local finder = dataProvider.FindElementDataByPredicate or dataProvider.FindByPredicate
+        if finder then
+            local scrollData = finder(dataProvider, function(data)
+                if not data then return false end
+                if data.currencyID == currencyID then return true end
+                if data.currencyIndex == targetIndex then return true end
+                return false
+            end)
+            if scrollData then
+                local alignCenter = ScrollBoxConstants and ScrollBoxConstants.AlignCenter
+                TokenFrame.ScrollBox:ScrollToElementData(scrollData, alignCenter)
+                return
+            end
+        end
+    end
+
+    -- Fallback: scroll by flat-list position percentage
+    if TokenFrame.ScrollBox.SetScrollPercentage then
+        local fraction = (targetIndex - 1) / math.max(1, size - 1)
+        TokenFrame.ScrollBox:SetScrollPercentage(fraction)
     end
 end
 
@@ -2471,27 +2479,43 @@ end
 --- Scroll the ReputationFrame ScrollBox to show a specific faction by ID
 function Highlight:ScrollToFactionRow(factionID)
     if not ReputationFrame or not ReputationFrame:IsShown() then return end
+    if not ReputationFrame.ScrollBox then return end
     if not C_Reputation or not C_Reputation.GetNumFactions then return end
 
-    -- Find the flat-list index for this factionID
     local numFactions = C_Reputation.GetNumFactions()
+    local targetIndex = nil
     for i = 1, numFactions do
-        local factionData = C_Reputation.GetFactionDataByIndex(i)
-        if factionData and not factionData.isHeader and factionData.factionID == factionID then
-            -- Found — scroll to it via the ScrollBox data provider
-            if ReputationFrame.ScrollBox then
-                local dataProvider = ReputationFrame.ScrollBox:GetDataProvider()
-                if dataProvider then
-                    local scrollData = dataProvider:FindByPredicate(function(data)
-                        return data and data.factionIndex == i
-                    end)
-                    if scrollData then
-                        ReputationFrame.ScrollBox:ScrollToElementData(scrollData)
-                    end
-                end
-            end
-            return
+        local fd = C_Reputation.GetFactionDataByIndex(i)
+        if fd and not fd.isHeader and fd.factionID == factionID then
+            targetIndex = i
+            break
         end
+    end
+    if not targetIndex then return end
+
+    -- Try ScrollToElementData via data provider
+    local dataProvider = ReputationFrame.ScrollBox:GetDataProvider()
+    if dataProvider then
+        local finder = dataProvider.FindElementDataByPredicate or dataProvider.FindByPredicate
+        if finder then
+            local scrollData = finder(dataProvider, function(data)
+                if not data then return false end
+                if data.factionID == factionID then return true end
+                if data.factionIndex == targetIndex then return true end
+                return false
+            end)
+            if scrollData then
+                local alignCenter = ScrollBoxConstants and ScrollBoxConstants.AlignCenter
+                ReputationFrame.ScrollBox:ScrollToElementData(scrollData, alignCenter)
+                return
+            end
+        end
+    end
+
+    -- Fallback: scroll by flat-list position percentage
+    if ReputationFrame.ScrollBox.SetScrollPercentage then
+        local fraction = (targetIndex - 1) / math.max(1, numFactions - 1)
+        ReputationFrame.ScrollBox:SetScrollPercentage(fraction)
     end
 end
 
