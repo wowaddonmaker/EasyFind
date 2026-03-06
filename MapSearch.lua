@@ -3463,7 +3463,9 @@ function MapSearch:GetPinInfo(pin)
                     local normX = (pX - cX) / cW
                     local normY = (cY - pY) / cH
                     local posInfo = C_Map.GetMapInfoAtPosition and C_Map.GetMapInfoAtPosition(mapID, normX, normY)
-                    if not posInfo or (posInfo.mapID ~= mapID and posInfo.parentMapID ~= mapID) then
+                    -- Only reject if the API confidently returns a DIFFERENT zone.
+                    -- nil means unmapped (new pin types, borders) - keep as benefit of the doubt.
+                    if posInfo and posInfo.mapID ~= mapID and posInfo.parentMapID ~= mapID then
                         return nil  -- belongs to adjacent zone
                     end
                 end
