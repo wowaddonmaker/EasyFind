@@ -4,6 +4,27 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [1.2.7] - 2026-03-07
+
+### Added
+- **Filter Button Triangle**: Filter buttons show only the dropdown arrow by default; hovering reveals the full button with a blue highlight glow matching the default Blizzard UI
+- **City Pin Detection**: Zone search now detects and points the indicator at existing city icons on continent maps instead of drawing a fallback overlay
+- **Zone Reguiding**: Clicking the wrong zone during step-by-step navigation now reguides you back to the correct target instead of stopping
+- **Atlas Zone Highlights**: Zone highlighting now supports atlas-based textures in addition to fileDataID textures
+
+### Changed
+- **Background Opacity**: Opacity slider now controls only the search bar background, keeping text and icons fully visible (default lowered to 0.75)
+- **Breadcrumb Style**: Replaced star4 glow with a subtle gold gradient tinge matching the Blizzard nav bar style
+- **Reputation Search**: Header-factions (e.g. "Horde Expedition") are now searchable; simplified faction detection using isChild instead of name-matching
+- **Currency/Reputation Navigation**: Pre-expands needed headers via API before opening tabs, removing the collapse-all-then-expand approach for faster, more reliable direct-open
+- **Results Layout**: Improved pin separator spacing and added preserveScroll support for header toggle clicks
+
+### Fixed
+- **Highlight Hover Timer**: Reduced minimum display time from 1.0s to 0.3s for snappier hover-dismiss behavior
+- **Currency Tooltip Hover**: Reduced tooltip hover wait from 1.0s to 0.3s for faster currency/reputation tooltip display
+
+---
+
 ## [1.2.6] - 2026-03-05
 
 ### Added

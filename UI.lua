@@ -390,11 +390,10 @@ function UI:CreateSearchFrame()
         })
     end
 
-    -- Quest-log atlas background (anchored to insets so it doesn't spill past the border)
     local bgTex = searchFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
     bgTex:SetPoint("TOPLEFT", 4, -4)
     bgTex:SetPoint("BOTTOMRIGHT", -4, 4)
-    bgTex:SetAtlas("QuestLog-main-background", false)
+    bgTex:SetColorTexture(0, 0, 0, EasyFind.db.searchBarOpacity or 0.75)
     searchFrame.bgTex = bgTex
 
     -- Search icon
@@ -551,9 +550,8 @@ function UI:CreateSearchFrame()
     local moveFading = false  -- true when alpha is reduced due to movement
 
     local function GetEffectiveAlpha()
-        local base = EasyFind.db.searchBarOpacity or 1.0
-        if moveFading then return base * MOVE_FADE_FACTOR end
-        return base
+        if moveFading then return MOVE_FADE_FACTOR end
+        return 1.0
     end
     searchFrame.getEffectiveAlpha = GetEffectiveAlpha
 
@@ -624,7 +622,7 @@ function UI:CreateSearchFrame()
         if EasyFind.db.staticOpacity then
             if moveFading then
                 moveFading = false
-                self:SetAlpha(EasyFind.db.searchBarOpacity or 1.0)
+                self:SetAlpha(1.0)
             end
             return
         end
@@ -1070,7 +1068,7 @@ function UI:CreateResultButton(index)
         if self.isPinHeader then
             EasyFind.db.pinsCollapsed = not EasyFind.db.pinsCollapsed
             if cachedHierarchical then
-                UI:ShowHierarchicalResults(cachedHierarchical)
+                UI:ShowHierarchicalResults(cachedHierarchical, true)
             end
             return
         end
@@ -1108,7 +1106,7 @@ function UI:CreateResultButton(index)
                     end
                 end
                 if cachedHierarchical then
-                    UI:ShowHierarchicalResults(cachedHierarchical)
+                    UI:ShowHierarchicalResults(cachedHierarchical, true)
                 end
             elseif self.data then
                 UI:SelectResult(self.data)
@@ -1261,7 +1259,7 @@ local function GetButtonIcon(frameName)
     return nil
 end
 
-function UI:ShowHierarchicalResults(hierarchical)
+function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     if not hierarchical or #hierarchical == 0 then
         self:HideResults()
         return
@@ -1404,6 +1402,8 @@ function UI:ShowHierarchicalResults(hierarchical)
     -- ----------------------------------------------------------------
     -- Render visible rows
     -- ----------------------------------------------------------------
+    local yOffset = 0
+    local pinEndYOffset = 0
     for i = 1, MAX_BUTTON_POOL do
         local btn = resultButtons[i]
         if i <= count then
@@ -1411,14 +1411,22 @@ function UI:ShowHierarchicalResults(hierarchical)
             local data = entry.data
             local depth = entry.depth or 0
 
-            -- Extra vertical offset for non-pin rows when separator is shown
-            local sepOffset = (hasResultsAfterPins and i > lastPinIndex) and PIN_SEP_HEIGHT or 0
+            -- Pin separator gap: add once at the transition row
+            if hasResultsAfterPins and i == lastPinIndex + 1 then
+                pinEndYOffset = yOffset
+                yOffset = yOffset + PIN_SEP_HEIGHT
+            end
+
+            -- Small gap between pinned items (not after pin header)
+            if entry.isPinned and i > 1 and visible[i - 1] and not visible[i - 1].isPinHeader then
+                yOffset = yOffset + 4
+            end
 
             -- Reposition for theme row height
             local padL = theme.resultsPadLeft or 10
             btn:SetSize(theme.btnWidth - scrollInset, rowH)
             btn:ClearAllPoints()
-            btn:SetPoint("TOPLEFT", resultsFrame.scrollChild, "TOPLEFT", padL, -(i - 1) * rowH - sepOffset)
+            btn:SetPoint("TOPLEFT", resultsFrame.scrollChild, "TOPLEFT", padL, -yOffset)
 
             -- Selection highlight color
             btn.selectionHighlight:SetVertexColor(unpack(theme.selectionColor))
@@ -1736,8 +1744,11 @@ function UI:ShowHierarchicalResults(hierarchical)
                 btn.amountText:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
             end
 
-            -- Reputation leaves: show standing bar on the right instead of icon
-            if isReputationLeaf and data and data.factionID then
+            -- Reputation bar: show on leaves and on path nodes with actual rep bars
+            -- (hasRepBar is false for pure grouping headers like Horde, Alliance)
+            local showRepBar = data and data.factionID and
+                (isReputationLeaf or (entry.isPathNode and data.category == "Reputation" and data.hasRepBar ~= false))
+            if showRepBar then
                 local fill, standingText, barR, barG, barB
                 local fid = data.factionID
 
@@ -1747,7 +1758,6 @@ function UI:ShowHierarchicalResults(hierarchical)
                     if ok and md and md.renownLevel then
                         local level = md.renownLevel or 0
                         standingText = "Renown " .. level
-                        -- Check if at max renown (bar should be full)
                         local atMax = C_MajorFactions.HasMaximumRenown
                             and C_MajorFactions.HasMaximumRenown(fid)
                         if atMax then
@@ -1757,7 +1767,7 @@ function UI:ShowHierarchicalResults(hierarchical)
                             local threshold = md.renownLevelThreshold or 1
                             fill = (threshold > 0) and (earned / threshold) or 1.0
                         end
-                        barR, barG, barB = 0.0, 0.55, 0.78  -- teal/cyan like WoW renown bars
+                        barR, barG, barB = 0.0, 0.55, 0.78
                     end
                 end
 
@@ -1776,7 +1786,7 @@ function UI:ShowHierarchicalResults(hierarchical)
                         else
                             fill = 0.0
                         end
-                        barR, barG, barB = 0.0, 0.60, 0.0  -- green for friendship
+                        barR, barG, barB = 0.0, 0.60, 0.0
                     end
                 end
 
@@ -1792,7 +1802,7 @@ function UI:ShowHierarchicalResults(hierarchical)
                         if maxR > minR then
                             fill = (cur - minR) / (maxR - minR)
                         else
-                            fill = 1.0  -- Exalted or capped
+                            fill = 1.0
                         end
                         local barColor = FACTION_BAR_COLORS and FACTION_BAR_COLORS[standing]
                         if barColor then
@@ -1812,18 +1822,35 @@ function UI:ShowHierarchicalResults(hierarchical)
                     end
                     btn.repClip:SetWidth(math.max(fill * 100, 0.1))
                     btn.repBarText:SetText(standingText)
+
+                    if entry.isPathNode and theme.showHeaderTab then
+                        -- Tab theme: place rep bar left of the toggle icon
+                        btn.repBar:ClearAllPoints()
+                        btn.repBar:SetPoint("RIGHT", btn.toggleIcon, "LEFT", -4, 0)
+                        btn.tabText:ClearAllPoints()
+                        btn.tabText:SetPoint("LEFT", btn.headerTab, "LEFT", 10, 0)
+                        btn.tabText:SetPoint("RIGHT", btn.repBar, "LEFT", -4, 0)
+                    elseif entry.isPathNode then
+                        -- Classic theme: rep bar on right, text between icon and bar
+                        btn.repBar:ClearAllPoints()
+                        btn.repBar:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
+                    else
+                        -- Leaf: default position, hide icon, anchor text to bar
+                        btn.repBar:ClearAllPoints()
+                        btn.repBar:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
+                        SetRowIcon(btn, "hidden", nil, theme.iconSize)
+                        local indentPixels = depth * indPx + 4
+                        btn.text:ClearAllPoints()
+                        btn.text:SetPoint("LEFT", btn, "LEFT", indentPixels, 0)
+                        btn.text:SetPoint("RIGHT", btn.repBar, "LEFT", -4, 0)
+                        iconSet = true
+                    end
                     btn.repBar:Show()
                 else
                     btn.repBar:Hide()
                 end
 
-                -- Hide left icon, anchor text to left of bar
-                SetRowIcon(btn, "hidden", nil, theme.iconSize)
-                local indentPixels = depth * indPx + 4
-                btn.text:ClearAllPoints()
-                btn.text:SetPoint("LEFT", btn, "LEFT", indentPixels, 0)
-                btn.text:SetPoint("RIGHT", btn.repBar, "LEFT", -4, 0)
-                iconSet = true
+                if not entry.isPathNode then iconSet = true end
             else
                 btn.repBar:Hide()
             end
@@ -1907,14 +1934,55 @@ function UI:ShowHierarchicalResults(hierarchical)
 
             -- Show pin indicator for pinned entries
             if entry.isPinned and btn.pinIcon then
+                -- Anchor pin icon to left edge of text, not the (possibly hidden) row icon
+                btn.pinIcon:ClearAllPoints()
+                btn.pinIcon:SetPoint("RIGHT", btn.text, "LEFT", 0, 0)
                 btn.pinIcon:Show()
                 -- Pinned entries during search: show path prefix in name
                 if data and data.path and #data.path > 0 then
                     local prefix = tconcat(data.path, " > ")
                     btn.text:SetText("|cff888888" .. prefix .. " >|r " .. (data.name or ""))
                 end
+                -- Gray separator between pinned items (skip after header, skip last pin)
+                local isLastPin = (i == lastPinIndex)
+                if i > 1 and not isLastPin and visible[i - 1] and not visible[i - 1].isPinHeader then
+                    btn.separator:SetColorTexture(0.4, 0.4, 0.4, 0.4)
+                    btn.separator:Show()
+                end
             end
 
+            -- Measure text height and expand row if text wraps
+            local actualH = rowH
+            if btn.repBar:IsShown() then
+                local textObj
+                if theme.showHeaderTab and entry.isPathNode and btn.headerTab:IsShown() then
+                    textObj = btn.tabText
+                else
+                    textObj = btn.text
+                end
+                local textHeight = textObj:GetStringHeight()
+                local minH = textHeight + 8  -- 4px padding top + bottom
+                if minH > rowH then
+                    actualH = minH
+                    btn:SetHeight(actualH)
+                    if btn.headerTab:IsShown() then
+                        btn.headerTab:SetHeight(actualH)
+                    end
+                    -- Reposition tree connectors for taller row
+                    if theme.showTreeLines and depth > 0 then
+                        local halfRow = actualH * 0.5
+                        local xCenter = (depth - 1) * INDENT_PX + 5
+                        btn.treeBranch[depth]:ClearAllPoints()
+                        btn.treeBranch[depth]:SetPoint("LEFT",  btn, "TOPLEFT", xCenter, -halfRow)
+                        btn.treeBranch[depth]:SetPoint("RIGHT", btn, "TOPLEFT", xCenter + INDENT_PX - 2, -halfRow)
+                        btn.treeElbow[depth]:ClearAllPoints()
+                        btn.treeElbow[depth]:SetPoint("TOP", btn, "TOPLEFT", xCenter, 2)
+                        btn.treeElbow[depth]:SetHeight(halfRow + 2)
+                    end
+                end
+            end
+
+            yOffset = yOffset + actualH
             btn:Show()
         else
             btn:Hide()
@@ -1932,21 +2000,19 @@ function UI:ShowHierarchicalResults(hierarchical)
     end
     
     -- Show/hide pin separator between pinned items and search results
-    local pinSepPadding = 0
     if resultsFrame.pinSeparator then
         if hasResultsAfterPins then
             resultsFrame.pinSeparator:ClearAllPoints()
-            resultsFrame.pinSeparator:SetPoint("TOPLEFT", resultsFrame.scrollChild, "TOPLEFT", 10, -lastPinIndex * rowH - 4)
-            resultsFrame.pinSeparator:SetPoint("TOPRIGHT", resultsFrame.scrollChild, "TOPRIGHT", -10, -lastPinIndex * rowH - 4)
+            resultsFrame.pinSeparator:SetPoint("TOPLEFT", resultsFrame.scrollChild, "TOPLEFT", 10, -pinEndYOffset - 4)
+            resultsFrame.pinSeparator:SetPoint("TOPRIGHT", resultsFrame.scrollChild, "TOPRIGHT", -10, -pinEndYOffset - 4)
             resultsFrame.pinSeparator:Show()
-            pinSepPadding = PIN_SEP_HEIGHT
         else
             resultsFrame.pinSeparator:Hide()
         end
     end
 
     -- Calculate total content height vs max visible height
-    local totalContentHeight = count * rowH + pinSepPadding
+    local totalContentHeight = yOffset
     local maxVisibleHeight = maxVisibleRows * rowH
     local hasScroll = totalContentHeight > maxVisibleHeight
     local visibleHeight = hasScroll and maxVisibleHeight or totalContentHeight
@@ -1961,8 +2027,10 @@ function UI:ShowHierarchicalResults(hierarchical)
     resultsFrame.scrollFrame:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 0, -padT)
     resultsFrame.scrollFrame:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", 0, theme.resultsPadBot)
 
-    -- Reset scroll position on new search
-    resultsFrame.scrollFrame:SetVerticalScroll(0)
+    -- Reset scroll position on new search (preserve on expand/collapse toggle)
+    if not preserveScroll then
+        resultsFrame.scrollFrame:SetVerticalScroll(0)
+    end
 
     -- Show/hide minimal scrollbar (overlays right edge)
     if resultsFrame.scrollBar then
@@ -2117,7 +2185,7 @@ function UI:ActivateSelected()
             if btn.isPinHeader then
                 EasyFind.db.pinsCollapsed = not EasyFind.db.pinsCollapsed
                 if cachedHierarchical then
-                    self:ShowHierarchicalResults(cachedHierarchical)
+                    self:ShowHierarchicalResults(cachedHierarchical, true)
                 end
                 return
             end
@@ -2136,7 +2204,7 @@ function UI:ActivateSelected()
                     end
                 end
                 if cachedHierarchical then
-                    self:ShowHierarchicalResults(cachedHierarchical)
+                    self:ShowHierarchicalResults(cachedHierarchical, true)
                 end
             elseif btn.data then
                 self:SelectResult(btn.data)
@@ -2196,28 +2264,53 @@ function UI:DirectOpen(data)
     local totalSteps = #steps
     local Highlight = ns.Highlight
 
-    -- Collapse all reputation headers first for a clean navigation state
-    local hasReputationSteps = false
+    -- For reputation steps, pre-expand all needed headers via API.
+    local needsReputationResync = false
     for _, step in ipairs(steps) do
-        if step.factionHeader or step.factionID then
-            hasReputationSteps = true
-            break
+        if step.factionHeader then
+            needsReputationResync = true
+            if C_Reputation and C_Reputation.GetNumFactions then
+                local headerNameLower = slower(step.factionHeader)
+                local numFactions = C_Reputation.GetNumFactions()
+                for i = 1, numFactions do
+                    local factionData = C_Reputation.GetFactionDataByIndex(i)
+                    if factionData and factionData.isHeader and factionData.name and slower(factionData.name) == headerNameLower then
+                        local isCollapsed = false
+                        if factionData.isHeaderExpanded ~= nil then
+                            isCollapsed = not factionData.isHeaderExpanded
+                        elseif factionData.isCollapsed ~= nil then
+                            isCollapsed = factionData.isCollapsed
+                        end
+                        if isCollapsed then
+                            C_Reputation.ExpandFactionHeader(i)
+                        end
+                        break
+                    end
+                end
+            end
         end
-    end
-    if hasReputationSteps then
-        self:CollapseAllReputationHeaders()
     end
 
-    -- Collapse all currency headers first for a clean navigation state
-    local hasCurrencySteps = false
+    -- For currency steps, pre-expand all needed headers via API (synchronous
+    -- data update) and track that we need a TokenFrame resync after the tab opens.
+    local needsCurrencyResync = false
     for _, step in ipairs(steps) do
-        if step.currencyHeader or step.currencyID then
-            hasCurrencySteps = true
-            break
+        if step.currencyHeader then
+            needsCurrencyResync = true
+            local headerNameLower = slower(step.currencyHeader)
+            if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyListSize then
+                local size = C_CurrencyInfo.GetCurrencyListSize()
+                for i = 1, size do
+                    local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+                    if info and info.isHeader and info.name and slower(info.name) == headerNameLower then
+                        if not info.isHeaderExpanded then
+                            C_CurrencyInfo.ExpandCurrencyList(i, true)
+                        end
+                        break
+                    end
+                end
+            end
         end
-    end
-    if hasCurrencySteps then
-        self:CollapseAllCurrencyHeaders()
     end
 
     -- Determine whether a step is "navigable" (can be auto-executed) vs "highlight-only"
@@ -2284,8 +2377,28 @@ function UI:DirectOpen(data)
 
         -- Click a main tab (Dungeons & Raids / Player vs. Player / etc.)
         if step.waitForFrame and step.tabIndex then
-            ClickButton(Highlight:GetTabButton(step.waitForFrame, step.tabIndex))
-            nextDelay = 0.15
+            local resync = false
+            if step.waitForFrame == "CharacterFrame" then
+                if needsCurrencyResync and step.tabIndex == 3 then
+                    resync = true
+                    needsCurrencyResync = false
+                elseif needsReputationResync and step.tabIndex == 2 then
+                    resync = true
+                    needsReputationResync = false
+                end
+            end
+            if resync then
+                -- Headers were pre-expanded via API. Toggle tabs to force
+                -- the ScrollBox to rebuild with the expanded state.
+                ClickButton(Highlight:GetTabButton("CharacterFrame", 1))
+                C_Timer.After(0.05, function()
+                    ClickButton(Highlight:GetTabButton(step.waitForFrame, step.tabIndex))
+                end)
+                nextDelay = 0.2
+            else
+                ClickButton(Highlight:GetTabButton(step.waitForFrame, step.tabIndex))
+                nextDelay = 0.15
+            end
         end
 
         -- Click a PvE side tab (Dungeon Finder / Raid Finder / Premade Groups)
@@ -2317,13 +2430,10 @@ function UI:DirectOpen(data)
             nextDelay = 0.3
         end
 
-        -- Expand a currency header
+        -- Currency headers are pre-expanded via API. Skip these steps
+        -- (the tab resync below handles syncing TokenFrame's display).
         if step.currencyHeader then
-            local isExpanded = Highlight:IsCurrencyHeaderExpanded(step.currencyHeader)
-            if isExpanded ~= true then
-                self:ExpandCurrencyHeader(step.currencyHeader)
-            end
-            nextDelay = 0.15
+            nextDelay = 0.05
         end
 
         -- Scroll to a currency
@@ -2344,20 +2454,16 @@ function UI:DirectOpen(data)
                                 C_Timer.After(0.1, checkHover)
                             end
                         end
-                        C_Timer.After(1.0, checkHover)
+                        C_Timer.After(0.3, checkHover)
                     end
                 end)
             end
             nextDelay = 0.15
         end
 
-        -- Expand a faction header
+        -- Faction headers are pre-expanded via API (same as currency).
         if step.factionHeader then
-            local isExpanded = Highlight:IsFactionHeaderExpanded(step.factionHeader)
-            if isExpanded ~= true then
-                self:ExpandFactionHeader(step.factionHeader)
-            end
-            nextDelay = 0.15
+            nextDelay = 0.05
         end
 
         -- Scroll to a faction
@@ -2378,7 +2484,7 @@ function UI:DirectOpen(data)
                                 C_Timer.After(0.1, checkHover)
                             end
                         end
-                        C_Timer.After(1.0, checkHover)
+                        C_Timer.After(0.3, checkHover)
                     end
                 end)
             end
@@ -2602,49 +2708,6 @@ function UI:ExpandCurrencyHeader(headerName)
     return false
 end
 
---- Helper function to collapse all reputation headers for a clean navigation state
-function UI:CollapseAllReputationHeaders()
-    if not C_Reputation or not C_Reputation.GetNumFactions then return end
-
-    -- Collapse all headers, iterating from the end to handle nested structures
-    for pass = 1, 50 do
-        local numFactions = C_Reputation.GetNumFactions()
-        local didCollapse = false
-        for i = numFactions, 1, -1 do
-            local factionData = C_Reputation.GetFactionDataByIndex(i)
-            if factionData and factionData.isHeader then
-                local isExpanded = factionData.isHeaderExpanded or (factionData.isCollapsed ~= nil and not factionData.isCollapsed)
-                if isExpanded then
-                    C_Reputation.CollapseFactionHeader(i)
-                    didCollapse = true
-                    break -- indices shift after collapse, restart
-                end
-            end
-        end
-        if not didCollapse then break end
-    end
-end
-
---- Helper function to collapse all currency headers for a clean navigation state
-function UI:CollapseAllCurrencyHeaders()
-    if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return end
-
-    -- Collapse all headers, iterating from the end to handle nested structures
-    for pass = 1, 50 do
-        local size = C_CurrencyInfo.GetCurrencyListSize()
-        local didCollapse = false
-        for i = size, 1, -1 do
-            local info = C_CurrencyInfo.GetCurrencyListInfo(i)
-            if info and info.isHeader and info.isHeaderExpanded then
-                C_CurrencyInfo.ExpandCurrencyList(i, false)
-                didCollapse = true
-                break -- indices shift after collapse, restart
-            end
-        end
-        if not didCollapse then break end
-    end
-end
-
 --- Helper function to expand a faction header by name
 function UI:ExpandFactionHeader(headerName)
     if not C_Reputation or not C_Reputation.GetNumFactions then return false end
@@ -2775,13 +2838,9 @@ function UI:UpdateScale()
 end
 
 function UI:UpdateOpacity()
-    if searchFrame then
-        local alpha = searchFrame.getEffectiveAlpha and searchFrame.getEffectiveAlpha()
-            or (EasyFind.db.searchBarOpacity or 1.0)
-        -- Only set alpha if smart show isn't actively hiding
-        if not EasyFind.db.smartShow or (searchFrame.smartShowVisible and searchFrame.smartShowVisible()) then
-            searchFrame:SetAlpha(alpha)
-        end
+    if searchFrame and searchFrame.bgTex then
+        local alpha = EasyFind.db.searchBarOpacity or 0.75
+        searchFrame.bgTex:SetColorTexture(0, 0, 0, alpha)
     end
 end
 
@@ -2822,8 +2881,7 @@ function UI:UpdateSmartShow()
         searchFrame.hoverZone:Hide()
         searchFrame.setSmartShowVisible(true)
         if EasyFind.db.visible ~= false and not inCombat then
-            local alpha = searchFrame.getEffectiveAlpha and searchFrame.getEffectiveAlpha()
-                or (EasyFind.db.searchBarOpacity or 1.0)
+            local alpha = searchFrame.getEffectiveAlpha and searchFrame.getEffectiveAlpha() or 1.0
             searchFrame:SetAlpha(alpha)
             searchFrame:Show()
         end

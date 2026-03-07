@@ -906,11 +906,10 @@ function MapSearch:CreateSearchFrame()
         })
     end
 
-    -- Quest-log atlas background, clipped to search bar height
     local bgTex = searchFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
     bgTex:SetPoint("TOPLEFT", 4, -4)
     bgTex:SetPoint("BOTTOMRIGHT", -4, 4)
-    bgTex:SetAtlas("QuestLog-main-background", false)
+    bgTex:SetColorTexture(0, 0, 0, EasyFind.db.searchBarOpacity or 0.75)
     searchFrame:SetClipsChildren(true)
     searchFrame.bgTex = bgTex
 
@@ -1012,23 +1011,51 @@ function MapSearch:CreateSearchFrame()
     localFilterBtn:SetPoint("RIGHT", searchFrame, "RIGHT", 1, -4)
     localFilterBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
 
-    local localFilterIcon = localFilterBtn:CreateTexture(nil, "ARTWORK")
-    localFilterIcon:SetAllPoints()
-    localFilterIcon:SetAtlas("common-dropdown-a-button-hover")
-    localFilterBtn.icon = localFilterIcon
+    local localArrow = localFilterBtn:CreateTexture(nil, "OVERLAY")
+    localArrow:SetAllPoints()
+    localArrow:SetAtlas("common-dropdown-a-button")
+
+    local maskWrap = "CLAMPTOBLACKADDITIVE"
+    local diagTexL = "Interface\\AddOns\\EasyFind\\Images\\mask-diagonal"
+    local diagTexR = "Interface\\AddOns\\EasyFind\\Images\\mask-diagonal-r"
+
+    -- Left diagonal (top crop baked into TGA)
+    local mBL = localFilterBtn:CreateMaskTexture()
+    mBL:SetTexture(diagTexL, maskWrap, maskWrap)
+    mBL:SetPoint("TOPLEFT", localArrow, "TOPLEFT", 0, 0)
+    mBL:SetPoint("BOTTOMRIGHT", localArrow, "BOTTOMRIGHT", 0, 0)
+    localArrow:AddMaskTexture(mBL)
+
+    -- Right diagonal (separate mirrored TGA)
+    local mBR = localFilterBtn:CreateMaskTexture()
+    mBR:SetTexture(diagTexR, maskWrap, maskWrap)
+    mBR:SetPoint("TOPLEFT", localArrow, "TOPLEFT", 0, 0)
+    mBR:SetPoint("BOTTOMRIGHT", localArrow, "BOTTOMRIGHT", 0, 0)
+    localArrow:AddMaskTexture(mBR)
+
+    localFilterBtn.arrow = localArrow
+
+    local localFullBtn = localFilterBtn:CreateTexture(nil, "ARTWORK")
+    localFullBtn:SetAllPoints()
+    localFullBtn:SetAtlas("common-dropdown-a-button-open")
+    localFullBtn:Hide()
+    localFilterBtn.fullBtn = localFullBtn
+
+    localFilterBtn:SetHighlightTexture(130757)
 
     localFilterBtn:SetScript("OnEnter", function(self)
-        localFilterIcon:SetAlpha(1)
+        self.arrow:Hide()
+        self.fullBtn:Show()
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText("Filter Results")
         GameTooltip:AddLine("Choose which result types to show.", 1, 1, 1, true)
         GameTooltip:Show()
     end)
-    localFilterBtn:SetScript("OnLeave", function()
-        localFilterIcon:SetAlpha(0.7)
+    localFilterBtn:SetScript("OnLeave", function(self)
+        self.fullBtn:Hide()
+        self.arrow:Show()
         GameTooltip_Hide()
     end)
-    localFilterIcon:SetAlpha(0.7)
 
     -- Clear button (grey circle X, matching retail quest log style)
     local clearBtn = Utils.CreateClearButton(searchFrame)
@@ -1142,11 +1169,10 @@ function MapSearch:CreateSearchFrame()
         })
     end
 
-    -- Quest-log atlas background, clipped to search bar height
     local bgTex = globalSearchFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
     bgTex:SetPoint("TOPLEFT", 4, -4)
     bgTex:SetPoint("BOTTOMRIGHT", -4, 4)
-    bgTex:SetAtlas("QuestLog-main-background", false)
+    bgTex:SetColorTexture(0, 0, 0, EasyFind.db.searchBarOpacity or 0.75)
     globalSearchFrame:SetClipsChildren(true)
     globalSearchFrame.bgTex = bgTex
 
@@ -1246,23 +1272,52 @@ function MapSearch:CreateSearchFrame()
     filterBtn:SetPoint("RIGHT", globalSearchFrame, "RIGHT", 1, -4)
     filterBtn:SetFrameLevel(globalSearchFrame:GetFrameLevel() + 10)
 
-    local filterIcon = filterBtn:CreateTexture(nil, "ARTWORK")
-    filterIcon:SetAllPoints()
-    filterIcon:SetAtlas("common-dropdown-a-button-hover")
-    filterBtn.icon = filterIcon
+    local globalArrow = filterBtn:CreateTexture(nil, "OVERLAY")
+    globalArrow:SetAllPoints()
+    globalArrow:SetAtlas("common-dropdown-a-button")
+
+    local gMaskTex = "Interface\\BUTTONS\\WHITE8x8"
+    local gMaskWrap = "CLAMPTOBLACKADDITIVE"
+    local gDiagTexL = "Interface\\AddOns\\EasyFind\\Images\\mask-diagonal"
+    local gDiagTexR = "Interface\\AddOns\\EasyFind\\Images\\mask-diagonal-r"
+
+    -- Left diagonal (top crop baked into TGA)
+    local gMBL = filterBtn:CreateMaskTexture()
+    gMBL:SetTexture(gDiagTexL, gMaskWrap, gMaskWrap)
+    gMBL:SetPoint("TOPLEFT", globalArrow, "TOPLEFT", 0, 0)
+    gMBL:SetPoint("BOTTOMRIGHT", globalArrow, "BOTTOMRIGHT", 0, 0)
+    globalArrow:AddMaskTexture(gMBL)
+
+    -- Right diagonal (mirrored TGA)
+    local gMBR = filterBtn:CreateMaskTexture()
+    gMBR:SetTexture(gDiagTexR, gMaskWrap, gMaskWrap)
+    gMBR:SetPoint("TOPLEFT", globalArrow, "TOPLEFT", 0, 0)
+    gMBR:SetPoint("BOTTOMRIGHT", globalArrow, "BOTTOMRIGHT", 0, 0)
+    globalArrow:AddMaskTexture(gMBR)
+
+    filterBtn.arrow = globalArrow
+
+    local globalFullBtn = filterBtn:CreateTexture(nil, "ARTWORK")
+    globalFullBtn:SetAllPoints()
+    globalFullBtn:SetAtlas("common-dropdown-a-button-open")
+    globalFullBtn:Hide()
+    filterBtn.fullBtn = globalFullBtn
+
+    filterBtn:SetHighlightTexture(130757)
 
     filterBtn:SetScript("OnEnter", function(self)
-        filterIcon:SetAlpha(1)
+        self.arrow:Hide()
+        self.fullBtn:Show()
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText("Filter Results")
         GameTooltip:AddLine("Choose which result types to show.", 1, 1, 1, true)
         GameTooltip:Show()
     end)
-    filterBtn:SetScript("OnLeave", function()
-        filterIcon:SetAlpha(0.7)
+    filterBtn:SetScript("OnLeave", function(self)
+        self.fullBtn:Hide()
+        self.arrow:Show()
         GameTooltip_Hide()
     end)
-    filterIcon:SetAlpha(0.7)
 
     -- Clear button for global search (grey circle X) - shifted left of filter button
     local globalClearBtn = Utils.CreateClearButton(globalSearchFrame)
@@ -1592,7 +1647,7 @@ function MapSearch:CreateHighlightFrame()
     local right = highlightFrame:CreateTexture(nil, "OVERLAY")
     right:SetColorTexture(1, 1, 0, 1)
     highlightFrame.right = right
-    
+
     -- Indicator pointing down to the location
     indicatorFrame = CreateFrame("Frame", "EasyFindMapIndicator", highlightFrame)
     indicatorFrame:SetSize(ns.ICON_SIZE, ns.ICON_SIZE)
@@ -1903,7 +1958,18 @@ function MapSearch:SearchZones(query)
         local cosmicChildren = C_Map.GetMapChildrenInfo(946, nil, false)
         if cosmicChildren then
             for _, child in ipairs(cosmicChildren) do
-                -- Get zones from each major world (Azeroth, Outland, Draenor, etc.)
+                if child.name then
+                    -- Include the world itself (Azeroth, Outland, Draenor, Shadowlands)
+                    tinsert(zones, {
+                        mapID = child.mapID,
+                        name = child.name,
+                        mapType = child.mapType,
+                        parentMapID = 946,
+                        parentName = "World",
+                        path = worldPath,
+                        depth = 0
+                    })
+                end
                 local worldZones = self:GetAllWorldZones(child.mapID, 0, worldPath)
                 for _, z in ipairs(worldZones) do
                     tinsert(zones, z)
@@ -2034,6 +2100,61 @@ function MapSearch:GroupZonesByParent(zones)
     return result
 end
 
+-- Scan canvas children for a city icon (texture 136441) near normalized coords.
+-- These are raw frames on the canvas, not Blizzard MapPinMixin pins.
+function MapSearch:FindCityPin(zoneName, normX, normY)
+    if not WorldMapFrame then return nil end
+
+    -- Only match on continent-level maps where city pins are clickable
+    local parentMapID = WorldMapFrame:GetMapID()
+    if not parentMapID then return nil end
+    local parentInfo = C_Map.GetMapInfo(parentMapID)
+    if not parentInfo or parentInfo.mapType ~= Enum.UIMapType.Continent then return nil end
+
+    local canvas = WorldMapFrame.ScrollContainer and WorldMapFrame.ScrollContainer.Child
+    if not canvas then return nil end
+
+    local lowerName = slower(zoneName)
+    local children = {canvas:GetChildren()}
+
+    -- Pass 1: exact name match
+    for i = 1, #children do
+        local child = children[i]
+        if child:IsShown() and child.name and slower(child.name) == lowerName then
+            return child
+        end
+    end
+
+    -- Pass 2: nearest city icon pin by GetPosition()
+    if not normX then return nil end
+    local bestPin, bestDist = nil, 0.01
+    for i = 1, #children do
+        local child = children[i]
+        if child:IsShown() and child.GetPosition then
+            local hasCityTex = false
+            for _, region in ipairs({child:GetRegions()}) do
+                if region.GetTextureFileID and region:GetTextureFileID() == 136441 then
+                    hasCityTex = true
+                    break
+                end
+            end
+            if hasCityTex then
+                local ok, px, py = pcall(child.GetPosition, child)
+                if ok and px and py then
+                    local dx = px - normX
+                    local dy = py - normY
+                    local dist = dx * dx + dy * dy
+                    if dist < bestDist then
+                        bestDist = dist
+                        bestPin = child
+                    end
+                end
+            end
+        end
+    end
+    return bestPin
+end
+
 -- Highlight a zone on the continent map using the actual zone shape texture
 function MapSearch:HighlightZone(mapID)
     DebugPrint("[EasyFind] HighlightZone called for mapID:", mapID)
@@ -2111,6 +2232,14 @@ function MapSearch:HighlightZone(mapID)
     local zoneLeftPx = left * canvasWidth
     local zoneRightPx = right * canvasWidth
     
+    -- For cities, find and point the arrow at the existing map icon
+    local cityOk, cityPin = pcall(self.FindCityPin, self, mapInfo.name, centerX, centerY)
+    if cityOk and cityPin then
+        DebugPrint("[EasyFind] HighlightZone: Found city pin for", mapInfo.name)
+        self:PointArrowAtPin(cityPin)
+        return true
+    end
+
     -- Try to get the actual zone highlight texture using the game's API
     local fileDataID, atlasID, texPercentX, texPercentY, texWidth, texHeight, posX, posY
     local highlightSuccess = pcall(function()
@@ -2131,36 +2260,39 @@ function MapSearch:HighlightZone(mapID)
     
     DebugPrint("[EasyFind] HighlightZone: texPercentX:", texPercentX, "texPercentY:", texPercentY, "texWidth:", texWidth, "texHeight:", texHeight)
     
-    if highlightSuccess and fileDataID and fileDataID > 0 and posX and posY and texPercentX and texPercentY then
-        DebugPrint("[EasyFind] HighlightZone: Using actual zone texture")
-        -- Use the actual zone shape texture with correct positioning!
-        -- IMPORTANT: posX, posY, texWidth, texHeight are NORMALIZED (0-1), must convert to pixels!
+    local hasTexture = highlightSuccess and posX and posY and texPercentX and texPercentY
+        and ((fileDataID and fileDataID > 0) or (atlasID and atlasID ~= ""))
+    if hasTexture then
+        DebugPrint("[EasyFind] HighlightZone: Using zone texture, fileDataID:", fileDataID, "atlas:", atlasID)
         local pixelPosX = posX * canvasWidth
         local pixelPosY = posY * canvasHeight
         local pixelWidth = texWidth * canvasWidth
         local pixelHeight = texHeight * canvasHeight
-        
-        -- Stack multiple layers of the zone texture for a stronger highlight effect.
-        -- ADD blending is subtle on the light map, so layering 3x makes it really pop.
-        local layers = 4
+        local isAtlas = not fileDataID or fileDataID == 0
+
+        local layers = isAtlas and 2 or 4
         for i = 1, layers do
             local hl = zoneHighlightFrame.highlights[i]
             if hl then
                 hl:ClearAllPoints()
-                hl:SetTexture(fileDataID)
-                hl:SetTexCoord(0, texPercentX, 0, texPercentY)
-                hl:SetVertexColor(1, 1, 0, 1)  -- Full bright yellow
+                if not isAtlas then
+                    hl:SetTexture(fileDataID)
+                    hl:SetTexCoord(0, texPercentX, 0, texPercentY)
+                    hl:SetPoint("TOPLEFT", canvas, "TOPLEFT", pixelPosX, -pixelPosY)
+                    hl:SetSize(pixelWidth, pixelHeight)
+                    hl:SetVertexColor(1, 1, 0, 1)
+                else
+                    hl:SetAtlas(atlasID, true)
+                    hl:SetPoint("CENTER", canvas, "TOPLEFT", zoneCenterPxX, -zoneCenterPxY)
+                    hl:SetVertexColor(1, 1, 0, 0.6)
+                end
                 hl:SetBlendMode("ADD")
-                hl:SetPoint("TOPLEFT", canvas, "TOPLEFT", pixelPosX, -pixelPosY)
-                hl:SetSize(pixelWidth, pixelHeight)
                 hl:Show()
             end
         end
         DebugPrint("[EasyFind] HighlightZone: stacked", layers, "layers at", pixelPosX, pixelPosY, "size", pixelWidth, pixelHeight)
     else
         DebugPrint("[EasyFind] HighlightZone: Using fallback colored overlay")
-        -- Fallback: use a simple colored overlay on the zone bounds
-        -- Make it VERY visible - bright yellow, high opacity (ALWAYS YELLOW)
         highlight:SetColorTexture(1, 1, 0, 0.75)
         highlight:SetBlendMode("BLEND")
         highlight:SetPoint("TOPLEFT", canvas, "TOPLEFT", zoneLeftPx, -zoneTopPx)
@@ -2324,10 +2456,9 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
     -- CASE 1: We're already on the target's parent map - just highlight the zone!
     if currentMapID == targetParentMapID then
         DebugPrint("[EasyFind] CASE 1: Already on target parent, highlighting zone")
-        -- Clear pendingZoneHighlight - this is the final zone-level step.
-        -- When the user clicks into the zone, OnMapChanged should fall through
-        -- to pendingWaypoint (if any) instead of re-triggering zone navigation.
-        self.pendingZoneHighlight = nil
+        -- Keep pending so reguiding works if user clicks wrong zone.
+        -- OnMapChanged checks arrival (newMapID == pending) to stop the chain.
+        self.pendingZoneHighlight = targetMapID
         C_Timer.After(0.05, function()
             self:HighlightZone(targetMapID)
         end)
@@ -2578,21 +2709,20 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
         hl:SetFrameStrata("TOOLTIP")
         hl:SetFrameLevel(300)
 
-        -- Circular star4 glow centered on the button - same texture used by indicator
-        -- glows, so it's proven to look good. ADD blend at high alpha = bright with
-        -- no rectangular artifacts since the texture is circular/star-shaped.
-        local starGlow = hl:CreateTexture(nil, "OVERLAY")
-        starGlow:SetSize(64, 64)
-        starGlow:SetPoint("CENTER")
-        starGlow:SetTexture("Interface\\Cooldown\\star4")
-        starGlow:SetVertexColor(1, 0.82, 0, 1)
-        starGlow:SetBlendMode("ADD")
+        -- Gold tinge overlay, matching Blizzard nav bar's current-map tinge style.
+        -- Uses WHITE8x8 (real texture) so SetGradient works (SetColorTexture ignores it).
+        local tinge = hl:CreateTexture(nil, "ARTWORK")
+        tinge:SetTexture("Interface\\BUTTONS\\WHITE8x8")
+        tinge:SetGradient("HORIZONTAL", CreateColor(1, 0.82, 0, 0), CreateColor(1, 0.82, 0, 0.35))
+        tinge:SetBlendMode("ADD")
+        tinge:SetAllPoints()
+        hl.tinge = tinge
 
         local glowAnim = hl:CreateAnimationGroup()
         glowAnim:SetLooping("BOUNCE")
         local glowAlpha = glowAnim:CreateAnimation("Alpha")
-        glowAlpha:SetFromAlpha(0.65)
-        glowAlpha:SetToAlpha(0.15)
+        glowAlpha:SetFromAlpha(1)
+        glowAlpha:SetToAlpha(0.3)
         glowAlpha:SetDuration(0.6)
         hl.glowAnim = glowAnim
 
@@ -2790,12 +2920,24 @@ function MapSearch:HookWorldMap()
 
         -- Check if we have a pending zone to highlight (step-by-step navigation)
         if savedPendingZone then
-            DebugPrint("[EasyFind] OnMapChanged - continuing navigation to:", savedPendingZone)
-
-            -- Continue the step-by-step navigation
-            C_Timer.After(0.1, function()
-                self:HighlightZoneOnMap(savedPendingZone)
-            end)
+            if newMapID == savedPendingZone then
+                -- Arrived at the target zone - stop reguiding
+                DebugPrint("[EasyFind] OnMapChanged - arrived at target zone:", savedPendingZone)
+                if self.pendingWaypoint then
+                    local wp = self.pendingWaypoint
+                    self.pendingWaypoint = nil
+                    C_Timer.After(0.1, function()
+                        self:ClearZoneHighlight()
+                        self:ShowWaypointAt(wp.x, wp.y, wp.icon, wp.category)
+                    end)
+                end
+            else
+                -- Wrong zone or intermediate step - reguide toward target
+                DebugPrint("[EasyFind] OnMapChanged - reguiding to:", savedPendingZone)
+                C_Timer.After(0.1, function()
+                    self:HighlightZoneOnMap(savedPendingZone)
+                end)
+            end
         elseif self.pendingWaypoint then
             -- We arrived at a zone with a pending waypoint (e.g. dungeon entrance)
             local wp = self.pendingWaypoint
@@ -4525,8 +4667,81 @@ function MapSearch:HighlightPin(pin)
     end
 end
 
+function MapSearch:PointArrowAtPin(pin)
+    waypointPin:Hide()
+
+    if not pin or not pin:IsShown() then
+        self:ClearHighlight()
+        return
+    end
+
+    currentHighlightedPin = pin
+
+    local userScale = EasyFind.db.iconScale or 1.0
+    local indicatorSize     = ns.UIToCanvas(ns.ICON_SIZE)      * userScale
+    local indicatorGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE) * userScale
+    indicatorFrame:SetSize(indicatorSize, indicatorSize)
+    indicatorFrame.glow:SetSize(indicatorGlowSize, indicatorGlowSize)
+
+    -- Keep highlightFrame shown (indicator is its child) but hide borders
+    highlightFrame:SetSize(1, 1)
+    highlightFrame:ClearAllPoints()
+    highlightFrame:SetPoint("CENTER", pin, "CENTER", 0, 0)
+    highlightFrame.top:Hide()
+    highlightFrame.bottom:Hide()
+    highlightFrame.left:Hide()
+    highlightFrame.right:Hide()
+
+    highlightFrame:Show()
+
+    -- Glow directly on the pin icon using the same star4 texture as map search indicators
+    if not pin.efGlowFrame then
+        local f = CreateFrame("Frame", nil, pin)
+        f:SetAllPoints()
+        f:SetFrameLevel(mmax(pin:GetFrameLevel() - 1, 0))
+        local g = f:CreateTexture(nil, "BACKGROUND")
+        g:SetTexture("Interface\\Cooldown\\star4")
+        g:SetBlendMode("ADD")
+        g:SetPoint("CENTER")
+        f.tex = g
+        local ag = f:CreateAnimationGroup()
+        ag:SetLooping("BOUNCE")
+        local alpha = ag:CreateAnimation("Alpha")
+        alpha:SetFromAlpha(0.6)
+        alpha:SetToAlpha(0.15)
+        alpha:SetDuration(0.5)
+        f.animGroup = ag
+        pin.efGlowFrame = f
+    end
+    local pinW, pinH = pin:GetSize()
+    local glowSize = mmax(pinW or 32, pinH or 32) * 2.5
+    pin.efGlowFrame.tex:SetSize(glowSize, glowSize)
+    pin.efGlowFrame.tex:SetVertexColor(1, 1, 0, 1)
+    pin.efGlowFrame:Show()
+    pin.efGlowFrame.animGroup:Play()
+
+    indicatorFrame:ClearAllPoints()
+    indicatorFrame:SetPoint("BOTTOM", pin, "TOP", 0, 2)
+    indicatorFrame:Show()
+
+    if indicatorFrame.animGroup then
+        indicatorFrame.animGroup:Play()
+    end
+end
+
 function MapSearch:ClearHighlight()
+    if currentHighlightedPin and currentHighlightedPin.efGlowFrame then
+        currentHighlightedPin.efGlowFrame.animGroup:Stop()
+        currentHighlightedPin.efGlowFrame:Hide()
+    end
     highlightFrame:Hide()
+    highlightFrame.top:Show()
+    highlightFrame.bottom:Show()
+    highlightFrame.left:Show()
+    highlightFrame.right:Show()
+
+    indicatorFrame:ClearAllPoints()
+    indicatorFrame:SetPoint("BOTTOM", highlightFrame, "TOP", 0, 2)
     indicatorFrame:Hide()
     waypointPin:Hide()
     waypointPin.waypointX = nil
@@ -4654,13 +4869,12 @@ function MapSearch:UpdateScale()
 end
 
 function MapSearch:UpdateOpacity()
-    if searchFrame then
-        local alpha = EasyFind.db.searchBarOpacity or 1.0
-        searchFrame:SetAlpha(alpha)
+    local alpha = EasyFind.db.searchBarOpacity or 0.75
+    if searchFrame and searchFrame.bgTex then
+        searchFrame.bgTex:SetColorTexture(0, 0, 0, alpha)
     end
-    if globalSearchFrame then
-        local alpha = EasyFind.db.searchBarOpacity or 1.0
-        globalSearchFrame:SetAlpha(alpha)
+    if globalSearchFrame and globalSearchFrame.bgTex then
+        globalSearchFrame.bgTex:SetColorTexture(0, 0, 0, alpha)
     end
 end
 

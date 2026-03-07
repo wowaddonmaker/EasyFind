@@ -25,7 +25,7 @@ local hooksecurefunc     = hooksecurefunc
 local wipe               = wipe
 local strsplit           = strsplit
 
-local HOVER_MIN_DISPLAY  = 1.0  -- seconds the highlight must be visible before hover clears it
+local HOVER_MIN_DISPLAY  = 0.3  -- seconds the highlight must be visible before hover clears it
 
 local highlightFrame
 local indicatorFrame
@@ -2384,7 +2384,7 @@ function Highlight:ScrollToFactionRow(factionID)
     local targetIndex = nil
     for i = 1, numFactions do
         local fd = C_Reputation.GetFactionDataByIndex(i)
-        if fd and not fd.isHeader and fd.factionID == factionID then
+        if fd and fd.factionID == factionID then
             targetIndex = i
             break
         end
@@ -2423,7 +2423,7 @@ function Highlight:GetFactionRowButton(factionID)
             if data.factionID == factionID then return true end
             if data.factionIndex then
                 local fd = C_Reputation and C_Reputation.GetFactionDataByIndex(data.factionIndex)
-                if fd and not fd.isHeader and fd.factionID == factionID then return true end
+                if fd and fd.factionID == factionID then return true end
             end
         end
         if factionNameLower then

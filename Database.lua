@@ -257,22 +257,6 @@ function Database:PopulateDynamicReputations()
     local currentExpansion = nil
     local currentFactionGroup = nil
 
-    -- Known expansion names to distinguish from faction-group headers
-    local expansionNames = {
-        ["The War Within"] = true,
-        ["Dragonflight"] = true,
-        ["Shadowlands"] = true,
-        ["Battle for Azeroth"] = true,
-        ["Legion"] = true,
-        ["Warlords of Draenor"] = true,
-        ["Mists of Pandaria"] = true,
-        ["Cataclysm"] = true,
-        ["Wrath of the Lich King"] = true,
-        ["Burning Crusade"] = true,
-        ["Classic"] = true,
-        ["Other"] = true,
-        ["Guild"] = true,
-    }
 
     local function buildHeaderSteps()
         local steps = {}
@@ -299,73 +283,64 @@ function Database:PopulateDynamicReputations()
         return path
     end
 
+    local function injectFaction(factionData)
+        local isDiscovered = (factionData.currentStanding and factionData.currentStanding > 0) or
+                             (factionData.isWatched == true)
+        if not isDiscovered then return end
+
+        local steps = buildHeaderSteps()
+        steps[#steps + 1] = { waitForFrame = "CharacterFrame", factionID = factionData.factionID }
+
+        local path = buildPath()
+
+        local keywords = {}
+        local factionNameLower = slower(factionData.name)
+        for word in factionNameLower:gmatch("%S+") do
+            if #word > 2 then
+                keywords[#keywords + 1] = word
+            end
+        end
+        keywords[#keywords + 1] = factionNameLower
+
+        local entry = {
+            name = factionData.name,
+            keywords = keywords,
+            category = "Reputation",
+            buttonFrame = "CharacterMicroButton",
+            path = path,
+            steps = steps,
+            factionID = factionData.factionID,
+            hasRepBar = not factionData.isHeader or factionData.isHeaderWithRep,
+        }
+
+        entry.nameLower = factionNameLower
+        entry.keywordsLower = {}
+        for j, kw in ipairs(entry.keywords) do
+            entry.keywordsLower[j] = kw
+        end
+
+        uiSearchData[#uiSearchData + 1] = entry
+        injected = injected + 1
+    end
+
     for i = 1, numFactions do
         local factionData = C_Reputation.GetFactionDataByIndex(i)
-        if factionData then
-            -- factionData has: name, factionID, isHeader, isHeaderExpanded, hasBonusRepGain, canToggleAtWar, etc.
-            -- factionID presence indicates an actual faction (not a header)
-
+        if factionData and factionData.name then
             if factionData.isHeader then
-                -- Determine if this is an expansion header or faction-group header
-                if factionData.name then
-                    if expansionNames[factionData.name] then
-                        -- It's an expansion header
-                        currentExpansion = factionData.name
-                        currentFactionGroup = nil  -- Clear faction group when entering new expansion
-                    else
-                        -- It's a faction-group header
-                        currentFactionGroup = factionData.name
+                if not factionData.isChild then
+                    currentExpansion = factionData.name
+                    currentFactionGroup = nil
+                else
+                    -- Clear previous sibling faction group before processing
+                    currentFactionGroup = nil
+                    -- Header-factions: inject all with factionID so they're searchable.
+                    if factionData.factionID and factionData.factionID > 0 then
+                        injectFaction(factionData)
                     end
+                    currentFactionGroup = factionData.name
                 end
-            else
-                -- It's an actual faction (non-header)
-                if factionData.factionID and factionData.name then
-                    -- Skip factions that haven't been discovered yet
-                    -- A faction is considered discovered if it has earned reputation or is actively watched
-                    local isDiscovered = (factionData.currentStanding and factionData.currentStanding > 0) or
-                                         (factionData.isWatched == true)
-
-                    -- Only process discovered factions (skip undiscovered ones like we do for undiscovered currencies)
-                    if isDiscovered then
-                        local steps = buildHeaderSteps()
-                        -- Add the final step to select this specific faction
-                        steps[#steps + 1] = { waitForFrame = "CharacterFrame", factionID = factionData.factionID }
-
-                        local path = buildPath()
-
-                        -- Create keywords from faction name words (like currency does)
-                        local keywords = {}
-                        local factionNameLower = slower(factionData.name)
-                        -- Split faction name into words and add each significant word
-                        for word in factionNameLower:gmatch("%S+") do
-                            if #word > 2 then  -- Skip very short words like "of", "the"
-                                keywords[#keywords + 1] = word
-                            end
-                        end
-                        -- Also add the full name as a keyword
-                        keywords[#keywords + 1] = factionNameLower
-
-                        local entry = {
-                            name = factionData.name,
-                            keywords = keywords,
-                            category = "Reputation",
-                            buttonFrame = "CharacterMicroButton",
-                            path = path,
-                            steps = steps,
-                            factionID = factionData.factionID,
-                        }
-
-                        -- Pre-lowercase for search performance
-                        entry.nameLower = slower(entry.name)
-                        entry.keywordsLower = {}
-                        for j, kw in ipairs(entry.keywords) do
-                            entry.keywordsLower[j] = kw  -- Already lowercased when created
-                        end
-
-                        uiSearchData[#uiSearchData + 1] = entry
-                        injected = injected + 1
-                    end
-                end
+            elseif factionData.factionID then
+                injectFaction(factionData)
             end
         end
     end
@@ -506,391 +481,6 @@ function Database:BuildUIDatabase()
                     flashLabel = "Currency",
                     steps = {
                         { waitForFrame = "CharacterFrame", tabIndex = 3 },
-                    },
-                    children = {
-                        -- CURRENCY ENTRIES (Auto-generated by Harvester)
-
-                        -- Currency Headers (navigate to the header/section)
-                        {
-                            name = "Midnight Currencies",
-                            keywords = {"midnight"},
-                            category = "Currency",
-                            steps = {{ waitForFrame = "CharacterFrame", currencyHeader = "Midnight" }},
-                            children = {
-                                {
-                                    name = "Twilight's Blade Insignia",
-                                    keywords = {"twilight's blade insignia", "insignia"},
-                                    steps = {{ waitForFrame = "CharacterFrame", currencyID = 3319 }},
-                                },
-                            },
-                        },
-                        {
-                            name = "Dungeon and Raid Currencies",
-                            keywords = {"dungeon and raid", "pve currencies"},
-                            category = "Currency",
-                            steps = {{ waitForFrame = "CharacterFrame", currencyHeader = "Dungeon and Raid" }},
-                            children = {
-                                {
-                                    name = "Timewarped Badge",
-                                    keywords = {"timewarped badge", "timewarped", "badge"},
-                                    steps = {{ waitForFrame = "CharacterFrame", currencyID = 1166 }},
-                                },
-                            },
-                        },
-                        {
-                            name = "Miscellaneous Currencies",
-                            keywords = {"miscellaneous", "misc"},
-                            category = "Currency",
-                            steps = {{ waitForFrame = "CharacterFrame", currencyHeader = "Miscellaneous" }},
-                            children = {
-                                {
-                                    name = "Community Coupons",
-                                    keywords = {"community coupons", "community", "coupons"},
-                                    steps = {{ waitForFrame = "CharacterFrame", currencyID = 3363 }},
-                                },
-                                {
-                                    name = "Darkmoon Prize Ticket",
-                                    keywords = {"darkmoon prize ticket", "darkmoon", "prize", "ticket"},
-                                    steps = {{ waitForFrame = "CharacterFrame", currencyID = 515 }},
-                                },
-                                {
-                                    name = "Trader's Tender",
-                                    keywords = {"trader's tender", "trader's", "tender"},
-                                    steps = {{ waitForFrame = "CharacterFrame", currencyID = 2032 }},
-                                },
-                            },
-                        },
-                        {
-                            name = "Player vs. Player Currencies",
-                            keywords = {"player vs. player", "pvp"},
-                            category = "Currency",
-                            steps = {{ waitForFrame = "CharacterFrame", currencyHeader = "Player vs. Player" }},
-                            children = {
-                                {
-                                    name = "Bloody Tokens",
-                                    keywords = {"bloody tokens", "bloody"},
-                                    steps = {{ waitForFrame = "CharacterFrame", currencyID = 2123 }},
-                                },
-                                {
-                                    name = "Conquest",
-                                    keywords = {"conquest"},
-                                    steps = {{ waitForFrame = "CharacterFrame", currencyID = 1602 }},
-                                },
-                                {
-                                    name = "Honor",
-                                    keywords = {"honor"},
-                                    steps = {{ waitForFrame = "CharacterFrame", currencyID = 1792 }},
-                                },
-                            },
-                        },
-                        {
-                            name = "Legacy Currencies",
-                            keywords = {"legacy", "old"},
-                            category = "Currency",
-                            steps = {{ waitForFrame = "CharacterFrame", currencyHeader = "Legacy" }},
-                            children = {
-                                {
-                                    name = "War Within Currencies",
-                                    keywords = {"war within", "tww"},
-                                    category = "Currency",
-                                    steps = {{ waitForFrame = "CharacterFrame", currencyHeader = "War Within" }},
-                                    children = {
-                                        {
-                                            name = "Kej",
-                                            keywords = {"kej"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 3056 }},
-                                        },
-                                        {
-                                            name = "Resonance Crystals",
-                                            keywords = {"resonance crystals", "resonance"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 2815 }},
-                                        },
-                                        {
-                                            name = "Season 3 Currencies",
-                                            keywords = {"season 3", "s3"},
-                                            category = "Currency",
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyHeader = "Season 3" }},
-                                            children = {
-                                                {
-                                                    name = "Restored Coffer Key",
-                                                    keywords = {"restored coffer key", "coffer key"},
-                                                    steps = {{ waitForFrame = "CharacterFrame", currencyID = 3028 }},
-                                                },
-                                                {
-                                                    name = "Undercoin",
-                                                    keywords = {"undercoin"},
-                                                    steps = {{ waitForFrame = "CharacterFrame", currencyID = 2803 }},
-                                                },
-                                                {
-                                                    name = "Valorstones",
-                                                    keywords = {"valorstones", "valor"},
-                                                    steps = {{ waitForFrame = "CharacterFrame", currencyID = 3008 }},
-                                                },
-                                                {
-                                                    name = "Weathered Ethereal Crest",
-                                                    keywords = {"weathered ethereal crest", "weathered crest"},
-                                                    steps = {{ waitForFrame = "CharacterFrame", currencyID = 3284 }},
-                                                },
-                                                {
-                                                    name = "Carved Ethereal Crest",
-                                                    keywords = {"carved ethereal crest", "carved crest"},
-                                                    steps = {{ waitForFrame = "CharacterFrame", currencyID = 3286 }},
-                                                },
-                                                {
-                                                    name = "Runed Ethereal Crest",
-                                                    keywords = {"runed ethereal crest", "runed crest"},
-                                                    steps = {{ waitForFrame = "CharacterFrame", currencyID = 3288 }},
-                                                },
-                                                {
-                                                    name = "Gilded Ethereal Crest",
-                                                    keywords = {"gilded ethereal crest", "gilded crest"},
-                                                    steps = {{ waitForFrame = "CharacterFrame", currencyID = 3290 }},
-                                                },
-                                            },
-                                        },
-                                    },
-                                },
-                                {
-                                    name = "Dragonflight Currencies",
-                                    keywords = {"dragonflight", "df"},
-                                    category = "Currency",
-                                    steps = {{ waitForFrame = "CharacterFrame", currencyHeader = "Dragonflight" }},
-                                    children = {
-                                        {
-                                            name = "Dragon Isles Supplies",
-                                            keywords = {"dragon isles supplies"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 2003 }},
-                                        },
-                                        {
-                                            name = "Elemental Overflow",
-                                            keywords = {"elemental overflow"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 2118 }},
-                                        },
-                                    },
-                                },
-                                {
-                                    name = "Shadowlands Currencies",
-                                    keywords = {"shadowlands", "sl"},
-                                    category = "Currency",
-                                    steps = {{ waitForFrame = "CharacterFrame", currencyHeader = "Shadowlands" }},
-                                    children = {
-                                        {
-                                            name = "Argent Commendation",
-                                            keywords = {"argent commendation"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1754 }},
-                                        },
-                                        {
-                                            name = "Cataloged Research",
-                                            keywords = {"cataloged research"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1931 }},
-                                        },
-                                        {
-                                            name = "Cosmic Flux",
-                                            keywords = {"cosmic flux"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 2009 }},
-                                        },
-                                        {
-                                            name = "Cyphers of the First Ones",
-                                            keywords = {"cyphers of the first ones", "cyphers"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1979 }},
-                                        },
-                                        {
-                                            name = "Grateful Offering",
-                                            keywords = {"grateful offering"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1885 }},
-                                        },
-                                        {
-                                            name = "Infused Ruby",
-                                            keywords = {"infused ruby"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1820 }},
-                                        },
-                                        {
-                                            name = "Reservoir Anima",
-                                            keywords = {"reservoir anima", "anima"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1813 }},
-                                        },
-                                        {
-                                            name = "Soul Ash",
-                                            keywords = {"soul ash"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1828 }},
-                                        },
-                                        {
-                                            name = "Soul Cinders",
-                                            keywords = {"soul cinders"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1906 }},
-                                        },
-                                        {
-                                            name = "Stygia",
-                                            keywords = {"stygia"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1767 }},
-                                        },
-                                    },
-                                },
-                                {
-                                    name = "Battle for Azeroth Currencies",
-                                    keywords = {"battle for azeroth", "bfa"},
-                                    category = "Currency",
-                                    steps = {{ waitForFrame = "CharacterFrame", currencyHeader = "Battle for Azeroth" }},
-                                    children = {
-                                        {
-                                            name = "7th Legion Service Medal",
-                                            keywords = {"7th legion service medal", "7th legion"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1717 }},
-                                        },
-                                        {
-                                            name = "Coalescing Visions",
-                                            keywords = {"coalescing visions"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1755 }},
-                                        },
-                                        {
-                                            name = "Echoes of Ny'alotha",
-                                            keywords = {"echoes of ny'alotha", "nyalotha"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1803 }},
-                                        },
-                                        {
-                                            name = "Prismatic Manapearl",
-                                            keywords = {"prismatic manapearl", "manapearl"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1721 }},
-                                        },
-                                        {
-                                            name = "Seafarer's Dubloon",
-                                            keywords = {"seafarer's dubloon", "dubloon"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1710 }},
-                                        },
-                                        {
-                                            name = "War Resources",
-                                            keywords = {"war resources"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1560 }},
-                                        },
-                                    },
-                                },
-                                {
-                                    name = "Legion Currencies",
-                                    keywords = {"legion"},
-                                    category = "Currency",
-                                    steps = {{ waitForFrame = "CharacterFrame", currencyHeader = "Legion" }},
-                                    children = {
-                                        {
-                                            name = "Curious Coin",
-                                            keywords = {"curious coin"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1275 }},
-                                        },
-                                        {
-                                            name = "Nethershard",
-                                            keywords = {"nethershard"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1226 }},
-                                        },
-                                        {
-                                            name = "Order Resources",
-                                            keywords = {"order resources", "order hall resources"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1220 }},
-                                        },
-                                        {
-                                            name = "Veiled Argunite",
-                                            keywords = {"veiled argunite", "argunite"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1508 }},
-                                        },
-                                        {
-                                            name = "Wakening Essence",
-                                            keywords = {"wakening essence"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1533 }},
-                                        },
-                                    },
-                                },
-                                {
-                                    name = "Warlords of Draenor Currencies",
-                                    keywords = {"warlords of draenor", "warlords", "wod"},
-                                    category = "Currency",
-                                    steps = {{ waitForFrame = "CharacterFrame", currencyHeader = "Warlords of Draenor" }},
-                                    children = {
-                                        {
-                                            name = "Apexis Crystal",
-                                            keywords = {"apexis crystal", "apexis"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 823 }},
-                                        },
-                                        {
-                                            name = "Artifact Fragment",
-                                            keywords = {"artifact fragment"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 944 }},
-                                        },
-                                        {
-                                            name = "Garrison Resources",
-                                            keywords = {"garrison resources", "garrison"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 824 }},
-                                        },
-                                        {
-                                            name = "Oil",
-                                            keywords = {"oil", "shipyard oil"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 1101 }},
-                                        },
-                                        {
-                                            name = "Seal of Tempered Fate",
-                                            keywords = {"seal of tempered fate", "bonus roll"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 994 }},
-                                        },
-                                    },
-                                },
-                                {
-                                    name = "Mists of Pandaria Currencies",
-                                    keywords = {"mists of pandaria", "mists", "mop"},
-                                    category = "Currency",
-                                    steps = {{ waitForFrame = "CharacterFrame", currencyHeader = "Mists of Pandaria" }},
-                                    children = {
-                                        {
-                                            name = "Elder Charm of Good Fortune",
-                                            keywords = {"elder charm of good fortune", "elder charm", "bonus roll"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 697 }},
-                                        },
-                                        {
-                                            name = "Lesser Charm of Good Fortune",
-                                            keywords = {"lesser charm of good fortune", "lesser charm"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 738 }},
-                                        },
-                                        {
-                                            name = "Mogu Rune of Fate",
-                                            keywords = {"mogu rune of fate", "mogu rune", "bonus roll"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 752 }},
-                                        },
-                                        {
-                                            name = "Timeless Coin",
-                                            keywords = {"timeless coin", "timeless isle"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 777 }},
-                                        },
-                                        {
-                                            name = "Warforged Seal",
-                                            keywords = {"warforged seal", "bonus roll"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 776 }},
-                                        },
-                                    },
-                                },
-                                {
-                                    name = "Cataclysm Currencies",
-                                    keywords = {"cataclysm", "cata"},
-                                    category = "Currency",
-                                    steps = {{ waitForFrame = "CharacterFrame", currencyHeader = "Cataclysm" }},
-                                    children = {
-                                        {
-                                            name = "Mote of Darkness",
-                                            keywords = {"mote of darkness"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 614 }},
-                                        },
-                                    },
-                                },
-                                {
-                                    name = "Wrath of the Lich King Currencies",
-                                    keywords = {"wrath of the lich king", "wrath", "wotlk"},
-                                    category = "Currency",
-                                    steps = {{ waitForFrame = "CharacterFrame", currencyHeader = "Wrath of the Lich King" }},
-                                    children = {
-                                        {
-                                            name = "Champion's Seal",
-                                            keywords = {"champion's seal", "argent tournament"},
-                                            steps = {{ waitForFrame = "CharacterFrame", currencyID = 241 }},
-                                        },
-                                    },
-                                },
-                            },
-                        },
                     },
                 },
             },
@@ -1742,17 +1332,6 @@ function Database:BuildUIDatabase()
         end
         if not item.icon and not item.buttonFrame then
             item.icon = 134400
-        end
-        -- Register static currency IDs and header names so dynamic supplement skips them
-        if item.steps then
-            for _, step in ipairs(item.steps) do
-                if step.currencyID then
-                    knownCurrencyIDs[step.currencyID] = true
-                end
-                if step.currencyHeader then
-                    knownCurrencyIDs["header_" .. slower(step.currencyHeader)] = true
-                end
-            end
         end
     end
 end

@@ -428,10 +428,10 @@ function Options:Initialize()
     end)
     optionsFrame.mapSearchSlider = mapSearchSlider
 
-    local opacitySlider = CreateSlider(sec1, "Opacity", "Search Bar Opacity", 0.2, 1.0, 0.05,
-        "Adjusts the opacity (transparency) of both the UI search bar and the map search bars.")
+    local opacitySlider = CreateSlider(sec1, "Opacity", "Background Opacity", 0.0, 1.0, 0.05,
+        "Adjusts the background opacity of all search bars. Text and icons remain fully visible.")
     opacitySlider:SetPoint("TOPLEFT", sec1, "TOPLEFT", COL_LEFT, -158)
-    opacitySlider:SetValue(EasyFind.db.searchBarOpacity or 1.0)
+    opacitySlider:SetValue(EasyFind.db.searchBarOpacity or 0.75)
     opacitySlider:HookScript("OnValueChanged", function(self, value)
         EasyFind.db.searchBarOpacity = value
         if ns.UI and ns.UI.UpdateOpacity then
@@ -770,7 +770,7 @@ function Options:Initialize()
         EasyFind.db.iconScale = 1.0
         EasyFind.db.uiSearchScale = 1.0
         EasyFind.db.mapSearchScale = 1.0
-        EasyFind.db.searchBarOpacity = 1.0
+        EasyFind.db.searchBarOpacity = 0.75
         EasyFind.db.uiSearchPosition = nil
         EasyFind.db.mapSearchPosition = nil
         EasyFind.db.globalSearchPosition = nil
@@ -814,7 +814,7 @@ function Options:Initialize()
         optionsFrame.mapIconSlider:SetValue(1.0)
         optionsFrame.uiSearchSlider:SetValue(1.0)
         optionsFrame.mapSearchSlider:SetValue(1.0)
-        optionsFrame.opacitySlider:SetValue(1.0)
+        optionsFrame.opacitySlider:SetValue(0.75)
         optionsFrame.directOpenCheckbox:SetChecked(false)
         optionsFrame.zoneNavCheckbox:SetChecked(false)
         optionsFrame.smartShowCheckbox:SetChecked(true)
@@ -923,7 +923,7 @@ function Options:Show()
     optionsFrame.mapIconSlider:SetValue(EasyFind.db.iconScale or 1.0)
     optionsFrame.uiSearchSlider:SetValue(EasyFind.db.uiSearchScale or 1.0)
     optionsFrame.mapSearchSlider:SetValue(EasyFind.db.mapSearchScale or 1.0)
-    optionsFrame.opacitySlider:SetValue(EasyFind.db.searchBarOpacity or 1.0)
+    optionsFrame.opacitySlider:SetValue(EasyFind.db.searchBarOpacity or 0.75)
     optionsFrame.maxResultsSlider:SetValue(EasyFind.db.maxResults or 10)
     optionsFrame.arrivalSlider:SetValue(EasyFind.db.arrivalDistance or 10)
     optionsFrame.directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false)
