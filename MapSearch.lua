@@ -2130,43 +2130,33 @@ local function GetMapRectViaContinent(mapID, viewMapID)
     return (tL - vL) / vW, (tR - vL) / vW, (tT - vT) / vH, (tB - vT) / vH
 end
 
--- Scan GetMapInfoAtPosition across a grid on viewMapID to find the actual
--- boundary where the game considers targetMapID to exist. Returns a tight
--- bounding rect, or nil if the target isn't found. Uses the continent-
--- projected rect as the search region (with padding) to limit API calls.
-local function ScanZoneBoundsOnMap(targetMapID, viewMapID, projL, projR, projT, projB)
-    local pad = 0.05
-    local minX = mmax(0, (projL or 0) - pad)
-    local maxX = mmin(1, (projR or 1) + pad)
-    local minY = mmax(0, (projT or 0) - pad)
-    local maxY = mmin(1, (projB or 1) + pad)
+-- Resolve a mapID to the best match for a given view map. When a zone exists
+-- under multiple mapIDs with the same name (e.g. TBC Isle of Quel'Danas 122
+-- vs Midnight versions 2432/2424/2565), the original mapID may have no
+-- position on the view map. This finds a same-named child of viewMapID that
+-- does have a valid rect, or returns the original mapID unchanged.
+local function ResolveZoneForMap(mapID, viewMapID)
+    local info = C_Map.GetMapInfo(mapID)
+    if not info or not info.name then return mapID end
 
-    local step = 0.01
-    local foundL, foundR, foundT, foundB
-    local x = minX
-    while x <= maxX do
-        local y = minY
-        while y <= maxY do
-            local info = C_Map.GetMapInfoAtPosition(viewMapID, x, y)
-            if info and info.mapID == targetMapID then
-                if not foundL then
-                    foundL, foundR, foundT, foundB = x, x, y, y
-                else
-                    if x < foundL then foundL = x end
-                    if x > foundR then foundR = x end
-                    if y < foundT then foundT = y end
-                    if y > foundB then foundB = y end
-                end
+    local ok, left, right = pcall(C_Map.GetMapRectOnMap, mapID, viewMapID)
+    if ok and left and (right - left) > 0 then return mapID end
+
+    local targetName = slower(info.name)
+    local children = C_Map.GetMapChildrenInfo(viewMapID, nil, false)
+    if not children then return mapID end
+
+    for _, child in ipairs(children) do
+        if child.mapID ~= mapID and slower(child.name) == targetName then
+            local ok2, cL, cR = pcall(C_Map.GetMapRectOnMap, child.mapID, viewMapID)
+            if ok2 and cL and (cR - cL) > 0 then
+                DebugPrint("[EasyFind] ResolveZoneForMap:", mapID, "->", child.mapID, "on", viewMapID)
+                return child.mapID
             end
-            y = y + step
         end
-        x = x + step
     end
 
-    if not foundL then return nil end
-    -- Shrink by half a step on each side for a tighter fit
-    local inset = step * 0.5
-    return foundL + inset, foundR - inset, foundT + inset, foundB - inset
+    return mapID
 end
 
 -- Sample points outside a zone's rect to find surrounding zones.
@@ -2204,6 +2194,7 @@ local function FindSurroundingZone(parentMapID, mapID, left, right, top, bottom,
     if bestID then return zones[bestID] end
 end
 
+
 -- Highlight a zone on the continent map using the actual zone shape texture
 function MapSearch:HighlightZone(mapID)
     DebugPrint("[EasyFind] HighlightZone called for mapID:", mapID)
@@ -2240,6 +2231,14 @@ function MapSearch:HighlightZone(mapID)
     local parentMapID = WorldMapFrame:GetMapID()
     if not parentMapID then return end
 
+    -- Resolve to a same-named child if this mapID has no position here
+    local resolved = ResolveZoneForMap(mapID, parentMapID)
+    if resolved ~= mapID then
+        mapID = resolved
+        mapInfo = C_Map.GetMapInfo(mapID)
+        if not mapInfo then return end
+    end
+
     local isZone = mapInfo.mapType == Enum.UIMapType.Zone
 
     local success, left, right, top, bottom = pcall(function()
@@ -2250,15 +2249,33 @@ function MapSearch:HighlightZone(mapID)
 
     -- GetMapRectOnMap returned zeros - either an instanced zone with no physical
     -- position, or a zone not in a direct parent-child relationship (e.g.
-    -- Stormwind on Elwynn). Try continent projection before giving up.
+    -- Stormwind on Elwynn). Try continent projection, then blind grid scan.
     if left == 0 and right == 0 and top == 0 and bottom == 0 then
         local pL, pR, pT, pB = GetMapRectViaContinent(mapID, parentMapID)
         if pL then
             left, right, top, bottom = pL, pR, pT, pB
             DebugPrint("[EasyFind] HighlightZone: used continent projection for coords")
         else
-            WorldMapFrame:SetMapID(mapID)
-            return
+            -- Blind scan: sample the map to find where the target zone exists
+            local minX, maxX, minY, maxY = 2, -1, 2, -1
+            for sx = 0.025, 0.975, 0.025 do
+                for sy = 0.025, 0.975, 0.025 do
+                    local resolved = C_Map.GetMapInfoAtPosition(parentMapID, sx, sy)
+                    if resolved and resolved.mapID == mapID then
+                        if sx < minX then minX = sx end
+                        if sx > maxX then maxX = sx end
+                        if sy < minY then minY = sy end
+                        if sy > maxY then maxY = sy end
+                    end
+                end
+            end
+            if maxX > minX then
+                left, right, top, bottom = minX, maxX, minY, maxY
+                DebugPrint("[EasyFind] HighlightZone: found via blind scan", minX, maxX, minY, maxY)
+            else
+                WorldMapFrame:SetMapID(mapID)
+                return
+            end
         end
     end
 
@@ -2357,56 +2374,6 @@ function MapSearch:HighlightZone(mapID)
                 end
             end
 
-            -- On a zone-level map: scan for actual bounds, keeping the
-            -- continent projection as fallback if the scan returns a tiny
-            -- sliver (some cities barely register via GetMapInfoAtPosition)
-            if parentMapInfo and parentMapInfo.mapType == Enum.UIMapType.Zone then
-                local sL, sR, sT, sB = ScanZoneBoundsOnMap(mapID, parentMapID, left, right, top, bottom)
-                local projW, projH = right - left, bottom - top
-                if sL and (sR - sL) > projW * 0.15 and (sB - sT) > projH * 0.15 then
-                    left, right, top, bottom = sL, sR, sT, sB
-                    DebugPrint("[EasyFind] HighlightZone: using scanned bounds")
-                else
-                    DebugPrint("[EasyFind] HighlightZone: scan too small, using projection")
-                end
-                centerX = (left + right) / 2
-                centerY = (top + bottom) / 2
-                width = (right - left) * canvasWidth
-                height = (bottom - top) * canvasHeight
-                zoneCenterPxX = centerX * canvasWidth
-                zoneCenterPxY = centerY * canvasHeight
-                zoneTopPx = top * canvasHeight
-                zoneBottomPx = bottom * canvasHeight
-                zoneLeftPx = left * canvasWidth
-                zoneRightPx = right * canvasWidth
-            end
-        end
-
-        -- Final fallback - border outline + translucent fill
-        local borderW = 2
-        highlight:SetColorTexture(1, 1, 0, 0.15)
-        highlight:SetBlendMode("BLEND")
-        highlight:SetPoint("TOPLEFT", canvas, "TOPLEFT", zoneLeftPx, -zoneTopPx)
-        highlight:SetSize(width, height)
-        highlight:Show()
-
-        local edges = {
-            { "TOPLEFT", "TOPLEFT", zoneLeftPx, -zoneTopPx, width, borderW },
-            { "TOPLEFT", "TOPLEFT", zoneLeftPx, -(zoneTopPx + height - borderW), width, borderW },
-            { "TOPLEFT", "TOPLEFT", zoneLeftPx, -zoneTopPx, borderW, height },
-            { "TOPLEFT", "TOPLEFT", zoneLeftPx + width - borderW, -zoneTopPx, borderW, height },
-        }
-        for i = 1, 4 do
-            local hl = zoneHighlightFrame.highlights[i + 1]
-            if hl then
-                local e = edges[i]
-                hl:ClearAllPoints()
-                hl:SetColorTexture(1, 1, 0, 0.8)
-                hl:SetBlendMode("BLEND")
-                hl:SetPoint(e[1], canvas, e[2], e[3], e[4])
-                hl:SetSize(e[5], e[6])
-                hl:Show()
-            end
         end
     end
     
@@ -2517,10 +2484,7 @@ function MapSearch:ClearZoneHighlight()
                 self.breadcrumbHighlight.indicatorFrame.animGroup:Stop()
             end
         end
-        if self.breadcrumbHighlight.glowAnim then
-            self.breadcrumbHighlight.glowAnim:Stop()
-        end
-        self.breadcrumbHighlight:Hide()  -- OnHide unlocks the button highlight automatically
+        self.breadcrumbHighlight:Hide()
     end
     
     -- Clear pending zone navigation (but NOT pendingWaypoint - that's the final
@@ -2555,14 +2519,24 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
     DebugPrint("[EasyFind] Target parent:", targetParentInfo and targetParentInfo.name or "nil", "ID:", targetParentMapID)
     
     local currentMapID = WorldMapFrame:GetMapID()
-    if not currentMapID then 
+    if not currentMapID then
         DebugPrint("[EasyFind] ERROR: No currentMapID")
         return 
     end
     
     local currentInfo = C_Map.GetMapInfo(currentMapID)
     DebugPrint("[EasyFind] Current map:", currentInfo and currentInfo.name or "nil", "ID:", currentMapID)
-    
+
+    -- Resolve legacy mapIDs: if the current map has a same-named child zone
+    -- with a valid rect, use that instead (e.g. TBC IQD 122 -> Midnight 2432)
+    local resolved = ResolveZoneForMap(targetMapID, currentMapID)
+    if resolved ~= targetMapID then
+        targetMapID = resolved
+        targetInfo = C_Map.GetMapInfo(targetMapID)
+        if not targetInfo then return end
+        targetParentMapID = ZONE_PARENT_OVERRIDES[targetMapID] or targetInfo.parentMapID
+    end
+
     -- CASE 1: We're already on the target's parent map - just highlight the zone!
     if currentMapID == targetParentMapID then
         DebugPrint("[EasyFind] CASE 1: Already on target parent, highlighting zone")
@@ -2576,29 +2550,63 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
     end
 
     -- CASE 1b: Current map physically contains the target even though the API
-    -- parent chain doesn't link them (e.g. Stormwind inside Elwynn Forest).
-    -- Verify via continent projection + GetMapInfoAtPosition.
-    if currentInfo and currentInfo.mapType == Enum.UIMapType.Zone then
+    -- parent chain doesn't link them (e.g. Stormwind inside Elwynn Forest,
+    -- IQD on Quel'Thalas). Verify via continent projection, then blind scan.
+    if currentInfo and (currentInfo.mapType == Enum.UIMapType.Zone or currentInfo.mapType == Enum.UIMapType.Continent) then
+        local found = false
         local cL, cR, cT, cB = GetMapRectViaContinent(targetMapID, currentMapID)
         if cL then
             local cX, cY = (cL + cR) / 2, (cT + cB) / 2
             if cX > 0 and cX < 1 and cY > 0 and cY < 1 then
                 local resolved = C_Map.GetMapInfoAtPosition(currentMapID, cX, cY)
                 if resolved and resolved.mapID == targetMapID then
-                    DebugPrint("[EasyFind] CASE 1b: Target visible on current map (containing zone)")
-                    self.pendingZoneHighlight = targetMapID
-                    C_Timer.After(0.05, function()
-                        self:HighlightZone(targetMapID)
-                    end)
+                    found = true
+                end
+            end
+        end
+        if not found then
+            for sx = 0.05, 0.95, 0.1 do
+                for sy = 0.05, 0.95, 0.1 do
+                    local resolved = C_Map.GetMapInfoAtPosition(currentMapID, sx, sy)
+                    if resolved and resolved.mapID == targetMapID then
+                        found = true
+                        break
+                    end
+                end
+                if found then break end
+            end
+        end
+        if found then
+            DebugPrint("[EasyFind] CASE 1b: Target visible on current map")
+            self.pendingZoneHighlight = targetMapID
+            C_Timer.After(0.05, function()
+                self:HighlightZone(targetMapID)
+            end)
+            return
+        end
+    end
+
+    -- CASE 1c: Target is an ancestor of the current map (e.g. searching
+    -- "Eastern Kingdoms" while on Eversong Woods). If the breadcrumb
+    -- button is visible, highlight it directly.
+    local currentPath = self:GetMapPath(currentMapID)
+    for ci = 1, #currentPath do
+        if currentPath[ci].mapID == targetMapID then
+            local navBar = WorldMapFrame.NavBar
+            if navBar then
+                local btn = self:FindBreadcrumbButton(navBar, targetMapID)
+                if btn and btn:IsShown() then
+                    DebugPrint("[EasyFind] CASE 1c: Target is visible ancestor, highlighting breadcrumb")
+                    self:ShowBreadcrumbHighlight(btn, targetMapID)
                     return
                 end
             end
+            break
         end
     end
 
     -- Build paths from root (World) to each map
     local targetParentPath = self:GetMapPath(targetParentMapID)
-    local currentPath = self:GetMapPath(currentMapID)
     
     DebugPrint("[EasyFind] Target parent path:")
     for i, p in ipairs(targetParentPath) do
@@ -2655,22 +2663,49 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
         return
     end
     
-    -- CASE 2b: Current zone-level map geographically contains the target even
-    -- though it's not in the API parent chain (e.g. Azuremyst Isle contains
-    -- Exodar, but Exodar's API parent is Kalimdor). Try HighlightZone directly
-    -- before sending the user backwards via breadcrumbs.
-    if currentInfo and currentInfo.mapType == Enum.UIMapType.Zone then
+    -- CASE 2b: Current map geographically contains the target even though
+    -- it's not in the API parent chain (e.g. Azuremyst Isle contains Exodar,
+    -- IQD visible on Quel'Thalas). Try continent projection first, then
+    -- blind grid scan as fallback for zones on different API continents.
+    if currentInfo and (currentInfo.mapType == Enum.UIMapType.Zone or currentInfo.mapType == Enum.UIMapType.Continent) then
+        local found = false
         local cL, cR, cT, cB = GetMapRectViaContinent(targetMapID, currentMapID)
         if cL then
-            local cX, cY = (cL + cR) / 2, (cT + cB) / 2
-            if cX > -0.1 and cX < 1.1 and cY > -0.1 and cY < 1.1 then
-                DebugPrint("[EasyFind] CASE 2b: Target projects onto current zone, trying HighlightZone")
-                self.pendingZoneHighlight = targetMapID
-                C_Timer.After(0.05, function()
-                    self:HighlightZone(targetMapID)
-                end)
-                return
+            for sx = 0, 1, 0.25 do
+                for sy = 0, 1, 0.25 do
+                    local px = cL + (cR - cL) * sx
+                    local py = cT + (cB - cT) * sy
+                    if px > 0 and px < 1 and py > 0 and py < 1 then
+                        local resolved = C_Map.GetMapInfoAtPosition(currentMapID, px, py)
+                        if resolved and resolved.mapID == targetMapID then
+                            found = true
+                            break
+                        end
+                    end
+                end
+                if found then break end
             end
+        end
+        if not found then
+            -- Blind grid scan when continent projection fails (different API continents)
+            for sx = 0.05, 0.95, 0.1 do
+                for sy = 0.05, 0.95, 0.1 do
+                    local resolved = C_Map.GetMapInfoAtPosition(currentMapID, sx, sy)
+                    if resolved and resolved.mapID == targetMapID then
+                        found = true
+                        break
+                    end
+                end
+                if found then break end
+            end
+        end
+        if found then
+            DebugPrint("[EasyFind] CASE 2b: Target found on current map via scan")
+            self.pendingZoneHighlight = targetMapID
+            C_Timer.After(0.05, function()
+                self:HighlightZone(targetMapID)
+            end)
+            return
         end
     end
 
@@ -2742,27 +2777,54 @@ function MapSearch:HighlightBreadcrumbForNavigation(dcaMapID, finalTargetMapID, 
         DebugPrint("[EasyFind] Button found and shown, highlighting it")
         self:ShowBreadcrumbHighlight(buttonToHighlight, finalTargetMapID)
     else
-        -- No exact breadcrumb found - try to highlight any visible breadcrumb
-        -- that helps the user navigate upward (avoid auto-navigating in teaching mode)
-        DebugPrint("[EasyFind] No button found, looking for any visible breadcrumb")
-        local fallbackButton = nil
+        -- FindBreadcrumbButton failed for DCA and all ancestors by mapID.
+        -- Try matching NavBar child text against ancestor names from the
+        -- target path (highest ancestor first) to find the right button.
+        DebugPrint("[EasyFind] No button via ID, trying text match against path ancestors")
         local navChildren = {navBar:GetChildren()}
-        for i = 1, #navChildren do
-            local child = navChildren[i]
-            if child and child:IsShown() and child.GetText and child:GetText() then
-                fallbackButton = child
-                break  -- take the leftmost (highest ancestor) visible button
+        for pathIdx = 1, dcaIndex do
+            local ancestorName = targetParentPath[pathIdx] and targetParentPath[pathIdx].name
+            if ancestorName then
+                local lowerAncestor = slower(ancestorName)
+                for ci = 1, #navChildren do
+                    local child = navChildren[ci]
+                    if child and child:IsShown() and child.GetText then
+                        local text = child:GetText()
+                        if text and slower(text) == lowerAncestor then
+                            buttonToHighlight = child
+                            DebugPrint("[EasyFind] Found breadcrumb via path text match:", text)
+                            break
+                        end
+                    end
+                end
+                if buttonToHighlight then break end
             end
         end
-        if fallbackButton then
-            DebugPrint("[EasyFind] Using fallback breadcrumb:", fallbackButton.GetText and fallbackButton:GetText() or "?")
+
+        -- Last resort: grab the first visible breadcrumb that isn't the
+        -- current map (navigates the user upward without snapping)
+        if not buttonToHighlight then
+            local currentMapID = WorldMapFrame:GetMapID()
+            for ci = 1, #navChildren do
+                local child = navChildren[ci]
+                if child and child:IsShown() and child.GetText and child:GetText() then
+                    local isCurrentMap = (child.GetID and child:GetID() == currentMapID)
+                        or (child.data and child.data.id == currentMapID)
+                    if not isCurrentMap then
+                        buttonToHighlight = child
+                        DebugPrint("[EasyFind] Using first non-current breadcrumb:", child:GetText())
+                        break
+                    end
+                end
+            end
+        end
+
+        if buttonToHighlight then
             self.pendingZoneHighlight = finalTargetMapID
-            self:ShowBreadcrumbHighlight(fallbackButton, finalTargetMapID)
+            self:ShowBreadcrumbHighlight(buttonToHighlight, finalTargetMapID)
         else
-            DebugPrint("[EasyFind] No breadcrumb at all, navigating directly to DCA")
-            -- CRITICAL: Set pending BEFORE SetMapID because SetMapID triggers OnMapChanged synchronously!
+            DebugPrint("[EasyFind] No breadcrumb at all, navigating to DCA as last resort")
             self.pendingZoneHighlight = finalTargetMapID
-            DebugPrint("[EasyFind] Set pendingZoneHighlight BEFORE SetMapID:", finalTargetMapID)
             WorldMapFrame:SetMapID(dcaMapID)
         end
     end
@@ -2859,45 +2921,15 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
         hl:SetFrameStrata("TOOLTIP")
         hl:SetFrameLevel(300)
 
-        hl:EnableMouse(false)
-
-        local pulseAnim = hl:CreateAnimationGroup()
-        pulseAnim:SetLooping("BOUNCE")
-        local pulse = pulseAnim:CreateAnimation("Alpha")
-        pulse:SetFromAlpha(1)
-        pulse:SetToAlpha(0.3)
-        pulse:SetDuration(0.8)
-        hl.pulseAnim = pulseAnim
-
-        -- Extra gold layers to boost brightness (single LockHighlight is too dim)
-        local GLOW_LAYERS = 3
-        hl.glowTextures = {}
-        for i = 1, GLOW_LAYERS do
-            local g = hl:CreateTexture(nil, "ARTWORK", nil, i)
-            g:SetAllPoints()
-            g:SetBlendMode("ADD")
-            g:SetVertexColor(1, 0.82, 0, 1)
-            g:Hide()
-            hl.glowTextures[i] = g
-        end
-
-        -- Unlock the previous button's highlight when this frame hides,
-        -- regardless of which clear path triggered it.
         hl:SetScript("OnHide", function(self)
-            for _, g in ipairs(self.glowTextures) do g:Hide() end
             if self.button then
                 if self.button.UnlockHighlight then self.button:UnlockHighlight() end
                 local hlTex = self.button.GetHighlightTexture and self.button:GetHighlightTexture()
-                if hlTex then
-                    hlTex:SetBlendMode("BLEND")
-                    hlTex:SetVertexColor(1, 1, 1, 1)
-                end
+                if hlTex then hlTex:SetVertexColor(1, 1, 1, 1) end
                 self.button = nil
             end
         end)
 
-        -- Indicator pointing to button - parented to UIParent so it's not clipped
-        -- by WorldMapFrame when extending above the map edge
         local bcIndFrame = CreateFrame("Frame", nil, UIParent)
         bcIndFrame:SetFrameStrata("TOOLTIP")
         bcIndFrame:SetFrameLevel(301)
@@ -2920,46 +2952,21 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
 
     local hl = self.breadcrumbHighlight
 
-    -- Unlock previous button if we're switching to a different one
     if hl.button and hl.button ~= button then
         if hl.button.UnlockHighlight then hl.button:UnlockHighlight() end
         local prevTex = hl.button.GetHighlightTexture and hl.button:GetHighlightTexture()
-        if prevTex then
-            prevTex:SetBlendMode("BLEND")
-            prevTex:SetVertexColor(1, 1, 1, 1)
-        end
+        if prevTex then prevTex:SetVertexColor(1, 1, 1, 1) end
     end
     hl.button = button
 
     if button.LockHighlight then button:LockHighlight() end
     local hlTex = button.GetHighlightTexture and button:GetHighlightTexture()
-    if hlTex then
-        hlTex:SetBlendMode("ADD")
-        hlTex:SetVertexColor(1, 0.82, 0, 1)
-    end
-
-    -- Copy the button's highlight texture into our stacked glow layers
-    for i = 1, #hl.glowTextures do
-        local g = hl.glowTextures[i]
-        if hlTex then
-            local atlas = hlTex:GetAtlas()
-            if atlas then
-                g:SetAtlas(atlas)
-            else
-                g:SetTexture(hlTex:GetTexture())
-                g:SetTexCoord(hlTex:GetTexCoord())
-            end
-            g:Show()
-        else
-            g:Hide()
-        end
-    end
+    if hlTex then hlTex:SetVertexColor(1, 0.82, 0, 1) end
 
     hl:ClearAllPoints()
     hl:SetPoint("TOPLEFT", button, "TOPLEFT", 0, 0)
     hl:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 0)
     hl:Show()
-    if hl.pulseAnim then hl.pulseAnim:Play() end
 
     if hl.indicatorFrame then
         hl.indicatorFrame:Show()
