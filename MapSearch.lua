@@ -2373,40 +2373,20 @@ function MapSearch:HighlightZone(mapID)
 
     -- Cities on continent maps have no highlight texture and sit inside
     -- another zone (e.g. Ironforge inside Dun Morogh, Orgrimmar inside
-    -- Durotar). Sample interior points to find the containing zone.
+    -- Durotar). Detect by checking what zone owns the center point.
+    -- Bugged zones (Uldum, Vale) return the continent at center, not a zone.
     if not hasTexture and isZone then
         local parentMapInfo = C_Map.GetMapInfo(parentMapID)
         if parentMapInfo and parentMapInfo.mapType == Enum.UIMapType.Continent then
-            local counts = {}
-            local zones = {}
-            for sx = 0.2, 0.8, 0.3 do
-                for sy = 0.2, 0.8, 0.3 do
-                    local px = left + (right - left) * sx
-                    local py = top + (bottom - top) * sy
-                    if px >= 0 and px <= 1 and py >= 0 and py <= 1 then
-                        local info = C_Map.GetMapInfoAtPosition(parentMapID, px, py)
-                        if info and info.mapID ~= mapID and info.mapType == Enum.UIMapType.Zone then
-                            counts[info.mapID] = (counts[info.mapID] or 0) + 1
-                            zones[info.mapID] = info
-                        end
-                    end
-                end
-            end
-            local bestID, bestCount
-            for id, count in pairs(counts) do
-                if not bestCount or count > bestCount then
-                    bestID, bestCount = id, count
-                end
-            end
-            if bestID then
+            local cx = (left + right) * 0.5
+            local cy = (top + bottom) * 0.5
+            local centerInfo = C_Map.GetMapInfoAtPosition(parentMapID, cx, cy)
+            local containingZone = centerInfo and centerInfo.mapID ~= mapID
+                and centerInfo.mapType == Enum.UIMapType.Zone and centerInfo.mapID
+            if containingZone then
+                -- Center is owned by another zone: this is a city inside it
                 self.pendingZoneHighlight = mapID
-                self:HighlightZone(bestID)
-                return
-            end
-            local surrounding = FindSurroundingZone(parentMapID, mapID, left, right, top, bottom, 1)
-            if surrounding then
-                self.pendingZoneHighlight = mapID
-                self:HighlightZone(surrounding.mapID)
+                self:HighlightZone(containingZone)
                 return
             end
         end
@@ -2470,6 +2450,67 @@ function MapSearch:HighlightZone(mapID)
         -- Skip the border box when this is the final navigation target
         -- (cities, Dalaran, etc.) - arrow-only is cleaner
         local isFinalTarget = self.pendingZoneHighlight == mapID
+
+        -- Always place a click overlay for the final navigation target.
+        -- For working zones SetMapID is equivalent to a normal click.
+        -- For zones broken by the WoW bug (Uldum, Vale of Eternal Blossoms)
+        -- this is the only way to navigate in.
+        if isFinalTarget then
+            DebugPrint("[EasyFind] Final target, adding click overlay for:", mapID)
+            if not zoneHighlightFrame.clickOverlay then
+                zoneHighlightFrame.clickOverlay = CreateFrame("Button", nil, canvas)
+                zoneHighlightFrame.clickOverlay:SetFrameStrata("DIALOG")
+            end
+            local overlay = zoneHighlightFrame.clickOverlay
+            overlay:ClearAllPoints()
+            overlay:SetPoint("TOPLEFT", canvas, "TOPLEFT", zoneLeftPx, -zoneTopPx)
+            overlay:SetSize(width, height)
+            overlay.targetMapID = mapID
+            overlay:SetScript("OnClick", function(self)
+                self:Hide()
+                local ms = ns.MapSearch
+                if ms then ms.pendingZoneHighlight = nil end
+                WorldMapFrame:SetMapID(self.targetMapID)
+            end)
+            overlay:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
+                local info = C_Map.GetMapInfo(self.targetMapID)
+                GameTooltip:SetText(info and info.name or "")
+                GameTooltip:Show()
+            end)
+            overlay:SetScript("OnLeave", function()
+                GameTooltip:Hide()
+            end)
+            overlay:Show()
+        end
+
+        -- Pulsing radial glow centered on bugged zones with no highlight texture
+        if isFinalTarget and not hasTexture then
+            if not zoneHighlightFrame.centerGlow then
+                local glow = canvas:CreateTexture(nil, "ARTWORK")
+                glow:SetTexture("Interface\\Cooldown\\star4")
+                glow:SetVertexColor(1, 1, 0, 0.4)
+                glow:SetBlendMode("ADD")
+                zoneHighlightFrame.centerGlow = glow
+
+                local ag = glow:CreateAnimationGroup()
+                ag:SetLooping("BOUNCE")
+                local pulse = ag:CreateAnimation("Alpha")
+                pulse:SetFromAlpha(0.25)
+                pulse:SetToAlpha(0.55)
+                pulse:SetDuration(0.8)
+                pulse:SetSmoothing("IN_OUT")
+                zoneHighlightFrame.centerGlowAnim = ag
+            end
+            local glow = zoneHighlightFrame.centerGlow
+            local glowSize = mmin(width, height) * 1.2
+            glow:ClearAllPoints()
+            glow:SetPoint("CENTER", canvas, "TOPLEFT",
+                zoneLeftPx + width * 0.5, -(zoneTopPx + height * 0.5))
+            glow:SetSize(glowSize, glowSize)
+            glow:Show()
+            zoneHighlightFrame.centerGlowAnim:Play()
+        end
 
         if not isFinalTarget then
             -- Border outline + translucent fill for regular zones
@@ -2589,13 +2630,24 @@ function MapSearch:ClearZoneHighlight()
         end
     end
     
+    if zoneHighlightFrame.centerGlow then
+        zoneHighlightFrame.centerGlow:Hide()
+        if zoneHighlightFrame.centerGlowAnim then
+            zoneHighlightFrame.centerGlowAnim:Stop()
+        end
+    end
+
+    if zoneHighlightFrame.clickOverlay then
+        zoneHighlightFrame.clickOverlay:Hide()
+    end
+
     if zoneHighlightFrame.indicator then
         zoneHighlightFrame.indicator:Hide()
         if zoneHighlightFrame.indicator.animGroup then
             zoneHighlightFrame.indicator.animGroup:Stop()
         end
     end
-    
+
     if zoneHighlightFrame.animGroup then
         zoneHighlightFrame.animGroup:Stop()
     end
@@ -2699,22 +2751,31 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
         -- need to route through their containing zone first. Only redirect
         -- when the candidate zone's rect fully encloses the target's rect
         -- (otherwise adjacent zones like Icecrown get falsely matched).
+        -- Skip when the zone has no highlight info (WoW bug: Uldum, Vale of
+        -- Eternal Blossoms) - let it fall through to direct highlight + overlay.
         if currentInfo and currentInfo.mapType == Enum.UIMapType.Continent
            and targetInfo.mapType == Enum.UIMapType.Zone then
             local ok, cL, cR, cT, cB = pcall(C_Map.GetMapRectOnMap, targetMapID, currentMapID)
             if ok and cL and (cR - cL) > 0 then
                 local cx, cy = (cL + cR) / 2, (cT + cB) / 2
+                local targetArea = (cR - cL) * (cB - cT)
                 local containing = C_Map.GetMapInfoAtPosition(currentMapID, cx, cy)
                 if containing and containing.mapID ~= targetMapID
                    and containing.mapType == Enum.UIMapType.Zone then
                     local ok2, sL, sR, sT, sB = pcall(C_Map.GetMapRectOnMap, containing.mapID, currentMapID)
                     if ok2 and sL and cL >= sL and cR <= sR and cT >= sT and cB <= sB then
-                        DebugPrint("[EasyFind] CASE 1: city inside", containing.name, "- routing through it")
-                        self.pendingZoneHighlight = targetMapID
-                        C_Timer.After(0.05, function()
-                            self:HighlightZone(containing.mapID)
-                        end)
-                        return
+                        local containArea = (sR - sL) * (sB - sT)
+                        -- Only route through containing zone if target is
+                        -- city-sized (< 25% of container area). Large zones
+                        -- that appear "inside" another are WoW API bugs.
+                        if targetArea < containArea * 0.25 then
+                            DebugPrint("[EasyFind] CASE 1: city inside", containing.name, "- routing through it")
+                            self.pendingZoneHighlight = targetMapID
+                            C_Timer.After(0.05, function()
+                                self:HighlightZone(containing.mapID)
+                            end)
+                            return
+                        end
                     end
                 end
                 -- Center returned the city itself; check surrounding points
@@ -2723,12 +2784,15 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
                 if surrounding then
                     local ok2, sL, sR, sT, sB = pcall(C_Map.GetMapRectOnMap, surrounding.mapID, currentMapID)
                     if ok2 and sL and cL >= sL and cR <= sR and cT >= sT and cB <= sB then
-                        DebugPrint("[EasyFind] CASE 1: city surrounded by", surrounding.name, "- routing through it")
-                        self.pendingZoneHighlight = targetMapID
-                        C_Timer.After(0.05, function()
-                            self:HighlightZone(surrounding.mapID)
-                        end)
-                        return
+                        local surroundArea = (sR - sL) * (sB - sT)
+                        if targetArea < surroundArea * 0.25 then
+                            DebugPrint("[EasyFind] CASE 1: city surrounded by", surrounding.name, "- routing through it")
+                            self.pendingZoneHighlight = targetMapID
+                            C_Timer.After(0.05, function()
+                                self:HighlightZone(surrounding.mapID)
+                            end)
+                            return
+                        end
                     end
                 end
             end
