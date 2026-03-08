@@ -2294,8 +2294,27 @@ function MapSearch:HighlightZone(mapID)
             left, right, top, bottom = pL, pR, pT, pB
             DebugPrint("[EasyFind] HighlightZone: used continent projection for coords")
         else
-            WorldMapFrame:SetMapID(mapID)
-            return
+            -- Blind scan: find where the target map exists on the parent map
+            -- (handles continents on the World map like Draenor, Outland, etc.)
+            local minX, maxX, minY, maxY = 2, -1, 2, -1
+            for sx = 0.025, 0.975, 0.05 do
+                for sy = 0.025, 0.975, 0.05 do
+                    local info = C_Map.GetMapInfoAtPosition(parentMapID, sx, sy)
+                    if info and info.mapID == mapID then
+                        if sx < minX then minX = sx end
+                        if sx > maxX then maxX = sx end
+                        if sy < minY then minY = sy end
+                        if sy > maxY then maxY = sy end
+                    end
+                end
+            end
+            if maxX > minX then
+                left, right, top, bottom = minX, maxX, minY, maxY
+                DebugPrint("[EasyFind] HighlightZone: found via blind scan", minX, maxX, minY, maxY)
+            else
+                WorldMapFrame:SetMapID(mapID)
+                return
+            end
         end
     end
 
@@ -2322,33 +2341,56 @@ function MapSearch:HighlightZone(mapID)
     if not highlight then return end
     highlight:ClearAllPoints()
 
-    -- Zone-type targets on continent maps may sit inside another zone
-    -- (e.g. Ironforge inside Dun Morogh). If a surrounding zone appears on
-    -- 2+ sides, redirect to it before even checking highlight textures.
-    if isZone then
+    local hasTexture = highlightSuccess and posX and posY and texPercentX and texPercentY
+        and ((fileDataID and fileDataID > 0) or (atlasID and atlasID ~= ""))
+
+    -- Validate the texture actually belongs to this zone. Cities on continent
+    -- maps pick up their containing zone's texture at the center point.
+    if hasTexture and isZone then
+        local resolvedInfo = C_Map.GetMapInfoAtPosition(parentMapID, centerX, centerY)
+        if resolvedInfo and resolvedInfo.mapID ~= mapID then
+            hasTexture = false
+        end
+    end
+
+    -- Cities on continent maps have no highlight texture and sit inside
+    -- another zone (e.g. Ironforge inside Dun Morogh, Orgrimmar inside
+    -- Durotar). Sample interior points to find the containing zone.
+    if not hasTexture and isZone then
         local parentMapInfo = C_Map.GetMapInfo(parentMapID)
         if parentMapInfo and parentMapInfo.mapType == Enum.UIMapType.Continent then
-            local containingZone = C_Map.GetMapInfoAtPosition(parentMapID, centerX, centerY)
-            if containingZone and containingZone.mapID ~= mapID then
+            local counts = {}
+            local zones = {}
+            for sx = 0.2, 0.8, 0.3 do
+                for sy = 0.2, 0.8, 0.3 do
+                    local px = left + (right - left) * sx
+                    local py = top + (bottom - top) * sy
+                    if px >= 0 and px <= 1 and py >= 0 and py <= 1 then
+                        local info = C_Map.GetMapInfoAtPosition(parentMapID, px, py)
+                        if info and info.mapID ~= mapID and info.mapType == Enum.UIMapType.Zone then
+                            counts[info.mapID] = (counts[info.mapID] or 0) + 1
+                            zones[info.mapID] = info
+                        end
+                    end
+                end
+            end
+            local bestID, bestCount
+            for id, count in pairs(counts) do
+                if not bestCount or count > bestCount then
+                    bestID, bestCount = id, count
+                end
+            end
+            if bestID then
                 self.pendingZoneHighlight = mapID
-                self:HighlightZone(containingZone.mapID)
+                self:HighlightZone(bestID)
                 return
             end
-            local surrounding = FindSurroundingZone(parentMapID, mapID, left, right, top, bottom, 2)
+            local surrounding = FindSurroundingZone(parentMapID, mapID, left, right, top, bottom, 1)
             if surrounding then
                 self.pendingZoneHighlight = mapID
                 self:HighlightZone(surrounding.mapID)
                 return
             end
-        end
-    end
-
-    local hasTexture = highlightSuccess and posX and posY and texPercentX and texPercentY
-        and ((fileDataID and fileDataID > 0) or (atlasID and atlasID ~= ""))
-    if hasTexture and isZone then
-        local resolvedInfo = C_Map.GetMapInfoAtPosition(parentMapID, centerX, centerY)
-        if resolvedInfo and resolvedInfo.mapID ~= mapID then
-            hasTexture = false
         end
     end
     if hasTexture then
@@ -2381,18 +2423,6 @@ function MapSearch:HighlightZone(mapID)
     else
         if isZone then
             local parentMapInfo = C_Map.GetMapInfo(parentMapID)
-
-            -- On continent: the strict (2+) check above missed this city
-            -- (e.g. Stormwind where only 1 probe hits Elwynn). Try again
-            -- accepting any single surrounding zone.
-            if parentMapInfo and parentMapInfo.mapType == Enum.UIMapType.Continent then
-                local surrounding = FindSurroundingZone(parentMapID, mapID, left, right, top, bottom, 1)
-                if surrounding then
-                    self.pendingZoneHighlight = mapID
-                    self:HighlightZone(surrounding.mapID)
-                    return
-                end
-            end
 
             -- On a zone-level map: scan for actual bounds, keeping the
             -- continent projection as fallback if the scan returns a tiny
@@ -2524,6 +2554,8 @@ function MapSearch:ClearZoneHighlight()
     if not zoneHighlightFrame then return end
     
     for _, highlight in ipairs(zoneHighlightFrame.highlights) do
+        highlight:SetTexture(nil)
+        highlight:SetTexCoord(0, 1, 0, 1)
         highlight:Hide()
     end
     
@@ -2597,6 +2629,11 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
         return 
     end
     
+    if currentMapID == targetMapID then
+        DebugPrint("[EasyFind] Already viewing target zone, nothing to do")
+        return
+    end
+
     local currentInfo = C_Map.GetMapInfo(currentMapID)
     DebugPrint("[EasyFind] Current map:", currentInfo and currentInfo.name or "nil", "ID:", currentMapID)
 
@@ -2789,22 +2826,22 @@ function MapSearch:HighlightBreadcrumbForNavigation(dcaMapID, finalTargetMapID, 
         DebugPrint("[EasyFind] Button found and shown, highlighting it")
         self:ShowBreadcrumbHighlight(buttonToHighlight, finalTargetMapID)
     else
-        -- No exact breadcrumb found - try to highlight any visible breadcrumb
-        -- that helps the user navigate upward (avoid auto-navigating in teaching mode)
-        DebugPrint("[EasyFind] No button found, looking for any visible breadcrumb")
-        local fallbackButton = nil
-        local navChildren = {navBar:GetChildren()}
-        for i = 1, #navChildren do
-            local child = navChildren[i]
-            if child and child:IsShown() and child.GetText and child:GetText() then
-                fallbackButton = child
-                break  -- take the leftmost (highest ancestor) visible button
+        -- Walk the current map's parent chain (highest first) and find
+        -- the first ancestor that has a visible breadcrumb button.
+        DebugPrint("[EasyFind] No button found, walking current path for fallback")
+        local currentMapID = WorldMapFrame:GetMapID()
+        local currentPath = self:GetMapPath(currentMapID)
+        for i = 1, #currentPath - 1 do  -- skip current map itself
+            local btn = self:FindBreadcrumbButton(navBar, currentPath[i].mapID)
+            if btn and btn:IsShown() then
+                buttonToHighlight = btn
+                DebugPrint("[EasyFind] Using path fallback:", currentPath[i].name, currentPath[i].mapID)
+                break
             end
         end
-        if fallbackButton then
-            DebugPrint("[EasyFind] Using fallback breadcrumb:", fallbackButton.GetText and fallbackButton:GetText() or "?")
+        if buttonToHighlight then
             self.pendingZoneHighlight = finalTargetMapID
-            self:ShowBreadcrumbHighlight(fallbackButton, finalTargetMapID)
+            self:ShowBreadcrumbHighlight(buttonToHighlight, finalTargetMapID)
         else
             DebugPrint("[EasyFind] No breadcrumb at all, navigating directly to DCA")
             -- CRITICAL: Set pending BEFORE SetMapID because SetMapID triggers OnMapChanged synchronously!
@@ -2857,12 +2894,27 @@ function MapSearch:FindBreadcrumbButton(navBar, mapID)
         DebugPrint("[EasyFind] navBar.navList is nil!")
     end
     
-    -- Check home button (usually Azeroth or World)
+    -- Check home button (usually World/Cosmic)
     if navBar.home and navBar.home:IsShown() then
-        local homeMapID = navBar.home.id
+        -- Cosmic map is always the home button; API name "Cosmic" differs
+        -- from the display name "World" so ID/text checks fail
+        local targetInfo = C_Map.GetMapInfo(mapID)
+        if targetInfo and targetInfo.mapType == Enum.UIMapType.Cosmic then
+            DebugPrint("[EasyFind] Cosmic map requested, returning home button")
+            return navBar.home
+        end
+        local homeMapID = navBar.home.id or (navBar.home.data and navBar.home.data.id)
         DebugPrint("[EasyFind] Home button ID:", homeMapID)
         if homeMapID == mapID then
             return navBar.home
+        end
+        -- Home button might match by text instead of ID
+        if not homeMapID and navBar.home.GetText then
+            local homeText = navBar.home:GetText()
+            if homeText and targetInfo and homeText == targetInfo.name then
+                DebugPrint("[EasyFind] Found home button via text:", homeText)
+                return navBar.home
+            end
         end
     else
         DebugPrint("[EasyFind] No home button or not shown")
