@@ -2373,21 +2373,49 @@ function MapSearch:HighlightZone(mapID)
 
     -- Cities on continent maps have no highlight texture and sit inside
     -- another zone (e.g. Ironforge inside Dun Morogh, Orgrimmar inside
-    -- Durotar). Detect by checking what zone owns the center point.
-    -- Bugged zones (Uldum, Vale) return the continent at center, not a zone.
+    -- Durotar). Sample interior points to find the containing zone.
+    -- Bugged zones (Uldum, Vale) are detected separately: their center
+    -- returns the continent itself rather than any zone.
     if not hasTexture and isZone then
         local parentMapInfo = C_Map.GetMapInfo(parentMapID)
         if parentMapInfo and parentMapInfo.mapType == Enum.UIMapType.Continent then
             local cx = (left + right) * 0.5
             local cy = (top + bottom) * 0.5
             local centerInfo = C_Map.GetMapInfoAtPosition(parentMapID, cx, cy)
-            local containingZone = centerInfo and centerInfo.mapID ~= mapID
-                and centerInfo.mapType == Enum.UIMapType.Zone and centerInfo.mapID
-            if containingZone then
-                -- Center is owned by another zone: this is a city inside it
-                self.pendingZoneHighlight = mapID
-                self:HighlightZone(containingZone)
-                return
+            local isBuggedZone = not centerInfo
+                or centerInfo.mapType ~= Enum.UIMapType.Zone
+            if not isBuggedZone then
+                -- Normal city detection: sample interior points
+                local counts = {}
+                for sx = 0.2, 0.8, 0.3 do
+                    for sy = 0.2, 0.8, 0.3 do
+                        local px = left + (right - left) * sx
+                        local py = top + (bottom - top) * sy
+                        if px >= 0 and px <= 1 and py >= 0 and py <= 1 then
+                            local info = C_Map.GetMapInfoAtPosition(parentMapID, px, py)
+                            if info and info.mapID ~= mapID and info.mapType == Enum.UIMapType.Zone then
+                                counts[info.mapID] = (counts[info.mapID] or 0) + 1
+                            end
+                        end
+                    end
+                end
+                local bestID, bestCount
+                for id, count in pairs(counts) do
+                    if not bestCount or count > bestCount then
+                        bestID, bestCount = id, count
+                    end
+                end
+                if bestID then
+                    self.pendingZoneHighlight = mapID
+                    self:HighlightZone(bestID)
+                    return
+                end
+                local surrounding = FindSurroundingZone(parentMapID, mapID, left, right, top, bottom, 1)
+                if surrounding then
+                    self.pendingZoneHighlight = mapID
+                    self:HighlightZone(surrounding.mapID)
+                    return
+                end
             end
         end
     end
