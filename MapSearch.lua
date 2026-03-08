@@ -2100,59 +2100,106 @@ function MapSearch:GroupZonesByParent(zones)
     return result
 end
 
--- Scan canvas children for a city icon (texture 136441) near normalized coords.
--- These are raw frames on the canvas, not Blizzard MapPinMixin pins.
-function MapSearch:FindCityPin(zoneName, normX, normY)
-    if not WorldMapFrame then return nil end
-
-    -- Only match on continent-level maps where city pins are clickable
-    local parentMapID = WorldMapFrame:GetMapID()
-    if not parentMapID then return nil end
-    local parentInfo = C_Map.GetMapInfo(parentMapID)
-    if not parentInfo or parentInfo.mapType ~= Enum.UIMapType.Continent then return nil end
-
-    local canvas = WorldMapFrame.ScrollContainer and WorldMapFrame.ScrollContainer.Child
-    if not canvas then return nil end
-
-    local lowerName = slower(zoneName)
-    local children = {canvas:GetChildren()}
-
-    -- Pass 1: exact name match
-    for i = 1, #children do
-        local child = children[i]
-        if child:IsShown() and child.name and slower(child.name) == lowerName then
-            return child
-        end
+-- Walk up the parent chain to find the continent a map belongs to
+local function GetContinentForMap(mapID)
+    local id = mapID
+    for i = 1, 10 do
+        local info = C_Map.GetMapInfo(id)
+        if not info then return nil end
+        if info.mapType == Enum.UIMapType.Continent then return id end
+        id = ZONE_PARENT_OVERRIDES[id] or info.parentMapID
+        if not id or id == 0 then return nil end
     end
+end
 
-    -- Pass 2: nearest city icon pin by GetPosition()
-    if not normX then return nil end
-    local bestPin, bestDist = nil, 0.01
-    for i = 1, #children do
-        local child = children[i]
-        if child:IsShown() and child.GetPosition then
-            local hasCityTex = false
-            for _, region in ipairs({child:GetRegions()}) do
-                if region.GetTextureFileID and region:GetTextureFileID() == 136441 then
-                    hasCityTex = true
-                    break
+-- Project mapID's rect onto viewMapID's coordinate space via their shared
+-- continent. Handles zones not in a direct parent-child relationship
+-- (e.g. Stormwind projected onto Elwynn Forest).
+local function GetMapRectViaContinent(mapID, viewMapID)
+    local c1 = GetContinentForMap(mapID)
+    local c2 = GetContinentForMap(viewMapID)
+    if not c1 or c1 ~= c2 then return nil end
+
+    local ok1, tL, tR, tT, tB = pcall(C_Map.GetMapRectOnMap, mapID, c1)
+    local ok2, vL, vR, vT, vB = pcall(C_Map.GetMapRectOnMap, viewMapID, c1)
+    if not ok1 or not tL or not ok2 or not vL then return nil end
+
+    local vW, vH = vR - vL, vB - vT
+    if vW == 0 or vH == 0 then return nil end
+
+    return (tL - vL) / vW, (tR - vL) / vW, (tT - vT) / vH, (tB - vT) / vH
+end
+
+-- Scan GetMapInfoAtPosition across a grid on viewMapID to find the actual
+-- boundary where the game considers targetMapID to exist. Returns a tight
+-- bounding rect, or nil if the target isn't found. Uses the continent-
+-- projected rect as the search region (with padding) to limit API calls.
+local function ScanZoneBoundsOnMap(targetMapID, viewMapID, projL, projR, projT, projB)
+    local pad = 0.05
+    local minX = mmax(0, (projL or 0) - pad)
+    local maxX = mmin(1, (projR or 1) + pad)
+    local minY = mmax(0, (projT or 0) - pad)
+    local maxY = mmin(1, (projB or 1) + pad)
+
+    local step = 0.01
+    local foundL, foundR, foundT, foundB
+    local x = minX
+    while x <= maxX do
+        local y = minY
+        while y <= maxY do
+            local info = C_Map.GetMapInfoAtPosition(viewMapID, x, y)
+            if info and info.mapID == targetMapID then
+                if not foundL then
+                    foundL, foundR, foundT, foundB = x, x, y, y
+                else
+                    if x < foundL then foundL = x end
+                    if x > foundR then foundR = x end
+                    if y < foundT then foundT = y end
+                    if y > foundB then foundB = y end
                 end
             end
-            if hasCityTex then
-                local ok, px, py = pcall(child.GetPosition, child)
-                if ok and px and py then
-                    local dx = px - normX
-                    local dy = py - normY
-                    local dist = dx * dx + dy * dy
-                    if dist < bestDist then
-                        bestDist = dist
-                        bestPin = child
-                    end
-                end
+            y = y + step
+        end
+        x = x + step
+    end
+
+    if not foundL then return nil end
+    return foundL, foundR, foundT, foundB
+end
+
+-- Sample points outside a zone's rect to find surrounding zones.
+-- minCount=2 → only return a zone if it appears on 2+ sides (for pre-texture
+--   check: catches cities like Ironforge where Dun Morogh surrounds 3/4 sides)
+-- minCount=1 → return the first valid zone found (for post-texture fallback:
+--   catches cities like Stormwind where only 1-2 probes hit a named zone)
+local function FindSurroundingZone(parentMapID, mapID, left, right, top, bottom, minCount)
+    local centerX = (left + right) / 2
+    local centerY = (top + bottom) / 2
+    local offsets = {
+        { left - 0.02, centerY },
+        { right + 0.02, centerY },
+        { centerX, top - 0.02 },
+        { centerX, bottom + 0.02 },
+    }
+    local counts = {}
+    local zones = {}
+    for i = 1, #offsets do
+        local px, py = offsets[i][1], offsets[i][2]
+        if px >= 0 and px <= 1 and py >= 0 and py <= 1 then
+            local info = C_Map.GetMapInfoAtPosition(parentMapID, px, py)
+            if info and info.mapID ~= mapID and info.mapType == Enum.UIMapType.Zone then
+                counts[info.mapID] = (counts[info.mapID] or 0) + 1
+                zones[info.mapID] = info
             end
         end
     end
-    return bestPin
+    local bestID, bestCount
+    for id, count in pairs(counts) do
+        if count >= minCount and (not bestCount or count > bestCount) then
+            bestID, bestCount = id, count
+        end
+    end
+    if bestID then return zones[bestID] end
 end
 
 -- Highlight a zone on the continent map using the actual zone shape texture
@@ -2186,41 +2233,34 @@ function MapSearch:HighlightZone(mapID)
         DebugPrint("[EasyFind] HighlightZone: no mapInfo for", mapID)
         return 
     end
-    DebugPrint("[EasyFind] HighlightZone: zone name:", mapInfo.name)
-    
+    DebugPrint("[EasyFind] HighlightZone: zone name:", mapInfo.name, "mapType:", mapInfo.mapType)
+
     local parentMapID = WorldMapFrame:GetMapID()
-    if not parentMapID then 
-        DebugPrint("[EasyFind] HighlightZone: no parentMapID!")
-        return 
-    end
-    DebugPrint("[EasyFind] HighlightZone: parent map ID:", parentMapID)
-    
-    -- Get the bounds of the zone on the parent map
+    if not parentMapID then return end
+
+    local isZone = mapInfo.mapType == Enum.UIMapType.Zone
+
     local success, left, right, top, bottom = pcall(function()
         return C_Map.GetMapRectOnMap(mapID, parentMapID)
     end)
-    
-    DebugPrint("[EasyFind] HighlightZone: GetMapRectOnMap success:", success, "left:", left)
-    
-    if not success or not left then
-        DebugPrint("[EasyFind] HighlightZone: GetMapRectOnMap failed!")
-        return
-    end
 
-    -- Instanced zones (player housing, scenarios) return 0,0,0,0 because they have
-    -- no physical position on the parent continent. Navigate directly instead.
+    if not success or not left then return end
+
+    -- GetMapRectOnMap returned zeros - either an instanced zone with no physical
+    -- position, or a zone not in a direct parent-child relationship (e.g.
+    -- Stormwind on Elwynn). Try continent projection before giving up.
     if left == 0 and right == 0 and top == 0 and bottom == 0 then
-        DebugPrint("[EasyFind] HighlightZone: zero rect, navigating directly to zone")
-        WorldMapFrame:SetMapID(mapID)
-        return
+        local pL, pR, pT, pB = GetMapRectViaContinent(mapID, parentMapID)
+        if pL then
+            left, right, top, bottom = pL, pR, pT, pB
+            DebugPrint("[EasyFind] HighlightZone: used continent projection for coords")
+        else
+            WorldMapFrame:SetMapID(mapID)
+            return
+        end
     end
 
-    DebugPrint("[EasyFind] HighlightZone: bounds L/R/T/B:", left, right, top, bottom)
-    
     local canvasWidth, canvasHeight = canvas:GetSize()
-    DebugPrint("[EasyFind] HighlightZone: canvas size:", canvasWidth, canvasHeight)
-    
-    -- Calculate zone center and size in pixels
     local centerX = (left + right) / 2
     local centerY = (top + bottom) / 2
     local zoneCenterPxX = centerX * canvasWidth
@@ -2231,39 +2271,48 @@ function MapSearch:HighlightZone(mapID)
     local zoneBottomPx = bottom * canvasHeight
     local zoneLeftPx = left * canvasWidth
     local zoneRightPx = right * canvasWidth
-    
-    -- For cities, find and point the arrow at the existing map icon
-    local cityOk, cityPin = pcall(self.FindCityPin, self, mapInfo.name, centerX, centerY)
-    if cityOk and cityPin then
-        DebugPrint("[EasyFind] HighlightZone: Found city pin for", mapInfo.name)
-        self:PointArrowAtPin(cityPin)
-        return true
-    end
 
-    -- Try to get the actual zone highlight texture using the game's API
+    -- B1: Try the zone's highlight texture from the game API
     local fileDataID, atlasID, texPercentX, texPercentY, texWidth, texHeight, posX, posY
     local highlightSuccess = pcall(function()
-        fileDataID, atlasID, texPercentX, texPercentY, texWidth, texHeight, posX, posY = 
+        fileDataID, atlasID, texPercentX, texPercentY, texWidth, texHeight, posX, posY =
             C_Map.GetMapHighlightInfoAtPosition(parentMapID, centerX, centerY)
     end)
-    
-    DebugPrint("[EasyFind] HighlightZone: GetMapHighlightInfoAtPosition success:", highlightSuccess)
-    DebugPrint("[EasyFind] HighlightZone: fileDataID:", fileDataID, "posX:", posX, "posY:", posY)
-    
+
     local highlight = zoneHighlightFrame.highlights[1]
-    if not highlight then
-        DebugPrint("[EasyFind] HighlightZone: ERROR - no highlight texture!")
-        return
-    end
-    
+    if not highlight then return end
     highlight:ClearAllPoints()
-    
-    DebugPrint("[EasyFind] HighlightZone: texPercentX:", texPercentX, "texPercentY:", texPercentY, "texWidth:", texWidth, "texHeight:", texHeight)
-    
+
+    -- Zone-type targets on continent maps may sit inside another zone
+    -- (e.g. Ironforge inside Dun Morogh). If a surrounding zone appears on
+    -- 2+ sides, redirect to it before even checking highlight textures.
+    if isZone then
+        local parentMapInfo = C_Map.GetMapInfo(parentMapID)
+        if parentMapInfo and parentMapInfo.mapType == Enum.UIMapType.Continent then
+            local containingZone = C_Map.GetMapInfoAtPosition(parentMapID, centerX, centerY)
+            if containingZone and containingZone.mapID ~= mapID then
+                self.pendingZoneHighlight = mapID
+                self:HighlightZone(containingZone.mapID)
+                return
+            end
+            local surrounding = FindSurroundingZone(parentMapID, mapID, left, right, top, bottom, 2)
+            if surrounding then
+                self.pendingZoneHighlight = mapID
+                self:HighlightZone(surrounding.mapID)
+                return
+            end
+        end
+    end
+
     local hasTexture = highlightSuccess and posX and posY and texPercentX and texPercentY
         and ((fileDataID and fileDataID > 0) or (atlasID and atlasID ~= ""))
+    if hasTexture and isZone then
+        local resolvedInfo = C_Map.GetMapInfoAtPosition(parentMapID, centerX, centerY)
+        if resolvedInfo and resolvedInfo.mapID ~= mapID then
+            hasTexture = false
+        end
+    end
     if hasTexture then
-        DebugPrint("[EasyFind] HighlightZone: Using zone texture, fileDataID:", fileDataID, "atlas:", atlasID)
         local pixelPosX = posX * canvasWidth
         local pixelPosY = posY * canvasHeight
         local pixelWidth = texWidth * canvasWidth
@@ -2290,15 +2339,62 @@ function MapSearch:HighlightZone(mapID)
                 hl:Show()
             end
         end
-        DebugPrint("[EasyFind] HighlightZone: stacked", layers, "layers at", pixelPosX, pixelPosY, "size", pixelWidth, pixelHeight)
     else
-        DebugPrint("[EasyFind] HighlightZone: Using fallback colored overlay")
-        highlight:SetColorTexture(1, 1, 0, 0.75)
+        if isZone then
+            local parentMapInfo = C_Map.GetMapInfo(parentMapID)
+
+            -- On continent: the strict (2+) check above missed this city
+            -- (e.g. Stormwind where only 1 probe hits Elwynn). Try again
+            -- accepting any single surrounding zone.
+            if parentMapInfo and parentMapInfo.mapType == Enum.UIMapType.Continent then
+                local surrounding = FindSurroundingZone(parentMapID, mapID, left, right, top, bottom, 1)
+                if surrounding then
+                    self.pendingZoneHighlight = mapID
+                    self:HighlightZone(surrounding.mapID)
+                    return
+                end
+            end
+
+            -- On a zone-level map: scan for actual bounds
+            if parentMapInfo and parentMapInfo.mapType == Enum.UIMapType.Zone then
+                local sL, sR, sT, sB = ScanZoneBoundsOnMap(mapID, parentMapID, left, right, top, bottom)
+                if sL then
+                    left, right, top, bottom = sL, sR, sT, sB
+                    width = (right - left) * canvasWidth
+                    height = (bottom - top) * canvasHeight
+                    zoneTopPx = top * canvasHeight
+                    zoneLeftPx = left * canvasWidth
+                    DebugPrint("[EasyFind] HighlightZone: scanned bounds L=", sL, "R=", sR, "T=", sT, "B=", sB)
+                end
+            end
+        end
+
+        -- Final fallback - border outline + translucent fill
+        local borderW = 2
+        highlight:SetColorTexture(1, 1, 0, 0.15)
         highlight:SetBlendMode("BLEND")
         highlight:SetPoint("TOPLEFT", canvas, "TOPLEFT", zoneLeftPx, -zoneTopPx)
         highlight:SetSize(width, height)
         highlight:Show()
-        DebugPrint("[EasyFind] HighlightZone: fallback at", zoneLeftPx, zoneTopPx, "size", width, height)
+
+        local edges = {
+            { "TOPLEFT", "TOPLEFT", zoneLeftPx, -zoneTopPx, width, borderW },
+            { "TOPLEFT", "TOPLEFT", zoneLeftPx, -(zoneTopPx + height - borderW), width, borderW },
+            { "TOPLEFT", "TOPLEFT", zoneLeftPx, -zoneTopPx, borderW, height },
+            { "TOPLEFT", "TOPLEFT", zoneLeftPx + width - borderW, -zoneTopPx, borderW, height },
+        }
+        for i = 1, 4 do
+            local hl = zoneHighlightFrame.highlights[i + 1]
+            if hl then
+                local e = edges[i]
+                hl:ClearAllPoints()
+                hl:SetColorTexture(1, 1, 0, 0.8)
+                hl:SetBlendMode("BLEND")
+                hl:SetPoint(e[1], canvas, e[2], e[3], e[4])
+                hl:SetSize(e[5], e[6])
+                hl:Show()
+            end
+        end
     end
     
     DebugPrint("[EasyFind] HighlightZone: About to show frame")
@@ -2464,7 +2560,28 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
         end)
         return
     end
-    
+
+    -- CASE 1b: Current map physically contains the target even though the API
+    -- parent chain doesn't link them (e.g. Stormwind inside Elwynn Forest).
+    -- Verify via continent projection + GetMapInfoAtPosition.
+    if currentInfo and currentInfo.mapType == Enum.UIMapType.Zone then
+        local cL, cR, cT, cB = GetMapRectViaContinent(targetMapID, currentMapID)
+        if cL then
+            local cX, cY = (cL + cR) / 2, (cT + cB) / 2
+            if cX > 0 and cX < 1 and cY > 0 and cY < 1 then
+                local resolved = C_Map.GetMapInfoAtPosition(currentMapID, cX, cY)
+                if resolved and resolved.mapID == targetMapID then
+                    DebugPrint("[EasyFind] CASE 1b: Target visible on current map (containing zone)")
+                    self.pendingZoneHighlight = targetMapID
+                    C_Timer.After(0.05, function()
+                        self:HighlightZone(targetMapID)
+                    end)
+                    return
+                end
+            end
+        end
+    end
+
     -- Build paths from root (World) to each map
     local targetParentPath = self:GetMapPath(targetParentMapID)
     local currentPath = self:GetMapPath(currentMapID)
@@ -2709,26 +2826,32 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
         hl:SetFrameStrata("TOOLTIP")
         hl:SetFrameLevel(300)
 
-        -- Gold tinge overlay, matching Blizzard nav bar's current-map tinge style.
-        -- Uses WHITE8x8 (real texture) so SetGradient works (SetColorTexture ignores it).
-        local tinge = hl:CreateTexture(nil, "ARTWORK")
-        tinge:SetTexture("Interface\\BUTTONS\\WHITE8x8")
-        tinge:SetGradient("HORIZONTAL", CreateColor(1, 0.82, 0, 0), CreateColor(1, 0.82, 0, 0.35))
-        tinge:SetBlendMode("ADD")
-        tinge:SetAllPoints()
-        hl.tinge = tinge
+        hl:EnableMouse(false)
 
-        local glowAnim = hl:CreateAnimationGroup()
-        glowAnim:SetLooping("BOUNCE")
-        local glowAlpha = glowAnim:CreateAnimation("Alpha")
-        glowAlpha:SetFromAlpha(1)
-        glowAlpha:SetToAlpha(0.3)
-        glowAlpha:SetDuration(0.6)
-        hl.glowAnim = glowAnim
+        local pulseAnim = hl:CreateAnimationGroup()
+        pulseAnim:SetLooping("BOUNCE")
+        local pulse = pulseAnim:CreateAnimation("Alpha")
+        pulse:SetFromAlpha(1)
+        pulse:SetToAlpha(0.3)
+        pulse:SetDuration(0.8)
+        hl.pulseAnim = pulseAnim
+
+        -- Extra gold layers to boost brightness (single LockHighlight is too dim)
+        local GLOW_LAYERS = 3
+        hl.glowTextures = {}
+        for i = 1, GLOW_LAYERS do
+            local g = hl:CreateTexture(nil, "ARTWORK", nil, i)
+            g:SetAllPoints()
+            g:SetBlendMode("ADD")
+            g:SetVertexColor(1, 0.82, 0, 1)
+            g:Hide()
+            hl.glowTextures[i] = g
+        end
 
         -- Unlock the previous button's highlight when this frame hides,
         -- regardless of which clear path triggered it.
         hl:SetScript("OnHide", function(self)
+            for _, g in ipairs(self.glowTextures) do g:Hide() end
             if self.button then
                 if self.button.UnlockHighlight then self.button:UnlockHighlight() end
                 local hlTex = self.button.GetHighlightTexture and self.button:GetHighlightTexture()
@@ -2782,11 +2905,28 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
         hlTex:SetVertexColor(1, 0.82, 0, 1)
     end
 
+    -- Copy the button's highlight texture into our stacked glow layers
+    for i = 1, #hl.glowTextures do
+        local g = hl.glowTextures[i]
+        if hlTex then
+            local atlas = hlTex:GetAtlas()
+            if atlas then
+                g:SetAtlas(atlas)
+            else
+                g:SetTexture(hlTex:GetTexture())
+                g:SetTexCoord(hlTex:GetTexCoord())
+            end
+            g:Show()
+        else
+            g:Hide()
+        end
+    end
+
     hl:ClearAllPoints()
     hl:SetPoint("TOPLEFT", button, "TOPLEFT", 0, 0)
     hl:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 0, 0)
     hl:Show()
-    if hl.glowAnim then hl.glowAnim:Play() end
+    if hl.pulseAnim then hl.pulseAnim:Play() end
 
     if hl.indicatorFrame then
         hl.indicatorFrame:Show()
@@ -2858,7 +2998,7 @@ function MapSearch:HookWorldMap()
         local newMapInfo = newMapID and C_Map.GetMapInfo(newMapID)
         DebugPrint("[EasyFind] OnMapChanged - new map:", newMapInfo and newMapInfo.name or "nil", "ID:", newMapID)
         DebugPrint("[EasyFind] OnMapChanged - pendingZoneHighlight:", self.pendingZoneHighlight)
-        
+
         -- Snapshot pendingZoneHighlight BEFORE clearing.
         -- pendingWaypoint is NOT wiped by ClearZoneHighlight so no snapshot needed.
         local savedPendingZone = self.pendingZoneHighlight
@@ -2932,7 +3072,9 @@ function MapSearch:HookWorldMap()
                     end)
                 end
             else
-                -- Wrong zone or intermediate step - reguide toward target
+                -- Wrong zone or intermediate step - use full path-based navigation
+                -- so multi-level chains (Cosmic → Azeroth → EK → Dun Morogh)
+                -- work correctly instead of trying to render directly.
                 DebugPrint("[EasyFind] OnMapChanged - reguiding to:", savedPendingZone)
                 C_Timer.After(0.1, function()
                     self:HighlightZoneOnMap(savedPendingZone)
@@ -4667,73 +4809,7 @@ function MapSearch:HighlightPin(pin)
     end
 end
 
-function MapSearch:PointArrowAtPin(pin)
-    waypointPin:Hide()
-
-    if not pin or not pin:IsShown() then
-        self:ClearHighlight()
-        return
-    end
-
-    currentHighlightedPin = pin
-
-    local userScale = EasyFind.db.iconScale or 1.0
-    local indicatorSize     = ns.UIToCanvas(ns.ICON_SIZE)      * userScale
-    local indicatorGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE) * userScale
-    indicatorFrame:SetSize(indicatorSize, indicatorSize)
-    indicatorFrame.glow:SetSize(indicatorGlowSize, indicatorGlowSize)
-
-    -- Keep highlightFrame shown (indicator is its child) but hide borders
-    highlightFrame:SetSize(1, 1)
-    highlightFrame:ClearAllPoints()
-    highlightFrame:SetPoint("CENTER", pin, "CENTER", 0, 0)
-    highlightFrame.top:Hide()
-    highlightFrame.bottom:Hide()
-    highlightFrame.left:Hide()
-    highlightFrame.right:Hide()
-
-    highlightFrame:Show()
-
-    -- Glow directly on the pin icon using the same star4 texture as map search indicators
-    if not pin.efGlowFrame then
-        local f = CreateFrame("Frame", nil, pin)
-        f:SetAllPoints()
-        f:SetFrameLevel(mmax(pin:GetFrameLevel() - 1, 0))
-        local g = f:CreateTexture(nil, "BACKGROUND")
-        g:SetTexture("Interface\\Cooldown\\star4")
-        g:SetBlendMode("ADD")
-        g:SetPoint("CENTER")
-        f.tex = g
-        local ag = f:CreateAnimationGroup()
-        ag:SetLooping("BOUNCE")
-        local alpha = ag:CreateAnimation("Alpha")
-        alpha:SetFromAlpha(0.6)
-        alpha:SetToAlpha(0.15)
-        alpha:SetDuration(0.5)
-        f.animGroup = ag
-        pin.efGlowFrame = f
-    end
-    local pinW, pinH = pin:GetSize()
-    local glowSize = mmax(pinW or 32, pinH or 32) * 2.5
-    pin.efGlowFrame.tex:SetSize(glowSize, glowSize)
-    pin.efGlowFrame.tex:SetVertexColor(1, 1, 0, 1)
-    pin.efGlowFrame:Show()
-    pin.efGlowFrame.animGroup:Play()
-
-    indicatorFrame:ClearAllPoints()
-    indicatorFrame:SetPoint("BOTTOM", pin, "TOP", 0, 2)
-    indicatorFrame:Show()
-
-    if indicatorFrame.animGroup then
-        indicatorFrame.animGroup:Play()
-    end
-end
-
 function MapSearch:ClearHighlight()
-    if currentHighlightedPin and currentHighlightedPin.efGlowFrame then
-        currentHighlightedPin.efGlowFrame.animGroup:Stop()
-        currentHighlightedPin.efGlowFrame:Hide()
-    end
     highlightFrame:Hide()
     highlightFrame.top:Show()
     highlightFrame.bottom:Show()
