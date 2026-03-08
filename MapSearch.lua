@@ -2449,30 +2449,36 @@ function MapSearch:HighlightZone(mapID)
             end
         end
 
-        -- Final fallback - border outline + translucent fill
-        local borderW = 2
-        highlight:SetColorTexture(1, 1, 0, 0.15)
-        highlight:SetBlendMode("BLEND")
-        highlight:SetPoint("TOPLEFT", canvas, "TOPLEFT", zoneLeftPx, -zoneTopPx)
-        highlight:SetSize(width, height)
-        highlight:Show()
+        -- Skip the border box for cities on zone maps (arrow-only)
+        local parentMapInfo2 = parentMapInfo or C_Map.GetMapInfo(parentMapID)
+        local isCityOnZone = parentMapInfo2 and parentMapInfo2.mapType == Enum.UIMapType.Zone
 
-        local edges = {
-            { "TOPLEFT", "TOPLEFT", zoneLeftPx, -zoneTopPx, width, borderW },
-            { "TOPLEFT", "TOPLEFT", zoneLeftPx, -(zoneTopPx + height - borderW), width, borderW },
-            { "TOPLEFT", "TOPLEFT", zoneLeftPx, -zoneTopPx, borderW, height },
-            { "TOPLEFT", "TOPLEFT", zoneLeftPx + width - borderW, -zoneTopPx, borderW, height },
-        }
-        for i = 1, 4 do
-            local hl = zoneHighlightFrame.highlights[i + 1]
-            if hl then
-                local e = edges[i]
-                hl:ClearAllPoints()
-                hl:SetColorTexture(1, 1, 0, 0.8)
-                hl:SetBlendMode("BLEND")
-                hl:SetPoint(e[1], canvas, e[2], e[3], e[4])
-                hl:SetSize(e[5], e[6])
-                hl:Show()
+        if not isCityOnZone then
+            -- Border outline + translucent fill for regular zones
+            local borderW = 2
+            highlight:SetColorTexture(1, 1, 0, 0.15)
+            highlight:SetBlendMode("BLEND")
+            highlight:SetPoint("TOPLEFT", canvas, "TOPLEFT", zoneLeftPx, -zoneTopPx)
+            highlight:SetSize(width, height)
+            highlight:Show()
+
+            local edges = {
+                { "TOPLEFT", "TOPLEFT", zoneLeftPx, -zoneTopPx, width, borderW },
+                { "TOPLEFT", "TOPLEFT", zoneLeftPx, -(zoneTopPx + height - borderW), width, borderW },
+                { "TOPLEFT", "TOPLEFT", zoneLeftPx, -zoneTopPx, borderW, height },
+                { "TOPLEFT", "TOPLEFT", zoneLeftPx + width - borderW, -zoneTopPx, borderW, height },
+            }
+            for i = 1, 4 do
+                local hl = zoneHighlightFrame.highlights[i + 1]
+                if hl then
+                    local e = edges[i]
+                    hl:ClearAllPoints()
+                    hl:SetColorTexture(1, 1, 0, 0.8)
+                    hl:SetBlendMode("BLEND")
+                    hl:SetPoint(e[1], canvas, e[2], e[3], e[4])
+                    hl:SetSize(e[5], e[6])
+                    hl:Show()
+                end
             end
         end
     end
