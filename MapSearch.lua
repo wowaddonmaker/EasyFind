@@ -2634,6 +2634,26 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
         return
     end
 
+    -- If the target is an ancestor of the current map, it's in the breadcrumb.
+    -- Highlight that breadcrumb button directly instead of going through DCA
+    -- logic which would overshoot to the target's parent.
+    local currentParentChain = self:GetMapPath(currentMapID)
+    for i = 1, #currentParentChain - 1 do
+        if currentParentChain[i].mapID == targetMapID then
+            DebugPrint("[EasyFind] Target is ancestor of current map, highlighting breadcrumb")
+            local navBar = WorldMapFrame.NavBar
+            if navBar then
+                local btn = self:FindBreadcrumbButton(navBar, targetMapID)
+                if btn and btn:IsShown() then
+                    self.pendingZoneHighlight = targetMapID
+                    self:ShowBreadcrumbHighlight(btn, targetMapID)
+                    return
+                end
+            end
+            break
+        end
+    end
+
     local currentInfo = C_Map.GetMapInfo(currentMapID)
     DebugPrint("[EasyFind] Current map:", currentInfo and currentInfo.name or "nil", "ID:", currentMapID)
 
@@ -2650,6 +2670,38 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
     -- CASE 1: We're already on the target's parent map - just highlight the zone!
     if currentMapID == targetParentMapID then
         DebugPrint("[EasyFind] CASE 1: Already on target parent, highlighting zone")
+
+        -- Cities parented directly to the continent (IF, UC, TB, Shattrath)
+        -- need to route through their containing zone first. Check if a
+        -- zone-level map surrounds this target on the continent.
+        if currentInfo and currentInfo.mapType == Enum.UIMapType.Continent
+           and targetInfo.mapType == Enum.UIMapType.Zone then
+            local ok, cL, cR, cT, cB = pcall(C_Map.GetMapRectOnMap, targetMapID, currentMapID)
+            if ok and cL and (cR - cL) > 0 then
+                local cx, cy = (cL + cR) / 2, (cT + cB) / 2
+                local containing = C_Map.GetMapInfoAtPosition(currentMapID, cx, cy)
+                if containing and containing.mapID ~= targetMapID
+                   and containing.mapType == Enum.UIMapType.Zone then
+                    DebugPrint("[EasyFind] CASE 1: city inside", containing.name, "- routing through it")
+                    self.pendingZoneHighlight = targetMapID
+                    C_Timer.After(0.05, function()
+                        self:HighlightZone(containing.mapID)
+                    end)
+                    return
+                end
+                -- Center returned the city itself; check surrounding points
+                local surrounding = FindSurroundingZone(currentMapID, targetMapID, cL, cR, cT, cB, 1)
+                if surrounding then
+                    DebugPrint("[EasyFind] CASE 1: city surrounded by", surrounding.name, "- routing through it")
+                    self.pendingZoneHighlight = targetMapID
+                    C_Timer.After(0.05, function()
+                        self:HighlightZone(surrounding.mapID)
+                    end)
+                    return
+                end
+            end
+        end
+
         -- Keep pending so reguiding works if user clicks wrong zone.
         -- OnMapChanged checks arrival (newMapID == pending) to stop the chain.
         self.pendingZoneHighlight = targetMapID
