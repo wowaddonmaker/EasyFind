@@ -2641,6 +2641,25 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
         return
     end
     
+    -- CASE 2b: Current zone-level map geographically contains the target even
+    -- though it's not in the API parent chain (e.g. Azuremyst Isle contains
+    -- Exodar, but Exodar's API parent is Kalimdor). Try HighlightZone directly
+    -- before sending the user backwards via breadcrumbs.
+    if currentInfo and currentInfo.mapType == Enum.UIMapType.Zone then
+        local cL, cR, cT, cB = GetMapRectViaContinent(targetMapID, currentMapID)
+        if cL then
+            local cX, cY = (cL + cR) / 2, (cT + cB) / 2
+            if cX > -0.1 and cX < 1.1 and cY > -0.1 and cY < 1.1 then
+                DebugPrint("[EasyFind] CASE 2b: Target projects onto current zone, trying HighlightZone")
+                self.pendingZoneHighlight = targetMapID
+                C_Timer.After(0.05, function()
+                    self:HighlightZone(targetMapID)
+                end)
+                return
+            end
+        end
+    end
+
     -- CASE 3: Current map is BELOW the deepest common ancestor
     DebugPrint("[EasyFind] CASE 3: Need to zoom OUT to DCA, highlighting breadcrumb")
     self:HighlightBreadcrumbForNavigation(dcaMapID, targetMapID, targetParentPath, dcaIndex)
