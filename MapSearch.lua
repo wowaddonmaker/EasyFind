@@ -2164,7 +2164,9 @@ local function ScanZoneBoundsOnMap(targetMapID, viewMapID, projL, projR, projT, 
     end
 
     if not foundL then return nil end
-    return foundL, foundR, foundT, foundB
+    -- Shrink by half a step on each side for a tighter fit
+    local inset = step * 0.5
+    return foundL + inset, foundR - inset, foundT + inset, foundB - inset
 end
 
 -- Sample points outside a zone's rect to find surrounding zones.
@@ -2360,10 +2362,16 @@ function MapSearch:HighlightZone(mapID)
                 local sL, sR, sT, sB = ScanZoneBoundsOnMap(mapID, parentMapID, left, right, top, bottom)
                 if sL then
                     left, right, top, bottom = sL, sR, sT, sB
+                    centerX = (left + right) / 2
+                    centerY = (top + bottom) / 2
                     width = (right - left) * canvasWidth
                     height = (bottom - top) * canvasHeight
+                    zoneCenterPxX = centerX * canvasWidth
+                    zoneCenterPxY = centerY * canvasHeight
                     zoneTopPx = top * canvasHeight
+                    zoneBottomPx = bottom * canvasHeight
                     zoneLeftPx = left * canvasWidth
+                    zoneRightPx = right * canvasWidth
                     DebugPrint("[EasyFind] HighlightZone: scanned bounds L=", sL, "R=", sR, "T=", sT, "B=", sB)
                 end
             end
@@ -2424,21 +2432,22 @@ function MapSearch:HighlightZone(mapID)
         DebugPrint("[EasyFind] HighlightZone: indicator positioning - zoneTopPx:", zoneTopPx, "margin+indicatorSize:", margin + indicatorSize)
 
         -- Set direction on the frame - ns.UpdateIndicator (via OnShow hook) reads this
+        local gap = 25
         if zoneTopPx > margin + indicatorSize then
             zoneInd.indicatorDirection = "down"
-            zoneInd:SetPoint("BOTTOM", canvas, "TOPLEFT", zoneCenterPxX, -(zoneTopPx - 10))
+            zoneInd:SetPoint("BOTTOM", canvas, "TOPLEFT", zoneCenterPxX, -(zoneTopPx - gap))
             DebugPrint("[EasyFind] Indicator placed ABOVE zone")
         elseif (canvasHeight - zoneBottomPx) > margin + indicatorSize then
             zoneInd.indicatorDirection = "up"
-            zoneInd:SetPoint("TOP", canvas, "TOPLEFT", zoneCenterPxX, -(zoneBottomPx + 10))
+            zoneInd:SetPoint("TOP", canvas, "TOPLEFT", zoneCenterPxX, -(zoneBottomPx + gap))
             DebugPrint("[EasyFind] Indicator placed BELOW zone")
         elseif zoneLeftPx > margin + indicatorSize then
             zoneInd.indicatorDirection = "right"
-            zoneInd:SetPoint("RIGHT", canvas, "TOPLEFT", zoneLeftPx - 10, -zoneCenterPxY)
+            zoneInd:SetPoint("RIGHT", canvas, "TOPLEFT", zoneLeftPx - gap, -zoneCenterPxY)
             DebugPrint("[EasyFind] Indicator placed LEFT of zone")
         else
             zoneInd.indicatorDirection = "left"
-            zoneInd:SetPoint("LEFT", canvas, "TOPLEFT", zoneRightPx + 10, -zoneCenterPxY)
+            zoneInd:SetPoint("LEFT", canvas, "TOPLEFT", zoneRightPx + gap, -zoneCenterPxY)
             DebugPrint("[EasyFind] Indicator placed RIGHT of zone")
         end
 
