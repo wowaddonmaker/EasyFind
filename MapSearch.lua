@@ -2678,8 +2678,9 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
         DebugPrint("[EasyFind] CASE 1: Already on target parent, highlighting zone")
 
         -- Cities parented directly to the continent (IF, UC, TB, Shattrath)
-        -- need to route through their containing zone first. Check if a
-        -- zone-level map surrounds this target on the continent.
+        -- need to route through their containing zone first. Only redirect
+        -- when the candidate zone's rect fully encloses the target's rect
+        -- (otherwise adjacent zones like Icecrown get falsely matched).
         if currentInfo and currentInfo.mapType == Enum.UIMapType.Continent
            and targetInfo.mapType == Enum.UIMapType.Zone then
             local ok, cL, cR, cT, cB = pcall(C_Map.GetMapRectOnMap, targetMapID, currentMapID)
@@ -2688,22 +2689,29 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
                 local containing = C_Map.GetMapInfoAtPosition(currentMapID, cx, cy)
                 if containing and containing.mapID ~= targetMapID
                    and containing.mapType == Enum.UIMapType.Zone then
-                    DebugPrint("[EasyFind] CASE 1: city inside", containing.name, "- routing through it")
-                    self.pendingZoneHighlight = targetMapID
-                    C_Timer.After(0.05, function()
-                        self:HighlightZone(containing.mapID)
-                    end)
-                    return
+                    local ok2, sL, sR, sT, sB = pcall(C_Map.GetMapRectOnMap, containing.mapID, currentMapID)
+                    if ok2 and sL and cL >= sL and cR <= sR and cT >= sT and cB <= sB then
+                        DebugPrint("[EasyFind] CASE 1: city inside", containing.name, "- routing through it")
+                        self.pendingZoneHighlight = targetMapID
+                        C_Timer.After(0.05, function()
+                            self:HighlightZone(containing.mapID)
+                        end)
+                        return
+                    end
                 end
                 -- Center returned the city itself; check surrounding points
+                -- and verify spatial containment
                 local surrounding = FindSurroundingZone(currentMapID, targetMapID, cL, cR, cT, cB, 1)
                 if surrounding then
-                    DebugPrint("[EasyFind] CASE 1: city surrounded by", surrounding.name, "- routing through it")
-                    self.pendingZoneHighlight = targetMapID
-                    C_Timer.After(0.05, function()
-                        self:HighlightZone(surrounding.mapID)
-                    end)
-                    return
+                    local ok2, sL, sR, sT, sB = pcall(C_Map.GetMapRectOnMap, surrounding.mapID, currentMapID)
+                    if ok2 and sL and cL >= sL and cR <= sR and cT >= sT and cB <= sB then
+                        DebugPrint("[EasyFind] CASE 1: city surrounded by", surrounding.name, "- routing through it")
+                        self.pendingZoneHighlight = targetMapID
+                        C_Timer.After(0.05, function()
+                            self:HighlightZone(surrounding.mapID)
+                        end)
+                        return
+                    end
                 end
             end
         end
