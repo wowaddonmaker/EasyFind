@@ -1877,19 +1877,36 @@ function MapSearch:GetAllWorldZones(startMapID, depth, parentPath)
                 tinsert(fullPath, {mapID = startMapID, name = parentName})
             end
             
-            -- Skip dungeon, micro, and orphan maps - only include navigable zones
+            -- Skip micro and orphan maps. Include Dungeon-type maps when
+            -- their parent is a Zone or Continent (clickable areas like
+            -- Dalaran). Exclude Dungeon children of World-type maps (ghost
+            -- reparented zones like Dalaran under Azeroth).
             local mt = child.mapType
-            if mt ~= Enum.UIMapType.Dungeon and mt ~= Enum.UIMapType.Micro and mt ~= Enum.UIMapType.Orphan then
+            local parentInfo = C_Map.GetMapInfo(startMapID)
+            local parentType = parentInfo and parentInfo.mapType
+            local includeDungeon = false
+            if mt == Enum.UIMapType.Dungeon then
+                if parentType == Enum.UIMapType.Zone then
+                    includeDungeon = true
+                elseif parentType == Enum.UIMapType.Continent then
+                    -- Only include if the map has a spatial rect on its parent
+                    -- (filters out ghost/phantom maps like old Dalaran in EK)
+                    local ok, dL, dR = pcall(C_Map.GetMapRectOnMap, child.mapID, startMapID)
+                    includeDungeon = ok and dL and (dR - dL) > 0
+                end
+            end
+            if mt ~= Enum.UIMapType.Micro and mt ~= Enum.UIMapType.Orphan
+               and (mt ~= Enum.UIMapType.Dungeon or includeDungeon) then
                 tinsert(allZones, {
                     mapID = child.mapID,
                     name = child.name,
                     mapType = child.mapType,
                     parentMapID = startMapID,
                     parentName = parentName,
-                    path = fullPath,  -- Full hierarchy path
+                    path = fullPath,
                     depth = depth
                 })
-                
+
                 -- Recurse into children
                 local subZones = self:GetAllWorldZones(child.mapID, depth + 1, fullPath)
                 for _, subZone in ipairs(subZones) do
@@ -1976,6 +1993,7 @@ function MapSearch:SearchZones(query)
                 end
             end
         end
+
     else
         -- Local: only direct children of current map
         zones = self:GetDirectChildZones()
@@ -2449,11 +2467,11 @@ function MapSearch:HighlightZone(mapID)
             end
         end
 
-        -- Skip the border box for cities on zone maps (arrow-only)
-        local parentMapInfo2 = parentMapInfo or C_Map.GetMapInfo(parentMapID)
-        local isCityOnZone = parentMapInfo2 and parentMapInfo2.mapType == Enum.UIMapType.Zone
+        -- Skip the border box when this is the final navigation target
+        -- (cities, Dalaran, etc.) - arrow-only is cleaner
+        local isFinalTarget = self.pendingZoneHighlight == mapID
 
-        if not isCityOnZone then
+        if not isFinalTarget then
             -- Border outline + translucent fill for regular zones
             local borderW = 2
             highlight:SetColorTexture(1, 1, 0, 0.15)
@@ -3258,7 +3276,12 @@ function MapSearch:HookWorldMap()
 
         -- Check if we have a pending zone to highlight (step-by-step navigation)
         if savedPendingZone then
-            if newMapID == savedPendingZone then
+            -- Match by ID or by name (handles zones with multiple mapIDs
+            -- like Dalaran which has different IDs per expansion)
+            local pendingInfo = C_Map.GetMapInfo(savedPendingZone)
+            local arrivedByName = pendingInfo and newMapInfo
+                and pendingInfo.name == newMapInfo.name
+            if newMapID == savedPendingZone or arrivedByName then
                 -- Arrived at the target zone - stop reguiding
                 DebugPrint("[EasyFind] OnMapChanged - arrived at target zone:", savedPendingZone)
                 if self.pendingWaypoint then
@@ -4230,7 +4253,8 @@ function MapSearch:SearchPOIs(pois, query)
     for _, poi in ipairs(pois) do
         local nameLower = slower(poi.name)
         local key = poi.name .. (poi.category or "")
-        
+            .. (poi.isZone and poi.pathPrefix or "")
+
         -- Zone results already scored by SearchZones - pass through directly
         local score
         if poi.isZone and poi.score then
@@ -4271,10 +4295,11 @@ function MapSearch:SearchPOIs(pois, query)
     if matchedCategory then
         for _, poi in ipairs(pois) do
             local key = poi.name .. (poi.category or "")
-            
+                .. (poi.isZone and poi.pathPrefix or "")
+
             if not seen[key] and poi.category then
                 local score = 0
-                
+
                 -- Direct category match
                 if poi.category == matchedCategory then
                     score = 150
