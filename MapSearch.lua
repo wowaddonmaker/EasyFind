@@ -11,6 +11,13 @@ local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
 local mmin, mmax, mabs, mpi, mfloor, msin = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mpi, Utils.mfloor, math.sin
 local pcall, tostring = Utils.pcall, Utils.tostring
 
+local GOLD_COLOR = ns.GOLD_COLOR
+local YELLOW_HIGHLIGHT = ns.YELLOW_HIGHLIGHT
+local DEFAULT_OPACITY = ns.DEFAULT_OPACITY
+local TOOLTIP_BORDER = ns.TOOLTIP_BORDER
+local DARK_PANEL_BG = ns.DARK_PANEL_BG
+local RESULT_ICON_SIZE = ns.RESULT_ICON_SIZE
+
 local CreateFrame        = CreateFrame
 local C_Map              = C_Map
 local C_Timer            = C_Timer
@@ -252,6 +259,7 @@ local activeSearchFrame -- Which bar is currently active
 local resultsFrame
 local resultButtons = {}
 local MAX_RESULTS_POOL = 50  -- pre-created button pool (scroll handles overflow)
+local TEXT_WRAP_FRACTION = 0.8
 local highlightFrame
 local indicatorFrame
 local currentHighlightedPin
@@ -320,7 +328,7 @@ local function CreateWaypointTracker()
         glow:SetSize(glowSize * 2.2, glowSize * 2.2)
         glow:SetPoint("CENTER")
         glow:SetTexture("Interface\\Cooldown\\star4")
-        glow:SetVertexColor(1, 1, 0, 0.7)
+        glow:SetVertexColor(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 0.7)
         glow:SetBlendMode("ADD")
         superTrackGlow.glow = glow
 
@@ -603,11 +611,11 @@ local function ShowPinPopup(btn, isPinned, onAction)
         pinPopup:SetFrameLevel(10000)
         pinPopup:SetBackdrop({
             bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            edgeFile = TOOLTIP_BORDER,
             tile = true, tileSize = 16, edgeSize = 12,
             insets = { left = 2, right = 2, top = 2, bottom = 2 }
         })
-        pinPopup:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+        pinPopup:SetBackdropColor(DARK_PANEL_BG[1], DARK_PANEL_BG[2], DARK_PANEL_BG[3], DARK_PANEL_BG[4])
         local label = pinPopup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         label:SetPoint("CENTER")
         pinPopup.label = label
@@ -759,6 +767,7 @@ function MapSearch:Initialize()
     self:CreateZoneHighlightFrame()
     self:HookWorldMap()
     self:UpdateScale()
+    self:UpdateWidth()
     self:UpdateOpacity()
 end
 
@@ -780,7 +789,7 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
 
     dropdown:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeFile = TOOLTIP_BORDER,
         edgeSize = 16,
         insets = { left = 4, right = 4, top = 4, bottom = 4 },
     })
@@ -789,7 +798,7 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
     local header = dropdown:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     header:SetPoint("TOPLEFT", 12, -PADDING_TOP)
     header:SetText("Show:")
-    header:SetTextColor(1, 0.82, 0, 1)
+    header:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1)
 
     local checkRows = {}
     local yStart = -(PADDING_TOP + HEADER_HEIGHT)
@@ -893,7 +902,7 @@ function MapSearch:CreateSearchFrame()
     -- Apply theme-appropriate backdrop (border only - atlas fills the background)
     if (EasyFind.db.resultsTheme or "Classic") == "Retail" then
         searchFrame:SetBackdrop({
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            edgeFile = TOOLTIP_BORDER,
             edgeSize = 16,
             insets = { left = 4, right = 4, top = 4, bottom = 4 }
         })
@@ -909,7 +918,7 @@ function MapSearch:CreateSearchFrame()
     local bgTex = searchFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
     bgTex:SetPoint("TOPLEFT", 4, -4)
     bgTex:SetPoint("BOTTOMRIGHT", -4, 4)
-    bgTex:SetColorTexture(0, 0, 0, EasyFind.db.searchBarOpacity or 0.75)
+    bgTex:SetColorTexture(0, 0, 0, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
     searchFrame:SetClipsChildren(true)
     searchFrame.bgTex = bgTex
 
@@ -951,11 +960,12 @@ function MapSearch:CreateSearchFrame()
     searchIcon:SetSize(14, 14)
     searchIcon:SetPoint("LEFT", 10, 0)
     searchIcon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
-    searchIcon:SetVertexColor(1, 0.82, 0)  -- Gold tint to match local theme
+    searchIcon:SetVertexColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])  -- Gold tint to match local theme
     
     local editBox = CreateFrame("EditBox", "EasyFindMapSearchBox", searchFrame)
-    editBox:SetSize(150, 20)
+    editBox:SetHeight(20)
     editBox:SetPoint("LEFT", searchIcon, "RIGHT", 5, 0)
+    editBox:SetPoint("RIGHT", searchFrame, "RIGHT", -60, 0)
     editBox:SetFontObject("ChatFontNormal")
     editBox:SetAutoFocus(false)
     editBox:SetMaxLetters(50)
@@ -1156,7 +1166,7 @@ function MapSearch:CreateSearchFrame()
     -- Apply theme-appropriate backdrop (border only - atlas fills the background)
     if (EasyFind.db.resultsTheme or "Classic") == "Retail" then
         globalSearchFrame:SetBackdrop({
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            edgeFile = TOOLTIP_BORDER,
             edgeSize = 16,
             insets = { left = 4, right = 4, top = 4, bottom = 4 }
         })
@@ -1172,7 +1182,7 @@ function MapSearch:CreateSearchFrame()
     local bgTex = globalSearchFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
     bgTex:SetPoint("TOPLEFT", 4, -4)
     bgTex:SetPoint("BOTTOMRIGHT", -4, 4)
-    bgTex:SetColorTexture(0, 0, 0, EasyFind.db.searchBarOpacity or 0.75)
+    bgTex:SetColorTexture(0, 0, 0, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
     globalSearchFrame:SetClipsChildren(true)
     globalSearchFrame.bgTex = bgTex
 
@@ -1215,8 +1225,9 @@ function MapSearch:CreateSearchFrame()
     globalSearchIcon:SetVertexColor(0.4, 0.8, 1)  -- Blue tint to match global theme
     
     local globalEditBox = CreateFrame("EditBox", "EasyFindMapGlobalSearchBox", globalSearchFrame)
-    globalEditBox:SetSize(150, 20)
+    globalEditBox:SetHeight(20)
     globalEditBox:SetPoint("LEFT", globalSearchIcon, "RIGHT", 5, 0)
+    globalEditBox:SetPoint("RIGHT", globalSearchFrame, "RIGHT", -60, 0)
     globalEditBox:SetFontObject("ChatFontNormal")
     globalEditBox:SetAutoFocus(false)
     globalEditBox:SetMaxLetters(50)
@@ -1439,8 +1450,8 @@ function MapSearch:CreateResultsFrame()
     resultsFrame.scrollBar = ns.Utils.CreateMinimalScrollBar(scrollFrame, resultsFrame)
 
     for i = 1, MAX_RESULTS_POOL do
-        local btn = self:CreateResultButton(i)
-        resultButtons[i] = btn
+        local resultRow = self:CreateResultButton(i)
+        resultButtons[i] = resultRow
     end
 end
 
@@ -1449,59 +1460,59 @@ local MAP_INDENT_COLOR = {0.40, 0.85, 1.00, 0.70}  -- cyan
 
 function MapSearch:CreateResultButton(index)
     local scrollChild = resultsFrame.scrollChild
-    local btn = CreateFrame("Button", "EasyFindMapResultButton"..index, scrollChild)
-    btn:SetSize(280, 24)
+    local resultRow = CreateFrame("Button", "EasyFindMapResultButton"..index, scrollChild)
+    resultRow:SetSize(280, 24)
     -- No fixed SetPoint here; ShowResults positions dynamically
-    
+
     -- Vertical indent line for grouped children
-    local indentLine = btn:CreateTexture(nil, "BACKGROUND")
+    local indentLine = resultRow:CreateTexture(nil, "BACKGROUND")
     indentLine:SetColorTexture(MAP_INDENT_COLOR[1], MAP_INDENT_COLOR[2], MAP_INDENT_COLOR[3], MAP_INDENT_COLOR[4])
     indentLine:SetWidth(2)
-    indentLine:SetPoint("TOP", btn, "TOPLEFT", 14, 2)
-    indentLine:SetPoint("BOTTOM", btn, "BOTTOMLEFT", 14, -2)
+    indentLine:SetPoint("TOP", resultRow, "TOPLEFT", 14, 2)
+    indentLine:SetPoint("BOTTOM", resultRow, "BOTTOMLEFT", 14, -2)
     indentLine:Hide()
-    btn.indentLine = indentLine
+    resultRow.indentLine = indentLine
 
-    local icon = btn:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(18, 18)
+    local icon = resultRow:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(RESULT_ICON_SIZE, RESULT_ICON_SIZE)
     icon:SetPoint("LEFT", 5, 0)
-    btn.icon = icon
+    resultRow.icon = icon
 
     -- Highlight only covers text area (right of icon) so icons stay crisp
-    btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-    local hl = btn:GetHighlightTexture()
+    resultRow:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    local hl = resultRow:GetHighlightTexture()
     hl:ClearAllPoints()
     hl:SetPoint("LEFT", icon, "RIGHT", 2, 0)
-    hl:SetPoint("RIGHT", btn, "RIGHT", 0, 0)
-    hl:SetPoint("TOP", btn, "TOP", 0, 0)
-    hl:SetPoint("BOTTOM", btn, "BOTTOM", 0, 0)
-    
+    hl:SetPoint("RIGHT", resultRow, "RIGHT", 0, 0)
+    hl:SetPoint("TOP", resultRow, "TOP", 0, 0)
+    hl:SetPoint("BOTTOM", resultRow, "BOTTOM", 0, 0)
+
     -- Secondary text for path prefix (shown above/before main text in gray)
-    local prefixText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local prefixText = resultRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     prefixText:SetPoint("LEFT", icon, "RIGHT", 6, 0)
     prefixText:SetTextColor(0.5, 0.5, 0.5)
     prefixText:SetJustifyH("LEFT")
     prefixText:Hide()
-    btn.prefixText = prefixText
-    
-    local text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    resultRow.prefixText = prefixText
+
+    local text = resultRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     text:SetPoint("LEFT", icon, "RIGHT", 6, 0)
-    text:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
+    text:SetPoint("RIGHT", resultRow, "RIGHT", -5, 0)
     text:SetJustifyH("LEFT")
-    btn.text = text
-    
+    resultRow.text = text
+
     -- Pin indicator (small map pin icon, shown for pinned items)
-    local pinIcon = btn:CreateTexture(nil, "OVERLAY")
+    local pinIcon = resultRow:CreateTexture(nil, "OVERLAY")
     pinIcon:SetSize(10, 10)
     pinIcon:SetPoint("BOTTOMLEFT", icon, "BOTTOMRIGHT", -4, -1)
     pinIcon:SetAtlas("Waypoint-MapPin-ChatIcon")
     pinIcon:Hide()
-    btn.pinIcon = pinIcon
+    resultRow.pinIcon = pinIcon
 
     -- Navigate button - shortcut: select result + auto-set waypoint in one click
-    local navBtn = CreateFrame("Button", nil, btn)
+    local navBtn = CreateFrame("Button", nil, resultRow)
     navBtn:SetSize(24, 24)
-    navBtn:SetPoint("RIGHT", btn, "RIGHT", -2, 0)
+    navBtn:SetPoint("RIGHT", resultRow, "RIGHT", -2, 0)
     local navTex = navBtn:CreateTexture(nil, "ARTWORK")
     navTex:SetSize(22, 22)
     navTex:SetPoint("CENTER")
@@ -1522,7 +1533,7 @@ function MapSearch:CreateResultButton(index)
     navBtn:SetScript("OnLeave", GameTooltip_Hide)
     navBtn:SetScript("OnClick", function(self)
         if self.disabled then return end
-        local data = btn.data
+        local data = resultRow.data
         if not data then return end
 
         -- Flag: auto-track once the pin is placed by ShowWaypointAt
@@ -1530,10 +1541,10 @@ function MapSearch:CreateResultButton(index)
         MapSearch:SelectResult(data)
     end)
     navBtn:Hide()
-    btn.navBtn = navBtn
+    resultRow.navBtn = navBtn
 
-    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    btn:SetScript("OnClick", function(self, mouseButton)
+    resultRow:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    resultRow:SetScript("OnClick", function(self, mouseButton)
         if mouseButton == "RightButton" and self.data then
             local pinData = self.data
             local isPinned = IsMapItemPinned(pinData)
@@ -1557,7 +1568,7 @@ function MapSearch:CreateResultButton(index)
     end)
 
     -- Hover preview: show pin at result coordinates while hovering
-    btn:SetScript("OnEnter", function(self)
+    resultRow:SetScript("OnEnter", function(self)
         local data = self.data
         if not data or isGlobalSearch then return end
         -- Only preview results with coordinates on the current map
@@ -1574,7 +1585,7 @@ function MapSearch:CreateResultButton(index)
         -- Mark as preview so it doesn't become the persistent state
         activePinState = MapSearch._savedPinState
     end)
-    btn:SetScript("OnLeave", function(self)
+    resultRow:SetScript("OnLeave", function(self)
         if not MapSearch._previewing then return end
         MapSearch._previewing = nil
         -- Clear the preview pin
@@ -1591,8 +1602,8 @@ function MapSearch:CreateResultButton(index)
         end
     end)
 
-    btn:Hide()
-    return btn
+    resultRow:Hide()
+    return resultRow
 end
 
 -- Resize highlight border textures in canvas units so they match the UI search
@@ -1633,19 +1644,19 @@ function MapSearch:CreateHighlightFrame()
     highlightFrame:Hide()
     
     local top = highlightFrame:CreateTexture(nil, "OVERLAY")
-    top:SetColorTexture(1, 1, 0, 1)
+    top:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 1)
     highlightFrame.top = top
 
     local bottom = highlightFrame:CreateTexture(nil, "OVERLAY")
-    bottom:SetColorTexture(1, 1, 0, 1)
+    bottom:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 1)
     highlightFrame.bottom = bottom
 
     local left = highlightFrame:CreateTexture(nil, "OVERLAY")
-    left:SetColorTexture(1, 1, 0, 1)
+    left:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 1)
     highlightFrame.left = left
 
     local right = highlightFrame:CreateTexture(nil, "OVERLAY")
-    right:SetColorTexture(1, 1, 0, 1)
+    right:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 1)
     highlightFrame.right = right
 
     -- Indicator pointing down to the location
@@ -1727,7 +1738,7 @@ function MapSearch:CreateHighlightFrame()
     glow:SetSize(100, 100)
     glow:SetPoint("CENTER")
     glow:SetTexture("Interface\\Cooldown\\star4")
-    glow:SetVertexColor(1, 1, 0, 0.8)
+    glow:SetVertexColor(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 0.8)
     glow:SetBlendMode("ADD")
     waypointPin.glow = glow
     
@@ -1756,7 +1767,7 @@ function MapSearch:CreateZoneHighlightFrame()
     -- Create a pool of highlight textures we can reuse (ALWAYS YELLOW)
     for i = 1, 10 do
         local highlight = zoneHighlightFrame:CreateTexture("EasyFindZoneHighlight"..i, "OVERLAY")
-        highlight:SetColorTexture(1, 1, 0, 0.5)
+        highlight:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 0.5)
         highlight:SetDrawLayer("OVERLAY", 7)  -- Highest sublayer
         highlight:Hide()
         zoneHighlightFrame.highlights[i] = highlight
@@ -2436,11 +2447,11 @@ function MapSearch:HighlightZone(mapID)
                     hl:SetTexCoord(0, texPercentX, 0, texPercentY)
                     hl:SetPoint("TOPLEFT", canvas, "TOPLEFT", pixelPosX, -pixelPosY)
                     hl:SetSize(pixelWidth, pixelHeight)
-                    hl:SetVertexColor(1, 1, 0, 1)
+                    hl:SetVertexColor(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 1)
                 else
                     hl:SetAtlas(atlasID, true)
                     hl:SetPoint("CENTER", canvas, "TOPLEFT", zoneCenterPxX, -zoneCenterPxY)
-                    hl:SetVertexColor(1, 1, 0, 0.6)
+                    hl:SetVertexColor(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 0.6)
                 end
                 hl:SetBlendMode("ADD")
                 hl:Show()
@@ -2517,7 +2528,7 @@ function MapSearch:HighlightZone(mapID)
             if not zoneHighlightFrame.centerGlow then
                 local glow = canvas:CreateTexture(nil, "ARTWORK")
                 glow:SetTexture("Interface\\Cooldown\\star4")
-                glow:SetVertexColor(1, 1, 0, 0.4)
+                glow:SetVertexColor(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 0.4)
                 glow:SetBlendMode("ADD")
                 zoneHighlightFrame.centerGlow = glow
 
@@ -2543,7 +2554,7 @@ function MapSearch:HighlightZone(mapID)
         if not isFinalTarget then
             -- Border outline + translucent fill for regular zones
             local borderW = 2
-            highlight:SetColorTexture(1, 1, 0, 0.15)
+            highlight:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 0.15)
             highlight:SetBlendMode("BLEND")
             highlight:SetPoint("TOPLEFT", canvas, "TOPLEFT", zoneLeftPx, -zoneTopPx)
             highlight:SetSize(width, height)
@@ -2560,7 +2571,7 @@ function MapSearch:HighlightZone(mapID)
                 if hl then
                     local e = edges[i]
                     hl:ClearAllPoints()
-                    hl:SetColorTexture(1, 1, 0, 0.8)
+                    hl:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 0.8)
                     hl:SetBlendMode("BLEND")
                     hl:SetPoint(e[1], canvas, e[2], e[3], e[4])
                     hl:SetSize(e[5], e[6])
@@ -2747,10 +2758,10 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
             DebugPrint("[EasyFind] Target is ancestor of current map, highlighting breadcrumb")
             local navBar = WorldMapFrame.NavBar
             if navBar then
-                local btn = self:FindBreadcrumbButton(navBar, targetMapID)
-                if btn and btn:IsShown() then
+                local breadcrumbBtn = self:FindBreadcrumbButton(navBar, targetMapID)
+                if breadcrumbBtn and breadcrumbBtn:IsShown() then
                     self.pendingZoneHighlight = targetMapID
-                    self:ShowBreadcrumbHighlight(btn, targetMapID)
+                    self:ShowBreadcrumbHighlight(breadcrumbBtn, targetMapID)
                     return
                 end
             end
@@ -3008,9 +3019,9 @@ function MapSearch:HighlightBreadcrumbForNavigation(dcaMapID, finalTargetMapID, 
         local currentMapID = WorldMapFrame:GetMapID()
         local currentPath = self:GetMapPath(currentMapID)
         for i = 1, #currentPath - 1 do  -- skip current map itself
-            local btn = self:FindBreadcrumbButton(navBar, currentPath[i].mapID)
-            if btn and btn:IsShown() then
-                buttonToHighlight = btn
+            local breadcrumbBtn = self:FindBreadcrumbButton(navBar, currentPath[i].mapID)
+            if breadcrumbBtn and breadcrumbBtn:IsShown() then
+                buttonToHighlight = breadcrumbBtn
                 DebugPrint("[EasyFind] Using path fallback:", currentPath[i].name, currentPath[i].mapID)
                 break
             end
@@ -3099,10 +3110,10 @@ function MapSearch:FindBreadcrumbButton(navBar, mapID)
     -- Last resort: look for WorldMapNavBarButton frames
     local buttonName = "WorldMapNavBarButton"
     for i = 1, 10 do
-        local btn = _G[buttonName .. i]
-        if btn and btn:IsShown() and btn.data and btn.data.id == mapID then
+        local mapBtn = _G[buttonName .. i]
+        if mapBtn and mapBtn:IsShown() and mapBtn.data and mapBtn.data.id == mapID then
             DebugPrint("[EasyFind] Found via global name:", buttonName .. i)
-            return btn
+            return mapBtn
         end
     end
 
@@ -3151,7 +3162,7 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
             local g = hl:CreateTexture(nil, "ARTWORK", nil, i)
             g:SetAllPoints()
             g:SetBlendMode("ADD")
-            g:SetVertexColor(1, 0.82, 0, 1)
+            g:SetVertexColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1)
             g:Hide()
             hl.glowTextures[i] = g
         end
@@ -3210,7 +3221,7 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
     local hlTex = button.GetHighlightTexture and button:GetHighlightTexture()
     if hlTex then
         hlTex:SetBlendMode("ADD")
-        hlTex:SetVertexColor(1, 0.82, 0, 1)
+        hlTex:SetVertexColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1)
     end
 
     -- Copy the button's highlight texture into our stacked glow layers
@@ -4479,6 +4490,11 @@ function MapSearch:ShowResults(results)
     end
     local willScroll = (count * 26 + 12) > maxVisibleHeight
 
+    -- Widen results frame when scrollbar is visible so text isn't overlapped
+    local baseResultsW = self:GetResultsWidth()
+    local scrollBarInset = willScroll and 20 or 0
+    resultsFrame:SetWidth(baseResultsW + scrollBarInset)
+
     -- Check if the player is in the zone being viewed (for navBtn disabled state)
     local viewedMapID = WorldMapFrame:GetMapID()
     local playerMapID = C_Map.GetBestMapForUnit("player")
@@ -4487,135 +4503,129 @@ function MapSearch:ShowResults(results)
     local yOffset = -6  -- running vertical offset (top padding)
 
     for i = 1, MAX_RESULTS_POOL do
-        local btn = resultButtons[i]
+        local resultRow = resultButtons[i]
         if i <= count then
             local data = results[i]
-            btn.data = data
-            
-            -- Reset button state
-            btn.icon:ClearAllPoints()
-            btn.icon:SetPoint("LEFT", 5, 0)
-            btn.text:ClearAllPoints()
-            btn.text:SetPoint("LEFT", btn.icon, "RIGHT", 6, 0)
-            if willScroll then
-                btn.text:SetPoint("RIGHT", scrollBar, "LEFT", -4, 0)
-            else
-                btn.text:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
-            end
-            btn.icon:Show()
-            btn.icon:SetVertexColor(1, 1, 1)
-            btn.text:SetTextColor(1, 1, 1)
-            if btn.prefixText then btn.prefixText:Hide() end
-            if btn.indentLine then btn.indentLine:Hide() end
-            if btn.pinIcon then btn.pinIcon:Hide() end
-            if btn.navBtn then btn.navBtn:Hide() end
+            resultRow.data = data
+
+            resultRow.icon:ClearAllPoints()
+            resultRow.icon:SetPoint("LEFT", 5, 0)
+            resultRow.text:ClearAllPoints()
+            resultRow.text:SetPoint("LEFT", resultRow.icon, "RIGHT", 6, 0)
+            -- Wrap at 80% of results frame width (anchored to resultRow to avoid scroll issues)
+            resultRow.text:SetPoint("RIGHT", resultRow, "LEFT", resultsFrame:GetWidth() * TEXT_WRAP_FRACTION - 10, 0)
+            resultRow.icon:Show()
+            resultRow.icon:SetVertexColor(1, 1, 1)
+            resultRow.text:SetTextColor(1, 1, 1)
+            if resultRow.prefixText then resultRow.prefixText:Hide() end
+            if resultRow.indentLine then resultRow.indentLine:Hide() end
+            if resultRow.pinIcon then resultRow.pinIcon:Hide() end
+            if resultRow.navBtn then resultRow.navBtn:Hide() end
 
             -- Format based on type
             if data.isZoneParent then
-                -- Parent header - no icon, just gray text with arrow
-                btn.icon:Hide()
-                btn.text:ClearAllPoints()
-                btn.text:SetPoint("LEFT", btn, "LEFT", 8, 0)
+                resultRow.icon:Hide()
+                resultRow.text:ClearAllPoints()
+                resultRow.text:SetPoint("LEFT", resultRow, "LEFT", 8, 0)
                 if willScroll then
-                    btn.text:SetPoint("RIGHT", scrollBar, "LEFT", -4, 0)
+                    resultRow.text:SetPoint("RIGHT", scrollBar, "LEFT", -4, 0)
                 else
-                    btn.text:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
+                    resultRow.text:SetPoint("RIGHT", resultRow, "RIGHT", -5, 0)
                 end
-                btn.text:SetText("|cff666666▼ " .. data.name .. "|r")
+                resultRow.text:SetText("|cff666666▼ " .. data.name .. "|r")
 
             elseif data.isZone then
                 if data.isIndented then
-                    -- Indented child zone - shift icon and text right
-                    btn.icon:ClearAllPoints()
-                    btn.icon:SetPoint("LEFT", 25, 0)  -- Indent the icon
-                    btn.text:ClearAllPoints()
-                    btn.text:SetPoint("LEFT", btn.icon, "RIGHT", 6, 0)
+                    resultRow.icon:ClearAllPoints()
+                    resultRow.icon:SetPoint("LEFT", 25, 0)
+                    resultRow.text:ClearAllPoints()
+                    resultRow.text:SetPoint("LEFT", resultRow.icon, "RIGHT", 6, 0)
                     if willScroll then
-                        btn.text:SetPoint("RIGHT", scrollBar, "LEFT", -4, 0)
+                        resultRow.text:SetPoint("RIGHT", scrollBar, "LEFT", -4, 0)
                     else
-                        btn.text:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
+                        resultRow.text:SetPoint("RIGHT", resultRow, "RIGHT", -5, 0)
                     end
-                    btn.text:SetText(data.displayName or data.name)
-                    btn.text:SetTextColor(1, 0.82, 0)  -- Gold
-                    btn.icon:SetTexture(237382)
-                    btn.icon:SetSize(16, 16)  -- Slightly smaller for children
-                    btn.icon:Show()
-                    -- Show vertical indent line
-                    if btn.indentLine then btn.indentLine:Show() end
+                    resultRow.text:SetText(data.displayName or data.name)
+                    resultRow.text:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
+                    resultRow.icon:SetTexture(237382)
+                    resultRow.icon:SetSize(16, 16)
+                    resultRow.icon:Show()
+                    if resultRow.indentLine then resultRow.indentLine:Show() end
 
                 elseif data.pathPrefix and data.pathPrefix ~= "" then
-                    -- Global search with path - show "Path > Zone" format
-                    btn.text:SetText("|cff666666" .. data.pathPrefix .. " >|r |cffffd100" .. data.name .. "|r")
-                    btn.icon:SetTexture(237382)
-                    btn.icon:Show()
+                    resultRow.text:SetText("|cff666666" .. data.pathPrefix .. " >|r |cffffd100" .. data.name .. "|r")
+                    resultRow.icon:SetTexture(237382)
+                    resultRow.icon:Show()
 
                 else
-                    -- Regular zone result
-                    btn.text:SetText(data.name)
-                    btn.text:SetTextColor(1, 0.82, 0)  -- Gold
-                    btn.icon:SetTexture(237382)
-                    btn.icon:Show()
+                    resultRow.text:SetText(data.name)
+                    resultRow.text:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
+                    resultRow.icon:SetTexture(237382)
+                    resultRow.icon:Show()
                 end
 
             else
-                -- Regular POI result
                 local displayText = data.name
-                -- For dungeon entrances from global search, show zone location
                 if data.isDungeonEntrance and data.pathPrefix and data.pathPrefix ~= "" then
                     displayText = data.name .. " |cff666666(" .. data.pathPrefix .. ")|r"
                 end
-                btn.text:SetText(displayText)
-                btn.text:SetTextColor(1, 1, 1)
+                resultRow.text:SetText(displayText)
+                resultRow.text:SetTextColor(1, 1, 1)
 
                 local iconTexture = GetCategoryIcon(data.category)
                 if data.icon then
                     iconTexture = data.icon
                 end
-                SetIconTexture(btn.icon, iconTexture)
-                btn.icon:SetSize(18, 18)
-                btn.icon:Show()
+                SetIconTexture(resultRow.icon, iconTexture)
+                resultRow.icon:SetSize(RESULT_ICON_SIZE, RESULT_ICON_SIZE)
+                resultRow.icon:Show()
             end
 
-            -- Show navigate button only for local search results with coordinates
+            -- Show navigate button for local search results with coordinates
             local hasCoords = not isGlobalSearch
                 and ((data.x and data.y) or (data.allInstances and #data.allInstances > 1))
-            if hasCoords and btn.navBtn then
-                btn.navBtn.texture:SetTexture(nil)
-                btn.navBtn.texture:SetTexCoord(0, 1, 0, 1)
-                btn.navBtn.texture:SetAtlas("Waypoint-MapPin-Untracked")
-                btn.navBtn.disabled = not playerInZone
-                btn.navBtn.texture:SetDesaturated(not playerInZone)
-                btn.navBtn.texture:SetAlpha(1)
-                btn.navBtn:Show()
-                -- Adjust text right edge to make room
-                btn.text:SetPoint("RIGHT", btn.navBtn, "LEFT", -2, 0)
+            if hasCoords and resultRow.navBtn then
+                resultRow.navBtn.texture:SetTexture(nil)
+                resultRow.navBtn.texture:SetTexCoord(0, 1, 0, 1)
+                resultRow.navBtn.texture:SetAtlas("Waypoint-MapPin-Untracked")
+                resultRow.navBtn.disabled = not playerInZone
+                resultRow.navBtn.texture:SetDesaturated(not playerInZone)
+                resultRow.navBtn.texture:SetAlpha(1)
+                resultRow.navBtn:Show()
             end
 
-            -- Show pin indicator for pinned items
-            if data.isPinned and btn.pinIcon then
-                btn.pinIcon:Show()
+            if data.isPinned and resultRow.pinIcon then
+                resultRow.pinIcon:Show()
             end
 
-            btn:Show()
+            resultRow:Show()
 
-            -- Force text width so GetStringHeight accounts for wrapping on first render
-            -- Button is inset 10px in a 300px results frame; icon(18)+pad(11) = 29
-            local scrollGutter = willScroll and (scrollBar:GetWidth() + 7) or 0
-            local btnW = resultsFrame:GetWidth() - 10 - scrollGutter
-            btn:SetWidth(btnW)
-            local scrollBarW = willScroll and (scrollBar:GetWidth() + 4) or 5
-            btn.text:SetWidth(btnW - 29 - scrollBarW)
+            local scrollGutter = willScroll and (scrollBar:GetWidth() + 0) or 0
+            local rowW = resultsFrame:GetWidth() - 10 - scrollGutter
+            resultRow:SetWidth(rowW)
 
-            -- Measure actual text height and size button to fit
-            local textHeight = btn.text:GetStringHeight() or 14
-            local rowHeight = mmax(24, textHeight + 8)  -- minimum 24, pad 8
+            -- Explicit text width so GetStringHeight calculates wrapping
+            -- before anchors resolve (next frame)
+            local textStartX = resultRow.icon:GetWidth() + 11  -- 11 = icon LEFT offset (5) + text gap (6)
+            local wrapWidth = resultsFrame:GetWidth() * TEXT_WRAP_FRACTION - 10 - textStartX
+            if data.isIndented then
+                wrapWidth = wrapWidth - 20
+            elseif data.isZoneParent then
+                wrapWidth = rowW - 8
+            end
+            if wrapWidth > 0 then
+                resultRow.text:SetWidth(wrapWidth)
+            end
 
-            btn:SetHeight(rowHeight)
-            btn:ClearAllPoints()
-            btn:SetPoint("TOPLEFT", resultsFrame.scrollChild, "TOPLEFT", 10, yOffset)
+            local textHeight = resultRow.text:GetStringHeight() or 14
+            local rowHeight = mmax(24, textHeight + 8)
+
+            resultRow:SetHeight(rowHeight)
+            resultRow:ClearAllPoints()
+            resultRow:SetPoint("TOPLEFT", resultsFrame.scrollChild, "TOPLEFT", 10, yOffset)
             yOffset = yOffset - rowHeight - 2
         else
-            btn:Hide()
+            resultRow:Hide()
         end
     end
 
@@ -4861,7 +4871,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
                     local glow = extraPin:CreateTexture(nil, "BACKGROUND")
                     glow:SetPoint("CENTER")
                     glow:SetTexture("Interface\\Cooldown\\star4")
-                    glow:SetVertexColor(1, 1, 0, 0.8)  -- Pin glow always yellow
+                    glow:SetVertexColor(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 0.8)  -- Pin glow always yellow
                     glow:SetBlendMode("ADD")
                     extraPin.glow = glow
                     
@@ -4914,19 +4924,19 @@ function MapSearch:ShowMultipleWaypoints(instances)
                     extraHighlight:SetFrameLevel(1998)
                     
                     local top = extraHighlight:CreateTexture(nil, "OVERLAY")
-                    top:SetColorTexture(1, 1, 0, 1)
+                    top:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 1)
                     extraHighlight.top = top
 
                     local bottom = extraHighlight:CreateTexture(nil, "OVERLAY")
-                    bottom:SetColorTexture(1, 1, 0, 1)
+                    bottom:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 1)
                     extraHighlight.bottom = bottom
 
                     local left = extraHighlight:CreateTexture(nil, "OVERLAY")
-                    left:SetColorTexture(1, 1, 0, 1)
+                    left:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 1)
                     extraHighlight.left = left
 
                     local right = extraHighlight:CreateTexture(nil, "OVERLAY")
-                    right:SetColorTexture(1, 1, 0, 1)
+                    right:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 1)
                     extraHighlight.right = right
                     
                     local animGroup = extraHighlight:CreateAnimationGroup()
@@ -5245,6 +5255,23 @@ function MapSearch:TrackActivePin()
     ShowSuperTrackGlow()
 end
 
+local BASE_SEARCH_W = 250
+local BASE_RESULTS_W = 300
+
+function MapSearch:GetSearchWidth()
+    return BASE_SEARCH_W * (EasyFind.db.mapSearchWidth or 1.0)
+end
+
+function MapSearch:GetResultsWidth()
+    return BASE_RESULTS_W * (EasyFind.db.mapSearchWidth or 1.0)
+end
+
+function MapSearch:UpdateWidth()
+    local w = self:GetSearchWidth()
+    if searchFrame then searchFrame:SetWidth(w) end
+    if globalSearchFrame then globalSearchFrame:SetWidth(w) end
+end
+
 function MapSearch:UpdateScale()
     if searchFrame then
         local scale = EasyFind.db.mapSearchScale or 1.0
@@ -5260,7 +5287,7 @@ function MapSearch:UpdateScale()
 end
 
 function MapSearch:UpdateOpacity()
-    local alpha = EasyFind.db.searchBarOpacity or 0.75
+    local alpha = EasyFind.db.searchBarOpacity or DEFAULT_OPACITY
     if searchFrame and searchFrame.bgTex then
         searchFrame.bgTex:SetColorTexture(0, 0, 0, alpha)
     end
@@ -5276,7 +5303,7 @@ function MapSearch:UpdateSearchBarTheme()
         if frame then
             if isRetail then
                 frame:SetBackdrop({
-                    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                    edgeFile = TOOLTIP_BORDER,
                     edgeSize = 16,
                     insets = { left = 4, right = 4, top = 4, bottom = 4 }
                 })

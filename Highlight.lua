@@ -17,6 +17,10 @@ local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
 local mmin, mmax, mabs, mpi = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mpi
 local pcall = Utils.pcall
 
+local GOLD_COLOR         = ns.GOLD_COLOR
+local YELLOW_HIGHLIGHT   = ns.YELLOW_HIGHLIGHT
+local TOOLTIP_BORDER     = ns.TOOLTIP_BORDER
+
 local CreateFrame        = CreateFrame
 local C_Timer            = C_Timer
 local GetTime            = GetTime
@@ -58,19 +62,19 @@ function Highlight:CreateHighlightFrame()
     
     -- Highlight border is ALWAYS yellow
     local top = highlightFrame:CreateTexture(nil, "OVERLAY")
-    top:SetColorTexture(1, 1, 0, 1)
+    top:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 1)
     highlightFrame.top = top
     
     local bottom = highlightFrame:CreateTexture(nil, "OVERLAY")
-    bottom:SetColorTexture(1, 1, 0, 1)
+    bottom:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 1)
     highlightFrame.bottom = bottom
     
     local left = highlightFrame:CreateTexture(nil, "OVERLAY")
-    left:SetColorTexture(1, 1, 0, 1)
+    left:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 1)
     highlightFrame.left = left
     
     local right = highlightFrame:CreateTexture(nil, "OVERLAY")
-    right:SetColorTexture(1, 1, 0, 1)
+    right:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 1)
     highlightFrame.right = right
     
     highlightFrame.borderSize = borderSize
@@ -132,7 +136,7 @@ function Highlight:CreateInstructionFrame()
     local text = instructionFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     text:SetPoint("TOPLEFT", 15, -15)
     text:SetPoint("TOPRIGHT", -15, -15)
-    text:SetTextColor(1, 1, 0)
+    text:SetTextColor(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3])
     text:SetJustifyH("CENTER")
     text:SetWordWrap(true)  -- Enable word wrap
     text:SetNonSpaceWrap(true)
@@ -164,16 +168,16 @@ function Highlight:CreateContextTooltip()
     
     contextTooltip:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeFile = TOOLTIP_BORDER,
         tile = true, tileSize = 16, edgeSize = 12,
         insets = { left = 3, right = 3, top = 3, bottom = 3 }
     })
     contextTooltip:SetBackdropColor(0, 0, 0, 0.9)
-    contextTooltip:SetBackdropBorderColor(1, 0.82, 0, 1)
+    contextTooltip:SetBackdropBorderColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1)
     
     local text = contextTooltip:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     text:SetPoint("CENTER", 0, 0)
-    text:SetTextColor(1, 1, 0)
+    text:SetTextColor(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3])
     text:SetJustifyH("CENTER")
     contextTooltip.text = text
 end
@@ -264,8 +268,8 @@ function Highlight:UpdateGuide()
     
     -- Step 1 type: Highlight a button directly (like micro menu buttons)
     if step.buttonFrame then
-        local btn = _G[step.buttonFrame]
-        if btn and btn:IsShown() then
+        local targetFrame = _G[step.buttonFrame]
+        if targetFrame and targetFrame:IsShown() then
             -- Check if user clicked it (frame that button opens is now visible)
             local nextStep = currentGuide.steps[currentStepIndex + 1]
             if nextStep and nextStep.waitForFrame then
@@ -277,14 +281,14 @@ function Highlight:UpdateGuide()
                 end
             elseif not nextStep then
                 -- Single step guide - dismiss on hover
-                if canHoverDismiss() and btn:IsMouseOver() then
+                if canHoverDismiss() and targetFrame:IsMouseOver() then
                     self:Cancel()
                     return
                 end
             end
-            
+
             -- Still need to click button - highlight only, no text
-            self:HighlightFrame(btn)
+            self:HighlightFrame(targetFrame)
         end
         return
     end
@@ -754,9 +758,9 @@ function Highlight:UpdateGuide()
                         local info = C_CurrencyInfo.GetCurrencyListInfo(i)
                         if info and info.isHeader and not info.isHeaderExpanded then
                             -- Try to find and highlight the button
-                            local btn = self:GetCurrencyHeaderButton(info.name)
-                            if btn then
-                                self:HighlightFrame(btn)
+                            local headerBtn = self:GetCurrencyHeaderButton(info.name)
+                            if headerBtn then
+                                self:HighlightFrame(headerBtn)
                                 return
                             else
                                 -- Button not found - hide and retry
@@ -900,9 +904,9 @@ function Highlight:UpdateGuide()
                         local factionData = C_Reputation.GetFactionDataByIndex(i)
                         if factionData and factionData.isHeader and not factionData.isHeaderExpanded then
                             -- Try to find and highlight the button
-                            local btn = self:GetFactionHeaderButton(factionData.name)
-                            if btn then
-                                self:HighlightFrame(btn)
+                            local headerBtn = self:GetFactionHeaderButton(factionData.name)
+                            if headerBtn then
+                                self:HighlightFrame(headerBtn)
                                 return
                             else
                                 -- Button not found - hide and retry
@@ -1081,10 +1085,10 @@ function Highlight:UpdateGuide()
         
         -- Search for a button by text (for PvP rated queue buttons like Solo Shuffle, 2v2, 3v3)
         if step.searchButtonText then
-            local btn = self:FindRatedPvPButton(step.searchButtonText)
-            if btn then
-                self:HighlightFrame(btn)
-                if canHoverDismiss() and btn:IsMouseOver() then
+            local pvpBtn = self:FindRatedPvPButton(step.searchButtonText)
+            if pvpBtn then
+                self:HighlightFrame(pvpBtn)
+                if canHoverDismiss() and pvpBtn:IsMouseOver() then
                     self:Cancel()
                     return
                 end
@@ -1365,13 +1369,13 @@ function Highlight:IsPvPSideTabSelected(frameName, sideTabIndex)
         -- Fallback: check button selected state for any tab
         local pvpButtons = self:GetPvPSideTabButtons()
         if pvpButtons and pvpButtons[sideTabIndex] then
-            local btn = pvpButtons[sideTabIndex]
-            if btn.GetSelectedState and btn:GetSelectedState() then return true end
-            if btn.IsSelected and btn:IsSelected() then return true end
-            if btn.selectedTex and btn.selectedTex:IsShown() then return true end
-            if btn.selectedTexture and btn.selectedTexture:IsShown() then return true end
-            if btn.Selected and btn.Selected:IsShown() then return true end
-            if btn.isSelected then return true end
+            local sideTab = pvpButtons[sideTabIndex]
+            if sideTab.GetSelectedState and sideTab:GetSelectedState() then return true end
+            if sideTab.IsSelected and sideTab:IsSelected() then return true end
+            if sideTab.selectedTex and sideTab.selectedTex:IsShown() then return true end
+            if sideTab.selectedTexture and sideTab.selectedTexture:IsShown() then return true end
+            if sideTab.Selected and sideTab.Selected:IsShown() then return true end
+            if sideTab.isSelected then return true end
         end
         
         return false

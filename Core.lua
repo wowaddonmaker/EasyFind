@@ -27,7 +27,8 @@ local DB_DEFAULTS = {
     iconScale = 1.0,
     uiSearchScale = 1.0,
     mapSearchScale = 1.0,
-    searchBarOpacity = 0.75,
+    mapSearchWidth = 1.0,
+    searchBarOpacity = 0.75,  -- ns.DEFAULT_OPACITY
     uiSearchPosition = nil,    -- {point, relPoint, x, y}
     mapSearchPosition = nil,   -- x offset from map left edge
     globalSearchPosition = nil, -- x offset from map right edge
@@ -247,7 +248,7 @@ function EasyFind:TestIndicatorTexture(texturePath)
     
     -- Try to load the texture
     testFrame.texture:SetTexture(texturePath)
-    testFrame.texture:SetVertexColor(1, 1, 0, 1)  -- Yellow like indicators
+    testFrame.texture:SetVertexColor(ns.YELLOW_HIGHLIGHT[1], ns.YELLOW_HIGHLIGHT[2], ns.YELLOW_HIGHLIGHT[3], 1)
     testFrame.title:SetText("Testing: " .. texturePath)
     testFrame:Show()
     

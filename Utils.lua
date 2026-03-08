@@ -44,6 +44,14 @@ Utils.pcall    = pcall
 Utils.tostring = tostring
 Utils.tonumber = tonumber
 
+-- Shared constants
+ns.GOLD_COLOR = {1.0, 0.82, 0.0}
+ns.YELLOW_HIGHLIGHT = {1, 1, 0}
+ns.DEFAULT_OPACITY = 0.75
+ns.TOOLTIP_BORDER = "Interface\\Tooltips\\UI-Tooltip-Border"
+ns.DARK_PANEL_BG = {0.1, 0.1, 0.1, 0.95}
+ns.RESULT_ICON_SIZE = 18
+
 -- DEBUG PRINT
 -- Centralised debug output - only prints when dev mode is enabled.
 function Utils.DebugPrint(...)
@@ -246,16 +254,16 @@ end
 -- Returns the scrollbar frame. Call bar:SetShown(bool) to show/hide,
 -- and bar:UpdateThumb() after resizing the scroll child.
 function Utils.CreateMinimalScrollBar(scrollFrame, parent)
-    local BAR_W = 7
+    local BAR_W = 6
     local CAP_H = 7
     local ARROW_W, ARROW_H = 16, 11
     local MIN_THUMB_H = 20
 
-    -- Container frame, anchored to right edge of parent
+    -- Container frame, anchored to right edge of scroll frame
     local bar = CreateFrame("Frame", nil, parent)
     bar:SetWidth(ARROW_W)
-    bar:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -4, -8)
-    bar:SetPoint("BOTTOMRIGHT", parent, "BOTTOMRIGHT", -4, 8)
+    bar:SetPoint("TOPRIGHT", scrollFrame, "TOPRIGHT", 0, 0)
+    bar:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", 0, 0)
     bar:SetFrameStrata(parent:GetFrameStrata())
     bar:SetFrameLevel(parent:GetFrameLevel() + 5)
 
@@ -288,11 +296,10 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
         scrollFrame:SetVerticalScroll(mmin(range, cur + 24))
     end)
 
-    -- Track (between arrows)
+    -- Track fills the bar width so track center = arrow center
     local track = CreateFrame("Frame", nil, bar)
-    track:SetWidth(BAR_W)
-    track:SetPoint("TOP", backBtn, "BOTTOM", 0, -1)
-    track:SetPoint("BOTTOM", fwdBtn, "TOP", 0, 1)
+    track:SetPoint("TOPLEFT", backBtn, "BOTTOMLEFT", 0, -2)
+    track:SetPoint("BOTTOMRIGHT", fwdBtn, "TOPRIGHT", 0, 2)
 
     local trackTopTex = track:CreateTexture(nil, "BACKGROUND")
     trackTopTex:SetAtlas("minimal-scrollbar-track-top")
@@ -310,7 +317,7 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
     trackMidTex:SetPoint("TOP", trackTopTex, "BOTTOM")
     trackMidTex:SetPoint("BOTTOM", trackBotTex, "TOP")
 
-    -- Thumb (draggable)
+    -- Thumb (draggable, same width as track)
     local thumb = CreateFrame("Button", nil, track)
     thumb:SetWidth(BAR_W)
     thumb:EnableMouse(true)

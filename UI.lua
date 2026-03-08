@@ -14,6 +14,13 @@ local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
 local tinsert, tsort, tconcat, tremove = Utils.tinsert, Utils.tsort, Utils.tconcat, Utils.tremove
 local mmin, mmax = Utils.mmin, Utils.mmax
 
+local GOLD_COLOR = ns.GOLD_COLOR
+local YELLOW_HIGHLIGHT = ns.YELLOW_HIGHLIGHT
+local DEFAULT_OPACITY = ns.DEFAULT_OPACITY
+local TOOLTIP_BORDER = ns.TOOLTIP_BORDER
+local DARK_PANEL_BG = ns.DARK_PANEL_BG
+local RESULT_ICON_SIZE = ns.RESULT_ICON_SIZE
+
 local CreateFrame        = CreateFrame
 local C_Timer            = C_Timer
 local UIParent           = UIParent
@@ -100,11 +107,11 @@ local function ShowPinPopup(btn, isPinned, onAction)
         pinPopup:SetFrameLevel(10000)
         pinPopup:SetBackdrop({
             bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            edgeFile = TOOLTIP_BORDER,
             tile = true, tileSize = 16, edgeSize = 12,
             insets = { left = 2, right = 2, top = 2, bottom = 2 }
         })
-        pinPopup:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+        pinPopup:SetBackdropColor(DARK_PANEL_BG[1], DARK_PANEL_BG[2], DARK_PANEL_BG[3], DARK_PANEL_BG[4])
         local label = pinPopup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         label:SetPoint("CENTER")
         pinPopup.label = label
@@ -172,7 +179,7 @@ THEMES["Classic"] = {
     pathFont        = "GameFontNormal",
     leafFont        = "GameFontNormal",
     pathColor       = {0.7, 0.7, 0.7},
-    leafColor       = {1, 0.82, 0},
+    leafColor       = GOLD_COLOR,
     -- tree lines
     showTreeLines   = true,
     indentColors    = {
@@ -250,7 +257,7 @@ THEMES["Retail"] = {
     separatorColor  = {0.5, 0.45, 0.3, 0.35},
     -- results backdrop - grey tooltip border, quest log background
     resultsBackdrop = {
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeFile = TOOLTIP_BORDER,
         edgeSize = 16,
         insets = { left = 4, right = 4, top = 4, bottom = 4 },
     },
@@ -275,7 +282,7 @@ function UI:CreateUnearnedTooltip()
     -- Simple black background with border
     unearnedTooltip:SetBackdrop({
         bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeFile = TOOLTIP_BORDER,
         tile = true, tileSize = 16, edgeSize = 16,
         insets = { left = 4, right = 4, top = 4, bottom = 4 }
     })
@@ -377,7 +384,7 @@ function UI:CreateSearchFrame()
     local theme = GetActiveTheme()
     if theme.searchBarRounded then
         searchFrame:SetBackdrop({
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            edgeFile = TOOLTIP_BORDER,
             edgeSize = 16,
             insets = { left = 4, right = 4, top = 4, bottom = 4 }
         })
@@ -393,7 +400,7 @@ function UI:CreateSearchFrame()
     local bgTex = searchFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
     bgTex:SetPoint("TOPLEFT", 4, -4)
     bgTex:SetPoint("BOTTOMRIGHT", -4, 4)
-    bgTex:SetColorTexture(0, 0, 0, EasyFind.db.searchBarOpacity or 0.75)
+    bgTex:SetColorTexture(0, 0, 0, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
     searchFrame.bgTex = bgTex
 
     -- Search icon
@@ -679,13 +686,13 @@ function UI:CreateResultsFrame()
     resultsFrame.scrollBar = ns.Utils.CreateMinimalScrollBar(scrollFrame, resultsFrame)
 
     for i = 1, MAX_BUTTON_POOL do
-        local btn = self:CreateResultButton(i)
-        resultButtons[i] = btn
+        local resultRow = self:CreateResultButton(i)
+        resultButtons[i] = resultRow
     end
 
     -- Pin section separator line (golden, shown between pinned items and search results)
     local pinSeparator = scrollChild:CreateTexture(nil, "ARTWORK")
-    pinSeparator:SetColorTexture(1.0, 0.82, 0.0, 0.4)
+    pinSeparator:SetColorTexture(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.4)
     pinSeparator:SetHeight(1)
     pinSeparator:Hide()
     resultsFrame.pinSeparator = pinSeparator
@@ -762,41 +769,41 @@ end
 
 function UI:CreateResultButton(index)
     local scrollChild = resultsFrame.scrollChild
-    local btn = CreateFrame("Button", "EasyFindResultButton"..index, scrollChild)
-    btn:SetSize(360, 22)
-    btn:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 10, -8 - (index - 1) * 22)
-    
-    btn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-    
+    local resultRow = CreateFrame("Button", "EasyFindResultButton"..index, scrollChild)
+    resultRow:SetSize(360, 22)
+    resultRow:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 10, -8 - (index - 1) * 22)
+
+    resultRow:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+
     -- Persistent selection highlight (for keyboard navigation)
-    local selTex = btn:CreateTexture(nil, "BACKGROUND")
+    local selTex = resultRow:CreateTexture(nil, "BACKGROUND")
     selTex:SetAllPoints()
     selTex:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
     selTex:SetBlendMode("ADD")
     selTex:SetVertexColor(0.3, 0.6, 1.0, 0.4)
     selTex:Hide()
-    btn.selectionHighlight = selTex
-    
+    resultRow.selectionHighlight = selTex
+
     -- Retail theme: full-width dark gradient behind headers (Event Schedule style)
-    local headerGrad = btn:CreateTexture(nil, "BACKGROUND", nil, 1)
+    local headerGrad = resultRow:CreateTexture(nil, "BACKGROUND", nil, 1)
     headerGrad:SetTexture("Interface\\QuestFrame\\UI-QuestLogTitleHighlight")
     headerGrad:SetBlendMode("ADD")
     headerGrad:SetVertexColor(0.35, 0.27, 0.08, 0.6)
     headerGrad:SetAllPoints()
     headerGrad:Hide()
-    btn.headerGrad = headerGrad
-    
+    resultRow.headerGrad = headerGrad
+
     -- Thin horizontal separator line at the bottom of each row
-    local separator = btn:CreateTexture(nil, "ARTWORK", nil, 0)
+    local separator = resultRow:CreateTexture(nil, "ARTWORK", nil, 0)
     separator:SetColorTexture(0.5, 0.45, 0.3, 0.3)
     separator:SetHeight(1)
-    separator:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 4, 0)
-    separator:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -4, 0)
+    separator:SetPoint("BOTTOMLEFT", resultRow, "BOTTOMLEFT", 4, 0)
+    separator:SetPoint("BOTTOMRIGHT", resultRow, "BOTTOMRIGHT", -4, 0)
     separator:Hide()
-    btn.separator = separator
-    
+    resultRow.separator = separator
+
     -- Retail: raised tab header (quest-log style with atlas textures)
-    local headerTab = CreateFrame("Button", nil, btn)
+    local headerTab = CreateFrame("Button", nil, resultRow)
     headerTab:SetAllPoints()
     headerTab:RegisterForClicks("LeftButtonUp")
     headerTab:SetScript("OnClick", function(self)
@@ -804,14 +811,14 @@ function UI:CreateResultButton(index)
         parent:GetScript("OnClick")(parent)
     end)
     headerTab:Hide()
-    btn.headerTab = headerTab
-    
+    resultRow.headerTab = headerTab
+
     -- Background texture using QuestLog-tab atlas
     local tabBg = headerTab:CreateTexture(nil, "BACKGROUND")
     tabBg:SetAllPoints()
     tabBg:SetAtlas("QuestLog-tab")
-    btn.tabBg = tabBg
-    
+    resultRow.tabBg = tabBg
+
     -- Hover overlay: same atlas, additive blend, manually shown/hidden
     local tabHoverOverlay = headerTab:CreateTexture(nil, "ARTWORK", nil, -1)
     tabHoverOverlay:SetAllPoints()
@@ -819,22 +826,22 @@ function UI:CreateResultButton(index)
     tabHoverOverlay:SetBlendMode("ADD")
     tabHoverOverlay:SetAlpha(0.40)
     tabHoverOverlay:Hide()
-    btn.tabHoverOverlay = tabHoverOverlay
-    
+    resultRow.tabHoverOverlay = tabHoverOverlay
+
     -- +/- button texture on right side (using atlas)
     local toggleIcon = headerTab:CreateTexture(nil, "ARTWORK")
     toggleIcon:SetSize(18, 17)
     toggleIcon:SetPoint("RIGHT", headerTab, "RIGHT", -8, 0)
     toggleIcon:SetAtlas("QuestLog-icon-expand")
-    btn.toggleIcon = toggleIcon
-    
+    resultRow.toggleIcon = toggleIcon
+
     -- Header name text (child of headerTab)
     local tabText = headerTab:CreateFontString(nil, "OVERLAY", "Game15Font_Shadow")
     tabText:SetPoint("LEFT", headerTab, "LEFT", 10, 0)
     tabText:SetPoint("RIGHT", toggleIcon, "LEFT", -4, 0)
     tabText:SetJustifyH("LEFT")
     tabText:SetTextColor(0.60, 0.58, 0.55, 1.0)    -- muted gray (normal state)
-    btn.tabText = tabText
+    resultRow.tabText = tabText
     
     -- Hover handlers: brighten tab bg, text near-white, icon bright yellow
     headerTab:SetScript("OnEnter", function(self)
@@ -872,7 +879,7 @@ function UI:CreateResultButton(index)
         end
         if parent.tabText then
             if parent._isMatch then
-                parent.tabText:SetTextColor(1.0, 0.82, 0.0, 1.0)   -- back to gold
+                parent.tabText:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1.0)   -- back to gold
             else
                 parent.tabText:SetTextColor(0.60, 0.58, 0.55, 1.0) -- back to gray
             end
@@ -894,83 +901,83 @@ function UI:CreateResultButton(index)
     tabSelTex:SetBlendMode("ADD")
     tabSelTex:SetVertexColor(0.3, 0.6, 1.0, 0.4)
     tabSelTex:Hide()
-    btn.tabSelectionHighlight = tabSelTex
-    
+    resultRow.tabSelectionHighlight = tabSelTex
+
     -- Tree connector textures per depth level
     -- Each level gets: a vertical pass-through line AND a horizontal branch line
-    btn.treeVert   = {}   -- vertical │ lines (pass-through for ancestors)
-    btn.treeBranch = {}   -- horizontal ─ branch connector at this row's own depth
-    btn.treeElbow  = {}   -- vertical half-line for └ (last child) vs ├ (mid child)
-    
+    resultRow.treeVert   = {}   -- vertical │ lines (pass-through for ancestors)
+    resultRow.treeBranch = {}   -- horizontal ─ branch connector at this row's own depth
+    resultRow.treeElbow  = {}   -- vertical half-line for └ (last child) vs ├ (mid child)
+
     for d = 1, MAX_DEPTH do
         local c = INDENT_COLORS[d]
         local xCenter = (d - 1) * INDENT_PX + 5  -- center X of this depth's column
-        
+
         -- Full-height vertical pass-through line (for ancestor depths still active)
-        local vert = btn:CreateTexture(nil, "BACKGROUND")
+        local vert = resultRow:CreateTexture(nil, "BACKGROUND")
         vert:SetColorTexture(c[1], c[2], c[3], c[4])
         vert:SetWidth(LINE_W)
-        vert:SetPoint("TOP",    btn, "TOPLEFT",    xCenter, 2)
-        vert:SetPoint("BOTTOM", btn, "BOTTOMLEFT", xCenter, -2)
+        vert:SetPoint("TOP",    resultRow, "TOPLEFT",    xCenter, 2)
+        vert:SetPoint("BOTTOM", resultRow, "BOTTOMLEFT", xCenter, -2)
         vert:Hide()
-        btn.treeVert[d] = vert
-        
+        resultRow.treeVert[d] = vert
+
         -- Half-height vertical elbow (top half only - for ├ and └ at this row's depth)
-        local elbow = btn:CreateTexture(nil, "BACKGROUND")
+        local elbow = resultRow:CreateTexture(nil, "BACKGROUND")
         elbow:SetColorTexture(c[1], c[2], c[3], c[4])
         elbow:SetWidth(LINE_W)
-        elbow:SetPoint("TOP", btn, "TOPLEFT", xCenter, 2)
+        elbow:SetPoint("TOP", resultRow, "TOPLEFT", xCenter, 2)
         elbow:SetHeight(13)  -- half the row height + a bit
         elbow:Hide()
-        btn.treeElbow[d] = elbow
-        
+        resultRow.treeElbow[d] = elbow
+
         -- Horizontal branch line (goes from the vertical line rightward to the icon)
-        local branch = btn:CreateTexture(nil, "BACKGROUND")
+        local branch = resultRow:CreateTexture(nil, "BACKGROUND")
         branch:SetColorTexture(c[1], c[2], c[3], c[4])
         branch:SetHeight(LINE_W)
-        branch:SetPoint("LEFT",  btn, "TOPLEFT", xCenter, -11)
-        branch:SetPoint("RIGHT", btn, "TOPLEFT", xCenter + INDENT_PX - 2, -11)
+        branch:SetPoint("LEFT",  resultRow, "TOPLEFT", xCenter, -11)
+        branch:SetPoint("RIGHT", resultRow, "TOPLEFT", xCenter + INDENT_PX - 2, -11)
         branch:Hide()
-        btn.treeBranch[d] = branch
+        resultRow.treeBranch[d] = branch
     end
     
-    local icon = btn:CreateTexture(nil, "ARTWORK")
+    local icon = resultRow:CreateTexture(nil, "ARTWORK")
     icon:SetSize(16, 16)
     icon:SetPoint("LEFT", 0, 0)
-    btn.icon = icon
+    resultRow.icon = icon
 
     -- Pin indicator (small map pin badge on the icon)
-    local pinIcon = btn:CreateTexture(nil, "OVERLAY")
+    local pinIcon = resultRow:CreateTexture(nil, "OVERLAY")
     pinIcon:SetSize(10, 10)
     pinIcon:SetPoint("BOTTOMLEFT", icon, "BOTTOMRIGHT", -4, -1)
     pinIcon:SetAtlas("Waypoint-MapPin-ChatIcon")
     pinIcon:Hide()
-    btn.pinIcon = pinIcon
+    resultRow.pinIcon = pinIcon
 
     -- Pin header toggle icon (expand/collapse, right-aligned on the button itself)
-    local pinToggle = btn:CreateTexture(nil, "ARTWORK")
+    local pinToggle = resultRow:CreateTexture(nil, "ARTWORK")
     pinToggle:SetSize(14, 14)
-    pinToggle:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+    pinToggle:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
     pinToggle:SetAtlas("QuestLog-icon-shrink")
     pinToggle:Hide()
-    btn.pinToggle = pinToggle
+    resultRow.pinToggle = pinToggle
 
     -- Pin header underline (thin golden line below the header text)
-    local pinHeaderLine = btn:CreateTexture(nil, "ARTWORK")
+    local pinHeaderLine = resultRow:CreateTexture(nil, "ARTWORK")
     pinHeaderLine:SetHeight(1)
-    pinHeaderLine:SetColorTexture(1.0, 0.82, 0.0, 0.4)
-    pinHeaderLine:SetPoint("BOTTOMLEFT", btn, "BOTTOMLEFT", 0, 0)
-    pinHeaderLine:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
+    pinHeaderLine:SetColorTexture(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.4)
+    pinHeaderLine:SetPoint("BOTTOMLEFT", resultRow, "BOTTOMLEFT", 0, 0)
+    pinHeaderLine:SetPoint("BOTTOMRIGHT", resultRow, "BOTTOMRIGHT", 0, 0)
     pinHeaderLine:Hide()
-    btn.pinHeaderLine = pinHeaderLine
+    resultRow.pinHeaderLine = pinHeaderLine
 
     -- Right-aligned currency amount label
-    local amountText = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    amountText:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+    local amountText = resultRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    amountText:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
     amountText:SetJustifyH("RIGHT")
     amountText:SetTextColor(0.9, 0.82, 0.65, 1.0)
     amountText:Hide()
-    btn.amountText = amountText
+    resultRow.amountText = amountText
 
     -- Right-aligned reputation standing bar
     -- Structure: repBar (dark bg + border) → repClip (clips fill) → repFillFrame (colored, same shape)
@@ -978,21 +985,21 @@ function UI:CreateResultButton(index)
     local REP_BAR_WIDTH = 100
     local repBarBackdrop = {
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeFile = TOOLTIP_BORDER,
         tile = true, tileSize = 8, edgeSize = 14,
         insets = { left = 3, right = 3, top = 3, bottom = 3 },
     }
 
-    local repBar = CreateFrame("Frame", nil, btn, BackdropTemplateMixin and "BackdropTemplate")
+    local repBar = CreateFrame("Frame", nil, resultRow, BackdropTemplateMixin and "BackdropTemplate")
     repBar:SetSize(REP_BAR_WIDTH, 19)
-    repBar:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
+    repBar:SetPoint("RIGHT", resultRow, "RIGHT", -6, 0)
     if repBar.SetBackdrop then
         repBar:SetBackdrop(repBarBackdrop)
         repBar:SetBackdropColor(0.06, 0.06, 0.06, 1.0)
         repBar:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.8)
     end
     repBar:Hide()
-    btn.repBar = repBar
+    resultRow.repBar = repBar
 
     -- Clip frame controls how much of the fill is visible (left→right)
     local repClip = CreateFrame("Frame", nil, repBar)
@@ -1000,7 +1007,7 @@ function UI:CreateResultButton(index)
     repClip:SetPoint("BOTTOMLEFT", repBar, "BOTTOMLEFT", 0, 0)
     repClip:SetWidth(REP_BAR_WIDTH)
     repClip:SetClipsChildren(true)
-    btn.repClip = repClip
+    resultRow.repClip = repClip
 
     -- Fill frame: same rounded shape as repBar, but colored; clipped by repClip
     local repFill = CreateFrame("Frame", nil, repClip, BackdropTemplateMixin and "BackdropTemplate")
@@ -1010,7 +1017,7 @@ function UI:CreateResultButton(index)
         repFill:SetBackdrop(repBarBackdrop)
         repFill:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.8)
     end
-    btn.repFill = repFill
+    resultRow.repFill = repFill
 
     -- Glossy bar texture (same as WoW default bars); backdrop bgColor matches fill
     -- color so the flat corners blend seamlessly with the glossy center
@@ -1018,7 +1025,7 @@ function UI:CreateResultButton(index)
     repBarTex:SetPoint("TOPLEFT", repFill, "TOPLEFT", 3, -3)
     repBarTex:SetPoint("BOTTOMRIGHT", repFill, "BOTTOMRIGHT", -3, 3)
     repBarTex:SetTexture("Interface\\TargetingFrame\\UI-StatusBar")
-    btn.repBarTex = repBarTex
+    resultRow.repBarTex = repBarTex
 
     -- Text overlay above everything (not clipped)
     local repTextOverlay = CreateFrame("Frame", nil, repBar)
@@ -1028,16 +1035,16 @@ function UI:CreateResultButton(index)
     repBarText:SetPoint("CENTER", repBar, "CENTER", 0, 0)
     repBarText:SetTextColor(1.0, 1.0, 1.0, 1.0)
     repBarText:SetShadowOffset(1, -1)
-    btn.repBarText = repBarText
+    resultRow.repBarText = repBarText
 
-    local text = btn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local text = resultRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     text:SetPoint("LEFT", icon, "RIGHT", 4, 0)
     text:SetPoint("RIGHT", amountText, "LEFT", -4, 0)
     text:SetJustifyH("LEFT")
-    btn.text = text
+    resultRow.text = text
     
-    btn:RegisterForClicks("LeftButtonDown", "RightButtonUp")
-    btn:SetScript("OnClick", function(self, mouseButton, down)
+    resultRow:RegisterForClicks("LeftButtonDown", "RightButtonUp")
+    resultRow:SetScript("OnClick", function(self, mouseButton, down)
         -- Right-click: show pin/unpin popup
         if mouseButton == "RightButton" and self.data then
             local pinData = self.data
@@ -1117,7 +1124,7 @@ function UI:CreateResultButton(index)
     end)
 
     -- Tooltip for unearned currencies
-    btn:SetScript("OnEnter", function(self)
+    resultRow:SetScript("OnEnter", function(self)
         if self.isUnearnedCurrency then
             if unearnedTooltip then
                 -- Update tooltip text based on whether it's a parent tab or individual currency
@@ -1139,15 +1146,15 @@ function UI:CreateResultButton(index)
         end
     end)
 
-    btn:SetScript("OnLeave", function(self)
+    resultRow:SetScript("OnLeave", function(self)
         -- Only hide our custom tooltip - let WoW manage GameTooltip naturally
         if unearnedTooltip then
             unearnedTooltip:Hide()
         end
     end)
 
-    btn:Hide()
-    return btn
+    resultRow:Hide()
+    return resultRow
 end
 
 function UI:OnSearchTextChanged(text)
@@ -1405,7 +1412,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     local yOffset = 0
     local pinEndYOffset = 0
     for i = 1, MAX_BUTTON_POOL do
-        local btn = resultButtons[i]
+        local resultRow = resultButtons[i]
         if i <= count then
             local entry = visible[i]
             local data = entry.data
@@ -1424,53 +1431,53 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 
             -- Reposition for theme row height
             local padL = theme.resultsPadLeft or 10
-            btn:SetSize(theme.btnWidth - scrollInset, rowH)
-            btn:ClearAllPoints()
-            btn:SetPoint("TOPLEFT", resultsFrame.scrollChild, "TOPLEFT", padL, -yOffset)
+            resultRow:SetSize(theme.btnWidth - scrollInset, rowH)
+            resultRow:ClearAllPoints()
+            resultRow:SetPoint("TOPLEFT", resultsFrame.scrollChild, "TOPLEFT", padL, -yOffset)
 
             -- Selection highlight color
-            btn.selectionHighlight:SetVertexColor(unpack(theme.selectionColor))
+            resultRow.selectionHighlight:SetVertexColor(unpack(theme.selectionColor))
 
-            btn.data = data
-            btn.isPathNode = entry.isPathNode
-            btn.isPinHeader = entry.isPinHeader or false
-            btn.pathNodeName = entry.isPathNode and entry.name or nil
-            btn.pathNodeDepth = entry.isPathNode and depth or nil
-            btn._containerEntry = entry.isContainer and entry or nil
-            if btn.pinIcon then btn.pinIcon:Hide() end
-            if btn.pinToggle then btn.pinToggle:Hide() end
-            if btn.pinHeaderLine then btn.pinHeaderLine:Hide() end
+            resultRow.data = data
+            resultRow.isPathNode = entry.isPathNode
+            resultRow.isPinHeader = entry.isPinHeader or false
+            resultRow.pathNodeName = entry.isPathNode and entry.name or nil
+            resultRow.pathNodeDepth = entry.isPathNode and depth or nil
+            resultRow._containerEntry = entry.isContainer and entry or nil
+            if resultRow.pinIcon then resultRow.pinIcon:Hide() end
+            if resultRow.pinToggle then resultRow.pinToggle:Hide() end
+            if resultRow.pinHeaderLine then resultRow.pinHeaderLine:Hide() end
 
             -- ---- Tree connector drawing ----
             for d = 1, MAX_DEPTH do
-                btn.treeVert[d]:Hide()
-                btn.treeElbow[d]:Hide()
-                btn.treeBranch[d]:Hide()
+                resultRow.treeVert[d]:Hide()
+                resultRow.treeElbow[d]:Hide()
+                resultRow.treeBranch[d]:Hide()
             end
-            
+
             if theme.showTreeLines and depth > 0 then
                 local halfRow = rowH * 0.5
                 local tc = theme.indentColors[depth] or theme.indentColors[1] or INDENT_COLORS[depth]
                 local xCenter = (depth - 1) * INDENT_PX + 5
-                
+
                 -- Recolor + reposition branch/elbow for active theme's row height
-                btn.treeBranch[depth]:SetColorTexture(tc[1], tc[2], tc[3], tc[4])
-                btn.treeBranch[depth]:ClearAllPoints()
-                btn.treeBranch[depth]:SetPoint("LEFT",  btn, "TOPLEFT", xCenter, -halfRow)
-                btn.treeBranch[depth]:SetPoint("RIGHT", btn, "TOPLEFT", xCenter + INDENT_PX - 2, -halfRow)
-                btn.treeBranch[depth]:Show()
-                
-                btn.treeElbow[depth]:SetColorTexture(tc[1], tc[2], tc[3], tc[4])
-                btn.treeElbow[depth]:ClearAllPoints()
-                btn.treeElbow[depth]:SetPoint("TOP", btn, "TOPLEFT", xCenter, 2)
-                btn.treeElbow[depth]:SetHeight(halfRow + 2)
-                btn.treeElbow[depth]:Show()
-                
+                resultRow.treeBranch[depth]:SetColorTexture(tc[1], tc[2], tc[3], tc[4])
+                resultRow.treeBranch[depth]:ClearAllPoints()
+                resultRow.treeBranch[depth]:SetPoint("LEFT",  resultRow, "TOPLEFT", xCenter, -halfRow)
+                resultRow.treeBranch[depth]:SetPoint("RIGHT", resultRow, "TOPLEFT", xCenter + INDENT_PX - 2, -halfRow)
+                resultRow.treeBranch[depth]:Show()
+
+                resultRow.treeElbow[depth]:SetColorTexture(tc[1], tc[2], tc[3], tc[4])
+                resultRow.treeElbow[depth]:ClearAllPoints()
+                resultRow.treeElbow[depth]:SetPoint("TOP", resultRow, "TOPLEFT", xCenter, 2)
+                resultRow.treeElbow[depth]:SetHeight(halfRow + 2)
+                resultRow.treeElbow[depth]:Show()
+
                 if not isLastChild[i] then
-                    btn.treeVert[depth]:SetColorTexture(tc[1], tc[2], tc[3], tc[4])
-                    btn.treeVert[depth]:Show()
+                    resultRow.treeVert[depth]:SetColorTexture(tc[1], tc[2], tc[3], tc[4])
+                    resultRow.treeVert[depth]:Show()
                 end
-                
+
                 for d = 1, depth - 1 do
                     local stillActive = false
                     for j = i + 1, count do
@@ -1480,74 +1487,74 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     end
                     if stillActive then
                         local ac = theme.indentColors[d] or theme.indentColors[1] or INDENT_COLORS[d]
-                        btn.treeVert[d]:SetColorTexture(ac[1], ac[2], ac[3], ac[4])
-                        btn.treeVert[d]:Show()
+                        resultRow.treeVert[d]:SetColorTexture(ac[1], ac[2], ac[3], ac[4])
+                        resultRow.treeVert[d]:Show()
                     end
                 end
             end
             
             -- ---- Header styling ----
-            btn._isMatch = entry.isMatch and entry.isPathNode
+            resultRow._isMatch = entry.isMatch and entry.isPathNode
             if entry.isPinHeader then
                 -- Pin header: plain text + toggle icon + underline (no tab/gradient)
-                btn.headerTab:Hide()
-                btn.headerGrad:Hide()
+                resultRow.headerTab:Hide()
+                resultRow.headerGrad:Hide()
                 local isCollapsed = EasyFind.db.pinsCollapsed
                 local expandAtlas = theme.expandAtlas or "QuestLog-icon-expand"
                 local collapseAtlas = theme.collapseAtlas or "QuestLog-icon-shrink"
-                btn.pinToggle:SetAtlas(isCollapsed and expandAtlas or collapseAtlas)
-                btn.pinToggle:Show()
-                btn.pinHeaderLine:Show()
+                resultRow.pinToggle:SetAtlas(isCollapsed and expandAtlas or collapseAtlas)
+                resultRow.pinToggle:Show()
+                resultRow.pinHeaderLine:Show()
                 -- Position text: left-aligned, right-bounded by toggle
-                btn.text:ClearAllPoints()
-                btn.text:SetPoint("LEFT", btn, "LEFT", 2, 0)
-                btn.text:SetPoint("RIGHT", btn.pinToggle, "LEFT", -4, 0)
-                btn.text:SetText(entry.name)
-                btn.text:SetFontObject(theme.pathFont)
-                btn.text:SetTextColor(0.7, 0.7, 0.7, 1.0)
+                resultRow.text:ClearAllPoints()
+                resultRow.text:SetPoint("LEFT", resultRow, "LEFT", 2, 0)
+                resultRow.text:SetPoint("RIGHT", resultRow.pinToggle, "LEFT", -4, 0)
+                resultRow.text:SetText(entry.name)
+                resultRow.text:SetFontObject(theme.pathFont)
+                resultRow.text:SetTextColor(0.7, 0.7, 0.7, 1.0)
             elseif theme.showHeaderTab and entry.isPathNode then
                 -- Quest-log raised tab header
                 local tabInset = depth * indPx
-                btn.headerTab:ClearAllPoints()
-                btn.headerTab:SetPoint("TOPLEFT", btn, "TOPLEFT", tabInset, 0)
-                btn.headerTab:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", 0, 0)
-                btn.headerTab:Show()
+                resultRow.headerTab:ClearAllPoints()
+                resultRow.headerTab:SetPoint("TOPLEFT", resultRow, "TOPLEFT", tabInset, 0)
+                resultRow.headerTab:SetPoint("BOTTOMRIGHT", resultRow, "BOTTOMRIGHT", 0, 0)
+                resultRow.headerTab:Show()
                 -- Set +/- atlas and header name on the tab
                 local key = entry.name .. "_" .. depth
                 local isCollapsed = collapsedNodes[key]
                 local expandAtlas = theme.expandAtlas or "QuestLog-icon-expand"
                 local collapseAtlas = theme.collapseAtlas or "QuestLog-icon-shrink"
                 local toggleAtlas = isCollapsed and expandAtlas or collapseAtlas
-                btn.toggleIcon:SetAtlas(toggleAtlas)
-                btn.tabText:SetText(entry.name)
+                resultRow.toggleIcon:SetAtlas(toggleAtlas)
+                resultRow.tabText:SetText(entry.name)
                 -- Matched path nodes get gold text; non-matches stay muted gray
-                if btn._isMatch then
-                    btn.tabText:SetTextColor(1.0, 0.82, 0.0, 1.0)   -- gold
+                if resultRow._isMatch then
+                    resultRow.tabText:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1.0)   -- gold
                 else
-                    btn.tabText:SetTextColor(0.60, 0.58, 0.55, 1.0) -- muted gray
+                    resultRow.tabText:SetTextColor(0.60, 0.58, 0.55, 1.0) -- muted gray
                 end
                 -- Normal icon/text hidden - SetRowIcon("hidden") handles icon below
-                btn.text:SetText("")
-                btn.headerGrad:Hide()
+                resultRow.text:SetText("")
+                resultRow.headerGrad:Hide()
             else
-                btn.headerTab:Hide()
+                resultRow.headerTab:Hide()
                 -- Gradient header (Classic fallback)
                 local showGrad = theme.showHeaderBar and entry.isPathNode
                 if showGrad then
-                    btn.headerGrad:SetAllPoints()
+                    resultRow.headerGrad:SetAllPoints()
                     local gradAlpha = mmax(0.25, 0.6 - depth * 0.1)
-                    btn.headerGrad:SetVertexColor(0.35, 0.27, 0.08, gradAlpha)
+                    resultRow.headerGrad:SetVertexColor(0.35, 0.27, 0.08, gradAlpha)
                 end
-                btn.headerGrad:SetShown(showGrad)
+                resultRow.headerGrad:SetShown(showGrad)
             end
-            
+
             -- Separator line between rows (skip for pin header which has its own underline)
             if not entry.isPinHeader and theme.showSeparators then
                 local sc = theme.separatorColor
-                btn.separator:SetColorTexture(sc[1], sc[2], sc[3], sc[4])
-                btn.separator:Show()
+                resultRow.separator:SetColorTexture(sc[1], sc[2], sc[3], sc[4])
+                resultRow.separator:Show()
             else
-                btn.separator:Hide()
+                resultRow.separator:Hide()
             end
 
             -- Check if this is a currency that hasn't been discovered yet
@@ -1608,43 +1615,43 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     end
                 end
             end
-            btn.isUnearnedCurrency = isUnearnedCurrency
-            btn.isPathNode = entry.isPathNode  -- Store for tooltip text
+            resultRow.isUnearnedCurrency = isUnearnedCurrency
+            resultRow.isPathNode = entry.isPathNode  -- Store for tooltip text
 
             -- ---- Position icon & text (non-tab, non-pin-header rows) ----
             if entry.isPinHeader then
                 -- Pin header: text already positioned in header styling; hide icon
             elseif not (theme.showHeaderTab and entry.isPathNode) then
                 local indentPixels = depth * indPx
-                btn.icon:ClearAllPoints()
-                btn.icon:SetPoint("LEFT", btn, "LEFT", indentPixels, 0)
+                resultRow.icon:ClearAllPoints()
+                resultRow.icon:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
 
-                btn.text:ClearAllPoints()
-                btn.text:SetPoint("LEFT", btn.icon, "RIGHT", 4, 0)
-                btn.text:SetPoint("RIGHT", btn.amountText, "LEFT", -4, 0)
-                btn.text:SetText(entry.name)
+                resultRow.text:ClearAllPoints()
+                resultRow.text:SetPoint("LEFT", resultRow.icon, "RIGHT", 4, 0)
+                resultRow.text:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
+                resultRow.text:SetText(entry.name)
 
                 -- Style: path nodes vs leaf results, themed
                 if entry.isPathNode then
-                    btn.text:SetFontObject(theme.pathFont)
+                    resultRow.text:SetFontObject(theme.pathFont)
                     if entry.isMatch then
-                        btn.text:SetTextColor(1.0, 0.82, 0.0, 1.0) -- gold for matches
+                        resultRow.text:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1.0) -- gold for matches
                     else
-                        btn.text:SetTextColor(unpack(theme.pathColor))
+                        resultRow.text:SetTextColor(unpack(theme.pathColor))
                     end
                 elseif isUnearnedCurrency then
                     -- Gray out unearned currencies
-                    btn.text:SetFontObject(theme.leafFont)
-                    btn.text:SetTextColor(0.5, 0.5, 0.5, 1.0)
+                    resultRow.text:SetFontObject(theme.leafFont)
+                    resultRow.text:SetTextColor(0.5, 0.5, 0.5, 1.0)
                 elseif entry.isMatch then
-                    btn.text:SetFontObject(theme.leafFont)
-                    btn.text:SetTextColor(1.0, 0.82, 0.0, 1.0) -- gold for matches
+                    resultRow.text:SetFontObject(theme.leafFont)
+                    resultRow.text:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1.0) -- gold for matches
                 else
-                    btn.text:SetFontObject(theme.leafFont)
-                    btn.text:SetTextColor(unpack(theme.leafColor))
+                    resultRow.text:SetFontObject(theme.leafFont)
+                    resultRow.text:SetTextColor(unpack(theme.leafColor))
                 end
             end
-            
+
             -- ---- Set icon ----
             local iconSet = false
             local isCurrencyItem = data and data.category == "Currency"
@@ -1653,18 +1660,18 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 
             if entry.isPinHeader then
                 -- Pin header: no row icon (toggle is handled by pinToggle)
-                SetRowIcon(btn, "hidden", nil, theme.iconSize)
+                SetRowIcon(resultRow, "hidden", nil, theme.iconSize)
                 iconSet = true
 
             elseif theme.showHeaderTab and entry.isPathNode then
-                SetRowIcon(btn, "hidden", nil, theme.iconSize)
+                SetRowIcon(resultRow, "hidden", nil, theme.iconSize)
                 iconSet = true
 
             elseif entry.isPathNode then
                 local key = entry.name .. "_" .. depth
                 local nodeCollapsed = collapsedNodes[key]
                 local iconPath = nodeCollapsed and theme.expandIcon or theme.collapseIcon
-                SetRowIcon(btn, "path", iconPath, theme.pathIconSize)
+                SetRowIcon(resultRow, "path", iconPath, theme.pathIconSize)
                 iconSet = true
             end
 
@@ -1701,47 +1708,47 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 
                 -- Amount text
                 if quantity then
-                    btn.amountText:SetText(tostring(quantity))
+                    resultRow.amountText:SetText(tostring(quantity))
                     if isUnearnedCurrency then
-                        btn.amountText:SetTextColor(0.5, 0.5, 0.5, 1.0)
+                        resultRow.amountText:SetTextColor(0.5, 0.5, 0.5, 1.0)
                     else
-                        btn.amountText:SetTextColor(0.9, 0.82, 0.65, 1.0)
+                        resultRow.amountText:SetTextColor(0.9, 0.82, 0.65, 1.0)
                     end
-                    btn.amountText:Show()
+                    resultRow.amountText:Show()
                 else
-                    btn.amountText:Hide()
+                    resultRow.amountText:Hide()
                 end
 
                 -- Move icon to right side (right of amount text)
                 if iconFileID then
-                    btn.icon:SetTexture(nil)
-                    btn.icon:SetTexCoord(0, 1, 0, 1)
-                    btn.icon:SetTexture(iconFileID)
-                    btn.icon:SetSize(theme.iconSize or 16, theme.iconSize or 16)
-                    btn.icon:ClearAllPoints()
-                    btn.icon:SetPoint("RIGHT", btn, "RIGHT", -5, 0)
-                    btn.icon:Show()
+                    resultRow.icon:SetTexture(nil)
+                    resultRow.icon:SetTexCoord(0, 1, 0, 1)
+                    resultRow.icon:SetTexture(iconFileID)
+                    resultRow.icon:SetSize(theme.iconSize or 16, theme.iconSize or 16)
+                    resultRow.icon:ClearAllPoints()
+                    resultRow.icon:SetPoint("RIGHT", resultRow, "RIGHT", -5, 0)
+                    resultRow.icon:Show()
                     -- Anchor amount text to left of icon
-                    btn.amountText:ClearAllPoints()
-                    btn.amountText:SetPoint("RIGHT", btn.icon, "LEFT", -3, 0)
+                    resultRow.amountText:ClearAllPoints()
+                    resultRow.amountText:SetPoint("RIGHT", resultRow.icon, "LEFT", -3, 0)
                 else
-                    SetRowIcon(btn, "hidden", nil, theme.iconSize)
-                    btn.amountText:ClearAllPoints()
-                    btn.amountText:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+                    SetRowIcon(resultRow, "hidden", nil, theme.iconSize)
+                    resultRow.amountText:ClearAllPoints()
+                    resultRow.amountText:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
                 end
 
                 -- Anchor name text from indent to amount (no left icon, tiny buffer)
                 local indentPixels = depth * indPx + 4
-                btn.text:ClearAllPoints()
-                btn.text:SetPoint("LEFT", btn, "LEFT", indentPixels, 0)
-                btn.text:SetPoint("RIGHT", btn.amountText, "LEFT", -4, 0)
+                resultRow.text:ClearAllPoints()
+                resultRow.text:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
+                resultRow.text:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
                 iconSet = true
 
             else
-                btn.amountText:Hide()
+                resultRow.amountText:Hide()
                 -- Reset amount text anchor for non-currency rows
-                btn.amountText:ClearAllPoints()
-                btn.amountText:SetPoint("RIGHT", btn, "RIGHT", -8, 0)
+                resultRow.amountText:ClearAllPoints()
+                resultRow.amountText:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
             end
 
             -- Reputation bar: show on leaves and on path nodes with actual rep bars
@@ -1816,47 +1823,47 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 if standingText then
                     if fill < 0 then fill = 0 end
                     if fill > 1 then fill = 1 end
-                    btn.repBarTex:SetVertexColor(barR, barG, barB, 1.0)
-                    if btn.repFill.SetBackdropColor then
-                        btn.repFill:SetBackdropColor(barR, barG, barB, 1.0)
+                    resultRow.repBarTex:SetVertexColor(barR, barG, barB, 1.0)
+                    if resultRow.repFill.SetBackdropColor then
+                        resultRow.repFill:SetBackdropColor(barR, barG, barB, 1.0)
                     end
-                    btn.repClip:SetWidth(math.max(fill * 100, 0.1))
-                    btn.repBarText:SetText(standingText)
+                    resultRow.repClip:SetWidth(math.max(fill * 100, 0.1))
+                    resultRow.repBarText:SetText(standingText)
 
                     if entry.isPathNode and theme.showHeaderTab then
                         -- Tab theme: place rep bar left of the toggle icon
-                        btn.repBar:ClearAllPoints()
-                        btn.repBar:SetPoint("RIGHT", btn.toggleIcon, "LEFT", -4, 0)
-                        btn.tabText:ClearAllPoints()
-                        btn.tabText:SetPoint("LEFT", btn.headerTab, "LEFT", 10, 0)
-                        btn.tabText:SetPoint("RIGHT", btn.repBar, "LEFT", -4, 0)
+                        resultRow.repBar:ClearAllPoints()
+                        resultRow.repBar:SetPoint("RIGHT", resultRow.toggleIcon, "LEFT", -4, 0)
+                        resultRow.tabText:ClearAllPoints()
+                        resultRow.tabText:SetPoint("LEFT", resultRow.headerTab, "LEFT", 10, 0)
+                        resultRow.tabText:SetPoint("RIGHT", resultRow.repBar, "LEFT", -4, 0)
                     elseif entry.isPathNode then
                         -- Classic theme: rep bar on right, text between icon and bar
-                        btn.repBar:ClearAllPoints()
-                        btn.repBar:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
+                        resultRow.repBar:ClearAllPoints()
+                        resultRow.repBar:SetPoint("RIGHT", resultRow, "RIGHT", -6, 0)
                     else
                         -- Leaf: default position, hide icon, anchor text to bar
-                        btn.repBar:ClearAllPoints()
-                        btn.repBar:SetPoint("RIGHT", btn, "RIGHT", -6, 0)
-                        SetRowIcon(btn, "hidden", nil, theme.iconSize)
+                        resultRow.repBar:ClearAllPoints()
+                        resultRow.repBar:SetPoint("RIGHT", resultRow, "RIGHT", -6, 0)
+                        SetRowIcon(resultRow, "hidden", nil, theme.iconSize)
                         local indentPixels = depth * indPx + 4
-                        btn.text:ClearAllPoints()
-                        btn.text:SetPoint("LEFT", btn, "LEFT", indentPixels, 0)
-                        btn.text:SetPoint("RIGHT", btn.repBar, "LEFT", -4, 0)
+                        resultRow.text:ClearAllPoints()
+                        resultRow.text:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
+                        resultRow.text:SetPoint("RIGHT", resultRow.repBar, "LEFT", -4, 0)
                         iconSet = true
                     end
-                    btn.repBar:Show()
+                    resultRow.repBar:Show()
                 else
-                    btn.repBar:Hide()
+                    resultRow.repBar:Hide()
                 end
 
                 if not entry.isPathNode then iconSet = true end
             else
-                btn.repBar:Hide()
+                resultRow.repBar:Hide()
             end
 
             if not iconSet and data and data.icon then
-                SetRowIcon(btn, "file", data.icon, theme.iconSize)
+                SetRowIcon(resultRow, "file", data.icon, theme.iconSize)
                 iconSet = true
             end
 
@@ -1864,10 +1871,10 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             if not iconSet and data and data.steps then
                 for _, step in ipairs(data.steps) do
                     if step.portraitMenu or step.portraitMenuOption then
-                        SetPortraitTexture(btn.icon, "player")
-                        btn.icon:SetTexCoord(0, 1, 0, 1)
-                        btn.icon:SetSize(theme.iconSize or 16, theme.iconSize or 16)
-                        btn.icon:Show()
+                        SetPortraitTexture(resultRow.icon, "player")
+                        resultRow.icon:SetTexCoord(0, 1, 0, 1)
+                        resultRow.icon:SetSize(theme.iconSize or 16, theme.iconSize or 16)
+                        resultRow.icon:Show()
                         iconSet = true
                         break
                     end
@@ -1894,10 +1901,10 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                                     end
                                     if tex then
                                         local ulX, ulY, llX, llY, urX, urY, lrX, lrY = region:GetTexCoord()
-                                        btn.icon:SetTexture(tex)
-                                        btn.icon:SetTexCoord(ulX, ulY, llX, llY, urX, urY, lrX, lrY)
-                                        btn.icon:SetSize(theme.iconSize or 16, theme.iconSize or 16)
-                                        btn.icon:Show()
+                                        resultRow.icon:SetTexture(tex)
+                                        resultRow.icon:SetTexCoord(ulX, ulY, llX, llY, urX, urY, lrX, lrY)
+                                        resultRow.icon:SetSize(theme.iconSize or 16, theme.iconSize or 16)
+                                        resultRow.icon:Show()
                                         iconSet = true
                                     end
                                     break
@@ -1905,10 +1912,10 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                             end
                             -- Fallback for render target tabs: use player portrait
                             if not iconSet then
-                                SetPortraitTexture(btn.icon, "player")
-                                btn.icon:SetTexCoord(0, 1, 0, 1)
-                                btn.icon:SetSize(theme.iconSize or 16, theme.iconSize or 16)
-                                btn.icon:Show()
+                                SetPortraitTexture(resultRow.icon, "player")
+                                resultRow.icon:SetTexCoord(0, 1, 0, 1)
+                                resultRow.icon:SetSize(theme.iconSize or 16, theme.iconSize or 16)
+                                resultRow.icon:Show()
                                 iconSet = true
                             end
                         end
@@ -1923,78 +1930,78 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 local texture, isAtlas = GetButtonIcon(data.buttonFrame)
                 if texture then
                     local kind = isAtlas and "atlas" or "file"
-                    SetRowIcon(btn, kind, texture, theme.iconSize)
+                    SetRowIcon(resultRow, kind, texture, theme.iconSize)
                     iconSet = true
                 end
             end
 
             if not iconSet then
-                SetRowIcon(btn, "file", 134400, theme.iconSize)
+                SetRowIcon(resultRow, "file", 134400, theme.iconSize)
             end
 
             -- Show pin indicator for pinned entries
-            if entry.isPinned and btn.pinIcon then
+            if entry.isPinned and resultRow.pinIcon then
                 -- Anchor pin icon to left edge of text, not the (possibly hidden) row icon
-                btn.pinIcon:ClearAllPoints()
-                btn.pinIcon:SetPoint("RIGHT", btn.text, "LEFT", 0, 0)
-                btn.pinIcon:Show()
+                resultRow.pinIcon:ClearAllPoints()
+                resultRow.pinIcon:SetPoint("RIGHT", resultRow.text, "LEFT", 0, 0)
+                resultRow.pinIcon:Show()
                 -- Pinned entries during search: show path prefix in name
                 if data and data.path and #data.path > 0 then
                     local prefix = tconcat(data.path, " > ")
-                    btn.text:SetText("|cff888888" .. prefix .. " >|r " .. (data.name or ""))
+                    resultRow.text:SetText("|cff888888" .. prefix .. " >|r " .. (data.name or ""))
                 end
                 -- Gray separator between pinned items (skip after header, skip last pin)
                 local isLastPin = (i == lastPinIndex)
                 if i > 1 and not isLastPin and visible[i - 1] and not visible[i - 1].isPinHeader then
-                    btn.separator:SetColorTexture(0.4, 0.4, 0.4, 0.4)
-                    btn.separator:Show()
+                    resultRow.separator:SetColorTexture(0.4, 0.4, 0.4, 0.4)
+                    resultRow.separator:Show()
                 end
             end
 
             -- Measure text height and expand row if text wraps
             local actualH = rowH
-            if btn.repBar:IsShown() then
+            if resultRow.repBar:IsShown() then
                 local textObj
-                if theme.showHeaderTab and entry.isPathNode and btn.headerTab:IsShown() then
-                    textObj = btn.tabText
+                if theme.showHeaderTab and entry.isPathNode and resultRow.headerTab:IsShown() then
+                    textObj = resultRow.tabText
                 else
-                    textObj = btn.text
+                    textObj = resultRow.text
                 end
                 local textHeight = textObj:GetStringHeight()
                 local minH = textHeight + 8  -- 4px padding top + bottom
                 if minH > rowH then
                     actualH = minH
-                    btn:SetHeight(actualH)
-                    if btn.headerTab:IsShown() then
-                        btn.headerTab:SetHeight(actualH)
+                    resultRow:SetHeight(actualH)
+                    if resultRow.headerTab:IsShown() then
+                        resultRow.headerTab:SetHeight(actualH)
                     end
                     -- Reposition tree connectors for taller row
                     if theme.showTreeLines and depth > 0 then
                         local halfRow = actualH * 0.5
                         local xCenter = (depth - 1) * INDENT_PX + 5
-                        btn.treeBranch[depth]:ClearAllPoints()
-                        btn.treeBranch[depth]:SetPoint("LEFT",  btn, "TOPLEFT", xCenter, -halfRow)
-                        btn.treeBranch[depth]:SetPoint("RIGHT", btn, "TOPLEFT", xCenter + INDENT_PX - 2, -halfRow)
-                        btn.treeElbow[depth]:ClearAllPoints()
-                        btn.treeElbow[depth]:SetPoint("TOP", btn, "TOPLEFT", xCenter, 2)
-                        btn.treeElbow[depth]:SetHeight(halfRow + 2)
+                        resultRow.treeBranch[depth]:ClearAllPoints()
+                        resultRow.treeBranch[depth]:SetPoint("LEFT",  resultRow, "TOPLEFT", xCenter, -halfRow)
+                        resultRow.treeBranch[depth]:SetPoint("RIGHT", resultRow, "TOPLEFT", xCenter + INDENT_PX - 2, -halfRow)
+                        resultRow.treeElbow[depth]:ClearAllPoints()
+                        resultRow.treeElbow[depth]:SetPoint("TOP", resultRow, "TOPLEFT", xCenter, 2)
+                        resultRow.treeElbow[depth]:SetHeight(halfRow + 2)
                     end
                 end
             end
 
             yOffset = yOffset + actualH
-            btn:Show()
+            resultRow:Show()
         else
-            btn:Hide()
-            btn.isPinHeader = false
-            btn.headerGrad:Hide()
-            btn.headerTab:Hide()
-            btn.separator:Hide()
-            btn.repBar:Hide()
+            resultRow:Hide()
+            resultRow.isPinHeader = false
+            resultRow.headerGrad:Hide()
+            resultRow.headerTab:Hide()
+            resultRow.separator:Hide()
+            resultRow.repBar:Hide()
             for d = 1, MAX_DEPTH do
-                btn.treeVert[d]:Hide()
-                btn.treeElbow[d]:Hide()
-                btn.treeBranch[d]:Hide()
+                resultRow.treeVert[d]:Hide()
+                resultRow.treeElbow[d]:Hide()
+                resultRow.treeBranch[d]:Hide()
             end
         end
     end
@@ -2161,28 +2168,28 @@ end
 
 function UI:UpdateSelectionHighlight()
     for i = 1, MAX_BUTTON_POOL do
-        local btn = resultButtons[i]
-        if btn.selectionHighlight then
-            btn.selectionHighlight:SetShown(i == selectedIndex)
+        local resultRow = resultButtons[i]
+        if resultRow.selectionHighlight then
+            resultRow.selectionHighlight:SetShown(i == selectedIndex)
         end
         -- Tab selection highlight (Retail theme)
-        if btn.tabSelectionHighlight then
-            btn.tabSelectionHighlight:SetShown(i == selectedIndex and btn.headerTab:IsShown())
+        if resultRow.tabSelectionHighlight then
+            resultRow.tabSelectionHighlight:SetShown(i == selectedIndex and resultRow.headerTab:IsShown())
         end
     end
 end
 
 function UI:ActivateSelected()
     if selectedIndex > 0 and selectedIndex <= MAX_BUTTON_POOL then
-        local btn = resultButtons[selectedIndex]
-        if btn:IsShown() then
+        local resultRow = resultButtons[selectedIndex]
+        if resultRow:IsShown() then
             -- Don't allow activating unearned currencies
-            if btn.isUnearnedCurrency then
+            if resultRow.isUnearnedCurrency then
                 return
             end
 
             -- Pin header: toggle collapse
-            if btn.isPinHeader then
+            if resultRow.isPinHeader then
                 EasyFind.db.pinsCollapsed = not EasyFind.db.pinsCollapsed
                 if cachedHierarchical then
                     self:ShowHierarchicalResults(cachedHierarchical, true)
@@ -2190,14 +2197,14 @@ function UI:ActivateSelected()
                 return
             end
 
-            if btn.isPathNode then
+            if resultRow.isPathNode then
                 -- Toggle collapse for path nodes
-                local key = (btn.pathNodeName or "") .. "_" .. (btn.pathNodeDepth or 0)
+                local key = (resultRow.pathNodeName or "") .. "_" .. (resultRow.pathNodeDepth or 0)
                 local wasCollapsed = collapsedNodes[key]
                 collapsedNodes[key] = not collapsedNodes[key]
-                if wasCollapsed and btn._containerEntry and cachedHierarchical then
+                if wasCollapsed and resultRow._containerEntry and cachedHierarchical then
                     for idx, entry in ipairs(cachedHierarchical) do
-                        if entry == btn._containerEntry then
+                        if entry == resultRow._containerEntry then
                             ExpandContainer(entry, idx)
                             break
                         end
@@ -2206,8 +2213,8 @@ function UI:ActivateSelected()
                 if cachedHierarchical then
                     self:ShowHierarchicalResults(cachedHierarchical, true)
                 end
-            elseif btn.data then
-                self:SelectResult(btn.data)
+            elseif resultRow.data then
+                self:SelectResult(resultRow.data)
             end
             return
         end
@@ -2442,13 +2449,13 @@ function UI:DirectOpen(data)
             -- If this is the last step, highlight it
             if stepIndex == executeCount then
                 C_Timer.After(0.05, function()
-                    local btn = Highlight:GetCurrencyRowButton(step.currencyID)
-                    if btn then
-                        Highlight:HighlightFrame(btn, nil)
+                    local currencyRow = Highlight:GetCurrencyRowButton(step.currencyID)
+                    if currencyRow then
+                        Highlight:HighlightFrame(currencyRow, nil)
                         -- Set up hover detection to clear highlight
                         local checkHover
                         checkHover = function()
-                            if btn:IsMouseOver() then
+                            if currencyRow:IsMouseOver() then
                                 Highlight:HideHighlight()
                             else
                                 C_Timer.After(0.1, checkHover)
@@ -2472,13 +2479,13 @@ function UI:DirectOpen(data)
             -- If this is the last step, highlight it
             if stepIndex == executeCount then
                 C_Timer.After(0.05, function()
-                    local btn = Highlight:GetFactionRowButton(step.factionID)
-                    if btn then
-                        Highlight:HighlightFrame(btn, nil)
+                    local factionRow = Highlight:GetFactionRowButton(step.factionID)
+                    if factionRow then
+                        Highlight:HighlightFrame(factionRow, nil)
                         -- Set up hover detection to clear highlight
                         local checkHover
                         checkHover = function()
-                            if btn:IsMouseOver() then
+                            if factionRow:IsMouseOver() then
                                 Highlight:HideHighlight()
                             else
                                 C_Timer.After(0.1, checkHover)
@@ -2688,9 +2695,9 @@ function UI:ExpandCurrencyHeader(headerName)
     -- Click the header button - this is what the game actually responds to.
     -- C_CurrencyInfo.ExpandCurrencyList exists but does not reliably trigger
     -- TokenFrame to rebuild its list in Midnight.
-    local btn = ns.Highlight and ns.Highlight:GetCurrencyHeaderButton(headerName)
-    if btn then
-        return ClickButton(btn)
+    local headerBtn = ns.Highlight and ns.Highlight:GetCurrencyHeaderButton(headerName)
+    if headerBtn then
+        return ClickButton(headerBtn)
     end
     -- Fallback: try the API directly
     if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return false end
@@ -2839,7 +2846,7 @@ end
 
 function UI:UpdateOpacity()
     if searchFrame and searchFrame.bgTex then
-        local alpha = EasyFind.db.searchBarOpacity or 0.75
+        local alpha = EasyFind.db.searchBarOpacity or DEFAULT_OPACITY
         searchFrame.bgTex:SetColorTexture(0, 0, 0, alpha)
     end
 end
@@ -2849,7 +2856,7 @@ function UI:UpdateSearchBarTheme()
     local theme = GetActiveTheme()
     if theme.searchBarRounded then
         searchFrame:SetBackdrop({
-            edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+            edgeFile = TOOLTIP_BORDER,
             edgeSize = 16,
             insets = { left = 4, right = 4, top = 4, bottom = 4 }
         })
@@ -3001,12 +3008,12 @@ function UI:ShowFirstTimeSetup()
 
     glow:SetBackdrop({
         bgFile   = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeFile = TOOLTIP_BORDER,
         edgeSize = 16,
         insets   = { left = 4, right = 4, top = 4, bottom = 4 }
     })
-    glow:SetBackdropColor(1, 0.82, 0, 0.20)
-    glow:SetBackdropBorderColor(1, 0.78, 0, 1.0)
+    glow:SetBackdropColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.20)
+    glow:SetBackdropBorderColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1.0)
 
     -- Gentle pulse on the gold fill
     local pulseUp = true
@@ -3019,14 +3026,14 @@ function UI:ShowFirstTimeSetup()
             pulseAlpha = pulseAlpha - elapsed * 0.12
             if pulseAlpha <= 0.12 then pulseAlpha = 0.12; pulseUp = true end
         end
-        self:SetBackdropColor(1, 0.82, 0, pulseAlpha)
+        self:SetBackdropColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], pulseAlpha)
     end)
 
     -- "EasyFind" label overlaid on the glow (like edit-mode frame labels)
     local setupLabel = glow:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     setupLabel:SetPoint("CENTER", glow, "CENTER", 0, 0)
     setupLabel:SetText("EasyFind")
-    setupLabel:SetTextColor(1, 0.82, 0, 0.7)
+    setupLabel:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.7)
 
     -- ── Resize handle (bottom-left corner) ──────────────────────────────
     local resizer = CreateFrame("Button", nil, glow)
@@ -3083,11 +3090,11 @@ function UI:ShowFirstTimeSetup()
     panel:SetFrameStrata("DIALOG")
     panel:SetBackdrop({
         bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeFile = TOOLTIP_BORDER,
         tile = true, tileSize = 32, edgeSize = 16,
         insets   = { left = 4, right = 4, top = 4, bottom = 4 }
     })
-    panel:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+    panel:SetBackdropColor(DARK_PANEL_BG[1], DARK_PANEL_BG[2], DARK_PANEL_BG[3], DARK_PANEL_BG[4])
 
     -- Top header lines (centered)
     local header = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -3220,7 +3227,7 @@ function UI:FlashLabel(labelText)
     
     -- Set to the hint text
     label:SetText(labelText)
-    label:SetTextColor(1, 0.82, 0)  -- Gold color
+    label:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
     
     -- Create flash animation
     local flashCount = 0
@@ -3228,7 +3235,7 @@ function UI:FlashLabel(labelText)
     ticker = C_Timer.NewTicker(0.3, function()
         flashCount = flashCount + 1
         if flashCount % 2 == 0 then
-            label:SetTextColor(1, 0.82, 0)
+            label:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
         else
             label:SetTextColor(1, 1, 1)
         end

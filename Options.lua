@@ -10,13 +10,18 @@ local tonumber, tostring = Utils.tonumber, Utils.tostring
 local tinsert = Utils.tinsert
 local IsMouseButtonDown = IsMouseButtonDown
 
+local GOLD_COLOR = ns.GOLD_COLOR
+local DEFAULT_OPACITY = ns.DEFAULT_OPACITY
+local TOOLTIP_BORDER = ns.TOOLTIP_BORDER
+local DARK_PANEL_BG = ns.DARK_PANEL_BG
+
 local optionsFrame
 local isInitialized = false
 
 -- Shared backdrop for selector buttons and flyout panels
 local SELECTOR_BACKDROP = {
     bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+    edgeFile = TOOLTIP_BORDER,
     tile = true, tileSize = 16, edgeSize = 12,
     insets = { left = 2, right = 2, top = 2, bottom = 2 }
 }
@@ -46,7 +51,7 @@ local function CreateFlyoutPanel(btnFrame, globalPrefix, width, numChoices)
     flyout:SetPoint("TOP", btnFrame, "BOTTOM", 0, -2)
     flyout:SetFrameStrata("FULLSCREEN_DIALOG")
     flyout:SetBackdrop(SELECTOR_BACKDROP)
-    flyout:SetBackdropColor(0.1, 0.1, 0.1, 0.95)
+    flyout:SetBackdropColor(DARK_PANEL_BG[1], DARK_PANEL_BG[2], DARK_PANEL_BG[3], DARK_PANEL_BG[4])
     flyout:Hide()
 
     btnFrame:SetScript("OnClick", function()
@@ -348,23 +353,23 @@ function Options:Initialize()
         return "Not Bound"
     end
 
-    local function StopCapture(btn, action)
-        btn.waitingForKey = false
-        btn:SetText(GetCurrentKeybindText(action))
-        btn:UnlockHighlight()
-        btn:EnableKeyboard(false)
-        btn:SetScript("OnKeyDown", nil)
+    local function StopCapture(keybindBtn, action)
+        keybindBtn.waitingForKey = false
+        keybindBtn:SetText(GetCurrentKeybindText(action))
+        keybindBtn:UnlockHighlight()
+        keybindBtn:EnableKeyboard(false)
+        keybindBtn:SetScript("OnKeyDown", nil)
     end
 
-    local function StartCapture(btn, action)
-        if btn.waitingForKey then
-            StopCapture(btn, action)
+    local function StartCapture(keybindBtn, action)
+        if keybindBtn.waitingForKey then
+            StopCapture(keybindBtn, action)
         else
-            btn.waitingForKey = true
-            btn:SetText("Press a key...")
-            btn:LockHighlight()
-            btn:EnableKeyboard(true)
-            btn:SetScript("OnKeyDown", function(self, key)
+            keybindBtn.waitingForKey = true
+            keybindBtn:SetText("Press a key...")
+            keybindBtn:LockHighlight()
+            keybindBtn:EnableKeyboard(true)
+            keybindBtn:SetScript("OnKeyDown", function(self, key)
                 if key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
                    or key == "LALT" or key == "RALT" then
                     return
@@ -389,19 +394,19 @@ function Options:Initialize()
         end
     end
 
-    local function MakeKeybindTooltip(btn, titleText, line1)
-        btn:SetScript("OnEnter", function(self)
+    local function MakeKeybindTooltip(keybindBtn, titleText, line1)
+        keybindBtn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetText(titleText)
             GameTooltip:AddLine(line1, 1, 1, 1)
             GameTooltip:AddLine("Right-click to clear. Escape to cancel.", 0.7, 0.7, 0.7)
             GameTooltip:Show()
         end)
-        btn:SetScript("OnLeave", GameTooltip_Hide)
+        keybindBtn:SetScript("OnLeave", GameTooltip_Hide)
     end
 
     -- SECTION 1: Search Bars
-    local sec1 = CreateSection("Search Bars", 200)
+    local sec1 = CreateSection("Search Bars", 265)
 
     -- Left column: sliders
     local uiSearchSlider = CreateSlider(sec1, "UISearch", "UI Search Bar Size", 0.5, 1.5, 0.1,
@@ -428,10 +433,22 @@ function Options:Initialize()
     end)
     optionsFrame.mapSearchSlider = mapSearchSlider
 
+    local mapWidthSlider = CreateSlider(sec1, "MapWidth", "Map Search Bar Width", 0.5, 2.0, 0.1,
+        "Adjusts the width of the map search bars and results dropdown independently of overall scale.")
+    mapWidthSlider:SetPoint("TOPLEFT", sec1, "TOPLEFT", COL_LEFT, -158)
+    mapWidthSlider:SetValue(EasyFind.db.mapSearchWidth or 1.0)
+    mapWidthSlider:HookScript("OnValueChanged", function(self, value)
+        EasyFind.db.mapSearchWidth = value
+        if ns.MapSearch and ns.MapSearch.UpdateWidth then
+            ns.MapSearch:UpdateWidth()
+        end
+    end)
+    optionsFrame.mapWidthSlider = mapWidthSlider
+
     local opacitySlider = CreateSlider(sec1, "Opacity", "Background Opacity", 0.0, 1.0, 0.05,
         "Adjusts the background opacity of all search bars. Text and icons remain fully visible.")
-    opacitySlider:SetPoint("TOPLEFT", sec1, "TOPLEFT", COL_LEFT, -158)
-    opacitySlider:SetValue(EasyFind.db.searchBarOpacity or 0.75)
+    opacitySlider:SetPoint("TOPLEFT", sec1, "TOPLEFT", COL_LEFT, -223)
+    opacitySlider:SetValue(EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
     opacitySlider:HookScript("OnValueChanged", function(self, value)
         EasyFind.db.searchBarOpacity = value
         if ns.UI and ns.UI.UpdateOpacity then
@@ -770,7 +787,7 @@ function Options:Initialize()
         EasyFind.db.iconScale = 1.0
         EasyFind.db.uiSearchScale = 1.0
         EasyFind.db.mapSearchScale = 1.0
-        EasyFind.db.searchBarOpacity = 0.75
+        EasyFind.db.searchBarOpacity = DEFAULT_OPACITY
         EasyFind.db.uiSearchPosition = nil
         EasyFind.db.mapSearchPosition = nil
         EasyFind.db.globalSearchPosition = nil
@@ -814,7 +831,7 @@ function Options:Initialize()
         optionsFrame.mapIconSlider:SetValue(1.0)
         optionsFrame.uiSearchSlider:SetValue(1.0)
         optionsFrame.mapSearchSlider:SetValue(1.0)
-        optionsFrame.opacitySlider:SetValue(0.75)
+        optionsFrame.opacitySlider:SetValue(DEFAULT_OPACITY)
         optionsFrame.directOpenCheckbox:SetChecked(false)
         optionsFrame.zoneNavCheckbox:SetChecked(false)
         optionsFrame.smartShowCheckbox:SetChecked(true)
@@ -923,7 +940,7 @@ function Options:Show()
     optionsFrame.mapIconSlider:SetValue(EasyFind.db.iconScale or 1.0)
     optionsFrame.uiSearchSlider:SetValue(EasyFind.db.uiSearchScale or 1.0)
     optionsFrame.mapSearchSlider:SetValue(EasyFind.db.mapSearchScale or 1.0)
-    optionsFrame.opacitySlider:SetValue(EasyFind.db.searchBarOpacity or 0.75)
+    optionsFrame.opacitySlider:SetValue(EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
     optionsFrame.maxResultsSlider:SetValue(EasyFind.db.maxResults or 10)
     optionsFrame.arrivalSlider:SetValue(EasyFind.db.arrivalDistance or 10)
     optionsFrame.directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false)
