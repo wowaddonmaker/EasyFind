@@ -2357,23 +2357,28 @@ function MapSearch:HighlightZone(mapID)
                 end
             end
 
-            -- On a zone-level map: scan for actual bounds
+            -- On a zone-level map: scan for actual bounds, keeping the
+            -- continent projection as fallback if the scan returns a tiny
+            -- sliver (some cities barely register via GetMapInfoAtPosition)
             if parentMapInfo and parentMapInfo.mapType == Enum.UIMapType.Zone then
                 local sL, sR, sT, sB = ScanZoneBoundsOnMap(mapID, parentMapID, left, right, top, bottom)
-                if sL then
+                local projW, projH = right - left, bottom - top
+                if sL and (sR - sL) > projW * 0.15 and (sB - sT) > projH * 0.15 then
                     left, right, top, bottom = sL, sR, sT, sB
-                    centerX = (left + right) / 2
-                    centerY = (top + bottom) / 2
-                    width = (right - left) * canvasWidth
-                    height = (bottom - top) * canvasHeight
-                    zoneCenterPxX = centerX * canvasWidth
-                    zoneCenterPxY = centerY * canvasHeight
-                    zoneTopPx = top * canvasHeight
-                    zoneBottomPx = bottom * canvasHeight
-                    zoneLeftPx = left * canvasWidth
-                    zoneRightPx = right * canvasWidth
-                    DebugPrint("[EasyFind] HighlightZone: scanned bounds L=", sL, "R=", sR, "T=", sT, "B=", sB)
+                    DebugPrint("[EasyFind] HighlightZone: using scanned bounds")
+                else
+                    DebugPrint("[EasyFind] HighlightZone: scan too small, using projection")
                 end
+                centerX = (left + right) / 2
+                centerY = (top + bottom) / 2
+                width = (right - left) * canvasWidth
+                height = (bottom - top) * canvasHeight
+                zoneCenterPxX = centerX * canvasWidth
+                zoneCenterPxY = centerY * canvasHeight
+                zoneTopPx = top * canvasHeight
+                zoneBottomPx = bottom * canvasHeight
+                zoneLeftPx = left * canvasWidth
+                zoneRightPx = right * canvasWidth
             end
         end
 
