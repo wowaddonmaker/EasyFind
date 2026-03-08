@@ -2198,6 +2198,22 @@ local function ScanZoneBoundsOnMap(targetMapID, viewMapID, projL, projR, projT, 
     return foundL + inset, foundR - inset, foundT + inset, foundB - inset
 end
 
+-- Check if a zone has no physical presence on any ancestor map.
+-- Orphan zones (e.g. Vision of Stormwind, Vision of Orgrimmar) return all
+-- zeros from GetMapRectOnMap and have no continent projection. Bugged zones
+-- (Uldum, Vale) return valid rects, so this won't match them.
+local function IsOrphanZone(mapID)
+    local info = C_Map.GetMapInfo(mapID)
+    if not info or not info.parentMapID then return false end
+    local ok, left, right, top, bottom = pcall(C_Map.GetMapRectOnMap, mapID, info.parentMapID)
+    if not ok or not left then return true end
+    if left ~= 0 or right ~= 0 or top ~= 0 or bottom ~= 0 then return false end
+    -- Continent projection also returns all zeros for truly orphaned zones
+    local pL, pR, pT, pB = GetMapRectViaContinent(mapID, info.parentMapID)
+    if not pL then return true end
+    return pL == 0 and pR == 0 and pT == 0 and pB == 0
+end
+
 -- Resolve a mapID to the best match for a given view map. When a zone exists
 -- under multiple mapIDs with the same name (e.g. TBC Isle of Quel'Danas 122
 -- vs Midnight versions 2432/2424/2565), the original mapID may have no
@@ -4457,6 +4473,7 @@ function MapSearch:SearchPOIs(pois, query)
 end
 
 function MapSearch:ShowResults(results)
+    self._lastResults = results
     if not results or #results == 0 then
         self:HideResults()
         return
@@ -4724,9 +4741,14 @@ function MapSearch:SelectResult(data)
 
         -- Handle zone selection
         if data.isZone and data.zoneMapID then
-            -- If this zone is also a dungeon/raid entrance, set a pending waypoint
-            -- so the entrance gets highlighted after navigating to the zone
-            if data.entranceX and data.entranceY and data.entranceMapID then
+            -- Orphan zones have no physical position on any parent map
+            -- (e.g. Vision of Stormwind). Snap directly since there's nothing
+            -- to highlight or guide through.
+            if IsOrphanZone(data.zoneMapID) then
+                DebugPrint("[EasyFind] SelectResult → ORPHAN ZONE, snapping directly to", data.zoneMapID)
+                self:ClearZoneHighlight()
+                WorldMapFrame:SetMapID(data.zoneMapID)
+            elseif data.entranceX and data.entranceY and data.entranceMapID then
                 DebugPrint("[EasyFind] SelectResult → ZONE+ENTRANCE branch, entranceMapID=", data.entranceMapID)
                 if EasyFind.db.navigateToZonesDirectly then
                     self:ClearZoneHighlight()
@@ -4743,12 +4765,10 @@ function MapSearch:SelectResult(data)
                 end
             elseif EasyFind.db.navigateToZonesDirectly then
                 DebugPrint("[EasyFind] SelectResult → ZONE DIRECT branch, zoneMapID=", data.zoneMapID)
-                -- Direct mode: navigate straight to the zone
                 self:ClearZoneHighlight()
                 WorldMapFrame:SetMapID(data.zoneMapID)
             else
                 DebugPrint("[EasyFind] SelectResult → ZONE TEACHING branch, zoneMapID=", data.zoneMapID)
-                -- Teaching mode: highlight the zone on current/parent map
                 self:HighlightZoneOnMap(data.zoneMapID, data.name)
             end
             return
@@ -4782,15 +4802,12 @@ function MapSearch:SelectResult(data)
                     end
                 end
                 if not found then
-                    -- Navigate to the zone, then show waypoint on arrival
-                    if EasyFind.db.navigateToZonesDirectly then
+                    if IsOrphanZone(data.entranceMapID) or EasyFind.db.navigateToZonesDirectly then
                         self:ClearZoneHighlight()
-                    end
-                    -- Set pendingWaypoint AFTER ClearZoneHighlight (which wipes it)
-                    self.pendingWaypoint = {x = data.x, y = data.y, icon = data.icon, category = data.category, mapID = data.entranceMapID}
-                    if EasyFind.db.navigateToZonesDirectly then
+                        self.pendingWaypoint = {x = data.x, y = data.y, icon = data.icon, category = data.category, mapID = data.entranceMapID}
                         WorldMapFrame:SetMapID(data.entranceMapID)
                     else
+                        self.pendingWaypoint = {x = data.x, y = data.y, icon = data.icon, category = data.category, mapID = data.entranceMapID}
                         self:HighlightZoneOnMap(data.entranceMapID, data.name)
                     end
                 end
