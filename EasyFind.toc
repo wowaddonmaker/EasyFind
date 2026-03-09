@@ -13,4 +13,5 @@ StaticLocations.lua
 UI.lua
 Highlight.lua
 MapSearch.lua
+Rescaler.lua
 Options.lua
