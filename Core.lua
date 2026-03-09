@@ -12,8 +12,10 @@ EasyFind._ns = ns  -- Expose namespace for dev tools (EasyFindDev)
 
 -- Binding localization strings (used by Bindings.xml)
 -- category="EasyFind" in Bindings.xml provides the header; no BINDING_HEADER_ global needed.
-BINDING_NAME_EASYFIND_TOGGLE = "Toggle UI Search Bar"
-BINDING_NAME_EASYFIND_FOCUS  = "Resume Typing in Search Bar"
+BINDING_NAME_EASYFIND_TOGGLE       = "Toggle UI Search Bar"
+BINDING_NAME_EASYFIND_FOCUS        = "Resume Typing in Search Bar"
+BINDING_NAME_EASYFIND_TOGGLE_FOCUS = "Toggle + Focus Search Bar"
+BINDING_NAME_EASYFIND_CLEAR        = "Clear All Highlights"
 
 -- Single shared event frame for the entire addon
 local eventFrame = CreateFrame("Frame")
@@ -28,7 +30,13 @@ local DB_DEFAULTS = {
     uiSearchScale = 1.0,
     mapSearchScale = 1.0,
     mapSearchWidth = 1.0,
+    uiSearchWidth = 1.0,
+    uiResultsScale = 1.0,
+    uiResultsWidth = 350,
+    mapResultsScale = 1.0,
+    mapResultsWidth = 1.0,
     searchBarOpacity = 0.75,  -- ns.DEFAULT_OPACITY
+    fontSize = 1.0,            -- Font size multiplier (0.5-2.0)
     uiSearchPosition = nil,    -- {point, relPoint, x, y}
     mapSearchPosition = nil,   -- x offset from map left edge
     globalSearchPosition = nil, -- x offset from map right edge
@@ -38,7 +46,7 @@ local DB_DEFAULTS = {
     resultsTheme = "Retail",  -- "Classic" or "Retail"
     indicatorStyle = "EasyFind Arrow",  -- Indicator texture style
     indicatorColor = "Yellow",  -- Indicator color preset
-    maxResults = 10,           -- Maximum number of search results to display (3-24)
+    maxResults = 6,            -- Maximum number of search results to display (3-24)
     showTruncationMessage = true,  -- Show "more results available" message when truncated
     hardResultsCap = false,    -- Hard cap on results (no "more results" message)
     staticOpacity = false,     -- Keep opacity constant while moving
@@ -50,6 +58,7 @@ local DB_DEFAULTS = {
     arrivalDistance = 10,      -- Yards - auto-clear waypoint when player is this close
     uiResultsAbove = false,    -- Show UI search results above the search bar
     mapResultsAbove = false,   -- Show map search results above the search bar
+    panelOpacity = 0.9,        -- Options panel background opacity
     showMinimapButton = true,  -- Show toggle button on minimap
     minimapButtonAngle = 220,  -- Position angle (degrees) around minimap edge
     globalSearchFilters = {    -- Global search category filters (all enabled by default)
@@ -83,6 +92,12 @@ local function OnInitialize()
         end
     end
 
+    -- Migrate old sentinel values to real pixel defaults
+    if EasyFindDB.uiResultsWidth == 1.0 then EasyFindDB.uiResultsWidth = 350 end
+
+    -- Migrate old maxResults default (10) to new default (6)
+    if EasyFindDB.maxResults == 10 then EasyFindDB.maxResults = 6 end
+
     EasyFind.db = EasyFindDB
 
     -- Read version from TOC for What's New detection
@@ -99,15 +114,7 @@ local function OnInitialize()
         elseif msg == "show" then
             if ns.UI then ns.UI:Show() end
         elseif msg == "clear" then
-            if ns.Highlight then
-                ns.Highlight:ClearAll()
-            end
-            if ns.MapSearch then
-                ns.MapSearch:ClearAll()
-                ns.MapSearch:ClearZoneHighlight()
-                ns.MapSearch.pendingWaypoint = nil
-            end
-            EasyFind:Print("Active highlights cleared.")
+            EasyFind:ClearAll()
         elseif msg:find("^test ") then
             -- /ef test Interface\\Path\\To\\Texture
             local texture = msg:match("^test%s+(.+)")
@@ -136,10 +143,17 @@ end
 
 local function OnPlayerLogin()
     C_Timer.After(0.5, function()
-        if ns.UI        then ns.UI:Initialize()        end
-        if ns.Highlight then ns.Highlight:Initialize() end
-        if ns.MapSearch  then ns.MapSearch:Initialize()  end
-        if ns.Options    then ns.Options:Initialize()    end
+        local function SafeInit(mod, name)
+            if not mod then return end
+            local ok, err = pcall(mod.Initialize, mod)
+            if not ok then
+                EasyFind:Print("|cffff4444" .. name .. " failed to initialize: " .. tostring(err) .. "|r")
+            end
+        end
+        SafeInit(ns.UI,        "UI")
+        SafeInit(ns.Highlight, "Highlight")
+        SafeInit(ns.MapSearch,  "MapSearch")
+        SafeInit(ns.Options,    "Options")
     end)
     -- Populate dynamic currencies and reputations after a short delay (APIs need the character loaded)
     C_Timer.After(2, function()
@@ -202,8 +216,28 @@ function EasyFind:FocusSearchUI()
     if ns.UI then ns.UI:Focus() end
 end
 
+function EasyFind:ToggleFocusSearchUI()
+    if WorldMapFrame and WorldMapFrame:IsShown() and ns.MapSearch then
+        ns.MapSearch:FocusLocalSearch()
+    elseif ns.UI then
+        ns.UI:ToggleFocus()
+    end
+end
+
 function EasyFind:OpenOptions()
     if ns.Options then ns.Options:Toggle() end
+end
+
+function EasyFind:ClearAll()
+    if ns.Highlight then
+        ns.Highlight:ClearAll()
+    end
+    if ns.MapSearch then
+        ns.MapSearch:ClearAll()
+        ns.MapSearch:ClearZoneHighlight()
+        ns.MapSearch.pendingWaypoint = nil
+    end
+    EasyFind:Print("Active highlights cleared.")
 end
 
 function EasyFind:StartGuide(guideData)

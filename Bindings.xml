@@ -5,4 +5,10 @@
 	<Binding name="EASYFIND_FOCUS" category="EasyFind">
 		EasyFind:FocusSearchUI()
 	</Binding>
+	<Binding name="EASYFIND_TOGGLE_FOCUS" category="EasyFind">
+		EasyFind:ToggleFocusSearchUI()
+	</Binding>
+	<Binding name="EASYFIND_CLEAR" category="EasyFind">
+		EasyFind:ClearAll()
+	</Binding>
 </Bindings>
