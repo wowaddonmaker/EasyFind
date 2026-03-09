@@ -259,7 +259,11 @@ local activeSearchFrame -- Which bar is currently active
 local resultsFrame
 local resultButtons = {}
 local MAX_RESULTS_POOL = 50  -- pre-created button pool (scroll handles overflow)
-local TEXT_WRAP_FRACTION = 0.8
+local selectedResultIndex = 0
+local navBtnFocused = false -- true = Shift+Right moved focus to the nav pin button
+local navFrame              -- Keyboard capture frame for results navigation
+local TEXT_WRAP_FRACTION = 0.85
+local SCROLL_CENTER_FRACTION = 0.95
 local highlightFrame
 local indicatorFrame
 local currentHighlightedPin
@@ -769,6 +773,27 @@ function MapSearch:Initialize()
     self:UpdateScale()
     self:UpdateWidth()
     self:UpdateOpacity()
+    self:UpdateFontSize()
+
+    -- Block focus during init window
+    if searchFrame and searchFrame.editBox then
+        searchFrame.editBox.blockFocus = true
+        searchFrame.editBox:ClearFocus()
+    end
+    if globalSearchFrame and globalSearchFrame.editBox then
+        globalSearchFrame.editBox.blockFocus = true
+        globalSearchFrame.editBox:ClearFocus()
+    end
+    C_Timer.After(1, function()
+        if searchFrame and searchFrame.editBox then
+            searchFrame.editBox.blockFocus = nil
+            searchFrame.editBox:ClearFocus()
+        end
+        if globalSearchFrame and globalSearchFrame.editBox then
+            globalSearchFrame.editBox.blockFocus = nil
+            globalSearchFrame.editBox:ClearFocus()
+        end
+    end)
 end
 
 -- SHARED FILTER DROPDOWN BUILDER - creates a tracking-menu-style checkbox panel
@@ -801,6 +826,7 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
     header:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1)
 
     local checkRows = {}
+    local checkRowsByIndex = {}
     local yStart = -(PADDING_TOP + HEADER_HEIGHT)
 
     for i, opt in ipairs(options) do
@@ -808,6 +834,7 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
         row:SetSize(DROPDOWN_WIDTH - 16, ROW_HEIGHT)
         row:SetPoint("TOPLEFT", 8, yStart - (i - 1) * ROW_HEIGHT)
         row:SetHitRectInsets(0, 0, 0, 0)
+        row.optKey = opt.key
 
         -- Rounded square checkbox (standard WoW style)
         row:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
@@ -830,6 +857,13 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
         highlight:SetAllPoints()
         highlight:SetColorTexture(1, 1, 1, 0.1)
 
+        -- Keyboard focus highlight (separate from mouse hover)
+        local kbHighlight = row:CreateTexture(nil, "BACKGROUND")
+        kbHighlight:SetAllPoints()
+        kbHighlight:SetColorTexture(1, 1, 1, 0.1)
+        kbHighlight:Hide()
+        row.kbHighlight = kbHighlight
+
         -- Start checked
         row:SetChecked(true)
 
@@ -842,16 +876,44 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
         end)
 
         checkRows[opt.key] = row
+        checkRowsByIndex[i] = row
+    end
+
+    dropdown.rows = checkRowsByIndex
+    dropdown.selectedRow = 0
+
+    function dropdown:SetSelectedRow(idx)
+        self.selectedRow = idx
+        for ri = 1, #checkRowsByIndex do
+            checkRowsByIndex[ri].kbHighlight:SetShown(ri == idx)
+        end
+    end
+
+    function dropdown:ToggleSelectedRow()
+        local row = checkRowsByIndex[self.selectedRow]
+        if row then
+            row:Click()
+        end
     end
 
     local totalHeight = PADDING_TOP + HEADER_HEIGHT + #options * ROW_HEIGHT + PADDING_BOTTOM
     dropdown:SetSize(DROPDOWN_WIDTH, totalHeight)
 
     -- Sync checkmarks to saved state on show
-    dropdown:SetScript("OnShow", function()
+    dropdown:SetScript("OnShow", function(self)
         local filters = EasyFind.db[dbKey]
         for key, row in pairs(checkRows) do
             row:SetChecked(filters[key] ~= false)
+        end
+        self:SetSelectedRow(self.keyboardOpen and 1 or 0)
+        self.keyboardOpen = nil
+    end)
+
+    dropdown:SetScript("OnHide", function(self)
+        self:SetSelectedRow(0)
+        if self.restoreToolbar then
+            self.restoreToolbar()
+            self.restoreToolbar = nil
         end
     end)
 
@@ -885,7 +947,7 @@ end
 function MapSearch:CreateSearchFrame()
     -- LOCAL search bar (left side - searches current map's child zones + POIs)
     searchFrame = CreateFrame("Frame", "EasyFindMapSearchFrame", WorldMapFrame, "BackdropTemplate")
-    searchFrame:SetSize(250, 32)
+    searchFrame:SetSize(250, ns.SEARCHBAR_HEIGHT)
     searchFrame:SetFrameStrata("DIALOG")
     searchFrame:SetFrameLevel(9999)
     searchFrame:SetMovable(true)
@@ -939,15 +1001,18 @@ function MapSearch:CreateSearchFrame()
             local scale = UIParent:GetEffectiveScale()
             local mapLeft = WorldMapFrame.ScrollContainer:GetLeft() * scale
             local mapRight = WorldMapFrame.ScrollContainer:GetRight() * scale
-            local frameWidth = self:GetWidth() * self:GetEffectiveScale()
-            
-            -- Calculate new X position relative to map
+            local mapW = (mapRight - mapLeft) / scale
+
             local newX = (cursorX - mapLeft) / scale - (self:GetWidth() / 2)
-            
-            -- Constrain to map width
-            local maxX = (mapRight - mapLeft) / scale - self:GetWidth()
+
+            -- Don't overlap the global bar
+            local globalW = globalSearchFrame and globalSearchFrame:GetWidth() or 0
+            local globalOff = EasyFind.db.globalSearchPosition or 0
+            local globalLeftEdge = mapW + globalOff - globalW
+            local maxX = globalLeftEdge - self:GetWidth()
+
             newX = mmax(0, mmin(newX, maxX))
-            
+
             self:ClearAllPoints()
             self:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", newX, 2)
             EasyFind.db.mapSearchPosition = newX
@@ -956,26 +1021,35 @@ function MapSearch:CreateSearchFrame()
         end
     end)
     
+    local contentSz = ns.SEARCHBAR_HEIGHT * ns.SEARCHBAR_FILL
+    local iconSz = contentSz * ns.SEARCHBAR_ICON_SCALE
     local searchIcon = searchFrame:CreateTexture(nil, "ARTWORK")
-    searchIcon:SetSize(14, 14)
+    searchIcon:SetSize(iconSz, iconSz)
     searchIcon:SetPoint("LEFT", 10, 0)
-    searchIcon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
-    searchIcon:SetVertexColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])  -- Gold tint to match local theme
-    
+    searchIcon:SetAtlas("common-search-magnifyingglass")
+    searchIcon:SetVertexColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
+    searchFrame.searchIcon = searchIcon
+
     local editBox = CreateFrame("EditBox", "EasyFindMapSearchBox", searchFrame)
-    editBox:SetHeight(20)
+    editBox:SetHeight(contentSz)
     editBox:SetPoint("LEFT", searchIcon, "RIGHT", 5, 0)
-    editBox:SetPoint("RIGHT", searchFrame, "RIGHT", -60, 0)
-    editBox:SetFontObject("ChatFontNormal")
+    -- RIGHT anchor set below after clearBtn creation
+    editBox:SetFontObject(ns.SEARCHBAR_FONT)
     editBox:SetAutoFocus(false)
     editBox:SetMaxLetters(50)
-    
-    local placeholder = editBox:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+
+    local placeholder = editBox:CreateFontString(nil, "ARTWORK", ns.SEARCHBAR_FONT)
     placeholder:SetPoint("LEFT", 2, 0)
+    placeholder:SetJustifyH("LEFT")
+    placeholder:SetTextColor(0.5, 0.5, 0.5, 1.0)
     placeholder:SetText("Search within this zone")
     editBox.placeholder = placeholder
     
     editBox:SetScript("OnEditFocusGained", function(self)
+        if self.blockFocus then
+            self:ClearFocus()
+            return
+        end
         self.placeholder:Hide()
         -- Clear the other search bar when focusing this one
         if globalSearchFrame and globalSearchFrame.editBox then
@@ -1007,14 +1081,22 @@ function MapSearch:CreateSearchFrame()
     end)
     
     editBox:SetScript("OnEnterPressed", function(self)
-        MapSearch:SelectFirstResult()
+        MapSearch:ActivateSelected()
     end)
-    
+
     editBox:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
-        -- Text and results stay visible; user can click back in to resume
     end)
-    
+
+    editBox:SetScript("OnKeyDown", function(self, key)
+        if resultsFrame and resultsFrame:IsShown() and selectedResultIndex == 0 then
+            if key == "DOWN" then
+                MapSearch:MoveSelection(1)
+            end
+        end
+        Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+    end)
+
     -- Filter button (inside search bar, flush right - same as global bar)
     local localFilterBtn = CreateFrame("Button", "EasyFindMapLocalFilterButton", searchFrame)
     localFilterBtn:SetSize(34, 34)
@@ -1093,12 +1175,45 @@ function MapSearch:CreateSearchFrame()
     end)
     clearBtn:SetScript("OnLeave", GameTooltip_Hide)
     searchFrame.clearBtn = clearBtn
-    
+
+    -- Anchor editBox and placeholder relative to buttons so text never overlaps
+    editBox:SetPoint("RIGHT", clearBtn, "LEFT", -4, 0)
+    placeholder:SetPoint("RIGHT", localFilterBtn, "LEFT", -4, 0)
+    placeholder:SetWordWrap(false)
+
+    -- Tooltip showing full placeholder when truncated and unfocused
+    editBox:HookScript("OnEnter", function(self)
+        if placeholder:IsShown() and placeholder:IsTruncated() and not self:HasFocus() then
+            GameTooltip:SetOwner(searchFrame, "ANCHOR_TOP")
+            GameTooltip:SetText(placeholder:GetText())
+            GameTooltip:Show()
+        end
+    end)
+    editBox:HookScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    editBox:HookScript("OnEditFocusGained", function()
+        GameTooltip:Hide()
+    end)
+
     -- Show/hide clear button based on text
     editBox:HookScript("OnTextChanged", function(self)
         clearBtn:SetShown(self:GetText() ~= "")
     end)
     
+    -- Shift-click editbox starts parent drag when not focused
+    editBox:HookScript("OnMouseDown", function(self)
+        if IsShiftKeyDown() and not self:HasFocus() then
+            self.blockFocus = true
+            searchFrame.isDragging = true
+            searchFrame.dragStartX = select(4, searchFrame:GetPoint()) or 0
+        end
+    end)
+    editBox:HookScript("OnMouseUp", function(self)
+        self.blockFocus = nil
+        searchFrame.isDragging = false
+    end)
+
     -- Click anywhere on the search frame to focus the editbox
     searchFrame:HookScript("OnMouseDown", function(self, button)
         if button == "LeftButton" and not IsShiftKeyDown() then
@@ -1148,7 +1263,7 @@ function MapSearch:CreateSearchFrame()
 
     -- GLOBAL search bar (right side - searches all zones in the world)
     globalSearchFrame = CreateFrame("Frame", "EasyFindMapGlobalSearchFrame", WorldMapFrame, "BackdropTemplate")
-    globalSearchFrame:SetSize(250, 32)
+    globalSearchFrame:SetSize(250, ns.SEARCHBAR_HEIGHT)
     globalSearchFrame:SetFrameStrata("DIALOG")
     globalSearchFrame:SetFrameLevel(9999)
     globalSearchFrame:SetMovable(true)
@@ -1202,14 +1317,18 @@ function MapSearch:CreateSearchFrame()
             local scale = UIParent:GetEffectiveScale()
             local mapLeft = WorldMapFrame.ScrollContainer:GetLeft() * scale
             local mapRight = WorldMapFrame.ScrollContainer:GetRight() * scale
-            
-            -- Calculate new X position relative to map RIGHT edge (negative offset)
+            local mapW = (mapRight - mapLeft) / scale
+
             local newX = (cursorX - mapRight) / scale + (self:GetWidth() / 2)
-            
-            -- Constrain
-            local maxNeg = -((mapRight - mapLeft) / scale - self:GetWidth())
-            newX = mmin(0, mmax(newX, maxNeg))
-            
+
+            -- Don't overlap the local bar
+            local localOff = EasyFind.db.mapSearchPosition or 0
+            local localW = searchFrame and searchFrame:GetWidth() or 0
+            local localRightEdge = localOff + localW
+            local minX = -(mapW - localRightEdge - self:GetWidth())
+
+            newX = mmin(0, mmax(newX, minX))
+
             self:ClearAllPoints()
             self:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", newX, 2)
             EasyFind.db.globalSearchPosition = newX
@@ -1219,25 +1338,32 @@ function MapSearch:CreateSearchFrame()
     end)
     
     local globalSearchIcon = globalSearchFrame:CreateTexture(nil, "ARTWORK")
-    globalSearchIcon:SetSize(14, 14)
+    globalSearchIcon:SetSize(iconSz, iconSz)
     globalSearchIcon:SetPoint("LEFT", 10, 0)
-    globalSearchIcon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
-    globalSearchIcon:SetVertexColor(0.4, 0.8, 1)  -- Blue tint to match global theme
-    
+    globalSearchIcon:SetAtlas("common-search-magnifyingglass")
+    globalSearchIcon:SetVertexColor(0.4, 0.8, 1)
+    globalSearchFrame.searchIcon = globalSearchIcon
+
     local globalEditBox = CreateFrame("EditBox", "EasyFindMapGlobalSearchBox", globalSearchFrame)
-    globalEditBox:SetHeight(20)
+    globalEditBox:SetHeight(contentSz)
     globalEditBox:SetPoint("LEFT", globalSearchIcon, "RIGHT", 5, 0)
-    globalEditBox:SetPoint("RIGHT", globalSearchFrame, "RIGHT", -60, 0)
-    globalEditBox:SetFontObject("ChatFontNormal")
+    -- RIGHT anchor set below after globalClearBtn creation
+    globalEditBox:SetFontObject(ns.SEARCHBAR_FONT)
     globalEditBox:SetAutoFocus(false)
     globalEditBox:SetMaxLetters(50)
-    
-    local globalPlaceholder = globalEditBox:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+
+    local globalPlaceholder = globalEditBox:CreateFontString(nil, "ARTWORK", ns.SEARCHBAR_FONT)
     globalPlaceholder:SetPoint("LEFT", 2, 0)
+    globalPlaceholder:SetJustifyH("LEFT")
+    globalPlaceholder:SetTextColor(0.5, 0.5, 0.5, 1.0)
     globalPlaceholder:SetText("Search for zones & instances")
     globalEditBox.placeholder = globalPlaceholder
     
     globalEditBox:SetScript("OnEditFocusGained", function(self)
+        if self.blockFocus then
+            self:ClearFocus()
+            return
+        end
         self.placeholder:Hide()
         -- Clear the other search bar when focusing this one
         if searchFrame and searchFrame.editBox then
@@ -1269,14 +1395,22 @@ function MapSearch:CreateSearchFrame()
     end)
     
     globalEditBox:SetScript("OnEnterPressed", function(self)
-        MapSearch:SelectFirstResult()
+        MapSearch:ActivateSelected()
     end)
-    
+
     globalEditBox:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
-        -- Text and results stay visible; user can click back in to resume
     end)
-    
+
+    globalEditBox:SetScript("OnKeyDown", function(self, key)
+        if resultsFrame and resultsFrame:IsShown() and selectedResultIndex == 0 then
+            if key == "DOWN" then
+                MapSearch:MoveSelection(1)
+            end
+        end
+        Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+    end)
+
     -- Filter button (inside search bar, flush right)
     local filterBtn = CreateFrame("Button", "EasyFindMapFilterButton", globalSearchFrame)
     filterBtn:SetSize(34, 34)
@@ -1356,12 +1490,44 @@ function MapSearch:CreateSearchFrame()
     end)
     globalClearBtn:SetScript("OnLeave", GameTooltip_Hide)
     globalSearchFrame.clearBtn = globalClearBtn
-    
+
+    -- Anchor editBox and placeholder relative to buttons
+    globalEditBox:SetPoint("RIGHT", globalClearBtn, "LEFT", -4, 0)
+    globalPlaceholder:SetPoint("RIGHT", filterBtn, "LEFT", -4, 0)
+    globalPlaceholder:SetWordWrap(false)
+
+    -- Tooltip showing full placeholder when truncated and unfocused
+    globalEditBox:HookScript("OnEnter", function(self)
+        if globalPlaceholder:IsShown() and globalPlaceholder:IsTruncated() and not self:HasFocus() then
+            GameTooltip:SetOwner(globalSearchFrame, "ANCHOR_TOP")
+            GameTooltip:SetText(globalPlaceholder:GetText())
+            GameTooltip:Show()
+        end
+    end)
+    globalEditBox:HookScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    globalEditBox:HookScript("OnEditFocusGained", function()
+        GameTooltip:Hide()
+    end)
+
     -- Show/hide clear button based on text
     globalEditBox:HookScript("OnTextChanged", function(self)
         globalClearBtn:SetShown(self:GetText() ~= "")
     end)
     
+    -- Shift-click editbox starts parent drag when not focused
+    globalEditBox:HookScript("OnMouseDown", function(self)
+        if IsShiftKeyDown() and not self:HasFocus() then
+            self.blockFocus = true
+            globalSearchFrame.isDragging = true
+        end
+    end)
+    globalEditBox:HookScript("OnMouseUp", function(self)
+        self.blockFocus = nil
+        globalSearchFrame.isDragging = false
+    end)
+
     -- Click anywhere on the search frame to focus the editbox
     globalSearchFrame:HookScript("OnMouseDown", function(self, button)
         if button == "LeftButton" and not IsShiftKeyDown() then
@@ -1393,6 +1559,299 @@ function MapSearch:CreateSearchFrame()
 
     globalSearchFrame.editBox = globalEditBox
     globalSearchFrame:Hide()
+
+    -- Key repeat with progressive acceleration for held arrow/tab keys
+    local REPEAT_INITIAL = 0.30
+    local REPEAT_FAST    = 0.05
+    local REPEAT_ACCEL   = 1.5
+    local repeatAction, repeatHeld, repeatNext
+    local repeatFrame = CreateFrame("Frame")
+
+    function MapSearch.StopKeyRepeat()
+        MapSearch.repeatKey = nil
+        repeatAction = nil
+        repeatFrame:SetScript("OnUpdate", nil)
+    end
+
+    function MapSearch.StartKeyRepeat(key, action)
+        action()
+        MapSearch.repeatKey = key
+        repeatAction = action
+        repeatHeld = 0
+        repeatNext = REPEAT_INITIAL
+        repeatFrame:SetScript("OnUpdate", function(_, elapsed)
+            repeatHeld = repeatHeld + elapsed
+            repeatNext = repeatNext - elapsed
+            if repeatNext <= 0 then
+                repeatAction()
+                local t = repeatHeld / REPEAT_ACCEL
+                if t > 1 then t = 1 end
+                repeatNext = REPEAT_INITIAL + (REPEAT_FAST - REPEAT_INITIAL) * t
+            end
+        end)
+    end
+
+    -- Toolbar keyboard focus: 0 = editbox, 1 = clear button, 2 = filter button
+    local toolbarFocus = 0
+
+    -- Highlight frame that moves to the focused toolbar control
+    local toolbarHighlight = CreateFrame("Frame", nil, UIParent)
+    toolbarHighlight:SetFrameStrata("FULLSCREEN_DIALOG")
+    toolbarHighlight:SetFrameLevel(10000)
+    toolbarHighlight:Hide()
+    local tbHL = toolbarHighlight:CreateTexture(nil, "OVERLAY")
+    tbHL:SetAllPoints()
+    tbHL:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+    tbHL:SetBlendMode("ADD")
+    tbHL:SetVertexColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.5)
+
+    local function GetToolbarControls()
+        local sf = activeSearchFrame
+        if not sf then return {} end
+        local controls = {}
+        if sf.clearBtn and sf.clearBtn:IsShown() then
+            tinsert(controls, sf.clearBtn)
+        end
+        if sf.filterBtn then
+            tinsert(controls, sf.filterBtn)
+        end
+        return controls
+    end
+
+    local function SetToolbarFocus(idx)
+        toolbarFocus = idx
+        local controls = GetToolbarControls()
+        local target = controls[idx]
+        if target then
+            toolbarHighlight:SetParent(target)
+            toolbarHighlight:ClearAllPoints()
+            toolbarHighlight:SetAllPoints(target)
+            toolbarHighlight:Show()
+        else
+            toolbarHighlight:Hide()
+        end
+    end
+
+    local function ClearToolbarFocus()
+        toolbarFocus = 0
+        toolbarHighlight:Hide()
+    end
+    MapSearch.ClearToolbarFocus = ClearToolbarFocus
+
+    local function GetActiveDropdown()
+        local sf = activeSearchFrame
+        if sf and sf.filterDropdown and sf.filterDropdown:IsShown() then
+            return sf.filterDropdown
+        end
+        return nil
+    end
+
+    -- Keyboard capture frame for navigating results without editbox focus
+    navFrame = CreateFrame("Frame", nil, searchFrame)
+    navFrame:SetSize(1, 1)
+    navFrame:EnableKeyboard(false)
+    navFrame:SetPropagateKeyboardInput(false)
+
+    local function HandleNavKeyDown(key)
+        local eb = activeSearchFrame and activeSearchFrame.editBox
+        local dropdown = GetActiveDropdown()
+
+        -- Filter dropdown keyboard navigation takes priority
+        if dropdown then
+            local rowCount = #dropdown.rows
+            if key == "DOWN" then
+                local newIdx = dropdown.selectedRow + 1
+                if newIdx > rowCount then newIdx = rowCount end
+                dropdown:SetSelectedRow(newIdx)
+            elseif key == "UP" then
+                local newIdx = dropdown.selectedRow - 1
+                if newIdx < 1 then
+                    dropdown:Hide()
+                else
+                    dropdown:SetSelectedRow(newIdx)
+                end
+            elseif key == "ENTER" or key == "SPACE" then
+                if dropdown.selectedRow > 0 then
+                    dropdown:ToggleSelectedRow()
+                end
+            elseif key == "ESCAPE" then
+                dropdown:Hide()
+            elseif key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
+                   or key == "LALT" or key == "RALT" then
+                -- stay in dropdown nav
+            end
+            return
+        end
+
+        -- Shift+Left/Right: nav pin toggle when in results
+        if IsShiftKeyDown() and key == "RIGHT" then
+            if selectedResultIndex > 0 then
+                local row = resultButtons[selectedResultIndex]
+                if row and row.navBtn and row.navBtn:IsShown() then
+                    navBtnFocused = true
+                    MapSearch:UpdateSelectionHighlight()
+                end
+            end
+            return
+        elseif IsShiftKeyDown() and key == "LEFT" then
+            if selectedResultIndex > 0 then
+                navBtnFocused = false
+                MapSearch:UpdateSelectionHighlight()
+            end
+            return
+        end
+
+        if key == "DOWN" then
+            if IsControlKeyDown() then
+                MapSearch:JumpToEnd()
+            else
+                MapSearch.StartKeyRepeat(key, function() MapSearch:MoveSelection(1) end)
+            end
+        elseif key == "UP" then
+            if IsControlKeyDown() then
+                MapSearch:JumpToStart()
+            else
+                MapSearch.StartKeyRepeat(key, function() MapSearch:MoveSelection(-1) end)
+            end
+        elseif key == "PAGEDOWN" then
+            MapSearch.StartKeyRepeat(key, function() MapSearch:MoveSelection(5) end)
+        elseif key == "PAGEUP" then
+            MapSearch.StartKeyRepeat(key, function() MapSearch:MoveSelection(-5) end)
+        elseif key == "HOME" then
+            MapSearch:JumpToStart()
+        elseif key == "END" then
+            MapSearch:JumpToEnd()
+        elseif key == "TAB" then
+            if IsControlKeyDown() then
+                -- Ctrl+Tab: switch between local and global search bars
+                ClearToolbarFocus()
+                selectedResultIndex = 0
+                navFrame:EnableKeyboard(false)
+                if isGlobalSearch then
+                    MapSearch:FocusLocalSearch()
+                else
+                    MapSearch:FocusGlobalSearch()
+                end
+            elseif IsShiftKeyDown() then
+                -- Shift+Tab: in results toggles nav button off, otherwise toolbar backward
+                if selectedResultIndex > 0 then
+                    navBtnFocused = false
+                    MapSearch:UpdateSelectionHighlight()
+                else
+                    local controls = GetToolbarControls()
+                    if #controls > 0 and toolbarFocus > 0 then
+                        local newIdx = toolbarFocus - 1
+                        if newIdx == 0 then
+                            ClearToolbarFocus()
+                            selectedResultIndex = 0
+                            MapSearch:UpdateSelectionHighlight()
+                        else
+                            SetToolbarFocus(newIdx)
+                        end
+                    elseif #controls > 0 then
+                        SetToolbarFocus(#controls)
+                    end
+                end
+            else
+                -- Tab: in results toggles nav button on, otherwise toolbar forward
+                if selectedResultIndex > 0 then
+                    local row = resultButtons[selectedResultIndex]
+                    if row and row.navBtn and row.navBtn:IsShown() then
+                        navBtnFocused = true
+                        MapSearch:UpdateSelectionHighlight()
+                    end
+                elseif toolbarFocus > 0 then
+                    local controls = GetToolbarControls()
+                    local newIdx = toolbarFocus + 1
+                    if newIdx > #controls then
+                        ClearToolbarFocus()
+                        selectedResultIndex = 0
+                        MapSearch:UpdateSelectionHighlight()
+                    else
+                        SetToolbarFocus(newIdx)
+                    end
+                end
+            end
+        elseif key == "ENTER" then
+            if toolbarFocus > 0 then
+                local controls = GetToolbarControls()
+                local target = controls[toolbarFocus]
+                if target then
+                    -- Pre-select first row when opening filter dropdown via keyboard
+                    local sf = activeSearchFrame
+                    if sf and sf.filterBtn == target and sf.filterDropdown then
+                        sf.filterDropdown.keyboardOpen = true
+                        sf.filterDropdown.restoreToolbar = function()
+                            if toolbarFocus > 0 then SetToolbarFocus(toolbarFocus) end
+                        end
+                        toolbarHighlight:Hide()
+                    end
+                    target:Click()
+                end
+            else
+                MapSearch:ActivateSelected()
+            end
+        elseif key == "ESCAPE" then
+            if toolbarFocus > 0 then
+                ClearToolbarFocus()
+            else
+                selectedResultIndex = 0
+                MapSearch:UpdateSelectionHighlight()
+            end
+        elseif key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
+               or key == "LALT" or key == "RALT" then
+            -- Modifier keys alone: stay in nav mode
+        else
+            ClearToolbarFocus()
+            selectedResultIndex = 0
+            MapSearch:UpdateSelectionHighlight()
+            if eb and not IsControlKeyDown() and not IsAltKeyDown() and #key == 1 then
+                local char = IsShiftKeyDown() and key or slower(key)
+                eb:Insert(char)
+            end
+        end
+    end
+
+    navFrame:SetScript("OnKeyDown", function(self, key)
+        HandleNavKeyDown(key)
+        Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+    end)
+    navFrame:SetScript("OnKeyUp", function(_, key)
+        if MapSearch.repeatKey == key then MapSearch.StopKeyRepeat() end
+    end)
+
+    -- Tab from editbox: toolbar first, then results. Ctrl+Tab: switch bars.
+    local function HookEditBoxKeys(eb)
+        eb:HookScript("OnKeyDown", function(self, key)
+            if key ~= "TAB" then return end
+            if IsControlKeyDown() then
+                self:ClearFocus()
+                if isGlobalSearch then
+                    MapSearch:FocusLocalSearch()
+                else
+                    MapSearch:FocusGlobalSearch()
+                end
+            elseif IsShiftKeyDown() then
+                local controls = GetToolbarControls()
+                if #controls > 0 then
+                    self:ClearFocus()
+                    navFrame:EnableKeyboard(true)
+                    SetToolbarFocus(#controls)
+                end
+            else
+                local controls = GetToolbarControls()
+                if #controls > 0 then
+                    self:ClearFocus()
+                    navFrame:EnableKeyboard(true)
+                    SetToolbarFocus(1)
+                elseif resultsFrame and resultsFrame:IsShown() and selectedResultIndex == 0 then
+                    MapSearch:MoveSelection(1)
+                end
+            end
+        end)
+    end
+    HookEditBoxKeys(editBox)
+    HookEditBoxKeys(globalEditBox)
 
     -- Filter dropdown (styled like WoW tracking menu)
     local FILTER_OPTIONS = {
@@ -1487,6 +1946,15 @@ function MapSearch:CreateResultButton(index)
     hl:SetPoint("TOP", resultRow, "TOP", 0, 0)
     hl:SetPoint("BOTTOM", resultRow, "BOTTOM", 0, 0)
 
+    -- Keyboard selection highlight (persistent, gold-tinted)
+    local selHL = resultRow:CreateTexture(nil, "ARTWORK", nil, 1)
+    selHL:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+    selHL:SetBlendMode("ADD")
+    selHL:SetVertexColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.4)
+    selHL:SetAllPoints(hl)
+    selHL:Hide()
+    resultRow.selectionHighlight = selHL
+
     -- Secondary text for path prefix (shown above/before main text in gray)
     local prefixText = resultRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     prefixText:SetPoint("LEFT", icon, "RIGHT", 6, 0)
@@ -1542,6 +2010,15 @@ function MapSearch:CreateResultButton(index)
     end)
     navBtn:Hide()
     resultRow.navBtn = navBtn
+
+    -- Keyboard focus highlight for nav button (Shift+Right in results)
+    local navBtnHL = navBtn:CreateTexture(nil, "BACKGROUND")
+    navBtnHL:SetAllPoints()
+    navBtnHL:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+    navBtnHL:SetBlendMode("ADD")
+    navBtnHL:SetVertexColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.6)
+    navBtnHL:Hide()
+    resultRow.navBtnHighlight = navBtnHL
 
     resultRow:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     resultRow:SetScript("OnClick", function(self, mouseButton)
@@ -4145,6 +4622,10 @@ function MapSearch:GetPinInfo(pin)
 end
 
 function MapSearch:OnSearchTextChanged(text)
+    if self._suppressTextChanged then
+        self._suppressTextChanged = nil
+        return
+    end
     if not text or text == "" or #text < 2 then
         self:ClearHighlight()
         self:ClearZoneHighlight()
@@ -4473,6 +4954,8 @@ function MapSearch:SearchPOIs(pois, query)
 end
 
 function MapSearch:ShowResults(results)
+    selectedResultIndex = 0
+    navBtnFocused = false
     self._lastResults = results
     if not results or #results == 0 then
         self:HideResults()
@@ -4486,7 +4969,7 @@ function MapSearch:ShowResults(results)
     -- Must compute maxVisibleHeight (including screen-space clamping) BEFORE the
     -- button loop, otherwise willScroll can be false while hasScroll ends up true
     -- and the scrollbar overlaps full-width buttons.
-    local maxVisibleRows = EasyFind.db.maxResults or 10
+    local maxVisibleRows = EasyFind.db.maxResults or 6
     local scrollBar = resultsFrame.scrollBar
     local maxVisibleHeight = maxVisibleRows * 26 + 12
     local preAnchor = activeSearchFrame or searchFrame
@@ -4512,6 +4995,13 @@ function MapSearch:ShowResults(results)
     local scrollBarInset = willScroll and 20 or 0
     resultsFrame:SetWidth(baseResultsW + scrollBarInset)
 
+    local wrapX = resultsFrame:GetWidth() * TEXT_WRAP_FRACTION - 10
+
+    -- NavBtn center = midpoint between wrap edge and scrollbar left edge
+    local scrollBarLeftX = resultsFrame:GetWidth() * SCROLL_CENTER_FRACTION - scrollBar:GetWidth() / 2
+    local navBtnCenterX = wrapX + (scrollBarLeftX - wrapX) * 0.45
+    local ROW_INSET = 10  -- row left offset from resultsFrame/scrollChild
+
     -- Check if the player is in the zone being viewed (for navBtn disabled state)
     local viewedMapID = WorldMapFrame:GetMapID()
     local playerMapID = C_Map.GetBestMapForUnit("player")
@@ -4529,8 +5019,7 @@ function MapSearch:ShowResults(results)
             resultRow.icon:SetPoint("LEFT", 5, 0)
             resultRow.text:ClearAllPoints()
             resultRow.text:SetPoint("LEFT", resultRow.icon, "RIGHT", 6, 0)
-            -- Wrap at 80% of results frame width (anchored to resultRow to avoid scroll issues)
-            resultRow.text:SetPoint("RIGHT", resultRow, "LEFT", resultsFrame:GetWidth() * TEXT_WRAP_FRACTION - 10, 0)
+            resultRow.text:SetPoint("RIGHT", resultsFrame, "LEFT", wrapX, 0)
             resultRow.icon:Show()
             resultRow.icon:SetVertexColor(1, 1, 1)
             resultRow.text:SetTextColor(1, 1, 1)
@@ -4538,17 +5027,15 @@ function MapSearch:ShowResults(results)
             if resultRow.indentLine then resultRow.indentLine:Hide() end
             if resultRow.pinIcon then resultRow.pinIcon:Hide() end
             if resultRow.navBtn then resultRow.navBtn:Hide() end
+            if resultRow.selectionHighlight then resultRow.selectionHighlight:Hide() end
+            if resultRow.navBtnHighlight then resultRow.navBtnHighlight:Hide() end
 
             -- Format based on type
             if data.isZoneParent then
                 resultRow.icon:Hide()
                 resultRow.text:ClearAllPoints()
                 resultRow.text:SetPoint("LEFT", resultRow, "LEFT", 8, 0)
-                if willScroll then
-                    resultRow.text:SetPoint("RIGHT", scrollBar, "LEFT", -4, 0)
-                else
-                    resultRow.text:SetPoint("RIGHT", resultRow, "RIGHT", -5, 0)
-                end
+                resultRow.text:SetPoint("RIGHT", resultsFrame, "LEFT", wrapX, 0)
                 resultRow.text:SetText("|cff666666▼ " .. data.name .. "|r")
 
             elseif data.isZone then
@@ -4557,11 +5044,7 @@ function MapSearch:ShowResults(results)
                     resultRow.icon:SetPoint("LEFT", 25, 0)
                     resultRow.text:ClearAllPoints()
                     resultRow.text:SetPoint("LEFT", resultRow.icon, "RIGHT", 6, 0)
-                    if willScroll then
-                        resultRow.text:SetPoint("RIGHT", scrollBar, "LEFT", -4, 0)
-                    else
-                        resultRow.text:SetPoint("RIGHT", resultRow, "RIGHT", -5, 0)
-                    end
+                    resultRow.text:SetPoint("RIGHT", resultsFrame, "LEFT", wrapX, 0)
                     resultRow.text:SetText(data.displayName or data.name)
                     resultRow.text:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
                     resultRow.icon:SetTexture(237382)
@@ -4602,6 +5085,8 @@ function MapSearch:ShowResults(results)
             local hasCoords = not isGlobalSearch
                 and ((data.x and data.y) or (data.allInstances and #data.allInstances > 1))
             if hasCoords and resultRow.navBtn then
+                resultRow.navBtn:ClearAllPoints()
+                resultRow.navBtn:SetPoint("CENTER", resultRow, "LEFT", navBtnCenterX - ROW_INSET, 0)
                 resultRow.navBtn.texture:SetTexture(nil)
                 resultRow.navBtn.texture:SetTexCoord(0, 1, 0, 1)
                 resultRow.navBtn.texture:SetAtlas("Waypoint-MapPin-Untracked")
@@ -4618,13 +5103,13 @@ function MapSearch:ShowResults(results)
             resultRow:Show()
 
             local scrollGutter = willScroll and (scrollBar:GetWidth() + 0) or 0
-            local rowW = resultsFrame:GetWidth() - 10 - scrollGutter
+            local rowW = resultsFrame:GetWidth() - ROW_INSET - scrollGutter
             resultRow:SetWidth(rowW)
 
-            -- Explicit text width so GetStringHeight calculates wrapping
-            -- before anchors resolve (next frame)
-            local textStartX = resultRow.icon:GetWidth() + 11  -- 11 = icon LEFT offset (5) + text gap (6)
-            local wrapWidth = resultsFrame:GetWidth() * TEXT_WRAP_FRACTION - 10 - textStartX
+            -- Explicit text width matching anchor-derived width so
+            -- GetStringHeight calculates correct line count before layout
+            local textLeftFromFrame = ROW_INSET + 5 + resultRow.icon:GetWidth() + 6
+            local wrapWidth = wrapX - textLeftFromFrame
             if data.isIndented then
                 wrapWidth = wrapWidth - 20
             elseif data.isZoneParent then
@@ -4639,7 +5124,7 @@ function MapSearch:ShowResults(results)
 
             resultRow:SetHeight(rowHeight)
             resultRow:ClearAllPoints()
-            resultRow:SetPoint("TOPLEFT", resultsFrame.scrollChild, "TOPLEFT", 10, yOffset)
+            resultRow:SetPoint("TOPLEFT", resultsFrame.scrollChild, "TOPLEFT", ROW_INSET, yOffset)
             yOffset = yOffset - rowHeight - 2
         else
             resultRow:Hide()
@@ -4667,10 +5152,13 @@ function MapSearch:ShowResults(results)
     -- Reset scroll position on new search
     resultsFrame.scrollFrame:SetVerticalScroll(0)
 
-    -- Show/hide minimal scrollbar (overlays right edge)
+    -- Position and show/hide scrollbar centered at SCROLL_CENTER_FRACTION of frame width
     if resultsFrame.scrollBar then
         resultsFrame.scrollBar:SetShown(hasScroll)
         if hasScroll then
+            local scrollCenterX = resultsFrame:GetWidth() * SCROLL_CENTER_FRACTION
+            resultsFrame.scrollBar:ClearAllPoints()
+            resultsFrame.scrollBar:SetPoint("CENTER", resultsFrame, "TOPLEFT", scrollCenterX, -resultsFrame:GetHeight() / 2)
             resultsFrame.scrollBar:UpdateThumb(totalContentHeight, visibleHeight)
         end
     end
@@ -4687,6 +5175,11 @@ function MapSearch:ShowResults(results)
 end
 
 function MapSearch:HideResults()
+    selectedResultIndex = 0
+    navBtnFocused = false
+    if MapSearch.StopKeyRepeat then MapSearch.StopKeyRepeat() end
+    if MapSearch.ClearToolbarFocus then MapSearch.ClearToolbarFocus() end
+    if navFrame then navFrame:EnableKeyboard(false) end
     resultsFrame:Hide()
 end
 
@@ -4708,11 +5201,108 @@ function MapSearch:ShowPinnedItems()
 end
 
 function MapSearch:SelectFirstResult()
-    -- Don't do anything if no results are showing
     if not resultsFrame:IsShown() then return end
     if resultButtons[1]:IsShown() and resultButtons[1].data then
         self:SelectResult(resultButtons[1].data)
     end
+end
+
+function MapSearch:CountVisibleResults()
+    local count = 0
+    for i = 1, MAX_RESULTS_POOL do
+        if resultButtons[i]:IsShown() then
+            count = i
+        else
+            break
+        end
+    end
+    return count
+end
+
+function MapSearch:MoveSelection(delta)
+    local visibleCount = self:CountVisibleResults()
+    if visibleCount == 0 then return end
+
+    local newIndex = selectedResultIndex + delta
+    if newIndex < 0 then newIndex = 0
+    elseif newIndex > visibleCount then newIndex = visibleCount end
+
+    selectedResultIndex = newIndex
+    navBtnFocused = false
+    self:UpdateSelectionHighlight()
+end
+
+function MapSearch:JumpToStart()
+    if self:CountVisibleResults() > 0 then
+        selectedResultIndex = 1
+        self:UpdateSelectionHighlight()
+    end
+end
+
+function MapSearch:JumpToEnd()
+    local visibleCount = self:CountVisibleResults()
+    if visibleCount > 0 then
+        selectedResultIndex = visibleCount
+        self:UpdateSelectionHighlight()
+    end
+end
+
+function MapSearch:UpdateSelectionHighlight()
+    for i = 1, MAX_RESULTS_POOL do
+        local resultRow = resultButtons[i]
+        if resultRow.selectionHighlight then
+            resultRow.selectionHighlight:SetShown(i == selectedResultIndex and not navBtnFocused)
+        end
+        if resultRow.navBtnHighlight then
+            resultRow.navBtnHighlight:SetShown(i == selectedResultIndex and navBtnFocused)
+        end
+    end
+    local eb = activeSearchFrame and activeSearchFrame.editBox
+    if selectedResultIndex > 0 then
+        if resultButtons[selectedResultIndex] then
+            Utils.ScrollToButton(resultsFrame.scrollFrame, resultButtons[selectedResultIndex])
+        end
+        if eb and eb:HasFocus() then
+            eb:ClearFocus()
+        end
+        navFrame:EnableKeyboard(true)
+    else
+        local wasNavigating = navFrame:IsKeyboardEnabled()
+        navFrame:EnableKeyboard(false)
+        if MapSearch.StopKeyRepeat then MapSearch.StopKeyRepeat() end
+        if wasNavigating and eb and not eb:HasFocus() then
+            eb:SetFocus()
+        end
+    end
+end
+
+function MapSearch:ActivateSelected()
+    if selectedResultIndex > 0 and selectedResultIndex <= MAX_RESULTS_POOL then
+        local resultRow = resultButtons[selectedResultIndex]
+        if resultRow:IsShown() and resultRow.data then
+            if navBtnFocused and resultRow.navBtn and resultRow.navBtn:IsShown() then
+                resultRow.navBtn:Click()
+            else
+                self:SelectResult(resultRow.data)
+            end
+            return
+        end
+    end
+    self:SelectFirstResult()
+end
+
+function MapSearch:FocusLocalSearch()
+    if not searchFrame or not searchFrame.editBox then return end
+    C_Timer.After(0, function()
+        searchFrame.editBox:SetFocus()
+    end)
+end
+
+function MapSearch:FocusGlobalSearch()
+    if not globalSearchFrame or not globalSearchFrame.editBox then return end
+    C_Timer.After(0, function()
+        globalSearchFrame.editBox:SetFocus()
+    end)
 end
 
 function MapSearch:SelectResult(data)
@@ -4720,6 +5310,9 @@ function MapSearch:SelectResult(data)
     self._previewing = nil
     self._savedPinState = nil
     searchFrame.editBox:ClearFocus()
+    if globalSearchFrame then
+        globalSearchFrame.editBox:ClearFocus()
+    end
     self:HideResults()
 
     if data then
@@ -4826,6 +5419,17 @@ function MapSearch:SelectResult(data)
             -- Dynamic pin with no coords - highlight it directly
             self:HighlightPin(data.pin)
         end
+    end
+
+    -- Clear search text after pins are placed. Flag persists until
+    -- OnSearchTextChanged consumes it (OnTextChanged may fire next frame).
+    self._suppressTextChanged = true
+    if isGlobalSearch and globalSearchFrame then
+        globalSearchFrame.editBox:SetText("")
+        globalSearchFrame.editBox.placeholder:Show()
+    else
+        searchFrame.editBox:SetText("")
+        searchFrame.editBox.placeholder:Show()
     end
 end
 
@@ -5279,7 +5883,26 @@ function MapSearch:GetSearchWidth()
     return BASE_SEARCH_W * (EasyFind.db.mapSearchWidth or 1.0)
 end
 
+function MapSearch:GetMaxResultsWidth()
+    local gap = 10
+    if searchFrame and globalSearchFrame then
+        local localLeft = searchFrame:GetLeft()
+        local globalLeft = globalSearchFrame:GetLeft()
+        if localLeft and globalLeft then
+            return globalLeft - localLeft - gap
+        end
+    end
+    if WorldMapFrame and WorldMapFrame.ScrollContainer then
+        return WorldMapFrame.ScrollContainer:GetWidth() - gap
+    end
+    return 600
+end
+
 function MapSearch:GetResultsWidth()
+    local w = EasyFind.db.mapResultsWidth
+    if w and w > 1 then
+        return mmin(w, self:GetMaxResultsWidth())
+    end
     return BASE_RESULTS_W * (EasyFind.db.mapSearchWidth or 1.0)
 end
 
@@ -5290,16 +5913,28 @@ function MapSearch:UpdateWidth()
 end
 
 function MapSearch:UpdateScale()
+    local scale = EasyFind.db.mapSearchScale or 1.0
     if searchFrame then
-        local scale = EasyFind.db.mapSearchScale or 1.0
         searchFrame:SetScale(scale)
-        if resultsFrame then
-            resultsFrame:SetScale(scale)
-        end
     end
     if globalSearchFrame then
-        local scale = EasyFind.db.mapSearchScale or 1.0
         globalSearchFrame:SetScale(scale)
+    end
+    self:UpdateResultsScale()
+end
+
+function MapSearch:UpdateResultsScale()
+    if resultsFrame then
+        resultsFrame:SetScale(EasyFind.db.mapResultsScale or 1.0)
+    end
+end
+
+function MapSearch:UpdateResultsWidth()
+    if resultsFrame then
+        local w = EasyFind.db.mapResultsWidth
+        if w and w > 1 then
+            resultsFrame:SetWidth(w)
+        end
     end
 end
 
@@ -5310,6 +5945,44 @@ function MapSearch:UpdateOpacity()
     end
     if globalSearchFrame and globalSearchFrame.bgTex then
         globalSearchFrame.bgTex:SetColorTexture(0, 0, 0, alpha)
+    end
+end
+
+function MapSearch:UpdateFontSize()
+    local scale = EasyFind.db.fontSize or 1.0
+
+    local function ScaleFont(fontString, baseFontObject)
+        local obj = _G[baseFontObject]
+        if not obj then return end
+        local path, baseSize, flags = obj:GetFont()
+        fontString:SetFont(path, baseSize * scale, flags)
+        fontString:SetJustifyH(fontString:GetJustifyH())
+    end
+
+    local barH = ns.SEARCHBAR_HEIGHT * scale
+    local contentSz = barH * ns.SEARCHBAR_FILL
+    local iconSz = contentSz * ns.SEARCHBAR_ICON_SCALE
+
+    if searchFrame then
+        searchFrame:SetHeight(barH)
+        searchFrame.editBox:SetHeight(contentSz)
+        if searchFrame.searchIcon then searchFrame.searchIcon:SetSize(iconSz, iconSz) end
+        ScaleFont(searchFrame.editBox, ns.SEARCHBAR_FONT)
+        ScaleFont(searchFrame.editBox.placeholder, ns.SEARCHBAR_FONT)
+    end
+    if globalSearchFrame then
+        globalSearchFrame:SetHeight(barH)
+        globalSearchFrame.editBox:SetHeight(contentSz)
+        if globalSearchFrame.searchIcon then globalSearchFrame.searchIcon:SetSize(iconSz, iconSz) end
+        ScaleFont(globalSearchFrame.editBox, ns.SEARCHBAR_FONT)
+        ScaleFont(globalSearchFrame.editBox.placeholder, ns.SEARCHBAR_FONT)
+    end
+
+    for _, resultRow in ipairs(resultButtons) do
+        ScaleFont(resultRow.text, "GameFontNormal")
+        if resultRow.prefixText then
+            ScaleFont(resultRow.prefixText, "GameFontNormalSmall")
+        end
     end
 end
 
