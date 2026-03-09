@@ -159,6 +159,7 @@ local function SetRowIcon(btn, kind, value, iconSize)
 end
 
 local selectedIndex = 0   -- 0 = none selected, 1..N = highlighted row
+local navFrame             -- Keyboard capture frame for results navigation
 local unearnedTooltip      -- Custom tooltip for unearned currencies
 
 -- THEME DEFINITIONS
@@ -176,8 +177,8 @@ THEMES["Classic"] = {
     iconSize        = 16,
     pathIconSize    = 14,
     -- fonts
-    pathFont        = "GameFontNormal",
-    leafFont        = "GameFontNormal",
+    pathFont        = ns.SEARCHBAR_FONT,
+    leafFont        = ns.LEAF_FONT,
     pathColor       = {0.7, 0.7, 0.7},
     leafColor       = GOLD_COLOR,
     -- tree lines
@@ -220,8 +221,8 @@ THEMES["Retail"] = {
     iconSize        = 16,
     pathIconSize    = 14,
     -- fonts
-    pathFont        = "Game15Font_Shadow",   -- exact quest log font
-    leafFont        = "GameFontHighlight",
+    pathFont        = ns.SEARCHBAR_FONT,
+    leafFont        = ns.LEAF_FONT,
     pathColor       = {0.65, 0.60, 0.55, 1.0},   -- muted gray-tan (normal state)
     pathColorHover  = {1.0, 1.0, 1.0, 1.0},      -- white (hover state)
     leafColor       = {0.9, 0.9, 0.9},           -- light grey items
@@ -330,6 +331,22 @@ function UI:Initialize()
         searchFrame:Hide()
     end
 
+    self:UpdateScale()
+    self:UpdateWidth()
+    self:UpdateFontSize()
+
+    -- Block focus during init window - prevents stealing keyboard input on login/reload.
+    -- Something (possibly the WoW client) focuses visible EditBoxes after creation;
+    -- blockFocus rejects it in OnEditFocusGained regardless of timing.
+    searchFrame.editBox.blockFocus = true
+    searchFrame.editBox:ClearFocus()
+    C_Timer.After(1, function()
+        if searchFrame and searchFrame.editBox then
+            searchFrame.editBox.blockFocus = nil
+            searchFrame.editBox:ClearFocus()
+        end
+    end)
+
     -- First-time setup overlay for new installs
     if EasyFind.db.firstInstall and not EasyFind.db.setupComplete then
         C_Timer.After(0.3, function() self:ShowFirstTimeSetup() end)
@@ -366,7 +383,7 @@ end
 
 function UI:CreateSearchFrame()
     searchFrame = CreateFrame("Frame", "EasyFindSearchFrame", UIParent, "BackdropTemplate")
-    searchFrame:SetSize(300, 36)
+    searchFrame:SetSize(250, ns.SEARCHBAR_HEIGHT)
     searchFrame:SetFrameStrata("HIGH")
     searchFrame:SetMovable(true)
     searchFrame:EnableMouse(true)
@@ -404,37 +421,57 @@ function UI:CreateSearchFrame()
     searchFrame.bgTex = bgTex
 
     -- Search icon
+    local contentSz = ns.SEARCHBAR_HEIGHT * ns.SEARCHBAR_FILL
+    local iconSz = contentSz * ns.SEARCHBAR_ICON_SCALE
     local searchIcon = searchFrame:CreateTexture(nil, "ARTWORK")
-    searchIcon:SetSize(16, 16)
+    searchIcon:SetSize(iconSz, iconSz)
     searchIcon:SetPoint("LEFT", searchFrame, "LEFT", 12, 0)
-    searchIcon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
-    
+    searchIcon:SetAtlas("common-search-magnifyingglass")
+    searchFrame.searchIcon = searchIcon
+
     -- Editbox
     local editBox = CreateFrame("EditBox", "EasyFindSearchBox", searchFrame)
-    editBox:SetSize(175, 20)
+    editBox:SetHeight(contentSz)
     editBox:SetPoint("LEFT", searchIcon, "RIGHT", 5, 0)
-    editBox:SetFontObject("ChatFontNormal")
+    editBox:SetPoint("RIGHT", searchFrame, "RIGHT", -8, 0)
+    editBox:SetFontObject(ns.SEARCHBAR_FONT)
     editBox:SetAutoFocus(false)
     editBox:SetMaxLetters(50)
 
     -- Block focus when Shift is held (shift = drag, not type) unless already typing
     editBox:HookScript("OnMouseDown", function(self)
         if IsShiftKeyDown() and not self:HasFocus() then
-            C_Timer.After(0, function() self:ClearFocus() end)
+            self.blockFocus = true
+            searchFrame:StartMoving()
         end
         if searchFrame.setupMode then
-            C_Timer.After(0, function() self:ClearFocus() end)
+            self.blockFocus = true
+        end
+    end)
+    editBox:HookScript("OnMouseUp", function(self)
+        self.blockFocus = nil
+        if searchFrame:IsMovable() then
+            searchFrame:StopMovingOrSizing()
+            local point, _, relPoint, x, y = searchFrame:GetPoint()
+            EasyFind.db.uiSearchPosition = {point, relPoint, x, y}
         end
     end)
     
-    local placeholder = editBox:CreateFontString(nil, "ARTWORK", "GameFontDisable")
+    local placeholder = editBox:CreateFontString(nil, "ARTWORK", ns.SEARCHBAR_FONT)
     placeholder:SetPoint("LEFT", 2, 0)
+    placeholder:SetPoint("RIGHT", editBox, "RIGHT", -2, 0)
+    placeholder:SetJustifyH("LEFT")
+    placeholder:SetWordWrap(false)
+    placeholder:SetTextColor(0.5, 0.5, 0.5, 1.0)
     placeholder:SetText("Search your UI here")
     editBox.placeholder = placeholder
     
     editBox:SetScript("OnEditFocusGained", function(self)
+        if self.blockFocus then
+            self:ClearFocus()
+            return
+        end
         self.placeholder:Hide()
-        -- Show pinned items when focusing with empty text
         if self:GetText() == "" then
             UI:ShowPinnedItems()
         end
@@ -511,29 +548,211 @@ function UI:CreateSearchFrame()
         clearTextBtn:SetShown(self:GetText() ~= "")
     end)
     
+    -- Key repeat with progressive acceleration for held arrow/tab keys.
+    -- Starts at REPEAT_INITIAL delay, accelerates toward REPEAT_FAST over REPEAT_ACCEL seconds.
+    local REPEAT_INITIAL = 0.30
+    local REPEAT_FAST    = 0.05
+    local REPEAT_ACCEL   = 1.5
+    local repeatKey, repeatAction, repeatHeld, repeatNext
+
+    local function StopKeyRepeat()
+        repeatKey = nil
+        repeatAction = nil
+        searchFrame:SetScript("OnUpdate", nil)
+    end
+    searchFrame.StopKeyRepeat = StopKeyRepeat
+
+    local function StartKeyRepeat(key, action)
+        action()
+        repeatKey = key
+        repeatAction = action
+        repeatHeld = 0
+        repeatNext = REPEAT_INITIAL
+        searchFrame:SetScript("OnUpdate", function(_, elapsed)
+            repeatHeld = repeatHeld + elapsed
+            repeatNext = repeatNext - elapsed
+            if repeatNext <= 0 then
+                repeatAction()
+                local t = repeatHeld / REPEAT_ACCEL
+                if t > 1 then t = 1 end
+                repeatNext = REPEAT_INITIAL + (REPEAT_FAST - REPEAT_INITIAL) * t
+            end
+        end)
+    end
+
     -- Arrow key / Tab navigation for results dropdown.
     -- IMPORTANT: Always block propagation while the editbox has focus so that
     -- typed letters never trigger the player's game keybinds.
     editBox:SetScript("OnKeyDown", function(self, key)
-        if resultsFrame and resultsFrame:IsShown() then
+        if resultsFrame and resultsFrame:IsShown() and selectedIndex == 0 then
             if key == "DOWN" then
                 UI:MoveSelection(1)
-            elseif key == "UP" then
-                UI:MoveSelection(-1)
-            elseif key == "TAB" then
-                if IsShiftKeyDown() then
-                    UI:MoveSelection(-1)
-                else
-                    UI:MoveSelection(1)
-                end
             end
         end
-        -- Never propagate keyboard input to game binds while the search box is focused
-        self:SetPropagateKeyboardInput(false)
+        Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
     end)
-    
+
     searchFrame.editBox = editBox
-    
+
+    -- Toolbar keyboard focus: 0 = editbox, 1 = clear button
+    local toolbarFocus = 0
+
+    local toolbarHighlight = CreateFrame("Frame", nil, UIParent)
+    toolbarHighlight:SetFrameStrata("FULLSCREEN_DIALOG")
+    toolbarHighlight:SetFrameLevel(10000)
+    toolbarHighlight:Hide()
+    local tbHL = toolbarHighlight:CreateTexture(nil, "OVERLAY")
+    tbHL:SetAllPoints()
+    tbHL:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+    tbHL:SetBlendMode("ADD")
+    tbHL:SetVertexColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.5)
+
+    local function GetToolbarControls()
+        local controls = {}
+        if clearTextBtn:IsShown() then
+            tinsert(controls, clearTextBtn)
+        end
+        return controls
+    end
+
+    local function SetToolbarFocus(idx)
+        toolbarFocus = idx
+        local controls = GetToolbarControls()
+        local target = controls[idx]
+        if target then
+            toolbarHighlight:SetParent(target)
+            toolbarHighlight:ClearAllPoints()
+            toolbarHighlight:SetAllPoints(target)
+            toolbarHighlight:Show()
+        else
+            toolbarHighlight:Hide()
+        end
+    end
+
+    local function ClearToolbarFocus()
+        toolbarFocus = 0
+        toolbarHighlight:Hide()
+    end
+    searchFrame.ClearToolbarFocus = ClearToolbarFocus
+
+    -- Keyboard capture frame for navigating results without editbox focus
+    navFrame = CreateFrame("Frame", nil, searchFrame)
+    navFrame:SetSize(1, 1)
+    navFrame:EnableKeyboard(false)
+    navFrame:SetPropagateKeyboardInput(false)
+
+    local function HandleNavKeyDown(key)
+        if key == "DOWN" then
+            if IsControlKeyDown() then
+                UI:JumpToEnd()
+            else
+                StartKeyRepeat(key, function() UI:MoveSelection(1) end)
+            end
+        elseif key == "UP" then
+            if IsControlKeyDown() then
+                UI:JumpToStart()
+            else
+                StartKeyRepeat(key, function() UI:MoveSelection(-1) end)
+            end
+        elseif key == "PAGEDOWN" then
+            StartKeyRepeat(key, function() UI:MoveSelection(5) end)
+        elseif key == "PAGEUP" then
+            StartKeyRepeat(key, function() UI:MoveSelection(-5) end)
+        elseif key == "HOME" then
+            UI:JumpToStart()
+        elseif key == "END" then
+            UI:JumpToEnd()
+        elseif key == "TAB" then
+            if IsShiftKeyDown() then
+                -- Shift+Tab: toolbar cycling backward, or result nav if no toolbar controls
+                local controls = GetToolbarControls()
+                if #controls > 0 and (toolbarFocus > 0 or selectedIndex == 0) then
+                    local newIdx = (toolbarFocus > 0) and (toolbarFocus - 1) or #controls
+                    if newIdx == 0 then
+                        ClearToolbarFocus()
+                        selectedIndex = 0
+                        UI:UpdateSelectionHighlight()
+                    else
+                        SetToolbarFocus(newIdx)
+                    end
+                else
+                    StartKeyRepeat(key, function() UI:MoveSelection(-1) end)
+                end
+            else
+                -- Tab: toolbar cycling forward, wrap to editbox after last control
+                if toolbarFocus > 0 then
+                    local controls = GetToolbarControls()
+                    local newIdx = toolbarFocus + 1
+                    if newIdx > #controls then
+                        ClearToolbarFocus()
+                        selectedIndex = 0
+                        UI:UpdateSelectionHighlight()
+                    else
+                        SetToolbarFocus(newIdx)
+                    end
+                else
+                    StartKeyRepeat(key, function() UI:MoveSelection(1) end)
+                end
+            end
+        elseif key == "ENTER" then
+            if toolbarFocus > 0 then
+                local controls = GetToolbarControls()
+                local target = controls[toolbarFocus]
+                if target then target:Click() end
+            else
+                UI:ActivateSelected()
+            end
+        elseif key == "ESCAPE" then
+            if toolbarFocus > 0 then
+                ClearToolbarFocus()
+            else
+                selectedIndex = 0
+                UI:UpdateSelectionHighlight()
+            end
+        elseif key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
+               or key == "LALT" or key == "RALT" then
+            -- Modifier keys alone: stay in nav mode
+        else
+            ClearToolbarFocus()
+            selectedIndex = 0
+            UI:UpdateSelectionHighlight()
+            if not IsControlKeyDown() and not IsAltKeyDown() and #key == 1 then
+                local char = IsShiftKeyDown() and key or slower(key)
+                searchFrame.editBox:Insert(char)
+            end
+        end
+    end
+
+    navFrame:SetScript("OnKeyDown", function(self, key)
+        HandleNavKeyDown(key)
+        Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+    end)
+    navFrame:SetScript("OnKeyUp", function(_, key)
+        if repeatKey == key then StopKeyRepeat() end
+    end)
+
+    -- Shift+Tab from editbox: transition to toolbar navigation
+    -- Tab from editbox: toolbar first, then results
+    editBox:HookScript("OnKeyDown", function(self, key)
+        if key ~= "TAB" then return end
+        local controls = GetToolbarControls()
+        if IsShiftKeyDown() then
+            if #controls > 0 then
+                self:ClearFocus()
+                navFrame:EnableKeyboard(true)
+                SetToolbarFocus(#controls)
+            end
+        else
+            if #controls > 0 then
+                self:ClearFocus()
+                navFrame:EnableKeyboard(true)
+                SetToolbarFocus(1)
+            elseif resultsFrame and resultsFrame:IsShown() and selectedIndex == 0 then
+                UI:MoveSelection(1)
+            end
+        end
+    end)
+
     -- Draggable with Shift key
     searchFrame:RegisterForDrag("LeftButton")
     searchFrame:SetScript("OnDragStart", function(self)
@@ -668,6 +887,16 @@ function UI:CreateResultsFrame()
     
     resultsFrame:Hide()
 
+    local resizeTimer
+    resultsFrame:SetScript("OnSizeChanged", function()
+        if not resultsFrame:IsShown() or not cachedHierarchical then return end
+        if resizeTimer then resizeTimer:Cancel() end
+        resizeTimer = C_Timer.NewTimer(0.02, function()
+            resizeTimer = nil
+            UI:ShowHierarchicalResults(cachedHierarchical, true)
+        end)
+    end)
+
     -- Plain ScrollFrame for clipping + mouse wheel
     local scrollFrame = CreateFrame("ScrollFrame", nil, resultsFrame)
     scrollFrame:EnableMouseWheel(true)
@@ -702,6 +931,7 @@ end
 local INDENT_COLORS = THEMES["Classic"].indentColors
 
 local INDENT_PX  = 20  -- pixels per depth level (icon 16 + 4 gap)
+local LINE_X_OFF = 10  -- horizontal offset within each depth column (clears tab rounded corner)
 local LINE_W     = 2   -- connector line thickness
 local MAX_DEPTH  = #INDENT_COLORS
 
@@ -904,39 +1134,35 @@ function UI:CreateResultButton(index)
     resultRow.tabSelectionHighlight = tabSelTex
 
     -- Tree connector textures per depth level
-    -- Each level gets: a vertical pass-through line AND a horizontal branch line
-    resultRow.treeVert   = {}   -- vertical │ lines (pass-through for ancestors)
-    resultRow.treeBranch = {}   -- horizontal ─ branch connector at this row's own depth
-    resultRow.treeElbow  = {}   -- vertical half-line for └ (last child) vs ├ (mid child)
+    resultRow.treeVert   = {}   -- vertical │ pass-through for ancestors
+    resultRow.treeBranch = {}   -- horizontal ─ branch connector
+    resultRow.treeElbow  = {}   -- vertical half-line for └ / ├
 
     for d = 1, MAX_DEPTH do
         local c = INDENT_COLORS[d]
-        local xCenter = (d - 1) * INDENT_PX + 5  -- center X of this depth's column
+        local xCenter = (d - 1) * INDENT_PX + LINE_X_OFF
 
-        -- Full-height vertical pass-through line (for ancestor depths still active)
         local vert = resultRow:CreateTexture(nil, "BACKGROUND")
-        vert:SetColorTexture(c[1], c[2], c[3], c[4])
+        vert:SetColorTexture(c[1], c[2], c[3], 1)
         vert:SetWidth(LINE_W)
-        vert:SetPoint("TOP",    resultRow, "TOPLEFT",    xCenter, 2)
-        vert:SetPoint("BOTTOM", resultRow, "BOTTOMLEFT", xCenter, -2)
+        vert:SetPoint("TOP",    resultRow, "TOPLEFT",    xCenter, 3)
+        vert:SetPoint("BOTTOM", resultRow, "BOTTOMLEFT", xCenter, -1)
         vert:Hide()
         resultRow.treeVert[d] = vert
 
-        -- Half-height vertical elbow (top half only - for ├ and └ at this row's depth)
         local elbow = resultRow:CreateTexture(nil, "BACKGROUND")
-        elbow:SetColorTexture(c[1], c[2], c[3], c[4])
+        elbow:SetColorTexture(c[1], c[2], c[3], 1)
         elbow:SetWidth(LINE_W)
-        elbow:SetPoint("TOP", resultRow, "TOPLEFT", xCenter, 2)
-        elbow:SetHeight(13)  -- half the row height + a bit
+        elbow:SetPoint("TOP", resultRow, "TOPLEFT", xCenter, 3)
+        elbow:SetHeight(13)
         elbow:Hide()
         resultRow.treeElbow[d] = elbow
 
-        -- Horizontal branch line (goes from the vertical line rightward to the icon)
         local branch = resultRow:CreateTexture(nil, "BACKGROUND")
-        branch:SetColorTexture(c[1], c[2], c[3], c[4])
+        branch:SetColorTexture(c[1], c[2], c[3], 1)
         branch:SetHeight(LINE_W)
-        branch:SetPoint("LEFT",  resultRow, "TOPLEFT", xCenter, -11)
-        branch:SetPoint("RIGHT", resultRow, "TOPLEFT", xCenter + INDENT_PX - 2, -11)
+        branch:SetPoint("LEFT",  resultRow, "TOPLEFT", xCenter - 1, -11)
+        branch:SetPoint("RIGHT", resultRow, "TOPLEFT", xCenter + INDENT_PX - LINE_X_OFF, -11)
         branch:Hide()
         resultRow.treeBranch[d] = branch
     end
@@ -1288,7 +1514,8 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     if theme.resultsBackdropBorderColor then
         resultsFrame:SetBackdropBorderColor(unpack(theme.resultsBackdropBorderColor))
     end
-    resultsFrame:SetWidth(theme.resultsWidth)
+    local customW = EasyFind.db.uiResultsWidth
+    resultsFrame:SetWidth((customW and customW > 1) and customW or theme.resultsWidth)
     
     -- Apply background atlas if specified (e.g. quest log background)
     if not resultsFrame.bgAtlasTex then
@@ -1370,7 +1597,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     local count = mmin(#visible, MAX_BUTTON_POOL)
 
     -- Pre-compute whether scrolling will be needed so buttons can be narrower
-    local maxVisibleRows = EasyFind.db.maxResults or 10
+    local maxVisibleRows = EasyFind.db.maxResults or 6
     local willScroll = count > maxVisibleRows
     local scrollInset = willScroll and 10 or 0
 
@@ -1431,7 +1658,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 
             -- Reposition for theme row height
             local padL = theme.resultsPadLeft or 10
-            resultRow:SetSize(theme.btnWidth - scrollInset, rowH)
+            resultRow:SetSize(resultsFrame:GetWidth() - padL * 2 - scrollInset, rowH)
             resultRow:ClearAllPoints()
             resultRow:SetPoint("TOPLEFT", resultsFrame.scrollChild, "TOPLEFT", padL, -yOffset)
 
@@ -1458,23 +1685,25 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             if theme.showTreeLines and depth > 0 then
                 local halfRow = rowH * 0.5
                 local tc = theme.indentColors[depth] or theme.indentColors[1] or INDENT_COLORS[depth]
-                local xCenter = (depth - 1) * INDENT_PX + 5
+                local xCenter = (depth - 1) * INDENT_PX + LINE_X_OFF
 
-                -- Recolor + reposition branch/elbow for active theme's row height
-                resultRow.treeBranch[depth]:SetColorTexture(tc[1], tc[2], tc[3], tc[4])
-                resultRow.treeBranch[depth]:ClearAllPoints()
-                resultRow.treeBranch[depth]:SetPoint("LEFT",  resultRow, "TOPLEFT", xCenter, -halfRow)
-                resultRow.treeBranch[depth]:SetPoint("RIGHT", resultRow, "TOPLEFT", xCenter + INDENT_PX - 2, -halfRow)
-                resultRow.treeBranch[depth]:Show()
-
-                resultRow.treeElbow[depth]:SetColorTexture(tc[1], tc[2], tc[3], tc[4])
+                resultRow.treeElbow[depth]:SetColorTexture(tc[1], tc[2], tc[3], 1)
                 resultRow.treeElbow[depth]:ClearAllPoints()
-                resultRow.treeElbow[depth]:SetPoint("TOP", resultRow, "TOPLEFT", xCenter, 2)
+                resultRow.treeElbow[depth]:SetPoint("TOP", resultRow, "TOPLEFT", xCenter, 3)
                 resultRow.treeElbow[depth]:SetHeight(halfRow + 2)
                 resultRow.treeElbow[depth]:Show()
 
+                resultRow.treeBranch[depth]:SetColorTexture(tc[1], tc[2], tc[3], 1)
+                resultRow.treeBranch[depth]:ClearAllPoints()
+                resultRow.treeBranch[depth]:SetPoint("LEFT",  resultRow, "TOPLEFT", xCenter - 1, -halfRow)
+                resultRow.treeBranch[depth]:SetPoint("RIGHT", resultRow, "TOPLEFT", xCenter + INDENT_PX - LINE_X_OFF, -halfRow)
+                resultRow.treeBranch[depth]:Show()
+
                 if not isLastChild[i] then
-                    resultRow.treeVert[depth]:SetColorTexture(tc[1], tc[2], tc[3], tc[4])
+                    resultRow.treeVert[depth]:SetColorTexture(tc[1], tc[2], tc[3], 1)
+                    resultRow.treeVert[depth]:ClearAllPoints()
+                    resultRow.treeVert[depth]:SetPoint("TOP",    resultRow, "TOPLEFT",    xCenter, 3)
+                    resultRow.treeVert[depth]:SetPoint("BOTTOM", resultRow, "BOTTOMLEFT", xCenter, -1)
                     resultRow.treeVert[depth]:Show()
                 end
 
@@ -1487,7 +1716,11 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     end
                     if stillActive then
                         local ac = theme.indentColors[d] or theme.indentColors[1] or INDENT_COLORS[d]
-                        resultRow.treeVert[d]:SetColorTexture(ac[1], ac[2], ac[3], ac[4])
+                        local dxCenter = (d - 1) * INDENT_PX + LINE_X_OFF
+                        resultRow.treeVert[d]:SetColorTexture(ac[1], ac[2], ac[3], 1)
+                        resultRow.treeVert[d]:ClearAllPoints()
+                        resultRow.treeVert[d]:SetPoint("TOP",    resultRow, "TOPLEFT",    dxCenter, 3)
+                        resultRow.treeVert[d]:SetPoint("BOTTOM", resultRow, "BOTTOMLEFT", dxCenter, -1)
                         resultRow.treeVert[d]:Show()
                     end
                 end
@@ -1960,15 +2193,15 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 
             -- Measure text height and expand row if text wraps
             local actualH = rowH
-            if resultRow.repBar:IsShown() then
-                local textObj
-                if theme.showHeaderTab and entry.isPathNode and resultRow.headerTab:IsShown() then
-                    textObj = resultRow.tabText
-                else
-                    textObj = resultRow.text
-                end
+            local textObj
+            if theme.showHeaderTab and entry.isPathNode and resultRow.headerTab:IsShown() then
+                textObj = resultRow.tabText
+            elseif not entry.isPinHeader then
+                textObj = resultRow.text
+            end
+            if textObj then
                 local textHeight = textObj:GetStringHeight()
-                local minH = textHeight + 8  -- 4px padding top + bottom
+                local minH = textHeight / ns.SEARCHBAR_FILL
                 if minH > rowH then
                     actualH = minH
                     resultRow:SetHeight(actualH)
@@ -1978,13 +2211,13 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     -- Reposition tree connectors for taller row
                     if theme.showTreeLines and depth > 0 then
                         local halfRow = actualH * 0.5
-                        local xCenter = (depth - 1) * INDENT_PX + 5
-                        resultRow.treeBranch[depth]:ClearAllPoints()
-                        resultRow.treeBranch[depth]:SetPoint("LEFT",  resultRow, "TOPLEFT", xCenter, -halfRow)
-                        resultRow.treeBranch[depth]:SetPoint("RIGHT", resultRow, "TOPLEFT", xCenter + INDENT_PX - 2, -halfRow)
+                        local xCenter = (depth - 1) * INDENT_PX + LINE_X_OFF
                         resultRow.treeElbow[depth]:ClearAllPoints()
-                        resultRow.treeElbow[depth]:SetPoint("TOP", resultRow, "TOPLEFT", xCenter, 2)
+                        resultRow.treeElbow[depth]:SetPoint("TOP", resultRow, "TOPLEFT", xCenter, 3)
                         resultRow.treeElbow[depth]:SetHeight(halfRow + 2)
+                        resultRow.treeBranch[depth]:ClearAllPoints()
+                        resultRow.treeBranch[depth]:SetPoint("LEFT",  resultRow, "TOPLEFT", xCenter - 1, -halfRow)
+                        resultRow.treeBranch[depth]:SetPoint("RIGHT", resultRow, "TOPLEFT", xCenter + INDENT_PX - LINE_X_OFF, -halfRow)
                     end
                 end
             end
@@ -2039,10 +2272,13 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         resultsFrame.scrollFrame:SetVerticalScroll(0)
     end
 
-    -- Show/hide minimal scrollbar (overlays right edge)
     if resultsFrame.scrollBar then
         resultsFrame.scrollBar:SetShown(hasScroll)
         if hasScroll then
+            local scrollCenterX = resultsFrame:GetWidth() * 0.96
+            resultsFrame.scrollBar:ClearAllPoints()
+            resultsFrame.scrollBar:SetPoint("CENTER", resultsFrame, "TOPLEFT", scrollCenterX, -resultsFrame:GetHeight() / 2)
+            resultsFrame.scrollBar:UpdateBarHeight()
             resultsFrame.scrollBar:UpdateThumb(totalContentHeight, visibleHeight)
         end
     end
@@ -2087,6 +2323,8 @@ function UI:RefreshResults()
 end
 
 function UI:HideResults()
+    if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
+    if searchFrame.ClearToolbarFocus then searchFrame.ClearToolbarFocus() end
     resultsFrame:Hide()
     if resultsFrame.pinSeparator then
         resultsFrame.pinSeparator:Hide()
@@ -2142,28 +2380,43 @@ function UI:SelectFirstResult()
     end
 end
 
-function UI:MoveSelection(delta)
-    -- Count visible buttons
-    local visibleCount = 0
+function UI:CountVisibleResults()
+    local count = 0
     for i = 1, MAX_BUTTON_POOL do
         if resultButtons[i]:IsShown() then
-            visibleCount = i
+            count = i
         else
             break
         end
     end
+    return count
+end
+
+function UI:MoveSelection(delta)
+    local visibleCount = self:CountVisibleResults()
     if visibleCount == 0 then return end
-    
+
     local newIndex = selectedIndex + delta
-    -- Wrap around
-    if newIndex < 1 then
-        newIndex = visibleCount
-    elseif newIndex > visibleCount then
-        newIndex = 1
-    end
-    
+    if newIndex < 0 then newIndex = 0
+    elseif newIndex > visibleCount then newIndex = visibleCount end
+
     selectedIndex = newIndex
     self:UpdateSelectionHighlight()
+end
+
+function UI:JumpToStart()
+    if self:CountVisibleResults() > 0 then
+        selectedIndex = 1
+        self:UpdateSelectionHighlight()
+    end
+end
+
+function UI:JumpToEnd()
+    local visibleCount = self:CountVisibleResults()
+    if visibleCount > 0 then
+        selectedIndex = visibleCount
+        self:UpdateSelectionHighlight()
+    end
 end
 
 function UI:UpdateSelectionHighlight()
@@ -2175,6 +2428,22 @@ function UI:UpdateSelectionHighlight()
         -- Tab selection highlight (Retail theme)
         if resultRow.tabSelectionHighlight then
             resultRow.tabSelectionHighlight:SetShown(i == selectedIndex and resultRow.headerTab:IsShown())
+        end
+    end
+    if selectedIndex > 0 then
+        if resultButtons[selectedIndex] then
+            Utils.ScrollToButton(resultsFrame.scrollFrame, resultButtons[selectedIndex])
+        end
+        if searchFrame.editBox:HasFocus() then
+            searchFrame.editBox:ClearFocus()
+        end
+        navFrame:EnableKeyboard(true)
+    else
+        local wasNavigating = navFrame:IsKeyboardEnabled()
+        navFrame:EnableKeyboard(false)
+        if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
+        if wasNavigating and not searchFrame.editBox:HasFocus() then
+            searchFrame.editBox:SetFocus()
         end
     end
 end
@@ -2834,12 +3103,48 @@ function UI:Toggle()
     end
 end
 
+function UI:ToggleFocus()
+    if not searchFrame then return end
+    if inCombat then return end
+    if searchFrame:IsShown() and searchFrame.editBox:HasFocus() then
+        self:Hide()
+    else
+        self:Show(false)
+        C_Timer.After(0, function()
+            if searchFrame and searchFrame:IsShown() then
+                searchFrame.editBox:SetFocus()
+            end
+        end)
+    end
+end
+
 function UI:UpdateScale()
     if searchFrame then
         local scale = EasyFind.db.uiSearchScale or 1.0
         searchFrame:SetScale(scale)
-        if resultsFrame then
-            resultsFrame:SetScale(scale)
+    end
+    self:UpdateResultsScale()
+end
+
+function UI:UpdateResultsScale()
+    if resultsFrame then
+        resultsFrame:SetScale(EasyFind.db.uiResultsScale or 1.0)
+    end
+end
+
+function UI:UpdateWidth()
+    if searchFrame then
+        local w = 250 * (EasyFind.db.uiSearchWidth or 1.0)
+        searchFrame:SetWidth(w)
+    end
+    self:UpdateResultsWidth()
+end
+
+function UI:UpdateResultsWidth()
+    if resultsFrame then
+        local w = EasyFind.db.uiResultsWidth
+        if w and w > 1 then
+            resultsFrame:SetWidth(w)
         end
     end
 end
@@ -3077,6 +3382,7 @@ function UI:ShowFirstTimeSetup()
             local newScale = curScale + dy * 0.005
             newScale = mmax(0.5, mmin(2.0, newScale))
             EasyFind.db.uiSearchScale = newScale
+            EasyFind.db.uiResultsScale = newScale
             searchFrame:SetScale(newScale)
             if resultsFrame then resultsFrame:SetScale(newScale) end
         end
@@ -3247,4 +3553,46 @@ function UI:FlashLabel(labelText)
             ticker:Cancel()
         end
     end)
+end
+
+function UI:UpdateFontSize()
+    local scale = EasyFind.db.fontSize or 1.0
+
+    local function ScaleFont(fontString, baseFontObject)
+        local obj = _G[baseFontObject]
+        if not obj then return end
+        local path, baseSize, flags = obj:GetFont()
+        fontString:SetFont(path, baseSize * scale, flags)
+        fontString:SetJustifyH(fontString:GetJustifyH())
+    end
+
+    if not searchFrame then return end
+
+    ScaleFont(searchFrame.editBox, ns.SEARCHBAR_FONT)
+    ScaleFont(searchFrame.editBox.placeholder, ns.SEARCHBAR_FONT)
+
+    local barH = ns.SEARCHBAR_HEIGHT * scale
+    local contentSz = barH * ns.SEARCHBAR_FILL
+    local iconSz = contentSz * ns.SEARCHBAR_ICON_SCALE
+    searchFrame:SetHeight(barH)
+    searchFrame.editBox:SetHeight(contentSz)
+    searchFrame.searchIcon:SetSize(iconSz, iconSz)
+
+    local theme = GetActiveTheme()
+    for i = 1, #resultButtons do
+        local row = resultButtons[i]
+        ScaleFont(row.text, theme.leafFont)
+        ScaleFont(row.tabText, theme.pathFont)
+        if row.amountText then
+            ScaleFont(row.amountText, "GameFontNormalSmall")
+        end
+        if row.repBarText then
+            ScaleFont(row.repBarText, "GameFontNormalSmall")
+        end
+    end
+
+    -- Re-layout visible results with new row heights
+    if cachedHierarchical and resultsFrame and resultsFrame:IsShown() then
+        self:ShowHierarchicalResults(cachedHierarchical, true)
+    end
 end
