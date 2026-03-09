@@ -221,7 +221,11 @@ function Highlight:StartGuide(guideData)
     
     -- Use a ticker to continuously check step conditions
     stepTicker = C_Timer.NewTicker(0.1, function()
-        self:UpdateGuide()
+        local ok, err = pcall(self.UpdateGuide, self)
+        if not ok then
+            if stepTicker then stepTicker:Cancel(); stepTicker = nil end
+            ns.DebugPrint("Guide error: " .. tostring(err))
+        end
     end)
 end
 
@@ -241,7 +245,11 @@ function Highlight:StartGuideAtStep(guideData, stepIndex)
     currentStepIndex = stepIndex
     
     stepTicker = C_Timer.NewTicker(0.1, function()
-        self:UpdateGuide()
+        local ok, err = pcall(self.UpdateGuide, self)
+        if not ok then
+            if stepTicker then stepTicker:Cancel(); stepTicker = nil end
+            ns.DebugPrint("Guide error: " .. tostring(err))
+        end
     end)
 end
 

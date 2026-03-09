@@ -44,6 +44,39 @@ Utils.pcall    = pcall
 Utils.tostring = tostring
 Utils.tonumber = tonumber
 
+--- Call a protected function safely, suppressing errors during combat lockdown.
+--- Returns true + results on success, false on failure.
+function Utils.SafeCall(func, ...)
+    if InCombatLockdown() then return false end
+    return pcall(func, ...)
+end
+
+--- Call a protected method safely (e.g. frame:SetPropagateKeyboardInput).
+--- Usage: Utils.SafeCallMethod(frame, "SetPropagateKeyboardInput", false)
+function Utils.SafeCallMethod(obj, method, ...)
+    if InCombatLockdown() then return false end
+    local fn = obj[method]
+    if not fn then return false end
+    return pcall(fn, obj, ...)
+end
+
+--- Scroll a ScrollFrame so that the given child button is visible.
+--- Uses the button's top/bottom relative to the scrollChild.
+function Utils.ScrollToButton(scrollFrame, button)
+    if not scrollFrame or not button then return end
+    local _, _, _, _, btnOffsetY = button:GetPoint(1)
+    if not btnOffsetY then return end
+    local btnTop = -btnOffsetY
+    local btnBot = btnTop + button:GetHeight()
+    local visH = scrollFrame:GetHeight()
+    local cur = scrollFrame:GetVerticalScroll()
+    if btnTop < cur then
+        scrollFrame:SetVerticalScroll(btnTop)
+    elseif btnBot > cur + visH then
+        scrollFrame:SetVerticalScroll(btnBot - visH)
+    end
+end
+
 -- Shared constants
 ns.GOLD_COLOR = {1.0, 0.82, 0.0}
 ns.YELLOW_HIGHLIGHT = {1, 1, 0}
@@ -51,6 +84,19 @@ ns.DEFAULT_OPACITY = 0.75
 ns.TOOLTIP_BORDER = "Interface\\Tooltips\\UI-Tooltip-Border"
 ns.DARK_PANEL_BG = {0.1, 0.1, 0.1, 0.95}
 ns.RESULT_ICON_SIZE = 18
+ns.SEARCHBAR_HEIGHT = 30      -- base search bar frame height (before font scaling)
+ns.SEARCHBAR_FILL = 0.55      -- fraction of bar height filled by text/icon
+ns.SEARCHBAR_ICON_SCALE = 0.75 -- icon size relative to editBox height (font glyphs are shorter than line height)
+local EasyFindSearchFont = CreateFont("EasyFindSearchFont")
+local baseFont = Game15Font_Shadow or GameFontNormal
+EasyFindSearchFont:CopyFontObject(baseFont)
+EasyFindSearchFont:SetFont((baseFont:GetFont()), 12, select(3, baseFont:GetFont()))
+ns.SEARCHBAR_FONT = "EasyFindSearchFont"
+
+local EasyFindLeafFont = CreateFont("EasyFindLeafFont")
+EasyFindLeafFont:CopyFontObject(baseFont)
+EasyFindLeafFont:SetFont((baseFont:GetFont()), 10, select(3, baseFont:GetFont()))
+ns.LEAF_FONT = "EasyFindLeafFont"
 
 -- DEBUG PRINT
 -- Centralised debug output - only prints when dev mode is enabled.
@@ -254,28 +300,38 @@ end
 -- Returns the scrollbar frame. Call bar:SetShown(bool) to show/hide,
 -- and bar:UpdateThumb() after resizing the scroll child.
 function Utils.CreateMinimalScrollBar(scrollFrame, parent)
-    local BAR_W = 6
-    local CAP_H = 7
-    local ARROW_W, ARROW_H = 16, 11
     local MIN_THUMB_H = 20
+    local TRACK_PAD = 2
+    local VERT_PAD  = 4
 
-    -- Container frame, anchored to right edge of scroll frame
+    -- Query native atlas sizes so we never hardcode sprite dimensions
+    local arrowInfo = C_Texture.GetAtlasInfo("minimal-scrollbar-arrow-top")
+    local trackCapInfo = C_Texture.GetAtlasInfo("minimal-scrollbar-track-top")
+    local ARROW_W = arrowInfo and arrowInfo.width or 17
+    local ARROW_H = arrowInfo and arrowInfo.height or 11
+    local BAR_W = trackCapInfo and trackCapInfo.width or 6
+
     local bar = CreateFrame("Frame", nil, parent)
     bar:SetWidth(ARROW_W)
-    bar:SetPoint("TOPRIGHT", scrollFrame, "TOPRIGHT", 0, 0)
-    bar:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", 0, 0)
+    bar:SetPoint("RIGHT", scrollFrame, "RIGHT", 0, 0)
     bar:SetFrameStrata(parent:GetFrameStrata())
     bar:SetFrameLevel(parent:GetFrameLevel() + 5)
+
+    local function UpdateBarHeight()
+        bar:SetHeight(scrollFrame:GetHeight() - VERT_PAD * 2)
+    end
+    bar.UpdateBarHeight = UpdateBarHeight
+    UpdateBarHeight()
 
     -- Up arrow
     local backBtn = CreateFrame("Button", nil, bar)
     backBtn:SetSize(ARROW_W, ARROW_H)
     backBtn:SetPoint("TOP", bar, "TOP", 0, 0)
     local backTex = backBtn:CreateTexture(nil, "BACKGROUND")
-    backTex:SetAtlas("minimal-scrollbar-arrow-top")
-    backTex:SetAllPoints()
-    backBtn:SetScript("OnEnter", function() backTex:SetAtlas("minimal-scrollbar-arrow-top-over") end)
-    backBtn:SetScript("OnLeave", function() backTex:SetAtlas("minimal-scrollbar-arrow-top") end)
+    backTex:SetAtlas("minimal-scrollbar-arrow-top", true)
+    backTex:SetPoint("CENTER")
+    backBtn:SetScript("OnEnter", function() backTex:SetAtlas("minimal-scrollbar-arrow-top-over", true) end)
+    backBtn:SetScript("OnLeave", function() backTex:SetAtlas("minimal-scrollbar-arrow-top", true) end)
     backBtn:SetScript("OnClick", function()
         local cur = scrollFrame:GetVerticalScroll()
         scrollFrame:SetVerticalScroll(mmax(0, cur - 24))
@@ -286,10 +342,10 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
     fwdBtn:SetSize(ARROW_W, ARROW_H)
     fwdBtn:SetPoint("BOTTOM", bar, "BOTTOM", 0, 0)
     local fwdTex = fwdBtn:CreateTexture(nil, "BACKGROUND")
-    fwdTex:SetAtlas("minimal-scrollbar-arrow-bottom")
-    fwdTex:SetAllPoints()
-    fwdBtn:SetScript("OnEnter", function() fwdTex:SetAtlas("minimal-scrollbar-arrow-bottom-over") end)
-    fwdBtn:SetScript("OnLeave", function() fwdTex:SetAtlas("minimal-scrollbar-arrow-bottom") end)
+    fwdTex:SetAtlas("minimal-scrollbar-arrow-bottom", true)
+    fwdTex:SetPoint("CENTER")
+    fwdBtn:SetScript("OnEnter", function() fwdTex:SetAtlas("minimal-scrollbar-arrow-bottom-over", true) end)
+    fwdBtn:SetScript("OnLeave", function() fwdTex:SetAtlas("minimal-scrollbar-arrow-bottom", true) end)
     fwdBtn:SetScript("OnClick", function()
         local cur = scrollFrame:GetVerticalScroll()
         local range = scrollFrame:GetVerticalScrollRange()
@@ -298,22 +354,19 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
 
     -- Track fills the bar width so track center = arrow center
     local track = CreateFrame("Frame", nil, bar)
-    track:SetPoint("TOPLEFT", backBtn, "BOTTOMLEFT", 0, -2)
-    track:SetPoint("BOTTOMRIGHT", fwdBtn, "TOPRIGHT", 0, 2)
+    track:SetPoint("TOPLEFT", backBtn, "BOTTOMLEFT", 0, -TRACK_PAD)
+    track:SetPoint("BOTTOMRIGHT", fwdBtn, "TOPRIGHT", 0, TRACK_PAD)
 
     local trackTopTex = track:CreateTexture(nil, "BACKGROUND")
-    trackTopTex:SetAtlas("minimal-scrollbar-track-top")
-    trackTopTex:SetSize(BAR_W, CAP_H)
+    trackTopTex:SetAtlas("minimal-scrollbar-track-top", true)
     trackTopTex:SetPoint("TOP")
 
     local trackBotTex = track:CreateTexture(nil, "BACKGROUND")
-    trackBotTex:SetAtlas("minimal-scrollbar-track-bottom")
-    trackBotTex:SetSize(BAR_W, CAP_H)
+    trackBotTex:SetAtlas("minimal-scrollbar-track-bottom", true)
     trackBotTex:SetPoint("BOTTOM")
 
     local trackMidTex = track:CreateTexture(nil, "BACKGROUND")
     trackMidTex:SetAtlas("!minimal-scrollbar-track-middle", true)
-    trackMidTex:SetWidth(BAR_W)
     trackMidTex:SetPoint("TOP", trackTopTex, "BOTTOM")
     trackMidTex:SetPoint("BOTTOM", trackBotTex, "TOP")
 
@@ -323,30 +376,27 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
     thumb:EnableMouse(true)
 
     local thumbTopTex = thumb:CreateTexture(nil, "ARTWORK")
-    thumbTopTex:SetAtlas("minimal-scrollbar-small-thumb-top")
-    thumbTopTex:SetSize(BAR_W, CAP_H)
+    thumbTopTex:SetAtlas("minimal-scrollbar-small-thumb-top", true)
     thumbTopTex:SetPoint("TOP")
 
     local thumbBotTex = thumb:CreateTexture(nil, "ARTWORK")
-    thumbBotTex:SetAtlas("minimal-scrollbar-small-thumb-bottom")
-    thumbBotTex:SetSize(BAR_W, CAP_H)
+    thumbBotTex:SetAtlas("minimal-scrollbar-small-thumb-bottom", true)
     thumbBotTex:SetPoint("BOTTOM")
 
     local thumbMidTex = thumb:CreateTexture(nil, "ARTWORK")
-    thumbMidTex:SetAtlas("minimal-scrollbar-small-thumb-middle")
-    thumbMidTex:SetWidth(BAR_W)
+    thumbMidTex:SetAtlas("minimal-scrollbar-small-thumb-middle", true)
     thumbMidTex:SetPoint("TOP", thumbTopTex, "BOTTOM")
     thumbMidTex:SetPoint("BOTTOM", thumbBotTex, "TOP")
 
     local function SetThumbNormal()
-        thumbTopTex:SetAtlas("minimal-scrollbar-small-thumb-top")
-        thumbBotTex:SetAtlas("minimal-scrollbar-small-thumb-bottom")
-        thumbMidTex:SetAtlas("minimal-scrollbar-small-thumb-middle")
+        thumbTopTex:SetAtlas("minimal-scrollbar-small-thumb-top", true)
+        thumbBotTex:SetAtlas("minimal-scrollbar-small-thumb-bottom", true)
+        thumbMidTex:SetAtlas("minimal-scrollbar-small-thumb-middle", true)
     end
     local function SetThumbOver()
-        thumbTopTex:SetAtlas("minimal-scrollbar-small-thumb-top-over")
-        thumbBotTex:SetAtlas("minimal-scrollbar-small-thumb-bottom-over")
-        thumbMidTex:SetAtlas("minimal-scrollbar-small-thumb-middle-over")
+        thumbTopTex:SetAtlas("minimal-scrollbar-small-thumb-top-over", true)
+        thumbBotTex:SetAtlas("minimal-scrollbar-small-thumb-bottom-over", true)
+        thumbMidTex:SetAtlas("minimal-scrollbar-small-thumb-middle-over", true)
     end
 
     thumb:SetScript("OnEnter", SetThumbOver)
@@ -418,6 +468,7 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
     bar._viewH = nil
 
     function bar:UpdateThumb(contentH, viewH)
+        self:UpdateBarHeight()
         if contentH then self._contentH = contentH end
         if viewH then self._viewH = viewH end
         contentH = contentH or self._contentH
@@ -440,7 +491,7 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
 
         local travel = trackH - thumbH
         local scrollPos = scrollFrame:GetVerticalScroll()
-        local ratio = (range > 0) and (scrollPos / range) or 0
+        local ratio = mmax(0, mmin(1, (range > 0) and (scrollPos / range) or 0))
 
         thumb:ClearAllPoints()
         thumb:SetPoint("TOP", track, "TOP", 0, -(ratio * travel))
@@ -460,8 +511,9 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
         scrollFrame:SetVerticalScroll(mmax(0, mmin(range, cur - delta * 72)))
     end)
 
-    -- Defer UpdateThumb on show so track layout is resolved first
+    -- Recompute bar height and thumb on show so layout matches current frame size
     bar:SetScript("OnShow", function(self)
+        self:UpdateBarHeight()
         C_Timer.After(0, function()
             if self:IsShown() then self:UpdateThumb() end
         end)
@@ -531,8 +583,8 @@ function Utils.ClickButton(btn, mouseButton)
         onClick(btn, mouseButton)
         return true
     elseif btn.Click then
-        btn:Click()
-        return true
+        local ok = Utils.SafeCallMethod(btn, "Click")
+        return ok ~= false
     end
     return false
 end
