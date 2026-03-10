@@ -1,0 +1,40 @@
+name: Feature Request
+description: Suggest a new feature or improvement
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: feature
+    attributes:
+      label: Which part of the addon?
+      options:
+        - UI Search (search bar, results, step-by-step guides)
+        - Map Search (world map pins, zone search, dungeon entrances)
+        - Options / Settings
+        - New feature entirely
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What would you like?
+      description: Describe the feature or improvement you have in mind.
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why would this be useful?
+      description: What problem does this solve, or how would it help you?
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
+      description: Screenshots, mockups, examples from other addons, etc.
+    validations:
+      required: false
