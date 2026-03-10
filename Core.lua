@@ -1,23 +1,20 @@
--- EasyFind Core
--- Entry point: namespace setup, SavedVariables, slash commands, event dispatch.
 local ADDON_NAME, ns = ...
 
 local Utils   = ns.Utils
 local sformat = Utils.sformat
 local pairs   = Utils.pairs
+local mmin, mmax = Utils.mmin, Utils.mmax
+local mrad, mdeg, matan2, mcos, msin, msqrt = math.rad, math.deg, math.atan2, math.cos, math.sin, math.sqrt
 
 EasyFind = {}
 ns.EasyFind = EasyFind
 EasyFind._ns = ns  -- Expose namespace for dev tools (EasyFindDev)
 
--- Binding localization strings (used by Bindings.xml)
--- category="EasyFind" in Bindings.xml provides the header; no BINDING_HEADER_ global needed.
 BINDING_NAME_EASYFIND_TOGGLE       = "Toggle UI Search Bar"
 BINDING_NAME_EASYFIND_FOCUS        = "Resume Typing in Search Bar"
 BINDING_NAME_EASYFIND_TOGGLE_FOCUS = "Toggle + Focus Search Bar"
 BINDING_NAME_EASYFIND_CLEAR        = "Clear All Highlights"
 
--- Single shared event frame for the entire addon
 local eventFrame = CreateFrame("Frame")
 ns.eventFrame = eventFrame
 
@@ -80,7 +77,6 @@ local DB_DEFAULTS = {
     },
 }
 
--- FEEDBACK URL POPUP
 local GITHUB_ISSUES_URL = "https://github.com/wowaddonmaker/EasyFind/issues/new"
 
 local function UrlEncode(str)
@@ -269,7 +265,6 @@ local function OnPlayerLogin()
     end
 end
 
--- EVENT DISPATCH - single frame, unregisters after one-time events
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
@@ -292,7 +287,6 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
     end
 end)
 
--- PUBLIC API
 function EasyFind:ToggleSearchUI()
     if ns.UI then ns.UI:Toggle() end
 end
@@ -375,7 +369,6 @@ function EasyFind:TestIndicatorTexture(texturePath)
     EasyFind:Print("Close the preview window to dismiss.")
 end
 
--- MINIMAP BUTTON
 local minimapButton
 
 -- Minimap shape quadrant table for non-round minimap support
@@ -398,8 +391,8 @@ local minimapShapes = {
 
 local function PositionMinimapButton(angle)
     if not minimapButton then return end
-    local rad = math.rad(angle)
-    local cx, cy = math.cos(rad), math.sin(rad)
+    local rad = mrad(angle)
+    local cx, cy = mcos(rad), msin(rad)
 
     -- Determine quadrant (1-4)
     local q = 1
@@ -418,10 +411,10 @@ local function PositionMinimapButton(angle)
         x, y = cx * w, cy * h
     else
         -- Squared quadrant - clamp to rectangle edge
-        local dw = math.sqrt(2 * w * w) - 10
-        local dh = math.sqrt(2 * h * h) - 10
-        x = math.max(-w, math.min(cx * dw, w))
-        y = math.max(-h, math.min(cy * dh, h))
+        local dw = msqrt(2 * w * w) - 10
+        local dh = msqrt(2 * h * h) - 10
+        x = mmax(-w, mmin(cx * dw, w))
+        y = mmax(-h, mmin(cy * dh, h))
     end
 
     minimapButton:ClearAllPoints()
@@ -475,7 +468,7 @@ local function CreateMinimapButton()
             local cx, cy = GetCursorPosition()
             local scale = Minimap:GetEffectiveScale()
             cx, cy = cx / scale, cy / scale
-            local angle = math.deg(math.atan2(cy - my, cx - mx))
+            local angle = mdeg(matan2(cy - my, cx - mx))
             EasyFind.db.minimapButtonAngle = angle
             PositionMinimapButton(angle)
         end)

@@ -1356,11 +1356,11 @@ function Highlight:IsPvPSideTabSelected(frameName, sideTabIndex)
         end
         
         if sideTabIndex == 1 then
-            return tab1Active and true or false
+            return tab1Active
         elseif sideTabIndex == 2 then
-            return tab2Active and true or false
+            return tab2Active
         elseif sideTabIndex == 3 then
-            return tab3Active and true or false
+            return tab3Active
         elseif sideTabIndex == 4 then
             -- Training Grounds: check TrainingGroundsFrame (confirmed via DevFrame)
             if TrainingGroundsFrame and TrainingGroundsFrame:IsShown() then
@@ -2294,7 +2294,7 @@ function Highlight:ScrollToCurrencyRow(currencyID)
     end
     if not targetIndex then return end
 
-    local fraction = (targetIndex - 1) / math.max(1, size - 1)
+    local fraction = (targetIndex - 1) / mmax(1, size - 1)
     ScrollBoxScrollTo(TokenFrame.ScrollBox, function(data)
         if not data then return false end
         if data.currencyID == currencyID then return true end
@@ -2403,7 +2403,7 @@ function Highlight:ScrollToFactionRow(factionID)
     end
     if not targetIndex then return end
 
-    local fraction = (targetIndex - 1) / math.max(1, numFactions - 1)
+    local fraction = (targetIndex - 1) / mmax(1, numFactions - 1)
     ScrollBoxScrollTo(ReputationFrame.ScrollBox, function(data)
         if not data then return false end
         if data.factionID == factionID then return true end

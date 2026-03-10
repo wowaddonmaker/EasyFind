@@ -1892,10 +1892,6 @@ function Database:GetContainerChildren(containerData)
 
     local children = {}
     for _, data in ipairs(uiSearchData) do
-        if data.path and #data.path == prefixLen + 0 then
-            -- Direct children: path matches the container's full path exactly
-            -- (not deeper descendants)
-        end
         if data.path and #data.path >= prefixLen then
             -- Check prefix match
             local match = true
@@ -1923,4 +1919,10 @@ function Database:FindItemByName(name)
     return nil
 end
 
-Database:Initialize()
+-- Static UI database must be built at load time (before ADDON_LOADED) so other
+-- modules can reference uiSearchData during their own initialization.
+-- Not routed through Core.lua SafeInit, so wrap here for error safety.
+local initOk, initErr = pcall(Database.Initialize, Database)
+if not initOk then
+    print("|cffff4444EasyFind Database failed to initialize: " .. tostring(initErr) .. "|r")
+end

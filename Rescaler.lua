@@ -33,7 +33,7 @@ local resultsOverlay = nil    -- glow around results
 local donePanel = nil         -- instruction + Done button
 local previewResults = nil    -- fake results frame for preview
 
--- ── Helpers ──────────────────────────────────────────────────────────
+-- Helpers
 
 local function ClampScale(v)
     return mmax(MIN_SCALE, mmin(MAX_SCALE, v))
@@ -196,7 +196,7 @@ local function CreateGlowOverlay(name, parent, target)
     return glow
 end
 
--- ── Preview results (fake rows to show results area) ─────────────
+-- Preview results (fake rows to show results area)
 
 local function CreatePreviewResults(parent, targetFrame, width, visibleRows, anchorAbove, leftAligned)
     local fontScale = EasyFind.db.fontSize or 1.0
@@ -278,7 +278,7 @@ local function CreatePreviewResults(parent, targetFrame, width, visibleRows, anc
     return frame
 end
 
--- ── Dimension label wiring ───────────────────────────────────────
+-- Dimension label wiring
 
 local function WireDimLabel(box, getter, setter)
     box:SetText(mfloor(getter() + 0.5))
@@ -296,7 +296,7 @@ local function WireDimLabel(box, getter, setter)
     end)
 end
 
--- ── Width drag handler ───────────────────────────────────────────
+-- Width drag handler
 
 local function SetupWidthDrag(handle, getWidth, setWidth, widthLabel, side)
     handle:SetScript("OnDragStart", function(self)
@@ -327,7 +327,7 @@ local function SetupWidthDrag(handle, getWidth, setWidth, widthLabel, side)
     end)
 end
 
--- ── Corner drag handler (width + rows combo) ────────────────────
+-- Corner drag handler (width + rows combo)
 
 local function SetupCornerDrag(handle, preview, getWidth, setWidth, widthLabel, rowsLabel, anchorAbove)
     handle:SetScript("OnDragStart", function(self)
@@ -367,7 +367,7 @@ local function SetupCornerDrag(handle, preview, getWidth, setWidth, widthLabel, 
     end)
 end
 
--- ── Row count drag handler ───────────────────────────────────────
+-- Row count drag handler
 
 local function SetupRowsDrag(handle, preview, rowsBox, anchorAbove)
     handle:SetScript("OnDragStart", function(self)
@@ -394,7 +394,7 @@ local function SetupRowsDrag(handle, preview, rowsBox, anchorAbove)
     end)
 end
 
--- ── Font size drag handler ─────────────────────────────────────
+-- Font size drag handler
 
 local function SetupFontDrag(handle, fontLabel, preview)
     local PX_PER_STEP = ns.SEARCHBAR_HEIGHT * 0.1
@@ -450,7 +450,7 @@ local function SetupFontDrag(handle, fontLabel, preview)
     end)
 end
 
--- ── Build overlays for a target ──────────────────────────────────
+-- Build overlays for a target
 
 local function BuildBarOverlay(parent, targetFrame, mode)
     local overlay = CreateGlowOverlay("EasyFindRescaleBarGlow", parent, targetFrame)
@@ -526,13 +526,6 @@ local function BuildResultsOverlay(parent, targetFrame)
     local scaleHandle = CreateScaleHandle(overlay, "BOTTOMRIGHT", 0, 0, false, false)
     overlay.scaleHandle = scaleHandle
 
-    -- Hidden scale box (not used, corner does width + rows)
-    local scaleBox = CreateFrame("EditBox", nil, overlay, "InputBoxTemplate")
-    scaleBox:SetSize(50, 20)
-    scaleBox:SetAutoFocus(false)
-    scaleBox:Hide()
-    overlay.scaleBox = scaleBox
-
     -- Width drag handles
     local leftHandle = CreateHandle(overlay, "LEFT", 0, 0, nil, true)
     local rightHandle = CreateHandle(overlay, "RIGHT", 0, 0, nil, true)
@@ -567,7 +560,7 @@ local function BuildResultsOverlay(parent, targetFrame)
     return overlay
 end
 
--- ── Done panel ───────────────────────────────────────────────────
+-- Done panel
 
 local function CreateDonePanel(parent)
     local totalW = 110 + 2 + 80
@@ -598,7 +591,7 @@ local function CreateDonePanel(parent)
     return panel
 end
 
--- ── Full-screen dim backdrop ─────────────────────────────────────
+-- Full-screen dim backdrop
 
 local function GetOrCreateBackdrop()
     if backdrop then return backdrop end
@@ -627,7 +620,7 @@ local function GetOrCreateBackdrop()
     return backdrop
 end
 
--- ── Enter rescale mode ───────────────────────────────────────────
+-- Enter rescale mode
 
 function Rescaler:Enter(mode)
     if activeMode then
@@ -786,7 +779,7 @@ function Rescaler:Enter(mode)
         setBarWidth(v)
     end)
     AddResetButton(barOverlay.widthBox, function()
-        local defW = (mode == "ui") and 250 or 250
+        local defW = 250
         setBarWidth(defW)
         barOverlay.widthBox:SetText(mfloor(defW + 0.5))
     end)
@@ -841,7 +834,6 @@ function Rescaler:Enter(mode)
     end)
 
     -- Wire results corner (width + rows combo)
-    resultsOverlay.scaleBox:Hide()
     resultsOverlay.rowsBox:SetText(currentRows)
     resultsOverlay.rowsBox:SetScript("OnEnterPressed", function(self)
         local val = tonumber(self:GetText())
@@ -886,7 +878,7 @@ function Rescaler:Enter(mode)
     donePanel:Show()
 end
 
--- ── Exit rescale mode ────────────────────────────────────────────
+-- Exit rescale mode
 
 function Rescaler:Exit(reopenOptions)
     if not activeMode then return end

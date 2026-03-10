@@ -1,12 +1,8 @@
--- EasyFind Shared Utilities
--- Localized globals, shared helpers, and common patterns used across all modules.
 local ADDON_NAME, ns = ...
 
 local Utils = {}
 ns.Utils = Utils
 
--- LOCALIZED GLOBALS
--- Caching frequently-used Lua and WoW globals to avoid repeated global lookups.
 local pairs, ipairs, type, select, unpack, next = pairs, ipairs, type, select, unpack, next
 local tinsert, tsort, tconcat, tremove = table.insert, table.sort, table.concat, table.remove
 local sfind, slower, ssub, sformat, smatch = string.find, string.lower, string.sub, string.format, string.match
@@ -14,7 +10,6 @@ local mmin, mmax, mabs, mpi, mceil, mfloor = math.min, math.max, math.abs, math.
 local pcall, tostring, tonumber = pcall, tostring, tonumber
 local GetTime, CreateFrame = GetTime, CreateFrame
 
--- Export localized references for other modules to import
 Utils.pairs   = pairs
 Utils.ipairs  = ipairs
 Utils.type    = type
@@ -105,7 +100,6 @@ function Utils.ScrollToButton(scrollFrame, button)
     end
 end
 
--- Shared constants
 ns.GOLD_COLOR = {1.0, 0.82, 0.0}
 ns.YELLOW_HIGHLIGHT = {1, 1, 0}
 ns.DEFAULT_OPACITY = 0.75
@@ -126,17 +120,12 @@ EasyFindLeafFont:CopyFontObject(baseFont)
 EasyFindLeafFont:SetFont((baseFont:GetFont()), 10, select(3, baseFont:GetFont()))
 ns.LEAF_FONT = "EasyFindLeafFont"
 
--- DEBUG PRINT
--- Centralised debug output - only prints when dev mode is enabled.
 function Utils.DebugPrint(...)
     if EasyFind and EasyFind.db and EasyFind.db.devMode then
         print("|cff33ff99[EasyFind]|r", ...)
     end
 end
 
--- FRAME TEXT EXTRACTION
--- Pulls the displayed text from any WoW frame/button.
--- Previously duplicated 8+ times across Highlight.lua and UI.lua.
 function Utils.GetButtonText(btn)
     if not btn then return nil end
 
@@ -168,9 +157,7 @@ function Utils.GetButtonText(btn)
     return nil
 end
 
--- COMBINED FRAME TEXT
--- Collects ALL text from a frame (main label + subtitles + fontstring regions)
--- into a single concatenated string.  Used for fuzzy button matching.
+-- Collects all text from a frame into a single string for fuzzy matching.
 function Utils.GetAllFrameText(frame)
     if not frame then return nil end
     local texts = {}
@@ -203,9 +190,7 @@ function Utils.GetAllFrameText(frame)
     return nil
 end
 
--- BUTTON SELECTION CHECK
--- Multi-method detection of whether a button/category is selected/expanded.
--- Previously duplicated in IsStatisticsCategorySelected & IsAchievementCategorySelected.
+-- Checks multiple properties/textures to detect if a button is selected or expanded.
 function Utils.IsButtonSelected(btn)
     if not btn then return false end
 
@@ -234,10 +219,7 @@ function Utils.IsButtonSelected(btn)
     return false
 end
 
--- RECURSIVE FRAME TREE SEARCH
--- Walks a frame hierarchy looking for a clickable child whose text matches
--- `targetText` (case-insensitive exact match).
--- `maxDepth` prevents runaway recursion (default 6).
+-- Walks a frame hierarchy for a clickable child with exact text match (case-insensitive).
 function Utils.SearchFrameTree(frame, targetTextLower, maxDepth)
     maxDepth = maxDepth or 6
     local function search(f, depth)
@@ -260,10 +242,7 @@ function Utils.SearchFrameTree(frame, targetTextLower, maxDepth)
     return search(frame, 0)
 end
 
--- FUZZY BUTTON SEARCH
--- Walks a frame hierarchy looking for a clickable, reasonably-sized child
--- whose combined text contains `searchText` (case-insensitive).
--- Used by FindRatedPvPButton and similar.
+-- Walks a frame hierarchy for a clickable child whose text contains searchText.
 function Utils.SearchFrameTreeFuzzy(frame, searchTextLower, maxDepth)
     maxDepth = maxDepth or 6
     local function search(f, depth)
@@ -289,7 +268,6 @@ function Utils.SearchFrameTreeFuzzy(frame, searchTextLower, maxDepth)
     return search(frame, 0)
 end
 
--- SAFE COPY TABLE (shallow)
 function Utils.ShallowCopy(src)
     local copy = {}
     for k, v in pairs(src) do
@@ -298,7 +276,6 @@ function Utils.ShallowCopy(src)
     return copy
 end
 
--- SAFE FRAME CHECK
 -- pcall-wrapped IsShown for frames that may be forbidden.
 function Utils.IsFrameShown(frame)
     if not frame then return false end
@@ -306,8 +283,7 @@ function Utils.IsFrameShown(frame)
     return ok and shown
 end
 
--- FRAME PATH RESOLVER
--- Resolve a dotted frame path string (e.g. "PVEFrame.Tab1") to the actual frame.
+-- Resolve a dotted path string (e.g. "PVEFrame.Tab1") to the actual frame.
 function Utils.GetFrameByPath(path)
     if not path then return nil end
     local parts = { strsplit(".", path) }
@@ -322,11 +298,7 @@ function Utils.GetFrameByPath(path)
     return current
 end
 
--- MINIMAL SCROLLBAR (Retail quest-log style)
--- Builds a thin 7px scrollbar using minimal-scrollbar-* atlas textures.
--- Overlays the right edge of `parent` - does NOT shrink content width.
--- Returns the scrollbar frame. Call bar:SetShown(bool) to show/hide,
--- and bar:UpdateThumb() after resizing the scroll child.
+-- Thin scrollbar using minimal-scrollbar-* atlas textures, overlaid on the right edge.
 function Utils.CreateMinimalScrollBar(scrollFrame, parent)
     local MIN_THUMB_H = 20
     local TRACK_PAD = 2
@@ -550,11 +522,6 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
     bar:Hide()
     return bar
 end
-
--- SCROLLBOX HELPERS
--- Shared patterns for WoW modern ScrollBox frames (virtual scroll lists).
--- Used by currency, reputation, and achievement panels, all of which use
--- the same ScrollBox API but different underlying data models.
 
 --- Scroll a ScrollBox to the first element matching matchFn.
 --- Tries FindElementDataByPredicate → ScrollToElementData first.

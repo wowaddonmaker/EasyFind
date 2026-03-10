@@ -30,6 +30,8 @@ local hooksecurefunc     = hooksecurefunc
 local wipe               = wipe
 local strsplit           = strsplit
 
+local STAR_GLOW_TEXTURE = "Interface\\Cooldown\\star4"
+
 -- INDICATOR THEME DEFINITIONS
 local INDICATOR_STYLES = {
     ["Classic Quest Arrow"] = {
@@ -170,7 +172,7 @@ function ns.CreateIndicatorTextures(parentFrame, iconSize, glowSize)
         local glow = parentFrame:CreateTexture(nil, "BACKGROUND")
         glow:SetSize(glowSize, glowSize)
         glow:SetPoint("CENTER")
-        glow:SetTexture("Interface\\Cooldown\\star4")
+        glow:SetTexture(STAR_GLOW_TEXTURE)
         glow:SetVertexColor(color[1], color[2], color[3], 0.35)
         glow:SetBlendMode("ADD")
         parentFrame.glow = glow
@@ -341,7 +343,7 @@ local function CreateWaypointTracker()
         local glow = superTrackGlow:CreateTexture(nil, "ARTWORK")
         glow:SetSize(glowSize * 1.5, glowSize * 1.5)
         glow:SetPoint("CENTER")
-        glow:SetTexture("Interface\\Cooldown\\star4")
+        glow:SetTexture(STAR_GLOW_TEXTURE)
         glow:SetVertexColor(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 0.7)
         glow:SetBlendMode("ADD")
         superTrackGlow.glow = glow
@@ -389,7 +391,7 @@ local function CreateWaypointTracker()
         -- Pulsing glow anchored to the waypoint pin position (shown during shrink)
         local pinGlow = nearTrackFrame:CreateTexture(nil, "ARTWORK")
         pinGlow:SetSize(36, 36)
-        pinGlow:SetTexture("Interface\\Cooldown\\star4")
+        pinGlow:SetTexture(STAR_GLOW_TEXTURE)
         pinGlow:SetVertexColor(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 0.7)
         pinGlow:SetBlendMode("ADD")
         pinGlow:Hide()
@@ -1646,7 +1648,7 @@ function MapSearch:CreateSearchFrame()
     globalIconHitbox:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText("|cFF66CCFFAll Zones|r Search")
-        GameTooltip:AddLine("Searches every zone in the entire world \226\128\148 continents, dungeons, and more.", 1, 1, 1, true)
+        GameTooltip:AddLine("Searches every zone in the entire world - continents, dungeons, and more.", 1, 1, 1, true)
         GameTooltip:AddLine(" ")
         GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
         GameTooltip:Show()
@@ -2312,7 +2314,7 @@ function MapSearch:CreateHighlightFrame()
     local glow = waypointPin:CreateTexture(nil, "BACKGROUND")
     glow:SetSize(100, 100)
     glow:SetPoint("CENTER")
-    glow:SetTexture("Interface\\Cooldown\\star4")
+    glow:SetTexture(STAR_GLOW_TEXTURE)
     glow:SetVertexColor(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 0.8)
     glow:SetBlendMode("ADD")
     waypointPin.glow = glow
@@ -3118,7 +3120,7 @@ function MapSearch:HighlightZone(mapID)
         if isFinalTarget and not hasTexture then
             if not zoneHighlightFrame.centerGlow then
                 local glow = canvas:CreateTexture(nil, "ARTWORK")
-                glow:SetTexture("Interface\\Cooldown\\star4")
+                glow:SetTexture(STAR_GLOW_TEXTURE)
                 glow:SetVertexColor(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 0.4)
                 glow:SetBlendMode("ADD")
                 zoneHighlightFrame.centerGlow = glow
@@ -5591,7 +5593,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
                     
                     local glow = extraPin:CreateTexture(nil, "BACKGROUND")
                     glow:SetPoint("CENTER")
-                    glow:SetTexture("Interface\\Cooldown\\star4")
+                    glow:SetTexture(STAR_GLOW_TEXTURE)
                     glow:SetVertexColor(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 0.8)  -- Pin glow always yellow
                     glow:SetBlendMode("ADD")
                     extraPin.glow = glow
@@ -6203,10 +6205,12 @@ end
 -- Highlight boxes, zone overlays, and pin glows are ALWAYS yellow and never change.
 function MapSearch:RefreshIndicators()
     -- Update main location indicator
-    ns.UpdateIndicator(_G["EasyFindMapIndicator"])
+    local mapInd = _G["EasyFindMapIndicator"]
+    if mapInd then ns.UpdateIndicator(mapInd) end
 
     -- Update zone indicator
-    ns.UpdateIndicator(_G["EasyFindZoneIndicator"])
+    local zoneInd = _G["EasyFindZoneIndicator"]
+    if zoneInd then ns.UpdateIndicator(zoneInd) end
 
     -- Update breadcrumb indicator
     if self.breadcrumbHighlight and self.breadcrumbHighlight.indicatorFrame then
@@ -6221,5 +6225,6 @@ function MapSearch:RefreshIndicators()
     end
 
     -- Update UI highlight indicator (Highlight.lua)
-    ns.UpdateIndicator(_G["EasyFindIndicatorFrame"])
+    local uiInd = _G["EasyFindIndicatorFrame"]
+    if uiInd then ns.UpdateIndicator(uiInd) end
 end

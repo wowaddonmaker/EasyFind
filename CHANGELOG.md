@@ -4,24 +4,47 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
-## [1.2.7] - 2026-03-07
+## [1.2.7] - 2026-03-10
 
 ### Added
-- **Filter Button Triangle**: Filter buttons show only the dropdown arrow by default; hovering reveals the full button with a blue highlight glow matching the default Blizzard UI
-- **City Pin Detection**: Zone search now detects and points the indicator at existing city icons on continent maps instead of drawing a fallback overlay
-- **Zone Reguiding**: Clicking the wrong zone during step-by-step navigation now reguides you back to the correct target instead of stopping
-- **Atlas Zone Highlights**: Zone highlighting now supports atlas-based textures in addition to fileDataID textures
+- **Keyboard Navigation**: Full arrow key, Tab, and Enter support for navigating search results without a mouse. Works in both UI search and map search bars
+- **Visual Rescaler**: New resize mode where you can drag handles on search bars and results panels to resize width, adjust row count, and change font size interactively. Shift+drag the search bar itself to reposition it along the map edge
+- **Toggle+Focus Keybind**: New combined keybind that toggles the search bar and immediately focuses it in one keypress. Automatically targets the map search bar when the world map is open
+- **Clear All Keybind**: Dedicated keybind to dismiss all highlights, map pins, zone highlights, and breadcrumbs
+- **Bug Report and Feature Request**: `/ef bug` and `/ef feature` as well as buttons for each in options panel to open pre-filled GitHub issue URLs for easy reporting
+- **Guide Circle Options**: New options for guide circle scale, minimap pin glow toggle, and separate minimap arrow glow toggle
+- **Waypoint Options**: Auto-track new pins, auto-clear on arrival, and configurable arrival distance now in the Options panel
+- **Class Trainer Category**: Class trainers now appear in map search results
+- **Thunder Bluff POIs**: Added points of interest for Thunder Bluff
 
 ### Changed
+- **Filter Button Triangle**: Filter buttons show only the dropdown arrow by default; hovering reveals the full button with a blue highlight glow
+- **Zone Navigation Arrows**: The arrows that guide you between maps now highlight with a shape that matches the button instead of a generic glow
+- **Reputation Search**: Parent factions (e.g. "Horde Expedition") are now searchable in addition to individual reputations
 - **Background Opacity**: Opacity slider now controls only the search bar background, keeping text and icons fully visible (default lowered to 0.75)
-- **Breadcrumb Style**: Replaced star4 glow with a subtle gold gradient tinge matching the Blizzard nav bar style
-- **Reputation Search**: Header-factions (e.g. "Horde Expedition") are now searchable; simplified faction detection using isChild instead of name-matching
-- **Currency/Reputation Navigation**: Pre-expands needed headers via API before opening tabs, removing the collapse-all-then-expand approach for faster, more reliable direct-open
-- **Results Layout**: Improved pin separator spacing and added preserveScroll support for header toggle clicks
+- **Options Panel**: Reorganized with new keybind, rescaler, waypoint, and guide circle sections
 
 ### Fixed
+- **Chromie Detection**: Chromie (timewalking NPC) now properly detected and included in search results with real icon
+- **Zone Reguiding**: Clicking the wrong zone during step-by-step navigation now correctly reguides you back to the target instead of stopping
+- **Zone Highlighting**: Fixed many zones not highlighting correctly on continent maps, including cities (Stormwind, Ironforge, etc.), remapped zones (Isle of Quel'Danas), and multi-step navigation between continents
+- **Unclickable Zones**: Zones with bugged click regions (Uldum, Vale of Eternal Blossoms) now handled with fallback navigation
+- **Dalaran and Dungeon-type Zones**: Fixed these zones missing from global search results
+- **Instanced Zone Snap**: Fixed Vision of Stormwind/Orgrimmar and similar instanced zones snapping to wrong locations
+- **Exodar/Azuremyst**: Fixed navigation trying to go backward instead of highlighting the zone directly
+- **Currency/Reputation Navigation**: Fixed navigation sometimes failing when opening currencies and reputations
+- **Adjacent Zone Filter**: Fixed filter incorrectly hiding some valid results like Conquest Quartermaster
+
+### Technical Notes
+- **Atlas Zone Highlights**: Zone highlighting now supports atlas-based textures in addition to fileDataID textures
+- **Shared Helpers**: Scroll, click, and frame-search patterns refactored into Utils.lua, reducing code duplication across Highlight and UI modules
+- **Shared Constants**: Extracted duplicated constants (colors, sizes, string paths) into ns.* values in Utils.lua
+- **Defensive Hardening**: Added pcall protection to waypoint tracker OnUpdate, flash ticker, and all initialization timers. Added SavedVariables type validation to prevent corrupted settings from breaking the addon
+- **Results Layout**: Improved pin separator spacing and scroll position preservation when toggling category headers
+- **Continent Projection Fallback**: Zones with very small scan areas now fall back to continent-level projection
 - **Highlight Hover Timer**: Reduced minimum display time from 1.0s to 0.3s for snappier hover-dismiss behavior
-- **Currency Tooltip Hover**: Reduced tooltip hover wait from 1.0s to 0.3s for faster currency/reputation tooltip display
+- **GetScript Error**: Fixed error when calling GetScript on non-Button frames
+- **Waypoint Tracker Performance**: Completely rewritten for zero per-frame memory allocations. Uses cached world-space coordinates and primitive API returns instead of creating objects every frame
 
 ---
 

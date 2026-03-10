@@ -990,7 +990,7 @@ local function ExpandContainer(entry, entryIndex)
 
     -- Insert after entryIndex
     for i = #toInsert, 1, -1 do
-        table.insert(cachedHierarchical, entryIndex + 1, toInsert[i])
+        tinsert(cachedHierarchical, entryIndex + 1, toInsert[i])
     end
 
     expandedContainers[key] = true
@@ -2060,7 +2060,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     if resultRow.repFill.SetBackdropColor then
                         resultRow.repFill:SetBackdropColor(barR, barG, barB, 1.0)
                     end
-                    resultRow.repClip:SetWidth(math.max(fill * 100, 0.1))
+                    resultRow.repClip:SetWidth(mmax(fill * 100, 0.1))
                     resultRow.repBarText:SetText(standingText)
 
                     if entry.isPathNode and theme.showHeaderTab then
@@ -2647,7 +2647,8 @@ function UI:DirectOpen(data)
 
         -- Click a micro menu button (like LFDMicroButton, CharacterMicroButton, etc.)
         if step.buttonFrame then
-            ClickButton(_G[step.buttonFrame])
+            local stepFrame = _G[step.buttonFrame]
+            if stepFrame then ClickButton(stepFrame) end
             nextDelay = 0.15
         end
 
