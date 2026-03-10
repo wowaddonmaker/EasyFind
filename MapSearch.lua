@@ -299,8 +299,8 @@ local function GetMinimapYardRadius()
     -- Fallback for older clients
     local zoom = Minimap:GetZoom()
     local isIndoors = IsIndoors and IsIndoors()
-    local tbl = isIndoors and MINIMAP_SIZE_INDOOR or MINIMAP_SIZE_OUTDOOR
-    return tbl[zoom] or tbl[0]
+    local sizeTable = isIndoors and MINIMAP_SIZE_INDOOR or MINIMAP_SIZE_OUTDOOR
+    return sizeTable[zoom] or sizeTable[0]
 end
 
 -- Forward declarations (defined after CreateWaypointTracker but referenced inside its OnUpdate)
@@ -1388,8 +1388,6 @@ function MapSearch:CreateSearchFrame()
         globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", 0, 2)
     end
     
-    -- Apply theme-appropriate backdrop
-    -- Apply theme-appropriate backdrop (border only - atlas fills the background)
     if (EasyFind.db.resultsTheme or "Classic") == "Retail" then
         globalSearchFrame:SetBackdrop({
             edgeFile = TOOLTIP_BORDER,

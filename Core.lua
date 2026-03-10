@@ -89,36 +89,36 @@ end
 local feedbackPopup
 local function ShowFeedbackURL(url)
     if not feedbackPopup then
-        local f = CreateFrame("Frame", "EasyFindFeedbackPopup", UIParent, "BackdropTemplate")
-        f:SetSize(460, 100)
-        f:SetPoint("CENTER", 0, 200)
-        f:SetFrameStrata("FULLSCREEN_DIALOG")
-        f:SetFrameLevel(100)
-        f:SetBackdrop({
+        local popup = CreateFrame("Frame", "EasyFindFeedbackPopup", UIParent, "BackdropTemplate")
+        popup:SetSize(460, 100)
+        popup:SetPoint("CENTER", 0, 200)
+        popup:SetFrameStrata("FULLSCREEN_DIALOG")
+        popup:SetFrameLevel(100)
+        popup:SetBackdrop({
             bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
             edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
             tile = true, tileSize = 32, edgeSize = 32,
             insets = { left = 11, right = 12, top = 12, bottom = 11 },
         })
-        f:SetBackdropColor(0, 0, 0, 0.95)
+        popup:SetBackdropColor(0, 0, 0, 0.95)
 
-        local label = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        local label = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         label:SetPoint("TOP", 0, -16)
         label:SetText("Press Ctrl+C to copy, then paste in your browser:")
 
-        local eb = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
-        eb:SetSize(400, 20)
-        eb:SetPoint("TOP", label, "BOTTOM", 0, -8)
-        eb:SetAutoFocus(false)
-        eb:SetJustifyH("LEFT")
-        eb:SetScript("OnEscapePressed", function(self) self:ClearFocus(); f:Hide() end)
-        f.editBox = eb
+        local editBox = CreateFrame("EditBox", nil, popup, "InputBoxTemplate")
+        editBox:SetSize(400, 20)
+        editBox:SetPoint("TOP", label, "BOTTOM", 0, -8)
+        editBox:SetAutoFocus(false)
+        editBox:SetJustifyH("LEFT")
+        editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus(); popup:Hide() end)
+        popup.editBox = editBox
 
-        local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+        local close = CreateFrame("Button", nil, popup, "UIPanelCloseButton")
         close:SetPoint("TOPRIGHT", -5, -5)
 
-        f:EnableMouse(true)
-        feedbackPopup = f
+        popup:EnableMouse(true)
+        feedbackPopup = popup
     end
     feedbackPopup:Show()
     feedbackPopup.editBox:SetText(url)
@@ -145,12 +145,10 @@ local function OnInitialize()
     if not EasyFindDB then
         EasyFindDB = { firstInstall = true }
     end
-    -- Merge defaults - existing values are preserved
     for k, v in pairs(DB_DEFAULTS) do
         if EasyFindDB[k] == nil then
             EasyFindDB[k] = v
         elseif type(v) == "table" and type(EasyFindDB[k]) == "table" then
-            -- Sub-merge nested tables so new keys are added to existing tables
             for sk, sv in pairs(v) do
                 if EasyFindDB[k][sk] == nil then
                     EasyFindDB[k][sk] = sv
@@ -159,18 +157,15 @@ local function OnInitialize()
         end
     end
 
-    -- Migrate old sentinel values to real pixel defaults
     if EasyFindDB.uiResultsWidth == 1.0 then EasyFindDB.uiResultsWidth = 350 end
 
-    -- Migrate old unified maxResults into separate ui/map settings
     if EasyFindDB.maxResults then
         if not EasyFindDB.uiMaxResults then EasyFindDB.uiMaxResults = EasyFindDB.maxResults end
         if not EasyFindDB.mapMaxResults then EasyFindDB.mapMaxResults = EasyFindDB.maxResults end
         EasyFindDB.maxResults = nil
     end
 
-    -- Post-merge validation: reset values whose type doesn't match the default,
-    -- and prune keys that no longer exist in DB_DEFAULTS.
+    -- Reset values whose type doesn't match the default
     for k, v in pairs(EasyFindDB) do
         local default = DB_DEFAULTS[k]
         if default ~= nil and type(v) ~= type(default) then
@@ -429,35 +424,30 @@ end
 local function CreateMinimapButton()
     if minimapButton then return minimapButton end
 
-    local btn = CreateFrame("Button", "EasyFindMinimapButton", Minimap)
-    btn:SetSize(31, 31)
-    btn:SetFrameStrata("MEDIUM")
-    btn:SetFrameLevel(8)
+    local mmBtn = CreateFrame("Button", "EasyFindMinimapButton", Minimap)
+    mmBtn:SetSize(31, 31)
+    mmBtn:SetFrameStrata("MEDIUM")
+    mmBtn:SetFrameLevel(8)
 
-    -- Border overlay
-    local border = btn:CreateTexture(nil, "OVERLAY")
+    local border = mmBtn:CreateTexture(nil, "OVERLAY")
     border:SetSize(50, 50)
-    border:SetTexture(136430)  -- MiniMap-TrackingBorder
+    border:SetTexture(136430)
     border:SetPoint("TOPLEFT")
 
-    -- Dark circular background disc
-    local bg = btn:CreateTexture(nil, "BACKGROUND")
-    bg:SetSize(24, 24)
-    bg:SetTexture(136467)  -- UI-Minimap-Background
-    bg:SetPoint("CENTER")
+    local background = mmBtn:CreateTexture(nil, "BACKGROUND")
+    background:SetSize(24, 24)
+    background:SetTexture(136467)
+    background:SetPoint("CENTER")
 
-    -- Icon
-    local icon = btn:CreateTexture(nil, "ARTWORK")
+    local icon = mmBtn:CreateTexture(nil, "ARTWORK")
     icon:SetSize(18, 18)
-    icon:SetTexture(136460)  -- INV_Misc_Spyglass_02
+    icon:SetTexture(136460)
     icon:SetPoint("CENTER")
 
-    -- Highlight
-    btn:SetHighlightTexture(136477)  -- UI-Minimap-ZoomButton-Highlight
+    mmBtn:SetHighlightTexture(136477)
 
-    -- Click behavior
-    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    btn:SetScript("OnClick", function(self, button)
+    mmBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    mmBtn:SetScript("OnClick", function(self, button)
         if button == "LeftButton" then
             EasyFind:ToggleSearchUI()
         elseif button == "RightButton" then
@@ -465,9 +455,8 @@ local function CreateMinimapButton()
         end
     end)
 
-    -- Drag to reposition around minimap
-    btn:RegisterForDrag("LeftButton")
-    btn:SetScript("OnDragStart", function(self)
+    mmBtn:RegisterForDrag("LeftButton")
+    mmBtn:SetScript("OnDragStart", function(self)
         self:SetScript("OnUpdate", function(self)
             local mx, my = Minimap:GetCenter()
             local cx, cy = GetCursorPosition()
@@ -478,12 +467,11 @@ local function CreateMinimapButton()
             PositionMinimapButton(angle)
         end)
     end)
-    btn:SetScript("OnDragStop", function(self)
+    mmBtn:SetScript("OnDragStop", function(self)
         self:SetScript("OnUpdate", nil)
     end)
 
-    -- Tooltip
-    btn:SetScript("OnEnter", function(self)
+    mmBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetText("EasyFind")
         GameTooltip:AddLine("Left-click: Toggle search bar", 1, 1, 1)
@@ -491,11 +479,11 @@ local function CreateMinimapButton()
         GameTooltip:AddLine("Drag to reposition", 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
-    btn:SetScript("OnLeave", GameTooltip_Hide)
+    mmBtn:SetScript("OnLeave", GameTooltip_Hide)
 
-    minimapButton = btn
+    minimapButton = mmBtn
     PositionMinimapButton(EasyFind.db.minimapButtonAngle or 220)
-    return btn
+    return mmBtn
 end
 
 function EasyFind:UpdateMinimapButton()

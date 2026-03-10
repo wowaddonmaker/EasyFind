@@ -1715,7 +1715,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             if resultRow.pinToggle then resultRow.pinToggle:Hide() end
             if resultRow.pinHeaderLine then resultRow.pinHeaderLine:Hide() end
 
-            -- ---- Tree connector drawing ----
+            -- Tree connector drawing
             for d = 1, MAX_DEPTH do
                 resultRow.treeVert[d]:Hide()
                 resultRow.treeElbow[d]:Hide()
@@ -1724,23 +1724,23 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 
             if theme.showTreeLines and depth > 0 then
                 local halfRow = rowH * 0.5
-                local tc = theme.indentColors[depth] or theme.indentColors[1] or INDENT_COLORS[depth]
+                local lineColor = theme.indentColors[depth] or theme.indentColors[1] or INDENT_COLORS[depth]
                 local xCenter = (depth - 1) * INDENT_PX + LINE_X_OFF
 
-                resultRow.treeElbow[depth]:SetColorTexture(tc[1], tc[2], tc[3], 1)
+                resultRow.treeElbow[depth]:SetColorTexture(lineColor[1], lineColor[2], lineColor[3], 1)
                 resultRow.treeElbow[depth]:ClearAllPoints()
                 resultRow.treeElbow[depth]:SetPoint("TOP", resultRow, "TOPLEFT", xCenter, 3)
                 resultRow.treeElbow[depth]:SetHeight(halfRow + 2)
                 resultRow.treeElbow[depth]:Show()
 
-                resultRow.treeBranch[depth]:SetColorTexture(tc[1], tc[2], tc[3], 1)
+                resultRow.treeBranch[depth]:SetColorTexture(lineColor[1], lineColor[2], lineColor[3], 1)
                 resultRow.treeBranch[depth]:ClearAllPoints()
                 resultRow.treeBranch[depth]:SetPoint("LEFT",  resultRow, "TOPLEFT", xCenter - 1, -halfRow)
                 resultRow.treeBranch[depth]:SetPoint("RIGHT", resultRow, "TOPLEFT", xCenter + INDENT_PX - LINE_X_OFF, -halfRow)
                 resultRow.treeBranch[depth]:Show()
 
                 if not isLastChild[i] then
-                    resultRow.treeVert[depth]:SetColorTexture(tc[1], tc[2], tc[3], 1)
+                    resultRow.treeVert[depth]:SetColorTexture(lineColor[1], lineColor[2], lineColor[3], 1)
                     resultRow.treeVert[depth]:ClearAllPoints()
                     resultRow.treeVert[depth]:SetPoint("TOP",    resultRow, "TOPLEFT",    xCenter, 3)
                     resultRow.treeVert[depth]:SetPoint("BOTTOM", resultRow, "BOTTOMLEFT", xCenter, -1)
@@ -1750,23 +1750,23 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 for d = 1, depth - 1 do
                     local stillActive = false
                     for j = i + 1, count do
-                        local dj = visible[j].depth or 0
-                        if dj < d then break end
-                        if dj == d then stillActive = true; break end
+                        local siblingDepth = visible[j].depth or 0
+                        if siblingDepth < d then break end
+                        if siblingDepth == d then stillActive = true; break end
                     end
                     if stillActive then
-                        local ac = theme.indentColors[d] or theme.indentColors[1] or INDENT_COLORS[d]
-                        local dxCenter = (d - 1) * INDENT_PX + LINE_X_OFF
-                        resultRow.treeVert[d]:SetColorTexture(ac[1], ac[2], ac[3], 1)
+                        local ancestorColor = theme.indentColors[d] or theme.indentColors[1] or INDENT_COLORS[d]
+                        local ancestorX = (d - 1) * INDENT_PX + LINE_X_OFF
+                        resultRow.treeVert[d]:SetColorTexture(ancestorColor[1], ancestorColor[2], ancestorColor[3], 1)
                         resultRow.treeVert[d]:ClearAllPoints()
-                        resultRow.treeVert[d]:SetPoint("TOP",    resultRow, "TOPLEFT",    dxCenter, 3)
-                        resultRow.treeVert[d]:SetPoint("BOTTOM", resultRow, "BOTTOMLEFT", dxCenter, -1)
+                        resultRow.treeVert[d]:SetPoint("TOP",    resultRow, "TOPLEFT",    ancestorX, 3)
+                        resultRow.treeVert[d]:SetPoint("BOTTOM", resultRow, "BOTTOMLEFT", ancestorX, -1)
                         resultRow.treeVert[d]:Show()
                     end
                 end
             end
             
-            -- ---- Header styling ----
+            -- Header styling
             resultRow._isMatch = entry.isMatch and entry.isPathNode
             if entry.isPinHeader then
                 -- Pin header: plain text + toggle icon + underline (no tab/gradient)
@@ -1891,7 +1891,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             resultRow.isUnearnedCurrency = isUnearnedCurrency
             resultRow.isPathNode = entry.isPathNode  -- Store for tooltip text
 
-            -- ---- Position icon & text (non-tab, non-pin-header rows) ----
+            -- Position icon & text (non-tab, non-pin-header rows)
             if entry.isPinHeader then
                 -- Pin header: text already positioned in header styling; hide icon
             elseif not (theme.showHeaderTab and entry.isPathNode) then
@@ -1925,7 +1925,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 end
             end
 
-            -- ---- Set icon ----
+            -- Set icon
             local iconSet = false
             local isCurrencyItem = data and data.category == "Currency"
             local isCurrencyLeaf = isCurrencyItem and not entry.isPathNode

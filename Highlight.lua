@@ -2395,8 +2395,8 @@ function Highlight:ScrollToFactionRow(factionID)
     local numFactions = C_Reputation.GetNumFactions()
     local targetIndex = nil
     for i = 1, numFactions do
-        local fd = C_Reputation.GetFactionDataByIndex(i)
-        if fd and fd.factionID == factionID then
+        local factionData = C_Reputation.GetFactionDataByIndex(i)
+        if factionData and factionData.factionID == factionID then
             targetIndex = i
             break
         end
@@ -2421,9 +2421,9 @@ function Highlight:GetFactionRowButton(factionID)
     if C_Reputation and C_Reputation.GetNumFactions then
         local numFactions = C_Reputation.GetNumFactions()
         for i = 1, numFactions do
-            local fd = C_Reputation.GetFactionDataByIndex(i)
-            if fd and fd.factionID == factionID and fd.name then
-                factionNameLower = slower(fd.name)
+            local factionData = C_Reputation.GetFactionDataByIndex(i)
+            if factionData and factionData.factionID == factionID and factionData.name then
+                factionNameLower = slower(factionData.name)
                 break
             end
         end
@@ -2434,8 +2434,8 @@ function Highlight:GetFactionRowButton(factionID)
         if data then
             if data.factionID == factionID then return true end
             if data.factionIndex then
-                local fd = C_Reputation and C_Reputation.GetFactionDataByIndex(data.factionIndex)
-                if fd and fd.factionID == factionID then return true end
+                local indexFaction = C_Reputation and C_Reputation.GetFactionDataByIndex(data.factionIndex)
+                if indexFaction and indexFaction.factionID == factionID then return true end
             end
         end
         if factionNameLower then

@@ -177,17 +177,17 @@ local function CreateScaleHandle(parent, point, xOff, yOff, flipH, flipV)
     handle:EnableMouse(true)
     handle:RegisterForDrag("LeftButton")
 
-    local l = flipH and 1 or 0
-    local r = flipH and 0 or 1
-    local t = flipV and 1 or 0
-    local b = flipV and 0 or 1
+    local texLeft = flipH and 1 or 0
+    local texRight = flipH and 0 or 1
+    local texTop = flipV and 1 or 0
+    local texBottom = flipV and 0 or 1
 
     handle:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
-    handle:GetNormalTexture():SetTexCoord(l, r, t, b)
+    handle:GetNormalTexture():SetTexCoord(texLeft, texRight, texTop, texBottom)
     handle:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
-    handle:GetHighlightTexture():SetTexCoord(l, r, t, b)
+    handle:GetHighlightTexture():SetTexCoord(texLeft, texRight, texTop, texBottom)
     handle:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
-    handle:GetPushedTexture():SetTexCoord(l, r, t, b)
+    handle:GetPushedTexture():SetTexCoord(texLeft, texRight, texTop, texBottom)
 
     return handle
 end
