@@ -1639,7 +1639,10 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     -- Pre-compute whether scrolling will be needed so buttons can be narrower
     local maxVisibleRows = EasyFind.db.uiMaxResults or 10
     local willScroll = count > maxVisibleRows
-    local scrollInset = willScroll and 10 or 0
+    local scrollInset = 0
+    if willScroll and resultsFrame.scrollBar then
+        scrollInset = resultsFrame.scrollBar:GetWidth()
+    end
 
     -- ----------------------------------------------------------------
     -- Pre-compute last-child flags on the VISIBLE list
