@@ -578,8 +578,8 @@ end
 function Utils.ClickButton(btn, mouseButton)
     if not btn then return false end
     mouseButton = mouseButton or "LeftButton"
-    local onClick = btn.GetScript and btn:GetScript("OnClick")
-    if onClick then
+    local hasScript, onClick = pcall(btn.GetScript, btn, "OnClick")
+    if hasScript and onClick then
         onClick(btn, mouseButton)
         return true
     elseif btn.Click then
