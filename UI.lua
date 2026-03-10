@@ -394,9 +394,9 @@ function UI:CreateSearchFrame()
         local pos = EasyFind.db.uiSearchPosition
         searchFrame:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4])
     else
-        searchFrame:SetPoint("TOP", UIParent, "TOP", 0, -5)
+        searchFrame:SetPoint("TOP", UIParent, "TOP", 0, -12)
     end
-    
+
     -- Apply theme-appropriate backdrop (border only - atlas fills the background)
     local theme = GetActiveTheme()
     if theme.searchBarRounded then
@@ -3203,7 +3203,7 @@ end
 function UI:ResetPosition()
     if searchFrame then
         searchFrame:ClearAllPoints()
-        searchFrame:SetPoint("TOP", UIParent, "TOP", 0, -5)
+        searchFrame:SetPoint("TOP", UIParent, "TOP", 0, -12)
         EasyFind.db.uiSearchPosition = nil
     end
 end
