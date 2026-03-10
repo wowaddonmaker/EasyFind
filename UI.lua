@@ -3539,17 +3539,20 @@ function UI:FlashLabel(labelText)
     local flashCount = 0
     local ticker
     ticker = C_Timer.NewTicker(0.3, function()
-        flashCount = flashCount + 1
-        if flashCount % 2 == 0 then
-            label:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
-        else
-            label:SetTextColor(1, 1, 1)
-        end
-        
-        if flashCount >= 6 then
-            -- Restore original
-            label:SetText(originalText)
-            label:SetTextColor(originalR, originalG, originalB)
+        local ok, err = pcall(function()
+            flashCount = flashCount + 1
+            if flashCount % 2 == 0 then
+                label:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
+            else
+                label:SetTextColor(1, 1, 1)
+            end
+            if flashCount >= 6 then
+                label:SetText(originalText)
+                label:SetTextColor(originalR, originalG, originalB)
+                ticker:Cancel()
+            end
+        end)
+        if not ok then
             ticker:Cancel()
         end
     end)

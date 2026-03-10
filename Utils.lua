@@ -60,6 +60,34 @@ function Utils.SafeCallMethod(obj, method, ...)
     return pcall(fn, obj, ...)
 end
 
+--- Protected OnUpdate wrapper. If the handler errors, it self-cancels
+--- to prevent per-frame error spam that can freeze the UI.
+--- Pass nil handler to clear.
+function Utils.SafeOnUpdate(frame, handler)
+    if not handler then
+        frame:SetScript("OnUpdate", nil)
+        return
+    end
+    frame:SetScript("OnUpdate", function(self, elapsed)
+        local ok, err = pcall(handler, self, elapsed)
+        if not ok then
+            self:SetScript("OnUpdate", nil)
+            Utils.DebugPrint("OnUpdate stopped: " .. tostring(err))
+        end
+    end)
+end
+
+--- Protected C_Timer.After wrapper. Catches errors in the callback
+--- so a crash in a delayed call doesn't propagate unhandled.
+function Utils.SafeAfter(delay, fn)
+    C_Timer.After(delay, function()
+        local ok, err = pcall(fn)
+        if not ok then
+            Utils.DebugPrint("Timer error: " .. tostring(err))
+        end
+    end)
+end
+
 --- Scroll a ScrollFrame so that the given child button is visible.
 --- Uses the button's top/bottom relative to the scrollChild.
 function Utils.ScrollToButton(scrollFrame, button)

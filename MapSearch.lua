@@ -409,7 +409,8 @@ local function CreateWaypointTracker()
     -- OnUpdate: calculate angle + distance, show perimeter glow when far, ring when near, auto-clear on arrival
     -- Uses UnitPosition (returns primitives) for zero per-frame allocations.
     -- Waypoint world position cached until USER_WAYPOINT_UPDATED fires.
-    waypointController:SetScript("OnUpdate", function(self, elapsed)
+    -- Wrapped in pcall so a crash self-cancels instead of spamming errors every frame.
+    local function WaypointOnUpdate(self, elapsed)
         if not C_Map.HasUserWaypoint() or not C_SuperTrack.IsSuperTrackingUserWaypoint() then
             if self.lastMode then
                 self.lastMode = nil
@@ -563,6 +564,14 @@ local function CreateWaypointTracker()
                 superTrackGlow.animGroup:Stop()
                 superTrackGlow:Hide()
             end
+        end
+    end
+
+    waypointController:SetScript("OnUpdate", function(self, elapsed)
+        local ok, err = pcall(WaypointOnUpdate, self, elapsed)
+        if not ok then
+            self:SetScript("OnUpdate", nil)
+            DebugPrint("Waypoint tracker stopped: " .. tostring(err))
         end
     end)
 end

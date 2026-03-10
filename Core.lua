@@ -168,6 +168,15 @@ local function OnInitialize()
     -- Migrate old maxResults default (10) to new default (6)
     if EasyFindDB.maxResults == 10 then EasyFindDB.maxResults = 6 end
 
+    -- Post-merge validation: reset values whose type doesn't match the default,
+    -- and prune keys that no longer exist in DB_DEFAULTS.
+    for k, v in pairs(EasyFindDB) do
+        local default = DB_DEFAULTS[k]
+        if default ~= nil and type(v) ~= type(default) then
+            EasyFindDB[k] = default
+        end
+    end
+
     EasyFind.db = EasyFindDB
 
     -- Read version from TOC for What's New detection
@@ -215,8 +224,10 @@ local function OnInitialize()
     end
 end
 
+local SafeAfter = Utils.SafeAfter
+
 local function OnPlayerLogin()
-    C_Timer.After(0.5, function()
+    SafeAfter(0.5, function()
         local function SafeInit(mod, name)
             if not mod then return end
             local ok, err = pcall(mod.Initialize, mod)
@@ -230,7 +241,7 @@ local function OnPlayerLogin()
         SafeInit(ns.Options,    "Options")
     end)
     -- Populate dynamic currencies and reputations after a short delay (APIs need the character loaded)
-    C_Timer.After(2, function()
+    SafeAfter(2, function()
         if ns.Database then
             ns.Database:PopulateDynamicCurrencies()
             ns.Database:PopulateDynamicReputations()
@@ -238,7 +249,7 @@ local function OnPlayerLogin()
     end)
 
     -- Minimap button (delayed slightly so Minimap frame is ready)
-    C_Timer.After(0.6, function()
+    SafeAfter(0.6, function()
         if EasyFind.db.showMinimapButton then
             EasyFind:UpdateMinimapButton()
         end
@@ -250,7 +261,7 @@ local function OnPlayerLogin()
     if currentVersion and currentVersion ~= lastSeen then
         -- Skip for brand-new installs (they get the first-time setup instead)
         if lastSeen ~= nil or EasyFind.db.setupComplete then
-            C_Timer.After(1.5, function()
+            SafeAfter(1.5, function()
                 if ns.UI then ns.UI:ShowWhatsNew(currentVersion) end
             end)
         end
