@@ -33,6 +33,21 @@ local resultsOverlay = nil    -- glow around results
 local donePanel = nil         -- instruction + Done button
 local previewResults = nil    -- fake results frame for preview
 
+local function GetMaxRows()
+    if activeMode == "ui" then return EasyFind.db.uiMaxResults or 10 end
+    return EasyFind.db.mapMaxResults or 6
+end
+
+local function SetMaxRows(rows)
+    if activeMode == "ui" then EasyFind.db.uiMaxResults = rows
+    else EasyFind.db.mapMaxResults = rows end
+end
+
+local function GetDefaultMaxRows()
+    if activeMode == "ui" then return 10 end
+    return 6
+end
+
 -- Helpers
 
 local function ClampScale(v)
@@ -262,7 +277,7 @@ local function CreatePreviewResults(parent, targetFrame, width, visibleRows, anc
         local scale = EasyFind.db.fontSize or 1.0
         local path, baseSize, flags = GameFontDisable:GetFont()
         local scaledRowH = PREVIEW_ROW_H * scale
-        local rows = EasyFind.db.maxResults or 6
+        local rows = GetMaxRows()
         for i = 1, MAX_ROWS do
             local row = self.rows[i]
             row:SetFont(path, baseSize * scale, flags)
@@ -337,7 +352,7 @@ local function SetupCornerDrag(handle, preview, getWidth, setWidth, widthLabel, 
         self.startX = cx / es
         self.startY = cy / es
         self.startWidth = getWidth()
-        self.startRows = EasyFind.db.maxResults or 6
+        self.startRows = GetMaxRows()
         self.scaledRowH = PREVIEW_ROW_H * (EasyFind.db.fontSize or 1.0)
     end)
     handle:SetScript("OnDragStop", function(self)
@@ -361,7 +376,7 @@ local function SetupCornerDrag(handle, preview, getWidth, setWidth, widthLabel, 
         if anchorAbove then dy = -dy end
         local rowDelta = mfloor(dy / self.scaledRowH + 0.5)
         local rows = mmax(MIN_ROWS, mmin(MAX_ROWS, self.startRows + rowDelta))
-        EasyFind.db.maxResults = rows
+        SetMaxRows(rows)
         preview:SetVisibleRows(rows)
         if rowsLabel and not rowsLabel:HasFocus() then rowsLabel:SetText(rows) end
     end)
@@ -374,7 +389,7 @@ local function SetupRowsDrag(handle, preview, rowsBox, anchorAbove)
         self.dragging = true
         local _, cy = GetCursorPosition()
         self.startY = cy / UIParent:GetEffectiveScale()
-        self.startRows = EasyFind.db.maxResults or 6
+        self.startRows = GetMaxRows()
         self.scaledRowH = PREVIEW_ROW_H * (EasyFind.db.fontSize or 1.0)
     end)
     handle:SetScript("OnDragStop", function(self)
@@ -388,7 +403,7 @@ local function SetupRowsDrag(handle, preview, rowsBox, anchorAbove)
         if anchorAbove then dy = -dy end
         local rowDelta = mfloor(dy / self.scaledRowH + 0.5)
         local rows = mmax(MIN_ROWS, mmin(MAX_ROWS, self.startRows + rowDelta))
-        EasyFind.db.maxResults = rows
+        SetMaxRows(rows)
         preview:SetVisibleRows(rows)
         if not rowsBox:HasFocus() then rowsBox:SetText(rows) end
     end)
@@ -426,7 +441,7 @@ local function SetupFontDrag(handle, fontLabel, preview)
         if preview and preview.rows then
             local path, baseSize, flags = GameFontDisable:GetFont()
             local scaledRowH = PREVIEW_ROW_H * newFont
-            local rows = EasyFind.db.maxResults or 6
+            local rows = GetMaxRows()
             for i = 1, MAX_ROWS do
                 local row = preview.rows[i]
                 row:SetFont(path, baseSize * newFont, flags)
@@ -758,7 +773,7 @@ function Rescaler:Enter(mode)
     local resultsAbove = (mode == "ui" and EasyFind.db.uiResultsAbove)
         or (mode == "map" and EasyFind.db.mapResultsAbove)
     local previewW = getResultsWidth()
-    local currentRows = EasyFind.db.maxResults or 6
+    local currentRows = GetMaxRows()
     local leftAligned = (mode == "map")
     previewResults = CreatePreviewResults(bg, searchBar, previewW, currentRows, resultsAbove, leftAligned)
     previewResults:SetScale(getResultsScale())
@@ -839,20 +854,21 @@ function Rescaler:Enter(mode)
         local val = tonumber(self:GetText())
         if val then
             val = mmax(MIN_ROWS, mmin(MAX_ROWS, mfloor(val + 0.5)))
-            EasyFind.db.maxResults = val
+            SetMaxRows(val)
             previewResults:SetVisibleRows(val)
             self:SetText(val)
         end
         self:ClearFocus()
     end)
     resultsOverlay.rowsBox:SetScript("OnEscapePressed", function(self)
-        self:SetText(EasyFind.db.maxResults or 6)
+        self:SetText(GetMaxRows())
         self:ClearFocus()
     end)
     AddResetButton(resultsOverlay.rowsBox, function()
-        EasyFind.db.maxResults = 6
-        previewResults:SetVisibleRows(6)
-        resultsOverlay.rowsBox:SetText(6)
+        local def = GetDefaultMaxRows()
+        SetMaxRows(def)
+        previewResults:SetVisibleRows(def)
+        resultsOverlay.rowsBox:SetText(def)
     end)
     SetupCornerDrag(resultsOverlay.scaleHandle, previewResults, getResultsWidth, function(w)
         setResultsWidth(w)

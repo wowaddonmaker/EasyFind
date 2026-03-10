@@ -43,7 +43,8 @@ local DB_DEFAULTS = {
     resultsTheme = "Retail",  -- "Classic" or "Retail"
     indicatorStyle = "EasyFind Arrow",  -- Indicator texture style
     indicatorColor = "Yellow",  -- Indicator color preset
-    maxResults = 6,            -- Maximum number of search results to display (3-24)
+    uiMaxResults = 10,         -- Maximum visible UI search results (3-24)
+    mapMaxResults = 6,         -- Maximum visible map search results (3-24)
     showTruncationMessage = true,  -- Show "more results available" message when truncated
     hardResultsCap = false,    -- Hard cap on results (no "more results" message)
     staticOpacity = false,     -- Keep opacity constant while moving
@@ -51,7 +52,7 @@ local DB_DEFAULTS = {
     pinnedMapItems = {},       -- Pinned map search results (persist across sessions)
     pinsCollapsed = false,     -- Whether the "Pinned Paths" header is collapsed
     showLoginMessage = true,   -- Show "EasyFind loaded!" message on login
-    blinkingPins = false,      -- Animate (blink/pulse) map pins and highlights
+    blinkingPins = true,       -- Pulse map pins and highlights in sync with indicator bob
     arrivalDistance = 10,      -- Yards - auto-clear waypoint when player is this close
     minimapArrowGlow = true,   -- Pulsing glow on minimap perimeter arrow
     minimapGuideCircle = true, -- Near-track ring + arrow around player on minimap
@@ -161,8 +162,12 @@ local function OnInitialize()
     -- Migrate old sentinel values to real pixel defaults
     if EasyFindDB.uiResultsWidth == 1.0 then EasyFindDB.uiResultsWidth = 350 end
 
-    -- Migrate old maxResults default (10) to new default (6)
-    if EasyFindDB.maxResults == 10 then EasyFindDB.maxResults = 6 end
+    -- Migrate old unified maxResults into separate ui/map settings
+    if EasyFindDB.maxResults then
+        if not EasyFindDB.uiMaxResults then EasyFindDB.uiMaxResults = EasyFindDB.maxResults end
+        if not EasyFindDB.mapMaxResults then EasyFindDB.mapMaxResults = EasyFindDB.maxResults end
+        EasyFindDB.maxResults = nil
+    end
 
     -- Post-merge validation: reset values whose type doesn't match the default,
     -- and prune keys that no longer exist in DB_DEFAULTS.

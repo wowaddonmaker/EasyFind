@@ -159,6 +159,7 @@ local function SetRowIcon(btn, kind, value, iconSize)
 end
 
 local selectedIndex = 0   -- 0 = none selected, 1..N = highlighted row
+local toggleFocused = false -- true = Tab moved focus to expand/collapse toggle
 local navFrame             -- Keyboard capture frame for results navigation
 local unearnedTooltip      -- Custom tooltip for unearned currencies
 
@@ -472,6 +473,11 @@ function UI:CreateSearchFrame()
             return
         end
         self.placeholder:Hide()
+        if selectedIndex > 0 then
+            selectedIndex = 0
+            toggleFocused = false
+            UI:UpdateSelectionHighlight(true)
+        end
         if self:GetText() == "" then
             UI:ShowPinnedItems()
         end
@@ -489,6 +495,7 @@ function UI:CreateSearchFrame()
             C_Timer.After(0, function()
                 if selectingResult then return end
                 if searchFrame.editBox:HasFocus() then return end
+                if navFrame and navFrame:IsKeyboardEnabled() then return end
                 if strtrim(searchFrame.editBox:GetText()) ~= "" then return end
                 UI:HideResults()
                 -- Now that results are hidden, let smart show fade the bar out
@@ -554,11 +561,12 @@ function UI:CreateSearchFrame()
     local REPEAT_FAST    = 0.05
     local REPEAT_ACCEL   = 1.5
     local repeatKey, repeatAction, repeatHeld, repeatNext
+    local repeatActive = false
 
     local function StopKeyRepeat()
         repeatKey = nil
         repeatAction = nil
-        searchFrame:SetScript("OnUpdate", nil)
+        repeatActive = false
     end
     searchFrame.StopKeyRepeat = StopKeyRepeat
 
@@ -568,25 +576,30 @@ function UI:CreateSearchFrame()
         repeatAction = action
         repeatHeld = 0
         repeatNext = REPEAT_INITIAL
-        searchFrame:SetScript("OnUpdate", function(_, elapsed)
-            repeatHeld = repeatHeld + elapsed
-            repeatNext = repeatNext - elapsed
-            if repeatNext <= 0 then
-                repeatAction()
-                local t = repeatHeld / REPEAT_ACCEL
-                if t > 1 then t = 1 end
-                repeatNext = REPEAT_INITIAL + (REPEAT_FAST - REPEAT_INITIAL) * t
-            end
-        end)
+        repeatActive = true
     end
+
+    searchFrame:SetScript("OnUpdate", function(_, elapsed)
+        if not repeatActive then return end
+        repeatHeld = repeatHeld + elapsed
+        repeatNext = repeatNext - elapsed
+        if repeatNext <= 0 then
+            repeatAction()
+            local t = repeatHeld / REPEAT_ACCEL
+            if t > 1 then t = 1 end
+            repeatNext = REPEAT_INITIAL + (REPEAT_FAST - REPEAT_INITIAL) * t
+        end
+    end)
 
     -- Arrow key / Tab navigation for results dropdown.
     -- IMPORTANT: Always block propagation while the editbox has focus so that
     -- typed letters never trigger the player's game keybinds.
     editBox:SetScript("OnKeyDown", function(self, key)
         if resultsFrame and resultsFrame:IsShown() and selectedIndex == 0 then
-            if key == "DOWN" then
-                UI:MoveSelection(1)
+            if EasyFind.db.uiResultsAbove then
+                if key == "UP" then UI:JumpToEnd() end
+            else
+                if key == "DOWN" then UI:MoveSelection(1) end
             end
         end
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
@@ -664,23 +677,36 @@ function UI:CreateSearchFrame()
             UI:JumpToEnd()
         elseif key == "TAB" then
             if IsShiftKeyDown() then
-                -- Shift+Tab: toolbar cycling backward, or result nav if no toolbar controls
-                local controls = GetToolbarControls()
-                if #controls > 0 and (toolbarFocus > 0 or selectedIndex == 0) then
-                    local newIdx = (toolbarFocus > 0) and (toolbarFocus - 1) or #controls
-                    if newIdx == 0 then
-                        ClearToolbarFocus()
-                        selectedIndex = 0
-                        UI:UpdateSelectionHighlight()
-                    else
-                        SetToolbarFocus(newIdx)
-                    end
+                if selectedIndex > 0 and toggleFocused then
+                    toggleFocused = false
+                    UI:UpdateSelectionHighlight()
                 else
-                    StartKeyRepeat(key, function() UI:MoveSelection(-1) end)
+                    local controls = GetToolbarControls()
+                    if #controls > 0 and (toolbarFocus > 0 or selectedIndex == 0) then
+                        local newIdx = (toolbarFocus > 0) and (toolbarFocus - 1) or #controls
+                        if newIdx == 0 then
+                            ClearToolbarFocus()
+                            selectedIndex = 0
+                            UI:UpdateSelectionHighlight()
+                        else
+                            SetToolbarFocus(newIdx)
+                        end
+                    else
+                        StartKeyRepeat(key, function() UI:MoveSelection(-1) end)
+                    end
                 end
             else
-                -- Tab: toolbar cycling forward, wrap to editbox after last control
-                if toolbarFocus > 0 then
+                if selectedIndex > 0 and not toggleFocused then
+                    local row = resultButtons[selectedIndex]
+                    local hasToggle = row and row.isPathNode and (
+                        (row.headerTab and row.headerTab:IsShown()) or
+                        (row.isPinHeader and row.pinToggle and row.pinToggle:IsShown())
+                    )
+                    if hasToggle then
+                        toggleFocused = true
+                        UI:UpdateSelectionHighlight()
+                    end
+                elseif toolbarFocus > 0 then
                     local controls = GetToolbarControls()
                     local newIdx = toolbarFocus + 1
                     if newIdx > #controls then
@@ -705,9 +731,15 @@ function UI:CreateSearchFrame()
         elseif key == "ESCAPE" then
             if toolbarFocus > 0 then
                 ClearToolbarFocus()
+            elseif toggleFocused then
+                toggleFocused = false
+                UI:UpdateSelectionHighlight()
             else
                 selectedIndex = 0
-                UI:UpdateSelectionHighlight()
+                toggleFocused = false
+                navFrame:EnableKeyboard(false)
+                if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
+                UI:UpdateSelectionHighlight(true)
             end
         elseif key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
                or key == "LALT" or key == "RALT" then
@@ -715,6 +747,7 @@ function UI:CreateSearchFrame()
         else
             ClearToolbarFocus()
             selectedIndex = 0
+            toggleFocused = false
             UI:UpdateSelectionHighlight()
             if not IsControlKeyDown() and not IsAltKeyDown() and #key == 1 then
                 local char = IsShiftKeyDown() and key or slower(key)
@@ -1064,6 +1097,13 @@ function UI:CreateResultButton(index)
     toggleIcon:SetPoint("RIGHT", headerTab, "RIGHT", -8, 0)
     toggleIcon:SetAtlas("QuestLog-icon-expand")
     resultRow.toggleIcon = toggleIcon
+
+    local toggleHighlight = resultRow:CreateTexture(nil, "OVERLAY")
+    toggleHighlight:SetSize(26, 25)
+    toggleHighlight:SetPoint("CENTER", toggleIcon, "CENTER", 0, 0)
+    toggleHighlight:SetColorTexture(1, 1, 0, 0.3)
+    toggleHighlight:Hide()
+    resultRow.toggleHighlight = toggleHighlight
 
     -- Header name text (child of headerTab)
     local tabText = headerTab:CreateFontString(nil, "OVERLAY", "Game15Font_Shadow")
@@ -1597,7 +1637,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     local count = mmin(#visible, MAX_BUTTON_POOL)
 
     -- Pre-compute whether scrolling will be needed so buttons can be narrower
-    local maxVisibleRows = EasyFind.db.maxResults or 6
+    local maxVisibleRows = EasyFind.db.uiMaxResults or 10
     local willScroll = count > maxVisibleRows
     local scrollInset = willScroll and 10 or 0
 
@@ -2304,6 +2344,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 
     -- Reset keyboard selection whenever results change
     selectedIndex = 0
+    toggleFocused = false
     self:UpdateSelectionHighlight()
 end
 
@@ -2336,7 +2377,8 @@ function UI:HideResults()
         resultsFrame.truncSeparator:Hide()
     end
     selectedIndex = 0
-    self:UpdateSelectionHighlight()
+    toggleFocused = false
+    self:UpdateSelectionHighlight(true)
 end
 
 function UI:ShowPinnedItems()
@@ -2397,16 +2439,25 @@ function UI:MoveSelection(delta)
     if visibleCount == 0 then return end
 
     local newIndex = selectedIndex + delta
-    if newIndex < 0 then newIndex = 0
-    elseif newIndex > visibleCount then newIndex = visibleCount end
+    if EasyFind.db.uiResultsAbove then
+        -- Above: exit to editbox past last result, clamp at first
+        if newIndex > visibleCount then newIndex = 0
+        elseif newIndex < 1 then newIndex = 1 end
+    else
+        -- Below: exit to editbox past first result, clamp at last
+        if newIndex < 0 then newIndex = 0
+        elseif newIndex > visibleCount then newIndex = visibleCount end
+    end
 
     selectedIndex = newIndex
+    toggleFocused = false
     self:UpdateSelectionHighlight()
 end
 
 function UI:JumpToStart()
     if self:CountVisibleResults() > 0 then
         selectedIndex = 1
+        toggleFocused = false
         self:UpdateSelectionHighlight()
     end
 end
@@ -2415,19 +2466,32 @@ function UI:JumpToEnd()
     local visibleCount = self:CountVisibleResults()
     if visibleCount > 0 then
         selectedIndex = visibleCount
+        toggleFocused = false
         self:UpdateSelectionHighlight()
     end
 end
 
-function UI:UpdateSelectionHighlight()
+function UI:UpdateSelectionHighlight(skipRefocus)
     for i = 1, MAX_BUTTON_POOL do
         local resultRow = resultButtons[i]
         if resultRow.selectionHighlight then
-            resultRow.selectionHighlight:SetShown(i == selectedIndex)
+            resultRow.selectionHighlight:SetShown(i == selectedIndex and not toggleFocused)
         end
         -- Tab selection highlight (Retail theme)
         if resultRow.tabSelectionHighlight then
-            resultRow.tabSelectionHighlight:SetShown(i == selectedIndex and resultRow.headerTab:IsShown())
+            resultRow.tabSelectionHighlight:SetShown(i == selectedIndex and resultRow.headerTab:IsShown() and not toggleFocused)
+        end
+        if resultRow.toggleHighlight then
+            local showToggle = i == selectedIndex and toggleFocused
+            if showToggle then
+                resultRow.toggleHighlight:ClearAllPoints()
+                if resultRow.isPinHeader and resultRow.pinToggle and resultRow.pinToggle:IsShown() then
+                    resultRow.toggleHighlight:SetPoint("CENTER", resultRow.pinToggle, "CENTER", 0, 0)
+                else
+                    resultRow.toggleHighlight:SetPoint("CENTER", resultRow.toggleIcon, "CENTER", 0, 0)
+                end
+            end
+            resultRow.toggleHighlight:SetShown(showToggle)
         end
     end
     if selectedIndex > 0 then
@@ -2442,7 +2506,7 @@ function UI:UpdateSelectionHighlight()
         local wasNavigating = navFrame:IsKeyboardEnabled()
         navFrame:EnableKeyboard(false)
         if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
-        if wasNavigating and not searchFrame.editBox:HasFocus() then
+        if wasNavigating and not skipRefocus and not searchFrame.editBox:HasFocus() then
             searchFrame.editBox:SetFocus()
         end
     end
@@ -2461,7 +2525,12 @@ function UI:ActivateSelected()
             if resultRow.isPinHeader then
                 EasyFind.db.pinsCollapsed = not EasyFind.db.pinsCollapsed
                 if cachedHierarchical then
+                    local savedIndex = selectedIndex
+                    local savedToggle = toggleFocused
                     self:ShowHierarchicalResults(cachedHierarchical, true)
+                    selectedIndex = savedIndex
+                    toggleFocused = savedToggle
+                    self:UpdateSelectionHighlight()
                 end
                 return
             end
@@ -2480,7 +2549,12 @@ function UI:ActivateSelected()
                     end
                 end
                 if cachedHierarchical then
+                    local savedIndex = selectedIndex
+                    local savedToggle = toggleFocused
                     self:ShowHierarchicalResults(cachedHierarchical, true)
+                    selectedIndex = savedIndex
+                    toggleFocused = savedToggle
+                    self:UpdateSelectionHighlight()
                 end
             elseif resultRow.data then
                 self:SelectResult(resultRow.data)

@@ -73,27 +73,29 @@ Options are also available via ESC > Interface > AddOns > EasyFind.
 
 EasyFind provides customizable keybinds:
 
-- **Toggle UI Search Bar**:  Show/hide the search bar
-- **Focus Search Bar**: Jump to the search bar and start typing (or unfocus if already active)
+- **Toggle Bar**: Show/hide the search bar
+- **Focus Bar**: Jump to the search bar and start typing (or unfocus if already active)
+- **Toggle+Focus**: Opens and focuses the search bar in one press. Press again to close. When the world map is open, focuses the local map search bar instead
+- **Clear All**: Dismiss all active highlights, map pins, zone highlights, and waypoints
 
 **No keybinds are set by default.** Configure them in the Options panel or via ESC > Keybinds > EasyFind.
 
 ## Options
-- **Arrow Style**: Choose from 4 arrow textures (EasyFind Arrow, Classic Quest Arrow, Minimap Player Arrow, Cursor Point). All arrows update in real-time.
-- **Arrow Color**: Pick from 8 color presets (Yellow, Gold, Orange, Red, Green, Blue, Purple, White).
-- **Icon Size**: Unified slider controls all search indicators (map pins, UI arrows, zone highlights) at once.
-- **Max Results**: How many results to show before scrolling (3-24).
-- **Arrival Distance**: How close you need to be before a waypoint auto-clears (3-50 yards).
-- **Open Panels Directly** (UI Search): When enabled, selecting a UI result opens the target panel immediately instead of guiding you through each step. Off by default.
-- **Navigate to Zones Directly** (Map Search): When enabled, selecting a map result jumps straight to the zone on the map instead of stepping through parent zones. Off by default.
-- **Smart Show**: Hide the search bar until you hover over it. Keeps your screen clean while staying accessible.
+- **Indicator Style**: Choose from 5 arrow textures (EasyFind Arrow, Classic Quest Arrow, Minimap Player Arrow, Low-res Gauntlet, HD Gauntlet). All indicators update in real-time.
+- **Indicator Color**: Pick from 8 color presets (Yellow, Gold, Orange, Red, Green, Blue, Purple, White).
 - **Results Theme**: Choose between Classic (colorful tree lines) or Retail (quest log style) for the search results dropdown.
-- **Search Bar Opacity**: Adjust transparency to see through the search bar.
+- **Open Panels Directly** (UI Search): Selecting a UI result opens the target panel immediately instead of guiding you through each step. Off by default.
+- **Navigate Zones Directly** (Map Search): Selecting a zone jumps straight to it instead of stepping through parent zones. Off by default.
+- **Smart Show**: Hide the search bar until you hover over it.
 - **Static Opacity**: Keep the search bar at constant opacity while moving (off by default; bar fades while moving).
-- **Blinking Map Pins**: Enable pulse animations on map search pins (off by default).
+- **UI Results Above / Map Results Above**: Show search results above the bar instead of below, useful for bottom-of-screen placement.
+- **Blinking Map Pins**: Pins and highlight boxes pulse in sync with the indicator arrow (on by default). The indicator arrow always bobs regardless.
+- **Background Opacity**: Adjust search bar transparency.
+- **Font Size**: Scale text and row height across all search bars.
+- **Icon Size / Guide Circle Scale**: Unified sliders for map indicators and minimap guide circle.
 - **Minimap Button**: Show or hide the minimap icon.
 - **Show Login Message**: Show or hide the "EasyFind loaded!" chat message on login.
-- **UI/Map Search Bar Scales**: Resize each search bar independently.
+- **Visual Rescaler**: Drag handles on search bars and results panels to resize width, row count, and font size interactively.
 - **Reset All Settings / Reset Positions**: Return settings or search bar positions to defaults.
 
 ## Moving the Search Bars

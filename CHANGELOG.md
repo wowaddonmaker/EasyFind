@@ -8,6 +8,7 @@ All notable changes to EasyFind will be documented in this file.
 
 ### Added
 - **Keyboard Navigation**: Full arrow key, Tab, and Enter support for navigating search results without a mouse. Works in both UI search and map search bars
+- **Tab Toggle Focus**: Tab/Shift+Tab toggles between a parent row and its expand/collapse button in both UI and map search results
 - **Visual Rescaler**: New resize mode where you can drag handles on search bars and results panels to resize width, adjust row count, and change font size interactively. Shift+drag the search bar itself to reposition it along the map edge
 - **Toggle+Focus Keybind**: New combined keybind that toggles the search bar and immediately focuses it in one keypress. Automatically targets the map search bar when the world map is open
 - **Clear All Keybind**: Dedicated keybind to dismiss all highlights, map pins, zone highlights, and breadcrumbs
@@ -16,15 +17,26 @@ All notable changes to EasyFind will be documented in this file.
 - **Waypoint Options**: Auto-track new pins, auto-clear on arrival, and configurable arrival distance now in the Options panel
 - **Class Trainer Category**: Class trainers now appear in map search results
 - **Thunder Bluff POIs**: Added points of interest for Thunder Bluff
+- **Separate Max Results**: UI search and map search now have independent max visible row counts (UI defaults to 10, map to 6)
+- **Results Above**: Both UI and map search results can now be shown above the search bar for bottom-of-screen placement
 
 ### Changed
+- **Indicator Arrow**: Arrow always bobs and pulses regardless of the Blinking Pins setting. Blinking Pins now only controls whether pins and highlight boxes pulse in sync
+- **Blinking Pins Default**: Changed default to enabled (was disabled)
 - **Filter Button Triangle**: Filter buttons show only the dropdown arrow by default; hovering reveals the full button with a blue highlight glow
 - **Zone Navigation Arrows**: The arrows that guide you between maps now highlight with a shape that matches the button instead of a generic glow
 - **Reputation Search**: Parent factions (e.g. "Horde Expedition") are now searchable in addition to individual reputations
 - **Background Opacity**: Opacity slider now controls only the search bar background, keeping text and icons fully visible (default lowered to 0.75)
-- **Options Panel**: Reorganized with new keybind, rescaler, waypoint, and guide circle sections
+- **Options Panel**: Reorganized with Speed boxes, two-column keybinds, and tighter section spacing. Theme selector moved to General section
+- **Keyword Scoring**: Short abbreviations (2-3 chars) like "bg" now boost exact keyword matches above initials matching so common abbreviations rank higher
+- **Keyboard Shortcuts Text**: Reorganized into clearer "From the search box" and "From the results list" sections
 
 ### Fixed
+- **Escape from Results**: Escape now properly deselects without refocusing the search editbox. Results stay visible for re-entry
+- **Stale Selection**: Clicking back into the editbox after Escape now resets the selection instead of leaving it stuck
+- **Enter on Result**: Pressing Enter on a search result now closes results and unfocuses the editbox, matching click behavior
+- **Enter on Toggle**: Pressing Enter on an expand/collapse toggle no longer refocuses the search bar
+- **Pinned Items Navigation**: Arrow keys now work on pinned items shown from an empty focused editbox
 - **Chromie Detection**: Chromie (timewalking NPC) now properly detected and included in search results with real icon
 - **Zone Reguiding**: Clicking the wrong zone during step-by-step navigation now correctly reguides you back to the target instead of stopping
 - **Zone Highlighting**: Fixed many zones not highlighting correctly on continent maps, including cities (Stormwind, Ironforge, etc.), remapped zones (Isle of Quel'Danas), and multi-step navigation between continents
@@ -36,6 +48,8 @@ All notable changes to EasyFind will be documented in this file.
 - **Adjacent Zone Filter**: Fixed filter incorrectly hiding some valid results like Conquest Quartermaster
 
 ### Technical Notes
+- **Independent Indicator Animation**: Indicator arrow has its own Alpha animation group so it pulses independently of the parent highlight frame
+- **Unified Animation Duration**: All animation durations consolidated into a single ANIM_DURATION constant
 - **Atlas Zone Highlights**: Zone highlighting now supports atlas-based textures in addition to fileDataID textures
 - **Shared Helpers**: Scroll, click, and frame-search patterns refactored into Utils.lua, reducing code duplication across Highlight and UI modules
 - **Shared Constants**: Extracted duplicated constants (colors, sizes, string paths) into ns.* values in Utils.lua

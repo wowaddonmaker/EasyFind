@@ -1562,7 +1562,8 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen)
         for _, kw in ipairs(keywordsLower) do
             local kwScore = 0
             if kw == query then
-                kwScore = 80
+                -- Short abbreviations (2-3 chars) are intentional, boost above initials
+                kwScore = queryLen <= 3 and 140 or 80
             elseif ssub(kw, 1, queryLen) == query then
                 kwScore = 70
             elseif Database:FindAtWordBoundary(kw, query) then

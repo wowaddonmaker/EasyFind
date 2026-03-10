@@ -116,6 +116,8 @@ ns.ZONE_ICON_GLOW_SIZE = 68
 -- Breadcrumb indicator
 ns.BREADCRUMB_SIZE   = 48
 
+local ANIM_DURATION = 0.5
+
 --- Convert a size in UI units to canvas units so it appears the same visual
 --- size as a same-valued element on UIParent.
 --- WoW's map zooms by making the canvas LARGER, not by changing scale.
@@ -402,7 +404,7 @@ local function CreateWaypointTracker()
         local pinGlowAlpha = pinGlowAG:CreateAnimation("Alpha")
         pinGlowAlpha:SetFromAlpha(1)
         pinGlowAlpha:SetToAlpha(0.4)
-        pinGlowAlpha:SetDuration(0.5)
+        pinGlowAlpha:SetDuration(ANIM_DURATION)
         nearTrackFrame.pinGlowAG = pinGlowAG
 
         nearTrackFrame:Hide()
@@ -1162,7 +1164,11 @@ function MapSearch:CreateSearchFrame()
         end
         isGlobalSearch = false
         activeSearchFrame = searchFrame
-        -- Show pinned items when focusing with empty text
+        if selectedResultIndex > 0 then
+            selectedResultIndex = 0
+            navBtnFocused = false
+            MapSearch:UpdateSelectionHighlight(true)
+        end
         if self:GetText() == "" then
             MapSearch:ShowPinnedItems()
         end
@@ -1193,8 +1199,10 @@ function MapSearch:CreateSearchFrame()
 
     editBox:SetScript("OnKeyDown", function(self, key)
         if resultsFrame and resultsFrame:IsShown() and selectedResultIndex == 0 then
-            if key == "DOWN" then
-                MapSearch:MoveSelection(1)
+            if EasyFind.db.mapResultsAbove then
+                if key == "UP" then MapSearch:JumpToEnd() end
+            else
+                if key == "DOWN" then MapSearch:MoveSelection(1) end
             end
         end
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
@@ -1476,7 +1484,11 @@ function MapSearch:CreateSearchFrame()
         end
         isGlobalSearch = true
         activeSearchFrame = globalSearchFrame
-        -- Show pinned items when focusing with empty text
+        if selectedResultIndex > 0 then
+            selectedResultIndex = 0
+            navBtnFocused = false
+            MapSearch:UpdateSelectionHighlight(true)
+        end
         if self:GetText() == "" then
             MapSearch:ShowPinnedItems()
         end
@@ -1507,8 +1519,10 @@ function MapSearch:CreateSearchFrame()
 
     globalEditBox:SetScript("OnKeyDown", function(self, key)
         if resultsFrame and resultsFrame:IsShown() and selectedResultIndex == 0 then
-            if key == "DOWN" then
-                MapSearch:MoveSelection(1)
+            if EasyFind.db.mapResultsAbove then
+                if key == "UP" then MapSearch:JumpToEnd() end
+            else
+                if key == "DOWN" then MapSearch:MoveSelection(1) end
             end
         end
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
@@ -1897,9 +1911,15 @@ function MapSearch:CreateSearchFrame()
         elseif key == "ESCAPE" then
             if toolbarFocus > 0 then
                 ClearToolbarFocus()
+            elseif navBtnFocused then
+                navBtnFocused = false
+                MapSearch:UpdateSelectionHighlight()
             else
                 selectedResultIndex = 0
-                MapSearch:UpdateSelectionHighlight()
+                navBtnFocused = false
+                navFrame:EnableKeyboard(false)
+                if MapSearch.StopKeyRepeat then MapSearch.StopKeyRepeat() end
+                MapSearch:UpdateSelectionHighlight(true)
             end
         elseif key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
                or key == "LALT" or key == "RALT" then
@@ -2250,15 +2270,19 @@ function MapSearch:CreateHighlightFrame()
     local alpha = animGroup:CreateAnimation("Alpha")
     alpha:SetFromAlpha(1)
     alpha:SetToAlpha(0.4)
-    alpha:SetDuration(0.5)
+    alpha:SetDuration(ANIM_DURATION)
     highlightFrame.animGroup = animGroup
-    
-    -- Indicator bob animation
+
+    -- Indicator bob + pulse animation (independent of parent highlight alpha)
     local indAnimGroup = indicatorFrame:CreateAnimationGroup()
     indAnimGroup:SetLooping("BOUNCE")
     local indMove = indAnimGroup:CreateAnimation("Translation")
     indMove:SetOffset(0, -10)
-    indMove:SetDuration(0.4)
+    indMove:SetDuration(ANIM_DURATION)
+    local indAlpha = indAnimGroup:CreateAnimation("Alpha")
+    indAlpha:SetFromAlpha(1)
+    indAlpha:SetToAlpha(0.4)
+    indAlpha:SetDuration(ANIM_DURATION)
     indicatorFrame.animGroup = indAnimGroup
     
     -- Create static location pin - shows the icon for locations from database
@@ -2325,7 +2349,7 @@ function MapSearch:CreateHighlightFrame()
     local pinPulse = pinAnimGroup:CreateAnimation("Alpha")
     pinPulse:SetFromAlpha(1)
     pinPulse:SetToAlpha(0.3)
-    pinPulse:SetDuration(0.4)
+    pinPulse:SetDuration(ANIM_DURATION)
     waypointPin.animGroup = pinAnimGroup
 
 end
@@ -2356,7 +2380,7 @@ function MapSearch:CreateZoneHighlightFrame()
     local alpha = animGroup:CreateAnimation("Alpha")
     alpha:SetFromAlpha(0.75)
     alpha:SetToAlpha(0.5)
-    alpha:SetDuration(0.5)
+    alpha:SetDuration(ANIM_DURATION)
     zoneHighlightFrame.animGroup = animGroup
     
     -- Create indicator for zone highlighting
@@ -2370,7 +2394,11 @@ function MapSearch:CreateZoneHighlightFrame()
     zoneIndAnimGroup:SetLooping("BOUNCE")
     local zoneIndMove = zoneIndAnimGroup:CreateAnimation("Translation")
     zoneIndMove:SetOffset(0, -10)
-    zoneIndMove:SetDuration(0.4)
+    zoneIndMove:SetDuration(ANIM_DURATION)
+    local zoneIndAlpha = zoneIndAnimGroup:CreateAnimation("Alpha")
+    zoneIndAlpha:SetFromAlpha(1)
+    zoneIndAlpha:SetToAlpha(0.4)
+    zoneIndAlpha:SetDuration(ANIM_DURATION)
     zoneInd.animGroup = zoneIndAnimGroup
     zoneInd.translateAnim = zoneIndMove
 
@@ -3788,7 +3816,11 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
         bcAnimGroup:SetLooping("BOUNCE")
         local bcMove = bcAnimGroup:CreateAnimation("Translation")
         bcMove:SetOffset(0, -10)
-        bcMove:SetDuration(0.4)
+        bcMove:SetDuration(ANIM_DURATION)
+        local bcAlpha = bcAnimGroup:CreateAnimation("Alpha")
+        bcAlpha:SetFromAlpha(1)
+        bcAlpha:SetToAlpha(0.4)
+        bcAlpha:SetDuration(ANIM_DURATION)
         bcIndFrame.animGroup = bcAnimGroup
 
         hl.indicatorFrame = bcIndFrame
@@ -5071,7 +5103,7 @@ function MapSearch:ShowResults(results)
     -- Must compute maxVisibleHeight (including screen-space clamping) BEFORE the
     -- button loop, otherwise willScroll can be false while hasScroll ends up true
     -- and the scrollbar overlaps full-width buttons.
-    local maxVisibleRows = EasyFind.db.maxResults or 6
+    local maxVisibleRows = EasyFind.db.mapMaxResults or 6
     local scrollBar = resultsFrame.scrollBar
     local maxVisibleHeight = maxVisibleRows * 26 + 12
     local preAnchor = activeSearchFrame or searchFrame
@@ -5149,20 +5181,20 @@ function MapSearch:ShowResults(results)
                     resultRow.text:SetPoint("RIGHT", resultsFrame, "LEFT", wrapX, 0)
                     resultRow.text:SetText(data.displayName or data.name)
                     resultRow.text:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
-                    resultRow.icon:SetTexture(237382)
+                    SetIconTexture(resultRow.icon, 237382)
                     resultRow.icon:SetSize(16, 16)
                     resultRow.icon:Show()
                     if resultRow.indentLine then resultRow.indentLine:Show() end
 
                 elseif data.pathPrefix and data.pathPrefix ~= "" then
                     resultRow.text:SetText("|cff666666" .. data.pathPrefix .. " >|r |cffffd100" .. data.name .. "|r")
-                    resultRow.icon:SetTexture(237382)
+                    SetIconTexture(resultRow.icon, 237382)
                     resultRow.icon:Show()
 
                 else
                     resultRow.text:SetText(data.name)
                     resultRow.text:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
-                    resultRow.icon:SetTexture(237382)
+                    SetIconTexture(resultRow.icon, 237382)
                     resultRow.icon:Show()
                 end
 
@@ -5326,8 +5358,15 @@ function MapSearch:MoveSelection(delta)
     if visibleCount == 0 then return end
 
     local newIndex = selectedResultIndex + delta
-    if newIndex < 0 then newIndex = 0
-    elseif newIndex > visibleCount then newIndex = visibleCount end
+    if EasyFind.db.mapResultsAbove then
+        -- Above: exit to editbox past last result, clamp at first
+        if newIndex > visibleCount then newIndex = 0
+        elseif newIndex < 1 then newIndex = 1 end
+    else
+        -- Below: exit to editbox past first result, clamp at last
+        if newIndex < 0 then newIndex = 0
+        elseif newIndex > visibleCount then newIndex = visibleCount end
+    end
 
     selectedResultIndex = newIndex
     navBtnFocused = false
@@ -5349,7 +5388,7 @@ function MapSearch:JumpToEnd()
     end
 end
 
-function MapSearch:UpdateSelectionHighlight()
+function MapSearch:UpdateSelectionHighlight(skipRefocus)
     for i = 1, MAX_RESULTS_POOL do
         local resultRow = resultButtons[i]
         if resultRow.selectionHighlight then
@@ -5372,7 +5411,7 @@ function MapSearch:UpdateSelectionHighlight()
         local wasNavigating = navFrame:IsKeyboardEnabled()
         navFrame:EnableKeyboard(false)
         if MapSearch.StopKeyRepeat then MapSearch.StopKeyRepeat() end
-        if wasNavigating and eb and not eb:HasFocus() then
+        if wasNavigating and not skipRefocus and eb and not eb:HasFocus() then
             eb:SetFocus()
         end
     end
@@ -5603,7 +5642,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
                     local pulse = animGroup:CreateAnimation("Alpha")
                     pulse:SetFromAlpha(1)
                     pulse:SetToAlpha(0.3)
-                    pulse:SetDuration(0.4)
+                    pulse:SetDuration(ANIM_DURATION)
                     extraPin.animGroup = animGroup
 
                     extraPin:EnableMouse(true)
@@ -5664,7 +5703,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
                     local alpha = animGroup:CreateAnimation("Alpha")
                     alpha:SetFromAlpha(1)
                     alpha:SetToAlpha(0.4)
-                    alpha:SetDuration(0.5)
+                    alpha:SetDuration(ANIM_DURATION)
                     extraHighlight.animGroup = animGroup
                     
                     self.extraHighlights[i-1] = extraHighlight
@@ -5682,7 +5721,11 @@ function MapSearch:ShowMultipleWaypoints(instances)
                     animGroup:SetLooping("BOUNCE")
                     local indMove = animGroup:CreateAnimation("Translation")
                     indMove:SetOffset(0, -10)
-                    indMove:SetDuration(0.4)
+                    indMove:SetDuration(ANIM_DURATION)
+                    local indAlpha = animGroup:CreateAnimation("Alpha")
+                    indAlpha:SetFromAlpha(1)
+                    indAlpha:SetToAlpha(0.4)
+                    indAlpha:SetDuration(ANIM_DURATION)
                     extraInd.animGroup = animGroup
 
                     self.extraIndicators[i-1] = extraInd
@@ -5709,9 +5752,6 @@ function MapSearch:ShowMultipleWaypoints(instances)
             end
             
             pin:Show()
-            if pin.animGroup and EasyFind.db.blinkingPins then
-                pin.animGroup:Play()
-            end
 
             -- Position and show the highlight box
             highlight:SetSize(highlightSize, highlightSize)
@@ -5719,10 +5759,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
             highlight:SetPoint("CENTER", pin, "CENTER", 0, 0)
             ResizeHighlightBorders(highlight)
             highlight:Show()
-            if highlight.animGroup then
-                highlight.animGroup:Play()
-            end
-            
+
             -- Position and show the indicator
             ind:SetSize(indicatorSize, indicatorSize)
             if ind.glow then
@@ -5731,8 +5768,11 @@ function MapSearch:ShowMultipleWaypoints(instances)
             ind:ClearAllPoints()
             ind:SetPoint("BOTTOM", highlight, "TOP", 0, 2)
             ind:Show()
-            if ind.animGroup then
-                ind.animGroup:Play()
+
+            if ind.animGroup then ind.animGroup:Play() end
+            if EasyFind.db.blinkingPins then
+                if pin.animGroup then pin.animGroup:Play() end
+                if highlight.animGroup then highlight.animGroup:Play() end
             end
         end
     end
@@ -5785,28 +5825,22 @@ function MapSearch:ShowWaypointAt(x, y, icon, category)
     waypointPin.isLocalSearch = not isGlobalSearch
     waypointPin:Show()
 
-    -- Start pin animation (pulsing glow)
-    if waypointPin.animGroup and EasyFind.db.blinkingPins then
-        waypointPin.animGroup:Play()
-    end
-    
     -- Resize and position highlight
     highlightFrame:SetSize(highlightSize, highlightSize)
     highlightFrame:ClearAllPoints()
     highlightFrame:SetPoint("CENTER", waypointPin, "CENTER", 0, 0)
     ResizeHighlightBorders(highlightFrame)
     highlightFrame:Show()
-    
+
     -- Resize indicator and its glow
     indicatorFrame:SetSize(indicatorSize, indicatorSize)
     indicatorFrame.glow:SetSize(indicatorGlowSize, indicatorGlowSize)
     indicatorFrame:Show()
-    
-    if highlightFrame.animGroup then
-        highlightFrame.animGroup:Play()
-    end
-    if indicatorFrame.animGroup then
-        indicatorFrame.animGroup:Play()
+
+    if indicatorFrame.animGroup then indicatorFrame.animGroup:Play() end
+    if EasyFind.db.blinkingPins then
+        if waypointPin.animGroup then waypointPin.animGroup:Play() end
+        if highlightFrame.animGroup then highlightFrame.animGroup:Play() end
     end
 
     -- Auto-track on minimap if requested by navigate button
@@ -5846,11 +5880,11 @@ function MapSearch:HighlightPin(pin)
     highlightFrame:Show()
     indicatorFrame:Show()
 
-    if highlightFrame.animGroup then
-        highlightFrame.animGroup:Play()
-    end
     if indicatorFrame.animGroup then
         indicatorFrame.animGroup:Play()
+    end
+    if EasyFind.db.blinkingPins and highlightFrame.animGroup then
+        highlightFrame.animGroup:Play()
     end
 end
 
@@ -6032,6 +6066,43 @@ function MapSearch:UpdateResultsWidth()
         if w and w > 1 then
             resultsFrame:SetWidth(w)
         end
+    end
+end
+
+function MapSearch:RefreshResultsAnchor()
+    if not resultsFrame or not resultsFrame:IsShown() then return end
+    local anchor = activeSearchFrame or searchFrame
+    if isGlobalSearch and globalSearchFrame then anchor = globalSearchFrame end
+    resultsFrame:ClearAllPoints()
+    if EasyFind.db.mapResultsAbove then
+        resultsFrame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, -8)
+    else
+        resultsFrame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, 8)
+    end
+end
+
+function MapSearch:UpdateBlinkingPins()
+    local blinking = EasyFind.db.blinkingPins
+
+    local function Toggle(frame)
+        if not frame or not frame.animGroup then return end
+        if blinking and frame:IsShown() then
+            frame.animGroup:Play()
+        else
+            frame.animGroup:Stop()
+            frame:SetAlpha(1)
+        end
+    end
+
+    -- Pins and highlights are gated by blinkingPins
+    Toggle(waypointPin)
+    Toggle(highlightFrame)
+
+    if self.extraPins then
+        for _, pin in ipairs(self.extraPins) do Toggle(pin) end
+    end
+    if self.extraHighlights then
+        for _, hl in ipairs(self.extraHighlights) do Toggle(hl) end
     end
 end
 
