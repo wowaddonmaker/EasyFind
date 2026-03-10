@@ -279,11 +279,12 @@ local waypointController      -- Invisible controller that drives OnUpdate
 
 local matan2, mcos, msin, msqrt = math.atan2, math.cos, math.sin, math.sqrt
 local GetPlayerFacing = GetPlayerFacing
-local NEAR_RING_RADIUS = 22   -- pixels from minimap center to ring edge
+local UnitPosition = UnitPosition
+local NEAR_RING_RADIUS = 28   -- pixels from minimap center to ring edge
 
 -- Minimap yard radius: use C_Minimap.GetViewRadius() (available 11.x+) for
--- exact per-frame values. Falls back to HereBeDragons-style lookup tables
--- for older clients (indoor/outdoor split, zoom 0–5).
+-- exact per-frame values. Falls back to standard lookup tables
+-- for older clients (indoor/outdoor split, zoom 0-5).
 local MINIMAP_SIZE_INDOOR  = { [0]=300, [1]=240, [2]=180, [3]=120, [4]=80, [5]=50 }
 local MINIMAP_SIZE_OUTDOOR = { [0]=466.67, [1]=400, [2]=333.33, [3]=266.67, [4]=200, [5]=133.33 }
 
@@ -304,11 +305,19 @@ local ShowSuperTrackGlow, HideSuperTrackGlow
 -- Blizzard waypoint integration - we place Blizzard's native waypoint and add
 -- our perimeter glow on top.  efPlacedWaypoint tracks whether we own the pin.
 local efPlacedWaypoint = false
-local cachedWPMapID, cachedWPx, cachedWPy  -- cached coords to avoid per-frame allocs
 local DEFAULT_ARRIVAL_DISTANCE = 10
 local function GetArrivalDistance()
     return EasyFind.db.arrivalDistance or DEFAULT_ARRIVAL_DISTANCE
 end
+
+-- Cached waypoint data (refreshed on USER_WAYPOINT_UPDATED, not every frame)
+local cachedWPMapID
+local cachedWPWorldX, cachedWPWorldY  -- world-space position (same space as UnitPosition)
+local cachedPlayerVec                 -- reusable Vector2D for one-time waypoint conversion
+local cachedAngle = 0
+local cachedDist = 0
+local cachedViewRadius = 300
+local cachedRotateMinimap = GetCVar("rotateMinimap") == "1"
 
 local function CreateWaypointTracker()
     -- Controller: invisible frame that runs the shared OnUpdate
@@ -318,18 +327,19 @@ local function CreateWaypointTracker()
         waypointController:Hide()
     end
 
-    -- Perimeter glow (shown behind Blizzard's supertrack arrow when waypoint is far)
+    -- Perimeter glow (shown behind Blizzard's supertrack arrow when waypoint is far).
+    -- The minimap perimeter arrow is a native C++ element (not a Lua frame),
+    -- so we position a centered glow at the same perimeter point.
     if not superTrackGlow then
         local glowSize = 48
         superTrackGlow = CreateFrame("Frame", "EasyFindMinimapGlow", UIParent)
         superTrackGlow:SetSize(glowSize, glowSize)
         superTrackGlow:SetFrameStrata("HIGH")
         superTrackGlow:SetFrameLevel(100)
-        superTrackGlow.glowSize = glowSize
 
-        -- Star glow effect (same as Blizzard waypoint glow)
+        -- Centered star glow (radially symmetric, no rotation needed)
         local glow = superTrackGlow:CreateTexture(nil, "ARTWORK")
-        glow:SetSize(glowSize * 2.2, glowSize * 2.2)
+        glow:SetSize(glowSize * 1.5, glowSize * 1.5)
         glow:SetPoint("CENTER")
         glow:SetTexture("Interface\\Cooldown\\star4")
         glow:SetVertexColor(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 0.7)
@@ -340,8 +350,8 @@ local function CreateWaypointTracker()
         ag:SetLooping("BOUNCE")
         local alpha = ag:CreateAnimation("Alpha")
         alpha:SetFromAlpha(1)
-        alpha:SetToAlpha(0.5)
-        alpha:SetDuration(0.5)
+        alpha:SetToAlpha(0.4)
+        alpha:SetDuration(0.6)
         superTrackGlow.animGroup = ag
         superTrackGlow:Hide()
     end
@@ -353,14 +363,13 @@ local function CreateWaypointTracker()
         nearTrackFrame:SetFrameStrata("HIGH")
         nearTrackFrame:SetFrameLevel(100)
 
-        local ringSize = (NEAR_RING_RADIUS * 2 + 6) * 0.8  -- 20% smaller
+        local ringSize = NEAR_RING_RADIUS * 2 + 6
         local ringLayers = {}
         for i = 1, 2 do
             local layer = nearTrackFrame:CreateTexture(nil, "OVERLAY", nil, i)
             layer:SetSize(ringSize, ringSize)
             layer:SetPoint("CENTER", Minimap, "CENTER", 0, 0)
-            layer:SetTexture(131016)
-            layer:SetTexCoord(0.25, 0.5, 0.875, 1.0)
+            layer:SetTexture("Interface\\AddOns\\EasyFind\\textures\\near-track-ring")
             layer:SetBlendMode("ADD")
             layer:SetVertexColor(1, 1, 0.3, 1)
             ringLayers[i] = layer
@@ -376,12 +385,32 @@ local function CreateWaypointTracker()
         alpha:SetToAlpha(0.6)
         alpha:SetDuration(0.6)
         nearTrackFrame.animGroup = ag
+
+        -- Pulsing glow anchored to the waypoint pin position (shown during shrink)
+        local pinGlow = nearTrackFrame:CreateTexture(nil, "ARTWORK")
+        pinGlow:SetSize(36, 36)
+        pinGlow:SetTexture("Interface\\Cooldown\\star4")
+        pinGlow:SetVertexColor(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 0.7)
+        pinGlow:SetBlendMode("ADD")
+        pinGlow:Hide()
+        nearTrackFrame.pinGlow = pinGlow
+
+        local pinGlowAG = nearTrackFrame:CreateAnimationGroup()
+        pinGlowAG:SetLooping("BOUNCE")
+        local pinGlowAlpha = pinGlowAG:CreateAnimation("Alpha")
+        pinGlowAlpha:SetFromAlpha(1)
+        pinGlowAlpha:SetToAlpha(0.4)
+        pinGlowAlpha:SetDuration(0.5)
+        nearTrackFrame.pinGlowAG = pinGlowAG
+
         nearTrackFrame:Hide()
     end
 
     -- OnUpdate: calculate angle + distance, show perimeter glow when far, ring when near, auto-clear on arrival
+    -- Uses UnitPosition (returns primitives) for zero per-frame allocations.
+    -- Waypoint world position cached until USER_WAYPOINT_UPDATED fires.
     waypointController:SetScript("OnUpdate", function(self, elapsed)
-        if not efPlacedWaypoint then
+        if not C_Map.HasUserWaypoint() or not C_SuperTrack.IsSuperTrackingUserWaypoint() then
             if self.lastMode then
                 self.lastMode = nil
             end
@@ -389,72 +418,70 @@ local function CreateWaypointTracker()
             return
         end
 
-        -- If user manually cleared the Blizzard waypoint, clean up
-        if not C_Map.HasUserWaypoint() then
-            HideSuperTrackGlow()
-            return
+        -- Resolve waypoint world position once (refreshed by USER_WAYPOINT_UPDATED)
+        if not cachedWPWorldX then
+            local wp = C_Map.GetUserWaypoint()
+            if not wp or not wp.position then
+                HideSuperTrackGlow()
+                return
+            end
+            cachedWPMapID = wp.uiMapID
+            if not cachedPlayerVec then
+                cachedPlayerVec = CreateVector2D(wp.position.x, wp.position.y)
+            else
+                cachedPlayerVec.x = wp.position.x
+                cachedPlayerVec.y = wp.position.y
+            end
+            local _, wWorld = C_Map.GetWorldPosFromMapPos(cachedWPMapID, cachedPlayerVec)
+            if not wWorld then return end
+            cachedWPWorldX = wWorld.x
+            cachedWPWorldY = wWorld.y
         end
 
-        local wpMapID = cachedWPMapID
-        local wx, wy = cachedWPx, cachedWPy
-        if not wpMapID or not wx or not wy then
-            HideSuperTrackGlow()
-            return
-        end
+        -- UnitPosition returns (posY, posX) as primitives (zero allocation)
+        -- posY corresponds to C_Map world .x, posX corresponds to .y
+        local upY, upX = UnitPosition("player")
+        if not upY then return end
 
-        local mapID = C_Map.GetBestMapForUnit("player")
-        if not mapID then return end
+        local dx = upY - cachedWPWorldX
+        local dy = upX - cachedWPWorldY
+        cachedAngle = matan2(dy, -dx)
 
-        local playerPos = C_Map.GetPlayerMapPosition(mapID, "player")
-        if not playerPos then return end
-
-        -- World coordinates for angle (works across continents)
-        local pCont, pWorld = C_Map.GetWorldPosFromMapPos(mapID, playerPos)
-        if not pWorld then return end
-
-        local wCont, wWorld = C_Map.GetWorldPosFromMapPos(wpMapID, CreateVector2D(wx, wy))
-        if not wWorld then return end
-
-        local dx = pWorld.x - wWorld.x
-        local dy = pWorld.y - wWorld.y
-        local angle = matan2(dy, -dx)
-
-        -- Adjust for minimap rotation
-        if GetCVar("rotateMinimap") == "1" then
+        if cachedRotateMinimap then
             local facing = GetPlayerFacing()
             if facing then
-                angle = angle - facing
+                cachedAngle = cachedAngle - facing
             end
         end
 
-        -- Distance in actual yards via map coordinate projection
-        -- Both positions must be on the same map for a meaningful distance
-        local dist
-        local px, py = playerPos:GetXY()
-        if mapID == wpMapID then
-            local mapWidth, mapHeight = C_Map.GetMapWorldSize(mapID)
-            local dxYards = (px - wx) * mapWidth
-            local dyYards = (py - wy) * mapHeight
-            dist = msqrt(dxYards * dxYards + dyYards * dyYards)
-        else
-            local wpMapPlayerPos = C_Map.GetPlayerMapPosition(wpMapID, "player")
-            if wpMapPlayerPos then
-                local wpPx, wpPy = wpMapPlayerPos:GetXY()
-                local mapWidth, mapHeight = C_Map.GetMapWorldSize(wpMapID)
-                local dxYards = (wpPx - wx) * mapWidth
-                local dyYards = (wpPy - wy) * mapHeight
-                dist = msqrt(dxYards * dxYards + dyYards * dyYards)
-            end
+        local rawDist = C_Navigation and C_Navigation.GetDistance and C_Navigation.GetDistance()
+        if rawDist and rawDist > 0 then
+            cachedDist = rawDist
         end
-        local viewRadius = GetMinimapYardRadius()
+        cachedViewRadius = GetMinimapYardRadius()
 
-        -- Auto-clear when player arrives at destination (skip if cross-map)
-        if dist and dist < GetArrivalDistance() then
-            MapSearch:ClearAll()
+        local angle = cachedAngle
+        local dist = cachedDist
+        local viewRadius = cachedViewRadius
+
+        -- C_Navigation returns 0 before the engine processes a fresh waypoint
+        if dist <= 0 then return end
+
+        if EasyFind.db.autoPinClear ~= false and dist < GetArrivalDistance() then
+            if efPlacedWaypoint then
+                MapSearch:ClearAll()
+            else
+                HideSuperTrackGlow()
+                C_SuperTrack.SetSuperTrackedUserWaypoint(false)
+                C_Map.ClearUserWaypoint()
+            end
             return
         end
 
-        if dist and dist < viewRadius then
+        -- Minimap pin becomes visible at 75% of the view radius
+        local showCircle = EasyFind.db.minimapGuideCircle ~= false
+        local showGlow = EasyFind.db.minimapArrowGlow ~= false
+        if dist < viewRadius * 0.75 then
             -- NEAR MODE: ring around player (Blizzard's pin is visible on minimap)
             if not self.lastMode or self.lastMode ~= "NEAR" then
                 self.lastMode = "NEAR"
@@ -463,28 +490,54 @@ local function CreateWaypointTracker()
                 superTrackGlow.animGroup:Stop()
                 superTrackGlow:Hide()
             end
-            if not nearTrackFrame:IsShown() then
-                nearTrackFrame:Show()
-                nearTrackFrame.animGroup:Play()
+            if showCircle then
+                if not nearTrackFrame:IsShown() then
+                    nearTrackFrame:Show()
+                    nearTrackFrame.animGroup:Play()
+                end
+            elseif nearTrackFrame:IsShown() then
+                nearTrackFrame.animGroup:Stop()
+                nearTrackFrame:Hide()
             end
-            -- Rotate ring so its built-in arrowhead points toward the waypoint
-            local rot = -(angle + math.pi / 4)
+            if showCircle then
+                local rot = -angle
 
-            -- Scale ring down as player approaches
-            local minimapPxRadius = Minimap:GetWidth() / 2
-            local pixelDist = (dist / viewRadius) * minimapPxRadius
-            local baseSize = nearTrackFrame.ringBaseSize
-            local arrowTipRadius = baseSize / 2 * 2.2
-            local scale = 1
-            if pixelDist < arrowTipRadius then
-                scale = pixelDist / arrowTipRadius
-                if scale < 0.15 then scale = 0.15 end
-            end
-            local sz = baseSize * scale
+                local minimapPxRadius = Minimap:GetWidth() / 2
+                local pixelDist = (dist / viewRadius) * minimapPxRadius
+                local userScale = EasyFind.db.guideCircleScale or 1.0
+                local baseSize = nearTrackFrame.ringBaseSize * userScale
+                local arrowTipPx = baseSize * 0.5
+                local pinHalf = 6
+                local shrinkThreshold = arrowTipPx + pinHalf
+                local shrinking = pixelDist < shrinkThreshold
+                local scale = 1
+                if shrinking then
+                    scale = pixelDist / shrinkThreshold
+                    if scale < 0.15 then scale = 0.15 end
+                end
+                local sz = baseSize * scale
 
-            for _, layer in ipairs(nearTrackFrame.ringLayers) do
-                layer:SetRotation(rot)
-                layer:SetSize(sz, sz)
+                for _, layer in ipairs(nearTrackFrame.ringLayers) do
+                    layer:SetRotation(rot)
+                    layer:SetSize(sz, sz)
+                end
+
+                -- Pulsing glow on the pin once the ring starts shrinking
+                local pinGlow = nearTrackFrame.pinGlow
+                local showPinGlow = EasyFind.db.minimapPinGlow ~= false
+                if showPinGlow and shrinking then
+                    local pinX = msin(angle) * pixelDist
+                    local pinY = mcos(angle) * pixelDist
+                    pinGlow:ClearAllPoints()
+                    pinGlow:SetPoint("CENTER", Minimap, "CENTER", pinX, pinY)
+                    if not pinGlow:IsShown() then
+                        pinGlow:Show()
+                        nearTrackFrame.pinGlowAG:Play()
+                    end
+                elseif pinGlow:IsShown() then
+                    nearTrackFrame.pinGlowAG:Stop()
+                    pinGlow:Hide()
+                end
             end
         else
             -- FAR MODE: perimeter glow
@@ -495,17 +548,21 @@ local function CreateWaypointTracker()
                 nearTrackFrame.animGroup:Stop()
                 nearTrackFrame:Hide()
             end
-            if not superTrackGlow:IsShown() then
-                superTrackGlow:Show()
-                superTrackGlow.animGroup:Play()
+            if showGlow then
+                if not superTrackGlow:IsShown() then
+                    superTrackGlow:Show()
+                    superTrackGlow.animGroup:Play()
+                end
+                -- Pull glow slightly inward so it sits over the arrow body
+                local perimeterRadius = Minimap:GetWidth() / 2 - 5
+                local glowX = msin(angle) * perimeterRadius
+                local glowY = mcos(angle) * perimeterRadius
+                superTrackGlow:ClearAllPoints()
+                superTrackGlow:SetPoint("CENTER", Minimap, "CENTER", glowX, glowY)
+            elseif superTrackGlow:IsShown() then
+                superTrackGlow.animGroup:Stop()
+                superTrackGlow:Hide()
             end
-            -- Position glow on minimap perimeter at the waypoint angle
-            local perimeterRadius = Minimap:GetWidth() / 2
-            local glowX = msin(angle) * perimeterRadius
-            local glowY = mcos(angle) * perimeterRadius
-            superTrackGlow:ClearAllPoints()
-            superTrackGlow:SetPoint("CENTER", Minimap, "CENTER", glowX, glowY)
-            superTrackGlow.glow:SetRotation(-angle)
         end
     end)
 end
@@ -516,10 +573,6 @@ ShowSuperTrackGlow = function()
 end
 
 HideSuperTrackGlow = function()
-    efPlacedWaypoint = false
-    cachedWPMapID = nil
-    cachedWPx = nil
-    cachedWPy = nil
     if waypointController then
         waypointController:Hide()
     end
@@ -537,16 +590,55 @@ end
 local loadingScreenFrame = CreateFrame("Frame")
 loadingScreenFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 loadingScreenFrame:RegisterEvent("USER_WAYPOINT_UPDATED")
+loadingScreenFrame:RegisterEvent("SUPER_TRACKING_CHANGED")
+loadingScreenFrame:RegisterEvent("NAVIGATION_DESTINATION_REACHED")
+loadingScreenFrame:RegisterEvent("CVAR_UPDATE")
 loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isReloadingUI)
-    if event == "USER_WAYPOINT_UPDATED" then
-        -- If we placed the waypoint and user cleared it externally, clean up glow
-        if efPlacedWaypoint and not C_Map.HasUserWaypoint() then
+    if event == "CVAR_UPDATE" then
+        -- isInitialLogin is repurposed here as the cvar name arg
+        if isInitialLogin == "rotateMinimap" then
+            cachedRotateMinimap = GetCVar("rotateMinimap") == "1"
+        end
+        return
+    end
+    if event == "NAVIGATION_DESTINATION_REACHED" then
+        if efPlacedWaypoint then
+            MapSearch:ClearAll()
+        else
+            HideSuperTrackGlow()
+            C_SuperTrack.SetSuperTrackedUserWaypoint(false)
+            C_Map.ClearUserWaypoint()
+        end
+        return
+    end
+    if event == "USER_WAYPOINT_UPDATED" or event == "SUPER_TRACKING_CHANGED" then
+        -- Invalidate cached waypoint so OnUpdate re-reads fresh coords
+        cachedWPMapID = nil
+        cachedWPWorldX = nil
+        cachedWPWorldY = nil
+        if EasyFind.db.autoTrackPins ~= false and C_Map.HasUserWaypoint() and not C_SuperTrack.IsSuperTrackingUserWaypoint() then
+            C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+            return
+        end
+        if C_Map.HasUserWaypoint() and C_SuperTrack.IsSuperTrackingUserWaypoint() then
+            ShowSuperTrackGlow()
+        else
+            if not C_Map.HasUserWaypoint() then
+                efPlacedWaypoint = false
+            end
             HideSuperTrackGlow()
         end
         return
     end
     -- PLAYER_ENTERING_WORLD
-    if isInitialLogin or isReloadingUI then return end  -- skip login/reload
+    if isInitialLogin or isReloadingUI then
+        C_Timer.After(0, function()
+            if C_Map.HasUserWaypoint() and C_SuperTrack.IsSuperTrackingUserWaypoint() then
+                ShowSuperTrackGlow()
+            end
+        end)
+        return
+    end
 
     -- Defer slightly so the map system has settled
     C_Timer.After(0, function()
@@ -2195,9 +2287,6 @@ function MapSearch:CreateHighlightFrame()
                 C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(viewingMapID, self.waypointX, self.waypointY))
                 C_SuperTrack.SetSuperTrackedUserWaypoint(true)
                 efPlacedWaypoint = true
-                cachedWPMapID = viewingMapID
-                cachedWPx = self.waypointX
-                cachedWPy = self.waypointY
                 ShowSuperTrackGlow()
             end
         end
@@ -4281,6 +4370,7 @@ function MapSearch:ScanAllFlightMasters()
     end
 
     cachedAllFlightMasters = allNodes
+    MapSearch._cachedFlightMasters = allNodes
     return allNodes
 end
 
@@ -4332,6 +4422,7 @@ function MapSearch:ScanAllDungeonEntrances()
     end
     
     cachedAllDungeonEntrances = allEntrances
+    MapSearch._cachedDungeonEntrances = allEntrances
     return allEntrances
 end
 
@@ -5523,9 +5614,6 @@ function MapSearch:ShowMultipleWaypoints(instances)
                                 C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(viewingMapID, self.waypointX, self.waypointY))
                                 C_SuperTrack.SetSuperTrackedUserWaypoint(true)
                                 efPlacedWaypoint = true
-                                cachedWPMapID = viewingMapID
-                                cachedWPx = self.waypointX
-                                cachedWPy = self.waypointY
                                 ShowSuperTrackGlow()
                             end
                         end
@@ -5845,6 +5933,7 @@ function MapSearch:ClearAll()
     self:ClearHighlight()
     -- Only clear Blizzard waypoint if EasyFind placed it
     if efPlacedWaypoint then
+        efPlacedWaypoint = false
         HideSuperTrackGlow()
         C_SuperTrack.SetSuperTrackedUserWaypoint(false)
         if C_Map.HasUserWaypoint() then
@@ -5870,9 +5959,6 @@ function MapSearch:TrackActivePin()
     C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, x, y))
     C_SuperTrack.SetSuperTrackedUserWaypoint(true)
     efPlacedWaypoint = true
-    cachedWPMapID = mapID
-    cachedWPx = x
-    cachedWPy = y
     ShowSuperTrackGlow()
 end
 
