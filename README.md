@@ -64,6 +64,8 @@ When you install EasyFind for the first time, you'll see an interactive setup ov
 | `/ef hide` | Hide the search bar |
 | `/ef show` | Show the search bar |
 | `/ef clear` | Dismiss all active highlights and guides (UI search, map POI, zone, breadcrumb) |
+| `/ef bug` | Get a link to submit a bug report on GitHub |
+| `/ef feature` | Get a link to submit a feature request on GitHub |
 
 Options are also available via ESC > Interface > AddOns > EasyFind.
 
@@ -97,6 +99,14 @@ EasyFind provides customizable keybinds:
 ## Moving the Search Bars
 
 Both search bars can be repositioned by holding **Shift** and dragging. The map search bar stays constrained to the bottom of the map frame.
+
+## Feedback
+
+Found a bug or have an idea? You can submit feedback through GitHub Issues:
+
+- **In-game**: Type `/ef bug` or `/ef feature`, or use the buttons at the bottom of the Options panel. A link will appear that you can copy and paste into your browser.
+- **On GitHub**: Open an issue directly at the [Issues page](https://github.com/wowaddonmaker/EasyFind/issues/new/choose).
+- **On CurseForge**: Leave a comment on the [CurseForge page](https://www.curseforge.com/wow/addons/easyfind).
 
 ## Links
 

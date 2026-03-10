@@ -33,7 +33,7 @@ All notable changes to EasyFind will be documented in this file.
 - **Search Results**: Results list is now scrollable with no hard cutoff
 
 ### Changed
-- **Waypoint Tracking**: Map pins now place a native WoW waypoint; the supertrack arrow and TomTom work normally
+- **Waypoint Tracking**: Map pins now place a native WoW waypoint with full supertrack arrow support
 
 ### Fixed
 - **Player Housing and Scenario Zones**: Clicking these in global search now navigates directly to the zone instead of placing a pin at the screen corner
