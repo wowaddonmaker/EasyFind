@@ -56,6 +56,12 @@ local DB_DEFAULTS = {
     showLoginMessage = true,   -- Show "EasyFind loaded!" message on login
     blinkingPins = false,      -- Animate (blink/pulse) map pins and highlights
     arrivalDistance = 10,      -- Yards - auto-clear waypoint when player is this close
+    minimapArrowGlow = true,   -- Pulsing glow on minimap perimeter arrow
+    minimapGuideCircle = true, -- Near-track ring + arrow around player on minimap
+    guideCircleScale = 1.0,    -- Scale multiplier for guide circle ring+arrow
+    minimapPinGlow = true,     -- Pulsing glow on map pin when guide circle shrinks onto it
+    autoPinClear = true,       -- Auto-clear map pin when player arrives
+    autoTrackPins = true,      -- Auto super-track newly placed map pins
     uiResultsAbove = false,    -- Show UI search results above the search bar
     mapResultsAbove = false,   -- Show map search results above the search bar
     panelOpacity = 0.9,        -- Options panel background opacity
@@ -73,6 +79,70 @@ local DB_DEFAULTS = {
         services = true,
     },
 }
+
+-- FEEDBACK URL POPUP
+local GITHUB_ISSUES_URL = "https://github.com/wowaddonmaker/EasyFind/issues/new"
+
+local function UrlEncode(str)
+    return str:gsub("([^%w%-%.%_%~ ])", function(c)
+        return sformat("%%%02X", c:byte())
+    end):gsub(" ", "+")
+end
+
+local feedbackPopup
+local function ShowFeedbackURL(url)
+    if not feedbackPopup then
+        local f = CreateFrame("Frame", "EasyFindFeedbackPopup", UIParent, "BackdropTemplate")
+        f:SetSize(460, 100)
+        f:SetPoint("CENTER", 0, 200)
+        f:SetFrameStrata("FULLSCREEN_DIALOG")
+        f:SetFrameLevel(100)
+        f:SetBackdrop({
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+            tile = true, tileSize = 32, edgeSize = 32,
+            insets = { left = 11, right = 12, top = 12, bottom = 11 },
+        })
+        f:SetBackdropColor(0, 0, 0, 0.95)
+
+        local label = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        label:SetPoint("TOP", 0, -16)
+        label:SetText("Press Ctrl+C to copy, then paste in your browser:")
+
+        local eb = CreateFrame("EditBox", nil, f, "InputBoxTemplate")
+        eb:SetSize(400, 20)
+        eb:SetPoint("TOP", label, "BOTTOM", 0, -8)
+        eb:SetAutoFocus(false)
+        eb:SetJustifyH("LEFT")
+        eb:SetScript("OnEscapePressed", function(self) self:ClearFocus(); f:Hide() end)
+        f.editBox = eb
+
+        local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
+        close:SetPoint("TOPRIGHT", -5, -5)
+
+        f:EnableMouse(true)
+        feedbackPopup = f
+    end
+    feedbackPopup:Show()
+    feedbackPopup.editBox:SetText(url)
+    feedbackPopup.editBox:SetCursorPosition(0)
+    feedbackPopup.editBox:SetFocus()
+    feedbackPopup.editBox:HighlightText()
+end
+
+local function OpenBugReport()
+    local version = ns.version or "unknown"
+    local url = GITHUB_ISSUES_URL .. "?template=bug_report.yml&version=" .. UrlEncode(version)
+    ShowFeedbackURL(url)
+end
+
+local function OpenFeatureRequest()
+    local url = GITHUB_ISSUES_URL .. "?template=feature_request.yml"
+    ShowFeedbackURL(url)
+end
+
+function EasyFind:OpenBugReport() OpenBugReport() end
+function EasyFind:OpenFeatureRequest() OpenFeatureRequest() end
 
 local function OnInitialize()
     if not EasyFindDB then
@@ -124,6 +194,10 @@ local function OnInitialize()
                 EasyFind:Print("Usage: /ef test <texture_path>")
                 EasyFind:Print("Example: /ef test Interface\\\\MINIMAP\\\\MiniMap-QuestArrow")
             end
+        elseif msg == "bug" then
+            OpenBugReport()
+        elseif msg == "feature" then
+            OpenFeatureRequest()
         elseif msg == "setup" then
             if ns.UI then
                 EasyFind.db.setupComplete = nil
@@ -132,7 +206,7 @@ local function OnInitialize()
         elseif msg == "whatsnew" then
             if ns.UI then ns.UI:ShowWhatsNew(ns.version) end
         else
-            EasyFind:Print("Usage: /ef show | /ef hide | /ef clear | /ef options")
+            EasyFind:Print("Usage: /ef show | hide | clear | options | bug | feature")
         end
     end
 
@@ -293,7 +367,7 @@ end
 -- MINIMAP BUTTON
 local minimapButton
 
--- Minimap shape quadrant table (matches LibDBIcon standard)
+-- Minimap shape quadrant table for non-round minimap support
 local minimapShapes = {
     ["ROUND"]                 = {true, true, true, true},
     ["SQUARE"]                = {false, false, false, false},
@@ -351,7 +425,7 @@ local function CreateMinimapButton()
     btn:SetFrameStrata("MEDIUM")
     btn:SetFrameLevel(8)
 
-    -- Border overlay (matches LibDBIcon exactly)
+    -- Border overlay
     local border = btn:CreateTexture(nil, "OVERLAY")
     border:SetSize(50, 50)
     border:SetTexture(136430)  -- MiniMap-TrackingBorder

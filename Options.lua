@@ -632,7 +632,7 @@ function Options:Initialize()
     optionsFrame.themeFlyout = themeFlyout
 
     -- SECTION 3: Map Search
-    local sec2 = CreateSection("Map Search", 135)
+    local sec2 = CreateSection("Map Search", 334)
 
     local resizeMapBtn = CreateFrame("Button", nil, sec2, "UIPanelButtonTemplate")
     resizeMapBtn:SetSize(160, 24)
@@ -667,7 +667,7 @@ function Options:Initialize()
     optionsFrame.zoneNavCheckbox = zoneNavCheckbox
 
     local mapIconSlider = CreateSlider(sec2, "MapIcon", "Icon Size", 0.5, 2.0, 0.1,
-        "Adjusts the size of search icons on the world map and in UI search.")
+        "Adjusts the size of map search result icons on the world map.")
     mapIconSlider:SetPoint("TOPLEFT", sec2, "TOPLEFT", COL_RIGHT, -28)
     mapIconSlider:SetValue(EasyFind.db.iconScale or 1.0)
     mapIconSlider:HookScript("OnValueChanged", function(self, value)
@@ -693,6 +693,16 @@ function Options:Initialize()
     end)
     optionsFrame.arrivalSlider = arrivalSlider
 
+    local circleScaleSlider = CreateSlider(sec2, "CircleScale", "Guide Circle Size", 0.5, 2.0, 0.1,
+        "Adjusts the size of the minimap guide circle and arrow that appears when tracking a map pin.",
+        function(val) return tostring(mfloor(val * 100 + 0.5)) .. "%" end)
+    circleScaleSlider:SetPoint("TOPLEFT", arrivalSlider, "BOTTOMLEFT", 0, -38)
+    circleScaleSlider:SetValue(EasyFind.db.guideCircleScale or 1.0)
+    circleScaleSlider:HookScript("OnValueChanged", function(self, value)
+        EasyFind.db.guideCircleScale = value
+    end)
+    optionsFrame.circleScaleSlider = circleScaleSlider
+
     local blinkingPinsCheckbox = CreateCheckbox(sec2, "BlinkingPins", "Blinking Map Pins",
         "When enabled, map search pins and highlight boxes pulse/blink to draw attention.\n\nWhen disabled (default), pins and highlights are shown with a steady glow. The indicator arrow still bobs.")
     blinkingPinsCheckbox:SetPoint("TOPLEFT", zoneNavCheckbox, "BOTTOMLEFT", 0, -4)
@@ -701,6 +711,51 @@ function Options:Initialize()
         EasyFind.db.blinkingPins = self:GetChecked()
     end)
     optionsFrame.blinkingPinsCheckbox = blinkingPinsCheckbox
+
+    local arrowGlowCheckbox = CreateCheckbox(sec2, "ArrowGlow", "Minimap Arrow Glow",
+        "When enabled, a pulsing glow highlights the minimap perimeter arrow that points toward your active map pin.\n\nDisable if you find the glow distracting.")
+    arrowGlowCheckbox:SetPoint("TOPLEFT", blinkingPinsCheckbox, "BOTTOMLEFT", 0, -4)
+    arrowGlowCheckbox:SetChecked(EasyFind.db.minimapArrowGlow ~= false)
+    arrowGlowCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.minimapArrowGlow = self:GetChecked()
+    end)
+    optionsFrame.arrowGlowCheckbox = arrowGlowCheckbox
+
+    local guideCircleCheckbox = CreateCheckbox(sec2, "GuideCircle", "Minimap Guide Circle",
+        "When enabled, a directional ring and arrow appears around your character on the minimap when a map pin is nearby, pointing toward the destination.\n\nDisable if you prefer only the default minimap pin.")
+    guideCircleCheckbox:SetPoint("TOPLEFT", arrowGlowCheckbox, "BOTTOMLEFT", 0, -4)
+    guideCircleCheckbox:SetChecked(EasyFind.db.minimapGuideCircle ~= false)
+    guideCircleCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.minimapGuideCircle = self:GetChecked()
+    end)
+    optionsFrame.guideCircleCheckbox = guideCircleCheckbox
+
+    local autoPinClearCheckbox = CreateCheckbox(sec2, "AutoPinClear", "Auto Map Pin Clear",
+        "When enabled, your map pin is automatically cleared when you arrive at the destination.\n\nDisable if you prefer to clear pins manually.")
+    autoPinClearCheckbox:SetPoint("TOPLEFT", guideCircleCheckbox, "BOTTOMLEFT", 0, -4)
+    autoPinClearCheckbox:SetChecked(EasyFind.db.autoPinClear ~= false)
+    autoPinClearCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.autoPinClear = self:GetChecked()
+    end)
+    optionsFrame.autoPinClearCheckbox = autoPinClearCheckbox
+
+    local autoTrackCheckbox = CreateCheckbox(sec2, "AutoTrack", "Auto Track Map Pins",
+        "When enabled, placing a map pin (Ctrl+Click) automatically starts tracking it on the minimap.\n\nWhen disabled, you must click the pin to start tracking.")
+    autoTrackCheckbox:SetPoint("TOPLEFT", autoPinClearCheckbox, "BOTTOMLEFT", 0, -4)
+    autoTrackCheckbox:SetChecked(EasyFind.db.autoTrackPins ~= false)
+    autoTrackCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.autoTrackPins = self:GetChecked()
+    end)
+    optionsFrame.autoTrackCheckbox = autoTrackCheckbox
+
+    local pinGlowCheckbox = CreateCheckbox(sec2, "PinGlow", "Map Pin Glow",
+        "When enabled, a pulsing glow appears on the minimap pin when the guide circle shrinks onto it.\n\nDisable if you find the glow distracting.")
+    pinGlowCheckbox:SetPoint("TOPLEFT", autoTrackCheckbox, "BOTTOMLEFT", 0, -4)
+    pinGlowCheckbox:SetChecked(EasyFind.db.minimapPinGlow ~= false)
+    pinGlowCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.minimapPinGlow = self:GetChecked()
+    end)
+    optionsFrame.pinGlowCheckbox = pinGlowCheckbox
 
     -- SECTION 4: Keyboard Shortcuts
     local sec4 = CreateSection("Keyboard Shortcuts", 220)
@@ -840,17 +895,38 @@ function Options:Initialize()
         preferredIndex = 3,
     }
 
+    -- Bottom buttons: 4 evenly spaced across 570px frame
+    -- 4 x 115px buttons + 5 x 22px gaps = 570px
+    local BTN_W = 115
+    local BTN_GAP = (FRAME_W - BTN_W * 4) / 5
+
     local resetAllBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
-    resetAllBtn:SetSize(130, 22)
-    resetAllBtn:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", 30, 18)
+    resetAllBtn:SetSize(BTN_W, 22)
+    resetAllBtn:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", BTN_GAP, 18)
     resetAllBtn:SetText("Reset All Settings")
     resetAllBtn:SetScript("OnClick", function()
         StaticPopup_Show("EASYFIND_RESET_ALL")
     end)
 
+    local bugBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
+    bugBtn:SetSize(BTN_W, 22)
+    bugBtn:SetPoint("LEFT", resetAllBtn, "RIGHT", BTN_GAP, 0)
+    bugBtn:SetText("Report a Bug")
+    bugBtn:SetScript("OnClick", function()
+        EasyFind:OpenBugReport()
+    end)
+
+    local featureBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
+    featureBtn:SetSize(BTN_W, 22)
+    featureBtn:SetPoint("LEFT", bugBtn, "RIGHT", BTN_GAP, 0)
+    featureBtn:SetText("Request a Feature")
+    featureBtn:SetScript("OnClick", function()
+        EasyFind:OpenFeatureRequest()
+    end)
+
     local resetPosBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
-    resetPosBtn:SetSize(130, 22)
-    resetPosBtn:SetPoint("BOTTOMRIGHT", optionsFrame, "BOTTOMRIGHT", -30, 18)
+    resetPosBtn:SetSize(BTN_W, 22)
+    resetPosBtn:SetPoint("LEFT", featureBtn, "RIGHT", BTN_GAP, 0)
     resetPosBtn:SetText("Reset Positions")
     resetPosBtn:SetScript("OnClick", function()
         StaticPopup_Show("EASYFIND_RESET_POSITIONS")
@@ -904,14 +980,21 @@ function Options:DoResetAll()
     EasyFind.db.showMinimapButton = true
     EasyFind.db.arrivalDistance = 10
     EasyFind.db.panelOpacity = 0.9
+    EasyFind.db.minimapArrowGlow = true
+    EasyFind.db.minimapGuideCircle = true
+    EasyFind.db.autoPinClear = true
+    EasyFind.db.autoTrackPins = true
+    EasyFind.db.minimapPinGlow = true
+    EasyFind.db.guideCircleScale = 1.0
     EasyFind.db.visible = true
 
     if ns.Highlight then
         ns.Highlight:ClearAll()
     end
     if ns.MapSearch then
-        ns.MapSearch:ClearHighlight()
+        ns.MapSearch:ClearAll()
         ns.MapSearch:ClearZoneHighlight()
+        ns.MapSearch.pendingWaypoint = nil
     end
 
     local old1, old2 = GetBindingKey("EASYFIND_TOGGLE")
@@ -944,7 +1027,13 @@ function Options:DoResetAll()
     optionsFrame.uiResultsAboveCheckbox:SetChecked(false)
     optionsFrame.mapResultsAboveCheckbox:SetChecked(false)
     optionsFrame.minimapBtnCheckbox:SetChecked(false)
+    optionsFrame.arrowGlowCheckbox:SetChecked(true)
+    optionsFrame.guideCircleCheckbox:SetChecked(true)
+    optionsFrame.autoPinClearCheckbox:SetChecked(true)
+    optionsFrame.autoTrackCheckbox:SetChecked(true)
+    optionsFrame.pinGlowCheckbox:SetChecked(true)
     optionsFrame.arrivalSlider:SetValue(10)
+    optionsFrame.circleScaleSlider:SetValue(1.0)
     optionsFrame.themeBtnText:SetText("Retail")
     optionsFrame.indicatorBtnText:SetText("EasyFind Arrow")
     optionsFrame.colorBtnText:SetText("Yellow")
