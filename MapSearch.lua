@@ -39,6 +39,7 @@ local GetMapInfoAtPosition   = C_Map.GetMapInfoAtPosition
 local SetUserWaypoint        = C_Map.SetUserWaypoint
 local GetAreaPOIForMap       = C_AreaPoiInfo and C_AreaPoiInfo.GetAreaPOIForMap
 local GetAreaPOIInfo         = C_AreaPoiInfo and C_AreaPoiInfo.GetAreaPOIInfo
+local GetDelvesForMap        = C_AreaPoiInfo and C_AreaPoiInfo.GetDelvesForMap
 local GetVignettePosition    = C_VignetteInfo and C_VignetteInfo.GetVignettePosition
 local GetDungeonEntrancesForMap   = C_EncounterJournal and C_EncounterJournal.GetDungeonEntrancesForMap
 local GetDungeonEntranceMapInfo   = C_EncounterJournal and C_EncounterJournal.GetDungeonEntranceMapInfo
@@ -48,6 +49,17 @@ local GetUserWaypoint        = C_Map.GetUserWaypoint
 local GetWorldPosFromMapPos  = C_Map.GetWorldPosFromMapPos
 local GetMapRectOnMap        = C_Map.GetMapRectOnMap
 local GetMapHighlightInfoAtPosition = C_Map.GetMapHighlightInfoAtPosition
+
+local sgsub = string.gsub
+
+-- Normalize a name for instance matching: lowercase, hyphens to spaces, collapse whitespace.
+-- Handles cases like "Nexus-Point Xenas" vs "Nexus Point Xenas".
+local function normalizeName(name)
+    local n = slower(name)
+    n = sgsub(n, "%-", " ")
+    n = sgsub(n, "%s+", " ")
+    return n
+end
 
 local STAR_GLOW_TEXTURE = "Interface\\Cooldown\\star4"
 
@@ -2165,7 +2177,7 @@ function MapSearch:CreateResultButton(index)
     -- Hover preview: show pin at result coordinates while hovering
     resultRow:SetScript("OnEnter", function(self)
         local data = self.data
-        if not data or isGlobalSearch then return end
+        if not data then return end
         -- Only preview results with coordinates on the current map
         local coords = MapSearch:GetPreviewCoords(data)
         if not coords then return end
@@ -4130,6 +4142,41 @@ end
 --   2) The parent continent - to catch entrances the EJ API only returns for a
 --      neighboring zone.  Continent entrances owned by the current zone are included
 --      with coordinates projected to zone space.
+-- Check if a named instance entrance is visible on a given map.
+-- Checks both EJ dungeons/raids and delve area POIs.
+-- Returns x, y or nil.
+function MapSearch:FindEntranceOnMap(name, mapID)
+    local nameNorm = normalizeName(name)
+    if GetDungeonEntrancesForMap then
+        local entrances = GetDungeonEntrancesForMap(mapID)
+        if entrances then
+            for _, ej in ipairs(entrances) do
+                if ej.name and ej.position then
+                    local ejNorm = normalizeName(ej.name)
+                    if ejNorm == nameNorm or sfind(ejNorm, nameNorm, 1, true) or sfind(nameNorm, ejNorm, 1, true) then
+                        return ej.position.x, ej.position.y
+                    end
+                end
+            end
+        end
+    end
+    if GetDelvesForMap and GetAreaPOIInfo then
+        local delveIDs = GetDelvesForMap(mapID)
+        if delveIDs then
+            for _, poiID in ipairs(delveIDs) do
+                local dInfo = GetAreaPOIInfo(mapID, poiID)
+                if dInfo and dInfo.name and dInfo.position then
+                    local dNorm = normalizeName(dInfo.name)
+                    if dNorm == nameNorm or sfind(dNorm, nameNorm, 1, true) or sfind(nameNorm, dNorm, 1, true) then
+                        return dInfo.position.x, dInfo.position.y
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
 function MapSearch:ScanDungeonEntrances(mapID)
     mapID = mapID or WorldMapFrame:GetMapID()
     if not mapID then return {} end
@@ -4248,10 +4295,44 @@ function MapSearch:GetGlobalInstanceCache()
                 local key = e.name .. "|" .. child.mapID
                 if not seen[key] then
                     seen[key] = true
-                    local nameKey = slower(e.name)
+                    local nameKey = normalizeName(e.name)
                     if not nameSeen[nameKey] then
                         nameSeen[nameKey] = true
                         tinsert(globalInstanceCache, e)
+                    end
+                end
+            end
+
+            -- Delve entrances via dedicated API (separate from EJ dungeons/raids)
+            if GetDelvesForMap then
+                local delveIDs = GetDelvesForMap(child.mapID)
+                if delveIDs then
+                    local childInfo
+                    for _, poiID in ipairs(delveIDs) do
+                        local dInfo = GetAreaPOIInfo(child.mapID, poiID)
+                        if dInfo and dInfo.name and dInfo.position then
+                            local dKey = dInfo.name .. "|" .. child.mapID
+                            if not seen[dKey] then
+                                seen[dKey] = true
+                                local dNameKey = normalizeName(dInfo.name)
+                                if not nameSeen[dNameKey] then
+                                    nameSeen[dNameKey] = true
+                                    if not childInfo then childInfo = GetMapInfo(child.mapID) end
+                                    tinsert(globalInstanceCache, {
+                                        name = dInfo.name,
+                                        category = "delve",
+                                        icon = nil,
+                                        isStatic = true,
+                                        isDungeonEntrance = true,
+                                        entranceMapID = child.mapID,
+                                        x = dInfo.position.x,
+                                        y = dInfo.position.y,
+                                        pathPrefix = childInfo and childInfo.name or "",
+                                        keywords = {"delve", "delves", "instance"},
+                                    })
+                                end
+                            end
+                        end
                     end
                 end
             end
@@ -4266,7 +4347,7 @@ function MapSearch:GetGlobalInstanceCache()
                         local skey = loc.name .. "|" .. child.mapID
                         if not seen[skey] then
                             seen[skey] = true
-                            local nameKey = slower(loc.name)
+                            local nameKey = normalizeName(loc.name)
                             if not nameSeen[nameKey] then
                                 nameSeen[nameKey] = true
                                 tinsert(globalInstanceCache, {
@@ -4571,6 +4652,28 @@ function MapSearch:ScanMapPOIs()
         end
     end
     
+    -- Delve entrances via dedicated API (not returned by GetAreaPOIForMap)
+    if GetDelvesForMap then
+        local delveIDs = GetDelvesForMap(mapID)
+        if delveIDs then
+            for _, delvePoiID in ipairs(delveIDs) do
+                local dInfo = GetAreaPOIInfo(mapID, delvePoiID)
+                if dInfo and dInfo.name and dInfo.position then
+                    tinsert(pois, {
+                        name = dInfo.name,
+                        category = "delve",
+                        icon = nil,
+                        isStatic = true,
+                        isDungeonEntrance = true,
+                        x = dInfo.position.x,
+                        y = dInfo.position.y,
+                        keywords = {"delve", "delves", "instance"},
+                    })
+                end
+            end
+        end
+    end
+
     -- Second: Scan all children of the map canvas for pins
     for i = 1, select("#", canvas:GetChildren()) do
         local pin = select(i, canvas:GetChildren())
@@ -4596,6 +4699,21 @@ function MapSearch:GetPinInfo(pin)
     -- Flight masters - handled by ScanFlightMasters() with proper zone filtering
     if pin.taxiNodeData then
         return nil
+    end
+
+    -- Delve entrance pins
+    if pin.pinTemplate == "DelveEntrancePinTemplate" and pin.name then
+        return {
+            name = pin.name,
+            pin = pin,
+            pinType = "delve",
+            category = "delve",
+            icon = nil,
+            isStatic = false,
+            isDungeonEntrance = true,
+            x = pin.normalizedX,
+            y = pin.normalizedY,
+        }
     end
     
     -- Area POIs (boats, zeppelins, portals, etc) - but NOT quests
@@ -4802,6 +4920,8 @@ function MapSearch:OnSearchTextChanged(text)
                 icon = 237382,
                 isZone = true,
                 zoneMapID = zone.mapID,
+                zoneMapType = zone.mapType,
+                zoneParentMapID = zone.parentMapID,
                 pathPrefix = parentPath,
                 score = zone.score + 200,
             })
@@ -4809,29 +4929,105 @@ function MapSearch:OnSearchTextChanged(text)
     end
 
     -- Global search: zones + dungeon/raid/delve entrances (skip service POIs)
+    --
+    -- Instances get ONE authoritative source: the global instance cache.
+    -- Dungeon-type zone results from SearchZones are suppressed when the
+    -- cache covers them. Cache entries are promoted to zone-style display
+    -- (with full breadcrumb paths) using a mapID-to-path lookup.
     if isGlobalSearch then
         local instancePOIs = self:GetGlobalInstanceCache()
+
+        -- Build mapID → full path string from the world zones cache
+        -- (cachedWorldZones is populated by SearchZones above)
+        local pathForMap = {}
+        if cachedWorldZones then
+            for _, zone in ipairs(cachedWorldZones) do
+                if zone.path and not pathForMap[zone.mapID] then
+                    local parts = {}
+                    for _, p in ipairs(zone.path) do
+                        tinsert(parts, p.name)
+                    end
+                    tinsert(parts, zone.name)
+                    pathForMap[zone.mapID] = tconcat(parts, " > ")
+                end
+            end
+        end
+
+        -- Build set of normalized instance names for Dungeon-type zone suppression.
+        -- normalizeName handles hyphens vs spaces ("Nexus-Point" == "Nexus Point").
+        local instanceNameNorm = {}
+        for _, poi in ipairs(instancePOIs) do
+            if poi.isDungeonEntrance then
+                instanceNameNorm[normalizeName(poi.name)] = true
+            end
+        end
+
+        -- Suppress Dungeon-type zones covered by cache entries.
+        -- Non-instance Dungeon-type zones (covenant halls, etc.) are kept.
+        -- Also remove suppressed names from zoneNames so the cache entry
+        -- can be added in the promotion step below.
+        for i = #allPOIs, 1, -1 do
+            local poi = allPOIs[i]
+            if poi.isZone and poi.zoneMapType == Enum.UIMapType.Dungeon then
+                local poiNorm = normalizeName(poi.name)
+                for instNorm in pairs(instanceNameNorm) do
+                    if sfind(instNorm, poiNorm, 1, true) or sfind(poiNorm, instNorm, 1, true) then
+                        zoneNames[slower(poi.name)] = nil
+                        zoneNames[poiNorm] = nil
+                        tremove(allPOIs, i)
+                        break
+                    end
+                end
+            end
+        end
+
+        -- Enrich non-Dungeon zone results with entrance data (exact name match)
         wipe(reuseEntranceLookup)
         local entranceLookup = reuseEntranceLookup
         for _, poi in ipairs(instancePOIs) do
             if poi.isDungeonEntrance and poi.x and poi.y then
                 entranceLookup[slower(poi.name)] = poi
             end
-            if not zoneNames[slower(poi.name)] then
-                tinsert(allPOIs, poi)
-            end
         end
-        -- Enrich zone results with entrance data
         for _, poi in ipairs(allPOIs) do
             if poi.isZone and poi.zoneMapID then
                 local entrance = entranceLookup[slower(poi.name)]
                 if entrance then
+                    poi.name = entrance.name
                     poi.entranceX = entrance.x
                     poi.entranceY = entrance.y
                     poi.entranceMapID = entrance.entranceMapID
                     poi.entranceIcon = entrance.icon
                     poi.entranceCategory = entrance.category
+                    poi.category = entrance.category
+                    poi.icon = entrance.icon
+                    zoneNames[slower(entrance.name)] = true
                 end
+            end
+        end
+
+        -- Add cache entries as zone-style results with full breadcrumb paths.
+        -- Each entry gets isZone + entranceX/Y so both rendering and
+        -- preview/click use the same unified code path.
+        for _, poi in ipairs(instancePOIs) do
+            if not zoneNames[slower(poi.name)] and not zoneNames[normalizeName(poi.name)] then
+                local fullPath = pathForMap[poi.entranceMapID]
+                tinsert(allPOIs, {
+                    name = poi.name,
+                    category = poi.category,
+                    icon = poi.icon,
+                    isZone = true,
+                    isStatic = poi.isStatic,
+                    isDungeonEntrance = poi.isDungeonEntrance,
+                    zoneMapID = poi.entranceMapID,
+                    entranceMapID = poi.entranceMapID,
+                    entranceX = poi.x,
+                    entranceY = poi.y,
+                    entranceIcon = poi.icon,
+                    entranceCategory = poi.category,
+                    pathPrefix = fullPath or poi.pathPrefix,
+                    keywords = poi.keywords,
+                })
             end
         end
     else
@@ -4868,11 +5064,14 @@ function MapSearch:OnSearchTextChanged(text)
             if poi.isZone and poi.zoneMapID then
                 local entrance = entranceLookup[slower(poi.name)]
                 if entrance then
+                    poi.name = entrance.name
                     poi.entranceX = entrance.x
                     poi.entranceY = entrance.y
                     poi.entranceMapID = entrance.entranceMapID
                     poi.entranceIcon = entrance.icon
                     poi.entranceCategory = entrance.category
+                    poi.category = entrance.category
+                    poi.icon = entrance.icon
                 end
             end
         end
@@ -5179,6 +5378,7 @@ function MapSearch:ShowResults(results)
                 resultRow.text:SetText("|cff666666▼ " .. data.name .. "|r")
 
             elseif data.isZone then
+                local zoneIcon = data.category ~= "zone" and GetCategoryIcon(data.category) or 237382
                 if data.isIndented then
                     resultRow.icon:ClearAllPoints()
                     resultRow.icon:SetPoint("LEFT", 25, 0)
@@ -5187,20 +5387,20 @@ function MapSearch:ShowResults(results)
                     resultRow.text:SetPoint("RIGHT", resultsFrame, "LEFT", wrapX, 0)
                     resultRow.text:SetText(data.displayName or data.name)
                     resultRow.text:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
-                    SetIconTexture(resultRow.icon, 237382)
+                    SetIconTexture(resultRow.icon, zoneIcon)
                     resultRow.icon:SetSize(16, 16)
                     resultRow.icon:Show()
                     if resultRow.indentLine then resultRow.indentLine:Show() end
 
                 elseif data.pathPrefix and data.pathPrefix ~= "" then
                     resultRow.text:SetText("|cff666666" .. data.pathPrefix .. " >|r |cffffd100" .. data.name .. "|r")
-                    SetIconTexture(resultRow.icon, 237382)
+                    SetIconTexture(resultRow.icon, zoneIcon)
                     resultRow.icon:Show()
 
                 else
                     resultRow.text:SetText(data.name)
                     resultRow.text:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
-                    SetIconTexture(resultRow.icon, 237382)
+                    SetIconTexture(resultRow.icon, zoneIcon)
                     resultRow.icon:Show()
                 end
 
@@ -5491,18 +5691,31 @@ function MapSearch:SelectResult(data)
                 WorldMapFrame:SetMapID(data.zoneMapID)
             elseif data.entranceX and data.entranceY and data.entranceMapID then
                 DebugPrint("[EasyFind] SelectResult → ZONE+ENTRANCE branch, entranceMapID=", data.entranceMapID)
-                if EasyFind.db.navigateToZonesDirectly then
-                    self:ClearZoneHighlight()
-                end
-                self.pendingWaypoint = {
-                    x = data.entranceX, y = data.entranceY,
-                    icon = data.entranceIcon, category = data.entranceCategory,
-                    mapID = data.entranceMapID,
-                }
-                if EasyFind.db.navigateToZonesDirectly then
-                    WorldMapFrame:SetMapID(data.entranceMapID)
+                local currentMapID = WorldMapFrame:GetMapID()
+                if currentMapID == data.entranceMapID then
+                    self:ShowWaypointAt(data.entranceX, data.entranceY, data.entranceIcon, data.entranceCategory)
                 else
-                    self:HighlightZoneOnMap(data.entranceMapID, data.name)
+                    -- The stored entranceMapID may be a continent or different
+                    -- sub-zone. Check if the entrance is visible on the current
+                    -- map before navigating away.
+                    local ex, ey = self:FindEntranceOnMap(data.name, currentMapID)
+                    if ex then
+                        self:ShowWaypointAt(ex, ey, data.entranceIcon, data.entranceCategory)
+                    else
+                        if EasyFind.db.navigateToZonesDirectly then
+                            self:ClearZoneHighlight()
+                        end
+                        self.pendingWaypoint = {
+                            x = data.entranceX, y = data.entranceY,
+                            icon = data.entranceIcon, category = data.entranceCategory,
+                            mapID = data.entranceMapID,
+                        }
+                        if EasyFind.db.navigateToZonesDirectly then
+                            WorldMapFrame:SetMapID(data.entranceMapID)
+                        else
+                            self:HighlightZoneOnMap(data.entranceMapID, data.name)
+                        end
+                    end
                 end
             elseif EasyFind.db.navigateToZonesDirectly then
                 DebugPrint("[EasyFind] SelectResult → ZONE DIRECT branch, zoneMapID=", data.zoneMapID)
@@ -5527,22 +5740,11 @@ function MapSearch:SelectResult(data)
                 -- The stored entranceMapID may differ from the current map even
                 -- though the entrance is visible here (e.g. entrance recorded on
                 -- Azj-Kahet but user is viewing City of Threads, or vice-versa).
-                -- Ask the EJ API whether this entrance exists on the current map.
-                DebugPrint("[EasyFind] SelectResult → DUNGEON checking EJ API for current map")
-                local found = false
-                if GetDungeonEntrancesForMap then
-                    local entrances = GetDungeonEntrancesForMap(currentMapID)
-                    if entrances then
-                        for _, ej in ipairs(entrances) do
-                            if ej.name == data.name and ej.position then
-                                self:ShowWaypointAt(ej.position.x, ej.position.y, data.icon, data.category)
-                                found = true
-                                break
-                            end
-                        end
-                    end
-                end
-                if not found then
+                DebugPrint("[EasyFind] SelectResult → DUNGEON checking current map for entrance")
+                local ex, ey = self:FindEntranceOnMap(data.name, currentMapID)
+                if ex then
+                    self:ShowWaypointAt(ex, ey, data.icon, data.category)
+                else
                     if IsOrphanZone(data.entranceMapID) or EasyFind.db.navigateToZonesDirectly then
                         self:ClearZoneHighlight()
                         self.pendingWaypoint = {x = data.x, y = data.y, icon = data.icon, category = data.category, mapID = data.entranceMapID}
@@ -5792,6 +5994,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
 end
 
 function MapSearch:ShowWaypointAt(x, y, icon, category)
+    if not x or not y then return end
     self:ClearHighlight()
 
     -- Save pin state so it can be restored after map close/reopen or map change
@@ -5956,25 +6159,32 @@ function MapSearch:GetPreviewCoords(data)
     end
     -- Direct POI coordinates
     if data.x and data.y and not data.isZone then
-        -- Dungeon entrance on a different map - check EJ API for current map
         if data.isDungeonEntrance and data.entranceMapID and data.entranceMapID ~= currentMapID then
-            if GetDungeonEntrancesForMap then
-                local entrances = GetDungeonEntrancesForMap(currentMapID)
-                if entrances then
-                    for _, ej in ipairs(entrances) do
-                        if ej.name == data.name and ej.position then
-                            return { x = ej.position.x, y = ej.position.y, icon = data.icon, category = data.category }
-                        end
-                    end
-                end
+            local ex, ey = MapSearch:FindEntranceOnMap(data.name, currentMapID)
+            if ex then
+                return { x = ex, y = ey, icon = data.icon, category = data.category }
             end
-            return nil  -- not visible on current map
+            return nil
         end
         return { x = data.x, y = data.y, icon = data.icon, category = data.category }
     end
-    -- Zone with entrance on the current map
-    if data.isZone and data.entranceX and data.entranceY and data.entranceMapID == currentMapID then
-        return { x = data.entranceX, y = data.entranceY, icon = data.entranceIcon, category = data.entranceCategory }
+    -- Zone with entrance data
+    if data.isZone and data.entranceX and data.entranceY and data.entranceMapID then
+        if data.entranceMapID == currentMapID then
+            return { x = data.entranceX, y = data.entranceY, icon = data.entranceIcon, category = data.entranceCategory }
+        end
+        local ex, ey = MapSearch:FindEntranceOnMap(data.name, currentMapID)
+        if ex then
+            return { x = ex, y = ey, icon = data.entranceIcon, category = data.entranceCategory }
+        end
+    end
+    -- Instance zone without entrance coords: try live API as fallback
+    if data.isZone and not data.entranceMapID
+       and (data.category == "dungeon" or data.category == "raid" or data.category == "delve") then
+        local ex, ey = MapSearch:FindEntranceOnMap(data.name, currentMapID)
+        if ex then
+            return { x = ex, y = ey, icon = data.icon, category = data.category }
+        end
     end
     return nil
 end
