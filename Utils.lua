@@ -109,11 +109,89 @@ ns.RESULT_ICON_SIZE = 18
 ns.SEARCHBAR_HEIGHT = 30      -- base search bar frame height (before font scaling)
 ns.SEARCHBAR_FILL = 0.55      -- fraction of bar height filled by text/icon
 ns.SEARCHBAR_ICON_SCALE = 0.75 -- icon size relative to editBox height (font glyphs are shorter than line height)
+ns.CLEAR_BTN_SIZE = 18         -- base clear button size (before font scaling)
 local EasyFindSearchFont = CreateFont("EasyFindSearchFont")
 local baseFont = Game15Font_Shadow or GameFontNormal
 EasyFindSearchFont:CopyFontObject(baseFont)
 EasyFindSearchFont:SetFont((baseFont:GetFont()), 12, select(3, baseFont:GetFont()))
 ns.SEARCHBAR_FONT = "EasyFindSearchFont"
+
+-- Custom 3-part search bar border with chamfered corners.
+-- Fill (BACKGROUND) and border (ARTWORK) use identical shapes from custom TGA textures.
+-- Fill is tinted black with tunable opacity; border uses Blizzard's action bar gray.
+local SEARCH_TEX_FILL = "Interface\\AddOns\\EasyFind\\Textures\\SearchBarFill"
+local SEARCH_TEX_BORDER = "Interface\\AddOns\\EasyFind\\Textures\\SearchBarBorder"
+local SEARCH_CAP_W = 8
+local SEARCH_TEX_W = 64
+local TC_LEFT  = {0, SEARCH_CAP_W / SEARCH_TEX_W, 0, 1}
+local TC_MID   = {SEARCH_CAP_W / SEARCH_TEX_W, 1 - SEARCH_CAP_W / SEARCH_TEX_W, 0, 1}
+local TC_RIGHT = {1 - SEARCH_CAP_W / SEARCH_TEX_W, 1, 0, 1}
+local BORDER_R, BORDER_G, BORDER_B = 0.42, 0.42, 0.42
+
+local function CreateTexPart(frame, layer, texPath, tc, vertR, vertG, vertB, vertA)
+    local tex = frame:CreateTexture(nil, layer)
+    tex:SetTexture(texPath)
+    tex:SetTexCoord(unpack(tc))
+    tex:SetVertexColor(vertR, vertG, vertB, vertA)
+    return tex
+end
+
+function ns.CreateSearchBorder(frame)
+    local fillLeft = CreateTexPart(frame, "BACKGROUND", SEARCH_TEX_FILL, TC_LEFT, 0, 0, 0, 1)
+    fillLeft:SetPoint("TOPLEFT")
+    fillLeft:SetPoint("BOTTOMLEFT")
+    fillLeft:SetWidth(SEARCH_CAP_W)
+
+    local fillRight = CreateTexPart(frame, "BACKGROUND", SEARCH_TEX_FILL, TC_RIGHT, 0, 0, 0, 1)
+    fillRight:SetPoint("TOPRIGHT")
+    fillRight:SetPoint("BOTTOMRIGHT")
+    fillRight:SetWidth(SEARCH_CAP_W)
+
+    local fillMid = CreateTexPart(frame, "BACKGROUND", SEARCH_TEX_FILL, TC_MID, 0, 0, 0, 1)
+    fillMid:SetPoint("TOPLEFT", fillLeft, "TOPRIGHT")
+    fillMid:SetPoint("BOTTOMRIGHT", fillRight, "BOTTOMLEFT")
+
+    local borderLeft = CreateTexPart(frame, "ARTWORK", SEARCH_TEX_BORDER, TC_LEFT, BORDER_R, BORDER_G, BORDER_B, 1)
+    borderLeft:SetAllPoints(fillLeft)
+
+    local borderRight = CreateTexPart(frame, "ARTWORK", SEARCH_TEX_BORDER, TC_RIGHT, BORDER_R, BORDER_G, BORDER_B, 1)
+    borderRight:SetAllPoints(fillRight)
+
+    local borderMid = CreateTexPart(frame, "ARTWORK", SEARCH_TEX_BORDER, TC_MID, BORDER_R, BORDER_G, BORDER_B, 1)
+    borderMid:SetAllPoints(fillMid)
+
+    frame.searchBorder = {
+        fillLeft = fillLeft, fillMid = fillMid, fillRight = fillRight,
+        borderLeft = borderLeft, borderMid = borderMid, borderRight = borderRight,
+    }
+end
+
+function ns.ScaleSearchBorder(frame, scale)
+    if not frame.searchBorder then return end
+    local sb = frame.searchBorder
+    local capW = SEARCH_CAP_W * scale
+    sb.fillLeft:SetWidth(capW)
+    sb.fillRight:SetWidth(capW)
+end
+
+function ns.SetSearchBorderShown(frame, shown)
+    if not frame.searchBorder then return end
+    local sb = frame.searchBorder
+    sb.fillLeft:SetShown(shown)
+    sb.fillMid:SetShown(shown)
+    sb.fillRight:SetShown(shown)
+    sb.borderLeft:SetShown(shown)
+    sb.borderMid:SetShown(shown)
+    sb.borderRight:SetShown(shown)
+end
+
+function ns.SetSearchBorderBgAlpha(frame, alpha)
+    if not frame.searchBorder then return end
+    local sb = frame.searchBorder
+    sb.fillLeft:SetAlpha(alpha)
+    sb.fillMid:SetAlpha(alpha)
+    sb.fillRight:SetAlpha(alpha)
+end
 
 local EasyFindLeafFont = CreateFont("EasyFindLeafFont")
 EasyFindLeafFont:CopyFontObject(baseFont)
@@ -588,7 +666,7 @@ end
 -- Returns the button; caller must set OnClick and OnEnter scripts.
 function Utils.CreateClearButton(parent, globalName)
     local btn = CreateFrame("Button", globalName, parent)
-    btn:SetSize(18, 18)
+    btn:SetSize(ns.CLEAR_BTN_SIZE, ns.CLEAR_BTN_SIZE)
     btn:SetPoint("RIGHT", parent, "RIGHT", -8, 0)
     btn:EnableMouse(true)
     btn:Hide()

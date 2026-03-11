@@ -23,7 +23,9 @@ EasyFind.db = {}
 -- SavedVariables defaults - new keys are auto-merged for existing users
 local DB_DEFAULTS = {
     visible = true,
-    iconScale = 1.0,
+    enableUISearch = true,
+    enableMapSearch = true,
+    iconScale = 0.8,
     uiSearchScale = 1.0,
     mapSearchScale = 1.0,
     mapSearchWidth = 1.0,
@@ -33,7 +35,8 @@ local DB_DEFAULTS = {
     mapResultsScale = 1.0,
     mapResultsWidth = 1.0,
     searchBarOpacity = 0.75,  -- ns.DEFAULT_OPACITY
-    fontSize = 1.0,            -- Font size multiplier (0.5-2.0)
+    fontSize = 1.0,            -- UI search font size multiplier (0.5-2.0)
+    mapFontSize = 1.0,         -- Map search font size multiplier (0.5-2.0)
     uiSearchPosition = nil,    -- {point, relPoint, x, y}
     mapSearchPosition = nil,   -- x offset from map left edge
     globalSearchPosition = nil, -- x offset from map right edge
@@ -52,7 +55,7 @@ local DB_DEFAULTS = {
     pinnedMapItems = {},       -- Pinned map search results (persist across sessions)
     pinsCollapsed = false,     -- Whether the "Pinned Paths" header is collapsed
     showLoginMessage = true,   -- Show "EasyFind loaded!" message on login
-    blinkingPins = true,       -- Pulse map pins and highlights in sync with indicator bob
+    blinkingPins = false,      -- Pulse map pins and highlights in sync with indicator bob
     arrivalDistance = 10,      -- Yards - auto-clear waypoint when player is this close
     minimapArrowGlow = true,   -- Pulsing glow on minimap perimeter arrow
     minimapGuideCircle = true, -- Near-track ring + arrow around player on minimap
@@ -199,6 +202,18 @@ local function OnInitialize()
                 EasyFind:Print("Usage: /ef test <texture_path>")
                 EasyFind:Print("Example: /ef test Interface\\\\MINIMAP\\\\MiniMap-QuestArrow")
             end
+        elseif msg == "noborder" then
+            local sf = _G["EasyFindSearchFrame"]
+            if sf then
+                ns.SetSearchBorderShown(sf, false)
+                sf:SetBackdrop(nil)
+                EasyFind:Print("Border hidden - /reload to restore")
+            end
+        elseif msg == "reset" then
+            if ns.Options then
+                ns.Options:Initialize()
+                StaticPopup_Show("EASYFIND_RESET_ALL")
+            end
         elseif msg == "bug" then
             OpenBugReport()
         elseif msg == "feature" then
@@ -211,12 +226,12 @@ local function OnInitialize()
         elseif msg == "whatsnew" then
             if ns.UI then ns.UI:ShowWhatsNew(ns.version) end
         else
-            EasyFind:Print("Usage: /ef show | hide | clear | options | bug | feature")
+            EasyFind:Print("Usage: /ef show | hide | clear | options | reset | bug | feature")
         end
     end
 
     if EasyFind.db.showLoginMessage ~= false then
-        EasyFind:Print("EasyFind loaded! Use /ef o to open options.")
+        EasyFind:Print("EasyFind loaded. Use /ef o to open options. (Disable this message in General settings.)")
     end
 end
 
@@ -231,9 +246,13 @@ local function OnPlayerLogin()
                 EasyFind:Print("|cffff4444" .. name .. " failed to initialize: " .. tostring(err) .. "|r")
             end
         end
-        SafeInit(ns.UI,        "UI")
-        SafeInit(ns.Highlight, "Highlight")
-        SafeInit(ns.MapSearch,  "MapSearch")
+        if EasyFind.db.enableUISearch ~= false then
+            SafeInit(ns.UI,        "UI")
+            SafeInit(ns.Highlight, "Highlight")
+        end
+        if EasyFind.db.enableMapSearch ~= false then
+            SafeInit(ns.MapSearch,  "MapSearch")
+        end
         SafeInit(ns.Options,    "Options")
     end)
     -- Populate dynamic currencies and reputations after a short delay (APIs need the character loaded)

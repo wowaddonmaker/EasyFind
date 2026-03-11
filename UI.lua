@@ -385,7 +385,7 @@ end
 function UI:CreateSearchFrame()
     searchFrame = CreateFrame("Frame", "EasyFindSearchFrame", UIParent, "BackdropTemplate")
     searchFrame:SetSize(250, ns.SEARCHBAR_HEIGHT)
-    searchFrame:SetFrameStrata("HIGH")
+    searchFrame:SetFrameStrata("MEDIUM")
     searchFrame:SetMovable(true)
     searchFrame:EnableMouse(true)
     searchFrame:SetClampedToScreen(true)
@@ -398,28 +398,23 @@ function UI:CreateSearchFrame()
         searchFrame:SetPoint("TOP", UIParent, "TOP", 0, -12)
     end
 
-    -- Apply theme-appropriate backdrop (border only - atlas fills the background)
     local theme = GetActiveTheme()
+    local WHITE8x8 = "Interface\\BUTTONS\\WHITE8x8"
+    ns.CreateSearchBorder(searchFrame)
     if theme.searchBarRounded then
-        searchFrame:SetBackdrop({
-            edgeFile = TOOLTIP_BORDER,
-            edgeSize = 16,
-            insets = { left = 4, right = 4, top = 4, bottom = 4 }
-        })
-        searchFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
+        searchFrame:SetBackdrop(nil)
+        ns.SetSearchBorderShown(searchFrame, true)
+        ns.SetSearchBorderBgAlpha(searchFrame, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
     else
         searchFrame:SetBackdrop({
+            bgFile = WHITE8x8,
             edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
             edgeSize = 20,
             insets = { left = 5, right = 5, top = 5, bottom = 5 }
         })
+        searchFrame:SetBackdropColor(0, 0, 0, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
+        ns.SetSearchBorderShown(searchFrame, false)
     end
-
-    local bgTex = searchFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
-    bgTex:SetPoint("TOPLEFT", 4, -4)
-    bgTex:SetPoint("BOTTOMRIGHT", -4, 4)
-    bgTex:SetColorTexture(0, 0, 0, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
-    searchFrame.bgTex = bgTex
 
     -- Search icon
     local contentSz = ns.SEARCHBAR_HEIGHT * ns.SEARCHBAR_FILL
@@ -611,8 +606,8 @@ function UI:CreateSearchFrame()
     local toolbarFocus = 0
 
     local toolbarHighlight = CreateFrame("Frame", nil, UIParent)
-    toolbarHighlight:SetFrameStrata("FULLSCREEN_DIALOG")
-    toolbarHighlight:SetFrameLevel(10000)
+    toolbarHighlight:SetFrameStrata("MEDIUM")
+    toolbarHighlight:SetFrameLevel(searchFrame:GetFrameLevel() + 100)
     toolbarHighlight:Hide()
     local tbHL = toolbarHighlight:CreateTexture(nil, "OVERLAY")
     tbHL:SetAllPoints()
@@ -816,7 +811,7 @@ function UI:CreateSearchFrame()
 
     -- Smart Show: invisible hover zone that triggers show/hide
     local hoverZone = CreateFrame("Frame", "EasyFindHoverZone", UIParent)
-    hoverZone:SetFrameStrata("HIGH")
+    hoverZone:SetFrameStrata("MEDIUM")
     hoverZone:SetFrameLevel(searchFrame:GetFrameLevel() - 1)
     hoverZone:EnableMouse(true)
     hoverZone:SetSize(340, 76)  -- larger than the search bar to catch the mouse nearby
@@ -908,7 +903,7 @@ function UI:CreateResultsFrame()
     resultsFrame = CreateFrame("Frame", "EasyFindResultsFrame", searchFrame, "BackdropTemplate")
     resultsFrame:SetWidth(380)  -- Wide to accommodate tree indentation
     resultsFrame:SetPoint("TOP", searchFrame, "BOTTOM", 0, 5)
-    resultsFrame:SetFrameStrata("HIGH")
+    resultsFrame:SetFrameStrata("MEDIUM")
     resultsFrame:SetFrameLevel(searchFrame:GetFrameLevel() + 1)
     
     resultsFrame:SetBackdrop({
@@ -1069,10 +1064,17 @@ function UI:CreateResultButton(index)
     local headerTab = CreateFrame("Button", nil, resultRow)
     headerTab:SetAllPoints()
     headerTab:RegisterForClicks("LeftButtonUp")
-    headerTab:SetScript("OnClick", function(self)
-        local parent = self:GetParent()
-        parent:GetScript("OnClick")(parent)
+    headerTab:SetScript("OnClick", function(self, mouseButton)
+        local row = self:GetParent()
+        if mouseButton == "RightButton" then
+            row:GetScript("OnClick")(row, mouseButton)
+            return
+        end
+        if row.data then
+            UI:SelectResult(row.data)
+        end
     end)
+    headerTab:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     headerTab:Hide()
     resultRow.headerTab = headerTab
 
@@ -1091,24 +1093,85 @@ function UI:CreateResultButton(index)
     tabHoverOverlay:Hide()
     resultRow.tabHoverOverlay = tabHoverOverlay
 
-    -- +/- button texture on right side (using atlas)
-    local toggleIcon = headerTab:CreateTexture(nil, "ARTWORK")
+    -- +/- toggle button on right side (filter-button style)
+    local toggleBtn = CreateFrame("Button", nil, headerTab)
+    toggleBtn:SetSize(26, 25)
+    toggleBtn:SetPoint("RIGHT", headerTab, "RIGHT", -8, 0)
+    toggleBtn:SetFrameLevel(headerTab:GetFrameLevel() + 2)
+    toggleBtn:RegisterForClicks("LeftButtonUp")
+    toggleBtn:SetScript("OnClick", function(self)
+        local row = self:GetParent():GetParent()
+        if row.isPinHeader then
+            EasyFind.db.pinsCollapsed = not EasyFind.db.pinsCollapsed
+            if cachedHierarchical then
+                UI:ShowHierarchicalResults(cachedHierarchical, true)
+            end
+            return
+        end
+        if row.isPathNode then
+            local key = (row.pathNodeName or "") .. "_" .. (row.pathNodeDepth or 0)
+            local wasCollapsed = collapsedNodes[key]
+            collapsedNodes[key] = not collapsedNodes[key]
+            if wasCollapsed and row._containerEntry and cachedHierarchical then
+                for idx, entry in ipairs(cachedHierarchical) do
+                    if entry == row._containerEntry then
+                        ExpandContainer(entry, idx)
+                        break
+                    end
+                end
+            end
+            if cachedHierarchical then
+                UI:ShowHierarchicalResults(cachedHierarchical, true)
+            end
+        end
+    end)
+
+    local toggleBtnBg = toggleBtn:CreateTexture(nil, "ARTWORK")
+    toggleBtnBg:SetAllPoints()
+    toggleBtnBg:SetTexture(796424)
+    toggleBtnBg:Hide()
+    toggleBtn.btnBg = toggleBtnBg
+
+    local toggleIcon = toggleBtn:CreateTexture(nil, "OVERLAY")
     toggleIcon:SetSize(18, 17)
-    toggleIcon:SetPoint("RIGHT", headerTab, "RIGHT", -8, 0)
+    toggleIcon:SetPoint("CENTER")
     toggleIcon:SetAtlas("QuestLog-icon-expand")
     resultRow.toggleIcon = toggleIcon
 
-    local toggleHighlight = resultRow:CreateTexture(nil, "OVERLAY")
+    toggleBtn:SetHighlightTexture(130757)
+    toggleBtn:SetScript("OnEnter", function(self)
+        self.btnBg:Show()
+        local row = self:GetParent():GetParent()
+        if row.tabHoverOverlay then row.tabHoverOverlay:Show() end
+        if row.tabText then row.tabText:SetTextColor(0.90, 0.88, 0.85, 1.0) end
+    end)
+    toggleBtn:SetScript("OnLeave", function(self)
+        self.btnBg:Hide()
+        local row = self:GetParent():GetParent()
+        if not self:GetParent():IsMouseOver() then
+            if row.tabHoverOverlay then row.tabHoverOverlay:Hide() end
+            if row.tabText then
+                if row._isMatch then
+                    row.tabText:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1.0)
+                else
+                    row.tabText:SetTextColor(0.60, 0.58, 0.55, 1.0)
+                end
+            end
+        end
+    end)
+    resultRow.toggleBtn = toggleBtn
+
+    local toggleHighlight = headerTab:CreateTexture(nil, "OVERLAY")
     toggleHighlight:SetSize(26, 25)
-    toggleHighlight:SetPoint("CENTER", toggleIcon, "CENTER", 0, 0)
-    toggleHighlight:SetColorTexture(1, 1, 0, 0.3)
+    toggleHighlight:SetPoint("CENTER", toggleBtn, "CENTER", 0, 0)
+    toggleHighlight:SetColorTexture(0.3, 0.6, 1.0, 0.4)
     toggleHighlight:Hide()
     resultRow.toggleHighlight = toggleHighlight
 
     -- Header name text (child of headerTab)
     local tabText = headerTab:CreateFontString(nil, "OVERLAY", "Game15Font_Shadow")
     tabText:SetPoint("LEFT", headerTab, "LEFT", 10, 0)
-    tabText:SetPoint("RIGHT", toggleIcon, "LEFT", -4, 0)
+    tabText:SetPoint("RIGHT", toggleBtn, "LEFT", -4, 0)
     tabText:SetJustifyH("LEFT")
     tabText:SetTextColor(0.60, 0.58, 0.55, 1.0)    -- muted gray (normal state)
     resultRow.tabText = tabText
@@ -1122,10 +1185,6 @@ function UI:CreateResultButton(index)
         if parent.tabText then
             parent.tabText:SetTextColor(0.90, 0.88, 0.85, 1.0)  -- soft white (slightly muted)
         end
-        if parent.toggleIcon then
-            parent.toggleIcon:SetVertexColor(1.0, 1.0, 0.0, 1.0)  -- bright pure yellow
-        end
-
         -- Show tooltip for unearned currencies
         if parent.isUnearnedCurrency and unearnedTooltip then
             local tooltipText = parent.isPathNode and "This tab does not exist on this character yet" or "Currency not yet earned"
@@ -1154,10 +1213,6 @@ function UI:CreateResultButton(index)
                 parent.tabText:SetTextColor(0.60, 0.58, 0.55, 1.0) -- back to gray
             end
         end
-        if parent.toggleIcon then
-            parent.toggleIcon:SetVertexColor(1.0, 1.0, 1.0, 1.0)  -- normal (atlas provides color)
-        end
-
         -- Hide tooltip for unearned currencies
         if unearnedTooltip then
             unearnedTooltip:Hide()
@@ -1347,42 +1402,39 @@ function UI:CreateResultButton(index)
         end
 
         if self.isPathNode then
-            -- Check if click was near the +/- toggle icon
-            local cursorX = GetCursorPosition()
-            local scale = self:GetEffectiveScale()
+            -- Retail theme: headerTab and toggleBtn handle clicks directly
             local isRetailHeader = self.headerTab and self.headerTab:IsShown()
-            local isToggleClick = false
-
             if isRetailHeader then
-                -- Retail: toggle icon on right side - generous 55px zone
-                local btnRight = self:GetRight() * scale
-                isToggleClick = cursorX >= (btnRight - 55 * scale)
+                if self.data then
+                    UI:SelectResult(self.data)
+                end
             else
                 -- Classic: +/- icon on left side - 35px zone from icon start
+                local cursorX = GetCursorPosition()
+                local scale = self:GetEffectiveScale()
                 local btnLeft = self:GetLeft() * scale
                 local depth = self.pathNodeDepth or 0
                 local iconLeft = btnLeft + depth * 20 * scale  -- INDENT_PX = 20
-                isToggleClick = cursorX <= (iconLeft + 35 * scale)
-            end
+                local isToggleClick = cursorX <= (iconLeft + 35 * scale)
 
-            if isToggleClick then
-                local key = (self.pathNodeName or "") .. "_" .. (self.pathNodeDepth or 0)
-                local wasCollapsed = collapsedNodes[key]
-                collapsedNodes[key] = not collapsedNodes[key]
-                -- Lazy-expand container nodes on first open
-                if wasCollapsed and self._containerEntry and cachedHierarchical then
-                    for idx, entry in ipairs(cachedHierarchical) do
-                        if entry == self._containerEntry then
-                            ExpandContainer(entry, idx)
-                            break
+                if isToggleClick then
+                    local key = (self.pathNodeName or "") .. "_" .. (self.pathNodeDepth or 0)
+                    local wasCollapsed = collapsedNodes[key]
+                    collapsedNodes[key] = not collapsedNodes[key]
+                    if wasCollapsed and self._containerEntry and cachedHierarchical then
+                        for idx, entry in ipairs(cachedHierarchical) do
+                            if entry == self._containerEntry then
+                                ExpandContainer(entry, idx)
+                                break
+                            end
                         end
                     end
+                    if cachedHierarchical then
+                        UI:ShowHierarchicalResults(cachedHierarchical, true)
+                    end
+                elseif self.data then
+                    UI:SelectResult(self.data)
                 end
-                if cachedHierarchical then
-                    UI:ShowHierarchicalResults(cachedHierarchical, true)
-                end
-            elseif self.data then
-                UI:SelectResult(self.data)
             end
         elseif self.data then
             UI:SelectResult(self.data)
@@ -2109,7 +2161,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     if entry.isPathNode and theme.showHeaderTab then
                         -- Tab theme: place rep bar left of the toggle icon
                         resultRow.repBar:ClearAllPoints()
-                        resultRow.repBar:SetPoint("RIGHT", resultRow.toggleIcon, "LEFT", -4, 0)
+                        resultRow.repBar:SetPoint("RIGHT", resultRow.toggleBtn, "LEFT", -4, 0)
                         resultRow.tabText:ClearAllPoints()
                         resultRow.tabText:SetPoint("LEFT", resultRow.headerTab, "LEFT", 10, 0)
                         resultRow.tabText:SetPoint("RIGHT", resultRow.repBar, "LEFT", -4, 0)
@@ -2367,6 +2419,7 @@ function UI:RefreshResults()
 end
 
 function UI:HideResults()
+    if not searchFrame then return end
     if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
     if searchFrame.ClearToolbarFocus then searchFrame.ClearToolbarFocus() end
     resultsFrame:Hide()
@@ -2486,15 +2539,36 @@ function UI:UpdateSelectionHighlight(skipRefocus)
         end
         if resultRow.toggleHighlight then
             local showToggle = i == selectedIndex and toggleFocused
-            if showToggle then
+            local isPinToggle = resultRow.isPinHeader and resultRow.pinToggle and resultRow.pinToggle:IsShown()
+            if showToggle and isPinToggle then
                 resultRow.toggleHighlight:ClearAllPoints()
-                if resultRow.isPinHeader and resultRow.pinToggle and resultRow.pinToggle:IsShown() then
-                    resultRow.toggleHighlight:SetPoint("CENTER", resultRow.pinToggle, "CENTER", 0, 0)
+                resultRow.toggleHighlight:SetPoint("CENTER", resultRow.pinToggle, "CENTER", 0, 0)
+            end
+            resultRow.toggleHighlight:SetShown(showToggle and isPinToggle)
+            if resultRow.toggleBtn then
+                if resultRow.toggleBtn.btnBg then
+                    resultRow.toggleBtn.btnBg:SetShown(showToggle and not isPinToggle)
+                end
+                if showToggle and not isPinToggle then
+                    resultRow.toggleBtn:LockHighlight()
                 else
-                    resultRow.toggleHighlight:SetPoint("CENTER", resultRow.toggleIcon, "CENTER", 0, 0)
+                    resultRow.toggleBtn:UnlockHighlight()
                 end
             end
-            resultRow.toggleHighlight:SetShown(showToggle)
+            if resultRow.tabHoverOverlay then
+                resultRow.tabHoverOverlay:SetShown(showToggle and not isPinToggle)
+            end
+            if resultRow.tabText then
+                if showToggle and not isPinToggle then
+                    resultRow.tabText:SetTextColor(0.90, 0.88, 0.85, 1.0)
+                elseif not resultRow.headerTab:IsMouseOver() then
+                    if resultRow._isMatch then
+                        resultRow.tabText:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1.0)
+                    else
+                        resultRow.tabText:SetTextColor(0.60, 0.58, 0.55, 1.0)
+                    end
+                end
+            end
         end
     end
     if selectedIndex > 0 then
@@ -3002,6 +3076,7 @@ function UI:Focus()
 end
 
 function UI:Show(andFocus)
+    if not searchFrame then return end
     if inCombat then return end
     searchFrame:Show()
     EasyFind.db.visible = true
@@ -3027,6 +3102,7 @@ function UI:Show(andFocus)
 end
 
 function UI:Hide()
+    if not searchFrame then return end
     searchFrame:Hide()
     searchFrame.setSmartShowVisible(false)
     self:HideResults()
@@ -3174,6 +3250,7 @@ function UI:ClickPortraitMenuOption(optionName)
 end
 
 function UI:Toggle()
+    if not searchFrame then return end
     if searchFrame:IsShown() and EasyFind.db.visible ~= false then
         self:Hide()
     else
@@ -3228,29 +3305,37 @@ function UI:UpdateResultsWidth()
 end
 
 function UI:UpdateOpacity()
-    if searchFrame and searchFrame.bgTex then
-        local alpha = EasyFind.db.searchBarOpacity or DEFAULT_OPACITY
-        searchFrame.bgTex:SetColorTexture(0, 0, 0, alpha)
+    if not searchFrame then return end
+    local alpha = EasyFind.db.searchBarOpacity or DEFAULT_OPACITY
+    local theme = GetActiveTheme()
+    if theme.searchBarRounded then
+        ns.SetSearchBorderBgAlpha(searchFrame, alpha)
+    else
+        searchFrame:SetBackdropColor(0, 0, 0, alpha)
     end
 end
 
 function UI:UpdateSearchBarTheme()
     if not searchFrame then return end
     local theme = GetActiveTheme()
+    local scale = EasyFind.db.fontSize or 1.0
+    local WHITE8x8 = "Interface\\BUTTONS\\WHITE8x8"
+    local alpha = EasyFind.db.searchBarOpacity or DEFAULT_OPACITY
     if theme.searchBarRounded then
-        searchFrame:SetBackdrop({
-            edgeFile = TOOLTIP_BORDER,
-            edgeSize = 16,
-            insets = { left = 4, right = 4, top = 4, bottom = 4 }
-        })
-        searchFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
+        searchFrame:SetBackdrop(nil)
+        ns.SetSearchBorderShown(searchFrame, true)
+        ns.ScaleSearchBorder(searchFrame, scale)
+        ns.SetSearchBorderBgAlpha(searchFrame, alpha)
     else
         searchFrame:SetBackdrop({
+            bgFile = WHITE8x8,
             edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-            edgeSize = 20,
-            insets = { left = 5, right = 5, top = 5, bottom = 5 }
+            edgeSize = 20 * scale,
+            insets = { left = 5 * scale, right = 5 * scale, top = 5 * scale, bottom = 5 * scale }
         })
         searchFrame:SetBackdropBorderColor(1, 1, 1, 1)
+        searchFrame:SetBackdropColor(0, 0, 0, alpha)
+        ns.SetSearchBorderShown(searchFrame, false)
     end
 end
 
@@ -3364,6 +3449,7 @@ end
 -- Shown once on fresh install to let the user position & scale the search
 -- bar before normal use.  Persisted via EasyFind.db.setupComplete.
 function UI:ShowFirstTimeSetup()
+    if not searchFrame then return end
     if EasyFind.db.setupComplete then return end
 
     -- Force search bar visible during setup (override SmartShow / hidden state)
@@ -3655,9 +3741,30 @@ function UI:UpdateFontSize()
     local barH = ns.SEARCHBAR_HEIGHT * scale
     local contentSz = barH * ns.SEARCHBAR_FILL
     local iconSz = contentSz * ns.SEARCHBAR_ICON_SCALE
+    local clearSz = ns.CLEAR_BTN_SIZE * scale
     searchFrame:SetHeight(barH)
     searchFrame.editBox:SetHeight(contentSz)
     searchFrame.searchIcon:SetSize(iconSz, iconSz)
+    if searchFrame.clearTextBtn then
+        searchFrame.clearTextBtn:SetSize(clearSz, clearSz)
+    end
+
+    local theme = GetActiveTheme()
+    local WHITE8x8 = "Interface\\BUTTONS\\WHITE8x8"
+    local alpha = EasyFind.db.searchBarOpacity or DEFAULT_OPACITY
+    if theme.searchBarRounded then
+        searchFrame:SetBackdrop(nil)
+        ns.ScaleSearchBorder(searchFrame, scale)
+        ns.SetSearchBorderBgAlpha(searchFrame, alpha)
+    else
+        searchFrame:SetBackdrop({
+            bgFile = WHITE8x8,
+            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+            edgeSize = 20 * scale,
+            insets = { left = 5 * scale, right = 5 * scale, top = 5 * scale, bottom = 5 * scale }
+        })
+        searchFrame:SetBackdropColor(0, 0, 0, alpha)
+    end
 
     local theme = GetActiveTheme()
     for i = 1, #resultButtons do

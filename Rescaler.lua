@@ -48,6 +48,24 @@ local function GetDefaultMaxRows()
     return 6
 end
 
+local function GetFontScale()
+    if activeMode == "ui" then return EasyFind.db.fontSize or 1.0 end
+    return EasyFind.db.mapFontSize or 1.0
+end
+
+local function SetFontScale(val)
+    if activeMode == "ui" then EasyFind.db.fontSize = val
+    else EasyFind.db.mapFontSize = val end
+end
+
+local function ApplyFontUpdate()
+    if activeMode == "ui" then
+        if ns.UI and ns.UI.UpdateFontSize then ns.UI:UpdateFontSize() end
+    else
+        if ns.MapSearch and ns.MapSearch.UpdateFontSize then ns.MapSearch:UpdateFontSize() end
+    end
+end
+
 -- Helpers
 
 local function ClampScale(v)
@@ -214,7 +232,7 @@ end
 -- Preview results (fake rows to show results area)
 
 local function CreatePreviewResults(parent, targetFrame, width, visibleRows, anchorAbove, leftAligned)
-    local fontScale = EasyFind.db.fontSize or 1.0
+    local fontScale = GetFontScale()
     local rowH = PREVIEW_ROW_H * fontScale
     local frame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     frame:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -266,7 +284,7 @@ local function CreatePreviewResults(parent, targetFrame, width, visibleRows, anc
 
     frame.SetVisibleRows = function(self, n)
         n = mmax(MIN_ROWS, mmin(MAX_ROWS, n))
-        local rowH = PREVIEW_ROW_H * (EasyFind.db.fontSize or 1.0)
+        local rowH = PREVIEW_ROW_H * GetFontScale()
         self:SetHeight(n * rowH + PREVIEW_PAD)
         for i = 1, MAX_ROWS do
             self.rows[i]:SetShown(i <= n)
@@ -274,7 +292,7 @@ local function CreatePreviewResults(parent, targetFrame, width, visibleRows, anc
     end
 
     frame.UpdatePreviewFont = function(self)
-        local scale = EasyFind.db.fontSize or 1.0
+        local scale = GetFontScale()
         local path, baseSize, flags = GameFontDisable:GetFont()
         local scaledRowH = PREVIEW_ROW_H * scale
         local rows = GetMaxRows()
@@ -353,7 +371,7 @@ local function SetupCornerDrag(handle, preview, getWidth, setWidth, widthLabel, 
         self.startY = cy / es
         self.startWidth = getWidth()
         self.startRows = GetMaxRows()
-        self.scaledRowH = PREVIEW_ROW_H * (EasyFind.db.fontSize or 1.0)
+        self.scaledRowH = PREVIEW_ROW_H * GetFontScale()
     end)
     handle:SetScript("OnDragStop", function(self)
         self.dragging = false
@@ -390,7 +408,7 @@ local function SetupRowsDrag(handle, preview, rowsBox, anchorAbove)
         local _, cy = GetCursorPosition()
         self.startY = cy / UIParent:GetEffectiveScale()
         self.startRows = GetMaxRows()
-        self.scaledRowH = PREVIEW_ROW_H * (EasyFind.db.fontSize or 1.0)
+        self.scaledRowH = PREVIEW_ROW_H * GetFontScale()
     end)
     handle:SetScript("OnDragStop", function(self)
         self.dragging = false
@@ -418,7 +436,7 @@ local function SetupFontDrag(handle, fontLabel, preview)
         self.dragging = true
         local _, cy = GetCursorPosition()
         self.startY = cy / UIParent:GetEffectiveScale()
-        self.startFont = EasyFind.db.fontSize or 1.0
+        self.startFont = GetFontScale()
     end)
     handle:SetScript("OnDragStop", function(self)
         self.dragging = false
@@ -433,9 +451,8 @@ local function SetupFontDrag(handle, fontLabel, preview)
         local newFont = mmax(MIN_FONT, mmin(MAX_FONT, self.startFont + stepDelta * 0.1))
         newFont = mfloor(newFont * 10 + 0.5) / 10
 
-        EasyFind.db.fontSize = newFont
-        if ns.UI and ns.UI.UpdateFontSize then ns.UI:UpdateFontSize() end
-        if ns.MapSearch and ns.MapSearch.UpdateFontSize then ns.MapSearch:UpdateFontSize() end
+        SetFontScale(newFont)
+        ApplyFontUpdate()
 
         -- Scale preview row text and height to match
         if preview and preview.rows then
@@ -459,8 +476,9 @@ local function SetupFontDrag(handle, fontLabel, preview)
         end
 
         local optPanel = _G["EasyFindOptionsFrame"]
-        if optPanel and optPanel.fontSlider then
-            optPanel.fontSlider:SetValue(newFont)
+        if optPanel then
+            local slider = activeMode == "ui" and optPanel.uiFontSlider or optPanel.mapFontSlider
+            if slider then slider:SetValue(newFont) end
         end
     end)
 end
@@ -702,7 +720,7 @@ function Rescaler:Enter(mode)
             ToggleWorldMap()
         end
 
-        searchBar = _G["EasyFindMapSearchFrame"]
+        searchBar = _G["EasyFindMapGlobalSearchFrame"]
         resultsFrame = _G["EasyFindMapResultsFrame"]
 
         if not searchBar then
@@ -715,8 +733,8 @@ function Rescaler:Enter(mode)
             w = ClampWidth(w)
             EasyFind.db.mapSearchWidth = w / 250
             searchBar:SetWidth(w)
-            local globalBar = _G["EasyFindMapGlobalSearchFrame"]
-            if globalBar then globalBar:SetWidth(w) end
+            local localBar = _G["EasyFindMapSearchFrame"]
+            if localBar then localBar:SetWidth(w) end
         end
 
         getBarScale = function() return EasyFind.db.mapSearchScale or 1.0 end
@@ -724,8 +742,8 @@ function Rescaler:Enter(mode)
             s = ClampScale(s)
             EasyFind.db.mapSearchScale = s
             searchBar:SetScale(s)
-            local globalBar = _G["EasyFindMapGlobalSearchFrame"]
-            if globalBar then globalBar:SetScale(s) end
+            local localBar = _G["EasyFindMapSearchFrame"]
+            if localBar then localBar:SetScale(s) end
         end
 
         getResultsScale = function() return EasyFind.db.mapResultsScale or 1.0 end
@@ -800,29 +818,27 @@ function Rescaler:Enter(mode)
     end)
 
     -- Wire bar bottom edge (font size)
-    local currentFont = EasyFind.db.fontSize or 1.0
+    local currentFont = GetFontScale()
     barOverlay.fontBox:SetText(mfloor(currentFont * 100 + 0.5))
     barOverlay.fontBox:SetScript("OnEnterPressed", function(self)
         local val = tonumber(self:GetText())
         if val then
             val = mmax(MIN_FONT * 100, mmin(MAX_FONT * 100, mfloor(val + 0.5)))
             local newFont = val / 100
-            EasyFind.db.fontSize = newFont
-            if ns.UI and ns.UI.UpdateFontSize then ns.UI:UpdateFontSize() end
-            if ns.MapSearch and ns.MapSearch.UpdateFontSize then ns.MapSearch:UpdateFontSize() end
+            SetFontScale(newFont)
+            ApplyFontUpdate()
             self:SetText(val)
             previewResults:UpdatePreviewFont()
         end
         self:ClearFocus()
     end)
     barOverlay.fontBox:SetScript("OnEscapePressed", function(self)
-        self:SetText(mfloor((EasyFind.db.fontSize or 1.0) * 100 + 0.5))
+        self:SetText(mfloor(GetFontScale() * 100 + 0.5))
         self:ClearFocus()
     end)
     AddResetButton(barOverlay.fontBox, function()
-        EasyFind.db.fontSize = 1.0
-        if ns.UI and ns.UI.UpdateFontSize then ns.UI:UpdateFontSize() end
-        if ns.MapSearch and ns.MapSearch.UpdateFontSize then ns.MapSearch:UpdateFontSize() end
+        SetFontScale(1.0)
+        ApplyFontUpdate()
         barOverlay.fontBox:SetText(100)
         previewResults:UpdatePreviewFont()
     end)

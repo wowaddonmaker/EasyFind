@@ -231,7 +231,7 @@ function ns.UpdateIndicator(parentFrame)
 
     -- Apply user icon scale to UI indicators (map indicators handle scale in their own sizing code)
     if parentFrame.isUIIndicator then
-        parentFrame:SetScale(EasyFind.db.iconScale or 1.0)
+        parentFrame:SetScale(EasyFind.db.iconScale or 0.8)
     end
 end
 
@@ -275,6 +275,20 @@ local waypointPin
 local zoneHighlightFrame  -- For highlighting zones on continent maps
 local isGlobalSearch = false  -- Tracks which search bar triggered the current search
 local activePinState = nil    -- {mapID, x, y, icon, category} - survives map close/reopen
+local cachedWorldZones        -- Built once per session by GetAllWorldZones
+
+-- Reusable tables for OnSearchTextChanged (wiped each call to avoid per-keystroke allocations)
+local reuseAllPOIs = {}
+local reuseZoneNames = {}
+local reuseEntranceLookup = {}
+local reuseExistingNames = {}
+local reuseFilteredResults = {}
+local reusePinnedKeys = {}
+local reusePinned = {}
+local reuseFiltered = {}
+local reuseSearchResults = {}
+local reuseSearchSeen = {}
+local reuseSearchDuplicates = {}
 local superTrackGlow          -- Perimeter glow frame (far mode)
 local nearTrackFrame          -- Ring + arrow frame (near mode)
 local waypointController      -- Invisible controller that drives OnUpdate
@@ -581,6 +595,7 @@ local function CreateWaypointTracker()
 end
 
 ShowSuperTrackGlow = function()
+    if EasyFind.db.enableMapSearch == false then return end
     CreateWaypointTracker()
     waypointController:Show()
 end
@@ -598,6 +613,7 @@ HideSuperTrackGlow = function()
         nearTrackFrame:Hide()
     end
 end
+MapSearch.HideSuperTrackGlow = HideSuperTrackGlow
 
 -- Auto-clear everything after a loading screen (teleport, hearthstone, portal, etc.)
 local loadingScreenFrame = CreateFrame("Frame")
@@ -629,7 +645,7 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
         cachedWPMapID = nil
         cachedWPWorldX = nil
         cachedWPWorldY = nil
-        if EasyFind.db.autoTrackPins ~= false and C_Map.HasUserWaypoint() and not C_SuperTrack.IsSuperTrackingUserWaypoint() then
+        if EasyFind.db.enableMapSearch ~= false and EasyFind.db.autoTrackPins ~= false and C_Map.HasUserWaypoint() and not C_SuperTrack.IsSuperTrackingUserWaypoint() then
             C_SuperTrack.SetSuperTrackedUserWaypoint(true)
             return
         end
@@ -782,6 +798,7 @@ local CATEGORY_ICONS = {
     pvpvendor = 236396,
     pvpquest = 236396,
     battlemasters = 236396,
+    quartermaster = 236396,
     mailbox = "Interface\\Icons\\INV_Letter_15",
     stablemaster = "Interface\\Icons\\Ability_Hunter_BeastCall",
     repairvendor = "Interface\\Icons\\INV_Hammer_20",
@@ -843,12 +860,17 @@ local CATEGORIES = {
     trainer = { keywords = {"trainer", "training", "class trainer"}, parent = "service" },
     vendor = { keywords = {"vendor", "merchant", "shop", "buy", "sell"}, parent = "service" },
     pvpvendor = { keywords = {"pvp vendor", "honor vendor", "conquest vendor", "arena vendor", "battleground vendor", "pvp gear"}, parent = "service" },
+    quartermaster = { keywords = {"quartermaster", "gear vendor", "currency vendor"}, parent = "service" },
     mailbox = { keywords = {"mail", "mailbox"}, parent = "service" },
     stablemaster = { keywords = {"stable", "stable master", "pet"}, parent = "service" },
     repairvendor = { keywords = {"repair", "repairs", "anvil"}, parent = "service" },
     barber = { keywords = {"barber", "barbershop", "appearance", "haircut"}, parent = "service" },
     transmogrifier = { keywords = {"transmog", "transmogrifier", "appearance"}, parent = "service" },
     
+    prof_blacksmithing = { keywords = {"blacksmithing", "bs"}, parent = "service" },
+    prof_jewelcrafting = { keywords = {"jewelcrafting", "jc"}, parent = "service" },
+    prof_leatherworking = { keywords = {"leatherworking", "lw"}, parent = "service" },
+
     rare = { keywords = {"rare", "rares", "silver dragon", "elite"} },
     treasure = { keywords = {"treasure", "chest", "loot"} },
     catalyst = { keywords = {"catalyst", "tier", "tier set", "revival catalyst", "upgrade"}, parent = "service" },
@@ -1066,28 +1088,23 @@ function MapSearch:CreateSearchFrame()
         searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", 0, 2)
     end
     
-    -- Apply theme-appropriate backdrop (border only - atlas fills the background)
+    local WHITE8x8 = "Interface\\BUTTONS\\WHITE8x8"
+    ns.CreateSearchBorder(searchFrame)
     if (EasyFind.db.resultsTheme or "Classic") == "Retail" then
-        searchFrame:SetBackdrop({
-            edgeFile = TOOLTIP_BORDER,
-            edgeSize = 16,
-            insets = { left = 4, right = 4, top = 4, bottom = 4 }
-        })
-        searchFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
+        searchFrame:SetBackdrop(nil)
+        ns.SetSearchBorderShown(searchFrame, true)
+        ns.SetSearchBorderBgAlpha(searchFrame, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
     else
         searchFrame:SetBackdrop({
+            bgFile = WHITE8x8,
             edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
             edgeSize = 16,
             insets = { left = 4, right = 4, top = 4, bottom = 4 }
         })
+        searchFrame:SetBackdropColor(0, 0, 0, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
+        ns.SetSearchBorderShown(searchFrame, false)
     end
-
-    local bgTex = searchFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
-    bgTex:SetPoint("TOPLEFT", 4, -4)
-    bgTex:SetPoint("BOTTOMRIGHT", -4, 4)
-    bgTex:SetColorTexture(0, 0, 0, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
     searchFrame:SetClipsChildren(true)
-    searchFrame.bgTex = bgTex
 
     -- Draggable with Shift key (constrained to map bottom edge)
     searchFrame:RegisterForDrag("LeftButton")
@@ -1210,53 +1227,36 @@ function MapSearch:CreateSearchFrame()
 
     -- Filter button (inside search bar, flush right - same as global bar)
     local localFilterBtn = CreateFrame("Button", "EasyFindMapLocalFilterButton", searchFrame)
-    localFilterBtn:SetSize(34, 34)
-    localFilterBtn:SetPoint("RIGHT", searchFrame, "RIGHT", 1, -4)
+    localFilterBtn:SetPoint("TOP", searchFrame, "TOP", 0, 0)
+    localFilterBtn:SetPoint("BOTTOM", searchFrame, "BOTTOM", 0, 0)
+    localFilterBtn:SetPoint("RIGHT", searchFrame, "RIGHT", 0, 0)
+    localFilterBtn:SetWidth(searchFrame:GetHeight())
     localFilterBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
 
     local localArrow = localFilterBtn:CreateTexture(nil, "OVERLAY")
-    localArrow:SetAllPoints()
-    localArrow:SetAtlas("common-dropdown-a-button")
-
-    local maskWrap = "CLAMPTOBLACKADDITIVE"
-    local diagTexL = "Interface\\AddOns\\EasyFind\\Images\\mask-diagonal"
-    local diagTexR = "Interface\\AddOns\\EasyFind\\Images\\mask-diagonal-r"
-
-    -- Left diagonal (top crop baked into TGA)
-    local mBL = localFilterBtn:CreateMaskTexture()
-    mBL:SetTexture(diagTexL, maskWrap, maskWrap)
-    mBL:SetPoint("TOPLEFT", localArrow, "TOPLEFT", 0, 0)
-    mBL:SetPoint("BOTTOMRIGHT", localArrow, "BOTTOMRIGHT", 0, 0)
-    localArrow:AddMaskTexture(mBL)
-
-    -- Right diagonal (separate mirrored TGA)
-    local mBR = localFilterBtn:CreateMaskTexture()
-    mBR:SetTexture(diagTexR, maskWrap, maskWrap)
-    mBR:SetPoint("TOPLEFT", localArrow, "TOPLEFT", 0, 0)
-    mBR:SetPoint("BOTTOMRIGHT", localArrow, "BOTTOMRIGHT", 0, 0)
-    localArrow:AddMaskTexture(mBR)
-
+    localArrow:SetSize(11, 11)
+    localArrow:SetPoint("CENTER")
+    localArrow:SetTexture(423808)
+    localArrow:SetTexCoord(0.453, 0.203, 0.453, 0.016, 0.641, 0.203, 0.641, 0.016)
     localFilterBtn.arrow = localArrow
 
-    local localFullBtn = localFilterBtn:CreateTexture(nil, "ARTWORK")
-    localFullBtn:SetAllPoints()
-    localFullBtn:SetAtlas("common-dropdown-a-button-open")
-    localFullBtn:Hide()
-    localFilterBtn.fullBtn = localFullBtn
+    local localBtnBg = localFilterBtn:CreateTexture(nil, "ARTWORK")
+    localBtnBg:SetAllPoints()
+    localBtnBg:SetTexture(796424)
+    localBtnBg:Hide()
+    localFilterBtn.btnBg = localBtnBg
 
     localFilterBtn:SetHighlightTexture(130757)
 
     localFilterBtn:SetScript("OnEnter", function(self)
-        self.arrow:Hide()
-        self.fullBtn:Show()
+        self.btnBg:Show()
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText("Filter Results")
         GameTooltip:AddLine("Choose which result types to show.", 1, 1, 1, true)
         GameTooltip:Show()
     end)
     localFilterBtn:SetScript("OnLeave", function(self)
-        self.fullBtn:Hide()
-        self.arrow:Show()
+        self.btnBg:Hide()
         GameTooltip_Hide()
     end)
 
@@ -1388,27 +1388,23 @@ function MapSearch:CreateSearchFrame()
         globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", 0, 2)
     end
     
+    local WHITE8x8 = "Interface\\BUTTONS\\WHITE8x8"
+    ns.CreateSearchBorder(globalSearchFrame)
     if (EasyFind.db.resultsTheme or "Classic") == "Retail" then
-        globalSearchFrame:SetBackdrop({
-            edgeFile = TOOLTIP_BORDER,
-            edgeSize = 16,
-            insets = { left = 4, right = 4, top = 4, bottom = 4 }
-        })
-        globalSearchFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
+        globalSearchFrame:SetBackdrop(nil)
+        ns.SetSearchBorderShown(globalSearchFrame, true)
+        ns.SetSearchBorderBgAlpha(globalSearchFrame, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
     else
         globalSearchFrame:SetBackdrop({
+            bgFile = WHITE8x8,
             edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
             edgeSize = 16,
             insets = { left = 4, right = 4, top = 4, bottom = 4 }
         })
+        globalSearchFrame:SetBackdropColor(0, 0, 0, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
+        ns.SetSearchBorderShown(globalSearchFrame, false)
     end
-
-    local bgTex = globalSearchFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
-    bgTex:SetPoint("TOPLEFT", 4, -4)
-    bgTex:SetPoint("BOTTOMRIGHT", -4, 4)
-    bgTex:SetColorTexture(0, 0, 0, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
     globalSearchFrame:SetClipsChildren(true)
-    globalSearchFrame.bgTex = bgTex
 
     -- Draggable with Shift key (constrained to map bottom edge)
     globalSearchFrame:RegisterForDrag("LeftButton")
@@ -1528,54 +1524,36 @@ function MapSearch:CreateSearchFrame()
 
     -- Filter button (inside search bar, flush right)
     local filterBtn = CreateFrame("Button", "EasyFindMapFilterButton", globalSearchFrame)
-    filterBtn:SetSize(34, 34)
-    filterBtn:SetPoint("RIGHT", globalSearchFrame, "RIGHT", 1, -4)
+    filterBtn:SetPoint("TOP", globalSearchFrame, "TOP", 0, 0)
+    filterBtn:SetPoint("BOTTOM", globalSearchFrame, "BOTTOM", 0, 0)
+    filterBtn:SetPoint("RIGHT", globalSearchFrame, "RIGHT", 0, 0)
+    filterBtn:SetWidth(globalSearchFrame:GetHeight())
     filterBtn:SetFrameLevel(globalSearchFrame:GetFrameLevel() + 10)
 
     local globalArrow = filterBtn:CreateTexture(nil, "OVERLAY")
-    globalArrow:SetAllPoints()
-    globalArrow:SetAtlas("common-dropdown-a-button")
-
-    local gMaskTex = "Interface\\BUTTONS\\WHITE8x8"
-    local gMaskWrap = "CLAMPTOBLACKADDITIVE"
-    local gDiagTexL = "Interface\\AddOns\\EasyFind\\Images\\mask-diagonal"
-    local gDiagTexR = "Interface\\AddOns\\EasyFind\\Images\\mask-diagonal-r"
-
-    -- Left diagonal (top crop baked into TGA)
-    local gMBL = filterBtn:CreateMaskTexture()
-    gMBL:SetTexture(gDiagTexL, gMaskWrap, gMaskWrap)
-    gMBL:SetPoint("TOPLEFT", globalArrow, "TOPLEFT", 0, 0)
-    gMBL:SetPoint("BOTTOMRIGHT", globalArrow, "BOTTOMRIGHT", 0, 0)
-    globalArrow:AddMaskTexture(gMBL)
-
-    -- Right diagonal (mirrored TGA)
-    local gMBR = filterBtn:CreateMaskTexture()
-    gMBR:SetTexture(gDiagTexR, gMaskWrap, gMaskWrap)
-    gMBR:SetPoint("TOPLEFT", globalArrow, "TOPLEFT", 0, 0)
-    gMBR:SetPoint("BOTTOMRIGHT", globalArrow, "BOTTOMRIGHT", 0, 0)
-    globalArrow:AddMaskTexture(gMBR)
-
+    globalArrow:SetSize(11, 11)
+    globalArrow:SetPoint("CENTER")
+    globalArrow:SetTexture(423808)
+    globalArrow:SetTexCoord(0.453, 0.203, 0.453, 0.016, 0.641, 0.203, 0.641, 0.016)
     filterBtn.arrow = globalArrow
 
-    local globalFullBtn = filterBtn:CreateTexture(nil, "ARTWORK")
-    globalFullBtn:SetAllPoints()
-    globalFullBtn:SetAtlas("common-dropdown-a-button-open")
-    globalFullBtn:Hide()
-    filterBtn.fullBtn = globalFullBtn
+    local globalBtnBg = filterBtn:CreateTexture(nil, "ARTWORK")
+    globalBtnBg:SetAllPoints()
+    globalBtnBg:SetTexture(796424)
+    globalBtnBg:Hide()
+    filterBtn.btnBg = globalBtnBg
 
     filterBtn:SetHighlightTexture(130757)
 
     filterBtn:SetScript("OnEnter", function(self)
-        self.arrow:Hide()
-        self.fullBtn:Show()
+        self.btnBg:Show()
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText("Filter Results")
         GameTooltip:AddLine("Choose which result types to show.", 1, 1, 1, true)
         GameTooltip:Show()
     end)
     filterBtn:SetScript("OnLeave", function(self)
-        self.fullBtn:Hide()
-        self.arrow:Show()
+        self.btnBg:Hide()
         GameTooltip_Hide()
     end)
 
@@ -2463,48 +2441,39 @@ end
 function MapSearch:GetAllWorldZones(startMapID, depth, parentPath)
     depth = depth or 0
     parentPath = parentPath or {}
-    
+
     local allZones = {}
-    local maxDepth = 6  -- Limit recursion depth
-    
+    local maxDepth = 6
+
     if depth > maxDepth then return allZones end
-    
+
     local children = C_Map.GetMapChildrenInfo(startMapID, nil, false)
     if not children then return allZones end
-    
+
+    local parentInfo = C_Map.GetMapInfo(startMapID)
+    local parentName = parentInfo and parentInfo.name or ""
+    local parentType = parentInfo and parentInfo.mapType
+
+    if parentName == "Cosmic" then
+        parentName = "World"
+    end
+
     for _, child in ipairs(children) do
         if child.name then
-            local parentInfo = C_Map.GetMapInfo(startMapID)
-            local parentName = parentInfo and parentInfo.name or ""
-            
-            -- Replace "Cosmic" with "World" for display
-            if parentName == "Cosmic" then
-                parentName = "World"
-            end
-            
-            -- Build the full path (copy parent path and add current parent)
             local fullPath = {}
-            for _, p in ipairs(parentPath) do
-                tinsert(fullPath, {mapID = p.mapID, name = p.name})
+            for i = 1, #parentPath do
+                fullPath[i] = parentPath[i]
             end
             if parentName ~= "" then
                 tinsert(fullPath, {mapID = startMapID, name = parentName})
             end
-            
-            -- Skip micro and orphan maps. Include Dungeon-type maps when
-            -- their parent is a Zone or Continent (clickable areas like
-            -- Dalaran). Exclude Dungeon children of World-type maps (ghost
-            -- reparented zones like Dalaran under Azeroth).
+
             local mt = child.mapType
-            local parentInfo = C_Map.GetMapInfo(startMapID)
-            local parentType = parentInfo and parentInfo.mapType
             local includeDungeon = false
             if mt == Enum.UIMapType.Dungeon then
                 if parentType == Enum.UIMapType.Zone then
                     includeDungeon = true
                 elseif parentType == Enum.UIMapType.Continent then
-                    -- Only include if the map has a spatial rect on its parent
-                    -- (filters out ghost/phantom maps like old Dalaran in EK)
                     local ok, dL, dR = pcall(C_Map.GetMapRectOnMap, child.mapID, startMapID)
                     includeDungeon = ok and dL and (dR - dL) > 0
                 end
@@ -2521,7 +2490,6 @@ function MapSearch:GetAllWorldZones(startMapID, depth, parentPath)
                     depth = depth
                 })
 
-                -- Recurse into children
                 local subZones = self:GetAllWorldZones(child.mapID, depth + 1, fullPath)
                 for _, subZone in ipairs(subZones) do
                     tinsert(allZones, subZone)
@@ -2529,7 +2497,7 @@ function MapSearch:GetAllWorldZones(startMapID, depth, parentPath)
             end
         end
     end
-    
+
     return allZones
 end
 
@@ -2579,33 +2547,32 @@ function MapSearch:SearchZones(query)
     local zones
     
     if isGlobalSearch then
-        -- Global: search entire world starting from Cosmic (946)
-        -- We need to include the "World" level in all paths
-        local worldPath = {{mapID = 946, name = "World"}}
-        
-        zones = {}
-        
-        -- Get all children of Cosmic (946) - this includes Azeroth, Outland, Draenor, etc.
-        local cosmicChildren = C_Map.GetMapChildrenInfo(946, nil, false)
-        if cosmicChildren then
-            for _, child in ipairs(cosmicChildren) do
-                if child.name then
-                    -- Include the world itself (Azeroth, Outland, Draenor, Shadowlands)
-                    tinsert(zones, {
-                        mapID = child.mapID,
-                        name = child.name,
-                        mapType = child.mapType,
-                        parentMapID = 946,
-                        parentName = "World",
-                        path = worldPath,
-                        depth = 0
-                    })
-                end
-                local worldZones = self:GetAllWorldZones(child.mapID, 0, worldPath)
-                for _, z in ipairs(worldZones) do
-                    tinsert(zones, z)
+        if cachedWorldZones then
+            zones = cachedWorldZones
+        else
+            local worldPath = {{mapID = 946, name = "World"}}
+            zones = {}
+            local cosmicChildren = C_Map.GetMapChildrenInfo(946, nil, false)
+            if cosmicChildren then
+                for _, child in ipairs(cosmicChildren) do
+                    if child.name then
+                        tinsert(zones, {
+                            mapID = child.mapID,
+                            name = child.name,
+                            mapType = child.mapType,
+                            parentMapID = 946,
+                            parentName = "World",
+                            path = worldPath,
+                            depth = 0
+                        })
+                    end
+                    local worldZones = self:GetAllWorldZones(child.mapID, 0, worldPath)
+                    for _, z in ipairs(worldZones) do
+                        tinsert(zones, z)
+                    end
                 end
             end
+            cachedWorldZones = zones
         end
 
     else
@@ -3210,7 +3177,7 @@ function MapSearch:HighlightZone(mapID)
     if zoneHighlightFrame.indicator then
         local zoneInd = zoneHighlightFrame.indicator
         -- Convert UI-unit sizes to canvas units so it's visible on continent maps
-        local userScale = EasyFind.db.iconScale or 1.0
+        local userScale = EasyFind.db.iconScale or 0.8
         local indicatorSize     = ns.UIToCanvas(ns.ZONE_ICON_SIZE)      * userScale
         local indicatorGlowSize = ns.UIToCanvas(ns.ZONE_ICON_GLOW_SIZE) * userScale
         zoneInd:SetSize(indicatorSize, indicatorSize)
@@ -4560,7 +4527,9 @@ function MapSearch:ScanMapPOIs()
                     category = "flightmaster"
                 elseif sfind(poiName, "trading post") then
                     category = "tradingpost"
-                elseif sfind(poiName, "conquest") or sfind(poiName, "honor") or sfind(poiName, "pvp") or sfind(poiName, "quartermaster") then
+                elseif sfind(poiName, "quartermaster") then
+                    category = "quartermaster"
+                elseif sfind(poiName, "conquest") or sfind(poiName, "honor") or sfind(poiName, "pvp") then
                     category = "pvpvendor"
                 elseif sfind(poiName, "chromie") then
                     category = "chromie"
@@ -4629,6 +4598,9 @@ function MapSearch:GetPinInfo(pin)
         elseif sfind(poiName, "tram") then
             category = "tram"
             pinType = "tram"
+        elseif sfind(poiName, "quartermaster") then
+            category = "quartermaster"
+            pinType = "quartermaster"
         elseif sfind(poiName, "pvp") or sfind(poiName, "arena") or sfind(poiName, "battleground") or sfind(poiDesc, "pvp") or sfind(poiName, "conquest") or sfind(poiName, "honor") or sfind(poiName, "weekly") then
             category = "pvpvendor"
             pinType = "pvpvendor"
@@ -4720,25 +4692,34 @@ function MapSearch:GetPinInfo(pin)
         return nil
     end
 
-    -- Filter out pins from adjacent zones (visible on map but not in focused zone)
-    local mapID = WorldMapFrame:GetMapID()
-    if mapID and name then
-        local canvas = WorldMapFrame.ScrollContainer and WorldMapFrame.ScrollContainer.Child
-        if canvas then
-            local cW, cH = canvas:GetSize()
-            if cW > 0 and cH > 0 then
-                local pX, pY = pin:GetCenter()
-                local cX, cY = canvas:GetLeft(), canvas:GetTop()
-                if pX and pY and cX and cY then
-                    local normX = (pX - cX) / cW
-                    local normY = (cY - pY) / cH
-                    local posInfo = C_Map.GetMapInfoAtPosition and C_Map.GetMapInfoAtPosition(mapID, normX, normY)
-                    -- Only reject if the API confidently returns a DIFFERENT zone.
-                    -- nil means unmapped (new pin types, borders) - keep as benefit of the doubt.
-                    if posInfo and posInfo.mapID ~= mapID and posInfo.parentMapID ~= mapID then
-                        return nil  -- belongs to adjacent zone
-                    end
-                end
+    -- Extract coordinates from pin data (more reliable than screen-position math)
+    local pinX, pinY
+    if pin.areaPoiInfo and pin.areaPoiInfo.position then
+        pinX = pin.areaPoiInfo.position.x
+        pinY = pin.areaPoiInfo.position.y
+    elseif pin.vignetteInfo and pin.vignetteInfo.vignetteGUID then
+        local pos = C_VignetteInfo and C_VignetteInfo.GetVignettePosition(pin.vignetteInfo.vignetteGUID, WorldMapFrame:GetMapID())
+        if pos then
+            pinX = pos.x
+            pinY = pos.y
+        end
+    end
+    -- Fallback: MapCanvasPinMixin exposes GetPosition on data-provider pins
+    if not pinX and pin.GetPosition then
+        local ok, px, py = pcall(pin.GetPosition, pin)
+        if ok and px and py and px >= 0 and px <= 1 and py >= 0 and py <= 1 then
+            pinX = px
+            pinY = py
+        end
+    end
+
+    -- Filter out pins from adjacent zones using extracted coordinates
+    if pinX and pinY then
+        local mapID = WorldMapFrame:GetMapID()
+        if mapID then
+            local posInfo = C_Map.GetMapInfoAtPosition and C_Map.GetMapInfoAtPosition(mapID, pinX, pinY)
+            if posInfo and posInfo.mapID ~= mapID and posInfo.parentMapID ~= mapID then
+                return nil
             end
         end
     end
@@ -4750,6 +4731,8 @@ function MapSearch:GetPinInfo(pin)
         category = category,
         icon = icon,
         isStatic = false,
+        x = pinX,
+        y = pinY,
     }
 end
 
@@ -4779,16 +4762,14 @@ function MapSearch:OnSearchTextChanged(text)
     local zoneMatches = {}
     if self:IsOnContinentMap() or isGlobalSearch then
         zoneMatches = self:SearchZones(text)
-        -- Don't auto-highlight - only highlight when user clicks a result
     end
 
-    local allPOIs = {}
+    wipe(reuseAllPOIs)
+    wipe(reuseZoneNames)
+    local allPOIs = reuseAllPOIs
+    local zoneNames = reuseZoneNames
 
-    -- Group zone matches by parent for clean display
     local groupedZones = self:GroupZonesByParent(zoneMatches)
-
-    -- Add zone results - simple flat list with full path
-    local zoneNames = {}  -- Track zone names to avoid duplicate POI entries
 
     for _, group in ipairs(groupedZones) do
         local zonesInGroup = group.zones
@@ -4811,9 +4792,8 @@ function MapSearch:OnSearchTextChanged(text)
     -- Global search: zones + dungeon/raid/delve entrances (skip service POIs)
     if isGlobalSearch then
         local instancePOIs = self:GetGlobalInstanceCache()
-        -- Build entrance lookup so zone results that match a dungeon/raid entrance
-        -- get enriched with coordinates for the final waypoint highlight
-        local entranceLookup = {}
+        wipe(reuseEntranceLookup)
+        local entranceLookup = reuseEntranceLookup
         for _, poi in ipairs(instancePOIs) do
             if poi.isDungeonEntrance and poi.x and poi.y then
                 entranceLookup[slower(poi.name)] = poi
@@ -4850,10 +4830,11 @@ function MapSearch:OnSearchTextChanged(text)
         -- take priority over pin-only entries from ScanMapPOIs during deduplication.
         -- Pin-only entries lack x/y and go through HighlightPin (no icon), while
         -- coordinate entries go through ShowWaypointAt (full icon + glow + arrow).
-        local existingNames = {}
+        wipe(reuseExistingNames)
+        local existingNames = reuseExistingNames
 
-        -- Build entrance lookup for zone result enrichment
-        local entranceLookup = {}
+        wipe(reuseEntranceLookup)
+        local entranceLookup = reuseEntranceLookup
         for _, entrance in ipairs(dungeonEntrances) do
             if entrance.isDungeonEntrance and entrance.x and entrance.y then
                 entranceLookup[slower(entrance.name)] = entrance
@@ -4904,7 +4885,8 @@ function MapSearch:OnSearchTextChanged(text)
     -- Apply global search filters (zones / dungeons / raids / delves)
     if isGlobalSearch then
         local filters = EasyFind.db.globalSearchFilters
-        local filteredResults = {}
+        wipe(reuseFilteredResults)
+        local filteredResults = reuseFilteredResults
         for _, r in ipairs(results) do
             local dominated = false
             if r.isZone and filters.zones == false then
@@ -4924,7 +4906,8 @@ function MapSearch:OnSearchTextChanged(text)
     else
         -- Apply local search filters (instances / travel / services / rares / treasures)
         local filters = EasyFind.db.localSearchFilters
-        local filteredResults = {}
+        wipe(reuseFilteredResults)
+        local filteredResults = reuseFilteredResults
         for _, r in ipairs(results) do
             local dominated = false
             local cat = r.category
@@ -4946,8 +4929,10 @@ function MapSearch:OnSearchTextChanged(text)
     -- Prepend pinned items (always shown at top regardless of query)
     local pins = EasyFind.db.pinnedMapItems
     if pins and #pins > 0 then
-        local pinnedKeys = {}
-        local pinned = {}
+        wipe(reusePinnedKeys)
+        wipe(reusePinned)
+        local pinnedKeys = reusePinnedKeys
+        local pinned = reusePinned
         for _, pin in ipairs(pins) do
             local copy = {}
             for k, v in pairs(pin) do copy[k] = v end
@@ -4955,8 +4940,8 @@ function MapSearch:OnSearchTextChanged(text)
             tinsert(pinned, copy)
             pinnedKeys[GetMapPinKey(pin)] = true
         end
-        -- Remove duplicates from search results that match pinned items
-        local filtered = {}
+        wipe(reuseFiltered)
+        local filtered = reuseFiltered
         for _, r in ipairs(results) do
             if not pinnedKeys[GetMapPinKey(r)] then
                 tinsert(filtered, r)
@@ -4974,9 +4959,12 @@ end
 
 function MapSearch:SearchPOIs(pois, query)
     query = slower(query)
-    local results = {}
-    local seen = {}
-    local duplicates = {}  -- Track all instances of duplicate POIs
+    wipe(reuseSearchResults)
+    wipe(reuseSearchSeen)
+    wipe(reuseSearchDuplicates)
+    local results = reuseSearchResults
+    local seen = reuseSearchSeen
+    local duplicates = reuseSearchDuplicates
     
     local matchedCategory, catScore, isExactCategoryMatch = self:GetCategoryMatch(query)
     local relatedCategories = matchedCategory and self:GetRelatedCategories(matchedCategory) or {}
@@ -4994,14 +4982,15 @@ function MapSearch:SearchPOIs(pois, query)
         else
             score = ns.Database:ScoreName(nameLower, query, #query)
             
-            -- Also check custom keywords for static locations
             if poi.keywords then
-                -- Build lowered keywords list for shared scorer
-                local kwLower = {}
-                for _, kw in ipairs(poi.keywords) do
-                    kwLower[#kwLower + 1] = slower(kw)
+                if not poi.kwLower then
+                    local lowered = {}
+                    for _, kw in ipairs(poi.keywords) do
+                        lowered[#lowered + 1] = slower(kw)
+                    end
+                    poi.kwLower = lowered
                 end
-                score = score + ns.Database:ScoreKeywords(kwLower, query, #query)
+                score = score + ns.Database:ScoreKeywords(poi.kwLower, query, #query)
             end
         end
         
@@ -5309,6 +5298,7 @@ end
 function MapSearch:HideResults()
     selectedResultIndex = 0
     navBtnFocused = false
+    self._lastResults = nil
     if MapSearch.StopKeyRepeat then MapSearch.StopKeyRepeat() end
     if MapSearch.ClearToolbarFocus then MapSearch.ClearToolbarFocus() end
     if navFrame then navFrame:EnableKeyboard(false) end
@@ -5587,7 +5577,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
     if not canvas then return end
     
     local canvasWidth, canvasHeight = canvas:GetSize()
-    local userScale = EasyFind.db.iconScale or 1.0
+    local userScale = EasyFind.db.iconScale or 0.8
     local ms = ns.MULTI_SCALE  -- slightly smaller for clusters
     
     local iconSize      = ns.UIToCanvas(ns.PIN_SIZE      * ms) * userScale
@@ -5799,7 +5789,7 @@ function MapSearch:ShowWaypointAt(x, y, icon, category)
     local canvasWidth, canvasHeight = canvas:GetSize()
     
     -- Convert UI-unit sizes to canvas units so they appear the same screen size
-    local userScale = EasyFind.db.iconScale or 1.0
+    local userScale = EasyFind.db.iconScale or 0.8
     local iconSize      = ns.UIToCanvas(ns.PIN_SIZE)       * userScale
     local glowSize      = ns.UIToCanvas(ns.PIN_GLOW_SIZE)  * userScale
     local highlightSize = ns.UIToCanvas(ns.HIGHLIGHT_SIZE)  * userScale
@@ -5859,7 +5849,7 @@ function MapSearch:HighlightPin(pin)
     currentHighlightedPin = pin
     
     -- Convert UI-unit sizes to canvas units
-    local userScale = EasyFind.db.iconScale or 1.0
+    local userScale = EasyFind.db.iconScale or 0.8
     
     local width, height = pin:GetSize()
     local minPinSize = ns.UIToCanvas(36) * userScale
@@ -5887,6 +5877,7 @@ function MapSearch:HighlightPin(pin)
 end
 
 function MapSearch:ClearHighlight()
+    if not highlightFrame then return end
     highlightFrame:Hide()
     highlightFrame.top:Show()
     highlightFrame.bottom:Show()
@@ -5998,6 +5989,7 @@ function MapSearch:TrackActivePin()
         x, y = activePinState.x, activePinState.y
     end
     if not mapID or not x or not y then return end
+    if x < 0 or x > 1 or y < 0 or y > 1 then return end
 
     C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, x, y))
     C_SuperTrack.SetSuperTrackedUserWaypoint(true)
@@ -6106,16 +6098,21 @@ end
 
 function MapSearch:UpdateOpacity()
     local alpha = EasyFind.db.searchBarOpacity or DEFAULT_OPACITY
-    if searchFrame and searchFrame.bgTex then
-        searchFrame.bgTex:SetColorTexture(0, 0, 0, alpha)
-    end
-    if globalSearchFrame and globalSearchFrame.bgTex then
-        globalSearchFrame.bgTex:SetColorTexture(0, 0, 0, alpha)
+    local isRetail = (EasyFind.db.resultsTheme or "Retail") == "Retail"
+    local frames = {searchFrame, globalSearchFrame}
+    for _, frame in ipairs(frames) do
+        if frame then
+            if isRetail then
+                ns.SetSearchBorderBgAlpha(frame, alpha)
+            else
+                frame:SetBackdropColor(0, 0, 0, alpha)
+            end
+        end
     end
 end
 
 function MapSearch:UpdateFontSize()
-    local scale = EasyFind.db.fontSize or 1.0
+    local scale = EasyFind.db.mapFontSize or 1.0
 
     local function ScaleFont(fontString, baseFontObject)
         local obj = _G[baseFontObject]
@@ -6128,21 +6125,28 @@ function MapSearch:UpdateFontSize()
     local barH = ns.SEARCHBAR_HEIGHT * scale
     local contentSz = barH * ns.SEARCHBAR_FILL
     local iconSz = contentSz * ns.SEARCHBAR_ICON_SCALE
+    local clearSz = ns.CLEAR_BTN_SIZE * scale
 
-    if searchFrame then
-        searchFrame:SetHeight(barH)
-        searchFrame.editBox:SetHeight(contentSz)
-        if searchFrame.searchIcon then searchFrame.searchIcon:SetSize(iconSz, iconSz) end
-        ScaleFont(searchFrame.editBox, ns.SEARCHBAR_FONT)
-        ScaleFont(searchFrame.editBox.placeholder, ns.SEARCHBAR_FONT)
+    local function ScaleBar(frame)
+        if not frame then return end
+        frame:SetHeight(barH)
+        frame.editBox:SetHeight(contentSz)
+        if frame.searchIcon then frame.searchIcon:SetSize(iconSz, iconSz) end
+        if frame.clearBtn then frame.clearBtn:SetSize(clearSz, clearSz) end
+        if frame.filterBtn then
+            frame.filterBtn:SetWidth(barH)
+            if frame.filterBtn.arrow then
+                local arrowSz = barH * 0.37
+                frame.filterBtn.arrow:SetSize(arrowSz, arrowSz)
+            end
+        end
+        ScaleFont(frame.editBox, ns.SEARCHBAR_FONT)
+        ScaleFont(frame.editBox.placeholder, ns.SEARCHBAR_FONT)
     end
-    if globalSearchFrame then
-        globalSearchFrame:SetHeight(barH)
-        globalSearchFrame.editBox:SetHeight(contentSz)
-        if globalSearchFrame.searchIcon then globalSearchFrame.searchIcon:SetSize(iconSz, iconSz) end
-        ScaleFont(globalSearchFrame.editBox, ns.SEARCHBAR_FONT)
-        ScaleFont(globalSearchFrame.editBox.placeholder, ns.SEARCHBAR_FONT)
-    end
+
+    ScaleBar(searchFrame)
+    ScaleBar(globalSearchFrame)
+    self:UpdateSearchBarTheme()
 
     for _, resultRow in ipairs(resultButtons) do
         ScaleFont(resultRow.text, "GameFontNormal")
@@ -6154,23 +6158,29 @@ end
 
 function MapSearch:UpdateSearchBarTheme()
     local isRetail = (EasyFind.db.resultsTheme or "Retail") == "Retail"
+    local scale = EasyFind.db.mapFontSize or 1.0
+    local edge = 16 * scale
+    local inset = 4 * scale
+    local WHITE8x8 = "Interface\\BUTTONS\\WHITE8x8"
+    local alpha = EasyFind.db.searchBarOpacity or DEFAULT_OPACITY
     local frames = {searchFrame, globalSearchFrame}
     for _, frame in ipairs(frames) do
         if frame then
             if isRetail then
-                frame:SetBackdrop({
-                    edgeFile = TOOLTIP_BORDER,
-                    edgeSize = 16,
-                    insets = { left = 4, right = 4, top = 4, bottom = 4 }
-                })
-                frame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
+                frame:SetBackdrop(nil)
+                ns.SetSearchBorderShown(frame, true)
+                ns.ScaleSearchBorder(frame, scale)
+                ns.SetSearchBorderBgAlpha(frame, alpha)
             else
                 frame:SetBackdrop({
+                    bgFile = WHITE8x8,
                     edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-                    edgeSize = 16,
-                    insets = { left = 4, right = 4, top = 4, bottom = 4 }
+                    edgeSize = edge,
+                    insets = { left = inset, right = inset, top = inset, bottom = inset }
                 })
                 frame:SetBackdropBorderColor(1, 1, 1, 1)
+                frame:SetBackdropColor(0, 0, 0, alpha)
+                ns.SetSearchBorderShown(frame, false)
             end
         end
     end
@@ -6196,7 +6206,7 @@ function MapSearch:UpdateIconScales()
     local canvas = WorldMapFrame.ScrollContainer.Child
     if not canvas then return end
     
-    local userScale = EasyFind.db.iconScale or 1.0
+    local userScale = EasyFind.db.iconScale or 0.8
     
     local iconSize      = ns.UIToCanvas(ns.PIN_SIZE)       * userScale
     local glowSize      = ns.UIToCanvas(ns.PIN_GLOW_SIZE)  * userScale
