@@ -870,9 +870,13 @@ function UI:CreateSearchFrame()
     searchFrame.smartShowVisible = function() return smartShowVisible end
     searchFrame.setSmartShowVisible = function(val) smartShowVisible = val end
 
-    -- OnUpdate: detect movement and adjust opacity accordingly
-    searchFrame:HookScript("OnUpdate", function(self)
-        -- Skip if user wants static opacity
+    -- OnUpdate: detect movement and adjust opacity accordingly (throttled to ~10Hz)
+    local moveCheckAccum = 0
+    searchFrame:HookScript("OnUpdate", function(self, elapsed)
+        moveCheckAccum = moveCheckAccum + elapsed
+        if moveCheckAccum < 0.1 then return end
+        moveCheckAccum = 0
+
         if EasyFind.db.staticOpacity then
             if moveFading then
                 moveFading = false
@@ -880,19 +884,15 @@ function UI:CreateSearchFrame()
             end
             return
         end
-        -- Don't interfere while SmartShow has the bar hidden
         if EasyFind.db.smartShow and not smartShowVisible then return end
 
         local speed = GetUnitSpeed("player")
-        local moving = speed > 0
         local hovering = self:IsMouseOver()
             or (resultsFrame and resultsFrame:IsShown() and resultsFrame:IsMouseOver())
-
-        local shouldFade = moving and not hovering
+        local shouldFade = speed > 0 and not hovering
 
         if shouldFade ~= moveFading then
             moveFading = shouldFade
-            -- Cancel any active UIFrameFade animation so it can't overwrite our alpha
             UIFrameFadeRemoveFrame(self)
             self:SetAlpha(GetEffectiveAlpha())
         end

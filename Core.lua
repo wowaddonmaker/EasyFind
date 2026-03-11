@@ -3,8 +3,10 @@ local ADDON_NAME, ns = ...
 local Utils   = ns.Utils
 local sformat = Utils.sformat
 local pairs   = Utils.pairs
+local xpcall  = Utils.xpcall
 local mmin, mmax = Utils.mmin, Utils.mmax
 local mrad, mdeg, matan2, mcos, msin, msqrt = math.rad, math.deg, math.atan2, math.cos, math.sin, math.sqrt
+local ErrorHandler = Utils.ErrorHandler
 
 EasyFind = {}
 ns.EasyFind = EasyFind
@@ -20,8 +22,13 @@ ns.eventFrame = eventFrame
 
 EasyFind.db = {}
 
+-- SavedVariables version. Increment when changing DB schema.
+-- Each migration runs once: if saved dbVersion < DB_VERSION, run all steps in order.
+local DB_VERSION = 1
+
 -- SavedVariables defaults - new keys are auto-merged for existing users
 local DB_DEFAULTS = {
+    dbVersion = DB_VERSION,
     visible = true,
     enableUISearch = true,
     enableMapSearch = true,
@@ -79,6 +86,23 @@ local DB_DEFAULTS = {
         travel = true,
         services = true,
     },
+}
+
+local DB_MIGRATIONS = {
+    -- [1] = Consolidate ad-hoc migrations (maxResults rename, uiResultsWidth reset)
+    [1] = function(db)
+        if db.maxResults then
+            if not db.uiMaxResults then db.uiMaxResults = db.maxResults end
+            if not db.mapMaxResults then db.mapMaxResults = db.maxResults end
+            db.maxResults = nil
+        end
+        if db.uiResultsWidth == 1.0 then db.uiResultsWidth = 350 end
+    end,
+}
+
+-- Fields that are runtime-only and must not persist in SavedVariables
+local RUNTIME_FIELDS = {
+    "firstInstall",
 }
 
 local GITHUB_ISSUES_URL = "https://github.com/wowaddonmaker/EasyFind/issues/new"
@@ -160,13 +184,14 @@ local function OnInitialize()
         end
     end
 
-    if EasyFindDB.uiResultsWidth == 1.0 then EasyFindDB.uiResultsWidth = 350 end
-
-    if EasyFindDB.maxResults then
-        if not EasyFindDB.uiMaxResults then EasyFindDB.uiMaxResults = EasyFindDB.maxResults end
-        if not EasyFindDB.mapMaxResults then EasyFindDB.mapMaxResults = EasyFindDB.maxResults end
-        EasyFindDB.maxResults = nil
+    -- Run sequential migrations
+    local savedVersion = EasyFindDB.dbVersion or 0
+    for v = savedVersion + 1, DB_VERSION do
+        if DB_MIGRATIONS[v] then
+            DB_MIGRATIONS[v](EasyFindDB)
+        end
     end
+    EasyFindDB.dbVersion = DB_VERSION
 
     -- Reset values whose type doesn't match the default
     for k, v in pairs(EasyFindDB) do
@@ -241,7 +266,7 @@ local function OnPlayerLogin()
     SafeAfter(0.5, function()
         local function SafeInit(mod, name)
             if not mod then return end
-            local ok, err = pcall(mod.Initialize, mod)
+            local ok, err = xpcall(mod.Initialize, ErrorHandler, mod)
             if not ok then
                 EasyFind:Print("|cffff4444" .. name .. " failed to initialize: " .. tostring(err) .. "|r")
             end
@@ -287,6 +312,7 @@ end
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+eventFrame:RegisterEvent("PLAYER_LOGOUT")
 eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
     if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
         OnInitialize()
@@ -303,6 +329,13 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
             OnPlayerLogin()
         end
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
+    elseif event == "PLAYER_LOGOUT" then
+        -- Strip runtime-only fields before SavedVariables serialization
+        if EasyFindDB then
+            for _, field in ipairs(RUNTIME_FIELDS) do
+                EasyFindDB[field] = nil
+            end
+        end
     end
 end)
 
@@ -513,5 +546,14 @@ function EasyFind:UpdateMinimapButton()
         minimapButton:Show()
     elseif minimapButton then
         minimapButton:Hide()
+    end
+end
+
+-- Addon compartment button (## AddonCompartmentFunc in TOC)
+function EasyFind_OnAddonCompartmentClick(_, button)
+    if button == "LeftButton" then
+        EasyFind:ToggleSearchUI()
+    else
+        EasyFind:OpenOptions()
     end
 end

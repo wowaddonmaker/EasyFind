@@ -7,8 +7,13 @@ local pairs, ipairs, type, select, unpack, next = pairs, ipairs, type, select, u
 local tinsert, tsort, tconcat, tremove = table.insert, table.sort, table.concat, table.remove
 local sfind, slower, ssub, sformat, smatch = string.find, string.lower, string.sub, string.format, string.match
 local mmin, mmax, mabs, mpi, mceil, mfloor = math.min, math.max, math.abs, math.pi, math.ceil, math.floor
-local pcall, tostring, tonumber = pcall, tostring, tonumber
+local pcall, xpcall, tostring, tonumber = pcall, xpcall, tostring, tonumber
+local debugstack = debugstack
 local GetTime, CreateFrame = GetTime, CreateFrame
+
+local function ErrorHandler(err)
+    return tostring(err) .. "\n" .. debugstack(2)
+end
 
 Utils.pairs   = pairs
 Utils.ipairs  = ipairs
@@ -36,8 +41,10 @@ Utils.mceil    = mceil
 Utils.mfloor   = mfloor
 
 Utils.pcall    = pcall
+Utils.xpcall   = xpcall
 Utils.tostring = tostring
 Utils.tonumber = tonumber
+Utils.ErrorHandler = ErrorHandler
 
 --- Call a protected function safely, suppressing errors during combat lockdown.
 --- Returns true + results on success, false on failure.
@@ -64,7 +71,7 @@ function Utils.SafeOnUpdate(frame, handler)
         return
     end
     frame:SetScript("OnUpdate", function(self, elapsed)
-        local ok, err = pcall(handler, self, elapsed)
+        local ok, err = xpcall(handler, ErrorHandler, self, elapsed)
         if not ok then
             self:SetScript("OnUpdate", nil)
             Utils.DebugPrint("OnUpdate stopped: " .. tostring(err))
@@ -76,7 +83,7 @@ end
 --- so a crash in a delayed call doesn't propagate unhandled.
 function Utils.SafeAfter(delay, fn)
     C_Timer.After(delay, function()
-        local ok, err = pcall(fn)
+        local ok, err = xpcall(fn, ErrorHandler)
         if not ok then
             Utils.DebugPrint("Timer error: " .. tostring(err))
         end

@@ -19,7 +19,6 @@ local DARK_PANEL_BG = ns.DARK_PANEL_BG
 local RESULT_ICON_SIZE = ns.RESULT_ICON_SIZE
 
 local CreateFrame        = CreateFrame
-local C_Map              = C_Map
 local C_Timer            = C_Timer
 local GameTooltip        = GameTooltip
 local GameTooltip_Hide   = GameTooltip_Hide
@@ -29,6 +28,26 @@ local IsMouseButtonDown  = IsMouseButtonDown
 local hooksecurefunc     = hooksecurefunc
 local wipe               = wipe
 local strsplit           = strsplit
+
+-- Cache C_* API functions at file scope to get unhooked copies
+local GetMapInfo             = C_Map.GetMapInfo
+local GetMapGroupID          = C_Map.GetMapGroupID
+local GetMapGroupMembersInfo = C_Map.GetMapGroupMembersInfo
+local GetMapChildrenInfo     = C_Map.GetMapChildrenInfo
+local GetBestMapForUnit      = C_Map.GetBestMapForUnit
+local GetMapInfoAtPosition   = C_Map.GetMapInfoAtPosition
+local SetUserWaypoint        = C_Map.SetUserWaypoint
+local GetAreaPOIForMap       = C_AreaPoiInfo and C_AreaPoiInfo.GetAreaPOIForMap
+local GetAreaPOIInfo         = C_AreaPoiInfo and C_AreaPoiInfo.GetAreaPOIInfo
+local GetVignettePosition    = C_VignetteInfo and C_VignetteInfo.GetVignettePosition
+local GetDungeonEntrancesForMap   = C_EncounterJournal and C_EncounterJournal.GetDungeonEntrancesForMap
+local GetDungeonEntranceMapInfo   = C_EncounterJournal and C_EncounterJournal.GetDungeonEntranceMapInfo
+local HasUserWaypoint        = C_Map.HasUserWaypoint
+local ClearUserWaypoint      = C_Map.ClearUserWaypoint
+local GetUserWaypoint        = C_Map.GetUserWaypoint
+local GetWorldPosFromMapPos  = C_Map.GetWorldPosFromMapPos
+local GetMapRectOnMap        = C_Map.GetMapRectOnMap
+local GetMapHighlightInfoAtPosition = C_Map.GetMapHighlightInfoAtPosition
 
 local STAR_GLOW_TEXTURE = "Interface\\Cooldown\\star4"
 
@@ -429,7 +448,7 @@ local function CreateWaypointTracker()
     -- Waypoint world position cached until USER_WAYPOINT_UPDATED fires.
     -- Wrapped in pcall so a crash self-cancels instead of spamming errors every frame.
     local function WaypointOnUpdate(self, elapsed)
-        if not C_Map.HasUserWaypoint() or not C_SuperTrack.IsSuperTrackingUserWaypoint() then
+        if not HasUserWaypoint() or not C_SuperTrack.IsSuperTrackingUserWaypoint() then
             if self.lastMode then
                 self.lastMode = nil
             end
@@ -439,7 +458,7 @@ local function CreateWaypointTracker()
 
         -- Resolve waypoint world position once (refreshed by USER_WAYPOINT_UPDATED)
         if not cachedWPWorldX then
-            local wp = C_Map.GetUserWaypoint()
+            local wp = GetUserWaypoint()
             if not wp or not wp.position then
                 HideSuperTrackGlow()
                 return
@@ -451,7 +470,7 @@ local function CreateWaypointTracker()
                 cachedPlayerVec.x = wp.position.x
                 cachedPlayerVec.y = wp.position.y
             end
-            local _, wWorld = C_Map.GetWorldPosFromMapPos(cachedWPMapID, cachedPlayerVec)
+            local _, wWorld = GetWorldPosFromMapPos(cachedWPMapID, cachedPlayerVec)
             if not wWorld then return end
             cachedWPWorldX = wWorld.x
             cachedWPWorldY = wWorld.y
@@ -492,7 +511,7 @@ local function CreateWaypointTracker()
             else
                 HideSuperTrackGlow()
                 C_SuperTrack.SetSuperTrackedUserWaypoint(false)
-                C_Map.ClearUserWaypoint()
+                ClearUserWaypoint()
             end
             return
         end
@@ -636,7 +655,7 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
         else
             HideSuperTrackGlow()
             C_SuperTrack.SetSuperTrackedUserWaypoint(false)
-            C_Map.ClearUserWaypoint()
+            ClearUserWaypoint()
         end
         return
     end
@@ -645,14 +664,14 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
         cachedWPMapID = nil
         cachedWPWorldX = nil
         cachedWPWorldY = nil
-        if EasyFind.db.enableMapSearch ~= false and EasyFind.db.autoTrackPins ~= false and C_Map.HasUserWaypoint() and not C_SuperTrack.IsSuperTrackingUserWaypoint() then
+        if EasyFind.db.enableMapSearch ~= false and EasyFind.db.autoTrackPins ~= false and HasUserWaypoint() and not C_SuperTrack.IsSuperTrackingUserWaypoint() then
             C_SuperTrack.SetSuperTrackedUserWaypoint(true)
             return
         end
-        if C_Map.HasUserWaypoint() and C_SuperTrack.IsSuperTrackingUserWaypoint() then
+        if HasUserWaypoint() and C_SuperTrack.IsSuperTrackingUserWaypoint() then
             ShowSuperTrackGlow()
         else
-            if not C_Map.HasUserWaypoint() then
+            if not HasUserWaypoint() then
                 efPlacedWaypoint = false
             end
             HideSuperTrackGlow()
@@ -662,7 +681,7 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
     -- PLAYER_ENTERING_WORLD
     if isInitialLogin or isReloadingUI then
         C_Timer.After(0, function()
-            if C_Map.HasUserWaypoint() and C_SuperTrack.IsSuperTrackingUserWaypoint() then
+            if HasUserWaypoint() and C_SuperTrack.IsSuperTrackingUserWaypoint() then
                 ShowSuperTrackGlow()
             end
         end)
@@ -2273,7 +2292,7 @@ function MapSearch:CreateHighlightFrame()
     waypointPin:EnableMouse(true)
     waypointPin:SetScript("OnEnter", function(self)
         if self.isLocalSearch then
-            local playerMapID = C_Map.GetBestMapForUnit("player")
+            local playerMapID = GetBestMapForUnit("player")
             local viewingMapID = WorldMapFrame:GetMapID()
             local inZone = playerMapID and viewingMapID and playerMapID == viewingMapID
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -2292,10 +2311,10 @@ function MapSearch:CreateHighlightFrame()
     waypointPin:SetScript("OnLeave", GameTooltip_Hide)
     waypointPin:SetScript("OnMouseUp", function(self, button)
         if button == "LeftButton" and self.isLocalSearch and self.waypointX and self.waypointY then
-            local playerMapID = C_Map.GetBestMapForUnit("player")
+            local playerMapID = GetBestMapForUnit("player")
             local viewingMapID = WorldMapFrame:GetMapID()
             if viewingMapID and playerMapID == viewingMapID then
-                C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(viewingMapID, self.waypointX, self.waypointY))
+                SetUserWaypoint(UiMapPoint.CreateFromCoordinates(viewingMapID, self.waypointX, self.waypointY))
                 C_SuperTrack.SetSuperTrackedUserWaypoint(true)
                 efPlacedWaypoint = true
                 ShowSuperTrackGlow()
@@ -2391,7 +2410,7 @@ function MapSearch:GetDirectChildZones(mapID)
     local seen = {}
     
     -- Get all direct children (not recursive)
-    local children = C_Map.GetMapChildrenInfo(mapID, nil, false)  -- false = not recursive
+    local children = GetMapChildrenInfo(mapID, nil, false)  -- false = not recursive
     if children then
         for _, child in ipairs(children) do
             if child.name and not seen[child.mapID] then
@@ -2420,7 +2439,7 @@ function MapSearch:GetMapHierarchy(mapID)
     local maxDepth = 10  -- Safety limit
     
     while currentID and maxDepth > 0 do
-        local mapInfo = C_Map.GetMapInfo(currentID)
+        local mapInfo = GetMapInfo(currentID)
         if mapInfo then
             tinsert(hierarchy, 1, {
                 mapID = currentID,
@@ -2447,10 +2466,10 @@ function MapSearch:GetAllWorldZones(startMapID, depth, parentPath)
 
     if depth > maxDepth then return allZones end
 
-    local children = C_Map.GetMapChildrenInfo(startMapID, nil, false)
+    local children = GetMapChildrenInfo(startMapID, nil, false)
     if not children then return allZones end
 
-    local parentInfo = C_Map.GetMapInfo(startMapID)
+    local parentInfo = GetMapInfo(startMapID)
     local parentName = parentInfo and parentInfo.name or ""
     local parentType = parentInfo and parentInfo.mapType
 
@@ -2474,7 +2493,7 @@ function MapSearch:GetAllWorldZones(startMapID, depth, parentPath)
                 if parentType == Enum.UIMapType.Zone then
                     includeDungeon = true
                 elseif parentType == Enum.UIMapType.Continent then
-                    local ok, dL, dR = pcall(C_Map.GetMapRectOnMap, child.mapID, startMapID)
+                    local ok, dL, dR = pcall(GetMapRectOnMap, child.mapID, startMapID)
                     includeDungeon = ok and dL and (dR - dL) > 0
                 end
             end
@@ -2552,7 +2571,7 @@ function MapSearch:SearchZones(query)
         else
             local worldPath = {{mapID = 946, name = "World"}}
             zones = {}
-            local cosmicChildren = C_Map.GetMapChildrenInfo(946, nil, false)
+            local cosmicChildren = GetMapChildrenInfo(946, nil, false)
             if cosmicChildren then
                 for _, child in ipairs(cosmicChildren) do
                     if child.name then
@@ -2703,7 +2722,7 @@ end
 local function GetContinentForMap(mapID)
     local id = mapID
     for i = 1, 10 do
-        local info = C_Map.GetMapInfo(id)
+        local info = GetMapInfo(id)
         if not info then return nil end
         if info.mapType == Enum.UIMapType.Continent then return id end
         id = ZONE_PARENT_OVERRIDES[id] or info.parentMapID
@@ -2719,8 +2738,8 @@ local function GetMapRectViaContinent(mapID, viewMapID)
     local c2 = GetContinentForMap(viewMapID)
     if not c1 or c1 ~= c2 then return nil end
 
-    local ok1, tL, tR, tT, tB = pcall(C_Map.GetMapRectOnMap, mapID, c1)
-    local ok2, vL, vR, vT, vB = pcall(C_Map.GetMapRectOnMap, viewMapID, c1)
+    local ok1, tL, tR, tT, tB = pcall(GetMapRectOnMap, mapID, c1)
+    local ok2, vL, vR, vT, vB = pcall(GetMapRectOnMap, viewMapID, c1)
     if not ok1 or not tL or not ok2 or not vL then return nil end
 
     local vW, vH = vR - vL, vB - vT
@@ -2746,7 +2765,7 @@ local function ScanZoneBoundsOnMap(targetMapID, viewMapID, projL, projR, projT, 
     while x <= maxX do
         local y = minY
         while y <= maxY do
-            local info = C_Map.GetMapInfoAtPosition(viewMapID, x, y)
+            local info = GetMapInfoAtPosition(viewMapID, x, y)
             if info and info.mapID == targetMapID then
                 if not foundL then
                     foundL, foundR, foundT, foundB = x, x, y, y
@@ -2773,9 +2792,9 @@ end
 -- zeros from GetMapRectOnMap and have no continent projection. Bugged zones
 -- (Uldum, Vale) return valid rects, so this won't match them.
 local function IsOrphanZone(mapID)
-    local info = C_Map.GetMapInfo(mapID)
+    local info = GetMapInfo(mapID)
     if not info or not info.parentMapID then return false end
-    local ok, left, right, top, bottom = pcall(C_Map.GetMapRectOnMap, mapID, info.parentMapID)
+    local ok, left, right, top, bottom = pcall(GetMapRectOnMap, mapID, info.parentMapID)
     if not ok or not left then return true end
     if left ~= 0 or right ~= 0 or top ~= 0 or bottom ~= 0 then return false end
     -- Continent projection also returns all zeros for truly orphaned zones
@@ -2790,19 +2809,19 @@ end
 -- position on the view map. This finds a same-named child of viewMapID that
 -- does have a valid rect, or returns the original mapID unchanged.
 local function ResolveZoneForMap(mapID, viewMapID)
-    local info = C_Map.GetMapInfo(mapID)
+    local info = GetMapInfo(mapID)
     if not info or not info.name then return mapID end
 
-    local ok, left, right = pcall(C_Map.GetMapRectOnMap, mapID, viewMapID)
+    local ok, left, right = pcall(GetMapRectOnMap, mapID, viewMapID)
     if ok and left and (right - left) > 0 then return mapID end
 
     local targetName = slower(info.name)
-    local children = C_Map.GetMapChildrenInfo(viewMapID, nil, false)
+    local children = GetMapChildrenInfo(viewMapID, nil, false)
     if not children then return mapID end
 
     for _, child in ipairs(children) do
         if child.mapID ~= mapID and slower(child.name) == targetName then
-            local ok2, cL, cR = pcall(C_Map.GetMapRectOnMap, child.mapID, viewMapID)
+            local ok2, cL, cR = pcall(GetMapRectOnMap, child.mapID, viewMapID)
             if ok2 and cL and (cR - cL) > 0 then
                 DebugPrint("[EasyFind] ResolveZoneForMap:", mapID, "->", child.mapID, "on", viewMapID)
                 return child.mapID
@@ -2832,7 +2851,7 @@ local function FindSurroundingZone(parentMapID, mapID, left, right, top, bottom,
     for i = 1, #offsets do
         local px, py = offsets[i][1], offsets[i][2]
         if px >= 0 and px <= 1 and py >= 0 and py <= 1 then
-            local info = C_Map.GetMapInfoAtPosition(parentMapID, px, py)
+            local info = GetMapInfoAtPosition(parentMapID, px, py)
             if info and info.mapID ~= mapID and info.mapType == Enum.UIMapType.Zone then
                 counts[info.mapID] = (counts[info.mapID] or 0) + 1
                 zones[info.mapID] = info
@@ -2874,7 +2893,7 @@ function MapSearch:HighlightZone(mapID)
         return 
     end
     
-    local mapInfo = C_Map.GetMapInfo(mapID)
+    local mapInfo = GetMapInfo(mapID)
     if not mapInfo then 
         DebugPrint("[EasyFind] HighlightZone: no mapInfo for", mapID)
         return 
@@ -2888,14 +2907,14 @@ function MapSearch:HighlightZone(mapID)
     local resolved = ResolveZoneForMap(mapID, parentMapID)
     if resolved ~= mapID then
         mapID = resolved
-        mapInfo = C_Map.GetMapInfo(mapID)
+        mapInfo = GetMapInfo(mapID)
         if not mapInfo then return end
     end
 
     local isZone = mapInfo.mapType == Enum.UIMapType.Zone
 
     local success, left, right, top, bottom = pcall(function()
-        return C_Map.GetMapRectOnMap(mapID, parentMapID)
+        return GetMapRectOnMap(mapID, parentMapID)
     end)
 
     if not success or not left then return end
@@ -2914,7 +2933,7 @@ function MapSearch:HighlightZone(mapID)
             local minX, maxX, minY, maxY = 2, -1, 2, -1
             for sx = 0.025, 0.975, 0.05 do
                 for sy = 0.025, 0.975, 0.05 do
-                    local info = C_Map.GetMapInfoAtPosition(parentMapID, sx, sy)
+                    local info = GetMapInfoAtPosition(parentMapID, sx, sy)
                     if info and info.mapID == mapID then
                         if sx < minX then minX = sx end
                         if sx > maxX then maxX = sx end
@@ -2949,7 +2968,7 @@ function MapSearch:HighlightZone(mapID)
     local fileDataID, atlasID, texPercentX, texPercentY, texWidth, texHeight, posX, posY
     local highlightSuccess = pcall(function()
         fileDataID, atlasID, texPercentX, texPercentY, texWidth, texHeight, posX, posY =
-            C_Map.GetMapHighlightInfoAtPosition(parentMapID, centerX, centerY)
+            GetMapHighlightInfoAtPosition(parentMapID, centerX, centerY)
     end)
 
     local highlight = zoneHighlightFrame.highlights[1]
@@ -2962,7 +2981,7 @@ function MapSearch:HighlightZone(mapID)
     -- Validate the texture actually belongs to this zone. Cities on continent
     -- maps pick up their containing zone's texture at the center point.
     if hasTexture and isZone then
-        local resolvedInfo = C_Map.GetMapInfoAtPosition(parentMapID, centerX, centerY)
+        local resolvedInfo = GetMapInfoAtPosition(parentMapID, centerX, centerY)
         if resolvedInfo and resolvedInfo.mapID ~= mapID then
             hasTexture = false
         end
@@ -2974,11 +2993,11 @@ function MapSearch:HighlightZone(mapID)
     -- Bugged zones (Uldum, Vale) are detected separately: their center
     -- returns the continent itself rather than any zone.
     if not hasTexture and isZone then
-        local parentMapInfo = C_Map.GetMapInfo(parentMapID)
+        local parentMapInfo = GetMapInfo(parentMapID)
         if parentMapInfo and parentMapInfo.mapType == Enum.UIMapType.Continent then
             local cx = (left + right) * 0.5
             local cy = (top + bottom) * 0.5
-            local centerInfo = C_Map.GetMapInfoAtPosition(parentMapID, cx, cy)
+            local centerInfo = GetMapInfoAtPosition(parentMapID, cx, cy)
             local isBuggedZone = not centerInfo
                 or centerInfo.mapType ~= Enum.UIMapType.Zone
             if not isBuggedZone then
@@ -2989,7 +3008,7 @@ function MapSearch:HighlightZone(mapID)
                         local px = left + (right - left) * sx
                         local py = top + (bottom - top) * sy
                         if px >= 0 and px <= 1 and py >= 0 and py <= 1 then
-                            local info = C_Map.GetMapInfoAtPosition(parentMapID, px, py)
+                            local info = GetMapInfoAtPosition(parentMapID, px, py)
                             if info and info.mapID ~= mapID and info.mapType == Enum.UIMapType.Zone then
                                 counts[info.mapID] = (counts[info.mapID] or 0) + 1
                             end
@@ -3045,7 +3064,7 @@ function MapSearch:HighlightZone(mapID)
         end
     else
         if isZone then
-            local parentMapInfo = C_Map.GetMapInfo(parentMapID)
+            local parentMapInfo = GetMapInfo(parentMapID)
 
             -- On a zone-level map: scan for actual bounds, keeping the
             -- continent projection as fallback if the scan returns a tiny
@@ -3099,7 +3118,7 @@ function MapSearch:HighlightZone(mapID)
             end)
             overlay:SetScript("OnEnter", function(self)
                 GameTooltip:SetOwner(self, "ANCHOR_CURSOR")
-                local info = C_Map.GetMapInfo(self.targetMapID)
+                local info = GetMapInfo(self.targetMapID)
                 GameTooltip:SetText(info and info.name or "")
                 GameTooltip:Show()
             end)
@@ -3302,7 +3321,7 @@ end
 function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
     DebugPrint("[EasyFind] HighlightZoneOnMap called for targetMapID:", targetMapID)
     
-    local targetInfo = C_Map.GetMapInfo(targetMapID)
+    local targetInfo = GetMapInfo(targetMapID)
     if not targetInfo then 
         DebugPrint("[EasyFind] ERROR: No targetInfo for mapID", targetMapID)
         return 
@@ -3321,7 +3340,7 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
         DebugPrint("[EasyFind] Using parent override for", targetMapID, "→", targetParentMapID)
     end
     
-    local targetParentInfo = C_Map.GetMapInfo(targetParentMapID)
+    local targetParentInfo = GetMapInfo(targetParentMapID)
     DebugPrint("[EasyFind] Target parent:", targetParentInfo and targetParentInfo.name or "nil", "ID:", targetParentMapID)
     
     local currentMapID = WorldMapFrame:GetMapID()
@@ -3355,7 +3374,7 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
         end
     end
 
-    local currentInfo = C_Map.GetMapInfo(currentMapID)
+    local currentInfo = GetMapInfo(currentMapID)
     DebugPrint("[EasyFind] Current map:", currentInfo and currentInfo.name or "nil", "ID:", currentMapID)
 
     -- Resolve legacy mapIDs: if the current map has a same-named child zone
@@ -3363,7 +3382,7 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
     local resolved = ResolveZoneForMap(targetMapID, currentMapID)
     if resolved ~= targetMapID then
         targetMapID = resolved
-        targetInfo = C_Map.GetMapInfo(targetMapID)
+        targetInfo = GetMapInfo(targetMapID)
         if not targetInfo then return end
         targetParentMapID = ZONE_PARENT_OVERRIDES[targetMapID] or targetInfo.parentMapID
     end
@@ -3380,14 +3399,14 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
         -- Eternal Blossoms) - let it fall through to direct highlight + overlay.
         if currentInfo and currentInfo.mapType == Enum.UIMapType.Continent
            and targetInfo.mapType == Enum.UIMapType.Zone then
-            local ok, cL, cR, cT, cB = pcall(C_Map.GetMapRectOnMap, targetMapID, currentMapID)
+            local ok, cL, cR, cT, cB = pcall(GetMapRectOnMap, targetMapID, currentMapID)
             if ok and cL and (cR - cL) > 0 then
                 local cx, cy = (cL + cR) / 2, (cT + cB) / 2
                 local targetArea = (cR - cL) * (cB - cT)
-                local containing = C_Map.GetMapInfoAtPosition(currentMapID, cx, cy)
+                local containing = GetMapInfoAtPosition(currentMapID, cx, cy)
                 if containing and containing.mapID ~= targetMapID
                    and containing.mapType == Enum.UIMapType.Zone then
-                    local ok2, sL, sR, sT, sB = pcall(C_Map.GetMapRectOnMap, containing.mapID, currentMapID)
+                    local ok2, sL, sR, sT, sB = pcall(GetMapRectOnMap, containing.mapID, currentMapID)
                     if ok2 and sL and cL >= sL and cR <= sR and cT >= sT and cB <= sB then
                         local containArea = (sR - sL) * (sB - sT)
                         -- Only route through containing zone if target is
@@ -3407,7 +3426,7 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
                 -- and verify spatial containment
                 local surrounding = FindSurroundingZone(currentMapID, targetMapID, cL, cR, cT, cB, 1)
                 if surrounding then
-                    local ok2, sL, sR, sT, sB = pcall(C_Map.GetMapRectOnMap, surrounding.mapID, currentMapID)
+                    local ok2, sL, sR, sT, sB = pcall(GetMapRectOnMap, surrounding.mapID, currentMapID)
                     if ok2 and sL and cL >= sL and cR <= sR and cT >= sT and cB <= sB then
                         local surroundArea = (sR - sL) * (sB - sT)
                         if targetArea < surroundArea * 0.25 then
@@ -3440,7 +3459,7 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
         if cL then
             local cX, cY = (cL + cR) / 2, (cT + cB) / 2
             if cX > 0 and cX < 1 and cY > 0 and cY < 1 then
-                local resolved = C_Map.GetMapInfoAtPosition(currentMapID, cX, cY)
+                local resolved = GetMapInfoAtPosition(currentMapID, cX, cY)
                 if resolved and resolved.mapID == targetMapID then
                     DebugPrint("[EasyFind] CASE 1b: Target visible on current map (containing zone)")
                     self.pendingZoneHighlight = targetMapID
@@ -3478,7 +3497,7 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
         end
     end
     
-    local dcaInfo = dcaMapID and C_Map.GetMapInfo(dcaMapID)
+    local dcaInfo = dcaMapID and GetMapInfo(dcaMapID)
     DebugPrint("[EasyFind] DCA:", dcaInfo and dcaInfo.name or "nil", "ID:", dcaMapID, "Index:", dcaIndex)
     
     if not dcaMapID then
@@ -3496,7 +3515,7 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
         local nextStepIndex = dcaIndex + 1
         if nextStepIndex <= #targetParentPath then
             local nextStepMapID = targetParentPath[nextStepIndex].mapID
-            local nextStepInfo = C_Map.GetMapInfo(nextStepMapID)
+            local nextStepInfo = GetMapInfo(nextStepMapID)
             DebugPrint("[EasyFind] Next step: highlight", nextStepInfo and nextStepInfo.name or "nil", "ID:", nextStepMapID)
             self.pendingZoneHighlight = targetMapID
             DebugPrint("[EasyFind] Set pendingZoneHighlight to", targetMapID)
@@ -3543,7 +3562,7 @@ function MapSearch:GetMapPath(mapID)
     local maxDepth = 15
     
     while currentID and maxDepth > 0 do
-        local info = C_Map.GetMapInfo(currentID)
+        local info = GetMapInfo(currentID)
         if info then
             tinsert(path, 1, {mapID = currentID, name = info.name, mapType = info.mapType})
             currentID = ZONE_PARENT_OVERRIDES[currentID] or info.parentMapID
@@ -3671,7 +3690,7 @@ function MapSearch:FindBreadcrumbButton(navBar, mapID)
     if navBar.home and navBar.home:IsShown() then
         -- Cosmic map is always the home button; API name "Cosmic" differs
         -- from the display name "World" so ID/text checks fail
-        local targetInfo = C_Map.GetMapInfo(mapID)
+        local targetInfo = GetMapInfo(mapID)
         if targetInfo and targetInfo.mapType == Enum.UIMapType.Cosmic then
             DebugPrint("[EasyFind] Cosmic map requested, returning home button")
             return navBar.home
@@ -3704,7 +3723,7 @@ function MapSearch:FindBreadcrumbButton(navBar, mapID)
     end
 
     -- Text-based fallback: match button text to the map name
-    local targetName = C_Map.GetMapInfo(mapID)
+    local targetName = GetMapInfo(mapID)
     targetName = targetName and targetName.name
     if targetName then
         for i = 1, select("#", navBar:GetChildren()) do
@@ -3853,7 +3872,7 @@ function MapSearch:IsOnContinentMap()
     local mapID = WorldMapFrame:GetMapID()
     if not mapID then return false end
     
-    local mapInfo = C_Map.GetMapInfo(mapID)
+    local mapInfo = GetMapInfo(mapID)
     if not mapInfo then return false end
     
     -- Continent type is 2, World is 1
@@ -3869,7 +3888,7 @@ function MapSearch:HookWorldMap()
         -- left the zone the pin was in, it's gone.
         if activePinState then
             local currentMapID = WorldMapFrame:GetMapID()
-            local playerMapID = C_Map.GetBestMapForUnit("player")
+            local playerMapID = GetBestMapForUnit("player")
             if currentMapID == activePinState.mapID and playerMapID == activePinState.mapID then
                 C_Timer.After(0, function()
                     if activePinState and activePinState.instances then
@@ -3904,7 +3923,7 @@ function MapSearch:HookWorldMap()
     
     hooksecurefunc(WorldMapFrame, "OnMapChanged", function()
         local newMapID = WorldMapFrame:GetMapID()
-        local newMapInfo = newMapID and C_Map.GetMapInfo(newMapID)
+        local newMapInfo = newMapID and GetMapInfo(newMapID)
         DebugPrint("[EasyFind] OnMapChanged - new map:", newMapInfo and newMapInfo.name or "nil", "ID:", newMapID)
         DebugPrint("[EasyFind] OnMapChanged - pendingZoneHighlight:", self.pendingZoneHighlight)
 
@@ -3937,14 +3956,14 @@ function MapSearch:HookWorldMap()
         if savedPendingZone and self.pendingWaypoint and self.pendingWaypoint.mapID then
             local wp = self.pendingWaypoint
             local currentMapID = WorldMapFrame:GetMapID()
-            if wp.mapID ~= currentMapID and C_EncounterJournal and C_EncounterJournal.GetDungeonEntrancesForMap then
-                local entrances = C_EncounterJournal.GetDungeonEntrancesForMap(currentMapID)
+            if wp.mapID ~= currentMapID and GetDungeonEntrancesForMap then
+                local entrances = GetDungeonEntrancesForMap(currentMapID)
                 if entrances then
                     for _, entrance in ipairs(entrances) do
                         if entrance.name and entrance.position then
                             -- Match by proximity - entrance coords are in current map space
                             -- Use GetMapRectOnMap to project wp coords to current map for comparison
-                            local ok, left, right, top, bottom = pcall(C_Map.GetMapRectOnMap, wp.mapID, currentMapID)
+                            local ok, left, right, top, bottom = pcall(GetMapRectOnMap, wp.mapID, currentMapID)
                             if ok and left and (right - left) > 0 then
                                 local projX = left + wp.x * (right - left)
                                 local projY = top  + wp.y * (bottom - top)
@@ -3971,7 +3990,7 @@ function MapSearch:HookWorldMap()
         if savedPendingZone then
             -- Match by ID or by name (handles zones with multiple mapIDs
             -- like Dalaran which has different IDs per expansion)
-            local pendingInfo = C_Map.GetMapInfo(savedPendingZone)
+            local pendingInfo = GetMapInfo(savedPendingZone)
             local arrivedByName = pendingInfo and newMapInfo
                 and pendingInfo.name == newMapInfo.name
             if newMapID == savedPendingZone or arrivedByName then
@@ -4073,7 +4092,7 @@ local function GetContinentInstanceOwners(continentID)
     local owners = {}
     local function scan(parentID, ownerZoneID, depth)
         if depth > 5 then return end
-        local children = C_Map.GetMapChildrenInfo(parentID, nil, false)
+        local children = GetMapChildrenInfo(parentID, nil, false)
         if children then
             for _, child in ipairs(children) do
                 if child.name then
@@ -4114,12 +4133,12 @@ end
 function MapSearch:ScanDungeonEntrances(mapID)
     mapID = mapID or WorldMapFrame:GetMapID()
     if not mapID then return {} end
-    if not C_EncounterJournal or not C_EncounterJournal.GetDungeonEntrancesForMap then return {} end
+    if not GetDungeonEntrancesForMap then return {} end
 
     local results = {}
     local seen = {}  -- dedup by entrance name
-    local mapInfo = C_Map.GetMapInfo(mapID)
-    local parentInfo = mapInfo and mapInfo.parentMapID and C_Map.GetMapInfo(mapInfo.parentMapID)
+    local mapInfo = GetMapInfo(mapID)
+    local parentInfo = mapInfo and mapInfo.parentMapID and GetMapInfo(mapInfo.parentMapID)
     local parentLabel = mapInfo and mapInfo.name or ""
 
     -- For zone-level maps (parent is Continent), use the continent-wide ownership
@@ -4133,7 +4152,7 @@ function MapSearch:ScanDungeonEntrances(mapID)
     local zL, zR, zT, zB
     if useContinent and continentID then
         local ok
-        ok, zL, zR, zT, zB = pcall(C_Map.GetMapRectOnMap, mapID, continentID)
+        ok, zL, zR, zT, zB = pcall(GetMapRectOnMap, mapID, continentID)
         canProject = ok and zL and (zR - zL) > 0 and (zB - zT) > 0
     end
 
@@ -4161,7 +4180,7 @@ function MapSearch:ScanDungeonEntrances(mapID)
     end
 
     -- Pass 1: scan the zone directly; exclude entrances owned by a different zone
-    local zoneEntrances = C_EncounterJournal.GetDungeonEntrancesForMap(mapID)
+    local zoneEntrances = GetDungeonEntrancesForMap(mapID)
     if zoneEntrances then
         for _, entrance in ipairs(zoneEntrances) do
             if entrance.name and entrance.position then
@@ -4183,7 +4202,7 @@ function MapSearch:ScanDungeonEntrances(mapID)
     -- Pass 2: scan the continent to pick up entrances the EJ API only returns
     -- for a neighboring zone.  Project continent coords → zone coords.
     if canProject and continentID and owners then
-        local contEntrances = C_EncounterJournal.GetDungeonEntrancesForMap(continentID)
+        local contEntrances = GetDungeonEntrancesForMap(continentID)
         if contEntrances then
             for _, entrance in ipairs(contEntrances) do
                 if entrance.name and entrance.position and not seen[entrance.name] then
@@ -4220,7 +4239,7 @@ function MapSearch:GetGlobalInstanceCache()
     -- We keep only that first entry to avoid duplicate search results and
     -- to maximise the chance that entranceMapID == the user's current map.
     local function collectMaps(parentMapID)
-        local children = C_Map.GetMapChildrenInfo(parentMapID, nil, false)
+        local children = GetMapChildrenInfo(parentMapID, nil, false)
         if not children then return end
         for _, child in ipairs(children) do
             -- Dungeon entrances from the encounter journal
@@ -4240,7 +4259,7 @@ function MapSearch:GetGlobalInstanceCache()
             -- Static locations with whitelisted categories (e.g. future delve POIs)
             local locs = STATIC_LOCATIONS[child.mapID]
             if locs then
-                local mapInfo = C_Map.GetMapInfo(child.mapID)
+                local mapInfo = GetMapInfo(child.mapID)
                 local mapName = mapInfo and mapInfo.name or ""
                 for _, loc in ipairs(locs) do
                     if GLOBAL_SEARCH_CATEGORIES[loc.category] then
@@ -4291,8 +4310,8 @@ function MapSearch:ScanFlightMasters(mapID)
     local FPFaction = Enum.FlightPathFaction
 
     -- Only filter adjacent-zone bleed on zone-level maps (parent is Continent).
-    local fmMapInfo = C_Map.GetMapInfo(mapID)
-    local fmParentInfo = fmMapInfo and fmMapInfo.parentMapID and C_Map.GetMapInfo(fmMapInfo.parentMapID)
+    local fmMapInfo = GetMapInfo(mapID)
+    local fmParentInfo = fmMapInfo and fmMapInfo.parentMapID and GetMapInfo(fmMapInfo.parentMapID)
     local fmShouldFilter = fmParentInfo and fmParentInfo.mapType == Enum.UIMapType.Continent
 
     for _, node in ipairs(nodes) do
@@ -4310,7 +4329,7 @@ function MapSearch:ScanFlightMasters(mapID)
                 if x >= 0 and x <= 1 and y >= 0 and y <= 1 then
                                         local fmInclude = true
                                         if fmShouldFilter then
-                                                local posInfo = C_Map.GetMapInfoAtPosition and C_Map.GetMapInfoAtPosition(mapID, x, y)
+                                                local posInfo = GetMapInfoAtPosition and GetMapInfoAtPosition(mapID, x, y)
                                                 fmInclude = posInfo and (posInfo.mapID == mapID or posInfo.parentMapID == mapID)
                                         end
                                         if fmInclude then
@@ -4344,7 +4363,7 @@ function MapSearch:ScanAllFlightMasters()
 
     local function collectFromMaps(parentMapID, depth)
         if depth > 6 then return end
-        local children = C_Map.GetMapChildrenInfo(parentMapID, nil, false)
+        local children = GetMapChildrenInfo(parentMapID, nil, false)
         if not children then return end
 
         for _, child in ipairs(children) do
@@ -4357,7 +4376,7 @@ function MapSearch:ScanAllFlightMasters()
                         if not seen[key] then
                             seen[key] = true
                             -- Add zone path prefix like dungeon entrances do
-                            local mapInfo = C_Map.GetMapInfo(child.mapID)
+                            local mapInfo = GetMapInfo(child.mapID)
                             node.pathPrefix = mapInfo and mapInfo.name or ""
                             tinsert(allNodes, node)
                         end
@@ -4370,7 +4389,7 @@ function MapSearch:ScanAllFlightMasters()
         end
     end
 
-    local cosmicChildren = C_Map.GetMapChildrenInfo(946, nil, false)
+    local cosmicChildren = GetMapChildrenInfo(946, nil, false)
     if cosmicChildren then
         for _, child in ipairs(cosmicChildren) do
             collectFromMaps(child.mapID, 0)
@@ -4388,7 +4407,7 @@ local cachedAllDungeonEntrances = nil
 
 function MapSearch:ScanAllDungeonEntrances()
     if cachedAllDungeonEntrances then return cachedAllDungeonEntrances end
-    if not C_EncounterJournal or not C_EncounterJournal.GetDungeonEntrancesForMap then return {} end
+    if not GetDungeonEntrancesForMap then return {} end
     
     local allEntrances = {}
     local seen = {}  -- Deduplicate by instance name + map
@@ -4396,7 +4415,7 @@ function MapSearch:ScanAllDungeonEntrances()
     -- Walk the full world tree collecting zone-type maps
     local function collectZoneMaps(parentMapID, depth)
         if depth > 6 then return end
-        local children = C_Map.GetMapChildrenInfo(parentMapID, nil, false)
+        local children = GetMapChildrenInfo(parentMapID, nil, false)
         if not children then return end
         
         for _, child in ipairs(children) do
@@ -4422,7 +4441,7 @@ function MapSearch:ScanAllDungeonEntrances()
     end
     
     -- Start from Cosmic → all worlds
-    local cosmicChildren = C_Map.GetMapChildrenInfo(946, nil, false)
+    local cosmicChildren = GetMapChildrenInfo(946, nil, false)
     if cosmicChildren then
         for _, child in ipairs(cosmicChildren) do
             collectZoneMaps(child.mapID, 0)
@@ -4494,10 +4513,10 @@ function MapSearch:ScanMapPOIs()
     -- First: Use WoW's API to get Area POIs directly (boats, zeppelins, portals, etc)
     -- Only include POIs we can categorize as useful (travel, services)
     -- Skip generic area POIs like landmarks, zone markers, events
-    local areaPOIs = C_AreaPoiInfo.GetAreaPOIForMap(mapID)
+    local areaPOIs = GetAreaPOIForMap(mapID)
     if areaPOIs then
         for _, poiID in ipairs(areaPOIs) do
-            local poiInfo = C_AreaPoiInfo.GetAreaPOIInfo(mapID, poiID)
+            local poiInfo = GetAreaPOIInfo(mapID, poiID)
             if poiInfo and poiInfo.name then
                 local category = nil  -- Start with nil, only add if we categorize it
                 local poiName = slower(poiInfo.name or "")
@@ -4698,7 +4717,7 @@ function MapSearch:GetPinInfo(pin)
         pinX = pin.areaPoiInfo.position.x
         pinY = pin.areaPoiInfo.position.y
     elseif pin.vignetteInfo and pin.vignetteInfo.vignetteGUID then
-        local pos = C_VignetteInfo and C_VignetteInfo.GetVignettePosition(pin.vignetteInfo.vignetteGUID, WorldMapFrame:GetMapID())
+        local pos = GetVignettePosition and GetVignettePosition(pin.vignetteInfo.vignetteGUID, WorldMapFrame:GetMapID())
         if pos then
             pinX = pos.x
             pinY = pos.y
@@ -4717,7 +4736,7 @@ function MapSearch:GetPinInfo(pin)
     if pinX and pinY then
         local mapID = WorldMapFrame:GetMapID()
         if mapID then
-            local posInfo = C_Map.GetMapInfoAtPosition and C_Map.GetMapInfoAtPosition(mapID, pinX, pinY)
+            local posInfo = GetMapInfoAtPosition and GetMapInfoAtPosition(mapID, pinX, pinY)
             if posInfo and posInfo.mapID ~= mapID and posInfo.parentMapID ~= mapID then
                 return nil
             end
@@ -5125,7 +5144,7 @@ function MapSearch:ShowResults(results)
 
     -- Check if the player is in the zone being viewed (for navBtn disabled state)
     local viewedMapID = WorldMapFrame:GetMapID()
-    local playerMapID = C_Map.GetBestMapForUnit("player")
+    local playerMapID = GetBestMapForUnit("player")
     local playerInZone = viewedMapID and playerMapID and viewedMapID == playerMapID
 
     local yOffset = -6  -- running vertical offset (top padding)
@@ -5511,8 +5530,8 @@ function MapSearch:SelectResult(data)
                 -- Ask the EJ API whether this entrance exists on the current map.
                 DebugPrint("[EasyFind] SelectResult → DUNGEON checking EJ API for current map")
                 local found = false
-                if C_EncounterJournal and C_EncounterJournal.GetDungeonEntrancesForMap then
-                    local entrances = C_EncounterJournal.GetDungeonEntrancesForMap(currentMapID)
+                if GetDungeonEntrancesForMap then
+                    local entrances = GetDungeonEntrancesForMap(currentMapID)
                     if entrances then
                         for _, ej in ipairs(entrances) do
                             if ej.name == data.name and ej.position then
@@ -5649,7 +5668,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
                         if button == "LeftButton" and self.isLocalSearch and self.waypointX and self.waypointY then
                             local viewingMapID = WorldMapFrame:GetMapID()
                             if viewingMapID then
-                                C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(viewingMapID, self.waypointX, self.waypointY))
+                                SetUserWaypoint(UiMapPoint.CreateFromCoordinates(viewingMapID, self.waypointX, self.waypointY))
                                 C_SuperTrack.SetSuperTrackedUserWaypoint(true)
                                 efPlacedWaypoint = true
                                 ShowSuperTrackGlow()
@@ -5939,8 +5958,8 @@ function MapSearch:GetPreviewCoords(data)
     if data.x and data.y and not data.isZone then
         -- Dungeon entrance on a different map - check EJ API for current map
         if data.isDungeonEntrance and data.entranceMapID and data.entranceMapID ~= currentMapID then
-            if C_EncounterJournal and C_EncounterJournal.GetDungeonEntrancesForMap then
-                local entrances = C_EncounterJournal.GetDungeonEntrancesForMap(currentMapID)
+            if GetDungeonEntrancesForMap then
+                local entrances = GetDungeonEntrancesForMap(currentMapID)
                 if entrances then
                     for _, ej in ipairs(entrances) do
                         if ej.name == data.name and ej.position then
@@ -5970,8 +5989,8 @@ function MapSearch:ClearAll()
         efPlacedWaypoint = false
         HideSuperTrackGlow()
         C_SuperTrack.SetSuperTrackedUserWaypoint(false)
-        if C_Map.HasUserWaypoint() then
-            C_Map.ClearUserWaypoint()
+        if HasUserWaypoint() then
+            ClearUserWaypoint()
         end
     end
 end
@@ -5991,7 +6010,7 @@ function MapSearch:TrackActivePin()
     if not mapID or not x or not y then return end
     if x < 0 or x > 1 or y < 0 or y > 1 then return end
 
-    C_Map.SetUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, x, y))
+    SetUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, x, y))
     C_SuperTrack.SetSuperTrackedUserWaypoint(true)
     efPlacedWaypoint = true
     ShowSuperTrackGlow()
