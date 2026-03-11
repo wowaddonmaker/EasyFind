@@ -1,8 +1,11 @@
 ## Interface: 120001, 120000
 ## Title: EasyFind
 ## Notes: Search and locate UI elements and map locations with ease
-## Author: YourName
+## Author: justawower
 ## Version: 1.2.7
+## IconTexture: 136460
+## Category: UI
+## AddonCompartmentFunc: EasyFind_OnAddonCompartmentClick
 ## SavedVariables: EasyFindDB
 ## DefaultState: enabled
 
