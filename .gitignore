@@ -1,8 +1,0 @@
-release.sh
-*.zip
-*.png
-CLAUDE.md
-PROGRESS.md
-Images/gen_masks.py
-media/
-copilot-instructions.md
