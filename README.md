@@ -31,7 +31,6 @@ Locate places and NPCs across Azeroth:
 - Mailboxes, barbers, transmogrifiers, and repair vendors
 - Stable masters, void storage, and guild services
 - The Great Vault, Creation Catalyst, and Trading Post
-- Rares and treasures
 - Chromie (Timewalking Campaigns)
 
 **Two search bars**: The local bar searches your current zone. The global bar searches zones, dungeons, raids, and delves across all of Azeroth. Both support category filters to narrow results by type.
@@ -44,7 +43,9 @@ Locate places and NPCs across Azeroth:
 
 ### Two navigation modes
 - **Guide Mode** (default): Walks you through each step to reach your destination. Highlights the correct button or tab with a yellow pulsing border and an animated arrow so you learn where things live.
-- **Direct Open Mode**: For when you already know the UI and just want to get there. Opens panels and tabs directly with no extra steps.
+- **Direct Open Mode**: Opens panels and tabs directly with no extra steps, for when you already know the UI.
+
+UI search and map search each have their own toggle. Enable **Open Panels Directly** (under UI Search options) to skip step-by-step guidance for interface panels. Enable **Navigate Zones Directly** (under Map Search options) to jump straight to a zone on the map instead of stepping through parent zones. Both are off by default.
 
 ## How to use
 
@@ -62,7 +63,7 @@ Results show their full path so you always know where you're going:
 
 ## First-time setup
 
-When you install EasyFind for the first time, you'll see an interactive setup overlay that helps you position and resize the search bar. Simply drag the bar where you want it and use the corner handle to adjust the size, then click **Done** when ready. You can always reposition it later by holding **Shift** and dragging.
+When you install EasyFind for the first time, you'll see an interactive setup overlay that helps you position and resize the search bar. Simply drag the bar where you want it and use the corner handle to adjust the size, then click **Done** when ready. You can always resize it later through the options menu (/ef o) and reposition it later by holding **Shift** and dragging.
 
 ## Slash commands
 
