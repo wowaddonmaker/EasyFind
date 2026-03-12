@@ -19,6 +19,14 @@ All notable changes to EasyFind will be documented in this file.
 - **Thunder Bluff POIs**: Added points of interest for Thunder Bluff
 - **Separate Max Results**: UI search and map search now have independent max visible row counts (UI defaults to 10, map to 6)
 - **Results Above**: Both UI and map search results can now be shown above the search bar for bottom-of-screen placement
+- **Blizzard Pin Tracking**: Minimap glow and guide circle now work with Blizzard's own map pins (flight points, area POIs, vignettes), not just user waypoints
+- **Pin Highlight Box Option**: Toggle the yellow highlight box around map pins on or off. Indicator arrow and pin icon remain visible either way
+- **Map Smart Show**: Auto-hide map search bars until you hover over them, like the existing UI search Smart Show
+- **Map Search Y-Offset**: New slider to adjust the vertical position of map search bars relative to the map bottom edge
+- **Keyboard Preview**: Arrow keys in map search results now preview the pin location on the map before you confirm
+- **Persistent Clear Button**: After selecting a map search result, the clear button stays visible on the search bar for easy dismissal
+- **Subsequence Matching**: Vowel-stripped abbreviations now match (e.g. "qtr" finds "quartermaster", "windrnr" finds "windrunner")
+- **Multi-word Fuzzy Search**: Multi-word queries now match per-word with fuzzy and subsequence support (e.g. "twlght hghlnds" finds "Twilight Highlands")
 
 ### Changed
 - **Indicator Arrow**: Arrow always bobs and pulses regardless of the Blinking Pins setting. Blinking Pins now only controls whether pins and highlight boxes pulse in sync
@@ -30,6 +38,9 @@ All notable changes to EasyFind will be documented in this file.
 - **Options Panel**: Reorganized with Speed boxes, two-column keybinds, and tighter section spacing. Theme selector moved to General section
 - **Keyword Scoring**: Short abbreviations (2-3 chars) like "bg" now boost exact keyword matches above initials matching so common abbreviations rank higher
 - **Keyboard Shortcuts Text**: Reorganized into clearer "From the search box" and "From the results list" sections
+- **Map Results Theme**: Map search results dropdown now matches the selected theme (Classic or Retail) and updates live on theme switch
+- **Fuzzy Length Tolerance**: Queries of 6+ characters now allow 2-character length differences when fuzzy matching, reducing missed results for longer words
+- **Filter Button Highlight**: Keyboard navigation now shows the filter button's own highlight style instead of an overlay rectangle
 
 ### Fixed
 - **Escape from Results**: Escape now properly deselects without refocusing the search editbox. Results stay visible for re-entry
@@ -46,6 +57,8 @@ All notable changes to EasyFind will be documented in this file.
 - **Exodar/Azuremyst**: Fixed navigation trying to go backward instead of highlighting the zone directly
 - **Currency/Reputation Navigation**: Fixed navigation sometimes failing when opening currencies and reputations
 - **Adjacent Zone Filter**: Fixed filter incorrectly hiding some valid results like Conquest Quartermaster
+- **Cross-zone Minimap Glow**: Minimap glow no longer appears for pins outside the player's current zone. Previously showed bogus arrows for pins on other continents or distant zones
+- **Trailing Whitespace in Search**: Trailing spaces no longer break search scoring or category matching
 
 ### Technical Notes
 - **Independent Indicator Animation**: Indicator arrow has its own Alpha animation group so it pulses independently of the parent highlight frame

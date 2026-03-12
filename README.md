@@ -119,12 +119,15 @@ EasyFind provides customizable keybinds:
 - **Icon Size**: Scale map indicator icons (default 80%).
 - **Arrival Distance**: How close (in yards) before a waypoint auto-clears. Default 10.
 - **Guide Circle Size**: Scale the minimap guide circle ring and arrow.
+- **Map Smart Show**: Auto-hide map search bars until you hover over them.
 - **Blinking Map Pins**: Pins and highlight boxes pulse in sync with the indicator arrow. Off by default. The indicator arrow always bobs regardless.
+- **Pin Highlight Box**: Toggle the yellow highlight box around map pins. Indicator arrow and pin icon remain visible either way.
 - **Minimap Arrow Glow**: Pulsing glow effect on the minimap perimeter arrow during navigation.
 - **Minimap Guide Circle**: Ring and directional arrow around your character on the minimap when navigating nearby.
 - **Map Pin Glow**: Pulsing glow on the map pin when the guide circle shrinks onto it.
 - **Auto Map Pin Clear**: Automatically clear map pins when you arrive at the destination.
 - **Auto Track Map Pins**: Automatically supertrack newly placed map pins for minimap arrow guidance.
+- **Map Search Y-Offset**: Adjust vertical position of map search bars relative to the map bottom edge.
 - **Category Filters**: Filter global results by zones, dungeons, raids, and delves. Filter local results by instances, travel, and services.
 
 ### Reset
