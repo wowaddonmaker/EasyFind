@@ -7,25 +7,22 @@ All notable changes to EasyFind will be documented in this file.
 ## [1.2.7] - 2026-03-10
 
 ### Added
-- **Keyboard Navigation**: Full arrow key, Tab, and Enter support for navigating search results without a mouse. Works in both UI search and map search bars
-- **Tab Toggle Focus**: Tab/Shift+Tab toggles between a parent row and its expand/collapse button in both UI and map search results
-- **Visual Rescaler**: New resize mode where you can drag handles on search bars and results panels to resize width, adjust row count, and change font size interactively. Shift+drag the search bar itself to reposition it along the map edge
-- **Toggle+Focus Keybind**: New combined keybind that toggles the search bar and immediately focuses it in one keypress. Automatically targets the map search bar when the world map is open
-- **Clear All Keybind**: Dedicated keybind to dismiss all highlights, map pins, zone highlights, and breadcrumbs
-- **Bug Report and Feature Request**: `/ef bug` and `/ef feature` as well as buttons for each in options panel to open pre-filled GitHub issue URLs for easy reporting
-- **Guide Circle Options**: New options for guide circle scale, minimap pin glow toggle, and separate minimap arrow glow toggle
-- **Waypoint Options**: Auto-track new pins, auto-clear on arrival, and configurable arrival distance now in the Options panel
-- **Class Trainer Category**: Class trainers now appear in map search results
-- **Thunder Bluff POIs**: Added points of interest for Thunder Bluff
-- **Separate Max Results**: UI search and map search now have independent max visible row counts (UI defaults to 10, map to 6)
-- **Results Above**: Both UI and map search results can now be shown above the search bar for bottom-of-screen placement
+- **Keyboard Navigation**: Full arrow key, Tab, and Enter support for navigating search results without a mouse. Works in both UI search and map search bars. Tab/Shift+Tab toggles between a parent row and its expand/collapse button. Arrow keys in map search preview the pin location before confirming
+- **Visual Rescaler**: Drag handles on search bars and results panels to resize width, adjust row count, and change font size interactively. Shift+drag the search bar itself to reposition it along the map edge
+- **Smarter Search**: Vowel-stripped abbreviations now match (e.g. "qtr" finds "quartermaster", "windrnr" finds "windrunner"). Multi-word queries match per-word with fuzzy and subsequence support (e.g. "twlght hghlnds" finds "Twilight Highlands")
 - **Blizzard Pin Tracking**: Minimap glow and guide circle now work with Blizzard's own map pins (flight points, area POIs, vignettes), not just user waypoints
-- **Pin Highlight Box Option**: Toggle the yellow highlight box around map pins on or off. Indicator arrow and pin icon remain visible either way
-- **Map Smart Show**: Auto-hide map search bars until you hover over them, like the existing UI search Smart Show
-- **Map Search Y-Offset**: New slider to adjust the vertical position of map search bars relative to the map bottom edge
-- **Keyboard Preview**: Arrow keys in map search results now preview the pin location on the map before you confirm
-- **Subsequence Matching**: Vowel-stripped abbreviations now match (e.g. "qtr" finds "quartermaster", "windrnr" finds "windrunner")
-- **Multi-word Fuzzy Search**: Multi-word queries now match per-word with fuzzy and subsequence support (e.g. "twlght hghlnds" finds "Twilight Highlands")
+- **Major POI Expansion**: Added points of interest for Stormwind, Orgrimmar, Ironforge, Thunder Bluff, Darnassus, Undercity, The Exodar, Silvermoon City, and Valdrakken. Includes class trainers, profession trainers, quartermasters, banks, inns, barbers, stable masters, guild services, and more
+- **Bug Report and Feature Request**: `/ef bug` and `/ef feature` as well as buttons in the options panel to open pre-filled GitHub issue URLs for easy reporting
+- **New options**:
+  - Toggle+Focus keybind: combined show+focus in one keypress, targets map search bar when world map is open
+  - Clear All keybind: dismiss all highlights, map pins, zone highlights, and breadcrumbs
+  - Guide circle scale, minimap pin glow toggle, and separate minimap arrow glow toggle
+  - Auto-track new pins, auto-clear on arrival, and configurable arrival distance
+  - Pin highlight box toggle (show/hide yellow highlight square around map pins)
+  - Map Smart Show (auto-hide map search bars until hover)
+  - Map search Y-offset slider
+  - Results above option for both UI and map search bars
+  - Separate max visible row counts for UI search (default 10) and map search (default 6)
 
 ### Changed
 - **Indicator Arrow**: Arrow always bobs and pulses regardless of the Blinking Pins setting. Blinking Pins now only controls whether pins and highlight boxes pulse in sync
@@ -38,7 +35,6 @@ All notable changes to EasyFind will be documented in this file.
 - **Keyword Scoring**: Short abbreviations (2-3 chars) like "bg" now boost exact keyword matches above initials matching so common abbreviations rank higher
 - **Keyboard Shortcuts Text**: Reorganized into clearer "From the search box" and "From the results list" sections
 - **Map Results Theme**: Map search results dropdown now matches the selected theme (Classic or Retail) and updates live on theme switch
-- **Fuzzy Length Tolerance**: Queries of 6+ characters now allow 2-character length differences when fuzzy matching, reducing missed results for longer words
 - **Filter Button Highlight**: Keyboard navigation now shows the filter button's own highlight style instead of an overlay rectangle
 
 ### Fixed
@@ -60,6 +56,7 @@ All notable changes to EasyFind will be documented in this file.
 - **Trailing Whitespace in Search**: Trailing spaces no longer break search scoring or category matching
 
 ### Technical Notes
+- **Fuzzy Length Tolerance**: Queries of 6+ characters now allow 2-character length differences when fuzzy matching, reducing missed results for longer words
 - **Independent Indicator Animation**: Indicator arrow has its own Alpha animation group so it pulses independently of the parent highlight frame
 - **Unified Animation Duration**: All animation durations consolidated into a single ANIM_DURATION constant
 - **Atlas Zone Highlights**: Zone highlighting now supports atlas-based textures in addition to fileDataID textures
