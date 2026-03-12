@@ -3404,14 +3404,16 @@ function UI:ShowWhatsNew(version)
     body:SetJustifyH("LEFT")
     body:SetSpacing(4)
     body:SetText(
-        "|cffFFD100\226\128\162|r |cffffffffMap Search Filters|r\n" ..
-        "        Filter global & local search by zones, dungeons, raids, and more\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffNative Waypoint Tracking|r\n" ..
-        "        Pins now place a real game waypoint\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffScrollable Results|r\n" ..
-        "        Search results are now scrollable (no more hard cutoff)\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffMinimap Button|r\n" ..
-        "        Optional minimap icon to quickly open or focus the search bar"
+        "|cffFFD100\226\128\162|r |cffffffffKeyboard Navigation|r\n" ..
+        "        Arrow keys, Tab, and Enter to browse and select results\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffVisual Rescaler|r\n" ..
+        "        Drag handles on search bars and results to resize on the fly\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffSmarter Search|r\n" ..
+        "        Abbreviations like \"qtr\" find quartermaster, multi-word fuzzy matching\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffMap Smart Show|r\n" ..
+        "        Map search bars can now auto-hide until you hover (enable in /ef o)\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffMajor POI Expansion|r\n" ..
+        "        New cities, class trainers, and points of interest across Azeroth"
     )
 
     -- Footer - anchored below body so it can't overlap
@@ -3600,7 +3602,9 @@ function UI:ShowFirstTimeSetup()
         "|cff999999moves away and reappears when you hover near|r\n" ..
         "|cff999999it. If kept unchecked, the bar stays visible and can be|r\n" ..
         "|cff999999toggled with the minimap button or|r\n" ..
-        "|cffFFD100/ef show|r |cff999999and|r |cffFFD100/ef hide|r|cff999999.|r"
+        "|cffFFD100/ef show|r |cff999999and|r |cffFFD100/ef hide|r|cff999999.|r\n" ..
+        "|cff999999You can also enable this for the map search|r\n" ..
+        "|cff999999bars in|r |cffFFD100/ef o|r|cff999999.|r"
     )
 
     -- Fade While Moving checkbox (default checked - staticOpacity defaults to false, meaning fade IS active)

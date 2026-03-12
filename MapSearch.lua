@@ -1451,13 +1451,9 @@ function MapSearch:CreateSearchFrame()
     clearBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
 
     clearBtn:SetScript("OnClick", function(self)
-        self.persistForHighlight = nil
         editBox:SetText("")
         editBox:ClearFocus()
         editBox.placeholder:Show()
-        if globalSearchFrame and globalSearchFrame.clearBtn then
-            globalSearchFrame.clearBtn.persistForHighlight = nil
-        end
         if globalSearchFrame and globalSearchFrame.editBox then
             globalSearchFrame.editBox:SetText("")
             globalSearchFrame.editBox:ClearFocus()
@@ -1495,9 +1491,7 @@ function MapSearch:CreateSearchFrame()
         GameTooltip:Hide()
     end)
 
-    -- Show/hide clear button based on text (unless persisting for active highlight)
     editBox:HookScript("OnTextChanged", function(self)
-        if clearBtn.persistForHighlight then return end
         clearBtn:SetShown(self:GetText() ~= "")
     end)
 
@@ -1753,13 +1747,9 @@ function MapSearch:CreateSearchFrame()
     globalClearBtn:SetFrameLevel(globalSearchFrame:GetFrameLevel() + 10)
 
     globalClearBtn:SetScript("OnClick", function(self)
-        self.persistForHighlight = nil
         globalEditBox:SetText("")
         globalEditBox:ClearFocus()
         globalEditBox.placeholder:Show()
-        if searchFrame and searchFrame.clearBtn then
-            searchFrame.clearBtn.persistForHighlight = nil
-        end
         if searchFrame and searchFrame.editBox then
             searchFrame.editBox:SetText("")
             searchFrame.editBox:ClearFocus()
@@ -1797,9 +1787,7 @@ function MapSearch:CreateSearchFrame()
         GameTooltip:Hide()
     end)
 
-    -- Show/hide clear button based on text (unless persisting for active highlight)
     globalEditBox:HookScript("OnTextChanged", function(self)
-        if globalClearBtn.persistForHighlight then return end
         globalClearBtn:SetShown(self:GetText() ~= "")
     end)
     
@@ -5921,11 +5909,6 @@ function MapSearch:SelectResult(data)
         globalSearchFrame.editBox.placeholder:Show()
     end
     self:HideResults()
-    -- Keep clear button visible on the source bar so users can dismiss the highlight
-    if sourceFrame and sourceFrame.clearBtn then
-        sourceFrame.clearBtn:Show()
-        sourceFrame.clearBtn.persistForHighlight = true
-    end
 
     if data then
         DebugPrint("[EasyFind] SelectResult: name=", data.name,
@@ -6407,14 +6390,6 @@ end
 -- Called by explicit dismiss actions (right-click pin, /ef clear, clear button)
 function MapSearch:ClearAll()
     activePinState = nil
-    if searchFrame and searchFrame.clearBtn then
-        searchFrame.clearBtn.persistForHighlight = nil
-        searchFrame.clearBtn:SetShown(searchFrame.editBox:GetText() ~= "")
-    end
-    if globalSearchFrame and globalSearchFrame.clearBtn then
-        globalSearchFrame.clearBtn.persistForHighlight = nil
-        globalSearchFrame.clearBtn:SetShown(globalSearchFrame.editBox:GetText() ~= "")
-    end
     self:ClearHighlight()
     -- Only clear Blizzard waypoint if EasyFind placed it
     if efPlacedWaypoint then

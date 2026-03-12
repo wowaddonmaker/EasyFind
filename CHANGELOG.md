@@ -24,7 +24,6 @@ All notable changes to EasyFind will be documented in this file.
 - **Map Smart Show**: Auto-hide map search bars until you hover over them, like the existing UI search Smart Show
 - **Map Search Y-Offset**: New slider to adjust the vertical position of map search bars relative to the map bottom edge
 - **Keyboard Preview**: Arrow keys in map search results now preview the pin location on the map before you confirm
-- **Persistent Clear Button**: After selecting a map search result, the clear button stays visible on the search bar for easy dismissal
 - **Subsequence Matching**: Vowel-stripped abbreviations now match (e.g. "qtr" finds "quartermaster", "windrnr" finds "windrunner")
 - **Multi-word Fuzzy Search**: Multi-word queries now match per-word with fuzzy and subsequence support (e.g. "twlght hghlnds" finds "Twilight Highlands")
 
