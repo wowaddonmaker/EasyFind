@@ -41,6 +41,7 @@ local GetAreaPOIForMap       = C_AreaPoiInfo and C_AreaPoiInfo.GetAreaPOIForMap
 local GetAreaPOIInfo         = C_AreaPoiInfo and C_AreaPoiInfo.GetAreaPOIInfo
 local GetDelvesForMap        = C_AreaPoiInfo and C_AreaPoiInfo.GetDelvesForMap
 local GetVignettePosition    = C_VignetteInfo and C_VignetteInfo.GetVignettePosition
+local GetTaxiNodesForMap     = C_TaxiMap and C_TaxiMap.GetTaxiNodesForMap
 local GetDungeonEntrancesForMap   = C_EncounterJournal and C_EncounterJournal.GetDungeonEntrancesForMap
 local GetDungeonEntranceMapInfo   = C_EncounterJournal and C_EncounterJournal.GetDungeonEntranceMapInfo
 local HasUserWaypoint        = C_Map.HasUserWaypoint
@@ -388,10 +389,29 @@ end
 local cachedWPMapID
 local cachedWPWorldX, cachedWPWorldY  -- world-space position (same space as UnitPosition)
 local cachedPlayerVec                 -- reusable Vector2D for one-time waypoint conversion
+local cachedCrossContinent            -- true when pin and player are on different continents
 local cachedAngle = 0
 local cachedDist = 0
 local cachedViewRadius = 300
 local cachedRotateMinimap = GetCVar("rotateMinimap") == "1"
+
+-- Capture map coordinates when a Blizzard POI pin is clicked for tracking.
+-- The hook fires synchronously during the click, so cursor is on the pin.
+local cachedPinMapID, cachedPinX, cachedPinY
+if C_SuperTrack and C_SuperTrack.SetSuperTrackedMapPin then
+    hooksecurefunc(C_SuperTrack, "SetSuperTrackedMapPin", function()
+        local sc = WorldMapFrame and WorldMapFrame.ScrollContainer
+        if sc and sc.GetNormalizedCursorPosition and WorldMapFrame:IsShown() then
+            local x, y = sc:GetNormalizedCursorPosition()
+            if x and y and x >= 0 and x <= 1 and y >= 0 and y <= 1 then
+                cachedPinMapID = WorldMapFrame:GetMapID()
+                cachedPinX = x
+                cachedPinY = y
+            end
+        end
+    end)
+end
+MapSearch._debugGetPinCache = function() return cachedPinMapID, cachedPinX, cachedPinY end
 
 local function CreateWaypointTracker()
     -- Controller: invisible frame that runs the shared OnUpdate
@@ -485,7 +505,12 @@ local function CreateWaypointTracker()
     -- Waypoint world position cached until USER_WAYPOINT_UPDATED fires.
     -- Wrapped in pcall so a crash self-cancels instead of spamming errors every frame.
     local function WaypointOnUpdate(self, elapsed)
-        if not HasUserWaypoint() or not C_SuperTrack.IsSuperTrackingUserWaypoint() then
+        local hasUserWP = HasUserWaypoint() and C_SuperTrack.IsSuperTrackingUserWaypoint()
+        local hasContentTrack = not hasUserWP
+            and C_SuperTrack.IsSuperTrackingAnything
+            and C_SuperTrack.IsSuperTrackingAnything()
+
+        if not hasUserWP and not hasContentTrack then
             if self.lastMode then
                 self.lastMode = nil
             end
@@ -493,24 +518,105 @@ local function CreateWaypointTracker()
             return
         end
 
-        -- Resolve waypoint world position once (refreshed by USER_WAYPOINT_UPDATED)
+        -- Resolve waypoint world position once (refreshed by USER_WAYPOINT_UPDATED / SUPER_TRACKING_CHANGED)
         if not cachedWPWorldX then
-            local wp = GetUserWaypoint()
-            if not wp or not wp.position then
-                HideSuperTrackGlow()
+            local wpMapID, wpX, wpY
+            if hasUserWP then
+                local wp = GetUserWaypoint()
+                if wp and wp.position then
+                    wpMapID = wp.uiMapID
+                    wpX = wp.position.x
+                    wpY = wp.position.y
+                end
+            else
+                local playerMapID = GetBestMapForUnit("player")
+                -- Try vignette position (quartermasters, dungeon entrances, etc.)
+                if C_SuperTrack.GetSuperTrackedVignette and GetVignettePosition then
+                    local vigGUID = C_SuperTrack.GetSuperTrackedVignette()
+                    if vigGUID and playerMapID then
+                        local pos = GetVignettePosition(vigGUID, playerMapID)
+                        if pos then
+                            wpMapID = playerMapID
+                            wpX = pos.x
+                            wpY = pos.y
+                        end
+                    end
+                end
+                -- Fallback: taxi node position by nodeID or name match
+                if not wpX and C_SuperTrack.GetSuperTrackedMapPin and GetTaxiNodesForMap then
+                    local pinType, pinID = C_SuperTrack.GetSuperTrackedMapPin()
+                    if pinType == 2 and pinID then
+                        local trackedName = C_SuperTrack.GetSuperTrackedItemName and C_SuperTrack.GetSuperTrackedItemName()
+                        local lookupMap = cachedPinMapID or playerMapID
+                        if lookupMap then
+                            local nodes = GetTaxiNodesForMap(lookupMap)
+                            if nodes then
+                                for ni = 1, #nodes do
+                                    local node = nodes[ni]
+                                    if node.position and (node.nodeID == pinID or (trackedName and node.name and trackedName:find(node.name, 1, true))) then
+                                        wpMapID = lookupMap
+                                        wpX = node.position.x
+                                        wpY = node.position.y
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+                -- Fallback: area POI from tracked map pin
+                if not wpX and C_SuperTrack.GetSuperTrackedMapPin and GetAreaPOIInfo then
+                    local _, poiID = C_SuperTrack.GetSuperTrackedMapPin()
+                    if poiID then
+                        -- Try with playerMapID first (nil mapID often returns 0,0)
+                        local poiInfo = playerMapID and GetAreaPOIInfo(playerMapID, poiID)
+                        if not poiInfo or not poiInfo.position or (poiInfo.position.x == 0 and poiInfo.position.y == 0) then
+                            poiInfo = GetAreaPOIInfo(nil, poiID)
+                        end
+                        if poiInfo and poiInfo.position and (poiInfo.position.x ~= 0 or poiInfo.position.y ~= 0) then
+                            wpMapID = poiInfo.uiMapID or playerMapID
+                            wpX = poiInfo.position.x
+                            wpY = poiInfo.position.y
+                        end
+                    end
+                end
+                -- Fallback: cursor capture from world map click
+                if not wpX and cachedPinMapID and cachedPinX then
+                    wpMapID = cachedPinMapID
+                    wpX = cachedPinX
+                    wpY = cachedPinY
+                end
+            end
+            if not wpMapID or not wpX then
                 return
             end
-            cachedWPMapID = wp.uiMapID
+            cachedWPMapID = wpMapID
             if not cachedPlayerVec then
-                cachedPlayerVec = CreateVector2D(wp.position.x, wp.position.y)
+                cachedPlayerVec = CreateVector2D(wpX, wpY)
             else
-                cachedPlayerVec.x = wp.position.x
-                cachedPlayerVec.y = wp.position.y
+                cachedPlayerVec.x = wpX
+                cachedPlayerVec.y = wpY
             end
             local _, wWorld = GetWorldPosFromMapPos(cachedWPMapID, cachedPlayerVec)
             if not wWorld then return end
             cachedWPWorldX = wWorld.x
             cachedWPWorldY = wWorld.y
+
+            -- Only support glow when pin is in the player's zone (by name, not ID)
+            cachedCrossContinent = true
+            local pMapID = GetBestMapForUnit("player")
+            if pMapID then
+                local pInfo = GetMapInfo(pMapID)
+                local wpInfo = GetMapInfo(cachedWPMapID)
+                if pInfo and wpInfo and pInfo.name == wpInfo.name then
+                    cachedCrossContinent = false
+                end
+            end
+        end
+
+        if cachedCrossContinent then
+            HideSuperTrackGlow()
+            return
         end
 
         -- UnitPosition returns (posY, posX) as primitives (zero allocation)
@@ -547,8 +653,12 @@ local function CreateWaypointTracker()
                 MapSearch:ClearAll()
             else
                 HideSuperTrackGlow()
-                C_SuperTrack.SetSuperTrackedUserWaypoint(false)
-                ClearUserWaypoint()
+                if hasUserWP then
+                    C_SuperTrack.SetSuperTrackedUserWaypoint(false)
+                    ClearUserWaypoint()
+                elseif C_SuperTrack.ClearAllSuperTracked then
+                    C_SuperTrack.ClearAllSuperTracked()
+                end
             end
             return
         end
@@ -689,10 +799,15 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
     if event == "NAVIGATION_DESTINATION_REACHED" then
         if efPlacedWaypoint then
             MapSearch:ClearAll()
-        else
+        elseif HasUserWaypoint() then
             HideSuperTrackGlow()
             C_SuperTrack.SetSuperTrackedUserWaypoint(false)
             ClearUserWaypoint()
+        else
+            HideSuperTrackGlow()
+            if C_SuperTrack.ClearAllSuperTracked then
+                C_SuperTrack.ClearAllSuperTracked()
+            end
         end
         return
     end
@@ -701,11 +816,17 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
         cachedWPMapID = nil
         cachedWPWorldX = nil
         cachedWPWorldY = nil
+        cachedCrossContinent = nil
         if EasyFind.db.enableMapSearch ~= false and EasyFind.db.autoTrackPins ~= false and HasUserWaypoint() and not C_SuperTrack.IsSuperTrackingUserWaypoint() then
             C_SuperTrack.SetSuperTrackedUserWaypoint(true)
             return
         end
         if HasUserWaypoint() and C_SuperTrack.IsSuperTrackingUserWaypoint() then
+            ShowSuperTrackGlow()
+        elseif not HasUserWaypoint()
+            and C_SuperTrack.IsSuperTrackingAnything
+            and C_SuperTrack.IsSuperTrackingAnything() then
+            efPlacedWaypoint = false
             ShowSuperTrackGlow()
         else
             if not HasUserWaypoint() then
@@ -719,6 +840,9 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
     if isInitialLogin or isReloadingUI then
         C_Timer.After(0, function()
             if HasUserWaypoint() and C_SuperTrack.IsSuperTrackingUserWaypoint() then
+                ShowSuperTrackGlow()
+            elseif C_SuperTrack.IsSuperTrackingAnything and C_SuperTrack.IsSuperTrackingAnything() then
+                efPlacedWaypoint = false
                 ShowSuperTrackGlow()
             end
         end)
@@ -916,7 +1040,7 @@ local CATEGORIES = {
     trainer = { keywords = {"trainer", "training", "class trainer"}, parent = "service" },
     vendor = { keywords = {"vendor", "merchant", "shop", "buy", "sell"}, parent = "service" },
     pvpvendor = { keywords = {"pvp vendor", "honor vendor", "conquest vendor", "arena vendor", "battleground vendor", "pvp gear"}, parent = "service" },
-    quartermaster = { keywords = {"quartermaster", "gear vendor", "currency vendor"}, parent = "service" },
+    quartermaster = { keywords = {"quartermaster", "qtr", "gear vendor", "currency vendor"}, parent = "service" },
     mailbox = { keywords = {"mail", "mailbox"}, parent = "service" },
     stablemaster = { keywords = {"stable", "stable master", "pet"}, parent = "service" },
     repairvendor = { keywords = {"repair", "repairs", "anvil"}, parent = "service" },
@@ -1075,7 +1199,11 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
     function dropdown:ToggleSelectedRow()
         local row = checkRowsByIndex[self.selectedRow]
         if row then
+            -- Click triggers OnSearchTextChanged which can kill keyboard state.
+            -- Preserve and restore it so the user can keep toggling.
+            local savedKb = navFrame and navFrame:IsKeyboardEnabled()
             row:Click()
+            if savedKb and navFrame then navFrame:EnableKeyboard(true) end
         end
     end
 
@@ -1137,11 +1265,11 @@ function MapSearch:CreateSearchFrame()
     searchFrame:EnableMouse(true)
     searchFrame:SetToplevel(true)
     
-    -- Apply saved position or default (left side)
+    local yOff = EasyFind.db.mapSearchYOffset or 0
     if EasyFind.db.mapSearchPosition then
-        searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", EasyFind.db.mapSearchPosition, 2)
+        searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", EasyFind.db.mapSearchPosition, yOff)
     else
-        searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", 0, 2)
+        searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", 0, yOff)
     end
     
     local WHITE8x8 = "Interface\\BUTTONS\\WHITE8x8"
@@ -1312,7 +1440,7 @@ function MapSearch:CreateSearchFrame()
         GameTooltip:Show()
     end)
     localFilterBtn:SetScript("OnLeave", function(self)
-        self.btnBg:Hide()
+        if not self.keyboardFocused then self.btnBg:Hide() end
         GameTooltip_Hide()
     end)
 
@@ -1322,10 +1450,14 @@ function MapSearch:CreateSearchFrame()
     clearBtn:SetPoint("RIGHT", searchFrame, "RIGHT", -32, 0)
     clearBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
 
-    clearBtn:SetScript("OnClick", function()
+    clearBtn:SetScript("OnClick", function(self)
+        self.persistForHighlight = nil
         editBox:SetText("")
         editBox:ClearFocus()
         editBox.placeholder:Show()
+        if globalSearchFrame and globalSearchFrame.clearBtn then
+            globalSearchFrame.clearBtn.persistForHighlight = nil
+        end
         if globalSearchFrame and globalSearchFrame.editBox then
             globalSearchFrame.editBox:SetText("")
             globalSearchFrame.editBox:ClearFocus()
@@ -1363,11 +1495,12 @@ function MapSearch:CreateSearchFrame()
         GameTooltip:Hide()
     end)
 
-    -- Show/hide clear button based on text
+    -- Show/hide clear button based on text (unless persisting for active highlight)
     editBox:HookScript("OnTextChanged", function(self)
+        if clearBtn.persistForHighlight then return end
         clearBtn:SetShown(self:GetText() ~= "")
     end)
-    
+
     -- Shift-click editbox starts parent drag when not focused
     editBox:HookScript("OnMouseDown", function(self)
         if IsShiftKeyDown() and not self:HasFocus() then
@@ -1437,11 +1570,11 @@ function MapSearch:CreateSearchFrame()
     globalSearchFrame:EnableMouse(true)
     globalSearchFrame:SetToplevel(true)
     
-    -- Position on the right side (anchored to bottom-right of the map scroll container)
+    local gYOff = EasyFind.db.mapSearchYOffset or 0
     if EasyFind.db.globalSearchPosition then
-        globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", EasyFind.db.globalSearchPosition, 2)
+        globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", EasyFind.db.globalSearchPosition, gYOff)
     else
-        globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", 0, 2)
+        globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", 0, gYOff)
     end
     
     local WHITE8x8 = "Interface\\BUTTONS\\WHITE8x8"
@@ -1609,7 +1742,7 @@ function MapSearch:CreateSearchFrame()
         GameTooltip:Show()
     end)
     filterBtn:SetScript("OnLeave", function(self)
-        self.btnBg:Hide()
+        if not self.keyboardFocused then self.btnBg:Hide() end
         GameTooltip_Hide()
     end)
 
@@ -1619,10 +1752,14 @@ function MapSearch:CreateSearchFrame()
     globalClearBtn:SetPoint("RIGHT", globalSearchFrame, "RIGHT", -32, 0)
     globalClearBtn:SetFrameLevel(globalSearchFrame:GetFrameLevel() + 10)
 
-    globalClearBtn:SetScript("OnClick", function()
+    globalClearBtn:SetScript("OnClick", function(self)
+        self.persistForHighlight = nil
         globalEditBox:SetText("")
         globalEditBox:ClearFocus()
         globalEditBox.placeholder:Show()
+        if searchFrame and searchFrame.clearBtn then
+            searchFrame.clearBtn.persistForHighlight = nil
+        end
         if searchFrame and searchFrame.editBox then
             searchFrame.editBox:SetText("")
             searchFrame.editBox:ClearFocus()
@@ -1660,8 +1797,9 @@ function MapSearch:CreateSearchFrame()
         GameTooltip:Hide()
     end)
 
-    -- Show/hide clear button based on text
+    -- Show/hide clear button based on text (unless persisting for active highlight)
     globalEditBox:HookScript("OnTextChanged", function(self)
+        if globalClearBtn.persistForHighlight then return end
         globalClearBtn:SetShown(self:GetText() ~= "")
     end)
     
@@ -1768,20 +1906,43 @@ function MapSearch:CreateSearchFrame()
     end
 
     local function SetToolbarFocus(idx)
+        -- Clear previous button state
+        local prevControls = GetToolbarControls()
+        local prevTarget = prevControls[toolbarFocus]
+        if prevTarget then
+            prevTarget.keyboardFocused = nil
+            if prevTarget.btnBg then prevTarget.btnBg:Hide() end
+            if prevTarget.UnlockHighlight then prevTarget:UnlockHighlight() end
+        end
         toolbarFocus = idx
         local controls = GetToolbarControls()
         local target = controls[idx]
         if target then
-            toolbarHighlight:SetParent(target)
-            toolbarHighlight:ClearAllPoints()
-            toolbarHighlight:SetAllPoints(target)
-            toolbarHighlight:Show()
+            target.keyboardFocused = true
+            -- Filter buttons use their own highlight (LockHighlight + btnBg)
+            if target.btnBg then
+                target.btnBg:Show()
+                if target.LockHighlight then target:LockHighlight() end
+                toolbarHighlight:Hide()
+            else
+                toolbarHighlight:SetParent(target)
+                toolbarHighlight:ClearAllPoints()
+                toolbarHighlight:SetAllPoints(target)
+                toolbarHighlight:Show()
+            end
         else
             toolbarHighlight:Hide()
         end
     end
 
     local function ClearToolbarFocus()
+        local controls = GetToolbarControls()
+        local prevTarget = controls[toolbarFocus]
+        if prevTarget then
+            prevTarget.keyboardFocused = nil
+            if prevTarget.btnBg then prevTarget.btnBg:Hide() end
+            if prevTarget.UnlockHighlight then prevTarget:UnlockHighlight() end
+        end
         toolbarFocus = 0
         toolbarHighlight:Hide()
     end
@@ -2033,16 +2194,31 @@ function MapSearch:CreateResultsFrame()
     resultsFrame:SetWidth(300)
     resultsFrame:SetFrameStrata("TOOLTIP")
     resultsFrame:SetFrameLevel(1001)
-    
-    -- Default anchor to local search bar; will be re-anchored dynamically
-    resultsFrame:SetPoint("TOPLEFT", searchFrame, "BOTTOMLEFT", 0, -2)
-    
-    resultsFrame:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 }
-    })
+
+    resultsFrame:SetPoint("TOPLEFT", searchFrame, "BOTTOMLEFT", 0, 2)
+
+    if (EasyFind.db.resultsTheme or "Classic") == "Retail" then
+        resultsFrame:SetBackdrop({
+            edgeFile = TOOLTIP_BORDER,
+            edgeSize = 16,
+            insets = { left = 4, right = 4, top = 4, bottom = 4 },
+        })
+        resultsFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
+        local bgTex = resultsFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
+        bgTex:SetPoint("TOPLEFT", 4, -4)
+        bgTex:SetPoint("BOTTOMRIGHT", -4, 4)
+        bgTex:SetAtlas("QuestLog-main-background", false)
+        bgTex:Show()
+        resultsFrame:SetClipsChildren(true)
+        resultsFrame.bgAtlasTex = bgTex
+    else
+        resultsFrame:SetBackdrop({
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+            tile = true, tileSize = 32, edgeSize = 20,
+            insets = { left = 5, right = 5, top = 5, bottom = 5 },
+        })
+    end
 
     resultsFrame:Hide()
 
@@ -2266,6 +2442,13 @@ local function ResizeHighlightBorders(frame)
     frame.right:SetWidth(bs)
     frame.right:SetPoint("TOPRIGHT", frame.top, "BOTTOMRIGHT", 0, 0)
     frame.right:SetPoint("BOTTOMRIGHT", frame.bottom, "TOPRIGHT", 0, 0)
+end
+
+local function SetHighlightBordersVisible(frame, visible)
+    frame.top:SetShown(visible)
+    frame.bottom:SetShown(visible)
+    frame.left:SetShown(visible)
+    frame.right:SetShown(visible)
 end
 
 function MapSearch:CreateHighlightFrame()
@@ -3916,10 +4099,68 @@ function MapSearch:IsOnContinentMap()
     return mapInfo.mapType == Enum.UIMapType.Continent or mapInfo.mapType == Enum.UIMapType.World
 end
 
+-- Map Smart Show: per-bar fade in/out on hover
+local function SmartShowFadeIn(frame)
+    if frame.smartShowTimer then frame.smartShowTimer:Cancel(); frame.smartShowTimer = nil end
+    if not frame.smartShowVisible then
+        frame.smartShowVisible = true
+        UIFrameFadeIn(frame, 0.15, frame:GetAlpha(), 1)
+    end
+end
+
+local function SmartShowFadeOut(frame)
+    if frame.editBox:HasFocus() or frame.editBox:GetText() ~= "" then return end
+    if resultsFrame and resultsFrame:IsShown() then return end
+    if frame.smartShowTimer then frame.smartShowTimer:Cancel() end
+    frame.smartShowTimer = C_Timer.NewTimer(0.4, function()
+        frame.smartShowTimer = nil
+        if frame.editBox:HasFocus() or frame.editBox:GetText() ~= "" then return end
+        if resultsFrame and resultsFrame:IsShown() then return end
+        if frame:IsMouseOver() then return end
+        frame.smartShowVisible = false
+        UIFrameFadeOut(frame, 0.25, frame:GetAlpha(), 0)
+    end)
+end
+
+local function HookMapSmartShow(frame)
+    frame.smartShowVisible = true
+    frame:HookScript("OnEnter", function()
+        if EasyFind.db.mapSmartShow then SmartShowFadeIn(frame) end
+    end)
+    frame:HookScript("OnLeave", function()
+        if EasyFind.db.mapSmartShow then SmartShowFadeOut(frame) end
+    end)
+end
+
+function MapSearch:UpdateMapSmartShow()
+    if not searchFrame then return end
+    local frames = { searchFrame, globalSearchFrame }
+    for i = 1, #frames do
+        local frame = frames[i]
+        if EasyFind.db.mapSmartShow then
+            frame.smartShowVisible = false
+            frame:SetAlpha(0)
+        else
+            if frame.smartShowTimer then frame.smartShowTimer:Cancel(); frame.smartShowTimer = nil end
+            frame.smartShowVisible = true
+            frame:SetAlpha(1)
+        end
+    end
+end
+
 function MapSearch:HookWorldMap()
+    HookMapSmartShow(searchFrame)
+    HookMapSmartShow(globalSearchFrame)
+
     WorldMapFrame:HookScript("OnShow", function()
         searchFrame:Show()
         globalSearchFrame:Show()
+        if EasyFind.db.mapSmartShow then
+            searchFrame:SetAlpha(0)
+            globalSearchFrame:SetAlpha(0)
+            searchFrame.smartShowVisible = false
+            globalSearchFrame.smartShowVisible = false
+        end
         -- Restore pins only if the player is in the pin's zone.
         -- Map opens to the player's current zone by default, so if they
         -- left the zone the pin was in, it's gone.
@@ -4072,7 +4313,7 @@ function MapSearch:HookWorldMap()
 end
 
 function MapSearch:GetCategoryMatch(query)
-    query = slower(query)
+    query = slower(query):match("^(.-)%s*$")
     local matchedCategory = nil
     local matchScore = 0
     local isExactCategoryMatch = false
@@ -5149,7 +5390,7 @@ function MapSearch:SearchPOIs(pois, query)
             score = poi.score
         else
             score = ns.Database:ScoreName(nameLower, query, #query)
-            
+
             if poi.keywords then
                 if not poi.kwLower then
                     local lowered = {}
@@ -5159,6 +5400,11 @@ function MapSearch:SearchPOIs(pois, query)
                     poi.kwLower = lowered
                 end
                 score = score + ns.Database:ScoreKeywords(poi.kwLower, query, #query)
+            end
+            -- Instance cache entries promoted to zone-style get the same
+            -- sorting boost, but only if they matched on their own merit
+            if poi.isZone and score >= 50 then
+                score = score + 200
             end
         end
         
@@ -5456,9 +5702,9 @@ function MapSearch:ShowResults(results)
     -- Anchor results dropdown to whichever search bar is active
     resultsFrame:ClearAllPoints()
     if resultsAbove then
-        resultsFrame:SetPoint("BOTTOMLEFT", preAnchor, "TOPLEFT", 0, -8)
+        resultsFrame:SetPoint("BOTTOMLEFT", preAnchor, "TOPLEFT", 0, -2)
     else
-        resultsFrame:SetPoint("TOPLEFT", preAnchor, "BOTTOMLEFT", 0, 8)
+        resultsFrame:SetPoint("TOPLEFT", preAnchor, "BOTTOMLEFT", 0, 2)
     end
 
     resultsFrame:Show()
@@ -5564,7 +5810,38 @@ function MapSearch:UpdateSelectionHighlight(skipRefocus)
             eb:ClearFocus()
         end
         navFrame:EnableKeyboard(true)
+        -- Keyboard preview: show pin for selected result
+        local resultRow = resultButtons[selectedResultIndex]
+        if resultRow and resultRow.data then
+            local coords = self:GetPreviewCoords(resultRow.data)
+            if coords then
+                if not self._previewing then
+                    self._savedPinState = activePinState
+                end
+                self._previewing = true
+                if coords.instances then
+                    self:ShowMultipleWaypoints(coords.instances)
+                else
+                    self:ShowWaypointAt(coords.x, coords.y, coords.icon, coords.category)
+                end
+                activePinState = self._savedPinState
+            end
+        end
     else
+        -- Clear keyboard preview when returning to editbox
+        if self._previewing then
+            self._previewing = nil
+            self:ClearHighlight()
+            local saved = self._savedPinState
+            self._savedPinState = nil
+            if saved and saved.mapID == WorldMapFrame:GetMapID() then
+                if saved.instances then
+                    self:ShowMultipleWaypoints(saved.instances)
+                else
+                    self:ShowWaypointAt(saved.x, saved.y, saved.icon, saved.category)
+                end
+            end
+        end
         local wasNavigating = navFrame:IsKeyboardEnabled()
         navFrame:EnableKeyboard(false)
         if MapSearch.StopKeyRepeat then MapSearch.StopKeyRepeat() end
@@ -5632,11 +5909,23 @@ function MapSearch:SelectResult(data)
     -- Clear preview state so OnLeave doesn't undo the real selection
     self._previewing = nil
     self._savedPinState = nil
+    local sourceFrame = activeSearchFrame or searchFrame
+    self._suppressTextChanged = true
+    searchFrame.editBox:SetText("")
     searchFrame.editBox:ClearFocus()
+    searchFrame.editBox.placeholder:Show()
     if globalSearchFrame then
+        self._suppressTextChanged = true
+        globalSearchFrame.editBox:SetText("")
         globalSearchFrame.editBox:ClearFocus()
+        globalSearchFrame.editBox.placeholder:Show()
     end
     self:HideResults()
+    -- Keep clear button visible on the source bar so users can dismiss the highlight
+    if sourceFrame and sourceFrame.clearBtn then
+        sourceFrame.clearBtn:Show()
+        sourceFrame.clearBtn.persistForHighlight = true
+    end
 
     if data then
         DebugPrint("[EasyFind] SelectResult: name=", data.name,
@@ -5895,6 +6184,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
             highlight:SetPoint("CENTER", pin, "CENTER", 0, 0)
             ResizeHighlightBorders(highlight)
             highlight:Show()
+            SetHighlightBordersVisible(highlight, EasyFind.db.mapPinHighlight ~= false)
 
             -- Position and show the indicator
             ind:SetSize(indicatorSize, indicatorSize)
@@ -5968,6 +6258,7 @@ function MapSearch:ShowWaypointAt(x, y, icon, category)
     highlightFrame:SetPoint("CENTER", waypointPin, "CENTER", 0, 0)
     ResizeHighlightBorders(highlightFrame)
     highlightFrame:Show()
+    SetHighlightBordersVisible(highlightFrame, EasyFind.db.mapPinHighlight ~= false)
 
     -- Resize indicator and its glow
     indicatorFrame:SetSize(indicatorSize, indicatorSize)
@@ -6015,6 +6306,7 @@ function MapSearch:HighlightPin(pin)
     highlightFrame:SetPoint("CENTER", pin, "CENTER", 0, 0)
     ResizeHighlightBorders(highlightFrame)
     highlightFrame:Show()
+    SetHighlightBordersVisible(highlightFrame, EasyFind.db.mapPinHighlight ~= false)
     indicatorFrame:Show()
 
     if indicatorFrame.animGroup then
@@ -6115,6 +6407,14 @@ end
 -- Called by explicit dismiss actions (right-click pin, /ef clear, clear button)
 function MapSearch:ClearAll()
     activePinState = nil
+    if searchFrame and searchFrame.clearBtn then
+        searchFrame.clearBtn.persistForHighlight = nil
+        searchFrame.clearBtn:SetShown(searchFrame.editBox:GetText() ~= "")
+    end
+    if globalSearchFrame and globalSearchFrame.clearBtn then
+        globalSearchFrame.clearBtn.persistForHighlight = nil
+        globalSearchFrame.clearBtn:SetShown(globalSearchFrame.editBox:GetText() ~= "")
+    end
     self:ClearHighlight()
     -- Only clear Blizzard waypoint if EasyFind placed it
     if efPlacedWaypoint then
@@ -6216,9 +6516,9 @@ function MapSearch:RefreshResultsAnchor()
     if isGlobalSearch and globalSearchFrame then anchor = globalSearchFrame end
     resultsFrame:ClearAllPoints()
     if EasyFind.db.mapResultsAbove then
-        resultsFrame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, -8)
+        resultsFrame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, -2)
     else
-        resultsFrame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, 8)
+        resultsFrame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, 2)
     end
 end
 
@@ -6244,6 +6544,20 @@ function MapSearch:UpdateBlinkingPins()
     end
     if self.extraHighlights then
         for _, hl in ipairs(self.extraHighlights) do Toggle(hl) end
+    end
+end
+
+function MapSearch:UpdatePinHighlight()
+    local visible = EasyFind.db.mapPinHighlight ~= false
+    if highlightFrame and highlightFrame:IsShown() then
+        SetHighlightBordersVisible(highlightFrame, visible)
+    end
+    if self.extraHighlights then
+        for _, hl in ipairs(self.extraHighlights) do
+            if hl:IsShown() then
+                SetHighlightBordersVisible(hl, visible)
+            end
+        end
     end
 end
 
@@ -6335,18 +6649,63 @@ function MapSearch:UpdateSearchBarTheme()
             end
         end
     end
+
+    if resultsFrame then
+        if isRetail then
+            resultsFrame:SetBackdrop({
+                edgeFile = TOOLTIP_BORDER,
+                edgeSize = 16,
+                insets = { left = 4, right = 4, top = 4, bottom = 4 },
+            })
+            resultsFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
+            if not resultsFrame.bgAtlasTex then
+                local tex = resultsFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
+                tex:SetPoint("TOPLEFT", 4, -4)
+                tex:SetPoint("BOTTOMRIGHT", -4, 4)
+                resultsFrame.bgAtlasTex = tex
+            end
+            resultsFrame.bgAtlasTex:SetAtlas("QuestLog-main-background", false)
+            resultsFrame.bgAtlasTex:Show()
+            resultsFrame:SetClipsChildren(true)
+        else
+            resultsFrame:SetBackdrop({
+                bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
+                edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
+                tile = true, tileSize = 32, edgeSize = 20,
+                insets = { left = 5, right = 5, top = 5, bottom = 5 },
+            })
+            if resultsFrame.bgAtlasTex then
+                resultsFrame.bgAtlasTex:Hide()
+            end
+        end
+    end
 end
 
 function MapSearch:ResetPosition()
+    local yOff = EasyFind.db.mapSearchYOffset or 0
     if searchFrame then
         searchFrame:ClearAllPoints()
-        searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", 0, 2)
+        searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", 0, yOff)
         EasyFind.db.mapSearchPosition = nil
     end
     if globalSearchFrame then
         globalSearchFrame:ClearAllPoints()
-        globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", 0, 2)
+        globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", 0, yOff)
         EasyFind.db.globalSearchPosition = nil
+    end
+end
+
+function MapSearch:UpdateYOffset()
+    local yOff = EasyFind.db.mapSearchYOffset or 0
+    if searchFrame then
+        searchFrame:ClearAllPoints()
+        local xOff = EasyFind.db.mapSearchPosition or 0
+        searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", xOff, yOff)
+    end
+    if globalSearchFrame then
+        globalSearchFrame:ClearAllPoints()
+        local xOff = EasyFind.db.globalSearchPosition or 0
+        globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", xOff, yOff)
     end
 end
 

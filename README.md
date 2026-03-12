@@ -24,7 +24,7 @@ Find and navigate to any interface element:
 Locate places and NPCs across Azeroth:
 - Portals, zeppelins, boats, and trams
 - Banks and auction houses
-- Flight masters and innkeepers
+- Flight masters and city innkeepers
 - Dungeon, raid, and delve entrances (search globally or within current map)
 - Profession trainers and class trainers
 - Vendors, PvP vendors, and quartermasters

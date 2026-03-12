@@ -1450,20 +1450,43 @@ function Database:ScoreFuzzy(text, query, queryLen)
         word = slower(word)
         if not (blocked and blocked[word]) then
             local wordLen = #word
-            -- Only compare words of similar length (within ±1) to reduce false positives
-            if wordLen >= queryLen - 1 and wordLen <= queryLen + 1 then
+            local lenDiff = wordLen - queryLen
+            if lenDiff < 0 then lenDiff = -lenDiff end
+            -- ±1 for short queries, ±2 for 6+ char queries
+            local maxLenDiff = queryLen >= 6 and 2 or 1
+            if lenDiff <= maxLenDiff then
                 local dist = Database:DamerauLevenshtein(query, word, queryLen, wordLen)
                 if dist == 1 then
-                    -- One edit away: transposition, substitution, insertion, or deletion
                     bestScore = mmax(bestScore, 85)
-                elseif dist == 2 and queryLen >= 6 then
-                    -- Two edits: only for longer queries (6+) to avoid false positives
+                elseif dist == 2 and queryLen >= 5 then
                     bestScore = mmax(bestScore, 45)
                 end
             end
         end
     end
     return bestScore
+end
+
+-- Check if all characters of `query` appear in order within `word`.
+-- Requires first character match to avoid spurious hits like "ahn'" in "magtheridon's".
+function Database:IsSubsequence(word, query, queryLen)
+    if ssub(word, 1, 1) ~= ssub(query, 1, 1) then return false end
+    local wi = 1
+    local wordLen = #word
+    for qi = 1, queryLen do
+        local qc = ssub(query, qi, qi)
+        local found = false
+        while wi <= wordLen do
+            if ssub(word, wi, wi) == qc then
+                wi = wi + 1
+                found = true
+                break
+            end
+            wi = wi + 1
+        end
+        if not found then return false end
+    end
+    return true
 end
 
 --- Damerau-Levenshtein distance (supports transpositions).
@@ -1507,8 +1530,16 @@ end
 --- All search features (UI, map zone, map POI) use this single function.
 --- Returns a score ≥ 0. Caller decides the minimum threshold.
 function Database:ScoreName(nameLower, query, queryLen)
+    -- Trim trailing whitespace so "windrnr " behaves like "windrnr"
+    if ssub(query, queryLen, queryLen) == " " then
+        query = query:match("^(.-)%s+$") or query
+        queryLen = #query
+        if queryLen == 0 then return 0 end
+    end
+
     local score = 0
 
+    -- Whole-string matching (works for single and multi-word queries)
     if nameLower == query then
         score = 200
     elseif ssub(nameLower, 1, queryLen) == query then
@@ -1525,10 +1556,104 @@ function Database:ScoreName(nameLower, query, queryLen)
         if initScore > score then score = initScore end
     end
 
-    -- Fuzzy/typo matching (queries ≥ 4 chars)
+    -- Fuzzy/typo matching against whole query (queries >= 4 chars)
     if score < 100 and queryLen >= 4 then
         local fuzzyScore = Database:ScoreFuzzy(nameLower, query, queryLen)
         if fuzzyScore > score then score = fuzzyScore end
+    end
+
+    -- Subsequence matching against name words for vowel-stripped abbreviations
+    -- Short queries (3-4): "qtr" → "quartermaster" (word must be 2x+ longer)
+    -- Longer queries (5-7): "windrnr" → "windrunner" (must cover 60%+ of word)
+    if score < 50 and queryLen >= 3 and not sfind(query, " ", 1, true) then
+        for word in nameLower:gmatch("[%w']+") do
+            local wordLen = #word
+            if queryLen <= 4 then
+                if wordLen >= queryLen * 2 and Database:IsSubsequence(word, query, queryLen) then
+                    score = mmax(score, 55)
+                    break
+                end
+            elseif queryLen <= 8 and wordLen > queryLen and queryLen / wordLen >= 0.6 then
+                if Database:IsSubsequence(word, query, queryLen) then
+                    score = mmax(score, 60)
+                    break
+                end
+            end
+        end
+    end
+
+    -- Per-word matching for multi-word queries:
+    -- Split query into words and score each against name words.
+    -- All query words must match for a score to be awarded.
+    if score < 50 and sfind(query, " ", 1, true) then
+        local queryWords = {}
+        for w in query:gmatch("%S+") do
+            queryWords[#queryWords + 1] = w
+        end
+        if #queryWords >= 2 then
+            local nameWords = {}
+            for w in nameLower:gmatch("[%w']+") do
+                nameWords[#nameWords + 1] = w
+            end
+            local allMatched = true
+            local totalWordScore = 0
+            local usedNameWords = {}
+            for _, qw in ipairs(queryWords) do
+                local qwLen = #qw
+                local bestWordScore = 0
+                local bestIdx = 0
+                for ni = 1, #nameWords do
+                    if not usedNameWords[ni] then
+                        local nw = nameWords[ni]
+                        local ws = 0
+                        if nw == qw then
+                            ws = 100
+                        elseif ssub(nw, 1, qwLen) == qw then
+                            ws = 90
+                        elseif sfind(nw, qw, 1, true) then
+                            ws = 50
+                        elseif qwLen >= 4 then
+                            local nwLen = #nw
+                            if nwLen >= qwLen - 2 and nwLen <= qwLen + 2 then
+                                local dist = Database:DamerauLevenshtein(qw, nw, qwLen, nwLen)
+                                if dist == 1 then
+                                    ws = 75
+                                elseif dist == 2 and qwLen >= 5 then
+                                    ws = 40
+                                end
+                            end
+                            -- Subsequence for vowel-stripped words
+                            if ws == 0 and qwLen <= 8 and nwLen > qwLen and qwLen / nwLen >= 0.6 then
+                                if Database:IsSubsequence(nw, qw, qwLen) then
+                                    ws = 45
+                                end
+                            end
+                        elseif qwLen == 3 then
+                            local nwLen = #nw
+                            if nwLen >= qwLen * 2 and Database:IsSubsequence(nw, qw, qwLen) then
+                                ws = 45
+                            end
+                        end
+                        if ws > bestWordScore then
+                            bestWordScore = ws
+                            bestIdx = ni
+                        end
+                    end
+                end
+                if bestWordScore > 0 then
+                    usedNameWords[bestIdx] = true
+                    totalWordScore = totalWordScore + bestWordScore
+                else
+                    allMatched = false
+                    break
+                end
+            end
+            if allMatched then
+                local avgScore = totalWordScore / #queryWords
+                local wordScore = mmin(110, avgScore)
+                if wordScore > score then score = wordScore end
+            end
+        end
     end
 
     -- Precision bonus: names that closely match the query length are more
@@ -1547,6 +1672,13 @@ end
 --- Returns a total score to ADD to the name score.
 function Database:ScoreKeywords(keywordsLower, query, queryLen)
     if not keywordsLower then return 0 end
+
+    -- Trim trailing whitespace to match ScoreName behavior
+    if ssub(query, queryLen, queryLen) == " " then
+        query = query:match("^(.-)%s+$") or query
+        queryLen = #query
+        if queryLen == 0 then return 0 end
+    end
 
     -- Split query into words for better multi-word matching
     local queryWords = {}
@@ -1578,6 +1710,23 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen)
             if kwScore < 40 and queryLen >= 4 then
                 local kf = Database:ScoreFuzzy(kw, query, queryLen)
                 if kf > 0 then kwScore = mmax(kwScore, kf) end
+            end
+            -- Subsequence per-word in keywords ("qtr" → "quartermaster", not across words)
+            if kwScore < 50 and queryLen >= 3 then
+                for kwWord in kw:gmatch("[%w']+") do
+                    local kwWordLen = #kwWord
+                    if queryLen <= 4 and kwWordLen >= queryLen * 2 then
+                        if Database:IsSubsequence(kwWord, query, queryLen) then
+                            kwScore = mmax(kwScore, 60)
+                            break
+                        end
+                    elseif queryLen <= 8 and kwWordLen > queryLen and queryLen / kwWordLen >= 0.6 then
+                        if Database:IsSubsequence(kwWord, query, queryLen) then
+                            kwScore = mmax(kwScore, 55)
+                            break
+                        end
+                    end
+                end
             end
             if kwScore > best then best = kwScore end
         end

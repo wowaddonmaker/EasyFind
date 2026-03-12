@@ -91,7 +91,7 @@ local function AddFlyoutOptions(flyout, choices, itemWidth, onSelect)
 end
 
 -- Helper to create a slider (anchored manually by caller)
-local function CreateSlider(parent, name, label, minVal, maxVal, step, tooltipText, formatFunc)
+local function CreateSlider(parent, name, label, minVal, maxVal, step, tooltipText, formatFunc, defaultValue, unitSuffix)
     local slider = CreateFrame("Slider", "EasyFindOptions" .. name .. "Slider", parent, "OptionsSliderTemplate")
     slider:SetWidth(200)
     slider:SetMinMaxValues(minVal, maxVal)
@@ -127,12 +127,11 @@ local function CreateSlider(parent, name, label, minVal, maxVal, step, tooltipTe
         if fs then fs:SetJustifyH("CENTER") end
     end
 
-    -- Add % label next to input box for percentage sliders
-    local percentLabel
-    if isPercentage then
-        percentLabel = slider:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-        percentLabel:SetPoint("LEFT", inputBox, "RIGHT", 2, 0)
-        percentLabel:SetText("%")
+    local suffixText = isPercentage and "%" or unitSuffix
+    if suffixText then
+        local suffixLabel = slider:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+        suffixLabel:SetPoint("LEFT", inputBox, "RIGHT", 2, 0)
+        suffixLabel:SetText(suffixText)
     end
 
     -- Helper to get display value (for percentage: multiply by 100)
@@ -186,6 +185,25 @@ local function CreateSlider(parent, name, label, minVal, maxVal, step, tooltipTe
     inputBox:SetText(tostring(getDisplayValue(slider:GetValue())))
 
     slider.inputBox = inputBox
+
+    if defaultValue then
+        local resetBtn = CreateFrame("Button", nil, slider)
+        resetBtn:SetSize(30, 12)
+        resetBtn:SetPoint("TOP", inputBox, "BOTTOM", 0, -1)
+        local resetText = resetBtn:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        resetText:SetPoint("CENTER")
+        resetText:SetText("Reset")
+        resetBtn:SetScript("OnEnter", function()
+            resetText:SetTextColor(1, 1, 1)
+        end)
+        resetBtn:SetScript("OnLeave", function()
+            resetText:SetTextColor(0.5, 0.5, 0.5)
+        end)
+        resetBtn:SetScript("OnClick", function()
+            slider:SetValue(defaultValue)
+        end)
+        slider.resetBtn = resetBtn
+    end
 
     if tooltipText then
         slider:SetScript("OnEnter", function(self)
@@ -241,6 +259,9 @@ local function SetControlsEnabled(controls, enabled)
             if ctrl.inputBox then
                 if enabled then ctrl.inputBox:Enable() else ctrl.inputBox:Disable() end
             end
+            if ctrl.resetBtn then
+                if enabled then ctrl.resetBtn:Enable() else ctrl.resetBtn:Disable() end
+            end
         elseif objType == "Button" then
             if enabled then ctrl:Enable() else ctrl:Disable() end
         elseif objType == "Frame" then
@@ -284,12 +305,19 @@ function Options:Initialize()
     end)
 
     optionsFrame:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 32,
-        insets = { left = 11, right = 12, top = 12, bottom = 11 }
+        edgeFile = TOOLTIP_BORDER,
+        edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
     })
-    optionsFrame:SetBackdropColor(0.12, 0.10, 0.08, EasyFind.db.panelOpacity or 0.9)
+    optionsFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
+    optionsFrame:SetClipsChildren(true)
+
+    local bgTex = optionsFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
+    bgTex:SetPoint("TOPLEFT", 4, -4)
+    bgTex:SetPoint("BOTTOMRIGHT", -4, 4)
+    bgTex:SetAtlas("QuestLog-main-background", false)
+    bgTex:SetAlpha(EasyFind.db.panelOpacity or 0.9)
+    optionsFrame.bgTex = bgTex
 
     -- Title
     local title = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
@@ -584,17 +612,19 @@ function Options:Initialize()
     optionsFrame.themeFlyout = themeFlyout
 
     local panelOpacitySlider = CreateSlider(sec3, "PanelOpacity", "Options Menu Opacity", 0.3, 1.0, 0.05,
-        "Adjusts the opacity of the options panel background.")
+        "Adjusts the opacity of the options panel background.", nil, 0.9)
     panelOpacitySlider:SetPoint("TOPLEFT", genOptionsBox, "TOPLEFT", COL_RIGHT - 2, -28)
     panelOpacitySlider:SetValue(EasyFind.db.panelOpacity or 0.9)
     panelOpacitySlider:HookScript("OnValueChanged", function(self, value)
         EasyFind.db.panelOpacity = value
-        optionsFrame:SetBackdropColor(0.12, 0.10, 0.08, value)
+        if optionsFrame.bgTex then
+            optionsFrame.bgTex:SetAlpha(value)
+        end
     end)
     optionsFrame.panelOpacitySlider = panelOpacitySlider
 
     local opacitySlider = CreateSlider(sec3, "Opacity", "Background Opacity", 0.0, 1.0, 0.05,
-        "Adjusts the background opacity of all search bars. Text and icons remain fully visible.")
+        "Adjusts the background opacity of all search bars. Text and icons remain fully visible.", nil, DEFAULT_OPACITY)
     opacitySlider:SetPoint("TOPLEFT", panelOpacitySlider, "BOTTOMLEFT", 0, -38)
     opacitySlider:SetValue(EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
     opacitySlider:HookScript("OnValueChanged", function(self, value)
@@ -684,7 +714,7 @@ function Options:Initialize()
     resizeUIBtn:SetScript("OnLeave", GameTooltip_Hide)
 
     local uiFontSlider = CreateSlider(sec1, "UIFontSize", "Font Size|cffff3333*|r", 0.5, 2.0, 0.1,
-        "Changing font size also affects search bar height and results window sizing.")
+        "Changing font size also affects search bar height and results window sizing.", nil, 1.0)
     uiFontSlider:SetPoint("TOPLEFT", uiOptionsBox, "TOPLEFT", COL_RIGHT - 2, -28)
     uiFontSlider:SetValue(EasyFind.db.fontSize or 1.0)
     uiFontSlider:HookScript("OnValueChanged", function(self, value)
@@ -696,7 +726,7 @@ function Options:Initialize()
     optionsFrame.uiFontSlider = uiFontSlider
 
     local smartShowCheckbox = CreateCheckbox(sec1, "SmartShow", "Smart Show (auto-hide)",
-        "When enabled, the UI search bar hides itself until you move your mouse near its position.\n\nThe bar reappears when your mouse enters the area and fades away when you move away.")
+        "When enabled, the UI search bar hides itself until you move your mouse near its position.\n\nThe bar reappears when your mouse enters the area and fades away when you move away.\n\nA separate Smart Show toggle for map search bars is available in the Map Search section.")
     smartShowCheckbox:SetPoint("TOPLEFT", uiSpeedBox, "BOTTOMLEFT", 8, -6)
     smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
     smartShowCheckbox:SetScript("OnClick", function(self)
@@ -732,7 +762,7 @@ function Options:Initialize()
     UpdateUIToggleVisual()
 
     -- SECTION 3: Map Search
-    local sec2 = CreateSection("Map Search", 302)
+    local sec2 = CreateSection("Map Search", 368)
 
     local mapEnableCheckbox = CreateCheckbox(sec2, "EnableMap", "Enable Map Search Module",
         "Uncheck to disable map search bars, pins, and all map overlay features.\n\nRequires a UI reload to take effect.")
@@ -807,7 +837,7 @@ function Options:Initialize()
     resizeMapBtn:SetScript("OnLeave", GameTooltip_Hide)
 
     local mapFontSlider = CreateSlider(sec2, "MapFontSize", "Font Size|cffff3333*|r", 0.5, 2.0, 0.1,
-        "Changing font size also affects search bar height and results window sizing.")
+        "Changing font size also affects search bar height and results window sizing.", nil, 1.0)
     mapFontSlider:SetPoint("TOPLEFT", mapOptionsBox, "TOPLEFT", COL_RIGHT - 2, -28)
     mapFontSlider:SetValue(EasyFind.db.mapFontSize or 1.0)
     mapFontSlider:HookScript("OnValueChanged", function(self, value)
@@ -818,9 +848,21 @@ function Options:Initialize()
     end)
     optionsFrame.mapFontSlider = mapFontSlider
 
+    local mapSmartShowCheckbox = CreateCheckbox(sec2, "MapSmartShow", "Smart Show (auto-hide)",
+        "When enabled, map search bars hide until you move your mouse near them.\n\nThe bars reappear on hover and fade away when you move away.\n\nText in the search bars or an open results list prevents fading.")
+    mapSmartShowCheckbox:SetPoint("TOPLEFT", mapSpeedBox, "BOTTOMLEFT", 8, -6)
+    mapSmartShowCheckbox:SetChecked(EasyFind.db.mapSmartShow or false)
+    mapSmartShowCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.mapSmartShow = self:GetChecked()
+        if ns.MapSearch and ns.MapSearch.UpdateMapSmartShow then
+            ns.MapSearch:UpdateMapSmartShow()
+        end
+    end)
+    optionsFrame.mapSmartShowCheckbox = mapSmartShowCheckbox
+
     local mapResultsAboveCheckbox = CreateCheckbox(sec2, "MapResultsAbove", "Map Results Above",
         "When enabled, map search bars show results above the bar instead of below.\n\nApplies to both local and global map search bars.")
-    mapResultsAboveCheckbox:SetPoint("TOPLEFT", mapSpeedBox, "BOTTOMLEFT", 8, -6)
+    mapResultsAboveCheckbox:SetPoint("TOPLEFT", mapSmartShowCheckbox, "BOTTOMLEFT", 0, -4)
     mapResultsAboveCheckbox:SetChecked(EasyFind.db.mapResultsAbove or false)
     mapResultsAboveCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.mapResultsAbove = self:GetChecked()
@@ -830,9 +872,23 @@ function Options:Initialize()
     end)
     optionsFrame.mapResultsAboveCheckbox = mapResultsAboveCheckbox
 
+    local mapYOffsetSlider = CreateSlider(sec2, "MapYOffset", "Bar Y Offset", -20, 20, 1,
+        "Vertical offset for the map search bars relative to the map bottom edge.\nPositive moves up, negative moves down.",
+        function(val) return tostring(mfloor(val + 0.5)) .. "px" end, 0, "px")
+    mapYOffsetSlider:SetPoint("TOPLEFT", mapFontSlider, "BOTTOMLEFT", 0, -38)
+    mapYOffsetSlider:SetValue(EasyFind.db.mapSearchYOffset or 0)
+    mapYOffsetSlider:HookScript("OnValueChanged", function(self, value)
+        value = mfloor(value + 0.5)
+        EasyFind.db.mapSearchYOffset = value
+        if ns.MapSearch and ns.MapSearch.UpdateYOffset then
+            ns.MapSearch:UpdateYOffset()
+        end
+    end)
+    optionsFrame.mapYOffsetSlider = mapYOffsetSlider
+
     local mapIconSlider = CreateSlider(sec2, "MapIcon", "Icon Size", 0.5, 2.0, 0.1,
-        "Adjusts the size of map search result icons on the world map.")
-    mapIconSlider:SetPoint("TOPLEFT", mapFontSlider, "BOTTOMLEFT", 0, -38)
+        "Adjusts the size of map search result icons on the world map.", nil, 0.8)
+    mapIconSlider:SetPoint("TOPLEFT", mapYOffsetSlider, "BOTTOMLEFT", 0, -38)
     mapIconSlider:SetValue(EasyFind.db.iconScale or 0.8)
     mapIconSlider:HookScript("OnValueChanged", function(self, value)
         EasyFind.db.iconScale = value
@@ -848,7 +904,7 @@ function Options:Initialize()
 
     local arrivalSlider = CreateSlider(sec2, "ArrivalDist", "Arrival Distance", 3, 50, 1,
         "How close (in yards) you must be to a tracked location before the waypoint auto-clears.",
-        function(val) return tostring(mfloor(val + 0.5)) .. "yd" end)
+        function(val) return tostring(mfloor(val + 0.5)) .. "yd" end, 10, "yd")
     arrivalSlider:SetPoint("TOPLEFT", mapIconSlider, "BOTTOMLEFT", 0, -38)
     arrivalSlider:SetValue(EasyFind.db.arrivalDistance or 10)
     arrivalSlider:HookScript("OnValueChanged", function(self, value)
@@ -859,7 +915,7 @@ function Options:Initialize()
 
     local circleScaleSlider = CreateSlider(sec2, "CircleScale", "Guide Circle Size", 0.5, 2.0, 0.1,
         "Adjusts the size of the minimap guide circle and arrow that appears when tracking a map pin.",
-        function(val) return tostring(mfloor(val * 100 + 0.5)) .. "%" end)
+        nil, 1.0)
     circleScaleSlider:SetPoint("TOPLEFT", arrivalSlider, "BOTTOMLEFT", 0, -38)
     circleScaleSlider:SetValue(EasyFind.db.guideCircleScale or 1.0)
     circleScaleSlider:HookScript("OnValueChanged", function(self, value)
@@ -879,9 +935,21 @@ function Options:Initialize()
     end)
     optionsFrame.blinkingPinsCheckbox = blinkingPinsCheckbox
 
+    local pinHighlightCheckbox = CreateCheckbox(sec2, "PinHighlight", "Pin Highlight Box",
+        "When enabled, a yellow highlight box is drawn around map search pins.\n\nDisable to show only the pin icon and indicator arrow.")
+    pinHighlightCheckbox:SetPoint("TOPLEFT", blinkingPinsCheckbox, "BOTTOMLEFT", 0, -4)
+    pinHighlightCheckbox:SetChecked(EasyFind.db.mapPinHighlight ~= false)
+    pinHighlightCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.mapPinHighlight = self:GetChecked()
+        if ns.MapSearch and ns.MapSearch.UpdatePinHighlight then
+            ns.MapSearch:UpdatePinHighlight()
+        end
+    end)
+    optionsFrame.pinHighlightCheckbox = pinHighlightCheckbox
+
     local arrowGlowCheckbox = CreateCheckbox(sec2, "ArrowGlow", "Minimap Arrow Glow",
         "When enabled, a pulsing glow highlights the minimap perimeter arrow that points toward your active map pin.\n\nDisable if you find the glow distracting.")
-    arrowGlowCheckbox:SetPoint("TOPLEFT", blinkingPinsCheckbox, "BOTTOMLEFT", 0, -4)
+    arrowGlowCheckbox:SetPoint("TOPLEFT", pinHighlightCheckbox, "BOTTOMLEFT", 0, -4)
     arrowGlowCheckbox:SetChecked(EasyFind.db.minimapArrowGlow ~= false)
     arrowGlowCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.minimapArrowGlow = self:GetChecked()
@@ -926,8 +994,8 @@ function Options:Initialize()
 
     mapControls = {
         mapOptionsBox, resizeMapBtn, mapFontSlider, mapIconSlider, arrivalSlider, circleScaleSlider,
-        zoneNavCheckbox, mapResultsAboveCheckbox, blinkingPinsCheckbox,
-        arrowGlowCheckbox, guideCircleCheckbox, autoPinClearCheckbox,
+        mapSmartShowCheckbox, zoneNavCheckbox, mapResultsAboveCheckbox, blinkingPinsCheckbox,
+        pinHighlightCheckbox, arrowGlowCheckbox, guideCircleCheckbox, autoPinClearCheckbox,
         autoTrackCheckbox, pinGlowCheckbox
     }
     UpdateMapToggleVisual()
@@ -1213,6 +1281,7 @@ function Options:DoResetAll()
     EasyFind.db.uiSearchPosition = nil
     EasyFind.db.mapSearchPosition = nil
     EasyFind.db.globalSearchPosition = nil
+    EasyFind.db.mapSearchYOffset = 0
     EasyFind.db.directOpen = false
     EasyFind.db.navigateToZonesDirectly = false
     EasyFind.db.smartShow = false
@@ -1224,6 +1293,7 @@ function Options:DoResetAll()
     EasyFind.db.indicatorStyle = "EasyFind Arrow"
     EasyFind.db.indicatorColor = "Yellow"
     EasyFind.db.blinkingPins = false
+    EasyFind.db.mapPinHighlight = true
     EasyFind.db.showLoginMessage = true
     EasyFind.db.uiResultsAbove = false
     EasyFind.db.mapResultsAbove = false
@@ -1236,6 +1306,7 @@ function Options:DoResetAll()
     EasyFind.db.autoTrackPins = true
     EasyFind.db.minimapPinGlow = true
     EasyFind.db.guideCircleScale = 1.0
+    EasyFind.db.mapSmartShow = false
     EasyFind.db.visible = true
     EasyFind.db.enableUISearch = true
     EasyFind.db.enableMapSearch = true
@@ -1280,6 +1351,7 @@ function Options:DoResetAll()
     SaveBindings(GetCurrentBindingSet())
 
     optionsFrame.mapIconSlider:SetValue(0.8)
+    optionsFrame.mapYOffsetSlider:SetValue(0)
     optionsFrame.panelOpacitySlider:SetValue(0.9)
     optionsFrame.opacitySlider:SetValue(DEFAULT_OPACITY)
     optionsFrame.uiFontSlider:SetValue(1.0)
@@ -1289,6 +1361,7 @@ function Options:DoResetAll()
     optionsFrame.smartShowCheckbox:SetChecked(false)
     optionsFrame.staticOpacityCheckbox:SetChecked(false)
     optionsFrame.blinkingPinsCheckbox:SetChecked(false)
+    optionsFrame.pinHighlightCheckbox:SetChecked(true)
     optionsFrame.loginMessageCheckbox:SetChecked(true)
     optionsFrame.uiResultsAboveCheckbox:SetChecked(false)
     optionsFrame.mapResultsAboveCheckbox:SetChecked(false)
@@ -1298,6 +1371,7 @@ function Options:DoResetAll()
     optionsFrame.autoPinClearCheckbox:SetChecked(true)
     optionsFrame.autoTrackCheckbox:SetChecked(true)
     optionsFrame.pinGlowCheckbox:SetChecked(true)
+    optionsFrame.mapSmartShowCheckbox:SetChecked(false)
     if optionsFrame.UpdateUIToggleVisual then optionsFrame.UpdateUIToggleVisual() end
     if optionsFrame.UpdateMapToggleVisual then optionsFrame.UpdateMapToggleVisual() end
     optionsFrame.arrivalSlider:SetValue(10)
@@ -1330,6 +1404,7 @@ function Options:DoResetAll()
         if ns.MapSearch.UpdateIconScales then ns.MapSearch:UpdateIconScales() end
         if ns.MapSearch.RefreshIndicators then ns.MapSearch:RefreshIndicators() end
         if ns.MapSearch.UpdateOpacity then ns.MapSearch:UpdateOpacity() end
+        if ns.MapSearch.UpdateMapSmartShow then ns.MapSearch:UpdateMapSmartShow() end
     end
     local uiInd = _G["EasyFindIndicatorFrame"]
     if uiInd then uiInd:SetScale(1.0) end
@@ -1392,15 +1467,18 @@ function Options:Show()
     optionsFrame.uiFontSlider:SetValue(EasyFind.db.fontSize or 1.0)
     optionsFrame.mapFontSlider:SetValue(EasyFind.db.mapFontSize or 1.0)
     optionsFrame.mapIconSlider:SetValue(EasyFind.db.iconScale or 0.8)
+    optionsFrame.mapYOffsetSlider:SetValue(EasyFind.db.mapSearchYOffset or 0)
     optionsFrame.arrivalSlider:SetValue(EasyFind.db.arrivalDistance or 10)
     optionsFrame.directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false)
     optionsFrame.zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly or false)
     optionsFrame.smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
     optionsFrame.staticOpacityCheckbox:SetChecked(EasyFind.db.staticOpacity or false)
     optionsFrame.blinkingPinsCheckbox:SetChecked(EasyFind.db.blinkingPins or false)
+    optionsFrame.pinHighlightCheckbox:SetChecked(EasyFind.db.mapPinHighlight ~= false)
     optionsFrame.loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage ~= false)
     optionsFrame.uiResultsAboveCheckbox:SetChecked(EasyFind.db.uiResultsAbove or false)
     optionsFrame.mapResultsAboveCheckbox:SetChecked(EasyFind.db.mapResultsAbove or false)
+    optionsFrame.mapSmartShowCheckbox:SetChecked(EasyFind.db.mapSmartShow or false)
     optionsFrame.minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton or false)
     optionsFrame.themeBtnText:SetText(EasyFind.db.resultsTheme or "Retail")
     optionsFrame.indicatorBtnText:SetText(EasyFind.db.indicatorStyle or "EasyFind Arrow")
@@ -1419,7 +1497,9 @@ function Options:Show()
     local key4 = GetBindingKey("EASYFIND_CLEAR")
     optionsFrame.clearBtn:SetText(key4 or "Not Bound")
 
-    optionsFrame:SetBackdropColor(0.12, 0.10, 0.08, EasyFind.db.panelOpacity or 0.9)
+    if optionsFrame.bgTex then
+        optionsFrame.bgTex:SetAlpha(EasyFind.db.panelOpacity or 0.9)
+    end
     optionsFrame.RelayoutSections()
     optionsFrame:Show()
 end

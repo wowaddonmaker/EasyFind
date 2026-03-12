@@ -675,19 +675,15 @@ function UI:CreateSearchFrame()
                 if selectedIndex > 0 and toggleFocused then
                     toggleFocused = false
                     UI:UpdateSelectionHighlight()
-                else
+                elseif toolbarFocus > 0 then
                     local controls = GetToolbarControls()
-                    if #controls > 0 and (toolbarFocus > 0 or selectedIndex == 0) then
-                        local newIdx = (toolbarFocus > 0) and (toolbarFocus - 1) or #controls
-                        if newIdx == 0 then
-                            ClearToolbarFocus()
-                            selectedIndex = 0
-                            UI:UpdateSelectionHighlight()
-                        else
-                            SetToolbarFocus(newIdx)
-                        end
+                    local newIdx = toolbarFocus - 1
+                    if newIdx == 0 then
+                        ClearToolbarFocus()
+                        selectedIndex = 0
+                        UI:UpdateSelectionHighlight()
                     else
-                        StartKeyRepeat(key, function() UI:MoveSelection(-1) end)
+                        SetToolbarFocus(newIdx)
                     end
                 end
             else
@@ -711,8 +707,6 @@ function UI:CreateSearchFrame()
                     else
                         SetToolbarFocus(newIdx)
                     end
-                else
-                    StartKeyRepeat(key, function() UI:MoveSelection(1) end)
                 end
             end
         elseif key == "ENTER" then
@@ -775,8 +769,6 @@ function UI:CreateSearchFrame()
                 self:ClearFocus()
                 navFrame:EnableKeyboard(true)
                 SetToolbarFocus(1)
-            elseif resultsFrame and resultsFrame:IsShown() and selectedIndex == 0 then
-                UI:MoveSelection(1)
             end
         end
     end)
@@ -902,7 +894,7 @@ end
 function UI:CreateResultsFrame()
     resultsFrame = CreateFrame("Frame", "EasyFindResultsFrame", searchFrame, "BackdropTemplate")
     resultsFrame:SetWidth(380)  -- Wide to accommodate tree indentation
-    resultsFrame:SetPoint("TOP", searchFrame, "BOTTOM", 0, 5)
+    resultsFrame:SetPoint("TOP", searchFrame, "BOTTOM", 0, 2)
     resultsFrame:SetFrameStrata("MEDIUM")
     resultsFrame:SetFrameLevel(searchFrame:GetFrameLevel() + 1)
     
@@ -1106,9 +1098,7 @@ function UI:CreateResultButton(index)
             if cachedHierarchical then
                 UI:ShowHierarchicalResults(cachedHierarchical, true)
             end
-            return
-        end
-        if row.isPathNode then
+        elseif row.isPathNode then
             local key = (row.pathNodeName or "") .. "_" .. (row.pathNodeDepth or 0)
             local wasCollapsed = collapsedNodes[key]
             collapsedNodes[key] = not collapsedNodes[key]
@@ -1122,6 +1112,17 @@ function UI:CreateResultButton(index)
             end
             if cachedHierarchical then
                 UI:ShowHierarchicalResults(cachedHierarchical, true)
+            end
+        else
+            return
+        end
+        -- Rebuild repurposes rows, clearing visual state. Re-show btnBg
+        -- for whichever toggleBtn is now under the cursor.
+        for i = 1, MAX_BUTTON_POOL do
+            local rb = resultButtons[i]
+            if rb and rb.toggleBtn and rb.toggleBtn:IsMouseOver() then
+                rb.toggleBtn.btnBg:Show()
+                break
             end
         end
     end)
@@ -1614,18 +1615,11 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         local tex = resultsFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
         -- Stretch horizontally to fill frame, but keep native height (clipped by frame)
         tex:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 4, -4)
-        tex:SetPoint("TOPRIGHT", resultsFrame, "TOPRIGHT", -4, -4)
+        tex:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", -4, 4)
         resultsFrame.bgAtlasTex = tex
     end
     if theme.resultsBgAtlas then
-        local info = C_Texture.GetAtlasInfo(theme.resultsBgAtlas)
-        if info then
-            resultsFrame.bgAtlasTex:SetAtlas(theme.resultsBgAtlas, false)  -- false = allow stretching
-            resultsFrame.bgAtlasTex:SetHeight(info.height)  -- native height, clipped by frame
-        else
-            resultsFrame.bgAtlasTex:SetAtlas(theme.resultsBgAtlas, false)
-            resultsFrame.bgAtlasTex:SetHeight(468)  -- fallback
-        end
+        resultsFrame.bgAtlasTex:SetAtlas(theme.resultsBgAtlas, false)
         resultsFrame.bgAtlasTex:Show()
         resultsFrame:SetClipsChildren(true)
     else
@@ -2378,21 +2372,13 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         end
     end
 
-    -- Stretch background texture if the frame is taller than the texture's native height
-    if theme.resultsBgAtlas and resultsFrame.bgAtlasTex and resultsFrame.bgAtlasTex:IsShown() then
-        local frameHeight = resultsFrame:GetHeight()
-        local currentTexHeight = resultsFrame.bgAtlasTex:GetHeight()
-        if frameHeight > currentTexHeight then
-            resultsFrame.bgAtlasTex:SetHeight(frameHeight - 8)
-        end
-    end
 
     -- Anchor results above or below based on setting
     resultsFrame:ClearAllPoints()
     if EasyFind.db.uiResultsAbove then
         resultsFrame:SetPoint("BOTTOM", searchFrame, "TOP", 0, -5)
     else
-        resultsFrame:SetPoint("TOP", searchFrame, "BOTTOM", 0, 5)
+        resultsFrame:SetPoint("TOP", searchFrame, "BOTTOM", 0, 2)
     end
 
     resultsFrame:Show()
@@ -2612,8 +2598,8 @@ function UI:ActivateSelected()
                 return
             end
 
-            if resultRow.isPathNode then
-                -- Toggle collapse for path nodes
+            if resultRow.isPathNode and toggleFocused then
+                -- Toggle collapse when focus is on the +/- control
                 local key = (resultRow.pathNodeName or "") .. "_" .. (resultRow.pathNodeDepth or 0)
                 local wasCollapsed = collapsedNodes[key]
                 collapsedNodes[key] = not collapsedNodes[key]
