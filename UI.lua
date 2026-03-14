@@ -32,6 +32,8 @@ local GetCursorPosition  = GetCursorPosition
 local hooksecurefunc     = hooksecurefunc
 local wipe               = wipe
 
+local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind-search-improvements\\textures\\lightning-bolt"
+
 local searchFrame
 local resultsFrame
 local resultButtons = {}
@@ -430,19 +432,76 @@ function UI:CreateSearchFrame()
         ns.SetSearchBorderShown(searchFrame, false)
     end
 
-    -- Search icon
+    -- Mode toggle button (search icon area, flush left)
     local contentSz = ns.SEARCHBAR_HEIGHT * ns.SEARCHBAR_FILL
     local iconSz = contentSz * ns.SEARCHBAR_ICON_SCALE
-    local searchIcon = searchFrame:CreateTexture(nil, "ARTWORK")
-    searchIcon:SetSize(iconSz, iconSz)
-    searchIcon:SetPoint("LEFT", searchFrame, "LEFT", 12, 0)
-    searchIcon:SetAtlas("common-search-magnifyingglass")
-    searchFrame.searchIcon = searchIcon
+
+    local modeBtn = CreateFrame("Button", "EasyFindModeButton", searchFrame)
+    modeBtn:SetPoint("TOP", searchFrame, "TOP", 0, 0)
+    modeBtn:SetPoint("BOTTOM", searchFrame, "BOTTOM", 0, 0)
+    modeBtn:SetPoint("LEFT", searchFrame, "LEFT", 0, 0)
+    modeBtn:SetWidth(searchFrame:GetHeight())
+    modeBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
+
+    local modeIcon = modeBtn:CreateTexture(nil, "OVERLAY")
+    modeIcon:SetSize(iconSz, iconSz)
+    modeIcon:SetPoint("CENTER")
+    modeBtn.icon = modeIcon
+
+    local modeBtnBg = modeBtn:CreateTexture(nil, "ARTWORK")
+    modeBtnBg:SetAllPoints()
+    modeBtnBg:SetTexture(796424)
+    modeBtnBg:Hide()
+    modeBtn.btnBg = modeBtnBg
+
+    modeBtn:SetHighlightTexture(130757)
+    searchFrame.modeBtn = modeBtn
+    searchFrame.searchIcon = modeIcon
+
+    local function UpdateModeButtonVisual(btn)
+        if EasyFind.db.directOpen then
+            btn.icon:SetAtlas(nil)
+            btn.icon:SetTexture(LIGHTNING_BOLT_TEX)
+        else
+            btn.icon:SetTexture(nil)
+            btn.icon:SetAtlas("common-search-magnifyingglass")
+        end
+    end
+    ns.UpdateModeButtonVisual = UpdateModeButtonVisual
+
+    modeBtn:SetScript("OnEnter", function(self)
+        self.btnBg:Show()
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        if EasyFind.db.directOpen then
+            GameTooltip:SetText("Fast Search (ON)")
+            GameTooltip:AddLine("Click to switch to step-by-step guided mode.", 1, 1, 1, true)
+        else
+            GameTooltip:SetText("Standard Search")
+            GameTooltip:AddLine("Click to enable fast search (opens panels directly).", 1, 1, 1, true)
+        end
+        GameTooltip:Show()
+    end)
+
+    modeBtn:SetScript("OnLeave", function(self)
+        if not self.keyboardFocused then self.btnBg:Hide() end
+        GameTooltip_Hide()
+    end)
+
+    modeBtn:SetScript("OnClick", function(self)
+        EasyFind.db.directOpen = not EasyFind.db.directOpen
+        UpdateModeButtonVisual(self)
+        local optPanel = _G["EasyFindOptionsFrame"]
+        if optPanel and optPanel.directOpenCheckbox then
+            optPanel.directOpenCheckbox:SetChecked(EasyFind.db.directOpen)
+        end
+    end)
+
+    UpdateModeButtonVisual(modeBtn)
 
     -- Editbox
     local editBox = CreateFrame("EditBox", "EasyFindSearchBox", searchFrame)
     editBox:SetHeight(contentSz)
-    editBox:SetPoint("LEFT", searchIcon, "RIGHT", 5, 0)
+    editBox:SetPoint("LEFT", modeBtn, "RIGHT", 0, 0)
     editBox:SetPoint("RIGHT", searchFrame, "RIGHT", -8, 0)
     editBox:SetFontObject(ns.SEARCHBAR_FONT)
     editBox:SetAutoFocus(false)
@@ -592,7 +651,7 @@ function UI:CreateSearchFrame()
 
     -- Anchor editBox right edge to left of clear button area (filter button zone)
     editBox:ClearAllPoints()
-    editBox:SetPoint("LEFT", searchIcon, "RIGHT", 5, 0)
+    editBox:SetPoint("LEFT", modeBtn, "RIGHT", 0, 0)
     editBox:SetPoint("RIGHT", filterBtn, "LEFT", -4, 0)
 
     -- Click anywhere on the search frame to focus the editbox (enables blinking cursor)
@@ -661,7 +720,7 @@ function UI:CreateSearchFrame()
 
     searchFrame.editBox = editBox
 
-    -- Toolbar keyboard focus: 0 = editbox, 1 = clear button
+    -- Toolbar keyboard focus: 0 = editbox, 1+ = toolbar control index
     local toolbarFocus = 0
 
     local toolbarHighlight = CreateFrame("Frame", nil, UIParent)
@@ -676,27 +735,51 @@ function UI:CreateSearchFrame()
 
     local function GetToolbarControls()
         local controls = {}
+        tinsert(controls, modeBtn)
         if clearTextBtn:IsShown() then
             tinsert(controls, clearTextBtn)
         end
+        tinsert(controls, filterBtn)
         return controls
     end
 
     local function SetToolbarFocus(idx)
+        -- Clear previous button state
+        local prevControls = GetToolbarControls()
+        local prevTarget = prevControls[toolbarFocus]
+        if prevTarget then
+            prevTarget.keyboardFocused = nil
+            if prevTarget.btnBg then prevTarget.btnBg:Hide() end
+            if prevTarget.UnlockHighlight then prevTarget:UnlockHighlight() end
+        end
         toolbarFocus = idx
         local controls = GetToolbarControls()
         local target = controls[idx]
         if target then
-            toolbarHighlight:SetParent(target)
-            toolbarHighlight:ClearAllPoints()
-            toolbarHighlight:SetAllPoints(target)
-            toolbarHighlight:Show()
+            target.keyboardFocused = true
+            if target.btnBg then
+                target.btnBg:Show()
+                if target.LockHighlight then target:LockHighlight() end
+                toolbarHighlight:Hide()
+            else
+                toolbarHighlight:SetParent(target)
+                toolbarHighlight:ClearAllPoints()
+                toolbarHighlight:SetAllPoints(target)
+                toolbarHighlight:Show()
+            end
         else
             toolbarHighlight:Hide()
         end
     end
 
     local function ClearToolbarFocus()
+        local controls = GetToolbarControls()
+        local prevTarget = controls[toolbarFocus]
+        if prevTarget then
+            prevTarget.keyboardFocused = nil
+            if prevTarget.btnBg then prevTarget.btnBg:Hide() end
+            if prevTarget.UnlockHighlight then prevTarget:UnlockHighlight() end
+        end
         toolbarFocus = 0
         toolbarHighlight:Hide()
     end
@@ -730,19 +813,22 @@ function UI:CreateSearchFrame()
         elseif key == "END" then
             UI:JumpToEnd()
         elseif key == "TAB" then
+            -- Ring order: modeBtn(1) → editBox → [clearBtn] → filterBtn → wrap
+            -- EditBox sits between toolbar index 1 and 2
             if IsShiftKeyDown() then
                 if selectedIndex > 0 and toggleFocused then
                     toggleFocused = false
                     UI:UpdateSelectionHighlight()
                 elseif toolbarFocus > 0 then
-                    local controls = GetToolbarControls()
-                    local newIdx = toolbarFocus - 1
-                    if newIdx == 0 then
+                    if toolbarFocus == 1 then
+                        local controls = GetToolbarControls()
+                        SetToolbarFocus(#controls)
+                    elseif toolbarFocus == 2 then
                         ClearToolbarFocus()
-                        selectedIndex = 0
-                        UI:UpdateSelectionHighlight()
+                        navFrame:EnableKeyboard(false)
+                        searchFrame.editBox:SetFocus()
                     else
-                        SetToolbarFocus(newIdx)
+                        SetToolbarFocus(toolbarFocus - 1)
                     end
                 end
             else
@@ -758,13 +844,14 @@ function UI:CreateSearchFrame()
                     end
                 elseif toolbarFocus > 0 then
                     local controls = GetToolbarControls()
-                    local newIdx = toolbarFocus + 1
-                    if newIdx > #controls then
+                    if toolbarFocus == 1 then
                         ClearToolbarFocus()
-                        selectedIndex = 0
-                        UI:UpdateSelectionHighlight()
+                        navFrame:EnableKeyboard(false)
+                        searchFrame.editBox:SetFocus()
+                    elseif toolbarFocus >= #controls then
+                        SetToolbarFocus(1)
                     else
-                        SetToolbarFocus(newIdx)
+                        SetToolbarFocus(toolbarFocus + 1)
                     end
                 end
             end
@@ -812,23 +899,19 @@ function UI:CreateSearchFrame()
         if repeatKey == key then StopKeyRepeat() end
     end)
 
-    -- Shift+Tab from editbox: transition to toolbar navigation
-    -- Tab from editbox: toolbar first, then results
+    -- Tab/Shift+Tab from editbox: navigate toolbar controls
+    -- Controls are ordered left-to-right: modeBtn, [clearTextBtn], filterBtn
+    -- EditBox sits between modeBtn and clearTextBtn/filterBtn, so:
+    --   Shift+Tab (left) → modeBtn (index 1)
+    --   Tab (right) → first control after editBox (index 2)
     editBox:HookScript("OnKeyDown", function(self, key)
         if key ~= "TAB" then return end
-        local controls = GetToolbarControls()
+        self:ClearFocus()
+        navFrame:EnableKeyboard(true)
         if IsShiftKeyDown() then
-            if #controls > 0 then
-                self:ClearFocus()
-                navFrame:EnableKeyboard(true)
-                SetToolbarFocus(#controls)
-            end
+            SetToolbarFocus(1)
         else
-            if #controls > 0 then
-                self:ClearFocus()
-                navFrame:EnableKeyboard(true)
-                SetToolbarFocus(1)
-            end
+            SetToolbarFocus(2)
         end
     end)
 
@@ -4143,6 +4226,12 @@ function UI:UpdateFontSize()
     searchFrame:SetHeight(barH)
     searchFrame.editBox:SetHeight(contentSz)
     searchFrame.searchIcon:SetSize(iconSz, iconSz)
+    if searchFrame.modeBtn then
+        searchFrame.modeBtn:SetWidth(barH)
+    end
+    if searchFrame.filterBtn then
+        searchFrame.filterBtn:SetWidth(barH)
+    end
     if searchFrame.clearTextBtn then
         searchFrame.clearTextBtn:SetSize(clearSz, clearSz)
     end

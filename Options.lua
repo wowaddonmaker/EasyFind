@@ -696,6 +696,10 @@ function Options:Initialize()
     directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false)
     directOpenCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.directOpen = self:GetChecked()
+        local sf = _G["EasyFindSearchFrame"]
+        if sf and sf.modeBtn and ns.UpdateModeButtonVisual then
+            ns.UpdateModeButtonVisual(sf.modeBtn)
+        end
     end)
     optionsFrame.directOpenCheckbox = directOpenCheckbox
 
@@ -1374,6 +1378,10 @@ function Options:DoResetAll()
     optionsFrame.uiFontSlider:SetValue(1.0)
     optionsFrame.mapFontSlider:SetValue(1.0)
     optionsFrame.directOpenCheckbox:SetChecked(false)
+    local sf = _G["EasyFindSearchFrame"]
+    if sf and sf.modeBtn and ns.UpdateModeButtonVisual then
+        ns.UpdateModeButtonVisual(sf.modeBtn)
+    end
     optionsFrame.zoneNavCheckbox:SetChecked(false)
     optionsFrame.smartShowCheckbox:SetChecked(false)
     optionsFrame.staticOpacityCheckbox:SetChecked(false)
