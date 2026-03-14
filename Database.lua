@@ -13,8 +13,30 @@ local unpack = Utils.unpack
 local C_CurrencyInfo = C_CurrencyInfo
 local wipe           = wipe
 
+-- Word split cache: avoids per-call gmatch + table creation in scoring hot path.
+-- Key = lowercase string, value = array of words split on [%w']+.
+local wordCache = {}
+
+local function GetWords(str)
+    local cached = wordCache[str]
+    if cached then return cached end
+    local words = {}
+    for w in str:gmatch("[%w']+") do
+        words[#words + 1] = w
+    end
+    wordCache[str] = words
+    return words
+end
+
+-- Reusable row tables for DamerauLevenshtein (avoids 3 table allocs per call)
+local dlPrev2, dlPrev, dlCurr = {}, {}, {}
+
+-- Reusable sort comparator (avoids closure creation per SearchUI call)
+local function scoreDescending(a, b) return a.score > b.score end
+
 local uiSearchData = {}
 Database.uiSearchData = uiSearchData  -- exposed for container expansion
+Database._wordCache = wordCache        -- exposed for DevMem diagnostics
 -- Track which currencyIDs are already in the static database
 local knownCurrencyIDs = {}
 
@@ -376,6 +398,95 @@ function Database:PopulateDynamicReputations()
     end
 end
 
+-- Called after PLAYER_LOGIN when C_MountJournal is available
+-- Scans the player's collected mounts and injects them into the search database
+-- Shared prototypes for mount/toy entries via __index.
+-- Eliminates 5 hash slots per entry (~320 bytes each × ~1300 entries).
+local MOUNT_PROTO = {
+    keywords     = {"mount", "ride"},
+    keywordsLower = {"mount", "ride"},
+    category     = "Mount",
+    path         = {},
+    steps        = {},
+}
+local MOUNT_MT = { __index = MOUNT_PROTO }
+
+local TOY_PROTO = {
+    keywords     = {"toy", "fun"},
+    keywordsLower = {"toy", "fun"},
+    category     = "Toy",
+    path         = {},
+    steps        = {},
+}
+local TOY_MT = { __index = TOY_PROTO }
+
+function Database:PopulateDynamicMounts()
+    if not C_MountJournal or not C_MountJournal.GetMountIDs then return end
+
+    local mountIDs = C_MountJournal.GetMountIDs()
+    if not mountIDs then return end
+
+    for _, mountID in ipairs(mountIDs) do
+        local name, spellID, icon, isActive, isUsable, sourceType, isFavorite,
+              isFactionSpecific, faction, shouldHideOnChar, isCollected = C_MountJournal.GetMountInfoByID(mountID)
+        if name and isCollected and not shouldHideOnChar then
+            uiSearchData[#uiSearchData + 1] = setmetatable({
+                name = name,
+                icon = icon,
+                mountID = mountID,
+                spellID = spellID,
+                nameLower = slower(name),
+            }, MOUNT_MT)
+        end
+    end
+end
+
+-- Called after PLAYER_LOGIN when C_ToyBox is available
+-- Scans the player's collected toys and injects them into the search database
+function Database:PopulateDynamicToys()
+    if not C_ToyBox then return end
+
+    local GetToyInfo = C_ToyBox.GetToyInfo
+    local GetNumFilteredToys = C_ToyBox.GetNumFilteredToys
+    local GetToyFromIndex = C_ToyBox.GetToyFromIndex
+    if not GetToyInfo or not GetNumFilteredToys or not GetToyFromIndex then return end
+
+    -- Save current filter state, set to show all collected toys only
+    local hasFilterAPI = C_ToyBox.GetCollectedShown and C_ToyBox.SetCollectedShown
+    local savedCollected = hasFilterAPI and C_ToyBox.GetCollectedShown()
+    local savedUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
+    local savedString = C_ToyBox.GetFilterString and C_ToyBox.GetFilterString() or ""
+
+    if hasFilterAPI then C_ToyBox.SetCollectedShown(true) end
+    if C_ToyBox.SetUncollectedShown then C_ToyBox.SetUncollectedShown(false) end
+    if C_ToyBox.SetAllSourceTypeFilters then C_ToyBox.SetAllSourceTypeFilters(true) end
+    if C_ToyBox.SetAllExpansionTypeFilters then C_ToyBox.SetAllExpansionTypeFilters(true) end
+    if C_ToyBox.SetFilterString then C_ToyBox.SetFilterString("") end
+    if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+
+    local numToys = GetNumFilteredToys()
+    for i = 1, numToys do
+        local itemID = GetToyFromIndex(i)
+        if itemID and itemID > 0 then
+            local _, toyName, toyIcon = GetToyInfo(itemID)
+            if toyName and toyName ~= "" then
+                uiSearchData[#uiSearchData + 1] = setmetatable({
+                    name = toyName,
+                    icon = toyIcon,
+                    toyItemID = itemID,
+                    nameLower = slower(toyName),
+                }, TOY_MT)
+            end
+        end
+    end
+
+    -- Restore filter state
+    if hasFilterAPI then C_ToyBox.SetCollectedShown(savedCollected) end
+    if C_ToyBox.SetUncollectedShown then C_ToyBox.SetUncollectedShown(savedUncollected) end
+    if C_ToyBox.SetFilterString then C_ToyBox.SetFilterString(savedString) end
+    if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+end
+
 -- TREE FLATTENER
 -- Walks the tree and produces flat entries for the search/highlight engines.
 -- Children inherit: buttonFrame, category, and accumulate path + steps from parents.
@@ -388,11 +499,14 @@ function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, 
         local myButtonFrame = node.buttonFrame or parentButtonFrame
         local myCategory = node.category or parentCategory
 
-        -- Accumulate steps: parent steps + this node's steps
-        local mySteps = {}
-        for _, s in ipairs(parentSteps) do mySteps[#mySteps + 1] = s end
+        -- Accumulate steps: reuse parent array when node adds nothing
+        local mySteps
         if node.steps then
+            mySteps = {}
+            for _, s in ipairs(parentSteps) do mySteps[#mySteps + 1] = s end
             for _, s in ipairs(node.steps) do mySteps[#mySteps + 1] = s end
+        else
+            mySteps = parentSteps
         end
 
         -- Build the flat entry (path = parent names leading here, NOT including self)
@@ -409,6 +523,7 @@ function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, 
         if node.flashLabel then entry.flashLabel = node.flashLabel end
         if node.icon then entry.icon = node.icon end
         if node.available then entry.available = node.available end
+        if node.canQueue then entry.canQueue = true end
 
         uiSearchData[#uiSearchData + 1] = entry
 
@@ -1113,8 +1228,8 @@ function Database:BuildUIDatabase()
                     category = "Group Finder",
                     steps = {{ waitForFrame = "PVEFrame", tabIndex = 1 }},
                     children = {
-                        { name = "Dungeon Finder", keywords = {"dungeon finder", "lfd", "random dungeon", "heroic dungeon", "normal dungeon", "dungeon queue"}, steps = {{ waitForFrame = "PVEFrame", sideTabIndex = 1 }} },
-                        { name = "Raid Finder", keywords = {"raid finder", "lfr", "looking for raid", "raid queue", "random raid"}, steps = {{ waitForFrame = "PVEFrame", sideTabIndex = 2 }} },
+                        { name = "Dungeon Finder", keywords = {"dungeon finder", "lfd", "random dungeon", "heroic dungeon", "normal dungeon", "dungeon queue"}, canQueue = true, steps = {{ waitForFrame = "PVEFrame", sideTabIndex = 1 }} },
+                        { name = "Raid Finder", keywords = {"raid finder", "lfr", "looking for raid", "raid queue", "random raid"}, canQueue = true, steps = {{ waitForFrame = "PVEFrame", sideTabIndex = 2 }} },
                         {
                             name = "Premade Groups (PvE)",
                             keywords = {"premade", "premade groups", "custom group", "find group", "make group", "list group"},
@@ -1143,10 +1258,10 @@ function Database:BuildUIDatabase()
                             keywords = {"quick match", "random bg", "random battleground", "casual pvp", "unrated", "pvp"},
                             steps = {{ waitForFrame = "PVEFrame", pvpSideTabIndex = 1 }},
                             children = {
-                                { name = "Arena Skirmish", keywords = {"arena skirmish", "skirmish", "unrated arena", "casual arena", "arena"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.SpecificFrame.ArenaSkirmish", "HonorFrame.ArenaSkirmish"}, searchButtonText = "Arena Skirmish", text = "Select Arena Skirmish from the list" }} },
-                                { name = "Random Battleground", keywords = {"random bg", "random battleground", "casual bg", "unrated bg", "battleground"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.SpecificFrame.RandomBG", "HonorFrame.RandomBG"}, searchButtonText = "Random Battlegrounds", text = "Select Random Battlegrounds from the list" }} },
-                                { name = "Random Epic Battleground", keywords = {"random epic bg", "random epic battleground", "epic bg", "epic battleground", "ashran", "alterac", "isle of conquest"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.SpecificFrame.RandomEpicBG", "HonorFrame.RandomEpicBG"}, searchButtonText = "Random Epic Battlegrounds", text = "Select Random Epic Battlegrounds from the list" }} },
-                                { name = "Brawl", keywords = {"brawl", "pvp brawl", "weekly brawl", "packed house"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.SpecificFrame.Brawl", "HonorFrame.BonusFrame.BrawlButton"}, searchButtonText = "Brawl", text = "Select the Brawl option from the list" }} },
+                                { name = "Arena Skirmish", keywords = {"arena skirmish", "skirmish", "unrated arena", "casual arena", "arena"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.BonusFrame.Arena1Button", "HonorFrame.ArenaSkirmish"}, searchButtonText = "Arena Skirmish", text = "Select Arena Skirmish from the list" }} },
+                                { name = "Random Battleground", keywords = {"random bg", "random battleground", "casual bg", "unrated bg", "battleground"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.BonusFrame.RandomBGButton", "HonorFrame.RandomBG"}, searchButtonText = "Random Battlegrounds", text = "Select Random Battlegrounds from the list" }} },
+                                { name = "Random Epic Battleground", keywords = {"random epic bg", "random epic battleground", "epic bg", "epic battleground", "ashran", "alterac", "isle of conquest"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.BonusFrame.RandomEpicBGButton", "HonorFrame.RandomEpicBG"}, searchButtonText = "Random Epic Battlegrounds", text = "Select Random Epic Battlegrounds from the list" }} },
+                                { name = "Brawl", keywords = {"brawl", "pvp brawl", "weekly brawl", "packed house"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.BonusFrame.BrawlButton"}, searchButtonText = "Brawl", text = "Select the Brawl option from the list" }} },
                             },
                         },
                         {
@@ -1154,11 +1269,11 @@ function Database:BuildUIDatabase()
                             keywords = {"rated", "rated pvp", "conquest", "pvp"},
                             steps = {{ waitForFrame = "PVEFrame", pvpSideTabIndex = 2 }},
                             children = {
-                                { name = "Solo Shuffle", keywords = {"solo shuffle", "shuffle", "solo arena", "arena"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.Arena1v1", "ConquestFrame.SoloShuffle"}, searchButtonText = "Solo Arena", text = "Solo Shuffle is the first option in the Rated panel" }} },
-                                { name = "2v2 Arena", keywords = {"2v2", "2s", "twos", "2v2 arena", "two vs two", "arena"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.Arena2v2"}, searchButtonText = "2v2", text = "2v2 Arena is in the Rated panel" }} },
-                                { name = "3v3 Arena", keywords = {"3v3", "3s", "threes", "3v3 arena", "three vs three", "arena"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.Arena3v3"}, searchButtonText = "3v3", text = "3v3 Arena is in the Rated panel" }} },
-                                { name = "Rated Battlegrounds", keywords = {"rbg", "rated bg", "rated battleground", "rated battlegrounds", "10v10", "ten vs ten"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.RatedBG", "PVPQueueFrame.HonorInset.RatedPanel.RatedBGButton", "HonorFrame.BonusFrame.RatedBGButton"}, text = "Rated Battlegrounds is in the Rated panel" }} },
-                                { name = "Solo Battlegrounds (Blitz)", keywords = {"solo bg", "solo battleground", "solo battlegrounds", "battleground", "blitz", "battleground blitz"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.SoloBG", "ConquestFrame.Brawl1v1"}, searchButtonText = "Solo Battlegrounds", text = "Solo Battlegrounds (Blitz) is in the Rated panel" }} },
+                                { name = "Solo Shuffle", keywords = {"solo shuffle", "shuffle", "solo arena", "arena"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.RatedSoloShuffle"}, searchButtonText = "Solo Arena", text = "Solo Shuffle is the first option in the Rated panel" }} },
+                                { name = "2v2 Arena", keywords = {"2v2", "2s", "twos", "2v2 arena", "two vs two", "arena"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.Arena2v2"}, searchButtonText = "2v2", text = "2v2 Arena is in the Rated panel" }} },
+                                { name = "3v3 Arena", keywords = {"3v3", "3s", "threes", "3v3 arena", "three vs three", "arena"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.Arena3v3"}, searchButtonText = "3v3", text = "3v3 Arena is in the Rated panel" }} },
+                                { name = "Rated Battlegrounds", keywords = {"rbg", "rated bg", "rated battleground", "rated battlegrounds", "10v10", "ten vs ten"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.RatedBG"}, text = "Rated Battlegrounds is in the Rated panel" }} },
+                                { name = "Solo Battlegrounds (Blitz)", keywords = {"solo bg", "solo battleground", "solo battlegrounds", "battleground", "blitz", "battleground blitz"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.RatedBGBlitz"}, searchButtonText = "Solo Battlegrounds", text = "Solo Battlegrounds (Blitz) is in the Rated panel" }} },
                             },
                         },
                         {
@@ -1333,6 +1448,51 @@ function Database:BuildUIDatabase()
         if not item.icon and not item.buttonFrame then
             item.icon = 134400
         end
+        -- Word cache fills lazily on first search (avoids init-time peak)
+    end
+
+    -- Tag entries with isPvP / isPvE for filter support
+    local PVP_NAMES = {
+        ["PvP Talents"] = true, ["War Mode"] = true, ["PvP Flag"] = true,
+    }
+    for _, item in ipairs(uiSearchData) do
+        -- PvP: explicit category, known PvP entries, or under Player vs. Player tree
+        if item.category == "PvP" or PVP_NAMES[item.name]
+            or sfind(item.name, "Player vs. Player", 1, true) then
+            item.isPvP = true
+        elseif item.path then
+            for _, p in ipairs(item.path) do
+                if sfind(p, "Player vs. Player", 1, true) then
+                    item.isPvP = true
+                    break
+                end
+            end
+        end
+        -- PvE: Group Finder PvE subtree (Dungeons & Raids, Mythic+)
+        if not item.isPvP and item.path then
+            local underGroupFinder = false
+            for _, p in ipairs(item.path) do
+                if p == "Group Finder" then underGroupFinder = true end
+                if underGroupFinder and (p == "Dungeons & Raids" or p == "Mythic+ Dungeons") then
+                    item.isPvE = true
+                    break
+                end
+            end
+        end
+        if not item.isPvE then
+            local n = item.name
+            if (n == "Dungeons & Raids" or n == "Dungeon Finder" or n == "Raid Finder"
+                or n == "Mythic+ Dungeons" or n == "Premade Groups (PvE)") then
+                if item.path then
+                    for _, p in ipairs(item.path) do
+                        if p == "Group Finder" then
+                            item.isPvE = true
+                            break
+                        end
+                    end
+                end
+            end
+        end
     end
 end
 
@@ -1375,26 +1535,24 @@ end
 --- "ranb" → "random battleground" = 115 (longer prefix matching)
 --- Returns 0 if no reasonable initials match found.
 function Database:ScoreInitials(text, query)
-    -- Split text into words
-    local words = {}
-    for w in text:gmatch("[%w]+") do
-        words[#words + 1] = slower(w)
-    end
+    -- Use cached word split (input is already lowercase)
+    local words = GetWords(text)
     if #words < 2 then return 0 end  -- initials only make sense for multi-word
 
     -- Blocklist: "pve" must never initials-match text containing word "pvp" (and vice versa)
     local blocked = FUZZY_BLOCKLIST[query]
     if blocked then
-        for _, w in ipairs(words) do
-            if blocked[w] then return 0 end
+        for wi = 1, #words do
+            if blocked[words[wi]] then return 0 end
         end
     end
 
     local queryLen = #query
+    local numWords = #words
 
     -- Strategy 1: Pure initials - each query char matches the first letter of consecutive words
     -- "rb" → R(ated) B(attlegrounds)
-    if queryLen <= #words then
+    if queryLen <= numWords then
         local allMatch = true
         for i = 1, queryLen do
             if ssub(query, i, i) ~= ssub(words[i], 1, 1) then
@@ -1404,7 +1562,7 @@ function Database:ScoreInitials(text, query)
         end
         if allMatch then
             -- Bonus for matching ALL words' initials (not partial)
-            local bonus = (queryLen == #words) and 135 or 130
+            local bonus = (queryLen == numWords) and 135 or 130
             return bonus
         end
     end
@@ -1413,8 +1571,9 @@ function Database:ScoreInitials(text, query)
     -- "raba" → "ra(ndom) ba(ttleground)" - greedily consume query chars across words
     local qi = 1  -- position in query
     local wordsMatched = 0
-    for _, w in ipairs(words) do
+    for wi = 1, numWords do
         if qi > queryLen then break end
+        local w = words[wi]
         -- How many chars from the start of this word match the query at position qi?
         local matchLen = 0
         while qi + matchLen <= queryLen and matchLen < #w do
@@ -1443,11 +1602,11 @@ end
 --- Returns a score > 0 if a close match is found, 0 otherwise.
 
 function Database:ScoreFuzzy(text, query, queryLen)
-    -- Check each word in the text for close matches
     local bestScore = 0
     local blocked = FUZZY_BLOCKLIST[query]
-    for word in text:gmatch("[%w]+") do
-        word = slower(word)
+    local textWords = GetWords(text)
+    for wi = 1, #textWords do
+        local word = textWords[wi]
         if not (blocked and blocked[word]) then
             local wordLen = #word
             local lenDiff = wordLen - queryLen
@@ -1493,12 +1652,10 @@ end
 --- Capped: returns early if distance exceeds 2 (saves CPU).
 function Database:DamerauLevenshtein(s1, s2, len1, len2)
     if mabs(len1 - len2) > 2 then return 3 end  -- too different, skip
-    
-    -- Use two rows instead of full matrix for memory efficiency
-    local prev2 = {}  -- row i-2
-    local prev  = {}  -- row i-1
-    local curr  = {}  -- row i
-    
+
+    -- Reuse module-level tables (rotated each row, no allocation)
+    local prev2, prev, curr = dlPrev2, dlPrev, dlCurr
+
     for j = 0, len2 do prev[j] = j end
     
     for i = 1, len1 do
@@ -1529,7 +1686,7 @@ end
 --- Unified name scoring: exact → starts-with → word-boundary → substring → initials → fuzzy.
 --- All search features (UI, map zone, map POI) use this single function.
 --- Returns a score ≥ 0. Caller decides the minimum threshold.
-function Database:ScoreName(nameLower, query, queryLen)
+function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
     -- Trim trailing whitespace so "windrnr " behaves like "windrnr"
     if ssub(query, queryLen, queryLen) == " " then
         query = query:match("^(.-)%s+$") or query
@@ -1566,7 +1723,9 @@ function Database:ScoreName(nameLower, query, queryLen)
     -- Short queries (3-4): "qtr" → "quartermaster" (word must be 2x+ longer)
     -- Longer queries (5-7): "windrnr" → "windrunner" (must cover 60%+ of word)
     if score < 50 and queryLen >= 3 and not sfind(query, " ", 1, true) then
-        for word in nameLower:gmatch("[%w']+") do
+        local nameWords = GetWords(nameLower)
+        for wi = 1, #nameWords do
+            local word = nameWords[wi]
             local wordLen = #word
             if queryLen <= 4 then
                 if wordLen >= queryLen * 2 and Database:IsSubsequence(word, query, queryLen) then
@@ -1586,19 +1745,20 @@ function Database:ScoreName(nameLower, query, queryLen)
     -- Split query into words and score each against name words.
     -- All query words must match for a score to be awarded.
     if score < 50 and sfind(query, " ", 1, true) then
-        local queryWords = {}
-        for w in query:gmatch("%S+") do
-            queryWords[#queryWords + 1] = w
+        local queryWords = optQueryWords
+        if not queryWords then
+            queryWords = {}
+            for w in query:gmatch("%S+") do
+                queryWords[#queryWords + 1] = w
+            end
         end
         if #queryWords >= 2 then
-            local nameWords = {}
-            for w in nameLower:gmatch("[%w']+") do
-                nameWords[#nameWords + 1] = w
-            end
+            local nameWords = GetWords(nameLower)
             local allMatched = true
             local totalWordScore = 0
             local usedNameWords = {}
-            for _, qw in ipairs(queryWords) do
+            for qwi = 1, #queryWords do
+                local qw = queryWords[qwi]
                 local qwLen = #qw
                 local bestWordScore = 0
                 local bestIdx = 0
@@ -1670,7 +1830,7 @@ end
 
 --- Unified keyword scoring: additive score from matching against a list of keywords.
 --- Returns a total score to ADD to the name score.
-function Database:ScoreKeywords(keywordsLower, query, queryLen)
+function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
     if not keywordsLower then return 0 end
 
     -- Trim trailing whitespace to match ScoreName behavior
@@ -1680,18 +1840,23 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen)
         if queryLen == 0 then return 0 end
     end
 
-    -- Split query into words for better multi-word matching
-    local queryWords = {}
-    for word in query:gmatch("%S+") do
-        queryWords[#queryWords + 1] = word
+    -- Use pre-split query words if provided, otherwise split here
+    local queryWords = optQueryWords
+    if not queryWords then
+        queryWords = {}
+        for word in query:gmatch("%S+") do
+            queryWords[#queryWords + 1] = word
+        end
     end
 
     -- Single-word query: take the BEST keyword match only (not sum).
     -- Summing caused items with redundant keywords (e.g. "reputation" +
     -- "reputation achievements") to outscore items with a better name match.
+    local numKeywords = #keywordsLower
     if #queryWords == 1 then
         local best = 0
-        for _, kw in ipairs(keywordsLower) do
+        for ki = 1, numKeywords do
+            local kw = keywordsLower[ki]
             local kwScore = 0
             if kw == query then
                 -- Short abbreviations (2-3 chars) are intentional, boost above initials
@@ -1711,9 +1876,11 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen)
                 local kf = Database:ScoreFuzzy(kw, query, queryLen)
                 if kf > 0 then kwScore = mmax(kwScore, kf) end
             end
-            -- Subsequence per-word in keywords ("qtr" → "quartermaster", not across words)
+            -- Subsequence per-word in keywords
             if kwScore < 50 and queryLen >= 3 then
-                for kwWord in kw:gmatch("[%w']+") do
+                local kwWords = GetWords(kw)
+                for kwi = 1, #kwWords do
+                    local kwWord = kwWords[kwi]
                     local kwWordLen = #kwWord
                     if queryLen <= 4 and kwWordLen >= queryLen * 2 then
                         if Database:IsSubsequence(kwWord, query, queryLen) then
@@ -1735,12 +1902,14 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen)
 
     -- For multi-word queries, match each word separately and take best match per word
     local total = 0
-    for _, queryWord in ipairs(queryWords) do
+    for qwi = 1, #queryWords do
+        local queryWord = queryWords[qwi]
         local queryWordLen = #queryWord
         local bestScore = 0
 
         if queryWordLen >= 2 then  -- single-char words too ambiguous for keyword matching
-            for _, kw in ipairs(keywordsLower) do
+            for ki = 1, numKeywords do
+                local kw = keywordsLower[ki]
                 local kwScore = 0
                 if kw == queryWord then
                     kwScore = 80
@@ -1772,38 +1941,83 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen)
     return total
 end
 
-function Database:SearchUI(query)
+-- Incremental search state: when the user extends the previous query (e.g. "mou" → "moun"),
+-- only re-score entries that matched before instead of the full dataset.
+local prevQuery = ""
+local prevSkipKey = ""
+local prevCandidates = {}
+
+function Database:SearchUI(query, skipCategories)
     if not query or query == "" or #query < 2 then
+        prevQuery = ""
         return {}
     end
-    
+
     query = slower(query)
     local queryLen = #query
+
+    -- Pre-trim trailing whitespace once (avoids per-entry match() in scoring)
+    if ssub(query, queryLen, queryLen) == " " then
+        query = query:match("^(.-)%s+$") or query
+        queryLen = #query
+        if queryLen == 0 then prevQuery = ""; return {} end
+    end
+
+    -- Pre-split query words once (passed to scoring to avoid per-entry gmatch)
+    local queryWords = {}
+    for w in query:gmatch("%S+") do
+        queryWords[#queryWords + 1] = w
+    end
+
+    -- Determine candidate set: incremental (previous matches) or full database
+    local skipKey = skipCategories and (
+        (skipCategories["Mount"] and "M" or "") ..
+        (skipCategories["Toy"] and "T" or "")
+    ) or ""
+
+    local searchSet
+    local prevLen = #prevQuery
+    if prevLen > 0 and skipKey == prevSkipKey
+        and queryLen > prevLen and ssub(query, 1, prevLen) == prevQuery then
+        searchSet = prevCandidates
+    else
+        searchSet = uiSearchData
+    end
+
     local results = {}
-    
-    for _, data in ipairs(uiSearchData) do
+    local candidateIdx = 0
+
+    local searchCount = #searchSet
+    for i = 1, searchCount do
+        local data = searchSet[i]
+        -- Skip entries whose category is filtered out (Mount/Toy items only)
+        if skipCategories and skipCategories[data.category] then
+            -- Filtered out by user preference, skip entirely
         -- Skip entries that have an availability check that returns false
-        if data.available and not data.available() then
+        elseif data.available and not data.available() then
             -- Not available in current context, skip
         else
         local nameLower = data.nameLower
-        local score = Database:ScoreName(nameLower, query, queryLen)
+        local score = Database:ScoreName(nameLower, query, queryLen, queryWords)
 
         -- Keyword matching (additive)
-        score = score + Database:ScoreKeywords(data.keywordsLower, query, queryLen)
-        
+        score = score + Database:ScoreKeywords(data.keywordsLower, query, queryLen, queryWords)
+
         if score >= 30 then
-            local result = {}
-            for k, v in pairs(data) do
-                result[k] = v
-            end
-            result.score = score
-            results[#results + 1] = result
+            results[#results + 1] = { data = data, score = score }
+            candidateIdx = candidateIdx + 1
+            prevCandidates[candidateIdx] = data
         end
         end -- else (availability check)
     end
-    
-    tsort(results, function(a, b) return a.score > b.score end)
+    -- Trim stale entries from previous search
+    for i = candidateIdx + 1, #prevCandidates do
+        prevCandidates[i] = nil
+    end
+    prevQuery = query
+    prevSkipKey = skipKey
+
+    tsort(results, scoreDescending)
     return results
 end
 
@@ -1838,29 +2052,31 @@ function Database:BuildHierarchicalResults(results)
     end
 
     for _, item in ipairs(results) do
-        local path = item.path or {}
+        -- item = {data = originalEntry, score = N} from SearchUI
+        local itemData = item.data
+        local path = itemData.path or {}
         local parentNode = getOrCreateNode(path)
         local itemScore = item.score or 0
 
-        if parentNode.children[item.name] then
+        if parentNode.children[itemData.name] then
             -- Node already exists (created as a path ancestor of another result).
             -- Attach the actual result data so it becomes navigable.
-            local existing = parentNode.children[item.name]
-            if not existing.data then existing.data = item end
+            local existing = parentNode.children[itemData.name]
+            if not existing.data then existing.data = itemData end
             existing.isMatch = true  -- direct search match
             if itemScore > existing.bestScore then
                 existing.bestScore = itemScore
             end
         else
-            parentNode.children[item.name] = {
-                name = item.name,
+            parentNode.children[itemData.name] = {
+                name = itemData.name,
                 children = {},
                 childOrder = {},
-                data = item,
+                data = itemData,
                 bestScore = itemScore,
                 isMatch = true,  -- direct search match
             }
-            parentNode.childOrder[#parentNode.childOrder + 1] = item.name
+            parentNode.childOrder[#parentNode.childOrder + 1] = itemData.name
         end
 
         -- Propagate best score upward so ancestor branches sort correctly.

@@ -46,8 +46,11 @@ local DB_DEFAULTS = {
     mapFontSize = 1.0,         -- Map search font size multiplier (0.5-2.0)
     uiSearchPosition = nil,    -- {point, relPoint, x, y}
     mapSearchPosition = nil,   -- x offset from map left edge
-    globalSearchPosition = nil, -- x offset from map right edge
+    globalSearchPosition = nil, -- x offset from map right edge (windowed)
+    mapSearchPositionMax = nil, -- x offset from map left edge (maximized)
+    globalSearchPositionMax = nil, -- x offset from map right edge (maximized)
     mapSearchYOffset = 0,      -- y offset for search bars relative to map bottom
+    hideSearchBarsMaximized = false, -- Hide search bars when map is full screen
     directOpen = false,        -- Open panels directly instead of step-by-step
     navigateToZonesDirectly = false,  -- Clicking a zone goes directly to it
     smartShow = false,         -- Hide search bar until mouse hovers nearby
@@ -88,6 +91,11 @@ local DB_DEFAULTS = {
         instances = true,
         travel = true,
         services = true,
+    },
+    uiSearchFilters = {        -- UI search category filters
+        ui = true,
+        mounts = false,
+        toys = false,
     },
 }
 
@@ -283,12 +291,21 @@ local function OnPlayerLogin()
         end
         SafeInit(ns.Options,    "Options")
     end)
-    -- Populate dynamic currencies and reputations after a short delay (APIs need the character loaded)
+    -- Populate dynamic currencies, reputations, mounts, and toys after a short delay (APIs need the character loaded)
+    -- Spread dynamic population across frames to avoid a single-frame stutter.
+    -- Currencies/reputations run first (they toggle collapsed headers, must be synchronous).
+    -- Mounts/toys run on subsequent frames, then GC reclaims init temporaries.
     SafeAfter(2, function()
-        if ns.Database then
-            ns.Database:PopulateDynamicCurrencies()
-            ns.Database:PopulateDynamicReputations()
-        end
+        if not ns.Database then return end
+        ns.Database:PopulateDynamicCurrencies()
+        ns.Database:PopulateDynamicReputations()
+        SafeAfter(0, function()
+            ns.Database:PopulateDynamicMounts()
+            SafeAfter(0, function()
+                ns.Database:PopulateDynamicToys()
+                collectgarbage("collect")
+            end)
+        end)
     end)
 
     -- Minimap button (delayed slightly so Minimap frame is ready)

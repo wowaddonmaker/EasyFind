@@ -126,8 +126,8 @@ ns.SEARCHBAR_FONT = "EasyFindSearchFont"
 -- Custom 3-part search bar border with chamfered corners.
 -- Fill (BACKGROUND) and border (ARTWORK) use identical shapes from custom TGA textures.
 -- Fill is tinted black with tunable opacity; border uses Blizzard's action bar gray.
-local SEARCH_TEX_FILL = "Interface\\AddOns\\EasyFind\\Textures\\SearchBarFill"
-local SEARCH_TEX_BORDER = "Interface\\AddOns\\EasyFind\\Textures\\SearchBarBorder"
+local SEARCH_TEX_FILL = "Interface\\AddOns\\EasyFind-mounts-toys\\Textures\\SearchBarFill"
+local SEARCH_TEX_BORDER = "Interface\\AddOns\\EasyFind-mounts-toys\\Textures\\SearchBarBorder"
 local SEARCH_CAP_W = 8
 local SEARCH_TEX_W = 64
 local TC_LEFT  = {0, SEARCH_CAP_W / SEARCH_TEX_W, 0, 1}
@@ -650,21 +650,22 @@ function Utils.ScrollBoxFindButton(scrollBox, matchFn)
     return nil
 end
 
---- Click a button using the safest available method.
---- Prefers calling the Lua OnClick handler directly (avoids secure-template
---- restrictions that cause ADDON_ACTION_FORBIDDEN on some protected frames).
+--- Click a button safely. Uses Click() which routes through the WoW frame
+--- pipeline. Errors from protected functions (e.g. SetTab on Encounter
+--- Journal tabs) are caught and suppressed.
 --- @param btn        Frame with Click or OnClick
 --- @param mouseButton string  default "LeftButton"
 function Utils.ClickButton(btn, mouseButton)
     if not btn then return false end
     mouseButton = mouseButton or "LeftButton"
+    if btn.Click then
+        pcall(btn.Click, btn, mouseButton)
+        return true
+    end
     local hasScript, onClick = pcall(btn.GetScript, btn, "OnClick")
     if hasScript and onClick then
-        onClick(btn, mouseButton)
+        pcall(onClick, btn, mouseButton)
         return true
-    elseif btn.Click then
-        local ok = Utils.SafeCallMethod(btn, "Click")
-        return ok ~= false
     end
     return false
 end
