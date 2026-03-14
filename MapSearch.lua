@@ -98,7 +98,7 @@ local INDICATOR_STYLES = {
         preRotated = false,  -- Needs mpi rotation to point down
     },
     ["EasyFind Arrow"] = {
-        texture = "Interface\\AddOns\\EasyFind-mounts-toys\\Images\\arrow-hq",
+        texture = "Interface\\AddOns\\EasyFind\\Images\\arrow-hq",
         texCoord = nil,
         preRotated = true,   -- Already points down, no rotation needed
     },
@@ -464,7 +464,7 @@ local function CreateWaypointTracker()
             local layer = nearTrackFrame:CreateTexture(nil, "OVERLAY", nil, i)
             layer:SetSize(ringSize, ringSize)
             layer:SetPoint("CENTER", Minimap, "CENTER", 0, 0)
-            layer:SetTexture("Interface\\AddOns\\EasyFind-mounts-toys\\textures\\near-track-ring")
+            layer:SetTexture("Interface\\AddOns\\EasyFind\\textures\\near-track-ring")
             layer:SetBlendMode("ADD")
             layer:SetVertexColor(1, 1, 0.3, 1)
             ringLayers[i] = layer
