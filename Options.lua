@@ -860,9 +860,21 @@ function Options:Initialize()
     end)
     optionsFrame.mapSmartShowCheckbox = mapSmartShowCheckbox
 
+    local hideMaxCheckbox = CreateCheckbox(sec2, "HideMaximized", "Hide Bars in Full Screen Map",
+        "When enabled, both map search bars are hidden when the world map is maximized (full screen).\n\nThey reappear when you return to the windowed map.")
+    hideMaxCheckbox:SetPoint("TOPLEFT", mapSmartShowCheckbox, "BOTTOMLEFT", 0, -4)
+    hideMaxCheckbox:SetChecked(EasyFind.db.hideSearchBarsMaximized or false)
+    hideMaxCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.hideSearchBarsMaximized = self:GetChecked()
+        if ns.MapSearch and ns.MapSearch.UpdateHideMaximized then
+            ns.MapSearch:UpdateHideMaximized()
+        end
+    end)
+    optionsFrame.hideMaxCheckbox = hideMaxCheckbox
+
     local mapResultsAboveCheckbox = CreateCheckbox(sec2, "MapResultsAbove", "Map Results Above",
         "When enabled, map search bars show results above the bar instead of below.\n\nApplies to both local and global map search bars.")
-    mapResultsAboveCheckbox:SetPoint("TOPLEFT", mapSmartShowCheckbox, "BOTTOMLEFT", 0, -4)
+    mapResultsAboveCheckbox:SetPoint("TOPLEFT", hideMaxCheckbox, "BOTTOMLEFT", 0, -4)
     mapResultsAboveCheckbox:SetChecked(EasyFind.db.mapResultsAbove or false)
     mapResultsAboveCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.mapResultsAbove = self:GetChecked()
@@ -994,9 +1006,9 @@ function Options:Initialize()
 
     mapControls = {
         mapOptionsBox, resizeMapBtn, mapFontSlider, mapIconSlider, arrivalSlider, circleScaleSlider,
-        mapSmartShowCheckbox, zoneNavCheckbox, mapResultsAboveCheckbox, blinkingPinsCheckbox,
-        pinHighlightCheckbox, arrowGlowCheckbox, guideCircleCheckbox, autoPinClearCheckbox,
-        autoTrackCheckbox, pinGlowCheckbox
+        mapSmartShowCheckbox, hideMaxCheckbox, zoneNavCheckbox, mapResultsAboveCheckbox,
+        blinkingPinsCheckbox, pinHighlightCheckbox, arrowGlowCheckbox, guideCircleCheckbox,
+        autoPinClearCheckbox, autoTrackCheckbox, pinGlowCheckbox
     }
     UpdateMapToggleVisual()
 
@@ -1254,6 +1266,8 @@ function Options:DoResetPositions()
     EasyFind.db.uiSearchPosition = nil
     EasyFind.db.mapSearchPosition = nil
     EasyFind.db.globalSearchPosition = nil
+    EasyFind.db.mapSearchPositionMax = nil
+    EasyFind.db.globalSearchPositionMax = nil
     EasyFind.db.optionsPosition = nil
     if ns.UI and ns.UI.ResetPosition then ns.UI:ResetPosition() end
     if ns.MapSearch and ns.MapSearch.ResetPosition then ns.MapSearch:ResetPosition() end
@@ -1281,6 +1295,8 @@ function Options:DoResetAll()
     EasyFind.db.uiSearchPosition = nil
     EasyFind.db.mapSearchPosition = nil
     EasyFind.db.globalSearchPosition = nil
+    EasyFind.db.mapSearchPositionMax = nil
+    EasyFind.db.globalSearchPositionMax = nil
     EasyFind.db.mapSearchYOffset = 0
     EasyFind.db.directOpen = false
     EasyFind.db.navigateToZonesDirectly = false
@@ -1307,6 +1323,7 @@ function Options:DoResetAll()
     EasyFind.db.minimapPinGlow = true
     EasyFind.db.guideCircleScale = 1.0
     EasyFind.db.mapSmartShow = false
+    EasyFind.db.hideSearchBarsMaximized = false
     EasyFind.db.visible = true
     EasyFind.db.enableUISearch = true
     EasyFind.db.enableMapSearch = true
@@ -1372,6 +1389,7 @@ function Options:DoResetAll()
     optionsFrame.autoTrackCheckbox:SetChecked(true)
     optionsFrame.pinGlowCheckbox:SetChecked(true)
     optionsFrame.mapSmartShowCheckbox:SetChecked(false)
+    optionsFrame.hideMaxCheckbox:SetChecked(false)
     if optionsFrame.UpdateUIToggleVisual then optionsFrame.UpdateUIToggleVisual() end
     if optionsFrame.UpdateMapToggleVisual then optionsFrame.UpdateMapToggleVisual() end
     optionsFrame.arrivalSlider:SetValue(10)
@@ -1479,6 +1497,7 @@ function Options:Show()
     optionsFrame.uiResultsAboveCheckbox:SetChecked(EasyFind.db.uiResultsAbove or false)
     optionsFrame.mapResultsAboveCheckbox:SetChecked(EasyFind.db.mapResultsAbove or false)
     optionsFrame.mapSmartShowCheckbox:SetChecked(EasyFind.db.mapSmartShow or false)
+    optionsFrame.hideMaxCheckbox:SetChecked(EasyFind.db.hideSearchBarsMaximized or false)
     optionsFrame.minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton or false)
     optionsFrame.themeBtnText:SetText(EasyFind.db.resultsTheme or "Retail")
     optionsFrame.indicatorBtnText:SetText(EasyFind.db.indicatorStyle or "EasyFind Arrow")

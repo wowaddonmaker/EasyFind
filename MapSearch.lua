@@ -98,7 +98,7 @@ local INDICATOR_STYLES = {
         preRotated = false,  -- Needs mpi rotation to point down
     },
     ["EasyFind Arrow"] = {
-        texture = "Interface\\AddOns\\EasyFind\\Images\\arrow-hq",
+        texture = "Interface\\AddOns\\EasyFind-mounts-toys\\Images\\arrow-hq",
         texCoord = nil,
         preRotated = true,   -- Already points down, no rotation needed
     },
@@ -333,6 +333,7 @@ local waypointPin
 local zoneHighlightFrame  -- For highlighting zones on continent maps
 local isGlobalSearch = false  -- Tracks which search bar triggered the current search
 local activePinState = nil    -- {mapID, x, y, icon, category} - survives map close/reopen
+local mapIsMaximized = false  -- Tracks WorldMapFrame maximize state for search bar repositioning
 local cachedWorldZones        -- Built once per session by GetAllWorldZones
 
 -- Reusable tables for OnSearchTextChanged (wiped each call to avoid per-keystroke allocations)
@@ -426,7 +427,7 @@ local function CreateWaypointTracker()
     -- so we position a centered glow at the same perimeter point.
     if not superTrackGlow then
         local glowSize = 48
-        superTrackGlow = CreateFrame("Frame", "EasyFindMinimapGlow", UIParent)
+        superTrackGlow = CreateFrame("Frame", "EasyFindMinimapGlow", MinimapCluster)
         superTrackGlow:SetSize(glowSize, glowSize)
         superTrackGlow:SetFrameStrata("HIGH")
         superTrackGlow:SetFrameLevel(100)
@@ -463,7 +464,7 @@ local function CreateWaypointTracker()
             local layer = nearTrackFrame:CreateTexture(nil, "OVERLAY", nil, i)
             layer:SetSize(ringSize, ringSize)
             layer:SetPoint("CENTER", Minimap, "CENTER", 0, 0)
-            layer:SetTexture("Interface\\AddOns\\EasyFind\\textures\\near-track-ring")
+            layer:SetTexture("Interface\\AddOns\\EasyFind-mounts-toys\\textures\\near-track-ring")
             layer:SetBlendMode("ADD")
             layer:SetVertexColor(1, 1, 0.3, 1)
             ringLayers[i] = layer
@@ -1290,7 +1291,7 @@ function MapSearch:CreateSearchFrame()
     end
     searchFrame:SetClipsChildren(true)
 
-    -- Draggable with Shift key (constrained to map bottom edge)
+    -- Draggable with Shift key (constrained to map edge)
     searchFrame:RegisterForDrag("LeftButton")
     searchFrame:SetScript("OnDragStart", function(self)
         if IsShiftKeyDown() then
@@ -1311,17 +1312,27 @@ function MapSearch:CreateSearchFrame()
 
             local newX = (cursorX - mapLeft) / scale - (self:GetWidth() / 2)
 
-            -- Don't overlap the global bar
-            local globalW = globalSearchFrame and globalSearchFrame:GetWidth() or 0
-            local globalOff = EasyFind.db.globalSearchPosition or 0
-            local globalLeftEdge = mapW + globalOff - globalW
-            local maxX = globalLeftEdge - self:GetWidth()
-
-            newX = mmax(0, mmin(newX, maxX))
-
-            self:ClearAllPoints()
-            self:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", newX, 2)
-            EasyFind.db.mapSearchPosition = newX
+            if mapIsMaximized then
+                -- Maximized: slide along top edge independently
+                local globalW = globalSearchFrame and globalSearchFrame:GetWidth() or 0
+                local globalOff = EasyFind.db.globalSearchPositionMax or -150
+                local globalLeftFromLeft = mapW + globalOff - globalW
+                local maxX = globalLeftFromLeft - self:GetWidth() - 6
+                newX = mmax(0, mmin(newX, maxX))
+                self:ClearAllPoints()
+                self:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "TOPLEFT", newX, -4)
+                EasyFind.db.mapSearchPositionMax = newX
+            else
+                -- Windowed: slide along bottom edge
+                local globalW = globalSearchFrame and globalSearchFrame:GetWidth() or 0
+                local globalOff = EasyFind.db.globalSearchPosition or 0
+                local globalLeftEdge = mapW + globalOff - globalW
+                local maxX = globalLeftEdge - self:GetWidth()
+                newX = mmax(0, mmin(newX, maxX))
+                self:ClearAllPoints()
+                self:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", newX, 2)
+                EasyFind.db.mapSearchPosition = newX
+            end
         elseif self.isDragging then
             self.isDragging = false
         end
@@ -1400,7 +1411,7 @@ function MapSearch:CreateSearchFrame()
 
     editBox:SetScript("OnKeyDown", function(self, key)
         if resultsFrame and resultsFrame:IsShown() and selectedResultIndex == 0 then
-            if EasyFind.db.mapResultsAbove then
+            if EasyFind.db.mapResultsAbove and not mapIsMaximized then
                 if key == "UP" then MapSearch:JumpToEnd() end
             else
                 if key == "DOWN" then MapSearch:MoveSelection(1) end
@@ -1589,7 +1600,7 @@ function MapSearch:CreateSearchFrame()
     end
     globalSearchFrame:SetClipsChildren(true)
 
-    -- Draggable with Shift key (constrained to map bottom edge)
+    -- Draggable with Shift key (constrained to map edge)
     globalSearchFrame:RegisterForDrag("LeftButton")
     globalSearchFrame:SetScript("OnDragStart", function(self)
         if IsShiftKeyDown() then
@@ -1607,19 +1618,29 @@ function MapSearch:CreateSearchFrame()
             local mapRight = WorldMapFrame.ScrollContainer:GetRight() * scale
             local mapW = (mapRight - mapLeft) / scale
 
-            local newX = (cursorX - mapRight) / scale + (self:GetWidth() / 2)
-
-            -- Don't overlap the local bar
-            local localOff = EasyFind.db.mapSearchPosition or 0
-            local localW = searchFrame and searchFrame:GetWidth() or 0
-            local localRightEdge = localOff + localW
-            local minX = -(mapW - localRightEdge - self:GetWidth())
-
-            newX = mmin(0, mmax(newX, minX))
-
-            self:ClearAllPoints()
-            self:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", newX, 2)
-            EasyFind.db.globalSearchPosition = newX
+            if mapIsMaximized then
+                -- Maximized: slide along top edge independently (from right)
+                local newX = (cursorX - mapRight) / scale + (self:GetWidth() / 2)
+                local localOff = EasyFind.db.mapSearchPositionMax or 4
+                local localW = searchFrame and searchFrame:GetWidth() or 0
+                local localRightEdge = localOff + localW
+                local minX = localRightEdge + 6 + self:GetWidth() - mapW
+                newX = mmin(0, mmax(newX, minX))
+                self:ClearAllPoints()
+                self:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "TOPRIGHT", newX, -4)
+                EasyFind.db.globalSearchPositionMax = newX
+            else
+                -- Windowed: slide along bottom edge independently
+                local newX = (cursorX - mapRight) / scale + (self:GetWidth() / 2)
+                local localOff = EasyFind.db.mapSearchPosition or 0
+                local localW = searchFrame and searchFrame:GetWidth() or 0
+                local localRightEdge = localOff + localW
+                local minX = -(mapW - localRightEdge - self:GetWidth())
+                newX = mmin(0, mmax(newX, minX))
+                self:ClearAllPoints()
+                self:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", newX, 2)
+                EasyFind.db.globalSearchPosition = newX
+            end
         elseif self.isDragging then
             self.isDragging = false
         end
@@ -1696,7 +1717,7 @@ function MapSearch:CreateSearchFrame()
 
     globalEditBox:SetScript("OnKeyDown", function(self, key)
         if resultsFrame and resultsFrame:IsShown() and selectedResultIndex == 0 then
-            if EasyFind.db.mapResultsAbove then
+            if EasyFind.db.mapResultsAbove and not mapIsMaximized then
                 if key == "UP" then MapSearch:JumpToEnd() end
             else
                 if key == "DOWN" then MapSearch:MoveSelection(1) end
@@ -4014,6 +4035,7 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
         bcAlpha:SetToAlpha(0.4)
         bcAlpha:SetDuration(ANIM_DURATION)
         bcIndFrame.animGroup = bcAnimGroup
+        bcIndFrame.bounceAnim = bcMove
 
         hl.indicatorFrame = bcIndFrame
         hl.indicator = bcIndFrame.indicator
@@ -4065,6 +4087,7 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
     if hl.pulseAnim then hl.pulseAnim:Play() end
 
     if hl.indicatorFrame then
+        self:UpdateBreadcrumbPosition()
         hl.indicatorFrame:Show()
         if hl.indicatorFrame.animGroup then
             hl.indicatorFrame.animGroup:Play()
@@ -4073,6 +4096,36 @@ function MapSearch:ShowBreadcrumbHighlight(button, finalTargetMapID)
 
     self.pendingZoneHighlight = finalTargetMapID
     DebugPrint("[EasyFind] ShowBreadcrumbHighlight - SET pendingZoneHighlight to:", finalTargetMapID)
+end
+
+-- Reposition the breadcrumb indicator for the current map mode.
+-- In maximized mode, breadcrumbs are at the screen top edge so the indicator
+-- goes below the button pointing up. In windowed mode it goes above pointing down.
+-- Called from ShowBreadcrumbHighlight and from RepositionForMapMode so the
+-- indicator stays correct when the user toggles between maximized and windowed.
+function MapSearch:UpdateBreadcrumbPosition()
+    local hl = self.breadcrumbHighlight
+    if not hl or not hl.indicatorFrame then return end
+    local indFrame = hl.indicatorFrame
+    indFrame:ClearAllPoints()
+    if mapIsMaximized then
+        indFrame:SetPoint("TOP", hl, "BOTTOM", 0, -8)
+        if indFrame.bounceAnim then
+            indFrame.bounceAnim:SetOffset(0, 10)
+        end
+        indFrame.indicatorDirection = "up"
+    else
+        indFrame:SetPoint("BOTTOM", hl, "TOP", 0, 8)
+        if indFrame.bounceAnim then
+            indFrame.bounceAnim:SetOffset(0, -10)
+        end
+        indFrame.indicatorDirection = nil
+    end
+    ns.UpdateIndicator(indFrame)
+    if indFrame:IsShown() and indFrame.animGroup then
+        indFrame.animGroup:Stop()
+        indFrame.animGroup:Play()
+    end
 end
 
 -- Check if current map is a continent (has zone children)
@@ -4136,6 +4189,17 @@ function MapSearch:UpdateMapSmartShow()
     end
 end
 
+function MapSearch:UpdateHideMaximized()
+    if not searchFrame then return end
+    if mapIsMaximized and EasyFind.db.hideSearchBarsMaximized then
+        searchFrame:Hide()
+        if globalSearchFrame then globalSearchFrame:Hide() end
+    elseif mapIsMaximized then
+        searchFrame:Show()
+        if globalSearchFrame then globalSearchFrame:Show() end
+    end
+end
+
 function MapSearch:HookWorldMap()
     HookMapSmartShow(searchFrame)
     HookMapSmartShow(globalSearchFrame)
@@ -4186,7 +4250,50 @@ function MapSearch:HookWorldMap()
         self:ClearZoneHighlight()
         self.pendingWaypoint = nil
     end)
-    
+
+    -- Reposition search bars when map toggles between maximized and windowed
+    if WorldMapFrame.IsMaximized then
+        local function RepositionForMapMode()
+            local maximized = WorldMapFrame:IsMaximized()
+            mapIsMaximized = maximized
+            if maximized then
+                -- Move both bars to top of the map, independently positioned
+                local maxXOff = EasyFind.db.mapSearchPositionMax or 4
+                searchFrame:ClearAllPoints()
+                searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "TOPLEFT", maxXOff, -4)
+                if globalSearchFrame then
+                    globalSearchFrame:ClearAllPoints()
+                    local gMaxXOff = EasyFind.db.globalSearchPositionMax or -150
+                    globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "TOPRIGHT", gMaxXOff, -4)
+                end
+                if EasyFind.db.hideSearchBarsMaximized then
+                    searchFrame:Hide()
+                    if globalSearchFrame then globalSearchFrame:Hide() end
+                end
+            else
+                -- Restore normal bottom-edge positions
+                local yOff = EasyFind.db.mapSearchYOffset or 0
+                searchFrame:ClearAllPoints()
+                local xOff = EasyFind.db.mapSearchPosition or 0
+                searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", xOff, yOff)
+                if globalSearchFrame then
+                    globalSearchFrame:ClearAllPoints()
+                    local gXOff = EasyFind.db.globalSearchPosition or 0
+                    globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", gXOff, yOff)
+                end
+                -- Restore bars that were hidden in maximized mode
+                searchFrame:Show()
+                if globalSearchFrame then globalSearchFrame:Show() end
+            end
+            self:RefreshResultsAnchor()
+            self:UpdateBreadcrumbPosition()
+        end
+        hooksecurefunc(WorldMapFrame, "Maximize", RepositionForMapMode)
+        hooksecurefunc(WorldMapFrame, "Minimize", RepositionForMapMode)
+        -- Apply on first show if already maximized
+        WorldMapFrame:HookScript("OnShow", RepositionForMapMode)
+    end
+
     hooksecurefunc(WorldMapFrame, "OnMapChanged", function()
         local newMapID = WorldMapFrame:GetMapID()
         local newMapInfo = newMapID and GetMapInfo(newMapID)
@@ -5486,7 +5593,8 @@ function MapSearch:ShowResults(results)
     end
     
     local count = mmin(#results, MAX_RESULTS_POOL)
-    local resultsAbove = EasyFind.db.mapResultsAbove
+    -- When maximized, bars are at top so results always drop downward
+    local resultsAbove = EasyFind.db.mapResultsAbove and not mapIsMaximized
 
     -- Pre-compute whether scrolling will be needed so buttons can be narrower.
     -- Must compute maxVisibleHeight (including screen-space clamping) BEFORE the
@@ -5749,7 +5857,7 @@ function MapSearch:MoveSelection(delta)
     if visibleCount == 0 then return end
 
     local newIndex = selectedResultIndex + delta
-    if EasyFind.db.mapResultsAbove then
+    if EasyFind.db.mapResultsAbove and not mapIsMaximized then
         -- Above: exit to editbox past last result, clamp at first
         if newIndex > visibleCount then newIndex = 0
         elseif newIndex < 1 then newIndex = 1 end
@@ -6490,7 +6598,8 @@ function MapSearch:RefreshResultsAnchor()
     local anchor = activeSearchFrame or searchFrame
     if isGlobalSearch and globalSearchFrame then anchor = globalSearchFrame end
     resultsFrame:ClearAllPoints()
-    if EasyFind.db.mapResultsAbove then
+    -- When maximized, bars are at top so results always drop downward
+    if EasyFind.db.mapResultsAbove and not mapIsMaximized then
         resultsFrame:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, -2)
     else
         resultsFrame:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, 2)
@@ -6657,20 +6766,33 @@ function MapSearch:UpdateSearchBarTheme()
 end
 
 function MapSearch:ResetPosition()
+    EasyFind.db.mapSearchPosition = nil
+    EasyFind.db.globalSearchPosition = nil
+    EasyFind.db.mapSearchPositionMax = nil
+    EasyFind.db.globalSearchPositionMax = nil
+    if mapIsMaximized then
+        searchFrame:ClearAllPoints()
+        searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "TOPLEFT", 4, -4)
+        if globalSearchFrame then
+            globalSearchFrame:ClearAllPoints()
+            globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "TOPRIGHT", -150, -4)
+        end
+        return
+    end
     local yOff = EasyFind.db.mapSearchYOffset or 0
     if searchFrame then
         searchFrame:ClearAllPoints()
         searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", 0, yOff)
-        EasyFind.db.mapSearchPosition = nil
     end
     if globalSearchFrame then
         globalSearchFrame:ClearAllPoints()
         globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", 0, yOff)
-        EasyFind.db.globalSearchPosition = nil
     end
 end
 
 function MapSearch:UpdateYOffset()
+    -- Skip repositioning while maximized; minimize will apply the offset
+    if mapIsMaximized then return end
     local yOff = EasyFind.db.mapSearchYOffset or 0
     if searchFrame then
         searchFrame:ClearAllPoints()
