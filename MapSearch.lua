@@ -7199,6 +7199,32 @@ function MapSearch:SearchForUI(query)
     local scored = self:SearchPOIs(pois, query)
     if not scored or #scored == 0 then return nil end
 
+    -- Apply global search filters (zones / dungeons / raids / delves)
+    -- so UI results mirror what the real global search bar shows
+    if not isLocal then
+        local gFilters = EasyFind.db.globalSearchFilters
+        if gFilters then
+            local filtered = {}
+            for _, r in ipairs(scored) do
+                local dominated = false
+                if r.isZone and r.category == "zone" and gFilters.zones == false then
+                    dominated = true
+                elseif r.category == "dungeon" and gFilters.dungeons == false then
+                    dominated = true
+                elseif r.category == "raid" and gFilters.raids == false then
+                    dominated = true
+                elseif r.category == "delve" and gFilters.delves == false then
+                    dominated = true
+                end
+                if not dominated then
+                    filtered[#filtered + 1] = r
+                end
+            end
+            scored = filtered
+            if #scored == 0 then return nil end
+        end
+    end
+
     -- Convert to UI search format {data, score}
     local results = {}
     for _, r in ipairs(scored) do

@@ -774,7 +774,7 @@ function Options:Initialize()
     UpdateUIToggleVisual()
 
     -- SECTION 3: Map Search
-    local sec2 = CreateSection("Map Search", 368)
+    local sec2 = CreateSection("Map Search", 394)
 
     local mapEnableCheckbox = CreateCheckbox(sec2, "EnableMap", "Enable Map Search Module",
         "Uncheck to disable map search bars, pins, and all map overlay features.\n\nRequires a UI reload to take effect.")
