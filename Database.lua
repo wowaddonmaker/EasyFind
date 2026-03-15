@@ -1921,10 +1921,13 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
             elseif Database:FindAtWordBoundary(kw, query) then
                 kwScore = 55
             end
-            -- Initials on keywords
+            -- Initials on keywords (steep penalty for short queries to avoid noise)
             if kwScore < 60 then
                 local ki = Database:ScoreInitials(kw, query)
-                if ki > 0 then kwScore = mmax(kwScore, ki - 20) end
+                if ki > 0 then
+                    local penalty = queryLen <= 2 and 110 or (queryLen == 3 and 70 or 20)
+                    kwScore = mmax(kwScore, ki - penalty)
+                end
             end
             -- Fuzzy on keywords
             if kwScore < 40 and queryLen >= 4 then
@@ -1973,10 +1976,13 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
                 elseif Database:FindAtWordBoundary(kw, queryWord) then
                     kwScore = 55
                 end
-                -- Initials on keywords
+                -- Initials on keywords (steep penalty for short queries to avoid noise)
                 if kwScore < 60 then
                     local ki = Database:ScoreInitials(kw, queryWord)
-                    if ki > 0 then kwScore = mmax(kwScore, ki - 20) end
+                    if ki > 0 then
+                        local penalty = queryWordLen <= 2 and 110 or (queryWordLen == 3 and 70 or 20)
+                        kwScore = mmax(kwScore, ki - penalty)
+                    end
                 end
                 -- Fuzzy on keywords
                 if kwScore < 40 and queryWordLen >= 4 then
