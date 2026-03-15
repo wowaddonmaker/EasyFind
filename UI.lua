@@ -4216,16 +4216,14 @@ function UI:ShowWhatsNew(version)
     body:SetJustifyH("LEFT")
     body:SetSpacing(4)
     body:SetText(
-        "|cffFFD100\226\128\162|r |cffffffffKeyboard Navigation|r\n" ..
-        "        Arrow keys, Tab, and Enter to browse and select results\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffVisual Rescaler|r\n" ..
-        "        Drag handles on search bars and results to resize on the fly\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffSmarter Search|r\n" ..
-        "        Abbreviations like \"qtr\" find quartermaster, multi-word fuzzy matching\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffMap Smart Show|r\n" ..
-        "        Map search bars can now auto-hide until you hover (enable in /ef o)\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffMajor POI Expansion|r\n" ..
-        "        New cities, class trainers, and points of interest across Azeroth"
+        "|cffFFD100\226\128\162|r |cffffffffMount, Toy, and Pet Search|r\n" ..
+        "        Search your collected mounts, toys, and battle pets (see UI Search filter on bar). Click to summon or use\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffUnified Search Bar|r\n" ..
+        "        Map search results can now also appear in the UI search bar with filter toggles\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffMode Toggle Button|r\n" ..
+        "        Quick toggle between guide mode and fast mode right in the search bar (click magnifying lens)\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffFull Screen Map Support|r\n" ..
+        "        Map search bars now work in full screen map mode"
     )
 
     -- Footer - anchored below body so it can't overlap

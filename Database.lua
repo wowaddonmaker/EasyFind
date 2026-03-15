@@ -1921,12 +1921,12 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
             elseif Database:FindAtWordBoundary(kw, query) then
                 kwScore = 55
             end
-            -- Initials on keywords (steep penalty for short queries to avoid noise)
-            if kwScore < 60 then
-                local ki = Database:ScoreInitials(kw, query)
-                if ki > 0 then
-                    local penalty = queryLen <= 2 and 110 or (queryLen == 3 and 70 or 20)
-                    kwScore = mmax(kwScore, ki - penalty)
+            -- Initials on keywords (skip for 1-2 char queries: penalty drops score below threshold)
+            if kwScore < 60 and queryLen >= 3 then
+                local initScore = Database:ScoreInitials(kw, query)
+                if initScore > 0 then
+                    local penalty = queryLen == 3 and 70 or 20
+                    kwScore = mmax(kwScore, initScore - penalty)
                 end
             end
             -- Fuzzy on keywords
@@ -1976,12 +1976,12 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
                 elseif Database:FindAtWordBoundary(kw, queryWord) then
                     kwScore = 55
                 end
-                -- Initials on keywords (steep penalty for short queries to avoid noise)
-                if kwScore < 60 then
-                    local ki = Database:ScoreInitials(kw, queryWord)
-                    if ki > 0 then
-                        local penalty = queryWordLen <= 2 and 110 or (queryWordLen == 3 and 70 or 20)
-                        kwScore = mmax(kwScore, ki - penalty)
+                -- Initials on keywords (skip for 1-2 char queries: penalty drops score below threshold)
+                if kwScore < 60 and queryWordLen >= 3 then
+                    local initScore = Database:ScoreInitials(kw, queryWord)
+                    if initScore > 0 then
+                        local penalty = queryWordLen == 3 and 70 or 20
+                        kwScore = mmax(kwScore, initScore - penalty)
                     end
                 end
                 -- Fuzzy on keywords

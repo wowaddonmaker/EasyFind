@@ -4,6 +4,38 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [1.3.0] - 2026-03-15
+
+### Added
+- **New UI Search Categories**: Enable each via the filter dropdown on the search bar
+  - **Mounts**: Search your collected mounts by name. Click a result to summon. Icons show combat tint when unavailable
+  - **Toys**: Search collected toys with cooldown sweep overlays. Click to use
+  - **Battle Pets**: Search your collected battle pets by name. Click to summon a companion
+  - **Map Search**: Search map POIs (zones, dungeon entrances, flight masters) directly from the UI search bar. Includes waypoint placement and minimap tracking preview on hover
+- **Mode Toggle Button**: Interactive fast/guide mode toggle flush-left in the search bar, replacing the static search icon. Syncs with the options panel checkbox
+- **Filter Dropdown Enhancements**: Per-filter icons, "Toggle All" button, and Shift+Up/Down section jump for keyboard navigation
+- **Independent Maximized Map Bars**: Zone and instance search bars position independently in full-screen map mode with separate saved positions
+- **Hide Bars in Full Screen Map**: New option to hide both map search bars when the map is maximized
+
+### Changed
+- **Tab/Shift+Tab Navigation**: Now cycles through all toolbar controls (mode button, editbox, clear button, filter button) in left-to-right order
+
+### Fixed
+- **Quest Tracking Coexistence**: User waypoint auto-reclaim no longer overrides active quest tracking
+- **Cross-zone Waypoint Navigation**: Minimap waypoint glow through portals now works correctly across zone boundaries
+- **Minimap Glow Tracking**: Glow no longer disappears when switching pin types, and cross-zone same-continent pins now track properly
+- **Encounter Journal Fast Mode**: Protected tabs in the Encounter Journal now hand off to the guide system instead of failing silently
+- **Short Query False Positives**: 2-char abbreviations like "fp" no longer match unrelated items through incidental keyword initials (e.g., "flight paths" in Travel Statistics)
+- **Scrollbar Overlap**: Fixed map search results overlapping with scrollbar in certain configurations
+- **Breadcrumb Arrow in Full Screen**: Arrow position, animation, and direction now update correctly when switching between maximized and windowed map modes
+
+### Technical Notes
+- **Search Performance**: Word-split cache, reusable Damerau-Levenshtein row tables, module-level sort comparator, pre-split query words, and incremental narrowing (extending a query re-scores only previous matches)
+- **Memory Reduction**: Search results store `{data, score}` references instead of shallow copies. `__index` prototypes for bulk-injected mount/toy/pet entries. Staggered population across frames to avoid single-frame stutter
+- **Keyword Initials Penalty**: Scaled by query length to eliminate noise from short queries while preserving useful matches for longer abbreviations
+
+---
+
 ## [1.2.7] - 2026-03-10
 
 ### Added

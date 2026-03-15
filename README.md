@@ -16,7 +16,9 @@ Find and navigate to any interface element such as:
 *   Guild and social features
 *   Professions
 *   All currencies from your character's Currency tab, including seasonal and legacy currencies (shows current amounts inline)
+*   Your collected mounts, toys, and battle pets (click to summon or use)
 *   Player portrait menu options (Set Focus, Loot Specialization, Dungeon/Raid Difficulty, Edit Mode, PvP Flag, etc.)
+*   Map search results (zones, dungeons, POIs) via the filter dropdown
 *   Coverage is always expanding. If a panel exists in the default UI, the goal is for EasyFind to reach it
 
 <p align="center">
@@ -58,9 +60,7 @@ Locate places and NPCs across Azeroth:
 *   Stable masters, void storage, and guild services
 *   The Great Vault, Creation Catalyst, and Trading Post
 *   Chromie (Timewalking Campaigns)
-*   Coming soon: improved main screen navigation and navigation to points outside your current zone
-
-Search the zone of the map you're currently focused on with the local bar (left side), or search across all of Azeroth with the global bar (right side).
+Search the zone of the map you're currently focused on with the local bar (left side), or search across all of Azeroth with the global bar (right side). Map search results also appear in the UI search bar when the Map Search filter is enabled.
 
 <p align="center">
 <img src="https://media.forgecdn.net/attachments/1577/343/local_search_ah-gif.gif" alt="local search"><br>
@@ -117,7 +117,7 @@ The global bar finds zones, dungeons, raids, and delves with full breadcrumb pat
 *   **Guide Mode** (default): Walks you through each step to reach your destination. Highlights the correct button or tab with a yellow pulsing border and an animated arrow so you learn where things live.
 *   **Direct Open Mode**: Opens panels and tabs directly with no extra steps, for when you already know the UI and just want the convenience.
 
-UI search and map search each have their own toggle. Enable **Open Panels Directly** (under UI Search options) to skip step-by-step guidance for interface panels. Enable **Navigate Zones Directly** (under Map Search options) to jump straight to a zone on the map instead of stepping through parent zones. Both are off by default.
+Toggle between modes using the mode button in the search bar (click the magnifying glass icon) or through the options panel. UI search and map search each have their own toggle. Enable **Open Panels Directly** (under UI Search options) to skip step-by-step guidance for interface panels. Enable **Navigate Zones Directly** (under Map Search options) to jump straight to a zone on the map instead of stepping through parent zones. Both are off by default.
 
 <p align="center">
 <img src="https://media.forgecdn.net/attachments/1577/341/instant_nav_to_zone-gif.gif" alt="instant zone navigation"><br>
@@ -221,6 +221,7 @@ EasyFind provides customizable keybinds:
 *   **Arrival Distance**: How close (in yards) before a waypoint auto-clears. Default 10.
 *   **Guide Circle Size**: Scale the minimap guide circle ring and arrow.
 *   **Map Smart Show**: Auto-hide map search bars until you hover over them.
+*   **Hide Bars in Full Screen Map**: Hide both map search bars when the map is maximized. Bars reappear in windowed mode.
 *   **Blinking Map Pins**: Pins and highlight boxes pulse in sync with the indicator arrow. Off by default. The indicator arrow always bobs regardless.
 *   **Pin Highlight Box**: Toggle the yellow highlight box around map pins. Indicator arrow and pin icon remain visible either way.
 *   **Minimap Arrow Glow**: Pulsing glow effect on the minimap perimeter arrow during navigation.
