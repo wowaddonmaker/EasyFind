@@ -3438,16 +3438,16 @@ function UI:SelectResult(data)
     end
 
     if EasyFind.db.directOpen and data.steps then
-        -- Portrait menu entries can't be automated (secure frame restriction)
-        local hasPortraitMenu = false
+        -- Portrait menu can't be automated (secure frame restriction)
+        local mustGuide = false
         for _, step in ipairs(data.steps) do
             if step.portraitMenu or step.portraitMenuOption then
-                hasPortraitMenu = true
+                mustGuide = true
                 break
             end
         end
 
-        if hasPortraitMenu then
+        if mustGuide then
             EasyFind:StartGuide(data)
         else
             self:DirectOpen(data)
@@ -3556,6 +3556,19 @@ function UI:DirectOpen(data)
     -- If final step is navigable, execute ALL steps (no highlight needed).
     -- If final step is highlight-only, execute all but the last, then highlight it.
     local executeCount = finalStepNavigable and totalSteps or (totalSteps - 1)
+
+    -- Stop before any step that would call protected functions (taint).
+    -- EncounterJournal:SetTab() is a protected C++ method triggered by EJ tab clicks.
+    -- Execute all steps up to (but not including) the first protected step,
+    -- then hand off to the guided highlight for the rest.
+    for i = 1, executeCount do
+        local s = steps[i]
+        if s.waitForFrame == "EncounterJournal" and s.tabIndex then
+            executeCount = i - 1
+            finalStepNavigable = false
+            break
+        end
+    end
 
     -- If there's nothing to execute programmatically (single highlight-only step),
     -- just start the normal guide.
