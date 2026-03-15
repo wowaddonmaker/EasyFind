@@ -32,6 +32,8 @@ local GetCursorPosition  = GetCursorPosition
 local hooksecurefunc     = hooksecurefunc
 local wipe               = wipe
 
+local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind\\textures\\lightning-bolt"
+
 local searchFrame
 local resultsFrame
 local resultButtons = {}
@@ -155,9 +157,10 @@ local function SetRowIcon(btn, kind, value, iconSize)
     btn.icon:SetTexture(nil)
     btn.icon:SetTexCoord(0, 1, 0, 1)
     btn.icon:SetVertexColor(1, 1, 1, 1)
-    -- Clear mount/toy tooltip data and cooldown from previous render
+    -- Clear mount/toy/pet tooltip data and cooldown from previous render
     btn.icon.mountID = nil
     btn.icon.toyItemID = nil
+    btn.icon.petID = nil
     btn.icon.spellID = nil
     if btn.iconCooldown then btn.iconCooldown:Hide() end
     if kind == "atlas" then
@@ -430,19 +433,87 @@ function UI:CreateSearchFrame()
         ns.SetSearchBorderShown(searchFrame, false)
     end
 
-    -- Search icon
+    -- Mode toggle button (search icon area, flush left)
     local contentSz = ns.SEARCHBAR_HEIGHT * ns.SEARCHBAR_FILL
     local iconSz = contentSz * ns.SEARCHBAR_ICON_SCALE
-    local searchIcon = searchFrame:CreateTexture(nil, "ARTWORK")
-    searchIcon:SetSize(iconSz, iconSz)
-    searchIcon:SetPoint("LEFT", searchFrame, "LEFT", 12, 0)
-    searchIcon:SetAtlas("common-search-magnifyingglass")
-    searchFrame.searchIcon = searchIcon
+
+    local modeBtn = CreateFrame("Button", "EasyFindModeButton", searchFrame)
+    modeBtn:SetPoint("TOP", searchFrame, "TOP", 0, 0)
+    modeBtn:SetPoint("BOTTOM", searchFrame, "BOTTOM", 0, 0)
+    modeBtn:SetPoint("LEFT", searchFrame, "LEFT", 0, 0)
+    modeBtn:SetWidth(searchFrame:GetHeight())
+    modeBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
+
+    local modeIcon = modeBtn:CreateTexture(nil, "OVERLAY")
+    modeIcon:SetSize(iconSz, iconSz)
+    modeIcon:SetPoint("CENTER")
+    modeBtn.icon = modeIcon
+
+    local modeBtnBg = modeBtn:CreateTexture(nil, "ARTWORK")
+    modeBtnBg:SetAllPoints()
+    modeBtnBg:SetTexture(796424)
+    modeBtnBg:Hide()
+    modeBtn.btnBg = modeBtnBg
+
+    modeBtn:SetHighlightTexture(130757)
+    searchFrame.modeBtn = modeBtn
+    searchFrame.searchIcon = modeIcon
+
+    local function UpdateModeButtonVisual(btn)
+        if EasyFind.db.directOpen then
+            btn.icon:SetAtlas(nil)
+            btn.icon:SetTexture(LIGHTNING_BOLT_TEX)
+        else
+            btn.icon:SetTexture(nil)
+            btn.icon:SetAtlas("common-search-magnifyingglass")
+        end
+    end
+    ns.UpdateModeButtonVisual = UpdateModeButtonVisual
+
+    modeBtn:SetScript("OnEnter", function(self)
+        self.btnBg:Show()
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        if EasyFind.db.directOpen then
+            GameTooltip:SetText("Fast Search (ON)")
+            GameTooltip:AddLine("Click to switch to step-by-step guided mode.", 1, 1, 1, true)
+        else
+            GameTooltip:SetText("Standard Search")
+            GameTooltip:AddLine("Click to enable fast search (opens panels directly).", 1, 1, 1, true)
+        end
+        GameTooltip:Show()
+    end)
+
+    modeBtn:SetScript("OnLeave", function(self)
+        if not self.keyboardFocused then self.btnBg:Hide() end
+        GameTooltip_Hide()
+    end)
+
+    modeBtn:SetScript("OnClick", function(self)
+        EasyFind.db.directOpen = not EasyFind.db.directOpen
+        -- Sync map search "navigate zones directly" when map filter is enabled
+        local filters = EasyFind.db.uiSearchFilters
+        if filters and filters.map ~= false then
+            EasyFind.db.navigateToZonesDirectly = EasyFind.db.directOpen
+        end
+        UpdateModeButtonVisual(self)
+        ns.Highlight:ClearAll()
+        local optPanel = _G["EasyFindOptionsFrame"]
+        if optPanel then
+            if optPanel.directOpenCheckbox then
+                optPanel.directOpenCheckbox:SetChecked(EasyFind.db.directOpen)
+            end
+            if optPanel.zoneNavCheckbox then
+                optPanel.zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly or false)
+            end
+        end
+    end)
+
+    UpdateModeButtonVisual(modeBtn)
 
     -- Editbox
     local editBox = CreateFrame("EditBox", "EasyFindSearchBox", searchFrame)
     editBox:SetHeight(contentSz)
-    editBox:SetPoint("LEFT", searchIcon, "RIGHT", 5, 0)
+    editBox:SetPoint("LEFT", modeBtn, "RIGHT", 0, 0)
     editBox:SetPoint("RIGHT", searchFrame, "RIGHT", -8, 0)
     editBox:SetFontObject(ns.SEARCHBAR_FONT)
     editBox:SetAutoFocus(false)
@@ -592,7 +663,7 @@ function UI:CreateSearchFrame()
 
     -- Anchor editBox right edge to left of clear button area (filter button zone)
     editBox:ClearAllPoints()
-    editBox:SetPoint("LEFT", searchIcon, "RIGHT", 5, 0)
+    editBox:SetPoint("LEFT", modeBtn, "RIGHT", 0, 0)
     editBox:SetPoint("RIGHT", filterBtn, "LEFT", -4, 0)
 
     -- Click anywhere on the search frame to focus the editbox (enables blinking cursor)
@@ -661,7 +732,7 @@ function UI:CreateSearchFrame()
 
     searchFrame.editBox = editBox
 
-    -- Toolbar keyboard focus: 0 = editbox, 1 = clear button
+    -- Toolbar keyboard focus: 0 = editbox, 1+ = toolbar control index
     local toolbarFocus = 0
 
     local toolbarHighlight = CreateFrame("Frame", nil, UIParent)
@@ -676,27 +747,51 @@ function UI:CreateSearchFrame()
 
     local function GetToolbarControls()
         local controls = {}
+        tinsert(controls, modeBtn)
         if clearTextBtn:IsShown() then
             tinsert(controls, clearTextBtn)
         end
+        tinsert(controls, filterBtn)
         return controls
     end
 
     local function SetToolbarFocus(idx)
+        -- Clear previous button state
+        local prevControls = GetToolbarControls()
+        local prevTarget = prevControls[toolbarFocus]
+        if prevTarget then
+            prevTarget.keyboardFocused = nil
+            if prevTarget.btnBg then prevTarget.btnBg:Hide() end
+            if prevTarget.UnlockHighlight then prevTarget:UnlockHighlight() end
+        end
         toolbarFocus = idx
         local controls = GetToolbarControls()
         local target = controls[idx]
         if target then
-            toolbarHighlight:SetParent(target)
-            toolbarHighlight:ClearAllPoints()
-            toolbarHighlight:SetAllPoints(target)
-            toolbarHighlight:Show()
+            target.keyboardFocused = true
+            if target.btnBg then
+                target.btnBg:Show()
+                if target.LockHighlight then target:LockHighlight() end
+                toolbarHighlight:Hide()
+            else
+                toolbarHighlight:SetParent(target)
+                toolbarHighlight:ClearAllPoints()
+                toolbarHighlight:SetAllPoints(target)
+                toolbarHighlight:Show()
+            end
         else
             toolbarHighlight:Hide()
         end
     end
 
     local function ClearToolbarFocus()
+        local controls = GetToolbarControls()
+        local prevTarget = controls[toolbarFocus]
+        if prevTarget then
+            prevTarget.keyboardFocused = nil
+            if prevTarget.btnBg then prevTarget.btnBg:Hide() end
+            if prevTarget.UnlockHighlight then prevTarget:UnlockHighlight() end
+        end
         toolbarFocus = 0
         toolbarHighlight:Hide()
     end
@@ -712,12 +807,16 @@ function UI:CreateSearchFrame()
         if key == "DOWN" then
             if IsControlKeyDown() then
                 UI:JumpToEnd()
+            elseif IsShiftKeyDown() then
+                UI:JumpToNextSection(1)
             else
                 StartKeyRepeat(key, function() UI:MoveSelection(1) end)
             end
         elseif key == "UP" then
             if IsControlKeyDown() then
                 UI:JumpToStart()
+            elseif IsShiftKeyDown() then
+                UI:JumpToNextSection(-1)
             else
                 StartKeyRepeat(key, function() UI:MoveSelection(-1) end)
             end
@@ -730,19 +829,22 @@ function UI:CreateSearchFrame()
         elseif key == "END" then
             UI:JumpToEnd()
         elseif key == "TAB" then
+            -- Ring order: modeBtn(1) → editBox → [clearBtn] → filterBtn → wrap
+            -- EditBox sits between toolbar index 1 and 2
             if IsShiftKeyDown() then
                 if selectedIndex > 0 and toggleFocused then
                     toggleFocused = false
                     UI:UpdateSelectionHighlight()
                 elseif toolbarFocus > 0 then
-                    local controls = GetToolbarControls()
-                    local newIdx = toolbarFocus - 1
-                    if newIdx == 0 then
+                    if toolbarFocus == 1 then
+                        local controls = GetToolbarControls()
+                        SetToolbarFocus(#controls)
+                    elseif toolbarFocus == 2 then
                         ClearToolbarFocus()
-                        selectedIndex = 0
-                        UI:UpdateSelectionHighlight()
+                        navFrame:EnableKeyboard(false)
+                        searchFrame.editBox:SetFocus()
                     else
-                        SetToolbarFocus(newIdx)
+                        SetToolbarFocus(toolbarFocus - 1)
                     end
                 end
             else
@@ -758,13 +860,14 @@ function UI:CreateSearchFrame()
                     end
                 elseif toolbarFocus > 0 then
                     local controls = GetToolbarControls()
-                    local newIdx = toolbarFocus + 1
-                    if newIdx > #controls then
+                    if toolbarFocus == 1 then
                         ClearToolbarFocus()
-                        selectedIndex = 0
-                        UI:UpdateSelectionHighlight()
+                        navFrame:EnableKeyboard(false)
+                        searchFrame.editBox:SetFocus()
+                    elseif toolbarFocus >= #controls then
+                        SetToolbarFocus(1)
                     else
-                        SetToolbarFocus(newIdx)
+                        SetToolbarFocus(toolbarFocus + 1)
                     end
                 end
             end
@@ -812,23 +915,19 @@ function UI:CreateSearchFrame()
         if repeatKey == key then StopKeyRepeat() end
     end)
 
-    -- Shift+Tab from editbox: transition to toolbar navigation
-    -- Tab from editbox: toolbar first, then results
+    -- Tab/Shift+Tab from editbox: navigate toolbar controls
+    -- Controls are ordered left-to-right: modeBtn, [clearTextBtn], filterBtn
+    -- EditBox sits between modeBtn and clearTextBtn/filterBtn, so:
+    --   Shift+Tab (left) → modeBtn (index 1)
+    --   Tab (right) → first control after editBox (index 2)
     editBox:HookScript("OnKeyDown", function(self, key)
         if key ~= "TAB" then return end
-        local controls = GetToolbarControls()
+        self:ClearFocus()
+        navFrame:EnableKeyboard(true)
         if IsShiftKeyDown() then
-            if #controls > 0 then
-                self:ClearFocus()
-                navFrame:EnableKeyboard(true)
-                SetToolbarFocus(#controls)
-            end
+            SetToolbarFocus(1)
         else
-            if #controls > 0 then
-                self:ClearFocus()
-                navFrame:EnableKeyboard(true)
-                SetToolbarFocus(1)
-            end
+            SetToolbarFocus(2)
         end
     end)
 
@@ -954,9 +1053,11 @@ function UI:CreateSearchFrame()
 end
 
 local UI_FILTER_OPTIONS = {
-    { key = "ui",     label = "UI Search" },
-    { key = "mounts", label = "Mounts" },
-    { key = "toys",   label = "Toys" },
+    { key = "ui",     label = "UI Search",  iconAtlas = "common-search-magnifyingglass" },
+    { key = "map",    label = "Map Search", iconAtlas = "Waypoint-MapPin-ChatIcon" },
+    { key = "mounts", label = "Mounts",     iconTex = 132261 },  -- Ability_Mount_RidingHorse
+    { key = "toys",   label = "Toys",       iconTex = 454046 },  -- Trade_Archaeology_ChestofTinyGlassAnimals
+    { key = "pets",   label = "Pets",       iconTex = 132599 },  -- PetJournalPortrait (Inv_Box_PetCarrier_01)
 }
 
 function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
@@ -981,19 +1082,26 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         insets = { left = 4, right = 4, top = 4, bottom = 4 },
     })
 
-    local header = dropdown:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    header:SetPoint("TOPLEFT", 12, -PADDING_TOP)
-    header:SetText("Show:")
-    header:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1)
+    local ICON_SIZE = 14
+
+    -- "Uncheck All" toggle at the top
+    local uncheckRow = CreateFrame("Button", nil, dropdown)
+    uncheckRow:SetSize(DROPDOWN_WIDTH - 16, ROW_HEIGHT)
+    uncheckRow:SetPoint("TOPLEFT", 8, -PADDING_TOP)
+    local uncheckLabel = uncheckRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    uncheckLabel:SetPoint("LEFT", 8, 0)
+    uncheckLabel:SetText("Toggle All")
+    local uncheckHL = uncheckRow:CreateTexture(nil, "HIGHLIGHT")
+    uncheckHL:SetAllPoints()
+    uncheckHL:SetColorTexture(1, 1, 1, 0.1)
 
     local checkRows = {}
     local checkRowsByIndex = {}
-    local yStart = -(PADDING_TOP + HEADER_HEIGHT)
+    local LayoutDropdown  -- forward declaration
 
     for i, opt in ipairs(UI_FILTER_OPTIONS) do
         local row = CreateFrame("CheckButton", nil, dropdown)
         row:SetSize(DROPDOWN_WIDTH - 16, ROW_HEIGHT)
-        row:SetPoint("TOPLEFT", 8, yStart - (i - 1) * ROW_HEIGHT)
         row:SetHitRectInsets(0, 0, 0, 0)
         row.optKey = opt.key
 
@@ -1011,6 +1119,74 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         label:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
         label:SetText(opt.label)
 
+        if opt.iconAtlas or opt.iconTex then
+            local icon = row:CreateTexture(nil, "ARTWORK")
+            icon:SetSize(ICON_SIZE, ICON_SIZE)
+            icon:SetPoint("RIGHT", -4, 0)
+            if opt.iconAtlas then
+                icon:SetAtlas(opt.iconAtlas)
+            else
+                icon:SetTexture(opt.iconTex)
+            end
+        end
+
+        -- Map Search: indented local/global sub-options (radio-style, one active at a time)
+        if opt.key == "map" then
+            local SUB_INDENT = 24
+            local mapSubRows = {}
+
+            for si, sub in ipairs({ { key = true, label = "Local (Zone)" }, { key = false, label = "Global (All Zones)" } }) do
+                local subRow = CreateFrame("CheckButton", nil, dropdown)
+                subRow:SetSize(DROPDOWN_WIDTH - 16 - SUB_INDENT, ROW_HEIGHT)
+                subRow:SetHitRectInsets(0, 0, 0, 0)
+
+                subRow:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+                subRow:GetNormalTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
+                subRow:GetNormalTexture():ClearAllPoints()
+                subRow:GetNormalTexture():SetPoint("LEFT", 4, 0)
+
+                subRow:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+                subRow:GetCheckedTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
+                subRow:GetCheckedTexture():ClearAllPoints()
+                subRow:GetCheckedTexture():SetPoint("LEFT", 4, 0)
+
+                local subLabel = subRow:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+                subLabel:SetPoint("LEFT", subRow:GetNormalTexture(), "RIGHT", 4, 0)
+                subLabel:SetText(sub.label)
+
+                local subHL = subRow:CreateTexture(nil, "HIGHLIGHT")
+                subHL:SetAllPoints()
+                subHL:SetColorTexture(1, 1, 1, 0.1)
+
+                subRow.isLocalKey = sub.key
+                mapSubRows[si] = subRow
+
+                subRow:SetScript("OnClick", function()
+                    EasyFind.db.uiMapSearchLocal = sub.key
+                    for _, sr in ipairs(mapSubRows) do
+                        sr:SetChecked((EasyFind.db.uiMapSearchLocal ~= false) == sr.isLocalKey)
+                    end
+                    if searchEditBox:GetText() ~= "" then
+                        UI:OnSearchTextChanged(searchEditBox:GetText())
+                    end
+                end)
+            end
+
+            row.mapSubRows = mapSubRows
+            row.updateMapToggle = function()
+                local isLocal = EasyFind.db.uiMapSearchLocal ~= false
+                local mapChecked = EasyFind.db.uiSearchFilters and EasyFind.db.uiSearchFilters.map ~= false
+                for si, sr in ipairs(mapSubRows) do
+                    sr:SetChecked(isLocal == sr.isLocalKey)
+                    sr:SetShown(mapChecked)
+                end
+            end
+
+            -- Wrap the original OnClick to also show/hide sub-rows
+            local origMapRowIdx = i
+            row.mapSubRowIdx = origMapRowIdx
+        end
+
         local highlight = row:CreateTexture(nil, "HIGHLIGHT")
         highlight:SetAllPoints()
         highlight:SetColorTexture(1, 1, 1, 0.1)
@@ -1026,6 +1202,8 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         row:SetScript("OnClick", function(self)
             local filters = EasyFind.db.uiSearchFilters
             filters[opt.key] = self:GetChecked()
+            if self.updateMapToggle then self.updateMapToggle() end
+            LayoutDropdown()
             if searchEditBox:GetText() ~= "" then
                 UI:OnSearchTextChanged(searchEditBox:GetText())
             end
@@ -1035,14 +1213,70 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         checkRowsByIndex[i] = row
     end
 
-    local totalHeight = PADDING_TOP + HEADER_HEIGHT + #UI_FILTER_OPTIONS * ROW_HEIGHT + PADDING_BOTTOM
-    dropdown:SetSize(DROPDOWN_WIDTH, totalHeight)
+    -- Layout: positions all rows including map sub-rows, adjusts dropdown height
+    local SUB_INDENT = 24
+    function LayoutDropdown()
+        local y = -PADDING_TOP
+        -- Toggle All row
+        uncheckRow:ClearAllPoints()
+        uncheckRow:SetPoint("TOPLEFT", 8, y)
+        y = y - ROW_HEIGHT
+        -- Filter rows
+        for i, opt in ipairs(UI_FILTER_OPTIONS) do
+            local row = checkRowsByIndex[i]
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", 8, y)
+            y = y - ROW_HEIGHT
+            -- Map sub-rows
+            if row.mapSubRows then
+                local mapChecked = EasyFind.db.uiSearchFilters and EasyFind.db.uiSearchFilters.map ~= false
+                for _, sr in ipairs(row.mapSubRows) do
+                    if mapChecked then
+                        sr:ClearAllPoints()
+                        sr:SetPoint("TOPLEFT", 8 + SUB_INDENT, y)
+                        sr:Show()
+                        y = y - ROW_HEIGHT
+                    else
+                        sr:Hide()
+                    end
+                end
+            end
+        end
+        dropdown:SetSize(DROPDOWN_WIDTH, -y + PADDING_BOTTOM)
+    end
+
+    -- Uncheck All: toggles all checkboxes off, or all back on if already all unchecked
+    uncheckRow:SetScript("OnClick", function()
+        local filters = EasyFind.db.uiSearchFilters
+        local allUnchecked = true
+        for _, opt in ipairs(UI_FILTER_OPTIONS) do
+            if filters[opt.key] ~= false then
+                allUnchecked = false
+                break
+            end
+        end
+        local newState = allUnchecked
+        for _, opt in ipairs(UI_FILTER_OPTIONS) do
+            filters[opt.key] = newState
+            checkRows[opt.key]:SetChecked(newState)
+        end
+        local mapRow = checkRows["map"]
+        if mapRow and mapRow.updateMapToggle then mapRow.updateMapToggle() end
+        LayoutDropdown()
+        if searchEditBox:GetText() ~= "" then
+            UI:OnSearchTextChanged(searchEditBox:GetText())
+        end
+    end)
+
+    LayoutDropdown()
 
     dropdown:SetScript("OnShow", function(self)
         local filters = EasyFind.db.uiSearchFilters
         for key, row in pairs(checkRows) do
             row:SetChecked(filters[key] ~= false)
+            if row.updateMapToggle then row.updateMapToggle() end
         end
+        LayoutDropdown()
     end)
 
     dropdown:SetScript("OnHide", function() end)
@@ -1154,13 +1388,21 @@ local cachedHierarchical    -- last full hierarchical list for re-rendering afte
 local expandedContainers = {}  -- tracks which containers have had children injected
 
 -- Reusable tables for grouping results (wiped each search to avoid per-keystroke allocations)
-local groupUI, groupMounts, groupToys = {}, {}, {}
+local groupUI, groupMounts, groupToys, groupPets, groupMap = {}, {}, {}, {}, {}
 local mountSectionHeader = {
     name = "Mounts", depth = 0, isPathNode = true,
     isMatch = false, isSectionHeader = true,
 }
 local toySectionHeader = {
     name = "Toys", depth = 0, isPathNode = true,
+    isMatch = false, isSectionHeader = true,
+}
+local petSectionHeader = {
+    name = "Pets", depth = 0, isPathNode = true,
+    isMatch = false, isSectionHeader = true,
+}
+local mapSectionHeader = {
+    name = "Map Search", depth = 0, isPathNode = true,
     isMatch = false, isSectionHeader = true,
 }
 
@@ -1669,6 +1911,11 @@ function UI:CreateResultButton(index)
                 unearnedTooltip:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale + 10, y / scale + 10)
                 unearnedTooltip:Show()
             end
+        elseif self.data and self.data.mapSearchResult then
+            -- Map result: preview pin on world map if it happens to be open
+            if ns.MapSearch and ns.MapSearch.PreviewUIResult then
+                ns.MapSearch:PreviewUIResult(self.data)
+            end
         elseif self.data and self.icon and self.icon:IsShown() then
             -- Mount tooltip (show on icon hover)
             if self.icon.mountID and self.icon.spellID then
@@ -1686,6 +1933,19 @@ function UI:CreateResultButton(index)
                         GameTooltip:SetToyByItemID(toyItemID)
                     end
                 end)
+            -- Pet tooltip
+            elseif self.icon.petID then
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                if C_PetJournal and C_PetJournal.GetPetInfoByPetID then
+                    local _, speciesID = C_PetJournal.GetPetInfoByPetID(self.icon.petID)
+                    if speciesID and BattlePetToolTip_ShowLink then
+                        local link = C_PetJournal.GetBattlePetLink and C_PetJournal.GetBattlePetLink(self.icon.petID)
+                        if link then
+                            GameTooltip:SetText(link)
+                            GameTooltip:Show()
+                        end
+                    end
+                end
             end
         end
     end)
@@ -1698,8 +1958,12 @@ function UI:CreateResultButton(index)
             self.toyTooltipTicker:Cancel()
             self.toyTooltipTicker = nil
         end
-        if self.data and (self.data.mountID or self.data.toyItemID) then
+        if self.data and (self.data.mountID or self.data.toyItemID or self.data.petID) then
             GameTooltip:Hide()
+        end
+        -- Clear map preview if we were showing one
+        if self.data and self.data.mapSearchResult and ns.MapSearch and ns.MapSearch.ClearUIPreview then
+            ns.MapSearch:ClearUIPreview()
         end
     end)
 
@@ -1728,29 +1992,36 @@ function UI:OnSearchTextChanged(text)
     expandedContainers = {}
 
     -- Build skip set from filters so SearchUI avoids scoring/copying filtered categories.
-    -- Only "Mount" and "Toy" categories are skippable here (actual mount/toy items).
+    -- Mount/Toy/Pet categories are skippable here (actual collection items).
     -- The "ui" filter is handled post-search since UI entries span many categories.
     local filters = EasyFind.db.uiSearchFilters
     local skipCategories
     if filters then
-        if filters.mounts == false or filters.toys == false then
+        if filters.mounts == false or filters.toys == false or filters.pets == false then
             skipCategories = {}
             if filters.mounts == false then skipCategories["Mount"] = true end
             if filters.toys == false then skipCategories["Toy"] = true end
+            if filters.pets == false then skipCategories["Pet"] = true end
         end
     end
     local results = ns.Database:SearchUI(text, skipCategories)
 
-    -- "UI Search" filter: hide results that aren't actual mount/toy items
+    -- "UI Search" filter: hide results that aren't collection items or map results
     if filters and filters.ui == false then
         local filtered = {}
         for _, r in ipairs(results) do
             local rd = r.data
-            if rd and (rd.mountID or rd.toyItemID) then
+            if rd and (rd.mountID or rd.toyItemID or rd.petID or rd.mapSearchResult) then
                 filtered[#filtered + 1] = r
             end
         end
         results = filtered
+    end
+
+    -- Map Search: search static locations and dungeon entrances, merge into results
+    local mapResults
+    if filters and filters.map ~= false and ns.MapSearch and ns.MapSearch.SearchForUI then
+        mapResults = ns.MapSearch:SearchForUI(text)
     end
 
     local hierarchical = ns.Database:BuildHierarchicalResults(results)
@@ -1763,20 +2034,36 @@ function UI:OnSearchTextChanged(text)
         end
     end
 
-    -- Group results by type: UI entries first, then Mounts, then Toys.
+    -- Group results by type: UI entries first, then collection groups, then map.
     -- Each non-UI group gets a collapsible section header.
     -- Reuse module-level tables to avoid per-keystroke allocations.
     wipe(groupUI)
     wipe(groupMounts)
     wipe(groupToys)
+    wipe(groupPets)
+    wipe(groupMap)
     for _, entry in ipairs(hierarchical) do
         local d = entry.data
         if d and d.mountID then
             groupMounts[#groupMounts + 1] = entry
         elseif d and d.toyItemID then
             groupToys[#groupToys + 1] = entry
+        elseif d and d.petID then
+            groupPets[#groupPets + 1] = entry
         else
             groupUI[#groupUI + 1] = entry
+        end
+    end
+    -- Map results come from a separate search, wrap them as hierarchical entries
+    if mapResults then
+        for _, r in ipairs(mapResults) do
+            groupMap[#groupMap + 1] = {
+                name = r.data.name,
+                depth = 1,
+                isPathNode = false,
+                isMatch = true,
+                data = r.data,
+            }
         end
     end
     hierarchical = {}
@@ -1792,6 +2079,19 @@ function UI:OnSearchTextChanged(text)
         hierarchical[#hierarchical + 1] = toySectionHeader
         for _, e in ipairs(groupToys) do
             e.depth = 1
+            hierarchical[#hierarchical + 1] = e
+        end
+    end
+    if #groupPets > 0 then
+        hierarchical[#hierarchical + 1] = petSectionHeader
+        for _, e in ipairs(groupPets) do
+            e.depth = 1
+            hierarchical[#hierarchical + 1] = e
+        end
+    end
+    if #groupMap > 0 then
+        hierarchical[#hierarchical + 1] = mapSectionHeader
+        for _, e in ipairs(groupMap) do
             hierarchical[#hierarchical + 1] = e
         end
     end
@@ -1880,6 +2180,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         self:HideResults()
         return
     end
+    if not resultsFrame then return end
     
     -- Cache the FULL (unfiltered) list so collapse toggles can re-render
     cachedHierarchical = hierarchical
@@ -1972,9 +2273,11 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     -- Show all results (scroll handles overflow)
     local count = mmin(#visible, MAX_BUTTON_POOL)
 
-    -- Pre-compute whether scrolling will be needed so buttons can be narrower
+    -- Pre-compute whether scrolling will be needed so buttons can be narrower.
+    -- Use >= to reserve scrollbar space when at the limit, since extra spacing
+    -- (pinned gaps, section separators) can push content height past the max.
     local maxVisibleRows = EasyFind.db.uiMaxResults or 10
-    local willScroll = count > maxVisibleRows
+    local willScroll = #visible >= maxVisibleRows
     local scrollInset = 0
     if willScroll and resultsFrame.scrollBar then
         scrollInset = resultsFrame.scrollBar:GetWidth()
@@ -2075,7 +2378,9 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 end
             end
             resultRow.isPathNode = entry.isPathNode
+            resultRow.isSectionHeader = entry.isSectionHeader or false
             resultRow.isPinHeader = entry.isPinHeader or false
+            resultRow.isPinned = entry.isPinned or false
             resultRow.pathNodeName = entry.isPathNode and entry.name or nil
             resultRow.pathNodeDepth = entry.isPathNode and depth or nil
             resultRow._containerEntry = entry.isContainer and entry or nil
@@ -2385,8 +2690,8 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 resultRow.text:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
                 iconSet = true
 
-            -- Mount/Toy leaves: icon goes to right side (same layout as currency icons)
-            elseif not iconSet and data and (data.mountID or data.toyItemID) then
+            -- Mount/Toy/Pet leaves: icon goes to right side (same layout as currency icons)
+            elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID) then
                 local iconFileID = data.icon
                 local rightOffset = -5
 
@@ -2400,6 +2705,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     resultRow.icon:Show()
                     resultRow.icon.mountID = data.mountID
                     resultRow.icon.toyItemID = data.toyItemID
+                    resultRow.icon.petID = data.petID
                     resultRow.icon.spellID = data.spellID
                     -- Red tint on mount icons when in combat (can't mount)
                     if data.mountID and InCombatLockdown() then
@@ -2430,7 +2736,39 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 local indentPixels = depth * indPx + 4
                 resultRow.text:ClearAllPoints()
                 resultRow.text:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
-                resultRow.text:SetPoint("RIGHT", resultRow, "RIGHT", textRightEdge, 0)
+                resultRow.text:SetPoint("RIGHT", resultRow.icon, "LEFT", -4, 0)
+                iconSet = true
+
+            -- Map search results: left-side category icon + nav pin on right
+            elseif not iconSet and data and data.mapSearchResult then
+                resultRow.amountText:Hide()
+                local mapIcon = data.icon
+                if mapIcon then
+                    resultRow.icon:SetTexture(nil)
+                    resultRow.icon:SetTexCoord(0, 1, 0, 1)
+                    resultRow.icon:SetVertexColor(1, 1, 1, 1)
+                    if type(mapIcon) == "table" then
+                        resultRow.icon:SetTexture(mapIcon.file)
+                        local c = mapIcon.coords
+                        resultRow.icon:SetTexCoord(c[1], c[2], c[3], c[4])
+                    elseif type(mapIcon) == "string" and sfind(mapIcon, "^atlas:") then
+                        resultRow.icon:SetAtlas(mapIcon:sub(7))
+                    else
+                        resultRow.icon:SetTexture(mapIcon)
+                    end
+                    resultRow.icon:SetSize(theme.iconSize or 16, theme.iconSize or 16)
+                    resultRow.icon:ClearAllPoints()
+                    local indentPixels = depth * indPx + 4
+                    resultRow.icon:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
+                    resultRow.icon:Show()
+                    resultRow.text:ClearAllPoints()
+                    resultRow.text:SetPoint("LEFT", resultRow.icon, "RIGHT", 4, 0)
+                else
+                    local indentPixels = depth * indPx + 4
+                    resultRow.text:ClearAllPoints()
+                    resultRow.text:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
+                end
+                resultRow.text:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
                 iconSet = true
 
             else
@@ -2794,6 +3132,7 @@ function UI:HideResults()
     if not searchFrame then return end
     if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
     if searchFrame.ClearToolbarFocus then searchFrame.ClearToolbarFocus() end
+    if not resultsFrame then return end
     resultsFrame:Hide()
     if resultsFrame.pinSeparator then
         resultsFrame.pinSeparator:Hide()
@@ -2813,6 +3152,7 @@ function UI:HideResults()
 end
 
 function UI:ShowPinnedItems()
+    if not resultsFrame then return end
     local pins = EasyFind.db.pinnedUIItems
     if not pins or #pins == 0 then
         self:HideResults()
@@ -2902,9 +3242,44 @@ function UI:JumpToEnd()
     end
 end
 
+function UI:JumpToNextSection(direction)
+    local visibleCount = self:CountVisibleResults()
+    if visibleCount == 0 then return end
+
+    local startIdx = selectedIndex
+    if startIdx == 0 then
+        startIdx = direction > 0 and 0 or visibleCount + 1
+    end
+
+    -- Find the first non-pinned row index (UI search section start)
+    local uiSectionStart = 0
+    for i = 1, visibleCount do
+        local row = resultButtons[i]
+        if row and not row.isPinHeader and not row.isPinned then
+            uiSectionStart = i
+            break
+        end
+    end
+
+    -- Find the next section boundary in the given direction.
+    -- Boundaries: first non-pinned row (UI search) + any isSectionHeader row.
+    local idx = startIdx + direction
+    while idx >= 1 and idx <= visibleCount do
+        local row = resultButtons[idx]
+        if row and (row.isSectionHeader or idx == uiSectionStart) then
+            selectedIndex = idx
+            toggleFocused = false
+            self:UpdateSelectionHighlight()
+            return
+        end
+        idx = idx + direction
+    end
+end
+
 function UI:UpdateSelectionHighlight(skipRefocus)
     for i = 1, MAX_BUTTON_POOL do
         local resultRow = resultButtons[i]
+        if not resultRow then break end
         if resultRow.selectionHighlight then
             resultRow.selectionHighlight:SetShown(i == selectedIndex and not toggleFocused)
         end
@@ -3041,22 +3416,38 @@ function UI:SelectResult(data)
         return
     end
 
+    -- Pet: summon/dismiss
+    if data.petID then
+        if C_PetJournal and C_PetJournal.SummonPetByGUID then
+            C_PetJournal.SummonPetByGUID(data.petID)
+        end
+        return
+    end
+
+    -- Map search result: open world map and search
+    if data.mapSearchResult then
+        if ns.MapSearch and ns.MapSearch.HandleUISearchClick then
+            ns.MapSearch:HandleUISearchClick(data)
+        end
+        return
+    end
+
     -- Flash label if specified (e.g., for Currency searches)
     if data.flashLabel then
         self:FlashLabel(data.flashLabel)
     end
 
     if EasyFind.db.directOpen and data.steps then
-        -- Portrait menu entries can't be automated (secure frame restriction)
-        local hasPortraitMenu = false
+        -- Portrait menu can't be automated (secure frame restriction)
+        local mustGuide = false
         for _, step in ipairs(data.steps) do
             if step.portraitMenu or step.portraitMenuOption then
-                hasPortraitMenu = true
+                mustGuide = true
                 break
             end
         end
 
-        if hasPortraitMenu then
+        if mustGuide then
             EasyFind:StartGuide(data)
         else
             self:DirectOpen(data)
@@ -3165,6 +3556,19 @@ function UI:DirectOpen(data)
     -- If final step is navigable, execute ALL steps (no highlight needed).
     -- If final step is highlight-only, execute all but the last, then highlight it.
     local executeCount = finalStepNavigable and totalSteps or (totalSteps - 1)
+
+    -- Stop before any step that would call protected functions (taint).
+    -- EncounterJournal:SetTab() is a protected C++ method triggered by EJ tab clicks.
+    -- Execute all steps up to (but not including) the first protected step,
+    -- then hand off to the guided highlight for the rest.
+    for i = 1, executeCount do
+        local s = steps[i]
+        if s.waitForFrame == "EncounterJournal" and s.tabIndex then
+            executeCount = i - 1
+            finalStepNavigable = false
+            break
+        end
+    end
 
     -- If there's nothing to execute programmatically (single highlight-only step),
     -- just start the normal guide.
@@ -4143,6 +4547,12 @@ function UI:UpdateFontSize()
     searchFrame:SetHeight(barH)
     searchFrame.editBox:SetHeight(contentSz)
     searchFrame.searchIcon:SetSize(iconSz, iconSz)
+    if searchFrame.modeBtn then
+        searchFrame.modeBtn:SetWidth(barH)
+    end
+    if searchFrame.filterBtn then
+        searchFrame.filterBtn:SetWidth(barH)
+    end
     if searchFrame.clearTextBtn then
         searchFrame.clearTextBtn:SetSize(clearSz, clearSz)
     end

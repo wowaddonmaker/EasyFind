@@ -696,6 +696,18 @@ function Options:Initialize()
     directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false)
     directOpenCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.directOpen = self:GetChecked()
+        local filters = EasyFind.db.uiSearchFilters
+        if filters and filters.map ~= false then
+            EasyFind.db.navigateToZonesDirectly = EasyFind.db.directOpen
+            if optionsFrame.zoneNavCheckbox then
+                optionsFrame.zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly)
+            end
+        end
+        ns.Highlight:ClearAll()
+        local sf = _G["EasyFindSearchFrame"]
+        if sf and sf.modeBtn and ns.UpdateModeButtonVisual then
+            ns.UpdateModeButtonVisual(sf.modeBtn)
+        end
     end)
     optionsFrame.directOpenCheckbox = directOpenCheckbox
 
@@ -762,7 +774,7 @@ function Options:Initialize()
     UpdateUIToggleVisual()
 
     -- SECTION 3: Map Search
-    local sec2 = CreateSection("Map Search", 368)
+    local sec2 = CreateSection("Map Search", 394)
 
     local mapEnableCheckbox = CreateCheckbox(sec2, "EnableMap", "Enable Map Search Module",
         "Uncheck to disable map search bars, pins, and all map overlay features.\n\nRequires a UI reload to take effect.")
@@ -1045,6 +1057,7 @@ function Options:Initialize()
         .. "|cFF00FF00Tab / Shift+Tab|r  Toggle focus between result row and nav button\n"
         .. "|cFF00FF00Page Up / Page Down|r  Jump 5 results\n"
         .. "|cFF00FF00Home / End / Ctrl+Up / Ctrl+Down|r  Jump to first / last result\n"
+        .. "|cFF00FF00Shift+Up / Shift+Down|r  Jump between result sections (UI, Map, Mounts, etc.)\n"
         .. "|cFF00FF00Ctrl+Tab|r  Switch between local and global map search bar\n\n"
         .. "|cFFFFD100Other:|r\n"
         .. "|cFF00FF00Shift+Drag|r  Reposition search bars\n"
@@ -1329,6 +1342,8 @@ function Options:DoResetAll()
     EasyFind.db.enableMapSearch = true
     EasyFind.db.globalSearchFilters = { zones = true, dungeons = true, raids = true, delves = true }
     EasyFind.db.localSearchFilters = { instances = true, travel = true, services = true }
+    EasyFind.db.uiSearchFilters = { ui = true, mounts = false, toys = false, pets = false, map = false }
+    EasyFind.db.uiMapSearchLocal = true
     EasyFind.db.optionsPosition = nil
 
     if optionsFrame then
@@ -1374,6 +1389,10 @@ function Options:DoResetAll()
     optionsFrame.uiFontSlider:SetValue(1.0)
     optionsFrame.mapFontSlider:SetValue(1.0)
     optionsFrame.directOpenCheckbox:SetChecked(false)
+    local sf = _G["EasyFindSearchFrame"]
+    if sf and sf.modeBtn and ns.UpdateModeButtonVisual then
+        ns.UpdateModeButtonVisual(sf.modeBtn)
+    end
     optionsFrame.zoneNavCheckbox:SetChecked(false)
     optionsFrame.smartShowCheckbox:SetChecked(false)
     optionsFrame.staticOpacityCheckbox:SetChecked(false)

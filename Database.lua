@@ -420,6 +420,15 @@ local TOY_PROTO = {
 }
 local TOY_MT = { __index = TOY_PROTO }
 
+local PET_PROTO = {
+    keywords     = {"pet", "companion", "battle pet"},
+    keywordsLower = {"pet", "companion", "battle pet"},
+    category     = "Pet",
+    path         = {},
+    steps        = {},
+}
+local PET_MT = { __index = PET_PROTO }
+
 function Database:PopulateDynamicMounts()
     if not C_MountJournal or not C_MountJournal.GetMountIDs then return end
 
@@ -485,6 +494,52 @@ function Database:PopulateDynamicToys()
     if C_ToyBox.SetUncollectedShown then C_ToyBox.SetUncollectedShown(savedUncollected) end
     if C_ToyBox.SetFilterString then C_ToyBox.SetFilterString(savedString) end
     if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+end
+
+-- Called after PLAYER_LOGIN when C_PetJournal is available
+-- Scans the player's collected pets and injects them into the search database
+function Database:PopulateDynamicPets()
+    if not C_PetJournal or not C_PetJournal.GetNumPets then return end
+
+    -- Save current filter state
+    local savedCollected = C_PetJournal.IsFilterChecked and C_PetJournal.IsFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED)
+    local savedNotCollected = C_PetJournal.IsFilterChecked and C_PetJournal.IsFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED)
+    local savedString = C_PetJournal.GetSearchFilter and C_PetJournal.GetSearchFilter() or ""
+
+    -- Show all collected pets
+    if C_PetJournal.SetFilterChecked then
+        C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, true)
+        C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, false)
+    end
+    if C_PetJournal.SetAllPetSourcesChecked then C_PetJournal.SetAllPetSourcesChecked(true) end
+    if C_PetJournal.SetAllPetTypesChecked then C_PetJournal.SetAllPetTypesChecked(true) end
+    if C_PetJournal.SetSearchFilter then C_PetJournal.SetSearchFilter("") end
+
+    local numPets = C_PetJournal.GetNumPets()
+    if not numPets then return end
+
+    local seen = {}
+    for i = 1, numPets do
+        local petID, speciesID, owned, customName, level, favorite, isRevoked,
+              speciesName, icon = C_PetJournal.GetPetInfoByIndex(i)
+        if speciesName and speciesName ~= "" and owned and not seen[speciesID] then
+            seen[speciesID] = true
+            uiSearchData[#uiSearchData + 1] = setmetatable({
+                name = speciesName,
+                icon = icon,
+                petID = petID,
+                speciesID = speciesID,
+                nameLower = slower(speciesName),
+            }, PET_MT)
+        end
+    end
+
+    -- Restore filter state
+    if C_PetJournal.SetFilterChecked then
+        if savedCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, savedCollected) end
+        if savedNotCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, savedNotCollected) end
+    end
+    if C_PetJournal.SetSearchFilter then C_PetJournal.SetSearchFilter(savedString) end
 end
 
 -- TREE FLATTENER

@@ -96,7 +96,10 @@ local DB_DEFAULTS = {
         ui = true,
         mounts = false,
         toys = false,
+        pets = false,
+        map = false,
     },
+    uiMapSearchLocal = true,   -- Map search in UI bar: true = local zone only, false = global
 }
 
 local DB_MIGRATIONS = {
@@ -214,6 +217,12 @@ local function OnInitialize()
 
     EasyFind.db = EasyFindDB
 
+    -- Sync navigateToZonesDirectly with directOpen when map search is enabled
+    local filters = EasyFind.db.uiSearchFilters
+    if filters and filters.map ~= false then
+        EasyFind.db.navigateToZonesDirectly = EasyFind.db.directOpen or false
+    end
+
     -- Read version from TOC for What's New detection
     ns.version = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version")
 
@@ -303,7 +312,10 @@ local function OnPlayerLogin()
             ns.Database:PopulateDynamicMounts()
             SafeAfter(0, function()
                 ns.Database:PopulateDynamicToys()
-                collectgarbage("collect")
+                SafeAfter(0, function()
+                    ns.Database:PopulateDynamicPets()
+                    collectgarbage("collect")
+                end)
             end)
         end)
     end)
