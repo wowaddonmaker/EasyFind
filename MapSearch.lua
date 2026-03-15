@@ -7011,6 +7011,8 @@ function MapSearch:SearchForUI(query)
     if not query or query == "" or #query < 2 then return nil end
 
     local isLocal = EasyFind.db.uiMapSearchLocal ~= false
+    local searchMapID = WorldMapFrame and WorldMapFrame:GetMapID()
+        or GetBestMapForUnit("player")
 
     -- Gather POIs using the same sources as OnSearchTextChanged
     local pois = {}
@@ -7053,10 +7055,15 @@ function MapSearch:SearchForUI(query)
             existingNames[slower(poi.name)] = true
         end
         if ns.STATIC_LOCATIONS then
-            for _, locations in pairs(ns.STATIC_LOCATIONS) do
+            for locMapID, locations in pairs(ns.STATIC_LOCATIONS) do
                 for _, loc in ipairs(locations) do
                     if not existingNames[slower(loc.name)] then
-                        pois[#pois + 1] = loc
+                        pois[#pois + 1] = {
+                            name = loc.name, category = loc.category,
+                            icon = loc.icon, isStatic = true,
+                            x = loc.x, y = loc.y,
+                            keywords = loc.keywords, mapID = locMapID,
+                        }
                         existingNames[slower(loc.name)] = true
                     end
                 end
@@ -7073,15 +7080,16 @@ function MapSearch:SearchForUI(query)
     -- Convert to UI search format {data, score}
     local results = {}
     for _, r in ipairs(scored) do
+        local cat = r.category or "location"
         results[#results + 1] = {
             score = r.score or 50,
             data = {
                 name = r.name,
                 nameLower = slower(r.name),
-                category = r.category or "location",
-                icon = r.icon,
+                category = cat,
+                icon = r.icon or GetCategoryIcon(cat),
                 mapSearchResult = true,
-                mapID = r.mapID or r.zoneMapID or r.entranceMapID,
+                mapID = r.mapID or r.zoneMapID or r.entranceMapID or searchMapID,
                 zoneName = r.zoneName,
                 x = r.x or r.entranceX,
                 y = r.y or r.entranceY,
@@ -7094,31 +7102,30 @@ function MapSearch:SearchForUI(query)
 end
 
 -- Handle click on a map search result from the UI search bar.
--- Fast mode: opens world map directly and places waypoint.
--- Standard mode: guides user to open map via step-by-step highlight.
+-- Fast mode: place waypoint + start minimap nav without opening map.
+--            Saves pin state so the indicator appears if user opens the map.
+-- Standard mode: guide to open the world map, then show pin.
 function MapSearch:HandleUISearchClick(data)
     if not data then return end
 
     if EasyFind.db.directOpen then
-        -- Fast mode: open map and navigate directly
-        if not WorldMapFrame or not WorldMapFrame:IsShown() then
-            ToggleWorldMap()
-        end
-        if WorldMapFrame and data.mapID then
-            WorldMapFrame:SetMapID(data.mapID)
-        end
-        -- Place waypoint if we have coordinates
+        -- Fast mode: activate navigation immediately without opening the map
         local x, y = data.x, data.y
         if data.mapID and x and y and x >= 0 and x <= 1 and y >= 0 and y <= 1 then
             SetUserWaypoint(UiMapPoint.CreateFromCoordinates(data.mapID, x, y))
             efPlacedWaypoint = true
             C_SuperTrack.SetSuperTrackedUserWaypoint(true)
             ShowSuperTrackGlow()
+            -- Save pin state so the map indicator renders if the user opens the map
+            activePinState = {
+                mapID = data.mapID,
+                x = x, y = y,
+                icon = data.icon, category = data.category,
+                isLocal = true,
+            }
         end
     else
-        -- Standard mode: guide user to open the world map, then continue navigation.
-        -- Two steps: the waitForFrame prevents single-step hover-dismiss on the
-        -- button, and auto-advances once WorldMapFrame appears.
+        -- Standard mode: guide user to open the world map, then show pin
         local guideData = {
             name = data.name or "Map Location",
             steps = {
@@ -7127,21 +7134,7 @@ function MapSearch:HandleUISearchClick(data)
             },
         }
         EasyFind:StartGuide(guideData)
-        -- Queue navigation to execute once the map opens
         self:SetPendingNavigation(data)
-    end
-end
-
--- Navigate to a map search result (place waypoint + start minimap tracking).
--- Called by the nav pin button on map search result rows.
-function MapSearch:NavigateToUIResult(data)
-    if not data or not data.mapID or not data.x or not data.y then return end
-    local x, y = data.x, data.y
-    if x >= 0 and x <= 1 and y >= 0 and y <= 1 then
-        SetUserWaypoint(UiMapPoint.CreateFromCoordinates(data.mapID, x, y))
-        efPlacedWaypoint = true
-        C_SuperTrack.SetSuperTrackedUserWaypoint(true)
-        ShowSuperTrackGlow()
     end
 end
 
@@ -7176,55 +7169,6 @@ function MapSearch:ClearUIPreview()
         else
             self:ShowWaypointAt(saved.x, saved.y, saved.icon, saved.category)
         end
-    end
-end
-
--- Preview minimap tracking for a map result (temporary waypoint).
--- Saves any existing waypoint state so it can be restored on leave.
-function MapSearch:PreviewMinimapTracking(data)
-    if not data or not data.mapID or not data.x or not data.y then return false end
-    local x, y = data.x, data.y
-    if x < 0 or x > 1 or y < 0 or y > 1 then return false end
-    -- Save existing waypoint state before preview
-    self._previewingMinimap = true
-    self._savedWaypointOwned = efPlacedWaypoint
-    self._savedWaypointPoint = HasUserWaypoint() and GetUserWaypoint() or nil
-    self._savedSuperTracking = C_SuperTrack.IsSuperTrackingUserWaypoint()
-    SetUserWaypoint(UiMapPoint.CreateFromCoordinates(data.mapID, x, y))
-    efPlacedWaypoint = true
-    C_SuperTrack.SetSuperTrackedUserWaypoint(true)
-    ShowSuperTrackGlow()
-    return true
-end
-
--- Clear minimap tracking preview and restore previous waypoint state.
-function MapSearch:ClearMinimapPreview()
-    if not self._previewingMinimap then return end
-    self._previewingMinimap = nil
-    local savedPoint = self._savedWaypointPoint
-    local savedOwned = self._savedWaypointOwned
-    local savedTracking = self._savedSuperTracking
-    self._savedWaypointPoint = nil
-    self._savedWaypointOwned = nil
-    self._savedSuperTracking = nil
-    -- Restore previous waypoint or clear the preview one
-    if savedPoint then
-        SetUserWaypoint(savedPoint)
-        efPlacedWaypoint = savedOwned or false
-        if savedTracking then
-            C_SuperTrack.SetSuperTrackedUserWaypoint(true)
-            ShowSuperTrackGlow()
-        else
-            C_SuperTrack.SetSuperTrackedUserWaypoint(false)
-            HideSuperTrackGlow()
-        end
-    else
-        if HasUserWaypoint() then
-            ClearUserWaypoint()
-        end
-        efPlacedWaypoint = false
-        C_SuperTrack.SetSuperTrackedUserWaypoint(false)
-        HideSuperTrackGlow()
     end
 end
 

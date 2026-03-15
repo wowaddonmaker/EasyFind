@@ -1803,51 +1803,6 @@ function UI:CreateResultButton(index)
     repBarText:SetShadowOffset(1, -1)
     resultRow.repBarText = repBarText
 
-    -- Nav pin button (shown on map search result rows)
-    local mapNavBtn = CreateFrame("Button", nil, resultRow)
-    mapNavBtn:SetSize(20, 20)
-    mapNavBtn:SetPoint("RIGHT", resultRow, "RIGHT", -4, 0)
-    mapNavBtn:SetFrameLevel(resultRow:GetFrameLevel() + 5)
-    local mapNavTex = mapNavBtn:CreateTexture(nil, "ARTWORK")
-    mapNavTex:SetAllPoints()
-    mapNavTex:SetAtlas("Waypoint-MapPin-ChatIcon")
-    mapNavBtn:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-    mapNavBtn:Hide()
-    mapNavBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Navigate")
-        GameTooltip:AddLine("Click to set waypoint and start minimap tracking.", 1, 1, 1, true)
-        GameTooltip:Show()
-        -- Preview minimap tracking direction while hovering
-        local rowData = self:GetParent().data
-        if rowData and ns.MapSearch and ns.MapSearch.PreviewMinimapTracking then
-            ns.MapSearch:PreviewMinimapTracking(rowData)
-        end
-        -- Also preview on world map if open
-        if rowData and ns.MapSearch and ns.MapSearch.PreviewUIResult then
-            ns.MapSearch:PreviewUIResult(rowData)
-        end
-    end)
-    mapNavBtn:SetScript("OnLeave", function(self)
-        GameTooltip_Hide()
-        -- Clear minimap tracking preview
-        if ns.MapSearch and ns.MapSearch.ClearMinimapPreview then
-            ns.MapSearch:ClearMinimapPreview()
-        end
-        -- Clear map preview
-        if ns.MapSearch and ns.MapSearch.ClearUIPreview then
-            ns.MapSearch:ClearUIPreview()
-        end
-    end)
-    mapNavBtn:RegisterForClicks("LeftButtonDown")
-    mapNavBtn:SetScript("OnClick", function(self)
-        local rowData = self:GetParent().data
-        if rowData and ns.MapSearch and ns.MapSearch.NavigateToUIResult then
-            ns.MapSearch:NavigateToUIResult(rowData)
-        end
-    end)
-    resultRow.mapNavBtn = mapNavBtn
-
     local text = resultRow:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     text:SetPoint("LEFT", icon, "RIGHT", 4, 0)
     text:SetPoint("RIGHT", amountText, "LEFT", -4, 0)
@@ -1856,10 +1811,6 @@ function UI:CreateResultButton(index)
 
     resultRow:RegisterForClicks("LeftButtonDown", "RightButtonUp")
     resultRow:SetScript("PostClick", function(self, mouseButton, down)
-        -- Skip if nav pin button was clicked
-        if self.mapNavBtn and self.mapNavBtn:IsShown() and self.mapNavBtn:IsMouseOver() then
-            return
-        end
         -- Right-click: show pin/unpin popup
         if mouseButton == "RightButton" and self.data then
             local pinData = self.data
@@ -2312,9 +2263,11 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     -- Show all results (scroll handles overflow)
     local count = mmin(#visible, MAX_BUTTON_POOL)
 
-    -- Pre-compute whether scrolling will be needed so buttons can be narrower
+    -- Pre-compute whether scrolling will be needed so buttons can be narrower.
+    -- Use >= to reserve scrollbar space when at the limit, since extra spacing
+    -- (pinned gaps, section separators) can push content height past the max.
     local maxVisibleRows = EasyFind.db.uiMaxResults or 10
-    local willScroll = #visible > maxVisibleRows
+    local willScroll = #visible >= maxVisibleRows
     local scrollInset = 0
     if willScroll and resultsFrame.scrollBar then
         scrollInset = resultsFrame.scrollBar:GetWidth()
@@ -2424,7 +2377,6 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             if resultRow.pinIcon then resultRow.pinIcon:Hide() end
             if resultRow.pinToggle then resultRow.pinToggle:Hide() end
             if resultRow.pinHeaderLine then resultRow.pinHeaderLine:Hide() end
-            if resultRow.mapNavBtn then resultRow.mapNavBtn:Hide() end
 
             -- Tree connector drawing
             for d = 1, MAX_DEPTH do
@@ -2780,11 +2732,20 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             -- Map search results: left-side category icon + nav pin on right
             elseif not iconSet and data and data.mapSearchResult then
                 resultRow.amountText:Hide()
-                if data.icon then
+                local mapIcon = data.icon
+                if mapIcon then
                     resultRow.icon:SetTexture(nil)
                     resultRow.icon:SetTexCoord(0, 1, 0, 1)
-                    resultRow.icon:SetTexture(data.icon)
                     resultRow.icon:SetVertexColor(1, 1, 1, 1)
+                    if type(mapIcon) == "table" then
+                        resultRow.icon:SetTexture(mapIcon.file)
+                        local c = mapIcon.coords
+                        resultRow.icon:SetTexCoord(c[1], c[2], c[3], c[4])
+                    elseif type(mapIcon) == "string" and sfind(mapIcon, "^atlas:") then
+                        resultRow.icon:SetAtlas(mapIcon:sub(7))
+                    else
+                        resultRow.icon:SetTexture(mapIcon)
+                    end
                     resultRow.icon:SetSize(theme.iconSize or 16, theme.iconSize or 16)
                     resultRow.icon:ClearAllPoints()
                     local indentPixels = depth * indPx + 4
@@ -2797,13 +2758,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     resultRow.text:ClearAllPoints()
                     resultRow.text:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
                 end
-                -- Show nav pin for results with coordinates
-                if resultRow.mapNavBtn and data.x and data.y then
-                    resultRow.mapNavBtn:Show()
-                    resultRow.text:SetPoint("RIGHT", resultRow.mapNavBtn, "LEFT", -4, 0)
-                else
-                    resultRow.text:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
-                end
+                resultRow.text:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
                 iconSet = true
 
             else
