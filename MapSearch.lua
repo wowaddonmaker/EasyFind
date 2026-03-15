@@ -7103,25 +7103,92 @@ function MapSearch:SearchForUI(query)
             end
         end
     else
-        -- Global: instance cache + static locations across all zones
-        local instancePOIs = self:GetGlobalInstanceCache()
-        for _, poi in ipairs(instancePOIs) do
-            pois[#pois + 1] = poi
-            existingNames[slower(poi.name)] = true
+        -- Global: mirror the real global search pipeline (zones + instances)
+        -- SearchZones checks the module-level isGlobalSearch flag to decide
+        -- whether to search all world zones vs just current map children.
+        local savedGlobalFlag = isGlobalSearch
+        isGlobalSearch = true
+        local zoneMatches = self:SearchZones(query)
+        isGlobalSearch = savedGlobalFlag
+        local groupedZones = self:GroupZonesByParent(zoneMatches)
+        local zoneNames = {}
+
+        for _, group in ipairs(groupedZones) do
+            for _, zone in ipairs(group.zones) do
+                zoneNames[slower(zone.name)] = true
+                pois[#pois + 1] = {
+                    name = zone.name, category = "zone", icon = 237382,
+                    isZone = true, zoneMapID = zone.mapID,
+                    zoneMapType = zone.mapType, zoneParentMapID = zone.parentMapID,
+                    pathPrefix = group.parentPath, score = zone.score + 200,
+                }
+            end
         end
-        if ns.STATIC_LOCATIONS then
-            for locMapID, locations in pairs(ns.STATIC_LOCATIONS) do
-                for _, loc in ipairs(locations) do
-                    if not existingNames[slower(loc.name)] then
-                        pois[#pois + 1] = {
-                            name = loc.name, category = loc.category,
-                            icon = loc.icon, isStatic = true,
-                            x = loc.x, y = loc.y,
-                            keywords = loc.keywords, mapID = locMapID,
-                        }
-                        existingNames[slower(loc.name)] = true
+
+        local instancePOIs = self:GetGlobalInstanceCache()
+
+        -- Build mapID → path string for breadcrumbs
+        local pathForMap = {}
+        if cachedWorldZones then
+            for _, zone in ipairs(cachedWorldZones) do
+                if zone.path and not pathForMap[zone.mapID] then
+                    local parts = {}
+                    for _, p in ipairs(zone.path) do
+                        parts[#parts + 1] = p.name
+                    end
+                    parts[#parts + 1] = zone.name
+                    pathForMap[zone.mapID] = tconcat(parts, " > ")
+                end
+            end
+        end
+
+        -- Suppress Dungeon-type zones covered by instance cache entries
+        local instanceNameNorm = {}
+        for _, poi in ipairs(instancePOIs) do
+            if poi.isDungeonEntrance then
+                instanceNameNorm[normalizeName(poi.name)] = true
+            end
+        end
+        for i = #pois, 1, -1 do
+            local poi = pois[i]
+            if poi.isZone and poi.zoneMapType == Enum.UIMapType.Dungeon then
+                local poiNorm = normalizeName(poi.name)
+                for instNorm in pairs(instanceNameNorm) do
+                    if sfind(instNorm, poiNorm, 1, true) or sfind(poiNorm, instNorm, 1, true) then
+                        zoneNames[slower(poi.name)] = nil
+                        zoneNames[poiNorm] = nil
+                        tremove(pois, i)
+                        break
                     end
                 end
+            end
+        end
+
+        -- Enrich non-Dungeon zones with entrance data
+        local entranceLookup = BuildEntranceLookup(instancePOIs)
+        for _, poi in ipairs(pois) do
+            if poi.isZone and poi.zoneMapID then
+                local entrance = entranceLookup[slower(poi.name)]
+                if entrance then
+                    EnrichZoneWithEntrance(poi, entrance)
+                    zoneNames[slower(entrance.name)] = true
+                end
+            end
+        end
+
+        -- Promote remaining cache entries as zone-style results with breadcrumbs
+        for _, poi in ipairs(instancePOIs) do
+            if not zoneNames[slower(poi.name)] and not zoneNames[normalizeName(poi.name)] then
+                local fullPath = pathForMap[poi.entranceMapID]
+                pois[#pois + 1] = {
+                    name = poi.name, category = poi.category, icon = poi.icon,
+                    isZone = true, isStatic = poi.isStatic,
+                    isDungeonEntrance = poi.isDungeonEntrance,
+                    zoneMapID = poi.entranceMapID, entranceMapID = poi.entranceMapID,
+                    entranceX = poi.x, entranceY = poi.y,
+                    entranceIcon = poi.icon, entranceCategory = poi.category,
+                    pathPrefix = fullPath or poi.pathPrefix, keywords = poi.keywords,
+                }
             end
         end
     end
@@ -7136,51 +7203,85 @@ function MapSearch:SearchForUI(query)
     local results = {}
     for _, r in ipairs(scored) do
         local cat = r.category or "location"
-        results[#results + 1] = {
-            score = r.score or 50,
-            data = {
-                name = r.name,
-                nameLower = slower(r.name),
-                category = cat,
-                icon = r.icon or GetCategoryIcon(cat),
-                mapSearchResult = true,
-                mapID = r.mapID or r.zoneMapID or r.entranceMapID or searchMapID,
-                zoneName = r.zoneName,
-                x = r.x or r.entranceX,
-                y = r.y or r.entranceY,
-                keywords = r.keywords,
-            },
+        local d = {
+            name = r.name,
+            nameLower = slower(r.name),
+            category = cat,
+            icon = r.icon or GetCategoryIcon(cat),
+            mapSearchResult = true,
+            mapID = r.mapID or r.zoneMapID or r.entranceMapID or searchMapID,
+            zoneName = r.zoneName,
+            x = r.x or r.entranceX,
+            y = r.y or r.entranceY,
+            keywords = r.keywords,
         }
+        -- Preserve fields needed by SelectResult for global results
+        if r.isZone then
+            d.isZone = true
+            d.zoneMapID = r.zoneMapID
+            d.entranceMapID = r.entranceMapID
+            d.entranceX = r.entranceX
+            d.entranceY = r.entranceY
+            d.entranceIcon = r.entranceIcon
+            d.entranceCategory = r.entranceCategory
+        end
+        if r.isDungeonEntrance then
+            d.isDungeonEntrance = true
+            if not d.entranceMapID then
+                d.entranceMapID = r.entranceMapID
+            end
+        end
+        results[#results + 1] = { score = r.score or 50, data = d }
     end
 
     return results
 end
 
 -- Handle click on a map search result from the UI search bar.
--- Fast mode: place waypoint + start minimap nav without opening map.
---            Saves pin state so the indicator appears if user opens the map.
--- Standard mode: guide to open the world map, then show pin.
+-- Local results:
+--   Fast mode: place waypoint + start minimap nav without opening map.
+--   Standard mode: guide to open the world map, then show pin.
+-- Global results (zones, instances):
+--   Fast mode: open map directly and run SelectResult (highlight/waypoint).
+--   Standard mode: guide to open map, then run SelectResult.
 function MapSearch:HandleUISearchClick(data)
     if not data then return end
 
+    local isGlobalResult = data.isZone or data.isDungeonEntrance
+
     if EasyFind.db.directOpen then
-        -- Fast mode: activate navigation immediately without opening the map
-        local x, y = data.x, data.y
-        if data.mapID and x and y and x >= 0 and x <= 1 and y >= 0 and y <= 1 then
-            SetUserWaypoint(UiMapPoint.CreateFromCoordinates(data.mapID, x, y))
-            efPlacedWaypoint = true
-            C_SuperTrack.SetSuperTrackedUserWaypoint(true)
-            ShowSuperTrackGlow()
-            -- Save pin state so the map indicator renders if the user opens the map
-            activePinState = {
-                mapID = data.mapID,
-                x = x, y = y,
-                icon = data.icon, category = data.category,
-                isLocal = true,
-            }
+        if isGlobalResult then
+            -- Fast mode (global): open map directly at the target
+            if not WorldMapFrame or not WorldMapFrame:IsShown() then
+                ToggleWorldMap()
+            end
+            if data.entranceMapID and data.entranceX and data.entranceY then
+                -- Instance with entrance: navigate to entrance zone, show waypoint
+                WorldMapFrame:SetMapID(data.entranceMapID)
+                self:ShowWaypointAt(data.entranceX, data.entranceY,
+                    data.entranceIcon or data.icon, data.entranceCategory or data.category)
+            elseif data.zoneMapID then
+                -- Zone: navigate directly
+                WorldMapFrame:SetMapID(data.zoneMapID)
+            end
+        else
+            -- Fast mode (local): activate navigation without opening the map
+            local x, y = data.x, data.y
+            if data.mapID and x and y and x >= 0 and x <= 1 and y >= 0 and y <= 1 then
+                SetUserWaypoint(UiMapPoint.CreateFromCoordinates(data.mapID, x, y))
+                efPlacedWaypoint = true
+                C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+                ShowSuperTrackGlow()
+                activePinState = {
+                    mapID = data.mapID,
+                    x = x, y = y,
+                    icon = data.icon, category = data.category,
+                    isLocal = true,
+                }
+            end
         end
     else
-        -- Standard mode: guide user to open the world map, then show pin
+        -- Standard mode: guide user to open the world map, then navigate
         local guideData = {
             name = data.name or "Map Location",
             steps = {
@@ -7259,9 +7360,10 @@ function MapSearch:SetPendingNavigation(data)
             local nav = pendingMapNav
             pendingMapNav = nil
             if ns.Highlight then ns.Highlight:Cancel() end
-            -- Navigate to the target zone then let the real SelectResult
-            -- handle pin display exactly like the map search bars do
-            if nav.mapID then
+            -- For local POIs, pre-navigate to their map so SelectResult
+            -- can place the pin. For zones/instances, SelectResult handles
+            -- its own navigation (breadcrumbs, entrance highlighting, etc.)
+            if nav.mapID and not nav.isZone and not nav.isDungeonEntrance then
                 WorldMapFrame:SetMapID(nav.mapID)
             end
             MapSearch:SelectResult(nav)

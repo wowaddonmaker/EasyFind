@@ -696,6 +696,13 @@ function Options:Initialize()
     directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false)
     directOpenCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.directOpen = self:GetChecked()
+        local filters = EasyFind.db.uiSearchFilters
+        if filters and filters.map ~= false then
+            EasyFind.db.navigateToZonesDirectly = EasyFind.db.directOpen
+            if optionsFrame.zoneNavCheckbox then
+                optionsFrame.zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly)
+            end
+        end
         ns.Highlight:ClearAll()
         local sf = _G["EasyFindSearchFrame"]
         if sf and sf.modeBtn and ns.UpdateModeButtonVisual then
@@ -1335,6 +1342,8 @@ function Options:DoResetAll()
     EasyFind.db.enableMapSearch = true
     EasyFind.db.globalSearchFilters = { zones = true, dungeons = true, raids = true, delves = true }
     EasyFind.db.localSearchFilters = { instances = true, travel = true, services = true }
+    EasyFind.db.uiSearchFilters = { ui = true, mounts = false, toys = false, pets = false, map = false }
+    EasyFind.db.uiMapSearchLocal = true
     EasyFind.db.optionsPosition = nil
 
     if optionsFrame then

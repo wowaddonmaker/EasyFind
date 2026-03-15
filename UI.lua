@@ -490,11 +490,21 @@ function UI:CreateSearchFrame()
 
     modeBtn:SetScript("OnClick", function(self)
         EasyFind.db.directOpen = not EasyFind.db.directOpen
+        -- Sync map search "navigate zones directly" when map filter is enabled
+        local filters = EasyFind.db.uiSearchFilters
+        if filters and filters.map ~= false then
+            EasyFind.db.navigateToZonesDirectly = EasyFind.db.directOpen
+        end
         UpdateModeButtonVisual(self)
         ns.Highlight:ClearAll()
         local optPanel = _G["EasyFindOptionsFrame"]
-        if optPanel and optPanel.directOpenCheckbox then
-            optPanel.directOpenCheckbox:SetChecked(EasyFind.db.directOpen)
+        if optPanel then
+            if optPanel.directOpenCheckbox then
+                optPanel.directOpenCheckbox:SetChecked(EasyFind.db.directOpen)
+            end
+            if optPanel.zoneNavCheckbox then
+                optPanel.zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly or false)
+            end
         end
     end)
 
