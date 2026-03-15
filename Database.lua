@@ -1621,7 +1621,7 @@ function Database:ScoreInitials(text, query)
             return bonus
         end
     end
-    
+
     -- Strategy 2: Prefix-of-words - each query segment matches the start of a word
     -- "raba" → "ra(ndom) ba(ttleground)" - greedily consume query chars across words
     local qi = 1  -- position in query
@@ -1648,7 +1648,7 @@ function Database:ScoreInitials(text, query)
         -- Score based on how many words were matched (more = better abbreviation)
         return 110 + mmin(wordsMatched * 3, 20)
     end
-    
+
     return 0
 end
 
@@ -1712,7 +1712,7 @@ function Database:DamerauLevenshtein(s1, s2, len1, len2)
     local prev2, prev, curr = dlPrev2, dlPrev, dlCurr
 
     for j = 0, len2 do prev[j] = j end
-    
+
     for i = 1, len1 do
         curr[0] = i
         local minInRow = i

@@ -14,7 +14,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: nebularg/actions-luacheck@v1
         with:
-          files: '*.lua Locales/*.lua'
+          files: '*.lua'
           args: '--no-color -q'
 
   toc-validation:

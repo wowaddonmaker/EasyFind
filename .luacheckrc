@@ -1,6 +1,12 @@
 std = "lua51"
 max_line_length = false
 
+-- Suppress warnings that are standard WoW addon patterns, not real issues
+ignore = {
+    "431",  -- shadowing upvalue (self in nested callbacks is standard WoW pattern)
+    "432",  -- shadowing upvalue argument
+}
+
 -- Globals this addon sets
 globals = {
     "EasyFind",
@@ -19,35 +25,46 @@ globals = {
 read_globals = {
     -- WoW Lua extensions
     "debugstack", "strsplit", "strtrim", "wipe", "hooksecurefunc",
-    "format", "time",
+    "format", "time", "date",
 
     -- Core API
-    "CreateFrame", "CreateFont", "GetTime", "GetLocale", "GetCVar",
-    "GetCursorPosition", "GetAddOnMetadata", "GetAtlasInfo",
+    "CreateFrame", "CreateFont", "CreateVector2D",
+    "GetTime", "GetLocale", "GetCVar", "GetCursorPosition",
+    "GetAddOnMetadata", "GetAtlasInfo", "GetMinimapShape",
     "GetBindingKey", "GetCurrentBindingSet", "SaveBindings", "SetBinding",
+    "GetCategoryInfo", "GetPlayerFacing",
     "SetPortraitTexture", "ToggleWorldMap", "ToggleDropDownMenu",
     "InterfaceOptions_AddCategory", "InCombatLockdown",
     "IsShiftKeyDown", "IsMouseButtonDown", "IsAltKeyDown", "IsControlKeyDown",
-    "IsInGroup", "IsInInstance", "UnitIsGroupLeader",
+    "IsInGroup", "IsInInstance", "IsIndoors", "UnitIsGroupLeader",
     "UnitFactionGroup", "UnitPosition",
     "StaticPopup_Show", "GameTooltip_Hide", "PlaySound", "ReloadUI",
-    "GetSpellInfo", "GetItemInfo",
-    "UseToyByItemID",
+    "GetSpellInfo", "GetItemInfo", "UseToyByItemID",
+    "PanelTemplates_GetSelectedTab",
 
     -- Frames and UI objects
     "UIParent", "GameTooltip", "WorldMapFrame", "Minimap", "MinimapCluster",
     "CharacterFrame", "PaperDollFrame", "AchievementFrame",
+    "CharacterStatsPane", "PaperDollTitlesPane", "PaperDollEquipmentManagerPane",
+    "CurrencyFrame",
     "SpellBookFrame", "PlayerSpellsFrame", "CollectionsJournal",
     "EncounterJournal", "PVEFrame", "ReputationFrame", "TokenFrame",
     "GroupFinderFrame", "LFGListFrame", "HelpFrame", "ClassTalentFrame",
     "GuildMicroButton", "StoreMicroButton", "PlayerFrame", "StoreFrame",
+    "LFDParentFrame", "RaidFinderFrame",
+    "LFGListPVEStub", "LFGListPVPStub",
+    "HonorFrame", "ConquestFrame", "TrainingGroundsFrame",
+    "PVPQueueFrame",
+    "AchievementFrameCategories_ExpandToCategory",
+    "AchievementFrameCategories_UpdateDataProvider",
+    "Menu", "ScrollBoxConstants",
 
     -- C_* namespaces
-    "C_AddOns", "C_AreaPoiInfo", "C_CurrencyInfo", "C_EncounterJournal",
-    "C_GossipInfo", "C_MajorFactions", "C_Map", "C_Minimap",
-    "C_MountJournal", "C_Navigation", "C_PetJournal", "C_Reputation",
-    "C_SuperTrack", "C_TaxiMap", "C_Texture", "C_Timer", "C_ToyBox",
-    "C_VignetteInfo",
+    "C_AddOns", "C_AchievementInfo", "C_AreaPoiInfo", "C_CurrencyInfo",
+    "C_EncounterJournal", "C_GossipInfo", "C_MajorFactions", "C_Map",
+    "C_Minimap", "C_MountJournal", "C_Navigation", "C_PetJournal",
+    "C_Reputation", "C_SuperTrack", "C_TaxiMap", "C_Texture", "C_Timer",
+    "C_ToyBox", "C_VignetteInfo",
 
     -- Constants, Enums, Mixins
     "Enum", "Settings", "BackdropTemplateMixin",
@@ -63,8 +80,3 @@ read_globals = {
 -- WoW callbacks have fixed signatures; unused args are normal
 unused_args = false
 self = false
-
--- Per-file overrides for data/generated files
-files["StaticLocations.lua"] = { max_line_length = false }
-files["Locales/deDE.lua"] = { max_line_length = false }
-files["Database.lua"] = { max_line_length = false }
