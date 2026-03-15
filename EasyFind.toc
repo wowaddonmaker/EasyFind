@@ -1,5 +1,5 @@
 ## Interface: 120001, 120000
-## Title: EasyFind (search-improvements)
+## Title: EasyFind
 ## Notes: Search and locate UI elements and map locations with ease
 ## Author: justawower
 ## Version: 1.2.7

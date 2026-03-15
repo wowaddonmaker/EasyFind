@@ -32,7 +32,7 @@ local GetCursorPosition  = GetCursorPosition
 local hooksecurefunc     = hooksecurefunc
 local wipe               = wipe
 
-local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind-search-improvements\\textures\\lightning-bolt"
+local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind\\textures\\lightning-bolt"
 
 local searchFrame
 local resultsFrame
