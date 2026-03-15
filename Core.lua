@@ -96,7 +96,10 @@ local DB_DEFAULTS = {
         ui = true,
         mounts = false,
         toys = false,
+        pets = false,
+        map = false,
     },
+    uiMapSearchLocal = true,   -- Map search in UI bar: true = local zone only, false = global
 }
 
 local DB_MIGRATIONS = {
@@ -303,7 +306,10 @@ local function OnPlayerLogin()
             ns.Database:PopulateDynamicMounts()
             SafeAfter(0, function()
                 ns.Database:PopulateDynamicToys()
-                collectgarbage("collect")
+                SafeAfter(0, function()
+                    ns.Database:PopulateDynamicPets()
+                    collectgarbage("collect")
+                end)
             end)
         end)
     end)

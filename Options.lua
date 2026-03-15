@@ -696,6 +696,7 @@ function Options:Initialize()
     directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false)
     directOpenCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.directOpen = self:GetChecked()
+        ns.Highlight:ClearAll()
         local sf = _G["EasyFindSearchFrame"]
         if sf and sf.modeBtn and ns.UpdateModeButtonVisual then
             ns.UpdateModeButtonVisual(sf.modeBtn)
@@ -1049,6 +1050,7 @@ function Options:Initialize()
         .. "|cFF00FF00Tab / Shift+Tab|r  Toggle focus between result row and nav button\n"
         .. "|cFF00FF00Page Up / Page Down|r  Jump 5 results\n"
         .. "|cFF00FF00Home / End / Ctrl+Up / Ctrl+Down|r  Jump to first / last result\n"
+        .. "|cFF00FF00Shift+Up / Shift+Down|r  Jump between result sections (UI, Map, Mounts, etc.)\n"
         .. "|cFF00FF00Ctrl+Tab|r  Switch between local and global map search bar\n\n"
         .. "|cFFFFD100Other:|r\n"
         .. "|cFF00FF00Shift+Drag|r  Reposition search bars\n"

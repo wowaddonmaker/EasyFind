@@ -35,6 +35,7 @@ local GetMapGroupID          = C_Map.GetMapGroupID
 local GetMapGroupMembersInfo = C_Map.GetMapGroupMembersInfo
 local GetMapChildrenInfo     = C_Map.GetMapChildrenInfo
 local GetBestMapForUnit      = C_Map.GetBestMapForUnit
+local GetPlayerMapPosition   = C_Map.GetPlayerMapPosition
 local GetMapInfoAtPosition   = C_Map.GetMapInfoAtPosition
 local SetUserWaypoint        = C_Map.SetUserWaypoint
 local GetAreaPOIForMap       = C_AreaPoiInfo and C_AreaPoiInfo.GetAreaPOIForMap
@@ -410,6 +411,10 @@ if C_SuperTrack and C_SuperTrack.SetSuperTrackedMapPin then
                 cachedPinY = y
             end
         end
+        -- Invalidate cached waypoint so resolution picks up the new pin
+        cachedWPWorldX = nil
+        cachedWPWorldY = nil
+        cachedCrossContinent = nil
     end)
 end
 MapSearch._debugGetPinCache = function() return cachedPinMapID, cachedPinX, cachedPinY end
@@ -511,7 +516,9 @@ local function CreateWaypointTracker()
             and C_SuperTrack.IsSuperTrackingAnything
             and C_SuperTrack.IsSuperTrackingAnything()
 
-        if not hasUserWP and not hasContentTrack then
+        -- Skip quest tracking: no reliable API for quest objective minimap angle
+        if not hasUserWP and (not hasContentTrack
+            or (C_SuperTrack.IsSuperTrackingQuest and C_SuperTrack.IsSuperTrackingQuest())) then
             if self.lastMode then
                 self.lastMode = nil
             end
@@ -521,6 +528,11 @@ local function CreateWaypointTracker()
 
         -- Resolve waypoint world position once (refreshed by USER_WAYPOINT_UPDATED / SUPER_TRACKING_CHANGED)
         if not cachedWPWorldX then
+            -- Hide stale glow while re-resolving so it doesn't linger at the old position
+            if superTrackGlow and superTrackGlow:IsShown() then
+                superTrackGlow.animGroup:Stop()
+                superTrackGlow:Hide()
+            end
             local wpMapID, wpX, wpY
             if hasUserWP then
                 local wp = GetUserWaypoint()
@@ -543,7 +555,9 @@ local function CreateWaypointTracker()
                         end
                     end
                 end
-                -- Fallback: taxi node position by nodeID or name match
+                -- Fallback: taxi node position by nodeID or name match.
+                -- Prefer cachedPinMapID (the map viewed when clicked) over
+                -- playerMapID, and reject matches with out-of-bounds coords.
                 if not wpX and C_SuperTrack.GetSuperTrackedMapPin and GetTaxiNodesForMap then
                     local pinType, pinID = C_SuperTrack.GetSuperTrackedMapPin()
                     if pinType == 2 and pinID then
@@ -555,10 +569,13 @@ local function CreateWaypointTracker()
                                 for ni = 1, #nodes do
                                     local node = nodes[ni]
                                     if node.position and (node.nodeID == pinID or (trackedName and node.name and trackedName:find(node.name, 1, true))) then
-                                        wpMapID = lookupMap
-                                        wpX = node.position.x
-                                        wpY = node.position.y
-                                        break
+                                        local nx, ny = node.position.x, node.position.y
+                                        if nx >= 0 and nx <= 1 and ny >= 0 and ny <= 1 then
+                                            wpMapID = lookupMap
+                                            wpX = nx
+                                            wpY = ny
+                                            break
+                                        end
                                     end
                                 end
                             end
@@ -581,6 +598,15 @@ local function CreateWaypointTracker()
                         end
                     end
                 end
+                -- Fallback: super-tracked waypoint (content tracking)
+                if not wpX and C_SuperTrack.GetNextWaypointForMap and playerMapID then
+                    local qX, qY = C_SuperTrack.GetNextWaypointForMap(playerMapID)
+                    if qX and qY and (qX ~= 0 or qY ~= 0) then
+                        wpMapID = playerMapID
+                        wpX = qX
+                        wpY = qY
+                    end
+                end
                 -- Fallback: cursor capture from world map click
                 if not wpX and cachedPinMapID and cachedPinX then
                     wpMapID = cachedPinMapID
@@ -589,8 +615,36 @@ local function CreateWaypointTracker()
                 end
             end
             if not wpMapID or not wpX then
+                HideSuperTrackGlow()
                 return
             end
+
+            -- Zone check: is the pin in the player's current zone?
+            local pMapID = GetBestMapForUnit("player")
+            local pinZoneID = cachedPinMapID or wpMapID
+            local sameZone = false
+            if pMapID and pMapID == pinZoneID then
+                sameZone = true
+            elseif pMapID then
+                local pInfo = GetMapInfo(pMapID)
+                local pinInfo = GetMapInfo(pinZoneID)
+                if pInfo and pinInfo and pInfo.name == pinInfo.name then
+                    sameZone = true
+                end
+            end
+
+            -- Cross-zone: prefer intermediate nav waypoint (portal, boat, etc.)
+            if not sameZone and pMapID and C_SuperTrack.GetNextWaypointForMap then
+                local navX, navY = C_SuperTrack.GetNextWaypointForMap(pMapID)
+                if navX and navY and (navX ~= 0 or navY ~= 0)
+                   and navX >= 0 and navX <= 1 and navY >= 0 and navY <= 1 then
+                    wpMapID = pMapID
+                    wpX = navX
+                    wpY = navY
+                end
+            end
+
+            -- Convert to world space
             cachedWPMapID = wpMapID
             if not cachedPlayerVec then
                 cachedPlayerVec = CreateVector2D(wpX, wpY)
@@ -598,21 +652,23 @@ local function CreateWaypointTracker()
                 cachedPlayerVec.x = wpX
                 cachedPlayerVec.y = wpY
             end
-            local _, wWorld = GetWorldPosFromMapPos(cachedWPMapID, cachedPlayerVec)
+            local pinContinent, wWorld = GetWorldPosFromMapPos(cachedWPMapID, cachedPlayerVec)
             if not wWorld then return end
-            cachedWPWorldX = wWorld.x
-            cachedWPWorldY = wWorld.y
 
-            -- Only support glow when pin is in the player's zone (by name, not ID)
-            cachedCrossContinent = true
-            local pMapID = GetBestMapForUnit("player")
+            -- Cross-continent check: world coords are in different spaces
             if pMapID then
-                local pInfo = GetMapInfo(pMapID)
-                local wpInfo = GetMapInfo(cachedWPMapID)
-                if pInfo and wpInfo and pInfo.name == wpInfo.name then
-                    cachedCrossContinent = false
+                cachedPlayerVec.x = 0.5
+                cachedPlayerVec.y = 0.5
+                local playerContinent = GetWorldPosFromMapPos(pMapID, cachedPlayerVec)
+                if playerContinent ~= pinContinent then
+                    cachedCrossContinent = true
+                    return
                 end
             end
+
+            cachedCrossContinent = false
+            cachedWPWorldX = wWorld.x
+            cachedWPWorldY = wWorld.y
         end
 
         if cachedCrossContinent then
@@ -652,14 +708,18 @@ local function CreateWaypointTracker()
         if EasyFind.db.autoPinClear ~= false and dist < GetArrivalDistance() then
             if efPlacedWaypoint then
                 MapSearch:ClearAll()
-            else
+                return
+            elseif hasUserWP then
                 HideSuperTrackGlow()
-                if hasUserWP then
-                    C_SuperTrack.SetSuperTrackedUserWaypoint(false)
-                    ClearUserWaypoint()
-                elseif C_SuperTrack.ClearAllSuperTracked then
-                    C_SuperTrack.ClearAllSuperTracked()
-                end
+                C_SuperTrack.SetSuperTrackedUserWaypoint(false)
+                ClearUserWaypoint()
+                return
+            end
+            -- Content tracking (quests, etc.): hide visuals but don't untrack
+            HideSuperTrackGlow()
+            if nearTrackFrame:IsShown() then
+                nearTrackFrame.animGroup:Stop()
+                nearTrackFrame:Hide()
             end
             return
         end
@@ -788,6 +848,7 @@ loadingScreenFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 loadingScreenFrame:RegisterEvent("USER_WAYPOINT_UPDATED")
 loadingScreenFrame:RegisterEvent("SUPER_TRACKING_CHANGED")
 loadingScreenFrame:RegisterEvent("NAVIGATION_DESTINATION_REACHED")
+loadingScreenFrame:RegisterEvent("SUPER_TRACKING_PATH_UPDATED")
 loadingScreenFrame:RegisterEvent("CVAR_UPDATE")
 loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isReloadingUI)
     if event == "CVAR_UPDATE" then
@@ -806,9 +867,20 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
             ClearUserWaypoint()
         else
             HideSuperTrackGlow()
-            if C_SuperTrack.ClearAllSuperTracked then
-                C_SuperTrack.ClearAllSuperTracked()
+            if nearTrackFrame and nearTrackFrame:IsShown() then
+                nearTrackFrame.animGroup:Stop()
+                nearTrackFrame:Hide()
             end
+        end
+        return
+    end
+    if event == "SUPER_TRACKING_PATH_UPDATED" then
+        -- Invalidate cached position so OnUpdate re-resolves (tracked content changed)
+        if not HasUserWaypoint() and C_SuperTrack.IsSuperTrackingAnything and C_SuperTrack.IsSuperTrackingAnything() then
+            cachedWPMapID = nil
+            cachedWPWorldX = nil
+            cachedWPWorldY = nil
+            cachedCrossContinent = nil
         end
         return
     end
@@ -818,16 +890,33 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
         cachedWPWorldX = nil
         cachedWPWorldY = nil
         cachedCrossContinent = nil
-        if EasyFind.db.enableMapSearch ~= false and EasyFind.db.autoTrackPins ~= false and HasUserWaypoint() and not C_SuperTrack.IsSuperTrackingUserWaypoint() then
-            C_SuperTrack.SetSuperTrackedUserWaypoint(true)
-            return
+        -- Auto-track user waypoint when placed and not yet tracked
+        if EasyFind.db.enableMapSearch ~= false and EasyFind.db.autoTrackPins ~= false
+           and HasUserWaypoint() and not C_SuperTrack.IsSuperTrackingUserWaypoint() then
+            -- USER_WAYPOINT_UPDATED: user explicitly placed a new pin, always track it.
+            -- SUPER_TRACKING_CHANGED: only reclaim if nothing else is actively tracked.
+            if event == "USER_WAYPOINT_UPDATED" then
+                -- Clear stale POI pin cache so zone check uses the waypoint's map
+                cachedPinMapID = nil
+                cachedPinX = nil
+                cachedPinY = nil
+                C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+                return
+            end
+            local isTrackingPin = C_SuperTrack.IsSuperTrackingMapPin and C_SuperTrack.IsSuperTrackingMapPin()
+            local isTrackingVignette = C_SuperTrack.GetSuperTrackedVignette and C_SuperTrack.GetSuperTrackedVignette() ~= nil
+            if not isTrackingPin and not isTrackingVignette then
+                C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+                return
+            end
         end
         if HasUserWaypoint() and C_SuperTrack.IsSuperTrackingUserWaypoint() then
             ShowSuperTrackGlow()
-        elseif not HasUserWaypoint()
-            and C_SuperTrack.IsSuperTrackingAnything
+        elseif C_SuperTrack.IsSuperTrackingAnything
             and C_SuperTrack.IsSuperTrackingAnything() then
-            efPlacedWaypoint = false
+            if not HasUserWaypoint() then
+                efPlacedWaypoint = false
+            end
             ShowSuperTrackGlow()
         else
             if not HasUserWaypoint() then
@@ -6913,4 +7002,270 @@ function MapSearch:RefreshIndicators()
     -- Update UI highlight indicator (Highlight.lua)
     local uiInd = _G["EasyFindIndicatorFrame"]
     if uiInd then ns.UpdateIndicator(uiInd) end
+end
+
+-- Search for the UI search bar, mirroring the real map search pipeline.
+-- Gathers the same POI sources (dynamic, static, entrances, flight masters),
+-- runs SearchPOIs with the same scoring, and returns results for UI display.
+function MapSearch:SearchForUI(query)
+    if not query or query == "" or #query < 2 then return nil end
+
+    local isLocal = EasyFind.db.uiMapSearchLocal ~= false
+
+    -- Gather POIs using the same sources as OnSearchTextChanged
+    local pois = {}
+    local existingNames = {}
+
+    if isLocal then
+        -- Local: same 4 sources as the real local search
+        local dynamicPOIs = self:ScanMapPOIs()
+        local staticLocations = self:GetStaticLocations()
+        local dungeonEntrances = self:ScanDungeonEntrances()
+        local flightMasters = self:ScanFlightMasters()
+
+        for _, entrance in ipairs(dungeonEntrances) do
+            pois[#pois + 1] = entrance
+            existingNames[slower(entrance.name)] = true
+        end
+        for _, fm in ipairs(flightMasters) do
+            if not existingNames[slower(fm.name)] then
+                pois[#pois + 1] = fm
+                existingNames[slower(fm.name)] = true
+            end
+        end
+        for _, poi in ipairs(dynamicPOIs) do
+            if not existingNames[slower(poi.name)] then
+                pois[#pois + 1] = poi
+                existingNames[slower(poi.name)] = true
+            end
+        end
+        for _, loc in ipairs(staticLocations) do
+            if not existingNames[slower(loc.name)] then
+                pois[#pois + 1] = loc
+                existingNames[slower(loc.name)] = true
+            end
+        end
+    else
+        -- Global: instance cache + static locations across all zones
+        local instancePOIs = self:GetGlobalInstanceCache()
+        for _, poi in ipairs(instancePOIs) do
+            pois[#pois + 1] = poi
+            existingNames[slower(poi.name)] = true
+        end
+        if ns.STATIC_LOCATIONS then
+            for _, locations in pairs(ns.STATIC_LOCATIONS) do
+                for _, loc in ipairs(locations) do
+                    if not existingNames[slower(loc.name)] then
+                        pois[#pois + 1] = loc
+                        existingNames[slower(loc.name)] = true
+                    end
+                end
+            end
+        end
+    end
+
+    if #pois == 0 then return nil end
+
+    -- Run the same scoring pipeline as the real map search
+    local scored = self:SearchPOIs(pois, query)
+    if not scored or #scored == 0 then return nil end
+
+    -- Convert to UI search format {data, score}
+    local results = {}
+    for _, r in ipairs(scored) do
+        results[#results + 1] = {
+            score = r.score or 50,
+            data = {
+                name = r.name,
+                nameLower = slower(r.name),
+                category = r.category or "location",
+                icon = r.icon,
+                mapSearchResult = true,
+                mapID = r.mapID or r.zoneMapID or r.entranceMapID,
+                zoneName = r.zoneName,
+                x = r.x or r.entranceX,
+                y = r.y or r.entranceY,
+                keywords = r.keywords,
+            },
+        }
+    end
+
+    return results
+end
+
+-- Handle click on a map search result from the UI search bar.
+-- Fast mode: opens world map directly and places waypoint.
+-- Standard mode: guides user to open map via step-by-step highlight.
+function MapSearch:HandleUISearchClick(data)
+    if not data then return end
+
+    if EasyFind.db.directOpen then
+        -- Fast mode: open map and navigate directly
+        if not WorldMapFrame or not WorldMapFrame:IsShown() then
+            ToggleWorldMap()
+        end
+        if WorldMapFrame and data.mapID then
+            WorldMapFrame:SetMapID(data.mapID)
+        end
+        -- Place waypoint if we have coordinates
+        local x, y = data.x, data.y
+        if data.mapID and x and y and x >= 0 and x <= 1 and y >= 0 and y <= 1 then
+            SetUserWaypoint(UiMapPoint.CreateFromCoordinates(data.mapID, x, y))
+            efPlacedWaypoint = true
+            C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+            ShowSuperTrackGlow()
+        end
+    else
+        -- Standard mode: guide user to open the world map, then continue navigation.
+        -- Two steps: the waitForFrame prevents single-step hover-dismiss on the
+        -- button, and auto-advances once WorldMapFrame appears.
+        local guideData = {
+            name = data.name or "Map Location",
+            steps = {
+                { buttonFrame = "QuestLogMicroButton" },
+                { waitForFrame = "WorldMapFrame" },
+            },
+        }
+        EasyFind:StartGuide(guideData)
+        -- Queue navigation to execute once the map opens
+        self:SetPendingNavigation(data)
+    end
+end
+
+-- Navigate to a map search result (place waypoint + start minimap tracking).
+-- Called by the nav pin button on map search result rows.
+function MapSearch:NavigateToUIResult(data)
+    if not data or not data.mapID or not data.x or not data.y then return end
+    local x, y = data.x, data.y
+    if x >= 0 and x <= 1 and y >= 0 and y <= 1 then
+        SetUserWaypoint(UiMapPoint.CreateFromCoordinates(data.mapID, x, y))
+        efPlacedWaypoint = true
+        C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+        ShowSuperTrackGlow()
+    end
+end
+
+-- Preview a map search result from the UI search bar on the world map.
+-- Only shows if WorldMapFrame is open. Returns true if preview was shown.
+function MapSearch:PreviewUIResult(data)
+    if not data or not WorldMapFrame or not WorldMapFrame:IsShown() then return false end
+    local coords = self:GetPreviewCoords(data)
+    if not coords then return false end
+    self._savedPinState = activePinState
+    self._previewing = true
+    if coords.instances then
+        self:ShowMultipleWaypoints(coords.instances)
+    else
+        self:ShowWaypointAt(coords.x, coords.y, coords.icon, coords.category)
+    end
+    activePinState = self._savedPinState
+    return true
+end
+
+-- Clear a UI result preview and restore previous pin state.
+function MapSearch:ClearUIPreview()
+    if not self._previewing then return end
+    self._previewing = nil
+    self:ClearHighlight()
+    local saved = self._savedPinState
+    self._savedPinState = nil
+    if saved and WorldMapFrame and WorldMapFrame:IsShown()
+       and saved.mapID == WorldMapFrame:GetMapID() then
+        if saved.instances then
+            self:ShowMultipleWaypoints(saved.instances)
+        else
+            self:ShowWaypointAt(saved.x, saved.y, saved.icon, saved.category)
+        end
+    end
+end
+
+-- Preview minimap tracking for a map result (temporary waypoint).
+-- Saves any existing waypoint state so it can be restored on leave.
+function MapSearch:PreviewMinimapTracking(data)
+    if not data or not data.mapID or not data.x or not data.y then return false end
+    local x, y = data.x, data.y
+    if x < 0 or x > 1 or y < 0 or y > 1 then return false end
+    -- Save existing waypoint state before preview
+    self._previewingMinimap = true
+    self._savedWaypointOwned = efPlacedWaypoint
+    self._savedWaypointPoint = HasUserWaypoint() and GetUserWaypoint() or nil
+    self._savedSuperTracking = C_SuperTrack.IsSuperTrackingUserWaypoint()
+    SetUserWaypoint(UiMapPoint.CreateFromCoordinates(data.mapID, x, y))
+    efPlacedWaypoint = true
+    C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+    ShowSuperTrackGlow()
+    return true
+end
+
+-- Clear minimap tracking preview and restore previous waypoint state.
+function MapSearch:ClearMinimapPreview()
+    if not self._previewingMinimap then return end
+    self._previewingMinimap = nil
+    local savedPoint = self._savedWaypointPoint
+    local savedOwned = self._savedWaypointOwned
+    local savedTracking = self._savedSuperTracking
+    self._savedWaypointPoint = nil
+    self._savedWaypointOwned = nil
+    self._savedSuperTracking = nil
+    -- Restore previous waypoint or clear the preview one
+    if savedPoint then
+        SetUserWaypoint(savedPoint)
+        efPlacedWaypoint = savedOwned or false
+        if savedTracking then
+            C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+            ShowSuperTrackGlow()
+        else
+            C_SuperTrack.SetSuperTrackedUserWaypoint(false)
+            HideSuperTrackGlow()
+        end
+    else
+        if HasUserWaypoint() then
+            ClearUserWaypoint()
+        end
+        efPlacedWaypoint = false
+        C_SuperTrack.SetSuperTrackedUserWaypoint(false)
+        HideSuperTrackGlow()
+    end
+end
+
+-- Pending navigation data for standard mode: after guide finishes and map opens,
+-- continue with map navigation (set zone + place waypoint).
+local pendingMapNav = nil
+
+function MapSearch:SetPendingNavigation(data)
+    pendingMapNav = data
+    if not data then return end
+    -- Watch for WorldMapFrame to appear via a short-lived ticker
+    if self._pendingNavTicker then
+        self._pendingNavTicker:Cancel()
+    end
+    local elapsed = 0
+    self._pendingNavTicker = C_Timer.NewTicker(0.1, function(ticker)
+        elapsed = elapsed + 0.1
+        -- Timeout after 30 seconds
+        if elapsed > 30 then
+            ticker:Cancel()
+            self._pendingNavTicker = nil
+            pendingMapNav = nil
+            return
+        end
+        if not pendingMapNav then
+            ticker:Cancel()
+            self._pendingNavTicker = nil
+            return
+        end
+        if WorldMapFrame and WorldMapFrame:IsShown() then
+            ticker:Cancel()
+            self._pendingNavTicker = nil
+            local nav = pendingMapNav
+            pendingMapNav = nil
+            if ns.Highlight then ns.Highlight:Cancel() end
+            -- Navigate to the target zone then let the real SelectResult
+            -- handle pin display exactly like the map search bars do
+            if nav.mapID then
+                WorldMapFrame:SetMapID(nav.mapID)
+            end
+            MapSearch:SelectResult(nav)
+        end
+    end)
 end
