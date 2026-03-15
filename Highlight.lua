@@ -57,28 +57,28 @@ function Highlight:CreateHighlightFrame()
     highlightFrame:SetFrameStrata("TOOLTIP")
     highlightFrame:SetFrameLevel(500)
     highlightFrame:Hide()
-    
+
     local borderSize = 4
-    
+
     -- Highlight border is ALWAYS yellow
     local top = highlightFrame:CreateTexture(nil, "OVERLAY")
     top:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 1)
     highlightFrame.top = top
-    
+
     local bottom = highlightFrame:CreateTexture(nil, "OVERLAY")
     bottom:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 1)
     highlightFrame.bottom = bottom
-    
+
     local left = highlightFrame:CreateTexture(nil, "OVERLAY")
     left:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 1)
     highlightFrame.left = left
-    
+
     local right = highlightFrame:CreateTexture(nil, "OVERLAY")
     right:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 1)
     highlightFrame.right = right
-    
+
     highlightFrame.borderSize = borderSize
-    
+
     local animGroup = highlightFrame:CreateAnimationGroup()
     animGroup:SetLooping("BOUNCE")
     local alpha = animGroup:CreateAnimation("Alpha")
@@ -124,7 +124,7 @@ function Highlight:CreateInstructionFrame()
     instructionFrame:SetFrameStrata("TOOLTIP")
     instructionFrame:SetFrameLevel(502)
     instructionFrame:Hide()
-    
+
     instructionFrame:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Gold-Border",
@@ -132,7 +132,7 @@ function Highlight:CreateInstructionFrame()
         insets = { left = 5, right = 5, top = 5, bottom = 5 }
     })
     instructionFrame:SetBackdropColor(0, 0, 0, 0.95)  -- Very dark background
-    
+
     local text = instructionFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     text:SetPoint("TOPLEFT", 15, -15)
     text:SetPoint("TOPRIGHT", -15, -15)
@@ -141,7 +141,7 @@ function Highlight:CreateInstructionFrame()
     text:SetWordWrap(true)  -- Enable word wrap
     text:SetNonSpaceWrap(true)
     instructionFrame.text = text
-    
+
     -- Dismiss button
     local dismissBtn = CreateFrame("Button", nil, instructionFrame, "UIPanelButtonTemplate")
     dismissBtn:SetSize(80, 22)
@@ -151,7 +151,7 @@ function Highlight:CreateInstructionFrame()
         Highlight:Cancel()
     end)
     instructionFrame.dismissBtn = dismissBtn
-    
+
     local closeBtn = CreateFrame("Button", nil, instructionFrame, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", 5, 5)
     closeBtn:SetSize(20, 20)
@@ -165,7 +165,7 @@ function Highlight:CreateContextTooltip()
     contextTooltip:SetFrameStrata("TOOLTIP")
     contextTooltip:SetFrameLevel(503)
     contextTooltip:Hide()
-    
+
     contextTooltip:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
         edgeFile = TOOLTIP_BORDER,
@@ -174,7 +174,7 @@ function Highlight:CreateContextTooltip()
     })
     contextTooltip:SetBackdropColor(0, 0, 0, 0.9)
     contextTooltip:SetBackdropBorderColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1)
-    
+
     local text = contextTooltip:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     text:SetPoint("CENTER", 0, 0)
     text:SetTextColor(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3])
@@ -207,7 +207,7 @@ end
 
 function Highlight:StartGuide(guideData)
     self:Cancel()
-    
+
     if not guideData or not guideData.steps or #guideData.steps == 0 then
         if guideData and guideData.steps and guideData.steps[1] and guideData.steps[1].customText then
             self:ShowInstruction(guideData.steps[1].customText)
@@ -215,10 +215,10 @@ function Highlight:StartGuide(guideData)
         end
         return
     end
-    
+
     currentGuide = guideData
     currentStepIndex = 1
-    
+
     -- Use a ticker to continuously check step conditions
     stepTicker = C_Timer.NewTicker(0.1, function()
         local ok, err = pcall(self.UpdateGuide, self)
@@ -232,18 +232,18 @@ end
 -- Start the guide at a specific step (used by DirectOpen to skip to final highlight)
 function Highlight:StartGuideAtStep(guideData, stepIndex)
     self:Cancel()
-    
+
     if not guideData or not guideData.steps or #guideData.steps == 0 then
         return
     end
-    
+
     if stepIndex > #guideData.steps then
         stepIndex = #guideData.steps
     end
-    
+
     currentGuide = guideData
     currentStepIndex = stepIndex
-    
+
     stepTicker = C_Timer.NewTicker(0.1, function()
         local ok, err = pcall(self.UpdateGuide, self)
         if not ok then
@@ -258,22 +258,22 @@ function Highlight:UpdateGuide()
         self:Cancel()
         return
     end
-    
+
     local step = currentGuide.steps[currentStepIndex]
     if not step then
         self:Cancel()
         return
     end
-    
+
     -- Custom text only
     if step.customText then
         self:ShowInstruction(step.customText)
         C_Timer.After(5, function() self:Cancel() end)
         return
     end
-    
+
     local isLastStep = (currentStepIndex == #currentGuide.steps)
-    
+
     -- Step 1 type: Highlight a button directly (like micro menu buttons)
     if step.buttonFrame then
         local targetFrame = _G[step.buttonFrame]
@@ -300,7 +300,7 @@ function Highlight:UpdateGuide()
         end
         return
     end
-    
+
     -- Portrait menu step 1: highlight player portrait and tell user to right-click
     if step.portraitMenu then
         -- Check if the portrait menu is already open
@@ -310,7 +310,7 @@ function Highlight:UpdateGuide()
             self:AdvanceStep()
             return
         end
-        
+
         -- Highlight the player frame portrait and show contextual tooltip
         local portrait = PlayerFrame
         if portrait and portrait:IsShown() then
@@ -319,7 +319,7 @@ function Highlight:UpdateGuide()
         end
         return
     end
-    
+
     -- Portrait menu step 2: find and highlight the correct menu option
     if step.portraitMenuOption then
         -- Check if portrait menu is still open
@@ -330,7 +330,7 @@ function Highlight:UpdateGuide()
             self:HideHighlight()
             return
         end
-        
+
         -- Find the menu option button and highlight it
         local optionBtn = self:FindPortraitMenuOption(step.portraitMenuOption)
         if optionBtn then
@@ -349,18 +349,18 @@ function Highlight:UpdateGuide()
         end
         return
     end
-    
+
     -- Step 2+ type: Wait for frame, then highlight tab or region
     if step.waitForFrame then
         local frame = self:GetFrameByPath(step.waitForFrame)
-        
+
         if not frame or not frame:IsShown() then
             -- Frame closed, go back to step 1
             currentStepIndex = 1
             self:HideHighlight()
             return
         end
-        
+
         -- Frame is open
         if step.tabIndex then
             -- Check if already on correct tab
@@ -369,7 +369,7 @@ function Highlight:UpdateGuide()
                 self:AdvanceStep()
                 return
             end
-            
+
             -- Need to click tab
             local tabBtn = self:GetTabButton(step.waitForFrame, step.tabIndex)
             if tabBtn then
@@ -388,7 +388,7 @@ function Highlight:UpdateGuide()
             end
             return
         end
-        
+
         -- Side tab (like Dungeon Finder / Raid Finder / Premade Groups in Group Finder)
         if step.sideTabIndex then
             -- First check: are we still on the correct main tab?
@@ -401,7 +401,7 @@ function Highlight:UpdateGuide()
                     break
                 end
             end
-            
+
             if requiredTabIndex then
                 local currentTab = self:GetCurrentTabIndex(step.waitForFrame)
                 if currentTab and currentTab ~= requiredTabIndex then
@@ -416,14 +416,14 @@ function Highlight:UpdateGuide()
                     end
                 end
             end
-            
+
             -- Check if already on correct side tab
             if self:IsSideTabSelected(step.waitForFrame, step.sideTabIndex) then
                 -- Correct tab, advance to next step
                 self:AdvanceStep()
                 return
             end
-            
+
             -- Need to click side tab
             local sideBtn = self:GetSideTabButton(step.waitForFrame, step.sideTabIndex)
             if sideBtn and sideBtn:IsShown() then
@@ -448,7 +448,7 @@ function Highlight:UpdateGuide()
             end
             return
         end
-        
+
         -- PVP Side tab (Quick Match / Rated / Premade Groups / Training Grounds in PvP tab)
         if step.pvpSideTabIndex then
             -- First check: are we still on the correct main tab (PvP tab = tab 2)?
@@ -461,7 +461,7 @@ function Highlight:UpdateGuide()
                     break
                 end
             end
-            
+
             if requiredTabIndex then
                 local currentTab = self:GetCurrentTabIndex(step.waitForFrame)
                 if currentTab and currentTab ~= requiredTabIndex then
@@ -477,14 +477,14 @@ function Highlight:UpdateGuide()
                     end
                 end
             end
-            
+
             -- Check if already on correct PvP side tab
             if self:IsPvPSideTabSelected(step.waitForFrame, step.pvpSideTabIndex) then
                 -- Correct tab, advance to next step
                 self:AdvanceStep()
                 return
             end
-            
+
             -- Need to click PvP side tab
             local pvpBtn = self:GetPvPSideTabButton(step.waitForFrame, step.pvpSideTabIndex)
             if pvpBtn and pvpBtn:IsShown() then
@@ -509,7 +509,7 @@ function Highlight:UpdateGuide()
             end
             return
         end
-        
+
         -- Statistics category navigation (tree-based category selection)
         if step.statisticsCategory then
             -- First check: are we still on the Statistics tab?
@@ -524,7 +524,7 @@ function Highlight:UpdateGuide()
                 self:HideHighlight()
                 return
             end
-            
+
             -- Prerequisite check: verify ALL earlier statisticsCategory steps are still
             -- expanded (children visible). A parent doesn't need to stay "selected" once
             -- we've drilled into a child - it just needs to still be expanded.
@@ -538,7 +538,7 @@ function Highlight:UpdateGuide()
                     end
                 end
             end
-            
+
             -- Check if already on correct statistics category
             if self:IsCategorySelectedByData(step.statisticsCategory) then
                 if isLastStep then
@@ -574,7 +574,7 @@ function Highlight:UpdateGuide()
             end
             return
         end
-        
+
         -- Achievement category navigation (tree-based category selection in Achievements/Guild tabs)
         if step.achievementCategory then
             -- First check: are we still on the correct tab?
@@ -586,7 +586,7 @@ function Highlight:UpdateGuide()
                     break
                 end
             end
-            
+
             if requiredTabIndex then
                 local currentTab = PanelTemplates_GetSelectedTab and PanelTemplates_GetSelectedTab(AchievementFrame)
                 if currentTab and currentTab ~= requiredTabIndex then
@@ -601,7 +601,7 @@ function Highlight:UpdateGuide()
                     return
                 end
             end
-            
+
             -- Prerequisite check: verify ALL earlier achievementCategory steps are still
             -- expanded (children visible). A parent doesn't need to stay "selected" once
             -- we've drilled into a child - it just needs to still be expanded.
@@ -615,7 +615,7 @@ function Highlight:UpdateGuide()
                     end
                 end
             end
-            
+
             -- Check if already on correct category
             if self:IsCategorySelectedByData(step.achievementCategory) then
                 if isLastStep then
@@ -651,7 +651,7 @@ function Highlight:UpdateGuide()
             end
             return
         end
-        
+
         -- Character Frame sidebar buttons (Character Stats, Titles, Equipment Manager)
         if step.sidebarButtonFrame or step.sidebarIndex then
             -- Check we're on the correct CharacterFrame tab first
@@ -663,7 +663,7 @@ function Highlight:UpdateGuide()
                     break
                 end
             end
-            
+
             if requiredTabIndex then
                 local currentTab = self:GetCurrentTabIndex(step.waitForFrame or "CharacterFrame")
                 if currentTab and currentTab ~= requiredTabIndex then
@@ -677,7 +677,7 @@ function Highlight:UpdateGuide()
                     end
                 end
             end
-            
+
             -- Check if the sidebar tab is already selected
             if self:IsSidebarTabSelected(step.sidebarIndex) then
                 if isLastStep then
@@ -687,7 +687,7 @@ function Highlight:UpdateGuide()
                 end
                 return
             end
-            
+
             -- Highlight the sidebar tab button
             local sidebarBtn = self:GetSidebarTabButton(step.sidebarIndex)
             if sidebarBtn then
@@ -707,7 +707,7 @@ function Highlight:UpdateGuide()
             end
             return
         end
-        
+
         -- Currency header expansion (expand a header section in the Currency tab)
         if step.currencyHeader then
             -- Check we're on the correct CharacterFrame tab (Currency = tab 3)
@@ -719,7 +719,7 @@ function Highlight:UpdateGuide()
                     break
                 end
             end
-            
+
             if requiredTabIndex then
                 local currentTab = self:GetCurrentTabIndex(step.waitForFrame or "CharacterFrame")
                 if currentTab and currentTab ~= requiredTabIndex then
@@ -733,10 +733,10 @@ function Highlight:UpdateGuide()
                     end
                 end
             end
-            
+
             -- Check if header is already expanded, collapsed, or not in list (parent collapsed)
             local headerState = self:IsCurrencyHeaderExpanded(step.currencyHeader)
-            
+
             if headerState == true then
                 -- Header is expanded - advance to next step
                 if isLastStep then
@@ -746,7 +746,7 @@ function Highlight:UpdateGuide()
                 end
                 return
             end
-            
+
             if headerState == nil then
                 -- Header not found - parent must be collapsed.
                 -- First, try to go back to previous currencyHeader step
@@ -795,7 +795,7 @@ function Highlight:UpdateGuide()
                 return
             end
         end
-        
+
         -- Currency row highlight (scroll to and highlight a specific currency by ID)
         if step.currencyID then
             -- Check we're on the correct CharacterFrame tab (Currency = tab 3)
@@ -807,7 +807,7 @@ function Highlight:UpdateGuide()
                     break
                 end
             end
-            
+
             if requiredTabIndex then
                 local currentTab = self:GetCurrentTabIndex(step.waitForFrame or "CharacterFrame")
                 if currentTab and currentTab ~= requiredTabIndex then
@@ -821,7 +821,7 @@ function Highlight:UpdateGuide()
                     end
                 end
             end
-            
+
             -- Check if ALL parent headers are still expanded; if any collapsed or missing, go back
             for i = currentStepIndex - 1, 1, -1 do
                 local prevStep = currentGuide.steps[i]
@@ -836,7 +836,7 @@ function Highlight:UpdateGuide()
                     -- Don't break - check ALL parent headers in the chain
                 end
             end
-            
+
             -- Scroll to the currency and highlight its row
             self:ScrollToCurrencyRow(step.currencyID)
             local currencyBtn = self:GetCurrencyRowButton(step.currencyID)
@@ -1056,12 +1056,12 @@ function Highlight:UpdateGuide()
             self:ShowInstruction(step.text)
             return
         end
-        
+
         -- Highlight a region (like PvP talents area) - these are final destinations
         if step.regionFrames or step.regionFrame then
             local framePaths = step.regionFrames or { step.regionFrame }
             local region = nil
-            
+
             -- Try each possible frame path
             for _, path in ipairs(framePaths) do
                 local testFrame = self:GetFrameByPath(path)
@@ -1070,12 +1070,12 @@ function Highlight:UpdateGuide()
                     break
                 end
             end
-            
+
             -- If path-based lookup failed, try text-based search as fallback
             if not region and step.searchButtonText then
                 region = self:FindRatedPvPButton(step.searchButtonText)
             end
-            
+
             if region then
                 -- Found the region, highlight it (no text needed)
                 self:HighlightFrame(region)
@@ -1090,7 +1090,7 @@ function Highlight:UpdateGuide()
             end
             return
         end
-        
+
         -- Search for a button by text (for PvP rated queue buttons like Solo Shuffle, 2v2, 3v3)
         if step.searchButtonText then
             local pvpBtn = self:FindRatedPvPButton(step.searchButtonText)
@@ -1111,7 +1111,7 @@ end
 function Highlight:AdvanceStep()
     self:HideHighlight()
     currentStepIndex = currentStepIndex + 1
-    
+
     if currentStepIndex > #currentGuide.steps then
         self:Cancel()
     end
@@ -1119,12 +1119,12 @@ end
 
 function Highlight:GetFrameByPath(path)
     if not path then return nil end
-    
+
     -- Special dynamic lookup for unnamed frames
     if path == "FIND_PVP_TALENTS" then
         return self:FindPvPTalentsTray()
     end
-    
+
     return Utils.GetFrameByPath(path)
 end
 
@@ -1134,14 +1134,14 @@ function Highlight:FindPvPTalentsTray()
         "ClassTalentFrame.TalentsTab.PvPTalentSlotTray",
         "ClassTalentFrame.PvPTalentSlotTray",
     }
-    
+
     for _, path in ipairs(paths) do
         local frame = Utils.GetFrameByPath(path)
         if frame and frame:IsShown() then
             return frame
         end
     end
-    
+
     return nil
 end
 
@@ -1169,7 +1169,7 @@ function Highlight:IsTabSelected(frameName, tabIndex)
         end
         return false
     end
-    
+
     -- CollectionsJournal
     if frameName == "CollectionsJournal" then
         local frame = CollectionsJournal
@@ -1178,7 +1178,7 @@ function Highlight:IsTabSelected(frameName, tabIndex)
         end
         return false
     end
-    
+
     -- CharacterFrame (Character Info tabs: Character, Reputation, Currency)
     if frameName == "CharacterFrame" then
         local frame = CharacterFrame
@@ -1194,13 +1194,13 @@ function Highlight:IsTabSelected(frameName, tabIndex)
             -- Reputation tab
             if ReputationFrame and ReputationFrame:IsShown() then return true end
         elseif tabIndex == 3 then
-            -- Currency tab  
+            -- Currency tab
             if TokenFrame and TokenFrame:IsShown() then return true end
             if CurrencyFrame and CurrencyFrame:IsShown() then return true end
         end
         return false
     end
-    
+
     -- PVEFrame (Group Finder tabs at bottom)
     if frameName == "PVEFrame" then
         local frame = PVEFrame
@@ -1209,7 +1209,7 @@ function Highlight:IsTabSelected(frameName, tabIndex)
         end
         return false
     end
-    
+
     -- AchievementFrame
     if frameName == "AchievementFrame" then
         local frame = AchievementFrame
@@ -1218,7 +1218,7 @@ function Highlight:IsTabSelected(frameName, tabIndex)
         end
         return false
     end
-    
+
     -- EncounterJournal (Adventure Guide)
     if frameName == "EncounterJournal" then
         local frame = EncounterJournal
@@ -1226,11 +1226,11 @@ function Highlight:IsTabSelected(frameName, tabIndex)
             -- Modern Adventure Guide tabs (7 total in modern WoW):
             -- Tab 1 = Journeys, Tab 2 = Traveler's Log, Tab 3 = Suggested Content
             -- Tab 4 = Dungeons, Tab 5 = Raids, Tab 6 = Item Sets (Loot), Tab 7 = Tutorials
-            
+
             -- Check by specific frame visibility
             local tabContentChecks = {
                 -- Tab 1: Journeys
-                function() 
+                function()
                     if frame.JourneysFrame and frame.JourneysFrame:IsShown() then return true end
                     return false
                 end,
@@ -1255,7 +1255,7 @@ function Highlight:IsTabSelected(frameName, tabIndex)
                     end
                     return false
                 end,
-                -- Tab 5: Raids  
+                -- Tab 5: Raids
                 function()
                     if frame.instanceSelect and frame.instanceSelect:IsShown() then
                         -- Check if we're filtering to raids
@@ -1277,12 +1277,12 @@ function Highlight:IsTabSelected(frameName, tabIndex)
                     return false
                 end,
             }
-            
+
             local checkFn = tabContentChecks[tabIndex]
             if checkFn and checkFn() then
                 return true
             end
-            
+
             -- Try PanelTemplates as fallback
             if PanelTemplates_GetSelectedTab then
                 local selectedTab = PanelTemplates_GetSelectedTab(frame)
@@ -1291,7 +1291,7 @@ function Highlight:IsTabSelected(frameName, tabIndex)
         end
         return false
     end
-    
+
     return false
 end
 
@@ -1332,7 +1332,7 @@ function Highlight:IsSideTabSelected(frameName, sideTabIndex)
         end
         return false
     end
-    
+
     return false
 end
 
@@ -1354,7 +1354,7 @@ function Highlight:IsPvPSideTabSelected(frameName, sideTabIndex)
                 tab3Active = true
             end
         end
-        
+
         if sideTabIndex == 1 then
             return tab1Active
         elseif sideTabIndex == 2 then
@@ -1373,7 +1373,7 @@ function Highlight:IsPvPSideTabSelected(frameName, sideTabIndex)
             end
             return false
         end
-        
+
         -- Fallback: check button selected state for any tab
         local pvpButtons = self:GetPvPSideTabButtons()
         if pvpButtons and pvpButtons[sideTabIndex] then
@@ -1385,19 +1385,19 @@ function Highlight:IsPvPSideTabSelected(frameName, sideTabIndex)
             if sideTab.Selected and sideTab.Selected:IsShown() then return true end
             if sideTab.isSelected then return true end
         end
-        
+
         return false
     end
-    
+
     return false
 end
 
 function Highlight:GetPvPSideTabButtons()
     -- Find the PvP side tab buttons
     local buttons = {}
-    
+
     if not PVPQueueFrame then return buttons end
-    
+
     -- Primary: CategoryButton1-4 (confirmed via DevFrame)
     -- CategoryButton1 = Quick Match, 2 = Rated, 3 = Premade Groups, 4 = Training Grounds
     for i = 1, 4 do
@@ -1406,7 +1406,7 @@ function Highlight:GetPvPSideTabButtons()
             buttons[i] = btn
         end
     end
-    
+
     -- Fallback: try legacy named buttons if CategoryButtons not found
     if not buttons[1] then
         local legacyNames = {"HonorButton", "ConquestButton", "LFGListButton", "TrainingGroundsButton"}
@@ -1416,7 +1416,7 @@ function Highlight:GetPvPSideTabButtons()
             end
         end
     end
-    
+
     return buttons
 end
 
@@ -1427,7 +1427,7 @@ function Highlight:GetPvPSideTabButton(frameName, sideTabIndex)
         if btn and btn:IsShown() then
             return btn
         end
-        
+
         -- Fallback: Try to find generic category buttons
         local fallbackNames = {
             "PVPQueueFrameCategoryButton1",
@@ -1437,7 +1437,7 @@ function Highlight:GetPvPSideTabButton(frameName, sideTabIndex)
         }
         return _G[fallbackNames[sideTabIndex]]
     end
-    
+
     return nil
 end
 
@@ -1676,7 +1676,7 @@ function Highlight:IsSidebarTabSelected(sidebarIndex)
     if not CharacterFrame or not CharacterFrame:IsShown() then
         return false
     end
-    
+
     -- Check if the correct sidebar pane is shown
     if sidebarIndex == 1 then
         -- Character Stats - check if CharacterStatsPane or the default paperdoll stats view is shown
@@ -1689,7 +1689,7 @@ function Highlight:IsSidebarTabSelected(sidebarIndex)
         -- Equipment Manager pane
         if PaperDollEquipmentManagerPane and PaperDollEquipmentManagerPane:IsShown() then return true end
     end
-    
+
     -- Also check the sidebar tab's visual selected state
     local sidebarTab = _G["PaperDollSidebarTab" .. sidebarIndex]
     if sidebarTab then
@@ -1699,7 +1699,7 @@ function Highlight:IsSidebarTabSelected(sidebarIndex)
         if sidebarTab.GetChecked and sidebarTab:GetChecked() then return true end
         if sidebarTab.IsChecked and sidebarTab:IsChecked() then return true end
     end
-    
+
     return false
 end
 
@@ -1707,13 +1707,13 @@ function Highlight:GetSidebarTabButton(sidebarIndex)
     if not CharacterFrame or not CharacterFrame:IsShown() then
         return nil
     end
-    
+
     -- Try PaperDollSidebarTab buttons directly (confirmed via Frame Inspector)
     local sidebarTab = _G["PaperDollSidebarTab" .. sidebarIndex]
     if sidebarTab and sidebarTab:IsShown() then
         return sidebarTab
     end
-    
+
     -- Try PaperDollSidebarTabs container children
     local sidebarTabs = _G["PaperDollSidebarTabs"]
     if not sidebarTabs and PaperDollFrame then
@@ -1725,7 +1725,7 @@ function Highlight:GetSidebarTabButton(sidebarIndex)
             return child
         end
     end
-    
+
     return nil
 end
 
@@ -1734,15 +1734,15 @@ function Highlight:FindRatedPvPButton(buttonText)
     if not PVEFrame or not PVEFrame:IsShown() then
         return nil
     end
-    
+
     local searchText = slower(buttonText)
-    
+
     -- Determine the active sub-panel and search only within it.
     -- This prevents finding buttons on inactive sub-tabs (e.g. finding
     -- "Random Battlegrounds" on Quick Match when looking for "Arena Skirmishes"
     -- on Premade Groups).
     local searchRoots = {}
-    
+
     -- PvP sub-panels
     if HonorFrame and HonorFrame:IsShown() then
         searchRoots[#searchRoots + 1] = HonorFrame
@@ -1756,7 +1756,7 @@ function Highlight:FindRatedPvPButton(buttonText)
     if TrainingGroundsFrame and TrainingGroundsFrame:IsShown() then
         searchRoots[#searchRoots + 1] = TrainingGroundsFrame
     end
-    
+
     -- PvE sub-panels
     if LFDParentFrame and LFDParentFrame:IsShown() then
         searchRoots[#searchRoots + 1] = LFDParentFrame
@@ -1767,18 +1767,18 @@ function Highlight:FindRatedPvPButton(buttonText)
     if LFGListPVEStub and LFGListPVEStub:IsShown() then
         searchRoots[#searchRoots + 1] = LFGListPVEStub
     end
-    
+
     -- LFGListFrame is shared between PvE and PvP premade groups
     if LFGListFrame and LFGListFrame:IsShown() then
         searchRoots[#searchRoots + 1] = LFGListFrame
     end
-    
+
     -- Search each active sub-panel
     for _, root in ipairs(searchRoots) do
         local result = SearchFrameTreeFuzzy(root, searchText)
         if result then return result end
     end
-    
+
     -- Fallback: search entire PVEFrame (for edge cases like Mythic+ or unknown layouts)
     return SearchFrameTreeFuzzy(PVEFrame, searchText)
 end
@@ -1793,7 +1793,7 @@ function Highlight:GetTabButton(frameName, tabIndex)
         -- Fallback to global tab buttons
         local tabBtn = _G["PlayerSpellsFrameTab" .. tabIndex]
         if tabBtn then return tabBtn end
-        
+
         -- Try the tab system directly
         if frame then
             -- Modern tab system might use TabSystem
@@ -1809,27 +1809,27 @@ function Highlight:GetTabButton(frameName, tabIndex)
             end
         end
     end
-    
+
     -- CollectionsJournal tabs
     if frameName == "CollectionsJournal" then
         return _G["CollectionsJournalTab" .. tabIndex]
     end
-    
+
     -- CharacterFrame tabs (Character, Reputation, Currency)
     if frameName == "CharacterFrame" then
         return _G["CharacterFrameTab" .. tabIndex]
     end
-    
+
     -- PVEFrame tabs (at bottom: Dungeons & Raids, Player vs. Player, Mythic+)
     if frameName == "PVEFrame" then
         return _G["PVEFrameTab" .. tabIndex]
     end
-    
+
     -- AchievementFrame tabs (Achievements, Guild, Statistics)
     if frameName == "AchievementFrame" then
         return _G["AchievementFrameTab" .. tabIndex]
     end
-    
+
     -- EncounterJournal tabs (Adventure Guide)
     if frameName == "EncounterJournal" then
         local frame = EncounterJournal
@@ -1837,7 +1837,7 @@ function Highlight:GetTabButton(frameName, tabIndex)
             -- Modern Adventure Guide tabs (7 total in modern WoW):
             -- Tab 1 = Journeys, Tab 2 = Traveler's Log, Tab 3 = Suggested Content
             -- Tab 4 = Dungeons, Tab 5 = Raids, Tab 6 = Item Sets (Loot), Tab 7 = Tutorials
-            
+
             -- Tab keywords to search for in button names
             local tabKeywords = {
                 {"Journey", "Journeys"},                    -- Tab 1
@@ -1848,7 +1848,7 @@ function Highlight:GetTabButton(frameName, tabIndex)
                 {"Loot", "ItemSet", "Set"},                 -- Tab 6
                 {"Tutorial", "HelpFrame"},                  -- Tab 7
             }
-            
+
             -- Helper function to search a container for tab buttons
             local function findTabInContainer(container, keywords)
                 if not container then return nil end
@@ -1872,7 +1872,7 @@ function Highlight:GetTabButton(frameName, tabIndex)
                 end
                 return nil
             end
-            
+
             local keywords = tabKeywords[tabIndex]
             if keywords then
                 -- Try direct frame properties first
@@ -1889,29 +1889,29 @@ function Highlight:GetTabButton(frameName, tabIndex)
                     local btn = frame[btnName]
                     if btn then return btn end
                 end
-                
+
                 -- Search in TopNavBar (where modern tabs often live)
                 local btn = findTabInContainer(frame.TopNavBar, keywords)
                 if btn then return btn end
-                
+
                 -- Search in TabBar
                 btn = findTabInContainer(frame.TabBar, keywords)
                 if btn then return btn end
-                
+
                 -- Search in TabSystem
                 btn = findTabInContainer(frame.TabSystem, keywords)
                 if btn then return btn end
-                
+
                 -- Search frame's direct children
                 btn = findTabInContainer(frame, keywords)
                 if btn then return btn end
             end
-            
+
             -- Try TabSystem.tabs array by index
             if frame.TabSystem and frame.TabSystem.tabs then
                 return frame.TabSystem.tabs[tabIndex]
             end
-            
+
             -- Try iterating children of various containers by index
             local containers = {frame.TopNavBar, frame.TabBar, frame.TabSystem, frame}
             for _, container in ipairs(containers) do
@@ -1929,16 +1929,16 @@ function Highlight:GetTabButton(frameName, tabIndex)
                     end
                 end
             end
-            
+
             -- Last resort: try global names
             local tab = _G["EncounterJournalTab" .. tabIndex]
             if tab then return tab end
-            
+
             local bottomTab = _G["EncounterJournalBottomTab" .. tabIndex]
             if bottomTab then return bottomTab end
         end
     end
-    
+
     return nil
 end
 
@@ -1954,16 +1954,16 @@ function Highlight:GetSideTabButton(frameName, sideTabIndex)
         if btn and btn:IsShown() then
             return btn
         end
-        
+
         -- Fallback: look for buttons by name
         local buttonNames = {
             "GroupFinderFrameGroupButton1",
-            "GroupFinderFrameGroupButton2", 
+            "GroupFinderFrameGroupButton2",
             "GroupFinderFrameGroupButton3",
         }
         return _G[buttonNames[sideTabIndex]]
     end
-    
+
     return nil
 end
 
@@ -1972,13 +1972,13 @@ function Highlight:HighlightFrame(frame, instructionText)
         self:HideHighlight()
         return
     end
-    
+
     local bs = highlightFrame.borderSize
     local pad = 4
-    
+
     highlightFrame:ClearAllPoints()
     highlightFrame:SetAllPoints(frame)
-    
+
     -- Top and bottom own the corners (full width including padding)
     highlightFrame.top:ClearAllPoints()
     highlightFrame.top:SetPoint("BOTTOMLEFT", frame, "TOPLEFT", -pad, 0)
@@ -2000,7 +2000,7 @@ function Highlight:HighlightFrame(frame, instructionText)
     highlightFrame.right:SetPoint("TOPRIGHT", highlightFrame.top, "BOTTOMRIGHT", 0, 0)
     highlightFrame.right:SetPoint("BOTTOMRIGHT", highlightFrame.bottom, "TOPRIGHT", 0, 0)
     highlightFrame.right:SetWidth(bs)
-    
+
     if not highlightFrame:IsShown() then
         highlightShownAt = GetTime()
     end
@@ -2008,14 +2008,14 @@ function Highlight:HighlightFrame(frame, instructionText)
     if highlightFrame.animGroup and not highlightFrame.animGroup:IsPlaying() then
         highlightFrame.animGroup:Play()
     end
-    
+
     indicatorFrame:ClearAllPoints()
     indicatorFrame:SetPoint("BOTTOM", frame, "TOP", 0, 10)
     indicatorFrame:Show()
     if indicatorFrame.animGroup and not indicatorFrame.animGroup:IsPlaying() then
         indicatorFrame.animGroup:Play()
     end
-    
+
     if instructionText then
         self:ShowInstruction(instructionText)
     elseif instructionFrame then
@@ -2025,16 +2025,16 @@ end
 
 function Highlight:ShowInstruction(text)
     instructionFrame.text:SetText(text)
-    
+
     -- Calculate proper width and height with word wrap
     local maxWidth = 450
     instructionFrame:SetWidth(maxWidth)
-    
+
     -- Get actual text height after word wrap
     local textHeight = instructionFrame.text:GetStringHeight()
     local frameHeight = mmax(90, textHeight + 60)  -- 60px for padding and button
     instructionFrame:SetHeight(frameHeight)
-    
+
     instructionFrame:ClearAllPoints()
     instructionFrame:SetPoint("TOP", UIParent, "TOP", 0, -100)
     instructionFrame:Show()
@@ -2074,7 +2074,7 @@ function Highlight:IsPortraitMenuOpen()
             return true
         end
     end
-    
+
     -- Method 2: Check modern Menu system (11.0+)
     -- The Menu API creates frames managed by MenuManager
     if Menu and Menu.GetManager then
@@ -2086,12 +2086,12 @@ function Highlight:IsPortraitMenuOpen()
             end
         end
     end
-    
+
     -- Method 3: Check if UIDROPDOWNMENU is open
     if UIDROPDOWNMENU_OPEN_MENU and UIDROPDOWNMENU_OPEN_MENU ~= "" then
         return true
     end
-    
+
     -- Method 4: Check for any visible context menu frame by common naming patterns
     local menuNames = {"PlayerFrameDropDown", "DropDownList1", "UnitPopupWindow"}
     for _, name in ipairs(menuNames) do
@@ -2103,7 +2103,7 @@ function Highlight:IsPortraitMenuOpen()
             end
         end
     end
-    
+
     return false
 end
 
@@ -2116,7 +2116,7 @@ function Highlight:GetPortraitMenuFrame()
             return dropdown
         end
     end
-    
+
     -- Check modern Menu system
     if Menu and Menu.GetManager then
         local ok, manager = pcall(Menu.GetManager)
@@ -2127,7 +2127,7 @@ function Highlight:GetPortraitMenuFrame()
             end
         end
     end
-    
+
     -- Fallback: check common frame names
     local menuNames = {"UnitPopupWindow"}
     for _, name in ipairs(menuNames) do
@@ -2139,13 +2139,13 @@ function Highlight:GetPortraitMenuFrame()
             end
         end
     end
-    
+
     return nil
 end
 
 function Highlight:FindPortraitMenuOption(optionName)
     local optionNameLower = slower(optionName)
-    
+
     local function getFrameText(frame)
         if not frame then return nil end
         if frame.GetText then
@@ -2164,10 +2164,10 @@ function Highlight:FindPortraitMenuOption(optionName)
         end
         return nil
     end
-    
+
     local function searchFrame(frame, depth)
         if not frame or depth > 8 then return nil end
-        
+
         local childOk, nChildren = pcall(function() return select("#", frame:GetChildren()) end)
         if not childOk or not nChildren then return nil end
         for i = 1, nChildren do
@@ -2179,14 +2179,14 @@ function Highlight:FindPortraitMenuOption(optionName)
                     -- Found matching option - return it if clickable
                     return child
                 end
-                
+
                 local result = searchFrame(child, depth + 1)
                 if result then return result end
             end
         end
         return nil
     end
-    
+
     -- Search DropDownList frames (legacy)
     for i = 1, 5 do
         local dropdown = _G["DropDownList" .. i]
@@ -2195,7 +2195,7 @@ function Highlight:FindPortraitMenuOption(optionName)
             if result then return result end
         end
     end
-    
+
     -- Search modern Menu system (11.0+)
     if Menu and Menu.GetManager then
         local ok, manager = pcall(Menu.GetManager)
@@ -2207,7 +2207,7 @@ function Highlight:FindPortraitMenuOption(optionName)
             end
         end
     end
-    
+
     -- Fallback: search common menu frame names
     local menuNames = {"UnitPopupWindow"}
     for _, name in ipairs(menuNames) do
@@ -2220,7 +2220,7 @@ function Highlight:FindPortraitMenuOption(optionName)
             end
         end
     end
-    
+
     return nil
 end
 
@@ -2230,10 +2230,10 @@ end
 -- Returns: true (expanded), false (collapsed), nil (not in list - parent collapsed)
 function Highlight:IsCurrencyHeaderExpanded(headerName)
     if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return nil end
-    
+
     local headerNameLower = slower(headerName)
     local size = C_CurrencyInfo.GetCurrencyListSize()
-    
+
     for i = 1, size do
         local info = C_CurrencyInfo.GetCurrencyListInfo(i)
         if info and info.isHeader and info.name and slower(info.name) == headerNameLower then
@@ -2449,12 +2449,12 @@ end
 function Highlight:Cancel()
     self:HideHighlight()
     self:HideContextTooltip()
-    
+
     if stepTicker then
         stepTicker:Cancel()
         stepTicker = nil
     end
-    
+
     currentGuide = nil
     currentStepIndex = nil
 end
