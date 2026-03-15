@@ -392,6 +392,7 @@ local cachedWPMapID
 local cachedWPWorldX, cachedWPWorldY  -- world-space position (same space as UnitPosition)
 local cachedPlayerVec                 -- reusable Vector2D for one-time waypoint conversion
 local cachedCrossContinent            -- true when pin and player are on different continents
+local cachedIsNavWaypoint             -- true when tracking an intermediate nav step (portal, boat)
 local cachedAngle = 0
 local cachedDist = 0
 local cachedViewRadius = 300
@@ -415,6 +416,11 @@ if C_SuperTrack and C_SuperTrack.SetSuperTrackedMapPin then
         cachedWPWorldX = nil
         cachedWPWorldY = nil
         cachedCrossContinent = nil
+        cachedIsNavWaypoint = nil
+        if superTrackGlow and superTrackGlow:IsShown() then
+            superTrackGlow.animGroup:Stop()
+            superTrackGlow:Hide()
+        end
     end)
 end
 MapSearch._debugGetPinCache = function() return cachedPinMapID, cachedPinX, cachedPinY end
@@ -528,11 +534,6 @@ local function CreateWaypointTracker()
 
         -- Resolve waypoint world position once (refreshed by USER_WAYPOINT_UPDATED / SUPER_TRACKING_CHANGED)
         if not cachedWPWorldX then
-            -- Hide stale glow while re-resolving so it doesn't linger at the old position
-            if superTrackGlow and superTrackGlow:IsShown() then
-                superTrackGlow.animGroup:Stop()
-                superTrackGlow:Hide()
-            end
             local wpMapID, wpX, wpY
             if hasUserWP then
                 local wp = GetUserWaypoint()
@@ -634,6 +635,7 @@ local function CreateWaypointTracker()
             end
 
             -- Cross-zone: prefer intermediate nav waypoint (portal, boat, etc.)
+            cachedIsNavWaypoint = false
             if not sameZone and pMapID and C_SuperTrack.GetNextWaypointForMap then
                 local navX, navY = C_SuperTrack.GetNextWaypointForMap(pMapID)
                 if navX and navY and (navX ~= 0 or navY ~= 0)
@@ -641,6 +643,7 @@ local function CreateWaypointTracker()
                     wpMapID = pMapID
                     wpX = navX
                     wpY = navY
+                    cachedIsNavWaypoint = true
                 end
             end
 
@@ -706,6 +709,15 @@ local function CreateWaypointTracker()
         if dist <= 0 then return end
 
         if EasyFind.db.autoPinClear ~= false and dist < GetArrivalDistance() then
+            -- Arrived at an intermediate nav waypoint (portal, boat): re-resolve
+            -- to the next step instead of clearing the actual destination.
+            if cachedIsNavWaypoint then
+                cachedWPWorldX = nil
+                cachedWPWorldY = nil
+                cachedCrossContinent = nil
+                cachedIsNavWaypoint = false
+                return
+            end
             if efPlacedWaypoint then
                 MapSearch:ClearAll()
                 return
@@ -859,6 +871,27 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
         return
     end
     if event == "NAVIGATION_DESTINATION_REACHED" then
+        -- If the user waypoint is on a different map than the player, this
+        -- is an intermediate arrival (portal, boat), not the final destination.
+        -- Re-resolve instead of clearing, regardless of cachedIsNavWaypoint
+        -- (which can be cleared by earlier events in the same frame).
+        if HasUserWaypoint() then
+            local wp = GetUserWaypoint()
+            local pMapID = GetBestMapForUnit("player")
+            if wp and wp.uiMapID and pMapID and wp.uiMapID ~= pMapID then
+                cachedWPMapID = nil
+                cachedWPWorldX = nil
+                cachedWPWorldY = nil
+                cachedCrossContinent = nil
+                cachedIsNavWaypoint = nil
+                if superTrackGlow and superTrackGlow:IsShown() then
+                    superTrackGlow.animGroup:Stop()
+                    superTrackGlow:Hide()
+                end
+                return
+            end
+        end
+        if EasyFind.db.autoPinClear == false then return end
         if efPlacedWaypoint then
             MapSearch:ClearAll()
         elseif HasUserWaypoint() then
@@ -875,13 +908,13 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
         return
     end
     if event == "SUPER_TRACKING_PATH_UPDATED" then
-        -- Invalidate cached position so OnUpdate re-resolves (tracked content changed)
-        if not HasUserWaypoint() and C_SuperTrack.IsSuperTrackingAnything and C_SuperTrack.IsSuperTrackingAnything() then
-            cachedWPMapID = nil
-            cachedWPWorldX = nil
-            cachedWPWorldY = nil
-            cachedCrossContinent = nil
-        end
+        -- Invalidate cached position so OnUpdate re-resolves (nav path changed,
+        -- e.g. after passing through a portal to a new zone)
+        cachedWPMapID = nil
+        cachedWPWorldX = nil
+        cachedWPWorldY = nil
+        cachedCrossContinent = nil
+        cachedIsNavWaypoint = nil
         return
     end
     if event == "USER_WAYPOINT_UPDATED" or event == "SUPER_TRACKING_CHANGED" then
@@ -890,6 +923,12 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
         cachedWPWorldX = nil
         cachedWPWorldY = nil
         cachedCrossContinent = nil
+        -- Hide stale glow so it doesn't linger at the old target's position
+        if superTrackGlow and superTrackGlow:IsShown() then
+            superTrackGlow.animGroup:Stop()
+            superTrackGlow:Hide()
+        end
+        cachedIsNavWaypoint = nil
         -- Auto-track user waypoint when placed and not yet tracked
         if EasyFind.db.enableMapSearch ~= false and EasyFind.db.autoTrackPins ~= false
            and HasUserWaypoint() and not C_SuperTrack.IsSuperTrackingUserWaypoint() then
@@ -947,6 +986,21 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
             ns.MapSearch:ClearZoneHighlight()
         end
         if ns.Highlight then ns.Highlight:ClearAll() end
+        -- Invalidate stale cached position from the previous zone
+        cachedWPMapID = nil
+        cachedWPWorldX = nil
+        cachedWPWorldY = nil
+        cachedCrossContinent = nil
+        cachedIsNavWaypoint = nil
+        cachedPinMapID = nil
+        cachedPinX = nil
+        cachedPinY = nil
+        -- Restart glow if a waypoint is still being tracked after the loading screen
+        if HasUserWaypoint() and C_SuperTrack.IsSuperTrackingUserWaypoint() then
+            ShowSuperTrackGlow()
+        elseif C_SuperTrack.IsSuperTrackingAnything and C_SuperTrack.IsSuperTrackingAnything() then
+            ShowSuperTrackGlow()
+        end
     end)
 end)
 
