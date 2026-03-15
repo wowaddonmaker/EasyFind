@@ -426,29 +426,29 @@ function EasyFind:TestIndicatorTexture(texturePath)
         insets = { left = 11, right = 12, top = 12, bottom = 11 }
     })
     testFrame:SetBackdropColor(0, 0, 0, 0.9)
-    
+
     if not testFrame.texture then
         testFrame.texture = testFrame:CreateTexture(nil, "ARTWORK")
         testFrame.texture:SetSize(200, 200)
         testFrame.texture:SetPoint("CENTER")
     end
-    
+
     if not testFrame.title then
         testFrame.title = testFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
         testFrame.title:SetPoint("TOP", 0, -15)
     end
-    
+
     if not testFrame.closeBtn then
         testFrame.closeBtn = CreateFrame("Button", nil, testFrame, "UIPanelCloseButton")
         testFrame.closeBtn:SetPoint("TOPRIGHT", -5, -5)
     end
-    
+
     -- Try to load the texture
     testFrame.texture:SetTexture(texturePath)
     testFrame.texture:SetVertexColor(ns.YELLOW_HIGHLIGHT[1], ns.YELLOW_HIGHLIGHT[2], ns.YELLOW_HIGHLIGHT[3], 1)
     testFrame.title:SetText("Testing: " .. texturePath)
     testFrame:Show()
-    
+
     EasyFind:Print("Testing texture: " .. texturePath)
     EasyFind:Print("Close the preview window to dismiss.")
 end

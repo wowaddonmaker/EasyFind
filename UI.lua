@@ -343,7 +343,7 @@ function UI:Initialize()
             searchFrame.hoverZone:Show()
         end
     end
-    
+
     inCombat = InCombatLockdown()
     if inCombat then
         searchFrame:Hide()
@@ -406,7 +406,7 @@ function UI:CreateSearchFrame()
     searchFrame:SetMovable(true)
     searchFrame:EnableMouse(true)
     searchFrame:SetClampedToScreen(true)
-    
+
     -- Apply saved position or default
     if EasyFind.db.uiSearchPosition then
         local pos = EasyFind.db.uiSearchPosition
@@ -537,7 +537,7 @@ function UI:CreateSearchFrame()
             EasyFind.db.uiSearchPosition = {point, relPoint, x, y}
         end
     end)
-    
+
     local placeholder = editBox:CreateFontString(nil, "ARTWORK", ns.SEARCHBAR_FONT)
     placeholder:SetPoint("LEFT", 2, 0)
     placeholder:SetPoint("RIGHT", editBox, "RIGHT", -2, 0)
@@ -546,7 +546,7 @@ function UI:CreateSearchFrame()
     placeholder:SetTextColor(0.5, 0.5, 0.5, 1.0)
     placeholder:SetText("Search your UI here")
     editBox.placeholder = placeholder
-    
+
     editBox:SetScript("OnEditFocusGained", function(self)
         if self.blockFocus then
             self:ClearFocus()
@@ -562,7 +562,7 @@ function UI:CreateSearchFrame()
             UI:ShowPinnedItems()
         end
     end)
-    
+
     editBox:SetScript("OnEditFocusLost", function(self)
         -- Skip cleanup when SelectResult is actively clearing text/focus
         if selectingResult then return end
@@ -585,28 +585,28 @@ function UI:CreateSearchFrame()
             end)
         end
     end)
-    
+
     editBox:SetScript("OnTextChanged", function(self)
         if self:GetText() ~= "" then
             self.placeholder:Hide()
         end
         UI:OnSearchTextChanged(self:GetText())
     end)
-    
+
     editBox:SetScript("OnEnterPressed", function(self)
         UI:ActivateSelected()
     end)
-    
+
     editBox:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
         -- Text and results stay visible; user can click back in to resume
     end)
-    
+
     -- Clear-text X button (grey circle X, matching retail quest log style)
     -- Only visible when there is text in the editbox.
     local clearTextBtn = Utils.CreateClearButton(searchFrame, "EasyFindClearTextButton")
     clearTextBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
-    
+
     clearTextBtn:SetScript("OnClick", function()
         editBox:SetText("")
         editBox:ClearFocus()
@@ -674,12 +674,12 @@ function UI:CreateSearchFrame()
             editBox:SetFocus()
         end
     end)
-    
+
     -- Show/hide the clear-text X based on whether there's text
     editBox:HookScript("OnTextChanged", function(self)
         clearTextBtn:SetShown(self:GetText() ~= "")
     end)
-    
+
     -- Key repeat with progressive acceleration for held arrow/tab keys.
     -- Starts at REPEAT_INITIAL delay, accelerates toward REPEAT_FAST over REPEAT_ACCEL seconds.
     local REPEAT_INITIAL = 0.30
@@ -944,11 +944,11 @@ function UI:CreateSearchFrame()
         local point, _, relPoint, x, y = self:GetPoint()
         EasyFind.db.uiSearchPosition = {point, relPoint, x, y}
     end)
-    
+
     -- Apply saved scale
     self:UpdateScale()
     self:UpdateOpacity()
-    
+
     -- Movement fade: reduce opacity while player is moving (like the world map)
     local MOVE_FADE_FACTOR = 0.4
     local moveFading = false  -- true when alpha is reduced due to movement
@@ -968,11 +968,11 @@ function UI:CreateSearchFrame()
     hoverZone:SetPoint("CENTER", searchFrame, "CENTER", 0, 0)
     hoverZone:Hide()
     searchFrame.hoverZone = hoverZone
-    
+
     -- Track whether the mouse is over the zone or the bar
     local smartShowVisible = false
     local smartShowTimer = nil
-    
+
     local function SmartShowFadeIn()
         if smartShowTimer then smartShowTimer:Cancel(); smartShowTimer = nil end
         if EasyFind.db.visible == false then return end
@@ -982,7 +982,7 @@ function UI:CreateSearchFrame()
             searchFrame:Show()
         end
     end
-    
+
     local function SmartShowFadeOut()
         if EasyFind.db.visible == false then return end
         -- Don't hide if the editbox has focus or contains text
@@ -1005,7 +1005,7 @@ function UI:CreateSearchFrame()
             end)
         end)
     end
-    
+
     hoverZone:SetScript("OnEnter", SmartShowFadeIn)
     hoverZone:SetScript("OnLeave", SmartShowFadeOut)
     searchFrame:HookScript("OnEnter", function()
@@ -1014,7 +1014,7 @@ function UI:CreateSearchFrame()
     searchFrame:HookScript("OnLeave", function()
         if EasyFind.db.smartShow then SmartShowFadeOut() end
     end)
-    
+
     searchFrame.smartShowFadeIn = SmartShowFadeIn
     searchFrame.smartShowFadeOut = SmartShowFadeOut
     searchFrame.smartShowVisible = function() return smartShowVisible end
@@ -1313,14 +1313,14 @@ function UI:CreateResultsFrame()
     resultsFrame:SetPoint("TOP", searchFrame, "BOTTOM", 0, 2)
     resultsFrame:SetFrameStrata("MEDIUM")
     resultsFrame:SetFrameLevel(searchFrame:GetFrameLevel() + 1)
-    
+
     resultsFrame:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
         edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
         tile = true, tileSize = 32, edgeSize = 20,
         insets = { left = 5, right = 5, top = 5, bottom = 5 }
     })
-    
+
     resultsFrame:Hide()
 
     local resizeTimer
@@ -1623,7 +1623,7 @@ function UI:CreateResultButton(index)
     tabText:SetJustifyH("LEFT")
     tabText:SetTextColor(0.60, 0.58, 0.55, 1.0)    -- muted gray (normal state)
     resultRow.tabText = tabText
-    
+
     -- Hover handlers: brighten tab bg, text near-white, icon bright yellow
     headerTab:SetScript("OnEnter", function(self)
         local parent = self:GetParent()
@@ -1666,7 +1666,7 @@ function UI:CreateResultButton(index)
             unearnedTooltip:Hide()
         end
     end)
-    
+
     -- Tab selection highlight (keyboard nav, child of headerTab)
     local tabSelTex = headerTab:CreateTexture(nil, "BACKGROUND")
     tabSelTex:SetAllPoints()
@@ -1709,7 +1709,7 @@ function UI:CreateResultButton(index)
         branch:Hide()
         resultRow.treeBranch[d] = branch
     end
-    
+
     local icon = resultRow:CreateTexture(nil, "ARTWORK")
     icon:SetSize(16, 16)
     icon:SetPoint("LEFT", 0, 0)
@@ -2181,15 +2181,15 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         return
     end
     if not resultsFrame then return end
-    
+
     -- Cache the FULL (unfiltered) list so collapse toggles can re-render
     cachedHierarchical = hierarchical
-    
+
     local theme = GetActiveTheme()
     local rowH  = theme.rowHeight
     local indPx = theme.indentPx
     local padT  = theme.resultsPadTop
-    
+
     -- Apply theme backdrop to results frame
     resultsFrame:SetBackdrop(theme.resultsBackdrop)
     if theme.resultsBackdropColor then
@@ -2200,7 +2200,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     end
     local customW = EasyFind.db.uiResultsWidth
     resultsFrame:SetWidth((customW and customW > 1) and customW or theme.resultsWidth)
-    
+
     -- Apply background atlas if specified (e.g. quest log background)
     if not resultsFrame.bgAtlasTex then
         local tex = resultsFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
@@ -2217,7 +2217,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         resultsFrame.bgAtlasTex:Hide()
         resultsFrame:SetClipsChildren(false)
     end
-    
+
     -- ----------------------------------------------------------------
     -- Build the visible list by filtering out children of collapsed nodes
     -- ----------------------------------------------------------------
@@ -2438,7 +2438,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     end
                 end
             end
-            
+
             -- Header styling
             resultRow._isMatch = entry.isMatch and entry.isPathNode
             if entry.isPinHeader then
@@ -3036,7 +3036,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             end
         end
     end
-    
+
     -- Show/hide pin separator between pinned items and search results
     if resultsFrame.pinSeparator then
         if hasResultsAfterPins then
@@ -3743,11 +3743,11 @@ end
 function UI:ClickCharacterSidebar(sidebarIndex)
     -- The sidebar buttons are PaperDollSidebarTab1/2/3 inside PaperDollSidebarTabs
     -- (confirmed via Frame Inspector)
-    
+
     if not CharacterFrame or not CharacterFrame:IsShown() then
         return false
     end
-    
+
     -- Switch to the Character tab (tab 1) first
     if PanelTemplates_GetSelectedTab and PanelTemplates_GetSelectedTab(CharacterFrame) ~= 1 then
         ClickButton(_G["CharacterFrameTab1"])
@@ -3778,13 +3778,13 @@ function UI:ClickCharacterSidebar(sidebarIndex)
             return ClickButton(select(sidebarIndex, sidebarTabs:GetChildren()))
         end
     end
-    
+
     -- Method 3: Try the ToggleSidebarTab function if available
     if PaperDollFrame and PaperDollFrame.ToggleSidebarTab then
         PaperDollFrame:ToggleSidebarTab(sidebarIndex)
         return true
     end
-    
+
     return false
 end
 
@@ -3793,7 +3793,7 @@ function UI:ClickAchievementCategory(categoryName)
     if not AchievementFrame or not AchievementFrame:IsShown() then
         return false
     end
-    
+
     local categoryNameLower = slower(categoryName)
 
     -- Primary: use the data provider to find the category and select it via Blizzard API
@@ -3846,9 +3846,9 @@ function UI:ClickAchievementCategory(categoryName)
                 end
             end
         end
-        
+
     end
-    
+
     return false
 end
 
@@ -3908,7 +3908,7 @@ function UI:Hide()
     searchFrame.editBox:ClearFocus()
     searchFrame.editBox.placeholder:Show()
     EasyFind.db.visible = false
-    
+
     searchFrame.hoverZone:SetShown(EasyFind.db.smartShow)
 end
 
@@ -3959,7 +3959,7 @@ end
 -- Helper function to open the player portrait right-click menu
 function UI:OpenPortraitMenu()
     if not PlayerFrame then return end
-    
+
     -- Method 1: Modern WoW - PlayerFrame has a dropdown system via PlayerFrameDropDown
     local dropDown = _G["PlayerFrameDropDown"]
     if dropDown then
@@ -3968,19 +3968,19 @@ function UI:OpenPortraitMenu()
             return
         end
     end
-    
+
     -- Method 2: Try Click() which goes through the WoW frame pipeline
     if PlayerFrame.Click then
         pcall(PlayerFrame.Click, PlayerFrame, "RightButton")
         return
     end
-    
+
     -- Method 3: Try UnitPopup API
     if UnitPopup_ShowMenu then
         UnitPopup_ShowMenu(PlayerFrame, "SELF", "player")
         return
     end
-    
+
     -- Method 4: Modern Menu system
     if PlayerFrame.unit and Menu and Menu.ModifyMenu then
         -- Try to invoke the right-click behavior via secure handler
@@ -3993,12 +3993,12 @@ end
 -- Helper function to click a portrait menu option by name
 function UI:ClickPortraitMenuOption(optionName)
     local optionNameLower = slower(optionName)
-    
+
     -- Search through open dropdown frames for the matching button
     -- Modern WoW uses the Menu system
     local function searchFrame(frame, depth)
         if not frame or depth > 5 then return false end
-        
+
         for i = 1, select("#", frame:GetChildren()) do
             local child = select(i, frame:GetChildren())
             if child and child:IsShown() then
@@ -4014,17 +4014,17 @@ function UI:ClickPortraitMenuOption(optionName)
                         end
                     end
                 end
-                
+
                 if text and sfind(slower(text), optionNameLower) then
                     if ClickButton(child) then return true end
                 end
-                
+
                 if searchFrame(child, depth + 1) then return true end
             end
         end
         return false
     end
-    
+
     -- Search common dropdown/menu frames
     for i = 1, 5 do
         local dropdown = _G["DropDownList" .. i]
@@ -4032,7 +4032,7 @@ function UI:ClickPortraitMenuOption(optionName)
             if searchFrame(dropdown, 0) then return true end
         end
     end
-    
+
     -- Also check UIParent children for modern menu frames
     for i = 1, select("#", UIParent:GetChildren()) do
         local child = select(i, UIParent:GetChildren())
@@ -4043,7 +4043,7 @@ function UI:ClickPortraitMenuOption(optionName)
             end
         end
     end
-    
+
     return false
 end
 
@@ -4490,15 +4490,15 @@ end
 -- Flash a label on the search frame (used for Currency hint)
 function UI:FlashLabel(labelText)
     if not searchFrame or not searchFrame.label then return end
-    
+
     local label = searchFrame.label
     local originalText = label:GetText()
     local originalR, originalG, originalB = label:GetTextColor()
-    
+
     -- Set to the hint text
     label:SetText(labelText)
     label:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
-    
+
     -- Create flash animation
     local flashCount = 0
     local ticker
