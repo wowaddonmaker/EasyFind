@@ -905,7 +905,8 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
             end
             local isTrackingPin = C_SuperTrack.IsSuperTrackingMapPin and C_SuperTrack.IsSuperTrackingMapPin()
             local isTrackingVignette = C_SuperTrack.GetSuperTrackedVignette and C_SuperTrack.GetSuperTrackedVignette() ~= nil
-            if not isTrackingPin and not isTrackingVignette then
+            local isTrackingQuest = C_SuperTrack.IsSuperTrackingQuest and C_SuperTrack.IsSuperTrackingQuest()
+            if not isTrackingPin and not isTrackingVignette and not isTrackingQuest then
                 C_SuperTrack.SetSuperTrackedUserWaypoint(true)
                 return
             end
