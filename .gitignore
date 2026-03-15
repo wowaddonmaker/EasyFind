@@ -1,0 +1,11 @@
+# Release artifacts
+*.zip
+
+# Editor files
+*.swp
+*.swo
+*~
+
+# OS files
+Thumbs.db
+.DS_Store

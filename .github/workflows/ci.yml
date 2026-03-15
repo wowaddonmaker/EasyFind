@@ -1,0 +1,103 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  luacheck:
+    name: Luacheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: nebularg/actions-luacheck@v1
+        with:
+          files: '*.lua Locales/*.lua'
+          args: '--no-color -q'
+
+  toc-validation:
+    name: TOC validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify TOC file references exist
+        run: |
+          EXIT_CODE=0
+          while IFS= read -r line; do
+            line="$(echo "$line" | sed 's/\r$//')"
+            [[ -z "$line" ]] && continue
+            [[ "$line" =~ ^## ]] && continue
+            filepath="$(echo "$line" | tr '\\' '/')"
+            if [[ ! -f "$filepath" ]]; then
+              echo "FAIL: $filepath listed in .toc but does not exist"
+              EXIT_CODE=1
+            fi
+          done < EasyFind.toc
+          exit $EXIT_CODE
+
+  commit-hygiene:
+    name: Commit hygiene
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Validate commit messages
+        run: |
+          BASE="${{ github.event.pull_request.base.sha }}"
+          HEAD="${{ github.event.pull_request.head.sha }}"
+          EXIT_CODE=0
+
+          while IFS= read -r sha; do
+            MSG="$(git log --format='%B' -n 1 "$sha")"
+            SUBJECT="$(echo "$MSG" | head -n 1)"
+
+            if [[ -z "$SUBJECT" ]]; then
+              echo "FAIL [$sha]: Empty subject line"
+              EXIT_CODE=1
+              continue
+            fi
+
+            if [[ ${#SUBJECT} -gt 72 ]]; then
+              echo "FAIL [$sha]: Subject exceeds 72 chars (${#SUBJECT})"
+              EXIT_CODE=1
+            fi
+
+          done < <(git rev-list "$BASE".."$HEAD")
+
+          exit $EXIT_CODE
+
+  file-hygiene:
+    name: File hygiene
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check for prohibited files
+        run: |
+          EXIT_CODE=0
+
+          # Block .env files
+          ENV_FILES=$(find . -name '.env' -o -name '.env.*' | grep -v '.env.example' | grep -v '.git/' || true)
+          if [[ -n "$ENV_FILES" ]]; then
+            echo "FAIL: .env file(s) in repository: $ENV_FILES"
+            EXIT_CODE=1
+          fi
+
+          # Block credential files
+          SECRET_FILES=$(find . -not -path './.git/*' -iregex '.*\.\(key\|pem\|p12\|pfx\)$' || true)
+          if [[ -n "$SECRET_FILES" ]]; then
+            echo "FAIL: Credential file(s) found: $SECRET_FILES"
+            EXIT_CODE=1
+          fi
+
+          # Check for hardcoded secrets in Lua files
+          SECRET_PATTERNS=$(grep -rlE '(api[_-]?key|secret|token|password)\s*[:=]\s*["'"'"'][A-Za-z0-9+/=_-]{20,}' *.lua Locales/*.lua 2>/dev/null || true)
+          if [[ -n "$SECRET_PATTERNS" ]]; then
+            echo "FAIL: Possible hardcoded secret in: $SECRET_PATTERNS"
+            EXIT_CODE=1
+          fi
+
+          exit $EXIT_CODE
