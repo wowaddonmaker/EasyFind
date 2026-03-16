@@ -2354,14 +2354,20 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             resultRow.selectionHighlight:SetVertexColor(unpack(theme.selectionColor))
 
             resultRow.data = data
-            -- Set secure action attributes for toys (UseToyByItemID is protected)
+            -- Set secure action attributes for toys and mounts
             if not InCombatLockdown() then
                 if data and data.toyItemID then
                     resultRow:SetAttribute("type", "toy")
                     resultRow:SetAttribute("toy", data.toyItemID)
+                    resultRow:SetAttribute("macrotext", nil)
+                elseif data and data.mountID then
+                    resultRow:SetAttribute("type", "macro")
+                    resultRow:SetAttribute("macrotext", "/cancelform [form]\n/run C_MountJournal.SummonByID(" .. data.mountID .. ")")
+                    resultRow:SetAttribute("toy", nil)
                 else
                     resultRow:SetAttribute("type", nil)
                     resultRow:SetAttribute("toy", nil)
+                    resultRow:SetAttribute("macrotext", nil)
                 end
             end
             resultRow.isPathNode = entry.isPathNode
@@ -3387,7 +3393,7 @@ function UI:SelectResult(data)
 
     if not data then return end
 
-    -- Mount: summon/dismiss (SummonByID is not protected, callable from addon code)
+    -- Mount: secure button handles cancelform on click; Enter falls back to direct API
     if data.mountID then
         if C_MountJournal and C_MountJournal.SummonByID then
             C_MountJournal.SummonByID(data.mountID)
@@ -3395,10 +3401,8 @@ function UI:SelectResult(data)
         return
     end
 
-    -- Toy: activated via SecureActionButton on mousedown (UseToyByItemID is protected)
-    if data.toyItemID then
-        return
-    end
+    -- Toy: handled by SecureActionButton on mousedown (UseToyByItemID is protected)
+    if data.toyItemID then return end
 
     -- Pet: summon/dismiss
     if data.petID then
