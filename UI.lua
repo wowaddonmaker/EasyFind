@@ -3561,166 +3561,127 @@ function UI:DirectOpen(data)
         return
     end
 
-    local function executeStep(stepIndex)
-        -- Done executing - either finished completely or hand off to highlight
-        if stepIndex > executeCount then
-            if not finalStepNavigable then
-                -- Final step is highlight-only - show it to the user
-                C_Timer.After(0.15, function()
-                    if Highlight then
-                        Highlight:StartGuideAtStep(data, totalSteps)
-                    end
-                end)
+    -- Execute all navigable steps synchronously in one frame. WoW frame
+    -- operations (ClickButton, tab selection) process immediately, so
+    -- child frames are available right after their parent is shown.
+    -- The only exception is currency/reputation tab resync, which toggles
+    -- tabs and needs one frame for the ScrollBox to rebuild.
+    local function executeFrom(start)
+        for i = start, executeCount do
+            local step = steps[i]
+
+            if step.buttonFrame then
+                local stepFrame = _G[step.buttonFrame]
+                if stepFrame then ClickButton(stepFrame) end
             end
-            -- If final step was navigable, we already executed it - nothing more to do
-            return
-        end
 
-        local step = steps[stepIndex]
-        local nextDelay = 0.1
-
-        -- Click a micro menu button (like LFDMicroButton, CharacterMicroButton, etc.)
-        if step.buttonFrame then
-            local stepFrame = _G[step.buttonFrame]
-            if stepFrame then ClickButton(stepFrame) end
-            nextDelay = 0.15
-        end
-
-        -- Click a main tab (Dungeons & Raids / Player vs. Player / etc.)
-        if step.waitForFrame and step.tabIndex then
-            local resync = false
-            if step.waitForFrame == "CharacterFrame" then
-                if needsCurrencyResync and step.tabIndex == 3 then
-                    resync = true
-                    needsCurrencyResync = false
-                elseif needsReputationResync and step.tabIndex == 2 then
-                    resync = true
-                    needsReputationResync = false
+            if step.waitForFrame and step.tabIndex then
+                local resync = false
+                if step.waitForFrame == "CharacterFrame" then
+                    if needsCurrencyResync and step.tabIndex == 3 then
+                        resync = true
+                        needsCurrencyResync = false
+                    elseif needsReputationResync and step.tabIndex == 2 then
+                        resync = true
+                        needsReputationResync = false
+                    end
+                end
+                if resync then
+                    -- Toggle tabs to force ScrollBox rebuild with expanded headers.
+                    -- Needs one frame to propagate; defer remaining steps.
+                    ClickButton(Highlight:GetTabButton("CharacterFrame", 1))
+                    local waitFrame = step.waitForFrame
+                    local tabIdx = step.tabIndex
+                    local resume = i + 1
+                    C_Timer.After(0.05, function()
+                        ClickButton(Highlight:GetTabButton(waitFrame, tabIdx))
+                        executeFrom(resume)
+                    end)
+                    return
+                else
+                    ClickButton(Highlight:GetTabButton(step.waitForFrame, step.tabIndex))
                 end
             end
-            if resync then
-                -- Headers were pre-expanded via API. Toggle tabs to force
-                -- the ScrollBox to rebuild with the expanded state.
-                ClickButton(Highlight:GetTabButton("CharacterFrame", 1))
-                C_Timer.After(0.05, function()
-                    ClickButton(Highlight:GetTabButton(step.waitForFrame, step.tabIndex))
-                end)
-                nextDelay = 0.2
-            else
-                ClickButton(Highlight:GetTabButton(step.waitForFrame, step.tabIndex))
-                nextDelay = 0.15
-            end
-        end
 
-        -- Click a PvE side tab (Dungeon Finder / Raid Finder / Premade Groups)
-        if step.sideTabIndex then
-            C_Timer.After(0.05, function()
+            if step.sideTabIndex then
                 ClickButton(Highlight:GetSideTabButton(step.waitForFrame or "PVEFrame", step.sideTabIndex))
-            end)
-            nextDelay = 0.2
-        end
+            end
 
-        -- Click a PvP side tab (Quick Match / Rated / Premade Groups / Training Grounds)
-        if step.pvpSideTabIndex then
-            C_Timer.After(0.05, function()
+            if step.pvpSideTabIndex then
                 ClickButton(Highlight:GetPvPSideTabButton(step.waitForFrame or "PVEFrame", step.pvpSideTabIndex))
-            end)
-            nextDelay = 0.2
-        end
-
-        -- Click a Character Frame sidebar tab
-        if step.sidebarButtonFrame or step.sidebarIndex then
-            self:ClickCharacterSidebar(step.sidebarIndex)
-            nextDelay = 0.15
-        end
-
-        -- Click a statistics or achievement category
-        local categoryToClick = step.statisticsCategory or step.achievementCategory
-        if categoryToClick then
-            self:ClickAchievementCategory(categoryToClick)
-            nextDelay = 0.3
-        end
-
-        -- Currency headers are pre-expanded via API. Skip these steps
-        -- (the tab resync below handles syncing TokenFrame's display).
-        if step.currencyHeader then
-            nextDelay = 0.05
-        end
-
-        -- Scroll to a currency
-        if step.currencyID then
-            Highlight:ScrollToCurrencyRow(step.currencyID)
-            -- If this is the last step, highlight it
-            if stepIndex == executeCount then
-                C_Timer.After(0.05, function()
-                    local currencyRow = Highlight:GetCurrencyRowButton(step.currencyID)
-                    if currencyRow then
-                        Highlight:HighlightFrame(currencyRow, nil)
-                        -- Set up hover detection to clear highlight
-                        local checkHover
-                        checkHover = function()
-                            if currencyRow:IsMouseOver() then
-                                Highlight:HideHighlight()
-                            else
-                                C_Timer.After(0.1, checkHover)
-                            end
-                        end
-                        C_Timer.After(0.3, checkHover)
-                    end
-                end)
             end
-            nextDelay = 0.15
-        end
 
-        -- Faction headers are pre-expanded via API (same as currency).
-        if step.factionHeader then
-            nextDelay = 0.05
-        end
-
-        -- Scroll to a faction
-        if step.factionID then
-            Highlight:ScrollToFactionRow(step.factionID)
-            -- If this is the last step, highlight it
-            if stepIndex == executeCount then
-                C_Timer.After(0.05, function()
-                    local factionRow = Highlight:GetFactionRowButton(step.factionID)
-                    if factionRow then
-                        Highlight:HighlightFrame(factionRow, nil)
-                        -- Set up hover detection to clear highlight
-                        local checkHover
-                        checkHover = function()
-                            if factionRow:IsMouseOver() then
-                                Highlight:HideHighlight()
-                            else
-                                C_Timer.After(0.1, checkHover)
-                            end
-                        end
-                        C_Timer.After(0.3, checkHover)
-                    end
-                end)
+            if step.sidebarButtonFrame or step.sidebarIndex then
+                self:ClickCharacterSidebar(step.sidebarIndex)
             end
-            nextDelay = 0.15
-        end
 
-        -- Click a button found by text search (Premade Groups categories, PvP queue buttons, etc.)
-        if step.searchButtonText then
-            C_Timer.After(0.05, function()
+            local categoryToClick = step.statisticsCategory or step.achievementCategory
+            if categoryToClick then
+                self:ClickAchievementCategory(categoryToClick)
+            end
+
+            -- Currency/faction headers pre-expanded via API, nothing to execute
+
+            if step.currencyID then
+                Highlight:ScrollToCurrencyRow(step.currencyID)
+                if i == executeCount then
+                    -- ScrollBox needs one frame to update after scroll; defer highlight
+                    local cID = step.currencyID
+                    C_Timer.After(0.05, function()
+                        local currencyRow = Highlight:GetCurrencyRowButton(cID)
+                        if currencyRow then
+                            Highlight:HighlightFrame(currencyRow, nil)
+                            local checkHover
+                            checkHover = function()
+                                if currencyRow:IsMouseOver() then
+                                    Highlight:HideHighlight()
+                                else
+                                    C_Timer.After(0.1, checkHover)
+                                end
+                            end
+                            C_Timer.After(0.3, checkHover)
+                        end
+                    end)
+                end
+            end
+
+            if step.factionID then
+                Highlight:ScrollToFactionRow(step.factionID)
+                if i == executeCount then
+                    local fID = step.factionID
+                    C_Timer.After(0.05, function()
+                        local factionRow = Highlight:GetFactionRowButton(fID)
+                        if factionRow then
+                            Highlight:HighlightFrame(factionRow, nil)
+                            local checkHover
+                            checkHover = function()
+                                if factionRow:IsMouseOver() then
+                                    Highlight:HideHighlight()
+                                else
+                                    C_Timer.After(0.1, checkHover)
+                                end
+                            end
+                            C_Timer.After(0.3, checkHover)
+                        end
+                    end)
+                end
+            end
+
+            if step.searchButtonText then
                 local parentFrame = step.waitForFrame and _G[step.waitForFrame]
                 if parentFrame then
                     ClickButton(SearchFrameTreeFuzzy(parentFrame, slower(step.searchButtonText)))
                 end
-            end)
-            nextDelay = 0.3
+            end
         end
 
-        -- Chain to the next step after a delay
-        C_Timer.After(nextDelay, function()
-            executeStep(stepIndex + 1)
-        end)
+        -- All navigable steps executed; highlight the final step if needed
+        if not finalStepNavigable and Highlight then
+            Highlight:StartGuideAtStep(data, totalSteps)
+        end
     end
 
-    -- Start executing from step 1
-    executeStep(1)
+    executeFrom(1)
 end
 
 -- Helper function to click Character Frame sidebar buttons

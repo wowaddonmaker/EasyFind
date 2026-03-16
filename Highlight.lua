@@ -237,11 +237,21 @@ function Highlight:StartGuideAtStep(guideData, stepIndex)
     currentGuide = guideData
     currentStepIndex = stepIndex
 
+    -- Attempt immediate highlight (avoids waiting for first ticker interval)
+    local ok, err = pcall(self.UpdateGuide, self)
+    if not ok then
+        ns.DebugPrint("Guide error: " .. tostring(err))
+        return
+    end
+
+    -- If guide completed or was cancelled by the immediate attempt, no ticker needed
+    if not currentGuide then return end
+
     stepTicker = C_Timer.NewTicker(0.1, function()
-        local ok, err = pcall(self.UpdateGuide, self)
-        if not ok then
+        local ok2, err2 = pcall(self.UpdateGuide, self)
+        if not ok2 then
             if stepTicker then stepTicker:Cancel(); stepTicker = nil end
-            ns.DebugPrint("Guide error: " .. tostring(err))
+            ns.DebugPrint("Guide error: " .. tostring(err2))
         end
     end)
 end
