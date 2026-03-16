@@ -1,4 +1,4 @@
-local ADDON_NAME, ns = ...
+local _, ns = ...
 
 local Options = {}
 ns.Options = Options
@@ -10,7 +10,6 @@ local tonumber, tostring = Utils.tonumber, Utils.tostring
 local tinsert = Utils.tinsert
 local IsMouseButtonDown = IsMouseButtonDown
 
-local GOLD_COLOR = ns.GOLD_COLOR
 local DEFAULT_OPACITY = ns.DEFAULT_OPACITY
 local TOOLTIP_BORDER = ns.TOOLTIP_BORDER
 local DARK_PANEL_BG = ns.DARK_PANEL_BG
@@ -1067,7 +1066,6 @@ function Options:Initialize()
         .. "(Map Search) to open map zones in one click instead of highlighting them first."
     )
     -- Keybind buttons
-    local KEYBIND_TOP = -8  -- offset below shortcutText (added dynamically)
     local KEYBIND_ROW_H = 28
     local KEYBIND_BTN_W = 140
 
