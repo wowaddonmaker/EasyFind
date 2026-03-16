@@ -236,7 +236,7 @@ local function OnInitialize()
             if ns.UI then ns.UI:Hide() end
         elseif msg == "show" then
             if ns.UI then ns.UI:Show() end
-        elseif msg == "clear" then
+        elseif msg == "c" or msg == "clear" then
             EasyFind:ClearAll()
         elseif msg:find("^test ") then
             -- /ef test Interface\\Path\\To\\Texture
@@ -254,7 +254,7 @@ local function OnInitialize()
                 sf:SetBackdrop(nil)
                 EasyFind:Print("Border hidden - /reload to restore")
             end
-        elseif msg == "reset" then
+        elseif msg == "r" or msg == "reset" then
             if ns.Options then
                 ns.Options:Initialize()
                 StaticPopup_Show("EASYFIND_RESET_ALL")
@@ -400,7 +400,6 @@ function EasyFind:ClearAll()
         ns.MapSearch:ClearZoneHighlight()
         ns.MapSearch.pendingWaypoint = nil
     end
-    EasyFind:Print("Active highlights cleared.")
 end
 
 function EasyFind:StartGuide(guideData)

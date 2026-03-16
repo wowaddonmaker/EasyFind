@@ -92,7 +92,7 @@ end
 -- Helper to create a slider (anchored manually by caller)
 local function CreateSlider(parent, name, label, minVal, maxVal, step, tooltipText, formatFunc, defaultValue, unitSuffix)
     local slider = CreateFrame("Slider", "EasyFindOptions" .. name .. "Slider", parent, "OptionsSliderTemplate")
-    slider:SetWidth(120)
+    slider:SetWidth(160)
     slider:SetMinMaxValues(minVal, maxVal)
     slider:SetValueStep(step)
     slider:SetObeyStepOnDrag(true)
@@ -422,18 +422,17 @@ function Options:Initialize()
     if isInitialized then return end
     isInitialized = true
 
-    local FRAME_W    = 485
+    local FRAME_W    = 380
+    local FRAME_H    = 380
     local COL_LEFT   = 4      -- Left column offset within content frames
-    local COL_RIGHT  = 262    -- Right column offset within content frames
     local BTN_OFFSET = 105    -- Label LEFT to button LEFT (aligns selectors/keybinds)
-    local HEADER_H   = 26
-    local HEADER_GAP = 4
-    local TITLE_Y    = -50    -- Y where first section header starts
-    local BOTTOM_PAD = 116    -- Space for separator, tips, 2x2 reset buttons
+    local TAB_Y      = -42    -- Y where tab buttons start
+    local CONTENT_Y  = -68    -- Y where tab content starts (below tab bar)
+    local CONTENT_H  = 294    -- Fixed content area height
 
-    -- Create the main options frame
+    -- Create the main options frame (fixed size)
     optionsFrame = CreateFrame("Frame", "EasyFindOptionsFrame", UIParent, "BackdropTemplate")
-    optionsFrame:SetSize(FRAME_W, 250)
+    optionsFrame:SetSize(FRAME_W, FRAME_H)
     if EasyFind.db.optionsPosition then
         local pos = EasyFind.db.optionsPosition
         optionsFrame:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4])
@@ -458,7 +457,6 @@ function Options:Initialize()
         insets = { left = 4, right = 4, top = 4, bottom = 4 },
     })
     optionsFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
-    optionsFrame:SetClipsChildren(true)
 
     local bgTex = optionsFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
     bgTex:SetPoint("TOPLEFT", 4, -4)
@@ -469,98 +467,149 @@ function Options:Initialize()
 
     -- Title
     local title = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", optionsFrame, "TOP", 0, -20)
+    title:SetPoint("TOP", optionsFrame, "TOP", 0, -16)
     title:SetText("EasyFind Options")
 
     -- Close button
     local closeBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", optionsFrame, "TOPRIGHT", -5, -5)
 
-    -- Collapsible section infrastructure
-    local sections = {}
-    local sep, instructionText  -- forward-declared for RelayoutSections
+    -- Content border (all tabs render inside this)
+    local contentBorder = CreateFrame("Frame", nil, optionsFrame, "BackdropTemplate")
+    contentBorder:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 12, CONTENT_Y)
+    contentBorder:SetPoint("TOPRIGHT", optionsFrame, "TOPRIGHT", -12, CONTENT_Y)
+    contentBorder:SetHeight(CONTENT_H)
+    contentBorder:SetBackdrop({
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 14,
+        insets = { left = 3, right = 3, top = 3, bottom = 3 },
+    })
+    contentBorder:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.6)
 
-    local function RelayoutSections()
-        local y = TITLE_Y
-        for _, section in ipairs(sections) do
-            section.header:ClearAllPoints()
-            section.header:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 16, y)
-            section.header:SetPoint("TOPRIGHT", optionsFrame, "TOPRIGHT", -16, y)
-            y = y - HEADER_H
-            if section.expanded then
-                y = y - section.contentHeight
-            end
-            y = y - HEADER_GAP
-        end
-        -- Position bottom elements below last section
-        if sep then
-            sep:ClearAllPoints()
-            sep:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 20, y - 2)
-            sep:SetPoint("TOPRIGHT", optionsFrame, "TOPRIGHT", -20, y - 2)
-        end
-        if instructionText then
-            instructionText:ClearAllPoints()
-            instructionText:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 22, y - 10)
-        end
-        -- Adjust frame height
-        local totalH = -y + BOTTOM_PAD
-        optionsFrame:SetHeight(totalH)
+    -- Tab system using WoW standard tab atlases (flipped for top attachment)
+    local tabFrames = {}
+    local tabButtons = {}
+    local activeTabIndex
+
+    -- Flip a texture vertically for top-attached tabs
+    local function FlipV(tex)
+        tex:SetTexCoord(0, 1, 1, 0)
     end
-    optionsFrame.RelayoutSections = RelayoutSections
 
-    local function CreateSection(sectionTitle, contentHeight)
-        local section = { expanded = false, contentHeight = contentHeight }
+    local function SetTabActive(btn, active)
+        if active then
+            btn.leftActive:Show(); btn.midActive:Show(); btn.rightActive:Show()
+            btn.leftInactive:Hide(); btn.midInactive:Hide(); btn.rightInactive:Hide()
+            btn.leftHl:Hide(); btn.midHl:Hide(); btn.rightHl:Hide()
+            btn:SetHeight(32)
+            btn:GetFontString():SetTextColor(1.0, 0.82, 0.0)
+        else
+            btn.leftActive:Hide(); btn.midActive:Hide(); btn.rightActive:Hide()
+            btn.leftInactive:Show(); btn.midInactive:Show(); btn.rightInactive:Show()
+            btn.leftHl:Show(); btn.midHl:Show(); btn.rightHl:Show()
+            btn:SetHeight(28)
+            btn:GetFontString():SetTextColor(0.8, 0.8, 0.8)
+        end
+    end
 
-        -- Header button (full width clickable bar)
-        local header = CreateFrame("Button", nil, optionsFrame)
-        header:SetHeight(HEADER_H)
+    local function SwitchToTab(index)
+        for i, tf in ipairs(tabFrames) do
+            tf:SetShown(i == index)
+            SetTabActive(tabButtons[i], i == index)
+        end
+        activeTabIndex = index
+    end
+    optionsFrame.SwitchToTab = SwitchToTab
 
-        -- Background using quest log tab atlas
-        local bg = header:CreateTexture(nil, "BACKGROUND")
-        bg:SetAllPoints()
-        bg:SetAtlas("QuestLog-tab")
+    local function CreateTab(tabName)
+        local index = #tabFrames + 1
 
-        -- Hover highlight
-        local hl = header:CreateTexture(nil, "HIGHLIGHT")
-        hl:SetAllPoints()
-        hl:SetAtlas("QuestLog-tab")
-        hl:SetBlendMode("ADD")
-        hl:SetAlpha(0.3)
+        local btn = CreateFrame("Button", nil, optionsFrame)
+        btn:SetNormalFontObject("GameFontHighlightSmall")
+        btn:SetText(tabName)
 
-        -- Section title text
-        local text = header:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        text:SetPoint("LEFT", header, "LEFT", 10, 0)
-        text:SetText(sectionTitle)
+        local textW = btn:GetFontString():GetStringWidth()
+        local tabW = mmax(textW + 28, 48)
+        btn:SetSize(tabW, 28)
 
-        -- Expand/collapse icon
-        local icon = header:CreateTexture(nil, "ARTWORK")
-        icon:SetSize(18, 17)
-        icon:SetPoint("RIGHT", header, "RIGHT", -8, 0)
-        icon:SetAtlas("QuestLog-icon-expand")
+        -- Force center text within tab
+        local fs = btn:GetFontString()
+        fs:ClearAllPoints()
+        fs:SetPoint("CENTER", btn, "CENTER", -2, 0)
+        fs:SetJustifyH("CENTER")
 
-        section.header = header
-        section.icon = icon
+        -- Active state textures (flipped vertically for top attachment)
+        local la = btn:CreateTexture(nil, "BACKGROUND")
+        la:SetAtlas("uiframe-activetab-left"); la:SetSize(35, 32)
+        la:SetPoint("BOTTOMLEFT", 0, 0); FlipV(la); la:Hide()
+        btn.leftActive = la
 
-        -- Content frame (hidden by default)
-        local content = CreateFrame("Frame", nil, optionsFrame)
-        content:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, 0)
-        content:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, 0)
-        content:SetHeight(contentHeight)
+        local ma = btn:CreateTexture(nil, "BACKGROUND")
+        ma:SetAtlas("_uiframe-activetab-center")
+        ma:SetPoint("BOTTOMLEFT", la, "BOTTOMRIGHT", 0, 0)
+        ma:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -35, 0)
+        ma:SetHeight(32); FlipV(ma); ma:Hide()
+        btn.midActive = ma
+
+        local ra = btn:CreateTexture(nil, "BACKGROUND")
+        ra:SetAtlas("uiframe-activetab-right"); ra:SetSize(37, 32)
+        ra:SetPoint("BOTTOMRIGHT", 0, 0); FlipV(ra); ra:Hide()
+        btn.rightActive = ra
+
+        -- Inactive state textures (flipped)
+        local li = btn:CreateTexture(nil, "BACKGROUND")
+        li:SetAtlas("uiframe-tab-left"); li:SetSize(35, 28)
+        li:SetPoint("BOTTOMLEFT", 0, 0); FlipV(li)
+        btn.leftInactive = li
+
+        local mi = btn:CreateTexture(nil, "BACKGROUND")
+        mi:SetAtlas("_uiframe-tab-center")
+        mi:SetPoint("BOTTOMLEFT", li, "BOTTOMRIGHT", 0, 0)
+        mi:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -35, 0)
+        mi:SetHeight(28); FlipV(mi)
+        btn.midInactive = mi
+
+        local ri = btn:CreateTexture(nil, "BACKGROUND")
+        ri:SetAtlas("uiframe-tab-right"); ri:SetSize(37, 28)
+        ri:SetPoint("BOTTOMRIGHT", 0, 0); FlipV(ri)
+        btn.rightInactive = ri
+
+        -- Highlight textures (flipped, shown over inactive only)
+        local lh = btn:CreateTexture(nil, "HIGHLIGHT")
+        lh:SetAtlas("uiframe-tab-left"); lh:SetSize(35, 28)
+        lh:SetPoint("BOTTOMLEFT", 0, 0); FlipV(lh); lh:SetAlpha(0.4)
+        btn.leftHl = lh
+
+        local mh = btn:CreateTexture(nil, "HIGHLIGHT")
+        mh:SetAtlas("_uiframe-tab-center")
+        mh:SetPoint("BOTTOMLEFT", lh, "BOTTOMRIGHT", 0, 0)
+        mh:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -35, 0)
+        mh:SetHeight(28); FlipV(mh); mh:SetAlpha(0.4)
+        btn.midHl = mh
+
+        local rh = btn:CreateTexture(nil, "HIGHLIGHT")
+        rh:SetAtlas("uiframe-tab-right"); rh:SetSize(37, 28)
+        rh:SetPoint("BOTTOMRIGHT", 0, 0); FlipV(rh); rh:SetAlpha(0.4)
+        btn.rightHl = rh
+
+        -- Position: tabs sit above the content border, bottom edges touching it
+        if index == 1 then
+            btn:SetPoint("BOTTOMLEFT", contentBorder, "TOPLEFT", 5, -2)
+        else
+            btn:SetPoint("BOTTOMLEFT", tabButtons[index - 1], "BOTTOMRIGHT", -8, 0)
+        end
+        btn:SetScript("OnClick", function() SwitchToTab(index) end)
+        tinsert(tabButtons, btn)
+
+        -- Content frame inside the border
+        local content = CreateFrame("Frame", nil, contentBorder)
+        content:SetPoint("TOPLEFT", 6, -6)
+        content:SetPoint("BOTTOMRIGHT", -6, 6)
         content:Hide()
-        section.content = content
+        tinsert(tabFrames, content)
 
-        -- Toggle on click
-        header:SetScript("OnClick", function()
-            section.expanded = not section.expanded
-            icon:SetAtlas(section.expanded and "QuestLog-icon-shrink" or "QuestLog-icon-expand")
-            content:SetShown(section.expanded)
-            RelayoutSections()
-        end)
-
-        tinsert(sections, section)
         return content
     end
-    optionsFrame.sections = sections
 
     -- Keybind helpers (defined early since Section 4 needs them)
     local function GetCurrentKeybindText(action)
@@ -606,7 +655,7 @@ function Options:Initialize()
                 SetBinding(combo, action)
                 SaveBindings(GetCurrentBindingSet())
                 StopCapture(self, action)
-                EasyFind:Print("Keybind set to: " .. combo)
+
             end)
         end
     end
@@ -615,30 +664,77 @@ function Options:Initialize()
         keybindBtn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetText(titleText)
-            GameTooltip:AddLine(line1, 1, 1, 1)
-            GameTooltip:AddLine("Right-click to clear. Escape to cancel.", 0.7, 0.7, 0.7)
+            GameTooltip:AddLine(line1, 1, 1, 1, true)
+            GameTooltip:AddLine("Right-click to clear. Escape to cancel.", 0.7, 0.7, 0.7, true)
             GameTooltip:Show()
         end)
         keybindBtn:SetScript("OnLeave", GameTooltip_Hide)
     end
 
     -- SECTION 1: General
-    local sec3 = CreateSection("General", 182)
+    -- HOME TAB
+    local homeTab = CreateTab("Home")
+    local homeIcon = homeTab:CreateTexture(nil, "ARTWORK")
+    homeIcon:SetSize(48, 48)
+    homeIcon:SetPoint("TOPLEFT", homeTab, "TOPLEFT", 12, -16)
+    homeIcon:SetTexture("Interface\\MINIMAP\\Tracking\\None")
 
-    local genOptionsBox = CreateFrame("Frame", nil, sec3, "BackdropTemplate")
-    genOptionsBox:SetPoint("TOPLEFT", sec3, "TOPLEFT", 2, -4)
-    genOptionsBox:SetPoint("TOPRIGHT", sec3, "TOPRIGHT", -2, -4)
-    genOptionsBox:SetPoint("BOTTOM", sec3, "BOTTOM", 0, 4)
-    genOptionsBox:SetBackdrop({
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        edgeSize = 14,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    genOptionsBox:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.6)
+    local homeTitle = homeTab:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    homeTitle:SetPoint("LEFT", homeIcon, "RIGHT", 12, 6)
+    homeTitle:SetText("EasyFind")
+
+    local homeVersion = homeTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    homeVersion:SetPoint("LEFT", homeTitle, "RIGHT", 6, 0)
+    local tocVersion = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("EasyFind", "Version")
+    homeVersion:SetText("|cFF888888v" .. (tocVersion or "") .. "|r")
+
+    local homeDesc = homeTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    homeDesc:SetPoint("TOPLEFT", homeIcon, "BOTTOMLEFT", 0, -12)
+    homeDesc:SetPoint("RIGHT", homeTab, "RIGHT", -12, 0)
+    homeDesc:SetJustifyH("LEFT")
+    homeDesc:SetSpacing(3)
+    homeDesc:SetText(
+        "|cFFFFD100Quick start:|r  Type in the search bar to find UI panels, map locations, "
+        .. "and more. Click a result to navigate there.\n\n"
+        .. "Use the |cFFFFD100filter button|r on the search bar to add mounts, toys, pets, and "
+        .. "map results to your searches. The world map also has its own search bars "
+        .. "for finding zones, dungeons, and points of interest directly on the map.\n\n"
+        .. "|cFFFFD100Slash commands:|r\n"
+        .. "  |cFF00FF00/ef o|r  Open this options panel\n"
+        .. "  |cFF00FF00/ef c|r  Dismiss all highlights and pins\n\n"
+        .. "For a full walkthrough, see the CurseForge page:"
+    )
+
+    local thankYou = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    thankYou:SetPoint("BOTTOMRIGHT", optionsFrame, "BOTTOMRIGHT", -16, 6)
+    thankYou:SetText("Thanks for trying EasyFind!")
+
+    local function CreateURLBox(parent, url, anchor, yOff)
+        local box = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
+        box:SetSize(FRAME_W - 60, 18)
+        box:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, yOff)
+        box:SetAutoFocus(false)
+        box:SetFontObject("GameFontHighlightSmall")
+        box:SetText(url)
+        box:SetCursorPosition(0)
+        box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        box:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+        box:SetScript("OnTextChanged", function(self) self:SetText(url); self:SetCursorPosition(0) end)
+        box:SetScript("OnMouseUp", function(self)
+            if not self:IsMouseOver() then self:ClearFocus() end
+        end)
+        return box
+    end
+
+    local cfBox = CreateURLBox(homeTab, "https://www.curseforge.com/wow/addons/easyfind", homeDesc, -6)
+
+    local sec3 = CreateTab("General")
+
+    -- General tab layout (no inner border, content fills the tab)
 
     local loginMessageCheckbox = CreateCheckbox(sec3, "LoginMessage", "Show Login Message",
         "When enabled, shows a short \"EasyFind loaded!\" message in chat when you log in.\n\nDisable to keep chat cleaner.")
-    loginMessageCheckbox:SetPoint("TOPLEFT", genOptionsBox, "TOPLEFT", 16, -10)
+    loginMessageCheckbox:SetPoint("TOPLEFT", sec3, "TOPLEFT", 8, -8)
     loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage ~= false)
     loginMessageCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.showLoginMessage = self:GetChecked()
@@ -647,7 +743,7 @@ function Options:Initialize()
 
     local minimapBtnCheckbox = CreateCheckbox(sec3, "MinimapBtn", "Show Minimap Button",
         "When enabled, adds a small search icon button to the minimap edge.\n\nLeft-click the button to toggle the search bar.\nRight-click to open options.\nDrag to reposition it around the minimap.")
-    minimapBtnCheckbox:SetPoint("TOPLEFT", loginMessageCheckbox, "BOTTOMLEFT", 0, -4)
+    minimapBtnCheckbox:SetPoint("LEFT", loginMessageCheckbox, "RIGHT", 120, 0)
     minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton ~= false)
     minimapBtnCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.showMinimapButton = self:GetChecked()
@@ -656,7 +752,7 @@ function Options:Initialize()
     optionsFrame.minimapBtnCheckbox = minimapBtnCheckbox
 
     local indicatorLabel = sec3:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    indicatorLabel:SetPoint("TOPLEFT", minimapBtnCheckbox, "BOTTOMLEFT", 4, -10)
+    indicatorLabel:SetPoint("TOPLEFT", loginMessageCheckbox, "BOTTOMLEFT", 4, -10)
     indicatorLabel:SetText("Indicator Style:")
 
     local indicatorChoices = {"EasyFind Arrow", "Classic Quest Arrow", "Minimap Player Arrow", "Low-res Gauntlet", "HD Gauntlet"}
@@ -761,7 +857,7 @@ function Options:Initialize()
 
     local panelOpacitySlider = CreateSlider(sec3, "PanelOpacity", "Options Menu Opacity", 0.3, 1.0, 0.05,
         "Adjusts the opacity of the options panel background.", nil, 0.9)
-    panelOpacitySlider:SetPoint("TOPLEFT", genOptionsBox, "TOPLEFT", COL_RIGHT - 2, -28)
+    panelOpacitySlider:SetPoint("TOPLEFT", themeLabel, "BOTTOMLEFT", 0, -30)
     panelOpacitySlider:SetValue(EasyFind.db.panelOpacity or 0.9)
     panelOpacitySlider:HookScript("OnValueChanged", function(self, value)
         EasyFind.db.panelOpacity = value
@@ -786,8 +882,10 @@ function Options:Initialize()
     end)
     optionsFrame.opacitySlider = opacitySlider
 
+    local RESET_BTN_W = 120
+
     -- SECTION 2: UI Search
-    local sec1 = CreateSection("UI Search", 180)
+    local sec1 = CreateTab("UI")
 
     local uiEnableCheckbox = CreateCheckbox(sec1, "EnableUI", "Enable UI Search Module",
         "Uncheck to disable the main UI search bar.\n\nRequires a UI reload to take effect.")
@@ -813,20 +911,15 @@ function Options:Initialize()
         end
     end)
 
-    local uiOptionsBox = CreateFrame("Frame", nil, sec1, "BackdropTemplate")
-    uiOptionsBox:SetPoint("TOPLEFT", sec1, "TOPLEFT", 2, -34)
-    uiOptionsBox:SetPoint("TOPRIGHT", sec1, "TOPRIGHT", -2, -34)
-    uiOptionsBox:SetPoint("BOTTOM", sec1, "BOTTOM", 0, 4)
-    uiOptionsBox:SetBackdrop({
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        edgeSize = 14,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    uiOptionsBox:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.6)
-
+    -- Gold separator under enable checkbox
+    local uiSep = sec1:CreateTexture(nil, "ARTWORK")
+    uiSep:SetPoint("TOPLEFT", sec1, "TOPLEFT", 6, -30)
+    uiSep:SetPoint("RIGHT", sec1, "RIGHT", -6, 0)
+    uiSep:SetHeight(1)
+    uiSep:SetColorTexture(0.8, 0.65, 0.0, 0.6)
 
     local uiSpeedBox = CreateFrame("Frame", nil, sec1, "BackdropTemplate")
-    uiSpeedBox:SetPoint("TOPLEFT", uiOptionsBox, "TOPLEFT", 8, -8)
+    uiSpeedBox:SetPoint("TOPLEFT", sec1, "TOPLEFT", 8, -38)
     uiSpeedBox:SetSize(210, 36)
     uiSpeedBox:SetBackdrop({
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -861,7 +954,7 @@ function Options:Initialize()
 
     local resizeUIBtn = CreateFrame("Button", nil, sec1, "UIPanelButtonTemplate")
     resizeUIBtn:SetSize(160, 22)
-    resizeUIBtn:SetPoint("TOPRIGHT", sec1, "TOPRIGHT", -COL_LEFT, -6)
+    resizeUIBtn:SetPoint("BOTTOMLEFT", sec1, "BOTTOMLEFT", 8, 32)
     resizeUIBtn:SetText("Resize UI Search")
     resizeUIBtn:SetScript("OnClick", function()
         if ns.Rescaler then ns.Rescaler:Enter("ui") end
@@ -873,19 +966,7 @@ function Options:Initialize()
     end)
     resizeUIBtn:SetScript("OnLeave", GameTooltip_Hide)
 
-    local uiFontSlider = CreateSlider(sec1, "UIFontSize", "Font Size|cffff3333*|r", 0.5, 2.0, 0.1,
-        "Changing font size also affects search bar height and results window sizing.", nil, 1.0)
-    uiFontSlider:SetPoint("TOPLEFT", uiOptionsBox, "TOPLEFT", COL_RIGHT - 2, -28)
-    uiFontSlider:SetValue(EasyFind.db.fontSize or 1.0)
-    uiFontSlider:HookScript("OnValueChanged", function(self, value)
-        EasyFind.db.fontSize = value
-        if ns.UI and ns.UI.UpdateFontSize then
-            ns.UI:UpdateFontSize()
-        end
-    end)
-    optionsFrame.uiFontSlider = uiFontSlider
-
-    local smartShowCheckbox = CreateCheckbox(sec1, "SmartShow", "Smart Show (auto-hide)",
+    local smartShowCheckbox = CreateCheckbox(sec1, "SmartShow", "Smart Show |cFF888888(Recommended)|r",
         "When enabled, the UI search bar hides itself until you move your mouse near its position.\n\nThe bar reappears when your mouse enters the area and fades away when you move away.\n\nA separate Smart Show toggle for map search bars is available in the Map Search section.")
     smartShowCheckbox:SetPoint("TOPLEFT", uiSpeedBox, "BOTTOMLEFT", 8, -6)
     smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
@@ -918,11 +999,39 @@ function Options:Initialize()
     end)
     optionsFrame.uiResultsAboveCheckbox = uiResultsAboveCheckbox
 
-    uiControls = { uiOptionsBox, resizeUIBtn, uiFontSlider, directOpenCheckbox, smartShowCheckbox, staticOpacityCheckbox, uiResultsAboveCheckbox }
+    local uiFontSlider = CreateSlider(sec1, "UIFontSize", "Font Size|cffff3333*|r", 0.5, 2.0, 0.1,
+        "Changing font size also affects search bar height and results window sizing.", nil, 1.0)
+    uiFontSlider:SetPoint("TOPLEFT", uiResultsAboveCheckbox, "BOTTOMLEFT", 4, -20)
+    uiFontSlider:SetValue(EasyFind.db.fontSize or 1.0)
+    uiFontSlider:HookScript("OnValueChanged", function(self, value)
+        EasyFind.db.fontSize = value
+        if ns.UI and ns.UI.UpdateFontSize then
+            ns.UI:UpdateFontSize()
+        end
+    end)
+    optionsFrame.uiFontSlider = uiFontSlider
+
+    local resetUIBtn = CreateFrame("Button", nil, sec1, "UIPanelButtonTemplate")
+    resetUIBtn:SetSize(RESET_BTN_W, 20)
+    resetUIBtn:SetPoint("BOTTOMLEFT", sec1, "BOTTOMLEFT", 8, 8)
+    resetUIBtn:SetText("Reset Settings")
+    resetUIBtn:SetScript("OnClick", function()
+        StaticPopup_Show("EASYFIND_RESET_UI")
+    end)
+
+    local resetUIPosBtn = CreateFrame("Button", nil, sec1, "UIPanelButtonTemplate")
+    resetUIPosBtn:SetSize(RESET_BTN_W, 20)
+    resetUIPosBtn:SetPoint("LEFT", resetUIBtn, "RIGHT", 8, 0)
+    resetUIPosBtn:SetText("Reset Positions")
+    resetUIPosBtn:SetScript("OnClick", function()
+        StaticPopup_Show("EASYFIND_RESET_UI_POS")
+    end)
+
+    uiControls = { resizeUIBtn, resetUIBtn, resetUIPosBtn, uiFontSlider, directOpenCheckbox, smartShowCheckbox, staticOpacityCheckbox, uiResultsAboveCheckbox }
     UpdateUIToggleVisual()
 
     -- SECTION 3: Map Search
-    local sec2 = CreateSection("Map Search", 210)
+    local sec2 = CreateTab("Map")
 
     local mapEnableCheckbox = CreateCheckbox(sec2, "EnableMap", "Enable Map Search Module",
         "Uncheck to disable map search bars, pins, and all map overlay features.\n\nRequires a UI reload to take effect.")
@@ -948,20 +1057,15 @@ function Options:Initialize()
         end
     end)
 
-    local mapOptionsBox = CreateFrame("Frame", nil, sec2, "BackdropTemplate")
-    mapOptionsBox:SetPoint("TOPLEFT", sec2, "TOPLEFT", 2, -34)
-    mapOptionsBox:SetPoint("TOPRIGHT", sec2, "TOPRIGHT", -2, -34)
-    mapOptionsBox:SetPoint("BOTTOM", sec2, "BOTTOM", 0, 4)
-    mapOptionsBox:SetBackdrop({
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        edgeSize = 14,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    mapOptionsBox:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.6)
-
+    -- Gold separator under enable checkbox
+    local mapSep = sec2:CreateTexture(nil, "ARTWORK")
+    mapSep:SetPoint("TOPLEFT", sec2, "TOPLEFT", 6, -30)
+    mapSep:SetPoint("RIGHT", sec2, "RIGHT", -6, 0)
+    mapSep:SetHeight(1)
+    mapSep:SetColorTexture(0.8, 0.65, 0.0, 0.6)
 
     local mapSpeedBox = CreateFrame("Frame", nil, sec2, "BackdropTemplate")
-    mapSpeedBox:SetPoint("TOPLEFT", mapOptionsBox, "TOPLEFT", 8, -8)
+    mapSpeedBox:SetPoint("TOPLEFT", sec2, "TOPLEFT", 8, -38)
     mapSpeedBox:SetSize(210, 36)
     mapSpeedBox:SetBackdrop({
         edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
@@ -984,7 +1088,7 @@ function Options:Initialize()
 
     local resizeMapBtn = CreateFrame("Button", nil, sec2, "UIPanelButtonTemplate")
     resizeMapBtn:SetSize(160, 22)
-    resizeMapBtn:SetPoint("TOPRIGHT", sec2, "TOPRIGHT", -COL_LEFT, -6)
+    resizeMapBtn:SetPoint("BOTTOMLEFT", sec2, "BOTTOMLEFT", 8, 32)
     resizeMapBtn:SetText("Resize Map Search")
     resizeMapBtn:SetScript("OnClick", function()
         if ns.Rescaler then ns.Rescaler:Enter("map") end
@@ -999,7 +1103,7 @@ function Options:Initialize()
     local FLYOUT_W = 260
 
     local searchBarGroup = CreateMultiSelectDropdown(sec2, "Search Bars", {
-        { label = "Smart Show", shortLabel = "Smart", dbKey = "mapSmartShow", default = false,
+        { label = "Smart Show |cFF888888(Recommended)|r", shortLabel = "Smart", dbKey = "mapSmartShow", default = false,
           tooltip = "Map search bars hide until you move your mouse near them.\nBars reappear on hover and fade when you move away.\nText in search bars or an open results list prevents fading.",
           callback = function() if ns.MapSearch and ns.MapSearch.UpdateMapSmartShow then ns.MapSearch:UpdateMapSmartShow() end end },
         { label = "Hide Fullscreen", shortLabel = "No Full", dbKey = "hideSearchBarsMaximized", default = false,
@@ -1137,80 +1241,93 @@ function Options:Initialize()
     UpdateArrivalSliderState()
     autoClearRow:HookScript("OnClick", UpdateArrivalSliderState)
 
+    local resetMapBtn = CreateFrame("Button", nil, sec2, "UIPanelButtonTemplate")
+    resetMapBtn:SetSize(RESET_BTN_W, 20)
+    resetMapBtn:SetPoint("BOTTOMLEFT", sec2, "BOTTOMLEFT", 8, 8)
+    resetMapBtn:SetText("Reset Settings")
+    resetMapBtn:SetScript("OnClick", function()
+        StaticPopup_Show("EASYFIND_RESET_MAP")
+    end)
+
+    local resetMapPosBtn = CreateFrame("Button", nil, sec2, "UIPanelButtonTemplate")
+    resetMapPosBtn:SetSize(RESET_BTN_W, 20)
+    resetMapPosBtn:SetPoint("LEFT", resetMapBtn, "RIGHT", 8, 0)
+    resetMapPosBtn:SetText("Reset Positions")
+    resetMapPosBtn:SetScript("OnClick", function()
+        StaticPopup_Show("EASYFIND_RESET_MAP_POS")
+    end)
+
     mapControls = {
-        mapOptionsBox, resizeMapBtn, zoneNavCheckbox,
+        resizeMapBtn, resetMapBtn, resetMapPosBtn, zoneNavCheckbox,
         searchBarGroup, mapPinGroup, minimapGroup, automationGroup
     }
     UpdateMapToggleVisual()
 
     -- SECTION 4: Keyboard Shortcuts
-    local sec4 = CreateSection("Keyboard Shortcuts", 220)
+    local sec4 = CreateTab("Shortcuts")
 
-    local kbOptionsBox = CreateFrame("Frame", nil, sec4, "BackdropTemplate")
-    kbOptionsBox:SetPoint("TOPLEFT", sec4, "TOPLEFT", 2, -4)
-    kbOptionsBox:SetPoint("TOPRIGHT", sec4, "TOPRIGHT", -2, -4)
-    kbOptionsBox:SetPoint("BOTTOM", sec4, "BOTTOM", 0, 4)
-    kbOptionsBox:SetBackdrop({
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        edgeSize = 14,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    kbOptionsBox:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.6)
+    -- Shortcuts tab layout (no inner border)
 
     local shortcutText = sec4:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    shortcutText:SetPoint("TOPLEFT", kbOptionsBox, "TOPLEFT", 12, -10)
+    shortcutText:SetPoint("TOPLEFT", sec4, "TOPLEFT", 8, -8)
     shortcutText:SetWidth(FRAME_W - 60)
     shortcutText:SetJustifyH("LEFT")
     shortcutText:SetSpacing(2)
     shortcutText:SetText(
-        "|cFFFFD100Toggle+Focus|r is the recommended keybind for fast, keyboard-driven searching. "
-        .. "It opens the search bar and places the cursor in it. Press it again to close. "
-        .. "When the world map is open, it focuses the local map search bar instead.\n\n"
-        .. "|cFFFFD100From the search box:|r\n"
+        "|cFFFFD100Search box:|r\n"
         .. "|cFF00FF00Down|r  Enter results list\n"
-        .. "|cFF00FF00Tab / Shift+Tab|r  Cycle between search box, clear, and filter buttons\n"
+        .. "|cFF00FF00Tab / Shift+Tab|r  Cycle between search/clear/filter buttons\n"
         .. "|cFF00FF00Enter|r  Activate focused button or highlighted result\n"
         .. "|cFF00FF00Escape|r  Remove cursor from search bar\n\n"
-        .. "|cFFFFD100From the results list:|r\n"
+        .. "|cFFFFD100Results list:|r\n"
         .. "|cFF00FF00Up / Down|r  Move through results\n"
-        .. "|cFF00FF00Tab / Shift+Tab|r  Toggle focus between result row and nav button\n"
+        .. "|cFF00FF00Tab / Shift+Tab|r  Toggle focus between result/nav button\n"
         .. "|cFF00FF00Page Up / Page Down|r  Jump 5 results\n"
-        .. "|cFF00FF00Home / End / Ctrl+Up / Ctrl+Down|r  Jump to first / last result\n"
-        .. "|cFF00FF00Shift+Up / Shift+Down|r  Jump between result sections (UI, Map, Mounts, etc.)\n"
-        .. "|cFF00FF00Ctrl+Tab|r  Switch between local and global map search bar\n\n"
+        .. "|cFF00FF00Home / End|r  Jump to first / last result\n"
+        .. "|cFF00FF00Shift+Up / Shift+Down|r  Jump between sections\n"
+        .. "|cFF00FF00Ctrl+Tab|r  Switch local / global map search bar\n\n"
         .. "|cFFFFD100Other:|r\n"
         .. "|cFF00FF00Shift+Drag|r  Reposition search bars\n"
-        .. "|cFF00FF00Right-click|r a result to pin/unpin it\n\n"
+        .. "|cFF00FF00Right-click|r a result to pin/unpin it\n"
+        .. "|cFF00FF00/ef show|r  |cFF00FF00/ef hide|r  Toggle the search bar\n"
     )
     -- Keybind buttons
-    local KEYBIND_ROW_H = 28
-    local KEYBIND_BTN_W = 140
+    local KEYBIND_ROW_H = 18
+    local KEYBIND_BTN_W = 80
 
     local keybindDefs = {
         { label = "Toggle Bar",    action = "EASYFIND_TOGGLE" },
         { label = "Focus Bar",     action = "EASYFIND_FOCUS" },
         { label = "Clear All",     action = "EASYFIND_CLEAR" },
+        { label = "Toggle+Foc",    action = "EASYFIND_TOGGLE_FOCUS" },
     }
 
     local keybindTooltips = {
         EASYFIND_TOGGLE       = { "Toggle Search Bar", "Shows or hides the main search bar." },
         EASYFIND_FOCUS        = { "Focus Search Bar", "Places the cursor in the search bar without toggling visibility." },
+        EASYFIND_TOGGLE_FOCUS = { "Toggle + Focus", "Opens and focuses the search bar in one press. Press again to close. When the map is open, focuses the local map search bar instead." },
         EASYFIND_CLEAR        = { "Clear All", "Dismisses all active highlights, map pins, zone highlights, and pending waypoints." },
     }
 
     local keybindButtons = {}
-    local KEYBIND_LABEL_W = 95
-    local keybindAnchor = shortcutText
-    local keybindRowLabels = {}
+    local KEYBIND_LABEL_W = 70
+    local COL2_X = 160
     for i, def in ipairs(keybindDefs) do
-        local rowLabel = sec4:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        rowLabel:SetPoint("TOPLEFT", i == 1 and keybindAnchor or keybindRowLabels[i - 1],
-            "BOTTOMLEFT", 0, i == 1 and -12 or -8)
+        local row = (i - 1) % 2        -- 0 or 1
+        local col = (i <= 2) and 0 or 1 -- left or right column
+
+        local rowLabel = sec4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        if row == 0 then
+            rowLabel:SetPoint("TOPLEFT", shortcutText, "BOTTOMLEFT", col * COL2_X, -12)
+        else
+            rowLabel:SetPoint("TOPLEFT", shortcutText, "BOTTOMLEFT", col * COL2_X, -12 - KEYBIND_ROW_H)
+        end
         rowLabel:SetText(def.label .. ":")
-        keybindRowLabels[i] = rowLabel
 
         local keybindBtn = CreateFrame("Button", nil, sec4, "UIPanelButtonTemplate")
-        keybindBtn:SetSize(KEYBIND_BTN_W, 22)
+        keybindBtn:SetNormalFontObject("GameFontHighlightSmall")
+        keybindBtn:SetHighlightFontObject("GameFontHighlightSmall")
+        keybindBtn:SetSize(KEYBIND_BTN_W, 18)
         keybindBtn:SetPoint("LEFT", rowLabel, "LEFT", KEYBIND_LABEL_W, 0)
         keybindBtn:SetText(GetCurrentKeybindText(def.action))
         keybindBtn:SetScript("OnClick", function(self, button)
@@ -1220,7 +1337,7 @@ function Options:Initialize()
                 if old2 then SetBinding(old2) end
                 SaveBindings(GetCurrentBindingSet())
                 self:SetText("Not Bound")
-                EasyFind:Print("Keybind cleared.")
+
             else
                 StartCapture(self, def.action)
             end
@@ -1236,35 +1353,11 @@ function Options:Initialize()
     end
     optionsFrame.keybindBtn = keybindButtons["EASYFIND_TOGGLE"]
     optionsFrame.focusBtn = keybindButtons["EASYFIND_FOCUS"]
-
+    optionsFrame.toggleFocusBtn = keybindButtons["EASYFIND_TOGGLE_FOCUS"]
     optionsFrame.clearBtn = keybindButtons["EASYFIND_CLEAR"]
 
-    -- Auto-size section to text + keybind buttons
-    C_Timer.After(0, function()
-        local textH = shortcutText:GetStringHeight()
-        if textH and textH > 0 then
-            local keybindRows = #keybindDefs
-            local keybindAreaH = 12 + keybindRows * KEYBIND_ROW_H
-            local newH = textH + keybindAreaH + 16
-            sec4:SetHeight(newH)
-            for _, section in ipairs(optionsFrame.sections) do
-                if section.content == sec4 then
-                    section.contentHeight = newH
-                    break
-                end
-            end
-        end
-    end)
 
-    -- BOTTOM - Separator, Tips, Reset buttons
-    sep = optionsFrame:CreateTexture(nil, "ARTWORK")
-    sep:SetHeight(1)
-    sep:SetColorTexture(0.5, 0.5, 0.5, 0.4)
-
-    instructionText = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    instructionText:SetWidth(FRAME_W - 44)
-    instructionText:SetJustifyH("LEFT")
-    instructionText:SetText("|cFFFFFF00Tips:|r  Hold |cFF00FF00Shift|r + drag to reposition bars  |cFF888888|||r  |cFF00FF00/ef o|r options\n|cFF00FF00/ef show|r  |cFF00FF00/ef hide|r toggle bar (or click minimap button)  |cFF888888|||r  |cFF00FF00/ef clear|r dismiss highlights\n|cFF00FF00/ef reset|r reset all settings (useful if the options panel gets lost off-screen)")
+    -- BOTTOM - Reset buttons (tips moved to Home tab)
 
     StaticPopupDialogs["EASYFIND_RESET_ALL"] = {
         text = "Reset all EasyFind settings to defaults?",
@@ -1336,44 +1429,113 @@ function Options:Initialize()
         preferredIndex = 3,
     }
 
-    -- Bottom buttons: 2x2 grid
-    local BTN_W = (FRAME_W - 36) / 2
-    local BTN_ROW_GAP = 6
+    StaticPopupDialogs["EASYFIND_RESET_UI"] = {
+        text = "Reset UI Search settings to defaults?",
+        button1 = "Reset",
+        button2 = "Cancel",
+        OnAccept = function() Options:DoResetUI() end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3,
+    }
 
-    local resetAllBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
-    resetAllBtn:SetSize(BTN_W, 22)
-    resetAllBtn:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", 12, 18 + 22 + BTN_ROW_GAP)
-    resetAllBtn:SetText("Reset Settings")
+    StaticPopupDialogs["EASYFIND_RESET_MAP"] = {
+        text = "Reset Map Search settings to defaults?",
+        button1 = "Reset",
+        button2 = "Cancel",
+        OnAccept = function() Options:DoResetMap() end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3,
+    }
+
+    StaticPopupDialogs["EASYFIND_RESET_UI_POS"] = {
+        text = "Reset UI Search positions to defaults?",
+        button1 = "Reset",
+        button2 = "Cancel",
+        OnAccept = function() Options:DoResetUIPositions() end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3,
+    }
+
+    StaticPopupDialogs["EASYFIND_RESET_MAP_POS"] = {
+        text = "Reset Map Search positions to defaults?",
+        button1 = "Reset",
+        button2 = "Cancel",
+        OnAccept = function() Options:DoResetMapPositions() end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3,
+    }
+
+    -- Reset buttons inside General tab (below last slider)
+    local resetAllBtn = CreateFrame("Button", nil, sec3, "UIPanelButtonTemplate")
+    resetAllBtn:SetSize(RESET_BTN_W, 20)
+    resetAllBtn:SetPoint("BOTTOMLEFT", sec3, "BOTTOMLEFT", 8, 8)
+    resetAllBtn:SetText("Reset All Settings")
     resetAllBtn:SetScript("OnClick", function()
         StaticPopup_Show("EASYFIND_RESET_ALL")
     end)
 
-    local resetPosBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
-    resetPosBtn:SetSize(BTN_W, 22)
-    resetPosBtn:SetPoint("LEFT", resetAllBtn, "RIGHT", 12, 0)
-    resetPosBtn:SetText("Reset Positions")
+    local resetPosBtn = CreateFrame("Button", nil, sec3, "UIPanelButtonTemplate")
+    resetPosBtn:SetSize(RESET_BTN_W, 20)
+    resetPosBtn:SetPoint("LEFT", resetAllBtn, "RIGHT", 8, 0)
+    resetPosBtn:SetText("Reset All Positions")
     resetPosBtn:SetScript("OnClick", function()
         StaticPopup_Show("EASYFIND_RESET_POSITIONS")
     end)
 
-    local bugBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
-    bugBtn:SetSize(BTN_W, 22)
-    bugBtn:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", 12, 18)
+    -- FEEDBACK TAB
+    local feedbackTab = CreateTab("Feedback")
+
+    local feedbackDesc = feedbackTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    feedbackDesc:SetPoint("TOPLEFT", feedbackTab, "TOPLEFT", 12, -16)
+    feedbackDesc:SetPoint("RIGHT", feedbackTab, "RIGHT", -12, 0)
+    feedbackDesc:SetJustifyH("LEFT")
+    feedbackDesc:SetSpacing(3)
+    feedbackDesc:SetText(
+        "Found a bug or have an idea for a new feature? Clicking either button "
+        .. "below will give you a link to submit your feedback.\n\n"
+        .. "When reporting a bug, please include what you were doing when it happened "
+        .. "and any error messages you saw. Screenshots are great!"
+    )
+
+    local bugBtn = CreateFrame("Button", nil, feedbackTab, "UIPanelButtonTemplate")
+    bugBtn:SetSize(RESET_BTN_W, 20)
+    bugBtn:SetPoint("TOPLEFT", feedbackDesc, "BOTTOMLEFT", 0, -12)
     bugBtn:SetText("Report Bug")
     bugBtn:SetScript("OnClick", function()
         EasyFind:OpenBugReport()
     end)
 
-    local featureBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
-    featureBtn:SetSize(BTN_W, 22)
+    local featureBtn = CreateFrame("Button", nil, feedbackTab, "UIPanelButtonTemplate")
+    featureBtn:SetSize(RESET_BTN_W, 20)
     featureBtn:SetPoint("LEFT", bugBtn, "RIGHT", 12, 0)
     featureBtn:SetText("Request Feature")
     featureBtn:SetScript("OnClick", function()
         EasyFind:OpenFeatureRequest()
     end)
 
-    -- Initial layout (all collapsed)
-    RelayoutSections()
+    local enjoyDesc = feedbackTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    enjoyDesc:SetPoint("TOPLEFT", bugBtn, "BOTTOMLEFT", 0, -18)
+    enjoyDesc:SetPoint("RIGHT", feedbackTab, "RIGHT", -12, 0)
+    enjoyDesc:SetJustifyH("LEFT")
+    enjoyDesc:SetSpacing(3)
+    enjoyDesc:SetText(
+        "If you're enjoying EasyFind, spreading the word or leaving a friendly "
+        .. "comment on the CurseForge page is always appreciated. "
+        .. "Copy the link below to share with friends:"
+    )
+
+    local shareBox = CreateURLBox(feedbackTab, "https://www.curseforge.com/wow/addons/easyfind", enjoyDesc, -6)
+
+    -- Show Home tab by default
+    SwitchToTab(1)
 
     optionsFrame:Hide()
 
@@ -1393,7 +1555,6 @@ function Options:DoResetPositions()
         optionsFrame:ClearAllPoints()
         optionsFrame:SetPoint("TOP", UIParent, "TOP", 0, -100)
     end
-    EasyFind:Print("All positions reset to defaults.")
 end
 
 function Options:DoResetAll()
@@ -1520,6 +1681,7 @@ function Options:DoResetAll()
     optionsFrame.colorSwatch:SetColorTexture(defaultRGB[1], defaultRGB[2], defaultRGB[3], 1)
     optionsFrame.keybindBtn:SetText("Not Bound")
     optionsFrame.focusBtn:SetText("Not Bound")
+    optionsFrame.toggleFocusBtn:SetText("Not Bound")
 
     if _G["EasyFindSearchFrame"] and ns.UI then
         if ns.UI.ResetPosition then ns.UI:ResetPosition() end
@@ -1546,9 +1708,137 @@ function Options:DoResetAll()
     if _G["EasyFindSearchFrame"] and ns.UI and ns.UI.Show then ns.UI:Show() end
     EasyFind:UpdateMinimapButton()
 
-    EasyFind:Print("All settings reset to defaults.")
     if needsReload then
         StaticPopup_Show("EASYFIND_RELOAD_PROMPT")
+    end
+end
+
+function Options:DoResetUI()
+    EasyFind.db.directOpen = false
+    EasyFind.db.smartShow = false
+    EasyFind.db.staticOpacity = false
+    EasyFind.db.uiResultsAbove = false
+    EasyFind.db.fontSize = 1.0
+    EasyFind.db.uiSearchScale = 1.0
+    EasyFind.db.uiSearchWidth = 1.0
+    EasyFind.db.uiResultsScale = 1.0
+    EasyFind.db.uiResultsWidth = 1.0
+    EasyFind.db.uiSearchPosition = nil
+    EasyFind.db.uiMaxResults = 10
+    EasyFind.db.uiSearchFilters = { ui = true, mounts = false, toys = false, pets = false, map = false }
+    EasyFind.db.uiMapSearchLocal = true
+
+    optionsFrame.directOpenCheckbox:SetChecked(false)
+    optionsFrame.smartShowCheckbox:SetChecked(false)
+    optionsFrame.staticOpacityCheckbox:SetChecked(false)
+    optionsFrame.uiResultsAboveCheckbox:SetChecked(false)
+    optionsFrame.uiFontSlider:SetValue(1.0)
+    local sf = _G["EasyFindSearchFrame"]
+    if sf and sf.modeBtn and ns.UpdateModeButtonVisual then
+        ns.UpdateModeButtonVisual(sf.modeBtn)
+    end
+
+    ns.Highlight:ClearAll()
+    if _G["EasyFindSearchFrame"] and ns.UI then
+        if ns.UI.ResetPosition then ns.UI:ResetPosition() end
+        if ns.UI.UpdateScale then ns.UI:UpdateScale() end
+        if ns.UI.UpdateWidth then ns.UI:UpdateWidth() end
+        if ns.UI.UpdateSmartShow then ns.UI:UpdateSmartShow() end
+        if ns.UI.UpdateFontSize then ns.UI:UpdateFontSize() end
+        if ns.UI.RefreshResults then ns.UI:RefreshResults() end
+    end
+end
+
+function Options:DoResetMap()
+    EasyFind.db.navigateToZonesDirectly = false
+    EasyFind.db.mapSmartShow = false
+    EasyFind.db.hideSearchBarsMaximized = false
+    EasyFind.db.mapResultsAbove = false
+    EasyFind.db.mapFontSize = 1.0
+    EasyFind.db.mapSearchYOffset = 0
+    EasyFind.db.iconScale = 0.8
+    EasyFind.db.mapSearchScale = 1.0
+    EasyFind.db.mapSearchWidth = 1.0
+    EasyFind.db.mapResultsScale = 1.0
+    EasyFind.db.mapResultsWidth = 1.0
+    EasyFind.db.mapSearchPosition = nil
+    EasyFind.db.globalSearchPosition = nil
+    EasyFind.db.mapSearchPositionMax = nil
+    EasyFind.db.globalSearchPositionMax = nil
+    EasyFind.db.mapMaxResults = 6
+    EasyFind.db.mapPinHighlight = true
+    EasyFind.db.blinkingPins = false
+    EasyFind.db.minimapArrowGlow = true
+    EasyFind.db.minimapGuideCircle = true
+    EasyFind.db.minimapPinGlow = true
+    EasyFind.db.guideCircleScale = 1.0
+    EasyFind.db.autoPinClear = true
+    EasyFind.db.autoTrackPins = true
+    EasyFind.db.arrivalDistance = 10
+    EasyFind.db.pinsCollapsed = false
+    EasyFind.db.globalSearchFilters = { zones = true, dungeons = true, raids = true, delves = true }
+    EasyFind.db.localSearchFilters = { instances = true, travel = true, services = true }
+
+    optionsFrame.zoneNavCheckbox:SetChecked(false)
+    optionsFrame.searchBarGroup:UpdateVisuals()
+    optionsFrame.mapPinGroup:UpdateVisuals()
+    optionsFrame.minimapGroup:UpdateVisuals()
+    optionsFrame.automationGroup:UpdateVisuals()
+    optionsFrame.mapFontSlider:SetValue(1.0)
+    optionsFrame.mapYOffsetSlider:SetValue(0)
+    optionsFrame.mapIconSlider:SetValue(0.8)
+    optionsFrame.arrivalSlider:SetValue(10)
+    optionsFrame.circleScaleSlider:SetValue(1.0)
+
+    if ns.MapSearch then
+        if ns.MapSearch.HideSuperTrackGlow then pcall(ns.MapSearch.HideSuperTrackGlow) end
+        if _G["EasyFindMapSearchFrame"] then
+            pcall(ns.MapSearch.ClearAll, ns.MapSearch)
+            pcall(ns.MapSearch.ClearZoneHighlight, ns.MapSearch)
+        end
+        ns.MapSearch.pendingWaypoint = nil
+    end
+    if _G["EasyFindMapSearchFrame"] and ns.MapSearch then
+        if ns.MapSearch.ResetPosition then ns.MapSearch:ResetPosition() end
+        if ns.MapSearch.UpdateScale then ns.MapSearch:UpdateScale() end
+        if ns.MapSearch.UpdateWidth then ns.MapSearch:UpdateWidth() end
+        if ns.MapSearch.UpdateFontSize then ns.MapSearch:UpdateFontSize() end
+        if ns.MapSearch.UpdateIconScales then ns.MapSearch:UpdateIconScales() end
+        if ns.MapSearch.RefreshIndicators then ns.MapSearch:RefreshIndicators() end
+        if ns.MapSearch.UpdateMapSmartShow then ns.MapSearch:UpdateMapSmartShow() end
+    end
+    local uiInd = _G["EasyFindIndicatorFrame"]
+    if uiInd then uiInd:SetScale(0.8) end
+end
+
+function Options:DoResetUIPositions()
+    EasyFind.db.uiSearchPosition = nil
+    EasyFind.db.uiSearchScale = 1.0
+    EasyFind.db.uiSearchWidth = 1.0
+    EasyFind.db.uiResultsScale = 1.0
+    EasyFind.db.uiResultsWidth = 1.0
+    if _G["EasyFindSearchFrame"] and ns.UI then
+        if ns.UI.ResetPosition then ns.UI:ResetPosition() end
+        if ns.UI.UpdateScale then ns.UI:UpdateScale() end
+        if ns.UI.UpdateWidth then ns.UI:UpdateWidth() end
+    end
+end
+
+function Options:DoResetMapPositions()
+    EasyFind.db.mapSearchPosition = nil
+    EasyFind.db.globalSearchPosition = nil
+    EasyFind.db.mapSearchPositionMax = nil
+    EasyFind.db.globalSearchPositionMax = nil
+    EasyFind.db.mapSearchScale = 1.0
+    EasyFind.db.mapSearchWidth = 1.0
+    EasyFind.db.mapResultsScale = 1.0
+    EasyFind.db.mapResultsWidth = 1.0
+    EasyFind.db.mapSearchYOffset = 0
+    optionsFrame.mapYOffsetSlider:SetValue(0)
+    if _G["EasyFindMapSearchFrame"] and ns.MapSearch then
+        if ns.MapSearch.ResetPosition then ns.MapSearch:ResetPosition() end
+        if ns.MapSearch.UpdateScale then ns.MapSearch:UpdateScale() end
+        if ns.MapSearch.UpdateWidth then ns.MapSearch:UpdateWidth() end
     end
 end
 
@@ -1589,13 +1879,6 @@ function Options:Show()
         self:Initialize()
     end
 
-    -- Collapse all sections on open for a clean view
-    for _, section in ipairs(optionsFrame.sections) do
-        section.expanded = false
-        section.icon:SetAtlas("QuestLog-icon-expand")
-        section.content:Hide()
-    end
-
     -- Refresh values from saved vars
     optionsFrame.panelOpacitySlider:SetValue(EasyFind.db.panelOpacity or 0.9)
     optionsFrame.opacitySlider:SetValue(EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
@@ -1627,13 +1910,14 @@ function Options:Show()
     optionsFrame.keybindBtn:SetText(key1 or "Not Bound")
     local key2 = GetBindingKey("EASYFIND_FOCUS")
     optionsFrame.focusBtn:SetText(key2 or "Not Bound")
+    local key3 = GetBindingKey("EASYFIND_TOGGLE_FOCUS")
+    optionsFrame.toggleFocusBtn:SetText(key3 or "Not Bound")
     local key4 = GetBindingKey("EASYFIND_CLEAR")
     optionsFrame.clearBtn:SetText(key4 or "Not Bound")
 
     if optionsFrame.bgTex then
         optionsFrame.bgTex:SetAlpha(EasyFind.db.panelOpacity or 0.9)
     end
-    optionsFrame.RelayoutSections()
     optionsFrame:Show()
 end
 
