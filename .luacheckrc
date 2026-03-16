@@ -66,9 +66,22 @@ read_globals = {
     "C_Reputation", "C_SuperTrack", "C_TaxiMap", "C_Texture", "C_Timer",
     "C_ToyBox", "C_VignetteInfo",
 
+    -- UI utility functions
+    "UIFrameFadeIn", "UIFrameFadeOut", "UIFrameFadeRemoveFrame",
+    "AchievementFrameCategories_SelectElementData",
+    "UnitPopup_ShowMenu", "BattlePetToolTip_ShowLink",
+    "GetUnitSpeed", "GetItemCooldown", "EJ_GetInstanceInfo",
+
+    -- Data types
+    "UiMapPoint",
+
+    -- Cross-addon references
+    "EasyFindDevDB",
+
     -- Constants, Enums, Mixins
     "Enum", "Settings", "BackdropTemplateMixin",
     "SOUNDKIT", "UIDROPDOWNMENU_OPEN_MENU", "UISpecialFrames",
+    "FACTION_BAR_COLORS",
     "LE_PET_JOURNAL_FILTER_COLLECTED", "LE_PET_JOURNAL_FILTER_NOT_COLLECTED",
 
     -- Font objects

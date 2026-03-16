@@ -1,5 +1,5 @@
 -- EasyFind Static Locations (auto-generated 2026-03-11 01:48)
-local ADDON_NAME, ns = ...
+local _, ns = ...
 ns.STATIC_LOCATIONS = {
     [84] = { -- Stormwind City
         { name = "Inn", category = "innkeeper", x = 0.6076649384171665, y = 0.7474117877548194, keywords = {"inn", "innkeeper", "hearth", "rest"} },
