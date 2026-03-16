@@ -7,7 +7,7 @@ local Utils   = ns.Utils
 local sformat = Utils.sformat
 local mfloor, mmin, mmax = Utils.mfloor, Utils.mmin, Utils.mmax
 local tonumber, tostring = Utils.tonumber, Utils.tostring
-local tinsert = Utils.tinsert
+local tinsert, tconcat = Utils.tinsert, Utils.tconcat
 local IsMouseButtonDown = IsMouseButtonDown
 
 local DEFAULT_OPACITY = ns.DEFAULT_OPACITY
@@ -92,7 +92,7 @@ end
 -- Helper to create a slider (anchored manually by caller)
 local function CreateSlider(parent, name, label, minVal, maxVal, step, tooltipText, formatFunc, defaultValue, unitSuffix)
     local slider = CreateFrame("Slider", "EasyFindOptions" .. name .. "Slider", parent, "OptionsSliderTemplate")
-    slider:SetWidth(200)
+    slider:SetWidth(120)
     slider:SetMinMaxValues(minVal, maxVal)
     slider:SetValueStep(step)
     slider:SetObeyStepOnDrag(true)
@@ -235,6 +235,151 @@ local function CreateCheckbox(parent, name, label, tooltipText)
     return checkbox
 end
 
+-- Multi-select dropdown: a label + button that opens a flyout with checkboxes.
+-- optionDefs: array of { label, dbKey, default, tooltip, callback }
+-- Returns a wrapper frame with :UpdateVisuals(), :SetGroupEnabled(bool),
+-- :AddSlider(...), and .flyout / .checkRows / .sliders fields.
+local function CreateMultiSelectDropdown(parent, groupLabel, optionDefs, btnWidth, flyoutWidth)
+    btnWidth = btnWidth or 160
+    flyoutWidth = flyoutWidth or btnWidth
+
+    local wrapper = CreateFrame("Frame", nil, parent)
+    wrapper:SetHeight(22)
+
+    local label = wrapper:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetPoint("LEFT", 4, 0)
+    label:SetText(groupLabel .. ":")
+    wrapper.label = label
+
+    -- Summary text: comma-separated short names of active options
+    local function GetSummaryText()
+        local parts = {}
+        for _, def in ipairs(optionDefs) do
+            local val = EasyFind.db[def.dbKey]
+            if val == nil then val = def.default end
+            if val then tinsert(parts, def.shortLabel or def.label) end
+        end
+        if #parts == 0 then return "None" end
+        return tconcat(parts, ", ")
+    end
+
+    local btnFrame = CreateFrame("Button", nil, wrapper, "BackdropTemplate")
+    btnFrame:SetSize(btnWidth, 22)
+    btnFrame:SetBackdrop(SELECTOR_BACKDROP)
+    btnFrame:SetBackdropColor(0.1, 0.1, 0.1, 0.8)
+    btnFrame:SetBackdropBorderColor(0.6, 0.6, 0.6, 0.8)
+    wrapper.button = btnFrame
+
+    local btnText = btnFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    btnText:SetPoint("CENTER")
+    btnText:SetText(GetSummaryText())
+    wrapper.btnText = btnText
+
+    -- Flyout panel with checkboxes (and optional sliders via AddSlider).
+    -- Parented to UIParent so it isn't clipped by the options frame.
+    local ROW_H = 22
+    local flyout = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    flyout:SetSize(flyoutWidth, #optionDefs * ROW_H + 8)
+    flyout:SetFrameStrata("FULLSCREEN_DIALOG")
+    flyout:SetFrameLevel(900)
+    flyout:SetBackdrop({
+        bgFile = "Interface\\BUTTONS\\WHITE8X8",
+        edgeFile = TOOLTIP_BORDER,
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 },
+    })
+    flyout:SetBackdropColor(0.08, 0.08, 0.08, 1)
+    flyout:Hide()
+    wrapper.flyout = flyout
+
+    -- Track vertical cursor for adding content (checkboxes, then sliders)
+    local contentH = #optionDefs * ROW_H + 4
+
+    btnFrame:SetScript("OnClick", function()
+        -- Re-anchor each time since the button may have moved
+        flyout:ClearAllPoints()
+        flyout:SetPoint("TOP", btnFrame, "BOTTOM", 0, -2)
+        flyout:SetShown(not flyout:IsShown())
+    end)
+
+    -- Click-away to close
+    flyout:SetScript("OnShow", function(self)
+        self:SetScript("OnUpdate", function(self)
+            if not self:IsMouseOver() and not btnFrame:IsMouseOver() then
+                if IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton") then
+                    self:Hide()
+                end
+            end
+        end)
+    end)
+    flyout:SetScript("OnHide", function(self)
+        self:SetScript("OnUpdate", nil)
+    end)
+
+    wrapper.checkRows = {}
+    for i, def in ipairs(optionDefs) do
+        local row = CreateFrame("CheckButton", nil, flyout, "InterfaceOptionsCheckButtonTemplate")
+        row:SetPoint("TOPLEFT", flyout, "TOPLEFT", 4, -4 - (i - 1) * ROW_H)
+        row.Text:SetText(def.label)
+        row.Text:SetFontObject("GameFontHighlightSmall")
+
+        local val = EasyFind.db[def.dbKey]
+        if val == nil then val = def.default end
+        row:SetChecked(val)
+
+        row:SetScript("OnClick", function(self)
+            EasyFind.db[def.dbKey] = self:GetChecked()
+            btnText:SetText(GetSummaryText())
+            if def.callback then def.callback() end
+        end)
+
+        if def.tooltip then
+            row:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(def.label)
+                GameTooltip:AddLine(def.tooltip, 1, 1, 1, true)
+                GameTooltip:Show()
+            end)
+            row:SetScript("OnLeave", GameTooltip_Hide)
+        end
+
+        row.dbKey = def.dbKey
+        row.defaultVal = def.default
+        tinsert(wrapper.checkRows, row)
+    end
+
+    -- Add a slider inside the flyout, below existing content.
+    -- Returns the slider frame. Uses the same API as CreateSlider.
+    wrapper.sliders = {}
+    function wrapper:AddSlider(name, sliderLabel, minVal, maxVal, step, tooltipText, formatFunc, defaultValue, unitSuffix)
+        contentH = contentH + 18
+        local slider = CreateSlider(flyout, name, sliderLabel, minVal, maxVal, step, tooltipText, formatFunc, defaultValue, unitSuffix)
+        slider:SetWidth(flyoutWidth - 110)
+        slider:SetPoint("TOPLEFT", flyout, "TOPLEFT", 14, -contentH)
+        contentH = contentH + 36
+        flyout:SetHeight(contentH + 4)
+        tinsert(self.sliders, slider)
+        return slider
+    end
+
+    function wrapper:UpdateVisuals()
+        for _, row in ipairs(self.checkRows) do
+            local val = EasyFind.db[row.dbKey]
+            if val == nil then val = row.defaultVal end
+            row:SetChecked(val)
+        end
+        btnText:SetText(GetSummaryText())
+    end
+
+    function wrapper:SetGroupEnabled(enabled)
+        if enabled then btnFrame:Enable() else btnFrame:Disable() end
+        self:SetAlpha(enabled and 1.0 or 0.35)
+        if not enabled and flyout:IsShown() then flyout:Hide() end
+    end
+
+    return wrapper
+end
+
 local DISABLED_TEXT = { 0.5, 0.5, 0.5 }
 local NORMAL_TEXT = { 1.0, 0.82, 0.0 }  -- GameFontNormal yellow
 
@@ -264,7 +409,11 @@ local function SetControlsEnabled(controls, enabled)
         elseif objType == "Button" then
             if enabled then ctrl:Enable() else ctrl:Disable() end
         elseif objType == "Frame" then
-            ctrl:SetAlpha(enabled and 1.0 or 0.35)
+            if ctrl.SetGroupEnabled then
+                ctrl:SetGroupEnabled(enabled)
+            else
+                ctrl:SetAlpha(enabled and 1.0 or 0.35)
+            end
         end
     end
 end
@@ -273,14 +422,14 @@ function Options:Initialize()
     if isInitialized then return end
     isInitialized = true
 
-    local FRAME_W    = 570
+    local FRAME_W    = 485
     local COL_LEFT   = 4      -- Left column offset within content frames
-    local COL_RIGHT  = 280    -- Right column offset within content frames
+    local COL_RIGHT  = 262    -- Right column offset within content frames
     local BTN_OFFSET = 105    -- Label LEFT to button LEFT (aligns selectors/keybinds)
     local HEADER_H   = 26
     local HEADER_GAP = 4
     local TITLE_Y    = -50    -- Y where first section header starts
-    local BOTTOM_PAD = 88     -- Space for separator, tips, reset buttons
+    local BOTTOM_PAD = 116    -- Space for separator, tips, 2x2 reset buttons
 
     -- Create the main options frame
     optionsFrame = CreateFrame("Frame", "EasyFindOptionsFrame", UIParent, "BackdropTemplate")
@@ -773,7 +922,7 @@ function Options:Initialize()
     UpdateUIToggleVisual()
 
     -- SECTION 3: Map Search
-    local sec2 = CreateSection("Map Search", 394)
+    local sec2 = CreateSection("Map Search", 210)
 
     local mapEnableCheckbox = CreateCheckbox(sec2, "EnableMap", "Enable Map Search Module",
         "Uncheck to disable map search bars, pins, and all map overlay features.\n\nRequires a UI reload to take effect.")
@@ -847,9 +996,28 @@ function Options:Initialize()
     end)
     resizeMapBtn:SetScript("OnLeave", GameTooltip_Hide)
 
-    local mapFontSlider = CreateSlider(sec2, "MapFontSize", "Font Size|cffff3333*|r", 0.5, 2.0, 0.1,
+    local FLYOUT_W = 260
+
+    local searchBarGroup = CreateMultiSelectDropdown(sec2, "Search Bars", {
+        { label = "Smart Show", shortLabel = "Smart", dbKey = "mapSmartShow", default = false,
+          tooltip = "Map search bars hide until you move your mouse near them.\nBars reappear on hover and fade when you move away.\nText in search bars or an open results list prevents fading.",
+          callback = function() if ns.MapSearch and ns.MapSearch.UpdateMapSmartShow then ns.MapSearch:UpdateMapSmartShow() end end },
+        { label = "Hide Fullscreen", shortLabel = "No Full", dbKey = "hideSearchBarsMaximized", default = false,
+          tooltip = "Both map search bars are hidden when the world map is maximized (full screen).\nThey reappear when you return to the windowed map.",
+          callback = function() if ns.MapSearch and ns.MapSearch.UpdateHideMaximized then ns.MapSearch:UpdateHideMaximized() end end },
+        { label = "Results Above", shortLabel = "Above", dbKey = "mapResultsAbove", default = false,
+          tooltip = "Map search results appear above the bar instead of below.\nApplies to both local and global map search bars.",
+          callback = function() if ns.MapSearch and ns.MapSearch.RefreshResultsAnchor then ns.MapSearch:RefreshResultsAnchor() end end },
+    }, nil, FLYOUT_W)
+    searchBarGroup:SetPoint("TOPLEFT", mapSpeedBox, "BOTTOMLEFT", 0, -8)
+    searchBarGroup:SetPoint("RIGHT", sec2, "RIGHT", -8, 0)
+    searchBarGroup.label:SetWidth(85)
+    searchBarGroup.label:SetJustifyH("LEFT")
+    searchBarGroup.button:SetPoint("LEFT", searchBarGroup.label, "RIGHT", 6, 0)
+    optionsFrame.searchBarGroup = searchBarGroup
+
+    local mapFontSlider = searchBarGroup:AddSlider("MapFontSize", "Font Size|cffff3333*|r", 0.5, 2.0, 0.1,
         "Changing font size also affects search bar height and results window sizing.", nil, 1.0)
-    mapFontSlider:SetPoint("TOPLEFT", mapOptionsBox, "TOPLEFT", COL_RIGHT - 2, -28)
     mapFontSlider:SetValue(EasyFind.db.mapFontSize or 1.0)
     mapFontSlider:HookScript("OnValueChanged", function(self, value)
         EasyFind.db.mapFontSize = value
@@ -859,46 +1027,9 @@ function Options:Initialize()
     end)
     optionsFrame.mapFontSlider = mapFontSlider
 
-    local mapSmartShowCheckbox = CreateCheckbox(sec2, "MapSmartShow", "Smart Show (auto-hide)",
-        "When enabled, map search bars hide until you move your mouse near them.\n\nThe bars reappear on hover and fade away when you move away.\n\nText in the search bars or an open results list prevents fading.")
-    mapSmartShowCheckbox:SetPoint("TOPLEFT", mapSpeedBox, "BOTTOMLEFT", 8, -6)
-    mapSmartShowCheckbox:SetChecked(EasyFind.db.mapSmartShow or false)
-    mapSmartShowCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.mapSmartShow = self:GetChecked()
-        if ns.MapSearch and ns.MapSearch.UpdateMapSmartShow then
-            ns.MapSearch:UpdateMapSmartShow()
-        end
-    end)
-    optionsFrame.mapSmartShowCheckbox = mapSmartShowCheckbox
-
-    local hideMaxCheckbox = CreateCheckbox(sec2, "HideMaximized", "Hide Bars in Full Screen Map",
-        "When enabled, both map search bars are hidden when the world map is maximized (full screen).\n\nThey reappear when you return to the windowed map.")
-    hideMaxCheckbox:SetPoint("TOPLEFT", mapSmartShowCheckbox, "BOTTOMLEFT", 0, -4)
-    hideMaxCheckbox:SetChecked(EasyFind.db.hideSearchBarsMaximized or false)
-    hideMaxCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.hideSearchBarsMaximized = self:GetChecked()
-        if ns.MapSearch and ns.MapSearch.UpdateHideMaximized then
-            ns.MapSearch:UpdateHideMaximized()
-        end
-    end)
-    optionsFrame.hideMaxCheckbox = hideMaxCheckbox
-
-    local mapResultsAboveCheckbox = CreateCheckbox(sec2, "MapResultsAbove", "Map Results Above",
-        "When enabled, map search bars show results above the bar instead of below.\n\nApplies to both local and global map search bars.")
-    mapResultsAboveCheckbox:SetPoint("TOPLEFT", hideMaxCheckbox, "BOTTOMLEFT", 0, -4)
-    mapResultsAboveCheckbox:SetChecked(EasyFind.db.mapResultsAbove or false)
-    mapResultsAboveCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.mapResultsAbove = self:GetChecked()
-        if ns.MapSearch and ns.MapSearch.RefreshResultsAnchor then
-            ns.MapSearch:RefreshResultsAnchor()
-        end
-    end)
-    optionsFrame.mapResultsAboveCheckbox = mapResultsAboveCheckbox
-
-    local mapYOffsetSlider = CreateSlider(sec2, "MapYOffset", "Bar Y Offset", -20, 20, 1,
+    local mapYOffsetSlider = searchBarGroup:AddSlider("MapYOffset", "Bar Y Offset", -20, 20, 1,
         "Vertical offset for the map search bars relative to the map bottom edge.\nPositive moves up, negative moves down.",
         function(val) return tostring(mfloor(val + 0.5)) .. "px" end, 0, "px")
-    mapYOffsetSlider:SetPoint("TOPLEFT", mapFontSlider, "BOTTOMLEFT", 0, -38)
     mapYOffsetSlider:SetValue(EasyFind.db.mapSearchYOffset or 0)
     mapYOffsetSlider:HookScript("OnValueChanged", function(self, value)
         value = mfloor(value + 0.5)
@@ -909,9 +1040,23 @@ function Options:Initialize()
     end)
     optionsFrame.mapYOffsetSlider = mapYOffsetSlider
 
-    local mapIconSlider = CreateSlider(sec2, "MapIcon", "Icon Size", 0.5, 2.0, 0.1,
+    local mapPinGroup = CreateMultiSelectDropdown(sec2, "Map Pins", {
+        { label = "Highlight Box", shortLabel = "Highlight", dbKey = "mapPinHighlight", default = true,
+          tooltip = "A yellow highlight box is drawn around map search pins.\nDisable to show only the pin icon and indicator arrow.",
+          callback = function() if ns.MapSearch and ns.MapSearch.UpdatePinHighlight then ns.MapSearch:UpdatePinHighlight() end end },
+        { label = "Blinking", shortLabel = "Blink", dbKey = "blinkingPins", default = false,
+          tooltip = "Map search pins and highlight boxes pulse in sync with the indicator arrow.\nWhen disabled, pins and highlights are steady. The indicator arrow always bobs.",
+          callback = function() if ns.MapSearch and ns.MapSearch.UpdateBlinkingPins then ns.MapSearch:UpdateBlinkingPins() end end },
+    }, nil, FLYOUT_W)
+    mapPinGroup:SetPoint("TOPLEFT", searchBarGroup, "BOTTOMLEFT", 0, -6)
+    mapPinGroup:SetPoint("RIGHT", sec2, "RIGHT", -8, 0)
+    mapPinGroup.label:SetWidth(85)
+    mapPinGroup.label:SetJustifyH("LEFT")
+    mapPinGroup.button:SetPoint("LEFT", mapPinGroup.label, "RIGHT", 6, 0)
+    optionsFrame.mapPinGroup = mapPinGroup
+
+    local mapIconSlider = mapPinGroup:AddSlider("MapIcon", "Icon Size", 0.5, 2.0, 0.1,
         "Adjusts the size of map search result icons on the world map.", nil, 0.8)
-    mapIconSlider:SetPoint("TOPLEFT", mapYOffsetSlider, "BOTTOMLEFT", 0, -38)
     mapIconSlider:SetValue(EasyFind.db.iconScale or 0.8)
     mapIconSlider:HookScript("OnValueChanged", function(self, value)
         EasyFind.db.iconScale = value
@@ -925,10 +1070,46 @@ function Options:Initialize()
     end)
     optionsFrame.mapIconSlider = mapIconSlider
 
-    local arrivalSlider = CreateSlider(sec2, "ArrivalDist", "Arrival Distance", 3, 50, 1,
+    local minimapGroup = CreateMultiSelectDropdown(sec2, "Minimap", {
+        { label = "Arrow Glow", shortLabel = "Arrow", dbKey = "minimapArrowGlow", default = true,
+          tooltip = "A pulsing glow highlights the minimap perimeter arrow that points toward your active map pin.\nDisable if you find the glow distracting." },
+        { label = "Guide Circle", shortLabel = "Circle", dbKey = "minimapGuideCircle", default = true,
+          tooltip = "A directional ring and arrow appears around your character on the minimap when a map pin is nearby, pointing toward the destination.\nDisable if you prefer only the default minimap pin." },
+        { label = "Pin Glow", shortLabel = "Glow", dbKey = "minimapPinGlow", default = true,
+          tooltip = "A pulsing glow appears on the minimap pin when the guide circle shrinks onto it.\nDisable if you find the glow distracting." },
+    }, nil, FLYOUT_W)
+    minimapGroup:SetPoint("TOPLEFT", mapPinGroup, "BOTTOMLEFT", 0, -6)
+    minimapGroup:SetPoint("RIGHT", sec2, "RIGHT", -8, 0)
+    minimapGroup.label:SetWidth(85)
+    minimapGroup.label:SetJustifyH("LEFT")
+    minimapGroup.button:SetPoint("LEFT", minimapGroup.label, "RIGHT", 6, 0)
+    optionsFrame.minimapGroup = minimapGroup
+
+    local circleScaleSlider = minimapGroup:AddSlider("CircleScale", "Guide Circle Size", 0.5, 2.0, 0.1,
+        "Adjusts the size of the minimap guide circle and arrow that appears when tracking a map pin.",
+        nil, 1.0)
+    circleScaleSlider:SetValue(EasyFind.db.guideCircleScale or 1.0)
+    circleScaleSlider:HookScript("OnValueChanged", function(self, value)
+        EasyFind.db.guideCircleScale = value
+    end)
+    optionsFrame.circleScaleSlider = circleScaleSlider
+
+    local automationGroup = CreateMultiSelectDropdown(sec2, "Automation", {
+        { label = "Auto Track", shortLabel = "Track", dbKey = "autoTrackPins", default = true,
+          tooltip = "Placing a map pin (Ctrl+Click) automatically starts tracking it on the minimap.\nWhen disabled, you must click the pin to start tracking." },
+        { label = "Auto Clear", shortLabel = "Clear", dbKey = "autoPinClear", default = true,
+          tooltip = "Your map pin is automatically cleared when you arrive at the destination.\nDisable if you prefer to clear pins manually." },
+    }, nil, FLYOUT_W)
+    automationGroup:SetPoint("TOPLEFT", minimapGroup, "BOTTOMLEFT", 0, -6)
+    automationGroup:SetPoint("RIGHT", sec2, "RIGHT", -8, 0)
+    automationGroup.label:SetWidth(85)
+    automationGroup.label:SetJustifyH("LEFT")
+    automationGroup.button:SetPoint("LEFT", automationGroup.label, "RIGHT", 6, 0)
+    optionsFrame.automationGroup = automationGroup
+
+    local arrivalSlider = automationGroup:AddSlider("ArrivalDist", "Arrival Distance", 3, 50, 1,
         "How close (in yards) you must be to a tracked location before the waypoint auto-clears.",
         function(val) return tostring(mfloor(val + 0.5)) .. "yd" end, 10, "yd")
-    arrivalSlider:SetPoint("TOPLEFT", mapIconSlider, "BOTTOMLEFT", 0, -38)
     arrivalSlider:SetValue(EasyFind.db.arrivalDistance or 10)
     arrivalSlider:HookScript("OnValueChanged", function(self, value)
         value = mfloor(value + 0.5)
@@ -936,90 +1117,29 @@ function Options:Initialize()
     end)
     optionsFrame.arrivalSlider = arrivalSlider
 
-    local circleScaleSlider = CreateSlider(sec2, "CircleScale", "Guide Circle Size", 0.5, 2.0, 0.1,
-        "Adjusts the size of the minimap guide circle and arrow that appears when tracking a map pin.",
-        nil, 1.0)
-    circleScaleSlider:SetPoint("TOPLEFT", arrivalSlider, "BOTTOMLEFT", 0, -38)
-    circleScaleSlider:SetValue(EasyFind.db.guideCircleScale or 1.0)
-    circleScaleSlider:HookScript("OnValueChanged", function(self, value)
-        EasyFind.db.guideCircleScale = value
-    end)
-    optionsFrame.circleScaleSlider = circleScaleSlider
+    -- Border around Auto Clear + Arrival Distance to show they're linked
+    local clearGroup = CreateFrame("Frame", nil, automationGroup.flyout, "BackdropTemplate")
+    local autoClearRow = automationGroup.checkRows[2]  -- Auto Clear is second
+    clearGroup:SetPoint("TOPLEFT", autoClearRow, "TOPLEFT", -4, 4)
+    clearGroup:SetPoint("RIGHT", automationGroup.flyout, "RIGHT", -4, 0)
+    clearGroup:SetPoint("BOTTOM", automationGroup.flyout, "BOTTOM", 0, 3)
+    clearGroup:SetBackdrop({
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        edgeSize = 10,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 },
+    })
+    clearGroup:SetBackdropBorderColor(0.4, 0.4, 0.4, 0.5)
 
-    local blinkingPinsCheckbox = CreateCheckbox(sec2, "BlinkingPins", "Blinking Map Pins",
-        "When enabled, map search pins and highlight boxes pulse in sync with the indicator arrow.\n\nWhen disabled (default), pins and highlights are steady. The indicator arrow always bobs.")
-    blinkingPinsCheckbox:SetPoint("TOPLEFT", mapResultsAboveCheckbox, "BOTTOMLEFT", 0, -4)
-    blinkingPinsCheckbox:SetChecked(EasyFind.db.blinkingPins or false)
-    blinkingPinsCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.blinkingPins = self:GetChecked()
-        if ns.MapSearch and ns.MapSearch.UpdateBlinkingPins then
-            ns.MapSearch:UpdateBlinkingPins()
-        end
-    end)
-    optionsFrame.blinkingPinsCheckbox = blinkingPinsCheckbox
-
-    local pinHighlightCheckbox = CreateCheckbox(sec2, "PinHighlight", "Pin Highlight Box",
-        "When enabled, a yellow highlight box is drawn around map search pins.\n\nDisable to show only the pin icon and indicator arrow.")
-    pinHighlightCheckbox:SetPoint("TOPLEFT", blinkingPinsCheckbox, "BOTTOMLEFT", 0, -4)
-    pinHighlightCheckbox:SetChecked(EasyFind.db.mapPinHighlight ~= false)
-    pinHighlightCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.mapPinHighlight = self:GetChecked()
-        if ns.MapSearch and ns.MapSearch.UpdatePinHighlight then
-            ns.MapSearch:UpdatePinHighlight()
-        end
-    end)
-    optionsFrame.pinHighlightCheckbox = pinHighlightCheckbox
-
-    local arrowGlowCheckbox = CreateCheckbox(sec2, "ArrowGlow", "Minimap Arrow Glow",
-        "When enabled, a pulsing glow highlights the minimap perimeter arrow that points toward your active map pin.\n\nDisable if you find the glow distracting.")
-    arrowGlowCheckbox:SetPoint("TOPLEFT", pinHighlightCheckbox, "BOTTOMLEFT", 0, -4)
-    arrowGlowCheckbox:SetChecked(EasyFind.db.minimapArrowGlow ~= false)
-    arrowGlowCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.minimapArrowGlow = self:GetChecked()
-    end)
-    optionsFrame.arrowGlowCheckbox = arrowGlowCheckbox
-
-    local guideCircleCheckbox = CreateCheckbox(sec2, "GuideCircle", "Minimap Guide Circle",
-        "When enabled, a directional ring and arrow appears around your character on the minimap when a map pin is nearby, pointing toward the destination.\n\nDisable if you prefer only the default minimap pin.")
-    guideCircleCheckbox:SetPoint("TOPLEFT", arrowGlowCheckbox, "BOTTOMLEFT", 0, -4)
-    guideCircleCheckbox:SetChecked(EasyFind.db.minimapGuideCircle ~= false)
-    guideCircleCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.minimapGuideCircle = self:GetChecked()
-    end)
-    optionsFrame.guideCircleCheckbox = guideCircleCheckbox
-
-    local autoPinClearCheckbox = CreateCheckbox(sec2, "AutoPinClear", "Auto Map Pin Clear",
-        "When enabled, your map pin is automatically cleared when you arrive at the destination.\n\nDisable if you prefer to clear pins manually.")
-    autoPinClearCheckbox:SetPoint("TOPLEFT", guideCircleCheckbox, "BOTTOMLEFT", 0, -4)
-    autoPinClearCheckbox:SetChecked(EasyFind.db.autoPinClear ~= false)
-    autoPinClearCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.autoPinClear = self:GetChecked()
-    end)
-    optionsFrame.autoPinClearCheckbox = autoPinClearCheckbox
-
-    local autoTrackCheckbox = CreateCheckbox(sec2, "AutoTrack", "Auto Track Map Pins",
-        "When enabled, placing a map pin (Ctrl+Click) automatically starts tracking it on the minimap.\n\nWhen disabled, you must click the pin to start tracking.")
-    autoTrackCheckbox:SetPoint("TOPLEFT", autoPinClearCheckbox, "BOTTOMLEFT", 0, -4)
-    autoTrackCheckbox:SetChecked(EasyFind.db.autoTrackPins ~= false)
-    autoTrackCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.autoTrackPins = self:GetChecked()
-    end)
-    optionsFrame.autoTrackCheckbox = autoTrackCheckbox
-
-    local pinGlowCheckbox = CreateCheckbox(sec2, "PinGlow", "Map Pin Glow",
-        "When enabled, a pulsing glow appears on the minimap pin when the guide circle shrinks onto it.\n\nDisable if you find the glow distracting.")
-    pinGlowCheckbox:SetPoint("TOPLEFT", autoTrackCheckbox, "BOTTOMLEFT", 0, -4)
-    pinGlowCheckbox:SetChecked(EasyFind.db.minimapPinGlow ~= false)
-    pinGlowCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.minimapPinGlow = self:GetChecked()
-    end)
-    optionsFrame.pinGlowCheckbox = pinGlowCheckbox
+    -- Gray out Arrival Distance slider when Auto Clear is unchecked
+    local function UpdateArrivalSliderState()
+        SetControlsEnabled({arrivalSlider}, EasyFind.db.autoPinClear ~= false)
+    end
+    UpdateArrivalSliderState()
+    autoClearRow:HookScript("OnClick", UpdateArrivalSliderState)
 
     mapControls = {
-        mapOptionsBox, resizeMapBtn, mapFontSlider, mapIconSlider, arrivalSlider, circleScaleSlider,
-        mapSmartShowCheckbox, hideMaxCheckbox, zoneNavCheckbox, mapResultsAboveCheckbox,
-        blinkingPinsCheckbox, pinHighlightCheckbox, arrowGlowCheckbox, guideCircleCheckbox,
-        autoPinClearCheckbox, autoTrackCheckbox, pinGlowCheckbox
+        mapOptionsBox, resizeMapBtn, zoneNavCheckbox,
+        searchBarGroup, mapPinGroup, minimapGroup, automationGroup
     }
     UpdateMapToggleVisual()
 
@@ -1061,9 +1181,6 @@ function Options:Initialize()
         .. "|cFFFFD100Other:|r\n"
         .. "|cFF00FF00Shift+Drag|r  Reposition search bars\n"
         .. "|cFF00FF00Right-click|r a result to pin/unpin it\n\n"
-        .. "|cFFFFD100Speed options:|r  Enable |cFF00FF00Open Panels Directly|r (UI Search) to skip step-by-step "
-        .. "guides and jump straight to the destination. Enable |cFF00FF00Navigate to Zones Directly|r "
-        .. "(Map Search) to open map zones in one click instead of highlighting them first."
     )
     -- Keybind buttons
     local KEYBIND_ROW_H = 28
@@ -1072,32 +1189,23 @@ function Options:Initialize()
     local keybindDefs = {
         { label = "Toggle Bar",    action = "EASYFIND_TOGGLE" },
         { label = "Focus Bar",     action = "EASYFIND_FOCUS" },
-        { label = "Toggle+Focus",  action = "EASYFIND_TOGGLE_FOCUS" },
         { label = "Clear All",     action = "EASYFIND_CLEAR" },
     }
 
     local keybindTooltips = {
         EASYFIND_TOGGLE       = { "Toggle Search Bar", "Shows or hides the main search bar." },
         EASYFIND_FOCUS        = { "Focus Search Bar", "Places the cursor in the search bar without toggling visibility." },
-        EASYFIND_TOGGLE_FOCUS = { "Toggle + Focus", "Opens and focuses the search bar in one press. When the map is open, focuses the local map search bar instead." },
         EASYFIND_CLEAR        = { "Clear All", "Dismisses all active highlights, map pins, zone highlights, and pending waypoints." },
     }
 
     local keybindButtons = {}
-    local KEYBIND_LABEL_W = 105
+    local KEYBIND_LABEL_W = 95
     local keybindAnchor = shortcutText
     local keybindRowLabels = {}
     for i, def in ipairs(keybindDefs) do
-        local col = (i - 1) % 2
-        local row = math.floor((i - 1) / 2)
-
         local rowLabel = sec4:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        if col == 0 then
-            rowLabel:SetPoint("TOPLEFT", row == 0 and keybindAnchor or keybindRowLabels[i - 2],
-                "BOTTOMLEFT", 0, row == 0 and -12 or -6)
-        else
-            rowLabel:SetPoint("LEFT", keybindRowLabels[i - 1], "LEFT", COL_RIGHT - 14, 0)
-        end
+        rowLabel:SetPoint("TOPLEFT", i == 1 and keybindAnchor or keybindRowLabels[i - 1],
+            "BOTTOMLEFT", 0, i == 1 and -12 or -8)
         rowLabel:SetText(def.label .. ":")
         keybindRowLabels[i] = rowLabel
 
@@ -1128,14 +1236,14 @@ function Options:Initialize()
     end
     optionsFrame.keybindBtn = keybindButtons["EASYFIND_TOGGLE"]
     optionsFrame.focusBtn = keybindButtons["EASYFIND_FOCUS"]
-    optionsFrame.toggleFocusBtn = keybindButtons["EASYFIND_TOGGLE_FOCUS"]
+
     optionsFrame.clearBtn = keybindButtons["EASYFIND_CLEAR"]
 
     -- Auto-size section to text + keybind buttons
     C_Timer.After(0, function()
         local textH = shortcutText:GetStringHeight()
         if textH and textH > 0 then
-            local keybindRows = math.ceil(#keybindDefs / 2)
+            local keybindRows = #keybindDefs
             local keybindAreaH = 12 + keybindRows * KEYBIND_ROW_H
             local newH = textH + keybindAreaH + 16
             sec4:SetHeight(newH)
@@ -1228,41 +1336,40 @@ function Options:Initialize()
         preferredIndex = 3,
     }
 
-    -- Bottom buttons: 4 evenly spaced across 570px frame
-    -- 4 x 115px buttons + 5 x 22px gaps = 570px
-    local BTN_W = 115
-    local BTN_GAP = (FRAME_W - BTN_W * 4) / 5
+    -- Bottom buttons: 2x2 grid
+    local BTN_W = (FRAME_W - 36) / 2
+    local BTN_ROW_GAP = 6
 
     local resetAllBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
     resetAllBtn:SetSize(BTN_W, 22)
-    resetAllBtn:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", BTN_GAP, 18)
-    resetAllBtn:SetText("Reset All Settings")
+    resetAllBtn:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", 12, 18 + 22 + BTN_ROW_GAP)
+    resetAllBtn:SetText("Reset Settings")
     resetAllBtn:SetScript("OnClick", function()
         StaticPopup_Show("EASYFIND_RESET_ALL")
     end)
 
+    local resetPosBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
+    resetPosBtn:SetSize(BTN_W, 22)
+    resetPosBtn:SetPoint("LEFT", resetAllBtn, "RIGHT", 12, 0)
+    resetPosBtn:SetText("Reset Positions")
+    resetPosBtn:SetScript("OnClick", function()
+        StaticPopup_Show("EASYFIND_RESET_POSITIONS")
+    end)
+
     local bugBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
     bugBtn:SetSize(BTN_W, 22)
-    bugBtn:SetPoint("LEFT", resetAllBtn, "RIGHT", BTN_GAP, 0)
-    bugBtn:SetText("Report a Bug")
+    bugBtn:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", 12, 18)
+    bugBtn:SetText("Report Bug")
     bugBtn:SetScript("OnClick", function()
         EasyFind:OpenBugReport()
     end)
 
     local featureBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
     featureBtn:SetSize(BTN_W, 22)
-    featureBtn:SetPoint("LEFT", bugBtn, "RIGHT", BTN_GAP, 0)
-    featureBtn:SetText("Request a Feature")
+    featureBtn:SetPoint("LEFT", bugBtn, "RIGHT", 12, 0)
+    featureBtn:SetText("Request Feature")
     featureBtn:SetScript("OnClick", function()
         EasyFind:OpenFeatureRequest()
-    end)
-
-    local resetPosBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelButtonTemplate")
-    resetPosBtn:SetSize(BTN_W, 22)
-    resetPosBtn:SetPoint("LEFT", featureBtn, "RIGHT", BTN_GAP, 0)
-    resetPosBtn:SetText("Reset Positions")
-    resetPosBtn:SetScript("OnClick", function()
-        StaticPopup_Show("EASYFIND_RESET_POSITIONS")
     end)
 
     -- Initial layout (all collapsed)
@@ -1394,19 +1501,13 @@ function Options:DoResetAll()
     optionsFrame.zoneNavCheckbox:SetChecked(false)
     optionsFrame.smartShowCheckbox:SetChecked(false)
     optionsFrame.staticOpacityCheckbox:SetChecked(false)
-    optionsFrame.blinkingPinsCheckbox:SetChecked(false)
-    optionsFrame.pinHighlightCheckbox:SetChecked(true)
     optionsFrame.loginMessageCheckbox:SetChecked(true)
     optionsFrame.uiResultsAboveCheckbox:SetChecked(false)
-    optionsFrame.mapResultsAboveCheckbox:SetChecked(false)
     optionsFrame.minimapBtnCheckbox:SetChecked(true)
-    optionsFrame.arrowGlowCheckbox:SetChecked(true)
-    optionsFrame.guideCircleCheckbox:SetChecked(true)
-    optionsFrame.autoPinClearCheckbox:SetChecked(true)
-    optionsFrame.autoTrackCheckbox:SetChecked(true)
-    optionsFrame.pinGlowCheckbox:SetChecked(true)
-    optionsFrame.mapSmartShowCheckbox:SetChecked(false)
-    optionsFrame.hideMaxCheckbox:SetChecked(false)
+    optionsFrame.searchBarGroup:UpdateVisuals()
+    optionsFrame.mapPinGroup:UpdateVisuals()
+    optionsFrame.minimapGroup:UpdateVisuals()
+    optionsFrame.automationGroup:UpdateVisuals()
     if optionsFrame.UpdateUIToggleVisual then optionsFrame.UpdateUIToggleVisual() end
     if optionsFrame.UpdateMapToggleVisual then optionsFrame.UpdateMapToggleVisual() end
     optionsFrame.arrivalSlider:SetValue(10)
@@ -1419,7 +1520,6 @@ function Options:DoResetAll()
     optionsFrame.colorSwatch:SetColorTexture(defaultRGB[1], defaultRGB[2], defaultRGB[3], 1)
     optionsFrame.keybindBtn:SetText("Not Bound")
     optionsFrame.focusBtn:SetText("Not Bound")
-    optionsFrame.toggleFocusBtn:SetText("Not Bound")
 
     if _G["EasyFindSearchFrame"] and ns.UI then
         if ns.UI.ResetPosition then ns.UI:ResetPosition() end
@@ -1508,14 +1608,13 @@ function Options:Show()
     optionsFrame.zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly or false)
     optionsFrame.smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
     optionsFrame.staticOpacityCheckbox:SetChecked(EasyFind.db.staticOpacity or false)
-    optionsFrame.blinkingPinsCheckbox:SetChecked(EasyFind.db.blinkingPins or false)
-    optionsFrame.pinHighlightCheckbox:SetChecked(EasyFind.db.mapPinHighlight ~= false)
     optionsFrame.loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage ~= false)
     optionsFrame.uiResultsAboveCheckbox:SetChecked(EasyFind.db.uiResultsAbove or false)
-    optionsFrame.mapResultsAboveCheckbox:SetChecked(EasyFind.db.mapResultsAbove or false)
-    optionsFrame.mapSmartShowCheckbox:SetChecked(EasyFind.db.mapSmartShow or false)
-    optionsFrame.hideMaxCheckbox:SetChecked(EasyFind.db.hideSearchBarsMaximized or false)
     optionsFrame.minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton or false)
+    optionsFrame.searchBarGroup:UpdateVisuals()
+    optionsFrame.mapPinGroup:UpdateVisuals()
+    optionsFrame.minimapGroup:UpdateVisuals()
+    optionsFrame.automationGroup:UpdateVisuals()
     optionsFrame.themeBtnText:SetText(EasyFind.db.resultsTheme or "Retail")
     optionsFrame.indicatorBtnText:SetText(EasyFind.db.indicatorStyle or "EasyFind Arrow")
     local clr = EasyFind.db.indicatorColor or "Yellow"
@@ -1528,8 +1627,6 @@ function Options:Show()
     optionsFrame.keybindBtn:SetText(key1 or "Not Bound")
     local key2 = GetBindingKey("EASYFIND_FOCUS")
     optionsFrame.focusBtn:SetText(key2 or "Not Bound")
-    local key3 = GetBindingKey("EASYFIND_TOGGLE_FOCUS")
-    optionsFrame.toggleFocusBtn:SetText(key3 or "Not Bound")
     local key4 = GetBindingKey("EASYFIND_CLEAR")
     optionsFrame.clearBtn:SetText(key4 or "Not Bound")
 
