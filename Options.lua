@@ -17,6 +17,12 @@ local DARK_PANEL_BG = ns.DARK_PANEL_BG
 local optionsFrame
 local isInitialized = false
 
+local FRAME_BACKDROP = {
+    edgeFile = TOOLTIP_BORDER,
+    edgeSize = 16,
+    insets = { left = 4, right = 4, top = 4, bottom = 4 },
+}
+
 -- Shared backdrop for selector buttons and flyout panels
 local SELECTOR_BACKDROP = {
     bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -451,11 +457,7 @@ function Options:Initialize()
         EasyFind.db.optionsPosition = {point, relPoint, x, y}
     end)
 
-    optionsFrame:SetBackdrop({
-        edgeFile = TOOLTIP_BORDER,
-        edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 },
-    })
+    optionsFrame:SetBackdrop(FRAME_BACKDROP)
     optionsFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
 
     local bgTex = optionsFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
@@ -469,10 +471,12 @@ function Options:Initialize()
     local title = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", optionsFrame, "TOP", 0, -16)
     title:SetText("EasyFind Options")
+    optionsFrame.titleText = title
 
     -- Close button
     local closeBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelCloseButton")
     closeBtn:SetPoint("TOPRIGHT", optionsFrame, "TOPRIGHT", -5, -5)
+    optionsFrame.closeBtn = closeBtn
 
     -- Content border (all tabs render inside this)
     local contentBorder = CreateFrame("Frame", nil, optionsFrame, "BackdropTemplate")
@@ -1843,29 +1847,38 @@ function Options:DoResetMapPositions()
 end
 
 function Options:RegisterWithBlizzardOptions()
-    -- Create a panel for the Interface Options
     local panel = CreateFrame("Frame")
     panel.name = "EasyFind"
 
-    local title = panel:CreateFontString(nil, "ARTWORK", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", 16, -16)
-    title:SetText("EasyFind")
+    panel:SetScript("OnShow", function(self)
+        if not isInitialized then Options:Initialize() end
+        Options.embedded = true
+        Options.embedding = true
 
-    local desc = panel:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    desc:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
-    desc:SetWidth(550)
-    desc:SetJustifyH("LEFT")
-    desc:SetText("EasyFind helps you find UI elements and map locations.\n\nUse /ef to search, or /ef o to open options.")
+        -- Hide standalone chrome
+        optionsFrame.titleText:Hide()
+        optionsFrame.closeBtn:Hide()
+        optionsFrame.bgTex:Hide()
+        optionsFrame:SetBackdrop(nil)
 
-    local openOptionsBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    openOptionsBtn:SetSize(150, 30)
-    openOptionsBtn:SetPoint("TOPLEFT", desc, "BOTTOMLEFT", 0, -20)
-    openOptionsBtn:SetText("Open EasyFind Options")
-    openOptionsBtn:SetScript("OnClick", function()
+        -- Reparent into Blizzard panel
+        optionsFrame:SetParent(self)
+        optionsFrame:ClearAllPoints()
+        optionsFrame:SetPoint("TOPLEFT", self, "TOPLEFT", 0, 34)
+        optionsFrame:SetFrameStrata("HIGH")
+        optionsFrame:SetMovable(false)
+        optionsFrame:RegisterForDrag()
+
         Options:Show()
+        Options.embedding = false
     end)
 
-    -- Register with the new Settings API if available, otherwise use old method
+    panel:SetScript("OnHide", function()
+        if not Options.embedded then return end
+        Options:RestoreStandalone()
+        optionsFrame:Hide()
+    end)
+
     if Settings and Settings.RegisterCanvasLayoutCategory then
         local category = Settings.RegisterCanvasLayoutCategory(panel, panel.name)
         Settings.RegisterAddOnCategory(category)
@@ -1877,6 +1890,11 @@ end
 function Options:Show()
     if not isInitialized then
         self:Initialize()
+    end
+
+    -- If called standalone while embedded in Blizzard panel, pull out
+    if self.embedded and not self.embedding then
+        self:RestoreStandalone()
     end
 
     -- Refresh values from saved vars
@@ -1915,10 +1933,34 @@ function Options:Show()
     local key4 = GetBindingKey("EASYFIND_CLEAR")
     optionsFrame.clearBtn:SetText(key4 or "Not Bound")
 
-    if optionsFrame.bgTex then
+    if not self.embedded and optionsFrame.bgTex then
         optionsFrame.bgTex:SetAlpha(EasyFind.db.panelOpacity or 0.9)
     end
     optionsFrame:Show()
+end
+
+function Options:RestoreStandalone()
+    self.embedded = false
+
+    optionsFrame.titleText:Show()
+    optionsFrame.closeBtn:Show()
+    optionsFrame.bgTex:Show()
+    optionsFrame.bgTex:SetAlpha(EasyFind.db.panelOpacity or 0.9)
+    optionsFrame:SetBackdrop(FRAME_BACKDROP)
+    optionsFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
+
+    optionsFrame:SetParent(UIParent)
+    optionsFrame:SetFrameStrata("DIALOG")
+    optionsFrame:SetMovable(true)
+    optionsFrame:RegisterForDrag("LeftButton")
+
+    optionsFrame:ClearAllPoints()
+    if EasyFind.db.optionsPosition then
+        local pos = EasyFind.db.optionsPosition
+        optionsFrame:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4])
+    else
+        optionsFrame:SetPoint("TOP", UIParent, "TOP", 0, -100)
+    end
 end
 
 function Options:Hide()
@@ -1930,6 +1972,12 @@ end
 function Options:Toggle()
     if not isInitialized then
         self:Initialize()
+    end
+
+    if self.embedded then
+        self:RestoreStandalone()
+        self:Show()
+        return
     end
 
     if optionsFrame:IsShown() then
