@@ -1,4 +1,4 @@
-local ADDON_NAME, ns = ...
+local _, ns = ...
 
 local MapSearch = {}
 ns.MapSearch = MapSearch
@@ -7,8 +7,8 @@ local Utils     = ns.Utils
 local DebugPrint = Utils.DebugPrint
 local pairs, ipairs, type, select = Utils.pairs, Utils.ipairs, Utils.type, Utils.select
 local tinsert, tsort, tconcat, tremove = Utils.tinsert, Utils.tsort, Utils.tconcat, Utils.tremove
-local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
-local mmin, mmax, mabs, mpi, mfloor, msin = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mpi, Utils.mfloor, math.sin
+local sfind, slower = Utils.sfind, Utils.slower
+local mmin, mmax, mpi = Utils.mmin, Utils.mmax, Utils.mpi
 local pcall, tostring = Utils.pcall, Utils.tostring
 
 local GOLD_COLOR = ns.GOLD_COLOR
@@ -27,15 +27,11 @@ local IsShiftKeyDown     = IsShiftKeyDown
 local IsMouseButtonDown  = IsMouseButtonDown
 local hooksecurefunc     = hooksecurefunc
 local wipe               = wipe
-local strsplit           = strsplit
 
 -- Cache C_* API functions at file scope to get unhooked copies
 local GetMapInfo             = C_Map.GetMapInfo
-local GetMapGroupID          = C_Map.GetMapGroupID
-local GetMapGroupMembersInfo = C_Map.GetMapGroupMembersInfo
 local GetMapChildrenInfo     = C_Map.GetMapChildrenInfo
 local GetBestMapForUnit      = C_Map.GetBestMapForUnit
-local GetPlayerMapPosition   = C_Map.GetPlayerMapPosition
 local GetMapInfoAtPosition   = C_Map.GetMapInfoAtPosition
 local SetUserWaypoint        = C_Map.SetUserWaypoint
 local GetAreaPOIForMap       = C_AreaPoiInfo and C_AreaPoiInfo.GetAreaPOIForMap
@@ -44,7 +40,6 @@ local GetDelvesForMap        = C_AreaPoiInfo and C_AreaPoiInfo.GetDelvesForMap
 local GetVignettePosition    = C_VignetteInfo and C_VignetteInfo.GetVignettePosition
 local GetTaxiNodesForMap     = C_TaxiMap and C_TaxiMap.GetTaxiNodesForMap
 local GetDungeonEntrancesForMap   = C_EncounterJournal and C_EncounterJournal.GetDungeonEntrancesForMap
-local GetDungeonEntranceMapInfo   = C_EncounterJournal and C_EncounterJournal.GetDungeonEntranceMapInfo
 local HasUserWaypoint        = C_Map.HasUserWaypoint
 local ClearUserWaypoint      = C_Map.ClearUserWaypoint
 local GetUserWaypoint        = C_Map.GetUserWaypoint
@@ -262,7 +257,7 @@ function ns.UpdateIndicator(parentFrame)
         tex:SetTexCoord(0, 1, 0, 1)
     end
     -- Use directional override if set, otherwise use style default
-    local indicatorRotation = 0
+    local indicatorRotation
     if parentFrame.indicatorDirection then
         indicatorRotation = ns.GetDirectionalRotation(parentFrame.indicatorDirection)
     elseif style.rotation then
@@ -329,7 +324,6 @@ local TEXT_WRAP_FRACTION = 0.85
 local SCROLL_CENTER_FRACTION = 0.95
 local highlightFrame
 local indicatorFrame
-local currentHighlightedPin
 local waypointPin
 local zoneHighlightFrame  -- For highlighting zones on continent maps
 local isGlobalSearch = false  -- Tracks which search bar triggered the current search
@@ -354,7 +348,7 @@ local waypointController      -- Invisible controller that drives OnUpdate
 
 -- MINIMAP WAYPOINT TRACKER - perimeter glow (far) + ring/arrow (near)
 
-local matan2, mcos, msin, msqrt = math.atan2, math.cos, math.sin, math.sqrt
+local matan2, mcos, msin = math.atan2, math.cos, math.sin
 local GetPlayerFacing = GetPlayerFacing
 local UnitPosition = UnitPosition
 local NEAR_RING_RADIUS = 28   -- pixels from minimap center to ring edge
@@ -1726,7 +1720,6 @@ function MapSearch:CreateSearchFrame()
         globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", 0, gYOff)
     end
 
-    local WHITE8x8 = "Interface\\BUTTONS\\WHITE8x8"
     ns.CreateSearchBorder(globalSearchFrame)
     if (EasyFind.db.resultsTheme or "Classic") == "Retail" then
         globalSearchFrame:SetBackdrop(nil)
@@ -2116,6 +2109,9 @@ function MapSearch:CreateSearchFrame()
     navFrame:SetPropagateKeyboardInput(false)
 
     local function HandleNavKeyDown(key)
+        if key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
+           or key == "LALT" or key == "RALT" then return end
+
         local eb = activeSearchFrame and activeSearchFrame.editBox
         local dropdown = GetActiveDropdown()
 
@@ -2139,9 +2135,6 @@ function MapSearch:CreateSearchFrame()
                 end
             elseif key == "ESCAPE" then
                 dropdown:Hide()
-            elseif key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
-                   or key == "LALT" or key == "RALT" then
-                -- stay in dropdown nav
             end
             return
         end
@@ -2267,9 +2260,6 @@ function MapSearch:CreateSearchFrame()
                 if MapSearch.StopKeyRepeat then MapSearch.StopKeyRepeat() end
                 MapSearch:UpdateSelectionHighlight(true)
             end
-        elseif key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
-               or key == "LALT" or key == "RALT" then
-            -- Modifier keys alone: stay in nav mode
         else
             ClearToolbarFocus()
             selectedResultIndex = 0
@@ -3027,14 +3017,12 @@ function MapSearch:GroupZonesByParent(zones)
         return zone.parentName or ""
     end
 
-    -- First pass: count how many zones share each full parent path
-    local pathCounts = {}
+    -- First pass: build path display and parent mapIDs
     local pathDisplay = {}
     local pathParentMapID = {}
 
     for _, zone in ipairs(zones) do
         local pathKey = getPathKey(zone)
-        pathCounts[pathKey] = (pathCounts[pathKey] or 0) + 1
         if not pathDisplay[pathKey] then
             pathDisplay[pathKey] = getPathDisplay(zone)
             -- Get the last mapID in the path for navigation
@@ -3053,9 +3041,7 @@ function MapSearch:GroupZonesByParent(zones)
     for _, zone in ipairs(zones) do
         local pathKey = getPathKey(zone)
 
-        if processedPaths[pathKey] then
-            -- Already processed this path group, skip
-        else
+        if not processedPaths[pathKey] then
             processedPaths[pathKey] = true
 
             -- Collect all zones with this same parent path
@@ -3832,8 +3818,8 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
         if cL then
             local cX, cY = (cL + cR) / 2, (cT + cB) / 2
             if cX > 0 and cX < 1 and cY > 0 and cY < 1 then
-                local resolved = GetMapInfoAtPosition(currentMapID, cX, cY)
-                if resolved and resolved.mapID == targetMapID then
+                local resolvedInfo = GetMapInfoAtPosition(currentMapID, cX, cY)
+                if resolvedInfo and resolvedInfo.mapID == targetMapID then
                     DebugPrint("[EasyFind] CASE 1b: Target visible on current map (containing zone)")
                     self.pendingZoneHighlight = targetMapID
                     C_Timer.After(0.05, function()
@@ -5174,7 +5160,6 @@ function MapSearch:GetPinInfo(pin)
     -- Area POIs (boats, zeppelins, portals, etc) - but NOT quests
     if pin.areaPoiInfo then
         name = pin.areaPoiInfo.name or pin.areaPoiInfo.description
-        pinType = "areapoi"
 
         local poiName = slower(name or "")
         local poiDesc = slower(pin.areaPoiInfo.description or "")
@@ -5614,7 +5599,7 @@ function MapSearch:SearchPOIs(pois, query)
     local seen = reuseSearchSeen
     local duplicates = reuseSearchDuplicates
 
-    local matchedCategory, catScore, isExactCategoryMatch = self:GetCategoryMatch(query)
+    local matchedCategory = self:GetCategoryMatch(query)
     local relatedCategories = matchedCategory and self:GetRelatedCategories(matchedCategory) or {}
 
     -- First pass: name matches
@@ -6149,7 +6134,6 @@ function MapSearch:SelectResult(data)
     -- Clear preview state so OnLeave doesn't undo the real selection
     self._previewing = nil
     self._savedPinState = nil
-    local sourceFrame = activeSearchFrame or searchFrame
     self._suppressTextChanged = true
     searchFrame.editBox:SetText("")
     searchFrame.editBox:ClearFocus()
@@ -6521,7 +6505,6 @@ function MapSearch:HighlightPin(pin)
         return
     end
 
-    currentHighlightedPin = pin
 
     -- Convert UI-unit sizes to canvas units
     local userScale = EasyFind.db.iconScale or 0.8
@@ -6600,7 +6583,6 @@ function MapSearch:ClearHighlight()
         end
     end
 
-    currentHighlightedPin = nil
 end
 
 -- Resolve preview-able coordinates for a search result on the current map.

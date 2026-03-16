@@ -1,10 +1,10 @@
-local ADDON_NAME, ns = ...
+local _, ns = ...
 
 local Rescaler = {}
 ns.Rescaler = Rescaler
 
 local Utils = ns.Utils
-local mmax, mmin, mfloor, mabs = Utils.mmax, Utils.mmin, Utils.mfloor, Utils.mabs
+local mmax, mmin, mfloor = Utils.mmax, Utils.mmin, Utils.mfloor
 local tinsert = Utils.tinsert
 
 local GOLD_COLOR = ns.GOLD_COLOR
@@ -13,8 +13,6 @@ local TOOLTIP_BORDER = ns.TOOLTIP_BORDER
 
 local MIN_WIDTH = 150
 local MAX_WIDTH = 600
-local MIN_SCALE = 0.5
-local MAX_SCALE = 2.0
 local HANDLE_SIZE = 10
 local GLOW_OUTSET = 6
 local PREVIEW_ROW_H = 26
@@ -68,16 +66,8 @@ end
 
 -- Helpers
 
-local function ClampScale(v)
-    return mmax(MIN_SCALE, mmin(MAX_SCALE, v))
-end
-
 local function ClampWidth(v)
     return mmax(MIN_WIDTH, mmin(MAX_WIDTH, v))
-end
-
-local function RoundTo(v, step)
-    return mfloor(v / step + 0.5) * step
 end
 
 local function AddResetButton(editBox, onConfirm)
@@ -663,11 +653,10 @@ function Rescaler:Enter(mode)
     activeMode = mode
 
     local searchBar, resultsFrame
-    local getBarWidth, setBarWidth, getBarScale, setBarScale
-    local getResultsWidth, setResultsWidth, getResultsScale, setResultsScale
+    local getBarWidth, setBarWidth
+    local getResultsWidth, setResultsWidth, getResultsScale
 
     if mode == "ui" then
-        local UI = ns.UI
         searchBar = _G["EasyFindSearchFrame"]
         resultsFrame = _G["EasyFindResultsFrame"]
 
@@ -687,20 +676,7 @@ function Rescaler:Enter(mode)
             EasyFind.db.uiSearchWidth = w / 250
         end
 
-        getBarScale = function() return EasyFind.db.uiSearchScale or 1.0 end
-        setBarScale = function(s)
-            s = ClampScale(s)
-            EasyFind.db.uiSearchScale = s
-            searchBar:SetScale(s)
-        end
-
         getResultsScale = function() return EasyFind.db.uiResultsScale or 1.0 end
-        setResultsScale = function(s)
-            s = ClampScale(s)
-            EasyFind.db.uiResultsScale = s
-            if resultsFrame then resultsFrame:SetScale(s) end
-            if previewResults then previewResults:SetScale(s) end
-        end
 
         getResultsWidth = function()
             if resultsFrame then return resultsFrame:GetWidth() end
@@ -713,8 +689,6 @@ function Rescaler:Enter(mode)
         end
 
     elseif mode == "map" then
-        local MapSearch = ns.MapSearch
-
         -- Open the world map if not already visible (search bars are anchored to it)
         if not WorldMapFrame or not WorldMapFrame:IsShown() then
             ToggleWorldMap()
@@ -737,22 +711,7 @@ function Rescaler:Enter(mode)
             if localBar then localBar:SetWidth(w) end
         end
 
-        getBarScale = function() return EasyFind.db.mapSearchScale or 1.0 end
-        setBarScale = function(s)
-            s = ClampScale(s)
-            EasyFind.db.mapSearchScale = s
-            searchBar:SetScale(s)
-            local localBar = _G["EasyFindMapSearchFrame"]
-            if localBar then localBar:SetScale(s) end
-        end
-
         getResultsScale = function() return EasyFind.db.mapResultsScale or 1.0 end
-        setResultsScale = function(s)
-            s = ClampScale(s)
-            EasyFind.db.mapResultsScale = s
-            if resultsFrame then resultsFrame:SetScale(s) end
-            if previewResults then previewResults:SetScale(s) end
-        end
 
         getResultsWidth = function()
             if resultsFrame then return resultsFrame:GetWidth() end

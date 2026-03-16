@@ -1,4 +1,4 @@
-local ADDON_NAME, ns = ...
+local _, ns = ...
 
 local Utils = {}
 ns.Utils = Utils
@@ -9,7 +9,7 @@ local sfind, slower, ssub, sformat, smatch = string.find, string.lower, string.s
 local mmin, mmax, mabs, mpi, mceil, mfloor = math.min, math.max, math.abs, math.pi, math.ceil, math.floor
 local pcall, xpcall, tostring, tonumber = pcall, xpcall, tostring, tonumber
 local debugstack = debugstack
-local GetTime, CreateFrame = GetTime, CreateFrame
+local CreateFrame = CreateFrame
 
 local function ErrorHandler(err)
     return tostring(err) .. "\n" .. debugstack(2)
