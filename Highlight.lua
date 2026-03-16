@@ -1,20 +1,16 @@
-local ADDON_NAME, ns = ...
+local _, ns = ...
 
 local Highlight = {}
 ns.Highlight = Highlight
 
 local Utils = ns.Utils
 local GetButtonText        = Utils.GetButtonText
-local IsButtonSelected     = Utils.IsButtonSelected
-local SearchFrameTree      = Utils.SearchFrameTree
 local SearchFrameTreeFuzzy = Utils.SearchFrameTreeFuzzy
-local GetAllFrameText      = Utils.GetAllFrameText
 local ScrollBoxScrollTo    = Utils.ScrollBoxScrollTo
 local ScrollBoxFindButton  = Utils.ScrollBoxFindButton
-local ClickButton          = Utils.ClickButton
-local select, ipairs, pairs = Utils.select, Utils.ipairs, Utils.pairs
-local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
-local mmin, mmax, mabs, mpi = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mpi
+local select, ipairs       = Utils.select, Utils.ipairs
+local sfind, slower        = Utils.sfind, Utils.slower
+local mmax, mpi            = Utils.mmax, Utils.mpi
 local pcall = Utils.pcall
 
 local GOLD_COLOR         = ns.GOLD_COLOR
@@ -25,9 +21,6 @@ local CreateFrame        = CreateFrame
 local C_Timer            = C_Timer
 local GetTime            = GetTime
 local UIParent           = UIParent
-local hooksecurefunc     = hooksecurefunc
-local wipe               = wipe
-local strsplit           = strsplit
 
 local HOVER_MIN_DISPLAY  = 0.3  -- seconds the highlight must be visible before hover clears it
 

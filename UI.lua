@@ -1,26 +1,21 @@
-local ADDON_NAME, ns = ...
+local _, ns = ...
 
 local UI = {}
 ns.UI = UI
 
 local Utils = ns.Utils
 local GetButtonText         = Utils.GetButtonText
-local SearchFrameTree       = Utils.SearchFrameTree
 local SearchFrameTreeFuzzy  = Utils.SearchFrameTreeFuzzy
-local GetFrameByPath        = Utils.GetFrameByPath
 local ClickButton           = Utils.ClickButton
-local DebugPrint            = Utils.DebugPrint
 local select, ipairs, pairs = Utils.select, Utils.ipairs, Utils.pairs
-local sfind, slower, sformat = Utils.sfind, Utils.slower, Utils.sformat
-local tinsert, tsort, tconcat, tremove = Utils.tinsert, Utils.tsort, Utils.tconcat, Utils.tremove
+local sfind, slower         = Utils.sfind, Utils.slower
+local tinsert, tconcat, tremove = Utils.tinsert, Utils.tconcat, Utils.tremove
 local mmin, mmax = Utils.mmin, Utils.mmax
 
 local GOLD_COLOR = ns.GOLD_COLOR
-local YELLOW_HIGHLIGHT = ns.YELLOW_HIGHLIGHT
 local DEFAULT_OPACITY = ns.DEFAULT_OPACITY
 local TOOLTIP_BORDER = ns.TOOLTIP_BORDER
 local DARK_PANEL_BG = ns.DARK_PANEL_BG
-local RESULT_ICON_SIZE = ns.RESULT_ICON_SIZE
 
 local CreateFrame        = CreateFrame
 local C_Timer            = C_Timer
@@ -29,7 +24,6 @@ local GameTooltip        = GameTooltip
 local GameTooltip_Hide   = GameTooltip_Hide
 local IsShiftKeyDown     = IsShiftKeyDown
 local GetCursorPosition  = GetCursorPosition
-local hooksecurefunc     = hooksecurefunc
 local wipe               = wipe
 
 local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind\\textures\\lightning-bolt"
@@ -804,6 +798,9 @@ function UI:CreateSearchFrame()
     navFrame:SetPropagateKeyboardInput(false)
 
     local function HandleNavKeyDown(key)
+        if key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
+           or key == "LALT" or key == "RALT" then return end
+
         if key == "DOWN" then
             if IsControlKeyDown() then
                 UI:JumpToEnd()
@@ -892,9 +889,6 @@ function UI:CreateSearchFrame()
                 if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
                 UI:UpdateSelectionHighlight(true)
             end
-        elseif key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
-               or key == "LALT" or key == "RALT" then
-            -- Modifier keys alone: stay in nav mode
         else
             ClearToolbarFocus()
             selectedIndex = 0
@@ -1064,7 +1058,6 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     local ROW_HEIGHT = 20
     local DROPDOWN_WIDTH = 207
     local PADDING_TOP = 8
-    local HEADER_HEIGHT = 19
     local PADDING_BOTTOM = 8
     local CHECK_SIZE = 16
 
@@ -1325,11 +1318,11 @@ function UI:CreateResultsFrame()
 
     local resizeTimer
     resultsFrame:SetScript("OnSizeChanged", function()
-        if not resultsFrame:IsShown() or not cachedHierarchical then return end
+        if not resultsFrame:IsShown() or not cachedHierarchical then return end  -- luacheck: ignore 113
         if resizeTimer then resizeTimer:Cancel() end
         resizeTimer = C_Timer.NewTimer(0.02, function()
             resizeTimer = nil
-            UI:ShowHierarchicalResults(cachedHierarchical, true)
+            UI:ShowHierarchicalResults(cachedHierarchical, true)  -- luacheck: ignore 113
         end)
     end)
 
@@ -2230,18 +2223,12 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 
         -- If we're skipping children of a collapsed node, check depth
         if skipBelowDepth then
-            if d > skipBelowDepth then
-                -- Still inside collapsed subtree - skip
-            else
-                -- Back to same or higher depth - stop skipping
+            if d <= skipBelowDepth then
                 skipBelowDepth = nil
             end
         end
 
-        -- Skip pinned items when pin header is collapsed
-        if skipPins and entry.isPinned then
-            -- skip this pinned entry
-        elseif not skipBelowDepth then
+        if not (skipPins and entry.isPinned) and not skipBelowDepth then
             if skipPins and not entry.isPinned then
                 skipPins = false  -- past the pin section
             end
@@ -2565,9 +2552,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             resultRow.isPathNode = entry.isPathNode  -- Store for tooltip text
 
             -- Position icon & text (non-tab, non-pin-header rows)
-            if entry.isPinHeader then
-                -- Pin header: text already positioned in header styling; hide icon
-            elseif not (theme.showHeaderTab and entry.isPathNode) then
+            if not entry.isPinHeader and not (theme.showHeaderTab and entry.isPathNode) then
                 local indentPixels = depth * indPx
                 resultRow.icon:ClearAllPoints()
                 resultRow.icon:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
@@ -2722,7 +2707,6 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 if data.toyItemID and iconFileID and GetItemCooldown then
                     local startTime, duration = GetItemCooldown(data.toyItemID)
                     if startTime and duration and duration > 0 then
-                        local iconSize = theme.iconSize or 16
                         resultRow.iconCooldown:SetAllPoints(resultRow.icon)
                         resultRow.iconCooldown:SetCooldown(startTime, duration)
                         resultRow.iconCooldown:Show()
@@ -4503,7 +4487,7 @@ function UI:FlashLabel(labelText)
     local flashCount = 0
     local ticker
     ticker = C_Timer.NewTicker(0.3, function()
-        local ok, err = pcall(function()
+        local ok, _ = pcall(function()
             flashCount = flashCount + 1
             if flashCount % 2 == 0 then
                 label:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
@@ -4572,7 +4556,6 @@ function UI:UpdateFontSize()
         searchFrame:SetBackdropColor(0, 0, 0, alpha)
     end
 
-    local theme = GetActiveTheme()
     for i = 1, #resultButtons do
         local row = resultButtons[i]
         ScaleFont(row.text, theme.leafFont)

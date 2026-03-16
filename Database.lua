@@ -1,17 +1,14 @@
-local ADDON_NAME, ns = ...
+local _, ns = ...
 
 local Database = {}
 ns.Database = Database
 
 local Utils   = ns.Utils
-local pairs, ipairs, type = Utils.pairs, Utils.ipairs, Utils.type
-local tinsert, tsort, tconcat = Utils.tinsert, Utils.tsort, Utils.tconcat
+local ipairs = Utils.ipairs
+local tsort, tconcat = Utils.tsort, Utils.tconcat
 local sfind, slower, ssub = Utils.sfind, Utils.slower, Utils.ssub
 local mmin, mmax, mabs = Utils.mmin, Utils.mmax, Utils.mabs
-local unpack = Utils.unpack
-
 local C_CurrencyInfo = C_CurrencyInfo
-local wipe           = wipe
 
 -- Word split cache: avoids per-call gmatch + table creation in scoring hot path.
 -- Key = lowercase string, value = array of words split on [%w']+.
@@ -373,9 +370,9 @@ function Database:PopulateDynamicReputations()
 
     -- Collapse back any headers we expanded during scanning
     for pass = 1, 50 do
-        local numFactions = C_Reputation.GetNumFactions()
+        local numFactionsPost = C_Reputation.GetNumFactions()
         local didCollapse = false
-        for i = numFactions, 1, -1 do
+        for i = numFactionsPost, 1, -1 do
             local factionData = C_Reputation.GetFactionDataByIndex(i)
             if factionData and factionData.isHeader and headersWeExpanded[factionData.name] then
                 -- Check if header is expanded using both property names
@@ -436,8 +433,8 @@ function Database:PopulateDynamicMounts()
     if not mountIDs then return end
 
     for _, mountID in ipairs(mountIDs) do
-        local name, spellID, icon, isActive, isUsable, sourceType, isFavorite,
-              isFactionSpecific, faction, shouldHideOnChar, isCollected = C_MountJournal.GetMountInfoByID(mountID)
+        local name, spellID, icon, _, _, _, _,
+              _, _, shouldHideOnChar, isCollected = C_MountJournal.GetMountInfoByID(mountID)
         if name and isCollected and not shouldHideOnChar then
             uiSearchData[#uiSearchData + 1] = setmetatable({
                 name = name,
@@ -520,7 +517,7 @@ function Database:PopulateDynamicPets()
 
     local seen = {}
     for i = 1, numPets do
-        local petID, speciesID, owned, customName, level, favorite, isRevoked,
+        local petID, speciesID, owned, _, _, _, _,
               speciesName, icon = C_PetJournal.GetPetInfoByIndex(i)
         if speciesName and speciesName ~= "" and owned and not seen[speciesID] then
             seen[speciesID] = true
@@ -1443,7 +1440,7 @@ function Database:BuildUIDatabase()
                     name = "Reset All Instances",
                     keywords = {"reset instances", "reset all instances", "instance reset", "dungeon reset"},
                     available = function()
-                        local inInstance, instanceType = IsInInstance()
+                        local inInstance = IsInInstance()
                         if inInstance then return false end
                         if IsInGroup() and not UnitIsGroupLeader("player") then return false end
                         return true
@@ -2051,25 +2048,20 @@ function Database:SearchUI(query, skipCategories)
     local searchCount = #searchSet
     for i = 1, searchCount do
         local data = searchSet[i]
-        -- Skip entries whose category is filtered out (Mount/Toy items only)
-        if skipCategories and skipCategories[data.category] then
-            -- Filtered out by user preference, skip entirely
-        -- Skip entries that have an availability check that returns false
-        elseif data.available and not data.available() then
-            -- Not available in current context, skip
-        else
-        local nameLower = data.nameLower
-        local score = Database:ScoreName(nameLower, query, queryLen, queryWords)
+        if not (skipCategories and skipCategories[data.category])
+           and not (data.available and not data.available()) then
+            local nameLower = data.nameLower
+            local score = Database:ScoreName(nameLower, query, queryLen, queryWords)
 
-        -- Keyword matching (additive)
-        score = score + Database:ScoreKeywords(data.keywordsLower, query, queryLen, queryWords)
+            -- Keyword matching (additive)
+            score = score + Database:ScoreKeywords(data.keywordsLower, query, queryLen, queryWords)
 
-        if score >= 30 then
-            results[#results + 1] = { data = data, score = score }
-            candidateIdx = candidateIdx + 1
-            prevCandidates[candidateIdx] = data
+            if score >= 30 then
+                results[#results + 1] = { data = data, score = score }
+                candidateIdx = candidateIdx + 1
+                prevCandidates[candidateIdx] = data
+            end
         end
-        end -- else (availability check)
     end
     -- Trim stale entries from previous search
     for i = candidateIdx + 1, #prevCandidates do
@@ -2271,10 +2263,7 @@ function Database:BuildHierarchicalResults(results)
             local child = node.children[childName]
             local hasChildren = #child.childOrder > 0
 
-            -- Skip empty path nodes (no data and no content in descendants)
-            if not hasActualContent(child) then
-                -- Skip this entire branch
-            else
+            if hasActualContent(child) then
                 -- Check if this leaf node is actually a container in the database
                 -- (has children that didn't match the search query).
                 local isContainer = false
@@ -2314,7 +2303,6 @@ function Database:GetContainerChildren(containerData)
     local prefix = {}
     for _, p in ipairs(containerData.path) do prefix[#prefix + 1] = p end
     prefix[#prefix + 1] = containerData.name
-    local prefixKey = tconcat(prefix, "\1")
     local prefixLen = #prefix
 
     local children = {}
