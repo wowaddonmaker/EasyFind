@@ -4108,7 +4108,7 @@ function UI:ShowWhatsNew(version)
     if _G["EasyFindWhatsNew"] then return end
 
     local f = CreateFrame("Frame", "EasyFindWhatsNew", UIParent, "BackdropTemplate")
-    f:SetSize(410, 300)
+    f:SetSize(410, 265)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetFrameLevel(200)
@@ -4149,14 +4149,13 @@ function UI:ShowWhatsNew(version)
     body:SetJustifyH("LEFT")
     body:SetSpacing(4)
     body:SetText(
-        "|cffFFD100\226\128\162|r |cffffffffMount, Toy, and Pet Search|r\n" ..
-        "        Search your collected mounts, toys, and battle pets (see UI Search filter on bar). Click to summon or use\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffUnified Search Bar|r\n" ..
-        "        Map search results can now also appear in the UI search bar with filter toggles\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffMode Toggle Button|r\n" ..
-        "        Quick toggle between guide mode and fast mode right in the search bar (click magnifying lens)\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffFull Screen Map Support|r\n" ..
-        "        Map search bars now work in full screen map mode"
+        "|cffFFD100\226\128\162|r |cffffffffInstant Fast Mode Navigation|r\n" ..
+        "        UI panels open without flickering in fast mode\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffIndependent Fast Mode Toggles|r\n" ..
+        "        Each search bar now has its own fast mode toggle\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffEasyFind-Only Navigation Options|r\n" ..
+        "        Restrict minimap glow and guide circle to EasyFind pins\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffOptions Panel Overhaul|r"
     )
 
     -- Footer - anchored below body so it can't overlap
