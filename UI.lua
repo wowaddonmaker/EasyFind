@@ -2347,7 +2347,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     resultRow:SetAttribute("macrotext", nil)
                 elseif data and data.mountID then
                     resultRow:SetAttribute("type", "macro")
-                    resultRow:SetAttribute("macrotext", "/cancelform [form]\n/run C_MountJournal.SummonByID(" .. data.mountID .. ")")
+                    resultRow:SetAttribute("macrotext", "/cancelform [form]")
                     resultRow:SetAttribute("toy", nil)
                 else
                     resultRow:SetAttribute("type", nil)
@@ -3377,7 +3377,7 @@ function UI:SelectResult(data)
 
     if not data then return end
 
-    -- Mount: secure button handles cancelform on click; Enter falls back to direct API
+    -- Mount: summon/dismiss (secure macro handles cancelform on click)
     if data.mountID then
         if C_MountJournal and C_MountJournal.SummonByID then
             C_MountJournal.SummonByID(data.mountID)
