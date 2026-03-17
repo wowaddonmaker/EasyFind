@@ -35,15 +35,15 @@ local DB_DEFAULTS = {
     iconScale = 0.8,
     uiSearchScale = 1.0,
     mapSearchScale = 1.0,
-    mapSearchWidth = 1.0,
-    uiSearchWidth = 1.0,
+    mapSearchWidth = 0.88,
+    uiSearchWidth = 0.88,
     uiResultsScale = 1.0,
-    uiResultsWidth = 350,
+    uiResultsWidth = 300,
     mapResultsScale = 1.0,
-    mapResultsWidth = 1.0,
+    mapResultsWidth = 300,
     searchBarOpacity = 0.75,  -- ns.DEFAULT_OPACITY
-    fontSize = 1.0,            -- UI search font size multiplier (0.5-2.0)
-    mapFontSize = 1.0,         -- Map search font size multiplier (0.5-2.0)
+    fontSize = 0.9,            -- UI search font size multiplier (0.5-2.0)
+    mapFontSize = 0.9,         -- Map search font size multiplier (0.5-2.0)
     uiSearchPosition = nil,    -- {point, relPoint, x, y}
     mapSearchPosition = nil,   -- x offset from map left edge
     globalSearchPosition = nil, -- x offset from map right edge (windowed)
@@ -52,7 +52,8 @@ local DB_DEFAULTS = {
     mapSearchYOffset = 0,      -- y offset for search bars relative to map bottom
     hideSearchBarsMaximized = false, -- Hide search bars when map is full screen
     directOpen = false,        -- Open panels directly instead of step-by-step
-    navigateToZonesDirectly = false,  -- Clicking a zone goes directly to it
+    localMapDirectOpen = false,       -- Zone bar: navigate directly (no zone highlighting)
+    globalMapDirectOpen = false,      -- Global bar: navigate directly (no zone highlighting)
     smartShow = false,         -- Hide search bar until mouse hovers nearby
     mapSmartShow = false,      -- Hide map search bars until mouse hovers nearby
     resultsTheme = "Retail",  -- "Classic" or "Retail"
@@ -66,12 +67,15 @@ local DB_DEFAULTS = {
     pinnedUIItems = {},        -- Pinned UI search results (persist across sessions)
     pinnedMapItems = {},       -- Pinned map search results (persist across sessions)
     pinsCollapsed = false,     -- Whether the "Pinned Paths" header is collapsed
+    mapPinsCollapsed = false,  -- Whether the map search "Pinned" header is collapsed
     showLoginMessage = true,   -- Show "EasyFind loaded!" message on login
     blinkingPins = false,      -- Pulse map pins and highlights in sync with indicator bob
     mapPinHighlight = true,    -- Show yellow highlight box around map pins
     arrivalDistance = 10,      -- Yards - auto-clear waypoint when player is this close
     minimapArrowGlow = true,   -- Pulsing glow on minimap perimeter arrow
+    glowOnlyEasyFind = false,  -- Only show glow for waypoints placed by EasyFind
     minimapGuideCircle = true, -- Near-track ring + arrow around player on minimap
+    circleOnlyEasyFind = false, -- Only show guide circle for EasyFind waypoints
     guideCircleScale = 1.0,    -- Scale multiplier for guide circle ring+arrow
     minimapPinGlow = true,     -- Pulsing glow on map pin when guide circle shrinks onto it
     autoPinClear = true,       -- Auto-clear map pin when player arrives
@@ -80,7 +84,7 @@ local DB_DEFAULTS = {
     mapResultsAbove = false,   -- Show map search results above the search bar
     panelOpacity = 0.9,        -- Options panel background opacity
     showMinimapButton = true,  -- Show toggle button on minimap
-    minimapButtonAngle = 220,  -- Position angle (degrees) around minimap edge
+    minimapButtonAngle = 200,  -- Position angle (degrees) around minimap edge
     globalSearchFilters = {    -- Global search category filters (all enabled by default)
         zones = true,
         dungeons = true,
@@ -110,7 +114,7 @@ local DB_MIGRATIONS = {
             if not db.mapMaxResults then db.mapMaxResults = db.maxResults end
             db.maxResults = nil
         end
-        if db.uiResultsWidth == 1.0 then db.uiResultsWidth = 350 end
+        if db.uiResultsWidth == 1.0 then db.uiResultsWidth = 300 end
     end,
 }
 
@@ -217,12 +221,6 @@ local function OnInitialize()
 
     EasyFind.db = EasyFindDB
 
-    -- Sync navigateToZonesDirectly with directOpen when map search is enabled
-    local filters = EasyFind.db.uiSearchFilters
-    if filters and filters.map ~= false then
-        EasyFind.db.navigateToZonesDirectly = EasyFind.db.directOpen or false
-    end
-
     -- Read version from TOC for What's New detection
     ns.version = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version")
 
@@ -232,10 +230,8 @@ local function OnInitialize()
         msg = msg and msg:lower():trim() or ""
         if msg == "o" or msg == "options" or msg == "config" or msg == "settings" then
             EasyFind:OpenOptions()
-        elseif msg == "hide" then
-            if ns.UI then ns.UI:Hide() end
-        elseif msg == "show" then
-            if ns.UI then ns.UI:Show() end
+        elseif msg == "toggle" or msg == "t" then
+            if ns.UI then ns.UI:Toggle() end
         elseif msg == "c" or msg == "clear" then
             EasyFind:ClearAll()
         elseif msg:find("^test ") then
@@ -270,8 +266,18 @@ local function OnInitialize()
             end
         elseif msg == "whatsnew" then
             if ns.UI then ns.UI:ShowWhatsNew(ns.version) end
+        elseif msg == "help" or msg == "h" or msg == "?" then
+            EasyFind:Print("Commands:")
+            EasyFind:Print("  /ef: open options panel")
+            EasyFind:Print("  /ef toggle: show/hide search bar")
+            EasyFind:Print("  /ef clear: dismiss highlights, pins, breadcrumbs")
+            EasyFind:Print("  /ef reset: reset all settings")
+            EasyFind:Print("  /ef bug: report a bug")
+            EasyFind:Print("  /ef feature: request a feature")
+        elseif msg == "" then
+            EasyFind:OpenOptions()
         else
-            EasyFind:Print("Usage: /ef show | hide | clear | options | reset | bug | feature")
+            print("|cFFFFFF00Type '/ef help' for a list of commands.|r")
         end
     end
 
@@ -565,7 +571,7 @@ local function CreateMinimapButton()
     mmBtn:SetScript("OnLeave", GameTooltip_Hide)
 
     minimapButton = mmBtn
-    PositionMinimapButton(EasyFind.db.minimapButtonAngle or 220)
+    PositionMinimapButton(EasyFind.db.minimapButtonAngle or 200)
     return mmBtn
 end
 
@@ -575,6 +581,7 @@ function EasyFind:UpdateMinimapButton()
             CreateMinimapButton()
         end
         minimapButton:Show()
+        PositionMinimapButton(EasyFind.db.minimapButtonAngle or 200)
     elseif minimapButton then
         minimapButton:Hide()
     end
