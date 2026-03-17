@@ -503,7 +503,6 @@ function Options:Initialize()
     local FRAME_H    = 380
     local COL_LEFT   = 4      -- Left column offset within content frames
     local BTN_OFFSET = 105    -- Label LEFT to button LEFT (aligns selectors/keybinds)
-    local TAB_Y      = -42    -- Y where tab buttons start
     local CONTENT_Y  = -68    -- Y where tab content starts (below tab bar)
     local CONTENT_H  = 294    -- Fixed content area height
 
@@ -564,7 +563,6 @@ function Options:Initialize()
     -- Tab system using WoW standard tab atlases (flipped for top attachment)
     local tabFrames = {}
     local tabButtons = {}
-    local activeTabIndex
 
     -- Flip a texture vertically for top-attached tabs
     local function FlipV(tex)
@@ -591,7 +589,6 @@ function Options:Initialize()
             tf:SetShown(i == index)
             SetTabActive(tabButtons[i], i == index)
         end
-        activeTabIndex = index
     end
     optionsFrame.SwitchToTab = SwitchToTab
 
@@ -805,7 +802,7 @@ function Options:Initialize()
         return box
     end
 
-    local cfBox = CreateURLBox(homeTab, "https://www.curseforge.com/wow/addons/easyfind", homeDesc, -6)
+    CreateURLBox(homeTab, "https://www.curseforge.com/wow/addons/easyfind", homeDesc, -6)
 
     local sec3 = CreateTab("General")
 
@@ -1626,7 +1623,7 @@ function Options:Initialize()
         .. "Copy the link below to share directly with friends:"
     )
 
-    local shareBox = CreateURLBox(feedbackTab, "https://www.curseforge.com/wow/addons/easyfind", enjoyDesc, -6)
+    CreateURLBox(feedbackTab, "https://www.curseforge.com/wow/addons/easyfind", enjoyDesc, -6)
 
     -- Show Home tab by default
     SwitchToTab(1)

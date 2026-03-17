@@ -1,5 +1,5 @@
 -- EasyFind Static Locations (auto-generated 2026-03-17 03:17)
-local ADDON_NAME, ns = ...
+local _, ns = ...
 ns.STATIC_LOCATIONS = {
     [18] = { -- Tirisfal Glades
         { name = "Portal to Stranglethorn Vale", category = "portal", x = 0.6142756296653066, y = 0.5879643697403164, keywords = {"portal", "teleport", "mage"} },
