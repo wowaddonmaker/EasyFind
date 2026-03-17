@@ -12,6 +12,8 @@ local select, ipairs       = Utils.select, Utils.ipairs
 local sfind, slower        = Utils.sfind, Utils.slower
 local mmax, mpi            = Utils.mmax, Utils.mpi
 local pcall = Utils.pcall
+local xpcall = Utils.xpcall
+local ErrorHandler = Utils.ErrorHandler
 
 local GOLD_COLOR         = ns.GOLD_COLOR
 local YELLOW_HIGHLIGHT   = ns.YELLOW_HIGHLIGHT
@@ -124,14 +126,14 @@ function Highlight:CreateInstructionFrame()
         tile = true, tileSize = 32, edgeSize = 16,
         insets = { left = 5, right = 5, top = 5, bottom = 5 }
     })
-    instructionFrame:SetBackdropColor(0, 0, 0, 0.95)  -- Very dark background
+    instructionFrame:SetBackdropColor(0, 0, 0, 0.95)
 
     local text = instructionFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     text:SetPoint("TOPLEFT", 15, -15)
     text:SetPoint("TOPRIGHT", -15, -15)
     text:SetTextColor(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3])
     text:SetJustifyH("CENTER")
-    text:SetWordWrap(true)  -- Enable word wrap
+    text:SetWordWrap(true)
     text:SetNonSpaceWrap(true)
     instructionFrame.text = text
 
@@ -214,7 +216,7 @@ function Highlight:StartGuide(guideData)
 
     -- Use a ticker to continuously check step conditions
     stepTicker = C_Timer.NewTicker(0.1, function()
-        local ok, err = pcall(self.UpdateGuide, self)
+        local ok, err = xpcall(self.UpdateGuide, ErrorHandler, self)
         if not ok then
             if stepTicker then stepTicker:Cancel(); stepTicker = nil end
             ns.DebugPrint("Guide error: " .. tostring(err))
@@ -237,11 +239,21 @@ function Highlight:StartGuideAtStep(guideData, stepIndex)
     currentGuide = guideData
     currentStepIndex = stepIndex
 
+    -- Attempt immediate highlight (avoids waiting for first ticker interval)
+    local ok, err = xpcall(self.UpdateGuide, ErrorHandler, self)
+    if not ok then
+        ns.DebugPrint("Guide error: " .. tostring(err))
+        return
+    end
+
+    -- If guide completed or was cancelled by the immediate attempt, no ticker needed
+    if not currentGuide then return end
+
     stepTicker = C_Timer.NewTicker(0.1, function()
-        local ok, err = pcall(self.UpdateGuide, self)
-        if not ok then
+        local ok2, err2 = xpcall(self.UpdateGuide, ErrorHandler, self)
+        if not ok2 then
             if stepTicker then stepTicker:Cancel(); stepTicker = nil end
-            ns.DebugPrint("Guide error: " .. tostring(err))
+            ns.DebugPrint("Guide error: " .. tostring(err2))
         end
     end)
 end
@@ -2219,7 +2231,6 @@ end
 
 -- Currency navigation helpers
 
--- Check if a currency header is currently expanded
 -- Returns: true (expanded), false (collapsed), nil (not in list - parent collapsed)
 function Highlight:IsCurrencyHeaderExpanded(headerName)
     if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return nil end
@@ -2321,8 +2332,7 @@ end
 
 -- REPUTATION HELPERS
 
---- Check if a faction header is expanded
---- Returns: true (expanded), false (collapsed), nil (not found/parent collapsed)
+-- Returns: true (expanded), false (collapsed), nil (not found/parent collapsed)
 function Highlight:IsFactionHeaderExpanded(headerName)
     if not C_Reputation or not C_Reputation.GetNumFactions then return nil end
 
@@ -2345,7 +2355,7 @@ function Highlight:IsFactionHeaderExpanded(headerName)
     return nil -- header not visible, parent must be collapsed
 end
 
---- Find the visible UI button for a faction header in the ReputationFrame ScrollBox
+-- Find the visible UI button for a faction header in the ReputationFrame ScrollBox
 function Highlight:GetFactionHeaderButton(headerName)
     if not ReputationFrame or not ReputationFrame:IsShown() then return nil end
 
@@ -2379,7 +2389,7 @@ function Highlight:GetFactionHeaderButton(headerName)
     return nil
 end
 
---- Scroll the ReputationFrame ScrollBox to show a specific faction by ID
+-- Scroll the ReputationFrame ScrollBox to show a specific faction by ID
 function Highlight:ScrollToFactionRow(factionID)
     if not ReputationFrame or not ReputationFrame:IsShown() then return end
     if not ReputationFrame.ScrollBox then return end
@@ -2405,7 +2415,7 @@ function Highlight:ScrollToFactionRow(factionID)
     end, fraction)
 end
 
---- Find the visible UI button/row for a specific faction by ID in the ReputationFrame ScrollBox
+-- Find the visible UI button/row for a specific faction by ID in the ReputationFrame ScrollBox
 function Highlight:GetFactionRowButton(factionID)
     if not ReputationFrame or not ReputationFrame:IsShown() then return nil end
     if not ReputationFrame.ScrollBox then return nil end
