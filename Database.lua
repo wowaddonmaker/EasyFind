@@ -576,6 +576,7 @@ function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, 
         if node.icon then entry.icon = node.icon end
         if node.available then entry.available = node.available end
         if node.canQueue then entry.canQueue = true end
+        if node.children then entry.isContainer = true end
 
         uiSearchData[#uiSearchData + 1] = entry
 
@@ -1558,9 +1559,8 @@ local FUZZY_BLOCKLIST = {
     ["pve"] = { ["pvp"] = true },
 }
 
---- Check if `query` appears at a word boundary in `text`.
---- A word boundary is the start of the string or right after a space/punctuation.
---- Returns true if found at a boundary, false if only found mid-word or not at all.
+-- A word boundary is the start of the string or right after a space/punctuation.
+-- Returns true if found at a boundary, false if only found mid-word or not at all.
 function Database:FindAtWordBoundary(text, query)
     -- Check at start of string
     if ssub(text, 1, #query) == query then return true end
@@ -1581,11 +1581,11 @@ function Database:FindAtWordBoundary(text, query)
     end
 end
 
---- Score how well `query` matches as initials/abbreviation of words in `text`.
---- "rb" → "rated battlegrounds" = 130 (each char matches a word start)
---- "raba" → "random battleground" = 125 (prefix of words)
---- "ranb" → "random battleground" = 115 (longer prefix matching)
---- Returns 0 if no reasonable initials match found.
+-- Score how well `query` matches as initials/abbreviation of words in `text`.
+-- "rb" → "rated battlegrounds" = 130 (each char matches a word start)
+-- "raba" → "random battleground" = 125 (prefix of words)
+-- "ranb" → "random battleground" = 115 (longer prefix matching)
+-- Returns 0 if no reasonable initials match found.
 function Database:ScoreInitials(text, query)
     -- Use cached word split (input is already lowercase)
     local words = GetWords(text)
@@ -1649,9 +1649,9 @@ function Database:ScoreInitials(text, query)
     return 0
 end
 
---- Score fuzzy/typo matching using Damerau-Levenshtein distance.
---- Only applied to individual words in `text` that are similar in length to `query`.
---- Returns a score > 0 if a close match is found, 0 otherwise.
+-- Score fuzzy/typo matching using Damerau-Levenshtein distance.
+-- Only applied to individual words in `text` that are similar in length to `query`.
+-- Returns a score > 0 if a close match is found, 0 otherwise.
 
 function Database:ScoreFuzzy(text, query, queryLen)
     local bestScore = 0
@@ -1678,17 +1678,18 @@ function Database:ScoreFuzzy(text, query, queryLen)
     return bestScore
 end
 
--- Check if all characters of `query` appear in order within `word`.
 -- Requires first character match to avoid spurious hits like "ahn'" in "magtheridon's".
 function Database:IsSubsequence(word, query, queryLen)
     if ssub(word, 1, 1) ~= ssub(query, 1, 1) then return false end
     local wi = 1
     local wordLen = #word
+    local firstPos
     for qi = 1, queryLen do
         local qc = ssub(query, qi, qi)
         local found = false
         while wi <= wordLen do
             if ssub(word, wi, wi) == qc then
+                if not firstPos then firstPos = wi end
                 wi = wi + 1
                 found = true
                 break
@@ -1697,11 +1698,12 @@ function Database:IsSubsequence(word, query, queryLen)
         end
         if not found then return false end
     end
-    return true
+    -- Reject sparse matches: "inn" in "instance" matches i(1)n(2)n(6) but span 6 > 5
+    return (wi - 1) - firstPos + 1 <= queryLen * 2 - 1
 end
 
---- Damerau-Levenshtein distance (supports transpositions).
---- Capped: returns early if distance exceeds 2 (saves CPU).
+-- Damerau-Levenshtein distance (supports transpositions).
+-- Capped: returns early if distance exceeds 2 (saves CPU).
 function Database:DamerauLevenshtein(s1, s2, len1, len2)
     if mabs(len1 - len2) > 2 then return 3 end  -- too different, skip
 
@@ -1735,9 +1737,9 @@ function Database:DamerauLevenshtein(s1, s2, len1, len2)
     return prev[len2]
 end
 
---- Unified name scoring: exact → starts-with → word-boundary → substring → initials → fuzzy.
---- All search features (UI, map zone, map POI) use this single function.
---- Returns a score ≥ 0. Caller decides the minimum threshold.
+-- Unified name scoring: exact → starts-with → word-boundary → substring → initials → fuzzy.
+-- All search features (UI, map zone, map POI) use this single function.
+-- Returns a score ≥ 0. Caller decides the minimum threshold.
 function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
     -- Trim trailing whitespace so "windrnr " behaves like "windrnr"
     if ssub(query, queryLen, queryLen) == " " then
@@ -1880,8 +1882,8 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
     return score
 end
 
---- Unified keyword scoring: additive score from matching against a list of keywords.
---- Returns a total score to ADD to the name score.
+-- Unified keyword scoring: additive score from matching against a list of keywords.
+-- Returns a total score to ADD to the name score.
 function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
     if not keywordsLower then return 0 end
 

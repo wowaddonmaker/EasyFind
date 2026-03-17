@@ -586,9 +586,13 @@ end
 -- Done panel
 
 local function CreateDonePanel(parent)
-    local totalW = 110 + 2 + 80
+    local BACK_W = 110
+    local DONE_W = 80
+    local BTN_GAP = 2
+    local BTN_H = 22
+    local PANEL_PAD = 8
     local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    panel:SetSize(totalW + 16, 22 + 14)
+    panel:SetSize(BACK_W + BTN_GAP + DONE_W + PANEL_PAD * 2, BTN_H + 14)
     panel:SetFrameStrata("FULLSCREEN_DIALOG")
     panel:SetFrameLevel(209)
     panel:SetBackdrop({
@@ -600,14 +604,14 @@ local function CreateDonePanel(parent)
     panel:SetBackdropColor(DARK_PANEL_BG[1], DARK_PANEL_BG[2], DARK_PANEL_BG[3], DARK_PANEL_BG[4])
 
     local backBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    backBtn:SetSize(110, 22)
-    backBtn:SetPoint("LEFT", panel, "LEFT", 8, 0)
+    backBtn:SetSize(BACK_W, BTN_H)
+    backBtn:SetPoint("LEFT", panel, "LEFT", PANEL_PAD, 0)
     backBtn:SetText("Back to Options")
     panel.backBtn = backBtn
 
     local doneBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    doneBtn:SetSize(80, 22)
-    doneBtn:SetPoint("LEFT", backBtn, "RIGHT", 2, 0)
+    doneBtn:SetSize(DONE_W, BTN_H)
+    doneBtn:SetPoint("LEFT", backBtn, "RIGHT", BTN_GAP, 0)
     doneBtn:SetText("Done")
     panel.doneBtn = doneBtn
 
@@ -771,7 +775,7 @@ function Rescaler:Enter(mode)
         setBarWidth(v)
     end)
     AddResetButton(barOverlay.widthBox, function()
-        local defW = 250
+        local defW = 250 * 0.88  -- 220px (matches DB_DEFAULTS searchWidth = 0.88)
         setBarWidth(defW)
         barOverlay.widthBox:SetText(mfloor(defW + 0.5))
     end)
@@ -796,9 +800,9 @@ function Rescaler:Enter(mode)
         self:ClearFocus()
     end)
     AddResetButton(barOverlay.fontBox, function()
-        SetFontScale(1.0)
+        SetFontScale(0.9)
         ApplyFontUpdate()
-        barOverlay.fontBox:SetText(100)
+        barOverlay.fontBox:SetText(90)
         previewResults:UpdatePreviewFont()
     end)
     SetupFontDrag(barOverlay.bottomHandle, barOverlay.fontBox, previewResults)
@@ -817,7 +821,7 @@ function Rescaler:Enter(mode)
         previewResults:SetWidth(v)
     end)
     AddResetButton(resultsOverlay.widthBox, function()
-        local defW = (mode == "ui") and 350 or 380
+        local defW = 300
         setResultsWidth(defW)
         previewResults:SetWidth(defW)
         resultsOverlay.widthBox:SetText(mfloor(defW + 0.5))
