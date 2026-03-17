@@ -9,8 +9,10 @@ local pairs, ipairs, type, select = Utils.pairs, Utils.ipairs, Utils.type, Utils
 local tinsert, tsort, tconcat, tremove = Utils.tinsert, Utils.tsort, Utils.tconcat, Utils.tremove
 local sfind, slower = Utils.sfind, Utils.slower
 local mmin, mmax, mpi = Utils.mmin, Utils.mmax, Utils.mpi
-local pcall, tostring = Utils.pcall, Utils.tostring
+local pcall, xpcall, tostring = Utils.pcall, Utils.xpcall, Utils.tostring
+local ErrorHandler = Utils.ErrorHandler
 
+local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind\\textures\\lightning-bolt"
 local GOLD_COLOR = ns.GOLD_COLOR
 local YELLOW_HIGHLIGHT = ns.YELLOW_HIGHLIGHT
 local DEFAULT_OPACITY = ns.DEFAULT_OPACITY
@@ -46,6 +48,7 @@ local GetUserWaypoint        = C_Map.GetUserWaypoint
 local GetWorldPosFromMapPos  = C_Map.GetWorldPosFromMapPos
 local GetMapRectOnMap        = C_Map.GetMapRectOnMap
 local GetMapHighlightInfoAtPosition = C_Map.GetMapHighlightInfoAtPosition
+local GetPlayerMapPosition          = C_Map.GetPlayerMapPosition
 
 local sgsub = string.gsub
 
@@ -161,7 +164,7 @@ ns.PIN_GLOW_SIZE     = 40   -- Map pin glow
 ns.HIGHLIGHT_SIZE    = 30   -- Yellow highlight border box
 
 -- Multi-pin (slightly smaller so clusters don't overlap)
-ns.MULTI_SCALE       = 0.85
+ns.MULTI_SCALE       = 1.0
 
 -- Zone indicator (continent maps)
 ns.ZONE_ICON_SIZE      = 48
@@ -172,12 +175,12 @@ ns.BREADCRUMB_SIZE   = 48
 
 local ANIM_DURATION = 0.5
 
---- Convert a size in UI units to canvas units so it appears the same visual
---- size as a same-valued element on UIParent.
---- WoW's map zooms by making the canvas LARGER, not by changing scale.
---- So the conversion is: canvasWidth / viewportWidth (canvas units per screen unit).
---- @param uiSize number  size in UI coordinate units
---- @return number  equivalent canvas coordinate units
+-- Convert a size in UI units to canvas units so it appears the same visual
+-- size as a same-valued element on UIParent.
+-- WoW's map zooms by making the canvas LARGER, not by changing scale.
+-- So the conversion is: canvasWidth / viewportWidth (canvas units per screen unit).
+-- @param uiSize number  size in UI coordinate units
+-- @return number  equivalent canvas coordinate units
 function ns.UIToCanvas(uiSize)
     local sc = WorldMapFrame and WorldMapFrame.ScrollContainer
     if not sc or not sc.Child then return uiSize end
@@ -193,11 +196,11 @@ end
 -- Every indicator icon in the addon (map search, zone search, UI search, breadcrumb)
 -- MUST use these two functions so they all look identical.
 
---- Create icon + glow textures on a parent frame.
---- Returns nothing; sets parentFrame.indicator and parentFrame.glow.
---- @param parentFrame Frame  - the frame the icon sits in
---- @param iconSize number|nil  - override size (defaults to ns.ICON_SIZE)
---- @param glowSize number|nil  - override glow (defaults to ns.ICON_GLOW_SIZE; 0 = no glow)
+-- Create icon + glow textures on a parent frame.
+-- Returns nothing; sets parentFrame.indicator and parentFrame.glow.
+-- @param parentFrame Frame  - the frame the icon sits in
+-- @param iconSize number|nil  - override size (defaults to ns.ICON_SIZE)
+-- @param glowSize number|nil  - override glow (defaults to ns.ICON_GLOW_SIZE; 0 = no glow)
 function ns.CreateIndicatorTextures(parentFrame, iconSize, glowSize)
     iconSize = iconSize or ns.ICON_SIZE
     glowSize = glowSize or ns.ICON_GLOW_SIZE
@@ -240,9 +243,9 @@ function ns.CreateIndicatorTextures(parentFrame, iconSize, glowSize)
     end)
 end
 
---- Update an existing indicator (and optional glow) to match current settings.
---- Works on any frame that was set up with ns.CreateIndicatorTextures.
---- @param parentFrame Frame
+-- Update an existing indicator (and optional glow) to match current settings.
+-- Works on any frame that was set up with ns.CreateIndicatorTextures.
+-- @param parentFrame Frame
 function ns.UpdateIndicator(parentFrame)
     if not parentFrame or not parentFrame.indicator then return end
     local style = GetIndicatorTexture()
@@ -289,10 +292,10 @@ function ns.UpdateIndicator(parentFrame)
     end
 end
 
---- Compute the rotation for an indicator pointing in a given direction.
---- Takes the style's own rotation into account so every style works correctly.
---- @param direction string "down"|"up"|"left"|"right"
---- @return number rotation in radians
+-- Compute the rotation for an indicator pointing in a given direction.
+-- Takes the style's own rotation into account so every style works correctly.
+-- @param direction string "down"|"up"|"left"|"right"
+-- @return number rotation in radians
 function ns.GetDirectionalRotation(direction)
     local style = GetIndicatorTexture()
     -- Base rotation is whatever points the indicator downward:
@@ -732,7 +735,13 @@ local function CreateWaypointTracker()
 
         -- Minimap pin becomes visible at 75% of the view radius
         local showCircle = EasyFind.db.minimapGuideCircle ~= false
+        if showCircle and EasyFind.db.circleOnlyEasyFind and not efPlacedWaypoint then
+            showCircle = false
+        end
         local showGlow = EasyFind.db.minimapArrowGlow ~= false
+        if showGlow and EasyFind.db.glowOnlyEasyFind and not efPlacedWaypoint then
+            showGlow = false
+        end
         if dist < viewRadius * 0.75 then
             -- NEAR MODE: ring around player (Blizzard's pin is visible on minimap)
             if not self.lastMode or self.lastMode ~= "NEAR" then
@@ -819,7 +828,7 @@ local function CreateWaypointTracker()
     end
 
     waypointController:SetScript("OnUpdate", function(self, elapsed)
-        local ok, err = pcall(WaypointOnUpdate, self, elapsed)
+        local ok, err = xpcall(WaypointOnUpdate, ErrorHandler, self, elapsed)
         if not ok then
             self:SetScript("OnUpdate", nil)
             DebugPrint("Waypoint tracker stopped: " .. tostring(err))
@@ -1081,8 +1090,8 @@ end
 -- Category icons mapping
 local CATEGORY_ICONS = {
     flightmaster = "atlas:TaxiNode_Neutral",
-    zeppelin = "Interface\\Icons\\INV_Misc_AirshipPart_Propeller",
-    boat = "Interface\\Icons\\Achievement_BG_captureflag_EOS",
+    zeppelin = 342918,
+    boat = 1126431,
     portal = "Interface\\Icons\\Spell_Arcane_PortalDalaran",
     tram = "Interface\\Icons\\INV_Misc_Gear_01",
     -- Cropped texCoords from atlas sprite sheet 1121272 - removes the built-in glow border
@@ -1092,11 +1101,11 @@ local CATEGORY_ICONS = {
     dungeon = { file = 1121272, coords = { 0.2056, 0.2397, 0.4478, 0.4819 } },
     raid    = { file = 1121272, coords = { 0.2056, 0.2397, 0.4986, 0.5327 } },
     delve   = { file = 1121272, coords = { 0.0104, 0.0541, 0.3990, 0.4427 } },
-    bank = "Interface\\Icons\\INV_Misc_Bag_10_Blue",
-    auctionhouse = "Interface\\Icons\\INV_Misc_Coin_01",
-    innkeeper = "Interface\\Icons\\Spell_Holy_GreaterHeal",
-    trainer = "Interface\\Icons\\INV_Misc_Book_09",
-    proftrainer = "Interface\\Icons\\INV_Misc_Book_09",
+    bank = 136453,
+    auctionhouse = 136452,
+    innkeeper = 136458,
+    trainer = 136463,
+    proftrainer = 136463,
     classtrainer = { file = 131016, coords = { 0.000, 0.250, 0.375, 0.500 } },
     prof_alchemy = "Interface\\Icons\\Trade_Alchemy",
     prof_blacksmithing = "Interface\\Icons\\Trade_BlackSmithing",
@@ -1113,25 +1122,31 @@ local CATEGORY_ICONS = {
     prof_tailoring = "Interface\\Icons\\Trade_Tailoring",
     prof_firstaid = "Interface\\Icons\\Spell_Holy_SealOfSacrifice",
     prof_archaeology = "Interface\\Icons\\Trade_Archaeology",
+    trainingdummy = "Interface\\Icons\\Ability_Warrior_Charge",
     vendor = "Interface\\Icons\\INV_Misc_Bag_07",
     pvpvendor = 236396,
     pvpquest = 236396,
     battlemasters = 236396,
-    quartermaster = 236396,
-    mailbox = "Interface\\Icons\\INV_Letter_15",
-    stablemaster = "Interface\\Icons\\Ability_Hunter_BeastCall",
-    repairvendor = "Interface\\Icons\\INV_Hammer_20",
-    barber = "Interface\\Icons\\INV_Misc_Comb_01",
-    transmogrifier = "Interface\\Icons\\INV_Arcane_Orb",
+    quartermaster = { file = 1121272, coords = { 0.5090, 0.5390, 0.6070, 0.6370 } },
+    mailbox = 136459,
+    stablemaster = 136466,
+    repairvendor = 136465,
+    barber = 3852099,
+    transmogrifier = 1598183,
     rare = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
     treasure = "Interface\\Icons\\INV_Misc_Bag_10",
     catalyst = "Interface\\Icons\\INV_10_GearUpgrade_Catalyst_Charged",
     greatvault = "Interface\\Icons\\INV_Misc_Lockbox_1",
-    upgradevendor = 463442, -- Reforge icon (FileDataID)
+    upgradevendor = 4025144,
     guildservices = "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend",
     voidstorage = "Interface\\Icons\\INV_Enchant_VoidCrystal",
     tradingpost = "Interface\\Icons\\tradingpostcurrency",
+    decor = { file = 1121272, coords = { 0.4078, 0.4380, 0.8713, 0.9040 } },
     chromie = "atlas:ChromieTime-32x32",
+    craftingorders = { file = 1121272, coords = { 0.8764, 0.9040, 0.5102, 0.5357 } },
+    rostrum = { file = 1121272, coords = { 0.7738, 0.8033, 0.4066, 0.4394 } },
+    pettrainer = "atlas:WildBattlePetCapturable",
+    ridingtrainer = "atlas:StableMaster",
     areapoi = "Interface\\Icons\\INV_Misc_QuestionMark",
     unknown = "Interface\\Icons\\INV_Misc_QuestionMark",
 }
@@ -1196,6 +1211,7 @@ local CATEGORIES = {
     greatvault = { keywords = {"great vault", "vault", "weekly rewards", "weekly chest"}, parent = "service" },
     upgradevendor = { keywords = {"upgrade", "upgrade vendor", "flightstone", "crest"}, parent = "service" },
     tradingpost = { keywords = {"trading post", "trader's tender", "tender", "tmog", "xmog"}, parent = "service" },
+    decor = { keywords = {"decor", "decoration", "decorations", "decorator", "housing", "furniture"}, parent = "service" },
 }
 
 -- Categories allowed in global (cross-zone) search results.
@@ -1478,16 +1494,70 @@ function MapSearch:CreateSearchFrame()
 
     local contentSz = ns.SEARCHBAR_HEIGHT * ns.SEARCHBAR_FILL
     local iconSz = contentSz * ns.SEARCHBAR_ICON_SCALE
-    local searchIcon = searchFrame:CreateTexture(nil, "ARTWORK")
+
+    local localModeBtn = CreateFrame("Button", nil, searchFrame)
+    localModeBtn:SetPoint("TOP", searchFrame, "TOP", 0, 0)
+    localModeBtn:SetPoint("BOTTOM", searchFrame, "BOTTOM", 0, 0)
+    localModeBtn:SetPoint("LEFT", searchFrame, "LEFT", 0, 0)
+    localModeBtn:SetWidth(ns.SEARCHBAR_HEIGHT)
+    localModeBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
+
+    local searchIcon = localModeBtn:CreateTexture(nil, "OVERLAY")
     searchIcon:SetSize(iconSz, iconSz)
-    searchIcon:SetPoint("LEFT", 10, 0)
-    searchIcon:SetAtlas("common-search-magnifyingglass")
-    searchIcon:SetVertexColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
+    searchIcon:SetPoint("CENTER")
     searchFrame.searchIcon = searchIcon
+    localModeBtn.icon = searchIcon
+
+    local localModeBtnBg = localModeBtn:CreateTexture(nil, "ARTWORK")
+    localModeBtnBg:SetAllPoints()
+    localModeBtnBg:SetTexture(796424)
+    localModeBtnBg:Hide()
+    localModeBtn.btnBg = localModeBtnBg
+    localModeBtn:SetHighlightTexture(130757)
+    searchFrame.modeBtn = localModeBtn
+
+    local function UpdateLocalModeBtnVisual()
+        if EasyFind.db.localMapDirectOpen then
+            searchIcon:SetAtlas(nil)
+            searchIcon:SetTexture(LIGHTNING_BOLT_TEX)
+        else
+            searchIcon:SetTexture(nil)
+            searchIcon:SetAtlas("common-search-magnifyingglass")
+        end
+        searchIcon:SetVertexColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
+    end
+    localModeBtn.UpdateVisual = UpdateLocalModeBtnVisual
+
+    localModeBtn:SetScript("OnEnter", function(self)
+        self.btnBg:Show()
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        if EasyFind.db.localMapDirectOpen then
+            GameTooltip:SetText("Fast Mode")
+            GameTooltip:AddLine("Click to switch to Standard mode.", 1, 1, 1, true)
+        else
+            GameTooltip:SetText("Standard Mode")
+            GameTooltip:AddLine("Click to switch to Fast mode.", 1, 1, 1, true)
+        end
+        GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    localModeBtn:SetScript("OnLeave", function(self)
+        if not self.keyboardFocused then self.btnBg:Hide() end
+        GameTooltip_Hide()
+    end)
+    localModeBtn:SetScript("OnClick", function(self)
+        EasyFind.db.localMapDirectOpen = not EasyFind.db.localMapDirectOpen
+        UpdateLocalModeBtnVisual()
+        local optPanel = _G["EasyFindOptionsFrame"]
+        if optPanel and optPanel.localNavCheckbox then
+            optPanel.localNavCheckbox:SetChecked(EasyFind.db.localMapDirectOpen)
+        end
+    end)
+    UpdateLocalModeBtnVisual()
 
     local editBox = CreateFrame("EditBox", "EasyFindMapSearchBox", searchFrame)
     editBox:SetHeight(contentSz)
-    editBox:SetPoint("LEFT", searchIcon, "RIGHT", 5, 0)
+    editBox:SetPoint("LEFT", localModeBtn, "RIGHT", 0, 0)
     -- RIGHT anchor set below after clearBtn creation
     editBox:SetFontObject(ns.SEARCHBAR_FONT)
     editBox:SetAutoFocus(false)
@@ -1534,6 +1604,7 @@ function MapSearch:CreateSearchFrame()
         if self:GetText() ~= "" then
             self.placeholder:Hide()
         end
+        if not self:HasFocus() then return end
         isGlobalSearch = false
         activeSearchFrame = searchFrame
         MapSearch:OnSearchTextChanged(self:GetText())
@@ -1571,6 +1642,9 @@ function MapSearch:CreateSearchFrame()
     localArrow:SetPoint("CENTER")
     localArrow:SetTexture(423808)
     localArrow:SetTexCoord(0.453, 0.203, 0.453, 0.016, 0.641, 0.203, 0.641, 0.016)
+    localArrow:SetDesaturated(true)
+    localArrow:SetBlendMode("ADD")
+    localArrow:SetVertexColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
     localFilterBtn.arrow = localArrow
 
     local localBtnBg = localFilterBtn:CreateTexture(nil, "ARTWORK")
@@ -1627,11 +1701,17 @@ function MapSearch:CreateSearchFrame()
 
     -- Tooltip showing full placeholder when truncated and unfocused
     editBox:HookScript("OnEnter", function(self)
-        if placeholder:IsShown() and placeholder:IsTruncated() and not self:HasFocus() then
-            GameTooltip:SetOwner(searchFrame, "ANCHOR_TOP")
-            GameTooltip:SetText(placeholder:GetText())
-            GameTooltip:Show()
+        if self:HasFocus() or not placeholder:IsShown() then return end
+        GameTooltip:SetOwner(searchFrame, "ANCHOR_TOP")
+        if EasyFind.db.localMapDirectOpen then
+            GameTooltip:SetText("|cFFFFD100Zone Search|r (Fast)")
+            GameTooltip:AddLine("Navigates directly to results without zone highlighting.", 1, 1, 1, true)
+        else
+            GameTooltip:SetText("|cFFFFD100Zone Search|r (Standard)")
+            GameTooltip:AddLine("Highlights zones on the map and guides navigation step by step.", 1, 1, 1, true)
         end
+        GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
     end)
     editBox:HookScript("OnLeave", function()
         GameTooltip:Hide()
@@ -1664,27 +1744,6 @@ function MapSearch:CreateSearchFrame()
         end
     end)
 
-    -- Invisible button over the icon to capture hover for tooltip
-    local searchIconHitbox = CreateFrame("Button", nil, searchFrame)
-    searchIconHitbox:SetSize(22, 22)
-    searchIconHitbox:SetPoint("CENTER", searchIcon, "CENTER", 0, 0)
-    searchIconHitbox:SetFrameLevel(searchFrame:GetFrameLevel() + 2)
-    searchIconHitbox:EnableMouse(true)
-    searchIconHitbox:RegisterForClicks()
-    searchIconHitbox:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("|cFFFFD100This Zone|r Search")
-        GameTooltip:AddLine("Searches for POIs and sub-zones within the map you're currently viewing.", 1, 1, 1, true)
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
-        GameTooltip:Show()
-    end)
-    searchIconHitbox:SetScript("OnLeave", GameTooltip_Hide)
-    searchIconHitbox:SetScript("OnMouseDown", function(_, button)
-        if button == "LeftButton" and not IsShiftKeyDown() then
-            editBox:SetFocus()
-        end
-    end)
 
     -- Local filter dropdown
     local LOCAL_FILTER_OPTIONS = {
@@ -1783,16 +1842,69 @@ function MapSearch:CreateSearchFrame()
         end
     end)
 
-    local globalSearchIcon = globalSearchFrame:CreateTexture(nil, "ARTWORK")
+    local globalModeBtn = CreateFrame("Button", nil, globalSearchFrame)
+    globalModeBtn:SetPoint("TOP", globalSearchFrame, "TOP", 0, 0)
+    globalModeBtn:SetPoint("BOTTOM", globalSearchFrame, "BOTTOM", 0, 0)
+    globalModeBtn:SetPoint("LEFT", globalSearchFrame, "LEFT", 0, 0)
+    globalModeBtn:SetWidth(ns.SEARCHBAR_HEIGHT)
+    globalModeBtn:SetFrameLevel(globalSearchFrame:GetFrameLevel() + 10)
+
+    local globalSearchIcon = globalModeBtn:CreateTexture(nil, "OVERLAY")
     globalSearchIcon:SetSize(iconSz, iconSz)
-    globalSearchIcon:SetPoint("LEFT", 10, 0)
-    globalSearchIcon:SetAtlas("common-search-magnifyingglass")
-    globalSearchIcon:SetVertexColor(0.4, 0.8, 1)
+    globalSearchIcon:SetPoint("CENTER")
     globalSearchFrame.searchIcon = globalSearchIcon
+    globalModeBtn.icon = globalSearchIcon
+
+    local globalModeBtnBg = globalModeBtn:CreateTexture(nil, "ARTWORK")
+    globalModeBtnBg:SetAllPoints()
+    globalModeBtnBg:SetTexture(796424)
+    globalModeBtnBg:Hide()
+    globalModeBtn.btnBg = globalModeBtnBg
+    globalModeBtn:SetHighlightTexture(130757)
+    globalSearchFrame.modeBtn = globalModeBtn
+
+    local function UpdateGlobalModeBtnVisual()
+        if EasyFind.db.globalMapDirectOpen then
+            globalSearchIcon:SetAtlas(nil)
+            globalSearchIcon:SetTexture(LIGHTNING_BOLT_TEX)
+        else
+            globalSearchIcon:SetTexture(nil)
+            globalSearchIcon:SetAtlas("common-search-magnifyingglass")
+        end
+        globalSearchIcon:SetVertexColor(0.4, 0.8, 1)
+    end
+    globalModeBtn.UpdateVisual = UpdateGlobalModeBtnVisual
+
+    globalModeBtn:SetScript("OnEnter", function(self)
+        self.btnBg:Show()
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        if EasyFind.db.globalMapDirectOpen then
+            GameTooltip:SetText("Fast Mode")
+            GameTooltip:AddLine("Click to switch to Standard mode.", 1, 1, 1, true)
+        else
+            GameTooltip:SetText("Standard Mode")
+            GameTooltip:AddLine("Click to switch to Fast mode.", 1, 1, 1, true)
+        end
+        GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    globalModeBtn:SetScript("OnLeave", function(self)
+        if not self.keyboardFocused then self.btnBg:Hide() end
+        GameTooltip_Hide()
+    end)
+    globalModeBtn:SetScript("OnClick", function(self)
+        EasyFind.db.globalMapDirectOpen = not EasyFind.db.globalMapDirectOpen
+        UpdateGlobalModeBtnVisual()
+        local optPanel = _G["EasyFindOptionsFrame"]
+        if optPanel and optPanel.globalNavCheckbox then
+            optPanel.globalNavCheckbox:SetChecked(EasyFind.db.globalMapDirectOpen)
+        end
+    end)
+    UpdateGlobalModeBtnVisual()
 
     local globalEditBox = CreateFrame("EditBox", "EasyFindMapGlobalSearchBox", globalSearchFrame)
     globalEditBox:SetHeight(contentSz)
-    globalEditBox:SetPoint("LEFT", globalSearchIcon, "RIGHT", 5, 0)
+    globalEditBox:SetPoint("LEFT", globalModeBtn, "RIGHT", 0, 0)
     -- RIGHT anchor set below after globalClearBtn creation
     globalEditBox:SetFontObject(ns.SEARCHBAR_FONT)
     globalEditBox:SetAutoFocus(false)
@@ -1839,6 +1951,7 @@ function MapSearch:CreateSearchFrame()
         if self:GetText() ~= "" then
             self.placeholder:Hide()
         end
+        if not self:HasFocus() then return end
         isGlobalSearch = true
         activeSearchFrame = globalSearchFrame
         MapSearch:OnSearchTextChanged(self:GetText())
@@ -1876,6 +1989,9 @@ function MapSearch:CreateSearchFrame()
     globalArrow:SetPoint("CENTER")
     globalArrow:SetTexture(423808)
     globalArrow:SetTexCoord(0.453, 0.203, 0.453, 0.016, 0.641, 0.203, 0.641, 0.016)
+    globalArrow:SetDesaturated(true)
+    globalArrow:SetBlendMode("ADD")
+    globalArrow:SetVertexColor(0.4, 0.8, 1)
     filterBtn.arrow = globalArrow
 
     local globalBtnBg = filterBtn:CreateTexture(nil, "ARTWORK")
@@ -1932,11 +2048,17 @@ function MapSearch:CreateSearchFrame()
 
     -- Tooltip showing full placeholder when truncated and unfocused
     globalEditBox:HookScript("OnEnter", function(self)
-        if globalPlaceholder:IsShown() and globalPlaceholder:IsTruncated() and not self:HasFocus() then
-            GameTooltip:SetOwner(globalSearchFrame, "ANCHOR_TOP")
-            GameTooltip:SetText(globalPlaceholder:GetText())
-            GameTooltip:Show()
+        if self:HasFocus() or not globalPlaceholder:IsShown() then return end
+        GameTooltip:SetOwner(globalSearchFrame, "ANCHOR_TOP")
+        if EasyFind.db.globalMapDirectOpen then
+            GameTooltip:SetText("|cFF66CCFFGlobal Search|r (Fast)")
+            GameTooltip:AddLine("Navigates directly to clicked zones and dungeon entrances.", 1, 1, 1, true)
+        else
+            GameTooltip:SetText("|cFF66CCFFGlobal Search|r (Standard)")
+            GameTooltip:AddLine("Highlights zones on the map and guides navigation step by step.", 1, 1, 1, true)
         end
+        GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
+        GameTooltip:Show()
     end)
     globalEditBox:HookScript("OnLeave", function()
         GameTooltip:Hide()
@@ -1968,27 +2090,6 @@ function MapSearch:CreateSearchFrame()
         end
     end)
 
-    -- Invisible button over the icon to capture hover for tooltip
-    local globalIconHitbox = CreateFrame("Button", nil, globalSearchFrame)
-    globalIconHitbox:SetSize(22, 22)
-    globalIconHitbox:SetPoint("CENTER", globalSearchIcon, "CENTER", 0, 0)
-    globalIconHitbox:SetFrameLevel(globalSearchFrame:GetFrameLevel() + 2)
-    globalIconHitbox:EnableMouse(true)
-    globalIconHitbox:RegisterForClicks()
-    globalIconHitbox:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:SetText("|cFF66CCFFAll Zones|r Search")
-        GameTooltip:AddLine("Searches every zone in the entire world - continents, dungeons, and more.", 1, 1, 1, true)
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
-        GameTooltip:Show()
-    end)
-    globalIconHitbox:SetScript("OnLeave", GameTooltip_Hide)
-    globalIconHitbox:SetScript("OnMouseDown", function(_, button)
-        if button == "LeftButton" and not IsShiftKeyDown() then
-            globalEditBox:SetFocus()
-        end
-    end)
 
     globalSearchFrame.editBox = globalEditBox
     globalSearchFrame:Hide()
@@ -2451,6 +2552,21 @@ function MapSearch:CreateResultButton(index)
     pinIcon:Hide()
     resultRow.pinIcon = pinIcon
 
+    -- Pin header elements (collapse toggle + gold separator line)
+    local pinToggle = resultRow:CreateTexture(nil, "OVERLAY")
+    pinToggle:SetSize(14, 14)
+    pinToggle:SetPoint("RIGHT", -4, 0)
+    pinToggle:Hide()
+    resultRow.pinToggle = pinToggle
+
+    local pinHeaderLine = resultRow:CreateTexture(nil, "OVERLAY")
+    pinHeaderLine:SetHeight(1)
+    pinHeaderLine:SetPoint("BOTTOMLEFT", 4, 0)
+    pinHeaderLine:SetPoint("BOTTOMRIGHT", -4, 0)
+    pinHeaderLine:SetColorTexture(1.0, 0.82, 0.0, 0.4)
+    pinHeaderLine:Hide()
+    resultRow.pinHeaderLine = pinHeaderLine
+
     -- Navigate button - shortcut: select result + auto-set waypoint in one click
     local navBtn = CreateFrame("Button", nil, resultRow)
     navBtn:SetSize(24, 24)
@@ -2462,6 +2578,24 @@ function MapSearch:CreateResultButton(index)
     navBtn.texture = navTex
     navBtn:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
     navBtn:SetScript("OnEnter", function(self)
+        -- Show preview pinned to the nearest instance (since that's where navigate will go)
+        local data = resultRow.data
+        if data then
+            local coords = MapSearch:GetPreviewCoords(data)
+            if coords then
+                MapSearch._savedPinState = activePinState
+                MapSearch._previewing = true
+                if coords.instances then
+                    local nearest = MapSearch:GetNearestInstance(coords.instances, WorldMapFrame:GetMapID())
+                    if nearest then
+                        MapSearch:ShowWaypointAt(nearest.x, nearest.y, nil, nearest.category)
+                    end
+                else
+                    MapSearch:ShowWaypointAt(coords.x, coords.y, coords.icon, coords.category)
+                end
+                activePinState = MapSearch._savedPinState
+            end
+        end
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         if self.disabled then
             GameTooltip:SetText("Navigate", 0.5, 0.5, 0.5)
@@ -2472,7 +2606,21 @@ function MapSearch:CreateResultButton(index)
         end
         GameTooltip:Show()
     end)
-    navBtn:SetScript("OnLeave", GameTooltip_Hide)
+    navBtn:SetScript("OnLeave", function(self)
+        GameTooltip_Hide()
+        if not MapSearch._previewing then return end
+        MapSearch._previewing = nil
+        MapSearch:ClearHighlight()
+        local saved = MapSearch._savedPinState
+        MapSearch._savedPinState = nil
+        if saved and saved.mapID == WorldMapFrame:GetMapID() then
+            if saved.instances then
+                MapSearch:ShowMultipleWaypoints(saved.instances)
+            else
+                MapSearch:ShowWaypointAt(saved.x, saved.y, saved.icon, saved.category)
+            end
+        end
+    end)
     navBtn:SetScript("OnClick", function(self)
         if self.disabled then return end
         local data = resultRow.data
@@ -2496,6 +2644,17 @@ function MapSearch:CreateResultButton(index)
 
     resultRow:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     resultRow:SetScript("OnClick", function(self, mouseButton)
+        if self.data and self.data.isPinHeader then
+            EasyFind.db.mapPinsCollapsed = not EasyFind.db.mapPinsCollapsed
+            local editBox = activeSearchFrame and activeSearchFrame.editBox
+            local text = editBox and editBox:GetText() or ""
+            if text == "" and editBox and editBox:HasFocus() then
+                MapSearch:ShowPinnedItems()
+            else
+                MapSearch:OnSearchTextChanged(text)
+            end
+            return
+        end
         if mouseButton == "RightButton" and self.data then
             local pinData = self.data
             local isPinned = IsMapItemPinned(pinData)
@@ -2674,10 +2833,15 @@ function MapSearch:CreateHighlightFrame()
     waypointPin:SetScript("OnLeave", GameTooltip_Hide)
     waypointPin:SetScript("OnMouseUp", function(self, button)
         if button == "LeftButton" and self.isLocalSearch and self.waypointX and self.waypointY then
+            local x, y = self.waypointX, self.waypointY
+            -- Collapse multi-pin to this one if in multi-pin state
+            if activePinState and activePinState.instances then
+                MapSearch:ShowWaypointAt(x, y, nil, self.waypointCategory)
+            end
             local playerMapID = GetBestMapForUnit("player")
             local viewingMapID = WorldMapFrame:GetMapID()
             if viewingMapID and playerMapID == viewingMapID then
-                SetUserWaypoint(UiMapPoint.CreateFromCoordinates(viewingMapID, self.waypointX, self.waypointY))
+                SetUserWaypoint(UiMapPoint.CreateFromCoordinates(viewingMapID, x, y))
                 C_SuperTrack.SetSuperTrackedUserWaypoint(true)
                 efPlacedWaypoint = true
                 ShowSuperTrackGlow()
@@ -4280,16 +4444,25 @@ local function SmartShowFadeIn(frame)
 end
 
 local function SmartShowFadeOut(frame)
-    if frame.editBox:HasFocus() or frame.editBox:GetText() ~= "" then return end
+    if frame.editBox:HasFocus() then return end
     if resultsFrame and resultsFrame:IsShown() then return end
     if frame.smartShowTimer then frame.smartShowTimer:Cancel() end
     frame.smartShowTimer = C_Timer.NewTimer(0.4, function()
         frame.smartShowTimer = nil
-        if frame.editBox:HasFocus() or frame.editBox:GetText() ~= "" then return end
+        if frame.editBox:HasFocus() then return end
         if resultsFrame and resultsFrame:IsShown() then return end
         if frame:IsMouseOver() then return end
         frame.smartShowVisible = false
         UIFrameFadeOut(frame, 0.25, frame:GetAlpha(), 0)
+    end)
+end
+
+local function HookSmartShowChild(child, frame)
+    child:HookScript("OnEnter", function()
+        if EasyFind.db.mapSmartShow then SmartShowFadeIn(frame) end
+    end)
+    child:HookScript("OnLeave", function()
+        if EasyFind.db.mapSmartShow then SmartShowFadeOut(frame) end
     end)
 end
 
@@ -4301,6 +4474,21 @@ local function HookMapSmartShow(frame)
     frame:HookScript("OnLeave", function()
         if EasyFind.db.mapSmartShow then SmartShowFadeOut(frame) end
     end)
+    frame.editBox:HookScript("OnEditFocusGained", function()
+        if EasyFind.db.mapSmartShow then SmartShowFadeIn(frame) end
+    end)
+    frame.editBox:HookScript("OnEditFocusLost", function()
+        if not EasyFind.db.mapSmartShow then return end
+        if frame:IsMouseOver() then return end
+        frame.smartShowVisible = false
+        UIFrameFadeOut(frame, 0.25, frame:GetAlpha(), 0)
+    end)
+    -- Child buttons intercept mouse events and don't propagate OnEnter/OnLeave
+    -- to the parent frame, so hook each one explicitly.
+    HookSmartShowChild(frame.modeBtn, frame)
+    HookSmartShowChild(frame.editBox, frame)
+    HookSmartShowChild(frame.clearBtn, frame)
+    HookSmartShowChild(frame.filterBtn, frame)
 end
 
 function MapSearch:UpdateMapSmartShow()
@@ -4713,7 +4901,7 @@ function MapSearch:ScanDungeonEntrances(mapID)
             x = ex,
             y = ey,
             pathPrefix = parentLabel,
-            keywords = {cat, "instance", "entrance", "portal"},
+            keywords = {cat, "instance", "entrance"},
         })
     end
 
@@ -5070,6 +5258,8 @@ function MapSearch:ScanMapPOIs()
                     category = "tradingpost"
                 elseif sfind(poiName, "quartermaster") then
                     category = "quartermaster"
+                elseif sfind(poiName, "decor") then
+                    category = "decor"
                 elseif sfind(poiName, "conquest") or sfind(poiName, "honor") or sfind(poiName, "pvp") then
                     category = "pvpvendor"
                 elseif sfind(poiName, "chromie") then
@@ -5178,6 +5368,9 @@ function MapSearch:GetPinInfo(pin)
         elseif sfind(poiName, "quartermaster") then
             category = "quartermaster"
             pinType = "quartermaster"
+        elseif sfind(poiName, "decor") then
+            category = "decor"
+            pinType = "decor"
         elseif sfind(poiName, "pvp") or sfind(poiName, "arena") or sfind(poiName, "battleground") or sfind(poiDesc, "pvp") or sfind(poiName, "conquest") or sfind(poiName, "honor") or sfind(poiName, "weekly") then
             category = "pvpvendor"
             pinType = "pvpvendor"
@@ -5506,9 +5699,11 @@ function MapSearch:OnSearchTextChanged(text)
             end
         end
         for _, loc in ipairs(staticLocations) do
+            -- Don't update existingNames here: multiple static locations with the same
+            -- name but different coords (e.g., two AHs in Orgrimmar) must all reach
+            -- SearchPOIs so the duplicate-tracking system can group and pin them.
             if not zoneNames[slower(loc.name)] and not existingNames[slower(loc.name)] then
                 tinsert(allPOIs, loc)
-                existingNames[slower(loc.name)] = true
             end
         end
     end
@@ -5559,19 +5754,27 @@ function MapSearch:OnSearchTextChanged(text)
         results = filteredResults
     end
 
-    -- Prepend pinned items (always shown at top regardless of query)
+    -- Prepend pinned items with header (always shown at top regardless of query)
     local pins = EasyFind.db.pinnedMapItems
     if pins and #pins > 0 then
         wipe(reusePinnedKeys)
         wipe(reusePinned)
         local pinnedKeys = reusePinnedKeys
         local pinned = reusePinned
-        for _, pin in ipairs(pins) do
-            local copy = {}
-            for k, v in pairs(pin) do copy[k] = v end
-            copy.isPinned = true
-            tinsert(pinned, copy)
-            pinnedKeys[GetMapPinKey(pin)] = true
+        -- Header row
+        tinsert(pinned, { isPinHeader = true, name = "Pinned" })
+        if not EasyFind.db.mapPinsCollapsed then
+            for _, pin in ipairs(pins) do
+                local copy = {}
+                for k, v in pairs(pin) do copy[k] = v end
+                copy.isPinned = true
+                tinsert(pinned, copy)
+                pinnedKeys[GetMapPinKey(pin)] = true
+            end
+        else
+            for _, pin in ipairs(pins) do
+                pinnedKeys[GetMapPinKey(pin)] = true
+            end
         end
         wipe(reuseFiltered)
         local filtered = reuseFiltered
@@ -5580,7 +5783,6 @@ function MapSearch:OnSearchTextChanged(text)
                 tinsert(filtered, r)
             end
         end
-        -- Combine: pins first, then search results
         for _, r in ipairs(filtered) do
             tinsert(pinned, r)
         end
@@ -5786,12 +5988,26 @@ function MapSearch:ShowResults(results)
             if resultRow.prefixText then resultRow.prefixText:Hide() end
             if resultRow.indentLine then resultRow.indentLine:Hide() end
             if resultRow.pinIcon then resultRow.pinIcon:Hide() end
+            if resultRow.pinToggle then resultRow.pinToggle:Hide() end
+            if resultRow.pinHeaderLine then resultRow.pinHeaderLine:Hide() end
             if resultRow.navBtn then resultRow.navBtn:Hide() end
             if resultRow.selectionHighlight then resultRow.selectionHighlight:Hide() end
             if resultRow.navBtnHighlight then resultRow.navBtnHighlight:Hide() end
 
             -- Format based on type
-            if data.isZoneParent then
+            if data.isPinHeader then
+                resultRow.icon:Hide()
+                resultRow.text:ClearAllPoints()
+                resultRow.text:SetPoint("LEFT", resultRow, "LEFT", 4, 0)
+                resultRow.text:SetPoint("RIGHT", resultRow.pinToggle, "LEFT", -4, 0)
+                resultRow.text:SetText("Pinned")
+                resultRow.text:SetTextColor(0.7, 0.7, 0.7)
+                local collapsed = EasyFind.db.mapPinsCollapsed
+                resultRow.pinToggle:SetAtlas(collapsed and "Soulbinds_Collection_CategoryHeader_Expand" or "Soulbinds_Collection_CategoryHeader_Collapse")
+                resultRow.pinToggle:Show()
+                resultRow.pinHeaderLine:Show()
+
+            elseif data.isZoneParent then
                 resultRow.icon:Hide()
                 resultRow.text:ClearAllPoints()
                 resultRow.text:SetPoint("LEFT", resultRow, "LEFT", 8, 0)
@@ -5862,6 +6078,15 @@ function MapSearch:ShowResults(results)
             end
 
             resultRow:Show()
+
+            -- Separator line after last pinned item before regular results
+            if data.isPinned and not data.isPinHeader then
+                local nextData = results[i + 1]
+                if nextData and not nextData.isPinned and not nextData.isPinHeader then
+                    resultRow.pinHeaderLine:Show()
+                    yOffset = yOffset - 4
+                end
+            end
 
             local scrollGutter = willScroll and (scrollBar:GetWidth() + 0) or 0
             local rowW = resultsFrame:GetWidth() - ROW_INSET - scrollGutter
@@ -5951,13 +6176,15 @@ function MapSearch:ShowPinnedItems()
         self:HideResults()
         return
     end
-    -- Mark each pin so ShowResults renders the indicator
     local display = {}
-    for _, pin in ipairs(pins) do
-        local copy = {}
-        for k, v in pairs(pin) do copy[k] = v end
-        copy.isPinned = true
-        tinsert(display, copy)
+    tinsert(display, { isPinHeader = true, name = "Pinned" })
+    if not EasyFind.db.mapPinsCollapsed then
+        for _, pin in ipairs(pins) do
+            local copy = {}
+            for k, v in pairs(pin) do copy[k] = v end
+            copy.isPinned = true
+            tinsert(display, copy)
+        end
     end
     self:ShowResults(display)
 end
@@ -6093,23 +6320,30 @@ end
 
 function MapSearch:FocusLocalSearch()
     if not searchFrame or not searchFrame.editBox then return end
-    C_Timer.After(0, function()
-        searchFrame.editBox:SetFocus()
-    end)
+    if EasyFind.db.mapSmartShow then SmartShowFadeIn(searchFrame) end
+    searchFrame.editBox:SetFocus()
 end
 
 function MapSearch:FocusGlobalSearch()
     if not globalSearchFrame or not globalSearchFrame.editBox then return end
-    C_Timer.After(0, function()
-        globalSearchFrame.editBox:SetFocus()
-    end)
+    if EasyFind.db.mapSmartShow then SmartShowFadeIn(globalSearchFrame) end
+    globalSearchFrame.editBox:SetFocus()
+end
+
+function MapSearch:UpdateMapModeBtns()
+    if searchFrame and searchFrame.modeBtn and searchFrame.modeBtn.UpdateVisual then
+        searchFrame.modeBtn.UpdateVisual()
+    end
+    if globalSearchFrame and globalSearchFrame.modeBtn and globalSearchFrame.modeBtn.UpdateVisual then
+        globalSearchFrame.modeBtn.UpdateVisual()
+    end
 end
 
 -- Shared logic for navigating to an instance entrance.
 -- If already on the target map, shows waypoint directly.
 -- Otherwise checks if the entrance is visible on the current map,
 -- falling back to map navigation with a pending waypoint.
-function MapSearch:NavigateToEntrance(name, x, y, icon, category, targetMapID)
+function MapSearch:NavigateToEntrance(name, x, y, icon, category, targetMapID, directMode)
     local currentMapID = WorldMapFrame:GetMapID()
     if currentMapID == targetMapID then
         self:ShowWaypointAt(x, y, icon, category)
@@ -6120,7 +6354,7 @@ function MapSearch:NavigateToEntrance(name, x, y, icon, category, targetMapID)
         self:ShowWaypointAt(ex, ey, icon, category)
         return
     end
-    if IsOrphanZone(targetMapID) or EasyFind.db.navigateToZonesDirectly then
+    if IsOrphanZone(targetMapID) or directMode then
         self:ClearZoneHighlight()
         self.pendingWaypoint = {x = x, y = y, icon = icon, category = category, mapID = targetMapID}
         WorldMapFrame:SetMapID(targetMapID)
@@ -6163,6 +6397,9 @@ function MapSearch:SelectResult(data)
             return
         end
 
+        local directMode = isGlobalSearch and (EasyFind.db.globalMapDirectOpen or false)
+            or (EasyFind.db.localMapDirectOpen or false)
+
         -- Handle zone selection
         if data.isZone and data.zoneMapID then
             -- Orphan zones have no physical position on any parent map
@@ -6174,8 +6411,8 @@ function MapSearch:SelectResult(data)
                 WorldMapFrame:SetMapID(data.zoneMapID)
             elseif data.entranceX and data.entranceY and data.entranceMapID then
                 DebugPrint("[EasyFind] SelectResult → ZONE+ENTRANCE branch, entranceMapID=", data.entranceMapID)
-                self:NavigateToEntrance(data.name, data.entranceX, data.entranceY, data.entranceIcon, data.entranceCategory, data.entranceMapID)
-            elseif EasyFind.db.navigateToZonesDirectly then
+                self:NavigateToEntrance(data.name, data.entranceX, data.entranceY, data.entranceIcon, data.entranceCategory, data.entranceMapID, directMode)
+            elseif directMode then
                 DebugPrint("[EasyFind] SelectResult → ZONE DIRECT branch, zoneMapID=", data.zoneMapID)
                 self:ClearZoneHighlight()
                 WorldMapFrame:SetMapID(data.zoneMapID)
@@ -6189,7 +6426,7 @@ function MapSearch:SelectResult(data)
         -- Dungeon/raid entrance from global search: navigate to zone, then show waypoint
         if data.isDungeonEntrance and data.entranceMapID then
             DebugPrint("[EasyFind] SelectResult → DUNGEON ENTRANCE branch, entranceMapID=", data.entranceMapID)
-            self:NavigateToEntrance(data.name, data.x, data.y, data.icon, data.category, data.entranceMapID)
+            self:NavigateToEntrance(data.name, data.x, data.y, data.icon, data.category, data.entranceMapID, directMode)
             return
         end
 
@@ -6303,9 +6540,12 @@ function MapSearch:ShowMultipleWaypoints(instances)
                     extraPin:SetScript("OnLeave", GameTooltip_Hide)
                     extraPin:SetScript("OnMouseUp", function(self, button)
                         if button == "LeftButton" and self.isLocalSearch and self.waypointX and self.waypointY then
+                            local x, y, cat = self.waypointX, self.waypointY, self.waypointCategory
+                            -- Collapse multi-pin to this one, then place waypoint
+                            MapSearch:ShowWaypointAt(x, y, nil, cat)
                             local viewingMapID = WorldMapFrame:GetMapID()
                             if viewingMapID then
-                                SetUserWaypoint(UiMapPoint.CreateFromCoordinates(viewingMapID, self.waypointX, self.waypointY))
+                                SetUserWaypoint(UiMapPoint.CreateFromCoordinates(viewingMapID, x, y))
                                 C_SuperTrack.SetSuperTrackedUserWaypoint(true)
                                 efPlacedWaypoint = true
                                 ShowSuperTrackGlow()
@@ -6383,6 +6623,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
             pin:SetPoint("CENTER", canvas, "TOPLEFT", instance.x * canvasWidth, -instance.y * canvasHeight)
             pin.waypointX = instance.x
             pin.waypointY = instance.y
+            pin.waypointCategory = instance.category
             pin.isLocalSearch = not isGlobalSearch
 
             local iconTexture = GetCategoryIcon(instance.category)
@@ -6414,10 +6655,19 @@ function MapSearch:ShowMultipleWaypoints(instances)
             ind:SetPoint("BOTTOM", highlight, "TOP", 0, 2)
             ind:Show()
 
-            if ind.animGroup then ind.animGroup:Play() end
+            if ind.animGroup then
+                ind:SetAlpha(1)
+                ind.animGroup:Play()
+            end
             if EasyFind.db.blinkingPins then
-                if pin.animGroup then pin.animGroup:Play() end
-                if highlight.animGroup then highlight.animGroup:Play() end
+                if pin.animGroup then
+                    pin:SetAlpha(1)
+                    pin.animGroup:Play()
+                end
+                if highlight.animGroup then
+                    highlight:SetAlpha(1)
+                    highlight.animGroup:Play()
+                end
             end
         end
     end
@@ -6636,6 +6886,25 @@ function MapSearch:ClearAll()
     end
 end
 
+function MapSearch:GetNearestInstance(instances, mapID)
+    if #instances == 1 then return instances[1] end
+    local pos = GetPlayerMapPosition(mapID, "player")
+    if not pos then return instances[1] end
+    local px, py = pos:GetXY()
+    local nearest, bestDist = instances[1], math.huge
+    for _, inst in ipairs(instances) do
+        if inst.x and inst.y then
+            local dx, dy = inst.x - px, inst.y - py
+            local dist = dx * dx + dy * dy
+            if dist < bestDist then
+                bestDist = dist
+                nearest = inst
+            end
+        end
+    end
+    return nearest
+end
+
 -- Auto-track the currently active pin on the minimap via Blizzard waypoint.
 -- Called by the navigate button to combine select + track in one action.
 function MapSearch:TrackActivePin()
@@ -6643,8 +6912,12 @@ function MapSearch:TrackActivePin()
     local mapID = activePinState.mapID
     local x, y
     if activePinState.instances then
-        local first = activePinState.instances[1]
-        if first then x, y = first.x, first.y end
+        local nearest = self:GetNearestInstance(activePinState.instances, mapID)
+        if nearest then
+            x, y = nearest.x, nearest.y
+            -- Collapse multi-pin display to just this instance
+            self:ShowWaypointAt(x, y, nil, nearest.category)
+        end
     else
         x, y = activePinState.x, activePinState.y
     end
@@ -6807,6 +7080,7 @@ function MapSearch:UpdateFontSize()
         frame:SetHeight(barH)
         frame.editBox:SetHeight(contentSz)
         if frame.searchIcon then frame.searchIcon:SetSize(iconSz, iconSz) end
+        if frame.modeBtn then frame.modeBtn:SetWidth(barH) end
         if frame.clearBtn then frame.clearBtn:SetSize(clearSz, clearSz) end
         if frame.filterBtn then
             frame.filterBtn:SetWidth(barH)

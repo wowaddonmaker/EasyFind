@@ -78,6 +78,9 @@ read_globals = {
     -- Cross-addon references
     "EasyFindDevDB",
 
+    -- Blizzard settings frames
+    "SettingsPanel", "InterfaceOptionsFrame",
+
     -- Constants, Enums, Mixins
     "Enum", "Settings", "BackdropTemplateMixin",
     "SOUNDKIT", "UIDROPDOWNMENU_OPEN_MENU", "UISpecialFrames",

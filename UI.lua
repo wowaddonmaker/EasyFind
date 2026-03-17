@@ -484,21 +484,11 @@ function UI:CreateSearchFrame()
 
     modeBtn:SetScript("OnClick", function(self)
         EasyFind.db.directOpen = not EasyFind.db.directOpen
-        -- Sync map search "navigate zones directly" when map filter is enabled
-        local filters = EasyFind.db.uiSearchFilters
-        if filters and filters.map ~= false then
-            EasyFind.db.navigateToZonesDirectly = EasyFind.db.directOpen
-        end
         UpdateModeButtonVisual(self)
         ns.Highlight:ClearAll()
         local optPanel = _G["EasyFindOptionsFrame"]
-        if optPanel then
-            if optPanel.directOpenCheckbox then
-                optPanel.directOpenCheckbox:SetChecked(EasyFind.db.directOpen)
-            end
-            if optPanel.zoneNavCheckbox then
-                optPanel.zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly or false)
-            end
+        if optPanel and optPanel.directOpenCheckbox then
+            optPanel.directOpenCheckbox:SetChecked(EasyFind.db.directOpen)
         end
     end)
 
@@ -628,6 +618,9 @@ function UI:CreateSearchFrame()
     filterArrow:SetPoint("CENTER")
     filterArrow:SetTexture(423808)
     filterArrow:SetTexCoord(0.453, 0.203, 0.453, 0.016, 0.641, 0.203, 0.641, 0.016)
+    filterArrow:SetDesaturated(true)
+    filterArrow:SetBlendMode("ADD")
+    filterArrow:SetVertexColor(1, 1, 1)
     filterBtn.arrow = filterArrow
 
     local filterBtnBg = filterBtn:CreateTexture(nil, "ARTWORK")
@@ -2211,9 +2204,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         resultsFrame:SetClipsChildren(false)
     end
 
-    -- ----------------------------------------------------------------
     -- Build the visible list by filtering out children of collapsed nodes
-    -- ----------------------------------------------------------------
     local visible = {}
     local skipBelowDepth = nil  -- when set, skip entries deeper than this
     local skipPins = false       -- when pin header is collapsed, skip pinned entries
@@ -2270,9 +2261,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         scrollInset = resultsFrame.scrollBar:GetWidth()
     end
 
-    -- ----------------------------------------------------------------
     -- Pre-compute last-child flags on the VISIBLE list
-    -- ----------------------------------------------------------------
     local isLastChild = {}
     for i = 1, count do
         local d = visible[i].depth or 0
@@ -2287,9 +2276,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         end
     end
 
-    -- ----------------------------------------------------------------
     -- Determine pin separator placement
-    -- ----------------------------------------------------------------
     local PIN_SEP_HEIGHT = 9  -- 4px gap + 1px line + 4px gap
     local CAT_SEP_HEIGHT = 9  -- same dimensions as pin separator
     local lastPinIndex = 0
@@ -2314,9 +2301,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         end
     end
 
-    -- ----------------------------------------------------------------
     -- Render visible rows
-    -- ----------------------------------------------------------------
     local yOffset = 0
     local pinEndYOffset = 0
     local catSepYPositions = {}
@@ -2354,14 +2339,20 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             resultRow.selectionHighlight:SetVertexColor(unpack(theme.selectionColor))
 
             resultRow.data = data
-            -- Set secure action attributes for toys (UseToyByItemID is protected)
+            -- Set secure action attributes for toys and mounts
             if not InCombatLockdown() then
                 if data and data.toyItemID then
                     resultRow:SetAttribute("type", "toy")
                     resultRow:SetAttribute("toy", data.toyItemID)
+                    resultRow:SetAttribute("macrotext", nil)
+                elseif data and data.mountID then
+                    resultRow:SetAttribute("type", "macro")
+                    resultRow:SetAttribute("macrotext", "/cancelform [form]\n/run C_MountJournal.SummonByID(" .. data.mountID .. ")")
+                    resultRow:SetAttribute("toy", nil)
                 else
                     resultRow:SetAttribute("type", nil)
                     resultRow:SetAttribute("toy", nil)
+                    resultRow:SetAttribute("macrotext", nil)
                 end
             end
             resultRow.isPathNode = entry.isPathNode
@@ -3080,7 +3071,6 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         end
     end
 
-
     -- Anchor results above or below based on setting
     resultsFrame:ClearAllPoints()
     if EasyFind.db.uiResultsAbove then
@@ -3387,7 +3377,7 @@ function UI:SelectResult(data)
 
     if not data then return end
 
-    -- Mount: summon/dismiss (SummonByID is not protected, callable from addon code)
+    -- Mount: secure button handles cancelform on click; Enter falls back to direct API
     if data.mountID then
         if C_MountJournal and C_MountJournal.SummonByID then
             C_MountJournal.SummonByID(data.mountID)
@@ -3395,10 +3385,8 @@ function UI:SelectResult(data)
         return
     end
 
-    -- Toy: activated via SecureActionButton on mousedown (UseToyByItemID is protected)
-    if data.toyItemID then
-        return
-    end
+    -- Toy: handled by SecureActionButton on mousedown (UseToyByItemID is protected)
+    if data.toyItemID then return end
 
     -- Pet: summon/dismiss
     if data.petID then
@@ -3561,166 +3549,127 @@ function UI:DirectOpen(data)
         return
     end
 
-    local function executeStep(stepIndex)
-        -- Done executing - either finished completely or hand off to highlight
-        if stepIndex > executeCount then
-            if not finalStepNavigable then
-                -- Final step is highlight-only - show it to the user
-                C_Timer.After(0.15, function()
-                    if Highlight then
-                        Highlight:StartGuideAtStep(data, totalSteps)
-                    end
-                end)
+    -- Execute all navigable steps synchronously in one frame. WoW frame
+    -- operations (ClickButton, tab selection) process immediately, so
+    -- child frames are available right after their parent is shown.
+    -- The only exception is currency/reputation tab resync, which toggles
+    -- tabs and needs one frame for the ScrollBox to rebuild.
+    local function executeFrom(start)
+        for i = start, executeCount do
+            local step = steps[i]
+
+            if step.buttonFrame then
+                local stepFrame = _G[step.buttonFrame]
+                if stepFrame then ClickButton(stepFrame) end
             end
-            -- If final step was navigable, we already executed it - nothing more to do
-            return
-        end
 
-        local step = steps[stepIndex]
-        local nextDelay = 0.1
-
-        -- Click a micro menu button (like LFDMicroButton, CharacterMicroButton, etc.)
-        if step.buttonFrame then
-            local stepFrame = _G[step.buttonFrame]
-            if stepFrame then ClickButton(stepFrame) end
-            nextDelay = 0.15
-        end
-
-        -- Click a main tab (Dungeons & Raids / Player vs. Player / etc.)
-        if step.waitForFrame and step.tabIndex then
-            local resync = false
-            if step.waitForFrame == "CharacterFrame" then
-                if needsCurrencyResync and step.tabIndex == 3 then
-                    resync = true
-                    needsCurrencyResync = false
-                elseif needsReputationResync and step.tabIndex == 2 then
-                    resync = true
-                    needsReputationResync = false
+            if step.waitForFrame and step.tabIndex then
+                local resync = false
+                if step.waitForFrame == "CharacterFrame" then
+                    if needsCurrencyResync and step.tabIndex == 3 then
+                        resync = true
+                        needsCurrencyResync = false
+                    elseif needsReputationResync and step.tabIndex == 2 then
+                        resync = true
+                        needsReputationResync = false
+                    end
+                end
+                if resync then
+                    -- Toggle tabs to force ScrollBox rebuild with expanded headers.
+                    -- Needs one frame to propagate; defer remaining steps.
+                    ClickButton(Highlight:GetTabButton("CharacterFrame", 1))
+                    local waitFrame = step.waitForFrame
+                    local tabIdx = step.tabIndex
+                    local resume = i + 1
+                    C_Timer.After(0.05, function()
+                        ClickButton(Highlight:GetTabButton(waitFrame, tabIdx))
+                        executeFrom(resume)
+                    end)
+                    return
+                else
+                    ClickButton(Highlight:GetTabButton(step.waitForFrame, step.tabIndex))
                 end
             end
-            if resync then
-                -- Headers were pre-expanded via API. Toggle tabs to force
-                -- the ScrollBox to rebuild with the expanded state.
-                ClickButton(Highlight:GetTabButton("CharacterFrame", 1))
-                C_Timer.After(0.05, function()
-                    ClickButton(Highlight:GetTabButton(step.waitForFrame, step.tabIndex))
-                end)
-                nextDelay = 0.2
-            else
-                ClickButton(Highlight:GetTabButton(step.waitForFrame, step.tabIndex))
-                nextDelay = 0.15
-            end
-        end
 
-        -- Click a PvE side tab (Dungeon Finder / Raid Finder / Premade Groups)
-        if step.sideTabIndex then
-            C_Timer.After(0.05, function()
+            if step.sideTabIndex then
                 ClickButton(Highlight:GetSideTabButton(step.waitForFrame or "PVEFrame", step.sideTabIndex))
-            end)
-            nextDelay = 0.2
-        end
+            end
 
-        -- Click a PvP side tab (Quick Match / Rated / Premade Groups / Training Grounds)
-        if step.pvpSideTabIndex then
-            C_Timer.After(0.05, function()
+            if step.pvpSideTabIndex then
                 ClickButton(Highlight:GetPvPSideTabButton(step.waitForFrame or "PVEFrame", step.pvpSideTabIndex))
-            end)
-            nextDelay = 0.2
-        end
-
-        -- Click a Character Frame sidebar tab
-        if step.sidebarButtonFrame or step.sidebarIndex then
-            self:ClickCharacterSidebar(step.sidebarIndex)
-            nextDelay = 0.15
-        end
-
-        -- Click a statistics or achievement category
-        local categoryToClick = step.statisticsCategory or step.achievementCategory
-        if categoryToClick then
-            self:ClickAchievementCategory(categoryToClick)
-            nextDelay = 0.3
-        end
-
-        -- Currency headers are pre-expanded via API. Skip these steps
-        -- (the tab resync below handles syncing TokenFrame's display).
-        if step.currencyHeader then
-            nextDelay = 0.05
-        end
-
-        -- Scroll to a currency
-        if step.currencyID then
-            Highlight:ScrollToCurrencyRow(step.currencyID)
-            -- If this is the last step, highlight it
-            if stepIndex == executeCount then
-                C_Timer.After(0.05, function()
-                    local currencyRow = Highlight:GetCurrencyRowButton(step.currencyID)
-                    if currencyRow then
-                        Highlight:HighlightFrame(currencyRow, nil)
-                        -- Set up hover detection to clear highlight
-                        local checkHover
-                        checkHover = function()
-                            if currencyRow:IsMouseOver() then
-                                Highlight:HideHighlight()
-                            else
-                                C_Timer.After(0.1, checkHover)
-                            end
-                        end
-                        C_Timer.After(0.3, checkHover)
-                    end
-                end)
             end
-            nextDelay = 0.15
-        end
 
-        -- Faction headers are pre-expanded via API (same as currency).
-        if step.factionHeader then
-            nextDelay = 0.05
-        end
-
-        -- Scroll to a faction
-        if step.factionID then
-            Highlight:ScrollToFactionRow(step.factionID)
-            -- If this is the last step, highlight it
-            if stepIndex == executeCount then
-                C_Timer.After(0.05, function()
-                    local factionRow = Highlight:GetFactionRowButton(step.factionID)
-                    if factionRow then
-                        Highlight:HighlightFrame(factionRow, nil)
-                        -- Set up hover detection to clear highlight
-                        local checkHover
-                        checkHover = function()
-                            if factionRow:IsMouseOver() then
-                                Highlight:HideHighlight()
-                            else
-                                C_Timer.After(0.1, checkHover)
-                            end
-                        end
-                        C_Timer.After(0.3, checkHover)
-                    end
-                end)
+            if step.sidebarButtonFrame or step.sidebarIndex then
+                self:ClickCharacterSidebar(step.sidebarIndex)
             end
-            nextDelay = 0.15
-        end
 
-        -- Click a button found by text search (Premade Groups categories, PvP queue buttons, etc.)
-        if step.searchButtonText then
-            C_Timer.After(0.05, function()
+            local categoryToClick = step.statisticsCategory or step.achievementCategory
+            if categoryToClick then
+                self:ClickAchievementCategory(categoryToClick)
+            end
+
+            -- Currency/faction headers pre-expanded via API, nothing to execute
+
+            if step.currencyID then
+                Highlight:ScrollToCurrencyRow(step.currencyID)
+                if i == executeCount then
+                    -- ScrollBox needs one frame to update after scroll; defer highlight
+                    local cID = step.currencyID
+                    C_Timer.After(0.05, function()
+                        local currencyRow = Highlight:GetCurrencyRowButton(cID)
+                        if currencyRow then
+                            Highlight:HighlightFrame(currencyRow, nil)
+                            local checkHover
+                            checkHover = function()
+                                if currencyRow:IsMouseOver() then
+                                    Highlight:HideHighlight()
+                                else
+                                    C_Timer.After(0.1, checkHover)
+                                end
+                            end
+                            C_Timer.After(0.3, checkHover)
+                        end
+                    end)
+                end
+            end
+
+            if step.factionID then
+                Highlight:ScrollToFactionRow(step.factionID)
+                if i == executeCount then
+                    local fID = step.factionID
+                    C_Timer.After(0.05, function()
+                        local factionRow = Highlight:GetFactionRowButton(fID)
+                        if factionRow then
+                            Highlight:HighlightFrame(factionRow, nil)
+                            local checkHover
+                            checkHover = function()
+                                if factionRow:IsMouseOver() then
+                                    Highlight:HideHighlight()
+                                else
+                                    C_Timer.After(0.1, checkHover)
+                                end
+                            end
+                            C_Timer.After(0.3, checkHover)
+                        end
+                    end)
+                end
+            end
+
+            if step.searchButtonText then
                 local parentFrame = step.waitForFrame and _G[step.waitForFrame]
                 if parentFrame then
                     ClickButton(SearchFrameTreeFuzzy(parentFrame, slower(step.searchButtonText)))
                 end
-            end)
-            nextDelay = 0.3
+            end
         end
 
-        -- Chain to the next step after a delay
-        C_Timer.After(nextDelay, function()
-            executeStep(stepIndex + 1)
-        end)
+        -- All navigable steps executed; highlight the final step if needed
+        if not finalStepNavigable and Highlight then
+            Highlight:StartGuideAtStep(data, totalSteps)
+        end
     end
 
-    -- Start executing from step 1
-    executeStep(1)
+    executeFrom(1)
 end
 
 -- Helper function to click Character Frame sidebar buttons
@@ -3921,7 +3870,7 @@ function UI:ExpandCurrencyHeader(headerName)
     return false
 end
 
---- Helper function to expand a faction header by name
+-- Helper function to expand a faction header by name
 function UI:ExpandFactionHeader(headerName)
     if not C_Reputation or not C_Reputation.GetNumFactions then return false end
 
@@ -4159,7 +4108,7 @@ function UI:ShowWhatsNew(version)
     if _G["EasyFindWhatsNew"] then return end
 
     local f = CreateFrame("Frame", "EasyFindWhatsNew", UIParent, "BackdropTemplate")
-    f:SetSize(410, 300)
+    f:SetSize(410, 265)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetFrameLevel(200)
@@ -4200,14 +4149,13 @@ function UI:ShowWhatsNew(version)
     body:SetJustifyH("LEFT")
     body:SetSpacing(4)
     body:SetText(
-        "|cffFFD100\226\128\162|r |cffffffffMount, Toy, and Pet Search|r\n" ..
-        "        Search your collected mounts, toys, and battle pets (see UI Search filter on bar). Click to summon or use\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffUnified Search Bar|r\n" ..
-        "        Map search results can now also appear in the UI search bar with filter toggles\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffMode Toggle Button|r\n" ..
-        "        Quick toggle between guide mode and fast mode right in the search bar (click magnifying lens)\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffFull Screen Map Support|r\n" ..
-        "        Map search bars now work in full screen map mode"
+        "|cffFFD100\226\128\162|r |cffffffffInstant Fast Mode Navigation|r\n" ..
+        "        UI panels open without flickering in fast mode\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffIndependent Fast Mode Toggles|r\n" ..
+        "        Each search bar now has its own fast mode toggle\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffEasyFind-Only Navigation Options|r\n" ..
+        "        Restrict minimap glow and guide circle to EasyFind pins\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffOptions Panel Overhaul|r"
     )
 
     -- Footer - anchored below body so it can't overlap
@@ -4248,7 +4196,7 @@ function UI:ShowFirstTimeSetup()
     searchFrame.setupMode = true
     searchFrame.editBox:EnableMouse(false)
 
-    -- ── Golden glow overlay ─────────────────────────────────────────────
+    -- Golden glow overlay
     local glow = CreateFrame("Frame", "EasyFindSetupGlow", searchFrame, "BackdropTemplate")
     glow:SetPoint("TOPLEFT", searchFrame, "TOPLEFT", -6, 6)
     glow:SetPoint("BOTTOMRIGHT", searchFrame, "BOTTOMRIGHT", 6, -6)
@@ -4286,7 +4234,7 @@ function UI:ShowFirstTimeSetup()
     setupLabel:SetText("EasyFind")
     setupLabel:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.7)
 
-    -- ── Resize handle (bottom-left corner) ──────────────────────────────
+    -- Resize handle (bottom-left corner)
     local resizer = CreateFrame("Button", nil, glow)
     resizer:SetSize(16, 16)
     resizer:SetPoint("BOTTOMLEFT", glow, "BOTTOMLEFT", 0, 0)
@@ -4335,9 +4283,9 @@ function UI:ShowFirstTimeSetup()
         self.lastY = cy
     end)
 
-    -- ── Instruction panel (anchored below the glow) ─────────────────────
+    -- Instruction panel (anchored below the glow)
     local panel = CreateFrame("Frame", nil, glow, "BackdropTemplate")
-    panel:SetSize(340, 260)
+    panel:SetSize(340, 215)
     panel:SetPoint("TOP", glow, "BOTTOM", 0, -6)
     panel:SetFrameStrata("DIALOG")
     panel:SetBackdrop({
@@ -4377,7 +4325,7 @@ function UI:ShowFirstTimeSetup()
     -- Smart Show checkbox (default checked - matches DB_DEFAULTS.smartShow = true)
     local smartShowCheckbox = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
     smartShowCheckbox:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", 0, -6)
-    smartShowCheckbox.Text:SetText("|cffFFD100Smart Show|r")
+    smartShowCheckbox.Text:SetText("|cffFFD100Smart Show|r |cff999999(Recommended)|r")
     smartShowCheckbox:SetChecked(false)
     smartShowCheckbox:SetScript("OnClick", function(self)
         -- Update live so the user can see the hover behavior immediately
@@ -4391,15 +4339,7 @@ function UI:ShowFirstTimeSetup()
     smartDesc:SetPoint("TOPLEFT", smartShowCheckbox.Text, "BOTTOMLEFT", 0, -2)
     smartDesc:SetWidth(284)
     smartDesc:SetJustifyH("LEFT")
-    smartDesc:SetText(
-        "|cff999999If enabled, the bar hides when your mouse|r\n" ..
-        "|cff999999moves away and reappears when you hover near|r\n" ..
-        "|cff999999it. If kept unchecked, the bar stays visible and can be|r\n" ..
-        "|cff999999toggled with the minimap button or|r\n" ..
-        "|cffFFD100/ef show|r |cff999999and|r |cffFFD100/ef hide|r|cff999999.|r\n" ..
-        "|cff999999You can also enable this for the map search|r\n" ..
-        "|cff999999bars in|r |cffFFD100/ef o|r|cff999999.|r"
-    )
+    smartDesc:SetText("|cff999999Bar hides when your mouse moves away and reappears when you hover near it.|r")
 
     -- Fade While Moving checkbox (default checked - staticOpacity defaults to false, meaning fade IS active)
     local fadeCheckbox = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
@@ -4423,7 +4363,7 @@ function UI:ShowFirstTimeSetup()
     footer:SetPoint("BOTTOM", panel, "BOTTOM", 0, 36)
     footer:SetWidth(310)
     footer:SetJustifyH("CENTER")
-    footer:SetText("|cff666666These and more settings can be changed in |cffFFD100/ef o|r|cff666666.|r")
+    footer:SetText("|cff666666These and more settings can be changed in |cffFFD100/ef|r|cff666666.|r")
 
     -- Done button
     local doneBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
@@ -4431,12 +4371,12 @@ function UI:ShowFirstTimeSetup()
     doneBtn:SetPoint("BOTTOM", panel, "BOTTOM", 0, 12)
     doneBtn:SetText("Done")
 
-    -- ── During setup: allow drag WITHOUT holding Shift ───────────────────
+    -- During setup: allow drag without holding Shift
     searchFrame:SetScript("OnDragStart", function(self)
         self:StartMoving()
     end)
 
-    -- ── Done handler: persist, cleanup, restore normal drag ─────────────
+    -- Done handler: persist, cleanup, restore normal drag
     doneBtn:SetScript("OnClick", function()
         EasyFind.db.setupComplete = true
 

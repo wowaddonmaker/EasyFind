@@ -4,6 +4,23 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [1.3.1] - 2026-03-17
+
+### Added
+- **EasyFind-Only Navigation Options**: Minimap arrow glow and guide circle now have sub-options to restrict behavior to EasyFind-placed waypoints only, ignoring other sources
+- **Independent Map Navigation Modes**: Local and global map search bars now have separate direct-open toggles instead of a shared setting
+- **Expanded POI Coverage**: Added portals in Tirisfal Glades, decor specialists, and additional innkeepers, auction houses, and mailboxes across multiple zones
+
+### Changed
+- **Slash Commands**: `/ef` now opens options directly. `/ef toggle` (shorthand `/ef t`) replaces `/ef show`/`/ef hide`. Added `/ef help` for a command overview
+- **Options Panel Dropdowns**: Redesigned with WoW-style open/close arrows and indented child options
+
+### Fixed
+- **New Map POI Categories**: Decor specialists, crafting order NPCs, rostrum, pet and riding trainers, and training dummies now properly appear in map search results
+- **Tooltip Clarity**: Map search bar editbox now shows bar identity (Zone/Global Search) and the current mode. Mode toggle button describes only the toggle action
+
+---
+
 ## [1.3.0] - 2026-03-15
 
 ### Added
