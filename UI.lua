@@ -484,21 +484,11 @@ function UI:CreateSearchFrame()
 
     modeBtn:SetScript("OnClick", function(self)
         EasyFind.db.directOpen = not EasyFind.db.directOpen
-        -- Sync map search "navigate zones directly" when map filter is enabled
-        local filters = EasyFind.db.uiSearchFilters
-        if filters and filters.map ~= false then
-            EasyFind.db.navigateToZonesDirectly = EasyFind.db.directOpen
-        end
         UpdateModeButtonVisual(self)
         ns.Highlight:ClearAll()
         local optPanel = _G["EasyFindOptionsFrame"]
-        if optPanel then
-            if optPanel.directOpenCheckbox then
-                optPanel.directOpenCheckbox:SetChecked(EasyFind.db.directOpen)
-            end
-            if optPanel.zoneNavCheckbox then
-                optPanel.zoneNavCheckbox:SetChecked(EasyFind.db.navigateToZonesDirectly or false)
-            end
+        if optPanel and optPanel.directOpenCheckbox then
+            optPanel.directOpenCheckbox:SetChecked(EasyFind.db.directOpen)
         end
     end)
 
@@ -628,6 +618,9 @@ function UI:CreateSearchFrame()
     filterArrow:SetPoint("CENTER")
     filterArrow:SetTexture(423808)
     filterArrow:SetTexCoord(0.453, 0.203, 0.453, 0.016, 0.641, 0.203, 0.641, 0.016)
+    filterArrow:SetDesaturated(true)
+    filterArrow:SetBlendMode("ADD")
+    filterArrow:SetVertexColor(1, 1, 1)
     filterBtn.arrow = filterArrow
 
     local filterBtnBg = filterBtn:CreateTexture(nil, "ARTWORK")
@@ -2211,9 +2204,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         resultsFrame:SetClipsChildren(false)
     end
 
-    -- ----------------------------------------------------------------
     -- Build the visible list by filtering out children of collapsed nodes
-    -- ----------------------------------------------------------------
     local visible = {}
     local skipBelowDepth = nil  -- when set, skip entries deeper than this
     local skipPins = false       -- when pin header is collapsed, skip pinned entries
@@ -2270,9 +2261,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         scrollInset = resultsFrame.scrollBar:GetWidth()
     end
 
-    -- ----------------------------------------------------------------
     -- Pre-compute last-child flags on the VISIBLE list
-    -- ----------------------------------------------------------------
     local isLastChild = {}
     for i = 1, count do
         local d = visible[i].depth or 0
@@ -2287,9 +2276,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         end
     end
 
-    -- ----------------------------------------------------------------
     -- Determine pin separator placement
-    -- ----------------------------------------------------------------
     local PIN_SEP_HEIGHT = 9  -- 4px gap + 1px line + 4px gap
     local CAT_SEP_HEIGHT = 9  -- same dimensions as pin separator
     local lastPinIndex = 0
@@ -2314,9 +2301,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         end
     end
 
-    -- ----------------------------------------------------------------
     -- Render visible rows
-    -- ----------------------------------------------------------------
     local yOffset = 0
     local pinEndYOffset = 0
     local catSepYPositions = {}
@@ -3085,7 +3070,6 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             resultsFrame.scrollBar:UpdateThumb(totalContentHeight, visibleHeight)
         end
     end
-
 
     -- Anchor results above or below based on setting
     resultsFrame:ClearAllPoints()
@@ -3886,7 +3870,7 @@ function UI:ExpandCurrencyHeader(headerName)
     return false
 end
 
---- Helper function to expand a faction header by name
+-- Helper function to expand a faction header by name
 function UI:ExpandFactionHeader(headerName)
     if not C_Reputation or not C_Reputation.GetNumFactions then return false end
 
@@ -4213,7 +4197,7 @@ function UI:ShowFirstTimeSetup()
     searchFrame.setupMode = true
     searchFrame.editBox:EnableMouse(false)
 
-    -- ── Golden glow overlay ─────────────────────────────────────────────
+    -- Golden glow overlay
     local glow = CreateFrame("Frame", "EasyFindSetupGlow", searchFrame, "BackdropTemplate")
     glow:SetPoint("TOPLEFT", searchFrame, "TOPLEFT", -6, 6)
     glow:SetPoint("BOTTOMRIGHT", searchFrame, "BOTTOMRIGHT", 6, -6)
@@ -4251,7 +4235,7 @@ function UI:ShowFirstTimeSetup()
     setupLabel:SetText("EasyFind")
     setupLabel:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.7)
 
-    -- ── Resize handle (bottom-left corner) ──────────────────────────────
+    -- Resize handle (bottom-left corner)
     local resizer = CreateFrame("Button", nil, glow)
     resizer:SetSize(16, 16)
     resizer:SetPoint("BOTTOMLEFT", glow, "BOTTOMLEFT", 0, 0)
@@ -4300,9 +4284,9 @@ function UI:ShowFirstTimeSetup()
         self.lastY = cy
     end)
 
-    -- ── Instruction panel (anchored below the glow) ─────────────────────
+    -- Instruction panel (anchored below the glow)
     local panel = CreateFrame("Frame", nil, glow, "BackdropTemplate")
-    panel:SetSize(340, 260)
+    panel:SetSize(340, 215)
     panel:SetPoint("TOP", glow, "BOTTOM", 0, -6)
     panel:SetFrameStrata("DIALOG")
     panel:SetBackdrop({
@@ -4342,7 +4326,7 @@ function UI:ShowFirstTimeSetup()
     -- Smart Show checkbox (default checked - matches DB_DEFAULTS.smartShow = true)
     local smartShowCheckbox = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
     smartShowCheckbox:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", 0, -6)
-    smartShowCheckbox.Text:SetText("|cffFFD100Smart Show|r")
+    smartShowCheckbox.Text:SetText("|cffFFD100Smart Show|r |cff999999(Recommended)|r")
     smartShowCheckbox:SetChecked(false)
     smartShowCheckbox:SetScript("OnClick", function(self)
         -- Update live so the user can see the hover behavior immediately
@@ -4356,15 +4340,7 @@ function UI:ShowFirstTimeSetup()
     smartDesc:SetPoint("TOPLEFT", smartShowCheckbox.Text, "BOTTOMLEFT", 0, -2)
     smartDesc:SetWidth(284)
     smartDesc:SetJustifyH("LEFT")
-    smartDesc:SetText(
-        "|cff999999If enabled, the bar hides when your mouse|r\n" ..
-        "|cff999999moves away and reappears when you hover near|r\n" ..
-        "|cff999999it. If kept unchecked, the bar stays visible and can be|r\n" ..
-        "|cff999999toggled with the minimap button or|r\n" ..
-        "|cffFFD100/ef show|r |cff999999and|r |cffFFD100/ef hide|r|cff999999.|r\n" ..
-        "|cff999999You can also enable this for the map search|r\n" ..
-        "|cff999999bars in|r |cffFFD100/ef o|r|cff999999.|r"
-    )
+    smartDesc:SetText("|cff999999Bar hides when your mouse moves away and reappears when you hover near it.|r")
 
     -- Fade While Moving checkbox (default checked - staticOpacity defaults to false, meaning fade IS active)
     local fadeCheckbox = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
@@ -4388,7 +4364,7 @@ function UI:ShowFirstTimeSetup()
     footer:SetPoint("BOTTOM", panel, "BOTTOM", 0, 36)
     footer:SetWidth(310)
     footer:SetJustifyH("CENTER")
-    footer:SetText("|cff666666These and more settings can be changed in |cffFFD100/ef o|r|cff666666.|r")
+    footer:SetText("|cff666666These and more settings can be changed in |cffFFD100/ef|r|cff666666.|r")
 
     -- Done button
     local doneBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
@@ -4396,12 +4372,12 @@ function UI:ShowFirstTimeSetup()
     doneBtn:SetPoint("BOTTOM", panel, "BOTTOM", 0, 12)
     doneBtn:SetText("Done")
 
-    -- ── During setup: allow drag WITHOUT holding Shift ───────────────────
+    -- During setup: allow drag without holding Shift
     searchFrame:SetScript("OnDragStart", function(self)
         self:StartMoving()
     end)
 
-    -- ── Done handler: persist, cleanup, restore normal drag ─────────────
+    -- Done handler: persist, cleanup, restore normal drag
     doneBtn:SetScript("OnClick", function()
         EasyFind.db.setupComplete = true
 
