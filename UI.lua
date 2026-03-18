@@ -26,7 +26,7 @@ local IsShiftKeyDown     = IsShiftKeyDown
 local GetCursorPosition  = GetCursorPosition
 local wipe               = wipe
 
-local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind\\textures\\lightning-bolt"
+local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind-rares\\textures\\lightning-bolt"
 
 local searchFrame
 local resultsFrame
