@@ -116,7 +116,7 @@ ns.RESULT_ICON_SIZE = 18
 ns.SEARCHBAR_HEIGHT = 30      -- base search bar frame height (before font scaling)
 ns.SEARCHBAR_FILL = 0.55      -- fraction of bar height filled by text/icon
 ns.SEARCHBAR_ICON_SCALE = 0.75 -- icon size relative to editBox height (font glyphs are shorter than line height)
-ns.CLEAR_BTN_SIZE = 18         -- base clear button size (before font scaling)
+ns.CLEAR_BTN_SIZE = 12         -- base clear button size (before font scaling)
 local EasyFindSearchFont = CreateFont("EasyFindSearchFont")
 local baseFont = Game15Font_Shadow or GameFontNormal
 EasyFindSearchFont:CopyFontObject(baseFont)
@@ -128,6 +128,7 @@ ns.SEARCHBAR_FONT = "EasyFindSearchFont"
 -- Fill is tinted black with tunable opacity; border uses Blizzard's action bar gray.
 local SEARCH_TEX_FILL = "Interface\\AddOns\\EasyFind\\Textures\\SearchBarFill"
 local SEARCH_TEX_BORDER = "Interface\\AddOns\\EasyFind\\Textures\\SearchBarBorder"
+local CLEAR_BTN_TEX = "Interface\\AddOns\\EasyFind\\Textures\\clear-button"
 local SEARCH_CAP_W = 8
 local SEARCH_TEX_W = 64
 local TC_LEFT  = {0, SEARCH_CAP_W / SEARCH_TEX_W, 0, 1}
@@ -681,13 +682,13 @@ function Utils.CreateClearButton(parent, globalName)
 
     local normal = btn:CreateTexture(nil, "ARTWORK")
     normal:SetAllPoints()
-    normal:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
+    normal:SetTexture(CLEAR_BTN_TEX)
     btn:SetNormalTexture(normal)
 
     local highlight = btn:CreateTexture(nil, "HIGHLIGHT")
     highlight:SetAllPoints()
-    highlight:SetTexture("Interface\\FriendsFrame\\ClearBroadcastIcon")
-    highlight:SetVertexColor(1.2, 1.2, 1.2, 1)
+    highlight:SetTexture(CLEAR_BTN_TEX)
+    highlight:SetVertexColor(1.3, 1.3, 1.3, 1)
     highlight:SetBlendMode("ADD")
     btn:SetHighlightTexture(highlight)
 

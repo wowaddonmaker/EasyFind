@@ -24,7 +24,7 @@ EasyFind.db = {}
 
 -- SavedVariables version. Increment when changing DB schema.
 -- Each migration runs once: if saved dbVersion < DB_VERSION, run all steps in order.
-local DB_VERSION = 1
+local DB_VERSION = 3
 
 -- SavedVariables defaults - new keys are auto-merged for existing users
 local DB_DEFAULTS = {
@@ -38,7 +38,7 @@ local DB_DEFAULTS = {
     mapSearchWidth = 0.88,
     uiSearchWidth = 0.88,
     uiResultsScale = 1.0,
-    uiResultsWidth = 300,
+    uiResultsWidth = 350,
     mapResultsScale = 1.0,
     mapResultsWidth = 300,
     searchBarOpacity = 0.75,  -- ns.DEFAULT_OPACITY
@@ -59,8 +59,8 @@ local DB_DEFAULTS = {
     resultsTheme = "Retail",  -- "Classic" or "Retail"
     indicatorStyle = "EasyFind Arrow",  -- Indicator texture style
     indicatorColor = "Yellow",  -- Indicator color preset
-    uiMaxResults = 10,         -- Maximum visible UI search results (3-24)
-    mapMaxResults = 6,         -- Maximum visible map search results (3-24)
+    uiResultsHeight = 280,     -- Visible height of UI search results panel in pixels
+    mapResultsHeight = 168,    -- Visible height of map search results panel in pixels
     showTruncationMessage = true,  -- Show "more results available" message when truncated
     hardResultsCap = false,    -- Hard cap on results (no "more results" message)
     staticOpacity = false,     -- Keep opacity constant while moving
@@ -117,6 +117,21 @@ local DB_MIGRATIONS = {
             db.maxResults = nil
         end
         if db.uiResultsWidth == 1.0 then db.uiResultsWidth = 300 end
+    end,
+    -- [2] = Widen default UI results panel from 300 to 350
+    [2] = function(db)
+        if db.uiResultsWidth == 300 then db.uiResultsWidth = 350 end
+    end,
+    -- [3] = Replace row-count settings with pixel height
+    [3] = function(db)
+        if not db.uiResultsHeight then
+            db.uiResultsHeight = db.uiMaxResults and (db.uiMaxResults * 28) or 280
+        end
+        if not db.mapResultsHeight then
+            db.mapResultsHeight = db.mapMaxResults and (db.mapMaxResults * 26 + 12) or 168
+        end
+        db.uiMaxResults = nil
+        db.mapMaxResults = nil
     end,
 }
 

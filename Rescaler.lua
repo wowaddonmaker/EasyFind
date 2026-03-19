@@ -18,8 +18,9 @@ local HANDLE_SIZE = 10
 local GLOW_OUTSET = 6
 local PREVIEW_ROW_H = 26
 local PREVIEW_PAD = 16
-local MIN_ROWS = 3
-local MAX_ROWS = 24
+local PREVIEW_MAX_ROWS = 24
+local MIN_HEIGHT = 80
+local MAX_HEIGHT = 700
 local MIN_FONT = 0.5
 local MAX_FONT = 2.0
 
@@ -32,19 +33,20 @@ local resultsOverlay = nil    -- glow around results
 local donePanel = nil         -- instruction + Done button
 local previewResults = nil    -- fake results frame for preview
 
-local function GetMaxRows()
-    if activeMode == "ui" then return EasyFind.db.uiMaxResults or 10 end
-    return EasyFind.db.mapMaxResults or 6
+local function GetResultsHeight()
+    if activeMode == "ui" then return EasyFind.db.uiResultsHeight or 280 end
+    return EasyFind.db.mapResultsHeight or 168
 end
 
-local function SetMaxRows(rows)
-    if activeMode == "ui" then EasyFind.db.uiMaxResults = rows
-    else EasyFind.db.mapMaxResults = rows end
+local function SetResultsHeight(h)
+    h = mmax(MIN_HEIGHT, mmin(MAX_HEIGHT, mfloor(h + 0.5)))
+    if activeMode == "ui" then EasyFind.db.uiResultsHeight = h
+    else EasyFind.db.mapResultsHeight = h end
 end
 
-local function GetDefaultMaxRows()
-    if activeMode == "ui" then return 10 end
-    return 6
+local function GetDefaultResultsHeight()
+    if activeMode == "ui" then return 280 end
+    return 168
 end
 
 local function GetFontScale()
@@ -69,6 +71,22 @@ end
 
 local function ClampWidth(v)
     return mmax(MIN_WIDTH, mmin(MAX_WIDTH, v))
+end
+
+local function GetScreenMaxHeight(anchorAbove)
+    if not activeSearchBar then return MAX_HEIGHT end
+    local available
+    if anchorAbove then
+        local screenTop = UIParent:GetTop() or UIParent:GetHeight()
+        local barTop = activeSearchBar:GetTop() or (screenTop / 2)
+        available = screenTop - barTop - 16
+    else
+        available = (activeSearchBar:GetBottom() or (UIParent:GetHeight() / 2)) - 16
+    end
+    if available > 0 then
+        return mmax(MIN_HEIGHT, mmin(MAX_HEIGHT, mfloor(available)))
+    end
+    return MAX_HEIGHT
 end
 
 local function AddResetButton(editBox, onConfirm)
@@ -222,14 +240,14 @@ end
 
 -- Preview results (fake rows to show results area)
 
-local function CreatePreviewResults(parent, targetFrame, width, visibleRows, anchorAbove, leftAligned)
+local function CreatePreviewResults(parent, targetFrame, width, heightPx, anchorAbove, leftAligned)
     local fontScale = GetFontScale()
     local rowH = PREVIEW_ROW_H * fontScale
     local frame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
     frame:SetFrameStrata("FULLSCREEN_DIALOG")
     frame:SetFrameLevel(190)
     frame:SetWidth(width)
-    frame:SetHeight(visibleRows * rowH + PREVIEW_PAD)
+    frame:SetHeight(heightPx)
 
     if leftAligned then
         if anchorAbove then
@@ -254,8 +272,9 @@ local function CreatePreviewResults(parent, targetFrame, width, visibleRows, anc
     frame:SetBackdropColor(0.1, 0.1, 0.1, 0.85)
     frame:SetClipsChildren(true)
 
+    local nVisible = mfloor((heightPx - PREVIEW_PAD) / rowH)
     frame.rows = {}
-    for i = 1, MAX_ROWS do
+    for i = 1, PREVIEW_MAX_ROWS do
         local row = frame:CreateFontString(nil, "OVERLAY", "GameFontDisable")
         row:SetPoint("LEFT", frame, "LEFT", 12, 0)
         row:SetPoint("RIGHT", frame, "RIGHT", -12, 0)
@@ -269,16 +288,17 @@ local function CreatePreviewResults(parent, targetFrame, width, visibleRows, anc
             local path, baseSize, flags = GameFontDisable:GetFont()
             row:SetFont(path, baseSize * fontScale, flags)
         end
-        row:SetShown(i <= visibleRows)
+        row:SetShown(i <= nVisible)
         frame.rows[i] = row
     end
 
-    frame.SetVisibleRows = function(self, n)
-        n = mmax(MIN_ROWS, mmin(MAX_ROWS, n))
-        local rowH = PREVIEW_ROW_H * GetFontScale()
-        self:SetHeight(n * rowH + PREVIEW_PAD)
-        for i = 1, MAX_ROWS do
-            self.rows[i]:SetShown(i <= n)
+    frame.SetPreviewHeight = function(self, h)
+        h = mmax(MIN_HEIGHT, mmin(MAX_HEIGHT, mfloor(h + 0.5)))
+        self:SetHeight(h)
+        local scaledRowH = PREVIEW_ROW_H * GetFontScale()
+        local nVis = mfloor((h - PREVIEW_PAD) / scaledRowH)
+        for i = 1, PREVIEW_MAX_ROWS do
+            self.rows[i]:SetShown(i <= nVis)
         end
     end
 
@@ -286,8 +306,9 @@ local function CreatePreviewResults(parent, targetFrame, width, visibleRows, anc
         local scale = GetFontScale()
         local path, baseSize, flags = GameFontDisable:GetFont()
         local scaledRowH = PREVIEW_ROW_H * scale
-        local rows = GetMaxRows()
-        for i = 1, MAX_ROWS do
+        local h = GetResultsHeight()
+        local nVis = mfloor((h - PREVIEW_PAD) / scaledRowH)
+        for i = 1, PREVIEW_MAX_ROWS do
             local row = self.rows[i]
             row:SetFont(path, baseSize * scale, flags)
             row:SetHeight(scaledRowH)
@@ -295,8 +316,9 @@ local function CreatePreviewResults(parent, targetFrame, width, visibleRows, anc
             row:SetPoint("LEFT", self, "LEFT", 12, 0)
             row:SetPoint("RIGHT", self, "RIGHT", -12, 0)
             row:SetPoint("TOP", self, "TOP", 0, -8 - (i - 1) * scaledRowH)
+            row:SetShown(i <= nVis)
         end
-        self:SetHeight(rows * scaledRowH + PREVIEW_PAD)
+        self:SetHeight(h)
     end
 
     return frame
@@ -351,9 +373,9 @@ local function SetupWidthDrag(handle, getWidth, setWidth, widthLabel, side)
     end)
 end
 
--- Corner drag handler (width + rows combo)
+-- Corner drag handler (width + height combo)
 
-local function SetupCornerDrag(handle, preview, getWidth, setWidth, widthLabel, rowsLabel, anchorAbove)
+local function SetupCornerDrag(handle, preview, getWidth, setWidth, widthLabel, heightLabel, anchorAbove)
     handle:SetScript("OnDragStart", function(self)
         self.dragging = true
         local cx, cy = GetCursorPosition()
@@ -361,8 +383,8 @@ local function SetupCornerDrag(handle, preview, getWidth, setWidth, widthLabel, 
         self.startX = cx / es
         self.startY = cy / es
         self.startWidth = getWidth()
-        self.startRows = GetMaxRows()
-        self.scaledRowH = PREVIEW_ROW_H * GetFontScale()
+        self.startHeight = GetResultsHeight()
+        self.maxH = GetScreenMaxHeight(anchorAbove)
     end)
     handle:SetScript("OnDragStop", function(self)
         self.dragging = false
@@ -383,23 +405,22 @@ local function SetupCornerDrag(handle, preview, getWidth, setWidth, widthLabel, 
 
         local dy = self.startY - cy
         if anchorAbove then dy = -dy end
-        local rowDelta = mfloor(dy / self.scaledRowH + 0.5)
-        local rows = mmax(MIN_ROWS, mmin(MAX_ROWS, self.startRows + rowDelta))
-        SetMaxRows(rows)
-        preview:SetVisibleRows(rows)
-        if rowsLabel and not rowsLabel:HasFocus() then rowsLabel:SetText(rows) end
+        local newH = mmax(MIN_HEIGHT, mmin(self.maxH, mfloor(self.startHeight + dy + 0.5)))
+        SetResultsHeight(newH)
+        preview:SetPreviewHeight(newH)
+        if heightLabel and not heightLabel:HasFocus() then heightLabel:SetText(newH) end
     end)
 end
 
--- Row count drag handler
+-- Height drag handler
 
-local function SetupRowsDrag(handle, preview, rowsBox, anchorAbove)
+local function SetupHeightDrag(handle, preview, heightBox, anchorAbove)
     handle:SetScript("OnDragStart", function(self)
         self.dragging = true
         local _, cy = GetCursorPosition()
         self.startY = cy / UIParent:GetEffectiveScale()
-        self.startRows = GetMaxRows()
-        self.scaledRowH = PREVIEW_ROW_H * GetFontScale()
+        self.startHeight = GetResultsHeight()
+        self.maxH = GetScreenMaxHeight(anchorAbove)
     end)
     handle:SetScript("OnDragStop", function(self)
         self.dragging = false
@@ -410,11 +431,10 @@ local function SetupRowsDrag(handle, preview, rowsBox, anchorAbove)
         cy = cy / UIParent:GetEffectiveScale()
         local dy = self.startY - cy
         if anchorAbove then dy = -dy end
-        local rowDelta = mfloor(dy / self.scaledRowH + 0.5)
-        local rows = mmax(MIN_ROWS, mmin(MAX_ROWS, self.startRows + rowDelta))
-        SetMaxRows(rows)
-        preview:SetVisibleRows(rows)
-        if not rowsBox:HasFocus() then rowsBox:SetText(rows) end
+        local newH = mmax(MIN_HEIGHT, mmin(self.maxH, mfloor(self.startHeight + dy + 0.5)))
+        SetResultsHeight(newH)
+        preview:SetPreviewHeight(newH)
+        if not heightBox:HasFocus() then heightBox:SetText(newH) end
     end)
 end
 
@@ -445,12 +465,13 @@ local function SetupFontDrag(handle, fontLabel, preview)
         SetFontScale(newFont)
         ApplyFontUpdate()
 
-        -- Scale preview row text and height to match
+        -- Update preview row fonts; height stays fixed (font size doesn't change result height)
         if preview and preview.rows then
             local path, baseSize, flags = GameFontDisable:GetFont()
             local scaledRowH = PREVIEW_ROW_H * newFont
-            local rows = GetMaxRows()
-            for i = 1, MAX_ROWS do
+            local h = GetResultsHeight()
+            local nVis = mfloor((h - PREVIEW_PAD) / scaledRowH)
+            for i = 1, PREVIEW_MAX_ROWS do
                 local row = preview.rows[i]
                 row:SetFont(path, baseSize * newFont, flags)
                 row:SetHeight(scaledRowH)
@@ -458,8 +479,9 @@ local function SetupFontDrag(handle, fontLabel, preview)
                 row:SetPoint("LEFT", preview, "LEFT", 12, 0)
                 row:SetPoint("RIGHT", preview, "RIGHT", -12, 0)
                 row:SetPoint("TOP", preview, "TOP", 0, -8 - (i - 1) * scaledRowH)
+                row:SetShown(i <= nVis)
             end
-            preview:SetHeight(rows * scaledRowH + PREVIEW_PAD)
+            preview:SetHeight(h)
         end
 
         if not fontLabel:HasFocus() then
@@ -533,7 +555,7 @@ local function BuildBarOverlay(parent, targetFrame, mode)
     return overlay
 end
 
-local function BuildResultsOverlay(parent, targetFrame)
+local function BuildResultsOverlay(parent, targetFrame, anchorAbove)
     local overlay = CreateGlowOverlay("EasyFindRescaleResultsGlow", parent, targetFrame)
     overlay:SetPoint("TOPLEFT", targetFrame, "TOPLEFT", -GLOW_OUTSET, GLOW_OUTSET)
     overlay:SetPoint("BOTTOMRIGHT", targetFrame, "BOTTOMRIGHT", GLOW_OUTSET, -GLOW_OUTSET)
@@ -546,8 +568,12 @@ local function BuildResultsOverlay(parent, targetFrame)
     local widthBox = CreateDimLabel(overlay, "LEFT", "RIGHT", 8, 0, "Width:")
     overlay.widthBox = widthBox
 
-    -- Corner handle (bottom-right)
-    local scaleHandle = CreateScaleHandle(overlay, "BOTTOMRIGHT", 0, 0, false, false)
+    -- Height drag edge and corner handle: top edge when above, bottom edge when below
+    local heightEdge = anchorAbove and "TOP" or "BOTTOM"
+    local cornerPoint = anchorAbove and "TOPRIGHT" or "BOTTOMRIGHT"
+    local flipV = anchorAbove
+
+    local scaleHandle = CreateScaleHandle(overlay, cornerPoint, 0, 0, false, flipV)
     overlay.scaleHandle = scaleHandle
 
     -- Width drag handles
@@ -556,30 +582,36 @@ local function BuildResultsOverlay(parent, targetFrame)
     overlay.leftHandle = leftHandle
     overlay.rightHandle = rightHandle
 
-    -- Bottom drag handle (for row count)
-    local bottomHandle = CreateHandle(overlay, "BOTTOM", 0, 0, nil, false)
-    overlay.bottomHandle = bottomHandle
+    -- Height drag handle (top or bottom edge)
+    local heightHandle = CreateHandle(overlay, heightEdge, 0, 0, nil, false)
+    overlay.heightHandle = heightHandle
 
-    -- Rows field (below bottom edge)
-    local rowsBox = CreateFrame("EditBox", nil, overlay, "InputBoxTemplate")
-    rowsBox:SetSize(40, 20)
-    rowsBox:SetAutoFocus(false)
-    rowsBox:SetMaxLetters(2)
-    rowsBox:SetJustifyH("CENTER")
-    rowsBox:SetFontObject("GameFontHighlightSmall")
+    -- Height field (outside the resize edge)
+    local heightBox = CreateFrame("EditBox", nil, overlay, "InputBoxTemplate")
+    heightBox:SetSize(50, 20)
+    heightBox:SetAutoFocus(false)
+    heightBox:SetMaxLetters(3)
+    heightBox:SetJustifyH("CENTER")
+    heightBox:SetFontObject("GameFontHighlightSmall")
 
-    local rowsPfx = overlay:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    rowsPfx:SetPoint("TOP", overlay, "BOTTOM", 0, -4)
-    rowsPfx:SetText("Rows:")
-    rowsPfx:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.7)
-    rowsBox:SetPoint("LEFT", rowsPfx, "RIGHT", 6, 0)
+    local heightPfx = overlay:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    heightPfx:SetText("Height:")
+    heightPfx:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.7)
+    if anchorAbove then
+        heightPfx:SetPoint("BOTTOM", overlay, "TOP", 0, 4)
+    else
+        heightPfx:SetPoint("TOP", overlay, "BOTTOM", 0, -4)
+    end
+    heightBox:SetPoint("LEFT", heightPfx, "RIGHT", 6, 0)
 
-    local rowsSuffix = rowsBox:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    rowsSuffix:SetPoint("LEFT", rowsBox, "RIGHT", 2, 0)
-    rowsSuffix:SetText("rows")
-    rowsSuffix:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.7)
+    local heightSuffix = heightBox:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    heightSuffix:SetPoint("LEFT", heightBox, "RIGHT", 2, 0)
+    heightSuffix:SetText("px")
+    heightSuffix:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.7)
 
-    overlay.rowsBox = rowsBox
+    overlay.heightBox = heightBox
+    overlay.heightPfx = heightPfx
+    overlay.anchorAbove = anchorAbove
 
     return overlay
 end
@@ -755,9 +787,9 @@ function Rescaler:Enter(mode)
     local resultsAbove = (mode == "ui" and EasyFind.db.uiResultsAbove)
         or (mode == "map" and EasyFind.db.mapResultsAbove)
     local previewW = getResultsWidth()
-    local currentRows = GetMaxRows()
+    local currentH = mmin(GetResultsHeight(), GetScreenMaxHeight(resultsAbove))
     local leftAligned = (mode == "map")
-    previewResults = CreatePreviewResults(bg, searchBar, previewW, currentRows, resultsAbove, leftAligned)
+    previewResults = CreatePreviewResults(bg, searchBar, previewW, currentH, resultsAbove, leftAligned)
     previewResults:SetScale(getResultsScale())
     previewResults:Show()
 
@@ -766,8 +798,23 @@ function Rescaler:Enter(mode)
     barOverlay:Show()
 
     -- Results overlay (around the preview)
-    resultsOverlay = BuildResultsOverlay(bg, previewResults)
+    resultsOverlay = BuildResultsOverlay(bg, previewResults, resultsAbove)
     resultsOverlay:Show()
+
+    -- If height label is near screen edge, flip it inside the overlay
+    local resizeEdge = resultsAbove and resultsOverlay:GetTop() or resultsOverlay:GetBottom()
+    local screenLimit = resultsAbove and UIParent:GetTop() or 0
+    local nearEdge = resultsAbove and (resizeEdge and screenLimit and (screenLimit - resizeEdge) < 40)
+        or (not resultsAbove and resizeEdge and resizeEdge < 40)
+    if nearEdge then
+        resultsOverlay.heightPfx:ClearAllPoints()
+        if resultsAbove then
+            resultsOverlay.heightPfx:SetPoint("TOPLEFT", resultsOverlay, "TOPLEFT", GLOW_OUTSET + 4, -8)
+        else
+            resultsOverlay.heightPfx:SetPoint("BOTTOMLEFT", resultsOverlay, "BOTTOMLEFT", GLOW_OUTSET + 4, 8)
+        end
+        resultsOverlay.heightInside = true
+    end
 
     -- Wire bar width drag
     SetupWidthDrag(barOverlay.leftHandle, getBarWidth, setBarWidth, barOverlay.widthBox, "LEFT")
@@ -828,35 +875,47 @@ function Rescaler:Enter(mode)
         resultsOverlay.widthBox:SetText(mfloor(defW + 0.5))
     end)
 
-    -- Wire results corner (width + rows combo)
-    resultsOverlay.rowsBox:SetText(currentRows)
-    resultsOverlay.rowsBox:SetScript("OnEnterPressed", function(self)
+    -- Wire results corner (width + height combo)
+    resultsOverlay.heightBox:SetText(currentH)
+    resultsOverlay.heightBox:SetScript("OnEnterPressed", function(self)
         local val = tonumber(self:GetText())
         if val then
-            val = mmax(MIN_ROWS, mmin(MAX_ROWS, mfloor(val + 0.5)))
-            SetMaxRows(val)
-            previewResults:SetVisibleRows(val)
+            val = mmax(MIN_HEIGHT, mmin(GetScreenMaxHeight(resultsAbove), mfloor(val + 0.5)))
+            SetResultsHeight(val)
+            previewResults:SetPreviewHeight(val)
             self:SetText(val)
         end
         self:ClearFocus()
     end)
-    resultsOverlay.rowsBox:SetScript("OnEscapePressed", function(self)
-        self:SetText(GetMaxRows())
+    resultsOverlay.heightBox:SetScript("OnEscapePressed", function(self)
+        self:SetText(GetResultsHeight())
         self:ClearFocus()
     end)
-    AddResetButton(resultsOverlay.rowsBox, function()
-        local def = GetDefaultMaxRows()
-        SetMaxRows(def)
-        previewResults:SetVisibleRows(def)
-        resultsOverlay.rowsBox:SetText(def)
+    local heightReset = AddResetButton(resultsOverlay.heightBox, function()
+        local def = GetDefaultResultsHeight()
+        SetResultsHeight(def)
+        previewResults:SetPreviewHeight(def)
+        resultsOverlay.heightBox:SetText(def)
     end)
+    if resultsOverlay.anchorAbove then
+        heightReset:ClearAllPoints()
+        heightReset:SetPoint("BOTTOM", resultsOverlay.heightBox, "TOP", 0, 2)
+    end
+    if resultsOverlay.heightInside then
+        heightReset:ClearAllPoints()
+        if resultsOverlay.anchorAbove then
+            heightReset:SetPoint("TOP", resultsOverlay.heightBox, "BOTTOM", 0, -2)
+        else
+            heightReset:SetPoint("BOTTOM", resultsOverlay.heightBox, "TOP", 0, 2)
+        end
+    end
     SetupCornerDrag(resultsOverlay.scaleHandle, previewResults, getResultsWidth, function(w)
         setResultsWidth(w)
         previewResults:SetWidth(w)
-    end, resultsOverlay.widthBox, resultsOverlay.rowsBox, resultsAbove)
+    end, resultsOverlay.widthBox, resultsOverlay.heightBox, resultsAbove)
 
-    -- Wire results bottom edge (row count)
-    SetupRowsDrag(resultsOverlay.bottomHandle, previewResults, resultsOverlay.rowsBox, resultsAbove)
+    -- Wire results bottom edge (height)
+    SetupHeightDrag(resultsOverlay.heightHandle, previewResults, resultsOverlay.heightBox, resultsAbove)
 
     -- Done panel
     donePanel = CreateDonePanel(bg)
@@ -891,7 +950,7 @@ function Rescaler:Exit(reopenOptions)
         resultsOverlay.leftHandle:SetScript("OnUpdate", nil)
         resultsOverlay.rightHandle:SetScript("OnUpdate", nil)
         resultsOverlay.scaleHandle:SetScript("OnUpdate", nil)
-        resultsOverlay.bottomHandle:SetScript("OnUpdate", nil)
+        resultsOverlay.heightHandle:SetScript("OnUpdate", nil)
         resultsOverlay:Hide()
         resultsOverlay = nil
     end
@@ -918,6 +977,7 @@ function Rescaler:Exit(reopenOptions)
         if ns.UI then
             if ns.UI.UpdateScale then ns.UI:UpdateScale() end
             if ns.UI.UpdateWidth then ns.UI:UpdateWidth() end
+            if ns.UI.RefreshResults then ns.UI:RefreshResults() end
         end
     elseif activeMode == "map" then
         if ns.MapSearch then
