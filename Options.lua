@@ -1674,7 +1674,7 @@ function Options:DoResetAll()
     EasyFind.db.mapSearchWidth = 0.88
     EasyFind.db.uiSearchWidth = 0.88
     EasyFind.db.uiResultsScale = 1.0
-    EasyFind.db.uiResultsWidth = 300
+    EasyFind.db.uiResultsWidth = 350
     EasyFind.db.mapResultsScale = 1.0
     EasyFind.db.mapResultsWidth = 300
     EasyFind.db.searchBarOpacity = DEFAULT_OPACITY
@@ -1691,8 +1691,8 @@ function Options:DoResetAll()
     EasyFind.db.globalMapDirectOpen = false
     EasyFind.db.smartShow = false
     EasyFind.db.resultsTheme = "Retail"
-    EasyFind.db.uiMaxResults = 10
-    EasyFind.db.mapMaxResults = 6
+    EasyFind.db.uiResultsHeight = 280
+    EasyFind.db.mapResultsHeight = 168
     EasyFind.db.pinsCollapsed = false
     EasyFind.db.staticOpacity = false
     EasyFind.db.indicatorStyle = "EasyFind Arrow"
@@ -1840,9 +1840,9 @@ function Options:DoResetUI()
     EasyFind.db.uiSearchScale = 1.0
     EasyFind.db.uiSearchWidth = 0.88
     EasyFind.db.uiResultsScale = 1.0
-    EasyFind.db.uiResultsWidth = 300
+    EasyFind.db.uiResultsWidth = 350
     EasyFind.db.uiSearchPosition = nil
-    EasyFind.db.uiMaxResults = 10
+    EasyFind.db.uiResultsHeight = 280
     EasyFind.db.uiSearchFilters = { ui = true, mounts = false, toys = false, pets = false, map = false }
     EasyFind.db.uiMapSearchLocal = true
 
@@ -1884,7 +1884,7 @@ function Options:DoResetMap()
     EasyFind.db.globalSearchPosition = nil
     EasyFind.db.mapSearchPositionMax = nil
     EasyFind.db.globalSearchPositionMax = nil
-    EasyFind.db.mapMaxResults = 6
+    EasyFind.db.mapResultsHeight = 168
     EasyFind.db.mapPinHighlight = true
     EasyFind.db.blinkingPins = false
     EasyFind.db.minimapArrowGlow = true
@@ -1942,7 +1942,7 @@ function Options:DoResetUIPositions()
     EasyFind.db.uiSearchScale = 1.0
     EasyFind.db.uiSearchWidth = 0.88
     EasyFind.db.uiResultsScale = 1.0
-    EasyFind.db.uiResultsWidth = 300
+    EasyFind.db.uiResultsWidth = 350
     if _G["EasyFindSearchFrame"] and ns.UI then
         if ns.UI.ResetPosition then ns.UI:ResetPosition() end
         if ns.UI.UpdateScale then ns.UI:UpdateScale() end

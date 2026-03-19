@@ -27,6 +27,7 @@ local GetCursorPosition  = GetCursorPosition
 local wipe               = wipe
 
 local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind\\textures\\lightning-bolt"
+local REP_BAR_WIDTH = 100
 
 local searchFrame
 local resultsFrame
@@ -34,6 +35,7 @@ local resultButtons = {}
 local MAX_BUTTON_POOL = 50  -- Maximum buttons (scroll handles overflow beyond this)
 local inCombat = false
 local selectingResult = false  -- guard: suppress OnTextChanged re-renders during SelectResult
+local deferredRepRefreshPending = false  -- deferred re-render to let IsTruncated() settle
 
 -- PIN HELPERS
 
@@ -190,7 +192,7 @@ THEMES["Classic"] = {
     rowHeight       = 22,
     indentPx        = 20,
     lineWidth       = 2,
-    resultsWidth    = 380,
+    resultsWidth    = 350,
     resultsPadTop   = 8,
     resultsPadBot   = 8,
     btnWidth        = 360,
@@ -233,7 +235,7 @@ THEMES["Retail"] = {
     rowHeight       = 28,
     indentPx        = 20,          -- matches INDENT_PX so tree lines align
     lineWidth       = 2,
-    resultsWidth    = 390,
+    resultsWidth    = 350,
     resultsPadTop   = 10,
     resultsPadBot   = 10,
     resultsPadLeft  = 12,
@@ -1615,6 +1617,7 @@ function UI:CreateResultButton(index)
     tabText:SetPoint("LEFT", headerTab, "LEFT", 10, 0)
     tabText:SetPoint("RIGHT", toggleBtn, "LEFT", -4, 0)
     tabText:SetJustifyH("LEFT")
+    tabText:SetMaxLines(1)
     tabText:SetTextColor(0.60, 0.58, 0.55, 1.0)    -- muted gray (normal state)
     resultRow.tabText = tabText
 
@@ -1752,7 +1755,6 @@ function UI:CreateResultButton(index)
     -- Right-aligned reputation standing bar
     -- Structure: repBar (dark bg + border) → repClip (clips fill) → repFillFrame (colored, same shape)
     --            repBar → repTextOverlay (text on top of everything)
-    local REP_BAR_WIDTH = 100
     local repBarBackdrop = {
         bgFile = "Interface\\BUTTONS\\WHITE8X8",
         edgeFile = TOOLTIP_BORDER,
@@ -2260,10 +2262,9 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     local count = mmin(#visible, MAX_BUTTON_POOL)
 
     -- Pre-compute whether scrolling will be needed so buttons can be narrower.
-    -- Use >= to reserve scrollbar space when at the limit, since extra spacing
-    -- (pinned gaps, section separators) can push content height past the max.
-    local maxVisibleRows = EasyFind.db.uiMaxResults or 10
-    local willScroll = #visible >= maxVisibleRows
+    -- Rough estimate: if all rows at base height exceed the limit, a scrollbar likely appears.
+    local maxVisibleHeight = EasyFind.db.uiResultsHeight or 280
+    local willScroll = #visible * rowH > maxVisibleHeight
     local scrollInset = 0
     if willScroll and resultsFrame.scrollBar then
         scrollInset = resultsFrame.scrollBar:GetWidth()
@@ -2313,6 +2314,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     local yOffset = 0
     local pinEndYOffset = 0
     local catSepYPositions = {}
+    local hasSideBySideRepBar = false
     for i = 1, MAX_BUTTON_POOL do
         local resultRow = resultButtons[i]
         if i <= count then
@@ -2837,7 +2839,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     if resultRow.repFill.SetBackdropColor then
                         resultRow.repFill:SetBackdropColor(barR, barG, barB, 1.0)
                     end
-                    resultRow.repClip:SetWidth(mmax(fill * 100, 0.1))
+                    resultRow.repClip:SetWidth(mmax(fill * REP_BAR_WIDTH, 0.1))
                     resultRow.repBarText:SetText(standingText)
 
                     if entry.isPathNode and theme.showHeaderTab then
@@ -2848,18 +2850,44 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                         resultRow.tabText:SetPoint("LEFT", resultRow.headerTab, "LEFT", 10, 0)
                         resultRow.tabText:SetPoint("RIGHT", resultRow.repBar, "LEFT", -4, 0)
                     elseif entry.isPathNode then
-                        -- Classic theme: rep bar on right, text between icon and bar
+                        -- Side-by-side by default; IsTruncated() reflects the previous frame's
+                        -- layout, which is accurate for stable results. A deferred re-render
+                        -- corrects it after first render or scale/width changes.
+                        local indentPixels = depth * indPx + 4
                         resultRow.repBar:ClearAllPoints()
                         resultRow.repBar:SetPoint("RIGHT", resultRow, "RIGHT", -6, 0)
+                        resultRow.text:ClearAllPoints()
+                        resultRow.text:SetPoint("LEFT", resultRow.icon, "RIGHT", 4, 0)
+                        resultRow.text:SetPoint("RIGHT", resultRow.repBar, "LEFT", -4, 0)
+                        if resultRow.text:IsTruncated() then
+                            resultRow.text:ClearAllPoints()
+                            resultRow.text:SetPoint("TOPLEFT", resultRow, "TOPLEFT", indentPixels, -3)
+                            resultRow.text:SetPoint("TOPRIGHT", resultRow, "TOPRIGHT", -6, -3)
+                            resultRow.repBar:ClearAllPoints()
+                            resultRow.repBar:SetPoint("BOTTOM", resultRow, "BOTTOM", 0, 5)
+                            resultRow:SetHeight(rowH + 25)
+                        else
+                            hasSideBySideRepBar = true
+                        end
                     else
-                        -- Leaf: default position, hide icon, anchor text to bar
-                        resultRow.repBar:ClearAllPoints()
-                        resultRow.repBar:SetPoint("RIGHT", resultRow, "RIGHT", -6, 0)
+                        -- Leaf: side-by-side by default, stack only if text truncates
                         SetRowIcon(resultRow, "hidden", nil, theme.iconSize)
                         local indentPixels = depth * indPx + 4
+                        resultRow.repBar:ClearAllPoints()
+                        resultRow.repBar:SetPoint("RIGHT", resultRow, "RIGHT", -6, 0)
                         resultRow.text:ClearAllPoints()
                         resultRow.text:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
                         resultRow.text:SetPoint("RIGHT", resultRow.repBar, "LEFT", -4, 0)
+                        if resultRow.text:IsTruncated() then
+                            resultRow.text:ClearAllPoints()
+                            resultRow.text:SetPoint("TOPLEFT", resultRow, "TOPLEFT", indentPixels, -3)
+                            resultRow.text:SetPoint("TOPRIGHT", resultRow, "TOPRIGHT", -6, -3)
+                            resultRow.repBar:ClearAllPoints()
+                            resultRow.repBar:SetPoint("BOTTOM", resultRow, "BOTTOM", 0, 5)
+                            resultRow:SetHeight(rowH + 25)
+                        else
+                            hasSideBySideRepBar = true
+                        end
                         iconSet = true
                     end
                     resultRow.repBar:Show()
@@ -2969,7 +2997,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             end
 
             -- Measure text height and expand row if text wraps
-            local actualH = rowH
+            local actualH = resultRow:GetHeight()
             local textObj
             if theme.showHeaderTab and entry.isPathNode and resultRow.headerTab:IsShown() then
                 textObj = resultRow.tabText
@@ -2979,7 +3007,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             if textObj then
                 local textHeight = textObj:GetStringHeight()
                 local minH = textHeight / ns.SEARCHBAR_FILL
-                if minH > rowH then
+                if minH > actualH then
                     actualH = minH
                     resultRow:SetHeight(actualH)
                     if resultRow.headerTab:IsShown() then
@@ -3049,9 +3077,19 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 
     -- Calculate total content height vs max visible height
     local totalContentHeight = yOffset
-    local maxVisibleHeight = maxVisibleRows * rowH
     local hasScroll = totalContentHeight > maxVisibleHeight
     local visibleHeight = hasScroll and maxVisibleHeight or totalContentHeight
+
+    -- If scrollbar appeared but we didn't reserve space for it (e.g. stacked rep rows
+    -- pushed content past maxVisibleHeight), retroactively narrow all visible rows
+    -- so they don't bleed into the scrollbar.
+    if hasScroll and scrollInset == 0 and resultsFrame.scrollBar then
+        local scrollBarW = resultsFrame.scrollBar:GetWidth()
+        scrollInset = scrollBarW
+        for i = 1, count do
+            resultButtons[i]:SetWidth(resultButtons[i]:GetWidth() - scrollBarW)
+        end
+    end
 
     -- Size the results frame and scroll child
     resultsFrame:SetHeight(padT + theme.resultsPadBot + visibleHeight)
@@ -3088,6 +3126,17 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     end
 
     resultsFrame:Show()
+
+    -- If any rep bar row is in side-by-side mode, schedule one deferred re-render so
+    -- IsTruncated() can reflect the layout we just set (it reads the previous frame's state).
+    if hasSideBySideRepBar and not deferredRepRefreshPending then
+        deferredRepRefreshPending = true
+        local selfRef = self
+        ns.Utils.SafeAfter(0, function()
+            deferredRepRefreshPending = false
+            selfRef:RefreshResults()
+        end)
+    end
 
     -- Reset keyboard selection whenever results change
     selectedIndex = 0
@@ -4024,6 +4073,7 @@ end
 function UI:UpdateResultsScale()
     if resultsFrame then
         resultsFrame:SetScale(EasyFind.db.uiResultsScale or 1.0)
+        self:RefreshResults()
     end
 end
 
@@ -4041,6 +4091,12 @@ function UI:UpdateResultsWidth()
         if w and w > 1 then
             resultsFrame:SetWidth(w)
         end
+    end
+end
+
+function UI:RefreshResults()
+    if cachedHierarchical and resultsFrame and resultsFrame:IsShown() then
+        self:ShowHierarchicalResults(cachedHierarchical, true)
     end
 end
 
