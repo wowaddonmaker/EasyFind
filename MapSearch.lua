@@ -338,6 +338,7 @@ local mapIsMaximized = false  -- Tracks WorldMapFrame maximize state for search 
 local cachedWorldZones        -- Built once per session by GetAllWorldZones
 local rareTrackCache = {}     -- [vignetteGUID] = rare entry, persists across scans for auto-track
 local rareTrackMapID = nil    -- mapID the cache is valid for
+local rareDeadGUIDs = {}      -- GUIDs confirmed dead/despawned, blocked from re-entering cache
 local efTrackedVignetteGUID = nil  -- GUID we explicitly set via SetSuperTrackedVignette (rares only)
 
 -- Reusable tables for OnSearchTextChanged (wiped each call to avoid per-keystroke allocations)
@@ -535,7 +536,14 @@ local function CreateWaypointTracker()
             return
         end
 
-        -- Resolve waypoint world position once (refreshed by USER_WAYPOINT_UPDATED / SUPER_TRACKING_CHANGED)
+        -- Resolve waypoint world position. Cached for static targets (user waypoints),
+        -- re-resolved every frame for moving targets (rares we're super-tracking).
+        local trackingOurRare = efTrackedVignetteGUID
+            and C_SuperTrack.GetSuperTrackedVignette
+            and C_SuperTrack.GetSuperTrackedVignette() == efTrackedVignetteGUID
+        if trackingOurRare then
+            cachedWPWorldX = nil
+        end
         if not cachedWPWorldX then
             local wpMapID, wpX, wpY
             if hasUserWP then
@@ -896,15 +904,6 @@ loadingScreenFrame:RegisterEvent("CVAR_UPDATE")
 loadingScreenFrame:RegisterEvent("VIGNETTES_UPDATED")
 loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isReloadingUI)
     if event == "VIGNETTES_UPDATED" then
-        -- Refresh cached position only when tracking a rare WE set (not game-tracked portals)
-        if efTrackedVignetteGUID then
-            local trackedGUID = C_SuperTrack.GetSuperTrackedVignette and C_SuperTrack.GetSuperTrackedVignette()
-            if trackedGUID and trackedGUID == efTrackedVignetteGUID then
-                cachedWPMapID = nil
-                cachedWPWorldX = nil
-                cachedWPWorldY = nil
-            end
-        end
         return
     end
     if event == "CVAR_UPDATE" then
@@ -5337,6 +5336,7 @@ function MapSearch:ScanVignettes()
 
     local mapID = WorldMapFrame:GetMapID()
     if not mapID then return rares end
+    local playerMapID = GetBestMapForUnit("player")
 
     local guids = GetVignettes()
     if not guids then return rares end
@@ -5346,7 +5346,11 @@ function MapSearch:ScanVignettes()
         if info and info.name and not info.isDead then
             local atlas = info.atlasName
             if atlas == "VignetteKill" or atlas == "VignetteKillElite" then
+                -- Try viewed map first, fall back to player's zone (sub-zone mismatch)
                 local pos = GetVignettePosition(guid, mapID)
+                if not pos and playerMapID and playerMapID ~= mapID then
+                    pos = GetVignettePosition(guid, playerMapID)
+                end
                 if pos then
                     rares[#rares + 1] = {
                         name = info.name,
@@ -5389,36 +5393,40 @@ function MapSearch:UpdateRareTracking()
     local mapID = WorldMapFrame:GetMapID()
     if not mapID then return end
 
-    -- Clear cache on zone change
+    -- Only show rare pins when viewing the player's zone
+    local playerMapID = GetBestMapForUnit("player")
+    if mapID ~= playerMapID then
+        self:ClearHighlight()
+        return
+    end
+
+    -- Clear caches on zone change
     if mapID ~= rareTrackMapID then
         wipe(rareTrackCache)
+        wipe(rareDeadGUIDs)
         rareTrackMapID = mapID
     end
 
-    -- Merge fresh scan into cache (updates positions of in-range rares)
+    -- Merge fresh scan into cache, skipping GUIDs confirmed dead
     local rares = self:ScanVignettes()
+    local activeGUIDs = {}
     for _, rare in ipairs(rares) do
-        if not rare.isAggregate and rare.vignetteGUID then
+        if not rare.isAggregate and rare.vignetteGUID and not rareDeadGUIDs[rare.vignetteGUID] then
+            activeGUIDs[rare.vignetteGUID] = true
+            rare.inRange = true
             rareTrackCache[rare.vignetteGUID] = rare
         end
     end
 
-    -- Prune dead rares; keep out-of-range ones at last known position
+    -- Prune: if a rare was in range last update but is now gone, it died/despawned.
+    -- Mark as dead so it won't re-enter the cache from corpse vignettes.
     for guid, rare in pairs(rareTrackCache) do
-        local info = GetVignetteInfo and GetVignetteInfo(guid)
-        if info then
-            if info.isDead then
+        if not activeGUIDs[guid] then
+            if rare.inRange then
                 rareTrackCache[guid] = nil
-            else
-                -- Still in range: refresh position
-                local pos = GetVignettePosition(guid, mapID)
-                if pos then
-                    rare.x = pos.x
-                    rare.y = pos.y
-                end
+                rareDeadGUIDs[guid] = true
             end
         end
-        -- info == nil means out of range, keep at last known position
     end
 
     -- Build display list from cache
@@ -6941,6 +6949,15 @@ function MapSearch:ShowMultipleWaypoints(instances)
                     highlight.animGroup:Play()
                 end
             end
+        end
+    end
+
+    -- Hide leftover extra frames from previous calls with more instances
+    if self.extraPins then
+        for j = #instances, #self.extraPins do
+            if self.extraPins[j] then self.extraPins[j]:Hide() end
+            if self.extraHighlights and self.extraHighlights[j] then self.extraHighlights[j]:Hide() end
+            if self.extraIndicators and self.extraIndicators[j] then self.extraIndicators[j]:Hide() end
         end
     end
 
