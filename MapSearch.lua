@@ -39,8 +39,11 @@ local SetUserWaypoint        = C_Map.SetUserWaypoint
 local GetAreaPOIForMap       = C_AreaPoiInfo and C_AreaPoiInfo.GetAreaPOIForMap
 local GetAreaPOIInfo         = C_AreaPoiInfo and C_AreaPoiInfo.GetAreaPOIInfo
 local GetDelvesForMap        = C_AreaPoiInfo and C_AreaPoiInfo.GetDelvesForMap
+local GetVignettes           = C_VignetteInfo and C_VignetteInfo.GetVignettes
+local GetVignetteInfo        = C_VignetteInfo and C_VignetteInfo.GetVignetteInfo
 local GetVignettePosition    = C_VignetteInfo and C_VignetteInfo.GetVignettePosition
 local GetTaxiNodesForMap     = C_TaxiMap and C_TaxiMap.GetTaxiNodesForMap
+local SetSuperTrackedVignette = C_SuperTrack and C_SuperTrack.SetSuperTrackedVignette
 local GetDungeonEntrancesForMap   = C_EncounterJournal and C_EncounterJournal.GetDungeonEntrancesForMap
 local HasUserWaypoint        = C_Map.HasUserWaypoint
 local ClearUserWaypoint      = C_Map.ClearUserWaypoint
@@ -333,6 +336,9 @@ local isGlobalSearch = false  -- Tracks which search bar triggered the current s
 local activePinState = nil    -- {mapID, x, y, icon, category} - survives map close/reopen
 local mapIsMaximized = false  -- Tracks WorldMapFrame maximize state for search bar repositioning
 local cachedWorldZones        -- Built once per session by GetAllWorldZones
+local rareTrackCache = {}     -- [vignetteGUID] = rare entry, persists across scans for auto-track
+local rareTrackMapID = nil    -- mapID the cache is valid for
+local efTrackedVignetteGUID = nil  -- GUID we explicitly set via SetSuperTrackedVignette (rares only)
 
 -- Reusable tables for OnSearchTextChanged (wiped each call to avoid per-keystroke allocations)
 local reuseAllPOIs = {}
@@ -631,16 +637,38 @@ local function CreateWaypointTracker()
                 end
             end
 
-            -- Cross-zone: prefer intermediate nav waypoint (portal, boat, etc.)
+            -- Prefer intermediate nav waypoint (portal, boat, etc.) when the
+            -- game's navigation mesh routes through one. Walk up the map
+            -- hierarchy (zone → parent → continent) because the waypoint may
+            -- be on a different zone than the player.
             cachedIsNavWaypoint = false
-            if not sameZone and pMapID and C_SuperTrack.GetNextWaypointForMap then
-                local navX, navY = C_SuperTrack.GetNextWaypointForMap(pMapID)
-                if navX and navY and (navX ~= 0 or navY ~= 0)
-                   and navX >= 0 and navX <= 1 and navY >= 0 and navY <= 1 then
-                    wpMapID = pMapID
-                    wpX = navX
-                    wpY = navY
-                    cachedIsNavWaypoint = true
+            if pMapID and C_SuperTrack.GetNextWaypointForMap then
+                local navMapID, navX, navY
+                local tryMap = pMapID
+                for _ = 1, 5 do
+                    if not tryMap then break end
+                    local nx, ny = C_SuperTrack.GetNextWaypointForMap(tryMap)
+                    if nx and ny and (nx ~= 0 or ny ~= 0)
+                       and nx >= 0 and nx <= 1 and ny >= 0 and ny <= 1 then
+                        navMapID = tryMap
+                        navX = nx
+                        navY = ny
+                        break
+                    end
+                    local info = GetMapInfo(tryMap)
+                    tryMap = info and info.parentMapID
+                end
+                if navMapID and navX then
+                    -- Only use nav waypoint if it differs from the actual destination
+                    local dx = navX - (wpX or 0)
+                    local dy = navY - (wpY or 0)
+                    local isSameMap = wpMapID == navMapID
+                    if not isSameMap or (dx * dx + dy * dy) > 0.001 then
+                        wpMapID = navMapID
+                        wpX = navX
+                        wpY = navY
+                        cachedIsNavWaypoint = true
+                    end
                 end
             end
 
@@ -865,7 +893,20 @@ loadingScreenFrame:RegisterEvent("SUPER_TRACKING_CHANGED")
 loadingScreenFrame:RegisterEvent("NAVIGATION_DESTINATION_REACHED")
 loadingScreenFrame:RegisterEvent("SUPER_TRACKING_PATH_UPDATED")
 loadingScreenFrame:RegisterEvent("CVAR_UPDATE")
+loadingScreenFrame:RegisterEvent("VIGNETTES_UPDATED")
 loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isReloadingUI)
+    if event == "VIGNETTES_UPDATED" then
+        -- Refresh cached position only when tracking a rare WE set (not game-tracked portals)
+        if efTrackedVignetteGUID then
+            local trackedGUID = C_SuperTrack.GetSuperTrackedVignette and C_SuperTrack.GetSuperTrackedVignette()
+            if trackedGUID and trackedGUID == efTrackedVignetteGUID then
+                cachedWPMapID = nil
+                cachedWPWorldX = nil
+                cachedWPWorldY = nil
+            end
+        end
+        return
+    end
     if event == "CVAR_UPDATE" then
         -- isInitialLogin is repurposed here as the cvar name arg
         if isInitialLogin == "rotateMinimap" then
@@ -926,6 +967,11 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
         cachedWPWorldX = nil
         cachedWPWorldY = nil
         cachedCrossContinent = nil
+        -- Clear stale rare tracking GUID when tracking target changes
+        local currentVig = C_SuperTrack.GetSuperTrackedVignette and C_SuperTrack.GetSuperTrackedVignette()
+        if efTrackedVignetteGUID and currentVig ~= efTrackedVignetteGUID then
+            efTrackedVignetteGUID = nil
+        end
         -- Hide stale glow so it doesn't linger at the old target's position
         if superTrackGlow and superTrackGlow:IsShown() then
             superTrackGlow.animGroup:Stop()
@@ -1133,7 +1179,7 @@ local CATEGORY_ICONS = {
     repairvendor = 136465,
     barber = 3852099,
     transmogrifier = 1598183,
-    rare = "Interface\\Icons\\INV_Misc_Head_Dragon_01",
+    rare = { file = 1121272, coords = { 0.7796, 0.8381, 0.1934, 0.2531 } },
     treasure = "Interface\\Icons\\INV_Misc_Bag_10",
     catalyst = "Interface\\Icons\\INV_10_GearUpgrade_Catalyst_Charged",
     greatvault = "Interface\\Icons\\INV_Misc_Lockbox_1",
@@ -1750,12 +1796,56 @@ function MapSearch:CreateSearchFrame()
         { key = "instances", label = "Instances" },
         { key = "travel",    label = "Travel" },
         { key = "services",  label = "Services" },
+        { key = "rares",     label = "Rares" },
     }
 
     local localFilterDropdown = MapSearch:CreateFilterDropdown(
         "EasyFindMapLocalFilterDropdown", LOCAL_FILTER_OPTIONS,
         "localSearchFilters", localFilterBtn, searchFrame, editBox
     )
+
+    -- "Auto-track" toggle on the Rares filter row
+    do
+        local raresRow = localFilterDropdown.rows[#LOCAL_FILTER_OPTIONS]  -- last row = Rares
+        raresRow:SetHitRectInsets(0, 65, 0, 0)
+        local trackBtn = CreateFrame("Button", nil, raresRow)
+        trackBtn:SetSize(60, 18)
+        trackBtn:SetPoint("RIGHT", raresRow, "RIGHT", -2, 0)
+        trackBtn:SetFrameLevel(raresRow:GetFrameLevel() + 1)
+        local trackLabel = trackBtn:CreateFontString(nil, "ARTWORK", "GameFontNormalSmall")
+        trackLabel:SetPoint("RIGHT")
+        trackLabel:SetText("Auto-track")
+        trackBtn.label = trackLabel
+
+        local function UpdateAutoTrackColor()
+            if EasyFind.db.alwaysShowRares then
+                trackLabel:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
+            else
+                trackLabel:SetTextColor(0.5, 0.5, 0.5)
+            end
+        end
+        UpdateAutoTrackColor()
+
+        trackBtn:SetScript("OnClick", function()
+            EasyFind.db.alwaysShowRares = not EasyFind.db.alwaysShowRares
+            UpdateAutoTrackColor()
+            MapSearch:UpdateRareTracking()
+        end)
+        trackBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            if EasyFind.db.alwaysShowRares then
+                GameTooltip:SetText("Auto-track: |cFF00FF00ON|r")
+                GameTooltip:AddLine("Active rares are always shown on the map.\nClick to disable.", 1, 1, 1, true)
+            else
+                GameTooltip:SetText("Auto-track: OFF")
+                GameTooltip:AddLine("Click to always show active rares on the map.", 1, 1, 1, true)
+            end
+            GameTooltip:Show()
+        end)
+        trackBtn:SetScript("OnLeave", GameTooltip_Hide)
+
+        localFilterDropdown:HookScript("OnShow", UpdateAutoTrackColor)
+    end
 
     searchFrame.filterBtn = localFilterBtn
     searchFrame.filterDropdown = localFilterDropdown
@@ -4550,6 +4640,12 @@ function MapSearch:HookWorldMap()
                 activePinState = nil
             end
         end
+        -- Show tracked rares when no search pins to restore
+        if not activePinState and EasyFind.db.alwaysShowRares then
+            C_Timer.After(0, function()
+                self:UpdateRareTracking()
+            end)
+        end
     end)
 
     WorldMapFrame:HookScript("OnHide", function()
@@ -4721,6 +4817,29 @@ function MapSearch:HookWorldMap()
                 activePinState = nil
             end
             self:ClearZoneHighlight()
+            -- Re-scan rares for the new zone
+            if EasyFind.db.alwaysShowRares then
+                C_Timer.After(0, function() self:UpdateRareTracking() end)
+            end
+        end
+    end)
+
+    -- Live-refresh search results when rares spawn or despawn nearby
+    local vignetteFrame = CreateFrame("Frame")
+    vignetteFrame:RegisterEvent("VIGNETTES_UPDATED")
+    vignetteFrame:SetScript("OnEvent", function()
+        if isGlobalSearch then return end
+        local editBox = searchFrame and searchFrame.editBox
+        if editBox and editBox:HasFocus() then
+            local text = editBox:GetText()
+            if text and #text >= 2 then
+                MapSearch:OnSearchTextChanged(text)
+                return
+            end
+        end
+        -- Refresh always-on rare pins when not actively searching
+        if EasyFind.db.alwaysShowRares then
+            MapSearch:UpdateRareTracking()
         end
     end)
 end
@@ -5212,6 +5331,111 @@ function MapSearch:GetStaticLocations()
     return results
 end
 
+function MapSearch:ScanVignettes()
+    local rares = {}
+    if not GetVignettes then return rares end
+
+    local mapID = WorldMapFrame:GetMapID()
+    if not mapID then return rares end
+
+    local guids = GetVignettes()
+    if not guids then return rares end
+
+    for _, guid in ipairs(guids) do
+        local info = GetVignetteInfo and GetVignetteInfo(guid)
+        if info and info.name and not info.isDead then
+            local atlas = info.atlasName
+            if atlas == "VignetteKill" or atlas == "VignetteKillElite" then
+                local pos = GetVignettePosition(guid, mapID)
+                if pos then
+                    rares[#rares + 1] = {
+                        name = info.name,
+                        category = "rare",
+                        icon = CATEGORY_ICONS.rare,
+                        x = pos.x,
+                        y = pos.y,
+                        vignetteGUID = guid,
+                        keywords = {"rare", "rares"},
+                    }
+                end
+            end
+        end
+    end
+
+    -- Aggregate "Rares" entry always present so the tracking toggle is accessible
+    local instances = {}
+    for _, rare in ipairs(rares) do
+        instances[#instances + 1] = rare
+    end
+    rares[#rares + 1] = {
+        name = "Rares",
+        category = "rare",
+        icon = CATEGORY_ICONS.rare,
+        keywords = {"rare", "rares"},
+        isAggregate = true,
+        allInstances = instances,
+    }
+
+    return rares
+end
+
+function MapSearch:UpdateRareTracking()
+    if not EasyFind.db.alwaysShowRares then return end
+    if not WorldMapFrame or not WorldMapFrame:IsShown() then return end
+    -- Don't override active search
+    local editBox = searchFrame and searchFrame.editBox
+    if editBox and editBox:GetText() ~= "" then return end
+
+    local mapID = WorldMapFrame:GetMapID()
+    if not mapID then return end
+
+    -- Clear cache on zone change
+    if mapID ~= rareTrackMapID then
+        wipe(rareTrackCache)
+        rareTrackMapID = mapID
+    end
+
+    -- Merge fresh scan into cache (updates positions of in-range rares)
+    local rares = self:ScanVignettes()
+    for _, rare in ipairs(rares) do
+        if not rare.isAggregate and rare.vignetteGUID then
+            rareTrackCache[rare.vignetteGUID] = rare
+        end
+    end
+
+    -- Prune dead rares; keep out-of-range ones at last known position
+    for guid, rare in pairs(rareTrackCache) do
+        local info = GetVignetteInfo and GetVignetteInfo(guid)
+        if info then
+            if info.isDead then
+                rareTrackCache[guid] = nil
+            else
+                -- Still in range: refresh position
+                local pos = GetVignettePosition(guid, mapID)
+                if pos then
+                    rare.x = pos.x
+                    rare.y = pos.y
+                end
+            end
+        end
+        -- info == nil means out of range, keep at last known position
+    end
+
+    -- Build display list from cache
+    local individuals = {}
+    for _, rare in pairs(rareTrackCache) do
+        if rare.x and rare.y then
+            individuals[#individuals + 1] = rare
+        end
+    end
+
+    if #individuals > 0 then
+        self:ShowMultipleWaypoints(individuals)
+    else
+        self:ClearHighlight()
+    end
+end
+
 function MapSearch:ScanMapPOIs()
     local pois = {}
     local mapID = WorldMapFrame:GetMapID()
@@ -5387,13 +5611,14 @@ function MapSearch:GetPinInfo(pin)
         end
     end
 
-    -- Vignettes (rares, treasures)
+    -- Vignettes: treasures only. Rares handled by ScanVignettes() (provides GUID for super-tracking)
     if pin.vignetteInfo then
-        name = pin.vignetteInfo.name
-        pinType = "vignette"
-        category = "rare"
         if pin.vignetteInfo.vignetteType == 2 then
+            name = pin.vignetteInfo.name
+            pinType = "vignette"
             category = "treasure"
+        else
+            return nil
         end
     end
 
@@ -5520,6 +5745,10 @@ function MapSearch:OnSearchTextChanged(text)
             self:ShowPinnedItems()
         else
             self:HideResults()
+        end
+        -- Resume always-on rare tracking when search is cleared
+        if EasyFind.db.alwaysShowRares and (not text or text == "") then
+            C_Timer.After(0, function() self:UpdateRareTracking() end)
         end
         return
     end
@@ -5661,6 +5890,9 @@ function MapSearch:OnSearchTextChanged(text)
         -- Get flight master locations for current map
         local flightMasters = self:ScanFlightMasters()
 
+        -- Scan active rares via vignette API
+        local vignetteRares = self:ScanVignettes()
+
         -- Coordinate-based sources first (dungeon entrances, flight masters) so they
         -- take priority over pin-only entries from ScanMapPOIs during deduplication.
         -- Pin-only entries lack x/y and go through HighlightPin (no icon), while
@@ -5688,6 +5920,17 @@ function MapSearch:OnSearchTextChanged(text)
             if not zoneNames[slower(fm.name)] and not existingNames[slower(fm.name)] then
                 tinsert(allPOIs, fm)
                 existingNames[slower(fm.name)] = true
+            end
+        end
+
+        for _, rare in ipairs(vignetteRares) do
+            if not rare.isAggregate then
+                if not zoneNames[slower(rare.name)] and not existingNames[slower(rare.name)] then
+                    tinsert(allPOIs, rare)
+                    existingNames[slower(rare.name)] = true
+                end
+            else
+                tinsert(allPOIs, rare)
             end
         end
 
@@ -5745,6 +5988,8 @@ function MapSearch:OnSearchTextChanged(text)
             elseif (cat == "flightmaster" or cat == "zeppelin" or cat == "boat" or cat == "portal" or cat == "tram" or parentCat == "travel") and filters.travel == false then
                 dominated = true
             elseif (parentCat == "service" or cat == "service") and filters.services == false then
+                dominated = true
+            elseif cat == "rare" and filters.rares == false then
                 dominated = true
             end
             if not dominated then
@@ -5894,9 +6139,9 @@ function MapSearch:SearchPOIs(pois, query)
         end
     end
 
-    -- Attach duplicates info to results
+    -- Attach duplicates info to results (skip entries with pre-populated allInstances)
     for _, result in ipairs(results) do
-        if result.duplicateKey and duplicates[result.duplicateKey] then
+        if not result.allInstances and result.duplicateKey and duplicates[result.duplicateKey] then
             result.allInstances = duplicates[result.duplicateKey]
         end
     end
@@ -6060,7 +6305,7 @@ function MapSearch:ShowResults(results)
 
             -- Show navigate button for local search results with coordinates
             local hasCoords = not isGlobalSearch
-                and ((data.x and data.y) or (data.allInstances and #data.allInstances > 1))
+                and ((data.x and data.y) or (data.allInstances and #data.allInstances >= 1))
             if hasCoords and resultRow.navBtn then
                 resultRow.navBtn:ClearAllPoints()
                 resultRow.navBtn:SetPoint("CENTER", resultRow, "LEFT", navBtnCenterX - ROW_INSET, 0)
@@ -6430,13 +6675,27 @@ function MapSearch:SelectResult(data)
             return
         end
 
-        -- Check if this POI has multiple instances (duplicates)
+        -- Check if this POI has multiple instances (duplicates) or aggregate
         if data.allInstances and #data.allInstances > 1 then
             -- Show ALL instances on the map
             self:ShowMultipleWaypoints(data.allInstances)
+        elseif data.allInstances and #data.allInstances == 1 then
+            local single = data.allInstances[1]
+            if single.x and single.y then
+                self:ShowWaypointAt(single.x, single.y, single.icon, single.category)
+                if single.vignetteGUID and SetSuperTrackedVignette then
+                    efTrackedVignetteGUID = single.vignetteGUID
+                    SetSuperTrackedVignette(single.vignetteGUID)
+                end
+            end
         elseif data.x and data.y then
             -- Single POI with coordinates
             self:ShowWaypointAt(data.x, data.y, data.icon, data.category)
+            -- Activate built-in navigation arrow for rares
+            if data.vignetteGUID and SetSuperTrackedVignette then
+                efTrackedVignetteGUID = data.vignetteGUID
+                SetSuperTrackedVignette(data.vignetteGUID)
+            end
         elseif data.pin then
             -- Dynamic pin with no coords - highlight it directly
             self:HighlightPin(data.pin)
@@ -6490,10 +6749,15 @@ function MapSearch:ShowMultipleWaypoints(instances)
         self.extraIndicators = {}
     end
 
+    -- Sort north-to-south (ascending y) so southern pins render on top
+    tsort(instances, function(a, b) return (a.y or 0) < (b.y or 0) end)
+
     -- Show each instance with pin, highlight box, and indicator
     for i, instance in ipairs(instances) do
         if instance.x and instance.y then
             local pin, highlight, ind
+            -- Stagger frame levels so each pin group fully covers the previous one
+            local baseLevel = 1998 + i * 3
 
             if i == 1 then
                 -- Use the main frames for first instance
@@ -6616,6 +6880,14 @@ function MapSearch:ShowMultipleWaypoints(instances)
                 end
                 ind = self.extraIndicators[i-1]
             end
+
+            -- Ensure consistent strata and staggered levels so overlapping pins stack cleanly
+            highlight:SetFrameStrata("TOOLTIP")
+            pin:SetFrameStrata("TOOLTIP")
+            ind:SetFrameStrata("TOOLTIP")
+            highlight:SetFrameLevel(baseLevel)
+            pin:SetFrameLevel(baseLevel + 1)
+            ind:SetFrameLevel(baseLevel + 2)
 
             -- Position and show the pin
             pin:SetSize(iconSize, iconSize)
@@ -6841,6 +7113,11 @@ function MapSearch:GetPreviewCoords(data)
     local currentMapID = WorldMapFrame:GetMapID()
     if data.allInstances and #data.allInstances > 1 then
         return { instances = data.allInstances }
+    elseif data.allInstances and #data.allInstances == 1 then
+        local single = data.allInstances[1]
+        if single.x and single.y then
+            return { x = single.x, y = single.y, icon = single.icon, category = single.category }
+        end
     end
     -- Determine the best known coords and their associated map
     local px, py, pIcon, pCat, pMapID
@@ -7330,11 +7607,12 @@ function MapSearch:SearchForUI(query)
     local existingNames = {}
 
     if isLocal then
-        -- Local: same 4 sources as the real local search
+        -- Local: same sources as the real local search
         local dynamicPOIs = self:ScanMapPOIs()
         local staticLocations = self:GetStaticLocations()
         local dungeonEntrances = self:ScanDungeonEntrances()
         local flightMasters = self:ScanFlightMasters()
+        local vignetteRares = self:ScanVignettes()
 
         for _, entrance in ipairs(dungeonEntrances) do
             pois[#pois + 1] = entrance
@@ -7344,6 +7622,16 @@ function MapSearch:SearchForUI(query)
             if not existingNames[slower(fm.name)] then
                 pois[#pois + 1] = fm
                 existingNames[slower(fm.name)] = true
+            end
+        end
+        for _, rare in ipairs(vignetteRares) do
+            if not rare.isAggregate then
+                if not existingNames[slower(rare.name)] then
+                    pois[#pois + 1] = rare
+                    existingNames[slower(rare.name)] = true
+                end
+            else
+                pois[#pois + 1] = rare
             end
         end
         for _, poi in ipairs(dynamicPOIs) do

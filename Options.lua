@@ -827,8 +827,20 @@ function Options:Initialize()
     end)
     optionsFrame.minimapBtnCheckbox = minimapBtnCheckbox
 
+    local rareTrackCheckbox = CreateCheckbox(sec3, "RareTrack", "Always Show Rares on Map",
+        "When enabled, active rare mobs are always displayed as pins on the world map without needing to search.\n\nThis can also be toggled from the \"Rares\" search result row.")
+    rareTrackCheckbox:SetPoint("TOPLEFT", loginMessageCheckbox, "BOTTOMLEFT", 0, -4)
+    rareTrackCheckbox:SetChecked(EasyFind.db.alwaysShowRares or false)
+    rareTrackCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.alwaysShowRares = self:GetChecked()
+        if ns.MapSearch then
+            ns.MapSearch:UpdateRareTracking()
+        end
+    end)
+    optionsFrame.rareTrackCheckbox = rareTrackCheckbox
+
     local indicatorLabel = sec3:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    indicatorLabel:SetPoint("TOPLEFT", loginMessageCheckbox, "BOTTOMLEFT", 4, -10)
+    indicatorLabel:SetPoint("TOPLEFT", rareTrackCheckbox, "BOTTOMLEFT", 4, -10)
     indicatorLabel:SetText("Indicator Style:")
 
     local indicatorChoices = {"EasyFind Arrow", "Classic Quest Arrow", "Minimap Player Arrow", "Low-res Gauntlet", "HD Gauntlet"}
