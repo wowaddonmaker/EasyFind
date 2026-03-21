@@ -12,6 +12,22 @@ EasyFind lets you search for any panel, tab, or setting in WoW's interface and a
 <em>Direct open skips straight to the panel instantly</em>
 </p>
 
+## Table of Contents
+
+- [Features](#features)
+  - [UI Search](#ui-search)
+  - [Map Search](#map-search)
+  - [Search Features](#search-features)
+  - [Two Navigation Modes](#two-navigation-modes)
+- [How to Use](#how-to-use)
+- [First-Time Setup](#first-time-setup)
+- [Slash Commands](#slash-commands)
+- [Keybinds](#keybinds)
+- [Options](#options)
+- [Moving the Search Bars](#moving-the-search-bars)
+- [Feedback](#feedback)
+- [Links](#links)
+
 ## Features
 
 ### UI Search
@@ -39,9 +55,8 @@ Find and navigate to any interface element such as:
 Currencies show your current amounts inline, and reputations display progress bars with renown level, friendship rank, or traditional standing.
 
 <p align="center">
-<img src="https://media.forgecdn.net/attachments/1577/337/currency-png.png" alt="currency search">
-<img src="https://media.forgecdn.net/attachments/1577/352/rep-png.png" alt="reputation search"><br>
-<em>Currency amounts and reputation progress bars in search results</em>
+<img src="https://media.forgecdn.net/attachments/1586/298/combined_rep_currency-png.png" alt="currency search">
+<em>Reputation progress bars (left) and currency amounts (right) in search results</em>
 </p>
 
 ### Map Search
@@ -59,6 +74,17 @@ Locate places and NPCs across Azeroth:
 *   The Great Vault, Creation Catalyst, and Trading Post
 *   Chromie (Timewalking Campaigns)
 *   Rare mobs (with optional auto-tracking that always shows active rares on the map)
+
+<p align="center">
+<img src="https://media.forgecdn.net/attachments/1591/410/all-rares-png.png" alt="all rares search" width="49%">
+<img src="https://media.forgecdn.net/attachments/1591/411/one-rare-png.png" alt="single rare search" width="49%"><br>
+<em>Search "rare" to see all active rares, or select a specific one to track it</em>
+</p>
+
+<p align="center">
+<img src="https://media.forgecdn.net/attachments/1591/412/rares-filter-png.png" alt="rares filter"><br>
+<em>Rares category with auto-track toggle in the filter menu</em>
+</p>
 
 Search the zone of the map you're currently focused on with the local bar (left side), or search across all of Azeroth with the global bar (right side). Map search results also appear in the UI search bar when the Map Search filter is enabled.
 

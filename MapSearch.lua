@@ -6234,16 +6234,15 @@ function MapSearch:ShowResults(results)
     -- Must compute maxVisibleHeight (including screen-space clamping) BEFORE the
     -- button loop, otherwise willScroll can be false while hasScroll ends up true
     -- and the scrollbar overlaps full-width buttons.
-    local maxVisibleRows = EasyFind.db.mapMaxResults or 6
     local scrollBar = resultsFrame.scrollBar
-    local maxVisibleHeight = maxVisibleRows * 26 + 12
+    local maxVisibleHeight = EasyFind.db.mapResultsHeight or 168
     local preAnchor = activeSearchFrame or searchFrame
     if isGlobalSearch and globalSearchFrame then
         preAnchor = globalSearchFrame
     end
     local screenH = UIParent:GetHeight()
     if resultsAbove then
-        local available = (preAnchor:GetTop() or (screenH / 2)) - 16
+        local available = screenH - (preAnchor:GetTop() or (screenH / 2)) - 16
         if available > 0 and maxVisibleHeight > available then
             maxVisibleHeight = available
         end
