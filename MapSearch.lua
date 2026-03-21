@@ -631,19 +631,7 @@ local function CreateWaypointTracker()
                 return
             end
 
-            -- Zone check: is the pin in the player's current zone?
             local pMapID = GetBestMapForUnit("player")
-            local pinZoneID = cachedPinMapID or wpMapID
-            local sameZone = false
-            if pMapID and pMapID == pinZoneID then
-                sameZone = true
-            elseif pMapID then
-                local pInfo = GetMapInfo(pMapID)
-                local pinInfo = GetMapInfo(pinZoneID)
-                if pInfo and pinInfo and pInfo.name == pinInfo.name then
-                    sameZone = true
-                end
-            end
 
             -- Prefer intermediate nav waypoint (portal, boat, etc.) when the
             -- game's navigation mesh routes through one. Walk up the map
