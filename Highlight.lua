@@ -281,7 +281,7 @@ function Highlight:UpdateGuide()
 
     -- Step 1 type: Highlight a button directly (like micro menu buttons)
     if step.buttonFrame then
-        local targetFrame = _G[step.buttonFrame]
+        local targetFrame = Utils.GetFrameByPath(step.buttonFrame) or _G[step.buttonFrame]
         if targetFrame and targetFrame:IsShown() then
             -- Check if user clicked it (frame that button opens is now visible)
             local nextStep = currentGuide.steps[currentStepIndex + 1]

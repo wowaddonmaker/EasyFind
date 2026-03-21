@@ -748,7 +748,7 @@ function Rescaler:Enter(mode)
     -- Dim backdrop
     local bg = GetOrCreateBackdrop()
     bg:Show()
-    bg:EnableKeyboard(true)
+    SafeCallMethod(bg, "EnableKeyboard", true)
 
     -- Preview results (fake rows so user sees the results area)
     local resultsAbove = (mode == "ui" and EasyFind.db.uiResultsAbove)
@@ -903,7 +903,7 @@ function Rescaler:Exit(reopenOptions)
         donePanel = nil
     end
     if backdrop then
-        backdrop:EnableKeyboard(false)
+        SafeCallMethod(backdrop, "EnableKeyboard", false)
         backdrop:Hide()
     end
 
