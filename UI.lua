@@ -4158,13 +4158,11 @@ function UI:ShowWhatsNew(version)
     body:SetJustifyH("LEFT")
     body:SetSpacing(4)
     body:SetText(
-        "|cffFFD100\226\128\162|r |cffffffffInstant Fast Mode Navigation|r\n" ..
-        "        UI panels open without flickering in fast mode\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffIndependent Fast Mode Toggles|r\n" ..
-        "        Each search bar now has its own fast mode toggle\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffEasyFind-Only Navigation Options|r\n" ..
-        "        Restrict minimap glow and guide circle to EasyFind pins\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffOptions Panel Overhaul|r"
+        "|cffFFD100\226\128\162|r |cffffffffRare Mob Tracking|r\n" ..
+        "        Active rares appear as searchable pins on the world map\n" ..
+        "        Toggle auto-tracking to pin all nearby rares automatically\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffGreat Vault|r\n" ..
+        "        Rewards panel now searchable in UI search"
     )
 
     -- Footer - anchored below body so it can't overlap
@@ -4181,6 +4179,8 @@ function UI:ShowWhatsNew(version)
         f:Hide()
     end)
 
+    -- Auto-size frame height: 58 top padding + body + 12 gap + footer + 8 gap + button + 16 bottom padding
+    f:SetHeight(58 + body:GetStringHeight() + 12 + footer:GetStringHeight() + 8 + okBtn:GetHeight() + 16)
     f:Show()
 end
 
