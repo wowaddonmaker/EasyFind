@@ -19,6 +19,7 @@ globals = {
     "BINDING_NAME_EASYFIND_FOCUS",
     "BINDING_NAME_EASYFIND_TOGGLE_FOCUS",
     "BINDING_NAME_EASYFIND_CLEAR",
+    "EncounterJournal",
 }
 
 -- WoW API globals (read-only)
@@ -33,7 +34,7 @@ read_globals = {
     "GetAddOnMetadata", "GetAtlasInfo", "GetMinimapShape",
     "GetBindingKey", "GetCurrentBindingSet", "SaveBindings", "SetBinding",
     "GetCategoryInfo", "GetPlayerFacing",
-    "SetPortraitTexture", "ToggleWorldMap", "ToggleDropDownMenu",
+    "SetPortraitTexture", "ShowUIPanel", "ToggleWorldMap", "ToggleDropDownMenu",
     "InterfaceOptions_AddCategory", "InCombatLockdown",
     "IsShiftKeyDown", "IsMouseButtonDown", "IsAltKeyDown", "IsControlKeyDown",
     "IsInGroup", "IsInInstance", "IsIndoors", "UnitIsGroupLeader",
@@ -48,7 +49,7 @@ read_globals = {
     "CharacterStatsPane", "PaperDollTitlesPane", "PaperDollEquipmentManagerPane",
     "CurrencyFrame",
     "SpellBookFrame", "PlayerSpellsFrame", "CollectionsJournal",
-    "EncounterJournal", "PVEFrame", "ReputationFrame", "TokenFrame",
+    "PVEFrame", "ReputationFrame", "TokenFrame",
     "GroupFinderFrame", "LFGListFrame", "HelpFrame", "ClassTalentFrame",
     "GuildMicroButton", "StoreMicroButton", "PlayerFrame", "StoreFrame",
     "LFDParentFrame", "RaidFinderFrame",
@@ -57,6 +58,7 @@ read_globals = {
     "PVPQueueFrame",
     "AchievementFrameCategories_ExpandToCategory",
     "AchievementFrameCategories_UpdateDataProvider",
+    "EncounterJournal_LoadUI", "PanelTemplates_SetTab",
     "Menu", "ScrollBoxConstants",
 
     -- C_* namespaces

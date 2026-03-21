@@ -26,7 +26,7 @@ local IsShiftKeyDown     = IsShiftKeyDown
 local GetCursorPosition  = GetCursorPosition
 local wipe               = wipe
 
-local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind\\textures\\lightning-bolt"
+local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind-rares\\textures\\lightning-bolt"
 
 local searchFrame
 local resultsFrame
@@ -160,7 +160,15 @@ local function SetRowIcon(btn, kind, value, iconSize)
     if kind == "atlas" then
         btn.icon:SetAtlas(value)
     elseif kind == "file" or kind == "path" then
-        btn.icon:SetTexture(value)
+        if type(value) == "table" and value.file then
+            btn.icon:SetTexture(value.file)
+            if value.coords then
+                local c = value.coords
+                btn.icon:SetTexCoord(c[1], c[2], c[3], c[4])
+            end
+        else
+            btn.icon:SetTexture(value)
+        end
     elseif kind == "hidden" then
         btn.icon:Hide()
         return
@@ -787,8 +795,8 @@ function UI:CreateSearchFrame()
     -- Keyboard capture frame for navigating results without editbox focus
     navFrame = CreateFrame("Frame", nil, searchFrame)
     navFrame:SetSize(1, 1)
-    navFrame:EnableKeyboard(false)
-    navFrame:SetPropagateKeyboardInput(false)
+    Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
+    Utils.SafeCallMethod(navFrame, "SetPropagateKeyboardInput", false)
 
     local function HandleNavKeyDown(key)
         if key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
@@ -831,7 +839,7 @@ function UI:CreateSearchFrame()
                         SetToolbarFocus(#controls)
                     elseif toolbarFocus == 2 then
                         ClearToolbarFocus()
-                        navFrame:EnableKeyboard(false)
+                        Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
                         searchFrame.editBox:SetFocus()
                     else
                         SetToolbarFocus(toolbarFocus - 1)
@@ -852,7 +860,7 @@ function UI:CreateSearchFrame()
                     local controls = GetToolbarControls()
                     if toolbarFocus == 1 then
                         ClearToolbarFocus()
-                        navFrame:EnableKeyboard(false)
+                        Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
                         searchFrame.editBox:SetFocus()
                     elseif toolbarFocus >= #controls then
                         SetToolbarFocus(1)
@@ -878,7 +886,7 @@ function UI:CreateSearchFrame()
             else
                 selectedIndex = 0
                 toggleFocused = false
-                navFrame:EnableKeyboard(false)
+                Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
                 if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
                 UI:UpdateSelectionHighlight(true)
             end
@@ -910,7 +918,7 @@ function UI:CreateSearchFrame()
     editBox:HookScript("OnKeyDown", function(self, key)
         if key ~= "TAB" then return end
         self:ClearFocus()
-        navFrame:EnableKeyboard(true)
+        Utils.SafeCallMethod(navFrame, "EnableKeyboard", true)
         if IsShiftKeyDown() then
             SetToolbarFocus(1)
         else
@@ -3302,10 +3310,10 @@ function UI:UpdateSelectionHighlight(skipRefocus)
         if searchFrame.editBox:HasFocus() then
             searchFrame.editBox:ClearFocus()
         end
-        navFrame:EnableKeyboard(true)
+        Utils.SafeCallMethod(navFrame, "EnableKeyboard", true)
     else
         local wasNavigating = navFrame:IsKeyboardEnabled()
-        navFrame:EnableKeyboard(false)
+        Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
         if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
         if wasNavigating and not skipRefocus and not searchFrame.editBox:HasFocus() then
             searchFrame.editBox:SetFocus()
@@ -3529,19 +3537,6 @@ function UI:DirectOpen(data)
     -- If final step is highlight-only, execute all but the last, then highlight it.
     local executeCount = finalStepNavigable and totalSteps or (totalSteps - 1)
 
-    -- Stop before any step that would call protected functions (taint).
-    -- EncounterJournal:SetTab() is a protected C++ method triggered by EJ tab clicks.
-    -- Execute all steps up to (but not including) the first protected step,
-    -- then hand off to the guided highlight for the rest.
-    for i = 1, executeCount do
-        local s = steps[i]
-        if s.waitForFrame == "EncounterJournal" and s.tabIndex then
-            executeCount = i - 1
-            finalStepNavigable = false
-            break
-        end
-    end
-
     -- If there's nothing to execute programmatically (single highlight-only step),
     -- just start the normal guide.
     if executeCount == 0 then
@@ -3559,11 +3554,25 @@ function UI:DirectOpen(data)
             local step = steps[i]
 
             if step.buttonFrame then
-                local stepFrame = _G[step.buttonFrame]
+                -- EncounterJournal: set selectedTab BEFORE opening so Blizzard's
+                -- own init calls SetTab with our value (clean call stack, no taint)
+                if step.buttonFrame == "EJMicroButton" then
+                    local nextStep = steps[i + 1]
+                    if nextStep and nextStep.waitForFrame == "EncounterJournal" and nextStep.tabIndex then
+                        EncounterJournal_LoadUI()
+                        EncounterJournal.selectedTab = nextStep.tabIndex
+                        ShowUIPanel(EncounterJournal)
+                        -- Skip the tab step, continue from the step after it
+                        executeFrom(i + 2)
+                        return
+                    end
+                end
+                local stepFrame = Utils.GetFrameByPath(step.buttonFrame) or _G[step.buttonFrame]
                 if stepFrame then ClickButton(stepFrame) end
             end
 
             if step.waitForFrame and step.tabIndex then
+
                 local resync = false
                 if step.waitForFrame == "CharacterFrame" then
                     if needsCurrencyResync and step.tabIndex == 3 then
@@ -3586,7 +3595,7 @@ function UI:DirectOpen(data)
                         executeFrom(resume)
                     end)
                     return
-                else
+                elseif step.waitForFrame ~= "EncounterJournal" then
                     ClickButton(Highlight:GetTabButton(step.waitForFrame, step.tabIndex))
                 end
             end
@@ -3663,9 +3672,9 @@ function UI:DirectOpen(data)
             end
         end
 
-        -- All navigable steps executed; highlight the final step if needed
+        -- Hand off remaining steps to the guided highlight
         if not finalStepNavigable and Highlight then
-            Highlight:StartGuideAtStep(data, totalSteps)
+            Highlight:StartGuideAtStep(data, executeCount + 1)
         end
     end
 

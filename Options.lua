@@ -508,6 +508,7 @@ function Options:Initialize()
 
     -- Create the main options frame (fixed size)
     optionsFrame = CreateFrame("Frame", "EasyFindOptionsFrame", UIParent, "BackdropTemplate")
+    ns.optionsFrame = optionsFrame
     optionsFrame:SetSize(FRAME_W, FRAME_H)
     if EasyFind.db.optionsPosition then
         local pos = EasyFind.db.optionsPosition
@@ -698,7 +699,7 @@ function Options:Initialize()
         keybindBtn.waitingForKey = false
         keybindBtn:SetText(GetCurrentKeybindText(action))
         keybindBtn:UnlockHighlight()
-        keybindBtn:EnableKeyboard(false)
+        Utils.SafeCallMethod(keybindBtn, "EnableKeyboard", false)
         keybindBtn:SetScript("OnKeyDown", nil)
     end
 
@@ -709,7 +710,7 @@ function Options:Initialize()
             keybindBtn.waitingForKey = true
             keybindBtn:SetText("Press a key...")
             keybindBtn:LockHighlight()
-            keybindBtn:EnableKeyboard(true)
+            Utils.SafeCallMethod(keybindBtn, "EnableKeyboard", true)
             keybindBtn:SetScript("OnKeyDown", function(self, key)
                 if key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
                    or key == "LALT" or key == "RALT" then
@@ -1170,9 +1171,25 @@ function Options:Initialize()
     end)
     optionsFrame.globalNavCheckbox = globalNavCheckbox
 
+    local rareTrackCheckbox = CreateCheckbox(sec2, "RareTrack", "Auto-track Rares",
+        "When enabled, active rare mobs are always displayed as pins on the world map without needing to search.\n\nThis can also be toggled from the filter dropdown on the zone search bar.")
+    rareTrackCheckbox:SetPoint("TOPLEFT", mapSpeedBox, "BOTTOMLEFT", 0, -4)
+    rareTrackCheckbox:SetChecked(EasyFind.db.alwaysShowRares or false)
+    rareTrackCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.alwaysShowRares = self:GetChecked()
+        if ns.MapSearch then
+            ns.MapSearch:UpdateRareTracking()
+            if ns.MapSearch.UpdateAutoTrackLabel then
+                ns.MapSearch:UpdateAutoTrackLabel()
+            end
+        end
+    end)
+    optionsFrame.rareTrackCheckbox = rareTrackCheckbox
+
     local resizeMapBtn = CreateFrame("Button", nil, sec2, "UIPanelButtonTemplate")
     resizeMapBtn:SetSize(160, 22)
-    resizeMapBtn:SetPoint("BOTTOMLEFT", sec2, "BOTTOMLEFT", 8, 32)
+    resizeMapBtn:SetPoint("RIGHT", sec2, "RIGHT", -8, 0)
+    resizeMapBtn:SetPoint("TOP", mapEnableCheckbox, "TOP", 0, 0)
     resizeMapBtn:SetText("Resize Map Search")
     resizeMapBtn:SetScript("OnClick", function()
         if ns.Rescaler then ns.Rescaler:Enter("map") end
@@ -1197,7 +1214,7 @@ function Options:Initialize()
           tooltip = "Map search results appear above the bar instead of below.\nApplies to both local and global map search bars.",
           callback = function() if ns.MapSearch and ns.MapSearch.RefreshResultsAnchor then ns.MapSearch:RefreshResultsAnchor() end end },
     }, nil, FLYOUT_W)
-    searchBarGroup:SetPoint("TOPLEFT", mapSpeedBox, "BOTTOMLEFT", 0, -8)
+    searchBarGroup:SetPoint("TOPLEFT", rareTrackCheckbox, "BOTTOMLEFT", 0, -2)
     searchBarGroup:SetPoint("RIGHT", sec2, "RIGHT", -8, 0)
     searchBarGroup.label:SetWidth(85)
     searchBarGroup.label:SetJustifyH("LEFT")
@@ -1326,7 +1343,7 @@ function Options:Initialize()
     end)
 
     mapControls = {
-        resizeMapBtn, resetMapBtn, resetMapPosBtn, localNavCheckbox, globalNavCheckbox,
+        resizeMapBtn, resetMapBtn, resetMapPosBtn, localNavCheckbox, globalNavCheckbox, rareTrackCheckbox,
         searchBarGroup, mapPinGroup, minimapGroup, automationGroup
     }
     UpdateMapToggleVisual()
@@ -1706,6 +1723,7 @@ function Options:DoResetAll()
     EasyFind.db.localSearchFilters = { instances = true, travel = true, services = true }
     EasyFind.db.uiSearchFilters = { ui = true, mounts = false, toys = false, pets = false, map = false }
     EasyFind.db.uiMapSearchLocal = true
+    EasyFind.db.alwaysShowRares = false
     EasyFind.db.optionsPosition = nil
 
     if optionsFrame then
@@ -1763,6 +1781,7 @@ function Options:DoResetAll()
     optionsFrame.loginMessageCheckbox:SetChecked(true)
     optionsFrame.uiResultsAboveCheckbox:SetChecked(false)
     optionsFrame.minimapBtnCheckbox:SetChecked(true)
+    if optionsFrame.rareTrackCheckbox then optionsFrame.rareTrackCheckbox:SetChecked(false) end
     if optionsFrame.searchBarGroup then optionsFrame.searchBarGroup:UpdateVisuals() end
     if optionsFrame.mapPinGroup then optionsFrame.mapPinGroup:UpdateVisuals() end
     if optionsFrame.minimapGroup then optionsFrame.minimapGroup:UpdateVisuals() end
@@ -1880,9 +1899,11 @@ function Options:DoResetMap()
     EasyFind.db.pinsCollapsed = false
     EasyFind.db.globalSearchFilters = { zones = true, dungeons = true, raids = true, delves = true }
     EasyFind.db.localSearchFilters = { instances = true, travel = true, services = true }
+    EasyFind.db.alwaysShowRares = false
 
     optionsFrame.localNavCheckbox:SetChecked(false)
     optionsFrame.globalNavCheckbox:SetChecked(false)
+    if optionsFrame.rareTrackCheckbox then optionsFrame.rareTrackCheckbox:SetChecked(false) end
     if ns.MapSearch and ns.MapSearch.UpdateMapModeBtns then ns.MapSearch:UpdateMapModeBtns() end
     if optionsFrame.searchBarGroup then optionsFrame.searchBarGroup:UpdateVisuals() end
     if optionsFrame.mapPinGroup then optionsFrame.mapPinGroup:UpdateVisuals() end
