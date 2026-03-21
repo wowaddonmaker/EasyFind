@@ -4,6 +4,24 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [1.4.0] - 2026-03-20
+
+### Added
+- **Rare Mob Tracking**: Active rare mobs in your zone appear as searchable pins on the world map. Search "rare" in the zone bar to see all nearby rares, or click individual rare names to track them with the minimap supertrack arrow
+- **Auto-track Rares**: Toggle in the zone search filter dropdown or the Map options tab. When enabled, all active rares are automatically pinned on the map without searching. Pins persist at last known position when rares leave detection range and clear when killed
+- **Great Vault (Rewards)**: Great vault rewards panel now searchable in UI search
+- **"NEW" Feature Labels**: New or experimental features display a glowing label with a tooltip encouraging feedback
+
+### Fixed
+- **Adventure Guide Fast Mode**: Direct open now works for all Adventure Guide tabs (Journeys, Dungeons, Raids, etc.)
+- **Combat Lockdown**: Fixed errors that could occur when reloading the UI during combat or by taking portals
+- **Nav Waypoint Tracking**: Minimap guide circle now correctly follows portal redirects when the portal is in a neighboring zone
+
+### Changed
+- **StaticLocations Cleanup**: Standardized bank and guild vault naming across all zones
+
+---
+
 ## [1.3.1] - 2026-03-17
 
 ### Added

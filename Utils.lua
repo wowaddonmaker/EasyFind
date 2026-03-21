@@ -126,8 +126,8 @@ ns.SEARCHBAR_FONT = "EasyFindSearchFont"
 -- Custom 3-part search bar border with chamfered corners.
 -- Fill (BACKGROUND) and border (ARTWORK) use identical shapes from custom TGA textures.
 -- Fill is tinted black with tunable opacity; border uses Blizzard's action bar gray.
-local SEARCH_TEX_FILL = "Interface\\AddOns\\EasyFind\\Textures\\SearchBarFill"
-local SEARCH_TEX_BORDER = "Interface\\AddOns\\EasyFind\\Textures\\SearchBarBorder"
+local SEARCH_TEX_FILL = "Interface\\AddOns\\EasyFind-rares\\Textures\\SearchBarFill"
+local SEARCH_TEX_BORDER = "Interface\\AddOns\\EasyFind-rares\\Textures\\SearchBarBorder"
 local SEARCH_CAP_W = 8
 local SEARCH_TEX_W = 64
 local TC_LEFT  = {0, SEARCH_CAP_W / SEARCH_TEX_W, 0, 1}

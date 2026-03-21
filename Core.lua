@@ -95,7 +95,9 @@ local DB_DEFAULTS = {
         instances = true,
         travel = true,
         services = true,
+        rares = true,
     },
+    alwaysShowRares = false,  -- Persistent rare tracking: show active rares on map without searching
     uiSearchFilters = {        -- UI search category filters
         ui = true,
         mounts = false,

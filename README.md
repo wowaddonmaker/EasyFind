@@ -58,6 +58,7 @@ Locate places and NPCs across Azeroth:
 *   Stable masters, void storage, and guild services
 *   The Great Vault, Creation Catalyst, and Trading Post
 *   Chromie (Timewalking Campaigns)
+*   Rare mobs (with optional auto-tracking that always shows active rares on the map)
 
 Search the zone of the map you're currently focused on with the local bar (left side), or search across all of Azeroth with the global bar (right side). Map search results also appear in the UI search bar when the Map Search filter is enabled.
 

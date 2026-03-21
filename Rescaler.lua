@@ -6,6 +6,7 @@ ns.Rescaler = Rescaler
 local Utils = ns.Utils
 local mmax, mmin, mfloor = Utils.mmax, Utils.mmin, Utils.mfloor
 local tinsert = Utils.tinsert
+local SafeCallMethod = Utils.SafeCallMethod
 
 local GOLD_COLOR = ns.GOLD_COLOR
 local DARK_PANEL_BG = ns.DARK_PANEL_BG
@@ -748,7 +749,7 @@ function Rescaler:Enter(mode)
     -- Dim backdrop
     local bg = GetOrCreateBackdrop()
     bg:Show()
-    bg:EnableKeyboard(true)
+    SafeCallMethod(bg, "EnableKeyboard", true)
 
     -- Preview results (fake rows so user sees the results area)
     local resultsAbove = (mode == "ui" and EasyFind.db.uiResultsAbove)
@@ -903,7 +904,7 @@ function Rescaler:Exit(reopenOptions)
         donePanel = nil
     end
     if backdrop then
-        backdrop:EnableKeyboard(false)
+        SafeCallMethod(backdrop, "EnableKeyboard", false)
         backdrop:Hide()
     end
 
