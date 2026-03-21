@@ -1147,11 +1147,26 @@ local CATEGORY_ICONS = {
     raid    = { file = 1121272, coords = { 0.2056, 0.2397, 0.4986, 0.5327 } },
     delve   = { file = 1121272, coords = { 0.0104, 0.0541, 0.3990, 0.4427 } },
     bank = 136453,
+    guildbank = 136453,
+    personalbank = 136453,
     auctionhouse = 136452,
     innkeeper = 136458,
     trainer = 136463,
     proftrainer = 136463,
     classtrainer = { file = 131016, coords = { 0.000, 0.250, 0.375, 0.500 } },
+    classtrainer_deathknight = "atlas:classicon-deathknight",
+    classtrainer_demonhunter = "atlas:classicon-demonhunter",
+    classtrainer_druid       = "atlas:classicon-druid",
+    classtrainer_evoker      = "atlas:classicon-evoker",
+    classtrainer_hunter      = "atlas:classicon-hunter",
+    classtrainer_mage        = "atlas:classicon-mage",
+    classtrainer_monk        = "atlas:classicon-monk",
+    classtrainer_paladin     = "atlas:classicon-paladin",
+    classtrainer_priest      = "atlas:classicon-priest",
+    classtrainer_rogue       = "atlas:classicon-rogue",
+    classtrainer_shaman      = "atlas:classicon-shaman",
+    classtrainer_warlock     = "atlas:classicon-warlock",
+    classtrainer_warrior     = "atlas:classicon-warrior",
     prof_alchemy = "Interface\\Icons\\Trade_Alchemy",
     prof_blacksmithing = "Interface\\Icons\\Trade_BlackSmithing",
     prof_cooking = "Interface\\Icons\\INV_Misc_Food_15",
@@ -1403,7 +1418,7 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
             -- Preserve and restore it so the user can keep toggling.
             local savedKb = navFrame and navFrame:IsKeyboardEnabled()
             row:Click()
-            if savedKb and navFrame then navFrame:EnableKeyboard(true) end
+            if savedKb and navFrame then Utils.SafeCallMethod(navFrame, "EnableKeyboard", true) end
         end
     end
 
@@ -1829,6 +1844,9 @@ function MapSearch:CreateSearchFrame()
             EasyFind.db.alwaysShowRares = not EasyFind.db.alwaysShowRares
             UpdateAutoTrackColor()
             MapSearch:UpdateRareTracking()
+            if ns.optionsFrame and ns.optionsFrame.rareTrackCheckbox then
+                ns.optionsFrame.rareTrackCheckbox:SetChecked(EasyFind.db.alwaysShowRares)
+            end
         end)
         trackBtn:SetScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -1844,6 +1862,47 @@ function MapSearch:CreateSearchFrame()
         trackBtn:SetScript("OnLeave", GameTooltip_Hide)
 
         localFilterDropdown:HookScript("OnShow", UpdateAutoTrackColor)
+
+        -- "Experimental" flashing tag on the Rares label
+        local expTag = CreateFrame("Frame", nil, localFilterDropdown)
+        expTag:EnableMouse(true)
+        expTag:SetFrameStrata("TOOLTIP")
+        local expText = expTag:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        expText:SetPoint("CENTER")
+        expText:SetText("NEW")
+        expText:SetTextColor(1, 1, 1)
+        expText:SetShadowColor(0.3, 0.9, 1.0, 1)
+        expText:SetShadowOffset(1, -1)
+        local textW = expText:GetStringWidth() + 4
+        expTag:SetSize(textW, 14)
+        for _, region in pairs({raresRow:GetRegions()}) do
+            if region.GetText and region:GetText() == "Rares" then
+                expTag:SetPoint("LEFT", region, "RIGHT", 3, 0)
+                break
+            end
+        end
+        -- Pulsing glow behind text
+        local expGlow = expTag:CreateTexture(nil, "BACKGROUND")
+        expGlow:SetPoint("CENTER")
+        expGlow:SetSize(textW + 24, 24)
+        expGlow:SetAtlas("collections-newglow")
+        expGlow:SetVertexColor(0.3, 0.85, 1.0, 0.5)
+        expGlow:SetBlendMode("ADD")
+        -- Glow pulse animation (text stays at 100%, only glow pulses)
+        local glowPulse = expGlow:CreateAnimationGroup()
+        glowPulse:SetLooping("BOUNCE")
+        local flash = glowPulse:CreateAnimation("Alpha")
+        flash:SetFromAlpha(0.8)
+        flash:SetToAlpha(0.1)
+        flash:SetDuration(1.5)
+        glowPulse:Play()
+        expTag:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT", 0, 16)
+            GameTooltip:SetText("New Feature")
+            GameTooltip:AddLine("Rare mob tracking is new and still being refined. If you encounter any issues or have suggestions, please share feedback on CurseForge or GitHub.", 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        expTag:SetScript("OnLeave", GameTooltip_Hide)
     end
 
     searchFrame.filterBtn = localFilterBtn
@@ -2295,8 +2354,8 @@ function MapSearch:CreateSearchFrame()
     -- Keyboard capture frame for navigating results without editbox focus
     navFrame = CreateFrame("Frame", nil, searchFrame)
     navFrame:SetSize(1, 1)
-    navFrame:EnableKeyboard(false)
-    navFrame:SetPropagateKeyboardInput(false)
+    Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
+    Utils.SafeCallMethod(navFrame, "SetPropagateKeyboardInput", false)
 
     local function HandleNavKeyDown(key)
         if key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
@@ -2372,7 +2431,7 @@ function MapSearch:CreateSearchFrame()
                 -- Ctrl+Tab: switch between local and global search bars
                 ClearToolbarFocus()
                 selectedResultIndex = 0
-                navFrame:EnableKeyboard(false)
+                Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
                 if isGlobalSearch then
                     MapSearch:FocusLocalSearch()
                 else
@@ -2446,7 +2505,7 @@ function MapSearch:CreateSearchFrame()
             else
                 selectedResultIndex = 0
                 navBtnFocused = false
-                navFrame:EnableKeyboard(false)
+                Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
                 if MapSearch.StopKeyRepeat then MapSearch.StopKeyRepeat() end
                 MapSearch:UpdateSelectionHighlight(true)
             end
@@ -2484,14 +2543,14 @@ function MapSearch:CreateSearchFrame()
                 local controls = GetToolbarControls()
                 if #controls > 0 then
                     self:ClearFocus()
-                    navFrame:EnableKeyboard(true)
+                    Utils.SafeCallMethod(navFrame, "EnableKeyboard", true)
                     SetToolbarFocus(#controls)
                 end
             else
                 local controls = GetToolbarControls()
                 if #controls > 0 then
                     self:ClearFocus()
-                    navFrame:EnableKeyboard(true)
+                    Utils.SafeCallMethod(navFrame, "EnableKeyboard", true)
                     SetToolbarFocus(1)
                 elseif resultsFrame and resultsFrame:IsShown() and selectedResultIndex == 0 then
                     MapSearch:MoveSelection(1)
@@ -5384,7 +5443,10 @@ function MapSearch:ScanVignettes()
 end
 
 function MapSearch:UpdateRareTracking()
-    if not EasyFind.db.alwaysShowRares then return end
+    if not EasyFind.db.alwaysShowRares then
+        self:ClearHighlight()
+        return
+    end
     if not WorldMapFrame or not WorldMapFrame:IsShown() then return end
     -- Don't override active search
     local editBox = searchFrame and searchFrame.editBox
@@ -6419,7 +6481,8 @@ function MapSearch:HideResults()
     self._lastResults = nil
     if MapSearch.StopKeyRepeat then MapSearch.StopKeyRepeat() end
     if MapSearch.ClearToolbarFocus then MapSearch.ClearToolbarFocus() end
-    if navFrame then navFrame:EnableKeyboard(false) end
+    if navFrame then Utils.SafeCallMethod(navFrame, "EnableKeyboard", false) end
+    if not resultsFrame then return end
     resultsFrame:Hide()
 end
 
@@ -6514,7 +6577,7 @@ function MapSearch:UpdateSelectionHighlight(skipRefocus)
         if eb and eb:HasFocus() then
             eb:ClearFocus()
         end
-        navFrame:EnableKeyboard(true)
+        Utils.SafeCallMethod(navFrame, "EnableKeyboard", true)
         -- Keyboard preview: show pin for selected result
         local resultRow = resultButtons[selectedResultIndex]
         if resultRow and resultRow.data then
@@ -6548,7 +6611,7 @@ function MapSearch:UpdateSelectionHighlight(skipRefocus)
             end
         end
         local wasNavigating = navFrame:IsKeyboardEnabled()
-        navFrame:EnableKeyboard(false)
+        Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
         if MapSearch.StopKeyRepeat then MapSearch.StopKeyRepeat() end
         if wasNavigating and not skipRefocus and eb and not eb:HasFocus() then
             eb:SetFocus()
