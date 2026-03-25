@@ -5,7 +5,7 @@ ns.Database = Database
 
 local Utils   = ns.Utils
 local ipairs = Utils.ipairs
-local tsort, tconcat = Utils.tsort, Utils.tconcat
+local tsort, tconcat, tremove = Utils.tsort, Utils.tconcat, Utils.tremove
 local sfind, slower, ssub = Utils.sfind, Utils.slower, Utils.ssub
 local mmin, mmax, mabs = Utils.mmin, Utils.mmax, Utils.mabs
 local C_CurrencyInfo = C_CurrencyInfo
@@ -426,6 +426,22 @@ local PET_PROTO = {
 }
 local PET_MT = { __index = PET_PROTO }
 
+local OUTFIT_PROTO = {
+    keywords     = {"outfit", "transmog", "tmog", "mog", "appearance", "keymog"},
+    keywordsLower = {"outfit", "transmog", "tmog", "mog", "appearance", "keymog"},
+    category     = "Outfit",
+    path         = {},
+    steps        = {},
+}
+local OUTFIT_MT = { __index = OUTFIT_PROTO }
+
+-- Outfit click-to-equip uses a single temporary action bar slot.
+-- PreClick dynamically places the outfit on this slot, then the secure
+-- handler calls UseAction to equip it. The slot is found empty at init
+-- and only ever holds the last-clicked outfit.
+local outfitTempSlot     -- single reserved action slot (nil if none found)
+local outfitEntries = {} -- track injected entries for re-population
+
 function Database:PopulateDynamicMounts()
     if not C_MountJournal or not C_MountJournal.GetMountIDs then return end
 
@@ -537,6 +553,50 @@ function Database:PopulateDynamicPets()
         if savedNotCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, savedNotCollected) end
     end
     if C_PetJournal.SetSearchFilter then C_PetJournal.SetSearchFilter(savedString) end
+end
+
+-- Called after PLAYER_LOGIN when C_TransmogOutfitInfo is available.
+-- Scans the player's saved transmog outfits and injects them into the search database.
+function Database:PopulateDynamicOutfits()
+    if not C_TransmogOutfitInfo or not C_TransmogOutfitInfo.GetOutfitsInfo then return end
+
+    -- Remove previous outfit entries (handles mid-session outfit changes)
+    for i = #uiSearchData, 1, -1 do
+        if uiSearchData[i].category == "Outfit" then
+            tremove(uiSearchData, i)
+        end
+    end
+    wipe(outfitEntries)
+
+    -- Find a temp action slot (once). Scan from 180 down for an empty slot.
+    if not outfitTempSlot then
+        for slot = 180, 1, -1 do
+            if not HasAction(slot) then
+                outfitTempSlot = slot
+                break
+            end
+        end
+    end
+
+    local outfits = C_TransmogOutfitInfo.GetOutfitsInfo()
+    if not outfits then return end
+
+    for _, info in ipairs(outfits) do
+        if not info.isDisabled then
+            local entry = setmetatable({
+                name = info.name,
+                icon = info.icon,
+                outfitID = info.outfitID,
+                nameLower = slower(info.name),
+            }, OUTFIT_MT)
+            uiSearchData[#uiSearchData + 1] = entry
+            outfitEntries[#outfitEntries + 1] = entry
+        end
+    end
+end
+
+function Database:GetOutfitTempSlot()
+    return outfitTempSlot
 end
 
 -- TREE FLATTENER
@@ -726,7 +786,7 @@ function Database:BuildUIDatabase()
                         },
                         {
                             name = "Collections (Achievements)",
-                            keywords = {"collections", "collection", "transmog"},
+                            keywords = {"collections", "collection", "transmog", "tmog"},
                             steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Collections" }},
                             children = {
                                 {
@@ -1292,7 +1352,7 @@ function Database:BuildUIDatabase()
                                 { name = "Delves (Premade)", keywords = {"delves", "delve group", "delve lfg", "find delve group", "premade delves", "delve"}, steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Delves", text = "Select Delves from the Premade Groups list" }} },
                                 { name = "Dungeons (Premade)", keywords = {"dungeons", "dungeon group", "dungeon lfg", "find dungeon group", "premade dungeons", "m+ group", "mythic group"}, steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Dungeons", text = "Select Dungeons from the Premade Groups list" }} },
                                 { name = "Raids - The War Within (Premade)", keywords = {"raids", "raids the war within", "raid group", "raid lfg", "find raid group", "premade raids", "tww raid", "war within raid", "nerub-ar", "liberation of undermine"}, steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Raids - The War Within", text = "Select Raids - The War Within from the Premade Groups list" }} },
-                                { name = "Raids - Legacy (Premade)", keywords = {"raids", "raids legacy", "legacy raid", "old raid", "legacy raid group", "legacy lfg", "transmog raid", "mount run"}, steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Raids - Legacy", text = "Select Raids - Legacy from the Premade Groups list" }} },
+                                { name = "Raids - Legacy (Premade)", keywords = {"raids", "raids legacy", "legacy raid", "old raid", "legacy raid group", "legacy lfg", "transmog raid", "tmog raid", "mount run"}, steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Raids - Legacy", text = "Select Raids - Legacy from the Premade Groups list" }} },
                                 { name = "Custom PvE Group", keywords = {"custom", "custom pve", "custom group", "custom lfg", "pve custom"}, steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Custom", text = "Select Custom from the Premade Groups list" }} },
                             },
                         },
@@ -1374,9 +1434,18 @@ function Database:BuildUIDatabase()
                 { name = "Pet Journal", keywords = {"pets", "pet", "battle pets", "companion", "pet collection", "critter", "pet journal"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 2 }} },
                 { name = "Toy Box", keywords = {"toys", "toy", "toybox", "toy box", "fun items"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 3 }} },
                 { name = "Heirlooms", keywords = {"heirlooms", "heirloom", "leveling gear", "bind on account", "boa"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 4 }} },
-                { name = "Appearances (Transmog)", keywords = {"transmog", "transmogrification", "appearance", "appearances", "wardrobe", "cosmetic", "looks", "mog"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 5, text = "Click the Appearances tab" }} },
+                { name = "Appearances (Transmog)", keywords = {"transmog", "tmog", "transmogrification", "appearance", "appearances", "wardrobe", "cosmetic", "looks", "mog"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 5, text = "Click the Appearances tab" }} },
                 { name = "Campsites", keywords = {"campsites", "campsite", "camp", "camping", "rest area"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 6 }} },
             },
+        },
+
+        -- TRANSMOGRIFICATION
+        {
+            name = "Transmogrification",
+            keywords = {"transmogrification", "transmog", "tmog", "mog", "wardrobe", "outfit", "outfits", "appearance", "keymog"},
+            category = "Transmogrification",
+            icon = { file = 6119963, coords = { 0.0183, 0.2629, 0.0131, 0.5152 } },
+            steps = {{ loadTransmog = true }},
         },
 
         -- ADVENTURE GUIDE
@@ -1421,7 +1490,7 @@ function Database:BuildUIDatabase()
             buttonFrame = "StoreMicroButton",
             steps = {{ buttonFrame = "StoreMicroButton" }},
             children = {
-                { name = "Shop Appearances", keywords = {"transmog", "appearance"}, category = "Shop", steps = {{ waitForFrame = "StoreFrame", text = "Browse the Appearances section in the shop" }} },
+                { name = "Shop Appearances", keywords = {"transmog", "tmog", "appearance"}, category = "Shop", steps = {{ waitForFrame = "StoreFrame", text = "Browse the Appearances section in the shop" }} },
             },
         },
 
@@ -2034,7 +2103,9 @@ function Database:SearchUI(query, skipCategories)
     -- Determine candidate set: incremental (previous matches) or full database
     local skipKey = skipCategories and (
         (skipCategories["Mount"] and "M" or "") ..
-        (skipCategories["Toy"] and "T" or "")
+        (skipCategories["Toy"] and "T" or "") ..
+        (skipCategories["Pet"] and "P" or "") ..
+        (skipCategories["Outfit"] and "O" or "")
     ) or ""
 
     local searchSet

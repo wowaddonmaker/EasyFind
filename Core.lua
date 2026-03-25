@@ -103,6 +103,7 @@ local DB_DEFAULTS = {
         mounts = false,
         toys = false,
         pets = false,
+        outfits = false,
         map = false,
     },
     uiMapSearchLocal = true,   -- Map search in UI bar: true = local zone only, false = global
@@ -337,7 +338,10 @@ local function OnPlayerLogin()
                 ns.Database:PopulateDynamicToys()
                 SafeAfter(0, function()
                     ns.Database:PopulateDynamicPets()
-                    collectgarbage("collect")
+                    SafeAfter(0, function()
+                        ns.Database:PopulateDynamicOutfits()
+                        collectgarbage("collect")
+                    end)
                 end)
             end)
         end)
@@ -364,10 +368,13 @@ local function OnPlayerLogin()
     end
 end
 
+local outfitRefreshTimer
+
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("PLAYER_LOGOUT")
+eventFrame:RegisterEvent("TRANSMOG_OUTFITS_CHANGED")
 eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
     if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
         OnInitialize()
@@ -384,6 +391,14 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
             OnPlayerLogin()
         end
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
+    elseif event == "TRANSMOG_OUTFITS_CHANGED" then
+        if outfitRefreshTimer then outfitRefreshTimer:Cancel() end
+        outfitRefreshTimer = C_Timer.NewTimer(0.5, function()
+            outfitRefreshTimer = nil
+            if ns.Database and ns.Database.PopulateDynamicOutfits then
+                ns.Database:PopulateDynamicOutfits()
+            end
+        end)
     elseif event == "PLAYER_LOGOUT" then
         -- Strip runtime-only fields before SavedVariables serialization
         if EasyFindDB then
