@@ -58,7 +58,7 @@ read_globals = {
     "PVPQueueFrame",
     "AchievementFrameCategories_ExpandToCategory",
     "AchievementFrameCategories_UpdateDataProvider",
-    "CollectionsJournal_LoadUI", "CollectionsJournal_SetTab", "Transmog_LoadUI",
+ "Transmog_LoadUI",
     "EncounterJournal_LoadUI", "PanelTemplates_SetTab",
     "Menu", "ScrollBoxConstants",
 

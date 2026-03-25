@@ -435,11 +435,10 @@ local OUTFIT_PROTO = {
 }
 local OUTFIT_MT = { __index = OUTFIT_PROTO }
 
--- Outfit click-to-equip uses a single temporary action bar slot.
--- PreClick dynamically places the outfit on this slot, then the secure
--- handler calls UseAction to equip it. The slot is found empty at init
--- and only ever holds the last-clicked outfit.
-local outfitTempSlot     -- single reserved action slot (nil if none found)
+-- Outfit click-to-equip uses a temporary action bar slot.
+-- PreClick finds an empty slot, places the outfit, then the secure
+-- handler calls UseAction to equip it. PostClick clears the slot.
+-- The slot is re-discovered each click to avoid overwriting user actions.
 local outfitEntries = {} -- track injected entries for re-population
 
 function Database:PopulateDynamicMounts()
@@ -568,16 +567,6 @@ function Database:PopulateDynamicOutfits()
     end
     wipe(outfitEntries)
 
-    -- Find a temp action slot (once). Scan from 180 down for an empty slot.
-    if not outfitTempSlot then
-        for slot = 180, 1, -1 do
-            if not HasAction(slot) then
-                outfitTempSlot = slot
-                break
-            end
-        end
-    end
-
     local outfits = C_TransmogOutfitInfo.GetOutfitsInfo()
     if not outfits then return end
 
@@ -595,8 +584,17 @@ function Database:PopulateDynamicOutfits()
     end
 end
 
-function Database:GetOutfitTempSlot()
-    return outfitTempSlot
+function Database:FindEmptyActionSlot()
+    -- Scan from high to low for an empty slot.
+    -- Skip 121-168: bonus/override/vehicle/stance bars that may reject
+    -- non-class-specific actions (e.g., totem slots for shamans,
+    -- stance slots for druids/warriors).
+    for slot = 180, 169, -1 do
+        if not HasAction(slot) then return slot end
+    end
+    for slot = 120, 1, -1 do
+        if not HasAction(slot) then return slot end
+    end
 end
 
 -- TREE FLATTENER
