@@ -48,7 +48,7 @@ read_globals = {
     "CharacterFrame", "PaperDollFrame", "AchievementFrame",
     "CharacterStatsPane", "PaperDollTitlesPane", "PaperDollEquipmentManagerPane",
     "CurrencyFrame",
-    "SpellBookFrame", "PlayerSpellsFrame", "CollectionsJournal",
+    "SpellBookFrame", "PlayerSpellsFrame", "CollectionsJournal", "TransmogFrame",
     "PVEFrame", "ReputationFrame", "TokenFrame",
     "GroupFinderFrame", "LFGListFrame", "HelpFrame", "ClassTalentFrame",
     "GuildMicroButton", "StoreMicroButton", "PlayerFrame", "StoreFrame",
@@ -58,6 +58,7 @@ read_globals = {
     "PVPQueueFrame",
     "AchievementFrameCategories_ExpandToCategory",
     "AchievementFrameCategories_UpdateDataProvider",
+    "CollectionsJournal_LoadUI", "CollectionsJournal_SetTab", "Transmog_LoadUI",
     "EncounterJournal_LoadUI", "PanelTemplates_SetTab",
     "Menu", "ScrollBoxConstants",
 
@@ -66,13 +67,14 @@ read_globals = {
     "C_EncounterJournal", "C_GossipInfo", "C_MajorFactions", "C_Map",
     "C_Minimap", "C_MountJournal", "C_Navigation", "C_PetJournal",
     "C_Reputation", "C_SuperTrack", "C_TaxiMap", "C_Texture", "C_Timer",
-    "C_ToyBox", "C_VignetteInfo",
+    "C_ToyBox", "C_TransmogOutfitInfo", "C_VignetteInfo",
 
     -- UI utility functions
     "UIFrameFadeIn", "UIFrameFadeOut", "UIFrameFadeRemoveFrame",
     "AchievementFrameCategories_SelectElementData",
     "UnitPopup_ShowMenu", "BattlePetToolTip_ShowLink",
     "GetUnitSpeed", "GetItemCooldown", "EJ_GetInstanceInfo",
+    "HasAction", "PlaceAction", "PickupAction", "ClearCursor",
 
     -- Data types
     "UiMapPoint",

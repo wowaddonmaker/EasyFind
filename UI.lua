@@ -47,7 +47,8 @@ end
 -- Copy storable fields from a search entry for SavedVariables pinning.
 -- Uses explicit field access (not pairs) so metatable __index fields are included.
 local CLEAN_SIMPLE_FIELDS = {"name", "nameLower", "category", "buttonFrame", "flashLabel", "icon",
-    "mountID", "spellID", "toyItemID", "factionID", "hasRepBar", "canQueue", "isPvP", "isPvE"}
+    "mountID", "spellID", "toyItemID", "petID", "speciesID", "outfitID",
+    "factionID", "hasRepBar", "canQueue", "isPvP", "isPvE"}
 local CLEAN_TABLE_FIELDS = {"path", "steps", "keywords", "keywordsLower"}
 
 local function CleanUIForStorage(data)
@@ -158,6 +159,7 @@ local function SetRowIcon(btn, kind, value, iconSize)
     btn.icon.toyItemID = nil
     btn.icon.petID = nil
     btn.icon.spellID = nil
+    btn.icon.outfitID = nil
     if btn.iconCooldown then btn.iconCooldown:Hide() end
     if kind == "atlas" then
         btn.icon:SetAtlas(value)
@@ -1055,6 +1057,7 @@ local UI_FILTER_OPTIONS = {
     { key = "mounts", label = "Mounts",     iconTex = 132261 },  -- Ability_Mount_RidingHorse
     { key = "toys",   label = "Toys",       iconTex = 454046 },  -- Trade_Archaeology_ChestofTinyGlassAnimals
     { key = "pets",   label = "Pets",       iconTex = 132599 },  -- PetJournalPortrait (Inv_Box_PetCarrier_01)
+    { key = "outfits", label = "Outfits",  iconTex = 132649 },  -- INV_Chest_Cloth_17
 }
 
 function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
@@ -1384,7 +1387,7 @@ local cachedHierarchical    -- last full hierarchical list for re-rendering afte
 local expandedContainers = {}  -- tracks which containers have had children injected
 
 -- Reusable tables for grouping results (wiped each search to avoid per-keystroke allocations)
-local groupUI, groupMounts, groupToys, groupPets, groupMap = {}, {}, {}, {}, {}
+local groupUI, groupMounts, groupToys, groupPets, groupOutfits, groupMap = {}, {}, {}, {}, {}, {}
 local mountSectionHeader = {
     name = "Mounts", depth = 0, isPathNode = true,
     isMatch = false, isSectionHeader = true,
@@ -1395,6 +1398,10 @@ local toySectionHeader = {
 }
 local petSectionHeader = {
     name = "Pets", depth = 0, isPathNode = true,
+    isMatch = false, isSectionHeader = true,
+}
+local outfitSectionHeader = {
+    name = "Outfits", depth = 0, isPathNode = true,
     isMatch = false, isSectionHeader = true,
 }
 local mapSectionHeader = {
@@ -1816,7 +1823,29 @@ function UI:CreateResultButton(index)
     resultRow.text = text
 
     resultRow:RegisterForClicks("LeftButtonDown", "RightButtonUp")
+    -- PreClick: dynamically place outfits on the temp action slot
+    -- so the secure handler's UseAction can equip them.
+    resultRow:SetScript("PreClick", function(self, mouseButton)
+        if mouseButton ~= "LeftButton" then return end
+        local outfitID = self.data and self.data.outfitID
+        if not outfitID then return end
+        local tempSlot = ns.Database and ns.Database:GetOutfitTempSlot()
+        if not tempSlot then return end
+        if C_TransmogOutfitInfo and C_TransmogOutfitInfo.PickupOutfit then
+            C_TransmogOutfitInfo.PickupOutfit(outfitID)
+            PlaceAction(tempSlot)
+            ClearCursor()
+        end
+    end)
     resultRow:SetScript("PostClick", function(self, mouseButton, down)
+        -- Clean up temp action slot after outfit equip
+        if self.data and self.data.outfitID then
+            local tempSlot = ns.Database and ns.Database:GetOutfitTempSlot()
+            if tempSlot then
+                PickupAction(tempSlot)
+                ClearCursor()
+            end
+        end
         -- Right-click: show pin/unpin popup
         if mouseButton == "RightButton" and self.data then
             local pinData = self.data
@@ -1942,6 +1971,19 @@ function UI:CreateResultButton(index)
                         end
                     end
                 end
+            -- Outfit tooltip
+            elseif self.icon.outfitID then
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(self.data and self.data.name or "Outfit")
+                if C_TransmogOutfitInfo and C_TransmogOutfitInfo.GetActiveOutfitID then
+                    local activeID = C_TransmogOutfitInfo.GetActiveOutfitID()
+                    if activeID and activeID == self.icon.outfitID then
+                        GameTooltip:AddLine("Currently equipped", 0.3, 1, 0.3)
+                    else
+                        GameTooltip:AddLine("Click to equip", 1, 0.82, 0)
+                    end
+                end
+                GameTooltip:Show()
             end
         end
     end)
@@ -1954,7 +1996,7 @@ function UI:CreateResultButton(index)
             self.toyTooltipTicker:Cancel()
             self.toyTooltipTicker = nil
         end
-        if self.data and (self.data.mountID or self.data.toyItemID or self.data.petID) then
+        if self.data and (self.data.mountID or self.data.toyItemID or self.data.petID or self.data.outfitID) then
             GameTooltip:Hide()
         end
         -- Clear map preview if we were showing one
@@ -1993,11 +2035,12 @@ function UI:OnSearchTextChanged(text)
     local filters = EasyFind.db.uiSearchFilters
     local skipCategories
     if filters then
-        if filters.mounts == false or filters.toys == false or filters.pets == false then
+        if filters.mounts == false or filters.toys == false or filters.pets == false or filters.outfits == false then
             skipCategories = {}
             if filters.mounts == false then skipCategories["Mount"] = true end
             if filters.toys == false then skipCategories["Toy"] = true end
             if filters.pets == false then skipCategories["Pet"] = true end
+            if filters.outfits == false then skipCategories["Outfit"] = true end
         end
     end
     local results = ns.Database:SearchUI(text, skipCategories)
@@ -2007,7 +2050,7 @@ function UI:OnSearchTextChanged(text)
         local filtered = {}
         for _, r in ipairs(results) do
             local rd = r.data
-            if rd and (rd.mountID or rd.toyItemID or rd.petID or rd.mapSearchResult) then
+            if rd and (rd.mountID or rd.toyItemID or rd.petID or rd.outfitID or rd.mapSearchResult) then
                 filtered[#filtered + 1] = r
             end
         end
@@ -2037,6 +2080,7 @@ function UI:OnSearchTextChanged(text)
     wipe(groupMounts)
     wipe(groupToys)
     wipe(groupPets)
+    wipe(groupOutfits)
     wipe(groupMap)
     for _, entry in ipairs(hierarchical) do
         local d = entry.data
@@ -2046,6 +2090,8 @@ function UI:OnSearchTextChanged(text)
             groupToys[#groupToys + 1] = entry
         elseif d and d.petID then
             groupPets[#groupPets + 1] = entry
+        elseif d and d.outfitID then
+            groupOutfits[#groupOutfits + 1] = entry
         else
             groupUI[#groupUI + 1] = entry
         end
@@ -2081,6 +2127,13 @@ function UI:OnSearchTextChanged(text)
     if #groupPets > 0 then
         hierarchical[#hierarchical + 1] = petSectionHeader
         for _, e in ipairs(groupPets) do
+            e.depth = 1
+            hierarchical[#hierarchical + 1] = e
+        end
+    end
+    if #groupOutfits > 0 then
+        hierarchical[#hierarchical + 1] = outfitSectionHeader
+        for _, e in ipairs(groupOutfits) do
             e.depth = 1
             hierarchical[#hierarchical + 1] = e
         end
@@ -2349,20 +2402,33 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             resultRow.selectionHighlight:SetVertexColor(unpack(theme.selectionColor))
 
             resultRow.data = data
-            -- Set secure action attributes for toys and mounts
+            -- Set secure action attributes for toys, mounts, and outfits
             if not InCombatLockdown() then
                 if data and data.toyItemID then
                     resultRow:SetAttribute("type", "toy")
                     resultRow:SetAttribute("toy", data.toyItemID)
                     resultRow:SetAttribute("macrotext", nil)
+                    resultRow:SetAttribute("action", nil)
                 elseif data and data.mountID then
                     resultRow:SetAttribute("type", "macro")
                     resultRow:SetAttribute("macrotext", "/cancelform [form]")
                     resultRow:SetAttribute("toy", nil)
+                    resultRow:SetAttribute("action", nil)
+                elseif data and data.outfitID then
+                    local tempSlot = ns.Database and ns.Database:GetOutfitTempSlot()
+                    if tempSlot then
+                        resultRow:SetAttribute("type", "action")
+                        resultRow:SetAttribute("action", tempSlot)
+                    else
+                        resultRow:SetAttribute("type", nil)
+                    end
+                    resultRow:SetAttribute("toy", nil)
+                    resultRow:SetAttribute("macrotext", nil)
                 else
                     resultRow:SetAttribute("type", nil)
                     resultRow:SetAttribute("toy", nil)
                     resultRow:SetAttribute("macrotext", nil)
+                    resultRow:SetAttribute("action", nil)
                 end
             end
             resultRow.isPathNode = entry.isPathNode
@@ -2677,7 +2743,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 iconSet = true
 
             -- Mount/Toy/Pet leaves: icon goes to right side (same layout as currency icons)
-            elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID) then
+            elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.outfitID) then
                 local iconFileID = data.icon
                 local rightOffset = -5
 
@@ -2693,9 +2759,18 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     resultRow.icon.toyItemID = data.toyItemID
                     resultRow.icon.petID = data.petID
                     resultRow.icon.spellID = data.spellID
+                    resultRow.icon.outfitID = data.outfitID
                     -- Red tint on mount icons when in combat (can't mount)
                     if data.mountID and InCombatLockdown() then
                         resultRow.icon:SetVertexColor(1, 0.3, 0.3, 1)
+                    -- Green tint on currently equipped outfit
+                    elseif data.outfitID and C_TransmogOutfitInfo and C_TransmogOutfitInfo.GetActiveOutfitID then
+                        local activeID = C_TransmogOutfitInfo.GetActiveOutfitID()
+                        if activeID and activeID == data.outfitID then
+                            resultRow.icon:SetVertexColor(0.3, 1, 0.3, 1)
+                        else
+                            resultRow.icon:SetVertexColor(1, 1, 1, 1)
+                        end
                     else
                         resultRow.icon:SetVertexColor(1, 1, 1, 1)
                     end
@@ -3035,6 +3110,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             if not InCombatLockdown() then
                 resultRow:SetAttribute("type", nil)
                 resultRow:SetAttribute("toy", nil)
+                resultRow:SetAttribute("action", nil)
             end
             resultRow.headerGrad:Hide()
             resultRow.headerTab:Hide()
@@ -3434,6 +3510,33 @@ function UI:SelectResult(data)
 
     if not data then return end
 
+    -- Transmogrification panel: load and show TransmogFrame
+    if data.steps and data.steps[1] and data.steps[1].loadTransmog then
+        if not TransmogFrame then
+            Transmog_LoadUI()
+        end
+        if TransmogFrame then
+            ShowUIPanel(TransmogFrame)
+        end
+        return
+    end
+
+    -- Outfit: PreClick places outfit on temp slot, SecureActionButton equips via UseAction.
+    -- Fallback opens wardrobe if no temp slot was found.
+    if data.outfitID then
+        local tempSlot = ns.Database and ns.Database:GetOutfitTempSlot()
+        if not tempSlot then
+            if not CollectionsJournal then
+                CollectionsJournal_LoadUI()
+            end
+            if CollectionsJournal then
+                ShowUIPanel(CollectionsJournal)
+                CollectionsJournal_SetTab(CollectionsJournal, 5)
+            end
+        end
+        return
+    end
+
     -- Mount: summon/dismiss (secure macro handles cancelform on click)
     if data.mountID then
         if C_MountJournal and C_MountJournal.SummonByID then
@@ -3601,6 +3704,16 @@ function UI:DirectOpen(data)
     local function executeFrom(start)
         for i = start, executeCount do
             local step = steps[i]
+
+            if step.loadTransmog then
+                if not TransmogFrame then
+                    Transmog_LoadUI()
+                end
+                if TransmogFrame then
+                    ShowUIPanel(TransmogFrame)
+                end
+                return
+            end
 
             if step.buttonFrame then
                 -- EncounterJournal: set selectedTab BEFORE opening so Blizzard's
