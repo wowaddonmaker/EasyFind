@@ -1823,28 +1823,47 @@ function UI:CreateResultButton(index)
     resultRow.text = text
 
     resultRow:RegisterForClicks("LeftButtonDown", "RightButtonUp")
-    -- PreClick: dynamically place outfits on the temp action slot
-    -- so the secure handler's UseAction can equip them.
+    -- PreClick: find an empty action slot, place the outfit on it,
+    -- so the secure handler's UseAction can equip it.
     resultRow:SetScript("PreClick", function(self, mouseButton)
         if mouseButton ~= "LeftButton" then return end
         local outfitID = self.data and self.data.outfitID
         if not outfitID then return end
-        local tempSlot = ns.Database and ns.Database:GetOutfitTempSlot()
-        if not tempSlot then return end
+        local tempSlot = ns.Database and ns.Database:FindEmptyActionSlot()
+        if not tempSlot then
+            -- No empty slot: clear action attribute so UseAction doesn't fire
+            -- on a random slot. SelectResult will handle the fallback.
+            self._outfitSlot = nil
+            if not InCombatLockdown() then
+                self:SetAttribute("type", nil)
+                self:SetAttribute("action", nil)
+            end
+            return
+        end
+        self._outfitSlot = tempSlot
+        if not InCombatLockdown() then
+            self:SetAttribute("action", tempSlot)
+        end
         if C_TransmogOutfitInfo and C_TransmogOutfitInfo.PickupOutfit then
             C_TransmogOutfitInfo.PickupOutfit(outfitID)
             PlaceAction(tempSlot)
             ClearCursor()
+            -- Verify placement succeeded (some slots reject non-class actions)
+            if not HasAction(tempSlot) then
+                self._outfitSlot = nil
+                if not InCombatLockdown() then
+                    self:SetAttribute("type", nil)
+                    self:SetAttribute("action", nil)
+                end
+            end
         end
     end)
     resultRow:SetScript("PostClick", function(self, mouseButton, down)
         -- Clean up temp action slot after outfit equip
-        if self.data and self.data.outfitID then
-            local tempSlot = ns.Database and ns.Database:GetOutfitTempSlot()
-            if tempSlot then
-                PickupAction(tempSlot)
-                ClearCursor()
-            end
+        if self._outfitSlot then
+            PickupAction(self._outfitSlot)
+            ClearCursor()
+            self._outfitSlot = nil
         end
         -- Right-click: show pin/unpin popup
         if mouseButton == "RightButton" and self.data then
@@ -2415,13 +2434,9 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     resultRow:SetAttribute("toy", nil)
                     resultRow:SetAttribute("action", nil)
                 elseif data and data.outfitID then
-                    local tempSlot = ns.Database and ns.Database:GetOutfitTempSlot()
-                    if tempSlot then
-                        resultRow:SetAttribute("type", "action")
-                        resultRow:SetAttribute("action", tempSlot)
-                    else
-                        resultRow:SetAttribute("type", nil)
-                    end
+                    -- type="action" is set here; PreClick sets the actual slot dynamically
+                    resultRow:SetAttribute("type", "action")
+                    resultRow:SetAttribute("action", 0)
                     resultRow:SetAttribute("toy", nil)
                     resultRow:SetAttribute("macrotext", nil)
                 else
@@ -3522,16 +3537,14 @@ function UI:SelectResult(data)
     end
 
     -- Outfit: PreClick places outfit on temp slot, SecureActionButton equips via UseAction.
-    -- Fallback opens wardrobe if no temp slot was found.
+    -- If no empty slot was available, open the TransmogFrame as fallback.
     if data.outfitID then
-        local tempSlot = ns.Database and ns.Database:GetOutfitTempSlot()
-        if not tempSlot then
-            if not CollectionsJournal then
-                CollectionsJournal_LoadUI()
+        if not ns.Database or not ns.Database:FindEmptyActionSlot() then
+            if not TransmogFrame then
+                Transmog_LoadUI()
             end
-            if CollectionsJournal then
-                ShowUIPanel(CollectionsJournal)
-                CollectionsJournal_SetTab(CollectionsJournal, 5)
+            if TransmogFrame then
+                ShowUIPanel(TransmogFrame)
             end
         end
         return
