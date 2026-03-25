@@ -4050,7 +4050,7 @@ end
 function UI:ToggleFocus()
     if not searchFrame then return end
     if inCombat then return end
-    if searchFrame:IsShown() and searchFrame.editBox:HasFocus() then
+    if searchFrame:IsShown() then
         self:Hide()
     else
         self:Show(false)
