@@ -64,7 +64,8 @@ local DB_DEFAULTS = {
     showTruncationMessage = true,  -- Show "more results available" message when truncated
     hardResultsCap = false,    -- Hard cap on results (no "more results" message)
     staticOpacity = false,     -- Keep opacity constant while moving
-    pinnedUIItems = {},        -- Pinned UI search results (persist across sessions)
+    pinnedUIItems = {},        -- Pinned UI search results (persist across sessions, account-wide)
+    pinnedUIItemsPerChar = {}, -- Character-specific pins (mounts, toys, pets, outfits) keyed by "Name-Realm"
     pinnedMapItems = {},       -- Pinned map search results (persist across sessions)
     pinsCollapsed = false,     -- Whether the "Pinned Paths" header is collapsed
     mapPinsCollapsed = false,  -- Whether the map search "Pinned" header is collapsed
@@ -397,6 +398,9 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
             outfitRefreshTimer = nil
             if ns.Database and ns.Database.PopulateDynamicOutfits then
                 ns.Database:PopulateDynamicOutfits()
+            end
+            if ns.UI and ns.UI.SyncOutfitPins then
+                ns.UI:SyncOutfitPins()
             end
         end)
     elseif event == "PLAYER_LOGOUT" then
