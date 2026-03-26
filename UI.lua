@@ -1990,12 +1990,7 @@ function UI:CreateResultButton(index)
             if self.data.outfitID and outfitCdStart > 0 then
                 if outfitCdDuration - (GetTime() - outfitCdStart) > 0 then onCooldown = true end
             end
-            if onCooldown then
-                if searchFrame and searchFrame.editBox then
-                    searchFrame.editBox:SetFocus()
-                end
-                return
-            end
+            if onCooldown then return end
         end
 
         -- Clean up temp action slot after outfit equip.
