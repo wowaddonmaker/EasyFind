@@ -1990,7 +1990,14 @@ function UI:CreateResultButton(index)
             if self.data.outfitID and outfitCdStart > 0 then
                 if outfitCdDuration - (GetTime() - outfitCdStart) > 0 then onCooldown = true end
             end
-            if onCooldown then return end
+            if onCooldown then
+                -- Mouse click: refocus editbox so OnEditFocusLost doesn't hide results.
+                -- Keyboard (via override binding): navFrame has keyboard, don't steal focus.
+                if searchFrame and searchFrame.editBox and not navFrame:IsKeyboardEnabled() then
+                    searchFrame.editBox:SetFocus()
+                end
+                return
+            end
         end
 
         -- Clean up temp action slot after outfit equip.
