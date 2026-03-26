@@ -1011,6 +1011,16 @@ function UI:CreateSearchFrame()
     end
 
     navFrame:SetScript("OnKeyDown", function(self, key)
+        -- Outfits/toys: let Enter propagate to the override binding
+        -- so the secure action handler fires (same as mouse click).
+        if key == "ENTER" and selectedIndex > 0 and not InCombatLockdown() then
+            local selRow = resultButtons[selectedIndex]
+            local rd = selRow and selRow.data
+            if rd and (rd.outfitID or rd.toyItemID) then
+                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
+                return
+            end
+        end
         HandleNavKeyDown(key)
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
     end)
@@ -3616,6 +3626,21 @@ function UI:UpdateSelectionHighlight(skipRefocus)
             searchFrame.editBox:SetFocus()
         end
     end
+
+    -- Bind Enter to the selected result button when it's an outfit or toy,
+    -- so the secure action handler fires on keypress (same as mouse click).
+    if not InCombatLockdown() then
+        local selRow = selectedIndex > 0 and resultButtons[selectedIndex]
+        local rd = selRow and selRow.data
+        if rd and (rd.outfitID or rd.toyItemID) then
+            local btnName = selRow:GetName()
+            if btnName then
+                SetOverrideBindingClick(navFrame, true, "ENTER", btnName, "LeftButton")
+            end
+        else
+            ClearOverrideBindings(navFrame)
+        end
+    end
 end
 
 function UI:ActivateSelected()
@@ -3693,19 +3718,8 @@ function UI:SelectResult(data)
         return
     end
 
-    -- Outfit: PreClick places outfit on temp slot, SecureActionButton equips via UseAction.
-    -- If no empty slot was available, open the TransmogFrame as fallback.
-    if data.outfitID then
-        if not ns.Database or not ns.Database:FindEmptyActionSlot() then
-            if not TransmogFrame then
-                Transmog_LoadUI()
-            end
-            if TransmogFrame then
-                ShowUIPanel(TransmogFrame)
-            end
-        end
-        return
-    end
+    -- Outfit: equip handled by SecureActionButton (mouse click or Enter binding).
+    if data.outfitID then return end
 
     -- Mount: summon/dismiss (secure macro handles cancelform on click)
     if data.mountID then
