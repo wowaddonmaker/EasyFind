@@ -36,6 +36,8 @@ local MAX_BUTTON_POOL = 50  -- Maximum buttons (scroll handles overflow beyond t
 local inCombat = false
 local selectingResult = false  -- guard: suppress OnTextChanged re-renders during SelectResult
 local deferredRepRefreshPending = false  -- deferred re-render to let IsTruncated() settle
+local outfitCdStart, outfitCdDuration = 0, 0  -- shared outfit swap cooldown
+local lastEquippedOutfitID                     -- tracks most recent equip for immediate green tint
 
 -- PIN HELPERS
 
@@ -78,10 +80,61 @@ local function CleanUIForStorage(data)
     return clean
 end
 
+-- Collection-type pins (mounts, toys, pets, outfits) are character-specific.
+-- All other pins are account-wide.
+local function IsCollectionPin(data)
+    return data and (data.mountID or data.toyItemID or data.petID or data.outfitID)
+end
+
+local charKey -- "Name-Realm", set on first use
+local function GetCharKey()
+    if not charKey then
+        local name = UnitName("player")
+        local realm = GetRealmName()
+        charKey = name and realm and (name .. "-" .. realm) or "Unknown"
+    end
+    return charKey
+end
+
+local function GetPinList(data)
+    if IsCollectionPin(data) then
+        local key = GetCharKey()
+        local perChar = EasyFind.db.pinnedUIItemsPerChar
+        if not perChar[key] then perChar[key] = {} end
+        return perChar[key]
+    end
+    return EasyFind.db.pinnedUIItems
+end
+
+local function GetAllPins()
+    local all = {}
+    for _, pin in ipairs(EasyFind.db.pinnedUIItems) do
+        all[#all + 1] = pin
+    end
+    local key = GetCharKey()
+    local charPins = EasyFind.db.pinnedUIItemsPerChar and EasyFind.db.pinnedUIItemsPerChar[key]
+    if charPins then
+        for _, pin in ipairs(charPins) do
+            all[#all + 1] = pin
+        end
+    end
+    return all
+end
+
 local function IsUIItemPinned(data)
     local key = GetUIPinKey(data)
+    -- Check both lists for collection pins (may exist in either due to migration)
     for _, pin in ipairs(EasyFind.db.pinnedUIItems) do
         if GetUIPinKey(pin) == key then return true end
+    end
+    if IsCollectionPin(data) then
+        local charKey = GetCharKey()
+        local charPins = EasyFind.db.pinnedUIItemsPerChar and EasyFind.db.pinnedUIItemsPerChar[charKey]
+        if charPins then
+            for _, pin in ipairs(charPins) do
+                if GetUIPinKey(pin) == key then return true end
+            end
+        end
     end
     return false
 end
@@ -90,11 +143,12 @@ local function PinUIItem(data)
     if IsUIItemPinned(data) then return end
     local clean = CleanUIForStorage(data)
     clean.isPinned = true
-    tinsert(EasyFind.db.pinnedUIItems, clean)
+    tinsert(GetPinList(data), clean)
 end
 
 local function UnpinUIItem(data)
     local key = GetUIPinKey(data)
+    -- Remove from whichever list contains it
     local items = EasyFind.db.pinnedUIItems
     for i = #items, 1, -1 do
         if GetUIPinKey(items[i]) == key then
@@ -102,6 +156,56 @@ local function UnpinUIItem(data)
             return
         end
     end
+    if IsCollectionPin(data) then
+        local ck = GetCharKey()
+        local charPins = EasyFind.db.pinnedUIItemsPerChar and EasyFind.db.pinnedUIItemsPerChar[ck]
+        if charPins then
+            for i = #charPins, 1, -1 do
+                if GetUIPinKey(charPins[i]) == key then
+                    tremove(charPins, i)
+                    return
+                end
+            end
+        end
+    end
+end
+
+-- Sync pinned outfit names/icons with current outfit data.
+-- Called when TRANSMOG_OUTFITS_CHANGED fires (outfits renamed/deleted).
+function UI:SyncOutfitPins()
+    if not C_TransmogOutfitInfo or not C_TransmogOutfitInfo.GetOutfitsInfo then return end
+    local outfits = C_TransmogOutfitInfo.GetOutfitsInfo()
+    if not outfits then return end
+
+    -- Build lookup: outfitID -> { name, icon }
+    local lookup = {}
+    for _, info in ipairs(outfits) do
+        lookup[info.outfitID] = info
+    end
+
+    -- Update both pin lists
+    local function syncList(pins)
+        if not pins then return end
+        for i = #pins, 1, -1 do
+            local pin = pins[i]
+            if pin.outfitID then
+                local info = lookup[pin.outfitID]
+                if info then
+                    pin.name = info.name
+                    pin.nameLower = info.name:lower()
+                    pin.icon = info.icon
+                else
+                    -- Outfit was deleted, remove pin
+                    tremove(pins, i)
+                end
+            end
+        end
+    end
+
+    syncList(EasyFind.db.pinnedUIItems)
+    local ck = GetCharKey()
+    local charPins = EasyFind.db.pinnedUIItemsPerChar and EasyFind.db.pinnedUIItemsPerChar[ck]
+    syncList(charPins)
 end
 
 -- Simple pin context popup (BOTTOMLEFT anchored at cursor so it opens above)
@@ -1829,6 +1933,10 @@ function UI:CreateResultButton(index)
         if mouseButton ~= "LeftButton" then return end
         local outfitID = self.data and self.data.outfitID
         if not outfitID then return end
+        -- Block if outfit swap is on cooldown
+        if outfitCdStart > 0 and outfitCdDuration - (GetTime() - outfitCdStart) > 0 then
+            return
+        end
         local tempSlot = ns.Database and ns.Database:FindEmptyActionSlot()
         if not tempSlot then
             -- No empty slot: clear action attribute so UseAction doesn't fire
@@ -1841,6 +1949,7 @@ function UI:CreateResultButton(index)
             return
         end
         self._outfitSlot = tempSlot
+        self._outfitID = outfitID
         if not InCombatLockdown() then
             self:SetAttribute("action", tempSlot)
         end
@@ -1851,6 +1960,7 @@ function UI:CreateResultButton(index)
             -- Verify placement succeeded (some slots reject non-class actions)
             if not HasAction(tempSlot) then
                 self._outfitSlot = nil
+                self._outfitID = nil
                 if not InCombatLockdown() then
                     self:SetAttribute("type", nil)
                     self:SetAttribute("action", nil)
@@ -1859,11 +1969,47 @@ function UI:CreateResultButton(index)
         end
     end)
     resultRow:SetScript("PostClick", function(self, mouseButton, down)
-        -- Clean up temp action slot after outfit equip
+        -- Block result selection if toy or outfit is on cooldown (keep results open).
+        -- Must run before the outfit cleanup block which sets the cooldown timestamp.
+        if self.data and mouseButton == "LeftButton" then
+            local onCooldown = false
+            if self.data.toyItemID and GetItemCooldown then
+                local cdStart, cdDur = GetItemCooldown(self.data.toyItemID)
+                if cdStart and cdDur and cdDur > 0 then onCooldown = true end
+            end
+            if self.data.outfitID and outfitCdStart > 0 then
+                if outfitCdDuration - (GetTime() - outfitCdStart) > 0 then onCooldown = true end
+            end
+            if onCooldown then
+                if searchFrame and searchFrame.editBox then
+                    searchFrame.editBox:SetFocus()
+                end
+                return
+            end
+        end
+
+        -- Clean up temp action slot after outfit equip.
         if self._outfitSlot then
-            PickupAction(self._outfitSlot)
-            ClearCursor()
+            local slot = self._outfitSlot
             self._outfitSlot = nil
+            -- Record equip immediately so green tint and cooldown
+            -- are correct when results re-render (API lags behind).
+            if self._outfitID then
+                lastEquippedOutfitID = self._outfitID
+                outfitCdStart = GetTime()
+                outfitCdDuration = 4
+                self._outfitID = nil
+            end
+            -- Delay slot cleanup one frame so UseAction fully completes
+            C_Timer.After(0, function()
+                -- Read actual cooldown duration if available
+                local start, dur = GetActionCooldown(slot)
+                if start and dur and dur > 0 then
+                    outfitCdStart, outfitCdDuration = start, dur
+                end
+                PickupAction(slot)
+                ClearCursor()
+            end)
         end
         -- Right-click: show pin/unpin popup
         if mouseButton == "RightButton" and self.data then
@@ -1994,13 +2140,13 @@ function UI:CreateResultButton(index)
             elseif self.icon.outfitID then
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText(self.data and self.data.name or "Outfit")
-                if C_TransmogOutfitInfo and C_TransmogOutfitInfo.GetActiveOutfitID then
-                    local activeID = C_TransmogOutfitInfo.GetActiveOutfitID()
-                    if activeID and activeID == self.icon.outfitID then
-                        GameTooltip:AddLine("Currently equipped", 0.3, 1, 0.3)
-                    else
-                        GameTooltip:AddLine("Click to equip", 1, 0.82, 0)
-                    end
+                local activeID = lastEquippedOutfitID
+                    or (C_TransmogOutfitInfo and C_TransmogOutfitInfo.GetActiveOutfitID
+                        and C_TransmogOutfitInfo.GetActiveOutfitID())
+                if activeID and activeID == self.icon.outfitID then
+                    GameTooltip:AddLine("Currently equipped", 0.3, 1, 0.3)
+                else
+                    GameTooltip:AddLine("Click to equip", 1, 0.82, 0)
                 end
                 GameTooltip:Show()
             end
@@ -2165,8 +2311,8 @@ function UI:OnSearchTextChanged(text)
     end
 
     -- Prepend pinned items at the top (always visible regardless of query)
-    local pins = EasyFind.db.pinnedUIItems
-    if pins and #pins > 0 then
+    local pins = GetAllPins()
+    if #pins > 0 then
         local pinnedEntries = {
             -- "Pinned Paths" collapsible header
             {
@@ -2779,8 +2925,10 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     if data.mountID and InCombatLockdown() then
                         resultRow.icon:SetVertexColor(1, 0.3, 0.3, 1)
                     -- Green tint on currently equipped outfit
-                    elseif data.outfitID and C_TransmogOutfitInfo and C_TransmogOutfitInfo.GetActiveOutfitID then
-                        local activeID = C_TransmogOutfitInfo.GetActiveOutfitID()
+                    elseif data.outfitID then
+                        local activeID = lastEquippedOutfitID
+                            or (C_TransmogOutfitInfo and C_TransmogOutfitInfo.GetActiveOutfitID
+                                and C_TransmogOutfitInfo.GetActiveOutfitID())
                         if activeID and activeID == data.outfitID then
                             resultRow.icon:SetVertexColor(0.3, 1, 0.3, 1)
                         else
@@ -2793,13 +2941,22 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     SetRowIcon(resultRow, "hidden", nil, theme.iconSize)
                 end
 
-                -- Toy cooldown sweep overlay
+                -- Cooldown sweep overlay (toys and outfits)
                 resultRow.amountText:Hide()
                 if data.toyItemID and iconFileID and GetItemCooldown then
                     local startTime, duration = GetItemCooldown(data.toyItemID)
                     if startTime and duration and duration > 0 then
                         resultRow.iconCooldown:SetAllPoints(resultRow.icon)
                         resultRow.iconCooldown:SetCooldown(startTime, duration)
+                        resultRow.iconCooldown:Show()
+                    else
+                        resultRow.iconCooldown:Hide()
+                    end
+                elseif data.outfitID and outfitCdStart > 0 then
+                    local remaining = outfitCdDuration - (GetTime() - outfitCdStart)
+                    if remaining > 0 then
+                        resultRow.iconCooldown:SetAllPoints(resultRow.icon)
+                        resultRow.iconCooldown:SetCooldown(outfitCdStart, outfitCdDuration)
                         resultRow.iconCooldown:Show()
                     else
                         resultRow.iconCooldown:Hide()
@@ -3275,8 +3432,8 @@ end
 
 function UI:ShowPinnedItems()
     if not resultsFrame then return end
-    local pins = EasyFind.db.pinnedUIItems
-    if not pins or #pins == 0 then
+    local pins = GetAllPins()
+    if #pins == 0 then
         self:HideResults()
         return
     end
@@ -3516,14 +3673,14 @@ function UI:ActivateSelected()
 end
 
 function UI:SelectResult(data)
+    if not data then return end
+
     selectingResult = true
     searchFrame.editBox:SetText("")
     searchFrame.editBox:ClearFocus()
     searchFrame.editBox.placeholder:Show()
     selectingResult = false
     self:HideResults()
-
-    if not data then return end
 
     -- Transmogrification panel: load and show TransmogFrame
     if data.steps and data.steps[1] and data.steps[1].loadTransmog then

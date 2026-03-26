@@ -30,7 +30,7 @@ read_globals = {
 
     -- Core API
     "CreateFrame", "CreateFont", "CreateVector2D",
-    "GetTime", "GetLocale", "GetCVar", "GetCursorPosition",
+    "GetTime", "GetLocale", "GetCVar", "GetCursorPosition", "GetRealmName",
     "GetAddOnMetadata", "GetAtlasInfo", "GetMinimapShape",
     "GetBindingKey", "GetCurrentBindingSet", "SaveBindings", "SetBinding",
     "GetCategoryInfo", "GetPlayerFacing",
@@ -73,8 +73,8 @@ read_globals = {
     "UIFrameFadeIn", "UIFrameFadeOut", "UIFrameFadeRemoveFrame",
     "AchievementFrameCategories_SelectElementData",
     "UnitPopup_ShowMenu", "BattlePetToolTip_ShowLink",
-    "GetUnitSpeed", "GetItemCooldown", "EJ_GetInstanceInfo",
-    "HasAction", "PlaceAction", "PickupAction", "ClearCursor",
+    "GetUnitSpeed", "GetItemCooldown", "EJ_GetInstanceInfo", "UnitName",
+    "HasAction", "PlaceAction", "PickupAction", "ClearCursor", "GetActionCooldown",
 
     -- Data types
     "UiMapPoint",
