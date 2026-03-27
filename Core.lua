@@ -105,8 +105,10 @@ local DB_DEFAULTS = {
         toys = false,
         pets = false,
         outfits = false,
+        loot = false,
         map = false,
     },
+    lootAllSpecs = false,      -- Loot search: false = current spec, true = all specs
     uiMapSearchLocal = true,   -- Map search in UI bar: true = local zone only, false = global
 }
 
@@ -341,7 +343,9 @@ local function OnPlayerLogin()
                     ns.Database:PopulateDynamicPets()
                     SafeAfter(0, function()
                         ns.Database:PopulateDynamicOutfits()
-                        collectgarbage("collect")
+                        SafeAfter(0, function()
+                            ns.Database:PopulateDynamicLoot()
+                        end)
                     end)
                 end)
             end)

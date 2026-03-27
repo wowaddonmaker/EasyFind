@@ -50,6 +50,7 @@ end
 -- Uses explicit field access (not pairs) so metatable __index fields are included.
 local CLEAN_SIMPLE_FIELDS = {"name", "nameLower", "category", "buttonFrame", "flashLabel", "icon",
     "mountID", "spellID", "toyItemID", "petID", "speciesID", "outfitID",
+    "itemID", "encounterID", "instanceID", "lootSlotName", "lootSourceName", "lootInstanceName", "lootSourceType",
     "factionID", "hasRepBar", "canQueue", "isPvP", "isPvE"}
 local CLEAN_TABLE_FIELDS = {"path", "steps", "keywords", "keywordsLower"}
 
@@ -80,10 +81,11 @@ local function CleanUIForStorage(data)
     return clean
 end
 
--- Collection-type pins (mounts, toys, pets, outfits) are character-specific.
+-- Collection-type pins (mounts, toys, pets, outfits, loot) are character-specific.
 -- All other pins are account-wide.
 local function IsCollectionPin(data)
-    return data and (data.mountID or data.toyItemID or data.petID or data.outfitID)
+    return data and (data.mountID or data.toyItemID or data.petID or data.outfitID
+        or (data.itemID and data.category == "Loot"))
 end
 
 local charKey -- "Name-Realm", set on first use
@@ -264,6 +266,7 @@ local function SetRowIcon(btn, kind, value, iconSize)
     btn.icon.petID = nil
     btn.icon.spellID = nil
     btn.icon.outfitID = nil
+    btn.icon.lootItemID = nil
     if btn.iconCooldown then btn.iconCooldown:Hide() end
     if kind == "atlas" then
         btn.icon:SetAtlas(value)
@@ -1173,6 +1176,7 @@ local UI_FILTER_OPTIONS = {
     { key = "toys",   label = "Toys",       iconTex = 454046 },  -- Trade_Archaeology_ChestofTinyGlassAnimals
     { key = "pets",   label = "Pets",       iconTex = 132599 },  -- PetJournalPortrait (Inv_Box_PetCarrier_01)
     { key = "outfits", label = "Outfits",  iconTex = 132649 },  -- INV_Chest_Cloth_17
+    { key = "loot",    label = "Loot",     iconTex = 132281 },  -- INV_Sword_04
 }
 
 function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
@@ -1502,7 +1506,7 @@ local cachedHierarchical    -- last full hierarchical list for re-rendering afte
 local expandedContainers = {}  -- tracks which containers have had children injected
 
 -- Reusable tables for grouping results (wiped each search to avoid per-keystroke allocations)
-local groupUI, groupMounts, groupToys, groupPets, groupOutfits, groupMap = {}, {}, {}, {}, {}, {}
+local groupUI, groupMounts, groupToys, groupPets, groupOutfits, groupLoot, groupMap = {}, {}, {}, {}, {}, {}, {}
 local mountSectionHeader = {
     name = "Mounts", depth = 0, isPathNode = true,
     isMatch = false, isSectionHeader = true,
@@ -1517,6 +1521,10 @@ local petSectionHeader = {
 }
 local outfitSectionHeader = {
     name = "Outfits", depth = 0, isPathNode = true,
+    isMatch = false, isSectionHeader = true,
+}
+local lootSectionHeader = {
+    name = "Loot", depth = 0, isPathNode = true,
     isMatch = false, isSectionHeader = true,
 }
 local mapSectionHeader = {
@@ -2162,6 +2170,16 @@ function UI:CreateResultButton(index)
                     GameTooltip:AddLine("Click to equip", 1, 0.82, 0)
                 end
                 GameTooltip:Show()
+            -- Loot item tooltip
+            elseif self.icon.lootItemID then
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                local itemLink = self.data and self.data.lootItemLink
+                if itemLink then
+                    GameTooltip:SetHyperlink(itemLink)
+                else
+                    GameTooltip:SetItemByID(self.icon.lootItemID)
+                end
+                GameTooltip:Show()
             end
         end
     end)
@@ -2174,7 +2192,8 @@ function UI:CreateResultButton(index)
             self.toyTooltipTicker:Cancel()
             self.toyTooltipTicker = nil
         end
-        if self.data and (self.data.mountID or self.data.toyItemID or self.data.petID or self.data.outfitID) then
+        if self.data and (self.data.mountID or self.data.toyItemID or self.data.petID or self.data.outfitID
+            or (self.data.itemID and self.data.category == "Loot")) then
             GameTooltip:Hide()
         end
         -- Clear map preview if we were showing one
@@ -2213,12 +2232,13 @@ function UI:OnSearchTextChanged(text)
     local filters = EasyFind.db.uiSearchFilters
     local skipCategories
     if filters then
-        if filters.mounts == false or filters.toys == false or filters.pets == false or filters.outfits == false then
+        if filters.mounts == false or filters.toys == false or filters.pets == false or filters.outfits == false or filters.loot == false then
             skipCategories = {}
             if filters.mounts == false then skipCategories["Mount"] = true end
             if filters.toys == false then skipCategories["Toy"] = true end
             if filters.pets == false then skipCategories["Pet"] = true end
             if filters.outfits == false then skipCategories["Outfit"] = true end
+            if filters.loot == false then skipCategories["Loot"] = true end
         end
     end
     local results = ns.Database:SearchUI(text, skipCategories)
@@ -2228,7 +2248,7 @@ function UI:OnSearchTextChanged(text)
         local filtered = {}
         for _, r in ipairs(results) do
             local rd = r.data
-            if rd and (rd.mountID or rd.toyItemID or rd.petID or rd.outfitID or rd.mapSearchResult) then
+            if rd and (rd.mountID or rd.toyItemID or rd.petID or rd.outfitID or (rd.itemID and rd.category == "Loot") or rd.mapSearchResult) then
                 filtered[#filtered + 1] = r
             end
         end
@@ -2259,6 +2279,7 @@ function UI:OnSearchTextChanged(text)
     wipe(groupToys)
     wipe(groupPets)
     wipe(groupOutfits)
+    wipe(groupLoot)
     wipe(groupMap)
     for _, entry in ipairs(hierarchical) do
         local d = entry.data
@@ -2270,6 +2291,8 @@ function UI:OnSearchTextChanged(text)
             groupPets[#groupPets + 1] = entry
         elseif d and d.outfitID then
             groupOutfits[#groupOutfits + 1] = entry
+        elseif d and d.itemID and d.category == "Loot" then
+            groupLoot[#groupLoot + 1] = entry
         else
             groupUI[#groupUI + 1] = entry
         end
@@ -2314,6 +2337,49 @@ function UI:OnSearchTextChanged(text)
         for _, e in ipairs(groupOutfits) do
             e.depth = 1
             hierarchical[#hierarchical + 1] = e
+        end
+    end
+    if #groupLoot > 0 then
+        hierarchical[#hierarchical + 1] = lootSectionHeader
+        -- Group loot results: slot -> instance -> items
+        local slotGroups = {}
+        local slotOrder = {}
+        for _, e in ipairs(groupLoot) do
+            local slot = (e.data and e.data.lootSlotName) or "Other"
+            if not slotGroups[slot] then
+                slotGroups[slot] = {}
+                slotOrder[#slotOrder + 1] = slot
+            end
+            slotGroups[slot][#slotGroups[slot] + 1] = e
+        end
+        for _, slot in ipairs(slotOrder) do
+            -- Slot sub-header
+            hierarchical[#hierarchical + 1] = {
+                name = slot, depth = 1, isPathNode = true,
+                isMatch = false, isSectionHeader = false,
+            }
+            -- Group by instance within slot
+            local instGroups = {}
+            local instOrder = {}
+            for _, e in ipairs(slotGroups[slot]) do
+                local inst = (e.data and e.data.lootInstanceName) or "Unknown"
+                if not instGroups[inst] then
+                    instGroups[inst] = {}
+                    instOrder[#instOrder + 1] = inst
+                end
+                instGroups[inst][#instGroups[inst] + 1] = e
+            end
+            for _, inst in ipairs(instOrder) do
+                -- Instance sub-header
+                hierarchical[#hierarchical + 1] = {
+                    name = inst, depth = 2, isPathNode = true,
+                    isMatch = false, isSectionHeader = false,
+                }
+                for _, e in ipairs(instGroups[inst]) do
+                    e.depth = 3
+                    hierarchical[#hierarchical + 1] = e
+                end
+            end
         end
     end
     if #groupMap > 0 then
@@ -2987,6 +3053,34 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     resultRow.iconCooldown:Hide()
                 end
 
+                local indentPixels = depth * indPx + 4
+                resultRow.text:ClearAllPoints()
+                resultRow.text:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
+                resultRow.text:SetPoint("RIGHT", resultRow.icon, "LEFT", -4, 0)
+                iconSet = true
+
+            -- Loot items: icon on right with source name inline
+            elseif not iconSet and data and data.itemID and data.category == "Loot" then
+                local iconFileID = data.icon
+                if iconFileID then
+                    resultRow.icon:SetTexture(nil)
+                    resultRow.icon:SetTexCoord(0, 1, 0, 1)
+                    resultRow.icon:SetTexture(iconFileID)
+                    resultRow.icon:SetSize(theme.iconSize or 16, theme.iconSize or 16)
+                    resultRow.icon:ClearAllPoints()
+                    resultRow.icon:SetPoint("RIGHT", resultRow, "RIGHT", -5, 0)
+                    resultRow.icon:Show()
+                    resultRow.icon.lootItemID = data.itemID
+                    resultRow.icon:SetVertexColor(1, 1, 1, 1)
+                else
+                    SetRowIcon(resultRow, "hidden", nil, theme.iconSize)
+                end
+                resultRow.amountText:Hide()
+                resultRow.iconCooldown:Hide()
+                -- Show source info after item name
+                if data.lootSourceName then
+                    resultRow.text:SetText(data.name .. "  |cff888888" .. data.lootSourceName .. "|r")
+                end
                 local indentPixels = depth * indPx + 4
                 resultRow.text:ClearAllPoints()
                 resultRow.text:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
@@ -3726,6 +3820,25 @@ function UI:SelectResult(data)
 
     -- Outfit: equip handled by SecureActionButton (mouse click or Enter binding).
     if data.outfitID then return end
+
+    -- Loot: Shift+click opens dressing room, regular click opens EJ to boss
+    if data.itemID and data.category == "Loot" then
+        if IsShiftKeyDown() and data.lootItemLink then
+            DressUpItemLink(data.lootItemLink)
+        else
+            EncounterJournal_LoadUI()
+            if data.instanceID and EJ_SelectInstance then
+                EJ_SelectInstance(data.instanceID)
+            end
+            if data.encounterID and EJ_SelectEncounter then
+                EJ_SelectEncounter(data.encounterID)
+            end
+            if EncounterJournal then
+                ShowUIPanel(EncounterJournal)
+            end
+        end
+        return
+    end
 
     -- Mount: summon/dismiss (secure macro handles cancelform on click)
     if data.mountID then

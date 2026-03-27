@@ -1721,7 +1721,7 @@ function Options:DoResetAll()
     EasyFind.db.enableMapSearch = true
     EasyFind.db.globalSearchFilters = { zones = true, dungeons = true, raids = true, delves = true }
     EasyFind.db.localSearchFilters = { instances = true, travel = true, services = true }
-    EasyFind.db.uiSearchFilters = { ui = true, mounts = false, toys = false, pets = false, outfits = false, map = false }
+    EasyFind.db.uiSearchFilters = { ui = true, mounts = false, toys = false, pets = false, outfits = false, loot = false, map = false }
     EasyFind.db.uiMapSearchLocal = true
     EasyFind.db.alwaysShowRares = false
     EasyFind.db.optionsPosition = nil
@@ -1843,7 +1843,7 @@ function Options:DoResetUI()
     EasyFind.db.uiResultsWidth = 350
     EasyFind.db.uiSearchPosition = nil
     EasyFind.db.uiResultsHeight = 280
-    EasyFind.db.uiSearchFilters = { ui = true, mounts = false, toys = false, pets = false, outfits = false, map = false }
+    EasyFind.db.uiSearchFilters = { ui = true, mounts = false, toys = false, pets = false, outfits = false, loot = false, map = false }
     EasyFind.db.uiMapSearchLocal = true
 
     optionsFrame.directOpenCheckbox:SetChecked(false)
