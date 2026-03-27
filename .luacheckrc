@@ -74,6 +74,12 @@ read_globals = {
     "AchievementFrameCategories_SelectElementData",
     "UnitPopup_ShowMenu", "BattlePetToolTip_ShowLink",
     "GetUnitSpeed", "GetItemCooldown", "EJ_GetInstanceInfo", "UnitName",
+    "GetItemInfoInstant", "GetItemStats", "GetSpecialization", "GetSpecializationInfo",
+    "UnitClass", "GetLootSpecialization", "DressUpItemLink",
+    "EJ_GetCurrentTier", "EJ_SelectTier", "EJ_GetInstanceByIndex",
+    "EJ_SelectInstance", "EJ_GetEncounterInfoByIndex", "EJ_SelectEncounter",
+    "EJ_SetDifficulty", "EJ_SetLootFilter", "EJ_SetSlotFilter",
+    "EJ_GetNumLoot", "EJ_GetLootInfoByIndex",
     "HasAction", "PlaceAction", "PickupAction", "ClearCursor", "GetActionCooldown",
 
     -- Data types

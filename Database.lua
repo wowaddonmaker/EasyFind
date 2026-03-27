@@ -435,6 +435,96 @@ local OUTFIT_PROTO = {
 }
 local OUTFIT_MT = { __index = OUTFIT_PROTO }
 
+local LOOT_PROTO = {
+    category = "Loot",
+    path     = {},
+    steps    = {},
+}
+local LOOT_MT = { __index = LOOT_PROTO }
+
+-- Map equip location strings to user-friendly search keywords
+local SLOT_KEYWORDS = {
+    INVTYPE_HEAD            = {"helm", "helmet", "head"},
+    INVTYPE_NECK            = {"neck", "necklace", "amulet"},
+    INVTYPE_SHOULDER        = {"shoulder", "shoulders", "pauldrons"},
+    INVTYPE_CHEST           = {"chest", "chestpiece"},
+    INVTYPE_ROBE            = {"chest", "robe", "chestpiece"},
+    INVTYPE_WAIST           = {"waist", "belt"},
+    INVTYPE_LEGS            = {"legs", "leggings", "pants"},
+    INVTYPE_FEET            = {"feet", "boots"},
+    INVTYPE_WRIST           = {"wrist", "bracers"},
+    INVTYPE_HAND            = {"hands", "gloves", "gauntlets"},
+    INVTYPE_FINGER          = {"ring", "finger"},
+    INVTYPE_TRINKET         = {"trinket"},
+    INVTYPE_CLOAK           = {"cloak", "back", "cape"},
+    INVTYPE_WEAPON          = {"weapon", "one hand"},
+    INVTYPE_WEAPONMAINHAND  = {"weapon", "main hand"},
+    INVTYPE_WEAPONOFFHAND   = {"weapon", "off hand", "offhand"},
+    INVTYPE_2HWEAPON        = {"weapon", "two hand", "2h"},
+    INVTYPE_SHIELD          = {"shield", "off hand"},
+    INVTYPE_RANGED          = {"ranged", "weapon"},
+    INVTYPE_RANGEDRIGHT     = {"ranged", "weapon", "wand"},
+    INVTYPE_HOLDABLE        = {"off hand", "held"},
+}
+
+-- Map item stat keys to search keywords
+local STAT_KEYWORD_MAP = {
+    ITEM_MOD_CRIT_RATING_SHORT    = {"crit", "critical strike"},
+    ITEM_MOD_HASTE_RATING_SHORT   = {"haste"},
+    ITEM_MOD_MASTERY_RATING_SHORT = {"mastery"},
+    ITEM_MOD_VERSATILITY          = {"vers", "versatility"},
+    ITEM_MOD_INTELLECT_SHORT      = {"int", "intellect"},
+    ITEM_MOD_AGILITY_SHORT        = {"agi", "agility"},
+    ITEM_MOD_STRENGTH_SHORT       = {"str", "strength"},
+}
+
+-- Slot display names for result text
+local SLOT_DISPLAY = {
+    INVTYPE_HEAD = "Head", INVTYPE_NECK = "Neck", INVTYPE_SHOULDER = "Shoulder",
+    INVTYPE_CHEST = "Chest", INVTYPE_ROBE = "Chest", INVTYPE_WAIST = "Waist",
+    INVTYPE_LEGS = "Legs", INVTYPE_FEET = "Feet", INVTYPE_WRIST = "Wrist",
+    INVTYPE_HAND = "Hands", INVTYPE_FINGER = "Ring", INVTYPE_TRINKET = "Trinket",
+    INVTYPE_CLOAK = "Cloak", INVTYPE_WEAPON = "Weapon", INVTYPE_WEAPONMAINHAND = "Main Hand",
+    INVTYPE_WEAPONOFFHAND = "Off Hand", INVTYPE_2HWEAPON = "Two-Hand",
+    INVTYPE_SHIELD = "Shield", INVTYPE_RANGED = "Ranged", INVTYPE_RANGEDRIGHT = "Ranged",
+    INVTYPE_HOLDABLE = "Off Hand",
+}
+
+-- EJ API compatibility layer (functions migrated from EJ_* to C_EncounterJournal.* in some patches)
+local EJ_GetCurrentTier     = EJ_GetCurrentTier or (C_EncounterJournal and C_EncounterJournal.GetCurrentTier)
+local EJ_SelectTier         = EJ_SelectTier or (C_EncounterJournal and C_EncounterJournal.SelectTier)
+local EJ_GetInstanceByIndex = EJ_GetInstanceByIndex or (C_EncounterJournal and C_EncounterJournal.GetInstanceByIndex)
+local EJ_SelectInstance     = EJ_SelectInstance or (C_EncounterJournal and C_EncounterJournal.SelectInstance)
+local EJ_GetEncounterInfoByIndex = EJ_GetEncounterInfoByIndex or (C_EncounterJournal and C_EncounterJournal.GetEncounterInfoByIndex)
+local EJ_SelectEncounter    = EJ_SelectEncounter or (C_EncounterJournal and C_EncounterJournal.SelectEncounter)
+local EJ_SetDifficulty      = EJ_SetDifficulty or (C_EncounterJournal and C_EncounterJournal.SetDifficulty)
+local EJ_SetLootFilter      = EJ_SetLootFilter or (C_EncounterJournal and C_EncounterJournal.SetLootFilter)
+local EJ_SetSlotFilter      = EJ_SetSlotFilter or (C_EncounterJournal and C_EncounterJournal.SetSlotFilter)
+local EJ_GetNumLoot         = EJ_GetNumLoot or (C_EncounterJournal and C_EncounterJournal.GetNumLoot)
+local EJ_GetLootInfoByIndex = EJ_GetLootInfoByIndex or (C_EncounterJournal and C_EncounterJournal.GetLootInfoByIndex)
+
+local lootEntries = {}       -- track injected entries for re-population
+local lootScanGeneration = 0 -- cancel stale scans when re-populating
+
+-- Enrich a loot entry with stat keywords from its item link.
+-- Called lazily when the entry first appears in results.
+function Database:EnrichLootStats(entry)
+    if entry._statsEnriched or not entry.lootItemLink then return end
+    local GetItemStats = GetItemStats or (C_Item and C_Item.GetItemStats)
+    if not GetItemStats then return end
+    local stats = GetItemStats(entry.lootItemLink)
+    if not stats then return end
+    for statKey, searchWords in pairs(STAT_KEYWORD_MAP) do
+        if stats[statKey] then
+            for _, word in ipairs(searchWords) do
+                entry.keywords[#entry.keywords + 1] = word
+                entry.keywordsLower[#entry.keywordsLower + 1] = word
+            end
+        end
+    end
+    entry._statsEnriched = true
+end
+
 -- Outfit click-to-equip uses a temporary action bar slot.
 -- PreClick finds an empty slot, places the outfit, then the secure
 -- handler calls UseAction to equip it. PostClick clears the slot.
@@ -595,6 +685,160 @@ function Database:FindEmptyActionSlot()
     for slot = 120, 1, -1 do
         if not HasAction(slot) then return slot end
     end
+end
+
+-- Called after PLAYER_LOGIN. Scans the Encounter Journal for current-tier loot
+-- and injects searchable entries. Staggered across frames (one instance per frame).
+function Database:PopulateDynamicLoot()
+    if not EJ_GetCurrentTier or not EJ_GetInstanceByIndex or not EJ_GetNumLoot then return end
+    if InCombatLockdown() then return end
+
+    -- Remove previous loot entries (handles spec toggle re-scan)
+    for i = #uiSearchData, 1, -1 do
+        if uiSearchData[i].category == "Loot" then
+            tremove(uiSearchData, i)
+        end
+    end
+    wipe(lootEntries)
+
+    -- Bump generation so any in-flight staggered scan aborts
+    lootScanGeneration = lootScanGeneration + 1
+    local myGen = lootScanGeneration
+
+    -- Suppress EJ UI events during scan
+    local ejFrame = _G["EncounterJournal"]
+    local savedOnEvent
+    if ejFrame then
+        savedOnEvent = ejFrame:GetScript("OnEvent")
+        ejFrame:SetScript("OnEvent", nil)
+    end
+
+    -- Save EJ state
+    local savedTier = EJ_GetCurrentTier and EJ_GetCurrentTier()
+
+    -- Set class/spec filter
+    local _, _, classID = UnitClass("player")
+    local specIndex = GetSpecialization and GetSpecialization()
+    local specID = specIndex and GetSpecializationInfo and GetSpecializationInfo(specIndex)
+    if classID and specID then
+        EJ_SetLootFilter(classID, EasyFind.db.lootAllSpecs and 0 or specID)
+    end
+    if EJ_SetSlotFilter then
+        EJ_SetSlotFilter(0) -- Enum.ItemSlotFilterType.NoFilter = 0
+    end
+
+    -- Collect all instances in the current tier
+    local instances = {}
+    local function collectInstances(isRaid)
+        local idx = 1
+        while true do
+            local instID, instName = EJ_GetInstanceByIndex(idx, isRaid)
+            if not instID then break end
+            instances[#instances + 1] = { id = instID, name = instName, isRaid = isRaid }
+            idx = idx + 1
+        end
+    end
+    collectInstances(false) -- dungeons
+    collectInstances(true)  -- raids
+
+    local seen = {} -- deduplicate by itemID
+    local SafeAfter = Utils.SafeAfter
+    local GetItemInfoInstant = GetItemInfoInstant
+
+    local function restoreState()
+        if savedTier and EJ_SelectTier then EJ_SelectTier(savedTier) end
+        if ejFrame and savedOnEvent then ejFrame:SetScript("OnEvent", savedOnEvent) end
+    end
+
+    local function processInstance(idx)
+        if myGen ~= lootScanGeneration then return end
+        if idx > #instances then
+            restoreState()
+            collectgarbage("collect")
+            return
+        end
+
+        local inst = instances[idx]
+        EJ_SelectInstance(inst.id)
+
+        -- Set a reasonable difficulty so loot tables are populated
+        if EJ_SetDifficulty then
+            if inst.isRaid then
+                EJ_SetDifficulty(14) -- Normal raid
+            else
+                EJ_SetDifficulty(23) -- Mythic dungeon
+            end
+        end
+
+        -- Iterate encounters in this instance
+        local encIdx = 1
+        while true do
+            local encName, _, encID = EJ_GetEncounterInfoByIndex(encIdx)
+            if not encName then break end
+            EJ_SelectEncounter(encID)
+
+            local numLoot = EJ_GetNumLoot and EJ_GetNumLoot() or 0
+            for li = 1, numLoot do
+                local lootInfo = EJ_GetLootInfoByIndex and EJ_GetLootInfoByIndex(li)
+                local itemID = lootInfo and lootInfo.itemID
+                if itemID and not seen[itemID] then
+                    seen[itemID] = true
+                    local itemName = lootInfo.name
+                    local _, _, _, equipLoc, instIcon = GetItemInfoInstant(itemID)
+                    local icon = lootInfo.icon or instIcon
+                    if itemName and itemName ~= "" then
+                        -- Build keywords
+                        local kw = {"loot", "drop", "gear", "equipment"}
+                        -- Slot keywords
+                        local slotKws = equipLoc and SLOT_KEYWORDS[equipLoc]
+                        if slotKws then
+                            for _, w in ipairs(slotKws) do kw[#kw + 1] = w end
+                        end
+                        -- Source keywords (boss name words, instance name words)
+                        if encName then
+                            for w in encName:lower():gmatch("%a+") do kw[#kw + 1] = w end
+                        end
+                        if inst.name then
+                            for w in inst.name:lower():gmatch("%a+") do kw[#kw + 1] = w end
+                        end
+                        -- Lower copy for search scoring
+                        local kwLower = {}
+                        for ki = 1, #kw do kwLower[ki] = kw[ki] end
+
+                        local itemLink = lootInfo.link
+                        local entry = setmetatable({
+                            name = itemName,
+                            nameLower = slower(itemName),
+                            icon = icon,
+                            itemID = itemID,
+                            encounterID = encID,
+                            instanceID = inst.id,
+                            keywords = kw,
+                            keywordsLower = kwLower,
+                            lootItemLink = itemLink,
+                            lootSlotName = equipLoc and SLOT_DISPLAY[equipLoc],
+                            lootSourceName = encName,
+                            lootInstanceName = inst.name,
+                            lootSourceType = inst.isRaid and "Raid" or "Dungeon",
+                        }, LOOT_MT)
+
+                        -- Enrich with stat keywords if item link is available
+                        if itemLink then
+                            Database:EnrichLootStats(entry)
+                        end
+
+                        uiSearchData[#uiSearchData + 1] = entry
+                        lootEntries[#lootEntries + 1] = entry
+                    end
+                end
+            end
+            encIdx = encIdx + 1
+        end
+
+        SafeAfter(0, function() processInstance(idx + 1) end)
+    end
+
+    processInstance(1)
 end
 
 -- TREE FLATTENER
@@ -2103,7 +2347,8 @@ function Database:SearchUI(query, skipCategories)
         (skipCategories["Mount"] and "M" or "") ..
         (skipCategories["Toy"] and "T" or "") ..
         (skipCategories["Pet"] and "P" or "") ..
-        (skipCategories["Outfit"] and "O" or "")
+        (skipCategories["Outfit"] and "O" or "") ..
+        (skipCategories["Loot"] and "L" or "")
     ) or ""
 
     local searchSet
