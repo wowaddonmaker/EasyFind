@@ -463,16 +463,17 @@ function UI:Initialize()
     self:UpdateWidth()
     self:UpdateFontSize()
 
-    -- Block focus during init window - prevents stealing keyboard input on login/reload.
-    -- Something (possibly the WoW client) focuses visible EditBoxes after creation;
-    -- blockFocus rejects it in OnEditFocusGained regardless of timing.
+    -- Block auto-focus on creation - WoW may focus visible EditBoxes after creation.
+    -- Block for two frames (enough for WoW's auto-focus to fire and get rejected).
     searchFrame.editBox.blockFocus = true
     searchFrame.editBox:ClearFocus()
-    C_Timer.After(1, function()
-        if searchFrame and searchFrame.editBox then
-            searchFrame.editBox.blockFocus = nil
-            searchFrame.editBox:ClearFocus()
-        end
+    C_Timer.After(0, function()
+        C_Timer.After(0, function()
+            if searchFrame and searchFrame.editBox then
+                searchFrame.editBox.blockFocus = nil
+                searchFrame.editBox:ClearFocus()
+            end
+        end)
     end)
 
     -- First-time setup overlay for new installs
@@ -2722,10 +2723,19 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             end
 
             -- Separator line between rows (skip for pin header which has its own underline)
+            -- Separator is anchored at BOTTOM of the row (line below this row).
             if not entry.isPinHeader and theme.showSeparators then
                 local sc = theme.separatorColor
                 resultRow.separator:SetColorTexture(sc[1], sc[2], sc[3], sc[4])
                 resultRow.separator:Show()
+            elseif entry.isPinned and not entry.isPinHeader then
+                local nextEntry = visible[i + 1]
+                if nextEntry and nextEntry.isPinned and not nextEntry.isPinHeader then
+                    resultRow.separator:SetColorTexture(0.4, 0.4, 0.4, 0.4)
+                    resultRow.separator:Show()
+                else
+                    resultRow.separator:Hide()
+                end
             else
                 resultRow.separator:Hide()
             end
@@ -3246,12 +3256,6 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 if data and data.path and #data.path > 0 then
                     local prefix = tconcat(data.path, " > ")
                     resultRow.text:SetText("|cff888888" .. prefix .. " >|r " .. (data.name or ""))
-                end
-                -- Gray separator between pinned items (skip after header, skip last pin)
-                local isLastPin = (i == lastPinIndex)
-                if i > 1 and not isLastPin and visible[i - 1] and not visible[i - 1].isPinHeader then
-                    resultRow.separator:SetColorTexture(0.4, 0.4, 0.4, 0.4)
-                    resultRow.separator:Show()
                 end
             end
 

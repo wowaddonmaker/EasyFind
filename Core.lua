@@ -308,7 +308,7 @@ end
 local SafeAfter = Utils.SafeAfter
 
 local function OnPlayerLogin()
-    SafeAfter(0.5, function()
+    SafeAfter(0, function()
         local function SafeInit(mod, name)
             if not mod then return end
             local ok, err = xpcall(mod.Initialize, ErrorHandler, mod)
