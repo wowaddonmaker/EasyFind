@@ -12,7 +12,7 @@ local mmin, mmax, mpi = Utils.mmin, Utils.mmax, Utils.mpi
 local pcall, xpcall, tostring = Utils.pcall, Utils.xpcall, Utils.tostring
 local ErrorHandler = Utils.ErrorHandler
 
-local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind-tmog-and-toggle-fix\\textures\\lightning-bolt"
+local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind-loot-search\\textures\\lightning-bolt"
 local GOLD_COLOR = ns.GOLD_COLOR
 local YELLOW_HIGHLIGHT = ns.YELLOW_HIGHLIGHT
 local DEFAULT_OPACITY = ns.DEFAULT_OPACITY
@@ -100,7 +100,7 @@ local INDICATOR_STYLES = {
         preRotated = false,  -- Needs mpi rotation to point down
     },
     ["EasyFind Arrow"] = {
-        texture = "Interface\\AddOns\\EasyFind-tmog-and-toggle-fix\\Images\\arrow-hq",
+        texture = "Interface\\AddOns\\EasyFind-loot-search\\Images\\arrow-hq",
         texCoord = nil,
         preRotated = true,   -- Already points down, no rotation needed
     },
@@ -479,7 +479,7 @@ local function CreateWaypointTracker()
             local layer = nearTrackFrame:CreateTexture(nil, "OVERLAY", nil, i)
             layer:SetSize(ringSize, ringSize)
             layer:SetPoint("CENTER", Minimap, "CENTER", 0, 0)
-            layer:SetTexture("Interface\\AddOns\\EasyFind-tmog-and-toggle-fix\\textures\\near-track-ring")
+            layer:SetTexture("Interface\\AddOns\\EasyFind-loot-search\\textures\\near-track-ring")
             layer:SetBlendMode("ADD")
             layer:SetVertexColor(1, 1, 0.3, 1)
             ringLayers[i] = layer
