@@ -734,10 +734,22 @@ function Database:PopulateDynamicLoot()
     -- Save EJ state
     local savedTier = EJ_GetCurrentTier and EJ_GetCurrentTier()
 
-    -- Class/spec for loot filter (applied per-encounter, not upfront)
-    local _, _, classID = UnitClass("player")
-    local specIndex = GetSpecialization and GetSpecialization()
-    local specID = specIndex and GetSpecializationInfo and GetSpecializationInfo(specIndex)
+    -- Build list of {classID, specID} pairs to scan
+    local specPairs = {}
+    local lootSpecs = EasyFind.db.lootSpecs
+    if lootSpecs and #lootSpecs > 0 then
+        for _, pair in ipairs(lootSpecs) do
+            specPairs[#specPairs + 1] = pair
+        end
+    else
+        -- Default: current spec only
+        local _, _, cid = UnitClass("player")
+        local si = GetSpecialization and GetSpecialization()
+        local sid = si and GetSpecializationInfo and GetSpecializationInfo(si)
+        if cid and sid then
+            specPairs[1] = { classID = cid, specID = sid }
+        end
+    end
 
     -- Collect all instances in the current tier
     local instances = {}
@@ -781,26 +793,25 @@ function Database:PopulateDynamicLoot()
             local encName, _, encID = EJ_GetEncounterInfoByIndex(encIdx)
             if not encName then break end
 
-            -- EJ is stateful: must set instance, encounter, difficulty,
-            -- slot filter, THEN loot filter in this exact order.
-            EJ_SelectInstance(inst.id)
-            EJ_SelectEncounter(encID)
-            if EJ_SetDifficulty then
-                EJ_SetDifficulty(inst.isRaid and 15 or 2)
-            end
-            if EJ_SetSlotFilter then
-                EJ_SetSlotFilter(Enum.ItemSlotFilterType.NoFilter)
-            end
-            if EJ_SetLootFilter and classID and specID then
-                EJ_SetLootFilter(classID, EasyFind.db.lootAllSpecs and 0 or specID)
-            end
+            -- Scan loot for each selected spec (dedup across specs via seen[])
+            for _, sp in ipairs(specPairs) do
+                EJ_SelectInstance(inst.id)
+                EJ_SelectEncounter(encID)
+                if EJ_SetDifficulty then
+                    EJ_SetDifficulty(inst.isRaid and 15 or 2)
+                end
+                if EJ_SetSlotFilter then
+                    EJ_SetSlotFilter(Enum.ItemSlotFilterType.NoFilter)
+                end
+                if EJ_SetLootFilter then
+                    EJ_SetLootFilter(sp.classID, sp.specID)
+                end
 
-            -- Iterate loot (break on nil, not GetNumLoot — more reliable)
-            local li = 1
-            while true do
-                local lootInfo = EJ_GetLootInfoByIndex(li)
-                if not lootInfo or not lootInfo.name then break end
-                local itemID = lootInfo.itemID
+                local li = 1
+                while true do
+                    local lootInfo = EJ_GetLootInfoByIndex(li)
+                    if not lootInfo or not lootInfo.name then break end
+                    local itemID = lootInfo.itemID
                 if itemID and not seen[itemID] then
                     seen[itemID] = true
                     local itemName = lootInfo.name
@@ -853,7 +864,8 @@ function Database:PopulateDynamicLoot()
                     end
                 end
                 li = li + 1
-            end
+                end
+            end -- specPairs loop
             encIdx = encIdx + 1
         end
 

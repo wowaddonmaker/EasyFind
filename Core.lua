@@ -108,7 +108,7 @@ local DB_DEFAULTS = {
         loot = false,
         map = false,
     },
-    lootAllSpecs = false,      -- Loot search: false = current spec, true = all specs
+    lootSpecs = nil,           -- Loot search: nil = current spec only, table of {classID, specID} pairs when customized
     lootSearchSlots = true,    -- Loot search: match by slot keywords (ring, helm, etc.)
     lootSearchStats = true,    -- Loot search: match by stat keywords (haste, crit, etc.)
     lootUpgradesOnly = false,  -- Loot search: only show items above equipped ilvl
