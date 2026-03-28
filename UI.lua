@@ -1236,6 +1236,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         local label = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
         label:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
         label:SetText(opt.label)
+        row.label = label
 
         if opt.iconAtlas or opt.iconTex then
             local icon = row:CreateTexture(nil, "ARTWORK")
@@ -1312,7 +1313,6 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 { dbKey = "lootSearchSlots",  label = "Search by Slot" },
                 { dbKey = "lootSearchStats",  label = "Search by Stats" },
                 { dbKey = "lootUpgradesOnly", label = "Upgrades Only" },
-                { dbKey = "lootAllSpecs",     label = "All Specs" },
             }
             local lootSubRows = {}
             for si, sub in ipairs(lootSubDefs) do
@@ -1343,8 +1343,8 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
                 subRow:SetScript("OnClick", function(self)
                     EasyFind.db[sub.dbKey] = self:GetChecked()
-                    -- Spec, slot, or stat toggle changes require loot re-scan
-                    if sub.dbKey == "lootAllSpecs" or sub.dbKey == "lootSearchSlots" or sub.dbKey == "lootSearchStats" then
+                    -- Slot or stat toggle changes require loot re-scan
+                    if sub.dbKey == "lootSearchSlots" or sub.dbKey == "lootSearchStats" then
                         if ns.Database and ns.Database.PopulateDynamicLoot then
                             ns.Database:PopulateDynamicLoot()
                         end
@@ -1355,13 +1355,390 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 end)
             end
 
+            -- Spec/class selector row (clickable label, opens flyout)
+            local specRow = CreateFrame("Button", nil, dropdown)
+            specRow:SetSize(DROPDOWN_WIDTH - 16 - SUB_INDENT, ROW_HEIGHT)
+            local specLabel = specRow:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+            specLabel:SetPoint("LEFT", 8, 0)
+            local specHL = specRow:CreateTexture(nil, "HIGHLIGHT")
+            specHL:SetAllPoints()
+            specHL:SetColorTexture(1, 1, 1, 0.1)
+            local specArrow = specRow:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+            specArrow:SetPoint("RIGHT", -4, 0)
+            specArrow:SetText(">")
+
+            -- Build class/spec data
+            local CLASS_COLORS = RAID_CLASS_COLORS
+            local allClassSpecs = {}
+            for classIdx = 1, GetNumClasses() do
+                local className, classFile, classID = GetClassInfo(classIdx)
+                if className then
+                    local specs = {}
+                    for specIdx = 1, GetNumSpecializationsForClassID(classID) do
+                        local sid, sname, _, sicon = GetSpecializationInfoForClassID(classID, specIdx)
+                        if sid then
+                            specs[#specs + 1] = { specID = sid, specName = sname, specIcon = sicon }
+                        end
+                    end
+                    if #specs > 0 then
+                        allClassSpecs[#allClassSpecs + 1] = {
+                            classID = classID, className = className,
+                            classFile = classFile, specs = specs,
+                        }
+                    end
+                end
+            end
+
+            -- Spec flyout: compact class list, hover opens spec sub-flyout
+            local FLYOUT_WIDTH = 160
+            local FLYOUT_ROW_H = 20
+            local SUBFLYOUT_WIDTH = 150
+
+            local BACKDROP_DEF = {
+                bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+                edgeFile = TOOLTIP_BORDER,
+                edgeSize = 16,
+                insets = { left = 4, right = 4, top = 4, bottom = 4 },
+            }
+
+            local specFlyout = CreateFrame("Frame", "EasyFindLootSpecFlyout", UIParent, "BackdropTemplate")
+            specFlyout:SetFrameStrata("FULLSCREEN_DIALOG")
+            specFlyout:SetFrameLevel(10000)
+            specFlyout:Hide()
+            specFlyout:EnableMouse(true)
+            specFlyout:SetBackdrop(BACKDROP_DEF)
+
+            local specSubFlyout = CreateFrame("Frame", "EasyFindLootSpecSubFlyout", UIParent, "BackdropTemplate")
+            specSubFlyout:SetFrameStrata("FULLSCREEN_DIALOG")
+            specSubFlyout:SetFrameLevel(10001)
+            specSubFlyout:Hide()
+            specSubFlyout:EnableMouse(true)
+            specSubFlyout:SetBackdrop(BACKDROP_DEF)
+
+            local specCheckRows = {} -- all {classID, specID, checkRow}
+            local activeSubClass = nil -- which class sub-flyout is showing
+
+            -- Helper: get selected spec pairs
+            local function GetSelectedSpecs()
+                local selected = {}
+                for _, scr in ipairs(specCheckRows) do
+                    if scr:GetChecked() then
+                        selected[#selected + 1] = { classID = scr._classID, specID = scr._specID }
+                    end
+                end
+                return selected
+            end
+
+            -- Helper: update spec label on the selector row
+            local function UpdateSpecLabel()
+                local lbl = row.specSelectLabel
+                if not lbl then return end
+                if row.label then row.label:SetText("Loot") end
+                local lootSpecs = EasyFind.db.lootSpecs
+                if not lootSpecs or #lootSpecs == 0 then
+                    local si = GetSpecialization and GetSpecialization()
+                    local _, sname
+                    if si then _, sname = GetSpecializationInfo(si) end
+                    local _, classFile = UnitClass("player")
+                    local cc = classFile and CLASS_COLORS[classFile]
+                    local colorStr = cc and string.format("|cff%02x%02x%02x", cc.r * 255, cc.g * 255, cc.b * 255) or ""
+                    lbl:SetText(colorStr .. (sname or "Current Spec") .. "|r")
+                elseif #lootSpecs == 1 then
+                    local sp = lootSpecs[1]
+                    local sname, classFile
+                    for _, cls in ipairs(allClassSpecs) do
+                        if cls.classID == sp.classID then
+                            classFile = cls.classFile
+                            for _, s in ipairs(cls.specs) do
+                                if s.specID == sp.specID then sname = s.specName; break end
+                            end
+                            break
+                        end
+                    end
+                    local cc = classFile and CLASS_COLORS[classFile]
+                    local colorStr = cc and string.format("|cff%02x%02x%02x", cc.r * 255, cc.g * 255, cc.b * 255) or ""
+                    lbl:SetText(colorStr .. (sname or "?") .. "|r")
+                else
+                    local totalSpecs = 0
+                    for _, cls in ipairs(allClassSpecs) do totalSpecs = totalSpecs + #cls.specs end
+                    if #lootSpecs >= totalSpecs then
+                        lbl:SetText("All Specs")
+                    elseif #lootSpecs <= 3 then
+                        local names = {}
+                        for _, sp in ipairs(lootSpecs) do
+                            for _, cls in ipairs(allClassSpecs) do
+                                if cls.classID == sp.classID then
+                                    for _, s in ipairs(cls.specs) do
+                                        if s.specID == sp.specID then names[#names + 1] = s.specName; break end
+                                    end
+                                    break
+                                end
+                            end
+                        end
+                        lbl:SetText(tconcat(names, ", "))
+                    else
+                        lbl:SetText(#lootSpecs .. " selected")
+                    end
+                end
+            end
+
+            -- Apply selection, re-scan
+            local function ApplySpecSelection()
+                local selected = GetSelectedSpecs()
+                EasyFind.db.lootSpecs = #selected > 0 and selected or nil
+                UpdateSpecLabel()
+                if ns.Database and ns.Database.PopulateDynamicLoot then
+                    ns.Database:PopulateDynamicLoot()
+                end
+                if searchEditBox:GetText() ~= "" then
+                    UI:OnSearchTextChanged(searchEditBox:GetText())
+                end
+            end
+
+            -- Sync checkboxes from saved data
+            local function SyncFlyoutState()
+                local lootSpecs = EasyFind.db.lootSpecs
+                for _, scr in ipairs(specCheckRows) do
+                    local checked = false
+                    if lootSpecs then
+                        for _, sp in ipairs(lootSpecs) do
+                            if sp.classID == scr._classID and sp.specID == scr._specID then
+                                checked = true; break
+                            end
+                        end
+                    end
+                    scr:SetChecked(checked)
+                end
+            end
+
+            -- Build spec sub-flyout rows per class (created once, shown/hidden on hover)
+            local classSubRows = {} -- classID -> { rows }
+            for _, cls in ipairs(allClassSpecs) do
+                local rows = {}
+                for _, spec in ipairs(cls.specs) do
+                    local sRow = CreateFrame("CheckButton", nil, specSubFlyout)
+                    sRow:SetSize(SUBFLYOUT_WIDTH - 16, FLYOUT_ROW_H)
+                    sRow:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+                    sRow:GetNormalTexture():SetSize(14, 14)
+                    sRow:GetNormalTexture():ClearAllPoints()
+                    sRow:GetNormalTexture():SetPoint("LEFT", 4, 0)
+                    sRow:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+                    sRow:GetCheckedTexture():SetSize(14, 14)
+                    sRow:GetCheckedTexture():ClearAllPoints()
+                    sRow:GetCheckedTexture():SetPoint("LEFT", 4, 0)
+                    local sLbl = sRow:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+                    sLbl:SetPoint("LEFT", sRow:GetNormalTexture(), "RIGHT", 4, 0)
+                    sLbl:SetText(spec.specName)
+                    local sHL = sRow:CreateTexture(nil, "HIGHLIGHT")
+                    sHL:SetAllPoints()
+                    sHL:SetColorTexture(1, 1, 1, 0.1)
+                    sRow._classID = cls.classID
+                    sRow._specID = spec.specID
+                    sRow:Hide()
+                    sRow:SetScript("OnClick", function()
+                        ApplySpecSelection()
+                    end)
+                    rows[#rows + 1] = sRow
+                    specCheckRows[#specCheckRows + 1] = sRow
+                end
+                classSubRows[cls.classID] = rows
+            end
+
+            -- Show sub-flyout for a class, anchored to the class row
+            local function ShowSubFlyout(classID, anchorRow)
+                if activeSubClass == classID and specSubFlyout:IsShown() then return end
+                activeSubClass = classID
+                SyncFlyoutState()
+                -- Hide all sub-rows, show only this class
+                for cid, rows in pairs(classSubRows) do
+                    for _, r in ipairs(rows) do r:SetShown(cid == classID) end
+                end
+                local rows = classSubRows[classID]
+                if not rows or #rows == 0 then specSubFlyout:Hide(); return end
+                local y = -6
+                for _, r in ipairs(rows) do
+                    r:ClearAllPoints()
+                    r:SetPoint("TOPLEFT", 8, y)
+                    y = y - FLYOUT_ROW_H
+                end
+                specSubFlyout:SetSize(SUBFLYOUT_WIDTH, -y + 6)
+                specSubFlyout:ClearAllPoints()
+                specSubFlyout:SetPoint("TOPLEFT", anchorRow, "TOPRIGHT", 2, 6)
+                specSubFlyout:Show()
+            end
+
+            -- Build main flyout rows: Current Spec, Toggle All, then class names
+            local flyoutRows = {}
+            local y = -6
+
+            -- "Current Spec" row
+            local curSpecBtn = CreateFrame("Button", nil, specFlyout)
+            curSpecBtn:SetSize(FLYOUT_WIDTH - 16, FLYOUT_ROW_H)
+            local csLbl = curSpecBtn:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+            csLbl:SetPoint("LEFT", 8, 0)
+            csLbl:SetText("Current Spec")
+            local csHL2 = curSpecBtn:CreateTexture(nil, "HIGHLIGHT")
+            csHL2:SetAllPoints()
+            csHL2:SetColorTexture(1, 1, 1, 0.1)
+            curSpecBtn:SetScript("OnClick", function()
+                EasyFind.db.lootSpecs = nil
+                SyncFlyoutState()
+                ApplySpecSelection()
+            end)
+            curSpecBtn:SetScript("OnEnter", function() specSubFlyout:Hide(); activeSubClass = nil end)
+            flyoutRows[#flyoutRows + 1] = curSpecBtn
+
+            -- "Toggle All" row
+            local toggleAllBtn = CreateFrame("Button", nil, specFlyout)
+            toggleAllBtn:SetSize(FLYOUT_WIDTH - 16, FLYOUT_ROW_H)
+            local taLbl = toggleAllBtn:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+            taLbl:SetPoint("LEFT", 8, 0)
+            taLbl:SetText("Toggle All")
+            local taHL2 = toggleAllBtn:CreateTexture(nil, "HIGHLIGHT")
+            taHL2:SetAllPoints()
+            taHL2:SetColorTexture(1, 1, 1, 0.1)
+            toggleAllBtn:SetScript("OnClick", function()
+                local allChecked = true
+                for _, scr in ipairs(specCheckRows) do
+                    if not scr:GetChecked() then allChecked = false; break end
+                end
+                for _, scr in ipairs(specCheckRows) do scr:SetChecked(not allChecked) end
+                ApplySpecSelection()
+            end)
+            toggleAllBtn:SetScript("OnEnter", function() specSubFlyout:Hide(); activeSubClass = nil end)
+            flyoutRows[#flyoutRows + 1] = toggleAllBtn
+
+            -- Class rows (hover to open spec sub-flyout)
+            for _, cls in ipairs(allClassSpecs) do
+                local clsBtn = CreateFrame("Button", nil, specFlyout)
+                clsBtn:SetSize(FLYOUT_WIDTH - 16, FLYOUT_ROW_H)
+                local clsLbl = clsBtn:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+                clsLbl:SetPoint("LEFT", 8, 0)
+                local cc = CLASS_COLORS[cls.classFile]
+                local colorStr = cc and string.format("|cff%02x%02x%02x", cc.r * 255, cc.g * 255, cc.b * 255) or "|cffffffff"
+                clsLbl:SetText(colorStr .. cls.className .. "|r")
+                local clsArrow = clsBtn:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+                clsArrow:SetPoint("RIGHT", -4, 0)
+                clsArrow:SetText(">")
+                local clsHL = clsBtn:CreateTexture(nil, "HIGHLIGHT")
+                clsHL:SetAllPoints()
+                clsHL:SetColorTexture(1, 1, 1, 0.1)
+                clsBtn:SetScript("OnEnter", function(self)
+                    ShowSubFlyout(cls.classID, self)
+                end)
+                flyoutRows[#flyoutRows + 1] = clsBtn
+            end
+
+            -- Layout main flyout
+            local function LayoutFlyout()
+                local fy = -6
+                for _, r in ipairs(flyoutRows) do
+                    r:ClearAllPoints()
+                    r:SetPoint("TOPLEFT", 8, fy)
+                    r:Show()
+                    fy = fy - FLYOUT_ROW_H
+                end
+                specFlyout:SetSize(FLYOUT_WIDTH, -fy + 6)
+            end
+
+            -- Spec selector row: clickable label (no checkbox), first item under Loot
+            specRow:Hide()
+            local specSelectRow = CreateFrame("Button", nil, dropdown)
+            specSelectRow:SetSize(DROPDOWN_WIDTH - 16 - SUB_INDENT, ROW_HEIGHT)
+            local specSelectLabel = specSelectRow:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+            specSelectLabel:SetPoint("LEFT", 8, 0)
+            local specSelectArrow = specSelectRow:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+            specSelectArrow:SetPoint("RIGHT", -4, 0)
+            specSelectArrow:SetText(">")
+            local specSelectHL = specSelectRow:CreateTexture(nil, "HIGHLIGHT")
+            specSelectHL:SetAllPoints()
+            specSelectHL:SetColorTexture(1, 1, 1, 0.1)
+
+            local specSep = specSelectRow:CreateTexture(nil, "ARTWORK")
+            specSep:SetHeight(1)
+            specSep:SetColorTexture(0.5, 0.5, 0.5, 0.4)
+            specSep:SetPoint("BOTTOMLEFT", specSelectRow, "BOTTOMLEFT", 0, -2)
+            specSep:SetPoint("BOTTOMRIGHT", specSelectRow, "BOTTOMRIGHT", 0, -2)
+
+            -- Hover opens flyout, click also works as fallback
+            local function OpenSpecFlyout()
+                if specFlyout:IsShown() then return end
+                SyncFlyoutState()
+                LayoutFlyout()
+                specFlyout:ClearAllPoints()
+                specFlyout:SetPoint("TOPLEFT", specSelectRow, "TOPRIGHT", 2, 0)
+                specFlyout:Show()
+            end
+            specSelectRow:SetScript("OnEnter", function() OpenSpecFlyout() end)
+            specSelectRow:SetScript("OnClick", function()
+                if specFlyout:IsShown() then
+                    specFlyout:Hide()
+                    specSubFlyout:Hide()
+                else
+                    OpenSpecFlyout()
+                end
+            end)
+
+            row.specSelectRow = specSelectRow
+            row.specSelectLabel = specSelectLabel
+
+            -- Close flyouts when dropdown hides or clicking outside
+            dropdown:HookScript("OnHide", function()
+                specSubFlyout:Hide()
+                specFlyout:Hide()
+            end)
+            -- Also close sub-flyout when leaving both the class row and sub-flyout area
+            specSubFlyout:SetScript("OnUpdate", function(self)
+                if not self:IsMouseOver() and not specFlyout:IsMouseOver() and not dropdown:IsMouseOver() then
+                    -- Brief delay to allow mouse to travel between panels
+                    if not self._leaveTimer then
+                        self._leaveTimer = C_Timer.NewTimer(0.3, function()
+                            self._leaveTimer = nil
+                            if not self:IsMouseOver() and not specFlyout:IsMouseOver() then
+                                self:Hide()
+                                activeSubClass = nil
+                            end
+                        end)
+                    end
+                else
+                    if self._leaveTimer then
+                        self._leaveTimer:Cancel()
+                        self._leaveTimer = nil
+                    end
+                end
+            end)
+            specFlyout:SetScript("OnShow", function(self)
+                self:RegisterEvent("GLOBAL_MOUSE_DOWN")
+            end)
+            specFlyout:SetScript("OnHide", function(self)
+                self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+                specSubFlyout:Hide()
+            end)
+            specFlyout:SetScript("OnEvent", function(self, event)
+                if event == "GLOBAL_MOUSE_DOWN" then
+                    if not self:IsMouseOver() and not specSubFlyout:IsMouseOver() and not dropdown:IsMouseOver() then
+                        self:Hide()
+                    end
+                end
+            end)
+
+            row.specFlyout = specFlyout
+            row.allClassSpecs = allClassSpecs
+
             row.lootSubRows = lootSubRows
             row.updateLootToggle = function()
                 local lootChecked = EasyFind.db.uiSearchFilters and EasyFind.db.uiSearchFilters.loot ~= false
                 for _, sr in ipairs(lootSubRows) do
-                    sr:SetChecked(EasyFind.db[sr.dbKey] ~= false)
+                    if sr.dbKey and sr.SetChecked then
+                        sr:SetChecked(EasyFind.db[sr.dbKey] ~= false)
+                    end
                     sr:SetShown(lootChecked)
                 end
+                if row.specSelectRow then
+                    row.specSelectRow:SetShown(lootChecked)
+                end
+                UpdateSpecLabel()
+                if not lootChecked then specFlyout:Hide() end
             end
         end
 
@@ -1420,9 +1797,21 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     end
                 end
             end
-            -- Loot sub-rows
+            -- Loot sub-rows: spec selector first, then separator, then checkboxes
             if row.lootSubRows then
                 local lootChecked = EasyFind.db.uiSearchFilters and EasyFind.db.uiSearchFilters.loot ~= false
+                -- Spec selector row (first, with separator)
+                if row.specSelectRow then
+                    if lootChecked then
+                        row.specSelectRow:ClearAllPoints()
+                        row.specSelectRow:SetPoint("TOPLEFT", 8 + SUB_INDENT, y)
+                        row.specSelectRow:Show()
+                        y = y - ROW_HEIGHT - 4 -- extra 4px for the separator line
+                    else
+                        row.specSelectRow:Hide()
+                    end
+                end
+                -- Checkbox sub-options
                 for _, sr in ipairs(row.lootSubRows) do
                     if lootChecked then
                         sr:ClearAllPoints()

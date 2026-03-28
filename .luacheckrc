@@ -76,6 +76,8 @@ read_globals = {
     "GetUnitSpeed", "GetItemCooldown", "EJ_GetInstanceInfo", "UnitName",
     "GetItemInfoInstant", "GetItemStats", "GetSpecialization", "GetSpecializationInfo",
     "UnitClass", "GetLootSpecialization", "DressUpItemLink",
+    "GetNumClasses", "GetClassInfo", "GetNumSpecializationsForClassID",
+    "GetSpecializationInfoForClassID", "RAID_CLASS_COLORS",
     "EJ_GetCurrentTier", "EJ_SelectTier", "EJ_GetInstanceByIndex",
     "EJ_SelectInstance", "EJ_GetEncounterInfoByIndex", "EJ_SelectEncounter",
     "EJ_SetDifficulty", "EJ_SetLootFilter", "EJ_SetSlotFilter",
