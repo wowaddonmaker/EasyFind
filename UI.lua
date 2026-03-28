@@ -1363,9 +1363,10 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             local specHL = specRow:CreateTexture(nil, "HIGHLIGHT")
             specHL:SetAllPoints()
             specHL:SetColorTexture(1, 1, 1, 0.1)
-            local specArrow = specRow:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+            local specArrow = specRow:CreateTexture(nil, "ARTWORK")
+            specArrow:SetSize(12, 12)
             specArrow:SetPoint("RIGHT", -4, 0)
-            specArrow:SetText(">")
+            specArrow:SetAtlas("ForwardArrowIcon")
 
             -- Build class/spec data
             local CLASS_COLORS = RAID_CLASS_COLORS
@@ -1389,31 +1390,13 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 end
             end
 
-            -- Spec flyout: compact class list, hover opens spec sub-flyout
+            -- Spec flyout: built lazily on first open (avoids frame-level issues at load time)
+            local specFlyout, specSubFlyout
+            local specCheckRows = {}
+            local activeSubClass = nil
             local FLYOUT_WIDTH = 160
             local FLYOUT_ROW_H = 20
             local SUBFLYOUT_WIDTH = 150
-
-            local BACKDROP_DEF = {
-                bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-                edgeFile = TOOLTIP_BORDER,
-                edgeSize = 16,
-                insets = { left = 4, right = 4, top = 4, bottom = 4 },
-            }
-
-            local specFlyout = CreateFrame("Frame", "EasyFindLootSpecFlyout", UIParent, "BackdropTemplate")
-            specFlyout:SetFrameStrata("FULLSCREEN_DIALOG")
-            specFlyout:SetFrameLevel(10000)
-            specFlyout:Hide()
-            specFlyout:EnableMouse(true)
-            specFlyout:SetBackdrop(BACKDROP_DEF)
-
-            local specSubFlyout = CreateFrame("Frame", "EasyFindLootSpecSubFlyout", UIParent, "BackdropTemplate")
-            specSubFlyout:SetFrameStrata("FULLSCREEN_DIALOG")
-            specSubFlyout:SetFrameLevel(10001)
-            specSubFlyout:Hide()
-            specSubFlyout:EnableMouse(true)
-            specSubFlyout:SetBackdrop(BACKDROP_DEF)
 
             local specCheckRows = {} -- all {classID, specID, checkRow}
             local activeSubClass = nil -- which class sub-flyout is showing
@@ -1556,9 +1539,11 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 local rows = classSubRows[classID]
                 if not rows or #rows == 0 then specSubFlyout:Hide(); return end
                 local y = -6
+                local subBtnLevel = specSubFlyout:GetFrameLevel() + 10
                 for _, r in ipairs(rows) do
                     r:ClearAllPoints()
-                    r:SetPoint("TOPLEFT", 8, y)
+                    r:SetPoint("TOPLEFT", specSubFlyout, "TOPLEFT", 8, y)
+                    r:SetFrameLevel(subBtnLevel)
                     y = y - FLYOUT_ROW_H
                 end
                 specSubFlyout:SetSize(SUBFLYOUT_WIDTH, -y + 6)
@@ -1617,13 +1602,20 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 local cc = CLASS_COLORS[cls.classFile]
                 local colorStr = cc and string.format("|cff%02x%02x%02x", cc.r * 255, cc.g * 255, cc.b * 255) or "|cffffffff"
                 clsLbl:SetText(colorStr .. cls.className .. "|r")
-                local clsArrow = clsBtn:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+                local clsArrow = clsBtn:CreateTexture(nil, "ARTWORK")
+                clsArrow:SetSize(12, 12)
                 clsArrow:SetPoint("RIGHT", -4, 0)
-                clsArrow:SetText(">")
+                clsArrow:SetAtlas("ForwardArrowIcon")
                 local clsHL = clsBtn:CreateTexture(nil, "HIGHLIGHT")
                 clsHL:SetAllPoints()
                 clsHL:SetColorTexture(1, 1, 1, 0.1)
+                -- Debug: red border to verify button bounds
+                local dbg = clsBtn:CreateTexture(nil, "BACKGROUND")
+                dbg:SetAllPoints()
+                dbg:SetColorTexture(1, 0, 0, 0.15)
+
                 clsBtn:SetScript("OnEnter", function(self)
+                    print("[SpecFlyout] ENTER: " .. cls.className)
                     ShowSubFlyout(cls.classID, self)
                 end)
                 flyoutRows[#flyoutRows + 1] = clsBtn
@@ -1632,9 +1624,12 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             -- Layout main flyout
             local function LayoutFlyout()
                 local fy = -6
+                local btnLevel = specFlyout:GetFrameLevel() + 10
+                DevLog("[SpecFlyout] Layout: " .. #flyoutRows .. " rows, btnLevel=" .. btnLevel)
                 for _, r in ipairs(flyoutRows) do
                     r:ClearAllPoints()
-                    r:SetPoint("TOPLEFT", 8, fy)
+                    r:SetPoint("TOPLEFT", specFlyout, "TOPLEFT", 8, fy)
+                    r:SetFrameLevel(btnLevel)
                     r:Show()
                     fy = fy - FLYOUT_ROW_H
                 end
@@ -1647,9 +1642,10 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             specSelectRow:SetSize(DROPDOWN_WIDTH - 16 - SUB_INDENT, ROW_HEIGHT)
             local specSelectLabel = specSelectRow:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
             specSelectLabel:SetPoint("LEFT", 8, 0)
-            local specSelectArrow = specSelectRow:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+            local specSelectArrow = specSelectRow:CreateTexture(nil, "ARTWORK")
+            specSelectArrow:SetSize(12, 12)
             specSelectArrow:SetPoint("RIGHT", -4, 0)
-            specSelectArrow:SetText(">")
+            specSelectArrow:SetAtlas("ForwardArrowIcon")
             local specSelectHL = specSelectRow:CreateTexture(nil, "HIGHLIGHT")
             specSelectHL:SetAllPoints()
             specSelectHL:SetColorTexture(1, 1, 1, 0.1)
@@ -1670,6 +1666,15 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 specFlyout:Show()
             end
             specSelectRow:SetScript("OnEnter", function() OpenSpecFlyout() end)
+            specSelectRow:SetScript("OnLeave", function()
+                C_Timer.After(0.15, function()
+                    if specFlyout:IsShown() and not specFlyout:IsMouseOver()
+                        and not specSelectRow:IsMouseOver()
+                        and not (specSubFlyout:IsShown() and specSubFlyout:IsMouseOver()) then
+                        specFlyout:Hide()
+                    end
+                end)
+            end)
             specSelectRow:SetScript("OnClick", function()
                 if specFlyout:IsShown() then
                     specFlyout:Hide()
