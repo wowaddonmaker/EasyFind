@@ -1406,7 +1406,8 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             specFlyout:EnableMouse(true)
             specFlyout:Hide()
             local flyoutBg = specFlyout:CreateTexture(nil, "BACKGROUND")
-            flyoutBg:SetAllPoints()
+            flyoutBg:SetPoint("TOPLEFT", 4, -4)
+            flyoutBg:SetPoint("BOTTOMRIGHT", -4, 4)
             flyoutBg:SetColorTexture(0.1, 0.1, 0.1, 0.95)
             local flyoutBorder = CreateFrame("Frame", nil, specFlyout, "BackdropTemplate")
             flyoutBorder:SetAllPoints()
@@ -1421,7 +1422,8 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             specSubFlyout:EnableMouse(true)
             specSubFlyout:Hide()
             local subBg = specSubFlyout:CreateTexture(nil, "BACKGROUND")
-            subBg:SetAllPoints()
+            subBg:SetPoint("TOPLEFT", 4, -4)
+            subBg:SetPoint("BOTTOMRIGHT", -4, 4)
             subBg:SetColorTexture(0.1, 0.1, 0.1, 0.95)
             local subBorder = CreateFrame("Frame", nil, specSubFlyout, "BackdropTemplate")
             subBorder:SetAllPoints()
@@ -4031,6 +4033,11 @@ function UI:HideResults()
     if not searchFrame then return end
     if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
     if searchFrame.ClearToolbarFocus then searchFrame.ClearToolbarFocus() end
+    -- Close any open spec flyouts
+    local sf = _G["EasyFindSpecFlyout"]
+    if sf and sf:IsShown() then sf:Hide() end
+    local ssf = _G["EasyFindSpecSubFlyout"]
+    if ssf and ssf:IsShown() then ssf:Hide() end
     if not resultsFrame then return end
     resultsFrame:Hide()
     if resultsFrame.pinSeparator then

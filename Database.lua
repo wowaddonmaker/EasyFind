@@ -707,7 +707,7 @@ function Database:PopulateDynamicLoot()
     local EJ_GetLootInfoByIndex = EJ("GetLootInfoByIndex")
 
     if not EJ_GetCurrentTier or not EJ_GetInstanceByIndex or not EJ_GetNumLoot or not EJ_GetLootInfoByIndex then
-        print("|cFFFF4444[EF Loot]|r Scan aborted: EJ APIs not available after LoadUI")
+        Utils.DebugPrint("Loot scan aborted: EJ APIs not available")
         return
     end
 
@@ -764,7 +764,6 @@ function Database:PopulateDynamicLoot()
     end
     collectInstances(false) -- dungeons
     collectInstances(true)  -- raids
-    print("|cFF55CCFF[EF Loot]|r Scan starting: " .. #instances .. " instances")
 
     local seen = {} -- deduplicate by itemID
     local SafeAfter = Utils.SafeAfter
@@ -779,7 +778,6 @@ function Database:PopulateDynamicLoot()
         if myGen ~= lootScanGeneration then return end
         if idx > #instances then
             restoreState()
-            print("|cFF55CCFF[EF Loot]|r Scan complete: " .. #lootEntries .. " items from " .. #instances .. " instances")
             collectgarbage("collect")
             return
         end
