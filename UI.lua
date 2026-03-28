@@ -1305,6 +1305,66 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             row.mapSubRowIdx = origMapRowIdx
         end
 
+        -- Loot: indented sub-options for search mode and spec toggle
+        if opt.key == "loot" then
+            local SUB_INDENT = 24
+            local lootSubDefs = {
+                { dbKey = "lootSearchSlots",  label = "Search by Slot" },
+                { dbKey = "lootSearchStats",  label = "Search by Stats" },
+                { dbKey = "lootUpgradesOnly", label = "Upgrades Only" },
+                { dbKey = "lootAllSpecs",     label = "All Specs" },
+            }
+            local lootSubRows = {}
+            for si, sub in ipairs(lootSubDefs) do
+                local subRow = CreateFrame("CheckButton", nil, dropdown)
+                subRow:SetSize(DROPDOWN_WIDTH - 16 - SUB_INDENT, ROW_HEIGHT)
+                subRow:SetHitRectInsets(0, 0, 0, 0)
+
+                subRow:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+                subRow:GetNormalTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
+                subRow:GetNormalTexture():ClearAllPoints()
+                subRow:GetNormalTexture():SetPoint("LEFT", 4, 0)
+
+                subRow:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+                subRow:GetCheckedTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
+                subRow:GetCheckedTexture():ClearAllPoints()
+                subRow:GetCheckedTexture():SetPoint("LEFT", 4, 0)
+
+                local subLabel = subRow:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+                subLabel:SetPoint("LEFT", subRow:GetNormalTexture(), "RIGHT", 4, 0)
+                subLabel:SetText(sub.label)
+
+                local subHL = subRow:CreateTexture(nil, "HIGHLIGHT")
+                subHL:SetAllPoints()
+                subHL:SetColorTexture(1, 1, 1, 0.1)
+
+                subRow.dbKey = sub.dbKey
+                lootSubRows[si] = subRow
+
+                subRow:SetScript("OnClick", function(self)
+                    EasyFind.db[sub.dbKey] = self:GetChecked()
+                    -- Spec, slot, or stat toggle changes require loot re-scan
+                    if sub.dbKey == "lootAllSpecs" or sub.dbKey == "lootSearchSlots" or sub.dbKey == "lootSearchStats" then
+                        if ns.Database and ns.Database.PopulateDynamicLoot then
+                            ns.Database:PopulateDynamicLoot()
+                        end
+                    end
+                    if searchEditBox:GetText() ~= "" then
+                        UI:OnSearchTextChanged(searchEditBox:GetText())
+                    end
+                end)
+            end
+
+            row.lootSubRows = lootSubRows
+            row.updateLootToggle = function()
+                local lootChecked = EasyFind.db.uiSearchFilters and EasyFind.db.uiSearchFilters.loot ~= false
+                for _, sr in ipairs(lootSubRows) do
+                    sr:SetChecked(EasyFind.db[sr.dbKey] ~= false)
+                    sr:SetShown(lootChecked)
+                end
+            end
+        end
+
         local highlight = row:CreateTexture(nil, "HIGHLIGHT")
         highlight:SetAllPoints()
         highlight:SetColorTexture(1, 1, 1, 0.1)
@@ -1321,6 +1381,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             local filters = EasyFind.db.uiSearchFilters
             filters[opt.key] = self:GetChecked()
             if self.updateMapToggle then self.updateMapToggle() end
+            if self.updateLootToggle then self.updateLootToggle() end
             LayoutDropdown()
             if searchEditBox:GetText() ~= "" then
                 UI:OnSearchTextChanged(searchEditBox:GetText())
@@ -1359,6 +1420,20 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     end
                 end
             end
+            -- Loot sub-rows
+            if row.lootSubRows then
+                local lootChecked = EasyFind.db.uiSearchFilters and EasyFind.db.uiSearchFilters.loot ~= false
+                for _, sr in ipairs(row.lootSubRows) do
+                    if lootChecked then
+                        sr:ClearAllPoints()
+                        sr:SetPoint("TOPLEFT", 8 + SUB_INDENT, y)
+                        sr:Show()
+                        y = y - ROW_HEIGHT
+                    else
+                        sr:Hide()
+                    end
+                end
+            end
         end
         dropdown:SetSize(DROPDOWN_WIDTH, -y + PADDING_BOTTOM)
     end
@@ -1380,6 +1455,8 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         end
         local mapRow = checkRows["map"]
         if mapRow and mapRow.updateMapToggle then mapRow.updateMapToggle() end
+        local lootRow = checkRows["loot"]
+        if lootRow and lootRow.updateLootToggle then lootRow.updateLootToggle() end
         LayoutDropdown()
         if searchEditBox:GetText() ~= "" then
             UI:OnSearchTextChanged(searchEditBox:GetText())
@@ -1393,6 +1470,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         for key, row in pairs(checkRows) do
             row:SetChecked(filters[key] ~= false)
             if row.updateMapToggle then row.updateMapToggle() end
+            if row.updateLootToggle then row.updateLootToggle() end
         end
         LayoutDropdown()
     end)
