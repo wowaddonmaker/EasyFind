@@ -436,9 +436,10 @@ local OUTFIT_PROTO = {
 local OUTFIT_MT = { __index = OUTFIT_PROTO }
 
 local LOOT_PROTO = {
-    category = "Loot",
-    path     = {},
-    steps    = {},
+    category    = "Loot",
+    path        = {},
+    steps       = {},
+    lootEntry   = true, -- use loot-specific scoring (toggle-aware keyword matching)
 }
 local LOOT_MT = { __index = LOOT_PROTO }
 
@@ -490,18 +491,12 @@ local SLOT_DISPLAY = {
     INVTYPE_HOLDABLE = "Off Hand",
 }
 
--- EJ API compatibility layer (functions migrated from EJ_* to C_EncounterJournal.* in some patches)
-local EJ_GetCurrentTier     = EJ_GetCurrentTier or (C_EncounterJournal and C_EncounterJournal.GetCurrentTier)
-local EJ_SelectTier         = EJ_SelectTier or (C_EncounterJournal and C_EncounterJournal.SelectTier)
-local EJ_GetInstanceByIndex = EJ_GetInstanceByIndex or (C_EncounterJournal and C_EncounterJournal.GetInstanceByIndex)
-local EJ_SelectInstance     = EJ_SelectInstance or (C_EncounterJournal and C_EncounterJournal.SelectInstance)
-local EJ_GetEncounterInfoByIndex = EJ_GetEncounterInfoByIndex or (C_EncounterJournal and C_EncounterJournal.GetEncounterInfoByIndex)
-local EJ_SelectEncounter    = EJ_SelectEncounter or (C_EncounterJournal and C_EncounterJournal.SelectEncounter)
-local EJ_SetDifficulty      = EJ_SetDifficulty or (C_EncounterJournal and C_EncounterJournal.SetDifficulty)
-local EJ_SetLootFilter      = EJ_SetLootFilter or (C_EncounterJournal and C_EncounterJournal.SetLootFilter)
-local EJ_SetSlotFilter      = EJ_SetSlotFilter or (C_EncounterJournal and C_EncounterJournal.SetSlotFilter)
-local EJ_GetNumLoot         = EJ_GetNumLoot or (C_EncounterJournal and C_EncounterJournal.GetNumLoot)
-local EJ_GetLootInfoByIndex = EJ_GetLootInfoByIndex or (C_EncounterJournal and C_EncounterJournal.GetLootInfoByIndex)
+-- EJ API compatibility: some functions migrated from EJ_* globals to C_EncounterJournal.*.
+-- Prefer C_EncounterJournal (current) over globals (may be stale wrappers).
+-- Resolved at call time because C_EJ functions may not exist until EncounterJournal_LoadUI().
+local function EJ(name)
+    return (C_EncounterJournal and C_EncounterJournal[name]) or _G["EJ_" .. name]
+end
 
 local lootEntries = {}       -- track injected entries for re-population
 local lootScanGeneration = 0 -- cancel stale scans when re-populating
@@ -510,18 +505,19 @@ local lootScanGeneration = 0 -- cancel stale scans when re-populating
 -- Called lazily when the entry first appears in results.
 function Database:EnrichLootStats(entry)
     if entry._statsEnriched or not entry.lootItemLink then return end
-    local GetItemStats = GetItemStats or (C_Item and C_Item.GetItemStats)
-    if not GetItemStats then return end
-    local stats = GetItemStats(entry.lootItemLink)
+    local GetItemStatsFn = GetItemStats or (C_Item and C_Item.GetItemStats)
+    if not GetItemStatsFn then return end
+    local stats = GetItemStatsFn(entry.lootItemLink)
     if not stats then return end
+    local statKw = entry.lootStatKw or {}
     for statKey, searchWords in pairs(STAT_KEYWORD_MAP) do
         if stats[statKey] then
             for _, word in ipairs(searchWords) do
-                entry.keywords[#entry.keywords + 1] = word
-                entry.keywordsLower[#entry.keywordsLower + 1] = word
+                statKw[#statKw + 1] = word
             end
         end
     end
+    entry.lootStatKw = statKw
     entry._statsEnriched = true
 end
 
@@ -690,8 +686,30 @@ end
 -- Called after PLAYER_LOGIN. Scans the Encounter Journal for current-tier loot
 -- and injects searchable entries. Staggered across frames (one instance per frame).
 function Database:PopulateDynamicLoot()
-    if not EJ_GetCurrentTier or not EJ_GetInstanceByIndex or not EJ_GetNumLoot then return end
     if InCombatLockdown() then return end
+
+    -- EJ loot tables require the UI to be loaded first
+    if not EncounterJournal then
+        EncounterJournal_LoadUI()
+    end
+
+    -- Resolve EJ APIs after UI load (some live on C_EncounterJournal, not global)
+    local EJ_GetCurrentTier     = EJ("GetCurrentTier")
+    local EJ_SelectTier         = EJ("SelectTier")
+    local EJ_GetInstanceByIndex = EJ("GetInstanceByIndex")
+    local EJ_SelectInstance     = EJ("SelectInstance")
+    local EJ_GetEncounterInfoByIndex = EJ("GetEncounterInfoByIndex")
+    local EJ_SelectEncounter    = EJ("SelectEncounter")
+    local EJ_SetDifficulty      = EJ("SetDifficulty")
+    local EJ_SetLootFilter      = EJ("SetLootFilter")
+    local EJ_SetSlotFilter      = EJ("SetSlotFilter")
+    local EJ_GetNumLoot         = EJ("GetNumLoot")
+    local EJ_GetLootInfoByIndex = EJ("GetLootInfoByIndex")
+
+    if not EJ_GetCurrentTier or not EJ_GetInstanceByIndex or not EJ_GetNumLoot or not EJ_GetLootInfoByIndex then
+        print("|cFFFF4444[EF Loot]|r Scan aborted: EJ APIs not available after LoadUI")
+        return
+    end
 
     -- Remove previous loot entries (handles spec toggle re-scan)
     for i = #uiSearchData, 1, -1 do
@@ -716,16 +734,10 @@ function Database:PopulateDynamicLoot()
     -- Save EJ state
     local savedTier = EJ_GetCurrentTier and EJ_GetCurrentTier()
 
-    -- Set class/spec filter
+    -- Class/spec for loot filter (applied per-encounter, not upfront)
     local _, _, classID = UnitClass("player")
     local specIndex = GetSpecialization and GetSpecialization()
     local specID = specIndex and GetSpecializationInfo and GetSpecializationInfo(specIndex)
-    if classID and specID then
-        EJ_SetLootFilter(classID, EasyFind.db.lootAllSpecs and 0 or specID)
-    end
-    if EJ_SetSlotFilter then
-        EJ_SetSlotFilter(0) -- Enum.ItemSlotFilterType.NoFilter = 0
-    end
 
     -- Collect all instances in the current tier
     local instances = {}
@@ -740,6 +752,7 @@ function Database:PopulateDynamicLoot()
     end
     collectInstances(false) -- dungeons
     collectInstances(true)  -- raids
+    print("|cFF55CCFF[EF Loot]|r Scan starting: " .. #instances .. " instances")
 
     local seen = {} -- deduplicate by itemID
     local SafeAfter = Utils.SafeAfter
@@ -754,57 +767,62 @@ function Database:PopulateDynamicLoot()
         if myGen ~= lootScanGeneration then return end
         if idx > #instances then
             restoreState()
+            print("|cFF55CCFF[EF Loot]|r Scan complete: " .. #lootEntries .. " items from " .. #instances .. " instances")
             collectgarbage("collect")
             return
         end
 
         local inst = instances[idx]
-        EJ_SelectInstance(inst.id)
-
-        -- Set a reasonable difficulty so loot tables are populated
-        if EJ_SetDifficulty then
-            if inst.isRaid then
-                EJ_SetDifficulty(14) -- Normal raid
-            else
-                EJ_SetDifficulty(23) -- Mythic dungeon
-            end
-        end
+        EJ_SelectInstance(inst.id) -- select once to populate encounter list
 
         -- Iterate encounters in this instance
         local encIdx = 1
         while true do
             local encName, _, encID = EJ_GetEncounterInfoByIndex(encIdx)
             if not encName then break end
-            EJ_SelectEncounter(encID)
 
-            local numLoot = EJ_GetNumLoot and EJ_GetNumLoot() or 0
-            for li = 1, numLoot do
-                local lootInfo = EJ_GetLootInfoByIndex and EJ_GetLootInfoByIndex(li)
-                local itemID = lootInfo and lootInfo.itemID
+            -- EJ is stateful: must set instance, encounter, difficulty,
+            -- slot filter, THEN loot filter in this exact order.
+            EJ_SelectInstance(inst.id)
+            EJ_SelectEncounter(encID)
+            if EJ_SetDifficulty then
+                EJ_SetDifficulty(inst.isRaid and 15 or 2)
+            end
+            if EJ_SetSlotFilter then
+                EJ_SetSlotFilter(Enum.ItemSlotFilterType.NoFilter)
+            end
+            if EJ_SetLootFilter and classID and specID then
+                EJ_SetLootFilter(classID, EasyFind.db.lootAllSpecs and 0 or specID)
+            end
+
+            -- Iterate loot (break on nil, not GetNumLoot — more reliable)
+            local li = 1
+            while true do
+                local lootInfo = EJ_GetLootInfoByIndex(li)
+                if not lootInfo or not lootInfo.name then break end
+                local itemID = lootInfo.itemID
                 if itemID and not seen[itemID] then
                     seen[itemID] = true
                     local itemName = lootInfo.name
                     local _, _, _, equipLoc, instIcon = GetItemInfoInstant(itemID)
                     local icon = lootInfo.icon or instIcon
                     if itemName and itemName ~= "" then
-                        -- Build keywords
-                        local kw = {"loot", "drop", "gear", "equipment"}
-                        -- Slot keywords
-                        local slotKws = equipLoc and SLOT_KEYWORDS[equipLoc]
-                        if slotKws then
-                            for _, w in ipairs(slotKws) do kw[#kw + 1] = w end
+                        -- Build typed keyword arrays for toggle-aware scoring
+                        local slotKws = {}
+                        local slotKwVals = equipLoc and SLOT_KEYWORDS[equipLoc]
+                        if slotKwVals then
+                            for _, w in ipairs(slotKwVals) do slotKws[#slotKws + 1] = w end
                         end
-                        -- Source keywords (boss name words, instance name words)
+
+                        local sourceKws = {}
                         if encName then
-                            for w in encName:lower():gmatch("%a+") do kw[#kw + 1] = w end
+                            for w in encName:lower():gmatch("%a+") do sourceKws[#sourceKws + 1] = w end
                         end
                         if inst.name then
-                            for w in inst.name:lower():gmatch("%a+") do kw[#kw + 1] = w end
+                            for w in inst.name:lower():gmatch("%a+") do sourceKws[#sourceKws + 1] = w end
                         end
-                        -- Lower copy for search scoring
-                        local kwLower = {}
-                        for ki = 1, #kw do kwLower[ki] = kw[ki] end
 
+                        -- Flat keywords/keywordsLower kept empty (lootEntry uses typed arrays)
                         local itemLink = lootInfo.link
                         local entry = setmetatable({
                             name = itemName,
@@ -813,8 +831,11 @@ function Database:PopulateDynamicLoot()
                             itemID = itemID,
                             encounterID = encID,
                             instanceID = inst.id,
-                            keywords = kw,
-                            keywordsLower = kwLower,
+                            keywords = {},
+                            keywordsLower = {},
+                            lootSlotKw = slotKws,
+                            lootSourceKw = sourceKws,
+                            lootStatKw = {},
                             lootItemLink = itemLink,
                             lootSlotName = equipLoc and SLOT_DISPLAY[equipLoc],
                             lootSourceName = encName,
@@ -831,6 +852,7 @@ function Database:PopulateDynamicLoot()
                         lootEntries[#lootEntries + 1] = entry
                     end
                 end
+                li = li + 1
             end
             encIdx = encIdx + 1
         end
@@ -2369,10 +2391,91 @@ function Database:SearchUI(query, skipCategories)
         if not (skipCategories and skipCategories[data.category])
            and not (data.available and not data.available()) then
             local nameLower = data.nameLower
-            local score = Database:ScoreName(nameLower, query, queryLen, queryWords)
+            local score
+            if data.lootEntry then
+                -- Loot: toggle-aware keyword matching.
+                -- Each query word is matched against the best keyword TYPE
+                -- (slot or stat), then the item must satisfy all matched types.
+                score = 0
+                local slotOn = EasyFind.db.lootSearchSlots ~= false
+                local statOn = EasyFind.db.lootSearchStats ~= false
 
-            -- Keyword matching (additive)
-            score = score + Database:ScoreKeywords(data.keywordsLower, query, queryLen, queryWords)
+                if not slotOn and not statOn then
+                    -- No toggles: match by item name prefix or source keywords
+                    if ssub(nameLower, 1, queryLen) == query then
+                        score = 100
+                    end
+                    if data.lootSourceKw then
+                        for qi = 1, #queryWords do
+                            local qw = queryWords[qi]
+                            local qwLen = #qw
+                            for ki = 1, #data.lootSourceKw do
+                                local kw = data.lootSourceKw[ki]
+                                if kw == qw then
+                                    score = score + 80; break
+                                elseif ssub(kw, 1, qwLen) == qw then
+                                    score = score + 70; break
+                                end
+                            end
+                        end
+                    end
+                else
+                    -- Score each query word against each keyword type separately.
+                    -- Assign word to whichever type scores higher.
+                    -- Item must match ALL assigned types.
+                    local slotMatched, statMatched = true, true
+                    local needsSlot, needsStat = false, false
+                    local totalScore = 0
+
+                    for qi = 1, #queryWords do
+                        local qw = queryWords[qi]
+                        local qwLen = #qw
+                        local slotScore, statScore = 0, 0
+
+                        -- Score against slot keywords
+                        if slotOn and data.lootSlotKw then
+                            for ki = 1, #data.lootSlotKw do
+                                local kw = data.lootSlotKw[ki]
+                                if kw == qw then
+                                    slotScore = mmax(slotScore, qwLen <= 3 and 140 or 80)
+                                elseif ssub(kw, 1, qwLen) == qw then
+                                    slotScore = mmax(slotScore, 70)
+                                end
+                            end
+                        end
+
+                        -- Score against stat keywords
+                        if statOn and data.lootStatKw then
+                            for ki = 1, #data.lootStatKw do
+                                local kw = data.lootStatKw[ki]
+                                if kw == qw then
+                                    statScore = mmax(statScore, qwLen <= 3 and 140 or 80)
+                                elseif ssub(kw, 1, qwLen) == qw then
+                                    statScore = mmax(statScore, 70)
+                                end
+                            end
+                        end
+
+                        -- Assign word to best matching type
+                        if slotScore == 0 and statScore == 0 then
+                            -- Word matches neither type — item doesn't match
+                            totalScore = 0
+                            break
+                        elseif slotScore >= statScore then
+                            needsSlot = true
+                            totalScore = totalScore + slotScore
+                        else
+                            needsStat = true
+                            totalScore = totalScore + statScore
+                        end
+                    end
+
+                    score = totalScore
+                end
+            else
+                score = Database:ScoreName(nameLower, query, queryLen, queryWords)
+                score = score + Database:ScoreKeywords(data.keywordsLower, query, queryLen, queryWords)
+            end
 
             if score >= 30 then
                 results[#results + 1] = { data = data, score = score }
