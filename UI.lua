@@ -1390,16 +1390,49 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 end
             end
 
-            -- Spec flyout: built lazily on first open (avoids frame-level issues at load time)
-            local specFlyout, specSubFlyout
-            local specCheckRows = {}
-            local activeSubClass = nil
             local FLYOUT_WIDTH = 160
             local FLYOUT_ROW_H = 20
-            local SUBFLYOUT_WIDTH = 150
+            local SUBFLYOUT_WIDTH = 170
 
-            local specCheckRows = {} -- all {classID, specID, checkRow}
-            local activeSubClass = nil -- which class sub-flyout is showing
+            local BACKDROP_DEF = {
+                bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+                edgeFile = TOOLTIP_BORDER,
+                edgeSize = 16,
+                insets = { left = 4, right = 4, top = 4, bottom = 4 },
+            }
+
+            local specFlyout = CreateFrame("Frame", "EasyFindSpecFlyout", UIParent)
+            specFlyout:SetFrameStrata("FULLSCREEN_DIALOG")
+            specFlyout:EnableMouse(true)
+            specFlyout:Hide()
+            local flyoutBg = specFlyout:CreateTexture(nil, "BACKGROUND")
+            flyoutBg:SetAllPoints()
+            flyoutBg:SetColorTexture(0.1, 0.1, 0.1, 0.95)
+            local flyoutBorder = CreateFrame("Frame", nil, specFlyout, "BackdropTemplate")
+            flyoutBorder:SetAllPoints()
+            flyoutBorder:SetFrameLevel(specFlyout:GetFrameLevel())
+            flyoutBorder:SetBackdrop({
+                edgeFile = TOOLTIP_BORDER, edgeSize = 16,
+                insets = { left = 4, right = 4, top = 4, bottom = 4 },
+            })
+
+            local specSubFlyout = CreateFrame("Frame", "EasyFindSpecSubFlyout", UIParent)
+            specSubFlyout:SetFrameStrata("FULLSCREEN_DIALOG")
+            specSubFlyout:EnableMouse(true)
+            specSubFlyout:Hide()
+            local subBg = specSubFlyout:CreateTexture(nil, "BACKGROUND")
+            subBg:SetAllPoints()
+            subBg:SetColorTexture(0.1, 0.1, 0.1, 0.95)
+            local subBorder = CreateFrame("Frame", nil, specSubFlyout, "BackdropTemplate")
+            subBorder:SetAllPoints()
+            subBorder:SetFrameLevel(specSubFlyout:GetFrameLevel())
+            subBorder:SetBackdrop({
+                edgeFile = TOOLTIP_BORDER, edgeSize = 16,
+                insets = { left = 4, right = 4, top = 4, bottom = 4 },
+            })
+
+            local specCheckRows = {}
+            local activeSubClass = nil
 
             -- Helper: get selected spec pairs
             local function GetSelectedSpecs()
@@ -1501,6 +1534,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 for _, spec in ipairs(cls.specs) do
                     local sRow = CreateFrame("CheckButton", nil, specSubFlyout)
                     sRow:SetSize(SUBFLYOUT_WIDTH - 16, FLYOUT_ROW_H)
+                    sRow:SetFrameLevel(specSubFlyout:GetFrameLevel() + 10)
                     sRow:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
                     sRow:GetNormalTexture():SetSize(14, 14)
                     sRow:GetNormalTexture():ClearAllPoints()
@@ -1509,8 +1543,12 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     sRow:GetCheckedTexture():SetSize(14, 14)
                     sRow:GetCheckedTexture():ClearAllPoints()
                     sRow:GetCheckedTexture():SetPoint("LEFT", 4, 0)
+                    local sIcon = sRow:CreateTexture(nil, "ARTWORK")
+                    sIcon:SetSize(14, 14)
+                    sIcon:SetPoint("LEFT", sRow:GetNormalTexture(), "RIGHT", 4, 0)
+                    if spec.specIcon then sIcon:SetTexture(spec.specIcon) end
                     local sLbl = sRow:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-                    sLbl:SetPoint("LEFT", sRow:GetNormalTexture(), "RIGHT", 4, 0)
+                    sLbl:SetPoint("LEFT", sIcon, "RIGHT", 4, 0)
                     sLbl:SetText(spec.specName)
                     local sHL = sRow:CreateTexture(nil, "HIGHLIGHT")
                     sHL:SetAllPoints()
@@ -1559,6 +1597,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             -- "Current Spec" row
             local curSpecBtn = CreateFrame("Button", nil, specFlyout)
             curSpecBtn:SetSize(FLYOUT_WIDTH - 16, FLYOUT_ROW_H)
+            curSpecBtn:SetFrameLevel(specFlyout:GetFrameLevel() + 10)
             local csLbl = curSpecBtn:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
             csLbl:SetPoint("LEFT", 8, 0)
             csLbl:SetText("Current Spec")
@@ -1576,6 +1615,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             -- "Toggle All" row
             local toggleAllBtn = CreateFrame("Button", nil, specFlyout)
             toggleAllBtn:SetSize(FLYOUT_WIDTH - 16, FLYOUT_ROW_H)
+            toggleAllBtn:SetFrameLevel(specFlyout:GetFrameLevel() + 10)
             local taLbl = toggleAllBtn:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
             taLbl:SetPoint("LEFT", 8, 0)
             taLbl:SetText("Toggle All")
@@ -1597,6 +1637,9 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             for _, cls in ipairs(allClassSpecs) do
                 local clsBtn = CreateFrame("Button", nil, specFlyout)
                 clsBtn:SetSize(FLYOUT_WIDTH - 16, FLYOUT_ROW_H)
+                clsBtn:SetFrameLevel(specFlyout:GetFrameLevel() + 10)
+                clsBtn:EnableMouse(true)
+                clsBtn:RegisterForClicks("AnyUp")
                 local clsLbl = clsBtn:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
                 clsLbl:SetPoint("LEFT", 8, 0)
                 local cc = CLASS_COLORS[cls.classFile]
@@ -1609,23 +1652,18 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 local clsHL = clsBtn:CreateTexture(nil, "HIGHLIGHT")
                 clsHL:SetAllPoints()
                 clsHL:SetColorTexture(1, 1, 1, 0.1)
-                -- Debug: red border to verify button bounds
-                local dbg = clsBtn:CreateTexture(nil, "BACKGROUND")
-                dbg:SetAllPoints()
-                dbg:SetColorTexture(1, 0, 0, 0.15)
-
                 clsBtn:SetScript("OnEnter", function(self)
-                    print("[SpecFlyout] ENTER: " .. cls.className)
                     ShowSubFlyout(cls.classID, self)
                 end)
                 flyoutRows[#flyoutRows + 1] = clsBtn
             end
 
+            specFlyout:Hide() -- hide after construction
+
             -- Layout main flyout
             local function LayoutFlyout()
                 local fy = -6
                 local btnLevel = specFlyout:GetFrameLevel() + 10
-                DevLog("[SpecFlyout] Layout: " .. #flyoutRows .. " rows, btnLevel=" .. btnLevel)
                 for _, r in ipairs(flyoutRows) do
                     r:ClearAllPoints()
                     r:SetPoint("TOPLEFT", specFlyout, "TOPLEFT", 8, fy)
