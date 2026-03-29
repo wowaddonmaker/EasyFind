@@ -1434,6 +1434,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             })
 
             local specCheckRows = {}
+            local classButtons = {} -- classID -> button (for active indicators)
             local activeSubClass = nil
 
             -- Helper: get selected spec pairs
@@ -1505,9 +1506,10 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 local selected = GetSelectedSpecs()
                 EasyFind.db.lootSpecs = #selected > 0 and selected or nil
                 UpdateSpecLabel()
-                -- Close all flyouts
+                -- Close all flyouts and the filter dropdown
                 specSubFlyout:Hide()
                 specFlyout:Hide()
+                dropdown:Hide()
                 if ns.Database and ns.Database.PopulateDynamicLoot then
                     ns.Database:PopulateDynamicLoot()
                 end
@@ -1519,6 +1521,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             -- Sync checkboxes from saved data
             local function SyncFlyoutState()
                 local lootSpecs = EasyFind.db.lootSpecs
+                -- Sync spec checkboxes
                 for _, scr in ipairs(specCheckRows) do
                     local checked = false
                     if lootSpecs then
@@ -1529,6 +1532,18 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                         end
                     end
                     scr:SetChecked(checked)
+                end
+                -- Sync class active indicators
+                for cid, btn in pairs(classButtons) do
+                    local hasActive = false
+                    if lootSpecs then
+                        for _, sp in ipairs(lootSpecs) do
+                            if sp.classID == cid then hasActive = true; break end
+                        end
+                    end
+                    if btn._activeIndicator then
+                        btn._activeIndicator:SetShown(hasActive)
+                    end
                 end
             end
 
@@ -1657,9 +1672,18 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 local clsHL = clsBtn:CreateTexture(nil, "HIGHLIGHT")
                 clsHL:SetAllPoints()
                 clsHL:SetColorTexture(1, 1, 1, 0.1)
+                -- Active indicator: green dot when any spec from this class is selected
+                local clsActive = clsBtn:CreateTexture(nil, "OVERLAY")
+                clsActive:SetSize(6, 6)
+                clsActive:SetPoint("LEFT", 1, 0)
+                clsActive:SetColorTexture(0.3, 1, 0.3, 1)
+                clsActive:Hide()
+                clsBtn._activeIndicator = clsActive
+                clsBtn._classID = cls.classID
                 clsBtn:SetScript("OnEnter", function(self)
                     ShowSubFlyout(cls.classID, self)
                 end)
+                classButtons[cls.classID] = clsBtn
                 flyoutRows[#flyoutRows + 1] = clsBtn
             end
 
