@@ -1502,17 +1502,20 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             end
 
             -- Apply selection, re-scan
-            local specFlyoutCooldown = false
             local function ApplySpecSelection()
                 local selected = GetSelectedSpecs()
                 EasyFind.db.lootSpecs = #selected > 0 and selected or nil
                 UpdateSpecLabel()
-                specSubFlyout:Hide()
-                specFlyout:Hide()
-                dropdown:Hide()
-                -- Block re-open from OnEnter for a brief window
-                specFlyoutCooldown = true
-                C_Timer.After(0.3, function() specFlyoutCooldown = false end)
+                SyncFlyoutState()
+                -- Re-scan loot in background
+                C_Timer.After(0, function()
+                    if ns.Database and ns.Database.PopulateDynamicLoot then
+                        ns.Database:PopulateDynamicLoot()
+                    end
+                    if searchEditBox:GetText() ~= "" then
+                        UI:OnSearchTextChanged(searchEditBox:GetText())
+                    end
+                end)
                 -- Defer re-scan so hide completes before any UI rebuild
                 C_Timer.After(0, function()
                     if ns.Database and ns.Database.PopulateDynamicLoot then
@@ -1689,6 +1692,17 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 clsBtn:SetScript("OnEnter", function(self)
                     ShowSubFlyout(cls.classID, self)
                 end)
+                clsBtn:SetScript("OnClick", function()
+                    -- Toggle all specs for this class
+                    local crows = classSubRows[cls.classID]
+                    if not crows then return end
+                    local allChecked = true
+                    for _, cr in ipairs(crows) do
+                        if not cr:GetChecked() then allChecked = false; break end
+                    end
+                    for _, cr in ipairs(crows) do cr:SetChecked(not allChecked) end
+                    ApplySpecSelection()
+                end)
                 classButtons[cls.classID] = clsBtn
                 flyoutRows[#flyoutRows + 1] = clsBtn
             end
@@ -1738,10 +1752,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 specFlyout:SetPoint("TOPLEFT", specSelectRow, "TOPRIGHT", 2, 0)
                 specFlyout:Show()
             end
-            specSelectRow:SetScript("OnEnter", function()
-                if specFlyoutCooldown then return end
-                OpenSpecFlyout()
-            end)
+            specSelectRow:SetScript("OnEnter", function() OpenSpecFlyout() end)
             specSelectRow:SetScript("OnLeave", function()
                 C_Timer.After(0.15, function()
                     if specFlyout:IsShown() and not specFlyout:IsMouseOver()
