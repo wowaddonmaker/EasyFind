@@ -1506,16 +1506,19 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 local selected = GetSelectedSpecs()
                 EasyFind.db.lootSpecs = #selected > 0 and selected or nil
                 UpdateSpecLabel()
-                -- Close all flyouts and the filter dropdown
+                -- Close everything first
                 specSubFlyout:Hide()
                 specFlyout:Hide()
                 dropdown:Hide()
-                if ns.Database and ns.Database.PopulateDynamicLoot then
-                    ns.Database:PopulateDynamicLoot()
-                end
-                if searchEditBox:GetText() ~= "" then
-                    UI:OnSearchTextChanged(searchEditBox:GetText())
-                end
+                -- Defer re-scan so hide completes before any UI rebuild
+                C_Timer.After(0, function()
+                    if ns.Database and ns.Database.PopulateDynamicLoot then
+                        ns.Database:PopulateDynamicLoot()
+                    end
+                    if searchEditBox:GetText() ~= "" then
+                        UI:OnSearchTextChanged(searchEditBox:GetText())
+                    end
+                end)
             end
 
             -- Sync checkboxes from saved data
