@@ -1502,14 +1502,17 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             end
 
             -- Apply selection, re-scan
+            local specFlyoutCooldown = false
             local function ApplySpecSelection()
                 local selected = GetSelectedSpecs()
                 EasyFind.db.lootSpecs = #selected > 0 and selected or nil
                 UpdateSpecLabel()
-                -- Close everything first
                 specSubFlyout:Hide()
                 specFlyout:Hide()
                 dropdown:Hide()
+                -- Block re-open from OnEnter for a brief window
+                specFlyoutCooldown = true
+                C_Timer.After(0.3, function() specFlyoutCooldown = false end)
                 -- Defer re-scan so hide completes before any UI rebuild
                 C_Timer.After(0, function()
                     if ns.Database and ns.Database.PopulateDynamicLoot then
@@ -1735,7 +1738,10 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 specFlyout:SetPoint("TOPLEFT", specSelectRow, "TOPRIGHT", 2, 0)
                 specFlyout:Show()
             end
-            specSelectRow:SetScript("OnEnter", function() OpenSpecFlyout() end)
+            specSelectRow:SetScript("OnEnter", function()
+                if specFlyoutCooldown then return end
+                OpenSpecFlyout()
+            end)
             specSelectRow:SetScript("OnLeave", function()
                 C_Timer.After(0.15, function()
                     if specFlyout:IsShown() and not specFlyout:IsMouseOver()
