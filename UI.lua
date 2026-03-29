@@ -4080,11 +4080,6 @@ function UI:HideResults()
     if not searchFrame then return end
     if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
     if searchFrame.ClearToolbarFocus then searchFrame.ClearToolbarFocus() end
-    -- Close any open spec flyouts
-    local sf = _G["EasyFindSpecFlyout"]
-    if sf and sf:IsShown() then sf:Hide() end
-    local ssf = _G["EasyFindSpecSubFlyout"]
-    if ssf and ssf:IsShown() then ssf:Hide() end
     if not resultsFrame then return end
     resultsFrame:Hide()
     if resultsFrame.pinSeparator then
