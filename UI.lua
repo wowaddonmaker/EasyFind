@@ -681,6 +681,12 @@ function UI:CreateSearchFrame()
                 if searchFrame.editBox:HasFocus() then return end
                 if navFrame and navFrame:IsKeyboardEnabled() then return end
                 if strtrim(searchFrame.editBox:GetText()) ~= "" then return end
+                -- Don't hide if user is interacting with spec/class flyouts
+                local sf = _G["EasyFindSpecFlyout"]
+                local ssf = _G["EasyFindSpecSubFlyout"]
+                if (sf and sf:IsMouseOver()) or (ssf and ssf:IsMouseOver()) then return end
+                local dd = _G["EasyFindUIFilterDropdown"]
+                if dd and dd:IsMouseOver() then return end
                 UI:HideResults()
                 -- Now that results are hidden, let smart show fade the bar out
                 if EasyFind.db.smartShow then
@@ -1681,11 +1687,10 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 local clsHL = clsBtn:CreateTexture(nil, "HIGHLIGHT")
                 clsHL:SetAllPoints()
                 clsHL:SetColorTexture(1, 1, 1, 0.1)
-                -- Active indicator: green dot when any spec from this class is selected
-                local clsActive = clsBtn:CreateTexture(nil, "OVERLAY")
-                clsActive:SetSize(6, 6)
-                clsActive:SetPoint("LEFT", 1, 0)
-                clsActive:SetColorTexture(0.3, 1, 0.3, 1)
+                -- Active indicator: subtle background tint when any spec from this class is selected
+                local clsActive = clsBtn:CreateTexture(nil, "BACKGROUND")
+                clsActive:SetAllPoints()
+                clsActive:SetColorTexture(0.15, 0.4, 0.15, 0.5)
                 clsActive:Hide()
                 clsBtn._activeIndicator = clsActive
                 clsBtn._classID = cls.classID
