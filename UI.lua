@@ -681,12 +681,12 @@ function UI:CreateSearchFrame()
                 if searchFrame.editBox:HasFocus() then return end
                 if navFrame and navFrame:IsKeyboardEnabled() then return end
                 if strtrim(searchFrame.editBox:GetText()) ~= "" then return end
-                -- Don't hide if user is interacting with spec/class flyouts
+                -- Don't hide if spec/class flyouts are open
                 local sf = _G["EasyFindSpecFlyout"]
                 local ssf = _G["EasyFindSpecSubFlyout"]
-                if (sf and sf:IsMouseOver()) or (ssf and ssf:IsMouseOver()) then return end
+                if (sf and sf:IsShown()) or (ssf and ssf:IsShown()) then return end
                 local dd = _G["EasyFindUIFilterDropdown"]
-                if dd and dd:IsMouseOver() then return end
+                if dd and dd:IsShown() then return end
                 UI:HideResults()
                 -- Now that results are hidden, let smart show fade the bar out
                 if EasyFind.db.smartShow then
