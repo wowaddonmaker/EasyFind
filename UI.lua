@@ -1951,10 +1951,16 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
     dropdown:SetScript("OnHide", function() end)
 
-    -- Close when clicking outside
+    -- Close when clicking outside (but not when interacting with spec/class flyouts)
     dropdown:SetScript("OnUpdate", function(self)
         if self:IsShown() and IsMouseButtonDown("LeftButton") then
             if not self:IsMouseOver() and not toggleBtn:IsMouseOver() then
+                local sf = _G["EasyFindSpecFlyout"]
+                local ssf = _G["EasyFindSpecSubFlyout"]
+                if (sf and sf:IsShown() and sf:IsMouseOver())
+                    or (ssf and ssf:IsShown() and ssf:IsMouseOver()) then
+                    return
+                end
                 self:Hide()
             end
         end
