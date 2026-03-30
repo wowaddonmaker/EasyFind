@@ -1507,36 +1507,9 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 end
             end
 
-            -- Apply selection, re-scan
-            local function ApplySpecSelection()
-                local selected = GetSelectedSpecs()
-                EasyFind.db.lootSpecs = #selected > 0 and selected or nil
-                UpdateSpecLabel()
-                SyncFlyoutState()
-                -- Re-scan loot in background
-                C_Timer.After(0, function()
-                    if ns.Database and ns.Database.PopulateDynamicLoot then
-                        ns.Database:PopulateDynamicLoot()
-                    end
-                    if searchEditBox:GetText() ~= "" then
-                        UI:OnSearchTextChanged(searchEditBox:GetText())
-                    end
-                end)
-                -- Defer re-scan so hide completes before any UI rebuild
-                C_Timer.After(0, function()
-                    if ns.Database and ns.Database.PopulateDynamicLoot then
-                        ns.Database:PopulateDynamicLoot()
-                    end
-                    if searchEditBox:GetText() ~= "" then
-                        UI:OnSearchTextChanged(searchEditBox:GetText())
-                    end
-                end)
-            end
-
-            -- Sync checkboxes from saved data
+            -- Sync checkboxes and class indicators from saved data
             local function SyncFlyoutState()
                 local lootSpecs = EasyFind.db.lootSpecs
-                -- Sync spec checkboxes
                 for _, scr in ipairs(specCheckRows) do
                     local checked = false
                     if lootSpecs then
@@ -1548,7 +1521,6 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     end
                     scr:SetChecked(checked)
                 end
-                -- Sync class active indicators
                 for cid, btn in pairs(classButtons) do
                     local hasActive = false
                     if lootSpecs then
@@ -1560,6 +1532,22 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                         btn._activeIndicator:SetShown(hasActive)
                     end
                 end
+            end
+
+            -- Apply selection, re-scan
+            local function ApplySpecSelection()
+                local selected = GetSelectedSpecs()
+                EasyFind.db.lootSpecs = #selected > 0 and selected or nil
+                UpdateSpecLabel()
+                SyncFlyoutState()
+                C_Timer.After(0, function()
+                    if ns.Database and ns.Database.PopulateDynamicLoot then
+                        ns.Database:PopulateDynamicLoot()
+                    end
+                    if searchEditBox:GetText() ~= "" then
+                        UI:OnSearchTextChanged(searchEditBox:GetText())
+                    end
+                end)
             end
 
             -- Build spec sub-flyout rows per class (created once, shown/hidden on hover)
