@@ -112,6 +112,7 @@ local DB_DEFAULTS = {
     lootSearchSlots = true,    -- Loot search: match by slot keywords (ring, helm, etc.)
     lootSearchStats = true,    -- Loot search: match by stat keywords (haste, crit, etc.)
     lootUpgradesOnly = false,  -- Loot search: only show items above equipped ilvl
+    lootDifficulty = "normal",
     uiMapSearchLocal = true,   -- Map search in UI bar: true = local zone only, false = global
 }
 
@@ -330,6 +331,15 @@ local function OnPlayerLogin()
         end
         SafeInit(ns.Options,    "Options")
     end)
+    -- Loot scan runs synchronously during login (loading screen absorbs the cost).
+    -- Pass true to pre-cache all class/spec combos so spec toggles are instant.
+    if ns.Database and ns.Database.PopulateDynamicLoot then
+        local ok, err = xpcall(ns.Database.PopulateDynamicLoot, ErrorHandler, ns.Database, true)
+        if not ok then
+            EasyFind:Print("|cffff4444Loot scan failed: " .. tostring(err) .. "|r")
+        end
+    end
+
     -- Populate dynamic currencies, reputations, mounts, and toys after a short delay (APIs need the character loaded)
     -- Spread dynamic population across frames to avoid a single-frame stutter.
     -- Currencies/reputations run first (they toggle collapsed headers, must be synchronous).
@@ -346,9 +356,6 @@ local function OnPlayerLogin()
                     ns.Database:PopulateDynamicPets()
                     SafeAfter(0, function()
                         ns.Database:PopulateDynamicOutfits()
-                        SafeAfter(0, function()
-                            ns.Database:PopulateDynamicLoot()
-                        end)
                     end)
                 end)
             end)
