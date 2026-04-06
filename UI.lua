@@ -998,6 +998,9 @@ function UI:CreateSearchFrame()
         elseif key == "ESCAPE" then
             if toolbarFocus > 0 then
                 ClearToolbarFocus()
+                if selectedIndex == 0 then
+                    Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
+                end
             elseif toggleFocused then
                 toggleFocused = false
                 UI:UpdateSelectionHighlight()
@@ -1278,6 +1281,79 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     local checkRows = {}
     local checkRowsByIndex = {}
     local LayoutDropdown  -- forward declaration
+    local dropdownKeyboardMode = false
+
+    -- Reusable keyboard nav for popup menus (diff popup, spec popup, class flyout).
+    -- Uses a single dropdownKeyboardMode flag: when true, any popup hiding returns
+    -- keyboard to the dropdown. No parent tracking needed.
+    local function AddPopupKeyboardNav(popup, getRows)
+        local popupFocus = 0
+        local popupHL = popup:CreateTexture(nil, "BACKGROUND")
+        popupHL:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+        popupHL:Hide()
+
+        local function SetPopupFocus(idx)
+            local rows = getRows()
+            popupFocus = idx
+            local target = rows[idx]
+            if target then
+                popupHL:SetParent(target)
+                popupHL:ClearAllPoints()
+                popupHL:SetAllPoints(target)
+                popupHL:Show()
+            else
+                popupHL:Hide()
+            end
+        end
+
+        Utils.SafeCallMethod(popup, "EnableKeyboard", false)
+        Utils.SafeCallMethod(popup, "SetPropagateKeyboardInput", false)
+
+        popup:HookScript("OnKeyDown", function(self, key)
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            local rows = getRows()
+            if key == "DOWN" then
+                local next = popupFocus + 1
+                if next > #rows then next = 1 end
+                SetPopupFocus(next)
+            elseif key == "UP" then
+                local prev = popupFocus - 1
+                if prev < 1 then prev = #rows end
+                SetPopupFocus(prev)
+            elseif key == "ENTER" then
+                local target = rows[popupFocus]
+                if target and target.Click then target:Click() end
+            elseif key == "ESCAPE" then
+                self:Hide()
+            else
+                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
+            end
+        end)
+
+        popup:HookScript("OnShow", function(self)
+            if dropdownKeyboardMode then
+                -- Disable keyboard on whoever currently has it
+                Utils.SafeCallMethod(dropdown, "EnableKeyboard", false)
+                local sp = _G["EasyFindSpecPopup"]
+                if sp then Utils.SafeCallMethod(sp, "EnableKeyboard", false) end
+                local cf = _G["EasyFindSpecFlyout"]
+                if cf then Utils.SafeCallMethod(cf, "EnableKeyboard", false) end
+                local dp = _G["EasyFindDiffPopup"]
+                if dp then Utils.SafeCallMethod(dp, "EnableKeyboard", false) end
+                Utils.SafeCallMethod(self, "EnableKeyboard", true)
+                SetPopupFocus(1)
+            end
+        end)
+
+        popup:HookScript("OnHide", function(self)
+            popupFocus = 0
+            popupHL:Hide()
+            Utils.SafeCallMethod(self, "EnableKeyboard", false)
+            if dropdownKeyboardMode and dropdown:IsShown() then
+                Utils.SafeCallMethod(dropdown, "EnableKeyboard", true)
+            end
+        end)
+    end
 
     for i, opt in ipairs(UI_FILTER_OPTIONS) do
         local row = CreateFrame("CheckButton", nil, dropdown)
@@ -1524,6 +1600,8 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 end
             end)
 
+            AddPopupKeyboardNav(diffPopup, function() return diffPopupRows end)
+
             row.diffBtn = diffBtn
             row.diffPopup = diffPopup
             row.UpdateDiffButtons = function()
@@ -1706,8 +1784,9 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 EasyFind.db.lootFilter = "all"
                 UpdateSpecLabel()
                 classFlyout:Hide()
-                specPopup:Hide()
+                if not classFlyout._keyboardParent then specPopup:Hide() end
                 ApplyFilterSelection()
+                if specPopup:IsShown() then LayoutSpecPopup() end
             end)
             classFlyoutRows[#classFlyoutRows + 1] = allClassRow
             -- Each class
@@ -1723,8 +1802,9 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     EasyFind.db.lootFilter = { classID = cls.classID }
                     UpdateSpecLabel()
                     classFlyout:Hide()
-                    specPopup:Hide()
+                    if not classFlyout._keyboardParent then specPopup:Hide() end
                     ApplyFilterSelection()
+                    if specPopup:IsShown() then LayoutSpecPopup() end
                 end)
                 classFlyoutRows[#classFlyoutRows + 1] = clsRow
             end
@@ -1775,13 +1855,15 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             local csHL = classSelectBtn:CreateTexture(nil, "HIGHLIGHT")
             csHL:SetAllPoints()
             csHL:SetColorTexture(1, 1, 1, 0.1)
-            classSelectBtn:SetScript("OnEnter", function(self)
+            local function OpenClassFlyout()
                 LayoutClassFlyout()
                 classFlyout:SetScale((EasyFind.db.uiSearchScale or 1.0) * (EasyFind.db.fontSize or 1.0))
                 classFlyout:ClearAllPoints()
-                classFlyout:SetPoint("TOPLEFT", self, "TOPRIGHT", 2, 6)
+                classFlyout:SetPoint("TOPLEFT", classSelectBtn, "TOPRIGHT", 2, 6)
                 classFlyout:Show()
-            end)
+            end
+            classSelectBtn:SetScript("OnEnter", function() OpenClassFlyout() end)
+            classSelectBtn:SetScript("OnClick", function() OpenClassFlyout() end)
 
             -- Spec rows (rebuilt each time popup opens based on selected class)
             local specRadioRows = {}
@@ -1946,6 +2028,14 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             row.specSelectRow = specSelectRow
             row.specSelectLabel = specSelectLabel
 
+            local function GetSpecPopupNavRows()
+                local rows = { classSelectBtn }
+                for _, sr in ipairs(specRadioRows) do
+                    if sr:IsShown() then rows[#rows + 1] = sr end
+                end
+                return rows
+            end
+
             -- Close on outside click
             specPopup:SetScript("OnShow", function(self)
                 self:RegisterEvent("GLOBAL_MOUSE_DOWN")
@@ -1966,6 +2056,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
             -- Close class flyout when mouse leaves both panels
             classFlyout:SetScript("OnUpdate", function(self)
+                if self:IsKeyboardEnabled() then return end
                 if not self:IsMouseOver() and not specPopup:IsMouseOver() then
                     if not self._leaveTimer then
                         self._leaveTimer = C_Timer.NewTimer(0.2, function()
@@ -1988,6 +2079,10 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 classFlyout:Hide()
                 specPopup:Hide()
             end)
+
+            -- Keyboard nav MUST be added AFTER SetScript calls above
+            AddPopupKeyboardNav(specPopup, GetSpecPopupNavRows)
+            AddPopupKeyboardNav(classFlyout, function() return classFlyoutRows end)
 
             -- Keep EasyFindSpecFlyout/EasyFindSpecSubFlyout names for dropdown close guard
             local specFlyout = classFlyout
@@ -2055,17 +2150,46 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
     -- Layout: positions all rows including map sub-rows, adjusts dropdown height
     local SUB_INDENT = 24
+    local dropdownNavRows = {}  -- ordered list of navigable rows (rebuilt on layout)
+    local dropdownFocus = 0
+    local dropdownKbHighlight = dropdown:CreateTexture(nil, "BACKGROUND")
+    dropdownKbHighlight:SetColorTexture(1, 1, 1, 0.1)
+    dropdownKbHighlight:Hide()
+
+    local function SetDropdownFocus(idx)
+        dropdownFocus = idx
+        local target = dropdownNavRows[idx]
+        if target then
+            dropdownKbHighlight:SetParent(target)
+            dropdownKbHighlight:ClearAllPoints()
+            dropdownKbHighlight:SetAllPoints(target)
+            dropdownKbHighlight:Show()
+        else
+            dropdownKbHighlight:Hide()
+        end
+    end
+
+    local function ClearDropdownFocus()
+        dropdownFocus = 0
+        dropdownKbHighlight:Hide()
+    end
+
     function LayoutDropdown()
+        local savedFocus = dropdownFocus
+        wipe(dropdownNavRows)
+        dropdownKbHighlight:Hide()
         local y = -PADDING_TOP
         -- Toggle All row
         uncheckRow:ClearAllPoints()
         uncheckRow:SetPoint("TOPLEFT", 8, y)
+        dropdownNavRows[#dropdownNavRows + 1] = uncheckRow
         y = y - ROW_HEIGHT
         -- Filter rows
         for i, opt in ipairs(UI_FILTER_OPTIONS) do
             local row = checkRowsByIndex[i]
             row:ClearAllPoints()
             row:SetPoint("TOPLEFT", 8, y)
+            dropdownNavRows[#dropdownNavRows + 1] = row
             y = y - ROW_HEIGHT
             -- Map sub-rows
             if row.mapSubRows then
@@ -2075,6 +2199,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                         sr:ClearAllPoints()
                         sr:SetPoint("TOPLEFT", 8 + SUB_INDENT, y)
                         sr:Show()
+                        dropdownNavRows[#dropdownNavRows + 1] = sr
                         y = y - ROW_HEIGHT
                     else
                         sr:Hide()
@@ -2103,6 +2228,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                         row.specSelectRow:ClearAllPoints()
                         row.specSelectRow:SetPoint("TOPLEFT", 8 + SUB_INDENT, y)
                         row.specSelectRow:Show()
+                        dropdownNavRows[#dropdownNavRows + 1] = row.specSelectRow
                         y = y - 28
                     else
                         row.specSelectRow:Hide()
@@ -2114,6 +2240,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                         row.diffBtn:ClearAllPoints()
                         row.diffBtn:SetPoint("TOPLEFT", 8 + SUB_INDENT, y)
                         row.diffBtn:Show()
+                        dropdownNavRows[#dropdownNavRows + 1] = row.diffBtn
                         y = y - 28
                     else
                         row.diffBtn:Hide()
@@ -2125,6 +2252,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                         sr:ClearAllPoints()
                         sr:SetPoint("TOPLEFT", 8 + SUB_INDENT, y)
                         sr:Show()
+                        dropdownNavRows[#dropdownNavRows + 1] = sr
                         y = y - ROW_HEIGHT
                     else
                         sr:Hide()
@@ -2133,7 +2261,41 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             end
         end
         dropdown:SetSize(DROPDOWN_WIDTH, -y + PADDING_BOTTOM)
+        -- Restore keyboard focus if it was active
+        if savedFocus > 0 and dropdown:IsKeyboardEnabled() then
+            if savedFocus > #dropdownNavRows then savedFocus = #dropdownNavRows end
+            SetDropdownFocus(savedFocus)
+        end
     end
+
+    -- Keyboard navigation for the dropdown
+    Utils.SafeCallMethod(dropdown, "EnableKeyboard", false)
+    Utils.SafeCallMethod(dropdown, "SetPropagateKeyboardInput", false)
+
+    dropdown:SetScript("OnKeyDown", function(self, key)
+        Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+        if key == "DOWN" then
+            local next = dropdownFocus + 1
+            if next > #dropdownNavRows then next = 1 end
+            SetDropdownFocus(next)
+        elseif key == "UP" then
+            local prev = dropdownFocus - 1
+            if prev < 1 then prev = #dropdownNavRows end
+            SetDropdownFocus(prev)
+        elseif key == "ENTER" then
+            local target = dropdownNavRows[dropdownFocus]
+            if target and target.Click then
+                target:Click()
+            end
+        elseif key == "ESCAPE" then
+            self._escapedViaKeyboard = true
+            self:Hide()
+        else
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
+        end
+    end)
+
+    -- (keyboard OnShow/OnHide hooks moved after SetScript calls below)
 
     -- Uncheck All: toggles all checkboxes off, or all back on if already all unchecked
     uncheckRow:SetScript("OnClick", function()
@@ -2173,6 +2335,39 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     end)
 
     dropdown:SetScript("OnHide", function() end)
+
+    -- Keyboard: enable when opened via Enter on filter button
+    dropdown:HookScript("OnShow", function(self)
+        if searchFrame.filterBtn and searchFrame.filterBtn.keyboardFocused then
+            dropdownKeyboardMode = true
+            Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
+            Utils.SafeCallMethod(self, "EnableKeyboard", true)
+            SetDropdownFocus(1)
+        end
+    end)
+
+    -- Keyboard: cleanup on hide
+    dropdown:HookScript("OnHide", function(self)
+        ClearDropdownFocus()
+        Utils.SafeCallMethod(self, "EnableKeyboard", false)
+        if self._escapedViaKeyboard then
+            self._escapedViaKeyboard = nil
+            dropdownKeyboardMode = false
+            Utils.SafeCallMethod(navFrame, "EnableKeyboard", true)
+        else
+            dropdownKeyboardMode = false
+            if searchFrame.ClearToolbarFocus then searchFrame.ClearToolbarFocus() end
+            Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
+            if searchFrame.filterBtn then
+                searchFrame.filterBtn.keyboardFocused = nil
+                if searchFrame.filterBtn.btnBg then searchFrame.filterBtn.btnBg:Hide() end
+                if searchFrame.filterBtn.UnlockHighlight then searchFrame.filterBtn:UnlockHighlight() end
+            end
+            if searchFrame.editBox and not searchFrame.editBox:IsMouseOver() then
+                searchFrame.editBox:ClearFocus()
+            end
+        end
+    end)
 
     -- Close when clicking outside (but not when interacting with spec/class flyouts)
     dropdown:SetScript("OnUpdate", function(self)
@@ -4298,7 +4493,17 @@ function UI:RefreshResults()
     self:UpdateSearchBarTheme()
     -- Only re-render if results are currently visible; don't resurrect old results
     if cachedHierarchical and resultsFrame and resultsFrame:IsShown() then
+        local savedIndex = selectedIndex
+        local savedToggle = toggleFocused
         self:ShowHierarchicalResults(cachedHierarchical)
+        -- ShowHierarchicalResults resets selectedIndex to 0; restore it for
+        -- deferred re-renders (rep bar IsTruncated settle) so keyboard
+        -- navigation isn't disrupted.
+        if savedIndex > 0 then
+            selectedIndex = savedIndex
+            toggleFocused = savedToggle
+            self:UpdateSelectionHighlight()
+        end
     end
 end
 
@@ -5298,7 +5503,14 @@ end
 
 function UI:RefreshResults()
     if cachedHierarchical and resultsFrame and resultsFrame:IsShown() then
+        local savedIndex = selectedIndex
+        local savedToggle = toggleFocused
         self:ShowHierarchicalResults(cachedHierarchical, true)
+        if savedIndex > 0 then
+            selectedIndex = savedIndex
+            toggleFocused = savedToggle
+            self:UpdateSelectionHighlight()
+        end
     end
 end
 
