@@ -14,14 +14,6 @@ All notable changes to EasyFind will be documented in this file.
 - **Clear Button for Navigation**: The search bar clear button now appears during active step-by-step guides and dismisses highlights and arrows in addition to clearing text
 - **Dynamic Category Ordering**: Search result categories (UI, Mounts, Loot, etc.) sort by best match score instead of a fixed order
 
-### Fixed
-- **Loot Navigation**: Fixed item highlighting in the Encounter Journal loot tab and added recovery when clicking a different boss mid-guide
-
-### Technical
-- EJ class/spec and difficulty filters sync with search filter selection before loot navigation
-- Guides fast-forward through already-satisfied steps instead of advancing one per ticker tick
-- Slightly thicker gold separator lines between result category groups
-
 ---
 
 ## [1.4.0] - 2026-03-20
