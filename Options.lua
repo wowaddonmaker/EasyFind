@@ -1722,6 +1722,11 @@ function Options:DoResetAll()
     EasyFind.db.globalSearchFilters = { zones = true, dungeons = true, raids = true, delves = true }
     EasyFind.db.localSearchFilters = { instances = true, travel = true, services = true }
     EasyFind.db.uiSearchFilters = { ui = true, mounts = false, toys = false, pets = false, outfits = false, loot = false, map = false }
+    EasyFind.db.lootFilter = nil          -- nil = current spec
+    EasyFind.db.lootDifficulty = "normal"
+    EasyFind.db.pinnedUIItems = {}
+    EasyFind.db.pinnedUIItemsPerChar = {}
+    EasyFind.db.pinnedMapItems = {}
     EasyFind.db.uiMapSearchLocal = true
     EasyFind.db.alwaysShowRares = false
     EasyFind.db.optionsPosition = nil

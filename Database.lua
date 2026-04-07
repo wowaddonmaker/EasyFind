@@ -518,6 +518,16 @@ local LOOT_DIFF_IDS = {
     mythic  = { dungeon = 23, raid = 16 },
 }
 
+-- Get the EJ difficulty ID for the current loot difficulty setting.
+-- sourceType: "Raid" or "Dungeon"
+function Database:GetEJDifficultyID(sourceType)
+    local diffKey = EasyFind.db.lootDifficulty or "normal"
+    local diffIDs = LOOT_DIFF_IDS[diffKey]
+    if not diffIDs then return nil end
+    local srcKey = sourceType == "Raid" and "raid" or "dungeon"
+    return diffIDs[srcKey] or diffIDs.raid or diffIDs.dungeon
+end
+
 -- Sync the EJ's internal loot filter to match EasyFind's lootFilter setting.
 -- Called when the user changes the filter and before loot navigation.
 function Database:SyncEJLootFilter()
