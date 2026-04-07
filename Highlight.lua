@@ -1172,10 +1172,9 @@ function Highlight:UpdateGuide()
 
         -- EJ loot tab: highlight if not selected, advance when loot content visible
         if step.ejLootTab then
-            -- Set difficulty after boss is selected (must come after instance/encounter selection)
-            if step.ejDifficultyID then
-                local setDiff = (C_EncounterJournal and C_EncounterJournal.SetDifficulty) or _G["EJ_SetDifficulty"]
-                if setDiff then setDiff(step.ejDifficultyID) end
+            if step.ejDifficultyID and not step._diffSet then
+                step._diffSet = true
+                if ns.Database then ns.Database:SetEJDifficulty(step.ejDifficultyID) end
             end
             local lootTab = _G["EncounterJournalEncounterFrameInfoLootTab"]
             if not lootTab or not lootTab:IsShown() then return end

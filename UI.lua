@@ -5393,9 +5393,8 @@ function UI:DirectOpen(data)
 
             -- EJ loot tab: click
             if step.ejLootTab then
-                if step.ejDifficultyID then
-                    local setDiff = (C_EncounterJournal and C_EncounterJournal.SetDifficulty) or _G["EJ_SetDifficulty"]
-                    if setDiff then setDiff(step.ejDifficultyID) end
+                if step.ejDifficultyID and ns.Database then
+                    ns.Database:SetEJDifficulty(step.ejDifficultyID)
                 end
                 local lootTab = _G["EncounterJournalEncounterFrameInfoLootTab"]
                 if lootTab then ClickButton(lootTab) end
