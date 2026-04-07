@@ -20,6 +20,7 @@ globals = {
     "BINDING_NAME_EASYFIND_TOGGLE_FOCUS",
     "BINDING_NAME_EASYFIND_CLEAR",
     "EncounterJournal",
+    "TransmogFrame",
 }
 
 -- WoW API globals (read-only)
@@ -48,7 +49,7 @@ read_globals = {
     "CharacterFrame", "PaperDollFrame", "AchievementFrame",
     "CharacterStatsPane", "PaperDollTitlesPane", "PaperDollEquipmentManagerPane",
     "CurrencyFrame",
-    "SpellBookFrame", "PlayerSpellsFrame", "CollectionsJournal", "TransmogFrame",
+    "SpellBookFrame", "PlayerSpellsFrame", "CollectionsJournal",
     "PVEFrame", "ReputationFrame", "TokenFrame",
     "GroupFinderFrame", "LFGListFrame", "HelpFrame", "ClassTalentFrame",
     "GuildMicroButton", "StoreMicroButton", "PlayerFrame", "StoreFrame",
@@ -63,7 +64,7 @@ read_globals = {
     "Menu", "ScrollBoxConstants",
 
     -- C_* namespaces
-    "C_AddOns", "C_AchievementInfo", "C_AreaPoiInfo", "C_CurrencyInfo",
+    "C_AddOns", "C_AchievementInfo", "C_AreaPoiInfo", "C_CurrencyInfo", "C_Item",
     "C_EncounterJournal", "C_GossipInfo", "C_MajorFactions", "C_Map",
     "C_Minimap", "C_MountJournal", "C_Navigation", "C_PetJournal",
     "C_Reputation", "C_SuperTrack", "C_TaxiMap", "C_Texture", "C_Timer",
@@ -83,6 +84,7 @@ read_globals = {
     "EJ_SetDifficulty", "EJ_SetLootFilter", "EJ_SetSlotFilter",
     "EJ_GetNumLoot", "EJ_GetLootInfoByIndex",
     "HasAction", "PlaceAction", "PickupAction", "ClearCursor", "GetActionCooldown",
+    "SetOverrideBindingClick", "ClearOverrideBindings",
 
     -- Data types
     "UiMapPoint",

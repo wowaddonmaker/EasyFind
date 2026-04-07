@@ -2354,7 +2354,6 @@ function MapSearch:CreateSearchFrame()
 
         -- Filter dropdown keyboard navigation takes priority
         if dropdown then
-            local rowCount = #dropdown.rows
             if key == "DOWN" then
                 MapSearch.StartKeyRepeat(key, function()
                     local rc = #dropdown.rows
