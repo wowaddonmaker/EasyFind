@@ -26,7 +26,7 @@ local IsShiftKeyDown     = IsShiftKeyDown
 local GetCursorPosition  = GetCursorPosition
 local wipe               = wipe
 
-local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind-loot-search\\textures\\lightning-bolt"
+local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind\\textures\\lightning-bolt"
 local REP_BAR_WIDTH = 100
 
 local searchFrame
@@ -1249,8 +1249,8 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
     -- Shared constants for dropdown popups and radio buttons (one place to tweak)
     local RADIO_SIZE = 14
-    local RADIO_OFF_TEX = "Interface\\AddOns\\EasyFind-loot-search\\radio-off"
-    local RADIO_ON_TEX = "Interface\\AddOns\\EasyFind-loot-search\\radio-on"
+    local RADIO_OFF_TEX = "Interface\\AddOns\\EasyFind\\radio-off"
+    local RADIO_ON_TEX = "Interface\\AddOns\\EasyFind\\radio-on"
     local DROPDOWN_BAR_SIZE = { 120, 27 }
     local DROPDOWN_ARROW_SIZE = { 20, 20 }
     local DROPDOWN_ARROW_DIM = 0.7
@@ -1899,7 +1899,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             local csArrow = classSelectBtn:CreateTexture(nil, "ARTWORK")
             csArrow:SetSize(16, 16)
             csArrow:SetPoint("RIGHT", -4, 0)
-            csArrow:SetTexture("Interface\\AddOns\\EasyFind-loot-search\\flyout-arrow")
+            csArrow:SetTexture("Interface\\AddOns\\EasyFind\\flyout-arrow")
             local csHL = classSelectBtn:CreateTexture(nil, "HIGHLIGHT")
             csHL:SetAllPoints()
             csHL:SetColorTexture(1, 1, 1, 0.1)
