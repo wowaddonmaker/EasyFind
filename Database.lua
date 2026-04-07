@@ -2463,7 +2463,9 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
         return best
     end
 
-    -- For multi-word queries, match each word separately and take best match per word
+    -- For multi-word queries, match each word separately and take best match per word.
+    -- All query words must match at least one keyword; a single unmatched word
+    -- zeroes the total to prevent common words like "of" from producing false positives.
     local total = 0
     for qwi = 1, #queryWords do
         local queryWord = queryWords[qwi]
@@ -2501,6 +2503,9 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
             end
         end
 
+        if bestScore == 0 then
+            return 0
+        end
         total = total + bestScore
     end
 
@@ -2570,14 +2575,20 @@ function Database:SearchUI(query, skipCategories)
                 score = 0
                 local totalScore = 0
 
+                local nameWords = GetWords(nameLower)
                 for qi = 1, #queryWords do
                     local qw = queryWords[qi]
                     local qwLen = #qw
                     local bestWord = 0
 
-                    -- Score against item name (prefix match)
-                    if qi == 1 and ssub(nameLower, 1, queryLen) == query then
-                        bestWord = 100
+                    -- Score against item name words (prefix match per word)
+                    for ni = 1, #nameWords do
+                        local nw = nameWords[ni]
+                        if nw == qw then
+                            bestWord = mmax(bestWord, qi == 1 and 100 or 90)
+                        elseif ssub(nw, 1, qwLen) == qw then
+                            bestWord = mmax(bestWord, qi == 1 and 95 or 85)
+                        end
                     end
 
                     -- Score against slot keywords

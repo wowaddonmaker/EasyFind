@@ -291,6 +291,7 @@ end
 local selectedIndex = 0   -- 0 = none selected, 1..N = highlighted row
 local toggleFocused = false -- true = Tab moved focus to expand/collapse toggle
 local navFrame             -- Keyboard capture frame for results navigation
+local escCatcher           -- UISpecialFrames fallback for second-ESC-to-close
 local unearnedTooltip      -- Custom tooltip for unearned currencies
 
 -- THEME DEFINITIONS
@@ -656,6 +657,7 @@ function UI:CreateSearchFrame()
             self:ClearFocus()
             return
         end
+        if escCatcher then escCatcher:Hide() end
         self.placeholder:Hide()
         if selectedIndex > 0 then
             selectedIndex = 0
@@ -709,7 +711,7 @@ function UI:CreateSearchFrame()
 
     editBox:SetScript("OnEscapePressed", function(self)
         self:ClearFocus()
-        -- Text and results stay visible; user can click back in to resume
+        -- Text and results stay visible; user can click back in to resume.
     end)
 
     -- Clear-text X button (grey circle X, matching retail quest log style)
@@ -807,6 +809,7 @@ function UI:CreateSearchFrame()
         repeatActive = false
     end
     searchFrame.StopKeyRepeat = StopKeyRepeat
+    searchFrame.IsRepeatKey = function(key) return repeatKey == key end
 
     local function StartKeyRepeat(key, action)
         action()
@@ -816,6 +819,7 @@ function UI:CreateSearchFrame()
         repeatNext = REPEAT_INITIAL
         repeatActive = true
     end
+    searchFrame.StartKeyRepeat = StartKeyRepeat
 
     searchFrame:SetScript("OnUpdate", function(_, elapsed)
         if not repeatActive then return end
@@ -1012,6 +1016,12 @@ function UI:CreateSearchFrame()
                 UI:UpdateSelectionHighlight(true)
             end
         else
+            -- If no selection and editbox isn't focused, let the key propagate
+            -- to the game (e.g. WASD movement) instead of typing into the bar.
+            if selectedIndex == 0 and not searchFrame.editBox:HasFocus() then
+                Utils.SafeCallMethod(navFrame, "SetPropagateKeyboardInput", true)
+                return
+            end
             ClearToolbarFocus()
             selectedIndex = 0
             toggleFocused = false
@@ -1034,11 +1044,30 @@ function UI:CreateSearchFrame()
                 return
             end
         end
-        HandleNavKeyDown(key)
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+        HandleNavKeyDown(key)
     end)
     navFrame:SetScript("OnKeyUp", function(_, key)
         if repeatKey == key then StopKeyRepeat() end
+    end)
+
+    -- UISpecialFrames fallback: WoW closes these on ESC before opening the
+    -- game menu.  Shown after the editbox loses focus with results visible so
+    -- the next ESC clears+closes instead of toggling the game menu.
+    escCatcher = CreateFrame("Frame", "EasyFindEscCatcher", searchFrame)
+    escCatcher:SetSize(1, 1)
+    escCatcher:Hide()
+    tinsert(UISpecialFrames, "EasyFindEscCatcher")
+    escCatcher:SetScript("OnHide", function()
+        if searchFrame.editBox:HasFocus() then return end
+        if not resultsFrame or not resultsFrame:IsShown() then return end
+        Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
+        if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
+        selectedIndex = 0
+        toggleFocused = false
+        searchFrame.editBox:SetText("")
+        searchFrame.editBox.placeholder:Show()
+        UI:HideResults()
     end)
 
     -- Tab/Shift+Tab from editbox: navigate toolbar controls
@@ -1313,13 +1342,19 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
             local rows = getRows()
             if key == "DOWN" then
-                local next = popupFocus + 1
-                if next > #rows then next = 1 end
-                SetPopupFocus(next)
+                searchFrame.StartKeyRepeat(key, function()
+                    local r = getRows()
+                    local next = popupFocus + 1
+                    if next > #r then next = 1 end
+                    SetPopupFocus(next)
+                end)
             elseif key == "UP" then
-                local prev = popupFocus - 1
-                if prev < 1 then prev = #rows end
-                SetPopupFocus(prev)
+                searchFrame.StartKeyRepeat(key, function()
+                    local r = getRows()
+                    local prev = popupFocus - 1
+                    if prev < 1 then prev = #r end
+                    SetPopupFocus(prev)
+                end)
             elseif key == "ENTER" then
                 local target = rows[popupFocus]
                 if target and target.Click then target:Click() end
@@ -1328,6 +1363,9 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             else
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
             end
+        end)
+        popup:HookScript("OnKeyUp", function(_, key)
+            if searchFrame.IsRepeatKey(key) then searchFrame.StopKeyRepeat() end
         end)
 
         popup:HookScript("OnShow", function(self)
@@ -2229,7 +2267,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                         row.specSelectRow:SetPoint("TOPLEFT", 8 + SUB_INDENT, y)
                         row.specSelectRow:Show()
                         dropdownNavRows[#dropdownNavRows + 1] = row.specSelectRow
-                        y = y - 28
+                        y = y - 24
                     else
                         row.specSelectRow:Hide()
                     end
@@ -2275,13 +2313,22 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     dropdown:SetScript("OnKeyDown", function(self, key)
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
         if key == "DOWN" then
-            local next = dropdownFocus + 1
-            if next > #dropdownNavRows then next = 1 end
-            SetDropdownFocus(next)
+            searchFrame.StartKeyRepeat(key, function()
+                local next = dropdownFocus + 1
+                if next > #dropdownNavRows then next = 1 end
+                SetDropdownFocus(next)
+            end)
         elseif key == "UP" then
-            local prev = dropdownFocus - 1
-            if prev < 1 then prev = #dropdownNavRows end
-            SetDropdownFocus(prev)
+            if dropdownFocus <= 1 then
+                self._escapedViaKeyboard = true
+                self:Hide()
+                return
+            end
+            searchFrame.StartKeyRepeat(key, function()
+                local prev = dropdownFocus - 1
+                if prev < 1 then prev = 1 end
+                SetDropdownFocus(prev)
+            end)
         elseif key == "ENTER" then
             local target = dropdownNavRows[dropdownFocus]
             if target and target.Click then
@@ -2293,6 +2340,9 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         else
             Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
         end
+    end)
+    dropdown:SetScript("OnKeyUp", function(_, key)
+        if searchFrame.IsRepeatKey(key) then searchFrame.StopKeyRepeat() end
     end)
 
     -- (keyboard OnShow/OnHide hooks moved after SetScript calls below)
@@ -3746,6 +3796,10 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 local collapseAtlas = theme.collapseAtlas or "QuestLog-icon-shrink"
                 local toggleAtlas = isCollapsed and expandAtlas or collapseAtlas
                 resultRow.toggleIcon:SetAtlas(toggleAtlas)
+                -- Reset tabText anchors (may have been re-anchored to repBar)
+                resultRow.tabText:ClearAllPoints()
+                resultRow.tabText:SetPoint("LEFT", resultRow.headerTab, "LEFT", 10, 0)
+                resultRow.tabText:SetPoint("RIGHT", resultRow.toggleBtn, "LEFT", -4, 0)
                 resultRow.tabText:SetText(entry.name)
                 -- Matched path nodes get gold text; non-matches stay muted gray
                 if resultRow._isMatch then
@@ -4334,10 +4388,11 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             end
 
             -- Measure text height and expand row if text wraps
+            -- Skip header tabs: they have SetMaxLines(1) and can't wrap.
             local actualH = resultRow:GetHeight()
             local textObj
             if theme.showHeaderTab and entry.isPathNode and resultRow.headerTab:IsShown() then
-                textObj = resultRow.tabText
+                textObj = nil
             elseif not entry.isPinHeader then
                 textObj = resultRow.text
             end
@@ -4513,6 +4568,7 @@ function UI:HideResults()
     if searchFrame.ClearToolbarFocus then searchFrame.ClearToolbarFocus() end
     if not resultsFrame then return end
     resultsFrame:Hide()
+    if escCatcher then escCatcher:Hide() end
     if resultsFrame.pinSeparator then
         resultsFrame.pinSeparator:Hide()
     end
