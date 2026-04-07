@@ -9,7 +9,7 @@ local SearchFrameTreeFuzzy  = Utils.SearchFrameTreeFuzzy
 local ClickButton           = Utils.ClickButton
 local select, ipairs, pairs = Utils.select, Utils.ipairs, Utils.pairs
 local sfind, slower         = Utils.sfind, Utils.slower
-local tinsert, tconcat, tremove = Utils.tinsert, Utils.tconcat, Utils.tremove
+local tinsert, tconcat, tremove, tsort = Utils.tinsert, Utils.tconcat, Utils.tremove, Utils.tsort
 local mmin, mmax = Utils.mmin, Utils.mmax
 
 local GOLD_COLOR = ns.GOLD_COLOR
@@ -1699,8 +1699,11 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
             -- Apply single selection and rebuild from cache
             local function ApplyFilterSelection()
-                if ns.Database and ns.Database.PopulateDynamicLoot then
-                    ns.Database:PopulateDynamicLoot()
+                if ns.Database then
+                    if ns.Database.PopulateDynamicLoot then
+                        ns.Database:PopulateDynamicLoot()
+                    end
+                    ns.Database:SyncEJLootFilter()
                 end
                 if searchEditBox:GetText() ~= "" then
                     UI:OnSearchTextChanged(searchEditBox:GetText())
@@ -2510,12 +2513,12 @@ function UI:CreateResultsFrame()
     pinSeparator:Hide()
     resultsFrame.pinSeparator = pinSeparator
 
-    -- Category separator lines (between UI, Mount, and Toy result groups)
+    -- Category separator lines (between result category groups)
     local categorySeps = {}
-    for sepIdx = 1, 2 do
+    for sepIdx = 1, 6 do
         local sep = scrollChild:CreateTexture(nil, "ARTWORK")
-        sep:SetColorTexture(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.25)
-        sep:SetHeight(1)
+        sep:SetColorTexture(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.3)
+        sep:SetHeight(1.5)
         sep:Hide()
         categorySeps[sepIdx] = sep
     end
@@ -2537,6 +2540,10 @@ local expandedContainers = {}  -- tracks which containers have had children inje
 
 -- Reusable tables for grouping results (wiped each search to avoid per-keystroke allocations)
 local groupUI, groupMounts, groupToys, groupPets, groupOutfits, groupLoot, groupMap = {}, {}, {}, {}, {}, {}, {}
+local uiSectionHeader = {
+    name = "UI", depth = 0, isPathNode = true,
+    isMatch = false, isSectionHeader = true,
+}
 local mountSectionHeader = {
     name = "Mounts", depth = 0, isPathNode = true,
     isMatch = false, isSectionHeader = true,
@@ -3291,6 +3298,35 @@ function UI:OnSearchTextChanged(text)
         mapResults = ns.MapSearch:SearchForUI(text)
     end
 
+    -- Compute best score per category from flat results (before hierarchy loses scores)
+    local bestCatScore = {}
+    for _, r in ipairs(results) do
+        local d = r.data
+        local s = r.score or 0
+        local cat
+        if d.mountID then cat = "mounts"
+        elseif d.toyItemID then cat = "toys"
+        elseif d.petID then cat = "pets"
+        elseif d.outfitID then cat = "outfits"
+        elseif d.itemID and d.category == "Loot" then cat = "loot"
+        else cat = "ui"
+        end
+        if s > (bestCatScore[cat] or 0) then bestCatScore[cat] = s end
+    end
+    if mapResults then
+        for _, r in ipairs(mapResults) do
+            local s = r.score or 0
+            if s > (bestCatScore.map or 0) then bestCatScore.map = s end
+        end
+    end
+    -- Boost loot category when the query exactly matches a slot name (e.g., "legs", "ring")
+    if bestCatScore.loot and ns.lootSlotNames then
+        local queryLower = slower(text)
+        if ns.lootSlotNames[queryLower] then
+            bestCatScore.loot = mmax(bestCatScore.loot, 200)
+        end
+    end
+
     local hierarchical = ns.Database:BuildHierarchicalResults(results)
     -- Container nodes (search results that have database children which didn't
     -- match the query) start collapsed - user can expand to browse children.
@@ -3339,83 +3375,80 @@ function UI:OnSearchTextChanged(text)
             }
         end
     end
+    -- Sort categories by best match score so the most relevant category appears first
+    local catGroups = {}
+    if #groupUI > 0 then catGroups[#catGroups + 1] = { key = "ui", score = bestCatScore.ui or 0 } end
+    if #groupMounts > 0 then catGroups[#catGroups + 1] = { key = "mounts", score = bestCatScore.mounts or 0 } end
+    if #groupToys > 0 then catGroups[#catGroups + 1] = { key = "toys", score = bestCatScore.toys or 0 } end
+    if #groupPets > 0 then catGroups[#catGroups + 1] = { key = "pets", score = bestCatScore.pets or 0 } end
+    if #groupOutfits > 0 then catGroups[#catGroups + 1] = { key = "outfits", score = bestCatScore.outfits or 0 } end
+    if #groupLoot > 0 then catGroups[#catGroups + 1] = { key = "loot", score = bestCatScore.loot or 0 } end
+    if #groupMap > 0 then catGroups[#catGroups + 1] = { key = "map", score = bestCatScore.map or 0 } end
+    tsort(catGroups, function(a, b)
+        if a.score ~= b.score then return a.score > b.score end
+        return a.key < b.key
+    end)
+
     hierarchical = {}
-    for _, e in ipairs(groupUI) do hierarchical[#hierarchical + 1] = e end
-    if #groupMounts > 0 then
-        hierarchical[#hierarchical + 1] = mountSectionHeader
-        for _, e in ipairs(groupMounts) do
-            e.depth = 1
-            hierarchical[#hierarchical + 1] = e
-        end
-    end
-    if #groupToys > 0 then
-        hierarchical[#hierarchical + 1] = toySectionHeader
-        for _, e in ipairs(groupToys) do
-            e.depth = 1
-            hierarchical[#hierarchical + 1] = e
-        end
-    end
-    if #groupPets > 0 then
-        hierarchical[#hierarchical + 1] = petSectionHeader
-        for _, e in ipairs(groupPets) do
-            e.depth = 1
-            hierarchical[#hierarchical + 1] = e
-        end
-    end
-    if #groupOutfits > 0 then
-        hierarchical[#hierarchical + 1] = outfitSectionHeader
-        for _, e in ipairs(groupOutfits) do
-            e.depth = 1
-            hierarchical[#hierarchical + 1] = e
-        end
-    end
-    if #groupLoot > 0 then
-        hierarchical[#hierarchical + 1] = lootSectionHeader
-        -- Group loot results: slot -> instance -> items
-        local slotGroups = {}
-        local slotOrder = {}
-        for _, e in ipairs(groupLoot) do
-            local slot = (e.data and e.data.lootSlotName) or "Other"
-            if not slotGroups[slot] then
-                slotGroups[slot] = {}
-                slotOrder[#slotOrder + 1] = slot
+    for _, cat in ipairs(catGroups) do
+        if cat.key == "ui" then
+            if #hierarchical > 0 then
+                hierarchical[#hierarchical + 1] = uiSectionHeader
             end
-            slotGroups[slot][#slotGroups[slot] + 1] = e
-        end
-        for _, slot in ipairs(slotOrder) do
-            -- Slot sub-header
-            hierarchical[#hierarchical + 1] = {
-                name = slot, depth = 1, isPathNode = true,
-                isMatch = false, isSectionHeader = false,
-            }
-            -- Group by instance within slot
-            local instGroups = {}
-            local instOrder = {}
-            for _, e in ipairs(slotGroups[slot]) do
-                local inst = (e.data and e.data.lootInstanceName) or "Unknown"
-                if not instGroups[inst] then
-                    instGroups[inst] = {}
-                    instOrder[#instOrder + 1] = inst
+            for _, e in ipairs(groupUI) do hierarchical[#hierarchical + 1] = e end
+        elseif cat.key == "mounts" then
+            hierarchical[#hierarchical + 1] = mountSectionHeader
+            for _, e in ipairs(groupMounts) do e.depth = 1; hierarchical[#hierarchical + 1] = e end
+        elseif cat.key == "toys" then
+            hierarchical[#hierarchical + 1] = toySectionHeader
+            for _, e in ipairs(groupToys) do e.depth = 1; hierarchical[#hierarchical + 1] = e end
+        elseif cat.key == "pets" then
+            hierarchical[#hierarchical + 1] = petSectionHeader
+            for _, e in ipairs(groupPets) do e.depth = 1; hierarchical[#hierarchical + 1] = e end
+        elseif cat.key == "outfits" then
+            hierarchical[#hierarchical + 1] = outfitSectionHeader
+            for _, e in ipairs(groupOutfits) do e.depth = 1; hierarchical[#hierarchical + 1] = e end
+        elseif cat.key == "loot" then
+            hierarchical[#hierarchical + 1] = lootSectionHeader
+            local slotGroups = {}
+            local slotOrder = {}
+            for _, e in ipairs(groupLoot) do
+                local slot = (e.data and e.data.lootSlotName) or "Other"
+                if not slotGroups[slot] then
+                    slotGroups[slot] = {}
+                    slotOrder[#slotOrder + 1] = slot
                 end
-                instGroups[inst][#instGroups[inst] + 1] = e
+                slotGroups[slot][#slotGroups[slot] + 1] = e
             end
-            for _, inst in ipairs(instOrder) do
-                -- Instance sub-header
+            for _, slot in ipairs(slotOrder) do
                 hierarchical[#hierarchical + 1] = {
-                    name = inst, depth = 2, isPathNode = true,
+                    name = slot, depth = 1, isPathNode = true,
                     isMatch = false, isSectionHeader = false,
                 }
-                for _, e in ipairs(instGroups[inst]) do
-                    e.depth = 3
-                    hierarchical[#hierarchical + 1] = e
+                local instGroups = {}
+                local instOrder = {}
+                for _, e in ipairs(slotGroups[slot]) do
+                    local inst = (e.data and e.data.lootInstanceName) or "Unknown"
+                    if not instGroups[inst] then
+                        instGroups[inst] = {}
+                        instOrder[#instOrder + 1] = inst
+                    end
+                    instGroups[inst][#instGroups[inst] + 1] = e
+                end
+                for _, inst in ipairs(instOrder) do
+                    hierarchical[#hierarchical + 1] = {
+                        name = inst, depth = 2, isPathNode = true,
+                        isMatch = false, isSectionHeader = false,
+                    }
+                    for _, e in ipairs(instGroups[inst]) do
+                        e.depth = 3
+                        hierarchical[#hierarchical + 1] = e
+                    end
                 end
             end
-        end
-    end
-    if #groupMap > 0 then
-        hierarchical[#hierarchical + 1] = mapSectionHeader
-        for _, e in ipairs(groupMap) do
-            hierarchical[#hierarchical + 1] = e
+        elseif cat.key == "map" then
+            hierarchical[#hierarchical + 1] = mapSectionHeader
+            for _, e in ipairs(groupMap) do hierarchical[#hierarchical + 1] = e end
         end
     end
 
@@ -4867,22 +4900,34 @@ function UI:SelectResult(data)
     -- Outfit: equip handled by SecureActionButton (mouse click or Enter binding).
     if data.outfitID then return end
 
-    -- Loot: Shift+click opens dressing room, regular click opens EJ to boss
+    -- Loot: Shift+click opens dressing room, regular click navigates EJ
     if data.itemID and data.category == "Loot" then
         local lootLink = ns.Database and ns.Database:GetLootItemLink(data)
         if IsShiftKeyDown() and lootLink then
             DressUpItemLink(lootLink)
+            return
+        end
+
+        -- Sync EJ loot filter so the item is visible when we navigate there
+        if ns.Database then ns.Database:SyncEJLootFilter() end
+
+        local isRaid = data.lootSourceType == "Raid"
+        local tabIndex = isRaid and 5 or 4
+        local guideData = {
+            steps = {
+                { buttonFrame = "EJMicroButton" },
+                { waitForFrame = "EncounterJournal", tabIndex = tabIndex },
+                { waitForFrame = "EncounterJournal", ejInstance = data.lootInstanceName },
+                { waitForFrame = "EncounterJournal", ejBoss = data.lootSourceName, ejEncounterID = data.encounterID },
+                { waitForFrame = "EncounterJournal", ejLootTab = true },
+                { waitForFrame = "EncounterJournal", ejLootItem = data.itemID, ejLootItemName = data.name },
+            },
+        }
+
+        if EasyFind.db.directOpen then
+            self:DirectOpen(guideData)
         else
-            EncounterJournal_LoadUI()
-            if data.instanceID and EJ_SelectInstance then
-                EJ_SelectInstance(data.instanceID)
-            end
-            if data.encounterID and EJ_SelectEncounter then
-                EJ_SelectEncounter(data.encounterID)
-            end
-            if EncounterJournal then
-                ShowUIPanel(EncounterJournal)
-            end
+            EasyFind:StartGuide(guideData)
         end
         return
     end
@@ -5017,6 +5062,9 @@ function UI:DirectOpen(data)
         if step.factionID then return true end
         if step.searchButtonText then return true end
         if step.portraitMenuOption then return true end
+        if step.ejInstance then return true end
+        if step.ejBoss then return true end
+        if step.ejLootTab then return true end
         -- regionFrames alone (no searchButtonText) = highlight-only (e.g. PvP Talents)
         -- waitForFrame alone = just waiting for a frame to appear, not navigable
         -- text alone = instruction text, not navigable
@@ -5074,8 +5122,10 @@ function UI:DirectOpen(data)
                         EncounterJournal_LoadUI()
                         EncounterJournal.selectedTab = nextStep.tabIndex
                         ShowUIPanel(EncounterJournal)
-                        -- Skip the tab step, continue from the step after it
-                        executeFrom(i + 2)
+                        -- Skip the tab step, continue from the step after it.
+                        -- Defer one frame so the ScrollBox populates its items.
+                        local resume = i + 2
+                        C_Timer.After(0, function() executeFrom(resume) end)
                         return
                     end
                 end
@@ -5127,6 +5177,79 @@ function UI:DirectOpen(data)
             local categoryToClick = step.statisticsCategory or step.achievementCategory
             if categoryToClick then
                 self:ClickAchievementCategory(categoryToClick)
+            end
+
+            -- EJ instance: find by name in ScrollBox and click
+            if step.ejInstance then
+                local scrollBox = _G["EncounterJournalInstanceSelect"] and _G["EncounterJournalInstanceSelect"].ScrollBox
+                if scrollBox then
+                    local targetName = slower(step.ejInstance)
+                    local instBtn = Utils.ScrollBoxFindButton(scrollBox, function(btn)
+                        local text = Utils.GetButtonText(btn)
+                        return text and slower(text) == targetName
+                    end)
+                    if instBtn then ClickButton(instBtn) end
+                end
+            end
+
+            -- EJ boss: find by name in BossesScrollBox and click
+            if step.ejBoss then
+                local infoFrame = _G["EncounterJournalEncounterFrameInfo"]
+                local scrollBox = infoFrame and infoFrame.BossesScrollBox
+                if scrollBox then
+                    local targetName = slower(step.ejBoss)
+                    local bossBtn = Utils.ScrollBoxFindButton(scrollBox, function(btn)
+                        local text = Utils.GetButtonText(btn)
+                        return text and slower(text) == targetName
+                    end)
+                    if bossBtn then ClickButton(bossBtn) end
+                end
+            end
+
+            -- EJ loot tab: click
+            if step.ejLootTab then
+                local lootTab = _G["EncounterJournalEncounterFrameInfoLootTab"]
+                if lootTab then ClickButton(lootTab) end
+            end
+
+            -- EJ loot item: highlight only (last step)
+            if step.ejLootItem and i == executeCount then
+                local Highlight = ns.Highlight
+                local infoFrame = _G["EncounterJournalEncounterFrameInfo"]
+                local scrollBox = infoFrame and (
+                    (infoFrame.LootContainer and infoFrame.LootContainer.ScrollBox)
+                    or infoFrame.LootScrollBox or infoFrame.ScrollBox
+                )
+                if scrollBox then
+                    local targetID = step.ejLootItem
+                    local itemName = step.ejLootItemName
+                    C_Timer.After(0.05, function()
+                        local itemBtn = Utils.ScrollBoxFindButton(scrollBox, function(btn)
+                            local edata = btn.GetElementData and btn:GetElementData()
+                            if edata and edata.itemID == targetID then return true end
+                            if itemName then
+                                local text = Utils.GetButtonText(btn)
+                                if text then
+                                    local clean = slower(text):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+                                    if clean == slower(itemName) then return true end
+                                end
+                            end
+                            return false
+                        end)
+                        if itemBtn and Highlight then
+                            Highlight:HighlightFrame(itemBtn)
+                            local checkHover
+                            checkHover = function()
+                                if itemBtn:IsMouseOver() then
+                                    Highlight:HideHighlight()
+                                else
+                                    C_Timer.After(0.1, checkHover)
+                                end
+                            end
+                            C_Timer.After(0.3, checkHover)
+                        end
+                    end)
+                end
             end
 
             -- Currency/faction headers pre-expanded via API, nothing to execute

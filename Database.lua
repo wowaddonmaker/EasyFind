@@ -491,6 +491,13 @@ local SLOT_DISPLAY = {
     INVTYPE_HOLDABLE = "Off Hand",
 }
 
+-- Lowercased slot display names for category score boosting (query "legs" → loot first)
+local lootSlotNames = {}
+for _, displayName in pairs(SLOT_DISPLAY) do
+    lootSlotNames[slower(displayName)] = true
+end
+ns.lootSlotNames = lootSlotNames
+
 -- EJ API compatibility: some functions migrated from EJ_* globals to C_EncounterJournal.*.
 -- Prefer C_EncounterJournal (current) over globals (may be stale wrappers).
 -- Resolved at call time because C_EJ functions may not exist until EncounterJournal_LoadUI().
@@ -510,6 +517,28 @@ local LOOT_DIFF_IDS = {
     heroic  = { dungeon = 2,  raid = 15 },
     mythic  = { dungeon = 23, raid = 16 },
 }
+
+-- Sync the EJ's internal loot filter to match EasyFind's lootFilter setting.
+-- Called when the user changes the filter and before loot navigation.
+function Database:SyncEJLootFilter()
+    local setFilter = EJ("SetLootFilter")
+    if not setFilter then return end
+    local lf = EasyFind.db.lootFilter
+    if not lf then
+        local _, _, cid = UnitClass("player")
+        local si = GetSpecialization and GetSpecialization()
+        local sid = si and GetSpecializationInfo and GetSpecializationInfo(si)
+        if cid and sid then
+            setFilter(cid, sid)
+        end
+    elseif lf == "all" then
+        setFilter(0, 0)
+    elseif lf.specID then
+        setFilter(lf.classID, lf.specID)
+    elseif lf.classID then
+        setFilter(lf.classID, 0)
+    end
+end
 
 -- Rebuild uiSearchData loot entries from cache based on current spec + difficulty selection.
 -- No EJ scan needed: filters cached items by spec and difficulty match.
