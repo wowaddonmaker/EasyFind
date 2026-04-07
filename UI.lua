@@ -5919,7 +5919,7 @@ function UI:ShowWhatsNew(version)
     if _G["EasyFindWhatsNew"] then return end
 
     local f = CreateFrame("Frame", "EasyFindWhatsNew", UIParent, "BackdropTemplate")
-    f:SetSize(410, 265)
+    f:SetSize(470, 265)
     f:SetPoint("CENTER")
     f:SetFrameStrata("DIALOG")
     f:SetFrameLevel(200)
@@ -5966,7 +5966,9 @@ function UI:ShowWhatsNew(version)
         "        Click to navigate directly to the item in the Encounter Journal\n" ..
         "|cffFFD100\226\128\162|r |cffffffffTransmog Outfits|r\n" ..
         "        Saved outfits appear in search results, click to equip\n" ..
-        "        Browse the transmog window from search without a vendor"
+        "        Browse the transmog window without a vendor (search \"tmog\")\n" ..
+        "\n|cff999999Enable Loot and Outfits in the filter dropdown (arrow button\n" ..
+        "inside the search bar) to see these results.|r"
     )
 
     -- Footer - anchored below body so it can't overlap
