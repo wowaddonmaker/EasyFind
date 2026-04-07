@@ -268,6 +268,7 @@ local function SetRowIcon(btn, kind, value, iconSize)
     btn.icon.outfitID = nil
     btn.icon.lootItemID = nil
     if btn.iconCooldown then btn.iconCooldown:Hide() end
+    if btn._lockOverlay then btn._lockOverlay:Hide() end
     if kind == "atlas" then
         btn.icon:SetAtlas(value)
     elseif kind == "file" or kind == "path" then
@@ -3198,13 +3199,28 @@ function UI:CreateResultButton(index)
             elseif self.icon.outfitID then
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                 GameTooltip:SetText(self.data and self.data.name or "Outfit")
+                GameTooltip:AddLine("Instant", 1, 1, 1)
+                GameTooltip:AddLine("Transmogrify the appearance of your\nweapons and armor", 0, 1, 0)
                 local activeID = lastEquippedOutfitID
                     or (C_TransmogOutfitInfo and C_TransmogOutfitInfo.GetActiveOutfitID
                         and C_TransmogOutfitInfo.GetActiveOutfitID())
                 if activeID and activeID == self.icon.outfitID then
+                    GameTooltip:AddLine(" ")
                     GameTooltip:AddLine("Currently equipped", 0.3, 1, 0.3)
                 else
+                    GameTooltip:AddLine(" ")
                     GameTooltip:AddLine("Click to equip", 1, 0.82, 0)
+                end
+                if C_TransmogOutfitInfo and C_TransmogOutfitInfo.IsLockedOutfit then
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine("Lock Appearance:", 1, 1, 1)
+                    GameTooltip:AddLine("Prevent this appearance from being\nreplaced by a Situation", 1, 0.82, 0)
+                    if C_TransmogOutfitInfo.IsLockedOutfit(self.icon.outfitID) then
+                        GameTooltip:AddLine(" ")
+                        GameTooltip:AddLine("Currently locked", 0.3, 1, 0.3)
+                    end
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine("<Right Click icon on action bar\nor transmog window to toggle>", 0.5, 0.5, 0.5)
                 end
                 GameTooltip:Show()
             -- Loot item tooltip
@@ -4096,6 +4112,13 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     SetRowIcon(resultRow, "hidden", nil, theme.iconSize)
                 end
 
+                -- Outfit lock overlay (dashed border when locked)
+                if data.outfitID and C_TransmogOutfitInfo and C_TransmogOutfitInfo.IsLockedOutfit then
+                    UI:UpdateOutfitLockOverlay(resultRow, C_TransmogOutfitInfo.IsLockedOutfit(data.outfitID))
+                elseif resultRow._lockOverlay then
+                    resultRow._lockOverlay:Hide()
+                end
+
                 -- Cooldown sweep overlay (toys and outfits)
                 resultRow.amountText:Hide()
                 if data.toyItemID and iconFileID and GetItemCooldown then
@@ -4879,6 +4902,21 @@ end
 -- Hide vendor-only transmog controls when opened via search (not at an NPC).
 -- Shows a message explaining full functionality requires a transmogrifier.
 -- Restores everything when the frame closes.
+-- Show or hide the lock overlay on a result row's outfit icon.
+function UI:UpdateOutfitLockOverlay(resultRow, isLocked)
+    if not resultRow.icon then return end
+    if not resultRow._lockOverlay then
+        local overlay = resultRow:CreateTexture(nil, "OVERLAY")
+        overlay:SetAtlas("transmog-outfit-spellFrame-active")
+        overlay:SetPoint("CENTER", resultRow.icon, "CENTER", 0, 0)
+        resultRow._lockOverlay = overlay
+
+    end
+    local size = (resultRow.icon:GetWidth() or 16) + 6
+    resultRow._lockOverlay:SetSize(size, size)
+    resultRow._lockOverlay:SetShown(isLocked)
+end
+
 function UI:ApplyTransmogBrowseMode()
     if not TransmogFrame then return end
 
