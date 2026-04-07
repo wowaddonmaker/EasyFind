@@ -20,6 +20,7 @@ globals = {
     "BINDING_NAME_EASYFIND_TOGGLE_FOCUS",
     "BINDING_NAME_EASYFIND_CLEAR",
     "EncounterJournal",
+    "TransmogFrame",
 }
 
 -- WoW API globals (read-only)
@@ -30,7 +31,7 @@ read_globals = {
 
     -- Core API
     "CreateFrame", "CreateFont", "CreateVector2D",
-    "GetTime", "GetLocale", "GetCVar", "GetCursorPosition",
+    "GetTime", "GetLocale", "GetCVar", "GetCursorPosition", "GetRealmName",
     "GetAddOnMetadata", "GetAtlasInfo", "GetMinimapShape",
     "GetBindingKey", "GetCurrentBindingSet", "SaveBindings", "SetBinding",
     "GetCategoryInfo", "GetPlayerFacing",
@@ -58,21 +59,32 @@ read_globals = {
     "PVPQueueFrame",
     "AchievementFrameCategories_ExpandToCategory",
     "AchievementFrameCategories_UpdateDataProvider",
+ "Transmog_LoadUI",
     "EncounterJournal_LoadUI", "PanelTemplates_SetTab",
     "Menu", "ScrollBoxConstants",
 
     -- C_* namespaces
-    "C_AddOns", "C_AchievementInfo", "C_AreaPoiInfo", "C_CurrencyInfo",
+    "C_AddOns", "C_AchievementInfo", "C_AreaPoiInfo", "C_CurrencyInfo", "C_Item",
     "C_EncounterJournal", "C_GossipInfo", "C_MajorFactions", "C_Map",
     "C_Minimap", "C_MountJournal", "C_Navigation", "C_PetJournal",
     "C_Reputation", "C_SuperTrack", "C_TaxiMap", "C_Texture", "C_Timer",
-    "C_ToyBox", "C_VignetteInfo",
+    "C_ToyBox", "C_TransmogOutfitInfo", "C_VignetteInfo",
 
     -- UI utility functions
     "UIFrameFadeIn", "UIFrameFadeOut", "UIFrameFadeRemoveFrame",
     "AchievementFrameCategories_SelectElementData",
     "UnitPopup_ShowMenu", "BattlePetToolTip_ShowLink",
-    "GetUnitSpeed", "GetItemCooldown", "EJ_GetInstanceInfo",
+    "GetUnitSpeed", "GetItemCooldown", "EJ_GetInstanceInfo", "UnitName",
+    "GetItemInfoInstant", "GetItemStats", "GetSpecialization", "GetSpecializationInfo",
+    "UnitClass", "GetLootSpecialization", "DressUpItemLink",
+    "GetNumClasses", "GetClassInfo", "GetNumSpecializationsForClassID",
+    "GetSpecializationInfoForClassID", "RAID_CLASS_COLORS",
+    "EJ_GetCurrentTier", "EJ_SelectTier", "EJ_GetInstanceByIndex",
+    "EJ_SelectInstance", "EJ_GetEncounterInfoByIndex", "EJ_SelectEncounter",
+    "EJ_SetDifficulty", "EJ_SetLootFilter", "EJ_SetSlotFilter",
+    "EJ_GetNumLoot", "EJ_GetLootInfoByIndex",
+    "HasAction", "PlaceAction", "PickupAction", "ClearCursor", "GetActionCooldown",
+    "SetOverrideBindingClick", "ClearOverrideBindings",
 
     -- Data types
     "UiMapPoint",

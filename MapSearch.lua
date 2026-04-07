@@ -2354,17 +2354,22 @@ function MapSearch:CreateSearchFrame()
 
         -- Filter dropdown keyboard navigation takes priority
         if dropdown then
-            local rowCount = #dropdown.rows
             if key == "DOWN" then
-                local newIdx = dropdown.selectedRow + 1
-                if newIdx > rowCount then newIdx = rowCount end
-                dropdown:SetSelectedRow(newIdx)
+                MapSearch.StartKeyRepeat(key, function()
+                    local rc = #dropdown.rows
+                    local newIdx = dropdown.selectedRow + 1
+                    if newIdx > rc then newIdx = rc end
+                    dropdown:SetSelectedRow(newIdx)
+                end)
             elseif key == "UP" then
-                local newIdx = dropdown.selectedRow - 1
-                if newIdx < 1 then
+                if dropdown.selectedRow <= 1 then
                     dropdown:Hide()
                 else
-                    dropdown:SetSelectedRow(newIdx)
+                    MapSearch.StartKeyRepeat(key, function()
+                        local newIdx = dropdown.selectedRow - 1
+                        if newIdx < 1 then newIdx = 1 end
+                        dropdown:SetSelectedRow(newIdx)
+                    end)
                 end
             elseif key == "ENTER" or key == "SPACE" then
                 if dropdown.selectedRow > 0 then

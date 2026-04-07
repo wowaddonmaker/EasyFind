@@ -214,14 +214,18 @@ function Highlight:StartGuide(guideData)
     currentGuide = guideData
     currentStepIndex = 1
 
-    -- Use a ticker to continuously check step conditions
+    self:FastForwardSteps()
+    if not currentGuide then return end
+
     stepTicker = C_Timer.NewTicker(0.1, function()
         local ok, err = xpcall(self.UpdateGuide, ErrorHandler, self)
         if not ok then
             if stepTicker then stepTicker:Cancel(); stepTicker = nil end
-            ns.DebugPrint("Guide error: " .. tostring(err))
+            print("Guide error: " .. tostring(err))
         end
     end)
+
+    self:NotifyClearButton()
 end
 
 -- Start the guide at a specific step (used by DirectOpen to skip to final highlight)
@@ -239,23 +243,33 @@ function Highlight:StartGuideAtStep(guideData, stepIndex)
     currentGuide = guideData
     currentStepIndex = stepIndex
 
-    -- Attempt immediate highlight (avoids waiting for first ticker interval)
-    local ok, err = xpcall(self.UpdateGuide, ErrorHandler, self)
-    if not ok then
-        ns.DebugPrint("Guide error: " .. tostring(err))
-        return
-    end
-
-    -- If guide completed or was cancelled by the immediate attempt, no ticker needed
+    self:FastForwardSteps()
     if not currentGuide then return end
 
     stepTicker = C_Timer.NewTicker(0.1, function()
-        local ok2, err2 = xpcall(self.UpdateGuide, ErrorHandler, self)
-        if not ok2 then
+        local ok, err = xpcall(self.UpdateGuide, ErrorHandler, self)
+        if not ok then
             if stepTicker then stepTicker:Cancel(); stepTicker = nil end
-            ns.DebugPrint("Guide error: " .. tostring(err2))
+            print("Guide error: " .. tostring(err))
         end
     end)
+
+    self:NotifyClearButton()
+end
+
+-- Advance through already-satisfied steps immediately instead of one-per-tick.
+-- Loops UpdateGuide until the step index stops advancing or the guide completes.
+function Highlight:FastForwardSteps()
+    local prevIdx
+    repeat
+        prevIdx = currentStepIndex
+        local ok, err = xpcall(self.UpdateGuide, ErrorHandler, self)
+        if not ok then
+            print("Guide error: " .. tostring(err))
+            self:Cancel()
+            return
+        end
+    until not currentGuide or currentStepIndex == prevIdx
 end
 
 function Highlight:UpdateGuide()
@@ -1053,7 +1067,175 @@ function Highlight:UpdateGuide()
                         return
                     end
                 end
+
+                -- Validate EJ boss (encounterID changed = user clicked different boss)
+                if prev.ejEncounterID then
+                    local infoFrame = _G["EncounterJournalEncounterFrameInfo"]
+                    local ej = _G["EncounterJournal"]
+                    local currentEnc = (infoFrame and infoFrame.encounterID)
+                        or (ej and ej.encounterID)
+                    if not currentEnc then
+                        local getEnc = (C_EncounterJournal and C_EncounterJournal.GetCurrentEncounter)
+                            or _G["EJ_GetCurrentEncounter"]
+                        if getEnc then currentEnc = getEnc() end
+                    end
+                    if currentEnc and currentEnc ~= prev.ejEncounterID then
+                        currentStepIndex = i
+                        self:HideHighlight()
+                        return
+                    end
+                end
+
+                -- Validate EJ loot tab (user switched to Overview/Abilities/etc.)
+                if prev.ejLootTab then
+                    local infoFrame = _G["EncounterJournalEncounterFrameInfo"]
+                    local lootContainer = infoFrame and infoFrame.LootContainer
+                    if lootContainer and not lootContainer:IsShown() then
+                        currentStepIndex = i
+                        self:HideHighlight()
+                        return
+                    end
+                end
             end
+        end
+
+        -- EJ instance button (ScrollBox with dynamic names, find by text)
+        if step.ejInstance then
+            -- Advance when instance select panel is hidden (user clicked an instance
+            -- and the EJ is now showing the encounter/boss view)
+            local instSelect = _G["EncounterJournalInstanceSelect"]
+            if instSelect and not instSelect:IsShown() then
+                self:AdvanceStep()
+                return
+            end
+            local scrollBox = _G["EncounterJournalInstanceSelect"] and _G["EncounterJournalInstanceSelect"].ScrollBox
+            if scrollBox then
+                local targetName = slower(step.ejInstance)
+                local instBtn = ScrollBoxFindButton(scrollBox, function(btn)
+                    local text = GetButtonText(btn)
+                    return text and slower(text) == targetName
+                end)
+                if instBtn then
+                    self:HighlightFrame(instBtn)
+                end
+            end
+            return
+        end
+
+        -- EJ boss button (ScrollBox with dynamic names, find by text)
+        if step.ejBoss then
+            -- Advance when the correct boss is selected
+            if step.ejEncounterID then
+                -- Try multiple ways to detect the selected encounter
+                local infoFrame = _G["EncounterJournalEncounterFrameInfo"]
+                local ej = _G["EncounterJournal"]
+                local currentEnc = (infoFrame and infoFrame.encounterID)
+                    or (ej and ej.encounterID)
+                if not currentEnc then
+                    local getEnc = (C_EncounterJournal and C_EncounterJournal.GetCurrentEncounter)
+                        or _G["EJ_GetCurrentEncounter"]
+                    if getEnc then currentEnc = getEnc() end
+                end
+                -- Fallback: check if the boss button itself shows a selected state
+                if not currentEnc then
+                    local scrollBox = infoFrame and infoFrame.BossesScrollBox
+                    if scrollBox then
+                        local targetName = slower(step.ejBoss)
+                        local bossBtn = ScrollBoxFindButton(scrollBox, function(btn)
+                            local text = GetButtonText(btn)
+                            return text and slower(text) == targetName
+                        end)
+                        if bossBtn then
+                            local sel = bossBtn.selectedTexture or bossBtn.SelectedTexture
+                            if sel and sel:IsShown() then currentEnc = step.ejEncounterID end
+                        end
+                    end
+                end
+                if currentEnc == step.ejEncounterID then
+                    self:AdvanceStep()
+                    return
+                end
+            end
+            local scrollBox = _G["EncounterJournalEncounterFrameInfo"] and _G["EncounterJournalEncounterFrameInfo"].BossesScrollBox
+            if scrollBox then
+                local targetName = slower(step.ejBoss)
+                local bossBtn = ScrollBoxFindButton(scrollBox, function(btn)
+                    local text = GetButtonText(btn)
+                    return text and slower(text) == targetName
+                end)
+                if bossBtn then
+                    self:HighlightFrame(bossBtn)
+                end
+            end
+            return
+        end
+
+        -- EJ loot tab: highlight if not selected, advance when loot content visible
+        if step.ejLootTab then
+            if step.ejDifficultyID and not step._diffSet then
+                step._diffSet = true
+                if ns.Database then ns.Database:SetEJDifficulty(step.ejDifficultyID) end
+            end
+            local lootTab = _G["EncounterJournalEncounterFrameInfoLootTab"]
+            if not lootTab or not lootTab:IsShown() then return end
+            -- Check if loot content is visible (tab already selected)
+            local infoFrame = _G["EncounterJournalEncounterFrameInfo"]
+            local lootVisible = infoFrame and (
+                (infoFrame.LootContainer and infoFrame.LootContainer:IsShown())
+                or (infoFrame.LootScrollBox and infoFrame.LootScrollBox:IsShown())
+            )
+            -- Fallback: check PanelTemplates or the tab's own selected state
+            if not lootVisible then
+                local selectedTab = infoFrame and PanelTemplates_GetSelectedTab and PanelTemplates_GetSelectedTab(infoFrame)
+                if selectedTab == 2 then lootVisible = true end
+                if lootTab.isSelected then lootVisible = true end
+                if lootTab.GetSelectedState and lootTab:GetSelectedState() then lootVisible = true end
+            end
+            if lootVisible then
+                self:AdvanceStep()
+                return
+            end
+            self:HighlightFrame(lootTab)
+            return
+        end
+
+        -- EJ loot item: find by itemID or name in LootContainer.ScrollBox
+        if step.ejLootItem then
+            local infoFrame = _G["EncounterJournalEncounterFrameInfo"]
+            if not infoFrame then return end
+            local lootContainer = infoFrame.LootContainer
+            local scrollBox = (lootContainer and lootContainer:IsShown() and lootContainer.ScrollBox)
+                or infoFrame.LootScrollBox
+            if not scrollBox then return end
+            local targetID = step.ejLootItem
+            local targetName = step.ejLootItemName and slower(step.ejLootItemName)
+
+            local itemBtn = ScrollBoxFindButton(scrollBox, function(btn)
+                local edata = btn.GetElementData and btn:GetElementData()
+                if edata then
+                    if edata.itemID == targetID then return true end
+                    if edata.link then
+                        local id = edata.link:match("item:(%d+)")
+                        if id and tonumber(id) == targetID then return true end
+                    end
+                end
+                if targetName then
+                    local text = GetButtonText(btn)
+                    if text then
+                        -- EJ loot text has inline color codes (|cAARRGGBB...|r)
+                        local clean = slower(text):gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+                        if clean == targetName then return true end
+                    end
+                end
+                return false
+            end)
+            if itemBtn then
+                self:HighlightFrame(itemBtn)
+                if canHoverDismiss() and itemBtn:IsMouseOver() then
+                    self:Cancel()
+                end
+            end
+            return
         end
 
         -- Text-only final step (when we've navigated but can't highlight specific element)
@@ -2063,11 +2245,22 @@ function Highlight:HideHighlight()
     end
 end
 
+function Highlight:IsActive()
+    return currentGuide ~= nil
+end
+
+function Highlight:NotifyClearButton()
+    if ns.UI and ns.UI.searchFrame and ns.UI.searchFrame.UpdateClearButtonVisibility then
+        ns.UI.searchFrame.UpdateClearButtonVisibility()
+    end
+end
+
 function Highlight:ClearAll()
     self:HideHighlight()
     currentGuide = nil
     currentStepIndex = nil
     if stepTicker then stepTicker:Cancel(); stepTicker = nil end
+    self:NotifyClearButton()
 end
 
 -- Portrait menu helpers
@@ -2460,4 +2653,6 @@ function Highlight:Cancel()
 
     currentGuide = nil
     currentStepIndex = nil
+
+    self:NotifyClearButton()
 end

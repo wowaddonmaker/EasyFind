@@ -43,6 +43,8 @@ Find and navigate to any interface element such as:
 *   Professions
 *   All currencies from your character's Currency tab, including seasonal and legacy currencies (shows current amounts inline)
 *   Your collected mounts, toys, and battle pets (click to summon or use)
+*   Dungeon and raid loot filtered by class, spec, and difficulty (click to open in the Encounter Journal)
+*   Transmog outfits with click-to-equip, cooldown tracking, and lock status display
 *   Player portrait menu options (Set Focus, Loot Specialization, Dungeon/Raid Difficulty, Edit Mode, PvP Flag, etc.)
 *   Map search results (zones, dungeons, POIs) via the filter dropdown
 *   Coverage is always expanding. If a panel exists in the default UI, the goal is for EasyFind to reach it

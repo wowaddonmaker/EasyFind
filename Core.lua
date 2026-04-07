@@ -64,7 +64,8 @@ local DB_DEFAULTS = {
     showTruncationMessage = true,  -- Show "more results available" message when truncated
     hardResultsCap = false,    -- Hard cap on results (no "more results" message)
     staticOpacity = false,     -- Keep opacity constant while moving
-    pinnedUIItems = {},        -- Pinned UI search results (persist across sessions)
+    pinnedUIItems = {},        -- Pinned UI search results (persist across sessions, account-wide)
+    pinnedUIItemsPerChar = {}, -- Character-specific pins (mounts, toys, pets, outfits) keyed by "Name-Realm"
     pinnedMapItems = {},       -- Pinned map search results (persist across sessions)
     pinsCollapsed = false,     -- Whether the "Pinned Paths" header is collapsed
     mapPinsCollapsed = false,  -- Whether the map search "Pinned" header is collapsed
@@ -103,8 +104,15 @@ local DB_DEFAULTS = {
         mounts = false,
         toys = false,
         pets = false,
+        outfits = false,
+        loot = false,
         map = false,
     },
+    lootSpecs = nil,           -- Loot search: nil = current spec only, table of {classID, specID} pairs when customized
+    lootSearchSlots = true,    -- Loot search: match by slot keywords (ring, helm, etc.)
+    lootSearchStats = true,    -- Loot search: match by stat keywords (haste, crit, etc.)
+    lootUpgradesOnly = false,  -- Loot search: only show items above equipped ilvl
+    lootDifficulty = "normal",
     uiMapSearchLocal = true,   -- Map search in UI bar: true = local zone only, false = global
 }
 
@@ -281,6 +289,41 @@ local function OnInitialize()
                 EasyFind.db.setupComplete = nil
                 ns.UI:ShowFirstTimeSetup()
             end
+        elseif msg == "ejdump" then
+            local info = _G["EncounterJournalEncounterFrameInfo"]
+            if not info then print("No EncounterJournalEncounterFrameInfo"); return end
+            print("--- EJ Loot Container Dump ---")
+            local lc = info.LootContainer
+            print("LootContainer: " .. tostring(lc) .. " shown:" .. tostring(lc and lc:IsShown()))
+            if lc then
+                local sb = lc.ScrollBox
+                print("  .ScrollBox: " .. tostring(sb))
+                if sb then
+                    print("  .ScrollBox:IsShown(): " .. tostring(sb:IsShown()))
+                    print("  has EnumerateFrames: " .. tostring(sb.EnumerateFrames ~= nil))
+                    if sb.EnumerateFrames then
+                        local count = 0
+                        for _, btn in sb:EnumerateFrames() do
+                            count = count + 1
+                            local text = ns.Utils.GetButtonText(btn)
+                            print("    [" .. count .. "] " .. tostring(text) .. " shown:" .. tostring(btn:IsShown()))
+                        end
+                        print("  total frames: " .. count)
+                    end
+                    local st = sb.ScrollTarget
+                    print("  .ScrollTarget: " .. tostring(st))
+                    if st then
+                        local kids = { st:GetChildren() }
+                        print("  ScrollTarget children: " .. #kids)
+                        for i, kid in ipairs(kids) do
+                            if i <= 5 then
+                                local text = ns.Utils.GetButtonText(kid)
+                                print("    [" .. i .. "] " .. tostring(text) .. " shown:" .. tostring(kid:IsShown()))
+                            end
+                        end
+                    end
+                end
+            end
         elseif msg == "whatsnew" then
             if ns.UI then ns.UI:ShowWhatsNew(ns.version) end
         elseif msg == "help" or msg == "h" or msg == "?" then
@@ -306,7 +349,7 @@ end
 local SafeAfter = Utils.SafeAfter
 
 local function OnPlayerLogin()
-    SafeAfter(0.5, function()
+    SafeAfter(0, function()
         local function SafeInit(mod, name)
             if not mod then return end
             local ok, err = xpcall(mod.Initialize, ErrorHandler, mod)
@@ -323,6 +366,15 @@ local function OnPlayerLogin()
         end
         SafeInit(ns.Options,    "Options")
     end)
+    -- Loot scan runs synchronously during login (loading screen absorbs the cost).
+    -- Pass true to pre-cache all class/spec combos so spec toggles are instant.
+    if ns.Database and ns.Database.PopulateDynamicLoot then
+        local ok, err = xpcall(ns.Database.PopulateDynamicLoot, ErrorHandler, ns.Database, true)
+        if not ok then
+            EasyFind:Print("|cffff4444Loot scan failed: " .. tostring(err) .. "|r")
+        end
+    end
+
     -- Populate dynamic currencies, reputations, mounts, and toys after a short delay (APIs need the character loaded)
     -- Spread dynamic population across frames to avoid a single-frame stutter.
     -- Currencies/reputations run first (they toggle collapsed headers, must be synchronous).
@@ -337,7 +389,9 @@ local function OnPlayerLogin()
                 ns.Database:PopulateDynamicToys()
                 SafeAfter(0, function()
                     ns.Database:PopulateDynamicPets()
-                    collectgarbage("collect")
+                    SafeAfter(0, function()
+                        ns.Database:PopulateDynamicOutfits()
+                    end)
                 end)
             end)
         end)
@@ -364,10 +418,13 @@ local function OnPlayerLogin()
     end
 end
 
+local outfitRefreshTimer
+
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("PLAYER_LOGOUT")
+eventFrame:RegisterEvent("TRANSMOG_OUTFITS_CHANGED")
 eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
     if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
         OnInitialize()
@@ -384,6 +441,17 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
             OnPlayerLogin()
         end
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
+    elseif event == "TRANSMOG_OUTFITS_CHANGED" then
+        if outfitRefreshTimer then outfitRefreshTimer:Cancel() end
+        outfitRefreshTimer = C_Timer.NewTimer(0.5, function()
+            outfitRefreshTimer = nil
+            if ns.Database and ns.Database.PopulateDynamicOutfits then
+                ns.Database:PopulateDynamicOutfits()
+            end
+            if ns.UI and ns.UI.SyncOutfitPins then
+                ns.UI:SyncOutfitPins()
+            end
+        end)
     elseif event == "PLAYER_LOGOUT" then
         -- Strip runtime-only fields before SavedVariables serialization
         if EasyFindDB then
