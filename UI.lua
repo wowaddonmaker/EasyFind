@@ -4065,6 +4065,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     resultRow.icon.petID = data.petID
                     resultRow.icon.spellID = data.spellID
                     resultRow.icon.outfitID = data.outfitID
+                    resultRow.icon.lootItemID = nil
                     -- Red tint on mount icons when in combat (can't mount)
                     if data.mountID and InCombatLockdown() then
                         resultRow.icon:SetVertexColor(1, 0.3, 0.3, 1)
@@ -4134,6 +4135,11 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     resultRow.icon:SetPoint("RIGHT", resultRow, "RIGHT", -5, 0)
                     resultRow.icon:Show()
                     resultRow.icon.lootItemID = data.itemID
+                    resultRow.icon.mountID = nil
+                    resultRow.icon.toyItemID = nil
+                    resultRow.icon.petID = nil
+                    resultRow.icon.spellID = nil
+                    resultRow.icon.outfitID = nil
                     resultRow.icon:SetVertexColor(1, 1, 1, 1)
                 else
                     SetRowIcon(resultRow, "hidden", nil, theme.iconSize)
@@ -5048,12 +5054,13 @@ function UI:SelectResult(data)
     -- Outfit: equip handled by SecureActionButton (mouse click or Enter binding).
     if data.outfitID then return end
 
-    -- Loot: Shift+click opens dressing room, regular click navigates EJ
+    -- Loot: Ctrl+click opens dressing room, regular click navigates EJ
     if data.itemID and data.category == "Loot" then
         local lootLink = ns.Database and ns.Database:GetLootItemLink(data)
-        if IsShiftKeyDown() and lootLink then
-            DressUpItemLink(lootLink)
-            return
+        if IsControlKeyDown() and lootLink then
+            if DressUpItemLink(lootLink) then
+                return
+            end
         end
 
         -- Sync EJ loot filter so the item is visible when we navigate there
