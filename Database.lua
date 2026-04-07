@@ -538,16 +538,6 @@ function Database:SyncEJLootFilter()
     elseif lf.classID then
         setFilter(lf.classID, 0)
     end
-
-    -- Sync difficulty
-    local setDifficulty = EJ("SetDifficulty")
-    if setDifficulty then
-        local diffKey = EasyFind.db.lootDifficulty or "normal"
-        local diffIDs = LOOT_DIFF_IDS[diffKey]
-        if diffIDs then
-            setDifficulty(diffIDs.raid or diffIDs.dungeon)
-        end
-    end
 end
 
 -- Rebuild uiSearchData loot entries from cache based on current spec + difficulty selection.
