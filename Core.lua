@@ -289,6 +289,41 @@ local function OnInitialize()
                 EasyFind.db.setupComplete = nil
                 ns.UI:ShowFirstTimeSetup()
             end
+        elseif msg == "ejdump" then
+            local info = _G["EncounterJournalEncounterFrameInfo"]
+            if not info then print("No EncounterJournalEncounterFrameInfo"); return end
+            print("--- EJ Loot Container Dump ---")
+            local lc = info.LootContainer
+            print("LootContainer: " .. tostring(lc) .. " shown:" .. tostring(lc and lc:IsShown()))
+            if lc then
+                local sb = lc.ScrollBox
+                print("  .ScrollBox: " .. tostring(sb))
+                if sb then
+                    print("  .ScrollBox:IsShown(): " .. tostring(sb:IsShown()))
+                    print("  has EnumerateFrames: " .. tostring(sb.EnumerateFrames ~= nil))
+                    if sb.EnumerateFrames then
+                        local count = 0
+                        for _, btn in sb:EnumerateFrames() do
+                            count = count + 1
+                            local text = ns.Utils.GetButtonText(btn)
+                            print("    [" .. count .. "] " .. tostring(text) .. " shown:" .. tostring(btn:IsShown()))
+                        end
+                        print("  total frames: " .. count)
+                    end
+                    local st = sb.ScrollTarget
+                    print("  .ScrollTarget: " .. tostring(st))
+                    if st then
+                        local kids = { st:GetChildren() }
+                        print("  ScrollTarget children: " .. #kids)
+                        for i, kid in ipairs(kids) do
+                            if i <= 5 then
+                                local text = ns.Utils.GetButtonText(kid)
+                                print("    [" .. i .. "] " .. tostring(text) .. " shown:" .. tostring(kid:IsShown()))
+                            end
+                        end
+                    end
+                end
+            end
         elseif msg == "whatsnew" then
             if ns.UI then ns.UI:ShowWhatsNew(ns.version) end
         elseif msg == "help" or msg == "h" or msg == "?" then
