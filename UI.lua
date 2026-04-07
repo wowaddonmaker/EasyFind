@@ -517,6 +517,7 @@ end
 
 function UI:CreateSearchFrame()
     searchFrame = CreateFrame("Frame", "EasyFindSearchFrame", UIParent, "BackdropTemplate")
+    UI.searchFrame = searchFrame
     searchFrame:SetSize(250, ns.SEARCHBAR_HEIGHT)
     searchFrame:SetFrameStrata("MEDIUM")
     searchFrame:SetMovable(true)
@@ -725,10 +726,11 @@ function UI:CreateSearchFrame()
         editBox:ClearFocus()
         editBox.placeholder:Show()
         UI:HideResults()
+        EasyFind:ClearAll()
     end)
     clearTextBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText("Clear search text")
+        GameTooltip:SetText("Clear search text and active highlights")
         GameTooltip:Show()
     end)
     clearTextBtn:SetScript("OnLeave", GameTooltip_Hide)
@@ -791,10 +793,14 @@ function UI:CreateSearchFrame()
         end
     end)
 
-    -- Show/hide the clear-text X based on whether there's text
-    editBox:HookScript("OnTextChanged", function(self)
-        clearTextBtn:SetShown(self:GetText() ~= "")
-    end)
+    -- Show/hide the clear X based on whether there's text or an active guide
+    local function UpdateClearButtonVisibility()
+        local hasText = editBox:GetText() ~= ""
+        local guideActive = ns.Highlight and ns.Highlight:IsActive()
+        clearTextBtn:SetShown(hasText or guideActive)
+    end
+    editBox:HookScript("OnTextChanged", UpdateClearButtonVisibility)
+    searchFrame.UpdateClearButtonVisibility = UpdateClearButtonVisibility
 
     -- Key repeat with progressive acceleration for held arrow/tab keys.
     -- Starts at REPEAT_INITIAL delay, accelerates toward REPEAT_FAST over REPEAT_ACCEL seconds.
@@ -5090,13 +5096,14 @@ function UI:SelectResult(data)
 
         local isRaid = data.lootSourceType == "Raid"
         local tabIndex = isRaid and 5 or 4
+        local ejDiffID = ns.Database and ns.Database:GetEJDifficultyID(data.lootSourceType)
         local guideData = {
             steps = {
                 { buttonFrame = "EJMicroButton" },
                 { waitForFrame = "EncounterJournal", tabIndex = tabIndex },
                 { waitForFrame = "EncounterJournal", ejInstance = data.lootInstanceName },
                 { waitForFrame = "EncounterJournal", ejBoss = data.lootSourceName, ejEncounterID = data.encounterID },
-                { waitForFrame = "EncounterJournal", ejLootTab = true },
+                { waitForFrame = "EncounterJournal", ejLootTab = true, ejDifficultyID = ejDiffID },
                 { waitForFrame = "EncounterJournal", ejLootItem = data.itemID, ejLootItemName = data.name },
             },
         }
@@ -5386,6 +5393,10 @@ function UI:DirectOpen(data)
 
             -- EJ loot tab: click
             if step.ejLootTab then
+                if step.ejDifficultyID then
+                    local setDiff = (C_EncounterJournal and C_EncounterJournal.SetDifficulty) or _G["EJ_SetDifficulty"]
+                    if setDiff then setDiff(step.ejDifficultyID) end
+                end
                 local lootTab = _G["EncounterJournalEncounterFrameInfoLootTab"]
                 if lootTab then ClickButton(lootTab) end
             end
