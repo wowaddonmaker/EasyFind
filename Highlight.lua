@@ -224,6 +224,8 @@ function Highlight:StartGuide(guideData)
             print("Guide error: " .. tostring(err))
         end
     end)
+
+    self:NotifyClearButton()
 end
 
 -- Start the guide at a specific step (used by DirectOpen to skip to final highlight)
@@ -251,6 +253,8 @@ function Highlight:StartGuideAtStep(guideData, stepIndex)
             print("Guide error: " .. tostring(err))
         end
     end)
+
+    self:NotifyClearButton()
 end
 
 -- Advance through already-satisfied steps immediately instead of one-per-tick.
@@ -1168,6 +1172,11 @@ function Highlight:UpdateGuide()
 
         -- EJ loot tab: highlight if not selected, advance when loot content visible
         if step.ejLootTab then
+            -- Set difficulty after boss is selected (must come after instance/encounter selection)
+            if step.ejDifficultyID then
+                local setDiff = (C_EncounterJournal and C_EncounterJournal.SetDifficulty) or _G["EJ_SetDifficulty"]
+                if setDiff then setDiff(step.ejDifficultyID) end
+            end
             local lootTab = _G["EncounterJournalEncounterFrameInfoLootTab"]
             if not lootTab or not lootTab:IsShown() then return end
             -- Check if loot content is visible (tab already selected)
@@ -2237,11 +2246,22 @@ function Highlight:HideHighlight()
     end
 end
 
+function Highlight:IsActive()
+    return currentGuide ~= nil
+end
+
+function Highlight:NotifyClearButton()
+    if ns.UI and ns.UI.searchFrame and ns.UI.searchFrame.UpdateClearButtonVisibility then
+        ns.UI.searchFrame.UpdateClearButtonVisibility()
+    end
+end
+
 function Highlight:ClearAll()
     self:HideHighlight()
     currentGuide = nil
     currentStepIndex = nil
     if stepTicker then stepTicker:Cancel(); stepTicker = nil end
+    self:NotifyClearButton()
 end
 
 -- Portrait menu helpers
@@ -2634,4 +2654,6 @@ function Highlight:Cancel()
 
     currentGuide = nil
     currentStepIndex = nil
+
+    self:NotifyClearButton()
 end
