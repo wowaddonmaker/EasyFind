@@ -5995,11 +5995,13 @@ function UI:ShowWhatsNew(version)
     body:SetJustifyH("LEFT")
     body:SetSpacing(4)
     body:SetText(
-        "|cffFFD100\226\128\162|r |cffffffffRare Mob Tracking|r\n" ..
-        "        Active rares appear as searchable pins on the world map\n" ..
-        "        Toggle auto-tracking to pin all nearby rares automatically\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffGreat Vault|r\n" ..
-        "        Rewards panel now searchable in UI search"
+        "|cffFFD100\226\128\162|r |cffffffffLoot Search|r\n" ..
+        "        Search dungeon and raid loot by name, slot, stats, or source\n" ..
+        "        Filter by class, spec, and difficulty\n" ..
+        "        Click to navigate directly to the item in the Encounter Journal\n" ..
+        "|cffFFD100\226\128\162|r |cffffffffTransmog Outfits|r\n" ..
+        "        Saved outfits appear in search results, click to equip\n" ..
+        "        Browse the transmog window from search without a vendor"
     )
 
     -- Footer - anchored below body so it can't overlap
