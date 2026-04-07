@@ -944,7 +944,6 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
     local GetItemInfoInstant = GetItemInfoInstant
 
     -- Build list of {diffKey, diffID} pairs per source type
-    local sourceType = { dungeon = "dungeon", raid = "raid" }
     local function getDiffPairs(isRaid)
         local pairs = {}
         local st = isRaid and "raid" or "dungeon"
@@ -2616,7 +2615,6 @@ function Database:SearchUI(query, skipCategories)
                 -- Loot: match by item name, slot, stats, and source keywords.
                 -- Each query word scores against all keyword types and takes
                 -- the best match. Words that match nothing eliminate the item.
-                score = 0
                 local totalScore = 0
 
                 local nameWords = GetWords(nameLower)

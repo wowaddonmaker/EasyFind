@@ -1251,9 +1251,6 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     local RADIO_SIZE = 14
     local RADIO_OFF_TEX = "Interface\\AddOns\\EasyFind\\radio-off"
     local RADIO_ON_TEX = "Interface\\AddOns\\EasyFind\\radio-on"
-    local DROPDOWN_BAR_SIZE = { 120, 27 }
-    local DROPDOWN_ARROW_SIZE = { 20, 20 }
-    local DROPDOWN_ARROW_DIM = 0.7
     local POPUP_BG_COLOR = { 0.05, 0.05, 0.05, 0.95 }
     local POPUP_BORDER_COLOR = { 0.6, 0.6, 0.6, 1 }
     local POPUP_BACKDROP = {
@@ -1267,28 +1264,6 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         frame:SetBackdrop(POPUP_BACKDROP)
         frame:SetBackdropColor(unpack(POPUP_BG_COLOR))
         frame:SetBackdropBorderColor(unpack(POPUP_BORDER_COLOR))
-    end
-
-    local function CreateDropdownBar(parent)
-        local bar = CreateFrame("Button", nil, parent)
-        bar:SetSize(unpack(DROPDOWN_BAR_SIZE))
-        local bg = bar:CreateTexture(nil, "BACKGROUND")
-        bg:SetAtlas("common-dropdown-textholder")
-        bg:SetAllPoints()
-        local arrow = bar:CreateTexture(nil, "OVERLAY")
-        arrow:SetAtlas("common-dropdown-a-button-hover")
-        arrow:SetSize(unpack(DROPDOWN_ARROW_SIZE))
-        arrow:SetPoint("RIGHT", -2, -1)
-        arrow:SetVertexColor(DROPDOWN_ARROW_DIM, DROPDOWN_ARROW_DIM, DROPDOWN_ARROW_DIM)
-        local label = bar:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-        label:SetPoint("LEFT", 8, 0)
-        label:SetPoint("RIGHT", arrow, "LEFT", -2, 0)
-        label:SetJustifyH("LEFT")
-        label:SetWordWrap(false)
-        bar:SetScript("OnEnter", function() arrow:SetVertexColor(1, 1, 1) end)
-        bar:SetScript("OnLeave", function() arrow:SetVertexColor(DROPDOWN_ARROW_DIM, DROPDOWN_ARROW_DIM, DROPDOWN_ARROW_DIM) end)
-        bar:Hide()
-        return bar, label, arrow
     end
 
     -- Creates a single radio texture that swaps between off/on states.
@@ -1680,13 +1655,6 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             local FLYOUT_ROW_H = 20
             local POPUP_WIDTH = 180
             local CLASSFLYOUT_WIDTH = 160
-            local TOOLTIP_BORDER = "Interface\\Tooltips\\UI-Tooltip-Border"
-            local BACKDROP_POPUP = {
-                bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-                edgeFile = TOOLTIP_BORDER, edgeSize = 14,
-                insets = { left = 3, right = 3, top = 3, bottom = 3 },
-            }
-
             -- Determine which class to display in the spec popup.
             -- Always returns a class (falls back to player's class for "all" or nil).
             local function GetSelectedClass()
@@ -1801,8 +1769,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             classFlyout:EnableMouse(true)
             classFlyout:Hide()
 
-            -- Also keep "EasyFindSpecSubFlyout" name for the dropdown close guard
-            local specSubFlyout = classFlyout
+            local LayoutSpecPopup  -- forward declaration for closures below
 
             -- Helper: create a radio-style row
             local function CreateRadioRow(parent, label, filterVal, width)
@@ -1929,7 +1896,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             local classHeaderLabel = classHeader:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
             classHeaderLabel:SetPoint("LEFT", 8, 0)
 
-            local function LayoutSpecPopup()
+            LayoutSpecPopup = function()
                 local selCls = GetSelectedClass()
                 local py = -6
                 local lvl = specPopup:GetFrameLevel() + 10
@@ -4947,13 +4914,11 @@ function UI:ApplyTransmogBrowseMode()
     -- Hide the Situations tab (vendor-only feature)
     local wardrobeCollection = TransmogFrame.WardrobeCollection
     local tabHeaders = wardrobeCollection and wardrobeCollection.TabHeaders
-    local situationsTab
     if tabHeaders then
         for _, tab in ipairs({ tabHeaders:GetChildren() }) do
             if tab.GetText and tab:GetText() == "Situations" then
                 tab:Hide()
                 hidden[#hidden + 1] = tab
-                situationsTab = tab
                 break
             end
         end
