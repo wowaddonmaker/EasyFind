@@ -917,6 +917,11 @@ function Database:PopulateDynamicTransmogSets()
             tremove(uiSearchData, i)
         end
     end
+    -- Invalidate incremental search cache. Without this, a query that was
+    -- typed before the repopulate (e.g. "cauldron" searched with Druid sets
+    -- active) would still reuse prevCandidates on the next extension and
+    -- miss the newly injected entries.
+    if self.ResetSearchCache then self:ResetSearchCache() end
 
     local allSets = C_TransmogSets.GetAllSets()
     if not allSets then return end
@@ -929,14 +934,17 @@ function Database:PopulateDynamicTransmogSets()
     local showPvE = not db or db.appearanceSetPvE ~= false
     local showPvP = not db or db.appearanceSetPvP ~= false
 
-    -- Sync class filter to default UI
+    -- Sync class filter to default UI. Guard against the hooksecurefunc in
+    -- Core.lua re-entering Populate from our own call here.
     if C_TransmogSets.SetTransmogSetsClassFilter then
+        EasyFind._tmogClassHookSuppress = true
         if not classFilter then
             local _, _, cid = UnitClass("player")
             if cid then C_TransmogSets.SetTransmogSetsClassFilter(cid) end
         elseif classFilter ~= "all" and type(classFilter) == "table" and classFilter.classID then
             C_TransmogSets.SetTransmogSetsClassFilter(classFilter.classID)
         end
+        EasyFind._tmogClassHookSuppress = false
     end
 
     -- Sync collected/PvE/PvP filters to default UI
@@ -2793,6 +2801,15 @@ end
 local prevQuery = ""
 local prevSkipKey = ""
 local prevCandidates = {}
+
+-- Clear the incremental search cache. Called after uiSearchData is mutated
+-- (e.g. PopulateDynamicTransmogSets) so the next query doesn't reuse a
+-- stale candidate list that was built against the old dataset.
+function Database:ResetSearchCache()
+    prevQuery = ""
+    prevSkipKey = ""
+    wipe(prevCandidates)
+end
 
 function Database:SearchUI(query, skipCategories)
     if not query or query == "" or #query < 2 then
