@@ -840,13 +840,20 @@ function UI:CreateSearchFrame()
     editBox:SetPoint("LEFT", modeBtn, "RIGHT", 0, 0)
     editBox:SetPoint("RIGHT", filterBtn, "LEFT", -4, 0)
 
-    -- Click anywhere on the search frame to focus the editbox (enables blinking cursor)
+    -- Click anywhere on the search frame to focus the editbox (enables blinking cursor).
     -- Use HookScript to preserve SmartShow OnLeave handlers;
-    -- skip focus if SmartShow is active and editbox is empty (prevents the bar getting stuck visible)
+    -- skip focus if SmartShow is active and editbox is empty (prevents the bar getting stuck visible).
+    -- Skip when the click landed on one of the toolbar buttons - they have their
+    -- own behavior, and stealing keyboard focus here would yank it away from any
+    -- other editable frame the player is currently using (chat, mail, /say, etc).
     searchFrame:HookScript("OnMouseDown", function(self, button)
-        if button == "LeftButton" and not IsShiftKeyDown() and not self.setupMode then
-            editBox:SetFocus()
+        if button ~= "LeftButton" or IsShiftKeyDown() or self.setupMode then return end
+        if (filterBtn and filterBtn:IsMouseOver())
+           or (modeBtn and modeBtn:IsMouseOver())
+           or (clearTextBtn and clearTextBtn:IsShown() and clearTextBtn:IsMouseOver()) then
+            return
         end
+        editBox:SetFocus()
     end)
 
     -- Show/hide the clear X based on whether there's text or an active guide
