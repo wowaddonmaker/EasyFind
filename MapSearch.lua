@@ -8,7 +8,7 @@ local DebugPrint = Utils.DebugPrint
 local pairs, ipairs, type, select = Utils.pairs, Utils.ipairs, Utils.type, Utils.select
 local tinsert, tsort, tconcat, tremove = Utils.tinsert, Utils.tsort, Utils.tconcat, Utils.tremove
 local sfind, slower = Utils.sfind, Utils.slower
-local mmin, mmax, mpi = Utils.mmin, Utils.mmax, Utils.mpi
+local mmin, mmax, mpi, mfloor = Utils.mmin, Utils.mmax, Utils.mpi, Utils.mfloor
 local pcall, xpcall, tostring = Utils.pcall, Utils.xpcall, Utils.tostring
 local ErrorHandler = Utils.ErrorHandler
 
@@ -2731,6 +2731,8 @@ function MapSearch:CreateResultButton(index)
                     if nearest then
                         MapSearch:ShowWaypointAt(nearest.x, nearest.y, nil, nearest.category)
                     end
+                elseif coords.pin and coords.pin:IsShown() then
+                    MapSearch:HighlightPin(coords.pin, coords.x, coords.y, coords.icon, coords.category)
                 else
                     MapSearch:ShowWaypointAt(coords.x, coords.y, coords.icon, coords.category)
                 end
@@ -2830,6 +2832,11 @@ function MapSearch:CreateResultButton(index)
         MapSearch._previewing = true
         if coords.instances then
             MapSearch:ShowMultipleWaypoints(coords.instances)
+        elseif coords.pin and coords.pin:IsShown() then
+            -- Glow the live native pin in place. coords.x/y/icon/category
+            -- are forwarded so HighlightPin can fall back to ShowWaypointAt
+            -- if the pin disappears mid-hover.
+            MapSearch:HighlightPin(coords.pin, coords.x, coords.y, coords.icon, coords.category)
         else
             MapSearch:ShowWaypointAt(coords.x, coords.y, coords.icon, coords.category)
         end
@@ -5603,14 +5610,88 @@ function MapSearch:ScanMapPOIs()
         end
     end
 
-    return pois
+    -- Dedupe: when both the API path and the canvas-children scan report the
+    -- same POI (same category at the same coordinates), keep the canvas-scan
+    -- entry because it carries a live pin reference. SelectResult uses that
+    -- reference to glow the native icon in place instead of stamping an
+    -- overlay icon on top.
+    local deduped = {}
+    local seenByKey = {}
+    for _, poi in ipairs(pois) do
+        local key
+        if poi.x and poi.y and poi.category then
+            key = poi.category .. "|" .. mfloor(poi.x * 1000) .. "|" .. mfloor(poi.y * 1000)
+        end
+        if not key then
+            tinsert(deduped, poi)
+        else
+            local existingIdx = seenByKey[key]
+            if not existingIdx then
+                tinsert(deduped, poi)
+                seenByKey[key] = #deduped
+            elseif poi.pin and not deduped[existingIdx].pin then
+                deduped[existingIdx] = poi
+            end
+        end
+    end
+    return deduped
+end
+
+-- Generic glow/waypoint atlases stacked on every native pin. Skipped when
+-- looking for the pin's distinguishing icon.
+local PIN_SKIP_ATLAS = {
+    ["Waypoint-MapPin-Tracked"]   = true,
+    ["Waypoint-MapPin-Untracked"] = true,
+    ["UI-QuestPoi-OuterGlow"]     = true,
+}
+
+-- Native Blizzard pin atlases we recognize by sight. Used as a fallback when
+-- the pin's other Lua metadata (areaPoiInfo, vignetteInfo) doesn't categorize
+-- it - some data providers expose pins as plain Frames with only an atlas to
+-- tell you what they are (e.g., trading post, quartermaster, chromie).
+local PIN_ATLAS_TYPES = {
+    ["ChromieTime-32x32"]         = { name = "Chromie",       category = "chromie" },
+    ["trading-post-minimap-icon"] = { name = "Trading Post",  category = "tradingpost" },
+    ["Quartermaster"]             = { name = "Quartermaster", category = "quartermaster" },
+}
+
+-- Inspect a pin's textures and return the first known atlas identity, plus
+-- the first non-generic ARTWORK atlas as a fallback icon. atlasName /
+-- atlasCategory are nil when the pin has no recognized atlas; atlasIcon may
+-- still be set (any non-generic ARTWORK atlas).
+local function ScanPinAtlasIdentity(pin)
+    local atlasName, atlasCategory, atlasIcon
+    for _, region in pairs({pin:GetRegions()}) do
+        if region.GetAtlas then
+            local a = region:GetAtlas()
+            if a and a ~= "" and not PIN_SKIP_ATLAS[a]
+               and region:GetDrawLayer() == "ARTWORK" then
+                if not atlasIcon then
+                    atlasIcon = "atlas:" .. a
+                end
+                if not atlasName then
+                    local known = PIN_ATLAS_TYPES[a]
+                    if known then
+                        atlasName = known.name
+                        atlasCategory = known.category
+                    end
+                end
+            end
+        end
+    end
+    return atlasName, atlasCategory, atlasIcon
 end
 
 function MapSearch:GetPinInfo(pin)
     if not pin or not pin:IsShown() then return nil end
 
+    -- Pre-scan atlases. Used as a fallback for any code path below that
+    -- would otherwise return nil due to unrecognized areaPoiInfo names or
+    -- vignette types we don't normally track.
+    local atlasName, atlasCategory, atlasIcon = ScanPinAtlasIdentity(pin)
+
     local name = nil
-    local icon = nil
+    local icon = atlasIcon
     local pinType = "unknown"
     local category = nil
 
@@ -5668,18 +5749,31 @@ function MapSearch:GetPinInfo(pin)
             category = "chromie"
             pinType = "chromie"
             icon = "atlas:ChromieTime-32x32"
+        elseif atlasCategory then
+            -- API name doesn't match our keyword list, but the pin's atlas
+            -- tells us what it is (e.g., a vendor NPC name like "Boots
+            -- Murphy" on a Quartermaster atlas). Keep the API name and
+            -- adopt the atlas-derived category.
+            category = atlasCategory
+            pinType = atlasCategory
         else
-            -- Generic area POI - skip it (these are usually landmarks, events, etc.)
             return nil
         end
     end
 
-    -- Vignettes: treasures only. Rares handled by ScanVignettes() (provides GUID for super-tracking)
+    -- Vignettes: treasures get the treasure category. Other vignette types
+    -- (vendors, services) are still useful if their atlas tells us what
+    -- they are; otherwise rares are handled by ScanVignettes() (which
+    -- provides GUID for super-tracking) so we drop them here.
     if pin.vignetteInfo then
         if pin.vignetteInfo.vignetteType == 2 then
             name = pin.vignetteInfo.name
             pinType = "vignette"
             category = "treasure"
+        elseif atlasCategory then
+            name = name or pin.vignetteInfo.name
+            category = atlasCategory
+            pinType = atlasCategory
         else
             return nil
         end
@@ -5700,38 +5794,19 @@ function MapSearch:GetPinInfo(pin)
         return nil
     end
 
-    -- Scan pin regions for atlas-based icons (shows the real map pin icon)
-    -- Also used to identify unknown pin types by their atlas name
-    local skipAtlas = { ["Waypoint-MapPin-Tracked"] = true, ["Waypoint-MapPin-Untracked"] = true, ["UI-QuestPoi-OuterGlow"] = true }
-    -- Atlas names that identify specific known pin types when other data fields are absent
-    local atlasPinTypes = {
-        ["ChromieTime-32x32"] = { name = "Chromie", category = "chromie" },
-    }
-    do
-        for _, region in pairs({pin:GetRegions()}) do
-            if region.GetAtlas then
-                local atlas = region:GetAtlas()
-                if atlas and atlas ~= "" and not skipAtlas[atlas] then
-                    local layer = region:GetDrawLayer()
-                    if layer == "ARTWORK" then
-                        if not icon then
-                            icon = "atlas:" .. atlas
-                        end
-                        if not name then
-                            local known = atlasPinTypes[atlas]
-                            if known then
-                                name     = known.name
-                                category = known.category
-                                pinType  = known.category
-                            end
-                        end
-                    end
-                end
-            end
-        end
+    -- No areaPoiInfo / vignetteInfo categorization happened: fall back to
+    -- whatever the atlas pre-scan identified. This is the path for plain
+    -- Frame pins that have no Lua metadata at all (e.g., trading post,
+    -- quartermaster on some maps).
+    if not category and atlasCategory then
+        category = atlasCategory
+        pinType = atlasCategory
+    end
+    if not name and atlasName then
+        name = atlasName
     end
 
-    -- Fallback raw texture scan (only if atlas scan found nothing)
+    -- Final fallback raw texture scan if we still have no icon at all
     if not icon then
         if pin.Texture and pin.Texture.GetTexture then
             local tex = pin.Texture:GetTexture()
@@ -5746,7 +5821,7 @@ function MapSearch:GetPinInfo(pin)
         end
     end
 
-    if not name or name == "" then
+    if not name or name == "" or not category then
         return nil
     end
 
@@ -6581,6 +6656,8 @@ function MapSearch:UpdateSelectionHighlight(skipRefocus)
                 self._previewing = true
                 if coords.instances then
                     self:ShowMultipleWaypoints(coords.instances)
+                elseif coords.pin and coords.pin:IsShown() then
+                    self:HighlightPin(coords.pin, coords.x, coords.y, coords.icon, coords.category)
                 else
                     self:ShowWaypointAt(coords.x, coords.y, coords.icon, coords.category)
                 end
@@ -6751,6 +6828,11 @@ function MapSearch:SelectResult(data)
                     SetSuperTrackedVignette(single.vignetteGUID)
                 end
             end
+        elseif data.pin and data.pin:IsShown() then
+            -- Native canvas pin available: glow the existing in-game icon
+            -- directly so the player still sees Blizzard's pin underneath
+            -- the highlight border, instead of stamping our own overlay.
+            self:HighlightPin(data.pin, data.x, data.y, data.icon, data.category)
         elseif data.x and data.y then
             -- Single POI with coordinates
             self:ShowWaypointAt(data.x, data.y, data.icon, data.category)
@@ -6760,7 +6842,7 @@ function MapSearch:SelectResult(data)
                 SetSuperTrackedVignette(data.vignetteGUID)
             end
         elseif data.pin then
-            -- Dynamic pin with no coords - highlight it directly
+            -- Pin reference but currently hidden and no coords: clear.
             self:HighlightPin(data.pin)
         end
     end
@@ -7091,17 +7173,59 @@ function MapSearch:ShowWaypointAt(x, y, icon, category)
     end
 end
 
-function MapSearch:HighlightPin(pin)
+-- Tracks the canvas pin currently scaled up by HighlightPin so ClearHighlight
+-- can restore the original scale. Module-scoped because the pin reference
+-- doesn't survive a /reload.
+local highlightedNativePin = nil
+
+local function RestoreNativePinScale()
+    local p = highlightedNativePin
+    if not p then return end
+    if p._easyfindOriginalScale and p.SetScale then
+        pcall(p.SetScale, p, p._easyfindOriginalScale)
+    end
+    p._easyfindOriginalScale = nil
+    highlightedNativePin = nil
+end
+
+function MapSearch:HighlightPin(pin, x, y, icon, category)
     waypointPin:Hide()
 
+    -- Restore any previously scaled native pin before highlighting a new one.
+    RestoreNativePinScale()
+
     if not pin or not pin:IsShown() then
+        -- Pin gone or hidden: fall back to overlay if we know the coords,
+        -- otherwise just clear.
+        if x and y then
+            self:ShowWaypointAt(x, y, icon, category)
+            return
+        end
         self:ClearHighlight()
         return
     end
 
+    -- Save state with coords + category so close/reopen can restore via the
+    -- ShowWaypointAt fallback. The live pin reference will be stale by then.
+    if x and y then
+        activePinState = {
+            mapID = WorldMapFrame:GetMapID(),
+            x = x, y = y,
+            icon = icon, category = category,
+            isLocal = not isGlobalSearch,
+        }
+    end
 
-    -- Convert UI-unit sizes to canvas units
+    -- Scale the native pin up so it visually pops while highlighted. The
+    -- original scale is cached on the pin frame and restored by
+    -- ClearHighlight (or the next HighlightPin call).
     local userScale = EasyFind.db.iconScale or 0.8
+    local nativePinScale = (EasyFind.db.nativePinScale or 1.5) * userScale
+    if pin.SetScale and pin.GetScale then
+        pin._easyfindOriginalScale = pin._easyfindOriginalScale or (pin:GetScale() or 1)
+        pcall(pin.SetScale, pin, pin._easyfindOriginalScale * nativePinScale)
+        highlightedNativePin = pin
+    end
 
     local width, height = pin:GetSize()
     local minPinSize = ns.UIToCanvas(36) * userScale
@@ -7131,6 +7255,10 @@ end
 
 function MapSearch:ClearHighlight()
     if not highlightFrame then return end
+
+    -- Restore the native pin's original scale before tearing down highlight visuals.
+    RestoreNativePinScale()
+
     highlightFrame:Hide()
     highlightFrame.top:Show()
     highlightFrame.bottom:Show()
@@ -7204,9 +7332,11 @@ function MapSearch:GetPreviewCoords(data)
         pCat = data.category
         pMapID = data.entranceMapID
     end
-    -- Coords on the current map: use directly
+    -- Coords on the current map: use directly. Forward the live pin
+    -- reference (when present) so previews can glow the native icon
+    -- in place of stamping an overlay.
     if px and py and (not pMapID or pMapID == currentMapID) then
-        return { x = px, y = py, icon = pIcon, category = pCat }
+        return { x = px, y = py, icon = pIcon, category = pCat, pin = data.pin }
     end
     -- Coords on a different map: check if entrance is visible here
     if data.isDungeonEntrance or data.category == "dungeon"
@@ -7946,6 +8076,8 @@ function MapSearch:PreviewUIResult(data)
     self._previewing = true
     if coords.instances then
         self:ShowMultipleWaypoints(coords.instances)
+    elseif coords.pin and coords.pin:IsShown() then
+        self:HighlightPin(coords.pin, coords.x, coords.y, coords.icon, coords.category)
     else
         self:ShowWaypointAt(coords.x, coords.y, coords.icon, coords.category)
     end
