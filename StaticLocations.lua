@@ -1,5 +1,5 @@
--- EasyFind Static Locations (auto-generated 2026-03-17 03:17)
-local _, ns = ...
+-- EasyFind Static Locations (auto-generated 2026-04-09 03:37)
+local ADDON_NAME, ns = ...
 ns.STATIC_LOCATIONS = {
     [18] = { -- Tirisfal Glades
         { name = "Portal to Stranglethorn Vale", category = "portal", x = 0.6142756296653066, y = 0.5879643697403164, keywords = {"portal", "teleport", "mage"} },
@@ -71,6 +71,8 @@ ns.STATIC_LOCATIONS = {
         { name = "Mailbox", category = "mailbox", x = 0.569003059844468, y = 0.7177869582605291, keywords = {"mail", "mailbox"} },
         { name = "Mailbox", category = "mailbox", x = 0.4982730493422765, y = 0.8637194336242191, keywords = {"mail", "mailbox"} },
         { name = "Mailbox", category = "mailbox", x = 0.7581761591013239, y = 0.6375443493587201, keywords = {"mail", "mailbox"} },
+        { name = "Other Continents|Ironforge, Eastern Kingdoms", category = "portal", x = 0.6687707901000977, y = 0.3439830541610718, keywords = {"portal", "teleport", "mage"} },
+        { name = "Other Continents|Azsuna, Broken Isles", category = "portal", x = 0.4872930347919464, y = 0.8809855580329895, keywords = {"portal", "teleport", "mage"} },
     },
     [85] = { -- Orgrimmar
         { name = "Legacy PvP Vendors", category = "pvpvendor", x = 0.3907181451218901, y = 0.7160247475023476, keywords = {"pvp", "honor", "conquest", "vendor"} },
@@ -321,7 +323,6 @@ ns.STATIC_LOCATIONS = {
         { name = "Innkeeper", category = "innkeeper", x = 0.80031418800354, y = 0.5956547260284424, keywords = {"inn", "innkeeper", "hearth", "rest", "tavern"} },
         { name = "Warlock Trainer", category = "classtrainer_warlock", x = 0.7610905766487122, y = 0.4362403452396393, keywords = {"trainer", "class", "warlock"} },
         { name = "Priest Trainer", category = "classtrainer_priest", x = 0.5428659319877625, y = 0.2686304748058319, keywords = {"trainer", "class", "priest"} },
-        { name = "Innkeeper", category = "innkeeper", x = 0.80031418800354, y = 0.5956547260284424, keywords = {"inn", "innkeeper", "hearth", "rest", "tavern"} },
         { name = "Stable Master", category = "stablemaster", x = 0.8282662630081177, y = 0.3097585141658783, keywords = {"stable", "pet"} },
         { name = "Mailbox", category = "mailbox", x = 0.879634439945221, y = 0.5083430409431458, keywords = {"mail", "mailbox"} },
     },
@@ -355,6 +356,9 @@ ns.STATIC_LOCATIONS = {
         { name = "Archaeology Trainer", category = "prof_archaeology", x = 0.6266931295394897, y = 0.7034234404563904, keywords = {"profession", "trainer", "archaeology", "artifact", "dig"} },
         { name = "Guild Services", category = "guildservices", x = 0.5892795920372009, y = 0.4632092118263245, keywords = {"guild", "tabard", "registrar"} },
         { name = "Innkeeper", category = "innkeeper", x = 0.7443743944168091, y = 0.3264971375465393, keywords = {"inn", "innkeeper", "hearth", "rest", "tavern"} },
+    },
+    [1164] = { -- Dazar'alor
+        { name = "Decor Specialist", category = "decor", x = 0.3680292523030898, y = 0.6273999392615361, keywords = {"decor", "decoration", "housing", "furniture"} },
     },
     [1670] = { -- Oribos
         { name = "Appearance Agitator", category = "barber", x = 0.6418470740318298, y = 0.6455227732658386, keywords = {"barber", "appearance", "haircut"} },
@@ -483,7 +487,6 @@ ns.STATIC_LOCATIONS = {
         { name = "Auction House", category = "auctionhouse", x = 0.5084021687507629, y = 0.7571848034858704, keywords = {"auction", "ah"} },
         { name = "Decor Specialist", category = "decor", x = 0.5596986357345336, y = 0.6570628685898381, keywords = {"decor", "decoration", "housing", "furniture"} },
         { name = "Crafting Orders", category = "craftingorders", x = 0.4515396058559418, y = 0.5560497045516968, keywords = {"crafting", "orders", "work order"} },
-        { name = "Inn", category = "innkeeper", x = 0.5628485083580017, y = 0.7034760117530823, keywords = {"inn", "innkeeper", "hearth", "rest", "tavern"} },
         { name = "Sanctum of Light", category = "landmark", x = 0.4544047117233276, y = 0.7033688426017761, keywords = {"sanctum", "light"} },
         { name = "Rostrum of Transformation", category = "rostrum", x = 0.5219147801399231, y = 0.7374712824821472, keywords = {"rostrum", "transformation", "dragonriding"} },
         { name = "Mailbox", category = "mailbox", x = 0.4985528588294983, y = 0.7411491870880127, keywords = {"mail", "mailbox"} },
@@ -494,6 +497,12 @@ ns.STATIC_LOCATIONS = {
         { name = "Mailbox", category = "mailbox", x = 0.695517930156462, y = 0.8206761373145117, keywords = {"mail", "mailbox"} },
         { name = "Mailbox", category = "mailbox", x = 0.5750499589877152, y = 0.6998717990457972, keywords = {"mail", "mailbox"} },
         { name = "Mailbox", category = "mailbox", x = 0.6702745588052893, y = 0.7012820215558285, keywords = {"mail", "mailbox"} },
+        { name = "Arcantina Portal", category = "portal", x = 0.562795365381976, y = 0.7056124956620882, keywords = {"portal", "teleport", "mage"} },
+    },
+    [2437] = { -- Zul'Aman
+        { name = "Decor Specialist", category = "decor", x = 0.461404994483628, y = 0.6649003781285632, keywords = {"decor", "decoration", "housing", "furniture"} },
+        { name = "Innkeeper", category = "innkeeper", x = 0.4540807306251356, y = 0.6545635298785561, keywords = {"inn", "innkeeper", "hearth", "rest", "tavern"} },
+        { name = "Mailbox", category = "mailbox", x = 0.4497563021021528, y = 0.6597604414722286, keywords = {"mail", "mailbox"} },
     },
 }
 
