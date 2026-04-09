@@ -400,6 +400,43 @@ local function OnPlayerLogin()
                         SafeAfter(0, function()
                             ns.Database:SyncTransmogSetFiltersFromUI()
                             ns.Database:PopulateDynamicTransmogSets()
+
+                            -- Hook Blizzard's class filter setter so any later
+                            -- change (including the engine restoring the saved
+                            -- value after Blizzard_Collections loads) triggers
+                            -- a resync + repopulate. The login sync above can
+                            -- run before the wardrobe state is fully restored,
+                            -- which is why the dropdown-open sync used to be
+                            -- the only thing that picked up the correct class.
+                            if C_TransmogSets and C_TransmogSets.SetTransmogSetsClassFilter
+                                and not EasyFind._tmogClassHooked then
+                                EasyFind._tmogClassHooked = true
+                                hooksecurefunc(C_TransmogSets, "SetTransmogSetsClassFilter", function(classID)
+                                    -- Skip when Populate itself called the setter, to avoid
+                                    -- infinite recursion through the hook.
+                                    if EasyFind._tmogClassHookSuppress then return end
+                                    if not classID or not ns.Database then return end
+                                    local db = EasyFind.db
+                                    if not db then return end
+                                    local _, _, playerClassID = UnitClass("player")
+                                    local newVal
+                                    if classID == playerClassID then
+                                        newVal = nil
+                                    else
+                                        newVal = { classID = classID }
+                                    end
+                                    -- Compare before vs after: avoid a repopulate if the
+                                    -- value didn't actually change.
+                                    local oldID = type(db.appearanceSetClass) == "table"
+                                        and db.appearanceSetClass.classID or db.appearanceSetClass
+                                    local newID = type(newVal) == "table" and newVal.classID or newVal
+                                    if oldID == newID then return end
+                                    db.appearanceSetClass = newVal
+                                    if ns.Database.PopulateDynamicTransmogSets then
+                                        ns.Database:PopulateDynamicTransmogSets()
+                                    end
+                                end)
+                            end
                         end)
                     end)
                 end)
@@ -435,6 +472,7 @@ eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("PLAYER_LOGOUT")
 eventFrame:RegisterEvent("TRANSMOG_OUTFITS_CHANGED")
+eventFrame:RegisterEvent("TRANSMOG_COLLECTION_UPDATED")
 eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
     if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
         OnInitialize()
@@ -462,6 +500,16 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
                 ns.UI:SyncOutfitPins()
             end
         end)
+    elseif event == "TRANSMOG_COLLECTION_UPDATED" then
+        -- Fires once the transmog collection (including the saved class
+        -- filter) is fully loaded. Re-sync + repopulate so we pick up the
+        -- correct class without waiting for the user to open our dropdown.
+        if ns.Database and ns.Database.SyncTransmogSetFiltersFromUI then
+            ns.Database:SyncTransmogSetFiltersFromUI()
+            if ns.Database.PopulateDynamicTransmogSets then
+                ns.Database:PopulateDynamicTransmogSets()
+            end
+        end
     elseif event == "PLAYER_LOGOUT" then
         -- Strip runtime-only fields before SavedVariables serialization
         if EasyFindDB then

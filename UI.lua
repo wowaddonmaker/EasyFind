@@ -2799,9 +2799,8 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
     -- Keyboard: enable when opened via Enter on filter button
     dropdown:HookScript("OnShow", function(self)
-        -- Sync appearance set filters from default UI on open. If anything
-        -- changed since we last populated, rebuild uiSearchData so the search
-        -- actually reflects the new class / collected / PvE / PvP state.
+        -- Sync appearance set filters from the default UI. Only repopulate
+        -- if something actually changed, so opening the dropdown is cheap.
         if ns.Database and ns.Database.SyncTransmogSetFiltersFromUI then
             local db = EasyFind.db
             local beforeClassID = type(db.appearanceSetClass) == "table"
@@ -2822,6 +2821,9 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 or beforePvP ~= db.appearanceSetPvP
             if changed and ns.Database.PopulateDynamicTransmogSets then
                 ns.Database:PopulateDynamicTransmogSets()
+                if searchEditBox and searchEditBox:GetText() ~= "" then
+                    UI:OnSearchTextChanged(searchEditBox:GetText())
+                end
             end
 
             local asRow = checkRows and checkRows.appearanceSets
