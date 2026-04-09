@@ -1238,6 +1238,51 @@ function Highlight:UpdateGuide()
             return
         end
 
+        -- Wardrobe Sets tab: switch to the Sets sub-tab within WardrobeCollectionFrame
+        if step.wardrobeSetsTab then
+            local wcf = _G["WardrobeCollectionFrame"]
+            if wcf and wcf.SetsCollectionFrame and wcf.SetsCollectionFrame:IsShown() then
+                self:AdvanceStep()
+                return
+            end
+            local setsTab = self:GetTabButton("WardrobeCollectionFrame", 2)
+            if setsTab then
+                self:HighlightFrame(setsTab)
+            end
+            return
+        end
+
+        -- Transmog set: scroll to and highlight in the Sets ScrollBox
+        if step.transmogSetID then
+            local wcf = _G["WardrobeCollectionFrame"]
+            local setsFrame = wcf and wcf.SetsCollectionFrame
+            local scrollBox = setsFrame and setsFrame.ListContainer
+                and setsFrame.ListContainer.ScrollBox
+            if not scrollBox then return end
+
+            local targetName = step.transmogSetName and slower(step.transmogSetName)
+            ScrollBoxScrollTo(scrollBox, function(elementData)
+                if not elementData then return false end
+                return elementData.setID and elementData.setID == step.transmogSetID
+            end)
+            local setBtn = ScrollBoxFindButton(scrollBox, function(btn)
+                local edata = btn.GetElementData and btn:GetElementData()
+                if edata and edata.setID == step.transmogSetID then return true end
+                if targetName then
+                    local text = GetButtonText(btn)
+                    if text and slower(text) == targetName then return true end
+                end
+                return false
+            end)
+            if setBtn then
+                self:HighlightFrame(setBtn)
+                if canHoverDismiss() and setBtn:IsMouseOver() then
+                    self:Cancel()
+                end
+            end
+            return
+        end
+
         -- Text-only final step (when we've navigated but can't highlight specific element)
         if step.text and not step.regionFrames and not step.regionFrame and not step.searchButtonText then
             self:ShowInstruction(step.text)
@@ -2015,6 +2060,34 @@ function Highlight:GetTabButton(frameName, tabIndex)
     -- AchievementFrame tabs (Achievements, Guild, Statistics)
     if frameName == "AchievementFrame" then
         return _G["AchievementFrameTab" .. tabIndex]
+    end
+
+    -- WardrobeCollectionFrame tabs (Items / Sets)
+    if frameName == "WardrobeCollectionFrame" then
+        -- Try named globals first
+        local tabBtn = _G["WardrobeCollectionFrameTab" .. tabIndex]
+        if tabBtn then return tabBtn end
+        local frame = _G["WardrobeCollectionFrame"]
+        if frame then
+            -- Try .Tabs array (modern WoW tab system)
+            if frame.Tabs and frame.Tabs[tabIndex] then return frame.Tabs[tabIndex] end
+            -- Try named properties
+            if tabIndex == 2 and frame.SetsTab then return frame.SetsTab end
+            if tabIndex == 1 and frame.ItemsTab then return frame.ItemsTab end
+            -- Search children by name or debugName
+            local tabKeywords = { {"Items", "Item", "Tab1"}, {"Sets", "Set", "Tab2"} }
+            local keywords = tabKeywords[tabIndex]
+            if keywords then
+                for i = 1, select("#", frame:GetChildren()) do
+                    local child = select(i, frame:GetChildren())
+                    local name = child:GetName() or ""
+                    local debugName = child.GetDebugName and child:GetDebugName() or ""
+                    for _, kw in ipairs(keywords) do
+                        if sfind(name, kw) or sfind(debugName, kw) then return child end
+                    end
+                end
+            end
+        end
     end
 
     -- EncounterJournal tabs (Adventure Guide)
