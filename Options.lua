@@ -1686,7 +1686,7 @@ function Options:DoResetAll()
     EasyFind.db.mapSearchPositionMax = nil
     EasyFind.db.globalSearchPositionMax = nil
     EasyFind.db.mapSearchYOffset = 0
-    EasyFind.db.directOpen = false
+    EasyFind.db.directOpen = true
     EasyFind.db.localMapDirectOpen = false
     EasyFind.db.globalMapDirectOpen = false
     EasyFind.db.smartShow = false
@@ -1720,10 +1720,19 @@ function Options:DoResetAll()
     EasyFind.db.enableUISearch = true
     EasyFind.db.enableMapSearch = true
     EasyFind.db.globalSearchFilters = { zones = true, dungeons = true, raids = true, delves = true }
-    EasyFind.db.localSearchFilters = { instances = true, travel = true, services = true }
-    EasyFind.db.uiSearchFilters = { ui = true, mounts = false, toys = false, pets = false, outfits = false, loot = false, map = false }
-    EasyFind.db.lootFilter = nil          -- nil = current spec
+    EasyFind.db.localSearchFilters = { instances = true, travel = true, services = true, rares = true }
+    EasyFind.db.uiSearchFilters = { ui = true, mounts = false, toys = false, pets = false, outfits = false, loot = false, appearanceSets = false, map = false }
+    EasyFind.db.lootSpecs = nil           -- nil = current spec only
+    EasyFind.db.lootSearchSlots = true
+    EasyFind.db.lootSearchStats = true
+    EasyFind.db.lootUpgradesOnly = false
     EasyFind.db.lootDifficulty = "normal"
+    EasyFind.db.appearanceSetClass = nil  -- nil = player class
+    EasyFind.db.appearanceSetCollected = true
+    EasyFind.db.appearanceSetNotCollected = true
+    EasyFind.db.appearanceSetPvE = true
+    EasyFind.db.appearanceSetPvP = true
+    EasyFind.db.nativePinScale = 1.5
     EasyFind.db.pinnedUIItems = {}
     EasyFind.db.pinnedUIItemsPerChar = {}
     EasyFind.db.pinnedMapItems = {}
@@ -1773,7 +1782,7 @@ function Options:DoResetAll()
     optionsFrame.opacitySlider:SetValue(DEFAULT_OPACITY)
     optionsFrame.uiFontSlider:SetValue(0.9)
     optionsFrame.mapFontSlider:SetValue(0.9)
-    optionsFrame.directOpenCheckbox:SetChecked(false)
+    optionsFrame.directOpenCheckbox:SetChecked(true)
     local sf = _G["EasyFindSearchFrame"]
     if sf and sf.modeBtn and ns.UpdateModeButtonVisual then
         ns.UpdateModeButtonVisual(sf.modeBtn)
@@ -1837,7 +1846,7 @@ function Options:DoResetAll()
 end
 
 function Options:DoResetUI()
-    EasyFind.db.directOpen = false
+    EasyFind.db.directOpen = true
     EasyFind.db.smartShow = false
     EasyFind.db.staticOpacity = false
     EasyFind.db.uiResultsAbove = false
@@ -1848,10 +1857,20 @@ function Options:DoResetUI()
     EasyFind.db.uiResultsWidth = 350
     EasyFind.db.uiSearchPosition = nil
     EasyFind.db.uiResultsHeight = 280
-    EasyFind.db.uiSearchFilters = { ui = true, mounts = false, toys = false, pets = false, outfits = false, loot = false, map = false }
+    EasyFind.db.uiSearchFilters = { ui = true, mounts = false, toys = false, pets = false, outfits = false, loot = false, appearanceSets = false, map = false }
+    EasyFind.db.lootSpecs = nil
+    EasyFind.db.lootSearchSlots = true
+    EasyFind.db.lootSearchStats = true
+    EasyFind.db.lootUpgradesOnly = false
+    EasyFind.db.lootDifficulty = "normal"
+    EasyFind.db.appearanceSetClass = nil
+    EasyFind.db.appearanceSetCollected = true
+    EasyFind.db.appearanceSetNotCollected = true
+    EasyFind.db.appearanceSetPvE = true
+    EasyFind.db.appearanceSetPvP = true
     EasyFind.db.uiMapSearchLocal = true
 
-    optionsFrame.directOpenCheckbox:SetChecked(false)
+    optionsFrame.directOpenCheckbox:SetChecked(true)
     optionsFrame.smartShowCheckbox:SetChecked(false)
     optionsFrame.staticOpacityCheckbox:SetChecked(false)
     optionsFrame.uiResultsAboveCheckbox:SetChecked(false)
