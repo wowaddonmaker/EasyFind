@@ -51,8 +51,12 @@ end
 local CLEAN_SIMPLE_FIELDS = {"name", "nameLower", "category", "buttonFrame", "flashLabel", "icon",
     "mountID", "spellID", "toyItemID", "petID", "speciesID", "outfitID",
     "itemID", "encounterID", "instanceID", "lootSlotName", "lootSourceName", "lootInstanceName", "lootSourceType",
+    "transmogSetID",
     "factionID", "hasRepBar", "canQueue", "isPvP", "isPvE"}
-local CLEAN_TABLE_FIELDS = {"path", "steps", "keywords", "keywordsLower"}
+-- Tables to copy. Some are arrays (path, steps, keywords) and some are
+-- string-keyed maps (lootItemLinks = {[difficulty] = link}), so iterate
+-- with pairs rather than ipairs.
+local CLEAN_TABLE_FIELDS = {"path", "steps", "keywords", "keywordsLower", "lootItemLinks"}
 
 local function CleanUIForStorage(data)
     local clean = {}
@@ -65,17 +69,17 @@ local function CleanUIForStorage(data)
         local k = CLEAN_TABLE_FIELDS[fi]
         local v = data[k]
         if v then
-            local arr = {}
-            for i2, v2 in ipairs(v) do
+            local copy = {}
+            for k2, v2 in pairs(v) do
                 if type(v2) == "table" then
                     local sub = {}
                     for sk, sv in pairs(v2) do sub[sk] = sv end
-                    arr[i2] = sub
+                    copy[k2] = sub
                 else
-                    arr[i2] = v2
+                    copy[k2] = v2
                 end
             end
-            clean[k] = arr
+            clean[k] = copy
         end
     end
     return clean
@@ -169,6 +173,58 @@ local function UnpinUIItem(data)
                 end
             end
         end
+    end
+end
+
+-- Apply a full transmog set to the DressUpFrame using Blizzard's own
+-- DressUpTransmogSet. The function's first parameter is misleadingly named
+-- "setID" in older docs but actually takes a table of itemModifiedAppearanceIDs
+-- (the sources to dress up). Passing a raw setID into it is the mistake that
+-- makes Blizzard's code appear broken.
+function UI:DressUpAppearanceSet(setID)
+    if not setID or not C_TransmogSets then return end
+
+    -- Gather source IDs from whichever API returns data. GetAllSourceIDs is
+    -- the canonical form (a numeric array), preferred when available.
+    local sources, n = {}, 0
+    local seen = {}
+    local function add(sid)
+        if sid and sid ~= 0 and not seen[sid] then
+            seen[sid] = true
+            n = n + 1
+            sources[n] = sid
+        end
+    end
+
+    if C_TransmogSets.GetAllSourceIDs then
+        local ids = C_TransmogSets.GetAllSourceIDs(setID)
+        if ids then
+            for i = 1, #ids do add(ids[i]) end
+        end
+    end
+    if n == 0 and C_TransmogSets.GetSetSources then
+        local set = C_TransmogSets.GetSetSources(setID)
+        if set then
+            for sourceID in pairs(set) do add(sourceID) end
+        end
+    end
+    if n == 0 and C_TransmogSets.GetSetPrimaryAppearances then
+        local appearances = C_TransmogSets.GetSetPrimaryAppearances(setID)
+        if appearances then
+            for i = 1, #appearances do
+                local app = appearances[i]
+                add(app and app.appearanceID)
+            end
+        end
+    end
+
+    if n == 0 then
+        EasyFind:Print("could not load sources for this appearance set.")
+        return
+    end
+
+    if DressUpTransmogSet then
+        DressUpTransmogSet(sources)
     end
 end
 
@@ -1219,9 +1275,10 @@ local UI_FILTER_OPTIONS = {
     { key = "map",    label = "Map Search", iconAtlas = "Waypoint-MapPin-ChatIcon" },
     { key = "mounts", label = "Mounts",     iconTex = 132261 },  -- Ability_Mount_RidingHorse
     { key = "toys",   label = "Toys",       iconTex = 454046 },  -- Trade_Archaeology_ChestofTinyGlassAnimals
-    { key = "pets",   label = "Pets",       iconTex = 132599 },  -- PetJournalPortrait (Inv_Box_PetCarrier_01)
+    { key = "pets",   label = "Pets",       iconTex = 631719 },  -- PetJournal paw icon
     { key = "outfits", label = "Outfits",  iconTex = 132649 },  -- INV_Chest_Cloth_17
     { key = "loot",    label = "Loot",     iconTex = 132281 },  -- INV_Sword_04
+    { key = "appearanceSets", label = "Appearance Sets", iconTex = "Interface\\Icons\\INV_Helmet_03" },
 }
 
 function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
@@ -1236,6 +1293,9 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     dropdown:SetFrameLevel(9999)
     dropdown:Hide()
     dropdown:EnableMouse(true)
+    -- Popups that should prevent the dropdown from closing on outside-click.
+    -- Each sub-filter registers its popups here instead of hardcoding frame names.
+    local dropdownGuardFrames = {}
     dropdown:SetClampedToScreen(true)
 
     dropdown:SetBackdrop({
@@ -1621,6 +1681,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             end)
 
             AddPopupKeyboardNav(diffPopup, function() return diffPopupRows end)
+            dropdownGuardFrames[#dropdownGuardFrames + 1] = diffPopup
 
             row.diffBtn = diffBtn
             row.diffPopup = diffPopup
@@ -2089,6 +2150,10 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 end
             end)
 
+            -- Register loot popups as dropdown guard frames
+            dropdownGuardFrames[#dropdownGuardFrames + 1] = specPopup
+            dropdownGuardFrames[#dropdownGuardFrames + 1] = classFlyout
+
             -- Close flyouts when dropdown hides
             dropdown:HookScript("OnHide", function()
                 classFlyout:Hide()
@@ -2146,6 +2211,338 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         kbHighlight:Hide()
         row.kbHighlight = kbHighlight
 
+        -- Appearance Sets sub-options: class selector + Filter button (collected/PvE/PvP)
+        if opt.key == "appearanceSets" then
+            local FLYOUT_ROW_H_AS = 20
+            local CLASSPOPUP_WIDTH_AS = 160
+            local FILTERFLYOUT_WIDTH_AS = 150
+            local FILTERFLYOUT_ROW_H = 22
+
+            -- Separator line
+            local asSep = dropdown:CreateTexture(nil, "ARTWORK")
+            asSep:SetHeight(1)
+            asSep:SetColorTexture(0.5, 0.5, 0.5, 0.4)
+            asSep:Hide()
+            row.asSep = asSep
+
+            -- Build class data (same pattern as loot)
+            local CLASS_COLORS_AS = RAID_CLASS_COLORS
+            local asClasses = {}
+            for classIdx = 1, GetNumClasses() do
+                local className, classFile, classID = GetClassInfo(classIdx)
+                if className and classFile then
+                    asClasses[#asClasses + 1] = {
+                        classID = classID, className = className, classFile = classFile,
+                    }
+                end
+            end
+
+            local function ApplyAsFilterSelection()
+                if ns.Database and ns.Database.PopulateDynamicTransmogSets then
+                    ns.Database:PopulateDynamicTransmogSets()
+                end
+                if searchEditBox:GetText() ~= "" then
+                    UI:OnSearchTextChanged(searchEditBox:GetText())
+                end
+            end
+
+            -----------------------------------------------------------
+            -- Class selector bar (matches loot spec selector exactly)
+            -----------------------------------------------------------
+            local classSelectRow = CreateFrame("Button", nil, dropdown)
+            classSelectRow:SetSize(120, 27)
+            local csBg = classSelectRow:CreateTexture(nil, "BACKGROUND")
+            csBg:SetAtlas("common-dropdown-textholder")
+            csBg:SetAllPoints()
+            local csArrow = classSelectRow:CreateTexture(nil, "OVERLAY")
+            csArrow:SetAtlas("common-dropdown-a-button-hover")
+            csArrow:SetSize(20, 20)
+            csArrow:SetPoint("RIGHT", -2, -1)
+            csArrow:SetVertexColor(0.7, 0.7, 0.7)
+            local csLabel = classSelectRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+            csLabel:SetPoint("LEFT", 8, 0)
+            csLabel:SetPoint("RIGHT", csArrow, "LEFT", -2, 0)
+            csLabel:SetJustifyH("LEFT")
+            csLabel:SetWordWrap(false)
+            classSelectRow:SetScript("OnEnter", function() csArrow:SetVertexColor(1, 1, 1) end)
+            classSelectRow:SetScript("OnLeave", function() csArrow:SetVertexColor(0.7, 0.7, 0.7) end)
+            classSelectRow:Hide()
+            row.asClassSelectRow = classSelectRow
+            row.asClassLabel = csLabel
+
+            local function UpdateAsClassLabel()
+                local cf = EasyFind.db.appearanceSetClass
+                if not cf then
+                    local _, _, cid = UnitClass("player")
+                    for _, cls in ipairs(asClasses) do
+                        if cls.classID == cid then
+                            local ccl = CLASS_COLORS_AS[cls.classFile]
+                            local cs = ccl and string.format("|cff%02x%02x%02x", ccl.r * 255, ccl.g * 255, ccl.b * 255) or ""
+                            csLabel:SetText(cs .. cls.className .. "|r")
+                            return
+                        end
+                    end
+                elseif cf == "all" then
+                    csLabel:SetText("All Classes")
+                elseif type(cf) == "table" and cf.classID then
+                    for _, cls in ipairs(asClasses) do
+                        if cls.classID == cf.classID then
+                            local ccl = CLASS_COLORS_AS[cls.classFile]
+                            local cs = ccl and string.format("|cff%02x%02x%02x", ccl.r * 255, ccl.g * 255, ccl.b * 255) or ""
+                            csLabel:SetText(cs .. cls.className .. "|r")
+                            return
+                        end
+                    end
+                end
+                csLabel:SetText("All Classes")
+            end
+            UpdateAsClassLabel()
+
+            -- Class popup (opens below the selector bar)
+            local classPopup = CreateFrame("Frame", "EasyFindAsClassPopup", UIParent, "BackdropTemplate")
+            classPopup:SetFrameStrata("TOOLTIP")
+            StylePopup(classPopup)
+            classPopup:EnableMouse(true)
+            classPopup:Hide()
+            classPopup:SetScript("OnShow", function(self)
+                self:RegisterEvent("GLOBAL_MOUSE_DOWN")
+            end)
+            classPopup:SetScript("OnHide", function(self)
+                self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+            end)
+            classPopup:SetScript("OnEvent", function(self, event)
+                if event == "GLOBAL_MOUSE_DOWN" then
+                    if not self:IsMouseOver() and not classSelectRow:IsMouseOver()
+                        and not dropdown:IsMouseOver() then
+                        self:Hide()
+                    end
+                end
+            end)
+
+            local classPopupRows = {}
+            -- "All Classes" row
+            local allRow = CreateFrame("Button", nil, classPopup)
+            allRow:SetSize(CLASSPOPUP_WIDTH_AS - 16, FLYOUT_ROW_H_AS)
+            allRow:SetFrameLevel(classPopup:GetFrameLevel() + 10)
+            local allRadio, allSetRadio = CreateRadioTexture(allRow)
+            allRadio:SetPoint("LEFT", 4, 0)
+            local allLbl = allRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+            allLbl:SetPoint("LEFT", allRadio, "RIGHT", 4, 0)
+            allLbl:SetText("All Classes")
+            local allHL = allRow:CreateTexture(nil, "HIGHLIGHT")
+            allHL:SetAllPoints()
+            allHL:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+            allRow._setRadioChecked = allSetRadio
+            allRow._classID = nil
+            allRow:SetScript("OnClick", function()
+                EasyFind.db.appearanceSetClass = "all"
+                UpdateAsClassLabel()
+                classPopup:Hide()
+                ApplyAsFilterSelection()
+            end)
+            classPopupRows[#classPopupRows + 1] = allRow
+
+            for _, cls in ipairs(asClasses) do
+                local clsRow = CreateFrame("Button", nil, classPopup)
+                clsRow:SetSize(CLASSPOPUP_WIDTH_AS - 16, FLYOUT_ROW_H_AS)
+                clsRow:SetFrameLevel(classPopup:GetFrameLevel() + 10)
+                local cRadio, cSetRadio = CreateRadioTexture(clsRow)
+                cRadio:SetPoint("LEFT", 4, 0)
+                local ccl = CLASS_COLORS_AS[cls.classFile]
+                local csStr = ccl and string.format("|cff%02x%02x%02x", ccl.r * 255, ccl.g * 255, ccl.b * 255) or ""
+                local cLbl = clsRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+                cLbl:SetPoint("LEFT", cRadio, "RIGHT", 4, 0)
+                cLbl:SetText(csStr .. cls.className .. "|r")
+                local cHL = clsRow:CreateTexture(nil, "HIGHLIGHT")
+                cHL:SetAllPoints()
+                cHL:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+                clsRow._setRadioChecked = cSetRadio
+                clsRow._classID = cls.classID
+                clsRow:SetScript("OnClick", function()
+                    EasyFind.db.appearanceSetClass = { classID = cls.classID }
+                    UpdateAsClassLabel()
+                    classPopup:Hide()
+                    ApplyAsFilterSelection()
+                end)
+                classPopupRows[#classPopupRows + 1] = clsRow
+            end
+
+            local function LayoutClassPopup()
+                local py = -6
+                local cf = EasyFind.db.appearanceSetClass
+                for _, r in ipairs(classPopupRows) do
+                    r:ClearAllPoints()
+                    r:SetPoint("TOPLEFT", classPopup, "TOPLEFT", 8, py)
+                    r:Show()
+                    if r._setRadioChecked then
+                        local match = false
+                        if not r._classID then
+                            match = cf == "all"
+                        else
+                            if type(cf) == "table" and cf.classID == r._classID then
+                                match = true
+                            elseif not cf then
+                                local _, _, cid = UnitClass("player")
+                                match = r._classID == cid
+                            end
+                        end
+                        r._setRadioChecked(match)
+                    end
+                    py = py - FLYOUT_ROW_H_AS
+                end
+                classPopup:SetSize(CLASSPOPUP_WIDTH_AS, -py + 6)
+            end
+
+            classSelectRow:SetScript("OnClick", function(self)
+                if classPopup:IsShown() then
+                    classPopup:Hide()
+                    return
+                end
+                LayoutClassPopup()
+                classPopup:SetScale((EasyFind.db.uiSearchScale or 1.0) * (EasyFind.db.fontSize or 1.0))
+                classPopup:ClearAllPoints()
+                classPopup:SetPoint("TOPLEFT", self, "BOTTOMLEFT", 0, 2)
+                classPopup:Show()
+            end)
+
+            -----------------------------------------------------------
+            -- Filter button (Options.lua multi-select dropdown style)
+            -----------------------------------------------------------
+            local asFilterDefs = {
+                { dbKey = "appearanceSetCollected",    label = "Collected",     shortLabel = "Collected" },
+                { dbKey = "appearanceSetNotCollected",  label = "Not Collected", shortLabel = "Not Collected" },
+                { dbKey = "appearanceSetPvE",          label = "PvE",           shortLabel = "PvE" },
+                { dbKey = "appearanceSetPvP",          label = "PvP",           shortLabel = "PvP" },
+            }
+
+            local filterBtn = CreateFrame("Button", nil, dropdown)
+            filterBtn:SetSize(120, 22)
+            local filterBg = filterBtn:CreateTexture(nil, "BACKGROUND")
+            filterBg:SetAllPoints()
+            filterBg:SetAtlas("common-dropdown-b-button-hover")
+            local filterArrow = filterBtn:CreateTexture(nil, "OVERLAY")
+            filterArrow:SetSize(16, 16)
+            filterArrow:SetPoint("RIGHT", -2, 0)
+            filterArrow:SetAtlas("common-dropdown-b-arrow-closed")
+            local filterText = filterBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            filterText:SetPoint("LEFT", 4, 0)
+            filterText:SetPoint("RIGHT", -16, 0)
+            filterText:SetJustifyH("CENTER")
+            filterText:SetText("Filter")
+            filterBtn:Hide()
+            row.asFilterBtn = filterBtn
+
+            -- Filter flyout panel
+            local filterFlyout = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+            filterFlyout:SetFrameStrata("TOOLTIP")
+            StylePopup(filterFlyout)
+            filterFlyout:EnableMouse(true)
+            filterFlyout:Hide()
+
+            local asSubRows = {}
+            local ffy = -4
+            for si, def in ipairs(asFilterDefs) do
+                local cbRow = CreateFrame("CheckButton", nil, filterFlyout)
+                cbRow:SetSize(FILTERFLYOUT_WIDTH_AS - 8, FILTERFLYOUT_ROW_H)
+                cbRow:SetPoint("TOPLEFT", filterFlyout, "TOPLEFT", 4, ffy)
+
+                cbRow:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+                cbRow:GetNormalTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
+                cbRow:GetNormalTexture():ClearAllPoints()
+                cbRow:GetNormalTexture():SetPoint("LEFT", 4, 0)
+
+                cbRow:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+                cbRow:GetCheckedTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
+                cbRow:GetCheckedTexture():ClearAllPoints()
+                cbRow:GetCheckedTexture():SetPoint("LEFT", 4, 0)
+
+                local cbLabel = cbRow:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+                cbLabel:SetPoint("LEFT", cbRow:GetNormalTexture(), "RIGHT", 4, 0)
+                cbLabel:SetText(def.label)
+
+                local cbHL = cbRow:CreateTexture(nil, "HIGHLIGHT")
+                cbHL:SetAllPoints()
+                cbHL:SetColorTexture(1, 1, 1, 0.1)
+
+                local val = EasyFind.db[def.dbKey]
+                if val == nil then val = true end
+                cbRow:SetChecked(val)
+                cbRow.dbKey = def.dbKey
+
+                cbRow:SetScript("OnClick", function(self)
+                    EasyFind.db[def.dbKey] = self:GetChecked()
+                    ApplyAsFilterSelection()
+                end)
+
+                asSubRows[si] = cbRow
+                ffy = ffy - FILTERFLYOUT_ROW_H
+                -- Separator between "Not Collected" and "PvE"
+                if si == 2 then
+                    local sep = filterFlyout:CreateTexture(nil, "ARTWORK")
+                    sep:SetHeight(1)
+                    sep:SetPoint("TOPLEFT", filterFlyout, "TOPLEFT", 8, ffy + 2)
+                    sep:SetPoint("TOPRIGHT", filterFlyout, "TOPRIGHT", -8, ffy + 2)
+                    sep:SetColorTexture(0.5, 0.5, 0.5, 0.4)
+                    ffy = ffy - 6
+                end
+            end
+            filterFlyout:SetSize(FILTERFLYOUT_WIDTH_AS, -ffy + 4)
+            row.asSubRows = asSubRows
+
+            filterBtn:SetScript("OnClick", function()
+                local opening = not filterFlyout:IsShown()
+                filterFlyout:SetShown(opening)
+                filterArrow:SetAtlas(opening and "common-dropdown-b-arrow-open" or "common-dropdown-b-arrow-closed")
+                if opening then
+                    filterFlyout:SetScale((EasyFind.db.uiSearchScale or 1.0) * (EasyFind.db.fontSize or 1.0))
+                    filterFlyout:ClearAllPoints()
+                    filterFlyout:SetPoint("TOPLEFT", filterBtn, "BOTTOMLEFT", 0, -2)
+                end
+            end)
+            filterFlyout:SetScript("OnShow", function(self)
+                self:RegisterEvent("GLOBAL_MOUSE_DOWN")
+            end)
+            filterFlyout:SetScript("OnHide", function(self)
+                self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+                filterArrow:SetAtlas("common-dropdown-b-arrow-closed")
+            end)
+            filterFlyout:SetScript("OnEvent", function(self, event)
+                if event == "GLOBAL_MOUSE_DOWN" then
+                    if not self:IsMouseOver() and not filterBtn:IsMouseOver()
+                        and not dropdown:IsMouseOver() then
+                        self:Hide()
+                    end
+                end
+            end)
+
+            -- Register appearance set popups as dropdown guard frames
+            dropdownGuardFrames[#dropdownGuardFrames + 1] = classPopup
+            dropdownGuardFrames[#dropdownGuardFrames + 1] = filterFlyout
+
+            -- Close popups when the main dropdown hides
+            dropdown:HookScript("OnHide", function()
+                classPopup:Hide()
+                filterFlyout:Hide()
+            end)
+
+            row.updateAppearanceSetToggle = function()
+                local checked = EasyFind.db.uiSearchFilters and EasyFind.db.uiSearchFilters.appearanceSets ~= false
+                if asSep then asSep:SetShown(checked) end
+                classSelectRow:SetShown(checked)
+                filterBtn:SetShown(checked)
+                for _, sr in ipairs(asSubRows) do
+                    if sr.dbKey and sr.SetChecked then
+                        sr:SetChecked(EasyFind.db[sr.dbKey] ~= false)
+                    end
+                end
+                UpdateAsClassLabel()
+                if not checked then
+                    classPopup:Hide()
+                    filterFlyout:Hide()
+                end
+            end
+        end
+
         row:SetChecked(true)
 
         row:SetScript("OnClick", function(self)
@@ -2153,6 +2550,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             filters[opt.key] = self:GetChecked()
             if self.updateMapToggle then self.updateMapToggle() end
             if self.updateLootToggle then self.updateLootToggle() end
+            if self.updateAppearanceSetToggle then self.updateAppearanceSetToggle() end
             LayoutDropdown()
             if searchEditBox:GetText() ~= "" then
                 UI:OnSearchTextChanged(searchEditBox:GetText())
@@ -2218,6 +2616,42 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                         y = y - ROW_HEIGHT
                     else
                         sr:Hide()
+                    end
+                end
+            end
+            -- Appearance Sets sub-rows
+            if row.asClassSelectRow then
+                local asChecked = EasyFind.db.uiSearchFilters and EasyFind.db.uiSearchFilters.appearanceSets ~= false
+                if row.asSep then
+                    if asChecked then
+                        row.asSep:ClearAllPoints()
+                        row.asSep:SetPoint("LEFT", 8 + SUB_INDENT, 0)
+                        row.asSep:SetPoint("RIGHT", dropdown, "RIGHT", -8, 0)
+                        row.asSep:SetPoint("TOP", 0, y - 2)
+                        row.asSep:Show()
+                        y = y - 6
+                    else
+                        row.asSep:Hide()
+                    end
+                end
+                if asChecked then
+                    row.asClassSelectRow:ClearAllPoints()
+                    row.asClassSelectRow:SetPoint("TOPLEFT", 8 + SUB_INDENT, y)
+                    row.asClassSelectRow:Show()
+                    dropdownNavRows[#dropdownNavRows + 1] = row.asClassSelectRow
+                    y = y - 28
+                else
+                    row.asClassSelectRow:Hide()
+                end
+                if row.asFilterBtn then
+                    if asChecked then
+                        row.asFilterBtn:ClearAllPoints()
+                        row.asFilterBtn:SetPoint("TOPLEFT", 8 + SUB_INDENT, y)
+                        row.asFilterBtn:Show()
+                        dropdownNavRows[#dropdownNavRows + 1] = row.asFilterBtn
+                        y = y - 24
+                    else
+                        row.asFilterBtn:Hide()
                     end
                 end
             end
@@ -2365,6 +2799,36 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
     -- Keyboard: enable when opened via Enter on filter button
     dropdown:HookScript("OnShow", function(self)
+        -- Sync appearance set filters from default UI on open. If anything
+        -- changed since we last populated, rebuild uiSearchData so the search
+        -- actually reflects the new class / collected / PvE / PvP state.
+        if ns.Database and ns.Database.SyncTransmogSetFiltersFromUI then
+            local db = EasyFind.db
+            local beforeClassID = type(db.appearanceSetClass) == "table"
+                and db.appearanceSetClass.classID or db.appearanceSetClass
+            local beforeCollected = db.appearanceSetCollected
+            local beforeNotCollected = db.appearanceSetNotCollected
+            local beforePvE = db.appearanceSetPvE
+            local beforePvP = db.appearanceSetPvP
+
+            ns.Database:SyncTransmogSetFiltersFromUI()
+
+            local afterClassID = type(db.appearanceSetClass) == "table"
+                and db.appearanceSetClass.classID or db.appearanceSetClass
+            local changed = beforeClassID ~= afterClassID
+                or beforeCollected ~= db.appearanceSetCollected
+                or beforeNotCollected ~= db.appearanceSetNotCollected
+                or beforePvE ~= db.appearanceSetPvE
+                or beforePvP ~= db.appearanceSetPvP
+            if changed and ns.Database.PopulateDynamicTransmogSets then
+                ns.Database:PopulateDynamicTransmogSets()
+            end
+
+            local asRow = checkRows and checkRows.appearanceSets
+            if asRow and asRow.updateAppearanceSetToggle then
+                asRow.updateAppearanceSetToggle()
+            end
+        end
         if searchFrame.filterBtn and searchFrame.filterBtn.keyboardFocused then
             dropdownKeyboardMode = true
             Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
@@ -2396,17 +2860,12 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         end
     end)
 
-    -- Close when clicking outside (but not when interacting with spec/class flyouts)
+    -- Close when clicking outside (but not when interacting with sub-filter popups)
     dropdown:SetScript("OnUpdate", function(self)
         if self:IsShown() and IsMouseButtonDown("LeftButton") then
             if not self:IsMouseOver() and not toggleBtn:IsMouseOver() then
-                local sf = _G["EasyFindSpecFlyout"]
-                local sp = _G["EasyFindSpecPopup"]
-                local dp = _G["EasyFindDiffPopup"]
-                if (sf and sf:IsShown() and sf:IsMouseOver())
-                    or (sp and sp:IsShown() and sp:IsMouseOver())
-                    or (dp and dp:IsShown() and dp:IsMouseOver()) then
-                    return
+                for _, guard in ipairs(dropdownGuardFrames) do
+                    if guard:IsShown() and guard:IsMouseOver() then return end
                 end
                 self:Hide()
             end
@@ -2513,7 +2972,7 @@ local cachedHierarchical    -- last full hierarchical list for re-rendering afte
 local expandedContainers = {}  -- tracks which containers have had children injected
 
 -- Reusable tables for grouping results (wiped each search to avoid per-keystroke allocations)
-local groupUI, groupMounts, groupToys, groupPets, groupOutfits, groupLoot, groupMap = {}, {}, {}, {}, {}, {}, {}
+local groupUI, groupMounts, groupToys, groupPets, groupOutfits, groupLoot, groupAppearanceSets, groupMap = {}, {}, {}, {}, {}, {}, {}, {}
 local uiSectionHeader = {
     name = "UI", depth = 0, isPathNode = true,
     isMatch = false, isSectionHeader = true,
@@ -2536,6 +2995,10 @@ local outfitSectionHeader = {
 }
 local lootSectionHeader = {
     name = "Loot", depth = 0, isPathNode = true,
+    isMatch = false, isSectionHeader = true,
+}
+local appearanceSetSectionHeader = {
+    name = "Appearance Sets", depth = 0, isPathNode = true,
     isMatch = false, isSectionHeader = true,
 }
 local mapSectionHeader = {
@@ -3258,13 +3721,14 @@ function UI:OnSearchTextChanged(text)
     local filters = EasyFind.db.uiSearchFilters
     local skipCategories
     if filters then
-        if filters.mounts == false or filters.toys == false or filters.pets == false or filters.outfits == false or filters.loot == false then
+        if filters.mounts == false or filters.toys == false or filters.pets == false or filters.outfits == false or filters.loot == false or filters.appearanceSets == false then
             skipCategories = {}
             if filters.mounts == false then skipCategories["Mount"] = true end
             if filters.toys == false then skipCategories["Toy"] = true end
             if filters.pets == false then skipCategories["Pet"] = true end
             if filters.outfits == false then skipCategories["Outfit"] = true end
             if filters.loot == false then skipCategories["Loot"] = true end
+            if filters.appearanceSets == false then skipCategories["Appearance Set"] = true end
         end
     end
     local results = ns.Database:SearchUI(text, skipCategories)
@@ -3274,7 +3738,7 @@ function UI:OnSearchTextChanged(text)
         local filtered = {}
         for _, r in ipairs(results) do
             local rd = r.data
-            if rd and (rd.mountID or rd.toyItemID or rd.petID or rd.outfitID or (rd.itemID and rd.category == "Loot") or rd.mapSearchResult) then
+            if rd and (rd.mountID or rd.toyItemID or rd.petID or rd.outfitID or (rd.itemID and rd.category == "Loot") or rd.transmogSetID or rd.mapSearchResult) then
                 filtered[#filtered + 1] = r
             end
         end
@@ -3298,6 +3762,7 @@ function UI:OnSearchTextChanged(text)
         elseif d.petID then cat = "pets"
         elseif d.outfitID then cat = "outfits"
         elseif d.itemID and d.category == "Loot" then cat = "loot"
+        elseif d.transmogSetID then cat = "appearanceSets"
         else cat = "ui"
         end
         if s > (bestCatScore[cat] or 0) then bestCatScore[cat] = s end
@@ -3335,6 +3800,7 @@ function UI:OnSearchTextChanged(text)
     wipe(groupPets)
     wipe(groupOutfits)
     wipe(groupLoot)
+    wipe(groupAppearanceSets)
     wipe(groupMap)
     for _, entry in ipairs(hierarchical) do
         local d = entry.data
@@ -3348,6 +3814,8 @@ function UI:OnSearchTextChanged(text)
             groupOutfits[#groupOutfits + 1] = entry
         elseif d and d.itemID and d.category == "Loot" then
             groupLoot[#groupLoot + 1] = entry
+        elseif d and d.transmogSetID then
+            groupAppearanceSets[#groupAppearanceSets + 1] = entry
         else
             groupUI[#groupUI + 1] = entry
         end
@@ -3372,6 +3840,7 @@ function UI:OnSearchTextChanged(text)
     if #groupPets > 0 then catGroups[#catGroups + 1] = { key = "pets", score = bestCatScore.pets or 0 } end
     if #groupOutfits > 0 then catGroups[#catGroups + 1] = { key = "outfits", score = bestCatScore.outfits or 0 } end
     if #groupLoot > 0 then catGroups[#catGroups + 1] = { key = "loot", score = bestCatScore.loot or 0 } end
+    if #groupAppearanceSets > 0 then catGroups[#catGroups + 1] = { key = "appearanceSets", score = bestCatScore.appearanceSets or 0 } end
     if #groupMap > 0 then catGroups[#catGroups + 1] = { key = "map", score = bestCatScore.map or 0 } end
     tsort(catGroups, function(a, b)
         if a.score ~= b.score then return a.score > b.score end
@@ -3435,6 +3904,9 @@ function UI:OnSearchTextChanged(text)
                     end
                 end
             end
+        elseif cat.key == "appearanceSets" then
+            hierarchical[#hierarchical + 1] = appearanceSetSectionHeader
+            for _, e in ipairs(groupAppearanceSets) do e.depth = 1; hierarchical[#hierarchical + 1] = e end
         elseif cat.key == "map" then
             hierarchical[#hierarchical + 1] = mapSectionHeader
             for _, e in ipairs(groupMap) do hierarchical[#hierarchical + 1] = e end
@@ -4048,7 +4520,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 iconSet = true
 
             -- Mount/Toy/Pet leaves: icon goes to right side (same layout as currency icons)
-            elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.outfitID) then
+            elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.outfitID or data.transmogSetID) then
                 local iconFileID = data.icon
                 local rightOffset = -5
 
@@ -5088,6 +5560,34 @@ function UI:SelectResult(data)
         return
     end
 
+    -- Appearance Set: Ctrl+click opens dressing room with full set, regular click navigates.
+    -- For pinned entries saved before transmogSetID was persisted, recover the
+    -- ID by looking up the set name in the live database.
+    if data.category == "Appearance Set" and not data.transmogSetID and data.name and ns.Database then
+        data.transmogSetID = ns.Database:GetTransmogSetIDByName(data.name)
+    end
+    if data.transmogSetID then
+        if IsControlKeyDown() then
+            self:DressUpAppearanceSet(data.transmogSetID)
+            return
+        end
+
+        local guideData = {
+            steps = {
+                { buttonFrame = "CollectionsMicroButton" },
+                { waitForFrame = "CollectionsJournal", tabIndex = 5 },
+                { waitForFrame = "WardrobeCollectionFrame", wardrobeSetsTab = true },
+                { waitForFrame = "WardrobeCollectionFrame", transmogSetID = data.transmogSetID, transmogSetName = data.name },
+            },
+        }
+        if EasyFind.db.directOpen then
+            self:DirectOpen(guideData)
+        else
+            EasyFind:StartGuide(guideData)
+        end
+        return
+    end
+
     -- Mount: summon/dismiss (secure macro handles cancelform on click)
     if data.mountID then
         if C_MountJournal and C_MountJournal.SummonByID then
@@ -5221,6 +5721,8 @@ function UI:DirectOpen(data)
         if step.ejInstance then return true end
         if step.ejBoss then return true end
         if step.ejLootTab then return true end
+        if step.wardrobeSetsTab then return true end
+        if step.transmogSetID then return true end
         -- regionFrames alone (no searchButtonText) = highlight-only (e.g. PvP Talents)
         -- waitForFrame alone = just waiting for a frame to appear, not navigable
         -- text alone = instruction text, not navigable
@@ -5408,6 +5910,61 @@ function UI:DirectOpen(data)
                             end
                             C_Timer.After(0.3, checkHover)
                         end
+                    end)
+                end
+            end
+
+            -- Wardrobe Sets tab: click the Sets tab within WardrobeCollectionFrame
+            if step.wardrobeSetsTab then
+                local setsTab = Highlight:GetTabButton("WardrobeCollectionFrame", 2)
+                if setsTab then
+                    ClickButton(setsTab)
+                elseif PanelTemplates_SetTab then
+                    local wcf = _G["WardrobeCollectionFrame"]
+                    if wcf then pcall(PanelTemplates_SetTab, wcf, 2) end
+                end
+            end
+
+            -- Transmog set: scroll to and highlight in the Sets ScrollBox
+            if step.transmogSetID and i == executeCount then
+                local setsFrame = _G["WardrobeCollectionFrame"]
+                    and _G["WardrobeCollectionFrame"].SetsCollectionFrame
+                local scrollBox = setsFrame and setsFrame.ListContainer
+                    and setsFrame.ListContainer.ScrollBox
+                if scrollBox then
+                    local targetName = step.transmogSetName and slower(step.transmogSetName)
+                    C_Timer.After(0.1, function()
+                        if targetName then
+                            Utils.ScrollBoxScrollTo(scrollBox, function(elementData)
+                                if not elementData then return false end
+                                local setID = elementData.setID
+                                if setID and setID == step.transmogSetID then return true end
+                                return false
+                            end)
+                        end
+                        C_Timer.After(0.05, function()
+                            local setBtn = Utils.ScrollBoxFindButton(scrollBox, function(btn)
+                                local edata = btn.GetElementData and btn:GetElementData()
+                                if edata and edata.setID == step.transmogSetID then return true end
+                                if targetName then
+                                    local text = Utils.GetButtonText(btn)
+                                    if text and slower(text) == targetName then return true end
+                                end
+                                return false
+                            end)
+                            if setBtn and Highlight then
+                                Highlight:HighlightFrame(setBtn)
+                                local checkHover
+                                checkHover = function()
+                                    if setBtn:IsMouseOver() then
+                                        Highlight:HideHighlight()
+                                    else
+                                        C_Timer.After(0.1, checkHover)
+                                    end
+                                end
+                                C_Timer.After(0.3, checkHover)
+                            end
+                        end)
                     end)
                 end
             end

@@ -106,6 +106,7 @@ local DB_DEFAULTS = {
         pets = false,
         outfits = false,
         loot = false,
+        appearanceSets = false,
         map = false,
     },
     lootSpecs = nil,           -- Loot search: nil = current spec only, table of {classID, specID} pairs when customized
@@ -113,6 +114,11 @@ local DB_DEFAULTS = {
     lootSearchStats = true,    -- Loot search: match by stat keywords (haste, crit, etc.)
     lootUpgradesOnly = false,  -- Loot search: only show items above equipped ilvl
     lootDifficulty = "normal",
+    appearanceSetClass = nil,         -- nil = player class, "all" = all, {classID=N} = specific
+    appearanceSetCollected = true,    -- Show collected sets
+    appearanceSetNotCollected = true, -- Show uncollected sets
+    appearanceSetPvE = true,          -- Show PvE sets (Dungeon/Raid)
+    appearanceSetPvP = true,          -- Show PvP sets
     uiMapSearchLocal = true,   -- Map search in UI bar: true = local zone only, false = global
 }
 
@@ -391,6 +397,10 @@ local function OnPlayerLogin()
                     ns.Database:PopulateDynamicPets()
                     SafeAfter(0, function()
                         ns.Database:PopulateDynamicOutfits()
+                        SafeAfter(0, function()
+                            ns.Database:SyncTransmogSetFiltersFromUI()
+                            ns.Database:PopulateDynamicTransmogSets()
+                        end)
                     end)
                 end)
             end)

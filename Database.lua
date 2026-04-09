@@ -9,6 +9,7 @@ local tsort, tconcat, tremove = Utils.tsort, Utils.tconcat, Utils.tremove
 local sfind, slower, ssub = Utils.sfind, Utils.slower, Utils.ssub
 local mmin, mmax, mabs = Utils.mmin, Utils.mmax, Utils.mabs
 local C_CurrencyInfo = C_CurrencyInfo
+local band, lshift = bit.band, bit.lshift
 
 -- Word split cache: avoids per-call gmatch + table creation in scoring hot path.
 -- Key = lowercase string, value = array of words split on [%w']+.
@@ -443,6 +444,13 @@ local LOOT_PROTO = {
 }
 local LOOT_MT = { __index = LOOT_PROTO }
 
+local TRANSMOG_SET_PROTO = {
+    category = "Appearance Set",
+    path     = {},
+    steps    = {},
+}
+local TRANSMOG_SET_MT = { __index = TRANSMOG_SET_PROTO }
+
 -- Map equip location strings to user-friendly search keywords
 local SLOT_KEYWORDS = {
     INVTYPE_HEAD            = {"helm", "helmet", "head"},
@@ -524,13 +532,52 @@ function Database:GetEJDifficultyID(sourceType)
     local diffIDs = LOOT_DIFF_IDS[diffKey]
     if not diffIDs then return nil end
     local srcKey = sourceType == "Raid" and "raid" or "dungeon"
-    return diffIDs[srcKey] or diffIDs.raid or diffIDs.dungeon
+    return diffIDs[srcKey]
 end
 
 function Database:SetEJDifficulty(diffID)
     if not diffID then return end
     local setDiff = EJ("SetDifficulty")
     if setDiff then setDiff(diffID) end
+end
+
+-- Sync the EJ's difficulty for both dungeon and raid tabs.
+-- EJ_SetDifficulty requires an instance of the matching type to be selected first.
+-- Saves and restores the current instance selection to avoid side effects.
+function Database:SyncEJDifficulty()
+    local selectInst = EJ("SelectInstance")
+    local getInst = EJ("GetInstanceByIndex")
+    local setDiff = EJ("SetDifficulty")
+    local getInstInfo = EJ("GetInstanceInfo")
+    if not selectInst or not getInst or not setDiff then return end
+
+    -- Save current instance so we can restore it after
+    -- EJ_GetInstanceInfo returns: name, description, bgImage, buttonImage1, ..., mapID, journalInstanceID
+    -- journalInstanceID is at index 12
+    local savedInstID = getInstInfo and select(12, getInstInfo())
+
+    local dungeonDiffID = self:GetEJDifficultyID("Dungeon")
+    if dungeonDiffID then
+        local dInstID = getInst(1, false)
+        if dInstID then
+            selectInst(dInstID)
+            setDiff(dungeonDiffID)
+        end
+    end
+
+    local raidDiffID = self:GetEJDifficultyID("Raid")
+    if raidDiffID then
+        local rInstID = getInst(1, true)
+        if rInstID then
+            selectInst(rInstID)
+            setDiff(raidDiffID)
+        end
+    end
+
+    -- Restore previous instance selection
+    if savedInstID and savedInstID > 0 then
+        selectInst(savedInstID)
+    end
 end
 
 -- Sync the EJ's internal loot filter to match EasyFind's lootFilter setting.
@@ -626,8 +673,28 @@ local DIFF_PRIORITY = { "mythic", "heroic", "normal", "lfr" }
 
 -- Returns the item link for a loot entry at the selected difficulty.
 -- Falls back to highest available if the selected difficulty has no link.
+-- Look up a transmog set's ID by exact name. Used to recover the setID for
+-- pinned appearance sets that were saved before transmogSetID was persisted.
+function Database:GetTransmogSetIDByName(name)
+    if not name or not C_TransmogSets or not C_TransmogSets.GetAllSets then return nil end
+    local allSets = C_TransmogSets.GetAllSets()
+    if not allSets then return nil end
+    for i = 1, #allSets do
+        local s = allSets[i]
+        if s and s.name == name then return s.setID end
+    end
+    return nil
+end
+
 function Database:GetLootItemLink(entry)
     local links = entry.lootItemLinks
+    -- Pinned/serialized entries lose their lootItemLinks table when written
+    -- to SavedVariables. Fall back to the live loot cache by itemID so
+    -- existing pins keep working without needing to be re-pinned.
+    if not links and entry.itemID then
+        local live = lootItemCache[entry.itemID]
+        if live then links = live.lootItemLinks end
+    end
     if not links then return nil end
     local selected = EasyFind.db.lootDifficulty or "normal"
     if links[selected] then return links[selected] end
@@ -803,6 +870,172 @@ function Database:PopulateDynamicOutfits()
             }, OUTFIT_MT)
             uiSearchData[#uiSearchData + 1] = entry
             outfitEntries[#outfitEntries + 1] = entry
+        end
+    end
+end
+
+-- Reads the default UI's transmog set filters and updates our saved settings.
+-- Called before populate and when the filter dropdown opens.
+function Database:SyncTransmogSetFiltersFromUI()
+    local db = EasyFind and EasyFind.db
+    if not db then return end
+    local getFilter = C_TransmogSets and (C_TransmogSets.GetBaseSetsFilter or C_TransmogSets.GetSetsFilter)
+    if getFilter then
+        -- Enum: 1=Collected, 2=Not Collected, 3=PvE, 4=PvP
+        local ok1, v1 = pcall(getFilter, 1)
+        local ok2, v2 = pcall(getFilter, 2)
+        local ok3, v3 = pcall(getFilter, 3)
+        local ok4, v4 = pcall(getFilter, 4)
+        if ok1 then db.appearanceSetCollected = v1 end
+        if ok2 then db.appearanceSetNotCollected = v2 end
+        if ok3 then db.appearanceSetPvE = v3 end
+        if ok4 then db.appearanceSetPvP = v4 end
+    end
+    local getClass = C_TransmogSets and C_TransmogSets.GetTransmogSetsClassFilter
+    if getClass then
+        local ok, classID = pcall(getClass)
+        if ok and classID then
+            local _, _, playerClassID = UnitClass("player")
+            if classID == playerClassID then
+                db.appearanceSetClass = nil
+            else
+                db.appearanceSetClass = { classID = classID }
+            end
+        end
+    end
+end
+
+-- Called after PLAYER_LOGIN when C_TransmogSets is available.
+-- Scans all transmog appearance sets and injects them into the search database.
+-- Respects class, collected, and PvE/PvP filter settings.
+function Database:PopulateDynamicTransmogSets()
+    if not C_TransmogSets or not C_TransmogSets.GetAllSets then return end
+
+    -- Remove previous entries (handles mid-session filter changes)
+    for i = #uiSearchData, 1, -1 do
+        if uiSearchData[i].transmogSetID then
+            tremove(uiSearchData, i)
+        end
+    end
+
+    local allSets = C_TransmogSets.GetAllSets()
+    if not allSets then return end
+
+    local db = EasyFind and EasyFind.db
+    if not db then return end
+    local classFilter = db.appearanceSetClass
+    local showCollected = not db or db.appearanceSetCollected ~= false
+    local showNotCollected = not db or db.appearanceSetNotCollected ~= false
+    local showPvE = not db or db.appearanceSetPvE ~= false
+    local showPvP = not db or db.appearanceSetPvP ~= false
+
+    -- Sync class filter to default UI
+    if C_TransmogSets.SetTransmogSetsClassFilter then
+        if not classFilter then
+            local _, _, cid = UnitClass("player")
+            if cid then C_TransmogSets.SetTransmogSetsClassFilter(cid) end
+        elseif classFilter ~= "all" and type(classFilter) == "table" and classFilter.classID then
+            C_TransmogSets.SetTransmogSetsClassFilter(classFilter.classID)
+        end
+    end
+
+    -- Sync collected/PvE/PvP filters to default UI
+    -- BaseSetsFilter enum: 1=Collected, 2=Not Collected, 3=PvE, 4=PvP
+    local syncFilter = C_TransmogSets.SetBaseSetsFilter or C_TransmogSets.SetSetsFilter
+    if syncFilter then
+        pcall(syncFilter, 1, showCollected)
+        pcall(syncFilter, 2, showNotCollected)
+        pcall(syncFilter, 3, showPvE)
+        pcall(syncFilter, 4, showPvP)
+    end
+
+    -- Refresh the default UI's sets list and class dropdown if loaded
+    local wcf = _G["WardrobeCollectionFrame"]
+    local scf = wcf and wcf.SetsCollectionFrame
+    if scf and scf:IsShown() then
+        if scf.SetDataSource then pcall(scf.SetDataSource, scf) end
+        if scf.UpdateUI then pcall(scf.UpdateUI, scf) end
+        if scf.Refresh then pcall(scf.Refresh, scf) end
+    end
+    -- Refresh class dropdown text
+    if wcf and wcf.ClassDropdown and wcf.ClassDropdown.Update then
+        pcall(wcf.ClassDropdown.Update, wcf.ClassDropdown)
+    end
+
+    -- Determine class mask for filtering
+    local wantMask
+    if not classFilter then
+        local _, _, cid = UnitClass("player")
+        wantMask = cid and lshift(1, cid - 1) or 0
+    elseif classFilter == "all" then
+        wantMask = nil -- accept all
+    elseif type(classFilter) == "table" and classFilter.classID then
+        wantMask = lshift(1, classFilter.classID - 1)
+    end
+
+    local GetSetPrimaryAppearances = C_TransmogSets.GetSetPrimaryAppearances
+    local GetSourceIcon = C_TransmogCollection and C_TransmogCollection.GetSourceIcon
+
+    for i = 1, #allSets do
+        local setInfo = allSets[i]
+        if setInfo.name and setInfo.name ~= "" and not setInfo.hiddenUntilCollected then
+            -- Class filter: use classMask for specific class, or accept all
+            local cm = setInfo.classMask or 0
+            local classOk = not wantMask or cm == 0 or cm < 0 or band(cm, wantMask) ~= 0
+
+            -- PvE/PvP filter (check for known PvP label patterns)
+            local label = setInfo.label or ""
+            local labelLower = slower(label)
+            local isPvP = sfind(labelLower, "pvp") or sfind(labelLower, "season")
+                or sfind(labelLower, "gladiator") or sfind(labelLower, "aspirant")
+                or sfind(labelLower, "combatant")
+            local sourceOk = (isPvP and showPvP) or (not isPvP and showPvE)
+
+            -- Collected filter
+            local collected = setInfo.collected
+            local collectedOk = true
+            if not (showCollected and showNotCollected) then
+                if collected and not showCollected then collectedOk = false end
+                if not collected and not showNotCollected then collectedOk = false end
+            end
+
+            if classOk and sourceOk and collectedOk then
+                local nameLower = slower(setInfo.name)
+                local kw = {"set", "transmog", "appearance"}
+                local kwLen = 3
+                if label ~= "" then
+                    kwLen = kwLen + 1
+                    kw[kwLen] = labelLower
+                end
+                if setInfo.description and setInfo.description ~= "" then
+                    local descLower = slower(setInfo.description)
+                    if descLower ~= nameLower then
+                        kwLen = kwLen + 1
+                        kw[kwLen] = descLower
+                    end
+                end
+
+                -- Get icon from first appearance source
+                local icon
+                if GetSetPrimaryAppearances and GetSourceIcon then
+                    local appearances = GetSetPrimaryAppearances(setInfo.setID)
+                    if appearances and appearances[1] then
+                        local sourceID = appearances[1].appearanceID
+                        if sourceID then
+                            icon = GetSourceIcon(sourceID)
+                        end
+                    end
+                end
+
+                uiSearchData[#uiSearchData + 1] = setmetatable({
+                    name = setInfo.name,
+                    nameLower = nameLower,
+                    transmogSetID = setInfo.setID,
+                    icon = icon,
+                    keywords = kw,
+                    keywordsLower = kw,
+                }, TRANSMOG_SET_MT)
+            end
         end
     end
 end
