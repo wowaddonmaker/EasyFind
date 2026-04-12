@@ -1183,7 +1183,7 @@ local CATEGORY_ICONS = {
     transmogrifier = 1598183,
     rare = { file = 1121272, coords = { 0.7796, 0.8381, 0.1934, 0.2531 } },
     treasure = "Interface\\Icons\\INV_Misc_Bag_10",
-    catalyst = "Interface\\Icons\\INV_10_GearUpgrade_Catalyst_Charged",
+    catalyst = { file = 1121272, coords = { 0.5097, 0.5390, 0.4078, 0.4363 } },
     greatvault = "Interface\\Icons\\INV_Misc_Lockbox_1",
     upgradevendor = 4025144,
     guildservices = "Interface\\Icons\\Achievement_GuildPerk_EverybodysFriend",
@@ -1191,6 +1191,7 @@ local CATEGORY_ICONS = {
     tradingpost = "Interface\\Icons\\tradingpostcurrency",
     decor = { file = 1121272, coords = { 0.4078, 0.4380, 0.8713, 0.9040 } },
     chromie = "atlas:ChromieTime-32x32",
+    lorewalker = { file = 1121272, coords = { 0.2027, 0.2404, 0.5966, 0.6261 } },
     craftingorders = { file = 1121272, coords = { 0.8764, 0.9040, 0.5102, 0.5357 } },
     rostrum = { file = 1121272, coords = { 0.7738, 0.8033, 0.4066, 0.4394 } },
     pettrainer = "atlas:WildBattlePetCapturable",
@@ -1260,6 +1261,7 @@ local CATEGORIES = {
     upgradevendor = { keywords = {"upgrade", "upgrade vendor", "flightstone", "crest"}, parent = "service" },
     tradingpost = { keywords = {"trading post", "trader's tender", "tender", "tmog", "xmog"}, parent = "service" },
     decor = { keywords = {"decor", "decoration", "decorations", "decorator", "housing", "furniture"}, parent = "service" },
+    lorewalker = { keywords = {"lorewalker", "cho", "lore walker", "pandaria lore", "flashback", "replay cinematic"}, parent = "service" },
 }
 
 -- Categories allowed in global (cross-zone) search results.
@@ -1581,9 +1583,9 @@ function MapSearch:CreateSearchFrame()
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         if EasyFind.db.localMapDirectOpen then
             GameTooltip:SetText("Fast Mode")
-            GameTooltip:AddLine("Click to switch to Standard mode.", 1, 1, 1, true)
+            GameTooltip:AddLine("Click to switch to Guide mode.", 1, 1, 1, true)
         else
-            GameTooltip:SetText("Standard Mode")
+            GameTooltip:SetText("Guide Mode")
             GameTooltip:AddLine("Click to switch to Fast mode.", 1, 1, 1, true)
         end
         GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
@@ -1755,7 +1757,7 @@ function MapSearch:CreateSearchFrame()
             GameTooltip:SetText("|cFFFFD100Zone Search|r (Fast)")
             GameTooltip:AddLine("Navigates directly to results without zone highlighting.", 1, 1, 1, true)
         else
-            GameTooltip:SetText("|cFFFFD100Zone Search|r (Standard)")
+            GameTooltip:SetText("|cFFFFD100Zone Search|r (Guide)")
             GameTooltip:AddLine("Highlights zones on the map and guides navigation step by step.", 1, 1, 1, true)
         end
         GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
@@ -2016,9 +2018,9 @@ function MapSearch:CreateSearchFrame()
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         if EasyFind.db.globalMapDirectOpen then
             GameTooltip:SetText("Fast Mode")
-            GameTooltip:AddLine("Click to switch to Standard mode.", 1, 1, 1, true)
+            GameTooltip:AddLine("Click to switch to Guide mode.", 1, 1, 1, true)
         else
-            GameTooltip:SetText("Standard Mode")
+            GameTooltip:SetText("Guide Mode")
             GameTooltip:AddLine("Click to switch to Fast mode.", 1, 1, 1, true)
         end
         GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
@@ -2190,7 +2192,7 @@ function MapSearch:CreateSearchFrame()
             GameTooltip:SetText("|cFF66CCFFGlobal Search|r (Fast)")
             GameTooltip:AddLine("Navigates directly to clicked zones and dungeon entrances.", 1, 1, 1, true)
         else
-            GameTooltip:SetText("|cFF66CCFFGlobal Search|r (Standard)")
+            GameTooltip:SetText("|cFF66CCFFGlobal Search|r (Guide)")
             GameTooltip:AddLine("Highlights zones on the map and guides navigation step by step.", 1, 1, 1, true)
         end
         GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
@@ -2993,6 +2995,10 @@ function MapSearch:CreateHighlightFrame()
                 C_SuperTrack.SetSuperTrackedUserWaypoint(true)
                 efPlacedWaypoint = true
                 ShowSuperTrackGlow()
+                local sf = _G["EasyFindSearchFrame"]
+                if sf and sf.UpdateClearButtonVisibility then
+                    sf.UpdateClearButtonVisibility()
+                end
             end
         end
         if button == "RightButton" then
@@ -5340,8 +5346,8 @@ end
 
 -- Scan dungeon entrances across ALL zone-type maps for global search.
 -- Results are cached since instance discovery doesn't change mid-session.
-function MapSearch:GetStaticLocations()
-    local mapID = WorldMapFrame:GetMapID()
+function MapSearch:GetStaticLocations(mapID)
+    mapID = mapID or WorldMapFrame:GetMapID()
     if not mapID then return {} end
 
     local results = {}
@@ -5389,11 +5395,11 @@ function MapSearch:GetStaticLocations()
     return results
 end
 
-function MapSearch:ScanVignettes()
+function MapSearch:ScanVignettes(mapID)
     local rares = {}
     if not GetVignettes then return rares end
 
-    local mapID = WorldMapFrame:GetMapID()
+    mapID = mapID or WorldMapFrame:GetMapID()
     if not mapID then return rares end
     local playerMapID = GetBestMapForUnit("player")
 
@@ -5506,9 +5512,9 @@ function MapSearch:UpdateRareTracking()
     end
 end
 
-function MapSearch:ScanMapPOIs()
+function MapSearch:ScanMapPOIs(mapID)
     local pois = {}
-    local mapID = WorldMapFrame:GetMapID()
+    mapID = mapID or WorldMapFrame:GetMapID()
     if not mapID then return pois end
 
     local canvas = WorldMapFrame.ScrollContainer and WorldMapFrame.ScrollContainer.Child
@@ -6709,6 +6715,54 @@ function MapSearch:FocusLocalSearch()
     searchFrame.editBox:SetFocus()
 end
 
+-- Run a local search programmatically, bypassing the OnTextChanged
+-- HasFocus gate. Sets the module-level state (isGlobalSearch,
+-- activeSearchFrame) and invokes the real search directly. Used by the
+-- demo's setupAfter functions to restore the "typed + results showing"
+-- state instantly when the user jumps to a later step.
+function MapSearch:RunLocalSearch(text)
+    if not searchFrame or not searchFrame.editBox then return end
+    -- No SetFocus: the real editbox must NOT hold keyboard focus or
+    -- the real user could type alongside the demo. We drive the search
+    -- directly by setting state and calling OnSearchTextChanged, which
+    -- skips the HasFocus() gate inside the editbox's OnTextChanged.
+    searchFrame.editBox:ClearFocus()
+    searchFrame.editBox:SetText(text or "")
+    if searchFrame.editBox.placeholder then
+        if text and text ~= "" then
+            searchFrame.editBox.placeholder:Hide()
+        else
+            searchFrame.editBox.placeholder:Show()
+        end
+    end
+    isGlobalSearch = false
+    activeSearchFrame = searchFrame
+    -- SelectResult sets _suppressTextChanged = true and relies on the
+    -- editbox's OnTextChanged to consume it. When we bypass focus, the
+    -- HasFocus() gate can leave the flag stuck, which would cause the
+    -- next OnSearchTextChanged to bail out early. Clear it here so the
+    -- search always runs.
+    self._suppressTextChanged = nil
+    self:OnSearchTextChanged(text or "")
+end
+
+function MapSearch:RunGlobalSearch(text)
+    if not globalSearchFrame or not globalSearchFrame.editBox then return end
+    globalSearchFrame.editBox:ClearFocus()
+    globalSearchFrame.editBox:SetText(text or "")
+    if globalSearchFrame.editBox.placeholder then
+        if text and text ~= "" then
+            globalSearchFrame.editBox.placeholder:Hide()
+        else
+            globalSearchFrame.editBox.placeholder:Show()
+        end
+    end
+    isGlobalSearch = true
+    activeSearchFrame = globalSearchFrame
+    self._suppressTextChanged = nil
+    self:OnSearchTextChanged(text or "")
+end
+
 function MapSearch:FocusGlobalSearch()
     if not globalSearchFrame or not globalSearchFrame.editBox then return end
     if EasyFind.db.mapSmartShow then SmartShowFadeIn(globalSearchFrame) end
@@ -6844,6 +6898,39 @@ function MapSearch:SelectResult(data)
         elseif data.pin then
             -- Pin reference but currently hidden and no coords: clear.
             self:HighlightPin(data.pin)
+        end
+
+        -- Fast Mode (local search only): auto-place a SuperTrack waypoint
+        -- so the minimap glow / guide-circle appears immediately without
+        -- needing a second click on the pin. Matches HandleUISearchClick's
+        -- local Fast Mode behavior.
+        -- Local search POIs generally don't carry their own mapID (the
+        -- mapID is implicit = currently-viewed map, since the local
+        -- search is scoped to that map), so we fall back to the viewed
+        -- map when data.mapID isn't present.
+        if not isGlobalSearch and directMode then
+            local autoX, autoY, autoMapID
+            if data.x and data.y then
+                autoX, autoY = data.x, data.y
+                autoMapID = data.mapID
+                    or (data.allInstances and data.allInstances[1] and data.allInstances[1].mapID)
+                    or (WorldMapFrame and WorldMapFrame:GetMapID())
+            elseif data.allInstances and #data.allInstances == 1 then
+                local single = data.allInstances[1]
+                autoX, autoY = single.x, single.y
+                autoMapID = single.mapID or (WorldMapFrame and WorldMapFrame:GetMapID())
+            end
+            if autoX and autoY and autoMapID
+               and autoX >= 0 and autoX <= 1 and autoY >= 0 and autoY <= 1 then
+                SetUserWaypoint(UiMapPoint.CreateFromCoordinates(autoMapID, autoX, autoY))
+                C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+                efPlacedWaypoint = true
+                ShowSuperTrackGlow()
+                local sf = _G["EasyFindSearchFrame"]
+                if sf and sf.UpdateClearButtonVisibility then
+                    sf.UpdateClearButtonVisibility()
+                end
+            end
         end
     end
 
@@ -7171,6 +7258,13 @@ function MapSearch:ShowWaypointAt(x, y, icon, category)
         self.autoTrackNextPin = nil
         self:TrackActivePin()
     end
+
+    -- Refresh the UI search bar's clear button so it appears while a
+    -- pin is visible (active map navigation).
+    local sf = _G["EasyFindSearchFrame"]
+    if sf and sf.UpdateClearButtonVisibility then
+        sf.UpdateClearButtonVisibility()
+    end
 end
 
 -- Tracks the canvas pin currently scaled up by HighlightPin so ClearHighlight
@@ -7269,6 +7363,13 @@ function MapSearch:ClearHighlight()
     indicatorFrame:SetPoint("BOTTOM", highlightFrame, "TOP", 0, 2)
     indicatorFrame:Hide()
     waypointPin:Hide()
+
+    -- Refresh the UI search bar's clear button (pin is gone, but map
+    -- navigation may still be active via efPlacedWaypoint).
+    local sf = _G["EasyFindSearchFrame"]
+    if sf and sf.UpdateClearButtonVisibility then
+        sf.UpdateClearButtonVisibility()
+    end
     waypointPin.waypointX = nil
     waypointPin.waypointY = nil
     waypointPin.isLocalSearch = nil
@@ -7351,6 +7452,61 @@ end
 
 -- Full clear: map visuals + minimap waypoint tracking
 -- Called by explicit dismiss actions (right-click pin, /ef clear, clear button)
+-- Returns true if EasyFind currently has any active map navigation:
+-- an active pin, a SuperTrack waypoint we placed, a zone highlight,
+-- or a pending waypoint/zone. Used by the UI search bar's clear button
+-- to stay visible while navigation is in progress.
+function MapSearch:HasActiveNavigation()
+    if efPlacedWaypoint then return true end
+    if activePinState then return true end
+    if self.pendingWaypoint then return true end
+    if self.pendingZoneHighlight then return true end
+    if waypointPin and waypointPin:IsShown() then return true end
+    return false
+end
+
+-- Return the currently-highlighted pin's coordinates and mapID, whether
+-- it was shown via ShowWaypointAt (waypointPin) or HighlightPin (native
+-- Blizzard pin). Used by the demo's "click to start tracking" step to
+-- resolve coordinates regardless of which rendering path was taken.
+function MapSearch:GetActivePinCoords()
+    if activePinState and activePinState.x and activePinState.y and activePinState.mapID then
+        return activePinState.x, activePinState.y, activePinState.mapID
+    end
+    if waypointPin and waypointPin:IsShown() and waypointPin.waypointX and waypointPin.waypointY then
+        local mapID = WorldMapFrame and WorldMapFrame:GetMapID()
+        return waypointPin.waypointX, waypointPin.waypointY, mapID
+    end
+    return nil, nil, nil
+end
+
+-- Place a SuperTrack user waypoint at the currently highlighted pin's
+-- location. Used by the "click the pin to start tracking" step in the
+-- Guide Mode demo (since Guide Mode doesn't auto-track on result click).
+function MapSearch:TrackActiveLocation()
+    local x, y, mapID = self:GetActivePinCoords()
+    if not (x and y and mapID) then return false end
+    SetUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, x, y))
+    C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+    efPlacedWaypoint = true
+    ShowSuperTrackGlow()
+    local sf = _G["EasyFindSearchFrame"]
+    if sf and sf.UpdateClearButtonVisibility then
+        sf.UpdateClearButtonVisibility()
+    end
+    return true
+end
+
+-- Return the on-screen frame currently showing the pin highlight. This
+-- is either waypointPin (overlay path) or highlightFrame (which is
+-- anchored over the native pin in the HighlightPin path). Used by the
+-- demo cursor to know where to move for a visual "click" on the pin.
+function MapSearch:GetActivePinFrame()
+    if waypointPin and waypointPin:IsShown() then return waypointPin end
+    if highlightFrame and highlightFrame:IsShown() then return highlightFrame end
+    return nil
+end
+
 function MapSearch:ClearAll()
     activePinState = nil
     self:ClearHighlight()
@@ -7362,6 +7518,11 @@ function MapSearch:ClearAll()
         if HasUserWaypoint() then
             ClearUserWaypoint()
         end
+    end
+    -- Notify the UI search bar to refresh its clear-button state.
+    local sf = _G["EasyFindSearchFrame"]
+    if sf and sf.UpdateClearButtonVisibility then
+        sf.UpdateClearButtonVisibility()
     end
 end
 
@@ -7801,20 +7962,26 @@ function MapSearch:SearchForUI(query)
     if not query or query == "" or #query < 2 then return nil end
 
     local isLocal = EasyFind.db.uiMapSearchLocal ~= false
-    local searchMapID = WorldMapFrame and WorldMapFrame:GetMapID()
-        or GetBestMapForUnit("player")
+    -- For UI-bar local search, "local" means the PLAYER's current zone,
+    -- not whatever the WorldMapFrame is currently viewing. The player
+    -- might have last opened the map to a different zone, but a local
+    -- search from the UI bar should always reflect what's around them.
+    local searchMapID = isLocal
+        and (GetBestMapForUnit("player") or (WorldMapFrame and WorldMapFrame:GetMapID()))
+        or (WorldMapFrame and WorldMapFrame:GetMapID()) or GetBestMapForUnit("player")
 
     -- Gather POIs using the same sources as OnSearchTextChanged
     local pois = {}
     local existingNames = {}
 
     if isLocal then
-        -- Local: same sources as the real local search
-        local dynamicPOIs = self:ScanMapPOIs()
-        local staticLocations = self:GetStaticLocations()
-        local dungeonEntrances = self:ScanDungeonEntrances()
-        local flightMasters = self:ScanFlightMasters()
-        local vignetteRares = self:ScanVignettes()
+        -- Local: same sources as the real local search, scoped to the
+        -- player's current zone (searchMapID computed above).
+        local dynamicPOIs = self:ScanMapPOIs(searchMapID)
+        local staticLocations = self:GetStaticLocations(searchMapID)
+        local dungeonEntrances = self:ScanDungeonEntrances(searchMapID)
+        local flightMasters = self:ScanFlightMasters(searchMapID)
+        local vignetteRares = self:ScanVignettes(searchMapID)
 
         for _, entrance in ipairs(dungeonEntrances) do
             pois[#pois + 1] = entrance
@@ -8050,6 +8217,10 @@ function MapSearch:HandleUISearchClick(data)
                     icon = data.icon, category = data.category,
                     isLocal = true,
                 }
+                local sf = _G["EasyFindSearchFrame"]
+                if sf and sf.UpdateClearButtonVisibility then
+                    sf.UpdateClearButtonVisibility()
+                end
             end
         end
     else

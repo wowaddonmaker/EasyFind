@@ -36,7 +36,7 @@ read_globals = {
     "GetAddOnMetadata", "GetAtlasInfo", "GetMinimapShape",
     "GetBindingKey", "GetCurrentBindingSet", "SaveBindings", "SetBinding",
     "GetCategoryInfo", "GetPlayerFacing",
-    "SetPortraitTexture", "ShowUIPanel", "ToggleWorldMap", "ToggleDropDownMenu",
+    "SetPortraitTexture", "ShowUIPanel", "HideUIPanel", "ToggleWorldMap", "ToggleDropDownMenu",
     "InterfaceOptions_AddCategory", "InCombatLockdown",
     "IsShiftKeyDown", "IsMouseButtonDown", "IsAltKeyDown", "IsControlKeyDown",
     "IsInGroup", "IsInInstance", "IsIndoors", "UnitIsGroupLeader",
