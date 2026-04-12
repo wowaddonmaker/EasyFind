@@ -1253,33 +1253,72 @@ function Highlight:UpdateGuide()
         end
 
         -- Transmog set: scroll to and highlight in the Sets ScrollBox
+        -- Transmog set: scroll to it in the left list, highlight the row.
         if step.transmogSetID then
             local wcf = _G["WardrobeCollectionFrame"]
-            local setsFrame = wcf and wcf.SetsCollectionFrame
-            local scrollBox = setsFrame and setsFrame.ListContainer
-                and setsFrame.ListContainer.ScrollBox
-            if not scrollBox then return end
+            local scf = wcf and wcf.SetsCollectionFrame
+            if not scf then return end
 
-            local targetName = step.transmogSetName and slower(step.transmogSetName)
-            ScrollBoxScrollTo(scrollBox, function(elementData)
-                if not elementData then return false end
-                return elementData.setID and elementData.setID == step.transmogSetID
-            end)
-            local setBtn = ScrollBoxFindButton(scrollBox, function(btn)
-                local edata = btn.GetElementData and btn:GetElementData()
-                if edata and edata.setID == step.transmogSetID then return true end
-                if targetName then
-                    local text = GetButtonText(btn)
-                    if text and slower(text) == targetName then return true end
-                end
-                return false
-            end)
-            if setBtn then
-                self:HighlightFrame(setBtn)
-                if canHoverDismiss() and setBtn:IsMouseOver() then
-                    self:Cancel()
+            local lc = scf.ListContainer
+            local scrollBox = lc and lc.ScrollBox
+
+            -- ScrollToElementData silently fails for this ScrollBox.
+            -- Find the element's index in the data provider and use
+            -- SetScrollPercentage to scroll to the calculated position.
+            if scrollBox and scrollBox.SetScrollPercentage then
+                local dp = scrollBox.GetDataProvider and scrollBox:GetDataProvider()
+                if dp then
+                    local matchFn = function(ed)
+                        return ed and ed.setID == step.transmogSetID
+                    end
+                    local finder = dp.FindElementDataByPredicate or dp.FindByPredicate
+                    local found = finder and finder(dp, matchFn)
+                    if found then
+                        local idx = dp.FindIndex and dp:FindIndex(found)
+                        local total = dp.GetSize and dp:GetSize()
+                        if idx and total and total > 1 then
+                            scrollBox:SetScrollPercentage((idx - 1) / (total - 1))
+                        end
+                    end
                 end
             end
+
+            -- Highlight the row
+            if scrollBox then
+                local setBtn = ScrollBoxFindButton(scrollBox, function(btn)
+                    local edata = btn.GetElementData and btn:GetElementData()
+                    return edata and edata.setID == step.transmogSetID
+                end)
+                if setBtn then
+                    self:HighlightFrame(setBtn)
+                    if canHoverDismiss() and setBtn:IsMouseOver() then
+                        self:Cancel()
+                    end
+                end
+            end
+            return
+        end
+
+        -- Transmog variant dropdown: highlight it for the user to click
+        if step.transmogVariantDropdown then
+            local wcf = _G["WardrobeCollectionFrame"]
+            local scf = wcf and wcf.SetsCollectionFrame
+            local dd = scf and scf.DetailsFrame
+                and scf.DetailsFrame.VariantSetsDropdown
+            if dd and dd:IsShown() then
+                self:HighlightFrame(dd)
+            end
+            return
+        end
+
+        -- Transmog variant: use SelectSet to switch to the variant
+        if step.transmogVariantSetID then
+            local wcf = _G["WardrobeCollectionFrame"]
+            local scf = wcf and wcf.SetsCollectionFrame
+            if scf and scf.SelectSet then
+                pcall(scf.SelectSet, scf, step.transmogVariantSetID)
+            end
+            self:AdvanceStep()
             return
         end
 
@@ -2064,26 +2103,31 @@ function Highlight:GetTabButton(frameName, tabIndex)
 
     -- WardrobeCollectionFrame tabs (Items / Sets)
     if frameName == "WardrobeCollectionFrame" then
-        -- Try named globals first
         local tabBtn = _G["WardrobeCollectionFrameTab" .. tabIndex]
         if tabBtn then return tabBtn end
         local frame = _G["WardrobeCollectionFrame"]
         if frame then
-            -- Try .Tabs array (modern WoW tab system)
             if frame.Tabs and frame.Tabs[tabIndex] then return frame.Tabs[tabIndex] end
-            -- Try named properties
+            if frame.TabSystem and frame.TabSystem.tabs then
+                local tab = frame.TabSystem.tabs[tabIndex]
+                if tab then return tab end
+            end
             if tabIndex == 2 and frame.SetsTab then return frame.SetsTab end
             if tabIndex == 1 and frame.ItemsTab then return frame.ItemsTab end
-            -- Search children by name or debugName
+            -- Scan button-type children only; content frames like
+            -- SetsCollectionFrame also match "Sets" but aren't tabs
             local tabKeywords = { {"Items", "Item", "Tab1"}, {"Sets", "Set", "Tab2"} }
             local keywords = tabKeywords[tabIndex]
             if keywords then
                 for i = 1, select("#", frame:GetChildren()) do
                     local child = select(i, frame:GetChildren())
-                    local name = child:GetName() or ""
-                    local debugName = child.GetDebugName and child:GetDebugName() or ""
-                    for _, kw in ipairs(keywords) do
-                        if sfind(name, kw) or sfind(debugName, kw) then return child end
+                    local objType = child.GetObjectType and child:GetObjectType()
+                    if objType == "Button" or objType == "CheckButton" then
+                        local cname = child:GetName() or ""
+                        local debugName = child.GetDebugName and child:GetDebugName() or ""
+                        for _, kw in ipairs(keywords) do
+                            if sfind(cname, kw) or sfind(debugName, kw) then return child end
+                        end
                     end
                 end
             end

@@ -986,7 +986,14 @@ function Database:PopulateDynamicTransmogSets()
 
     for i = 1, #allSets do
         local setInfo = allSets[i]
-        if setInfo.name and setInfo.name ~= "" and not setInfo.hiddenUntilCollected then
+        -- Only include base sets; variants share the same visuals and
+        -- aren't directly navigable in the Sets tab left list
+        local isBaseSet = true
+        if C_TransmogSets.GetBaseSetID then
+            local bid = C_TransmogSets.GetBaseSetID(setInfo.setID)
+            isBaseSet = not bid or bid == setInfo.setID
+        end
+        if isBaseSet and setInfo.name and setInfo.name ~= "" and not setInfo.hiddenUntilCollected then
             -- Class filter: use classMask for specific class, or accept all
             local cm = setInfo.classMask or 0
             local classOk = not wantMask or cm == 0 or cm < 0 or band(cm, wantMask) ~= 0
