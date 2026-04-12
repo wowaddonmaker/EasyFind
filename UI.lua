@@ -24,6 +24,8 @@ local GameTooltip        = GameTooltip
 local GameTooltip_Hide   = GameTooltip_Hide
 local IsShiftKeyDown     = IsShiftKeyDown
 local GetCursorPosition  = GetCursorPosition
+local InCombatLockdown   = InCombatLockdown
+local HideUIPanel        = HideUIPanel
 local wipe               = wipe
 
 local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind\\textures\\lightning-bolt"
@@ -184,49 +186,18 @@ end
 function UI:DressUpAppearanceSet(setID)
     if not setID or not C_TransmogSets then return end
 
-    -- Gather source IDs from whichever API returns data. GetAllSourceIDs is
-    -- the canonical form (a numeric array), preferred when available.
-    local sources, n = {}, 0
-    local seen = {}
-    local function add(sid)
-        if sid and sid ~= 0 and not seen[sid] then
-            seen[sid] = true
-            n = n + 1
-            sources[n] = sid
-        end
-    end
-
-    if C_TransmogSets.GetAllSourceIDs then
-        local ids = C_TransmogSets.GetAllSourceIDs(setID)
-        if ids then
-            for i = 1, #ids do add(ids[i]) end
-        end
-    end
-    if n == 0 and C_TransmogSets.GetSetSources then
-        local set = C_TransmogSets.GetSetSources(setID)
-        if set then
-            for sourceID in pairs(set) do add(sourceID) end
-        end
-    end
-    if n == 0 and C_TransmogSets.GetSetPrimaryAppearances then
-        local appearances = C_TransmogSets.GetSetPrimaryAppearances(setID)
-        if appearances then
-            for i = 1, #appearances do
-                local app = appearances[i]
-                add(app and app.appearanceID)
-            end
-        end
-    end
-
-    if n == 0 then
+    local allIDs = C_TransmogSets.GetAllSourceIDs
+        and C_TransmogSets.GetAllSourceIDs(setID)
+    if not allIDs or #allIDs == 0 then
         EasyFind:Print("could not load sources for this appearance set.")
         return
     end
 
     if DressUpTransmogSet then
-        DressUpTransmogSet(sources)
+        DressUpTransmogSet(allIDs)
     end
 end
+
 
 -- Sync pinned outfit names/icons with current outfit data.
 -- Called when TRANSMOG_OUTFITS_CHANGED fires (outfits renamed/deleted).
@@ -647,11 +618,11 @@ function UI:CreateSearchFrame()
         self.btnBg:Show()
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
         if EasyFind.db.directOpen then
-            GameTooltip:SetText("Fast Search (ON)")
-            GameTooltip:AddLine("Click to switch to step-by-step guided mode.", 1, 1, 1, true)
+            GameTooltip:SetText("Fast Mode")
+            GameTooltip:AddLine("Click to switch to step-by-step Guide Mode.", 1, 1, 1, true)
         else
-            GameTooltip:SetText("Standard Search")
-            GameTooltip:AddLine("Click to enable fast search (opens panels directly).", 1, 1, 1, true)
+            GameTooltip:SetText("Guide Mode")
+            GameTooltip:AddLine("Click to enable Fast Mode (opens panels directly).", 1, 1, 1, true)
         end
         GameTooltip:Show()
     end)
@@ -856,11 +827,16 @@ function UI:CreateSearchFrame()
         editBox:SetFocus()
     end)
 
-    -- Show/hide the clear X based on whether there's text or an active guide
+    -- Show/hide the clear X based on whether there's text, an active
+    -- UI highlight guide, or active map navigation (waypoint, SuperTrack,
+    -- pin). So the player can press it to cancel ANY kind of active
+    -- navigation without typing /ef c.
     local function UpdateClearButtonVisibility()
         local hasText = editBox:GetText() ~= ""
         local guideActive = ns.Highlight and ns.Highlight:IsActive()
-        clearTextBtn:SetShown(hasText or guideActive)
+        local mapActive = ns.MapSearch and ns.MapSearch.HasActiveNavigation
+            and ns.MapSearch:HasActiveNavigation()
+        clearTextBtn:SetShown(hasText or guideActive or mapActive)
     end
     editBox:HookScript("OnTextChanged", UpdateClearButtonVisibility)
     searchFrame.UpdateClearButtonVisibility = UpdateClearButtonVisibility
@@ -1214,12 +1190,19 @@ function UI:CreateSearchFrame()
         if searchFrame.editBox:HasFocus() or searchFrame.editBox:GetText() ~= "" then return end
         -- Don't hide if results are showing
         if resultsFrame and resultsFrame:IsShown() then return end
+        -- Don't hide while the player is actively resizing the bar
+        if searchFrame.resizing then return end
         if smartShowTimer then smartShowTimer:Cancel() end
         smartShowTimer = C_Timer.NewTimer(0.4, function()
             smartShowTimer = nil
-            -- Re-check conditions after the delay
+            -- Re-check conditions after the delay. Smart Show might have
+            -- been disabled while the timer was pending (e.g., unchecked
+            -- from the tutorial or options panel mid-hover-out) in which
+            -- case we must not fade the bar out.
+            if not EasyFind.db.smartShow then return end
             if searchFrame.editBox:HasFocus() or searchFrame.editBox:GetText() ~= "" then return end
             if resultsFrame and resultsFrame:IsShown() then return end
+            if searchFrame.resizing then return end
             if hoverZone:IsMouseOver() or searchFrame:IsMouseOver() then return end
             smartShowVisible = false
             UIFrameFadeOut(searchFrame, 0.25, searchFrame:GetAlpha(), 0)
@@ -1244,6 +1227,12 @@ function UI:CreateSearchFrame()
     searchFrame.smartShowFadeOut = SmartShowFadeOut
     searchFrame.smartShowVisible = function() return smartShowVisible end
     searchFrame.setSmartShowVisible = function(val) smartShowVisible = val end
+    searchFrame.cancelSmartShowTimer = function()
+        if smartShowTimer then
+            smartShowTimer:Cancel()
+            smartShowTimer = nil
+        end
+    end
 
     -- OnUpdate: detect movement and adjust opacity accordingly (throttled to ~10Hz)
     local moveCheckAccum = 0
@@ -1260,6 +1249,16 @@ function UI:CreateSearchFrame()
             return
         end
         if EasyFind.db.smartShow and not smartShowVisible then return end
+        -- While the player is resizing the bar, keep it fully visible so
+        -- they can see the live size/font changes.
+        if self.resizing then
+            if moveFading then
+                moveFading = false
+                UIFrameFadeRemoveFrame(self)
+                self:SetAlpha(1.0)
+            end
+            return
+        end
 
         local speed = GetUnitSpeed("player")
         local hovering = self:IsMouseOver()
@@ -2860,8 +2859,17 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
             if searchFrame.filterBtn then
                 searchFrame.filterBtn.keyboardFocused = nil
-                if searchFrame.filterBtn.btnBg then searchFrame.filterBtn.btnBg:Hide() end
-                if searchFrame.filterBtn.UnlockHighlight then searchFrame.filterBtn:UnlockHighlight() end
+                -- Don't wipe the hover highlight if the cursor is still on
+                -- the filter button (the common case when clicking the
+                -- button to toggle the dropdown closed). Otherwise the
+                -- outline disappears and OnEnter doesn't re-fire until
+                -- the cursor leaves and comes back.
+                if searchFrame.filterBtn.btnBg and not searchFrame.filterBtn:IsMouseOver() then
+                    searchFrame.filterBtn.btnBg:Hide()
+                end
+                if searchFrame.filterBtn.UnlockHighlight and not searchFrame.filterBtn:IsMouseOver() then
+                    searchFrame.filterBtn:UnlockHighlight()
+                end
             end
             if searchFrame.editBox and not searchFrame.editBox:IsMouseOver() then
                 searchFrame.editBox:ClearFocus()
@@ -2898,6 +2906,10 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     end)
 
     searchFrame.filterDropdown = dropdown
+    -- Expose the checkRows table so the demo system can hover/click
+    -- specific filter rows (e.g., "map") by key without duplicating the
+    -- layout logic.
+    dropdown.checkRows = checkRows
 end
 
 function UI:CreateResultsFrame()
@@ -5581,14 +5593,21 @@ function UI:SelectResult(data)
             return
         end
 
+        local setID = data.transmogSetID
+        local GetBaseSetID = C_TransmogSets.GetBaseSetID
+        local baseID = GetBaseSetID and GetBaseSetID(setID) or setID
         local guideData = {
             steps = {
                 { buttonFrame = "CollectionsMicroButton" },
                 { waitForFrame = "CollectionsJournal", tabIndex = 5 },
                 { waitForFrame = "WardrobeCollectionFrame", wardrobeSetsTab = true },
-                { waitForFrame = "WardrobeCollectionFrame", transmogSetID = data.transmogSetID, transmogSetName = data.name },
+                { waitForFrame = "WardrobeCollectionFrame", transmogSetID = baseID },
             },
         }
+        if baseID ~= setID then
+            guideData.steps[#guideData.steps + 1] = { waitForFrame = "WardrobeCollectionFrame", transmogVariantDropdown = true }
+            guideData.steps[#guideData.steps + 1] = { waitForFrame = "WardrobeCollectionFrame", transmogVariantSetID = setID }
+        end
         if EasyFind.db.directOpen then
             self:DirectOpen(guideData)
         else
@@ -5732,6 +5751,8 @@ function UI:DirectOpen(data)
         if step.ejLootTab then return true end
         if step.wardrobeSetsTab then return true end
         if step.transmogSetID then return true end
+        if step.transmogVariantDropdown then return true end
+        if step.transmogVariantSetID then return true end
         -- regionFrames alone (no searchButtonText) = highlight-only (e.g. PvP Talents)
         -- waitForFrame alone = just waiting for a frame to appear, not navigable
         -- text alone = instruction text, not navigable
@@ -5923,57 +5944,58 @@ function UI:DirectOpen(data)
                 end
             end
 
-            -- Wardrobe Sets tab: click the Sets tab within WardrobeCollectionFrame
+            -- Wardrobe Sets tab: click the Sets tab within WardrobeCollectionFrame.
+            -- Defer remaining steps so the SetsCollectionFrame ScrollBox populates.
             if step.wardrobeSetsTab then
+                local wcf = _G["WardrobeCollectionFrame"]
                 local setsTab = Highlight:GetTabButton("WardrobeCollectionFrame", 2)
                 if setsTab then
                     ClickButton(setsTab)
-                elseif PanelTemplates_SetTab then
-                    local wcf = _G["WardrobeCollectionFrame"]
-                    if wcf then pcall(PanelTemplates_SetTab, wcf, 2) end
+                end
+                if wcf then
+                    local scf = wcf.SetsCollectionFrame
+                    if not scf or not scf:IsShown() then
+                        if wcf.SetTab then
+                            pcall(wcf.SetTab, wcf, 2)
+                        elseif PanelTemplates_SetTab then
+                            pcall(PanelTemplates_SetTab, wcf, 2)
+                        end
+                    end
+                end
+                if i < executeCount then
+                    local resume = i + 1
+                    C_Timer.After(0.1, function() executeFrom(resume) end)
+                    return
                 end
             end
 
-            -- Transmog set: scroll to and highlight in the Sets ScrollBox
+            -- Transmog set: scroll via SetScrollPercentage + select
             if step.transmogSetID and i == executeCount then
-                local setsFrame = _G["WardrobeCollectionFrame"]
+                local scf = _G["WardrobeCollectionFrame"]
                     and _G["WardrobeCollectionFrame"].SetsCollectionFrame
-                local scrollBox = setsFrame and setsFrame.ListContainer
-                    and setsFrame.ListContainer.ScrollBox
-                if scrollBox then
-                    local targetName = step.transmogSetName and slower(step.transmogSetName)
+                if scf then
                     C_Timer.After(0.1, function()
-                        if targetName then
-                            Utils.ScrollBoxScrollTo(scrollBox, function(elementData)
-                                if not elementData then return false end
-                                local setID = elementData.setID
-                                if setID and setID == step.transmogSetID then return true end
-                                return false
-                            end)
-                        end
-                        C_Timer.After(0.05, function()
-                            local setBtn = Utils.ScrollBoxFindButton(scrollBox, function(btn)
-                                local edata = btn.GetElementData and btn:GetElementData()
-                                if edata and edata.setID == step.transmogSetID then return true end
-                                if targetName then
-                                    local text = Utils.GetButtonText(btn)
-                                    if text and slower(text) == targetName then return true end
-                                end
-                                return false
-                            end)
-                            if setBtn and Highlight then
-                                Highlight:HighlightFrame(setBtn)
-                                local checkHover
-                                checkHover = function()
-                                    if setBtn:IsMouseOver() then
-                                        Highlight:HideHighlight()
-                                    else
-                                        C_Timer.After(0.1, checkHover)
+                        local lc = scf.ListContainer
+                        local scrollBox = lc and lc.ScrollBox
+                        if scrollBox and scrollBox.SetScrollPercentage then
+                            local dp = scrollBox.GetDataProvider and scrollBox:GetDataProvider()
+                            if dp then
+                                local finder = dp.FindElementDataByPredicate or dp.FindByPredicate
+                                local found = finder and finder(dp, function(ed)
+                                    return ed and ed.setID == step.transmogSetID
+                                end)
+                                if found then
+                                    local idx = dp.FindIndex and dp:FindIndex(found)
+                                    local total = dp.GetSize and dp:GetSize()
+                                    if idx and total and total > 1 then
+                                        scrollBox:SetScrollPercentage((idx - 1) / (total - 1))
                                     end
                                 end
-                                C_Timer.After(0.3, checkHover)
                             end
-                        end)
+                        end
+                        if lc and lc.SelectElementDataMatchingSetID then
+                            pcall(lc.SelectElementDataMatchingSetID, lc, step.transmogSetID)
+                        end
                     end)
                 end
             end
@@ -6467,8 +6489,12 @@ function UI:UpdateSmartShow()
             searchFrame.setSmartShowVisible(false)
         end
     else
-        -- Disable smart show: hide hover zone, restore normal opacity
+        -- Disable smart show: hide hover zone, cancel any pending fade-out
+        -- timer (the player may be mid-hover-out when they flip the toggle),
+        -- and restore normal opacity.
         searchFrame.hoverZone:Hide()
+        if searchFrame.cancelSmartShowTimer then searchFrame.cancelSmartShowTimer() end
+        UIFrameFadeRemoveFrame(searchFrame)
         searchFrame.setSmartShowVisible(true)
         if EasyFind.db.visible ~= false and not inCombat then
             local alpha = searchFrame.getEffectiveAlpha and searchFrame.getEffectiveAlpha() or 1.0
@@ -6564,8 +6590,9 @@ function UI:ShowWhatsNew(version)
 end
 
 -- FIRST-TIME SETUP OVERLAY
--- Shown once on fresh install to let the user position & scale the search
--- bar before normal use.  Persisted via EasyFind.db.setupComplete.
+-- Shown once on fresh install to let the user position & scale the search bar
+-- and learn about Fast vs Guide mode. Persisted account-wide via
+-- EasyFind.db.setupComplete.
 function UI:ShowFirstTimeSetup()
     if not searchFrame then return end
     if EasyFind.db.setupComplete then return end
@@ -6584,110 +6611,163 @@ function UI:ShowFirstTimeSetup()
     searchFrame.setupMode = true
     searchFrame.editBox:EnableMouse(false)
 
-    -- Golden glow overlay
-    local glow = CreateFrame("Frame", "EasyFindSetupGlow", searchFrame, "BackdropTemplate")
-    glow:SetPoint("TOPLEFT", searchFrame, "TOPLEFT", -6, 6)
-    glow:SetPoint("BOTTOMRIGHT", searchFrame, "BOTTOMRIGHT", 6, -6)
-    glow:SetFrameStrata("DIALOG")
-    glow:SetFrameLevel(100)
-    glow:EnableMouse(false)  -- clicks pass through to search bar
-    glow:SetIgnoreParentAlpha(true)  -- stay opaque when search bar fades
-
-    glow:SetBackdrop({
-        bgFile   = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = TOOLTIP_BORDER,
-        edgeSize = 16,
-        insets   = { left = 4, right = 4, top = 4, bottom = 4 }
-    })
-    glow:SetBackdropColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.20)
-    glow:SetBackdropBorderColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1.0)
-
-    -- Gentle pulse on the gold fill
-    local pulseUp = true
-    local pulseAlpha = 0.20
-    glow:SetScript("OnUpdate", function(self, elapsed)
-        if pulseUp then
-            pulseAlpha = pulseAlpha + elapsed * 0.12
-            if pulseAlpha >= 0.35 then pulseAlpha = 0.35; pulseUp = false end
-        else
-            pulseAlpha = pulseAlpha - elapsed * 0.12
-            if pulseAlpha <= 0.12 then pulseAlpha = 0.12; pulseUp = true end
-        end
-        self:SetBackdropColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], pulseAlpha)
-    end)
-
-    -- "EasyFind" label overlaid on the glow (like edit-mode frame labels)
-    local setupLabel = glow:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    setupLabel:SetPoint("CENTER", glow, "CENTER", 0, 0)
-    setupLabel:SetText("EasyFind")
-    setupLabel:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.7)
-
-    -- Resize handle (bottom-left corner)
-    local resizer = CreateFrame("Button", nil, glow)
+    -- Resize handle (bottom-left corner of the search bar). Parents to
+    -- searchFrame so it fades in sync when Smart Show hides the bar.
+    local resizer = CreateFrame("Button", nil, searchFrame)
+    resizer:SetFrameStrata("DIALOG")
+    resizer:SetFrameLevel(searchFrame:GetFrameLevel() + 20)
     resizer:SetSize(16, 16)
-    resizer:SetPoint("BOTTOMLEFT", glow, "BOTTOMLEFT", 0, 0)
+    resizer:SetPoint("BOTTOMRIGHT", searchFrame, "BOTTOMRIGHT", 0, 0)
     resizer:EnableMouse(true)
-    resizer:RegisterForDrag("LeftButton")
 
+    -- Bright gold grabber: additive blend mode over a solid-gold vertex
+    -- color makes the lines read well on any background. The Blizzard
+    -- grabber texture is already oriented for bottom-right, so no flip.
+    local function styleResizerTex(tex)
+        tex:SetVertexColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1)
+        tex:SetBlendMode("ADD")
+    end
     resizer:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
-    resizer:GetNormalTexture():SetTexCoord(1, 0, 0, 1)   -- flip for bottom-left
+    styleResizerTex(resizer:GetNormalTexture())
     resizer:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
-    resizer:GetHighlightTexture():SetTexCoord(1, 0, 0, 1)
+    styleResizerTex(resizer:GetHighlightTexture())
     resizer:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
-    resizer:GetPushedTexture():SetTexCoord(1, 0, 0, 1)
+    styleResizerTex(resizer:GetPushedTexture())
 
     resizer:SetScript("OnEnter", function(self)
+        if self.dragging then return end  -- don't show tooltip mid-drag
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:SetText("Drag to resize")
         GameTooltip:Show()
     end)
     resizer:SetScript("OnLeave", GameTooltip_Hide)
 
+    local function scaleResizerVisual()
+        local s = mmax(0.5, mmin(2.0, EasyFind.db.fontSize or 1.0))
+        resizer:SetSize(16 * s, 16 * s)
+    end
+
+    -- Dragging the bottom-left corner resizes the bar in two axes at once:
+    --   horizontal  -> uiSearchWidth (symmetric growth around a locked top-center)
+    --   vertical    -> fontSize (which also grows the bar height downward)
+    --
+    -- Uses OnMouseDown (not RegisterForDrag) so there's no 4-pixel drag
+    -- threshold: the bar starts resizing the instant the cursor moves.
+    -- Delta-from-start math keeps the cursor locked to wherever on the
+    -- resizer the user originally clicked - if they clicked the middle
+    -- of the hitbox, the middle of the hitbox follows the cursor.
     resizer.dragging = false
-    resizer.lastY = nil
-    resizer:SetScript("OnDragStart", function(self)
+    resizer:SetScript("OnMouseDown", function(self, button)
+        if button ~= "LeftButton" then return end
+        GameTooltip_Hide()  -- hide the hover tooltip while dragging
         self.dragging = true
-        local _, cy = GetCursorPosition()
-        self.lastY = cy / UIParent:GetEffectiveScale()
+        searchFrame.resizing = true
+
+        -- Snapshot the current top-center as a stationary anchor for
+        -- symmetric horizontal growth and top-down vertical growth.
+        local left, right, top = searchFrame:GetLeft(), searchFrame:GetRight(), searchFrame:GetTop()
+        if not (left and right and top) then
+            self.dragging = false
+            searchFrame.resizing = nil
+            return
+        end
+        self.anchorCenterX = (left + right) / 2
+        self.anchorTopY = top
+        searchFrame:ClearAllPoints()
+        searchFrame:SetPoint("TOP", UIParent, "BOTTOMLEFT", self.anchorCenterX, self.anchorTopY)
+
+        -- Snapshot starting cursor position and starting db values so the
+        -- per-frame math can compute deltas absolutely without drift and
+        -- without snapping the corner to the cursor at drag start.
+        self.startCx, self.startCy = GetCursorPosition()
+        self.startWidth = EasyFind.db.uiSearchWidth or 1.0
+        self.startFont = EasyFind.db.fontSize or 1.0
     end)
-    resizer:SetScript("OnDragStop", function(self)
+
+    local function stopResize(self)
+        if not self.dragging then return end
         self.dragging = false
-        self.lastY = nil
+        searchFrame.resizing = nil
+        self.anchorCenterX = nil
+        self.anchorTopY = nil
+        self.startCx = nil
+        self.startCy = nil
+        self.startWidth = nil
+        self.startFont = nil
+
+        -- Persist the new TOP-anchored position so the bar sticks after drag.
+        local point, _, relPoint, x, y = searchFrame:GetPoint()
+        EasyFind.db.uiSearchPosition = {point, relPoint, x, y}
+    end
+
+    resizer:SetScript("OnMouseUp", function(self, button)
+        if button ~= "LeftButton" then return end
+        stopResize(self)
     end)
+
     resizer:SetScript("OnUpdate", function(self)
         if not self.dragging then return end
-        local _, cy = GetCursorPosition()
-        cy = cy / UIParent:GetEffectiveScale()
-        if self.lastY then
-            local dy = self.lastY - cy   -- drag down = bigger for bottom-left handle
-            local curScale = EasyFind.db.uiSearchScale or 1.0
-            local newScale = curScale + dy * 0.005
-            newScale = mmax(0.5, mmin(2.0, newScale))
-            EasyFind.db.uiSearchScale = newScale
-            EasyFind.db.uiResultsScale = newScale
-            searchFrame:SetScale(newScale)
-            if resultsFrame then resultsFrame:SetScale(newScale) end
+        -- If the user released the button outside the hitbox, OnMouseUp
+        -- won't fire - bail out when we detect the button is no longer down.
+        if not IsMouseButtonDown("LeftButton") then
+            stopResize(self)
+            return
         end
-        self.lastY = cy
+        if not (self.startCx and self.startCy and self.startWidth and self.startFont) then return end
+
+        local cx, cy = GetCursorPosition()
+        local effScale = searchFrame:GetEffectiveScale() or 1.0
+        if effScale <= 0 then return end
+
+        -- Delta from the cursor's starting position (in raw screen pixels).
+        local dxScreen = cx - self.startCx
+        local dyScreen = cy - self.startCy
+
+        -- Bottom-right corner: cursor moving RIGHT should grow the bar
+        -- symmetrically, cursor moving DOWN should grow the font/height.
+        --   d(uiSearchWidth) =  dxScreen / (effScale * 125)
+        --   d(fontSize)      = -dyScreen / (effScale * SEARCHBAR_HEIGHT)
+        local newWidth = self.startWidth + dxScreen / (effScale * 125)
+        local newFont  = self.startFont  - dyScreen / (effScale * ns.SEARCHBAR_HEIGHT)
+
+        newWidth = mmax(0.5, mmin(2.5, newWidth))
+        newFont = mmax(0.5, mmin(2.0, newFont))
+
+        EasyFind.db.uiSearchWidth = newWidth
+        EasyFind.db.fontSize = newFont
+        UI:UpdateWidth()
+        UI:UpdateFontSize()
+        scaleResizerVisual()
     end)
 
-    -- Instruction panel (anchored below the glow)
-    local panel = CreateFrame("Frame", nil, glow, "BackdropTemplate")
-    panel:SetSize(340, 215)
-    panel:SetPoint("TOP", glow, "BOTTOM", 0, -6)
+    -- Set the initial resizer size to match the current font scale
+    scaleResizerVisual()
+
+    -- Fixed panel width - text wraps to fit. 290px comfortably holds the
+    -- longest header line and lets the descriptions wrap to 2 lines.
+    local SIDE_BUFFER = 16
+    local panelWidth = 290
+
+    -- Instruction panel (anchored below the search bar)
+    local panel = CreateFrame("Frame", nil, searchFrame, "BackdropTemplate")
+    panel:SetSize(panelWidth, 245)
+    panel:SetPoint("TOP", searchFrame, "BOTTOM", 0, -6)
+    panel:SetIgnoreParentAlpha(true)  -- survive Smart Show fade
     panel:SetFrameStrata("DIALOG")
+    -- Solid flat background (same WHITE8x8 texture the search bar uses) so
+    -- the panel is fully opaque and text stays easy to read.
     panel:SetBackdrop({
-        bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
+        bgFile   = "Interface\\Buttons\\WHITE8x8",
         edgeFile = TOOLTIP_BORDER,
-        tile = true, tileSize = 32, edgeSize = 16,
+        edgeSize = 16,
         insets   = { left = 4, right = 4, top = 4, bottom = 4 }
     })
-    panel:SetBackdropColor(DARK_PANEL_BG[1], DARK_PANEL_BG[2], DARK_PANEL_BG[3], DARK_PANEL_BG[4])
+    panel:SetBackdropColor(0.05, 0.05, 0.05, 0.9)
 
-    -- Top header lines (centered)
+    -- Top header lines (centered).
     local header = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     header:SetPoint("TOP", panel, "TOP", 0, -12)
-    header:SetWidth(310)
+    header:SetWidth(panelWidth - SIDE_BUFFER * 2)
     header:SetJustifyH("CENTER")
     header:SetText(
         "|cffffffffDrag the search bar to position it.|r\n" ..
@@ -6703,20 +6783,44 @@ function UI:ShowFirstTimeSetup()
         "\226\128\162 |cff999999Hold |cffFFD100Shift|r|cff999999 + drag to reposition later.|r"
     )
 
-    -- Horizontal separator between tip and Smart Show section
+    -- Reset to defaults button: escape hatch if a new user accidentally
+    -- shrinks the bar to an unclickable size or drags it off-screen.
+    local resetDefaultsBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    resetDefaultsBtn:SetSize(180, 20)
+    resetDefaultsBtn:SetPoint("TOP", tip, "BOTTOM", 0, -6)
+    resetDefaultsBtn:SetText("Reset size & position")
+    resetDefaultsBtn:SetScript("OnClick", function()
+        EasyFind.db.uiSearchPosition = nil
+        EasyFind.db.uiSearchWidth = 0.88
+        EasyFind.db.fontSize = 0.9
+        if UI.ResetPosition then UI:ResetPosition() end
+        UI:UpdateWidth()
+        UI:UpdateFontSize()
+        scaleResizerVisual()
+    end)
+
+    -- Horizontal separator between the reset button and Smart Show section
     local sep = panel:CreateTexture(nil, "ARTWORK")
     sep:SetHeight(1)
-    sep:SetPoint("TOPLEFT", tip, "BOTTOMLEFT", 0, -6)
-    sep:SetPoint("TOPRIGHT", tip, "BOTTOMRIGHT", 0, -6)
+    sep:SetPoint("TOPLEFT", resetDefaultsBtn, "BOTTOMLEFT", -70, -8)
+    sep:SetPoint("TOPRIGHT", resetDefaultsBtn, "BOTTOMRIGHT", 70, -8)
     sep:SetColorTexture(0.4, 0.4, 0.4, 0.6)
 
     -- Smart Show checkbox (default checked - matches DB_DEFAULTS.smartShow = true)
+    -- The separator anchor sits ~15px outside the panel's left edge
+    -- (sep extends past the panel for a full hr-rule look), so anchoring
+    -- the checkbox with offset 30 from sep.BOTTOMLEFT places it at
+    -- roughly panel.left + 15 - a comfortable left margin inside the
+    -- panel.
     local smartShowCheckbox = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
-    smartShowCheckbox:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", 0, -6)
+    smartShowCheckbox:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", 30, -6)
     smartShowCheckbox.Text:SetText("|cffFFD100Smart Show|r |cff999999(Recommended)|r")
     smartShowCheckbox:SetChecked(false)
     smartShowCheckbox:SetScript("OnClick", function(self)
-        -- Update live so the user can see the hover behavior immediately
+        -- Apply live so the player can see the hover behavior immediately,
+        -- same as the matching toggle in /ef options. The tutorial panel
+        -- has SetIgnoreParentAlpha(true) so it stays visible even when the
+        -- search bar fades out.
         EasyFind.db.smartShow = self:GetChecked()
         UI:UpdateSmartShow()
     end)
@@ -6725,7 +6829,7 @@ function UI:ShowFirstTimeSetup()
     local smartDesc = smartShowCheckbox:CreateFontString(nil, "OVERLAY")
     smartDesc:SetFontObject(smartShowCheckbox.Text:GetFontObject())
     smartDesc:SetPoint("TOPLEFT", smartShowCheckbox.Text, "BOTTOMLEFT", 0, -2)
-    smartDesc:SetWidth(284)
+    smartDesc:SetWidth(panelWidth - 60)
     smartDesc:SetJustifyH("LEFT")
     smartDesc:SetText("|cff999999Bar hides when your mouse moves away and reappears when you hover near it.|r")
 
@@ -6742,44 +6846,123 @@ function UI:ShowFirstTimeSetup()
     local fadeDesc = fadeCheckbox:CreateFontString(nil, "OVERLAY")
     fadeDesc:SetFontObject(fadeCheckbox.Text:GetFontObject())
     fadeDesc:SetPoint("TOPLEFT", fadeCheckbox.Text, "BOTTOMLEFT", 0, -2)
-    fadeDesc:SetWidth(284)
+    fadeDesc:SetWidth(panelWidth - 60)
     fadeDesc:SetJustifyH("LEFT")
-    fadeDesc:SetText("|cff999999Reduces bar opacity while your character is moving.|r")
+    fadeDesc:SetText("|cff999999Reduces bar opacity while you're moving.|r")
 
     -- Footer note
     local footer = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     footer:SetPoint("BOTTOM", panel, "BOTTOM", 0, 36)
-    footer:SetWidth(310)
+    footer:SetWidth(panelWidth - SIDE_BUFFER * 2)
     footer:SetJustifyH("CENTER")
-    footer:SetText("|cff666666These and more settings can be changed in |cffFFD100/ef|r|cff666666.|r")
+    footer:SetText("|cff666666See all settings in |cffFFD100/ef|r|cff666666.|r")
 
-    -- Done button
-    local doneBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    doneBtn:SetSize(80, 22)
-    doneBtn:SetPoint("BOTTOM", panel, "BOTTOM", 0, 12)
-    doneBtn:SetText("Done")
+    -- "Got it" button: just closes the tutorial, no mode-intro step.
+    local gotItBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    gotItBtn:SetSize(100, 22)
+    gotItBtn:SetPoint("BOTTOM", panel, "BOTTOM", 0, 12)
+    gotItBtn:SetText("Got it")
+
+    -- Floating "Mode toggle" pointer group, independent of the panel.
+    -- Sits to the LEFT of the search bar so the arrow can point RIGHT at
+    -- the mode button. Uses the Blizzard atlas arrow (sheet 1121272),
+    -- rotated -90deg so the natively-up arrow points right.
+    --
+    -- The frame itself stays fixed next to the mode button; the TEXTURE
+    -- inside the frame slides via a sin wave so only the arrow bounces,
+    -- leaving the label and See Demo button rock-steady.
+    local ARROW_SIZE = 28
+    local modePointerFrame = CreateFrame("Frame", nil, searchFrame)
+    modePointerFrame:SetSize(ARROW_SIZE, ARROW_SIZE)
+    modePointerFrame:SetPoint("RIGHT", searchFrame.modeBtn, "LEFT", -4, 0)
+    modePointerFrame:SetIgnoreParentAlpha(true)
+    local modePointer = modePointerFrame:CreateTexture(nil, "OVERLAY")
+    modePointer:SetSize(ARROW_SIZE, ARROW_SIZE)
+    modePointer:SetPoint("CENTER", modePointerFrame, "CENTER", 0, 0)
+    modePointer:SetTexture(1121272)
+    modePointer:SetTexCoord(0.6078, 0.6402, 0.9381, 0.9688)
+    modePointer:SetRotation(-1.5708)  -- -90deg: up -> right
+
+    local POKE_AMOUNT = 10
+    local POKE_PERIOD = 1.4  -- seconds per full cycle; shared by both the
+                              -- arrow poke and the mode-button flash so
+                              -- the animations stay phase-locked
+    local pokeElapsed = 0
+
+    -- Label and See Demo button anchor to the mode button directly, NOT
+    -- to the arrow frame, so they don't inherit the poke animation.
+    local modePointerLabel = searchFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    modePointerLabel:SetPoint("RIGHT", searchFrame.modeBtn, "LEFT", -4 - ARROW_SIZE - 4, 0)
+    modePointerLabel:SetText("|cffFFD100Mode toggle|r")
+    modePointerLabel:SetIgnoreParentAlpha(true)
+
+    local seeDemoBtn = CreateFrame("Button", nil, searchFrame, "UIPanelButtonTemplate")
+    seeDemoBtn:SetSize(120, 24)
+    seeDemoBtn:SetPoint("TOPRIGHT", modePointerLabel, "BOTTOMRIGHT", 0, -8)
+    seeDemoBtn:SetText("See demo")
+    seeDemoBtn:SetIgnoreParentAlpha(true)
+
+    -- Pulsing gold flash over the mode button. Uses a radial star glow
+    -- texture (already referenced elsewhere in the addon) so the flash
+    -- has soft edges instead of the hard square corners you'd get from
+    -- tinting WHITE8x8. Sized larger than the button so the glow halo
+    -- extends past the button's bounds.
+    local modeFlashFrame = CreateFrame("Frame", nil, searchFrame.modeBtn)
+    modeFlashFrame:SetPoint("CENTER", searchFrame.modeBtn, "CENTER", 0, 0)
+    local flashSize = searchFrame.modeBtn:GetHeight() * 1.8
+    modeFlashFrame:SetSize(flashSize, flashSize)
+    modeFlashFrame:SetFrameLevel(searchFrame.modeBtn:GetFrameLevel() + 5)
+    modeFlashFrame:SetIgnoreParentAlpha(true)
+    local modeFlash = modeFlashFrame:CreateTexture(nil, "OVERLAY")
+    modeFlash:SetAllPoints()
+    modeFlash:SetTexture("Interface\\Cooldown\\star4")
+    modeFlash:SetVertexColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1)
+    modeFlash:SetBlendMode("ADD")
+
+    local FLASH_MIN, FLASH_MAX = 0.15, 0.55
+    modeFlashFrame:SetAlpha(FLASH_MIN)
+
+    -- Shared ticker drives both the arrow poke and the mode-button flash
+    -- so they're perfectly in sync: arrow closest to button == brightest
+    -- flash, arrow farthest == dimmest flash.
+    modePointerFrame:SetScript("OnUpdate", function(_, dt)
+        pokeElapsed = pokeElapsed + dt
+        local phase = (1 - math.cos(pokeElapsed * 2 * math.pi / POKE_PERIOD)) * 0.5
+        modePointer:ClearAllPoints()
+        modePointer:SetPoint("CENTER", modePointerFrame, "CENTER", phase * POKE_AMOUNT, 0)
+        modeFlashFrame:SetAlpha(FLASH_MIN + (FLASH_MAX - FLASH_MIN) * phase)
+    end)
 
     -- During setup: allow drag without holding Shift
     searchFrame:SetScript("OnDragStart", function(self)
         self:StartMoving()
     end)
 
-    -- Done handler: persist, cleanup, restore normal drag
-    doneBtn:SetScript("OnClick", function()
+    -- Forward declarations for the demo frames so FinishSetup can clean
+    -- them up regardless of whether the player went through See Demo.
+    local demoFrame
+    local startDemo
+
+    local function FinishSetup()
         EasyFind.db.setupComplete = true
 
         -- Save current position
         local point, _, relPoint, x, y = searchFrame:GetPoint()
         EasyFind.db.uiSearchPosition = {point, relPoint, x, y}
 
-        -- Destroy overlay & restore normal state
+        -- Destroy overlays & restore normal state
         searchFrame.setupMode = nil
         searchFrame.editBox:EnableMouse(true)
         UI:UpdateSearchBarTheme()  -- restore proper backdrop colors
-        glow:SetScript("OnUpdate", nil)
         resizer:SetScript("OnUpdate", nil)
-        glow:Hide()
+        resizer:Hide()
         panel:Hide()
+        modePointerFrame:SetScript("OnUpdate", nil)
+        modePointerFrame:Hide()
+        modePointerLabel:Hide()
+        seeDemoBtn:Hide()
+        modeFlashFrame:Hide()
+        if demoFrame then demoFrame:Hide() end
 
         -- Restore shift-only drag
         searchFrame:SetScript("OnDragStart", function(self)
@@ -6796,6 +6979,49 @@ function UI:ShowFirstTimeSetup()
         -- Record current version so What's New won't fire on next login
         -- (brand-new users don't need to see it - all features are new for them)
         EasyFind.db.lastSeenVersion = ns.version
+    end
+
+    startDemo = function()
+        ns.Demo.Start({
+            searchFrame = searchFrame,
+            resultsFrame = resultsFrame,
+            resultButtons = resultButtons,
+            finishSetup = FinishSetup,
+        })
+    end
+
+    gotItBtn:SetScript("OnClick", FinishSetup)
+
+    -- Escape closes the whole tutorial from the positioning panel.
+    panel:EnableKeyboard(true)
+    panel:SetPropagateKeyboardInput(true)
+    panel:SetScript("OnKeyDown", function(self, key)
+        if key == "ESCAPE" then
+            self:SetPropagateKeyboardInput(false)
+            FinishSetup()
+        else
+            self:SetPropagateKeyboardInput(true)
+        end
+    end)
+
+    seeDemoBtn:SetScript("OnClick", function()
+        -- Save position + apply preferences, then skip straight to the
+        -- interactive demo (no mode-intro step in between).
+        local point, _, relPoint, x, y = searchFrame:GetPoint()
+        EasyFind.db.uiSearchPosition = {point, relPoint, x, y}
+        EasyFind.db.smartShow = smartShowCheckbox:GetChecked()
+        EasyFind.db.staticOpacity = not fadeCheckbox:GetChecked()
+        UI:UpdateSmartShow()
+
+        -- Hide the positioning UI before the demo runs.
+        panel:Hide()
+        resizer:Hide()
+        modePointerFrame:SetScript("OnUpdate", nil)
+        modePointerFrame:Hide()
+        modePointerLabel:Hide()
+        seeDemoBtn:Hide()
+        modeFlashFrame:Hide()
+        startDemo()
     end)
 end
 

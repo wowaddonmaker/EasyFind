@@ -1009,7 +1009,7 @@ function Options:Initialize()
     uiSpeedLabel:SetText("Speed")
 
     local directOpenCheckbox = CreateCheckbox(sec1, "DirectOpen", "Open Panels Directly",
-        "When enabled, clicking a UI search result will immediately open the destination panel.\n\nWhen disabled (default), you will be guided step-by-step with highlights showing you where to click.")
+        "When enabled (default), Fast Mode opens the destination panel immediately.\n\nWhen disabled, Guide Mode walks you through step-by-step with highlights showing where to click.")
     directOpenCheckbox:SetPoint("TOPLEFT", uiSpeedBox, "TOPLEFT", 8, -4)
     directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false)
     directOpenCheckbox:SetScript("OnClick", function(self)
