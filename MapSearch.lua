@@ -1770,8 +1770,14 @@ function MapSearch:CreateSearchFrame()
         GameTooltip:Hide()
     end)
 
-    editBox:HookScript("OnTextChanged", function(self)
-        clearBtn:SetShown(self:GetText() ~= "")
+    local function UpdateLocalClearVisibility()
+        local hasText = editBox:GetText() ~= ""
+        local navActive = MapSearch.HasActiveNavigation and MapSearch:HasActiveNavigation()
+        clearBtn:SetShown(hasText or navActive)
+    end
+    searchFrame.UpdateClearButtonVisibility = UpdateLocalClearVisibility
+    editBox:HookScript("OnTextChanged", function()
+        UpdateLocalClearVisibility()
     end)
 
     -- Shift-click editbox starts parent drag when not focused
@@ -2205,8 +2211,14 @@ function MapSearch:CreateSearchFrame()
         GameTooltip:Hide()
     end)
 
-    globalEditBox:HookScript("OnTextChanged", function(self)
-        globalClearBtn:SetShown(self:GetText() ~= "")
+    local function UpdateGlobalClearVisibility()
+        local hasText = globalEditBox:GetText() ~= ""
+        local navActive = MapSearch.HasActiveNavigation and MapSearch:HasActiveNavigation()
+        globalClearBtn:SetShown(hasText or navActive)
+    end
+    globalSearchFrame.UpdateClearButtonVisibility = UpdateGlobalClearVisibility
+    globalEditBox:HookScript("OnTextChanged", function()
+        UpdateGlobalClearVisibility()
     end)
 
     -- Shift-click editbox starts parent drag when not focused
@@ -2846,7 +2858,10 @@ function MapSearch:CreateResultButton(index)
         activePinState = MapSearch._savedPinState
     end)
     resultRow:SetScript("OnLeave", function(self)
+        if MapSearch._demoHoverLock then return end
         if not MapSearch._previewing then return end
+        -- Mouse moved to a child frame (navBtn, etc.) - still hovering
+        if self:IsMouseOver() then return end
         MapSearch._previewing = nil
         -- Clear the preview pin
         MapSearch:ClearHighlight()
@@ -2995,10 +3010,7 @@ function MapSearch:CreateHighlightFrame()
                 C_SuperTrack.SetSuperTrackedUserWaypoint(true)
                 efPlacedWaypoint = true
                 ShowSuperTrackGlow()
-                local sf = _G["EasyFindSearchFrame"]
-                if sf and sf.UpdateClearButtonVisibility then
-                    sf.UpdateClearButtonVisibility()
-                end
+                MapSearch:RefreshAllClearButtons()
             end
         end
         if button == "RightButton" then
@@ -4892,6 +4904,9 @@ function MapSearch:HookWorldMap()
     local vignetteFrame = CreateFrame("Frame")
     vignetteFrame:RegisterEvent("VIGNETTES_UPDATED")
     vignetteFrame:SetScript("OnEvent", function()
+        -- Don't wipe a hover preview; the refresh will happen when
+        -- the preview ends or the user types more.
+        if MapSearch._previewing then return end
         if isGlobalSearch then return end
         local editBox = searchFrame and searchFrame.editBox
         if editBox and editBox:HasFocus() then
@@ -6836,8 +6851,12 @@ function MapSearch:SelectResult(data)
             return
         end
 
-        local directMode = isGlobalSearch and (EasyFind.db.globalMapDirectOpen or false)
-            or (EasyFind.db.localMapDirectOpen or false)
+        local directMode
+        if isGlobalSearch then
+            directMode = EasyFind.db.globalMapDirectOpen or false
+        else
+            directMode = EasyFind.db.localMapDirectOpen or false
+        end
 
         -- Handle zone selection
         if data.isZone and data.zoneMapID then
@@ -6910,15 +6929,21 @@ function MapSearch:SelectResult(data)
         -- map when data.mapID isn't present.
         if not isGlobalSearch and directMode then
             local autoX, autoY, autoMapID
-            if data.x and data.y then
-                autoX, autoY = data.x, data.y
-                autoMapID = data.mapID
-                    or (data.allInstances and data.allInstances[1] and data.allInstances[1].mapID)
-                    or (WorldMapFrame and WorldMapFrame:GetMapID())
+            local viewedMap = WorldMapFrame and WorldMapFrame:GetMapID()
+            if data.allInstances and #data.allInstances > 1 then
+                -- Multiple instances: navigate to the nearest one
+                local nearest = self:GetNearestInstance(data.allInstances, viewedMap)
+                if nearest then
+                    autoX, autoY = nearest.x, nearest.y
+                    autoMapID = nearest.mapID or viewedMap
+                end
             elseif data.allInstances and #data.allInstances == 1 then
                 local single = data.allInstances[1]
                 autoX, autoY = single.x, single.y
-                autoMapID = single.mapID or (WorldMapFrame and WorldMapFrame:GetMapID())
+                autoMapID = single.mapID or viewedMap
+            elseif data.x and data.y then
+                autoX, autoY = data.x, data.y
+                autoMapID = data.mapID or viewedMap
             end
             if autoX and autoY and autoMapID
                and autoX >= 0 and autoX <= 1 and autoY >= 0 and autoY <= 1 then
@@ -6926,10 +6951,7 @@ function MapSearch:SelectResult(data)
                 C_SuperTrack.SetSuperTrackedUserWaypoint(true)
                 efPlacedWaypoint = true
                 ShowSuperTrackGlow()
-                local sf = _G["EasyFindSearchFrame"]
-                if sf and sf.UpdateClearButtonVisibility then
-                    sf.UpdateClearButtonVisibility()
-                end
+                MapSearch:RefreshAllClearButtons()
             end
         end
     end
@@ -7185,6 +7207,17 @@ function MapSearch:ShowMultipleWaypoints(instances)
         end
     end
 
+    -- During hover preview, prevent pins from intercepting mouse events
+    -- that belong to the results panel (pins can overlap at TOOLTIP strata)
+    if self._previewing then
+        waypointPin:EnableMouse(false)
+        if self.extraPins then
+            for _, ep in ipairs(self.extraPins) do
+                if ep:IsShown() then ep:EnableMouse(false) end
+            end
+        end
+    end
+
     -- Auto-track on minimap if requested by navigate button
     if self.autoTrackNextPin then
         self.autoTrackNextPin = nil
@@ -7233,6 +7266,9 @@ function MapSearch:ShowWaypointAt(x, y, icon, category)
     waypointPin.waypointY = y
     waypointPin.isLocalSearch = not isGlobalSearch
     waypointPin:Show()
+    if self._previewing then
+        waypointPin:EnableMouse(false)
+    end
 
     -- Resize and position highlight
     highlightFrame:SetSize(highlightSize, highlightSize)
@@ -7261,10 +7297,7 @@ function MapSearch:ShowWaypointAt(x, y, icon, category)
 
     -- Refresh the UI search bar's clear button so it appears while a
     -- pin is visible (active map navigation).
-    local sf = _G["EasyFindSearchFrame"]
-    if sf and sf.UpdateClearButtonVisibility then
-        sf.UpdateClearButtonVisibility()
-    end
+    self:RefreshAllClearButtons()
 end
 
 -- Tracks the canvas pin currently scaled up by HighlightPin so ClearHighlight
@@ -7363,13 +7396,16 @@ function MapSearch:ClearHighlight()
     indicatorFrame:SetPoint("BOTTOM", highlightFrame, "TOP", 0, 2)
     indicatorFrame:Hide()
     waypointPin:Hide()
+    -- Reset strata to creation defaults so the mouse-enabled pin doesn't
+    -- linger at TOOLTIP (set by ShowMultipleWaypoints) where it can
+    -- overlap and steal mouse from the TOOLTIP-strata results panel.
+    waypointPin:SetFrameStrata("HIGH")
+    waypointPin:SetFrameLevel(2000)
+    waypointPin:EnableMouse(true)
 
     -- Refresh the UI search bar's clear button (pin is gone, but map
     -- navigation may still be active via efPlacedWaypoint).
-    local sf = _G["EasyFindSearchFrame"]
-    if sf and sf.UpdateClearButtonVisibility then
-        sf.UpdateClearButtonVisibility()
-    end
+    self:RefreshAllClearButtons()
     waypointPin.waypointX = nil
     waypointPin.waypointY = nil
     waypointPin.isLocalSearch = nil
@@ -7387,6 +7423,7 @@ function MapSearch:ClearHighlight()
     if self.extraPins then
         for _, pin in ipairs(self.extraPins) do
             pin:Hide()
+            pin:EnableMouse(true)
             pin.waypointX = nil
             pin.waypointY = nil
             pin.isLocalSearch = nil
@@ -7465,6 +7502,19 @@ function MapSearch:HasActiveNavigation()
     return false
 end
 
+function MapSearch:RefreshAllClearButtons()
+    local frames = {
+        _G["EasyFindSearchFrame"],
+        _G["EasyFindMapSearchFrame"],
+        _G["EasyFindMapGlobalSearchFrame"],
+    }
+    for _, f in ipairs(frames) do
+        if f and f.UpdateClearButtonVisibility then
+            f.UpdateClearButtonVisibility()
+        end
+    end
+end
+
 -- Return the currently-highlighted pin's coordinates and mapID, whether
 -- it was shown via ShowWaypointAt (waypointPin) or HighlightPin (native
 -- Blizzard pin). Used by the demo's "click to start tracking" step to
@@ -7490,10 +7540,7 @@ function MapSearch:TrackActiveLocation()
     C_SuperTrack.SetSuperTrackedUserWaypoint(true)
     efPlacedWaypoint = true
     ShowSuperTrackGlow()
-    local sf = _G["EasyFindSearchFrame"]
-    if sf and sf.UpdateClearButtonVisibility then
-        sf.UpdateClearButtonVisibility()
-    end
+    self:RefreshAllClearButtons()
     return true
 end
 
@@ -7520,10 +7567,7 @@ function MapSearch:ClearAll()
         end
     end
     -- Notify the UI search bar to refresh its clear-button state.
-    local sf = _G["EasyFindSearchFrame"]
-    if sf and sf.UpdateClearButtonVisibility then
-        sf.UpdateClearButtonVisibility()
-    end
+    self:RefreshAllClearButtons()
 end
 
 function MapSearch:GetNearestInstance(instances, mapID)
@@ -8217,10 +8261,7 @@ function MapSearch:HandleUISearchClick(data)
                     icon = data.icon, category = data.category,
                     isLocal = true,
                 }
-                local sf = _G["EasyFindSearchFrame"]
-                if sf and sf.UpdateClearButtonVisibility then
-                    sf.UpdateClearButtonVisibility()
-                end
+                MapSearch:RefreshAllClearButtons()
             end
         end
     else
