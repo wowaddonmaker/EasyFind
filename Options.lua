@@ -1207,7 +1207,7 @@ function Options:Initialize()
         { label = "Smart Show |cFF888888(Recommended)|r", shortLabel = "Smart", dbKey = "mapSmartShow", default = false,
           tooltip = "Map search bars hide until you move your mouse near them.\nBars reappear on hover and fade when you move away.\nText in search bars or an open results list prevents fading.",
           callback = function() if ns.MapSearch and ns.MapSearch.UpdateMapSmartShow then ns.MapSearch:UpdateMapSmartShow() end end },
-        { label = "Hide Fullscreen", shortLabel = "No Full", dbKey = "hideSearchBarsMaximized", default = false,
+        { label = "Hide Fullscreen", shortLabel = "No Full", dbKey = "hideSearchBarsMaximized", default = true,
           tooltip = "Both map search bars are hidden when the world map is maximized (full screen).\nThey reappear when you return to the windowed map.",
           callback = function() if ns.MapSearch and ns.MapSearch.UpdateHideMaximized then ns.MapSearch:UpdateHideMaximized() end end },
         { label = "Results Above", shortLabel = "Above", dbKey = "mapResultsAbove", default = false,
@@ -1715,7 +1715,7 @@ function Options:DoResetAll()
     EasyFind.db.minimapPinGlow = true
     EasyFind.db.guideCircleScale = 1.0
     EasyFind.db.mapSmartShow = false
-    EasyFind.db.hideSearchBarsMaximized = false
+    EasyFind.db.hideSearchBarsMaximized = true
     EasyFind.db.visible = true
     EasyFind.db.enableUISearch = true
     EasyFind.db.enableMapSearch = true
@@ -1895,7 +1895,7 @@ function Options:DoResetMap()
     EasyFind.db.localMapDirectOpen = false
     EasyFind.db.globalMapDirectOpen = false
     EasyFind.db.mapSmartShow = false
-    EasyFind.db.hideSearchBarsMaximized = false
+    EasyFind.db.hideSearchBarsMaximized = true
     EasyFind.db.mapResultsAbove = false
     EasyFind.db.mapFontSize = 0.9
     EasyFind.db.mapSearchYOffset = 0
