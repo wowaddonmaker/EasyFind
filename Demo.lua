@@ -949,12 +949,8 @@ function Demo.Start(ctx)
         -- state still reads true, which causes spurious auto-close
         -- during demo playback. Swap in a no-op OnUpdate for the demo's
         -- lifetime so the dropdown stays open when the demo wants it
-        -- open. Restored on endDemo.
-        local savedFilterDropdownOnUpdate
-        if searchFrame.filterDropdown then
-            savedFilterDropdownOnUpdate = searchFrame.filterDropdown:GetScript("OnUpdate")
-            searchFrame.filterDropdown:SetScript("OnUpdate", nil)
-        end
+        -- open. Suspend/resume is tied to applyRunningLocks/releaseRunningLocks
+        -- so the dropdown works normally when the demo is idle.
 
         -- Temporarily force-disable movement fade (staticOpacity = true)
         -- so the search bar stays at full alpha even if the player walks
@@ -969,6 +965,7 @@ function Demo.Start(ctx)
         local cursor = CreateFrame("Frame", nil, UIParent)
         cursor:SetSize(36, 36)
         cursor:SetFrameStrata("TOOLTIP")
+        cursor:SetFrameLevel(10001)
         cursor:EnableMouse(false)
         local cursorTex = cursor:CreateTexture(nil, "OVERLAY")
         cursorTex:SetAllPoints()
@@ -976,6 +973,12 @@ function Demo.Start(ctx)
         cursorTex:SetTexture(4489300)
         cursorTex:SetTexCoord(0.0000, 0.2315, 0.0000, 0.4104)
         cursor:Hide()
+
+        local rightClickIcon = cursor:CreateTexture(nil, "OVERLAY")
+        rightClickIcon:SetAtlas("newplayertutorial-icon-mouse-rightbutton")
+        rightClickIcon:SetSize(48, 48)
+        rightClickIcon:SetPoint("LEFT", cursor, "RIGHT", 2, 0)
+        rightClickIcon:Hide()
 
         active = true
         -- stepGen is bumped whenever an in-flight animation is cancelled so
@@ -991,10 +994,14 @@ function Demo.Start(ctx)
         local pendingTimers = {}
         local stopBlinkCursor    -- forward decl; defined below next to typeText
         local updateLockState    -- forward decl; defined where the locks are built
+        local locksSuppressed    -- forward decl; defined where the locks are built
+        local applyRunningLocks  -- forward decl; defined where the locks are built
+        local releaseRunningLocks -- forward decl; defined where the locks are built
         local setHoveredRow      -- forward decl; defined with result-row hover
         local clearButtonHover   -- forward decl; defined before moveCursorTo
         local resetMapSearchState  -- forward decl; defined with map search demo
         local closeWorldMap        -- forward decl; defined with map search demo
+        local hideMapCaret         -- forward decl; defined with map search demo
 
         local tickFrame = CreateFrame("Frame")
         tickFrame:SetScript("OnUpdate", function(_, dt)
@@ -1057,27 +1064,135 @@ function Demo.Start(ctx)
             end
         end
 
+        -- Builds a tutorial-style floating text box: vertical black-to-
+        -- dim-yellow interior plus a chamfered glow border rendered
+        -- from three custom TGAs (corner, horizontal edge, vertical
+        -- edge) tinted to the neon yellow. The alpha profile -- bright
+        -- band, soft falloff, diagonal corner chamfer -- is baked into
+        -- the texture files (see tools/gen_glow_tgas.py), so scaling
+        -- the frame just re-stretches the edge strips between the
+        -- fixed-size corner pieces. The glow container pulses via a
+        -- single alpha animation.
+        local function createTutorialBox(textFont)
+            local f = CreateFrame("Frame", nil, UIParent)
+            f:SetFrameStrata("TOOLTIP")
+            f:SetFrameLevel(1000)
+            f:SetIgnoreParentAlpha(true)
+
+            local BR, BG, BB = 1.0, 0.98, 0.45
+            local TR, TG, TB = 1.0, 0.96, 0.15
+
+            -- Interior: black at top fading to a dim yellow-brown at bottom.
+            local interior = f:CreateTexture(nil, "BACKGROUND", nil, 2)
+            interior:SetAllPoints(f)
+            interior:SetColorTexture(1, 1, 1, 1)
+            interior:SetGradient("VERTICAL",
+                CreateColor(0.32, 0.26, 0.02, 0.94),
+                CreateColor(0.00, 0.00, 0.00, 0.96))
+
+            -- Text (on f so the pulse doesn't dim it).
+            f.fs = f:CreateFontString(nil, "OVERLAY", textFont or "GameFontNormalLarge")
+            f.fs:SetPoint("TOPLEFT",     f, "TOPLEFT",     16, -12)
+            f.fs:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16,  12)
+            f.fs:SetJustifyH("CENTER")
+            f.fs:SetJustifyV("MIDDLE")
+            f.fs:SetTextColor(TR, TG, TB, 1.0)
+            f.fs:SetShadowColor(0, 0, 0, 1)
+            f.fs:SetShadowOffset(1, -1)
+
+            -- Chamfered glow border via custom TGA textures. The three
+            -- files encode the exact alpha profile we want (bright
+            -- band in the middle, soft falloff on both sides, diagonal
+            -- chamfer cut at the outer corner), so there's no rect-
+            -- math stacking. The shape is real pixels in an alpha
+            -- channel, tinted to the neon yellow via SetVertexColor.
+            local glow = CreateFrame("Frame", nil, f)
+            glow:SetAllPoints(f)
+
+            local TEX_CORNER = "Interface\\AddOns\\EasyFind\\textures\\glow-corner"
+            local TEX_EDGE_H = "Interface\\AddOns\\EasyFind\\textures\\glow-edge-h"
+            local TEX_EDGE_V = "Interface\\AddOns\\EasyFind\\textures\\glow-edge-v"
+            local CORNER_SZ  = 16   -- native texture dimension
+            local HALF       = CORNER_SZ / 2
+
+            -- The corner TGA is designed TL-style (outermost pixel at
+            -- its own top-left). For the other three corners we flip
+            -- the texture via SetTexCoord's left/right and top/bottom
+            -- being swapped.
+            local function addCorner(frameAnchor, dx, dy, texL, texR, texT, texB)
+                local t = glow:CreateTexture(nil, "BORDER")
+                t:SetTexture(TEX_CORNER)
+                t:SetTexCoord(texL, texR, texT, texB)
+                t:SetVertexColor(BR, BG, BB)
+                t:SetSize(CORNER_SZ, CORNER_SZ)
+                t:SetPoint(frameAnchor, f, frameAnchor, dx, dy)
+            end
+            addCorner("TOPLEFT",     -HALF,  HALF, 0, 1, 0, 1)   -- TL
+            addCorner("TOPRIGHT",     HALF,  HALF, 1, 0, 0, 1)   -- TR
+            addCorner("BOTTOMLEFT",  -HALF, -HALF, 0, 1, 1, 0)   -- BL
+            addCorner("BOTTOMRIGHT",  HALF, -HALF, 1, 0, 1, 0)   -- BR
+
+            -- Edges stretch between the corners. The horizontal edge
+            -- texture has its cross-section gradient along Y; we flip
+            -- Y for the bottom edge. Vertical edge texture gradient is
+            -- along X; we flip X for the right edge.
+            local function addHEdge(frameAnchorL, frameAnchorR, dyOuter, dyInner, flipY)
+                local t = glow:CreateTexture(nil, "BORDER")
+                t:SetTexture(TEX_EDGE_H)
+                if flipY then t:SetTexCoord(0, 1, 1, 0) else t:SetTexCoord(0, 1, 0, 1) end
+                t:SetVertexColor(BR, BG, BB)
+                t:SetPoint("TOPLEFT",     f, frameAnchorL,  HALF, dyOuter)
+                t:SetPoint("BOTTOMRIGHT", f, frameAnchorR, -HALF, dyInner)
+            end
+            addHEdge("TOPLEFT",    "TOPRIGHT",     HALF, -HALF, false)
+            addHEdge("BOTTOMLEFT", "BOTTOMRIGHT",  HALF, -HALF, true)
+
+            local function addVEdge(frameAnchorT, frameAnchorB, dxOuter, dxInner, flipX)
+                local t = glow:CreateTexture(nil, "BORDER")
+                t:SetTexture(TEX_EDGE_V)
+                if flipX then t:SetTexCoord(1, 0, 0, 1) else t:SetTexCoord(0, 1, 0, 1) end
+                t:SetVertexColor(BR, BG, BB)
+                t:SetPoint("TOPLEFT",     f, frameAnchorT, dxOuter, -HALF)
+                t:SetPoint("BOTTOMRIGHT", f, frameAnchorB, dxInner,  HALF)
+            end
+            addVEdge("TOPLEFT",  "BOTTOMLEFT",  -HALF,  HALF, false)
+            addVEdge("TOPRIGHT", "BOTTOMRIGHT", -HALF,  HALF, true)
+
+
+            -- Neon pulse: bright to slightly dim and back. Floor stays
+            -- high enough that the outer glow is always visible.
+            local pulseAG = glow:CreateAnimationGroup()
+            pulseAG:SetLooping("BOUNCE")
+            local pulseAnim = pulseAG:CreateAnimation("Alpha")
+            pulseAnim:SetFromAlpha(0.65)
+            pulseAnim:SetToAlpha(1.0)
+            pulseAnim:SetDuration(0.9)
+            pulseAnim:SetSmoothing("IN_OUT")
+            pulseAG:Play()
+            f:HookScript("OnShow", function() pulseAG:Restart() end)
+
+            -- Re-sizes the frame to fit the current text plus padding.
+            f.SetAutoSized = function(self, maxWidth)
+                maxWidth = maxWidth or 380
+                self.fs:ClearAllPoints()
+                self.fs:SetPoint("CENTER", self, "CENTER", 0, 0)
+                self.fs:SetWidth(maxWidth - 32)
+                local w = mmin(self.fs:GetStringWidth() + 32, maxWidth)
+                local h = self.fs:GetStringHeight() + 24
+                self:SetSize(w, h)
+            end
+
+            return f
+        end
+
         -- Transition banner shown at the end of Fast Mode, hidden when
         -- Guide Mode begins. Anchored near the top-center of the screen
         -- on the TOOLTIP strata so it floats above every menu and frame.
-        -- The backdrop is flat-dark with a gold tooltip border (matching
-        -- the demo panel's aesthetic) plus a soft radial glow behind the
-        -- text so it reads clearly without looking like a stock dialog.
         -- A fade-in/out animation group softens the transition.
-        local transitionFrame = CreateFrame("Frame", nil, UIParent)
-        transitionFrame:SetFrameStrata("TOOLTIP")
-        transitionFrame:SetFrameLevel(1000)
+        local transitionFrame = createTutorialBox("GameFontNormalLarge")
         transitionFrame:SetPoint("TOP", UIParent, "TOP", 0, -160)
-        transitionFrame:SetSize(400, 72)
-        transitionFrame:SetIgnoreParentAlpha(true)
-
-        local transitionFS = transitionFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-        transitionFS:SetPoint("CENTER", transitionFrame, "CENTER", 0, 0)
-        transitionFS:SetWidth(370)
-        transitionFS:SetJustifyH("CENTER")
-        transitionFS:SetTextColor(1.0, 0.82, 0.0, 1.0)
-        transitionFS:SetShadowColor(0, 0, 0, 1)
-        transitionFS:SetShadowOffset(2, -2)
+        transitionFrame:SetSize(460, 80)
+        local transitionFS = transitionFrame.fs
         transitionFS:SetText("Now let's take a look at what that process looks like in Guide Mode.")
 
         transitionFrame:Hide()
@@ -1088,61 +1203,44 @@ function Demo.Start(ctx)
         function transitionText:Show() transitionFrame:Show() end
         function transitionText:Hide() transitionFrame:Hide() end
 
-        -- Minimap callout: floating gold text anchored to the minimap,
-        -- used to draw attention to minimap changes (e.g. "your target
-        -- is now tracked"). Same visual style as transitionText.
-        local minimapCalloutFrame = CreateFrame("Frame", nil, UIParent)
-        minimapCalloutFrame:SetFrameStrata("TOOLTIP")
-        minimapCalloutFrame:SetFrameLevel(1000)
-        minimapCalloutFrame:SetSize(300, 60)
-        minimapCalloutFrame:SetIgnoreParentAlpha(true)
-        -- Anchor just below the minimap so the callout points at it.
-        -- Falls back to top-right of the screen if Minimap isn't present.
+        -- Minimap callout: tutorial-style hint box anchored to the
+        -- minimap, used to draw attention to minimap changes (e.g.
+        -- "your target is now tracked").
+        local minimapCalloutFrame = createTutorialBox("GameFontNormalLarge")
+        minimapCalloutFrame:SetSize(320, 68)
         if _G["Minimap"] then
             minimapCalloutFrame:SetPoint("RIGHT", _G["Minimap"], "LEFT", -20, 40)
         else
             minimapCalloutFrame:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -240, -80)
         end
-
-        local minimapCalloutFS = minimapCalloutFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-        minimapCalloutFS:SetPoint("CENTER", minimapCalloutFrame, "CENTER", 0, 0)
-        minimapCalloutFS:SetWidth(280)
-        minimapCalloutFS:SetJustifyH("CENTER")
-        minimapCalloutFS:SetTextColor(1.0, 0.82, 0.0, 1.0)
-        minimapCalloutFS:SetShadowColor(0, 0, 0, 1)
-        minimapCalloutFS:SetShadowOffset(2, -2)
+        local minimapCalloutFS = minimapCalloutFrame.fs
         minimapCalloutFS:SetText("Note how your target is now tracked!")
         minimapCalloutFrame:Hide()
 
         local minimapCallout = {}
-        function minimapCallout:SetText(text) minimapCalloutFS:SetText(text or "") end
+        function minimapCallout:SetText(text)
+            minimapCalloutFS:SetText(text or "")
+            minimapCalloutFrame:SetAutoSized(360)
+        end
         function minimapCallout:Show() minimapCalloutFrame:Show() end
         function minimapCallout:Hide() minimapCalloutFrame:Hide() end
 
         -- Floating narration anchored next to the local map search frame.
-        -- Used by mapSearchCurrent's "browse what's around" step. Frame
-        -- and font string live as fields on the table so this consumes
-        -- only one local in the parent function.
+        -- Used by mapSearchCurrent's "browse what's around" step.
         local mapSearchCallout = {}
-        mapSearchCallout.frame = CreateFrame("Frame", nil, UIParent)
-        mapSearchCallout.frame:SetFrameStrata("TOOLTIP")
-        mapSearchCallout.frame:SetFrameLevel(1000)
+        mapSearchCallout.frame = createTutorialBox("GameFontNormalLarge")
         mapSearchCallout.frame:SetSize(280, 60)
-        mapSearchCallout.frame:SetIgnoreParentAlpha(true)
         mapSearchCallout.frame:Hide()
-        mapSearchCallout.fs = mapSearchCallout.frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-        mapSearchCallout.fs:SetPoint("CENTER", mapSearchCallout.frame, "CENTER", 0, 0)
-        mapSearchCallout.fs:SetWidth(260)
-        mapSearchCallout.fs:SetJustifyH("CENTER")
-        mapSearchCallout.fs:SetTextColor(1.0, 0.82, 0.0, 1.0)
-        mapSearchCallout.fs:SetShadowColor(0, 0, 0, 1)
-        mapSearchCallout.fs:SetShadowOffset(2, -2)
-        function mapSearchCallout:SetText(text) self.fs:SetText(text or "") end
+        mapSearchCallout.fs = mapSearchCallout.frame.fs
+        function mapSearchCallout:SetText(text)
+            self.fs:SetText(text or "")
+            self.frame:SetAutoSized(340)
+        end
         function mapSearchCallout:Show()
             local lsf = _G["EasyFindMapSearchFrame"]
             if lsf then
                 self.frame:ClearAllPoints()
-                self.frame:SetPoint("LEFT", lsf, "RIGHT", 24, 0)
+                self.frame:SetPoint("LEFT", lsf, "RIGHT", 56, 0)
             end
             self.frame:Show()
         end
@@ -1159,6 +1257,9 @@ function Demo.Start(ctx)
         local function endDemo()
             active = false
             paused = false
+            if searchFrame.filterDropdown then
+                searchFrame.filterDropdown._demoSuspend = nil
+            end
             wipe(pendingTimers)
             tickFrame:SetScript("OnUpdate", nil)
             cursor:SetScript("OnUpdate", nil)
@@ -1167,8 +1268,11 @@ function Demo.Start(ctx)
             setHoveredRow(nil)
             clearButtonHover()
             transitionText:Hide()
+            mapSearchCallout:Hide()
             minimapCallout:Hide()
             minimapArrow:Hide()
+            hideMapCaret()
+            if ns.MapSearch then ns.MapSearch._demoHoverLock = nil end
             -- Wipe any demo-modified search bar state so the bar returns
             -- to its clean default (placeholder visible, no stale text).
             searchFrame.editBox:SetText("")
@@ -1181,8 +1285,7 @@ function Demo.Start(ctx)
                 if searchFrame.filterDropdown:IsShown() then
                     searchFrame.filterDropdown:Hide()
                 end
-                -- Restore the original OnUpdate handler (auto-close).
-                searchFrame.filterDropdown:SetScript("OnUpdate", savedFilterDropdownOnUpdate)
+                searchFrame.filterDropdown._demoSuspend = nil
             end
             if ns.Highlight and ns.Highlight.ClearAll then
                 pcall(ns.Highlight.ClearAll, ns.Highlight)
@@ -1247,31 +1350,61 @@ function Demo.Start(ctx)
         rowHoverTex:SetVertexColor(1, 1, 1, 0.6)
         rowHoverTex:Hide()
         local hoveredResultRow
+        -- Separate hover overlay for the filter dropdown (its CheckButton
+        -- rows don't have a highlight texture set).
+        local dropdownHoverTex
+        local function getDropdownHoverTex()
+            if not dropdownHoverTex then
+                local dd = searchFrame.filterDropdown
+                if not dd then return nil end
+                dropdownHoverTex = dd:CreateTexture(nil, "OVERLAY")
+                dropdownHoverTex:SetColorTexture(1, 1, 1, 0.1)
+                dropdownHoverTex:Hide()
+            end
+            return dropdownHoverTex
+        end
 
         setHoveredRow = function(row)
             if row == hoveredResultRow then return end
-            -- Unlock previous row's highlight (for map result buttons
-            -- which use LockHighlight instead of the overlay texture).
-            if hoveredResultRow then
-                if hoveredResultRow.UnlockHighlight then
-                    hoveredResultRow:UnlockHighlight()
+            -- Fire OnLeave on the departing map result row so the map
+            -- preview clears at the exact same frame as the highlight.
+            local prev = hoveredResultRow
+            if prev then
+                if prev.UnlockHighlight then
+                    prev:UnlockHighlight()
+                end
+                if prev._demoMapHover then
+                    prev._demoMapHover = nil
+                    if ns.MapSearch then ns.MapSearch._demoHoverLock = nil end
+                    local onLeave = prev:GetScript("OnLeave")
+                    if onLeave then pcall(onLeave, prev) end
                 end
             end
             hoveredResultRow = row
+            rowHoverTex:Hide()
+            local ddTex = getDropdownHoverTex()
+            if ddTex then ddTex:Hide() end
             if row then
-                -- Map result buttons (EasyFindMapResultButton*) use
-                -- SetHighlightTexture natively, so LockHighlight works.
-                -- UI search buttons use the rowHoverTex overlay instead.
-                local isMapBtn = row:GetName() and sfind(row:GetName(), "MapResult")
-                if isMapBtn then
-                    if row.LockHighlight then row:LockHighlight() end
+                if row.GetHighlightTexture and row:GetHighlightTexture() then
+                    row:LockHighlight()
+                elseif row._isDropdownRow then
+                    if ddTex then
+                        ddTex:ClearAllPoints()
+                        ddTex:SetAllPoints(row)
+                        ddTex:Show()
+                    end
                 else
                     rowHoverTex:ClearAllPoints()
                     rowHoverTex:SetAllPoints(row)
                     rowHoverTex:Show()
                 end
-            else
-                rowHoverTex:Hide()
+                -- Fire OnEnter on map result rows so the map preview
+                -- appears at the exact same frame as the highlight.
+                if row._demoMapHover then
+                    if ns.MapSearch then ns.MapSearch._demoHoverLock = true end
+                    local onEnter = row:GetScript("OnEnter")
+                    if onEnter then pcall(onEnter, row) end
+                end
             end
         end
 
@@ -1285,13 +1418,41 @@ function Demo.Start(ctx)
             local ct = cursor:GetTop()
             if not cl then setHoveredRow(nil); return end
             local cx, cy = cl + 4, ct - 4
+            -- Pin popup
+            local pinPop = _G["EasyFindPinPopup"]
+            if pinPop and pinPop:IsShown() then
+                local rl, rr, rt, rb = pinPop:GetLeft(), pinPop:GetRight(), pinPop:GetTop(), pinPop:GetBottom()
+                if rl and cx >= rl and cx <= rr and cy <= rt and cy >= rb then
+                    setHoveredRow(pinPop)
+                    return
+                end
+            end
             -- UI search results
             if resultsFrame:IsShown() then
                 for i = 1, #resultButtons do
                     local row = resultButtons[i]
-                    if row and row:IsShown() and row.data then
+                    if row and row:IsShown() then
                         local rl, rr, rt, rb = row:GetLeft(), row:GetRight(), row:GetTop(), row:GetBottom()
                         if rl and cx >= rl and cx <= rr and cy <= rt and cy >= rb then
+                            setHoveredRow(row)
+                            return
+                        end
+                    end
+                end
+            end
+            -- Filter dropdown rows (dropdown has custom scaling, so
+            -- convert the cursor tip to the dropdown's coordinate space)
+            local dd = searchFrame.filterDropdown
+            if dd and dd:IsShown() and dd.checkRows then
+                local ds = dd:GetEffectiveScale()
+                local cs = cursor:GetEffectiveScale()
+                local dcx = cx * cs / ds
+                local dcy = cy * cs / ds
+                for _, row in pairs(dd.checkRows) do
+                    if row and row:IsShown() then
+                        local rl, rr, rt, rb = row:GetLeft(), row:GetRight(), row:GetTop(), row:GetBottom()
+                        if rl and dcx >= rl and dcx <= rr and dcy <= rt and dcy >= rb then
+                            row._isDropdownRow = true
                             setHoveredRow(row)
                             return
                         end
@@ -1413,7 +1574,13 @@ function Demo.Start(ctx)
                 if elapsed >= total then
                     self:SetSize(startSize, startSize)
                     self:SetScript("OnUpdate", nil)
-                    if onComplete then pcall(onComplete) end
+                    if onComplete then
+                        local ok, err = pcall(onComplete)
+                        if not ok and err then
+                            local handler = geterrorhandler()
+                            if handler then handler(err) end
+                        end
+                    end
                 end
             end)
         end
@@ -1847,10 +2014,150 @@ function Demo.Start(ctx)
         -- Zone/Instance Map Search demo
         --------------------------------------------------------------------
 
-        -- Type text into an arbitrary editbox (map search bars need real
-        -- focus for OnTextChanged to fire and trigger the search). The
-        -- editbox is given programmatic focus, which bypasses click
-        -- blockers. Characters are typed via SetText one at a time.
+        -- Blinking text caret for map search editboxes. A hidden
+        -- FontString mirrors the editbox font to measure text width.
+        local mapCaret = CreateFrame("Frame", nil, UIParent)
+        mapCaret:SetFrameStrata("TOOLTIP")
+        mapCaret:SetFrameLevel(10002)
+        mapCaret:SetSize(1, 1)
+        mapCaret:Hide()
+        local mapCaretTex = mapCaret:CreateTexture(nil, "OVERLAY")
+        mapCaretTex:SetTexture("Interface\\Buttons\\WHITE8x8")
+        mapCaretTex:SetVertexColor(1, 1, 1, 1)
+        mapCaretTex:SetWidth(1)
+        mapCaretTex:SetAllPoints()
+        local mapCaretMeasure = mapCaret:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        mapCaretMeasure:Hide()
+        local mapCaretTicker
+        local mapCaretLastEditBox
+
+        local function positionMapCaret(editBox)
+            mapCaret:ClearAllPoints()
+            local text = editBox:GetText() or ""
+            local inL = editBox:GetTextInsets()
+            local xOff = inL or 2
+            if #text > 0 then
+                if editBox ~= mapCaretLastEditBox then
+                    local ok, fontPath, fontSize, fontFlags = pcall(editBox.GetFont, editBox)
+                    if ok and fontPath and fontSize and fontSize > 0 then
+                        pcall(mapCaretMeasure.SetFont, mapCaretMeasure, fontPath, fontSize, fontFlags)
+                    end
+                    mapCaretLastEditBox = editBox
+                end
+                mapCaretMeasure:SetText(text)
+                xOff = xOff + (mapCaretMeasure:GetStringWidth() or 0)
+            end
+            mapCaret:SetPoint("LEFT", editBox, "LEFT", xOff, 0)
+            mapCaret:SetPoint("TOP", editBox, "TOP", 0, -2)
+            mapCaret:SetPoint("BOTTOM", editBox, "BOTTOM", 0, 2)
+        end
+
+        local function showMapCaret(editBox)
+            positionMapCaret(editBox)
+            mapCaret:Show()
+            mapCaretTex:SetAlpha(1)
+            if mapCaretTicker then mapCaretTicker:Cancel() end
+            local vis = true
+            mapCaretTicker = C_Timer.NewTicker(0.5, function()
+                vis = not vis
+                mapCaretTex:SetAlpha(vis and 1 or 0)
+            end)
+        end
+        hideMapCaret = function()
+            if mapCaretTicker then mapCaretTicker:Cancel(); mapCaretTicker = nil end
+            mapCaret:Hide()
+        end
+        local function repositionMapCaret(editBox)
+            positionMapCaret(editBox)
+            mapCaretTex:SetAlpha(1)
+        end
+
+        -- Simulate refocusing then backspacing the current editbox text
+        -- one character at a time. Shows a blinking caret at the end of
+        -- the text for a beat, then deletes character by character.
+        local function backspaceMapText(editBox, charDelay, onComplete)
+            local gsf = _G["EasyFindMapGlobalSearchFrame"]
+            local isGlobal = gsf and gsf.editBox == editBox
+            local runFn
+            if isGlobal and ns.MapSearch and ns.MapSearch.RunGlobalSearch then
+                runFn = function(t) ns.MapSearch:RunGlobalSearch(t) end
+            elseif ns.MapSearch and ns.MapSearch.RunLocalSearch then
+                runFn = function(t) ns.MapSearch:RunLocalSearch(t) end
+            else
+                runFn = function(t) editBox:SetText(t) end
+            end
+            local cur = editBox:GetText() or ""
+            local len = #cur
+            if len == 0 then
+                if onComplete then onComplete() end
+                return
+            end
+            showMapCaret(editBox)
+            safeAfter(0.6, function()
+                local myGen = stepGen
+                local function nextDel()
+                    if not active or myGen ~= stepGen then return end
+                    len = len - 1
+                    if len <= 0 then
+                        runFn("")
+                        repositionMapCaret(editBox)
+                        safeAfter(0.4, function()
+                            hideMapCaret()
+                            if onComplete then onComplete() end
+                        end)
+                        return
+                    end
+                    runFn(cur:sub(1, len))
+                    repositionMapCaret(editBox)
+                    safeAfter(charDelay, nextDel)
+                end
+                nextDel()
+            end)
+        end
+
+        -- Variant that leaves the caret visible after the last deletion
+        -- so the caret persists across backspace→type transitions (matching
+        -- real editbox behavior where focus isn't lost between edits).
+        local function backspaceMapTextKeepCaret(editBox, charDelay, onComplete)
+            local cur = editBox:GetText() or ""
+            if #cur == 0 then
+                showMapCaret(editBox)
+                if onComplete then onComplete() end
+                return
+            end
+            local gsf = _G["EasyFindMapGlobalSearchFrame"]
+            local isGlobal = gsf and gsf.editBox == editBox
+            local runFn
+            if isGlobal and ns.MapSearch and ns.MapSearch.RunGlobalSearch then
+                runFn = function(t) ns.MapSearch:RunGlobalSearch(t) end
+            elseif ns.MapSearch and ns.MapSearch.RunLocalSearch then
+                runFn = function(t) ns.MapSearch:RunLocalSearch(t) end
+            else
+                runFn = function(t) editBox:SetText(t) end
+            end
+            local len = #cur
+            showMapCaret(editBox)
+            safeAfter(0.6, function()
+                local myGen = stepGen
+                local function nextDel()
+                    if not active or myGen ~= stepGen then return end
+                    len = len - 1
+                    if len <= 0 then
+                        runFn("")
+                        repositionMapCaret(editBox)
+                        safeAfter(0.4, function()
+                            if onComplete then onComplete() end
+                        end)
+                        return
+                    end
+                    runFn(cur:sub(1, len))
+                    repositionMapCaret(editBox)
+                    safeAfter(charDelay, nextDel)
+                end
+                nextDel()
+            end)
+        end
+
         local function typeMapText(editBox, text, charDelay, onComplete)
             -- NEVER focus the real editbox: if it had keyboard focus,
             -- the real user could type into it alongside the demo.
@@ -1870,19 +2177,33 @@ function Demo.Start(ctx)
                 runFn = function(t) editBox:SetText(t) end
             end
             runFn("")
+            showMapCaret(editBox)
             local i = 0
             local myGen = stepGen
             local function nextChar()
                 if not active or myGen ~= stepGen then return end
                 i = i + 1
                 if i > #text then
+                    hideMapCaret()
                     if onComplete then onComplete() end
                     return
                 end
                 runFn(text:sub(1, i))
+                repositionMapCaret(editBox)
                 safeAfter(charDelay, nextChar)
             end
             nextChar()
+        end
+
+        -- Variant that re-shows the caret after typing finishes, matching
+        -- real editbox behavior where the caret persists until the user
+        -- clicks away. Used in browse flows where backspace→type cycles
+        -- repeat without defocusing.
+        local function typeMapTextKeepCaret(editBox, text, charDelay, onComplete)
+            typeMapText(editBox, text, charDelay, function()
+                showMapCaret(editBox)
+                if onComplete then onComplete() end
+            end)
         end
 
         -- Find a map search result button by partial name match.
@@ -1952,6 +2273,7 @@ function Demo.Start(ctx)
         -- activePinState (otherwise WorldMapFrame's OnShow hook would
         -- restore a stale pin the next time the map opens).
         resetMapSearchState = function()
+            hideMapCaret()
             local lsf = _G["EasyFindMapSearchFrame"]
             if lsf and lsf.editBox then
                 lsf.editBox:SetText("")
@@ -2087,6 +2409,7 @@ function Demo.Start(ctx)
                 or _G["EasyFindMapResultButton1"]
             if not target or not target:IsShown() then done(); return end
             moveCursorTo(target, CURSOR_MOVE, function()
+                hideMapCaret()
                 clickAnim(function()
                     if target.data and ns.MapSearch then
                         pcall(ns.MapSearch.SelectResult, ns.MapSearch, target.data)
@@ -2245,6 +2568,49 @@ function Demo.Start(ctx)
             end
         end
 
+        -- Hover the local map search mode button, show tooltip, click
+        -- to toggle if needed. Mirrors hoverModeButton for the UI bar.
+        local function hoverLocalMapModeBtn(wantFast, done)
+            local lsf = _G["EasyFindMapSearchFrame"]
+            local mb = lsf and lsf.modeBtn
+            if not mb then ensureLocalMapMode(wantFast); done(); return end
+            moveCursorTo(mb, CURSOR_MOVE, function()
+                if mb.btnBg then mb.btnBg:Show() end
+                if mb.LockHighlight then mb:LockHighlight() end
+                GameTooltip:SetOwner(mb, "ANCHOR_BOTTOM")
+                local currentFast = EasyFind.db.localMapDirectOpen
+                local function showTargetTooltip()
+                    if wantFast then
+                        GameTooltip:SetText("Fast Mode")
+                        GameTooltip:AddLine("Clicking a result auto-tracks on the minimap.", 1, 1, 1, true)
+                    else
+                        GameTooltip:SetText("Guide Mode")
+                        GameTooltip:AddLine("Clicking a result shows a pin you can click to track.", 1, 1, 1, true)
+                    end
+                    GameTooltip:Show()
+                end
+                if currentFast ~= wantFast then
+                    -- Wrong mode: show current, pause, click to toggle
+                    if currentFast then
+                        GameTooltip:SetText("Fast Mode")
+                    else
+                        GameTooltip:SetText("Guide Mode")
+                    end
+                    GameTooltip:Show()
+                    safeAfter(1.0, function()
+                        clickAnim(function()
+                            ensureLocalMapMode(wantFast)
+                            showTargetTooltip()
+                            safeAfter(1.0, done)
+                        end)
+                    end)
+                else
+                    showTargetTooltip()
+                    safeAfter(1.2, done)
+                end
+            end)
+        end
+
         -- Click the waypoint pin to place a SuperTrack user waypoint.
         -- This triggers the real minimap glow / guide-circle behavior.
         -- Uses MapSearch helpers that resolve the pin location whether
@@ -2355,6 +2721,14 @@ function Demo.Start(ctx)
             minimapArrowAG:Stop()
             minimapArrowFrame:Hide()
         end
+        function minimapArrow:SetPaused(isPaused)
+            if not minimapArrowFrame:IsShown() then return end
+            if isPaused then
+                minimapArrowAG:Pause()
+            else
+                minimapArrowAG:Play()
+            end
+        end
 
         -- Show the minimap callout text and a bouncing arrow pointing
         -- at the minimap. No cursor movement: the arrow does the
@@ -2392,15 +2766,16 @@ function Demo.Start(ctx)
             safeAfter(0.8, done)
         end
 
-        function msc.typeFlight(done)
+        function msc.retypeLastBrowse(done)
             local lsf = _G["EasyFindMapSearchFrame"]
             local editBox = lsf and lsf.editBox
             if not editBox then done(); return end
+            local lastPOI = msc.lastBrowsePOI
+            local query = lastPOI and slower(lastPOI.name):sub(1, 3) or "ban"
             moveCursorTo(editBox, CURSOR_MOVE, function()
                 clickAnim(function()
-                    editBox:SetText("")
-                    safeAfter(STEP_PAUSE, function()
-                        typeMapText(editBox, "fli", TYPE_DELAY, function()
+                    backspaceMapTextKeepCaret(editBox, TYPE_DELAY, function()
+                        typeMapTextKeepCaret(editBox, query, TYPE_DELAY, function()
                             safeAfter(SETTLE_PAUSE, done)
                         end)
                     end)
@@ -2408,52 +2783,70 @@ function Demo.Start(ctx)
             end)
         end
 
+        local function closeMapAndFinish(done)
+            local closeBtn = getMapCloseBtn()
+            if closeBtn and closeBtn:IsShown() then
+                moveCursorTo(closeBtn, CURSOR_MOVE, function()
+                    clickAnim(function()
+                        clearDemoWaypoint()
+                        resetMapSearchState()
+                        closeWorldMap()
+                        safeAfter(0.5, function()
+                            cursor:Hide()
+                            done()
+                        end)
+                    end)
+                end)
+            else
+                clearDemoWaypoint()
+                resetMapSearchState()
+                closeWorldMap()
+                safeAfter(0.5, function()
+                    cursor:Hide()
+                    done()
+                end)
+            end
+        end
+
         function msc.finishHintAndClose(done)
             showMinimapHint(function()
                 minimapCallout:Hide()
                 minimapArrow:Hide()
-                local closeBtn = getMapCloseBtn()
-                if closeBtn and closeBtn:IsShown() then
-                    moveCursorTo(closeBtn, CURSOR_MOVE, function()
-                        clickAnim(function()
-                            clearDemoWaypoint()
-                            resetMapSearchState()
-                            closeWorldMap()
-                            safeAfter(0.5, function()
-                                cursor:Hide()
-                                done()
-                            end)
-                        end)
-                    end)
-                else
-                    clearDemoWaypoint()
-                    resetMapSearchState()
-                    closeWorldMap()
-                    safeAfter(0.5, function()
-                        cursor:Hide()
-                        done()
-                    end)
-                end
+                closeMapAndFinish(done)
             end)
         end
 
         function msc.clickResult(wantFast, done)
             ensureLocalMapMode(wantFast)
-            local target = findMapResultByName("Flight")
+            local lastPOI = msc.lastBrowsePOI
+            local target = (lastPOI and findMapResultByName(lastPOI.name))
                 or findFirstVisibleMapResult()
             if not target then
                 safeAfter(0.5, done)
                 return
             end
             moveCursorTo(target, CURSOR_MOVE, function()
+                hideMapCaret()
                 clickAnim(function()
+                    -- Clear the hover tag so setHoveredRow fires OnLeave
+                    -- when SelectResult hides the results frame.
+                    if target._demoMapHover then target._demoMapHover = nil end
+                    setHoveredRow(nil)
                     if target.data and ns.MapSearch then
                         pcall(ns.MapSearch.SelectResult, ns.MapSearch, target.data)
                     end
                     if wantFast then
-                        minimapCallout:SetText("Notice how your target is now automatically tracked!")
                         safeAfter(SETTLE_PAUSE, function()
-                            msc.finishHintAndClose(done)
+                            minimapCallout:SetText("Notice how your target is now automatically tracked!")
+                            minimapCallout:Show()
+                            minimapArrow:Show()
+                            moveCursorTo(minimapCalloutFrame, CURSOR_MOVE, function()
+                                safeAfter(2.5, function()
+                                    minimapCallout:Hide()
+                                    minimapArrow:Hide()
+                                    closeMapAndFinish(done)
+                                end)
+                            end, 0, -45)
                         end)
                     else
                         safeAfter(SETTLE_PAUSE, done)
@@ -2463,33 +2856,66 @@ function Demo.Start(ctx)
         end
 
         function msc.clickPinTrackContinue(done)
+            mapSearchCallout:SetText("Click the pin to place a waypoint and start tracking.")
+            mapSearchCallout:Show()
             clickPinAndTrack(function()
-                minimapCallout:SetText("Tracked. There's an even easier way...")
-                safeAfter(2.0, function()
-                    minimapCallout:Hide()
-                    clearDemoWaypoint()
-                    resetMapSearchState()
-                    local lsf = _G["EasyFindMapSearchFrame"]
-                    local editBox = lsf and lsf.editBox
-                    if editBox then editBox:SetText("") end
-                    safeAfter(0.4, done)
+                safeAfter(1.5, function()
+                    mapSearchCallout:Hide()
+                    minimapCallout:SetText("Tracked. There's an even easier way...")
+                    minimapCallout:Show()
+                    minimapArrow:Show()
+                    moveCursorTo(minimapCalloutFrame, CURSOR_MOVE, function()
+                        safeAfter(2.5, function()
+                            minimapCallout:Hide()
+                            minimapArrow:Hide()
+                            -- Move cursor to the map search clear button and click it
+                            -- so the user sees how to dismiss the pin, rather than
+                            -- having it magically disappear.
+                            local lsf = _G["EasyFindMapSearchFrame"]
+                            local clearBtn = lsf and lsf.clearBtn
+                            if clearBtn and clearBtn:IsShown() then
+                                moveCursorTo(clearBtn, CURSOR_MOVE, function()
+                                    clickAnim(function()
+                                        local handler = clearBtn:GetScript("OnClick")
+                                        if handler then pcall(handler, clearBtn) end
+                                        clearDemoWaypoint()
+                                        safeAfter(0.4, done)
+                                    end)
+                                end)
+                            else
+                                clearDemoWaypoint()
+                                resetMapSearchState()
+                                if lsf and lsf.editBox then lsf.editBox:SetText("") end
+                                safeAfter(0.4, done)
+                            end
+                        end)
+                    end, 0, -45)
                 end)
             end)
         end
 
         function msc.clickNavBtnAutoTrack(done)
-            local row = findMapResultByName("Flight") or findFirstVisibleMapResult()
+            local lastPOI = msc.lastBrowsePOI
+            local row = (lastPOI and findMapResultByName(lastPOI.name))
+                or findFirstVisibleMapResult()
             if not row or not row.navBtn or not row.navBtn:IsShown() then
                 safeAfter(0.5, done)
                 return
             end
             moveCursorTo(row.navBtn, CURSOR_MOVE, function()
-                clickAnim(function()
-                    if row.data and ns.MapSearch then
-                        ns.MapSearch.autoTrackNextPin = true
-                        pcall(ns.MapSearch.SelectResult, ns.MapSearch, row.data)
-                    end
-                    safeAfter(SETTLE_PAUSE, done)
+                hideMapCaret()
+                -- Briefly show the nav button tooltip before clicking
+                local onEnter = row.navBtn:GetScript("OnEnter")
+                if onEnter then pcall(onEnter, row.navBtn) end
+                safeAfter(1.0, function()
+                    GameTooltip_Hide()
+                    clickAnim(function()
+                        if row.data and ns.MapSearch then
+                            ns.MapSearch.autoTrackNextPin = true
+                            pcall(ns.MapSearch.SelectResult, ns.MapSearch, row.data)
+                        end
+                        safeAfter(SETTLE_PAUSE, done)
+                    end)
                 end)
             end)
         end
@@ -2515,36 +2941,48 @@ function Demo.Start(ctx)
             return picks
         end
 
-        function msc.hoverSearchPreview(query, displayName, narration, done)
+        function msc.hoverSearchPreview(query, displayName, narration, isFirstVisit, keepPreview, done)
             local lsf = _G["EasyFindMapSearchFrame"]
             local editBox = lsf and lsf.editBox
             if not editBox then done(); return end
-            moveCursorTo(editBox, CURSOR_MOVE, function()
-                clickAnim(function()
-                    editBox:SetText("")
-                    safeAfter(STEP_PAUSE, function()
-                        typeMapText(editBox, query, TYPE_DELAY, function()
-                            safeAfter(SETTLE_PAUSE, function()
-                                local row = findMapResultByName(displayName) or findFirstVisibleMapResult()
-                                if not row then done(); return end
-                                moveCursorTo(row, CURSOR_MOVE, function()
-                                    mapSearchCallout:SetText(narration)
-                                    mapSearchCallout:Show()
-                                    local onEnter = row:GetScript("OnEnter")
-                                    if onEnter then pcall(onEnter, row) end
-                                    safeAfter(2.2, function()
-                                        local onLeave = row:GetScript("OnLeave")
-                                        if onLeave then pcall(onLeave, row) end
+            local function afterFocus()
+                backspaceMapTextKeepCaret(editBox, TYPE_DELAY, function()
+                    typeMapTextKeepCaret(editBox, query, TYPE_DELAY, function()
+                        safeAfter(SETTLE_PAUSE, function()
+                            local row = findMapResultByName(displayName) or findFirstVisibleMapResult()
+                            if not row then done(); return end
+                            -- Tag the row so setHoveredRow fires OnEnter/OnLeave
+                            -- in sync with the highlight (same placeCursorAt frame).
+                            row._demoMapHover = true
+                            moveCursorTo(row, CURSOR_MOVE, function()
+                                mapSearchCallout:SetText(narration)
+                                mapSearchCallout:Show()
+                                safeAfter(2.2, function()
+                                    if keepPreview then
+                                        -- Leave _demoMapHover set so the preview
+                                        -- persists until clickResult clears it.
                                         done()
-                                    end)
+                                    else
+                                        -- Clear the tag; setHoveredRow will fire
+                                        -- OnLeave when the cursor moves away.
+                                        done()
+                                    end
                                 end)
                             end)
                         end)
                     end)
                 end)
-            end)
+            end
+            if isFirstVisit then
+                moveCursorTo(editBox, CURSOR_MOVE, function()
+                    clickAnim(afterFocus)
+                end)
+            else
+                moveCursorTo(editBox, CURSOR_MOVE, afterFocus)
+            end
         end
 
+        msc.lastBrowsePOI = nil
         function msc.browseWhatsAround(done)
             local picks = msc.pickDiversePOIs()
             if #picks == 0 then done(); return end
@@ -2552,27 +2990,21 @@ function Demo.Start(ctx)
             local function nextOne()
                 idx = idx + 1
                 if idx > #picks then
-                    mapSearchCallout:SetText("Now let's see what happens when we click a flight master.")
-                    safeAfter(2.5, function()
-                        mapSearchCallout:Hide()
-                        local lsf = _G["EasyFindMapSearchFrame"]
-                        local editBox = lsf and lsf.editBox
-                        if editBox then editBox:SetText("") end
-                        if ns.MapSearch and ns.MapSearch.ClearHighlight then
-                            pcall(ns.MapSearch.ClearHighlight, ns.MapSearch)
-                        end
-                        done()
-                    end)
+                    msc.lastBrowsePOI = picks[#picks]
+                    mapSearchCallout:Hide()
+                    done()
                     return
                 end
                 local poi = picks[idx]
                 local query = slower(poi.name):sub(1, 3)
-                msc.hoverSearchPreview(query, poi.name, "Hovering over a result shows it on the map.", nextOne)
+                local isLast = idx == #picks
+                msc.hoverSearchPreview(query, poi.name, "Hovering over a result shows it on the map.", idx == 1, isLast, nextOne)
             end
             nextOne()
         end
 
         DEMOS.mapSearchCurrent.rebuild = function(def)
+            msc.lastBrowsePOI = nil
             -- Capture the user's CURRENT mode as the snapshot so
             -- restoreUserSettings (which runs after rebuild) reverts
             -- any flips the demo's run/setupAfter make to the saved
@@ -2580,73 +3012,78 @@ function Demo.Start(ctx)
             -- demoModeFast, NOT the user's saved setting.
             savedLocalMapDirectOpen = EasyFind.db.localMapDirectOpen
             local isFast = demoModeFast["mapSearchCurrent"] ~= false
-            if isFast then
-                def.stepDefs = {
-                    { text = "Open the world map",                section = 1 },
-                    { text = "Browse what's around", section = 1 },
-                    { text = 'Start typing "Flight Master"',     section = 1 },
-                    { text = "Click the Flight Master result",    section = 1 },
-                }
-                def.sections = {
-                    { header = "", section = 1, firstStep = 1, lastStep = 4 },
-                }
-                def.run = {
-                    function(done) msc.openMap(true, done) end,
-                    msc.browseWhatsAround,
-                    msc.typeFlight,
-                    function(done) msc.clickResult(true, done) end,
-                }
-                def.setupAfter = {
-                    function() ensureLocalMapMode(true); openWorldMapToPlayerZone() end,
-                    function() ensureLocalMapMode(true); openWorldMapToPlayerZone() end,
-                    function()
-                        ensureLocalMapMode(true); openWorldMapToPlayerZone()
-                        if ns.MapSearch and ns.MapSearch.RunLocalSearch then
-                            pcall(ns.MapSearch.RunLocalSearch, ns.MapSearch, "fli")
-                        end
-                    end,
-                    function() clearDemoWaypoint(); resetMapSearchState(); closeWorldMap() end,
-                }
-            else
-                def.stepDefs = {
-                    { text = "Open the world map",                       section = 1 },
-                    { text = "Browse what's around",  section = 1 },
-                    { text = 'Start typing "Flight Master"',            section = 1 },
-                    { text = "Click the Flight Master result",           section = 1 },
-                    { text = "Click the pin to start tracking",          section = 1 },
-                    { text = 'Now type "Flight Master" again',           section = 1 },
-                    { text = "Click the nav pin to auto-track instead",  section = 1 },
-                    { text = "Now you're tracking it on the minimap!",   section = 1 },
-                }
-                def.sections = {
-                    { header = "", section = 1, firstStep = 1, lastStep = 8 },
-                }
-                def.run = {
-                    function(done) msc.openMap(false, done) end,
-                    msc.browseWhatsAround,
-                    msc.typeFlight,
-                    function(done) msc.clickResult(false, done) end,
-                    msc.clickPinTrackContinue,
-                    msc.typeFlight,
-                    msc.clickNavBtnAutoTrack,
-                    msc.minimapHintAndClose,
-                }
-                local snapMapSearch = function()
-                    ensureLocalMapMode(false); openWorldMapToPlayerZone()
+            local hasBrowse = #msc.pickDiversePOIs() > 0
+            local openSnap = function()
+                ensureLocalMapMode(isFast); openWorldMapToPlayerZone()
+            end
+            -- Snap to end-of-browse: map open with the last POI query
+            -- typed and results visible, ready for "Click a result".
+            local browseSnap = function()
+                ensureLocalMapMode(isFast); openWorldMapToPlayerZone()
+                local picks = msc.pickDiversePOIs()
+                if #picks > 0 then
+                    msc.lastBrowsePOI = picks[#picks]
+                    local query = slower(picks[#picks].name):sub(1, 3)
                     if ns.MapSearch and ns.MapSearch.RunLocalSearch then
-                        pcall(ns.MapSearch.RunLocalSearch, ns.MapSearch, "fli")
+                        ns.MapSearch:RunLocalSearch(query)
                     end
                 end
-                def.setupAfter = {
-                    function() ensureLocalMapMode(false); openWorldMapToPlayerZone() end,
-                    function() ensureLocalMapMode(false); openWorldMapToPlayerZone() end,
-                    snapMapSearch,
-                    snapMapSearch,
-                    function() ensureLocalMapMode(false); openWorldMapToPlayerZone() end,
-                    snapMapSearch,
-                    snapMapSearch,
-                    function() clearDemoWaypoint(); resetMapSearchState(); closeWorldMap() end,
-                }
+            end
+            local doneSnap = function()
+                clearDemoWaypoint(); resetMapSearchState(); closeWorldMap()
+            end
+            local modeLabel = isFast
+                and "Make sure Fast Mode is enabled"
+                or "Make sure Guide Mode is enabled"
+            local modeStep = function(done) hoverLocalMapModeBtn(isFast, done) end
+            if isFast then
+                if hasBrowse then
+                    def.stepDefs = {
+                        { text = "Open the world map",       section = 1 },
+                        { text = modeLabel,                  section = 1 },
+                        { text = "Browse what's around",     section = 1 },
+                        { text = "Click a result",           section = 1 },
+                    }
+                    def.sections = { { header = "", section = 1, firstStep = 1, lastStep = 4 } }
+                    def.run = {
+                        function(done) msc.openMap(true, done) end,
+                        modeStep,
+                        msc.browseWhatsAround,
+                        function(done) msc.clickResult(true, done) end,
+                    }
+                    def.setupAfter = { openSnap, openSnap, browseSnap, doneSnap }
+                else
+                    def.disabled = true
+                    def.disabledMessage = "No searchable POIs in this zone."
+                end
+            else
+                if hasBrowse then
+                    def.stepDefs = {
+                        { text = "Open the world map",                       section = 1 },
+                        { text = modeLabel,                                  section = 1 },
+                        { text = "Browse what's around",                     section = 1 },
+                        { text = "Click a result",                           section = 1 },
+                        { text = "Click the pin to start tracking",          section = 1 },
+                        { text = "Search again",                             section = 1 },
+                        { text = "Click the nav pin to auto-track instead",  section = 1 },
+                        { text = "Now you're tracking it on the minimap!",   section = 1 },
+                    }
+                    def.sections = { { header = "", section = 1, firstStep = 1, lastStep = 8 } }
+                    def.run = {
+                        function(done) msc.openMap(false, done) end,
+                        modeStep,
+                        msc.browseWhatsAround,
+                        function(done) msc.clickResult(false, done) end,
+                        msc.clickPinTrackContinue,
+                        msc.retypeLastBrowse,
+                        msc.clickNavBtnAutoTrack,
+                        msc.minimapHintAndClose,
+                    }
+                    def.setupAfter = { openSnap, openSnap, browseSnap, openSnap, openSnap, browseSnap, openSnap, doneSnap }
+                else
+                    def.disabled = true
+                    def.disabledMessage = "No searchable POIs in this zone."
+                end
             end
         end
 
@@ -3261,6 +3698,391 @@ function Demo.Start(ctx)
         end
 
         --------------------------------------------------------------------
+        -- Disabled-demo overlay: shown over the step list when a demo
+        -- can't run (e.g. no saved outfits). Created once, toggled by
+        -- loadDemo based on def.disabled / def.disabledMessage.
+        --------------------------------------------------------------------
+        local disabledOverlay = CreateFrame("Frame", nil, stepScrollFrame)
+        disabledOverlay:SetAllPoints()
+        disabledOverlay:SetFrameLevel(stepScrollFrame:GetFrameLevel() + 10)
+        local disabledText = disabledOverlay:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        disabledText:SetPoint("CENTER", 0, 10)
+        disabledText:SetWidth(180)
+        disabledText:SetTextColor(0.7, 0.7, 0.7)
+        disabledOverlay:Hide()
+
+        --------------------------------------------------------------------
+        -- Outfits demo
+        --------------------------------------------------------------------
+        local od = {}
+
+        function od.findOutfitEntry()
+            if not ns.Database or not ns.Database.uiSearchData then return nil end
+            local activeID = C_TransmogOutfitInfo and C_TransmogOutfitInfo.GetActiveOutfitID
+                and C_TransmogOutfitInfo.GetActiveOutfitID()
+            for _, e in ipairs(ns.Database.uiSearchData) do
+                if e.outfitID and e.outfitID ~= activeID then return e end
+            end
+            return nil
+        end
+
+        od.entry = nil
+
+        function od.enableFilter(done)
+            local dd = searchFrame.filterDropdown
+            local outfitRow = dd and dd.checkRows and dd.checkRows.outfits
+            msui.stepFilterBtnClick(function()
+                msui.openFilterDropdown()
+                safeAfter(STEP_PAUSE, function()
+                    if not outfitRow then
+                        EasyFind.db.uiSearchFilters = EasyFind.db.uiSearchFilters or {}
+                        EasyFind.db.uiSearchFilters.outfits = true
+                        safeAfter(0.3, done)
+                        return
+                    end
+                    moveCursorTo(outfitRow, CURSOR_MOVE, function()
+                        if not outfitRow:GetChecked() then
+                            clickAnim(function()
+                                outfitRow:SetChecked(true)
+                                EasyFind.db.uiSearchFilters = EasyFind.db.uiSearchFilters or {}
+                                EasyFind.db.uiSearchFilters.outfits = true
+                                local h = outfitRow:GetScript("OnClick")
+                                if h then pcall(h, outfitRow) end
+                                safeAfter(STEP_PAUSE, done)
+                            end)
+                        else
+                            safeAfter(0.8, done)
+                        end
+                    end)
+                end)
+            end)
+        end
+
+        function od.typeQuery(query, done)
+            moveCursorTo(searchFrame.editBox, CURSOR_MOVE, function()
+                clickAnim(function()
+                    msui.closeFilterDropdown()
+                    startBlinkCursor()
+                    safeAfter(STEP_PAUSE, function()
+                        typeText(query, TYPE_DELAY, function()
+                            safeAfter(STEP_PAUSE, done)
+                        end)
+                    end)
+                end)
+            end)
+        end
+
+        -- Bouncing red arrow (same style as the tutorial mode-toggle arrow)
+        -- that sits outside the results window pointing at a target row.
+        local OD_ARROW_SIZE = 28
+        local odArrowFrame = CreateFrame("Frame", nil, UIParent)
+        odArrowFrame:SetFrameStrata("TOOLTIP")
+        odArrowFrame:SetFrameLevel(1002)
+        odArrowFrame:SetSize(OD_ARROW_SIZE, OD_ARROW_SIZE)
+        odArrowFrame:SetIgnoreParentAlpha(true)
+        local odArrowTex = odArrowFrame:CreateTexture(nil, "ARTWORK")
+        odArrowTex:SetSize(OD_ARROW_SIZE, OD_ARROW_SIZE)
+        odArrowTex:SetPoint("CENTER")
+        odArrowTex:SetTexture(1121272)
+        odArrowTex:SetTexCoord(0.6078, 0.6402, 0.9381, 0.9688)
+        odArrowTex:SetRotation(math.pi / 2) -- point left (toward results)
+        local odArrowLabel = odArrowFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+        odArrowLabel:SetPoint("LEFT", odArrowFrame, "RIGHT", 4, 0)
+        odArrowLabel:SetTextColor(1.0, 0.82, 0.0)
+        odArrowLabel:SetShadowColor(0, 0, 0, 1)
+        odArrowLabel:SetShadowOffset(1, -1)
+        odArrowFrame:Hide()
+
+        local odPokeElapsed = 0
+        local OD_POKE_AMOUNT = 8
+        local OD_POKE_PERIOD = 1.4
+        odArrowFrame:SetScript("OnUpdate", function(_, dt)
+            if not odArrowFrame:IsShown() then return end
+            odPokeElapsed = odPokeElapsed + dt
+            local offset = math.sin(odPokeElapsed / OD_POKE_PERIOD * math.pi * 2) * OD_POKE_AMOUNT
+            odArrowTex:SetPoint("CENTER", odArrowFrame, "CENTER", -offset, 0)
+        end)
+
+        local function odShowArrow(target, labelText)
+            odArrowFrame:ClearAllPoints()
+            odArrowFrame:SetPoint("LEFT", target, "RIGHT", 4, 0)
+            odArrowLabel:SetText(labelText)
+            odPokeElapsed = 0
+            odArrowFrame:Show()
+        end
+
+        local function odHideArrow()
+            odArrowFrame:Hide()
+        end
+
+        -- Wait for the user to actually equip the target outfit
+        function od.waitForEquip(targetOutfitID, done)
+            local row = findResultRowByName(od.entry and od.entry.name) or findFirstResultRow()
+            if not row then done(); return end
+            stopBlinkCursor()
+            cursor:Hide()
+            odShowArrow(row, "Click here to equip outfit")
+            -- Suppress the lock system and release locks so the user's
+            -- hardware click reaches the SecureActionButton.
+            locksSuppressed = true
+            releaseRunningLocks()
+            -- Keep the editbox locked so the user can't type during the wait
+            searchFrame.editBox:EnableMouse(false)
+            searchFrame.editBox:ClearFocus()
+            local ticker
+            ticker = C_Timer.NewTicker(0.2, function()
+                local activeID = C_TransmogOutfitInfo
+                    and C_TransmogOutfitInfo.GetActiveOutfitID
+                    and C_TransmogOutfitInfo.GetActiveOutfitID()
+                if activeID == targetOutfitID then
+                    ticker:Cancel()
+                    locksSuppressed = false
+                    applyRunningLocks()
+                    odHideArrow()
+                    od.clearSearch()
+                    transitionFS:SetText("You now have the outfit equipped.")
+                    transitionText:Show()
+                    safeAfter(2.5, function()
+                        transitionFS:SetText("Now let's see how we can pin this for quick access later.")
+                        beginSectionTransition(2)
+                        safeAfter(3.5, function()
+                            transitionText:Hide()
+                            done()
+                        end)
+                    end)
+                end
+            end)
+            od.equipTicker = ticker
+        end
+
+        function od.pinOutfit(done)
+            local e = od.entry
+            if not e then done(); return end
+            od.typeQuery(slower(e.name):sub(1, 4), function()
+                local row = findResultRowByName(e.name) or findFirstResultRow()
+                if not row then done(); return end
+                moveCursorTo(row, CURSOR_MOVE, function()
+                    mapSearchCallout:SetText("Right-click to pin for quick access.")
+                    mapSearchCallout.frame:ClearAllPoints()
+                    mapSearchCallout.frame:SetPoint("TOP", resultsFrame, "BOTTOM", 0, -8)
+                    mapSearchCallout.frame:Show()
+                    -- Show the right-click mouse indicator next to the cursor
+                    rightClickIcon:Show()
+                    safeAfter(1.0, function()
+                        -- Right-click animation
+                        clickAnim(function()
+                            -- Trigger the real right-click handler to show pin popup
+                            local postClick = row:GetScript("PostClick")
+                            if postClick then postClick(row, "RightButton") end
+                            local popup = _G["EasyFindPinPopup"]
+                            if not popup or not popup:IsShown() then
+                                rightClickIcon:Hide()
+                                if row.data then
+                                    UI.PinUIItem(row.data)
+                                    od.pinnedByDemo = true
+                                end
+                                safeAfter(1.5, function()
+                                    mapSearchCallout:Hide()
+                                    od.clearSearch()
+                                    safeAfter(0.5, done)
+                                end)
+                                return
+                            end
+                            -- Anchor popup near the row (ShowPinPopup used
+                            -- the real cursor position which is wrong here)
+                            popup:ClearAllPoints()
+                            popup:SetPoint("LEFT", row, "RIGHT", 4, 0)
+                            -- Let the user see the popup for a moment
+                            safeAfter(1.2, function()
+                                rightClickIcon:Hide()
+                                moveCursorTo(popup, CURSOR_MOVE * 0.6, function()
+                                    clickAnim(function()
+                                        popup:Click()
+                                        od.pinnedByDemo = true
+                                        safeAfter(1.5, function()
+                                            mapSearchCallout:Hide()
+                                            safeAfter(0.5, done)
+                                        end)
+                                    end)
+                                end)
+                            end)
+                        end)
+                    end)
+                end)
+            end)
+        end
+
+        function od.showPinnedAccess(done)
+            local clearBtn = searchFrame.clearTextBtn
+            if not clearBtn or not clearBtn:IsShown() then
+                -- No text to clear, just focus the bar
+                moveCursorTo(searchFrame.editBox, CURSOR_MOVE, function()
+                    clickAnim(function()
+                        if searchFrame.editBox then
+                            searchFrame.editBox:SetText("")
+                        end
+                        if UI.ShowPinnedItems then
+                            pcall(UI.ShowPinnedItems, UI)
+                        end
+                        safeAfter(1.5, function()
+                            transitionFS:SetText("Now you can easily get to it again later without typing.")
+                            transitionText:Show()
+                            safeAfter(3.0, function()
+                                transitionText:Hide()
+                                od.clearSearch()
+                                cursor:Hide()
+                                safeAfter(0.3, done)
+                            end)
+                        end)
+                    end)
+                end)
+                return
+            end
+            -- Move to the clear (X) button and click it
+            moveCursorTo(clearBtn, CURSOR_MOVE, function()
+                clickAnim(function()
+                    local onClick = clearBtn:GetScript("OnClick")
+                    if onClick then pcall(onClick, clearBtn) end
+                    safeAfter(0.6, function()
+                        -- Now focus the empty search bar to show pinned items
+                        moveCursorTo(searchFrame.editBox, CURSOR_MOVE, function()
+                            clickAnim(function()
+                                if UI.ShowPinnedItems then
+                                    pcall(UI.ShowPinnedItems, UI)
+                                end
+                                safeAfter(1.5, function()
+                                    transitionFS:SetText("Now you can easily get to it again later without typing.")
+                                    transitionText:Show()
+                                    safeAfter(3.0, function()
+                                        transitionText:Hide()
+                                        od.clearSearch()
+                                        cursor:Hide()
+                                        safeAfter(0.3, done)
+                                    end)
+                                end)
+                            end)
+                        end)
+                    end)
+                end)
+            end)
+        end
+
+        function od.clearSearch()
+            if searchFrame and searchFrame.editBox then
+                searchFrame.editBox:SetText("")
+                searchFrame.editBox:ClearFocus()
+                if UI.OnSearchTextChanged then
+                    pcall(UI.OnSearchTextChanged, UI, "")
+                end
+            end
+            setHoveredRow(nil)
+            stopBlinkCursor()
+        end
+
+        function od.cleanup()
+            odHideArrow()
+            rightClickIcon:Hide()
+            mapSearchCallout:Hide()
+            transitionText:Hide()
+            if od.equipTicker then od.equipTicker:Cancel(); od.equipTicker = nil end
+            locksSuppressed = false
+            if od.pinnedByDemo and od.entry then
+                pcall(UI.UnpinUIItem, od.entry)
+                od.pinnedByDemo = false
+            end
+            od.clearSearch()
+        end
+
+
+        DEMOS.outfits.supportsModeToggle = false
+
+        DEMOS.outfits.rebuild = function(def)
+            local outfitEntry = od.findOutfitEntry()
+
+            if not outfitEntry then
+                def.disabled = true
+                def.disabledMessage = "Please save an outfit before trying this demo."
+                def.sections = {}
+                def.stepDefs = {}
+                def.run = {}
+                def.setupAfter = {}
+                return
+            end
+
+            def.disabled = false
+
+            od.entry = outfitEntry
+            od.pinnedByDemo = false
+            local savedDirectOpen = EasyFind.db.directOpen
+            local savedFilters = EasyFind.db.uiSearchFilters
+                and EasyFind.db.uiSearchFilters.outfits
+
+            def.sections = {
+                { header = "Equip a saved outfit", section = 1, firstStep = 1, lastStep = 3 },
+                { header = "Pin for quick access",  section = 2, firstStep = 4, lastStep = 5 },
+            }
+            def.stepDefs = {
+                { text = "Enable Outfits search filter",     section = 1 },
+                { text = "Start typing an outfit name",      section = 1 },
+                { text = "Click the outfit to equip it",     section = 1 },
+                { text = "Right-click to pin it",            section = 2 },
+                { text = "Focus the search bar to see pins", section = 2 },
+            }
+
+            def.run = {
+                -- 1: Enable filter
+                function(done)
+                    od.enableFilter(function()
+                        od.entry = od.findOutfitEntry()
+                        done()
+                    end)
+                end,
+                -- 2: Type outfit name
+                function(done)
+                    local e = od.entry
+                    if not e then done(); return end
+                    od.typeQuery(slower(e.name):sub(1, 4), done)
+                end,
+                -- 3: Show arrow, wait for user to equip
+                function(done)
+                    local e = od.entry
+                    if not e then done(); return end
+                    od.waitForEquip(e.outfitID, done)
+                end,
+                -- 4: Re-search + right-click to pin
+                function(done)
+                    transitionText:Hide()
+                    od.pinOutfit(done)
+                end,
+                -- 5: Focus bar to show pinned items
+                function(done)
+                    od.showPinnedAccess(done)
+                end,
+            }
+
+            local function snap()
+                od.cleanup()
+                EasyFind.db.uiSearchFilters = EasyFind.db.uiSearchFilters or {}
+                EasyFind.db.uiSearchFilters.outfits = true
+            end
+            def.setupAfter = {
+                function() snap() end,
+                function() snap() end,
+                function() snap() end,
+                function() snap() end,
+                function()
+                    od.cleanup()
+                    EasyFind.db.directOpen = savedDirectOpen
+                    if EasyFind.db.uiSearchFilters then
+                        EasyFind.db.uiSearchFilters.outfits = savedFilters
+                    end
+                    if od.entry then pcall(UI.UnpinUIItem, od.entry) end
+                    cursor:Hide()
+                end,
+            }
+        end
+
+        --------------------------------------------------------------------
         -- Appearance Sets demo
         --------------------------------------------------------------------
         local asd = {}
@@ -3735,7 +4557,7 @@ function Demo.Start(ctx)
             end
         end
 
-        local function applyRunningLocks()
+        applyRunningLocks = function()
             lockFrame(searchFrame)
             lockFrame(resultsFrame)
             -- Demo-specific frames (PlayerSpellsFrame, WorldMapFrame,
@@ -3750,23 +4572,32 @@ function Demo.Start(ctx)
             searchFrame:SetScript("OnDragStart", nil)
             searchFrame.setupMode = true
             searchFrame.editBox:EnableMouse(false)
+            if searchFrame.filterDropdown then
+                searchFrame.filterDropdown._demoSuspend = true
+            end
             lockMapSearchEditBoxes()
         end
-        local function releaseRunningLocks()
+        releaseRunningLocks = function()
             unlockAllFrames()
             searchFrame:SetScript("OnDragStart", savedDragStart)
             searchFrame.setupMode = nil
             searchFrame.editBox:EnableMouse(true)
+            if searchFrame.filterDropdown then
+                searchFrame.filterDropdown._demoSuspend = nil
+            end
             unlockMapSearchEditBoxes()
         end
+        locksSuppressed = false
         updateLockState = function()
             if not active then releaseRunningLocks(); return end
+            if locksSuppressed then return end
             local isRunning = (not paused) and (animatingIdx > 0 or autoPlay)
             if isRunning then
                 applyRunningLocks()
             else
                 releaseRunningLocks()
             end
+            minimapArrow:SetPaused(not isRunning)
         end
 
         local function updateButtons()
@@ -3982,6 +4813,8 @@ function Demo.Start(ctx)
             if minimapCallout then minimapCallout:Hide() end
             if minimapArrow then minimapArrow:Hide() end
             if mapSearchCallout then mapSearchCallout:Hide() end
+            -- Outfit demo cleanup (arrow, ticker, right-click icon, pin)
+            if od then pcall(od.cleanup) end
             if clearDemoWaypoint then pcall(clearDemoWaypoint) end
             if resetMapSearchState then pcall(resetMapSearchState) end
             if closeWorldMap then pcall(closeWorldMap) end
@@ -4144,6 +4977,13 @@ function Demo.Start(ctx)
             refreshStepList()
             updateButtons()
             refreshModeToggle()
+            -- Disabled demo overlay
+            if def.disabled then
+                disabledText:SetText(def.disabledMessage or "This demo is not available.")
+                disabledOverlay:Show()
+            else
+                disabledOverlay:Hide()
+            end
             if refreshDemoMenuActive then refreshDemoMenuActive() end
         end
 
@@ -4312,24 +5152,24 @@ function Demo.Start(ctx)
             end
         end)
 
+        local function startAutoPlay()
+            autoPlay = true
+            updateButtons()
+            if animatingIdx == 0 then
+                runStep(completedUpTo + 1)
+            end
+        end
+
         playBtn:SetScript("OnClick", function()
             if not active then return end
             if paused then
-                -- Resume from the frozen state. Cursor OnUpdates and the
-                -- safeAfter queue start advancing again.
                 paused = false
                 updateButtons()
             elseif autoPlay then
-                -- Currently running: freeze everything in place.
                 paused = true
                 updateButtons()
             else
-                -- Not running: start auto-play from current position.
-                autoPlay = true
-                updateButtons()
-                if animatingIdx == 0 then
-                    runStep(completedUpTo + 1)
-                end
+                startAutoPlay()
             end
         end)
 
