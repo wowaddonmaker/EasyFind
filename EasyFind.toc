@@ -13,6 +13,8 @@ Utils.lua
 Core.lua
 Database.lua
 StaticLocations.lua
+TutorialBox.lua
+ChevronConfig.lua
 UI.lua
 Highlight.lua
 MapSearch.lua
