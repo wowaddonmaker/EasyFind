@@ -1064,132 +1064,11 @@ function Demo.Start(ctx)
             end
         end
 
-        -- Builds a tutorial-style floating text box: vertical black-to-
-        -- dim-yellow interior plus a chamfered glow border rendered
-        -- from three custom TGAs (corner, horizontal edge, vertical
-        -- edge) tinted to the neon yellow. The alpha profile -- bright
-        -- band, soft falloff, diagonal corner chamfer -- is baked into
-        -- the texture files (see tools/gen_glow_tgas.py), so scaling
-        -- the frame just re-stretches the edge strips between the
-        -- fixed-size corner pieces. The glow container pulses via a
-        -- single alpha animation.
-        local function createTutorialBox(textFont)
-            local f = CreateFrame("Frame", nil, UIParent)
-            f:SetFrameStrata("TOOLTIP")
-            f:SetFrameLevel(1000)
-            f:SetIgnoreParentAlpha(true)
-
-            local BR, BG, BB = 1.0, 0.98, 0.45
-            local TR, TG, TB = 1.0, 0.96, 0.15
-
-            -- Interior: black at top fading to a dim yellow-brown at bottom.
-            local interior = f:CreateTexture(nil, "BACKGROUND", nil, 2)
-            interior:SetAllPoints(f)
-            interior:SetColorTexture(1, 1, 1, 1)
-            interior:SetGradient("VERTICAL",
-                CreateColor(0.32, 0.26, 0.02, 0.94),
-                CreateColor(0.00, 0.00, 0.00, 0.96))
-
-            -- Text (on f so the pulse doesn't dim it).
-            f.fs = f:CreateFontString(nil, "OVERLAY", textFont or "GameFontNormalLarge")
-            f.fs:SetPoint("TOPLEFT",     f, "TOPLEFT",     16, -12)
-            f.fs:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -16,  12)
-            f.fs:SetJustifyH("CENTER")
-            f.fs:SetJustifyV("MIDDLE")
-            f.fs:SetTextColor(TR, TG, TB, 1.0)
-            f.fs:SetShadowColor(0, 0, 0, 1)
-            f.fs:SetShadowOffset(1, -1)
-
-            -- Chamfered glow border via custom TGA textures. The three
-            -- files encode the exact alpha profile we want (bright
-            -- band in the middle, soft falloff on both sides, diagonal
-            -- chamfer cut at the outer corner), so there's no rect-
-            -- math stacking. The shape is real pixels in an alpha
-            -- channel, tinted to the neon yellow via SetVertexColor.
-            local glow = CreateFrame("Frame", nil, f)
-            glow:SetAllPoints(f)
-
-            local TEX_CORNER = "Interface\\AddOns\\EasyFind\\textures\\glow-corner"
-            local TEX_EDGE_H = "Interface\\AddOns\\EasyFind\\textures\\glow-edge-h"
-            local TEX_EDGE_V = "Interface\\AddOns\\EasyFind\\textures\\glow-edge-v"
-            local CORNER_SZ  = 16   -- native texture dimension
-            local HALF       = CORNER_SZ / 2
-
-            -- The corner TGA is designed TL-style (outermost pixel at
-            -- its own top-left). For the other three corners we flip
-            -- the texture via SetTexCoord's left/right and top/bottom
-            -- being swapped.
-            local function addCorner(frameAnchor, dx, dy, texL, texR, texT, texB)
-                local t = glow:CreateTexture(nil, "BORDER")
-                t:SetTexture(TEX_CORNER)
-                t:SetTexCoord(texL, texR, texT, texB)
-                t:SetVertexColor(BR, BG, BB)
-                t:SetSize(CORNER_SZ, CORNER_SZ)
-                t:SetPoint(frameAnchor, f, frameAnchor, dx, dy)
-            end
-            addCorner("TOPLEFT",     -HALF,  HALF, 0, 1, 0, 1)   -- TL
-            addCorner("TOPRIGHT",     HALF,  HALF, 1, 0, 0, 1)   -- TR
-            addCorner("BOTTOMLEFT",  -HALF, -HALF, 0, 1, 1, 0)   -- BL
-            addCorner("BOTTOMRIGHT",  HALF, -HALF, 1, 0, 1, 0)   -- BR
-
-            -- Edges stretch between the corners. The horizontal edge
-            -- texture has its cross-section gradient along Y; we flip
-            -- Y for the bottom edge. Vertical edge texture gradient is
-            -- along X; we flip X for the right edge.
-            local function addHEdge(frameAnchorL, frameAnchorR, dyOuter, dyInner, flipY)
-                local t = glow:CreateTexture(nil, "BORDER")
-                t:SetTexture(TEX_EDGE_H)
-                if flipY then t:SetTexCoord(0, 1, 1, 0) else t:SetTexCoord(0, 1, 0, 1) end
-                t:SetVertexColor(BR, BG, BB)
-                t:SetPoint("TOPLEFT",     f, frameAnchorL,  HALF, dyOuter)
-                t:SetPoint("BOTTOMRIGHT", f, frameAnchorR, -HALF, dyInner)
-            end
-            addHEdge("TOPLEFT",    "TOPRIGHT",     HALF, -HALF, false)
-            addHEdge("BOTTOMLEFT", "BOTTOMRIGHT",  HALF, -HALF, true)
-
-            local function addVEdge(frameAnchorT, frameAnchorB, dxOuter, dxInner, flipX)
-                local t = glow:CreateTexture(nil, "BORDER")
-                t:SetTexture(TEX_EDGE_V)
-                if flipX then t:SetTexCoord(1, 0, 0, 1) else t:SetTexCoord(0, 1, 0, 1) end
-                t:SetVertexColor(BR, BG, BB)
-                t:SetPoint("TOPLEFT",     f, frameAnchorT, dxOuter, -HALF)
-                t:SetPoint("BOTTOMRIGHT", f, frameAnchorB, dxInner,  HALF)
-            end
-            addVEdge("TOPLEFT",  "BOTTOMLEFT",  -HALF,  HALF, false)
-            addVEdge("TOPRIGHT", "BOTTOMRIGHT", -HALF,  HALF, true)
-
-
-            -- Neon pulse: bright to slightly dim and back. Floor stays
-            -- high enough that the outer glow is always visible.
-            local pulseAG = glow:CreateAnimationGroup()
-            pulseAG:SetLooping("BOUNCE")
-            local pulseAnim = pulseAG:CreateAnimation("Alpha")
-            pulseAnim:SetFromAlpha(0.65)
-            pulseAnim:SetToAlpha(1.0)
-            pulseAnim:SetDuration(0.9)
-            pulseAnim:SetSmoothing("IN_OUT")
-            pulseAG:Play()
-            f:HookScript("OnShow", function() pulseAG:Restart() end)
-
-            -- Re-sizes the frame to fit the current text plus padding.
-            f.SetAutoSized = function(self, maxWidth)
-                maxWidth = maxWidth or 380
-                self.fs:ClearAllPoints()
-                self.fs:SetPoint("CENTER", self, "CENTER", 0, 0)
-                self.fs:SetWidth(maxWidth - 32)
-                local w = mmin(self.fs:GetStringWidth() + 32, maxWidth)
-                local h = self.fs:GetStringHeight() + 24
-                self:SetSize(w, h)
-            end
-
-            return f
-        end
-
         -- Transition banner shown at the end of Fast Mode, hidden when
         -- Guide Mode begins. Anchored near the top-center of the screen
         -- on the TOOLTIP strata so it floats above every menu and frame.
         -- A fade-in/out animation group softens the transition.
-        local transitionFrame = createTutorialBox("GameFontNormalLarge")
+        local transitionFrame = ns.TutorialBox.Create(UIParent, "GameFontNormalLarge")
         transitionFrame:SetPoint("TOP", UIParent, "TOP", 0, -160)
         transitionFrame:SetSize(460, 80)
         local transitionFS = transitionFrame.fs
@@ -1206,7 +1085,7 @@ function Demo.Start(ctx)
         -- Minimap callout: tutorial-style hint box anchored to the
         -- minimap, used to draw attention to minimap changes (e.g.
         -- "your target is now tracked").
-        local minimapCalloutFrame = createTutorialBox("GameFontNormalLarge")
+        local minimapCalloutFrame = ns.TutorialBox.Create(UIParent, "GameFontNormalLarge")
         minimapCalloutFrame:SetSize(320, 68)
         if _G["Minimap"] then
             minimapCalloutFrame:SetPoint("RIGHT", _G["Minimap"], "LEFT", -20, 40)
@@ -1228,7 +1107,7 @@ function Demo.Start(ctx)
         -- Floating narration anchored next to the local map search frame.
         -- Used by mapSearchCurrent's "browse what's around" step.
         local mapSearchCallout = {}
-        mapSearchCallout.frame = createTutorialBox("GameFontNormalLarge")
+        mapSearchCallout.frame = ns.TutorialBox.Create(UIParent, "GameFontNormalLarge")
         mapSearchCallout.frame:SetSize(280, 60)
         mapSearchCallout.frame:Hide()
         mapSearchCallout.fs = mapSearchCallout.frame.fs
@@ -3786,11 +3665,9 @@ function Demo.Start(ctx)
         odArrowTex:SetTexture(1121272)
         odArrowTex:SetTexCoord(0.6078, 0.6402, 0.9381, 0.9688)
         odArrowTex:SetRotation(math.pi / 2) -- point left (toward results)
-        local odArrowLabel = odArrowFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
-        odArrowLabel:SetPoint("LEFT", odArrowFrame, "RIGHT", 4, 0)
-        odArrowLabel:SetTextColor(1.0, 0.82, 0.0)
-        odArrowLabel:SetShadowColor(0, 0, 0, 1)
-        odArrowLabel:SetShadowOffset(1, -1)
+        local odArrowBox = ns.TutorialBox.Create(UIParent, "GameFontNormalLarge")
+        odArrowBox:SetPoint("LEFT", odArrowFrame, "RIGHT", 4, 0)
+        odArrowBox:Hide()
         odArrowFrame:Hide()
 
         local odPokeElapsed = 0
@@ -3806,13 +3683,16 @@ function Demo.Start(ctx)
         local function odShowArrow(target, labelText)
             odArrowFrame:ClearAllPoints()
             odArrowFrame:SetPoint("LEFT", target, "RIGHT", 4, 0)
-            odArrowLabel:SetText(labelText)
+            odArrowBox.fs:SetText(labelText or "")
+            odArrowBox:SetAutoSized(360)
             odPokeElapsed = 0
             odArrowFrame:Show()
+            odArrowBox:Show()
         end
 
         local function odHideArrow()
             odArrowFrame:Hide()
+            odArrowBox:Hide()
         end
 
         -- Wait for the user to actually equip the target outfit

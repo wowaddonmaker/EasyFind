@@ -177,6 +177,8 @@ local function UnpinUIItem(data)
         end
     end
 end
+UI.PinUIItem = PinUIItem
+UI.UnpinUIItem = UnpinUIItem
 
 -- Apply a full transmog set to the DressUpFrame using Blizzard's own
 -- DressUpTransmogSet. The function's first parameter is misleadingly named
@@ -2879,6 +2881,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
     -- Close when clicking outside (but not when interacting with sub-filter popups)
     dropdown:SetScript("OnUpdate", function(self)
+        if self._demoSuspend then return end
         if self:IsShown() and IsMouseButtonDown("LeftButton") then
             if not self:IsMouseOver() and not toggleBtn:IsMouseOver() then
                 for _, guard in ipairs(dropdownGuardFrames) do
@@ -6802,8 +6805,9 @@ function UI:ShowFirstTimeSetup()
     -- Horizontal separator between the reset button and Smart Show section
     local sep = panel:CreateTexture(nil, "ARTWORK")
     sep:SetHeight(1)
-    sep:SetPoint("TOPLEFT", resetDefaultsBtn, "BOTTOMLEFT", -70, -8)
-    sep:SetPoint("TOPRIGHT", resetDefaultsBtn, "BOTTOMRIGHT", 70, -8)
+    sep:SetPoint("LEFT", panel, "LEFT", 12, 0)
+    sep:SetPoint("RIGHT", panel, "RIGHT", -12, 0)
+    sep:SetPoint("TOP", resetDefaultsBtn, "BOTTOM", 0, -8)
     sep:SetColorTexture(0.4, 0.4, 0.4, 0.6)
 
     -- Smart Show checkbox (default checked - matches DB_DEFAULTS.smartShow = true)
@@ -6871,34 +6875,18 @@ function UI:ShowFirstTimeSetup()
     -- The frame itself stays fixed next to the mode button; the TEXTURE
     -- inside the frame slides via a sin wave so only the arrow bounces,
     -- leaving the label and See Demo button rock-steady.
-    local ARROW_SIZE = 28
-    local modePointerFrame = CreateFrame("Frame", nil, searchFrame)
-    modePointerFrame:SetSize(ARROW_SIZE, ARROW_SIZE)
-    modePointerFrame:SetPoint("RIGHT", searchFrame.modeBtn, "LEFT", -4, 0)
-    modePointerFrame:SetIgnoreParentAlpha(true)
-    local modePointer = modePointerFrame:CreateTexture(nil, "OVERLAY")
-    modePointer:SetSize(ARROW_SIZE, ARROW_SIZE)
-    modePointer:SetPoint("CENTER", modePointerFrame, "CENTER", 0, 0)
-    modePointer:SetTexture(1121272)
-    modePointer:SetTexCoord(0.6078, 0.6402, 0.9381, 0.9688)
-    modePointer:SetRotation(-1.5708)  -- -90deg: up -> right
-
-    local POKE_AMOUNT = 10
-    local POKE_PERIOD = 1.4  -- seconds per full cycle; shared by both the
-                              -- arrow poke and the mode-button flash so
-                              -- the animations stay phase-locked
-    local pokeElapsed = 0
-
-    -- Label and See Demo button anchor to the mode button directly, NOT
-    -- to the arrow frame, so they don't inherit the poke animation.
-    local modePointerLabel = searchFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    modePointerLabel:SetPoint("RIGHT", searchFrame.modeBtn, "LEFT", -4 - ARROW_SIZE - 4, 0)
-    modePointerLabel:SetText("|cffFFD100Mode toggle|r")
-    modePointerLabel:SetIgnoreParentAlpha(true)
+    -- Tutorial label + animated chevron pointing at the mode button.
+    -- AttachPointer handles rotation, origin (trail-back flush with the
+    -- label's RIGHT border), and per-cycle translation toward the target.
+    local modePointerLabel = ns.TutorialBox.Create(searchFrame, "GameFontNormalLarge")
+    modePointerLabel.fs:SetText("Mode toggle")
+    modePointerLabel:SetAutoSized(200)
+    modePointerLabel:ClearAllPoints()
+    modePointerLabel:SetPoint("RIGHT", searchFrame.modeBtn, "LEFT", -72, 0)
 
     local seeDemoBtn = CreateFrame("Button", nil, searchFrame, "UIPanelButtonTemplate")
     seeDemoBtn:SetSize(120, 24)
-    seeDemoBtn:SetPoint("TOPRIGHT", modePointerLabel, "BOTTOMRIGHT", 0, -8)
+    seeDemoBtn:SetPoint("TOP", modePointerLabel, "BOTTOM", 0, -8)
     seeDemoBtn:SetText("See demo")
     seeDemoBtn:SetIgnoreParentAlpha(true)
 
@@ -6922,16 +6910,26 @@ function UI:ShowFirstTimeSetup()
     local FLASH_MIN, FLASH_MAX = 0.15, 0.55
     modeFlashFrame:SetAlpha(FLASH_MIN)
 
-    -- Shared ticker drives both the arrow poke and the mode-button flash
-    -- so they're perfectly in sync: arrow closest to button == brightest
-    -- flash, arrow farthest == dimmest flash.
-    modePointerFrame:SetScript("OnUpdate", function(_, dt)
-        pokeElapsed = pokeElapsed + dt
-        local phase = (1 - math.cos(pokeElapsed * 2 * math.pi / POKE_PERIOD)) * 0.5
-        modePointer:ClearAllPoints()
-        modePointer:SetPoint("CENTER", modePointerFrame, "CENTER", phase * POKE_AMOUNT, 0)
-        modeFlashFrame:SetAlpha(FLASH_MIN + (FLASH_MAX - FLASH_MIN) * phase)
-    end)
+    -- Chevron pointer; its onPhase callback syncs the mode-button flash
+    -- so the brightest moment of the flash matches a fresh arrow being
+    -- born at the start position.
+    local POINTER_COUNT = 2
+    local modePointer = ns.TutorialBox.AttachPointer(modePointerLabel, {
+        direction   = "right",
+        travel      = 48,
+        duration    = 1.25,
+        count       = POINTER_COUNT,
+        fadeStart   = 0.75,
+        startOffset = -10,
+        easing      = 0.5,
+        glow        = 0.7,
+        -- Flash pulses once per fresh-arrow birth, so it cycles
+        -- `count` times per animation period.
+        onPhase   = function(phase)
+            local flashPhase = (phase * POINTER_COUNT) % 1
+            modeFlashFrame:SetAlpha(FLASH_MIN + (FLASH_MAX - FLASH_MIN) * (1 - flashPhase))
+        end,
+    })
 
     -- During setup: allow drag without holding Shift
     searchFrame:SetScript("OnDragStart", function(self)
@@ -6957,12 +6955,15 @@ function UI:ShowFirstTimeSetup()
         resizer:SetScript("OnUpdate", nil)
         resizer:Hide()
         panel:Hide()
-        modePointerFrame:SetScript("OnUpdate", nil)
-        modePointerFrame:Hide()
+        modePointer:Stop()
         modePointerLabel:Hide()
         seeDemoBtn:Hide()
         modeFlashFrame:Hide()
         if demoFrame then demoFrame:Hide() end
+        -- Clear the demo suspend flag so the dropdown auto-close works
+        if searchFrame.filterDropdown then
+            searchFrame.filterDropdown._demoSuspend = nil
+        end
 
         -- Restore shift-only drag
         searchFrame:SetScript("OnDragStart", function(self)
@@ -7016,8 +7017,7 @@ function UI:ShowFirstTimeSetup()
         -- Hide the positioning UI before the demo runs.
         panel:Hide()
         resizer:Hide()
-        modePointerFrame:SetScript("OnUpdate", nil)
-        modePointerFrame:Hide()
+        modePointer:Stop()
         modePointerLabel:Hide()
         seeDemoBtn:Hide()
         modeFlashFrame:Hide()

@@ -1,0 +1,3 @@
+local _, ns = ...
+ns.CHEVRON_TEX_SIZE = 64
+ns.CHEVRON_APEX_INSET = 18.5813
