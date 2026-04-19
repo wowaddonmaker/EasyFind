@@ -194,7 +194,7 @@ function Demo.Start(ctx)
         demoFrame:SetSize(280, 290)
         -- Shift down from center so the panel doesn't cover the minimap.
         -- User can still drag it anywhere they want.
-        demoFrame:SetPoint("RIGHT", UIParent, "RIGHT", -32, -120)
+        demoFrame:SetPoint("RIGHT", UIParent, "RIGHT", -32, -60)
         demoFrame:SetFrameStrata("FULLSCREEN_DIALOG")
         demoFrame:SetIgnoreParentAlpha(true)
         -- Make the panel draggable so the user can move it out of the
@@ -943,6 +943,25 @@ function Demo.Start(ctx)
         end
         local savedUiMapSearchLocal = EasyFind.db.uiMapSearchLocal
 
+        -- Snapshot WMF's current mapID so demos that navigate WMF (the
+        -- zone/instance demo calls SelectResult, which SetMapIDs to the
+        -- instance entrance) don't leak that state into later demos.
+        -- WMF may not be loaded yet at this point; openWorldMap will
+        -- lazy-capture the real pre-demo mapID right after it loads the
+        -- addon. restoreWmfMapID reverts WMF on every demo switch and
+        -- on panel close.
+        local savedWmfMapID
+        if WorldMapFrame and WorldMapFrame.GetMapID then
+            savedWmfMapID = WorldMapFrame:GetMapID()
+        end
+        local function restoreWmfMapID()
+            if not savedWmfMapID then return end
+            if InCombatLockdown() then return end
+            if not (WorldMapFrame and WorldMapFrame.SetMapID) then return end
+            if WorldMapFrame:GetMapID() == savedWmfMapID then return end
+            pcall(WorldMapFrame.SetMapID, WorldMapFrame, savedWmfMapID)
+        end
+
         -- The UI filter dropdown has an OnUpdate handler that auto-hides
         -- when the user's mouse button is down outside the dropdown. The
         -- demo's click blockers eat real clicks but the button-down
@@ -1084,11 +1103,14 @@ function Demo.Start(ctx)
 
         -- Minimap callout: tutorial-style hint box anchored to the
         -- minimap, used to draw attention to minimap changes (e.g.
-        -- "your target is now tracked").
+        -- "your target is now tracked"). Box sits to the LEFT of the
+        -- minimap with its vertical center aligned to the minimap's
+        -- vertical center, with a 65 px gap on the right for the
+        -- chevron pointer's full visible sweep (see AttachPointer below).
         local minimapCalloutFrame = ns.TutorialBox.Create(UIParent, "GameFontNormalLarge")
-        minimapCalloutFrame:SetSize(320, 68)
+        minimapCalloutFrame:SetSize(220, 60)
         if _G["Minimap"] then
-            minimapCalloutFrame:SetPoint("RIGHT", _G["Minimap"], "LEFT", -20, 40)
+            minimapCalloutFrame:SetPoint("RIGHT", _G["Minimap"], "LEFT", -65, 0)
         else
             minimapCalloutFrame:SetPoint("TOPRIGHT", UIParent, "TOPRIGHT", -240, -80)
         end
@@ -1099,31 +1121,207 @@ function Demo.Start(ctx)
         local minimapCallout = {}
         function minimapCallout:SetText(text)
             minimapCalloutFS:SetText(text or "")
-            minimapCalloutFrame:SetAutoSized(360)
+            -- Narrower cap than the map-search callout (which has ~300 px
+            -- of horizontal room to the right of the results frame).
+            -- Over the minimap area there's less room and the phrases
+            -- here are short, so 220 keeps the box compact without
+            -- triggering awkward 3+ line wraps.
+            minimapCalloutFrame:SetAutoSized(220)
         end
         function minimapCallout:Show() minimapCalloutFrame:Show() end
         function minimapCallout:Hide() minimapCalloutFrame:Hide() end
 
         -- Floating narration anchored next to the local map search frame.
-        -- Used by mapSearchCurrent's "browse what's around" step.
+        -- Used by mapSearchCurrent's "browse what's around" step. Has an
+        -- attached left-pointing arrow that is only shown via
+        -- :ShowWithArrow() for the hover-preview step; other callers use
+        -- plain :Show() and get the box without the arrow.
         local mapSearchCallout = {}
         mapSearchCallout.frame = ns.TutorialBox.Create(UIParent, "GameFontNormalLarge")
         mapSearchCallout.frame:SetSize(280, 60)
         mapSearchCallout.frame:Hide()
         mapSearchCallout.fs = mapSearchCallout.frame.fs
+        -- Persistent left-pointing chevron. Travel = gap between the box's
+        -- left edge and the right edge of the results frame, so the apex
+        -- lands right on the results. Parented to the tutorial box, so it
+        -- inherits strata/visibility and hides automatically when the box
+        -- hides. Created once and toggled via the arrow driver's own
+        -- Show/Hide (preserving the animation's elapsed state).
+        -- Cadence copied from modePointer (UI.lua) — the canonical
+        -- tutorial-arrow recipe. Only `direction` and `travel` should
+        -- vary per caller; the rest stay as-is across every chevron.
+        mapSearchCallout.arrow = ns.TutorialBox.AttachPointer(mapSearchCallout.frame, {
+            direction   = "left",
+            travel      = 36,
+            duration    = 1.25,
+            count       = 2,
+            easing      = 0.5,
+            fadeStart   = 0.75,
+            startOffset = -10,
+            glow        = 0.7,
+        })
+        mapSearchCallout.arrow.frame:Hide()
         function mapSearchCallout:SetText(text)
             self.fs:SetText(text or "")
             self.frame:SetAutoSized(340)
         end
         function mapSearchCallout:Show()
-            local lsf = _G["EasyFindMapSearchFrame"]
-            if lsf then
+            -- Anchor once per show-session to the results frame (so the
+            -- gap is right for current scrollbar / mapSearchWidth state),
+            -- then freeze the position by re-anchoring to UIParent with
+            -- the absolute coords. Within a session the results frame
+            -- resizes as the user types different prefixes; without the
+            -- freeze the callout would jump around with each resize.
+            -- Hide() resets anchorLocked so the next show recomputes.
+            if not self.anchorLocked then
+                local rf = _G["EasyFindMapResultsFrame"]
+                local lsf = _G["EasyFindMapSearchFrame"]
                 self.frame:ClearAllPoints()
-                self.frame:SetPoint("LEFT", lsf, "RIGHT", 56, 0)
+                if rf and rf:IsShown() then
+                    -- 65 px leaves room for the chevron's full ~63 px
+                    -- visible sweep (texSize 64 minus 2 * apexInset of
+                    -- 18.58 = 26.84 visible shape, plus 36 travel) so
+                    -- the apex lands just past the results edge at peak
+                    -- travel without cutting into the result rows.
+                    self.frame:SetPoint("TOPLEFT", rf, "TOPRIGHT", 65, -4)
+                elseif lsf then
+                    -- Fallback for callsites that run before results open.
+                    self.frame:SetPoint("LEFT", lsf, "RIGHT", 120, -40)
+                end
+                -- Show before reading GetLeft/GetTop so the layout pass
+                -- resolves the anchor to actual screen coords.
+                self.frame:Show()
+                local l, t = self.frame:GetLeft(), self.frame:GetTop()
+                if l and t then
+                    self.frame:ClearAllPoints()
+                    self.frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", l, t)
+                    self.anchorLocked = true
+                end
             end
+            self.arrow.frame:Hide()
             self.frame:Show()
         end
-        function mapSearchCallout:Hide() self.frame:Hide() end
+        function mapSearchCallout:ShowWithArrow()
+            self:Show()
+            self.arrow.frame:Show()
+        end
+        -- Cross-fade the old text up and out while the new text rises up
+        -- from below to take its place. Box size, anchor, and arrow all
+        -- stay put. Falls through to a plain Show when the callout isn't
+        -- already visible (no "old text" to scroll away). Same ease/timing
+        -- family as setScrollTarget's OnUpdate tween, just applied per
+        -- fontstring.
+        mapSearchCallout.textAnim = CreateFrame("Frame")
+        mapSearchCallout.textAnim:Hide()
+        function mapSearchCallout:SetTextScrolling(newText)
+            local isShown = self.frame:IsShown()
+            local oldText = self.fs:GetText() or ""
+            if not isShown or oldText == "" then
+                self:SetText(newText)
+                self:ShowWithArrow()
+                return
+            end
+            if oldText == newText then return end
+            -- Lazy-create the secondary fontstring the first time we swap.
+            -- Shares fs's current color/shadow/justify so the transition
+            -- reads as the same text just changing words.
+            if not self.fs2 then
+                local fs2 = self.frame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+                fs2:SetJustifyH("CENTER")
+                fs2:SetJustifyV("MIDDLE")
+                fs2:SetTextColor(self.fs:GetTextColor())
+                fs2:SetShadowColor(0, 0, 0, 1)
+                fs2:SetShadowOffset(1, -1)
+                self.fs2 = fs2
+            end
+            -- fs2 carries the OLD text (scrolls up and out). fs takes the
+            -- NEW text and scrolls up from below into center.
+            self.fs2:SetWidth(self.fs:GetWidth())
+            self.fs2:SetText(oldText)
+            self.fs2:ClearAllPoints()
+            self.fs2:SetPoint("CENTER", self.frame, "CENTER", 0, 0)
+            self.fs2:SetAlpha(1)
+            self.fs:SetText(newText)
+            self.fs:ClearAllPoints()
+            self.fs:SetPoint("CENTER", self.frame, "CENTER", 0, -20)
+            self.fs:SetAlpha(0)
+            local duration = 0.35
+            local elapsed = 0
+            self.textAnim:SetScript("OnUpdate", function(_, dt)
+                elapsed = elapsed + dt
+                local t = elapsed / duration
+                if t > 1 then t = 1 end
+                local eased = t * t * (3 - 2 * t)
+                self.fs2:ClearAllPoints()
+                self.fs2:SetPoint("CENTER", self.frame, "CENTER", 0, 20 * eased)
+                self.fs2:SetAlpha(1 - eased)
+                self.fs:ClearAllPoints()
+                self.fs:SetPoint("CENTER", self.frame, "CENTER", 0, -20 * (1 - eased))
+                self.fs:SetAlpha(eased)
+                if t >= 1 then
+                    self.textAnim:SetScript("OnUpdate", nil)
+                    self.textAnim:Hide()
+                    self.fs:ClearAllPoints()
+                    self.fs:SetPoint("CENTER", self.frame, "CENTER", 0, 0)
+                    self.fs:SetAlpha(1)
+                    self.fs2:SetAlpha(0)
+                    self.fs2:SetText("")
+                end
+            end)
+            self.textAnim:Show()
+        end
+        function mapSearchCallout:Hide()
+            -- Cancel any in-flight scroll so a later Show() starts fresh.
+            if self.textAnim then
+                self.textAnim:SetScript("OnUpdate", nil)
+                self.textAnim:Hide()
+            end
+            if self.moveAnim then
+                self.moveAnim:SetScript("OnUpdate", nil)
+                self.moveAnim:Hide()
+            end
+            if self.fs2 then
+                self.fs2:SetAlpha(0)
+                self.fs2:SetText("")
+            end
+            -- Drop the locked absolute anchor so the next Show()
+            -- re-computes against whatever state the results frame is
+            -- in at that point (scrollbar present/absent, different
+            -- mapSearchWidth, etc.).
+            self.anchorLocked = nil
+            self.fs:ClearAllPoints()
+            self.fs:SetPoint("CENTER", self.frame, "CENTER", 0, 0)
+            self.fs:SetAlpha(1)
+            self.arrow.frame:Hide()
+            self.frame:Hide()
+        end
+
+        -- Emitter frames for the two clear-button chevrons. Each emitter
+        -- sits ~63 px to the LEFT of its clear button at show time; the
+        -- attached chevron emerges through its right border and its
+        -- phase-1 apex lands at the button's left edge. Emitters are 1
+        -- px so they don't render anything themselves. Cadence copied
+        -- from modePointer (the canonical tutorial-arrow recipe).
+        local function makeClearChevron()
+            local emitter = CreateFrame("Frame", nil, UIParent)
+            emitter:SetSize(1, 1)
+            emitter:SetFrameStrata("TOOLTIP")
+            emitter:Hide()
+            local chev = ns.TutorialBox.AttachPointer(emitter, {
+                direction   = "right",
+                travel      = 36,
+                duration    = 1.25,
+                count       = 2,
+                easing      = 0.5,
+                fadeStart   = 0.75,
+                startOffset = -10,
+                glow        = 0.7,
+            })
+            chev.frame:Hide()
+            return { emitter = emitter, chev = chev }
+        end
+        local localClearPointer  = makeClearChevron()
+        local globalClearPointer = makeClearChevron()
 
         -- Forward decl so endDemo / cancelInFlight / resetDemoGameState
         -- can call minimapArrow:Hide() via upvalue. The methods are
@@ -1132,6 +1330,12 @@ function Demo.Start(ctx)
         local minimapArrow = {}
         function minimapArrow:Show() end
         function minimapArrow:Hide() end
+
+        -- Ticker used by the end-of-demo tracking-state narration to
+        -- poll EasyFindNearTrack:IsShown() until the player crosses
+        -- into the other mode. Held at this scope so endDemo /
+        -- cancelInFlight can cancel it if the demo is aborted.
+        local trackingStateTicker
 
         local function endDemo()
             active = false
@@ -1148,6 +1352,11 @@ function Demo.Start(ctx)
             clearButtonHover()
             transitionText:Hide()
             mapSearchCallout:Hide()
+            localClearPointer.chev.frame:Hide()
+            localClearPointer.emitter:Hide()
+            globalClearPointer.chev.frame:Hide()
+            globalClearPointer.emitter:Hide()
+            if trackingStateTicker then trackingStateTicker:Cancel(); trackingStateTicker = nil end
             minimapCallout:Hide()
             minimapArrow:Hide()
             hideMapCaret()
@@ -1171,6 +1380,11 @@ function Demo.Start(ctx)
             end
             -- Clean up map search state if a map demo was running.
             if resetMapSearchState then pcall(resetMapSearchState) end
+            -- Revert WMF mapID so the user's map returns to whatever
+            -- they had open before starting the demo, not wherever a
+            -- demo step navigated to (e.g. the instance entrance the
+            -- zone/instance demo jumps to).
+            restoreWmfMapID()
             if closeWorldMap then pcall(closeWorldMap) end
             -- Release every blocker, restore drag handler and editbox.
             if updateLockState then updateLockState() end
@@ -1383,14 +1597,37 @@ function Demo.Start(ctx)
         end
 
         local function moveCursorTo(targetFrame, duration, onArrive, offsetX, offsetY)
-            -- Clear any lingering hover state from the previous target
-            -- (tooltip, button outline, highlight) so it doesn't persist
-            -- while the cursor is in transit to a new frame.
-            clearButtonHover()
+            -- Previous target's hover state (tooltip, button outline,
+            -- highlight) is cleared below once the cursor has visibly
+            -- moved off it, not at the start. Clearing at the start
+            -- would make the tooltip dismiss while the cursor is still
+            -- sitting on the button it's about to leave.
+            local isTutorialBox = targetFrame and targetFrame._isTutorialBox
             local tx, ty = centerInUIParent(targetFrame)
             if not tx then
                 if onArrive then onArrive() end
                 return
+            end
+            -- Default landing placements (skipped if caller passed explicit
+            -- offsets). Two cases:
+            --   * Tutorial boxes: tip at the bottom-border center, sprite
+            --     extends below the frame so it never covers the text.
+            --   * Small icon buttons (<=50x50 Button): tip in the lower-
+            --     right quadrant so the icon below stays visible.
+            if not offsetX and not offsetY then
+                if isTutorialBox then
+                    local bottom = targetFrame:GetBottom()
+                    if bottom then
+                        ty = bottom - 4
+                    end
+                elseif targetFrame.IsObjectType and targetFrame:IsObjectType("Button") then
+                    local w = targetFrame:GetWidth() or 0
+                    local h = targetFrame:GetHeight() or 0
+                    if w > 0 and h > 0 and w <= 50 and h <= 50 then
+                        offsetX = w * 0.3
+                        offsetY = -h * 0.3
+                    end
+                end
             end
             if offsetX then tx = tx + offsetX end
             if offsetY then ty = ty + offsetY end
@@ -1407,6 +1644,7 @@ function Demo.Start(ctx)
             local sy = cursor:GetTop() - 4
             local elapsed = 0
             local myGen = stepGen
+            local hoverCleared = false
             cursor:SetScript("OnUpdate", function(self, dt)
                 if not active or myGen ~= stepGen then
                     self:SetScript("OnUpdate", nil)
@@ -1419,9 +1657,30 @@ function Demo.Start(ctx)
                 local eased = t * t * (3 - 2 * t)  -- smoothstep
                 local nx = sx + (tx - sx) * eased
                 local ny = sy + (ty - sy) * eased
+                -- Release the previous target's tooltip/highlight once
+                -- the cursor has traveled ~20 px from the start — far
+                -- enough to be clearly off a small icon button. This
+                -- lets the tooltip linger while the cursor is still
+                -- visibly on the button it just left.
+                if not hoverCleared then
+                    local dx, dy = nx - sx, ny - sy
+                    if dx * dx + dy * dy >= 400 then
+                        hoverCleared = true
+                        clearButtonHover()
+                    end
+                end
                 placeCursorAt(nx, ny)
                 if t >= 1 then
                     self:SetScript("OnUpdate", nil)
+                    -- For a tutorial box, re-anchor the cursor's TOPLEFT
+                    -- to the frame's BOTTOM so it follows if the box
+                    -- resizes later (e.g. SetText grows the height for
+                    -- a longer message). The -4/0 offset puts the tip
+                    -- at bottom-center with no overlap into the frame.
+                    if isTutorialBox and not offsetX and not offsetY then
+                        cursor:ClearAllPoints()
+                        cursor:SetPoint("TOPLEFT", targetFrame, "BOTTOM", -4, 0)
+                    end
                     if onArrive then pcall(onArrive) end
                 end
             end)
@@ -2115,6 +2374,14 @@ function Demo.Start(ctx)
             if C_AddOns and C_AddOns.LoadAddOn then
                 pcall(C_AddOns.LoadAddOn, "Blizzard_WorldMap")
             end
+            -- Lazy-capture the pre-demo WMF mapID: if WMF wasn't loaded
+            -- at Demo.Start, this is the first moment it exists with a
+            -- valid mapID, and we need that value to restore on demo
+            -- switch / panel close. Capture BEFORE ToggleWorldMap since
+            -- opening the map may trigger a SetMapID of its own.
+            if savedWmfMapID == nil and WorldMapFrame and WorldMapFrame.GetMapID then
+                savedWmfMapID = WorldMapFrame:GetMapID()
+            end
             if not WorldMapFrame or not WorldMapFrame:IsShown() then
                 pcall(ToggleWorldMap)
             end
@@ -2524,89 +2791,42 @@ function Demo.Start(ctx)
             end
         end
 
-        -- Bouncing tutorial-style arrow anchored under the callout text,
-        -- pointing up at the text so the user notices it. Uses the same
-        -- indicator texture as the tutorial Highlight engine, following
-        -- the user's selected style and color.
-        local minimapArrowFrame = CreateFrame("Frame", nil, UIParent)
-        minimapArrowFrame:SetFrameStrata("TOOLTIP")
-        minimapArrowFrame:SetFrameLevel(1001)
-        local ARROW_SIZE = ns.ICON_SIZE or 48
-        minimapArrowFrame:SetSize(ARROW_SIZE, ARROW_SIZE)
-        minimapArrowFrame:SetIgnoreParentAlpha(true)
-        -- Sits directly below the callout text.
-        -- Sit directly against the minimap's left edge, just below the
-        -- callout text vertically, so the arrow is visibly next to what
-        -- it's pointing at. Falls back to the callout anchor if the
-        -- minimap isn't available.
-        if _G["Minimap"] then
-            minimapArrowFrame:SetPoint("RIGHT", _G["Minimap"], "LEFT", -4, -20)
-        else
-            minimapArrowFrame:SetPoint("TOP", minimapCalloutFrame, "BOTTOM", 0, -4)
-        end
-
-        local minimapArrowTex = minimapArrowFrame:CreateTexture(nil, "ARTWORK")
-        minimapArrowTex:SetAllPoints()
-
-        -- Apply current indicator style/color on show, and rotate so
-        -- the arrow points RIGHT toward the minimap (the minimap is to
-        -- the right of the callout text, and this arrow sits under the
-        -- text). CreateIndicatorTextures' `style.rotation` field (or
-        -- the preRotated vs not-preRotated default) is the rotation
-        -- that makes the texture point DOWN in tutorial mode; adding
-        -- pi/2 rotates CCW 90 degrees, taking "down" to "right".
-        local function refreshMinimapArrowStyle()
-            local style = ns.GetIndicatorTexture and ns.GetIndicatorTexture()
-                or { texture = "Interface\\AddOns\\EasyFind\\Images\\arrow-hq", preRotated = true }
-            local color = ns.GetIndicatorColor and ns.GetIndicatorColor()
-                or { 1.0, 0.82, 0.0 }
-            minimapArrowTex:SetTexture(style.texture)
-            if style.texCoord then
-                minimapArrowTex:SetTexCoord(unpack(style.texCoord))
-            else
-                minimapArrowTex:SetTexCoord(0, 1, 0, 1)
-            end
-            minimapArrowTex:SetVertexColor(color[1], color[2], color[3], 1)
-            local pointsDown
-            if style.rotation then
-                pointsDown = style.rotation
-            elseif style.preRotated then
-                pointsDown = 0
-            else
-                pointsDown = math.pi
-            end
-            minimapArrowTex:SetRotation(pointsDown + math.pi / 2)
-        end
-        minimapArrowFrame:HookScript("OnShow", refreshMinimapArrowStyle)
-        minimapArrowFrame:Hide()
-
-        -- Bounce horizontally toward the minimap. Same BOUNCE pattern as
-        -- Highlight.lua's tutorial indicator, just sideways so the
-        -- motion reinforces the pointing direction.
-        local minimapArrowAG = minimapArrowFrame:CreateAnimationGroup()
-        minimapArrowAG:SetLooping("BOUNCE")
-        local arrowBounce = minimapArrowAG:CreateAnimation("Translation")
-        arrowBounce:SetOffset(10, 0)
-        arrowBounce:SetDuration(0.4)
+        -- Tutorial chevron pointer attached to the minimap callout box,
+        -- animating rightward into the minimap. Gap between the box's
+        -- right edge and the minimap's left edge (set on the callout's
+        -- SetPoint above) is sized so the chevron's full visible sweep
+        -- (~27 px shape + 36 px travel) lands the apex just shy of the
+        -- minimap edge at peak travel, without intruding.
+        -- Cadence copied from modePointer (canonical recipe).
+        local minimapChevron = ns.TutorialBox.AttachPointer(minimapCalloutFrame, {
+            direction   = "right",
+            travel      = 36,
+            duration    = 1.25,
+            count       = 2,
+            easing      = 0.5,
+            fadeStart   = 0.75,
+            startOffset = -10,
+            glow        = 0.7,
+        })
+        minimapChevron.frame:Hide()
 
         -- Attach real methods to the forward-declared minimapArrow table
         -- so upvalues in endDemo / cancelInFlight / resetDemoGameState
-        -- see the live implementation.
+        -- see the live implementation. The old bouncing indicator
+        -- texture was replaced with chevrons attached to the callout
+        -- box, so Show/Hide now just toggle the chevron driver frame's
+        -- visibility (OnUpdate pauses automatically while hidden).
         function minimapArrow:Show()
-            minimapArrowFrame:Show()
-            minimapArrowAG:Play()
+            minimapChevron.frame:Show()
         end
         function minimapArrow:Hide()
-            minimapArrowAG:Stop()
-            minimapArrowFrame:Hide()
+            minimapChevron.frame:Hide()
         end
-        function minimapArrow:SetPaused(isPaused)
-            if not minimapArrowFrame:IsShown() then return end
-            if isPaused then
-                minimapArrowAG:Pause()
-            else
-                minimapArrowAG:Play()
-            end
+        function minimapArrow:SetPaused(_)
+            -- No-op: chevron OnUpdate is bound to parent visibility, and
+            -- the callout itself stays shown during a pause, so the
+            -- chevron keeps cycling. Acceptable tradeoff for how rarely
+            -- users pause mid-callout.
         end
 
         -- Show the minimap callout text and a bouncing arrow pointing
@@ -2695,6 +2915,229 @@ function Demo.Start(ctx)
             end)
         end
 
+        -- Inline hint shown right after a result is clicked and the
+        -- highlights activate: scroll mapSearchCallout's text from the
+        -- "Now let's click this result" narration to a short sentence
+        -- calling out the clear buttons, point a chevron at each, and
+        -- fire the local button's real tooltip so the user sees what
+        -- they do. No separate step in the demo list; runs between the
+        -- click-animation settle and the minimap callout.
+        function msc.clearBtnHint(done)
+            local lsf = _G["EasyFindMapSearchFrame"]
+            local gsf = _G["EasyFindMapGlobalSearchFrame"]
+            local localBtn  = lsf and lsf.clearBtn
+            local globalBtn = gsf and gsf.clearBtn
+            local haveLocal  = localBtn  and localBtn:IsShown()
+            local haveGlobal = globalBtn and globalBtn:IsShown()
+            if not haveLocal and not haveGlobal then
+                done(); return
+            end
+            -- Hide the callout's own left-pointing chevron: the two
+            -- clear-button chevrons below already point at their real
+            -- targets, so a third arrow from the callout is noise.
+            mapSearchCallout.arrow.frame:Hide()
+            -- Two sequential messages. The first sets context; the
+            -- second is the call-to-action that the chevrons + cursor
+            -- tooltip will reinforce. Pre-measure the box size required
+            -- for each, take the max, then tween the box to that size
+            -- alongside the slide below. Staying at one size across
+            -- both scrolls avoids a second resize mid-sequence.
+            local hintContext = "Clear icons will be visible anytime a highlight is active."
+            local hintAction  = "Click any to clear all highlights."
+            local startW = mapSearchCallout.frame:GetWidth()
+            local startH = mapSearchCallout.frame:GetHeight()
+            local savedText = mapSearchCallout.fs:GetText() or ""
+            mapSearchCallout.fs:SetText(hintContext)
+            mapSearchCallout.frame:SetAutoSized(340)
+            local wCtx = mapSearchCallout.frame:GetWidth()
+            local hCtx = mapSearchCallout.frame:GetHeight()
+            mapSearchCallout.fs:SetText(hintAction)
+            mapSearchCallout.frame:SetAutoSized(340)
+            local wAct = mapSearchCallout.frame:GetWidth()
+            local hAct = mapSearchCallout.frame:GetHeight()
+            local targetW = wCtx > wAct and wCtx or wAct
+            local targetH = hCtx > hAct and hCtx or hAct
+            mapSearchCallout.fs:SetText(savedText)
+            mapSearchCallout.frame:SetSize(startW, startH)
+            mapSearchCallout:SetTextScrolling(hintContext)
+            -- Slide the callout from its anchored spot next to the
+            -- results frame down and to the left, so it lands centered
+            -- below the two map search bars. Tween position and size
+            -- together so the box grows to fit the two-line text in
+            -- sync with the slide.
+            local startL = mapSearchCallout.frame:GetLeft()
+            local startT = mapSearchCallout.frame:GetTop()
+            local leftEdge  = lsf and lsf:GetLeft()
+            local rightEdge = gsf and gsf:GetRight()
+            local lsfBot = lsf and lsf:GetBottom()
+            local gsfBot = gsf and gsf:GetBottom()
+            if startL and startT and leftEdge and rightEdge and lsfBot and gsfBot then
+                local targetL = (leftEdge + rightEdge) * 0.5 - targetW * 0.5
+                local targetT = (lsfBot < gsfBot and lsfBot or gsfBot) - 28
+                if not mapSearchCallout.moveAnim then
+                    mapSearchCallout.moveAnim = CreateFrame("Frame")
+                    mapSearchCallout.moveAnim:Hide()
+                end
+                local moveAnim = mapSearchCallout.moveAnim
+                moveAnim:SetScript("OnUpdate", nil)
+                local dur = 0.5
+                local el = 0
+                moveAnim:SetScript("OnUpdate", function(_, dt)
+                    el = el + dt
+                    local t = el / dur
+                    if t > 1 then t = 1 end
+                    local eased = t * t * (3 - 2 * t)
+                    local nl = startL + (targetL - startL) * eased
+                    local nt = startT + (targetT - startT) * eased
+                    local nw = startW + (targetW - startW) * eased
+                    local nh = startH + (targetH - startH) * eased
+                    mapSearchCallout.frame:SetSize(nw, nh)
+                    mapSearchCallout.frame:ClearAllPoints()
+                    mapSearchCallout.frame:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", nl, nt)
+                    if t >= 1 then
+                        moveAnim:SetScript("OnUpdate", nil)
+                        moveAnim:Hide()
+                    end
+                end)
+                moveAnim:Show()
+            end
+            -- Chevron phase-1 apex lands ~63 px right of emitter.RIGHT
+            -- (visible 27 + travel 36). Anchoring emitter.RIGHT to the
+            -- button's LEFT with a -63 offset puts the apex right at
+            -- the button's left edge at peak travel.
+            local function showChevronAt(pointer, btn)
+                if not btn then return end
+                pointer.emitter:ClearAllPoints()
+                pointer.emitter:SetPoint("RIGHT", btn, "LEFT", -63, 0)
+                pointer.emitter:Show()
+                pointer.chev.frame:Show()
+            end
+            local hoverBtn = haveLocal and localBtn or globalBtn
+            -- Fires once the cursor has travelled to the clear button.
+            -- Triggers the real OnEnter tooltip, waits, then runs the
+            -- "Let's try it." -> click -> retype -> reclick sequence
+            -- before handing off to done() for the minimap callout.
+            local function clearHintOnArrive()
+                local onEnter = hoverBtn:GetScript("OnEnter")
+                if onEnter then pcall(onEnter, hoverBtn) end
+                safeAfter(2.8, function()
+                    GameTooltip_Hide()
+                    localClearPointer.chev.frame:Hide()
+                    localClearPointer.emitter:Hide()
+                    globalClearPointer.chev.frame:Hide()
+                    globalClearPointer.emitter:Hide()
+                    mapSearchCallout:SetTextScrolling("Let's try it.")
+                    safeAfter(2.0, function()
+                        clickAnim(function()
+                            local onClick = hoverBtn:GetScript("OnClick")
+                            if onClick then
+                                pcall(onClick, hoverBtn, "LeftButton", true)
+                            end
+                            safeAfter(0.9, function()
+                                mapSearchCallout:SetTextScrolling("Now let's quickly get tracking again.")
+                                safeAfter(1.8, function()
+                                    -- Keep the callout visible through
+                                    -- retype + cursor travel so the user
+                                    -- reads the narration the whole way;
+                                    -- hide it right at the click.
+                                    msc.retypeLastBrowse(function()
+                                        local lastPOI = msc.lastBrowsePOI
+                                        local target = (lastPOI and findMapResultByName(lastPOI.name))
+                                            or findFirstVisibleMapResult()
+                                        if not target then
+                                            mapSearchCallout:Hide()
+                                            done(); return
+                                        end
+                                        moveCursorTo(target, CURSOR_MOVE, function()
+                                            hideMapCaret()
+                                            clickAnim(function()
+                                                if target._demoMapHover then target._demoMapHover = nil end
+                                                setHoveredRow(nil)
+                                                mapSearchCallout:Hide()
+                                                if target.data and ns.MapSearch then
+                                                    pcall(ns.MapSearch.SelectResult, ns.MapSearch, target.data)
+                                                end
+                                                safeAfter(SETTLE_PAUSE, done)
+                                            end)
+                                        end)
+                                    end)
+                                end)
+                            end)
+                        end)
+                    end)
+                end)
+            end
+            -- Chevrons show immediately so the callout text and the
+            -- buttons it refers to are pointed at from the first
+            -- word. Cursor travel + tooltip wait until the text rolls
+            -- to the action sentence so the visual call-to-action
+            -- aligns with the imperative.
+            if haveLocal  then showChevronAt(localClearPointer,  localBtn)  end
+            if haveGlobal then showChevronAt(globalClearPointer, globalBtn) end
+            safeAfter(2.2, function()
+                mapSearchCallout:SetTextScrolling(hintAction)
+                moveCursorTo(hoverBtn, CURSOR_MOVE, clearHintOnArrive)
+            end)
+        end
+
+        -- After the "point is now being tracked" callout, detect
+        -- whether the player is currently in NEAR mode (circle+arrow
+        -- visible) or FAR mode (perimeter glow). Then narrate a
+        -- "move to see it flip" flow tailored to their starting
+        -- state. EasyFindNearTrack is the frame that only appears
+        -- when the POI is within 75% of the minimap's radar radius
+        -- (see MapSearch.lua:769), so its visibility is the mode
+        -- test.
+        function msc.trackingStateNarration(done)
+            local nearTrack = _G["EasyFindNearTrack"]
+            local glow = _G["EasyFindMinimapGlow"]
+            local function inNearMode()
+                return nearTrack and nearTrack:IsShown()
+            end
+            local function trackingActive()
+                local nearShown = nearTrack and nearTrack:IsShown()
+                local glowShown = glow and glow:IsShown()
+                return nearShown or glowShown
+            end
+            local function cancelTicker()
+                if trackingStateTicker then
+                    trackingStateTicker:Cancel()
+                    trackingStateTicker = nil
+                end
+            end
+            local function pollUntil(predicate, onArrive)
+                cancelTicker()
+                trackingStateTicker = C_Timer.NewTicker(0.25, function()
+                    if predicate() then
+                        cancelTicker()
+                        onArrive()
+                    end
+                end)
+            end
+            -- Final wait: don't end the demo until the player has
+            -- actually reached the POI and super-tracking has cleared
+            -- (both the near-track frame and the perimeter glow are
+            -- hidden). The user asked for this explicitly; no timeout.
+            local function waitForArrival(onArrive)
+                pollUntil(function() return not trackingActive() end, onArrive)
+            end
+            if inNearMode() then
+                minimapCallout:SetText("Try moving further to see the perimeter arrow glow.\n(Glow can be turned off in settings.)")
+                pollUntil(function() return not inNearMode() end, function()
+                    minimapCallout:SetText("Venture all the way to the point to see the circle shrink.")
+                    pollUntil(inNearMode, function()
+                        waitForArrival(done)
+                    end)
+                end)
+            else
+                minimapCallout:SetText("Try moving closer to place the guiding circle around you.\n(Glow can be turned off in settings.)")
+                pollUntil(inNearMode, function()
+                    minimapCallout:SetText("Venture all the way to the point to see the circle shrink.")
+                    waitForArrival(done)
+                end)
+            end
+        end
+
         function msc.clickResult(wantFast, done)
             ensureLocalMapMode(wantFast)
             local lastPOI = msc.lastBrowsePOI
@@ -2704,9 +3147,21 @@ function Demo.Start(ctx)
                 safeAfter(0.5, done)
                 return
             end
-            moveCursorTo(target, CURSOR_MOVE, function()
-                hideMapCaret()
-                clickAnim(function()
+            -- Announce the next action. Scroll-transition the text so
+            -- the callout (already showing "Hovering over a result..."
+            -- at the end of browseWhatsAround) stays put and its text
+            -- ticker-rolls to the new narration instead of popping out
+            -- and back. Falls back to Show if the callout wasn't already
+            -- open (e.g. the browse step was skipped).
+            mapSearchCallout:SetTextScrolling("Now let's click this result.")
+            -- Extra beat before the click so the user has time to read
+            -- the freshly-scrolled narration (CURSOR_MOVE below adds
+            -- another 0.8s of reading while the cursor travels to the
+            -- row).
+            safeAfter(2.8, function()
+                moveCursorTo(target, CURSOR_MOVE, function()
+                    hideMapCaret()
+                    clickAnim(function()
                     -- Clear the hover tag so setHoveredRow fires OnLeave
                     -- when SelectResult hides the results frame.
                     if target._demoMapHover then target._demoMapHover = nil end
@@ -2716,27 +3171,45 @@ function Demo.Start(ctx)
                     end
                     if wantFast then
                         safeAfter(SETTLE_PAUSE, function()
-                            minimapCallout:SetText("Notice how your target is now automatically tracked!")
-                            minimapCallout:Show()
-                            minimapArrow:Show()
-                            moveCursorTo(minimapCalloutFrame, CURSOR_MOVE, function()
-                                safeAfter(2.5, function()
-                                    minimapCallout:Hide()
-                                    minimapArrow:Hide()
-                                    closeMapAndFinish(done)
+                            -- Scroll the callout's text from "Now let's
+                            -- click this result." to the clear-button
+                            -- hint, point chevrons at both clear
+                            -- buttons, fire the local one's tooltip.
+                            -- Then hand off to the minimap tracking
+                            -- callout.
+                            msc.clearBtnHint(function()
+                                mapSearchCallout:Hide()
+                                minimapCallout:SetText("The point is now being tracked.")
+                                minimapCallout:Show()
+                                minimapArrow:Show()
+                                moveCursorTo(minimapCalloutFrame, CURSOR_MOVE, function()
+                                    safeAfter(2.5, function()
+                                        msc.trackingStateNarration(function()
+                                            minimapCallout:Hide()
+                                            minimapArrow:Hide()
+                                            closeMapAndFinish(done)
+                                        end)
+                                    end)
                                 end)
-                            end, 0, -45)
+                            end)
                         end)
                     else
+                        -- Guide mode: leave the callout visible so the
+                        -- next step (clickPinTrackContinue) can scroll
+                        -- its text from "Now let's click..." to the pin
+                        -- instructions without a pop-out / pop-back.
                         safeAfter(SETTLE_PAUSE, done)
                     end
+                    end)
                 end)
             end)
         end
 
         function msc.clickPinTrackContinue(done)
-            mapSearchCallout:SetText("Click the pin to place a waypoint and start tracking.")
-            mapSearchCallout:Show()
+            -- Scroll-transition from the previous step's "Now let's click
+            -- this result." callout so the box doesn't pop out and back.
+            -- Falls through to a normal Show if the callout is hidden.
+            mapSearchCallout:SetTextScrolling("Click the pin to place a waypoint and start tracking.")
             clickPinAndTrack(function()
                 safeAfter(1.5, function()
                     mapSearchCallout:Hide()
@@ -2768,7 +3241,7 @@ function Demo.Start(ctx)
                                 safeAfter(0.4, done)
                             end
                         end)
-                    end, 0, -45)
+                    end)
                 end)
             end)
         end
@@ -2806,8 +3279,31 @@ function Demo.Start(ctx)
 
         function msc.pickDiversePOIs()
             if not (ns.MapSearch and ns.MapSearch.GetStaticLocations) then return {} end
-            local pois = ns.MapSearch:GetStaticLocations()
-            if not pois then return {} end
+            -- This demo is about what's around the player right now, so
+            -- prefer the player's actual zone. WMF's mapID is only a
+            -- fallback because the zone/instance demo navigates WMF to
+            -- an instance entrance map (no POIs) via SelectResult and
+            -- stays there after the demo closes. Using WMF as the
+            -- primary source would incorrectly disable this demo on the
+            -- very next switch. GetBestMapForUnit can return nil
+            -- transiently (loading screens, very early init), so cache
+            -- a last-good mapID as a final fallback. Same priority as
+            -- MapSearch:SearchForUI's local search.
+            local getBest = _G["GetBestMapForUnit"]
+            local playerMapID = getBest and getBest("player")
+            local wmfMapID = WorldMapFrame and WorldMapFrame:GetMapID()
+            local pois = playerMapID and ns.MapSearch:GetStaticLocations(playerMapID)
+            if pois and #pois > 0 then
+                msc.lastGoodMapID = playerMapID
+            else
+                pois = wmfMapID and ns.MapSearch:GetStaticLocations(wmfMapID)
+                if pois and #pois > 0 then
+                    msc.lastGoodMapID = wmfMapID
+                elseif msc.lastGoodMapID then
+                    pois = ns.MapSearch:GetStaticLocations(msc.lastGoodMapID)
+                end
+            end
+            if not pois or #pois == 0 then return {} end
             local picks, seenCat = {}, {}
             for _, poi in ipairs(pois) do
                 local cat = poi.category or "unknown"
@@ -2820,35 +3316,83 @@ function Demo.Start(ctx)
             return picks
         end
 
-        function msc.hoverSearchPreview(query, displayName, narration, isFirstVisit, keepPreview, done)
+        -- Max rows to hover per typed prefix. Capped so a prefix that
+        -- yields many results (e.g. a very common first 3 chars) doesn't
+        -- stretch the browse step into a long slog.
+        local MAX_BROWSE_HOVERS = 3
+        -- Pause on each row when hovering multiple; a full narration pause
+        -- when there's only one row so the single preview has time to land.
+        local BROWSE_MULTI_HOVER_PAUSE = 1.0
+        local BROWSE_SINGLE_HOVER_PAUSE = 2.2
+
+        -- Type `query` into the local map search bar, then walk the cursor
+        -- through each visible result row (up to MAX_BROWSE_HOVERS),
+        -- pausing at each so the map preview can update. Each row is
+        -- tagged with _demoMapHover so setHoveredRow fires real
+        -- OnEnter/OnLeave as the cursor crosses rows, making the preview
+        -- track the cursor in real time.
+        function msc.hoverRowsForPrefix(query, isFirstVisit, done)
             local lsf = _G["EasyFindMapSearchFrame"]
             local editBox = lsf and lsf.editBox
             if not editBox then done(); return end
+            local function hoverAllRows()
+                local rows = {}
+                for i = 1, 20 do
+                    local btn = _G["EasyFindMapResultButton" .. i]
+                    if btn and btn:IsShown() and btn.data and btn.data.name
+                       and not btn.data.isHeader then
+                        rows[#rows + 1] = btn
+                        if #rows >= MAX_BROWSE_HOVERS then break end
+                    end
+                end
+                if #rows == 0 then done(); return end
+                -- Tag every row up front so the preview fires even on rows
+                -- the cursor passes through between deliberate stops.
+                for i = 1, #rows do rows[i]._demoMapHover = true end
+                local pause = (#rows > 1) and BROWSE_MULTI_HOVER_PAUSE or BROWSE_SINGLE_HOVER_PAUSE
+                local idx = 0
+                local function nextRow()
+                    idx = idx + 1
+                    if idx > #rows then
+                        -- Remember the last visible row so later steps
+                        -- (clickResult, retypeLastBrowse) re-target it.
+                        local lastRow = rows[#rows]
+                        if lastRow and lastRow.data and lastRow.data.name then
+                            msc.lastBrowsePOI = { name = lastRow.data.name }
+                        end
+                        -- Untag the rows we already visited so when the
+                        -- cursor travels back to the editbox for the next
+                        -- prefix it doesn't re-trigger previews on each
+                        -- row it passes over. The last row stays tagged
+                        -- so its preview clears via OnLeave when the
+                        -- cursor finally departs.
+                        for i = 1, #rows - 1 do
+                            rows[i]._demoMapHover = nil
+                        end
+                        done()
+                        return
+                    end
+                    local row = rows[idx]
+                    moveCursorTo(row, CURSOR_MOVE, function()
+                        safeAfter(pause, nextRow)
+                    end)
+                end
+                nextRow()
+            end
             local function afterFocus()
                 backspaceMapTextKeepCaret(editBox, TYPE_DELAY, function()
                     typeMapTextKeepCaret(editBox, query, TYPE_DELAY, function()
-                        safeAfter(SETTLE_PAUSE, function()
-                            local row = findMapResultByName(displayName) or findFirstVisibleMapResult()
-                            if not row then done(); return end
-                            -- Tag the row so setHoveredRow fires OnEnter/OnLeave
-                            -- in sync with the highlight (same placeCursorAt frame).
-                            row._demoMapHover = true
-                            moveCursorTo(row, CURSOR_MOVE, function()
-                                mapSearchCallout:SetText(narration)
-                                mapSearchCallout:Show()
-                                safeAfter(2.2, function()
-                                    if keepPreview then
-                                        -- Leave _demoMapHover set so the preview
-                                        -- persists until clickResult clears it.
-                                        done()
-                                    else
-                                        -- Clear the tag; setHoveredRow will fire
-                                        -- OnLeave when the cursor moves away.
-                                        done()
-                                    end
-                                end)
-                            end)
-                        end)
+                        -- Show the narration as soon as typing finishes
+                        -- (only on the first prefix; later prefixes reuse
+                        -- the callout that's already up). Raising it here
+                        -- instead of waiting for cursor arrival at the
+                        -- first row lets the user read the instruction
+                        -- while the cursor is still travelling.
+                        if isFirstVisit then
+                            mapSearchCallout:SetText("Hovering over a result shows it on the map.")
+                            mapSearchCallout:ShowWithArrow()
+                        end
+                        safeAfter(SETTLE_PAUSE, hoverAllRows)
                     end)
                 end)
             end
@@ -2866,24 +3410,48 @@ function Demo.Start(ctx)
             local picks = msc.pickDiversePOIs()
             if #picks == 0 then done(); return end
             local idx = 0
-            local function nextOne()
+            local function nextPick()
                 idx = idx + 1
                 if idx > #picks then
-                    msc.lastBrowsePOI = picks[#picks]
-                    mapSearchCallout:Hide()
+                    -- Leave the callout visible so clickResult can
+                    -- scroll its text from "Hovering over a result..."
+                    -- to "Now let's click this result." without the box
+                    -- popping out and back.
                     done()
                     return
                 end
                 local poi = picks[idx]
-                local query = slower(poi.name):sub(1, 3)
-                local isLast = idx == #picks
-                msc.hoverSearchPreview(query, poi.name, "Hovering over a result shows it on the map.", idx == 1, isLast, nextOne)
+                -- Per-category overrides: typing "ah" or "fp" reads as
+                -- the natural in-game shorthand and avoids spelling out
+                -- "auc"/"fli" which look awkward in the demo.
+                local cat = poi.category
+                local query
+                if cat == "auctionhouse" then
+                    query = "ah"
+                elseif cat == "flightmaster" then
+                    query = "fp"
+                else
+                    query = slower(poi.name):sub(1, 3)
+                end
+                msc.hoverRowsForPrefix(query, idx == 1, nextPick)
             end
-            nextOne()
+            nextPick()
         end
 
         DEMOS.mapSearchCurrent.rebuild = function(def)
             msc.lastBrowsePOI = nil
+            -- Fully wipe the demo payload each rebuild. Both the
+            -- disabled state and the step list live on the shared `def`
+            -- table across rebuilds, so a previous run that populated
+            -- stepDefs (hasBrowse=true) and a later run that sets
+            -- disabled=true (hasBrowse=false) would otherwise layer the
+            -- disabled overlay on top of a still-populated step list.
+            def.disabled = false
+            def.disabledMessage = nil
+            def.stepDefs = nil
+            def.sections = nil
+            def.run = nil
+            def.setupAfter = nil
             -- Capture the user's CURRENT mode as the snapshot so
             -- restoreUserSettings (which runs after rebuild) reverts
             -- any flips the demo's run/setupAfter make to the saved
@@ -2896,15 +3464,39 @@ function Demo.Start(ctx)
                 ensureLocalMapMode(isFast); openWorldMapToPlayerZone()
             end
             -- Snap to end-of-browse: map open with the last POI query
-            -- typed and results visible, ready for "Click a result".
+            -- typed and results visible, ready for "Click a result". The
+            -- animation's last hover lands on the last visible row of the
+            -- final prefix (not necessarily picks[#picks] itself, since
+            -- the prefix can match siblings). Mirror that here so jumping
+            -- to the end state and playing through produce the same
+            -- lastBrowsePOI for clickResult to re-target.
             local browseSnap = function()
                 ensureLocalMapMode(isFast); openWorldMapToPlayerZone()
                 local picks = msc.pickDiversePOIs()
                 if #picks > 0 then
-                    msc.lastBrowsePOI = picks[#picks]
-                    local query = slower(picks[#picks].name):sub(1, 3)
+                    local lastPick = picks[#picks]
+                    msc.lastBrowsePOI = { name = lastPick.name }
+                    local query = slower(lastPick.name):sub(1, 3)
                     if ns.MapSearch and ns.MapSearch.RunLocalSearch then
                         ns.MapSearch:RunLocalSearch(query)
+                    end
+                    -- Walk the visible result list the same way the
+                    -- animation's hoverRowsForPrefix does (first N
+                    -- non-header rows) and pick the last one as the
+                    -- end-of-browse target.
+                    local lastName
+                    local seen = 0
+                    for i = 1, 20 do
+                        local btn = _G["EasyFindMapResultButton" .. i]
+                        if btn and btn:IsShown() and btn.data and btn.data.name
+                           and not btn.data.isHeader then
+                            lastName = btn.data.name
+                            seen = seen + 1
+                            if seen >= MAX_BROWSE_HOVERS then break end
+                        end
+                    end
+                    if lastName then
+                        msc.lastBrowsePOI = { name = lastName }
                     end
                 end
             end
@@ -3218,7 +3810,7 @@ function Demo.Start(ctx)
                         if target.data and ns.MapSearch and ns.MapSearch.HandleUISearchClick then
                             pcall(ns.MapSearch.HandleUISearchClick, ns.MapSearch, target.data)
                         end
-                        minimapCallout:SetText("Notice how your target is now automatically tracked!")
+                        minimapCallout:SetText("The point is now being tracked.")
                         safeAfter(SETTLE_PAUSE, function()
                             showMinimapHint(function()
                                 minimapCallout:Hide()
@@ -4693,10 +5285,23 @@ function Demo.Start(ctx)
             if minimapCallout then minimapCallout:Hide() end
             if minimapArrow then minimapArrow:Hide() end
             if mapSearchCallout then mapSearchCallout:Hide() end
+            if localClearPointer then
+                localClearPointer.chev.frame:Hide()
+                localClearPointer.emitter:Hide()
+            end
+            if globalClearPointer then
+                globalClearPointer.chev.frame:Hide()
+                globalClearPointer.emitter:Hide()
+            end
             -- Outfit demo cleanup (arrow, ticker, right-click icon, pin)
             if od then pcall(od.cleanup) end
             if clearDemoWaypoint then pcall(clearDemoWaypoint) end
             if resetMapSearchState then pcall(resetMapSearchState) end
+            -- Revert any WMF mapID change before closing so the next
+            -- demo's rebuild (e.g. mapSearchCurrent's pickDiversePOIs)
+            -- sees the player's real pre-demo WMF state instead of
+            -- wherever the previous demo navigated to.
+            restoreWmfMapID()
             if closeWorldMap then pcall(closeWorldMap) end
             if not InCombatLockdown() then
                 local psf = _G["PlayerSpellsFrame"]
@@ -4729,9 +5334,18 @@ function Demo.Start(ctx)
             setHoveredRow(nil)
             clearButtonHover()
             if transitionText then transitionText:Hide() end
+            if trackingStateTicker then trackingStateTicker:Cancel(); trackingStateTicker = nil end
             if minimapCallout then minimapCallout:Hide() end
             if minimapArrow then minimapArrow:Hide() end
             if mapSearchCallout then mapSearchCallout:Hide() end
+            if localClearPointer then
+                localClearPointer.chev.frame:Hide()
+                localClearPointer.emitter:Hide()
+            end
+            if globalClearPointer then
+                globalClearPointer.chev.frame:Hide()
+                globalClearPointer.emitter:Hide()
+            end
             animatingIdx = 0
         end
 

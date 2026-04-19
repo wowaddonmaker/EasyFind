@@ -191,6 +191,11 @@ function TutorialBox.AttachPointer(box, opts)
         core:SetTexture(CHEVRON_TEXTURE)
         core:SetVertexColor(color[1], color[2], color[3])
         core:SetRotation(dir.rotation)
+        -- Additive blend so the core reads as luminous (adds light to
+        -- whatever sits beneath it) instead of a solid painted-on shape.
+        -- Matches the glow's blend mode, keeping the whole chevron in
+        -- the same "warm ember" visual family.
+        core:SetBlendMode("ADD")
         group.core = core
         chevrons[i] = core
 
@@ -282,6 +287,11 @@ function TutorialBox.Create(parent, textFont)
         local h = self.fs:GetStringHeight() + 24
         self:SetSize(w, h)
     end
+
+    -- Marker so cursor-hover helpers can detect tutorial boxes and
+    -- anchor the cursor sprite outside the frame (tip at the bottom
+    -- border, body below) instead of covering text in the middle.
+    f._isTutorialBox = true
 
     return f
 end

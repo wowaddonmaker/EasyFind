@@ -2058,7 +2058,7 @@ function MapSearch:CreateSearchFrame()
     globalPlaceholder:SetPoint("LEFT", 2, 0)
     globalPlaceholder:SetJustifyH("LEFT")
     globalPlaceholder:SetTextColor(0.5, 0.5, 0.5, 1.0)
-    globalPlaceholder:SetText("Search for zones & instances")
+    globalPlaceholder:SetText("Search for zones/instances")
     globalEditBox.placeholder = globalPlaceholder
 
     globalEditBox:SetScript("OnEditFocusGained", function(self)
