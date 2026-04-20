@@ -551,9 +551,6 @@ function Demo.Start(ctx)
         local DEMO_LIST = {
             { name = "UI Search",                key = "uiSearch" },
             { name = "Guide Mode",               key = "guide" },
-            { name = "Zone/instance map search", key = "mapSearchZone" },
-            { name = "Current zone map search",  key = "mapSearchCurrent" },
-            { name = "Map search through UI bar",key = "mapSearchUI" },
             { name = "Outfits",                  key = "outfits" },
             { name = "Appearance sets",          key = "appearanceSets" },
             { name = "Loot",                     key = "loot" },

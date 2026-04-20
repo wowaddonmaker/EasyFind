@@ -1283,35 +1283,14 @@ local GLOBAL_SEARCH_CATEGORIES = {
 local STATIC_LOCATIONS = ns.STATIC_LOCATIONS or {}
 
 function MapSearch:Initialize()
-    self:CreateSearchFrame()
-    self:CreateResultsFrame()
+    -- Floating search bars (searchFrame / globalSearchFrame) and the floating
+    -- results dropdown (resultsFrame) are deprecated; MapTab is the new
+    -- front-end. We only create waypoint / highlight / world-map-hook
+    -- machinery, which MapTab, HandleUISearchClick, and rare tracking all
+    -- still depend on.
     self:CreateHighlightFrame()
     self:CreateZoneHighlightFrame()
     self:HookWorldMap()
-    self:UpdateScale()
-    self:UpdateWidth()
-    self:UpdateOpacity()
-    self:UpdateFontSize()
-
-    -- Block focus during init window
-    if searchFrame and searchFrame.editBox then
-        searchFrame.editBox.blockFocus = true
-        searchFrame.editBox:ClearFocus()
-    end
-    if globalSearchFrame and globalSearchFrame.editBox then
-        globalSearchFrame.editBox.blockFocus = true
-        globalSearchFrame.editBox:ClearFocus()
-    end
-    C_Timer.After(1, function()
-        if searchFrame and searchFrame.editBox then
-            searchFrame.editBox.blockFocus = nil
-            searchFrame.editBox:ClearFocus()
-        end
-        if globalSearchFrame and globalSearchFrame.editBox then
-            globalSearchFrame.editBox.blockFocus = nil
-            globalSearchFrame.editBox:ClearFocus()
-        end
-    end)
 end
 
 -- SHARED FILTER DROPDOWN BUILDER - creates a tracking-menu-style checkbox panel
@@ -4593,18 +4572,7 @@ function MapSearch:UpdateHideMaximized()
 end
 
 function MapSearch:HookWorldMap()
-    HookMapSmartShow(searchFrame)
-    HookMapSmartShow(globalSearchFrame)
-
     WorldMapFrame:HookScript("OnShow", function()
-        searchFrame:Show()
-        globalSearchFrame:Show()
-        if EasyFind.db.mapSmartShow then
-            searchFrame:SetAlpha(0)
-            globalSearchFrame:SetAlpha(0)
-            searchFrame.smartShowVisible = false
-            globalSearchFrame.smartShowVisible = false
-        end
         -- Restore pins only if the player is in the pin's zone.
         -- Map opens to the player's current zone by default, so if they
         -- left the zone the pin was in, it's gone.
@@ -4633,63 +4601,24 @@ function MapSearch:HookWorldMap()
     end)
 
     WorldMapFrame:HookScript("OnHide", function()
-        searchFrame:Hide()
-        globalSearchFrame:Hide()
-        if searchFrame.filterDropdown then
-            searchFrame.filterDropdown:Hide()
-        end
-        if globalSearchFrame.filterDropdown then
-            globalSearchFrame.filterDropdown:Hide()
-        end
-        self:HideResults()
-        -- Hide ALL high-strata visuals that paint through the closed map.
+        -- Hide high-strata visuals that would paint through the closed map.
         -- activePinState is preserved so they restore on reopen.
         self:ClearHighlight()
         self:ClearZoneHighlight()
         self.pendingWaypoint = nil
     end)
 
-    -- Reposition search bars when map toggles between maximized and windowed
+    -- Track maximized state so breadcrumb repositioning and waypoint
+    -- placement logic can branch on it, even though we no longer have
+    -- floating bars to move.
     if WorldMapFrame.IsMaximized then
-        local function RepositionForMapMode()
-            local maximized = WorldMapFrame:IsMaximized()
-            mapIsMaximized = maximized
-            if maximized then
-                -- Move both bars to top of the map, independently positioned
-                local maxXOff = EasyFind.db.mapSearchPositionMax or 4
-                searchFrame:ClearAllPoints()
-                searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "TOPLEFT", maxXOff, -4)
-                if globalSearchFrame then
-                    globalSearchFrame:ClearAllPoints()
-                    local gMaxXOff = EasyFind.db.globalSearchPositionMax or -150
-                    globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "TOPRIGHT", gMaxXOff, -4)
-                end
-                if EasyFind.db.hideSearchBarsMaximized then
-                    searchFrame:Hide()
-                    if globalSearchFrame then globalSearchFrame:Hide() end
-                end
-            else
-                -- Restore normal bottom-edge positions
-                local yOff = EasyFind.db.mapSearchYOffset or 0
-                searchFrame:ClearAllPoints()
-                local xOff = EasyFind.db.mapSearchPosition or 0
-                searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", xOff, yOff)
-                if globalSearchFrame then
-                    globalSearchFrame:ClearAllPoints()
-                    local gXOff = EasyFind.db.globalSearchPosition or 0
-                    globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", gXOff, yOff)
-                end
-                -- Restore bars that were hidden in maximized mode
-                searchFrame:Show()
-                if globalSearchFrame then globalSearchFrame:Show() end
-            end
-            self:RefreshResultsAnchor()
+        local function OnMapModeChange()
+            mapIsMaximized = WorldMapFrame:IsMaximized()
             self:UpdateBreadcrumbPosition()
         end
-        hooksecurefunc(WorldMapFrame, "Maximize", RepositionForMapMode)
-        hooksecurefunc(WorldMapFrame, "Minimize", RepositionForMapMode)
-        -- Apply on first show if already maximized
-        WorldMapFrame:HookScript("OnShow", RepositionForMapMode)
+        hooksecurefunc(WorldMapFrame, "Maximize", OnMapModeChange)
+        hooksecurefunc(WorldMapFrame, "Minimize", OnMapModeChange)
+        WorldMapFrame:HookScript("OnShow", OnMapModeChange)
     end
 
     hooksecurefunc(WorldMapFrame, "OnMapChanged", function()
@@ -4702,21 +4631,12 @@ function MapSearch:HookWorldMap()
         -- pendingWaypoint is NOT wiped by ClearZoneHighlight so no snapshot needed.
         local savedPendingZone = self.pendingZoneHighlight
 
-        self:HideResults()
         self:ClearHighlight()
-        self:ClearZoneHighlight()  -- Explicit clear - SetText below may not reliably fire OnTextChanged inside hooksecurefunc
+        self:ClearZoneHighlight()
 
         -- Clear breadcrumb highlight
         if self.breadcrumbHighlight then
             self.breadcrumbHighlight:Hide()
-        end
-
-        -- Clear both search bars on map change
-        searchFrame.editBox:SetText("")
-        searchFrame.editBox.placeholder:Show()
-        if globalSearchFrame and globalSearchFrame.editBox then
-            globalSearchFrame.editBox:SetText("")
-            globalSearchFrame.editBox.placeholder:Show()
         end
 
         -- If we have both a pending zone AND a pending waypoint, check if the
@@ -5799,6 +5719,7 @@ function MapSearch:GetPinInfo(pin)
 end
 
 function MapSearch:OnSearchTextChanged(text)
+    if not resultsFrame then return end  -- floating bars deprecated
     if self._suppressTextChanged then
         self._suppressTextChanged = nil
         return
@@ -6242,6 +6163,7 @@ function MapSearch:SearchPOIs(pois, query)
 end
 
 function MapSearch:ShowResults(results)
+    if not resultsFrame then return end  -- floating bars deprecated
     selectedResultIndex = 0
     navBtnFocused = false
     self._lastResults = results
@@ -6498,6 +6420,7 @@ function MapSearch:HideResults()
 end
 
 function MapSearch:ShowPinnedItems()
+    if not resultsFrame then return end  -- floating bars deprecated
     local pins = EasyFind.db.pinnedMapItems
     if not pins or #pins == 0 then
         self:HideResults()
@@ -6746,14 +6669,17 @@ function MapSearch:SelectResult(data)
     self._previewing = nil
     self._savedPinState = nil
     self._suppressTextChanged = true
-    searchFrame.editBox:SetText("")
-    searchFrame.editBox:ClearFocus()
-    searchFrame.editBox.placeholder:Show()
-    if globalSearchFrame then
+    -- Floating bars may be gone (deprecated) - guard the editbox clears.
+    if searchFrame and searchFrame.editBox then
+        searchFrame.editBox:SetText("")
+        searchFrame.editBox:ClearFocus()
+        if searchFrame.editBox.placeholder then searchFrame.editBox.placeholder:Show() end
+    end
+    if globalSearchFrame and globalSearchFrame.editBox then
         self._suppressTextChanged = true
         globalSearchFrame.editBox:SetText("")
         globalSearchFrame.editBox:ClearFocus()
-        globalSearchFrame.editBox.placeholder:Show()
+        if globalSearchFrame.editBox.placeholder then globalSearchFrame.editBox.placeholder:Show() end
     end
     self:HideResults()
 
@@ -6881,13 +6807,14 @@ function MapSearch:SelectResult(data)
 
     -- Clear search text after pins are placed. Flag persists until
     -- OnSearchTextChanged consumes it (OnTextChanged may fire next frame).
+    -- Floating bars may be retired - guard editbox access.
     self._suppressTextChanged = true
-    if isGlobalSearch and globalSearchFrame then
+    if isGlobalSearch and globalSearchFrame and globalSearchFrame.editBox then
         globalSearchFrame.editBox:SetText("")
-        globalSearchFrame.editBox.placeholder:Show()
-    else
+        if globalSearchFrame.editBox.placeholder then globalSearchFrame.editBox.placeholder:Show() end
+    elseif searchFrame and searchFrame.editBox then
         searchFrame.editBox:SetText("")
-        searchFrame.editBox.placeholder:Show()
+        if searchFrame.editBox.placeholder then searchFrame.editBox.placeholder:Show() end
     end
 end
 
@@ -7773,28 +7700,11 @@ function MapSearch:UpdateSearchBarTheme()
 end
 
 function MapSearch:ResetPosition()
+    -- Floating bars are retired so there's nothing to reposition.
     EasyFind.db.mapSearchPosition = nil
     EasyFind.db.globalSearchPosition = nil
     EasyFind.db.mapSearchPositionMax = nil
     EasyFind.db.globalSearchPositionMax = nil
-    if mapIsMaximized then
-        searchFrame:ClearAllPoints()
-        searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "TOPLEFT", 4, -4)
-        if globalSearchFrame then
-            globalSearchFrame:ClearAllPoints()
-            globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "TOPRIGHT", -150, -4)
-        end
-        return
-    end
-    local yOff = EasyFind.db.mapSearchYOffset or 0
-    if searchFrame then
-        searchFrame:ClearAllPoints()
-        searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", 0, yOff)
-    end
-    if globalSearchFrame then
-        globalSearchFrame:ClearAllPoints()
-        globalSearchFrame:SetPoint("TOPRIGHT", WorldMapFrame.ScrollContainer, "BOTTOMRIGHT", 0, yOff)
-    end
 end
 
 function MapSearch:UpdateYOffset()
