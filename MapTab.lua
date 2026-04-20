@@ -25,7 +25,13 @@ local select = select
 -- Side-tab geometry and shared atlas textures from the Blizzard map.
 local TAB_W, TAB_H       = 42, 55
 local TAB_BG_W, TAB_BG_H = 51, 59
-local TAB_ICON_SIZE      = 28
+-- The common-search-magnifyingglass atlas is 24x24 native. Rendering at
+-- 20x20 keeps it crisp (no upscale blur) while sitting inside the tab.
+local TAB_ICON_SIZE      = 20
+local TAB_ICON_GOLD      = {1.00, 0.82, 0.00}
+local TAB_ICON_DIM       = {0.55, 0.45, 0.10}
+-- Vertical gap under MapLegendTab so the two tabs don't collide.
+local TAB_STACK_GAP      = -6
 
 -- Popup menu geometry (matches UI.lua's pin/guide popup)
 local EYE_ICON_TEX     = "Interface\\AddOns\\EasyFind\\textures\\eye"
@@ -61,13 +67,17 @@ local function FindAtlasTexture(frame, atlas)
     return nil
 end
 
--- Note: we deliberately do NOT hide QuestsFrame / MapLegendFrame when our
--- panel opens. Blizzard's tab logic assumes those frames stay alive and
--- simply swap visibility internally; hiding them from here leaves the
--- quest-log scroll area blank when the user clicks back to Quests or
--- MapLegend. Our panel is parented to QuestMapFrame with a higher frame
--- level + an opaque QuestLog-main-background atlas, so it cleanly
--- overlays the other content without disturbing it.
+-- When our panel opens we hide Blizzard's QuestsFrame + MapLegendFrame;
+-- otherwise their text (section headers, "Map Legend" title) leaks
+-- through our overlay since those fontstrings live at frame sublevels
+-- above any single backdrop. We track which was visible so the user's
+-- click on a Blizzard tab correctly restores its panel even if our
+-- state overlapped a Blizzard internal that skipped a re-Show.
+local function HideBlizzPanels(qmf)
+    if qmf.QuestsFrame then qmf.QuestsFrame:Hide() end
+    if qmf.DetailsFrame then qmf.DetailsFrame:Hide() end
+    if qmf.MapLegendFrame then qmf.MapLegendFrame:Hide() end
+end
 
 local function RefreshSelectGlows()
     local qmf = _G["QuestMapFrame"]
@@ -86,6 +96,10 @@ local function RefreshSelectGlows()
         setGlow(tabFrame, true)
     else
         setGlow(tabFrame, false)
+    end
+    if tabFrame and tabFrame._efIcon then
+        local c = selectedIsOurs and TAB_ICON_GOLD or TAB_ICON_DIM
+        tabFrame._efIcon:SetVertexColor(c[1], c[2], c[3])
     end
 end
 
@@ -519,9 +533,11 @@ local function ShowOurPanel()
     local qmf = _G["QuestMapFrame"]
     if not qmf or not panel then return end
     selectedIsOurs = true
+    HideBlizzPanels(qmf)
     panel:Show()
     RefreshSelectGlows()
-    if panel.searchBox then panel.searchBox:SetFocus() end
+    -- Don't auto-focus the search box; clicking the tab just swaps content.
+    -- User can click the box when they want to type.
     MapTab:RunSearch(panel.searchBox and panel.searchBox:GetText() or "")
 end
 
@@ -620,9 +636,9 @@ local function CreateTabFrame(qmf)
     tab:SetSize(TAB_W, TAB_H)
     tab:SetFrameStrata("HIGH")
     tab:SetFrameLevel(qmf.MapLegendTab:GetFrameLevel())
-    -- Stack flush under MapLegendTab. Inherits its X offset from the map
-    -- frame's right edge, so horizontally it lines up identically.
-    tab:SetPoint("TOPLEFT", qmf.MapLegendTab, "BOTTOMLEFT", 0, 0)
+    -- Stack under MapLegendTab with a small vertical gap so the leather
+    -- edges of the two tabs don't collide.
+    tab:SetPoint("TOPLEFT", qmf.MapLegendTab, "BOTTOMLEFT", 0, TAB_STACK_GAP)
     tab:EnableMouse(true)
 
     -- Leather side piece. The atlas (51x59) is wider/taller than the
@@ -634,10 +650,14 @@ local function CreateTabFrame(qmf)
     bg:SetSize(TAB_BG_W, TAB_BG_H)
     bg:SetPoint("CENTER", tab, "CENTER", 0, 0)
 
+    -- Icon: common-search-magnifyingglass atlas tinted gold. RefreshSelectGlows
+    -- toggles between dim (inactive) and bright (active) gold.
     local icon = tab:CreateTexture(nil, "ARTWORK")
     icon:SetAtlas("common-search-magnifyingglass", false)
     icon:SetSize(TAB_ICON_SIZE, TAB_ICON_SIZE)
     icon:SetPoint("CENTER", tab, "CENTER", 0, 0)
+    icon:SetVertexColor(TAB_ICON_DIM[1], TAB_ICON_DIM[2], TAB_ICON_DIM[3])
+    tab._efIcon = icon
 
     local selectGlow = tab:CreateTexture(nil, "OVERLAY")
     selectGlow:SetAtlas("QuestLog-Tab-side-Glow-Select", false)
@@ -690,17 +710,25 @@ local function CreatePanel(qmf)
     bg:SetAllPoints(p)
     p.backdrop = bg
 
+    -- Search box and cog sit ABOVE the paper, in the dark header bar of
+    -- the map frame (matching where Blizzard's Search Quest Log sits).
+    -- Anchored with positive Y so they float above the panel's top edge.
     local searchBox = CreateSearchBox(p)
-    searchBox:SetPoint("TOPLEFT", p, "TOPLEFT", 6, -8)
+    searchBox:SetPoint("TOPLEFT", p, "TOPLEFT", 4, 30)
     p.searchBox = searchBox
 
     local cog = CreateFilterCog(p)
     cog:SetPoint("LEFT", searchBox, "RIGHT", 6, 0)
     p.cog = cog
 
-    local scrollFrame = CreateFrame("ScrollFrame", nil, p, "UIPanelScrollFrameTemplate")
-    scrollFrame:SetPoint("TOPLEFT", searchBox, "BOTTOMLEFT", 0, -12)
-    scrollFrame:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -24, 8)
+    -- Scroll area covers the full paper area. Use a plain ScrollFrame
+    -- (no template) so we don't inherit the blue/gold UIPanel scroll
+    -- decorations. Mouse wheel drives scrolling; a proper minimal
+    -- scrollbar is a followup.
+    local scrollFrame = CreateFrame("ScrollFrame", nil, p)
+    scrollFrame:SetPoint("TOPLEFT", p, "TOPLEFT", 6, -8)
+    scrollFrame:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -6, 8)
+    scrollFrame:EnableMouseWheel(true)
     p.scrollFrame = scrollFrame
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
@@ -708,6 +736,14 @@ local function CreatePanel(qmf)
     scrollFrame:SetScrollChild(scrollChild)
     scrollFrame:HookScript("OnSizeChanged", function(_, w) scrollChild:SetWidth(w) end)
     scrollChild:SetWidth(scrollFrame:GetWidth())
+    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
+        local maxScroll = math.max(0, scrollChild:GetHeight() - self:GetHeight())
+        local cur = self:GetVerticalScroll() or 0
+        local target = cur - delta * 24
+        if target < 0 then target = 0 end
+        if target > maxScroll then target = maxScroll end
+        self:SetVerticalScroll(target)
+    end)
     p.scrollChild = scrollChild
 
     local emptyMsg = p:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -746,21 +782,27 @@ function MapTab:Initialize()
     tabFrame = CreateTabFrame(qmf)
     panel = CreatePanel(qmf)
 
+    -- Blizzard tab click: hide our panel. Belt-and-suspenders show the
+    -- clicked panel explicitly in case Blizzard's internal handler saw a
+    -- state we disturbed (we hid both panels when our tab opened, and
+    -- Blizzard's tab click may early-out on "already selected" state).
     if qmf.QuestsTab then
         qmf.QuestsTab:HookScript("OnMouseUp", function(_, button)
-            if button == "LeftButton" then HideOurPanel() end
+            if button == "LeftButton" then
+                HideOurPanel()
+                if qmf.MapLegendFrame then qmf.MapLegendFrame:Hide() end
+                if qmf.QuestsFrame then qmf.QuestsFrame:Show() end
+            end
         end)
     end
     if qmf.MapLegendTab then
         qmf.MapLegendTab:HookScript("OnMouseUp", function(_, button)
-            if button == "LeftButton" then HideOurPanel() end
+            if button == "LeftButton" then
+                HideOurPanel()
+                if qmf.QuestsFrame then qmf.QuestsFrame:Hide() end
+                if qmf.MapLegendFrame then qmf.MapLegendFrame:Show() end
+            end
         end)
-    end
-    if qmf.QuestsFrame then
-        qmf.QuestsFrame:HookScript("OnShow", HideOurPanel)
-    end
-    if qmf.MapLegendFrame then
-        qmf.MapLegendFrame:HookScript("OnShow", HideOurPanel)
     end
 
     -- Hide our tab in the maximized map view, matching Blizzard's tabs.
