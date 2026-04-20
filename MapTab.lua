@@ -705,6 +705,19 @@ end
 -- Initialize
 -- ===================================================================
 
+-- Focus the MapTab search box, opening the map + selecting our tab if
+-- not already there. Intended to be called from the "focus map search"
+-- keybind dispatcher in Core.
+function MapTab:Focus()
+    if not initialized then self:Initialize() end
+    if not panel then return end
+    if WorldMapFrame and not WorldMapFrame:IsShown() then
+        ToggleWorldMap()
+    end
+    ShowOurPanel()
+    if panel.searchBox then panel.searchBox:SetFocus() end
+end
+
 function MapTab:Initialize()
     if initialized then return end
     local qmf = _G["QuestMapFrame"]
@@ -729,6 +742,23 @@ function MapTab:Initialize()
     end
     if qmf.MapLegendFrame then
         qmf.MapLegendFrame:HookScript("OnShow", HideOurPanel)
+    end
+
+    -- Hide our tab in the maximized map view, matching Blizzard's tabs.
+    if WorldMapFrame and WorldMapFrame.IsMaximized then
+        local function UpdateTabVisibility()
+            if not tabFrame then return end
+            if WorldMapFrame:IsMaximized() then
+                HideOurPanel()
+                tabFrame:Hide()
+            else
+                tabFrame:Show()
+            end
+        end
+        hooksecurefunc(WorldMapFrame, "Maximize", UpdateTabVisibility)
+        hooksecurefunc(WorldMapFrame, "Minimize", UpdateTabVisibility)
+        WorldMapFrame:HookScript("OnShow", UpdateTabVisibility)
+        UpdateTabVisibility()
     end
 end
 
