@@ -995,33 +995,6 @@ function Options:Initialize()
     uiSep:SetHeight(1)
     uiSep:SetColorTexture(0.8, 0.65, 0.0, 0.6)
 
-    local uiSpeedBox = CreateFrame("Frame", nil, sec1, "BackdropTemplate")
-    uiSpeedBox:SetPoint("TOPLEFT", sec1, "TOPLEFT", 8, -38)
-    uiSpeedBox:SetSize(210, 36)
-    uiSpeedBox:SetBackdrop({
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        edgeSize = 14,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    uiSpeedBox:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.6)
-    local uiSpeedLabel = uiSpeedBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    uiSpeedLabel:SetPoint("BOTTOM", uiSpeedBox, "TOP", 0, -8)
-    uiSpeedLabel:SetText("Speed")
-
-    local directOpenCheckbox = CreateCheckbox(sec1, "DirectOpen", "Open Panels Directly",
-        "When enabled (default), Fast Mode opens the destination panel immediately.\n\nWhen disabled, Guide Mode walks you through step-by-step with highlights showing where to click.")
-    directOpenCheckbox:SetPoint("TOPLEFT", uiSpeedBox, "TOPLEFT", 8, -4)
-    directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false)
-    directOpenCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.directOpen = self:GetChecked()
-        ns.Highlight:ClearAll()
-        local sf = _G["EasyFindSearchFrame"]
-        if sf and sf.modeBtn and ns.UpdateModeButtonVisual then
-            ns.UpdateModeButtonVisual(sf.modeBtn)
-        end
-    end)
-    optionsFrame.directOpenCheckbox = directOpenCheckbox
-
     local resizeUIBtn = CreateFrame("Button", nil, sec1, "UIPanelButtonTemplate")
     resizeUIBtn:SetSize(160, 22)
     resizeUIBtn:SetPoint("BOTTOMLEFT", sec1, "BOTTOMLEFT", 8, 32)
@@ -1038,7 +1011,7 @@ function Options:Initialize()
 
     local smartShowCheckbox = CreateCheckbox(sec1, "SmartShow", "Smart Show |cFF888888(Recommended)|r",
         "When enabled, the UI search bar hides itself until you move your mouse near its position.\n\nThe bar reappears when your mouse enters the area and fades away when you move away.\n\nA separate Smart Show toggle for map search bars is available in the Map Search section.")
-    smartShowCheckbox:SetPoint("TOPLEFT", uiSpeedBox, "BOTTOMLEFT", 8, -6)
+    smartShowCheckbox:SetPoint("TOPLEFT", sec1, "TOPLEFT", 16, -38)
     smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
     smartShowCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.smartShow = self:GetChecked()
@@ -1097,7 +1070,7 @@ function Options:Initialize()
         StaticPopup_Show("EASYFIND_RESET_UI_POS")
     end)
 
-    uiControls = { resizeUIBtn, resetUIBtn, resetUIPosBtn, uiFontSlider, directOpenCheckbox, smartShowCheckbox, staticOpacityCheckbox, uiResultsAboveCheckbox }
+    uiControls = { resizeUIBtn, resetUIBtn, resetUIPosBtn, uiFontSlider, smartShowCheckbox, staticOpacityCheckbox, uiResultsAboveCheckbox }
     UpdateUIToggleVisual()
 
     -- SECTION 3: Map Search
@@ -1134,46 +1107,9 @@ function Options:Initialize()
     mapSep:SetHeight(1)
     mapSep:SetColorTexture(0.8, 0.65, 0.0, 0.6)
 
-    local mapSpeedBox = CreateFrame("Frame", nil, sec2, "BackdropTemplate")
-    mapSpeedBox:SetPoint("TOPLEFT", sec2, "TOPLEFT", 8, -38)
-    mapSpeedBox:SetSize(210, 72)
-    mapSpeedBox:SetBackdrop({
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        edgeSize = 14,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    mapSpeedBox:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.6)
-    local mapSpeedLabel = mapSpeedBox:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    mapSpeedLabel:SetPoint("BOTTOM", mapSpeedBox, "TOP", 0, -8)
-    mapSpeedLabel:SetText("Speed")
-
-    local localNavCheckbox = CreateCheckbox(sec2, "LocalNav", "Navigate Directly: Zone Bar",
-        "When enabled, clicking zone or entrance results in the zone search bar navigates directly without step-by-step zone highlighting.\n\nAlso toggled by clicking the search icon on the zone bar.")
-    localNavCheckbox:SetPoint("TOPLEFT", mapSpeedBox, "TOPLEFT", 8, -10)
-    localNavCheckbox:SetChecked(EasyFind.db.localMapDirectOpen or false)
-    localNavCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.localMapDirectOpen = self:GetChecked()
-        if ns.MapSearch and ns.MapSearch.UpdateMapModeBtns then
-            ns.MapSearch:UpdateMapModeBtns()
-        end
-    end)
-    optionsFrame.localNavCheckbox = localNavCheckbox
-
-    local globalNavCheckbox = CreateCheckbox(sec2, "GlobalNav", "Navigate Directly: Global Bar",
-        "When enabled, clicking zone or dungeon results in the global search bar navigates directly without breadcrumb zone highlighting.\n\nAlso toggled by clicking the search icon on the global bar.")
-    globalNavCheckbox:SetPoint("TOPLEFT", localNavCheckbox, "BOTTOMLEFT", 0, -4)
-    globalNavCheckbox:SetChecked(EasyFind.db.globalMapDirectOpen or false)
-    globalNavCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.globalMapDirectOpen = self:GetChecked()
-        if ns.MapSearch and ns.MapSearch.UpdateMapModeBtns then
-            ns.MapSearch:UpdateMapModeBtns()
-        end
-    end)
-    optionsFrame.globalNavCheckbox = globalNavCheckbox
-
     local rareTrackCheckbox = CreateCheckbox(sec2, "RareTrack", "Auto-track Rares",
         "When enabled, active rare mobs are always displayed as pins on the world map without needing to search.\n\nThis can also be toggled from the filter dropdown on the zone search bar.")
-    rareTrackCheckbox:SetPoint("TOPLEFT", mapSpeedBox, "BOTTOMLEFT", 0, -4)
+    rareTrackCheckbox:SetPoint("TOPLEFT", sec2, "TOPLEFT", 16, -38)
     rareTrackCheckbox:SetChecked(EasyFind.db.alwaysShowRares or false)
     rareTrackCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.alwaysShowRares = self:GetChecked()
@@ -1276,15 +1212,15 @@ function Options:Initialize()
     optionsFrame.mapIconSlider = mapIconSlider
 
     local minimapGroup = CreateMultiSelectDropdown(sec2, "Minimap", {
-        { label = "Arrow Glow", shortLabel = "Arrow", dbKey = "minimapArrowGlow", default = true,
+        { label = "Arrow Glow", shortLabel = "Arrow", dbKey = "minimapArrowGlow", default = false,
           tooltip = "A pulsing glow highlights the minimap perimeter arrow that points toward your active map pin.\nDisable if you find the glow distracting." },
         { label = "Only EasyFind Pins", dbKey = "glowOnlyEasyFind", default = false, indent = true, hiddenFromSummary = true, parentDbKey = "minimapArrowGlow",
           tooltip = "When enabled, the arrow glow only appears for waypoints placed by EasyFind (clicking search results or navigation pins).\nWaypoints placed by Ctrl+clicking the map or other means will not show the glow." },
-        { label = "Guide Circle", shortLabel = "Circle", dbKey = "minimapGuideCircle", default = true,
+        { label = "Guide Circle", shortLabel = "Circle", dbKey = "minimapGuideCircle", default = false,
           tooltip = "A directional ring and arrow appears around your character on the minimap when a map pin is nearby, pointing toward the destination.\nDisable if you prefer only the default minimap pin." },
         { label = "Only EasyFind Pins", dbKey = "circleOnlyEasyFind", default = false, indent = true, hiddenFromSummary = true, parentDbKey = "minimapGuideCircle",
           tooltip = "When enabled, the guide circle only appears for waypoints placed by EasyFind.\nWaypoints placed by Ctrl+clicking the map or other means will not show the circle." },
-        { label = "Pin Glow", shortLabel = "Glow", dbKey = "minimapPinGlow", default = true, indent = true, parentDbKey = "minimapGuideCircle",
+        { label = "Pin Glow", shortLabel = "Glow", dbKey = "minimapPinGlow", default = false, indent = true, parentDbKey = "minimapGuideCircle",
           tooltip = "A pulsing glow appears on the minimap pin when the guide circle shrinks onto it.\nDisable if you find the glow distracting." },
     }, nil, FLYOUT_W)
     minimapGroup:SetPoint("TOPLEFT", mapPinGroup, "BOTTOMLEFT", 0, -6)
@@ -1343,7 +1279,7 @@ function Options:Initialize()
     end)
 
     mapControls = {
-        resizeMapBtn, resetMapBtn, resetMapPosBtn, localNavCheckbox, globalNavCheckbox, rareTrackCheckbox,
+        resizeMapBtn, resetMapBtn, resetMapPosBtn, rareTrackCheckbox,
         searchBarGroup, mapPinGroup, minimapGroup, automationGroup
     }
     UpdateMapToggleVisual()
@@ -1686,9 +1622,6 @@ function Options:DoResetAll()
     EasyFind.db.mapSearchPositionMax = nil
     EasyFind.db.globalSearchPositionMax = nil
     EasyFind.db.mapSearchYOffset = 0
-    EasyFind.db.directOpen = true
-    EasyFind.db.localMapDirectOpen = false
-    EasyFind.db.globalMapDirectOpen = false
     EasyFind.db.smartShow = false
     EasyFind.db.resultsTheme = "Retail"
     EasyFind.db.uiResultsHeight = 280
@@ -1706,13 +1639,13 @@ function Options:DoResetAll()
     EasyFind.db.minimapButtonAngle = 200
     EasyFind.db.arrivalDistance = 10
     EasyFind.db.panelOpacity = 0.9
-    EasyFind.db.minimapArrowGlow = true
+    EasyFind.db.minimapArrowGlow = false
     EasyFind.db.glowOnlyEasyFind = false
     EasyFind.db.circleOnlyEasyFind = false
-    EasyFind.db.minimapGuideCircle = true
+    EasyFind.db.minimapGuideCircle = false
     EasyFind.db.autoPinClear = true
     EasyFind.db.autoTrackPins = true
-    EasyFind.db.minimapPinGlow = true
+    EasyFind.db.minimapPinGlow = false
     EasyFind.db.guideCircleScale = 1.0
     EasyFind.db.mapSmartShow = false
     EasyFind.db.hideSearchBarsMaximized = true
@@ -1782,14 +1715,6 @@ function Options:DoResetAll()
     optionsFrame.opacitySlider:SetValue(DEFAULT_OPACITY)
     optionsFrame.uiFontSlider:SetValue(0.9)
     optionsFrame.mapFontSlider:SetValue(0.9)
-    optionsFrame.directOpenCheckbox:SetChecked(true)
-    local sf = _G["EasyFindSearchFrame"]
-    if sf and sf.modeBtn and ns.UpdateModeButtonVisual then
-        ns.UpdateModeButtonVisual(sf.modeBtn)
-    end
-    optionsFrame.localNavCheckbox:SetChecked(false)
-    optionsFrame.globalNavCheckbox:SetChecked(false)
-    if ns.MapSearch and ns.MapSearch.UpdateMapModeBtns then ns.MapSearch:UpdateMapModeBtns() end
     optionsFrame.smartShowCheckbox:SetChecked(false)
     optionsFrame.staticOpacityCheckbox:SetChecked(false)
     optionsFrame.loginMessageCheckbox:SetChecked(true)
@@ -1846,7 +1771,6 @@ function Options:DoResetAll()
 end
 
 function Options:DoResetUI()
-    EasyFind.db.directOpen = true
     EasyFind.db.smartShow = false
     EasyFind.db.staticOpacity = false
     EasyFind.db.uiResultsAbove = false
@@ -1870,15 +1794,10 @@ function Options:DoResetUI()
     EasyFind.db.appearanceSetPvP = true
     EasyFind.db.uiMapSearchLocal = true
 
-    optionsFrame.directOpenCheckbox:SetChecked(true)
     optionsFrame.smartShowCheckbox:SetChecked(false)
     optionsFrame.staticOpacityCheckbox:SetChecked(false)
     optionsFrame.uiResultsAboveCheckbox:SetChecked(false)
     optionsFrame.uiFontSlider:SetValue(0.9)
-    local sf = _G["EasyFindSearchFrame"]
-    if sf and sf.modeBtn and ns.UpdateModeButtonVisual then
-        ns.UpdateModeButtonVisual(sf.modeBtn)
-    end
 
     ns.Highlight:ClearAll()
     if _G["EasyFindSearchFrame"] and ns.UI then
@@ -1892,8 +1811,6 @@ function Options:DoResetUI()
 end
 
 function Options:DoResetMap()
-    EasyFind.db.localMapDirectOpen = false
-    EasyFind.db.globalMapDirectOpen = false
     EasyFind.db.mapSmartShow = false
     EasyFind.db.hideSearchBarsMaximized = true
     EasyFind.db.mapResultsAbove = false
@@ -1911,11 +1828,11 @@ function Options:DoResetMap()
     EasyFind.db.mapResultsHeight = 168
     EasyFind.db.mapPinHighlight = true
     EasyFind.db.blinkingPins = false
-    EasyFind.db.minimapArrowGlow = true
+    EasyFind.db.minimapArrowGlow = false
     EasyFind.db.glowOnlyEasyFind = false
     EasyFind.db.circleOnlyEasyFind = false
-    EasyFind.db.minimapGuideCircle = true
-    EasyFind.db.minimapPinGlow = true
+    EasyFind.db.minimapGuideCircle = false
+    EasyFind.db.minimapPinGlow = false
     EasyFind.db.guideCircleScale = 1.0
     EasyFind.db.autoPinClear = true
     EasyFind.db.autoTrackPins = true
@@ -1925,10 +1842,7 @@ function Options:DoResetMap()
     EasyFind.db.localSearchFilters = { instances = true, travel = true, services = true }
     EasyFind.db.alwaysShowRares = false
 
-    optionsFrame.localNavCheckbox:SetChecked(false)
-    optionsFrame.globalNavCheckbox:SetChecked(false)
     if optionsFrame.rareTrackCheckbox then optionsFrame.rareTrackCheckbox:SetChecked(false) end
-    if ns.MapSearch and ns.MapSearch.UpdateMapModeBtns then ns.MapSearch:UpdateMapModeBtns() end
     if optionsFrame.searchBarGroup then optionsFrame.searchBarGroup:UpdateVisuals() end
     if optionsFrame.mapPinGroup then optionsFrame.mapPinGroup:UpdateVisuals() end
     if optionsFrame.minimapGroup then optionsFrame.minimapGroup:UpdateVisuals() end
@@ -2071,9 +1985,6 @@ function Options:Show()
     if optionsFrame.mapIconSlider then optionsFrame.mapIconSlider:SetValue(EasyFind.db.iconScale or 0.8) end
     if optionsFrame.mapYOffsetSlider then optionsFrame.mapYOffsetSlider:SetValue(EasyFind.db.mapSearchYOffset or 0) end
     if optionsFrame.arrivalSlider then optionsFrame.arrivalSlider:SetValue(EasyFind.db.arrivalDistance or 10) end
-    if optionsFrame.directOpenCheckbox then optionsFrame.directOpenCheckbox:SetChecked(EasyFind.db.directOpen or false) end
-    if optionsFrame.localNavCheckbox then optionsFrame.localNavCheckbox:SetChecked(EasyFind.db.localMapDirectOpen or false) end
-    if optionsFrame.globalNavCheckbox then optionsFrame.globalNavCheckbox:SetChecked(EasyFind.db.globalMapDirectOpen or false) end
     optionsFrame.smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
     optionsFrame.staticOpacityCheckbox:SetChecked(EasyFind.db.staticOpacity or false)
     optionsFrame.loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage ~= false)

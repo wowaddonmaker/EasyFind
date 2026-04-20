@@ -13,7 +13,6 @@ local GOLD_COLOR = ns.GOLD_COLOR
 local TOOLTIP_BORDER = ns.TOOLTIP_BORDER
 local DEFAULT_OPACITY = ns.DEFAULT_OPACITY
 local DARK_PANEL_BG = ns.DARK_PANEL_BG
-local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind\\textures\\lightning-bolt"
 
 local CreateFrame        = CreateFrame
 local C_Timer            = C_Timer
@@ -72,16 +71,6 @@ function Demo.Start(ctx)
             pcall(C_AddOns.LoadAddOn, "Blizzard_PlayerSpells")
         end
 
-        -- Step list: ONLY real (executable) steps. Section headers are
-        -- display-only entries in DEMO_SECTIONS below and aren't navigable
-        -- stops in the state machine - the player shouldn't have to click
-        -- Per-demo Fast/Guide flag for demos that opt in via
-        -- supportsModeToggle. Defaults to fast (true). Independent of
-        -- the user's saved EasyFind.db.directOpen / *MapDirectOpen
-        -- settings, which the demo restores after each run.
-        local demoModeFast = {}
-
-        -- Next to get past a header that does nothing.
         -- Demo registry. Each entry has:
         --   title       - shown at the top of the demo panel
         --   sections    - list of { header, section, firstStep, lastStep }
@@ -90,9 +79,6 @@ function Demo.Start(ctx)
         --   setupAfter  - list of function() that snaps the game state to
         --                 the end of step i without animation (used by
         --                 Prev/Next/jumpToStep)
-        --   supportsModeToggle - true to show the Fast/Guide toggle button
-        --                 on the demo panel; the demo's `rebuild` reads
-        --                 demoModeFast[key] to pick which step set to build
         -- run and setupAfter for the default UI Search demo are populated
         -- further down, after the helper functions they reference exist.
         -- Other demos start empty and get filled in as we build them.
@@ -100,67 +86,67 @@ function Demo.Start(ctx)
             uiSearch = {
                 title    = "UI Search",
                 sections = {
-                    { header = "|TInterface\\AddOns\\EasyFind\\textures\\lightning-bolt:14:14|t Fast Mode (for convenience)", section = 1, firstStep = 1, lastStep = 3 },
-                    { header = "|A:common-search-magnifyingglass:14:14|a Guide Mode (for learning)",                          section = 2, firstStep = 4, lastStep = 8 },
+                    { header = "Search and open a panel", section = 1, firstStep = 1, lastStep = 2 },
                 },
                 stepDefs = {
-                    { text = "Make sure Fast Mode is enabled",   section = 1 },  -- 1
-                    { text = 'Start typing "Spellbook"',         section = 1 },  -- 2
-                    { text = "Click the Spellbook result",       section = 1 },  -- 3
-                    { text = "Switch to Guide Mode",             section = 2 },  -- 4
-                    { text = 'Start typing "Spellbook"',         section = 2 },  -- 5
-                    { text = "Click the Spellbook result",       section = 2 },  -- 6
-                    { text = "Click Talents & Spellbook button", section = 2 },  -- 7
-                    { text = "Click the Spellbook tab",          section = 2 },  -- 8
+                    { text = 'Start typing "Spellbook"',   section = 1 },  -- 1
+                    { text = "Click the Spellbook result", section = 1 },  -- 2
                 },
                 lockFrames = { "PlayerSpellsFrame" },
                 run = {},
                 setupAfter = {},
             },
+            guide = {
+                title    = "Guide Mode",
+                sections = {
+                    { header = "Right-click a result to get a guided walkthrough", section = 1, firstStep = 1, lastStep = 4 },
+                },
+                stepDefs = {
+                    { text = 'Start typing "Valorstones"',      section = 1 },  -- 1
+                    { text = "Right-click the Valorstones row", section = 1 },  -- 2
+                    { text = "Click Guide in the menu",         section = 1 },  -- 3
+                    { text = "Follow the step-by-step guide",   section = 1 },  -- 4
+                },
+                lockFrames = { "CharacterFrame" },
+                run = {},
+                setupAfter = {},
+            },
             mapSearchZone = {
                 title = "Zone/Instance Map Search",
-                -- sections / stepDefs / run / setupAfter are populated by
-                -- the `rebuild` function based on demoModeFast["mapSearchZone"].
                 sections = {},
                 stepDefs = {},
                 lockFrames = { "WorldMapFrame" },
                 run = {},
                 setupAfter = {},
-                supportsModeToggle = true,
             },
             mapSearchCurrent = {
                 title = "Current Zone Map Search",
-                -- sections / stepDefs / run / setupAfter are populated by
-                -- the `rebuild` function based on demoModeFast["mapSearchCurrent"].
                 sections = {},
                 stepDefs = {},
                 lockFrames = { "WorldMapFrame" },
                 run = {},
                 setupAfter = {},
-                supportsModeToggle = true,
             },
             mapSearchUI = {
                 title = "Map search through UI bar",
                 sections = {
-                    { header = "Local Map POI search: Flight Master", section = 1, firstStep = 1, lastStep = 6 },
-                    { header = "Global zone search: Eastern Plaguelands", section = 2, firstStep = 7, lastStep = 10 },
+                    { header = "Local Map POI search: Flight Master", section = 1, firstStep = 1, lastStep = 5 },
+                    { header = "Global zone search: Eastern Plaguelands", section = 2, firstStep = 6, lastStep = 9 },
                 },
                 stepDefs = {
-                    { text = "Make sure Fast Mode is enabled",       section = 1 },  -- 1
-                    { text = "Open the filter menu",                 section = 1 },  -- 2
-                    { text = "Enable Map Search filter",             section = 1 },  -- 3
-                    { text = 'Confirm "Local" is selected',          section = 1 },  -- 4
-                    { text = 'Start typing "Flight Master"',         section = 1 },  -- 5
-                    { text = "Click the Flight Master result",       section = 1 },  -- 6
-                    { text = "Open the filter menu",                 section = 2 },  -- 7
-                    { text = 'Switch to "Global"',                   section = 2 },  -- 8
-                    { text = 'Start typing "Eastern Plaguelands"',   section = 2 },  -- 9
-                    { text = "Click the Eastern Plaguelands result", section = 2 },  -- 10
+                    { text = "Open the filter menu",                 section = 1 },  -- 1
+                    { text = "Enable Map Search filter",             section = 1 },  -- 2
+                    { text = 'Confirm "Local" is selected',          section = 1 },  -- 3
+                    { text = 'Start typing "Flight Master"',         section = 1 },  -- 4
+                    { text = "Click the Flight Master result",       section = 1 },  -- 5
+                    { text = "Open the filter menu",                 section = 2 },  -- 6
+                    { text = 'Switch to "Global"',                   section = 2 },  -- 7
+                    { text = 'Start typing "Eastern Plaguelands"',   section = 2 },  -- 8
+                    { text = "Click the Eastern Plaguelands result", section = 2 },  -- 9
                 },
                 lockFrames = { "WorldMapFrame" },
                 run = {},
                 setupAfter = {},
-                supportsModeToggle = true,
             },
             outfits          = { title = "Outfits",                  sections = {}, stepDefs = {}, lockFrames = {}, run = {}, setupAfter = {} },
             appearanceSets   = { title = "Appearance Sets",          sections = {}, stepDefs = {}, lockFrames = {}, run = {}, setupAfter = {} },
@@ -228,81 +214,6 @@ function Demo.Start(ctx)
         titleSep:SetPoint("TOPLEFT", 16, -60)
         titleSep:SetPoint("TOPRIGHT", -16, -60)
         titleSep:SetColorTexture(0.4, 0.4, 0.4, 0.7)
-
-        -- Fast/Guide toggle row. Only shown for demos that opt in via
-        -- def.supportsModeToggle. The "Mode:" prefix sits outside the
-        -- button so the button itself just displays the icon + the
-        -- current mode name. All sub-elements live on the modeUI table
-        -- so they only consume one local in this large function.
-        local modeUI = {}
-        modeUI.row = CreateFrame("Frame", nil, demoFrame)
-        modeUI.row:SetSize(108, 16)
-        modeUI.row:SetPoint("TOP", title, "BOTTOM", 0, -4)
-        modeUI.row:Hide()
-
-        modeUI.prefix = modeUI.row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        modeUI.prefix:SetPoint("LEFT", modeUI.row, "LEFT", 0, 0)
-        modeUI.prefix:SetText("Mode:")
-        modeUI.prefix:SetTextColor(0.85, 0.85, 0.85)
-
-        modeUI.btn = CreateFrame("Button", nil, modeUI.row)
-        modeUI.btn:SetSize(64, 16)
-        modeUI.btn:SetPoint("LEFT", modeUI.prefix, "RIGHT", 4, 0)
-        local _modeTex = modeUI.btn:CreateTexture(nil, "BACKGROUND")
-        _modeTex:SetAllPoints()
-        _modeTex:SetColorTexture(0.4, 0.4, 0.4, 0.6)
-        _modeTex = modeUI.btn:CreateTexture(nil, "ARTWORK")
-        _modeTex:SetPoint("TOPLEFT", 1, -1)
-        _modeTex:SetPoint("BOTTOMRIGHT", -1, 1)
-        _modeTex:SetColorTexture(0.12, 0.12, 0.12, 0.95)
-        modeUI.icon = modeUI.btn:CreateTexture(nil, "OVERLAY")
-        modeUI.icon:SetSize(11, 11)
-        modeUI.icon:SetPoint("LEFT", modeUI.btn, "LEFT", 4, 0)
-        modeUI.label = modeUI.btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        modeUI.label:SetPoint("LEFT", modeUI.icon, "RIGHT", 3, 0)
-        modeUI.label:SetPoint("RIGHT", modeUI.btn, "RIGHT", -3, 0)
-        modeUI.label:SetJustifyH("LEFT")
-        modeUI.btn:SetHighlightTexture(130757, "ADD")
-
-        local function refreshModeToggle()
-            local def = DEMOS[currentDemoKey]
-            if not def or not def.supportsModeToggle then
-                modeUI.row:Hide()
-                return
-            end
-            local isFast = demoModeFast[currentDemoKey] ~= false
-            if isFast then
-                modeUI.icon:SetAtlas(nil)
-                modeUI.icon:SetTexture(LIGHTNING_BOLT_TEX)
-                modeUI.label:SetText("Fast")
-                modeUI.label:SetTextColor(1.0, 0.82, 0.0)
-            else
-                modeUI.icon:SetTexture(nil)
-                modeUI.icon:SetAtlas("common-search-magnifyingglass")
-                modeUI.label:SetText("Guide")
-                modeUI.label:SetTextColor(0.6, 0.85, 1.0)
-            end
-            modeUI.row:Show()
-        end
-
-        modeUI.btn:SetScript("OnClick", function()
-            if not active or not currentDemoKey then return end
-            demoModeFast[currentDemoKey] = (demoModeFast[currentDemoKey] == false)
-            if loadDemo then loadDemo(currentDemoKey) end
-        end)
-
-        modeUI.btn:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-            if demoModeFast[currentDemoKey] ~= false then
-                GameTooltip:SetText("Fast Mode")
-                GameTooltip:AddLine("Click to switch this demo to Guide Mode.", 1, 1, 1, true)
-            else
-                GameTooltip:SetText("Guide Mode")
-                GameTooltip:AddLine("Click to switch this demo to Fast Mode.", 1, 1, 1, true)
-            end
-            GameTooltip:Show()
-        end)
-        modeUI.btn:SetScript("OnLeave", GameTooltip_Hide)
 
         -- Scroll container for the step list. Sits directly below the
         -- title separator and above the transport-button row. Rows are
@@ -639,6 +550,7 @@ function Demo.Start(ctx)
         -- it doesn't spill below the demo panel.
         local DEMO_LIST = {
             { name = "UI Search",                key = "uiSearch" },
+            { name = "Guide Mode",               key = "guide" },
             { name = "Zone/instance map search", key = "mapSearchZone" },
             { name = "Current zone map search",  key = "mapSearchCurrent" },
             { name = "Map search through UI bar",key = "mapSearchUI" },
@@ -919,8 +831,7 @@ function Demo.Start(ctx)
         -- count toward startDemo's MAXVARS=200 budget AND so they
         -- aren't upvalues for _runDemo's inner closures (avoids
         -- MAXUPVAL=60). _runDemo runs immediately at the bottom of
-        -- startDemo. The forward-declared `active` upvalue is still
-        -- shared with the modeUI button handlers above.
+        -- startDemo.
         local function _runDemo()
 
         -- Save originals so the lock toggling system can restore them
@@ -929,9 +840,6 @@ function Demo.Start(ctx)
         -- replaced/disabled while a step is animating, then restored
         -- whenever the demo is paused, idle, or stopped.
         local savedDragStart = searchFrame:GetScript("OnDragStart")
-        local savedDirectOpen = EasyFind.db.directOpen
-        local savedGlobalMapDirectOpen = EasyFind.db.globalMapDirectOpen
-        local savedLocalMapDirectOpen = EasyFind.db.localMapDirectOpen
         -- Also snapshot the UI bar's Map Search filter toggle and
         -- local/global sub-option. The map-search-through-UI-bar demo
         -- flips both and must restore the user's actual pre-demo
@@ -1053,26 +961,14 @@ function Demo.Start(ctx)
             })
         end
 
-        -- Restore the user's pre-demo settings AND refresh the mode
-        -- button visual (the icon doesn't auto-update when directOpen
-        -- changes, so without this call it stays stuck on whatever the
-        -- last demo step left it as).
+        -- Restore the user's pre-demo filter state.
         local function restoreUserSettings()
             -- staticOpacity stays forced true while the demo is open;
             -- it's restored in endDemo, not here, so loadDemo doesn't
             -- re-enable movement fade between demo switches.
-            EasyFind.db.directOpen = savedDirectOpen
-            EasyFind.db.globalMapDirectOpen = savedGlobalMapDirectOpen
-            EasyFind.db.localMapDirectOpen = savedLocalMapDirectOpen
             EasyFind.db.uiSearchFilters = EasyFind.db.uiSearchFilters or {}
             EasyFind.db.uiSearchFilters.map = savedUiMapFilter
             EasyFind.db.uiMapSearchLocal = savedUiMapSearchLocal
-            if ns.UpdateModeButtonVisual then
-                pcall(ns.UpdateModeButtonVisual, searchFrame.modeBtn)
-            end
-            if ns.MapSearch and ns.MapSearch.UpdateMapModeBtns then
-                pcall(ns.MapSearch.UpdateMapModeBtns, ns.MapSearch)
-            end
             -- Refresh the filter dropdown's visual state to match the
             -- restored saved values (map checkbox + local/global sub).
             local dd = searchFrame.filterDropdown
@@ -1577,23 +1473,6 @@ function Demo.Start(ctx)
 
         clearButtonHover = function()
             GameTooltip_Hide()
-            -- UI search mode button
-            local mb = searchFrame.modeBtn
-            if mb then
-                if mb.btnBg then mb.btnBg:Hide() end
-                if mb.UnlockHighlight then mb:UnlockHighlight() end
-            end
-            -- Map search mode buttons
-            local gsf = _G["EasyFindMapGlobalSearchFrame"]
-            if gsf and gsf.modeBtn then
-                if gsf.modeBtn.btnBg then gsf.modeBtn.btnBg:Hide() end
-                if gsf.modeBtn.UnlockHighlight then gsf.modeBtn:UnlockHighlight() end
-            end
-            local lsf = _G["EasyFindMapSearchFrame"]
-            if lsf and lsf.modeBtn then
-                if lsf.modeBtn.btnBg then lsf.modeBtn.btnBg:Hide() end
-                if lsf.modeBtn.UnlockHighlight then lsf.modeBtn:UnlockHighlight() end
-            end
         end
 
         local function moveCursorTo(targetFrame, duration, onArrive, offsetX, offsetY)
@@ -1839,22 +1718,8 @@ function Demo.Start(ctx)
         local PRE_ACT_GAP         = 0.7
         local POST_ACT_GAP        = 0.4
 
-        -- Defensive precondition helper. Each step calls ensureMode at
-        -- the start with the directOpen value it expects, so if the user
-        -- toggled the mode while paused or between steps it gets snapped
-        -- back to the default the step assumes.
-        local function ensureMode(wantFast)
-            if EasyFind.db.directOpen ~= wantFast then
-                EasyFind.db.directOpen = wantFast
-                if ns.UpdateModeButtonVisual then
-                    pcall(ns.UpdateModeButtonVisual, searchFrame.modeBtn)
-                end
-            end
-        end
-
         -- Reset PlayerSpellsFrame to its default tab (Specialization) so
-        -- the guide mode demo shows the full navigation steps instead
-        -- of opening directly on the tab we left it on during fast mode.
+        -- the demo always starts from a clean state.
         local function resetPlayerSpellsFrame()
             local frame = _G["PlayerSpellsFrame"]
             if not frame then return end
@@ -1870,89 +1735,10 @@ function Demo.Start(ctx)
             end
         end
 
-        -- Hover the mode button to show what it does. If the player has
-        -- it set to Guide Mode, this also performs an animated click
-        -- to flip it back to Fast Mode (since the demo assumes Fast).
-        -- The toggle happens INSIDE the click animation so the visual
-        -- and the state change land at the same moment.
-        -- Offset the cursor toward the bottom-right of the toggle button
-        -- so the icon (lightning bolt / magnifying glass) stays visible
-        -- during the hover and click animations.
-        local MODE_BTN_OFFSET_X = 9
-        local MODE_BTN_OFFSET_Y = -9
-
-        local function hoverModeButton(done)
-            local mb = searchFrame.modeBtn
-            moveCursorTo(mb, CURSOR_MOVE, function()
-                if mb.btnBg then mb.btnBg:Show() end
-                if mb.LockHighlight then mb:LockHighlight() end
-                GameTooltip:SetOwner(mb, "ANCHOR_BOTTOM")
-                local function showFastTooltip()
-                    GameTooltip:SetText("Fast Mode")
-                    GameTooltip:AddLine("Click to switch to step-by-step Guide Mode.", 1, 1, 1, true)
-                    GameTooltip:Show()
-                end
-                if not EasyFind.db.directOpen then
-                    GameTooltip:SetText("Guide Mode")
-                    GameTooltip:AddLine("Click to enable Fast Mode (opens panels directly).", 1, 1, 1, true)
-                    GameTooltip:Show()
-                    safeAfter(1.0, function()
-                        clickAnim(function()
-                            EasyFind.db.directOpen = true
-                            if ns.UpdateModeButtonVisual then
-                                pcall(ns.UpdateModeButtonVisual, mb)
-                            end
-                            showFastTooltip()
-                            safeAfter(1.0, done)
-                        end)
-                    end)
-                else
-                    showFastTooltip()
-                    safeAfter(1.2, done)
-                end
-            end, MODE_BTN_OFFSET_X, MODE_BTN_OFFSET_Y)
-        end
-
-        -- Mirror of hoverModeButton that switches to Guide Mode instead.
-        -- Used by mapSearchUI's guide variant in step 1.
-        local function hoverModeButtonToGuide(done)
-            local mb = searchFrame.modeBtn
-            moveCursorTo(mb, CURSOR_MOVE, function()
-                if mb.btnBg then mb.btnBg:Show() end
-                if mb.LockHighlight then mb:LockHighlight() end
-                GameTooltip:SetOwner(mb, "ANCHOR_BOTTOM")
-                local function showGuideTooltip()
-                    GameTooltip:SetText("Guide Mode")
-                    GameTooltip:AddLine("Click to enable Fast Mode (opens panels directly).", 1, 1, 1, true)
-                    GameTooltip:Show()
-                end
-                if EasyFind.db.directOpen then
-                    GameTooltip:SetText("Fast Mode")
-                    GameTooltip:AddLine("Click to switch to step-by-step Guide Mode.", 1, 1, 1, true)
-                    GameTooltip:Show()
-                    safeAfter(1.0, function()
-                        clickAnim(function()
-                            EasyFind.db.directOpen = false
-                            if ns.UpdateModeButtonVisual then
-                                pcall(ns.UpdateModeButtonVisual, mb)
-                            end
-                            showGuideTooltip()
-                            safeAfter(1.0, done)
-                        end)
-                    end)
-                else
-                    showGuideTooltip()
-                    safeAfter(1.2, done)
-                end
-            end, MODE_BTN_OFFSET_X, MODE_BTN_OFFSET_Y)
-        end
-
         -- Focuses the UI search bar with cursor animation + blink
         -- cursor, then types the query. Owns the full "search for X"
-        -- action so there's no standalone focus step. `wantFast`
-        -- defaults to true; pass false for the Guide Mode sections.
-        local function uis_stepFocusAndType(query, wantFast, done)
-            ensureMode(wantFast)
+        -- action so there's no standalone focus step.
+        local function uis_stepFocusAndType(query, done)
             moveCursorTo(searchFrame.editBox, CURSOR_MOVE, function()
                 clickAnim(function()
                     startBlinkCursor()
@@ -1966,168 +1752,22 @@ function Demo.Start(ctx)
         end
 
         DEMOS.uiSearch.run = {
-            -- 1: Make sure Fast Mode is enabled. If the player is in
-            -- Standard Mode, hoverModeButton click-animates the toggle
-            -- and flips directOpen during the click visualization.
-            function(done)
-                hoverModeButton(done)
-            end,
-            -- 2: Start typing "sp" (cursor flies to the bar, focuses
+            -- 1: Start typing "sp" (cursor flies to the bar, focuses
             -- it, then types — all in this single step).
             function(done)
-                uis_stepFocusAndType("sp", true, done)
+                uis_stepFocusAndType("sp", done)
             end,
-            -- 3: Click the Spellbook result (not just the first one).
-            -- Final step of Fast Mode. After the result fires and the
-            -- user sees the panel open, sequence:
-            --   1. Settle (see the Spellbook tab open)
-            --   2. Clean up: hide cursor, close opened windows, clear
-            --      search text so the screen is clean
-            --   3. Show transition banner
-            --   4. Pause so the user can read it
-            --   5. Done → step 5 picks up
+            -- 2: Click the Spellbook result, let PlayerSpellsFrame
+            -- open, then clean up.
             function(done)
-                ensureMode(true)
                 local target = findResultRowByName("Spellbook") or findFirstResultRow() or searchFrame.editBox
                 moveCursorTo(target, CURSOR_MOVE, function()
                     clickAnim(function()
                         UI:SelectResult(spellbookEntry)
                         safeAfter(1.5, function()
-                            -- Move cursor to the close button on PlayerSpellsFrame
-                            -- and fake-click it, then close the window.
                             local psf = _G["PlayerSpellsFrame"]
                             local closeBtn = psf and (psf.ClosePanelButton or psf.CloseButton)
-                            if closeBtn and closeBtn:IsShown() then
-                                moveCursorTo(closeBtn, CURSOR_MOVE, function()
-                                    clickAnim(function()
-                                        setHoveredRow(nil)
-                                        stopBlinkCursor()
-                                        searchFrame.editBox:SetText("")
-                                        UI:OnSearchTextChanged("")
-                                        if ns.Highlight and ns.Highlight.ClearAll then
-                                            pcall(ns.Highlight.ClearAll, ns.Highlight)
-                                        end
-                                        resetPlayerSpellsFrame()
-                                        safeAfter(1.0, function()
-                                            transitionText:Show()
-                                            beginSectionTransition(2)
-                                            safeAfter(3.5, done)
-                                        end)
-                                    end)
-                                end)
-                            else
-                                setHoveredRow(nil)
-                                stopBlinkCursor()
-                                searchFrame.editBox:SetText("")
-                                UI:OnSearchTextChanged("")
-                                if ns.Highlight and ns.Highlight.ClearAll then
-                                    pcall(ns.Highlight.ClearAll, ns.Highlight)
-                                end
-                                resetPlayerSpellsFrame()
-                                safeAfter(1.0, function()
-                                    transitionText:Show()
-                                    beginSectionTransition(2)
-                                    safeAfter(2.0, done)
-                                end)
-                            end
-                        end)
-                    end)
-                end)
-            end,
-            -- 4: Switch to Guide Mode (hover with tooltip + highlight,
-            -- click, show updated tooltip so the user sees the change).
-            -- Tooltip/highlight persist until the cursor moves to the
-            -- next target (clearButtonHover runs at the start of
-            -- moveCursorTo).
-            function(done)
-                transitionText:Hide()
-                ensureMode(true)
-                local mb = searchFrame.modeBtn
-                moveCursorTo(mb, CURSOR_MOVE, function()
-                    if mb.btnBg then mb.btnBg:Show() end
-                    if mb.LockHighlight then mb:LockHighlight() end
-                    GameTooltip:SetOwner(mb, "ANCHOR_BOTTOM")
-                    GameTooltip:SetText("Fast Mode")
-                    GameTooltip:AddLine("Click to switch to step-by-step Guide Mode.", 1, 1, 1, true)
-                    GameTooltip:Show()
-                    safeAfter(1.0, function()
-                        clickAnim(function()
-                            EasyFind.db.directOpen = false
-                            if ns.UpdateModeButtonVisual then
-                                pcall(ns.UpdateModeButtonVisual, mb)
-                            end
-                            GameTooltip:SetText("Guide Mode")
-                            GameTooltip:AddLine("Click to enable Fast Mode (opens panels directly).", 1, 1, 1, true)
-                            GameTooltip:Show()
-                            safeAfter(0.8, done)
-                        end)
-                    end)
-                end, MODE_BTN_OFFSET_X, MODE_BTN_OFFSET_Y)
-            end,
-            -- 5: Start typing "sp" in Guide Mode
-            function(done)
-                uis_stepFocusAndType("sp", false, done)
-            end,
-            -- 6: Click the Spellbook result (fires real Highlight)
-            function(done)
-                ensureMode(false)
-                local target = findResultRowByName("Spellbook") or findFirstResultRow() or searchFrame.editBox
-                moveCursorTo(target, CURSOR_MOVE, function()
-                    clickAnim(function()
-                        UI:SelectResult(spellbookEntry)
-                        safeAfter(SETTLE_PAUSE, done)
-                    end)
-                end)
-            end,
-            -- 7: Click the Player Spells micro button (real Highlight arrow showing)
-            function(done)
-                ensureMode(false)
-                local microBtn = _G["PlayerSpellsMicroButton"]
-                if not microBtn then done(); return end
-                moveCursorTo(microBtn, CURSOR_MOVE, function()
-                    clickAnim(function()
-                        if not InCombatLockdown() then
-                            pcall(ShowUIPanel, _G["PlayerSpellsFrame"])
-                        end
-                        safeAfter(SETTLE_PAUSE, done)
-                    end)
-                end)
-            end,
-            -- 8: Click the Spellbook tab (tab 3), then after a settle
-            -- move the cursor to the close button, click it, close the
-            -- window, and hide the cursor to end the demo cleanly.
-            function(done)
-                ensureMode(false)
-                local tab
-                local psf = _G["PlayerSpellsFrame"]
-                if psf and psf.TabSystem and psf.TabSystem.tabs then
-                    tab = psf.TabSystem.tabs[3]
-                end
-                if not tab then tab = _G["PlayerSpellsFrameTab3"] end
-                if not tab then done(); return end
-                moveCursorTo(tab, CURSOR_MOVE, function()
-                    clickAnim(function()
-                        if tab.Click then pcall(tab.Click, tab) end
-                        safeAfter(SETTLE_PAUSE + 1.0, function()
-                            local closeBtn = psf and (psf.ClosePanelButton or psf.CloseButton)
-                            if closeBtn and closeBtn:IsShown() then
-                                moveCursorTo(closeBtn, CURSOR_MOVE, function()
-                                    clickAnim(function()
-                                        setHoveredRow(nil)
-                                        stopBlinkCursor()
-                                        searchFrame.editBox:SetText("")
-                                        UI:OnSearchTextChanged("")
-                                        if ns.Highlight and ns.Highlight.ClearAll then
-                                            pcall(ns.Highlight.ClearAll, ns.Highlight)
-                                        end
-                                        resetPlayerSpellsFrame()
-                                        safeAfter(0.5, function()
-                                            cursor:Hide()
-                                            done()
-                                        end)
-                                    end)
-                                end)
-                            else
+                            local function cleanup()
                                 setHoveredRow(nil)
                                 stopBlinkCursor()
                                 searchFrame.editBox:SetText("")
@@ -2141,12 +1781,121 @@ function Demo.Start(ctx)
                                     done()
                                 end)
                             end
+                            if closeBtn and closeBtn:IsShown() then
+                                moveCursorTo(closeBtn, CURSOR_MOVE, function()
+                                    clickAnim(cleanup)
+                                end)
+                            else
+                                cleanup()
+                            end
                         end)
                     end)
                 end)
             end,
         }
         demoSteps = DEMOS.uiSearch.run
+
+        --------------------------------------------------------------------
+        -- Guide Mode demo: right-click a result, pick Guide from the
+        -- popup, and let the step-by-step highlight guide play.
+        --------------------------------------------------------------------
+        local function guide_cleanup(done)
+            setHoveredRow(nil)
+            stopBlinkCursor()
+            searchFrame.editBox:SetText("")
+            UI:OnSearchTextChanged("")
+            if searchFrame.editBox.placeholder then
+                searchFrame.editBox.placeholder:Show()
+            end
+            if ns.Highlight and ns.Highlight.ClearAll then
+                pcall(ns.Highlight.ClearAll, ns.Highlight)
+            end
+            if not InCombatLockdown() then
+                local cf = _G["CharacterFrame"]
+                if cf and cf.IsShown and cf:IsShown() then
+                    pcall(HideUIPanel, cf)
+                end
+                local tf = _G["TokenFrame"]
+                if tf and tf.IsShown and tf:IsShown() then
+                    pcall(HideUIPanel, tf)
+                end
+            end
+            safeAfter(0.4, function()
+                cursor:Hide()
+                rightClickIcon:Hide()
+                done()
+            end)
+        end
+
+        DEMOS.guide.run = {
+            -- 1: Type "Valorstones"
+            function(done)
+                uis_stepFocusAndType("Valorstones", done)
+            end,
+            -- 2: Move to the Valorstones result row and right-click,
+            -- which triggers ShowPinPopup with the Guide row.
+            function(done)
+                local target = findResultRowByName("Valorstones") or findFirstResultRow()
+                if not target then
+                    guide_cleanup(done)
+                    return
+                end
+                moveCursorTo(target, CURSOR_MOVE, function()
+                    rightClickIcon:Show()
+                    safeAfter(0.5, function()
+                        clickAnim(function()
+                            rightClickIcon:Hide()
+                            local onClick = target:GetScript("OnClick")
+                            if onClick then
+                                pcall(onClick, target, "RightButton", true)
+                            end
+                            safeAfter(SETTLE_PAUSE, done)
+                        end)
+                    end)
+                end)
+            end,
+            -- 3: Click the Guide row in the pin popup. SelectResult
+            -- with forceGuide=true routes a currency entry through
+            -- EasyFind:StartGuide.
+            function(done)
+                local popup = _G["EasyFindPinPopup"]
+                local guideRow = popup and popup.guideRow
+                if not (popup and popup:IsShown() and guideRow and guideRow:IsShown()) then
+                    local target = findResultRowByName("Valorstones") or findFirstResultRow()
+                    if target and target.data then
+                        UI:SelectResult(target.data, true)
+                    end
+                    safeAfter(SETTLE_PAUSE, done)
+                    return
+                end
+                moveCursorTo(guideRow, CURSOR_MOVE, function()
+                    clickAnim(function()
+                        local onClick = guideRow:GetScript("OnClick")
+                        if onClick then
+                            pcall(onClick, guideRow)
+                        end
+                        safeAfter(SETTLE_PAUSE, done)
+                    end)
+                end)
+            end,
+            -- 4: Let the highlight ticker run so the user sees the
+            -- step-by-step guide, then clean up.
+            function(done)
+                safeAfter(4.0, function()
+                    guide_cleanup(done)
+                end)
+            end,
+        }
+        DEMOS.guide.setupAfter = {
+            function() end,
+            function() end,
+            function() end,
+            function()
+                if ns.Highlight and ns.Highlight.ClearAll then
+                    pcall(ns.Highlight.ClearAll, ns.Highlight)
+                end
+            end,
+        }
 
         --------------------------------------------------------------------
         -- Zone/Instance Map Search demo
@@ -2401,17 +2150,6 @@ function Demo.Start(ctx)
                 or nil
         end
 
-        -- Helper: ensure the global map search mode toggle is in the
-        -- expected state and update its visual.
-        local function ensureGlobalMapMode(wantFast)
-            if EasyFind.db.globalMapDirectOpen ~= wantFast then
-                EasyFind.db.globalMapDirectOpen = wantFast
-                if ns.MapSearch and ns.MapSearch.UpdateMapModeBtns then
-                    pcall(ns.MapSearch.UpdateMapModeBtns, ns.MapSearch)
-                end
-            end
-        end
-
         -- Helper: clean up map search state (clear editboxes, focus,
         -- results, pins, zone highlight, activePinState, waypoint).
         -- Both local and global search bars so nothing bleeds across
@@ -2437,69 +2175,6 @@ function Demo.Start(ctx)
                 if ns.MapSearch.ClearAll then pcall(ns.MapSearch.ClearAll, ns.MapSearch) end
                 if ns.MapSearch.ClearZoneHighlight then pcall(ns.MapSearch.ClearZoneHighlight, ns.MapSearch) end
             end
-        end
-
-        -- Recursive navigation clicker for Guide Mode: checks if the
-        -- waypoint pin is visible (meaning we arrived at the final
-        -- destination). If not, looks for either a breadcrumb button in
-        -- the nav bar OR a zone indicator on the map canvas, clicks it,
-        -- and recurses. Caps at 10 iterations to prevent infinite loops.
-        local function clickBreadcrumbsUntilArrived(done, depth)
-            depth = (depth or 0) + 1
-            if depth > 10 then done(); return end
-            safeAfter(0.6, function()
-                -- Have we arrived? Waypoint pin visible = destination.
-                local pin = _G["EasyFindLocationPin"]
-                if pin and pin:IsShown() then
-                    done()
-                    return
-                end
-                -- Priority 1: breadcrumb highlight in the nav bar.
-                local bcHL = _G["EasyFindBreadcrumbHighlight"]
-                if bcHL and bcHL:IsShown() then
-                    moveCursorTo(bcHL, CURSOR_MOVE, function()
-                        clickAnim(function()
-                            local _, relTo = bcHL:GetPoint(1)
-                            if relTo and relTo.Click then
-                                pcall(relTo.Click, relTo)
-                            end
-                            clickBreadcrumbsUntilArrived(done, depth)
-                        end)
-                    end)
-                    return
-                end
-                -- Priority 2: zone indicator arrow on the map canvas.
-                -- This appears when the target zone is highlighted on the
-                -- current map and the user needs to click it to zoom in.
-                -- The arrow is anchored next to the zone in one of four
-                -- directions (down/up/right/left) — read indicatorDirection
-                -- to push the cursor PAST the arrow into the zone itself,
-                -- not onto the arrow's tip.
-                local zoneInd = _G["EasyFindZoneIndicator"]
-                if zoneInd and zoneInd:IsShown() then
-                    local dx, dy = 0, -75  -- default: arrow above zone, cursor goes down
-                    local dir = zoneInd.indicatorDirection
-                    if dir == "up" then
-                        dx, dy = 0, 75
-                    elseif dir == "right" then
-                        dx, dy = 75, 0
-                    elseif dir == "left" then
-                        dx, dy = -75, 0
-                    end
-                    moveCursorTo(zoneInd, CURSOR_MOVE, function()
-                        clickAnim(function()
-                            if ns.MapSearch and ns.MapSearch.pendingZoneHighlight then
-                                pcall(WorldMapFrame.SetMapID, WorldMapFrame,
-                                    ns.MapSearch.pendingZoneHighlight)
-                            end
-                            clickBreadcrumbsUntilArrived(done, depth)
-                        end)
-                    end, dx, dy)
-                    return
-                end
-                -- Neither visible yet, wait and retry.
-                clickBreadcrumbsUntilArrived(done, depth)
-            end)
         end
 
         -- Hover over the waypoint pin to show "found it". When the
@@ -2542,15 +2217,13 @@ function Demo.Start(ctx)
             end)
         end
 
-        function msz.openMap(fast, done)
+        function msz.openMap(done)
             if InCombatLockdown() then done(); return end
-            ensureGlobalMapMode(fast)
             openWorldMap()
             safeAfter(0.8, done)
         end
 
-        function msz.clickNexus(fast, done)
-            ensureGlobalMapMode(fast)
+        function msz.clickNexus(done)
             local target = findMapResultByName("The Nexus")
                 or _G["EasyFindMapResultButton1"]
             if not target or not target:IsShown() then done(); return end
@@ -2590,101 +2263,33 @@ function Demo.Start(ctx)
             end)
         end
 
-        function msz.switchToGuide(done)
-            ensureGlobalMapMode(true)
-            local gsf = _G["EasyFindMapGlobalSearchFrame"]
-            local mb = gsf and gsf.modeBtn
-            if not mb then done(); return end
-            moveCursorTo(mb, CURSOR_MOVE, function()
-                if mb.btnBg then mb.btnBg:Show() end
-                if mb.LockHighlight then mb:LockHighlight() end
-                GameTooltip:SetOwner(mb, "ANCHOR_TOP")
-                GameTooltip:SetText("Fast Mode")
-                GameTooltip:AddLine("Click to switch to Guide mode.", 1, 1, 1, true)
-                GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
-                GameTooltip:Show()
-                safeAfter(1.0, function()
-                    clickAnim(function()
-                        EasyFind.db.globalMapDirectOpen = false
-                        if ns.MapSearch and ns.MapSearch.UpdateMapModeBtns then
-                            pcall(ns.MapSearch.UpdateMapModeBtns, ns.MapSearch)
-                        end
-                        GameTooltip:SetText("Guide Mode")
-                        GameTooltip:AddLine("Click to switch to Fast mode.", 1, 1, 1, true)
-                        GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
-                        GameTooltip:Show()
-                        safeAfter(0.8, done)
-                    end)
-                end)
-            end, MODE_BTN_OFFSET_X, MODE_BTN_OFFSET_Y)
-        end
-
         DEMOS.mapSearchZone.rebuild = function(def)
-            -- Capture the user's saved global mode so restoreUserSettings
-            -- reverts any flips the run/setupAfter make to the saved value.
-            savedGlobalMapDirectOpen = EasyFind.db.globalMapDirectOpen
-            local isFast = demoModeFast["mapSearchZone"] ~= false
-            if isFast then
-                def.stepDefs = {
-                    { text = "Open the world map",            section = 1 },
-                    { text = 'Start typing "The Nexus"',      section = 1 },
-                    { text = "Click The Nexus result",        section = 1 },
-                    { text = "Hover over to clear highlight", section = 1 },
-                }
-                def.sections = {
-                    { header = "", section = 1, firstStep = 1, lastStep = 4 },
-                }
-                def.run = {
-                    function(done) msz.openMap(true, done) end,
-                    function(done) ensureGlobalMapMode(true); msz.stepFocusAndType("nex", done) end,
-                    function(done) msz.clickNexus(true, done) end,
-                    msz.finish,
-                }
-                def.setupAfter = {
-                    function() ensureGlobalMapMode(true); openWorldMap() end,
-                    function()
-                        ensureGlobalMapMode(true); openWorldMap()
-                        if ns.MapSearch and ns.MapSearch.RunGlobalSearch then
-                            pcall(ns.MapSearch.RunGlobalSearch, ns.MapSearch, "nex")
-                        end
-                    end,
-                    function() ensureGlobalMapMode(true); openWorldMap() end,
-                    function() resetMapSearchState(); closeWorldMap() end,
-                }
-            else
-                def.stepDefs = {
-                    { text = "Open the world map",            section = 1 },
-                    { text = "Switch to Guide Mode",          section = 1 },
-                    { text = 'Start typing "The Nexus"',      section = 1 },
-                    { text = "Click The Nexus result",        section = 1 },
-                    { text = "Follow the breadcrumbs",        section = 1 },
-                    { text = "Hover over to clear highlight", section = 1 },
-                }
-                def.sections = {
-                    { header = "", section = 1, firstStep = 1, lastStep = 6 },
-                }
-                def.run = {
-                    function(done) msz.openMap(true, done) end,
-                    msz.switchToGuide,
-                    function(done) ensureGlobalMapMode(false); msz.stepFocusAndType("nex", done) end,
-                    function(done) msz.clickNexus(false, done) end,
-                    function(done) clickBreadcrumbsUntilArrived(done) end,
-                    msz.finish,
-                }
-                def.setupAfter = {
-                    function() ensureGlobalMapMode(true); openWorldMap() end,
-                    function() ensureGlobalMapMode(false); openWorldMap() end,
-                    function()
-                        ensureGlobalMapMode(false); openWorldMap()
-                        if ns.MapSearch and ns.MapSearch.RunGlobalSearch then
-                            pcall(ns.MapSearch.RunGlobalSearch, ns.MapSearch, "nex")
-                        end
-                    end,
-                    function() ensureGlobalMapMode(false); openWorldMap() end,
-                    function() ensureGlobalMapMode(false); openWorldMap() end,
-                    function() resetMapSearchState(); closeWorldMap() end,
-                }
-            end
+            def.stepDefs = {
+                { text = "Open the world map",            section = 1 },
+                { text = 'Start typing "The Nexus"',      section = 1 },
+                { text = "Click The Nexus result",        section = 1 },
+                { text = "Hover over to clear highlight", section = 1 },
+            }
+            def.sections = {
+                { header = "", section = 1, firstStep = 1, lastStep = 4 },
+            }
+            def.run = {
+                msz.openMap,
+                function(done) msz.stepFocusAndType("nex", done) end,
+                msz.clickNexus,
+                msz.finish,
+            }
+            def.setupAfter = {
+                function() openWorldMap() end,
+                function()
+                    openWorldMap()
+                    if ns.MapSearch and ns.MapSearch.RunGlobalSearch then
+                        pcall(ns.MapSearch.RunGlobalSearch, ns.MapSearch, "nex")
+                    end
+                end,
+                function() openWorldMap() end,
+                function() resetMapSearchState(); closeWorldMap() end,
+            }
         end
 
         --------------------------------------------------------------------
@@ -2703,58 +2308,6 @@ function Demo.Start(ctx)
                 pcall(WorldMapFrame.SetMapID, WorldMapFrame, playerMapID)
             end
             return true
-        end
-
-        local function ensureLocalMapMode(wantFast)
-            if EasyFind.db.localMapDirectOpen ~= wantFast then
-                EasyFind.db.localMapDirectOpen = wantFast
-                if ns.MapSearch and ns.MapSearch.UpdateMapModeBtns then
-                    pcall(ns.MapSearch.UpdateMapModeBtns, ns.MapSearch)
-                end
-            end
-        end
-
-        -- Hover the local map search mode button, show tooltip, click
-        -- to toggle if needed. Mirrors hoverModeButton for the UI bar.
-        local function hoverLocalMapModeBtn(wantFast, done)
-            local lsf = _G["EasyFindMapSearchFrame"]
-            local mb = lsf and lsf.modeBtn
-            if not mb then ensureLocalMapMode(wantFast); done(); return end
-            moveCursorTo(mb, CURSOR_MOVE, function()
-                if mb.btnBg then mb.btnBg:Show() end
-                if mb.LockHighlight then mb:LockHighlight() end
-                GameTooltip:SetOwner(mb, "ANCHOR_BOTTOM")
-                local currentFast = EasyFind.db.localMapDirectOpen
-                local function showTargetTooltip()
-                    if wantFast then
-                        GameTooltip:SetText("Fast Mode")
-                        GameTooltip:AddLine("Clicking a result auto-tracks on the minimap.", 1, 1, 1, true)
-                    else
-                        GameTooltip:SetText("Guide Mode")
-                        GameTooltip:AddLine("Clicking a result shows a pin you can click to track.", 1, 1, 1, true)
-                    end
-                    GameTooltip:Show()
-                end
-                if currentFast ~= wantFast then
-                    -- Wrong mode: show current, pause, click to toggle
-                    if currentFast then
-                        GameTooltip:SetText("Fast Mode")
-                    else
-                        GameTooltip:SetText("Guide Mode")
-                    end
-                    GameTooltip:Show()
-                    safeAfter(1.0, function()
-                        clickAnim(function()
-                            ensureLocalMapMode(wantFast)
-                            showTargetTooltip()
-                            safeAfter(1.0, done)
-                        end)
-                    end)
-                else
-                    showTargetTooltip()
-                    safeAfter(1.2, done)
-                end
-            end)
         end
 
         -- Click the waypoint pin to place a SuperTrack user waypoint.
@@ -2841,22 +2394,14 @@ function Demo.Start(ctx)
         end
 
         ----------------------------------------------------------------
-        -- Current Zone Map Search: rebuilds based on demoModeFast so
-        -- the toggle button on the demo panel can flip between Fast
-        -- and Guide variants without touching the user's saved
-        -- localMapDirectOpen setting.
+        -- Current Zone Map Search: browse POIs around the player.
+        -- All helpers live on a single table so this huge parent
+        -- function only consumes one local for the whole bundle.
         ----------------------------------------------------------------
-        -- All current-zone-map-search step functions live on a single
-        -- table so this huge parent function only consumes one local
-        -- for the whole bundle. `wantFast` params are the demo's
-        -- desired mode (from demoModeFast), NOT the user's saved
-        -- setting; each helper flips ensureLocalMapMode before its
-        -- action so SelectResult / auto-track behave correctly.
         local msc = {}
 
-        function msc.openMap(wantFast, done)
+        function msc.openMap(done)
             if InCombatLockdown() then done(); return end
-            ensureLocalMapMode(wantFast)
             local ok = openWorldMapToPlayerZone()
             if not ok then
                 safeAfter(0.5, done)
@@ -3138,8 +2683,7 @@ function Demo.Start(ctx)
             end
         end
 
-        function msc.clickResult(wantFast, done)
-            ensureLocalMapMode(wantFast)
+        function msc.clickResult(done)
             local lastPOI = msc.lastBrowsePOI
             local target = (lastPOI and findMapResultByName(lastPOI.name))
                 or findFirstVisibleMapResult()
@@ -3162,14 +2706,13 @@ function Demo.Start(ctx)
                 moveCursorTo(target, CURSOR_MOVE, function()
                     hideMapCaret()
                     clickAnim(function()
-                    -- Clear the hover tag so setHoveredRow fires OnLeave
-                    -- when SelectResult hides the results frame.
-                    if target._demoMapHover then target._demoMapHover = nil end
-                    setHoveredRow(nil)
-                    if target.data and ns.MapSearch then
-                        pcall(ns.MapSearch.SelectResult, ns.MapSearch, target.data)
-                    end
-                    if wantFast then
+                        -- Clear the hover tag so setHoveredRow fires OnLeave
+                        -- when SelectResult hides the results frame.
+                        if target._demoMapHover then target._demoMapHover = nil end
+                        setHoveredRow(nil)
+                        if target.data and ns.MapSearch then
+                            pcall(ns.MapSearch.SelectResult, ns.MapSearch, target.data)
+                        end
                         safeAfter(SETTLE_PAUSE, function()
                             -- Scroll the callout's text from "Now let's
                             -- click this result." to the clear-button
@@ -3193,13 +2736,6 @@ function Demo.Start(ctx)
                                 end)
                             end)
                         end)
-                    else
-                        -- Guide mode: leave the callout visible so the
-                        -- next step (clickPinTrackContinue) can scroll
-                        -- its text from "Now let's click..." to the pin
-                        -- instructions without a pop-out / pop-back.
-                        safeAfter(SETTLE_PAUSE, done)
-                    end
                     end)
                 end)
             end)
@@ -3442,36 +2978,26 @@ function Demo.Start(ctx)
             msc.lastBrowsePOI = nil
             -- Fully wipe the demo payload each rebuild. Both the
             -- disabled state and the step list live on the shared `def`
-            -- table across rebuilds, so a previous run that populated
-            -- stepDefs (hasBrowse=true) and a later run that sets
-            -- disabled=true (hasBrowse=false) would otherwise layer the
-            -- disabled overlay on top of a still-populated step list.
+            -- table across rebuilds.
             def.disabled = false
             def.disabledMessage = nil
             def.stepDefs = nil
             def.sections = nil
             def.run = nil
             def.setupAfter = nil
-            -- Capture the user's CURRENT mode as the snapshot so
-            -- restoreUserSettings (which runs after rebuild) reverts
-            -- any flips the demo's run/setupAfter make to the saved
-            -- value. Demo's own fast/guide selection comes from
-            -- demoModeFast, NOT the user's saved setting.
-            savedLocalMapDirectOpen = EasyFind.db.localMapDirectOpen
-            local isFast = demoModeFast["mapSearchCurrent"] ~= false
             local hasBrowse = #msc.pickDiversePOIs() > 0
+            if not hasBrowse then
+                def.disabled = true
+                def.disabledMessage = "No searchable POIs in this zone."
+                return
+            end
             local openSnap = function()
-                ensureLocalMapMode(isFast); openWorldMapToPlayerZone()
+                openWorldMapToPlayerZone()
             end
             -- Snap to end-of-browse: map open with the last POI query
-            -- typed and results visible, ready for "Click a result". The
-            -- animation's last hover lands on the last visible row of the
-            -- final prefix (not necessarily picks[#picks] itself, since
-            -- the prefix can match siblings). Mirror that here so jumping
-            -- to the end state and playing through produce the same
-            -- lastBrowsePOI for clickResult to re-target.
+            -- typed and results visible, ready for "Click a result".
             local browseSnap = function()
-                ensureLocalMapMode(isFast); openWorldMapToPlayerZone()
+                openWorldMapToPlayerZone()
                 local picks = msc.pickDiversePOIs()
                 if #picks > 0 then
                     local lastPick = picks[#picks]
@@ -3480,10 +3006,6 @@ function Demo.Start(ctx)
                     if ns.MapSearch and ns.MapSearch.RunLocalSearch then
                         ns.MapSearch:RunLocalSearch(query)
                     end
-                    -- Walk the visible result list the same way the
-                    -- animation's hoverRowsForPrefix does (first N
-                    -- non-header rows) and pick the last one as the
-                    -- end-of-browse target.
                     local lastName
                     local seen = 0
                     for i = 1, 20 do
@@ -3503,59 +3025,18 @@ function Demo.Start(ctx)
             local doneSnap = function()
                 clearDemoWaypoint(); resetMapSearchState(); closeWorldMap()
             end
-            local modeLabel = isFast
-                and "Make sure Fast Mode is enabled"
-                or "Make sure Guide Mode is enabled"
-            local modeStep = function(done) hoverLocalMapModeBtn(isFast, done) end
-            if isFast then
-                if hasBrowse then
-                    def.stepDefs = {
-                        { text = "Open the world map",       section = 1 },
-                        { text = modeLabel,                  section = 1 },
-                        { text = "Browse what's around",     section = 1 },
-                        { text = "Click a result",           section = 1 },
-                    }
-                    def.sections = { { header = "", section = 1, firstStep = 1, lastStep = 4 } }
-                    def.run = {
-                        function(done) msc.openMap(true, done) end,
-                        modeStep,
-                        msc.browseWhatsAround,
-                        function(done) msc.clickResult(true, done) end,
-                    }
-                    def.setupAfter = { openSnap, openSnap, browseSnap, doneSnap }
-                else
-                    def.disabled = true
-                    def.disabledMessage = "No searchable POIs in this zone."
-                end
-            else
-                if hasBrowse then
-                    def.stepDefs = {
-                        { text = "Open the world map",                       section = 1 },
-                        { text = modeLabel,                                  section = 1 },
-                        { text = "Browse what's around",                     section = 1 },
-                        { text = "Click a result",                           section = 1 },
-                        { text = "Click the pin to start tracking",          section = 1 },
-                        { text = "Search again",                             section = 1 },
-                        { text = "Click the nav pin to auto-track instead",  section = 1 },
-                        { text = "Now you're tracking it on the minimap!",   section = 1 },
-                    }
-                    def.sections = { { header = "", section = 1, firstStep = 1, lastStep = 8 } }
-                    def.run = {
-                        function(done) msc.openMap(false, done) end,
-                        modeStep,
-                        msc.browseWhatsAround,
-                        function(done) msc.clickResult(false, done) end,
-                        msc.clickPinTrackContinue,
-                        msc.retypeLastBrowse,
-                        msc.clickNavBtnAutoTrack,
-                        msc.minimapHintAndClose,
-                    }
-                    def.setupAfter = { openSnap, openSnap, browseSnap, openSnap, openSnap, browseSnap, openSnap, doneSnap }
-                else
-                    def.disabled = true
-                    def.disabledMessage = "No searchable POIs in this zone."
-                end
-            end
+            def.stepDefs = {
+                { text = "Open the world map",   section = 1 },
+                { text = "Browse what's around", section = 1 },
+                { text = "Click a result",       section = 1 },
+            }
+            def.sections = { { header = "", section = 1, firstStep = 1, lastStep = 3 } }
+            def.run = {
+                msc.openMap,
+                msc.browseWhatsAround,
+                msc.clickResult,
+            }
+            def.setupAfter = { openSnap, browseSnap, doneSnap }
         end
 
         ----------------------------------------------------------------
@@ -3676,55 +3157,6 @@ function Demo.Start(ctx)
             end)
         end
 
-        -- Combined filter steps: open filter → enable Map Search → confirm
-        -- Local, all chained as a single demo step.
-        function msui.enableLocalFilter(done)
-            msui.stepFilterBtnClick(function()
-                msui.openFilterDropdown()
-                safeAfter(STEP_PAUSE, function()
-                    msui.ensureMapFilterEnabled()
-                    local localRow = msui.getMapSubRow(true)
-                    if localRow then
-                        moveCursorTo(localRow, CURSOR_MOVE, function()
-                            if EasyFind.db.uiMapSearchLocal == false then
-                                clickAnim(function()
-                                    msui.setMapSubLocal(true)
-                                    safeAfter(STEP_PAUSE, done)
-                                end)
-                            else
-                                safeAfter(0.6, done)
-                            end
-                        end)
-                    else
-                        msui.setMapSubLocal(true)
-                        safeAfter(0.5, done)
-                    end
-                end)
-            end)
-        end
-
-        -- Combined filter steps: open filter → switch to Global.
-        function msui.switchToGlobalFilter(done)
-            msui.stepFilterBtnClick(function()
-                msui.openFilterDropdown()
-                safeAfter(STEP_PAUSE, function()
-                    msui.ensureMapFilterEnabled()
-                    local globalRow = msui.getMapSubRow(false)
-                    if globalRow then
-                        moveCursorTo(globalRow, CURSOR_MOVE, function()
-                            clickAnim(function()
-                                msui.setMapSubLocal(false)
-                                safeAfter(STEP_PAUSE, done)
-                            end)
-                        end)
-                    else
-                        msui.setMapSubLocal(false)
-                        safeAfter(0.5, done)
-                    end
-                end)
-            end)
-        end
-
         -- Find a visible UI search result whose name contains the given
         -- substring (case-insensitive). Falls back to the first visible
         -- non-header row if no match (so the demo still has something
@@ -3745,88 +3177,76 @@ function Demo.Start(ctx)
             return first
         end
 
-        -- After HandleUISearchClick has started a guide in standard mode,
-        -- the EasyFind highlighter draws on QuestLogMicroButton. Wait
-        -- briefly for the highlight to appear, then click the button to
-        -- open the world map. The pending navigation registered by
-        -- HandleUISearchClick fires when WorldMapFrame becomes visible.
-        function msui.clickQuestLogMicroBtn(done)
-            local btn = _G["QuestLogMicroButton"]
-            if not btn then done(); return end
-            safeAfter(0.6, function()
-                moveCursorTo(btn, CURSOR_MOVE, function()
-                    clickAnim(function()
-                        if btn.Click then pcall(btn.Click, btn) end
-                        -- Wait for map fade-in + pending navigation +
-                        -- pin placement.
-                        safeAfter(1.6, done)
-                    end)
-                end)
-            end)
-        end
-
-        -- Click the EasyFindLocationPin to set a SuperTrack waypoint
-        -- on it (the pin's OnMouseUp handler does this for left-click
-        -- when the player is on the same map). Also fires the OnMouseUp
-        -- script directly so the click registers even though the demo's
-        -- click blocker eats real mouse events.
-        function msui.clickLocalPin(done)
-            local pin = _G["EasyFindLocationPin"]
-            if not pin or not pin:IsShown() then
-                safeAfter(0.5, done)
+        -- Helper: fire the click handler for the flight master or
+        -- Eastern Plaguelands result row, then settle.
+        local function msui_clickPartial(substring, afterClick)
+            local target = msui.findResultRowByPartialName(substring)
+            if not target then
+                safeAfter(0.5, afterClick)
                 return
             end
-            moveCursorTo(pin, CURSOR_MOVE, function()
+            moveCursorTo(target, CURSOR_MOVE, function()
                 clickAnim(function()
-                    local handler = pin:GetScript("OnMouseUp")
-                    if handler then pcall(handler, pin, "LeftButton") end
-                    safeAfter(SETTLE_PAUSE, done)
+                    stopBlinkCursor()
+                    if target.data and ns.MapSearch and ns.MapSearch.HandleUISearchClick then
+                        pcall(ns.MapSearch.HandleUISearchClick, ns.MapSearch, target.data)
+                    end
+                    afterClick()
                 end)
             end)
         end
 
-        local mapSearchUI_fastRun = {
+        local mapSearchUI_run = {
             ----------------------------------------------------------------
             -- SECTION 1: Local Map POI search (flight master)
             ----------------------------------------------------------------
-            -- 1: Make sure Fast Mode is enabled
-            function(done) hoverModeButton(done) end,
-            -- 2: Enable Local Map Search filter
-            function(done) msui.enableLocalFilter(done) end,
-            -- 3: Type "fli"
-            function(done) msui.stepFocusAndType("fli", done) end,
-            -- 6: Click the Flight Master result. Fast Mode places the
-            -- waypoint directly (no map opens). Minimap hint, then
-            -- transition to Global section.
+            -- 1: Open filter menu
+            function(done) msui.stepFilterBtnClick(function() msui.openFilterDropdown(); safeAfter(STEP_PAUSE, done) end) end,
+            -- 2: Enable Map Search filter
             function(done)
-                local target = msui.findResultRowByPartialName("flight master")
-                if not target then
-                    safeAfter(0.5, done)
-                    return
-                end
-                moveCursorTo(target, CURSOR_MOVE, function()
-                    clickAnim(function()
-                        stopBlinkCursor()
-                        if target.data and ns.MapSearch and ns.MapSearch.HandleUISearchClick then
-                            pcall(ns.MapSearch.HandleUISearchClick, ns.MapSearch, target.data)
+                msui.ensureMapFilterEnabled()
+                safeAfter(STEP_PAUSE, done)
+            end,
+            -- 3: Confirm Local is selected
+            function(done)
+                local localRow = msui.getMapSubRow(true)
+                if localRow then
+                    moveCursorTo(localRow, CURSOR_MOVE, function()
+                        if EasyFind.db.uiMapSearchLocal == false then
+                            clickAnim(function()
+                                msui.setMapSubLocal(true)
+                                safeAfter(STEP_PAUSE, done)
+                            end)
+                        else
+                            safeAfter(0.6, done)
                         end
-                        minimapCallout:SetText("The point is now being tracked.")
-                        safeAfter(SETTLE_PAUSE, function()
-                            showMinimapHint(function()
-                                minimapCallout:Hide()
-                                minimapArrow:Hide()
-                                clearDemoWaypoint()
-                                searchFrame.editBox:SetText("")
-                                UI:OnSearchTextChanged("")
-                                if searchFrame.editBox.placeholder then
-                                    searchFrame.editBox.placeholder:Show()
-                                end
-                                safeAfter(1.0, function()
-                                    transitionFS:SetText("Now let's try a global zone search to find Eastern Plaguelands.")
-                                    transitionText:Show()
-                                    beginSectionTransition(2)
-                                    safeAfter(3.5, done)
-                                end)
+                    end)
+                else
+                    msui.setMapSubLocal(true)
+                    safeAfter(0.5, done)
+                end
+            end,
+            -- 4: Type "fli"
+            function(done) msui.stepFocusAndType("fli", done) end,
+            -- 5: Click the Flight Master result.
+            function(done)
+                msui_clickPartial("flight master", function()
+                    minimapCallout:SetText("The point is now being tracked.")
+                    safeAfter(SETTLE_PAUSE, function()
+                        showMinimapHint(function()
+                            minimapCallout:Hide()
+                            minimapArrow:Hide()
+                            clearDemoWaypoint()
+                            searchFrame.editBox:SetText("")
+                            UI:OnSearchTextChanged("")
+                            if searchFrame.editBox.placeholder then
+                                searchFrame.editBox.placeholder:Show()
+                            end
+                            safeAfter(1.0, function()
+                                transitionFS:SetText("Now let's try a global zone search to find Eastern Plaguelands.")
+                                transitionText:Show()
+                                beginSectionTransition(2)
+                                safeAfter(3.5, done)
                             end)
                         end)
                     end)
@@ -3835,251 +3255,42 @@ function Demo.Start(ctx)
             ----------------------------------------------------------------
             -- SECTION 2: Global zone search (Eastern Plaguelands)
             ----------------------------------------------------------------
-            -- 5: Enable Global Map Search filter
+            -- 6: Open filter menu
             function(done)
                 transitionText:Hide()
-                msui.switchToGlobalFilter(done)
+                msui.stepFilterBtnClick(function() msui.openFilterDropdown(); safeAfter(STEP_PAUSE, done) end)
             end,
-            -- 6: Type "eas"
-            function(done) msui.stepFocusAndType("eas", done) end,
-            -- 10: Click the Eastern Plaguelands result. Strict name
-            -- match: no fallback to first result. Fast Mode with a
-            -- global zone result opens the map and navigates to the
-            -- zone.
+            -- 7: Switch to Global
             function(done)
-                local target = msui.findResultRowByPartialName("eastern plaguelands")
-                if not target then
-                    safeAfter(0.5, done)
-                    return
-                end
-                moveCursorTo(target, CURSOR_MOVE, function()
-                    clickAnim(function()
-                        stopBlinkCursor()
-                        if target.data and ns.MapSearch and ns.MapSearch.HandleUISearchClick then
-                            pcall(ns.MapSearch.HandleUISearchClick, ns.MapSearch, target.data)
-                        end
-                        safeAfter(SETTLE_PAUSE + 1.5, function()
-                            searchFrame.editBox:SetText("")
-                            UI:OnSearchTextChanged("")
-                            if searchFrame.editBox.placeholder then
-                                searchFrame.editBox.placeholder:Show()
-                            end
-                            local closeBtn = getMapCloseBtn()
-                            if closeBtn and closeBtn:IsShown() then
-                                moveCursorTo(closeBtn, CURSOR_MOVE, function()
-                                    clickAnim(function()
-                                        resetMapSearchState()
-                                        closeWorldMap()
-                                        safeAfter(0.5, function()
-                                            cursor:Hide()
-                                            done()
-                                        end)
-                                    end)
-                                end)
-                            else
-                                resetMapSearchState()
-                                closeWorldMap()
-                                safeAfter(0.5, function()
-                                    cursor:Hide()
-                                    done()
-                                end)
-                            end
+                msui.ensureMapFilterEnabled()
+                local globalRow = msui.getMapSubRow(false)
+                if globalRow then
+                    moveCursorTo(globalRow, CURSOR_MOVE, function()
+                        clickAnim(function()
+                            msui.setMapSubLocal(false)
+                            safeAfter(STEP_PAUSE, done)
                         end)
                     end)
-                end)
-            end,
-        }
-
-        -- Common "directOpen + map filter enabled, local/global" baseline
-        -- every mapSearchUI setupAfter builds on. Reads demoModeFast so
-        -- the same baseline reuses across both fast and guide variants.
-        function msui.baseline(isLocal)
-            EasyFind.db.directOpen = (demoModeFast["mapSearchUI"] ~= false)
-            if ns.UpdateModeButtonVisual then
-                pcall(ns.UpdateModeButtonVisual, searchFrame.modeBtn)
-            end
-            msui.ensureMapFilterEnabled()
-            msui.setMapSubLocal(isLocal)
-        end
-
-        local mapSearchUI_fastSetupAfter = {
-            -- 1: Fast mode enabled
-            function() msui.baseline(true); msui.closeFilterDropdown() end,
-            -- 2: Local filter enabled
-            function() msui.baseline(true); msui.closeFilterDropdown() end,
-            -- 3: "fli" typed
-            function()
-                msui.baseline(true); msui.closeFilterDropdown()
-                searchFrame.editBox:SetText("fli")
-                if searchFrame.editBox.placeholder then searchFrame.editBox.placeholder:Hide() end
-                UI:OnSearchTextChanged("fli")
-                startBlinkCursor()
-            end,
-            -- 4: Flight master clicked, waypoint placed
-            function()
-                msui.baseline(true); msui.closeFilterDropdown()
-                clearDemoWaypoint()
-                searchFrame.editBox:SetText("")
-                UI:OnSearchTextChanged("")
-                if searchFrame.editBox.placeholder then searchFrame.editBox.placeholder:Show() end
-            end,
-            -- 5: Global filter enabled
-            function() msui.baseline(false); msui.closeFilterDropdown() end,
-            -- 6: "eas" typed
-            function()
-                msui.baseline(false); msui.closeFilterDropdown()
-                searchFrame.editBox:SetText("eas")
-                if searchFrame.editBox.placeholder then searchFrame.editBox.placeholder:Hide() end
-                UI:OnSearchTextChanged("eas")
-                startBlinkCursor()
-            end,
-            -- 7: Eastern Plaguelands clicked, map closed
-            function()
-                msui.baseline(false); msui.closeFilterDropdown()
-                clearDemoWaypoint()
-                searchFrame.editBox:SetText("")
-                UI:OnSearchTextChanged("")
-                if searchFrame.editBox.placeholder then searchFrame.editBox.placeholder:Show() end
-                resetMapSearchState(); closeWorldMap()
-            end,
-        }
-
-        local mapSearchUI_fastStepDefs = {
-            { text = "Make sure Fast Mode is enabled",          section = 1 },  -- 1
-            { text = "Enable Local Map Search filter",          section = 1 },  -- 2
-            { text = 'Start typing "Flight Master"',            section = 1 },  -- 3
-            { text = "Click the Flight Master result",          section = 1 },  -- 4
-            { text = "Enable Global Map Search filter",         section = 2 },  -- 5
-            { text = 'Start typing "Eastern Plaguelands"',      section = 2 },  -- 6
-            { text = "Click the Eastern Plaguelands result",    section = 2 },  -- 7
-        }
-        local mapSearchUI_fastSections = {
-            { header = "Local Map POI search: Flight Master", section = 1, firstStep = 1, lastStep = 4 },
-            { header = "Global zone search: Eastern Plaguelands", section = 2, firstStep = 5, lastStep = 7 },
-        }
-
-        -- Guide-mode variant: clicking a result triggers HandleUISearchClick's
-        -- guide branch (StartGuide + SetPendingNavigation), so the demo
-        -- has additional steps to walk through the guide: click the
-        -- highlighted QuestLogMicroButton, follow any breadcrumbs, then
-        -- click the destination pin to track.
-        local mapSearchUI_guideStepDefs = {
-            { text = "Make sure Guide Mode is enabled",                section = 1 },  -- 1
-            { text = "Enable Local Map Search filter",                 section = 1 },  -- 2
-            { text = 'Start typing "Flight Master"',                   section = 1 },  -- 3
-            { text = "Click the Flight Master result",                 section = 1 },  -- 4
-            { text = "Click the highlighted Quest Log button",         section = 1 },  -- 5
-            { text = "Click the flight master pin to track",           section = 1 },  -- 6
-            { text = "Enable Global Map Search filter",                section = 2 },  -- 7
-            { text = 'Start typing "Eastern Plaguelands"',             section = 2 },  -- 8
-            { text = "Click the Eastern Plaguelands result",           section = 2 },  -- 9
-            { text = "Click the highlighted Quest Log button",         section = 2 },  -- 10
-            { text = "Follow the breadcrumbs to the zone",             section = 2 },  -- 11
-        }
-        local mapSearchUI_guideSections = {
-            { header = "Local Map POI search: Flight Master",   section = 1, firstStep = 1, lastStep = 6 },
-            { header = "Global zone search: Eastern Plaguelands", section = 2, firstStep = 7, lastStep = 11 },
-        }
-
-        local mapSearchUI_guideRun = {
-            -- 1: Switch to Guide Mode
-            function(done) hoverModeButtonToGuide(done) end,
-            -- 2: Enable Local Map Search filter
-            function(done) msui.enableLocalFilter(done) end,
-            -- 3: Type "fli"
-            function(done) msui.stepFocusAndType("fli", done) end,
-            -- 6: Click result (HandleUISearchClick → guide starts)
-            function(done)
-                local target = msui.findResultRowByPartialName("flight master")
-                if not target then
+                else
+                    msui.setMapSubLocal(false)
                     safeAfter(0.5, done)
-                    return
                 end
-                moveCursorTo(target, CURSOR_MOVE, function()
-                    clickAnim(function()
-                        stopBlinkCursor()
-                        if target.data and ns.MapSearch and ns.MapSearch.HandleUISearchClick then
-                            pcall(ns.MapSearch.HandleUISearchClick, ns.MapSearch, target.data)
-                        end
-                        safeAfter(SETTLE_PAUSE, done)
-                    end)
-                end)
-            end,
-            -- 7: Click highlighted Quest Log button → opens map
-            function(done) msui.clickQuestLogMicroBtn(done) end,
-            -- 8: Click pin to track → minimap hint → transition
-            function(done)
-                msui.clickLocalPin(function()
-                    minimapCallout:SetText("Check your minimap: your target is now tracked!")
-                    showMinimapHint(function()
-                        minimapCallout:Hide()
-                        minimapArrow:Hide()
-                        clearDemoWaypoint()
-                        local closeBtn = getMapCloseBtn()
-                        local function finish()
-                            resetMapSearchState()
-                            closeWorldMap()
-                            searchFrame.editBox:SetText("")
-                            UI:OnSearchTextChanged("")
-                            if searchFrame.editBox.placeholder then
-                                searchFrame.editBox.placeholder:Show()
-                            end
-                            safeAfter(0.8, function()
-                                transitionFS:SetText("Now let's try a global zone search to find Eastern Plaguelands.")
-                                transitionText:Show()
-                                beginSectionTransition(2)
-                                safeAfter(3.5, done)
-                            end)
-                        end
-                        if closeBtn and closeBtn:IsShown() then
-                            moveCursorTo(closeBtn, CURSOR_MOVE, function()
-                                clickAnim(finish)
-                            end)
-                        else
-                            finish()
-                        end
-                    end)
-                end)
-            end,
-            -- 7: Enable Global Map Search filter
-            function(done)
-                transitionText:Hide()
-                msui.switchToGlobalFilter(done)
             end,
             -- 8: Type "eas"
             function(done) msui.stepFocusAndType("eas", done) end,
-            -- 12: Click result (guide starts)
+            -- 9: Click the Eastern Plaguelands result.
             function(done)
-                local target = msui.findResultRowByPartialName("eastern plaguelands")
-                if not target then
-                    safeAfter(0.5, done)
-                    return
-                end
-                moveCursorTo(target, CURSOR_MOVE, function()
-                    clickAnim(function()
-                        stopBlinkCursor()
-                        if target.data and ns.MapSearch and ns.MapSearch.HandleUISearchClick then
-                            pcall(ns.MapSearch.HandleUISearchClick, ns.MapSearch, target.data)
+                msui_clickPartial("eastern plaguelands", function()
+                    safeAfter(SETTLE_PAUSE + 1.5, function()
+                        searchFrame.editBox:SetText("")
+                        UI:OnSearchTextChanged("")
+                        if searchFrame.editBox.placeholder then
+                            searchFrame.editBox.placeholder:Show()
                         end
-                        safeAfter(SETTLE_PAUSE, done)
-                    end)
-                end)
-            end,
-            -- 13: Click highlighted Quest Log button → opens map
-            function(done) msui.clickQuestLogMicroBtn(done) end,
-            -- 14: Follow breadcrumbs to the zone, then close the map
-            function(done)
-                clickBreadcrumbsUntilArrived(function()
-                    safeAfter(1.5, function()
                         local closeBtn = getMapCloseBtn()
                         local function finish()
                             resetMapSearchState()
                             closeWorldMap()
-                            searchFrame.editBox:SetText("")
-                            UI:OnSearchTextChanged("")
-                            if searchFrame.editBox.placeholder then
-                                searchFrame.editBox.placeholder:Show()
-                            end
                             safeAfter(0.5, function()
                                 cursor:Hide()
                                 done()
@@ -4097,12 +3308,20 @@ function Demo.Start(ctx)
             end,
         }
 
-        local mapSearchUI_guideSetupAfter = {
-            -- 1: Guide mode enabled
+        -- Baseline every setupAfter builds on: filter enabled + local/global sub.
+        function msui.baseline(isLocal)
+            msui.ensureMapFilterEnabled()
+            msui.setMapSubLocal(isLocal)
+        end
+
+        local mapSearchUI_setupAfter = {
+            -- 1: Filter menu opened
+            function() msui.baseline(true); msui.openFilterDropdown() end,
+            -- 2: Map filter enabled
+            function() msui.baseline(true); msui.openFilterDropdown() end,
+            -- 3: Local confirmed
             function() msui.baseline(true); msui.closeFilterDropdown() end,
-            -- 2: Local filter enabled
-            function() msui.baseline(true); msui.closeFilterDropdown() end,
-            -- 3: "fli" typed
+            -- 4: "fli" typed
             function()
                 msui.baseline(true); msui.closeFilterDropdown()
                 searchFrame.editBox:SetText("fli")
@@ -4110,22 +3329,16 @@ function Demo.Start(ctx)
                 UI:OnSearchTextChanged("fli")
                 startBlinkCursor()
             end,
-            -- 4: Result clicked, guide started
+            -- 5: Flight master clicked
             function()
                 msui.baseline(true); msui.closeFilterDropdown()
+                clearDemoWaypoint()
                 searchFrame.editBox:SetText("")
                 UI:OnSearchTextChanged("")
-                if searchFrame.editBox.placeholder then
-                    searchFrame.editBox.placeholder:Show()
-                end
+                if searchFrame.editBox.placeholder then searchFrame.editBox.placeholder:Show() end
             end,
-            -- 5: QuestLogMicroButton clicked, map open
-            function() msui.baseline(true); msui.closeFilterDropdown() end,
-            -- 6: Pin clicked, tracked, map closed (section 1 end)
-            function()
-                msui.baseline(true); msui.closeFilterDropdown()
-                clearDemoWaypoint(); resetMapSearchState(); closeWorldMap()
-            end,
+            -- 6: Filter menu opened for section 2
+            function() msui.baseline(false); msui.openFilterDropdown() end,
             -- 7: Global filter enabled
             function() msui.baseline(false); msui.closeFilterDropdown() end,
             -- 8: "eas" typed
@@ -4136,36 +3349,20 @@ function Demo.Start(ctx)
                 UI:OnSearchTextChanged("eas")
                 startBlinkCursor()
             end,
-            -- 9: Result clicked, guide started
+            -- 9: Eastern Plaguelands clicked, map closed
             function()
                 msui.baseline(false); msui.closeFilterDropdown()
+                clearDemoWaypoint()
                 searchFrame.editBox:SetText("")
                 UI:OnSearchTextChanged("")
                 if searchFrame.editBox.placeholder then searchFrame.editBox.placeholder:Show() end
-            end,
-            -- 10: QuestLogMicroButton clicked, map open
-            function() msui.baseline(false); msui.closeFilterDropdown() end,
-            -- 11: Breadcrumbs followed, map closed (final)
-            function()
-                msui.baseline(false); msui.closeFilterDropdown()
                 resetMapSearchState(); closeWorldMap()
             end,
         }
 
         DEMOS.mapSearchUI.rebuild = function(def)
-            savedDirectOpen = EasyFind.db.directOpen
-            local isFast = demoModeFast["mapSearchUI"] ~= false
-            if isFast then
-                def.stepDefs   = mapSearchUI_fastStepDefs
-                def.sections   = mapSearchUI_fastSections
-                def.run        = mapSearchUI_fastRun
-                def.setupAfter = mapSearchUI_fastSetupAfter
-            else
-                def.stepDefs   = mapSearchUI_guideStepDefs
-                def.sections   = mapSearchUI_guideSections
-                def.run        = mapSearchUI_guideRun
-                def.setupAfter = mapSearchUI_guideSetupAfter
-            end
+            def.run        = mapSearchUI_run
+            def.setupAfter = mapSearchUI_setupAfter
         end
 
         --------------------------------------------------------------------
@@ -4466,8 +3663,6 @@ function Demo.Start(ctx)
         end
 
 
-        DEMOS.outfits.supportsModeToggle = false
-
         DEMOS.outfits.rebuild = function(def)
             local outfitEntry = od.findOutfitEntry()
 
@@ -4485,7 +3680,6 @@ function Demo.Start(ctx)
 
             od.entry = outfitEntry
             od.pinnedByDemo = false
-            local savedDirectOpen = EasyFind.db.directOpen
             local savedFilters = EasyFind.db.uiSearchFilters
                 and EasyFind.db.uiSearchFilters.outfits
 
@@ -4544,7 +3738,6 @@ function Demo.Start(ctx)
                 function() snap() end,
                 function()
                     od.cleanup()
-                    EasyFind.db.directOpen = savedDirectOpen
                     if EasyFind.db.uiSearchFilters then
                         EasyFind.db.uiSearchFilters.outfits = savedFilters
                     end
@@ -4823,8 +4016,6 @@ function Demo.Start(ctx)
             asd.clearSearch()
         end
 
-        DEMOS.appearanceSets.supportsModeToggle = true
-
         DEMOS.appearanceSets.rebuild = function(def)
             local _, _, playerClassID = UnitClass("player")
             local myArmor = CLASS_ARMOR[playerClassID]
@@ -4833,12 +4024,10 @@ function Demo.Start(ctx)
                 if armor ~= myArmor then altClassID = cid; break end
             end
             local altClassName = altClassID and (GetClassInfo(altClassID)) or "another class"
-            local isFast = demoModeFast["appearanceSets"] ~= false
 
             def.sections = {
                 { header = "Preview on your character",          section = 1, firstStep = 1, lastStep = 3 },
-                { header = isFast and "Open in Collections"
-                                   or "Guide to Collections",   section = 2, firstStep = 4, lastStep = 5 },
+                { header = "Open in Collections",                section = 2, firstStep = 4, lastStep = 5 },
                 { header = "Try " .. altClassName .. "'s armor", section = 3, firstStep = 6, lastStep = 8 },
             }
             def.stepDefs = {
@@ -4846,8 +4035,7 @@ function Demo.Start(ctx)
                 { text = "Start typing an appearance set name",                 section = 1 },
                 { text = "Ctrl+Click to preview on your character",             section = 1 },
                 { text = "Search the same set again",                           section = 2 },
-                { text = isFast and "Click to open it in Collections"
-                                 or "Click to start the guide",                 section = 2 },
+                { text = "Click to open it in Collections",                     section = 2 },
                 { text = "Switch class filter to " .. altClassName,             section = 3 },
                 { text = "Search a " .. altClassName .. " appearance set",      section = 3 },
                 { text = "Ctrl+Click to preview on your character",             section = 3 },
@@ -4885,11 +4073,9 @@ function Demo.Start(ctx)
                 end,
                 -- 5: Regular click → Collections (opens, shows callout, closes)
                 function(done)
-                    local fast = demoModeFast["appearanceSets"] ~= false
                     asd.regularClickSet(
-                        fast and "A regular click opens the set in Collections."
-                             or "A regular click starts the step-by-step guide.",
-                        fast, done)
+                        "A regular click opens the set in Collections.",
+                        true, done)
                 end,
                 -- 6: Switch class filter + cache alt set
                 function(done)
@@ -5315,7 +4501,7 @@ function Demo.Start(ctx)
         -- Cancel any in-flight step animation. Bumps the generation counter
         -- so every async callback captured before this point aborts on its
         -- next check, stops the current timer / cursor OnUpdate / blink
-        -- cursor, and clears stray visuals left by hoverModeButton.
+        -- cursor, and clears any stray tooltip / hover state.
         local function cancelInFlight()
             stepGen = stepGen + 1
             wipe(pendingTimers)
@@ -5353,88 +4539,16 @@ function Demo.Start(ctx)
         -- animation. These are used by Previous to rewind: reset to clean
         -- slate, then call setupAfterStep[target] for the new position.
         DEMOS.uiSearch.setupAfter = {
-            -- 1: Fast mode enabled
+            -- 1: "sp" typed + results showing
             function()
-                EasyFind.db.directOpen = true
-                if ns.UpdateModeButtonVisual then
-                    pcall(ns.UpdateModeButtonVisual, searchFrame.modeBtn)
-                end
-            end,
-            -- 2: Fast mode + "sp" typed + results showing
-            function()
-                EasyFind.db.directOpen = true
-                if ns.UpdateModeButtonVisual then
-                    pcall(ns.UpdateModeButtonVisual, searchFrame.modeBtn)
-                end
                 searchFrame.editBox:SetText("sp")
                 UI:OnSearchTextChanged("sp")
                 startBlinkCursor()
             end,
-            -- 3: Fast mode, Spellbook opened then cleaned up (the run
-            -- function closes its window and clears the search before
-            -- calling done), so the end state is just fast mode idle.
-            function()
-                EasyFind.db.directOpen = true
-                if ns.UpdateModeButtonVisual then
-                    pcall(ns.UpdateModeButtonVisual, searchFrame.modeBtn)
-                end
-            end,
-            -- 4: Guide mode toggled, clean state
-            function()
-                EasyFind.db.directOpen = false
-                if ns.UpdateModeButtonVisual then
-                    pcall(ns.UpdateModeButtonVisual, searchFrame.modeBtn)
-                end
-            end,
-            -- 5: Guide mode + "sp" typed + results showing
-            function()
-                EasyFind.db.directOpen = false
-                if ns.UpdateModeButtonVisual then
-                    pcall(ns.UpdateModeButtonVisual, searchFrame.modeBtn)
-                end
-                searchFrame.editBox:SetText("sp")
-                UI:OnSearchTextChanged("sp")
-                startBlinkCursor()
-            end,
-            -- 6: Spellbook result selected in guide mode; Highlight
-            -- system is now showing its first arrow on the micro
-            -- button.
-            function()
-                EasyFind.db.directOpen = false
-                if ns.UpdateModeButtonVisual then
-                    pcall(ns.UpdateModeButtonVisual, searchFrame.modeBtn)
-                end
-                UI:SelectResult(spellbookEntry)
-            end,
-            -- 7: PlayerSpellsFrame now open, Highlight advances to tab 3
-            function()
-                EasyFind.db.directOpen = false
-                if ns.UpdateModeButtonVisual then
-                    pcall(ns.UpdateModeButtonVisual, searchFrame.modeBtn)
-                end
-                UI:SelectResult(spellbookEntry)
-                if not InCombatLockdown() then
-                    pcall(ShowUIPanel, _G["PlayerSpellsFrame"])
-                end
-            end,
-            -- 8: Spellbook tab (3) selected
-            function()
-                EasyFind.db.directOpen = false
-                if ns.UpdateModeButtonVisual then
-                    pcall(ns.UpdateModeButtonVisual, searchFrame.modeBtn)
-                end
-                UI:SelectResult(spellbookEntry)
-                if not InCombatLockdown() then
-                    pcall(ShowUIPanel, _G["PlayerSpellsFrame"])
-                end
-                local psf = _G["PlayerSpellsFrame"]
-                local tab
-                if psf and psf.TabSystem and psf.TabSystem.tabs then
-                    tab = psf.TabSystem.tabs[3]
-                end
-                if not tab then tab = _G["PlayerSpellsFrameTab3"] end
-                if tab and tab.Click then pcall(tab.Click, tab) end
-            end,
+            -- 2: Spellbook opened then cleaned up (the run function
+            -- closes its window and clears the search before calling
+            -- done), so the end state is idle.
+            function() end,
         }
         setupAfterStep = DEMOS.uiSearch.setupAfter
 
@@ -5470,7 +4584,6 @@ function Demo.Start(ctx)
             rebuildStepRows()
             refreshStepList()
             updateButtons()
-            refreshModeToggle()
             -- Disabled demo overlay
             if def.disabled then
                 disabledText:SetText(def.disabledMessage or "This demo is not available.")

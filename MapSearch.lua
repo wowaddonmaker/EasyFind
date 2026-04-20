@@ -12,7 +12,6 @@ local mmin, mmax, mpi, mfloor = Utils.mmin, Utils.mmax, Utils.mpi, Utils.mfloor
 local pcall, xpcall, tostring = Utils.pcall, Utils.xpcall, Utils.tostring
 local ErrorHandler = Utils.ErrorHandler
 
-local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind\\textures\\lightning-bolt"
 local GOLD_COLOR = ns.GOLD_COLOR
 local YELLOW_HIGHLIGHT = ns.YELLOW_HIGHLIGHT
 local DEFAULT_OPACITY = ns.DEFAULT_OPACITY
@@ -1545,69 +1544,25 @@ function MapSearch:CreateSearchFrame()
     local contentSz = ns.SEARCHBAR_HEIGHT * ns.SEARCHBAR_FILL
     local iconSz = contentSz * ns.SEARCHBAR_ICON_SCALE
 
-    local localModeBtn = CreateFrame("Button", nil, searchFrame)
-    localModeBtn:SetPoint("TOP", searchFrame, "TOP", 0, 0)
-    localModeBtn:SetPoint("BOTTOM", searchFrame, "BOTTOM", 0, 0)
-    localModeBtn:SetPoint("LEFT", searchFrame, "LEFT", 0, 0)
-    localModeBtn:SetWidth(ns.SEARCHBAR_HEIGHT)
-    localModeBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
+    local localIconHolder = CreateFrame("Frame", nil, searchFrame)
+    localIconHolder:SetPoint("TOP", searchFrame, "TOP", 0, 0)
+    localIconHolder:SetPoint("BOTTOM", searchFrame, "BOTTOM", 0, 0)
+    localIconHolder:SetPoint("LEFT", searchFrame, "LEFT", 0, 0)
+    localIconHolder:SetWidth(ns.SEARCHBAR_HEIGHT)
+    localIconHolder:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
 
-    local searchIcon = localModeBtn:CreateTexture(nil, "OVERLAY")
+    local searchIcon = localIconHolder:CreateTexture(nil, "OVERLAY")
     searchIcon:SetSize(iconSz, iconSz)
     searchIcon:SetPoint("CENTER")
+    searchIcon:SetAtlas("common-search-magnifyingglass")
+    searchIcon:SetVertexColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
     searchFrame.searchIcon = searchIcon
-    localModeBtn.icon = searchIcon
-
-    local localModeBtnBg = localModeBtn:CreateTexture(nil, "ARTWORK")
-    localModeBtnBg:SetAllPoints()
-    localModeBtnBg:SetTexture(796424)
-    localModeBtnBg:Hide()
-    localModeBtn.btnBg = localModeBtnBg
-    localModeBtn:SetHighlightTexture(130757)
-    searchFrame.modeBtn = localModeBtn
-
-    local function UpdateLocalModeBtnVisual()
-        if EasyFind.db.localMapDirectOpen then
-            searchIcon:SetAtlas(nil)
-            searchIcon:SetTexture(LIGHTNING_BOLT_TEX)
-        else
-            searchIcon:SetTexture(nil)
-            searchIcon:SetAtlas("common-search-magnifyingglass")
-        end
-        searchIcon:SetVertexColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
-    end
-    localModeBtn.UpdateVisual = UpdateLocalModeBtnVisual
-
-    localModeBtn:SetScript("OnEnter", function(self)
-        self.btnBg:Show()
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        if EasyFind.db.localMapDirectOpen then
-            GameTooltip:SetText("Fast Mode")
-            GameTooltip:AddLine("Click to switch to Guide mode.", 1, 1, 1, true)
-        else
-            GameTooltip:SetText("Guide Mode")
-            GameTooltip:AddLine("Click to switch to Fast mode.", 1, 1, 1, true)
-        end
-        GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
-        GameTooltip:Show()
-    end)
-    localModeBtn:SetScript("OnLeave", function(self)
-        if not self.keyboardFocused then self.btnBg:Hide() end
-        GameTooltip_Hide()
-    end)
-    localModeBtn:SetScript("OnClick", function(self)
-        EasyFind.db.localMapDirectOpen = not EasyFind.db.localMapDirectOpen
-        UpdateLocalModeBtnVisual()
-        local optPanel = _G["EasyFindOptionsFrame"]
-        if optPanel and optPanel.localNavCheckbox then
-            optPanel.localNavCheckbox:SetChecked(EasyFind.db.localMapDirectOpen)
-        end
-    end)
-    UpdateLocalModeBtnVisual()
+    localIconHolder.icon = searchIcon
+    searchFrame.modeBtn = localIconHolder
 
     local editBox = CreateFrame("EditBox", "EasyFindMapSearchBox", searchFrame)
     editBox:SetHeight(contentSz)
-    editBox:SetPoint("LEFT", localModeBtn, "RIGHT", 0, 0)
+    editBox:SetPoint("LEFT", localIconHolder, "RIGHT", 0, 0)
     -- RIGHT anchor set below after clearBtn creation
     editBox:SetFontObject(ns.SEARCHBAR_FONT)
     editBox:SetAutoFocus(false)
@@ -1753,13 +1708,8 @@ function MapSearch:CreateSearchFrame()
     editBox:HookScript("OnEnter", function(self)
         if self:HasFocus() or not placeholder:IsShown() then return end
         GameTooltip:SetOwner(searchFrame, "ANCHOR_TOP")
-        if EasyFind.db.localMapDirectOpen then
-            GameTooltip:SetText("|cFFFFD100Zone Search|r (Fast)")
-            GameTooltip:AddLine("Navigates directly to results without zone highlighting.", 1, 1, 1, true)
-        else
-            GameTooltip:SetText("|cFFFFD100Zone Search|r (Guide)")
-            GameTooltip:AddLine("Highlights zones on the map and guides navigation step by step.", 1, 1, 1, true)
-        end
+        GameTooltip:SetText("|cFFFFD100Zone Search|r")
+        GameTooltip:AddLine("Right-click a result for Pin or Guide options.", 1, 1, 1, true)
         GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
@@ -1986,69 +1936,25 @@ function MapSearch:CreateSearchFrame()
         end
     end)
 
-    local globalModeBtn = CreateFrame("Button", nil, globalSearchFrame)
-    globalModeBtn:SetPoint("TOP", globalSearchFrame, "TOP", 0, 0)
-    globalModeBtn:SetPoint("BOTTOM", globalSearchFrame, "BOTTOM", 0, 0)
-    globalModeBtn:SetPoint("LEFT", globalSearchFrame, "LEFT", 0, 0)
-    globalModeBtn:SetWidth(ns.SEARCHBAR_HEIGHT)
-    globalModeBtn:SetFrameLevel(globalSearchFrame:GetFrameLevel() + 10)
+    local globalIconHolder = CreateFrame("Frame", nil, globalSearchFrame)
+    globalIconHolder:SetPoint("TOP", globalSearchFrame, "TOP", 0, 0)
+    globalIconHolder:SetPoint("BOTTOM", globalSearchFrame, "BOTTOM", 0, 0)
+    globalIconHolder:SetPoint("LEFT", globalSearchFrame, "LEFT", 0, 0)
+    globalIconHolder:SetWidth(ns.SEARCHBAR_HEIGHT)
+    globalIconHolder:SetFrameLevel(globalSearchFrame:GetFrameLevel() + 10)
 
-    local globalSearchIcon = globalModeBtn:CreateTexture(nil, "OVERLAY")
+    local globalSearchIcon = globalIconHolder:CreateTexture(nil, "OVERLAY")
     globalSearchIcon:SetSize(iconSz, iconSz)
     globalSearchIcon:SetPoint("CENTER")
+    globalSearchIcon:SetAtlas("common-search-magnifyingglass")
+    globalSearchIcon:SetVertexColor(0.4, 0.8, 1)
     globalSearchFrame.searchIcon = globalSearchIcon
-    globalModeBtn.icon = globalSearchIcon
-
-    local globalModeBtnBg = globalModeBtn:CreateTexture(nil, "ARTWORK")
-    globalModeBtnBg:SetAllPoints()
-    globalModeBtnBg:SetTexture(796424)
-    globalModeBtnBg:Hide()
-    globalModeBtn.btnBg = globalModeBtnBg
-    globalModeBtn:SetHighlightTexture(130757)
-    globalSearchFrame.modeBtn = globalModeBtn
-
-    local function UpdateGlobalModeBtnVisual()
-        if EasyFind.db.globalMapDirectOpen then
-            globalSearchIcon:SetAtlas(nil)
-            globalSearchIcon:SetTexture(LIGHTNING_BOLT_TEX)
-        else
-            globalSearchIcon:SetTexture(nil)
-            globalSearchIcon:SetAtlas("common-search-magnifyingglass")
-        end
-        globalSearchIcon:SetVertexColor(0.4, 0.8, 1)
-    end
-    globalModeBtn.UpdateVisual = UpdateGlobalModeBtnVisual
-
-    globalModeBtn:SetScript("OnEnter", function(self)
-        self.btnBg:Show()
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        if EasyFind.db.globalMapDirectOpen then
-            GameTooltip:SetText("Fast Mode")
-            GameTooltip:AddLine("Click to switch to Guide mode.", 1, 1, 1, true)
-        else
-            GameTooltip:SetText("Guide Mode")
-            GameTooltip:AddLine("Click to switch to Fast mode.", 1, 1, 1, true)
-        end
-        GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
-        GameTooltip:Show()
-    end)
-    globalModeBtn:SetScript("OnLeave", function(self)
-        if not self.keyboardFocused then self.btnBg:Hide() end
-        GameTooltip_Hide()
-    end)
-    globalModeBtn:SetScript("OnClick", function(self)
-        EasyFind.db.globalMapDirectOpen = not EasyFind.db.globalMapDirectOpen
-        UpdateGlobalModeBtnVisual()
-        local optPanel = _G["EasyFindOptionsFrame"]
-        if optPanel and optPanel.globalNavCheckbox then
-            optPanel.globalNavCheckbox:SetChecked(EasyFind.db.globalMapDirectOpen)
-        end
-    end)
-    UpdateGlobalModeBtnVisual()
+    globalIconHolder.icon = globalSearchIcon
+    globalSearchFrame.modeBtn = globalIconHolder
 
     local globalEditBox = CreateFrame("EditBox", "EasyFindMapGlobalSearchBox", globalSearchFrame)
     globalEditBox:SetHeight(contentSz)
-    globalEditBox:SetPoint("LEFT", globalModeBtn, "RIGHT", 0, 0)
+    globalEditBox:SetPoint("LEFT", globalIconHolder, "RIGHT", 0, 0)
     -- RIGHT anchor set below after globalClearBtn creation
     globalEditBox:SetFontObject(ns.SEARCHBAR_FONT)
     globalEditBox:SetAutoFocus(false)
@@ -2194,13 +2100,8 @@ function MapSearch:CreateSearchFrame()
     globalEditBox:HookScript("OnEnter", function(self)
         if self:HasFocus() or not globalPlaceholder:IsShown() then return end
         GameTooltip:SetOwner(globalSearchFrame, "ANCHOR_TOP")
-        if EasyFind.db.globalMapDirectOpen then
-            GameTooltip:SetText("|cFF66CCFFGlobal Search|r (Fast)")
-            GameTooltip:AddLine("Navigates directly to clicked zones and dungeon entrances.", 1, 1, 1, true)
-        else
-            GameTooltip:SetText("|cFF66CCFFGlobal Search|r (Guide)")
-            GameTooltip:AddLine("Highlights zones on the map and guides navigation step by step.", 1, 1, 1, true)
-        end
+        GameTooltip:SetText("|cFF66CCFFGlobal Search|r")
+        GameTooltip:AddLine("Right-click a result for Pin or Guide options.", 1, 1, 1, true)
         GameTooltip:AddLine("Hold |cFF00FF00Shift|r and drag to reposition.", 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
