@@ -529,8 +529,8 @@ function EasyFind:FocusSearchUI()
 end
 
 function EasyFind:ToggleFocusSearchUI()
-    if WorldMapFrame and WorldMapFrame:IsShown() and ns.MapSearch then
-        ns.MapSearch:FocusLocalSearch()
+    if WorldMapFrame and WorldMapFrame:IsShown() and ns.MapTab then
+        ns.MapTab:Focus()
     elseif ns.UI then
         ns.UI:ToggleFocus()
     end
