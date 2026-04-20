@@ -1086,6 +1086,13 @@ local function UnpinMapItem(data)
     end
 end
 
+-- Expose pin helpers on the module so external renderers (MapTab) can
+-- toggle pins without duplicating the canonicalization logic.
+MapSearch.GetMapPinKey  = function(_, data) return GetMapPinKey(data) end
+MapSearch.IsMapItemPinned = function(_, data) return IsMapItemPinned(data) end
+MapSearch.PinMapItem   = function(_, data) return PinMapItem(data) end
+MapSearch.UnpinMapItem = function(_, data) return UnpinMapItem(data) end
+
 -- Simple pin context popup (BOTTOMLEFT anchored at cursor so it opens above)
 local pinPopup
 local function ShowPinPopup(btn, isPinned, onAction)
@@ -5817,9 +5824,22 @@ function MapSearch:OnSearchTextChanged(text)
     self:ClearZoneHighlight()
     self:ClearHighlight()
 
+    local results = self:BuildResults(text, isGlobalSearch)
+    self:ShowResults(results)
+end
+
+-- Pure result computation: takes a query and a global-mode flag, returns the
+-- ranked + filtered + pin-merged result list. No rendering. Safe to call
+-- from MapTab or any other renderer that wants both local and global sets.
+-- Temporarily sets the module-level `isGlobalSearch` so transitively-called
+-- helpers (SearchZones, GetGlobalInstanceCache, ...) see the requested mode.
+function MapSearch:BuildResults(text, isGlobal, skipPins)
+    local savedGlobalFlag = isGlobalSearch
+    isGlobalSearch = isGlobal and true or false
+
     -- Search for zones (works for both local and global mode)
     local zoneMatches = {}
-    if self:IsOnContinentMap() or isGlobalSearch then
+    if self:IsOnContinentMap() or isGlobal then
         zoneMatches = self:SearchZones(text)
     end
 
@@ -5856,7 +5876,7 @@ function MapSearch:OnSearchTextChanged(text)
     -- Dungeon-type zone results from SearchZones are suppressed when the
     -- cache covers them. Cache entries are promoted to zone-style display
     -- (with full breadcrumb paths) using a mapID-to-path lookup.
-    if isGlobalSearch then
+    if isGlobal then
         local instancePOIs = self:GetGlobalInstanceCache()
 
         -- Build mapID → full path string from the world zones cache
@@ -6014,7 +6034,7 @@ function MapSearch:OnSearchTextChanged(text)
     local results = self:SearchPOIs(allPOIs, text)
 
     -- Apply global search filters (zones / dungeons / raids / delves)
-    if isGlobalSearch then
+    if isGlobal then
         local filters = EasyFind.db.globalSearchFilters
         wipe(reuseFilteredResults)
         local filteredResults = reuseFilteredResults
@@ -6059,8 +6079,9 @@ function MapSearch:OnSearchTextChanged(text)
         results = filteredResults
     end
 
-    -- Prepend pinned items with header (always shown at top regardless of query)
-    local pins = EasyFind.db.pinnedMapItems
+    -- Prepend pinned items with header (always shown at top regardless of query).
+    -- Callers that render their own pinned section (e.g. MapTab) pass skipPins.
+    local pins = not skipPins and EasyFind.db.pinnedMapItems or nil
     if pins and #pins > 0 then
         wipe(reusePinnedKeys)
         wipe(reusePinned)
@@ -6094,7 +6115,8 @@ function MapSearch:OnSearchTextChanged(text)
         results = pinned
     end
 
-    self:ShowResults(results)
+    isGlobalSearch = savedGlobalFlag
+    return results
 end
 
 function MapSearch:SearchPOIs(pois, query)
