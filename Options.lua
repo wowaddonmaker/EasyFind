@@ -1122,20 +1122,8 @@ function Options:Initialize()
     end)
     optionsFrame.rareTrackCheckbox = rareTrackCheckbox
 
-    local resizeMapBtn = CreateFrame("Button", nil, sec2, "UIPanelButtonTemplate")
-    resizeMapBtn:SetSize(160, 22)
-    resizeMapBtn:SetPoint("RIGHT", sec2, "RIGHT", -8, 0)
-    resizeMapBtn:SetPoint("TOP", mapEnableCheckbox, "TOP", 0, 0)
-    resizeMapBtn:SetText("Resize Map Search")
-    resizeMapBtn:SetScript("OnClick", function()
-        if ns.Rescaler then ns.Rescaler:Enter("map") end
-    end)
-    resizeMapBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Visually resize the map search bars and results dropdown.\nDrag edges for width, corners for scale.")
-        GameTooltip:Show()
-    end)
-    resizeMapBtn:SetScript("OnLeave", GameTooltip_Hide)
+    -- Resize Map Search button removed: floating map search bars are retired
+    -- and the new MapTab uses the Blizzard quest-log-tab sizing.
 
     local FLYOUT_W = 260
 
@@ -1279,7 +1267,7 @@ function Options:Initialize()
     end)
 
     mapControls = {
-        resizeMapBtn, resetMapBtn, resetMapPosBtn, rareTrackCheckbox,
+        resetMapBtn, resetMapPosBtn, rareTrackCheckbox,
         searchBarGroup, mapPinGroup, minimapGroup, automationGroup
     }
     UpdateMapToggleVisual()
