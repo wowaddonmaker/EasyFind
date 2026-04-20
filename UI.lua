@@ -28,7 +28,7 @@ local InCombatLockdown   = InCombatLockdown
 local HideUIPanel        = HideUIPanel
 local wipe               = wipe
 
-local LIGHTNING_BOLT_TEX = "Interface\\AddOns\\EasyFind\\textures\\lightning-bolt"
+local EYE_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\eye"
 local REP_BAR_WIDTH = 100
 
 local searchFrame
@@ -239,12 +239,39 @@ function UI:SyncOutfitPins()
     syncList(charPins)
 end
 
--- Simple pin context popup (BOTTOMLEFT anchored at cursor so it opens above)
+-- Right-click context menu with Pin/Unpin and optional Guide row.
+-- Anchored BOTTOMLEFT at cursor so it opens above the pointer.
+local EYE_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\eye"
+local PIN_MENU_ROW_H = 22
+local PIN_MENU_WIDTH = 96
 local pinPopup
-local function ShowPinPopup(btn, isPinned, onAction)
+
+local function CreatePinMenuRow(parent)
+    local row = CreateFrame("Button", nil, parent)
+    row:SetHeight(PIN_MENU_ROW_H)
+    row:RegisterForClicks("LeftButtonUp")
+    local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    label:SetPoint("LEFT", row, "LEFT", 8, 0)
+    row.label = label
+    local icon = row:CreateTexture(nil, "OVERLAY")
+    icon:SetSize(14, 14)
+    icon:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+    icon:Hide()
+    row.icon = icon
+    row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+    return row
+end
+
+-- Hide when the cursor leaves the popup's bounding box. A child row's OnLeave
+-- fires when the cursor crosses to a sibling row too, so IsMouseOver on the
+-- parent discriminates "left the menu entirely" from "moved between rows".
+local function pinPopupRowOnLeave()
+    if pinPopup and not pinPopup:IsMouseOver() then pinPopup:Hide() end
+end
+
+local function ShowPinPopup(btn, isPinned, onPinAction, onGuide)
     if not pinPopup then
-        pinPopup = CreateFrame("Button", "EasyFindPinPopup", UIParent, "BackdropTemplate")
-        pinPopup:SetSize(80, 28)
+        pinPopup = CreateFrame("Frame", "EasyFindPinPopup", UIParent, "BackdropTemplate")
         pinPopup:SetFrameStrata("TOOLTIP")
         pinPopup:SetFrameLevel(10000)
         pinPopup:SetBackdrop({
@@ -254,32 +281,48 @@ local function ShowPinPopup(btn, isPinned, onAction)
             insets = { left = 2, right = 2, top = 2, bottom = 2 }
         })
         pinPopup:SetBackdropColor(DARK_PANEL_BG[1], DARK_PANEL_BG[2], DARK_PANEL_BG[3], DARK_PANEL_BG[4])
-        local label = pinPopup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        label:SetPoint("CENTER")
-        pinPopup.label = label
-        pinPopup:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-        -- Delayed hide: brief grace period so the popup doesn't vanish when
-        -- the cursor drifts a pixel outside the button
-        pinPopup:SetScript("OnLeave", function(self)
-            if self._hideTimer then self._hideTimer:Cancel() end
-            self._hideTimer = C_Timer.NewTimer(0.25, function()
-                if not self:IsMouseOver() then self:Hide() end
-            end)
-        end)
-        pinPopup:SetScript("OnEnter", function(self)
-            if self._hideTimer then self._hideTimer:Cancel(); self._hideTimer = nil end
-        end)
+        pinPopup.guideRow = CreatePinMenuRow(pinPopup)
+        pinPopup.guideRow.label:SetText("Guide")
+        pinPopup.guideRow.icon:SetTexture(EYE_ICON_TEX)
+        pinPopup.guideRow.icon:Show()
+        pinPopup.pinRow = CreatePinMenuRow(pinPopup)
+
+        pinPopup.pinRow:SetScript("OnLeave", pinPopupRowOnLeave)
+        pinPopup.guideRow:SetScript("OnLeave", pinPopupRowOnLeave)
     end
-    pinPopup.label:SetText(isPinned and "Unpin" or "Pin")
-    pinPopup:SetScript("OnClick", function(self)
-        self:Hide()
-        onAction()
+
+    pinPopup.pinRow:Show()
+    pinPopup.pinRow.label:SetText(isPinned and "Unpin" or "Pin")
+    pinPopup.pinRow:SetScript("OnClick", function()
+        pinPopup:Hide()
+        if onPinAction then onPinAction() end
     end)
+    pinPopup.pinRow:ClearAllPoints()
+
+    if onGuide then
+        pinPopup.guideRow:ClearAllPoints()
+        pinPopup.guideRow:SetPoint("TOPLEFT", pinPopup, "TOPLEFT", 4, -4)
+        pinPopup.guideRow:SetPoint("TOPRIGHT", pinPopup, "TOPRIGHT", -4, -4)
+        pinPopup.guideRow:Show()
+        pinPopup.guideRow:SetScript("OnClick", function()
+            pinPopup:Hide()
+            onGuide()
+        end)
+        pinPopup.pinRow:SetPoint("TOPLEFT", pinPopup.guideRow, "BOTTOMLEFT", 0, 0)
+        pinPopup.pinRow:SetPoint("TOPRIGHT", pinPopup.guideRow, "BOTTOMRIGHT", 0, 0)
+        pinPopup:SetSize(PIN_MENU_WIDTH, PIN_MENU_ROW_H * 2 + 8)
+    else
+        pinPopup.guideRow:Hide()
+        pinPopup.guideRow:SetScript("OnClick", nil)
+        pinPopup.pinRow:SetPoint("TOPLEFT", pinPopup, "TOPLEFT", 4, -4)
+        pinPopup.pinRow:SetPoint("TOPRIGHT", pinPopup, "TOPRIGHT", -4, -4)
+        pinPopup:SetSize(PIN_MENU_WIDTH, PIN_MENU_ROW_H + 8)
+    end
+
     local scale = UIParent:GetEffectiveScale()
     local x, y = GetCursorPosition()
     pinPopup:ClearAllPoints()
     pinPopup:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale, y / scale)
-    if pinPopup._hideTimer then pinPopup._hideTimer:Cancel(); pinPopup._hideTimer = nil end
     pinPopup:Show()
 end
 
@@ -579,77 +622,32 @@ function UI:CreateSearchFrame()
         ns.SetSearchBorderShown(searchFrame, false)
     end
 
-    -- Mode toggle button (search icon area, flush left)
+    -- Static magnifying-glass icon (non-interactive, flush left)
     local contentSz = ns.SEARCHBAR_HEIGHT * ns.SEARCHBAR_FILL
     local iconSz = contentSz * ns.SEARCHBAR_ICON_SCALE
 
-    local modeBtn = CreateFrame("Button", "EasyFindModeButton", searchFrame)
-    modeBtn:SetPoint("TOP", searchFrame, "TOP", 0, 0)
-    modeBtn:SetPoint("BOTTOM", searchFrame, "BOTTOM", 0, 0)
-    modeBtn:SetPoint("LEFT", searchFrame, "LEFT", 0, 0)
-    modeBtn:SetWidth(searchFrame:GetHeight())
-    modeBtn:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
+    local iconHolder = CreateFrame("Frame", nil, searchFrame)
+    iconHolder:SetPoint("TOP", searchFrame, "TOP", 0, 0)
+    iconHolder:SetPoint("BOTTOM", searchFrame, "BOTTOM", 0, 0)
+    iconHolder:SetPoint("LEFT", searchFrame, "LEFT", 0, 0)
+    iconHolder:SetWidth(searchFrame:GetHeight())
+    iconHolder:SetFrameLevel(searchFrame:GetFrameLevel() + 10)
 
-    local modeIcon = modeBtn:CreateTexture(nil, "OVERLAY")
-    modeIcon:SetSize(iconSz, iconSz)
-    modeIcon:SetPoint("CENTER")
-    modeBtn.icon = modeIcon
-
-    local modeBtnBg = modeBtn:CreateTexture(nil, "ARTWORK")
-    modeBtnBg:SetAllPoints()
-    modeBtnBg:SetTexture(796424)
-    modeBtnBg:Hide()
-    modeBtn.btnBg = modeBtnBg
-
-    modeBtn:SetHighlightTexture(130757)
-    searchFrame.modeBtn = modeBtn
-    searchFrame.searchIcon = modeIcon
-
-    local function UpdateModeButtonVisual(btn)
-        if EasyFind.db.directOpen then
-            btn.icon:SetAtlas(nil)
-            btn.icon:SetTexture(LIGHTNING_BOLT_TEX)
-        else
-            btn.icon:SetTexture(nil)
-            btn.icon:SetAtlas("common-search-magnifyingglass")
-        end
-    end
-    ns.UpdateModeButtonVisual = UpdateModeButtonVisual
-
-    modeBtn:SetScript("OnEnter", function(self)
-        self.btnBg:Show()
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        if EasyFind.db.directOpen then
-            GameTooltip:SetText("Fast Mode")
-            GameTooltip:AddLine("Click to switch to step-by-step Guide Mode.", 1, 1, 1, true)
-        else
-            GameTooltip:SetText("Guide Mode")
-            GameTooltip:AddLine("Click to enable Fast Mode (opens panels directly).", 1, 1, 1, true)
-        end
-        GameTooltip:Show()
-    end)
-
-    modeBtn:SetScript("OnLeave", function(self)
-        if not self.keyboardFocused then self.btnBg:Hide() end
-        GameTooltip_Hide()
-    end)
-
-    modeBtn:SetScript("OnClick", function(self)
-        EasyFind.db.directOpen = not EasyFind.db.directOpen
-        UpdateModeButtonVisual(self)
-        ns.Highlight:ClearAll()
-        local optPanel = _G["EasyFindOptionsFrame"]
-        if optPanel and optPanel.directOpenCheckbox then
-            optPanel.directOpenCheckbox:SetChecked(EasyFind.db.directOpen)
-        end
-    end)
-
-    UpdateModeButtonVisual(modeBtn)
+    local searchIcon = iconHolder:CreateTexture(nil, "OVERLAY")
+    searchIcon:SetSize(iconSz, iconSz)
+    searchIcon:SetPoint("CENTER")
+    searchIcon:SetAtlas("common-search-magnifyingglass")
+    iconHolder.icon = searchIcon
+    searchFrame.searchIcon = searchIcon
+    -- Kept for Demo.lua / legacy references; no longer a clickable toggle.
+    searchFrame.modeBtn = iconHolder
+    -- No-op shim so legacy pcalls from Demo.lua succeed.
+    ns.UpdateModeButtonVisual = ns.UpdateModeButtonVisual or function() end
 
     -- Editbox
     local editBox = CreateFrame("EditBox", "EasyFindSearchBox", searchFrame)
     editBox:SetHeight(contentSz)
-    editBox:SetPoint("LEFT", modeBtn, "RIGHT", 0, 0)
+    editBox:SetPoint("LEFT", iconHolder, "RIGHT", 0, 0)
     editBox:SetPoint("RIGHT", searchFrame, "RIGHT", -8, 0)
     editBox:SetFontObject(ns.SEARCHBAR_FONT)
     editBox:SetAutoFocus(false)
@@ -810,7 +808,7 @@ function UI:CreateSearchFrame()
 
     -- Anchor editBox right edge to left of clear button area (filter button zone)
     editBox:ClearAllPoints()
-    editBox:SetPoint("LEFT", modeBtn, "RIGHT", 0, 0)
+    editBox:SetPoint("LEFT", iconHolder, "RIGHT", 0, 0)
     editBox:SetPoint("RIGHT", filterBtn, "LEFT", -4, 0)
 
     -- Click anywhere on the search frame to focus the editbox (enables blinking cursor).
@@ -822,7 +820,7 @@ function UI:CreateSearchFrame()
     searchFrame:HookScript("OnMouseDown", function(self, button)
         if button ~= "LeftButton" or IsShiftKeyDown() or self.setupMode then return end
         if (filterBtn and filterBtn:IsMouseOver())
-           or (modeBtn and modeBtn:IsMouseOver())
+           or (iconHolder and iconHolder:IsMouseOver())
            or (clearTextBtn and clearTextBtn:IsShown() and clearTextBtn:IsMouseOver()) then
             return
         end
@@ -912,7 +910,6 @@ function UI:CreateSearchFrame()
 
     local function GetToolbarControls()
         local controls = {}
-        tinsert(controls, modeBtn)
         if clearTextBtn:IsShown() then
             tinsert(controls, clearTextBtn)
         end
@@ -997,17 +994,13 @@ function UI:CreateSearchFrame()
         elseif key == "END" then
             UI:JumpToEnd()
         elseif key == "TAB" then
-            -- Ring order: modeBtn(1) → editBox → [clearBtn] → filterBtn → wrap
-            -- EditBox sits between toolbar index 1 and 2
+            -- Ring order: editBox → [clearBtn] → filterBtn → wrap back to editBox
             if IsShiftKeyDown() then
                 if selectedIndex > 0 and toggleFocused then
                     toggleFocused = false
                     UI:UpdateSelectionHighlight()
                 elseif toolbarFocus > 0 then
                     if toolbarFocus == 1 then
-                        local controls = GetToolbarControls()
-                        SetToolbarFocus(#controls)
-                    elseif toolbarFocus == 2 then
                         ClearToolbarFocus()
                         Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
                         searchFrame.editBox:SetFocus()
@@ -1028,12 +1021,10 @@ function UI:CreateSearchFrame()
                     end
                 elseif toolbarFocus > 0 then
                     local controls = GetToolbarControls()
-                    if toolbarFocus == 1 then
+                    if toolbarFocus >= #controls then
                         ClearToolbarFocus()
                         Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
                         searchFrame.editBox:SetFocus()
-                    elseif toolbarFocus >= #controls then
-                        SetToolbarFocus(1)
                     else
                         SetToolbarFocus(toolbarFocus + 1)
                     end
@@ -1118,19 +1109,17 @@ function UI:CreateSearchFrame()
         UI:HideResults()
     end)
 
-    -- Tab/Shift+Tab from editbox: navigate toolbar controls
-    -- Controls are ordered left-to-right: modeBtn, [clearTextBtn], filterBtn
-    -- EditBox sits between modeBtn and clearTextBtn/filterBtn, so:
-    --   Shift+Tab (left) → modeBtn (index 1)
-    --   Tab (right) → first control after editBox (index 2)
+    -- Tab/Shift+Tab from editbox: navigate toolbar controls to the right of
+    -- the editbox (clearTextBtn, filterBtn). Shift+Tab wraps to the last.
     editBox:HookScript("OnKeyDown", function(self, key)
         if key ~= "TAB" then return end
         self:ClearFocus()
         Utils.SafeCallMethod(navFrame, "EnableKeyboard", true)
+        local controls = GetToolbarControls()
         if IsShiftKeyDown() then
-            SetToolbarFocus(1)
+            SetToolbarFocus(#controls)
         else
-            SetToolbarFocus(2)
+            SetToolbarFocus(1)
         end
     end)
 
@@ -3530,10 +3519,15 @@ function UI:CreateResultButton(index)
                 ClearCursor()
             end)
         end
-        -- Right-click: show pin/unpin popup
+        -- Right-click: show pin/unpin popup (plus Guide row if entry has a guide path)
         if mouseButton == "RightButton" and self.data then
             local pinData = self.data
             local isPinned = IsUIItemPinned(pinData)
+            local hasGuide = pinData.steps or pinData.transmogSetID
+                or (pinData.category == "Loot" and pinData.itemID)
+            local onGuide = hasGuide and function()
+                UI:SelectResult(pinData, true)
+            end or nil
             ShowPinPopup(self, isPinned, function()
                 if isPinned then
                     UnpinUIItem(pinData)
@@ -3547,7 +3541,7 @@ function UI:CreateResultButton(index)
                 else
                     UI:OnSearchTextChanged(text)
                 end
-            end)
+            end, onGuide)
             return
         end
 
@@ -5525,8 +5519,9 @@ function UI:ApplyTransmogBrowseMode()
     end
 end
 
-function UI:SelectResult(data)
+function UI:SelectResult(data, forceGuide)
     if not data then return end
+    local useFast = not forceGuide
 
     selectingResult = true
     searchFrame.editBox:SetText("")
@@ -5576,7 +5571,7 @@ function UI:SelectResult(data)
             },
         }
 
-        if EasyFind.db.directOpen then
+        if useFast then
             self:DirectOpen(guideData)
         else
             EasyFind:StartGuide(guideData)
@@ -5611,7 +5606,7 @@ function UI:SelectResult(data)
             guideData.steps[#guideData.steps + 1] = { waitForFrame = "WardrobeCollectionFrame", transmogVariantDropdown = true }
             guideData.steps[#guideData.steps + 1] = { waitForFrame = "WardrobeCollectionFrame", transmogVariantSetID = setID }
         end
-        if EasyFind.db.directOpen then
+        if useFast then
             self:DirectOpen(guideData)
         else
             EasyFind:StartGuide(guideData)
@@ -5651,7 +5646,7 @@ function UI:SelectResult(data)
         self:FlashLabel(data.flashLabel)
     end
 
-    if EasyFind.db.directOpen and data.steps then
+    if useFast and data.steps then
         -- Portrait menu can't be automated (secure frame restriction)
         local mustGuide = false
         for _, step in ipairs(data.steps) do
@@ -6867,69 +6862,11 @@ function UI:ShowFirstTimeSetup()
     gotItBtn:SetPoint("BOTTOM", panel, "BOTTOM", 0, 12)
     gotItBtn:SetText("Got it")
 
-    -- Floating "Mode toggle" pointer group, independent of the panel.
-    -- Sits to the LEFT of the search bar so the arrow can point RIGHT at
-    -- the mode button. Uses the Blizzard atlas arrow (sheet 1121272),
-    -- rotated -90deg so the natively-up arrow points right.
-    --
-    -- The frame itself stays fixed next to the mode button; the TEXTURE
-    -- inside the frame slides via a sin wave so only the arrow bounces,
-    -- leaving the label and See Demo button rock-steady.
-    -- Tutorial label + animated chevron pointing at the mode button.
-    -- AttachPointer handles rotation, origin (trail-back flush with the
-    -- label's RIGHT border), and per-cycle translation toward the target.
-    local modePointerLabel = ns.TutorialBox.Create(searchFrame, "GameFontNormalLarge")
-    modePointerLabel.fs:SetText("Mode toggle")
-    modePointerLabel:SetAutoSized(200)
-    modePointerLabel:ClearAllPoints()
-    modePointerLabel:SetPoint("RIGHT", searchFrame.modeBtn, "LEFT", -72, 0)
-
     local seeDemoBtn = CreateFrame("Button", nil, searchFrame, "UIPanelButtonTemplate")
     seeDemoBtn:SetSize(120, 24)
-    seeDemoBtn:SetPoint("TOP", modePointerLabel, "BOTTOM", 0, -8)
+    seeDemoBtn:SetPoint("TOP", searchFrame, "BOTTOM", 0, -12)
     seeDemoBtn:SetText("See demo")
     seeDemoBtn:SetIgnoreParentAlpha(true)
-
-    -- Pulsing gold flash over the mode button. Uses a radial star glow
-    -- texture (already referenced elsewhere in the addon) so the flash
-    -- has soft edges instead of the hard square corners you'd get from
-    -- tinting WHITE8x8. Sized larger than the button so the glow halo
-    -- extends past the button's bounds.
-    local modeFlashFrame = CreateFrame("Frame", nil, searchFrame.modeBtn)
-    modeFlashFrame:SetPoint("CENTER", searchFrame.modeBtn, "CENTER", 0, 0)
-    local flashSize = searchFrame.modeBtn:GetHeight() * 1.8
-    modeFlashFrame:SetSize(flashSize, flashSize)
-    modeFlashFrame:SetFrameLevel(searchFrame.modeBtn:GetFrameLevel() + 5)
-    modeFlashFrame:SetIgnoreParentAlpha(true)
-    local modeFlash = modeFlashFrame:CreateTexture(nil, "OVERLAY")
-    modeFlash:SetAllPoints()
-    modeFlash:SetTexture("Interface\\Cooldown\\star4")
-    modeFlash:SetVertexColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1)
-    modeFlash:SetBlendMode("ADD")
-
-    local FLASH_MIN, FLASH_MAX = 0.15, 0.55
-    modeFlashFrame:SetAlpha(FLASH_MIN)
-
-    -- Chevron pointer; its onPhase callback syncs the mode-button flash
-    -- so the brightest moment of the flash matches a fresh arrow being
-    -- born at the start position.
-    local POINTER_COUNT = 2
-    local modePointer = ns.TutorialBox.AttachPointer(modePointerLabel, {
-        direction   = "right",
-        travel      = 48,
-        duration    = 1.25,
-        count       = POINTER_COUNT,
-        fadeStart   = 0.75,
-        startOffset = -10,
-        easing      = 0.5,
-        glow        = 0.7,
-        -- Flash pulses once per fresh-arrow birth, so it cycles
-        -- `count` times per animation period.
-        onPhase   = function(phase)
-            local flashPhase = (phase * POINTER_COUNT) % 1
-            modeFlashFrame:SetAlpha(FLASH_MIN + (FLASH_MAX - FLASH_MIN) * (1 - flashPhase))
-        end,
-    })
 
     -- During setup: allow drag without holding Shift
     searchFrame:SetScript("OnDragStart", function(self)
@@ -6955,10 +6892,7 @@ function UI:ShowFirstTimeSetup()
         resizer:SetScript("OnUpdate", nil)
         resizer:Hide()
         panel:Hide()
-        modePointer:Stop()
-        modePointerLabel:Hide()
         seeDemoBtn:Hide()
-        modeFlashFrame:Hide()
         if demoFrame then demoFrame:Hide() end
         -- Clear the demo suspend flag so the dropdown auto-close works
         if searchFrame.filterDropdown then
@@ -7017,10 +6951,7 @@ function UI:ShowFirstTimeSetup()
         -- Hide the positioning UI before the demo runs.
         panel:Hide()
         resizer:Hide()
-        modePointer:Stop()
-        modePointerLabel:Hide()
         seeDemoBtn:Hide()
-        modeFlashFrame:Hide()
         startDemo()
     end)
 end

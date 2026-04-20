@@ -1,6 +1,9 @@
 # Release artifacts
 *.zip
 
+# Archived / retired assets (kept on disk for reference, not shipped)
+archive/
+
 # Editor files
 *.swp
 *.swo
