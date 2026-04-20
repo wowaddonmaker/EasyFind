@@ -67,17 +67,14 @@ local function FindAtlasTexture(frame, atlas)
     return nil
 end
 
--- When our panel opens we hide Blizzard's QuestsFrame + MapLegendFrame;
--- otherwise their text (section headers, "Map Legend" title) leaks
--- through our overlay since those fontstrings live at frame sublevels
--- above any single backdrop. We track which was visible so the user's
--- click on a Blizzard tab correctly restores its panel even if our
--- state overlapped a Blizzard internal that skipped a re-Show.
-local function HideBlizzPanels(qmf)
-    if qmf.QuestsFrame then qmf.QuestsFrame:Hide() end
-    if qmf.DetailsFrame then qmf.DetailsFrame:Hide() end
-    if qmf.MapLegendFrame then qmf.MapLegendFrame:Hide() end
-end
+-- We overlay Blizzard's panels with ours rather than hiding them. Hiding
+-- QuestsFrame / MapLegendFrame fought Blizzard's own tab-state machine
+-- (the "Map Legend" title fontstring lives on QuestMapFrame directly,
+-- not on MapLegendFrame, so hiding the panel didn't hide the title).
+-- A high frame level plus an opaque backdrop extending up through the
+-- header area cleanly covers everything without disturbing Blizzard
+-- state. HideBlizzPanels is kept as a no-op shim for clarity.
+local function HideBlizzPanels(_) end
 
 local function RefreshSelectGlows()
     local qmf = _G["QuestMapFrame"]
@@ -690,44 +687,55 @@ end
 -- ===================================================================
 
 local function CreatePanel(qmf)
-    -- Match the QuestScrollFrame rect so our panel slots exactly into the
-    -- quest log content area. Pulling from _G in case QuestsFrame is
-    -- loaded but the scroll frame gets attached later.
+    -- Anchor to the QuestScrollFrame rect so the paper portion of our
+    -- panel lines up with Blizzard's quest-list area. The header region
+    -- is handled by a separate upward anchor on the search-box host
+    -- frame so it extends above into the dark map header bar.
     local host = _G["QuestScrollFrame"] or qmf.QuestsFrame or qmf
     local p = CreateFrame("Frame", "EasyFindMapSearchPanel", qmf)
     p:SetFrameStrata(qmf:GetFrameStrata())
-    p:SetFrameLevel(qmf:GetFrameLevel() + 5)
-    p:SetAllPoints(host)
+    -- Very high level so we sit above any FontStrings Blizzard anchors
+    -- to QuestMapFrame (like the "Map Legend" title text).
+    p:SetFrameLevel(qmf:GetFrameLevel() + 50)
+    p:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 42)
+    p:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", 0, 0)
     p:EnableMouse(true)
     p:Hide()
 
-    -- Paint the same backdrop the Blizzard quest-log scroll area uses
-    -- (QuestLog-main-background atlas, file 5684770). Layered at
-    -- BACKGROUND sublevel -1 so it sits behind the search box + rows
-    -- but above whatever QuestMapFrame shows underneath us.
-    local bg = p:CreateTexture(nil, "BACKGROUND", nil, -1)
-    bg:SetAtlas("QuestLog-main-background", false)
-    bg:SetAllPoints(p)
-    p.backdrop = bg
+    -- Opaque dark header block covering the area above the paper, where
+    -- Blizzard's title fontstring ("Map & Quest Log" / "Map Legend")
+    -- sits. Without this, the title bleeds through when another tab
+    -- was last active.
+    local headerBg = p:CreateTexture(nil, "BACKGROUND", nil, -2)
+    headerBg:SetColorTexture(0.08, 0.08, 0.09, 1.0)
+    headerBg:SetPoint("TOPLEFT", p, "TOPLEFT", 0, 0)
+    headerBg:SetPoint("TOPRIGHT", p, "TOPRIGHT", 0, 0)
+    headerBg:SetHeight(42)
+    p.headerBg = headerBg
 
-    -- Search box and cog sit ABOVE the paper, in the dark header bar of
-    -- the map frame (matching where Blizzard's Search Quest Log sits).
-    -- Anchored with positive Y so they float above the panel's top edge.
+    -- Paint the same backdrop the Blizzard quest-log scroll area uses
+    -- (QuestLog-main-background atlas) on the lower paper portion.
+    local paperBg = p:CreateTexture(nil, "BACKGROUND", nil, -1)
+    paperBg:SetAtlas("QuestLog-main-background", false)
+    paperBg:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -42)
+    paperBg:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", 0, 0)
+    p.paperBg = paperBg
+
+    -- Search box + cog live in the header area (upper 42px of our panel)
+    -- so they sit above the paper and below the map title bar, matching
+    -- where QuestScrollFrame.SearchBox renders in Blizzard's layout.
     local searchBox = CreateSearchBox(p)
-    searchBox:SetPoint("TOPLEFT", p, "TOPLEFT", 4, 30)
+    searchBox:SetPoint("TOPLEFT", p, "TOPLEFT", 6, -12)
     p.searchBox = searchBox
 
     local cog = CreateFilterCog(p)
     cog:SetPoint("LEFT", searchBox, "RIGHT", 6, 0)
     p.cog = cog
 
-    -- Scroll area covers the full paper area. Use a plain ScrollFrame
-    -- (no template) so we don't inherit the blue/gold UIPanel scroll
-    -- decorations. Mouse wheel drives scrolling; a proper minimal
-    -- scrollbar is a followup.
+    -- Scroll area occupies the paper portion only.
     local scrollFrame = CreateFrame("ScrollFrame", nil, p)
-    scrollFrame:SetPoint("TOPLEFT", p, "TOPLEFT", 6, -8)
-    scrollFrame:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", -6, 8)
+    scrollFrame:SetPoint("TOPLEFT", paperBg, "TOPLEFT", 6, -6)
+    scrollFrame:SetPoint("BOTTOMRIGHT", paperBg, "BOTTOMRIGHT", -14, 6)
     scrollFrame:EnableMouseWheel(true)
     p.scrollFrame = scrollFrame
 
@@ -782,26 +790,18 @@ function MapTab:Initialize()
     tabFrame = CreateTabFrame(qmf)
     panel = CreatePanel(qmf)
 
-    -- Blizzard tab click: hide our panel. Belt-and-suspenders show the
-    -- clicked panel explicitly in case Blizzard's internal handler saw a
-    -- state we disturbed (we hid both panels when our tab opened, and
-    -- Blizzard's tab click may early-out on "already selected" state).
+    -- Blizzard tab click: just hide our overlay; Blizzard's own OnMouseUp
+    -- (which runs before this HookScript) handles showing the correct
+    -- panel. No need to re-do its work since we never disturb Quests /
+    -- MapLegend visibility ourselves.
     if qmf.QuestsTab then
         qmf.QuestsTab:HookScript("OnMouseUp", function(_, button)
-            if button == "LeftButton" then
-                HideOurPanel()
-                if qmf.MapLegendFrame then qmf.MapLegendFrame:Hide() end
-                if qmf.QuestsFrame then qmf.QuestsFrame:Show() end
-            end
+            if button == "LeftButton" then HideOurPanel() end
         end)
     end
     if qmf.MapLegendTab then
         qmf.MapLegendTab:HookScript("OnMouseUp", function(_, button)
-            if button == "LeftButton" then
-                HideOurPanel()
-                if qmf.QuestsFrame then qmf.QuestsFrame:Hide() end
-                if qmf.MapLegendFrame then qmf.MapLegendFrame:Show() end
-            end
+            if button == "LeftButton" then HideOurPanel() end
         end)
     end
 
