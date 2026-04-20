@@ -67,14 +67,20 @@ local function FindAtlasTexture(frame, atlas)
     return nil
 end
 
--- We overlay Blizzard's panels with ours rather than hiding them. Hiding
--- QuestsFrame / MapLegendFrame fought Blizzard's own tab-state machine
--- (the "Map Legend" title fontstring lives on QuestMapFrame directly,
--- not on MapLegendFrame, so hiding the panel didn't hide the title).
--- A high frame level plus an opaque backdrop extending up through the
--- header area cleanly covers everything without disturbing Blizzard
--- state. HideBlizzPanels is kept as a no-op shim for clarity.
-local function HideBlizzPanels(_) end
+-- Blizzard's scrollbars + panel contents can still draw above our
+-- backdrop even at a high frame level because their children nest at
+-- higher sublevels. Rather than Hide the panels (which broke tab-state
+-- last time), we SetAlpha(0) on them while ours is active — their
+-- children inherit alpha 0 so nothing draws, but the frames remain
+-- Shown so Blizzard's tab logic stays consistent.
+local function HideBlizzPanels(qmf)
+    if qmf.QuestsFrame then qmf.QuestsFrame:SetAlpha(0) end
+    if qmf.MapLegendFrame then qmf.MapLegendFrame:SetAlpha(0) end
+end
+local function RestoreBlizzPanels(qmf)
+    if qmf.QuestsFrame then qmf.QuestsFrame:SetAlpha(1) end
+    if qmf.MapLegendFrame then qmf.MapLegendFrame:SetAlpha(1) end
+end
 
 local function RefreshSelectGlows()
     local qmf = _G["QuestMapFrame"]
@@ -545,6 +551,8 @@ local function HideOurPanel()
         panel:Hide()
         if panel.searchBox then panel.searchBox:ClearFocus() end
     end
+    local qmf = _G["QuestMapFrame"]
+    if qmf then RestoreBlizzPanels(qmf) end
     ClearHoverPreview()
     RefreshSelectGlows()
 end
@@ -687,52 +695,57 @@ end
 -- ===================================================================
 
 local function CreatePanel(qmf)
-    -- Anchor to the QuestScrollFrame rect so the paper portion of our
-    -- panel lines up with Blizzard's quest-list area. The header region
-    -- is handled by a separate upward anchor on the search-box host
-    -- frame so it extends above into the dark map header bar.
-    local host = _G["QuestScrollFrame"] or qmf.QuestsFrame or qmf
+    -- Anchor to QuestsFrame (the right-column container that spans both
+    -- the header area where SearchBox sits and the paper scroll area).
+    -- This matches exactly what Blizzard's Quests panel covers, so we
+    -- naturally occlude their whole rect (including any scrollbar).
+    local host = qmf.QuestsFrame or _G["QuestScrollFrame"] or qmf
     local p = CreateFrame("Frame", "EasyFindMapSearchPanel", qmf)
     p:SetFrameStrata(qmf:GetFrameStrata())
     -- Very high level so we sit above any FontStrings Blizzard anchors
-    -- to QuestMapFrame (like the "Map Legend" title text).
+    -- to QuestMapFrame (like the "Map Legend" title text) and above
+    -- any scrollbar children anchored at higher sublevels.
     p:SetFrameLevel(qmf:GetFrameLevel() + 50)
-    p:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 42)
-    p:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", 0, 0)
+    -- A touch of right-edge extension just in case a child scrollbar
+    -- peeks outside QuestsFrame's own bounds.
+    p:SetPoint("TOPLEFT", host, "TOPLEFT", 0, 0)
+    p:SetPoint("BOTTOMRIGHT", host, "BOTTOMRIGHT", 8, 0)
     p:EnableMouse(true)
     p:Hide()
 
-    -- Opaque dark header block covering the area above the paper, where
-    -- Blizzard's title fontstring ("Map & Quest Log" / "Map Legend")
-    -- sits. Without this, the title bleeds through when another tab
-    -- was last active.
+    -- Approximate height of the header area inside QuestsFrame where the
+    -- search bar + settings cog sit (above the paper). Measured against
+    -- QuestScrollFrame (the paper area) so subsequent texture sizing
+    -- adapts if Blizzard tweaks the layout.
+    local HEADER_H = 34
+
+    -- Opaque dark header block covering the area above the paper.
+    -- Occludes any Blizzard title text that would bleed through.
     local headerBg = p:CreateTexture(nil, "BACKGROUND", nil, -2)
     headerBg:SetColorTexture(0.08, 0.08, 0.09, 1.0)
     headerBg:SetPoint("TOPLEFT", p, "TOPLEFT", 0, 0)
     headerBg:SetPoint("TOPRIGHT", p, "TOPRIGHT", 0, 0)
-    headerBg:SetHeight(42)
+    headerBg:SetHeight(HEADER_H)
     p.headerBg = headerBg
 
-    -- Paint the same backdrop the Blizzard quest-log scroll area uses
-    -- (QuestLog-main-background atlas) on the lower paper portion.
+    -- Paper backdrop (QuestLog-main-background atlas) covers the rest.
     local paperBg = p:CreateTexture(nil, "BACKGROUND", nil, -1)
     paperBg:SetAtlas("QuestLog-main-background", false)
-    paperBg:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -42)
+    paperBg:SetPoint("TOPLEFT", p, "TOPLEFT", 0, -HEADER_H)
     paperBg:SetPoint("BOTTOMRIGHT", p, "BOTTOMRIGHT", 0, 0)
     p.paperBg = paperBg
 
-    -- Search box + cog live in the header area (upper 42px of our panel)
-    -- so they sit above the paper and below the map title bar, matching
-    -- where QuestScrollFrame.SearchBox renders in Blizzard's layout.
+    -- Search box + cog sit inside the header region.
     local searchBox = CreateSearchBox(p)
-    searchBox:SetPoint("TOPLEFT", p, "TOPLEFT", 6, -12)
+    searchBox:SetPoint("TOPLEFT", p, "TOPLEFT", 6, -8)
     p.searchBox = searchBox
 
     local cog = CreateFilterCog(p)
     cog:SetPoint("LEFT", searchBox, "RIGHT", 6, 0)
     p.cog = cog
 
-    -- Scroll area occupies the paper portion only.
+    -- Scroll area fills just the paper. Right margin reserved for a
+    -- future minimal scrollbar.
     local scrollFrame = CreateFrame("ScrollFrame", nil, p)
     scrollFrame:SetPoint("TOPLEFT", paperBg, "TOPLEFT", 6, -6)
     scrollFrame:SetPoint("BOTTOMRIGHT", paperBg, "BOTTOMRIGHT", -14, 6)
