@@ -727,11 +727,22 @@ function UI:CreateSearchFrame()
         end
     end)
 
+    local pendingUISearchTimer
     editBox:SetScript("OnTextChanged", function(self)
         if self:GetText() ~= "" then
             self.placeholder:Hide()
         end
-        UI:OnSearchTextChanged(self:GetText())
+        -- Defer the search to the next frame so the keystroke frame
+        -- only does cheap work (placeholder + clear-button updates).
+        -- The full Database/Map search runs on the next frame, well
+        -- under the perception threshold. Multiple keystrokes within
+        -- one frame coalesce — only the latest text fires.
+        if pendingUISearchTimer then pendingUISearchTimer:Cancel() end
+        local snapshot = self:GetText()
+        pendingUISearchTimer = C_Timer.NewTimer(0, function()
+            pendingUISearchTimer = nil
+            UI:OnSearchTextChanged(snapshot)
+        end)
     end)
 
     editBox:SetScript("OnEnterPressed", function(self)
@@ -833,51 +844,26 @@ function UI:CreateSearchFrame()
     -- navigation without typing /ef c.
     local function UpdateClearButtonVisibility()
         local hasText = editBox:GetText() ~= ""
+        local focused = editBox:HasFocus()
         local guideActive = ns.Highlight and ns.Highlight:IsActive()
         local mapActive = ns.MapSearch and ns.MapSearch.HasActiveNavigation
             and ns.MapSearch:HasActiveNavigation()
-        clearTextBtn:SetShown(hasText or guideActive or mapActive)
+        clearTextBtn:SetShown(hasText or focused or guideActive or mapActive)
     end
     editBox:HookScript("OnTextChanged", UpdateClearButtonVisibility)
+    editBox:HookScript("OnEditFocusGained", UpdateClearButtonVisibility)
+    editBox:HookScript("OnEditFocusLost", UpdateClearButtonVisibility)
     searchFrame.UpdateClearButtonVisibility = UpdateClearButtonVisibility
 
-    -- Key repeat with progressive acceleration for held arrow/tab keys.
-    -- Starts at REPEAT_INITIAL delay, accelerates toward REPEAT_FAST over REPEAT_ACCEL seconds.
-    local REPEAT_INITIAL = 0.30
-    local REPEAT_FAST    = 0.05
-    local REPEAT_ACCEL   = 1.5
-    local repeatKey, repeatAction, repeatHeld, repeatNext
-    local repeatActive = false
-
-    local function StopKeyRepeat()
-        repeatKey = nil
-        repeatAction = nil
-        repeatActive = false
-    end
-    searchFrame.StopKeyRepeat = StopKeyRepeat
-    searchFrame.IsRepeatKey = function(key) return repeatKey == key end
-
-    local function StartKeyRepeat(key, action)
-        action()
-        repeatKey = key
-        repeatAction = action
-        repeatHeld = 0
-        repeatNext = REPEAT_INITIAL
-        repeatActive = true
-    end
+    -- Shared key-repeat helper (also used by MapTab). Attaches its own
+    -- OnUpdate to searchFrame; action fires immediately on Start, then
+    -- at an accelerating cadence while the key is held.
+    local keyRepeat = Utils.CreateKeyRepeat(searchFrame)
+    local StartKeyRepeat = keyRepeat.Start
+    local StopKeyRepeat  = keyRepeat.Stop
     searchFrame.StartKeyRepeat = StartKeyRepeat
-
-    searchFrame:SetScript("OnUpdate", function(_, elapsed)
-        if not repeatActive then return end
-        repeatHeld = repeatHeld + elapsed
-        repeatNext = repeatNext - elapsed
-        if repeatNext <= 0 then
-            repeatAction()
-            local t = repeatHeld / REPEAT_ACCEL
-            if t > 1 then t = 1 end
-            repeatNext = REPEAT_INITIAL + (REPEAT_FAST - REPEAT_INITIAL) * t
-        end
-    end)
+    searchFrame.StopKeyRepeat  = StopKeyRepeat
+    searchFrame.IsRepeatKey    = keyRepeat.IsKey
 
     -- Arrow key / Tab navigation for results dropdown.
     -- IMPORTANT: Always block propagation while the editbox has focus so that
@@ -888,6 +874,16 @@ function UI:CreateSearchFrame()
                 if key == "UP" then UI:JumpToEnd() end
             else
                 if key == "DOWN" then UI:MoveSelection(1) end
+            end
+        end
+        -- Ctrl+J/K (and the emacs-equivalent Ctrl+N/P) work from the
+        -- editbox as down/up aliases. First press drops into the first
+        -- result; subsequent presses walk the list. Parallels MapTab.
+        if IsControlKeyDown() then
+            if key == "J" or key == "N" then
+                UI:MoveSelection(1)
+            elseif key == "K" or key == "P" then
+                UI:MoveSelection(-1)
             end
         end
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
@@ -965,9 +961,75 @@ function UI:CreateSearchFrame()
     Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
     Utils.SafeCallMethod(navFrame, "SetPropagateKeyboardInput", false)
 
+    -- Cycle focus through editBox → [clearBtn] → filterBtn → row →
+    -- toggle button (chevron / pin toggle) and back. Shared by Tab,
+    -- Shift+Tab, and the Ctrl+L / Ctrl+H vim aliases below.
+    local function CycleFocus(reverse)
+        if reverse then
+            if selectedIndex > 0 and toggleFocused then
+                toggleFocused = false
+                UI:UpdateSelectionHighlight()
+            elseif toolbarFocus > 0 then
+                if toolbarFocus == 1 then
+                    ClearToolbarFocus()
+                    Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
+                    searchFrame.editBox:SetFocus()
+                else
+                    SetToolbarFocus(toolbarFocus - 1)
+                end
+            end
+        else
+            if selectedIndex > 0 and not toggleFocused then
+                local row = resultButtons[selectedIndex]
+                local hasToggle = row and row.isPathNode and (
+                    (row.headerTab and row.headerTab:IsShown()) or
+                    (row.isPinHeader and row.pinToggle and row.pinToggle:IsShown())
+                )
+                if hasToggle then
+                    toggleFocused = true
+                    UI:UpdateSelectionHighlight()
+                end
+            elseif toolbarFocus > 0 then
+                local controls = GetToolbarControls()
+                if toolbarFocus >= #controls then
+                    ClearToolbarFocus()
+                    Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
+                    searchFrame.editBox:SetFocus()
+                else
+                    SetToolbarFocus(toolbarFocus + 1)
+                end
+            end
+        end
+    end
+
     local function HandleNavKeyDown(key)
         if key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
            or key == "LALT" or key == "RALT" then return end
+
+        -- Ctrl+H/J/K/L: vim-style nav aliases. J/K = down/up (also
+        -- N/P emacs-style); add Shift to jump sections like Shift+Up/Down.
+        -- H/L = focus cycle (Shift+Tab / Tab).
+        if IsControlKeyDown() and (key == "J" or key == "N") then
+            if IsShiftKeyDown() then
+                UI:JumpToNextSection(1)
+            else
+                UI:MoveSelection(1)
+            end
+            return
+        elseif IsControlKeyDown() and (key == "K" or key == "P") then
+            if IsShiftKeyDown() then
+                UI:JumpToNextSection(-1)
+            else
+                UI:MoveSelection(-1)
+            end
+            return
+        elseif IsControlKeyDown() and key == "L" then
+            CycleFocus(false)
+            return
+        elseif IsControlKeyDown() and key == "H" then
+            CycleFocus(true)
+            return
+        end
 
         if key == "DOWN" then
             if IsControlKeyDown() then
@@ -985,6 +1047,54 @@ function UI:CreateSearchFrame()
             else
                 StartKeyRepeat(key, function() UI:MoveSelection(-1) end)
             end
+        elseif key == "SPACE" then
+            -- SPACE on a highlighted group/pin header toggles collapse.
+            -- Consumed unconditionally while navigating so it never
+            -- leaks through to the editbox (which would otherwise
+            -- refocus on the next UpdateSelectionHighlight and insert a
+            -- literal space character into the search text).
+            --
+            -- Toggling also rebuilds the result list (via
+            -- ShowHierarchicalResults), which wipes selectedIndex.
+            -- Snapshot the row's identity first so the same header can
+            -- be re-selected after the rebuild — letting the user spam
+            -- Space to collapse/expand without losing selection.
+            if selectedIndex > 0 then
+                local row = resultButtons[selectedIndex]
+                if row then
+                    local savedPinHeader    = row.isPinHeader
+                    local savedPathName     = row.isPathNode and row.pathNodeName
+                    local savedPathDepth    = row.isPathNode and row.pathNodeDepth
+                    if row.isPinHeader and row.pinToggle and row.pinToggle:IsShown() then
+                        local handler = row.pinToggle:GetScript("OnClick")
+                        if handler then handler(row.pinToggle, "LeftButton") end
+                    elseif row.toggleBtn and row.toggleBtn:IsShown() then
+                        local handler = row.toggleBtn:GetScript("OnClick")
+                        if handler then handler(row.toggleBtn, "LeftButton") end
+                    end
+                    for i = 1, MAX_BUTTON_POOL do
+                        local rb = resultButtons[i]
+                        if not rb then break end
+                        if rb:IsShown() then
+                            local match = false
+                            if savedPinHeader and rb.isPinHeader then
+                                match = true
+                            elseif savedPathName and rb.isPathNode
+                               and rb.pathNodeName == savedPathName
+                               and rb.pathNodeDepth == savedPathDepth then
+                                match = true
+                            end
+                            if match then
+                                selectedIndex = i
+                                toggleFocused = false
+                                UI:UpdateSelectionHighlight()
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+            return
         elseif key == "PAGEDOWN" then
             StartKeyRepeat(key, function() UI:MoveSelection(5) end)
         elseif key == "PAGEUP" then
@@ -995,41 +1105,7 @@ function UI:CreateSearchFrame()
             UI:JumpToEnd()
         elseif key == "TAB" then
             -- Ring order: editBox → [clearBtn] → filterBtn → wrap back to editBox
-            if IsShiftKeyDown() then
-                if selectedIndex > 0 and toggleFocused then
-                    toggleFocused = false
-                    UI:UpdateSelectionHighlight()
-                elseif toolbarFocus > 0 then
-                    if toolbarFocus == 1 then
-                        ClearToolbarFocus()
-                        Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
-                        searchFrame.editBox:SetFocus()
-                    else
-                        SetToolbarFocus(toolbarFocus - 1)
-                    end
-                end
-            else
-                if selectedIndex > 0 and not toggleFocused then
-                    local row = resultButtons[selectedIndex]
-                    local hasToggle = row and row.isPathNode and (
-                        (row.headerTab and row.headerTab:IsShown()) or
-                        (row.isPinHeader and row.pinToggle and row.pinToggle:IsShown())
-                    )
-                    if hasToggle then
-                        toggleFocused = true
-                        UI:UpdateSelectionHighlight()
-                    end
-                elseif toolbarFocus > 0 then
-                    local controls = GetToolbarControls()
-                    if toolbarFocus >= #controls then
-                        ClearToolbarFocus()
-                        Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
-                        searchFrame.editBox:SetFocus()
-                    else
-                        SetToolbarFocus(toolbarFocus + 1)
-                    end
-                end
-            end
+            CycleFocus(IsShiftKeyDown())
         elseif key == "ENTER" then
             if toolbarFocus > 0 then
                 local controls = GetToolbarControls()
@@ -1087,7 +1163,7 @@ function UI:CreateSearchFrame()
         HandleNavKeyDown(key)
     end)
     navFrame:SetScript("OnKeyUp", function(_, key)
-        if repeatKey == key then StopKeyRepeat() end
+        if keyRepeat.IsKey(key) then StopKeyRepeat(key) end
     end)
 
     -- UISpecialFrames fallback: WoW closes these on ESC before opening the
@@ -1113,6 +1189,29 @@ function UI:CreateSearchFrame()
     -- the editbox (clearTextBtn, filterBtn). Shift+Tab wraps to the last.
     editBox:HookScript("OnKeyDown", function(self, key)
         if key ~= "TAB" then return end
+        -- Tab-completion: if there's a candidate result whose name
+        -- contains the current query, complete to it and keep focus.
+        -- Fall through to toolbar-focus behavior below only when no
+        -- completion is applicable.
+        local q = self:GetText() or ""
+        if q ~= "" and not IsShiftKeyDown() and cachedHierarchical then
+            -- Walk in scoring order, take the first prefix-matching
+            -- candidate. Skips fuzzy winners that don't start with the
+            -- typed text (e.g. "dragon i" skipping "Dragonblight" to
+            -- reach "Dragon Isles").
+            local qLower = q:lower()
+            for _, entry in ipairs(cachedHierarchical) do
+                if entry.isMatch and not entry.isPathNode and entry.name
+                   and #entry.name >= #q
+                   and entry.name:sub(1, #q):lower() == qLower
+                   and entry.name:lower() ~= qLower then
+                    local completed = entry.name:lower()
+                    self:SetText(completed)
+                    self:SetCursorPosition(#completed)
+                    return
+                end
+            end
+        end
         self:ClearFocus()
         Utils.SafeCallMethod(navFrame, "EnableKeyboard", true)
         local controls = GetToolbarControls()
@@ -1464,62 +1563,9 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             end
         end
 
-        -- Map Search: indented local/global sub-options (radio-style, one active at a time)
-        if opt.key == "map" then
-            local SUB_INDENT = 24
-            local mapSubRows = {}
-
-            for si, sub in ipairs({ { key = true, label = "Local (Zone)" }, { key = false, label = "Global (All Zones)" } }) do
-                local subRow = CreateFrame("CheckButton", nil, dropdown)
-                subRow:SetSize(DROPDOWN_WIDTH - 16 - SUB_INDENT, ROW_HEIGHT)
-                subRow:SetHitRectInsets(0, 0, 0, 0)
-
-                subRow:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
-                subRow:GetNormalTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
-                subRow:GetNormalTexture():ClearAllPoints()
-                subRow:GetNormalTexture():SetPoint("LEFT", 4, 0)
-
-                subRow:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
-                subRow:GetCheckedTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
-                subRow:GetCheckedTexture():ClearAllPoints()
-                subRow:GetCheckedTexture():SetPoint("LEFT", 4, 0)
-
-                local subLabel = subRow:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-                subLabel:SetPoint("LEFT", subRow:GetNormalTexture(), "RIGHT", 4, 0)
-                subLabel:SetText(sub.label)
-
-                local subHL = subRow:CreateTexture(nil, "HIGHLIGHT")
-                subHL:SetAllPoints()
-                subHL:SetColorTexture(1, 1, 1, 0.1)
-
-                subRow.isLocalKey = sub.key
-                mapSubRows[si] = subRow
-
-                subRow:SetScript("OnClick", function()
-                    EasyFind.db.uiMapSearchLocal = sub.key
-                    for _, sr in ipairs(mapSubRows) do
-                        sr:SetChecked((EasyFind.db.uiMapSearchLocal ~= false) == sr.isLocalKey)
-                    end
-                    if searchEditBox:GetText() ~= "" then
-                        UI:OnSearchTextChanged(searchEditBox:GetText())
-                    end
-                end)
-            end
-
-            row.mapSubRows = mapSubRows
-            row.updateMapToggle = function()
-                local isLocal = EasyFind.db.uiMapSearchLocal ~= false
-                local mapChecked = EasyFind.db.uiSearchFilters and EasyFind.db.uiSearchFilters.map ~= false
-                for si, sr in ipairs(mapSubRows) do
-                    sr:SetChecked(isLocal == sr.isLocalKey)
-                    sr:SetShown(mapChecked)
-                end
-            end
-
-            -- Wrap the original OnClick to also show/hide sub-rows
-            local origMapRowIdx = i
-            row.mapSubRowIdx = origMapRowIdx
-        end
+        -- Map Search: was a local/global radio pair, but the MapTab
+        -- model shows both scopes together and that's what UI search
+        -- now does too — the toggle above is just on/off.
 
         -- Loot: indented sub-options for search mode and spec toggle
         if opt.key == "loot" then
@@ -3082,16 +3128,12 @@ function UI:CreateResultButton(index)
     resultRow:SetSize(360, 22)
     resultRow:SetPoint("TOPLEFT", scrollChild, "TOPLEFT", 10, -8 - (index - 1) * 22)
 
-    resultRow:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-
-    -- Persistent selection highlight (for keyboard navigation)
-    local selTex = resultRow:CreateTexture(nil, "BACKGROUND")
-    selTex:SetAllPoints()
-    selTex:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
-    selTex:SetBlendMode("ADD")
-    selTex:SetVertexColor(0.3, 0.6, 1.0, 0.4)
-    selTex:Hide()
-    resultRow.selectionHighlight = selTex
+    -- Single highlight texture for both mouse hover and keyboard
+    -- selection via LockHighlight, so the two paths look identical.
+    -- Uses Blizzard's tapered quest-log row glow atlas.
+    resultRow:SetHighlightAtlas("QuestLog-quest-glow-yellow")
+    local hlTex = resultRow:GetHighlightTexture()
+    if hlTex then hlTex:SetBlendMode("ADD") end
 
     -- Retail theme: full-width dark gradient behind headers (Event Schedule style)
     local headerGrad = resultRow:CreateTexture(nil, "BACKGROUND", nil, 1)
@@ -3360,6 +3402,29 @@ function UI:CreateResultButton(index)
     pinHeaderLine:SetPoint("BOTTOMRIGHT", resultRow, "BOTTOMRIGHT", 0, 0)
     pinHeaderLine:Hide()
     resultRow.pinHeaderLine = pinHeaderLine
+
+    -- Section-label visuals: centered fontstring flanked by two faint
+    -- gold rules (matches MapTab's "Pinned" / "This Zone" / etc. style).
+    -- Used for category headers (UI/Mounts/Toys/...) instead of the
+    -- chunkier QuestLog-tab parent header so categories take less
+    -- vertical space and don't waste a parent indent.
+    local sectionLabelLeft = resultRow:CreateTexture(nil, "ARTWORK")
+    sectionLabelLeft:SetHeight(1)
+    sectionLabelLeft:SetColorTexture(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.4)
+    sectionLabelLeft:Hide()
+    resultRow.sectionLabelLeft = sectionLabelLeft
+
+    local sectionLabelRight = resultRow:CreateTexture(nil, "ARTWORK")
+    sectionLabelRight:SetHeight(1)
+    sectionLabelRight:SetColorTexture(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.4)
+    sectionLabelRight:Hide()
+    resultRow.sectionLabelRight = sectionLabelRight
+
+    local sectionLabelText = resultRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    sectionLabelText:SetPoint("CENTER", resultRow, "CENTER", 0, 0)
+    sectionLabelText:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
+    sectionLabelText:Hide()
+    resultRow.sectionLabelText = sectionLabelText
 
     -- Right-aligned currency amount label
     local amountText = resultRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -3838,16 +3903,78 @@ function UI:OnSearchTextChanged(text)
             groupUI[#groupUI + 1] = entry
         end
     end
-    -- Map results come from a separate search, wrap them as hierarchical entries
+    -- Map results: group by top-ancestor continent so parent/children
+    -- nest with collapsible headers (matches MapTab's layout). A group
+    -- with only one entry renders flat — no point wrapping a single
+    -- result in its own header. Groups with the parent zone itself as
+    -- a match promote the parent entry to the header's navigate target.
     if mapResults then
-        for _, r in ipairs(mapResults) do
-            groupMap[#groupMap + 1] = {
-                name = r.data.name,
-                depth = 1,
-                isPathNode = false,
-                isMatch = true,
-                data = r.data,
-            }
+        local getAncestor = ns.MapTab and ns.MapTab.GetTopAncestor
+        if not getAncestor then
+            -- Fallback if MapTab isn't loaded yet (unlikely but safe).
+            for _, r in ipairs(mapResults) do
+                groupMap[#groupMap + 1] = {
+                    name = r.data.name, depth = 1,
+                    isPathNode = false, isMatch = true, data = r.data,
+                }
+            end
+        else
+            local groupsByAncestor = {}
+            local ancestorOrder = {}
+            for _, r in ipairs(mapResults) do
+                local d = r.data
+                local mapID = d.mapID or d.zoneMapID or d.entranceMapID
+                local ancestor = mapID and getAncestor(ns.MapTab, mapID)
+                if not ancestor or ancestor == "" then ancestor = "Other" end
+                local g = groupsByAncestor[ancestor]
+                if not g then
+                    g = { items = {}, bestScore = 0, selfMatch = nil }
+                    groupsByAncestor[ancestor] = g
+                    ancestorOrder[#ancestorOrder + 1] = ancestor
+                end
+                -- Detect "the zone IS its own top ancestor" (Eastern
+                -- Kingdoms matching while all its child zones also
+                -- match) so the parent header can point at it rather
+                -- than a synthesized one.
+                if d.name == ancestor and d.isZone then
+                    g.selfMatch = r
+                else
+                    g.items[#g.items + 1] = r
+                end
+                local s = r.score or 0
+                if s > g.bestScore then g.bestScore = s end
+            end
+            for _, ancestor in ipairs(ancestorOrder) do
+                local g = groupsByAncestor[ancestor]
+                local total = #g.items + (g.selfMatch and 1 or 0)
+                if total > 1 then
+                    -- Parent header, then children at depth 2
+                    local headerData = g.selfMatch and g.selfMatch.data
+                        or { name = ancestor, mapSearchResult = true, isZone = true }
+                    groupMap[#groupMap + 1] = {
+                        name = ancestor, depth = 1,
+                        isPathNode = true, isMatch = true,
+                        data = headerData,
+                    }
+                    for _, r in ipairs(g.items) do
+                        groupMap[#groupMap + 1] = {
+                            name = r.data.name, depth = 2,
+                            isPathNode = false, isMatch = true,
+                            data = r.data,
+                        }
+                    end
+                else
+                    -- Single-item group: render flat, no wrapping header.
+                    local r = g.selfMatch or g.items[1]
+                    if r then
+                        groupMap[#groupMap + 1] = {
+                            name = r.data.name, depth = 1,
+                            isPathNode = false, isMatch = true,
+                            data = r.data,
+                        }
+                    end
+                end
+            end
         end
     end
     -- Sort categories by best match score so the most relevant category appears first
@@ -4138,16 +4265,11 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         hasResultsAfterPins = true
     end
 
-    -- Pre-compute section header separator positions
+    -- Section labels carry their own pair of gold rules, so the
+    -- separator-above-label was just doubling up on the visual cut.
+    -- Keep the table around for the render loop's lookup but never
+    -- populate it.
     local catSepBeforeIndex = {}
-    for i = 2, count do
-        if visible[i].isSectionHeader then
-            local prev = visible[i - 1]
-            if not prev.isPinHeader and not prev.isPinned then
-                catSepBeforeIndex[i] = true
-            end
-        end
-    end
 
     -- Render visible rows
     local yOffset = 0
@@ -4184,8 +4306,20 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             resultRow:ClearAllPoints()
             resultRow:SetPoint("TOPLEFT", resultsFrame.scrollChild, "TOPLEFT", padL, -yOffset)
 
-            -- Selection highlight color
-            resultRow.selectionHighlight:SetVertexColor(unpack(theme.selectionColor))
+            -- Selection visual is now carried by the row's built-in
+            -- HighlightTexture (atlas set in CreateResultRow), shared
+            -- with mouse hover; no separate selectionHighlight texture.
+            if resultRow.UnlockHighlight then resultRow:UnlockHighlight() end
+
+            -- Always hide section-label visuals up front. The section-
+            -- header branch below re-shows them when applicable; rows
+            -- recycled from a previous section-header role would
+            -- otherwise leak the gold rules across normal rows.
+            if resultRow.sectionLabelText then
+                resultRow.sectionLabelText:Hide()
+                resultRow.sectionLabelLeft:Hide()
+                resultRow.sectionLabelRight:Hide()
+            end
 
             resultRow.data = data
             -- Set secure action attributes for toys, mounts, and outfits
@@ -4294,6 +4428,25 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 resultRow.text:SetText(entry.name)
                 resultRow.text:SetFontObject(theme.pathFont)
                 resultRow.text:SetTextColor(0.7, 0.7, 0.7, 1.0)
+            elseif entry.isSectionHeader then
+                -- Lightweight inline section label: centered text
+                -- between two faint horizontal rules. Used for
+                -- category dividers (UI / Mounts / Toys / Map / ...)
+                -- so they cost less vertical space than a full
+                -- parent-tab header and don't waste a parent indent.
+                resultRow.headerTab:Hide()
+                resultRow.headerGrad:Hide()
+                resultRow.text:SetText("")
+                resultRow.sectionLabelText:SetText(entry.name)
+                resultRow.sectionLabelText:Show()
+                resultRow.sectionLabelLeft:ClearAllPoints()
+                resultRow.sectionLabelLeft:SetPoint("LEFT", resultRow, "LEFT", 6, 0)
+                resultRow.sectionLabelLeft:SetPoint("RIGHT", resultRow.sectionLabelText, "LEFT", -6, 0)
+                resultRow.sectionLabelLeft:Show()
+                resultRow.sectionLabelRight:ClearAllPoints()
+                resultRow.sectionLabelRight:SetPoint("LEFT", resultRow.sectionLabelText, "RIGHT", 6, 0)
+                resultRow.sectionLabelRight:SetPoint("RIGHT", resultRow, "RIGHT", -6, 0)
+                resultRow.sectionLabelRight:Show()
             elseif theme.showHeaderTab and entry.isPathNode then
                 -- Quest-log raised tab header
                 local tabInset = depth * indPx
@@ -5240,12 +5393,25 @@ function UI:UpdateSelectionHighlight(skipRefocus)
     for i = 1, MAX_BUTTON_POOL do
         local resultRow = resultButtons[i]
         if not resultRow then break end
-        if resultRow.selectionHighlight then
-            resultRow.selectionHighlight:SetShown(i == selectedIndex and not toggleFocused)
+        -- Leaf rows (no headerTab): LockHighlight pins the shared
+        -- row HighlightTexture so keyboard selection looks identical
+        -- to mouse hover. Header rows skip the row highlight — their
+        -- visual is carried by tabHoverOverlay inside the tab to match
+        -- mouse hover exactly (rather than painting a row-wide glow
+        -- that extends past the tab).
+        local isHeaderRow = resultRow.headerTab and resultRow.headerTab:IsShown()
+        if resultRow.LockHighlight then
+            if i == selectedIndex and not toggleFocused and not isHeaderRow then
+                resultRow:LockHighlight()
+            else
+                resultRow:UnlockHighlight()
+            end
         end
-        -- Tab selection highlight (Retail theme)
+        -- Retired blue glow: keyboard selection now uses the same
+        -- tabHoverOverlay the mouse-hover path does so the two paths
+        -- look identical. Keep the texture reference silent.
         if resultRow.tabSelectionHighlight then
-            resultRow.tabSelectionHighlight:SetShown(i == selectedIndex and resultRow.headerTab:IsShown() and not toggleFocused)
+            resultRow.tabSelectionHighlight:Hide()
         end
         if resultRow.toggleHighlight then
             local showToggle = i == selectedIndex and toggleFocused
@@ -5265,11 +5431,18 @@ function UI:UpdateSelectionHighlight(skipRefocus)
                     resultRow.toggleBtn:UnlockHighlight()
                 end
             end
+            -- Tab overlay shows for keyboard selection on a non-pin
+            -- header whether the cursor is on the row body (not
+            -- toggleFocused) or on the toggle button (toggleFocused).
+            -- Pin headers use their own pin-toggle highlight instead.
+            local isHeaderSelected = i == selectedIndex
+                and resultRow.headerTab and resultRow.headerTab:IsShown()
+                and not isPinToggle
             if resultRow.tabHoverOverlay then
-                resultRow.tabHoverOverlay:SetShown(showToggle and not isPinToggle)
+                resultRow.tabHoverOverlay:SetShown(isHeaderSelected)
             end
             if resultRow.tabText then
-                if showToggle and not isPinToggle then
+                if isHeaderSelected then
                     resultRow.tabText:SetTextColor(0.90, 0.88, 0.85, 1.0)
                 elseif not resultRow.headerTab:IsMouseOver() then
                     if resultRow._isMatch then
@@ -6609,6 +6782,46 @@ function UI:ShowFirstTimeSetup()
     searchFrame.setupMode = true
     searchFrame.editBox:EnableMouse(false)
 
+    -- Golden glow overlay (port of the v1.5.0 setup glow). 6px outset
+    -- from the search bar, pulsing fill, gold border, "Drag to move"
+    -- label centered on top.
+    local glow = CreateFrame("Frame", "EasyFindSetupGlow", searchFrame, "BackdropTemplate")
+    glow:SetPoint("TOPLEFT", searchFrame, "TOPLEFT", -6, 6)
+    glow:SetPoint("BOTTOMRIGHT", searchFrame, "BOTTOMRIGHT", 6, -6)
+    glow:SetFrameStrata("DIALOG")
+    glow:SetFrameLevel(100)
+    glow:EnableMouse(false)  -- clicks pass through to search bar
+    glow:SetIgnoreParentAlpha(true)  -- stay opaque when search bar fades
+
+    glow:SetBackdrop({
+        bgFile   = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = TOOLTIP_BORDER,
+        edgeSize = 16,
+        insets   = { left = 4, right = 4, top = 4, bottom = 4 }
+    })
+    glow:SetBackdropColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.20)
+    glow:SetBackdropBorderColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1.0)
+
+    -- Gentle pulse on the gold fill
+    local pulseUp = true
+    local pulseAlpha = 0.20
+    glow:SetScript("OnUpdate", function(self, elapsed)
+        if pulseUp then
+            pulseAlpha = pulseAlpha + elapsed * 0.12
+            if pulseAlpha >= 0.35 then pulseAlpha = 0.35; pulseUp = false end
+        else
+            pulseAlpha = pulseAlpha - elapsed * 0.12
+            if pulseAlpha <= 0.12 then pulseAlpha = 0.12; pulseUp = true end
+        end
+        self:SetBackdropColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], pulseAlpha)
+    end)
+
+    -- Centered label overlaid on the glow (like edit-mode frame labels).
+    local setupLabel = glow:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    setupLabel:SetPoint("CENTER", glow, "CENTER", 0, 0)
+    setupLabel:SetText("Drag to move")
+    setupLabel:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.9)
+
     -- Resize handle (bottom-left corner of the search bar). Parents to
     -- searchFrame so it fades in sync when Smart Show hides the bar.
     local resizer = CreateFrame("Button", nil, searchFrame)
@@ -6741,9 +6954,8 @@ function UI:ShowFirstTimeSetup()
     -- Set the initial resizer size to match the current font scale
     scaleResizerVisual()
 
-    -- Fixed panel width - text wraps to fit. 290px comfortably holds the
-    -- longest header line and lets the descriptions wrap to 2 lines.
-    local SIDE_BUFFER = 16
+    -- Fixed panel width — comfortably holds the keybind rows and
+    -- two-button bottom strip without wrapping.
     local panelWidth = 290
 
     -- Instruction panel (anchored below the search bar)
@@ -6752,67 +6964,33 @@ function UI:ShowFirstTimeSetup()
     panel:SetPoint("TOP", searchFrame, "BOTTOM", 0, -6)
     panel:SetIgnoreParentAlpha(true)  -- survive Smart Show fade
     panel:SetFrameStrata("DIALOG")
-    -- Solid flat background (same WHITE8x8 texture the search bar uses) so
-    -- the panel is fully opaque and text stays easy to read.
     panel:SetBackdrop({
         bgFile   = "Interface\\Buttons\\WHITE8x8",
         edgeFile = TOOLTIP_BORDER,
-        edgeSize = 16,
-        insets   = { left = 4, right = 4, top = 4, bottom = 4 }
+        edgeSize = 14,
+        insets   = { left = 3, right = 3, top = 3, bottom = 3 }
     })
-    panel:SetBackdropColor(0.05, 0.05, 0.05, 0.9)
+    panel:SetBackdropColor(0.05, 0.05, 0.05, 0.95)
+    panel:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.7)
 
-    -- Top header lines (centered).
-    local header = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    header:SetPoint("TOP", panel, "TOP", 0, -12)
-    header:SetWidth(panelWidth - SIDE_BUFFER * 2)
-    header:SetJustifyH("CENTER")
-    header:SetText(
-        "|cffffffffDrag the search bar to position it.|r\n" ..
-        "|cffffffffUse the corner handle to resize.|r"
-    )
+    -- "Setup" header (centered, just under the panel top).
+    local header = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    header:SetPoint("TOP", panel, "TOP", 0, -10)
+    header:SetText("Setup")
 
-    -- Tip line (left-aligned, anchored below header)
-    local tip = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    tip:SetPoint("TOPLEFT", header, "BOTTOMLEFT", 0, -8)
-    tip:SetPoint("TOPRIGHT", header, "BOTTOMRIGHT", 0, -8)
-    tip:SetJustifyH("LEFT")
-    tip:SetText(
-        "\226\128\162 |cff999999Hold |cffFFD100Shift|r|cff999999 + drag to reposition later.|r"
-    )
-
-    -- Reset to defaults button: escape hatch if a new user accidentally
-    -- shrinks the bar to an unclickable size or drags it off-screen.
-    local resetDefaultsBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    resetDefaultsBtn:SetSize(180, 20)
-    resetDefaultsBtn:SetPoint("TOP", tip, "BOTTOM", 0, -6)
-    resetDefaultsBtn:SetText("Reset size & position")
-    resetDefaultsBtn:SetScript("OnClick", function()
-        EasyFind.db.uiSearchPosition = nil
-        EasyFind.db.uiSearchWidth = 0.88
-        EasyFind.db.fontSize = 0.9
-        if UI.ResetPosition then UI:ResetPosition() end
-        UI:UpdateWidth()
-        UI:UpdateFontSize()
-        scaleResizerVisual()
-    end)
-
-    -- Horizontal separator between the reset button and Smart Show section
+    -- Horizontal separator immediately under the header.
     local sep = panel:CreateTexture(nil, "ARTWORK")
     sep:SetHeight(1)
     sep:SetPoint("LEFT", panel, "LEFT", 12, 0)
     sep:SetPoint("RIGHT", panel, "RIGHT", -12, 0)
-    sep:SetPoint("TOP", resetDefaultsBtn, "BOTTOM", 0, -8)
+    sep:SetPoint("TOP", header, "BOTTOM", 0, -8)
     sep:SetColorTexture(0.4, 0.4, 0.4, 0.6)
 
-    -- Smart Show checkbox (default checked - matches DB_DEFAULTS.smartShow = true)
-    -- The separator anchor sits ~15px outside the panel's left edge
-    -- (sep extends past the panel for a full hr-rule look), so anchoring
-    -- the checkbox with offset 30 from sep.BOTTOMLEFT places it at
-    -- roughly panel.left + 15 - a comfortable left margin inside the
-    -- panel.
+    -- Smart Show checkbox aligned to the panel's left margin (sep is
+    -- already anchored at panel.left + 12 so 0 keeps the checkbox box
+    -- flush with the separator without further indentation).
     local smartShowCheckbox = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
-    smartShowCheckbox:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", 30, -6)
+    smartShowCheckbox:SetPoint("TOPLEFT", sep, "BOTTOMLEFT", 0, -6)
     smartShowCheckbox.Text:SetText("|cffFFD100Smart Show|r |cff999999(Recommended)|r")
     smartShowCheckbox:SetChecked(false)
     smartShowCheckbox:SetScript("OnClick", function(self)
@@ -6849,24 +7027,119 @@ function UI:ShowFirstTimeSetup()
     fadeDesc:SetJustifyH("LEFT")
     fadeDesc:SetText("|cff999999Reduces bar opacity while you're moving.|r")
 
-    -- Footer note
-    local footer = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    footer:SetPoint("BOTTOM", panel, "BOTTOM", 0, 36)
-    footer:SetWidth(panelWidth - SIDE_BUFFER * 2)
-    footer:SetJustifyH("CENTER")
-    footer:SetText("|cff666666See all settings in |cffFFD100/ef|r|cff666666.|r")
+    -- Keybind rows. Each row = [label] [keybind button] [recommended hint].
+    -- Click the button to capture a key, right-click to clear, Esc to cancel —
+    -- mirrors the keybind UI in /ef Options > Shortcuts.
+    local function GetKeybindLabel(action)
+        local k1 = GetBindingKey(action)
+        return k1 or "Not Bound"
+    end
 
-    -- "Got it" button: just closes the tutorial, no mode-intro step.
+    local function StopKeybindCapture(btn, action)
+        btn.waitingForKey = false
+        btn:SetText(GetKeybindLabel(action))
+        btn:UnlockHighlight()
+        Utils.SafeCallMethod(btn, "EnableKeyboard", false)
+        btn:SetScript("OnKeyDown", nil)
+    end
+
+    -- Two-column symmetric layout. Row 1 = labels, row 2 = buttons.
+    -- Each column is centered in half the panel; the label and button
+    -- inside a column share an x-center, so the button sits directly
+    -- under its label.
+    local KEYBIND_BTN_W = 110
+    local LEFT_COL_X    = panelWidth / 4   -- center of the left half
+    local RIGHT_COL_X   = panelWidth * 3/4 -- center of the right half
+
+    -- Invisible row anchor: y is locked to fadeDesc bottom so the labels
+    -- below sit a fixed gap under the description. Width spans the panel
+    -- so label x = row.left + colCenterX places each label center on its
+    -- column. Using a single-anchor TOP on each label avoids the over-
+    -- constrained x that two SetPoints would create.
+    local keybindRow = CreateFrame("Frame", nil, panel)
+    keybindRow:SetHeight(1)
+    keybindRow:SetPoint("LEFT",  panel, "LEFT")
+    keybindRow:SetPoint("RIGHT", panel, "RIGHT")
+    keybindRow:SetPoint("TOP",   fadeDesc, "BOTTOM", 0, -12)
+
+    local function CreateKeybindLabel(text, colCenterX)
+        local lbl = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        lbl:SetText(text)
+        lbl:SetPoint("TOP", keybindRow, "TOPLEFT", colCenterX, 0)
+        return lbl
+    end
+
+    local function CreateKeybindButton(label, anchorLabel, action, recommended)
+        local btn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+        btn:SetNormalFontObject("GameFontHighlightSmall")
+        btn:SetHighlightFontObject("GameFontHighlightSmall")
+        btn:SetSize(KEYBIND_BTN_W, 22)
+        btn:SetPoint("TOP", anchorLabel, "BOTTOM", 0, -4)
+        btn:SetText(GetKeybindLabel(action))
+        btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        btn:SetScript("OnClick", function(self, mouseButton)
+            if mouseButton == "RightButton" then
+                local o1, o2 = GetBindingKey(action)
+                if o1 then SetBinding(o1) end
+                if o2 then SetBinding(o2) end
+                SaveBindings(GetCurrentBindingSet())
+                self:SetText("Not Bound")
+                return
+            end
+            if self.waitingForKey then
+                StopKeybindCapture(self, action)
+                return
+            end
+            self.waitingForKey = true
+            self:SetText("Press a key...")
+            self:LockHighlight()
+            Utils.SafeCallMethod(self, "EnableKeyboard", true)
+            self:SetScript("OnKeyDown", function(s, key)
+                if key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
+                   or key == "LALT" or key == "RALT" then return end
+                if key == "ESCAPE" then
+                    StopKeybindCapture(s, action)
+                    return
+                end
+                local combo = ""
+                if IsAltKeyDown() then combo = combo .. "ALT-" end
+                if IsControlKeyDown() then combo = combo .. "CTRL-" end
+                if IsShiftKeyDown() then combo = combo .. "SHIFT-" end
+                combo = combo .. key
+                local o1, o2 = GetBindingKey(action)
+                if o1 then SetBinding(o1) end
+                if o2 then SetBinding(o2) end
+                SetBinding(combo, action)
+                SaveBindings(GetCurrentBindingSet())
+                StopKeybindCapture(s, action)
+            end)
+        end)
+        btn:HookScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine("Recommended: " .. recommended, 1, 1, 1, true)
+            GameTooltip:AddLine("Click to bind. Right-click to clear.", 0.7, 0.7, 0.7, true)
+            GameTooltip:Show()
+        end)
+        btn:HookScript("OnLeave", GameTooltip_Hide)
+        return btn
+    end
+
+    local toggleLabel = CreateKeybindLabel("Toggle bar", LEFT_COL_X)
+    local mapLabel    = CreateKeybindLabel("Open map search", RIGHT_COL_X)
+    CreateKeybindButton("toggle", toggleLabel, "EASYFIND_TOGGLE_FOCUS", "Ctrl+Space")
+    CreateKeybindButton("map",    mapLabel,    "EASYFIND_MAP_FOCUS",    "Ctrl+M")
+
+    -- Bottom buttons swapped: "See demo" on the LEFT, "Got it" on the
+    -- RIGHT. Centered as a pair around the panel's vertical midline.
+    local seeDemoBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
+    seeDemoBtn:SetSize(100, 22)
+    seeDemoBtn:SetPoint("BOTTOMRIGHT", panel, "BOTTOM", -4, 12)
+    seeDemoBtn:SetText("See demo")
+
     local gotItBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     gotItBtn:SetSize(100, 22)
-    gotItBtn:SetPoint("BOTTOM", panel, "BOTTOM", 0, 12)
+    gotItBtn:SetPoint("BOTTOMLEFT", panel, "BOTTOM", 4, 12)
     gotItBtn:SetText("Got it")
-
-    local seeDemoBtn = CreateFrame("Button", nil, searchFrame, "UIPanelButtonTemplate")
-    seeDemoBtn:SetSize(120, 24)
-    seeDemoBtn:SetPoint("TOP", searchFrame, "BOTTOM", 0, -12)
-    seeDemoBtn:SetText("See demo")
-    seeDemoBtn:SetIgnoreParentAlpha(true)
 
     -- During setup: allow drag without holding Shift
     searchFrame:SetScript("OnDragStart", function(self)
@@ -6889,10 +7162,11 @@ function UI:ShowFirstTimeSetup()
         searchFrame.setupMode = nil
         searchFrame.editBox:EnableMouse(true)
         UI:UpdateSearchBarTheme()  -- restore proper backdrop colors
+        glow:SetScript("OnUpdate", nil)
+        glow:Hide()
         resizer:SetScript("OnUpdate", nil)
         resizer:Hide()
         panel:Hide()
-        seeDemoBtn:Hide()
         if demoFrame then demoFrame:Hide() end
         -- Clear the demo suspend flag so the dropdown auto-close works
         if searchFrame.filterDropdown then
@@ -6948,10 +7222,13 @@ function UI:ShowFirstTimeSetup()
         EasyFind.db.staticOpacity = not fadeCheckbox:GetChecked()
         UI:UpdateSmartShow()
 
-        -- Hide the positioning UI before the demo runs.
+        -- Hide all setup-mode chrome before the demo takes over the
+        -- search bar. Without this, the gold "Drag to move" glow
+        -- lingers on top of the demo.
         panel:Hide()
         resizer:Hide()
-        seeDemoBtn:Hide()
+        glow:SetScript("OnUpdate", nil)
+        glow:Hide()
         startDemo()
     end)
 end

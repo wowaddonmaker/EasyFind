@@ -90,6 +90,53 @@ function Utils.SafeAfter(delay, fn)
     end)
 end
 
+--- Key-repeat controller shared by UI search and MapTab nav. Holding
+--- a key fires the action immediately, waits INITIAL seconds, then
+--- ticks at a rate that accelerates from INITIAL toward FAST over
+--- ACCEL seconds. Attach OnKeyUp to `Stop(key)` so releasing the key
+--- stops the repeat — pass the key so other keys pressed concurrently
+--- don't cancel each other.
+---
+--- Returns a table: { Start(key, action), Stop(key?), IsKey(key) }.
+function Utils.CreateKeyRepeat(frame, initialDelay, fastDelay, accelDuration)
+    initialDelay = initialDelay or 0.30
+    fastDelay = fastDelay or 0.05
+    accelDuration = accelDuration or 1.5
+    local repeatKey, repeatAction, repeatNext, repeatHeld
+    local repeatActive = false
+
+    local function Start(key, action)
+        action()
+        repeatKey = key
+        repeatAction = action
+        repeatHeld = 0
+        repeatNext = initialDelay
+        repeatActive = true
+    end
+    local function Stop(key)
+        if not key or repeatKey == key then
+            repeatActive = false
+            repeatKey = nil
+            repeatAction = nil
+        end
+    end
+    local function IsKey(key) return repeatKey == key end
+
+    frame:HookScript("OnUpdate", function(_, elapsed)
+        if not repeatActive then return end
+        repeatHeld = repeatHeld + elapsed
+        repeatNext = repeatNext - elapsed
+        if repeatNext <= 0 then
+            repeatAction()
+            local t = repeatHeld / accelDuration
+            if t > 1 then t = 1 end
+            repeatNext = initialDelay + (fastDelay - initialDelay) * t
+        end
+    end)
+
+    return { Start = Start, Stop = Stop, IsKey = IsKey }
+end
+
 --- Scroll a ScrollFrame so that the given child button is visible.
 --- Uses the button's top/bottom relative to the scrollChild.
 function Utils.ScrollToButton(scrollFrame, button)
