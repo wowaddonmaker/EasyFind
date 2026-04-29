@@ -2534,6 +2534,34 @@ function Database:DamerauLevenshtein(s1, s2, len1, len2)
     return prev[len2]
 end
 
+-- Fast pre-filter: every distinct character in the query must appear
+-- somewhere in `text`. Order and position don't matter so fuzzy
+-- matchers tolerant of transpositions (e.g., "acheivement" vs
+-- "achievement") still pass through to the real scorers. Missing a
+-- single query char is a definitive "cannot match" signal.
+--
+-- Builds a small byte-set from the text per call. For stable text
+-- (POI names), the caller should cache result at a higher level; for
+-- one-off scoring this remains cheap — O(|text| + |query|).
+local reuseCouldMatchSet = {}
+function Database:CouldMatch(text, query)
+    local tlen, qlen = #text, #query
+    if qlen == 0 then return true end
+    if tlen == 0 then return false end
+    local seen = reuseCouldMatchSet
+    for k in pairs(seen) do seen[k] = nil end
+    for i = 1, tlen do
+        seen[text:byte(i)] = true
+    end
+    for i = 1, qlen do
+        local qb = query:byte(i)
+        if qb ~= 32 and not seen[qb] then  -- skip spaces (multi-word queries)
+            return false
+        end
+    end
+    return true
+end
+
 -- Unified name scoring: exact → starts-with → word-boundary → substring → initials → fuzzy.
 -- All search features (UI, map zone, map POI) use this single function.
 -- Returns a score ≥ 0. Caller decides the minimum threshold.
@@ -2544,6 +2572,11 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
         queryLen = #query
         if queryLen == 0 then return 0 end
     end
+
+    -- Cheap pre-filter: if the query's chars don't appear in order in
+    -- the name, no scoring path can match. Saves the subsequence +
+    -- fuzzy DP pass on the ~90%+ of entries that obviously don't match.
+    if not Database:CouldMatch(nameLower, query) then return 0 end
 
     local score = 0
 
