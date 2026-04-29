@@ -12,10 +12,9 @@ EasyFind = {}
 ns.EasyFind = EasyFind
 EasyFind._ns = ns  -- Expose namespace for dev tools (EasyFindDev)
 
-BINDING_NAME_EASYFIND_TOGGLE       = "Toggle UI Search Bar"
-BINDING_NAME_EASYFIND_FOCUS        = "Resume Typing in Search Bar"
-BINDING_NAME_EASYFIND_TOGGLE_FOCUS = "Toggle + Focus Search Bar"
+BINDING_NAME_EASYFIND_TOGGLE_FOCUS = "Toggle Search Bar"
 BINDING_NAME_EASYFIND_CLEAR        = "Clear All Highlights"
+BINDING_NAME_EASYFIND_MAP_FOCUS    = "Open Map Search"
 
 local eventFrame = CreateFrame("Frame")
 ns.eventFrame = eventFrame
@@ -24,7 +23,7 @@ EasyFind.db = {}
 
 -- SavedVariables version. Increment when changing DB schema.
 -- Each migration runs once: if saved dbVersion < DB_VERSION, run all steps in order.
-local DB_VERSION = 3
+local DB_VERSION = 4
 
 -- SavedVariables defaults - new keys are auto-merged for existing users
 local DB_DEFAULTS = {
@@ -98,6 +97,16 @@ local DB_DEFAULTS = {
         services = true,
         rares = true,
     },
+    mapTabFilters = {          -- MapTab (unified) category filters. Applied after
+        zones = true,          -- BuildResults to gate each bucket independently
+        instances = true,      -- of the global/local DBs.
+        travel = true,
+        services = true,
+        rares = true,
+    },
+    mapTabRecentSearches = {},  -- Most-recent-first list of past map search queries
+    mapTabShowRecent = true,    -- Toggle for showing recent searches when idle
+    mapTabRecentCount = 3,      -- Number of recent searches to keep / display (1-20)
     alwaysShowRares = false,  -- Persistent rare tracking: show active rares on map without searching
     uiSearchFilters = {        -- UI search category filters
         ui = true,
@@ -146,6 +155,16 @@ local DB_MIGRATIONS = {
         end
         db.uiMaxResults = nil
         db.mapMaxResults = nil
+    end,
+    -- [4] = Flip stale localMapDirectOpen / globalMapDirectOpen defaults.
+    -- The "Make Fast Mode default" commit changed both defaults from false
+    -- to true but didn't migrate existing saves. Users carried over
+    -- false → SelectResult bucketed every zone click into the multi-click
+    -- teach path (HighlightZoneOnMap), making clicks feel like they
+    -- needed two presses to register.
+    [4] = function(db)
+        if db.localMapDirectOpen == false then db.localMapDirectOpen = true end
+        if db.globalMapDirectOpen == false then db.globalMapDirectOpen = true end
     end,
 }
 
@@ -534,6 +553,10 @@ function EasyFind:ToggleFocusSearchUI()
     elseif ns.UI then
         ns.UI:ToggleFocus()
     end
+end
+
+function EasyFind:FocusMapSearch()
+    if ns.MapTab then ns.MapTab:Focus() end
 end
 
 function EasyFind:OpenOptions()

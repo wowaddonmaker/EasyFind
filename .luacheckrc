@@ -15,10 +15,9 @@ globals = {
     "SlashCmdList",
     "StaticPopupDialogs",
     "SLASH_EASYFIND1",
-    "BINDING_NAME_EASYFIND_TOGGLE",
-    "BINDING_NAME_EASYFIND_FOCUS",
     "BINDING_NAME_EASYFIND_TOGGLE_FOCUS",
     "BINDING_NAME_EASYFIND_CLEAR",
+    "BINDING_NAME_EASYFIND_MAP_FOCUS",
     "EncounterJournal",
     "TransmogFrame",
 }
