@@ -129,11 +129,15 @@ ns.SEARCHBAR_FONT = "EasyFindSearchFont"
 local SEARCH_TEX_FILL = "Interface\\AddOns\\EasyFind\\Textures\\SearchBarFill"
 local SEARCH_TEX_BORDER = "Interface\\AddOns\\EasyFind\\Textures\\SearchBarBorder"
 local CLEAR_BTN_TEX = "Interface\\AddOns\\EasyFind\\Textures\\clear-button"
-local SEARCH_CAP_W = 8
-local SEARCH_TEX_W = 64
-local TC_LEFT  = {0, SEARCH_CAP_W / SEARCH_TEX_W, 0, 1}
-local TC_MID   = {SEARCH_CAP_W / SEARCH_TEX_W, 1 - SEARCH_CAP_W / SEARCH_TEX_W, 0, 1}
-local TC_RIGHT = {1 - SEARCH_CAP_W / SEARCH_TEX_W, 1, 0, 1}
+-- Pill-shape 9-slice cap occupies 25% of the texture on each side
+-- (0..0.25 left, 0.75..1.0 right) so the texture's full semicircle
+-- end-cap renders at any bar height. Display cap width is half the
+-- frame height -- a true semicircle when rendered, recomputed on
+-- every frame resize via OnSizeChanged.
+local CAP_TEX_RATIO = 0.25
+local TC_LEFT  = {0, CAP_TEX_RATIO, 0, 1}
+local TC_MID   = {CAP_TEX_RATIO, 1 - CAP_TEX_RATIO, 0, 1}
+local TC_RIGHT = {1 - CAP_TEX_RATIO, 1, 0, 1}
 local BORDER_R, BORDER_G, BORDER_B = 0.42, 0.42, 0.42
 
 local function CreateTexPart(frame, layer, texPath, tc, vertR, vertG, vertB, vertA)
@@ -144,16 +148,24 @@ local function CreateTexPart(frame, layer, texPath, tc, vertR, vertG, vertB, ver
     return tex
 end
 
+local function ApplyCapWidths(frame)
+    if not frame.searchBorder then return end
+    local h = frame:GetHeight() or 0
+    if h <= 0 then return end
+    local capW = h / 2
+    local sb = frame.searchBorder
+    sb.fillLeft:SetWidth(capW)
+    sb.fillRight:SetWidth(capW)
+end
+
 function ns.CreateSearchBorder(frame)
     local fillLeft = CreateTexPart(frame, "BACKGROUND", SEARCH_TEX_FILL, TC_LEFT, 0, 0, 0, 1)
     fillLeft:SetPoint("TOPLEFT")
     fillLeft:SetPoint("BOTTOMLEFT")
-    fillLeft:SetWidth(SEARCH_CAP_W)
 
     local fillRight = CreateTexPart(frame, "BACKGROUND", SEARCH_TEX_FILL, TC_RIGHT, 0, 0, 0, 1)
     fillRight:SetPoint("TOPRIGHT")
     fillRight:SetPoint("BOTTOMRIGHT")
-    fillRight:SetWidth(SEARCH_CAP_W)
 
     local fillMid = CreateTexPart(frame, "BACKGROUND", SEARCH_TEX_FILL, TC_MID, 0, 0, 0, 1)
     fillMid:SetPoint("TOPLEFT", fillLeft, "TOPRIGHT")
@@ -172,14 +184,18 @@ function ns.CreateSearchBorder(frame)
         fillLeft = fillLeft, fillMid = fillMid, fillRight = fillRight,
         borderLeft = borderLeft, borderMid = borderMid, borderRight = borderRight,
     }
+    ApplyCapWidths(frame)
+    -- A theme/font/zoom change calls SetHeight; OnSizeChanged keeps
+    -- the cap width in lockstep without each caller having to know.
+    frame:HookScript("OnSizeChanged", ApplyCapWidths)
 end
 
-function ns.ScaleSearchBorder(frame, scale)
-    if not frame.searchBorder then return end
-    local sb = frame.searchBorder
-    local capW = SEARCH_CAP_W * scale
-    sb.fillLeft:SetWidth(capW)
-    sb.fillRight:SetWidth(capW)
+-- Kept as a public no-op for callers that still pass the legacy
+-- scale parameter. Cap width tracks frame height now via the
+-- OnSizeChanged hook installed in CreateSearchBorder, so we just
+-- re-apply in case the caller resized the frame in the same tick.
+function ns.ScaleSearchBorder(frame, _scale)
+    ApplyCapWidths(frame)
 end
 
 function ns.SetSearchBorderShown(frame, shown)
