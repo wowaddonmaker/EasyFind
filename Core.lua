@@ -107,6 +107,7 @@ local DB_DEFAULTS = {
     mapTabRecentSearches = {},  -- Most-recent-first list of past map search queries
     mapTabShowRecent = true,    -- Toggle for showing recent searches when idle
     mapTabRecentCount = 3,      -- Number of recent searches to keep / display (1-20)
+    mapTabAutoExpand = true,    -- Auto-expand a matched parent header to show all its world-hierarchy children
     alwaysShowRares = false,  -- Persistent rare tracking: show active rares on map without searching
     uiSearchFilters = {        -- UI search category filters
         ui = true,

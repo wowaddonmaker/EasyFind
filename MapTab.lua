@@ -176,13 +176,26 @@ local function GetWorldChildren(mapID)
             if child.name and mt
                and mt ~= Enum.UIMapType.Micro
                and mt ~= Enum.UIMapType.Orphan then
+                local category, icon
+                if mt == Enum.UIMapType.Dungeon then
+                    -- Sub-zones of dungeon mapType render with the
+                    -- dungeon-portal category icon instead of the
+                    -- generic continent texture. The API doesn't
+                    -- distinguish raids here, so all instance-type
+                    -- children get the dungeon glyph.
+                    category = "dungeon"
+                    icon = nil
+                else
+                    category = "zone"
+                    icon = 237382
+                end
                 result[#result + 1] = {
                     name = child.name,
-                    category = "zone",
+                    category = category,
                     isZone = true,
                     zoneMapID = child.mapID,
                     zoneMapType = mt,
-                    icon = 237382,
+                    icon = icon,
                     synthesized = true,
                 }
             end
@@ -393,9 +406,14 @@ local function ShowPopup(isPinned, onPin, onGuide)
         pinPopup.pinRow:SetScript("OnLeave", MenuRowOnLeave)
         pinPopup.guideRow:SetScript("OnLeave", MenuRowOnLeave)
         -- Dismiss on outside click (any button). Same pattern used by
-        -- the MapSearch filter dropdown.
+        -- the MapSearch filter dropdown. The grace period avoids a race
+        -- where the press that opened the popup (RightButtonDown) is
+        -- still registering as held during the first OnUpdate tick —
+        -- without it, IsMouseButtonDown stays true and the popup hides
+        -- itself before the cursor settles inside.
         pinPopup:SetScript("OnUpdate", function(self)
             if not self:IsShown() then return end
+            if self._openedAt and GetTime() - self._openedAt < 0.15 then return end
             if (IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton"))
                and not self:IsMouseOver() then
                 self:Hide()
@@ -434,7 +452,12 @@ local function ShowPopup(isPinned, onPin, onGuide)
     local scale = UIParent:GetEffectiveScale()
     local x, y = GetCursorPosition()
     pinPopup:ClearAllPoints()
-    pinPopup:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale, y / scale)
+    -- Offset so the cursor lands ~8px inside the popup rather than at
+    -- its bottom-left corner. Without the offset, IsMouseOver flickers
+    -- at the boundary pixel and the auto-dismiss handler can hide the
+    -- popup on the same frame it appears.
+    pinPopup:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale - 8, y / scale - 8)
+    pinPopup._openedAt = GetTime()
     pinPopup:Show()
 end
 
@@ -612,12 +635,10 @@ local function RowOnClick(row, button)
 
     if button == "RightButton" then
         local isPinned = MapSearch and MapSearch:IsMapItemPinned(data)
-        local isGlobal = data.isZone or data.isDungeonEntrance
-        local onGuide = isGlobal and function() TriggerResultSelect(data, false) end or nil
         ShowPopup(isPinned, function()
             if isPinned then MapSearch:UnpinMapItem(data) else MapSearch:PinMapItem(data) end
             RefreshCurrentSearch()
-        end, onGuide)
+        end, function() TriggerResultSelect(data, false) end)
         return
     end
 
@@ -629,9 +650,11 @@ local function RowOnClick(row, button)
 end
 
 -- Walk a result's parent-map chain and return a full breadcrumb string
--- "<name> > <zone> > <continent> > <world>". Skips a leading ancestor
--- whose name matches the POI itself (zone results' own mapID resolves
--- to the same name, so we'd otherwise render "Tol Barad > Tol Barad").
+-- "<world> > <continent> > <zone> > <name>" — root first, leaf last.
+-- The Blizzard API names mapID 946 "Cosmic"; surface it as "World"
+-- since that's how players refer to it. Skips an ancestor whose name
+-- matches the POI itself (zone results' own mapID resolves to the
+-- same name, so we'd otherwise render "Tol Barad > Tol Barad").
 local function BuildFullBreadcrumb(data)
     local mapID = data.mapID or data.zoneMapID or data.entranceMapID or data.parentMapID
     if not mapID or not C_Map or not C_Map.GetMapInfo then return data.name end
@@ -641,14 +664,20 @@ local function BuildFullBreadcrumb(data)
     for _ = 1, 20 do
         local info = C_Map.GetMapInfo(current)
         if not info then break end
-        if not info.name or info.name:lower() ~= leafName then
-            parts[#parts + 1] = info.name
+        if info.name and info.name:lower() ~= leafName then
+            local name = info.name == "Cosmic" and "World" or info.name
+            parts[#parts + 1] = name
         end
         if not info.parentMapID or info.parentMapID == 0 then break end
         current = info.parentMapID
     end
     if #parts == 0 then return data.name end
-    return data.name .. "  >  " .. table.concat(parts, "  >  ")
+    local segments = {}
+    for i = #parts, 1, -1 do
+        segments[#segments + 1] = parts[i]
+    end
+    segments[#segments + 1] = data.name
+    return table.concat(segments, "  >  ")
 end
 
 local function RowOnEnter(row)
@@ -1131,6 +1160,28 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
         for _, e in ipairs(entries) do
             if e.type == "flat" then
                 placeRow(e.data, 0, nil)
+            elseif e.type == "version" then
+                -- Version group: same name, multiple mapIDs (e.g. Dalaran
+                -- exists in Northrend and Broken Isles). Default-collapsed
+                -- so the bare name shows; expanding lists each variant —
+                -- their pathPrefix already disambiguates ("Crystalsong
+                -- Forest" / "Broken Isles"). Header navigates to newest.
+                local groupKey = sectionKey .. ":version:" .. e.name
+                local stored = collapsedDb[groupKey]
+                local collapsed = stored ~= false  -- nil → default collapsed
+                local capturedCollapsed = collapsed
+                local onToggle = function()
+                    collapsedDb[groupKey] = not capturedCollapsed and true or false
+                    RefreshCurrentSearch()
+                end
+                local nav = e.navigateData
+                local onRClick = nav and function() headerRightClick(nav, capturedCollapsed) end or nil
+                placeGroupHeader(e.name, groupKey, nil, collapsed, nav, true, onToggle, onRClick)
+                if not collapsed then
+                    for _, item in ipairs(e.items) do
+                        placeRow(item, 18, nil)
+                    end
+                end
             else
                 local groupKey = sectionKey .. ":" .. e.name
                 local collapsed = collapsedDb[groupKey] == true
@@ -1148,7 +1199,8 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
                 local items
                 local usingWorldChildren = false
                 local parentMatched = e.navigateData and not e.navigateData.synthesized
-                if parentMatched and e.ancestorMapID then
+                local autoExpand = EasyFind.db.mapTabAutoExpand ~= false
+                if parentMatched and e.ancestorMapID and autoExpand then
                     local world = GetWorldChildren(e.ancestorMapID)
                     items = world or e.items
                     usingWorldChildren = world and #world > 0
@@ -1517,6 +1569,24 @@ function MapTab:RunSearch(text)
     -- don't pollute "This Zone" on a world/continent map.
     local localFiltered = FilterAndDedupe(localRaw, seen, true)
     local localEntries = GroupBySharedParent(localFiltered)
+    -- A continent/world-type zone match (e.g. "Eastern Kingdoms" while
+    -- viewing EK) is dropped from local by EXCLUDE_FROM_LOCAL_MAPTYPES,
+    -- so its "This Zone" group ends up with synthesized navigateData
+    -- and parentMatched stays false — auto-expand never fires. Promote
+    -- the synthesized header back to the real result so the renderer's
+    -- parentMatched check sees it.
+    for i = 1, #localRaw do
+        local r = localRaw[i]
+        if r and r.isZone and r.zoneMapID then
+            for j = 1, #localEntries do
+                local e = localEntries[j]
+                if e.type == "group" and e.ancestorMapID == r.zoneMapID
+                   and e.navigateData and e.navigateData.synthesized then
+                    e.navigateData = r
+                end
+            end
+        end
+    end
     local globalRaw
     if multiToken then
         globalRaw = BuildMultiTokenResults(tokens, true)
@@ -1525,7 +1595,70 @@ function MapTab:RunSearch(text)
     end
     if myGen ~= lastQueryGen then return end
     local globalFiltered = FilterAndDedupe(globalRaw, seen, false)
+
+    -- Pull duplicate-named zones out of globalFiltered into version groups.
+    -- Names matching 2+ entries collapse into one header that lists every
+    -- variant (highest-mapID first as a "newest" heuristic). The header
+    -- starts collapsed; clicking it navigates to the newest variant.
+    local versionGroups
+    do
+        local byName = {}
+        for i = 1, #globalFiltered do
+            local r = globalFiltered[i]
+            if r and r.isZone and r.zoneMapID and r.name then
+                local key = r.name:lower()
+                local list = byName[key]
+                if not list then list = {}; byName[key] = list end
+                list[#list + 1] = r
+            end
+        end
+        local removed = {}
+        for _, list in pairs(byName) do
+            if #list >= 2 then
+                table.sort(list, function(a, b)
+                    return (a.zoneMapID or 0) > (b.zoneMapID or 0)
+                end)
+                for j = 1, #list do removed[list[j]] = true end
+                versionGroups = versionGroups or {}
+                versionGroups[#versionGroups + 1] = {
+                    type = "version",
+                    name = list[1].name,
+                    items = list,
+                    navigateData = list[1],
+                }
+            end
+        end
+        if versionGroups then
+            local kept = {}
+            for i = 1, #globalFiltered do
+                if not removed[globalFiltered[i]] then
+                    kept[#kept + 1] = globalFiltered[i]
+                end
+            end
+            globalFiltered = kept
+        end
+    end
+
     local globalEntries = GroupBySharedParent(globalFiltered)
+    if versionGroups then
+        for i = #versionGroups, 1, -1 do
+            tinsert(globalEntries, 1, versionGroups[i])
+        end
+    end
+
+    -- Drop any global group whose continent matches the currently-viewed
+    -- map. The 'this zone' section already covers everything inside
+    -- that continent, so surfacing it again under 'across the world' is
+    -- pure redundancy. Belt-and-suspenders against any dedup miss.
+    local viewedMapID = WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID()
+    if viewedMapID then
+        for i = #globalEntries, 1, -1 do
+            local e = globalEntries[i]
+            if e.type == "group" and e.ancestorMapID == viewedMapID then
+                tremove(globalEntries, i)
+            end
+        end
+    end
 
     -- Stash top N result names (locals first, then globals) for
     -- autocomplete. Ghost/Tab picks the first name whose lowercase
@@ -2415,6 +2548,44 @@ local function CreatePanel(qmf)
         RefreshCurrentSearch()
     end)
     p.recentCheck = recentCheck
+
+    -- "Auto expand headers" checkbox to the right of the recent toggle.
+    -- When on (default), a matched zone header lists every child the
+    -- world hierarchy says lives under it. When off, only children
+    -- whose names actually match the query show up — handy when you
+    -- want a focused list instead of a continent's full roster.
+    local expandCheck = CreateFrame("CheckButton", "EasyFindMapTabAutoExpandCheck", p, "UICheckButtonTemplate")
+    expandCheck:SetSize(20, 20)
+    expandCheck:SetPoint("LEFT", recentLabel, "RIGHT", 12, -1)
+    expandCheck:SetHitRectInsets(0, -120, 0, 0)
+    local expandLabel = expandCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    expandLabel:SetPoint("LEFT", expandCheck, "RIGHT", 2, 1)
+    expandLabel:SetText("Auto expand headers")
+    expandCheck:SetScript("OnShow", function(self)
+        self:SetChecked(EasyFind.db.mapTabAutoExpand ~= false)
+    end)
+    expandCheck:SetScript("OnClick", function(self)
+        EasyFind.db.mapTabAutoExpand = self:GetChecked() and true or false
+        RefreshCurrentSearch()
+    end)
+    expandCheck:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
+        GameTooltip:SetText("Auto expand headers")
+        GameTooltip:AddLine(
+            "When a search matches a parent zone, list every child it "
+            .. "contains - even ones that don't match your query.",
+            1, 1, 1, true)
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(
+            "Example: searching |cffffd200east|r matches Eastern Kingdoms. "
+            .. "With this on, every zone inside Eastern Kingdoms is listed "
+            .. "under it. With it off, only zones whose names actually match "
+            .. "|cffffd200east|r show up (Eastern Plaguelands, etc.).",
+            0.85, 0.85, 0.85, true)
+        GameTooltip:Show()
+    end)
+    expandCheck:SetScript("OnLeave", GameTooltip_Hide)
+    p.expandCheck = expandCheck
 
     return p
 end
