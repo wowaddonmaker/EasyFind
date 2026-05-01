@@ -1889,6 +1889,16 @@ HandleNavKey = function(key, keepSearchFocus)
     elseif key == "ENTER" then
         if navRowIndex > 0 then
             ActivateNavSelection()
+            -- Match the mouse-click activation flow: a clicked row
+            -- ends with searchBox unfocused, navRowIndex=0, and
+            -- navFrame keyboard off. Without mirroring that state,
+            -- the next Esc would clear editbox focus, then navFrame
+            -- (still keyboard-enabled with navRowIndex > 0) would
+            -- pick up the propagated key and re-focus the search
+            -- bar via the Esc branch — instead of closing the map.
+            SetNavRowIndex(0)
+            SetNavFrameCapture(false)
+            if panel and panel.searchBox then panel.searchBox:ClearFocus() end
             return true
         end
         return false
