@@ -7051,16 +7051,29 @@ function UI:ShowFirstTimeSetup()
     local LEFT_COL_X    = panelWidth / 4   -- center of the left half
     local RIGHT_COL_X   = panelWidth * 3/4 -- center of the right half
 
-    -- Invisible row anchor: y is locked to fadeDesc bottom so the labels
-    -- below sit a fixed gap under the description. Width spans the panel
-    -- so label x = row.left + colCenterX places each label center on its
-    -- column. Using a single-anchor TOP on each label avoids the over-
-    -- constrained x that two SetPoints would create.
+    -- Section header for the keybind row, with a thin divider underneath
+    -- so it reads as a labeled subsection rather than two loose buttons.
+    local keybindHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    keybindHeader:SetText("Keybindings")
+    keybindHeader:SetPoint("TOP", fadeDesc, "BOTTOM", 0, -14)
+
+    local keybindDivider = panel:CreateTexture(nil, "ARTWORK")
+    keybindDivider:SetColorTexture(1, 1, 1, 0.18)
+    keybindDivider:SetHeight(1)
+    keybindDivider:SetPoint("LEFT", panel, "LEFT", 24, 0)
+    keybindDivider:SetPoint("RIGHT", panel, "RIGHT", -24, 0)
+    keybindDivider:SetPoint("TOP", keybindHeader, "BOTTOM", 0, -4)
+
+    -- Invisible row anchor: y is locked to the divider so the labels
+    -- below sit a fixed gap under it. Width spans the panel so label
+    -- x = row.left + colCenterX places each label center on its column.
+    -- Using a single-anchor TOP on each label avoids the over-constrained
+    -- x that two SetPoints would create.
     local keybindRow = CreateFrame("Frame", nil, panel)
     keybindRow:SetHeight(1)
     keybindRow:SetPoint("LEFT",  panel, "LEFT")
     keybindRow:SetPoint("RIGHT", panel, "RIGHT")
-    keybindRow:SetPoint("TOP",   fadeDesc, "BOTTOM", 0, -12)
+    keybindRow:SetPoint("TOP",   keybindDivider, "BOTTOM", 0, -10)
 
     local function CreateKeybindLabel(text, colCenterX)
         local lbl = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -7129,16 +7142,18 @@ function UI:ShowFirstTimeSetup()
     CreateKeybindButton("toggle", toggleLabel, "EASYFIND_TOGGLE_FOCUS", "Ctrl+Space")
     CreateKeybindButton("map",    mapLabel,    "EASYFIND_MAP_FOCUS",    "Ctrl+M")
 
-    -- Bottom buttons swapped: "See demo" on the LEFT, "Got it" on the
-    -- RIGHT. Centered as a pair around the panel's vertical midline.
+    -- Buttons sit just below the panel, centered as a pair around the
+    -- panel's vertical midline. "See demo" on the LEFT, "Got it" on the
+    -- RIGHT. Anchoring TOP to the panel's BOTTOM places them outside the
+    -- frame so they don't crowd the keybind section above.
     local seeDemoBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     seeDemoBtn:SetSize(100, 22)
-    seeDemoBtn:SetPoint("BOTTOMRIGHT", panel, "BOTTOM", -4, 12)
+    seeDemoBtn:SetPoint("TOPLEFT", panel, "BOTTOM", 4, -8)
     seeDemoBtn:SetText("See demo")
 
     local gotItBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     gotItBtn:SetSize(100, 22)
-    gotItBtn:SetPoint("BOTTOMLEFT", panel, "BOTTOM", 4, 12)
+    gotItBtn:SetPoint("TOPRIGHT", panel, "BOTTOM", -4, -8)
     gotItBtn:SetText("Got it")
 
     -- During setup: allow drag without holding Shift
