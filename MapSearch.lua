@@ -8720,25 +8720,18 @@ function MapSearch:SearchForUI(query)
     local scored = self:SearchPOIs(pois, query)
     if not scored or #scored == 0 then return nil end
 
-    -- Apply global search filters (zones / dungeons / raids / delves)
-    -- to the combined result set so category toggles affect UI results
-    -- whether they come from local scan or the global instance cache.
+    -- Apply the MapTab cog filters so the UI search bar surfaces the
+    -- same buckets the user picked there. Mirrors FilterAndDedupe in
+    -- MapTab.lua: any POI whose bucket is explicitly disabled
+    -- (filters[bucket] == false) drops out. Buckets without a saved
+    -- value default to enabled — same convention DB_DEFAULTS uses.
     do
-        local gFilters = EasyFind.db.globalSearchFilters
-        if gFilters then
+        local mtFilters = EasyFind.db.mapTabFilters
+        if mtFilters then
             local filtered = {}
             for _, r in ipairs(scored) do
-                local dominated = false
-                if r.isZone and r.category == "zone" and gFilters.zones == false then
-                    dominated = true
-                elseif r.category == "dungeon" and gFilters.dungeons == false then
-                    dominated = true
-                elseif r.category == "raid" and gFilters.raids == false then
-                    dominated = true
-                elseif r.category == "delve" and gFilters.delves == false then
-                    dominated = true
-                end
-                if not dominated then
+                local bucket = GetFilterBucket(r)
+                if mtFilters[bucket] ~= false then
                     filtered[#filtered + 1] = r
                 end
             end
@@ -8762,6 +8755,11 @@ function MapSearch:SearchForUI(query)
             x = r.x or r.entranceX,
             y = r.y or r.entranceY,
             keywords = r.keywords,
+            -- Carry the originating query so HandleUISearchClick can
+            -- pre-populate the MapTab search box. Mirrors what would
+            -- happen if the user had typed the same query inside the
+            -- MapTab and clicked the same row.
+            query = query,
         }
         -- Preserve fields needed by SelectResult for global results
         if r.isZone then
@@ -8796,6 +8794,17 @@ function MapSearch:HandleUISearchClick(data)
     if not data then return end
 
     local isGlobalResult = data.isZone or data.isDungeonEntrance
+
+    -- Activate the MapTab + populate the search box with the originating
+    -- query. Mirrors the end state the user would have if they'd typed
+    -- the same query inside the MapTab and clicked the same row: tab
+    -- active, results visible, search bar showing the query (unfocused
+    -- so the click doesn't trap WASD). MapTab.OpenWithQuery handles
+    -- ToggleWorldMap itself, so the per-branch ToggleWorldMap calls
+    -- below become no-ops when the MapTab path runs.
+    if ns.MapTab and ns.MapTab.OpenWithQuery and data.query then
+        ns.MapTab:OpenWithQuery(data.query)
+    end
 
     if isGlobalResult then
         -- Open the world map at the target and show a waypoint/zone.
