@@ -168,6 +168,12 @@ local function GetWorldChildren(mapID)
         worldChildrenCache[mapID] = result
         return result
     end
+    -- Use the generic zone icon for every child regardless of
+    -- Blizzard's mapType. The API marks instanced cities (Dalaran,
+    -- etc.) as Dungeon, so an mt-based dungeon glyph mis-fires on
+    -- cities. Synthesized expansions of a continent never contain
+    -- real dungeons anyway — those live inside zones, not directly
+    -- under the continent.
     local children = GetMapChildrenInfo(mapID, nil, false)
     if children then
         for i = 1, #children do
@@ -176,26 +182,13 @@ local function GetWorldChildren(mapID)
             if child.name and mt
                and mt ~= Enum.UIMapType.Micro
                and mt ~= Enum.UIMapType.Orphan then
-                local category, icon
-                if mt == Enum.UIMapType.Dungeon then
-                    -- Sub-zones of dungeon mapType render with the
-                    -- dungeon-portal category icon instead of the
-                    -- generic continent texture. The API doesn't
-                    -- distinguish raids here, so all instance-type
-                    -- children get the dungeon glyph.
-                    category = "dungeon"
-                    icon = nil
-                else
-                    category = "zone"
-                    icon = 237382
-                end
                 result[#result + 1] = {
                     name = child.name,
-                    category = category,
+                    category = "zone",
                     isZone = true,
                     zoneMapID = child.mapID,
                     zoneMapType = mt,
-                    icon = icon,
+                    icon = 237382,
                     synthesized = true,
                 }
             end
@@ -254,6 +247,13 @@ local lastRenderedQuery
 local navRowIndex = 0
 local visibleNavRows = {}
 local navFrame    -- created lazily by EnsureNavFrame()
+-- Hold-to-step controller for nav keys; assigned by EnsureNavFrame.
+-- Declared up here so the editbox OnKeyUp hook (defined later in
+-- CreateSearchBox) can reach it. SearchBoxTemplate consumes OS-level
+-- auto-repeat OnKeyDown events, so unlike UI.lua's plain EditBox we
+-- can't rely on the OS to walk the list while a key is held. The
+-- ticker fires the action at an accelerating cadence on its own.
+local navKeyRepeat
 
 -- ---------------------------------------------------------------------------
 -- Tab select glow + icon tint helper
@@ -1061,6 +1061,7 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
     if navFrame then
         Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
     end
+    if navKeyRepeat then navKeyRepeat.Stop() end
     local y = 4
     local collapsedDb = sessionCollapsed
 
@@ -1235,8 +1236,65 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
                             end
                         end
                     else
+                        -- Group duplicate-named children into nested
+                        -- version sub-groups. Blizzard's hierarchy keeps
+                        -- multiple mapIDs sharing a display name (Arathi
+                        -- Highlands warfront variants, old Dalaran Crater
+                        -- + revisions, etc.). Show one collapsible header
+                        -- per name; expanding lists each variant tagged
+                        -- by mapID so they're distinguishable. Default-
+                        -- collapsed; clicking the header navigates to
+                        -- the highest-mapID (newest) variant.
+                        local byName, order = {}, {}
                         for _, item in ipairs(items) do
-                            placeRow(item, 18, e.name)
+                            local n = item.name or ""
+                            local list = byName[n]
+                            if not list then
+                                list = {}
+                                byName[n] = list
+                                order[#order + 1] = n
+                            end
+                            list[#list + 1] = item
+                        end
+                        for _, n in ipairs(order) do
+                            local variants = byName[n]
+                            if #variants == 1 then
+                                placeRow(variants[1], 18, e.name)
+                            else
+                                table.sort(variants, function(a, b)
+                                    return (a.zoneMapID or 0) > (b.zoneMapID or 0)
+                                end)
+                                local subKey = groupKey .. ":var:" .. n
+                                local stored = collapsedDb[subKey]
+                                local subCollapsed = stored ~= false
+                                local subCaptured = subCollapsed
+                                local subToggle = function()
+                                    collapsedDb[subKey] = not subCaptured and true or false
+                                    RefreshCurrentSearch()
+                                end
+                                local subNav = variants[1]
+                                local subRClick = function() headerRightClick(subNav, subCaptured) end
+                                placeGroupHeader(n, subKey, nil, subCollapsed, subNav,
+                                    true, subToggle, subRClick, 18)
+                                if not subCollapsed then
+                                    for _, variant in ipairs(variants) do
+                                        -- Clone so we don't mutate the
+                                        -- per-session worldChildrenCache
+                                        -- entry. pathPrefix flows through
+                                        -- placeRow's gray-suffix path.
+                                        placeRow({
+                                            name = variant.name,
+                                            category = variant.category,
+                                            isZone = variant.isZone,
+                                            zoneMapID = variant.zoneMapID,
+                                            zoneMapType = variant.zoneMapType,
+                                            icon = variant.icon,
+                                            synthesized = variant.synthesized,
+                                            pathPrefix = "map #" .. tostring(variant.zoneMapID),
+                                        }, 36, n)
+                                    end
+                                end
+                            end
                         end
                     end
                 end
@@ -1722,6 +1780,12 @@ local function EnsureNavFrame()
             self:SetPropagateKeyboardInput(true)
         end
     end)
+    navFrame:SetScript("OnKeyUp", function(_, key)
+        if navKeyRepeat and navKeyRepeat.IsKey(key) then
+            navKeyRepeat.Stop(key)
+        end
+    end)
+    navKeyRepeat = Utils.CreateKeyRepeat(navFrame)
     return navFrame
 end
 
@@ -1780,6 +1844,13 @@ local function SetNavFrameCapture(on)
     local nf = EnsureNavFrame()
     if not nf then return end
     Utils.SafeCallMethod(nf, "EnableKeyboard", on and true or false)
+    -- Releasing keyboard capture defuses any in-flight hold-to-step
+    -- ticker. Without this, a missed OnKeyUp (e.g. user clicked the
+    -- map mid-hold so the editbox+navFrame both lost keyboard input
+    -- before the release fired) would leave repeatActive on, and the
+    -- ticker would resume firing the move action the next time
+    -- navFrame became visible.
+    if not on and navKeyRepeat then navKeyRepeat.Stop() end
 end
 
 local function SetNavRowIndex(i)
@@ -1825,17 +1896,17 @@ HandleNavKey = function(key, keepSearchFocus)
             panel.searchBox:ClearFocus()
         end
         SetNavFrameCapture(true)
-        -- Single-step: each OnKeyDown moves one row. WoW delivers
-        -- repeated OnKeyDown events at the OS auto-repeat cadence
-        -- while the key is held, so a held arrow / Ctrl+J still walks
-        -- the list; we just don't run our own repeat ticker. Owning
-        -- the repeat ourselves bit us in two ways: the press that
-        -- fires from the editbox doesn't have a paired OnKeyUp on
-        -- navFrame to stop the timer, so repeatActive could get
-        -- stuck and auto-scroll on the next panel show; and the OS
-        -- repeat firing through navFrame's OnKeyDown would also call
-        -- Start, racing the ticker.
-        MoveNavSelection(1)
+        -- Hold-to-step via the OnUpdate ticker. SearchBoxTemplate
+        -- swallows OS-level auto-repeat OnKeyDown events, so a held
+        -- key would only fire once without our own ticker. The
+        -- editbox path needs its own OnKeyUp to stop the repeat
+        -- (paired with the OnKeyDown that started it); see the
+        -- editBox:HookScript("OnKeyUp", ...) below in CreateSearchBox.
+        if navKeyRepeat then
+            navKeyRepeat.Start(key, function() MoveNavSelection(1) end)
+        else
+            MoveNavSelection(1)
+        end
         return true
     elseif key == "UP" or (ctrl and key == "K") then
         if #visibleNavRows == 0 then return false end
@@ -1852,7 +1923,11 @@ HandleNavKey = function(key, keepSearchFocus)
             panel.searchBox:ClearFocus()
         end
         SetNavFrameCapture(true)
-        MoveNavSelection(-1)
+        if navKeyRepeat then
+            navKeyRepeat.Start(key, function() MoveNavSelection(-1) end)
+        else
+            MoveNavSelection(-1)
+        end
         return true
     elseif key == "SPACE" then
         -- Space inside the search box is a literal character and must
@@ -1962,6 +2037,7 @@ local function CreateSearchBox(parent)
             navRowIndex = 0
             if visibleNavRows then wipe(visibleNavRows) end
             if navFrame then Utils.SafeCallMethod(navFrame, "EnableKeyboard", false) end
+            if navKeyRepeat then navKeyRepeat.Stop() end
         end)
     end
 
@@ -2111,6 +2187,18 @@ local function CreateSearchBox(parent)
         HandleNavKey(key, true)
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
     end)
+    -- Stop the hold-to-step ticker on key release. The OnKeyDown that
+    -- started the repeat fires from the editbox, and WoW pairs OnKeyUp
+    -- to the same frame regardless of focus changes mid-press, so the
+    -- navFrame OnKeyUp handler isn't always reached. Mirror it here so
+    -- a release on a key whose down event was on the editbox still
+    -- stops the repeat -- otherwise it would keep ticking after the
+    -- user lets go.
+    editBox:HookScript("OnKeyUp", function(_, key)
+        if navKeyRepeat and navKeyRepeat.IsKey(key) then
+            navKeyRepeat.Stop(key)
+        end
+    end)
 
     -- Force focus on click. SearchBoxTemplate doesn't always grab focus
     -- back cleanly after the user has been clicking around in result
@@ -2121,12 +2209,14 @@ local function CreateSearchBox(parent)
         if navFrame then
             Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
         end
+        if navKeyRepeat then navKeyRepeat.Stop() end
         navRowIndex = 0
     end)
     editBox:HookScript("OnEditFocusGained", function()
         if navFrame then
             Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
         end
+        if navKeyRepeat then navKeyRepeat.Stop() end
     end)
 
     editBox:HookScript("OnEnterPressed", function(self)
@@ -2438,6 +2528,17 @@ local function CreatePanel(qmf)
                 if key == "rares" and dropdown.UpdateAutoTrackRow then
                     dropdown:UpdateAutoTrackRow()
                 end
+                -- The UI search bar's map results follow the same cog
+                -- settings, so a toggle here should refresh that view
+                -- too. Without this, a stale UI dropdown could keep
+                -- showing flight masters after the user disabled them.
+                local uiMod = ns.UI
+                local uiSb = uiMod and uiMod.searchFrame and uiMod.searchFrame.editBox
+                if uiMod and uiMod.OnSearchTextChanged
+                   and uiSb and uiSb:IsShown() then
+                    local txt = uiSb:GetText() or ""
+                    if txt ~= "" then uiMod:OnSearchTextChanged(txt) end
+                end
             end
         )
         AttachAutoTrackRow(dropdown)
@@ -2638,6 +2739,55 @@ function MapTab:Focus()
     end)
 end
 
+-- Activate the MapTab and populate the search box with `query`, leaving
+-- the editbox unfocused. Used by the floating UI search bar so clicking
+-- a map result there mirrors what would happen if the same query had
+-- been typed and submitted from inside the MapTab. SetText fires
+-- OnTextChanged, which schedules RunSearch on the next frame, so result
+-- rows render automatically.
+function MapTab:OpenWithQuery(query)
+    if not initialized then self:Initialize() end
+    if not WorldMapFrame or not WorldMapFrame:IsShown() then
+        if ToggleWorldMap then ToggleWorldMap() end
+        if not initialized then self:Initialize() end
+    end
+    -- Init not ready (rare first-load race): stash the query so the
+    -- ADDON_LOADED → Initialize callback can replay it once the panel
+    -- exists. Mirrors _pendingFocus.
+    if not panel or not tabFrame then
+        MapTab._pendingQuery = query
+        return
+    end
+    -- Order matters: set the search text BEFORE invoking the tab's
+    -- OnMouseUp. ShowOurPanel reads the current editbox text and runs
+    -- a synchronous RunSearch on every show, so seeding the text first
+    -- means the panel's first render already uses our query instead of
+    -- briefly flashing an empty / recent-searches state. ClearFocus
+    -- prevents the editbox from grabbing keyboard input — the user
+    -- triggered this by clicking a result, so they expect to keep
+    -- moving with WASD.
+    if panel.searchBox then
+        panel.searchBox:SetText(query or "")
+        panel.searchBox:ClearFocus()
+    end
+    local clickHandler = tabFrame:GetScript("OnMouseUp")
+    if clickHandler then clickHandler(tabFrame, "LeftButton") end
+    C_Timer.After(0, function()
+        if not panel then return end
+        if not panel:IsShown() and clickHandler then
+            clickHandler(tabFrame, "LeftButton")
+        end
+        if panel.searchBox and panel:IsShown() then
+            -- Re-apply in case some other path (e.g. tab swap focus
+            -- restoration) blanked the text on this frame.
+            if panel.searchBox:GetText() ~= (query or "") then
+                panel.searchBox:SetText(query or "")
+            end
+            panel.searchBox:ClearFocus()
+        end
+    end)
+end
+
 -- ---------------------------------------------------------------------------
 -- Initialize (hook Blizzard tab clicks + fullscreen-hide)
 -- ---------------------------------------------------------------------------
@@ -2724,6 +2874,22 @@ function MapTab:Initialize()
                     end
                 end)
             end
+            -- Mirror handling for OpenWithQuery: replay the deferred
+            -- query once the tab + panel exist. Cleared even if
+            -- _pendingFocus was also set (focus path takes precedence).
+            if MapTab._pendingQuery ~= nil and not MapTab._pendingFocus then
+                local q = MapTab._pendingQuery
+                MapTab._pendingQuery = nil
+                SafeAfter(0, function()
+                    if panel then
+                        ShowOurPanel()
+                        if panel.searchBox and panel:IsShown() then
+                            panel.searchBox:SetText(q or "")
+                            panel.searchBox:ClearFocus()
+                        end
+                    end
+                end)
+            end
         end)
     end
 
@@ -2762,6 +2928,11 @@ function MapTab:Initialize()
     if MapTab._pendingFocus then
         MapTab._pendingFocus = nil
         SafeAfter(0, function() MapTab:Focus() end)
+    end
+    if MapTab._pendingQuery ~= nil then
+        local q = MapTab._pendingQuery
+        MapTab._pendingQuery = nil
+        SafeAfter(0, function() MapTab:OpenWithQuery(q) end)
     end
 end
 
