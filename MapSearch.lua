@@ -1077,6 +1077,12 @@ local function PinMapItem(data)
     if IsMapItemPinned(data) then return end
     local clean = CleanForStorage(data)
     clean.isPinned = true
+    -- Default a freshly-pinned parent to collapsed. The toggle callback
+    -- writes back to this same SavedVariables entry, so any user-driven
+    -- expand/collapse state survives map close, /reload, and logout.
+    if data.isZone and data.zoneMapID and clean.collapsed == nil then
+        clean.collapsed = true
+    end
     tinsert(EasyFind.db.pinnedMapItems, clean)
 end
 
@@ -2871,10 +2877,15 @@ function MapSearch:CreateHighlightFrame()
     right:SetColorTexture(YELLOW_HIGHLIGHT[1], YELLOW_HIGHLIGHT[2], YELLOW_HIGHLIGHT[3], 1)
     highlightFrame.right = right
 
-    -- Indicator pointing down to the location
-    indicatorFrame = CreateFrame("Frame", "EasyFindMapIndicator", highlightFrame)
+    -- Indicator pointing down to the location. Parented to the canvas
+    -- (sibling of waypointPin / highlightFrame) and anchored explicitly
+    -- on every show — never reparented. Reparenting between hovers had
+    -- inconsistent timing on some result rows where the indicator would
+    -- inherit a stale Hidden state and never repaint.
+    indicatorFrame = CreateFrame("Frame", "EasyFindMapIndicator", WorldMapFrame.ScrollContainer.Child)
+    indicatorFrame:SetFrameStrata("TOOLTIP")
+    indicatorFrame:SetFrameLevel(2000)
     indicatorFrame:SetSize(ns.ICON_SIZE, ns.ICON_SIZE)
-    indicatorFrame:SetPoint("BOTTOM", highlightFrame, "TOP", 0, 2)
     indicatorFrame:EnableMouse(false)
     ns.CreateIndicatorTextures(indicatorFrame)
 
@@ -3597,24 +3608,12 @@ function MapSearch:PreviewZoneHighlight(mapID)
     local resolved = ResolveZoneForMap(mapID, parentMapID)
     if resolved ~= mapID then mapID = resolved end
 
-    -- Already inside the zone's own map: no preview to draw (the rect
-    -- would just be the entire canvas).
-    if mapID == parentMapID then return end
-
-    -- Ancestor of the currently-viewed map (Kalimdor when on Orgrimmar,
-    -- Durotar when on Orgrimmar, etc.). The current canvas IS the
-    -- ancestor's territory, so the only sensible "preview" would cover
-    -- the whole map — which both reads as a glitch and isn't what the
-    -- user is asking to be shown. Bail.
-    do
-        local cur = parentMapID
-        for _ = 1, 15 do
-            local info = GetMapInfo(cur)
-            if not info or not info.parentMapID or info.parentMapID == 0 then break end
-            if info.parentMapID == mapID then return end
-            cur = info.parentMapID
-        end
-    end
+    -- Strict direct-child gate: only preview zones whose parentMapID is
+    -- the currently-viewed map. Anything else (ancestors, siblings,
+    -- distant descendants) produces glitchy or misleading rects and is
+    -- skipped entirely.
+    local zoneInfo = GetMapInfo(mapID)
+    if not zoneInfo or zoneInfo.parentMapID ~= parentMapID then return end
 
     local ok, left, right, top, bottom = pcall(GetMapRectOnMap, mapID, parentMapID)
     if not ok or not left then return end
@@ -4123,7 +4122,11 @@ function MapSearch:HighlightZone(mapID)
     return true
 end
 
-function MapSearch:ClearZoneHighlight()
+-- preserveBreadcrumb: when true, leaves the click-driven breadcrumb
+-- highlight (and its pendingZoneHighlight) untouched. Used by hover-
+-- preview cleanup so moving the cursor off a row doesn't wipe the
+-- gold breadcrumb the user is being guided to.
+function MapSearch:ClearZoneHighlight(preserveBreadcrumb)
     if not zoneHighlightFrame then return end
 
     for _, highlight in ipairs(zoneHighlightFrame.highlights) do
@@ -4161,6 +4164,8 @@ function MapSearch:ClearZoneHighlight()
     end
 
     zoneHighlightFrame:Hide()
+
+    if preserveBreadcrumb then return end
 
     -- Also clear breadcrumb highlight
     if self.breadcrumbHighlight then
@@ -7601,7 +7606,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
     end
 end
 
-function MapSearch:ShowWaypointAt(x, y, icon, category)
+function MapSearch:ShowWaypointAt(x, y, icon, category, arrowOnly)
     if not x or not y then return end
     self:ClearHighlight()
 
@@ -7611,6 +7616,7 @@ function MapSearch:ShowWaypointAt(x, y, icon, category)
         x = x, y = y,
         icon = icon, category = category,
         isLocal = not isGlobalSearch,
+        arrowOnly = arrowOnly,
     }
 
     local canvas = WorldMapFrame.ScrollContainer.Child
@@ -7625,6 +7631,31 @@ function MapSearch:ShowWaypointAt(x, y, icon, category)
     local highlightSize = ns.UIToCanvas(ns.HIGHLIGHT_SIZE)  * userScale
     local indicatorSize     = ns.UIToCanvas(ns.ICON_SIZE)       * userScale
     local indicatorGlowSize = ns.UIToCanvas(ns.ICON_GLOW_SIZE)  * userScale
+
+    -- Arrow-only mode (zone hover preview): the zone's outline is drawn
+    -- by zoneHighlightFrame, so pin chrome (icon, glow, highlight box)
+    -- would clutter it. Hide pin and highlight, then anchor the
+    -- indicator at the zone center on the canvas. The indicator is a
+    -- permanent canvas child — no reparenting between calls.
+    if arrowOnly then
+        waypointPin:Hide()
+        highlightFrame:Hide()
+        indicatorFrame:SetSize(indicatorSize, indicatorSize)
+        if indicatorFrame.glow then
+            indicatorFrame.glow:SetSize(indicatorGlowSize, indicatorGlowSize)
+        end
+        indicatorFrame:ClearAllPoints()
+        indicatorFrame:SetPoint("BOTTOM", canvas, "TOPLEFT",
+            canvasWidth * x, -canvasHeight * y + 2)
+        indicatorFrame:SetAlpha(1)
+        indicatorFrame:Show()
+        if indicatorFrame.animGroup then
+            indicatorFrame.animGroup:Stop()
+            indicatorFrame.animGroup:Play()
+        end
+        self:RefreshAllClearButtons()
+        return
+    end
 
     -- Resize the pin and glow
     waypointPin:SetSize(iconSize, iconSize)
@@ -7658,12 +7689,20 @@ function MapSearch:ShowWaypointAt(x, y, icon, category)
     highlightFrame:Show()
     SetHighlightBordersVisible(highlightFrame, EasyFind.db.mapPinHighlight ~= false)
 
-    -- Resize indicator and its glow
+    -- Resize indicator and its glow, then anchor explicitly above the
+    -- highlight box (indicator is a permanent canvas child; the old
+    -- parent-relative anchor doesn't apply anymore).
     indicatorFrame:SetSize(indicatorSize, indicatorSize)
     indicatorFrame.glow:SetSize(indicatorGlowSize, indicatorGlowSize)
+    indicatorFrame:ClearAllPoints()
+    indicatorFrame:SetPoint("BOTTOM", highlightFrame, "TOP", 0, 2)
+    indicatorFrame:SetAlpha(1)
     indicatorFrame:Show()
 
-    if indicatorFrame.animGroup then indicatorFrame.animGroup:Play() end
+    if indicatorFrame.animGroup then
+        indicatorFrame.animGroup:Stop()
+        indicatorFrame.animGroup:Play()
+    end
     if EasyFind.db.blinkingPins then
         if waypointPin.animGroup then waypointPin.animGroup:Play() end
         if highlightFrame.animGroup then highlightFrame.animGroup:Play() end
@@ -7821,14 +7860,21 @@ function MapSearch:RunHoverPreview(data)
         end
         self:ShowMultipleWaypoints(composite)
     elseif coords.x and coords.y then
-        composite[#composite + 1] = {
-            x = coords.x, y = coords.y,
-            icon = coords.icon, category = coords.category,
-        }
-        if #composite > 1 then
-            self:ShowMultipleWaypoints(composite)
+        if coords.arrowOnly then
+            -- Zone preview: only the bouncing arrow + zone outline, no pin
+            -- icon/glow/box. Skip composite merging so existing clicked
+            -- pins from another category don't pull in their icons either.
+            self:ShowWaypointAt(coords.x, coords.y, nil, nil, true)
         else
-            self:ShowWaypointAt(coords.x, coords.y, coords.icon, coords.category)
+            composite[#composite + 1] = {
+                x = coords.x, y = coords.y,
+                icon = coords.icon, category = coords.category,
+            }
+            if #composite > 1 then
+                self:ShowMultipleWaypoints(composite)
+            else
+                self:ShowWaypointAt(coords.x, coords.y, coords.icon, coords.category)
+            end
         end
     end
 
@@ -7844,12 +7890,10 @@ function MapSearch:EndHoverPreview()
     if not self._previewing then return end
     self._previewing = nil
     if self._previewingZone then
-        -- ClearZoneHighlight nukes pendingZoneHighlight as a side effect.
-        -- Preserve it across the call so a real click-driven nav chain
-        -- (set somewhere else, untouched by the hover preview) survives.
-        local savedPending = self.pendingZoneHighlight
-        self:ClearZoneHighlight()
-        self.pendingZoneHighlight = savedPending
+        -- preserveBreadcrumb keeps the click-driven gold breadcrumb
+        -- and pendingZoneHighlight intact while we drop the hover
+        -- preview's zone outline.
+        self:ClearZoneHighlight(true)
         self._previewingZone = nil
     end
     self:ClearHighlight()
@@ -7876,8 +7920,6 @@ function MapSearch:ClearHighlight()
     highlightFrame.left:Show()
     highlightFrame.right:Show()
 
-    indicatorFrame:ClearAllPoints()
-    indicatorFrame:SetPoint("BOTTOM", highlightFrame, "TOP", 0, 2)
     indicatorFrame:Hide()
     waypointPin:Hide()
     -- Reset strata to creation defaults so the mouse-enabled pin doesn't
@@ -7984,6 +8026,35 @@ function MapSearch:GetPreviewCoords(data)
         local ex, ey = self:FindEntranceOnMap(data.name, currentMapID)
         if ex then
             return { x = ex, y = ey, icon = pIcon or data.icon, category = pCat or data.category }
+        end
+    end
+    -- Plain zone result with no entrance data: anchor the indicator at
+    -- the zone's center on the currently-viewed map so the bouncing
+    -- arrow points into the highlight rect drawn by PreviewZoneHighlight.
+    -- arrowOnly flag tells RunHoverPreview to skip the icon / pin chrome
+    -- because the zone outline already conveys "this is a zone".
+    if data.isZone and data.zoneMapID then
+        local zMap = data.zoneMapID
+        local resolved = ResolveZoneForMap(zMap, currentMapID)
+        if resolved ~= zMap then zMap = resolved end
+        -- Strict direct-child gate (matches PreviewZoneHighlight): only
+        -- show the bouncing arrow when the zone's parentMapID is the
+        -- currently-viewed map. Anything else is suppressed.
+        local zInfo = GetMapInfo(zMap)
+        if zInfo and zInfo.parentMapID == currentMapID then
+            local ok, left, right, top, bottom = pcall(GetMapRectOnMap, zMap, currentMapID)
+            if ok and left then
+                if left == 0 and right == 0 and top == 0 and bottom == 0 then
+                    local pL, pR, pT, pB = GetMapRectViaContinent(zMap, currentMapID)
+                    if pL then left, right, top, bottom = pL, pR, pT, pB end
+                end
+                if left and (right - left) > 0.005 and (bottom - top) > 0.005
+                   and (right - left) < 1.05 and (bottom - top) < 1.05 then
+                    local cx = (left + right) / 2
+                    local cy = (top + bottom) / 2
+                    return { x = cx, y = cy, arrowOnly = true }
+                end
+            end
         end
     end
     return nil

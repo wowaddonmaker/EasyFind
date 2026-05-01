@@ -3563,7 +3563,11 @@ function Demo.Start(ctx)
                                 rightClickIcon:Hide()
                                 moveCursorTo(popup, CURSOR_MOVE * 0.6, function()
                                     clickAnim(function()
-                                        popup:Click()
+                                        if popup.pinRow and popup.pinRow.Click then
+                                            popup.pinRow:Click()
+                                        elseif popup.Hide then
+                                            popup:Hide()
+                                        end
                                         od.pinnedByDemo = true
                                         safeAfter(1.5, function()
                                             mapSearchCallout:Hide()
