@@ -1576,7 +1576,6 @@ end
 -- declared between the two.
 local HandleNavKey
 
-local navKeyRepeat
 local function EnsureNavFrame()
     if navFrame then return navFrame end
     if not panel then return nil end
@@ -1590,12 +1589,6 @@ local function EnsureNavFrame()
             self:SetPropagateKeyboardInput(true)
         end
     end)
-    navFrame:SetScript("OnKeyUp", function(_, key)
-        if navKeyRepeat and navKeyRepeat.IsKey(key) then
-            navKeyRepeat.Stop(key)
-        end
-    end)
-    navKeyRepeat = Utils.CreateKeyRepeat(navFrame)
     return navFrame
 end
 
@@ -1699,14 +1692,17 @@ HandleNavKey = function(key, keepSearchFocus)
             panel.searchBox:ClearFocus()
         end
         SetNavFrameCapture(true)
-        -- Hold-to-step via the shared key-repeat helper. Start fires
-        -- the action immediately, then again after initialDelay,
-        -- accelerating toward fastDelay the longer the key is held.
-        if navKeyRepeat then
-            navKeyRepeat.Start(key, function() MoveNavSelection(1) end)
-        else
-            MoveNavSelection(1)
-        end
+        -- Single-step: each OnKeyDown moves one row. WoW delivers
+        -- repeated OnKeyDown events at the OS auto-repeat cadence
+        -- while the key is held, so a held arrow / Ctrl+J still walks
+        -- the list; we just don't run our own repeat ticker. Owning
+        -- the repeat ourselves bit us in two ways: the press that
+        -- fires from the editbox doesn't have a paired OnKeyUp on
+        -- navFrame to stop the timer, so repeatActive could get
+        -- stuck and auto-scroll on the next panel show; and the OS
+        -- repeat firing through navFrame's OnKeyDown would also call
+        -- Start, racing the ticker.
+        MoveNavSelection(1)
         return true
     elseif key == "UP" or (ctrl and key == "K") then
         if #visibleNavRows == 0 then return false end
@@ -1723,11 +1719,7 @@ HandleNavKey = function(key, keepSearchFocus)
             panel.searchBox:ClearFocus()
         end
         SetNavFrameCapture(true)
-        if navKeyRepeat then
-            navKeyRepeat.Start(key, function() MoveNavSelection(-1) end)
-        else
-            MoveNavSelection(-1)
-        end
+        MoveNavSelection(-1)
         return true
     elseif key == "SPACE" then
         -- Space inside the search box is a literal character and must
@@ -1921,6 +1913,15 @@ local function CreateSearchBox(parent)
         -- The "typed" prefix is everything up to the cursor; anything
         -- after is autocomplete suffix the user hasn't accepted.
         local typed = current:sub(1, cursorPos)
+        -- Pressing an arrow key while the autocomplete suffix is
+        -- highlighted collapses (or deletes) the selection without
+        -- changing the user's typed prefix. WoW fires OnTextChanged
+        -- on that selection edit, and if we let it reschedule a
+        -- search, RunSearch fires on the next frame, RenderRows
+        -- resets navRowIndex to 0, and the row we just navigated to
+        -- with HandleNavKey loses its highlight. Bail when the prefix
+        -- is unchanged: there's nothing new to search.
+        if typed == typedText then return end
         lastWasAddition = #typed > #typedText
         typedText = typed
 
@@ -1951,6 +1952,19 @@ local function CreateSearchBox(parent)
     -- the end. ENTER routes through HandleNavKey, which activates a
     -- highlighted row or falls through to push-to-recents below.
     editBox:HookScript("OnKeyDown", function(self, key)
+        -- An active autocomplete suffix is rendered as highlighted
+        -- text. WoW's default arrow-key handling on a highlighted
+        -- selection fires OnTextChanged synchronously, which schedules
+        -- a C_Timer.NewTimer(0) to RunSearch on the next frame —
+        -- RenderRows resets navRowIndex to 0 and drops the move we're
+        -- about to make. Cancel that timer for nav keys before
+        -- HandleNavKey runs so the navigation actually sticks.
+        if pendingSearchTimer
+           and (key == "DOWN" or key == "UP"
+                or (IsControlKeyDown() and (key == "J" or key == "K"))) then
+            pendingSearchTimer:Cancel()
+            pendingSearchTimer = nil
+        end
         HandleNavKey(key, true)
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
     end)
