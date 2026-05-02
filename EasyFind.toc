@@ -18,6 +18,7 @@ ChevronConfig.lua
 UI.lua
 Highlight.lua
 MapSearch.lua
+MapTab.lua
 Rescaler.lua
 Options.lua
 Demo.lua
