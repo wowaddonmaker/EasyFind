@@ -1122,64 +1122,38 @@ function Options:Initialize()
     end)
     optionsFrame.rareTrackCheckbox = rareTrackCheckbox
 
-    local resizeMapBtn = CreateFrame("Button", nil, sec2, "UIPanelButtonTemplate")
-    resizeMapBtn:SetSize(160, 22)
-    resizeMapBtn:SetPoint("RIGHT", sec2, "RIGHT", -8, 0)
-    resizeMapBtn:SetPoint("TOP", mapEnableCheckbox, "TOP", 0, 0)
-    resizeMapBtn:SetText("Resize Map Search")
-    resizeMapBtn:SetScript("OnClick", function()
-        if ns.Rescaler then ns.Rescaler:Enter("map") end
-    end)
-    resizeMapBtn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Visually resize the map search bars and results dropdown.\nDrag edges for width, corners for scale.")
-        GameTooltip:Show()
-    end)
-    resizeMapBtn:SetScript("OnLeave", GameTooltip_Hide)
+    -- Resize Map Search button removed: floating map search bars are retired
+    -- and the new MapTab uses the Blizzard quest-log-tab sizing.
 
     local FLYOUT_W = 260
 
-    local searchBarGroup = CreateMultiSelectDropdown(sec2, "Search Bars", {
-        { label = "Smart Show |cFF888888(Recommended)|r", shortLabel = "Smart", dbKey = "mapSmartShow", default = false,
-          tooltip = "Map search bars hide until you move your mouse near them.\nBars reappear on hover and fade when you move away.\nText in search bars or an open results list prevents fading.",
-          callback = function() if ns.MapSearch and ns.MapSearch.UpdateMapSmartShow then ns.MapSearch:UpdateMapSmartShow() end end },
-        { label = "Hide Fullscreen", shortLabel = "No Full", dbKey = "hideSearchBarsMaximized", default = true,
-          tooltip = "Both map search bars are hidden when the world map is maximized (full screen).\nThey reappear when you return to the windowed map.",
-          callback = function() if ns.MapSearch and ns.MapSearch.UpdateHideMaximized then ns.MapSearch:UpdateHideMaximized() end end },
-        { label = "Results Above", shortLabel = "Above", dbKey = "mapResultsAbove", default = false,
-          tooltip = "Map search results appear above the bar instead of below.\nApplies to both local and global map search bars.",
-          callback = function() if ns.MapSearch and ns.MapSearch.RefreshResultsAnchor then ns.MapSearch:RefreshResultsAnchor() end end },
+    local mapTabGroup = CreateMultiSelectDropdown(sec2, "Map Tab", {
+        { label = "Show Recent Searches", shortLabel = "Recent", dbKey = "mapTabShowRecent", default = true,
+          tooltip = "Show your recent search queries in the Map Search tab when the search box is empty.\nClick any recent entry to rerun that search.",
+          callback = function() if ns.MapTab and ns.MapTab.RefreshIfOpen then ns.MapTab:RefreshIfOpen() end end },
     }, nil, FLYOUT_W)
-    searchBarGroup:SetPoint("TOPLEFT", rareTrackCheckbox, "BOTTOMLEFT", 0, -2)
-    searchBarGroup:SetPoint("RIGHT", sec2, "RIGHT", -8, 0)
-    searchBarGroup.label:SetWidth(85)
-    searchBarGroup.label:SetJustifyH("LEFT")
-    searchBarGroup.button:SetPoint("LEFT", searchBarGroup.label, "RIGHT", 6, 0)
-    optionsFrame.searchBarGroup = searchBarGroup
+    mapTabGroup:SetPoint("TOPLEFT", rareTrackCheckbox, "BOTTOMLEFT", 0, -6)
+    mapTabGroup:SetPoint("RIGHT", sec2, "RIGHT", -8, 0)
+    mapTabGroup.label:SetWidth(85)
+    mapTabGroup.label:SetJustifyH("LEFT")
+    mapTabGroup.button:SetPoint("LEFT", mapTabGroup.label, "RIGHT", 6, 0)
+    optionsFrame.mapTabGroup = mapTabGroup
 
-    local mapFontSlider = searchBarGroup:AddSlider("MapFontSize", "Font Size|cffff3333*|r", 0.5, 2.0, 0.1,
-        "Changing font size also affects search bar height and results window sizing.", nil, 1.0)
-    mapFontSlider:SetValue(EasyFind.db.mapFontSize or 1.0)
-    mapFontSlider:HookScript("OnValueChanged", function(self, value)
-        EasyFind.db.mapFontSize = value
-        if ns.MapSearch and ns.MapSearch.UpdateFontSize then
-            ns.MapSearch:UpdateFontSize()
-        end
-    end)
-    optionsFrame.mapFontSlider = mapFontSlider
-
-    local mapYOffsetSlider = searchBarGroup:AddSlider("MapYOffset", "Bar Y Offset", -20, 20, 1,
-        "Vertical offset for the map search bars relative to the map bottom edge.\nPositive moves up, negative moves down.",
-        function(val) return tostring(mfloor(val + 0.5)) .. "px" end, 0, "px")
-    mapYOffsetSlider:SetValue(EasyFind.db.mapSearchYOffset or 0)
-    mapYOffsetSlider:HookScript("OnValueChanged", function(self, value)
+    local recentCountSlider = mapTabGroup:AddSlider("RecentCount", "Recent Count", 1, 10, 1,
+        "How many recent searches to keep and display in the Map Search tab.",
+        function(val) return tostring(mfloor(val + 0.5)) end, 3, "", "mapTabShowRecent")
+    recentCountSlider:SetValue(EasyFind.db.mapTabRecentCount or 3)
+    recentCountSlider:HookScript("OnValueChanged", function(_, value)
         value = mfloor(value + 0.5)
-        EasyFind.db.mapSearchYOffset = value
-        if ns.MapSearch and ns.MapSearch.UpdateYOffset then
-            ns.MapSearch:UpdateYOffset()
+        EasyFind.db.mapTabRecentCount = value
+        -- Trim the stored list immediately if user shrank the cap.
+        local list = EasyFind.db.mapTabRecentSearches
+        if list then
+            while #list > value do table.remove(list) end
         end
+        if ns.MapTab and ns.MapTab.RefreshIfOpen then ns.MapTab:RefreshIfOpen() end
     end)
-    optionsFrame.mapYOffsetSlider = mapYOffsetSlider
+    optionsFrame.recentCountSlider = recentCountSlider
 
     local mapPinGroup = CreateMultiSelectDropdown(sec2, "EF Map Icons", {
         { label = "Highlight Box", shortLabel = "Highlight", dbKey = "mapPinHighlight", default = true,
@@ -1189,7 +1163,7 @@ function Options:Initialize()
           tooltip = "Map search pins and highlight boxes pulse in sync with the indicator arrow.\nWhen disabled, pins and highlights are steady. The indicator arrow always bobs.",
           callback = function() if ns.MapSearch and ns.MapSearch.UpdateBlinkingPins then ns.MapSearch:UpdateBlinkingPins() end end },
     }, nil, FLYOUT_W)
-    mapPinGroup:SetPoint("TOPLEFT", searchBarGroup, "BOTTOMLEFT", 0, -6)
+    mapPinGroup:SetPoint("TOPLEFT", mapTabGroup, "BOTTOMLEFT", 0, -6)
     mapPinGroup:SetPoint("RIGHT", sec2, "RIGHT", -8, 0)
     mapPinGroup.label:SetWidth(85)
     mapPinGroup.label:SetJustifyH("LEFT")
@@ -1279,8 +1253,8 @@ function Options:Initialize()
     end)
 
     mapControls = {
-        resizeMapBtn, resetMapBtn, resetMapPosBtn, rareTrackCheckbox,
-        searchBarGroup, mapPinGroup, minimapGroup, automationGroup
+        resetMapBtn, resetMapPosBtn, rareTrackCheckbox,
+        mapPinGroup, minimapGroup, automationGroup
     }
     UpdateMapToggleVisual()
 
@@ -1296,53 +1270,45 @@ function Options:Initialize()
     shortcutText:SetSpacing(2)
     shortcutText:SetText(
         "|cFFFFD100Search box:|r\n"
-        .. "|cFF00FF00Down|r  Enter results list\n"
-        .. "|cFF00FF00Tab / Shift+Tab|r  Cycle between search/clear/filter buttons\n"
-        .. "|cFF00FF00Enter|r  Activate focused button or highlighted result\n"
-        .. "|cFF00FF00Escape|r  Remove cursor from search bar\n\n"
+        .. "|cFF00FF00Down|r enter results  |cFF00FF00Enter|r activate  |cFF00FF00Esc|r unfocus\n"
+        .. "|cFF00FF00Tab / Shift+Tab|r cycle search/clear/filter buttons\n\n"
         .. "|cFFFFD100Results list:|r\n"
-        .. "|cFF00FF00Up / Down|r  Move through results\n"
-        .. "|cFF00FF00Tab / Shift+Tab|r  Toggle focus between result/nav button\n"
-        .. "|cFF00FF00Page Up / Page Down|r  Jump 5 results\n"
-        .. "|cFF00FF00Home / End|r  Jump to first / last result\n"
-        .. "|cFF00FF00Shift+Up / Shift+Down|r  Jump between sections\n"
-        .. "|cFF00FF00Ctrl+Tab|r  Switch local / global map search bar\n\n"
+        .. "|cFF00FF00Up/Down|r or |cFF00FF00Ctrl+K/J|r  Move through results\n"
+        .. "|cFF00FF00Tab/Shift+Tab|r or |cFF00FF00Ctrl+L/H|r  Cycle focus to nav buttons\n"
+        .. "|cFF00FF00PgUp/PgDn|r jump 5  |cFF00FF00Home/End|r first/last\n"
+        .. "|cFF00FF00Shift+Up/Down|r or |cFF00FF00Ctrl+Shift+K/J|r jump section\n"
+        .. "|cFF00FF00Ctrl+Tab|r switch local/global map search bar\n\n"
         .. "|cFFFFD100Other:|r\n"
-        .. "|cFF00FF00Shift+Drag|r  Reposition search bars\n"
-        .. "|cFF00FF00Right-click|r a result to pin/unpin it\n"
-        .. "|cFF00FF00/ef show|r  |cFF00FF00/ef hide|r  Toggle the search bar\n"
+        .. "|cFF00FF00Shift+Drag|r reposition  |cFF00FF00Right-click|r pin/unpin\n"
+        .. "|cFF00FF00/ef toggle|r toggle the search bar\n"
     )
     -- Keybind buttons
     local KEYBIND_ROW_H = 18
     local KEYBIND_BTN_W = 80
 
     local keybindDefs = {
-        { label = "Toggle Bar",    action = "EASYFIND_TOGGLE" },
-        { label = "Focus Bar",     action = "EASYFIND_FOCUS" },
-        { label = "Clear All",     action = "EASYFIND_CLEAR" },
-        { label = "Toggle+Foc",    action = "EASYFIND_TOGGLE_FOCUS" },
+        { label = "Toggle Search Bar", action = "EASYFIND_TOGGLE_FOCUS" },
+        { label = "Open Map Search",   action = "EASYFIND_MAP_FOCUS" },
+        { label = "Clear All",         action = "EASYFIND_CLEAR" },
     }
 
     local keybindTooltips = {
-        EASYFIND_TOGGLE       = { "Toggle Search Bar", "Shows or hides the main search bar." },
-        EASYFIND_FOCUS        = { "Focus Search Bar", "Places the cursor in the search bar without toggling visibility." },
-        EASYFIND_TOGGLE_FOCUS = { "Toggle + Focus", "Opens and focuses the search bar in one press. Press again to close. When the map is open, focuses the local map search bar instead." },
+        EASYFIND_TOGGLE_FOCUS = { "Toggle Search Bar", "Opens and focuses the UI search bar in one press. Press again to close." },
+        EASYFIND_MAP_FOCUS    = { "Open Map Search", "Opens the world map, switches to the EasyFind Map Search tab, and focuses its search box." },
         EASYFIND_CLEAR        = { "Clear All", "Dismisses all active highlights, map pins, zone highlights, and pending waypoints." },
     }
 
     local keybindButtons = {}
-    local KEYBIND_LABEL_W = 70
-    local COL2_X = 160
+    -- Single column. Two-column layout overlapped because labels like
+    -- "Toggle Search Bar:" exceed the small per-column allowance and
+    -- bleed into the button area of the same row. One column with a
+    -- wide label slot keeps every label clear of its button.
+    local KEYBIND_LABEL_W = 130
     for i, def in ipairs(keybindDefs) do
-        local row = (i - 1) % 2        -- 0 or 1
-        local col = (i <= 2) and 0 or 1 -- left or right column
+        local row = i - 1
 
         local rowLabel = sec4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        if row == 0 then
-            rowLabel:SetPoint("TOPLEFT", shortcutText, "BOTTOMLEFT", col * COL2_X, -12)
-        else
-            rowLabel:SetPoint("TOPLEFT", shortcutText, "BOTTOMLEFT", col * COL2_X, -12 - KEYBIND_ROW_H)
-        end
+        rowLabel:SetPoint("TOPLEFT", shortcutText, "BOTTOMLEFT", 0, -12 - row * KEYBIND_ROW_H)
         rowLabel:SetText(def.label .. ":")
 
         local keybindBtn = CreateFrame("Button", nil, sec4, "UIPanelButtonTemplate")
@@ -1372,10 +1338,9 @@ function Options:Initialize()
 
         keybindButtons[def.action] = keybindBtn
     end
-    optionsFrame.keybindBtn = keybindButtons["EASYFIND_TOGGLE"]
-    optionsFrame.focusBtn = keybindButtons["EASYFIND_FOCUS"]
     optionsFrame.toggleFocusBtn = keybindButtons["EASYFIND_TOGGLE_FOCUS"]
-    optionsFrame.clearBtn = keybindButtons["EASYFIND_CLEAR"]
+    optionsFrame.mapFocusBtn    = keybindButtons["EASYFIND_MAP_FOCUS"]
+    optionsFrame.clearBtn       = keybindButtons["EASYFIND_CLEAR"]
 
     -- Reset buttons (tips on Home tab)
 
@@ -1692,15 +1657,11 @@ function Options:DoResetAll()
         ns.MapSearch.pendingWaypoint = nil
     end
 
-    local old1, old2 = GetBindingKey("EASYFIND_TOGGLE")
+    local old1, old2 = GetBindingKey("EASYFIND_TOGGLE_FOCUS")
     if old1 then SetBinding(old1) end
     if old2 then SetBinding(old2) end
 
-    old1, old2 = GetBindingKey("EASYFIND_FOCUS")
-    if old1 then SetBinding(old1) end
-    if old2 then SetBinding(old2) end
-
-    old1, old2 = GetBindingKey("EASYFIND_TOGGLE_FOCUS")
+    old1, old2 = GetBindingKey("EASYFIND_MAP_FOCUS")
     if old1 then SetBinding(old1) end
     if old2 then SetBinding(old2) end
 
@@ -1710,18 +1671,15 @@ function Options:DoResetAll()
     SaveBindings(GetCurrentBindingSet())
 
     optionsFrame.mapIconSlider:SetValue(0.8)
-    optionsFrame.mapYOffsetSlider:SetValue(0)
     optionsFrame.panelOpacitySlider:SetValue(0.9)
     optionsFrame.opacitySlider:SetValue(DEFAULT_OPACITY)
     optionsFrame.uiFontSlider:SetValue(0.9)
-    optionsFrame.mapFontSlider:SetValue(0.9)
     optionsFrame.smartShowCheckbox:SetChecked(false)
     optionsFrame.staticOpacityCheckbox:SetChecked(false)
     optionsFrame.loginMessageCheckbox:SetChecked(true)
     optionsFrame.uiResultsAboveCheckbox:SetChecked(false)
     optionsFrame.minimapBtnCheckbox:SetChecked(true)
     if optionsFrame.rareTrackCheckbox then optionsFrame.rareTrackCheckbox:SetChecked(false) end
-    if optionsFrame.searchBarGroup then optionsFrame.searchBarGroup:UpdateVisuals() end
     if optionsFrame.mapPinGroup then optionsFrame.mapPinGroup:UpdateVisuals() end
     if optionsFrame.minimapGroup then optionsFrame.minimapGroup:UpdateVisuals() end
     if optionsFrame.automationGroup then optionsFrame.automationGroup:UpdateVisuals() end
@@ -1843,12 +1801,9 @@ function Options:DoResetMap()
     EasyFind.db.alwaysShowRares = false
 
     if optionsFrame.rareTrackCheckbox then optionsFrame.rareTrackCheckbox:SetChecked(false) end
-    if optionsFrame.searchBarGroup then optionsFrame.searchBarGroup:UpdateVisuals() end
     if optionsFrame.mapPinGroup then optionsFrame.mapPinGroup:UpdateVisuals() end
     if optionsFrame.minimapGroup then optionsFrame.minimapGroup:UpdateVisuals() end
     if optionsFrame.automationGroup then optionsFrame.automationGroup:UpdateVisuals() end
-    optionsFrame.mapFontSlider:SetValue(0.9)
-    optionsFrame.mapYOffsetSlider:SetValue(0)
     optionsFrame.mapIconSlider:SetValue(0.8)
     optionsFrame.arrivalSlider:SetValue(10)
     optionsFrame.circleScaleSlider:SetValue(1.0)
@@ -1898,7 +1853,6 @@ function Options:DoResetMapPositions()
     EasyFind.db.mapResultsScale = 1.0
     EasyFind.db.mapResultsWidth = 300
     EasyFind.db.mapSearchYOffset = 0
-    optionsFrame.mapYOffsetSlider:SetValue(0)
     if _G["EasyFindMapSearchFrame"] and ns.MapSearch then
         if ns.MapSearch.ResetPosition then ns.MapSearch:ResetPosition() end
         if ns.MapSearch.UpdateScale then ns.MapSearch:UpdateScale() end
@@ -1981,16 +1935,13 @@ function Options:Show()
     if optionsFrame.panelOpacitySlider then optionsFrame.panelOpacitySlider:SetValue(EasyFind.db.panelOpacity or 0.9) end
     if optionsFrame.opacitySlider then optionsFrame.opacitySlider:SetValue(EasyFind.db.searchBarOpacity or DEFAULT_OPACITY) end
     if optionsFrame.uiFontSlider then optionsFrame.uiFontSlider:SetValue(EasyFind.db.fontSize or 0.9) end
-    if optionsFrame.mapFontSlider then optionsFrame.mapFontSlider:SetValue(EasyFind.db.mapFontSize or 0.9) end
     if optionsFrame.mapIconSlider then optionsFrame.mapIconSlider:SetValue(EasyFind.db.iconScale or 0.8) end
-    if optionsFrame.mapYOffsetSlider then optionsFrame.mapYOffsetSlider:SetValue(EasyFind.db.mapSearchYOffset or 0) end
     if optionsFrame.arrivalSlider then optionsFrame.arrivalSlider:SetValue(EasyFind.db.arrivalDistance or 10) end
     optionsFrame.smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
     optionsFrame.staticOpacityCheckbox:SetChecked(EasyFind.db.staticOpacity or false)
     optionsFrame.loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage ~= false)
     optionsFrame.uiResultsAboveCheckbox:SetChecked(EasyFind.db.uiResultsAbove or false)
     optionsFrame.minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton or false)
-    if optionsFrame.searchBarGroup then optionsFrame.searchBarGroup:UpdateVisuals() end
     if optionsFrame.mapPinGroup then optionsFrame.mapPinGroup:UpdateVisuals() end
     if optionsFrame.minimapGroup then optionsFrame.minimapGroup:UpdateVisuals() end
     if optionsFrame.automationGroup then optionsFrame.automationGroup:UpdateVisuals() end
@@ -2002,14 +1953,12 @@ function Options:Show()
     optionsFrame.colorBtnText:SetTextColor(rgb[1], rgb[2], rgb[3])
     optionsFrame.colorSwatch:SetColorTexture(rgb[1], rgb[2], rgb[3], 1)
 
-    local key1 = GetBindingKey("EASYFIND_TOGGLE")
-    optionsFrame.keybindBtn:SetText(key1 or "Not Bound")
-    local key2 = GetBindingKey("EASYFIND_FOCUS")
-    optionsFrame.focusBtn:SetText(key2 or "Not Bound")
-    local key3 = GetBindingKey("EASYFIND_TOGGLE_FOCUS")
-    optionsFrame.toggleFocusBtn:SetText(key3 or "Not Bound")
-    local key4 = GetBindingKey("EASYFIND_CLEAR")
-    optionsFrame.clearBtn:SetText(key4 or "Not Bound")
+    local key1 = GetBindingKey("EASYFIND_TOGGLE_FOCUS")
+    optionsFrame.toggleFocusBtn:SetText(key1 or "Not Bound")
+    local key2 = GetBindingKey("EASYFIND_MAP_FOCUS")
+    optionsFrame.mapFocusBtn:SetText(key2 or "Not Bound")
+    local key3 = GetBindingKey("EASYFIND_CLEAR")
+    optionsFrame.clearBtn:SetText(key3 or "Not Bound")
 
     if not self.embedded and optionsFrame.bgTex then
         optionsFrame.bgTex:SetAlpha(EasyFind.db.panelOpacity or 0.9)
