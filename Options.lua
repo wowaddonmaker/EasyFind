@@ -720,6 +720,16 @@ function Options:Initialize()
                     StopCapture(self, action)
                     return
                 end
+                -- Reject bare SPACE/ENTER/movement keys -- they're vital
+                -- defaults (jump, accept, WASD) and silently overwriting
+                -- them on a stray keypress during capture has bricked
+                -- spacebar after a /reload more than once. Only bind
+                -- these when modified.
+                local hasMod = IsAltKeyDown() or IsControlKeyDown() or IsShiftKeyDown()
+                if not hasMod and (key == "SPACE" or key == "ENTER"
+                    or key == "W" or key == "A" or key == "S" or key == "D") then
+                    return
+                end
                 local combo = ""
                 if IsAltKeyDown()   then combo = combo .. "ALT-"   end
                 if IsControlKeyDown() then combo = combo .. "CTRL-"  end
@@ -1042,9 +1052,22 @@ function Options:Initialize()
     end)
     optionsFrame.uiResultsAboveCheckbox = uiResultsAboveCheckbox
 
+    local hideHeadersCheckbox = CreateCheckbox(sec1, "HideHeaders", "Flat Results (no headers)",
+        "Show results as a single flat list with no category headers. Each row displays the entry name with its full path as subtext underneath.")
+    hideHeadersCheckbox:SetPoint("TOPLEFT", uiResultsAboveCheckbox, "BOTTOMLEFT", 0, -2)
+    hideHeadersCheckbox:SetChecked(EasyFind.db.uiHideHeaders or false)
+    hideHeadersCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.uiHideHeaders = self:GetChecked()
+        -- Re-run the search so results rebuild in the chosen layout mode.
+        if ns.UI and ns.UI.RebuildOpenResults then
+            ns.UI:RebuildOpenResults()
+        end
+    end)
+    optionsFrame.hideHeadersCheckbox = hideHeadersCheckbox
+
     local uiFontSlider = CreateSlider(sec1, "UIFontSize", "Font Size|cffff3333*|r", 0.5, 2.0, 0.1,
         "Changing font size also affects search bar height and results window sizing.", nil, 1.0)
-    uiFontSlider:SetPoint("TOPLEFT", uiResultsAboveCheckbox, "BOTTOMLEFT", 4, -20)
+    uiFontSlider:SetPoint("TOPLEFT", hideHeadersCheckbox, "BOTTOMLEFT", 4, -20)
     uiFontSlider:SetValue(EasyFind.db.fontSize or 1.0)
     uiFontSlider:HookScript("OnValueChanged", function(self, value)
         EasyFind.db.fontSize = value
@@ -1070,7 +1093,7 @@ function Options:Initialize()
         StaticPopup_Show("EASYFIND_RESET_UI_POS")
     end)
 
-    uiControls = { resizeUIBtn, resetUIBtn, resetUIPosBtn, uiFontSlider, smartShowCheckbox, staticOpacityCheckbox, uiResultsAboveCheckbox }
+    uiControls = { resizeUIBtn, resetUIBtn, resetUIPosBtn, uiFontSlider, smartShowCheckbox, staticOpacityCheckbox, uiResultsAboveCheckbox, hideHeadersCheckbox }
     UpdateUIToggleVisual()
 
     -- SECTION 3: Map Search
@@ -1342,6 +1365,67 @@ function Options:Initialize()
     optionsFrame.mapFocusBtn    = keybindButtons["EASYFIND_MAP_FOCUS"]
     optionsFrame.clearBtn       = keybindButtons["EASYFIND_CLEAR"]
 
+    -- Aliases panel: scrollable list with one row per saved alias.
+    -- Each row shows "alias -> entry name" and a small X button to
+    -- remove that alias. Entries that no longer resolve (mount
+    -- relearned with a different ID, etc.) still show so the user can
+    -- prune them.
+    local aliasHeader = sec4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    aliasHeader:SetPoint("TOPLEFT", shortcutText, "BOTTOMLEFT", 0, -12 - #keybindDefs * KEYBIND_ROW_H - 18)
+    aliasHeader:SetText("|cFFFFD100Saved Aliases:|r right-click any search result and choose Add Alias")
+
+    local aliasScroll = CreateFrame("ScrollFrame", nil, sec4, "UIPanelScrollFrameTemplate")
+    aliasScroll:SetPoint("TOPLEFT", aliasHeader, "BOTTOMLEFT", 0, -6)
+    aliasScroll:SetSize(FRAME_W - 80, 110)
+
+    local aliasContent = CreateFrame("Frame", nil, aliasScroll)
+    aliasContent:SetSize(FRAME_W - 100, 1)
+    aliasScroll:SetScrollChild(aliasContent)
+
+    local aliasRowPool = {}
+    local function ReleaseAliasRows()
+        for i = 1, #aliasRowPool do aliasRowPool[i]:Hide() end
+    end
+    local function AcquireAliasRow(idx)
+        local row = aliasRowPool[idx]
+        if row then row:Show(); return row end
+        row = CreateFrame("Frame", nil, aliasContent)
+        row:SetSize(FRAME_W - 100, 18)
+        row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.text:SetPoint("LEFT", row, "LEFT", 4, 0)
+        row.text:SetJustifyH("LEFT")
+        row.removeBtn = CreateFrame("Button", nil, row, "UIPanelCloseButton")
+        row.removeBtn:SetSize(20, 20)
+        row.removeBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+        aliasRowPool[idx] = row
+        return row
+    end
+
+    local function RefreshAliasList()
+        ReleaseAliasRows()
+        if not ns.Aliases then return end
+        local entries = {}
+        ns.Aliases:ForEach(function(text, info)
+            entries[#entries + 1] = info
+        end)
+        table.sort(entries, function(a, b) return (a.text or ""):lower() < (b.text or ""):lower() end)
+        local y = -2
+        for i, info in ipairs(entries) do
+            local row = AcquireAliasRow(i)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", aliasContent, "TOPLEFT", 0, y)
+            row.text:SetText(("|cFFFFD100%s|r  -> %s"):format(info.text or "?", info.name or "?"))
+            row.removeBtn:SetScript("OnClick", function()
+                if ns.Aliases then ns.Aliases:Remove(info.text) end
+                RefreshAliasList()
+            end)
+            y = y - 18
+        end
+        aliasContent:SetHeight(math.max(1, -y + 4))
+    end
+    sec4:HookScript("OnShow", RefreshAliasList)
+    optionsFrame.RefreshAliasList = RefreshAliasList
+
     -- Reset buttons (tips on Home tab)
 
     StaticPopupDialogs["EASYFIND_RESET_ALL"] = {
@@ -1600,6 +1684,7 @@ function Options:DoResetAll()
     EasyFind.db.showLoginMessage = true
     EasyFind.db.uiResultsAbove = false
     EasyFind.db.mapResultsAbove = false
+    EasyFind.db.uiHideHeaders = false
     EasyFind.db.showMinimapButton = true
     EasyFind.db.minimapButtonAngle = 200
     EasyFind.db.arrivalDistance = 10
@@ -1619,7 +1704,7 @@ function Options:DoResetAll()
     EasyFind.db.enableMapSearch = true
     EasyFind.db.globalSearchFilters = { zones = true, dungeons = true, raids = true, delves = true }
     EasyFind.db.localSearchFilters = { instances = true, travel = true, services = true, rares = true }
-    EasyFind.db.uiSearchFilters = { ui = true, mounts = false, toys = false, pets = false, outfits = false, loot = false, appearanceSets = false, map = false }
+    EasyFind.db.uiSearchFilters = { ui = true, achievements = true, currencies = true, reputations = true, collections = true, mounts = false, toys = false, pets = false, outfits = false, loot = false, appearanceSets = false, map = false }
     EasyFind.db.lootSpecs = nil           -- nil = current spec only
     EasyFind.db.lootSearchSlots = true
     EasyFind.db.lootSearchStats = true
@@ -1678,6 +1763,7 @@ function Options:DoResetAll()
     optionsFrame.staticOpacityCheckbox:SetChecked(false)
     optionsFrame.loginMessageCheckbox:SetChecked(true)
     optionsFrame.uiResultsAboveCheckbox:SetChecked(false)
+    if optionsFrame.hideHeadersCheckbox then optionsFrame.hideHeadersCheckbox:SetChecked(false) end
     optionsFrame.minimapBtnCheckbox:SetChecked(true)
     if optionsFrame.rareTrackCheckbox then optionsFrame.rareTrackCheckbox:SetChecked(false) end
     if optionsFrame.mapPinGroup then optionsFrame.mapPinGroup:UpdateVisuals() end
@@ -1739,7 +1825,7 @@ function Options:DoResetUI()
     EasyFind.db.uiResultsWidth = 350
     EasyFind.db.uiSearchPosition = nil
     EasyFind.db.uiResultsHeight = 280
-    EasyFind.db.uiSearchFilters = { ui = true, mounts = false, toys = false, pets = false, outfits = false, loot = false, appearanceSets = false, map = false }
+    EasyFind.db.uiSearchFilters = { ui = true, achievements = true, currencies = true, reputations = true, collections = true, mounts = false, toys = false, pets = false, outfits = false, loot = false, appearanceSets = false, map = false }
     EasyFind.db.lootSpecs = nil
     EasyFind.db.lootSearchSlots = true
     EasyFind.db.lootSearchStats = true

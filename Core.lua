@@ -23,7 +23,7 @@ EasyFind.db = {}
 
 -- SavedVariables version. Increment when changing DB schema.
 -- Each migration runs once: if saved dbVersion < DB_VERSION, run all steps in order.
-local DB_VERSION = 4
+local DB_VERSION = 6
 
 -- SavedVariables defaults - new keys are auto-merged for existing users
 local DB_DEFAULTS = {
@@ -36,7 +36,7 @@ local DB_DEFAULTS = {
     uiSearchScale = 1.0,
     mapSearchScale = 1.0,
     mapSearchWidth = 0.88,
-    uiSearchWidth = 0.88,
+    uiSearchWidth = 1.54,  -- 0.88 * 1.75: results dropdown matches bar width now
     uiResultsScale = 1.0,
     uiResultsWidth = 350,
     mapResultsScale = 1.0,
@@ -110,13 +110,19 @@ local DB_DEFAULTS = {
     mapTabAutoExpand = true,    -- Auto-expand a matched parent header to show all its world-hierarchy children
     alwaysShowRares = false,  -- Persistent rare tracking: show active rares on map without searching
     uiSearchFilters = {        -- UI search category filters
-        ui = true,
+        ui = true,           -- UI elements (excludes achievement/currency/reputation entries)
+        achievements = true, -- Individual achievement category entries
+        currencies = true,   -- Individual currency entries
+        reputations = true,  -- Individual reputation entries
+        collections = true,  -- Parent toggle for Mounts/Toys/Pets/Outfits/Appearance Sets
         mounts = false,
         toys = false,
         pets = false,
         outfits = false,
         loot = false,
         appearanceSets = false,
+        bags = false,
+        options = true,
         map = false,
     },
     lootSpecs = nil,           -- Loot search: nil = current spec only, table of {classID, specID} pairs when customized
@@ -130,6 +136,10 @@ local DB_DEFAULTS = {
     appearanceSetPvE = true,          -- Show PvE sets (Dungeon/Raid)
     appearanceSetPvP = true,          -- Show PvP sets
     uiMapSearchLocal = true,   -- Map search in UI bar: true = local zone only, false = global
+    uiHideHeaders = false,     -- Flat results list: no category headers, path shown as subtext per row
+    aliases = {},              -- User-defined search aliases: { [aliasText] = { kind, id, name } }
+    uiSearchHistory = {},      -- Shell-style search history (most recent at index 1, capped at uiSearchHistoryLimit)
+    uiSearchHistoryLimit = 500, -- Bash HISTSIZE default
 }
 
 local DB_MIGRATIONS = {
@@ -157,13 +167,25 @@ local DB_MIGRATIONS = {
         db.uiMaxResults = nil
         db.mapMaxResults = nil
     end,
-    -- [4] = Flip stale localMapDirectOpen / globalMapDirectOpen defaults.
+    -- [4] = Combined search bar + results dropdown silhouette. The
+    -- results panel now matches the bar's width directly, so the
+    -- old 0.88 default would render the bar (and therefore the
+    -- dropdown) too narrow. Bump uiSearchWidth ~1.75x for everyone
+    -- whose width is at or below the old default; users who have
+    -- explicitly widened it past the old default keep their value.
+    [4] = function(db)
+        local w = db.uiSearchWidth
+        if w == nil or w <= 0.88 then
+            db.uiSearchWidth = 1.54
+        end
+    end,
+    -- [5] = Flip stale localMapDirectOpen / globalMapDirectOpen defaults.
     -- The "Make Fast Mode default" commit changed both defaults from false
     -- to true but didn't migrate existing saves. Users carried over
     -- false → SelectResult bucketed every zone click into the multi-click
     -- teach path (HighlightZoneOnMap), making clicks feel like they
     -- needed two presses to register.
-    [4] = function(db)
+    [5] = function(db)
         if db.localMapDirectOpen == false then db.localMapDirectOpen = true end
         if db.globalMapDirectOpen == false then db.globalMapDirectOpen = true end
     end,
@@ -417,6 +439,15 @@ local function OnPlayerLogin()
                     ns.Database:PopulateDynamicPets()
                     SafeAfter(0, function()
                         ns.Database:PopulateDynamicOutfits()
+                        if ns.Database.PopulateDynamicMacros then
+                            ns.Database:PopulateDynamicMacros()
+                        end
+                        if ns.Database.PopulateDynamicAbilities then
+                            ns.Database:PopulateDynamicAbilities()
+                        end
+                        if ns.Database.PopulateDynamicBags then
+                            ns.Database:PopulateDynamicBags()
+                        end
                         SafeAfter(0, function()
                             ns.Database:SyncTransmogSetFiltersFromUI()
                             ns.Database:PopulateDynamicTransmogSets()
@@ -493,6 +524,11 @@ eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 eventFrame:RegisterEvent("PLAYER_LOGOUT")
 eventFrame:RegisterEvent("TRANSMOG_OUTFITS_CHANGED")
 eventFrame:RegisterEvent("TRANSMOG_COLLECTION_UPDATED")
+eventFrame:RegisterEvent("UPDATE_MACROS")
+eventFrame:RegisterEvent("SPELLS_CHANGED")
+eventFrame:RegisterEvent("BAG_UPDATE_DELAYED")
+local bagRefreshTimer
+local spellRefreshTimer
 eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
     if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
         OnInitialize()
@@ -530,6 +566,30 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
                 ns.Database:PopulateDynamicTransmogSets()
             end
         end
+    elseif event == "UPDATE_MACROS" then
+        -- Fires when the player creates, edits, or deletes a macro. Re-scan
+        -- so the search index reflects the change without /reload.
+        if ns.Database and ns.Database.PopulateDynamicMacros then
+            ns.Database:PopulateDynamicMacros()
+        end
+    elseif event == "SPELLS_CHANGED" then
+        -- Throttle: many SPELLS_CHANGED events can fire in rapid
+        -- succession on login or when learning a row of talents.
+        if spellRefreshTimer then spellRefreshTimer:Cancel() end
+        spellRefreshTimer = C_Timer.NewTimer(1.0, function()
+            spellRefreshTimer = nil
+            if ns.Database and ns.Database.PopulateDynamicAbilities then
+                ns.Database:PopulateDynamicAbilities()
+            end
+        end)
+    elseif event == "BAG_UPDATE_DELAYED" then
+        if bagRefreshTimer then bagRefreshTimer:Cancel() end
+        bagRefreshTimer = C_Timer.NewTimer(0.5, function()
+            bagRefreshTimer = nil
+            if ns.Database and ns.Database.PopulateDynamicBags then
+                ns.Database:PopulateDynamicBags()
+            end
+        end)
     elseif event == "PLAYER_LOGOUT" then
         -- Strip runtime-only fields before SavedVariables serialization
         if EasyFindDB then

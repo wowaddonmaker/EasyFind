@@ -303,6 +303,12 @@ function Database:PopulateDynamicReputations()
         return path
     end
 
+    -- Localized "Alliance" / "Horde" header names from globals when available;
+    -- fall back to lowercase string comparison for non-English clients that
+    -- don't expose them under these IDs.
+    local ALLIANCE_HEADER = (FACTION_ALLIANCE or "Alliance"):lower()
+    local HORDE_HEADER    = (FACTION_HORDE    or "Horde"):lower()
+
     local function injectFaction(factionData)
         local isDiscovered = (factionData.currentStanding and factionData.currentStanding > 0) or
                              (factionData.isWatched == true)
@@ -322,6 +328,19 @@ function Database:PopulateDynamicReputations()
         end
         keywords[#keywords + 1] = factionNameLower
 
+        -- Faction side: inferred from the parent group header. Factions
+        -- under an Alliance/Horde sub-header are faction-locked; the rest
+        -- are either-faction reputations.
+        local factionSide
+        if currentFactionGroup then
+            local groupLower = slower(currentFactionGroup)
+            if groupLower == ALLIANCE_HEADER then
+                factionSide = "alliance"
+            elseif groupLower == HORDE_HEADER then
+                factionSide = "horde"
+            end
+        end
+
         local entry = {
             name = factionData.name,
             keywords = keywords,
@@ -330,6 +349,7 @@ function Database:PopulateDynamicReputations()
             path = path,
             steps = steps,
             factionID = factionData.factionID,
+            factionSide = factionSide,
             hasRepBar = not factionData.isHeader or factionData.isHeaderWithRep,
         }
 
@@ -1323,6 +1343,207 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
     end
     RebuildLootSearchData()
     collectgarbage("collect")
+end
+
+-- Macro search: scans the player's account-wide and per-character macros
+-- and injects them as searchable entries. Direct click runs the macro;
+-- guide mode opens MacroFrame, switches to the matching tab, and selects
+-- the macro. Re-callable: clears prior Macro entries before re-injecting,
+-- so calls from UPDATE_MACROS reflect renames/edits/deletes.
+function Database:PopulateDynamicMacros()
+    if not GetNumMacros or not GetMacroInfo then return end
+
+    for i = #uiSearchData, 1, -1 do
+        if uiSearchData[i].category == "Macro" then
+            tremove(uiSearchData, i)
+        end
+    end
+    if self.ResetSearchCache then self:ResetSearchCache() end
+
+    local numGlobal, numPerChar = GetNumMacros()
+    local MAX_ACCOUNT = MAX_ACCOUNT_MACROS or 120
+
+    local function injectMacro(macroIdx, isCharSpecific)
+        local name, iconTexture, body = GetMacroInfo(macroIdx)
+        if not name or name == "" then return end
+        local nameLower = slower(name)
+        local kw = { "macro", nameLower }
+        -- Index macro body words (slash command names, target names, etc.)
+        -- so /castsequence Hearthstone is reachable by typing "hearthstone".
+        if body and body ~= "" then
+            local cleanBody = body:gsub("#show[^\n]*", ""):gsub("/", " ")
+            for word in cleanBody:gmatch("[%w']+") do
+                local wl = slower(word)
+                if #wl >= 3 then kw[#kw + 1] = wl end
+            end
+        end
+        local tabIdx = isCharSpecific and 2 or 1
+        local entry = {
+            name = name,
+            nameLower = nameLower,
+            keywords = kw,
+            keywordsLower = kw,
+            category = "Macro",
+            icon = iconTexture,
+            macroIndex = macroIdx,
+            macroBody = body,
+            macroIsChar = isCharSpecific,
+            buttonFrame = "MainMenuMicroButton",
+            path = { "Macros", isCharSpecific and "Character" or "General" },
+            steps = {
+                { buttonFrame = "MainMenuMicroButton" },
+                { gameMenuText = "Macros" },
+                { waitForFrame = "MacroFrame", tabIndex = tabIdx },
+                { waitForFrame = "MacroFrame", macroIndex = macroIdx },
+            },
+        }
+        uiSearchData[#uiSearchData + 1] = entry
+    end
+
+    for i = 1, numGlobal do
+        injectMacro(i, false)
+    end
+    for i = 1, numPerChar do
+        injectMacro(MAX_ACCOUNT + i, true)
+    end
+end
+
+-- Inject one entry per learned spell into uiSearchData. Retail Midnight
+-- replaced GetSpellBookItemInfo's (slot, slotType) string-typed args
+-- with (slotIndex, Enum.SpellBookSpellBank) and returns a single
+-- SpellBookItemInfo table containing name, subName, actionID, iconID.
+-- We use that path exclusively; pre-Midnight clients (Classic) skip
+-- registration since this addon targets Midnight 12.0+.
+function Database:PopulateDynamicAbilities()
+    -- Strip prior pass so /reload-equivalent rebuilds don't double up.
+    for i = #uiSearchData, 1, -1 do
+        if uiSearchData[i].category == "Ability" then
+            tremove(uiSearchData, i)
+        end
+    end
+    if self.ResetSearchCache then self:ResetSearchCache() end
+
+    local SBOOK = C_SpellBook
+    if not SBOOK or not SBOOK.GetSpellBookItemInfo
+       or not SBOOK.GetNumSpellBookSkillLines or not SBOOK.GetSpellBookSkillLineInfo then
+        return
+    end
+    local BANK = (Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player) or 0
+    local SPELL_TYPE = Enum and Enum.SpellBookItemType and Enum.SpellBookItemType.Spell
+
+    local seen = {}  -- spellID -> true (dedupe across skill lines)
+
+    local numLines = SBOOK.GetNumSpellBookSkillLines() or 0
+    for tab = 1, numLines do
+        local lineInfo = SBOOK.GetSpellBookSkillLineInfo(tab)
+        local offset = lineInfo and lineInfo.itemIndexOffset or 0
+        local numSpells = lineInfo and lineInfo.numSpellBookItems or 0
+        for s = offset + 1, offset + numSpells do
+            local itemInfo = SBOOK.GetSpellBookItemInfo(s, BANK)
+            -- Skip flyout placeholders, passives we don't want, etc.
+            if itemInfo
+               and (not SPELL_TYPE or itemInfo.itemType == SPELL_TYPE)
+               and itemInfo.name and itemInfo.name ~= ""
+               and itemInfo.actionID and not seen[itemInfo.actionID] then
+                seen[itemInfo.actionID] = true
+                local name = itemInfo.name
+                local subName = itemInfo.subName
+                local displayName = (subName and subName ~= "") and (name .. " (" .. subName .. ")") or name
+                local nameLower = slower(displayName)
+                local kw = { "ability", "spell", "cast", slower(name) }
+                uiSearchData[#uiSearchData + 1] = {
+                    name = displayName,
+                    nameLower = nameLower,
+                    keywords = kw,
+                    keywordsLower = kw,
+                    category = "Ability",
+                    icon = itemInfo.iconID,
+                    spellID = itemInfo.actionID,
+                    spellName = name,
+                    -- No multi-step guide: SelectResult treats spellID
+                    -- as a direct cast target; drag-to-pickup uses it
+                    -- to put the spell on the cursor.
+                    steps = { { spellID = itemInfo.actionID } },
+                }
+            end
+        end
+    end
+end
+
+-- Inject one entry per unique item carried in the player's bags. The
+-- entry stores the first occupied location so guide mode can highlight
+-- the right slot; drag-to-pickup uses the item ID to put the item on
+-- the cursor (matching the in-game bag drag behavior).
+function Database:PopulateDynamicBags()
+    local CONT = C_Container
+    local getNumSlots = (CONT and CONT.GetContainerNumSlots) or GetContainerNumSlots
+    local getItemInfo = (CONT and CONT.GetContainerItemInfo)  or GetContainerItemInfo
+    if not getNumSlots or not getItemInfo then return end
+
+    for i = #uiSearchData, 1, -1 do
+        if uiSearchData[i].category == "Bag" then
+            tremove(uiSearchData, i)
+        end
+    end
+    if self.ResetSearchCache then self:ResetSearchCache() end
+
+    local itemMap = {}
+    local order = {}
+    for bag = 0, NUM_BAG_SLOTS or 4 do
+        local slots = getNumSlots(bag) or 0
+        for slot = 1, slots do
+            local raw = getItemInfo(bag, slot)
+            if raw then
+                local itemID, texture, link, count
+                if type(raw) == "table" then
+                    itemID, texture, link, count = raw.itemID, raw.iconFileID, raw.hyperlink, raw.stackCount
+                else
+                    -- Legacy multi-return (Classic-era layout)
+                    texture = raw
+                    local _
+                    _, count, _, _, _, _, link, _, _, itemID = getItemInfo(bag, slot)
+                end
+                if itemID then
+                    local entry = itemMap[itemID]
+                    if not entry then
+                        entry = { texture = texture, link = link, totalCount = 0, locations = {} }
+                        itemMap[itemID] = entry
+                        order[#order + 1] = itemID
+                    end
+                    entry.totalCount = entry.totalCount + (count or 1)
+                    entry.locations[#entry.locations + 1] = { bag = bag, slot = slot }
+                end
+            end
+        end
+    end
+
+    for _, itemID in ipairs(order) do
+        local info = itemMap[itemID]
+        local name = info.link and info.link:match("%[(.-)%]") or (GetItemInfo and GetItemInfo(itemID)) or ("Item " .. itemID)
+        local first = info.locations[1]
+        local bagBtn = first.bag == 0 and "MainMenuBarBackpackButton"
+            or ("CharacterBag" .. (first.bag - 1) .. "Slot")
+        local nameLower = slower(name)
+        local kw = { "bag", "item", "inventory", nameLower }
+        uiSearchData[#uiSearchData + 1] = {
+            name = name,
+            nameLower = nameLower,
+            keywords = kw,
+            keywordsLower = kw,
+            category = "Bag",
+            icon = info.texture,
+            itemID = itemID,
+            bagID = first.bag,
+            bagSlot = first.slot,
+            bagItemLink = info.link,
+            bagCount = info.totalCount,
+            bagLocations = info.locations,
+            buttonFrame = bagBtn,
+            steps = {
+                { buttonFrame = bagBtn },
+            },
+        }
+    end
 end
 
 -- TREE FLATTENER

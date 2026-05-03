@@ -139,6 +139,139 @@ end
 
 --- Scroll a ScrollFrame so that the given child button is visible.
 --- Uses the button's top/bottom relative to the scrollChild.
+-- Chrome-style inline autocomplete for an editbox. The full
+-- suggestion is set as the editbox text, the cursor sits at the end
+-- of what the user typed, and the trailing suggestion is selected so
+-- the native caret is always visible at the end of the typed prefix.
+-- Tab confirms; typing a character replaces the selection (advancing
+-- the prefix); backspace deletes the selection without re-applying
+-- the suggestion.
+--
+-- opts.findCandidate(typedText) -> string | nil
+--   Returns the autocomplete suggestion for `typedText`, or nil to
+--   strip any active suggestion.
+--
+-- The caller is responsible for invoking editBox.UpdateAutocomplete()
+-- after its search results refresh, since the suggestion source is
+-- typically derived from those results.
+function Utils.AttachAutocomplete(editBox, opts)
+    if not editBox or not opts or type(opts.findCandidate) ~= "function" then return end
+
+    local findCandidate = opts.findCandidate
+    local typedText = ""
+    local programmatic = false
+    -- Last suggestion we rendered into the editbox. Used by the smooth-typing
+    -- fast path to extend the highlight in-place when the new typed prefix is
+    -- still a prefix of the same candidate, so the suggestion doesn't blink
+    -- between the keystroke and the deferred ApplyAutocomplete next frame.
+    local currentCandidate = nil
+    -- Set true by the smooth-typing fast path when it has already
+    -- rendered the correct suggestion for the current typedText, so a
+    -- subsequent caller-driven ApplyAutocomplete from the search-refresh
+    -- timer can skip the redundant findCandidate + cursor/highlight pass
+    -- (which would re-run the lookup and re-paint the highlight even
+    -- when nothing visually needs to change).
+    local smoothExtendDone = false
+
+    local function StripAutocomplete()
+        local current = editBox:GetText() or ""
+        if current == typedText then return end
+        programmatic = true
+        editBox:SetText(typedText)
+        editBox:SetCursorPosition(#typedText)
+        editBox:HighlightText(0, 0)
+        programmatic = false
+    end
+
+    local function ApplyAutocomplete()
+        if programmatic or typedText == "" or not editBox:HasFocus() then
+            return
+        end
+        -- Smooth fast path already settled the suggestion for this
+        -- typedText; consume the flag and bail before findCandidate
+        -- runs (which would re-call into the result list and re-paint
+        -- the highlight even if nothing changed).
+        if smoothExtendDone then
+            smoothExtendDone = false
+            return
+        end
+        local candidate = findCandidate(typedText)
+        if not candidate or candidate:lower() == typedText:lower() then
+            currentCandidate = nil
+            StripAutocomplete()
+            return
+        end
+        local suffix = candidate:sub(#typedText + 1):lower()
+        if suffix == "" then
+            currentCandidate = nil
+            StripAutocomplete()
+            return
+        end
+        local fullText = typedText .. suffix
+        currentCandidate = fullText
+        if editBox:GetText() == fullText then
+            editBox:SetCursorPosition(#typedText)
+            editBox:HighlightText(#typedText, #fullText)
+            return
+        end
+        programmatic = true
+        editBox:SetText(fullText)
+        editBox:SetCursorPosition(#typedText)
+        editBox:HighlightText(#typedText, #fullText)
+        programmatic = false
+    end
+
+    editBox:HookScript("OnTextChanged", function(self)
+        if programmatic then return end
+        local current = self:GetText() or ""
+        local cursorPos = self:GetCursorPosition()
+        local typed = current:sub(1, cursorPos)
+        if typed == typedText then return end
+        local prevLen = #typedText
+        typedText = typed
+
+        -- Smooth-typing fast path only when the user is GROWING the typed
+        -- prefix. On a shrink (backspace) the suggestion must be torn
+        -- down -- re-extending it here would cancel the backspace
+        -- visually and the user gets stuck.
+        if #typedText > prevLen
+           and currentCandidate and typedText ~= ""
+           and #typedText < #currentCandidate
+           and typedText:lower() == currentCandidate:sub(1, #typedText):lower() then
+            local fullText = typedText .. currentCandidate:sub(#typedText + 1)
+            programmatic = true
+            if current ~= fullText then
+                self:SetText(fullText)
+            end
+            self:SetCursorPosition(#typedText)
+            self:HighlightText(#typedText, #fullText)
+            programmatic = false
+            smoothExtendDone = true
+        elseif #typedText < prevLen then
+            currentCandidate = nil
+        end
+    end)
+
+    editBox:HookScript("OnEditFocusLost", StripAutocomplete)
+
+    editBox:HookScript("OnTabPressed", function(self)
+        local current = self:GetText() or ""
+        if current == "" or current == typedText then return end
+        programmatic = true
+        self:SetCursorPosition(#current)
+        self:HighlightText(0, 0)
+        programmatic = false
+        typedText = current
+    end)
+
+    -- Public API on the editbox so callers can drive it from their
+    -- search-update path without holding their own state.
+    editBox.UpdateAutocomplete = ApplyAutocomplete
+    editBox.StripAutocomplete  = StripAutocomplete
+    editBox.GetTypedText       = function() return typedText end
+    editBox.IsAutocompleteProgrammatic = function() return programmatic end
+end
+
 function Utils.ScrollToButton(scrollFrame, button)
     if not scrollFrame or not button then return end
     local _, _, _, _, btnOffsetY = button:GetPoint(1)
@@ -176,12 +309,19 @@ ns.SEARCHBAR_FONT = "EasyFindSearchFont"
 local SEARCH_TEX_FILL = "Interface\\AddOns\\EasyFind\\Textures\\SearchBarFill"
 local SEARCH_TEX_BORDER = "Interface\\AddOns\\EasyFind\\Textures\\SearchBarBorder"
 local CLEAR_BTN_TEX = "Interface\\AddOns\\EasyFind\\Textures\\clear-button"
--- Pill-shape 9-slice cap occupies 25% of the texture on each side
--- (0..0.25 left, 0.75..1.0 right) so the texture's full semicircle
--- end-cap renders at any bar height. Display cap width is half the
--- frame height -- a true semicircle when rendered, recomputed on
--- every frame resize via OnSizeChanged.
-local CAP_TEX_RATIO = 0.25
+-- 9-slice cap covers the leftmost / rightmost 37.5% of the texture
+-- (0..0.375, 0.625..1) -- the texture itself has the curve in the
+-- outer 64 tex px (a true semicircle, radius == half texture height)
+-- followed by 32 tex px of flat top/bottom that buffer the cap/mid
+-- 9-slice boundary. Cutting in the flat region lets the cap (rendered
+-- at one horizontal scale) and the mid (rendered at another) join
+-- without a visible kink at the curve's tangent point.
+--
+-- Display cap_w = 0.75 * h. The curve occupies the OUTER 2/3 of the
+-- cap (= 0.5 * h = h/2), which is the true semicircle proportion;
+-- the inner 1/3 (= 0.25 * h) is flat extension before mid begins.
+local CAP_TEX_RATIO = 0.375
+local CAP_DISPLAY_RATIO = 0.75
 local TC_LEFT  = {0, CAP_TEX_RATIO, 0, 1}
 local TC_MID   = {CAP_TEX_RATIO, 1 - CAP_TEX_RATIO, 0, 1}
 local TC_RIGHT = {1 - CAP_TEX_RATIO, 1, 0, 1}
@@ -199,7 +339,7 @@ local function ApplyCapWidths(frame)
     if not frame.searchBorder then return end
     local h = frame:GetHeight() or 0
     if h <= 0 then return end
-    local capW = h / 2
+    local capW = h * CAP_DISPLAY_RATIO
     local sb = frame.searchBorder
     sb.fillLeft:SetWidth(capW)
     sb.fillRight:SetWidth(capW)
@@ -243,6 +383,148 @@ end
 -- re-apply in case the caller resized the frame in the same tick.
 function ns.ScaleSearchBorder(frame, _scale)
     ApplyCapWidths(frame)
+end
+
+-- ---------------------------------------------------------------------------
+-- Rounded-rect 9-slice (combined search bar + results dropdown silhouette)
+--
+-- Used by the container frame that wraps both. Texture is 256x256 with
+-- corner radius 64 (= 25% on each side), so the 9-slice cap ratio is
+-- 0.25. Corner cells stay a fixed display size (cornerSize, normally
+-- h_bar / 2 so it visually matches the bar's pill caps); top/bottom
+-- edges stretch horizontally, left/right edges stretch vertically,
+-- center fills the rest.
+--
+-- When the container's height equals 2 * cornerSize, the side edges
+-- collapse to zero and the silhouette becomes a horizontal pill --
+-- same shape the bar alone wants. When the container grows downward
+-- (results open), only the side edges and center stretch; the
+-- corners keep their shape. That gives us the "Google search bar
+-- with dropdown" look in a single primitive.
+-- ---------------------------------------------------------------------------
+local COMBINED_TEX_FILL   = "Interface\\AddOns\\EasyFind\\Textures\\CombinedFill"
+local COMBINED_TEX_BORDER = "Interface\\AddOns\\EasyFind\\Textures\\CombinedBorder"
+local CR = 0.25  -- 9-slice corner ratio (cornerSize_tex / texSize) for the combined texture
+
+local TC9 = {
+    tl = {0,        CR,     0,        CR    },
+    tm = {CR,       1 - CR, 0,        CR    },
+    tr = {1 - CR,   1,      0,        CR    },
+    ml = {0,        CR,     CR,       1 - CR},
+    mm = {CR,       1 - CR, CR,       1 - CR},
+    mr = {1 - CR,   1,      CR,       1 - CR},
+    bl = {0,        CR,     1 - CR,   1     },
+    bm = {CR,       1 - CR, 1 - CR,   1     },
+    br = {1 - CR,   1,      1 - CR,   1     },
+}
+
+local function CreateNineSlice(frame, layer, texPath, vertR, vertG, vertB, vertA)
+    local nine = {}
+    local function P(name)
+        local t = frame:CreateTexture(nil, layer)
+        t:SetTexture(texPath)
+        t:SetTexCoord(unpack(TC9[name]))
+        t:SetVertexColor(vertR, vertG, vertB, vertA)
+        return t
+    end
+    nine.tl, nine.tm, nine.tr = P("tl"), P("tm"), P("tr")
+    nine.ml, nine.mm, nine.mr = P("ml"), P("mm"), P("mr")
+    nine.bl, nine.bm, nine.br = P("bl"), P("bm"), P("br")
+    return nine
+end
+
+local function AnchorNineSlice(frame, n, cornerSize)
+    -- Corners: pinned to each frame corner with explicit size.
+    n.tl:ClearAllPoints(); n.tl:SetPoint("TOPLEFT");     n.tl:SetSize(cornerSize, cornerSize)
+    n.tr:ClearAllPoints(); n.tr:SetPoint("TOPRIGHT");    n.tr:SetSize(cornerSize, cornerSize)
+    n.bl:ClearAllPoints(); n.bl:SetPoint("BOTTOMLEFT");  n.bl:SetSize(cornerSize, cornerSize)
+    n.br:ClearAllPoints(); n.br:SetPoint("BOTTOMRIGHT"); n.br:SetSize(cornerSize, cornerSize)
+    -- Top edge stretches between the two top corners; same for bottom.
+    n.tm:ClearAllPoints()
+    n.tm:SetPoint("TOPLEFT",  n.tl, "TOPRIGHT")
+    n.tm:SetPoint("BOTTOMRIGHT", n.tr, "BOTTOMLEFT")
+    n.bm:ClearAllPoints()
+    n.bm:SetPoint("TOPLEFT",  n.bl, "TOPRIGHT")
+    n.bm:SetPoint("BOTTOMRIGHT", n.br, "BOTTOMLEFT")
+    -- Left/right edges stretch between top and bottom corners.
+    n.ml:ClearAllPoints()
+    n.ml:SetPoint("TOPLEFT",  n.tl, "BOTTOMLEFT")
+    n.ml:SetPoint("BOTTOMRIGHT", n.bl, "TOPRIGHT")
+    n.mr:ClearAllPoints()
+    n.mr:SetPoint("TOPLEFT",  n.tr, "BOTTOMLEFT")
+    n.mr:SetPoint("BOTTOMRIGHT", n.br, "TOPRIGHT")
+    -- Center fills between the four edges.
+    n.mm:ClearAllPoints()
+    n.mm:SetPoint("TOPLEFT",  n.tl, "BOTTOMRIGHT")
+    n.mm:SetPoint("BOTTOMRIGHT", n.br, "TOPLEFT")
+end
+
+local function ApplyContainerCornerSize(frame)
+    if not frame.combinedBorder then return end
+    local h = frame.cbBarHeight or frame:GetHeight() or 0
+    if h <= 0 then return end
+    local cornerSize = h / 2
+    AnchorNineSlice(frame, frame.combinedBorder.fill,   cornerSize)
+    AnchorNineSlice(frame, frame.combinedBorder.border, cornerSize)
+end
+
+function ns.CreateRoundedRectBorder(frame)
+    local fill   = CreateNineSlice(frame, "BACKGROUND", COMBINED_TEX_FILL,   0, 0, 0, 1)
+    local border = CreateNineSlice(frame, "ARTWORK",    COMBINED_TEX_BORDER, BORDER_R, BORDER_G, BORDER_B, 1)
+    frame.combinedBorder = { fill = fill, border = border }
+    ApplyContainerCornerSize(frame)
+    -- Keep corner cells a constant display size as the frame resizes
+    -- (results open / close, theme rescale, etc). The bar height drives
+    -- the corner; if a caller pins it via cbBarHeight the OnSizeChanged
+    -- still re-anchors against that pinned value.
+    frame:HookScript("OnSizeChanged", ApplyContainerCornerSize)
+end
+
+-- The container's corner radius tracks the BAR height, not the
+-- container's own (which grows when results open). Callers must pin the
+-- bar height via this setter once on creation and again whenever
+-- fontSize / theme changes the bar's pixel height.
+function ns.SetRoundedRectBarHeight(frame, h)
+    frame.cbBarHeight = h
+    ApplyContainerCornerSize(frame)
+end
+
+function ns.SetRoundedRectBorderShown(frame, shown)
+    if not frame.combinedBorder then return end
+    for _, t in pairs(frame.combinedBorder.fill)   do t:SetShown(shown) end
+    for _, t in pairs(frame.combinedBorder.border) do t:SetShown(shown) end
+end
+
+function ns.SetRoundedRectBorderBgAlpha(frame, alpha)
+    if not frame.combinedBorder then return end
+    for _, t in pairs(frame.combinedBorder.fill) do t:SetAlpha(alpha) end
+end
+
+-- A 1-px horizontal divider that runs across the inside of the
+-- container at the bottom of the bar's content area. Visible only
+-- when the results dropdown is open; it doubles as the "bar's
+-- bottom border" the user keeps as the search/results separator.
+function ns.CreateRoundedRectDivider(frame)
+    if frame.combinedDivider then return frame.combinedDivider end
+    local d = frame:CreateTexture(nil, "ARTWORK")
+    d:SetColorTexture(BORDER_R, BORDER_G, BORDER_B, 1)
+    d:SetHeight(1)
+    d:Hide()
+    frame.combinedDivider = d
+    return d
+end
+
+-- Position the divider at `yOffset` below the container's top, with a
+-- small inset from each side so it doesn't bleed into the rounded
+-- corners. yOffset should be the bar's height (= bar's bottom edge).
+function ns.SetRoundedRectDivider(frame, yOffset, shown)
+    local d = frame.combinedDivider
+    if not d then return end
+    local cornerSize = (frame.cbBarHeight or frame:GetHeight() or 0) / 2
+    d:ClearAllPoints()
+    d:SetPoint("TOPLEFT",  frame, "TOPLEFT",  cornerSize * 0.5, -yOffset)
+    d:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -cornerSize * 0.5, -yOffset)
+    d:SetShown(shown and true or false)
 end
 
 function ns.SetSearchBorderShown(frame, shown)

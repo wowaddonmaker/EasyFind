@@ -15,10 +15,12 @@ Database.lua
 StaticLocations.lua
 TutorialBox.lua
 ChevronConfig.lua
+Aliases.lua
 UI.lua
 Highlight.lua
 MapSearch.lua
 MapTab.lua
 Rescaler.lua
+BlizzOptionsSearch.lua
 Options.lua
 Demo.lua

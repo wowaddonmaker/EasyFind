@@ -1144,13 +1144,14 @@ local CATEGORY_ICONS = {
     boat = 1126431,
     portal = "Interface\\Icons\\Spell_Arcane_PortalDalaran",
     tram = "Interface\\Icons\\INV_Misc_Gear_01",
-    -- Cropped texCoords from atlas sprite sheet 1121272 - removes the built-in glow border
-    -- Full atlas coords: Dungeon L=0.1982 R=0.2471 T=0.4404 B=0.4893
-    --                     Raid    L=0.1982 R=0.2471 T=0.4912 B=0.5400
-    --                     delves  L=0.0010 R=0.0635 T=0.3896 B=0.4521
-    dungeon = { file = 1121272, coords = { 0.2056, 0.2397, 0.4478, 0.4819 } },
-    raid    = { file = 1121272, coords = { 0.2056, 0.2397, 0.4986, 0.5327 } },
-    delve   = { file = 1121272, coords = { 0.0104, 0.0541, 0.3990, 0.4427 } },
+    -- Use the clean map-pin atlases instead of the journal sprite sheet.
+    -- The 1121272 sheet's icons are wrapped in a wide soft glow that
+    -- gets clipped to a square inside the row's icon slot; the pin
+    -- atlases are tight, no-bleed shapes that match WoW's own dungeon /
+    -- raid / delve world-map pins.
+    dungeon = "atlas:Dungeon",
+    raid    = "atlas:Raid",
+    delve   = { file = 1121272, coords = { 0.0000, 0.0620, 0.3903, 0.4509 } },
     bank = 136453,
     guildbank = 136453,
     personalbank = 136453,

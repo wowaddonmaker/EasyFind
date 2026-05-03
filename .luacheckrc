@@ -84,6 +84,15 @@ read_globals = {
     "EJ_SetDifficulty", "EJ_SetLootFilter", "EJ_SetSlotFilter",
     "EJ_GetNumLoot", "EJ_GetLootInfoByIndex",
     "HasAction", "PlaceAction", "PickupAction", "ClearCursor", "GetActionCooldown",
+    "PickupSpell", "PickupItem", "PickupMacro", "C_Spell",
+    "ACCEPT", "CANCEL", "StaticPopup_Show",
+    "C_SpellBook", "C_Container", "GetNumSpellTabs", "GetSpellTabInfo",
+    "GetSpellBookItemInfo", "GetSpellBookItemName", "GetSpellBookItemTexture",
+    "GetContainerNumSlots", "GetContainerItemInfo", "PickupContainerItem",
+    "NUM_BAG_SLOTS", "GetNumMacros", "GetMacroInfo", "MAX_ACCOUNT_MACROS",
+    "ShowMacroFrame", "MacroFrame", "MacroFrame_SelectMacro", "MacroFrame_Update",
+    "MacroFrame_OnTabChanged", "PanelTemplates_SetTab", "C_AddOns", "LoadAddOn",
+    "CreateMacro",
     "SetOverrideBindingClick", "ClearOverrideBindings",
 
     -- Data types
