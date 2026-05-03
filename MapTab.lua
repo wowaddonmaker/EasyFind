@@ -352,9 +352,17 @@ local function HideOurPanel()
         if panel.outer then panel.outer:Hide() else panel:Hide() end
         if panel.searchBox then panel.searchBox:ClearFocus() end
     end
-    if ns.MapSearch and ns.MapSearch.ClearHighlight and ns.MapSearch._previewing then
-        ns.MapSearch._previewing = nil
-        ns.MapSearch:ClearHighlight()
+    -- Tear down any in-flight hover preview when the panel closes so the
+    -- zone outline / pin / saved-state don't survive into another tab.
+    -- Mirrors EndHoverPreview's full cleanup rather than just the
+    -- _previewing flag flip + pin clear it used to do.
+    if ns.MapSearch and ns.MapSearch._previewing then
+        if ns.MapSearch.EndHoverPreview then
+            ns.MapSearch:EndHoverPreview()
+        else
+            ns.MapSearch._previewing = nil
+            if ns.MapSearch.ClearHighlight then ns.MapSearch:ClearHighlight() end
+        end
     end
     RefreshSelectGlows()
 end
@@ -826,7 +834,13 @@ local function CreateGroupHeader(parent)
     end)
     toggleBtn:SetScript("OnLeave", function(self)
         self.btnBg:Hide()
-        if not hdr:IsMouseOver() then hdr.hoverOverlay:Hide() end
+        if not hdr:IsMouseOver() then
+            hdr.hoverOverlay:Hide()
+            -- Mirror the header body's OnLeave: when neither the toggle
+            -- nor the header itself is hovered, the user has fully left
+            -- the group row and the hover preview should clear.
+            ClearHoverPreview()
+        end
     end)
     hdr.toggleBtn = toggleBtn
 
@@ -2013,6 +2027,27 @@ local function CreateSearchBox(parent)
     if editBox.Instructions then
         editBox.Instructions:SetText("Search for POIs, zones, instances...")
     end
+
+    -- Reject auto-focus on creation. WoW will silently focus visible
+    -- EditBoxes after creation despite SetAutoFocus(false). When the
+    -- WorldMap is open during /reload this editbox auto-focuses, and
+    -- its OnKeyDown handler sets SetPropagateKeyboardInput(false) for
+    -- every key -- which silently eats SPACE/WASD even though the bar
+    -- looks unfocused. Reject any focus that arrives within the first
+    -- couple frames after creation.
+    editBox._blockAutoFocus = true
+    editBox:HookScript("OnEditFocusGained", function(self)
+        if self._blockAutoFocus then self:ClearFocus() end
+    end)
+    -- Allow legitimate user clicks to focus by clearing the block on
+    -- OnMouseDown (which fires before focus is gained).
+    editBox:HookScript("OnMouseDown", function(self) self._blockAutoFocus = nil end)
+    editBox:ClearFocus()
+    C_Timer.After(0, function()
+        C_Timer.After(0, function()
+            if editBox then editBox._blockAutoFocus = nil; editBox:ClearFocus() end
+        end)
+    end)
 
     local function UpdateClear(self)
         if self.clearButton then
