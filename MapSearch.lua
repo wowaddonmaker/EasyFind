@@ -343,6 +343,8 @@ local cachedWorldZones        -- Built once per session by GetAllWorldZones
 local rareTrackCache = {}     -- [vignetteGUID] = rare entry, persists across scans for auto-track
 local rareTrackMapID = nil    -- mapID the cache is valid for
 local rareDeadGUIDs = {}      -- GUIDs confirmed dead/despawned, blocked from re-entering cache
+MapSearch._rareTrackCache = rareTrackCache    -- exposed for DevMem diagnostics
+MapSearch._rareDeadGUIDs = rareDeadGUIDs      -- exposed for DevMem diagnostics
 local efTrackedVignetteGUID = nil  -- GUID we explicitly set via SetSuperTrackedVignette (rares only)
 
 -- Reusable tables for OnSearchTextChanged (wiped each call to avoid per-keystroke allocations)

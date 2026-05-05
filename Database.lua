@@ -7,13 +7,21 @@ local Utils   = ns.Utils
 local ipairs = Utils.ipairs
 local tsort, tconcat, tremove = Utils.tsort, Utils.tconcat, Utils.tremove
 local sfind, slower, ssub = Utils.sfind, Utils.slower, Utils.ssub
+local sbyte = string.byte
 local mmin, mmax, mabs = Utils.mmin, Utils.mmax, Utils.mabs
 local C_CurrencyInfo = C_CurrencyInfo
 local band, lshift = bit.band, bit.lshift
 
 -- Word split cache: avoids per-call gmatch + table creation in scoring hot path.
 -- Key = lowercase string, value = array of words split on [%w']+.
+-- FIFO-bounded so per-keystroke prefixes ("a", "ac", "ach", ...) do not
+-- accumulate forever. Most recent prefixes stay in cache; oldest evict
+-- when the ring buffer wraps. Cap of 256 covers normal typing patterns
+-- with room to spare while keeping retained memory in the low-KB range.
 local wordCache = {}
+local wordCacheKeys = {}
+local wordCacheHead = 1
+local WORD_CACHE_MAX = 256
 
 local function GetWords(str)
     local cached = wordCache[str]
@@ -22,12 +30,22 @@ local function GetWords(str)
     for w in str:gmatch("[%w']+") do
         words[#words + 1] = w
     end
+    local oldKey = wordCacheKeys[wordCacheHead]
+    if oldKey then wordCache[oldKey] = nil end
+    wordCacheKeys[wordCacheHead] = str
+    wordCacheHead = wordCacheHead + 1
+    if wordCacheHead > WORD_CACHE_MAX then wordCacheHead = 1 end
     wordCache[str] = words
     return words
 end
 
 -- Reusable row tables for DamerauLevenshtein (avoids 3 table allocs per call)
 local dlPrev2, dlPrev, dlCurr = {}, {}, {}
+
+-- Reusable scratch for ScoreName's per-word matching path. Was allocated
+-- per-entry per-search in the multi-word query branch (3700+ entries x
+-- many keystrokes per second = major GC pressure during typing).
+local scoreNameUsedWords = {}
 
 -- Reusable sort comparator (avoids closure creation per SearchUI call)
 local function scoreDescending(a, b) return a.score > b.score end
@@ -564,6 +582,9 @@ local lootEntries = {}       -- track injected entries for re-population
 local lootScanGeneration = 0 -- cancel stale scans when re-populating
 local lootItemCache = {}     -- itemID -> entry (persists across spec/diff toggles)
 local lootSpecsScanned = {}  -- ["classID-specID"] = true
+Database._lootItemCache = lootItemCache         -- exposed for DevMem diagnostics
+Database._lootEntries = lootEntries             -- exposed for DevMem diagnostics
+Database._lootSpecsScanned = lootSpecsScanned   -- exposed for DevMem diagnostics
 
 -- Maps user-facing difficulty keys to EJ difficulty IDs per source type
 local LOOT_DIFF_IDS = {
@@ -2913,23 +2934,23 @@ local INITIALS_STOPWORDS = {
 -- A word boundary is the start of the string or right after a space/punctuation.
 -- Returns true if found at a boundary, false if only found mid-word or not at all.
 function Database:FindAtWordBoundary(text, query)
-    -- Check at start of string
-    if ssub(text, 1, #query) == query then return true end
-    -- Check after word boundaries (space, dash, parenthesis, colon, slash, dot)
-    local pos = 1
-    while true do
-        local found = sfind(text, query, pos, true)
-        if not found then return false end
-        if found > 1 then
-            local prev = ssub(text, found - 1, found - 1)
-            if prev == " " or prev == "-" or prev == "(" or prev == ":" or prev == "/" or prev == "." then
-                return true
-            end
-        else
-            return true  -- found at position 1
+    -- Check at start of string. sfind avoids the per-call substring
+    -- allocation that ssub(text, 1, #query) would create.
+    local found = sfind(text, query, 1, true)
+    if not found then return false end
+    if found == 1 then return true end
+    -- After word boundaries (space, dash, parenthesis, colon, slash, dot).
+    -- sbyte avoids creating a 1-char string per check.
+    while found do
+        local prev = sbyte(text, found - 1)
+        -- 32=space, 45=- 40=( 58=: 47=/ 46=.
+        if prev == 32 or prev == 45 or prev == 40
+           or prev == 58 or prev == 47 or prev == 46 then
+            return true
         end
-        pos = found + 1
+        found = sfind(text, query, found + 1, true)
     end
+    return false
 end
 
 -- Score how well `query` matches as initials/abbreviation of words in `text`.
@@ -2958,7 +2979,7 @@ function Database:ScoreInitials(text, query)
     if queryLen <= numWords then
         local allMatch = true
         for i = 1, queryLen do
-            if ssub(query, i, i) ~= ssub(words[i], 1, 1) then
+            if sbyte(query, i) ~= sbyte(words[i], 1) then
                 allMatch = false
                 break
             end
@@ -2986,7 +3007,7 @@ function Database:ScoreInitials(text, query)
         local w = words[wi]
         local matchLen = 0
         while qi + matchLen <= queryLen and matchLen < #w do
-            if ssub(query, qi + matchLen, qi + matchLen) == ssub(w, matchLen + 1, matchLen + 1) then
+            if sbyte(query, qi + matchLen) == sbyte(w, matchLen + 1) then
                 matchLen = matchLen + 1
             else
                 break
@@ -3021,7 +3042,7 @@ function Database:ScoreFuzzy(text, query, queryLen)
     else return 0  -- queries under 4 chars: no fuzzy, substring covers them
     end
 
-    local queryFirst = ssub(query, 1, 1)
+    local queryFirst = sbyte(query, 1)
     local bestScore = 0
     local blocked = FUZZY_BLOCKLIST[query]
     local textWords = GetWords(text)
@@ -3033,7 +3054,7 @@ function Database:ScoreFuzzy(text, query, queryLen)
         -- first character, and this rule kills the false-positive
         -- flood without dropping real typos like "achievmnts" →
         -- "achievements".
-        if ssub(word, 1, 1) == queryFirst
+        if sbyte(word, 1) == queryFirst
            and not (blocked and blocked[word]) then
             local wordLen = #word
             local lenDiff = wordLen - queryLen
@@ -3052,16 +3073,19 @@ function Database:ScoreFuzzy(text, query, queryLen)
 end
 
 -- Requires first character match to avoid spurious hits like "ahn'" in "magtheridon's".
+-- Uses sbyte() instead of ssub() inside the inner loop -- ssub creates a
+-- fresh 1-char string per call which adds up to thousands of short-lived
+-- strings per keystroke (3700 entries x queryLen iterations).
 function Database:IsSubsequence(word, query, queryLen)
-    if ssub(word, 1, 1) ~= ssub(query, 1, 1) then return false end
+    if sbyte(word, 1) ~= sbyte(query, 1) then return false end
     local wi = 1
     local wordLen = #word
     local firstPos
     for qi = 1, queryLen do
-        local qc = ssub(query, qi, qi)
+        local qc = sbyte(query, qi)
         local found = false
         while wi <= wordLen do
-            if ssub(word, wi, wi) == qc then
+            if sbyte(word, wi) == qc then
                 if not firstPos then firstPos = wi end
                 wi = wi + 1
                 found = true
@@ -3157,9 +3181,12 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
     local score = 0
 
     -- Whole-string matching (works for single and multi-word queries)
+    -- sfind(plain) avoids the per-entry substring allocation that
+    -- ssub(haystack, 1, n) == needle would create. With ~3700 entries
+    -- scored per keystroke this is the dominant per-search alloc.
     if nameLower == query then
         score = 200
-    elseif ssub(nameLower, 1, queryLen) == query then
+    elseif sfind(nameLower, query, 1, true) == 1 then
         score = 150
     elseif Database:FindAtWordBoundary(nameLower, query) then
         score = 120
@@ -3219,7 +3246,8 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
             local nameWords = GetWords(nameLower)
             local allMatched = true
             local totalWordScore = 0
-            local usedNameWords = {}
+            wipe(scoreNameUsedWords)
+            local usedNameWords = scoreNameUsedWords
             for qwi = 1, #queryWords do
                 local qw = queryWords[qwi]
                 local qwLen = #qw
@@ -3231,11 +3259,11 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
                         local ws = 0
                         if nw == qw then
                             ws = 100
-                        elseif ssub(nw, 1, qwLen) == qw then
+                        elseif sfind(nw, qw, 1, true) == 1 then
                             ws = 90
                         elseif sfind(nw, qw, 1, true) then
                             ws = 50
-                        elseif qwLen >= 4 and ssub(nw, 1, 1) == ssub(qw, 1, 1) then
+                        elseif qwLen >= 4 and sbyte(nw, 1) == sbyte(qw, 1) then
                             local nwLen = #nw
                             local maxEdits = qwLen >= 8 and 2 or 1
                             if nwLen >= qwLen - maxEdits and nwLen <= qwLen + maxEdits then
@@ -3325,7 +3353,7 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
             if kw == query then
                 -- Short abbreviations (2-3 chars) are intentional, boost above initials
                 kwScore = queryLen <= 3 and 140 or 80
-            elseif ssub(kw, 1, queryLen) == query then
+            elseif sfind(kw, query, 1, true) == 1 then
                 kwScore = 70
             elseif Database:FindAtWordBoundary(kw, query) then
                 kwScore = 55
@@ -3386,7 +3414,7 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
                 local kwScore = 0
                 if kw == queryWord then
                     kwScore = 80
-                elseif ssub(kw, 1, queryWordLen) == queryWord then
+                elseif sfind(kw, queryWord, 1, true) == 1 then
                     kwScore = 70
                 elseif Database:FindAtWordBoundary(kw, queryWord) then
                     kwScore = 55
@@ -3513,6 +3541,33 @@ local function sortChildren(node)
     end
 end
 
+-- Tree node pool. BuildHierarchicalResults previously allocated ~300
+-- fresh tables per call (root + per-result entry + path nodes). At 60
+-- keystrokes/sec that's ~18k tables/sec -- the bulk of the per-search
+-- GC churn that caused +29 MB transient peaks during HOLD-backspace.
+-- Pooling reuses the same node tables across searches.
+local treeNodePool = {}
+local treeNodePoolN = 0
+Database._treeNodePool = treeNodePool
+
+local function getTreeNode()
+    treeNodePoolN = treeNodePoolN + 1
+    local n = treeNodePool[treeNodePoolN]
+    if not n then
+        n = { children = {}, childOrder = {} }
+        treeNodePool[treeNodePoolN] = n
+    else
+        wipe(n.children)
+        wipe(n.childOrder)
+    end
+    n.name = nil
+    n.data = nil
+    n.bestScore = 0
+    n.isMatch = false
+    n._hac = nil
+    return n
+end
+
 local function GetOrCreateNode(root, pathParts)
     local node = root
     for i = 1, #pathParts do
@@ -3520,12 +3575,8 @@ local function GetOrCreateNode(root, pathParts)
         local children = node.children
         local existing = children[part]
         if not existing then
-            existing = {
-                name = part,
-                children = {},
-                childOrder = {},
-                bestScore = 0,
-            }
+            existing = getTreeNode()
+            existing.name = part
             children[part] = existing
             node.childOrder[#node.childOrder + 1] = part
         end
@@ -3620,6 +3671,8 @@ end
 local flattenScratch = {}
 local hierEntryPool = {}
 local hierEntryPoolN = 0
+Database._flattenScratch = flattenScratch
+Database._hierEntryPool = hierEntryPool
 
 local function FlattenNode(self, node, depth, out, containerPaths)
     local order = node.childOrder
@@ -3699,6 +3752,8 @@ end
 local resultsBuf = {}
 local resultsQueryWords = {}
 local resultEntryPool = {}
+Database._resultsBuf = resultsBuf
+Database._resultEntryPool = resultEntryPool
 
 function Database:SearchUI(query, skipCategories)
     if not query or query == "" or #query < 2 then
@@ -3822,7 +3877,7 @@ function Database:SearchUI(query, skipCategories)
                             local kw = data.lootSlotKw[ki]
                             if kw == qw then
                                 bestWord = mmax(bestWord, qwLen <= 3 and 140 or 80)
-                            elseif ssub(kw, 1, qwLen) == qw then
+                            elseif sfind(kw, qw, 1, true) == 1 then
                                 bestWord = mmax(bestWord, 70)
                             end
                         end
@@ -3834,7 +3889,7 @@ function Database:SearchUI(query, skipCategories)
                             local kw = data.lootStatKw[ki]
                             if kw == qw then
                                 bestWord = mmax(bestWord, qwLen <= 3 and 140 or 80)
-                            elseif ssub(kw, 1, qwLen) == qw then
+                            elseif sfind(kw, qw, 1, true) == 1 then
                                 bestWord = mmax(bestWord, 70)
                             end
                         end
@@ -3846,7 +3901,7 @@ function Database:SearchUI(query, skipCategories)
                             local kw = data.lootSourceKw[ki]
                             if kw == qw then
                                 bestWord = mmax(bestWord, 80)
-                            elseif ssub(kw, 1, qwLen) == qw then
+                            elseif sfind(kw, qw, 1, true) == 1 then
                                 bestWord = mmax(bestWord, 70)
                             end
                         end
@@ -3876,7 +3931,7 @@ function Database:SearchUI(query, skipCategories)
                     -- aliases don't drag every achievement category in.
                     if nameLower == query then
                         score = 200
-                    elseif ssub(nameLower, 1, queryLen) == query then
+                    elseif sfind(nameLower, query, 1, true) == 1 then
                         score = 150
                     elseif Database:FindAtWordBoundary(nameLower, query) then
                         score = 120
@@ -3922,6 +3977,23 @@ function Database:SearchUI(query, skipCategories)
     local SEARCH_RESULT_CAP = 100
     if resultsN > SEARCH_RESULT_CAP then
         for i = SEARCH_RESULT_CAP + 1, resultsN do results[i] = nil end
+        -- Trim the pool to the cap so a single broad query ("mo") does
+        -- not leave the pool sized at ~420 forever.
+        for i = SEARCH_RESULT_CAP + 1, #resultEntryPool do
+            resultEntryPool[i] = nil
+        end
+        resultsN = SEARCH_RESULT_CAP
+    end
+    -- Clear stale data refs on pool slots above the current result
+    -- count. Without this, a broad search followed by a narrow one
+    -- leaves the pool holding refs from the broad search forever.
+    for i = resultsN + 1, #resultEntryPool do
+        local r = resultEntryPool[i]
+        if r and r.data then
+            r.data = nil
+            r.score = nil
+            r.isAlias = nil
+        end
     end
     return results
 end
@@ -3934,7 +4006,11 @@ function Database:BuildHierarchicalResults(results)
         return {}
     end
 
-    local root = { children = {}, childOrder = {} }
+    -- Reset the tree-node pool index; nodes from this pool are reused
+    -- across calls so the only per-call allocation is the returned
+    -- hierarchical array (and pool-grow when first hit).
+    treeNodePoolN = 0
+    local root = getTreeNode()
 
     for ri = 1, #results do
         local item = results[ri]
@@ -3951,14 +4027,12 @@ function Database:BuildHierarchicalResults(results)
                 existing.bestScore = itemScore
             end
         else
-            parentNode.children[itemData.name] = {
-                name = itemData.name,
-                children = {},
-                childOrder = {},
-                data = itemData,
-                bestScore = itemScore,
-                isMatch = true,
-            }
+            local leaf = getTreeNode()
+            leaf.name = itemData.name
+            leaf.data = itemData
+            leaf.bestScore = itemScore
+            leaf.isMatch = true
+            parentNode.children[itemData.name] = leaf
             parentNode.childOrder[#parentNode.childOrder + 1] = itemData.name
         end
 

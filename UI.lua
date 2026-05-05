@@ -4110,6 +4110,15 @@ local SCRATCH = {
     catGroups = {},
 }
 
+-- Exposed for /efd mem diagnostics so we can see whether per-search
+-- scratch tables, per-bucket result tables, or the button pool are
+-- responsible for the post-search memory growth.
+UI._flatEntries = flatEntries
+UI._flatCombined = flatCombined
+UI._PB = PB
+UI._SCRATCH = SCRATCH
+UI._resultButtons = resultButtons
+
 local function CatGroupCompare(a, b)
     if a.score ~= b.score then return a.score > b.score end
     return a.key < b.key
