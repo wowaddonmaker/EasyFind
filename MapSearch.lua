@@ -1509,22 +1509,10 @@ function MapSearch:CreateSearchFrame()
         searchFrame:SetPoint("TOPLEFT", WorldMapFrame.ScrollContainer, "BOTTOMLEFT", 0, yOff)
     end
 
-    local WHITE8x8 = "Interface\\BUTTONS\\WHITE8x8"
     ns.CreateSearchBorder(searchFrame)
-    if (EasyFind.db.resultsTheme or "Classic") == "Retail" then
-        searchFrame:SetBackdrop(nil)
-        ns.SetSearchBorderShown(searchFrame, true)
-        ns.SetSearchBorderBgAlpha(searchFrame, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
-    else
-        searchFrame:SetBackdrop({
-            bgFile = WHITE8x8,
-            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-            edgeSize = 16,
-            insets = { left = 4, right = 4, top = 4, bottom = 4 }
-        })
-        searchFrame:SetBackdropColor(0, 0, 0, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
-        ns.SetSearchBorderShown(searchFrame, false)
-    end
+    searchFrame:SetBackdrop(nil)
+    ns.SetSearchBorderShown(searchFrame, true)
+    ns.SetSearchBorderBgAlpha(searchFrame, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
     searchFrame:SetClipsChildren(true)
 
     -- Draggable with Shift key (constrained to map edge)
@@ -1907,20 +1895,9 @@ function MapSearch:CreateSearchFrame()
     end
 
     ns.CreateSearchBorder(globalSearchFrame)
-    if (EasyFind.db.resultsTheme or "Classic") == "Retail" then
-        globalSearchFrame:SetBackdrop(nil)
-        ns.SetSearchBorderShown(globalSearchFrame, true)
-        ns.SetSearchBorderBgAlpha(globalSearchFrame, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
-    else
-        globalSearchFrame:SetBackdrop({
-            bgFile = WHITE8x8,
-            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-            edgeSize = 16,
-            insets = { left = 4, right = 4, top = 4, bottom = 4 }
-        })
-        globalSearchFrame:SetBackdropColor(0, 0, 0, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
-        ns.SetSearchBorderShown(globalSearchFrame, false)
-    end
+    globalSearchFrame:SetBackdrop(nil)
+    ns.SetSearchBorderShown(globalSearchFrame, true)
+    ns.SetSearchBorderBgAlpha(globalSearchFrame, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
     globalSearchFrame:SetClipsChildren(true)
 
     -- Draggable with Shift key (constrained to map edge)
@@ -2530,28 +2507,19 @@ function MapSearch:CreateResultsFrame()
 
     resultsFrame:SetPoint("TOPLEFT", searchFrame, "BOTTOMLEFT", 0, 2)
 
-    if (EasyFind.db.resultsTheme or "Classic") == "Retail" then
-        resultsFrame:SetBackdrop({
-            edgeFile = TOOLTIP_BORDER,
-            edgeSize = 16,
-            insets = { left = 4, right = 4, top = 4, bottom = 4 },
-        })
-        resultsFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
-        local bgTex = resultsFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
-        bgTex:SetPoint("TOPLEFT", 4, -4)
-        bgTex:SetPoint("BOTTOMRIGHT", -4, 4)
-        bgTex:SetAtlas("QuestLog-main-background", false)
-        bgTex:Show()
-        resultsFrame:SetClipsChildren(true)
-        resultsFrame.bgAtlasTex = bgTex
-    else
-        resultsFrame:SetBackdrop({
-            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-            tile = true, tileSize = 32, edgeSize = 20,
-            insets = { left = 5, right = 5, top = 5, bottom = 5 },
-        })
-    end
+    resultsFrame:SetBackdrop({
+        edgeFile = TOOLTIP_BORDER,
+        edgeSize = 16,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
+    })
+    resultsFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
+    local bgTex = resultsFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
+    bgTex:SetPoint("TOPLEFT", 4, -4)
+    bgTex:SetPoint("BOTTOMRIGHT", -4, 4)
+    bgTex:SetAtlas("QuestLog-main-background", false)
+    bgTex:Show()
+    resultsFrame:SetClipsChildren(true)
+    resultsFrame.bgAtlasTex = bgTex
 
     resultsFrame:Hide()
 
@@ -5211,6 +5179,11 @@ function MapSearch:ScanDungeonEntrances(mapID)
             local _, _, _, _, _, _, _, _, _, _, _, entIsRaid = EJ_GetInstanceInfo(entrance.journalInstanceID)
             if entIsRaid then cat = "raid" end
         end
+        local kw = {cat, "instance", "entrance"}
+        local abbrs = ns.INSTANCE_ABBRS and ns.INSTANCE_ABBRS[slower(entrance.name)]
+        if abbrs then
+            for ai = 1, #abbrs do kw[#kw + 1] = abbrs[ai] end
+        end
         tinsert(results, {
             name = entrance.name,
             category = cat,
@@ -5221,7 +5194,7 @@ function MapSearch:ScanDungeonEntrances(mapID)
             x = ex,
             y = ey,
             pathPrefix = parentLabel,
-            keywords = {cat, "instance", "entrance"},
+            keywords = kw,
         })
     end
 
@@ -8304,15 +8277,10 @@ end
 
 function MapSearch:UpdateOpacity()
     local alpha = EasyFind.db.searchBarOpacity or DEFAULT_OPACITY
-    local isRetail = (EasyFind.db.resultsTheme or "Retail") == "Retail"
     local frames = {searchFrame, globalSearchFrame}
     for _, frame in ipairs(frames) do
         if frame then
-            if isRetail then
-                ns.SetSearchBorderBgAlpha(frame, alpha)
-            else
-                frame:SetBackdropColor(0, 0, 0, alpha)
-            end
+            ns.SetSearchBorderBgAlpha(frame, alpha)
         end
     end
 end
@@ -8364,62 +8332,34 @@ function MapSearch:UpdateFontSize()
 end
 
 function MapSearch:UpdateSearchBarTheme()
-    local isRetail = (EasyFind.db.resultsTheme or "Retail") == "Retail"
     local scale = EasyFind.db.mapFontSize or 1.0
-    local edge = 16 * scale
-    local inset = 4 * scale
-    local WHITE8x8 = "Interface\\BUTTONS\\WHITE8x8"
     local alpha = EasyFind.db.searchBarOpacity or DEFAULT_OPACITY
     local frames = {searchFrame, globalSearchFrame}
     for _, frame in ipairs(frames) do
         if frame then
-            if isRetail then
-                frame:SetBackdrop(nil)
-                ns.SetSearchBorderShown(frame, true)
-                ns.ScaleSearchBorder(frame, scale)
-                ns.SetSearchBorderBgAlpha(frame, alpha)
-            else
-                frame:SetBackdrop({
-                    bgFile = WHITE8x8,
-                    edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-                    edgeSize = edge,
-                    insets = { left = inset, right = inset, top = inset, bottom = inset }
-                })
-                frame:SetBackdropBorderColor(1, 1, 1, 1)
-                frame:SetBackdropColor(0, 0, 0, alpha)
-                ns.SetSearchBorderShown(frame, false)
-            end
+            frame:SetBackdrop(nil)
+            ns.SetSearchBorderShown(frame, true)
+            ns.ScaleSearchBorder(frame, scale)
+            ns.SetSearchBorderBgAlpha(frame, alpha)
         end
     end
 
     if resultsFrame then
-        if isRetail then
-            resultsFrame:SetBackdrop({
-                edgeFile = TOOLTIP_BORDER,
-                edgeSize = 16,
-                insets = { left = 4, right = 4, top = 4, bottom = 4 },
-            })
-            resultsFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
-            if not resultsFrame.bgAtlasTex then
-                local tex = resultsFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
-                tex:SetPoint("TOPLEFT", 4, -4)
-                tex:SetPoint("BOTTOMRIGHT", -4, 4)
-                resultsFrame.bgAtlasTex = tex
-            end
-            resultsFrame.bgAtlasTex:SetAtlas("QuestLog-main-background", false)
-            resultsFrame.bgAtlasTex:Show()
-            resultsFrame:SetClipsChildren(true)
-        else
-            resultsFrame:SetBackdrop({
-                bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-                edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-                tile = true, tileSize = 32, edgeSize = 20,
-                insets = { left = 5, right = 5, top = 5, bottom = 5 },
-            })
-            if resultsFrame.bgAtlasTex then
-                resultsFrame.bgAtlasTex:Hide()
-            end
+        resultsFrame:SetBackdrop({
+            edgeFile = TOOLTIP_BORDER,
+            edgeSize = 16,
+            insets = { left = 4, right = 4, top = 4, bottom = 4 },
+        })
+        resultsFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
+        if not resultsFrame.bgAtlasTex then
+            local tex = resultsFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
+            tex:SetPoint("TOPLEFT", 4, -4)
+            tex:SetPoint("BOTTOMRIGHT", -4, 4)
+            resultsFrame.bgAtlasTex = tex
         end
+        resultsFrame.bgAtlasTex:SetAtlas("QuestLog-main-background", false)
+        resultsFrame.bgAtlasTex:Show()
+        resultsFrame:SetClipsChildren(true)
     end
 end
 
@@ -8707,8 +8647,16 @@ function MapSearch:SearchForUI(query)
                 }
             end
         end
+        -- Wipe stale per-POI score/dedupe state. SearchPOIs trusts
+        -- poi.score on isZone entries as a shortcut (the "zone results
+        -- already scored by SearchZones" branch), so leftover scores
+        -- from a prior query (e.g. "raid" scored every instance 150)
+        -- would otherwise leak into the next unrelated query like "3v".
         for i = 1, #promotedInstancePOIs do
             local p = promotedInstancePOIs[i]
+            p.score = nil
+            p.duplicateKey = nil
+            p.allInstances = nil
             if not zoneNames[slower(p.name)] and not zoneNames[normalizeName(p.name)] then
                 pois[#pois + 1] = p
             end
@@ -8752,7 +8700,8 @@ function MapSearch:SearchForUI(query)
             icon = r.icon or GetCategoryIcon(cat),
             mapSearchResult = true,
             mapID = r.mapID or r.zoneMapID or r.entranceMapID or searchMapID,
-            zoneName = r.zoneName,
+            zoneName = r.zoneName or r.pathPrefix,
+            pathPrefix = r.pathPrefix,
             x = r.x or r.entranceX,
             y = r.y or r.entranceY,
             keywords = r.keywords,
@@ -8791,7 +8740,7 @@ end
 -- Global results (zones, instances):
 --   Fast mode: open map directly and run SelectResult (highlight/waypoint).
 --   Standard mode: guide to open map, then run SelectResult.
-function MapSearch:HandleUISearchClick(data)
+function MapSearch:HandleUISearchClick(data, forceGuide)
     if not data then return end
 
     local isGlobalResult = data.isZone or data.isDungeonEntrance
@@ -8809,13 +8758,16 @@ function MapSearch:HandleUISearchClick(data)
 
     if isGlobalResult then
         -- Open the world map at the target and show a waypoint/zone.
-        -- Guide/breadcrumb mode is reserved for an explicit right-click
-        -- → Guide flow; a plain UI-search click should always direct-
-        -- open so the user gets there in one action.
+        -- Guide/breadcrumb mode (forceGuide=true) walks parent zones via
+        -- breadcrumb arrows; fast mode jumps straight to the entrance.
         if not WorldMapFrame or not WorldMapFrame:IsShown() then
             ToggleWorldMap()
         end
-        if data.entranceMapID and data.entranceX and data.entranceY then
+        if forceGuide then
+            -- Reuse the MapSearch SelectResult path with directOverride=false
+            -- so breadcrumb/teaching mode kicks in (HighlightBreadcrumb...).
+            self:SelectResult(data, false)
+        elseif data.entranceMapID and data.entranceX and data.entranceY then
             WorldMapFrame:SetMapID(data.entranceMapID)
             self:ShowWaypointAt(data.entranceX, data.entranceY,
                 data.entranceIcon or data.icon, data.entranceCategory or data.category)
@@ -8823,15 +8775,14 @@ function MapSearch:HandleUISearchClick(data)
             WorldMapFrame:SetMapID(data.zoneMapID)
         end
     else
-        -- Local POI: place the tracked waypoint AND open the world map
-        -- at the POI's zone so the user can see where it is. Tracking-
-        -- without-opening was a holdover from the old fast-mode flow.
+        -- Local POI: open the world map at the POI's zone and show the
+        -- visual pin on the canvas. We deliberately do NOT call
+        -- SetUserWaypoint / SetSuperTrackedUserWaypoint here — the user
+        -- has to click the on-canvas pin's tracking icon to actually
+        -- start tracking, matching the way clicking the small map pin
+        -- works elsewhere in the addon (and Blizzard's own UI).
         local x, y = data.x, data.y
         if data.mapID and x and y and x >= 0 and x <= 1 and y >= 0 and y <= 1 then
-            SetUserWaypoint(UiMapPoint.CreateFromCoordinates(data.mapID, x, y))
-            efPlacedWaypoint = true
-            C_SuperTrack.SetSuperTrackedUserWaypoint(true)
-            ShowSuperTrackGlow()
             activePinState = {
                 mapID = data.mapID,
                 x = x, y = y,
@@ -8839,9 +8790,6 @@ function MapSearch:HandleUISearchClick(data)
                 isLocal = true,
             }
             MapSearch:RefreshAllClearButtons()
-            -- Open the world map and ensure it's showing the POI's
-            -- zone, then drop the visual pin on the canvas. ShowWaypointAt
-            -- expects the canvas to be the matching map.
             if not WorldMapFrame or not WorldMapFrame:IsShown() then
                 ToggleWorldMap()
             end

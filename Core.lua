@@ -23,7 +23,7 @@ EasyFind.db = {}
 
 -- SavedVariables version. Increment when changing DB schema.
 -- Each migration runs once: if saved dbVersion < DB_VERSION, run all steps in order.
-local DB_VERSION = 6
+local DB_VERSION = 8
 
 -- SavedVariables defaults - new keys are auto-merged for existing users
 local DB_DEFAULTS = {
@@ -53,16 +53,20 @@ local DB_DEFAULTS = {
     hideSearchBarsMaximized = true,  -- Hide search bars when map is full screen (opt-in fullscreen search)
     localMapDirectOpen = true,       -- Zone bar left-click: direct navigation (breadcrumb/guide reserved for right-click Guide)
     globalMapDirectOpen = true,      -- Global bar left-click: direct navigation (breadcrumb/guide reserved for right-click Guide)
-    smartShow = false,         -- Hide search bar until mouse hovers nearby
+    autoHide = true,           -- Raycast-style: bar starts hidden; bind opens, click-out hides
+    smartShow = false,         -- Hide search bar until mouse hovers nearby (legacy alternate to autoHide)
+    lockPosition = false,      -- Disable drag-to-move on the search bar
+    tutorialDone = false,      -- True once the user has finished the onboarding wizard
     mapSmartShow = false,      -- Hide map search bars until mouse hovers nearby
-    resultsTheme = "Retail",  -- "Classic" or "Retail"
+    resultsTheme = "Modern",  -- legacy; only "Modern" ships right now
+    font = "Default",          -- "Default" (Friz Quadrata) or "Inter"
     indicatorStyle = "EasyFind Arrow",  -- Indicator texture style
     indicatorColor = "Yellow",  -- Indicator color preset
     uiResultsHeight = 280,     -- Visible height of UI search results panel in pixels
     mapResultsHeight = 168,    -- Visible height of map search results panel in pixels
     showTruncationMessage = true,  -- Show "more results available" message when truncated
     hardResultsCap = false,    -- Hard cap on results (no "more results" message)
-    staticOpacity = false,     -- Keep opacity constant while moving
+    staticOpacity = true,      -- Keep opacity constant while moving (default-on with toggle/autoHide UX)
     pinnedUIItems = {},        -- Pinned UI search results (persist across sessions, account-wide)
     pinnedUIItemsPerChar = {}, -- Character-specific pins (mounts, toys, pets, outfits) keyed by "Name-Realm"
     pinnedMapItems = {},       -- Pinned map search results (persist across sessions)
@@ -100,7 +104,8 @@ local DB_DEFAULTS = {
     mapTabFilters = {          -- MapTab (unified) category filters. Applied after
         zones = true,          -- BuildResults to gate each bucket independently
         instances = true,      -- of the global/local DBs.
-        travel = true,
+        flightpath = false,    -- Off by default: zone maps are dense with flight masters
+        travel = true,         -- Portals, ships, zeppelins, trams (separate from flight paths)
         services = true,
         rares = true,
     },
@@ -109,21 +114,25 @@ local DB_DEFAULTS = {
     mapTabRecentCount = 3,      -- Number of recent searches to keep / display (1-20)
     mapTabAutoExpand = true,    -- Auto-expand a matched parent header to show all its world-hierarchy children
     alwaysShowRares = false,  -- Persistent rare tracking: show active rares on map without searching
-    uiSearchFilters = {        -- UI search category filters
-        ui = true,           -- UI elements (excludes achievement/currency/reputation entries)
-        achievements = true, -- Individual achievement category entries
-        currencies = true,   -- Individual currency entries
-        reputations = true,  -- Individual reputation entries
-        collections = true,  -- Parent toggle for Mounts/Toys/Pets/Outfits/Appearance Sets
-        mounts = false,
-        toys = false,
-        pets = false,
-        outfits = false,
-        loot = false,
-        appearanceSets = false,
-        bags = false,
-        options = true,
-        map = false,
+    uiSearchFilters = {        -- UI search category filters (all enabled by default)
+        ui             = true,
+        achievements   = true,
+        currencies     = true,
+        reputations    = true,
+        collections    = true,
+        mounts         = true,
+        toys           = true,
+        pets           = true,
+        outfits        = true,
+        heirlooms      = true,
+        loot           = true,
+        appearanceSets = true,
+        bags           = true,
+        macros         = true,
+        options        = true,
+        abilities      = true,
+        bosses         = true,
+        map            = true,
     },
     lootSpecs = nil,           -- Loot search: nil = current spec only, table of {classID, specID} pairs when customized
     lootSearchSlots = true,    -- Loot search: match by slot keywords (ring, helm, etc.)
@@ -136,7 +145,7 @@ local DB_DEFAULTS = {
     appearanceSetPvE = true,          -- Show PvE sets (Dungeon/Raid)
     appearanceSetPvP = true,          -- Show PvP sets
     uiMapSearchLocal = true,   -- Map search in UI bar: true = local zone only, false = global
-    uiHideHeaders = false,     -- Flat results list: no category headers, path shown as subtext per row
+    uiHideHeaders = true,      -- Flat results list: no category headers, path shown as subtext per row
     aliases = {},              -- User-defined search aliases: { [aliasText] = { kind, id, name } }
     uiSearchHistory = {},      -- Shell-style search history (most recent at index 1, capped at uiSearchHistoryLimit)
     uiSearchHistoryLimit = 500, -- Bash HISTSIZE default
@@ -188,6 +197,25 @@ local DB_MIGRATIONS = {
     [5] = function(db)
         if db.localMapDirectOpen == false then db.localMapDirectOpen = true end
         if db.globalMapDirectOpen == false then db.globalMapDirectOpen = true end
+    end,
+    -- [6] = Default flightpath filter to off in MapTab. Pre-existing
+    -- mapTabFilters tables won't have the key (added when we split
+    -- flight masters out of the Travel bucket), so they default to nil
+    -- = enabled. Force false unless the user explicitly turned it on.
+    [6] = function(db)
+        if db.mapTabFilters and db.mapTabFilters.flightpath == nil then
+            db.mapTabFilters.flightpath = false
+        end
+    end,
+    -- [8] = Theme rename: "Classic" deprecated, "Retail" renamed to
+    -- "Modern" (the new default), and "Retail" reused for the parchment
+    -- variant. Existing saves on the old "Retail" or "Classic" values
+    -- get pointed at "Modern" so nothing changes for them visually until
+    -- they pick the new "Retail" themselves.
+    [8] = function(db)
+        if db.resultsTheme == "Retail" or db.resultsTheme == "Classic" then
+            db.resultsTheme = "Modern"
+        end
     end,
 }
 
@@ -332,10 +360,24 @@ local function OnInitialize()
             OpenBugReport()
         elseif msg == "feature" then
             OpenFeatureRequest()
-        elseif msg == "setup" then
-            if ns.UI then
-                EasyFind.db.setupComplete = nil
-                ns.UI:ShowFirstTimeSetup()
+        elseif msg == "setup" or msg == "tutorial" or msg == "wizard" or msg == "welcome" then
+            if ns.Wizard and ns.Wizard.Show then
+                EasyFind.db.tutorialDone = false
+                ns.Wizard:Show()
+            end
+        elseif msg == "perf" then
+            ns.PERF = not ns.PERF
+            EasyFind:Print("Perf logging " .. (ns.PERF and "ON" or "OFF"))
+            if ns.PERF and ns.UI then
+                EasyFind:Print(string.format(
+                    "Render so far: %d skipped, %d ran",
+                    ns.UI._renderSkips or 0, ns.UI._renderRuns or 0))
+            end
+        elseif msg == "test" or msg == "perftest" then
+            if ns.Perf and ns.Perf.Run then
+                ns.Perf:Run()
+            else
+                EasyFind:Print("Perf module not loaded")
             end
         elseif msg == "ejdump" then
             local info = _G["EncounterJournalEncounterFrameInfo"]
@@ -448,6 +490,24 @@ local function OnPlayerLogin()
                         if ns.Database.PopulateDynamicBags then
                             ns.Database:PopulateDynamicBags()
                         end
+                        if ns.Database.PopulateDynamicHeirlooms then
+                            ns.Database:PopulateDynamicHeirlooms()
+                        end
+                        if ns.Database.PopulateDynamicTitles then
+                            ns.Database:PopulateDynamicTitles()
+                        end
+                        if ns.Database.PopulateDynamicGearSets then
+                            ns.Database:PopulateDynamicGearSets()
+                        end
+                        if ns.Database.PopulateDynamicBosses then
+                            -- Defer one frame: scanning every dungeon
+                            -- and raid boss across all expansion tiers
+                            -- can take a noticeable beat, so let the
+                            -- bag/ability passes settle first.
+                            SafeAfter(0, function()
+                                ns.Database:PopulateDynamicBosses()
+                            end)
+                        end
                         SafeAfter(0, function()
                             ns.Database:SyncTransmogSetFiltersFromUI()
                             ns.Database:PopulateDynamicTransmogSets()
@@ -527,8 +587,10 @@ eventFrame:RegisterEvent("TRANSMOG_COLLECTION_UPDATED")
 eventFrame:RegisterEvent("UPDATE_MACROS")
 eventFrame:RegisterEvent("SPELLS_CHANGED")
 eventFrame:RegisterEvent("BAG_UPDATE_DELAYED")
+eventFrame:RegisterEvent("EQUIPMENT_SETS_CHANGED")
 local bagRefreshTimer
 local spellRefreshTimer
+local gearSetRefreshTimer
 eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
     if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
         OnInitialize()
@@ -588,6 +650,14 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
             bagRefreshTimer = nil
             if ns.Database and ns.Database.PopulateDynamicBags then
                 ns.Database:PopulateDynamicBags()
+            end
+        end)
+    elseif event == "EQUIPMENT_SETS_CHANGED" then
+        if gearSetRefreshTimer then gearSetRefreshTimer:Cancel() end
+        gearSetRefreshTimer = C_Timer.NewTimer(0.3, function()
+            gearSetRefreshTimer = nil
+            if ns.Database and ns.Database.PopulateDynamicGearSets then
+                ns.Database:PopulateDynamicGearSets()
             end
         end)
     elseif event == "PLAYER_LOGOUT" then
@@ -756,8 +826,8 @@ local function CreateMinimapButton()
     background:SetPoint("CENTER")
 
     local icon = mmBtn:CreateTexture(nil, "ARTWORK")
-    icon:SetSize(18, 18)
-    icon:SetTexture(136460)
+    icon:SetSize(14, 14)
+    icon:SetTexture("Interface\\AddOns\\EasyFind\\Textures\\SpyglassMinimap")
     icon:SetPoint("CENTER")
 
     mmBtn:SetHighlightTexture(136477)

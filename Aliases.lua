@@ -53,6 +53,16 @@ function Aliases:FindEntryByKey(key)
         local entry = data[i]
         if Aliases:GetEntryKey(entry) == key then return entry end
     end
+    -- Map results don't live in uiSearchData (they come from
+    -- MapSearch:SearchForUI). Fall back to the snapshot stored when
+    -- the alias was added so the alias hit still renders.
+    if EasyFind and EasyFind.db and EasyFind.db.aliases then
+        for _, info in pairs(EasyFind.db.aliases) do
+            if info.key == key and info.snapshot then
+                return info.snapshot
+            end
+        end
+    end
     return nil
 end
 
@@ -68,10 +78,37 @@ function Aliases:Add(aliasText, data)
     if type(EasyFind.db.aliases) ~= "table" then
         EasyFind.db.aliases = {}
     end
+    -- Map results aren't in uiSearchData, so FindEntryByKey can't
+    -- recover them later. Snapshot the renderable fields so the alias
+    -- hit still works after a /reload.
+    local snapshot
+    if data.mapSearchResult then
+        snapshot = {
+            name = data.name,
+            nameLower = data.nameLower,
+            category = data.category,
+            icon = data.icon,
+            mapSearchResult = true,
+            mapID = data.mapID,
+            zoneName = data.zoneName,
+            pathPrefix = data.pathPrefix,
+            x = data.x, y = data.y,
+            keywords = data.keywords,
+            isZone = data.isZone,
+            zoneMapID = data.zoneMapID,
+            entranceMapID = data.entranceMapID,
+            entranceX = data.entranceX,
+            entranceY = data.entranceY,
+            entranceIcon = data.entranceIcon,
+            entranceCategory = data.entranceCategory,
+            isDungeonEntrance = data.isDungeonEntrance,
+        }
+    end
     EasyFind.db.aliases[slower(aliasText)] = {
         text = aliasText,
         key  = key,
         name = data.name or aliasText,
+        snapshot = snapshot,
     }
     return true
 end
