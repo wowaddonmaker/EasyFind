@@ -456,6 +456,15 @@ local OUTFIT_PROTO = {
 }
 local OUTFIT_MT = { __index = OUTFIT_PROTO }
 
+local HEIRLOOM_PROTO = {
+    keywords     = {"heirloom"},
+    keywordsLower = {"heirloom"},
+    category     = "Heirloom",
+    path         = {},
+    steps        = {},
+}
+local HEIRLOOM_MT = { __index = HEIRLOOM_PROTO }
+
 local LOOT_PROTO = {
     category    = "Loot",
     path        = {},
@@ -470,6 +479,24 @@ local TRANSMOG_SET_PROTO = {
     steps    = {},
 }
 local TRANSMOG_SET_MT = { __index = TRANSMOG_SET_PROTO }
+
+local TITLE_PROTO = {
+    keywords     = {"title"},
+    keywordsLower = {"title"},
+    category     = "Title",
+    path         = {},
+    steps        = {},
+}
+local TITLE_MT = { __index = TITLE_PROTO }
+
+local GEAR_SET_PROTO = {
+    keywords     = {"gear", "set", "equipment", "equip", "loadout"},
+    keywordsLower = {"gear", "set", "equipment", "equip", "loadout"},
+    category     = "Gear Set",
+    path         = {},
+    steps        = {},
+}
+local GEAR_SET_MT = { __index = GEAR_SET_PROTO }
 
 -- Map equip location strings to user-friendly search keywords
 local SLOT_KEYWORDS = {
@@ -862,6 +889,117 @@ function Database:PopulateDynamicPets()
         if savedNotCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, savedNotCollected) end
     end
     if C_PetJournal.SetSearchFilter then C_PetJournal.SetSearchFilter(savedString) end
+end
+
+-- Called after PLAYER_LOGIN when C_Heirloom is available.
+-- Scans the heirloom catalog and injects any owned heirloom into the
+-- search database. Click handler creates the heirloom item in the
+-- player's bags via C_Heirloom.CreateHeirloom.
+function Database:PopulateDynamicHeirlooms()
+    if not C_Heirloom or not C_Heirloom.GetHeirloomItemIDs then return end
+
+    for i = #uiSearchData, 1, -1 do
+        if uiSearchData[i].category == "Heirloom" then
+            tremove(uiSearchData, i)
+        end
+    end
+
+    local ids = C_Heirloom.GetHeirloomItemIDs()
+    if type(ids) ~= "table" then return end
+
+    local hasHeirloom = C_Heirloom.PlayerHasHeirloom
+    local getInfo = C_Heirloom.GetHeirloomInfo
+    if not getInfo then return end
+
+    local getItemIcon = C_Item and C_Item.GetItemIconByID
+    for _, itemID in ipairs(ids) do
+        local owned = (not hasHeirloom) or hasHeirloom(itemID)
+        if owned then
+            local name, _, _, icon = getInfo(itemID)
+            if (not icon or icon == 0) and getItemIcon then
+                icon = getItemIcon(itemID)
+            end
+            if name and name ~= "" then
+                uiSearchData[#uiSearchData + 1] = setmetatable({
+                    name = name,
+                    nameLower = slower(name),
+                    icon = icon,
+                    heirloomItemID = itemID,
+                }, HEIRLOOM_MT)
+            end
+        end
+    end
+    if self.ResetSearchCache then self:ResetSearchCache() end
+end
+
+-- Scan known character titles and inject as search entries. Click on a
+-- title row sets it as the current title via SetCurrentTitle. Titles
+-- come back from the API with a "%s" placeholder for the player's
+-- name; we strip it for display so the row reads "the Insane" rather
+-- than "%s the Insane".
+function Database:PopulateDynamicTitles()
+    local getNum = GetNumTitles
+    local getName = GetTitleName
+    local isKnown = IsTitleKnown
+    if not getNum or not getName or not isKnown then return end
+
+    for i = #uiSearchData, 1, -1 do
+        if uiSearchData[i].category == "Title" then
+            tremove(uiSearchData, i)
+        end
+    end
+
+    local total = getNum()
+    if not total or total <= 0 then return end
+
+    for titleID = 1, total do
+        if isKnown(titleID) then
+            local raw = getName(titleID)
+            if raw and raw ~= "" then
+                local display = raw:gsub("%%s", ""):gsub("^%s+", ""):gsub("%s+$", "")
+                if display == "" then display = raw end
+                uiSearchData[#uiSearchData + 1] = setmetatable({
+                    name = display,
+                    titleID = titleID,
+                    nameLower = slower(display),
+                }, TITLE_MT)
+            end
+        end
+    end
+    if self.ResetSearchCache then self:ResetSearchCache() end
+end
+
+-- Scan the player's saved Equipment Manager gear sets and inject as
+-- search entries. Click on a row equips the set via
+-- C_EquipmentSet.UseEquipmentSet (no protected-frame issues outside
+-- combat). Per-set icons come from the saved iconFileID.
+function Database:PopulateDynamicGearSets()
+    if not C_EquipmentSet or not C_EquipmentSet.GetEquipmentSetIDs then return end
+
+    for i = #uiSearchData, 1, -1 do
+        if uiSearchData[i].category == "Gear Set" then
+            tremove(uiSearchData, i)
+        end
+    end
+
+    local ids = C_EquipmentSet.GetEquipmentSetIDs()
+    if type(ids) ~= "table" then return end
+
+    local getInfo = C_EquipmentSet.GetEquipmentSetInfo
+    if not getInfo then return end
+
+    for _, setID in ipairs(ids) do
+        local name, iconFileID = getInfo(setID)
+        if name and name ~= "" then
+            uiSearchData[#uiSearchData + 1] = setmetatable({
+                name = name,
+                icon = iconFileID,
+                gearSetID = setID,
+                nameLower = slower(name),
+            }, GEAR_SET_MT)
+        end
+    end
+    if self.ResetSearchCache then self:ResetSearchCache() end
 end
 
 -- Called after PLAYER_LOGIN when C_TransmogOutfitInfo is available.
@@ -1450,13 +1588,39 @@ function Database:PopulateDynamicAbilities()
                 local subName = itemInfo.subName
                 local displayName = (subName and subName ~= "") and (name .. " (" .. subName .. ")") or name
                 local nameLower = slower(displayName)
-                local kw = { "ability", "spell", "cast", slower(name) }
+                -- "ability" / "abilities" let multi-word queries scope
+                -- to abilities ("feral abilities" matches all spec
+                -- abilities for that line). "spell" / "cast" / similar
+                -- generics are deliberately omitted: they used to drag
+                -- every ability into single-letter-typo searches via
+                -- fuzzy matching. The "ability"/"abilities" pair is
+                -- safer because the only nearby word ("agility") is
+                -- in FUZZY_BLOCKLIST.
+                -- Spec / skill-line name (e.g. "Feral", "Restoration")
+                -- is included so multi-word queries like "feral
+                -- abilities" can scope to a spec.
+                local kw = { slower(name), "ability", "abilities" }
+                if lineInfo and lineInfo.name and lineInfo.name ~= "" then
+                    kw[#kw + 1] = slower(lineInfo.name)
+                end
+                -- offSpecID > 0 means this line belongs to a non-active
+                -- specialization (the greyed-out tabs in the spellbook).
+                -- We still index the spells so users can search across all
+                -- specs, but mark them so the row renderer can desaturate
+                -- the icon and dim the text the way the spellbook does.
+                local isOffSpec = lineInfo and lineInfo.offSpecID
+                    and lineInfo.offSpecID ~= 0
                 uiSearchData[#uiSearchData + 1] = {
                     name = displayName,
                     nameLower = nameLower,
                     keywords = kw,
                     keywordsLower = kw,
                     category = "Ability",
+                    -- Spec / class skill-line name ("Feral", "Druid", "Restoration").
+                    -- Used by the row renderer to show "Feral Ability" subtext
+                    -- instead of the bare "Ability" category label.
+                    treeName = lineInfo and lineInfo.name,
+                    isOffSpec = isOffSpec,
                     icon = itemInfo.iconID,
                     spellID = itemInfo.actionID,
                     spellName = name,
@@ -1468,6 +1632,148 @@ function Database:PopulateDynamicAbilities()
             end
         end
     end
+end
+
+-- Common community abbreviations for dungeons/raids whose initials
+-- skip non-leading letters (e.g. "BWL" picks the W from blackWing) so
+-- the standard initials/prefix scoring can't reach them. Listed as
+-- per-instance keyword aliases — typing "bwl" gets the same 2-3 char
+-- exact-match boost (140) that "icc" already gets via the prefix path.
+-- Keys are lowercased instance names returned by EJ_GetInstanceByIndex.
+-- Exposed on ns so MapSearch can inject the same aliases onto its
+-- dungeon-entrance POIs and the two surfaces stay in sync.
+local INSTANCE_ABBRS = {
+    ["blackwing lair"]    = {"bwl"},
+    ["blackrock depths"]  = {"brd"},
+    ["blackfathom deeps"] = {"bfd"},
+    ["ragefire chasm"]    = {"rfc"},
+    ["razorfen downs"]    = {"rfd"},
+    ["razorfen kraul"]    = {"rfk"},
+    ["scarlet monastery"] = {"sm"},
+    ["scarlet halls"]     = {"sm"},
+    ["shadowfang keep"]   = {"sfk"},
+    ["zul'farrak"]        = {"zf"},
+    ["wailing caverns"]   = {"wc"},
+    ["icecrown citadel"]  = {"icc"},
+    ["black temple"]      = {"bt"},
+    ["naxxramas"]         = {"nax", "naxx"},
+}
+ns.INSTANCE_ABBRS = INSTANCE_ABBRS
+
+-- Inject one entry per dungeon/raid boss across every expansion tier.
+-- Click navigates the Encounter Journal to that boss. Icon is the
+-- boss's first creature portrait (EJ_GetCreatureInfo[5]) so results
+-- look like the EJ's own boss list.
+function Database:PopulateDynamicBosses()
+    -- Strip prior pass so re-runs don't double up.
+    for i = #uiSearchData, 1, -1 do
+        if uiSearchData[i].category == "Boss" then
+            tremove(uiSearchData, i)
+        end
+    end
+    if self.ResetSearchCache then self:ResetSearchCache() end
+
+    if not EncounterJournal then
+        EncounterJournal_LoadUI()
+    end
+
+    local getNumTiers       = EJ("GetNumTiers") or _G.EJ_GetNumTiers
+    local getCurrentTier    = EJ("GetCurrentTier") or _G.EJ_GetCurrentTier
+    local selectTier        = EJ("SelectTier") or _G.EJ_SelectTier
+    local getInstanceByIdx  = EJ("GetInstanceByIndex")
+    local selectInstance    = EJ("SelectInstance")
+    local getEncounterByIdx = EJ("GetEncounterInfoByIndex")
+    local getCreatureInfo   = EJ("GetCreatureInfo") or _G.EJ_GetCreatureInfo
+    if not getInstanceByIdx or not getEncounterByIdx or not selectTier then
+        return
+    end
+
+    -- Suppress EJ UI events during the scan so opening the journal
+    -- mid-scan can't fight us. Restore at the end.
+    local ejFrame = _G["EncounterJournal"]
+    local savedOnEvent
+    if ejFrame then
+        savedOnEvent = ejFrame:GetScript("OnEvent")
+        ejFrame:SetScript("OnEvent", nil)
+    end
+
+    local savedTier = getCurrentTier and getCurrentTier()
+    local numTiers = (getNumTiers and getNumTiers()) or 10
+
+    for tier = 1, numTiers do
+        selectTier(tier)
+        for _, isRaid in ipairs({ false, true }) do
+            local idx = 1
+            while true do
+                local instID, instName = getInstanceByIdx(idx, isRaid)
+                if not instID then break end
+                if selectInstance then selectInstance(instID) end
+
+                local encIdx = 1
+                while true do
+                    local encName, _, encID = getEncounterByIdx(encIdx)
+                    if not encName then break end
+
+                    local nameLower = slower(encName)
+                    local instLower = slower(instName or "")
+                    -- Keywords intentionally exclude generic "raid"/"dungeon"
+                    -- so typing those alone doesn't flood with every boss.
+                    -- The instance name + "boss" let "<inst> boss" queries
+                    -- match (e.g. "icc boss" -> all Icecrown Citadel bosses).
+                    -- SearchUI further gates instance-keyword matches behind
+                    -- the presence of "boss" in the query, so plain "icc"
+                    -- still won't flood with bosses either.
+                    local kw = { instLower, "boss", "bosses" }
+                    local abbrs = INSTANCE_ABBRS[instLower]
+                    if abbrs then
+                        for ai = 1, #abbrs do
+                            kw[#kw + 1] = abbrs[ai]
+                        end
+                    end
+
+                    -- Pull the first creature's portrait icon if EJ exposes it.
+                    local icon
+                    if getCreatureInfo then
+                        local ok, _, _, _, _, iconImage = pcall(getCreatureInfo, 1, encID)
+                        if ok and iconImage and iconImage ~= 0 then
+                            icon = iconImage
+                        end
+                    end
+
+                    uiSearchData[#uiSearchData + 1] = {
+                        name = encName,
+                        nameLower = nameLower,
+                        keywords = kw,
+                        keywordsLower = kw,
+                        category = "Boss",
+                        icon = icon,
+                        encounterID = encID,
+                        instanceID = instID,
+                        instanceName = instName,
+                        instanceNameLower = instLower,
+                        isRaidBoss = isRaid,
+                        ejTier = tier,
+                        path = { isRaid and "Raid" or "Dungeon", instName },
+                        steps = {
+                            { buttonFrame = "EJMicroButton" },
+                            { waitForFrame = "EncounterJournal", ejTier = tier, ejTabIsRaid = isRaid },
+                            { waitForFrame = "EncounterJournal", ejInstance = instName, ejInstanceID = instID },
+                            { waitForFrame = "EncounterJournal", ejBoss = encName, ejEncounterID = encID },
+                        },
+                    }
+
+                    encIdx = encIdx + 1
+                end
+
+                idx = idx + 1
+            end
+        end
+    end
+
+    -- Restore prior tier and EJ event handler so the journal behaves
+    -- normally for the user's next interaction.
+    if savedTier and selectTier then selectTier(savedTier) end
+    if ejFrame and savedOnEvent then ejFrame:SetScript("OnEvent", savedOnEvent) end
 end
 
 -- Inject one entry per unique item carried in the player's bags. The
@@ -1541,6 +1847,7 @@ function Database:PopulateDynamicBags()
             buttonFrame = bagBtn,
             steps = {
                 { buttonFrame = bagBtn },
+                { containerBag = first.bag, containerSlot = first.slot, allLocations = info.locations },
             },
         }
     end
@@ -2477,7 +2784,7 @@ function Database:BuildUIDatabase()
             name = "Bags / Inventory",
             keywords = {"bags", "bag", "inventory", "backpack", "items", "storage"},
             category = "Inventory",
-            icon = 130716,
+            iconAtlas = "bag-main",
             steps = {{ buttonFrame = "MainMenuBarBackpackButton" }},
         },
         {
@@ -2506,20 +2813,26 @@ function Database:BuildUIDatabase()
     -- Flatten the tree into the flat uiSearchData array
     self:FlattenTree(uiTree)
 
-    -- Pre-lowercase names and keywords for search performance
-    -- Also track which currencyIDs are in the static database
     for _, item in ipairs(uiSearchData) do
         item.nameLower = slower(item.name)
         if item.keywords then
-            item.keywordsLower = {}
-            for i, kw in ipairs(item.keywords) do
-                item.keywordsLower[i] = slower(kw)
+            local kws = item.keywords
+            local needsCopy = false
+            for i = 1, #kws do
+                local k = kws[i]
+                if k ~= slower(k) then needsCopy = true; break end
+            end
+            if needsCopy then
+                local lowered = {}
+                for i = 1, #kws do lowered[i] = slower(kws[i]) end
+                item.keywordsLower = lowered
+            else
+                item.keywordsLower = kws
             end
         end
         if not item.icon and not item.buttonFrame then
             item.icon = 134400
         end
-        -- Word cache fills lazily on first search (avoids init-time peak)
     end
 
     -- Tag entries with isPvP / isPvE for filter support
@@ -2575,6 +2888,26 @@ end
 local FUZZY_BLOCKLIST = {
     ["pvp"] = { ["pve"] = true },
     ["pve"] = { ["pvp"] = true },
+    -- "ability" / "abilities" appear as keywords on every ability entry
+    -- so multi-word queries like "feral abilities" can scope to a spec.
+    -- Block fuzzy hits between them and the literal stat "agility" so
+    -- typing "agility" doesn't drag every ability into the results.
+    ["agility"]   = { ["ability"] = true, ["abilities"] = true },
+    ["ability"]   = { ["agility"] = true },
+    ["abilities"] = { ["agility"] = true },
+}
+
+-- Words that real abbreviations skip without comment ("lfg" = "Looking For
+-- Group", "tot" = "Throne of Thunder"). Initials Strategy 2 may step over
+-- these for free; skipping any non-stopword (a content word like "atrocity"
+-- in "Shurrai, Atrocity of the Undersea") breaks the chain so unrelated
+-- queries don't get a misleading high score from accidental letter
+-- alignment.
+local INITIALS_STOPWORDS = {
+    ["of"] = true, ["the"] = true, ["a"] = true, ["an"] = true,
+    ["and"] = true, ["or"] = true, ["in"] = true, ["on"] = true,
+    ["at"] = true, ["by"] = true, ["for"] = true, ["to"] = true,
+    ["with"] = true, ["from"] = true,
 }
 
 -- A word boundary is the start of the string or right after a space/punctuation.
@@ -2637,14 +2970,20 @@ function Database:ScoreInitials(text, query)
         end
     end
 
-    -- Strategy 2: Prefix-of-words - each query segment matches the start of a word
-    -- "raba" → "ra(ndom) ba(ttleground)" - greedily consume query chars across words
-    local qi = 1  -- position in query
+    -- Strategy 2: Prefix-of-words - each query segment matches the start
+    -- of a word, walking left-to-right. "raba" → "ra(ndom) ba(ttleground)"
+    -- greedily consumes query chars across consecutive words.
+    -- Once the chain has started (wordsMatched > 0), encountering a
+    -- non-stopword that doesn't match breaks the chain. Without this,
+    -- queries like "sound" wrongly initial-match "Shurrai, Atrocity of
+    -- the Undersea" via S(hurrai) o(f) und(ersea), skipping the content
+    -- word "atrocity" silently. Stopwords (of/the/and/...) may still be
+    -- skipped — that's what lets "tot" → "Throne of Thunder" work.
+    local qi = 1
     local wordsMatched = 0
     for wi = 1, numWords do
         if qi > queryLen then break end
         local w = words[wi]
-        -- How many chars from the start of this word match the query at position qi?
         local matchLen = 0
         while qi + matchLen <= queryLen and matchLen < #w do
             if ssub(query, qi + matchLen, qi + matchLen) == ssub(w, matchLen + 1, matchLen + 1) then
@@ -2656,11 +2995,11 @@ function Database:ScoreInitials(text, query)
         if matchLen > 0 then
             qi = qi + matchLen
             wordsMatched = wordsMatched + 1
+        elseif wordsMatched > 0 and not INITIALS_STOPWORDS[w] then
+            break
         end
     end
-    -- Did we consume the entire query across multiple words?
     if qi > queryLen and wordsMatched >= 2 then
-        -- Score based on how many words were matched (more = better abbreviation)
         return 110 + mmin(wordsMatched * 3, 20)
     end
 
@@ -2672,22 +3011,38 @@ end
 -- Returns a score > 0 if a close match is found, 0 otherwise.
 
 function Database:ScoreFuzzy(text, query, queryLen)
+    -- Length-scaled typo tolerance (1 edit per ~4 chars), the same
+    -- shape Algolia / Elasticsearch AUTO mode use. Without this scale,
+    -- a 5-char query like "skull" would fuzzy-match "spell" (2 edits)
+    -- and similar 40%-different words, drowning real results.
+    local maxEdits
+    if queryLen >= 8 then maxEdits = 2
+    elseif queryLen >= 4 then maxEdits = 1
+    else return 0  -- queries under 4 chars: no fuzzy, substring covers them
+    end
+
+    local queryFirst = ssub(query, 1, 1)
     local bestScore = 0
     local blocked = FUZZY_BLOCKLIST[query]
     local textWords = GetWords(text)
     for wi = 1, #textWords do
         local word = textWords[wi]
-        if not (blocked and blocked[word]) then
+        -- First-letter constraint (Algolia default). "easter" vs
+        -- "master" is a 1-edit match technically, but they're
+        -- semantically unrelated — typos almost never change the
+        -- first character, and this rule kills the false-positive
+        -- flood without dropping real typos like "achievmnts" →
+        -- "achievements".
+        if ssub(word, 1, 1) == queryFirst
+           and not (blocked and blocked[word]) then
             local wordLen = #word
             local lenDiff = wordLen - queryLen
             if lenDiff < 0 then lenDiff = -lenDiff end
-            -- ±1 for short queries, ±2 for 6+ char queries
-            local maxLenDiff = queryLen >= 6 and 2 or 1
-            if lenDiff <= maxLenDiff then
+            if lenDiff <= maxEdits then
                 local dist = Database:DamerauLevenshtein(query, word, queryLen, wordLen)
-                if dist == 1 then
+                if dist == 1 and maxEdits >= 1 then
                     bestScore = mmax(bestScore, 85)
-                elseif dist == 2 and queryLen >= 5 then
+                elseif dist == 2 and maxEdits >= 2 then
                     bestScore = mmax(bestScore, 45)
                 end
             end
@@ -2849,7 +3204,10 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
     -- Per-word matching for multi-word queries:
     -- Split query into words and score each against name words.
     -- All query words must match for a score to be awarded.
-    if score < 50 and sfind(query, " ", 1, true) then
+    -- Fires even when an inferior path already returned a low score
+    -- (e.g. mid-word substring 30) so a multi-word typo match like
+    -- "estern kingd" → "Eastern Kingdoms" can still surface.
+    if score < 100 and sfind(query, " ", 1, true) then
         local queryWords = optQueryWords
         if not queryWords then
             queryWords = {}
@@ -2877,13 +3235,14 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
                             ws = 90
                         elseif sfind(nw, qw, 1, true) then
                             ws = 50
-                        elseif qwLen >= 4 then
+                        elseif qwLen >= 4 and ssub(nw, 1, 1) == ssub(qw, 1, 1) then
                             local nwLen = #nw
-                            if nwLen >= qwLen - 2 and nwLen <= qwLen + 2 then
+                            local maxEdits = qwLen >= 8 and 2 or 1
+                            if nwLen >= qwLen - maxEdits and nwLen <= qwLen + maxEdits then
                                 local dist = Database:DamerauLevenshtein(qw, nw, qwLen, nwLen)
                                 if dist == 1 then
                                     ws = 75
-                                elseif dist == 2 and qwLen >= 5 then
+                                elseif dist == 2 and maxEdits >= 2 then
                                     ws = 40
                                 end
                             end
@@ -3009,15 +3368,19 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
     end
 
     -- For multi-word queries, match each word separately and take best match per word.
-    -- All query words must match at least one keyword; a single unmatched word
-    -- zeroes the total to prevent common words like "of" from producing false positives.
+    -- All query words >= 2 chars must match at least one keyword; a single
+    -- unmatched word zeroes the total to prevent common words like "of" from
+    -- producing false positives. Single-character words are SKIPPED (not
+    -- failed) so a mid-type query like "feral a" still passes through entries
+    -- that match "feral" — otherwise the prevCandidates incremental narrowing
+    -- chain inherits an empty set and "feral abil" silently returns nothing.
     local total = 0
     for qwi = 1, #queryWords do
         local queryWord = queryWords[qwi]
         local queryWordLen = #queryWord
         local bestScore = 0
 
-        if queryWordLen >= 2 then  -- single-char words too ambiguous for keyword matching
+        if queryWordLen >= 2 then
             for ki = 1, numKeywords do
                 local kw = keywordsLower[ki]
                 local kwScore = 0
@@ -3046,12 +3409,12 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
                     bestScore = kwScore
                 end
             end
+            if bestScore == 0 then
+                return 0
+            end
+            total = total + bestScore
         end
-
-        if bestScore == 0 then
-            return 0
-        end
-        total = total + bestScore
+        -- queryWordLen < 2: skipped (mid-type), don't fail entry
     end
 
     return total
@@ -3063,19 +3426,285 @@ local prevQuery = ""
 local prevSkipKey = ""
 local prevCandidates = {}
 
--- Clear the incremental search cache. Called after uiSearchData is mutated
--- (e.g. PopulateDynamicTransmogSets) so the next query doesn't reuse a
--- stale candidate list that was built against the old dataset.
+-- ---------------------------------------------------------------------
+-- Inverted prefix indexes. Without these, every keystroke that isn't
+-- a forward extension of the previous query (every backspace, every
+-- fresh query, every typo correction) falls back to a full scan over
+-- ~10K entries — held backspace stutters every frame.
+--
+-- We keep two indexes side-by-side:
+--   prefix2Index["mo"] = { entries with any name/keyword word starting "mo" }
+--   prefix1Index["m"]  = { entries with any name/keyword word starting "m"  }
+--
+-- Lookup tries 2-char first (smallest bucket, ~50-300 entries).
+-- Falls back to 1-char if the 2-char bucket is empty (covers rare
+-- prefixes and entries whose words are < 2 chars). Falls back to a
+-- full scan as a final safety net (should never happen in practice).
+--
+-- Built at the end of init and rebuilt any time uiSearchData mutates
+-- (ResetSearchCache invalidates the indexes; next SearchUI rebuilds).
+-- ---------------------------------------------------------------------
+local prefix1Index = nil
+local prefix2Index = nil
+
+local function indexAddWord(seen1, seen2, entry, word)
+    if not word or word == "" then return end
+    local c1 = ssub(word, 1, 1)
+    if not seen1[c1] then
+        seen1[c1] = true
+        local b1 = prefix1Index[c1]
+        if not b1 then b1 = {}; prefix1Index[c1] = b1 end
+        b1[#b1 + 1] = entry
+    end
+    if #word >= 2 then
+        local c2 = ssub(word, 1, 2)
+        if not seen2[c2] then
+            seen2[c2] = true
+            local b2 = prefix2Index[c2]
+            if not b2 then b2 = {}; prefix2Index[c2] = b2 end
+            b2[#b2 + 1] = entry
+        end
+    end
+end
+
+local function rebuildPrefixIndexes()
+    prefix1Index = {}
+    prefix2Index = {}
+    local seen1, seen2 = {}, {}
+    for ei = 1, #uiSearchData do
+        local entry = uiSearchData[ei]
+        for k in pairs(seen1) do seen1[k] = nil end
+        for k in pairs(seen2) do seen2[k] = nil end
+        local nameLower = entry.nameLower
+        if nameLower then
+            for word in nameLower:gmatch("%S+") do
+                indexAddWord(seen1, seen2, entry, word)
+            end
+        end
+        local kwl = entry.keywordsLower
+        if kwl then
+            for ki = 1, #kwl do
+                local kw = kwl[ki]
+                if type(kw) == "string" then
+                    for word in kw:gmatch("%S+") do
+                        indexAddWord(seen1, seen2, entry, word)
+                    end
+                end
+            end
+        end
+    end
+end
+
+local sortChildrenNode
+local function compareChildByScore(a, b)
+    local children = sortChildrenNode.children
+    local sa = children[a].bestScore or 0
+    local sb = children[b].bestScore or 0
+    if sa ~= sb then return sa > sb end
+    return a < b
+end
+local function sortChildren(node)
+    sortChildrenNode = node
+    tsort(node.childOrder, compareChildByScore)
+    local children = node.children
+    local order = node.childOrder
+    for i = 1, #order do
+        sortChildren(children[order[i]])
+    end
+end
+
+local function GetOrCreateNode(root, pathParts)
+    local node = root
+    for i = 1, #pathParts do
+        local part = pathParts[i]
+        local children = node.children
+        local existing = children[part]
+        if not existing then
+            existing = {
+                name = part,
+                children = {},
+                childOrder = {},
+                bestScore = 0,
+            }
+            children[part] = existing
+            node.childOrder[#node.childOrder + 1] = part
+        end
+        node = existing
+    end
+    return node
+end
+
+local function HasActualContent(node)
+    if node._hac ~= nil then return node._hac end
+    if node.data then
+        local nodeData = node.data
+        local isCurrencyNode = nodeData.category == "Currency"
+        if not isCurrencyNode then
+            if nodeData.available and not nodeData.available() then
+                node._hac = false
+                return false
+            end
+            node._hac = true
+            return true
+        end
+
+        local hasCurrencyID = false
+        if nodeData.steps and C_CurrencyInfo then
+            local steps = nodeData.steps
+            for i = 1, #steps do
+                if steps[i].currencyID then
+                    hasCurrencyID = true
+                    break
+                end
+            end
+        end
+
+        if hasCurrencyID then
+            local steps = nodeData.steps
+            local isLegacyCurrency = false
+            for i = 1, #steps do
+                if steps[i].currencyHeader == "Legacy" then
+                    isLegacyCurrency = true
+                    break
+                end
+            end
+
+            for i = 1, #steps do
+                local step = steps[i]
+                if step.currencyID then
+                    local currencyInfo = C_CurrencyInfo.GetCurrencyInfo(step.currencyID)
+                    if not currencyInfo then node._hac = false; return false end
+                    if currencyInfo.quantity == 0 then
+                        local isDiscovered = (currencyInfo.totalEarned and currencyInfo.totalEarned > 0)
+                            or currencyInfo.useTotalEarnedForMaxQty
+                            or (currencyInfo.discovered == true)
+                        if isLegacyCurrency and not isDiscovered then
+                            node._hac = false
+                            return false
+                        end
+                    end
+                end
+            end
+            node._hac = true
+            return true
+        end
+
+        if nodeData.category == "Currency" and nodeData.steps then
+            local steps = nodeData.steps
+            local isLegacyParent = false
+            for i = 1, #steps do
+                if steps[i].currencyHeader == "Legacy" then
+                    isLegacyParent = true
+                    break
+                end
+            end
+            if not isLegacyParent then
+                node._hac = true
+                return true
+            end
+        end
+    end
+
+    local order = node.childOrder
+    local children = node.children
+    for i = 1, #order do
+        if HasActualContent(children[order[i]]) then
+            node._hac = true
+            return true
+        end
+    end
+    node._hac = false
+    return false
+end
+
+local flattenScratch = {}
+local hierEntryPool = {}
+local hierEntryPoolN = 0
+
+local function FlattenNode(self, node, depth, out, containerPaths)
+    local order = node.childOrder
+    local children = node.children
+    for ci = 1, #order do
+        local child = children[order[ci]]
+        local hasChildren = #child.childOrder > 0
+
+        if HasActualContent(child) then
+            local isContainer = false
+            if not hasChildren and child.data and child.data.path then
+                local path = child.data.path
+                local pathLen = #path
+                for pi = 1, pathLen do flattenScratch[pi] = path[pi] end
+                flattenScratch[pathLen + 1] = child.name
+                for pi = pathLen + 2, #flattenScratch do flattenScratch[pi] = nil end
+                isContainer = containerPaths[tconcat(flattenScratch, "\1", 1, pathLen + 1)] or false
+            elseif not hasChildren and child.data then
+                isContainer = containerPaths[child.name] or false
+            end
+
+            hierEntryPoolN = hierEntryPoolN + 1
+            local entry = hierEntryPool[hierEntryPoolN]
+            if not entry then
+                entry = {}
+                hierEntryPool[hierEntryPoolN] = entry
+            end
+            entry.name = child.name
+            entry.depth = depth
+            entry.isPathNode = hasChildren or isContainer
+            entry.isMatch = child.isMatch or false
+            entry.data = child.data or self:FindItemByName(child.name)
+            entry.isContainer = isContainer or nil
+            entry.isPinHeader = nil
+            entry.isPinned = nil
+            entry.isSectionHeader = nil
+            entry.isFlat = nil
+            entry.flatCatKey = nil
+            out[#out + 1] = entry
+
+            if hasChildren then
+                FlattenNode(self, child, depth + 1, out, containerPaths)
+            end
+        end
+    end
+end
+
+function Database:ResetHierEntryPool()
+    hierEntryPoolN = 0
+end
+
+local containerPathCache
+local nameLookup
+local function GetContainerPathSet()
+    if containerPathCache then return containerPathCache end
+    local cache = {}
+    for i = 1, #uiSearchData do
+        local data = uiSearchData[i]
+        if data.path then
+            cache[tconcat(data.path, "\1")] = true
+        end
+    end
+    containerPathCache = cache
+    return cache
+end
+
 function Database:ResetSearchCache()
     prevQuery = ""
     prevSkipKey = ""
     wipe(prevCandidates)
+    containerPathCache = nil
+    nameLookup = nil
+    prefix1Index = nil
+    prefix2Index = nil
 end
+
+local resultsBuf = {}
+local resultsQueryWords = {}
+local resultEntryPool = {}
 
 function Database:SearchUI(query, skipCategories)
     if not query or query == "" or #query < 2 then
         prevQuery = ""
-        return {}
+        wipe(resultsBuf)
+        return resultsBuf
     end
 
     query = slower(query)
@@ -3085,13 +3714,35 @@ function Database:SearchUI(query, skipCategories)
     if ssub(query, queryLen, queryLen) == " " then
         query = query:match("^(.-)%s+$") or query
         queryLen = #query
-        if queryLen == 0 then prevQuery = ""; return {} end
+        if queryLen == 0 then prevQuery = ""; wipe(resultsBuf); return resultsBuf end
     end
 
-    -- Pre-split query words once (passed to scoring to avoid per-entry gmatch)
-    local queryWords = {}
+    wipe(resultsQueryWords)
+    local queryWords = resultsQueryWords
     for w in query:gmatch("%S+") do
         queryWords[#queryWords + 1] = w
+    end
+
+    -- Detect "<instance> boss" style queries. When the user mentions
+    -- "boss" anywhere in the query, bosses are allowed to match by
+    -- their instance keyword (e.g. "icc boss" -> all ICC bosses).
+    -- Without "boss" present, bosses are restricted to name-only
+    -- matches so plain "raid"/"dungeon"/"icc" don't flood with them.
+    local bossQueryWord = false
+    -- Same gate for achievement entries: there are ~175 of them, and
+    -- nearly any common word (easter, mounts, kill, dungeon...) shows
+    -- up in some achievement keyword. Gate them behind the user
+    -- typing "ach"/"achievement"/etc. or a strong name match.
+    local achQueryWord = false
+    for qi = 1, #queryWords do
+        local qw = queryWords[qi]
+        if qw == "boss" or qw == "bosses" then
+            bossQueryWord = true
+        end
+        if ssub(qw, 1, 3) == "ach" or qw == "stat" or qw == "stats"
+           or qw == "statistic" or qw == "statistics" then
+            achQueryWord = true
+        end
     end
 
     -- Determine candidate set: incremental (previous matches) or full database
@@ -3100,6 +3751,7 @@ function Database:SearchUI(query, skipCategories)
         (skipCategories["Toy"] and "T" or "") ..
         (skipCategories["Pet"] and "P" or "") ..
         (skipCategories["Outfit"] and "O" or "") ..
+        (skipCategories["Heirloom"] and "H" or "") ..
         (skipCategories["Loot"] and "L" or "")
     ) or ""
 
@@ -3107,12 +3759,32 @@ function Database:SearchUI(query, skipCategories)
     local prevLen = #prevQuery
     if prevLen > 0 and skipKey == prevSkipKey
         and queryLen > prevLen and ssub(query, 1, prevLen) == prevQuery then
+        -- Forward extension of the prior query: re-score the prior
+        -- candidates only. (Cheapest path.)
         searchSet = prevCandidates
     else
-        searchSet = uiSearchData
+        -- Fresh query / backspace / typo correction: look up the
+        -- 2-char prefix bucket (smallest), fall back to 1-char (covers
+        -- single-char-word entries and rare prefixes), and only as a
+        -- last resort go full-scan. In practice the 2-char hit covers
+        -- ~all real queries.
+        if not prefix2Index then rebuildPrefixIndexes() end
+        local key2 = ssub(query, 1, 2)
+        searchSet = prefix2Index[key2]
+        if not searchSet then
+            searchSet = prefix1Index[ssub(query, 1, 1)]
+        end
+        if not searchSet then
+            wipe(resultsBuf)
+            prevQuery = query
+            prevSkipKey = skipKey
+            return resultsBuf
+        end
     end
 
-    local results = {}
+    wipe(resultsBuf)
+    local results = resultsBuf
+    local resultsN = 0
     local candidateIdx = 0
 
     local searchCount = #searchSet
@@ -3188,13 +3860,46 @@ function Database:SearchUI(query, skipCategories)
                 end
 
                 score = totalScore
-            else
+            elseif data.category == "Boss" and not bossQueryWord then
+                -- Bosses match by name only when the query doesn't
+                -- mention "boss". This prevents plain "raid"/"dungeon"
+                -- /"icc" from dragging every encounter into the list.
                 score = Database:ScoreName(nameLower, query, queryLen, queryWords)
-                score = score + Database:ScoreKeywords(data.keywordsLower, query, queryLen, queryWords)
+            else
+                local cat = data.category
+                local isAchEntry = cat == "Achievements" or cat == "Guild Achievements"
+                                   or cat == "Statistics"
+                if isAchEntry and not achQueryWord then
+                    -- Restrict achievement entries to strong name matches
+                    -- only (exact / prefix / starts-with-word). Skip the
+                    -- keyword score entirely so short common keyword
+                    -- aliases don't drag every achievement category in.
+                    if nameLower == query then
+                        score = 200
+                    elseif ssub(nameLower, 1, queryLen) == query then
+                        score = 150
+                    elseif Database:FindAtWordBoundary(nameLower, query) then
+                        score = 120
+                    else
+                        score = 0
+                    end
+                else
+                    score = Database:ScoreName(nameLower, query, queryLen, queryWords)
+                    score = score + Database:ScoreKeywords(data.keywordsLower, query, queryLen, queryWords)
+                end
             end
 
             if score >= 30 then
-                results[#results + 1] = { data = data, score = score }
+                resultsN = resultsN + 1
+                local r = resultEntryPool[resultsN]
+                if not r then
+                    r = {}
+                    resultEntryPool[resultsN] = r
+                end
+                r.data = data
+                r.score = score
+                r.isAlias = nil
+                results[resultsN] = r
                 candidateIdx = candidateIdx + 1
                 prevCandidates[candidateIdx] = data
             end
@@ -3208,6 +3913,16 @@ function Database:SearchUI(query, skipCategories)
     prevSkipKey = skipKey
 
     tsort(results, scoreDescending)
+    -- Cap to top-N by score. Beyond ~100 results the per-keystroke
+    -- bucket-build / sort / hierarchical-flatten pipeline pays in full
+    -- for entries the user can't see (the row pool is 50 anyway), and
+    -- "525 results for `mo`" hits 70ms+ in build alone. Capping the
+    -- raw score-sorted list before the downstream pipeline makes the
+    -- hot path proportional to visible work, not to dataset size.
+    local SEARCH_RESULT_CAP = 100
+    if resultsN > SEARCH_RESULT_CAP then
+        for i = SEARCH_RESULT_CAP + 1, resultsN do results[i] = nil end
+    end
     return results
 end
 
@@ -3219,41 +3934,19 @@ function Database:BuildHierarchicalResults(results)
         return {}
     end
 
-    -- Step 1 - Build a virtual tree from all results.
-    -- Each node: { name, children (name→node), childOrder (list of names),
-    --              data (search result entry or nil), bestScore }
     local root = { children = {}, childOrder = {} }
 
-    local function getOrCreateNode(pathParts)
-        local node = root
-        for _, part in ipairs(pathParts) do
-            if not node.children[part] then
-                node.children[part] = {
-                    name = part,
-                    children = {},
-                    childOrder = {},
-                    bestScore = 0,
-                }
-                node.childOrder[#node.childOrder + 1] = part
-            end
-            node = node.children[part]
-        end
-        return node
-    end
-
-    for _, item in ipairs(results) do
-        -- item = {data = originalEntry, score = N} from SearchUI
+    for ri = 1, #results do
+        local item = results[ri]
         local itemData = item.data
         local path = itemData.path or {}
-        local parentNode = getOrCreateNode(path)
+        local parentNode = GetOrCreateNode(root, path)
         local itemScore = item.score or 0
+        local existing = parentNode.children[itemData.name]
 
-        if parentNode.children[itemData.name] then
-            -- Node already exists (created as a path ancestor of another result).
-            -- Attach the actual result data so it becomes navigable.
-            local existing = parentNode.children[itemData.name]
+        if existing then
             if not existing.data then existing.data = itemData end
-            existing.isMatch = true  -- direct search match
+            existing.isMatch = true
             if itemScore > existing.bestScore then
                 existing.bestScore = itemScore
             end
@@ -3264,172 +3957,24 @@ function Database:BuildHierarchicalResults(results)
                 childOrder = {},
                 data = itemData,
                 bestScore = itemScore,
-                isMatch = true,  -- direct search match
+                isMatch = true,
             }
             parentNode.childOrder[#parentNode.childOrder + 1] = itemData.name
         end
 
-        -- Propagate best score upward so ancestor branches sort correctly.
         local node = root
-        for _, part in ipairs(path) do
-            node = node.children[part]
+        for pi = 1, #path do
+            node = node.children[path[pi]]
             if itemScore > node.bestScore then
                 node.bestScore = itemScore
             end
         end
     end
 
-    -- Step 2 - Sort children at every level: best score desc, then name asc.
-    local function sortChildren(node)
-        tsort(node.childOrder, function(a, b)
-            local sa = node.children[a].bestScore or 0
-            local sb = node.children[b].bestScore or 0
-            if sa ~= sb then return sa > sb end
-            return a < b
-        end)
-        for _, childName in ipairs(node.childOrder) do
-            sortChildren(node.children[childName])
-        end
-    end
     sortChildren(root)
 
-    -- Step 3 - DFS flatten into the display list.
-    -- Only include path nodes that have actual leaf content (not just empty descendants)
     local hierarchical = {}
-
-    -- Check if a node or any of its descendants has actual data that's available to the player
-    local function hasActualContent(node)
-        if node.data then
-            -- Check if this is a currency node (leaf or parent)
-            local isCurrencyNode = node.data.category == "Currency"
-
-            -- For non-currency items, use the availability function
-            if not isCurrencyNode then
-                if node.data.available and not node.data.available() then
-                    return false
-                end
-                return true
-            end
-
-            -- For currency items, check if it's a leaf node (has actual currency) vs parent node (just a header)
-            local hasCurrencyID = false
-            if node.data.steps and C_CurrencyInfo then
-                for _, step in ipairs(node.data.steps) do
-                    if step.currencyID then
-                        hasCurrencyID = true
-                        break
-                    end
-                end
-            end
-
-            -- Only process currency discovery checks for leaf nodes (nodes with actual currencyID)
-            if hasCurrencyID then
-                -- Check if this is under the Legacy tab
-                local isLegacyCurrency = false
-                for _, step in ipairs(node.data.steps) do
-                    if step.currencyHeader == "Legacy" then
-                        isLegacyCurrency = true
-                        break
-                    end
-                end
-
-                for _, step in ipairs(node.data.steps) do
-                    if step.currencyID then
-                        local currencyInfo = C_CurrencyInfo.GetCurrencyInfo(step.currencyID)
-                        -- If currency info doesn't exist, it's not available for this character
-                        if not currencyInfo then
-                            return false
-                        end
-                        -- Check if currency has been discovered
-                        if currencyInfo.quantity == 0 then
-                            local isDiscovered = (currencyInfo.totalEarned and currencyInfo.totalEarned > 0) or
-                                                 (currencyInfo.useTotalEarnedForMaxQty) or
-                                                 (currencyInfo.discovered == true)
-                            -- Only filter out undiscovered Legacy currencies
-                            -- Current content currencies are always shown (UI will grey them out)
-                            if isLegacyCurrency and not isDiscovered then
-                                return false
-                            end
-                        end
-                    end
-                end
-                -- Leaf node passed all checks
-                return true
-            end
-
-            -- For parent nodes (no currencyID), check if it's a non-Legacy currency tab
-            -- Non-Legacy currency tabs (D&R, Misc, PvP) should always show even with no children
-            if node.data.category == "Currency" and node.data.steps then
-                local isLegacyParent = false
-                for _, step in ipairs(node.data.steps) do
-                    if step.currencyHeader == "Legacy" then
-                        isLegacyParent = true
-                        break
-                    end
-                end
-                -- Non-Legacy currency parent tabs always show (UI will grey them out if needed)
-                if not isLegacyParent then
-                    return true
-                end
-            end
-            -- For Legacy parent nodes and non-currency nodes, fall through to check children
-        end
-
-        -- Check if any child has actual available content
-        for _, childName in ipairs(node.childOrder) do
-            if hasActualContent(node.children[childName]) then
-                return true
-            end
-        end
-        return false
-    end
-
-    -- Build a set of "container paths" - path prefixes that have children
-    -- in the full database.  Used to detect leaf search results that should
-    -- render as expandable path nodes (e.g. "Reputation", "Rated").
-    local containerPaths = {}
-    for _, data in ipairs(uiSearchData) do
-        if data.path then
-            local key = tconcat(data.path, "\1")
-            containerPaths[key] = true
-        end
-    end
-
-    local function flatten(node, depth)
-        for _, childName in ipairs(node.childOrder) do
-            local child = node.children[childName]
-            local hasChildren = #child.childOrder > 0
-
-            if hasActualContent(child) then
-                -- Check if this leaf node is actually a container in the database
-                -- (has children that didn't match the search query).
-                local isContainer = false
-                if not hasChildren and child.data then
-                    local fp = {}
-                    if child.data.path then
-                        for _, p in ipairs(child.data.path) do fp[#fp + 1] = p end
-                    end
-                    fp[#fp + 1] = child.name
-                    isContainer = containerPaths[tconcat(fp, "\1")] or false
-                end
-
-                hierarchical[#hierarchical + 1] = {
-                    name = child.name,
-                    depth = depth,
-                    isPathNode = hasChildren or isContainer,
-                    isMatch = child.isMatch or false,
-                    data = child.data or self:FindItemByName(child.name),
-                    isContainer = isContainer or nil,
-                }
-
-                if hasChildren then
-                    flatten(child, depth + 1)
-                end
-            end
-        end
-    end
-    flatten(root, 0)
-
+    FlattenNode(self, root, 0, hierarchical, GetContainerPathSet())
     return hierarchical
 end
 
@@ -3463,12 +4008,16 @@ function Database:GetContainerChildren(containerData)
 end
 
 function Database:FindItemByName(name)
-    for _, data in ipairs(uiSearchData) do
-        if data.name == name then
-            return data
+    if not nameLookup then
+        nameLookup = {}
+        for i = 1, #uiSearchData do
+            local d = uiSearchData[i]
+            if not nameLookup[d.name] then
+                nameLookup[d.name] = d
+            end
         end
     end
-    return nil
+    return nameLookup[name]
 end
 
 -- Static UI database must be built at load time (before ADDON_LOADED) so other

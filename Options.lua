@@ -921,30 +921,28 @@ function Options:Initialize()
     optionsFrame.colorSwatch = colorSwatch
     optionsFrame.colorFlyout = colorFlyout
 
-    local themeLabel = sec3:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    themeLabel:SetPoint("TOPLEFT", colorLabel, "BOTTOMLEFT", 0, -20)
-    themeLabel:SetText("Theme:")
+    local fontLabel = sec3:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    fontLabel:SetPoint("TOPLEFT", colorLabel, "BOTTOMLEFT", 0, -20)
+    fontLabel:SetText("Font:")
 
-    local themeChoices = {"Classic", "Retail"}
-
-    local themeBtnFrame, themeBtnText = CreateFlyoutSelector(
-        sec3, "EasyFindTheme", 120, themeLabel, EasyFind.db.resultsTheme or "Retail"
+    local fontChoices = ns.FONT_CHOICES or {"Default", "Inter"}
+    local fontBtnFrame, fontBtnText = CreateFlyoutSelector(
+        sec3, "EasyFindFont", 120, fontLabel, EasyFind.db.font or "Default"
     )
-    themeBtnFrame:ClearAllPoints()
-    themeBtnFrame:SetPoint("LEFT", themeLabel, "LEFT", BTN_OFFSET, 0)
-    local themeFlyout = CreateFlyoutPanel(themeBtnFrame, "EasyFindTheme", 120, #themeChoices)
-    AddFlyoutOptions(themeFlyout, themeChoices, 114, function(name)
-        EasyFind.db.resultsTheme = name
-        themeBtnText:SetText(name)
-        if ns.UI and ns.UI.RefreshResults then ns.UI:RefreshResults() end
-        if ns.MapSearch and ns.MapSearch.UpdateSearchBarTheme then ns.MapSearch:UpdateSearchBarTheme() end
+    fontBtnFrame:ClearAllPoints()
+    fontBtnFrame:SetPoint("LEFT", fontLabel, "LEFT", BTN_OFFSET, 0)
+    local fontFlyout = CreateFlyoutPanel(fontBtnFrame, "EasyFindFont", 120, #fontChoices)
+    AddFlyoutOptions(fontFlyout, fontChoices, 114, function(name)
+        EasyFind.db.font = name
+        fontBtnText:SetText(name)
+        if ns.RefreshAddonFont then ns.RefreshAddonFont() end
     end)
-    optionsFrame.themeBtnText = themeBtnText
-    optionsFrame.themeFlyout = themeFlyout
+    optionsFrame.fontBtnText = fontBtnText
+    optionsFrame.fontFlyout = fontFlyout
 
     local panelOpacitySlider = CreateSlider(sec3, "PanelOpacity", "Options Menu Opacity", 0.3, 1.0, 0.05,
         "Adjusts the opacity of the options panel background.", nil, 0.9)
-    panelOpacitySlider:SetPoint("TOPLEFT", themeLabel, "BOTTOMLEFT", 0, -30)
+    panelOpacitySlider:SetPoint("TOPLEFT", fontLabel, "BOTTOMLEFT", 0, -30)
     panelOpacitySlider:SetValue(EasyFind.db.panelOpacity or 0.9)
     panelOpacitySlider:HookScript("OnValueChanged", function(self, value)
         EasyFind.db.panelOpacity = value
@@ -1019,9 +1017,29 @@ function Options:Initialize()
     end)
     resizeUIBtn:SetScript("OnLeave", GameTooltip_Hide)
 
-    local smartShowCheckbox = CreateCheckbox(sec1, "SmartShow", "Smart Show |cFF888888(Recommended)|r",
-        "When enabled, the UI search bar hides itself until you move your mouse near its position.\n\nThe bar reappears when your mouse enters the area and fades away when you move away.\n\nA separate Smart Show toggle for map search bars is available in the Map Search section.")
-    smartShowCheckbox:SetPoint("TOPLEFT", sec1, "TOPLEFT", 16, -38)
+    local autoHideCheckbox = CreateCheckbox(sec1, "AutoHide", "Auto-Hide |cFF888888(Recommended)|r",
+        "Raycast-style: the search bar starts hidden and only appears when you press the keybind. Clicking outside the bar, results, or filter menu hides it again, as does selecting a result.\n\nWhen enabled, Smart Show is ignored.")
+    autoHideCheckbox:SetPoint("TOPLEFT", sec1, "TOPLEFT", 16, -38)
+    autoHideCheckbox:SetChecked(EasyFind.db.autoHide ~= false)
+    autoHideCheckbox:SetScript("OnClick", function(self)
+        local on = self:GetChecked()
+        EasyFind.db.autoHide = on
+        if on then
+            if ns.UI and ns.UI.Hide then ns.UI:Hide() end
+        else
+            if ns.UI and ns.UI.Show then ns.UI:Show(false) end
+        end
+        if optionsFrame.smartShowCheckbox then
+            optionsFrame.smartShowCheckbox:SetEnabled(not on)
+            local lbl = optionsFrame.smartShowCheckbox:GetFontString()
+            if lbl then lbl:SetTextColor(on and 0.5 or 1, on and 0.5 or 1, on and 0.5 or 1) end
+        end
+    end)
+    optionsFrame.autoHideCheckbox = autoHideCheckbox
+
+    local smartShowCheckbox = CreateCheckbox(sec1, "SmartShow", "Smart Show",
+        "When enabled, the UI search bar hides itself until you move your mouse near its position.\n\nThe bar reappears when your mouse enters the area and fades away when you move away.\n\nIgnored when Auto-Hide is enabled. A separate Smart Show toggle for map search bars is available in the Map Search section.")
+    smartShowCheckbox:SetPoint("TOPLEFT", autoHideCheckbox, "BOTTOMLEFT", 0, -2)
     smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
     smartShowCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.smartShow = self:GetChecked()
@@ -1029,6 +1047,11 @@ function Options:Initialize()
             ns.UI:UpdateSmartShow()
         end
     end)
+    if EasyFind.db.autoHide ~= false then
+        smartShowCheckbox:SetEnabled(false)
+        local lbl = smartShowCheckbox:GetFontString()
+        if lbl then lbl:SetTextColor(0.5, 0.5, 0.5) end
+    end
     optionsFrame.smartShowCheckbox = smartShowCheckbox
 
     local staticOpacityCheckbox = CreateCheckbox(sec1, "StaticOpacity", "Static Opacity",
@@ -1043,9 +1066,18 @@ function Options:Initialize()
     end)
     optionsFrame.staticOpacityCheckbox = staticOpacityCheckbox
 
+    local lockPositionCheckbox = CreateCheckbox(sec1, "LockPosition", "Lock Position",
+        "When enabled, the search bar can't be dragged. Useful if you've placed it exactly where you want and don't want to bump it by accident.\n\nReset Positions and the :reset command still work.")
+    lockPositionCheckbox:SetPoint("TOPLEFT", staticOpacityCheckbox, "BOTTOMLEFT", 0, -2)
+    lockPositionCheckbox:SetChecked(EasyFind.db.lockPosition or false)
+    lockPositionCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.lockPosition = self:GetChecked()
+    end)
+    optionsFrame.lockPositionCheckbox = lockPositionCheckbox
+
     local uiResultsAboveCheckbox = CreateCheckbox(sec1, "UIResultsAbove", "UI Results Above",
         "When enabled, the UI search bar shows results above the bar instead of below.\n\nUseful if you place the search bar near the bottom of your screen.")
-    uiResultsAboveCheckbox:SetPoint("TOPLEFT", staticOpacityCheckbox, "BOTTOMLEFT", 0, -2)
+    uiResultsAboveCheckbox:SetPoint("TOPLEFT", lockPositionCheckbox, "BOTTOMLEFT", 0, -2)
     uiResultsAboveCheckbox:SetChecked(EasyFind.db.uiResultsAbove or false)
     uiResultsAboveCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.uiResultsAbove = self:GetChecked()
@@ -1055,7 +1087,7 @@ function Options:Initialize()
     local hideHeadersCheckbox = CreateCheckbox(sec1, "HideHeaders", "Flat Results (no headers)",
         "Show results as a single flat list with no category headers. Each row displays the entry name with its full path as subtext underneath.")
     hideHeadersCheckbox:SetPoint("TOPLEFT", uiResultsAboveCheckbox, "BOTTOMLEFT", 0, -2)
-    hideHeadersCheckbox:SetChecked(EasyFind.db.uiHideHeaders or false)
+    hideHeadersCheckbox:SetChecked(EasyFind.db.uiHideHeaders ~= false)
     hideHeadersCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.uiHideHeaders = self:GetChecked()
         -- Re-run the search so results rebuild in the chosen layout mode.
@@ -1093,7 +1125,7 @@ function Options:Initialize()
         StaticPopup_Show("EASYFIND_RESET_UI_POS")
     end)
 
-    uiControls = { resizeUIBtn, resetUIBtn, resetUIPosBtn, uiFontSlider, smartShowCheckbox, staticOpacityCheckbox, uiResultsAboveCheckbox, hideHeadersCheckbox }
+    uiControls = { resizeUIBtn, resetUIBtn, resetUIPosBtn, uiFontSlider, autoHideCheckbox, smartShowCheckbox, staticOpacityCheckbox, lockPositionCheckbox, uiResultsAboveCheckbox, hideHeadersCheckbox }
     UpdateUIToggleVisual()
 
     -- SECTION 3: Map Search
@@ -1672,7 +1704,11 @@ function Options:DoResetAll()
     EasyFind.db.globalSearchPositionMax = nil
     EasyFind.db.mapSearchYOffset = 0
     EasyFind.db.smartShow = false
-    EasyFind.db.resultsTheme = "Retail"
+    EasyFind.db.autoHide = true
+    EasyFind.db.lockPosition = false
+    EasyFind.db.tutorialDone = false
+    EasyFind.db.resultsTheme = "Modern"
+    EasyFind.db.font = "Default"
     EasyFind.db.uiResultsHeight = 280
     EasyFind.db.mapResultsHeight = 168
     EasyFind.db.pinsCollapsed = false
@@ -1684,7 +1720,7 @@ function Options:DoResetAll()
     EasyFind.db.showLoginMessage = true
     EasyFind.db.uiResultsAbove = false
     EasyFind.db.mapResultsAbove = false
-    EasyFind.db.uiHideHeaders = false
+    EasyFind.db.uiHideHeaders = true
     EasyFind.db.showMinimapButton = true
     EasyFind.db.minimapButtonAngle = 200
     EasyFind.db.arrivalDistance = 10
@@ -1704,7 +1740,7 @@ function Options:DoResetAll()
     EasyFind.db.enableMapSearch = true
     EasyFind.db.globalSearchFilters = { zones = true, dungeons = true, raids = true, delves = true }
     EasyFind.db.localSearchFilters = { instances = true, travel = true, services = true, rares = true }
-    EasyFind.db.uiSearchFilters = { ui = true, achievements = true, currencies = true, reputations = true, collections = true, mounts = false, toys = false, pets = false, outfits = false, loot = false, appearanceSets = false, map = false }
+    EasyFind.db.uiSearchFilters = { ui = true, achievements = true, currencies = true, reputations = true, collections = true, mounts = true, toys = true, pets = true, outfits = true, heirlooms = true, loot = true, appearanceSets = true, bags = true, macros = true, options = true, abilities = true, bosses = true, map = true }
     EasyFind.db.lootSpecs = nil           -- nil = current spec only
     EasyFind.db.lootSearchSlots = true
     EasyFind.db.lootSearchStats = true
@@ -1760,10 +1796,16 @@ function Options:DoResetAll()
     optionsFrame.opacitySlider:SetValue(DEFAULT_OPACITY)
     optionsFrame.uiFontSlider:SetValue(0.9)
     optionsFrame.smartShowCheckbox:SetChecked(false)
+    if optionsFrame.autoHideCheckbox then
+        optionsFrame.autoHideCheckbox:SetChecked(true)
+    end
+    if optionsFrame.lockPositionCheckbox then
+        optionsFrame.lockPositionCheckbox:SetChecked(false)
+    end
     optionsFrame.staticOpacityCheckbox:SetChecked(false)
     optionsFrame.loginMessageCheckbox:SetChecked(true)
     optionsFrame.uiResultsAboveCheckbox:SetChecked(false)
-    if optionsFrame.hideHeadersCheckbox then optionsFrame.hideHeadersCheckbox:SetChecked(false) end
+    if optionsFrame.hideHeadersCheckbox then optionsFrame.hideHeadersCheckbox:SetChecked(true) end
     optionsFrame.minimapBtnCheckbox:SetChecked(true)
     if optionsFrame.rareTrackCheckbox then optionsFrame.rareTrackCheckbox:SetChecked(false) end
     if optionsFrame.mapPinGroup then optionsFrame.mapPinGroup:UpdateVisuals() end
@@ -1773,9 +1815,10 @@ function Options:DoResetAll()
     if optionsFrame.UpdateMapToggleVisual then optionsFrame.UpdateMapToggleVisual() end
     optionsFrame.arrivalSlider:SetValue(10)
     optionsFrame.circleScaleSlider:SetValue(1.0)
-    optionsFrame.themeBtnText:SetText("Retail")
     optionsFrame.indicatorBtnText:SetText("EasyFind Arrow")
     optionsFrame.colorBtnText:SetText("Yellow")
+    if optionsFrame.fontBtnText then optionsFrame.fontBtnText:SetText("Default") end
+    if ns.RefreshAddonFont then ns.RefreshAddonFont() end
     local defaultRGB = ns.INDICATOR_COLORS["Yellow"]
     optionsFrame.colorBtnText:SetTextColor(defaultRGB[1], defaultRGB[2], defaultRGB[3])
     optionsFrame.colorSwatch:SetColorTexture(defaultRGB[1], defaultRGB[2], defaultRGB[3], 1)
@@ -1816,6 +1859,8 @@ end
 
 function Options:DoResetUI()
     EasyFind.db.smartShow = false
+    EasyFind.db.autoHide = true
+    EasyFind.db.lockPosition = false
     EasyFind.db.staticOpacity = false
     EasyFind.db.uiResultsAbove = false
     EasyFind.db.fontSize = 0.9
@@ -1825,7 +1870,7 @@ function Options:DoResetUI()
     EasyFind.db.uiResultsWidth = 350
     EasyFind.db.uiSearchPosition = nil
     EasyFind.db.uiResultsHeight = 280
-    EasyFind.db.uiSearchFilters = { ui = true, achievements = true, currencies = true, reputations = true, collections = true, mounts = false, toys = false, pets = false, outfits = false, loot = false, appearanceSets = false, map = false }
+    EasyFind.db.uiSearchFilters = { ui = true, achievements = true, currencies = true, reputations = true, collections = true, mounts = true, toys = true, pets = true, outfits = true, heirlooms = true, loot = true, appearanceSets = true, bags = true, macros = true, options = true, abilities = true, bosses = true, map = true }
     EasyFind.db.lootSpecs = nil
     EasyFind.db.lootSearchSlots = true
     EasyFind.db.lootSearchStats = true
@@ -1839,6 +1884,12 @@ function Options:DoResetUI()
     EasyFind.db.uiMapSearchLocal = true
 
     optionsFrame.smartShowCheckbox:SetChecked(false)
+    if optionsFrame.autoHideCheckbox then
+        optionsFrame.autoHideCheckbox:SetChecked(true)
+    end
+    if optionsFrame.lockPositionCheckbox then
+        optionsFrame.lockPositionCheckbox:SetChecked(false)
+    end
     optionsFrame.staticOpacityCheckbox:SetChecked(false)
     optionsFrame.uiResultsAboveCheckbox:SetChecked(false)
     optionsFrame.uiFontSlider:SetValue(0.9)
@@ -2023,16 +2074,33 @@ function Options:Show()
     if optionsFrame.uiFontSlider then optionsFrame.uiFontSlider:SetValue(EasyFind.db.fontSize or 0.9) end
     if optionsFrame.mapIconSlider then optionsFrame.mapIconSlider:SetValue(EasyFind.db.iconScale or 0.8) end
     if optionsFrame.arrivalSlider then optionsFrame.arrivalSlider:SetValue(EasyFind.db.arrivalDistance or 10) end
+    if optionsFrame.autoHideCheckbox then
+        optionsFrame.autoHideCheckbox:SetChecked(EasyFind.db.autoHide ~= false)
+    end
     optionsFrame.smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
+    do
+        local autoOn = EasyFind.db.autoHide ~= false
+        optionsFrame.smartShowCheckbox:SetEnabled(not autoOn)
+        local lbl = optionsFrame.smartShowCheckbox:GetFontString()
+        if lbl then
+            local g = autoOn and 0.5 or 1
+            lbl:SetTextColor(g, g, g)
+        end
+    end
     optionsFrame.staticOpacityCheckbox:SetChecked(EasyFind.db.staticOpacity or false)
+    if optionsFrame.lockPositionCheckbox then
+        optionsFrame.lockPositionCheckbox:SetChecked(EasyFind.db.lockPosition or false)
+    end
     optionsFrame.loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage ~= false)
     optionsFrame.uiResultsAboveCheckbox:SetChecked(EasyFind.db.uiResultsAbove or false)
     optionsFrame.minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton or false)
     if optionsFrame.mapPinGroup then optionsFrame.mapPinGroup:UpdateVisuals() end
     if optionsFrame.minimapGroup then optionsFrame.minimapGroup:UpdateVisuals() end
     if optionsFrame.automationGroup then optionsFrame.automationGroup:UpdateVisuals() end
-    optionsFrame.themeBtnText:SetText(EasyFind.db.resultsTheme or "Retail")
     optionsFrame.indicatorBtnText:SetText(EasyFind.db.indicatorStyle or "EasyFind Arrow")
+    if optionsFrame.fontBtnText then
+        optionsFrame.fontBtnText:SetText(EasyFind.db.font or "Default")
+    end
     local clr = EasyFind.db.indicatorColor or "Yellow"
     local rgb = ns.INDICATOR_COLORS[clr] or ns.INDICATOR_COLORS.Yellow
     optionsFrame.colorBtnText:SetText(clr)

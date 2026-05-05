@@ -856,6 +856,14 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
 
     bar:SetScript("OnUpdate", function(self)
         if not self.isDragging then return end
+        -- Mouse-up can fire outside the thumb (drag off the edge, release
+        -- on another frame). The thumb's OnMouseUp doesn't fire then, so
+        -- detect button release here and end the drag.
+        if not IsMouseButtonDown("LeftButton") then
+            self.isDragging = false
+            if not thumb:IsMouseOver() then SetThumbNormal() end
+            return
+        end
         local range = scrollFrame:GetVerticalScrollRange()
         if range <= 0 then return end
 
@@ -1038,4 +1046,72 @@ function Utils.CreateClearButton(parent, globalName)
     btn:SetHighlightTexture(highlight)
 
     return btn
+end
+
+-- ---------------------------------------------------------------------------
+-- Addon-wide font selection.
+--
+-- ns.FONT_CHOICES drives the Options dropdown. Each FontString that opts
+-- into user-selectable fonts goes through ns.RegisterAddonFont(fs, weight,
+-- sizeOverride, flags) which:
+--   1. snapshots the FontString's existing font (path/size/flags) as the
+--      "Default" baseline so we can revert without remembering Friz Quadrata
+--      paths,
+--   2. records the requested addon weight ("regular" / "semibold" / "bold")
+--      so non-Default choices know which weight file to load,
+--   3. tracks the FontString in a registry,
+--   4. immediately applies the current user's choice.
+--
+-- ns.RefreshAddonFont() re-applies the current EasyFind.db.font to every
+-- registered FontString -- call it from the Options selector callback. Modules
+-- that want to participate just call RegisterAddonFont after CreateFontString.
+-- ---------------------------------------------------------------------------
+local INTER_REGULAR  = "Interface\\AddOns\\EasyFind\\Fonts\\Inter-Regular.ttf"
+local INTER_SEMIBOLD = "Interface\\AddOns\\EasyFind\\Fonts\\Inter-SemiBold.ttf"
+local INTER_BOLD     = "Interface\\AddOns\\EasyFind\\Fonts\\Inter-Bold.ttf"
+
+ns.FONT_CHOICES = { "Default", "Inter" }
+
+local fontRegistry = {}
+ns._fontRegistry = fontRegistry
+
+local function GetFontChoice()
+    return (EasyFind and EasyFind.db and EasyFind.db.font) or "Default"
+end
+
+local function ApplyFontTo(fs)
+    if not fs or not fs.SetFont then return end
+    local baseline = fs._addonFontBaseline
+    if not baseline then return end
+    local size  = fs._addonFontSizeOverride or baseline.size or 12
+    local flags = fs._addonFontFlags or baseline.flags or ""
+    local choice = GetFontChoice()
+    if choice == "Inter" then
+        local w = fs._addonFontWeight
+        local path = INTER_REGULAR
+        if     w == "bold"     then path = INTER_BOLD
+        elseif w == "semibold" then path = INTER_SEMIBOLD end
+        fs:SetFont(path, size, flags)
+    else
+        fs:SetFont(baseline.path, baseline.size, baseline.flags or "")
+    end
+end
+
+function ns.RegisterAddonFont(fs, weight, sizeOverride, flags)
+    if not fs or not fs.GetFont or not fs.SetFont then return end
+    if not fs._addonFontBaseline then
+        local p, sz, fl = fs:GetFont()
+        fs._addonFontBaseline = { path = p, size = sz, flags = fl }
+        fontRegistry[#fontRegistry + 1] = fs
+    end
+    fs._addonFontWeight       = weight
+    fs._addonFontSizeOverride = sizeOverride
+    fs._addonFontFlags        = flags
+    ApplyFontTo(fs)
+end
+
+function ns.RefreshAddonFont()
+    for i = 1, #fontRegistry do
+        ApplyFontTo(fontRegistry[i])
+    end
 end

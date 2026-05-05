@@ -240,7 +240,7 @@ end
 
 -- Preview results (fake rows to show results area)
 
-local function CreatePreviewResults(parent, targetFrame, width, heightPx, anchorAbove, leftAligned)
+local function CreatePreviewResults(parent, targetFrame, width, heightPx, anchorAbove, leftAligned, flushDock)
     local fontScale = GetFontScale()
     local rowH = PREVIEW_ROW_H * fontScale
     local frame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
@@ -249,17 +249,18 @@ local function CreatePreviewResults(parent, targetFrame, width, heightPx, anchor
     frame:SetWidth(width)
     frame:SetHeight(heightPx)
 
+    local gap = flushDock and 0 or 2
     if leftAligned then
         if anchorAbove then
-            frame:SetPoint("BOTTOMLEFT", targetFrame, "TOPLEFT", 0, 2)
+            frame:SetPoint("BOTTOMLEFT", targetFrame, "TOPLEFT", 0, gap)
         else
-            frame:SetPoint("TOPLEFT", targetFrame, "BOTTOMLEFT", 0, -2)
+            frame:SetPoint("TOPLEFT", targetFrame, "BOTTOMLEFT", 0, -gap)
         end
     else
         if anchorAbove then
-            frame:SetPoint("BOTTOM", targetFrame, "TOP", 0, 2)
+            frame:SetPoint("BOTTOM", targetFrame, "TOP", 0, gap)
         else
-            frame:SetPoint("TOP", targetFrame, "BOTTOM", 0, -2)
+            frame:SetPoint("TOP", targetFrame, "BOTTOM", 0, -gap)
         end
     end
 
@@ -706,24 +707,25 @@ function Rescaler:Enter(mode)
         searchBar:Show()
         searchBar:SetAlpha(1.0)
 
-        getBarWidth = function() return searchBar:GetWidth() end
-        setBarWidth = function(w)
+        -- UI mode is the unified rounded-pill design: bar + results
+        -- share one rounded silhouette and one width. Both setters
+        -- below drive the same width so the bar overlay and results
+        -- overlay handles all stay in sync.
+        local function setUiWidth(w)
             w = ClampWidth(w)
             searchBar:SetWidth(w)
             EasyFind.db.uiSearchWidth = w / 250
-        end
-
-        getResultsScale = function() return EasyFind.db.uiResultsScale or 1.0 end
-
-        getResultsWidth = function()
-            if resultsFrame then return resultsFrame:GetWidth() end
-            return 380
-        end
-        setResultsWidth = function(w)
-            w = ClampWidth(w)
             EasyFind.db.uiResultsWidth = w
             if resultsFrame then resultsFrame:SetWidth(w) end
         end
+
+        getBarWidth = function() return searchBar:GetWidth() end
+        setBarWidth = setUiWidth
+
+        getResultsScale = function() return EasyFind.db.uiResultsScale or 1.0 end
+
+        getResultsWidth = function() return searchBar:GetWidth() end
+        setResultsWidth = setUiWidth
 
     elseif mode == "map" then
         -- Open the world map if not already visible (search bars are anchored to it)
@@ -789,7 +791,10 @@ function Rescaler:Enter(mode)
     local previewW = getResultsWidth()
     local currentH = mmin(GetResultsHeight(), GetScreenMaxHeight(resultsAbove))
     local leftAligned = (mode == "map")
-    previewResults = CreatePreviewResults(bg, searchBar, previewW, currentH, resultsAbove, leftAligned)
+    -- UI mode is the unified pill: dock the preview flush against the
+    -- bar (zero gap) so width changes look continuous.
+    local flushDock = (mode == "ui")
+    previewResults = CreatePreviewResults(bg, searchBar, previewW, currentH, resultsAbove, leftAligned, flushDock)
     previewResults:SetScale(getResultsScale())
     previewResults:Show()
 
@@ -816,15 +821,18 @@ function Rescaler:Enter(mode)
         resultsOverlay.heightInside = true
     end
 
-    -- Wire bar width drag
-    SetupWidthDrag(barOverlay.leftHandle, getBarWidth, setBarWidth, barOverlay.widthBox, "LEFT")
-    SetupWidthDrag(barOverlay.rightHandle, getBarWidth, setBarWidth, barOverlay.widthBox, "RIGHT")
-    WireDimLabel(barOverlay.widthBox, getBarWidth, function(v)
-        setBarWidth(v)
-    end)
+    -- Wire bar width drag. In UI mode the preview is the live results
+    -- area; resize it in lockstep so the unified pill stays continuous.
+    local function setBarWidthAndPreview(w)
+        setBarWidth(w)
+        if mode == "ui" then previewResults:SetWidth(searchBar:GetWidth()) end
+    end
+    SetupWidthDrag(barOverlay.leftHandle, getBarWidth, setBarWidthAndPreview, barOverlay.widthBox, "LEFT")
+    SetupWidthDrag(barOverlay.rightHandle, getBarWidth, setBarWidthAndPreview, barOverlay.widthBox, "RIGHT")
+    WireDimLabel(barOverlay.widthBox, getBarWidth, setBarWidthAndPreview)
     AddResetButton(barOverlay.widthBox, function()
         local defW = 250 * 0.88  -- 220px (matches DB_DEFAULTS searchWidth = 0.88)
-        setBarWidth(defW)
+        setBarWidthAndPreview(defW)
         barOverlay.widthBox:SetText(mfloor(defW + 0.5))
     end)
 
@@ -855,25 +863,37 @@ function Rescaler:Enter(mode)
     end)
     SetupFontDrag(barOverlay.bottomHandle, barOverlay.fontBox, previewResults)
 
-    -- Wire results width drag
-    SetupWidthDrag(resultsOverlay.leftHandle, getResultsWidth, function(w)
-        setResultsWidth(w)
-        previewResults:SetWidth(w)
-    end, resultsOverlay.widthBox, "LEFT")
-    SetupWidthDrag(resultsOverlay.rightHandle, getResultsWidth, function(w)
-        setResultsWidth(w)
-        previewResults:SetWidth(w)
-    end, resultsOverlay.widthBox, "RIGHT")
-    WireDimLabel(resultsOverlay.widthBox, getResultsWidth, function(v)
-        setResultsWidth(v)
-        previewResults:SetWidth(v)
-    end)
-    AddResetButton(resultsOverlay.widthBox, function()
-        local defW = 300
-        setResultsWidth(defW)
-        previewResults:SetWidth(defW)
-        resultsOverlay.widthBox:SetText(mfloor(defW + 0.5))
-    end)
+    -- Wire results width drag. UI mode locks results width to bar
+    -- width (single rounded pill), so the results overlay's width
+    -- handles + width box are redundant -- hide them entirely. The
+    -- bar's width handles already update the preview width via
+    -- setBarWidth above.
+    if mode == "ui" then
+        resultsOverlay.leftHandle:Hide()
+        resultsOverlay.rightHandle:Hide()
+        resultsOverlay.widthBox:Hide()
+        if resultsOverlay.widthBox.prefix then resultsOverlay.widthBox.prefix:Hide() end
+        if resultsOverlay.widthBox.suffix then resultsOverlay.widthBox.suffix:Hide() end
+    else
+        SetupWidthDrag(resultsOverlay.leftHandle, getResultsWidth, function(w)
+            setResultsWidth(w)
+            previewResults:SetWidth(w)
+        end, resultsOverlay.widthBox, "LEFT")
+        SetupWidthDrag(resultsOverlay.rightHandle, getResultsWidth, function(w)
+            setResultsWidth(w)
+            previewResults:SetWidth(w)
+        end, resultsOverlay.widthBox, "RIGHT")
+        WireDimLabel(resultsOverlay.widthBox, getResultsWidth, function(v)
+            setResultsWidth(v)
+            previewResults:SetWidth(v)
+        end)
+        AddResetButton(resultsOverlay.widthBox, function()
+            local defW = 300
+            setResultsWidth(defW)
+            previewResults:SetWidth(defW)
+            resultsOverlay.widthBox:SetText(mfloor(defW + 0.5))
+        end)
+    end
 
     -- Wire results corner (width + height combo)
     resultsOverlay.heightBox:SetText(currentH)
@@ -909,10 +929,16 @@ function Rescaler:Enter(mode)
             heightReset:SetPoint("BOTTOM", resultsOverlay.heightBox, "TOP", 0, 2)
         end
     end
-    SetupCornerDrag(resultsOverlay.scaleHandle, previewResults, getResultsWidth, function(w)
-        setResultsWidth(w)
-        previewResults:SetWidth(w)
-    end, resultsOverlay.widthBox, resultsOverlay.heightBox, resultsAbove)
+    if mode == "ui" then
+        -- Width is locked to the bar in UI mode; the corner handle
+        -- only changes height. Reuse the height-only handler.
+        SetupHeightDrag(resultsOverlay.scaleHandle, previewResults, resultsOverlay.heightBox, resultsAbove)
+    else
+        SetupCornerDrag(resultsOverlay.scaleHandle, previewResults, getResultsWidth, function(w)
+            setResultsWidth(w)
+            previewResults:SetWidth(w)
+        end, resultsOverlay.widthBox, resultsOverlay.heightBox, resultsAbove)
+    end
 
     -- Wire results bottom edge (height)
     SetupHeightDrag(resultsOverlay.heightHandle, previewResults, resultsOverlay.heightBox, resultsAbove)

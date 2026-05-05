@@ -339,14 +339,48 @@ function Highlight:UpdateGuide()
         return
     end
 
+    -- Game Menu button by text (e.g. "Macros", "Options"). The
+    -- buttons in GameMenuFrame are unnamed (dynamic hex IDs) but
+    -- carry their label text, so look up by GetText() on each child.
+    if step.gameMenuText then
+        if not GameMenuFrame or not GameMenuFrame:IsShown() then
+            -- Menu closed: in guide mode rewind to reopen, in DirectOpen
+            -- mode (left-click "open + show me") just cancel since the
+            -- user has dismissed the destination.
+            if currentGuide and currentGuide.noCourseCorrect then
+                self:Cancel()
+            else
+                currentStepIndex = 1
+                self:HideHighlight()
+            end
+            return
+        end
+        local btn = self:FindGameMenuButton(step.gameMenuText)
+        if btn then
+            self:HighlightFrame(btn)
+            if canHoverDismiss() and btn:IsMouseOver() then
+                self:Cancel()
+                return
+            end
+        else
+            self:HideHighlight()
+            self:ShowInstruction("'" .. step.gameMenuText .. "' is not in the Game Menu")
+            C_Timer.After(2.5, function() self:Cancel() end)
+        end
+        return
+    end
+
     -- Portrait menu step 2: find and highlight the correct menu option
     if step.portraitMenuOption then
         -- Check if portrait menu is still open
         if not self:IsPortraitMenuOpen() then
-            -- Menu was closed, go back to portrait step
             self:HideContextTooltip()
-            currentStepIndex = currentStepIndex - 1
-            self:HideHighlight()
+            if currentGuide and currentGuide.noCourseCorrect then
+                self:Cancel()
+            else
+                currentStepIndex = currentStepIndex - 1
+                self:HideHighlight()
+            end
             return
         end
 
@@ -374,9 +408,12 @@ function Highlight:UpdateGuide()
         local frame = self:GetFrameByPath(step.waitForFrame)
 
         if not frame or not frame:IsShown() then
-            -- Frame closed, go back to step 1
-            currentStepIndex = 1
-            self:HideHighlight()
+            if currentGuide and currentGuide.noCourseCorrect then
+                self:Cancel()
+            else
+                currentStepIndex = 1
+                self:HideHighlight()
+            end
             return
         end
 
@@ -405,6 +442,27 @@ function Highlight:UpdateGuide()
                 -- Can't find tab button on last step, show instruction
                 self:ShowInstruction(step.text or "Click the correct tab")
             end
+            return
+        end
+
+        -- EJ tier + dungeon/raid tab (boss navigation). Sets the tier on
+        -- the EJ then highlights the correct tab; advances when both
+        -- the tab is active and the InstanceSelect ScrollBox is showing.
+        if step.waitForFrame == "EncounterJournal" and step.ejTier then
+            local tabIdx = step.ejTabIsRaid and 5 or 4
+            if not step._tierApplied then
+                step._tierApplied = true
+                if EJ_SelectTier then EJ_SelectTier(step.ejTier) end
+            end
+            if self:IsTabSelected("EncounterJournal", tabIdx) then
+                local instSelect = _G["EncounterJournalInstanceSelect"]
+                if instSelect and instSelect:IsShown() then
+                    self:AdvanceStep()
+                    return
+                end
+            end
+            local tabBtn = self:GetTabButton("EncounterJournal", tabIdx)
+            if tabBtn then self:HighlightFrame(tabBtn) end
             return
         end
 
@@ -1068,6 +1126,18 @@ function Highlight:UpdateGuide()
                     end
                 end
 
+                -- Validate EJ tier (user picked a different tier dropdown).
+                -- If the live tier no longer matches, rewind so we re-set it.
+                if prev.ejTier then
+                    local liveTier = EJ_GetCurrentTier and EJ_GetCurrentTier()
+                    if liveTier and liveTier ~= prev.ejTier then
+                        currentStepIndex = i
+                        prev._tierApplied = nil
+                        self:HideHighlight()
+                        return
+                    end
+                end
+
                 -- Validate EJ boss (encounterID changed = user clicked different boss)
                 if prev.ejEncounterID then
                     local infoFrame = _G["EncounterJournalEncounterFrameInfo"]
@@ -1097,6 +1167,60 @@ function Highlight:UpdateGuide()
                     end
                 end
             end
+        end
+
+        -- Bag slot highlight: open all bags containing the item, glow
+        -- the first matching slot, and accent secondaries with the bag
+        -- search overlay so duplicates across bags are still visible.
+        if step.containerBag ~= nil and step.containerSlot then
+            local locations = step.allLocations or {{ bag = step.containerBag, slot = step.containerSlot }}
+            local CONT = C_Container
+            local openBag = (CONT and CONT.OpenBag) or OpenBag
+            local getSlots = (CONT and CONT.GetContainerNumSlots) or GetContainerNumSlots
+
+            if openBag then
+                local seen = {}
+                for _, loc in ipairs(locations) do
+                    if not seen[loc.bag] then
+                        seen[loc.bag] = true
+                        pcall(openBag, loc.bag)
+                    end
+                end
+            end
+
+            local found = false
+            for _, loc in ipairs(locations) do
+                for i = 1, 13 do
+                    local cf = _G["ContainerFrame" .. i]
+                    if cf and cf:IsShown() and cf:GetID() == loc.bag then
+                        local ok, n = pcall(function() return getSlots and getSlots(loc.bag) end)
+                        local numSlots = (ok and n) or 0
+                        if numSlots == 0 then
+                            for c = 1, 40 do
+                                if not _G["ContainerFrame" .. i .. "Item" .. c] then
+                                    numSlots = c - 1; break
+                                end
+                            end
+                        end
+                        local btnIdx = numSlots - loc.slot + 1
+                        local itemBtn = btnIdx >= 1 and _G["ContainerFrame" .. i .. "Item" .. btnIdx] or nil
+                        if itemBtn and itemBtn:IsShown() then
+                            if not found then
+                                self:HighlightFrame(itemBtn)
+                                found = true
+                            else
+                                local glow = _G[itemBtn:GetName() .. "SearchOverlay"]
+                                if glow then
+                                    glow:SetVertexColor(1, 1, 0, 0.5)
+                                    glow:Show()
+                                end
+                            end
+                        end
+                        break
+                    end
+                end
+            end
+            return
         end
 
         -- EJ instance button (ScrollBox with dynamic names, find by text)
@@ -2455,6 +2579,30 @@ function Highlight:GetPortraitMenuFrame()
         end
     end
 
+    return nil
+end
+
+-- Find a button in GameMenuFrame by its label text. The buttons in
+-- modern GameMenuFrame are unnamed (dynamic hex IDs change each
+-- session) so name-based lookup doesn't work; iterate visible
+-- children and match GetText().
+function Highlight:FindGameMenuButton(label)
+    if not GameMenuFrame or not label then return nil end
+    local target = slower(label)
+    local ok, nChildren = pcall(function() return select("#", GameMenuFrame:GetChildren()) end)
+    if not ok or not nChildren then return nil end
+    for i = 1, nChildren do
+        local child = select(i, GameMenuFrame:GetChildren())
+        if child then
+            local sok, shown = pcall(child.IsShown, child)
+            if sok and shown and child.GetText then
+                local tok, text = pcall(child.GetText, child)
+                if tok and text and slower(text) == target then
+                    return child
+                end
+            end
+        end
+    end
     return nil
 end
 
