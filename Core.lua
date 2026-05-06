@@ -34,58 +34,36 @@ local DB_DEFAULTS = {
     iconScale = 0.8,
     nativePinScale = 1.5,      -- Multiplier applied to a Blizzard map pin while EasyFind is glowing it
     uiSearchScale = 1.0,
-    mapSearchScale = 1.0,
-    mapSearchWidth = 0.88,
     uiSearchWidth = 1.54,  -- 0.88 * 1.75: results dropdown matches bar width now
     uiResultsScale = 1.0,
     uiResultsWidth = 350,
-    mapResultsScale = 1.0,
-    mapResultsWidth = 300,
     searchBarOpacity = 0.75,  -- ns.DEFAULT_OPACITY
     fontSize = 0.9,            -- UI search font size multiplier (0.5-2.0)
-    mapFontSize = 0.9,         -- Map search font size multiplier (0.5-2.0)
     uiSearchPosition = nil,    -- {point, relPoint, x, y}
-    mapSearchPosition = nil,   -- x offset from map left edge
-    globalSearchPosition = nil, -- x offset from map right edge (windowed)
-    mapSearchPositionMax = nil, -- x offset from map left edge (maximized)
-    globalSearchPositionMax = nil, -- x offset from map right edge (maximized)
-    mapSearchYOffset = 0,      -- y offset for search bars relative to map bottom
-    hideSearchBarsMaximized = true,  -- Hide search bars when map is full screen (opt-in fullscreen search)
-    localMapDirectOpen = true,       -- Zone bar left-click: direct navigation (breadcrumb/guide reserved for right-click Guide)
-    globalMapDirectOpen = true,      -- Global bar left-click: direct navigation (breadcrumb/guide reserved for right-click Guide)
+    localMapDirectOpen = true,
+    globalMapDirectOpen = true,
     autoHide = true,           -- Raycast-style: bar starts hidden; bind opens, click-out hides
     smartShow = false,         -- Hide search bar until mouse hovers nearby (legacy alternate to autoHide)
     lockPosition = false,      -- Disable drag-to-move on the search bar
     tutorialDone = false,      -- True once the user has finished the onboarding wizard
-    mapSmartShow = false,      -- Hide map search bars until mouse hovers nearby
     resultsTheme = "Modern",  -- legacy; only "Modern" ships right now
     font = "Default",          -- "Default" (Friz Quadrata) or "Inter"
     indicatorStyle = "EasyFind Arrow",  -- Indicator texture style
     indicatorColor = "Yellow",  -- Indicator color preset
     uiResultsHeight = 280,     -- Visible height of UI search results panel in pixels
-    mapResultsHeight = 168,    -- Visible height of map search results panel in pixels
     showTruncationMessage = true,  -- Show "more results available" message when truncated
     hardResultsCap = false,    -- Hard cap on results (no "more results" message)
     staticOpacity = true,      -- Keep opacity constant while moving (default-on with toggle/autoHide UX)
     pinnedUIItems = {},        -- Pinned UI search results (persist across sessions, account-wide)
     pinnedUIItemsPerChar = {}, -- Character-specific pins (mounts, toys, pets, outfits) keyed by "Name-Realm"
     pinnedMapItems = {},       -- Pinned map search results (persist across sessions)
-    pinsCollapsed = false,     -- Whether the "Pinned Paths" header is collapsed
     mapPinsCollapsed = false,  -- Whether the map search "Pinned" header is collapsed
     showLoginMessage = true,   -- Show "EasyFind loaded!" message on login
     blinkingPins = false,      -- Pulse map pins and highlights in sync with indicator bob
     mapPinHighlight = true,    -- Show yellow highlight box around map pins
-    arrivalDistance = 10,      -- Yards - auto-clear waypoint when player is this close
-    minimapArrowGlow = false,  -- Pulsing glow on minimap perimeter arrow
-    glowOnlyEasyFind = false,  -- Only show glow for waypoints placed by EasyFind
-    minimapGuideCircle = false,-- Near-track ring + arrow around player on minimap
-    circleOnlyEasyFind = false, -- Only show guide circle for EasyFind waypoints
-    guideCircleScale = 1.0,    -- Scale multiplier for guide circle ring+arrow
-    minimapPinGlow = false,    -- Pulsing glow on map pin when guide circle shrinks onto it
     autoPinClear = true,       -- Auto-clear map pin when player arrives
     autoTrackPins = true,      -- Auto super-track newly placed map pins
     uiResultsAbove = false,    -- Show UI search results above the search bar
-    mapResultsAbove = false,   -- Show map search results above the search bar
     panelOpacity = 0.9,        -- Options panel background opacity
     showMinimapButton = true,  -- Show toggle button on minimap
     minimapButtonAngle = 200,  -- Position angle (degrees) around minimap edge
@@ -101,9 +79,9 @@ local DB_DEFAULTS = {
         services = true,
         rares = true,
     },
-    mapTabFilters = {          -- MapTab (unified) category filters. Applied after
-        zones = true,          -- BuildResults to gate each bucket independently
-        instances = true,      -- of the global/local DBs.
+    mapTabFilters = {
+        zones = true,
+        instances = true,
         flightpath = false,    -- Off by default: zone maps are dense with flight masters
         travel = true,         -- Portals, ships, zeppelins, trams (separate from flight paths)
         services = true,
@@ -145,7 +123,6 @@ local DB_DEFAULTS = {
     appearanceSetPvE = true,          -- Show PvE sets (Dungeon/Raid)
     appearanceSetPvP = true,          -- Show PvP sets
     uiMapSearchLocal = true,   -- Map search in UI bar: true = local zone only, false = global
-    uiHideHeaders = true,      -- Flat results list: no category headers, path shown as subtext per row
     aliases = {},              -- User-defined search aliases: { [aliasText] = { kind, id, name } }
     uiSearchHistory = {},      -- Shell-style search history (most recent at index 1, capped at uiSearchHistoryLimit)
     uiSearchHistoryLimit = 500, -- Bash HISTSIZE default
@@ -170,9 +147,6 @@ local DB_MIGRATIONS = {
         if not db.uiResultsHeight then
             db.uiResultsHeight = db.uiMaxResults and (db.uiMaxResults * 28) or 280
         end
-        if not db.mapResultsHeight then
-            db.mapResultsHeight = db.mapMaxResults and (db.mapMaxResults * 26 + 12) or 168
-        end
         db.uiMaxResults = nil
         db.mapMaxResults = nil
     end,
@@ -188,12 +162,7 @@ local DB_MIGRATIONS = {
             db.uiSearchWidth = 1.54
         end
     end,
-    -- [5] = Flip stale localMapDirectOpen / globalMapDirectOpen defaults.
-    -- The "Make Fast Mode default" commit changed both defaults from false
-    -- to true but didn't migrate existing saves. Users carried over
-    -- false → SelectResult bucketed every zone click into the multi-click
-    -- teach path (HighlightZoneOnMap), making clicks feel like they
-    -- needed two presses to register.
+    -- [5] = Restore direct map navigation defaults.
     [5] = function(db)
         if db.localMapDirectOpen == false then db.localMapDirectOpen = true end
         if db.globalMapDirectOpen == false then db.globalMapDirectOpen = true end
@@ -207,7 +176,7 @@ local DB_MIGRATIONS = {
             db.mapTabFilters.flightpath = false
         end
     end,
-    -- [8] = Theme rename: "Classic" deprecated, "Retail" renamed to
+    -- [8] = Theme rename: "Classic" and "Retail" renamed to
     -- "Modern" (the new default), and "Retail" reused for the parchment
     -- variant. Existing saves on the old "Retail" or "Classic" values
     -- get pointed at "Modern" so nothing changes for them visually until
@@ -438,6 +407,42 @@ end
 
 local SafeAfter = Utils.SafeAfter
 
+local function MarkDynamicCategoryDirty(key)
+    if ns.Database and ns.Database.MarkDynamicCategoryDirty then
+        ns.Database:MarkDynamicCategoryDirty(key)
+    end
+    if ns.UI and ns.UI.RebuildOpenResults then
+        ns.UI:RebuildOpenResults()
+    end
+end
+
+local function InstallTransmogClassFilterHook()
+    if not C_TransmogSets or not C_TransmogSets.SetTransmogSetsClassFilter
+       or EasyFind._tmogClassHooked then
+        return
+    end
+    EasyFind._tmogClassHooked = true
+    hooksecurefunc(C_TransmogSets, "SetTransmogSetsClassFilter", function(classID)
+        if EasyFind._tmogClassHookSuppress then return end
+        if not classID then return end
+        local db = EasyFind.db
+        if not db then return end
+        local _, _, playerClassID = UnitClass("player")
+        local newVal
+        if classID == playerClassID then
+            newVal = nil
+        else
+            newVal = { classID = classID }
+        end
+        local oldID = type(db.appearanceSetClass) == "table"
+            and db.appearanceSetClass.classID or db.appearanceSetClass
+        local newID = type(newVal) == "table" and newVal.classID or newVal
+        if oldID == newID then return end
+        db.appearanceSetClass = newVal
+        MarkDynamicCategoryDirty("transmogSets")
+    end)
+end
+
 local function OnPlayerLogin()
     SafeAfter(0, function()
         local function SafeInit(mod, name)
@@ -447,112 +452,35 @@ local function OnPlayerLogin()
                 EasyFind:Print("|cffff4444" .. name .. " failed to initialize: " .. tostring(err) .. "|r")
             end
         end
-        if EasyFind.db.enableUISearch ~= false then
-            SafeInit(ns.UI,        "UI")
-            SafeInit(ns.Highlight, "Highlight")
-        end
         if EasyFind.db.enableMapSearch ~= false then
             SafeInit(ns.MapSearch,  "MapSearch")
         end
-        SafeInit(ns.Options,    "Options")
-    end)
-    -- Loot scan runs synchronously during login (loading screen absorbs the cost).
-    -- Pass true to pre-cache all class/spec combos so spec toggles are instant.
-    if ns.Database and ns.Database.PopulateDynamicLoot then
-        local ok, err = xpcall(ns.Database.PopulateDynamicLoot, ErrorHandler, ns.Database, true)
-        if not ok then
-            EasyFind:Print("|cffff4444Loot scan failed: " .. tostring(err) .. "|r")
+        if EasyFind.db.enableUISearch ~= false and ns.Database and ns.Database.LoadCoreDynamicSearchData then
+            local ok, err = xpcall(ns.Database.LoadCoreDynamicSearchData, ErrorHandler, ns.Database)
+            if not ok then
+                EasyFind:Print("|cffff4444Search data failed to initialize: " .. tostring(err) .. "|r")
+            end
         end
-    end
-
-    -- Populate dynamic currencies, reputations, mounts, and toys after a short delay (APIs need the character loaded)
-    -- Spread dynamic population across frames to avoid a single-frame stutter.
-    -- Currencies/reputations run first (they toggle collapsed headers, must be synchronous).
-    -- Mounts/toys run on subsequent frames, then GC reclaims init temporaries.
-    SafeAfter(2, function()
-        if not ns.Database then return end
-        ns.Database:PopulateDynamicCurrencies()
-        ns.Database:PopulateDynamicReputations()
-        SafeAfter(0, function()
-            ns.Database:PopulateDynamicMounts()
-            SafeAfter(0, function()
-                ns.Database:PopulateDynamicToys()
-                SafeAfter(0, function()
-                    ns.Database:PopulateDynamicPets()
-                    SafeAfter(0, function()
-                        ns.Database:PopulateDynamicOutfits()
-                        if ns.Database.PopulateDynamicMacros then
-                            ns.Database:PopulateDynamicMacros()
-                        end
-                        if ns.Database.PopulateDynamicAbilities then
-                            ns.Database:PopulateDynamicAbilities()
-                        end
-                        if ns.Database.PopulateDynamicBags then
-                            ns.Database:PopulateDynamicBags()
-                        end
-                        if ns.Database.PopulateDynamicHeirlooms then
-                            ns.Database:PopulateDynamicHeirlooms()
-                        end
-                        if ns.Database.PopulateDynamicTitles then
-                            ns.Database:PopulateDynamicTitles()
-                        end
-                        if ns.Database.PopulateDynamicGearSets then
-                            ns.Database:PopulateDynamicGearSets()
-                        end
-                        if ns.Database.PopulateDynamicBosses then
-                            -- Defer one frame: scanning every dungeon
-                            -- and raid boss across all expansion tiers
-                            -- can take a noticeable beat, so let the
-                            -- bag/ability passes settle first.
-                            SafeAfter(0, function()
-                                ns.Database:PopulateDynamicBosses()
-                            end)
-                        end
-                        SafeAfter(0, function()
-                            ns.Database:SyncTransmogSetFiltersFromUI()
-                            ns.Database:PopulateDynamicTransmogSets()
-
-                            -- Hook Blizzard's class filter setter so any later
-                            -- change (including the engine restoring the saved
-                            -- value after Blizzard_Collections loads) triggers
-                            -- a resync + repopulate. The login sync above can
-                            -- run before the wardrobe state is fully restored,
-                            -- which is why the dropdown-open sync used to be
-                            -- the only thing that picked up the correct class.
-                            if C_TransmogSets and C_TransmogSets.SetTransmogSetsClassFilter
-                                and not EasyFind._tmogClassHooked then
-                                EasyFind._tmogClassHooked = true
-                                hooksecurefunc(C_TransmogSets, "SetTransmogSetsClassFilter", function(classID)
-                                    -- Skip when Populate itself called the setter, to avoid
-                                    -- infinite recursion through the hook.
-                                    if EasyFind._tmogClassHookSuppress then return end
-                                    if not classID or not ns.Database then return end
-                                    local db = EasyFind.db
-                                    if not db then return end
-                                    local _, _, playerClassID = UnitClass("player")
-                                    local newVal
-                                    if classID == playerClassID then
-                                        newVal = nil
-                                    else
-                                        newVal = { classID = classID }
-                                    end
-                                    -- Compare before vs after: avoid a repopulate if the
-                                    -- value didn't actually change.
-                                    local oldID = type(db.appearanceSetClass) == "table"
-                                        and db.appearanceSetClass.classID or db.appearanceSetClass
-                                    local newID = type(newVal) == "table" and newVal.classID or newVal
-                                    if oldID == newID then return end
-                                    db.appearanceSetClass = newVal
-                                    if ns.Database.PopulateDynamicTransmogSets then
-                                        ns.Database:PopulateDynamicTransmogSets()
-                                    end
-                                end)
-                            end
-                        end)
-                    end)
-                end)
-            end)
-        end)
+        if EasyFind.db.enableUISearch ~= false then
+            SafeInit(ns.UI,        "UI")
+            SafeInit(ns.Highlight, "Highlight")
+            if ns.Database and ns.Database.WarmSearchHotPath then
+                SafeAfter(0, function() ns.Database:WarmSearchHotPath() end)
+            end
+            if ns.UI and ns.UI.WarmSearchHotPath then
+                SafeAfter(0.05, function() ns.UI:WarmSearchHotPath() end)
+            end
+        end
+        if EasyFind.db.enableMapSearch ~= false and ns.MapSearch and ns.MapSearch.WarmUISearchCaches then
+            SafeAfter(0.10, function() ns.MapSearch:WarmUISearchCaches() end)
+        end
+        if ns.Options and ns.Options.RegisterWithBlizzardOptions then
+            local ok, err = xpcall(ns.Options.RegisterWithBlizzardOptions, ErrorHandler, ns.Options)
+            if not ok then
+                EasyFind:Print("|cffff4444Options registration failed: " .. tostring(err) .. "|r")
+            end
+        end
+        InstallTransmogClassFilterHook()
     end)
 
     -- Minimap button (delayed slightly so Minimap frame is ready)
@@ -611,54 +539,36 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         if outfitRefreshTimer then outfitRefreshTimer:Cancel() end
         outfitRefreshTimer = C_Timer.NewTimer(0.5, function()
             outfitRefreshTimer = nil
-            if ns.Database and ns.Database.PopulateDynamicOutfits then
-                ns.Database:PopulateDynamicOutfits()
-            end
-            if ns.UI and ns.UI.SyncOutfitPins then
-                ns.UI:SyncOutfitPins()
+            MarkDynamicCategoryDirty("outfits")
+            if ns.UIPins and ns.UIPins.SyncOutfits then
+                ns.UIPins.SyncOutfits()
             end
         end)
     elseif event == "TRANSMOG_COLLECTION_UPDATED" then
-        -- Fires once the transmog collection (including the saved class
-        -- filter) is fully loaded. Re-sync + repopulate so we pick up the
-        -- correct class without waiting for the user to open our dropdown.
         if ns.Database and ns.Database.SyncTransmogSetFiltersFromUI then
             ns.Database:SyncTransmogSetFiltersFromUI()
-            if ns.Database.PopulateDynamicTransmogSets then
-                ns.Database:PopulateDynamicTransmogSets()
-            end
+            MarkDynamicCategoryDirty("transmogSets")
+            InstallTransmogClassFilterHook()
         end
     elseif event == "UPDATE_MACROS" then
-        -- Fires when the player creates, edits, or deletes a macro. Re-scan
-        -- so the search index reflects the change without /reload.
-        if ns.Database and ns.Database.PopulateDynamicMacros then
-            ns.Database:PopulateDynamicMacros()
-        end
+        MarkDynamicCategoryDirty("macros")
     elseif event == "SPELLS_CHANGED" then
-        -- Throttle: many SPELLS_CHANGED events can fire in rapid
-        -- succession on login or when learning a row of talents.
         if spellRefreshTimer then spellRefreshTimer:Cancel() end
         spellRefreshTimer = C_Timer.NewTimer(1.0, function()
             spellRefreshTimer = nil
-            if ns.Database and ns.Database.PopulateDynamicAbilities then
-                ns.Database:PopulateDynamicAbilities()
-            end
+            MarkDynamicCategoryDirty("abilities")
         end)
     elseif event == "BAG_UPDATE_DELAYED" then
         if bagRefreshTimer then bagRefreshTimer:Cancel() end
         bagRefreshTimer = C_Timer.NewTimer(0.5, function()
             bagRefreshTimer = nil
-            if ns.Database and ns.Database.PopulateDynamicBags then
-                ns.Database:PopulateDynamicBags()
-            end
+            MarkDynamicCategoryDirty("bags")
         end)
     elseif event == "EQUIPMENT_SETS_CHANGED" then
         if gearSetRefreshTimer then gearSetRefreshTimer:Cancel() end
         gearSetRefreshTimer = C_Timer.NewTimer(0.3, function()
             gearSetRefreshTimer = nil
-            if ns.Database and ns.Database.PopulateDynamicGearSets then
-                ns.Database:PopulateDynamicGearSets()
-            end
+            MarkDynamicCategoryDirty("gearSets")
         end)
     elseif event == "PLAYER_LOGOUT" then
         -- Strip runtime-only fields before SavedVariables serialization

@@ -19,7 +19,7 @@ All notable changes to EasyFind will be documented in this file.
 ## [1.4.0] - 2026-03-20
 
 ### Added
-- **Rare Mob Tracking**: Active rare mobs in your zone appear as searchable pins on the world map. Search "rare" in the zone bar to see all nearby rares, or click individual rare names to track them with the minimap supertrack arrow
+- **Rare Mob Tracking**: Active rare mobs in your zone appear as searchable pins on the world map. Search "rare" in the zone bar to see all nearby rares, or click individual rare names to track them with Blizzard waypoint tracking
 - **Auto-track Rares**: Toggle in the zone search filter dropdown or the Map options tab. When enabled, all active rares are automatically pinned on the map without searching. Pins persist at last known position when rares leave detection range and clear when killed
 - **Great Vault (Rewards)**: Great vault rewards panel now searchable in UI search
 - **"NEW" Feature Labels**: New or experimental features display a glowing label with a tooltip encouraging feedback
@@ -27,7 +27,6 @@ All notable changes to EasyFind will be documented in this file.
 ### Fixed
 - **Adventure Guide Fast Mode**: Direct open now works for all Adventure Guide tabs (Journeys, Dungeons, Raids, etc.)
 - **Combat Lockdown**: Fixed errors that could occur when reloading the UI during combat or by taking portals
-- **Nav Waypoint Tracking**: Minimap guide circle now correctly follows portal redirects when the portal is in a neighboring zone
 
 ### Changed
 - **StaticLocations Cleanup**: Standardized bank and guild vault naming across all zones
@@ -37,7 +36,6 @@ All notable changes to EasyFind will be documented in this file.
 ## [1.3.1] - 2026-03-17
 
 ### Added
-- **EasyFind-Only Navigation Options**: Minimap arrow glow and guide circle now have sub-options to restrict behavior to EasyFind-placed waypoints only, ignoring other sources
 - **Independent Map Navigation Modes**: Local and global map search bars now have separate direct-open toggles instead of a shared setting
 - **Expanded POI Coverage**: Added portals in Tirisfal Glades, decor specialists, and additional innkeepers, auction houses, and mailboxes across multiple zones
 
@@ -58,7 +56,7 @@ All notable changes to EasyFind will be documented in this file.
   - **Mounts**: Search your collected mounts by name. Click a result to summon. Icons show combat tint when unavailable
   - **Toys**: Search collected toys with cooldown sweep overlays. Click to use
   - **Battle Pets**: Search your collected battle pets by name. Click to summon a companion
-  - **Map Search**: Search map POIs (zones, dungeon entrances, flight masters) directly from the UI search bar. Includes waypoint placement and minimap tracking preview on hover
+  - **Map Search**: Search map POIs (zones, dungeon entrances, flight masters) directly from the UI search bar. Includes waypoint placement on hover
 - **Mode Toggle Button**: Interactive fast/guide mode toggle flush-left in the search bar, replacing the static search icon. Syncs with the options panel checkbox
 - **Filter Dropdown Enhancements**: Per-filter icons, "Toggle All" button, and Shift+Up/Down section jump for keyboard navigation
 - **Independent Maximized Map Bars**: Zone and instance search bars position independently in full-screen map mode with separate saved positions
@@ -69,8 +67,6 @@ All notable changes to EasyFind will be documented in this file.
 
 ### Fixed
 - **Quest Tracking Coexistence**: User waypoint auto-reclaim no longer overrides active quest tracking
-- **Cross-zone Waypoint Navigation**: Minimap waypoint glow through portals now works correctly across zone boundaries
-- **Minimap Glow Tracking**: Glow no longer disappears when switching pin types, and cross-zone same-continent pins now track properly
 - **Encounter Journal Fast Mode**: Protected tabs in the Encounter Journal now hand off to the guide system instead of failing silently
 - **Short Query False Positives**: 2-char abbreviations like "fp" no longer match unrelated items through incidental keyword initials (e.g., "flight paths" in Travel Statistics)
 - **Scrollbar Overlap**: Fixed map search results overlapping with scrollbar in certain configurations
@@ -89,14 +85,12 @@ All notable changes to EasyFind will be documented in this file.
 - **Keyboard Navigation**: Full arrow key, Tab, and Enter support for navigating search results without a mouse. Works in both UI search and map search bars. Tab/Shift+Tab toggles between a parent row and its expand/collapse button. Arrow keys in map search preview the pin location before confirming
 - **Visual Rescaler**: Drag handles on search bars and results panels to resize width, adjust row count, and change font size interactively. Shift+drag the search bar itself to reposition it along the map edge
 - **Smarter Search**: Vowel-stripped abbreviations now match (e.g. "qtr" finds "quartermaster", "windrnr" finds "windrunner"). Multi-word queries match per-word with fuzzy and subsequence support (e.g. "twlght hghlnds" finds "Twilight Highlands")
-- **Blizzard Pin Tracking**: Minimap glow and guide circle now work with Blizzard's own map pins (flight points, area POIs, vignettes), not just user waypoints
 - **Major POI Expansion**: Added points of interest for Stormwind, Orgrimmar, Ironforge, Thunder Bluff, Darnassus, Undercity, The Exodar, Silvermoon City, and Valdrakken. Includes class trainers, profession trainers, quartermasters, banks, inns, barbers, stable masters, guild services, and more
 - **Bug Report and Feature Request**: `/ef bug` and `/ef feature` as well as buttons in the options panel to open pre-filled GitHub issue URLs for easy reporting
 - **New options**:
   - Toggle+Focus keybind: combined show+focus in one keypress, targets map search bar when world map is open
   - Clear All keybind: dismiss all highlights, map pins, zone highlights, and breadcrumbs
-  - Guide circle scale, minimap pin glow toggle, and separate minimap arrow glow toggle
-  - Auto-track new pins, auto-clear on arrival, and configurable arrival distance
+  - Auto-track new pins and auto-clear on arrival
   - Pin highlight box toggle (show/hide yellow highlight square around map pins)
   - Map Smart Show (auto-hide map search bars until hover)
   - Map search Y-offset slider
@@ -141,12 +135,11 @@ All notable changes to EasyFind will be documented in this file.
 - **Atlas Zone Highlights**: Zone highlighting now supports atlas-based textures in addition to fileDataID textures
 - **Shared Helpers**: Scroll, click, and frame-search patterns refactored into Utils.lua, reducing code duplication across Highlight and UI modules
 - **Shared Constants**: Extracted duplicated constants (colors, sizes, string paths) into ns.* values in Utils.lua
-- **Defensive Hardening**: Added pcall protection to waypoint tracker OnUpdate, flash ticker, and all initialization timers. Added SavedVariables type validation to prevent corrupted settings from breaking the addon
+- **Defensive Hardening**: Added pcall protection to flash ticker and all initialization timers. Added SavedVariables type validation to prevent corrupted settings from breaking the addon
 - **Results Layout**: Improved pin separator spacing and scroll position preservation when toggling category headers
 - **Continent Projection Fallback**: Zones with very small scan areas now fall back to continent-level projection
 - **Highlight Hover Timer**: Reduced minimum display time from 1.0s to 0.3s for snappier hover-dismiss behavior
 - **GetScript Error**: Fixed error when calling GetScript on non-Button frames
-- **Waypoint Tracker Performance**: Completely rewritten for zero per-frame memory allocations. Uses cached world-space coordinates and primitive API returns instead of creating objects every frame
 
 ---
 
@@ -170,7 +163,6 @@ All notable changes to EasyFind will be documented in this file.
 ## [1.2.5] - 2026-03-04
 
 ### Added
-- **Arrival Distance Slider**: Waypoint auto-clear distance is now configurable (3–20 yards, default 10) via the Options panel
 - **Show Login Message Toggle**: Option to hide the "EasyFind loaded!" chat message on login
 
 ### Changed
@@ -189,16 +181,13 @@ All notable changes to EasyFind will be documented in this file.
 
 ### Added
 - **Pinned Paths**: Right-click any UI or map search result to pin it as a bookmark. Pinned items appear at the top of results and persist across sessions. Collapsible header keeps things tidy
-- **Click-to-Navigate Map Pins**: Click any local map search pin to place a native WoW waypoint and activate minimap tracking (no more Ctrl+clicking the map manually)
-  - **Two-stage** visual guidance system for the placed waypoints:
-    - **Far**: Pulsing gold star on the minimap perimeter over the standard Blizz arrow when waypoint is outside minimap range
-    - **Near**: Rotating gold ring with directional arrowhead when waypoint enters minimap range; ring smoothly shrinks as you approach to avoid map pin going inside circle
+- **Click-to-Navigate Map Pins**: Click any local map search pin to place and track a native WoW waypoint
   - Waypoint pin is automatically removed when the game reports "Reached Destination"
 
 ### Changed
 - **Map Pin**
   - **Default Map Pin Size**: Map pin icons and highlight boxes reduced to ~50% of previous size for less visual clutter on the world map
-  - **Map Pin Hover Behavior**: Local search pins now show a tooltip ("Click to track on minimap") instead of auto-dismissing on hover; global search pins retain the original hover-to-dismiss behavior
+  - **Map Pin Hover Behavior**: Local search pins now show a waypoint tooltip instead of auto-dismissing on hover; global search pins retain the original hover-to-dismiss behavior
     - Can still remove local search pins by either right clicking them, hitting the clear button on the search bar, or with /ef clear
   - **Blinking Map Pins Option**: Map pins now solid by default, but there is a new toggle in Options panel to enable/disable the map pin pulse animations
 
@@ -359,4 +348,3 @@ All notable changes to EasyFind will be documented in this file.
 - Achievement and Statistics navigation
 - Draggable search bar with scale options
 - Slash command `/ef` to toggle UI search
-

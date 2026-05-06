@@ -5,7 +5,7 @@ ns.Database = Database
 
 local Utils   = ns.Utils
 local ipairs = Utils.ipairs
-local tsort, tconcat, tremove = Utils.tsort, Utils.tconcat, Utils.tremove
+local tsort, tconcat = Utils.tsort, Utils.tconcat
 local sfind, slower, ssub = Utils.sfind, Utils.slower, Utils.ssub
 local sbyte = string.byte
 local mmin, mmax, mabs = Utils.mmin, Utils.mmax, Utils.mabs
@@ -56,6 +56,38 @@ Database._wordCache = wordCache        -- exposed for DevMem diagnostics
 -- Track which currencyIDs are already in the static database
 local knownCurrencyIDs = {}
 
+local function RemoveEntriesByCategory(category)
+    local writeIdx = 0
+    for i = 1, #uiSearchData do
+        local entry = uiSearchData[i]
+        if entry.category ~= category then
+            writeIdx = writeIdx + 1
+            uiSearchData[writeIdx] = entry
+        end
+    end
+    for i = #uiSearchData, writeIdx + 1, -1 do
+        uiSearchData[i] = nil
+    end
+end
+
+local function RemoveEntriesWithField(field)
+    local writeIdx = 0
+    for i = 1, #uiSearchData do
+        local entry = uiSearchData[i]
+        if not entry[field] then
+            writeIdx = writeIdx + 1
+            uiSearchData[writeIdx] = entry
+        end
+    end
+    for i = #uiSearchData, writeIdx + 1, -1 do
+        uiSearchData[i] = nil
+    end
+end
+
+function Database:_RemoveEntriesByCategory(category)
+    RemoveEntriesByCategory(category)
+end
+
 function Database:Initialize()
     self:BuildUIDatabase()
 end
@@ -64,6 +96,9 @@ end
 -- Scans the WoW currency list and injects any currencies not already in the static database
 function Database:PopulateDynamicCurrencies()
     if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return end
+
+    RemoveEntriesByCategory("Currency")
+    wipe(knownCurrencyIDs)
 
     -- Expand all collapsed headers so we can see every currency
     -- Track which ones we expand so we can collapse them back afterward
@@ -253,6 +288,8 @@ end
 -- Scans the WoW reputation list and injects factions as searchable entries
 function Database:PopulateDynamicReputations()
     if not C_Reputation or not C_Reputation.GetNumFactions then return end
+
+    RemoveEntriesByCategory("Reputation")
 
     -- Expand all collapsed headers so we can see every faction
     local headersWeExpanded = {}
@@ -552,6 +589,73 @@ local STAT_KEYWORD_MAP = {
     ITEM_MOD_STRENGTH_SHORT       = {"str", "strength"},
 }
 
+local heavySearchWordLookup
+local function AddHeavySearchWord(word)
+    if not word or word == "" then return end
+    word = slower(word)
+    heavySearchWordLookup[word] = true
+    if #word > 2 and ssub(word, #word, #word) ~= "s" then
+        heavySearchWordLookup[word .. "s"] = true
+    end
+end
+
+local function AddHeavySearchWords(words)
+    for i = 1, #words do
+        for word in words[i]:gmatch("%S+") do
+            AddHeavySearchWord(word)
+        end
+    end
+end
+
+local function GetHeavySearchWordLookup()
+    if heavySearchWordLookup then return heavySearchWordLookup end
+    heavySearchWordLookup = {}
+    AddHeavySearchWords({
+        "loot", "item", "gear", "armor", "boss", "bosses",
+        "dungeon", "raid", "weapon",
+    })
+    for equipLoc, words in _G.pairs(SLOT_KEYWORDS) do
+        AddHeavySearchWord(_G[equipLoc])
+        AddHeavySearchWords(words)
+    end
+    for statKey, words in _G.pairs(STAT_KEYWORD_MAP) do
+        AddHeavySearchWord(_G[statKey])
+        AddHeavySearchWords(words)
+    end
+    return heavySearchWordLookup
+end
+
+local statSearchWordLookup
+local function IsLootStatSearchWord(word)
+    if not statSearchWordLookup then
+        statSearchWordLookup = {}
+        for statKey, words in _G.pairs(STAT_KEYWORD_MAP) do
+            local label = _G[statKey]
+            if label then
+                for part in slower(label):gmatch("%S+") do
+                    statSearchWordLookup[part] = true
+                end
+            end
+            for i = 1, #words do
+                for part in words[i]:gmatch("%S+") do
+                    statSearchWordLookup[part] = true
+                end
+            end
+        end
+    end
+    return statSearchWordLookup[word] or false
+end
+
+function Database:QueryNeedsHeavySearchData(text)
+    if not text then return false end
+    local lookup = GetHeavySearchWordLookup()
+    for word in slower(text):gmatch("%S+") do
+        word = word:gsub("^%p+", ""):gsub("%p+$", "")
+        if lookup[word] then return true end
+    end
+    return false
+end
+
 -- Slot display names for result text
 local SLOT_DISPLAY = {
     INVTYPE_HEAD = "Head", INVTYPE_NECK = "Neck", INVTYPE_SHOULDER = "Shoulder",
@@ -580,6 +684,7 @@ end
 
 local lootEntries = {}       -- track injected entries for re-population
 local lootScanGeneration = 0 -- cancel stale scans when re-populating
+local bossScanGeneration = 0
 local lootItemCache = {}     -- itemID -> entry (persists across spec/diff toggles)
 local lootSpecsScanned = {}  -- ["classID-specID"] = true
 Database._lootItemCache = lootItemCache         -- exposed for DevMem diagnostics
@@ -776,10 +881,12 @@ end
 function Database:EnrichLootStats(entry)
     if entry._statsEnriched then return end
     local link = Database:GetLootItemLink(entry)
-    if not link then return end
     local GetItemStatsFn = GetItemStats or (C_Item and C_Item.GetItemStats)
     if not GetItemStatsFn then return end
-    local stats = GetItemStatsFn(link)
+    local stats = link and GetItemStatsFn(link)
+    if not stats and entry.itemID then
+        stats = GetItemStatsFn("item:" .. entry.itemID)
+    end
     if not stats then return end
     local statKw = entry.lootStatKw or {}
     for statKey, searchWords in pairs(STAT_KEYWORD_MAP) do
@@ -801,6 +908,8 @@ local outfitEntries = {} -- track injected entries for re-population
 
 function Database:PopulateDynamicMounts()
     if not C_MountJournal or not C_MountJournal.GetMountIDs then return end
+
+    RemoveEntriesByCategory("Mount")
 
     local mountIDs = C_MountJournal.GetMountIDs()
     if not mountIDs then return end
@@ -824,6 +933,8 @@ end
 -- Scans the player's collected toys and injects them into the search database
 function Database:PopulateDynamicToys()
     if not C_ToyBox then return end
+
+    RemoveEntriesByCategory("Toy")
 
     local GetToyInfo = C_ToyBox.GetToyInfo
     local GetNumFilteredToys = C_ToyBox.GetNumFilteredToys
@@ -870,6 +981,8 @@ end
 -- Scans the player's collected pets and injects them into the search database
 function Database:PopulateDynamicPets()
     if not C_PetJournal or not C_PetJournal.GetNumPets then return end
+
+    RemoveEntriesByCategory("Pet")
 
     -- Save current filter state
     local savedCollected = C_PetJournal.IsFilterChecked and C_PetJournal.IsFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED)
@@ -919,11 +1032,7 @@ end
 function Database:PopulateDynamicHeirlooms()
     if not C_Heirloom or not C_Heirloom.GetHeirloomItemIDs then return end
 
-    for i = #uiSearchData, 1, -1 do
-        if uiSearchData[i].category == "Heirloom" then
-            tremove(uiSearchData, i)
-        end
-    end
+    RemoveEntriesByCategory("Heirloom")
 
     local ids = C_Heirloom.GetHeirloomItemIDs()
     if type(ids) ~= "table" then return end
@@ -964,11 +1073,7 @@ function Database:PopulateDynamicTitles()
     local isKnown = IsTitleKnown
     if not getNum or not getName or not isKnown then return end
 
-    for i = #uiSearchData, 1, -1 do
-        if uiSearchData[i].category == "Title" then
-            tremove(uiSearchData, i)
-        end
-    end
+    RemoveEntriesByCategory("Title")
 
     local total = getNum()
     if not total or total <= 0 then return end
@@ -997,11 +1102,7 @@ end
 function Database:PopulateDynamicGearSets()
     if not C_EquipmentSet or not C_EquipmentSet.GetEquipmentSetIDs then return end
 
-    for i = #uiSearchData, 1, -1 do
-        if uiSearchData[i].category == "Gear Set" then
-            tremove(uiSearchData, i)
-        end
-    end
+    RemoveEntriesByCategory("Gear Set")
 
     local ids = C_EquipmentSet.GetEquipmentSetIDs()
     if type(ids) ~= "table" then return end
@@ -1029,11 +1130,7 @@ function Database:PopulateDynamicOutfits()
     if not C_TransmogOutfitInfo or not C_TransmogOutfitInfo.GetOutfitsInfo then return end
 
     -- Remove previous outfit entries (handles mid-session outfit changes)
-    for i = #uiSearchData, 1, -1 do
-        if uiSearchData[i].category == "Outfit" then
-            tremove(uiSearchData, i)
-        end
-    end
+    RemoveEntriesByCategory("Outfit")
     wipe(outfitEntries)
 
     local outfits = C_TransmogOutfitInfo.GetOutfitsInfo()
@@ -1091,11 +1188,7 @@ function Database:PopulateDynamicTransmogSets()
     if not C_TransmogSets or not C_TransmogSets.GetAllSets then return end
 
     -- Remove previous entries (handles mid-session filter changes)
-    for i = #uiSearchData, 1, -1 do
-        if uiSearchData[i].transmogSetID then
-            tremove(uiSearchData, i)
-        end
-    end
+    RemoveEntriesWithField("transmogSetID")
     -- Invalidate incremental search cache. Without this, a query that was
     -- typed before the repopulate (e.g. "cauldron" searched with Druid sets
     -- active) would still reuse prevCandidates on the next extension and
@@ -1247,14 +1340,7 @@ function Database:FindEmptyActionSlot()
     end
 end
 
--- Called after PLAYER_LOGIN. Scans the Encounter Journal for current-tier loot
--- and injects searchable entries. Caches results so spec toggles only filter
--- in memory without re-scanning. Only scans specs not yet in cache.
--- Optional scanAllSpecs: when true, pre-caches every class/spec combo (for loading screen).
-function Database:PopulateDynamicLoot(scanAllSpecs)
-    if InCombatLockdown() then return end
-
-    -- Build list of {classID, specID} pairs for current selection
+local function BuildLootSpecPairs(scanAllSpecs)
     local specPairs = {}
     if scanAllSpecs then
         for classIdx = 1, GetNumClasses() do
@@ -1269,7 +1355,6 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
             end
         end
     else
-        -- Build from lootFilter (single selection)
         local lootFilter = EasyFind.db.lootFilter
         if not lootFilter then
             local _, _, cid = UnitClass("player")
@@ -1279,7 +1364,6 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
                 specPairs[1] = { classID = cid, specID = sid }
             end
         elseif lootFilter == "all" then
-            -- Scan all specs
             for classIdx = 1, GetNumClasses() do
                 local _, _, classID = GetClassInfo(classIdx)
                 if classID then
@@ -1302,8 +1386,10 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
             end
         end
     end
+    return specPairs
+end
 
-    -- Find specs that haven't been scanned yet
+local function GetLootSpecsToScan(specPairs)
     local needScan = {}
     for _, sp in ipairs(specPairs) do
         local key = sp.classID .. "-" .. sp.specID
@@ -1311,6 +1397,106 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
             needScan[#needScan + 1] = sp
         end
     end
+    return needScan
+end
+
+local function GetLootDiffPairs(isRaid)
+    local pairs = {}
+    local st = isRaid and "raid" or "dungeon"
+    for diffKey, ids in _G.pairs(LOOT_DIFF_IDS) do
+        if ids[st] then
+            pairs[#pairs + 1] = { key = diffKey, id = ids[st] }
+        end
+    end
+    return pairs
+end
+
+local function CacheLootInfo(database, lootInfo, inst, encName, encID, diff, sp, spKey, GetItemInfoInstantFn)
+    local itemID = lootInfo.itemID
+    if not itemID then return end
+    local cached = lootItemCache[itemID]
+    if cached then
+        local foundSp = false
+        for _, sk in ipairs(cached._cachedSpecs) do
+            if sk == spKey then foundSp = true; break end
+        end
+        if not foundSp then
+            cached._cachedSpecs[#cached._cachedSpecs + 1] = spKey
+        end
+
+        local foundDf = false
+        for _, dk in ipairs(cached._cachedDiffs) do
+            if dk == diff.key then foundDf = true; break end
+        end
+        if not foundDf then
+            cached._cachedDiffs[#cached._cachedDiffs + 1] = diff.key
+            if lootInfo.link and cached.lootItemLinks then
+                cached.lootItemLinks[diff.key] = lootInfo.link
+            end
+        end
+        return
+    end
+
+    local itemName = lootInfo.name
+    if not itemName or itemName == "" then return end
+    local _, _, _, equipLoc, instIcon = GetItemInfoInstantFn(itemID)
+    local slotKws = {}
+    local slotKwVals = equipLoc and SLOT_KEYWORDS[equipLoc]
+    if slotKwVals then
+        for _, w in ipairs(slotKwVals) do slotKws[#slotKws + 1] = w end
+    end
+
+    local sourceKws = {}
+    if encName then
+        for w in encName:lower():gmatch("%a+") do sourceKws[#sourceKws + 1] = w end
+    end
+    if inst.name then
+        for w in inst.name:lower():gmatch("%a+") do sourceKws[#sourceKws + 1] = w end
+    end
+
+    local itemLinks = {}
+    if lootInfo.link then itemLinks[diff.key] = lootInfo.link end
+    local entry = setmetatable({
+        name = itemName,
+        nameLower = slower(itemName),
+        icon = lootInfo.icon or instIcon,
+        itemID = itemID,
+        encounterID = encID,
+        instanceID = inst.id,
+        keywords = {},
+        keywordsLower = {},
+        lootSlotKw = slotKws,
+        lootSourceKw = sourceKws,
+        lootStatKw = {},
+        lootItemLinks = itemLinks,
+        lootSlotName = equipLoc and SLOT_DISPLAY[equipLoc],
+        lootSourceName = encName,
+        lootInstanceName = inst.name,
+        lootSourceType = inst.isRaid and "Raid" or "Dungeon",
+        _cachedSpecs = { spKey },
+        _cachedDiffs = { diff.key },
+    }, LOOT_MT)
+
+    if lootInfo.link then
+        database:EnrichLootStats(entry)
+    end
+    lootItemCache[itemID] = entry
+end
+
+function Database:CancelDynamicScans()
+    lootScanGeneration = lootScanGeneration + 1
+    bossScanGeneration = bossScanGeneration + 1
+end
+
+-- Called after PLAYER_LOGIN. Scans the Encounter Journal for current-tier loot
+-- and injects searchable entries. Caches results so spec toggles only filter
+-- in memory without re-scanning. Only scans specs not yet in cache.
+-- Optional scanAllSpecs: when true, pre-caches every class/spec combo (for loading screen).
+function Database:PopulateDynamicLoot(scanAllSpecs)
+    if InCombatLockdown() then return end
+
+    local specPairs = BuildLootSpecPairs(scanAllSpecs)
+    local needScan = GetLootSpecsToScan(specPairs)
 
     -- All selected specs already cached: just rebuild from cache (instant)
     if #needScan == 0 then
@@ -1371,22 +1557,10 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
     local GetItemInfoInstant = GetItemInfoInstant
 
     -- Build list of {diffKey, diffID} pairs per source type
-    local function getDiffPairs(isRaid)
-        local pairs = {}
-        local st = isRaid and "raid" or "dungeon"
-        for diffKey, ids in _G.pairs(LOOT_DIFF_IDS) do
-            if ids[st] then
-                pairs[#pairs + 1] = { key = diffKey, id = ids[st] }
-            end
-        end
-        return pairs
-    end
-
-    -- Synchronous scan: runs during loading screen so no frame stutter
     for _, inst in ipairs(instances) do
         if myGen ~= lootScanGeneration then break end
         EJ_SelectInstance(inst.id)
-        local diffPairs = getDiffPairs(inst.isRaid)
+        local diffPairs = GetLootDiffPairs(inst.isRaid)
 
         local encIdx = 1
         while true do
@@ -1412,80 +1586,7 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
                     while true do
                         local lootInfo = EJ_GetLootInfoByIndex(li)
                         if not lootInfo or not lootInfo.name then break end
-                        local itemID = lootInfo.itemID
-                        if itemID then
-                            local cached = lootItemCache[itemID]
-                            if cached then
-                                -- Add spec tag if missing
-                                local foundSp = false
-                                for _, sk in ipairs(cached._cachedSpecs) do
-                                    if sk == spKey then foundSp = true; break end
-                                end
-                                if not foundSp then
-                                    cached._cachedSpecs[#cached._cachedSpecs + 1] = spKey
-                                end
-                                -- Add difficulty tag and link if missing
-                                local foundDf = false
-                                for _, dk in ipairs(cached._cachedDiffs) do
-                                    if dk == diff.key then foundDf = true; break end
-                                end
-                                if not foundDf then
-                                    cached._cachedDiffs[#cached._cachedDiffs + 1] = diff.key
-                                    if lootInfo.link and cached.lootItemLinks then
-                                        cached.lootItemLinks[diff.key] = lootInfo.link
-                                    end
-                                end
-                            else
-                                local itemName = lootInfo.name
-                                local _, _, _, equipLoc, instIcon = GetItemInfoInstant(itemID)
-                                local icon = lootInfo.icon or instIcon
-                                if itemName and itemName ~= "" then
-                                    local slotKws = {}
-                                    local slotKwVals = equipLoc and SLOT_KEYWORDS[equipLoc]
-                                    if slotKwVals then
-                                        for _, w in ipairs(slotKwVals) do slotKws[#slotKws + 1] = w end
-                                    end
-
-                                    local sourceKws = {}
-                                    if encName then
-                                        for w in encName:lower():gmatch("%a+") do sourceKws[#sourceKws + 1] = w end
-                                    end
-                                    if inst.name then
-                                        for w in inst.name:lower():gmatch("%a+") do sourceKws[#sourceKws + 1] = w end
-                                    end
-
-                                    local itemLink = lootInfo.link
-                                    local itemLinks = {}
-                                    if itemLink then itemLinks[diff.key] = itemLink end
-                                    local entry = setmetatable({
-                                        name = itemName,
-                                        nameLower = slower(itemName),
-                                        icon = icon,
-                                        itemID = itemID,
-                                        encounterID = encID,
-                                        instanceID = inst.id,
-                                        keywords = {},
-                                        keywordsLower = {},
-                                        lootSlotKw = slotKws,
-                                        lootSourceKw = sourceKws,
-                                        lootStatKw = {},
-                                        lootItemLinks = itemLinks,
-                                        lootSlotName = equipLoc and SLOT_DISPLAY[equipLoc],
-                                        lootSourceName = encName,
-                                        lootInstanceName = inst.name,
-                                        lootSourceType = inst.isRaid and "Raid" or "Dungeon",
-                                        _cachedSpecs = { spKey },
-                                        _cachedDiffs = { diff.key },
-                                    }, LOOT_MT)
-
-                                    if itemLink then
-                                        Database:EnrichLootStats(entry)
-                                    end
-
-                                    lootItemCache[itemID] = entry
-                                end
-                            end
-                        end
+                        CacheLootInfo(Database, lootInfo, inst, encName, encID, diff, sp, spKey, GetItemInfoInstant)
                         li = li + 1
                     end
                 end
@@ -1501,7 +1602,193 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
         lootSpecsScanned[sp.classID .. "-" .. sp.specID] = true
     end
     RebuildLootSearchData()
-    collectgarbage("collect")
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            collectgarbage("step", 200)
+        end)
+    else
+        collectgarbage("step", 200)
+    end
+end
+
+function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
+    if InCombatLockdown() then done(false); return end
+    if not C_Timer or not C_Timer.After then
+        self:PopulateDynamicLoot(scanAllSpecs)
+        done(true)
+        return
+    end
+
+    local specPairs = BuildLootSpecPairs(scanAllSpecs)
+    local needScan = GetLootSpecsToScan(specPairs)
+    if #needScan == 0 then
+        RebuildLootSearchData()
+        done(true)
+        return
+    end
+
+    if not EncounterJournal then
+        EncounterJournal_LoadUI()
+    end
+
+    local EJ_GetCurrentTier     = EJ("GetCurrentTier")
+    local EJ_SelectTier         = EJ("SelectTier")
+    local EJ_GetInstanceByIndex = EJ("GetInstanceByIndex")
+    local EJ_SelectInstance     = EJ("SelectInstance")
+    local EJ_GetEncounterInfoByIndex = EJ("GetEncounterInfoByIndex")
+    local EJ_SelectEncounter    = EJ("SelectEncounter")
+    local EJ_SetDifficulty      = EJ("SetDifficulty")
+    local EJ_SetLootFilter      = EJ("SetLootFilter")
+    local EJ_SetSlotFilter      = EJ("SetSlotFilter")
+    local EJ_GetLootInfoByIndex = EJ("GetLootInfoByIndex")
+
+    if not EJ_GetCurrentTier or not EJ_GetInstanceByIndex or not EJ_GetLootInfoByIndex then
+        done(false)
+        return
+    end
+
+    lootScanGeneration = lootScanGeneration + 1
+    local myGen = lootScanGeneration
+    local ejFrame = _G["EncounterJournal"]
+    local savedOnEvent
+    if ejFrame then
+        savedOnEvent = ejFrame:GetScript("OnEvent")
+        ejFrame:SetScript("OnEvent", nil)
+    end
+    local savedTier = EJ_GetCurrentTier and EJ_GetCurrentTier()
+
+    local instances = {}
+    local function collectInstances(isRaid)
+        local idx = 1
+        while true do
+            local instID, instName = EJ_GetInstanceByIndex(idx, isRaid)
+            if not instID then break end
+            instances[#instances + 1] = { id = instID, name = instName, isRaid = isRaid }
+            idx = idx + 1
+        end
+    end
+    collectInstances(false)
+    collectInstances(true)
+
+    local state = {
+        instIdx = 1,
+        encIdx = 1,
+        diffIdx = 1,
+        specIdx = 1,
+        lootIdx = 1,
+        diffPairs = nil,
+        encName = nil,
+        encID = nil,
+        prepared = false,
+    }
+    local GetItemInfoInstantFn = GetItemInfoInstant
+    local budgetMs = 4
+
+    local function finish(changed, err)
+        if savedTier and EJ_SelectTier then EJ_SelectTier(savedTier) end
+        if ejFrame and savedOnEvent then ejFrame:SetScript("OnEvent", savedOnEvent) end
+        if changed then
+            for _, sp in ipairs(needScan) do
+                lootSpecsScanned[sp.classID .. "-" .. sp.specID] = true
+            end
+            RebuildLootSearchData()
+            collectgarbage("step", 200)
+        end
+        done(changed, err)
+    end
+
+    local function step()
+        if myGen ~= lootScanGeneration then
+            finish(false, "cancelled")
+            return
+        end
+
+        local start = debugprofilestop and debugprofilestop() or 0
+        while true do
+            local inst = instances[state.instIdx]
+            if not inst then
+                finish(true)
+                return
+            end
+
+            if not state.diffPairs then
+                EJ_SelectInstance(inst.id)
+                state.diffPairs = GetLootDiffPairs(inst.isRaid)
+                state.encIdx = 1
+                state.diffIdx = 1
+                state.specIdx = 1
+                state.lootIdx = 1
+                state.prepared = false
+            end
+
+            if not state.encName then
+                local encName, _, encID = EJ_GetEncounterInfoByIndex(state.encIdx)
+                if not encName then
+                    state.instIdx = state.instIdx + 1
+                    state.diffPairs = nil
+                    state.encName = nil
+                    state.encID = nil
+                    state.prepared = false
+                else
+                    state.encName = encName
+                    state.encID = encID
+                end
+            elseif not state.diffPairs[state.diffIdx] then
+                state.encIdx = state.encIdx + 1
+                state.diffIdx = 1
+                state.specIdx = 1
+                state.lootIdx = 1
+                state.encName = nil
+                state.encID = nil
+                state.prepared = false
+            elseif not needScan[state.specIdx] then
+                state.diffIdx = state.diffIdx + 1
+                state.specIdx = 1
+                state.lootIdx = 1
+                state.prepared = false
+            else
+                local diff = state.diffPairs[state.diffIdx]
+                local sp = needScan[state.specIdx]
+                local spKey = sp.classID .. "-" .. sp.specID
+                if not state.prepared then
+                    EJ_SelectInstance(inst.id)
+                    EJ_SelectEncounter(state.encID)
+                    if EJ_SetDifficulty then EJ_SetDifficulty(diff.id) end
+                    if EJ_SetSlotFilter then EJ_SetSlotFilter(Enum.ItemSlotFilterType.NoFilter) end
+                    if EJ_SetLootFilter then EJ_SetLootFilter(sp.classID, sp.specID) end
+                    state.lootIdx = 1
+                    state.prepared = true
+                end
+
+                local processed = 0
+                while processed < 8 do
+                    local lootInfo = EJ_GetLootInfoByIndex(state.lootIdx)
+                    if not lootInfo or not lootInfo.name then
+                        state.specIdx = state.specIdx + 1
+                        state.lootIdx = 1
+                        state.prepared = false
+                        break
+                    end
+                    CacheLootInfo(self, lootInfo, inst, state.encName, state.encID, diff, sp, spKey, GetItemInfoInstantFn)
+                    state.lootIdx = state.lootIdx + 1
+                    processed = processed + 1
+                end
+            end
+
+            if debugprofilestop and (debugprofilestop() - start) >= budgetMs then
+                C_Timer.After(0, function()
+                    local ok, err = xpcall(step, Utils.ErrorHandler)
+                    if not ok then finish(false, err) end
+                end)
+                return
+            end
+        end
+    end
+
+    C_Timer.After(0, function()
+        local ok, err = xpcall(step, Utils.ErrorHandler)
+        if not ok then finish(false, err) end
+    end)
 end
 
 -- Macro search: scans the player's account-wide and per-character macros
@@ -1512,11 +1799,7 @@ end
 function Database:PopulateDynamicMacros()
     if not GetNumMacros or not GetMacroInfo then return end
 
-    for i = #uiSearchData, 1, -1 do
-        if uiSearchData[i].category == "Macro" then
-            tremove(uiSearchData, i)
-        end
-    end
+    RemoveEntriesByCategory("Macro")
     if self.ResetSearchCache then self:ResetSearchCache() end
 
     local numGlobal, numPerChar = GetNumMacros()
@@ -1575,11 +1858,7 @@ end
 -- registration since this addon targets Midnight 12.0+.
 function Database:PopulateDynamicAbilities()
     -- Strip prior pass so /reload-equivalent rebuilds don't double up.
-    for i = #uiSearchData, 1, -1 do
-        if uiSearchData[i].category == "Ability" then
-            tremove(uiSearchData, i)
-        end
-    end
+    RemoveEntriesByCategory("Ability")
     if self.ResetSearchCache then self:ResetSearchCache() end
 
     local SBOOK = C_SpellBook
@@ -1681,17 +1960,55 @@ local INSTANCE_ABBRS = {
 }
 ns.INSTANCE_ABBRS = INSTANCE_ABBRS
 
+local function AddBossEntry(tier, isRaid, instID, instName, encName, encID, getCreatureInfo)
+    local nameLower = slower(encName)
+    local instLower = slower(instName or "")
+    local kw = { instLower, "boss", "bosses" }
+    local abbrs = INSTANCE_ABBRS[instLower]
+    if abbrs then
+        for ai = 1, #abbrs do
+            kw[#kw + 1] = abbrs[ai]
+        end
+    end
+
+    local icon
+    if getCreatureInfo then
+        local ok, _, _, _, _, iconImage = pcall(getCreatureInfo, 1, encID)
+        if ok and iconImage and iconImage ~= 0 then
+            icon = iconImage
+        end
+    end
+
+    uiSearchData[#uiSearchData + 1] = {
+        name = encName,
+        nameLower = nameLower,
+        keywords = kw,
+        keywordsLower = kw,
+        category = "Boss",
+        icon = icon,
+        encounterID = encID,
+        instanceID = instID,
+        instanceName = instName,
+        instanceNameLower = instLower,
+        isRaidBoss = isRaid,
+        ejTier = tier,
+        path = { isRaid and "Raid" or "Dungeon", instName },
+        steps = {
+            { buttonFrame = "EJMicroButton" },
+            { waitForFrame = "EncounterJournal", ejTier = tier, ejTabIsRaid = isRaid },
+            { waitForFrame = "EncounterJournal", ejInstance = instName, ejInstanceID = instID },
+            { waitForFrame = "EncounterJournal", ejBoss = encName, ejEncounterID = encID },
+        },
+    }
+end
+
 -- Inject one entry per dungeon/raid boss across every expansion tier.
 -- Click navigates the Encounter Journal to that boss. Icon is the
 -- boss's first creature portrait (EJ_GetCreatureInfo[5]) so results
 -- look like the EJ's own boss list.
 function Database:PopulateDynamicBosses()
     -- Strip prior pass so re-runs don't double up.
-    for i = #uiSearchData, 1, -1 do
-        if uiSearchData[i].category == "Boss" then
-            tremove(uiSearchData, i)
-        end
-    end
+    RemoveEntriesByCategory("Boss")
     if self.ResetSearchCache then self:ResetSearchCache() end
 
     if not EncounterJournal then
@@ -1735,54 +2052,7 @@ function Database:PopulateDynamicBosses()
                     local encName, _, encID = getEncounterByIdx(encIdx)
                     if not encName then break end
 
-                    local nameLower = slower(encName)
-                    local instLower = slower(instName or "")
-                    -- Keywords intentionally exclude generic "raid"/"dungeon"
-                    -- so typing those alone doesn't flood with every boss.
-                    -- The instance name + "boss" let "<inst> boss" queries
-                    -- match (e.g. "icc boss" -> all Icecrown Citadel bosses).
-                    -- SearchUI further gates instance-keyword matches behind
-                    -- the presence of "boss" in the query, so plain "icc"
-                    -- still won't flood with bosses either.
-                    local kw = { instLower, "boss", "bosses" }
-                    local abbrs = INSTANCE_ABBRS[instLower]
-                    if abbrs then
-                        for ai = 1, #abbrs do
-                            kw[#kw + 1] = abbrs[ai]
-                        end
-                    end
-
-                    -- Pull the first creature's portrait icon if EJ exposes it.
-                    local icon
-                    if getCreatureInfo then
-                        local ok, _, _, _, _, iconImage = pcall(getCreatureInfo, 1, encID)
-                        if ok and iconImage and iconImage ~= 0 then
-                            icon = iconImage
-                        end
-                    end
-
-                    uiSearchData[#uiSearchData + 1] = {
-                        name = encName,
-                        nameLower = nameLower,
-                        keywords = kw,
-                        keywordsLower = kw,
-                        category = "Boss",
-                        icon = icon,
-                        encounterID = encID,
-                        instanceID = instID,
-                        instanceName = instName,
-                        instanceNameLower = instLower,
-                        isRaidBoss = isRaid,
-                        ejTier = tier,
-                        path = { isRaid and "Raid" or "Dungeon", instName },
-                        steps = {
-                            { buttonFrame = "EJMicroButton" },
-                            { waitForFrame = "EncounterJournal", ejTier = tier, ejTabIsRaid = isRaid },
-                            { waitForFrame = "EncounterJournal", ejInstance = instName, ejInstanceID = instID },
-                            { waitForFrame = "EncounterJournal", ejBoss = encName, ejEncounterID = encID },
-                        },
-                    }
-
+                    AddBossEntry(tier, isRaid, instID, instName, encName, encID, getCreatureInfo)
                     encIdx = encIdx + 1
                 end
 
@@ -1797,6 +2067,117 @@ function Database:PopulateDynamicBosses()
     if ejFrame and savedOnEvent then ejFrame:SetScript("OnEvent", savedOnEvent) end
 end
 
+function Database:PopulateDynamicBossesAsync(done)
+    if not C_Timer or not C_Timer.After then
+        self:PopulateDynamicBosses()
+        done(true)
+        return
+    end
+
+    RemoveEntriesByCategory("Boss")
+    if self.ResetSearchCache then self:ResetSearchCache() end
+
+    if not EncounterJournal then
+        EncounterJournal_LoadUI()
+    end
+
+    local getNumTiers       = EJ("GetNumTiers") or _G.EJ_GetNumTiers
+    local getCurrentTier    = EJ("GetCurrentTier") or _G.EJ_GetCurrentTier
+    local selectTier        = EJ("SelectTier") or _G.EJ_SelectTier
+    local getInstanceByIdx  = EJ("GetInstanceByIndex")
+    local selectInstance    = EJ("SelectInstance")
+    local getEncounterByIdx = EJ("GetEncounterInfoByIndex")
+    local getCreatureInfo   = EJ("GetCreatureInfo") or _G.EJ_GetCreatureInfo
+    if not getInstanceByIdx or not getEncounterByIdx or not selectTier then
+        done(false)
+        return
+    end
+
+    bossScanGeneration = bossScanGeneration + 1
+    local myGen = bossScanGeneration
+    local ejFrame = _G["EncounterJournal"]
+    local savedOnEvent
+    if ejFrame then
+        savedOnEvent = ejFrame:GetScript("OnEvent")
+        ejFrame:SetScript("OnEvent", nil)
+    end
+
+    local savedTier = getCurrentTier and getCurrentTier()
+    local numTiers = (getNumTiers and getNumTiers()) or 10
+    local state = { tier = 1, raidIdx = 1, instIdx = 1, encIdx = 1, instID = nil, instName = nil }
+    local raidModes = { false, true }
+    local budgetMs = 4
+
+    local function finish(changed, err)
+        if savedTier and selectTier then selectTier(savedTier) end
+        if ejFrame and savedOnEvent then ejFrame:SetScript("OnEvent", savedOnEvent) end
+        done(changed, err)
+    end
+
+    local function step()
+        if myGen ~= bossScanGeneration then
+            finish(false, "cancelled")
+            return
+        end
+
+        local start = debugprofilestop and debugprofilestop() or 0
+        while state.tier <= numTiers do
+            selectTier(state.tier)
+            local isRaid = raidModes[state.raidIdx]
+            if isRaid == nil then
+                state.tier = state.tier + 1
+                state.raidIdx = 1
+                state.instIdx = 1
+                state.encIdx = 1
+                state.instID = nil
+                state.instName = nil
+            elseif not state.instID then
+                local instID, instName = getInstanceByIdx(state.instIdx, isRaid)
+                if not instID then
+                    state.raidIdx = state.raidIdx + 1
+                    state.instIdx = 1
+                    state.encIdx = 1
+                else
+                    state.instID = instID
+                    state.instName = instName
+                    state.encIdx = 1
+                    if selectInstance then selectInstance(instID) end
+                end
+            else
+                local processed = 0
+                while processed < 10 do
+                    local encName, _, encID = getEncounterByIdx(state.encIdx)
+                    if not encName then
+                        state.instIdx = state.instIdx + 1
+                        state.instID = nil
+                        state.instName = nil
+                        state.encIdx = 1
+                        break
+                    end
+                    AddBossEntry(state.tier, isRaid, state.instID, state.instName, encName, encID, getCreatureInfo)
+                    state.encIdx = state.encIdx + 1
+                    processed = processed + 1
+                end
+            end
+
+            if debugprofilestop and (debugprofilestop() - start) >= budgetMs then
+                C_Timer.After(0, function()
+                    local ok, err = xpcall(step, Utils.ErrorHandler)
+                    if not ok then finish(false, err) end
+                end)
+                return
+            end
+        end
+
+        finish(true)
+    end
+
+    C_Timer.After(0, function()
+        local ok, err = xpcall(step, Utils.ErrorHandler)
+        if not ok then finish(false, err) end
+    end)
+end
+
 -- Inject one entry per unique item carried in the player's bags. The
 -- entry stores the first occupied location so guide mode can highlight
 -- the right slot; drag-to-pickup uses the item ID to put the item on
@@ -1807,11 +2188,7 @@ function Database:PopulateDynamicBags()
     local getItemInfo = (CONT and CONT.GetContainerItemInfo)  or GetContainerItemInfo
     if not getNumSlots or not getItemInfo then return end
 
-    for i = #uiSearchData, 1, -1 do
-        if uiSearchData[i].category == "Bag" then
-            tremove(uiSearchData, i)
-        end
-    end
+    RemoveEntriesByCategory("Bag")
     if self.ResetSearchCache then self:ResetSearchCache() end
 
     local itemMap = {}
@@ -1872,6 +2249,20 @@ function Database:PopulateDynamicBags()
             },
         }
     end
+end
+
+function Database:_ResetDynamicProviderCaches()
+    wipe(knownCurrencyIDs)
+    wipe(lootEntries)
+    wipe(lootItemCache)
+    wipe(lootSpecsScanned)
+    wipe(outfitEntries)
+end
+
+function Database:_ResetHeavyProviderCaches()
+    wipe(lootEntries)
+    wipe(lootItemCache)
+    wipe(lootSpecsScanned)
 end
 
 -- TREE FLATTENER
@@ -3112,8 +3503,11 @@ function Database:DamerauLevenshtein(s1, s2, len1, len2)
     for i = 1, len1 do
         curr[0] = i
         local minInRow = i
+        local c1 = sbyte(s1, i)
+        local c1Prev = i > 1 and sbyte(s1, i - 1) or nil
         for j = 1, len2 do
-            local cost = (ssub(s1, i, i) == ssub(s2, j, j)) and 0 or 1
+            local c2 = sbyte(s2, j)
+            local cost = (c1 == c2) and 0 or 1
             curr[j] = mmin(
                 prev[j] + 1,        -- deletion
                 curr[j - 1] + 1,    -- insertion
@@ -3121,8 +3515,8 @@ function Database:DamerauLevenshtein(s1, s2, len1, len2)
             )
             -- Transposition
             if i > 1 and j > 1
-                and ssub(s1, i, i) == ssub(s2, j - 1, j - 1)
-                and ssub(s1, i - 1, i - 1) == ssub(s2, j, j) then
+                and c1 == sbyte(s2, j - 1)
+                and c1Prev == c2 then
                 curr[j] = mmin(curr[j], prev2[j - 2] + cost)
             end
             if curr[j] < minInRow then minInRow = curr[j] end
@@ -3450,77 +3844,165 @@ end
 
 -- Incremental search state: when the user extends the previous query (e.g. "mou" → "moun"),
 -- only re-score entries that matched before instead of the full dataset.
+local function ScoreSingleFieldWord(fieldWord, queryWord, queryWordLen)
+    if fieldWord == queryWord then return 100 end
+    if sfind(fieldWord, queryWord, 1, true) == 1 then return 90 end
+    if fieldWord .. "s" == queryWord or queryWord .. "s" == fieldWord then return 82 end
+    if sfind(fieldWord, queryWord, 1, true) then return 50 end
+    if queryWordLen >= 3 then
+        local fieldLen = #fieldWord
+        if fieldLen > queryWordLen and queryWordLen <= 8
+           and queryWordLen / fieldLen >= 0.45
+           and Database:IsSubsequence(fieldWord, queryWord, queryWordLen) then
+            return 55
+        end
+    end
+    if queryWordLen >= 4 and sbyte(fieldWord, 1) == sbyte(queryWord, 1) then
+        local fieldLen = #fieldWord
+        local maxEdits = queryWordLen >= 8 and 2 or 1
+        if fieldLen >= queryWordLen - maxEdits and fieldLen <= queryWordLen + maxEdits then
+            local dist = Database:DamerauLevenshtein(fieldWord, queryWord, fieldLen, queryWordLen)
+            if dist <= maxEdits then return mmax(45, 85 - dist * 20) end
+        end
+    end
+    return 0
+end
+
+local function ScoreFieldWords(words, queryWord, queryWordLen)
+    local best = 0
+    for i = 1, #words do
+        local score = ScoreSingleFieldWord(words[i], queryWord, queryWordLen)
+        if score > best then best = score end
+    end
+    return best
+end
+
+function Database:ScoreEntryFields(data, queryWords)
+    if not queryWords or #queryWords < 2 then return 0 end
+    local total = 0
+    local matched = 0
+    local nameWords = GetWords(data.nameLower or "")
+    local keywordsLower = data.keywordsLower
+
+    for qi = 1, #queryWords do
+        local qw = queryWords[qi]
+        local qwLen = #qw
+        if qwLen >= 2 or (qwLen == 1 and qi == #queryWords and matched > 0) then
+            local best = ScoreFieldWords(nameWords, qw, qwLen)
+            if keywordsLower then
+                for ki = 1, #keywordsLower do
+                    local kw = keywordsLower[ki]
+                    local kwScore = ScoreSingleFieldWord(kw, qw, qwLen)
+                    if kwScore < 90 then
+                        kwScore = mmax(kwScore, ScoreFieldWords(GetWords(kw), qw, qwLen))
+                    end
+                    if kwScore > best then best = kwScore end
+                end
+            end
+            if best == 0 then return 0 end
+            total = total + best
+            matched = matched + 1
+        end
+    end
+
+    if matched < 2 then return 0 end
+    return total + matched * 5
+end
+
 local prevQuery = ""
 local prevSkipKey = ""
 local prevCandidates = {}
 
--- ---------------------------------------------------------------------
--- Inverted prefix indexes. Without these, every keystroke that isn't
--- a forward extension of the previous query (every backspace, every
--- fresh query, every typo correction) falls back to a full scan over
--- ~10K entries — held backspace stutters every frame.
---
--- We keep two indexes side-by-side:
---   prefix2Index["mo"] = { entries with any name/keyword word starting "mo" }
---   prefix1Index["m"]  = { entries with any name/keyword word starting "m"  }
---
--- Lookup tries 2-char first (smallest bucket, ~50-300 entries).
--- Falls back to 1-char if the 2-char bucket is empty (covers rare
--- prefixes and entries whose words are < 2 chars). Falls back to a
--- full scan as a final safety net (should never happen in practice).
---
--- Built at the end of init and rebuilt any time uiSearchData mutates
--- (ResetSearchCache invalidates the indexes; next SearchUI rebuilds).
--- ---------------------------------------------------------------------
-local prefix1Index = nil
-local prefix2Index = nil
+local prefixIndex = {}
+local prefixIndexSeen = {}
+local prefixIndexReady = false
+local prefixCandidateBuf = {}
+local prefixCandidateSeen = {}
+Database._prefixIndex = prefixIndex
 
-local function indexAddWord(seen1, seen2, entry, word)
-    if not word or word == "" then return end
-    local c1 = ssub(word, 1, 1)
-    if not seen1[c1] then
-        seen1[c1] = true
-        local b1 = prefix1Index[c1]
-        if not b1 then b1 = {}; prefix1Index[c1] = b1 end
-        b1[#b1 + 1] = entry
+local function AddPrefixIndexEntry(entry, prefix)
+    if prefixIndexSeen[prefix] == entry then return end
+    prefixIndexSeen[prefix] = entry
+    local bucket = prefixIndex[prefix]
+    if not bucket then
+        bucket = {}
+        prefixIndex[prefix] = bucket
     end
-    if #word >= 2 then
-        local c2 = ssub(word, 1, 2)
-        if not seen2[c2] then
-            seen2[c2] = true
-            local b2 = prefix2Index[c2]
-            if not b2 then b2 = {}; prefix2Index[c2] = b2 end
-            b2[#b2 + 1] = entry
+    bucket[#bucket + 1] = entry
+end
+
+local function IndexPrefixText(entry, text)
+    if not text then return end
+    for word in text:gmatch("%S+") do
+        local len = #word
+        if len >= 1 then AddPrefixIndexEntry(entry, ssub(word, 1, 1)) end
+        if len >= 2 then AddPrefixIndexEntry(entry, ssub(word, 1, 2)) end
+    end
+end
+
+local function IndexPrefixList(entry, list)
+    if not list then return end
+    for i = 1, #list do
+        local text = list[i]
+        if type(text) == "string" then IndexPrefixText(entry, text) end
+    end
+end
+
+function Database:BuildSearchPrefixIndex()
+    wipe(prefixIndex)
+    wipe(prefixIndexSeen)
+    for i = 1, #uiSearchData do
+        local entry = uiSearchData[i]
+        IndexPrefixText(entry, entry.nameLower)
+        IndexPrefixList(entry, entry.keywordsLower)
+        IndexPrefixList(entry, entry.lootSlotKw)
+        IndexPrefixList(entry, entry.lootStatKw)
+        IndexPrefixList(entry, entry.lootSourceKw)
+    end
+    wipe(prefixIndexSeen)
+    prefixIndexReady = true
+end
+
+function Database:WarmSearchHotPath()
+    if not prefixIndexReady then
+        self:BuildSearchPrefixIndex()
+    end
+end
+
+local function ClearPrefixBuckets()
+    wipe(prefixIndex)
+    prefixIndexReady = false
+end
+
+local function GetPrefixBucket(prefix)
+    return prefixIndex[prefix] or false
+end
+
+local function AddPrefixCandidateBucket(bucket)
+    if not bucket then return end
+    for i = 1, #bucket do
+        local entry = bucket[i]
+        if not prefixCandidateSeen[entry] then
+            prefixCandidateSeen[entry] = true
+            prefixCandidateBuf[#prefixCandidateBuf + 1] = entry
         end
     end
 end
 
-local function rebuildPrefixIndexes()
-    prefix1Index = {}
-    prefix2Index = {}
-    local seen1, seen2 = {}, {}
-    for ei = 1, #uiSearchData do
-        local entry = uiSearchData[ei]
-        for k in pairs(seen1) do seen1[k] = nil end
-        for k in pairs(seen2) do seen2[k] = nil end
-        local nameLower = entry.nameLower
-        if nameLower then
-            for word in nameLower:gmatch("%S+") do
-                indexAddWord(seen1, seen2, entry, word)
-            end
-        end
-        local kwl = entry.keywordsLower
-        if kwl then
-            for ki = 1, #kwl do
-                local kw = kwl[ki]
-                if type(kw) == "string" then
-                    for word in kw:gmatch("%S+") do
-                        indexAddWord(seen1, seen2, entry, word)
-                    end
-                end
-            end
+local function GetMultiTokenPrefixCandidates(queryWords)
+    wipe(prefixCandidateBuf)
+    wipe(prefixCandidateSeen)
+    for i = 1, #queryWords do
+        local word = queryWords[i]
+        local len = #word
+        if len >= 2 then
+            AddPrefixCandidateBucket(GetPrefixBucket(ssub(word, 1, 2)))
+        elseif len == 1 then
+            AddPrefixCandidateBucket(GetPrefixBucket(word))
         end
     end
+    wipe(prefixCandidateSeen)
+    return #prefixCandidateBuf > 0 and prefixCandidateBuf or nil
 end
 
 local sortChildrenNode
@@ -3740,13 +4222,18 @@ local function GetContainerPathSet()
 end
 
 function Database:ResetSearchCache()
+    if self._dynamicBatchLoading then
+        self._dynamicBatchChanged = true
+        return
+    end
     prevQuery = ""
     prevSkipKey = ""
     wipe(prevCandidates)
     containerPathCache = nil
     nameLookup = nil
-    prefix1Index = nil
-    prefix2Index = nil
+    local hadPrefixIndex = prefixIndexReady
+    ClearPrefixBuckets()
+    if hadPrefixIndex then self:BuildSearchPrefixIndex() end
 end
 
 local resultsBuf = {}
@@ -3754,6 +4241,17 @@ local resultsQueryWords = {}
 local resultEntryPool = {}
 Database._resultsBuf = resultsBuf
 Database._resultEntryPool = resultEntryPool
+
+function Database:TrimSearchMemory()
+    self:UnloadDynamicSearchData()
+    wipe(resultsBuf)
+    wipe(resultsQueryWords)
+    wipe(resultEntryPool)
+    wipe(wordCache)
+    wipe(wordCacheKeys)
+    wordCacheHead = 1
+    ClearPrefixBuckets()
+end
 
 function Database:SearchUI(query, skipCategories)
     if not query or query == "" or #query < 2 then
@@ -3789,10 +4287,14 @@ function Database:SearchUI(query, skipCategories)
     -- up in some achievement keyword. Gate them behind the user
     -- typing "ach"/"achievement"/etc. or a strong name match.
     local achQueryWord = false
+    local lootStatQueryWord = false
     for qi = 1, #queryWords do
         local qw = queryWords[qi]
         if qw == "boss" or qw == "bosses" then
             bossQueryWord = true
+        end
+        if IsLootStatSearchWord(qw) then
+            lootStatQueryWord = true
         end
         if ssub(qw, 1, 3) == "ach" or qw == "stat" or qw == "stats"
            or qw == "statistic" or qw == "statistics" then
@@ -3818,18 +4320,20 @@ function Database:SearchUI(query, skipCategories)
         -- candidates only. (Cheapest path.)
         searchSet = prevCandidates
     else
-        -- Fresh query / backspace / typo correction: look up the
-        -- 2-char prefix bucket (smallest), fall back to 1-char (covers
-        -- single-char-word entries and rare prefixes), and only as a
-        -- last resort go full-scan. In practice the 2-char hit covers
-        -- ~all real queries.
-        if not prefix2Index then rebuildPrefixIndexes() end
-        local key2 = ssub(query, 1, 2)
-        searchSet = prefix2Index[key2]
-        if not searchSet then
-            searchSet = prefix1Index[ssub(query, 1, 1)]
+        if prefixIndexReady then
+            if #queryWords >= 2 then
+                searchSet = GetMultiTokenPrefixCandidates(queryWords)
+            else
+                local key2 = ssub(query, 1, 2)
+                searchSet = GetPrefixBucket(key2)
+                if not searchSet then
+                    searchSet = GetPrefixBucket(ssub(query, 1, 1))
+                end
+            end
+        else
+            searchSet = uiSearchData
         end
-        if not searchSet then
+        if not searchSet or #searchSet == 0 then
             wipe(resultsBuf)
             prevQuery = query
             prevSkipKey = skipKey
@@ -3850,6 +4354,9 @@ function Database:SearchUI(query, skipCategories)
             local nameLower = data.nameLower
             local score
             if data.lootEntry then
+                if lootStatQueryWord and not data._statsEnriched then
+                    Database:EnrichLootStats(data)
+                end
                 -- Loot: match by item name, slot, stats, and source keywords.
                 -- Each query word scores against all keyword types and takes
                 -- the best match. Words that match nothing eliminate the item.
@@ -3941,6 +4448,9 @@ function Database:SearchUI(query, skipCategories)
                 else
                     score = Database:ScoreName(nameLower, query, queryLen, queryWords)
                     score = score + Database:ScoreKeywords(data.keywordsLower, query, queryLen, queryWords)
+                    if #queryWords >= 2 then
+                        score = mmax(score, Database:ScoreEntryFields(data, queryWords))
+                    end
                 end
             end
 

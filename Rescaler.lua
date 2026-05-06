@@ -24,8 +24,7 @@ local MAX_HEIGHT = 700
 local MIN_FONT = 0.5
 local MAX_FONT = 2.0
 
--- Active rescaler state
-local activeMode = nil        -- "ui" or "map"
+local activeMode = nil
 local activeSearchBar = nil   -- the search bar being rescaled
 local backdrop = nil          -- full-screen dim
 local barOverlay = nil        -- glow around search bar
@@ -34,37 +33,28 @@ local donePanel = nil         -- instruction + Done button
 local previewResults = nil    -- fake results frame for preview
 
 local function GetResultsHeight()
-    if activeMode == "ui" then return EasyFind.db.uiResultsHeight or 280 end
-    return EasyFind.db.mapResultsHeight or 168
+    return EasyFind.db.uiResultsHeight or 280
 end
 
 local function SetResultsHeight(h)
     h = mmax(MIN_HEIGHT, mmin(MAX_HEIGHT, mfloor(h + 0.5)))
-    if activeMode == "ui" then EasyFind.db.uiResultsHeight = h
-    else EasyFind.db.mapResultsHeight = h end
+    EasyFind.db.uiResultsHeight = h
 end
 
 local function GetDefaultResultsHeight()
-    if activeMode == "ui" then return 280 end
-    return 168
+    return 280
 end
 
 local function GetFontScale()
-    if activeMode == "ui" then return EasyFind.db.fontSize or 1.0 end
-    return EasyFind.db.mapFontSize or 1.0
+    return EasyFind.db.fontSize or 1.0
 end
 
 local function SetFontScale(val)
-    if activeMode == "ui" then EasyFind.db.fontSize = val
-    else EasyFind.db.mapFontSize = val end
+    EasyFind.db.fontSize = val
 end
 
 local function ApplyFontUpdate()
-    if activeMode == "ui" then
-        if ns.UI and ns.UI.UpdateFontSize then ns.UI:UpdateFontSize() end
-    else
-        if ns.MapSearch and ns.MapSearch.UpdateFontSize then ns.MapSearch:UpdateFontSize() end
-    end
+    if ns.UI and ns.UI.UpdateFontSize then ns.UI:UpdateFontSize() end
 end
 
 -- Helpers
@@ -374,45 +364,6 @@ local function SetupWidthDrag(handle, getWidth, setWidth, widthLabel, side)
     end)
 end
 
--- Corner drag handler (width + height combo)
-
-local function SetupCornerDrag(handle, preview, getWidth, setWidth, widthLabel, heightLabel, anchorAbove)
-    handle:SetScript("OnDragStart", function(self)
-        self.dragging = true
-        local cx, cy = GetCursorPosition()
-        local es = UIParent:GetEffectiveScale()
-        self.startX = cx / es
-        self.startY = cy / es
-        self.startWidth = getWidth()
-        self.startHeight = GetResultsHeight()
-        self.maxH = GetScreenMaxHeight(anchorAbove)
-    end)
-    handle:SetScript("OnDragStop", function(self)
-        self.dragging = false
-    end)
-    handle:SetScript("OnUpdate", function(self)
-        if not self.dragging then return end
-        local cx, cy = GetCursorPosition()
-        local es = UIParent:GetEffectiveScale()
-        cx = cx / es
-        cy = cy / es
-
-        local dx = cx - self.startX
-        local newW = ClampWidth(self.startWidth + dx * 2)
-        setWidth(newW)
-        if widthLabel and not widthLabel:HasFocus() then
-            widthLabel:SetText(mfloor(newW + 0.5))
-        end
-
-        local dy = self.startY - cy
-        if anchorAbove then dy = -dy end
-        local newH = mmax(MIN_HEIGHT, mmin(self.maxH, mfloor(self.startHeight + dy + 0.5)))
-        SetResultsHeight(newH)
-        preview:SetPreviewHeight(newH)
-        if heightLabel and not heightLabel:HasFocus() then heightLabel:SetText(newH) end
-    end)
-end
-
 -- Height drag handler
 
 local function SetupHeightDrag(handle, preview, heightBox, anchorAbove)
@@ -491,7 +442,7 @@ local function SetupFontDrag(handle, fontLabel, preview)
 
         local optPanel = _G["EasyFindOptionsFrame"]
         if optPanel then
-            local slider = activeMode == "ui" and optPanel.uiFontSlider or optPanel.mapFontSlider
+            local slider = optPanel.uiFontSlider
             if slider then slider:SetValue(newFont) end
         end
     end)
@@ -506,7 +457,7 @@ local function BuildBarOverlay(parent, targetFrame, mode)
 
     local label = overlay:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetPoint("CENTER")
-    label:SetText(mode == "ui" and "UI Search Bar" or "Map Search Bar")
+    label:SetText("UI Search Bar")
     label:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.7)
 
     local widthBox = CreateDimLabel(overlay, "LEFT", "RIGHT", 8, 0, "Width:")
@@ -687,84 +638,37 @@ function Rescaler:Enter(mode)
     if activeMode then
         self:Exit()
     end
+    if mode ~= "ui" then return end
 
     activeMode = mode
 
     local searchBar, resultsFrame
     local getBarWidth, setBarWidth
-    local getResultsWidth, setResultsWidth, getResultsScale
+    local getResultsWidth, getResultsScale
 
-    if mode == "ui" then
-        searchBar = _G["EasyFindSearchFrame"]
-        resultsFrame = _G["EasyFindResultsFrame"]
+    searchBar = _G["EasyFindSearchFrame"]
+    resultsFrame = _G["EasyFindResultsFrame"]
 
-        if not searchBar then
-            activeMode = nil
-            return
-        end
-
-        -- Force visible
-        searchBar:Show()
-        searchBar:SetAlpha(1.0)
-
-        -- UI mode is the unified rounded-pill design: bar + results
-        -- share one rounded silhouette and one width. Both setters
-        -- below drive the same width so the bar overlay and results
-        -- overlay handles all stay in sync.
-        local function setUiWidth(w)
-            w = ClampWidth(w)
-            searchBar:SetWidth(w)
-            EasyFind.db.uiSearchWidth = w / 250
-            EasyFind.db.uiResultsWidth = w
-            if resultsFrame then resultsFrame:SetWidth(w) end
-        end
-
-        getBarWidth = function() return searchBar:GetWidth() end
-        setBarWidth = setUiWidth
-
-        getResultsScale = function() return EasyFind.db.uiResultsScale or 1.0 end
-
-        getResultsWidth = function() return searchBar:GetWidth() end
-        setResultsWidth = setUiWidth
-
-    elseif mode == "map" then
-        -- Open the world map if not already visible (search bars are anchored to it)
-        if not WorldMapFrame or not WorldMapFrame:IsShown() then
-            ToggleWorldMap()
-        end
-
-        searchBar = _G["EasyFindMapGlobalSearchFrame"]
-        resultsFrame = _G["EasyFindMapResultsFrame"]
-
-        if not searchBar then
-            activeMode = nil
-            return
-        end
-
-        getBarWidth = function() return searchBar:GetWidth() end
-        setBarWidth = function(w)
-            w = ClampWidth(w)
-            EasyFind.db.mapSearchWidth = w / 250
-            searchBar:SetWidth(w)
-            local localBar = _G["EasyFindMapSearchFrame"]
-            if localBar then localBar:SetWidth(w) end
-        end
-
-        getResultsScale = function() return EasyFind.db.mapResultsScale or 1.0 end
-
-        getResultsWidth = function()
-            if resultsFrame then return resultsFrame:GetWidth() end
-            return 300 * (EasyFind.db.mapSearchWidth or 1.0)
-        end
-        setResultsWidth = function(w)
-            w = ClampWidth(w)
-            if ns.MapSearch and ns.MapSearch.GetMaxResultsWidth then
-                w = mmin(w, ns.MapSearch:GetMaxResultsWidth())
-            end
-            EasyFind.db.mapResultsWidth = w
-            if resultsFrame then resultsFrame:SetWidth(w) end
-        end
+    if not searchBar then
+        activeMode = nil
+        return
     end
+
+    searchBar:Show()
+    searchBar:SetAlpha(1.0)
+
+    local function setUiWidth(w)
+        w = ClampWidth(w)
+        searchBar:SetWidth(w)
+        EasyFind.db.uiSearchWidth = w / 250
+        EasyFind.db.uiResultsWidth = w
+        if resultsFrame then resultsFrame:SetWidth(w) end
+    end
+
+    getBarWidth = function() return searchBar:GetWidth() end
+    setBarWidth = setUiWidth
+    getResultsScale = function() return EasyFind.db.uiResultsScale or 1.0 end
+    getResultsWidth = function() return searchBar:GetWidth() end
 
     -- Hide options panel
     local optPanel = _G["EasyFindOptionsFrame"]
@@ -786,15 +690,10 @@ function Rescaler:Enter(mode)
     SafeCallMethod(bg, "EnableKeyboard", true)
 
     -- Preview results (fake rows so user sees the results area)
-    local resultsAbove = (mode == "ui" and EasyFind.db.uiResultsAbove)
-        or (mode == "map" and EasyFind.db.mapResultsAbove)
+    local resultsAbove = EasyFind.db.uiResultsAbove
     local previewW = getResultsWidth()
     local currentH = mmin(GetResultsHeight(), GetScreenMaxHeight(resultsAbove))
-    local leftAligned = (mode == "map")
-    -- UI mode is the unified pill: dock the preview flush against the
-    -- bar (zero gap) so width changes look continuous.
-    local flushDock = (mode == "ui")
-    previewResults = CreatePreviewResults(bg, searchBar, previewW, currentH, resultsAbove, leftAligned, flushDock)
+    previewResults = CreatePreviewResults(bg, searchBar, previewW, currentH, resultsAbove, false, true)
     previewResults:SetScale(getResultsScale())
     previewResults:Show()
 
@@ -825,7 +724,7 @@ function Rescaler:Enter(mode)
     -- area; resize it in lockstep so the unified pill stays continuous.
     local function setBarWidthAndPreview(w)
         setBarWidth(w)
-        if mode == "ui" then previewResults:SetWidth(searchBar:GetWidth()) end
+        previewResults:SetWidth(searchBar:GetWidth())
     end
     SetupWidthDrag(barOverlay.leftHandle, getBarWidth, setBarWidthAndPreview, barOverlay.widthBox, "LEFT")
     SetupWidthDrag(barOverlay.rightHandle, getBarWidth, setBarWidthAndPreview, barOverlay.widthBox, "RIGHT")
@@ -863,37 +762,11 @@ function Rescaler:Enter(mode)
     end)
     SetupFontDrag(barOverlay.bottomHandle, barOverlay.fontBox, previewResults)
 
-    -- Wire results width drag. UI mode locks results width to bar
-    -- width (single rounded pill), so the results overlay's width
-    -- handles + width box are redundant -- hide them entirely. The
-    -- bar's width handles already update the preview width via
-    -- setBarWidth above.
-    if mode == "ui" then
-        resultsOverlay.leftHandle:Hide()
-        resultsOverlay.rightHandle:Hide()
-        resultsOverlay.widthBox:Hide()
-        if resultsOverlay.widthBox.prefix then resultsOverlay.widthBox.prefix:Hide() end
-        if resultsOverlay.widthBox.suffix then resultsOverlay.widthBox.suffix:Hide() end
-    else
-        SetupWidthDrag(resultsOverlay.leftHandle, getResultsWidth, function(w)
-            setResultsWidth(w)
-            previewResults:SetWidth(w)
-        end, resultsOverlay.widthBox, "LEFT")
-        SetupWidthDrag(resultsOverlay.rightHandle, getResultsWidth, function(w)
-            setResultsWidth(w)
-            previewResults:SetWidth(w)
-        end, resultsOverlay.widthBox, "RIGHT")
-        WireDimLabel(resultsOverlay.widthBox, getResultsWidth, function(v)
-            setResultsWidth(v)
-            previewResults:SetWidth(v)
-        end)
-        AddResetButton(resultsOverlay.widthBox, function()
-            local defW = 300
-            setResultsWidth(defW)
-            previewResults:SetWidth(defW)
-            resultsOverlay.widthBox:SetText(mfloor(defW + 0.5))
-        end)
-    end
+    resultsOverlay.leftHandle:Hide()
+    resultsOverlay.rightHandle:Hide()
+    resultsOverlay.widthBox:Hide()
+    if resultsOverlay.widthBox.prefix then resultsOverlay.widthBox.prefix:Hide() end
+    if resultsOverlay.widthBox.suffix then resultsOverlay.widthBox.suffix:Hide() end
 
     -- Wire results corner (width + height combo)
     resultsOverlay.heightBox:SetText(currentH)
@@ -929,27 +802,14 @@ function Rescaler:Enter(mode)
             heightReset:SetPoint("BOTTOM", resultsOverlay.heightBox, "TOP", 0, 2)
         end
     end
-    if mode == "ui" then
-        -- Width is locked to the bar in UI mode; the corner handle
-        -- only changes height. Reuse the height-only handler.
-        SetupHeightDrag(resultsOverlay.scaleHandle, previewResults, resultsOverlay.heightBox, resultsAbove)
-    else
-        SetupCornerDrag(resultsOverlay.scaleHandle, previewResults, getResultsWidth, function(w)
-            setResultsWidth(w)
-            previewResults:SetWidth(w)
-        end, resultsOverlay.widthBox, resultsOverlay.heightBox, resultsAbove)
-    end
+    SetupHeightDrag(resultsOverlay.scaleHandle, previewResults, resultsOverlay.heightBox, resultsAbove)
 
     -- Wire results bottom edge (height)
     SetupHeightDrag(resultsOverlay.heightHandle, previewResults, resultsOverlay.heightBox, resultsAbove)
 
     -- Done panel
     donePanel = CreateDonePanel(bg)
-    if mode == "map" then
-        donePanel:SetPoint("BOTTOM", barOverlay, "TOP", 0, 0)
-    else
-        donePanel:SetPoint("TOP", resultsOverlay, "BOTTOM", 0, -50)
-    end
+    donePanel:SetPoint("TOP", resultsOverlay, "BOTTOM", 0, -50)
     donePanel.doneBtn:SetScript("OnClick", function()
         Rescaler:Exit()
     end)
@@ -998,19 +858,10 @@ function Rescaler:Exit(reopenOptions)
         activeSearchBar = nil
     end
 
-    -- Apply final values
-    if activeMode == "ui" then
-        if ns.UI then
-            if ns.UI.UpdateScale then ns.UI:UpdateScale() end
-            if ns.UI.UpdateWidth then ns.UI:UpdateWidth() end
-            if ns.UI.RefreshResults then ns.UI:RefreshResults() end
-        end
-    elseif activeMode == "map" then
-        if ns.MapSearch then
-            if ns.MapSearch.UpdateScale then ns.MapSearch:UpdateScale() end
-            if ns.MapSearch.UpdateWidth then ns.MapSearch:UpdateWidth() end
-            if ns.MapSearch.UpdateResultsWidth then ns.MapSearch:UpdateResultsWidth() end
-        end
+    if ns.UI then
+        if ns.UI.UpdateScale then ns.UI:UpdateScale() end
+        if ns.UI.UpdateWidth then ns.UI:UpdateWidth() end
+        if ns.UI.RefreshResults then ns.UI:RefreshResults() end
     end
 
     activeMode = nil

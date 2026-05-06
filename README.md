@@ -132,14 +132,7 @@ The global bar finds zones, dungeons, raids, and delves with full breadcrumb pat
 *   **Fuzzy and Abbreviation Matching**: Vowel-stripped abbreviations like `qtr` find "quartermaster". Multi-word queries like `twlght hghlnds` find "Twilight Highlands".
 *   **Zone Abbreviations**: Type common shortcuts like `sw` (Stormwind), `dal` (Dalaran), `org` (Orgrimmar), `if` (Ironforge), `orib` (Oribos), and more.
 *   **Keyboard Navigation**: Arrow keys, Tab, and Enter to browse and select results without a mouse.
-*   **Click-to-Navigate**: Click any local search pin on the map to place a native WoW waypoint with minimap supertrack arrow. The waypoint auto-clears when you arrive (configurable arrival distance).
-*   **Minimap Guide Circle**: When navigating to a nearby POI, a shrinking ring and directional arrow appear around your character on the minimap, guiding you to the exact spot.
-
-<p align="center">
-<img src="https://media.forgecdn.net/attachments/1577/347/minimap_glow-png.png" alt="minimap glow">
-<img src="https://media.forgecdn.net/attachments/1577/346/minimap_circle-png.png" alt="minimap guide circle"><br>
-<em>Minimap glow arrow (far away) and guide circle (close up)</em>
-</p>
+*   **Click-to-Navigate**: Click any local search pin on the map to place and track a native WoW waypoint. The waypoint auto-clears when Blizzard reports arrival.
 
 ### Two Navigation Modes
 
@@ -240,7 +233,7 @@ EasyFind provides customizable keybinds:
 *   **UI Results Above**: Show search results above the bar instead of below, useful for bottom-of-screen placement.
 *   **UI Font Size**: Scale text and row height for the UI search bar independently.
 *   **Background Opacity**: Adjust search bar transparency.
-*   **Visual Rescaler**: Drag handles on search bars and results panels to resize width, row count, and font size interactively.
+*   **Visual Rescaler**: Drag handles on the search bar and results panel to resize width, row count, and font size interactively.
 
 <p align="center">
 <img src="https://media.forgecdn.net/attachments/1577/353/resize-png.png" alt="visual rescaler"><br>
@@ -249,33 +242,23 @@ EasyFind provides customizable keybinds:
 
 ### Map Search
 *   **Enable Map Search Module**: Toggle the entire map search feature on or off (requires reload).
-*   **Navigate Zones Directly**: Selecting a zone jumps straight to it instead of stepping through parent zones. Off by default.
-*   **Map Results Above**: Show map search results above the bar instead of below.
-*   **Map Font Size**: Scale text and row height for the map search bars independently.
+*   **Map Search Tab**: Search zones, dungeons, raids, delves, services, travel points, and rares from the world map.
 *   **Icon Size**: Scale map indicator icons (default 80%).
-*   **Arrival Distance**: How close (in yards) before a waypoint auto-clears. Default 10.
-*   **Guide Circle Size**: Scale the minimap guide circle ring and arrow.
-*   **Map Smart Show**: Auto-hide map search bars until you hover over them.
-*   **Hide Bars in Full Screen Map**: Hide both map search bars when the map is maximized. Bars reappear in windowed mode.
 *   **Blinking Map Pins**: Pins and highlight boxes pulse in sync with the indicator arrow. Off by default. The indicator arrow always bobs regardless.
 *   **Pin Highlight Box**: Toggle the yellow highlight box around map pins. Indicator arrow and pin icon remain visible either way.
-*   **Minimap Arrow Glow**: Pulsing glow effect on the minimap perimeter arrow during navigation. Sub-option: **Only EasyFind Pins** — restrict the glow to waypoints placed by EasyFind, ignoring others.
-*   **Minimap Guide Circle**: Ring and directional arrow around your character on the minimap when navigating nearby. Sub-option: **Only EasyFind Pins** — restrict the guide circle to waypoints placed by EasyFind, ignoring others.
-*   **Map Pin Glow**: Pulsing glow on the map pin when the guide circle shrinks onto it.
 *   **Auto Map Pin Clear**: Automatically clear map pins when you arrive at the destination.
-*   **Auto Track Map Pins**: Automatically supertrack newly placed map pins for minimap arrow guidance.
-*   **Map Search Y-Offset**: Adjust vertical position of map search bars relative to the map bottom edge.
-*   **Category Filters**: Filter global results by zones, dungeons, raids, and delves. Filter local results by instances, travel, and services.
+*   **Auto Track Map Pins**: Automatically supertrack newly placed map pins through Blizzard's waypoint system.
+*   **Category Filters**: Filter map results by zones, instances, travel, services, flight paths, and rares.
 
-Map Search options are organized into grouped dropdowns (Search Bars, Map Pins, Minimap, Automation) to keep related settings together.
+Map Search options are organized into grouped dropdowns to keep related settings together.
 
 ### Reset
 *   **Reset Settings**: Return all settings to defaults.
 *   **Reset Positions**: Return search bar positions to defaults.
 
-## Moving the Search Bars
+## Moving the Search Bar
 
-Both search bars can be repositioned by holding **Shift** and dragging. The map search bar stays constrained to the bottom of the map frame.
+The search bar can be repositioned by holding **Shift** and dragging.
 
 ## Feedback
 

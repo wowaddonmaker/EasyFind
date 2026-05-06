@@ -16,12 +16,201 @@ local DARK_PANEL_BG = ns.DARK_PANEL_BG
 
 local optionsFrame
 local isInitialized = false
+local blizzardRegistered = false
 
 local FRAME_BACKDROP = {
     edgeFile = TOOLTIP_BORDER,
     edgeSize = 16,
     insets = { left = 4, right = 4, top = 4, bottom = 4 },
 }
+
+local NIL = {}
+local DEFAULT_UI_FILTERS = {
+    ui = true, achievements = true, currencies = true, reputations = true,
+    collections = true, mounts = true, toys = true, pets = true,
+    outfits = true, heirlooms = true, loot = true, appearanceSets = true,
+    bags = true, macros = true, options = true, abilities = true,
+    bosses = true, map = true,
+}
+local DEFAULT_GLOBAL_SEARCH_FILTERS = { zones = true, dungeons = true, raids = true, delves = true }
+local DEFAULT_LOCAL_SEARCH_FILTERS = { instances = true, travel = true, services = true, rares = true }
+
+local UI_DEFAULTS = {
+    smartShow = false,
+    autoHide = true,
+    lockPosition = false,
+    staticOpacity = false,
+    uiResultsAbove = false,
+    fontSize = 0.9,
+    uiSearchScale = 1.0,
+    uiSearchWidth = 1.54,
+    uiResultsScale = 1.0,
+    uiResultsWidth = 350,
+    uiSearchPosition = NIL,
+    uiResultsHeight = 280,
+    uiSearchFilters = DEFAULT_UI_FILTERS,
+    lootSpecs = NIL,
+    lootSearchSlots = true,
+    lootSearchStats = true,
+    lootUpgradesOnly = false,
+    lootDifficulty = "normal",
+    appearanceSetClass = NIL,
+    appearanceSetCollected = true,
+    appearanceSetNotCollected = true,
+    appearanceSetPvE = true,
+    appearanceSetPvP = true,
+    uiMapSearchLocal = true,
+}
+
+local MAP_DEFAULTS = {
+    iconScale = 0.8,
+    mapPinHighlight = true,
+    blinkingPins = false,
+    autoPinClear = true,
+    autoTrackPins = true,
+    globalSearchFilters = DEFAULT_GLOBAL_SEARCH_FILTERS,
+    localSearchFilters = DEFAULT_LOCAL_SEARCH_FILTERS,
+    alwaysShowRares = false,
+}
+
+local GENERAL_DEFAULTS = {
+    searchBarOpacity = DEFAULT_OPACITY,
+    tutorialDone = false,
+    resultsTheme = "Modern",
+    font = "Default",
+    indicatorStyle = "EasyFind Arrow",
+    indicatorColor = "Yellow",
+    showLoginMessage = true,
+    showMinimapButton = true,
+    minimapButtonAngle = 200,
+    panelOpacity = 0.9,
+    visible = true,
+    enableUISearch = true,
+    enableMapSearch = true,
+    nativePinScale = 1.5,
+    pinnedUIItems = {},
+    pinnedUIItemsPerChar = {},
+    pinnedMapItems = {},
+    optionsPosition = NIL,
+}
+
+local UI_POSITION_DEFAULTS = {
+    uiSearchPosition = NIL,
+    uiSearchScale = 1.0,
+    uiSearchWidth = 1.54,
+    uiResultsScale = 1.0,
+    uiResultsWidth = 350,
+}
+
+local function CloneTable(src)
+    local dst = {}
+    for k, v in pairs(src) do
+        dst[k] = type(v) == "table" and CloneTable(v) or v
+    end
+    return dst
+end
+
+local function ApplyDefaults(defaults)
+    for key, value in pairs(defaults) do
+        if value == NIL then
+            EasyFind.db[key] = nil
+        elseif type(value) == "table" then
+            EasyFind.db[key] = CloneTable(value)
+        else
+            EasyFind.db[key] = value
+        end
+    end
+end
+
+local function ResetOptionsPosition()
+    EasyFind.db.optionsPosition = nil
+    if optionsFrame then
+        optionsFrame:ClearAllPoints()
+        optionsFrame:SetPoint("TOP", UIParent, "TOP", 0, -100)
+    end
+end
+
+local function ClearMapRuntime()
+    if not ns.MapSearch then return end
+    pcall(ns.MapSearch.ClearAll, ns.MapSearch)
+    pcall(ns.MapSearch.ClearZoneHighlight, ns.MapSearch)
+    ns.MapSearch.pendingWaypoint = nil
+end
+
+local function RefreshUIRuntime(resetPosition)
+    if ns.Highlight and ns.Highlight.ClearAll then pcall(ns.Highlight.ClearAll, ns.Highlight) end
+    if not (_G["EasyFindSearchFrame"] and ns.UI) then return end
+    if resetPosition and ns.UI.ResetPosition then ns.UI:ResetPosition() end
+    if ns.UI.UpdateScale then ns.UI:UpdateScale() end
+    if ns.UI.UpdateWidth then ns.UI:UpdateWidth() end
+    if ns.UI.UpdateOpacity then ns.UI:UpdateOpacity() end
+    if ns.UI.UpdateSmartShow then ns.UI:UpdateSmartShow() end
+    if ns.UI.UpdateFontSize then ns.UI:UpdateFontSize() end
+    if ns.UI.RefreshResults then ns.UI:RefreshResults() end
+end
+
+local function RefreshMapRuntime()
+    ClearMapRuntime()
+    if ns.MapSearch then
+        if ns.MapSearch.UpdateIconScales then ns.MapSearch:UpdateIconScales() end
+        if ns.MapSearch.RefreshIndicators then ns.MapSearch:RefreshIndicators() end
+    end
+    local uiInd = _G["EasyFindIndicatorFrame"]
+    if uiInd then uiInd:SetScale(EasyFind.db.iconScale or 0.8) end
+end
+
+local function ClearBinding(action)
+    local old1, old2 = GetBindingKey(action)
+    if old1 then SetBinding(old1) end
+    if old2 then SetBinding(old2) end
+end
+
+local function SyncOptionControls()
+    if not optionsFrame then return end
+
+    if optionsFrame.panelOpacitySlider then optionsFrame.panelOpacitySlider:SetValue(EasyFind.db.panelOpacity or 0.9) end
+    if optionsFrame.opacitySlider then optionsFrame.opacitySlider:SetValue(EasyFind.db.searchBarOpacity or DEFAULT_OPACITY) end
+    if optionsFrame.uiFontSlider then optionsFrame.uiFontSlider:SetValue(EasyFind.db.fontSize or 0.9) end
+    if optionsFrame.mapIconSlider then optionsFrame.mapIconSlider:SetValue(EasyFind.db.iconScale or 0.8) end
+
+    if optionsFrame.autoHideCheckbox then optionsFrame.autoHideCheckbox:SetChecked(EasyFind.db.autoHide ~= false) end
+    if optionsFrame.smartShowCheckbox then
+        local autoOn = EasyFind.db.autoHide ~= false
+        optionsFrame.smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
+        optionsFrame.smartShowCheckbox:SetEnabled(not autoOn)
+        local lbl = optionsFrame.smartShowCheckbox:GetFontString()
+        if lbl then
+            local g = autoOn and 0.5 or 1
+            lbl:SetTextColor(g, g, g)
+        end
+    end
+    if optionsFrame.staticOpacityCheckbox then optionsFrame.staticOpacityCheckbox:SetChecked(EasyFind.db.staticOpacity or false) end
+    if optionsFrame.lockPositionCheckbox then optionsFrame.lockPositionCheckbox:SetChecked(EasyFind.db.lockPosition or false) end
+    if optionsFrame.loginMessageCheckbox then optionsFrame.loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage ~= false) end
+    if optionsFrame.uiResultsAboveCheckbox then optionsFrame.uiResultsAboveCheckbox:SetChecked(EasyFind.db.uiResultsAbove or false) end
+    if optionsFrame.minimapBtnCheckbox then optionsFrame.minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton ~= false) end
+    if optionsFrame.rareTrackCheckbox then optionsFrame.rareTrackCheckbox:SetChecked(EasyFind.db.alwaysShowRares or false) end
+
+    if optionsFrame.mapPinGroup then optionsFrame.mapPinGroup:UpdateVisuals() end
+    if optionsFrame.automationGroup then optionsFrame.automationGroup:UpdateVisuals() end
+    if optionsFrame.UpdateUIToggleVisual then optionsFrame.UpdateUIToggleVisual() end
+    if optionsFrame.UpdateMapToggleVisual then optionsFrame.UpdateMapToggleVisual() end
+
+    if optionsFrame.indicatorBtnText then optionsFrame.indicatorBtnText:SetText(EasyFind.db.indicatorStyle or "EasyFind Arrow") end
+    if optionsFrame.fontBtnText then optionsFrame.fontBtnText:SetText(EasyFind.db.font or "Default") end
+
+    local clr = EasyFind.db.indicatorColor or "Yellow"
+    local rgb = ns.INDICATOR_COLORS[clr] or ns.INDICATOR_COLORS.Yellow
+    if optionsFrame.colorBtnText then
+        optionsFrame.colorBtnText:SetText(clr)
+        optionsFrame.colorBtnText:SetTextColor(rgb[1], rgb[2], rgb[3])
+    end
+    if optionsFrame.colorSwatch then optionsFrame.colorSwatch:SetColorTexture(rgb[1], rgb[2], rgb[3], 1) end
+
+    if optionsFrame.toggleFocusBtn then optionsFrame.toggleFocusBtn:SetText(GetBindingKey("EASYFIND_TOGGLE_FOCUS") or "Not Bound") end
+    if optionsFrame.mapFocusBtn then optionsFrame.mapFocusBtn:SetText(GetBindingKey("EASYFIND_MAP_FOCUS") or "Not Bound") end
+    if optionsFrame.clearBtn then optionsFrame.clearBtn:SetText(GetBindingKey("EASYFIND_CLEAR") or "Not Bound") end
+end
 
 -- Shared backdrop for selector buttons and flyout panels
 local SELECTOR_BACKDROP = {
@@ -961,9 +1150,6 @@ function Options:Initialize()
         if ns.UI and ns.UI.UpdateOpacity then
             ns.UI:UpdateOpacity()
         end
-        if ns.MapSearch and ns.MapSearch.UpdateOpacity then
-            ns.MapSearch:UpdateOpacity()
-        end
     end)
     optionsFrame.opacitySlider = opacitySlider
 
@@ -1038,7 +1224,7 @@ function Options:Initialize()
     optionsFrame.autoHideCheckbox = autoHideCheckbox
 
     local smartShowCheckbox = CreateCheckbox(sec1, "SmartShow", "Smart Show",
-        "When enabled, the UI search bar hides itself until you move your mouse near its position.\n\nThe bar reappears when your mouse enters the area and fades away when you move away.\n\nIgnored when Auto-Hide is enabled. A separate Smart Show toggle for map search bars is available in the Map Search section.")
+        "When enabled, the UI search bar hides itself until you move your mouse near its position.\n\nThe bar reappears when your mouse enters the area and fades away when you move away.\n\nIgnored when Auto-Hide is enabled.")
     smartShowCheckbox:SetPoint("TOPLEFT", autoHideCheckbox, "BOTTOMLEFT", 0, -2)
     smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
     smartShowCheckbox:SetScript("OnClick", function(self)
@@ -1084,22 +1270,9 @@ function Options:Initialize()
     end)
     optionsFrame.uiResultsAboveCheckbox = uiResultsAboveCheckbox
 
-    local hideHeadersCheckbox = CreateCheckbox(sec1, "HideHeaders", "Flat Results (no headers)",
-        "Show results as a single flat list with no category headers. Each row displays the entry name with its full path as subtext underneath.")
-    hideHeadersCheckbox:SetPoint("TOPLEFT", uiResultsAboveCheckbox, "BOTTOMLEFT", 0, -2)
-    hideHeadersCheckbox:SetChecked(EasyFind.db.uiHideHeaders ~= false)
-    hideHeadersCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.uiHideHeaders = self:GetChecked()
-        -- Re-run the search so results rebuild in the chosen layout mode.
-        if ns.UI and ns.UI.RebuildOpenResults then
-            ns.UI:RebuildOpenResults()
-        end
-    end)
-    optionsFrame.hideHeadersCheckbox = hideHeadersCheckbox
-
     local uiFontSlider = CreateSlider(sec1, "UIFontSize", "Font Size|cffff3333*|r", 0.5, 2.0, 0.1,
         "Changing font size also affects search bar height and results window sizing.", nil, 1.0)
-    uiFontSlider:SetPoint("TOPLEFT", hideHeadersCheckbox, "BOTTOMLEFT", 4, -20)
+    uiFontSlider:SetPoint("TOPLEFT", uiResultsAboveCheckbox, "BOTTOMLEFT", 4, -20)
     uiFontSlider:SetValue(EasyFind.db.fontSize or 1.0)
     uiFontSlider:HookScript("OnValueChanged", function(self, value)
         EasyFind.db.fontSize = value
@@ -1125,14 +1298,14 @@ function Options:Initialize()
         StaticPopup_Show("EASYFIND_RESET_UI_POS")
     end)
 
-    uiControls = { resizeUIBtn, resetUIBtn, resetUIPosBtn, uiFontSlider, autoHideCheckbox, smartShowCheckbox, staticOpacityCheckbox, lockPositionCheckbox, uiResultsAboveCheckbox, hideHeadersCheckbox }
+    uiControls = { resizeUIBtn, resetUIBtn, resetUIPosBtn, uiFontSlider, autoHideCheckbox, smartShowCheckbox, staticOpacityCheckbox, lockPositionCheckbox, uiResultsAboveCheckbox }
     UpdateUIToggleVisual()
 
     -- SECTION 3: Map Search
     local sec2 = CreateTab("Map")
 
     local mapEnableCheckbox = CreateCheckbox(sec2, "EnableMap", "Enable Map Search Module",
-        "Uncheck to disable map search bars, pins, and all map overlay features.\n\nRequires a UI reload to take effect.")
+        "Uncheck to disable map search, pins, and map overlay features.\n\nRequires a UI reload to take effect.")
     mapEnableCheckbox:SetPoint("TOPLEFT", sec2, "TOPLEFT", COL_LEFT, -6)
     mapEnableCheckbox:SetChecked(EasyFind.db.enableMapSearch ~= false)
 
@@ -1176,9 +1349,6 @@ function Options:Initialize()
         end
     end)
     optionsFrame.rareTrackCheckbox = rareTrackCheckbox
-
-    -- Resize Map Search button removed: floating map search bars are retired
-    -- and the new MapTab uses the Blizzard quest-log-tab sizing.
 
     local FLYOUT_W = 260
 
@@ -1240,56 +1410,18 @@ function Options:Initialize()
     end)
     optionsFrame.mapIconSlider = mapIconSlider
 
-    local minimapGroup = CreateMultiSelectDropdown(sec2, "Minimap", {
-        { label = "Arrow Glow", shortLabel = "Arrow", dbKey = "minimapArrowGlow", default = false,
-          tooltip = "A pulsing glow highlights the minimap perimeter arrow that points toward your active map pin.\nDisable if you find the glow distracting." },
-        { label = "Only EasyFind Pins", dbKey = "glowOnlyEasyFind", default = false, indent = true, hiddenFromSummary = true, parentDbKey = "minimapArrowGlow",
-          tooltip = "When enabled, the arrow glow only appears for waypoints placed by EasyFind (clicking search results or navigation pins).\nWaypoints placed by Ctrl+clicking the map or other means will not show the glow." },
-        { label = "Guide Circle", shortLabel = "Circle", dbKey = "minimapGuideCircle", default = false,
-          tooltip = "A directional ring and arrow appears around your character on the minimap when a map pin is nearby, pointing toward the destination.\nDisable if you prefer only the default minimap pin." },
-        { label = "Only EasyFind Pins", dbKey = "circleOnlyEasyFind", default = false, indent = true, hiddenFromSummary = true, parentDbKey = "minimapGuideCircle",
-          tooltip = "When enabled, the guide circle only appears for waypoints placed by EasyFind.\nWaypoints placed by Ctrl+clicking the map or other means will not show the circle." },
-        { label = "Pin Glow", shortLabel = "Glow", dbKey = "minimapPinGlow", default = false, indent = true, parentDbKey = "minimapGuideCircle",
-          tooltip = "A pulsing glow appears on the minimap pin when the guide circle shrinks onto it.\nDisable if you find the glow distracting." },
-    }, nil, FLYOUT_W)
-    minimapGroup:SetPoint("TOPLEFT", mapPinGroup, "BOTTOMLEFT", 0, -6)
-    minimapGroup:SetPoint("RIGHT", sec2, "RIGHT", -8, 0)
-    minimapGroup.label:SetWidth(85)
-    minimapGroup.label:SetJustifyH("LEFT")
-    minimapGroup.button:SetPoint("LEFT", minimapGroup.label, "RIGHT", 6, 0)
-    optionsFrame.minimapGroup = minimapGroup
-
-    local circleScaleSlider = minimapGroup:AddSlider("CircleScale", "Guide Circle Size", 0.5, 2.0, 0.1,
-        "Adjusts the size of the minimap guide circle and arrow that appears when tracking a map pin.",
-        nil, 1.0, nil, "minimapGuideCircle")
-    circleScaleSlider:SetValue(EasyFind.db.guideCircleScale or 1.0)
-    circleScaleSlider:HookScript("OnValueChanged", function(self, value)
-        EasyFind.db.guideCircleScale = value
-    end)
-    optionsFrame.circleScaleSlider = circleScaleSlider
-
     local automationGroup = CreateMultiSelectDropdown(sec2, "Map Pins", {
         { label = "Auto Track Map Pins", shortLabel = "Track", dbKey = "autoTrackPins", default = true,
-          tooltip = "Placing a map pin (Ctrl+Click) automatically starts tracking it on the minimap.\nWhen disabled, you must click the pin to start tracking." },
+          tooltip = "Placing a map pin (Ctrl+Click) automatically starts Blizzard waypoint tracking.\nWhen disabled, you must click the pin to start tracking." },
         { label = "Auto Clear Map Pins", shortLabel = "Clear", dbKey = "autoPinClear", default = true,
-          tooltip = "Your map pin is automatically cleared when you arrive at the destination.\nDisable if you prefer to clear pins manually." },
+          tooltip = "Your map pin is automatically cleared when Blizzard reports arrival.\nDisable if you prefer to clear pins manually." },
     }, nil, FLYOUT_W)
-    automationGroup:SetPoint("TOPLEFT", minimapGroup, "BOTTOMLEFT", 0, -6)
+    automationGroup:SetPoint("TOPLEFT", mapPinGroup, "BOTTOMLEFT", 0, -6)
     automationGroup:SetPoint("RIGHT", sec2, "RIGHT", -8, 0)
     automationGroup.label:SetWidth(85)
     automationGroup.label:SetJustifyH("LEFT")
     automationGroup.button:SetPoint("LEFT", automationGroup.label, "RIGHT", 6, 0)
     optionsFrame.automationGroup = automationGroup
-
-    local arrivalSlider = automationGroup:AddSlider("ArrivalDist", "Arrival Distance", 3, 50, 1,
-        "How close (in yards) you must be to a tracked location before the waypoint auto-clears.",
-        function(val) return tostring(mfloor(val + 0.5)) .. "yd" end, 10, "yd", "autoPinClear")
-    arrivalSlider:SetValue(EasyFind.db.arrivalDistance or 10)
-    arrivalSlider:HookScript("OnValueChanged", function(self, value)
-        value = mfloor(value + 0.5)
-        EasyFind.db.arrivalDistance = value
-    end)
-    optionsFrame.arrivalSlider = arrivalSlider
 
     local resetMapBtn = CreateFrame("Button", nil, sec2, "UIPanelButtonTemplate")
     resetMapBtn:SetSize(RESET_BTN_W, 20)
@@ -1299,17 +1431,9 @@ function Options:Initialize()
         StaticPopup_Show("EASYFIND_RESET_MAP")
     end)
 
-    local resetMapPosBtn = CreateFrame("Button", nil, sec2, "UIPanelButtonTemplate")
-    resetMapPosBtn:SetSize(RESET_BTN_W, 20)
-    resetMapPosBtn:SetPoint("LEFT", resetMapBtn, "RIGHT", 8, 0)
-    resetMapPosBtn:SetText("Reset Positions")
-    resetMapPosBtn:SetScript("OnClick", function()
-        StaticPopup_Show("EASYFIND_RESET_MAP_POS")
-    end)
-
     mapControls = {
-        resetMapBtn, resetMapPosBtn, rareTrackCheckbox,
-        mapPinGroup, minimapGroup, automationGroup
+        resetMapBtn, rareTrackCheckbox,
+        mapPinGroup, automationGroup
     }
     UpdateMapToggleVisual()
 
@@ -1331,8 +1455,7 @@ function Options:Initialize()
         .. "|cFF00FF00Up/Down|r or |cFF00FF00Ctrl+K/J|r  Move through results\n"
         .. "|cFF00FF00Tab/Shift+Tab|r or |cFF00FF00Ctrl+L/H|r  Cycle focus to nav buttons\n"
         .. "|cFF00FF00PgUp/PgDn|r jump 5  |cFF00FF00Home/End|r first/last\n"
-        .. "|cFF00FF00Shift+Up/Down|r or |cFF00FF00Ctrl+Shift+K/J|r jump section\n"
-        .. "|cFF00FF00Ctrl+Tab|r switch local/global map search bar\n\n"
+        .. "|cFF00FF00Shift+Up/Down|r or |cFF00FF00Ctrl+Shift+K/J|r jump section\n\n"
         .. "|cFFFFD100Other:|r\n"
         .. "|cFF00FF00Shift+Drag|r reposition  |cFF00FF00Right-click|r pin/unpin\n"
         .. "|cFF00FF00/ef toggle|r toggle the search bar\n"
@@ -1498,7 +1621,7 @@ function Options:Initialize()
     }
 
     StaticPopupDialogs["EASYFIND_DISABLE_MAP_SEARCH"] = {
-        text = "Disable Map Search?\n\nThis will remove map search bars, pins, and all map overlay features. You can re-enable it later from options.",
+        text = "Disable Map Search?\n\nThis will remove map search, pins, and map overlay features. You can re-enable it later from options.",
         button1 = "Disable",
         button2 = "Cancel",
         OnAccept = function()
@@ -1507,9 +1630,6 @@ function Options:Initialize()
             if ns.MapSearch then
                 pcall(ns.MapSearch.ClearAll, ns.MapSearch)
                 pcall(ns.MapSearch.ClearZoneHighlight, ns.MapSearch)
-                if ns.MapSearch.HideSuperTrackGlow then
-                    pcall(ns.MapSearch.HideSuperTrackGlow)
-                end
             end
             StaticPopup_Show("EASYFIND_RELOAD_PROMPT")
         end,
@@ -1557,17 +1677,6 @@ function Options:Initialize()
         button1 = "Reset",
         button2 = "Cancel",
         OnAccept = function() Options:DoResetUIPositions() end,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
-
-    StaticPopupDialogs["EASYFIND_RESET_MAP_POS"] = {
-        text = "Reset Map Search positions to defaults?",
-        button1 = "Reset",
-        button2 = "Cancel",
-        OnAccept = function() Options:DoResetMapPositions() end,
         timeout = 0,
         whileDead = true,
         hideOnEscape = true,
@@ -1670,185 +1779,27 @@ end
 
 function Options:DoResetPositions()
     EasyFind.db.uiSearchPosition = nil
-    EasyFind.db.mapSearchPosition = nil
-    EasyFind.db.globalSearchPosition = nil
-    EasyFind.db.mapSearchPositionMax = nil
-    EasyFind.db.globalSearchPositionMax = nil
-    EasyFind.db.optionsPosition = nil
     if ns.UI and ns.UI.ResetPosition then ns.UI:ResetPosition() end
-    if ns.MapSearch and ns.MapSearch.ResetPosition then ns.MapSearch:ResetPosition() end
-    if optionsFrame then
-        optionsFrame:ClearAllPoints()
-        optionsFrame:SetPoint("TOP", UIParent, "TOP", 0, -100)
-    end
+    ResetOptionsPosition()
 end
 
 function Options:DoResetAll()
     local needsReload = (EasyFind.db.enableUISearch == false) or (EasyFind.db.enableMapSearch == false)
-    EasyFind.db.iconScale = 0.8
-    EasyFind.db.uiSearchScale = 1.0
-    EasyFind.db.mapSearchScale = 1.0
-    EasyFind.db.mapSearchWidth = 0.88
-    EasyFind.db.uiSearchWidth = 0.88
-    EasyFind.db.uiResultsScale = 1.0
-    EasyFind.db.uiResultsWidth = 350
-    EasyFind.db.mapResultsScale = 1.0
-    EasyFind.db.mapResultsWidth = 300
-    EasyFind.db.searchBarOpacity = DEFAULT_OPACITY
-    EasyFind.db.fontSize = 0.9
-    EasyFind.db.mapFontSize = 0.9
-    EasyFind.db.uiSearchPosition = nil
-    EasyFind.db.mapSearchPosition = nil
-    EasyFind.db.globalSearchPosition = nil
-    EasyFind.db.mapSearchPositionMax = nil
-    EasyFind.db.globalSearchPositionMax = nil
-    EasyFind.db.mapSearchYOffset = 0
-    EasyFind.db.smartShow = false
-    EasyFind.db.autoHide = true
-    EasyFind.db.lockPosition = false
-    EasyFind.db.tutorialDone = false
-    EasyFind.db.resultsTheme = "Modern"
-    EasyFind.db.font = "Default"
-    EasyFind.db.uiResultsHeight = 280
-    EasyFind.db.mapResultsHeight = 168
-    EasyFind.db.pinsCollapsed = false
-    EasyFind.db.staticOpacity = false
-    EasyFind.db.indicatorStyle = "EasyFind Arrow"
-    EasyFind.db.indicatorColor = "Yellow"
-    EasyFind.db.blinkingPins = false
-    EasyFind.db.mapPinHighlight = true
-    EasyFind.db.showLoginMessage = true
-    EasyFind.db.uiResultsAbove = false
-    EasyFind.db.mapResultsAbove = false
-    EasyFind.db.uiHideHeaders = true
-    EasyFind.db.showMinimapButton = true
-    EasyFind.db.minimapButtonAngle = 200
-    EasyFind.db.arrivalDistance = 10
-    EasyFind.db.panelOpacity = 0.9
-    EasyFind.db.minimapArrowGlow = false
-    EasyFind.db.glowOnlyEasyFind = false
-    EasyFind.db.circleOnlyEasyFind = false
-    EasyFind.db.minimapGuideCircle = false
-    EasyFind.db.autoPinClear = true
-    EasyFind.db.autoTrackPins = true
-    EasyFind.db.minimapPinGlow = false
-    EasyFind.db.guideCircleScale = 1.0
-    EasyFind.db.mapSmartShow = false
-    EasyFind.db.hideSearchBarsMaximized = true
-    EasyFind.db.visible = true
-    EasyFind.db.enableUISearch = true
-    EasyFind.db.enableMapSearch = true
-    EasyFind.db.globalSearchFilters = { zones = true, dungeons = true, raids = true, delves = true }
-    EasyFind.db.localSearchFilters = { instances = true, travel = true, services = true, rares = true }
-    EasyFind.db.uiSearchFilters = { ui = true, achievements = true, currencies = true, reputations = true, collections = true, mounts = true, toys = true, pets = true, outfits = true, heirlooms = true, loot = true, appearanceSets = true, bags = true, macros = true, options = true, abilities = true, bosses = true, map = true }
-    EasyFind.db.lootSpecs = nil           -- nil = current spec only
-    EasyFind.db.lootSearchSlots = true
-    EasyFind.db.lootSearchStats = true
-    EasyFind.db.lootUpgradesOnly = false
-    EasyFind.db.lootDifficulty = "normal"
-    EasyFind.db.appearanceSetClass = nil  -- nil = player class
-    EasyFind.db.appearanceSetCollected = true
-    EasyFind.db.appearanceSetNotCollected = true
-    EasyFind.db.appearanceSetPvE = true
-    EasyFind.db.appearanceSetPvP = true
-    EasyFind.db.nativePinScale = 1.5
-    EasyFind.db.pinnedUIItems = {}
-    EasyFind.db.pinnedUIItemsPerChar = {}
-    EasyFind.db.pinnedMapItems = {}
-    EasyFind.db.uiMapSearchLocal = true
-    EasyFind.db.alwaysShowRares = false
-    EasyFind.db.optionsPosition = nil
+    ApplyDefaults(UI_DEFAULTS)
+    ApplyDefaults(MAP_DEFAULTS)
+    ApplyDefaults(GENERAL_DEFAULTS)
+    ResetOptionsPosition()
+    ClearMapRuntime()
 
-    if optionsFrame then
-        optionsFrame:ClearAllPoints()
-        optionsFrame:SetPoint("TOP", UIParent, "TOP", 0, -100)
-    end
-
-    if ns.Highlight and ns.Highlight.ClearAll then
-        pcall(ns.Highlight.ClearAll, ns.Highlight)
-    end
-    if ns.MapSearch then
-        if ns.MapSearch.HideSuperTrackGlow then
-            pcall(ns.MapSearch.HideSuperTrackGlow)
-        end
-        if _G["EasyFindMapSearchFrame"] then
-            pcall(ns.MapSearch.ClearAll, ns.MapSearch)
-            pcall(ns.MapSearch.ClearZoneHighlight, ns.MapSearch)
-        end
-        ns.MapSearch.pendingWaypoint = nil
-    end
-
-    local old1, old2 = GetBindingKey("EASYFIND_TOGGLE_FOCUS")
-    if old1 then SetBinding(old1) end
-    if old2 then SetBinding(old2) end
-
-    old1, old2 = GetBindingKey("EASYFIND_MAP_FOCUS")
-    if old1 then SetBinding(old1) end
-    if old2 then SetBinding(old2) end
-
-    old1, old2 = GetBindingKey("EASYFIND_CLEAR")
-    if old1 then SetBinding(old1) end
-    if old2 then SetBinding(old2) end
+    ClearBinding("EASYFIND_TOGGLE_FOCUS")
+    ClearBinding("EASYFIND_MAP_FOCUS")
+    ClearBinding("EASYFIND_CLEAR")
     SaveBindings(GetCurrentBindingSet())
 
-    optionsFrame.mapIconSlider:SetValue(0.8)
-    optionsFrame.panelOpacitySlider:SetValue(0.9)
-    optionsFrame.opacitySlider:SetValue(DEFAULT_OPACITY)
-    optionsFrame.uiFontSlider:SetValue(0.9)
-    optionsFrame.smartShowCheckbox:SetChecked(false)
-    if optionsFrame.autoHideCheckbox then
-        optionsFrame.autoHideCheckbox:SetChecked(true)
-    end
-    if optionsFrame.lockPositionCheckbox then
-        optionsFrame.lockPositionCheckbox:SetChecked(false)
-    end
-    optionsFrame.staticOpacityCheckbox:SetChecked(false)
-    optionsFrame.loginMessageCheckbox:SetChecked(true)
-    optionsFrame.uiResultsAboveCheckbox:SetChecked(false)
-    if optionsFrame.hideHeadersCheckbox then optionsFrame.hideHeadersCheckbox:SetChecked(true) end
-    optionsFrame.minimapBtnCheckbox:SetChecked(true)
-    if optionsFrame.rareTrackCheckbox then optionsFrame.rareTrackCheckbox:SetChecked(false) end
-    if optionsFrame.mapPinGroup then optionsFrame.mapPinGroup:UpdateVisuals() end
-    if optionsFrame.minimapGroup then optionsFrame.minimapGroup:UpdateVisuals() end
-    if optionsFrame.automationGroup then optionsFrame.automationGroup:UpdateVisuals() end
-    if optionsFrame.UpdateUIToggleVisual then optionsFrame.UpdateUIToggleVisual() end
-    if optionsFrame.UpdateMapToggleVisual then optionsFrame.UpdateMapToggleVisual() end
-    optionsFrame.arrivalSlider:SetValue(10)
-    optionsFrame.circleScaleSlider:SetValue(1.0)
-    optionsFrame.indicatorBtnText:SetText("EasyFind Arrow")
-    optionsFrame.colorBtnText:SetText("Yellow")
-    if optionsFrame.fontBtnText then optionsFrame.fontBtnText:SetText("Default") end
+    SyncOptionControls()
     if ns.RefreshAddonFont then ns.RefreshAddonFont() end
-    local defaultRGB = ns.INDICATOR_COLORS["Yellow"]
-    optionsFrame.colorBtnText:SetTextColor(defaultRGB[1], defaultRGB[2], defaultRGB[3])
-    optionsFrame.colorSwatch:SetColorTexture(defaultRGB[1], defaultRGB[2], defaultRGB[3], 1)
-    optionsFrame.keybindBtn:SetText("Not Bound")
-    optionsFrame.focusBtn:SetText("Not Bound")
-    optionsFrame.toggleFocusBtn:SetText("Not Bound")
-
-    if _G["EasyFindSearchFrame"] and ns.UI then
-        if ns.UI.ResetPosition then ns.UI:ResetPosition() end
-        if ns.UI.UpdateScale then ns.UI:UpdateScale() end
-        if ns.UI.UpdateWidth then ns.UI:UpdateWidth() end
-        if ns.UI.UpdateOpacity then ns.UI:UpdateOpacity() end
-        if ns.UI.UpdateSmartShow then ns.UI:UpdateSmartShow() end
-        if ns.UI.UpdateFontSize then ns.UI:UpdateFontSize() end
-        if ns.UI.RefreshResults then ns.UI:RefreshResults() end
-    end
-    if _G["EasyFindMapSearchFrame"] and ns.MapSearch then
-        if ns.MapSearch.UpdateSearchBarTheme then ns.MapSearch:UpdateSearchBarTheme() end
-        if ns.MapSearch.ResetPosition then ns.MapSearch:ResetPosition() end
-        if ns.MapSearch.UpdateScale then ns.MapSearch:UpdateScale() end
-        if ns.MapSearch.UpdateWidth then ns.MapSearch:UpdateWidth() end
-        if ns.MapSearch.UpdateResultsWidth then ns.MapSearch:UpdateResultsWidth() end
-        if ns.MapSearch.UpdateFontSize then ns.MapSearch:UpdateFontSize() end
-        if ns.MapSearch.UpdateIconScales then ns.MapSearch:UpdateIconScales() end
-        if ns.MapSearch.RefreshIndicators then ns.MapSearch:RefreshIndicators() end
-        if ns.MapSearch.UpdateOpacity then ns.MapSearch:UpdateOpacity() end
-        if ns.MapSearch.UpdateMapSmartShow then ns.MapSearch:UpdateMapSmartShow() end
-    end
-    local uiInd = _G["EasyFindIndicatorFrame"]
-    if uiInd then uiInd:SetScale(1.0) end
+    RefreshUIRuntime(true)
+    RefreshMapRuntime()
     if _G["EasyFindSearchFrame"] and ns.UI and ns.UI.Show then ns.UI:Show() end
     EasyFind:UpdateMinimapButton()
 
@@ -1858,146 +1809,27 @@ function Options:DoResetAll()
 end
 
 function Options:DoResetUI()
-    EasyFind.db.smartShow = false
-    EasyFind.db.autoHide = true
-    EasyFind.db.lockPosition = false
-    EasyFind.db.staticOpacity = false
-    EasyFind.db.uiResultsAbove = false
-    EasyFind.db.fontSize = 0.9
-    EasyFind.db.uiSearchScale = 1.0
-    EasyFind.db.uiSearchWidth = 0.88
-    EasyFind.db.uiResultsScale = 1.0
-    EasyFind.db.uiResultsWidth = 350
-    EasyFind.db.uiSearchPosition = nil
-    EasyFind.db.uiResultsHeight = 280
-    EasyFind.db.uiSearchFilters = { ui = true, achievements = true, currencies = true, reputations = true, collections = true, mounts = true, toys = true, pets = true, outfits = true, heirlooms = true, loot = true, appearanceSets = true, bags = true, macros = true, options = true, abilities = true, bosses = true, map = true }
-    EasyFind.db.lootSpecs = nil
-    EasyFind.db.lootSearchSlots = true
-    EasyFind.db.lootSearchStats = true
-    EasyFind.db.lootUpgradesOnly = false
-    EasyFind.db.lootDifficulty = "normal"
-    EasyFind.db.appearanceSetClass = nil
-    EasyFind.db.appearanceSetCollected = true
-    EasyFind.db.appearanceSetNotCollected = true
-    EasyFind.db.appearanceSetPvE = true
-    EasyFind.db.appearanceSetPvP = true
-    EasyFind.db.uiMapSearchLocal = true
-
-    optionsFrame.smartShowCheckbox:SetChecked(false)
-    if optionsFrame.autoHideCheckbox then
-        optionsFrame.autoHideCheckbox:SetChecked(true)
-    end
-    if optionsFrame.lockPositionCheckbox then
-        optionsFrame.lockPositionCheckbox:SetChecked(false)
-    end
-    optionsFrame.staticOpacityCheckbox:SetChecked(false)
-    optionsFrame.uiResultsAboveCheckbox:SetChecked(false)
-    optionsFrame.uiFontSlider:SetValue(0.9)
-
-    ns.Highlight:ClearAll()
-    if _G["EasyFindSearchFrame"] and ns.UI then
-        if ns.UI.ResetPosition then ns.UI:ResetPosition() end
-        if ns.UI.UpdateScale then ns.UI:UpdateScale() end
-        if ns.UI.UpdateWidth then ns.UI:UpdateWidth() end
-        if ns.UI.UpdateSmartShow then ns.UI:UpdateSmartShow() end
-        if ns.UI.UpdateFontSize then ns.UI:UpdateFontSize() end
-        if ns.UI.RefreshResults then ns.UI:RefreshResults() end
-    end
+    ApplyDefaults(UI_DEFAULTS)
+    SyncOptionControls()
+    RefreshUIRuntime(true)
 end
 
 function Options:DoResetMap()
-    EasyFind.db.mapSmartShow = false
-    EasyFind.db.hideSearchBarsMaximized = true
-    EasyFind.db.mapResultsAbove = false
-    EasyFind.db.mapFontSize = 0.9
-    EasyFind.db.mapSearchYOffset = 0
-    EasyFind.db.iconScale = 0.8
-    EasyFind.db.mapSearchScale = 1.0
-    EasyFind.db.mapSearchWidth = 0.88
-    EasyFind.db.mapResultsScale = 1.0
-    EasyFind.db.mapResultsWidth = 300
-    EasyFind.db.mapSearchPosition = nil
-    EasyFind.db.globalSearchPosition = nil
-    EasyFind.db.mapSearchPositionMax = nil
-    EasyFind.db.globalSearchPositionMax = nil
-    EasyFind.db.mapResultsHeight = 168
-    EasyFind.db.mapPinHighlight = true
-    EasyFind.db.blinkingPins = false
-    EasyFind.db.minimapArrowGlow = false
-    EasyFind.db.glowOnlyEasyFind = false
-    EasyFind.db.circleOnlyEasyFind = false
-    EasyFind.db.minimapGuideCircle = false
-    EasyFind.db.minimapPinGlow = false
-    EasyFind.db.guideCircleScale = 1.0
-    EasyFind.db.autoPinClear = true
-    EasyFind.db.autoTrackPins = true
-    EasyFind.db.arrivalDistance = 10
-    EasyFind.db.pinsCollapsed = false
-    EasyFind.db.globalSearchFilters = { zones = true, dungeons = true, raids = true, delves = true }
-    EasyFind.db.localSearchFilters = { instances = true, travel = true, services = true }
-    EasyFind.db.alwaysShowRares = false
-
-    if optionsFrame.rareTrackCheckbox then optionsFrame.rareTrackCheckbox:SetChecked(false) end
-    if optionsFrame.mapPinGroup then optionsFrame.mapPinGroup:UpdateVisuals() end
-    if optionsFrame.minimapGroup then optionsFrame.minimapGroup:UpdateVisuals() end
-    if optionsFrame.automationGroup then optionsFrame.automationGroup:UpdateVisuals() end
-    optionsFrame.mapIconSlider:SetValue(0.8)
-    optionsFrame.arrivalSlider:SetValue(10)
-    optionsFrame.circleScaleSlider:SetValue(1.0)
-
-    if ns.MapSearch then
-        if ns.MapSearch.HideSuperTrackGlow then pcall(ns.MapSearch.HideSuperTrackGlow) end
-        if _G["EasyFindMapSearchFrame"] then
-            pcall(ns.MapSearch.ClearAll, ns.MapSearch)
-            pcall(ns.MapSearch.ClearZoneHighlight, ns.MapSearch)
-        end
-        ns.MapSearch.pendingWaypoint = nil
-    end
-    if _G["EasyFindMapSearchFrame"] and ns.MapSearch then
-        if ns.MapSearch.ResetPosition then ns.MapSearch:ResetPosition() end
-        if ns.MapSearch.UpdateScale then ns.MapSearch:UpdateScale() end
-        if ns.MapSearch.UpdateWidth then ns.MapSearch:UpdateWidth() end
-        if ns.MapSearch.UpdateResultsWidth then ns.MapSearch:UpdateResultsWidth() end
-        if ns.MapSearch.UpdateFontSize then ns.MapSearch:UpdateFontSize() end
-        if ns.MapSearch.UpdateIconScales then ns.MapSearch:UpdateIconScales() end
-        if ns.MapSearch.RefreshIndicators then ns.MapSearch:RefreshIndicators() end
-        if ns.MapSearch.UpdateMapSmartShow then ns.MapSearch:UpdateMapSmartShow() end
-    end
-    local uiInd = _G["EasyFindIndicatorFrame"]
-    if uiInd then uiInd:SetScale(0.8) end
+    ApplyDefaults(MAP_DEFAULTS)
+    SyncOptionControls()
+    RefreshMapRuntime()
 end
 
 function Options:DoResetUIPositions()
-    EasyFind.db.uiSearchPosition = nil
-    EasyFind.db.uiSearchScale = 1.0
-    EasyFind.db.uiSearchWidth = 0.88
-    EasyFind.db.uiResultsScale = 1.0
-    EasyFind.db.uiResultsWidth = 350
-    if _G["EasyFindSearchFrame"] and ns.UI then
-        if ns.UI.ResetPosition then ns.UI:ResetPosition() end
-        if ns.UI.UpdateScale then ns.UI:UpdateScale() end
-        if ns.UI.UpdateWidth then ns.UI:UpdateWidth() end
-    end
-end
-
-function Options:DoResetMapPositions()
-    EasyFind.db.mapSearchPosition = nil
-    EasyFind.db.globalSearchPosition = nil
-    EasyFind.db.mapSearchPositionMax = nil
-    EasyFind.db.globalSearchPositionMax = nil
-    EasyFind.db.mapSearchScale = 1.0
-    EasyFind.db.mapSearchWidth = 0.88
-    EasyFind.db.mapResultsScale = 1.0
-    EasyFind.db.mapResultsWidth = 300
-    EasyFind.db.mapSearchYOffset = 0
-    if _G["EasyFindMapSearchFrame"] and ns.MapSearch then
-        if ns.MapSearch.ResetPosition then ns.MapSearch:ResetPosition() end
-        if ns.MapSearch.UpdateScale then ns.MapSearch:UpdateScale() end
-        if ns.MapSearch.UpdateWidth then ns.MapSearch:UpdateWidth() end
-    end
+    ApplyDefaults(UI_POSITION_DEFAULTS)
+    SyncOptionControls()
+    RefreshUIRuntime(true)
 end
 
 function Options:RegisterWithBlizzardOptions()
+    if blizzardRegistered then return end
+    blizzardRegistered = true
+
     local panel = CreateFrame("Frame")
     panel.name = "EasyFind"
 
@@ -2073,7 +1905,6 @@ function Options:Show()
     if optionsFrame.opacitySlider then optionsFrame.opacitySlider:SetValue(EasyFind.db.searchBarOpacity or DEFAULT_OPACITY) end
     if optionsFrame.uiFontSlider then optionsFrame.uiFontSlider:SetValue(EasyFind.db.fontSize or 0.9) end
     if optionsFrame.mapIconSlider then optionsFrame.mapIconSlider:SetValue(EasyFind.db.iconScale or 0.8) end
-    if optionsFrame.arrivalSlider then optionsFrame.arrivalSlider:SetValue(EasyFind.db.arrivalDistance or 10) end
     if optionsFrame.autoHideCheckbox then
         optionsFrame.autoHideCheckbox:SetChecked(EasyFind.db.autoHide ~= false)
     end
@@ -2095,7 +1926,6 @@ function Options:Show()
     optionsFrame.uiResultsAboveCheckbox:SetChecked(EasyFind.db.uiResultsAbove or false)
     optionsFrame.minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton or false)
     if optionsFrame.mapPinGroup then optionsFrame.mapPinGroup:UpdateVisuals() end
-    if optionsFrame.minimapGroup then optionsFrame.minimapGroup:UpdateVisuals() end
     if optionsFrame.automationGroup then optionsFrame.automationGroup:UpdateVisuals() end
     optionsFrame.indicatorBtnText:SetText(EasyFind.db.indicatorStyle or "EasyFind Arrow")
     if optionsFrame.fontBtnText then
@@ -2167,5 +1997,3 @@ function Options:Toggle()
         self:Show()
     end
 end
-
--- Options:Initialize() is called from Core.lua OnPlayerLogin
