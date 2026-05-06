@@ -5,7 +5,7 @@ ns.Database = Database
 
 local Utils   = ns.Utils
 local ipairs = Utils.ipairs
-local tsort, tconcat = Utils.tsort, Utils.tconcat
+local tsort = Utils.tsort
 local sfind, slower, ssub = Utils.sfind, Utils.slower, Utils.ssub
 local sbyte = string.byte
 local mmin, mmax, mabs = Utils.mmin, Utils.mmax, Utils.mabs
@@ -2186,6 +2186,8 @@ function Database:PopulateDynamicBags()
     local CONT = C_Container
     local getNumSlots = (CONT and CONT.GetContainerNumSlots) or GetContainerNumSlots
     local getItemInfo = (CONT and CONT.GetContainerItemInfo)  or GetContainerItemInfo
+    local getItemInfoInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    local isEquippableItem = (C_Item and C_Item.IsEquippableItem) or _G.IsEquippableItem
     if not getNumSlots or not getItemInfo then return end
 
     RemoveEntriesByCategory("Bag")
@@ -2224,6 +2226,12 @@ function Database:PopulateDynamicBags()
     for _, itemID in ipairs(order) do
         local info = itemMap[itemID]
         local name = info.link and info.link:match("%[(.-)%]") or (GetItemInfo and GetItemInfo(itemID)) or ("Item " .. itemID)
+        local equipLoc
+        if getItemInfoInstant then
+            local _, _, _, itemEquipLoc = getItemInfoInstant(itemID)
+            equipLoc = itemEquipLoc
+        end
+        local isEquippable = (equipLoc and equipLoc ~= "") or (isEquippableItem and isEquippableItem(itemID)) or false
         local first = info.locations[1]
         local bagBtn = first.bag == 0 and "MainMenuBarBackpackButton"
             or ("CharacterBag" .. (first.bag - 1) .. "Slot")
@@ -2237,6 +2245,8 @@ function Database:PopulateDynamicBags()
             category = "Bag",
             icon = info.texture,
             itemID = itemID,
+            equipLoc = equipLoc,
+            isEquippable = isEquippable,
             bagID = first.bag,
             bagSlot = first.slot,
             bagItemLink = info.link,
@@ -2302,7 +2312,6 @@ function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, 
         if node.icon then entry.icon = node.icon end
         if node.available then entry.available = node.available end
         if node.canQueue then entry.canQueue = true end
-        if node.children then entry.isContainer = true end
 
         uiSearchData[#uiSearchData + 1] = entry
 
@@ -4005,222 +4014,6 @@ local function GetMultiTokenPrefixCandidates(queryWords)
     return #prefixCandidateBuf > 0 and prefixCandidateBuf or nil
 end
 
-local sortChildrenNode
-local function compareChildByScore(a, b)
-    local children = sortChildrenNode.children
-    local sa = children[a].bestScore or 0
-    local sb = children[b].bestScore or 0
-    if sa ~= sb then return sa > sb end
-    return a < b
-end
-local function sortChildren(node)
-    sortChildrenNode = node
-    tsort(node.childOrder, compareChildByScore)
-    local children = node.children
-    local order = node.childOrder
-    for i = 1, #order do
-        sortChildren(children[order[i]])
-    end
-end
-
--- Tree node pool. BuildHierarchicalResults previously allocated ~300
--- fresh tables per call (root + per-result entry + path nodes). At 60
--- keystrokes/sec that's ~18k tables/sec -- the bulk of the per-search
--- GC churn that caused +29 MB transient peaks during HOLD-backspace.
--- Pooling reuses the same node tables across searches.
-local treeNodePool = {}
-local treeNodePoolN = 0
-Database._treeNodePool = treeNodePool
-
-local function getTreeNode()
-    treeNodePoolN = treeNodePoolN + 1
-    local n = treeNodePool[treeNodePoolN]
-    if not n then
-        n = { children = {}, childOrder = {} }
-        treeNodePool[treeNodePoolN] = n
-    else
-        wipe(n.children)
-        wipe(n.childOrder)
-    end
-    n.name = nil
-    n.data = nil
-    n.bestScore = 0
-    n.isMatch = false
-    n._hac = nil
-    return n
-end
-
-local function GetOrCreateNode(root, pathParts)
-    local node = root
-    for i = 1, #pathParts do
-        local part = pathParts[i]
-        local children = node.children
-        local existing = children[part]
-        if not existing then
-            existing = getTreeNode()
-            existing.name = part
-            children[part] = existing
-            node.childOrder[#node.childOrder + 1] = part
-        end
-        node = existing
-    end
-    return node
-end
-
-local function HasActualContent(node)
-    if node._hac ~= nil then return node._hac end
-    if node.data then
-        local nodeData = node.data
-        local isCurrencyNode = nodeData.category == "Currency"
-        if not isCurrencyNode then
-            if nodeData.available and not nodeData.available() then
-                node._hac = false
-                return false
-            end
-            node._hac = true
-            return true
-        end
-
-        local hasCurrencyID = false
-        if nodeData.steps and C_CurrencyInfo then
-            local steps = nodeData.steps
-            for i = 1, #steps do
-                if steps[i].currencyID then
-                    hasCurrencyID = true
-                    break
-                end
-            end
-        end
-
-        if hasCurrencyID then
-            local steps = nodeData.steps
-            local isLegacyCurrency = false
-            for i = 1, #steps do
-                if steps[i].currencyHeader == "Legacy" then
-                    isLegacyCurrency = true
-                    break
-                end
-            end
-
-            for i = 1, #steps do
-                local step = steps[i]
-                if step.currencyID then
-                    local currencyInfo = C_CurrencyInfo.GetCurrencyInfo(step.currencyID)
-                    if not currencyInfo then node._hac = false; return false end
-                    if currencyInfo.quantity == 0 then
-                        local isDiscovered = (currencyInfo.totalEarned and currencyInfo.totalEarned > 0)
-                            or currencyInfo.useTotalEarnedForMaxQty
-                            or (currencyInfo.discovered == true)
-                        if isLegacyCurrency and not isDiscovered then
-                            node._hac = false
-                            return false
-                        end
-                    end
-                end
-            end
-            node._hac = true
-            return true
-        end
-
-        if nodeData.category == "Currency" and nodeData.steps then
-            local steps = nodeData.steps
-            local isLegacyParent = false
-            for i = 1, #steps do
-                if steps[i].currencyHeader == "Legacy" then
-                    isLegacyParent = true
-                    break
-                end
-            end
-            if not isLegacyParent then
-                node._hac = true
-                return true
-            end
-        end
-    end
-
-    local order = node.childOrder
-    local children = node.children
-    for i = 1, #order do
-        if HasActualContent(children[order[i]]) then
-            node._hac = true
-            return true
-        end
-    end
-    node._hac = false
-    return false
-end
-
-local flattenScratch = {}
-local hierEntryPool = {}
-local hierEntryPoolN = 0
-Database._flattenScratch = flattenScratch
-Database._hierEntryPool = hierEntryPool
-
-local function FlattenNode(self, node, depth, out, containerPaths)
-    local order = node.childOrder
-    local children = node.children
-    for ci = 1, #order do
-        local child = children[order[ci]]
-        local hasChildren = #child.childOrder > 0
-
-        if HasActualContent(child) then
-            local isContainer = false
-            if not hasChildren and child.data and child.data.path then
-                local path = child.data.path
-                local pathLen = #path
-                for pi = 1, pathLen do flattenScratch[pi] = path[pi] end
-                flattenScratch[pathLen + 1] = child.name
-                for pi = pathLen + 2, #flattenScratch do flattenScratch[pi] = nil end
-                isContainer = containerPaths[tconcat(flattenScratch, "\1", 1, pathLen + 1)] or false
-            elseif not hasChildren and child.data then
-                isContainer = containerPaths[child.name] or false
-            end
-
-            hierEntryPoolN = hierEntryPoolN + 1
-            local entry = hierEntryPool[hierEntryPoolN]
-            if not entry then
-                entry = {}
-                hierEntryPool[hierEntryPoolN] = entry
-            end
-            entry.name = child.name
-            entry.depth = depth
-            entry.isPathNode = hasChildren or isContainer
-            entry.isMatch = child.isMatch or false
-            entry.data = child.data or self:FindItemByName(child.name)
-            entry.isContainer = isContainer or nil
-            entry.isPinHeader = nil
-            entry.isPinned = nil
-            entry.isSectionHeader = nil
-            entry.isFlat = nil
-            entry.flatCatKey = nil
-            out[#out + 1] = entry
-
-            if hasChildren then
-                FlattenNode(self, child, depth + 1, out, containerPaths)
-            end
-        end
-    end
-end
-
-function Database:ResetHierEntryPool()
-    hierEntryPoolN = 0
-end
-
-local containerPathCache
-local nameLookup
-local function GetContainerPathSet()
-    if containerPathCache then return containerPathCache end
-    local cache = {}
-    for i = 1, #uiSearchData do
-        local data = uiSearchData[i]
-        if data.path then
-            cache[tconcat(data.path, "\1")] = true
-        end
-    end
-    containerPathCache = cache
-    return cache
-end
-
 function Database:ResetSearchCache()
     if self._dynamicBatchLoading then
         self._dynamicBatchChanged = true
@@ -4229,8 +4022,6 @@ function Database:ResetSearchCache()
     prevQuery = ""
     prevSkipKey = ""
     wipe(prevCandidates)
-    containerPathCache = nil
-    nameLookup = nil
     local hadPrefixIndex = prefixIndexReady
     ClearPrefixBuckets()
     if hadPrefixIndex then self:BuildSearchPrefixIndex() end
@@ -4506,102 +4297,6 @@ function Database:SearchUI(query, skipCategories)
         end
     end
     return results
-end
-
--- Build a hierarchical tree from flat results for display.
--- Uses a proper tree structure internally and DFS-flattens it, so children
--- are always adjacent to their parent regardless of alphabetical ordering.
-function Database:BuildHierarchicalResults(results)
-    if not results or #results == 0 then
-        return {}
-    end
-
-    -- Reset the tree-node pool index; nodes from this pool are reused
-    -- across calls so the only per-call allocation is the returned
-    -- hierarchical array (and pool-grow when first hit).
-    treeNodePoolN = 0
-    local root = getTreeNode()
-
-    for ri = 1, #results do
-        local item = results[ri]
-        local itemData = item.data
-        local path = itemData.path or {}
-        local parentNode = GetOrCreateNode(root, path)
-        local itemScore = item.score or 0
-        local existing = parentNode.children[itemData.name]
-
-        if existing then
-            if not existing.data then existing.data = itemData end
-            existing.isMatch = true
-            if itemScore > existing.bestScore then
-                existing.bestScore = itemScore
-            end
-        else
-            local leaf = getTreeNode()
-            leaf.name = itemData.name
-            leaf.data = itemData
-            leaf.bestScore = itemScore
-            leaf.isMatch = true
-            parentNode.children[itemData.name] = leaf
-            parentNode.childOrder[#parentNode.childOrder + 1] = itemData.name
-        end
-
-        local node = root
-        for pi = 1, #path do
-            node = node.children[path[pi]]
-            if itemScore > node.bestScore then
-                node.bestScore = itemScore
-            end
-        end
-    end
-
-    sortChildren(root)
-
-    local hierarchical = {}
-    FlattenNode(self, root, 0, hierarchical, GetContainerPathSet())
-    return hierarchical
-end
-
--- Get direct children of a container node from the database.
--- Called when user expands a collapsed container in the search results.
-function Database:GetContainerChildren(containerData)
-    if not containerData or not containerData.path then return {} end
-    local prefix = {}
-    for _, p in ipairs(containerData.path) do prefix[#prefix + 1] = p end
-    prefix[#prefix + 1] = containerData.name
-    local prefixLen = #prefix
-
-    local children = {}
-    for _, data in ipairs(uiSearchData) do
-        if data.path and #data.path >= prefixLen then
-            -- Check prefix match
-            local match = true
-            for i = 1, prefixLen do
-                if data.path[i] ~= prefix[i] then match = false; break end
-            end
-            if match and #data.path == prefixLen then
-                -- Direct child of this container
-                children[#children + 1] = data
-            end
-        end
-    end
-
-    -- Sort alphabetically
-    tsort(children, function(a, b) return (a.name or "") < (b.name or "") end)
-    return children
-end
-
-function Database:FindItemByName(name)
-    if not nameLookup then
-        nameLookup = {}
-        for i = 1, #uiSearchData do
-            local d = uiSearchData[i]
-            if not nameLookup[d.name] then
-                nameLookup[d.name] = d
-            end
-        end
-    end
-    return nameLookup[name]
 end
 
 -- Static UI database must be built at load time (before ADDON_LOADED) so other

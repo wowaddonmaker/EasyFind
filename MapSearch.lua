@@ -4,12 +4,16 @@ local MapSearch = {}
 ns.MapSearch = MapSearch
 
 local Utils     = ns.Utils
+local MapUtils  = ns.MapUtils
 local DebugPrint = Utils.DebugPrint
 local pairs, ipairs, type, select = Utils.pairs, Utils.ipairs, Utils.type, Utils.select
 local tinsert, tsort, tconcat, tremove = Utils.tinsert, Utils.tsort, Utils.tconcat, Utils.tremove
 local sfind, slower, ssub = Utils.sfind, Utils.slower, Utils.ssub
 local mmin, mmax, mpi, mfloor = Utils.mmin, Utils.mmax, Utils.mpi, Utils.mfloor
 local pcall, tostring = Utils.pcall, Utils.tostring
+local GetMapParentID = MapUtils.GetParentMapID
+local GetMapPath = MapUtils.GetMapPath
+local ZONE_ABBREVIATIONS = MapUtils.ZONE_ABBREVIATIONS
 
 local GOLD_COLOR = ns.GOLD_COLOR
 local YELLOW_HIGHLIGHT = ns.YELLOW_HIGHLIGHT
@@ -159,7 +163,6 @@ local INDICATOR_STYLES = {
         offsetY = 0,
     },
 }
-
 -- Indicator color presets
 local INDICATOR_COLORS = {
     ["Yellow"]  = {1.0, 1.0, 0.0},
@@ -1183,62 +1186,10 @@ function MapSearch:GetAllWorldZones(startMapID, depth, parentPath)
     return allZones
 end
 
--- Parent map overrides for guided navigation
--- Some zones have incorrect parentMapID in the WoW API, causing guided navigation
--- to route through maps where the target zone isn't clickable.
--- Maps [childMapID] = correctedParentMapID
-local ZONE_PARENT_OVERRIDES = {
+local ZONE_PARENT_OVERRIDES = MapUtils.PARENT_OVERRIDES or {
+
     [2346] = 2274, -- Undermine → Khaz Algar (API incorrectly says The Ringing Deeps 2214)
 }
-
--- Search for zones matching query
--- Common abbreviations for major cities/zones
--- Maps lowercase abbreviation → lowercase zone name
-local ZONE_ABBREVIATIONS = {
-    ["sw"] = "stormwind city",
-    ["stormwind"] = "stormwind city",
-    ["og"] = "orgrimmar",
-    ["org"] = "orgrimmar",
-    ["if"] = "ironforge",
-    ["tb"] = "thunder bluff",
-    ["uc"] = "undercity",
-    ["darn"] = "darnassus",
-    ["exo"] = "the exodar",
-    ["smc"] = "silvermoon city",
-    ["silvermoon"] = "silvermoon city",
-    ["dal"] = "dalaran",
-    ["bb"] = "booty bay",
-    ["sh"] = "shattrath city",
-    ["shatt"] = "shattrath city",
-    ["shat"] = "shattrath city",
-    ["daz"] = "dazar'alor",
-    ["bor"] = "boralus",
-    ["orib"] = "oribos",
-    ["vald"] = "valdrakken",
-    ["zand"] = "zandalar",
-    ["kt"] = "kul tiras",
-    ["ek"] = "eastern kingdoms",
-    ["kali"] = "kalimdor",
-    ["dk"] = "acherus: the ebon hold",
-    -- Continent shorthand for names the normal prefix/substring matcher
-    -- can't reach ("nr" isn't inside "northrend", "wod" isn't inside
-    -- "draenor", etc.). Plain prefixes like "drae", "pand", "khaz" are
-    -- intentionally omitted because substring matching already handles
-    -- them.
-    ["nr"] = "northrend",
-    ["ol"] = "outland",
-    ["tbc"] = "outland",
-    ["sl"] = "shadowlands",
-    ["wod"] = "draenor",
-    ["di"] = "dragon isles",
-    ["df"] = "dragon isles",
-    ["bi"] = "broken isles",
-    ["leg"] = "broken isles",
-    ["mop"] = "pandaria",
-    ["tww"] = "khaz algar",
-}
-
-ns.MapSearch.ZONE_ABBREVIATIONS = ZONE_ABBREVIATIONS
 
 -- Per-query cache for SearchZones, keyed on mode (local vs global).
 -- Stores recently-run queries so backspace hits cache (the previous
@@ -1511,7 +1462,7 @@ local function GetContinentForMap(mapID)
         local info = GetMapInfo(id)
         if not info then return nil end
         if info.mapType == Enum.UIMapType.Continent then return id end
-        id = ZONE_PARENT_OVERRIDES[id] or info.parentMapID
+        id = GetMapParentID(id, info)
         if not id or id == 0 then return nil end
     end
 end
@@ -2264,7 +2215,7 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
 
     DebugPrint("[EasyFind] Target zone:", targetInfo.name)
 
-    local targetParentMapID = ZONE_PARENT_OVERRIDES[targetMapID] or targetInfo.parentMapID
+    local targetParentMapID = GetMapParentID(targetMapID, targetInfo)
     if not targetParentMapID then
         DebugPrint("[EasyFind] No parent, going directly to zone")
         WorldMapFrame:SetMapID(targetMapID)
@@ -2319,7 +2270,7 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
         targetMapID = resolved
         targetInfo = GetMapInfo(targetMapID)
         if not targetInfo then return end
-        targetParentMapID = ZONE_PARENT_OVERRIDES[targetMapID] or targetInfo.parentMapID
+        targetParentMapID = GetMapParentID(targetMapID, targetInfo)
     end
 
     -- CASE 1: We're already on the target's parent map - just highlight the zone!
@@ -2492,22 +2443,7 @@ end
 
 -- Get the full path from World/root to a given map
 function MapSearch:GetMapPath(mapID)
-    local path = {}
-    local currentID = mapID
-    local maxDepth = 15
-
-    while currentID and maxDepth > 0 do
-        local info = GetMapInfo(currentID)
-        if info then
-            tinsert(path, 1, {mapID = currentID, name = info.name, mapType = info.mapType})
-            currentID = ZONE_PARENT_OVERRIDES[currentID] or info.parentMapID
-        else
-            break
-        end
-        maxDepth = maxDepth - 1
-    end
-
-    return path
+    return GetMapPath(mapID)
 end
 
 -- Highlight a breadcrumb button to guide user to zoom out toward the target
@@ -5607,44 +5543,6 @@ function MapSearch:RefreshAllClearButtons()
             f.UpdateClearButtonVisibility()
         end
     end
-end
-
--- Return the currently-highlighted pin's coordinates and mapID, whether
--- it was shown via ShowWaypointAt (waypointPin) or HighlightPin (native
--- Blizzard pin). Used by the demo's "click to start tracking" step to
--- resolve coordinates regardless of which rendering path was taken.
-function MapSearch:GetActivePinCoords()
-    if activePinState and activePinState.x and activePinState.y and activePinState.mapID then
-        return activePinState.x, activePinState.y, activePinState.mapID
-    end
-    if waypointPin and waypointPin:IsShown() and waypointPin.waypointX and waypointPin.waypointY then
-        local mapID = WorldMapFrame and WorldMapFrame:GetMapID()
-        return waypointPin.waypointX, waypointPin.waypointY, mapID
-    end
-    return nil, nil, nil
-end
-
--- Place a SuperTrack user waypoint at the currently highlighted pin's
--- location. Used by the "click the pin to start tracking" step in the
--- Guide Mode demo (since Guide Mode doesn't auto-track on result click).
-function MapSearch:TrackActiveLocation()
-    local x, y, mapID = self:GetActivePinCoords()
-    if not (x and y and mapID) then return false end
-    SetUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, x, y))
-    C_SuperTrack.SetSuperTrackedUserWaypoint(true)
-    efPlacedWaypoint = true
-    self:RefreshAllClearButtons()
-    return true
-end
-
--- Return the on-screen frame currently showing the pin highlight. This
--- is either waypointPin (overlay path) or highlightFrame (which is
--- anchored over the native pin in the HighlightPin path). Used by the
--- demo cursor to know where to move for a visual "click" on the pin.
-function MapSearch:GetActivePinFrame()
-    if waypointPin and waypointPin:IsShown() then return waypointPin end
-    if highlightFrame and highlightFrame:IsShown() then return highlightFrame end
-    return nil
 end
 
 function MapSearch:ClearAll()

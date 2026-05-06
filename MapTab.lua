@@ -4,6 +4,7 @@ local MapTab = {}
 ns.MapTab = MapTab
 
 local Utils = ns.Utils
+local MapUtils = ns.MapUtils
 local SafeAfter = Utils and Utils.SafeAfter or function(delay, fn) C_Timer.After(delay, fn) end
 local tinsert = Utils and Utils.tinsert or table.insert
 local tremove = table.remove
@@ -24,7 +25,12 @@ local TAB_ICON_GOLD      = {1.00, 0.82, 0.00}
 local TAB_ICON_DIM       = {0.55, 0.45, 0.10}
 local TAB_STACK_GAP      = -3
 
-local EYE_ICON_TEX     = "Interface\\AddOns\\EasyFind\\textures\\eye"
+local FormatPathPrefix = MapUtils.FormatPathPrefix
+local GetTopAncestor = MapUtils.GetTopAncestor
+local GetZoneUnderAncestor = MapUtils.GetZoneUnderAncestor
+local GetAncestorNames = MapUtils.GetAncestorNames
+local ExpandZoneAbbrev = MapUtils.ExpandZoneAbbrev
+local BuildFullBreadcrumb = MapUtils.BuildBreadcrumb
 
 -- Result row layout
 local ROW_HEIGHT       = 24
@@ -35,111 +41,8 @@ local ROW_POOL_RETAIN  = 80
 local HEADER_POOL_RETAIN = 40
 local SECTION_POOL_RETAIN = 12
 
--- Roots stripped from pathPrefix display. Every zone in WoW descends
--- from "World", and the vast majority descend from "Azeroth", so those
--- segments add no disambiguation — strip them in display order only.
--- Other continents ("Outland", "Draenor", etc.) are kept because they
--- genuinely distinguish a zone's origin.
--- Top-level virtual roots that should NOT surface as group headers.
--- "Cosmic" (mapID 946) sits above Azeroth, Outland, Draenor, and
--- Shadowlands; without it here, raids and dungeons from those
--- expansions all group under "Cosmic" instead of their actual
--- continent name.
-local PATH_STRIP_ROOTS = { "World", "Azeroth", "Cosmic" }
 
-local function FormatPathPrefix(pathStr)
-    if type(pathStr) ~= "string" or pathStr == "" then return pathStr end
-    for i = 1, #PATH_STRIP_ROOTS do
-        local root = PATH_STRIP_ROOTS[i] .. " > "
-        if pathStr:sub(1, #root) == root then
-            pathStr = pathStr:sub(#root + 1)
-        else
-            break  -- stop on first non-matching root so order is preserved
-        end
-    end
-    -- Exact match (pathStr == a stripped root with nothing after): drop it.
-    for i = 1, #PATH_STRIP_ROOTS do
-        if pathStr == PATH_STRIP_ROOTS[i] then return "" end
-    end
-    return pathStr
-end
-
--- Top non-stripped ancestor name for a mapID. Walks the parentMapID
--- chain until the next step would be a stripped root ("World"/"Azeroth")
--- or root is reached. Used as the grouping key so deeply-nested zones
--- (Dalaran inside Crystalsong Forest inside Northrend) group with
--- siblings at the same continent-level header.
-local topAncestorCache = {}
-local function IsStripped(name)
-    if not name then return false end
-    for i = 1, #PATH_STRIP_ROOTS do
-        if PATH_STRIP_ROOTS[i] == name then return true end
-    end
-    return false
-end
-local function GetTopAncestor(mapID)
-    if not mapID or mapID == 0 then return nil end
-    local cached = topAncestorCache[mapID]
-    if cached ~= nil then
-        if cached == false then return nil end
-        return cached.name, cached.mapID
-    end
-    local current = mapID
-    local resultName, resultID
-    for _ = 1, 20 do
-        local info = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(current)
-        if not info then break end
-        local parentID = info.parentMapID
-        local parentInfo = parentID and parentID ~= 0 and C_Map.GetMapInfo(parentID) or nil
-        local parentName = parentInfo and parentInfo.name
-        if not parentInfo or not parentName or IsStripped(parentName) or parentID == 0 then
-            resultName = info.name
-            resultID = current
-            break
-        end
-        current = parentID
-    end
-    if resultName then
-        topAncestorCache[mapID] = { name = resultName, mapID = resultID }
-    else
-        topAncestorCache[mapID] = false
-    end
-    return resultName, resultID
-end
-
--- Exposed so UI search and other callers can group map results by the
--- same continent label the MapTab uses.
 MapTab.GetTopAncestor = function(_, mapID) return GetTopAncestor(mapID) end
-
--- Walk mapID's parent chain and return the first ancestor whose
--- parentMapID is ancestorMapID — i.e. the direct child of `ancestorMapID`
--- that contains `mapID`. Used for second-level zone grouping inside a
--- continent group: an FM in Hillsbrad → Hillsbrad; a zone result for
--- Eastern Plaguelands → itself.
-local zoneUnderAncestorCache = {}
-local function GetZoneUnderAncestor(mapID, ancestorMapID)
-    if not mapID or not ancestorMapID then return nil end
-    if mapID == ancestorMapID then return nil end
-    local cacheKey = mapID .. "_" .. ancestorMapID
-    local cached = zoneUnderAncestorCache[cacheKey]
-    if cached ~= nil then
-        if cached == false then return nil end
-        return cached.name, cached.mapID
-    end
-    local current = mapID
-    for _ = 1, 20 do
-        local info = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(current)
-        if not info then break end
-        if info.parentMapID == ancestorMapID then
-            zoneUnderAncestorCache[cacheKey] = { name = info.name, mapID = current }
-            return info.name, current
-        end
-        if not info.parentMapID or info.parentMapID == 0 then break end
-        current = info.parentMapID
-    end
-    zoneUnderAncestorCache[cacheKey] = false
-    return nil
-end
 
 -- Children of a map from Blizzard's world hierarchy (non-recursive).
 -- Used to populate a group on-demand when the user expands a matched
@@ -360,12 +263,7 @@ local function HideOurPanel()
 end
 
 local function ShowPopup(isPinned, onPin, onGuide)
-    local rows = {}
-    if onGuide then
-        rows[#rows + 1] = { text = "Guide", icon = EYE_ICON_TEX, onClick = onGuide }
-    end
-    rows[#rows + 1] = { text = isPinned and "Unpin" or "Pin", onClick = onPin }
-    Utils.ShowCursorMenu("EasyFindMapTabPopup", rows, {
+    Utils.ShowPinMenu("EasyFindMapTabPopup", isPinned, onPin, onGuide, nil, {
         width = 96,
         rowHeight = 22,
         offsetX = -8,
@@ -542,37 +440,6 @@ local function RowOnClick(row, button)
     -- (Enter key or result click), not on incidental focus loss.
     MapTab:PushRecentSearch(currentQuery)
     TriggerResultSelect(data)
-end
-
--- Walk a result's parent-map chain and return a full breadcrumb string
--- "<world> > <continent> > <zone> > <name>" — root first, leaf last.
--- The Blizzard API names mapID 946 "Cosmic"; surface it as "World"
--- since that's how players refer to it. Skips an ancestor whose name
--- matches the POI itself (zone results' own mapID resolves to the
--- same name, so we'd otherwise render "Tol Barad > Tol Barad").
-local function BuildFullBreadcrumb(data)
-    local mapID = data.mapID or data.zoneMapID or data.entranceMapID or data.parentMapID
-    if not mapID or not C_Map or not C_Map.GetMapInfo then return data.name end
-    local parts = {}
-    local current = mapID
-    local leafName = data.name and data.name:lower() or ""
-    for _ = 1, 20 do
-        local info = C_Map.GetMapInfo(current)
-        if not info then break end
-        if info.name and info.name:lower() ~= leafName then
-            local name = info.name == "Cosmic" and "World" or info.name
-            parts[#parts + 1] = name
-        end
-        if not info.parentMapID or info.parentMapID == 0 then break end
-        current = info.parentMapID
-    end
-    if #parts == 0 then return data.name end
-    local segments = {}
-    for i = #parts, 1, -1 do
-        segments[#segments + 1] = parts[i]
-    end
-    segments[#segments + 1] = data.name
-    return table.concat(segments, "  >  ")
 end
 
 local function RowOnEnter(row)
@@ -1400,41 +1267,6 @@ local function FilterAndDedupe(results, seen, isLocal)
     return out
 end
 
--- Walk the parent chain of mapID and return an array of the names at
--- every level (lowercased). Used to let a token like "northrend" match
--- any POI whose ancestor chain includes Northrend, so "northrend raid"
--- picks out raids scoped to that continent.
-local ancestorNamesCache = {}
-local function GetAncestorNames(mapID)
-    if not mapID or mapID == 0 then return {} end
-    local cached = ancestorNamesCache[mapID]
-    if cached then return cached end
-    local names = {}
-    local current = mapID
-    for _ = 1, 20 do
-        local info = C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(current)
-        if not info then break end
-        if info.name and info.name ~= "" then
-            names[#names + 1] = info.name:lower()
-        end
-        local parentID = info.parentMapID
-        if not parentID or parentID == 0 then break end
-        current = parentID
-    end
-    ancestorNamesCache[mapID] = names
-    return names
-end
-
--- Expand a token through the shared zone-abbreviation table so shortcut
--- queries like "nr" resolve to "northrend" during multi-token matching.
--- Returns the expansion string (lowercase) or nil if no abbreviation
--- exists. Cached lookup — the table is a plain dict.
-local function ExpandZoneAbbrev(t)
-    local tbl = ns.MapSearch and ns.MapSearch.ZONE_ABBREVIATIONS
-    if not tbl then return nil end
-    return tbl[t]
-end
-
 -- Does a single token match a POI via any available facet? Token must
 -- already be lowercase. Checks name, keywords, category (with plural/
 -- singular flex), pathPrefix, ancestor zone names, and — for ancestors —
@@ -2053,8 +1885,11 @@ local function CreateSearchBox(parent)
                 if grew and self.UpdateAutocomplete then self:UpdateAutocomplete() end
             end)
         end,
-        onAccepted = function(text)
-            MapTab:PushRecentSearch(text)
+        onAccepted = function(text, source)
+            if text and text ~= "" then MapTab:RunSearch(text) end
+            if source ~= "right" and source ~= "ctrl-l" and source ~= "click" then
+                MapTab:PushRecentSearch(text)
+            end
         end,
     })
     editBox:HookScript("OnEditFocusGained", UpdateClear)
@@ -2069,6 +1904,17 @@ local function CreateSearchBox(parent)
     -- the end. ENTER routes through HandleNavKey, which activates a
     -- highlighted row or falls through to push-to-recents below.
     editBox:HookScript("OnKeyDown", function(self, key)
+        if self.HasAutocomplete and self:HasAutocomplete() and self.AcceptAutocomplete then
+            if key == "RIGHT" or key == "ARROWRIGHT" then
+                self:AcceptAutocomplete("right")
+                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+                return
+            elseif key == "L" and IsControlKeyDown() then
+                self:AcceptAutocomplete("ctrl-l")
+                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+                return
+            end
+        end
         -- An active autocomplete suffix is rendered as highlighted
         -- text. WoW's default arrow-key handling on a highlighted
         -- selection fires OnTextChanged synchronously, which schedules
@@ -2124,7 +1970,10 @@ local function CreateSearchBox(parent)
         local current = self:GetText() or ""
         local typed = self.GetTypedText and self:GetTypedText() or current
         local accepted = false
-        if current ~= "" and current ~= typed and self.AcceptAutocomplete then
+        if self.HasAutocomplete and self:HasAutocomplete() and self.AcceptAutocomplete then
+            accepted = self:AcceptAutocomplete()
+            current = self:GetText() or ""
+        elseif current ~= "" and current ~= typed and self.AcceptAutocomplete then
             accepted = self:AcceptAutocomplete()
             current = self:GetText() or ""
         end

@@ -10,6 +10,7 @@
 ## DefaultState: enabled
 
 Utils.lua
+MapUtils.lua
 Core.lua
 Database.lua
 DatabaseDynamic.lua
