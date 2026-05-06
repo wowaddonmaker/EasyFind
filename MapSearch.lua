@@ -1369,8 +1369,11 @@ function MapSearch:SearchZones(query)
         return a.name < b.name
     end)
 
-    -- Store under the current query so backspace/retyping hits cache.
-    CachePut(cache, query, matches)
+    if #matches > 0 then
+        CachePut(cache, query, matches)
+    else
+        cache.lastQuery = query
+    end
 
     return matches
 end
@@ -4631,18 +4634,18 @@ function MapSearch:SearchPOIs(pois, query, noCache)
 
     if noCache then return results end
 
-    -- Snapshot for the query cache. Shallow-copy because `results`
-    -- points at reuseSearchResults which the next call wipes.
-    local snapshot = {}
-    for i = 1, #results do snapshot[i] = results[i] end
-    if cache.entries[query] == nil then
-        cache.order[#cache.order + 1] = query
-        if #cache.order > SEARCH_CACHE_MAX then
-            local oldest = tremove(cache.order, 1)
-            cache.entries[oldest] = nil
+    if #results > 0 then
+        local snapshot = {}
+        for i = 1, #results do snapshot[i] = results[i] end
+        if cache.entries[query] == nil then
+            cache.order[#cache.order + 1] = query
+            if #cache.order > SEARCH_CACHE_MAX then
+                local oldest = tremove(cache.order, 1)
+                cache.entries[oldest] = nil
+            end
         end
+        cache.entries[query] = { matchedCategory = matchedCategory, results = snapshot }
     end
-    cache.entries[query] = { matchedCategory = matchedCategory, results = snapshot }
     cache.lastQuery = query
     cache.lastCategory = matchedCategory
 

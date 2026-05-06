@@ -40,7 +40,8 @@ local resultsFrame
 -- resultsFrame when ShowHierarchicalResults runs.
 local containerFrame
 local resultButtons = {}
-local MAX_BUTTON_POOL = 50  -- Maximum buttons (scroll handles overflow beyond this)
+local MAX_BUTTON_POOL = 50
+local MAX_SEARCH_RESULT_ROWS = 18
 local EnsureResultButton
 local inCombat = false
 local selectingResult = false  -- guard: suppress OnTextChanged re-renders during SelectResult
@@ -197,6 +198,10 @@ local function GetFlatSubtext(data)
     return data.category or ""
 end
 
+local function IsSpellbookOnlyAbility(data)
+    return data and data.category == "Ability" and data.spellID and data.isSpellbookOnly
+end
+
 -- Hint shown only on the currently-selected row, replacing the normal
 -- subtext so the user knows what Enter / left-click will do without
 -- cluttering every other row. Returns nil for entries whose action
@@ -212,7 +217,9 @@ local function GetActionHint(data)
     if data.outfitID then return "Select to wear outfit" end
     if data.gearSetID then return "Select to equip gear set" end
     if data.transmogSetID then return "Select to preview appearance set" end
-    if data.spellID and data.category == "Ability" then return "Select to cast" end
+    if data.spellID and data.category == "Ability" then
+        return IsSpellbookOnlyAbility(data) and "Select to show in spellbook" or "Select to cast"
+    end
     if data.macroIndex then return "Select to run macro" end
     if data.itemID and data.category == "Bag" then
         if data.isEquippable or (data.equipLoc and data.equipLoc ~= "") then
@@ -297,7 +304,8 @@ end
 
 local function ShowPinPopup(_, isPinned, onPinAction, onGuide, onAddAlias)
     Utils.ShowPinMenu("EasyFindPinPopup", isPinned, onPinAction, onGuide, onAddAlias, {
-        strata = "FULLSCREEN_DIALOG",
+        strata = "TOOLTIP",
+        level = 100,
         width = 96,
         rowHeight = 22,
     })
@@ -327,28 +335,8 @@ local function ClearResultTooltips()
     end
 end
 
--- Centralized icon setter - resets texture state before applying to prevent
--- atlas/texture bleed between rows.
 local function SetRowIcon(btn, kind, value, iconSize)
-    -- Cache the (kind, value, size) we last applied. The hot path on
-    -- every keystroke re-renders rows whose icon hasn't changed at all
-    -- (incremental narrowing keeps top-N rows the same), so skipping
-    -- the SetTexture / SetAtlas / SetTexCoord burst when nothing
-    -- changed is one of the bigger per-keystroke wins.
     local sz = iconSize or 16
-    -- Cache key is the raw value (numeric fileID or the full coords
-    -- table). Table identity is what we want: two distinct sprite-sheet
-    -- entries with the same fileID but different coords are distinct
-    -- tables, so they correctly miss the cache.
-    if btn._iconKind == kind and btn._iconValKey == value and btn._iconSize == sz then
-        if kind == "hidden" then return end
-        btn.icon:Show()
-        return
-    end
-    btn._iconKind   = kind
-    btn._iconValKey = value
-    btn._iconSize   = sz
-
     btn.icon:SetTexture(nil)
     btn.icon:SetTexCoord(0, 1, 0, 1)
     btn.icon:SetVertexColor(1, 1, 1, 1)
@@ -394,16 +382,16 @@ local THEMES = {}
 
 -- Modern: quest-log style - raised tab headers, golden tree lines, grey border
 THEMES["Modern"] = {
-    rowHeight       = 22,
+    rowHeight       = 20,
     indentPx        = 20,          -- matches INDENT_PX so tree lines align
     lineWidth       = 2,
     resultsWidth    = 350,
-    resultsPadTop   = 10,
-    resultsPadBot   = 10,
+    resultsPadTop   = 8,
+    resultsPadBot   = 8,
     resultsPadLeft  = 12,
     btnWidth        = 366,
-    iconSize        = 16,
-    pathIconSize    = 14,
+    iconSize        = 15,
+    pathIconSize    = 13,
     -- fonts
     pathFont        = ns.SEARCHBAR_FONT,
     leafFont        = ns.LEAF_FONT,
@@ -464,6 +452,12 @@ local function ScaleFont(fontString, baseFontObject)
     local path, baseSize, flags = obj:GetFont()
     fontString:SetFont(path, baseSize * (EasyFind.db.fontSize or 1.0), flags)
     fontString:SetJustifyH(fontString:GetJustifyH())
+end
+
+local function SetScaledFont(fontString, baseFontObject)
+    if not fontString then return end
+    fontString:SetFontObject(baseFontObject)
+    ScaleFont(fontString, baseFontObject)
 end
 
 local function ApplyResultRowFonts(row, theme)
@@ -779,7 +773,7 @@ function UI:CreateSearchFrame()
                 _G["EasyFindSpecFlyout"],
             }
             for _, g in ipairs(guards) do
-                if g and g:IsShown() and g:IsMouseOver() then
+                if Utils.IsFrameOrChildMouseOver(g) then
                     onGuard = true
                     break
                 end
@@ -814,9 +808,26 @@ function UI:CreateSearchFrame()
         end
     end)
 
-    local pendingUISearchTimer
     local lastTypedLen = 0
     local lastSearchTime = 0
+    local pendingUISearchText = ""
+    local pendingUISearchGrew = false
+    local pendingUISearchDue = 0
+    local pendingUISearchFrame = CreateFrame("Frame")
+    pendingUISearchFrame:Hide()
+    pendingUISearchFrame:SetScript("OnUpdate", function(self)
+        if GetTime() < pendingUISearchDue then return end
+        self:Hide()
+        local typedNow = pendingUISearchText
+        local grew = pendingUISearchGrew
+        pendingUISearchText = ""
+        pendingUISearchGrew = false
+        lastSearchTime = GetTime()
+        UI:OnSearchTextChanged(typedNow)
+        if grew and editBox.UpdateAutocomplete then
+            editBox.UpdateAutocomplete()
+        end
+    end)
     local SEARCH_THROTTLE = 0.05  -- 50ms cap on search/render frequency
     editBox:SetScript("OnTextChanged", function(self, userInput)
         self.placeholder:SetShown(self:GetText() == "")
@@ -833,7 +844,6 @@ function UI:CreateSearchFrame()
         if self.IsAutocompleteBackspaceStrip and self:IsAutocompleteBackspaceStrip() then return end
         historyIndex = 0
         historyDraft = ""
-        if pendingUISearchTimer then pendingUISearchTimer:Cancel() end
         -- Search query is the text up to the cursor -- anything past
         -- the cursor is unaccepted autocomplete suffix and must not
         -- feed into search results. Programmatic autocomplete SetText
@@ -845,14 +855,10 @@ function UI:CreateSearchFrame()
         lastTypedLen = #typedNow
         local elapsed = GetTime() - lastSearchTime
         local delay = elapsed >= SEARCH_THROTTLE and 0 or (SEARCH_THROTTLE - elapsed)
-        pendingUISearchTimer = C_Timer.NewTimer(delay, function()
-            pendingUISearchTimer = nil
-            lastSearchTime = GetTime()
-            UI:OnSearchTextChanged(typedNow)
-            if grew and editBox.UpdateAutocomplete then
-                editBox.UpdateAutocomplete()
-            end
-        end)
+        pendingUISearchText = typedNow
+        pendingUISearchGrew = grew
+        pendingUISearchDue = GetTime() + delay
+        pendingUISearchFrame:Show()
     end)
 
     editBox:SetScript("OnEnterPressed", function(self)
@@ -1494,7 +1500,8 @@ function UI:CreateSearchFrame()
         if key == "ENTER" and selectedIndex > 0 and not InCombatLockdown() then
             local selRow = resultButtons[selectedIndex]
             local rd = selRow and selRow.data
-            if rd and (rd.outfitID or rd.toyItemID or rd.spellID
+            if rd and (rd.outfitID or rd.toyItemID
+               or (rd.spellID and not IsSpellbookOnlyAbility(rd))
                or rd.mountID or rd.macroIndex
                or (rd.itemID and rd.category == "Bag")) then
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
@@ -1725,7 +1732,7 @@ function UI:CreateSearchFrame()
         if dropdown and dropdown.guardFrames then
             for i = 1, #dropdown.guardFrames do
                 local g = dropdown.guardFrames[i]
-                if g and g:IsShown() and g:IsMouseOver() then return end
+                if Utils.IsFrameOrChildMouseOver(g) then return end
             end
         end
         local extras = {
@@ -1733,7 +1740,7 @@ function UI:CreateSearchFrame()
             _G["EasyFindUIWizard"],
         }
         for _, g in ipairs(extras) do
-            if g and g:IsShown() and g:IsMouseOver() then return end
+            if Utils.IsFrameOrChildMouseOver(g) then return end
         end
         UI:Hide()
     end)
@@ -3689,7 +3696,7 @@ function UI:CreateResultsFrame()
             _G["EasyFindSpecFlyout"],
         }
         for _, g in ipairs(guards) do
-            if g and g:IsShown() and g:IsMouseOver() then return end
+            if Utils.IsFrameOrChildMouseOver(g) then return end
         end
         UI:HideResults()
     end)
@@ -3797,6 +3804,66 @@ local function MaybeLoadHeavySearchData(text, needsHeavy)
         end
     end)
     if not started then heavySearchLoading = false end
+end
+
+local function RefocusSearchEditBox()
+    if searchFrame and searchFrame.editBox
+       and not (navFrame and navFrame:IsKeyboardEnabled()) then
+        searchFrame.editBox.blockFocus = nil
+        searchFrame.editBox:SetFocus()
+    end
+end
+
+local function ReadSettingVariable(variable)
+    if Settings and Settings.GetSetting then
+        local sok, settObj = pcall(Settings.GetSetting, variable)
+        if sok and settObj and settObj.GetValue then
+            local vok, value = pcall(settObj.GetValue, settObj)
+            if vok then return value end
+        end
+    end
+    if GetCVar then
+        local ok, value = pcall(GetCVar, variable)
+        if ok then return value end
+    end
+end
+
+local function WriteSettingVariable(variable, value)
+    if Settings and Settings.SetValue then
+        local ok = pcall(Settings.SetValue, variable, value)
+        if ok then return true end
+        ok = pcall(Settings.SetValue, Settings, variable, value)
+        if ok then return true end
+    end
+    if Settings and Settings.GetSetting then
+        local sok, settObj = pcall(Settings.GetSetting, variable)
+        if sok and settObj and settObj.SetValue then
+            local ok = pcall(settObj.SetValue, settObj, value)
+            if ok then return true end
+        end
+    end
+    if SetCVar then
+        local ok = pcall(SetCVar, variable, tostring(value))
+        if ok then return true end
+    end
+    return false
+end
+
+local function ActivateSettingResult(data)
+    if not data or not data.settingVariable then return false end
+    local stype = data.settingType
+    if stype == "checkbox" then
+        UI:ToggleSettingCheckbox(data)
+    elseif stype == "slider" then
+        RefocusSearchEditBox()
+    elseif stype == "dropdown" then
+        if not UI:CycleSettingDropdown(data) then
+            UI:OpenSettingNoClose(data)
+        end
+    else
+        UI:OpenSettingNoClose(data)
+    end
+    return true
 end
 
 -- Within-group ordering for flat-list mode. Score-first so the best
@@ -4383,7 +4450,20 @@ function UI:CreateResultButton(index)
     -- the secure click. SetScript would replace them and break casts.
     resultRow:HookScript("OnMouseDown", function(self, button)
         if button ~= "LeftButton" then return end
-        if not IsShiftKeyDown() then return end
+        if not IsShiftKeyDown() then
+            local handled = ActivateSettingResult(self.data)
+            if not handled and IsSpellbookOnlyAbility(self.data) then
+                UI:SelectResult(self.data)
+                handled = true
+            end
+            if handled then
+                self._handledNonSecureMouseDown = true
+                C_Timer.After(0, function()
+                    self._handledNonSecureMouseDown = nil
+                end)
+            end
+            return
+        end
         if not self.data then return end
         local x, y = GetCursorPosition()
         self._dragOriginX, self._dragOriginY = x, y
@@ -4476,6 +4556,10 @@ function UI:CreateResultButton(index)
         end
     end)
     resultRow:SetScript("PostClick", function(self, mouseButton, down)
+        if self._handledNonSecureMouseDown then
+            self._handledNonSecureMouseDown = nil
+            return
+        end
         -- Shift+click pickup: cursor is holding the action for the
         -- user to drop on a bar. Don't navigate away or close.
         if self._pickedUp then
@@ -4574,32 +4658,7 @@ function UI:CreateResultButton(index)
             -- the next keystroke to the search bar instead of the bind.
             return
         end
-        if self.data and self.data.settingVariable then
-            local stype = self.data.settingType
-            if stype == "checkbox" then
-                UI:ToggleSettingCheckbox(self.data)
-            elseif stype == "slider" then
-                -- Slider widget handles its own drag/click. The row
-                -- still receives a "click" because the slider is a
-                -- child, so refocus the editbox to keep results open
-                -- (OnEditFocusLost would otherwise hide them).
-                if searchFrame and searchFrame.editBox
-                   and not (navFrame and navFrame:IsKeyboardEnabled()) then
-                    searchFrame.editBox.blockFocus = nil
-                    searchFrame.editBox:SetFocus()
-                end
-            elseif stype == "dropdown" then
-                -- Cycle to the next dropdown value inline. Falls back to
-                -- opening the panel only if we can't enumerate options
-                -- (variable not found in any live category layout).
-                if not UI:CycleSettingDropdown(self.data) then
-                    UI:OpenSettingNoClose(self.data)
-                end
-            else
-                UI:OpenSettingNoClose(self.data)
-            end
-            return
-        end
+        if ActivateSettingResult(self.data) then return end
 
         if self.isPinHeader then
             return
@@ -5250,12 +5309,20 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         local theme = EasyFind.db.resultsTheme
         local above = EasyFind.db.uiResultsAbove
         local collapsedKey = next(collapsedNodes)
+        local fontScale = EasyFind.db.fontSize or 1.0
+        local searchW = searchFrame and searchFrame:GetWidth() or 0
+        local customResultsW = EasyFind.db.uiResultsWidth or 0
+        local maxResultsH = EasyFind.db.uiResultsHeight or 280
         local n = #hierarchical
         local last = self._lastRenderSig
         local same = last and last.n == n
             and last.theme == theme
             and last.above == above
             and last.collapsedKey == collapsedKey
+            and last.fontScale == fontScale
+            and last.searchW == searchW
+            and last.customResultsW == customResultsW
+            and last.maxResultsH == maxResultsH
             and resultsFrame:IsShown()
         if same then
             for hi = 1, n do
@@ -5276,6 +5343,10 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         last.theme = theme
         last.above = above
         last.collapsedKey = collapsedKey
+        last.fontScale = fontScale
+        last.searchW = searchW
+        last.customResultsW = customResultsW
+        last.maxResultsH = maxResultsH
         for hi = 1, n do
             local e = hierarchical[hi]
             last[hi * 2 - 1] = e.data
@@ -5287,22 +5358,34 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     ClearResultTooltips()
 
     local theme = GetActiveTheme()
-    local rowH  = theme.rowHeight
+    local fontScale = EasyFind.db.fontSize or 1.0
+    local rowH  = mfloor(theme.rowHeight * fontScale + 0.5)
+    if rowH < theme.rowHeight then rowH = theme.rowHeight end
+    local flatExtraH = mfloor(16 * fontScale + 0.5)
+    if flatExtraH < 16 then flatExtraH = 16 end
+    local stackGap = mfloor(2 * fontScale + 0.5)
+    if stackGap < 2 then stackGap = 2 end
+    local stackHalfGap = stackGap * 0.5
     local indPx = theme.indentPx
-    local padT  = theme.resultsPadTop
+    local padT  = mfloor((theme.resultsPadTop or 0) * fontScale + 0.5)
+    if padT < theme.resultsPadTop then padT = theme.resultsPadTop end
+    local padB = mfloor((theme.resultsPadBot or 0) * fontScale + 0.5)
+    if padB < theme.resultsPadBot then padB = theme.resultsPadBot end
 
     -- Scale row icons to match leaf font height so icon top/bottom
     -- align with text top/bottom instead of overflowing the cap line.
-    local iconScale = 1.15
+    local iconScale = 1.12
     local leafFontObj = _G[theme.leafFont]
     local leafFontPx = 10
     if leafFontObj and leafFontObj.GetFont then
         local _, sz = leafFontObj:GetFont()
         if sz and sz > 0 then leafFontPx = sz end
     end
-    local rowIconSize = math.floor(leafFontPx * iconScale + 0.5)
+    local rowIconSize = math.floor(leafFontPx * fontScale * iconScale + 0.5)
     if rowIconSize < 12 then rowIconSize = 12 end
-    if rowIconSize > (theme.iconSize or 16) then rowIconSize = theme.iconSize or 16 end
+    local maxIconSize = math.floor((theme.iconSize or 16) * fontScale + 0.5)
+    if maxIconSize < (theme.iconSize or 16) then maxIconSize = theme.iconSize or 16 end
+    if rowIconSize > maxIconSize then rowIconSize = maxIconSize end
 
     -- Apply theme backdrop to results frame
     resultsFrame:SetBackdrop(theme.resultsBackdrop)
@@ -5375,6 +5458,9 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     end
 
     local count = mmin(visibleN, MAX_BUTTON_POOL)
+    if pinSlots < visibleN then
+        count = mmin(count, pinSlots + MAX_SEARCH_RESULT_ROWS)
+    end
 
     local maxVisibleHeight = EasyFind.db.uiResultsHeight or 280
     local willScroll = visibleN * rowH > maxVisibleHeight
@@ -5438,7 +5524,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             -- to fit the name + path subtext stack with breathing room above
             -- the name and below the path so neither bleeds into the rep bar.
             local padL = theme.resultsPadLeft or 10
-            local entryRowH = entry.isFlat and (rowH + 20) or rowH
+            local entryRowH = entry.isFlat and (rowH + flatExtraH) or rowH
             resultRow:SetSize(resultsFrame:GetWidth() - padL * 2 - scrollInset, entryRowH)
             resultRow:ClearAllPoints()
             resultRow:SetPoint("TOPLEFT", resultsFrame.scrollChild, "TOPLEFT", padL, -yOffset)
@@ -5474,7 +5560,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     newType, newKey, newVal = "macro", "macrotext", "/cancelform [form]"
                 elseif data and data.outfitID then
                     newType, newKey, newVal = "action", "action", 0
-                elseif data and data.spellID then
+                elseif data and data.spellID and not IsSpellbookOnlyAbility(data) then
                     newType, newKey, newVal = "spell", "spell", data.spellName or data.spellID
                 elseif data and data.itemID and data.category == "Bag" then
                     newType, newKey, newVal = "item", "item", data.name
@@ -5573,7 +5659,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 resultRow.text:SetPoint("LEFT", resultRow, "LEFT", 2, 0)
                 resultRow.text:SetPoint("RIGHT", resultRow.pinToggle, "LEFT", -4, 0)
                 resultRow.text:SetText(entry.name)
-                resultRow.text:SetFontObject(theme.pathFont)
+                SetScaledFont(resultRow.text, theme.pathFont)
                 resultRow.text:SetTextColor(0.7, 0.7, 0.7, 1.0)
             elseif entry.isSectionHeader then
                 -- Lightweight inline section label: centered text
@@ -5731,7 +5817,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     local catIconDef = GetFlatCategoryIcon(data)
                     local leftAnchor
                     if catIconDef then
-                        local sz = entryRowH - 14
+                        local sz = entryRowH - 16
                         if catIconDef.atlas then
                             resultRow.flatCatIcon:SetAtlas(catIconDef.atlas)
                             resultRow.flatCatIcon:SetTexCoord(0, 1, 0, 1)
@@ -5760,10 +5846,10 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     end
 
                     resultRow.text:ClearAllPoints()
-                    resultRow.text:SetPoint("TOPLEFT", leftAnchor, "TOPRIGHT", 6, -5)
+                    resultRow.text:SetPoint("BOTTOMLEFT", leftAnchor, "RIGHT", 6, stackHalfGap)
                     resultRow.text:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
                     resultRow.text:SetText(entry.name)
-                    resultRow.text:SetFontObject(theme.pathFont)
+                    SetScaledFont(resultRow.text, theme.pathFont)
                     if isUnearnedCurrency then
                         resultRow.text:SetTextColor(0.5, 0.5, 0.5, 1.0)
                     else
@@ -5771,10 +5857,10 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     end
 
                     resultRow.pathSubtext:ClearAllPoints()
-                    resultRow.pathSubtext:SetPoint("TOPLEFT", resultRow.text, "BOTTOMLEFT", 0, -1)
+                    resultRow.pathSubtext:SetPoint("TOPLEFT", resultRow.text, "BOTTOMLEFT", 0, -stackGap)
                     resultRow.pathSubtext:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
                     resultRow.pathSubtext:SetText(GetFlatSubtext(data))
-                    resultRow.pathSubtext:SetFontObject(theme.leafFont)
+                    SetScaledFont(resultRow.pathSubtext, theme.leafFont)
                     resultRow.pathSubtext:SetTextColor(0.55, 0.55, 0.55, 1.0)
                     resultRow.pathSubtext:Show()
                 else
@@ -5792,7 +5878,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 
                     -- Style: path nodes vs leaf results, themed
                     if entry.isPathNode then
-                        resultRow.text:SetFontObject(theme.pathFont)
+                        SetScaledFont(resultRow.text, theme.pathFont)
                         if entry.isMatch then
                             resultRow.text:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1.0) -- gold for matches
                         else
@@ -5800,13 +5886,13 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                         end
                     elseif isUnearnedCurrency then
                         -- Gray out unearned currencies
-                        resultRow.text:SetFontObject(theme.leafFont)
+                        SetScaledFont(resultRow.text, theme.leafFont)
                         resultRow.text:SetTextColor(0.5, 0.5, 0.5, 1.0)
                     elseif entry.isMatch then
-                        resultRow.text:SetFontObject(theme.leafFont)
+                        SetScaledFont(resultRow.text, theme.leafFont)
                         resultRow.text:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1.0) -- gold for matches
                     else
-                        resultRow.text:SetFontObject(theme.leafFont)
+                        SetScaledFont(resultRow.text, theme.leafFont)
                         resultRow.text:SetTextColor(unpack(theme.leafColor))
                     end
                 end
@@ -5920,7 +6006,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 local leftAnchor
                 local catIconDef = FLAT_CATEGORY_ICONS.currency
                 if catIconDef and resultRow.flatCatIcon then
-                    local sz = entry.isFlat and (entryRowH - 14) or rowIconSize
+                    local sz = entry.isFlat and (entryRowH - 16) or rowIconSize
                     if catIconDef.atlas then
                         resultRow.flatCatIcon:SetAtlas(catIconDef.atlas)
                     else
@@ -6471,11 +6557,12 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     -- Lazily cache the option list so subsequent renders
                     -- can translate raw values (often opaque ints) into
                     -- the localized label the dropdown actually shows.
-                    if data.settingType == "dropdown" and data.settingOptions == nil
+                    if data.settingType == "dropdown" and not data.settingOptions
                        and ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.GetOptionsForVariable then
-                        data.settingOptions = ns.BlizzOptionsSearch.GetOptionsForVariable(data.settingVariable) or false
+                        local opts = ns.BlizzOptionsSearch.GetOptionsForVariable(data.settingVariable)
+                        if opts then data.settingOptions = opts end
                     end
-                    if data.settingOptions and rawVal ~= nil then
+                    if type(data.settingOptions) == "table" and rawVal ~= nil then
                         for oi = 1, #data.settingOptions do
                             local o = data.settingOptions[oi]
                             if o.value == rawVal or tostring(o.value) == tostring(rawVal) then
@@ -6512,13 +6599,13 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     or d.outfitID or d.transmogSetID or d.category == "Currency"
                     or (d.itemID and d.category == "Loot"))
                 if rightSideIcon then
-                    local rightSize = entryRowH - 18
+                    local rightSize = entryRowH - 20
                     if rightSize < (theme.iconSize or 16) then
                         rightSize = theme.iconSize or 16
                     end
                     resultRow.icon:SetSize(rightSize, rightSize)
                 else
-                    local flatIconSize = entryRowH - 14
+                    local flatIconSize = entryRowH - 16
                     resultRow.icon:SetSize(flatIconSize, flatIconSize)
                 end
             end
@@ -6569,10 +6656,10 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 
                 resultRow.text:ClearAllPoints()
                 if leftAnchor then
-                    resultRow.text:SetPoint("TOPLEFT", leftAnchor, "TOPRIGHT", 6, -7)
+                    resultRow.text:SetPoint("BOTTOMLEFT", leftAnchor, "RIGHT", 6, stackHalfGap)
                 else
                     local flatIndent = depth * indPx + 4
-                    resultRow.text:SetPoint("TOPLEFT", resultRow, "TOPLEFT", flatIndent, -7)
+                    resultRow.text:SetPoint("BOTTOMLEFT", resultRow, "LEFT", flatIndent, stackHalfGap)
                 end
                 if rightAnchor == resultRow then
                     resultRow.text:SetPoint("RIGHT", resultRow, "RIGHT", rightOffset, 0)
@@ -6581,7 +6668,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 end
 
                 resultRow.pathSubtext:ClearAllPoints()
-                resultRow.pathSubtext:SetPoint("TOPLEFT", resultRow.text, "BOTTOMLEFT", 0, -1)
+                resultRow.pathSubtext:SetPoint("TOPLEFT", resultRow.text, "BOTTOMLEFT", 0, -stackGap)
                 if rightAnchor == resultRow then
                     resultRow.pathSubtext:SetPoint("RIGHT", resultRow, "RIGHT", rightOffset, 0)
                 else
@@ -6619,7 +6706,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 if minH > actualH then
                     actualH = minH
                     resultRow:SetHeight(actualH)
-                    if resultRow.headerTab:IsShown() then
+                    if resultRow.headerTab and resultRow.headerTab:IsShown() then
                         resultRow.headerTab:SetHeight(actualH)
                     end
                     -- Reposition tree connectors for taller row
@@ -6639,7 +6726,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             -- Off-spec abilities: desaturate the icon and dim the text
             -- to match the spellbook's greyed-out treatment for spells
             -- that belong to a non-active spec line (offSpecID > 0).
-            if data and data.isOffSpec then
+            if IsSpellbookOnlyAbility(data) then
                 if resultRow.icon then
                     resultRow.icon:SetVertexColor(0.4, 0.4, 0.4, 1.0)
                 end
@@ -6722,14 +6809,14 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     end
 
     -- Size the results frame and scroll child
-    resultsFrame:SetHeight(padT + theme.resultsPadBot + visibleHeight)
+    resultsFrame:SetHeight(padT + padB + visibleHeight)
     resultsFrame.scrollChild:SetWidth(resultsFrame:GetWidth() - scrollInset)
     resultsFrame.scrollChild:SetHeight(totalContentHeight)
 
     -- Position scroll frame inside results frame (accounting for padding)
     resultsFrame.scrollFrame:ClearAllPoints()
     resultsFrame.scrollFrame:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 0, -padT)
-    resultsFrame.scrollFrame:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", 0, theme.resultsPadBot)
+    resultsFrame.scrollFrame:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", 0, padB)
 
     -- Reset scroll position on new search (preserve on expand/collapse toggle)
     if not preserveScroll then
@@ -6854,27 +6941,15 @@ end
 function UI:ToggleSettingCheckbox(data)
     if not data or not data.settingVariable then return end
     local var = data.settingVariable
-    local toggled = false
-    if Settings and Settings.GetSetting then
-        local sok, settObj = pcall(Settings.GetSetting, var)
-        if sok and settObj and settObj.GetValue and settObj.SetValue then
-            local vok, curVal = pcall(settObj.GetValue, settObj)
-            if vok then
-                if type(curVal) == "boolean" then
-                    pcall(settObj.SetValue, settObj, not curVal)
-                    toggled = true
-                elseif curVal == "1" or curVal == "0" then
-                    pcall(settObj.SetValue, settObj, curVal == "1" and "0" or "1")
-                    toggled = true
-                end
-            end
-        end
-    end
-    if not toggled and GetCVar then
-        local cur = GetCVar(var)
-        if cur and SetCVar then
-            SetCVar(var, cur == "1" and "0" or "1")
-        end
+    local curVal = ReadSettingVariable(var)
+    if type(curVal) == "boolean" then
+        WriteSettingVariable(var, not curVal)
+    elseif curVal == "1" or curVal == "0" then
+        WriteSettingVariable(var, curVal == "1" and "0" or "1")
+    elseif curVal == "true" or curVal == "false" then
+        WriteSettingVariable(var, curVal == "true" and "false" or "true")
+    elseif curVal == 1 or curVal == 0 then
+        WriteSettingVariable(var, curVal == 1 and 0 or 1)
     end
     -- Refresh the row so the checkbox state updates without closing
     -- the search panel. Keeps focus on the editbox so the user can
@@ -6900,17 +6975,7 @@ function UI:CycleSettingDropdown(data)
     end
     if not opts or #opts == 0 then return false end
 
-    local settObj
-    if Settings and Settings.GetSetting then
-        local sok, s = pcall(Settings.GetSetting, var)
-        if sok then settObj = s end
-    end
-    local curVal
-    if settObj and settObj.GetValue then
-        local vok, v = pcall(settObj.GetValue, settObj)
-        if vok then curVal = v end
-    end
-    if curVal == nil and GetCVar then curVal = GetCVar(var) end
+    local curVal = ReadSettingVariable(var)
 
     local curIdx
     for i = 1, #opts do
@@ -6923,13 +6988,7 @@ function UI:CycleSettingDropdown(data)
     local nextIdx = (curIdx or 0) % #opts + 1
     local nextVal = opts[nextIdx].value
 
-    local applied = false
-    if settObj and settObj.SetValue then
-        applied = pcall(settObj.SetValue, settObj, nextVal)
-    end
-    if not applied and SetCVar then
-        pcall(SetCVar, var, tostring(nextVal))
-    end
+    if not WriteSettingVariable(var, nextVal) then return false end
 
     self:RefreshResults()
     if searchFrame and searchFrame.editBox
@@ -7013,6 +7072,25 @@ function UI:HideResults()
     if resultsFrame.truncSeparator then
         resultsFrame.truncSeparator:Hide()
     end
+    cachedHierarchical = nil
+    self._lastRenderSig = nil
+    for i = 1, #resultButtons do
+        local row = resultButtons[i]
+        if row then
+            row.data = nil
+            row:Hide()
+            if row.icon then
+                row.icon.mountID = nil
+                row.icon.toyItemID = nil
+                row.icon.petID = nil
+                row.icon.spellID = nil
+                row.icon.outfitID = nil
+                row.icon.heirloomItemID = nil
+                row.icon.bagItemID = nil
+                row.icon.lootItemID = nil
+            end
+        end
+    end
     selectedIndex = 0
     toggleFocused = false
     self:UpdateSelectionHighlight(true)
@@ -7071,6 +7149,7 @@ function UI:SelectFirstResult()
     -- Only select if results are visible and there's actual data
     local first = resultButtons[1]
     if resultsFrame:IsShown() and first and first:IsShown() and first.data then
+        if ActivateSettingResult(first.data) then return end
         self:SelectResult(first.data)
     end
 end
@@ -7207,15 +7286,12 @@ function UI:UpdateSelectionHighlight(skipRefocus)
         end
     end
 
-    -- Bind Enter to the selected result button for any secure-action row
-    -- (spell/toy/macro/action/item) so the secure dispatch fires on keypress
-    -- the same as a mouse click. Without this, Enter on an ability would
-    -- fall through ActivateSelected → SelectResult, which intentionally
-    -- no-ops for spell/toy data because casting is protected.
+    -- Secure rows need Enter bound to the row button so protected actions fire.
     if not InCombatLockdown() then
         local selRow = selectedIndex > 0 and resultButtons[selectedIndex]
         local rd = selRow and selRow.data
-        local secureRow = rd and (rd.outfitID or rd.toyItemID or rd.spellID
+        local secureRow = rd and (rd.outfitID or rd.toyItemID
+            or (rd.spellID and not IsSpellbookOnlyAbility(rd))
             or rd.mountID or rd.macroIndex
             or (rd.itemID and rd.category == "Bag"))
         if secureRow then
@@ -7255,6 +7331,7 @@ function UI:ActivateSelected()
                     self:UpdateSelectionHighlight()
                 end
             elseif resultRow.data then
+                if ActivateSettingResult(resultRow.data) then return end
                 self:SelectResult(resultRow.data)
             end
             return
@@ -7415,6 +7492,612 @@ function UI:ApplyTransmogBrowseMode()
     end
 end
 
+local function ExtractSlot(value)
+    return value.slotIndex
+        or value.spellBookIndex
+        or value.spellBookItemSlotIndex
+        or value.spellBookItemIndex
+        or value.itemIndex
+        or value.slot
+        or value.index
+end
+
+local function ExtractBank(value)
+    return value.spellBank
+        or value.spellBookBank
+        or value.spellBookItemBank
+        or value.bank
+end
+
+local function ExtractSpecID(value)
+    local specID = value.specID
+    if specID ~= nil and specID ~= 0 then return specID end
+    if value.spellBookSpecID ~= nil then return value.spellBookSpecID end
+    local offSpecID = value.offSpecID
+    if offSpecID ~= nil and offSpecID ~= 0 then return offSpecID end
+    return specID
+end
+
+local function HasSlotMismatch(value, targetSlot, targetBank)
+    if not targetSlot then return false end
+    local valueSlot = ExtractSlot(value)
+    if not valueSlot then return false end
+    if valueSlot ~= targetSlot then return true end
+    if not targetBank then return false end
+    local valueBank = ExtractBank(value)
+    if valueBank ~= nil and valueBank ~= targetBank then return true end
+    return false
+end
+
+local function HasSpecMismatch(value, targetSpecID)
+    if targetSpecID == nil then return false end
+    local valueSpecID = ExtractSpecID(value)
+    return valueSpecID ~= nil and valueSpecID ~= targetSpecID
+end
+
+local function SpellRecordMatches(value, target, seen)
+    if not value then return false end
+    local vt = type(value)
+    if vt == "number" then
+        if target.spellBookSpecID ~= nil or target.spellBookIndex then return false end
+        return value == target.spellID or value == target.spellBookSpellID
+    end
+    if vt ~= "table" then return false end
+    seen = seen or {}
+    if seen[value] then return false end
+    seen[value] = true
+
+    local targetSpell = target.spellBookSpellID or target.spellID
+    local targetSlot = target.spellBookIndex
+    local targetBank = target.spellBookBank
+    local targetSpecID = target.spellBookSpecID
+
+    if targetSpecID ~= nil then
+        local specID = ExtractSpecID(value)
+        if specID and specID == targetSpecID then
+            local slot = ExtractSlot(value)
+            if slot and targetSlot and slot == targetSlot then return true end
+            if targetSpell and (value.spellID == targetSpell
+                or value.actionID == targetSpell) then return true end
+        end
+    end
+
+    if targetSlot then
+        local bank = ExtractBank(value)
+        local slot = ExtractSlot(value)
+        if slot == targetSlot
+            and (not targetBank or bank == nil or bank == targetBank)
+            and not HasSpecMismatch(value, targetSpecID) then
+            return true
+        end
+    end
+
+    -- When the target carries disambiguation hints (specID or slot),
+    -- spellID/name matches REQUIRE the value to carry a matching
+    -- specID or slot. Without that, a sibling row with no slot/spec
+    -- exposed (e.g. SpellBookItemInfo returned by a Button method)
+    -- would match by spellID alone and the wrong "Wrath" wins.
+    local needsDisambig = target.spellBookSpecID ~= nil
+        or target.spellBookIndex ~= nil
+    local function valueHasMatchingDisambig()
+        local valueSpec = ExtractSpecID(value)
+        if targetSpecID and valueSpec and valueSpec == targetSpecID then
+            return true
+        end
+        local valueSlot = ExtractSlot(value)
+        if targetSlot and valueSlot and valueSlot == targetSlot then
+            return true
+        end
+        return false
+    end
+
+    if targetSpell and (value.spellID == targetSpell
+        or value.spellId == targetSpell
+        or value.actionID == targetSpell
+        or value.actionId == targetSpell
+        or value.id == targetSpell) then
+        if not HasSpecMismatch(value, targetSpecID)
+            and not HasSlotMismatch(value, targetSlot, targetBank)
+            and (not needsDisambig or valueHasMatchingDisambig()) then
+            return true
+        end
+    end
+
+    local targetName = target.nameLower or (target.spellName and slower(target.spellName))
+    if targetName and value.name and slower(value.name) == targetName then
+        if not HasSpecMismatch(value, targetSpecID)
+            and not HasSlotMismatch(value, targetSlot, targetBank)
+            and (not needsDisambig or valueHasMatchingDisambig()) then
+            return true
+        end
+    end
+
+    if value.data and value.data ~= value and SpellRecordMatches(value.data, target, seen) then return true end
+    if value.elementData and value.elementData ~= value and SpellRecordMatches(value.elementData, target, seen) then return true end
+    if value.spellInfo and value.spellInfo ~= value and SpellRecordMatches(value.spellInfo, target, seen) then return true end
+    if value.spellBookItemInfo and value.spellBookItemInfo ~= value and SpellRecordMatches(value.spellBookItemInfo, target, seen) then return true end
+    if value.spellBookItemData and value.spellBookItemData ~= value and SpellRecordMatches(value.spellBookItemData, target, seen) then return true end
+    if value.itemInfo and value.itemInfo ~= value and SpellRecordMatches(value.itemInfo, target, seen) then return true end
+    return false
+end
+
+local function SpellFrameMatchesSelf(frame, target)
+    if not frame then return false end
+
+    local targetSlot = target.spellBookIndex
+    local targetBank = target.spellBookBank
+    if targetSlot and frame.GetItemSlotIndex then
+        local sok, slot = pcall(frame.GetItemSlotIndex, frame)
+        if sok and slot == targetSlot then
+            if not targetBank or not frame.GetSpellBookItemBank then
+                return true
+            end
+            local bok, bank = pcall(frame.GetSpellBookItemBank, frame)
+            if not bok or bank == nil or bank == targetBank then
+                return true
+            end
+        end
+    end
+
+    if frame.GetElementData then
+        local ok, data = pcall(frame.GetElementData, frame)
+        if ok and SpellRecordMatches(data, target) then return true end
+    end
+    if frame.GetSpellID then
+        local ok, id = pcall(frame.GetSpellID, frame)
+        if ok and SpellRecordMatches(id, target) then return true end
+    end
+    if frame.GetSpellBookItemInfo then
+        local ok, info = pcall(frame.GetSpellBookItemInfo, frame)
+        if ok and SpellRecordMatches(info, target) then return true end
+    end
+    if SpellRecordMatches(frame.data, target) then return true end
+    if SpellRecordMatches(frame.elementData, target) then return true end
+    if SpellRecordMatches(frame.spellInfo, target) then return true end
+    if SpellRecordMatches(frame.spellBookItemInfo, target) then return true end
+    if SpellRecordMatches(frame.spellBookItemData, target) then return true end
+    return false
+end
+
+local function SpellFrameMatches(frame, target)
+    if SpellFrameMatchesSelf(frame, target) then return true end
+    if frame and frame.GetParent then
+        local parent = frame:GetParent()
+        if parent and SpellFrameMatchesSelf(parent, target) then return true end
+        if parent and parent.GetParent then
+            local gp = parent:GetParent()
+            if gp and SpellFrameMatchesSelf(gp, target) then return true end
+        end
+    end
+    return false
+end
+
+local function SpellFrameTextMatches(frame, target)
+    local targetName = target and (target.nameLower or (target.spellName and slower(target.spellName)))
+    if not targetName then return false end
+    local text = GetButtonText(frame)
+    return text and slower(text) == targetName
+end
+
+local function GetTabSkillLineName(tab)
+    if not tab then return nil end
+    if type(tab.tabText) == "string" and tab.tabText ~= "" then
+        return tab.tabText
+    end
+    if tab.skillLineInfo and type(tab.skillLineInfo.name) == "string" then
+        return tab.skillLineInfo.name
+    end
+    if type(tab.skillLine) == "table" and type(tab.skillLine.name) == "string" then
+        return tab.skillLine.name
+    end
+    if tab.elementData and type(tab.elementData.name) == "string" then
+        return tab.elementData.name
+    end
+    if tab.GetElementData then
+        local ok, ed = pcall(tab.GetElementData, tab)
+        if ok and ed and type(ed.name) == "string" then return ed.name end
+    end
+    if tab.tooltipText and type(tab.tooltipText) == "string" then
+        return tab.tooltipText
+    end
+    if tab.GetText then
+        local ok, txt = pcall(tab.GetText, tab)
+        if ok and type(txt) == "string" and txt ~= "" then return txt end
+    end
+    local btnText = GetButtonText(tab)
+    if btnText and btnText ~= "" then return btnText end
+    return nil
+end
+
+local function FindSpellbookCategoryTab(frame, data)
+    local book = frame and frame.SpellBookFrame
+    local tabSystem = book and book.CategoryTabSystem
+    if not tabSystem or not tabSystem.GetChildren then return nil end
+
+    local targetName = data and data.spellBookCategoryName
+    local targetLower = targetName and slower(targetName)
+    local targetIsGeneral = targetLower == slower(_G.GENERAL or "general")
+
+    local seen = {}
+    local candidates = {}
+    local function add(tab)
+        if tab and not seen[tab] and tab.Click then
+            seen[tab] = true
+            candidates[#candidates + 1] = tab
+        end
+    end
+    if tabSystem.tabs then
+        for _, tab in ipairs(tabSystem.tabs) do add(tab) end
+    end
+    local children = { tabSystem:GetChildren() }
+    for i = 1, #children do
+        local child = children[i]
+        if child and child:IsShown() then add(child) end
+    end
+
+    local generalLower = slower(_G.GENERAL or "general")
+    local function isGeneralTab(tab)
+        local name = GetTabSkillLineName(tab)
+        if name and slower(name) == generalLower then return true end
+        local text = GetButtonText(tab)
+        if text and slower(text) == generalLower then return true end
+        return false
+    end
+
+    if targetIsGeneral then
+        for i = 1, #candidates do
+            if isGeneralTab(candidates[i]) then return candidates[i] end
+        end
+    else
+        local classLower = UnitClass and slower(UnitClass("player") or "") or ""
+        for i = 1, #candidates do
+            local name = GetTabSkillLineName(candidates[i])
+            if name and classLower ~= "" and slower(name) == classLower then
+                return candidates[i]
+            end
+        end
+        for i = 1, #candidates do
+            if not isGeneralTab(candidates[i]) then return candidates[i] end
+        end
+    end
+
+    return nil
+end
+
+local function GetSpellbookPagedFrame(frame)
+    local book = frame and frame.SpellBookFrame
+    return book and (book.PagedSpellsFrame or book) or nil
+end
+
+local function SpellbookPageButton(frame, key)
+    local paged = GetSpellbookPagedFrame(frame)
+    local controls = paged and paged.PagingControls
+    return controls and controls[key] or nil
+end
+
+local function CanClickButton(btn)
+    if not btn or not btn:IsShown() then return false end
+    if btn.IsEnabled then
+        local ok, enabled = pcall(btn.IsEnabled, btn)
+        if ok then return enabled end
+    end
+    return btn.Click ~= nil
+end
+
+local function ClickSpellbookPage(frame, key)
+    local btn = SpellbookPageButton(frame, key)
+    if not CanClickButton(btn) then return false end
+    return ClickButton(btn)
+end
+
+local function RewindSpellbookToFirstPage(frame)
+    for _ = 1, 12 do
+        if not ClickSpellbookPage(frame, "PrevPageButton") then break end
+    end
+end
+
+local function GetSpellbookDataProvider(paged)
+    if not paged then return nil, nil end
+    local function probe(frame)
+        if not frame then return nil end
+        if frame.GetDataProvider then
+            local ok, dp = pcall(frame.GetDataProvider, frame)
+            if ok and dp then return dp end
+        end
+        return nil
+    end
+    local dp = probe(paged)
+    if dp then return dp, paged end
+    if paged.GetChildren then
+        for _, child in ipairs({ paged:GetChildren() }) do
+            local cdp = probe(child)
+            if cdp then return cdp, child end
+            if child and child.GetChildren then
+                for _, gc in ipairs({ child:GetChildren() }) do
+                    local gdp = probe(gc)
+                    if gdp then return gdp, gc end
+                end
+            end
+        end
+    end
+    return nil, nil
+end
+
+local function FindSpellElementInSection(paged, data)
+    local dp = GetSpellbookDataProvider(paged)
+    if not dp then return nil end
+
+    local size = dp.GetSize and dp:GetSize() or 0
+    if size == 0 and not dp.Enumerate then return nil end
+
+    local targetSpellID = data.spellBookSpellID or data.spellID
+    local targetSlot = data.spellBookIndex
+    local targetBank = data.spellBookBank
+    local targetSpecID = data.spellBookSpecID
+    local targetNameLower = data.nameLower
+        or (data.spellName and slower(data.spellName))
+        or (data.name and slower(data.name))
+    local targetSectionLower = data.spellBookCategoryName
+        and slower(data.spellBookCategoryName)
+
+    local currentSection
+    local fallback
+    local function inspect(elem)
+        if elem then
+            local info = elem.spellBookItemInfo or elem.spellInfo or elem.spellBookItemData
+            local isSpellElement = info or elem.spellID or elem.actionID or ExtractSlot(elem)
+            if not isSpellElement then
+                local hdr = elem.name or elem.title or elem.text or elem.header
+                if type(hdr) == "string" and hdr ~= "" then
+                    currentSection = slower(hdr)
+                end
+            else
+                info = info or elem
+                local elemSlot = ExtractSlot(elem) or ExtractSlot(info)
+                local elemBank = ExtractBank(elem) or ExtractBank(info)
+                local elemSpecID = ExtractSpecID(elem) or ExtractSpecID(info)
+                local specOK = targetSpecID == nil or elemSpecID == nil
+                    or elemSpecID == targetSpecID
+                local match = false
+                if specOK and targetSlot and elemSlot == targetSlot
+                    and (not targetBank or elemBank == nil or elemBank == targetBank) then
+                    match = true
+                elseif specOK and targetSpellID
+                    and not HasSlotMismatch(elem, targetSlot, targetBank)
+                    and not HasSlotMismatch(info, targetSlot, targetBank)
+                    and (elem.spellID == targetSpellID
+                        or elem.actionID == targetSpellID
+                        or info.spellID == targetSpellID
+                        or info.actionID == targetSpellID) then
+                    match = true
+                elseif specOK and targetNameLower and info.name
+                    and not HasSlotMismatch(elem, targetSlot, targetBank)
+                    and not HasSlotMismatch(info, targetSlot, targetBank)
+                    and slower(info.name) == targetNameLower then
+                    match = true
+                end
+                if match then
+                    if targetSectionLower and currentSection == targetSectionLower then
+                        return elem
+                    end
+                    fallback = fallback or elem
+                end
+            end
+        end
+        return nil
+    end
+
+    if dp.Enumerate then
+        for a, b in dp:Enumerate() do
+            local found = inspect(b or a)
+            if found then return found end
+        end
+    else
+        for i = 1, size do
+            local elem = dp.Find and dp:Find(i)
+            local found = inspect(elem)
+            if found then return found end
+        end
+    end
+    return fallback
+end
+
+local function ScrollSpellbookToElement(paged, elem)
+    if not elem then return false end
+    local _, host = GetSpellbookDataProvider(paged)
+    if host and host.ScrollToElementData then
+        local alignCenter = ScrollBoxConstants and ScrollBoxConstants.AlignCenter
+        pcall(host.ScrollToElementData, host, elem, alignCenter)
+        return true
+    end
+    return false
+end
+
+local function FindVisibleButtonForElement(paged, elem)
+    if not elem then return nil end
+    local _, host = GetSpellbookDataProvider(paged)
+    if host and host.EnumerateFrames then
+        for _, f in host:EnumerateFrames() do
+            if f and f:IsShown() and f.GetElementData then
+                local ok, ed = pcall(f.GetElementData, f)
+                if ok and ed == elem then return f end
+            end
+        end
+    end
+    return nil
+end
+
+local function HideHighlightOnHover(frame)
+    if not frame or frame._efHideHighlightOnHover or not frame.HookScript then return end
+    frame._efHideHighlightOnHover = true
+    frame:HookScript("OnEnter", function()
+        local highlight = ns.Highlight
+        if highlight and highlight.HideHighlight then
+            highlight:HideHighlight()
+        end
+    end)
+    if frame.IsMouseOver and frame:IsMouseOver() then
+        local highlight = ns.Highlight
+        if highlight and highlight.HideHighlight then
+            highlight:HideHighlight()
+        end
+    end
+end
+
+local function FindSpellbookButton(root, target, scroll, candidate)
+    if not root then return nil end
+    local nextCandidate = candidate
+    if root.Click then
+        nextCandidate = root
+    elseif root.GetScript then
+        local ok, onClick = pcall(root.GetScript, root, "OnClick")
+        if ok and onClick then nextCandidate = root end
+    end
+    if root.EnumerateFrames and root.GetDataProvider then
+        if scroll then
+            Utils.ScrollBoxScrollTo(root, function(data)
+                return SpellRecordMatches(data, target)
+            end)
+        end
+        local hasID = target and (target.spellBookSpellID or target.spellID)
+        local btn = Utils.ScrollBoxFindButton(root, function(frame)
+            if SpellFrameMatches(frame, target) then return true end
+            if not hasID and SpellFrameTextMatches(frame, target) then return true end
+            return false
+        end)
+        if btn then return btn end
+    end
+    local hasID = target and (target.spellBookSpellID or target.spellID)
+    if SpellFrameMatches(root, target) then
+        return nextCandidate or root
+    end
+    if not hasID and SpellFrameTextMatches(root, target) then
+        return nextCandidate or root
+    end
+    if root.GetChildren then
+        for _, child in ipairs({ root:GetChildren() }) do
+            if child and child:IsShown() then
+                local found = FindSpellbookButton(child, target, scroll, nextCandidate)
+                if found then return found end
+            end
+        end
+    end
+    return nil
+end
+
+function UI:OpenAbilityInSpellbook(data)
+    local highlight = ns.Highlight
+    local categoryClicked = false
+    local rewound = false
+    local triedElementScroll = false
+    local targetElement
+    local pagesAdvanced = 0
+    local MAX_PAGES = 20
+
+    local function openFrame()
+        local frame = _G["PlayerSpellsFrame"]
+        if frame and frame:IsShown() then
+            if highlight and highlight.IsTabSelected
+               and not highlight:IsTabSelected("PlayerSpellsFrame", 3) then
+                local tab = highlight.GetTabButton
+                    and highlight:GetTabButton("PlayerSpellsFrame", 3)
+                ClickButton(tab)
+                return true
+            end
+            return false
+        end
+
+        local util = _G.PlayerSpellsUtil
+        if util and util.TogglePlayerSpellsFrame then
+            pcall(util.TogglePlayerSpellsFrame, 3)
+        else
+            ClickButton(_G["PlayerSpellsMicroButton"])
+        end
+        return true
+    end
+
+    local function reveal(attempt)
+        local needsRetry = openFrame()
+        local frame = _G["PlayerSpellsFrame"]
+        if needsRetry then
+            if attempt < 36 then
+                C_Timer.After(0.05, function() reveal(attempt + 1) end)
+            end
+            return
+        end
+        local root = frame and frame.SpellBookFrame
+        if not root or not root:IsShown() then
+            if attempt < 36 then
+                C_Timer.After(0.05, function() reveal(attempt + 1) end)
+            end
+            return
+        end
+
+        if not categoryClicked then
+            local tab = FindSpellbookCategoryTab(frame, data)
+            if tab then
+                categoryClicked = true
+                rewound = false
+                triedElementScroll = false
+                targetElement = nil
+                pagesAdvanced = 0
+                ClickButton(tab)
+                if attempt < 36 then
+                    C_Timer.After(0, function() reveal(attempt + 1) end)
+                end
+                return
+            end
+        end
+
+        local paged = GetSpellbookPagedFrame(frame) or root
+
+        if not triedElementScroll then
+            triedElementScroll = true
+            targetElement = FindSpellElementInSection(paged, data)
+            if targetElement and ScrollSpellbookToElement(paged, targetElement) then
+                C_Timer.After(0, function() reveal(attempt + 1) end)
+                return
+            end
+        end
+
+        if targetElement then
+            local elementBtn = FindVisibleButtonForElement(paged, targetElement)
+            if elementBtn and highlight then
+                highlight:HighlightFrame(elementBtn)
+                HideHighlightOnHover(elementBtn)
+                return
+            end
+        end
+
+        local btn = FindSpellbookButton(paged, data, false)
+        if btn and highlight then
+            highlight:HighlightFrame(btn)
+            HideHighlightOnHover(btn)
+            return
+        end
+
+        if not rewound then
+            RewindSpellbookToFirstPage(frame)
+            rewound = true
+            pagesAdvanced = 0
+            C_Timer.After(0, function() reveal(attempt + 1) end)
+            return
+        end
+
+        if pagesAdvanced < MAX_PAGES
+           and ClickSpellbookPage(frame, "NextPageButton") then
+            pagesAdvanced = pagesAdvanced + 1
+            C_Timer.After(0, function() reveal(attempt + 1) end)
+            return
+        end
+        if attempt < 36 then
+            C_Timer.After(0.05, function() reveal(attempt + 1) end)
+        end
+    end
+
+    C_Timer.After(0.05, function() reveal(1) end)
+end
+
 function UI:SelectResult(data, forceGuide)
     if not data then return end
     local useFast = not forceGuide
@@ -7562,10 +8245,12 @@ function UI:SelectResult(data, forceGuide)
     -- Toy: handled by SecureActionButton on mousedown (UseToyByItemID is protected)
     if data.toyItemID then return end
 
-    -- Ability: cast via SecureActionButton (CastSpell is protected). The spell
-    -- attribute was set when the row was bound, so the click already fired the
-    -- cast — don't try to walk the (no-op) steps[] guide here.
-    if data.spellID then return end
+    if data.spellID then
+        if forceGuide or IsSpellbookOnlyAbility(data) then
+            self:OpenAbilityInSpellbook(data)
+        end
+        return
+    end
 
     -- Pet: summon/dismiss. Stored petID can go stale (released, caged,
     -- traded) -- look up a fresh owned GUID by speciesID first, fall

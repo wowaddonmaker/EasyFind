@@ -33,8 +33,8 @@ local ExpandZoneAbbrev = MapUtils.ExpandZoneAbbrev
 local BuildFullBreadcrumb = MapUtils.BuildBreadcrumb
 
 -- Result row layout
-local ROW_HEIGHT       = 24
-local ROW_ICON_SIZE    = 18
+local ROW_HEIGHT       = 22
+local ROW_ICON_SIZE    = 17
 local SECTION_HEADER_H = 22
 local MAX_ROW_POOL     = 300
 local ROW_POOL_RETAIN  = 80
@@ -124,6 +124,42 @@ local sessionCollapsed = {}
 local sessionCollapsedQuery = nil
 local lastQueryGen = 0
 local pendingSearchTimer
+local pendingSearchFrame
+local pendingSearchText
+local pendingSearchGrew
+local pendingSearchEditBox
+local function CancelPendingSearch()
+    if pendingSearchFrame then pendingSearchFrame:Hide() end
+    pendingSearchTimer = nil
+    pendingSearchText = nil
+    pendingSearchGrew = nil
+    pendingSearchEditBox = nil
+end
+local function SchedulePendingSearch(editBox, typed, grew)
+    if not pendingSearchFrame then
+        pendingSearchFrame = CreateFrame("Frame")
+        pendingSearchFrame:Hide()
+        pendingSearchFrame:SetScript("OnUpdate", function(self)
+            self:Hide()
+            local box = pendingSearchEditBox
+            local text = pendingSearchText or ""
+            local shouldAutocomplete = pendingSearchGrew
+            pendingSearchTimer = nil
+            pendingSearchText = nil
+            pendingSearchGrew = nil
+            pendingSearchEditBox = nil
+            MapTab:RunSearch(text)
+            if shouldAutocomplete and box and box.UpdateAutocomplete then
+                box:UpdateAutocomplete()
+            end
+        end)
+    end
+    pendingSearchTimer = true
+    pendingSearchText = typed
+    pendingSearchGrew = grew
+    pendingSearchEditBox = editBox
+    pendingSearchFrame:Show()
+end
 -- Tracks the query that produced the currently-displayed results. The
 -- search box text can diverge from this (e.g. clicking a recent-search
 -- row runs a search without populating the box), so result-click and
@@ -734,10 +770,7 @@ local function TrimHeaderPool()
 end
 
 ReleaseMapTabMemory = function(trimFrames)
-    if pendingSearchTimer then
-        pendingSearchTimer:Cancel()
-        pendingSearchTimer = nil
-    end
+    if pendingSearchTimer then CancelPendingSearch() end
     ReleaseAllRows()
     ReleaseAllHeaders()
     if panel and panel.scrollChild then panel.scrollChild:SetHeight(1) end
@@ -1878,12 +1911,7 @@ local function CreateSearchBox(parent)
         onTypedChanged = function(self, typed, _, grew)
             lastTypeTime = GetTime()
             UpdateClear(self)
-            if pendingSearchTimer then pendingSearchTimer:Cancel(); pendingSearchTimer = nil end
-            pendingSearchTimer = C_Timer.NewTimer(0, function()
-                pendingSearchTimer = nil
-                MapTab:RunSearch(typed)
-                if grew and self.UpdateAutocomplete then self:UpdateAutocomplete() end
-            end)
+            SchedulePendingSearch(self, typed, grew)
         end,
         onAccepted = function(text, source)
             if text and text ~= "" then MapTab:RunSearch(text) end
@@ -1915,18 +1943,11 @@ local function CreateSearchBox(parent)
                 return
             end
         end
-        -- An active autocomplete suffix is rendered as highlighted
-        -- text. WoW's default arrow-key handling on a highlighted
-        -- selection fires OnTextChanged synchronously, which schedules
-        -- a C_Timer.NewTimer(0) to RunSearch on the next frame —
-        -- RenderRows resets navRowIndex to 0 and drops the move we're
-        -- about to make. Cancel that timer for nav keys before
-        -- HandleNavKey runs so the navigation actually sticks.
+        -- Keep nav keys from racing a pending search render.
         if pendingSearchTimer
            and (key == "DOWN" or key == "UP"
                 or (IsControlKeyDown() and (key == "J" or key == "K"))) then
-            pendingSearchTimer:Cancel()
-            pendingSearchTimer = nil
+            CancelPendingSearch()
         end
         HandleNavKey(key, true)
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
