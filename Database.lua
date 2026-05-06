@@ -1869,45 +1869,38 @@ function Database:PopulateDynamicAbilities()
     local BANK = (Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player) or 0
     local SPELL_TYPE = Enum and Enum.SpellBookItemType and Enum.SpellBookItemType.Spell
 
-    local seen = {}  -- spellID -> true (dedupe across skill lines)
+    local seen = {}
 
     local numLines = SBOOK.GetNumSpellBookSkillLines() or 0
     for tab = 1, numLines do
         local lineInfo = SBOOK.GetSpellBookSkillLineInfo(tab)
         local offset = lineInfo and lineInfo.itemIndexOffset or 0
         local numSpells = lineInfo and lineInfo.numSpellBookItems or 0
+        local lineName = lineInfo and lineInfo.name
+        local lineSpecID = lineInfo and lineInfo.specID
+        local offSpecID = lineInfo and lineInfo.offSpecID
+        if (lineSpecID == nil or lineSpecID == 0)
+            and offSpecID and offSpecID ~= 0 then
+            lineSpecID = offSpecID
+        end
         for s = offset + 1, offset + numSpells do
             local itemInfo = SBOOK.GetSpellBookItemInfo(s, BANK)
-            -- Skip flyout placeholders, passives we don't want, etc.
+            local seenKey = itemInfo and itemInfo.actionID
+                and (tostring(itemInfo.actionID) .. ":" .. tostring(tab)
+                    .. ":" .. tostring(lineSpecID or ""))
             if itemInfo
                and (not SPELL_TYPE or itemInfo.itemType == SPELL_TYPE)
                and itemInfo.name and itemInfo.name ~= ""
-               and itemInfo.actionID and not seen[itemInfo.actionID] then
-                seen[itemInfo.actionID] = true
+               and itemInfo.actionID and seenKey and not seen[seenKey] then
+                seen[seenKey] = true
                 local name = itemInfo.name
                 local subName = itemInfo.subName
                 local displayName = (subName and subName ~= "") and (name .. " (" .. subName .. ")") or name
                 local nameLower = slower(displayName)
-                -- "ability" / "abilities" let multi-word queries scope
-                -- to abilities ("feral abilities" matches all spec
-                -- abilities for that line). "spell" / "cast" / similar
-                -- generics are deliberately omitted: they used to drag
-                -- every ability into single-letter-typo searches via
-                -- fuzzy matching. The "ability"/"abilities" pair is
-                -- safer because the only nearby word ("agility") is
-                -- in FUZZY_BLOCKLIST.
-                -- Spec / skill-line name (e.g. "Feral", "Restoration")
-                -- is included so multi-word queries like "feral
-                -- abilities" can scope to a spec.
                 local kw = { slower(name), "ability", "abilities" }
-                if lineInfo and lineInfo.name and lineInfo.name ~= "" then
-                    kw[#kw + 1] = slower(lineInfo.name)
+                if lineName and lineName ~= "" then
+                    kw[#kw + 1] = slower(lineName)
                 end
-                -- offSpecID > 0 means this line belongs to a non-active
-                -- specialization (the greyed-out tabs in the spellbook).
-                -- We still index the spells so users can search across all
-                -- specs, but mark them so the row renderer can desaturate
-                -- the icon and dim the text the way the spellbook does.
                 local isOffSpec = lineInfo and lineInfo.offSpecID
                     and lineInfo.offSpecID ~= 0
                 uiSearchData[#uiSearchData + 1] = {
@@ -1916,17 +1909,19 @@ function Database:PopulateDynamicAbilities()
                     keywords = kw,
                     keywordsLower = kw,
                     category = "Ability",
-                    -- Spec / class skill-line name ("Feral", "Druid", "Restoration").
-                    -- Used by the row renderer to show "Feral Ability" subtext
-                    -- instead of the bare "Ability" category label.
                     treeName = lineInfo and lineInfo.name,
                     isOffSpec = isOffSpec,
+                    isPassive = itemInfo.isPassive,
+                    isSpellbookOnly = isOffSpec or itemInfo.isPassive,
                     icon = itemInfo.iconID,
                     spellID = itemInfo.actionID,
+                    spellBookSpellID = itemInfo.spellID or itemInfo.actionID,
+                    spellBookIndex = s,
+                    spellBookBank = BANK,
+                    spellBookCategoryIndex = tab,
+                    spellBookCategoryName = lineName,
+                    spellBookSpecID = lineSpecID,
                     spellName = name,
-                    -- No multi-step guide: SelectResult treats spellID
-                    -- as a direct cast target; drag-to-pickup uses it
-                    -- to put the spell on the cursor.
                     steps = { { spellID = itemInfo.actionID } },
                 }
             end
@@ -4047,6 +4042,7 @@ end
 function Database:SearchUI(query, skipCategories)
     if not query or query == "" or #query < 2 then
         prevQuery = ""
+        wipe(prevCandidates)
         wipe(resultsBuf)
         return resultsBuf
     end
@@ -4058,7 +4054,7 @@ function Database:SearchUI(query, skipCategories)
     if ssub(query, queryLen, queryLen) == " " then
         query = query:match("^(.-)%s+$") or query
         queryLen = #query
-        if queryLen == 0 then prevQuery = ""; wipe(resultsBuf); return resultsBuf end
+        if queryLen == 0 then prevQuery = ""; wipe(prevCandidates); wipe(resultsBuf); return resultsBuf end
     end
 
     wipe(resultsQueryWords)
@@ -4126,6 +4122,7 @@ function Database:SearchUI(query, skipCategories)
         end
         if not searchSet or #searchSet == 0 then
             wipe(resultsBuf)
+            wipe(prevCandidates)
             prevQuery = query
             prevSkipKey = skipKey
             return resultsBuf

@@ -704,6 +704,20 @@ function Utils.GetButtonText(btn)
     return nil
 end
 
+function Utils.IsFrameOrChildMouseOver(frame)
+    if not frame or not frame:IsShown() then return false end
+    if frame:IsMouseOver() then return true end
+    if frame.GetChildren then
+        for i = 1, select("#", frame:GetChildren()) do
+            local child = select(i, frame:GetChildren())
+            if child and Utils.IsFrameOrChildMouseOver(child) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 -- Collects all text from a frame into a single string for fuzzy matching.
 function Utils.GetAllFrameText(frame)
     if not frame then return nil end
@@ -1179,6 +1193,18 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
         })
         local bg = ns.DARK_PANEL_BG
         if bg then menu:SetBackdropColor(bg[1], bg[2], bg[3], bg[4]) end
+        local function MenuHasMouse(self)
+            if self:IsMouseOver() then return true end
+            if self.rows then
+                for i = 1, #self.rows do
+                    local row = self.rows[i]
+                    if row and row:IsShown() and row:IsMouseOver() then
+                        return true
+                    end
+                end
+            end
+            return false
+        end
         menu:SetScript("OnShow", function(self)
             self._showedAt = GetTime()
             self._outsideSince = nil
@@ -1191,9 +1217,14 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             self._hasEntered = false
             self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
             self:UnregisterEvent("GLOBAL_MOUSE_UP")
+            if self.rows then
+                for i = 1, #self.rows do
+                    self.rows[i]:Hide()
+                end
+            end
         end)
         menu:SetScript("OnUpdate", function(self)
-            if self:IsMouseOver() then
+            if MenuHasMouse(self) then
                 self._outsideSince = nil
                 self._hasEntered = true
                 return
@@ -1211,7 +1242,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
         menu:SetScript("OnEvent", function(self, event)
             if event ~= "GLOBAL_MOUSE_DOWN" and event ~= "GLOBAL_MOUSE_UP" then return end
             if self._showedAt and (GetTime() - self._showedAt) < (self.clickGrace or 0.05) then return end
-            if not self:IsMouseOver() then self:Hide() end
+            if not MenuHasMouse(self) then self:Hide() end
         end)
     end
 
@@ -1231,9 +1262,9 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             shown = shown + 1
             local row = menu.rows[shown]
             if not row then
-                row = CreateFrame("Button", nil, menu)
+                row = CreateFrame("Button", nil, UIParent)
+                row:EnableMouse(true)
                 row:SetHeight(rowH)
-                row:RegisterForClicks("LeftButtonUp")
                 row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
                 row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 row.label:SetPoint("LEFT", row, "LEFT", 8, 0)
@@ -1242,7 +1273,10 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 row.icon:SetPoint("RIGHT", row, "RIGHT", -8, 0)
                 menu.rows[shown] = row
             end
+            row:SetParent(UIParent)
+            row:SetFrameStrata(menu:GetFrameStrata())
             row:SetHeight(rowH)
+            row:SetFrameLevel(menu:GetFrameLevel() + 20 + shown)
             row.label:SetText(def.text or "")
             if def.icon then
                 row.icon:SetTexture(def.icon)
@@ -1251,10 +1285,12 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 row.icon:Hide()
             end
             local onClick = def.onClick
-            row:SetScript("OnClick", function()
+            row:SetScript("OnMouseDown", function(_, button)
+                if button ~= "LeftButton" then return end
                 menu:Hide()
                 if onClick then onClick() end
             end)
+            row:SetScript("OnClick", nil)
             row:ClearAllPoints()
             if shown == 1 then
                 row:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4)
@@ -1264,12 +1300,14 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 row:SetPoint("TOPRIGHT", lastRow, "BOTTOMRIGHT", 0, 0)
             end
             row:Show()
+            if row.Raise then row:Raise() end
             lastRow = row
         end
     end
     for i = shown + 1, #menu.rows do
         menu.rows[i]:Hide()
         menu.rows[i]:SetScript("OnClick", nil)
+        menu.rows[i]:SetScript("OnMouseDown", nil)
     end
 
     menu:SetSize(width, rowH * shown + 8)

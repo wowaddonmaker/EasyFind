@@ -273,22 +273,80 @@ BlizzOptionsSearch.GetTooltipForVariable = GetTooltipForVariable
 -- enumerated. Cached per variable since layouts don't change after
 -- registration. False sentinel = "we looked, none available".
 local optionsByVariable = {}
-local function NormalizeOptionTable(opts)
+local function NormalizeOptionTable(opts, setting)
     if type(opts) == "function" then
-        local ok, o = pcall(opts)
+        local ok, o = pcall(opts, setting)
+        if not ok then
+            ok, o = pcall(opts)
+        end
         if not ok then return nil end
         opts = o
     end
     if type(opts) ~= "table" then return nil end
     local norm = {}
     for _, o in ipairs(opts) do
-        if type(o) == "table" and o.value ~= nil then
-            local lab = o.label or o.text or o.name or tostring(o.value)
-            tinsert(norm, { value = o.value, label = lab })
+        if type(o) == "table" then
+            local value = o.value
+            if value == nil then value = o.cvarValue end
+            if value == nil and type(o.data) == "table" then
+                value = o.data.value
+                if value == nil then value = o.data.cvarValue end
+                if value == nil then value = o.data.id end
+            elseif value == nil then
+                value = o.data
+            end
+            if value == nil and o.GetValue then
+                local ok, v = pcall(o.GetValue, o)
+                if ok then value = v end
+            end
+            if value ~= nil then
+                local label = o.label or o.text or o.name
+                if not label and type(o.data) == "table" then
+                    label = o.data.label or o.data.text or o.data.name
+                end
+                if not label and o.GetText then
+                    local ok, text = pcall(o.GetText, o)
+                    if ok then label = text end
+                end
+                if not label and o.GetName then
+                    local ok, name = pcall(o.GetName, o)
+                    if ok then label = name end
+                end
+                tinsert(norm, { value = value, label = label or tostring(value) })
+            end
+        elseif o ~= nil then
+            tinsert(norm, { value = o, label = tostring(o) })
+        end
+    end
+    if #norm == 0 then
+        for value, label in pairs(opts) do
+            if type(label) ~= "table" then
+                tinsert(norm, { value = value, label = tostring(label) })
+            end
         end
     end
     if #norm == 0 then return nil end
     return norm
+end
+
+local function GetInitializerOptions(init, setting)
+    local d = init and init.data
+    local found
+    if type(d) == "table" then
+        found = NormalizeOptionTable(d.options, setting)
+            or NormalizeOptionTable(d.dropdownOptions, setting)
+            or NormalizeOptionTable(d.values, setting)
+            or NormalizeOptionTable(d.valueOptions, setting)
+    end
+    if not found and init and init.GetOptions then
+        local ok, opts = pcall(init.GetOptions, init)
+        if ok then found = NormalizeOptionTable(opts, setting) end
+    end
+    if not found and setting and setting.GetOptions then
+        local ok, opts = pcall(setting.GetOptions, setting)
+        if ok then found = NormalizeOptionTable(opts, setting) end
+    end
+    return found
 end
 
 local function GetOptionsForVariable(variable)
@@ -318,9 +376,7 @@ local function GetOptionsForVariable(variable)
                     if setting and setting.GetVariable then
                         local vok, v = pcall(setting.GetVariable, setting)
                         if vok and v == variable then
-                            local d = init.data
-                            local opts = (type(d) == "table") and d.options or nil
-                            found = NormalizeOptionTable(opts)
+                            found = GetInitializerOptions(init, setting)
                             return
                         end
                     end
@@ -338,7 +394,7 @@ local function GetOptionsForVariable(variable)
     if type(list) == "table" then
         for _, cat in ipairs(list) do scan(cat) end
     end
-    optionsByVariable[variable] = found or false
+    if found then optionsByVariable[variable] = found end
     return found
 end
 BlizzOptionsSearch.GetOptionsForVariable = GetOptionsForVariable
@@ -739,7 +795,10 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
                 local d = init.data
                 local opts = (type(d) == "table") and d.options or nil
                 if type(opts) == "function" then
-                    local ook, o = pcall(opts)
+                    local ook, o = pcall(opts, setting)
+                    if not ook then
+                        ook, o = pcall(opts)
+                    end
                     if ook then opts = o end
                 end
                 if type(opts) == "table" and opts.minValue and opts.maxValue then
@@ -761,15 +820,8 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
                 -- objects. We normalize to { value, label } pairs and
                 -- skip if the table doesn't look enumerable.
                 local settingOptions
-                if resolvedType == "dropdown" and type(opts) == "table" then
-                    local norm = {}
-                    for _, o in ipairs(opts) do
-                        if type(o) == "table" and o.value ~= nil then
-                            local lab = o.label or o.text or o.name or tostring(o.value)
-                            tinsert(norm, { value = o.value, label = lab })
-                        end
-                    end
-                    if #norm > 0 then settingOptions = norm end
+                if resolvedType == "dropdown" then
+                    settingOptions = GetInitializerOptions(init, setting)
                 end
 
                 local nameLower = slower(settingName)
