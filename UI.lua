@@ -29,7 +29,6 @@ local GetCursorPosition  = GetCursorPosition
 local InCombatLockdown   = InCombatLockdown
 local wipe               = wipe
 
-local EYE_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\eye"
 local REP_BAR_WIDTH = 100
 
 local searchFrame
@@ -216,7 +215,7 @@ local function GetActionHint(data)
     if data.spellID and data.category == "Ability" then return "Select to cast" end
     if data.macroIndex then return "Select to run macro" end
     if data.itemID and data.category == "Bag" then
-        if data.equipLoc and data.equipLoc ~= "" then
+        if data.isEquippable or (data.equipLoc and data.equipLoc ~= "") then
             return "Select to equip item"
         end
         return "Select to use item"
@@ -297,15 +296,7 @@ function UI:SyncOutfitPins()
 end
 
 local function ShowPinPopup(_, isPinned, onPinAction, onGuide, onAddAlias)
-    local rows = {}
-    if onGuide then
-        rows[#rows + 1] = { text = "Guide", icon = EYE_ICON_TEX, onClick = onGuide }
-    end
-    rows[#rows + 1] = { text = isPinned and "Unpin" or "Pin", onClick = onPinAction }
-    if onAddAlias then
-        rows[#rows + 1] = { text = "Add Alias", onClick = onAddAlias }
-    end
-    Utils.ShowCursorMenu("EasyFindPinPopup", rows, {
+    Utils.ShowPinMenu("EasyFindPinPopup", isPinned, onPinAction, onGuide, onAddAlias, {
         strata = "FULLSCREEN_DIALOG",
         width = 96,
         rowHeight = 22,
@@ -420,7 +411,7 @@ THEMES["Modern"] = {
     pathColorHover  = {1.0, 1.0, 1.0, 1.0},      -- white (hover state)
     leafColor       = {0.9, 0.9, 0.9},           -- light grey items
     -- tree lines - warm gold (single colour at every depth)
-    showTreeLines   = true,
+    showTreeLines   = false,
     indentColors    = {
         {0.85, 0.65, 0.15, 0.80},
         {0.85, 0.65, 0.15, 0.80},
@@ -438,7 +429,7 @@ THEMES["Modern"] = {
     -- header bar disabled (headerTab used instead)
     showHeaderBar   = false,
     -- header tab: quest-log style with atlas textures
-    showHeaderTab   = true,
+    showHeaderTab   = false,
     headerTabAtlas  = "QuestLog-tab",             -- WoW atlas for tab background
     headerHighlightAlpha = 0.40,                  -- highlight layer alpha
     -- +/- button atlases
@@ -839,6 +830,7 @@ function UI:CreateSearchFrame()
         -- two searches (the user's and the autocomplete suffix's),
         -- doubling per-keystroke cost.
         if not userInput then return end
+        if self.IsAutocompleteBackspaceStrip and self:IsAutocompleteBackspaceStrip() then return end
         historyIndex = 0
         historyDraft = ""
         if pendingUISearchTimer then pendingUISearchTimer:Cancel() end
@@ -973,17 +965,10 @@ function UI:CreateSearchFrame()
             end
             return nil
         end,
+        onAccepted = function(text)
+            if text and text ~= "" then UI:OnSearchTextChanged(text, true) end
+        end,
     })
-
-    -- After Tab confirms an autocomplete suggestion, re-run the search
-    -- so the result list reflects the now-full text. Without this the
-    -- visible results stay on the original typed prefix even though the
-    -- editbox shows the confirmed candidate.
-    editBox:HookScript("OnTabPressed", function(self)
-        local current = self:GetText() or ""
-        if current == "" then return end
-        UI:OnSearchTextChanged(current, true)
-    end)
 
     -- Shift+click link insertion: when the search bar has focus, shift-clicking
     -- an item in bags / an achievement in the achievement frame / a spell in
@@ -1157,6 +1142,17 @@ function UI:CreateSearchFrame()
         if boundAction and string.sub(boundAction, 1, 9) == "EASYFIND_" then
             Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
             return
+        end
+        if self.HasAutocomplete and self:HasAutocomplete() and self.AcceptAutocomplete then
+            if key == "RIGHT" or key == "ARROWRIGHT" then
+                self:AcceptAutocomplete("right")
+                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+                return
+            elseif key == "L" and IsControlKeyDown() then
+                self:AcceptAutocomplete("ctrl-l")
+                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+                return
+            end
         end
         -- ENTER with autocomplete highlight visible: WoW's default
         -- editbox processing treats the first Enter as "deselect"
@@ -3603,7 +3599,6 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     -- listens for GLOBAL_MOUSE_DOWN regardless of button) but leaves the
     -- filter dropdown stuck open.
     dropdown:SetScript("OnUpdate", function(self)
-        if self._demoSuspend then return end
         if self:IsShown()
            and (IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton")) then
             if not self:IsMouseOver() and not toggleBtn:IsMouseOver() then
@@ -3632,10 +3627,6 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     end)
 
     searchFrame.filterDropdown = dropdown
-    -- Expose the checkRows table so the demo system can hover/click
-    -- specific filter rows (e.g., "map") by key without duplicating the
-    -- layout logic.
-    dropdown.checkRows = checkRows
 end
 
 function EnsureResultButton(index)
@@ -3763,12 +3754,11 @@ local INDENT_COLORS = {
 local INDENT_PX  = 20  -- pixels per depth level (icon 16 + 4 gap)
 local LINE_X_OFF = 10  -- horizontal offset within each depth column (clears tab rounded corner)
 local LINE_W     = 2   -- connector line thickness
-local MAX_DEPTH  = #INDENT_COLORS
+local MAX_DEPTH  = 0
 
 -- Session-only collapse state for path nodes (cleared on every new search)
 local collapsedNodes = {}   -- key = "name_depth", value = true
 local cachedHierarchical    -- last full hierarchical list for re-rendering after toggle
-local expandedContainers = {}  -- tracks which containers have had children injected
 
 local flatEntries = {}
 local flatCombined = {}
@@ -3822,62 +3812,6 @@ local function FlatNameLess(ra, rb)
 end
 
 -- Expand a container node: inject its database children into cachedHierarchical.
-local function ExpandContainer(entry, entryIndex)
-    if not entry or not entry.data or not entry.isContainer then return end
-    local key = entry.name .. "_" .. (entry.depth or 0)
-    if expandedContainers[key] then return end  -- already expanded
-
-    local children = ns.Database:GetContainerChildren(entry.data)
-    if #children == 0 then return end
-
-    local childDepth = (entry.depth or 0) + 1
-    -- Build child entries and insert right after the container in cachedHierarchical
-    local toInsert = {}
-    for _, childData in ipairs(children) do
-        -- Check if this child is itself a container
-        local childIsContainer = false
-        local fp = {}
-        if childData.path then
-            for _, p in ipairs(childData.path) do fp[#fp + 1] = p end
-        end
-        fp[#fp + 1] = childData.name
-        -- Quick check: any item in the DB has this as a path prefix?
-        for _, dbItem in ipairs(ns.Database.uiSearchData or {}) do
-            if dbItem.path then
-                local match = true
-                for i = 1, #fp do
-                    if not dbItem.path[i] or dbItem.path[i] ~= fp[i] then
-                        match = false; break
-                    end
-                end
-                if match and #dbItem.path >= #fp then
-                    childIsContainer = true; break
-                end
-            end
-        end
-
-        toInsert[#toInsert + 1] = {
-            name = childData.name,
-            depth = childDepth,
-            isPathNode = childIsContainer,
-            data = childData,
-            isContainer = childIsContainer or nil,
-        }
-        -- Start child containers collapsed too
-        if childIsContainer then
-            collapsedNodes[childData.name .. "_" .. childDepth] = true
-        end
-    end
-
-    -- Insert after entryIndex
-    for i = #toInsert, 1, -1 do
-        tinsert(cachedHierarchical, entryIndex + 1, toInsert[i])
-    end
-
-    expandedContainers[key] = true
-    entry.isContainer = nil  -- no longer needs lazy expansion
-end
-
 function UI:CreateResultButton(index)
     local scrollChild = resultsFrame.scrollChild
     local resultRow = CreateFrame("Button", "EasyFindResultButton"..index, scrollChild, "SecureActionButtonTemplate")
@@ -3891,15 +3825,6 @@ function UI:CreateResultButton(index)
     local hlTex = resultRow:GetHighlightTexture()
     if hlTex then hlTex:SetBlendMode("ADD") end
 
-    -- Retail theme: full-width dark gradient behind headers (Event Schedule style)
-    local headerGrad = resultRow:CreateTexture(nil, "BACKGROUND", nil, 1)
-    headerGrad:SetTexture("Interface\\QuestFrame\\UI-QuestLogTitleHighlight")
-    headerGrad:SetBlendMode("ADD")
-    headerGrad:SetVertexColor(0.35, 0.27, 0.08, 0.6)
-    headerGrad:SetAllPoints()
-    headerGrad:Hide()
-    resultRow.headerGrad = headerGrad
-
     -- Thin horizontal separator line at the bottom of each row
     local separator = resultRow:CreateTexture(nil, "ARTWORK", nil, 0)
     separator:SetColorTexture(0.5, 0.45, 0.3, 0.3)
@@ -3908,182 +3833,6 @@ function UI:CreateResultButton(index)
     separator:SetPoint("BOTTOMRIGHT", resultRow, "BOTTOMRIGHT", -4, 0)
     separator:Hide()
     resultRow.separator = separator
-
-    -- Retail: raised tab header (quest-log style with atlas textures)
-    local headerTab = CreateFrame("Button", nil, resultRow)
-    headerTab:SetAllPoints()
-    headerTab:RegisterForClicks("LeftButtonUp")
-    headerTab:SetScript("OnClick", function(self, mouseButton)
-        local row = self:GetParent()
-        if mouseButton == "RightButton" then
-            local postClick = row:GetScript("PostClick")
-            if postClick then postClick(row, mouseButton) end
-            return
-        end
-        if row.data then
-            UI:SelectResult(row.data)
-        end
-    end)
-    headerTab:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    headerTab:Hide()
-    resultRow.headerTab = headerTab
-
-    -- Background texture using QuestLog-tab atlas
-    local tabBg = headerTab:CreateTexture(nil, "BACKGROUND")
-    tabBg:SetAllPoints()
-    tabBg:SetAtlas("QuestLog-tab")
-    resultRow.tabBg = tabBg
-
-    -- Hover overlay: same atlas, additive blend, manually shown/hidden
-    local tabHoverOverlay = headerTab:CreateTexture(nil, "ARTWORK", nil, -1)
-    tabHoverOverlay:SetAllPoints()
-    tabHoverOverlay:SetAtlas("QuestLog-tab")
-    tabHoverOverlay:SetBlendMode("ADD")
-    tabHoverOverlay:SetAlpha(0.40)
-    tabHoverOverlay:Hide()
-    resultRow.tabHoverOverlay = tabHoverOverlay
-
-    -- +/- toggle button on right side (filter-button style)
-    local toggleBtn = CreateFrame("Button", nil, headerTab)
-    toggleBtn:SetSize(26, 25)
-    toggleBtn:SetPoint("RIGHT", headerTab, "RIGHT", -8, 0)
-    toggleBtn:SetFrameLevel(headerTab:GetFrameLevel() + 2)
-    toggleBtn:RegisterForClicks("LeftButtonUp")
-    toggleBtn:SetScript("OnClick", function(self)
-        local row = self:GetParent():GetParent()
-        if row.isPinHeader then
-            return
-        elseif row.isPathNode then
-            local key = (row.pathNodeName or "") .. "_" .. (row.pathNodeDepth or 0)
-            local wasCollapsed = collapsedNodes[key]
-            collapsedNodes[key] = not collapsedNodes[key]
-            if wasCollapsed and row._containerEntry and cachedHierarchical then
-                for idx, entry in ipairs(cachedHierarchical) do
-                    if entry == row._containerEntry then
-                        ExpandContainer(entry, idx)
-                        break
-                    end
-                end
-            end
-            if cachedHierarchical then
-                UI:ShowHierarchicalResults(cachedHierarchical, true)
-            end
-        else
-            return
-        end
-        -- Rebuild repurposes rows, clearing visual state. Re-show btnBg
-        -- for whichever toggleBtn is now under the cursor.
-        for i = 1, MAX_BUTTON_POOL do
-            local rb = resultButtons[i]
-            if rb and rb.toggleBtn and rb.toggleBtn:IsMouseOver() then
-                rb.toggleBtn.btnBg:Show()
-                break
-            end
-        end
-    end)
-
-    local toggleBtnBg = toggleBtn:CreateTexture(nil, "ARTWORK")
-    toggleBtnBg:SetAllPoints()
-    toggleBtnBg:SetTexture(796424)
-    toggleBtnBg:Hide()
-    toggleBtn.btnBg = toggleBtnBg
-
-    local toggleIcon = toggleBtn:CreateTexture(nil, "OVERLAY")
-    toggleIcon:SetSize(18, 17)
-    toggleIcon:SetPoint("CENTER")
-    toggleIcon:SetAtlas("QuestLog-icon-expand")
-    resultRow.toggleIcon = toggleIcon
-
-    toggleBtn:SetHighlightTexture(130757)
-    toggleBtn:SetScript("OnEnter", function(self)
-        self.btnBg:Show()
-        local row = self:GetParent():GetParent()
-        if row.tabHoverOverlay then row.tabHoverOverlay:Show() end
-        if row.tabText then row.tabText:SetTextColor(0.90, 0.88, 0.85, 1.0) end
-    end)
-    toggleBtn:SetScript("OnLeave", function(self)
-        self.btnBg:Hide()
-        local row = self:GetParent():GetParent()
-        if not self:GetParent():IsMouseOver() then
-            if row.tabHoverOverlay then row.tabHoverOverlay:Hide() end
-            if row.tabText then
-                if row._isMatch then
-                    row.tabText:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1.0)
-                else
-                    row.tabText:SetTextColor(0.60, 0.58, 0.55, 1.0)
-                end
-            end
-        end
-    end)
-    resultRow.toggleBtn = toggleBtn
-
-    local toggleHighlight = headerTab:CreateTexture(nil, "OVERLAY")
-    toggleHighlight:SetSize(26, 25)
-    toggleHighlight:SetPoint("CENTER", toggleBtn, "CENTER", 0, 0)
-    toggleHighlight:SetColorTexture(0.3, 0.6, 1.0, 0.4)
-    toggleHighlight:Hide()
-    resultRow.toggleHighlight = toggleHighlight
-
-    -- Header name text (child of headerTab)
-    local tabText = headerTab:CreateFontString(nil, "OVERLAY", "Game15Font_Shadow")
-    tabText:SetPoint("LEFT", headerTab, "LEFT", 10, 0)
-    tabText:SetPoint("RIGHT", toggleBtn, "LEFT", -4, 0)
-    tabText:SetJustifyH("LEFT")
-    tabText:SetMaxLines(1)
-    tabText:SetTextColor(0.60, 0.58, 0.55, 1.0)    -- muted gray (normal state)
-    resultRow.tabText = tabText
-
-    -- Hover handlers: brighten tab bg, text near-white, icon bright yellow
-    headerTab:SetScript("OnEnter", function(self)
-        local parent = self:GetParent()
-        if parent.tabHoverOverlay then
-            parent.tabHoverOverlay:Show()
-        end
-        if parent.tabText then
-            parent.tabText:SetTextColor(0.90, 0.88, 0.85, 1.0)  -- soft white (slightly muted)
-        end
-        -- Show tooltip for unearned currencies
-        if parent.isUnearnedCurrency and unearnedTooltip then
-            local tooltipText = parent.isPathNode and "This tab does not exist on this character yet" or "Currency not yet earned"
-            unearnedTooltip.text:SetText(tooltipText)
-
-            local textWidth = unearnedTooltip.text:GetStringWidth()
-            local textHeight = unearnedTooltip.text:GetStringHeight()
-            unearnedTooltip:SetSize(textWidth + 20, textHeight + 16)
-
-            local scale = UIParent:GetEffectiveScale()
-            local x, y = GetCursorPosition()
-            unearnedTooltip:ClearAllPoints()
-            unearnedTooltip:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale + 10, y / scale + 10)
-            unearnedTooltip:Show()
-        end
-    end)
-    headerTab:SetScript("OnLeave", function(self)
-        local parent = self:GetParent()
-        if parent.tabHoverOverlay then
-            parent.tabHoverOverlay:Hide()
-        end
-        if parent.tabText then
-            if parent._isMatch then
-                parent.tabText:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1.0)   -- back to gold
-            else
-                parent.tabText:SetTextColor(0.60, 0.58, 0.55, 1.0) -- back to gray
-            end
-        end
-        -- Hide tooltip for unearned currencies
-        if unearnedTooltip then
-            unearnedTooltip:Hide()
-        end
-    end)
-
-    -- Tab selection highlight (keyboard nav, child of headerTab)
-    local tabSelTex = headerTab:CreateTexture(nil, "BACKGROUND")
-    tabSelTex:SetAllPoints()
-    tabSelTex:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
-    tabSelTex:SetBlendMode("ADD")
-    tabSelTex:SetVertexColor(0.3, 0.6, 1.0, 0.4)
-    tabSelTex:Hide()
-    resultRow.tabSelectionHighlight = tabSelTex
 
     -- Tree connector textures per depth level
     resultRow.treeVert   = {}   -- vertical │ pass-through for ancestors
@@ -4874,16 +4623,7 @@ function UI:CreateResultButton(index)
 
                 if isToggleClick then
                     local key = (self.pathNodeName or "") .. "_" .. (self.pathNodeDepth or 0)
-                    local wasCollapsed = collapsedNodes[key]
                     collapsedNodes[key] = not collapsedNodes[key]
-                    if wasCollapsed and self._containerEntry and cachedHierarchical then
-                        for idx, entry in ipairs(cachedHierarchical) do
-                            if entry == self._containerEntry then
-                                ExpandContainer(entry, idx)
-                                break
-                            end
-                        end
-                    end
                     if cachedHierarchical then
                         UI:ShowHierarchicalResults(cachedHierarchical, true)
                     end
@@ -5245,7 +4985,6 @@ function UI:OnSearchTextChanged(text, force)
     end
 
     wipe(collapsedNodes)
-    wipe(expandedContainers)
     local needsHeavy = ns.Database and ns.Database.QueryNeedsHeavySearchData
         and ns.Database:QueryNeedsHeavySearchData(text)
     if not force and not needsHeavy and ns.Database and ns.Database.CancelDynamicWarmup then
@@ -5764,7 +5503,6 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             resultRow.isPinned = entry.isPinned or false
             resultRow.pathNodeName = entry.isPathNode and entry.name or nil
             resultRow.pathNodeDepth = entry.isPathNode and depth or nil
-            resultRow._containerEntry = entry.isContainer and entry or nil
             if resultRow.pinIcon then resultRow.pinIcon:Hide() end
             if resultRow.pinToggle then resultRow.pinToggle:Hide() end
             if resultRow.pinHeaderLine then resultRow.pinHeaderLine:Hide() end
@@ -5824,8 +5562,8 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             resultRow._isMatch = entry.isMatch and entry.isPathNode
             if entry.isPinHeader then
                 -- Pin header: plain text + toggle icon + underline (no tab/gradient)
-                resultRow.headerTab:Hide()
-                resultRow.headerGrad:Hide()
+                if resultRow.headerTab then resultRow.headerTab:Hide() end
+                if resultRow.headerGrad then resultRow.headerGrad:Hide() end
                 local collapseAtlas = theme.collapseAtlas or "QuestLog-icon-shrink"
                 resultRow.pinToggle:SetAtlas(collapseAtlas)
                 resultRow.pinToggle:Show()
@@ -5843,8 +5581,8 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 -- category dividers (UI / Mounts / Toys / Map / ...)
                 -- so they cost less vertical space than a full
                 -- parent-tab header and don't waste a parent indent.
-                resultRow.headerTab:Hide()
-                resultRow.headerGrad:Hide()
+                if resultRow.headerTab then resultRow.headerTab:Hide() end
+                if resultRow.headerGrad then resultRow.headerGrad:Hide() end
                 resultRow.text:SetText("")
                 resultRow.sectionLabelText:SetText(entry.name)
                 resultRow.sectionLabelText:Show()
@@ -5856,7 +5594,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 resultRow.sectionLabelRight:SetPoint("LEFT", resultRow.sectionLabelText, "RIGHT", 6, 0)
                 resultRow.sectionLabelRight:SetPoint("RIGHT", resultRow, "RIGHT", -6, 0)
                 resultRow.sectionLabelRight:Show()
-            elseif theme.showHeaderTab and entry.isPathNode then
+            elseif theme.showHeaderTab and entry.isPathNode and resultRow.headerTab then
                 -- Quest-log raised tab header
                 local tabInset = depth * indPx
                 resultRow.headerTab:ClearAllPoints()
@@ -5883,17 +5621,17 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 end
                 -- Normal icon/text hidden - SetRowIcon("hidden") handles icon below
                 resultRow.text:SetText("")
-                resultRow.headerGrad:Hide()
+                if resultRow.headerGrad then resultRow.headerGrad:Hide() end
             else
-                resultRow.headerTab:Hide()
+                if resultRow.headerTab then resultRow.headerTab:Hide() end
                 -- Gradient header (Classic fallback)
                 local showGrad = theme.showHeaderBar and entry.isPathNode
-                if showGrad then
+                if showGrad and resultRow.headerGrad then
                     resultRow.headerGrad:SetAllPoints()
                     local gradAlpha = mmax(0.25, 0.6 - depth * 0.1)
                     resultRow.headerGrad:SetVertexColor(0.35, 0.27, 0.08, gradAlpha)
                 end
-                resultRow.headerGrad:SetShown(showGrad)
+                if resultRow.headerGrad then resultRow.headerGrad:SetShown(showGrad) end
             end
 
             -- Separator line between rows (skip for pin header which has its own underline)
@@ -6870,7 +6608,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             -- Skip header tabs: they have SetMaxLines(1) and can't wrap.
             local actualH = resultRow:GetHeight()
             local textObj
-            if theme.showHeaderTab and entry.isPathNode and resultRow.headerTab:IsShown() then
+            if theme.showHeaderTab and entry.isPathNode and resultRow.headerTab and resultRow.headerTab:IsShown() then
                 textObj = nil
             elseif not entry.isPinHeader then
                 textObj = resultRow.text
@@ -6926,8 +6664,8 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 resultRow:SetAttribute("macro", nil)
                 resultRow:SetAttribute("macrotext", nil)
             end
-            resultRow.headerGrad:Hide()
-            resultRow.headerTab:Hide()
+            if resultRow.headerGrad then resultRow.headerGrad:Hide() end
+            if resultRow.headerTab then resultRow.headerTab:Hide() end
             resultRow.separator:Hide()
             resultRow.repBar:Hide()
             if resultRow.flatCatIcon then resultRow.flatCatIcon:Hide() end
@@ -7308,7 +7046,6 @@ function UI:ShowPinnedItems()
     end
 
     wipe(collapsedNodes)
-    wipe(expandedContainers)
     local entries = pinnedOnlyEntries
     for i, pin in ipairs(pins) do
         local e = entries[i]
@@ -7443,61 +7180,12 @@ function UI:UpdateSelectionHighlight(skipRefocus)
     for i = 1, MAX_BUTTON_POOL do
         local resultRow = resultButtons[i]
         if not resultRow then break end
-        -- Leaf rows (no headerTab): LockHighlight pins the shared
-        -- row HighlightTexture so keyboard selection looks identical
-        -- to mouse hover. Header rows skip the row highlight — their
-        -- visual is carried by tabHoverOverlay inside the tab to match
-        -- mouse hover exactly (rather than painting a row-wide glow
-        -- that extends past the tab).
         local isHeaderRow = resultRow.headerTab and resultRow.headerTab:IsShown()
         if resultRow.LockHighlight then
-            if i == selectedIndex and not toggleFocused and not isHeaderRow then
+            if i == selectedIndex and not isHeaderRow then
                 resultRow:LockHighlight()
             else
                 resultRow:UnlockHighlight()
-            end
-        end
-        if resultRow.tabSelectionHighlight then
-            resultRow.tabSelectionHighlight:Hide()
-        end
-        if resultRow.toggleHighlight then
-            local showToggle = i == selectedIndex and toggleFocused
-            local isPinToggle = resultRow.isPinHeader and resultRow.pinToggle and resultRow.pinToggle:IsShown()
-            if showToggle and isPinToggle then
-                resultRow.toggleHighlight:ClearAllPoints()
-                resultRow.toggleHighlight:SetPoint("CENTER", resultRow.pinToggle, "CENTER", 0, 0)
-            end
-            resultRow.toggleHighlight:SetShown(showToggle and isPinToggle)
-            if resultRow.toggleBtn then
-                if resultRow.toggleBtn.btnBg then
-                    resultRow.toggleBtn.btnBg:SetShown(showToggle and not isPinToggle)
-                end
-                if showToggle and not isPinToggle then
-                    resultRow.toggleBtn:LockHighlight()
-                else
-                    resultRow.toggleBtn:UnlockHighlight()
-                end
-            end
-            -- Tab overlay shows for keyboard selection on a non-pin
-            -- header whether the cursor is on the row body (not
-            -- toggleFocused) or on the toggle button (toggleFocused).
-            -- Pin headers use their own pin-toggle highlight instead.
-            local isHeaderSelected = i == selectedIndex
-                and resultRow.headerTab and resultRow.headerTab:IsShown()
-                and not isPinToggle
-            if resultRow.tabHoverOverlay then
-                resultRow.tabHoverOverlay:SetShown(isHeaderSelected)
-            end
-            if resultRow.tabText then
-                if isHeaderSelected then
-                    resultRow.tabText:SetTextColor(0.90, 0.88, 0.85, 1.0)
-                elseif not resultRow.headerTab:IsMouseOver() then
-                    if resultRow._isMatch then
-                        resultRow.tabText:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1.0)
-                    else
-                        resultRow.tabText:SetTextColor(0.60, 0.58, 0.55, 1.0)
-                    end
-                end
             end
         end
     end
@@ -7557,16 +7245,7 @@ function UI:ActivateSelected()
             if resultRow.isPathNode and toggleFocused then
                 -- Toggle collapse when focus is on the +/- control
                 local key = (resultRow.pathNodeName or "") .. "_" .. (resultRow.pathNodeDepth or 0)
-                local wasCollapsed = collapsedNodes[key]
                 collapsedNodes[key] = not collapsedNodes[key]
-                if wasCollapsed and resultRow._containerEntry and cachedHierarchical then
-                    for idx, entry in ipairs(cachedHierarchical) do
-                        if entry == resultRow._containerEntry then
-                            ExpandContainer(entry, idx)
-                            break
-                        end
-                    end
-                end
                 if cachedHierarchical then
                     local savedIndex = selectedIndex
                     local savedToggle = toggleFocused
@@ -9501,41 +9180,15 @@ function UI:ShowFirstTimeSetup()
     CreateKeybindButton("toggle", toggleLabel, "EASYFIND_TOGGLE_FOCUS", "Ctrl+Space")
     CreateKeybindButton("map",    mapLabel,    "EASYFIND_MAP_FOCUS",    "Ctrl+M")
 
-    -- Buttons sit just below the panel, centered as a pair around the
-    -- panel's vertical midline. "See demo" on the LEFT, "Got it" on the
-    -- RIGHT. Anchoring TOP to the panel's BOTTOM places them outside the
-    -- frame so they don't crowd the keybind section above.
-    local seeDemoBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    seeDemoBtn:SetSize(100, 22)
-    seeDemoBtn:SetPoint("TOPLEFT", panel, "BOTTOM", 4, -8)
-    seeDemoBtn:SetText("See demo")
-
     local gotItBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
     gotItBtn:SetSize(100, 22)
-    gotItBtn:SetPoint("TOPRIGHT", panel, "BOTTOM", -4, -8)
+    gotItBtn:SetPoint("TOP", panel, "BOTTOM", 0, -8)
     gotItBtn:SetText("Got it")
 
     -- During setup: allow drag without holding Shift
     searchFrame:SetScript("OnDragStart", function(self)
         self:StartMoving()
     end)
-
-    -- Forward declarations for the demo frames so FinishSetup can clean
-    -- them up regardless of whether the player went through See Demo.
-    local demoFrame
-    local startDemo
-
-    local function EnsureDemoLoaded()
-        if ns.Demo and ns.Demo.Start then return true end
-        if C_AddOns and C_AddOns.LoadAddOn then
-            local ok, reason = pcall(C_AddOns.LoadAddOn, "EasyFind_Demo")
-            if ok and ns.Demo and ns.Demo.Start then return true end
-            EasyFind:Print("Demo module could not be loaded: " .. tostring(reason or "unknown error"))
-        else
-            EasyFind:Print("Demo module is not available on this client.")
-        end
-        return false
-    end
 
     local function FinishSetup()
         EasyFind.db.setupComplete = true
@@ -9553,11 +9206,6 @@ function UI:ShowFirstTimeSetup()
         resizer:SetScript("OnUpdate", nil)
         resizer:Hide()
         panel:Hide()
-        if demoFrame then demoFrame:Hide() end
-        -- Clear the demo suspend flag so the dropdown auto-close works
-        if searchFrame.filterDropdown then
-            searchFrame.filterDropdown._demoSuspend = nil
-        end
 
         -- Restore shift-only drag
         searchFrame:SetScript("OnDragStart", function(self)
@@ -9576,23 +9224,6 @@ function UI:ShowFirstTimeSetup()
         EasyFind.db.lastSeenVersion = ns.version
     end
 
-    startDemo = function()
-        if not EnsureDemoLoaded() then return false end
-
-        panel:Hide()
-        resizer:Hide()
-        glow:SetScript("OnUpdate", nil)
-        glow:Hide()
-
-        demoFrame = ns.Demo.Start({
-            searchFrame = searchFrame,
-            resultsFrame = resultsFrame,
-            resultButtons = resultButtons,
-            finishSetup = FinishSetup,
-        })
-        return true
-    end
-
     gotItBtn:SetScript("OnClick", FinishSetup)
 
     -- Escape closes the whole tutorial from the positioning panel.
@@ -9607,17 +9238,6 @@ function UI:ShowFirstTimeSetup()
         end
     end)
 
-    seeDemoBtn:SetScript("OnClick", function()
-        -- Save position + apply preferences, then skip straight to the
-        -- interactive demo (no mode-intro step in between).
-        local point, _, relPoint, x, y = searchFrame:GetPoint()
-        EasyFind.db.uiSearchPosition = {point, relPoint, x, y}
-        EasyFind.db.smartShow = smartShowCheckbox:GetChecked()
-        EasyFind.db.staticOpacity = not fadeCheckbox:GetChecked()
-        UI:UpdateSmartShow()
-
-        startDemo()
-    end)
 end
 
 -- Flash a label on the search frame (used for Currency hint)

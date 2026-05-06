@@ -137,23 +137,6 @@ function Utils.CreateKeyRepeat(frame, initialDelay, fastDelay, accelDuration)
     return { Start = Start, Stop = Stop, IsKey = IsKey }
 end
 
---- Scroll a ScrollFrame so that the given child button is visible.
---- Uses the button's top/bottom relative to the scrollChild.
--- Chrome-style inline autocomplete for an editbox. The full
--- suggestion is set as the editbox text, the cursor sits at the end
--- of what the user typed, and the trailing suggestion is selected so
--- the native caret is always visible at the end of the typed prefix.
--- Tab confirms; typing a character replaces the selection (advancing
--- the prefix); backspace deletes the selection without re-applying
--- the suggestion.
---
--- opts.findCandidate(typedText) -> string | nil
---   Returns the autocomplete suggestion for `typedText`, or nil to
---   strip any active suggestion.
---
--- The caller is responsible for invoking editBox.UpdateAutocomplete()
--- after its search results refresh, since the suggestion source is
--- typically derived from those results.
 function Utils.AttachAutocomplete(editBox, opts)
     if not editBox or not opts or type(opts.findCandidate) ~= "function" then return end
 
@@ -162,128 +145,255 @@ function Utils.AttachAutocomplete(editBox, opts)
     local onAccepted = opts.onAccepted
     local typedText = ""
     local programmatic = false
-    -- Last suggestion we rendered into the editbox. Used by the smooth-typing
-    -- fast path to extend the highlight in-place when the new typed prefix is
-    -- still a prefix of the same candidate, so the suggestion doesn't blink
-    -- between the keystroke and the deferred ApplyAutocomplete next frame.
     local currentCandidate = nil
-    -- Set true by the smooth-typing fast path when it has already
-    -- rendered the correct suggestion for the current typedText, so a
-    -- subsequent caller-driven ApplyAutocomplete from the search-refresh
-    -- timer can skip the redundant findCandidate + cursor/highlight pass
-    -- (which would re-run the lookup and re-paint the highlight even
-    -- when nothing visually needs to change).
     local smoothExtendDone = false
+    local restoreBackspaceText, restoreBackspaceCursor
+    local mouseAcceptCandidate
+    local mouseAcceptTypedLen
+    local backspaceStripActive = false
+    local charDispatchedTyped
+
+    local function HasAutocomplete()
+        return currentCandidate ~= nil and (editBox:GetText() or "") ~= typedText
+    end
+
+    local function NormalizeCandidate(candidate)
+        if not candidate or candidate == "" or typedText == "" then return nil end
+        candidate = slower(candidate)
+        local typedLen = #typedText
+        if typedLen >= #candidate then return nil end
+        if slower(ssub(candidate, 1, typedLen)) ~= slower(typedText) then
+            return nil
+        end
+        return candidate
+    end
 
     local function StripAutocomplete()
-        local current = editBox:GetText() or ""
-        if current == typedText then return end
+        local hadAutocomplete = HasAutocomplete()
+        if hadAutocomplete then
+            programmatic = true
+            editBox:SetText(typedText)
+            editBox:SetCursorPosition(#typedText)
+            editBox:HighlightText(0, 0)
+            programmatic = false
+        else
+            editBox:HighlightText(0, 0)
+        end
+        currentCandidate = nil
+        smoothExtendDone = false
+        return hadAutocomplete
+    end
+
+    local function RenderCandidate(candidate)
+        candidate = NormalizeCandidate(candidate)
+        if not candidate then
+            StripAutocomplete()
+            return false
+        end
+
+        local typedLen = #typedText
+        typedText = ssub(candidate, 1, typedLen)
+        currentCandidate = candidate
+
         programmatic = true
-        editBox:SetText(typedText)
-        editBox:SetCursorPosition(#typedText)
-        editBox:HighlightText(0, 0)
+        if editBox:GetText() ~= candidate then
+            editBox:SetText(candidate)
+        end
+        editBox:SetCursorPosition(typedLen)
+        editBox:HighlightText(typedLen, #candidate)
         programmatic = false
+        return true
     end
 
     local function ApplyAutocomplete()
         if programmatic or typedText == "" or not editBox:HasFocus() then
+            StripAutocomplete()
             return
         end
-        -- Smooth fast path already settled the suggestion for this
-        -- typedText; consume the flag and bail before findCandidate
-        -- runs (which would re-call into the result list and re-paint
-        -- the highlight even if nothing changed).
         if smoothExtendDone then
             smoothExtendDone = false
             return
         end
         local candidate = findCandidate(typedText)
-        if not candidate or candidate:lower() == typedText:lower() then
-            currentCandidate = nil
-            StripAutocomplete()
-            return
-        end
-        local suffix = candidate:sub(#typedText + 1):lower()
-        if suffix == "" then
-            currentCandidate = nil
-            StripAutocomplete()
-            return
-        end
-        local fullText = typedText .. suffix
-        currentCandidate = fullText
-        if editBox:GetText() == fullText then
-            editBox:SetCursorPosition(#typedText)
-            editBox:HighlightText(#typedText, #fullText)
-            return
-        end
-        programmatic = true
-        editBox:SetText(fullText)
-        editBox:SetCursorPosition(#typedText)
-        editBox:HighlightText(#typedText, #fullText)
-        programmatic = false
+        RenderCandidate(candidate)
     end
 
-    editBox:HookScript("OnTextChanged", function(self)
+    editBox:HookScript("OnTextChanged", function(self, userInput)
         if programmatic then return end
         local current = self:GetText() or ""
-        local cursorPos = self:GetCursorPosition()
-        local typed = current:sub(1, cursorPos)
+        if restoreBackspaceText then
+            local restoreText = restoreBackspaceText
+            local restoreCursor = restoreBackspaceCursor or #restoreText
+            restoreBackspaceText, restoreBackspaceCursor = nil, nil
+            backspaceStripActive = false
+            if current ~= restoreText then
+                programmatic = true
+                self:SetText(restoreText)
+                self:SetCursorPosition(restoreCursor)
+                self:HighlightText(0, 0)
+                programmatic = false
+            end
+            typedText = ssub(restoreText, 1, restoreCursor)
+            return
+        end
+        local cursorPos = self:GetCursorPosition() or #current
+        if not userInput and cursorPos == 0 and current ~= "" then
+            cursorPos = #current
+        end
+        local typed = ssub(current, 1, cursorPos)
+        if charDispatchedTyped and typed == charDispatchedTyped then
+            charDispatchedTyped = nil
+            return
+        end
         if typed == typedText then return end
         local prevText = typedText
         local prevLen = #typedText
         typedText = typed
-        if onTypedChanged then onTypedChanged(self, typedText, prevText, #typedText > prevLen) end
-
-        -- Smooth-typing fast path only when the user is GROWING the typed
-        -- prefix. On a shrink (backspace) the suggestion must be torn
-        -- down -- re-extending it here would cancel the backspace
-        -- visually and the user gets stuck.
+        local grew = #typedText > prevLen
         if #typedText > prevLen
            and currentCandidate and typedText ~= ""
            and #typedText < #currentCandidate
-           and typedText:lower() == currentCandidate:sub(1, #typedText):lower() then
-            local fullText = typedText .. currentCandidate:sub(#typedText + 1)
-            programmatic = true
-            if current ~= fullText then
-                self:SetText(fullText)
-            end
-            self:SetCursorPosition(#typedText)
-            self:HighlightText(#typedText, #fullText)
-            programmatic = false
-            smoothExtendDone = true
-        elseif #typedText < prevLen then
+           and slower(typedText) == slower(ssub(currentCandidate, 1, #typedText)) then
+            smoothExtendDone = RenderCandidate(currentCandidate)
+        else
             currentCandidate = nil
+            self:HighlightText(0, 0)
+        end
+        if onTypedChanged then onTypedChanged(self, typedText, prevText, grew) end
+    end)
+
+    editBox:HookScript("OnChar", function(self, char)
+        if not currentCandidate or not char or char == "" then return end
+        local current = self:GetText() or ""
+        if current == currentCandidate then return end
+        local cursorPos = self:GetCursorPosition() or #current
+        local typed = ssub(current, 1, cursorPos)
+        if #typed <= #typedText then return end
+        local candidatePrefix = ssub(currentCandidate, 1, #typed)
+        if slower(typed) ~= slower(candidatePrefix) then
+            currentCandidate = nil
+            self:HighlightText(0, 0)
+            return
+        end
+
+        local prevText = typedText
+        typedText = candidatePrefix
+        if not RenderCandidate(currentCandidate) then return end
+        smoothExtendDone = true
+        if onTypedChanged then
+            charDispatchedTyped = typedText
+            if C_Timer then
+                C_Timer.After(0, function()
+                    charDispatchedTyped = nil
+                end)
+            end
+            onTypedChanged(self, typedText, prevText, true)
         end
     end)
 
     editBox:HookScript("OnEditFocusLost", StripAutocomplete)
 
-    local function AcceptAutocomplete(self)
-        local current = self:GetText() or ""
-        if current == "" or current == typedText then return false end
+    local function AcceptAutocomplete(self, source, cursorPos)
+        local candidate = currentCandidate
+        if not candidate or candidate == "" then return false end
+        if cursorPos then
+            if cursorPos < 0 then cursorPos = 0 end
+            if cursorPos > #candidate then cursorPos = #candidate end
+        end
+        if not self:HasFocus() then self:SetFocus() end
         programmatic = true
-        self:SetCursorPosition(#current)
+        self:SetText(candidate)
+        self:SetCursorPosition(cursorPos or #candidate)
         self:HighlightText(0, 0)
         programmatic = false
-        typedText = current
+        typedText = candidate
         currentCandidate = nil
-        if onAccepted then onAccepted(current) end
+        smoothExtendDone = false
+        if onAccepted then onAccepted(candidate, source) end
         return true
     end
 
-    editBox:HookScript("OnTabPressed", function(self)
-        AcceptAutocomplete(self)
+    editBox:HookScript("OnMouseDown", function(_, button)
+        if button ~= "LeftButton" then return end
+        mouseAcceptCandidate = HasAutocomplete() and currentCandidate or nil
+        mouseAcceptTypedLen = mouseAcceptCandidate and #typedText or nil
     end)
 
-    -- Public API on the editbox so callers can drive it from their
-    -- search-update path without holding their own state.
+    editBox:HookScript("OnMouseUp", function(self, button)
+        if button ~= "LeftButton" or not mouseAcceptCandidate then return end
+        local candidate = mouseAcceptCandidate
+        local typedLen = mouseAcceptTypedLen or #typedText
+        mouseAcceptCandidate = nil
+        mouseAcceptTypedLen = nil
+        if (self:GetText() or "") ~= candidate then return end
+        local cursorPos = self:GetCursorPosition() or #candidate
+        if cursorPos < typedLen then
+            local prefix = ssub(candidate, 1, typedLen)
+            programmatic = true
+            self:SetText(prefix)
+            self:SetCursorPosition(cursorPos)
+            self:HighlightText(0, 0)
+            programmatic = false
+            typedText = prefix
+            currentCandidate = nil
+            smoothExtendDone = false
+            return
+        end
+        typedText = candidate
+        currentCandidate = nil
+        smoothExtendDone = false
+        self:HighlightText(0, 0)
+        if onAccepted then onAccepted(candidate, "click") end
+    end)
+
+    editBox:HookScript("OnTabPressed", function(self)
+        AcceptAutocomplete(self, "tab")
+    end)
+
+    editBox:HookScript("OnKeyDown", function(self, key)
+        if key == "BACKSPACE" and HasAutocomplete() then
+            backspaceStripActive = true
+            restoreBackspaceText = typedText
+            restoreBackspaceCursor = #typedText
+            StripAutocomplete()
+            if C_Timer then
+                C_Timer.After(0, function()
+                    restoreBackspaceText, restoreBackspaceCursor = nil, nil
+                    backspaceStripActive = false
+                end)
+            end
+            if Utils.SafeCallMethod then
+                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            end
+            return
+        end
+        local source
+        if key == "RIGHT" or key == "ARROWRIGHT" then
+            source = "right"
+        elseif key == "L" and IsControlKeyDown() then
+            source = "ctrl-l"
+        end
+        if source
+           and AcceptAutocomplete(self, source) then
+            if Utils.SafeCallMethod then
+                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            end
+        end
+    end)
+
     editBox.UpdateAutocomplete = ApplyAutocomplete
     editBox.StripAutocomplete  = StripAutocomplete
-    editBox.AcceptAutocomplete = AcceptAutocomplete
+    editBox.AcceptAutocomplete = function(self, source, cursorPos)
+        return AcceptAutocomplete(self, source, cursorPos)
+    end
     editBox.GetTypedText       = function() return typedText end
+    editBox.HasAutocomplete    = function() return HasAutocomplete() end
+    editBox.IsAutocompleteBackspaceStrip = function() return backspaceStripActive end
     editBox.IsAutocompleteProgrammatic = function() return programmatic end
 end
 
+--- Scroll a ScrollFrame so that the given child button is visible.
+--- Uses the button's top/bottom relative to the scrollChild.
 function Utils.ScrollToButton(scrollFrame, button)
     if not scrollFrame or not button then return end
     local _, _, _, _, btnOffsetY = button:GetPoint(1)
@@ -303,6 +413,7 @@ ns.GOLD_COLOR = {1.0, 0.82, 0.0}
 ns.YELLOW_HIGHLIGHT = {1, 1, 0}
 ns.DEFAULT_OPACITY = 0.75
 ns.TOOLTIP_BORDER = "Interface\\Tooltips\\UI-Tooltip-Border"
+ns.EYE_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\eye"
 ns.DARK_PANEL_BG = {0.1, 0.1, 0.1, 0.95}
 ns.RESULT_ICON_SIZE = 18
 ns.SEARCHBAR_HEIGHT = 30      -- base search bar frame height (before font scaling)
@@ -383,17 +494,7 @@ function ns.CreateSearchBorder(frame)
         fillLeft = fillLeft, fillMid = fillMid, fillRight = fillRight,
         borderLeft = borderLeft, borderMid = borderMid, borderRight = borderRight,
     }
-    ApplyCapWidths(frame)
-    -- A theme/font/zoom change calls SetHeight; OnSizeChanged keeps
-    -- the cap width in lockstep without each caller having to know.
     frame:HookScript("OnSizeChanged", ApplyCapWidths)
-end
-
--- Kept as a public no-op for callers that still pass the legacy
--- scale parameter. Cap width tracks frame height now via the
--- OnSizeChanged hook installed in CreateSearchBorder, so we just
--- re-apply in case the caller resized the frame in the same tick.
-function ns.ScaleSearchBorder(frame, _scale)
     ApplyCapWidths(frame)
 end
 
@@ -1179,6 +1280,18 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
         x / scale + (opts.offsetX or 0), y / scale + (opts.offsetY or 0))
     menu:Show()
     return menu
+end
+
+function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opts)
+    local rows = {}
+    if onGuide then
+        rows[#rows + 1] = { text = "Guide", icon = ns.EYE_ICON_TEX, onClick = onGuide }
+    end
+    rows[#rows + 1] = { text = isPinned and "Unpin" or "Pin", onClick = onPin }
+    if onAddAlias then
+        rows[#rows + 1] = { text = "Add Alias", onClick = onAddAlias }
+    end
+    return Utils.ShowCursorMenu(globalName, rows, opts)
 end
 
 function Utils.SetIconTexture(textureObj, icon, fallback)
