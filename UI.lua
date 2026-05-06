@@ -4,6 +4,7 @@ local UI = {}
 ns.UI = UI
 
 local Utils = ns.Utils
+local UIPins = ns.UIPins
 local GetButtonText         = Utils.GetButtonText
 local SearchFrameTreeFuzzy  = Utils.SearchFrameTreeFuzzy
 local ClickButton           = Utils.ClickButton
@@ -17,7 +18,6 @@ local sformat = Utils.sformat
 local GOLD_COLOR = ns.GOLD_COLOR
 local DEFAULT_OPACITY = ns.DEFAULT_OPACITY
 local TOOLTIP_BORDER = ns.TOOLTIP_BORDER
-local DARK_PANEL_BG = ns.DARK_PANEL_BG
 
 local CreateFrame        = CreateFrame
 local C_Timer            = C_Timer
@@ -27,7 +27,6 @@ local GameTooltip_Hide   = GameTooltip_Hide
 local IsShiftKeyDown     = IsShiftKeyDown
 local GetCursorPosition  = GetCursorPosition
 local InCombatLockdown   = InCombatLockdown
-local HideUIPanel        = HideUIPanel
 local wipe               = wipe
 
 local EYE_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\eye"
@@ -43,9 +42,11 @@ local resultsFrame
 local containerFrame
 local resultButtons = {}
 local MAX_BUTTON_POOL = 50  -- Maximum buttons (scroll handles overflow beyond this)
+local EnsureResultButton
 local inCombat = false
 local selectingResult = false  -- guard: suppress OnTextChanged re-renders during SelectResult
 local deferredRepRefreshPending = false  -- deferred re-render to let IsTruncated() settle
+local idleTrimSerial = 0
 local outfitCdStart, outfitCdDuration = 0, 0  -- shared outfit swap cooldown
 local lastEquippedOutfitID                     -- tracks most recent equip for immediate green tint
 
@@ -56,61 +57,6 @@ local lastEquippedOutfitID                     -- tracks most recent equip for i
 -- into the highlighted result row without an extra keystroke.
 local historyIndex = 0
 local historyDraft = ""           -- User's in-flight text, restored when stepping back to index 0
-
--- PIN HELPERS
-
-local function GetUIPinKey(data)
-    if not data or not data.name then return "" end
-    return data.name .. "|" .. tconcat(data.path or {}, ">")
-end
-
--- Copy storable fields from a search entry for SavedVariables pinning.
--- Uses explicit field access (not pairs) so metatable __index fields are included.
-local CLEAN_SIMPLE_FIELDS = {"name", "nameLower", "category", "buttonFrame", "flashLabel", "icon",
-    "mountID", "spellID", "toyItemID", "petID", "speciesID", "outfitID", "heirloomItemID",
-    "macroIndex", "macroIsChar", "bagID", "bagSlot", "bagItemLink",
-    "itemID", "encounterID", "instanceID", "lootSlotName", "lootSourceName", "lootInstanceName", "lootSourceType",
-    "transmogSetID",
-    "factionID", "hasRepBar", "canQueue", "isPvP", "isPvE"}
--- Tables to copy. Some are arrays (path, steps, keywords) and some are
--- string-keyed maps (lootItemLinks = {[difficulty] = link}), so iterate
--- with pairs rather than ipairs.
-local CLEAN_TABLE_FIELDS = {"path", "steps", "keywords", "keywordsLower", "lootItemLinks"}
-
-local function CleanUIForStorage(data)
-    local clean = {}
-    for fi = 1, #CLEAN_SIMPLE_FIELDS do
-        local k = CLEAN_SIMPLE_FIELDS[fi]
-        local v = data[k]
-        if v ~= nil then clean[k] = v end
-    end
-    for fi = 1, #CLEAN_TABLE_FIELDS do
-        local k = CLEAN_TABLE_FIELDS[fi]
-        local v = data[k]
-        if v then
-            local copy = {}
-            for k2, v2 in pairs(v) do
-                if type(v2) == "table" then
-                    local sub = {}
-                    for sk, sv in pairs(v2) do sub[sk] = sv end
-                    copy[k2] = sub
-                else
-                    copy[k2] = v2
-                end
-            end
-            clean[k] = copy
-        end
-    end
-    return clean
-end
-
--- Collection-type pins (mounts, toys, pets, outfits, loot) are character-specific.
--- All other pins are account-wide.
-local function IsCollectionPin(data)
-    return data and (data.mountID or data.toyItemID or data.petID or data.outfitID
-        or data.heirloomItemID
-        or (data.itemID and data.category == "Loot"))
-end
 
 -- LEFT-side category icons for flat mode. Collection items (mounts, toys,
 -- etc.) push their item-specific icon to the right side of the row, leaving
@@ -318,89 +264,10 @@ local function ApplyActionHint(row)
     actionHintRow = row
 end
 
-local charKey -- "Name-Realm", set on first use
-local function GetCharKey()
-    if not charKey then
-        local name = UnitName("player")
-        local realm = GetRealmName()
-        charKey = name and realm and (name .. "-" .. realm) or "Unknown"
-    end
-    return charKey
-end
-
-local function GetPinList(data)
-    if IsCollectionPin(data) then
-        local key = GetCharKey()
-        local perChar = EasyFind.db.pinnedUIItemsPerChar
-        if not perChar[key] then perChar[key] = {} end
-        return perChar[key]
-    end
-    return EasyFind.db.pinnedUIItems
-end
-
-local function GetAllPins()
-    local all = {}
-    for _, pin in ipairs(EasyFind.db.pinnedUIItems) do
-        all[#all + 1] = pin
-    end
-    local key = GetCharKey()
-    local charPins = EasyFind.db.pinnedUIItemsPerChar and EasyFind.db.pinnedUIItemsPerChar[key]
-    if charPins then
-        for _, pin in ipairs(charPins) do
-            all[#all + 1] = pin
-        end
-    end
-    return all
-end
-
-local function IsUIItemPinned(data)
-    local key = GetUIPinKey(data)
-    -- Check both lists for collection pins (may exist in either due to migration)
-    for _, pin in ipairs(EasyFind.db.pinnedUIItems) do
-        if GetUIPinKey(pin) == key then return true end
-    end
-    if IsCollectionPin(data) then
-        local charKey = GetCharKey()
-        local charPins = EasyFind.db.pinnedUIItemsPerChar and EasyFind.db.pinnedUIItemsPerChar[charKey]
-        if charPins then
-            for _, pin in ipairs(charPins) do
-                if GetUIPinKey(pin) == key then return true end
-            end
-        end
-    end
-    return false
-end
-
-local function PinUIItem(data)
-    if IsUIItemPinned(data) then return end
-    local clean = CleanUIForStorage(data)
-    clean.isPinned = true
-    tinsert(GetPinList(data), clean)
-end
-
-local function UnpinUIItem(data)
-    local key = GetUIPinKey(data)
-    -- Remove from whichever list contains it
-    local items = EasyFind.db.pinnedUIItems
-    for i = #items, 1, -1 do
-        if GetUIPinKey(items[i]) == key then
-            tremove(items, i)
-            return
-        end
-    end
-    if IsCollectionPin(data) then
-        local ck = GetCharKey()
-        local charPins = EasyFind.db.pinnedUIItemsPerChar and EasyFind.db.pinnedUIItemsPerChar[ck]
-        if charPins then
-            for i = #charPins, 1, -1 do
-                if GetUIPinKey(charPins[i]) == key then
-                    tremove(charPins, i)
-                    return
-                end
-            end
-        end
-    end
-end
+local GetAllPins = UIPins.GetAll
+local IsUIItemPinned = UIPins.IsPinned
+local PinUIItem = UIPins.Pin
+local UnpinUIItem = UIPins.Unpin
 UI.PinUIItem = PinUIItem
 UI.UnpinUIItem = UnpinUIItem
 
@@ -425,196 +292,48 @@ function UI:DressUpAppearanceSet(setID)
 end
 
 
--- Sync pinned outfit names/icons with current outfit data.
--- Called when TRANSMOG_OUTFITS_CHANGED fires (outfits renamed/deleted).
 function UI:SyncOutfitPins()
-    if not C_TransmogOutfitInfo or not C_TransmogOutfitInfo.GetOutfitsInfo then return end
-    local outfits = C_TransmogOutfitInfo.GetOutfitsInfo()
-    if not outfits then return end
+    UIPins.SyncOutfits()
+end
 
-    -- Build lookup: outfitID -> { name, icon }
-    local lookup = {}
-    for _, info in ipairs(outfits) do
-        lookup[info.outfitID] = info
+local function ShowPinPopup(_, isPinned, onPinAction, onGuide, onAddAlias)
+    local rows = {}
+    if onGuide then
+        rows[#rows + 1] = { text = "Guide", icon = EYE_ICON_TEX, onClick = onGuide }
     end
+    rows[#rows + 1] = { text = isPinned and "Unpin" or "Pin", onClick = onPinAction }
+    if onAddAlias then
+        rows[#rows + 1] = { text = "Add Alias", onClick = onAddAlias }
+    end
+    Utils.ShowCursorMenu("EasyFindPinPopup", rows, {
+        strata = "FULLSCREEN_DIALOG",
+        width = 96,
+        rowHeight = 22,
+    })
+end
 
-    -- Update both pin lists
-    local function syncList(pins)
-        if not pins then return end
-        for i = #pins, 1, -1 do
-            local pin = pins[i]
-            if pin.outfitID then
-                local info = lookup[pin.outfitID]
-                if info then
-                    pin.name = info.name
-                    pin.nameLower = info.name:lower()
-                    pin.icon = info.icon
-                else
-                    -- Outfit was deleted, remove pin
-                    tremove(pins, i)
+local unearnedTooltip
+
+local function ClearResultTooltips()
+    if unearnedTooltip then unearnedTooltip:Hide() end
+    if BattlePetTooltip then BattlePetTooltip:Hide() end
+    if GameTooltip then
+        for i = 1, #resultButtons do
+            local row = resultButtons[i]
+            if row then
+                if row.toyTooltipTicker then
+                    row.toyTooltipTicker:Cancel()
+                    row.toyTooltipTicker = nil
+                end
+                if GameTooltip:IsOwned(row) then
+                    GameTooltip:Hide()
                 end
             end
         end
     end
-
-    syncList(EasyFind.db.pinnedUIItems)
-    local ck = GetCharKey()
-    local charPins = EasyFind.db.pinnedUIItemsPerChar and EasyFind.db.pinnedUIItemsPerChar[ck]
-    syncList(charPins)
-end
-
--- Right-click context menu with Pin/Unpin and optional Guide row.
--- Anchored BOTTOMLEFT at cursor so it opens above the pointer.
-local EYE_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\eye"
-local PIN_MENU_ROW_H = 22
-local PIN_MENU_WIDTH = 96
-local pinPopup
-
-local function CreatePinMenuRow(parent)
-    local row = CreateFrame("Button", nil, parent)
-    row:SetHeight(PIN_MENU_ROW_H)
-    row:RegisterForClicks("LeftButtonUp")
-    local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    label:SetPoint("LEFT", row, "LEFT", 8, 0)
-    row.label = label
-    local icon = row:CreateTexture(nil, "OVERLAY")
-    icon:SetSize(14, 14)
-    icon:SetPoint("RIGHT", row, "RIGHT", -8, 0)
-    icon:Hide()
-    row.icon = icon
-    row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-    return row
-end
-
--- Hide when the cursor leaves the popup's bounding box. A child row's OnLeave
-local function ShowPinPopup(btn, isPinned, onPinAction, onGuide, onAddAlias)
-    if not pinPopup then
-        pinPopup = CreateFrame("Frame", "EasyFindPinPopup", UIParent, "BackdropTemplate")
-        pinPopup:SetFrameStrata("FULLSCREEN_DIALOG")
-        pinPopup:SetToplevel(true)
-        pinPopup:EnableMouse(true)
-        pinPopup:SetBackdrop({
-            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-            edgeFile = TOOLTIP_BORDER,
-            tile = true, tileSize = 16, edgeSize = 12,
-            insets = { left = 2, right = 2, top = 2, bottom = 2 }
-        })
-        pinPopup:SetBackdropColor(DARK_PANEL_BG[1], DARK_PANEL_BG[2], DARK_PANEL_BG[3], DARK_PANEL_BG[4])
-        pinPopup.guideRow = CreatePinMenuRow(pinPopup)
-        pinPopup.guideRow.label:SetText("Guide")
-        pinPopup.guideRow.icon:SetTexture(EYE_ICON_TEX)
-        pinPopup.guideRow.icon:Show()
-        pinPopup.pinRow = CreatePinMenuRow(pinPopup)
-        pinPopup.aliasRow = CreatePinMenuRow(pinPopup)
-        pinPopup.aliasRow.label:SetText("Add Alias")
-
-        -- Continuous outside-cursor poll: hides the popup once the
-        -- cursor has been outside for a short grace window. Combined
-        -- with GLOBAL_MOUSE_DOWN/UP for instant click-out dismissal
-        -- (with a small post-show grace so the right-click that
-        -- opened the popup doesn't immediately close it).
-        pinPopup:SetScript("OnShow", function(self)
-            self._showedAt = GetTime()
-            self._outsideSince = nil
-            self._hasEntered = false
-            self:RegisterEvent("GLOBAL_MOUSE_DOWN")
-            self:RegisterEvent("GLOBAL_MOUSE_UP")
-        end)
-        pinPopup:SetScript("OnHide", function(self)
-            self._outsideSince = nil
-            self._hasEntered = false
-            self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
-            self:UnregisterEvent("GLOBAL_MOUSE_UP")
-        end)
-        pinPopup:SetScript("OnUpdate", function(self)
-            if self:IsMouseOver() then
-                self._outsideSince = nil
-                self._hasEntered = true
-                return
-            end
-            -- Don't start the outside timer until the cursor has reached
-            -- the popup at least once. Otherwise the popup can close
-            -- before the user has a chance to move the mouse onto it.
-            if not self._hasEntered then return end
-            local now = GetTime()
-            if not self._outsideSince then
-                self._outsideSince = now
-                return
-            end
-            if now - self._outsideSince > 0.3 then
-                self:Hide()
-            end
-        end)
-        pinPopup:SetScript("OnEvent", function(self, event)
-            if event ~= "GLOBAL_MOUSE_DOWN" and event ~= "GLOBAL_MOUSE_UP" then
-                return
-            end
-            if self._showedAt and (GetTime() - self._showedAt) < 0.05 then
-                return
-            end
-            if not self:IsMouseOver() then
-                self:Hide()
-            end
-        end)
+    if ns.MapSearch and ns.MapSearch.ClearUIPreview then
+        ns.MapSearch:ClearUIPreview()
     end
-
-    pinPopup.pinRow:Show()
-    pinPopup.pinRow.label:SetText(isPinned and "Unpin" or "Pin")
-    pinPopup.pinRow:SetScript("OnClick", function()
-        pinPopup:Hide()
-        if onPinAction then onPinAction() end
-    end)
-
-    -- Stack rows top-to-bottom in this order: Guide (if applicable),
-    -- Pin/Unpin, Add Alias (if applicable). Each anchor chains off
-    -- the previous visible row so dropping one shifts the rest up.
-    local rowsShown = 0
-    local lastStackedRow
-    local function StackRow(row)
-        row:ClearAllPoints()
-        if rowsShown == 0 then
-            row:SetPoint("TOPLEFT", pinPopup, "TOPLEFT", 4, -4)
-            row:SetPoint("TOPRIGHT", pinPopup, "TOPRIGHT", -4, -4)
-        else
-            row:SetPoint("TOPLEFT", lastStackedRow, "BOTTOMLEFT", 0, 0)
-            row:SetPoint("TOPRIGHT", lastStackedRow, "BOTTOMRIGHT", 0, 0)
-        end
-        row:Show()
-        rowsShown = rowsShown + 1
-        lastStackedRow = row
-    end
-
-    if onGuide then
-        pinPopup.guideRow:SetScript("OnClick", function()
-            pinPopup:Hide()
-            onGuide()
-        end)
-        StackRow(pinPopup.guideRow)
-    else
-        pinPopup.guideRow:Hide()
-        pinPopup.guideRow:SetScript("OnClick", nil)
-    end
-
-    StackRow(pinPopup.pinRow)
-
-    if onAddAlias then
-        pinPopup.aliasRow:SetScript("OnClick", function()
-            pinPopup:Hide()
-            onAddAlias()
-        end)
-        StackRow(pinPopup.aliasRow)
-    else
-        pinPopup.aliasRow:Hide()
-        pinPopup.aliasRow:SetScript("OnClick", nil)
-    end
-
-    pinPopup:SetSize(PIN_MENU_WIDTH, PIN_MENU_ROW_H * rowsShown + 8)
-
-    local scale = UIParent:GetEffectiveScale()
-    local x, y = GetCursorPosition()
-    pinPopup:ClearAllPoints()
-    pinPopup:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale, y / scale)
-    pinPopup:Show()
 end
 
 -- Centralized icon setter - resets texture state before applying to prevent
@@ -677,7 +396,6 @@ local selectedIndex = 0   -- 0 = none selected, 1..N = highlighted row
 local toggleFocused = false -- true = Tab moved focus to expand/collapse toggle
 local navFrame             -- Keyboard capture frame for results navigation
 local escCatcher           -- UISpecialFrames fallback for second-ESC-to-close
-local unearnedTooltip      -- Custom tooltip for unearned currencies
 local activeKeybindBtn
 
 -- THEME DEFINITIONS
@@ -746,6 +464,27 @@ THEMES["Modern"] = {
 
 local function GetActiveTheme()
     return THEMES["Modern"]
+end
+
+local function ScaleFont(fontString, baseFontObject)
+    if not fontString then return end
+    local obj = _G[baseFontObject]
+    if not obj then return end
+    local path, baseSize, flags = obj:GetFont()
+    fontString:SetFont(path, baseSize * (EasyFind.db.fontSize or 1.0), flags)
+    fontString:SetJustifyH(fontString:GetJustifyH())
+end
+
+local function ApplyResultRowFonts(row, theme)
+    if not row then return end
+    theme = theme or GetActiveTheme()
+    ScaleFont(row.text, theme.leafFont)
+    ScaleFont(row.tabText, theme.pathFont)
+    ScaleFont(row.sectionLabelText, "GameFontNormalSmall")
+    ScaleFont(row.pathSubtext, theme.leafFont)
+    ScaleFont(row.amountText, "GameFontNormalSmall")
+    ScaleFont(row.repBarText, "GameFontNormalSmall")
+    ScaleFont(row.settingSliderValue, "GameFontNormalSmall")
 end
 
 function UI:CreateUnearnedTooltip()
@@ -832,15 +571,12 @@ function UI:Initialize()
         end)
     end
 
-    -- Prewarm: 3s after login (after dynamic data has finished loading)
-    -- run a throwaway search so the first-char inverted index gets
-    -- built and the per-bucket scratch tables get allocated. Without
-    -- this, the user's first real keystroke pays a 100ms+ cold tax.
-    C_Timer.After(3, function()
-        if ns.Database and ns.Database.SearchUI then
-            ns.Database:SearchUI("zz")
-        end
-    end)
+end
+
+function UI:WarmSearchHotPath()
+    for i = 1, MAX_BUTTON_POOL do
+        EnsureResultButton(i):Hide()
+    end
 end
 
 function UI:RegisterCombatEvents()
@@ -890,7 +626,6 @@ function UI:CreateSearchFrame()
     end
 
     local theme = GetActiveTheme()
-    local WHITE8x8 = "Interface\\BUTTONS\\WHITE8x8"
     ns.CreateSearchBorder(searchFrame)
 
     -- Combined visual frame: 9-slice rounded rect that morphs from a
@@ -948,10 +683,7 @@ function UI:CreateSearchFrame()
     searchIcon:SetAtlas("common-search-magnifyingglass")
     iconHolder.icon = searchIcon
     searchFrame.searchIcon = searchIcon
-    -- Kept for Demo.lua / legacy references; no longer a clickable toggle.
     searchFrame.modeBtn = iconHolder
-    -- No-op shim so legacy pcalls from Demo.lua succeed.
-    ns.UpdateModeButtonVisual = ns.UpdateModeButtonVisual or function() end
 
     -- Editbox
     local editBox = CreateFrame("EditBox", "EasyFindSearchBox", searchFrame)
@@ -2131,8 +1863,8 @@ function UI:BuildAppearanceSetOptionsPopup(StylePopup, CreateRadioTexture,
     end
 
     local function ApplyFilterSelection()
-        if ns.Database and ns.Database.PopulateDynamicTransmogSets then
-            ns.Database:PopulateDynamicTransmogSets()
+        if ns.Database and ns.Database.RefreshDynamicCategory then
+            ns.Database:RefreshDynamicCategory("transmogSets")
         end
         if searchEditBox and searchEditBox:GetText() ~= "" then
             UI:OnSearchTextChanged(searchEditBox:GetText())
@@ -2869,9 +2601,6 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             dropdown:HookScript("OnHide", function() popup:Hide() end)
         end
 
-        -- Map Search: was a local/global radio pair, but the MapTab
-        -- model shows both scopes together and that's what UI search
-        -- now does too — the toggle above is just on/off.
 
         -- Loot/Gear: side popup with difficulty + spec selector + iLvl
         -- upgrades checkbox. Opens to the right of the Gear filter row
@@ -2997,8 +2726,8 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     EasyFind.db.lootDifficulty = def.key
                     UpdateDiffLabel()
                     diffPopup:Hide()
-                    if ns.Database and ns.Database.PopulateDynamicLoot then
-                        ns.Database:PopulateDynamicLoot()
+                    if ns.Database and ns.Database.RefreshDynamicCategory then
+                        ns.Database:RefreshDynamicCategory("loot")
                     end
                     if searchEditBox:GetText() ~= "" then
                         UI:OnSearchTextChanged(searchEditBox:GetText())
@@ -3097,8 +2826,8 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             -- Apply single selection and rebuild from cache
             local function ApplyFilterSelection()
                 if ns.Database then
-                    if ns.Database.PopulateDynamicLoot then
-                        ns.Database:PopulateDynamicLoot()
+                    if ns.Database.RefreshDynamicCategory then
+                        ns.Database:RefreshDynamicCategory("loot")
                     end
                     ns.Database:SyncEJLootFilter()
                 end
@@ -3816,8 +3545,8 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 or beforeNotCollected ~= db.appearanceSetNotCollected
                 or beforePvE ~= db.appearanceSetPvE
                 or beforePvP ~= db.appearanceSetPvP
-            if changed and ns.Database.PopulateDynamicTransmogSets then
-                ns.Database:PopulateDynamicTransmogSets()
+            if changed and ns.Database.RefreshDynamicCategory then
+                ns.Database:RefreshDynamicCategory("transmogSets")
                 if searchEditBox and searchEditBox:GetText() ~= "" then
                     UI:OnSearchTextChanged(searchEditBox:GetText())
                 end
@@ -3909,6 +3638,15 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     dropdown.checkRows = checkRows
 end
 
+function EnsureResultButton(index)
+    local row = resultButtons[index]
+    if not row then
+        row = UI:CreateResultButton(index)
+        resultButtons[index] = row
+    end
+    return row
+end
+
 function UI:CreateResultsFrame()
     resultsFrame = CreateFrame("Frame", "EasyFindResultsFrame", searchFrame, "BackdropTemplate")
     resultsFrame:SetWidth(380)  -- Wide to accommodate tree indentation
@@ -3922,6 +3660,16 @@ function UI:CreateResultsFrame()
         tile = true, tileSize = 32, edgeSize = 20,
         insets = { left = 5, right = 5, top = 5, bottom = 5 }
     })
+
+    local theme = GetActiveTheme()
+    local bgAtlasTex = resultsFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
+    bgAtlasTex:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 4, -4)
+    bgAtlasTex:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", -4, 4)
+    if theme.resultsBgAtlas then
+        bgAtlasTex:SetAtlas(theme.resultsBgAtlas, false)
+    end
+    bgAtlasTex:Hide()
+    resultsFrame.bgAtlasTex = bgAtlasTex
 
     resultsFrame:Hide()
 
@@ -3982,11 +3730,6 @@ function UI:CreateResultsFrame()
     -- Minimal retail-style scrollbar (overlays right edge, no content squish)
     resultsFrame.scrollBar = ns.Utils.CreateMinimalScrollBar(scrollFrame, resultsFrame)
 
-    for i = 1, MAX_BUTTON_POOL do
-        local resultRow = self:CreateResultButton(i)
-        resultButtons[i] = resultRow
-    end
-
     -- Pin section separator line (golden, shown between pinned items and search results)
     local pinSeparator = scrollChild:CreateTexture(nil, "ARTWORK")
     pinSeparator:SetColorTexture(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.4)
@@ -4027,115 +3770,44 @@ local collapsedNodes = {}   -- key = "name_depth", value = true
 local cachedHierarchical    -- last full hierarchical list for re-rendering after toggle
 local expandedContainers = {}  -- tracks which containers have had children injected
 
--- Reusable tables for grouping results (wiped each search to avoid per-keystroke allocations)
-local groupUI, groupMounts, groupToys, groupPets, groupOutfits, groupLoot, groupAppearanceSets, groupMap = {}, {}, {}, {}, {}, {}, {}, {}
-local groupAchievements, groupCurrencies, groupReputations = {}, {}, {}
-local groupBags, groupOptions = {}, {}
-local groupHeirlooms = {}
-local uiSectionHeader = {
-    name = "UI Elements", depth = 0, isPathNode = true,
-    isMatch = false, isSectionHeader = true,
-}
-local achievementSectionHeader = {
-    name = "Achievements", depth = 0, isPathNode = true,
-    isMatch = false, isSectionHeader = true,
-}
-local currencySectionHeader = {
-    name = "Currencies", depth = 0, isPathNode = true,
-    isMatch = false, isSectionHeader = true,
-}
-local reputationSectionHeader = {
-    name = "Reputations", depth = 0, isPathNode = true,
-    isMatch = false, isSectionHeader = true,
-}
-local mountSectionHeader = {
-    name = "Mounts", depth = 0, isPathNode = true,
-    isMatch = false, isSectionHeader = true,
-}
-local toySectionHeader = {
-    name = "Toys", depth = 0, isPathNode = true,
-    isMatch = false, isSectionHeader = true,
-}
-local petSectionHeader = {
-    name = "Pets", depth = 0, isPathNode = true,
-    isMatch = false, isSectionHeader = true,
-}
-local outfitSectionHeader = {
-    name = "Outfits", depth = 0, isPathNode = true,
-    isMatch = false, isSectionHeader = true,
-}
-local heirloomSectionHeader = {
-    name = "Heirlooms", depth = 0, isPathNode = true,
-    isMatch = false, isSectionHeader = true,
-}
-local lootSectionHeader = {
-    name = "Gear", depth = 0, isPathNode = true,
-    isMatch = false, isSectionHeader = true,
-}
-local appearanceSetSectionHeader = {
-    name = "Appearance Sets", depth = 0, isPathNode = true,
-    isMatch = false, isSectionHeader = true,
-}
-local mapSectionHeader = {
-    name = "Map Search", depth = 0, isPathNode = true,
-    isMatch = false, isSectionHeader = true,
-}
-local bagsSectionHeader = {
-    name = "Bags", depth = 0, isPathNode = true,
-    isMatch = false, isSectionHeader = true,
-}
-local optionsSectionHeader = {
-    name = "Game Options", depth = 0, isPathNode = true,
-    isMatch = false, isSectionHeader = true,
-}
-
--- Flat-list mode scratch: reused entry pool keeps per-keystroke allocations
--- low when uiHideHeaders is on. flatEntries holds recyclable entry tables;
--- flatCombined is the merged-results buffer that gets sorted by score.
 local flatEntries = {}
 local flatCombined = {}
-
-local PB = {
-    ui = {}, ach = {}, cur = {}, rep = {},
-    mounts = {}, toys = {}, pets = {},
-    outfits = {}, loot = {}, appsets = {},
-    bags = {}, options = {}, heirlooms = {},
-}
+local pinnedSearchEntries = {}
+local pinnedSearchPinEntries = {}
+local pinnedOnlyEntries = {}
 
 local SCRATCH = {
     visible = {},
     isLastChild = {},
     catSepYPositions = {},
-    bestCatScore = {},
-    catGroups = {},
+    aliasSeen = {},
+    filteredResults = {},
+    skipCategories = {},
 }
 
--- Exposed for /efd mem diagnostics so we can see whether per-search
--- scratch tables, per-bucket result tables, or the button pool are
--- responsible for the post-search memory growth.
 UI._flatEntries = flatEntries
 UI._flatCombined = flatCombined
-UI._PB = PB
+UI._pinnedSearchEntries = pinnedSearchEntries
+UI._pinnedSearchPinEntries = pinnedSearchPinEntries
 UI._SCRATCH = SCRATCH
 UI._resultButtons = resultButtons
 
-local function CatGroupCompare(a, b)
-    if a.score ~= b.score then return a.score > b.score end
-    return a.key < b.key
-end
+local heavySearchLoading = false
 
-local function BuildBucketInto(group, bucketResults)
-    if #bucketResults == 0 then return end
-    local hier = ns.Database:BuildHierarchicalResults(bucketResults)
-    for hi = 1, #hier do
-        local entry = hier[hi]
-        if entry.isContainer then
-            collapsedNodes[entry.name .. "_" .. (entry.depth or 0)] = true
+local function MaybeLoadHeavySearchData(text, needsHeavy)
+    if heavySearchLoading or not ns.Database or not ns.Database.LoadHeavyDynamicSearchData then return end
+    if not needsHeavy then return end
+    heavySearchLoading = true
+    local started = ns.Database:LoadHeavyDynamicSearchData(function()
+        heavySearchLoading = false
+        local currentText = searchFrame and searchFrame.editBox and searchFrame.editBox:GetText()
+        if searchFrame and searchFrame.editBox and searchFrame.editBox:HasFocus()
+           and currentText and currentText ~= "" then
+            UI:OnSearchTextChanged(currentText, true)
         end
-        group[#group + 1] = entry
-    end
+    end)
+    if not started then heavySearchLoading = false end
 end
-
 
 -- Within-group ordering for flat-list mode. Score-first so the best
 -- matches stay at the top — alphabetical was burying high-scoring
@@ -4280,10 +3952,7 @@ function UI:CreateResultButton(index)
     toggleBtn:SetScript("OnClick", function(self)
         local row = self:GetParent():GetParent()
         if row.isPinHeader then
-            EasyFind.db.pinsCollapsed = not EasyFind.db.pinsCollapsed
-            if cachedHierarchical then
-                UI:ShowHierarchicalResults(cachedHierarchical, true)
-            end
+            return
         elseif row.isPathNode then
             local key = (row.pathNodeName or "") .. "_" .. (row.pathNodeDepth or 0)
             local wasCollapsed = collapsedNodes[key]
@@ -5183,12 +4852,7 @@ function UI:CreateResultButton(index)
             return
         end
 
-        -- Pin header: toggle collapse
         if self.isPinHeader then
-            EasyFind.db.pinsCollapsed = not EasyFind.db.pinsCollapsed
-            if cachedHierarchical then
-                UI:ShowHierarchicalResults(cachedHierarchical, true)
-            end
             return
         end
 
@@ -5331,6 +4995,7 @@ function UI:CreateResultButton(index)
                 local link = C_PetJournal and C_PetJournal.GetBattlePetLink
                     and C_PetJournal.GetBattlePetLink(self.icon.petID)
                 if link and BattlePetToolTip_ShowLink then
+                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
                     BattlePetToolTip_ShowLink(link)
                 elseif link then
                     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -5434,6 +5099,7 @@ function UI:CreateResultButton(index)
         end
     end)
 
+    ApplyResultRowFonts(resultRow)
     resultRow:Hide()
     return resultRow
 end
@@ -5563,7 +5229,11 @@ function UI:OnSearchTextChanged(text, force)
     end
     -- Treat whitespace-only as empty (pins show on focus, not on blank spaces)
     if text then text = strtrim(text) end
+    ClearResultTooltips()
     if not text or text == "" then
+        if ns.Database and ns.Database.CancelDynamicWarmup then
+            ns.Database:CancelDynamicWarmup()
+        end
         -- Only show pins if the editbox still has focus (avoid re-showing
         -- after SelectResult clears the text)
         if searchFrame and searchFrame.editBox and searchFrame.editBox:HasFocus() then
@@ -5574,13 +5244,14 @@ function UI:OnSearchTextChanged(text, force)
         return
     end
 
-    -- Clear collapse state so every new search starts fully expanded
-    collapsedNodes = {}
-    expandedContainers = {}
-
-    if ns.Database.ResetHierEntryPool then
-        ns.Database:ResetHierEntryPool()
+    wipe(collapsedNodes)
+    wipe(expandedContainers)
+    local needsHeavy = ns.Database and ns.Database.QueryNeedsHeavySearchData
+        and ns.Database:QueryNeedsHeavySearchData(text)
+    if not force and not needsHeavy and ns.Database and ns.Database.CancelDynamicWarmup then
+        ns.Database:CancelDynamicWarmup()
     end
+    MaybeLoadHeavySearchData(text, needsHeavy)
 
     -- Build skip set from filters so SearchUI avoids scoring/copying filtered categories.
     -- Collection items (mounts/toys/pets/outfits/appearance sets) are
@@ -5609,7 +5280,8 @@ function UI:OnSearchTextChanged(text, force)
         if mountsOff or toysOff or petsOff or outfitsOff or lootOff
            or appsetsOff or bagsOff or macrosOff or gameOptOff or addonOptOff
            or abilitiesOff or bossesOff or heirloomsOff or titlesOff or gearSetsOff then
-            skipCategories = {}
+            skipCategories = SCRATCH.skipCategories
+            wipe(skipCategories)
             if mountsOff    then skipCategories["Mount"] = true end
             if toysOff      then skipCategories["Toy"] = true end
             if petsOff      then skipCategories["Pet"] = true end
@@ -5638,7 +5310,8 @@ function UI:OnSearchTextChanged(text, force)
     if ns.Aliases then
         local aliasMatches = ns.Aliases:GetMatches(text:lower())
         if aliasMatches then
-            local seen = {}
+            wipe(SCRATCH.aliasSeen)
+            local seen = SCRATCH.aliasSeen
             for _, r in ipairs(results) do seen[r.data] = true end
             for i = #aliasMatches, 1, -1 do
                 local hit = aliasMatches[i]
@@ -5647,6 +5320,7 @@ function UI:OnSearchTextChanged(text, force)
                     seen[hit.data] = true
                 end
             end
+            wipe(seen)
         end
     end
 
@@ -5661,7 +5335,8 @@ function UI:OnSearchTextChanged(text, force)
                     or filters.bags == false or filters.macros == false
                     or filters.options == false
                     or filters.gameOptions == false or filters.addonOptions == false) then
-        local filtered = {}
+        wipe(SCRATCH.filteredResults)
+        local filtered = SCRATCH.filteredResults
         local fi = 0
         for ri = 1, #results do
             local r = results[ri]
@@ -5679,6 +5354,7 @@ function UI:OnSearchTextChanged(text, force)
                 end
             end
         end
+        for i = fi + 1, #filtered do filtered[i] = nil end
         results = filtered
     end
 
@@ -5688,66 +5364,24 @@ function UI:OnSearchTextChanged(text, force)
         mapResults = ns.MapSearch:SearchForUI(text)
     end
 
-    wipe(SCRATCH.bestCatScore)
-    local bestCatScore = SCRATCH.bestCatScore
-    for ri = 1, #results do
-        local r = results[ri]
-        local d = r.data
-        local s = r.score or 0
-        local cat
-        if d.mountID then cat = "mounts"
-        elseif d.toyItemID then cat = "toys"
-        elseif d.petID then cat = "pets"
-        elseif d.outfitID then cat = "outfits"
-        elseif d.heirloomItemID then cat = "heirlooms"
-        elseif d.itemID and d.category == "Loot" then cat = "loot"
-        elseif d.transmogSetID then cat = "appearanceSets"
-        else cat = GetUIBucket(d) or "ui"
-        end
-        if s > (bestCatScore[cat] or 0) then bestCatScore[cat] = s end
-    end
+    wipe(flatCombined)
+    local combined = flatCombined
+    for ri = 1, #results do combined[#combined + 1] = results[ri] end
     if mapResults then
-        for ri = 1, #mapResults do
-            local s = mapResults[ri].score or 0
-            if s > (bestCatScore.map or 0) then bestCatScore.map = s end
-        end
+        for ri = 1, #mapResults do combined[#combined + 1] = mapResults[ri] end
     end
-    -- Boost loot category when the query exactly matches a slot name (e.g., "legs", "ring")
-    if bestCatScore.loot and ns.lootSlotNames then
-        local queryLower = slower(text)
-        if ns.lootSlotNames[queryLower] then
-            bestCatScore.loot = mmax(bestCatScore.loot, 200)
-        end
-    end
+    if #combined > 1 then tsort(combined, FlatNameLess) end
 
-    local hideHeaders = EasyFind.db.uiHideHeaders
-    local hierarchical
-    if hideHeaders then
-        -- Flat-list mode: single score-sorted list. UI results, map
-        -- results, collections, settings — everything gets ranked
-        -- together purely on score. Category clustering (used to
-        -- live here) hid genuinely better matches behind weaker ones
-        -- in higher-priority buckets, e.g. a name-prefix UI hit
-        -- lost to a same-bucket map result that only matched via
-        -- initials, because the map bucket sorted alphabetically
-        -- by zone before yielding to the next bucket.
-        wipe(flatCombined)
-        local combined = flatCombined
-        for ri = 1, #results do combined[#combined + 1] = results[ri] end
-        if mapResults then
-            for ri = 1, #mapResults do combined[#combined + 1] = mapResults[ri] end
-        end
-        if #combined > 1 then tsort(combined, FlatNameLess) end
-
-        local n = 0
-        for ri = 1, #combined do
+    local n = 0
+    for ri = 1, #combined do
+        local d = combined[ri] and combined[ri].data
+        if d then
             n = n + 1
             local e = flatEntries[n]
             if not e then
                 e = {}
                 flatEntries[n] = e
             end
-            local d = combined[ri].data
             e.name = d.name
             e.depth = 0
             e.isPathNode = false
@@ -5756,290 +5390,44 @@ function UI:OnSearchTextChanged(text, force)
             e.flatCatKey = nil
             e.data = d
         end
-        for i = n + 1, #flatEntries do
-            flatEntries[i] = nil
-        end
-        hierarchical = flatEntries
-    else
-
-    local pb = PB
-    wipe(pb.ui); wipe(pb.ach); wipe(pb.cur); wipe(pb.rep)
-    wipe(pb.mounts); wipe(pb.toys); wipe(pb.pets)
-    wipe(pb.outfits); wipe(pb.loot); wipe(pb.appsets)
-    wipe(pb.bags); wipe(pb.options); wipe(pb.heirlooms)
-    for ri = 1, #results do
-        local r = results[ri]
-        local d = r.data
-        if d.mountID then
-            pb.mounts[#pb.mounts + 1] = r
-        elseif d.toyItemID then
-            pb.toys[#pb.toys + 1] = r
-        elseif d.petID then
-            pb.pets[#pb.pets + 1] = r
-        elseif d.outfitID then
-            pb.outfits[#pb.outfits + 1] = r
-        elseif d.heirloomItemID then
-            pb.heirlooms[#pb.heirlooms + 1] = r
-        elseif d.itemID and d.category == "Loot" then
-            pb.loot[#pb.loot + 1] = r
-        elseif d.transmogSetID then
-            pb.appsets[#pb.appsets + 1] = r
-        else
-            local bucket = UI_BUCKET_BY_CATEGORY[d.category]
-            if bucket == "achievements" then
-                pb.ach[#pb.ach + 1] = r
-            elseif bucket == "currencies" then
-                pb.cur[#pb.cur + 1] = r
-            elseif bucket == "reputations" then
-                pb.rep[#pb.rep + 1] = r
-            elseif bucket == "bags" then
-                pb.bags[#pb.bags + 1] = r
-            elseif bucket == "options" then
-                pb.options[#pb.options + 1] = r
-            else
-                pb.ui[#pb.ui + 1] = r
-            end
-        end
+    end
+    for i = n + 1, #flatEntries do
+        flatEntries[i] = nil
     end
 
-    -- Reuse module-level group tables to hold the per-bucket hierarchies.
-    wipe(groupUI); wipe(groupAchievements); wipe(groupCurrencies); wipe(groupReputations)
-    wipe(groupMounts); wipe(groupToys); wipe(groupPets)
-    wipe(groupOutfits); wipe(groupLoot); wipe(groupAppearanceSets); wipe(groupMap)
-    wipe(groupBags); wipe(groupOptions); wipe(groupHeirlooms)
-
-    BuildBucketInto(groupUI,           pb.ui)
-    BuildBucketInto(groupAchievements, pb.ach)
-    BuildBucketInto(groupCurrencies,   pb.cur)
-    BuildBucketInto(groupReputations,  pb.rep)
-    BuildBucketInto(groupBags,         pb.bags)
-    BuildBucketInto(groupOptions,      pb.options)
-    BuildBucketInto(groupMounts,       pb.mounts)
-    BuildBucketInto(groupToys,         pb.toys)
-    BuildBucketInto(groupPets,         pb.pets)
-    BuildBucketInto(groupOutfits,      pb.outfits)
-    BuildBucketInto(groupHeirlooms,    pb.heirlooms)
-    BuildBucketInto(groupLoot,         pb.loot)
-    BuildBucketInto(groupAppearanceSets, pb.appsets)
-    -- Keep `hierarchical` defined for the rest of the function;
-    -- it gets rebuilt below by appending each section in catGroups order.
-    hierarchical = nil
-
-    -- Map results: group by top-ancestor continent so parent/children
-    -- nest with collapsible headers (matches MapTab's layout). A group
-    -- with only one entry renders flat — no point wrapping a single
-    -- result in its own header. Groups with the parent zone itself as
-    -- a match promote the parent entry to the header's navigate target.
-    if mapResults then
-        local getAncestor = ns.MapTab and ns.MapTab.GetTopAncestor
-        if not getAncestor then
-            -- Fallback if MapTab isn't loaded yet (unlikely but safe).
-            for _, r in ipairs(mapResults) do
-                groupMap[#groupMap + 1] = {
-                    name = r.data.name, depth = 1,
-                    isPathNode = false, isMatch = true, data = r.data,
-                }
-            end
-        else
-            local groupsByAncestor = {}
-            local ancestorOrder = {}
-            for _, r in ipairs(mapResults) do
-                local d = r.data
-                local mapID = d.mapID or d.zoneMapID or d.entranceMapID
-                local ancestor = mapID and getAncestor(ns.MapTab, mapID)
-                if not ancestor or ancestor == "" then ancestor = "Other" end
-                local g = groupsByAncestor[ancestor]
-                if not g then
-                    g = { items = {}, bestScore = 0, selfMatch = nil }
-                    groupsByAncestor[ancestor] = g
-                    ancestorOrder[#ancestorOrder + 1] = ancestor
-                end
-                -- Detect "the zone IS its own top ancestor" (Eastern
-                -- Kingdoms matching while all its child zones also
-                -- match) so the parent header can point at it rather
-                -- than a synthesized one.
-                if d.name == ancestor and d.isZone then
-                    g.selfMatch = r
-                else
-                    g.items[#g.items + 1] = r
-                end
-                local s = r.score or 0
-                if s > g.bestScore then g.bestScore = s end
-            end
-            for _, ancestor in ipairs(ancestorOrder) do
-                local g = groupsByAncestor[ancestor]
-                local total = #g.items + (g.selfMatch and 1 or 0)
-                if total > 1 then
-                    -- Parent header, then children at depth 2
-                    local headerData = g.selfMatch and g.selfMatch.data
-                        or { name = ancestor, mapSearchResult = true, isZone = true }
-                    groupMap[#groupMap + 1] = {
-                        name = ancestor, depth = 1,
-                        isPathNode = true, isMatch = true,
-                        data = headerData,
-                    }
-                    for _, r in ipairs(g.items) do
-                        groupMap[#groupMap + 1] = {
-                            name = r.data.name, depth = 2,
-                            isPathNode = false, isMatch = true,
-                            data = r.data,
-                        }
-                    end
-                else
-                    -- Single-item group: render flat, no wrapping header.
-                    local r = g.selfMatch or g.items[1]
-                    if r then
-                        groupMap[#groupMap + 1] = {
-                            name = r.data.name, depth = 1,
-                            isPathNode = false, isMatch = true,
-                            data = r.data,
-                        }
-                    end
-                end
-            end
-        end
-    end
-    -- Sort categories by best match score so the most relevant category appears first
-    wipe(SCRATCH.catGroups)
-    local catGroups = SCRATCH.catGroups
-    local n = 0
-    if #groupUI > 0 then n = n + 1; local g = catGroups[n] or {}; catGroups[n] = g; g.key = "ui"; g.score = bestCatScore.ui or 0 end
-    if #groupAchievements > 0 then n = n + 1; local g = catGroups[n] or {}; catGroups[n] = g; g.key = "achievements"; g.score = bestCatScore.achievements or 0 end
-    if #groupCurrencies > 0 then n = n + 1; local g = catGroups[n] or {}; catGroups[n] = g; g.key = "currencies"; g.score = bestCatScore.currencies or 0 end
-    if #groupReputations > 0 then n = n + 1; local g = catGroups[n] or {}; catGroups[n] = g; g.key = "reputations"; g.score = bestCatScore.reputations or 0 end
-    if #groupBags > 0 then n = n + 1; local g = catGroups[n] or {}; catGroups[n] = g; g.key = "bags"; g.score = bestCatScore.bags or 0 end
-    if #groupOptions > 0 then n = n + 1; local g = catGroups[n] or {}; catGroups[n] = g; g.key = "options"; g.score = bestCatScore.options or 0 end
-    if #groupMounts > 0 then n = n + 1; local g = catGroups[n] or {}; catGroups[n] = g; g.key = "mounts"; g.score = bestCatScore.mounts or 0 end
-    if #groupToys > 0 then n = n + 1; local g = catGroups[n] or {}; catGroups[n] = g; g.key = "toys"; g.score = bestCatScore.toys or 0 end
-    if #groupPets > 0 then n = n + 1; local g = catGroups[n] or {}; catGroups[n] = g; g.key = "pets"; g.score = bestCatScore.pets or 0 end
-    if #groupOutfits > 0 then n = n + 1; local g = catGroups[n] or {}; catGroups[n] = g; g.key = "outfits"; g.score = bestCatScore.outfits or 0 end
-    if #groupHeirlooms > 0 then n = n + 1; local g = catGroups[n] or {}; catGroups[n] = g; g.key = "heirlooms"; g.score = bestCatScore.heirlooms or 0 end
-    if #groupLoot > 0 then n = n + 1; local g = catGroups[n] or {}; catGroups[n] = g; g.key = "loot"; g.score = bestCatScore.loot or 0 end
-    if #groupAppearanceSets > 0 then n = n + 1; local g = catGroups[n] or {}; catGroups[n] = g; g.key = "appearanceSets"; g.score = bestCatScore.appearanceSets or 0 end
-    if #groupMap > 0 then n = n + 1; local g = catGroups[n] or {}; catGroups[n] = g; g.key = "map"; g.score = bestCatScore.map or 0 end
-    tsort(catGroups, CatGroupCompare)
-
-    hierarchical = {}
-    for _, cat in ipairs(catGroups) do
-        if cat.key == "ui" then
-            if #hierarchical > 0 then
-                hierarchical[#hierarchical + 1] = uiSectionHeader
-            end
-            for _, e in ipairs(groupUI) do hierarchical[#hierarchical + 1] = e end
-        elseif cat.key == "achievements" then
-            hierarchical[#hierarchical + 1] = achievementSectionHeader
-            for _, e in ipairs(groupAchievements) do hierarchical[#hierarchical + 1] = e end
-        elseif cat.key == "currencies" then
-            hierarchical[#hierarchical + 1] = currencySectionHeader
-            for _, e in ipairs(groupCurrencies) do hierarchical[#hierarchical + 1] = e end
-        elseif cat.key == "reputations" then
-            hierarchical[#hierarchical + 1] = reputationSectionHeader
-            for _, e in ipairs(groupReputations) do hierarchical[#hierarchical + 1] = e end
-        elseif cat.key == "bags" then
-            hierarchical[#hierarchical + 1] = bagsSectionHeader
-            for _, e in ipairs(groupBags) do hierarchical[#hierarchical + 1] = e end
-        elseif cat.key == "options" then
-            hierarchical[#hierarchical + 1] = optionsSectionHeader
-            for _, e in ipairs(groupOptions) do hierarchical[#hierarchical + 1] = e end
-        elseif cat.key == "mounts" then
-            hierarchical[#hierarchical + 1] = mountSectionHeader
-            for _, e in ipairs(groupMounts) do e.depth = 1; hierarchical[#hierarchical + 1] = e end
-        elseif cat.key == "toys" then
-            hierarchical[#hierarchical + 1] = toySectionHeader
-            for _, e in ipairs(groupToys) do e.depth = 1; hierarchical[#hierarchical + 1] = e end
-        elseif cat.key == "pets" then
-            hierarchical[#hierarchical + 1] = petSectionHeader
-            for _, e in ipairs(groupPets) do e.depth = 1; hierarchical[#hierarchical + 1] = e end
-        elseif cat.key == "outfits" then
-            hierarchical[#hierarchical + 1] = outfitSectionHeader
-            for _, e in ipairs(groupOutfits) do e.depth = 1; hierarchical[#hierarchical + 1] = e end
-        elseif cat.key == "heirlooms" then
-            hierarchical[#hierarchical + 1] = heirloomSectionHeader
-            for _, e in ipairs(groupHeirlooms) do e.depth = 1; hierarchical[#hierarchical + 1] = e end
-        elseif cat.key == "loot" then
-            hierarchical[#hierarchical + 1] = lootSectionHeader
-            local slotGroups = {}
-            local slotOrder = {}
-            for _, e in ipairs(groupLoot) do
-                local slot = (e.data and e.data.lootSlotName) or "Other"
-                if not slotGroups[slot] then
-                    slotGroups[slot] = {}
-                    slotOrder[#slotOrder + 1] = slot
-                end
-                slotGroups[slot][#slotGroups[slot] + 1] = e
-            end
-            for _, slot in ipairs(slotOrder) do
-                hierarchical[#hierarchical + 1] = {
-                    name = slot, depth = 1, isPathNode = true,
-                    isMatch = false, isSectionHeader = false,
-                }
-                local instGroups = {}
-                local instOrder = {}
-                for _, e in ipairs(slotGroups[slot]) do
-                    local inst = (e.data and e.data.lootInstanceName) or "Unknown"
-                    if not instGroups[inst] then
-                        instGroups[inst] = {}
-                        instOrder[#instOrder + 1] = inst
-                    end
-                    instGroups[inst][#instGroups[inst] + 1] = e
-                end
-                for _, inst in ipairs(instOrder) do
-                    hierarchical[#hierarchical + 1] = {
-                        name = inst, depth = 2, isPathNode = true,
-                        isMatch = false, isSectionHeader = false,
-                    }
-                    for _, e in ipairs(instGroups[inst]) do
-                        e.depth = 3
-                        hierarchical[#hierarchical + 1] = e
-                    end
-                end
-            end
-        elseif cat.key == "appearanceSets" then
-            hierarchical[#hierarchical + 1] = appearanceSetSectionHeader
-            for _, e in ipairs(groupAppearanceSets) do e.depth = 1; hierarchical[#hierarchical + 1] = e end
-        elseif cat.key == "map" then
-            hierarchical[#hierarchical + 1] = mapSectionHeader
-            for _, e in ipairs(groupMap) do hierarchical[#hierarchical + 1] = e end
-        end
-    end
-
-    end -- end if hideHeaders / else branch
-
-    -- Prepend pinned items at the top (always visible regardless of query).
-    -- In flat-headerless mode, skip the "Pinned Paths" header but still show pins
-    -- on top so quick-launches stay accessible.
+    local hierarchical = flatEntries
     local pins = GetAllPins()
     if #pins > 0 then
-        local pinnedEntries = {}
-        if not hideHeaders then
-            pinnedEntries[#pinnedEntries + 1] = {
-                isPinHeader = true,
-                name = "Pinned Paths",
-                depth = 0,
-                isPathNode = true,
-                isMatch = false,
-            }
-        end
+        wipe(pinnedSearchEntries)
+        local pinnedEntries = pinnedSearchEntries
+        local pcount = 0
         for _, pin in ipairs(pins) do
-            tinsert(pinnedEntries, {
-                name = pin.name,
-                depth = 0,
-                isPathNode = false,
-                isMatch = true,
-                isPinned = true,
-                isFlat = hideHeaders or nil,
-                data = pin,
-            })
+            pcount = pcount + 1
+            local e = pinnedSearchPinEntries[pcount]
+            if not e then
+                e = {}
+                pinnedSearchPinEntries[pcount] = e
+            end
+            e.name = pin.name
+            e.depth = 0
+            e.isPathNode = false
+            e.isMatch = true
+            e.isPinned = true
+            e.isFlat = true
+            e.data = pin
+            pinnedEntries[pcount] = e
         end
-        -- Combine: pinned header + pins first, then all search results
-        -- (pinned items may also appear in results - intentional so the user
-        -- can see where the path stands in the full hierarchy)
-        for _, entry in ipairs(hierarchical) do
-            tinsert(pinnedEntries, entry)
+        for i = 1, #hierarchical do
+            pcount = pcount + 1
+            pinnedEntries[pcount] = hierarchical[i]
+        end
+        for i = pcount + 1, #pinnedEntries do
+            pinnedEntries[i] = nil
         end
         hierarchical = pinnedEntries
+    else
+        wipe(pinnedSearchEntries)
     end
-
     local _perfTBuild = ns.PERF and debugprofilestop() or 0
     self:ShowHierarchicalResults(hierarchical)
     if ns.PERF then
@@ -6111,7 +5499,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 
     -- Render-skip: if the input list is identical (same length, same
     -- data refs and same depth at every index) AND the relevant view
-    -- state (theme, collapse state, hide-headers, results-above) hasn't
+    -- state (theme, collapse state, results-above) hasn't
     -- changed since the last render, the visible output would be byte-
     -- for-byte identical. Skip the entire per-row layout pass — this is
     -- the typical case during typing once the top results stabilize.
@@ -6121,17 +5509,14 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         -- typing. Snapshot a single key (or nil if empty) — a click on
         -- a collapse toggle adds or removes a key, which we'll see.
         local theme = EasyFind.db.resultsTheme
-        local hideHeaders = EasyFind.db.uiHideHeaders
         local above = EasyFind.db.uiResultsAbove
         local collapsedKey = next(collapsedNodes)
         local n = #hierarchical
         local last = self._lastRenderSig
         local same = last and last.n == n
             and last.theme == theme
-            and last.hideHeaders == hideHeaders
             and last.above == above
             and last.collapsedKey == collapsedKey
-            and last.pinsCollapsed == EasyFind.db.pinsCollapsed
             and resultsFrame:IsShown()
         if same then
             for hi = 1, n do
@@ -6150,10 +5535,8 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         if not last then last = {}; self._lastRenderSig = last end
         last.n = n
         last.theme = theme
-        last.hideHeaders = hideHeaders
         last.above = above
         last.collapsedKey = collapsedKey
-        last.pinsCollapsed = EasyFind.db.pinsCollapsed
         for hi = 1, n do
             local e = hierarchical[hi]
             last[hi * 2 - 1] = e.data
@@ -6161,6 +5544,8 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         end
         for i = n * 2 + 1, #last do last[i] = nil end
     end
+
+    ClearResultTooltips()
 
     local theme = GetActiveTheme()
     local rowH  = theme.rowHeight
@@ -6200,14 +5585,6 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         resultsFrame:SetWidth((customW and customW > 1) and customW or theme.resultsWidth)
     end
 
-    -- Apply background atlas if specified (e.g. quest log background)
-    if not resultsFrame.bgAtlasTex then
-        local tex = resultsFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
-        -- Stretch horizontally to fill frame, but keep native height (clipped by frame)
-        tex:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 4, -4)
-        tex:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", -4, 4)
-        resultsFrame.bgAtlasTex = tex
-    end
     if theme.resultsBgAtlas then
         resultsFrame.bgAtlasTex:SetAtlas(theme.resultsBgAtlas, false)
         resultsFrame.bgAtlasTex:Show()
@@ -6240,11 +5617,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             visibleN = visibleN + 1
             visible[visibleN] = entry
 
-            if entry.isPinHeader then
-                if EasyFind.db.pinsCollapsed then
-                    skipPins = true
-                end
-            elseif entry.isPathNode then
+            if entry.isPathNode then
                 local key = entry.name .. "_" .. d
                 if collapsedNodes[key] then
                     skipBelowDepth = d
@@ -6288,7 +5661,6 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 
     -- Determine pin separator placement
     local PIN_SEP_HEIGHT = 9  -- 4px gap + 1px line + 4px gap
-    local CAT_SEP_HEIGHT = 9  -- same dimensions as pin separator
     local lastPinIndex = 0
     local hasResultsAfterPins = false
     for i = 1, count do
@@ -6300,20 +5672,14 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         hasResultsAfterPins = true
     end
 
-    -- Section labels carry their own pair of gold rules, so the
-    -- separator-above-label was just doubling up on the visual cut.
-    -- Keep the table around for the render loop's lookup but never
-    -- populate it.
-    local catSepBeforeIndex = {}
-
     local yOffset = 0
     local pinEndYOffset = 0
     wipe(SCRATCH.catSepYPositions)
     local catSepYPositions = SCRATCH.catSepYPositions
     local hasSideBySideRepBar = false
     for i = 1, MAX_BUTTON_POOL do
-        local resultRow = resultButtons[i]
-        if i <= count then
+        local resultRow = i <= count and EnsureResultButton(i) or resultButtons[i]
+        if resultRow and i <= count then
             local entry = visible[i]
             local data = entry.data
             local depth = entry.depth or 0
@@ -6322,12 +5688,6 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             if hasResultsAfterPins and i == lastPinIndex + 1 then
                 pinEndYOffset = yOffset
                 yOffset = yOffset + PIN_SEP_HEIGHT
-            end
-
-            -- Category separator gap (between UI, Mount, and Toy groups)
-            if catSepBeforeIndex[i] then
-                catSepYPositions[#catSepYPositions + 1] = yOffset
-                yOffset = yOffset + CAT_SEP_HEIGHT
             end
 
             -- Small gap between pinned items (not after pin header)
@@ -6466,10 +5826,8 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 -- Pin header: plain text + toggle icon + underline (no tab/gradient)
                 resultRow.headerTab:Hide()
                 resultRow.headerGrad:Hide()
-                local isCollapsed = EasyFind.db.pinsCollapsed
-                local expandAtlas = theme.expandAtlas or "QuestLog-icon-expand"
                 local collapseAtlas = theme.collapseAtlas or "QuestLog-icon-shrink"
-                resultRow.pinToggle:SetAtlas(isCollapsed and expandAtlas or collapseAtlas)
+                resultRow.pinToggle:SetAtlas(collapseAtlas)
                 resultRow.pinToggle:Show()
                 resultRow.pinHeaderLine:Show()
                 -- Position text: left-aligned, right-bounded by toggle
@@ -7557,7 +6915,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 
             yOffset = yOffset + actualH
             resultRow:Show()
-        else
+        elseif resultRow then
             resultRow:Hide()
             resultRow.isPinHeader = false
             if not InCombatLockdown() then
@@ -7702,9 +7060,35 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 end
 
 function UI:ShowResults(results)
-    -- Legacy function, redirects to hierarchical
-    local hierarchical = ns.Database:BuildHierarchicalResults(results)
-    self:ShowHierarchicalResults(hierarchical)
+    if not results or #results == 0 then
+        self:HideResults()
+        return
+    end
+
+    local n = 0
+    for ri = 1, #results do
+        local r = results[ri]
+        local d = r and (r.data or r)
+        if d then
+            n = n + 1
+            local e = flatEntries[n]
+            if not e then
+                e = {}
+                flatEntries[n] = e
+            end
+            e.name = d.name
+            e.depth = 0
+            e.isPathNode = false
+            e.isMatch = true
+            e.isFlat = true
+            e.flatCatKey = nil
+            e.data = d
+        end
+    end
+    for i = n + 1, #flatEntries do
+        flatEntries[i] = nil
+    end
+    self:ShowHierarchicalResults(flatEntries)
 end
 
 function UI:RefreshResults()
@@ -7894,6 +7278,25 @@ function UI:HideResults()
     selectedIndex = 0
     toggleFocused = false
     self:UpdateSelectionHighlight(true)
+
+    if ns.Database and ns.Database.CancelDynamicWarmup then
+        ns.Database:CancelDynamicWarmup()
+    end
+
+    idleTrimSerial = idleTrimSerial + 1
+    local serial = idleTrimSerial
+    if C_Timer and C_Timer.After then
+        C_Timer.After(60, function()
+            if serial ~= idleTrimSerial then return end
+            if resultsFrame and resultsFrame:IsShown() then return end
+            if ns.Database and ns.Database.TrimSearchMemory then
+                ns.Database:TrimSearchMemory()
+            end
+            if ns.MapSearch and ns.MapSearch.TrimSearchMemory then
+                ns.MapSearch:TrimSearchMemory()
+            end
+        end)
+    end
 end
 
 function UI:ShowPinnedItems()
@@ -7904,46 +7307,42 @@ function UI:ShowPinnedItems()
         return
     end
 
-    -- Build synthetic hierarchical entries and delegate to the same renderer
-    -- used during search, so pinned items look identical in both cases.
-    collapsedNodes = {}
-    expandedContainers = {}
-    local hideHeaders = EasyFind.db.uiHideHeaders
-    local entries = {}
-    if not hideHeaders then
-        entries[#entries + 1] = {
-            isPinHeader = true,
-            name = "Pinned Paths",
-            depth = 0,
-            isPathNode = true,
-            isMatch = false,
-        }
+    wipe(collapsedNodes)
+    wipe(expandedContainers)
+    local entries = pinnedOnlyEntries
+    for i, pin in ipairs(pins) do
+        local e = entries[i]
+        if not e then
+            e = {}
+            entries[i] = e
+        end
+        e.name = pin.name
+        e.depth = 0
+        e.isPathNode = false
+        e.isMatch = true
+        e.isPinned = true
+        e.isFlat = true
+        e.data = pin
     end
-    for _, pin in ipairs(pins) do
-        tinsert(entries, {
-            name = pin.name,
-            depth = 0,
-            isPathNode = false,
-            isMatch = true,
-            isPinned = true,
-            isFlat = hideHeaders or nil,
-            data = pin,
-        })
+    for i = #pins + 1, #entries do
+        entries[i] = nil
     end
     self:ShowHierarchicalResults(entries)
 end
 
 function UI:SelectFirstResult()
     -- Only select if results are visible and there's actual data
-    if resultsFrame:IsShown() and resultButtons[1]:IsShown() and resultButtons[1].data then
-        self:SelectResult(resultButtons[1].data)
+    local first = resultButtons[1]
+    if resultsFrame:IsShown() and first and first:IsShown() and first.data then
+        self:SelectResult(first.data)
     end
 end
 
 function UI:CountVisibleResults()
     local count = 0
     for i = 1, MAX_BUTTON_POOL do
-        if resultButtons[i]:IsShown() then
+        local row = resultButtons[i]
+        if row and row:IsShown() then
             count = i
         else
             break
@@ -8058,9 +7457,6 @@ function UI:UpdateSelectionHighlight(skipRefocus)
                 resultRow:UnlockHighlight()
             end
         end
-        -- Retired blue glow: keyboard selection now uses the same
-        -- tabHoverOverlay the mouse-hover path does so the two paths
-        -- look identical. Keep the texture reference silent.
         if resultRow.tabSelectionHighlight then
             resultRow.tabSelectionHighlight:Hide()
         end
@@ -8148,23 +7544,13 @@ end
 function UI:ActivateSelected()
     if selectedIndex > 0 and selectedIndex <= MAX_BUTTON_POOL then
         local resultRow = resultButtons[selectedIndex]
-        if resultRow:IsShown() then
+        if resultRow and resultRow:IsShown() then
             -- Don't allow activating unearned currencies
             if resultRow.isUnearnedCurrency then
                 return
             end
 
-            -- Pin header: toggle collapse
             if resultRow.isPinHeader then
-                EasyFind.db.pinsCollapsed = not EasyFind.db.pinsCollapsed
-                if cachedHierarchical then
-                    local savedIndex = selectedIndex
-                    local savedToggle = toggleFocused
-                    self:ShowHierarchicalResults(cachedHierarchical, true)
-                    selectedIndex = savedIndex
-                    toggleFocused = savedToggle
-                    self:UpdateSelectionHighlight()
-                end
                 return
             end
 
@@ -8604,6 +7990,59 @@ function UI:SelectResult(data, forceGuide)
     end
 end
 
+local EncounterDataMatches
+EncounterDataMatches = function(value, targetID, targetName)
+    if not value then return false end
+    if targetID and (value.encounterID == targetID or value.journalEncounterID == targetID or value.id == targetID) then
+        return true
+    end
+    local name = value.name or value.title or value.text
+    if targetName and name and slower(name) == targetName then return true end
+    local nested = value.data or value.elementData
+    if nested and nested ~= value then
+        return EncounterDataMatches(nested, targetID, targetName)
+    end
+    return false
+end
+
+local function GetEJBossesScrollBox()
+    local infoFrame = _G["EncounterJournalEncounterFrameInfo"]
+    return infoFrame and infoFrame.BossesScrollBox
+end
+
+local function EncounterFrameMatches(btn, targetID, targetName)
+    local edata = btn.GetElementData and btn:GetElementData()
+    if EncounterDataMatches(edata, targetID, targetName) then return true end
+    if targetID and (btn.encounterID == targetID or btn.journalEncounterID == targetID or btn.id == targetID) then
+        return true
+    end
+    local text = GetButtonText(btn)
+    return targetName and text and slower(text) == targetName
+end
+
+local function RevealEJEncounter(step)
+    local targetID = step.ejEncounterID
+    local targetName = step.ejBoss and slower(step.ejBoss)
+    local function reveal()
+        local scrollBox = GetEJBossesScrollBox()
+        if not scrollBox then return end
+        Utils.ScrollBoxScrollTo(scrollBox, function(edata)
+            return EncounterDataMatches(edata, targetID, targetName)
+        end)
+        local bossBtn = Utils.ScrollBoxFindButton(scrollBox, function(btn)
+            return EncounterFrameMatches(btn, targetID, targetName)
+        end)
+        if bossBtn and bossBtn.GetElementData and scrollBox.ScrollToElementData then
+            local edata = bossBtn:GetElementData()
+            if edata then
+                scrollBox:ScrollToElementData(edata, ScrollBoxConstants and ScrollBoxConstants.AlignCenter)
+            end
+        end
+    end
+    reveal()
+    if C_Timer and C_Timer.After then C_Timer.After(0.05, reveal) end
+end
+
 -- Direct open mode - programmatically navigates to the target as far as possible.
 -- Executes ALL steps that represent clickable navigation (tabs, categories, buttons).
 -- Only falls back to highlighting when the final step is a non-navigable UI region
@@ -8886,17 +8325,21 @@ function UI:DirectOpen(data)
                 local displayEncounter = _G["EncounterJournal_DisplayEncounter"]
                 if step.ejEncounterID and displayEncounter then
                     pcall(displayEncounter, step.ejEncounterID)
+                    RevealEJEncounter(step)
                 else
                     local infoFrame = _G["EncounterJournalEncounterFrameInfo"]
                     local scrollBox = infoFrame and infoFrame.BossesScrollBox
                     if scrollBox then
                         local targetName = slower(step.ejBoss)
+                        Utils.ScrollBoxScrollTo(scrollBox, function(edata)
+                            return EncounterDataMatches(edata, step.ejEncounterID, targetName)
+                        end)
                         local bossBtn = Utils.ScrollBoxFindButton(scrollBox, function(btn)
-                            local text = Utils.GetButtonText(btn)
-                            return text and slower(text) == targetName
+                            return EncounterFrameMatches(btn, step.ejEncounterID, targetName)
                         end)
                         if bossBtn then ClickButton(bossBtn) end
                     end
+                    RevealEJEncounter(step)
                 end
                 -- ejLootTab needs a frame for the boss content to settle
                 -- before we click the loot tab (otherwise Overview eats
@@ -9245,6 +8688,9 @@ end
 
 function UI:Hide()
     if not searchFrame then return end
+    if ns.Database and ns.Database.CancelDynamicWarmup then
+        ns.Database:CancelDynamicWarmup()
+    end
     searchFrame:Hide()
     searchFrame.setSmartShowVisible(false)
     self:HideResults()
@@ -10079,6 +9525,18 @@ function UI:ShowFirstTimeSetup()
     local demoFrame
     local startDemo
 
+    local function EnsureDemoLoaded()
+        if ns.Demo and ns.Demo.Start then return true end
+        if C_AddOns and C_AddOns.LoadAddOn then
+            local ok, reason = pcall(C_AddOns.LoadAddOn, "EasyFind_Demo")
+            if ok and ns.Demo and ns.Demo.Start then return true end
+            EasyFind:Print("Demo module could not be loaded: " .. tostring(reason or "unknown error"))
+        else
+            EasyFind:Print("Demo module is not available on this client.")
+        end
+        return false
+    end
+
     local function FinishSetup()
         EasyFind.db.setupComplete = true
 
@@ -10119,12 +9577,20 @@ function UI:ShowFirstTimeSetup()
     end
 
     startDemo = function()
-        ns.Demo.Start({
+        if not EnsureDemoLoaded() then return false end
+
+        panel:Hide()
+        resizer:Hide()
+        glow:SetScript("OnUpdate", nil)
+        glow:Hide()
+
+        demoFrame = ns.Demo.Start({
             searchFrame = searchFrame,
             resultsFrame = resultsFrame,
             resultButtons = resultButtons,
             finishSetup = FinishSetup,
         })
+        return true
     end
 
     gotItBtn:SetScript("OnClick", FinishSetup)
@@ -10150,13 +9616,6 @@ function UI:ShowFirstTimeSetup()
         EasyFind.db.staticOpacity = not fadeCheckbox:GetChecked()
         UI:UpdateSmartShow()
 
-        -- Hide all setup-mode chrome before the demo takes over the
-        -- search bar. Without this, the gold "Drag to move" glow
-        -- lingers on top of the demo.
-        panel:Hide()
-        resizer:Hide()
-        glow:SetScript("OnUpdate", nil)
-        glow:Hide()
         startDemo()
     end)
 end
@@ -10198,14 +9657,6 @@ end
 
 function UI:UpdateFontSize()
     local scale = EasyFind.db.fontSize or 1.0
-
-    local function ScaleFont(fontString, baseFontObject)
-        local obj = _G[baseFontObject]
-        if not obj then return end
-        local path, baseSize, flags = obj:GetFont()
-        fontString:SetFont(path, baseSize * scale, flags)
-        fontString:SetJustifyH(fontString:GetJustifyH())
-    end
 
     if not searchFrame then return end
 
@@ -10250,18 +9701,7 @@ function UI:UpdateFontSize()
     end
 
     for i = 1, #resultButtons do
-        local row = resultButtons[i]
-        ScaleFont(row.text, theme.leafFont)
-        ScaleFont(row.tabText, theme.pathFont)
-        if row.pathSubtext then
-            ScaleFont(row.pathSubtext, theme.leafFont)
-        end
-        if row.amountText then
-            ScaleFont(row.amountText, "GameFontNormalSmall")
-        end
-        if row.repBarText then
-            ScaleFont(row.repBarText, "GameFontNormalSmall")
-        end
+        ApplyResultRowFonts(resultButtons[i], theme)
     end
 
     -- Re-layout visible results with new row heights

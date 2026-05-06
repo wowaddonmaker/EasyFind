@@ -158,6 +158,8 @@ function Utils.AttachAutocomplete(editBox, opts)
     if not editBox or not opts or type(opts.findCandidate) ~= "function" then return end
 
     local findCandidate = opts.findCandidate
+    local onTypedChanged = opts.onTypedChanged
+    local onAccepted = opts.onAccepted
     local typedText = ""
     local programmatic = false
     -- Last suggestion we rendered into the editbox. Used by the smooth-typing
@@ -227,8 +229,10 @@ function Utils.AttachAutocomplete(editBox, opts)
         local cursorPos = self:GetCursorPosition()
         local typed = current:sub(1, cursorPos)
         if typed == typedText then return end
+        local prevText = typedText
         local prevLen = #typedText
         typedText = typed
+        if onTypedChanged then onTypedChanged(self, typedText, prevText, #typedText > prevLen) end
 
         -- Smooth-typing fast path only when the user is GROWING the typed
         -- prefix. On a shrink (backspace) the suggestion must be torn
@@ -254,20 +258,28 @@ function Utils.AttachAutocomplete(editBox, opts)
 
     editBox:HookScript("OnEditFocusLost", StripAutocomplete)
 
-    editBox:HookScript("OnTabPressed", function(self)
+    local function AcceptAutocomplete(self)
         local current = self:GetText() or ""
-        if current == "" or current == typedText then return end
+        if current == "" or current == typedText then return false end
         programmatic = true
         self:SetCursorPosition(#current)
         self:HighlightText(0, 0)
         programmatic = false
         typedText = current
+        currentCandidate = nil
+        if onAccepted then onAccepted(current) end
+        return true
+    end
+
+    editBox:HookScript("OnTabPressed", function(self)
+        AcceptAutocomplete(self)
     end)
 
     -- Public API on the editbox so callers can drive it from their
     -- search-update path without holding their own state.
     editBox.UpdateAutocomplete = ApplyAutocomplete
     editBox.StripAutocomplete  = StripAutocomplete
+    editBox.AcceptAutocomplete = AcceptAutocomplete
     editBox.GetTypedText       = function() return typedText end
     editBox.IsAutocompleteProgrammatic = function() return programmatic end
 end
@@ -557,12 +569,15 @@ function Utils.DebugPrint(...)
     end
 end
 
+local BUTTON_TEXT_KEYS = {"label", "Label", "text", "Text", "Name", "name"}
+local FRAME_TEXT_KEYS = {"Label", "label", "Text", "text", "Name", "name"}
+local frameTextScratch = {}
+
 function Utils.GetButtonText(btn)
     if not btn then return nil end
 
     -- Named text children (covers virtually every Blizzard button style)
-    local keys = {"label", "Label", "text", "Text", "Name", "name"}
-    for _, key in ipairs(keys) do
+    for _, key in ipairs(BUTTON_TEXT_KEYS) do
         local child = btn[key]
         if child and child.GetText then
             local t = child:GetText()
@@ -591,10 +606,10 @@ end
 -- Collects all text from a frame into a single string for fuzzy matching.
 function Utils.GetAllFrameText(frame)
     if not frame then return nil end
-    local texts = {}
+    wipe(frameTextScratch)
+    local texts = frameTextScratch
 
-    local keys = {"Label", "label", "Text", "text", "Name", "name"}
-    for _, key in ipairs(keys) do
+    for _, key in ipairs(FRAME_TEXT_KEYS) do
         local child = frame[key]
         if child and child.GetText then
             local t = child:GetText()
@@ -1046,6 +1061,142 @@ function Utils.CreateClearButton(parent, globalName)
     btn:SetHighlightTexture(highlight)
 
     return btn
+end
+
+function Utils.ShowCursorMenu(globalName, rows, opts)
+    opts = opts or {}
+    local menu = _G[globalName]
+    if not menu then
+        menu = CreateFrame("Frame", globalName, UIParent, "BackdropTemplate")
+        menu:EnableMouse(true)
+        menu.rows = {}
+        menu:SetBackdrop({
+            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+            edgeFile = ns.TOOLTIP_BORDER,
+            tile = true, tileSize = 16, edgeSize = 12,
+            insets = { left = 2, right = 2, top = 2, bottom = 2 }
+        })
+        local bg = ns.DARK_PANEL_BG
+        if bg then menu:SetBackdropColor(bg[1], bg[2], bg[3], bg[4]) end
+        menu:SetScript("OnShow", function(self)
+            self._showedAt = GetTime()
+            self._outsideSince = nil
+            self._hasEntered = false
+            self:RegisterEvent("GLOBAL_MOUSE_DOWN")
+            self:RegisterEvent("GLOBAL_MOUSE_UP")
+        end)
+        menu:SetScript("OnHide", function(self)
+            self._outsideSince = nil
+            self._hasEntered = false
+            self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+            self:UnregisterEvent("GLOBAL_MOUSE_UP")
+        end)
+        menu:SetScript("OnUpdate", function(self)
+            if self:IsMouseOver() then
+                self._outsideSince = nil
+                self._hasEntered = true
+                return
+            end
+            if not self._hasEntered then return end
+            local now = GetTime()
+            if not self._outsideSince then
+                self._outsideSince = now
+                return
+            end
+            if now - self._outsideSince > (self.outsideDelay or 0.3) then
+                self:Hide()
+            end
+        end)
+        menu:SetScript("OnEvent", function(self, event)
+            if event ~= "GLOBAL_MOUSE_DOWN" and event ~= "GLOBAL_MOUSE_UP" then return end
+            if self._showedAt and (GetTime() - self._showedAt) < (self.clickGrace or 0.05) then return end
+            if not self:IsMouseOver() then self:Hide() end
+        end)
+    end
+
+    menu:SetFrameStrata(opts.strata or "TOOLTIP")
+    menu:SetFrameLevel(opts.level or 10000)
+    menu:SetToplevel(opts.toplevel ~= false)
+    menu.outsideDelay = opts.outsideDelay or 0.3
+    menu.clickGrace = opts.clickGrace or 0.05
+
+    local rowH = opts.rowHeight or 22
+    local width = opts.width or 96
+    local shown = 0
+    local lastRow
+    for i = 1, #rows do
+        local def = rows[i]
+        if def then
+            shown = shown + 1
+            local row = menu.rows[shown]
+            if not row then
+                row = CreateFrame("Button", nil, menu)
+                row:SetHeight(rowH)
+                row:RegisterForClicks("LeftButtonUp")
+                row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+                row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                row.label:SetPoint("LEFT", row, "LEFT", 8, 0)
+                row.icon = row:CreateTexture(nil, "OVERLAY")
+                row.icon:SetSize(14, 14)
+                row.icon:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+                menu.rows[shown] = row
+            end
+            row:SetHeight(rowH)
+            row.label:SetText(def.text or "")
+            if def.icon then
+                row.icon:SetTexture(def.icon)
+                row.icon:Show()
+            else
+                row.icon:Hide()
+            end
+            local onClick = def.onClick
+            row:SetScript("OnClick", function()
+                menu:Hide()
+                if onClick then onClick() end
+            end)
+            row:ClearAllPoints()
+            if shown == 1 then
+                row:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4)
+                row:SetPoint("TOPRIGHT", menu, "TOPRIGHT", -4, -4)
+            else
+                row:SetPoint("TOPLEFT", lastRow, "BOTTOMLEFT", 0, 0)
+                row:SetPoint("TOPRIGHT", lastRow, "BOTTOMRIGHT", 0, 0)
+            end
+            row:Show()
+            lastRow = row
+        end
+    end
+    for i = shown + 1, #menu.rows do
+        menu.rows[i]:Hide()
+        menu.rows[i]:SetScript("OnClick", nil)
+    end
+
+    menu:SetSize(width, rowH * shown + 8)
+    local scale = UIParent:GetEffectiveScale()
+    local x, y = GetCursorPosition()
+    menu:ClearAllPoints()
+    menu:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT",
+        x / scale + (opts.offsetX or 0), y / scale + (opts.offsetY or 0))
+    menu:Show()
+    return menu
+end
+
+function Utils.SetIconTexture(textureObj, icon, fallback)
+    if not textureObj then return end
+    textureObj:SetTexture(nil)
+    if textureObj.SetAtlas then textureObj:SetAtlas(nil) end
+    textureObj:SetTexCoord(0, 1, 0, 1)
+    if type(icon) == "table" and icon.file then
+        textureObj:SetTexture(icon.file)
+        local c = icon.coords
+        if c then textureObj:SetTexCoord(c[1], c[2], c[3], c[4]) end
+    elseif type(icon) == "string" and ssub(icon, 1, 6) == "atlas:" then
+        textureObj:SetAtlas(ssub(icon, 7), false)
+    elseif icon then
+        textureObj:SetTexture(icon)
+    else
+        textureObj:SetTexture(fallback or "Interface\\Icons\\INV_Misc_QuestionMark")
+    end
 end
 
 -- ---------------------------------------------------------------------------

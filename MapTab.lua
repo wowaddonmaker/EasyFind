@@ -5,47 +5,35 @@ ns.MapTab = MapTab
 
 local Utils = ns.Utils
 local SafeAfter = Utils and Utils.SafeAfter or function(delay, fn) C_Timer.After(delay, fn) end
-local sfind = Utils and Utils.sfind or string.find
-local slower = Utils and Utils.slower or string.lower
 local tinsert = Utils and Utils.tinsert or table.insert
 local tremove = table.remove
 
 local GOLD_COLOR = ns.GOLD_COLOR or {1.0, 0.82, 0.0}
-local TOOLTIP_BORDER = ns.TOOLTIP_BORDER
-local DARK_PANEL_BG = ns.DARK_PANEL_BG
 
 local CreateFrame = CreateFrame
 local GameTooltip = GameTooltip
 local GameTooltip_Hide = GameTooltip_Hide
 local C_Timer = C_Timer
-local GetCursorPosition = GetCursorPosition
-local UIParent = UIParent
 
 -- ---------------------------------------------------------------------------
 -- Tab geometry
 -- ---------------------------------------------------------------------------
 local TAB_W, TAB_H       = 42, 55
-local TAB_BG_W, TAB_BG_H = 51, 59
 local TAB_ICON_SIZE      = 20
 local TAB_ICON_GOLD      = {1.00, 0.82, 0.00}
 local TAB_ICON_DIM       = {0.55, 0.45, 0.10}
 local TAB_STACK_GAP      = -3
 
--- Pin / Guide popup geometry (mirrors UI.lua)
 local EYE_ICON_TEX     = "Interface\\AddOns\\EasyFind\\textures\\eye"
-local PIN_MENU_ROW_H   = 22
-local PIN_MENU_WIDTH   = 96
 
 -- Result row layout
 local ROW_HEIGHT       = 24
 local ROW_ICON_SIZE    = 18
 local SECTION_HEADER_H = 22
--- Pool grows as needed and is reused across queries; the cap exists
--- only to prevent unbounded growth on pathological inputs. Global
--- searches that match a category (e.g. "fp" → every flight master)
--- can easily produce 200+ rows, so the cap needs headroom well past
--- the worst real query.
-local MAX_ROW_POOL     = 1000
+local MAX_ROW_POOL     = 300
+local ROW_POOL_RETAIN  = 80
+local HEADER_POOL_RETAIN = 40
+local SECTION_POOL_RETAIN = 12
 
 -- Roots stripped from pathPrefix display. Every zone in WoW descends
 -- from "World", and the vast majority descend from "Azeroth", so those
@@ -218,10 +206,13 @@ local tabFrame
 -- resolves the name as a global and later fails with "attempt to call
 -- global 'RefreshCurrentSearch' (a nil value)".
 local RefreshCurrentSearch
+local ReleaseMapTabMemory
 local panel
 local selectedIsOurs = false
 local rowPool = {}
 local headerPool = {}
+local rowPoolCursor = 1
+local headerPoolCursor = 1
 -- Ephemeral collapse state: scoped to the current query text. Reset
 -- when the search text changes so fresh matches always default to
 -- expanded (auto-expand on parent match). User clicks on +/- within
@@ -364,109 +355,23 @@ local function HideOurPanel()
             if ns.MapSearch.ClearHighlight then ns.MapSearch:ClearHighlight() end
         end
     end
+    if ReleaseMapTabMemory then ReleaseMapTabMemory(true) end
     RefreshSelectGlows()
 end
 
--- ---------------------------------------------------------------------------
--- Pin / Guide right-click popup (mirrors UI.lua)
--- ---------------------------------------------------------------------------
-local pinPopup
-
-local function CreateMenuRow(parent)
-    local row = CreateFrame("Button", nil, parent)
-    row:SetHeight(PIN_MENU_ROW_H)
-    row:RegisterForClicks("LeftButtonUp")
-    local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    label:SetPoint("LEFT", row, "LEFT", 8, 0)
-    row.label = label
-    local icon = row:CreateTexture(nil, "OVERLAY")
-    icon:SetSize(14, 14)
-    icon:SetPoint("RIGHT", row, "RIGHT", -8, 0)
-    icon:Hide()
-    row.icon = icon
-    row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
-    return row
-end
-
-local function MenuRowOnLeave()
-    if pinPopup and not pinPopup:IsMouseOver() then pinPopup:Hide() end
-end
-
 local function ShowPopup(isPinned, onPin, onGuide)
-    if not pinPopup then
-        pinPopup = CreateFrame("Frame", "EasyFindMapTabPopup", UIParent, "BackdropTemplate")
-        pinPopup:SetFrameStrata("TOOLTIP")
-        pinPopup:SetFrameLevel(10000)
-        pinPopup:SetBackdrop({
-            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-            edgeFile = TOOLTIP_BORDER,
-            tile = true, tileSize = 16, edgeSize = 12,
-            insets = { left = 2, right = 2, top = 2, bottom = 2 }
-        })
-        if DARK_PANEL_BG then
-            pinPopup:SetBackdropColor(DARK_PANEL_BG[1], DARK_PANEL_BG[2], DARK_PANEL_BG[3], DARK_PANEL_BG[4])
-        end
-        pinPopup.guideRow = CreateMenuRow(pinPopup)
-        pinPopup.guideRow.label:SetText("Guide")
-        pinPopup.guideRow.icon:SetTexture(EYE_ICON_TEX)
-        pinPopup.guideRow.icon:Show()
-        pinPopup.pinRow = CreateMenuRow(pinPopup)
-        pinPopup.pinRow:SetScript("OnLeave", MenuRowOnLeave)
-        pinPopup.guideRow:SetScript("OnLeave", MenuRowOnLeave)
-        -- Dismiss on outside click (any button). Same pattern used by
-        -- the MapSearch filter dropdown. The grace period avoids a race
-        -- where the press that opened the popup (RightButtonDown) is
-        -- still registering as held during the first OnUpdate tick —
-        -- without it, IsMouseButtonDown stays true and the popup hides
-        -- itself before the cursor settles inside.
-        pinPopup:SetScript("OnUpdate", function(self)
-            if not self:IsShown() then return end
-            if self._openedAt and GetTime() - self._openedAt < 0.15 then return end
-            if (IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton"))
-               and not self:IsMouseOver() then
-                self:Hide()
-            end
-        end)
-    end
-
-    pinPopup.pinRow:Show()
-    pinPopup.pinRow.label:SetText(isPinned and "Unpin" or "Pin")
-    pinPopup.pinRow:SetScript("OnClick", function()
-        pinPopup:Hide()
-        if onPin then onPin() end
-    end)
-    pinPopup.pinRow:ClearAllPoints()
-
+    local rows = {}
     if onGuide then
-        pinPopup.guideRow:ClearAllPoints()
-        pinPopup.guideRow:SetPoint("TOPLEFT", pinPopup, "TOPLEFT", 4, -4)
-        pinPopup.guideRow:SetPoint("TOPRIGHT", pinPopup, "TOPRIGHT", -4, -4)
-        pinPopup.guideRow:Show()
-        pinPopup.guideRow:SetScript("OnClick", function()
-            pinPopup:Hide()
-            onGuide()
-        end)
-        pinPopup.pinRow:SetPoint("TOPLEFT", pinPopup.guideRow, "BOTTOMLEFT", 0, 0)
-        pinPopup.pinRow:SetPoint("TOPRIGHT", pinPopup.guideRow, "BOTTOMRIGHT", 0, 0)
-        pinPopup:SetSize(PIN_MENU_WIDTH, PIN_MENU_ROW_H * 2 + 8)
-    else
-        pinPopup.guideRow:Hide()
-        pinPopup.guideRow:SetScript("OnClick", nil)
-        pinPopup.pinRow:SetPoint("TOPLEFT", pinPopup, "TOPLEFT", 4, -4)
-        pinPopup.pinRow:SetPoint("TOPRIGHT", pinPopup, "TOPRIGHT", -4, -4)
-        pinPopup:SetSize(PIN_MENU_WIDTH, PIN_MENU_ROW_H + 8)
+        rows[#rows + 1] = { text = "Guide", icon = EYE_ICON_TEX, onClick = onGuide }
     end
-
-    local scale = UIParent:GetEffectiveScale()
-    local x, y = GetCursorPosition()
-    pinPopup:ClearAllPoints()
-    -- Offset so the cursor lands ~8px inside the popup rather than at
-    -- its bottom-left corner. Without the offset, IsMouseOver flickers
-    -- at the boundary pixel and the auto-dismiss handler can hide the
-    -- popup on the same frame it appears.
-    pinPopup:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale - 8, y / scale - 8)
-    pinPopup._openedAt = GetTime()
-    pinPopup:Show()
+    rows[#rows + 1] = { text = isPinned and "Unpin" or "Pin", onClick = onPin }
+    Utils.ShowCursorMenu("EasyFindMapTabPopup", rows, {
+        width = 96,
+        rowHeight = 22,
+        offsetX = -8,
+        offsetY = -8,
+        clickGrace = 0.15,
+    })
 end
 
 -- ---------------------------------------------------------------------------
@@ -556,25 +461,7 @@ local function SetRowIcon(row, data)
     if icon == nil and data.category and ns.MapSearch and ns.MapSearch.GetCategoryIcon then
         icon = ns.MapSearch.GetCategoryIcon(data.category)
     end
-    row.icon:SetTexCoord(0, 1, 0, 1)
-    if type(icon) == "string" and icon:sub(1, 6) == "atlas:" then
-        row.icon:SetTexture(nil)
-        row.icon:SetAtlas(icon:sub(7), false)
-    elseif type(icon) == "number" then
-        row.icon:SetAtlas(nil)
-        row.icon:SetTexture(icon)
-    elseif type(icon) == "string" then
-        row.icon:SetAtlas(nil)
-        row.icon:SetTexture(icon)
-    elseif type(icon) == "table" and icon.file then
-        row.icon:SetAtlas(nil)
-        row.icon:SetTexture(icon.file)
-        if icon.coords then
-            row.icon:SetTexCoord(icon.coords[1], icon.coords[2], icon.coords[3], icon.coords[4])
-        end
-    else
-        row.icon:SetTexture("Interface\\Icons\\INV_Misc_QuestionMark")
-    end
+    Utils.SetIconTexture(row.icon, icon)
 end
 
 -- Timestamp of the most recent keystroke in the search box. Hover
@@ -715,20 +602,24 @@ local function RowOnLeave(row)
 end
 
 local function AcquireRow(parent)
-    for i = 1, #rowPool do
-        local row = rowPool[i]
-        if not row:IsShown() then row:SetParent(parent); return row end
+    local row = rowPool[rowPoolCursor]
+    if row then
+        row:SetParent(parent)
+        rowPoolCursor = rowPoolCursor + 1
+        return row
     end
     if #rowPool >= MAX_ROW_POOL then return nil end
-    local row = CreateResultRow(parent)
+    row = CreateResultRow(parent)
     row:SetScript("OnClick", RowOnClick)
     row:SetScript("OnEnter", RowOnEnter)
     row:SetScript("OnLeave", RowOnLeave)
     tinsert(rowPool, row)
+    rowPoolCursor = rowPoolCursor + 1
     return row
 end
 
 local function ReleaseAllRows()
+    rowPoolCursor = 1
     for i = 1, #rowPool do rowPool[i]:Hide(); rowPool[i].data = nil end
 end
 
@@ -754,22 +645,23 @@ local function CreateSectionLabel(parent)
 end
 
 local sectionLabelPool = {}
+local sectionLabelPoolCursor = 1
 
 local function AcquireSectionLabel(parent, labelText)
-    local hdr
-    for i = 1, #sectionLabelPool do
-        local h = sectionLabelPool[i]
-        if not h:IsShown() then hdr = h; h:SetParent(parent); break end
-    end
+    local hdr = sectionLabelPool[sectionLabelPoolCursor]
     if not hdr then
         hdr = CreateSectionLabel(parent)
         tinsert(sectionLabelPool, hdr)
+    else
+        hdr:SetParent(parent)
     end
+    sectionLabelPoolCursor = sectionLabelPoolCursor + 1
     hdr.label:SetText(labelText or "")
     return hdr
 end
 
 local function ReleaseAllSectionLabels()
+    sectionLabelPoolCursor = 1
     for i = 1, #sectionLabelPool do sectionLabelPool[i]:Hide() end
 end
 
@@ -881,15 +773,14 @@ end
 -- onRightClick: called when the header body is right-clicked. Used to
 -- open the pin/unpin popup for the header's navigateData.
 local function AcquireGroupHeader(parent, labelText, groupKey, count, collapsed, navigateData, hasChildren, onToggle, onRightClick)
-    local hdr
-    for i = 1, #headerPool do
-        local h = headerPool[i]
-        if not h:IsShown() then hdr = h; h:SetParent(parent); break end
-    end
+    local hdr = headerPool[headerPoolCursor]
     if not hdr then
         hdr = CreateGroupHeader(parent)
         tinsert(headerPool, hdr)
+    else
+        hdr:SetParent(parent)
     end
+    headerPoolCursor = headerPoolCursor + 1
     hdr.label:SetText(labelText or "")
     hdr.toggleBtn.icon:SetAtlas(collapsed and "QuestLog-icon-expand" or "QuestLog-icon-shrink")
     -- Hide the toggle button entirely when there are no children to
@@ -928,8 +819,77 @@ local function AcquireGroupHeader(parent, labelText, groupKey, count, collapsed,
 end
 
 local function ReleaseAllHeaders()
+    headerPoolCursor = 1
     for i = 1, #headerPool do headerPool[i]:Hide() end
     ReleaseAllSectionLabels()
+end
+
+local function DetachFrame(frame)
+    if frame and frame.SetParent then
+        pcall(frame.SetParent, frame, nil)
+    end
+end
+
+local function TrimRowPool()
+    for i = #rowPool, ROW_POOL_RETAIN + 1, -1 do
+        local row = rowPool[i]
+        if row then
+            row:Hide()
+            row.data = nil
+            DetachFrame(row)
+        end
+        rowPool[i] = nil
+    end
+    rowPoolCursor = 1
+end
+
+local function TrimHeaderPool()
+    for i = #headerPool, HEADER_POOL_RETAIN + 1, -1 do
+        local hdr = headerPool[i]
+        if hdr then
+            hdr:Hide()
+            hdr.navigateData = nil
+            hdr.groupKey = nil
+            DetachFrame(hdr)
+        end
+        headerPool[i] = nil
+    end
+    for i = #sectionLabelPool, SECTION_POOL_RETAIN + 1, -1 do
+        local hdr = sectionLabelPool[i]
+        if hdr then
+            hdr:Hide()
+            DetachFrame(hdr)
+        end
+        sectionLabelPool[i] = nil
+    end
+    headerPoolCursor = 1
+    sectionLabelPoolCursor = 1
+end
+
+ReleaseMapTabMemory = function(trimFrames)
+    if pendingSearchTimer then
+        pendingSearchTimer:Cancel()
+        pendingSearchTimer = nil
+    end
+    ReleaseAllRows()
+    ReleaseAllHeaders()
+    if panel and panel.scrollChild then panel.scrollChild:SetHeight(1) end
+    if panel and panel.emptyMsg then panel.emptyMsg:Hide() end
+    if panel then
+        panel.topResultName = nil
+        panel.topResultCandidates = nil
+    end
+    navRowIndex = 0
+    if visibleNavRows then wipe(visibleNavRows) end
+    if navFrame then Utils.SafeCallMethod(navFrame, "EnableKeyboard", false) end
+    if navKeyRepeat then navKeyRepeat.Stop() end
+    if trimFrames then
+        TrimRowPool()
+        TrimHeaderPool()
+    end
+    if ns.MapSearch and ns.MapSearch.ReleaseIdleSearchMemory then
+        ns.MapSearch:ReleaseIdleSearchMemory()
+    end
 end
 
 -- ---------------------------------------------------------------------------
@@ -942,13 +902,6 @@ local function BuildPinnedSection()
     if not pins or #pins == 0 then return nil end
     return pins
 end
-
--- Group a result list by pathPrefix (immediate parent zone name).
--- Groups with <2 members render flat (pathPrefix stays inline); groups
--- with 2+ members promote to a collapsible parent header with indented
--- children (pathPrefix suppressed on the children).
--- Returns an ordered array: { {type="flat", data=r} | {type="group", name=p, items={...}} }
-local GROUP_THRESHOLD = 2
 
 local function GroupBySharedParent(results)
     if not results or #results == 0 then return {} end
@@ -2062,17 +2015,7 @@ local function CreateSearchBox(parent)
     -- is truly empty after pressing X.
     if editBox.clearButton then
         editBox.clearButton:HookScript("OnClick", function()
-            if pendingSearchTimer then
-                pendingSearchTimer:Cancel(); pendingSearchTimer = nil
-            end
-            ReleaseAllRows()
-            ReleaseAllHeaders()
-            if panel and panel.scrollChild then panel.scrollChild:SetHeight(1) end
-            if panel and panel.emptyMsg then panel.emptyMsg:Hide() end
-            navRowIndex = 0
-            if visibleNavRows then wipe(visibleNavRows) end
-            if navFrame then Utils.SafeCallMethod(navFrame, "EnableKeyboard", false) end
-            if navKeyRepeat then navKeyRepeat.Stop() end
+            if ReleaseMapTabMemory then ReleaseMapTabMemory(false) end
         end)
     end
 
@@ -2098,105 +2041,25 @@ local function CreateSearchBox(parent)
     end
     editBox.FindPrefixCandidate = FindPrefixCandidate
 
-    -- Inline autocomplete using SetText + HighlightText (Chrome-style).
-    -- The displayed text is the full suggestion, the cursor sits at the
-    -- end of the user's typed prefix, and the trailing suggestion is
-    -- selected. WoW's native caret renders at the cursor position with
-    -- nothing layered over it, so the caret is always visible at the
-    -- end of what the user typed. Tab confirms; typing replaces the
-    -- selection (advancing through the suggestion); backspace deletes
-    -- the selection without re-applying autocomplete.
-    --
-    -- typedText: the user's actual typed prefix (search query)
-    -- programmatic: re-entrancy guard for our own SetText calls
-    -- lastWasAddition: true if the last text change extended the typed
-    --                  prefix; gates whether we re-apply autocomplete
-    --                  after the next RunSearch settles
-    local typedText = ""
-    local programmatic = false
-    local lastWasAddition = false
-
-    local function StripAutocomplete()
-        local current = editBox:GetText() or ""
-        if current == typedText then return end
-        programmatic = true
-        editBox:SetText(typedText)
-        editBox:SetCursorPosition(#typedText)
-        editBox:HighlightText(0, 0)
-        programmatic = false
-    end
-
-    local function ApplyAutocomplete()
-        if programmatic or typedText == "" or not editBox:HasFocus() then
-            return
-        end
-        local candidate = FindPrefixCandidate(typedText)
-        if not candidate or candidate:lower() == typedText:lower() then
-            StripAutocomplete()
-            return
-        end
-        local suffix = candidate:sub(#typedText + 1):lower()
-        if suffix == "" then StripAutocomplete(); return end
-        local fullText = typedText .. suffix
-        if editBox:GetText() == fullText then
-            -- Already showing this suggestion. Just reassert the highlight
-            -- in case focus loss / regain dropped it.
-            editBox:SetCursorPosition(#typedText)
-            editBox:HighlightText(#typedText, #fullText)
-            return
-        end
-        programmatic = true
-        editBox:SetText(fullText)
-        editBox:SetCursorPosition(#typedText)
-        editBox:HighlightText(#typedText, #fullText)
-        programmatic = false
-    end
-    editBox.UpdateAutocomplete = ApplyAutocomplete
-    editBox.GetTypedText = function() return typedText end
-
-    editBox:HookScript("OnTextChanged", function(self)
-        if programmatic then return end
-        -- Hover-preview suppression: re-rendering rows under a stationary
-        -- cursor would otherwise fire spurious OnEnter events as the user
-        -- types.
-        lastTypeTime = GetTime()
-        UpdateClear(self)
-
-        local current = self:GetText() or ""
-        local cursorPos = self:GetCursorPosition()
-        -- The "typed" prefix is everything up to the cursor; anything
-        -- after is autocomplete suffix the user hasn't accepted.
-        local typed = current:sub(1, cursorPos)
-        -- Pressing an arrow key while the autocomplete suffix is
-        -- highlighted collapses (or deletes) the selection without
-        -- changing the user's typed prefix. WoW fires OnTextChanged
-        -- on that selection edit, and if we let it reschedule a
-        -- search, RunSearch fires on the next frame, RenderRows
-        -- resets navRowIndex to 0, and the row we just navigated to
-        -- with HandleNavKey loses its highlight. Bail when the prefix
-        -- is unchanged: there's nothing new to search.
-        if typed == typedText then return end
-        lastWasAddition = #typed > #typedText
-        typedText = typed
-
-        if pendingSearchTimer then pendingSearchTimer:Cancel(); pendingSearchTimer = nil end
-        local snapshot = typed
-        pendingSearchTimer = C_Timer.NewTimer(0, function()
-            pendingSearchTimer = nil
-            MapTab:RunSearch(snapshot)
-            -- Re-apply autocomplete only when the user added characters.
-            -- For deletions / no-ops, leave the text alone so backspace
-            -- actually removes the suggestion instead of re-conjuring it.
-            if lastWasAddition then ApplyAutocomplete() end
-            lastWasAddition = false
-        end)
-    end)
+    Utils.AttachAutocomplete(editBox, {
+        findCandidate = FindPrefixCandidate,
+        onTypedChanged = function(self, typed, _, grew)
+            lastTypeTime = GetTime()
+            UpdateClear(self)
+            if pendingSearchTimer then pendingSearchTimer:Cancel(); pendingSearchTimer = nil end
+            pendingSearchTimer = C_Timer.NewTimer(0, function()
+                pendingSearchTimer = nil
+                MapTab:RunSearch(typed)
+                if grew and self.UpdateAutocomplete then self:UpdateAutocomplete() end
+            end)
+        end,
+        onAccepted = function(text)
+            MapTab:PushRecentSearch(text)
+        end,
+    })
     editBox:HookScript("OnEditFocusGained", UpdateClear)
     editBox:HookScript("OnEditFocusLost", function(self)
         UpdateClear(self)
-        -- Strip any pending autocomplete suffix so the editbox shows the
-        -- user's actual typed text when unfocused.
-        StripAutocomplete()
     end)
 
     -- Keyboard nav: consume arrow / Ctrl+J/K / Esc while the editbox
@@ -2258,32 +2121,15 @@ local function CreateSearchBox(parent)
         -- If a row is highlighted, HandleNavKey already activated it on
         -- OnKeyDown(ENTER) and we shouldn't also commit to recents.
         if navRowIndex > 0 then return end
-        -- Enter accepts any active autocomplete suggestion the same way
-        -- Tab does, then commits the full text.
         local current = self:GetText() or ""
-        if current ~= "" and current ~= typedText then
-            programmatic = true
-            self:SetCursorPosition(#current)
-            self:HighlightText(0, 0)
-            programmatic = false
-            typedText = current
+        local typed = self.GetTypedText and self:GetTypedText() or current
+        local accepted = false
+        if current ~= "" and current ~= typed and self.AcceptAutocomplete then
+            accepted = self:AcceptAutocomplete()
+            current = self:GetText() or ""
         end
-        MapTab:PushRecentSearch(current)
+        if not accepted then MapTab:PushRecentSearch(current) end
         self:ClearFocus()
-    end)
-    -- Tab confirms the highlighted autocomplete: cursor jumps to the end
-    -- of the full text and the highlight is cleared, locking in the
-    -- suggestion. The typed prefix is updated to match the now-accepted
-    -- text so subsequent typing extends it cleanly.
-    editBox:HookScript("OnTabPressed", function(self)
-        local current = self:GetText() or ""
-        if current == "" or current == typedText then return end
-        programmatic = true
-        self:SetCursorPosition(#current)
-        self:HighlightText(0, 0)
-        programmatic = false
-        typedText = current
-        MapTab:PushRecentSearch(current)
     end)
     return editBox
 end
@@ -2550,15 +2396,15 @@ local function CreatePanel(qmf)
     searchBox:SetPoint("RIGHT", cog, "LEFT", -6, 0)
     p.searchBox = searchBox
 
-    -- Filter dropdown anchored to the cog. Skip the legacy MapSearch
-    -- refresh path (searchEditBox=nil) since we're not using the
-    -- deprecated floating dropdown; our onChanged callback handles it.
     if ns.MapSearch and ns.MapSearch.CreateFilterDropdown then
         local dropdown
         dropdown = ns.MapSearch:CreateFilterDropdown(
             "EasyFindMapTabFilterDropdown", FILTER_OPTIONS,
-            "mapTabFilters", cog, outer, nil,
+            "mapTabFilters", cog, outer,
             function(key)
+                if key == "flightpath" and ns.MapSearch and ns.MapSearch.ReleaseIdleSearchMemory then
+                    ns.MapSearch:ReleaseIdleSearchMemory()
+                end
                 RefreshCurrentSearch()
                 if key == "rares" and dropdown.UpdateAutoTrackRow then
                     dropdown:UpdateAutoTrackRow()
@@ -2774,12 +2620,6 @@ function MapTab:Focus()
     end)
 end
 
--- Activate the MapTab and populate the search box with `query`, leaving
--- the editbox unfocused. Used by the floating UI search bar so clicking
--- a map result there mirrors what would happen if the same query had
--- been typed and submitted from inside the MapTab. SetText fires
--- OnTextChanged, which schedules RunSearch on the next frame, so result
--- rows render automatically.
 function MapTab:OpenWithQuery(query)
     if not initialized then self:Initialize() end
     if not WorldMapFrame or not WorldMapFrame:IsShown() then
@@ -2924,6 +2764,13 @@ function MapTab:Initialize()
                         end
                     end
                 end)
+            end
+        end)
+        WorldMapFrame:HookScript("OnHide", function()
+            if selectedIsOurs then
+                HideOurPanel()
+            elseif ReleaseMapTabMemory then
+                ReleaseMapTabMemory(true)
             end
         end)
     end
