@@ -6907,25 +6907,6 @@ function UI:ShowResults(results)
     self:ShowHierarchicalResults(flatEntries)
 end
 
-function UI:RefreshResults()
-    -- Re-render current results with the active theme (called when theme changes)
-    self:UpdateSearchBarTheme()
-    -- Only re-render if results are currently visible; don't resurrect old results
-    if cachedHierarchical and resultsFrame and resultsFrame:IsShown() then
-        local savedIndex = selectedIndex
-        local savedToggle = toggleFocused
-        self:ShowHierarchicalResults(cachedHierarchical)
-        -- ShowHierarchicalResults resets selectedIndex to 0; restore it for
-        -- deferred re-renders (rep bar IsTruncated settle) so keyboard
-        -- navigation isn't disrupted.
-        if savedIndex > 0 then
-            selectedIndex = savedIndex
-            toggleFocused = savedToggle
-            self:UpdateSelectionHighlight()
-        end
-    end
-end
-
 -- Toggle a boolean setting in place (clicked from a result row).
 -- Tries the Settings API first (handles non-CVar settings like action
 -- bar visibility), falls back to GetCVar/SetCVar.
@@ -9351,6 +9332,12 @@ function UI:RefreshResults()
     if cachedHierarchical and resultsFrame and resultsFrame:IsShown() then
         local savedIndex = selectedIndex
         local savedToggle = toggleFocused
+        -- Bypass ShowHierarchicalResults' render-skip cache. Setting
+        -- toggles, slider writes, and dropdown cycles keep the same
+        -- entry.data reference, so the row-by-row layout pass would be
+        -- skipped and the on-screen checkbox/value/slider would stay
+        -- stale until the result list rebuilt from scratch.
+        self._lastRenderSig = nil
         self:ShowHierarchicalResults(cachedHierarchical, true)
         if savedIndex > 0 then
             selectedIndex = savedIndex
