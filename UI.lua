@@ -78,6 +78,7 @@ local FLAT_CATEGORY_ICONS = {
     -- icon (spell icon / boss portrait) is pushed to the RIGHT side.
     ability       = { tex = 522972, coords = { 0.904, 0.996, 0.707, 0.748 } },
     boss          = { tex = 522972, coords = { 0.855, 0.949, 0.524, 0.566 } },
+    talent        = { atlas = "talents-node-circle-gray" },
     macro         = { tex = "Interface\\MacroFrame\\MacroFrame-Icon" },
     bag           = { atlas = "bag-main" },
     loot          = { tex = 522972, coords = { 0.730, 0.824, 0.618, 0.660 } },
@@ -133,6 +134,7 @@ local function GetFlatCategoryIcon(data)
     if data.heirloomItemID then return FLAT_CATEGORY_ICONS.heirloom end
     if data.transmogSetID then return FLAT_CATEGORY_ICONS.appearanceSet end
     if data.spellID and data.category == "Ability" then return FLAT_CATEGORY_ICONS.ability end
+    if data.category == "Talent" then return FLAT_CATEGORY_ICONS.talent end
     if data.encounterID and data.category == "Boss" then return FLAT_CATEGORY_ICONS.boss end
     if data.macroIndex and data.category == "Macro" then return FLAT_CATEGORY_ICONS.macro end
     if data.bagID and data.category == "Bag" then return FLAT_CATEGORY_ICONS.bag end
@@ -4851,6 +4853,20 @@ function UI:CreateResultButton(index)
     resultRow:SetScript("OnEnter", function(self)
         -- Hover-based action hint (mirrors keyboard selection hint).
         ApplyActionHint(self)
+        -- Talent / Ability rows: show the spell tooltip (talents share the
+        -- spell tooltip surface). Mirrors the icon-OnEnter path so the row
+        -- itself produces a tooltip even when the cursor is on the name.
+        if self.data and self.data.spellID
+           and (self.data.category == "Talent" or self.data.category == "Ability") then
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            if GameTooltip.SetSpellByID then
+                GameTooltip:SetSpellByID(self.data.spellID)
+            else
+                GameTooltip:SetHyperlink("spell:" .. self.data.spellID)
+            end
+            GameTooltip:Show()
+            return
+        end
         -- Keybinding row: show the action name plus current bindings.
         if self.data and self.data.settingType == "keybind" and self.data.bindingAction then
             local action = self.data.bindingAction
@@ -5685,7 +5701,12 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     newType, newKey, newVal = "macro", "macrotext", "/cancelform [form]"
                 elseif data and data.outfitID then
                     newType, newKey, newVal = "action", "action", 0
-                elseif data and data.spellID and not IsSpellbookOnlyAbility(data) then
+                elseif data and data.spellID and data.category ~= "Talent"
+                       and not IsSpellbookOnlyAbility(data) then
+                    -- Talents share the spellID field but should never cast
+                    -- on click -- the click navigates to the talents tree
+                    -- and highlights the node. Skip the secure cast type so
+                    -- only PostClick / SelectResult handle the talent path.
                     newType, newKey, newVal = "spell", "spell", data.spellName or data.spellID
                 elseif data and data.itemID and data.category == "Bag" then
                     newType, newKey, newVal = "item", "item", data.name
@@ -6160,7 +6181,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 iconSet = true
 
             -- Mount/Toy/Pet leaves: icon goes to right side (same layout as currency icons)
-            elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.outfitID or data.heirloomItemID or data.transmogSetID or (data.spellID and data.category == "Ability") or (data.encounterID and data.category == "Boss") or (data.macroIndex and data.category == "Macro") or (data.bagID and data.category == "Bag")) then
+            elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.outfitID or data.heirloomItemID or data.transmogSetID or (data.spellID and data.category == "Ability") or (data.spellID and data.category == "Talent") or (data.encounterID and data.category == "Boss") or (data.macroIndex and data.category == "Macro") or (data.bagID and data.category == "Bag")) then
                 local iconFileID = data.icon
                 local rightOffset = -5
 
@@ -6745,7 +6766,8 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 local d = entry.data
                 local rightSideIcon = d and (d.mountID or d.toyItemID or d.petID
                     or d.outfitID or d.transmogSetID or d.category == "Currency"
-                    or (d.itemID and d.category == "Loot"))
+                    or (d.itemID and d.category == "Loot")
+                    or (d.spellID and d.category == "Talent"))
                 if rightSideIcon then
                     local rightSize = entryRowH - 20
                     if rightSize < (theme.iconSize or 16) then
@@ -6769,7 +6791,8 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 local d = data
                 local mainIconOnRight = d and (d.mountID or d.toyItemID or d.petID
                     or d.outfitID or d.transmogSetID or d.category == "Currency"
-                    or (d.itemID and d.category == "Loot"))
+                    or (d.itemID and d.category == "Loot")
+                    or (d.spellID and d.category == "Talent"))
 
                 local leftAnchor
                 if catShown then
@@ -8166,6 +8189,51 @@ local function FindSpellbookButton(root, target, scroll, candidate)
     return nil
 end
 
+-- Open PlayerSpellsFrame to the Talents tab (2) and highlight the
+-- talent node matching data.talentNodeID. Mirrors OpenAbilityInSpellbook's
+-- shape: prefer PlayerSpellsUtil.TogglePlayerSpellsFrame(tabID) for an
+-- atomic open-to-tab; fall back to clicking the micro button + tab.
+-- The talent step's own Highlight branch (in Highlight.lua) finds the
+-- node button by GetNodeID() and highlights it once the tree is up.
+function UI:OpenTalentInTalentsTab(data)
+    local highlight = ns.Highlight
+    local TALENTS_TAB = 2
+
+    local function ensureFrameOnTab(attempt)
+        local frame = _G["PlayerSpellsFrame"]
+        if not (frame and frame:IsShown()) then
+            local util = _G.PlayerSpellsUtil
+            if util and util.TogglePlayerSpellsFrame then
+                pcall(util.TogglePlayerSpellsFrame, TALENTS_TAB)
+            else
+                ClickButton(_G["PlayerSpellsMicroButton"])
+            end
+            if attempt < 30 then
+                C_Timer.After(0.05, function() ensureFrameOnTab(attempt + 1) end)
+            end
+            return
+        end
+        if highlight and highlight.IsTabSelected
+           and not highlight:IsTabSelected("PlayerSpellsFrame", TALENTS_TAB) then
+            local tab = highlight.GetTabButton
+                and highlight:GetTabButton("PlayerSpellsFrame", TALENTS_TAB)
+            if tab then ClickButton(tab) end
+            if attempt < 30 then
+                C_Timer.After(0, function() ensureFrameOnTab(attempt + 1) end)
+            end
+            return
+        end
+        -- Frame open and on Talents tab: hand off the node-highlight step
+        -- to the Highlight system. data.steps[3] is the talentNodeID step.
+        if highlight and highlight.StartGuideAtStep then
+            data.noCourseCorrect = true
+            highlight:StartGuideAtStep(data, 3)
+        end
+    end
+
+    ensureFrameOnTab(1)
+end
+
 function UI:OpenAbilityInSpellbook(data)
     local highlight = ns.Highlight
     local categoryClicked = false
@@ -8439,6 +8507,14 @@ function UI:SelectResult(data, forceGuide)
 
     -- Toy: handled by SecureActionButton on mousedown (UseToyByItemID is protected)
     if data.toyItemID then return end
+
+    -- Talents: open Talents tab and highlight the matching node. Routed
+    -- here (before the generic spellID branch) because talents share the
+    -- spellID field with abilities but should never cast.
+    if data.category == "Talent" and data.talentNodeID then
+        self:OpenTalentInTalentsTab(data)
+        return
+    end
 
     if data.spellID then
         if forceGuide or IsSpellbookOnlyAbility(data) then
