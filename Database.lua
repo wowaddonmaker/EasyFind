@@ -4104,6 +4104,15 @@ function Database:SearchUI(query, skipCategories)
         return resultsBuf
     end
 
+    -- First-call build: without a ready prefix index every search falls
+    -- through to a linear scan over uiSearchData. After dynamic providers
+    -- populate that's ~1500+ entries per keystroke. Build once on demand
+    -- so the FIRST search after reload doesn't pay the linear-scan cost
+    -- on every keystroke that follows.
+    if not prefixIndexReady then
+        self:BuildSearchPrefixIndex()
+    end
+
     query = slower(query)
     local queryLen = #query
 
