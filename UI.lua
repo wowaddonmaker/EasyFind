@@ -722,7 +722,6 @@ function UI:CreateSearchFrame()
             return
         end
         if EasyFind.EnsureDynamicLoaded then EasyFind:EnsureDynamicLoaded() end
-        if escCatcher then escCatcher:Hide() end
         if selectedIndex > 0 then
             selectedIndex = 0
             toggleFocused = false
@@ -936,18 +935,8 @@ function UI:CreateSearchFrame()
         UI:ActivateSelected()
     end)
 
-    editBox:SetScript("OnEscapePressed", function(self)
-        if UI:CloseFilterDropdownIfOpen() then
-            self:SetFocus()
-            return
-        end
-        if self:GetText() == "" then
-            UI:Hide()
-            return
-        end
-        self:SetText("")
-        self.placeholder:Show()
-        UI:HideResults()
+    editBox:SetScript("OnEscapePressed", function(_)
+        UI:HandleEscape()
     end)
 
     -- Chrome-style inline autocomplete: same helper MapTab uses.
@@ -1456,25 +1445,23 @@ function UI:CreateSearchFrame()
                 UI:ActivateSelected()
             end
         elseif key == "ESCAPE" then
-            if UI:CloseFilterDropdownIfOpen() then
-                if searchFrame and searchFrame.editBox then
-                    searchFrame.editBox:SetFocus()
-                end
-            elseif toolbarFocus > 0 then
+            -- Reset nav state inline (toolbarFocus / selectedIndex /
+            -- toggleFocused are locals to this closure, so we can't move
+            -- this into HandleEscape without exposing them). Then route
+            -- through HandleEscape so the same close-menus / clear-text /
+            -- hide-bar decision tree runs as the editBox and escCatcher
+            -- paths. Single ESC closes the bar when no menus are open.
+            if toolbarFocus > 0 then
                 ClearToolbarFocus()
-                if selectedIndex == 0 then
-                    Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
-                end
-            elseif toggleFocused then
-                toggleFocused = false
-                UI:UpdateSelectionHighlight()
-            else
+            end
+            if selectedIndex > 0 or toggleFocused then
                 selectedIndex = 0
                 toggleFocused = false
-                Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
-                if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
                 UI:UpdateSelectionHighlight(true)
             end
+            Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
+            if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
+            UI:HandleEscape()
         else
             -- If no selection and editbox isn't focused, let the key propagate
             -- to the game (e.g. WASD movement) instead of typing into the bar.
@@ -1543,23 +1530,25 @@ function UI:CreateSearchFrame()
         if keyRepeat.IsKey(key) then StopKeyRepeat(key) end
     end)
 
-    -- UISpecialFrames fallback: WoW closes these on ESC before opening the
-    -- game menu.  Shown after the editbox loses focus with results visible so
-    -- the next ESC clears+closes instead of toggling the game menu.
-    escCatcher = CreateFrame("Frame", "EasyFindEscCatcher", searchFrame)
+    -- UISpecialFrames fallback: shown whenever the search bar is visible so
+    -- WoW always has a target for ESC, even after the editbox loses focus
+    -- (clicking the filter button, hovering a sub-flyout, etc). WoW Hides
+    -- the catcher on ESC; OnHide runs the unified HandleEscape and re-Shows
+    -- the catcher if the bar is still open so the next ESC also fires.
+    -- Parented to UIParent (not searchFrame) so the OnHide signal isn't
+    -- entangled with parent-cascade hides during reload / autoHide flows.
+    escCatcher = CreateFrame("Frame", "EasyFindEscCatcher", UIParent)
     escCatcher:SetSize(1, 1)
     escCatcher:Hide()
     tinsert(UISpecialFrames, "EasyFindEscCatcher")
-    escCatcher:SetScript("OnHide", function()
-        if searchFrame.editBox:HasFocus() then return end
-        if not resultsFrame or not resultsFrame:IsShown() then return end
-        Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
-        if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
-        selectedIndex = 0
-        toggleFocused = false
-        searchFrame.editBox:SetText("")
-        searchFrame.editBox.placeholder:Show()
-        UI:HideResults()
+    escCatcher:SetScript("OnHide", function(self)
+        if not searchFrame or not searchFrame:IsShown() then return end
+        -- editBox having focus means WoW's ESC pipeline already routed to
+        -- OnEscapePressed; this OnHide is a side-effect of something else
+        -- (autoHide hide, etc) and shouldn't drive ESC behavior.
+        if searchFrame.editBox and searchFrame.editBox:HasFocus() then return end
+        UI:HandleEscape()
+        if searchFrame:IsShown() then self:Show() end
     end)
 
     -- Tab confirms autocomplete suggestion only. Toolbar nav (clear /
@@ -1714,6 +1703,10 @@ function UI:CreateSearchFrame()
         if EasyFind.db.autoHide then
             self:RegisterEvent("GLOBAL_MOUSE_DOWN")
         end
+        -- Arm the UISpecialFrames catcher: gives ESC a target even when
+        -- the editbox lacks focus (clicking the filter button, hovering a
+        -- flyout). escCatcher's OnHide consolidates the close behavior.
+        if escCatcher then escCatcher:Show() end
     end)
     searchFrame:HookScript("OnHide", function(self)
         self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
@@ -1745,6 +1738,7 @@ function UI:CreateSearchFrame()
         end
         UI:Hide()
     end)
+
 end
 
 -- Top-level filter list, alphabetical. Collections stays compact via a
@@ -2246,7 +2240,11 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 local target = rows[popupFocus]
                 if target and target.Click then target:Click() end
             elseif key == "ESCAPE" then
-                self:Hide()
+                -- Route through HandleEscape: closes the parent dropdown
+                -- and any sibling popups together, refocuses editbox.
+                -- Bare self:Hide() only hits this popup and leaves the
+                -- main dropdown / nested popups behind.
+                UI:HandleEscape()
             else
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
             end
@@ -3476,7 +3474,10 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             end
         elseif key == "ESCAPE" then
             self._escapedViaKeyboard = true
-            self:Hide()
+            -- Route through HandleEscape so flyouts/popups close together
+            -- and the editbox refocuses, instead of just self:Hide() which
+            -- only hits the main dropdown.
+            UI:HandleEscape()
         else
             Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
         end
@@ -3595,7 +3596,12 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     if fb.UnlockHighlight then fb:UnlockHighlight() end
                 end
             end
-            if searchFrame.editBox and not searchFrame.editBox:IsMouseOver() then
+            -- Skip the ClearFocus when HandleEscape is driving the close —
+            -- it intentionally refocuses the editbox so the user can keep
+            -- typing. ClearFocus + same-frame SetFocus can lose to internal
+            -- editbox state, hence the flag instead of relying on order.
+            if searchFrame.editBox and not searchFrame.editBox:IsMouseOver()
+               and not UI._escClosingMenus then
                 searchFrame.editBox:ClearFocus()
             end
         end
@@ -7003,11 +7009,48 @@ end
 -- whether to consume the ESC keystroke vs fall through to text-clear /
 -- window-close behavior). Walks dropdown.guardFrames so ESC works the
 -- same regardless of how deep the user has navigated into sub-filters.
+-- Every popup frame the filter dropdown can spawn. Named globals so a
+-- brute-force walk catches popups not registered in dropdownGuardFrames
+-- (classPopup is parented to UIParent without ever being added to the
+-- guard list, etc), and so the close path doesn't depend on the cascade
+-- chain firing in the right order.
+local FILTER_POPUP_NAMES = {
+    "EasyFindAsClassPopup",
+    "EasyFindAsOptionsPopup",
+    "EasyFindGearOptionsPopup",
+    "EasyFindDiffPopup",
+    "EasyFindSpecPopup",
+    "EasyFindSpecFlyout",
+    "EasyFindSpecSubFlyout",
+}
+
 function UI:CloseFilterDropdownIfOpen()
     if not searchFrame then return false end
     local dropdown = searchFrame.filterDropdown
     if not dropdown then return false end
     local closedAny = false
+    -- Brute-force hide every named popup. classPopup is never registered
+    -- in guardFrames; relying on the cascade-via-OnHide chain misses it
+    -- when the parent popup is already hidden. Hide by name is idempotent
+    -- and order-independent.
+    for i = 1, #FILTER_POPUP_NAMES do
+        local f = _G[FILTER_POPUP_NAMES[i]]
+        if f and f.IsShown and f:IsShown() then
+            f:Hide()
+            closedAny = true
+        end
+    end
+    -- Collections / Options flyout popups are unnamed; reach them via the
+    -- dropdown.flyoutPopups registry.
+    if dropdown.flyoutPopups then
+        for i = 1, #dropdown.flyoutPopups do
+            local popup = dropdown.flyoutPopups[i]
+            if popup and popup:IsShown() then
+                popup:Hide()
+                closedAny = true
+            end
+        end
+    end
     if dropdown.guardFrames then
         for i = 1, #dropdown.guardFrames do
             local guard = dropdown.guardFrames[i]
@@ -7044,7 +7087,6 @@ function UI:HideResults()
         containerFrame:SetPoint("BOTTOM",   searchFrame, "BOTTOM",   0, 0)
         ns.SetRoundedRectDivider(containerFrame, 0, false)
     end
-    if escCatcher then escCatcher:Hide() end
     if resultsFrame.pinSeparator then
         resultsFrame.pinSeparator:Hide()
     end
@@ -9021,6 +9063,10 @@ function UI:Show(andFocus)
     if not searchFrame then return end
     if inCombat then return end
     searchFrame:Show()
+    -- Belt-and-suspenders: OnShow hook also calls this, but if searchFrame
+    -- was already shown the hook didn't fire and escCatcher would be left
+    -- hidden — leaving ESC without a target when the editbox is unfocused.
+    if escCatcher then escCatcher:Show() end
     EasyFind.db.visible = true
     if EasyFind.db.smartShow and not EasyFind.db.autoHide then
         searchFrame.hoverZone:Show()
@@ -9050,6 +9096,7 @@ function UI:Hide()
     -- on screen after the bar is toggled off via keybind.
     self:CloseFilterDropdownIfOpen()
     searchFrame:Hide()
+    if escCatcher then escCatcher:Hide() end
     searchFrame.setSmartShowVisible(false)
     self:HideResults()
     searchFrame.editBox:ClearFocus()
@@ -9057,6 +9104,55 @@ function UI:Hide()
     EasyFind.db.visible = false
 
     searchFrame.hoverZone:SetShown(EasyFind.db.smartShow)
+end
+
+-- Unified ESC handler: collapses every menu state we care about into one
+-- decision tree. Called from editBox:OnEscapePressed (focused path) and
+-- escCatcher:OnHide (unfocused path) so ESC behaves the same regardless of
+-- which frame currently holds keyboard input.
+--   Filter dropdown / flyouts open: close them all + refocus editbox.
+--   Editbox has text:               clear text + refocus.
+--   Otherwise:                      hide the search bar.
+function UI:HandleEscape()
+    if not searchFrame or not searchFrame:IsShown() then return end
+    local editBox = searchFrame.editBox
+    local function Refocus()
+        if not editBox then return end
+        -- Three SetFocus attempts spread across timing windows: synchronous
+        -- (works when dropdown:OnHide already ran), next-frame (handles the
+        -- normal Hide cascade), and short-deferred (handles editbox state
+        -- machine quirks after a Hide chain). Whichever lands first wins;
+        -- subsequent SetFocus on an already-focused editbox is a no-op.
+        editBox.blockFocus = nil
+        editBox:SetFocus()
+        C_Timer.After(0, function()
+            if not searchFrame or not searchFrame:IsShown() or not editBox then return end
+            if editBox:HasFocus() then return end
+            editBox.blockFocus = nil
+            editBox:SetFocus()
+        end)
+        C_Timer.After(0.05, function()
+            if not searchFrame or not searchFrame:IsShown() or not editBox then return end
+            if editBox:HasFocus() then return end
+            editBox.blockFocus = nil
+            editBox:SetFocus()
+        end)
+    end
+    self._escClosingMenus = true
+    local closedAny = self:CloseFilterDropdownIfOpen()
+    self._escClosingMenus = nil
+    if closedAny then
+        Refocus()
+        return
+    end
+    if editBox and editBox:GetText() ~= "" then
+        editBox:SetText("")
+        if editBox.placeholder then editBox.placeholder:Show() end
+        self:HideResults()
+        Refocus()
+        return
+    end
+    self:Hide()
 end
 
 -- Helper function to expand a currency header by name
