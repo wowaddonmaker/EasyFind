@@ -3111,8 +3111,12 @@ function MapSearch:ScanDungeonEntrances(mapID)
 
     -- Helper: classify and append an entrance
     local function addEntrance(entrance, ex, ey)
-        if seen[entrance.name] then return end
-        seen[entrance.name] = true
+        -- Dedup case-insensitively: Blizzard's API sometimes returns
+        -- the same instance under different casings ("Chamber Of Heart"
+        -- vs "Chamber of Heart") which would otherwise both pass.
+        local key = slower(entrance.name)
+        if seen[key] then return end
+        seen[key] = true
         local cat = "dungeon"
         if entrance.journalInstanceID and EJ_GetInstanceInfo then
             local _, _, _, _, _, _, _, _, _, _, _, entIsRaid = EJ_GetInstanceInfo(entrance.journalInstanceID)
@@ -3164,7 +3168,7 @@ function MapSearch:ScanDungeonEntrances(mapID)
         local contEntrances = GetDungeonEntrancesForMap(continentID)
         if contEntrances then
             for _, entrance in ipairs(contEntrances) do
-                if entrance.name and entrance.position and not seen[entrance.name] then
+                if entrance.name and entrance.position and not seen[slower(entrance.name)] then
                     local ownerZone = owners[slower(entrance.name)]
                     if ownerZone == mapID then
                         local cx, cy = entrance.position.x, entrance.position.y
@@ -5829,12 +5833,17 @@ function MapSearch:SearchForUI(query)
                 local nameLower = GetNameLower(zone)
                 zoneNames[nameLower] = true
                 if not existingNames[nameLower] then
+                    -- Pre-set score WITHOUT the +200 zone boost the dedicated
+                    -- map tab uses. In the UI search bar, map zones merge with
+                    -- non-map results (toys, items, abilities), and a +200
+                    -- boost causes fuzzy zone matches like "Heart of Fear" to
+                    -- outrank prefix matches like "Hearthstone".
                     pois[#pois + 1] = {
                         name = zone.name, category = "zone", icon = 237382,
                         nameLower = zone.nameLower, nameNorm = zone.nameNorm,
                         isZone = true, zoneMapID = zone.mapID,
                         zoneMapType = zone.mapType, zoneParentMapID = zone.parentMapID,
-                        pathPrefix = group.parentPath, score = zone.score + 200,
+                        pathPrefix = group.parentPath, score = zone.score,
                     }
                 end
             end

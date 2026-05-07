@@ -95,7 +95,7 @@ end
 -- Called after PLAYER_LOGIN when C_CurrencyInfo is available
 -- Scans the WoW currency list and injects any currencies not already in the static database
 function Database:PopulateDynamicCurrencies()
-    if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return end
+    if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return false end
 
     RemoveEntriesByCategory("Currency")
     wipe(knownCurrencyIDs)
@@ -282,12 +282,13 @@ function Database:PopulateDynamicCurrencies()
         end
         if not didCollapse then break end
     end
+    return true
 end
 
 -- Called after PLAYER_LOGIN when C_Reputation is available
 -- Scans the WoW reputation list and injects factions as searchable entries
 function Database:PopulateDynamicReputations()
-    if not C_Reputation or not C_Reputation.GetNumFactions then return end
+    if not C_Reputation or not C_Reputation.GetNumFactions then return false end
 
     RemoveEntriesByCategory("Reputation")
 
@@ -469,6 +470,7 @@ function Database:PopulateDynamicReputations()
         end
         if not didCollapse then break end
     end
+    return true
 end
 
 -- Called after PLAYER_LOGIN when C_MountJournal is available
@@ -907,12 +909,12 @@ end
 local outfitEntries = {} -- track injected entries for re-population
 
 function Database:PopulateDynamicMounts()
-    if not C_MountJournal or not C_MountJournal.GetMountIDs then return end
+    if not C_MountJournal or not C_MountJournal.GetMountIDs then return false end
 
     RemoveEntriesByCategory("Mount")
 
     local mountIDs = C_MountJournal.GetMountIDs()
-    if not mountIDs then return end
+    if not mountIDs then return false end
 
     for _, mountID in ipairs(mountIDs) do
         local name, spellID, icon, _, _, _, _,
@@ -927,19 +929,20 @@ function Database:PopulateDynamicMounts()
             }, MOUNT_MT)
         end
     end
+    return true
 end
 
 -- Called after PLAYER_LOGIN when C_ToyBox is available
 -- Scans the player's collected toys and injects them into the search database
 function Database:PopulateDynamicToys()
-    if not C_ToyBox then return end
+    if not C_ToyBox then return false end
 
     RemoveEntriesByCategory("Toy")
 
     local GetToyInfo = C_ToyBox.GetToyInfo
     local GetNumFilteredToys = C_ToyBox.GetNumFilteredToys
     local GetToyFromIndex = C_ToyBox.GetToyFromIndex
-    if not GetToyInfo or not GetNumFilteredToys or not GetToyFromIndex then return end
+    if not GetToyInfo or not GetNumFilteredToys or not GetToyFromIndex then return false end
 
     -- Save current filter state, set to show all collected toys only
     local hasFilterAPI = C_ToyBox.GetCollectedShown and C_ToyBox.SetCollectedShown
@@ -975,12 +978,13 @@ function Database:PopulateDynamicToys()
     if C_ToyBox.SetUncollectedShown then C_ToyBox.SetUncollectedShown(savedUncollected) end
     if C_ToyBox.SetFilterString then C_ToyBox.SetFilterString(savedString) end
     if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+    return true
 end
 
 -- Called after PLAYER_LOGIN when C_PetJournal is available
 -- Scans the player's collected pets and injects them into the search database
 function Database:PopulateDynamicPets()
-    if not C_PetJournal or not C_PetJournal.GetNumPets then return end
+    if not C_PetJournal or not C_PetJournal.GetNumPets then return false end
 
     RemoveEntriesByCategory("Pet")
 
@@ -999,7 +1003,14 @@ function Database:PopulateDynamicPets()
     if C_PetJournal.SetSearchFilter then C_PetJournal.SetSearchFilter("") end
 
     local numPets = C_PetJournal.GetNumPets()
-    if not numPets then return end
+    if not numPets then
+        if C_PetJournal.SetFilterChecked then
+            if savedCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, savedCollected) end
+            if savedNotCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, savedNotCollected) end
+        end
+        if C_PetJournal.SetSearchFilter then C_PetJournal.SetSearchFilter(savedString) end
+        return false
+    end
 
     local seen = {}
     for i = 1, numPets do
@@ -1023,6 +1034,7 @@ function Database:PopulateDynamicPets()
         if savedNotCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, savedNotCollected) end
     end
     if C_PetJournal.SetSearchFilter then C_PetJournal.SetSearchFilter(savedString) end
+    return true
 end
 
 -- Called after PLAYER_LOGIN when C_Heirloom is available.
@@ -1030,16 +1042,16 @@ end
 -- search database. Click handler creates the heirloom item in the
 -- player's bags via C_Heirloom.CreateHeirloom.
 function Database:PopulateDynamicHeirlooms()
-    if not C_Heirloom or not C_Heirloom.GetHeirloomItemIDs then return end
+    if not C_Heirloom or not C_Heirloom.GetHeirloomItemIDs then return false end
 
     RemoveEntriesByCategory("Heirloom")
 
     local ids = C_Heirloom.GetHeirloomItemIDs()
-    if type(ids) ~= "table" then return end
+    if type(ids) ~= "table" then return false end
 
     local hasHeirloom = C_Heirloom.PlayerHasHeirloom
     local getInfo = C_Heirloom.GetHeirloomInfo
-    if not getInfo then return end
+    if not getInfo then return false end
 
     local getItemIcon = C_Item and C_Item.GetItemIconByID
     for _, itemID in ipairs(ids) do
@@ -1060,6 +1072,7 @@ function Database:PopulateDynamicHeirlooms()
         end
     end
     if self.ResetSearchCache then self:ResetSearchCache() end
+    return true
 end
 
 -- Scan known character titles and inject as search entries. Click on a
@@ -1071,12 +1084,12 @@ function Database:PopulateDynamicTitles()
     local getNum = GetNumTitles
     local getName = GetTitleName
     local isKnown = IsTitleKnown
-    if not getNum or not getName or not isKnown then return end
+    if not getNum or not getName or not isKnown then return false end
 
     RemoveEntriesByCategory("Title")
 
     local total = getNum()
-    if not total or total <= 0 then return end
+    if not total or total <= 0 then return false end
 
     for titleID = 1, total do
         if isKnown(titleID) then
@@ -1093,6 +1106,7 @@ function Database:PopulateDynamicTitles()
         end
     end
     if self.ResetSearchCache then self:ResetSearchCache() end
+    return true
 end
 
 -- Scan the player's saved Equipment Manager gear sets and inject as
@@ -1100,15 +1114,15 @@ end
 -- C_EquipmentSet.UseEquipmentSet (no protected-frame issues outside
 -- combat). Per-set icons come from the saved iconFileID.
 function Database:PopulateDynamicGearSets()
-    if not C_EquipmentSet or not C_EquipmentSet.GetEquipmentSetIDs then return end
+    if not C_EquipmentSet or not C_EquipmentSet.GetEquipmentSetIDs then return false end
 
     RemoveEntriesByCategory("Gear Set")
 
     local ids = C_EquipmentSet.GetEquipmentSetIDs()
-    if type(ids) ~= "table" then return end
+    if type(ids) ~= "table" then return false end
 
     local getInfo = C_EquipmentSet.GetEquipmentSetInfo
-    if not getInfo then return end
+    if not getInfo then return false end
 
     for _, setID in ipairs(ids) do
         local name, iconFileID = getInfo(setID)
@@ -1122,19 +1136,20 @@ function Database:PopulateDynamicGearSets()
         end
     end
     if self.ResetSearchCache then self:ResetSearchCache() end
+    return true
 end
 
 -- Called after PLAYER_LOGIN when C_TransmogOutfitInfo is available.
 -- Scans the player's saved transmog outfits and injects them into the search database.
 function Database:PopulateDynamicOutfits()
-    if not C_TransmogOutfitInfo or not C_TransmogOutfitInfo.GetOutfitsInfo then return end
+    if not C_TransmogOutfitInfo or not C_TransmogOutfitInfo.GetOutfitsInfo then return false end
 
     -- Remove previous outfit entries (handles mid-session outfit changes)
     RemoveEntriesByCategory("Outfit")
     wipe(outfitEntries)
 
     local outfits = C_TransmogOutfitInfo.GetOutfitsInfo()
-    if not outfits then return end
+    if not outfits then return false end
 
     for _, info in ipairs(outfits) do
         if not info.isDisabled then
@@ -1148,6 +1163,7 @@ function Database:PopulateDynamicOutfits()
             outfitEntries[#outfitEntries + 1] = entry
         end
     end
+    return true
 end
 
 -- Reads the default UI's transmog set filters and updates our saved settings.
@@ -1185,7 +1201,7 @@ end
 -- Scans all transmog appearance sets and injects them into the search database.
 -- Respects class, collected, and PvE/PvP filter settings.
 function Database:PopulateDynamicTransmogSets()
-    if not C_TransmogSets or not C_TransmogSets.GetAllSets then return end
+    if not C_TransmogSets or not C_TransmogSets.GetAllSets then return false end
 
     -- Remove previous entries (handles mid-session filter changes)
     RemoveEntriesWithField("transmogSetID")
@@ -1196,10 +1212,10 @@ function Database:PopulateDynamicTransmogSets()
     if self.ResetSearchCache then self:ResetSearchCache() end
 
     local allSets = C_TransmogSets.GetAllSets()
-    if not allSets then return end
+    if not allSets then return false end
 
     local db = EasyFind and EasyFind.db
-    if not db then return end
+    if not db then return false end
     local classFilter = db.appearanceSetClass
     local showCollected = not db or db.appearanceSetCollected ~= false
     local showNotCollected = not db or db.appearanceSetNotCollected ~= false
@@ -1325,6 +1341,7 @@ function Database:PopulateDynamicTransmogSets()
             end
         end
     end
+    return true
 end
 
 function Database:FindEmptyActionSlot()
@@ -1797,7 +1814,7 @@ end
 -- the macro. Re-callable: clears prior Macro entries before re-injecting,
 -- so calls from UPDATE_MACROS reflect renames/edits/deletes.
 function Database:PopulateDynamicMacros()
-    if not GetNumMacros or not GetMacroInfo then return end
+    if not GetNumMacros or not GetMacroInfo then return false end
 
     RemoveEntriesByCategory("Macro")
     if self.ResetSearchCache then self:ResetSearchCache() end
@@ -1848,6 +1865,7 @@ function Database:PopulateDynamicMacros()
     for i = 1, numPerChar do
         injectMacro(MAX_ACCOUNT + i, true)
     end
+    return true
 end
 
 -- Inject one entry per learned spell into uiSearchData. Retail Midnight
@@ -1864,12 +1882,45 @@ function Database:PopulateDynamicAbilities()
     local SBOOK = C_SpellBook
     if not SBOOK or not SBOOK.GetSpellBookItemInfo
        or not SBOOK.GetNumSpellBookSkillLines or not SBOOK.GetSpellBookSkillLineInfo then
-        return
+        return false
     end
     local BANK = (Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player) or 0
     local SPELL_TYPE = Enum and Enum.SpellBookItemType and Enum.SpellBookItemType.Spell
+    local FLYOUT_TYPE = Enum and Enum.SpellBookItemType and Enum.SpellBookItemType.Flyout
+    local GetFlyoutInfoFn = GetFlyoutInfo
+    local GetFlyoutSlotInfoFn = GetFlyoutSlotInfo
 
     local seen = {}
+
+    local function injectAbility(name, subName, spellID, iconID, lineName, lineSpecID, isOffSpec, isPassive, slotIndex)
+        if not name or name == "" or not spellID then return end
+        local displayName = (subName and subName ~= "") and (name .. " (" .. subName .. ")") or name
+        local nameLower = slower(displayName)
+        local kw = { slower(name), "ability", "abilities" }
+        if lineName and lineName ~= "" then
+            kw[#kw + 1] = slower(lineName)
+        end
+        uiSearchData[#uiSearchData + 1] = {
+            name = displayName,
+            nameLower = nameLower,
+            keywords = kw,
+            keywordsLower = kw,
+            category = "Ability",
+            treeName = lineName,
+            isOffSpec = isOffSpec or false,
+            isPassive = isPassive,
+            isSpellbookOnly = isOffSpec or isPassive,
+            icon = iconID,
+            spellID = spellID,
+            spellBookSpellID = spellID,
+            spellBookIndex = slotIndex,
+            spellBookBank = BANK,
+            spellBookCategoryName = lineName,
+            spellBookSpecID = lineSpecID,
+            spellName = name,
+            steps = { { spellID = spellID } },
+        }
+    end
 
     local numLines = SBOOK.GetNumSpellBookSkillLines() or 0
     for tab = 1, numLines do
@@ -1883,50 +1934,55 @@ function Database:PopulateDynamicAbilities()
             and offSpecID and offSpecID ~= 0 then
             lineSpecID = offSpecID
         end
+        local isOffSpec = lineInfo and lineInfo.offSpecID
+            and lineInfo.offSpecID ~= 0 or false
         for s = offset + 1, offset + numSpells do
             local itemInfo = SBOOK.GetSpellBookItemInfo(s, BANK)
-            local seenKey = itemInfo and itemInfo.actionID
-                and (tostring(itemInfo.actionID) .. ":" .. tostring(tab)
-                    .. ":" .. tostring(lineSpecID or ""))
-            if itemInfo
-               and (not SPELL_TYPE or itemInfo.itemType == SPELL_TYPE)
-               and itemInfo.name and itemInfo.name ~= ""
-               and itemInfo.actionID and seenKey and not seen[seenKey] then
-                seen[seenKey] = true
-                local name = itemInfo.name
-                local subName = itemInfo.subName
-                local displayName = (subName and subName ~= "") and (name .. " (" .. subName .. ")") or name
-                local nameLower = slower(displayName)
-                local kw = { slower(name), "ability", "abilities" }
-                if lineName and lineName ~= "" then
-                    kw[#kw + 1] = slower(lineName)
+            if itemInfo and itemInfo.name and itemInfo.name ~= "" and itemInfo.actionID then
+                if (not SPELL_TYPE or itemInfo.itemType == SPELL_TYPE) then
+                    local seenKey = tostring(itemInfo.actionID) .. ":" .. tostring(tab)
+                        .. ":" .. tostring(lineSpecID or "")
+                    if not seen[seenKey] then
+                        seen[seenKey] = true
+                        injectAbility(itemInfo.name, itemInfo.subName, itemInfo.actionID,
+                            itemInfo.iconID, lineName, lineSpecID, isOffSpec, itemInfo.isPassive, s)
+                    end
+                elseif FLYOUT_TYPE and itemInfo.itemType == FLYOUT_TYPE
+                       and GetFlyoutInfoFn and GetFlyoutSlotInfoFn then
+                    -- Flyouts are containers (Switch Flight Style → Skyriding /
+                    -- Steady Flight, etc.). The flyout itself isn't castable,
+                    -- but its slot spells are — scan and inject each, and use
+                    -- the flyout's own name as a keyword so "switch flight"
+                    -- finds the slot spells.
+                    local flyoutID = itemInfo.actionID
+                    local flyoutName, _, numSlots, isKnown = GetFlyoutInfoFn(flyoutID)
+                    if isKnown and numSlots and numSlots > 0 then
+                        local flyoutKw = flyoutName and flyoutName ~= ""
+                            and slower(flyoutName) or nil
+                        for slot = 1, numSlots do
+                            local slotSpellID, _, slotIsKnown, slotSpellName = GetFlyoutSlotInfoFn(flyoutID, slot)
+                            if slotIsKnown and slotSpellID and slotSpellName then
+                                local slotIcon = C_Spell and C_Spell.GetSpellTexture
+                                    and C_Spell.GetSpellTexture(slotSpellID)
+                                local seenKey = tostring(slotSpellID) .. ":" .. tostring(tab)
+                                    .. ":" .. tostring(lineSpecID or "")
+                                if not seen[seenKey] then
+                                    seen[seenKey] = true
+                                    injectAbility(slotSpellName, nil, slotSpellID,
+                                        slotIcon, lineName, lineSpecID, isOffSpec, false, s)
+                                    if flyoutKw then
+                                        local injected = uiSearchData[#uiSearchData]
+                                        injected.keywords[#injected.keywords + 1] = flyoutKw
+                                    end
+                                end
+                            end
+                        end
+                    end
                 end
-                local isOffSpec = lineInfo and lineInfo.offSpecID
-                    and lineInfo.offSpecID ~= 0
-                uiSearchData[#uiSearchData + 1] = {
-                    name = displayName,
-                    nameLower = nameLower,
-                    keywords = kw,
-                    keywordsLower = kw,
-                    category = "Ability",
-                    treeName = lineInfo and lineInfo.name,
-                    isOffSpec = isOffSpec,
-                    isPassive = itemInfo.isPassive,
-                    isSpellbookOnly = isOffSpec or itemInfo.isPassive,
-                    icon = itemInfo.iconID,
-                    spellID = itemInfo.actionID,
-                    spellBookSpellID = itemInfo.spellID or itemInfo.actionID,
-                    spellBookIndex = s,
-                    spellBookBank = BANK,
-                    spellBookCategoryIndex = tab,
-                    spellBookCategoryName = lineName,
-                    spellBookSpecID = lineSpecID,
-                    spellName = name,
-                    steps = { { spellID = itemInfo.actionID } },
-                }
             end
         end
     end
+    return true
 end
 
 -- Common community abbreviations for dungeons/raids whose initials
@@ -2183,7 +2239,7 @@ function Database:PopulateDynamicBags()
     local getItemInfo = (CONT and CONT.GetContainerItemInfo)  or GetContainerItemInfo
     local getItemInfoInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
     local isEquippableItem = (C_Item and C_Item.IsEquippableItem) or _G.IsEquippableItem
-    if not getNumSlots or not getItemInfo then return end
+    if not getNumSlots or not getItemInfo then return false end
 
     RemoveEntriesByCategory("Bag")
     if self.ResetSearchCache then self:ResetSearchCache() end
@@ -2254,6 +2310,7 @@ function Database:PopulateDynamicBags()
             },
         }
     end
+    return true
 end
 
 function Database:_ResetDynamicProviderCaches()
@@ -4099,10 +4156,53 @@ function Database:SearchUI(query, skipCategories)
         (skipCategories["Loot"] and "L" or "")
     ) or ""
 
+    -- prevCandidates is missing entries the current (more permissive)
+    -- scoring pass would now match. Two distinct cases trigger this:
+    --
+    --   1. A gating flag flipped false → true on this keystroke
+    --      ("icc bos" → "icc boss" turns bossQueryWord on; "characters"
+    --      → "characters ach..." turns achQueryWord on). Boss /
+    --      achievement entries that previously failed the stricter
+    --      gate were never scored, so prevCandidates contains zero of
+    --      them.
+    --
+    --   2. A new word was just appended to a stat-keyword query
+    --      ("haste" → "haste ring"). lootStatQueryWord stays true
+    --      throughout, but loot rings are missing from the "ha"
+    --      prefix bucket (their lootStatKw is populated lazily, after
+    --      the index was built), so they never made it into
+    --      prevCandidates. Adding "ring" pulls them in via the "ri"
+    --      bucket on the multi-token path.
+    --
+    -- Either case bypasses extension for one keystroke and lets the
+    -- prefix lookup rebuild the candidate set.
+    local prevLootStat, prevBossWord, prevAchWord = false, false, false
+    local prevWordCount = 0
+    if prevQuery ~= "" then
+        for prevWord in prevQuery:gmatch("%S+") do
+            prevWordCount = prevWordCount + 1
+            if IsLootStatSearchWord(prevWord) then prevLootStat = true end
+            if prevWord == "boss" or prevWord == "bosses" then
+                prevBossWord = true
+            end
+            if ssub(prevWord, 1, 3) == "ach" or prevWord == "stat" or prevWord == "stats"
+               or prevWord == "statistic" or prevWord == "statistics" then
+                prevAchWord = true
+            end
+        end
+    end
+    local addedNewWord = #queryWords > prevWordCount
+    local gatingShifted =
+        (lootStatQueryWord and not prevLootStat)
+        or (bossQueryWord and not prevBossWord)
+        or (achQueryWord and not prevAchWord)
+        or (lootStatQueryWord and addedNewWord)
+
     local searchSet
     local prevLen = #prevQuery
     if prevLen > 0 and skipKey == prevSkipKey
-        and queryLen > prevLen and ssub(query, 1, prevLen) == prevQuery then
+        and queryLen > prevLen and ssub(query, 1, prevLen) == prevQuery
+        and not gatingShifted then
         -- Forward extension of the prior query: re-score the prior
         -- candidates only. (Cheapest path.)
         searchSet = prevCandidates
@@ -4266,17 +4366,9 @@ function Database:SearchUI(query, skipCategories)
     prevSkipKey = skipKey
 
     tsort(results, scoreDescending)
-    -- Cap to top-N by score. Beyond ~100 results the per-keystroke
-    -- bucket-build / sort / hierarchical-flatten pipeline pays in full
-    -- for entries the user can't see (the row pool is 50 anyway), and
-    -- "525 results for `mo`" hits 70ms+ in build alone. Capping the
-    -- raw score-sorted list before the downstream pipeline makes the
-    -- hot path proportional to visible work, not to dataset size.
-    local SEARCH_RESULT_CAP = 100
+    local SEARCH_RESULT_CAP = 250
     if resultsN > SEARCH_RESULT_CAP then
         for i = SEARCH_RESULT_CAP + 1, resultsN do results[i] = nil end
-        -- Trim the pool to the cap so a single broad query ("mo") does
-        -- not leave the pool sized at ~420 forever.
         for i = SEARCH_RESULT_CAP + 1, #resultEntryPool do
             resultEntryPool[i] = nil
         end

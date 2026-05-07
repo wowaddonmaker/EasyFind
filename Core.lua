@@ -301,6 +301,7 @@ local function OnInitialize()
         if msg == "o" or msg == "options" or msg == "config" or msg == "settings" then
             EasyFind:OpenOptions()
         elseif msg == "toggle" or msg == "t" then
+            EasyFind:EnsureDynamicLoaded()
             if ns.UI then ns.UI:Toggle() end
         elseif msg == "c" or msg == "clear" then
             EasyFind:ClearAll()
@@ -443,45 +444,62 @@ local function InstallTransmogClassFilterHook()
     end)
 end
 
+-- Lazy dynamic load: pulled the moment the user opens the search bar (or any
+-- entry point that surfaces dynamic results). Other search-style addons follow
+-- the same shape: nothing is scanned at PLAYER_LOGIN, so the player never sees
+-- a post-load-screen stutter from us.
+-- Calling repeatedly is safe: LoadDeferredSyncProvidersStaggered skips
+-- providers that are loaded-and-clean, so re-entry only refreshes dirty ones.
+function EasyFind:EnsureDynamicLoaded()
+    if not ns.Database then return end
+    if EasyFind.db.enableUISearch == false then return end
+    if ns.Database.LoadDeferredSyncProvidersStaggered then
+        ns.Database:LoadDeferredSyncProvidersStaggered()
+    end
+    if not self._dynamicLoadTriggered then
+        self._dynamicLoadTriggered = true
+        if ns.Database.LoadHeavyDynamicSearchDataSync then
+            SafeAfter(0.5, function()
+                if EasyFind.db.enableUISearch == false then return end
+                ns.Database:LoadHeavyDynamicSearchDataSync()
+            end)
+        end
+        -- Late-arriving APIs (Wardrobe, Heirlooms) sometimes aren't ready in
+        -- the first pass. Re-trigger after they've had time to populate.
+        SafeAfter(3.0, function()
+            if EasyFind.db.enableUISearch == false then return end
+            if ns.Database.LoadDeferredSyncProvidersStaggered then
+                ns.Database:LoadDeferredSyncProvidersStaggered()
+            end
+        end)
+    end
+end
+
 local function OnPlayerLogin()
-    SafeAfter(0, function()
-        local function SafeInit(mod, name)
-            if not mod then return end
-            local ok, err = xpcall(mod.Initialize, ErrorHandler, mod)
-            if not ok then
-                EasyFind:Print("|cffff4444" .. name .. " failed to initialize: " .. tostring(err) .. "|r")
-            end
+    local function SafeInit(mod, name)
+        if not mod then return end
+        local ok, err = xpcall(mod.Initialize, ErrorHandler, mod)
+        if not ok then
+            EasyFind:Print("|cffff4444" .. name .. " failed to initialize: " .. tostring(err) .. "|r")
         end
-        if EasyFind.db.enableMapSearch ~= false then
-            SafeInit(ns.MapSearch,  "MapSearch")
+    end
+    if EasyFind.db.enableMapSearch ~= false then
+        SafeInit(ns.MapSearch,  "MapSearch")
+    end
+    if EasyFind.db.enableUISearch ~= false then
+        SafeInit(ns.UI,        "UI")
+        SafeInit(ns.Highlight, "Highlight")
+    end
+    if EasyFind.db.enableMapSearch ~= false and ns.MapSearch and ns.MapSearch.WarmUISearchCaches then
+        ns.MapSearch:WarmUISearchCaches()
+    end
+    if ns.Options and ns.Options.RegisterWithBlizzardOptions then
+        local ok, err = xpcall(ns.Options.RegisterWithBlizzardOptions, ErrorHandler, ns.Options)
+        if not ok then
+            EasyFind:Print("|cffff4444Options registration failed: " .. tostring(err) .. "|r")
         end
-        if EasyFind.db.enableUISearch ~= false and ns.Database and ns.Database.LoadCoreDynamicSearchData then
-            local ok, err = xpcall(ns.Database.LoadCoreDynamicSearchData, ErrorHandler, ns.Database)
-            if not ok then
-                EasyFind:Print("|cffff4444Search data failed to initialize: " .. tostring(err) .. "|r")
-            end
-        end
-        if EasyFind.db.enableUISearch ~= false then
-            SafeInit(ns.UI,        "UI")
-            SafeInit(ns.Highlight, "Highlight")
-            if ns.Database and ns.Database.WarmSearchHotPath then
-                SafeAfter(0, function() ns.Database:WarmSearchHotPath() end)
-            end
-            if ns.UI and ns.UI.WarmSearchHotPath then
-                SafeAfter(0.05, function() ns.UI:WarmSearchHotPath() end)
-            end
-        end
-        if EasyFind.db.enableMapSearch ~= false and ns.MapSearch and ns.MapSearch.WarmUISearchCaches then
-            SafeAfter(0.10, function() ns.MapSearch:WarmUISearchCaches() end)
-        end
-        if ns.Options and ns.Options.RegisterWithBlizzardOptions then
-            local ok, err = xpcall(ns.Options.RegisterWithBlizzardOptions, ErrorHandler, ns.Options)
-            if not ok then
-                EasyFind:Print("|cffff4444Options registration failed: " .. tostring(err) .. "|r")
-            end
-        end
-        InstallTransmogClassFilterHook()
-    end)
+    end
+    InstallTransmogClassFilterHook()
 
     -- Minimap button (delayed slightly so Minimap frame is ready)
     SafeAfter(0.6, function()
@@ -581,14 +599,17 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
 end)
 
 function EasyFind:ToggleSearchUI()
+    self:EnsureDynamicLoaded()
     if ns.UI then ns.UI:Toggle() end
 end
 
 function EasyFind:FocusSearchUI()
+    self:EnsureDynamicLoaded()
     if ns.UI then ns.UI:Focus() end
 end
 
 function EasyFind:ToggleFocusSearchUI()
+    self:EnsureDynamicLoaded()
     if WorldMapFrame and WorldMapFrame:IsShown() and ns.MapTab then
         ns.MapTab:Focus()
     elseif ns.UI then
@@ -597,6 +618,7 @@ function EasyFind:ToggleFocusSearchUI()
 end
 
 function EasyFind:FocusMapSearch()
+    self:EnsureDynamicLoaded()
     if ns.MapTab then ns.MapTab:Focus() end
 end
 
