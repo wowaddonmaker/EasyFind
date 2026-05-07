@@ -1793,9 +1793,11 @@ local UI_FILTER_OPTIONS = {
     { key = "currencies",  label = "Currencies",  iconTex = 136452 },
     -- Gear: treasure-chest icon from the Encounter Journal loot tab
     -- spritesheet (texture 522972) for visual consistency with the
-    -- in-game loot UI.
+    -- in-game loot UI. hasFlyout flags the row to draw the chevron --
+    -- the actual flyout (difficulty, spec, iLvl) is built inline below
+    -- via gearOptionsPopup, not via flyoutSubFilters.
     { key = "loot",        label = "Gear",        iconTex = 522972,
-      iconCoords = { 0.730, 0.824, 0.618, 0.660 } },
+      iconCoords = { 0.730, 0.824, 0.618, 0.660 }, hasFlyout = true },
     { key = "map",         label = "Map Search",  iconTex = 1121272,
       iconCoords = { 0.3457, 0.3856, 0.2549, 0.2951 } },
     { key = "options",     label = "Options",     iconTex = 1121272,
@@ -2370,8 +2372,10 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
         -- Right-pointing chevron on rows that have a flyout, signalling
         -- the row expands to the right. Mirrors the standard submenu
-        -- indicator used elsewhere in the WoW UI.
-        if opt.flyoutSubFilters then
+        -- indicator used elsewhere in the WoW UI. flyoutSubFilters drives
+        -- the auto-built sub-filter popup; hasFlyout opts in rows whose
+        -- flyout is built inline below (Gear → gearOptionsPopup).
+        if opt.flyoutSubFilters or opt.hasFlyout then
             local chev = row:CreateTexture(nil, "OVERLAY")
             chev:SetAtlas("common-icon-forwardarrow")
             chev:SetSize(ICON_SIZE - 2, ICON_SIZE - 2)
@@ -5684,6 +5688,8 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 elseif data and data.macroIndex and data.category == "Macro"
                        and data.macroBody and data.macroBody ~= "" then
                     newType, newKey, newVal = "macro", "macrotext", data.macroBody
+                elseif data and data.slashCommand then
+                    newType, newKey, newVal = "macro", "macrotext", data.slashCommand
                 end
                 if resultRow._lastAttrType ~= newType
                    or resultRow._lastAttrKey ~= newKey
@@ -8231,10 +8237,19 @@ function UI:OpenAbilityInSpellbook(data)
             end
         end
 
+        -- Validator passed to HighlightFrame's watcher. ScrollBox button
+        -- pools repurpose the same physical button for different spells
+        -- when the user pages the spellbook, so the frame stays visible
+        -- but stops representing the search target. This re-checks the
+        -- spell identity each tick and clears the highlight on mismatch.
+        local function stillRepresentsTarget(f)
+            return SpellFrameMatchesSelf(f, data)
+        end
+
         if targetElement then
             local elementBtn = FindVisibleButtonForElement(paged, targetElement)
             if elementBtn and highlight then
-                highlight:HighlightFrame(elementBtn)
+                highlight:HighlightFrame(elementBtn, nil, stillRepresentsTarget)
                 HideHighlightOnHover(elementBtn)
                 return
             end
@@ -8242,7 +8257,7 @@ function UI:OpenAbilityInSpellbook(data)
 
         local btn = FindSpellbookButton(paged, data, false)
         if btn and highlight then
-            highlight:HighlightFrame(btn)
+            highlight:HighlightFrame(btn, nil, stillRepresentsTarget)
             HideHighlightOnHover(btn)
             return
         end
@@ -8283,6 +8298,11 @@ function UI:SelectResult(data, forceGuide)
     else
         self:HideResults()
     end
+
+    -- Slash-command actions (e.g. Pet Dismiss → /dismisspet) fire via
+    -- the secure macrotext attribute set when the row was rendered. The
+    -- click already ran the command; nothing else for SelectResult to do.
+    if data.slashCommand then return end
 
 
     -- Transmogrification panel: load and show TransmogFrame

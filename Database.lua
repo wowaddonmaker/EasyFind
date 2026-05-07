@@ -2364,6 +2364,7 @@ function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, 
         if node.icon then entry.icon = node.icon end
         if node.available then entry.available = node.available end
         if node.canQueue then entry.canQueue = true end
+        if node.slashCommand then entry.slashCommand = node.slashCommand end
 
         uiSearchData[#uiSearchData + 1] = entry
 
@@ -3280,6 +3281,20 @@ function Database:BuildUIDatabase()
             category = "Social",
             icon = 134939,
             steps = {{ customText = "Click the clock/time display on your minimap to open the Calendar" }},
+        },
+
+        -- Quick action: dismiss any active companion pet via /dismisspet.
+        -- The slashCommand field maps to a secure macrotext attribute on
+        -- the result row, so clicking runs the command directly. No need
+        -- for the user to remember the slash command -- searching for
+        -- "dismiss" or "pet" surfaces it.
+        {
+            name = "Dismiss Pet",
+            keywords = {"dismiss", "dismiss pet", "pet", "companion", "summon",
+                        "battle pet", "critter", "minion"},
+            category = "Action",
+            icon = 132599,  -- INV_Misc_Pet_01 silhouette
+            slashCommand = "/dismisspet",
         },
     }
 

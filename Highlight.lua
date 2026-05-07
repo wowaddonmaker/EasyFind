@@ -81,6 +81,32 @@ function Highlight:CreateHighlightFrame()
     alpha:SetToAlpha(0.3)
     alpha:SetDuration(0.5)
     highlightFrame.animGroup = animGroup
+
+    -- Visibility + identity watcher. Throttled to 0.1s so it's not a
+    -- per-frame cost.
+    --   IsVisible() (unlike IsShown) reflects parent-chain visibility, so
+    --     cascade-hides (panel close, tab switch) trigger a clear even
+    --     though OnHide doesn't fire on each child.
+    --   _targetValidator catches the case where the target frame is still
+    --     visible but no longer represents the original target -- e.g. a
+    --     ScrollBox button repurposed for a different spell after the user
+    --     pages the spellbook. Caller passes a closure that re-checks
+    --     identity (SpellFrameMatchesSelf etc.).
+    local watchAccum = 0
+    highlightFrame:HookScript("OnUpdate", function(self, elapsed)
+        watchAccum = watchAccum + elapsed
+        if watchAccum < 0.1 then return end
+        watchAccum = 0
+        local target = self._targetFrame
+        if target and target.IsVisible and not target:IsVisible() then
+            Highlight:HideHighlight()
+            return
+        end
+        local validator = self._targetValidator
+        if validator and not validator(target) then
+            Highlight:HideHighlight()
+        end
+    end)
 end
 
 function Highlight:CreateIndicatorFrame()
@@ -2395,11 +2421,19 @@ function Highlight:GetSideTabButton(frameName, sideTabIndex)
     return nil
 end
 
-function Highlight:HighlightFrame(frame, instructionText)
+function Highlight:HighlightFrame(frame, instructionText, validator)
     if not frame or not frame:IsShown() then
         self:HideHighlight()
         return
     end
+
+    -- Track this target so the visibility watcher can hide the highlight
+    -- when the user closes the panel / switches tabs / changes pages and
+    -- the target frame stops being visible. The OnUpdate poller in
+    -- CreateHighlightFrame handles cascade-hides AND identity changes
+    -- (a ScrollBox button repurposed for a different spell after paging).
+    highlightFrame._targetFrame = frame
+    highlightFrame._targetValidator = validator
 
     local bs = highlightFrame.borderSize
     local pad = 4
@@ -2471,6 +2505,8 @@ end
 function Highlight:HideHighlight()
     highlightShownAt = nil
     if highlightFrame then
+        highlightFrame._targetFrame = nil
+        highlightFrame._targetValidator = nil
         highlightFrame:Hide()
         if highlightFrame.animGroup then highlightFrame.animGroup:Stop() end
     end
