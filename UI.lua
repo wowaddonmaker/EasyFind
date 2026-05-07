@@ -4325,6 +4325,112 @@ function UI:CreateResultButton(index)
     kb1:SetScript("OnClick", MakeBindingClickHandler(1))
     kb2:SetScript("OnClick", MakeBindingClickHandler(2))
 
+    -- Inline dropdown widget for settings whose options enumerate. Matches
+    -- the in-game SettingsDropdownWithSteppers control:
+    --   prev/next: common-dropdown-c-button-hover-2 (25x25 paddle body)
+    --     overlaid with common-dropdown-icon-prev / -icon-next chevron
+    --   center: common-dropdown-c-button-hover-1 (stretchable body)
+    --     with common-dropdown-c-button-hover-arrow chevron + gold text
+    -- WoW Midnight only ships the "-hover" atlases for these (no idle
+    -- variant), so we use the hover atlas as the always-visible body.
+    local dropdownGroup = CreateFrame("Frame", nil, resultRow)
+    dropdownGroup:SetSize(180, 25)
+    dropdownGroup:SetPoint("RIGHT", resultRow, "RIGHT", -6, 0)
+    dropdownGroup:SetFrameLevel(resultRow:GetFrameLevel() + 5)
+    dropdownGroup:Hide()
+    resultRow.settingDropdownGroup = dropdownGroup
+
+    local function MakePaddleButton(parent, iconAtlas)
+        local btn = CreateFrame("Button", nil, parent)
+        btn:SetSize(25, 25)
+        local body = btn:CreateTexture(nil, "BACKGROUND")
+        body:SetAllPoints()
+        body:SetAtlas("common-dropdown-c-button-hover-2", false)
+        local icon = btn:CreateTexture(nil, "OVERLAY")
+        icon:SetSize(17, 17)
+        icon:SetAtlas(iconAtlas, false)
+        icon:SetPoint("CENTER", 0, 0)
+        local hl = btn:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetAtlas("common-dropdown-c-button-hover-2", false)
+        hl:SetBlendMode("ADD")
+        hl:SetAlpha(0.4)
+        return btn
+    end
+
+    local ddPrev = MakePaddleButton(dropdownGroup, "common-dropdown-icon-back")
+    ddPrev:SetPoint("LEFT", dropdownGroup, "LEFT", 0, 0)
+    resultRow.settingDropdownPrev = ddPrev
+
+    local ddNext = MakePaddleButton(dropdownGroup, "common-dropdown-icon-next")
+    ddNext:SetPoint("RIGHT", dropdownGroup, "RIGHT", 0, 0)
+    resultRow.settingDropdownNext = ddNext
+
+    local ddCenter = CreateFrame("Button", nil, dropdownGroup)
+    ddCenter:SetPoint("LEFT", ddPrev, "RIGHT", 2, 0)
+    ddCenter:SetPoint("RIGHT", ddNext, "LEFT", -2, 0)
+    ddCenter:SetHeight(25)
+    local ddBg = ddCenter:CreateTexture(nil, "BACKGROUND")
+    ddBg:SetAllPoints()
+    ddBg:SetAtlas("common-dropdown-c-button-hover-1", false)
+    local ddHover = ddCenter:CreateTexture(nil, "HIGHLIGHT")
+    ddHover:SetAllPoints()
+    ddHover:SetAtlas("common-dropdown-c-button-hover-1", false)
+    ddHover:SetBlendMode("ADD")
+    ddHover:SetAlpha(0.4)
+    local ddArrow = ddCenter:CreateTexture(nil, "OVERLAY")
+    ddArrow:SetSize(12, 5)
+    ddArrow:SetAtlas("common-dropdown-c-button-hover-arrow", false)
+    ddArrow:SetPoint("RIGHT", ddCenter, "RIGHT", -8, 0)
+    ddCenter:SetNormalFontObject("GameFontNormal")
+    local ddTxt = ddCenter:GetFontString()
+    if ddTxt then
+        ddTxt:SetTextColor(1, 0.82, 0, 1)
+        ddTxt:SetPoint("LEFT", ddCenter, "LEFT", 8, 0)
+        ddTxt:SetPoint("RIGHT", ddArrow, "LEFT", -4, 0)
+        ddTxt:SetJustifyH("CENTER")
+        ddTxt:SetWordWrap(false)
+    end
+    resultRow.settingDropdownLabel = ddCenter
+
+    -- Open the native Blizzard menu on click. Reads opts/current value
+    -- from whatever data the row has *now*, since rows are pooled and the
+    -- same physical button serves different settings across renders.
+    ddCenter:SetScript("OnClick", function(self)
+        local rowData = resultRow.data
+        if not rowData or not rowData.settingVariable or not MenuUtil then return end
+        local opts = rowData.settingOptions
+        if not opts and ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.GetOptionsForVariable then
+            opts = ns.BlizzOptionsSearch.GetOptionsForVariable(rowData.settingVariable)
+            if opts then rowData.settingOptions = opts end
+        end
+        if not opts or #opts == 0 then return end
+        local var = rowData.settingVariable
+        MenuUtil.CreateContextMenu(self, function(_, rootDescription)
+            for i = 1, #opts do
+                local opt = opts[i]
+                local optValue = opt.value
+                rootDescription:CreateRadio(opt.label or tostring(optValue), function()
+                    local cur = ReadSettingVariable(var)
+                    return cur == optValue or tostring(cur) == tostring(optValue)
+                end, function()
+                    UI:SetSettingDropdownValue(rowData, optValue)
+                end)
+            end
+        end)
+    end)
+
+    ddPrev:SetScript("OnClick", function()
+        if resultRow.data then UI:CycleSettingDropdown(resultRow.data, -1) end
+    end)
+    ddNext:SetScript("OnClick", function()
+        if resultRow.data then UI:CycleSettingDropdown(resultRow.data, 1) end
+    end)
+
+    ddPrev:HookScript("OnMouseUp", refocusEditbox)
+    ddNext:HookScript("OnMouseUp", refocusEditbox)
+    ddCenter:HookScript("OnMouseUp", refocusEditbox)
+
     local settingSliderValue = sliderGroup:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     settingSliderValue:SetPoint("BOTTOM", sliderGroup, "TOP", 0, -2)
     settingSliderValue:SetTextColor(0.7, 0.7, 0.7, 1.0)
@@ -6460,6 +6566,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 refresh()
                 resultRow.settingKeybindGroup:Show()
                 if resultRow.settingSlider then resultRow.settingSliderGroup:Hide() end
+                if resultRow.settingDropdownGroup then resultRow.settingDropdownGroup:Hide() end
                 resultRow.settingState:Hide()
                 resultRow.settingCheck:Hide()
                 resultRow.amountText:Hide()
@@ -6486,6 +6593,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     resultRow.settingCheck:SetShown(isOn)
                     resultRow.amountText:Hide()
                     if resultRow.settingSlider then resultRow.settingSliderGroup:Hide() end
+                    if resultRow.settingDropdownGroup then resultRow.settingDropdownGroup:Hide() end
                     -- Re-anchor text RIGHT to settingState so the row name
                     -- truncates at the checkbox instead of overlapping it.
                     resultRow.text:SetPoint("RIGHT", resultRow.settingState, "LEFT", -4, 0)
@@ -6527,6 +6635,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     resultRow.settingState:Hide()
                     resultRow.settingCheck:Hide()
                     resultRow.amountText:Hide()
+                    if resultRow.settingDropdownGroup then resultRow.settingDropdownGroup:Hide() end
                     resultRow.text:SetPoint("RIGHT", resultRow.settingSliderGroup, "LEFT", -4, 0)
                 else
                     -- Dropdown / other: show current value as text
@@ -6553,20 +6662,34 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                         local opts = ns.BlizzOptionsSearch.GetOptionsForVariable(data.settingVariable)
                         if opts then data.settingOptions = opts end
                     end
-                    if type(data.settingOptions) == "table" and rawVal ~= nil then
-                        for oi = 1, #data.settingOptions do
-                            local o = data.settingOptions[oi]
+                    local optList = (data.settingType == "dropdown" and type(data.settingOptions) == "table")
+                        and data.settingOptions or nil
+                    if optList and rawVal ~= nil then
+                        for oi = 1, #optList do
+                            local o = optList[oi]
                             if o.value == rawVal or tostring(o.value) == tostring(rawVal) then
                                 val = o.label or val
                                 break
                             end
                         end
                     end
-                    if val and val ~= "" then
-                        resultRow.amountText:SetText("|cFFAAAAaa" .. val .. "|r")
-                        resultRow.amountText:ClearAllPoints()
-                        resultRow.amountText:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
-                        resultRow.amountText:Show()
+                    if optList and #optList > 0 then
+                        -- Inline dropdown widget: paddle arrows + center
+                        -- button styled like the in-game Settings dropdown.
+                        resultRow.settingDropdownLabel:SetText(val or "")
+                        resultRow.settingDropdownGroup:Show()
+                        resultRow.amountText:Hide()
+                        resultRow.text:SetPoint("RIGHT", resultRow.settingDropdownGroup, "LEFT", -4, 0)
+                    else
+                        -- No enumerable options: muted text fallback. Click
+                        -- opens the panel via OpenSettingNoClose.
+                        if val and val ~= "" then
+                            resultRow.amountText:SetText("|cFFAAAAaa" .. val .. "|r")
+                            resultRow.amountText:ClearAllPoints()
+                            resultRow.amountText:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
+                            resultRow.amountText:Show()
+                        end
+                        if resultRow.settingDropdownGroup then resultRow.settingDropdownGroup:Hide() end
                     end
                     resultRow.settingState:Hide()
                     resultRow.settingCheck:Hide()
@@ -6577,6 +6700,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 resultRow.settingCheck:Hide()
                 if resultRow.settingSlider then resultRow.settingSliderGroup:Hide() end
                 if resultRow.settingKeybindGroup then resultRow.settingKeybindGroup:Hide() end
+                if resultRow.settingDropdownGroup then resultRow.settingDropdownGroup:Hide() end
             end
 
             -- Flat-list icon sizing. The LEFT icon (UI/map/pin or flatCatIcon)
@@ -6937,7 +7061,8 @@ end
 -- Advance a dropdown setting to its next value inline. Returns true if
 -- we found options and applied a new value; false if the variable
 -- wasn't enumerable (caller should fall back to opening the panel).
-function UI:CycleSettingDropdown(data)
+-- direction: +1 next (default), -1 prev. Wraps around at either end.
+function UI:CycleSettingDropdown(data, direction)
     if not data or not data.settingVariable then return false end
     local var = data.settingVariable
     local opts = data.settingOptions
@@ -6957,11 +7082,26 @@ function UI:CycleSettingDropdown(data)
             break
         end
     end
-    local nextIdx = (curIdx or 0) % #opts + 1
+    local n = #opts
+    local step = direction or 1
+    local nextIdx = ((curIdx or 1) - 1 + step) % n + 1
     local nextVal = opts[nextIdx].value
 
     if not WriteSettingVariable(var, nextVal) then return false end
 
+    self:RefreshResults()
+    if searchFrame and searchFrame.editBox
+       and not (navFrame and navFrame:IsKeyboardEnabled()) then
+        searchFrame.editBox.blockFocus = nil
+        searchFrame.editBox:SetFocus()
+    end
+    return true
+end
+
+-- Apply a specific value picked from the dropdown popup (no cycle).
+function UI:SetSettingDropdownValue(data, value)
+    if not data or not data.settingVariable then return false end
+    if not WriteSettingVariable(data.settingVariable, value) then return false end
     self:RefreshResults()
     if searchFrame and searchFrame.editBox
        and not (navFrame and navFrame:IsKeyboardEnabled()) then
