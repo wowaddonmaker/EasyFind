@@ -765,6 +765,21 @@ local function CreateMinimapButton()
     mmBtn:SetHighlightTexture(136477)
 
     mmBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+    -- The search bar's autoHide handler fires on GLOBAL_MOUSE_DOWN before
+    -- our OnClick (which runs on mouseUp). Without these flags it would
+    -- close the bar first, then OnClick's toggle would see a hidden bar
+    -- and re-open it -- net effect: the click does nothing. Setting the
+    -- flag synchronously in OnMouseDown lets autoHide skip this click.
+    mmBtn:HookScript("OnMouseDown", function(self, button)
+        if button == "LeftButton" then
+            EasyFind._minimapClickActive = true
+        end
+    end)
+    mmBtn:HookScript("OnMouseUp", function(self, button)
+        if button == "LeftButton" then
+            EasyFind._minimapClickActive = nil
+        end
+    end)
     mmBtn:SetScript("OnClick", function(self, button)
         if button == "LeftButton" then
             EasyFind:ToggleSearchUI()
