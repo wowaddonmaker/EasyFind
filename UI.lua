@@ -40,8 +40,8 @@ local resultsFrame
 -- resultsFrame when ShowHierarchicalResults runs.
 local containerFrame
 local resultButtons = {}
-local MAX_BUTTON_POOL = 50
-local MAX_SEARCH_RESULT_ROWS = 18
+local MAX_BUTTON_POOL = 100
+local MAX_SEARCH_RESULT_ROWS = MAX_BUTTON_POOL
 local EnsureResultButton
 local inCombat = false
 local selectingResult = false  -- guard: suppress OnTextChanged re-renders during SelectResult
@@ -220,7 +220,7 @@ local function GetActionHint(data)
     if data.spellID and data.category == "Ability" then
         return IsSpellbookOnlyAbility(data) and "Select to show in spellbook" or "Select to cast"
     end
-    if data.macroIndex then return "Select to run macro" end
+    if data.macroIndex then return "Select to run macro | Ctrl+click to edit" end
     if data.itemID and data.category == "Bag" then
         if data.isEquippable or (data.equipLoc and data.equipLoc ~= "") then
             return "Select to equip item"
@@ -721,6 +721,7 @@ function UI:CreateSearchFrame()
             self:ClearFocus()
             return
         end
+        if EasyFind.EnsureDynamicLoaded then EasyFind:EnsureDynamicLoaded() end
         if escCatcher then escCatcher:Hide() end
         if selectedIndex > 0 then
             selectedIndex = 0
@@ -3795,8 +3796,14 @@ local function MaybeLoadHeavySearchData(text, needsHeavy)
     if heavySearchLoading or not ns.Database or not ns.Database.LoadHeavyDynamicSearchData then return end
     if not needsHeavy then return end
     heavySearchLoading = true
-    local started = ns.Database:LoadHeavyDynamicSearchData(function()
+    local started = ns.Database:LoadHeavyDynamicSearchData(function(anyChanged)
         heavySearchLoading = false
+        -- Only re-run search when a provider actually loaded fresh data.
+        -- Without this gate, every keystroke after providers are loaded
+        -- triggers heavy-load chain → callback → search → heavy-load
+        -- chain → ... an infinite loop that allocates ~10 MB/sec across
+        -- result re-rendering and SearchUI's per-iteration scratch.
+        if not anyChanged then return end
         local currentText = searchFrame and searchFrame.editBox and searchFrame.editBox:GetText()
         if searchFrame and searchFrame.editBox and searchFrame.editBox:HasFocus()
            and currentText and currentText ~= "" then
@@ -3829,22 +3836,27 @@ local function ReadSettingVariable(variable)
 end
 
 local function WriteSettingVariable(variable, value)
-    if Settings and Settings.SetValue then
-        local ok = pcall(Settings.SetValue, variable, value)
-        if ok then return true end
-        ok = pcall(Settings.SetValue, Settings, variable, value)
-        if ok then return true end
-    end
+    -- Prefer the per-setting object: GetSetting returns nil for variables
+    -- the Settings panel doesn't know about, so a successful SetValue here
+    -- means the write actually went somewhere. Settings.SetValue (static)
+    -- is a silent no-op for unregistered variables, so we skip it.
     if Settings and Settings.GetSetting then
         local sok, settObj = pcall(Settings.GetSetting, variable)
         if sok and settObj and settObj.SetValue then
-            local ok = pcall(settObj.SetValue, settObj, value)
-            if ok then return true end
+            if pcall(settObj.SetValue, settObj, value) then return true end
         end
     end
+    -- CVar fallback for raw CVars not registered with the Settings panel.
+    -- Booleans need explicit "1"/"0" — tostring(true) gives "true", which
+    -- a CVar slot would store literally and break the next read.
     if SetCVar then
-        local ok = pcall(SetCVar, variable, tostring(value))
-        if ok then return true end
+        local cvarVal
+        if type(value) == "boolean" then
+            cvarVal = value and "1" or "0"
+        else
+            cvarVal = tostring(value)
+        end
+        if pcall(SetCVar, variable, cvarVal) then return true end
     end
     return false
 end
@@ -4036,16 +4048,19 @@ function UI:CreateResultButton(index)
 
     local function applySettingValue(variable, newVal)
         if not variable then return end
-        local applied = false
+        -- Same priority as WriteSettingVariable: object-based first
+        -- (only registered settings expose a Setting object), then
+        -- SetCVar for raw CVars. The slider only ever passes numbers,
+        -- so type-conversion edge cases don't matter here, but mirror
+        -- the same shape so the two writers stay in sync.
         if Settings and Settings.GetSetting then
             local sok, settObj = pcall(Settings.GetSetting, variable)
             if sok and settObj and settObj.SetValue then
-                pcall(settObj.SetValue, settObj, newVal)
-                applied = true
+                if pcall(settObj.SetValue, settObj, newVal) then return end
             end
         end
-        if not applied and SetCVar then
-            SetCVar(variable, newVal)
+        if SetCVar then
+            pcall(SetCVar, variable, tostring(newVal))
         end
     end
 
@@ -4450,20 +4465,7 @@ function UI:CreateResultButton(index)
     -- the secure click. SetScript would replace them and break casts.
     resultRow:HookScript("OnMouseDown", function(self, button)
         if button ~= "LeftButton" then return end
-        if not IsShiftKeyDown() then
-            local handled = ActivateSettingResult(self.data)
-            if not handled and IsSpellbookOnlyAbility(self.data) then
-                UI:SelectResult(self.data)
-                handled = true
-            end
-            if handled then
-                self._handledNonSecureMouseDown = true
-                C_Timer.After(0, function()
-                    self._handledNonSecureMouseDown = nil
-                end)
-            end
-            return
-        end
+        if not IsShiftKeyDown() then return end
         if not self.data then return end
         local x, y = GetCursorPosition()
         self._dragOriginX, self._dragOriginY = x, y
@@ -4526,6 +4528,17 @@ function UI:CreateResultButton(index)
             return
         end
 
+        -- Ctrl + macro: suppress the secure macro run so PostClick can
+        -- open MacroFrame for editing instead. SelectResult's macro
+        -- branch reads IsControlKeyDown() to pick the edit path.
+        if d and d.macroIndex and IsControlKeyDown() then
+            self:SetAttribute("type", nil)
+            self._lastAttrType = nil
+            self._lastAttrKey = nil
+            self._lastAttrVal = nil
+            return
+        end
+
         -- Outfit equip: place onto a temp action slot, then the secure
         -- UseAction dispatch fires on the action attribute.
         local outfitID = d and d.outfitID
@@ -4556,10 +4569,6 @@ function UI:CreateResultButton(index)
         end
     end)
     resultRow:SetScript("PostClick", function(self, mouseButton, down)
-        if self._handledNonSecureMouseDown then
-            self._handledNonSecureMouseDown = nil
-            return
-        end
         -- Shift+click pickup: cursor is holding the action for the
         -- user to drop on a bar. Don't navigate away or close.
         if self._pickedUp then
@@ -5194,38 +5203,11 @@ function UI:OnSearchTextChanged(text, force)
     end
 
     local hierarchical = flatEntries
-    local pins = GetAllPins()
-    if #pins > 0 then
-        wipe(pinnedSearchEntries)
-        local pinnedEntries = pinnedSearchEntries
-        local pcount = 0
-        for _, pin in ipairs(pins) do
-            pcount = pcount + 1
-            local e = pinnedSearchPinEntries[pcount]
-            if not e then
-                e = {}
-                pinnedSearchPinEntries[pcount] = e
-            end
-            e.name = pin.name
-            e.depth = 0
-            e.isPathNode = false
-            e.isMatch = true
-            e.isPinned = true
-            e.isFlat = true
-            e.data = pin
-            pinnedEntries[pcount] = e
-        end
-        for i = 1, #hierarchical do
-            pcount = pcount + 1
-            pinnedEntries[pcount] = hierarchical[i]
-        end
-        for i = pcount + 1, #pinnedEntries do
-            pinnedEntries[i] = nil
-        end
-        hierarchical = pinnedEntries
-    else
-        wipe(pinnedSearchEntries)
-    end
+    -- Pins are quick-access entries that only show when the search bar is
+    -- empty (handled by ShowPinnedItems). During an active text search we
+    -- skip them so a user who pinned 6 settings doesn't see them prepended
+    -- to every unrelated query like "achieve".
+    wipe(pinnedSearchEntries)
     local _perfTBuild = ns.PERF and debugprofilestop() or 0
     self:ShowHierarchicalResults(hierarchical)
     if ns.PERF then
@@ -5564,6 +5546,9 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     newType, newKey, newVal = "spell", "spell", data.spellName or data.spellID
                 elseif data and data.itemID and data.category == "Bag" then
                     newType, newKey, newVal = "item", "item", data.name
+                elseif data and data.macroIndex and data.category == "Macro"
+                       and data.macroBody and data.macroBody ~= "" then
+                    newType, newKey, newVal = "macro", "macrotext", data.macroBody
                 end
                 if resultRow._lastAttrType ~= newType
                    or resultRow._lastAttrKey ~= newKey
@@ -8318,10 +8303,16 @@ function UI:SelectResult(data, forceGuide)
         if not data.steps or #data.steps == 0 then return end
     end
 
-    -- Macro: open MacroFrame and select the macro slot.
+    -- Macro: default click runs the macro (handled by the row's secure
+    -- macro attribute). Ctrl+click opens MacroFrame for editing —
+    -- PreClick clears the secure type when Ctrl is held so the macro
+    -- doesn't also fire. Right-click → Guide opens MacroFrame as a
+    -- guide via forceGuide=true.
     if data.macroIndex then
         if useFast then
-            UI:OpenMacroFrameAt(data.macroIndex, data.macroIsChar)
+            if IsControlKeyDown() then
+                UI:OpenMacroFrameAt(data.macroIndex, data.macroIsChar)
+            end
             return
         end
         if data.steps then EasyFind:StartGuide(data) end
@@ -9055,6 +9046,9 @@ function UI:Hide()
     if ns.Database and ns.Database.CancelDynamicWarmup then
         ns.Database:CancelDynamicWarmup()
     end
+    -- Close any open filter dropdown / flyouts so they don't linger
+    -- on screen after the bar is toggled off via keybind.
+    self:CloseFilterDropdownIfOpen()
     searchFrame:Hide()
     searchFrame.setSmartShowVisible(false)
     self:HideResults()

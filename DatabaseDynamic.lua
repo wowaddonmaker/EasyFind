@@ -79,8 +79,14 @@ local function RunDynamicProvider(database, provider, onDone)
     local fn = database[provider.fn]
     if not fn then onDone(false); return end
 
-    local ok, err = xpcall(fn, Utils.ErrorHandler, database)
-    FinishDynamicProvider(database, provider, ok, err, true, onDone)
+    local ok, readyOrErr = xpcall(fn, Utils.ErrorHandler, database)
+    if ok and readyOrErr == false then
+        provider.loaded = false
+        provider.dirty = true
+        onDone(false)
+        return
+    end
+    FinishDynamicProvider(database, provider, ok, readyOrErr, true, onDone)
 end
 
 function Database:CancelDynamicWarmup()
@@ -110,26 +116,85 @@ function Database:RefreshDynamicCategory(key)
     return changed
 end
 
+-- LoadCoreDynamicSearchData is now a no-op stub: every provider runs on
+-- its own frame via LoadDeferredSyncProvidersStaggered after PLAYER_LOGIN.
+-- Spreading the cost across ~12 frames means no single frame's added
+-- work is visible as a stutter, matching the pre-refactor experience.
 function Database:LoadCoreDynamicSearchData()
-    if self._loadingCoreDynamic then return false end
-    self._loadingCoreDynamic = true
+    return false
+end
+
+-- Run every sync (non-async) provider one per frame. Each provider runs
+-- in its own frame, so no single frame stacks the cost of multiple
+-- collection / spell-book / EJ scans. ~12 frames (~200ms at 60fps) for
+-- all sync providers to populate after login.
+function Database:LoadDeferredSyncProvidersStaggered()
+    -- Batch flag suppresses per-provider ResetSearchCache (which rebuilds
+    -- the prefix index over the entire uiSearchData each time). Without
+    -- this each of the ~12 providers triggers a full rebuild — by the
+    -- end the prefix index has been rebuilt 12 times. We rebuild once
+    -- at the end of the chain instead.
     self._dynamicBatchLoading = true
     self._dynamicBatchChanged = false
+    local index = 1
+    local function step()
+        while index <= #dynamicProviders do
+            local provider = dynamicProviders[index]
+            index = index + 1
+            if not provider.asyncFn
+               and not (provider.loaded and not provider.dirty) then
+                RunDynamicProvider(self, provider, function()
+                    if C_Timer and C_Timer.After then
+                        C_Timer.After(0, step)
+                    else
+                        step()
+                    end
+                end)
+                return
+            end
+        end
+        local changed = self._dynamicBatchChanged
+        self._dynamicBatchLoading = false
+        self._dynamicBatchChanged = false
+        if changed and self.ResetSearchCache then self:ResetSearchCache() end
+    end
+    step()
+end
 
+-- Synchronous heavy-data load. Used at PLAYER_LOGIN so the load
+-- screen absorbs the cost. Only loot (current spec) is scanned here —
+-- it's small and matches a common search ("ring", "haste ring"). Boss
+-- scanning iterates ~1000+ encounters across every expansion tier and
+-- adds noticeable post-login CPU; bosses lazy-load on the first "boss"
+-- keyword via LoadHeavyDynamicSearchData instead.
+local SYNC_HEAVY_KEYS = { loot = true }
+function Database:LoadHeavyDynamicSearchDataSync()
     for i = 1, #dynamicProviders do
         local provider = dynamicProviders[i]
-        if not provider.asyncFn then
-            RunDynamicProvider(self, provider, function() end)
+        if provider.asyncFn and SYNC_HEAVY_KEYS[provider.key]
+           and not (provider.loaded and not provider.dirty) then
+            local fn = provider.fn and self[provider.fn]
+            if fn then
+                local pre = provider.pre and self[provider.pre]
+                if pre then pre(self) end
+                -- Loot scans ONLY the current spec at login (scanAllSpecs=false).
+                -- Spec toggles in the loot filter dropdown trigger a lazy scan
+                -- for that spec via the async path.
+                local ok, err = xpcall(fn, Utils.ErrorHandler, self)
+                if ok then
+                    provider.loaded = true
+                    provider.dirty = false
+                else
+                    provider.loaded = false
+                    if EasyFind and EasyFind.Print then
+                        EasyFind:Print("|cffff4444" .. provider.key
+                            .. " sync load failed: " .. tostring(err) .. "|r")
+                    end
+                end
+            end
         end
     end
-
-    local changed = self._dynamicBatchChanged
-    self._dynamicBatchLoading = false
-    self._dynamicBatchChanged = false
-    self._loadingCoreDynamic = false
-
-    if changed and self.ResetSearchCache then self:ResetSearchCache() end
-    return changed
+    if self.ResetSearchCache then self:ResetSearchCache() end
 end
 
 function Database:LoadHeavyDynamicSearchData(onDone)
@@ -137,12 +202,14 @@ function Database:LoadHeavyDynamicSearchData(onDone)
     self._loadingHeavyDynamic = true
 
     local index = 1
+    local anyChanged = false
     local function step()
         while index <= #dynamicProviders do
             local provider = dynamicProviders[index]
             index = index + 1
             if provider.asyncFn then
-                RunDynamicProvider(self, provider, function()
+                RunDynamicProvider(self, provider, function(changed)
+                    if changed then anyChanged = true end
                     if C_Timer and C_Timer.After then
                         C_Timer.After(0.05, step)
                     else
@@ -153,7 +220,7 @@ function Database:LoadHeavyDynamicSearchData(onDone)
             end
         end
         self._loadingHeavyDynamic = false
-        if onDone then onDone() end
+        if onDone then onDone(anyChanged) end
     end
 
     step()

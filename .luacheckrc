@@ -94,6 +94,7 @@ read_globals = {
     "ACCEPT", "CANCEL", "StaticPopup_Show",
     "C_SpellBook", "C_Container", "GetNumSpellTabs", "GetSpellTabInfo",
     "GetSpellBookItemInfo", "GetSpellBookItemName", "GetSpellBookItemTexture",
+    "GetFlyoutInfo", "GetFlyoutSlotInfo",
     "GetContainerNumSlots", "GetContainerItemInfo", "PickupContainerItem",
     "NUM_BAG_SLOTS", "GetNumMacros", "GetMacroInfo", "MAX_ACCOUNT_MACROS",
     "ShowMacroFrame", "MacroFrame", "MacroFrame_SelectMacro", "MacroFrame_Update",
