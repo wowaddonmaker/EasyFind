@@ -205,6 +205,185 @@ local SETTINGS_DATA = {
 
 local TYPE_MAP = { c = "checkbox", d = "dropdown", s = "slider" }
 
+-- Hardcoded option lists for CVar-based dropdowns the live SettingsPanel
+-- can't enumerate (these aren't registered as Setting objects, so
+-- GetOptionsForVariable's layout walk returns nil). Listed in the order
+-- the in-game dropdown shows them so the inline picker reads naturally.
+-- Each entry: { value, label }. Hardware-specific dropdowns (monitors,
+-- sound devices, GPUs, resolutions) are intentionally omitted -- their
+-- options are machine-dependent and can't be hardcoded sensibly.
+local CVAR_DROPDOWN_OPTIONS = {
+    AUTOLOOTTOGGLE = {
+        { value = "NONE",  label = "None" },
+        { value = "ALT",   label = "ALT key" },
+        { value = "CTRL",  label = "CTRL key" },
+        { value = "SHIFT", label = "SHIFT key" },
+    },
+    PROXY_NPC_NAMES = {
+        { value = "1", label = "Quest NPCs" },
+        { value = "2", label = "Hostile NPCs" },
+        { value = "3", label = "Hostile and Interactive NPCs" },
+        { value = "4", label = "All NPCs" },
+        { value = "5", label = "None" },
+    },
+    nameplateMotion = {
+        { value = "0", label = "Overlapping Nameplates" },
+        { value = "1", label = "Stacking Nameplates" },
+    },
+    PROXY_STATUS_TEXT = {
+        { value = "1", label = "Numeric Value" },
+        { value = "2", label = "Percentage" },
+        { value = "3", label = "Both" },
+        { value = "4", label = "None" },
+    },
+    PROXY_CHAT_BUBBLES = {
+        { value = "1", label = "All" },
+        { value = "2", label = "None" },
+        { value = "3", label = "Exclude party chat" },
+    },
+    raidFramesHealthText = {
+        { value = "none",       label = "None" },
+        { value = "health",     label = "Health Remaining" },
+        { value = "losthealth", label = "Health Lost" },
+        { value = "perc",       label = "Health Percentage" },
+    },
+    PROXY_SELF_HIGHLIGHT = {
+        { value = "0", label = "Off" },
+        { value = "1", label = "Circle" },
+        { value = "2", label = "Icon" },
+        { value = "3", label = "Circle and Icon" },
+    },
+    floatingCombatTextFloatMode = {
+        { value = "1", label = "Scroll Up" },
+        { value = "2", label = "Scroll Down" },
+        { value = "3", label = "Arc" },
+    },
+    PROXY_SELF_CAST = {
+        { value = "1", label = "None" },
+        { value = "2", label = "Auto" },
+        { value = "3", label = "Key Press" },
+        { value = "4", label = "Auto and Key Press" },
+    },
+    SELFCAST = {
+        { value = "ALT",   label = "ALT key" },
+        { value = "CTRL",  label = "CTRL key" },
+        { value = "SHIFT", label = "SHIFT key" },
+    },
+    FOCUSCAST = {
+        { value = "NONE",  label = "None" },
+        { value = "ALT",   label = "ALT key" },
+        { value = "CTRL",  label = "CTRL key" },
+        { value = "SHIFT", label = "SHIFT key" },
+    },
+    chatStyle = {
+        { value = "classic", label = "Classic Style" },
+        { value = "im",      label = "IM Style" },
+    },
+    whisperMode = {
+        { value = "inline",            label = "In-line" },
+        { value = "popout",            label = "New Tab" },
+        { value = "popout_and_inline", label = "Both" },
+    },
+    showTimestamps = {
+        { value = "none",          label = "None" },
+        { value = "%H:%M ",        label = "15:27" },
+        { value = "%I:%M ",        label = "03:27" },
+        { value = "%H:%M:%S ",     label = "15:27:32" },
+        { value = "%I:%M %p ",     label = "03:27 PM" },
+        { value = "%I:%M:%S ",     label = "03:27:32" },
+        { value = "%I:%M:%S %p ",  label = "03:27:32 PM" },
+    },
+    PROXY_SICKNESS_SHAKE = {
+        { value = "1", label = "None" },
+        { value = "2", label = "Full" },
+        { value = "3", label = "Reduced" },
+    },
+    cursorSizePreferred = {
+        { value = "-1", label = "Default" },
+        { value = "0",  label = "32x32" },
+        { value = "1",  label = "48x48" },
+        { value = "2",  label = "64x64" },
+        { value = "3",  label = "96x96" },
+        { value = "4",  label = "128x128" },
+    },
+    PROXY_INTERACT_ICONS = {
+        { value = "1", label = "NPCs Only" },
+        { value = "2", label = "Show All" },
+        { value = "3", label = "Show None" },
+    },
+    colorblindSimulator = {
+        { value = "0", label = "None" },
+        { value = "1", label = "Protanopia" },
+        { value = "2", label = "Deuteranopia" },
+        { value = "3", label = "Tritanopia" },
+    },
+    PROXY_MOVIE_SUBTITLE_BACKGROUND = {
+        { value = "1", label = "None" },
+        { value = "2", label = "Dark" },
+        { value = "3", label = "Light" },
+    },
+    LowLatencyMode = {
+        { value = "0", label = "Disabled" },
+        { value = "1", label = "Built-in" },
+        { value = "2", label = "NVIDIA Reflex" },
+        { value = "3", label = "NVIDIA Reflex + Boost" },
+        { value = "4", label = "Intel XeLL" },
+    },
+    PROXY_ANTIALIASING = {
+        { value = "0", label = "None" },
+        { value = "1", label = "Image-Based" },
+        { value = "2", label = "Multisample" },
+        { value = "3", label = "Advanced" },
+    },
+    PROXY_FXAA = {
+        { value = "0", label = "None" },
+        { value = "1", label = "FXAA Low" },
+        { value = "2", label = "FXAA High" },
+        { value = "3", label = "CMAA" },
+    },
+    PROXY_MSAA = {
+        { value = "0", label = "None" },
+        { value = "1", label = "2x" },
+        { value = "2", label = "4x" },
+        { value = "3", label = "8x" },
+    },
+    textureFilteringMode = {
+        { value = "0", label = "Bilinear" },
+        { value = "1", label = "Trilinear" },
+        { value = "2", label = "2x Anisotropic" },
+        { value = "3", label = "4x Anisotropic" },
+        { value = "4", label = "8x Anisotropic" },
+        { value = "5", label = "16x Anisotropic" },
+    },
+    shadowrt = {
+        { value = "0", label = "Disabled" },
+        { value = "1", label = "Fair" },
+        { value = "2", label = "Good" },
+        { value = "3", label = "High" },
+    },
+    ResampleQuality = {
+        { value = "0", label = "Point" },
+        { value = "1", label = "Bilinear" },
+        { value = "2", label = "Bicubic" },
+        { value = "3", label = "FidelityFX Super Resolution" },
+    },
+    vrsValar = {
+        { value = "0", label = "Disabled" },
+        { value = "1", label = "Standard" },
+        { value = "2", label = "Aggressive" },
+    },
+    cameraSmoothStyle = {
+        { value = "0", label = "Never" },
+        { value = "1", label = "Smart" },
+        { value = "2", label = "Always" },
+        { value = "4", label = "Only when moving" },
+    },
+    PROXY_GRAPHICS_API = {
+        { value = "d3d11", label = "DirectX 11" },
+        { value = "d3d12", label = "DirectX 12" },
+    },
+}
+
 -- Resolved tables, populated once at register time.
 -- categoryIDByName[lowercaseName] = catID
 -- categoryIDByVariable[variable] = catID (variable -> owning category)
@@ -354,6 +533,14 @@ local function GetOptionsForVariable(variable)
     local cached = optionsByVariable[variable]
     if cached ~= nil then
         return cached ~= false and cached or nil
+    end
+    -- CVar dropdowns (AUTOLOOTTOGGLE, raidFramesHealthText, etc.) aren't
+    -- registered as Setting objects, so the SettingsPanel walker below
+    -- never finds them. Hardcoded list catches them first.
+    local hardcoded = CVAR_DROPDOWN_OPTIONS[variable]
+    if hardcoded then
+        optionsByVariable[variable] = hardcoded
+        return hardcoded
     end
     if not (SettingsPanel and SettingsPanel.GetLayout
             and Settings and Settings.GetCategoryList) then

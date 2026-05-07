@@ -29,6 +29,9 @@ read_globals = {
     "debugstack", "debugprofilestart", "debugprofilestop", "strsplit", "strtrim", "wipe", "hooksecurefunc",
     "format", "time", "date",
 
+    -- Menus
+    "MenuUtil",
+
     -- Core API
     "CreateFrame", "CreateFont", "CreateVector2D", "CreateColor",
     "GetTime", "GetLocale", "GetCVar", "SetCVar", "GetCursorPosition", "GetRealmName",
