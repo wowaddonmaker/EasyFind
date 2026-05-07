@@ -5849,7 +5849,13 @@ function MapSearch:SearchForUI(query)
             end
         end
 
-        if globalInstanceCache then
+        -- Always build/use the instance cache so dungeons / raids / delves
+        -- show up in UI search alongside zones and POIs. Previously gated
+        -- on `globalInstanceCache ~= nil`, which meant instances were
+        -- invisible until something else (e.g. opening MapTab) built the
+        -- cache. GetGlobalInstanceCache self-builds if nil; the build is
+        -- cached after the first call.
+        do
             local instancePOIs = self:GetGlobalInstanceCache()
 
             wipe(reuseUISearchInstanceNameNorm)
