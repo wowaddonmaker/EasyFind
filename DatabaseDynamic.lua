@@ -157,6 +157,10 @@ function Database:LoadDeferredSyncProvidersStaggered()
         self._dynamicBatchLoading = false
         self._dynamicBatchChanged = false
         if changed and self.ResetSearchCache then self:ResetSearchCache() end
+        -- Pre-warm the prefix index off the loaded dataset so the very
+        -- first user search doesn't pay the build cost on the keystroke.
+        -- Cheap if already ready; rebuilds via ResetSearchCache otherwise.
+        if self.WarmSearchHotPath then self:WarmSearchHotPath() end
     end
     step()
 end
@@ -195,6 +199,7 @@ function Database:LoadHeavyDynamicSearchDataSync()
         end
     end
     if self.ResetSearchCache then self:ResetSearchCache() end
+    if self.WarmSearchHotPath then self:WarmSearchHotPath() end
 end
 
 function Database:LoadHeavyDynamicSearchData(onDone)
