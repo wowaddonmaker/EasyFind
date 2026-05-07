@@ -1714,6 +1714,29 @@ function UI:CreateSearchFrame()
     searchFrame:HookScript("OnEvent", function(self, event)
         if event ~= "GLOBAL_MOUSE_DOWN" then return end
         if not EasyFind.db.autoHide then return end
+        -- Minimap button click is in flight: skip autoHide so the button's
+        -- own OnClick toggle is the only state change. Set in OnMouseDown
+        -- of the minimap button (Core.lua), cleared in OnMouseUp.
+        if EasyFind._minimapClickActive then return end
+        -- WoW's actual click-target focus stack. Use this rather than
+        -- IsMouseOver: GetMouseFoci is what the click dispatch itself
+        -- uses, so a frame in this list is guaranteed to receive the
+        -- click. Catches the minimap button (and any other "click target
+        -- that should NOT close the bar") even if our OnMouseDown flag
+        -- races against this event handler.
+        local mmBtn = _G["EasyFindMinimapButton"]
+        if mmBtn then
+            if GetMouseFoci then
+                local foci = GetMouseFoci()
+                if foci then
+                    for i = 1, #foci do
+                        if foci[i] == mmBtn then return end
+                    end
+                end
+            elseif GetMouseFocus and GetMouseFocus() == mmBtn then
+                return
+            end
+        end
         if self:IsMouseOver() then return end
         if resultsFrame and resultsFrame:IsShown() and resultsFrame:IsMouseOver() then return end
         if activeKeybindBtn then return end
