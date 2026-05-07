@@ -1472,17 +1472,14 @@ function Highlight:UpdateGuide()
             return
         end
 
-        -- Talent node: enumerate ButtonsParent children and find the
-        -- button whose nodeID matches. Talent buttons expose GetNodeID()
-        -- (and/or carry the id on .nodeID), so scan once and call
-        -- HighlightFrame with a validator so the watcher clears if the
-        -- user navigates away. Pass a closure that re-checks the nodeID.
+        -- Talent node: prefer TalentsFrame's own button-by-nodeID lookup
+        -- when available (Midnight's TalentFrameBaseMixin exposes it), and
+        -- fall back to enumerating known button containers. ButtonsParent
+        -- holds class talents; hero/sub-tree talents live under their own
+        -- containers, so we walk each candidate parent.
         if step.talentNodeID then
             local talentsFrame = PlayerSpellsFrame and PlayerSpellsFrame.TalentsFrame
-            local parent = talentsFrame and talentsFrame.ButtonsParent
-            if not (parent and parent.GetChildren) then
-                return
-            end
+            if not talentsFrame then return end
             local targetNode = step.talentNodeID
             local function nodeIDOf(btn)
                 if not btn then return nil end
@@ -1492,16 +1489,52 @@ function Highlight:UpdateGuide()
                 end
                 return btn.nodeID
             end
+
             local match
-            local children = { parent:GetChildren() }
-            for ci = 1, #children do
-                if nodeIDOf(children[ci]) == targetNode then
-                    match = children[ci]
-                    break
+            -- 1) Direct lookup if the frame exposes it.
+            if talentsFrame.GetTalentButtonByNodeID then
+                local ok, btn = pcall(talentsFrame.GetTalentButtonByNodeID, talentsFrame, targetNode)
+                if ok and btn and btn:IsShown() then match = btn end
+            end
+            -- 2) Walk likely button containers as a fallback.
+            if not match then
+                local containers = {
+                    talentsFrame.ButtonsParent,
+                    talentsFrame.HeroTalentsContainer,
+                    talentsFrame.SubTreeContainer,
+                }
+                for _, parent in ipairs(containers) do
+                    if parent and parent.GetChildren then
+                        local children = { parent:GetChildren() }
+                        for ci = 1, #children do
+                            local child = children[ci]
+                            if nodeIDOf(child) == targetNode then
+                                match = child
+                                break
+                            end
+                            -- One level deeper: hero subtree puts buttons
+                            -- inside a subtree-specific child frame.
+                            if child and child.GetChildren then
+                                local grand = { child:GetChildren() }
+                                for gi = 1, #grand do
+                                    if nodeIDOf(grand[gi]) == targetNode then
+                                        match = grand[gi]
+                                        break
+                                    end
+                                end
+                                if match then break end
+                            end
+                        end
+                        if match then break end
+                    end
                 end
             end
+
             if match then
-                self:HighlightFrame(match, nil, function(f)
+                -- Use Blizzard's own SearchIcon spyglass on the talent
+                -- node instead of our yellow border. Matches the in-game
+                -- talent search visual the player already recognizes.
+                self:HighlightTalentSearch(match, function(f)
                     return nodeIDOf(f) == targetNode
                 end)
                 if canHoverDismiss() and match:IsMouseOver() then
@@ -2544,13 +2577,49 @@ function Highlight:ShowInstruction(text)
     instructionFrame:Show()
 end
 
+-- Talent search: show the Blizzard-native SearchIcon spyglass on the
+-- target talent button (matches the in-game talent search visual).
+-- Reuses highlightFrame's watcher for visibility / identity tracking
+-- but suppresses the yellow border textures and indicator chevron.
+function Highlight:HighlightTalentSearch(button, validator)
+    if not button or not button:IsShown() then
+        self:HideHighlight()
+        return
+    end
+    self:HideHighlight()
+    if button.SearchIcon and button.SearchIcon.Show then
+        button.SearchIcon:Show()
+    end
+    highlightFrame._targetFrame = button
+    highlightFrame._targetValidator = validator
+    highlightFrame._talentSearchBtn = button
+    -- Hide the yellow border textures so only the SearchIcon shows.
+    -- Restored in HideHighlight for the next normal HighlightFrame call.
+    if highlightFrame.top    then highlightFrame.top:Hide() end
+    if highlightFrame.bottom then highlightFrame.bottom:Hide() end
+    if highlightFrame.left   then highlightFrame.left:Hide() end
+    if highlightFrame.right  then highlightFrame.right:Hide() end
+    highlightFrame:Show()
+    if highlightFrame.animGroup then highlightFrame.animGroup:Stop() end
+end
+
 function Highlight:HideHighlight()
     highlightShownAt = nil
     if highlightFrame then
+        if highlightFrame._talentSearchBtn
+           and highlightFrame._talentSearchBtn.SearchIcon then
+            highlightFrame._talentSearchBtn.SearchIcon:Hide()
+        end
+        highlightFrame._talentSearchBtn = nil
         highlightFrame._targetFrame = nil
         highlightFrame._targetValidator = nil
         highlightFrame:Hide()
         if highlightFrame.animGroup then highlightFrame.animGroup:Stop() end
+        -- Restore yellow border textures hidden by HighlightTalentSearch.
+        if highlightFrame.top    then highlightFrame.top:Show() end
+        if highlightFrame.bottom then highlightFrame.bottom:Show() end
+        if highlightFrame.left   then highlightFrame.left:Show() end
+        if highlightFrame.right  then highlightFrame.right:Show() end
     end
     if indicatorFrame then
         indicatorFrame:Hide()
