@@ -5695,7 +5695,10 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             -- up no-ops here.
             if not InCombatLockdown() then
                 local newType, newKey, newVal
-                if data and data.toyItemID then
+                if data and data.toyItemID and not data.isToyboxOnly then
+                    -- Unusable toys (faction-restricted etc.) skip the
+                    -- secure use type so PostClick can route them to the
+                    -- ToyBox instead of silently no-op'ing on click.
                     newType, newKey, newVal = "toy", "toy", data.toyItemID
                 elseif data and data.mountID then
                     newType, newKey, newVal = "macro", "macrotext", "/cancelform [form]"
@@ -6767,7 +6770,8 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 local rightSideIcon = d and (d.mountID or d.toyItemID or d.petID
                     or d.outfitID or d.transmogSetID or d.category == "Currency"
                     or (d.itemID and d.category == "Loot")
-                    or (d.spellID and d.category == "Talent"))
+                    or (d.spellID and d.category == "Talent")
+                    or d.mapSearchResult)
                 if rightSideIcon then
                     local rightSize = entryRowH - 20
                     if rightSize < (theme.iconSize or 16) then
@@ -6792,7 +6796,8 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 local mainIconOnRight = d and (d.mountID or d.toyItemID or d.petID
                     or d.outfitID or d.transmogSetID or d.category == "Currency"
                     or (d.itemID and d.category == "Loot")
-                    or (d.spellID and d.category == "Talent"))
+                    or (d.spellID and d.category == "Talent")
+                    or d.mapSearchResult)
 
                 local leftAnchor
                 if catShown then
@@ -8189,6 +8194,46 @@ local function FindSpellbookButton(root, target, scroll, candidate)
     return nil
 end
 
+-- Open the Collections > Toys tab and surface the target toy. For
+-- unusable toys (faction-restricted etc.) the secure use no-ops, so we
+-- route here instead. SetFilterString filters the ToyBox to just this
+-- toy's name -- the cleanest "highlight": the player sees only the toy
+-- they were looking for. Restoring the prior filter is left to the
+-- player; once they're done they can clear the search field.
+function UI:OpenToyInToyBox(data)
+    if not data or not data.toyItemID then return end
+    local highlight = ns.Highlight
+    local TOY_TAB = 3
+
+    local function step(attempt)
+        local journal = _G["CollectionsJournal"]
+        if not (journal and journal:IsShown()) then
+            local micro = _G["CollectionsMicroButton"]
+            if micro then ClickButton(micro) end
+            if attempt < 30 then
+                C_Timer.After(0.05, function() step(attempt + 1) end)
+            end
+            return
+        end
+        if highlight and highlight.IsTabSelected
+           and not highlight:IsTabSelected("CollectionsJournal", TOY_TAB) then
+            local tab = highlight.GetTabButton
+                and highlight:GetTabButton("CollectionsJournal", TOY_TAB)
+            if tab then ClickButton(tab) end
+            if attempt < 30 then
+                C_Timer.After(0, function() step(attempt + 1) end)
+            end
+            return
+        end
+        if C_ToyBox and C_ToyBox.SetFilterString then
+            C_ToyBox.SetFilterString(data.name or "")
+            if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+        end
+    end
+
+    step(1)
+end
+
 -- Open PlayerSpellsFrame to the Talents tab (2) and highlight the
 -- talent node matching data.talentNodeID. Mirrors OpenAbilityInSpellbook's
 -- shape: prefer PlayerSpellsUtil.TogglePlayerSpellsFrame(tabID) for an
@@ -8505,8 +8550,17 @@ function UI:SelectResult(data, forceGuide)
         return
     end
 
-    -- Toy: handled by SecureActionButton on mousedown (UseToyByItemID is protected)
-    if data.toyItemID then return end
+    -- Toy: usable toys fire via the SecureActionButton type=toy attribute
+    -- (set on the row when rendered). Unusable toys (faction-restricted,
+    -- etc.) fall through here -- route them to the ToyBox so the player
+    -- can at least see the toy in their collection. Mirrors how unusable
+    -- abilities navigate to the spellbook instead of attempting a cast.
+    if data.toyItemID then
+        if data.isToyboxOnly then
+            self:OpenToyInToyBox(data)
+        end
+        return
+    end
 
     -- Talents: open Talents tab and highlight the matching node. Routed
     -- here (before the generic spellID branch) because talents share the

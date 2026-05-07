@@ -963,12 +963,22 @@ function Database:PopulateDynamicToys()
         if itemID and itemID > 0 then
             local _, toyName, toyIcon = GetToyInfo(itemID)
             if toyName and toyName ~= "" then
-                uiSearchData[#uiSearchData + 1] = setmetatable({
+                -- Faction-restricted toys (Horde Only / Alliance Only),
+                -- race-restricted toys, etc. flunk IsUsableItem. Tag them so
+                -- the click handler routes to ToyBox highlight instead of
+                -- attempting a secure use that would silently no-op.
+                local isUsable = true
+                if IsUsableItem then
+                    isUsable = IsUsableItem(itemID) and true or false
+                end
+                local entry = setmetatable({
                     name = toyName,
                     icon = toyIcon,
                     toyItemID = itemID,
                     nameLower = slower(toyName),
                 }, TOY_MT)
+                if not isUsable then entry.isToyboxOnly = true end
+                uiSearchData[#uiSearchData + 1] = entry
             end
         end
     end
@@ -3373,18 +3383,18 @@ function Database:BuildUIDatabase()
             steps = {{ customText = "Click the clock/time display on your minimap to open the Calendar" }},
         },
 
-        -- Quick action: dismiss any active companion pet via /dismisspet.
-        -- The slashCommand field maps to a secure macrotext attribute on
-        -- the result row, so clicking runs the command directly. No need
-        -- for the user to remember the slash command -- searching for
-        -- "dismiss" or "pet" surfaces it.
+        -- Quick action: dismiss any active companion. /dismisspet alone
+        -- only handles hunter/warlock pets, so the macrotext also toggles
+        -- the active battle-pet companion via SummonPetByGUID with the
+        -- currently-summoned GUID (which dismisses it). Two lines so one
+        -- click covers both kinds of "pet" the player might mean.
         {
             name = "Dismiss Pet",
             keywords = {"dismiss", "dismiss pet", "pet", "companion", "summon",
                         "battle pet", "critter", "minion"},
             category = "Action",
-            icon = 132599,  -- INV_Misc_Pet_01 silhouette
-            slashCommand = "/dismisspet",
+            icon = 132599,
+            slashCommand = "/dismisspet\n/run local g = C_PetJournal and C_PetJournal.GetSummonedPetGUID and C_PetJournal.GetSummonedPetGUID(); if g then C_PetJournal.SummonPetByGUID(g) end",
         },
     }
 
