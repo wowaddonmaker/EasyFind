@@ -17,6 +17,7 @@ local dynamicProviders = {
     { key = "gearSets",    category = "Gear Set",       fn = "PopulateDynamicGearSets" },
     { key = "macros",      category = "Macro",          fn = "PopulateDynamicMacros" },
     { key = "abilities",   category = "Ability",        fn = "PopulateDynamicAbilities" },
+    { key = "talents",     category = "Talent",         fn = "PopulateDynamicTalents" },
     { key = "bags",        category = "Bag",            fn = "PopulateDynamicBags" },
     { key = "transmogSets", category = "Appearance Set", fn = "PopulateDynamicTransmogSets", pre = "SyncTransmogSetFiltersFromUI" },
     { key = "loot",        category = "Loot",           fn = "PopulateDynamicLoot", asyncFn = "PopulateDynamicLootAsync" },

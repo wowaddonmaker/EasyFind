@@ -1808,6 +1808,9 @@ local UI_FILTER_OPTIONS = {
       } },
     { key = "reputations", label = "Reputations", iconTex = 1121272,
       iconCoords = { 0.3783, 0.4072, 0.9066, 0.9350 } },
+    -- Talents: leaf icon from the talents atlas spritesheet (4556093),
+    -- visually consistent with the in-game talent tree.
+    { key = "talents",     label = "Talents",     iconAtlas = "talents-icon-learnableplus" },
     -- Title icon from PaperDollSidebarTab2 (Titles tab) spritesheet 514608.
     { key = "titles",      label = "Titles",      iconTex = 514608,
       iconCoords = { 0.016, 0.531, 0.324, 0.461 } },
@@ -1840,6 +1843,7 @@ local UI_BUCKET_BY_CATEGORY = {
     ["Reputation"]         = "reputations",
     ["Bag"]                = "bags",
     ["Macro"]              = "macros",
+    ["Talent"]             = "talents",
     ["Game Settings"]      = "gameOptions",
     ["AddOn Settings"]     = "addonOptions",
 }
