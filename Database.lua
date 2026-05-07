@@ -2229,6 +2229,96 @@ function Database:PopulateDynamicBossesAsync(done)
     end)
 end
 
+-- Enumerate the player's class/spec talent tree(s) via C_Traits and
+-- emit one search entry per selectable talent. Each entry remembers the
+-- nodeID + entryID so the click handler can scroll the talents tree
+-- into view, find the matching node button under PlayerSpellsFrame.
+-- TalentsFrame.ButtonsParent, and highlight it.
+function Database:PopulateDynamicTalents()
+    RemoveEntriesByCategory("Talent")
+    if self.ResetSearchCache then self:ResetSearchCache() end
+
+    if not C_ClassTalents or not C_ClassTalents.GetActiveConfigID
+       or not C_Traits or not C_Traits.GetConfigInfo
+       or not C_Traits.GetTreeNodes or not C_Traits.GetNodeInfo
+       or not C_Traits.GetEntryInfo or not C_Traits.GetDefinitionInfo then
+        return false
+    end
+    local configID = C_ClassTalents.GetActiveConfigID()
+    if not configID then return false end
+
+    local cfgOk, configInfo = pcall(C_Traits.GetConfigInfo, configID)
+    if not cfgOk or type(configInfo) ~= "table" or type(configInfo.treeIDs) ~= "table" then
+        return false
+    end
+
+    local seen = {}
+
+    local function injectEntry(treeID, nodeID, entryID, isChoice)
+        local eok, entryInfo = pcall(C_Traits.GetEntryInfo, configID, entryID)
+        if not eok or type(entryInfo) ~= "table" then return end
+        local defID = entryInfo.definitionID
+        if not defID then return end
+        local dok, defInfo = pcall(C_Traits.GetDefinitionInfo, defID)
+        if not dok or type(defInfo) ~= "table" then return end
+
+        local spellID = defInfo.spellID or defInfo.overriddenSpellID
+        local name = defInfo.overrideName
+        local icon
+        if spellID and C_Spell and C_Spell.GetSpellInfo then
+            local sok, spellInfo = pcall(C_Spell.GetSpellInfo, spellID)
+            if sok and spellInfo then
+                if not name or name == "" then name = spellInfo.name end
+                icon = spellInfo.iconID
+            end
+        end
+        if not name or name == "" then return end
+        if seen[name .. "|" .. (spellID or 0)] then return end
+        seen[name .. "|" .. (spellID or 0)] = true
+
+        local nameLower = slower(name)
+        local kw = { "talent", "talents", "spec", nameLower }
+        uiSearchData[#uiSearchData + 1] = {
+            name = name,
+            nameLower = nameLower,
+            keywords = kw,
+            keywordsLower = kw,
+            category = "Talent",
+            icon = icon,
+            spellID = spellID,
+            spellName = name,
+            talentConfigID = configID,
+            talentTreeID = treeID,
+            talentNodeID = nodeID,
+            talentEntryID = entryID,
+            talentIsChoice = isChoice or false,
+            buttonFrame = "PlayerSpellsMicroButton",
+            path = { "Talents" },
+            steps = {
+                { buttonFrame = "PlayerSpellsMicroButton" },
+                { waitForFrame = "PlayerSpellsFrame", tabIndex = 2 },
+                { talentNodeID = nodeID, talentTreeID = treeID },
+            },
+        }
+    end
+
+    for _, treeID in ipairs(configInfo.treeIDs) do
+        local nok, nodeIDs = pcall(C_Traits.GetTreeNodes, treeID)
+        if nok and type(nodeIDs) == "table" then
+            for _, nodeID in ipairs(nodeIDs) do
+                local niok, nodeInfo = pcall(C_Traits.GetNodeInfo, configID, nodeID)
+                if niok and type(nodeInfo) == "table" and type(nodeInfo.entryIDs) == "table" then
+                    local isChoice = #nodeInfo.entryIDs > 1
+                    for _, entryID in ipairs(nodeInfo.entryIDs) do
+                        injectEntry(treeID, nodeID, entryID, isChoice)
+                    end
+                end
+            end
+        end
+    end
+    return true
+end
+
 -- Inject one entry per unique item carried in the player's bags. The
 -- entry stores the first occupied location so guide mode can highlight
 -- the right slot; drag-to-pickup uses the item ID to put the item on

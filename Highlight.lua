@@ -1472,6 +1472,48 @@ function Highlight:UpdateGuide()
             return
         end
 
+        -- Talent node: enumerate ButtonsParent children and find the
+        -- button whose nodeID matches. Talent buttons expose GetNodeID()
+        -- (and/or carry the id on .nodeID), so scan once and call
+        -- HighlightFrame with a validator so the watcher clears if the
+        -- user navigates away. Pass a closure that re-checks the nodeID.
+        if step.talentNodeID then
+            local talentsFrame = PlayerSpellsFrame and PlayerSpellsFrame.TalentsFrame
+            local parent = talentsFrame and talentsFrame.ButtonsParent
+            if not (parent and parent.GetChildren) then
+                return
+            end
+            local targetNode = step.talentNodeID
+            local function nodeIDOf(btn)
+                if not btn then return nil end
+                if btn.GetNodeID then
+                    local ok, id = pcall(btn.GetNodeID, btn)
+                    if ok then return id end
+                end
+                return btn.nodeID
+            end
+            local match
+            local children = { parent:GetChildren() }
+            for ci = 1, #children do
+                if nodeIDOf(children[ci]) == targetNode then
+                    match = children[ci]
+                    break
+                end
+            end
+            if match then
+                self:HighlightFrame(match, nil, function(f)
+                    return nodeIDOf(f) == targetNode
+                end)
+                if canHoverDismiss() and match:IsMouseOver() then
+                    self:Cancel()
+                    return
+                end
+            else
+                self:ShowInstruction(step.text or "Look for this talent in the talents tree")
+            end
+            return
+        end
+
         -- Text-only final step (when we've navigated but can't highlight specific element)
         if step.text and not step.regionFrames and not step.regionFrame and not step.searchButtonText then
             self:ShowInstruction(step.text)
