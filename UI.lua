@@ -680,6 +680,14 @@ function UI:Initialize()
     self:CreateResultsFrame()
     self:RegisterCombatEvents()
 
+    -- Hook Blizzard's TokenFrame / ReputationFrame / SpellBookFrame so
+    -- our filter flyout choices apply when the player opens those
+    -- panels. Frames are LoadOnDemand: hook each as it appears.
+    local blizzHook = CreateFrame("Frame")
+    blizzHook:RegisterEvent("ADDON_LOADED")
+    blizzHook:SetScript("OnEvent", function() UI:HookBlizzardFilters() end)
+    UI:HookBlizzardFilters()
+
     if EasyFind.db.autoHide then
         searchFrame:Hide()
     elseif EasyFind.db.visible ~= false then
@@ -1974,7 +1982,13 @@ local UI_FILTER_OPTIONS = {
     -- Abilities: boss-skull icon from the Encounter Journal boss tab
     -- spritesheet (texture 522972).
     { key = "abilities",   label = "Abilities",   iconTex = 522972,
-      iconCoords = { 0.904, 0.996, 0.707, 0.748 } },
+      iconCoords = { 0.904, 0.996, 0.707, 0.748 },
+      flyoutRadio = {
+          checkboxes = {
+              { dbKey = "abilityHidePassives", label = "Hide Passives",
+                onChange = function(v) if UI.ApplySpellBookHidePassives then UI:ApplySpellBookHidePassives(v) end end },
+          },
+      } },
     { key = "achievements", label = "Achievements", iconAtlas = "UI-HUD-MicroMenu-Achievements-Up" },
     { key = "bags",        label = "Bags",        iconAtlas = "bag-main" },
     -- Bosses: EJ overview tab icon from texture 522972.
@@ -1998,6 +2012,7 @@ local UI_FILTER_OPTIONS = {
               { value = "all",     label = "This Character Only" },
               { value = "warband", label = "All Warband Transferable" },
           },
+          onChange = function(v) if UI.ApplyTokenFrameFilter then UI:ApplyTokenFrameFilter(v) end end,
       } },
     -- Gear: treasure-chest icon from the Encounter Journal loot tab
     -- spritesheet (texture 522972) for visual consistency with the
@@ -2023,7 +2038,20 @@ local UI_FILTER_OPTIONS = {
           { key = "addonOptions", label = "AddOn Options", iconAtlas = "QuestLog-icon-setting", iconColor = { 1.0, 0.78, 0.35 } },
       } },
     { key = "reputations", label = "Reputations", iconTex = 1121272,
-      iconCoords = { 0.3783, 0.4072, 0.9066, 0.9350 } },
+      iconCoords = { 0.3783, 0.4072, 0.9066, 0.9350 },
+      flyoutRadio = {
+          dbKey = "reputationFilterMode",
+          options = {
+              { value = "all",     label = "All" },
+              { value = "warband", label = "Warband" },
+              { value = "char",    label = (UnitName and UnitName("player")) or "This Character" },
+          },
+          onChange = function(v) if UI.ApplyReputationFilter then UI:ApplyReputationFilter(v) end end,
+          checkboxes = {
+              { dbKey = "showLegacyReputations", label = "Show Legacy Reputations",
+                onChange = function(v) if UI.ApplyReputationShowLegacy then UI:ApplyReputationShowLegacy(v) end end },
+          },
+      } },
     -- Talents: leaf icon from the talents atlas spritesheet (4556093),
     -- visually consistent with the in-game talent tree.
     { key = "talents",     label = "Talents",     iconAtlas = "UI-HUD-MicroMenu-SpellbookAbilities-Up" },
@@ -2897,15 +2925,19 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             dropdown:HookScript("OnHide", function() popup:Hide() end)
         end
 
-        -- Radio flyout (e.g. Currencies > "All Warband Transferable" /
-        -- "This Character Only"). Mirrors the checkbox flyout above
-        -- but writes a single dbKey to the chosen option's value, and
-        -- sub-rows render as radio bullets that uncheck siblings.
+        -- Radio + checkbox flyout. radio.options renders radio rows that
+        -- write radio.dbKey; radio.checkboxes renders independent toggles
+        -- below. Either section may be omitted (e.g. Abilities has only a
+        -- "Hide Passives" checkbox; Currencies has only the radio set).
         if opt.flyoutRadio and not opt.flyoutSubFilters then
             local radio = opt.flyoutRadio
             local SUB_POPUP_WIDTH = 200
             local SUB_ROW_H = 22
             local SUB_PAD = 6
+            local options = radio.options or {}
+            local checkboxes = radio.checkboxes or {}
+            local hasSeparator = #options > 0 and #checkboxes > 0
+            local SEPARATOR_H = hasSeparator and 8 or 0
 
             local popup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
             popup:SetFrameStrata("TOOLTIP")
@@ -2930,7 +2962,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             end)
 
             local radioRows = {}
-            for ri, optionDef in ipairs(radio.options) do
+            for ri, optionDef in ipairs(options) do
                 local rRow = CreateFrame("Button", nil, popup)
                 rRow:SetSize(SUB_POPUP_WIDTH - SUB_PAD * 2, SUB_ROW_H)
                 rRow:SetPoint("TOPLEFT", popup, "TOPLEFT",
@@ -2962,6 +2994,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     for _, otherRow in ipairs(radioRows) do
                         otherRow.tick:SetShown(otherRow.value == self.value)
                     end
+                    if radio.onChange then radio.onChange(self.value) end
                     if searchEditBox:GetText() ~= "" then
                         UI:OnSearchTextChanged(searchEditBox:GetText())
                     end
@@ -2970,12 +3003,71 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 radioRows[ri] = rRow
             end
 
-            popup:SetSize(SUB_POPUP_WIDTH, SUB_PAD * 2 + #radio.options * SUB_ROW_H)
+            local checkboxRows = {}
+            local cbStartY = SUB_PAD + #options * SUB_ROW_H + SEPARATOR_H
+            for ci, cbDef in ipairs(checkboxes) do
+                local cRow = CreateFrame("Button", nil, popup)
+                cRow:SetSize(SUB_POPUP_WIDTH - SUB_PAD * 2, SUB_ROW_H)
+                cRow:SetPoint("TOPLEFT", popup, "TOPLEFT",
+                    SUB_PAD, -(cbStartY + (ci - 1) * SUB_ROW_H))
+
+                local box = cRow:CreateTexture(nil, "ARTWORK")
+                box:SetAtlas("common-dropdown-ticksquare")
+                box:SetSize(12, 12)
+                box:SetPoint("LEFT", 5, 0)
+
+                local tick = cRow:CreateTexture(nil, "OVERLAY")
+                tick:SetAtlas("common-dropdown-icon-checkmark-yellow")
+                tick:SetSize(14, 14)
+                tick:SetPoint("LEFT", 4, 0)
+                tick:Hide()
+
+                local lbl = cRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+                lbl:SetPoint("LEFT", box, "RIGHT", 6, 0)
+                lbl:SetText(cbDef.label)
+
+                local hl = cRow:CreateTexture(nil, "HIGHLIGHT")
+                hl:SetAllPoints()
+                hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+
+                cRow.tick = tick
+                cRow.dbKey = cbDef.dbKey
+                cRow.onChange = cbDef.onChange
+                cRow:SetScript("OnClick", function(self)
+                    local cur = EasyFind.db[self.dbKey]
+                    local next = not cur
+                    EasyFind.db[self.dbKey] = next
+                    self.tick:SetShown(next)
+                    if self.onChange then self.onChange(next) end
+                    if searchEditBox:GetText() ~= "" then
+                        UI:OnSearchTextChanged(searchEditBox:GetText())
+                    end
+                end)
+                checkboxRows[ci] = cRow
+            end
+
+            popup:SetSize(SUB_POPUP_WIDTH,
+                SUB_PAD * 2 + #options * SUB_ROW_H + SEPARATOR_H + #checkboxes * SUB_ROW_H)
+
+            if hasSeparator then
+                local sep = popup:CreateTexture(nil, "ARTWORK")
+                sep:SetColorTexture(1, 1, 1, 0.12)
+                sep:SetHeight(1)
+                sep:SetPoint("LEFT", popup, "LEFT", SUB_PAD, 0)
+                sep:SetPoint("RIGHT", popup, "RIGHT", -SUB_PAD, 0)
+                sep:SetPoint("TOP", popup, "TOP", 0,
+                    -(SUB_PAD + #options * SUB_ROW_H + SEPARATOR_H * 0.5))
+            end
 
             local function SyncRadio()
-                local cur = EasyFind.db[radio.dbKey]
-                for _, rRow in ipairs(radioRows) do
-                    rRow.tick:SetShown(rRow.value == cur)
+                if radio.dbKey then
+                    local cur = EasyFind.db[radio.dbKey]
+                    for _, rRow in ipairs(radioRows) do
+                        rRow.tick:SetShown(rRow.value == cur)
+                    end
+                end
+                for _, cRow in ipairs(checkboxRows) do
+                    cRow.tick:SetShown(EasyFind.db[cRow.dbKey] and true or false)
                 end
             end
             row.SyncFlyoutSubChecks = SyncRadio
@@ -6109,6 +6201,9 @@ function UI:OnSearchTextChanged(text, force)
     -- (ui / abilities / achievements / currencies / reputations / bags
     -- / options) is unchecked. Options is a parent toggle: when off,
     -- both gameOptions and addonOptions buckets are treated as off.
+    -- abilityHidePassives also drops isPassive ability rows here so
+    -- the filter applies regardless of which bucket is on.
+    local hidePassives = EasyFind.db.abilityHidePassives
     if filters and (filters.ui == false or filters.abilities == false
                     or filters.bosses == false
                     or filters.achievements == false
@@ -6117,7 +6212,8 @@ function UI:OnSearchTextChanged(text, force)
                     or filters.options == false
                     or filters.gameOptions == false or filters.addonOptions == false
                     or filters.titles == false or filters.gearSets == false
-                    or filters.talents == false) then
+                    or filters.talents == false
+                    or hidePassives) then
         wipe(SCRATCH.filteredResults)
         local filtered = SCRATCH.filteredResults
         local fi = 0
@@ -6127,11 +6223,13 @@ function UI:OnSearchTextChanged(text, force)
                 fi = fi + 1
                 filtered[fi] = r
             else
-                local bucket = GetUIBucket(r.data)
+                local d = r.data
+                local bucket = GetUIBucket(d)
                 local bucketOff = bucket and filters[bucket] == false
                 local parentOff = optionsOff
                     and (bucket == "gameOptions" or bucket == "addonOptions")
-                if not bucket or (not bucketOff and not parentOff) then
+                local passiveOff = hidePassives and d and d.category == "Ability" and d.isPassive
+                if not passiveOff and (not bucket or (not bucketOff and not parentOff)) then
                     fi = fi + 1
                     filtered[fi] = r
                 end
@@ -10549,6 +10647,102 @@ function UI:IsCurrencyOnBackpack(currencyID)
     local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
     if not ok or type(info) ~= "table" then return false end
     return info.isShowInBackpack and true or false
+end
+
+-- Try to drive Blizzard's TokenFrame filter (the dropdown that toggles
+-- between "Show All" and "Show Warband Transferable"). The exact API has
+-- moved around across Dragonflight / War Within / Midnight, so try
+-- known field/method names in order and refresh whichever is present.
+function UI:ApplyTokenFrameFilter(mode)
+    if not mode then return end
+    local warband = (mode == "warband")
+    if TokenFrame then
+        if TokenFrame.SetFilter then
+            pcall(TokenFrame.SetFilter, TokenFrame, mode)
+        elseif TokenFrame.SetFilterMode then
+            pcall(TokenFrame.SetFilterMode, TokenFrame, mode)
+        else
+            TokenFrame.filter = mode
+            TokenFrame.showWarband = warband
+        end
+        if TokenFrame.Update then
+            pcall(TokenFrame.Update, TokenFrame)
+        end
+    end
+    if BackpackTokenFrame and BackpackTokenFrame.Update then
+        pcall(BackpackTokenFrame.Update, BackpackTokenFrame)
+    end
+end
+
+-- Reputation filter (All / Warband / This Character). Same defensive
+-- multi-API pattern -- Blizzard's reputation revamp shifted the storage
+-- location across builds.
+function UI:ApplyReputationFilter(mode)
+    if not mode then return end
+    if not ReputationFrame then return end
+    if ReputationFrame.SetFilter then
+        pcall(ReputationFrame.SetFilter, ReputationFrame, mode)
+    elseif ReputationFrame.SetFilterMode then
+        pcall(ReputationFrame.SetFilterMode, ReputationFrame, mode)
+    else
+        ReputationFrame.filter = mode
+    end
+    if ReputationFrame.Update then
+        pcall(ReputationFrame.Update, ReputationFrame)
+    end
+end
+
+function UI:ApplyReputationShowLegacy(show)
+    if not ReputationFrame then return end
+    if ReputationFrame.SetShowLegacy then
+        pcall(ReputationFrame.SetShowLegacy, ReputationFrame, show and true or false)
+    else
+        ReputationFrame.showLegacy = show and true or false
+    end
+    if ReputationFrame.Update then
+        pcall(ReputationFrame.Update, ReputationFrame)
+    end
+end
+
+-- Spellbook "Hide Passives" checkbox. Lives on PlayerSpellsFrame's
+-- spellbook page in modern WoW; SpellBookFrame is the older path.
+function UI:ApplySpellBookHidePassives(hide)
+    hide = hide and true or false
+    local frame = (PlayerSpellsFrame and PlayerSpellsFrame.SpellBookFrame) or SpellBookFrame
+    if not frame then return end
+    if frame.SetHidePassives then
+        pcall(frame.SetHidePassives, frame, hide)
+    else
+        frame.hidePassives = hide
+    end
+    if frame.Update then
+        pcall(frame.Update, frame)
+    elseif frame.UpdateDisplayedSpells then
+        pcall(frame.UpdateDisplayedSpells, frame)
+    end
+end
+
+-- Re-apply all driven filters when the relevant Blizzard frame opens.
+-- The frames are LoadOnDemand, so we hook OnShow lazily once the frame
+-- becomes available.
+function UI:HookBlizzardFilters()
+    local function hookOnce(frame, applyFn, dbKey)
+        if not frame or frame._easyFindFilterHooked then return end
+        frame._easyFindFilterHooked = true
+        frame:HookScript("OnShow", function()
+            local v = EasyFind.db and EasyFind.db[dbKey]
+            if v ~= nil then applyFn(UI, v) end
+        end)
+    end
+    if TokenFrame then hookOnce(TokenFrame, UI.ApplyTokenFrameFilter, "currencyFilterMode") end
+    if ReputationFrame then
+        hookOnce(ReputationFrame, function(self)
+            self:ApplyReputationFilter(EasyFind.db.reputationFilterMode)
+            self:ApplyReputationShowLegacy(EasyFind.db.showLegacyReputations)
+        end, "reputationFilterMode")
+    end
+    local sbf = (PlayerSpellsFrame and PlayerSpellsFrame.SpellBookFrame) or SpellBookFrame
+    if sbf then hookOnce(sbf, UI.ApplySpellBookHidePassives, "abilityHidePassives") end
 end
 
 function UI:ToggleCurrencyBackpack(currencyID)
