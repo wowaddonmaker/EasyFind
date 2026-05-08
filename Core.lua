@@ -128,6 +128,15 @@ local DB_DEFAULTS = {
     -- dropdown). "all" = show every currency the character has;
     -- "warband" = only surface warband-transferable currencies.
     currencyFilterMode = "all",
+    -- Reputation filter mode (mirrors ReputationFrame's dropdown).
+    -- "all" / "warband" / "char". Persisted independently from
+    -- showLegacyReputations because Blizzard treats them as separate
+    -- filter axes.
+    reputationFilterMode = "all",
+    showLegacyReputations = false,
+    -- Spellbook ability filter: when true, hides passive abilities in
+    -- both EasyFind's results and Blizzard's spellbook page.
+    abilityHidePassives = false,
     appearanceSetClass = nil,         -- nil = player class, "all" = all, {classID=N} = specific
     appearanceSetCollected = true,    -- Show collected sets
     appearanceSetNotCollected = true, -- Show uncollected sets
