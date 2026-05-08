@@ -191,6 +191,23 @@ function Utils.AttachAutocomplete(editBox, opts)
             return false
         end
 
+        -- Abort if a user keystroke landed between when the search was
+        -- scheduled and now: WoW defers OnTextChanged by one frame, so
+        -- the in-flight char hasn't updated typedText yet but is already
+        -- in the editbox. Calling SetText here would overwrite it, and
+        -- the deferred OnTextChanged would then see no change vs.
+        -- typedText (we'd just set it to candidate) and silently drop
+        -- the keystroke.
+        local liveText = editBox:GetText() or ""
+        local liveCursor = editBox:GetCursorPosition() or #liveText
+        local hasLiveSuggestion = currentCandidate ~= nil
+                                  and liveText == currentCandidate
+                                  and liveCursor == #typedText
+        local liveTyped = ssub(liveText, 1, liveCursor)
+        if not hasLiveSuggestion and liveTyped ~= typedText then
+            return false
+        end
+
         local typedLen = #typedText
         typedText = ssub(candidate, 1, typedLen)
         currentCandidate = candidate
@@ -250,46 +267,41 @@ function Utils.AttachAutocomplete(editBox, opts)
         local prevLen = #typedText
         typedText = typed
         local grew = #typedText > prevLen
-        if #typedText > prevLen
-           and currentCandidate and typedText ~= ""
-           and #typedText < #currentCandidate
-           and slower(typedText) == slower(ssub(currentCandidate, 1, #typedText)) then
-            smoothExtendDone = RenderCandidate(currentCandidate)
-        else
+        -- Smooth-extend: when the user types a character that matches
+        -- the next character of the current candidate, re-attach the
+        -- suggestion in-place instead of clearing it and waiting for
+        -- the throttled re-render. This is the "Chrome omnibox" feel:
+        -- the highlighted suffix shrinks character by character without
+        -- flicker. Safe because we run synchronously inside
+        -- OnTextChanged (post-keystroke), not from the throttle's
+        -- OnUpdate, so there's no in-flight char to clobber.
+        local extended = false
+        if grew and currentCandidate
+           and #typed < #currentCandidate
+           and slower(ssub(currentCandidate, 1, #typed)) == slower(typed) then
+            local typedLen = #typed
+            programmatic = true
+            if self:GetText() ~= currentCandidate then
+                self:SetText(currentCandidate)
+            end
+            self:SetCursorPosition(typedLen)
+            self:HighlightText(typedLen, #currentCandidate)
+            programmatic = false
+            extended = true
+        end
+        if not extended then
             currentCandidate = nil
             self:HighlightText(0, 0)
         end
         if onTypedChanged then onTypedChanged(self, typedText, prevText, grew) end
     end)
 
-    editBox:HookScript("OnChar", function(self, char)
-        if not currentCandidate or not char or char == "" then return end
-        local current = self:GetText() or ""
-        if current == currentCandidate then return end
-        local cursorPos = self:GetCursorPosition() or #current
-        local typed = ssub(current, 1, cursorPos)
-        if #typed <= #typedText then return end
-        local candidatePrefix = ssub(currentCandidate, 1, #typed)
-        if slower(typed) ~= slower(candidatePrefix) then
-            currentCandidate = nil
-            self:HighlightText(0, 0)
-            return
-        end
-
-        local prevText = typedText
-        typedText = candidatePrefix
-        if not RenderCandidate(currentCandidate) then return end
-        smoothExtendDone = true
-        if onTypedChanged then
-            charDispatchedTyped = typedText
-            if C_Timer then
-                C_Timer.After(0, function()
-                    charDispatchedTyped = nil
-                end)
-            end
-            onTypedChanged(self, typedText, prevText, true)
-        end
-    end)
+    -- OnChar smooth-extend hook removed: it raced with OnTextChanged
+    -- when the user typed quickly, calling SetText mid-keystroke and
+    -- occasionally swallowing the next character. OnTextChanged below
+    -- still handles smooth extension when the typed prefix continues
+    -- to match the candidate, so the suggestion still grows as you
+    -- type without an extra SetText pass per character.
 
     editBox:HookScript("OnEditFocusLost", StripAutocomplete)
 
@@ -861,157 +873,173 @@ end
 
 -- Thin scrollbar using minimal-scrollbar-* atlas textures, overlaid on the right edge.
 function Utils.CreateMinimalScrollBar(scrollFrame, parent)
-    local MIN_THUMB_H = 20
-    local TRACK_PAD = 2
-    local VERT_PAD  = 4
-
-    -- Query native atlas sizes so we never hardcode sprite dimensions
-    local arrowInfo = C_Texture.GetAtlasInfo("minimal-scrollbar-arrow-top")
-    local trackCapInfo = C_Texture.GetAtlasInfo("minimal-scrollbar-track-top")
-    local ARROW_W = arrowInfo and arrowInfo.width or 17
-    local ARROW_H = arrowInfo and arrowInfo.height or 11
-    local BAR_W = trackCapInfo and trackCapInfo.width or 6
+    local THUMB_W = 3
+    local EDGE_INSET = 4
+    local VERT_PAD = 4
+    local MIN_THUMB_H = 14
+    local FADE_HOLD = 0.6
+    local FADE_OUT = 0.25
+    local WHEEL_STEP = 90
+    local SCROLL_LERP = 0.30
+    local SCROLL_EPS = 0.5
 
     local bar = CreateFrame("Frame", nil, parent)
-    bar:SetWidth(ARROW_W)
-    bar:SetPoint("RIGHT", scrollFrame, "RIGHT", 0, 0)
+    bar:SetWidth(THUMB_W)
+    bar:SetPoint("TOPRIGHT", scrollFrame, "TOPRIGHT", -EDGE_INSET, -VERT_PAD)
+    bar:SetPoint("BOTTOMRIGHT", scrollFrame, "BOTTOMRIGHT", -EDGE_INSET, VERT_PAD)
     bar:SetFrameStrata(parent:GetFrameStrata())
     bar:SetFrameLevel(parent:GetFrameLevel() + 5)
+    bar:EnableMouse(true)
 
-    local function UpdateBarHeight()
-        bar:SetHeight(scrollFrame:GetHeight() - VERT_PAD * 2)
-    end
-    bar.UpdateBarHeight = UpdateBarHeight
-    UpdateBarHeight()
+    bar.UpdateBarHeight = function() end
 
-    -- Up arrow
-    local backBtn = CreateFrame("Button", nil, bar)
-    backBtn:SetSize(ARROW_W, ARROW_H)
-    backBtn:SetPoint("TOP", bar, "TOP", 0, 0)
-    local backTex = backBtn:CreateTexture(nil, "BACKGROUND")
-    backTex:SetAtlas("minimal-scrollbar-arrow-top", true)
-    backTex:SetPoint("CENTER")
-    backBtn:SetScript("OnEnter", function() backTex:SetAtlas("minimal-scrollbar-arrow-top-over", true) end)
-    backBtn:SetScript("OnLeave", function() backTex:SetAtlas("minimal-scrollbar-arrow-top", true) end)
-    backBtn:SetScript("OnClick", function()
-        local cur = scrollFrame:GetVerticalScroll()
-        scrollFrame:SetVerticalScroll(mmax(0, cur - 24))
-    end)
-
-    -- Down arrow
-    local fwdBtn = CreateFrame("Button", nil, bar)
-    fwdBtn:SetSize(ARROW_W, ARROW_H)
-    fwdBtn:SetPoint("BOTTOM", bar, "BOTTOM", 0, 0)
-    local fwdTex = fwdBtn:CreateTexture(nil, "BACKGROUND")
-    fwdTex:SetAtlas("minimal-scrollbar-arrow-bottom", true)
-    fwdTex:SetPoint("CENTER")
-    fwdBtn:SetScript("OnEnter", function() fwdTex:SetAtlas("minimal-scrollbar-arrow-bottom-over", true) end)
-    fwdBtn:SetScript("OnLeave", function() fwdTex:SetAtlas("minimal-scrollbar-arrow-bottom", true) end)
-    fwdBtn:SetScript("OnClick", function()
-        local cur = scrollFrame:GetVerticalScroll()
-        local range = scrollFrame:GetVerticalScrollRange()
-        scrollFrame:SetVerticalScroll(mmin(range, cur + 24))
-    end)
-
-    -- Track fills the bar width so track center = arrow center
     local track = CreateFrame("Frame", nil, bar)
-    track:SetPoint("TOPLEFT", backBtn, "BOTTOMLEFT", 0, -TRACK_PAD)
-    track:SetPoint("BOTTOMRIGHT", fwdBtn, "TOPRIGHT", 0, TRACK_PAD)
+    track:SetAllPoints(bar)
 
-    local trackTopTex = track:CreateTexture(nil, "BACKGROUND")
-    trackTopTex:SetAtlas("minimal-scrollbar-track-top", true)
-    trackTopTex:SetPoint("TOP")
-
-    local trackBotTex = track:CreateTexture(nil, "BACKGROUND")
-    trackBotTex:SetAtlas("minimal-scrollbar-track-bottom", true)
-    trackBotTex:SetPoint("BOTTOM")
-
-    local trackMidTex = track:CreateTexture(nil, "BACKGROUND")
-    trackMidTex:SetAtlas("!minimal-scrollbar-track-middle", true)
-    trackMidTex:SetPoint("TOP", trackTopTex, "BOTTOM")
-    trackMidTex:SetPoint("BOTTOM", trackBotTex, "TOP")
-
-    -- Thumb (draggable, same width as track)
     local thumb = CreateFrame("Button", nil, track)
-    thumb:SetWidth(BAR_W)
+    thumb:SetWidth(THUMB_W)
     thumb:EnableMouse(true)
 
-    local thumbTopTex = thumb:CreateTexture(nil, "ARTWORK")
-    thumbTopTex:SetAtlas("minimal-scrollbar-small-thumb-top", true)
-    thumbTopTex:SetPoint("TOP")
+    -- Pill shape: rect body + masked half-circle caps top/bottom.
+    local capH = THUMB_W * 0.5
 
-    local thumbBotTex = thumb:CreateTexture(nil, "ARTWORK")
-    thumbBotTex:SetAtlas("minimal-scrollbar-small-thumb-bottom", true)
-    thumbBotTex:SetPoint("BOTTOM")
+    local thumbBody = thumb:CreateTexture(nil, "ARTWORK")
+    thumbBody:SetColorTexture(1, 1, 1, 1)
+    thumbBody:SetPoint("TOPLEFT", thumb, "TOPLEFT", 0, -capH)
+    thumbBody:SetPoint("BOTTOMRIGHT", thumb, "BOTTOMRIGHT", 0, capH)
 
-    local thumbMidTex = thumb:CreateTexture(nil, "ARTWORK")
-    thumbMidTex:SetAtlas("minimal-scrollbar-small-thumb-middle", true)
-    thumbMidTex:SetPoint("TOP", thumbTopTex, "BOTTOM")
-    thumbMidTex:SetPoint("BOTTOM", thumbBotTex, "TOP")
+    local thumbTop = thumb:CreateTexture(nil, "ARTWORK")
+    thumbTop:SetColorTexture(1, 1, 1, 1)
+    thumbTop:SetSize(THUMB_W, capH)
+    thumbTop:SetPoint("TOP", thumb, "TOP", 0, 0)
 
-    local function SetThumbNormal()
-        thumbTopTex:SetAtlas("minimal-scrollbar-small-thumb-top", true)
-        thumbBotTex:SetAtlas("minimal-scrollbar-small-thumb-bottom", true)
-        thumbMidTex:SetAtlas("minimal-scrollbar-small-thumb-middle", true)
+    local topMask = thumb:CreateMaskTexture()
+    topMask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    topMask:SetSize(THUMB_W, THUMB_W)
+    topMask:SetPoint("TOP", thumb, "TOP", 0, 0)
+    thumbTop:AddMaskTexture(topMask)
+
+    local thumbBot = thumb:CreateTexture(nil, "ARTWORK")
+    thumbBot:SetColorTexture(1, 1, 1, 1)
+    thumbBot:SetSize(THUMB_W, capH)
+    thumbBot:SetPoint("BOTTOM", thumb, "BOTTOM", 0, 0)
+
+    local botMask = thumb:CreateMaskTexture()
+    botMask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    botMask:SetSize(THUMB_W, THUMB_W)
+    botMask:SetPoint("BOTTOM", thumb, "BOTTOM", 0, 0)
+    thumbBot:AddMaskTexture(botMask)
+
+    local function SetThumbAlpha(a)
+        thumbBody:SetAlpha(a)
+        thumbTop:SetAlpha(a)
+        thumbBot:SetAlpha(a)
     end
-    local function SetThumbOver()
-        thumbTopTex:SetAtlas("minimal-scrollbar-small-thumb-top-over", true)
-        thumbBotTex:SetAtlas("minimal-scrollbar-small-thumb-bottom-over", true)
-        thumbMidTex:SetAtlas("minimal-scrollbar-small-thumb-middle-over", true)
-    end
+    local function SetThumbNormal() SetThumbAlpha(0.55) end
+    local function SetThumbOver()  SetThumbAlpha(0.85) end
+    SetThumbNormal()
 
     thumb:SetScript("OnEnter", SetThumbOver)
     thumb:SetScript("OnLeave", function()
         if not bar.isDragging then SetThumbNormal() end
     end)
 
-    -- Thumb dragging
+    -- Activity-driven visibility. Bar is shown but at alpha 0 by default;
+    -- each interaction bumps it to full opacity, and after FADE_HOLD
+    -- seconds of idle it fades back over FADE_OUT seconds.
+    bar:SetAlpha(0)
+    bar._lastActivity = 0
+    bar._fadingOut = false
+    bar._scrollTarget = nil
     bar.isDragging = false
     bar.dragOffset = 0
+
+    function bar:NudgeVisible()
+        self._lastActivity = GetTime()
+        self._fadingOut = false
+        if self:IsShown() then self:SetAlpha(1) end
+    end
+
+    local function ScrollByDelta(delta)
+        local range = scrollFrame:GetVerticalScrollRange()
+        if range <= 0 then return end
+        local current = bar._scrollTarget or scrollFrame:GetVerticalScroll()
+        bar._scrollTarget = mmax(0, mmin(range, current - delta * WHEEL_STEP))
+        bar:NudgeVisible()
+    end
+    bar.ScrollByDelta = function(_, delta) ScrollByDelta(delta) end
 
     thumb:SetScript("OnMouseDown", function(self, button)
         if button ~= "LeftButton" then return end
         bar.isDragging = true
+        bar._scrollTarget = nil
         local _, cursorY = GetCursorPosition()
         local scale = self:GetEffectiveScale()
         bar.dragOffset = cursorY / scale - self:GetTop()
         SetThumbOver()
+        bar:NudgeVisible()
     end)
 
     thumb:SetScript("OnMouseUp", function(self, button)
         if button ~= "LeftButton" then return end
         bar.isDragging = false
         if not self:IsMouseOver() then SetThumbNormal() end
+        bar:NudgeVisible()
     end)
 
     bar:SetScript("OnUpdate", function(self)
-        if not self.isDragging then return end
-        -- Mouse-up can fire outside the thumb (drag off the edge, release
-        -- on another frame). The thumb's OnMouseUp doesn't fire then, so
-        -- detect button release here and end the drag.
-        if not IsMouseButtonDown("LeftButton") then
-            self.isDragging = false
-            if not thumb:IsMouseOver() then SetThumbNormal() end
+        if self.isDragging then
+            if not IsMouseButtonDown("LeftButton") then
+                self.isDragging = false
+                if not thumb:IsMouseOver() then SetThumbNormal() end
+            else
+                local range = scrollFrame:GetVerticalScrollRange()
+                if range > 0 then
+                    local _, cursorY = GetCursorPosition()
+                    local scale = track:GetEffectiveScale()
+                    cursorY = cursorY / scale
+                    local trackT = track:GetTop()
+                    local thumbH = thumb:GetHeight()
+                    local travel = track:GetHeight() - thumbH
+                    if travel > 0 then
+                        local pos = trackT - (cursorY - self.dragOffset)
+                        local ratio = mmax(0, mmin(1, pos / travel))
+                        scrollFrame:SetVerticalScroll(ratio * range)
+                    end
+                end
+            end
+            self:NudgeVisible()
             return
         end
-        local range = scrollFrame:GetVerticalScrollRange()
-        if range <= 0 then return end
 
-        local _, cursorY = GetCursorPosition()
-        local scale = track:GetEffectiveScale()
-        cursorY = cursorY / scale
+        if self._scrollTarget then
+            local cur = scrollFrame:GetVerticalScroll()
+            local diff = self._scrollTarget - cur
+            if mabs(diff) < SCROLL_EPS then
+                scrollFrame:SetVerticalScroll(self._scrollTarget)
+                self._scrollTarget = nil
+            else
+                scrollFrame:SetVerticalScroll(cur + diff * SCROLL_LERP)
+            end
+            self:NudgeVisible()
+        end
 
-        local trackT = track:GetTop()
-        local thumbH = thumb:GetHeight()
-        local travel = track:GetHeight() - thumbH
-        if travel <= 0 then return end
-
-        local pos = trackT - (cursorY - self.dragOffset)
-        local ratio = mmax(0, mmin(1, pos / travel))
-        scrollFrame:SetVerticalScroll(ratio * range)
+        if self:GetAlpha() <= 0 then return end
+        local idle = GetTime() - self._lastActivity
+        if idle < FADE_HOLD then return end
+        if not self._fadingOut then
+            self._fadingOut = true
+            self._fadeStart = GetTime()
+        end
+        local t = (GetTime() - self._fadeStart) / FADE_OUT
+        if t >= 1 then
+            self:SetAlpha(0)
+            self._fadingOut = false
+        else
+            self:SetAlpha(1 - t)
+        end
     end)
 
-    -- Click track to jump
     track:EnableMouse(true)
     track:SetScript("OnMouseDown", function(self, button)
         if button ~= "LeftButton" then return end
@@ -1027,17 +1055,14 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
         if trackH <= 0 then return end
 
         local ratio = (trackT - cursorY) / trackH
-        scrollFrame:SetVerticalScroll(mmax(0, mmin(range, ratio * range)))
+        bar._scrollTarget = mmax(0, mmin(range, ratio * range))
+        bar:NudgeVisible()
     end)
 
-    -- Update thumb position and size from current scroll state.
-    -- Optional explicit contentH/viewH avoid layout-timing issues on first render.
-    -- Values are cached so deferred calls (OnShow) can reuse them.
     bar._contentH = nil
     bar._viewH = nil
 
     function bar:UpdateThumb(contentH, viewH)
-        self:UpdateBarHeight()
         if contentH then self._contentH = contentH end
         if viewH then self._viewH = viewH end
         contentH = contentH or self._contentH
@@ -1067,22 +1092,24 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
         thumb:Show()
     end
 
-    -- Sync thumb when scroll position changes
     scrollFrame:SetScript("OnVerticalScroll", function()
         bar:UpdateThumb()
+        bar:NudgeVisible()
     end)
 
-    -- Mouse wheel on the scrollbar itself
     bar:EnableMouseWheel(true)
-    bar:SetScript("OnMouseWheel", function(_, delta)
-        local range = scrollFrame:GetVerticalScrollRange()
-        local cur = scrollFrame:GetVerticalScroll()
-        scrollFrame:SetVerticalScroll(mmax(0, mmin(range, cur - delta * 72)))
-    end)
+    bar:SetScript("OnMouseWheel", function(_, delta) ScrollByDelta(delta) end)
 
-    -- Recompute bar height and thumb on show so layout matches current frame size
+    -- Route the host scrollFrame's wheel through the same eased path so
+    -- wheel events on the content (not just over the thumb) feel smooth.
+    scrollFrame:EnableMouseWheel(true)
+    scrollFrame:SetScript("OnMouseWheel", function(_, delta) ScrollByDelta(delta) end)
+
     bar:SetScript("OnShow", function(self)
-        self:UpdateBarHeight()
+        self:SetAlpha(0)
+        self._lastActivity = 0
+        self._fadingOut = false
+        self._scrollTarget = nil
         C_Timer.After(0, function()
             if self:IsShown() then self:UpdateThumb() end
         end)
@@ -1178,11 +1205,47 @@ function Utils.CreateClearButton(parent, globalName)
     return btn
 end
 
+-- Pool of (menu, rows) tuples keyed by globalName. We never destroy
+-- WoW frames (they persist for the session), but we cycle through pool
+-- members so each open uses a freshly-laid-out menu rather than mutating
+-- one we just hid. This avoids a class of redraw / state-leak bugs where
+-- the second open of a cached menu inherits stale flags from the first
+-- close (e.g. backdrop tile dropped by Hide/Show, alpha stuck after
+-- click, etc.).
+local cursorMenuPool = {}
+local cursorMenuCounter = 0
+
+local function FindFreeMenu(globalName)
+    local pool = cursorMenuPool[globalName]
+    if not pool then return nil end
+    for i = 1, #pool do
+        local menu = pool[i]
+        if menu and not menu:IsShown() then return menu end
+    end
+    return nil
+end
+
+local function HideOtherMenus(globalName, except)
+    local pool = cursorMenuPool[globalName]
+    if not pool then return end
+    for i = 1, #pool do
+        local menu = pool[i]
+        if menu and menu ~= except and menu:IsShown() then menu:Hide() end
+    end
+end
+
 function Utils.ShowCursorMenu(globalName, rows, opts)
     opts = opts or {}
-    local menu = _G[globalName]
+
+    -- Hide any sibling already-shown instance under this globalName so
+    -- we never have two cursor menus visible at once.
+    HideOtherMenus(globalName, nil)
+
+    local menu = FindFreeMenu(globalName)
     if not menu then
-        menu = CreateFrame("Frame", globalName, UIParent, "BackdropTemplate")
+        cursorMenuCounter = cursorMenuCounter + 1
+        local frameName = globalName .. "_" .. cursorMenuCounter
+        menu = CreateFrame("Frame", frameName, UIParent, "BackdropTemplate")
         menu:EnableMouse(true)
         menu.rows = {}
         menu:SetBackdrop({
@@ -1219,7 +1282,8 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             self:UnregisterEvent("GLOBAL_MOUSE_UP")
             if self.rows then
                 for i = 1, #self.rows do
-                    self.rows[i]:Hide()
+                    local row = self.rows[i]
+                    if row then row:Hide() end
                 end
             end
         end)
@@ -1244,11 +1308,14 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             if self._showedAt and (GetTime() - self._showedAt) < (self.clickGrace or 0.05) then return end
             if not MenuHasMouse(self) then self:Hide() end
         end)
+        cursorMenuPool[globalName] = cursorMenuPool[globalName] or {}
+        local pool = cursorMenuPool[globalName]
+        pool[#pool + 1] = menu
+        if not _G[globalName] then _G[globalName] = menu end
     end
 
     menu:SetFrameStrata(opts.strata or "TOOLTIP")
     menu:SetFrameLevel(opts.level or 10000)
-    menu:SetToplevel(opts.toplevel ~= false)
     menu.outsideDelay = opts.outsideDelay or 0.3
     menu.clickGrace = opts.clickGrace or 0.05
 
@@ -1262,7 +1329,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             shown = shown + 1
             local row = menu.rows[shown]
             if not row then
-                row = CreateFrame("Button", nil, UIParent)
+                row = CreateFrame("Button", nil, menu)
                 row:EnableMouse(true)
                 row:SetHeight(rowH)
                 row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
@@ -1271,26 +1338,46 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 row.icon = row:CreateTexture(nil, "OVERLAY")
                 row.icon:SetSize(14, 14)
                 row.icon:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+                row.sep = row:CreateTexture(nil, "ARTWORK")
+                row.sep:SetColorTexture(1, 1, 1, 0.18)
+                row.sep:SetHeight(1)
+                row.sep:SetPoint("LEFT", row, "LEFT", 6, 0)
+                row.sep:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+                row.sep:Hide()
                 menu.rows[shown] = row
             end
-            row:SetParent(UIParent)
-            row:SetFrameStrata(menu:GetFrameStrata())
-            row:SetHeight(rowH)
-            row:SetFrameLevel(menu:GetFrameLevel() + 20 + shown)
-            row.label:SetText(def.text or "")
-            if def.icon then
-                row.icon:SetTexture(def.icon)
-                row.icon:Show()
-            else
+            local isSep = def.isSeparator
+            local sepH = 7
+            row:SetHeight(isSep and sepH or rowH)
+            if isSep then
+                row.label:SetText("")
                 row.icon:Hide()
+                row.sep:Show()
+                row:EnableMouse(false)
+                local hl = row:GetHighlightTexture()
+                if hl then hl:SetAlpha(0) end
+                row:SetScript("OnMouseDown", nil)
+                row:SetScript("OnClick", nil)
+            else
+                row.label:SetText(def.text or "")
+                if def.icon then
+                    row.icon:SetTexture(def.icon)
+                    row.icon:Show()
+                else
+                    row.icon:Hide()
+                end
+                row.sep:Hide()
+                row:EnableMouse(true)
+                local hl = row:GetHighlightTexture()
+                if hl then hl:SetAlpha(1) end
+                local onClick = def.onClick
+                row:SetScript("OnMouseDown", function(_, button)
+                    if button ~= "LeftButton" then return end
+                    menu:Hide()
+                    if onClick then onClick() end
+                end)
+                row:SetScript("OnClick", nil)
             end
-            local onClick = def.onClick
-            row:SetScript("OnMouseDown", function(_, button)
-                if button ~= "LeftButton" then return end
-                menu:Hide()
-                if onClick then onClick() end
-            end)
-            row:SetScript("OnClick", nil)
             row:ClearAllPoints()
             if shown == 1 then
                 row:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4)
@@ -1300,35 +1387,105 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 row:SetPoint("TOPRIGHT", lastRow, "BOTTOMRIGHT", 0, 0)
             end
             row:Show()
-            if row.Raise then row:Raise() end
             lastRow = row
         end
     end
     for i = shown + 1, #menu.rows do
-        menu.rows[i]:Hide()
-        menu.rows[i]:SetScript("OnClick", nil)
-        menu.rows[i]:SetScript("OnMouseDown", nil)
+        local row = menu.rows[i]
+        if row then
+            row:Hide()
+            row:SetScript("OnClick", nil)
+            row:SetScript("OnMouseDown", nil)
+        end
     end
 
-    menu:SetSize(width, rowH * shown + 8)
+    -- Auto-grow width to fit the widest row's label + icon. Use the
+    -- caller-provided width as a floor so short menus stay compact.
+    -- 8px LEFT pad + label + 4px gap + 14px icon (when present) + 8px
+    -- right pad ≈ label + 34.
+    local needed = width
+    local totalH = 0
+    for i = 1, shown do
+        local row = menu.rows[i]
+        if row then
+            totalH = totalH + (row:GetHeight() or rowH)
+            if row.label and row.label:IsShown() then
+                local getter = row.label.GetUnboundedStringWidth or row.label.GetStringWidth
+                local lblW = getter and getter(row.label) or 0
+                local hasIcon = row.icon and row.icon:IsShown()
+                local rowW = lblW + (hasIcon and 34 or 24)
+                if rowW > needed then needed = rowW end
+            end
+        end
+    end
+    menu:SetSize(needed, totalH + 8)
     local scale = UIParent:GetEffectiveScale()
     local x, y = GetCursorPosition()
     menu:ClearAllPoints()
-    menu:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT",
+    -- Anchor TOPLEFT to cursor so rows extend down-right like every
+    -- standard right-click menu (Windows / macOS / Blizzard's own).
+    menu:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT",
         x / scale + (opts.offsetX or 0), y / scale + (opts.offsetY or 0))
     menu:Show()
     return menu
 end
 
-function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opts)
+function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opts, extra)
     local rows = {}
-    if onGuide then
-        rows[#rows + 1] = { text = "Guide", icon = ns.EYE_ICON_TEX, onClick = onGuide }
-    end
-    rows[#rows + 1] = { text = isPinned and "Unpin" or "Pin", onClick = onPin }
+    -- Base section: same three rows on every entry, in a fixed order
+    -- (Add Alias → Pin → Guide). Each is gated by whether the
+    -- underlying action is meaningful for the entry; an unsupported
+    -- one is simply omitted rather than shown disabled, but the
+    -- relative order of the rows that ARE shown is stable.
     if onAddAlias then
         rows[#rows + 1] = { text = "Add Alias", onClick = onAddAlias }
     end
+    rows[#rows + 1] = { text = isPinned and "Unpin" or "Pin", onClick = onPin }
+    if onGuide then
+        rows[#rows + 1] = { text = "Guide", icon = ns.EYE_ICON_TEX, onClick = onGuide }
+    end
+
+    -- Extras section: category-specific actions. Collect into a local
+    -- list first so we can decide whether to emit a separator above it.
+    local extras = {}
+    if extra and extra.onTrack then
+        extras[#extras + 1] = {
+            text = extra.isTracked and "Untrack" or "Track",
+            onClick = extra.onTrack,
+        }
+    end
+    if extra and extra.onToggleBackpack then
+        extras[#extras + 1] = {
+            text = extra.isOnBackpack and "Remove from backpack" or "Show on backpack",
+            onClick = extra.onToggleBackpack,
+        }
+    end
+    if extra and extra.onTransfer then
+        extras[#extras + 1] = { text = "Transfer", onClick = extra.onTransfer }
+    end
+    if extra and extra.onSummon then
+        extras[#extras + 1] = { text = "Summon", onClick = extra.onSummon }
+    end
+    if extra and extra.onRename then
+        extras[#extras + 1] = { text = "Rename", onClick = extra.onRename }
+    end
+    if extra and extra.onToggleFavorite then
+        extras[#extras + 1] = {
+            text = extra.isFavorite and "Remove favorite" or "Set favorite",
+            onClick = extra.onToggleFavorite,
+        }
+    end
+    if extra and extra.onCageOrRelease then
+        extras[#extras + 1] = {
+            text = extra.isCageable and "Put in cage" or "Release",
+            onClick = extra.onCageOrRelease,
+        }
+    end
+    if #extras > 0 then
+        rows[#rows + 1] = { isSeparator = true }
+        for i = 1, #extras do rows[#rows + 1] = extras[i] end
+    end
+
     return Utils.ShowCursorMenu(globalName, rows, opts)
 end
 
