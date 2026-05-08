@@ -92,6 +92,35 @@ function Database:Initialize()
     self:BuildUIDatabase()
 end
 
+-- Defensive multi-spelling check for "is this currency warband-shared".
+-- WoW has shipped at least three names / shapes for this concept across
+-- builds; check all of them so detection doesn't regress when Blizzard
+-- renames a field. Reused by both the per-currency populator and the
+-- warband-fill pass.
+function Database:IsCurrencyAccountTransferable(currencyID)
+    if not currencyID or not C_CurrencyInfo then return false end
+    local fns = {
+        C_CurrencyInfo.IsAccountTransferableCurrency,
+        C_CurrencyInfo.IsAccountWideCurrency,
+    }
+    for i = 1, #fns do
+        local fn = fns[i]
+        if fn then
+            local ok, val = pcall(fn, currencyID)
+            if ok and val then return true end
+        end
+    end
+    if C_CurrencyInfo.GetCurrencyInfo then
+        local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
+        if ok and type(info) == "table" then
+            if info.isAccountTransferable then return true end
+            if info.isAccountWide then return true end
+            if info.transferPercentage and info.transferPercentage > 0 then return true end
+        end
+    end
+    return false
+end
+
 -- Called after PLAYER_LOGIN when C_CurrencyInfo is available
 -- Scans the WoW currency list and injects any currencies not already in the static database
 function Database:PopulateDynamicCurrencies()
@@ -228,6 +257,7 @@ function Database:PopulateDynamicCurrencies()
                 end
                 words[#words + 1] = slower(immediateHeaderName) .. " " .. currNameLower
 
+                local isAccountTransferable = Database:IsCurrencyAccountTransferable(info.currencyID)
                 local entry = {
                     name = currName,
                     keywords = words,
@@ -237,6 +267,8 @@ function Database:PopulateDynamicCurrencies()
                     steps = currSteps,
                     flashLabel = "Currency",
                     icon = info.iconFileID or nil,
+                    currencyID = info.currencyID,
+                    isAccountTransferable = isAccountTransferable,
                 }
                 entry.nameLower = slower(entry.name)
                 entry.keywordsLower = {}
@@ -282,6 +314,55 @@ function Database:PopulateDynamicCurrencies()
         end
         if not didCollapse then break end
     end
+
+    -- Warband-fill pass: surface warband-transferable currencies the
+    -- player has on OTHER characters (or has never touched on any
+    -- character but still exist account-wide). Without this, the
+    -- "All Warband Transferable" filter mode only shows currencies
+    -- the current character has interacted with — defeating the point.
+    -- Enumerate via the modern C_CurrencyInfo accessor when available;
+    -- fall back to a bounded ID scan only if nothing else works.
+    do
+        local extraIDs
+        if C_CurrencyInfo.GetAccountCurrencyTypes then
+            local ok, list = pcall(C_CurrencyInfo.GetAccountCurrencyTypes)
+            if ok and type(list) == "table" then extraIDs = list end
+        end
+        if extraIDs then
+            for _, cid in ipairs(extraIDs) do
+                if not knownCurrencyIDs[cid]
+                   and self:IsCurrencyAccountTransferable(cid) then
+                    local fok, finfo = pcall(C_CurrencyInfo.GetCurrencyInfo, cid)
+                    local cname = (fok and type(finfo) == "table" and finfo.name) or nil
+                    if cname and cname ~= "" then
+                        local cnameLower = slower(cname)
+                        local kw = { cnameLower, "currency", "warband" }
+                        local entry = {
+                            name = cname,
+                            keywords = kw,
+                            category = "Currency",
+                            buttonFrame = "CharacterMicroButton",
+                            path = { "Character Info", "Currency" },
+                            steps = {
+                                { buttonFrame = "CharacterMicroButton" },
+                                { waitForFrame = "CharacterFrame", tabIndex = 3 },
+                                { waitForFrame = "CharacterFrame", currencyID = cid },
+                            },
+                            flashLabel = "Currency",
+                            icon = (fok and finfo.iconFileID) or nil,
+                            currencyID = cid,
+                            isAccountTransferable = true,
+                        }
+                        entry.nameLower = cnameLower
+                        entry.keywordsLower = { cnameLower, "currency", "warband" }
+                        uiSearchData[#uiSearchData + 1] = entry
+                        knownCurrencyIDs[cid] = true
+                    end
+                end
+            end
+        end
+    end
+
     return true
 end
 
@@ -554,6 +635,7 @@ local GEAR_SET_PROTO = {
     steps        = {},
 }
 local GEAR_SET_MT = { __index = GEAR_SET_PROTO }
+
 
 -- Map equip location strings to user-friendly search keywords
 local SLOT_KEYWORDS = {
@@ -963,13 +1045,17 @@ function Database:PopulateDynamicToys()
         if itemID and itemID > 0 then
             local _, toyName, toyIcon = GetToyInfo(itemID)
             if toyName and toyName ~= "" then
-                -- Faction-restricted toys (Horde Only / Alliance Only),
-                -- race-restricted toys, etc. flunk IsUsableItem. Tag them so
-                -- the click handler routes to ToyBox highlight instead of
-                -- attempting a secure use that would silently no-op.
+                -- Tag faction/class-restricted toys so the click handler
+                -- routes to ToyBox highlight instead of attempting a
+                -- secure use that would silently no-op. C_ToyBox.IsToyUsable
+                -- mirrors what Blizzard's own ToyBox UI uses for the Use
+                -- button enable state, unlike the broader IsUsableItem
+                -- which can flunk usable toys when the item info hasn't
+                -- been cached yet at PLAYER_LOGIN time.
                 local isUsable = true
-                if IsUsableItem then
-                    isUsable = IsUsableItem(itemID) and true or false
+                if C_ToyBox and C_ToyBox.IsToyUsable then
+                    local ok, usable = pcall(C_ToyBox.IsToyUsable, itemID)
+                    if ok and usable == false then isUsable = false end
                 end
                 local entry = setmetatable({
                     name = toyName,
@@ -1118,6 +1204,7 @@ function Database:PopulateDynamicTitles()
     if self.ResetSearchCache then self:ResetSearchCache() end
     return true
 end
+
 
 -- Scan the player's saved Equipment Manager gear sets and inject as
 -- search entries. Click on a row equips the set via
@@ -2264,7 +2351,7 @@ function Database:PopulateDynamicTalents()
 
     local seen = {}
 
-    local function injectEntry(treeID, nodeID, entryID, isChoice)
+    local function injectEntry(treeID, nodeID, entryID, isChoice, nodeInfo)
         local eok, entryInfo = pcall(C_Traits.GetEntryInfo, configID, entryID)
         if not eok or type(entryInfo) ~= "table" then return end
         local defID = entryInfo.definitionID
@@ -2286,6 +2373,17 @@ function Database:PopulateDynamicTalents()
         if seen[name .. "|" .. (spellID or 0)] then return end
         seen[name .. "|" .. (spellID or 0)] = true
 
+        -- Allocation: choice nodes pick one of their entries via
+        -- activeEntry; regular nodes report activeRank > 0 when the
+        -- player has put points in. Used by the row renderer to
+        -- desaturate the per-talent icon for unspecced talents.
+        local isAllocated
+        if isChoice then
+            isAllocated = nodeInfo.activeEntry and nodeInfo.activeEntry.entryID == entryID
+        else
+            isAllocated = (nodeInfo.activeRank or 0) > 0
+        end
+
         local nameLower = slower(name)
         local kw = { "talent", "talents", "spec", nameLower }
         uiSearchData[#uiSearchData + 1] = {
@@ -2302,6 +2400,7 @@ function Database:PopulateDynamicTalents()
             talentNodeID = nodeID,
             talentEntryID = entryID,
             talentIsChoice = isChoice or false,
+            talentIsAllocated = isAllocated and true or false,
             buttonFrame = "PlayerSpellsMicroButton",
             path = { "Talents" },
             steps = {
@@ -2320,7 +2419,7 @@ function Database:PopulateDynamicTalents()
                 if niok and type(nodeInfo) == "table" and type(nodeInfo.entryIDs) == "table" then
                     local isChoice = #nodeInfo.entryIDs > 1
                     for _, entryID in ipairs(nodeInfo.entryIDs) do
-                        injectEntry(treeID, nodeID, entryID, isChoice)
+                        injectEntry(treeID, nodeID, entryID, isChoice, nodeInfo)
                     end
                 end
             end
@@ -3297,12 +3396,18 @@ function Database:BuildUIDatabase()
         },
 
         -- GAME MENU / HELP / SHOP
+        -- buttonFrame is kept solely so GetButtonIcon can derive the
+        -- "UI-HUD-MicroMenu-GameMenu-Up" atlas from MainMenuMicroButton's
+        -- textureName. The actual click goes through slashCommand because
+        -- the micro button's OnClick (and ToggleGameMenu) call
+        -- SpellStopCasting() when a spell is targeting -- protected, and
+        -- it taints when fired from a /run script context.
         {
             name = "Game Menu",
             keywords = {"menu", "settings", "options", "escape", "esc", "logout", "quit", "exit", "interface"},
             category = "Menu Bar",
             buttonFrame = "MainMenuMicroButton",
-            steps = {{ buttonFrame = "MainMenuMicroButton" }},
+            slashCommand = "/run if GameMenuFrame:IsShown() then HideUIPanel(GameMenuFrame) else ShowUIPanel(GameMenuFrame) end",
         },
         {
             name = "Help",
@@ -3369,18 +3474,32 @@ function Database:BuildUIDatabase()
             steps = {{ buttonFrame = "QuickJoinToastButton" }},
         },
         {
-            name = "World Map",
-            keywords = {"map", "world map", "zone map", "navigation"},
+            name = "Toggle World Map",
+            keywords = {"map", "world map", "navigation", "toggle"},
             category = "Navigation",
             icon = 134269,
-            steps = {{ customText = "Press M to open the World Map" }},
+            slashCommand = "/run if WorldMapFrame:IsShown() then HideUIPanel(WorldMapFrame) else ShowUIPanel(WorldMapFrame) end",
+        },
+        {
+            name = "Toggle Zone Map",
+            keywords = {"zone map", "battlefield map", "floating map", "area map", "navigation", "toggle"},
+            category = "Navigation",
+            icon = 134269,
+            slashCommand = "/run C_AddOns.LoadAddOn('Blizzard_BattlefieldMap'); if BattlefieldMapFrame then BattlefieldMapFrame:SetShown(not BattlefieldMapFrame:IsShown()) end",
+        },
+        {
+            name = "Toggle Minimap",
+            keywords = {"minimap", "mini map", "tracking", "navigation", "toggle"},
+            category = "Navigation",
+            icon = 134269,
+            slashCommand = "/run MinimapCluster:SetShown(not MinimapCluster:IsShown())",
         },
         {
             name = "Calendar",
             keywords = {"calendar", "events", "holidays", "schedule"},
             category = "Social",
             icon = 134939,
-            steps = {{ customText = "Click the clock/time display on your minimap to open the Calendar" }},
+            slashCommand = "/click GameTimeFrame",
         },
 
         -- Quick action: dismiss any active companion. /dismisspet alone
@@ -3393,7 +3512,7 @@ function Database:BuildUIDatabase()
             keywords = {"dismiss", "dismiss pet", "pet", "companion", "summon",
                         "battle pet", "critter", "minion"},
             category = "Action",
-            icon = 132599,
+            icon = 631719,
             slashCommand = "/dismisspet\n/run local g = C_PetJournal and C_PetJournal.GetSummonedPetGUID and C_PetJournal.GetSummonedPetGUID(); if g then C_PetJournal.SummonPetByGUID(g) end",
         },
     }
@@ -3878,15 +3997,6 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
         end
     end
 
-    -- Precision bonus: names that closely match the query length are more
-    -- relevant (e.g. "Reputation" should rank above "Reputation (Achievements)"
-    -- when searching "reputation"). Up to 50 bonus for exact-length match.
-    if score >= 100 then
-        local nameLen = #nameLower
-        local ratio = queryLen / nameLen  -- 1.0 for exact, lower for longer names
-        score = score + mmax(0, mmin(50, ratio * 50))
-    end
-
     return score
 end
 
@@ -4057,6 +4167,7 @@ function Database:ScoreEntryFields(data, queryWords)
     if not queryWords or #queryWords < 2 then return 0 end
     local total = 0
     local matched = 0
+    local nameMatches = 0
     local nameWords = GetWords(data.nameLower or "")
     local keywordsLower = data.keywordsLower
 
@@ -4064,7 +4175,8 @@ function Database:ScoreEntryFields(data, queryWords)
         local qw = queryWords[qi]
         local qwLen = #qw
         if qwLen >= 2 or (qwLen == 1 and qi == #queryWords and matched > 0) then
-            local best = ScoreFieldWords(nameWords, qw, qwLen)
+            local nameBest = ScoreFieldWords(nameWords, qw, qwLen)
+            local kwBest = 0
             if keywordsLower then
                 for ki = 1, #keywordsLower do
                     local kw = keywordsLower[ki]
@@ -4072,8 +4184,15 @@ function Database:ScoreEntryFields(data, queryWords)
                     if kwScore < 90 then
                         kwScore = mmax(kwScore, ScoreFieldWords(GetWords(kw), qw, qwLen))
                     end
-                    if kwScore > best then best = kwScore end
+                    if kwScore > kwBest then kwBest = kwScore end
                 end
+            end
+            local best
+            if nameBest > 0 then
+                best = nameBest
+                nameMatches = nameMatches + 1
+            else
+                best = kwBest
             end
             if best == 0 then return 0 end
             total = total + best
@@ -4082,6 +4201,15 @@ function Database:ScoreEntryFields(data, queryWords)
     end
 
     if matched < 2 then return 0 end
+    -- Discount entries whose match came purely from embedded keyword
+    -- text (no query word actually appeared in the entry's own name).
+    -- Without this, an item whose keyword list happens to contain
+    -- "Eastern Kingdoms" outranks the literal Eastern Kingdoms zone
+    -- because keyword sums (90 per word) beat name-only avg-capped
+    -- scoring (110 max).
+    if nameMatches == 0 then
+        total = math.floor(total * 0.45)
+    end
     return total + matched * 5
 end
 
@@ -4380,13 +4508,17 @@ function Database:SearchUI(query, skipCategories)
                     local qwLen = #qw
                     local bestWord = 0
 
-                    -- Score against item name words (prefix match per word)
+                    -- Score against item name words (prefix match per word).
+                    -- Name match must outrank lootSourceKw (boss name)
+                    -- match below; otherwise loot whose own name contains
+                    -- the query gets buried under same-boss loot that
+                    -- only matched via the encounter name.
                     for ni = 1, #nameWords do
                         local nw = nameWords[ni]
                         if nw == qw then
-                            bestWord = mmax(bestWord, qi == 1 and 100 or 90)
+                            bestWord = mmax(bestWord, qi == 1 and 130 or 120)
                         elseif ssub(nw, 1, qwLen) == qw then
-                            bestWord = mmax(bestWord, qi == 1 and 95 or 85)
+                            bestWord = mmax(bestWord, qi == 1 and 115 or 105)
                         end
                     end
 
@@ -4414,14 +4546,19 @@ function Database:SearchUI(query, skipCategories)
                         end
                     end
 
-                    -- Score against source keywords (boss/dungeon name)
+                    -- Score against source keywords (boss/dungeon name).
+                    -- Prefix match on a boss name is a strong real signal
+                    -- ("nexu" -> "Nexus-Point Xenas"), so its score must
+                    -- beat a 1-edit fuzzy hit (85) on an unrelated setting
+                    -- name like "Next View" -- otherwise gear from the
+                    -- searched encounter ranks below misspellings.
                     if data.lootSourceKw then
                         for ki = 1, #data.lootSourceKw do
                             local kw = data.lootSourceKw[ki]
                             if kw == qw then
-                                bestWord = mmax(bestWord, 80)
+                                bestWord = mmax(bestWord, 110)
                             elseif sfind(kw, qw, 1, true) == 1 then
-                                bestWord = mmax(bestWord, 70)
+                                bestWord = mmax(bestWord, 100)
                             end
                         end
                     end
@@ -4458,8 +4595,16 @@ function Database:SearchUI(query, skipCategories)
                         score = 0
                     end
                 else
-                    score = Database:ScoreName(nameLower, query, queryLen, queryWords)
-                    score = score + Database:ScoreKeywords(data.keywordsLower, query, queryLen, queryWords)
+                    -- MAX, not SUM. Many entries put their lowercased name into
+                    -- keywordsLower (talents, abilities, mounts, ...), so a sum
+                    -- double-counts the same fuzzy hit -- "hearth" matching
+                    -- "heart" once via the name and once via the keyword
+                    -- silently doubles into 170, beating real 150 prefix
+                    -- matches like "Hearthstone Board".
+                    score = mmax(
+                        Database:ScoreName(nameLower, query, queryLen, queryWords),
+                        Database:ScoreKeywords(data.keywordsLower, query, queryLen, queryWords)
+                    )
                     if #queryWords >= 2 then
                         score = mmax(score, Database:ScoreEntryFields(data, queryWords))
                     end
