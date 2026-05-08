@@ -806,6 +806,18 @@ local function CollectEntries()
     -- on demand when the user clicks an entry.
     ResolveCategoryIDs()
 
+    -- Treat the live registry as authoritative: if at least one curated
+    -- variable resolves, assume the registry is up and any unresolved
+    -- variable is a phantom entry (CVar removed from the live panel in
+    -- this client version). Skip those instead of injecting dead rows
+    -- whose click does nothing. If nothing resolved, the registry
+    -- isn't ready yet — fall back to emitting all curated entries and
+    -- let the late re-pass at 3.0s prune.
+    local registryReady = false
+    for var in pairs(categoryIDByVariable) do
+        if var then registryReady = true break end
+    end
+
     -- Curated individual settings (Auto Loot, Sticky Targeting, etc.).
     -- These run unconditionally so they're always searchable, even on
     -- a clean install where Settings.GetCategoryList isn't ready until
@@ -818,30 +830,33 @@ local function CollectEntries()
         local catLower = slower(catName)
         local resolved = TYPE_MAP[typeCode] or "other"
         local kw = { "setting", "option", "config", catLower, nameLower }
-        local catID = GetCategoryIDForVariable(var) or GetCategoryID(catName)
-        tinsert(entries, {
-            name = name,
-            nameLower = nameLower,
-            keywords = kw,
-            keywordsLower = kw,
-            category = "Game Settings",
-            path = { "Game Settings", catName },
-            -- Icon comes from category="Game Settings" cogwheel routing in UI.lua.
-            settingsCategory = catName,
-            settingCategoryID = catID,
-            settingVariable = var,
-            settingType = resolved,
-            settingMin = sMin,
-            settingMax = sMax,
-            settingStep = sStep,
-            steps = {
-                {
-                    settingsCategory = catName,
-                    settingCategoryID = catID,
-                    settingVariable = var,
+        local resolvedCatID = GetCategoryIDForVariable(var)
+        if not (registryReady and not resolvedCatID) then
+            local catID = resolvedCatID or GetCategoryID(catName)
+            tinsert(entries, {
+                name = name,
+                nameLower = nameLower,
+                keywords = kw,
+                keywordsLower = kw,
+                category = "Game Settings",
+                path = { "Game Settings", catName },
+                -- Icon comes from category="Game Settings" cogwheel routing in UI.lua.
+                settingsCategory = catName,
+                settingCategoryID = catID,
+                settingVariable = var,
+                settingType = resolved,
+                settingMin = sMin,
+                settingMax = sMax,
+                settingStep = sStep,
+                steps = {
+                    {
+                        settingsCategory = catName,
+                        settingCategoryID = catID,
+                        settingVariable = var,
+                    },
                 },
-            },
-        })
+            })
+        end
     end
 
     -- Top-level + subcategory entries from the live registry. Optional:
