@@ -105,6 +105,13 @@ function Highlight:CreateHighlightFrame()
         local validator = self._targetValidator
         if validator and not validator(target) then
             Highlight:HideHighlight()
+            return
+        end
+        -- Hover-to-dismiss: once the player moves the cursor onto the
+        -- highlighted target, they've found it -- clear the visual so
+        -- the talent panel / spellbook / etc. isn't cluttered.
+        if target and target.IsMouseOver and target:IsMouseOver() then
+            Highlight:HideHighlight()
         end
     end)
 end
@@ -1478,65 +1485,57 @@ function Highlight:UpdateGuide()
         -- holds class talents; hero/sub-tree talents live under their own
         -- containers, so we walk each candidate parent.
         if step.talentNodeID then
+            -- Match by talent NAME against the talent button frames,
+            -- which are frame-named after their talent (per inspect:
+            -- "PlayerSpellsFrame.TalentsFrame.ButtonsParent.<hex>" with
+            -- the parent path showing "Forestwalk" / "Thick Hide" /
+            -- etc.). nodeID-based lookup has been unreliable across
+            -- talent revisions; matching by GetName() works for class
+            -- talents AND hero talents.
             local talentsFrame = PlayerSpellsFrame and PlayerSpellsFrame.TalentsFrame
             if not talentsFrame then return end
-            local targetNode = step.talentNodeID
-            local function nodeIDOf(btn)
-                if not btn then return nil end
-                if btn.GetNodeID then
-                    local ok, id = pcall(btn.GetNodeID, btn)
-                    if ok then return id end
+            local targetLower = (currentGuide.name or ""):lower()
+
+            local function nameOf(btn)
+                if not btn or not btn.GetName then return nil end
+                local n = btn:GetName()
+                return n and n:lower() or nil
+            end
+
+            -- Recursive search: choice-node options nest one extra level
+            -- below ButtonsParent's direct children, so a fixed 2-level
+            -- walk misses them. Cap depth to avoid parent loops.
+            local function searchTree(frame, depth)
+                if not frame or depth > 5 then return nil end
+                if frame.SearchIcon and nameOf(frame) == targetLower then
+                    return frame
                 end
-                return btn.nodeID
+                if frame.GetChildren then
+                    local kids = { frame:GetChildren() }
+                    for i = 1, #kids do
+                        local found = searchTree(kids[i], depth + 1)
+                        if found then return found end
+                    end
+                end
+                return nil
             end
 
             local match
-            -- 1) Direct lookup if the frame exposes it.
-            if talentsFrame.GetTalentButtonByNodeID then
-                local ok, btn = pcall(talentsFrame.GetTalentButtonByNodeID, talentsFrame, targetNode)
-                if ok and btn and btn:IsShown() then match = btn end
-            end
-            -- 2) Walk likely button containers as a fallback.
-            if not match then
-                local containers = {
-                    talentsFrame.ButtonsParent,
-                    talentsFrame.HeroTalentsContainer,
-                    talentsFrame.SubTreeContainer,
-                }
-                for _, parent in ipairs(containers) do
-                    if parent and parent.GetChildren then
-                        local children = { parent:GetChildren() }
-                        for ci = 1, #children do
-                            local child = children[ci]
-                            if nodeIDOf(child) == targetNode then
-                                match = child
-                                break
-                            end
-                            -- One level deeper: hero subtree puts buttons
-                            -- inside a subtree-specific child frame.
-                            if child and child.GetChildren then
-                                local grand = { child:GetChildren() }
-                                for gi = 1, #grand do
-                                    if nodeIDOf(grand[gi]) == targetNode then
-                                        match = grand[gi]
-                                        break
-                                    end
-                                end
-                                if match then break end
-                            end
-                        end
-                        if match then break end
-                    end
-                end
+            local containers = {
+                talentsFrame.ButtonsParent,
+                talentsFrame.HeroTalentsContainer,
+                talentsFrame.SubTreeContainer,
+            }
+            for _, parent in ipairs(containers) do
+                match = searchTree(parent, 0)
+                if match then break end
             end
 
             if match then
-                -- Use Blizzard's own SearchIcon spyglass on the talent
-                -- node instead of our yellow border. Matches the in-game
-                -- talent search visual the player already recognizes.
-                self:HighlightTalentSearch(match, function(f)
-                    return nodeIDOf(f) == targetNode
-                end)
+                if match.SearchIcon and match.SearchIcon.Show then
+                    match.SearchIcon:Show()
+                end
+                self:RegisterTalentSearchIcon(match, targetLower, nameOf)
                 if canHoverDismiss() and match:IsMouseOver() then
                     self:Cancel()
                     return
@@ -2577,24 +2576,93 @@ function Highlight:ShowInstruction(text)
     instructionFrame:Show()
 end
 
--- Talent search: show the Blizzard-native SearchIcon spyglass on the
--- target talent button (matches the in-game talent search visual).
--- Reuses highlightFrame's watcher for visibility / identity tracking
--- but suppresses the yellow border textures and indicator chevron.
-function Highlight:HighlightTalentSearch(button, validator)
-    if not button or not button:IsShown() then
+-- SearchIcon registration: caller has already shown button.SearchIcon
+-- (Blizzard's native spyglass on talent / spellbook nodes). This hooks
+-- the button into highlightFrame's visibility watcher so the spyglass
+-- clears on cascade-hide / repurpose / hover-dismiss without us drawing
+-- our own yellow border on top.
+--
+--   button   - the talent / spell button whose SearchIcon was shown.
+--   validator - (frame) -> bool. Returns true while the frame still
+--               represents the original target; false on identity
+--               change (e.g. a ScrollBox row repurposed for a
+--               different spell). Optional: pass nil for "always
+--               valid until the button hides".
+function Highlight:RegisterSearchIconWatch(button, validator)
+    if not button then return end
+    -- Clear any previous registration so only one spyglass is live.
+    if highlightFrame._talentSearchBtn
+       and highlightFrame._talentSearchBtn ~= button
+       and highlightFrame._talentSearchBtn.SearchIcon then
+        highlightFrame._talentSearchBtn.SearchIcon:Hide()
+    end
+    highlightFrame._talentSearchBtn = button
+    highlightFrame._targetFrame = button
+    highlightFrame._targetValidator = validator
+    -- Hide the yellow border textures so the watcher's OnUpdate ticks
+    -- without the standard highlight visuals showing on top of the
+    -- native spyglass.
+    if highlightFrame.top    then highlightFrame.top:Hide() end
+    if highlightFrame.bottom then highlightFrame.bottom:Hide() end
+    if highlightFrame.left   then highlightFrame.left:Hide() end
+    if highlightFrame.right  then highlightFrame.right:Hide() end
+    highlightFrame:Show()
+    if highlightFrame.animGroup then highlightFrame.animGroup:Stop() end
+end
+
+-- Backwards-compatible alias used by the talent-name search path.
+function Highlight:RegisterTalentSearchIcon(button, targetNameLower, nameOf)
+    self:RegisterSearchIconWatch(button, function(f)
+        return nameOf and nameOf(f) == targetNameLower
+    end)
+end
+
+-- Spellbook glow: matches the in-game spellbook-item-unassigned-glow
+-- visual without hijacking the real glow texture (which signals
+-- "spell not on an action bar"). We attach our own texture child to
+-- the button using the same atlas and run a pulse animation, then
+-- register with the watcher so it clears on cascade-hide / repurpose
+-- / hover-dismiss like the talent spyglass.
+function Highlight:HighlightSpellbookSpell(row, validator)
+    if not row or not row:IsShown() then
         self:HideHighlight()
         return
     end
     self:HideHighlight()
-    if button.SearchIcon and button.SearchIcon.Show then
-        button.SearchIcon:Show()
+
+    -- The visible spellbook entry has an inner .Button child holding just
+    -- the spell icon (~40x39); the parent row container also includes
+    -- the spell name label and other artwork. Glow only the icon.
+    local iconBtn = (row.Button and row.Button.IsShown and row.Button:IsShown() and row.Button) or row
+
+    local glow = iconBtn._efSearchGlow
+    if not glow then
+        local w, h = iconBtn:GetSize()
+        if not w or w < 1 then w = 40 end
+        if not h or h < 1 then h = 39 end
+        glow = iconBtn:CreateTexture(nil, "OVERLAY", nil, 1)
+        glow:SetAtlas("spellbook-item-unassigned-glow")
+        glow:SetPoint("CENTER", iconBtn, "CENTER", 0, 0)
+        glow:SetSize(w * 1.4, h * 1.4)
+        glow:SetBlendMode("ADD")
+        local ag = glow:CreateAnimationGroup()
+        ag:SetLooping("BOUNCE")
+        local pulse = ag:CreateAnimation("Alpha")
+        pulse:SetFromAlpha(0.85)
+        pulse:SetToAlpha(1.6)
+        pulse:SetDuration(0.7)
+        glow._efPulse = ag
+        iconBtn._efSearchGlow = glow
     end
-    highlightFrame._targetFrame = button
+    glow:SetAlpha(1.6)
+    glow:Show()
+    if glow._efPulse and not glow._efPulse:IsPlaying() then
+        glow._efPulse:Play()
+    end
+
+    highlightFrame._spellbookGlowBtn = iconBtn
+    highlightFrame._targetFrame = row
     highlightFrame._targetValidator = validator
-    highlightFrame._talentSearchBtn = button
-    -- Hide the yellow border textures so only the SearchIcon shows.
-    -- Restored in HideHighlight for the next normal HighlightFrame call.
     if highlightFrame.top    then highlightFrame.top:Hide() end
     if highlightFrame.bottom then highlightFrame.bottom:Hide() end
     if highlightFrame.left   then highlightFrame.left:Hide() end
@@ -2610,7 +2678,14 @@ function Highlight:HideHighlight()
            and highlightFrame._talentSearchBtn.SearchIcon then
             highlightFrame._talentSearchBtn.SearchIcon:Hide()
         end
+        if highlightFrame._spellbookGlowBtn
+           and highlightFrame._spellbookGlowBtn._efSearchGlow then
+            local g = highlightFrame._spellbookGlowBtn._efSearchGlow
+            if g._efPulse then g._efPulse:Stop() end
+            g:Hide()
+        end
         highlightFrame._talentSearchBtn = nil
+        highlightFrame._spellbookGlowBtn = nil
         highlightFrame._targetFrame = nil
         highlightFrame._targetValidator = nil
         highlightFrame:Hide()
