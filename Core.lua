@@ -117,6 +117,17 @@ local DB_DEFAULTS = {
     lootSearchStats = true,    -- Loot search: match by stat keywords (haste, crit, etc.)
     lootUpgradesOnly = false,  -- Loot search: only show items above equipped ilvl
     lootDifficulty = "normal",
+    -- Per-flyout "Hide tooltips" toggles. Keys mirror filter top-level
+    -- groups; when true, OnEnter on rows in that group skips the
+    -- gear/item tooltip entirely.
+    hideTooltips = {
+        collections = false,    -- mounts/toys/pets/outfits/heirlooms/appearance sets
+        loot        = false,    -- gear search results
+    },
+    -- Currencies filter mode (mirrors the in-game CurrencyFrame
+    -- dropdown). "all" = show every currency the character has;
+    -- "warband" = only surface warband-transferable currencies.
+    currencyFilterMode = "all",
     appearanceSetClass = nil,         -- nil = player class, "all" = all, {classID=N} = specific
     appearanceSetCollected = true,    -- Show collected sets
     appearanceSetNotCollected = true, -- Show uncollected sets
@@ -500,6 +511,28 @@ local function OnPlayerLogin()
         end
     end
     InstallTransmogClassFilterHook()
+
+    -- Pre-warm the search hot path eagerly: build the prefix index over
+    -- the static dataset immediately, then kick off the deferred dynamic
+    -- providers in the background so by the time the user opens the
+    -- search bar (post-login UI fade-in, minimap button click, etc.) the
+    -- index is ready and no first-keystroke build cost remains.
+    if ns.Database then
+        if ns.Database.WarmSearchHotPath then
+            xpcall(ns.Database.WarmSearchHotPath, ErrorHandler, ns.Database)
+        end
+        EasyFind:EnsureDynamicLoaded()
+    end
+
+    -- Pre-warm Blizzard's achievement search index off the user's typing
+    -- path. The index build is the lag source we used to hit on the
+    -- first achievement-related search; doing it once in the background
+    -- here makes per-keystroke achievement results instant later.
+    SafeAfter(2.0, function()
+        if ns.UI and ns.UI.PrewarmAchievementSearch then
+            xpcall(ns.UI.PrewarmAchievementSearch, ErrorHandler, ns.UI)
+        end
+    end)
 
     -- Minimap button (delayed slightly so Minimap frame is ready)
     SafeAfter(0.6, function()
