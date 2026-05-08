@@ -41,7 +41,11 @@ local resultsFrame
 local containerFrame
 local resultButtons = {}
 local MAX_BUTTON_POOL = 100
-local MAX_SEARCH_RESULT_ROWS = MAX_BUTTON_POOL
+-- Hard render cap on the search-match portion of the result list. Pinned
+-- items are counted separately. Pre-render cap in OnSearchTextChanged
+-- already trims to 15 before flattening; this is a backstop for any
+-- other call path (alias views, container expansion) that lands here.
+local MAX_SEARCH_RESULT_ROWS = 15
 local EnsureResultButton
 local inCombat = false
 local selectingResult = false  -- guard: suppress OnTextChanged re-renders during SelectResult
@@ -78,7 +82,8 @@ local FLAT_CATEGORY_ICONS = {
     -- icon (spell icon / boss portrait) is pushed to the RIGHT side.
     ability       = { tex = 522972, coords = { 0.904, 0.996, 0.707, 0.748 } },
     boss          = { tex = 522972, coords = { 0.855, 0.949, 0.524, 0.566 } },
-    talent        = { atlas = "talents-node-circle-gray" },
+    talent        = { atlas = "UI-HUD-MicroMenu-SpellbookAbilities-Up" },
+    achievement   = { atlas = "UI-HUD-MicroMenu-Achievements-Up" },
     macro         = { tex = "Interface\\MacroFrame\\MacroFrame-Icon" },
     bag           = { atlas = "bag-main" },
     loot          = { tex = 522972, coords = { 0.730, 0.824, 0.618, 0.660 } },
@@ -135,6 +140,7 @@ local function GetFlatCategoryIcon(data)
     if data.transmogSetID then return FLAT_CATEGORY_ICONS.appearanceSet end
     if data.spellID and data.category == "Ability" then return FLAT_CATEGORY_ICONS.ability end
     if data.category == "Talent" then return FLAT_CATEGORY_ICONS.talent end
+    if data.achievementID and data.category == "Achievement" then return FLAT_CATEGORY_ICONS.achievement end
     if data.encounterID and data.category == "Boss" then return FLAT_CATEGORY_ICONS.boss end
     if data.macroIndex and data.category == "Macro" then return FLAT_CATEGORY_ICONS.macro end
     if data.bagID and data.category == "Bag" then return FLAT_CATEGORY_ICONS.bag end
@@ -157,9 +163,78 @@ end
 -- Compose the small subtext shown under a flat-list result (Alfred-style).
 -- UI entries get their breadcrumb path; collection items and map results fall
 -- back to a category label or zone name so every row carries some context.
+-- Abbreviate a binding string for display in the inline keybind buttons.
+-- "SHIFT-PAGEDOWN" -> "S-PgDn", etc. WoW returns keynames in
+-- MODIFIER-KEY uppercase form; we only shorten the parts that commonly
+-- overflow the 60-ish-px keybind button.
+local KEY_ABBREV = {
+    SHIFT = "S", CTRL = "C", ALT = "A", META = "M",
+    PAGEDOWN = "PgDn", PAGEUP = "PgUp",
+    HOME = "Home", END = "End",
+    DELETE = "Del", INSERT = "Ins",
+    BACKSPACE = "BkSp", SPACE = "Spc",
+    ESCAPE = "Esc", ENTER = "Ent",
+    PRINTSCREEN = "PrtSc",
+    MOUSEWHEELUP = "MWU", MOUSEWHEELDOWN = "MWD",
+    BUTTON3 = "MB3", BUTTON4 = "MB4", BUTTON5 = "MB5",
+}
+local function AbbrevBinding(binding)
+    if not binding or binding == "" then return "Not Bound" end
+    local out = {}
+    for part in binding:gmatch("[^%-]+") do
+        local up = part:upper()
+        local short = KEY_ABBREV[up]
+        if not short then
+            -- NUMPAD0-9 -> Num0, NUMPADDIVIDE -> Num/, etc.
+            local n = up:match("^NUMPAD(%d)$")
+            if n then short = "Num" .. n end
+        end
+        out[#out + 1] = short or part
+    end
+    return table.concat(out, "-")
+end
+
+-- Set a FontString's text and append "..." when the rendered string
+-- exceeds the FontString's anchor-bounded width. Used for result-row
+-- titles and any other single-line label that must clip cleanly
+-- instead of overflowing into the next row's space (WoW doesn't
+-- auto-add ellipses for anchor-clipped FontStrings).
+local function SetClippedText(fs, text)
+    if not fs then return end
+    fs:SetText(text or "")
+    if not text or text == "" then return end
+    -- Use anchor-derived bounds (GetLeft / GetRight) instead of
+    -- GetWidth(): GetWidth() on an L+R anchored FontString can return
+    -- the natural string width when the text overflows, which then
+    -- causes the trim loop to stop at a string that's far shorter than
+    -- the actual visible bound (premature ellipsis with empty space
+    -- before the next element).
+    local left, right = fs:GetLeft(), fs:GetRight()
+    local maxW
+    if left and right and right > left then
+        maxW = right - left
+    else
+        maxW = fs:GetWidth() or 0
+    end
+    if not maxW or maxW <= 0 then return end
+    local getW = fs.GetUnboundedStringWidth
+    local strW = getW and fs:GetUnboundedStringWidth() or fs:GetStringWidth() or 0
+    if strW <= maxW then return end
+    for cut = #text - 1, 1, -1 do
+        local trimmed = text:sub(1, cut) .. "..."
+        fs:SetText(trimmed)
+        local w = getW and fs:GetUnboundedStringWidth() or fs:GetStringWidth() or 0
+        if w <= maxW then return end
+    end
+end
+
 local function GetFlatSubtext(data)
     if not data then return "" end
     if data.path and #data.path > 0 then
+        local cat = data.category
+        if data.achievementID or cat == "Achievement" or cat == "Achievements" then
+            return data.path[#data.path]
+        end
         return tconcat(data.path, " > ")
     end
     if data.mapSearchResult then
@@ -209,23 +284,113 @@ end
 -- cluttering every other row. Returns nil for entries whose action
 -- isn't worth labelling (UI navigation, settings — the row name itself
 -- already tells you what happens).
+-- Default tooltip placement for non-gear results. The default UI sets
+-- the tooltip's bottom-right corner just up-and-left of the cursor
+-- (with a small diagonal buffer so the tooltip doesn't sit literally
+-- under the cursor arrow). ANCHOR_CURSOR puts it bottom-center at the
+-- cursor instead, so we anchor manually. We also hook OnUpdate to
+-- track cursor motion while the tooltip is owned by the row, mirroring
+-- how default ANCHOR_CURSOR follows the mouse.
+local TOOLTIP_CURSOR_OFFSET_X = -8
+local TOOLTIP_CURSOR_OFFSET_Y = 16
+
+local function PlaceTooltipBottomRightAtCursor(tooltip)
+    tooltip:ClearAllPoints()
+    local cx, cy = GetCursorPosition()
+    local scale = UIParent:GetEffectiveScale() or 1
+    if scale == 0 then scale = 1 end
+    tooltip:SetPoint(
+        "BOTTOMRIGHT", UIParent, "BOTTOMLEFT",
+        (cx / scale) + TOOLTIP_CURSOR_OFFSET_X,
+        (cy / scale) + TOOLTIP_CURSOR_OFFSET_Y
+    )
+end
+
+local function AnchorTooltipAtCursor(tooltip, ownerFrame)
+    tooltip:SetOwner(ownerFrame, "ANCHOR_NONE")
+    PlaceTooltipBottomRightAtCursor(tooltip)
+    tooltip._easyFindCursorFollow = ownerFrame
+    if not tooltip._easyFindCursorHooked then
+        tooltip._easyFindCursorHooked = true
+        tooltip:HookScript("OnUpdate", function(self)
+            if self._easyFindCursorFollow and self:IsOwned(self._easyFindCursorFollow) then
+                PlaceTooltipBottomRightAtCursor(self)
+            end
+        end)
+        tooltip:HookScript("OnHide", function(self)
+            self._easyFindCursorFollow = nil
+        end)
+    end
+end
+
+-- Special placement for GEAR tooltips: items render with an attached
+-- item-compare frame doubled in width, so cursor-anchored tooltips
+-- end up covering the result row that spawned them. Anchor to the
+-- search/results panel's outside edge (whichever side has more screen
+-- room) so the cursor and our own UI both stay clear.
+local function AnchorGearTooltip(tooltip, ownerFrame)
+    tooltip:SetOwner(ownerFrame, "ANCHOR_NONE")
+    tooltip:ClearAllPoints()
+
+    local panel = (resultsFrame and resultsFrame:IsShown()) and resultsFrame
+                  or (searchFrame and searchFrame:IsShown()) and searchFrame
+                  or ownerFrame
+
+    local left = panel and panel:GetLeft()
+    local right = panel and panel:GetRight()
+    local top = panel and panel:GetTop()
+    local screenW = UIParent:GetWidth() or 0
+
+    if left and right and top and screenW > 0 then
+        local roomRight = screenW - right
+        local roomLeft = left
+        local gap = 8
+        if roomRight >= roomLeft then
+            tooltip:SetPoint("TOPLEFT", panel, "TOPRIGHT", gap, 0)
+        else
+            tooltip:SetPoint("TOPRIGHT", panel, "TOPLEFT", -gap, 0)
+        end
+        return
+    end
+
+    -- Fallback when the panel isn't measurable.
+    tooltip:SetOwner(ownerFrame, "ANCHOR_RIGHT")
+end
+
 local function GetActionHint(data)
     if not data then return nil end
     if data.titleID then return "Select to apply as your title" end
     if data.mountID then return "Select to summon mount" end
     if data.petID then return "Select to summon pet" end
-    if data.toyItemID then return "Select to use toy" end
+    if data.toyItemID then
+        return data.isToyboxOnly and "Select to show in Toy Box" or "Select to use toy"
+    end
     if data.heirloomItemID then return "Select to add heirloom to bags" end
     if data.outfitID then return "Select to wear outfit" end
     if data.gearSetID then return "Select to equip gear set" end
-    if data.transmogSetID then return "Select to preview appearance set" end
+    if data.transmogSetID then return "Select to preview | Ctrl+click to try on" end
     if data.spellID and data.category == "Ability" then
         return IsSpellbookOnlyAbility(data) and "Select to show in spellbook" or "Select to cast"
     end
     if data.macroIndex then return "Select to run macro | Ctrl+click to edit" end
     if data.itemID and data.category == "Bag" then
-        if data.isEquippable or (data.equipLoc and data.equipLoc ~= "") then
+        -- Only treat items with a real gear slot as "equippable". Some
+        -- consumables flunk IsEquippableItem at the database level, so
+        -- key off equipLoc directly: empty / NON_EQUIP / AMMO / QUIVER
+        -- aren't gear slots and should still read "Select to use".
+        local slot = data.equipLoc
+        if slot and slot ~= "" and slot ~= "INVTYPE_NON_EQUIP"
+           and slot ~= "INVTYPE_AMMO" and slot ~= "INVTYPE_QUIVER" then
             return "Select to equip item"
+        end
+        -- Containers / quest items / wrapped boxes: the right-click
+        -- action opens the contents, not "use". GetItemInfo returns the
+        -- item type as the 6th value.
+        if GetItemInfo then
+            local itemType = select(6, GetItemInfo(data.itemID))
+            if itemType == "Container" or itemType == "Quest" then
+                return "Select to open item"
+            end
         end
         return "Select to use item"
     end
@@ -237,10 +402,13 @@ local function GetActionHint(data)
         return "Select to open Encounter Journal"
     end
     if data.settingType == "dropdown" and data.settingVariable then
-        return "Select to cycle value"
+        return "Select to open setting"
     end
     if data.settingType == "checkbox" and data.settingVariable then
         return "Select to toggle"
+    end
+    if data.settingType == "keybind" and data.bindingAction then
+        return "Hover a slot then click to rebind"
     end
     return nil
 end
@@ -304,13 +472,13 @@ function UI:SyncOutfitPins()
     UIPins.SyncOutfits()
 end
 
-local function ShowPinPopup(_, isPinned, onPinAction, onGuide, onAddAlias)
+local function ShowPinPopup(_, isPinned, onPinAction, onGuide, onAddAlias, extra)
     Utils.ShowPinMenu("EasyFindPinPopup", isPinned, onPinAction, onGuide, onAddAlias, {
         strata = "TOOLTIP",
         level = 100,
         width = 96,
         rowHeight = 22,
-    })
+    }, extra)
 end
 
 local unearnedTooltip
@@ -599,7 +767,11 @@ function UI:CreateSearchFrame()
     searchFrame = CreateFrame("Frame", "EasyFindSearchFrame", UIParent, "BackdropTemplate")
     UI.searchFrame = searchFrame
     searchFrame:SetSize(250, ns.SEARCHBAR_HEIGHT)
-    searchFrame:SetFrameStrata("MEDIUM")
+    -- FULLSCREEN_DIALOG keeps the search bar above the default UI's
+    -- DIALOG-strata menus (Game Menu, Options panel, etc.) so opening
+    -- the bar from inside any in-game menu still puts our results on
+    -- top instead of getting buried.
+    searchFrame:SetFrameStrata("FULLSCREEN_DIALOG")
     searchFrame:SetMovable(true)
     searchFrame:EnableMouse(true)
     searchFrame:SetClampedToScreen(true)
@@ -623,7 +795,7 @@ function UI:CreateSearchFrame()
     -- searchFrame so it follows movement / resizing.
     containerFrame = CreateFrame("Frame", "EasyFindContainerFrame", UIParent)
     UI.containerFrame = containerFrame
-    containerFrame:SetFrameStrata("MEDIUM")
+    containerFrame:SetFrameStrata("FULLSCREEN_DIALOG")
     containerFrame:SetFrameLevel(math.max(0, searchFrame:GetFrameLevel() - 1))
     containerFrame:SetPoint("TOPLEFT",  searchFrame, "TOPLEFT",  0, 0)
     containerFrame:SetPoint("TOPRIGHT", searchFrame, "TOPRIGHT", 0, 0)
@@ -946,6 +1118,23 @@ function UI:CreateSearchFrame()
     -- handlers don't get clobbered. The candidate source is the first
     -- visible result row name, so the suggested completion always
     -- aligns with what the user lands on if they press Enter.
+    -- Strip WoW inline markup from item / quest names so the autocomplete
+    -- suggestion doesn't leak atlas / color / texture / hyperlink codes
+    -- ("|A:professions-chaticon-quality-...|a", "|cffrrggbb...|r", etc.).
+    -- Markup is usually preceded by a space ("Item Name |A:...|a"); after
+    -- stripping the markup, also collapse runs of whitespace and trim the
+    -- result so the suggestion ends cleanly.
+    local function StripMarkup(s)
+        if not s then return s end
+        s = s:gsub("|A:[^|]*|a", "")
+        s = s:gsub("|T[^|]*|t", "")
+        s = s:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")
+        s = s:gsub("|H[^|]+|h(.-)|h", "%1")
+        s = s:gsub("%s+", " ")
+        s = s:match("^%s*(.-)%s*$") or s
+        return s
+    end
+
     Utils.AttachAutocomplete(editBox, {
         findCandidate = function(typed)
             if not typed or typed == "" then return nil end
@@ -953,7 +1142,8 @@ function UI:CreateSearchFrame()
             for i = 1, MAX_BUTTON_POOL do
                 local row = resultButtons[i]
                 if not row or not row:IsShown() then break end
-                local nm = row.data and row.data.name
+                local rawName = row.data and row.data.name
+                local nm = StripMarkup(rawName)
                 if nm and #nm >= #typed then
                     local prefix = nm:sub(1, #typed):lower()
                     if prefix == lower and nm:lower() ~= lower then
@@ -1492,7 +1682,7 @@ function UI:CreateSearchFrame()
             local rd = selRow and selRow.data
             if rd and (rd.outfitID or rd.toyItemID
                or (rd.spellID and not IsSpellbookOnlyAbility(rd))
-               or rd.mountID or rd.macroIndex
+               or rd.mountID or rd.macroIndex or rd.slashCommand
                or (rd.itemID and rd.category == "Bag")) then
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
                 return
@@ -1720,6 +1910,15 @@ function UI:CreateSearchFrame()
         -- own OnClick toggle is the only state change. Set in OnMouseDown
         -- of the minimap button (Core.lua), cleared in OnMouseUp.
         if EasyFind._minimapClickActive then return end
+        -- An inline setting-dropdown popup is open. It lives on UIParent
+        -- as a separate top-level frame, so a click inside it is "outside"
+        -- our search bar and would otherwise close the bar before the
+        -- popup's OnClick callback runs.
+        if EasyFind._inlineDropdownMenuOpen then return end
+        -- Grace window after a popup row was selected. Some setting
+        -- writes dispatch follow-up events (CVAR updates etc.) that
+        -- reach this handler with the popup already hidden.
+        if EasyFind._popupGraceUntil and GetTime() < EasyFind._popupGraceUntil then return end
         -- WoW's actual click-target focus stack. Use this rather than
         -- IsMouseOver: GetMouseFoci is what the click dispatch itself
         -- uses, so a frame in this list is guaranteed to receive the
@@ -1792,7 +1991,14 @@ local UI_FILTER_OPTIONS = {
           { key = "pets",           label = "Pets",            iconTex = 631719 },
           { key = "toys",           label = "Toys",            iconTex = 454046 },
       } },
-    { key = "currencies",  label = "Currencies",  iconTex = 136452 },
+    { key = "currencies",  label = "Currencies",  iconTex = 136452,
+      flyoutRadio = {
+          dbKey = "currencyFilterMode",
+          options = {
+              { value = "all",     label = "This Character Only" },
+              { value = "warband", label = "All Warband Transferable" },
+          },
+      } },
     -- Gear: treasure-chest icon from the Encounter Journal loot tab
     -- spritesheet (texture 522972) for visual consistency with the
     -- in-game loot UI. hasFlyout flags the row to draw the chevron --
@@ -1801,7 +2007,15 @@ local UI_FILTER_OPTIONS = {
     { key = "loot",        label = "Gear",        iconTex = 522972,
       iconCoords = { 0.730, 0.824, 0.618, 0.660 }, hasFlyout = true },
     { key = "map",         label = "Map Search",  iconTex = 1121272,
-      iconCoords = { 0.3457, 0.3856, 0.2549, 0.2951 } },
+      iconCoords = { 0.3457, 0.3856, 0.2549, 0.2951 },
+      flyoutSubFilters = {
+          { key = "zones",      label = "Zones",        dbTable = "mapTabFilters" },
+          { key = "instances",  label = "Instances",    dbTable = "mapTabFilters" },
+          { key = "flightpath", label = "Flight Paths", dbTable = "mapTabFilters" },
+          { key = "travel",     label = "Travel",       dbTable = "mapTabFilters" },
+          { key = "services",   label = "Services",     dbTable = "mapTabFilters" },
+          { key = "rares",      label = "Rares",        dbTable = "mapTabFilters" },
+      } },
     { key = "options",     label = "Options",     iconTex = 1121272,
       iconCoords = { 0.4451, 0.4705, 0.8079, 0.8344 },
       flyoutSubFilters = {
@@ -1812,7 +2026,7 @@ local UI_FILTER_OPTIONS = {
       iconCoords = { 0.3783, 0.4072, 0.9066, 0.9350 } },
     -- Talents: leaf icon from the talents atlas spritesheet (4556093),
     -- visually consistent with the in-game talent tree.
-    { key = "talents",     label = "Talents",     iconAtlas = "talents-icon-learnableplus" },
+    { key = "talents",     label = "Talents",     iconAtlas = "UI-HUD-MicroMenu-SpellbookAbilities-Up" },
     -- Title icon from PaperDollSidebarTab2 (Titles tab) spritesheet 514608.
     { key = "titles",      label = "Titles",      iconTex = 514608,
       iconCoords = { 0.016, 0.531, 0.324, 0.461 } },
@@ -1838,6 +2052,7 @@ end
 local UI_BUCKET_BY_CATEGORY = {
     ["Ability"]            = "abilities",
     ["Boss"]               = "bosses",
+    ["Achievement"]        = "achievements",
     ["Achievements"]       = "achievements",
     ["Guild Achievements"] = "achievements",
     ["Statistics"]         = "achievements",
@@ -1846,6 +2061,8 @@ local UI_BUCKET_BY_CATEGORY = {
     ["Bag"]                = "bags",
     ["Macro"]              = "macros",
     ["Talent"]             = "talents",
+    ["Title"]              = "titles",
+    ["Gear Set"]           = "gearSets",
     ["Game Settings"]      = "gameOptions",
     ["AddOn Settings"]     = "addonOptions",
 }
@@ -2381,7 +2598,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         -- indicator used elsewhere in the WoW UI. flyoutSubFilters drives
         -- the auto-built sub-filter popup; hasFlyout opts in rows whose
         -- flyout is built inline below (Gear → gearOptionsPopup).
-        if opt.flyoutSubFilters or opt.hasFlyout then
+        if opt.flyoutSubFilters or opt.flyoutRadio or opt.hasFlyout then
             local chev = row:CreateTexture(nil, "OVERLAY")
             chev:SetAtlas("common-icon-forwardarrow")
             chev:SetSize(ICON_SIZE - 2, ICON_SIZE - 2)
@@ -2500,7 +2717,9 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 subHL:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
 
                 subRow:SetScript("OnClick", function(self)
-                    EasyFind.db.uiSearchFilters[sub.key] = self:GetChecked()
+                    local target = sub.dbTable and EasyFind.db[sub.dbTable]
+                                   or EasyFind.db.uiSearchFilters
+                    target[sub.key] = self:GetChecked()
                     if searchEditBox:GetText() ~= "" then
                         UI:OnSearchTextChanged(searchEditBox:GetText())
                     end
@@ -2566,14 +2785,56 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 end
             end
             row.flyoutSubRows = subRows
-            popup:SetSize(SUB_POPUP_WIDTH, SUB_PAD * 2 + #opt.flyoutSubFilters * SUB_ROW_H)
+
+            -- "Hide tooltips" checkbox at the bottom of the collections
+            -- flyout. Toggles the per-group EasyFind.db.hideTooltips
+            -- setting that the OnEnter handlers consult before showing
+            -- mount / toy / pet / heirloom / appearance set tooltips.
+            local extraRows = 0
+            local hideTipRow
+            if opt.key == "collections" then
+                hideTipRow = CreateFrame("CheckButton", nil, popup)
+                hideTipRow:SetSize(SUB_POPUP_WIDTH - SUB_PAD * 2, SUB_ROW_H)
+                hideTipRow:SetHitRectInsets(0, 0, 0, 0)
+                hideTipRow:SetPoint("TOPLEFT", popup, "TOPLEFT",
+                    SUB_PAD, -(SUB_PAD + #opt.flyoutSubFilters * SUB_ROW_H))
+                hideTipRow:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+                hideTipRow:GetNormalTexture():SetSize(CHK, CHK)
+                hideTipRow:GetNormalTexture():ClearAllPoints()
+                hideTipRow:GetNormalTexture():SetPoint("LEFT", 4, 0)
+                hideTipRow:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+                hideTipRow:GetCheckedTexture():SetSize(CHK, CHK)
+                hideTipRow:GetCheckedTexture():ClearAllPoints()
+                hideTipRow:GetCheckedTexture():SetPoint("LEFT", 4, 0)
+                local lbl = hideTipRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+                lbl:SetPoint("LEFT", hideTipRow:GetNormalTexture(), "RIGHT", 4, 0)
+                lbl:SetText("Hide tooltips")
+                local hl = hideTipRow:CreateTexture(nil, "HIGHLIGHT")
+                hl:SetAllPoints()
+                hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+                hideTipRow:SetScript("OnClick", function(self)
+                    EasyFind.db.hideTooltips = EasyFind.db.hideTooltips or {}
+                    EasyFind.db.hideTooltips.collections = self:GetChecked() and true or false
+                end)
+                row.hideTooltipsRow = hideTipRow
+                extraRows = 1
+            end
+            popup:SetSize(SUB_POPUP_WIDTH,
+                SUB_PAD * 2 + (#opt.flyoutSubFilters + extraRows) * SUB_ROW_H)
 
             -- Sync sub-row checked state from current DB values.
             local function SyncSubChecks()
-                local f = EasyFind.db.uiSearchFilters
                 for _, sub in ipairs(opt.flyoutSubFilters) do
                     local sr = subRows[sub.key]
-                    if sr then sr:SetChecked(f[sub.key] ~= false) end
+                    if sr then
+                        local target = sub.dbTable and EasyFind.db[sub.dbTable]
+                                       or EasyFind.db.uiSearchFilters
+                        sr:SetChecked(target[sub.key] ~= false)
+                    end
+                end
+                if hideTipRow then
+                    local ht = EasyFind.db.hideTooltips
+                    hideTipRow:SetChecked(ht and ht.collections == true)
                 end
             end
             row.SyncFlyoutSubChecks = SyncSubChecks
@@ -2636,6 +2897,126 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             dropdown:HookScript("OnHide", function() popup:Hide() end)
         end
 
+        -- Radio flyout (e.g. Currencies > "All Warband Transferable" /
+        -- "This Character Only"). Mirrors the checkbox flyout above
+        -- but writes a single dbKey to the chosen option's value, and
+        -- sub-rows render as radio bullets that uncheck siblings.
+        if opt.flyoutRadio and not opt.flyoutSubFilters then
+            local radio = opt.flyoutRadio
+            local SUB_POPUP_WIDTH = 200
+            local SUB_ROW_H = 22
+            local SUB_PAD = 6
+
+            local popup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+            popup:SetFrameStrata("TOOLTIP")
+            StylePopup(popup)
+            popup:EnableMouse(true)
+            popup:Hide()
+            row.flyoutPopup = popup
+            dropdownGuardFrames[#dropdownGuardFrames + 1] = popup
+            dropdown.flyoutPopups = dropdown.flyoutPopups or {}
+            dropdown.flyoutPopups[#dropdown.flyoutPopups + 1] = popup
+
+            popup:HookScript("OnShow", function(self)
+                self:RegisterEvent("GLOBAL_MOUSE_DOWN")
+            end)
+            popup:HookScript("OnHide", function(self)
+                self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+            end)
+            popup:HookScript("OnEvent", function(self, event)
+                if event ~= "GLOBAL_MOUSE_DOWN" then return end
+                if self:IsMouseOver() or row:IsMouseOver() then return end
+                self:Hide()
+            end)
+
+            local radioRows = {}
+            for ri, optionDef in ipairs(radio.options) do
+                local rRow = CreateFrame("Button", nil, popup)
+                rRow:SetSize(SUB_POPUP_WIDTH - SUB_PAD * 2, SUB_ROW_H)
+                rRow:SetPoint("TOPLEFT", popup, "TOPLEFT",
+                    SUB_PAD, -(SUB_PAD + (ri - 1) * SUB_ROW_H))
+
+                local bullet = rRow:CreateTexture(nil, "ARTWORK")
+                bullet:SetAtlas("common-dropdown-tickradial")
+                bullet:SetSize(14, 14)
+                bullet:SetPoint("LEFT", 4, 0)
+
+                local tick = rRow:CreateTexture(nil, "OVERLAY")
+                tick:SetAtlas("common-dropdown-icon-radialtick-yellow")
+                tick:SetSize(14, 14)
+                tick:SetPoint("LEFT", 4, 0)
+                tick:Hide()
+
+                local lbl = rRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+                lbl:SetPoint("LEFT", bullet, "RIGHT", 6, 0)
+                lbl:SetText(optionDef.label)
+
+                local hl = rRow:CreateTexture(nil, "HIGHLIGHT")
+                hl:SetAllPoints()
+                hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+
+                rRow.tick = tick
+                rRow.value = optionDef.value
+                rRow:SetScript("OnClick", function(self)
+                    EasyFind.db[radio.dbKey] = self.value
+                    for _, otherRow in ipairs(radioRows) do
+                        otherRow.tick:SetShown(otherRow.value == self.value)
+                    end
+                    if searchEditBox:GetText() ~= "" then
+                        UI:OnSearchTextChanged(searchEditBox:GetText())
+                    end
+                end)
+
+                radioRows[ri] = rRow
+            end
+
+            popup:SetSize(SUB_POPUP_WIDTH, SUB_PAD * 2 + #radio.options * SUB_ROW_H)
+
+            local function SyncRadio()
+                local cur = EasyFind.db[radio.dbKey]
+                for _, rRow in ipairs(radioRows) do
+                    rRow.tick:SetShown(rRow.value == cur)
+                end
+            end
+            row.SyncFlyoutSubChecks = SyncRadio
+
+            local function PositionPopup()
+                popup:ClearAllPoints()
+                popup:SetPoint("TOPLEFT", row, "TOPRIGHT", 4, 0)
+            end
+            local hideTimer
+            local function ShowPopup()
+                if hideTimer then hideTimer:Cancel(); hideTimer = nil end
+                for _, sibling in ipairs(dropdown.flyoutPopups or {}) do
+                    if sibling ~= popup and sibling:IsShown() then sibling:Hide() end
+                end
+                SyncRadio()
+                popup:SetScale((EasyFind.db.uiSearchScale or 1.0) * (EasyFind.db.fontSize or 1.0))
+                PositionPopup()
+                popup:Show()
+            end
+            local function MaybeHide()
+                if popup:IsMouseOver() or row:IsMouseOver() then return end
+                popup:Hide()
+            end
+            local function ScheduleHide()
+                if hideTimer then hideTimer:Cancel() end
+                hideTimer = C_Timer.NewTimer(0.15, function()
+                    hideTimer = nil
+                    MaybeHide()
+                end)
+            end
+            row.ShowFlyoutPopup = ShowPopup
+            row.ScheduleHideFlyoutPopup = ScheduleHide
+            popup:HookScript("OnLeave", ScheduleHide)
+            popup:HookScript("OnEnter", function()
+                if hideTimer then hideTimer:Cancel(); hideTimer = nil end
+            end)
+            row:HookScript("OnEnter", ShowPopup)
+            row:HookScript("OnLeave", ScheduleHide)
+            dropdown:HookScript("OnHide", function() popup:Hide() end)
+        end
+
 
         -- Loot/Gear: side popup with difficulty + spec selector + iLvl
         -- upgrades checkbox. Opens to the right of the Gear filter row
@@ -2654,6 +3035,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
             local lootSubDefs = {
                 { dbKey = "lootUpgradesOnly", label = "iLvl Upgrades Only" },
+                { dbKey = "hideTooltips.loot", label = "Hide tooltips" },
             }
             local lootSubRows = {}
             for si, sub in ipairs(lootSubDefs) do
@@ -2682,12 +3064,27 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 subRow.dbKey = sub.dbKey
                 lootSubRows[si] = subRow
 
+                -- Resolve "a.b" dotted keys into a getter/setter so the
+                -- nested hideTooltips.loot toggle lives alongside the
+                -- flat lootUpgradesOnly checkbox without duplicating
+                -- this whole subRow setup.
+                local function resolveDbPath()
+                    local parent, leaf = sub.dbKey:match("^(.-)%.([^%.]+)$")
+                    if parent then
+                        EasyFind.db[parent] = EasyFind.db[parent] or {}
+                        return EasyFind.db[parent], leaf
+                    end
+                    return EasyFind.db, sub.dbKey
+                end
+
                 subRow:SetScript("OnClick", function(self)
-                    EasyFind.db[sub.dbKey] = self:GetChecked()
+                    local tbl, leaf = resolveDbPath()
+                    tbl[leaf] = self:GetChecked() and true or false
                     if searchEditBox:GetText() ~= "" then
                         UI:OnSearchTextChanged(searchEditBox:GetText())
                     end
                 end)
+                subRow.resolveDbPath = resolveDbPath
             end
 
             -- Separator line between iLvl Upgrades checkbox and the
@@ -3381,8 +3778,9 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
             row.updateLootToggle = function()
                 for _, sr in ipairs(lootSubRows) do
-                    if sr.dbKey and sr.SetChecked then
-                        sr:SetChecked(EasyFind.db[sr.dbKey] ~= false)
+                    if sr.SetChecked and sr.resolveDbPath then
+                        local tbl, leaf = sr.resolveDbPath()
+                        sr:SetChecked(tbl[leaf] == true)
                     end
                 end
                 UpdateSpecLabel()
@@ -3525,12 +3923,14 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     uncheckRow:SetScript("OnClick", function()
         local filters = EasyFind.db.uiSearchFilters
         local allUnchecked = true
-        ForEachFilterKey(function(key)
-            if filters[key] ~= false then allUnchecked = false end
+        ForEachFilterKey(function(key, opt)
+            local target = opt.dbTable and EasyFind.db[opt.dbTable] or filters
+            if target[key] ~= false then allUnchecked = false end
         end)
         local newState = allUnchecked
-        ForEachFilterKey(function(key)
-            filters[key] = newState
+        ForEachFilterKey(function(key, opt)
+            local target = opt.dbTable and EasyFind.db[opt.dbTable] or filters
+            target[key] = newState
         end)
         for _, opt in ipairs(UI_FILTER_OPTIONS) do
             local row = checkRows[opt.key]
@@ -3689,7 +4089,7 @@ function UI:CreateResultsFrame()
     resultsFrame = CreateFrame("Frame", "EasyFindResultsFrame", searchFrame, "BackdropTemplate")
     resultsFrame:SetWidth(380)  -- Wide to accommodate tree indentation
     resultsFrame:SetPoint("TOP", searchFrame, "BOTTOM", 0, 2)
-    resultsFrame:SetFrameStrata("MEDIUM")
+    resultsFrame:SetFrameStrata("FULLSCREEN_DIALOG")
     resultsFrame:SetFrameLevel(searchFrame:GetFrameLevel() + 1)
 
     resultsFrame:SetBackdrop({
@@ -3751,14 +4151,9 @@ function UI:CreateResultsFrame()
         end)
     end)
 
-    -- Plain ScrollFrame for clipping + mouse wheel
+    -- Plain ScrollFrame for clipping. Wheel handler is wired up by
+    -- CreateMinimalScrollBar so wheel events route through the eased path.
     local scrollFrame = CreateFrame("ScrollFrame", nil, resultsFrame)
-    scrollFrame:EnableMouseWheel(true)
-    scrollFrame:SetScript("OnMouseWheel", function(self, delta)
-        local range = self:GetVerticalScrollRange()
-        local cur = self:GetVerticalScroll()
-        self:SetVerticalScroll(mmax(0, mmin(range, cur - delta * 72)))
-    end)
     resultsFrame.scrollFrame = scrollFrame
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
@@ -3812,6 +4207,125 @@ local flatCombined = {}
 local pinnedSearchEntries = {}
 local pinnedSearchPinEntries = {}
 local pinnedOnlyEntries = {}
+
+-- Inline achievement search: drive Blizzard's own indexed achievement
+-- search system (the one that powers the AchievementFrame's search box)
+-- in the background. SetAchievementSearchString builds an internal
+-- index on first call and emits ACHIEVEMENT_SEARCH_UPDATED when results
+-- are ready; GetFilteredAchievementID(i) reads them out. We pre-warm
+-- the index once after login so per-keystroke searches are instant,
+-- and we synthesize result rows on the fly without pre-loading any of
+-- the ~25k achievement entries into our own search index.
+local ACHIEVEMENT_PROTO = {
+    keywords      = {},
+    keywordsLower = {},
+    category      = "Achievement",
+    buttonFrame   = "AchievementMicroButton",
+    path          = { "Achievements" },
+}
+local ACHIEVEMENT_MT = { __index = ACHIEVEMENT_PROTO }
+local achievementEntryByID = {}
+local achSearchCache = {}
+local achSearchPending = nil
+local achSearchListener
+local achSearchPrewarmed = false
+local ACH_MAX_RESULTS = 8
+
+local function GetOrCreateAchievementEntry(id, name, icon)
+    local entry = achievementEntryByID[id]
+    if entry then
+        if name and entry.name ~= name then
+            entry.name = name
+            entry.nameLower = slower(name)
+        end
+        if icon and entry.icon ~= icon then entry.icon = icon end
+        return entry
+    end
+    entry = setmetatable({
+        name = name,
+        nameLower = slower(name or ""),
+        achievementID = id,
+        icon = icon,
+        steps = { { buttonFrame = "AchievementMicroButton", achievementID = id } },
+    }, ACHIEVEMENT_MT)
+    achievementEntryByID[id] = entry
+    return entry
+end
+
+local function CollectAchievementSearchResults(query)
+    local getNum = _G["GetNumFilteredAchievements"]
+    local getID  = _G["GetFilteredAchievementID"]
+    local getInfo = _G["GetAchievementInfo"]
+    if not getNum or not getID or not getInfo then return nil end
+    local count = getNum() or 0
+    if count == 0 then return {} end
+    local capped = count > ACH_MAX_RESULTS and ACH_MAX_RESULTS or count
+    local results = {}
+    for i = 1, capped do
+        local id = getID(i)
+        if id then
+            local _, name, _, _, _, _, _, _, _, icon = getInfo(id)
+            if name and name ~= "" then
+                results[#results + 1] = GetOrCreateAchievementEntry(id, name, icon)
+            end
+        end
+    end
+    return results
+end
+
+local function EnsureAchievementSearchListener()
+    if achSearchListener then return end
+    achSearchListener = CreateFrame("Frame")
+    achSearchListener:RegisterEvent("ACHIEVEMENT_SEARCH_UPDATED")
+    achSearchListener:SetScript("OnEvent", function()
+        local pending = achSearchPending
+        if not pending then return end
+        achSearchPending = nil
+        local results = CollectAchievementSearchResults(pending)
+        if results then achSearchCache[pending] = results end
+        local eb = searchFrame and searchFrame.editBox
+        if eb then
+            -- Compare against the typed prefix (cursor-position cut),
+            -- not the full editbox text. The autocomplete suffix is
+            -- selected past the cursor and would make full text != pending.
+            local full = eb:GetText() or ""
+            local cursor = eb:GetCursorPosition() or #full
+            local typedPrefix = strtrim(full:sub(1, cursor))
+            if typedPrefix == pending then
+                UI:OnSearchTextChanged(typedPrefix, true)
+            end
+        end
+    end)
+end
+
+function UI:RequestAchievementSearch(query)
+    if not query or #query < 2 then return nil end
+    local cached = achSearchCache[query]
+    if cached then return cached end
+    local setSearch = _G["SetAchievementSearchString"]
+    if not setSearch then return nil end
+    EnsureAchievementSearchListener()
+    achSearchPending = query
+    pcall(setSearch, query)
+    return nil
+end
+
+function UI:PrewarmAchievementSearch()
+    if achSearchPrewarmed then return end
+    achSearchPrewarmed = true
+    local loadUI = _G["AchievementFrame_LoadUI"]
+    if loadUI then pcall(loadUI) end
+    EnsureAchievementSearchListener()
+    local setSearch = _G["SetAchievementSearchString"]
+    if not setSearch then return end
+    -- Trigger the one-time index build off the player's typing path.
+    -- A nonsensical query that won't match anything keeps the search
+    -- box visually empty if the user opens AchievementFrame later.
+    pcall(setSearch, "\1")
+    if Utils and Utils.SafeAfter then
+        Utils.SafeAfter(0.5, function() pcall(setSearch, "") end)
+    end
+end
 
 local SCRATCH = {
     visible = {},
@@ -3908,9 +4422,11 @@ local function ActivateSettingResult(data)
     elseif stype == "slider" then
         RefocusSearchEditBox()
     elseif stype == "dropdown" then
-        if not UI:CycleSettingDropdown(data) then
-            UI:OpenSettingNoClose(data)
-        end
+        -- Dropdown row click opens the Settings panel for that variable.
+        -- Inline cycling has its own controls (paddle arrows, center
+        -- popup) right on the row, so the row click itself shouldn't
+        -- duplicate that behavior.
+        UI:OpenSettingNoClose(data)
     else
         UI:OpenSettingNoClose(data)
     end
@@ -3927,6 +4443,135 @@ local function FlatNameLess(ra, rb)
     local sa, sb = ra.score or 0, rb.score or 0
     if sa ~= sb then return sa > sb end
     return (ra.data.name or "") < (rb.data.name or "")
+end
+
+-- Custom popup for inline setting dropdowns. Replaces MenuUtil.CreateContextMenu
+-- because MenuUtil's option buttons can have a click target that's narrower than
+-- the visible label for very long strings, which silently swallows selection.
+-- This popup auto-sizes to the longest label so every row's clickable area
+-- matches its visible text exactly.
+local inlineDropdownPopup
+local inlineDropdownRows = {}
+local function GetInlineDropdownPopup()
+    if inlineDropdownPopup then return inlineDropdownPopup end
+    local p = CreateFrame("Frame", "EasyFindInlineDropdownPopup", UIParent, "BackdropTemplate")
+    -- Match the bar's FULLSCREEN_DIALOG so the popup renders ABOVE the
+    -- bar instead of behind it. Other popups (filter dropdown sub-menus,
+    -- spec/class flyouts) already use TOOLTIP which sits above this.
+    p:SetFrameStrata("FULLSCREEN_DIALOG")
+    p:SetFrameLevel(200)
+    p:Hide()
+    p:EnableMouse(true)
+    p:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8X8",
+        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+        tile = false, edgeSize = 12,
+        insets = { left = 4, right = 4, top = 4, bottom = 4 },
+    })
+    p:SetBackdropColor(0.05, 0.05, 0.05, 0.95)
+    p:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+    p:SetScript("OnEvent", function(self, event)
+        if event ~= "GLOBAL_MOUSE_DOWN" then return end
+        if self:IsMouseOver() then return end
+        if self.owner and self.owner:IsMouseOver() then return end
+        self:Hide()
+    end)
+    p:SetScript("OnShow", function(self)
+        self:RegisterEvent("GLOBAL_MOUSE_DOWN")
+        EasyFind._inlineDropdownMenuOpen = true
+    end)
+    p:SetScript("OnHide", function(self)
+        self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+        EasyFind._inlineDropdownMenuOpen = false
+    end)
+    inlineDropdownPopup = p
+    return p
+end
+
+local function GetInlineDropdownRow(popup, index)
+    local row = inlineDropdownRows[index]
+    if row then return row end
+    row = CreateFrame("Button", nil, popup)
+    row:SetHeight(20)
+    local radio = row:CreateTexture(nil, "ARTWORK")
+    radio:SetSize(14, 14)
+    radio:SetTexture("Interface\\AddOns\\EasyFind\\radio-off")
+    radio:SetPoint("LEFT", 6, 0)
+    row.radio = radio
+    local lbl = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    lbl:SetPoint("LEFT", radio, "RIGHT", 6, 0)
+    lbl:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+    lbl:SetJustifyH("LEFT")
+    lbl:SetWordWrap(false)
+    lbl:SetMaxLines(1)
+    row.lbl = lbl
+    local hl = row:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 1, 1, 0.1)
+    inlineDropdownRows[index] = row
+    return row
+end
+
+local function ShowInlineSettingDropdown(owner, opts, getCurrent, onSelect)
+    local popup = GetInlineDropdownPopup()
+    popup.owner = owner
+    -- Hide any prior rows in the pool.
+    for i = 1, #inlineDropdownRows do
+        inlineDropdownRows[i]:Hide()
+        inlineDropdownRows[i]:SetScript("OnClick", nil)
+    end
+    -- Measure longest label so the popup auto-sizes.
+    local maxTextW = 0
+    local probe = popup._probeFS
+    if not probe then
+        probe = popup:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        probe:Hide()
+        popup._probeFS = probe
+    end
+    for i = 1, #opts do
+        local label = opts[i].label or tostring(opts[i].value)
+        probe:SetText(label)
+        local w = (probe.GetUnboundedStringWidth and probe:GetUnboundedStringWidth())
+            or (probe.GetStringWidth and probe:GetStringWidth())
+            or 0
+        if w > maxTextW then maxTextW = w end
+    end
+    local PAD_LR = 6 + 14 + 6 + 6     -- left pad + radio + gap + right pad
+    local PAD_TOP = 8
+    local PAD_BOT = 8
+    local ROW_H = 20
+    local popupW = math.max(140, math.ceil(maxTextW) + PAD_LR + 12)
+    local popupH = PAD_TOP + (#opts * ROW_H) + PAD_BOT
+    popup:SetSize(popupW, popupH)
+    popup:ClearAllPoints()
+    popup:SetPoint("TOPRIGHT", owner, "BOTTOMRIGHT", 0, -2)
+    -- Build rows.
+    local cur = getCurrent and getCurrent() or nil
+    for i = 1, #opts do
+        local opt = opts[i]
+        local row = GetInlineDropdownRow(popup, i)
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", popup, "TOPLEFT", 6, -PAD_TOP - (i - 1) * ROW_H)
+        row:SetPoint("RIGHT", popup, "RIGHT", -6, 0)
+        row.lbl:SetText(opt.label or tostring(opt.value))
+        local checked = cur == opt.value or tostring(cur) == tostring(opt.value)
+        row.radio:SetTexture(checked and "Interface\\AddOns\\EasyFind\\radio-on" or "Interface\\AddOns\\EasyFind\\radio-off")
+        local optValue = opt.value
+        row:SetScript("OnClick", function()
+            if onSelect then onSelect(optValue) end
+            EasyFind._popupGraceUntil = GetTime() + 0.2
+            popup:Hide()
+        end)
+        row:Show()
+    end
+    popup:Show()
+    popup:Raise()
+end
+
+UI.HideInlineSettingDropdown = function()
+    if inlineDropdownPopup and inlineDropdownPopup:IsShown() then
+        inlineDropdownPopup:Hide()
+    end
 end
 
 -- Expand a container node: inject its database children into cachedHierarchical.
@@ -4358,6 +5003,30 @@ function UI:CreateResultButton(index)
     kb1:SetScript("OnClick", MakeBindingClickHandler(1))
     kb2:SetScript("OnClick", MakeBindingClickHandler(2))
 
+    -- Hovering a kb button overrides the row's action-hint subtext with a
+    -- slot-specific hint ("primary" vs "alternate") so the user knows
+    -- which key the next press will bind. OnLeave hands back to the row.
+    local function MakeKbHoverHandler(slotLabel)
+        return function(self)
+            if not resultRow.pathSubtext or not resultRow.pathSubtext:IsShown() then return end
+            resultRow.pathSubtext:SetText("Click then press a key to bind " .. slotLabel)
+            resultRow.pathSubtext:SetTextColor(0.85, 0.78, 0.55, 1.0)
+        end
+    end
+    local function KbLeaveHandler(self)
+        if not resultRow.pathSubtext or not resultRow.pathSubtext:IsShown() then return end
+        if resultRow:IsMouseOver() then
+            ApplyActionHint(resultRow)
+        else
+            resultRow.pathSubtext:SetText(GetFlatSubtext(resultRow.data))
+            resultRow.pathSubtext:SetTextColor(0.55, 0.55, 0.55, 1.0)
+        end
+    end
+    kb1:HookScript("OnEnter", MakeKbHoverHandler("primary"))
+    kb1:HookScript("OnLeave", KbLeaveHandler)
+    kb2:HookScript("OnEnter", MakeKbHoverHandler("alternate"))
+    kb2:HookScript("OnLeave", KbLeaveHandler)
+
     -- Inline dropdown widget for settings whose options enumerate. Matches
     -- the in-game SettingsDropdownWithSteppers control:
     --   prev/next: common-dropdown-c-button-hover-2 (25x25 paddle body)
@@ -4423,15 +5092,46 @@ function UI:CreateResultButton(index)
         ddTxt:SetPoint("RIGHT", ddArrow, "LEFT", -4, 0)
         ddTxt:SetJustifyH("CENTER")
         ddTxt:SetWordWrap(false)
+        ddTxt:SetNonSpaceWrap(false)
+        ddTxt:SetMaxLines(1)
     end
     resultRow.settingDropdownLabel = ddCenter
+    -- Width-bounded truncation with ellipses. Anchor-clipped FontStrings
+    -- silently chop with no marker, so we measure and append "..." when
+    -- the value would overflow the chevron-padded button.
+    resultRow.SetSettingDropdownText = function(self, value)
+        local btn = self.settingDropdownLabel
+        if not btn then return end
+        value = value or ""
+        btn:SetText(value)
+        local fs = btn:GetFontString()
+        if not fs then return end
+        local btnW = btn:GetWidth() or 0
+        -- Reserve room for: 8px left pad + chevron at -8 from right (12 wide,
+        -- so 20 from right edge) + 8px gap before the chevron = 36 total.
+        local maxW = btnW - 38
+        if maxW <= 0 or #value == 0 then return end
+        local function getW()
+            return (fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth())
+                or (fs.GetStringWidth and fs:GetStringWidth())
+                or 0
+        end
+        if getW() <= maxW then return end
+        for cut = #value - 1, 1, -1 do
+            btn:SetText(value:sub(1, cut) .. "...")
+            if getW() <= maxW then return end
+        end
+    end
 
-    -- Open the native Blizzard menu on click. Reads opts/current value
+    -- Open our custom dropdown popup on click. Reads opts/current value
     -- from whatever data the row has *now*, since rows are pooled and the
-    -- same physical button serves different settings across renders.
+    -- same physical button serves different settings across renders. We
+    -- avoid MenuUtil here because its option click target can be narrower
+    -- than the visible label for very long strings, silently swallowing
+    -- selection on the longest entry.
     ddCenter:SetScript("OnClick", function(self)
         local rowData = resultRow.data
-        if not rowData or not rowData.settingVariable or not MenuUtil then return end
+        if not rowData or not rowData.settingVariable then return end
         local opts = rowData.settingOptions
         if not opts and ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.GetOptionsForVariable then
             opts = ns.BlizzOptionsSearch.GetOptionsForVariable(rowData.settingVariable)
@@ -4439,18 +5139,9 @@ function UI:CreateResultButton(index)
         end
         if not opts or #opts == 0 then return end
         local var = rowData.settingVariable
-        MenuUtil.CreateContextMenu(self, function(_, rootDescription)
-            for i = 1, #opts do
-                local opt = opts[i]
-                local optValue = opt.value
-                rootDescription:CreateRadio(opt.label or tostring(optValue), function()
-                    local cur = ReadSettingVariable(var)
-                    return cur == optValue or tostring(cur) == tostring(optValue)
-                end, function()
-                    UI:SetSettingDropdownValue(rowData, optValue)
-                end)
-            end
-        end)
+        ShowInlineSettingDropdown(self, opts,
+            function() return ReadSettingVariable(var) end,
+            function(value) UI:SetSettingDropdownValue(rowData, value) end)
     end)
 
     ddPrev:SetScript("OnClick", function()
@@ -4531,6 +5222,12 @@ function UI:CreateResultButton(index)
     text:SetPoint("LEFT", icon, "RIGHT", 4, 0)
     text:SetPoint("RIGHT", amountText, "LEFT", -4, 0)
     text:SetJustifyH("LEFT")
+    -- Single-line, no wrap. The render path uses SetClippedText below
+    -- to append "..." when the name is too wide for the available
+    -- horizontal space, matching how the dropdown widget truncates.
+    text:SetWordWrap(false)
+    text:SetNonSpaceWrap(false)
+    text:SetMaxLines(1)
     resultRow.text = text
 
     -- Path subtext (flat-headerless mode only). Anchored under the name in the
@@ -4773,6 +5470,43 @@ function UI:CreateResultButton(index)
             local onAddAlias = canAlias and function()
                 UI:PromptForAlias(pinData)
             end or nil
+            local extra
+            if pinData.achievementID and pinData.category == "Achievement" then
+                local achID = pinData.achievementID
+                local isTracked = UI:IsAchievementTracked(achID)
+                extra = {
+                    isTracked = isTracked,
+                    onTrack = function() UI:ToggleAchievementTracked(achID) end,
+                }
+            elseif pinData.category == "Currency" and pinData.currencyID then
+                local cid = pinData.currencyID
+                extra = {
+                    isOnBackpack = UI:IsCurrencyOnBackpack(cid),
+                    onToggleBackpack = function() UI:ToggleCurrencyBackpack(cid) end,
+                }
+                if UI:IsCurrencyTransferable(cid) then
+                    extra.onTransfer = function() UI:RouteCurrencyTransfer(pinData) end
+                end
+            elseif pinData.transmogSetID then
+                local sid = pinData.transmogSetID
+                extra = {
+                    isFavorite = UI:IsTransmogSetFavorite(sid),
+                    onToggleFavorite = function() UI:ToggleTransmogSetFavorite(sid) end,
+                }
+            elseif pinData.petID then
+                local pid = pinData.petID
+                local cageable = UI:IsPetCageable(pid)
+                extra = {
+                    onSummon = function() UI:SummonPet(pid) end,
+                    onRename = function() UI:RenamePet(pid) end,
+                    isFavorite = UI:IsPetFavorite(pid),
+                    onToggleFavorite = function() UI:TogglePetFavorite(pid) end,
+                    onCageOrRelease = function()
+                        if cageable then UI:CagePet(pid) else UI:ReleasePet(pid) end
+                    end,
+                    isCageable = cageable,
+                }
+            end
             ShowPinPopup(self, isPinned, function()
                 if isPinned then
                     UnpinUIItem(pinData)
@@ -4786,7 +5520,7 @@ function UI:CreateResultButton(index)
                 else
                     UI:OnSearchTextChanged(text, true)
                 end
-            end, onGuide, onAddAlias)
+            end, onGuide, onAddAlias, extra)
             return
         end
 
@@ -4853,12 +5587,42 @@ function UI:CreateResultButton(index)
     resultRow:SetScript("OnEnter", function(self)
         -- Hover-based action hint (mirrors keyboard selection hint).
         ApplyActionHint(self)
+        -- Macro rows: resolve the #showtooltip / first cast/use line to a
+        -- spell or item via the macro APIs and surface that tooltip. Falls
+        -- back to displaying the macro body when neither resolves.
+        if self.data and self.data.macroIndex and self.data.category == "Macro" then
+            local idx = self.data.macroIndex
+            local spellID
+            if GetMacroSpell then
+                local _, _, sid = GetMacroSpell(idx)
+                spellID = sid
+            end
+            local itemName, itemLink
+            if not spellID and GetMacroItem then
+                itemName, itemLink = GetMacroItem(idx)
+            end
+            AnchorTooltipAtCursor(GameTooltip, self)
+            if spellID and GameTooltip.SetSpellByID then
+                GameTooltip:SetSpellByID(spellID)
+            elseif itemLink and GameTooltip.SetHyperlink then
+                GameTooltip:SetHyperlink(itemLink)
+            elseif itemName and GameTooltip.SetItemByID and select(2, GetItemInfo(itemName)) then
+                GameTooltip:SetHyperlink(select(2, GetItemInfo(itemName)))
+            else
+                GameTooltip:SetText(self.data.name or "Macro", 1, 1, 1)
+                if self.data.macroBody and self.data.macroBody ~= "" then
+                    GameTooltip:AddLine(self.data.macroBody, 0.7, 0.7, 0.7, true)
+                end
+            end
+            GameTooltip:Show()
+            return
+        end
         -- Talent / Ability rows: show the spell tooltip (talents share the
         -- spell tooltip surface). Mirrors the icon-OnEnter path so the row
         -- itself produces a tooltip even when the cursor is on the name.
         if self.data and self.data.spellID
            and (self.data.category == "Talent" or self.data.category == "Ability") then
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            AnchorTooltipAtCursor(GameTooltip, self)
             if GameTooltip.SetSpellByID then
                 GameTooltip:SetSpellByID(self.data.spellID)
             else
@@ -4867,10 +5631,28 @@ function UI:CreateResultButton(index)
             GameTooltip:Show()
             return
         end
+        -- Currency row: show the currency tooltip (icon + description +
+        -- amount). Routed early so it doesn't fall through to the
+        -- generic icon-tooltip block, which only checks mount / toy /
+        -- pet / etc. fields and would otherwise miss currencies.
+        if self.data and self.data.category == "Currency" and self.data.currencyID then
+            local cid = self.data.currencyID
+            AnchorTooltipAtCursor(GameTooltip, self)
+            if GameTooltip.SetCurrencyByID then
+                GameTooltip:SetCurrencyByID(cid)
+            elseif C_CurrencyInfo and C_CurrencyInfo.GetCurrencyLink then
+                local lok, link = pcall(C_CurrencyInfo.GetCurrencyLink, cid)
+                if lok and link and GameTooltip.SetHyperlink then
+                    GameTooltip:SetHyperlink(link)
+                end
+            end
+            GameTooltip:Show()
+            return
+        end
         -- Keybinding row: show the action name plus current bindings.
         if self.data and self.data.settingType == "keybind" and self.data.bindingAction then
             local action = self.data.bindingAction
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            AnchorTooltipAtCursor(GameTooltip, self)
             GameTooltip:SetText(self.data.name or action, 1, 1, 1)
             local k1, k2 = GetBindingKey(action)
             GameTooltip:AddLine(" ")
@@ -4891,7 +5673,7 @@ function UI:CreateResultButton(index)
             if ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.GetTooltipForVariable then
                 tipText = ns.BlizzOptionsSearch.GetTooltipForVariable(var, self.data.name)
             end
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            AnchorTooltipAtCursor(GameTooltip, self)
             GameTooltip:SetText(self.data.name or var, 1, 1, 1)
             if tipText then
                 GameTooltip:AddLine(tipText, 1, 0.82, 0, true)
@@ -4940,15 +5722,38 @@ function UI:CreateResultButton(index)
                 ns.MapSearch:PreviewUIResult(self.data)
             end
         elseif self.data and self.icon and self.icon:IsShown() then
+            -- Per-flyout tooltip suppression. Collections covers the
+            -- mount / toy / pet / outfit / heirloom / appearance set
+            -- group; loot (the gear flyout's "Hide tooltips") covers
+            -- itemized gear results AND any bag item that's actual
+            -- gear — the entry being a "Bag" by category is incidental
+            -- to where it lives, the user-facing class of thing is
+            -- "gear" either way.
+            local ht = EasyFind.db.hideTooltips
+            local ic = self.icon
+            if ht and ht.collections and (ic.mountID or ic.toyItemID or ic.petID
+                or ic.outfitID or ic.heirloomItemID or ic.transmogSetID) then
+                return
+            end
+            if ht and ht.loot then
+                if ic.lootItemID then return end
+                if ic.bagItemID and self.data and self.data.equipLoc then
+                    local slot = self.data.equipLoc
+                    if slot ~= "" and slot ~= "INVTYPE_NON_EQUIP"
+                       and slot ~= "INVTYPE_AMMO" and slot ~= "INVTYPE_QUIVER" then
+                        return
+                    end
+                end
+            end
             -- Mount tooltip (show on icon hover)
             if self.icon.mountID and self.icon.spellID then
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                AnchorTooltipAtCursor(GameTooltip, self)
                 GameTooltip:SetMountBySpellID(self.icon.spellID)
                 GameTooltip:Show()
             -- Toy tooltip with live cooldown refresh
             elseif self.icon.toyItemID then
                 local toyItemID = self.icon.toyItemID
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                AnchorTooltipAtCursor(GameTooltip, self)
                 GameTooltip:SetToyByItemID(toyItemID)
                 GameTooltip:Show()
                 self.toyTooltipTicker = C_Timer.NewTicker(1, function()
@@ -4962,16 +5767,16 @@ function UI:CreateResultButton(index)
                 local link = C_PetJournal and C_PetJournal.GetBattlePetLink
                     and C_PetJournal.GetBattlePetLink(self.icon.petID)
                 if link and BattlePetToolTip_ShowLink then
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    AnchorTooltipAtCursor(GameTooltip, self)
                     BattlePetToolTip_ShowLink(link)
                 elseif link then
-                    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                    AnchorTooltipAtCursor(GameTooltip, self)
                     GameTooltip:SetHyperlink(link)
                     GameTooltip:Show()
                 end
             -- Outfit tooltip
             elseif self.icon.outfitID then
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                AnchorTooltipAtCursor(GameTooltip, self)
                 GameTooltip:SetText(self.data and self.data.name or "Outfit")
                 GameTooltip:AddLine("Instant", 1, 1, 1)
                 GameTooltip:AddLine("Transmogrify the appearance of your\nweapons and armor", 0, 1, 0)
@@ -4999,7 +5804,7 @@ function UI:CreateResultButton(index)
                 GameTooltip:Show()
             -- Loot item tooltip
             elseif self.icon.lootItemID then
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                AnchorGearTooltip(GameTooltip, self)
                 local itemLink = self.data and ns.Database and ns.Database:GetLootItemLink(self.data)
                 if itemLink then
                     GameTooltip:SetHyperlink(itemLink)
@@ -5009,22 +5814,32 @@ function UI:CreateResultButton(index)
                 GameTooltip:Show()
             -- Heirloom tooltip
             elseif self.icon.heirloomItemID then
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                AnchorGearTooltip(GameTooltip, self)
                 GameTooltip:SetItemByID(self.icon.heirloomItemID)
                 GameTooltip:Show()
             -- Ability tooltip (must come after mount, since mount entries
             -- carry both mountID and spellID and use the mount tooltip).
             elseif self.icon.spellID then
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                AnchorTooltipAtCursor(GameTooltip, self)
                 if GameTooltip.SetSpellByID then
                     GameTooltip:SetSpellByID(self.icon.spellID)
                 else
                     GameTooltip:SetHyperlink("spell:" .. self.icon.spellID)
                 end
                 GameTooltip:Show()
-            -- Bag item tooltip
+            -- Bag item tooltip. Real gear (helm/chest/weapon/etc.) gets
+            -- the panel-edge buffer because of the compare frame; bag
+            -- consumables / containers are normal-sized so they follow
+            -- the cursor like everything else.
             elseif self.icon.bagItemID then
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                local slot = self.data and self.data.equipLoc
+                local isGear = slot and slot ~= "" and slot ~= "INVTYPE_NON_EQUIP"
+                              and slot ~= "INVTYPE_AMMO" and slot ~= "INVTYPE_QUIVER"
+                if isGear then
+                    AnchorGearTooltip(GameTooltip, self)
+                else
+                    AnchorTooltipAtCursor(GameTooltip, self)
+                end
                 local link = self.data and self.data.bagItemLink
                 if link then
                     GameTooltip:SetHyperlink(link)
@@ -5300,7 +6115,9 @@ function UI:OnSearchTextChanged(text, force)
                     or filters.currencies == false or filters.reputations == false
                     or filters.bags == false or filters.macros == false
                     or filters.options == false
-                    or filters.gameOptions == false or filters.addonOptions == false) then
+                    or filters.gameOptions == false or filters.addonOptions == false
+                    or filters.titles == false or filters.gearSets == false
+                    or filters.talents == false) then
         wipe(SCRATCH.filteredResults)
         local filtered = SCRATCH.filteredResults
         local fi = 0
@@ -5324,6 +6141,16 @@ function UI:OnSearchTextChanged(text, force)
         results = filtered
     end
 
+    -- Currency filter mode: kept in DB so it can drive bidirectional
+    -- sync with the in-game CurrencyFrame's filter dropdown later, but
+    -- we deliberately don't prune our own search results here. The
+    -- in-game tab shows every currency the character has discovered
+    -- (zero-quantity warband-transferable ones included), and an
+    -- earlier per-cache `isAccountTransferable` check was hiding some
+    -- of those because the flag's truthiness varied across builds.
+    -- Showing everything keeps search at least as inclusive as the
+    -- in-game tab regardless of what mode is selected.
+
     -- Map Search: search static locations and dungeon entrances, merge into results
     local mapResults
     if filters and filters.map ~= false and ns.MapSearch and ns.MapSearch.SearchForUI then
@@ -5337,6 +6164,44 @@ function UI:OnSearchTextChanged(text, force)
         for ri = 1, #mapResults do combined[#combined + 1] = mapResults[ri] end
     end
     if #combined > 1 then tsort(combined, FlatNameLess) end
+
+    -- Hard cap on visible results. The scoring step already ranks by
+    -- relevance; everything past the cap is noise the user has to scroll
+    -- through. Pinned items aren't in this set (they only show on empty
+    -- query), so the cap is a clean top-N over the actual search match
+    -- list. 15 matches the original uiMaxResults default.
+    local TOP_N = 15
+    if #combined > TOP_N then
+        for ri = #combined, TOP_N + 1, -1 do combined[ri] = nil end
+    end
+
+    -- Inline achievement results: drive Blizzard's indexed achievement
+    -- search and surface its results directly in our dropdown. First
+    -- call for a given query kicks off the (already-built) index lookup
+    -- and returns nothing; ACHIEVEMENT_SEARCH_UPDATED fires next frame
+    -- and we re-render with the cached results. Score each one through
+    -- ScoreName so they interleave naturally with mount / toy / setting
+    -- hits ranked off the same query, instead of clumping at a fixed
+    -- band.
+    if text ~= "" and (not filters or filters.achievements ~= false) then
+        local achHits = self:RequestAchievementSearch(text)
+        if achHits and ns.Database and ns.Database.ScoreName then
+            local lowerQ = slower(text)
+            local qLen = #lowerQ
+            -- Blizzard's index returns matches across name + description
+            -- + criteria; we only want name matches here (the user has
+            -- the UI Elements filter for navigating to achievement
+            -- categories by their subtext). Drop anything ScoreName
+            -- can't rank against the name itself.
+            for ai = 1, #achHits do
+                local entry = achHits[ai]
+                local score = ns.Database:ScoreName(entry.nameLower, lowerQ, qLen)
+                if score and score > 0 then
+                    combined[#combined + 1] = { data = entry, score = score }
+                end
+            end
+        end
+    end
 
     local n = 0
     for ri = 1, #combined do
@@ -5354,6 +6219,7 @@ function UI:OnSearchTextChanged(text, force)
             e.isMatch = true
             e.isFlat = true
             e.flatCatKey = nil
+            e.isPinned = IsUIItemPinned(d) and true or false
             e.data = d
         end
     end
@@ -5468,7 +6334,10 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         if same then
             for hi = 1, n do
                 local e = hierarchical[hi]
-                if last[hi * 2 - 1] ~= e.data or last[hi * 2] ~= (e.depth or 0) then
+                local stride = (hi - 1) * 3
+                if last[stride + 1] ~= e.data
+                   or last[stride + 2] ~= (e.depth or 0)
+                   or last[stride + 3] ~= (e.isPinned and 1 or 0) then
                     same = false
                     break
                 end
@@ -5490,10 +6359,12 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         last.maxResultsH = maxResultsH
         for hi = 1, n do
             local e = hierarchical[hi]
-            last[hi * 2 - 1] = e.data
-            last[hi * 2] = e.depth or 0
+            local stride = (hi - 1) * 3
+            last[stride + 1] = e.data
+            last[stride + 2] = e.depth or 0
+            last[stride + 3] = e.isPinned and 1 or 0
         end
-        for i = n * 2 + 1, #last do last[i] = nil end
+        for i = n * 3 + 1, #last do last[i] = nil end
     end
 
     ClearResultTooltips()
@@ -5606,9 +6477,6 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     local maxVisibleHeight = EasyFind.db.uiResultsHeight or 280
     local willScroll = visibleN * rowH > maxVisibleHeight
     local scrollInset = 0
-    if willScroll and resultsFrame.scrollBar then
-        scrollInset = resultsFrame.scrollBar:GetWidth()
-    end
 
     wipe(SCRATCH.isLastChild)
     local isLastChild = SCRATCH.isLastChild
@@ -5686,6 +6554,25 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             end
 
             resultRow.data = data
+            -- Reset every icon.* tooltip-identifier the OnEnter handler
+            -- looks at. Without this, rows recycled from a previous
+            -- render leak their old category's tooltip — e.g. a row
+            -- that was "Felfire Hawk" (mount) becoming "Bronze Bullion"
+            -- (currency) keeps icon.mountID set, so OnEnter shows the
+            -- mount tooltip instead. Only the mount/toy/.../bag branch
+            -- below resets these per-field; categories like currency,
+            -- reputation, achievement, settings never enter that branch
+            -- and used to inherit stale state.
+            if resultRow.icon then
+                resultRow.icon.mountID = nil
+                resultRow.icon.toyItemID = nil
+                resultRow.icon.petID = nil
+                resultRow.icon.spellID = nil
+                resultRow.icon.outfitID = nil
+                resultRow.icon.heirloomItemID = nil
+                resultRow.icon.bagItemID = nil
+                resultRow.icon.lootItemID = nil
+            end
             -- Secure action attributes. Cache the (type, value) we last
             -- applied to this row so we only re-issue SetAttribute when
             -- the row's data actually changed. SetAttribute on a secure
@@ -5812,9 +6699,9 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 resultRow.text:ClearAllPoints()
                 resultRow.text:SetPoint("LEFT", resultRow, "LEFT", 2, 0)
                 resultRow.text:SetPoint("RIGHT", resultRow.pinToggle, "LEFT", -4, 0)
-                resultRow.text:SetText(entry.name)
                 SetScaledFont(resultRow.text, theme.pathFont)
                 resultRow.text:SetTextColor(0.7, 0.7, 0.7, 1.0)
+                SetClippedText(resultRow.text, entry.name)
             elseif entry.isSectionHeader then
                 -- Lightweight inline section label: centered text
                 -- between two faint horizontal rules. Used for
@@ -6002,13 +6889,13 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     resultRow.text:ClearAllPoints()
                     resultRow.text:SetPoint("BOTTOMLEFT", leftAnchor, "RIGHT", 6, stackHalfGap)
                     resultRow.text:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
-                    resultRow.text:SetText(entry.name)
                     SetScaledFont(resultRow.text, theme.pathFont)
                     if isUnearnedCurrency then
                         resultRow.text:SetTextColor(0.5, 0.5, 0.5, 1.0)
                     else
                         resultRow.text:SetTextColor(1.0, 1.0, 1.0, 1.0)
                     end
+                    SetClippedText(resultRow.text, entry.name)
 
                     resultRow.pathSubtext:ClearAllPoints()
                     resultRow.pathSubtext:SetPoint("TOPLEFT", resultRow.text, "BOTTOMLEFT", 0, -stackGap)
@@ -6024,7 +6911,6 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     resultRow.text:ClearAllPoints()
                     resultRow.text:SetPoint("LEFT", resultRow.icon, "RIGHT", 4, 0)
                     resultRow.text:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
-                    resultRow.text:SetText(entry.name)
 
                     if resultRow.pathSubtext then
                         resultRow.pathSubtext:Hide()
@@ -6049,6 +6935,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                         SetScaledFont(resultRow.text, theme.leafFont)
                         resultRow.text:SetTextColor(unpack(theme.leafColor))
                     end
+                    SetClippedText(resultRow.text, entry.name)
                 end
             else
                 if resultRow.pathSubtext then resultRow.pathSubtext:Hide() end
@@ -6216,6 +7103,16 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                             resultRow.icon:SetVertexColor(0.3, 1, 0.3, 1)
                         else
                             resultRow.icon:SetVertexColor(1, 1, 1, 1)
+                        end
+                    -- Talents: desaturate the per-talent icon if not in
+                    -- the player's current allocation. Allocated talents
+                    -- (chosen choice option, or non-zero rank on regular
+                    -- nodes) render full color.
+                    elseif data.category == "Talent" then
+                        if data.talentIsAllocated then
+                            resultRow.icon:SetVertexColor(1, 1, 1, 1)
+                        else
+                            resultRow.icon:SetVertexColor(0.4, 0.4, 0.4, 1)
                         end
                     else
                         resultRow.icon:SetVertexColor(1, 1, 1, 1)
@@ -6613,8 +7510,8 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 local kb2 = resultRow.settingKeybind2
                 local function refresh()
                     local k1, k2 = GetBindingKey(action)
-                    kb1:SetText(k1 or "Not Bound")
-                    kb2:SetText(k2 or "Not Bound")
+                    kb1:SetText(AbbrevBinding(k1))
+                    kb2:SetText(AbbrevBinding(k2))
                 end
                 kb1._bindingAction = action
                 kb1._refresh = refresh
@@ -6733,7 +7630,11 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     if optList and #optList > 0 then
                         -- Inline dropdown widget: paddle arrows + center
                         -- button styled like the in-game Settings dropdown.
-                        resultRow.settingDropdownLabel:SetText(val or "")
+                        if resultRow.SetSettingDropdownText then
+                            resultRow:SetSettingDropdownText(val or "")
+                        else
+                            resultRow.settingDropdownLabel:SetText(val or "")
+                        end
                         resultRow.settingDropdownGroup:Show()
                         resultRow.amountText:Hide()
                         resultRow.text:SetPoint("RIGHT", resultRow.settingDropdownGroup, "LEFT", -4, 0)
@@ -6768,9 +7669,15 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             if entry.isFlat and resultRow.icon and resultRow.icon:IsShown() then
                 local d = entry.data
                 local rightSideIcon = d and (d.mountID or d.toyItemID or d.petID
-                    or d.outfitID or d.transmogSetID or d.category == "Currency"
+                    or d.outfitID or d.heirloomItemID or d.transmogSetID
+                    or d.category == "Currency"
                     or (d.itemID and d.category == "Loot")
                     or (d.spellID and d.category == "Talent")
+                    or (d.spellID and d.category == "Ability")
+                    or (d.encounterID and d.category == "Boss")
+                    or (d.macroIndex and d.category == "Macro")
+                    or (d.bagID and d.category == "Bag")
+                    or (d.achievementID and d.category == "Achievement")
                     or d.mapSearchResult)
                 if rightSideIcon then
                     local rightSize = entryRowH - 20
@@ -6794,9 +7701,15 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 local catShown = resultRow.flatCatIcon and resultRow.flatCatIcon:IsShown()
                 local d = data
                 local mainIconOnRight = d and (d.mountID or d.toyItemID or d.petID
-                    or d.outfitID or d.transmogSetID or d.category == "Currency"
+                    or d.outfitID or d.heirloomItemID or d.transmogSetID
+                    or d.category == "Currency"
                     or (d.itemID and d.category == "Loot")
                     or (d.spellID and d.category == "Talent")
+                    or (d.spellID and d.category == "Ability")
+                    or (d.encounterID and d.category == "Boss")
+                    or (d.macroIndex and d.category == "Macro")
+                    or (d.bagID and d.category == "Bag")
+                    or (d.achievementID and d.category == "Achievement")
                     or d.mapSearchResult)
 
                 local leftAnchor
@@ -6901,8 +7814,11 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 
             -- Off-spec abilities: desaturate the icon and dim the text
             -- to match the spellbook's greyed-out treatment for spells
-            -- that belong to a non-active spec line (offSpecID > 0).
-            if IsSpellbookOnlyAbility(data) then
+            -- that belong to a non-active spec line. Active passives
+            -- (current-spec, not castable but the player has them) stay
+            -- full-color -- they're still "yours". Click for both still
+            -- routes to the spellbook page since neither can be cast.
+            if data.isOffSpec then
                 if resultRow.icon then
                     resultRow.icon:SetVertexColor(0.4, 0.4, 0.4, 1.0)
                 end
@@ -6973,17 +7889,6 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     local hasScroll = totalContentHeight > maxVisibleHeight
     local visibleHeight = hasScroll and maxVisibleHeight or totalContentHeight
 
-    -- If scrollbar appeared but we didn't reserve space for it (e.g. stacked rep rows
-    -- pushed content past maxVisibleHeight), retroactively narrow all visible rows
-    -- so they don't bleed into the scrollbar.
-    if hasScroll and scrollInset == 0 and resultsFrame.scrollBar then
-        local scrollBarW = resultsFrame.scrollBar:GetWidth()
-        scrollInset = scrollBarW
-        for i = 1, count do
-            resultButtons[i]:SetWidth(resultButtons[i]:GetWidth() - scrollBarW)
-        end
-    end
-
     -- Size the results frame and scroll child
     resultsFrame:SetHeight(padT + padB + visibleHeight)
     resultsFrame.scrollChild:SetWidth(resultsFrame:GetWidth() - scrollInset)
@@ -7002,10 +7907,6 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     if resultsFrame.scrollBar then
         resultsFrame.scrollBar:SetShown(hasScroll)
         if hasScroll then
-            local scrollCenterX = resultsFrame:GetWidth() * 0.96
-            resultsFrame.scrollBar:ClearAllPoints()
-            resultsFrame.scrollBar:SetPoint("CENTER", resultsFrame, "TOPLEFT", scrollCenterX, -resultsFrame:GetHeight() / 2)
-            resultsFrame.scrollBar:UpdateBarHeight()
             resultsFrame.scrollBar:UpdateThumb(totalContentHeight, visibleHeight)
         end
     end
@@ -7501,7 +8402,7 @@ function UI:UpdateSelectionHighlight(skipRefocus)
         local rd = selRow and selRow.data
         local secureRow = rd and (rd.outfitID or rd.toyItemID
             or (rd.spellID and not IsSpellbookOnlyAbility(rd))
-            or rd.mountID or rd.macroIndex
+            or rd.mountID or rd.macroIndex or rd.slashCommand
             or (rd.itemID and rd.category == "Bag"))
         if secureRow then
             local btnName = selRow:GetName()
@@ -8234,12 +9135,12 @@ function UI:OpenToyInToyBox(data)
     step(1)
 end
 
--- Open PlayerSpellsFrame to the Talents tab (2) and highlight the
--- talent node matching data.talentNodeID. Mirrors OpenAbilityInSpellbook's
--- shape: prefer PlayerSpellsUtil.TogglePlayerSpellsFrame(tabID) for an
--- atomic open-to-tab; fall back to clicking the micro button + tab.
--- The talent step's own Highlight branch (in Highlight.lua) finds the
--- node button by GetNodeID() and highlights it once the tree is up.
+-- Open PlayerSpellsFrame to the Talents tab and drive Blizzard's own
+-- search box at PlayerSpellsFrame.TalentsFrame.SearchBox with the
+-- talent name. The game's native search highlights matching nodes
+-- with the spyglass icon -- no need for our own highlight pass.
+-- Cleanest path: matches the visual the player already recognizes
+-- and works for hero / sub-tree talents without us walking parents.
 function UI:OpenTalentInTalentsTab(data)
     local highlight = ns.Highlight
     local TALENTS_TAB = 2
@@ -8268,12 +9169,78 @@ function UI:OpenTalentInTalentsTab(data)
             end
             return
         end
-        -- Frame open and on Talents tab: hand off the node-highlight step
-        -- to the Highlight system. data.steps[3] is the talentNodeID step.
-        if highlight and highlight.StartGuideAtStep then
-            data.noCourseCorrect = true
-            highlight:StartGuideAtStep(data, 3)
+        -- Frame open and on Talents tab: light up the matching talent
+        -- button's SearchIcon directly. Each talent button is parented
+        -- to TalentsFrame.ButtonsParent (or a hero/sub-tree container)
+        -- and frame-named after the talent itself, so the cleanest path
+        -- is: walk children, match by GetName(), Show() the SearchIcon.
+        local talentsFrame = frame.TalentsFrame
+        local targetLower = (data.name or ""):lower()
+
+        local function nameOf(btn)
+            if not btn or not btn.GetName then return nil end
+            local n = btn:GetName()
+            return n and n:lower() or nil
         end
+
+        -- Recursive search: choice nodes nest the actual option button
+        -- one (or more) levels below ButtonsParent's direct child, so a
+        -- fixed 2-level walk misses them. Cap depth so we don't spin on
+        -- weird parent loops.
+        local function searchTree(frame, depth)
+            if not frame or depth > 5 then return nil end
+            if frame.SearchIcon and nameOf(frame) == targetLower then
+                return frame
+            end
+            if frame.GetChildren then
+                local kids = { frame:GetChildren() }
+                for i = 1, #kids do
+                    local found = searchTree(kids[i], depth + 1)
+                    if found then return found end
+                end
+            end
+            return nil
+        end
+
+        local function findMatchingButton()
+            if not talentsFrame then return nil end
+            local containers = {
+                talentsFrame.ButtonsParent,
+                talentsFrame.HeroTalentsContainer,
+                talentsFrame.SubTreeContainer,
+            }
+            for _, parent in ipairs(containers) do
+                local found = searchTree(parent, 0)
+                if found then return found end
+            end
+            return nil
+        end
+
+        local tries = 0
+        local function showSpyglass()
+            tries = tries + 1
+            local btn = findMatchingButton()
+            if btn and btn.SearchIcon and btn.SearchIcon.Show then
+                -- Bump strata above the talent button's own ARTWORK / OVERLAY
+                -- siblings so the spyglass isn't occluded by the talent
+                -- icon's connectors and glow textures.
+                if btn.SearchIcon.SetFrameStrata then
+                    btn.SearchIcon:SetFrameStrata("HIGH")
+                end
+                if btn.SearchIcon.SetFrameLevel and btn.GetFrameLevel then
+                    btn.SearchIcon:SetFrameLevel(btn:GetFrameLevel() + 10)
+                end
+                btn.SearchIcon:Show()
+                if ns.Highlight and ns.Highlight.RegisterTalentSearchIcon then
+                    ns.Highlight:RegisterTalentSearchIcon(btn, targetLower, nameOf)
+                end
+                return
+            end
+            if tries < 20 then
+                C_Timer.After(0.05, showSpyglass)
+            end
+        end
+        C_Timer.After(0, showSpyglass)
     end
 
     ensureFrameOnTab(1)
@@ -8366,16 +9333,24 @@ function UI:OpenAbilityInSpellbook(data)
         if targetElement then
             local elementBtn = FindVisibleButtonForElement(paged, targetElement)
             if elementBtn and highlight then
-                highlight:HighlightFrame(elementBtn, nil, stillRepresentsTarget)
-                HideHighlightOnHover(elementBtn)
+                if highlight.HighlightSpellbookSpell then
+                    highlight:HighlightSpellbookSpell(elementBtn, stillRepresentsTarget)
+                else
+                    highlight:HighlightFrame(elementBtn, nil, stillRepresentsTarget)
+                    HideHighlightOnHover(elementBtn)
+                end
                 return
             end
         end
 
         local btn = FindSpellbookButton(paged, data, false)
         if btn and highlight then
-            highlight:HighlightFrame(btn, nil, stillRepresentsTarget)
-            HideHighlightOnHover(btn)
+            if highlight.HighlightSpellbookSpell then
+                highlight:HighlightSpellbookSpell(btn, stillRepresentsTarget)
+            else
+                highlight:HighlightFrame(btn, nil, stillRepresentsTarget)
+                HideHighlightOnHover(btn)
+            end
             return
         end
 
@@ -8420,6 +9395,7 @@ function UI:SelectResult(data, forceGuide)
     -- the secure macrotext attribute set when the row was rendered. The
     -- click already ran the command; nothing else for SelectResult to do.
     if data.slashCommand then return end
+
 
 
     -- Transmogrification panel: load and show TransmogFrame
@@ -8617,10 +9593,23 @@ function UI:SelectResult(data, forceGuide)
     -- open the bag(s) containing them and highlight the slot.
     if data.itemID and data.category == "Bag" then
         if useFast then
+            -- Skip bag-open for anything the secure click will already act
+            -- on: explicit Use spells, equippable gear, AND broad item
+            -- types that "use" via right-click without a Use:tooltip line
+            -- (Consumable / Container / Quest). Without the type fallback,
+            -- right-click-openable containers like lockboxes still hit
+            -- the bag-open path, so the bag visibly pops AND the
+            -- container opens -- the user only wants the latter.
             local hasUseEffect = (C_Item and C_Item.GetItemSpell and C_Item.GetItemSpell(data.itemID))
                 or (GetItemSpell and GetItemSpell(data.itemID))
             local isEquippable = IsEquippableItem and IsEquippableItem(data.itemID)
-            if hasUseEffect or isEquippable then
+            local itemType
+            if not hasUseEffect and not isEquippable and GetItemInfo then
+                itemType = select(6, GetItemInfo(data.itemID))
+            end
+            if hasUseEffect or isEquippable
+               or itemType == "Consumable" or itemType == "Container"
+               or itemType == "Quest" then
                 return
             end
             local openBag = (C_Container and C_Container.OpenBag) or OpenBag
@@ -8965,6 +9954,10 @@ function UI:DirectOpen(data)
             local categoryToClick = step.statisticsCategory or step.achievementCategory
             if categoryToClick then
                 self:ClickAchievementCategory(categoryToClick)
+            end
+
+            if step.achievementID then
+                self:OpenAchievementByID(step.achievementID)
             end
 
             -- EJ tier + dungeon/raid tab (boss navigation when EJ is already
@@ -9334,6 +10327,345 @@ function UI:ClickAchievementCategory(categoryName)
     return false
 end
 
+-- Achievement watch/tracking. Modern WoW (Midnight) routes achievement
+-- tracking through C_ContentTracking with Enum.ContentTrackingType
+-- .Achievement. Older clients exposed top-level
+-- IsTrackedAchievement / AddTrackedAchievement /
+-- RemoveTrackedAchievement. We try the modern API first then fall back.
+local function GetAchievementContentType()
+    if Enum and Enum.ContentTrackingType
+       and Enum.ContentTrackingType.Achievement ~= nil then
+        return Enum.ContentTrackingType.Achievement
+    end
+    return nil
+end
+
+function UI:IsAchievementTracked(achievementID)
+    if not achievementID then return false end
+    local ct = GetAchievementContentType()
+    if ct ~= nil and C_ContentTracking and C_ContentTracking.IsTracking then
+        local ok, tracked = pcall(C_ContentTracking.IsTracking, ct, achievementID)
+        if ok then return tracked and true or false end
+    end
+    local fn = _G["IsTrackedAchievement"]
+    if fn then
+        local ok, tracked = pcall(fn, achievementID)
+        if ok then return tracked and true or false end
+    end
+    return false
+end
+
+function UI:ToggleAchievementTracked(achievementID)
+    if not achievementID then return end
+    local tracked = self:IsAchievementTracked(achievementID)
+    local ct = GetAchievementContentType()
+    if ct ~= nil and C_ContentTracking and C_ContentTracking.StartTracking then
+        if tracked then
+            -- StopTracking REQUIRES a third arg (Enum.ContentTrackingStopType);
+            -- omitting it causes the call to silently no-op. .User is the
+            -- "user clicked to stop tracking" reason.
+            local stopType = (Enum and Enum.ContentTrackingStopType
+                              and Enum.ContentTrackingStopType.User) or 0
+            pcall(C_ContentTracking.StopTracking, ct, achievementID, stopType)
+        else
+            pcall(C_ContentTracking.StartTracking, ct, achievementID)
+        end
+        return
+    end
+    if tracked then
+        local stop = _G["RemoveTrackedAchievement"]
+        if stop then pcall(stop, achievementID) end
+    else
+        local start = _G["AddTrackedAchievement"]
+        if start then pcall(start, achievementID) end
+    end
+end
+
+-- Pet (battle pet) right-click actions. petID here is a Blizzard pet
+-- GUID string returned by GetPetInfoByIndex / similar, NOT a numeric
+-- speciesID. All wrappers no-op gracefully when the pet APIs aren't
+-- available.
+function UI:SummonPet(petID)
+    if petID and C_PetJournal and C_PetJournal.SummonPetByGUID then
+        pcall(C_PetJournal.SummonPetByGUID, petID)
+    end
+end
+
+function UI:IsPetFavorite(petID)
+    if not petID or not C_PetJournal then return false end
+    if C_PetJournal.GetPetInfoByPetID then
+        local ok, _, _, _, _, _, _, _, _, _, _, _, _, _, isFav = pcall(C_PetJournal.GetPetInfoByPetID, petID)
+        if ok and isFav then return true end
+    end
+    return false
+end
+
+function UI:TogglePetFavorite(petID)
+    if not petID or not C_PetJournal or not C_PetJournal.SetFavorite then return end
+    local fav = self:IsPetFavorite(petID)
+    pcall(C_PetJournal.SetFavorite, petID, (not fav) and 1 or 0)
+end
+
+-- Returns true when the pet is cage-eligible (tradeable). Blizzard's
+-- context menu shows "Put In Cage" for these and "Release" for the
+-- rest; we mirror that distinction so the user gets the same affordance.
+function UI:IsPetCageable(petID)
+    if not petID or not C_PetJournal then return false end
+    if C_PetJournal.PetIsTradable then
+        local ok, val = pcall(C_PetJournal.PetIsTradable, petID)
+        if ok then return val and true or false end
+    end
+    return false
+end
+
+function UI:CagePet(petID)
+    if not petID or not C_PetJournal or not C_PetJournal.CagePetByID then return end
+    pcall(C_PetJournal.CagePetByID, petID)
+end
+
+function UI:ReleasePet(petID)
+    if not petID or not C_PetJournal or not C_PetJournal.ReleasePetByID then return end
+    StaticPopup_Show("EASYFIND_PET_RELEASE_CONFIRM", nil, nil, petID)
+end
+
+StaticPopupDialogs["EASYFIND_PET_RELEASE_CONFIRM"] = {
+    text = "Are you sure you want to permanently release this pet? This cannot be undone.",
+    button1 = ACCEPT or "OK",
+    button2 = CANCEL or "Cancel",
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    OnAccept = function(_, petID)
+        if petID and C_PetJournal and C_PetJournal.ReleasePetByID then
+            pcall(C_PetJournal.ReleasePetByID, petID)
+        end
+    end,
+}
+
+function UI:RenamePet(petID)
+    if not petID then return end
+    StaticPopup_Show("EASYFIND_PET_RENAME", nil, nil, petID)
+end
+
+StaticPopupDialogs["EASYFIND_PET_RENAME"] = {
+    text = "New name for this pet:",
+    button1 = ACCEPT or "OK",
+    button2 = CANCEL or "Cancel",
+    hasEditBox = true,
+    maxLetters = 16,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    enterClicksFirstButton = true,
+    OnShow = function(self, petID)
+        local eb = self.editBox or self.EditBox
+        if not eb then return end
+        local existing = ""
+        if petID and C_PetJournal and C_PetJournal.GetPetInfoByPetID then
+            local ok, _, customName, _, _, _, _, _, name = pcall(C_PetJournal.GetPetInfoByPetID, petID)
+            if ok then existing = customName or name or "" end
+        end
+        eb:SetText(existing)
+        eb:HighlightText()
+        eb:SetFocus()
+    end,
+    OnAccept = function(self, petID)
+        local eb = self.editBox or self.EditBox
+        local txt = eb and eb:GetText() or ""
+        if petID and C_PetJournal and C_PetJournal.SetCustomName then
+            pcall(C_PetJournal.SetCustomName, petID, txt)
+        end
+    end,
+}
+
+-- Transmog (appearance) set favorite toggle. The favorite flag lives on
+-- the BASE set (not the per-class / per-difficulty variants), so we
+-- always resolve to the base ID before reading or writing. Without this
+-- step, SetIsFavorite is a silent no-op when called with a variant ID.
+local function ResolveTransmogBaseSetID(setID)
+    if not setID or not C_TransmogSets then return setID end
+    if C_TransmogSets.GetBaseSetID then
+        local ok, baseID = pcall(C_TransmogSets.GetBaseSetID, setID)
+        if ok and baseID and baseID ~= 0 then return baseID end
+    end
+    return setID
+end
+
+function UI:IsTransmogSetFavorite(setID)
+    if not setID or not C_TransmogSets then return false end
+    local baseID = ResolveTransmogBaseSetID(setID)
+    if C_TransmogSets.GetIsFavorite then
+        local ok, fav = pcall(C_TransmogSets.GetIsFavorite, baseID)
+        if ok and fav then return true end
+    end
+    if C_TransmogSets.GetSetInfo then
+        local ok, info = pcall(C_TransmogSets.GetSetInfo, baseID)
+        if ok and type(info) == "table" and info.favoriteSetID then return true end
+        if ok and type(info) == "table" and info.favorite then return true end
+    end
+    return false
+end
+
+function UI:ToggleTransmogSetFavorite(setID)
+    if not setID or not C_TransmogSets then return end
+    local baseID = ResolveTransmogBaseSetID(setID)
+    local fav = self:IsTransmogSetFavorite(baseID)
+    if C_TransmogSets.SetIsFavorite then
+        pcall(C_TransmogSets.SetIsFavorite, baseID, not fav)
+    elseif C_TransmogSets.MarkSetFavorite then
+        pcall(C_TransmogSets.MarkSetFavorite, baseID, not fav)
+    end
+end
+
+-- Backpack-tracker toggle for currencies. Mirrors what the in-game
+-- "Show on backpack" checkbox in the Currency tab does.
+function UI:IsCurrencyOnBackpack(currencyID)
+    if not currencyID or currencyID == 0 or not C_CurrencyInfo then return false end
+    -- The enumeration list is authoritative. The CurrencyInfo struct's
+    -- `isShowInBackpack` flag in modern builds indicates *capability*
+    -- (the currency is allowed to be tracked), not current state — so
+    -- using it always read as on, the toggle always tried to add, and
+    -- removal silently no-op'd.
+    local getInfo = C_CurrencyInfo.GetBackpackCurrencyInfo
+    if getInfo then
+        local cap = (_G["MAX_WATCHED_TOKENS"]) or 3
+        for i = 1, cap do
+            local bok, bi = pcall(getInfo, i)
+            if not bok or type(bi) ~= "table" then break end
+            local id = bi.currencyTypesID or bi.currencyID
+            -- Require a non-zero ID match. Some clients return a
+            -- placeholder table for unused tracker slots with id=0 /
+            -- name="" / nil quantity instead of returning nil; without
+            -- this guard, comparing against currencyID still works but
+            -- we'd false-positive if the caller ever passed 0 or nil
+            -- through (defended above) — keep the explicit check so a
+            -- future mistake at a call site can't bite.
+            if id and id ~= 0 and id == currencyID then return true end
+        end
+        return false
+    end
+    -- Fallback for builds that don't expose the enumeration: trust the
+    -- inline flag from GetCurrencyInfo.
+    local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
+    if not ok or type(info) ~= "table" then return false end
+    return info.isShowInBackpack and true or false
+end
+
+function UI:ToggleCurrencyBackpack(currencyID)
+    if not currencyID or not C_CurrencyInfo then return end
+    local on = self:IsCurrencyOnBackpack(currencyID)
+    local target = not on
+
+    -- Backpack tracker caps at 3. When the user tries to ADD a fourth,
+    -- raise the same red UIErrorsFrame message Blizzard's default UI
+    -- shows instead of silently dropping the call.
+    if target and C_CurrencyInfo.GetBackpackCurrencyInfo then
+        local cap = (_G["MAX_WATCHED_TOKENS"]) or 3
+        local count = 0
+        for i = 1, cap + 1 do
+            local bok, bi = pcall(C_CurrencyInfo.GetBackpackCurrencyInfo, i)
+            if not bok or type(bi) ~= "table" then break end
+            count = count + 1
+        end
+        if count >= cap then
+            local msg = (_G["TOKEN_BACKPACK_FULL_MESSAGE"])
+                or string.format("You may only watch %d currencies at a time", cap)
+            local errFrame = _G["UIErrorsFrame"]
+            if errFrame and errFrame.AddMessage then
+                errFrame:AddMessage(msg, 1.0, 0.1, 0.1, 1.0)
+            end
+            return
+        end
+    end
+
+    -- SetCurrencyBackpackByID takes a currency ID directly. The older
+    -- SetCurrencyBackpack takes a *list index* (which is why it
+    -- silently no-op'd / hit the wrong currency when called with an
+    -- ID). Prefer the by-ID variant when available.
+    if C_CurrencyInfo.SetCurrencyBackpackByID then
+        pcall(C_CurrencyInfo.SetCurrencyBackpackByID, currencyID, target)
+    elseif C_CurrencyInfo.SetCurrencyBackpack then
+        pcall(C_CurrencyInfo.SetCurrencyBackpack, currencyID, target)
+    end
+
+    -- Force the visible backpack token strip to refresh now. The
+    -- SetCurrency* call updates state but doesn't always notify the
+    -- ContainerFrame's token row when the bag is already open, so the
+    -- user sees stale icons until they close and reopen. Call every
+    -- update entry-point we know about; whichever exists in this
+    -- client wins, the rest no-op.
+    local candidates = {
+        _G["BackpackTokenFrame"],
+        _G["BackpackTokenFrame_Update"],
+    }
+    for _, c in ipairs(candidates) do
+        if type(c) == "function" then
+            pcall(c)
+        elseif type(c) == "table" then
+            if c.Update then pcall(c.Update, c) end
+            if c.UpdateTokens then pcall(c.UpdateTokens, c) end
+        end
+    end
+    -- Container frames host the token row in modern bag UI. Iterate
+    -- the standard ContainerFrame1..N looking for an Update method.
+    for i = 1, 13 do
+        local cf = _G["ContainerFrame" .. i]
+        if cf and cf.Update then pcall(cf.Update, cf) end
+        local tokenFrame = cf and cf.tokenFrame
+        if tokenFrame and tokenFrame.Update then
+            pcall(tokenFrame.Update, tokenFrame)
+        end
+    end
+end
+
+function UI:IsCurrencyTransferable(currencyID)
+    return ns.Database and ns.Database.IsCurrencyAccountTransferable
+       and ns.Database:IsCurrencyAccountTransferable(currencyID) or false
+end
+
+-- Open the Currency tab to the given currency, then click the
+-- TokenFramePopup's transfer toggle. The first half mirrors what a
+-- left-click on the row would do; we then chain a deferred click on
+-- the transfer button once the popup is laid out.
+function UI:RouteCurrencyTransfer(pinData)
+    if not pinData then return end
+    self:SelectResult(pinData)
+    if not Utils or not Utils.SafeAfter then return end
+    local function clickTransfer()
+        local btn = _G["TokenFramePopup"] and _G["TokenFramePopup"].CurrencyTransferToggleButton
+        if btn and btn:IsShown() and btn.Click then
+            btn:Click()
+        end
+    end
+    Utils.SafeAfter(0.1, clickTransfer)
+    Utils.SafeAfter(0.25, clickTransfer)
+end
+
+-- Open the AchievementFrame to a specific achievement. Tries Blizzard's
+-- modern OpenAchievementFrameToAchievement first; falls back to the
+-- legacy AchievementFrame_SelectAchievement; finally just shows the
+-- frame so the user can find it manually.
+function UI:OpenAchievementByID(achievementID)
+    if not achievementID then return end
+    if _G["AchievementFrame_LoadUI"] then
+        pcall(_G["AchievementFrame_LoadUI"])
+    end
+    local frame = _G["AchievementFrame"]
+    if frame and not frame:IsShown() and ShowUIPanel then
+        ShowUIPanel(frame)
+    end
+    local opener = _G["OpenAchievementFrameToAchievement"]
+    if opener then
+        pcall(opener, achievementID)
+        return
+    end
+    local selector = _G["AchievementFrame_SelectAchievement"]
+    if selector then
+        pcall(selector, achievementID)
+    end
+end
+
+
 -- Helper function to click a side tab (PvE Group Finder tabs)
 -- Helper to extract text from various button types
 function UI:GetButtonText(frame)
@@ -9660,6 +10992,16 @@ function UI:RefreshResults()
             selectedIndex = savedIndex
             toggleFocused = savedToggle
             self:UpdateSelectionHighlight()
+        end
+        -- Re-apply the hover action hint. Re-render rewrote pathSubtext
+        -- back to GetFlatSubtext, so the row the cursor is still over
+        -- would otherwise revert to the unhovered subtext after a click.
+        for i = 1, #resultButtons do
+            local row = resultButtons[i]
+            if row and row:IsShown() and row:IsMouseOver() then
+                ApplyActionHint(row)
+                break
+            end
         end
     end
 end
@@ -10245,7 +11587,7 @@ function UI:ShowFirstTimeSetup()
             end)
         end)
         btn:HookScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            AnchorTooltipAtCursor(GameTooltip, self)
             GameTooltip:AddLine("Recommended: " .. recommended, 1, 1, 1, true)
             GameTooltip:AddLine("Click to bind. Right-click to clear.", 0.7, 0.7, 0.7, true)
             GameTooltip:Show()
