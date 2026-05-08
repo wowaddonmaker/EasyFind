@@ -10649,77 +10649,232 @@ function UI:IsCurrencyOnBackpack(currencyID)
     return info.isShowInBackpack and true or false
 end
 
--- Try to drive Blizzard's TokenFrame filter (the dropdown that toggles
--- between "Show All" and "Show Warband Transferable"). The exact API has
--- moved around across Dragonflight / War Within / Midnight, so try
--- known field/method names in order and refresh whichever is present.
-function UI:ApplyTokenFrameFilter(mode)
-    if not mode then return end
-    local warband = (mode == "warband")
-    if TokenFrame then
-        if TokenFrame.SetFilter then
-            pcall(TokenFrame.SetFilter, TokenFrame, mode)
-        elseif TokenFrame.SetFilterMode then
-            pcall(TokenFrame.SetFilterMode, TokenFrame, mode)
-        else
-            TokenFrame.filter = mode
-            TokenFrame.showWarband = warband
+-- Walk a frame's descendants depth-first looking for a CheckButton whose
+-- visible label contains the given (lowercase) substring. Used to find
+-- Blizzard's Hide Passives checkbox without hard-coding the dynamic hex
+-- frame path that changes each session.
+local function FindCheckButtonByText(frame, needle)
+    if not frame or not needle then return nil end
+    local function getLabelText(btn)
+        if btn.text and btn.text.GetText then return btn.text:GetText() end
+        if btn.Text and btn.Text.GetText then return btn.Text:GetText() end
+        if btn.Label and btn.Label.GetText then return btn.Label:GetText() end
+        if btn.GetFontString then
+            local fs = btn:GetFontString()
+            if fs and fs.GetText then return fs:GetText() end
         end
-        if TokenFrame.Update then
-            pcall(TokenFrame.Update, TokenFrame)
+        if btn.GetRegions then
+            local regions = { btn:GetRegions() }
+            for i = 1, #regions do
+                local r = regions[i]
+                if r and r.GetObjectType and r:GetObjectType() == "FontString" and r.GetText then
+                    local t = r:GetText()
+                    if t then return t end
+                end
+            end
         end
+        return nil
     end
-    if BackpackTokenFrame and BackpackTokenFrame.Update then
-        pcall(BackpackTokenFrame.Update, BackpackTokenFrame)
+    local function walk(f, depth)
+        if not f or depth > 8 then return nil end
+        local ot = f.GetObjectType and f:GetObjectType() or nil
+        if ot == "CheckButton" then
+            local t = getLabelText(f)
+            if t and slower(t):find(needle, 1, true) then return f end
+        end
+        if f.GetChildren then
+            local kids = { f:GetChildren() }
+            for i = 1, #kids do
+                local found = walk(kids[i], depth + 1)
+                if found then return found end
+            end
+        end
+        return nil
     end
+    return walk(frame, 0)
 end
 
--- Reputation filter (All / Warband / This Character). Same defensive
--- multi-API pattern -- Blizzard's reputation revamp shifted the storage
--- location across builds.
+-- Find a dropdown frame whose selected text matches one of `wantedTexts`.
+-- Modern Blizzard dropdowns expose SetSelectionByValue / Pick or
+-- inherit from DropdownButton. We don't try to drive the dropdown's
+-- internal value (Blizzard renamed the storage too many times); instead
+-- we find a child option button whose text matches and dispatch its
+-- OnClick like the user clicked it.
+local function ClickMatchingDropdownOption(frame, wantedTexts, depth)
+    if not frame or (depth or 0) > 10 then return false end
+    local ot = frame.GetObjectType and frame:GetObjectType() or nil
+    if ot == "Button" or ot == "CheckButton" then
+        local label
+        if frame.text and frame.text.GetText then label = frame.text:GetText()
+        elseif frame.Text and frame.Text.GetText then label = frame.Text:GetText()
+        else
+            if frame.GetRegions then
+                local regions = { frame:GetRegions() }
+                for i = 1, #regions do
+                    local r = regions[i]
+                    if r and r.GetObjectType and r:GetObjectType() == "FontString" then
+                        label = r:GetText()
+                        if label and label ~= "" then break end
+                    end
+                end
+            end
+        end
+        if label then
+            local lower = slower(label)
+            for _, want in ipairs(wantedTexts) do
+                if lower == slower(want) then
+                    local oc = frame:GetScript("OnClick")
+                    if oc then
+                        local ok = pcall(oc, frame, "LeftButton", true)
+                        if ok then return true end
+                    end
+                    if frame.Click then pcall(frame.Click, frame, "LeftButton") end
+                    return true
+                end
+            end
+        end
+    end
+    if frame.GetChildren then
+        local kids = { frame:GetChildren() }
+        for i = 1, #kids do
+            if ClickMatchingDropdownOption(kids[i], wantedTexts, (depth or 0) + 1) then return true end
+        end
+    end
+    return false
+end
+
+-- Trigger a click on a Blizzard dropdown so its menu pops up, then
+-- traverse the open menu (which lives under UIParent / DropDownList)
+-- to find and click the matching option. Restores the menu's hidden
+-- state at the end so we don't leave a dangling visible popup.
+local function DriveDropdown(dropdownFrame, wantedTexts)
+    if not dropdownFrame then return false end
+    -- Modern WowDropdownMenu pattern
+    if dropdownFrame.SetSelectionText then
+        pcall(dropdownFrame.SetSelectionText, dropdownFrame, wantedTexts[1])
+    end
+    -- Find the trigger button and click it to open the menu
+    local trigger = dropdownFrame.Button or dropdownFrame.MenuTrigger or dropdownFrame
+    if trigger and trigger.GetScript then
+        local oc = trigger:GetScript("OnMouseDown") or trigger:GetScript("OnClick")
+        if oc then pcall(oc, trigger, "LeftButton") end
+    end
+    -- Walk all currently visible UIParent children for an open menu and
+    -- click the matching item. The menu may live in DropDownList1 or
+    -- newer MenuFrame with dynamic name.
+    local function findMenu()
+        if DropDownList1 and DropDownList1:IsShown() then return DropDownList1 end
+        local kids = { UIParent:GetChildren() }
+        for i = 1, #kids do
+            local k = kids[i]
+            if k and k:IsShown() and k.GetObjectType and k:GetObjectType() == "Frame" then
+                local strata = k:GetFrameStrata()
+                if strata == "FULLSCREEN_DIALOG" or strata == "TOOLTIP" then
+                    -- Heuristic: menus are tall narrow popups
+                    if k:GetWidth() < 300 and k:GetHeight() < 400 then
+                        return k
+                    end
+                end
+            end
+        end
+        return nil
+    end
+    local menu = findMenu()
+    if not menu then return false end
+    local clicked = ClickMatchingDropdownOption(menu, wantedTexts, 0)
+    if menu.Hide then menu:Hide() end
+    return clicked
+end
+
+-- Currency filter (TokenFrame / BackpackTokenFrame). Modern dropdown
+-- API path is the priority; field-fallback is kept for older builds.
+function UI:ApplyTokenFrameFilter(mode)
+    if not mode then return end
+    if not TokenFrame then return end
+    local labels = (mode == "warband")
+        and { "Warband Transferable", "Show Warband Transferable", "Warband" }
+        or  { "All", "Show All", "This Character", "This Character Only" }
+    local fd = TokenFrame.filterDropdown or TokenFrame.FilterDropdown
+        or TokenFrame.filterDropDown or TokenFrame.dropdown
+    if fd and DriveDropdown(fd, labels) then
+        if TokenFrame.Update then pcall(TokenFrame.Update, TokenFrame) end
+        return
+    end
+    -- Fallback: defensive method/field set
+    for _, m in ipairs({ "SetFilter", "SetFilterMode" }) do
+        local fn = TokenFrame[m]
+        if fn then pcall(fn, TokenFrame, mode) end
+    end
+    if TokenFrame.Update then pcall(TokenFrame.Update, TokenFrame) end
+end
+
+-- Reputation filter (All / Warband / Char). Same dropdown-drive pattern.
 function UI:ApplyReputationFilter(mode)
     if not mode then return end
     if not ReputationFrame then return end
-    if ReputationFrame.SetFilter then
-        pcall(ReputationFrame.SetFilter, ReputationFrame, mode)
-    elseif ReputationFrame.SetFilterMode then
-        pcall(ReputationFrame.SetFilterMode, ReputationFrame, mode)
+    local labels
+    if mode == "warband" then
+        labels = { "Warband" }
+    elseif mode == "char" then
+        local n = UnitName and UnitName("player")
+        labels = n and { n } or { "Character" }
     else
-        ReputationFrame.filter = mode
+        labels = { "All" }
     end
-    if ReputationFrame.Update then
-        pcall(ReputationFrame.Update, ReputationFrame)
+    local fd = ReputationFrame.filterDropdown or ReputationFrame.FilterDropdown
+        or ReputationFrame.filterDropDown
+    if fd and DriveDropdown(fd, labels) then
+        if ReputationFrame.Update then pcall(ReputationFrame.Update, ReputationFrame) end
+        return
     end
+    for _, m in ipairs({ "SetFilter", "SetFilterMode" }) do
+        local fn = ReputationFrame[m]
+        if fn then pcall(fn, ReputationFrame, mode) end
+    end
+    if ReputationFrame.Update then pcall(ReputationFrame.Update, ReputationFrame) end
 end
 
+-- Show Legacy Reputations -- a checkbox in the same filter dropdown.
+-- The dropdown's checkboxes are toggled by clicking the matching item;
+-- driving the menu open + click is the most reliable cross-build path.
 function UI:ApplyReputationShowLegacy(show)
     if not ReputationFrame then return end
-    if ReputationFrame.SetShowLegacy then
-        pcall(ReputationFrame.SetShowLegacy, ReputationFrame, show and true or false)
-    else
-        ReputationFrame.showLegacy = show and true or false
-    end
-    if ReputationFrame.Update then
-        pcall(ReputationFrame.Update, ReputationFrame)
+    local fd = ReputationFrame.filterDropdown or ReputationFrame.FilterDropdown
+        or ReputationFrame.filterDropDown
+    if fd then
+        -- Snapshot current state so we only click when our state diverges.
+        local applied = DriveDropdown(fd, { "Show Legacy Reputations" })
+        if applied and ReputationFrame.Update then
+            pcall(ReputationFrame.Update, ReputationFrame)
+        end
     end
 end
 
--- Spellbook "Hide Passives" checkbox. Lives on PlayerSpellsFrame's
--- spellbook page in modern WoW; SpellBookFrame is the older path.
+-- Hide Passives. The actual checkbox is somewhere under the spellbook
+-- frame; rather than guess the path (Blizzard moves it across builds),
+-- walk descendants to find a CheckButton labeled "Hide Passives" and
+-- toggle it via its native OnClick so all of Blizzard's downstream
+-- bookkeeping fires.
 function UI:ApplySpellBookHidePassives(hide)
     hide = hide and true or false
     local frame = (PlayerSpellsFrame and PlayerSpellsFrame.SpellBookFrame) or SpellBookFrame
     if not frame then return end
-    if frame.SetHidePassives then
-        pcall(frame.SetHidePassives, frame, hide)
-    else
-        frame.hidePassives = hide
+    local cb = frame._easyFindHidePassivesCB
+    if not cb or not cb.GetChecked or not cb:IsShown() then
+        cb = FindCheckButtonByText(frame, "hide passives")
+        frame._easyFindHidePassivesCB = cb
     end
-    if frame.Update then
-        pcall(frame.Update, frame)
-    elseif frame.UpdateDisplayedSpells then
-        pcall(frame.UpdateDisplayedSpells, frame)
+    if not cb then
+        -- Last resort: defensive set + refresh
+        if frame.SetHidePassives then pcall(frame.SetHidePassives, frame, hide) end
+        if frame.UpdateDisplayedSpells then pcall(frame.UpdateDisplayedSpells, frame) end
+        return
     end
+    if cb:GetChecked() == hide then return end
+    cb:SetChecked(hide)
+    local oc = cb:GetScript("OnClick")
+    if oc then pcall(oc, cb, "LeftButton", true)
+    elseif cb.Click then pcall(cb.Click, cb, "LeftButton") end
 end
 
 -- Re-apply all driven filters when the relevant Blizzard frame opens.
