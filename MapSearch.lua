@@ -4183,7 +4183,7 @@ function MapSearch:BuildResults(text, isGlobal, skipPins)
                 zoneMapType = zone.mapType,
                 zoneParentMapID = zone.parentMapID,
                 pathPrefix = parentPath,
-                score = zone.score + 200,
+                score = zone.score,
             }
             allPOIs[#allPOIs + 1] = entry
         end
@@ -4334,6 +4334,23 @@ function MapSearch:BuildResults(text, isGlobal, skipPins)
             local nameLower = GetNameLower(loc)
             if not zoneNames[nameLower] and not existingNames[nameLower] then
                 tinsert(allPOIs, loc)
+            end
+        end
+
+        -- Local mode normally only sees POIs in the current zone, so
+        -- abbreviations like "rfc" → Ragefire Chasm fall flat unless
+        -- the player happens to be standing in Orgrimmar. The UI search
+        -- bar always pulls the global instance cache; the map search
+        -- bar should match that for consistency. Add globally-cached
+        -- dungeon / raid / delve entrances as additional candidates so
+        -- a name or abbreviation hit surfaces them regardless of
+        -- current zone. They still get scored alongside local POIs.
+        local globalInstances = self:GetGlobalInstanceCache()
+        for _, poi in ipairs(globalInstances) do
+            local nameLower = GetNameLower(poi)
+            if not zoneNames[nameLower] and not existingNames[nameLower] then
+                tinsert(allPOIs, poi)
+                existingNames[nameLower] = true
             end
         end
     end
@@ -4555,12 +4572,9 @@ function MapSearch:SearchPOIs(pois, query, noCache)
 
             if poi.keywords then
                 if not poi.kwLower then PreparePOI(poi) end
-                score = score + ns.Database:ScoreKeywords(poi.kwLower, query, #query)
-            end
-            -- Instance cache entries promoted to zone-style get the same
-            -- sorting boost, but only if they matched on their own merit
-            if poi.isZone and score >= 50 then
-                score = score + 200
+                -- MAX, not SUM, so an entry whose keyword list duplicates
+                -- the name doesn't double-count the same fuzzy hit.
+                score = mmax(score, ns.Database:ScoreKeywords(poi.kwLower, query, #query))
             end
         end
 
