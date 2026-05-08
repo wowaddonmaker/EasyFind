@@ -112,6 +112,11 @@ local RefreshCurrentSearch
 local ReleaseMapTabMemory
 local panel
 local selectedIsOurs = false
+-- The Blizzard QuestMapFrame display mode that was active when our panel
+-- took over. SetDisplayMode(nil) clears qmf.displayMode, so when the map
+-- closes + reopens, Blizzard has no mode to restore and the sidebar
+-- renders blank. We stash the prior mode here and put it back on hide.
+local prevBlizzardDisplayMode
 local rowPool = {}
 local headerPool = {}
 local rowPoolCursor = 1
@@ -244,6 +249,7 @@ local function ShowOurPanel()
     -- uses. Without it, clicking a Blizzard tab afterwards is a no-op
     -- (same-mode transition) and the panel stays hidden.
     if qmf.SetDisplayMode then
+        prevBlizzardDisplayMode = qmf.displayMode
         local ok, err = pcall(qmf.SetDisplayMode, qmf)
         if not ok then
             if qmf.QuestsFrame then qmf.QuestsFrame:Hide() end
@@ -282,6 +288,19 @@ local function HideOurPanel()
         if panel.outer then panel.outer:Hide() else panel:Hide() end
         if panel.searchBox then panel.searchBox:ClearFocus() end
     end
+    -- Restore Blizzard's display mode if we cleared it. If a Blizzard tab
+    -- was clicked, qmf.displayMode is already non-nil (the new tab set
+    -- it), so we leave that alone. Only restore when displayMode is nil,
+    -- which happens when the map simply closed while our panel was
+    -- active. Without this, reopening the map shows a blank sidebar.
+    local qmf = _G["QuestMapFrame"]
+    if qmf and qmf.SetDisplayMode and qmf.displayMode == nil then
+        local restore = prevBlizzardDisplayMode or qmf.QuestsFrame
+        if restore then
+            pcall(qmf.SetDisplayMode, qmf, restore)
+        end
+    end
+    prevBlizzardDisplayMode = nil
     -- Tear down any in-flight hover preview when the panel closes so the
     -- zone outline / pin / saved-state don't survive into another tab.
     -- Mirrors EndHoverPreview's full cleanup rather than just the
