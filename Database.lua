@@ -2987,20 +2987,8 @@ function Database:BuildUIDatabase()
                     -- GetStatisticsCategoryList() / GetCategoryInfo() so the
                     -- search index always matches the live AchievementFrame
                     -- Statistics sidebar for the current build.
-                    children = {
-                        -- Manual: Duel Statistics is a specific row inside
-                        -- Player vs. Player > World, not a sidebar category,
-                        -- so the API walk doesn't surface it as a row.
-                        {
-                            name = "Duel Statistics",
-                            keywords = {"duel", "duels", "dueling", "1v1", "duels won", "duels lost"},
-                            category = "Statistics",
-                            steps = {
-                                { waitForFrame = "AchievementFrame", statisticsCategory = "Player vs. Player" },
-                                { waitForFrame = "AchievementFrame", statisticsCategory = "World" },
-                            },
-                        },
-                    },
+                    -- Per-row stat entries (including duels) come from
+                    -- PopulateDynamicStatistics; no manual entries needed.
                 },
             },
         },
