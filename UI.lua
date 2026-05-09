@@ -401,14 +401,11 @@ local function GetActionHint(data)
     if data.encounterID and data.category == "Boss" then
         return "Select to open Encounter Journal"
     end
-    if data.settingType == "dropdown" and data.settingVariable then
-        return "Select to open setting"
-    end
     if data.settingType == "checkbox" and data.settingVariable then
-        return "Select to toggle"
+        return "Select to toggle | Ctrl+click to open settings menu"
     end
-    if data.settingType == "keybind" and data.bindingAction then
-        return "Hover a slot then click to rebind"
+    if data.settingVariable or data.bindingAction then
+        return "Select to open settings menu"
     end
     return nil
 end
@@ -4493,7 +4490,49 @@ local function WriteSettingVariable(variable, value)
     if Settings and Settings.GetSetting then
         local sok, settObj = pcall(Settings.GetSetting, variable)
         if sok and settObj and settObj.SetValue then
-            if pcall(settObj.SetValue, settObj, value) then return true end
+            -- Coerce to the setting's declared variable type before
+            -- writing. Type mismatches (e.g. passing "1" to a number
+            -- setting) make Setting:SetValue silently no-op, which
+            -- looks like a flicker on our row: pcall succeeds but
+            -- the underlying value never changes.
+            local writeValue = value
+            if settObj.GetVariableType then
+                local tok, vtype = pcall(settObj.GetVariableType, settObj)
+                if tok and type(vtype) == "string" then
+                    if vtype == "number" then
+                        writeValue = tonumber(value) or value
+                    elseif vtype == "string" then
+                        writeValue = tostring(value)
+                    elseif vtype == "boolean" then
+                        if type(value) == "boolean" then
+                            writeValue = value
+                        elseif value == "1" or value == 1 or value == "true" then
+                            writeValue = true
+                        elseif value == "0" or value == 0 or value == "false" then
+                            writeValue = false
+                        end
+                    end
+                end
+            end
+            if pcall(settObj.SetValue, settObj, writeValue) then
+                -- Settings flagged with CommitFlag.Apply stage to
+                -- pendingValue (graphics, resolution, etc.) and need
+                -- the user to commit. Tell BlizzOptionsSearch so the
+                -- floating Apply/Revert bar can surface the change.
+                if ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.NotePendingApply then
+                    ns.BlizzOptionsSearch:NotePendingApply(variable)
+                end
+                -- Verify: SetValue can succeed on the call but reject
+                -- the value internally. Read back to confirm it took.
+                if settObj.GetValue then
+                    local rok, raw = pcall(settObj.GetValue, settObj)
+                    if rok and (raw == writeValue or tostring(raw) == tostring(writeValue)) then
+                        return true
+                    end
+                else
+                    return true
+                end
+            end
         end
     end
     -- CVar fallback for raw CVars not registered with the Settings panel.
@@ -4511,20 +4550,19 @@ local function WriteSettingVariable(variable, value)
     return false
 end
 
-local function ActivateSettingResult(data)
+local function ActivateSettingResult(data, ctrlHeld)
     if not data or not data.settingVariable then return false end
     local stype = data.settingType
-    if stype == "checkbox" then
+    if stype == "checkbox" and not ctrlHeld then
+        -- Plain click toggles inline. Ctrl+click falls through to open
+        -- the in-game Settings panel for the same variable.
         UI:ToggleSettingCheckbox(data)
-    elseif stype == "slider" then
-        RefocusSearchEditBox()
-    elseif stype == "dropdown" then
-        -- Dropdown row click opens the Settings panel for that variable.
-        -- Inline cycling has its own controls (paddle arrows, center
-        -- popup) right on the row, so the row click itself shouldn't
-        -- duplicate that behavior.
-        UI:OpenSettingNoClose(data)
     else
+        -- Slider / keybind / dropdown / unknown: open the Settings
+        -- panel for that variable. Inline editors (slider drag, kb1/kb2
+        -- capture, dropdown paddles) sit on top of the row and consume
+        -- their own clicks, so the row click reaching us means the user
+        -- clicked the label area and wants to navigate to the setting.
         UI:OpenSettingNoClose(data)
     end
     return true
@@ -4837,7 +4875,15 @@ function UI:CreateResultButton(index)
         if Settings and Settings.GetSetting then
             local sok, settObj = pcall(Settings.GetSetting, variable)
             if sok and settObj and settObj.SetValue then
-                if pcall(settObj.SetValue, settObj, newVal) then return end
+                if pcall(settObj.SetValue, settObj, newVal) then
+                    -- Slider drag goes through here, not WriteSettingVariable,
+                    -- so trigger the same Apply-flag tracking so the per-row
+                    -- apply ext appears.
+                    if ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.NotePendingApply then
+                        ns.BlizzOptionsSearch:NotePendingApply(variable)
+                    end
+                    return
+                end
             end
         end
         if SetCVar then
@@ -4909,15 +4955,39 @@ function UI:CreateResultButton(index)
         if self._updating then return end
         applySettingValue(self._settingVar, newVal)
         local valText = resultRow.settingSliderValue
-        if valText then
-            if newVal == mfloor(newVal) then
-                valText:SetText(tostring(mfloor(newVal)))
-            else
-                valText:SetText(sformat("%.2f", newVal))
+        if not valText then return end
+        local fmt = self._settingFormatter
+        if not fmt and ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.GetFormatterForVariable then
+            fmt = ns.BlizzOptionsSearch.GetFormatterForVariable(self._settingVar)
+            if fmt then self._settingFormatter = fmt end
+        end
+        local displayVal
+        if fmt then
+            local fok, formatted = pcall(fmt, newVal)
+            if fok and formatted ~= nil then
+                local ft = type(formatted)
+                if ft == "string" and formatted ~= "" then
+                    displayVal = formatted
+                elseif ft == "number" then
+                    displayVal = (formatted == mfloor(formatted))
+                        and tostring(mfloor(formatted))
+                        or sformat("%.2f", formatted)
+                end
             end
         end
+        if not displayVal then
+            displayVal = (newVal == mfloor(newVal))
+                and tostring(mfloor(newVal))
+                or sformat("%.2f", newVal)
+        end
+        valText:SetText(displayVal)
     end)
     resultRow.settingSlider = settingSlider
+
+    -- Refresh once on drag-release so the per-row apply ext appears for
+    -- Apply-flagged sliders. OnValueChanged fires per-tick during drag,
+    -- which would be too expensive to refresh on; OnMouseUp fires once.
+    settingSlider:HookScript("OnMouseUp", function() UI:RefreshResults() end)
 
     stepBack:SetScript("OnClick", function()
         local slider = resultRow.settingSlider
@@ -5101,23 +5171,20 @@ function UI:CreateResultButton(index)
     kb2:SetScript("OnClick", MakeBindingClickHandler(2))
 
     -- Hovering a kb button overrides the row's action-hint subtext with a
-    -- slot-specific hint ("primary" vs "alternate") so the user knows
-    -- which key the next press will bind. OnLeave hands back to the row.
+    -- Per-slot GameTooltip explaining the rebind workflow. Lives on the
+    -- kb buttons themselves so the row's subtext stays focused on what
+    -- clicking the row does ("Select to open settings menu").
     local function MakeKbHoverHandler(slotLabel)
         return function(self)
-            if not resultRow.pathSubtext or not resultRow.pathSubtext:IsShown() then return end
-            resultRow.pathSubtext:SetText("Click then press a key to bind " .. slotLabel)
-            resultRow.pathSubtext:SetTextColor(0.85, 0.78, 0.55, 1.0)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            GameTooltip:SetText("Bind " .. slotLabel .. " key", 1, 1, 1)
+            GameTooltip:AddLine("Click then press a key combination.", 0.85, 0.78, 0.55, true)
+            GameTooltip:AddLine("Right-click to clear.", 0.7, 0.7, 0.7, true)
+            GameTooltip:Show()
         end
     end
-    local function KbLeaveHandler(self)
-        if not resultRow.pathSubtext or not resultRow.pathSubtext:IsShown() then return end
-        if resultRow:IsMouseOver() then
-            ApplyActionHint(resultRow)
-        else
-            resultRow.pathSubtext:SetText(GetFlatSubtext(resultRow.data))
-            resultRow.pathSubtext:SetTextColor(0.55, 0.55, 0.55, 1.0)
-        end
+    local function KbLeaveHandler()
+        GameTooltip:Hide()
     end
     kb1:HookScript("OnEnter", MakeKbHoverHandler("primary"))
     kb1:HookScript("OnLeave", KbLeaveHandler)
@@ -5257,6 +5324,49 @@ function UI:CreateResultButton(index)
     settingSliderValue:SetTextColor(0.7, 0.7, 0.7, 1.0)
     settingSliderValue:SetShadowOffset(1, -1)
     resultRow.settingSliderValue = settingSliderValue
+
+    -- Per-row Apply / Reset section. Settings flagged with
+    -- CommitFlag.Apply (graphics, resolution, etc.) stage their value
+    -- to setting.pendingValue instead of writing through; the row grows
+    -- to expose the buttons inline so the change can be committed
+    -- without leaving the search.
+    local APPLY_EXT_H = 22
+    local applyExt = CreateFrame("Frame", nil, resultRow)
+    applyExt:SetHeight(APPLY_EXT_H)
+    applyExt:SetPoint("TOPLEFT", resultRow, "BOTTOMLEFT", 6, -2)
+    applyExt:SetPoint("TOPRIGHT", resultRow, "BOTTOMRIGHT", -6, -2)
+    applyExt:Hide()
+
+    local applyExtSep = applyExt:CreateTexture(nil, "ARTWORK")
+    applyExtSep:SetColorTexture(0.85, 0.78, 0.55, 0.55)
+    applyExtSep:SetHeight(1)
+    applyExtSep:SetPoint("TOPLEFT", applyExt, "TOPLEFT", 0, 0)
+    applyExtSep:SetPoint("TOPRIGHT", applyExt, "TOPRIGHT", 0, 0)
+
+    local resetBtn = CreateFrame("Button", nil, applyExt, "UIPanelButtonTemplate")
+    resetBtn:SetSize(58, 18)
+    resetBtn:SetText("Reset")
+    resetBtn:SetPoint("RIGHT", applyExt, "CENTER", -2, -2)
+    local applyBtn = CreateFrame("Button", nil, applyExt, "UIPanelButtonTemplate")
+    applyBtn:SetSize(58, 18)
+    applyBtn:SetText("Apply")
+    applyBtn:SetPoint("LEFT", applyExt, "CENTER", 2, -2)
+    applyBtn:SetScript("OnClick", function()
+        local v = resultRow.data and resultRow.data.settingVariable
+        if v and ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.ApplyVariable then
+            ns.BlizzOptionsSearch:ApplyVariable(v)
+            UI:RefreshResults()
+        end
+    end)
+    resetBtn:SetScript("OnClick", function()
+        local v = resultRow.data and resultRow.data.settingVariable
+        if v and ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.RevertVariable then
+            ns.BlizzOptionsSearch:RevertVariable(v)
+            UI:RefreshResults()
+        end
+    end)
+    resultRow.settingApplyExt = applyExt
+    resultRow.settingApplyExtH = APPLY_EXT_H
 
     -- Right-aligned reputation standing bar
     -- Structure: repBar (dark bg + border) → repClip (clips fill) → repFillFrame (colored, same shape)
@@ -5626,24 +5736,13 @@ function UI:CreateResultButton(index)
             return
         end
 
-        -- Setting click: keep the search panel open so the user can
-        -- adjust multiple settings, retest, retoggle, etc. without
-        -- having to reopen the search.
-        --   Checkbox: toggle inline (no need to open the panel at all).
-        --   Slider: the inline slider widget IS the editor; row click
-        --     is a no-op so dragging the slider doesn't also fire a
-        --     row click that opens the panel.
-        --   Dropdown / other: open the Settings panel for editing but
-        --     leave the search results visible underneath.
-        if self.data and self.data.settingType == "keybind" and self.data.bindingAction then
-            -- Keybind row: the inline kb1/kb2 buttons own the click and
-            -- manage their own keyboard capture (via blockFocus on the
-            -- editbox). A bare row click does nothing here; refocusing
-            -- the editbox would clear blockFocus mid-capture and hand
-            -- the next keystroke to the search bar instead of the bind.
-            return
-        end
-        if ActivateSettingResult(self.data) then return end
+        -- Setting click. Checkbox: toggle inline (Ctrl+click opens the
+        -- panel). Everything else (slider / keybind / dropdown): open
+        -- the panel so the user lands on the setting they searched for.
+        -- Inline editors (slider drag, kb1/kb2 capture, dropdown
+        -- paddles) sit on top of the row and consume their own clicks,
+        -- so reaching this handler means the user clicked the label.
+        if ActivateSettingResult(self.data, IsControlKeyDown()) then return end
 
         if self.isPinHeader then
             return
@@ -5789,7 +5888,26 @@ function UI:CreateResultButton(index)
                 local n = tonumber(cur)
                 if n then
                     GameTooltip:AddLine(" ")
-                    local valStr = (n == mfloor(n)) and tostring(mfloor(n)) or sformat("%.2f", n)
+                    if not self.data.settingFormatter
+                       and ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.GetFormatterForVariable then
+                        local fmt = ns.BlizzOptionsSearch.GetFormatterForVariable(var)
+                        if fmt then self.data.settingFormatter = fmt end
+                    end
+                    local valStr
+                    if self.data.settingFormatter then
+                        local fok, f = pcall(self.data.settingFormatter, n)
+                        if fok and f ~= nil then
+                            local ft = type(f)
+                            if ft == "string" and f ~= "" then
+                                valStr = f
+                            elseif ft == "number" then
+                                valStr = (f == mfloor(f)) and tostring(mfloor(f)) or sformat("%.2f", f)
+                            end
+                        end
+                    end
+                    if not valStr then
+                        valStr = (n == mfloor(n)) and tostring(mfloor(n)) or sformat("%.2f", n)
+                    end
                     GameTooltip:AddLine(sformat("Current: %s   (%s - %s)",
                         valStr,
                         tostring(self.data.settingMin),
@@ -7674,6 +7792,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     if sMax <= sMin then sMax = sMin + 1 end
                     local slider = resultRow.settingSlider
                     slider._settingVar = data.settingVariable
+                    slider._settingFormatter = data.settingFormatter
                     slider._updating = true
                     slider:SetMinMaxValues(sMin, sMax)
                     slider:SetValueStep(stepVal)
@@ -7681,11 +7800,35 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     slider._updating = false
                     resultRow.settingSliderGroup:Show()
 
+                    -- Curated SETTINGS_DATA rows don't ship with a
+                    -- formatter; pull from the live registry on demand
+                    -- so the inline value matches Blizzard's panel
+                    -- (Mouse Look Speed raw 180 -> displayed "5.5").
+                    if not data.settingFormatter
+                       and ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.GetFormatterForVariable then
+                        local fmt = ns.BlizzOptionsSearch.GetFormatterForVariable(data.settingVariable)
+                        if fmt then data.settingFormatter = fmt end
+                    end
                     local displayVal
-                    if numVal == mfloor(numVal) then
-                        displayVal = tostring(mfloor(numVal))
-                    else
-                        displayVal = sformat("%.2f", numVal)
+                    if data.settingFormatter then
+                        local fok, formatted = pcall(data.settingFormatter, numVal)
+                        if fok and formatted ~= nil then
+                            local ft = type(formatted)
+                            if ft == "string" and formatted ~= "" then
+                                displayVal = formatted
+                            elseif ft == "number" then
+                                displayVal = (formatted == mfloor(formatted))
+                                    and tostring(mfloor(formatted))
+                                    or sformat("%.2f", formatted)
+                            end
+                        end
+                    end
+                    if not displayVal then
+                        if numVal == mfloor(numVal) then
+                            displayVal = tostring(mfloor(numVal))
+                        else
+                            displayVal = sformat("%.2f", numVal)
+                        end
                     end
                     resultRow.settingSliderValue:SetText(displayVal)
 
@@ -7883,6 +8026,21 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 end
             end
 
+            -- Per-row Apply / Reset extension for settings that staged
+            -- a pendingValue (CommitFlag.Apply -- graphics, resolution).
+            -- The extension sits BELOW the row as a separate visual
+            -- element so the row's own contents (icon, name, inline
+            -- editors) don't shift; only the y-cursor below advances to
+            -- make room.
+            local hasPendingApply = false
+            if data and data.settingVariable and ns.BlizzOptionsSearch
+               and ns.BlizzOptionsSearch.HasPendingChange then
+                hasPendingApply = ns.BlizzOptionsSearch:HasPendingChange(data.settingVariable)
+            end
+            if resultRow.settingApplyExt then
+                resultRow.settingApplyExt:SetShown(hasPendingApply)
+            end
+
             -- Measure text height and expand row if text wraps
             -- Skip header tabs: they have SetMaxLines(1) and can't wrap.
             local actualH = resultRow:GetHeight()
@@ -7933,6 +8091,11 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 end
             end
 
+            -- Reserve y-cursor space for the apply extension (sits below
+            -- the row at -2 offset). Row's own bounds are unchanged.
+            if hasPendingApply and resultRow.settingApplyExtH then
+                actualH = actualH + resultRow.settingApplyExtH + 2
+            end
             yOffset = yOffset + actualH
             resultRow:Show()
         elseif resultRow then
