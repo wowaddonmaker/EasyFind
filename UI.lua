@@ -401,7 +401,8 @@ local function GetActionHint(data)
     if data.encounterID and data.category == "Boss" then
         return "Select to open Encounter Journal"
     end
-    if data.settingType == "checkbox" and data.settingVariable then
+    if (data.settingType == "checkbox" or data.settingType == "checkboxSlider")
+       and data.settingVariable then
         return "Select to toggle | Ctrl+click to open settings menu"
     end
     if data.settingVariable or data.bindingAction then
@@ -4232,7 +4233,7 @@ function UI:CreateResultsFrame()
         for _, g in ipairs(guards) do
             if Utils.IsFrameOrChildMouseOver(g) then return end
         end
-        UI:HideResults()
+        UI:RequestHideResults()
     end)
 
     local resizeTimer
@@ -4467,6 +4468,7 @@ local function RefocusSearchEditBox()
         searchFrame.editBox:SetFocus()
     end
 end
+function UI:RefocusSearchEditBox() RefocusSearchEditBox() end
 
 local function ReadSettingVariable(variable)
     if Settings and Settings.GetSetting then
@@ -4553,9 +4555,11 @@ end
 local function ActivateSettingResult(data, ctrlHeld)
     if not data or not data.settingVariable then return false end
     local stype = data.settingType
-    if stype == "checkbox" and not ctrlHeld then
+    if (stype == "checkbox" or stype == "checkboxSlider") and not ctrlHeld then
         -- Plain click toggles inline. Ctrl+click falls through to open
-        -- the in-game Settings panel for the same variable.
+        -- the in-game Settings panel for the same variable. For
+        -- checkboxSlider, the cb variable lives at data.settingVariable
+        -- so the existing toggle path Just Works.
         UI:ToggleSettingCheckbox(data)
     else
         -- Slider / keybind / dropdown / unknown: open the Settings
@@ -5351,19 +5355,28 @@ function UI:CreateResultButton(index)
     applyBtn:SetSize(58, 18)
     applyBtn:SetText("Apply")
     applyBtn:SetPoint("LEFT", applyExt, "CENTER", 2, -2)
-    applyBtn:SetScript("OnClick", function()
-        local v = resultRow.data and resultRow.data.settingVariable
-        if v and ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.ApplyVariable then
-            ns.BlizzOptionsSearch:ApplyVariable(v)
-            UI:RefreshResults()
+    local function bothVars(d)
+        if not d then return nil, nil end
+        local primary = d.settingVariable
+        local secondary
+        if d.sliderVariable and d.sliderVariable ~= primary then
+            secondary = d.sliderVariable
         end
+        return primary, secondary
+    end
+    applyBtn:SetScript("OnClick", function()
+        if not ns.BlizzOptionsSearch or not ns.BlizzOptionsSearch.ApplyVariable then return end
+        local primary, secondary = bothVars(resultRow.data)
+        if primary then ns.BlizzOptionsSearch:ApplyVariable(primary) end
+        if secondary then ns.BlizzOptionsSearch:ApplyVariable(secondary) end
+        UI:RefreshResults()
     end)
     resetBtn:SetScript("OnClick", function()
-        local v = resultRow.data and resultRow.data.settingVariable
-        if v and ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.RevertVariable then
-            ns.BlizzOptionsSearch:RevertVariable(v)
-            UI:RefreshResults()
-        end
+        if not ns.BlizzOptionsSearch or not ns.BlizzOptionsSearch.RevertVariable then return end
+        local primary, secondary = bothVars(resultRow.data)
+        if primary then ns.BlizzOptionsSearch:RevertVariable(primary) end
+        if secondary then ns.BlizzOptionsSearch:RevertVariable(secondary) end
+        UI:RefreshResults()
     end)
     resultRow.settingApplyExt = applyExt
     resultRow.settingApplyExtH = APPLY_EXT_H
@@ -7749,7 +7762,80 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             elseif data and data.settingVariable and not entry.isPathNode then
                 if resultRow.settingKeybindGroup then resultRow.settingKeybindGroup:Hide() end
                 local settingType = data.settingType
-                if settingType == "checkbox" then
+                if settingType == "checkboxSlider" and data.cbVariable and data.sliderVariable then
+                    -- Combined widget: checkbox state + slider in one row
+                    -- (mirrors Blizzard's CreateSettingsCheckboxSliderInitializer
+                    -- visual e.g. "Use UI Scale" with the % slider).
+                    local isOn = false
+                    if Settings and Settings.GetSetting then
+                        local sok, cbObj = pcall(Settings.GetSetting, data.cbVariable)
+                        if sok and cbObj and cbObj.GetValue then
+                            local vok, v = pcall(cbObj.GetValue, cbObj)
+                            if vok then isOn = (v == true or v == "1" or v == 1) end
+                        end
+                    end
+                    resultRow.settingState:Show()
+                    resultRow.settingCheck:SetShown(isOn)
+                    resultRow.amountText:Hide()
+                    if resultRow.settingDropdownGroup then resultRow.settingDropdownGroup:Hide() end
+
+                    local sliderVar = data.sliderVariable
+                    local rawVal
+                    if Settings and Settings.GetSetting then
+                        local sok, sObj = pcall(Settings.GetSetting, sliderVar)
+                        if sok and sObj and sObj.GetValue then
+                            local vok, v = pcall(sObj.GetValue, sObj)
+                            if vok then rawVal = v end
+                        end
+                    end
+                    if rawVal == nil and GetCVar then rawVal = GetCVar(sliderVar) end
+                    local numVal = tonumber(rawVal) or data.settingMin or 0
+                    local sMin = data.settingMin or 0
+                    local sMax = data.settingMax or 1
+                    local stepVal = data.settingStep or 1
+                    if sMax <= sMin then sMax = sMin + 1 end
+                    local slider = resultRow.settingSlider
+                    slider._settingVar = sliderVar
+                    slider._settingFormatter = data.settingFormatter
+                    slider._updating = true
+                    slider:SetMinMaxValues(sMin, sMax)
+                    slider:SetValueStep(stepVal)
+                    slider:SetValue(numVal)
+                    slider._updating = false
+
+                    if not data.settingFormatter
+                       and ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.GetFormatterForVariable then
+                        local fmt = ns.BlizzOptionsSearch.GetFormatterForVariable(sliderVar)
+                        if fmt then data.settingFormatter = fmt end
+                    end
+                    local displayVal
+                    if data.settingFormatter then
+                        local fok, formatted = pcall(data.settingFormatter, numVal)
+                        if fok and formatted ~= nil then
+                            local ft = type(formatted)
+                            if ft == "string" and formatted ~= "" then displayVal = formatted
+                            elseif ft == "number" then
+                                displayVal = (formatted == mfloor(formatted))
+                                    and tostring(mfloor(formatted))
+                                    or sformat("%.2f", formatted)
+                            end
+                        end
+                    end
+                    if not displayVal then
+                        displayVal = (numVal == mfloor(numVal))
+                            and tostring(mfloor(numVal))
+                            or sformat("%.2f", numVal)
+                    end
+                    resultRow.settingSliderValue:SetText(displayVal)
+
+                    -- Slider group sits to the LEFT of the checkbox
+                    -- so both fit on the right side of the row.
+                    resultRow.settingSliderGroup:ClearAllPoints()
+                    resultRow.settingSliderGroup:SetPoint("RIGHT", resultRow.settingState, "LEFT", -6, 0)
+                    resultRow.settingSliderGroup:Show()
+
+                    resultRow.text:SetPoint("RIGHT", resultRow.settingSliderGroup, "LEFT", -4, 0)
+                elseif settingType == "checkbox" then
                     local isOn = false
                     if Settings and Settings.GetSetting then
                         local sok, settObj = pcall(Settings.GetSetting, data.settingVariable)
@@ -7798,6 +7884,10 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     slider:SetValueStep(stepVal)
                     slider:SetValue(numVal)
                     slider._updating = false
+                    -- Reset to default RIGHT anchor in case the previous
+                    -- render of this row was a checkboxSlider entry.
+                    resultRow.settingSliderGroup:ClearAllPoints()
+                    resultRow.settingSliderGroup:SetPoint("RIGHT", resultRow, "RIGHT", -6, 0)
                     resultRow.settingSliderGroup:Show()
 
                     -- Curated SETTINGS_DATA rows don't ship with a
@@ -8036,6 +8126,10 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             if data and data.settingVariable and ns.BlizzOptionsSearch
                and ns.BlizzOptionsSearch.HasPendingChange then
                 hasPendingApply = ns.BlizzOptionsSearch:HasPendingChange(data.settingVariable)
+                if not hasPendingApply and data.sliderVariable
+                   and data.sliderVariable ~= data.settingVariable then
+                    hasPendingApply = ns.BlizzOptionsSearch:HasPendingChange(data.sliderVariable)
+                end
             end
             if resultRow.settingApplyExt then
                 resultRow.settingApplyExt:SetShown(hasPendingApply)
@@ -8414,6 +8508,39 @@ function UI:CloseFilterDropdownIfOpen()
         closedAny = true
     end
     return closedAny
+end
+
+-- Explicit user-close request: shows the unapplied-changes popup if
+-- there are pending Apply-flagged settings, otherwise hides directly.
+-- Used by the click-outside-to-close watcher and ESC handlers; the
+-- internal HideResults callers (no-results refresh, etc.) skip it.
+function UI:RequestHideResults()
+    if resultsFrame and resultsFrame:IsShown()
+       and ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.GetPendingApplyCount
+       and ns.BlizzOptionsSearch:GetPendingApplyCount() > 0 then
+        local alreadyShowing = StaticPopup_Visible
+            and StaticPopup_Visible("EASYFIND_UNAPPLIED_SETTINGS")
+        if not alreadyShowing and StaticPopup_Show then
+            StaticPopup_Show("EASYFIND_UNAPPLIED_SETTINGS")
+        end
+        local popup = _G["StaticPopup1"]
+        if popup and popup:IsShown() and not popup._easyFindStrataLifted then
+            popup._easyFindStrataLifted = true
+            popup._easyFindOriginalStrata = popup:GetFrameStrata()
+            popup:SetFrameStrata("TOOLTIP")
+            popup:HookScript("OnHide", function(self)
+                if self._easyFindStrataLifted then
+                    if self._easyFindOriginalStrata then
+                        self:SetFrameStrata(self._easyFindOriginalStrata)
+                    end
+                    self._easyFindStrataLifted = nil
+                    self._easyFindOriginalStrata = nil
+                end
+            end)
+        end
+        return
+    end
+    self:HideResults()
 end
 
 function UI:HideResults()
@@ -11173,7 +11300,7 @@ function UI:HandleEscape()
     if editBox and editBox:GetText() ~= "" then
         editBox:SetText("")
         if editBox.placeholder then editBox.placeholder:Show() end
-        self:HideResults()
+        self:RequestHideResults()
         Refocus()
         return
     end

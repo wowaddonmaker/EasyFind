@@ -739,37 +739,48 @@ function BlizzOptionsSearch:NotePendingApply(variable)
     end
 end
 
--- Apply all pending changes at once. Mirrors SettingsPanel:CommitSettings
--- so secondary effects (gx restart, window update, save bindings) fire
--- once for the batch instead of per-setting.
+-- Find the StaticPopup slot currently displaying the named popup.
+-- Blizzard reuses StaticPopup1..4 across all popups; when one is busy
+-- (e.g., our unapplied-changes popup), the next StaticPopup_Show lands
+-- in a different slot. Walk all slots to find the one we want.
+local function FindStaticPopupSlot(popupName)
+    for i = 1, 4 do
+        local p = _G["StaticPopup" .. i]
+        if p and p:IsShown() and p.which == popupName then return p end
+    end
+    return nil
+end
+
+local function LiftPopupAndRefresh(popup)
+    if not popup or popup._easyFindStrataLifted then return end
+    popup._easyFindStrataLifted = true
+    popup._easyFindOriginalStrata = popup:GetFrameStrata()
+    popup:SetFrameStrata("TOOLTIP")
+    popup:HookScript("OnHide", function(self)
+        if self._easyFindStrataLifted then
+            if self._easyFindOriginalStrata then
+                self:SetFrameStrata(self._easyFindOriginalStrata)
+            end
+            self._easyFindStrataLifted = nil
+            self._easyFindOriginalStrata = nil
+        end
+        if ns.UI and ns.UI.RefreshResults then ns.UI:RefreshResults() end
+    end)
+end
+
+-- Apply all pending changes at once. Push them into SettingsPanel.modified
+-- and run its CommitSettings(false) so Blizzard's full pipeline fires:
+-- gx restart / window update / save bindings AND the
+-- GAME_SETTINGS_TIMED_CONFIRMATION popup for any Revertable settings
+-- in the batch (monitor, resolution, etc.).
 function BlizzOptionsSearch:ApplyPendingChanges()
     if not next(pendingApplySettings) then return end
-    if not Settings or not Settings.CommitFlag then return end
-
-    local list = {}
-    for setting in pairs(pendingApplySettings) do
-        if setting.LockPendingValue then pcall(setting.LockPendingValue, setting) end
-        list[#list + 1] = setting
-    end
-    table.sort(list, function(a, b)
-        local oa = a.GetCommitOrder and a:GetCommitOrder() or 0
-        local ob = b.GetCommitOrder and b:GetCommitOrder() or 0
-        return oa < ob
-    end)
-    local saveBindings, gxRestart, windowUpdate = false, false, false
-    for i = 1, #list do
-        local s = list[i]
-        if s.HasCommitFlag then
-            saveBindings = saveBindings or (pcall(s.HasCommitFlag, s, Settings.CommitFlag.SaveBindings) and s:HasCommitFlag(Settings.CommitFlag.SaveBindings))
-            gxRestart   = gxRestart   or (pcall(s.HasCommitFlag, s, Settings.CommitFlag.GxRestart)   and s:HasCommitFlag(Settings.CommitFlag.GxRestart))
-            windowUpdate= windowUpdate or (pcall(s.HasCommitFlag, s, Settings.CommitFlag.UpdateWindow) and s:HasCommitFlag(Settings.CommitFlag.UpdateWindow))
+    if SettingsPanel and SettingsPanel.modified and SettingsPanel.CommitSettings then
+        for setting in pairs(pendingApplySettings) do
+            SettingsPanel.modified[setting] = setting
         end
-        if s.Commit then pcall(s.Commit, s) end
-    end
-    if gxRestart and RestartGx then pcall(RestartGx) end
-    if windowUpdate and UpdateWindow then pcall(UpdateWindow) end
-    if saveBindings and SaveBindings and GetCurrentBindingSet then
-        pcall(SaveBindings, GetCurrentBindingSet())
+        pcall(SettingsPanel.CommitSettings, SettingsPanel, false)
+        LiftPopupAndRefresh(FindStaticPopupSlot("GAME_SETTINGS_TIMED_CONFIRMATION"))
     end
     wipe(pendingApplySettings)
     FirePendingChanged()
@@ -887,25 +898,7 @@ function BlizzOptionsSearch:ApplyVariable(variable)
             end
         end
         pcall(SettingsPanel.CommitSettings, SettingsPanel, false)
-        -- Lift the timed-confirmation popup above our search panel
-        -- (resultsFrame is FULLSCREEN_DIALOG; StaticPopup1 defaults to
-        -- DIALOG which renders behind us). Hook OnHide once to restore
-        -- so other StaticPopup1 uses aren't affected.
-        local popup = _G["StaticPopup1"]
-        if popup and popup:IsShown() and not popup._easyFindStrataLifted then
-            popup._easyFindStrataLifted = true
-            popup._easyFindOriginalStrata = popup:GetFrameStrata()
-            popup:SetFrameStrata("TOOLTIP")
-            popup:HookScript("OnHide", function(self)
-                if self._easyFindStrataLifted then
-                    if self._easyFindOriginalStrata then
-                        self:SetFrameStrata(self._easyFindOriginalStrata)
-                    end
-                    self._easyFindStrataLifted = nil
-                    self._easyFindOriginalStrata = nil
-                end
-            end)
-        end
+        LiftPopupAndRefresh(FindStaticPopupSlot("GAME_SETTINGS_TIMED_CONFIRMATION"))
         pendingApplySettings[settObj] = nil
         if deps then
             for i = 1, #deps do
@@ -926,6 +919,45 @@ function BlizzOptionsSearch:ApplyVariable(variable)
     CommitStagedDependents(variable)
     pendingApplySettings[settObj] = nil
     FirePendingChanged()
+end
+
+-- Mirrors Blizzard's GAME_SETTINGS_CONFIRM_DISCARD popup so closing
+-- our search panel with pending Apply-flagged settings prompts the
+-- same three-button choice. Defined once at file load; the StaticPopup
+-- registry keeps it across reloads.
+StaticPopupDialogs = StaticPopupDialogs or {}
+if not StaticPopupDialogs["EASYFIND_UNAPPLIED_SETTINGS"] then
+    StaticPopupDialogs["EASYFIND_UNAPPLIED_SETTINGS"] = {
+        text = SETTINGS_CONFIRM_DISCARD or
+            "You have settings that have not been applied.\nAre you sure you wish to exit?",
+        button1 = SETTINGS_UNAPPLIED_EXIT or "Exit",
+        button2 = SETTINGS_UNAPPLIED_APPLY_AND_EXIT or "Apply and Exit",
+        button3 = SETTINGS_UNAPPLIED_CANCEL or "Cancel",
+        OnButton1 = function()
+            if BlizzOptionsSearch.RevertPendingChanges then
+                BlizzOptionsSearch:RevertPendingChanges()
+            end
+            if ns.UI and ns.UI.HideResults then ns.UI:HideResults() end
+        end,
+        OnButton2 = function()
+            if BlizzOptionsSearch.ApplyPendingChanges then
+                BlizzOptionsSearch:ApplyPendingChanges()
+            end
+            if ns.UI and ns.UI.HideResults then ns.UI:HideResults() end
+        end,
+        OnButton3 = function() end,
+        OnHide = function()
+            -- Restore search bar focus when the popup dismisses, no
+            -- matter the path (button click, ESC, or click-away).
+            if ns.UI and ns.UI.RefocusSearchEditBox then
+                ns.UI:RefocusSearchEditBox()
+            end
+        end,
+        selectCallbackByIndex = true,
+        hideOnEscape = 1,
+        whileDead = 1,
+        fullScreenCover = true,
+    }
 end
 
 function BlizzOptionsSearch:RevertVariable(variable)
@@ -1447,18 +1479,97 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
     local iok, inits = pcall(layout.GetInitializers, layout)
     if not iok or not inits then return out end
 
-    for _, init in ipairs(inits) do
+    -- Combined initializers from CreateSettingsCheckboxSliderInitializer
+    -- ("Use UI Scale" with the checkbox + companion slider in one row)
+    -- bundle two settings into one initializer at init.data.cbSetting +
+    -- init.data.sliderSetting. We emit a single "checkboxSlider" entry
+    -- so the row mirrors Blizzard's combined widget instead of showing
+    -- two separate searchable rows.
+    local function inspectInit(init)
+        local d = init.data
+        if type(d) == "table" and d.cbSetting and d.sliderSetting then
+            return { combined = true, init = init }
+        end
         local setting
         if init.GetSetting then
             local sok, s = pcall(init.GetSetting, init)
             if sok then setting = s end
         end
-        if not setting and init.data then setting = init.data.setting end
+        if not setting and d then setting = d.setting end
         if not setting and init.GetData then
-            local dok, d = pcall(init.GetData, init)
-            if dok and d then setting = d.setting end
+            local dok, dd = pcall(init.GetData, init)
+            if dok and dd then setting = dd.setting end
         end
+        return { setting = setting, init = init }
+    end
 
+    for _, init in ipairs(inits) do
+      local info = inspectInit(init)
+      if info.combined then
+        local d = init.data
+        local cb, sl = d.cbSetting, d.sliderSetting
+        local cvok, cvar = pcall(cb.GetVariable, cb)
+        local svok, svar = pcall(sl.GetVariable, sl)
+        local label = d.cbLabel or d.sliderLabel
+        if cvok and svok and cvar and svar and label and label ~= "" then
+            local opts = d.sliderOptions
+            if type(opts) == "function" then
+                local ook, o = pcall(opts, sl)
+                if ook then opts = o end
+            end
+            local sMin, sMax, sStep, sFmt
+            if type(opts) == "table" then
+                sMin = opts.minValue
+                sMax = opts.maxValue
+                -- Settings.CreateSliderOptions stores steps as the
+                -- NUMBER OF STEPS across the range, not the per-tick
+                -- delta. Convert to step size: (max - min) / steps.
+                if opts.stepSize then
+                    sStep = opts.stepSize
+                elseif opts.steps and opts.steps > 0 and sMax > sMin then
+                    sStep = (sMax - sMin) / opts.steps
+                else
+                    sStep = 1
+                end
+                if type(opts.formatters) == "table" then
+                    sFmt = opts.formatters[2] or opts.formatters[1]
+                        or opts.formatters[0] or opts.formatters.Top
+                        or opts.formatters.Right
+                    if type(sFmt) ~= "function" then
+                        sFmt = nil
+                        for _, fn in pairs(opts.formatters) do
+                            if type(fn) == "function" then sFmt = fn; break end
+                        end
+                    end
+                end
+            end
+            local nameLower = slower(label)
+            local kw = { "addon", "setting", "option", nameLower, slower(catName or "") }
+            tinsert(out, {
+                name = label,
+                nameLower = nameLower,
+                keywords = kw,
+                keywordsLower = kw,
+                category = "AddOn Settings",
+                path = pathPrefix,
+                settingsCategory = catName,
+                settingCategoryID = catID,
+                settingVariable = cvar,
+                cbVariable = cvar,
+                sliderVariable = svar,
+                settingType = "checkboxSlider",
+                settingMin = sMin,
+                settingMax = sMax,
+                settingStep = sStep,
+                settingFormatter = sFmt,
+                steps = {
+                    { settingsCategory = catName, settingCategoryID = catID,
+                      settingVariable = cvar },
+                },
+            })
+        end
+      else
+        local setting = info.setting
         if setting and setting.GetVariable then
             local vok, variable = pcall(setting.GetVariable, setting)
             local nok, settingName = pcall(setting.GetName, setting)
@@ -1481,7 +1592,16 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
                     resolvedType = "slider"
                     sMin = opts.minValue
                     sMax = opts.maxValue
-                    sStep = opts.steps or opts.stepSize or 1
+                    -- Settings.CreateSliderOptions stores steps as the
+                -- NUMBER OF STEPS across the range, not the per-tick
+                -- delta. Convert to step size: (max - min) / steps.
+                if opts.stepSize then
+                    sStep = opts.stepSize
+                elseif opts.steps and opts.steps > 0 and sMax > sMin then
+                    sStep = (sMax - sMin) / opts.steps
+                else
+                    sStep = 1
+                end
                     -- Slider display value goes through Blizzard's
                     -- formatter (uiScale 0.64 -> "64%", etc.). Labels
                     -- are keyed by MinimalSliderWithSteppersMixin.Label
@@ -1548,6 +1668,7 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
                 tinsert(out, entry)
             end
         end
+      end
     end
     return out
 end
@@ -1659,6 +1780,60 @@ local function CollectAddonCategories()
 end
 BlizzOptionsSearch.CollectAddonCategories = CollectAddonCategories
 
+-- Walk Game (non-AddOn) categories for individual settings the curated
+-- SETTINGS_DATA list doesn't surface (Use UI Scale, vsync, etc.). The
+-- live registry is authoritative for what's actually in the panel
+-- this build, so this captures settings Blizzard added without us
+-- touching the curated list. Skip variables already in SETTINGS_DATA
+-- so we don't double-emit.
+local function BuildCuratedVariableSet()
+    local set = {}
+    for i = 1, #SETTINGS_DATA do
+        local v = SETTINGS_DATA[i] and SETTINGS_DATA[i][2]
+        if v then set[v] = true end
+    end
+    return set
+end
+
+local function CollectGameSettings()
+    local entries = {}
+    if not Settings then return entries end
+    local curated = BuildCuratedVariableSet()
+    local seenCatIDs = {}
+    local function emit(cat, parentName)
+        if not cat or not cat.GetName then return end
+        if IsAddonCategory(cat) then return end
+        local catID = cat.GetID and cat:GetID()
+        if not catID or seenCatIDs[catID] then return end
+        seenCatIDs[catID] = true
+        local catName = cat:GetName()
+        if not catName or catName == "" then return end
+        local pathPrefix = { "Game Settings", catName }
+        local inline = WalkCategorySettings(cat, catName, catID, pathPrefix)
+        for _, e in ipairs(inline) do
+            if not curated[e.settingVariable] then
+                e.category = "Game Settings"
+                tinsert(entries, e)
+            end
+        end
+    end
+    local list = GetSettingsCategoryList()
+    if type(list) == "table" then
+        for _, cat in ipairs(list) do
+            emit(cat, nil)
+            if cat.GetSubcategories then
+                local sok, subs = pcall(cat.GetSubcategories, cat)
+                if sok and type(subs) == "table" then
+                    local parentName = cat.GetName and cat:GetName()
+                    for _, sub in ipairs(subs) do emit(sub, parentName) end
+                end
+            end
+        end
+    end
+    return entries
+end
+BlizzOptionsSearch.CollectGameSettings = CollectGameSettings
+
 -- Register the collected entries into the Database. Called once
 -- after PLAYER_LOGIN so Settings.* is fully populated.
 function BlizzOptionsSearch:Populate()
@@ -1675,6 +1850,10 @@ function BlizzOptionsSearch:Populate()
     local addonEntries = CollectAddonCategories()
     for i = 1, #addonEntries do
         tinsert(data, addonEntries[i])
+    end
+    local gameEntries = CollectGameSettings()
+    for i = 1, #gameEntries do
+        tinsert(data, gameEntries[i])
     end
     if ns.Database.ResetSearchCache then ns.Database:ResetSearchCache() end
 end
