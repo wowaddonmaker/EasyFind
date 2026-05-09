@@ -4512,9 +4512,11 @@ local function CollectAchievementSearchResults(query)
     if count == 0 then return {} end
     local capped = count > ACH_MAX_RESULTS and ACH_MAX_RESULTS or count
     local results = {}
+    local isStat = ns.Database and ns.Database.IsStatisticAchievement
+        and function(id) return ns.Database:IsStatisticAchievement(id) end
     for i = 1, capped do
         local id = getID(i)
-        if id then
+        if id and not (isStat and isStat(id)) then
             local _, name, _, _, _, _, _, _, _, icon = getInfo(id)
             if name and name ~= "" then
                 results[#results + 1] = GetOrCreateAchievementEntry(id, name, icon)
@@ -6498,7 +6500,7 @@ function UI:OnSearchTextChanged(text, force)
     local hidePassives = EasyFind.db.abilityHidePassives
     if filters and (filters.ui == false or filters.abilities == false
                     or filters.bosses == false
-                    or filters.achievements == false
+                    or filters.achievements == false or filters.statistics == false
                     or filters.currencies == false or filters.reputations == false
                     or filters.bags == false or filters.macros == false
                     or filters.options == false
