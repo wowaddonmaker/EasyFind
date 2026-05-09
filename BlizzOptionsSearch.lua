@@ -1780,6 +1780,65 @@ local function CollectAddonCategories()
 end
 BlizzOptionsSearch.CollectAddonCategories = CollectAddonCategories
 
+-- Hardcoded option lists for graphics-quality dropdowns whose options
+-- live inside SettingsAdvancedQualityControlsMixin's private closures
+-- (GetShadowQualityOptions etc.). Mirror Blizzard's Graphics.lua: same
+-- value sets, same localized label globals, same hardware-validity
+-- filter via IsGraphicsSettingValueSupported.
+local function MakeQualityOpts(cvar, raid, optionDefs)
+    return { cvar = cvar, raid = raid, optionDefs = optionDefs }
+end
+local function L(name, fallback)
+    local v = _G[name]
+    if type(v) == "string" and v ~= "" then return v end
+    return fallback
+end
+local QUALITY_LIKE_5 = {
+    { 0, "VIDEO_OPTIONS_LOW", "Low" },
+    { 1, "VIDEO_OPTIONS_FAIR", "Fair" },
+    { 2, "VIDEO_OPTIONS_MEDIUM", "Medium" },
+    { 3, "VIDEO_OPTIONS_HIGH", "High" },
+    { 4, "VIDEO_OPTIONS_ULTRA", "Ultra" },
+    { 5, "VIDEO_OPTIONS_ULTRA_HIGH", "Ultra High" },
+}
+local QUALITY_LIKE_4 = {
+    { 0, "VIDEO_OPTIONS_LOW", "Low" },
+    { 1, "VIDEO_OPTIONS_FAIR", "Fair" },
+    { 2, "VIDEO_OPTIONS_MEDIUM", "Medium" },
+    { 3, "VIDEO_OPTIONS_HIGH", "High" },
+}
+local HARDCODED_OPTIONS = {
+    PROXY_SHADOW_QUALITY        = MakeQualityOpts("graphicsShadowQuality", false, QUALITY_LIKE_5),
+    PROXY_RAID_SHADOW_QUALITY   = MakeQualityOpts("raidGraphicsShadowQuality", true, QUALITY_LIKE_5),
+    PROXY_LIQUID_DETAIL         = MakeQualityOpts("graphicsLiquidDetail", false, QUALITY_LIKE_4),
+    PROXY_RAID_LIQUID_DETAIL    = MakeQualityOpts("raidGraphicsLiquidDetail", true, QUALITY_LIKE_4),
+    PROXY_PARTICLE_DENSITY      = MakeQualityOpts("graphicsParticleDensity", false, QUALITY_LIKE_5),
+    PROXY_RAID_PARTICLE_DENSITY = MakeQualityOpts("raidGraphicsParticleDensity", true, QUALITY_LIKE_5),
+    PROXY_VIEW_DISTANCE         = MakeQualityOpts("graphicsViewDistance", false, QUALITY_LIKE_5),
+    PROXY_RAID_VIEW_DISTANCE    = MakeQualityOpts("raidGraphicsViewDistance", true, QUALITY_LIKE_5),
+    PROXY_ENVIRONMENT_DETAIL    = MakeQualityOpts("graphicsEnvironmentDetail", false, QUALITY_LIKE_5),
+    PROXY_RAID_ENVIRONMENT_DETAIL = MakeQualityOpts("raidGraphicsEnvironmentDetail", true, QUALITY_LIKE_5),
+    PROXY_GROUND_CLUTTER        = MakeQualityOpts("graphicsGroundClutter", false, QUALITY_LIKE_5),
+    PROXY_RAID_GROUND_CLUTTER   = MakeQualityOpts("raidGraphicsGroundClutter", true, QUALITY_LIKE_5),
+}
+local function BuildQualityOptions(spec)
+    if not spec then return nil end
+    local out = {}
+    for _, def in ipairs(spec.optionDefs) do
+        local value, labelGlobal, fallback = def[1], def[2], def[3]
+        local supported = true
+        if IsGraphicsSettingValueSupported and spec.cvar then
+            local ok, err = pcall(IsGraphicsSettingValueSupported, spec.cvar, value, spec.raid)
+            if ok then supported = (err == nil or err == 0) end
+        end
+        if supported then
+            tinsert(out, { value = value, label = L(labelGlobal, fallback) })
+        end
+    end
+    if #out == 0 then return nil end
+    return out
+end
+
 -- Walk Game (non-AddOn) categories for individual settings the curated
 -- SETTINGS_DATA list doesn't surface (Use UI Scale, vsync, etc.). The
 -- live registry is authoritative for what's actually in the panel
@@ -1799,6 +1858,8 @@ local function CollectGameSettings()
     local entries = {}
     if not Settings then return entries end
     local curated = BuildCuratedVariableSet()
+    local emittedVars = {}
+    for v in pairs(curated) do emittedVars[v] = true end
     local seenCatIDs = {}
     local function emit(cat, parentName)
         if not cat or not cat.GetName then return end
@@ -1811,9 +1872,10 @@ local function CollectGameSettings()
         local pathPrefix = { "Game Settings", catName }
         local inline = WalkCategorySettings(cat, catName, catID, pathPrefix)
         for _, e in ipairs(inline) do
-            if not curated[e.settingVariable] then
+            if not emittedVars[e.settingVariable] then
                 e.category = "Game Settings"
                 tinsert(entries, e)
+                emittedVars[e.settingVariable] = true
             end
         end
     end
@@ -1826,6 +1888,73 @@ local function CollectGameSettings()
                 if sok and type(subs) == "table" then
                     local parentName = cat.GetName and cat:GetName()
                     for _, sub in ipairs(subs) do emit(sub, parentName) end
+                end
+            end
+        end
+    end
+    -- Fallback pass: SettingsPanel.settings holds every Setting object
+    -- registered via Settings.RegisterCVar/Proxy/AddOn. Custom container
+    -- initializers (Graphics Quality's BaseQualityControls, which bundles
+    -- Shadow Quality / Liquid Detail / etc. into one frame) hide their
+    -- child settings from layout:GetInitializers, so the walk above
+    -- misses them. Pull them straight from the registry as basic
+    -- navigation entries: click the row, panel opens to the category.
+    if SettingsPanel and SettingsPanel.settings then
+        for setting, cat in pairs(SettingsPanel.settings) do
+            if cat and not IsAddonCategory(cat) and setting.GetVariable then
+                local vok, variable = pcall(setting.GetVariable, setting)
+                if vok and variable and not emittedVars[variable] then
+                    local nok, settingName = pcall(setting.GetName, setting)
+                    if nok and settingName and settingName ~= "" then
+                        -- Base + Raid variants of each Graphics Quality
+                        -- setting share the same display name with
+                        -- different proxy variables (PROXY_SHADOW_QUALITY
+                        -- vs the raid one). Suffix the raid version so
+                        -- the search results don't show two identical
+                        -- rows.
+                        local displayName = settingName
+                        local lowerVar = slower(variable)
+                        if lowerVar:find("raid", 1, true) then
+                            displayName = settingName .. " (Raid)"
+                        end
+                        local catName = cat.GetName and cat:GetName() or "Game Settings"
+                        local catID = cat.GetID and cat:GetID()
+                        local nameLower = slower(displayName)
+                        local kw = { "setting", "option", "config", nameLower, slower(catName) }
+                        -- Booleans render with the inline checkbox row.
+                        -- Known graphics-quality dropdowns get a hardcoded
+                        -- option list so the inline dropdown widget works.
+                        -- Other non-boolean orphans fall back to "open the
+                        -- panel on click" since we can't enumerate their
+                        -- options from outside the custom mixin.
+                        local resolvedType, settingOptions
+                        local qspec = HARDCODED_OPTIONS[variable]
+                        if qspec then
+                            settingOptions = BuildQualityOptions(qspec)
+                            if settingOptions then resolvedType = "dropdown" end
+                        elseif setting.GetVariableType then
+                            local tok, vt = pcall(setting.GetVariableType, setting)
+                            if tok and vt == "boolean" then resolvedType = "checkbox" end
+                        end
+                        tinsert(entries, {
+                            name = displayName,
+                            nameLower = nameLower,
+                            keywords = kw,
+                            keywordsLower = kw,
+                            category = "Game Settings",
+                            path = { "Game Settings", catName },
+                            settingsCategory = catName,
+                            settingCategoryID = catID,
+                            settingVariable = variable,
+                            settingType = resolvedType,
+                            settingOptions = settingOptions,
+                            steps = {
+                                { settingsCategory = catName, settingCategoryID = catID,
+                                  settingVariable = variable },
+                            },
+                        })
+                        emittedVars[variable] = true
+                    end
                 end
             end
         end
