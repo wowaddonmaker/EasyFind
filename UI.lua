@@ -4326,6 +4326,48 @@ local achSearchListener
 local achSearchPrewarmed = false
 local ACH_MAX_RESULTS = 8
 
+-- Walk the achievement's category chain root-down so the guide
+-- breadcrumbs through each parent before highlighting the achievement
+-- row. GetAchievementCategory + GetCategoryInfo (parentID) walks up
+-- toward -1 (root sentinel).
+local function BuildAchievementSteps(achievementID)
+    local steps = { { buttonFrame = "AchievementMicroButton" } }
+    local getCat   = _G["GetAchievementCategory"]
+    local getInfo  = _G["GetCategoryInfo"]
+    if not getCat or not getInfo then
+        steps[1].achievementID = achievementID
+        return steps
+    end
+    local catID = getCat(achievementID)
+    if not catID or catID < 0 then
+        steps[1].achievementID = achievementID
+        return steps
+    end
+    local chain = {}
+    local seen = {}
+    local current = catID
+    while current and current > 0 and not seen[current] do
+        seen[current] = true
+        local title, parentID = getInfo(current)
+        if not title then break end
+        chain[#chain + 1] = title
+        current = parentID
+    end
+    -- Reverse so root-most appears first.
+    for i = #chain, 1, -1 do
+        steps[#steps + 1] = {
+            waitForFrame = "AchievementFrame",
+            achievementCategory = chain[i],
+        }
+    end
+    -- Final step targets the achievement itself.
+    steps[#steps + 1] = {
+        waitForFrame = "AchievementFrame",
+        achievementID = achievementID,
+    }
+    return steps
+end
+
 local function GetOrCreateAchievementEntry(id, name, icon)
     local entry = achievementEntryByID[id]
     if entry then
@@ -4341,7 +4383,7 @@ local function GetOrCreateAchievementEntry(id, name, icon)
         nameLower = slower(name or ""),
         achievementID = id,
         icon = icon,
-        steps = { { buttonFrame = "AchievementMicroButton", achievementID = id } },
+        steps = BuildAchievementSteps(id),
     }, ACHIEVEMENT_MT)
     achievementEntryByID[id] = entry
     return entry
