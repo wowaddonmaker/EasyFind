@@ -16,6 +16,12 @@ local SIMPLE_FIELDS = {
     "itemID", "encounterID", "instanceID", "lootSlotName", "lootSourceName", "lootInstanceName", "lootSourceType",
     "transmogSetID",
     "factionID", "hasRepBar", "canQueue", "isPvP", "isPvE",
+    -- Map-search fields. Without these the row's render branch can't
+    -- recognize the entry as a map result, so the general icon goes
+    -- missing and the specific icon falls back to the LEFT slot.
+    "mapSearchResult", "isZone", "mapID", "zoneName", "pathPrefix",
+    "zoneMapType", "zoneParentMapID",
+    "achievementID",
 }
 
 local TABLE_FIELDS = {
@@ -117,11 +123,20 @@ function UIPins.IsPinned(data)
 end
 
 function UIPins.Pin(data)
-    if UIPins.IsPinned(data) then return end
     local list = GetPinList(data)
     if not list then return end
     local clean = CleanForStorage(data)
     clean.isPinned = true
+    -- If a stale entry exists (e.g. saved before a new field was added
+    -- to SIMPLE_FIELDS), replace it in place so the next render picks
+    -- up the fresh fields.
+    local key = UIPins.GetKey(data)
+    for i, existing in ipairs(list) do
+        if UIPins.GetKey(existing) == key then
+            list[i] = clean
+            return
+        end
+    end
     tinsert(list, clean)
 end
 

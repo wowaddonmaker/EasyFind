@@ -6503,11 +6503,38 @@ function UI:OnSearchTextChanged(text, force)
         flatEntries[i] = nil
     end
 
+    -- Stable partition: pinned matches float to the top, non-pinned
+    -- follow. Each group keeps its score-sorted order. Pinned items
+    -- the user has stuck stay at the head of every relevant search.
+    if n > 1 then
+        local pinnedBuf = SCRATCH.pinnedFlat or {}
+        SCRATCH.pinnedFlat = pinnedBuf
+        local otherBuf = SCRATCH.otherFlat or {}
+        SCRATCH.otherFlat = otherBuf
+        wipe(pinnedBuf)
+        wipe(otherBuf)
+        for i = 1, n do
+            local e = flatEntries[i]
+            if e.isPinned then
+                pinnedBuf[#pinnedBuf + 1] = e
+            else
+                otherBuf[#otherBuf + 1] = e
+            end
+        end
+        if #pinnedBuf > 0 and #pinnedBuf < n then
+            local out = 0
+            for i = 1, #pinnedBuf do
+                out = out + 1
+                flatEntries[out] = pinnedBuf[i]
+            end
+            for i = 1, #otherBuf do
+                out = out + 1
+                flatEntries[out] = otherBuf[i]
+            end
+        end
+    end
+
     local hierarchical = flatEntries
-    -- Pins are quick-access entries that only show when the search bar is
-    -- empty (handled by ShowPinnedItems). During an active text search we
-    -- skip them so a user who pinned 6 settings doesn't see them prepended
-    -- to every unrelated query like "achieve".
     wipe(pinnedSearchEntries)
     local _perfTBuild = ns.PERF and debugprofilestop() or 0
     self:ShowHierarchicalResults(hierarchical)
@@ -7043,14 +7070,6 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 local sc = theme.separatorColor
                 resultRow.separator:SetColorTexture(sc[1], sc[2], sc[3], sc[4])
                 resultRow.separator:Show()
-            elseif entry.isPinned and not entry.isPinHeader then
-                local nextEntry = visible[i + 1]
-                if nextEntry and nextEntry.isPinned and not nextEntry.isPinHeader then
-                    resultRow.separator:SetColorTexture(0.4, 0.4, 0.4, 0.4)
-                    resultRow.separator:Show()
-                else
-                    resultRow.separator:Hide()
-                end
             else
                 resultRow.separator:Hide()
             end
@@ -11342,7 +11361,10 @@ function UI:HandleEscape()
     if editBox and editBox:GetText() ~= "" then
         editBox:SetText("")
         if editBox.placeholder then editBox.placeholder:Show() end
-        self:RequestHideResults()
+        -- SetText("") fires OnTextChanged -> OnSearchTextChanged which
+        -- calls ShowPinnedItems when the editbox still has focus, so
+        -- the pinned list lights up. Don't follow with RequestHideResults
+        -- here; that would close the results we just opened to pins.
         Refocus()
         return
     end
