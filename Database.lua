@@ -2526,6 +2526,246 @@ function Database:_ResetHeavyProviderCaches()
     wipe(lootSpecsScanned)
 end
 
+-- Aliases the API category names don't carry. Keyed by lowercase name.
+-- Words from the name are tokenized automatically by the search scorer,
+-- so these only need acronyms and shortenings the user might type.
+local CATEGORY_KEYWORD_OVERLAY = {
+    ["rated battlegrounds"]      = {"rbg", "rated bg"},
+    ["alterac valley"]           = {"av"},
+    ["arathi basin"]             = {"ab"},
+    ["eye of the storm"]         = {"eots"},
+    ["warsong gulch"]            = {"wsg"},
+    ["wintergrasp"]              = {"wg"},
+    ["strand of the ancients"]   = {"sota"},
+    ["isle of conquest"]         = {"ioc"},
+    ["temple of kotmogu"]        = {"tok"},
+    ["silvershard mines"]        = {"ssm"},
+    ["the burning crusade"]      = {"tbc", "burning crusade"},
+    ["wrath of the lich king"]   = {"wotlk", "wrath", "lich king"},
+    ["mists of pandaria"]        = {"mop", "pandaria"},
+    ["warlords of draenor"]      = {"wod", "draenor"},
+    ["battle for azeroth"]       = {"bfa"},
+    ["shadowlands"]              = {"sl"},
+    ["dragonflight"]             = {"df"},
+    ["the war within"]           = {"tww", "war within"},
+    ["feats of strength"]        = {"fos"},
+    ["player vs. player"]        = {"pvp"},
+    ["dungeons & raids"]         = {"dungeons", "raids"},
+}
+
+local CATEGORY_FLAG_GUILD = 0x00000001
+
+local function buildCategoryEntry(opts)
+    local nameLower = slower(opts.categoryName)
+    local kw = { nameLower }
+    for w in nameLower:gmatch("[%w']+") do
+        if #w > 2 and w ~= nameLower then kw[#kw + 1] = w end
+    end
+    local overlay = CATEGORY_KEYWORD_OVERLAY[nameLower]
+    if overlay then
+        for i = 1, #overlay do kw[#kw + 1] = overlay[i] end
+    end
+    local entry = {
+        name = opts.displayName,
+        keywords = kw,
+        category = opts.category,
+        buttonFrame = "AchievementMicroButton",
+        path = opts.path,
+        steps = opts.steps,
+        flashLabel = opts.flashLabel,
+    }
+    entry.nameLower = slower(opts.displayName)
+    entry.keywordsLower = {}
+    for j = 1, #kw do entry.keywordsLower[j] = slower(kw[j]) end
+    return entry
+end
+
+-- Walks GetCategoryList()/GetCategoryInfo() to build personal +
+-- guild achievement category entries directly from the live registry,
+-- so search results always match what the AchievementFrame sidebar
+-- actually contains for the current build.
+function Database:PopulateDynamicAchievements()
+    if not GetCategoryList or not GetCategoryInfo then return false end
+    RemoveEntriesByCategory("Achievement Category")
+
+    local categories = GetCategoryList()
+    if not categories then return false end
+
+    -- 12.0's GetCategoryList returns the union of achievement +
+    -- statistics category IDs. Subtract the statistics set so we only
+    -- emit real achievement-tab sidebar entries here; statistics get
+    -- their own dynamic populator.
+    local statsCategorySet = {}
+    if GetStatisticsCategoryList then
+        local statCats = GetStatisticsCategoryList()
+        if statCats then
+            for i = 1, #statCats do statsCategorySet[statCats[i]] = true end
+        end
+    end
+
+    local catMap = {}
+    for i = 1, #categories do
+        local catID = categories[i]
+        if not statsCategorySet[catID] then
+            local name, parentID, flags = GetCategoryInfo(catID)
+            if name and name ~= "" then
+                catMap[catID] = {
+                    id = catID, name = name, parentID = parentID,
+                    isGuild = band(flags or 0, CATEGORY_FLAG_GUILD) == 1,
+                    children = {},
+                }
+            end
+        end
+    end
+
+    local roots = {}
+    for _, cat in pairs(catMap) do
+        local parent = cat.parentID and cat.parentID ~= -1 and catMap[cat.parentID]
+        if parent then
+            parent.children[#parent.children + 1] = cat
+        else
+            roots[#roots + 1] = cat
+        end
+    end
+
+    local function emit(cat, parentChain, isGuildBranch)
+        local prefix = isGuildBranch and "Guild: " or ""
+        local suffix = isGuildBranch and "" or " (Achievements)"
+        local pathRoot = isGuildBranch
+            and { "Achievements", "Guild Achievements" }
+            or { "Achievements", "Personal Achievements" }
+
+        local steps = {
+            { buttonFrame = "AchievementMicroButton" },
+            { waitForFrame = "AchievementFrame", tabIndex = isGuildBranch and 2 or 1 },
+        }
+        local path = {}
+        for i = 1, #pathRoot do path[i] = pathRoot[i] end
+        for i = 1, #parentChain do
+            local pn = parentChain[i].name
+            steps[#steps + 1] = { waitForFrame = "AchievementFrame", achievementCategory = pn }
+            path[#path + 1] = pn
+        end
+        steps[#steps + 1] = { waitForFrame = "AchievementFrame", achievementCategory = cat.name }
+
+        uiSearchData[#uiSearchData + 1] = buildCategoryEntry({
+            displayName  = prefix .. cat.name .. suffix,
+            categoryName = cat.name,
+            category     = "Achievement Category",
+            path         = path,
+            steps        = steps,
+            flashLabel   = "Achievements",
+        })
+
+        if #cat.children > 0 then
+            local nextChain = {}
+            for i = 1, #parentChain do nextChain[i] = parentChain[i] end
+            nextChain[#nextChain + 1] = cat
+            for i = 1, #cat.children do emit(cat.children[i], nextChain, isGuildBranch) end
+        end
+    end
+
+    for i = 1, #roots do emit(roots[i], {}, roots[i].isGuild) end
+    return true
+end
+
+-- Walks GetStatisticsCategoryList()/GetCategoryInfo() to emit the
+-- Statistics tab's category tree. Same shape as achievements but
+-- targets the Statistics tab (tabIndex = 3).
+function Database:PopulateDynamicStatistics()
+    if not GetStatisticsCategoryList or not GetCategoryInfo then return false end
+    RemoveEntriesByCategory("Statistic")
+
+    local categories = GetStatisticsCategoryList()
+    if not categories then return false end
+
+    local catMap = {}
+    for i = 1, #categories do
+        local catID = categories[i]
+        local name, parentID = GetCategoryInfo(catID)
+        if name and name ~= "" then
+            catMap[catID] = {
+                id = catID, name = name, parentID = parentID, children = {},
+            }
+        end
+    end
+
+    local roots = {}
+    for _, cat in pairs(catMap) do
+        local parent = cat.parentID and cat.parentID ~= -1 and catMap[cat.parentID]
+        if parent then
+            parent.children[#parent.children + 1] = cat
+        else
+            roots[#roots + 1] = cat
+        end
+    end
+
+    -- Emit one entry per individual stat row inside each category.
+    -- Each "row" in the Statistics tab is an achievement ID whose
+    -- value is fetched via GetStatistic(achievementID). Walking
+    -- GetCategoryNumAchievements + GetAchievementInfo gives us the
+    -- per-row IDs and titles for inline display. Heavy (~400 API
+    -- calls); call this synchronously at PLAYER_LOGIN so it lands
+    -- during the load-screen window where the cost is hidden.
+    local function emit(cat, parentChain)
+        local baseSteps = {
+            { buttonFrame = "AchievementMicroButton" },
+            { waitForFrame = "AchievementFrame", tabIndex = 3 },
+        }
+        local pathBase = { "Achievements", "Statistics" }
+        for i = 1, #parentChain do
+            local pn = parentChain[i].name
+            baseSteps[#baseSteps + 1] = { waitForFrame = "AchievementFrame", statisticsCategory = pn }
+            pathBase[#pathBase + 1] = pn
+        end
+        baseSteps[#baseSteps + 1] = { waitForFrame = "AchievementFrame", statisticsCategory = cat.name }
+        pathBase[#pathBase + 1] = cat.name
+
+        if GetCategoryNumAchievements and GetAchievementInfo then
+            local total = GetCategoryNumAchievements(cat.id, true)
+            for i = 1, (total or 0) do
+                local id, title = GetAchievementInfo(cat.id, i)
+                if id and title and title ~= "" then
+                    local steps = {}
+                    for s = 1, #baseSteps do steps[s] = baseSteps[s] end
+                    -- Leaf step: ONLY statisticID + statisticName.
+                    -- Including statisticsCategory here would make the
+                    -- statisticsCategory handler match first (it runs
+                    -- before the statisticID handler) and Cancel the
+                    -- guide because the category is already selected.
+                    steps[#steps + 1] = {
+                        waitForFrame = "AchievementFrame",
+                        statisticID = id,
+                        statisticName = title,
+                    }
+                    local path = {}
+                    for p = 1, #pathBase do path[p] = pathBase[p] end
+                    local entry = buildCategoryEntry({
+                        displayName  = title,
+                        categoryName = title,
+                        category     = "Statistic",
+                        path         = path,
+                        steps        = steps,
+                        flashLabel   = "Statistics",
+                    })
+                    entry.statisticID = id
+                    uiSearchData[#uiSearchData + 1] = entry
+                end
+            end
+        end
+
+        if #cat.children > 0 then
+            local nextChain = {}
+            for i = 1, #parentChain do nextChain[i] = parentChain[i] end
+            nextChain[#nextChain + 1] = cat
+            for i = 1, #cat.children do emit(cat.children[i], nextChain) end
+        end
+    end
+
+    for i = 1, #roots do emit(roots[i], {}) end
+    return true
+end
+
 -- TREE FLATTENER
 -- Walks the tree and produces flat entries for the search/highlight engines.
 -- Children inherit: buttonFrame, category, and accumulate path + steps from parents.
@@ -2704,430 +2944,11 @@ function Database:BuildUIDatabase()
                     keywords = {"achievements", "achievement tab", "personal achievements"},
                     category = "Achievements",
                     steps = {{ waitForFrame = "AchievementFrame", tabIndex = 1 }},
-                    children = {
-                        -- ACHIEVEMENT CATEGORIES (Auto-generated by Harvester)
-                        {
-                            name = "Characters (Achievements)",
-                            keywords = {"characters"},
-                            steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Characters" }},
-                        },
-                        {
-                            name = "Collections (Achievements)",
-                            keywords = {"collections", "collection", "transmog", "tmog"},
-                            steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Collections" }},
-                            children = {
-                                {
-                                    name = "Appearances (Achievements)",
-                                    keywords = {"appearances"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Appearances" }},
-                                },
-                                {
-                                    name = "Decor (Achievements)",
-                                    keywords = {"decor"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Decor" }},
-                                },
-                                {
-                                    name = "Dragon Isle Drake Cosmetics (Achievements)",
-                                    keywords = {"dragon isle drake cosmetics", "drake cosmetics"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Dragon Isle Drake Cosmetics" }},
-                                },
-                                {
-                                    name = "Mounts - Collections (Achievements)",
-                                    keywords = {"mounts"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Mounts" }},
-                                },
-                                {
-                                    name = "Toy Box (Achievements)",
-                                    keywords = {"toy box", "toys"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Toy Box" }},
-                                },
-                            },
-                        },
-                        {
-                            name = "Delves (Achievements)",
-                            keywords = {"delves"},
-                            steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Delves" }},
-                            children = {
-                                {
-                                    name = "Midnight - Delves (Achievements)",
-                                    keywords = {"midnight"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Midnight" }},
-                                },
-                                {
-                                    name = "The War Within (Achievements)",
-                                    keywords = {"the war within", "tww"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "The War Within" }},
-                                },
-                            },
-                        },
-                        {
-                            name = "Dungeons & Raids (Achievements)",
-                            keywords = {"dungeons & raids", "dungeons", "raids", "dungeon", "raid"},
-                            steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Dungeons & Raids" }},
-                            children = {
-                                {
-                                    name = "Battle Dungeon (Achievements)",
-                                    keywords = {"battle dungeon"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Battle Dungeon" }},
-                                },
-                                {
-                                    name = "Battle Raid (Achievements)",
-                                    keywords = {"battle raid"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Battle Raid" }},
-                                },
-                                {
-                                    name = "Cataclysm Dungeon (Achievements)",
-                                    keywords = {"cataclysm dungeon", "cata dungeon"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Cataclysm Dungeon" }},
-                                },
-                                {
-                                    name = "Cataclysm Raid (Achievements)",
-                                    keywords = {"cataclysm raid", "cata raid"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Cataclysm Raid" }},
-                                },
-                                {
-                                    name = "Classic - Dungeons & Raids (Achievements)",
-                                    keywords = {"classic"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Classic" }},
-                                },
-                                {
-                                    name = "Draenor Dungeon (Achievements)",
-                                    keywords = {"draenor dungeon", "wod dungeon"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Draenor Dungeon" }},
-                                },
-                                {
-                                    name = "Draenor Raid (Achievements)",
-                                    keywords = {"draenor raid", "wod raid"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Draenor Raid" }},
-                                },
-                                {
-                                    name = "Dragonflight Dungeon (Achievements)",
-                                    keywords = {"dragonflight dungeon", "df dungeon"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Dragonflight Dungeon" }},
-                                },
-                                {
-                                    name = "Dragonflight Raid (Achievements)",
-                                    keywords = {"dragonflight raid", "df raid"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Dragonflight Raid" }},
-                                },
-                                {
-                                    name = "Legion Dungeon (Achievements)",
-                                    keywords = {"legion dungeon"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Legion Dungeon" }},
-                                },
-                                {
-                                    name = "Legion Raid (Achievements)",
-                                    keywords = {"legion raid"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Legion Raid" }},
-                                },
-                                {
-                                    name = "Lich King Dungeon (Achievements)",
-                                    keywords = {"lich king dungeon", "wotlk dungeon"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Lich King Dungeon" }},
-                                },
-                                {
-                                    name = "Lich King Raid (Achievements)",
-                                    keywords = {"lich king raid", "wotlk raid"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Lich King Raid" }},
-                                },
-                                {
-                                    name = "Midnight Dungeon (Achievements)",
-                                    keywords = {"midnight dungeon"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Midnight Dungeon" }},
-                                },
-                                {
-                                    name = "Midnight Raid (Achievements)",
-                                    keywords = {"midnight raid"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Midnight Raid" }},
-                                },
-                                {
-                                    name = "Pandaria Dungeon (Achievements)",
-                                    keywords = {"pandaria dungeon", "mop dungeon"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Pandaria Dungeon" }},
-                                },
-                                {
-                                    name = "Pandaria Raid (Achievements)",
-                                    keywords = {"pandaria raid", "mop raid"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Pandaria Raid" }},
-                                },
-                                {
-                                    name = "Shadowlands Dungeon (Achievements)",
-                                    keywords = {"shadowlands dungeon", "sl dungeon"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Shadowlands Dungeon" }},
-                                },
-                                {
-                                    name = "Shadowlands Raid (Achievements)",
-                                    keywords = {"shadowlands raid", "sl raid"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Shadowlands Raid" }},
-                                },
-                                {
-                                    name = "The Burning Crusade - Dungeons & Raids (Achievements)",
-                                    keywords = {"the burning crusade", "tbc"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "The Burning Crusade" }},
-                                },
-                                {
-                                    name = "War Within Dungeon (Achievements)",
-                                    keywords = {"war within dungeon", "tww dungeon"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "War Within Dungeon" }},
-                                },
-                                {
-                                    name = "War Within Raid (Achievements)",
-                                    keywords = {"war within raid", "tww raid"},
-                                    steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "War Within Raid" }},
-                                },
-                            },
-                        },
-                        {
-                            name = "Expansion Features (Achievements)",
-                            keywords = {"expansion features", "expansion"},
-                            steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Expansion Features" }},
-                            children = {
-                                { name = "Argent Tournament (Achievements)", keywords = {"argent tournament"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Argent Tournament" }} },
-                                { name = "Covenant Sanctums (Achievements)", keywords = {"covenant sanctums", "covenant", "sanctums"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Covenant Sanctums" }} },
-                                { name = "Draenor Garrison (Achievements)", keywords = {"draenor garrison", "garrison"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Draenor Garrison" }} },
-                                { name = "Heart of Azeroth (Achievements)", keywords = {"heart of azeroth", "hoa"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Heart of Azeroth" }} },
-                                { name = "Island Expeditions (Achievements)", keywords = {"island expeditions", "islands"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Island Expeditions" }} },
-                                { name = "Legion Class Hall (Achievements)", keywords = {"legion class hall", "class hall", "order hall"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Legion Class Hall" }} },
-                                { name = "Lorewalking (Achievements)", keywords = {"lorewalking"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Lorewalking" }} },
-                                { name = "Pandaria Scenarios (Achievements)", keywords = {"pandaria scenarios", "scenarios"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Pandaria Scenarios" }} },
-                                { name = "Prey (Achievements)", keywords = {"prey"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Prey" }} },
-                                { name = "Proving Grounds (Achievements)", keywords = {"proving grounds"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Proving Grounds" }} },
-                                { name = "Skyriding (Achievements)", keywords = {"skyriding", "dragonriding"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Skyriding" }} },
-                                { name = "Tol Barad (Achievements)", keywords = {"tol barad", "tb"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Tol Barad" }} },
-                                { name = "Torghast (Achievements)", keywords = {"torghast", "tower of the damned"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Torghast" }} },
-                                { name = "Visions of N'Zoth (Achievements)", keywords = {"visions of n'zoth", "visions", "nzoth"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Visions of N'Zoth" }} },
-                                { name = "Visions of N'Zoth Revisited (Achievements)", keywords = {"visions of n'zoth revisited", "nzoth revisited"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Visions of N'Zoth Revisited" }} },
-                                { name = "War Effort (Achievements)", keywords = {"war effort"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "War Effort" }} },
-                                { name = "Warfronts (Achievements)", keywords = {"warfronts", "warfront"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Warfronts" }} },
-                            },
-                        },
-                        {
-                            name = "Exploration (Achievements)",
-                            keywords = {"exploration", "explore", "explorer"},
-                            steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Exploration" }},
-                            children = {
-                                { name = "Battle for Azeroth - Exploration (Achievements)", keywords = {"battle for azeroth", "bfa"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Battle for Azeroth" }} },
-                                { name = "Cataclysm - Exploration (Achievements)", keywords = {"cataclysm"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Cataclysm" }} },
-                                { name = "Draenor - Exploration (Achievements)", keywords = {"draenor"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Draenor" }} },
-                                { name = "Eastern Kingdoms - Exploration (Achievements)", keywords = {"eastern kingdoms"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Eastern Kingdoms" }} },
-                                { name = "Kalimdor - Exploration (Achievements)", keywords = {"kalimdor"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Kalimdor" }} },
-                                { name = "Legion - Exploration (Achievements)", keywords = {"legion"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Legion" }} },
-                                { name = "Midnight - Exploration (Achievements)", keywords = {"midnight"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Midnight" }} },
-                                { name = "Northrend - Exploration (Achievements)", keywords = {"northrend"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Northrend" }} },
-                                { name = "Outland - Exploration (Achievements)", keywords = {"outland"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Outland" }} },
-                                { name = "Pandaria - Exploration (Achievements)", keywords = {"pandaria"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Pandaria" }} },
-                                { name = "Shadowlands - Exploration (Achievements)", keywords = {"shadowlands"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Shadowlands" }} },
-                                { name = "Dragon Isles (Achievements)", keywords = {"dragon isles", "dragonflight"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Dragon Isles" }} },
-                                { name = "War Within - Exploration (Achievements)", keywords = {"war within"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "War Within" }} },
-                            },
-                        },
-                        {
-                            name = "Feats of Strength (Achievements)",
-                            keywords = {"feats of strength", "feats", "feat", "fos"},
-                            steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Feats of Strength" }},
-                            children = {
-                                { name = "Delves - Feats of Strength (Achievements)", keywords = {"delves"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Delves" }} },
-                                { name = "Dungeons - Feats of Strength (Achievements)", keywords = {"dungeons", "dungeon"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Dungeons" }} },
-                                { name = "Events (Achievements)", keywords = {"events"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Events" }} },
-                                { name = "Mounts - Feats of Strength (Achievements)", keywords = {"mounts"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Mounts" }} },
-                                { name = "Player vs. Player - Feats of Strength (Achievements)", keywords = {"player vs. player", "pvp"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Player vs. Player" }} },
-                                { name = "Promotions (Achievements)", keywords = {"promotions"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Promotions" }} },
-                                { name = "Raids - Feats of Strength (Achievements)", keywords = {"raids", "raid"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Raids" }} },
-                                { name = "Reputation - Feats of Strength (Achievements)", keywords = {"reputation", "rep", "factions"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Reputation" }} },
-                            },
-                        },
-                        {
-                            name = "Legacy (Achievements)",
-                            keywords = {"legacy", "old", "removed"},
-                            steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Legacy" }},
-                            children = {
-                                { name = "Character (Achievements)", keywords = {"character"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Character" }} },
-                                { name = "Currencies (Achievements)", keywords = {"currencies", "currency"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Currencies" }} },
-                                { name = "Dungeons - Legacy (Achievements)", keywords = {"dungeons", "dungeon"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Dungeons" }} },
-                                { name = "Expansion Features - Legacy (Achievements)", keywords = {"expansion features", "expansion"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Expansion Features" }} },
-                                { name = "Legion Remix (Achievements)", keywords = {"legion remix", "legion", "remix"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Legion Remix" }} },
-                                { name = "Player vs. Player - Legacy (Achievements)", keywords = {"player vs. player", "pvp"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Player vs. Player" }} },
-                                { name = "Professions - Legacy (Achievements)", keywords = {"professions", "profession", "crafting"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Professions" }} },
-                                { name = "Quests - Legacy (Achievements)", keywords = {"quests", "quest"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Quests" }} },
-                                { name = "Raids - Legacy (Achievements)", keywords = {"raids", "raid"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Raids" }} },
-                                { name = "Remix: Mists of Pandaria (Achievements)", keywords = {"remix: mists of pandaria", "remix", "mists", "pandaria"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Remix: Mists of Pandaria" }} },
-                                { name = "World Events - Legacy (Achievements)", keywords = {"world events", "holidays", "seasonal"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "World Events" }} },
-                            },
-                        },
-                        { name = "Pet Battles (Achievements)", keywords = {"pet battles", "pets", "battle pets"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Pet Battles" }},
-                            children = {
-                                { name = "Battle (Achievements)", keywords = {"battle"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Battle" }} },
-                                { name = "Collect (Achievements)", keywords = {"collect"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Collect" }} },
-                                { name = "Level (Achievements)", keywords = {"level"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Level" }} },
-                            },
-                        },
-                        {
-                            name = "Player vs. Player (Achievements)",
-                            keywords = {"player vs. player", "pvp"},
-                            steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Player vs. Player" }},
-                            children = {
-                                { name = "Alterac Valley (Achievements)", keywords = {"alterac valley", "av"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Alterac Valley" }} },
-                                { name = "Arathi Basin (Achievements)", keywords = {"arathi basin", "ab"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Arathi Basin" }} },
-                                { name = "Arena (Achievements)", keywords = {"arena", "arenas"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Arena" }} },
-                                { name = "Ashran (Achievements)", keywords = {"ashran"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Ashran" }} },
-                                { name = "Battle for Gilneas (Achievements)", keywords = {"battle for gilneas", "gilneas"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Battle for Gilneas" }} },
-                                { name = "Deephaul Ravine (Achievements)", keywords = {"deephaul ravine", "deephaul"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Deephaul Ravine" }} },
-                                { name = "Deepwind Gorge (Achievements)", keywords = {"deepwind gorge", "deepwind"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Deepwind Gorge" }} },
-                                { name = "Eye of the Storm (Achievements)", keywords = {"eye of the storm", "eots"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Eye of the Storm" }} },
-                                { name = "Honor (Achievements)", keywords = {"honor"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Honor" }} },
-                                { name = "Isle of Conquest (Achievements)", keywords = {"isle of conquest", "ioc"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Isle of Conquest" }} },
-                                { name = "Rated Battleground (Achievements)", keywords = {"rated battleground", "rated"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Rated Battleground" }} },
-                                { name = "Seething Shore (Achievements)", keywords = {"seething shore", "seething"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Seething Shore" }} },
-                                { name = "Silvershard Mines (Achievements)", keywords = {"silvershard mines", "silvershard"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Silvershard Mines" }} },
-                                { name = "Temple of Kotmogu (Achievements)", keywords = {"temple of kotmogu", "kotmogu"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Temple of Kotmogu" }} },
-                                { name = "Training Grounds (Achievements)", keywords = {"training grounds", "training"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Training Grounds" }} },
-                                { name = "Twin Peaks (Achievements)", keywords = {"twin peaks"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Twin Peaks" }} },
-                                { name = "Warsong Gulch (Achievements)", keywords = {"warsong gulch", "wsg"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Warsong Gulch" }} },
-                                { name = "Wintergrasp (Achievements)", keywords = {"wintergrasp", "wg"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Wintergrasp" }} },
-                                { name = "World (Achievements)", keywords = {"world"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "World" }} },
-                            },
-                        },
-                        {
-                            name = "Professions (Achievements)",
-                            keywords = {"professions", "profession", "crafting"},
-                            steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Professions" }},
-                            children = {
-                                { name = "Alchemy (Achievements)", keywords = {"alchemy"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Alchemy" }} },
-                                { name = "Archaeology (Achievements)", keywords = {"archaeology"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Archaeology" }} },
-                                { name = "Blacksmithing (Achievements)", keywords = {"blacksmithing"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Blacksmithing" }} },
-                                { name = "Cooking (Achievements)", keywords = {"cooking"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Cooking" }} },
-                                { name = "Enchanting (Achievements)", keywords = {"enchanting"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Enchanting" }} },
-                                { name = "Engineering (Achievements)", keywords = {"engineering"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Engineering" }} },
-                                { name = "Fishing (Achievements)", keywords = {"fishing"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Fishing" }} },
-                                { name = "First Aid (Achievements)", keywords = {"first aid"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "First Aid" }} },
-                                { name = "Herbalism (Achievements)", keywords = {"herbalism"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Herbalism" }} },
-                                { name = "Inscription (Achievements)", keywords = {"inscription"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Inscription" }} },
-                                { name = "Jewelcrafting (Achievements)", keywords = {"jewelcrafting"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Jewelcrafting" }} },
-                                { name = "Leatherworking (Achievements)", keywords = {"leatherworking"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Leatherworking" }} },
-                                { name = "Mining (Achievements)", keywords = {"mining"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Mining" }} },
-                                { name = "Skinning (Achievements)", keywords = {"skinning"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Skinning" }} },
-                                { name = "Tailoring (Achievements)", keywords = {"tailoring"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Tailoring" }} },
-                            },
-                        },
-                        {
-                            name = "Quests (Achievements)",
-                            keywords = {"quests", "quest"},
-                            steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Quests" }},
-                            children = {
-                                { name = "Battle for Azeroth - Quests (Achievements)", keywords = {"battle for azeroth", "bfa"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Battle for Azeroth" }} },
-                                { name = "Cataclysm - Quests (Achievements)", keywords = {"cataclysm"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Cataclysm" }} },
-                                { name = "Draenor - Quests (Achievements)", keywords = {"draenor"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Draenor" }} },
-                                { name = "Dragonflight - Quests (Achievements)", keywords = {"dragonflight"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Dragonflight" }} },
-                                { name = "Eastern Kingdoms - Quests (Achievements)", keywords = {"eastern kingdoms"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Eastern Kingdoms" }} },
-                                { name = "Kalimdor - Quests (Achievements)", keywords = {"kalimdor"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Kalimdor" }} },
-                                { name = "Legion - Quests (Achievements)", keywords = {"legion"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Legion" }} },
-                                { name = "Midnight - Quests (Achievements)", keywords = {"midnight"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Midnight" }} },
-                                { name = "Northrend - Quests (Achievements)", keywords = {"northrend"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Northrend" }} },
-                                { name = "Outland - Quests (Achievements)", keywords = {"outland"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Outland" }} },
-                                { name = "Pandaria - Quests (Achievements)", keywords = {"pandaria"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Pandaria" }} },
-                                { name = "Shadowlands - Quests (Achievements)", keywords = {"shadowlands"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Shadowlands" }} },
-                                { name = "The Dragon Isles - Quests (Achievements)", keywords = {"dragon isles", "dragonflight"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "The Dragon Isles" }} },
-                                { name = "The War Within - Quests (Achievements)", keywords = {"war within"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "The War Within" }} },
-                            },
-                        },
-                        {
-                            name = "Reputation (Achievements)",
-                            keywords = {"reputation", "rep", "factions"},
-                            steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Reputation" }},
-                            children = {
-                                { name = "Battle for Azeroth - Reputation (Achievements)", keywords = {"battle for azeroth", "bfa"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Battle for Azeroth" }} },
-                                { name = "Cataclysm - Reputation (Achievements)", keywords = {"cataclysm"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Cataclysm" }} },
-                                { name = "Classic - Reputation (Achievements)", keywords = {"classic"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Classic" }} },
-                                { name = "Draenor - Reputation (Achievements)", keywords = {"draenor"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Draenor" }} },
-                                { name = "Dragonflight - Reputation (Achievements)", keywords = {"dragonflight"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Dragonflight" }} },
-                                { name = "Legion - Reputation (Achievements)", keywords = {"legion"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Legion" }} },
-                                { name = "Midnight - Reputation (Achievements)", keywords = {"midnight"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Midnight" }} },
-                                { name = "Northrend - Reputation (Achievements)", keywords = {"northrend"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Northrend" }} },
-                                { name = "Outland - Reputation (Achievements)", keywords = {"outland"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Outland" }} },
-                                { name = "Pandaria - Reputation (Achievements)", keywords = {"pandaria"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Pandaria" }} },
-                                { name = "Shadowlands - Reputation (Achievements)", keywords = {"shadowlands"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Shadowlands" }} },
-                                { name = "The Burning Crusade - Reputation (Achievements)", keywords = {"the burning crusade", "tbc"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "The Burning Crusade" }} },
-                                { name = "The Dragon Isles - Reputation (Achievements)", keywords = {"dragon isles", "dragonflight"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "The Dragon Isles" }} },
-                                { name = "The War Within - Reputation (Achievements)", keywords = {"war within"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "The War Within" }} },
-                                { name = "Wrath of the Lich King (Achievements)", keywords = {"wrath of the lich king", "wrath", "wotlk"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Wrath of the Lich King" }} },
-                            },
-                        },
-                        {
-                            name = "World Events (Achievements)",
-                            keywords = {"world events", "holidays", "seasonal"},
-                            steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "World Events" }},
-                            children = {
-                                { name = "Anniversary Celebration (Achievements)", keywords = {"anniversary celebration", "anniversary"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Anniversary Celebration" }} },
-                                { name = "Brawler's Guild (Achievements)", keywords = {"brawler's guild", "brawler"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Brawler's Guild" }} },
-                                { name = "Brewfest (Achievements)", keywords = {"brewfest"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Brewfest" }} },
-                                { name = "Children's Week (Achievements)", keywords = {"children's week"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Children's Week" }} },
-                                { name = "Dastardly Duos (Achievements)", keywords = {"dastardly duos", "dastardly"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Dastardly Duos" }} },
-                                { name = "Day of the Dead (Achievements)", keywords = {"day of the dead"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Day of the Dead" }} },
-                                { name = "Darkmoon Faire (Achievements)", keywords = {"darkmoon faire", "darkmoon"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Darkmoon Faire" }} },
-                                { name = "Feast of Winter Veil (Achievements)", keywords = {"feast of winter veil", "winter veil", "christmas"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Feast of Winter Veil" }} },
-                                { name = "Hallow's End (Achievements)", keywords = {"hallow's end", "halloween"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Hallow's End" }} },
-                                { name = "Lunar Festival (Achievements)", keywords = {"lunar festival"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Lunar Festival" }} },
-                                { name = "Love is in the Air (Achievements)", keywords = {"love is in the air", "valentine"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Love is in the Air" }} },
-                                { name = "Midsummer (Achievements)", keywords = {"midsummer", "midsummer fire festival"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Midsummer" }} },
-                                { name = "Noblegarden (Achievements)", keywords = {"noblegarden", "easter"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Noblegarden" }} },
-                                { name = "Pilgrim's Bounty (Achievements)", keywords = {"pilgrim's bounty", "thanksgiving"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Pilgrim's Bounty" }} },
-                                { name = "Timewalking (Achievements)", keywords = {"timewalking"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Timewalking" }} },
-                                { name = "Winter Veil (Achievements)", keywords = {"winter veil"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Winter Veil" }} },
-                            },
-                        },
-                    },
-                },
-
-                -- GUILD ACHIEVEMENTS (Tab 2)
-                {
-                    name = "Guild Achievements",
-                    keywords = {"guild achievements", "guild tab", "guild points"},
-                    category = "Achievements",
-                    steps = {{ waitForFrame = "AchievementFrame", tabIndex = 2 }},
-                    children = {
-                        -- GUILD ACHIEVEMENT CATEGORIES (Auto-generated by Harvester)
-                        {
-                            name = "Guild: Dungeons & Raids",
-                            keywords = {"dungeons & raids", "dungeons", "raids"},
-                            category = "Guild Achievements",
-                            steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Dungeons & Raids" }},
-                            children = {
-                                { name = "Guild: Battle Dungeon", keywords = {"battle dungeon"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Battle Dungeon" }} },
-                                { name = "Guild: Battle Raid", keywords = {"battle raid"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Battle Raid" }} },
-                                { name = "Guild: Cataclysm Dungeon", keywords = {"cataclysm dungeon", "cata dungeon"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Cataclysm Dungeon" }} },
-                                { name = "Guild: Cataclysm Raid", keywords = {"cataclysm raid", "cata raid"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Cataclysm Raid" }} },
-                                { name = "Guild: Classic", keywords = {"classic"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Classic" }} },
-                                { name = "Guild: Draenor Dungeon", keywords = {"draenor dungeon", "wod dungeon"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Draenor Dungeon" }} },
-                                { name = "Guild: Draenor Raid", keywords = {"draenor raid", "wod raid"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Draenor Raid" }} },
-                                { name = "Guild: Dragonflight Dungeon", keywords = {"dragonflight dungeon", "df dungeon"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Dragonflight Dungeon" }} },
-                                { name = "Guild: Dragonflight Raid", keywords = {"dragonflight raid", "df raid"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Dragonflight Raid" }} },
-                                { name = "Guild: Legion Dungeon", keywords = {"legion dungeon"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Legion Dungeon" }} },
-                                { name = "Guild: Legion Raid", keywords = {"legion raid"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Legion Raid" }} },
-                                { name = "Guild: Lich King Dungeon", keywords = {"lich king dungeon", "wotlk dungeon"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Lich King Dungeon" }} },
-                                { name = "Guild: Lich King Raid", keywords = {"lich king raid", "wotlk raid"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Lich King Raid" }} },
-                                { name = "Guild: Midnight Dungeon", keywords = {"midnight dungeon"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Midnight Dungeon" }} },
-                                { name = "Guild: Midnight Raid", keywords = {"midnight raid"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Midnight Raid" }} },
-                                { name = "Guild: Pandaria Dungeon", keywords = {"pandaria dungeon", "mop dungeon"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Pandaria Dungeon" }} },
-                                { name = "Guild: Pandaria Raid", keywords = {"pandaria raid", "mop raid"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Pandaria Raid" }} },
-                                { name = "Guild: Shadowlands Dungeon", keywords = {"shadowlands dungeon", "sl dungeon"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Shadowlands Dungeon" }} },
-                                { name = "Guild: Shadowlands Raid", keywords = {"shadowlands raid", "sl raid"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Shadowlands Raid" }} },
-                                { name = "Guild: The Burning Crusade", keywords = {"the burning crusade", "tbc"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "The Burning Crusade" }} },
-                                { name = "Guild: War Within Dungeon", keywords = {"war within dungeon", "tww dungeon"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "War Within Dungeon" }} },
-                                { name = "Guild: War Within Raid", keywords = {"war within raid", "tww raid"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "War Within Raid" }} },
-                            },
-                        },
-                        { name = "Guild: General", keywords = {"general"}, category = "Guild Achievements", steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "General" }} },
-                        { name = "Guild: Guild Feats of Strength", keywords = {"guild feats of strength", "guild feats", "fos"}, category = "Guild Achievements", steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Guild Feats of Strength" }} },
-                        { name = "Guild: Player vs. Player", keywords = {"player vs. player", "pvp", "guild pvp"}, category = "Guild Achievements", steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Player vs. Player" }},
-                            children = {
-                                { name = "Guild: Arena", keywords = {"arena"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Arena" }} },
-                                { name = "Guild: Battlegrounds", keywords = {"battlegrounds", "bg"}, steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Battlegrounds" }} },
-                            },
-                        },
-                        { name = "Guild: Professions", keywords = {"professions", "profession", "crafting"}, category = "Guild Achievements", steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Professions" }} },
-                        { name = "Guild: Quests", keywords = {"quests", "quest"}, category = "Guild Achievements", steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Quests" }} },
-                        { name = "Guild: Reputation", keywords = {"reputation", "rep", "factions"}, category = "Guild Achievements", steps = {{ waitForFrame = "AchievementFrame", achievementCategory = "Reputation" }} },
-                    },
+                    -- Category entries are emitted at runtime by
+                    -- Database:PopulateDynamicAchievements() using
+                    -- GetCategoryList() / GetCategoryInfo() so the search
+                    -- index always matches the live AchievementFrame
+                    -- sidebar for the current build.
                 },
 
                 -- STATISTICS (Tab 3)
@@ -3136,82 +2957,15 @@ function Database:BuildUIDatabase()
                     keywords = {"statistics", "stats tab", "player statistics"},
                     category = "Achievements",
                     steps = {{ waitForFrame = "AchievementFrame", tabIndex = 3 }},
+                    -- Statistics category entries are emitted at runtime by
+                    -- Database:PopulateDynamicStatistics() using
+                    -- GetStatisticsCategoryList() / GetCategoryInfo() so the
+                    -- search index always matches the live AchievementFrame
+                    -- Statistics sidebar for the current build.
                     children = {
-                        -- STATISTICS CATEGORIES (Auto-generated by Harvester)
-                        {
-                            name = "Character Statistics",
-                            keywords = {"character"},
-                            category = "Statistics",
-                            steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Character" }},
-                            children = {
-                                { name = "Consumables Statistics", keywords = {"consumables"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Consumables" }} },
-                                { name = "Wealth Statistics", keywords = {"wealth"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Wealth" }} },
-                            },
-                        },
-                        { name = "Kills Statistics", keywords = {"kills", "kill count"}, category = "Statistics", steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Kills" }} },
-                        { name = "Deaths Statistics", keywords = {"deaths"}, category = "Statistics", steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Deaths" }} },
-                        { name = "Quests Statistics", keywords = {"quests", "quest count"}, category = "Statistics", steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Quests" }} },
-                        { name = "Skills Statistics", keywords = {"skills"}, category = "Statistics", steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Skills" }} },
-                        { name = "Travel Statistics", keywords = {"travel", "distance", "flight paths"}, category = "Statistics", steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Travel" }} },
-                        { name = "Social Statistics", keywords = {"social", "friends", "groups"}, category = "Statistics", steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Social" }} },
-                        { name = "Delves Statistics", keywords = {"delves"}, category = "Statistics", steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Delves" }} },
-                        {
-                            name = "Combat Statistics",
-                            keywords = {"combat"},
-                            category = "Statistics",
-                            steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Combat" }},
-                            children = {
-                                { name = "Buffs Statistics", keywords = {"buffs"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Buffs" }} },
-                                { name = "Damage Statistics", keywords = {"damage"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Damage" }} },
-                                { name = "Healing Statistics", keywords = {"healing"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Healing" }} },
-                            },
-                        },
-                        {
-                            name = "Dungeons & Raids Statistics",
-                            keywords = {"dungeons & raids", "dungeons", "raids"},
-                            category = "Statistics",
-                            steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Dungeons & Raids" }},
-                            children = {
-                                { name = "Lich King - D&R Statistics", keywords = {"lich king", "wotlk"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Lich King" }} },
-                                { name = "Cataclysm - D&R Statistics", keywords = {"cataclysm"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Cataclysm" }} },
-                                { name = "Pandaria - D&R Statistics", keywords = {"pandaria"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Pandaria" }} },
-                                { name = "Draenor - D&R Statistics", keywords = {"draenor"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Draenor" }} },
-                                { name = "Legion - D&R Statistics", keywords = {"legion"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Legion" }} },
-                                { name = "Battle for Azeroth - D&R Statistics", keywords = {"battle for azeroth", "bfa"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Battle for Azeroth" }} },
-                                { name = "Shadowlands - D&R Statistics", keywords = {"shadowlands"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Shadowlands" }} },
-                                { name = "Dragonflight - D&R Statistics", keywords = {"dragonflight"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Dragonflight" }} },
-                                { name = "The War Within - D&R Statistics", keywords = {"war within"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "The War Within" }} },
-                            },
-                        },
-                        {
-                            name = "Player vs. Player Statistics",
-                            keywords = {"player vs. player", "pvp"},
-                            category = "Statistics",
-                            steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Player vs. Player" }},
-                            children = {
-                                { name = "Rated Arenas Statistics", keywords = {"arena", "rated arenas"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Rated Arenas" }} },
-                                {
-                                    name = "Battlegrounds Statistics",
-                                    keywords = {"battlegrounds", "bg"},
-                                    steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Battlegrounds" }},
-                                    children = {
-                                        { name = "Alterac Valley Statistics", keywords = {"alterac valley", "av"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Alterac Valley" }} },
-                                        { name = "Arathi Basin Statistics", keywords = {"arathi basin", "ab"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Arathi Basin" }} },
-                                        { name = "Eye of the Storm Statistics", keywords = {"eye of the storm", "eots"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Eye of the Storm" }} },
-                                        { name = "Strand of the Ancients Statistics", keywords = {"strand of the ancients", "sota"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Strand of the Ancients" }} },
-                                        { name = "Warsong Gulch Statistics", keywords = {"warsong gulch", "wsg"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Warsong Gulch" }} },
-                                        { name = "Wintergrasp Statistics", keywords = {"wintergrasp", "wg"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Wintergrasp" }} },
-                                    },
-                                },
-                                { name = "Rated Battlegrounds Statistics", keywords = {"rated battlegrounds", "rbg"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Rated Battlegrounds" }} },
-                                { name = "World Statistics", keywords = {"world"}, steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "World" }} },
-                            },
-                        },
-                        { name = "Pet Battles Statistics", keywords = {"pet battles", "battle pets"}, category = "Statistics", steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Pet Battles" }} },
-                        { name = "Proving Grounds Statistics", keywords = {"proving grounds"}, category = "Statistics", steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Proving Grounds" }} },
-                        { name = "Legacy Statistics", keywords = {"legacy"}, category = "Statistics", steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "Legacy" }} },
-                        { name = "World Events Statistics", keywords = {"world events", "holidays"}, category = "Statistics", steps = {{ waitForFrame = "AchievementFrame", statisticsCategory = "World Events" }} },
-                        -- Manual entry: Duel Statistics (specific deep navigation)
+                        -- Manual: Duel Statistics is a specific row inside
+                        -- Player vs. Player > World, not a sidebar category,
+                        -- so the API walk doesn't surface it as a row.
                         {
                             name = "Duel Statistics",
                             keywords = {"duel", "duels", "dueling", "1v1", "duels won", "duels lost"},

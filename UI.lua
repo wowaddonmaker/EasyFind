@@ -180,6 +180,7 @@ local FLAT_CATEGORY_ICONS = {
     appearanceSet = { tex = "Interface\\Icons\\INV_Helmet_03" },
     currency      = { tex = 136452 },  -- Same coin/AH glyph the map uses
     reputation    = { tex = 1121272, coords = { 0.3783, 0.4072, 0.9066, 0.9350 } },
+    statistic     = { tex = 1121272, coords = { 0.1997, 0.2437, 0.5933, 0.6266 } },
     map           = { tex = 1121272, coords = { 0.3457, 0.3856, 0.2549, 0.2951 } },
     -- Ability / boss: matches the filter-menu icons (boss tab + overview tab
     -- glyphs from the Encounter Journal spritesheet). The row's per-entry
@@ -252,6 +253,7 @@ local function GetFlatCategoryIcon(data)
     if data.category == "Game Settings" then return FLAT_CATEGORY_ICONS.setting end
     if data.category == "AddOn Settings" then return FLAT_CATEGORY_ICONS.settingAddon end
     if data.category == "Currency" then return FLAT_CATEGORY_ICONS.currency end
+    if data.statisticID or data.category == "Statistic" then return FLAT_CATEGORY_ICONS.statistic end
     if data.titleID then return FLAT_CATEGORY_ICONS.title end
     if data.gearSetID then
         ResolveGearSetIcon()
@@ -2089,6 +2091,8 @@ local UI_FILTER_OPTIONS = {
           },
       } },
     { key = "achievements", label = "Achievements", iconAtlas = "UI-HUD-MicroMenu-Achievements-Up" },
+    { key = "statistics",  label = "Statistics",  iconTex = 1121272,
+      iconCoords = { 0.1997, 0.2437, 0.5933, 0.6266 } },
     { key = "bags",        label = "Bags",        iconAtlas = "bag-main" },
     -- Bosses: EJ overview tab icon from texture 522972.
     { key = "bosses",      label = "Bosses",      iconTex = 522972,
@@ -2181,10 +2185,12 @@ end
 local UI_BUCKET_BY_CATEGORY = {
     ["Ability"]            = "abilities",
     ["Boss"]               = "bosses",
-    ["Achievement"]        = "achievements",
-    ["Achievements"]       = "achievements",
-    ["Guild Achievements"] = "achievements",
-    ["Statistics"]         = "achievements",
+    ["Achievement"]          = "achievements",
+    ["Achievements"]         = "achievements",
+    ["Achievement Category"] = "achievements",
+    ["Guild Achievements"]   = "achievements",
+    ["Statistics"]           = "statistics",
+    ["Statistic"]            = "statistics",
     ["Currency"]           = "currencies",
     ["Reputation"]         = "reputations",
     ["Bag"]                = "bags",
@@ -7464,6 +7470,55 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     leftAnchor = resultRow.flatCatIcon
                 end
 
+                resultRow.text:ClearAllPoints()
+                if leftAnchor then
+                    resultRow.text:SetPoint("LEFT", leftAnchor, "RIGHT", 4, 0)
+                else
+                    resultRow.text:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
+                end
+                resultRow.text:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
+                iconSet = true
+
+            -- Statistic rows: show the live stat value inline via amountText.
+            -- GetStatistic returns a string ("394", "23%", "1d 4h 12m") or
+            -- "--" for stats with no recorded value yet.
+            elseif data and data.statisticID and not entry.isPathNode then
+                local value
+                if GetStatistic then
+                    local ok, v = pcall(GetStatistic, data.statisticID)
+                    if ok then value = v end
+                end
+                if value and value ~= "" and value ~= "--" then
+                    resultRow.amountText:SetText(value)
+                    resultRow.amountText:SetTextColor(0.9, 0.82, 0.65, 1.0)
+                else
+                    resultRow.amountText:SetText("--")
+                    resultRow.amountText:SetTextColor(0.5, 0.5, 0.5, 1.0)
+                end
+                resultRow.amountText:ClearAllPoints()
+                resultRow.amountText:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
+                resultRow.amountText:Show()
+                SetRowIcon(resultRow, "hidden", nil, rowIconSize)
+
+                local indentPixels = depth * indPx
+                local leftAnchor
+                local catIconDef = FLAT_CATEGORY_ICONS.statistic
+                if catIconDef and resultRow.flatCatIcon then
+                    local sz = entry.isFlat and (entryRowH - 16) or rowIconSize
+                    resultRow.flatCatIcon:SetTexture(catIconDef.tex)
+                    if catIconDef.coords then
+                        resultRow.flatCatIcon:SetTexCoord(catIconDef.coords[1], catIconDef.coords[2],
+                                                          catIconDef.coords[3], catIconDef.coords[4])
+                    else
+                        resultRow.flatCatIcon:SetTexCoord(0, 1, 0, 1)
+                    end
+                    resultRow.flatCatIcon:SetVertexColor(1, 1, 1, 1)
+                    resultRow.flatCatIcon:SetSize(sz, sz)
+                    resultRow.flatCatIcon:ClearAllPoints()
+                    resultRow.flatCatIcon:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
+                    resultRow.flatCatIcon:Show()
+                    leftAnchor = resultRow.flatCatIcon
+                end
                 resultRow.text:ClearAllPoints()
                 if leftAnchor then
                     resultRow.text:SetPoint("LEFT", leftAnchor, "RIGHT", 4, 0)

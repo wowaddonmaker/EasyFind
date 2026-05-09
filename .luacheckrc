@@ -68,6 +68,7 @@ read_globals = {
     "AchievementFrame_LoadUI", "AchievementFrame_SelectAchievement",
     "OpenAchievementFrameToAchievement",
     "AchievementFrame", "GetCategoryList", "GetCategoryNumAchievements",
+    "GetStatisticsCategoryList", "GetStatistic",
     "GetAchievementInfo",
     "SetAchievementSearchString", "GetNumFilteredAchievements",
     "GetFilteredAchievementID",

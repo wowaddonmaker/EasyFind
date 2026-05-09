@@ -26,11 +26,11 @@ local FRAME_BACKDROP = {
 
 local NIL = {}
 local DEFAULT_UI_FILTERS = {
-    ui = true, achievements = true, currencies = true, reputations = true,
-    collections = true, mounts = true, toys = true, pets = true,
-    outfits = true, heirlooms = true, loot = true, appearanceSets = true,
-    bags = true, macros = true, options = true, abilities = true,
-    bosses = true, map = true,
+    ui = true, achievements = true, statistics = true, currencies = true,
+    reputations = true, collections = true, mounts = true, toys = true,
+    pets = true, outfits = true, heirlooms = true, loot = true,
+    appearanceSets = true, bags = true, macros = true, options = true,
+    abilities = true, bosses = true, map = true,
 }
 local DEFAULT_GLOBAL_SEARCH_FILTERS = { zones = true, dungeons = true, raids = true, delves = true }
 local DEFAULT_LOCAL_SEARCH_FILTERS = { instances = true, travel = true, services = true, rares = true }

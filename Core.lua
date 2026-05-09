@@ -496,6 +496,20 @@ function EasyFind:EnsureDynamicLoaded()
 end
 
 local function OnPlayerLogin()
+    -- Heavy synchronous statistics enumeration runs first so it lands
+    -- during the load-screen window — the player isn't controlling the
+    -- character yet, so the ~400 API calls are invisible. The dynamic
+    -- provider machinery checks `loaded` and skips this when the
+    -- staggered chain reaches it later.
+    if ns.Database and ns.Database.PopulateDynamicStatistics
+       and EasyFind.db.enableUISearch ~= false then
+        local ok = xpcall(ns.Database.PopulateDynamicStatistics,
+                          ErrorHandler, ns.Database)
+        if ok and ns.Database.MarkDynamicProviderLoaded then
+            ns.Database:MarkDynamicProviderLoaded("statistics")
+        end
+    end
+
     local function SafeInit(mod, name)
         if not mod then return end
         local ok, err = xpcall(mod.Initialize, ErrorHandler, mod)
