@@ -533,6 +533,18 @@ local function OnPlayerLogin()
         EasyFind:EnsureDynamicLoaded()
     end
 
+    -- Background-load heavy async providers (bosses) a few seconds after
+    -- login so individual encounter names ("Professor Putricide") match
+    -- on the first search instead of requiring a "boss" / "icc" keyword
+    -- to trigger the lazy load. The async loader is time-sliced so the
+    -- ~1000 encounter scan doesn't stutter.
+    SafeAfter(5.0, function()
+        if EasyFind.db.enableUISearch == false then return end
+        if ns.Database and ns.Database.LoadHeavyDynamicSearchData then
+            ns.Database:LoadHeavyDynamicSearchData(function() end)
+        end
+    end)
+
     -- Pre-warm Blizzard's achievement search index off the user's typing
     -- path. The index build is the lag source we used to hit on the
     -- first achievement-related search; doing it once in the background
