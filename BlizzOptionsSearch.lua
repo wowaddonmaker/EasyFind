@@ -14,6 +14,25 @@ local slower = Utils.slower
 local SafeAfter = Utils.SafeAfter
 local pcall = pcall
 
+-- Modern WoW exposes the categories via SettingsPanel:GetAllCategories.
+-- The legacy Settings.GetCategoryList was removed in Midnight (12.0),
+-- so callers that walked it returned nil and silently failed.
+local function GetSettingsCategoryList()
+    if SettingsPanel and SettingsPanel.GetAllCategories then
+        local ok, list = pcall(SettingsPanel.GetAllCategories, SettingsPanel)
+        if ok and type(list) == "table" then return list end
+    end
+    if Settings and Settings.GetCategoryList then
+        local ok, list = pcall(Settings.GetCategoryList)
+        if ok and type(list) == "table" then return list end
+    end
+    return nil
+end
+local function HasSettingsCategoryAccess()
+    return (SettingsPanel and SettingsPanel.GetAllCategories) ~= nil
+        or (Settings and Settings.GetCategoryList) ~= nil
+end
+
 -- Curated list of individual settings for direct search.
 -- Format: { display name, CVar/variable, category name, type code, [min, max, step] }
 -- type: c=checkbox, d=dropdown, s=slider
@@ -542,8 +561,7 @@ local function GetOptionsForVariable(variable)
         optionsByVariable[variable] = hardcoded
         return hardcoded
     end
-    if not (SettingsPanel and SettingsPanel.GetLayout
-            and Settings and Settings.GetCategoryList) then
+    if not (SettingsPanel and SettingsPanel.GetLayout and HasSettingsCategoryAccess()) then
         return nil
     end
     local found
@@ -577,7 +595,7 @@ local function GetOptionsForVariable(variable)
             end
         end
     end
-    local list = Settings.GetCategoryList()
+    local list = GetSettingsCategoryList()
     if type(list) == "table" then
         for _, cat in ipairs(list) do scan(cat) end
     end
@@ -585,6 +603,289 @@ local function GetOptionsForVariable(variable)
     return found
 end
 BlizzOptionsSearch.GetOptionsForVariable = GetOptionsForVariable
+
+-- Pull the slider's display formatter from the live registry so curated
+-- SETTINGS_DATA entries (Mouse Look Speed, Camera Distance, etc.) show
+-- the same value Blizzard's panel does instead of the raw CVar number
+-- (e.g., PROXY_MOUSE_LOOK_SPEED raw 180 -> displayed "5.5").
+local formatterByVariable = {}
+local function PickFormatter(formatters)
+    if type(formatters) ~= "table" then return nil end
+    -- MinimalSliderWithSteppersMixin.Label = MakeEnum("Left","Right","Top","Min","Max")
+    -- Top (2) mirrors the live value above the thumb best.
+    local f = formatters[2] or formatters[1] or formatters[0]
+        or formatters.Top or formatters.Right
+    if type(f) == "function" then return f end
+    for _, fn in pairs(formatters) do
+        if type(fn) == "function" then return fn end
+    end
+    return nil
+end
+local function GetFormatterForVariable(variable)
+    if not variable then return nil end
+    local cached = formatterByVariable[variable]
+    if cached ~= nil then
+        return cached ~= false and cached or nil
+    end
+    if not (SettingsPanel and SettingsPanel.GetLayout and HasSettingsCategoryAccess()) then
+        return nil
+    end
+    local found
+    local function scan(cat)
+        if found or not cat then return end
+        local lok, layout = pcall(SettingsPanel.GetLayout, SettingsPanel, cat)
+        if lok and layout and layout.GetInitializers then
+            local iok, inits = pcall(layout.GetInitializers, layout)
+            if iok and inits then
+                for _, init in ipairs(inits) do
+                    local setting
+                    if init.GetSetting then
+                        local sok, s = pcall(init.GetSetting, init)
+                        if sok then setting = s end
+                    end
+                    if not setting and init.data then setting = init.data.setting end
+                    if setting and setting.GetVariable then
+                        local vok, v = pcall(setting.GetVariable, setting)
+                        if vok and v == variable then
+                            local d = init.data
+                            local opts = (type(d) == "table") and d.options or nil
+                            if type(opts) == "function" then
+                                local ook, o = pcall(opts, setting)
+                                if not ook then ook, o = pcall(opts) end
+                                if ook then opts = o end
+                            end
+                            if type(opts) == "table" then
+                                found = PickFormatter(opts.formatters)
+                            end
+                            return
+                        end
+                    end
+                end
+            end
+        end
+        if cat.GetSubcategories then
+            local sok, subs = pcall(cat.GetSubcategories, cat)
+            if sok and type(subs) == "table" then
+                for _, sub in ipairs(subs) do scan(sub) end
+            end
+        end
+    end
+    local list = GetSettingsCategoryList()
+    if type(list) == "table" then
+        for _, cat in ipairs(list) do scan(cat) end
+    end
+    formatterByVariable[variable] = found or false
+    return found
+end
+BlizzOptionsSearch.GetFormatterForVariable = GetFormatterForVariable
+
+-- Pending-apply tracking. Settings with CommitFlag.Apply (graphics
+-- options, resolution, etc.) stage their value into setting.pendingValue
+-- instead of writing through, so we mirror Blizzard's bottom-bar UX:
+-- accumulate pending changes and let the user Apply / Revert as a batch.
+local pendingApplySettings = {}
+local pendingChangeCallbacks = {}
+
+local function PendingCount()
+    -- Prune entries whose pendingValue cleared out from under us (user
+    -- opened Blizzard's panel and Applied / Cancelled there directly).
+    local n = 0
+    for setting in pairs(pendingApplySettings) do
+        if setting.pendingValue ~= nil then
+            n = n + 1
+        else
+            pendingApplySettings[setting] = nil
+        end
+    end
+    return n
+end
+
+local function FirePendingChanged()
+    local n = PendingCount()
+    for i = 1, #pendingChangeCallbacks do
+        pcall(pendingChangeCallbacks[i], n)
+    end
+end
+
+function BlizzOptionsSearch:RegisterPendingChangedCallback(fn)
+    if type(fn) ~= "function" then return end
+    pendingChangeCallbacks[#pendingChangeCallbacks + 1] = fn
+end
+
+function BlizzOptionsSearch:GetPendingApplyCount()
+    return PendingCount()
+end
+
+-- Called by the inline editor right after Setting:SetValue. If the
+-- setting has the Apply commit flag, the new value is staged in
+-- setting.pendingValue and needs the user to commit; otherwise the
+-- value is already live and we drop the entry.
+function BlizzOptionsSearch:NotePendingApply(variable)
+    if not variable or not Settings or not Settings.GetSetting then return end
+    local sok, settObj = pcall(Settings.GetSetting, variable)
+    if not sok or not settObj then return end
+    local hasApply
+    if settObj.HasCommitFlag and Settings.CommitFlag and Settings.CommitFlag.Apply then
+        local hok, has = pcall(settObj.HasCommitFlag, settObj, Settings.CommitFlag.Apply)
+        hasApply = hok and has
+    end
+    if hasApply and settObj.pendingValue ~= nil then
+        pendingApplySettings[settObj] = settObj
+        FirePendingChanged()
+    elseif pendingApplySettings[settObj] then
+        -- Setting reverted to original via repeat-edit: drop it.
+        pendingApplySettings[settObj] = nil
+        FirePendingChanged()
+    end
+end
+
+-- Apply all pending changes at once. Mirrors SettingsPanel:CommitSettings
+-- so secondary effects (gx restart, window update, save bindings) fire
+-- once for the batch instead of per-setting.
+function BlizzOptionsSearch:ApplyPendingChanges()
+    if not next(pendingApplySettings) then return end
+    if not Settings or not Settings.CommitFlag then return end
+
+    local list = {}
+    for setting in pairs(pendingApplySettings) do
+        if setting.LockPendingValue then pcall(setting.LockPendingValue, setting) end
+        list[#list + 1] = setting
+    end
+    table.sort(list, function(a, b)
+        local oa = a.GetCommitOrder and a:GetCommitOrder() or 0
+        local ob = b.GetCommitOrder and b:GetCommitOrder() or 0
+        return oa < ob
+    end)
+    local saveBindings, gxRestart, windowUpdate = false, false, false
+    for i = 1, #list do
+        local s = list[i]
+        if s.HasCommitFlag then
+            saveBindings = saveBindings or (pcall(s.HasCommitFlag, s, Settings.CommitFlag.SaveBindings) and s:HasCommitFlag(Settings.CommitFlag.SaveBindings))
+            gxRestart   = gxRestart   or (pcall(s.HasCommitFlag, s, Settings.CommitFlag.GxRestart)   and s:HasCommitFlag(Settings.CommitFlag.GxRestart))
+            windowUpdate= windowUpdate or (pcall(s.HasCommitFlag, s, Settings.CommitFlag.UpdateWindow) and s:HasCommitFlag(Settings.CommitFlag.UpdateWindow))
+        end
+        if s.Commit then pcall(s.Commit, s) end
+    end
+    if gxRestart and RestartGx then pcall(RestartGx) end
+    if windowUpdate and UpdateWindow then pcall(UpdateWindow) end
+    if saveBindings and SaveBindings and GetCurrentBindingSet then
+        pcall(SaveBindings, GetCurrentBindingSet())
+    end
+    wipe(pendingApplySettings)
+    FirePendingChanged()
+end
+
+function BlizzOptionsSearch:RevertPendingChanges()
+    if not next(pendingApplySettings) then return end
+    for setting in pairs(pendingApplySettings) do
+        if setting.Revert then pcall(setting.Revert, setting) end
+    end
+    wipe(pendingApplySettings)
+    FirePendingChanged()
+end
+
+-- True when a single variable has a staged-but-not-applied change.
+function BlizzOptionsSearch:HasPendingChange(variable)
+    if not variable or not Settings or not Settings.GetSetting then return false end
+    local sok, settObj = pcall(Settings.GetSetting, variable)
+    if not sok or not settObj then return false end
+    return settObj.pendingValue ~= nil
+end
+
+local function FlagsFor(setting)
+    local saveBindings, gxRestart, windowUpdate
+    if setting.HasCommitFlag and Settings and Settings.CommitFlag then
+        local function has(flag)
+            local ok, v = pcall(setting.HasCommitFlag, setting, flag)
+            return ok and v
+        end
+        saveBindings = has(Settings.CommitFlag.SaveBindings)
+        gxRestart    = has(Settings.CommitFlag.GxRestart)
+        windowUpdate = has(Settings.CommitFlag.UpdateWindow)
+    end
+    return saveBindings, gxRestart, windowUpdate
+end
+
+-- Apply / revert one specific setting (per-row Apply/Reset buttons).
+-- PROXY_ANTIALIASING is a "view" setting whose own SetValue closure
+-- only zeros the OTHER mode's CVar (fxaa or msaa); it assumes the
+-- chosen mode's CVar is already non-zero (Blizzard's UI relies on a
+-- secondary "quality" dropdown the user fills in). For our inline
+-- editor without that dropdown, default the dependent CVar to a
+-- baseline so applying the parent actually turns AA on.
+local PROXY_DEPENDENT_DEFAULTS = {
+    PROXY_ANTIALIASING = function(value)
+        if value == 1 and GetCVar and tonumber(GetCVar("ffxAntiAliasingMode")) == 0 then
+            if SetCVar then pcall(SetCVar, "ffxAntiAliasingMode", "1") end
+        elseif value == 2 and GetCVar and tonumber(GetCVar("MSAAQuality")) == 0 then
+            if SetCVar then pcall(SetCVar, "MSAAQuality", "2") end
+        elseif value == 3 then
+            if GetCVar and tonumber(GetCVar("ffxAntiAliasingMode")) == 0
+               and SetCVar then pcall(SetCVar, "ffxAntiAliasingMode", "1") end
+            if GetCVar and tonumber(GetCVar("MSAAQuality")) == 0
+               and SetCVar then pcall(SetCVar, "MSAAQuality", "2") end
+        end
+    end,
+}
+
+-- Settings whose own SetValue closure stages dependent Apply-flagged
+-- settings (e.g., PROXY_ANTIALIASING's closure calls
+-- aaSettings.fxaa:SetValue / aaSettings.msaa:SetValue). When we Apply
+-- the parent, those dependents stay staged unless we also commit them.
+local PROXY_DEPENDENTS = {
+    PROXY_ANTIALIASING = { "PROXY_FXAA", "PROXY_MSAA", "PROXY_MSAA_ALPHA" },
+}
+
+local function CommitStagedDependents(parentVar)
+    local deps = PROXY_DEPENDENTS[parentVar]
+    if not deps or not Settings or not Settings.GetSetting then return end
+    for i = 1, #deps do
+        local depVar = deps[i]
+        local ok, depObj = pcall(Settings.GetSetting, depVar)
+        if ok and depObj and depObj.pendingValue ~= nil and depObj.SetValue then
+            pcall(depObj.SetValue, depObj, depObj.pendingValue, true)
+            pendingApplySettings[depObj] = nil
+        end
+    end
+end
+
+function BlizzOptionsSearch:ApplyVariable(variable)
+    if not variable or not Settings or not Settings.GetSetting then return end
+    local sok, settObj = pcall(Settings.GetSetting, variable)
+    if not sok or not settObj or settObj.pendingValue == nil then return end
+    local pending = settObj.pendingValue
+    local depsFn = PROXY_DEPENDENT_DEFAULTS[variable]
+    if depsFn then pcall(depsFn, pending) end
+    if settObj.SetValue then
+        pcall(settObj.SetValue, settObj, pending, true)
+    end
+    -- Parent's SetValue closure may have staged dependents (e.g.,
+    -- AA_NONE clears both fxaa and msaa via dep:SetValue, which stages
+    -- when the dep itself is Apply-flagged). Commit those too.
+    CommitStagedDependents(variable)
+    pendingApplySettings[settObj] = nil
+    FirePendingChanged()
+end
+
+function BlizzOptionsSearch:RevertVariable(variable)
+    if not variable or not Settings or not Settings.GetSetting then return end
+    local sok, settObj = pcall(Settings.GetSetting, variable)
+    if not sok or not settObj or settObj.pendingValue == nil then return end
+    if settObj.Revert then pcall(settObj.Revert, settObj) end
+    pendingApplySettings[settObj] = nil
+    -- Discard any dependents the parent staged.
+    local deps = PROXY_DEPENDENTS[variable]
+    if deps then
+        for i = 1, #deps do
+            local _, depObj = pcall(Settings.GetSetting, deps[i])
+            if depObj and depObj.pendingValue ~= nil and depObj.Revert then
+                pcall(depObj.Revert, depObj)
+                pendingApplySettings[depObj] = nil
+            end
+        end
+    end
+    FirePendingChanged()
+end
 
 -- Walk one category and its subcategories, recording id by name and
 -- (where possible) by variable. SettingsPanel exposes the layout per
@@ -683,12 +984,10 @@ end
 -- party addon's setting registration, weird initializer shape) can't
 -- abort the entire crawl and starve SETTINGS_DATA of category ids.
 local function ResolveCategoryIDs()
-    if Settings and Settings.GetCategoryList then
-        local lok, list = pcall(Settings.GetCategoryList)
-        if lok and type(list) == "table" then
-            for _, cat in ipairs(list) do
-                pcall(CrawlCategory, cat)
-            end
+    local list = GetSettingsCategoryList()
+    if type(list) == "table" then
+        for _, cat in ipairs(list) do
+            pcall(CrawlCategory, cat)
         end
     end
     if SettingsPanel and SettingsPanel.GetAllCategories then
@@ -748,49 +1047,160 @@ local function OpenSettingsByName(name)
 end
 BlizzOptionsSearch.OpenSettingsByName = OpenSettingsByName
 
--- Scroll the SettingsPanel's setting list to the row matching the
--- given variable name. Called after the category opens.
-local function ScrollToSettingVariable(variable)
-    if not SettingsPanel then return false end
-    local scrollBox = SettingsPanel.Container
+local function GetSettingsScrollBox()
+    if not SettingsPanel then return nil end
+    return SettingsPanel.Container
         and SettingsPanel.Container.SettingsList
         and SettingsPanel.Container.SettingsList.ScrollBox
+end
+
+-- Highlight the visible row for an elementData in the settings list, so
+-- the user lands on a clearly-marked row instead of having to scan the
+-- whole panel for the thing they searched.
+local function HighlightFoundElement(scrollBox, elementData)
+    if not scrollBox or not elementData then return end
+    if not ns.Highlight or not ns.Highlight.HighlightFrame then return end
+    SafeAfter(0.05, function()
+        local frame = scrollBox.FindFrame and scrollBox:FindFrame(elementData)
+        if frame then ns.Highlight:HighlightFrame(frame) end
+    end)
+end
+
+local function FindSettingElement(dp, variable)
+    if not dp then return nil end
+    local function matches(elementData)
+        local inner = elementData and (elementData.data or elementData)
+        local setting = inner and inner.setting
+        if setting and setting.GetVariable then
+            return setting:GetVariable() == variable
+        end
+        return false
+    end
+    if dp.FindElementDataByPredicate then
+        local found = dp:FindElementDataByPredicate(matches)
+        if found then return found end
+    end
+    if dp.GetSize and dp.Find then
+        for si = 1, dp:GetSize() do
+            local ed = dp:Find(si)
+            if matches(ed) then return ed end
+        end
+    end
+    return nil
+end
+
+-- Scroll to and highlight the row for a setting variable.
+local function ScrollToSettingVariable(variable)
+    local scrollBox = GetSettingsScrollBox()
+    if not scrollBox then return false end
+    local dp = scrollBox.GetDataProvider and scrollBox:GetDataProvider()
+    local found = FindSettingElement(dp, variable)
+    if not found then return false end
+    local alignCenter = ScrollBoxConstants and ScrollBoxConstants.AlignCenter
+    scrollBox:ScrollToElementData(found, alignCenter)
+    HighlightFoundElement(scrollBox, found)
+    return true
+end
+BlizzOptionsSearch.ScrollToSettingVariable = ScrollToSettingVariable
+
+-- Look up a binding's index from its action name (e.g., ACTIONBUTTON1).
+local function GetBindingIndexForAction(action)
+    if not action or not GetNumBindings or not GetBinding then return nil end
+    for i = 1, GetNumBindings() do
+        local a = GetBinding(i)
+        if a == action then return i end
+    end
+    return nil
+end
+
+-- Walk a SettingsKeybindingSection's child binding frames for one whose
+-- bindingIndex matches. KeyBindingFrameBindingTemplateMixin:Init stashes
+-- the initializer on self.initializer, so binding index lives at
+-- frame.initializer.data.bindingIndex.
+local function FindBindingFrameInSection(sectionFrame, bindingIndex)
+    if not sectionFrame or not sectionFrame.Controls then return nil end
+    for _, frame in ipairs(sectionFrame.Controls) do
+        local idx
+        if frame.initializer and frame.initializer.data then
+            idx = frame.initializer.data.bindingIndex
+        end
+        if not idx and frame.data and frame.data.bindingIndex then
+            idx = frame.data.bindingIndex
+        end
+        if idx == bindingIndex then return frame end
+    end
+    return nil
+end
+
+-- Scroll to a keybind: find the section by header name, expand it if
+-- collapsed, then highlight the binding row inside.
+local function ScrollToBindingAction(action, headerName)
+    if not action then return false end
+    local scrollBox = GetSettingsScrollBox()
     if not scrollBox then return false end
     local dp = scrollBox.GetDataProvider and scrollBox:GetDataProvider()
     if not dp then return false end
 
-    local found
-    if dp.FindElementDataByPredicate then
-        found = dp:FindElementDataByPredicate(function(elementData)
-            local inner = elementData and (elementData.data or elementData)
-            local setting = inner and inner.setting
-            if setting and setting.GetVariable then
-                return setting:GetVariable() == variable
-            end
-            return false
-        end)
-    end
-    if not found and dp.GetSize and dp.Find then
-        local sz = dp:GetSize()
-        for si = 1, sz do
-            local sdata = dp:Find(si)
-            local inner = sdata and (sdata.data or sdata)
-            local setting = inner and inner.setting
-            if setting and setting.GetVariable
-               and setting:GetVariable() == variable then
-                found = sdata
-                break
+    local bindingIdx = GetBindingIndexForAction(action)
+
+    -- Locate the section element. Match by header name first; fall back
+    -- to any section whose bindingsCategories contains our index.
+    local headerLower = headerName and slower(headerName) or nil
+    local function matchSection(elementData)
+        local inner = elementData and (elementData.data or elementData)
+        if not inner then return false end
+        if headerLower and inner.name and slower(inner.name) == headerLower then
+            return true
+        end
+        if bindingIdx and inner.bindingsCategories then
+            for _, entry in ipairs(inner.bindingsCategories) do
+                if type(entry) == "table" and entry[1] == bindingIdx then return true end
             end
         end
+        return false
     end
-    if found then
-        local alignCenter = ScrollBoxConstants and ScrollBoxConstants.AlignCenter
-        scrollBox:ScrollToElementData(found, alignCenter)
-        return true
+
+    local section
+    if dp.FindElementDataByPredicate then
+        section = dp:FindElementDataByPredicate(matchSection)
     end
-    return false
+    if not section and dp.GetSize and dp.Find then
+        for si = 1, dp:GetSize() do
+            local ed = dp:Find(si)
+            if matchSection(ed) then section = ed; break end
+        end
+    end
+    if not section then return false end
+
+    local sectionData = section.data or section
+    local alignBegin = ScrollBoxConstants and ScrollBoxConstants.AlignBegin
+    scrollBox:ScrollToElementData(section, alignBegin)
+
+    -- Expand if collapsed, wait for the section's child frames to lay
+    -- out, then highlight the actual binding row. The section frame may
+    -- be recycled across passes, so re-fetch it inside the deferred
+    -- callback rather than capturing the first reference.
+    local function expandThenHighlight()
+        local sectionFrame = scrollBox.FindFrame and scrollBox:FindFrame(section)
+        if not sectionFrame then return end
+        if sectionData and not sectionData.expanded and sectionFrame.Button then
+            sectionFrame.Button:Click()
+        end
+        SafeAfter(0.15, function()
+            local sf = scrollBox.FindFrame and scrollBox:FindFrame(section)
+            if not sf or not bindingIdx then return end
+            local bindingFrame = FindBindingFrameInSection(sf, bindingIdx)
+            if bindingFrame and bindingFrame:IsShown()
+               and ns.Highlight and ns.Highlight.HighlightFrame then
+                ns.Highlight:HighlightFrame(bindingFrame)
+            end
+        end)
+    end
+    SafeAfter(0.05, expandThenHighlight)
+
+    return true
 end
-BlizzOptionsSearch.ScrollToSettingVariable = ScrollToSettingVariable
+BlizzOptionsSearch.ScrollToBindingAction = ScrollToBindingAction
 
 -- Collect name/path entries. SETTINGS_DATA always produces entries
 -- regardless of whether the live Settings tree is available yet (the
@@ -860,10 +1270,9 @@ local function CollectEntries()
     end
 
     -- Top-level + subcategory entries from the live registry. Optional:
-    -- if Settings.GetCategoryList isn't ready yet, the curated entries
-    -- above are still present.
-    if not Settings or not Settings.GetCategoryList then return entries end
-    local list = Settings.GetCategoryList()
+    -- if the categories aren't ready yet, the curated entries above are
+    -- still present.
+    local list = GetSettingsCategoryList()
     if type(list) ~= "table" then return entries end
 
     local function addCategoryEntry(cat, parentName)
@@ -948,7 +1357,11 @@ local function CollectKeybindings()
                 settingType = "keybind",
                 bindingAction = action,
                 steps = {
-                    { settingsCategory = "Keybindings" },
+                    {
+                        settingsCategory = "Keybindings",
+                        bindingAction = action,
+                        bindingHeader = currentHeader,
+                    },
                 },
             })
         end
@@ -993,7 +1406,7 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
                 -- Slider initializers expose a SliderOptions table on
                 -- init.data.options; checkbox initializers have a boolean
                 -- variable type; everything else falls into "dropdown".
-                local resolvedType, sMin, sMax, sStep
+                local resolvedType, sMin, sMax, sStep, sFmt
                 local d = init.data
                 local opts = (type(d) == "table") and d.options or nil
                 if type(opts) == "function" then
@@ -1008,6 +1421,22 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
                     sMin = opts.minValue
                     sMax = opts.maxValue
                     sStep = opts.steps or opts.stepSize or 1
+                    -- Slider display value goes through Blizzard's
+                    -- formatter (uiScale 0.64 -> "64%", etc.). Labels
+                    -- are keyed by MinimalSliderWithSteppersMixin.Label
+                    -- (Left=0, Right=1, Top=2, Min=3, Max=4); Top
+                    -- mirrors the live value above the thumb best.
+                    if type(opts.formatters) == "table" then
+                        sFmt = opts.formatters[2] or opts.formatters[1]
+                            or opts.formatters[0] or opts.formatters.Top
+                            or opts.formatters.Right
+                        if type(sFmt) ~= "function" then
+                            sFmt = nil
+                            for _, fn in pairs(opts.formatters) do
+                                if type(fn) == "function" then sFmt = fn; break end
+                            end
+                        end
+                    end
                 elseif setting.GetVariableType then
                     local tok, vtype = pcall(setting.GetVariableType, setting)
                     if tok and vtype == "boolean" then
@@ -1045,6 +1474,7 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
                     settingMin = sMin,
                     settingMax = sMax,
                     settingStep = sStep,
+                    settingFormatter = sFmt,
                     settingOptions = settingOptions,
                     steps = {
                         {
@@ -1221,6 +1651,10 @@ function BlizzOptionsSearch:HandleStep(step)
     if step.settingVariable then
         SafeAfter(0, function() ScrollToSettingVariable(step.settingVariable) end)
         SafeAfter(0.1, function() ScrollToSettingVariable(step.settingVariable) end)
+    elseif step.bindingAction then
+        local header = step.bindingHeader
+        SafeAfter(0, function() ScrollToBindingAction(step.bindingAction, header) end)
+        SafeAfter(0.15, function() ScrollToBindingAction(step.bindingAction, header) end)
     end
 
     return catID ~= nil
