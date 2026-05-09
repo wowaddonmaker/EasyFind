@@ -107,11 +107,12 @@ function Highlight:CreateHighlightFrame()
             Highlight:HideHighlight()
             return
         end
-        -- Hover-to-dismiss: once the player moves the cursor onto the
-        -- highlighted target, they've found it -- clear the visual so
-        -- the talent panel / spellbook / etc. isn't cluttered.
-        if target and target.IsMouseOver and target:IsMouseOver() then
-            Highlight:HideHighlight()
+        -- Hover-to-dismiss: cursor is on the target, so the player
+        -- found it. Cancel (not HideHighlight) stops the step ticker;
+        -- otherwise the next tick's HighlightFrame re-shows and resets
+        -- highlightShownAt, this watcher hides again, and we strobe.
+        if canHoverDismiss() and target and target.IsMouseOver and target:IsMouseOver() then
+            Highlight:Cancel()
         end
     end)
 end
