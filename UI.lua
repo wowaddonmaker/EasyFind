@@ -31,6 +31,110 @@ local wipe               = wipe
 
 local REP_BAR_WIDTH = 100
 
+local CHARACTER_TAB_SUBFRAME = {
+    [1] = "PaperDollFrame",
+    [2] = "ReputationFrame",
+    [3] = "TokenFrame",
+}
+
+local function SecureCall(fn, ...)
+    if not fn then return false end
+    if securecallfunction then
+        securecallfunction(fn, ...)
+    else
+        pcall(fn, ...)
+    end
+    return true
+end
+
+local function SecureShowUIPanel(frame)
+    if not frame or not ShowUIPanel then return false end
+    return SecureCall(ShowUIPanel, frame)
+end
+
+local function IsPlayerSpellsTabSelected(tabIndex)
+    local frame = _G["PlayerSpellsFrame"]
+    if not frame then return false end
+    if frame.GetTab then
+        local currentTab = frame:GetTab()
+        if currentTab == tabIndex then return true end
+    end
+    if tabIndex == 1 and frame.SpecFrame and frame.SpecFrame:IsShown() then
+        return true
+    elseif tabIndex == 2 and frame.TalentsFrame and frame.TalentsFrame:IsShown() then
+        return true
+    elseif tabIndex == 2 and ClassTalentFrame and ClassTalentFrame:IsShown() then
+        return true
+    elseif tabIndex == 3 and frame.SpellBookFrame and frame.SpellBookFrame:IsShown() then
+        return true
+    end
+    return false
+end
+
+local function OpenPlayerSpellsFrame(tabIndex)
+    local frame = _G["PlayerSpellsFrame"]
+    if frame and frame:IsShown() then
+        return true
+    end
+
+    -- Opening PlayerSpellsFrame through the microbutton taints Blizzard's
+    -- ShowUIPanel/UIParent path. Call Blizzard's opener through
+    -- securecallfunction so later protected panel work, including
+    -- CharacterFrame status bars, does not inherit EasyFind taint.
+    local util = _G.PlayerSpellsUtil
+    if util and SecureCall(util.TogglePlayerSpellsFrame, tabIndex) then
+        return true
+    end
+
+    return ClickButton(_G["PlayerSpellsMicroButton"])
+end
+
+local function IsCharacterTabSelected(tabIndex)
+    if not tabIndex then return CharacterFrame and CharacterFrame:IsShown() end
+    if not (CharacterFrame and CharacterFrame:IsShown()) then return false end
+    if PanelTemplates_GetSelectedTab
+       and PanelTemplates_GetSelectedTab(CharacterFrame) == tabIndex then
+        return true
+    end
+    if tabIndex == 1 then
+        return (PaperDollFrame and PaperDollFrame:IsShown())
+            or (CharacterStatsPane and CharacterStatsPane:IsShown())
+    elseif tabIndex == 2 then
+        return ReputationFrame and ReputationFrame:IsShown()
+    elseif tabIndex == 3 then
+        return (TokenFrame and TokenFrame:IsShown())
+            or (CurrencyFrame and CurrencyFrame:IsShown())
+    end
+    return false
+end
+
+local function OpenCharacterFrame(tabIndex)
+    if IsCharacterTabSelected(tabIndex) then return true end
+
+    local subFrame = CHARACTER_TAB_SUBFRAME[tabIndex] or "PaperDollFrame"
+    if SecureCall(_G.ToggleCharacter, subFrame) then
+        return true
+    end
+
+    return ClickButton(_G["CharacterMicroButton"])
+end
+
+local function OpenButtonFrame(buttonFrame, nextStep)
+    if buttonFrame == "PlayerSpellsMicroButton" then
+        local tabIndex = nextStep and nextStep.waitForFrame == "PlayerSpellsFrame"
+            and nextStep.tabIndex or nil
+        return OpenPlayerSpellsFrame(tabIndex)
+    elseif buttonFrame == "CharacterMicroButton" then
+        local tabIndex = nextStep and nextStep.waitForFrame == "CharacterFrame"
+            and nextStep.tabIndex or nil
+        return OpenCharacterFrame(tabIndex)
+    end
+
+    local stepFrame = Utils.GetFrameByPath(buttonFrame) or _G[buttonFrame]
+    if stepFrame then return ClickButton(stepFrame) end
+    return false
+end
+
 local searchFrame
 local resultsFrame
 -- Combined-frame backdrop: rounded-rect 9-slice that wraps the bar
@@ -1731,7 +1835,11 @@ function UI:CreateSearchFrame()
     escCatcher = CreateFrame("Frame", "EasyFindEscCatcher", UIParent)
     escCatcher:SetSize(1, 1)
     escCatcher:Hide()
-    tinsert(UISpecialFrames, "EasyFindEscCatcher")
+    -- UISpecialFrames registration removed: any insecure mutation of
+    -- a frame in that table can taint Blizzard's ESC pipeline, and we
+    -- mutate this frame heavily. Our editbox's OnEscapePressed and the
+    -- searchFrame's keyboard handler at the navFrame level handle ESC
+    -- on their own, so giving up the UISpecialFrames fallback is safe.
     escCatcher:SetScript("OnHide", function(self)
         if not searchFrame or not searchFrame:IsShown() then return end
         -- editBox having focus means WoW's ESC pipeline already routed to
@@ -9602,12 +9710,7 @@ function UI:OpenTalentInTalentsTab(data)
     local function ensureFrameOnTab(attempt)
         local frame = _G["PlayerSpellsFrame"]
         if not (frame and frame:IsShown()) then
-            local util = _G.PlayerSpellsUtil
-            if util and util.TogglePlayerSpellsFrame then
-                pcall(util.TogglePlayerSpellsFrame, TALENTS_TAB)
-            else
-                ClickButton(_G["PlayerSpellsMicroButton"])
-            end
+            OpenPlayerSpellsFrame(TALENTS_TAB)
             if attempt < 30 then
                 C_Timer.After(0.05, function() ensureFrameOnTab(attempt + 1) end)
             end
@@ -9722,12 +9825,7 @@ function UI:OpenAbilityInSpellbook(data)
             return false
         end
 
-        local util = _G.PlayerSpellsUtil
-        if util and util.TogglePlayerSpellsFrame then
-            pcall(util.TogglePlayerSpellsFrame, 3)
-        else
-            ClickButton(_G["PlayerSpellsMicroButton"])
-        end
+        OpenPlayerSpellsFrame(3)
         return true
     end
 
@@ -9858,7 +9956,7 @@ function UI:SelectResult(data, forceGuide)
             Transmog_LoadUI()
         end
         if TransmogFrame then
-            ShowUIPanel(TransmogFrame)
+            SecureShowUIPanel(TransmogFrame)
             self:ApplyTransmogBrowseMode()
         end
         return
@@ -10309,7 +10407,7 @@ function UI:DirectOpen(data)
                     Transmog_LoadUI()
                 end
                 if TransmogFrame then
-                    ShowUIPanel(TransmogFrame)
+                    SecureShowUIPanel(TransmogFrame)
                     UI:ApplyTransmogBrowseMode()
                 end
                 return
@@ -10334,7 +10432,7 @@ function UI:DirectOpen(data)
                     if nextStep and nextStep.waitForFrame == "EncounterJournal" and nextStep.tabIndex then
                         EncounterJournal_LoadUI()
                         EncounterJournal.selectedTab = nextStep.tabIndex
-                        ShowUIPanel(EncounterJournal)
+                        SecureShowUIPanel(EncounterJournal)
                         -- Skip the tab step, continue from the step after it.
                         -- Defer one frame so the ScrollBox populates its items.
                         local resume = i + 2
@@ -10352,7 +10450,7 @@ function UI:DirectOpen(data)
                         if EJ_SelectTier then EJ_SelectTier(nextStep.ejTier) end
                         local tabIdx = nextStep.ejTabIsRaid and 5 or 4
                         EncounterJournal.selectedTab = tabIdx
-                        ShowUIPanel(EncounterJournal)
+                        SecureShowUIPanel(EncounterJournal)
                         local tabBtn = Highlight:GetTabButton("EncounterJournal", tabIdx)
                         if tabBtn then ClickButton(tabBtn) end
                         local resume = i + 2
@@ -10360,8 +10458,7 @@ function UI:DirectOpen(data)
                         return
                     end
                 end
-                local stepFrame = Utils.GetFrameByPath(step.buttonFrame) or _G[step.buttonFrame]
-                if stepFrame then ClickButton(stepFrame) end
+                OpenButtonFrame(step.buttonFrame, steps[i + 1])
             end
 
             if step.waitForFrame and step.tabIndex then
@@ -10379,16 +10476,22 @@ function UI:DirectOpen(data)
                 if resync then
                     -- Toggle tabs to force ScrollBox rebuild with expanded headers.
                     -- Needs one frame to propagate; defer remaining steps.
-                    ClickButton(Highlight:GetTabButton("CharacterFrame", 1))
-                    local waitFrame = step.waitForFrame
+                    OpenCharacterFrame(1)
                     local tabIdx = step.tabIndex
                     local resume = i + 1
                     C_Timer.After(0.05, function()
-                        ClickButton(Highlight:GetTabButton(waitFrame, tabIdx))
+                        OpenCharacterFrame(tabIdx)
                         executeFrom(resume)
                     end)
                     return
-                elseif step.waitForFrame ~= "EncounterJournal" then
+                elseif step.waitForFrame == "CharacterFrame" then
+                    OpenCharacterFrame(step.tabIndex)
+                elseif step.waitForFrame == "PlayerSpellsFrame"
+                       and not IsPlayerSpellsTabSelected(step.tabIndex) then
+                    local tabBtn = Highlight:GetTabButton(step.waitForFrame, step.tabIndex)
+                    if tabBtn then ClickButton(tabBtn) end
+                elseif step.waitForFrame ~= "EncounterJournal"
+                       and step.waitForFrame ~= "PlayerSpellsFrame" then
                     ClickButton(Highlight:GetTabButton(step.waitForFrame, step.tabIndex))
                 end
             end
@@ -10679,7 +10782,7 @@ function UI:ClickCharacterSidebar(sidebarIndex)
 
     -- Switch to the Character tab (tab 1) first
     if PanelTemplates_GetSelectedTab and PanelTemplates_GetSelectedTab(CharacterFrame) ~= 1 then
-        ClickButton(_G["CharacterFrameTab1"])
+        OpenCharacterFrame(1)
     end
 
     -- Method 1: Try PaperDollSidebarTab buttons directly (Frame Inspector confirmed names)
@@ -11235,7 +11338,7 @@ function UI:OpenAchievementByID(achievementID)
     end
     local frame = _G["AchievementFrame"]
     if frame and not frame:IsShown() and ShowUIPanel then
-        ShowUIPanel(frame)
+        SecureShowUIPanel(frame)
     end
     local opener = _G["OpenAchievementFrameToAchievement"]
     if opener then
@@ -11686,9 +11789,6 @@ function UI:ShowWhatsNew(version)
     f:RegisterForDrag("LeftButton")
     f:SetScript("OnDragStart", f.StartMoving)
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
-
-    -- Escape to close
-    tinsert(UISpecialFrames, "EasyFindWhatsNew")
 
     -- Close button (X)
     local closeBtn = CreateFrame("Button", nil, f, "UIPanelCloseButton")

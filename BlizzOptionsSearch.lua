@@ -14,6 +14,16 @@ local slower = Utils.slower
 local SafeAfter = Utils.SafeAfter
 local pcall = pcall
 
+local function SecureCall(fn, ...)
+    if not fn then return false end
+    if securecallfunction then
+        securecallfunction(fn, ...)
+    else
+        pcall(fn, ...)
+    end
+    return true
+end
+
 -- Modern WoW exposes the categories via SettingsPanel:GetAllCategories.
 -- The legacy Settings.GetCategoryList was removed in Midnight (12.0),
 -- so callers that walked it returned nil and silently failed.
@@ -1101,9 +1111,9 @@ local function ShowSettings()
     if not SettingsPanel then return end
     if SettingsPanel:IsShown() then return end
     if SettingsPanel.Open then
-        pcall(SettingsPanel.Open, SettingsPanel)
+        SecureCall(SettingsPanel.Open, SettingsPanel)
     elseif ShowUIPanel then
-        pcall(ShowUIPanel, SettingsPanel)
+        SecureCall(ShowUIPanel, SettingsPanel)
     end
 end
 
