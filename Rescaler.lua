@@ -616,8 +616,6 @@ local function GetOrCreateBackdrop()
     tex:SetAllPoints()
     tex:SetColorTexture(0, 0, 0, 0.5)
 
-    tinsert(UISpecialFrames, "EasyFindRescaleBackdrop")
-
     local SafeCallMethod = Utils.SafeCallMethod
     backdrop:SetScript("OnKeyDown", function(self, key)
         if key == "ESCAPE" then

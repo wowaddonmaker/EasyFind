@@ -3477,7 +3477,7 @@ function Database:BuildUIDatabase()
             keywords = {"map", "world map", "navigation", "toggle"},
             category = "Navigation",
             icon = 134269,
-            slashCommand = "/run if WorldMapFrame:IsShown() then HideUIPanel(WorldMapFrame) else ShowUIPanel(WorldMapFrame) end",
+            slashCommand = "/run ToggleWorldMap()",
         },
         {
             name = "Toggle Zone Map",
