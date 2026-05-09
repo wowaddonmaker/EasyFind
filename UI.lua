@@ -4343,6 +4343,12 @@ function UI:CreateResultsFrame()
             _G["EasyFindDiffPopup"],
             _G["EasyFindSpecPopup"],
             _G["EasyFindSpecFlyout"],
+            -- Blizzard's StaticPopup slots: clicks on our unapplied-
+            -- settings popup buttons (Apply / Exit / Cancel) must not
+            -- register as "outside" or they'd trigger an extra
+            -- RequestHideResults that closes the panel.
+            _G["StaticPopup1"], _G["StaticPopup2"],
+            _G["StaticPopup3"], _G["StaticPopup4"],
         }
         for _, g in ipairs(guards) do
             if Utils.IsFrameOrChildMouseOver(g) then return end
@@ -5456,6 +5462,13 @@ function UI:CreateResultButton(index)
     -- than the visible label for very long strings, silently swallowing
     -- selection on the longest entry.
     ddCenter:SetScript("OnClick", function(self)
+        -- Toggle: a second click on the same button closes the
+        -- already-open popup instead of re-opening it.
+        if inlineDropdownPopup and inlineDropdownPopup:IsShown()
+           and inlineDropdownPopup.owner == self then
+            inlineDropdownPopup:Hide()
+            return
+        end
         local rowData = resultRow.data
         if not rowData or not rowData.settingVariable then return end
         local opts = rowData.settingOptions
@@ -5528,6 +5541,7 @@ function UI:CreateResultButton(index)
         if primary then ns.BlizzOptionsSearch:ApplyVariable(primary) end
         if secondary then ns.BlizzOptionsSearch:ApplyVariable(secondary) end
         UI:RefreshResults()
+        RefocusSearchEditBox()
     end)
     resetBtn:SetScript("OnClick", function()
         if not ns.BlizzOptionsSearch or not ns.BlizzOptionsSearch.RevertVariable then return end
@@ -5535,6 +5549,7 @@ function UI:CreateResultButton(index)
         if primary then ns.BlizzOptionsSearch:RevertVariable(primary) end
         if secondary then ns.BlizzOptionsSearch:RevertVariable(secondary) end
         UI:RefreshResults()
+        RefocusSearchEditBox()
     end)
     resultRow.settingApplyExt = applyExt
     resultRow.settingApplyExtH = APPLY_EXT_H
@@ -8740,30 +8755,55 @@ end
 -- there are pending Apply-flagged settings, otherwise hides directly.
 -- Used by the click-outside-to-close watcher and ESC handlers; the
 -- internal HideResults callers (no-results refresh, etc.) skip it.
+-- StaticPopup_Show lands the popup in StaticPopup1..4 depending on
+-- which slots are busy. Walk all four to find the one we just opened.
+local function FindPopupSlot(popupName)
+    for i = 1, 4 do
+        local p = _G["StaticPopup" .. i]
+        if p and p:IsShown() and p.which == popupName then return p end
+    end
+    return nil
+end
+
+-- The default DIALOG strata renders behind our FULLSCREEN_DIALOG
+-- results panel. Lift the popup to TOOLTIP for the duration of its
+-- visibility, then restore the original strata on hide so we don't
+-- pollute other StaticPopup1 uses elsewhere in the UI.
+local function LiftPopupStrata(popup)
+    if not popup or popup._easyFindStrataLifted then return end
+    popup._easyFindStrataLifted = true
+    popup._easyFindOriginalStrata = popup:GetFrameStrata()
+    popup:SetFrameStrata("TOOLTIP")
+    popup:HookScript("OnHide", function(self)
+        if self._easyFindStrataLifted then
+            if self._easyFindOriginalStrata then
+                self:SetFrameStrata(self._easyFindOriginalStrata)
+            end
+            self._easyFindStrataLifted = nil
+            self._easyFindOriginalStrata = nil
+        end
+    end)
+end
+
+-- Show the unapplied-settings popup (if not already up) and lift its
+-- strata above the results panel. Returns true if the popup is now
+-- visible (so the caller can short-circuit its dismiss path).
+function UI:ShowUnappliedSettingsPopup()
+    if not (ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.GetPendingApplyCount
+            and ns.BlizzOptionsSearch:GetPendingApplyCount() > 0) then
+        return false
+    end
+    local already = StaticPopup_Visible
+        and StaticPopup_Visible("EASYFIND_UNAPPLIED_SETTINGS")
+    if not already and StaticPopup_Show then
+        StaticPopup_Show("EASYFIND_UNAPPLIED_SETTINGS")
+    end
+    LiftPopupStrata(FindPopupSlot("EASYFIND_UNAPPLIED_SETTINGS"))
+    return true
+end
+
 function UI:RequestHideResults()
-    if resultsFrame and resultsFrame:IsShown()
-       and ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.GetPendingApplyCount
-       and ns.BlizzOptionsSearch:GetPendingApplyCount() > 0 then
-        local alreadyShowing = StaticPopup_Visible
-            and StaticPopup_Visible("EASYFIND_UNAPPLIED_SETTINGS")
-        if not alreadyShowing and StaticPopup_Show then
-            StaticPopup_Show("EASYFIND_UNAPPLIED_SETTINGS")
-        end
-        local popup = _G["StaticPopup1"]
-        if popup and popup:IsShown() and not popup._easyFindStrataLifted then
-            popup._easyFindStrataLifted = true
-            popup._easyFindOriginalStrata = popup:GetFrameStrata()
-            popup:SetFrameStrata("TOOLTIP")
-            popup:HookScript("OnHide", function(self)
-                if self._easyFindStrataLifted then
-                    if self._easyFindOriginalStrata then
-                        self:SetFrameStrata(self._easyFindOriginalStrata)
-                    end
-                    self._easyFindStrataLifted = nil
-                    self._easyFindOriginalStrata = nil
-                end
-            end)
-        end
+    if resultsFrame and resultsFrame:IsShown() and self:ShowUnappliedSettingsPopup() then
         return
     end
     self:HideResults()
@@ -11518,6 +11558,11 @@ function UI:HandleEscape()
         Refocus()
         return
     end
+    -- Pending Apply-flagged settings: the popup must preempt the
+    -- text-clear and panel-close branches so Cancel preserves the
+    -- exact pre-ESC state (text, scroll, pending change). The helper
+    -- also lifts the popup above our results panel strata.
+    if self:ShowUnappliedSettingsPopup() then return end
     if editBox and editBox:GetText() ~= "" then
         editBox:SetText("")
         if editBox.placeholder then editBox.placeholder:Show() end

@@ -785,13 +785,20 @@ end
 -- in the batch (monitor, resolution, etc.).
 function BlizzOptionsSearch:ApplyPendingChanges()
     if not next(pendingApplySettings) then return end
-    if SettingsPanel and SettingsPanel.modified and SettingsPanel.CommitSettings then
-        for setting in pairs(pendingApplySettings) do
-            SettingsPanel.modified[setting] = setting
+    -- Apply each pending setting via the same path the per-row Apply
+    -- button uses (ApplyVariable). That path is proven to actually
+    -- commit the value -- per-setting Commit() and SettingsPanel
+    -- writes both silently no-op on some build paths from addon code.
+    -- Snapshot variables first so wiping pendingApplySettings inside
+    -- ApplyVariable doesn't break iteration.
+    local vars = {}
+    for setting in pairs(pendingApplySettings) do
+        if setting.GetVariable then
+            local ok, v = pcall(setting.GetVariable, setting)
+            if ok and v then vars[#vars + 1] = v end
         end
-        pcall(SettingsPanel.CommitSettings, SettingsPanel, false)
-        LiftPopupAndRefresh(FindStaticPopupSlot("GAME_SETTINGS_TIMED_CONFIRMATION"))
     end
+    for i = 1, #vars do self:ApplyVariable(vars[i]) end
     wipe(pendingApplySettings)
     FirePendingChanged()
 end
@@ -950,13 +957,13 @@ if StaticPopupDialogs and not StaticPopupDialogs["EASYFIND_UNAPPLIED_SETTINGS"] 
             if BlizzOptionsSearch.RevertPendingChanges then
                 BlizzOptionsSearch:RevertPendingChanges()
             end
-            if ns.UI and ns.UI.HideResults then ns.UI:HideResults() end
+            if ns.UI and ns.UI.Hide then ns.UI:Hide() end
         end,
         OnButton2 = function()
             if BlizzOptionsSearch.ApplyPendingChanges then
                 BlizzOptionsSearch:ApplyPendingChanges()
             end
-            if ns.UI and ns.UI.HideResults then ns.UI:HideResults() end
+            if ns.UI and ns.UI.Hide then ns.UI:Hide() end
         end,
         OnButton3 = function() end,
         OnHide = function()
