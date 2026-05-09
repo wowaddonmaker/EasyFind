@@ -679,14 +679,7 @@ function UI:Initialize()
     self:CreateSearchFrame()
     self:CreateResultsFrame()
     self:RegisterCombatEvents()
-
-    -- Hook Blizzard's TokenFrame / ReputationFrame / SpellBookFrame so
-    -- our filter flyout choices apply when the player opens those
-    -- panels. Frames are LoadOnDemand: hook each as it appears.
-    local blizzHook = CreateFrame("Frame")
-    blizzHook:RegisterEvent("ADDON_LOADED")
-    blizzHook:SetScript("OnEvent", function() UI:HookBlizzardFilters() end)
-    UI:HookBlizzardFilters()
+    self:HookBlizzardFilterChanges()
 
     if EasyFind.db.autoHide then
         searchFrame:Hide()
@@ -1998,19 +1991,21 @@ local UI_FILTER_OPTIONS = {
     { key = "collections",  label = "Collections",  iconAtlas = "UI-HUD-MicroMenu-Collections-Up",
       flyoutSubFilters = {
           { key = "appearanceSets", label = "Appearance Sets", iconTex = "Interface\\Icons\\INV_Helmet_03", hasOptions = true },
-          { key = "gearSets",       label = "Gear Sets",       iconAtlas = "equipmentmanager-spec-border" },
           { key = "heirlooms",      label = "Heirlooms",       iconTex = 133877 },
           { key = "mounts",         label = "Mounts",          iconTex = 132261 },
           { key = "outfits",        label = "Outfits",         iconTex = 132649 },
           { key = "pets",           label = "Pets",            iconTex = 631719 },
           { key = "toys",           label = "Toys",            iconTex = 454046 },
       } },
+    { key = "gearSets",    label = "Gear Sets",   iconAtlas = "equipmentmanager-spec-border" },
     { key = "currencies",  label = "Currencies",  iconTex = 136452,
       flyoutRadio = {
           dbKey = "currencyFilterMode",
           options = {
-              { value = "all",     label = "This Character Only" },
-              { value = "warband", label = "All Warband Transferable" },
+              { value = "warband", label = CURRENCY_FILTER_TYPE_TRANSFERABLE or "All Warband Transferable" },
+              { value = "all",     label = (CURRENCY_FILTER_TYPE_CHARACTER and UnitName and UnitName("player")
+                                           and CURRENCY_FILTER_TYPE_CHARACTER:format(UnitName("player")))
+                                          or ((UnitName and UnitName("player") or "This Character") .. " Only") },
           },
           onChange = function(v) if UI.ApplyTokenFrameFilter then UI:ApplyTokenFrameFilter(v) end end,
       } },
@@ -2396,6 +2391,22 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     local PADDING_BOTTOM = 8
     local CHECK_SIZE = 16
 
+    -- Single source of truth for which side-flyout (sub-filters / radio /
+    -- gear options) is currently visible. Any popup that opens hides
+    -- whatever was active so sweeping between rows can never leave a
+    -- previous flyout lingering, even rows whose popup wasn't tracked
+    -- in dropdown.flyoutPopups.
+    local activeFlyoutPopup
+    local function SetActiveFlyout(popup)
+        if activeFlyoutPopup and activeFlyoutPopup ~= popup and activeFlyoutPopup:IsShown() then
+            activeFlyoutPopup:Hide()
+        end
+        activeFlyoutPopup = popup
+    end
+    local function ClearActiveFlyout(popup)
+        if activeFlyoutPopup == popup then activeFlyoutPopup = nil end
+    end
+
     local dropdown = CreateFrame("Frame", "EasyFindUIFilterDropdown", UIParent, "BackdropTemplate")
     dropdown:SetFrameStrata("FULLSCREEN_DIALOG")
     dropdown:SetFrameLevel(9999)
@@ -2678,6 +2689,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             end)
             popup:HookScript("OnHide", function(self)
                 self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+                ClearActiveFlyout(self)
             end)
             popup:HookScript("OnEvent", function(self, event)
                 if event ~= "GLOBAL_MOUSE_DOWN" then return end
@@ -2878,15 +2890,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             local hideTimer
             local function ShowPopup()
                 if hideTimer then hideTimer:Cancel(); hideTimer = nil end
-                -- Slam any sibling flyout shut on entry so quickly
-                -- moving between adjacent flyout rows can't paint two
-                -- popups on top of each other (the 0.15s grace timer
-                -- would otherwise leave the previous one hanging).
-                for _, sibling in ipairs(dropdown.flyoutPopups or {}) do
-                    if sibling ~= popup and sibling:IsShown() then
-                        sibling:Hide()
-                    end
-                end
+                SetActiveFlyout(popup)
                 SyncSubChecks()
                 popup:SetScale((EasyFind.db.uiSearchScale or 1.0) * (EasyFind.db.fontSize or 1.0))
                 PositionPopup()
@@ -2954,6 +2958,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             end)
             popup:HookScript("OnHide", function(self)
                 self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+                ClearActiveFlyout(self)
             end)
             popup:HookScript("OnEvent", function(self, event)
                 if event ~= "GLOBAL_MOUSE_DOWN" then return end
@@ -3079,9 +3084,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             local hideTimer
             local function ShowPopup()
                 if hideTimer then hideTimer:Cancel(); hideTimer = nil end
-                for _, sibling in ipairs(dropdown.flyoutPopups or {}) do
-                    if sibling ~= popup and sibling:IsShown() then sibling:Hide() end
-                end
+                SetActiveFlyout(popup)
                 SyncRadio()
                 popup:SetScale((EasyFind.db.uiSearchScale or 1.0) * (EasyFind.db.fontSize or 1.0))
                 PositionPopup()
@@ -3826,6 +3829,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             end
             local function ShowGear()
                 if gearHideTimer then gearHideTimer:Cancel(); gearHideTimer = nil end
+                SetActiveFlyout(gearOptionsPopup)
                 if row.UpdateDiffButtons then row.UpdateDiffButtons() end
                 UpdateSpecLabel()
                 for _, sr in ipairs(lootSubRows) do
@@ -3854,6 +3858,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 local sp = _G["EasyFindSpecPopup"]
                 if sp then sp:Hide() end
                 classFlyout:Hide()
+                ClearActiveFlyout(self)
             end)
             -- Outside-click: nested diff/spec/class popups act as guards
             -- so clicks inside them don't dismiss the gear options.
@@ -6149,7 +6154,7 @@ function UI:OnSearchTextChanged(text, force)
         local abilitiesOff = filters.abilities == false
         local bossesOff = filters.bosses == false
         local titlesOff = filters.titles == false
-        local gearSetsOff = collectionsOff or filters.gearSets == false
+        local gearSetsOff = filters.gearSets == false
         if mountsOff or toysOff or petsOff or outfitsOff or lootOff
            or appsetsOff or bagsOff or macrosOff or gameOptOff or addonOptOff
            or abilitiesOff or bossesOff or heirloomsOff or titlesOff or gearSetsOff then
@@ -10649,255 +10654,133 @@ function UI:IsCurrencyOnBackpack(currencyID)
     return info.isShowInBackpack and true or false
 end
 
--- Walk a frame's descendants depth-first looking for a CheckButton whose
--- visible label contains the given (lowercase) substring. Used to find
--- Blizzard's Hide Passives checkbox without hard-coding the dynamic hex
--- frame path that changes each session.
-local function FindCheckButtonByText(frame, needle)
-    if not frame or not needle then return nil end
-    local function getLabelText(btn)
-        if btn.text and btn.text.GetText then return btn.text:GetText() end
-        if btn.Text and btn.Text.GetText then return btn.Text:GetText() end
-        if btn.Label and btn.Label.GetText then return btn.Label:GetText() end
-        if btn.GetFontString then
-            local fs = btn:GetFontString()
-            if fs and fs.GetText then return fs:GetText() end
-        end
-        if btn.GetRegions then
-            local regions = { btn:GetRegions() }
-            for i = 1, #regions do
-                local r = regions[i]
-                if r and r.GetObjectType and r:GetObjectType() == "FontString" and r.GetText then
-                    local t = r:GetText()
-                    if t then return t end
-                end
-            end
-        end
-        return nil
-    end
-    local function walk(f, depth)
-        if not f or depth > 8 then return nil end
-        local ot = f.GetObjectType and f:GetObjectType() or nil
-        if ot == "CheckButton" then
-            local t = getLabelText(f)
-            if t and slower(t):find(needle, 1, true) then return f end
-        end
-        if f.GetChildren then
-            local kids = { f:GetChildren() }
-            for i = 1, #kids do
-                local found = walk(kids[i], depth + 1)
-                if found then return found end
-            end
-        end
-        return nil
-    end
-    return walk(frame, 0)
+-- Force a dropdown's trigger label to re-read its IsSelected callback.
+-- Modern WowDropdownMenu builds the displayed selection text inside
+-- SetupMenu's generator; calling GenerateMenu rebuilds and re-evaluates.
+local function RefreshDropdownLabel(dropdown)
+    if not dropdown then return end
+    if dropdown.GenerateMenu then pcall(dropdown.GenerateMenu, dropdown)
+    elseif dropdown.RefreshMenu then pcall(dropdown.RefreshMenu, dropdown)
+    elseif dropdown.SignalUpdate then pcall(dropdown.SignalUpdate, dropdown) end
 end
 
--- Find a dropdown frame whose selected text matches one of `wantedTexts`.
--- Modern Blizzard dropdowns expose SetSelectionByValue / Pick or
--- inherit from DropdownButton. We don't try to drive the dropdown's
--- internal value (Blizzard renamed the storage too many times); instead
--- we find a child option button whose text matches and dispatch its
--- OnClick like the user clicked it.
-local function ClickMatchingDropdownOption(frame, wantedTexts, depth)
-    if not frame or (depth or 0) > 10 then return false end
-    local ot = frame.GetObjectType and frame:GetObjectType() or nil
-    if ot == "Button" or ot == "CheckButton" then
-        local label
-        if frame.text and frame.text.GetText then label = frame.text:GetText()
-        elseif frame.Text and frame.Text.GetText then label = frame.Text:GetText()
-        else
-            if frame.GetRegions then
-                local regions = { frame:GetRegions() }
-                for i = 1, #regions do
-                    local r = regions[i]
-                    if r and r.GetObjectType and r:GetObjectType() == "FontString" then
-                        label = r:GetText()
-                        if label and label ~= "" then break end
-                    end
-                end
-            end
-        end
-        if label then
-            local lower = slower(label)
-            for _, want in ipairs(wantedTexts) do
-                if lower == slower(want) then
-                    local oc = frame:GetScript("OnClick")
-                    if oc then
-                        local ok = pcall(oc, frame, "LeftButton", true)
-                        if ok then return true end
-                    end
-                    if frame.Click then pcall(frame.Click, frame, "LeftButton") end
-                    return true
-                end
-            end
-        end
-    end
-    if frame.GetChildren then
-        local kids = { frame:GetChildren() }
-        for i = 1, #kids do
-            if ClickMatchingDropdownOption(kids[i], wantedTexts, (depth or 0) + 1) then return true end
-        end
-    end
-    return false
-end
-
--- Trigger a click on a Blizzard dropdown so its menu pops up, then
--- traverse the open menu (which lives under UIParent / DropDownList)
--- to find and click the matching option. Restores the menu's hidden
--- state at the end so we don't leave a dangling visible popup.
-local function DriveDropdown(dropdownFrame, wantedTexts)
-    if not dropdownFrame then return false end
-    -- Modern WowDropdownMenu pattern
-    if dropdownFrame.SetSelectionText then
-        pcall(dropdownFrame.SetSelectionText, dropdownFrame, wantedTexts[1])
-    end
-    -- Find the trigger button and click it to open the menu
-    local trigger = dropdownFrame.Button or dropdownFrame.MenuTrigger or dropdownFrame
-    if trigger and trigger.GetScript then
-        local oc = trigger:GetScript("OnMouseDown") or trigger:GetScript("OnClick")
-        if oc then pcall(oc, trigger, "LeftButton") end
-    end
-    -- Walk all currently visible UIParent children for an open menu and
-    -- click the matching item. The menu may live in DropDownList1 or
-    -- newer MenuFrame with dynamic name.
-    local function findMenu()
-        if DropDownList1 and DropDownList1:IsShown() then return DropDownList1 end
-        local kids = { UIParent:GetChildren() }
-        for i = 1, #kids do
-            local k = kids[i]
-            if k and k:IsShown() and k.GetObjectType and k:GetObjectType() == "Frame" then
-                local strata = k:GetFrameStrata()
-                if strata == "FULLSCREEN_DIALOG" or strata == "TOOLTIP" then
-                    -- Heuristic: menus are tall narrow popups
-                    if k:GetWidth() < 300 and k:GetHeight() < 400 then
-                        return k
-                    end
-                end
-            end
-        end
-        return nil
-    end
-    local menu = findMenu()
-    if not menu then return false end
-    local clicked = ClickMatchingDropdownOption(menu, wantedTexts, 0)
-    if menu.Hide then menu:Hide() end
-    return clicked
-end
-
--- Currency filter (TokenFrame / BackpackTokenFrame). Modern dropdown
--- API path is the priority; field-fallback is kept for older builds.
+-- Currency filter. API: C_CurrencyInfo.SetCurrencyFilter(filterType).
+-- DiscoveredAndAllAccountTransferable = "warband"; DiscoveredOnly = "all".
 function UI:ApplyTokenFrameFilter(mode)
-    if not mode then return end
-    if not TokenFrame then return end
-    local labels = (mode == "warband")
-        and { "Warband Transferable", "Show Warband Transferable", "Warband" }
-        or  { "All", "Show All", "This Character", "This Character Only" }
-    local fd = TokenFrame.filterDropdown or TokenFrame.FilterDropdown
-        or TokenFrame.filterDropDown or TokenFrame.dropdown
-    if fd and DriveDropdown(fd, labels) then
+    if not mode or not C_CurrencyInfo or not C_CurrencyInfo.SetCurrencyFilter then return end
+    if not Enum or not Enum.CurrencyFilterType then return end
+    local target = (mode == "warband")
+        and Enum.CurrencyFilterType.DiscoveredAndAllAccountTransferable
+        or  Enum.CurrencyFilterType.DiscoveredOnly
+    local current = C_CurrencyInfo.GetCurrencyFilter and C_CurrencyInfo.GetCurrencyFilter()
+    if current == target then return end
+    -- Mirror Blizzard's SetFilterTypeSelected: clear in-flight selection
+    -- so the popup doesn't try to render a row that no longer exists.
+    if TokenFrame then
+        TokenFrame.selectedToken = nil
+        TokenFrame.selectedID = nil
+    end
+    if TokenFramePopup and TokenFramePopup.Hide then TokenFramePopup:Hide() end
+    pcall(C_CurrencyInfo.SetCurrencyFilter, target)
+    if TokenFrame and TokenFrame:IsShown() then
         if TokenFrame.Update then pcall(TokenFrame.Update, TokenFrame) end
-        return
+        RefreshDropdownLabel(TokenFrame.filterDropdown)
     end
-    -- Fallback: defensive method/field set
-    for _, m in ipairs({ "SetFilter", "SetFilterMode" }) do
-        local fn = TokenFrame[m]
-        if fn then pcall(fn, TokenFrame, mode) end
-    end
-    if TokenFrame.Update then pcall(TokenFrame.Update, TokenFrame) end
 end
 
--- Reputation filter (All / Warband / Char). Same dropdown-drive pattern.
+-- Reputation sort type. API: C_Reputation.SetReputationSortType(sortType).
+-- None = "all"; Account = "warband"; Character = "char".
 function UI:ApplyReputationFilter(mode)
-    if not mode then return end
-    if not ReputationFrame then return end
-    local labels
+    if not mode or not C_Reputation or not C_Reputation.SetReputationSortType then return end
+    if not Enum or not Enum.ReputationSortType then return end
+    local sortType
     if mode == "warband" then
-        labels = { "Warband" }
+        sortType = Enum.ReputationSortType.Account
     elseif mode == "char" then
-        local n = UnitName and UnitName("player")
-        labels = n and { n } or { "Character" }
+        sortType = Enum.ReputationSortType.Character
     else
-        labels = { "All" }
+        sortType = Enum.ReputationSortType.None
     end
-    local fd = ReputationFrame.filterDropdown or ReputationFrame.FilterDropdown
-        or ReputationFrame.filterDropDown
-    if fd and DriveDropdown(fd, labels) then
+    local current = C_Reputation.GetReputationSortType and C_Reputation.GetReputationSortType()
+    if current == sortType then return end
+    pcall(C_Reputation.SetReputationSortType, sortType)
+    if ReputationFrame and ReputationFrame:IsShown() then
         if ReputationFrame.Update then pcall(ReputationFrame.Update, ReputationFrame) end
-        return
+        RefreshDropdownLabel(ReputationFrame.filterDropdown)
     end
-    for _, m in ipairs({ "SetFilter", "SetFilterMode" }) do
-        local fn = ReputationFrame[m]
-        if fn then pcall(fn, ReputationFrame, mode) end
-    end
-    if ReputationFrame.Update then pcall(ReputationFrame.Update, ReputationFrame) end
 end
 
--- Show Legacy Reputations -- a checkbox in the same filter dropdown.
--- The dropdown's checkboxes are toggled by clicking the matching item;
--- driving the menu open + click is the most reliable cross-build path.
+-- Show Legacy Reputations. API: C_Reputation.SetLegacyReputationsShown(bool).
 function UI:ApplyReputationShowLegacy(show)
-    if not ReputationFrame then return end
-    local fd = ReputationFrame.filterDropdown or ReputationFrame.FilterDropdown
-        or ReputationFrame.filterDropDown
-    if fd then
-        -- Snapshot current state so we only click when our state diverges.
-        local applied = DriveDropdown(fd, { "Show Legacy Reputations" })
-        if applied and ReputationFrame.Update then
-            pcall(ReputationFrame.Update, ReputationFrame)
-        end
+    if not C_Reputation or not C_Reputation.SetLegacyReputationsShown then return end
+    show = show and true or false
+    local current = C_Reputation.AreLegacyReputationsShown and C_Reputation.AreLegacyReputationsShown()
+    if current == show then return end
+    pcall(C_Reputation.SetLegacyReputationsShown, show)
+    if ReputationFrame and ReputationFrame:IsShown() then
+        if ReputationFrame.Update then pcall(ReputationFrame.Update, ReputationFrame) end
+        RefreshDropdownLabel(ReputationFrame.filterDropdown)
     end
 end
 
--- Hide Passives. The actual checkbox is somewhere under the spellbook
--- frame; rather than guess the path (Blizzard moves it across builds),
--- walk descendants to find a CheckButton labeled "Hide Passives" and
--- toggle it via its native OnClick so all of Blizzard's downstream
--- bookkeeping fires.
+-- Hide Passives. CVar-backed: spellBookHidePassives ("0" / "1").
+-- Mirrors SpellBookFrameMixin:SetupSettingsDropdown's SetSelected logic.
 function UI:ApplySpellBookHidePassives(hide)
     hide = hide and true or false
-    local frame = (PlayerSpellsFrame and PlayerSpellsFrame.SpellBookFrame) or SpellBookFrame
-    if not frame then return end
-    local cb = frame._easyFindHidePassivesCB
-    if not cb or not cb.GetChecked or not cb:IsShown() then
-        cb = FindCheckButtonByText(frame, "hide passives")
-        frame._easyFindHidePassivesCB = cb
+    if GetCVarBool and GetCVarBool("spellBookHidePassives") == hide then return end
+    if SetCVar then pcall(SetCVar, "spellBookHidePassives", hide and "1" or "0") end
+    local frame = PlayerSpellsFrame and PlayerSpellsFrame.SpellBookFrame
+    if frame and frame:IsShown() and frame.UpdateDisplayedSpells then
+        pcall(frame.UpdateDisplayedSpells, frame, true, false)
     end
-    if not cb then
-        -- Last resort: defensive set + refresh
-        if frame.SetHidePassives then pcall(frame.SetHidePassives, frame, hide) end
-        if frame.UpdateDisplayedSpells then pcall(frame.UpdateDisplayedSpells, frame) end
-        return
-    end
-    if cb:GetChecked() == hide then return end
-    cb:SetChecked(hide)
-    local oc = cb:GetScript("OnClick")
-    if oc then pcall(oc, cb, "LeftButton", true)
-    elseif cb.Click then pcall(cb.Click, cb, "LeftButton") end
 end
 
--- Re-apply all driven filters when the relevant Blizzard frame opens.
--- The frames are LoadOnDemand, so we hook OnShow lazily once the frame
--- becomes available.
-function UI:HookBlizzardFilters()
-    local function hookOnce(frame, applyFn, dbKey)
-        if not frame or frame._easyFindFilterHooked then return end
-        frame._easyFindFilterHooked = true
-        frame:HookScript("OnShow", function()
-            local v = EasyFind.db and EasyFind.db[dbKey]
-            if v ~= nil then applyFn(UI, v) end
+-- Bidirectional sync from Blizzard back to our DB. Hook the same
+-- C_*Info setters Blizzard's own dropdowns call so toggling the
+-- in-game UI updates our flyout state. The popup syncs from DB on
+-- next show, so we don't need to refresh anything live.
+function UI:HookBlizzardFilterChanges()
+    if C_CurrencyInfo and C_CurrencyInfo.SetCurrencyFilter and Enum and Enum.CurrencyFilterType then
+        hooksecurefunc(C_CurrencyInfo, "SetCurrencyFilter", function(filterType)
+            local mode = (filterType == Enum.CurrencyFilterType.DiscoveredAndAllAccountTransferable)
+                and "warband" or "all"
+            if EasyFind.db and EasyFind.db.currencyFilterMode ~= mode then
+                EasyFind.db.currencyFilterMode = mode
+            end
         end)
     end
-    if TokenFrame then hookOnce(TokenFrame, UI.ApplyTokenFrameFilter, "currencyFilterMode") end
-    if ReputationFrame then
-        hookOnce(ReputationFrame, function(self)
-            self:ApplyReputationFilter(EasyFind.db.reputationFilterMode)
-            self:ApplyReputationShowLegacy(EasyFind.db.showLegacyReputations)
-        end, "reputationFilterMode")
+    if C_Reputation and C_Reputation.SetReputationSortType and Enum and Enum.ReputationSortType then
+        hooksecurefunc(C_Reputation, "SetReputationSortType", function(sortType)
+            local mode
+            if sortType == Enum.ReputationSortType.Account then mode = "warband"
+            elseif sortType == Enum.ReputationSortType.Character then mode = "char"
+            else mode = "all" end
+            if EasyFind.db and EasyFind.db.reputationFilterMode ~= mode then
+                EasyFind.db.reputationFilterMode = mode
+            end
+        end)
     end
-    local sbf = (PlayerSpellsFrame and PlayerSpellsFrame.SpellBookFrame) or SpellBookFrame
-    if sbf then hookOnce(sbf, UI.ApplySpellBookHidePassives, "abilityHidePassives") end
+    if C_Reputation and C_Reputation.SetLegacyReputationsShown then
+        hooksecurefunc(C_Reputation, "SetLegacyReputationsShown", function(show)
+            show = show and true or false
+            if EasyFind.db and EasyFind.db.showLegacyReputations ~= show then
+                EasyFind.db.showLegacyReputations = show
+            end
+        end)
+    end
+    -- Hide Passives is CVar-backed; CVAR_UPDATE fires on any change.
+    local cvarFrame = CreateFrame("Frame")
+    cvarFrame:RegisterEvent("CVAR_UPDATE")
+    cvarFrame:SetScript("OnEvent", function(_, _, name, value)
+        if not name then return end
+        local n = slower(name)
+        if n == "spellbookhidepassives" then
+            local hide = value == "1" or value == 1 or value == true
+            if EasyFind.db and EasyFind.db.abilityHidePassives ~= hide then
+                EasyFind.db.abilityHidePassives = hide
+            end
+        end
+    end)
 end
 
 function UI:ToggleCurrencyBackpack(currencyID)
