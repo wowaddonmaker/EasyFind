@@ -849,6 +849,14 @@ local function CommitStagedDependents(parentVar)
     end
 end
 
+local function HasFlag(settObj, flag)
+    if not settObj.HasCommitFlag or not Settings or not Settings.CommitFlag or not flag then
+        return false
+    end
+    local ok, has = pcall(settObj.HasCommitFlag, settObj, flag)
+    return ok and has
+end
+
 function BlizzOptionsSearch:ApplyVariable(variable)
     if not variable or not Settings or not Settings.GetSetting then return end
     local sok, settObj = pcall(Settings.GetSetting, variable)
@@ -856,6 +864,59 @@ function BlizzOptionsSearch:ApplyVariable(variable)
     local pending = settObj.pendingValue
     local depsFn = PROXY_DEPENDENT_DEFAULTS[variable]
     if depsFn then pcall(depsFn, pending) end
+
+    -- Settings flagged Revertable (monitor, resolution, display mode)
+    -- need Blizzard's CommitSettings pipeline so the
+    -- GAME_SETTINGS_TIMED_CONFIRMATION popup ("Accept new options?
+    -- Reverting in 8 seconds.") fires. The popup is the user's only
+    -- escape hatch when a change leaves the screen unusable. Our
+    -- direct SetValue(immediate=true) path skips that, so route
+    -- through Blizzard for these specifically. Push parent + any
+    -- staged dependents into SettingsPanel.modified first.
+    local revertable = HasFlag(settObj, Settings.CommitFlag.Revertable)
+    if revertable and SettingsPanel and SettingsPanel.CommitSettings
+       and SettingsPanel.modified then
+        SettingsPanel.modified[settObj] = settObj
+        local deps = PROXY_DEPENDENTS[variable]
+        if deps then
+            for i = 1, #deps do
+                local _, depObj = pcall(Settings.GetSetting, deps[i])
+                if depObj and depObj.pendingValue ~= nil then
+                    SettingsPanel.modified[depObj] = depObj
+                end
+            end
+        end
+        pcall(SettingsPanel.CommitSettings, SettingsPanel, false)
+        -- Lift the timed-confirmation popup above our search panel
+        -- (resultsFrame is FULLSCREEN_DIALOG; StaticPopup1 defaults to
+        -- DIALOG which renders behind us). Hook OnHide once to restore
+        -- so other StaticPopup1 uses aren't affected.
+        local popup = _G["StaticPopup1"]
+        if popup and popup:IsShown() and not popup._easyFindStrataLifted then
+            popup._easyFindStrataLifted = true
+            popup._easyFindOriginalStrata = popup:GetFrameStrata()
+            popup:SetFrameStrata("TOOLTIP")
+            popup:HookScript("OnHide", function(self)
+                if self._easyFindStrataLifted then
+                    if self._easyFindOriginalStrata then
+                        self:SetFrameStrata(self._easyFindOriginalStrata)
+                    end
+                    self._easyFindStrataLifted = nil
+                    self._easyFindOriginalStrata = nil
+                end
+            end)
+        end
+        pendingApplySettings[settObj] = nil
+        if deps then
+            for i = 1, #deps do
+                local _, depObj = pcall(Settings.GetSetting, deps[i])
+                if depObj then pendingApplySettings[depObj] = nil end
+            end
+        end
+        FirePendingChanged()
+        return
+    end
+
     if settObj.SetValue then
         pcall(settObj.SetValue, settObj, pending, true)
     end
