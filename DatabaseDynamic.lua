@@ -6,8 +6,10 @@ local Utils = ns.Utils
 if not Database then return end
 
 local dynamicProviders = {
-    { key = "currencies",  category = "Currency",       fn = "PopulateDynamicCurrencies" },
-    { key = "reputations", category = "Reputation",     fn = "PopulateDynamicReputations" },
+    { key = "currencies",  category = "Currency",             fn = "PopulateDynamicCurrencies" },
+    { key = "reputations", category = "Reputation",           fn = "PopulateDynamicReputations" },
+    { key = "achievements", category = "Achievement Category", fn = "PopulateDynamicAchievements" },
+    { key = "statistics",  category = "Statistic",            fn = "PopulateDynamicStatistics" },
     { key = "mounts",      category = "Mount",          fn = "PopulateDynamicMounts" },
     { key = "toys",        category = "Toy",            fn = "PopulateDynamicToys" },
     { key = "pets",        category = "Pet",            fn = "PopulateDynamicPets" },
@@ -92,6 +94,13 @@ end
 
 function Database:CancelDynamicWarmup()
     if self.CancelDynamicScans then self:CancelDynamicScans() end
+end
+
+function Database:MarkDynamicProviderLoaded(key)
+    local provider = dynamicProviderByKey[key]
+    if not provider then return end
+    provider.loaded = true
+    provider.dirty = false
 end
 
 function Database:MarkDynamicCategoryDirty(key)

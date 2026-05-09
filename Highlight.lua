@@ -692,6 +692,41 @@ function Highlight:UpdateGuide()
             return
         end
 
+        -- Statistic terminal step. AchievementFrameStats.ScrollBox's
+        -- data provider stores entries shaped { id, colorIndex, header }
+        -- where `id` is the statistic ID. Match on that, scroll the
+        -- row into view, then highlight the rendered button.
+        if step.statisticID then
+            if not (AchievementFrame and AchievementFrame:IsShown()) then
+                self:Cancel()
+                return
+            end
+            local stats = _G["AchievementFrameStats"]
+            local box = stats and stats.ScrollBox
+            if not box then return end
+
+            local function matches(data)
+                return type(data) == "table" and data.id == step.statisticID
+            end
+
+            local align = ScrollBoxConstants and ScrollBoxConstants.AlignCenter or 0.5
+            if box.ScrollToElementDataByPredicate then
+                pcall(box.ScrollToElementDataByPredicate, box, matches, align)
+            end
+
+            local btn = ScrollBoxFindButton(box, function(b)
+                local data = b.GetElementData and b:GetElementData()
+                return matches(data)
+            end)
+            if btn then
+                self:HighlightFrame(btn)
+                if isLastStep and canHoverDismiss() and btn:IsMouseOver() then
+                    self:Cancel()
+                end
+            end
+            return
+        end
+
         -- Achievement-by-ID terminal step. Drive Blizzard's own
         -- OpenAchievementFrameToAchievement to scroll the
         -- AchievementFrameAchievements.ScrollBox to the row, then
