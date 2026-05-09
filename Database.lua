@@ -3396,18 +3396,17 @@ function Database:BuildUIDatabase()
         },
 
         -- GAME MENU / HELP / SHOP
-        -- buttonFrame is kept solely so GetButtonIcon can derive the
-        -- "UI-HUD-MicroMenu-GameMenu-Up" atlas from MainMenuMicroButton's
-        -- textureName. The actual click goes through slashCommand because
-        -- the micro button's OnClick (and ToggleGameMenu) call
-        -- SpellStopCasting() when a spell is targeting -- protected, and
-        -- it taints when fired from a /run script context.
+        -- /click routes through the secure dispatch so the micro
+        -- button's OnClick fires in a hardware-event context;
+        -- ToggleGameMenu's internal ClearTarget then succeeds. A
+        -- /run ShowUIPanel(GameMenuFrame) here forbid-errors on
+        -- ClearTarget because /run is not a hardware event.
         {
             name = "Game Menu",
             keywords = {"menu", "settings", "options", "escape", "esc", "logout", "quit", "exit", "interface"},
             category = "Menu Bar",
             buttonFrame = "MainMenuMicroButton",
-            slashCommand = "/run if GameMenuFrame:IsShown() then HideUIPanel(GameMenuFrame) else ShowUIPanel(GameMenuFrame) end",
+            slashCommand = "/click MainMenuMicroButton",
         },
         {
             name = "Help",
