@@ -36,6 +36,15 @@ local stepTicker
 local highlightShownAt   -- GetTime() when the current highlight was first shown
 
 local function canHoverDismiss()
+    -- Hover-to-dismiss only fires on the LAST step of a guide (or when
+    -- there's no guide running -- a single-highlight, like clicking a
+    -- search result that didn't open Guide mode). Intermediate guide
+    -- steps must stick around long enough for the player to see them
+    -- light up; clearing on hover would short-circuit the breadcrumb.
+    if currentGuide and currentGuide.steps then
+        local total = #currentGuide.steps
+        if currentStepIndex and currentStepIndex < total then return false end
+    end
     return not highlightShownAt or (GetTime() - highlightShownAt) >= HOVER_MIN_DISPLAY
 end
 
@@ -92,27 +101,24 @@ function Highlight:CreateHighlightFrame()
     --     ScrollBox button repurposed for a different spell after the user
     --     pages the spellbook. Caller passes a closure that re-checks
     --     identity (SpellFrameMatchesSelf etc.).
+    -- Repurpose watcher only -- NO hover-dismiss here, NO visibility
+    -- check. The per-step UpdateGuide loop already advances/rewinds
+    -- when the destination panel changes; a blanket visibility watcher
+    -- false-positives on ScrollBox-virtualized targets (achievement
+    -- categories, currency rows, etc.) which briefly report not-shown
+    -- during their own re-render and would kill intermediate highlights.
+    -- The validator path stays for explicit identity checks the caller
+    -- opted into (e.g. spellbook page-flip).
     local watchAccum = 0
     highlightFrame:HookScript("OnUpdate", function(self, elapsed)
         watchAccum = watchAccum + elapsed
         if watchAccum < 0.1 then return end
         watchAccum = 0
         local target = self._targetFrame
-        if target and target.IsVisible and not target:IsVisible() then
-            Highlight:HideHighlight()
-            return
-        end
         local validator = self._targetValidator
         if validator and not validator(target) then
             Highlight:HideHighlight()
             return
-        end
-        -- Hover-to-dismiss: cursor is on the target, so the player
-        -- found it. Cancel (not HideHighlight) stops the step ticker;
-        -- otherwise the next tick's HighlightFrame re-shows and resets
-        -- highlightShownAt, this watcher hides again, and we strobe.
-        if canHoverDismiss() and target and target.IsMouseOver and target:IsMouseOver() then
-            Highlight:Cancel()
         end
     end)
 end
@@ -686,8 +692,47 @@ function Highlight:UpdateGuide()
             return
         end
 
+        -- Achievement-by-ID terminal step. Drive Blizzard's own
+        -- OpenAchievementFrameToAchievement to scroll the
+        -- AchievementFrameAchievements.ScrollBox to the row, then
+        -- look up the visible button via the data provider's selected
+        -- element and layer our yellow border on it.
+        if step.achievementID then
+            if not (AchievementFrame and AchievementFrame:IsShown()) then
+                self:Cancel()
+                return
+            end
+            local opener = _G["OpenAchievementFrameToAchievement"]
+            if opener then pcall(opener, step.achievementID) end
+            local btn
+            local list = _G["AchievementFrameAchievements"]
+            if list and list.ScrollBox then
+                local getSelected = _G["AchievementFrameAchievements_GetSelectedElementData"]
+                local elementData = getSelected and getSelected()
+                if elementData and elementData.id == step.achievementID
+                   and list.ScrollBox.FindFrame then
+                    local ok, found = pcall(list.ScrollBox.FindFrame, list.ScrollBox, elementData)
+                    if ok and found and found:IsShown() then btn = found end
+                end
+            end
+            if btn then
+                self:HighlightFrame(btn)
+                if isLastStep and canHoverDismiss() and btn:IsMouseOver() then
+                    self:Cancel()
+                end
+            end
+            return
+        end
+
         -- Achievement category navigation (tree-based category selection in Achievements/Guild tabs)
         if step.achievementCategory then
+            -- If the player closed the achievement panel, don't try to
+            -- reopen / rewind. We deprecated that behavior; the guide
+            -- just cancels.
+            if not (AchievementFrame and AchievementFrame:IsShown()) then
+                self:Cancel()
+                return
+            end
             -- First check: are we still on the correct tab?
             local requiredTabIndex = nil
             for i = currentStepIndex - 1, 1, -1 do
@@ -743,16 +788,6 @@ function Highlight:UpdateGuide()
                 -- Selected but collapsed - fall through to highlight so user expands it
             end
 
-            -- For non-final steps: if the category is a parent that's expanded (children visible),
-            -- skip ahead - don't force the user to re-select a parent they've already drilled into
-            if not isLastStep then
-                local elementData = self:FindCategoryElementData(step.achievementCategory)
-                if elementData and elementData.parent and not elementData.collapsed then
-                    self:AdvanceStep()
-                    return
-                end
-            end
-
             -- Not selected - find the button (scrolls into view automatically)
             local categoryBtn = self:GetAchievementCategoryButton(step.achievementCategory)
             if categoryBtn then
@@ -803,13 +838,8 @@ function Highlight:UpdateGuide()
             local sidebarBtn = self:GetSidebarTabButton(step.sidebarIndex)
             if sidebarBtn then
                 self:HighlightFrame(sidebarBtn)
-                -- Check for click/hover to advance
-                if canHoverDismiss() and sidebarBtn:IsMouseOver() then
-                    if isLastStep then
-                        self:Cancel()
-                    else
-                        self:AdvanceStep()
-                    end
+                if isLastStep and canHoverDismiss() and sidebarBtn:IsMouseOver() then
+                    self:Cancel()
                 end
             elseif isLastStep then
                 local tabNames = {"Character Stats", "Titles", "Equipment Manager"}
