@@ -2591,22 +2591,33 @@ function Database:PopulateDynamicAchievements()
     local categories = GetCategoryList()
     if not categories then return false end
 
-    -- 12.0's GetCategoryList returns the union of achievement +
-    -- statistics category IDs. Subtract the statistics set so we only
-    -- emit real achievement-tab sidebar entries here; statistics get
-    -- their own dynamic populator.
-    local statsCategorySet = {}
+    -- 12.0's GetCategoryList returns the union of achievement category
+    -- IDs AND every individual stat-row ID (each stat row is itself an
+    -- achievement ID and appears in this list with its stat name as
+    -- the "category" name). Build an exclusion set covering both:
+    -- every sidebar stats category + every stat row inside them.
+    local statsExclude = {}
     if GetStatisticsCategoryList then
         local statCats = GetStatisticsCategoryList()
         if statCats then
-            for i = 1, #statCats do statsCategorySet[statCats[i]] = true end
+            for i = 1, #statCats do
+                local statCatID = statCats[i]
+                statsExclude[statCatID] = true
+                if GetCategoryNumAchievements and GetAchievementInfo then
+                    local total = GetCategoryNumAchievements(statCatID, true)
+                    for j = 1, (total or 0) do
+                        local statID = GetAchievementInfo(statCatID, j)
+                        if statID then statsExclude[statID] = true end
+                    end
+                end
+            end
         end
     end
 
     local catMap = {}
     for i = 1, #categories do
         local catID = categories[i]
-        if not statsCategorySet[catID] then
+        if not statsExclude[catID] then
             local name, parentID, flags = GetCategoryInfo(catID)
             if name and name ~= "" then
                 catMap[catID] = {
@@ -2672,9 +2683,22 @@ end
 -- Walks GetStatisticsCategoryList()/GetCategoryInfo() to emit the
 -- Statistics tab's category tree. Same shape as achievements but
 -- targets the Statistics tab (tabIndex = 3).
+-- Set of achievement IDs that are statistic-tracker achievements.
+-- Populated by PopulateDynamicStatistics; consumed by callers that
+-- enumerate achievements via Blizzard's APIs (e.g. UI.lua's inline
+-- achievement search) so they can filter stat-trackers out -- those
+-- show up under their own dedicated Statistics filter, not as
+-- duplicate "Achievement" rows.
+Database.statisticIDs = Database.statisticIDs or {}
+
+function Database:IsStatisticAchievement(achievementID)
+    return Database.statisticIDs[achievementID] == true
+end
+
 function Database:PopulateDynamicStatistics()
     if not GetStatisticsCategoryList or not GetCategoryInfo then return false end
     RemoveEntriesByCategory("Statistic")
+    wipe(Database.statisticIDs)
 
     local categories = GetStatisticsCategoryList()
     if not categories then return false end
@@ -2726,6 +2750,7 @@ function Database:PopulateDynamicStatistics()
             for i = 1, (total or 0) do
                 local id, title = GetAchievementInfo(cat.id, i)
                 if id and title and title ~= "" then
+                    Database.statisticIDs[id] = true
                     local steps = {}
                     for s = 1, #baseSteps do steps[s] = baseSteps[s] end
                     -- Leaf step: ONLY statisticID + statisticName.
