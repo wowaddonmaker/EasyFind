@@ -187,7 +187,7 @@ local FLAT_CATEGORY_ICONS = {
     -- icon (spell icon / boss portrait) is pushed to the RIGHT side.
     ability       = { tex = 522972, coords = { 0.904, 0.996, 0.707, 0.748 } },
     boss          = { tex = 522972, coords = { 0.855, 0.949, 0.524, 0.566 } },
-    talent        = { atlas = "UI-HUD-MicroMenu-SpellbookAbilities-Up" },
+    talent        = { atlas = "UI-HUD-MicroMenu-SpecTalents-Up" },
     achievement   = { atlas = "UI-HUD-MicroMenu-Achievements-Up" },
     macro         = { tex = "Interface\\MacroFrame\\MacroFrame-Icon" },
     bag           = { atlas = "bag-main" },
@@ -2159,7 +2159,7 @@ local UI_FILTER_OPTIONS = {
       } },
     -- Talents: leaf icon from the talents atlas spritesheet (4556093),
     -- visually consistent with the in-game talent tree.
-    { key = "talents",     label = "Talents",     iconAtlas = "UI-HUD-MicroMenu-SpellbookAbilities-Up" },
+    { key = "talents",     label = "Talents",     iconAtlas = "UI-HUD-MicroMenu-SpecTalents-Up" },
     -- Title icon from PaperDollSidebarTab2 (Titles tab) spritesheet 514608.
     { key = "titles",      label = "Titles",      iconTex = 514608,
       iconCoords = { 0.016, 0.531, 0.324, 0.461 } },
