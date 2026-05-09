@@ -935,8 +935,11 @@ end
 -- our search panel with pending Apply-flagged settings prompts the
 -- same three-button choice. Defined once at file load; the StaticPopup
 -- registry keeps it across reloads.
-StaticPopupDialogs = StaticPopupDialogs or {}
-if not StaticPopupDialogs["EASYFIND_UNAPPLIED_SETTINGS"] then
+-- Do NOT add `StaticPopupDialogs = StaticPopupDialogs or {}` here. The
+-- write to the global slot taints StaticPopupDialogs even when the
+-- value identity is preserved, and that taint propagates into
+-- ShowUIPanel / UIParentPanelManager, crashing later panel opens.
+if StaticPopupDialogs and not StaticPopupDialogs["EASYFIND_UNAPPLIED_SETTINGS"] then
     StaticPopupDialogs["EASYFIND_UNAPPLIED_SETTINGS"] = {
         text = SETTINGS_CONFIRM_DISCARD or
             "You have settings that have not been applied.\nAre you sure you wish to exit?",
