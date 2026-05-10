@@ -9,31 +9,38 @@ local tinsert = Utils.tinsert
 local SafeCallMethod = Utils.SafeCallMethod
 
 local GOLD_COLOR = ns.GOLD_COLOR
-local DARK_PANEL_BG = ns.DARK_PANEL_BG
 local TOOLTIP_BORDER = ns.TOOLTIP_BORDER
 
 local MIN_WIDTH = 150
 local MAX_WIDTH = 600
 local HANDLE_SIZE = 10
 local GLOW_OUTSET = 6
+local EDGE_HANDLE_INSET = 34
 local PREVIEW_ROW_H = 26
 local PREVIEW_PAD = 16
 local PREVIEW_MAX_ROWS = 24
 local MIN_HEIGHT = 80
 local MAX_HEIGHT = 700
-local MIN_FONT = 0.5
-local MAX_FONT = 2.0
+local MIN_BAR_HEIGHT = 24
+local MAX_BAR_HEIGHT = 56
+local DEFAULT_BAR_HEIGHT = ns.SEARCHBAR_HEIGHT or 30
+local DEFAULT_RESULTS_HEIGHT = 280
 
 local activeMode = nil
-local activeSearchBar = nil   -- the search bar being rescaled
+local activeSearchBar = nil   -- the mock search bar being rescaled
+local liveSearchBar = nil     -- real search bar hidden while editing
+local liveResultsFrame = nil
+local liveContainerFrame = nil
+local liveState = nil
 local backdrop = nil          -- full-screen dim
 local barOverlay = nil        -- glow around search bar
-local resultsOverlay = nil    -- glow around results
 local donePanel = nil         -- instruction + Done button
+local mockSearchBar = nil     -- inert mock bar for resize mode
+local mockWindowFrame = nil   -- unified background behind mock bar/results
 local previewResults = nil    -- fake results frame for preview
 
 local function GetResultsHeight()
-    return EasyFind.db.uiResultsHeight or 280
+    return EasyFind.db.uiResultsHeight or DEFAULT_RESULTS_HEIGHT
 end
 
 local function SetResultsHeight(h)
@@ -42,19 +49,21 @@ local function SetResultsHeight(h)
 end
 
 local function GetDefaultResultsHeight()
-    return 280
+    return DEFAULT_RESULTS_HEIGHT
+end
+
+local function GetSearchBarHeight()
+    local h = EasyFind.db.uiSearchBarHeight or DEFAULT_BAR_HEIGHT
+    return mmax(MIN_BAR_HEIGHT, mmin(MAX_BAR_HEIGHT, h))
+end
+
+local function SetSearchBarHeight(h)
+    h = mmax(MIN_BAR_HEIGHT, mmin(MAX_BAR_HEIGHT, mfloor(h + 0.5)))
+    EasyFind.db.uiSearchBarHeight = h
 end
 
 local function GetFontScale()
     return EasyFind.db.fontSize or 1.0
-end
-
-local function SetFontScale(val)
-    EasyFind.db.fontSize = val
-end
-
-local function ApplyFontUpdate()
-    if ns.UI and ns.UI.UpdateFontSize then ns.UI:UpdateFontSize() end
 end
 
 -- Helpers
@@ -63,20 +72,51 @@ local function ClampWidth(v)
     return mmax(MIN_WIDTH, mmin(MAX_WIDTH, v))
 end
 
-local function GetScreenMaxHeight(anchorAbove)
-    if not activeSearchBar then return MAX_HEIGHT end
+local function GetUnifiedWindowHeight()
+    return GetSearchBarHeight() + GetResultsHeight()
+end
+
+local function GetScreenMaxWindowHeight(anchorAbove)
+    if not activeSearchBar then return MAX_BAR_HEIGHT + MAX_HEIGHT end
     local available
     if anchorAbove then
         local screenTop = UIParent:GetTop() or UIParent:GetHeight()
-        local barTop = activeSearchBar:GetTop() or (screenTop / 2)
-        available = screenTop - barTop - 16
+        local barBottom = activeSearchBar:GetBottom() or (screenTop / 2)
+        available = screenTop - barBottom - 16
     else
-        available = (activeSearchBar:GetBottom() or (UIParent:GetHeight() / 2)) - 16
+        available = (activeSearchBar:GetTop() or (UIParent:GetHeight() / 2)) - 16
     end
+    local minTotal = MIN_BAR_HEIGHT + MIN_HEIGHT
+    local maxTotal = MAX_BAR_HEIGHT + MAX_HEIGHT
     if available > 0 then
-        return mmax(MIN_HEIGHT, mmin(MAX_HEIGHT, mfloor(available)))
+        return mmax(minTotal, mmin(maxTotal, mfloor(available)))
     end
-    return MAX_HEIGHT
+    return maxTotal
+end
+
+local function SetUnifiedWindowHeight(totalH, barRatio, preview, heightBox, anchorAbove)
+    local minTotal = MIN_BAR_HEIGHT + MIN_HEIGHT
+    local maxTotal = GetScreenMaxWindowHeight(anchorAbove)
+    totalH = mmax(minTotal, mmin(maxTotal, mfloor(totalH + 0.5)))
+
+    local ratio = barRatio or (GetSearchBarHeight() / mmax(1, GetUnifiedWindowHeight()))
+    local barH = mmax(MIN_BAR_HEIGHT, mmin(MAX_BAR_HEIGHT, totalH * ratio))
+    if totalH - barH < MIN_HEIGHT then barH = totalH - MIN_HEIGHT end
+    if totalH - barH > MAX_HEIGHT then barH = totalH - MAX_HEIGHT end
+    barH = mmax(MIN_BAR_HEIGHT, mmin(MAX_BAR_HEIGHT, barH))
+
+    local resultsH = mmax(MIN_HEIGHT, mmin(MAX_HEIGHT, totalH - barH))
+    SetSearchBarHeight(barH)
+    SetResultsHeight(resultsH)
+
+    if mockSearchBar and mockSearchBar.SetMockBarHeight then
+        mockSearchBar:SetMockBarHeight(GetSearchBarHeight())
+    end
+    if preview then preview:SetPreviewHeight(GetResultsHeight()) end
+    if mockWindowFrame and mockWindowFrame.UpdateLayout then mockWindowFrame:UpdateLayout() end
+    if heightBox and not heightBox:HasFocus() then
+        heightBox:SetText(mfloor(GetUnifiedWindowHeight() + 0.5))
+    end
 end
 
 local function AddResetButton(editBox, onConfirm)
@@ -154,8 +194,8 @@ local function CreateHandle(parent, point, xOff, yOff, cursor, isHorizontal)
     handle:SetFrameLevel(parent:GetFrameLevel() + 10)
     if isHorizontal then
         handle:SetSize(HANDLE_SIZE, 1)
-        handle:SetPoint("TOP", parent, "TOP", 0, -GLOW_OUTSET)
-        handle:SetPoint("BOTTOM", parent, "BOTTOM", 0, GLOW_OUTSET)
+        handle:SetPoint("TOP", parent, "TOP", 0, -EDGE_HANDLE_INSET)
+        handle:SetPoint("BOTTOM", parent, "BOTTOM", 0, EDGE_HANDLE_INSET)
         if point == "LEFT" then
             handle:SetPoint("LEFT", parent, "LEFT", xOff, 0)
         else
@@ -163,8 +203,8 @@ local function CreateHandle(parent, point, xOff, yOff, cursor, isHorizontal)
         end
     else
         handle:SetHeight(HANDLE_SIZE)
-        handle:SetPoint("LEFT", parent, "LEFT", GLOW_OUTSET, 0)
-        handle:SetPoint("RIGHT", parent, "RIGHT", -GLOW_OUTSET, 0)
+        handle:SetPoint("LEFT", parent, "LEFT", EDGE_HANDLE_INSET, 0)
+        handle:SetPoint("RIGHT", parent, "RIGHT", -EDGE_HANDLE_INSET, 0)
         handle:SetPoint(point, parent, point, 0, yOff)
     end
     handle:EnableMouse(true)
@@ -188,9 +228,9 @@ end
 
 local function CreateScaleHandle(parent, point, xOff, yOff, flipH, flipV)
     local handle = CreateFrame("Button", nil, parent)
-    handle:SetSize(16, 16)
+    handle:SetSize(22, 22)
     handle:SetPoint(point, parent, point, xOff, yOff)
-    handle:SetFrameLevel(parent:GetFrameLevel() + 10)
+    handle:SetFrameLevel(parent:GetFrameLevel() + 20)
     handle:EnableMouse(true)
     handle:RegisterForDrag("LeftButton")
 
@@ -228,6 +268,64 @@ local function CreateGlowOverlay(name, parent, target)
     return glow
 end
 
+local function HideRoundedFrameBorder(frame)
+    if not (frame and frame.combinedBorder and frame.combinedBorder.border) then return end
+    for _, tex in pairs(frame.combinedBorder.border) do tex:Hide() end
+end
+
+local function SetModernButtonFill(btn, r, g, b)
+    if not (btn and btn.combinedBorder and btn.combinedBorder.fill) then return end
+    for _, tex in pairs(btn.combinedBorder.fill) do
+        tex:SetVertexColor(r, g, b, 1)
+    end
+end
+
+local function CreateModernButton(parent, text, width, height)
+    local btn = CreateFrame("Button", nil, parent)
+    local rawSetSize = btn.SetSize
+    rawSetSize(btn, width or 100, height or 22)
+
+    ns.CreateRoundedRectBorder(btn)
+    ns.SetRoundedRectBarHeight(btn, mmin(height or 22, 10))
+    ns.SetRoundedRectBorderBgAlpha(btn, 1)
+    HideRoundedFrameBorder(btn)
+    SetModernButtonFill(btn, 0.095, 0.095, 0.108)
+
+    local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    label:SetPoint("CENTER")
+    label:SetText(text or "")
+    label:SetTextColor(1, 1, 1, 1)
+    btn._label = label
+
+    btn.SetText = function(self, value)
+        if self._label then self._label:SetText(value or "") end
+    end
+    btn.GetText = function(self)
+        return self._label and self._label:GetText() or ""
+    end
+    btn.SetSize = function(self, w, h)
+        rawSetSize(self, w, h)
+        ns.SetRoundedRectBarHeight(self, mmin(h or self:GetHeight() or 22, 10))
+    end
+
+    btn:SetScript("OnEnter", function(self)
+        if self:IsEnabled() then SetModernButtonFill(self, 0.155, 0.155, 0.172) end
+    end)
+    btn:SetScript("OnLeave", function(self)
+        if self:IsEnabled() then SetModernButtonFill(self, 0.095, 0.095, 0.108) end
+    end)
+    btn:SetScript("OnMouseDown", function(self)
+        if self:IsEnabled() then SetModernButtonFill(self, 0.065, 0.065, 0.078) end
+    end)
+    btn:SetScript("OnMouseUp", function(self)
+        if not self:IsEnabled() then return end
+        if self:IsMouseOver() then SetModernButtonFill(self, 0.155, 0.155, 0.172)
+        else SetModernButtonFill(self, 0.095, 0.095, 0.108) end
+    end)
+
+    return btn
+end
+
 -- Preview results (fake rows to show results area)
 
 local function CreatePreviewResults(parent, targetFrame, width, heightPx, anchorAbove, leftAligned, flushDock)
@@ -254,13 +352,17 @@ local function CreatePreviewResults(parent, targetFrame, width, heightPx, anchor
         end
     end
 
-    frame:SetBackdrop({
-        bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-        edgeFile = TOOLTIP_BORDER,
-        tile = true, tileSize = 32, edgeSize = 16,
-        insets   = { left = 4, right = 4, top = 4, bottom = 4 }
-    })
-    frame:SetBackdropColor(0.1, 0.1, 0.1, 0.85)
+    if flushDock then
+        frame:SetBackdrop(nil)
+    else
+        frame:SetBackdrop({
+            bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+            edgeFile = TOOLTIP_BORDER,
+            tile = true, tileSize = 32, edgeSize = 16,
+            insets   = { left = 4, right = 4, top = 4, bottom = 4 }
+        })
+        frame:SetBackdropColor(0.1, 0.1, 0.1, 0.85)
+    end
     frame:SetClipsChildren(true)
 
     local nVisible = mfloor((heightPx - PREVIEW_PAD) / rowH)
@@ -311,6 +413,102 @@ local function CreatePreviewResults(parent, targetFrame, width, heightPx, anchor
         end
         self:SetHeight(h)
     end
+
+    return frame
+end
+
+local function CreateMockSearchBar(parent, liveBar, centerX, centerY)
+    local barH = GetSearchBarHeight()
+    local width = ClampWidth((liveBar and liveBar.GetWidth and liveBar:GetWidth()) or (250 * (EasyFind.db.uiSearchWidth or 1.0)))
+
+    local frame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    frame:SetFrameStrata("FULLSCREEN_DIALOG")
+    frame:SetFrameLevel(190)
+    frame:SetSize(width, barH)
+    frame:EnableMouse(false)
+
+    local cx, cy = centerX, centerY
+    if (not cx or not cy) and liveBar and liveBar.GetCenter then
+        cx, cy = liveBar:GetCenter()
+    end
+    if not cx or not cy then
+        local parentW = UIParent:GetWidth() or 0
+        local parentH = UIParent:GetHeight() or 0
+        cx, cy = parentW / 2, parentH * (2 / 3)
+    end
+    frame:SetPoint("CENTER", UIParent, "BOTTOMLEFT", cx, cy)
+
+    frame:SetBackdrop(nil)
+
+    local contentSz = barH * (ns.SEARCHBAR_FILL or 0.72)
+    local iconSz = contentSz * (ns.SEARCHBAR_ICON_SCALE or 0.58)
+
+    local iconHolder = CreateFrame("Frame", nil, frame)
+    iconHolder:SetPoint("TOP", frame, "TOP", 0, 0)
+    iconHolder:SetPoint("BOTTOM", frame, "BOTTOM", 0, 0)
+    iconHolder:SetPoint("LEFT", frame, "LEFT", 0, 0)
+    iconHolder:SetWidth(barH)
+    frame.iconHolder = iconHolder
+
+    local icon = iconHolder:CreateTexture(nil, "OVERLAY")
+    icon:SetSize(iconSz, iconSz)
+    icon:SetPoint("CENTER")
+    if icon.SetAtlas then
+        icon:SetAtlas("common-search-magnifyingglass")
+    else
+        icon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
+    end
+    icon:SetAlpha(0.9)
+    frame.searchIcon = icon
+
+    local text = frame:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+    text:SetPoint("LEFT", iconHolder, "RIGHT", 0, 0)
+    text:SetPoint("RIGHT", frame, "RIGHT", -10, 0)
+    text:SetJustifyH("LEFT")
+    text:SetText("Search")
+    text:SetTextColor(0.55, 0.55, 0.58, 1)
+    frame.placeholder = text
+
+    frame.SetMockBarHeight = function(self, h)
+        h = mmax(MIN_BAR_HEIGHT, mmin(MAX_BAR_HEIGHT, h or DEFAULT_BAR_HEIGHT))
+        self:SetHeight(h)
+        if self.iconHolder then self.iconHolder:SetWidth(h) end
+        local contentSz = h * (ns.SEARCHBAR_FILL or 0.72)
+        local iconSz = contentSz * (ns.SEARCHBAR_ICON_SCALE or 0.58)
+        if self.searchIcon then self.searchIcon:SetSize(iconSz, iconSz) end
+        if mockWindowFrame and mockWindowFrame.UpdateLayout then mockWindowFrame:UpdateLayout() end
+    end
+
+    return frame
+end
+
+local function CreateMockWindowFrame(parent, searchBar, preview, anchorAbove)
+    local frame = CreateFrame("Frame", nil, parent)
+    frame:SetFrameStrata("FULLSCREEN_DIALOG")
+    frame:SetFrameLevel(188)
+    frame:EnableMouse(false)
+    if anchorAbove then
+        frame:SetPoint("TOPLEFT", preview, "TOPLEFT", 0, 0)
+        frame:SetPoint("TOPRIGHT", preview, "TOPRIGHT", 0, 0)
+        frame:SetPoint("BOTTOMLEFT", searchBar, "BOTTOMLEFT", 0, 0)
+        frame:SetPoint("BOTTOMRIGHT", searchBar, "BOTTOMRIGHT", 0, 0)
+    else
+        frame:SetPoint("TOPLEFT", searchBar, "TOPLEFT", 0, 0)
+        frame:SetPoint("TOPRIGHT", searchBar, "TOPRIGHT", 0, 0)
+        frame:SetPoint("BOTTOMLEFT", preview, "BOTTOMLEFT", 0, 0)
+        frame:SetPoint("BOTTOMRIGHT", preview, "BOTTOMRIGHT", 0, 0)
+    end
+    ns.CreateRoundedRectBorder(frame)
+    ns.CreateRoundedRectDivider(frame)
+    ns.SetRoundedRectBarHeight(frame, searchBar:GetHeight())
+    ns.SetRoundedRectBorderBgAlpha(frame, EasyFind.db.searchBarOpacity or ns.DEFAULT_OPACITY or 0.88)
+
+    frame.UpdateLayout = function(self)
+        local dividerOffset = anchorAbove and preview:GetHeight() or searchBar:GetHeight()
+        ns.SetRoundedRectBarHeight(self, searchBar:GetHeight())
+        ns.SetRoundedRectDivider(self, dividerOffset, true)
+    end
+    frame:UpdateLayout()
 
     return frame
 end
@@ -371,8 +569,9 @@ local function SetupHeightDrag(handle, preview, heightBox, anchorAbove)
         self.dragging = true
         local _, cy = GetCursorPosition()
         self.startY = cy / UIParent:GetEffectiveScale()
-        self.startHeight = GetResultsHeight()
-        self.maxH = GetScreenMaxHeight(anchorAbove)
+        self.startHeight = GetUnifiedWindowHeight()
+        self.barRatio = GetSearchBarHeight() / mmax(1, self.startHeight)
+        self.maxH = GetScreenMaxWindowHeight(anchorAbove)
     end)
     handle:SetScript("OnDragStop", function(self)
         self.dragging = false
@@ -383,162 +582,78 @@ local function SetupHeightDrag(handle, preview, heightBox, anchorAbove)
         cy = cy / UIParent:GetEffectiveScale()
         local dy = self.startY - cy
         if anchorAbove then dy = -dy end
-        local newH = mmax(MIN_HEIGHT, mmin(self.maxH, mfloor(self.startHeight + dy + 0.5)))
-        SetResultsHeight(newH)
-        preview:SetPreviewHeight(newH)
-        if not heightBox:HasFocus() then heightBox:SetText(newH) end
+        local newH = mmax(MIN_BAR_HEIGHT + MIN_HEIGHT, mmin(self.maxH, mfloor(self.startHeight + dy + 0.5)))
+        SetUnifiedWindowHeight(newH, self.barRatio, preview, heightBox, anchorAbove)
     end)
 end
 
--- Font size drag handler
-
-local function SetupFontDrag(handle, fontLabel, preview)
-    local PX_PER_STEP = ns.SEARCHBAR_HEIGHT * 0.1
-
+local function SetupCornerDrag(handle, getWidth, setWidth, widthBox, preview, heightBox, anchorAbove)
     handle:SetScript("OnDragStart", function(self)
         self.dragging = true
-        local _, cy = GetCursorPosition()
-        self.startY = cy / UIParent:GetEffectiveScale()
-        self.startFont = GetFontScale()
+        local cx, cy = GetCursorPosition()
+        local scale = UIParent:GetEffectiveScale()
+        self.startX = cx / scale
+        self.startY = cy / scale
+        self.startWidth = getWidth()
+        self.startHeight = GetUnifiedWindowHeight()
+        self.barRatio = GetSearchBarHeight() / mmax(1, self.startHeight)
+        self.maxH = GetScreenMaxWindowHeight(anchorAbove)
     end)
     handle:SetScript("OnDragStop", function(self)
         self.dragging = false
     end)
     handle:SetScript("OnUpdate", function(self)
         if not self.dragging then return end
-        local _, cy = GetCursorPosition()
-        cy = cy / UIParent:GetEffectiveScale()
-        -- Dragging down = bigger bar = larger font
+        local cx, cy = GetCursorPosition()
+        local scale = UIParent:GetEffectiveScale()
+        cx, cy = cx / scale, cy / scale
+
+        local newW = ClampWidth(self.startWidth + (cx - self.startX) * 2)
+        setWidth(newW)
+        if widthBox and not widthBox:HasFocus() then
+            widthBox:SetText(mfloor(newW + 0.5))
+        end
+
         local dy = self.startY - cy
-        local stepDelta = mfloor(dy / PX_PER_STEP + 0.5)
-        local newFont = mmax(MIN_FONT, mmin(MAX_FONT, self.startFont + stepDelta * 0.1))
-        newFont = mfloor(newFont * 10 + 0.5) / 10
-
-        SetFontScale(newFont)
-        ApplyFontUpdate()
-
-        -- Update preview row fonts; height stays fixed (font size doesn't change result height)
-        if preview and preview.rows then
-            local path, baseSize, flags = GameFontDisable:GetFont()
-            local scaledRowH = PREVIEW_ROW_H * newFont
-            local h = GetResultsHeight()
-            local nVis = mfloor((h - PREVIEW_PAD) / scaledRowH)
-            for i = 1, PREVIEW_MAX_ROWS do
-                local row = preview.rows[i]
-                row:SetFont(path, baseSize * newFont, flags)
-                row:SetHeight(scaledRowH)
-                row:ClearAllPoints()
-                row:SetPoint("LEFT", preview, "LEFT", 12, 0)
-                row:SetPoint("RIGHT", preview, "RIGHT", -12, 0)
-                row:SetPoint("TOP", preview, "TOP", 0, -8 - (i - 1) * scaledRowH)
-                row:SetShown(i <= nVis)
-            end
-            preview:SetHeight(h)
-        end
-
-        if not fontLabel:HasFocus() then
-            fontLabel:SetText(mfloor(newFont * 100 + 0.5))
-        end
-
-        local optPanel = _G["EasyFindOptionsFrame"]
-        if optPanel then
-            local slider = optPanel.uiFontSlider
-            if slider then slider:SetValue(newFont) end
-        end
+        if anchorAbove then dy = -dy end
+        local newH = mmax(MIN_BAR_HEIGHT + MIN_HEIGHT, mmin(self.maxH, mfloor(self.startHeight + dy + 0.5)))
+        SetUnifiedWindowHeight(newH, self.barRatio, preview, heightBox, anchorAbove)
     end)
 end
 
 -- Build overlays for a target
 
-local function BuildBarOverlay(parent, targetFrame, mode)
-    local overlay = CreateGlowOverlay("EasyFindRescaleBarGlow", parent, targetFrame)
-    overlay:SetPoint("TOPLEFT", targetFrame, "TOPLEFT", -GLOW_OUTSET, GLOW_OUTSET)
-    overlay:SetPoint("BOTTOMRIGHT", targetFrame, "BOTTOMRIGHT", GLOW_OUTSET, -GLOW_OUTSET)
+local function BuildUnifiedWindowOverlay(parent, searchBar, preview, anchorAbove)
+    local overlay = CreateGlowOverlay("EasyFindRescaleWindowGlow", parent, searchBar)
+    if anchorAbove then
+        overlay:SetPoint("TOPLEFT", preview, "TOPLEFT", -GLOW_OUTSET, GLOW_OUTSET)
+        overlay:SetPoint("TOPRIGHT", preview, "TOPRIGHT", GLOW_OUTSET, GLOW_OUTSET)
+        overlay:SetPoint("BOTTOMLEFT", searchBar, "BOTTOMLEFT", -GLOW_OUTSET, -GLOW_OUTSET)
+        overlay:SetPoint("BOTTOMRIGHT", searchBar, "BOTTOMRIGHT", GLOW_OUTSET, -GLOW_OUTSET)
+    else
+        overlay:SetPoint("TOPLEFT", searchBar, "TOPLEFT", -GLOW_OUTSET, GLOW_OUTSET)
+        overlay:SetPoint("TOPRIGHT", searchBar, "TOPRIGHT", GLOW_OUTSET, GLOW_OUTSET)
+        overlay:SetPoint("BOTTOMLEFT", preview, "BOTTOMLEFT", -GLOW_OUTSET, -GLOW_OUTSET)
+        overlay:SetPoint("BOTTOMRIGHT", preview, "BOTTOMRIGHT", GLOW_OUTSET, -GLOW_OUTSET)
+    end
 
     local label = overlay:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     label:SetPoint("CENTER")
-    label:SetText("UI Search Bar")
+    label:SetText("UI Search Window")
     label:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.7)
 
     local widthBox = CreateDimLabel(overlay, "LEFT", "RIGHT", 8, 0, "Width:")
     overlay.widthBox = widthBox
 
-    -- Width drag handles (left and right edges)
-    local leftHandle = CreateHandle(overlay, "LEFT", 0, 0, nil, true)
-    local rightHandle = CreateHandle(overlay, "RIGHT", 0, 0, nil, true)
-    overlay.leftHandle = leftHandle
-    overlay.rightHandle = rightHandle
-
-    -- Bottom drag handle (for font size)
-    local bottomHandle = CreateHandle(overlay, "BOTTOM", 0, 0, nil, false)
-    overlay.bottomHandle = bottomHandle
-
-    -- Font size field (below bottom edge)
-    local fontBox = CreateFrame("EditBox", nil, overlay, "InputBoxTemplate")
-    fontBox:SetSize(50, 20)
-    fontBox:SetAutoFocus(false)
-    fontBox:SetMaxLetters(4)
-    fontBox:SetJustifyH("CENTER")
-    fontBox:SetFontObject("GameFontHighlightSmall")
-
-    local fontPfx = overlay:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    fontPfx:SetPoint("TOP", overlay, "BOTTOM", 0, -4)
-    fontPfx:SetText("Font:")
-    fontPfx:SetTextColor(0.9, 0.3, 0.3, 1.0)
-    fontBox:SetPoint("LEFT", fontPfx, "RIGHT", 6, 0)
-
-    local fontSuffix = fontBox:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    fontSuffix:SetPoint("LEFT", fontBox, "RIGHT", 2, 0)
-    fontSuffix:SetText("%")
-    fontSuffix:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.7)
-
-    -- Tooltip on the prefix label
-    local fontTip = CreateFrame("Frame", nil, overlay)
-    fontTip:SetAllPoints(fontPfx)
-    fontTip:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Changing font size also resizes the search bar and results window.")
-        GameTooltip:Show()
-    end)
-    fontTip:SetScript("OnLeave", GameTooltip_Hide)
-
-    overlay.fontBox = fontBox
-
-    return overlay
-end
-
-local function BuildResultsOverlay(parent, targetFrame, anchorAbove)
-    local overlay = CreateGlowOverlay("EasyFindRescaleResultsGlow", parent, targetFrame)
-    overlay:SetPoint("TOPLEFT", targetFrame, "TOPLEFT", -GLOW_OUTSET, GLOW_OUTSET)
-    overlay:SetPoint("BOTTOMRIGHT", targetFrame, "BOTTOMRIGHT", GLOW_OUTSET, -GLOW_OUTSET)
-
-    local label = overlay:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    label:SetPoint("CENTER")
-    label:SetText("Search Results")
-    label:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.7)
-
-    local widthBox = CreateDimLabel(overlay, "LEFT", "RIGHT", 8, 0, "Width:")
-    overlay.widthBox = widthBox
-
-    -- Height drag edge and corner handle: top edge when above, bottom edge when below
-    local heightEdge = anchorAbove and "TOP" or "BOTTOM"
+    local resizeEdge = anchorAbove and "TOP" or "BOTTOM"
     local cornerPoint = anchorAbove and "TOPRIGHT" or "BOTTOMRIGHT"
     local flipV = anchorAbove
 
-    local scaleHandle = CreateScaleHandle(overlay, cornerPoint, 0, 0, false, flipV)
-    overlay.scaleHandle = scaleHandle
+    overlay.leftHandle = CreateHandle(overlay, "LEFT", 0, 0, nil, true)
+    overlay.rightHandle = CreateHandle(overlay, "RIGHT", 0, 0, nil, true)
+    overlay.heightHandle = CreateHandle(overlay, resizeEdge, 0, 0, nil, false)
+    overlay.scaleHandle = CreateScaleHandle(overlay, cornerPoint, 0, 0, false, flipV)
 
-    -- Width drag handles
-    local leftHandle = CreateHandle(overlay, "LEFT", 0, 0, nil, true)
-    local rightHandle = CreateHandle(overlay, "RIGHT", 0, 0, nil, true)
-    overlay.leftHandle = leftHandle
-    overlay.rightHandle = rightHandle
-
-    -- Height drag handle (top or bottom edge)
-    local heightHandle = CreateHandle(overlay, heightEdge, 0, 0, nil, false)
-    overlay.heightHandle = heightHandle
-
-    -- Height field (outside the resize edge)
     local heightBox = CreateFrame("EditBox", nil, overlay, "InputBoxTemplate")
     heightBox:SetSize(50, 20)
     heightBox:SetAutoFocus(false)
@@ -575,29 +690,17 @@ local function CreateDonePanel(parent)
     local DONE_W = 80
     local BTN_GAP = 2
     local BTN_H = 22
-    local PANEL_PAD = 8
-    local panel = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    panel:SetSize(BACK_W + BTN_GAP + DONE_W + PANEL_PAD * 2, BTN_H + 14)
+    local panel = CreateFrame("Frame", nil, parent)
+    panel:SetSize(BACK_W + BTN_GAP + DONE_W, BTN_H)
     panel:SetFrameStrata("FULLSCREEN_DIALOG")
     panel:SetFrameLevel(209)
-    panel:SetBackdrop({
-        bgFile   = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = TOOLTIP_BORDER,
-        tile = true, tileSize = 32, edgeSize = 16,
-        insets   = { left = 4, right = 4, top = 4, bottom = 4 }
-    })
-    panel:SetBackdropColor(DARK_PANEL_BG[1], DARK_PANEL_BG[2], DARK_PANEL_BG[3], DARK_PANEL_BG[4])
 
-    local backBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    backBtn:SetSize(BACK_W, BTN_H)
-    backBtn:SetPoint("LEFT", panel, "LEFT", PANEL_PAD, 0)
-    backBtn:SetText("Back to Options")
+    local backBtn = CreateModernButton(panel, "Back to Options", BACK_W, BTN_H)
+    backBtn:SetPoint("LEFT", panel, "LEFT", 0, 0)
     panel.backBtn = backBtn
 
-    local doneBtn = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    doneBtn:SetSize(DONE_W, BTN_H)
+    local doneBtn = CreateModernButton(panel, "Done", DONE_W, BTN_H)
     doneBtn:SetPoint("LEFT", backBtn, "RIGHT", BTN_GAP, 0)
-    doneBtn:SetText("Done")
     panel.doneBtn = doneBtn
 
     return panel
@@ -640,33 +743,38 @@ function Rescaler:Enter(mode)
 
     activeMode = mode
 
-    local searchBar, resultsFrame
-    local getBarWidth, setBarWidth
-    local getResultsWidth, getResultsScale
+    liveSearchBar = _G["EasyFindSearchFrame"]
+    liveResultsFrame = _G["EasyFindResultsFrame"]
+    liveContainerFrame = _G["EasyFindContainerFrame"]
 
-    searchBar = _G["EasyFindSearchFrame"]
-    resultsFrame = _G["EasyFindResultsFrame"]
-
-    if not searchBar then
+    if not liveSearchBar then
         activeMode = nil
         return
     end
 
-    searchBar:Show()
-    searchBar:SetAlpha(1.0)
+    liveState = {
+        searchShown = liveSearchBar:IsShown(),
+        searchAlpha = liveSearchBar:GetAlpha(),
+        resultsShown = liveResultsFrame and liveResultsFrame:IsShown(),
+        containerShown = liveContainerFrame and liveContainerFrame:IsShown(),
+    }
+    local liveCenterX, liveCenterY = liveSearchBar:GetCenter()
+    if liveSearchBar.editBox then
+        liveSearchBar.editBox:ClearFocus()
+    end
+    if liveResultsFrame then liveResultsFrame:Hide() end
+    liveSearchBar:Hide()
+    if liveContainerFrame then liveContainerFrame:Hide() end
 
     local function setUiWidth(w)
         w = ClampWidth(w)
-        searchBar:SetWidth(w)
+        mockSearchBar:SetWidth(w)
         EasyFind.db.uiSearchWidth = w / 250
         EasyFind.db.uiResultsWidth = w
-        if resultsFrame then resultsFrame:SetWidth(w) end
     end
 
-    getBarWidth = function() return searchBar:GetWidth() end
-    setBarWidth = setUiWidth
-    getResultsScale = function() return EasyFind.db.uiResultsScale or 1.0 end
-    getResultsWidth = function() return searchBar:GetWidth() end
+    local getBarWidth = function() return mockSearchBar:GetWidth() end
+    local setBarWidth = setUiWidth
 
     -- Hide options panel
     local optPanel = _G["EasyFindOptionsFrame"]
@@ -674,140 +782,102 @@ function Rescaler:Enter(mode)
         optPanel:Hide()
     end
 
-    activeSearchBar = searchBar
-
-    -- Block focus but allow shift-drag
-    searchBar.setupMode = true
-    if searchBar.editBox then
-        searchBar.editBox:ClearFocus()
-    end
-
     -- Dim backdrop
     local bg = GetOrCreateBackdrop()
     bg:Show()
     SafeCallMethod(bg, "EnableKeyboard", true)
 
+    mockSearchBar = CreateMockSearchBar(bg, liveSearchBar, liveCenterX, liveCenterY)
+    mockSearchBar:Show()
+    activeSearchBar = mockSearchBar
+
     -- Preview results (fake rows so user sees the results area)
     local resultsAbove = EasyFind.db.uiResultsAbove
-    local previewW = getResultsWidth()
-    local currentH = mmin(GetResultsHeight(), GetScreenMaxHeight(resultsAbove))
-    previewResults = CreatePreviewResults(bg, searchBar, previewW, currentH, resultsAbove, false, true)
-    previewResults:SetScale(getResultsScale())
+    local currentTotal = GetUnifiedWindowHeight()
+    local currentRatio = GetSearchBarHeight() / mmax(1, currentTotal)
+    SetUnifiedWindowHeight(mmin(currentTotal, GetScreenMaxWindowHeight(resultsAbove)), currentRatio, nil, nil, resultsAbove)
+    local previewW = getBarWidth()
+    local currentH = GetResultsHeight()
+    previewResults = CreatePreviewResults(bg, mockSearchBar, previewW, currentH, resultsAbove, false, true)
     previewResults:Show()
+    mockWindowFrame = CreateMockWindowFrame(bg, mockSearchBar, previewResults, resultsAbove)
+    previewResults:HookScript("OnSizeChanged", function()
+        if mockWindowFrame and mockWindowFrame.UpdateLayout then mockWindowFrame:UpdateLayout() end
+    end)
 
-    -- Bar overlay
-    barOverlay = BuildBarOverlay(bg, searchBar, mode)
+    -- One overlay around the combined bar + results silhouette.
+    barOverlay = BuildUnifiedWindowOverlay(bg, mockSearchBar, previewResults, resultsAbove)
     barOverlay:Show()
 
-    -- Results overlay (around the preview)
-    resultsOverlay = BuildResultsOverlay(bg, previewResults, resultsAbove)
-    resultsOverlay:Show()
-
     -- If height label is near screen edge, flip it inside the overlay
-    local resizeEdge = resultsAbove and resultsOverlay:GetTop() or resultsOverlay:GetBottom()
+    local resizeEdge = resultsAbove and barOverlay:GetTop() or barOverlay:GetBottom()
     local screenLimit = resultsAbove and UIParent:GetTop() or 0
     local nearEdge = resultsAbove and (resizeEdge and screenLimit and (screenLimit - resizeEdge) < 40)
         or (not resultsAbove and resizeEdge and resizeEdge < 40)
     if nearEdge then
-        resultsOverlay.heightPfx:ClearAllPoints()
+        barOverlay.heightPfx:ClearAllPoints()
         if resultsAbove then
-            resultsOverlay.heightPfx:SetPoint("TOPLEFT", resultsOverlay, "TOPLEFT", GLOW_OUTSET + 4, -8)
+            barOverlay.heightPfx:SetPoint("TOPLEFT", barOverlay, "TOPLEFT", GLOW_OUTSET + 4, -8)
         else
-            resultsOverlay.heightPfx:SetPoint("BOTTOMLEFT", resultsOverlay, "BOTTOMLEFT", GLOW_OUTSET + 4, 8)
+            barOverlay.heightPfx:SetPoint("BOTTOMLEFT", barOverlay, "BOTTOMLEFT", GLOW_OUTSET + 4, 8)
         end
-        resultsOverlay.heightInside = true
+        barOverlay.heightInside = true
     end
 
-    -- Wire bar width drag. In UI mode the preview is the live results
-    -- area; resize it in lockstep so the unified pill stays continuous.
+    -- Wire unified window width. The bar and preview resize in lockstep
+    -- because the current UI uses one combined silhouette.
     local function setBarWidthAndPreview(w)
         setBarWidth(w)
-        previewResults:SetWidth(searchBar:GetWidth())
+        previewResults:SetWidth(mockSearchBar:GetWidth())
     end
     SetupWidthDrag(barOverlay.leftHandle, getBarWidth, setBarWidthAndPreview, barOverlay.widthBox, "LEFT")
     SetupWidthDrag(barOverlay.rightHandle, getBarWidth, setBarWidthAndPreview, barOverlay.widthBox, "RIGHT")
     WireDimLabel(barOverlay.widthBox, getBarWidth, setBarWidthAndPreview)
     AddResetButton(barOverlay.widthBox, function()
-        local defW = 250 * 0.88  -- 220px (matches DB_DEFAULTS searchWidth = 0.88)
+        local defW = 250 * 1.54
         setBarWidthAndPreview(defW)
         barOverlay.widthBox:SetText(mfloor(defW + 0.5))
     end)
 
-    -- Wire bar bottom edge (font size)
-    local currentFont = GetFontScale()
-    barOverlay.fontBox:SetText(mfloor(currentFont * 100 + 0.5))
-    barOverlay.fontBox:SetScript("OnEnterPressed", function(self)
+    -- Wire unified window height. The search bar strip and result rows resize together.
+    barOverlay.heightBox:SetText(mfloor(GetUnifiedWindowHeight() + 0.5))
+    barOverlay.heightBox:SetScript("OnEnterPressed", function(self)
         local val = tonumber(self:GetText())
         if val then
-            val = mmax(MIN_FONT * 100, mmin(MAX_FONT * 100, mfloor(val + 0.5)))
-            local newFont = val / 100
-            SetFontScale(newFont)
-            ApplyFontUpdate()
-            self:SetText(val)
-            previewResults:UpdatePreviewFont()
+            local ratio = GetSearchBarHeight() / mmax(1, GetUnifiedWindowHeight())
+            SetUnifiedWindowHeight(val, ratio, previewResults, self, resultsAbove)
+            self:SetText(mfloor(GetUnifiedWindowHeight() + 0.5))
         end
         self:ClearFocus()
     end)
-    barOverlay.fontBox:SetScript("OnEscapePressed", function(self)
-        self:SetText(mfloor(GetFontScale() * 100 + 0.5))
+    barOverlay.heightBox:SetScript("OnEscapePressed", function(self)
+        self:SetText(mfloor(GetUnifiedWindowHeight() + 0.5))
         self:ClearFocus()
     end)
-    AddResetButton(barOverlay.fontBox, function()
-        SetFontScale(0.9)
-        ApplyFontUpdate()
-        barOverlay.fontBox:SetText(90)
-        previewResults:UpdatePreviewFont()
+    local heightReset = AddResetButton(barOverlay.heightBox, function()
+        local defTotal = DEFAULT_BAR_HEIGHT + GetDefaultResultsHeight()
+        local defRatio = DEFAULT_BAR_HEIGHT / defTotal
+        SetUnifiedWindowHeight(defTotal, defRatio, previewResults, barOverlay.heightBox, resultsAbove)
+        barOverlay.heightBox:SetText(mfloor(GetUnifiedWindowHeight() + 0.5))
     end)
-    SetupFontDrag(barOverlay.bottomHandle, barOverlay.fontBox, previewResults)
-
-    resultsOverlay.leftHandle:Hide()
-    resultsOverlay.rightHandle:Hide()
-    resultsOverlay.widthBox:Hide()
-    if resultsOverlay.widthBox.prefix then resultsOverlay.widthBox.prefix:Hide() end
-    if resultsOverlay.widthBox.suffix then resultsOverlay.widthBox.suffix:Hide() end
-
-    -- Wire results corner (width + height combo)
-    resultsOverlay.heightBox:SetText(currentH)
-    resultsOverlay.heightBox:SetScript("OnEnterPressed", function(self)
-        local val = tonumber(self:GetText())
-        if val then
-            val = mmax(MIN_HEIGHT, mmin(GetScreenMaxHeight(resultsAbove), mfloor(val + 0.5)))
-            SetResultsHeight(val)
-            previewResults:SetPreviewHeight(val)
-            self:SetText(val)
-        end
-        self:ClearFocus()
-    end)
-    resultsOverlay.heightBox:SetScript("OnEscapePressed", function(self)
-        self:SetText(GetResultsHeight())
-        self:ClearFocus()
-    end)
-    local heightReset = AddResetButton(resultsOverlay.heightBox, function()
-        local def = GetDefaultResultsHeight()
-        SetResultsHeight(def)
-        previewResults:SetPreviewHeight(def)
-        resultsOverlay.heightBox:SetText(def)
-    end)
-    if resultsOverlay.anchorAbove then
+    if barOverlay.anchorAbove then
         heightReset:ClearAllPoints()
-        heightReset:SetPoint("BOTTOM", resultsOverlay.heightBox, "TOP", 0, 2)
+        heightReset:SetPoint("BOTTOM", barOverlay.heightBox, "TOP", 0, 2)
     end
-    if resultsOverlay.heightInside then
+    if barOverlay.heightInside then
         heightReset:ClearAllPoints()
-        if resultsOverlay.anchorAbove then
-            heightReset:SetPoint("TOP", resultsOverlay.heightBox, "BOTTOM", 0, -2)
+        if barOverlay.anchorAbove then
+            heightReset:SetPoint("TOP", barOverlay.heightBox, "BOTTOM", 0, -2)
         else
-            heightReset:SetPoint("BOTTOM", resultsOverlay.heightBox, "TOP", 0, 2)
+            heightReset:SetPoint("BOTTOM", barOverlay.heightBox, "TOP", 0, 2)
         end
     end
-    SetupHeightDrag(resultsOverlay.scaleHandle, previewResults, resultsOverlay.heightBox, resultsAbove)
-
-    -- Wire results bottom edge (height)
-    SetupHeightDrag(resultsOverlay.heightHandle, previewResults, resultsOverlay.heightBox, resultsAbove)
+    SetupCornerDrag(barOverlay.scaleHandle, getBarWidth, setBarWidthAndPreview, barOverlay.widthBox, previewResults, barOverlay.heightBox, resultsAbove)
+    SetupHeightDrag(barOverlay.heightHandle, previewResults, barOverlay.heightBox, resultsAbove)
 
     -- Done panel
     donePanel = CreateDonePanel(bg)
-    donePanel:SetPoint("TOP", resultsOverlay, "BOTTOM", 0, -50)
+    donePanel:SetPoint("TOP", barOverlay, "BOTTOM", 0, -50)
     donePanel.doneBtn:SetScript("OnClick", function()
         Rescaler:Exit()
     end)
@@ -824,23 +894,24 @@ function Rescaler:Exit(reopenOptions)
 
     -- Clean up all overlay frames
     if barOverlay then
-        barOverlay.leftHandle:SetScript("OnUpdate", nil)
-        barOverlay.rightHandle:SetScript("OnUpdate", nil)
-        barOverlay.bottomHandle:SetScript("OnUpdate", nil)
+        if barOverlay.leftHandle then barOverlay.leftHandle:SetScript("OnUpdate", nil) end
+        if barOverlay.rightHandle then barOverlay.rightHandle:SetScript("OnUpdate", nil) end
+        if barOverlay.heightHandle then barOverlay.heightHandle:SetScript("OnUpdate", nil) end
+        if barOverlay.scaleHandle then barOverlay.scaleHandle:SetScript("OnUpdate", nil) end
         barOverlay:Hide()
         barOverlay = nil
-    end
-    if resultsOverlay then
-        resultsOverlay.leftHandle:SetScript("OnUpdate", nil)
-        resultsOverlay.rightHandle:SetScript("OnUpdate", nil)
-        resultsOverlay.scaleHandle:SetScript("OnUpdate", nil)
-        resultsOverlay.heightHandle:SetScript("OnUpdate", nil)
-        resultsOverlay:Hide()
-        resultsOverlay = nil
     end
     if previewResults then
         previewResults:Hide()
         previewResults = nil
+    end
+    if mockSearchBar then
+        mockSearchBar:Hide()
+        mockSearchBar = nil
+    end
+    if mockWindowFrame then
+        mockWindowFrame:Hide()
+        mockWindowFrame = nil
     end
     if donePanel then
         donePanel:Hide()
@@ -856,12 +927,35 @@ function Rescaler:Exit(reopenOptions)
         activeSearchBar = nil
     end
 
+    if liveSearchBar then
+        liveSearchBar.setupMode = nil
+        liveSearchBar:SetAlpha((liveState and liveState.searchAlpha) or 1)
+        if liveState and liveState.searchShown then
+            liveSearchBar:Show()
+        else
+            liveSearchBar:Hide()
+        end
+    end
+    if liveResultsFrame then
+        if liveState and liveState.resultsShown then liveResultsFrame:Show()
+        else liveResultsFrame:Hide() end
+    end
+    if liveContainerFrame then
+        if liveState and liveState.containerShown then liveContainerFrame:Show()
+        else liveContainerFrame:Hide() end
+    end
+
     if ns.UI then
         if ns.UI.UpdateScale then ns.UI:UpdateScale() end
         if ns.UI.UpdateWidth then ns.UI:UpdateWidth() end
+        if ns.UI.UpdateSearchBarHeight then ns.UI:UpdateSearchBarHeight() end
         if ns.UI.RefreshResults then ns.UI:RefreshResults() end
     end
 
+    liveSearchBar = nil
+    liveResultsFrame = nil
+    liveContainerFrame = nil
+    liveState = nil
     activeMode = nil
 
     if reopenOptions then

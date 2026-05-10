@@ -16,7 +16,6 @@ local mfloor = Utils.mfloor
 local sformat = Utils.sformat
 
 local GOLD_COLOR = ns.GOLD_COLOR
-local DEFAULT_OPACITY = ns.DEFAULT_OPACITY
 local TOOLTIP_BORDER = ns.TOOLTIP_BORDER
 
 local CreateFrame        = CreateFrame
@@ -30,6 +29,16 @@ local InCombatLockdown   = InCombatLockdown
 local wipe               = wipe
 
 local REP_BAR_WIDTH = 100
+
+function UI:GetDefaultSearchBarPoint()
+    local parentH = UIParent and UIParent.GetHeight and UIParent:GetHeight() or 768
+    return "CENTER", "CENTER", 0, parentH / 6
+end
+
+function UI:GetSearchBarHeight()
+    local h = EasyFind and EasyFind.db and EasyFind.db.uiSearchBarHeight or ns.SEARCHBAR_HEIGHT
+    return mmax(24, mmin(56, h or ns.SEARCHBAR_HEIGHT or 30))
+end
 
 local CHARACTER_TAB_SUBFRAME = {
     [1] = "PaperDollFrame",
@@ -205,6 +214,7 @@ local FLAT_CATEGORY_ICONS = {
     -- glance from the silvery-grey game-settings cogwheel.
     settingAddon  = { atlas = "QuestLog-icon-setting", color = { 1.0, 0.78, 0.35 } },
     title         = { tex = 514608, coords = { 0.016, 0.531, 0.324, 0.461 } },
+    calculator    = { tex = "Interface\\Icons\\INV_Misc_Note_05" },
     -- Resolved lazily from PaperDollSidebarTab3 so the icon always
     -- matches whatever sprite-sheet region Blizzard uses for the
     -- Equipment Manager sidebar tab. Filled in by ResolveGearSetIcon().
@@ -251,6 +261,7 @@ local REP_FACTION_ICONS = {
 
 local function GetFlatCategoryIcon(data)
     if not data then return nil end
+    if data.calculatorResult then return FLAT_CATEGORY_ICONS.calculator end
     if data.mountID then return FLAT_CATEGORY_ICONS.mount end
     if data.toyItemID then return FLAT_CATEGORY_ICONS.toy end
     if data.petID then return FLAT_CATEGORY_ICONS.pet end
@@ -350,6 +361,7 @@ end
 
 local function GetFlatSubtext(data)
     if not data then return "" end
+    if data.calculatorResult then return "Expression" end
     if data.path and #data.path > 0 then
         return data.path[#data.path]
     end
@@ -389,6 +401,981 @@ local function GetFlatSubtext(data)
         return data.treeName .. " Ability"
     end
     return data.category or ""
+end
+
+UI._calculator = {
+    PATH = { "Calculator" },
+    FUNCTIONS = {
+        abs = true, acos = true, acosd = true, asin = true, asind = true,
+        atan = true, atan2 = true, atand = true, ceil = true, cos = true,
+        cosd = true, cosh = true, cot = true, cotd = true, csc = true,
+        cscd = true, exp = true, factorial = true, floor = true, ln = true,
+        log = true, max = true, min = true, mod = true, pow = true, round = true,
+        sec = true, secd = true, sin = true, sind = true, sinh = true,
+        sqrt = true, tan = true, tand = true, tanh = true,
+    },
+}
+
+function UI._calculator.IsFinite(value)
+    return type(value) == "number" and value == value
+        and value ~= math.huge and value ~= -math.huge
+end
+
+function UI._calculator.ToRadians(value)
+    return value * math.pi / 180
+end
+
+function UI._calculator.ToDegrees(value)
+    return value * 180 / math.pi
+end
+
+function UI._calculator.Round(value)
+    if value >= 0 then return math.floor(value + 0.5) end
+    return math.ceil(value - 0.5)
+end
+
+function UI._calculator.Factorial(value)
+    if value < 0 or value ~= math.floor(value) or value > 170 then return nil end
+    local result = 1
+    for i = 2, value do result = result * i end
+    return result
+end
+
+function UI._calculator.Atan2(y, x)
+    if math.atan2 then return math.atan2(y, x) end
+    if x > 0 then
+        return math.atan(y / x)
+    elseif x < 0 and y >= 0 then
+        return math.atan(y / x) + math.pi
+    elseif x < 0 then
+        return math.atan(y / x) - math.pi
+    elseif y > 0 then
+        return math.pi / 2
+    elseif y < 0 then
+        return -math.pi / 2
+    end
+    return nil
+end
+
+function UI._calculator.Sinh(value)
+    if math.sinh then return math.sinh(value) end
+    return (math.exp(value) - math.exp(-value)) / 2
+end
+
+function UI._calculator.Cosh(value)
+    if math.cosh then return math.cosh(value) end
+    return (math.exp(value) + math.exp(-value)) / 2
+end
+
+function UI._calculator.Tanh(value)
+    if math.tanh then return math.tanh(value) end
+    local pos = math.exp(value)
+    local neg = math.exp(-value)
+    return (pos - neg) / (pos + neg)
+end
+
+function UI._calculator.ApplyFunction(name, args)
+    local argc = #args
+    local a, b = args[1], args[2]
+    local c = UI._calculator
+
+    if name == "abs" then
+        if argc ~= 1 then return nil end
+        return math.abs(a)
+    elseif name == "sqrt" then
+        if argc ~= 1 or a < 0 then return nil end
+        return math.sqrt(a)
+    elseif name == "floor" then
+        if argc ~= 1 then return nil end
+        return math.floor(a)
+    elseif name == "ceil" then
+        if argc ~= 1 then return nil end
+        return math.ceil(a)
+    elseif name == "round" then
+        if argc ~= 1 then return nil end
+        return c.Round(a)
+    elseif name == "ln" then
+        if argc ~= 1 or a <= 0 then return nil end
+        return math.log(a)
+    elseif name == "log" then
+        if argc == 1 then
+            if a <= 0 then return nil end
+            return math.log(a) / math.log(10)
+        elseif argc == 2 then
+            if a <= 0 or a == 1 or b <= 0 then return nil end
+            return math.log(b) / math.log(a)
+        end
+        return nil
+    elseif name == "exp" then
+        if argc ~= 1 then return nil end
+        return math.exp(a)
+    elseif name == "pow" then
+        if argc ~= 2 then return nil end
+        return math.pow(a, b)
+    elseif name == "mod" then
+        if argc ~= 2 or b == 0 then return nil end
+        return math.fmod(a, b)
+    elseif name == "factorial" then
+        if argc ~= 1 then return nil end
+        return c.Factorial(a)
+    elseif name == "min" then
+        if argc < 1 then return nil end
+        local result = a
+        for i = 2, argc do if args[i] < result then result = args[i] end end
+        return result
+    elseif name == "max" then
+        if argc < 1 then return nil end
+        local result = a
+        for i = 2, argc do if args[i] > result then result = args[i] end end
+        return result
+    elseif name == "sin" then
+        if argc ~= 1 then return nil end
+        return math.sin(a)
+    elseif name == "cos" then
+        if argc ~= 1 then return nil end
+        return math.cos(a)
+    elseif name == "tan" then
+        if argc ~= 1 then return nil end
+        return math.tan(a)
+    elseif name == "sind" then
+        if argc ~= 1 then return nil end
+        return math.sin(c.ToRadians(a))
+    elseif name == "cosd" then
+        if argc ~= 1 then return nil end
+        return math.cos(c.ToRadians(a))
+    elseif name == "tand" then
+        if argc ~= 1 then return nil end
+        return math.tan(c.ToRadians(a))
+    elseif name == "asin" then
+        if argc ~= 1 or a < -1 or a > 1 then return nil end
+        return math.asin(a)
+    elseif name == "acos" then
+        if argc ~= 1 or a < -1 or a > 1 then return nil end
+        return math.acos(a)
+    elseif name == "atan" then
+        if argc == 1 then return math.atan(a) end
+        if argc == 2 then return c.Atan2(a, b) end
+        return nil
+    elseif name == "asind" then
+        if argc ~= 1 or a < -1 or a > 1 then return nil end
+        return c.ToDegrees(math.asin(a))
+    elseif name == "acosd" then
+        if argc ~= 1 or a < -1 or a > 1 then return nil end
+        return c.ToDegrees(math.acos(a))
+    elseif name == "atand" then
+        if argc == 1 then return c.ToDegrees(math.atan(a)) end
+        if argc == 2 then
+            local v = c.Atan2(a, b)
+            return v and c.ToDegrees(v) or nil
+        end
+        return nil
+    elseif name == "atan2" then
+        if argc ~= 2 then return nil end
+        return c.Atan2(a, b)
+    elseif name == "sinh" then
+        if argc ~= 1 then return nil end
+        return c.Sinh(a)
+    elseif name == "cosh" then
+        if argc ~= 1 then return nil end
+        return c.Cosh(a)
+    elseif name == "tanh" then
+        if argc ~= 1 then return nil end
+        return c.Tanh(a)
+    elseif name == "sec" then
+        if argc ~= 1 then return nil end
+        local v = math.cos(a)
+        if v == 0 then return nil end
+        return 1 / v
+    elseif name == "csc" then
+        if argc ~= 1 then return nil end
+        local v = math.sin(a)
+        if v == 0 then return nil end
+        return 1 / v
+    elseif name == "cot" then
+        if argc ~= 1 then return nil end
+        local v = math.tan(a)
+        if v == 0 then return nil end
+        return 1 / v
+    elseif name == "secd" then
+        if argc ~= 1 then return nil end
+        local v = math.cos(c.ToRadians(a))
+        if v == 0 then return nil end
+        return 1 / v
+    elseif name == "cscd" then
+        if argc ~= 1 then return nil end
+        local v = math.sin(c.ToRadians(a))
+        if v == 0 then return nil end
+        return 1 / v
+    elseif name == "cotd" then
+        if argc ~= 1 then return nil end
+        local v = math.tan(c.ToRadians(a))
+        if v == 0 then return nil end
+        return 1 / v
+    end
+    return nil
+end
+
+function UI._calculator.LooksLikeInput(raw)
+    local text = raw and strtrim(raw) or ""
+    if text == "" or #text > 96 then return false end
+
+    local lower = slower(text)
+    if lower == "pi" or lower == "tau" then return true end
+
+    local hasNumber = sfind(lower, "%d") ~= nil
+    local hasConstant = sfind(lower, "%f[%a]pi%f[%A]") ~= nil
+        or sfind(lower, "%f[%a]tau%f[%A]") ~= nil
+        or sfind(lower, "%f[%a]e%f[%A]") ~= nil
+    if not hasNumber and not hasConstant then return false end
+
+    if sfind(lower, "[%+%-%*/%^%%%!%(%)%,]") then return true end
+    if hasNumber and (sfind(lower, "%d%s*%a") or sfind(lower, "%d%s*%(")
+        or sfind(lower, "%)%s*%d") or sfind(lower, "%)%s*%a")
+        or sfind(lower, "%)%s*%(")) then
+        return true
+    end
+
+    for name in pairs(UI._calculator.FUNCTIONS) do
+        if sfind(lower, "%f[%a]" .. name .. "%f[%A]") then return true end
+    end
+    return false
+end
+
+function UI._calculator.Tokenize(text)
+    local tokens = {}
+    local i, n = 1, #text
+
+    while i <= n do
+        local ch = text:sub(i, i)
+        if ch:match("%s") then
+            i = i + 1
+        elseif ch == "," then
+            local prev = i > 1 and text:sub(i - 1, i - 1) or ""
+            local nextCh = i < n and text:sub(i + 1, i + 1) or ""
+            if prev:match("%d") and nextCh:match("%d") then
+                i = i + 1
+            else
+                tokens[#tokens + 1] = { type = "op", value = "," }
+                i = i + 1
+            end
+        elseif ch:match("%d") or ch == "." then
+            local parts = {}
+            local sawDigit, sawDot = false, false
+            while i <= n do
+                ch = text:sub(i, i)
+                if ch:match("%d") then
+                    sawDigit = true
+                    parts[#parts + 1] = ch
+                    i = i + 1
+                elseif ch == "." and not sawDot then
+                    sawDot = true
+                    parts[#parts + 1] = ch
+                    i = i + 1
+                elseif ch == "," then
+                    local nextCh = i < n and text:sub(i + 1, i + 1) or ""
+                    if nextCh:match("%d") then i = i + 1 else break end
+                else
+                    break
+                end
+            end
+            if not sawDigit then return nil end
+
+            if i <= n and text:sub(i, i):lower() == "e" then
+                local expStart = i
+                local expParts = { "e" }
+                i = i + 1
+                ch = i <= n and text:sub(i, i) or ""
+                if ch == "+" or ch == "-" then
+                    expParts[#expParts + 1] = ch
+                    i = i + 1
+                end
+                local expDigits = false
+                while i <= n do
+                    ch = text:sub(i, i)
+                    if not ch:match("%d") then break end
+                    expDigits = true
+                    expParts[#expParts + 1] = ch
+                    i = i + 1
+                end
+                if expDigits then
+                    for pi = 1, #expParts do parts[#parts + 1] = expParts[pi] end
+                else
+                    i = expStart
+                end
+            end
+
+            local value = tonumber(tconcat(parts))
+            if not value then return nil end
+            tokens[#tokens + 1] = { type = "number", value = value }
+        elseif ch:match("%a") then
+            local start = i
+            repeat
+                i = i + 1
+                ch = i <= n and text:sub(i, i) or ""
+            until ch == "" or not ch:match("[%w_]")
+            tokens[#tokens + 1] = { type = "ident", value = slower(text:sub(start, i - 1)) }
+        elseif ch == "+" or ch == "-" or ch == "*" or ch == "/"
+            or ch == "^" or ch == "%" or ch == "!" or ch == "(" or ch == ")" then
+            tokens[#tokens + 1] = { type = "op", value = ch }
+            i = i + 1
+        else
+            return nil
+        end
+    end
+
+    tokens[#tokens + 1] = { type = "eof" }
+    return tokens
+end
+
+function UI._calculator.Parse(tokens)
+    local pos = 1
+    local c = UI._calculator
+    local parseExpression, parseAdd, parseMul, parseUnary, parsePower, parsePostfix, parsePrimary
+
+    local function fail()
+        error("calculator parse failed", 0)
+    end
+
+    local function current()
+        return tokens[pos]
+    end
+
+    local function acceptOp(op)
+        local tok = current()
+        if tok and tok.type == "op" and tok.value == op then
+            pos = pos + 1
+            return true
+        end
+        return false
+    end
+
+    local function isImplicitStart(tok)
+        if not tok then return false end
+        if tok.type == "number" then return true end
+        if tok.type == "op" and tok.value == "(" then return true end
+        if tok.type == "ident" then
+            return tok.value ~= "deg" and tok.value ~= "degree" and tok.value ~= "degrees"
+                and tok.value ~= "rad" and tok.value ~= "radian" and tok.value ~= "radians"
+                and tok.value ~= "mod" and tok.value ~= "x" and tok.value ~= "times"
+        end
+        return false
+    end
+
+    parseExpression = function()
+        return parseAdd()
+    end
+
+    parseAdd = function()
+        local left = parseMul()
+        while true do
+            if acceptOp("+") then
+                left = left + parseMul()
+            elseif acceptOp("-") then
+                left = left - parseMul()
+            else
+                return left
+            end
+        end
+    end
+
+    parseMul = function()
+        local left = parseUnary()
+        while true do
+            local tok = current()
+            if acceptOp("*") then
+                left = left * parseUnary()
+            elseif acceptOp("/") then
+                local right = parseUnary()
+                if right == 0 then fail() end
+                left = left / right
+            elseif tok and tok.type == "ident"
+                and (tok.value == "mod" or tok.value == "x" or tok.value == "times") then
+                pos = pos + 1
+                local right = parseUnary()
+                if tok.value == "mod" then
+                    if right == 0 then fail() end
+                    left = math.fmod(left, right)
+                else
+                    left = left * right
+                end
+            elseif isImplicitStart(tok) then
+                left = left * parseUnary()
+            else
+                return left
+            end
+        end
+    end
+
+    parseUnary = function()
+        if acceptOp("+") then return parseUnary() end
+        if acceptOp("-") then return -parseUnary() end
+
+        local tok = current()
+        if tok and tok.type == "ident" and c.FUNCTIONS[tok.value] then
+            local name = tok.value
+            pos = pos + 1
+            local args = {}
+            if acceptOp("(") then
+                if not acceptOp(")") then
+                    repeat
+                        args[#args + 1] = parseExpression()
+                    until not acceptOp(",")
+                    if not acceptOp(")") then fail() end
+                end
+            else
+                args[1] = parseUnary()
+            end
+            local value = c.ApplyFunction(name, args)
+            if value == nil or not c.IsFinite(value) then fail() end
+            return value
+        end
+
+        return parsePower()
+    end
+
+    parsePower = function()
+        local left = parsePostfix()
+        if acceptOp("^") then
+            left = math.pow(left, parseUnary())
+            if not c.IsFinite(left) then fail() end
+        end
+        return left
+    end
+
+    parsePostfix = function()
+        local value = parsePrimary()
+        while true do
+            local tok = current()
+            if acceptOp("!") then
+                value = c.Factorial(value)
+                if value == nil then fail() end
+            elseif acceptOp("%") then
+                value = value / 100
+            elseif tok and tok.type == "ident"
+                and (tok.value == "deg" or tok.value == "degree" or tok.value == "degrees") then
+                pos = pos + 1
+                value = c.ToRadians(value)
+            elseif tok and tok.type == "ident"
+                and (tok.value == "rad" or tok.value == "radian" or tok.value == "radians") then
+                pos = pos + 1
+            else
+                return value
+            end
+            if not c.IsFinite(value) then fail() end
+        end
+    end
+
+    parsePrimary = function()
+        local tok = current()
+        if not tok then fail() end
+        if tok.type == "number" then
+            pos = pos + 1
+            return tok.value
+        elseif tok.type == "ident" then
+            pos = pos + 1
+            if tok.value == "pi" then
+                return math.pi
+            elseif tok.value == "tau" then
+                return math.pi * 2
+            elseif tok.value == "e" then
+                return math.exp(1)
+            end
+            fail()
+        elseif acceptOp("(") then
+            local value = parseExpression()
+            if not acceptOp(")") then fail() end
+            return value
+        end
+        fail()
+    end
+
+    local value = parseExpression()
+    local tok = current()
+    if not tok or tok.type ~= "eof" then fail() end
+    if not c.IsFinite(value) then fail() end
+    return value
+end
+
+function UI._calculator.Format(value)
+    if math.abs(value) < 0.000000000001 then value = 0 end
+    local nearest = UI._calculator.Round(value)
+    if math.abs(value - nearest) < 0.0000000001 then
+        return tostring(nearest)
+    end
+    return sformat("%.12g", value)
+end
+
+function UI:EvaluateCalculatorExpression(raw)
+    local c = UI._calculator
+    if not c.LooksLikeInput(raw) then return nil end
+    local expression = strtrim(raw)
+    local tokens = c.Tokenize(expression)
+    if not tokens then return nil end
+
+    local ok, value = pcall(c.Parse, tokens)
+    if not ok or not c.IsFinite(value) then return nil end
+
+    local result = c.Format(value)
+    return {
+        name = expression,
+        nameLower = slower(expression),
+        category = "Calculator",
+        path = c.PATH,
+        noPin = true,
+        calculatorExpression = expression,
+        calculatorResult = result,
+        calculatorValue = value,
+    }
+end
+
+function UI:EnsureCalculatorCopyBox()
+    local box = UI._calculator.copyBox
+    if box then return box end
+
+    box = CreateFrame("EditBox", "EasyFindCalculatorCopyBox", UIParent)
+    box:SetSize(1, 1)
+    -- Match the copy pattern used by chat-copy addons: the edit box must be
+    -- on-screen, focused, and selected. Off-screen boxes do not reliably feed
+    -- the client/OS copy path.
+    box:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, 0)
+    box:SetAlpha(0)
+    box:SetFontObject(GameFontNormal)
+    box:SetAutoFocus(false)
+    box:EnableKeyboard(false)
+    box:SetMaxLetters(0)
+    box:SetScript("OnKeyDown", function(self, key)
+        if UI:HandleCalculatorCopyKey(key) then
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            return
+        end
+        if UI:HandleCalculatorCopyConfirmKey(key) then
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+        end
+    end)
+    box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+    box:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    box:SetScript("OnEditFocusLost", function()
+        UI._calculator.copyFocused = nil
+        if not UI._calculator.releasingCopyBox then
+            UI._calculator.prevFocus = nil
+        end
+    end)
+    UI._calculator.copyBox = box
+    return box
+end
+
+function UI:ReleaseCalculatorCopyBox(source)
+    if source and UI._calculator.copySource ~= source then return end
+
+    UI._calculator.copyToken = (UI._calculator.copyToken or 0) + 1
+    UI._calculator.copySource = nil
+
+    local prev = UI._calculator.prevFocus
+    local box = UI._calculator.copyBox
+    UI._calculator.releasingCopyBox = true
+    if box then
+        box:HighlightText(0, 0)
+        box:ClearFocus()
+    end
+    UI._calculator.releasingCopyBox = nil
+    UI._calculator.copyFocused = nil
+
+    UI._calculator.prevFocus = nil
+    if not (prev and prev.SetFocus and prev.IsVisible and prev:IsVisible()) then
+        prev = searchFrame and searchFrame.editBox
+    end
+    if prev and prev.SetFocus and prev.IsVisible and prev:IsVisible() then
+        prev:SetFocus()
+    end
+end
+
+function UI:CopyCalculatorResult(result, source)
+    if not result or result == "" then return false end
+
+    local box = self:EnsureCalculatorCopyBox()
+    if not UI._calculator.copyFocused then
+        local cur = GetCurrentKeyBoardFocus and GetCurrentKeyBoardFocus()
+        if cur and cur ~= box then
+            UI._calculator.prevFocus = cur
+        end
+    end
+    UI._calculator.copySource = source or "click"
+    box:SetText(result)
+    box:SetCursorPosition(0)
+    box:HighlightText(0, -1)
+    box:SetFocus()
+    UI._calculator.copyFocused = true
+
+    UI._calculator.copyToken = (UI._calculator.copyToken or 0) + 1
+    local token = UI._calculator.copyToken
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            local copyBox = UI._calculator.copyBox
+            if UI._calculator.copyToken ~= token or not copyBox then return end
+            if copyBox:GetText() ~= result then return end
+            copyBox:SetFocus()
+            copyBox:HighlightText(0, -1)
+        end)
+    end
+    return true
+end
+
+function UI:RearmActiveCalculatorCopy(source)
+    local result = UI._calculator.activeResult
+    if not result or result == "" then return false end
+    if source == "ctrl" and UI._calculator.copyComplete then return false end
+    return self:CopyCalculatorResult(result, source or "active")
+end
+
+function UI:EnsureCalculatorCopyWatcher()
+    if UI._calculator.copyWatcher then return UI._calculator.copyWatcher end
+
+    local frame = CreateFrame("Frame")
+    frame:RegisterEvent("MODIFIER_STATE_CHANGED")
+    frame:Hide()
+    frame:SetScript("OnEvent", function(_, _, key, down)
+        if not UI._calculator.activeData or not UI._calculator.activeResult then return end
+        if key ~= "LCTRL" and key ~= "RCTRL" then return end
+
+        if down == 1 and IsControlKeyDown and IsControlKeyDown() then
+            UI._calculator.ctrlWasDown = true
+            UI:RearmActiveCalculatorCopy("ctrl")
+        elseif down == 0 and IsControlKeyDown and not IsControlKeyDown() then
+            UI._calculator.ctrlWasDown = nil
+            UI._calculator.copyKeyWasDown = nil
+            UI:ReleaseCalculatorCopyBox()
+        end
+    end)
+    frame:SetScript("OnUpdate", function(self)
+        if not UI._calculator.activeData or not UI._calculator.activeResult then
+            UI._calculator.ctrlWasDown = nil
+            UI._calculator.copyKeyWasDown = nil
+            self:Hide()
+            return
+        end
+
+        local ctrlDown = IsControlKeyDown and IsControlKeyDown()
+        if ctrlDown and not UI._calculator.ctrlWasDown then
+            UI:RearmActiveCalculatorCopy("ctrl")
+        end
+        UI._calculator.ctrlWasDown = ctrlDown and true or nil
+
+        local copyDown = ctrlDown and IsKeyDown
+            and ((IsKeyDown("C") or IsKeyDown("c")) and true or false)
+        if copyDown and not UI._calculator.copyKeyWasDown then
+            UI:RearmActiveCalculatorCopy("confirm")
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0, function()
+                    UI:ConfirmCalculatorCopied()
+                end)
+            else
+                UI:ConfirmCalculatorCopied()
+            end
+        end
+        UI._calculator.copyKeyWasDown = copyDown and true or nil
+    end)
+    UI._calculator.copyWatcher = frame
+    return frame
+end
+
+function UI:StartCalculatorCopyWatcher()
+    local frame = self:EnsureCalculatorCopyWatcher()
+    frame:Show()
+end
+
+function UI:GetCalculatorPartValue(row, part)
+    local data = row and row.data
+    if not data or not data.calculatorResult then return nil end
+    if part == "expression" then
+        return data.calculatorExpression or data.name
+    end
+    return data.calculatorResult
+end
+
+function UI:SetCalculatorCopyHighlight(row, part)
+    if not row then return end
+    local expressionActive = part == "expression"
+    local resultActive = part == "result"
+    local expressionCopied = expressionActive
+        and UI._calculator.copiedData == row.data
+        and UI._calculator.copiedPart == "expression"
+    local resultCopied = resultActive
+        and UI._calculator.copiedData == row.data
+        and UI._calculator.copiedPart == "result"
+    if row.calcExpressionHighlight then
+        row.calcExpressionHighlight:SetShown(expressionActive)
+    end
+    if row.calcResultHighlight then
+        row.calcResultHighlight:SetShown(resultActive)
+    end
+    if row.calcExpressionHint then
+        row.calcExpressionHint:SetText(expressionCopied and "Now Ctrl+V to paste" or "Ctrl+C to copy")
+        if expressionCopied then
+            row.calcExpressionHint:SetTextColor(0.48, 1.0, 0.62, 1.0)
+        else
+            row.calcExpressionHint:SetTextColor(0.72, 0.72, 0.72, 1.0)
+        end
+        row.calcExpressionHint:SetShown(expressionActive)
+    end
+    if row.calcResultHint then
+        row.calcResultHint:SetText(resultCopied and "Now Ctrl+V to paste" or "Ctrl+C to copy")
+        if resultCopied then
+            row.calcResultHint:SetTextColor(0.48, 1.0, 0.62, 1.0)
+        else
+            row.calcResultHint:SetTextColor(0.72, 0.72, 0.72, 1.0)
+        end
+        row.calcResultHint:SetShown(resultActive)
+    end
+    if row.calcExpressionText then
+        row.calcExpressionText:ClearAllPoints()
+        row.calcExpressionText:SetPoint("LEFT", row.calcCard, "LEFT", 12, expressionActive and 5 or 0)
+        row.calcExpressionText:SetPoint("RIGHT", row.calcDivider, "LEFT", -22, expressionActive and 5 or 0)
+        if expressionActive then
+            row.calcExpressionText:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1.0)
+        else
+            row.calcExpressionText:SetTextColor(0.96, 0.96, 0.96, 1.0)
+        end
+    end
+    if row.calcResultText then
+        row.calcResultText:ClearAllPoints()
+        row.calcResultText:SetPoint("LEFT", row.calcDivider, "RIGHT", 22, resultActive and 5 or 0)
+        row.calcResultText:SetPoint("RIGHT", row.calcCard, "RIGHT", -12, resultActive and 5 or 0)
+        if resultActive then
+            row.calcResultText:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1.0)
+        else
+            row.calcResultText:SetTextColor(0.96, 0.96, 0.96, 1.0)
+        end
+    end
+end
+
+function UI:ClearCalculatorCopyHighlight(row)
+    row = row or UI._calculator.activeRow
+    if row then
+        self:SetCalculatorCopyHighlight(row, nil)
+    end
+    if not row or UI._calculator.activeRow == row then
+        UI._calculator.activeRow = nil
+        UI._calculator.activeData = nil
+        UI._calculator.activeResult = nil
+        UI._calculator.activePart = nil
+        UI._calculator.activeSource = nil
+        UI._calculator.copyComplete = nil
+        UI._calculator.copyCompleteValue = nil
+        UI._calculator.copiedData = nil
+        UI._calculator.copiedPart = nil
+        if UI._calculator.copyWatcher then
+            UI._calculator.copyWatcher:Hide()
+        end
+        UI._calculator.ctrlWasDown = nil
+        UI._calculator.copyKeyWasDown = nil
+    end
+end
+
+function UI:ArmCalculatorPartFromRow(row, part, source)
+    if not row or not row:IsShown() or not row.data or not row.data.calculatorResult then
+        return false
+    end
+    source = source or "click"
+    part = part == "expression" and "expression" or "result"
+    local value = self:GetCalculatorPartValue(row, part)
+    if not value or value == "" then return false end
+
+    local completedHover = source == "hover" and UI._calculator.copyComplete
+    if source ~= "ctrl" and source ~= "confirm" and not completedHover then
+        UI._calculator.copyComplete = nil
+        UI._calculator.copyCompleteValue = nil
+    end
+    if UI._calculator.activeData ~= row.data or UI._calculator.activePart ~= part then
+        UI._calculator.copiedData = nil
+        UI._calculator.copiedPart = nil
+    end
+    if UI._calculator.activeRow and UI._calculator.activeRow ~= row then
+        self:SetCalculatorCopyHighlight(UI._calculator.activeRow, nil)
+    end
+    if source ~= "hover" or ((IsControlKeyDown and IsControlKeyDown()) and not UI._calculator.copyComplete) then
+        if not self:CopyCalculatorResult(value, source) then
+            return false
+        end
+    end
+    UI._calculator.activeRow = row
+    UI._calculator.activeData = row.data
+    UI._calculator.activeResult = value
+    UI._calculator.activePart = part
+    UI._calculator.activeSource = source
+    self:SetCalculatorCopyHighlight(row, part)
+    self:StartCalculatorCopyWatcher()
+    return true
+end
+
+function UI:ArmCalculatorResultFromRow(row, source)
+    return self:ArmCalculatorPartFromRow(row, "result", source or "click")
+end
+
+function UI:ArmCalculatorResultForData(data, source)
+    if not data or not data.calculatorResult then return false end
+    for i = 1, #resultButtons do
+        local row = resultButtons[i]
+        if row and row:IsShown() and row.data == data then
+            return self:ArmCalculatorResultFromRow(row, source or "click")
+        end
+    end
+    source = source or "click"
+    if self:CopyCalculatorResult(data.calculatorResult, source) then
+        UI._calculator.activeRow = nil
+        UI._calculator.activeData = data
+        UI._calculator.activeResult = data.calculatorResult
+        UI._calculator.activePart = "result"
+        UI._calculator.activeSource = source
+        UI._calculator.copyComplete = nil
+        UI._calculator.copyCompleteValue = nil
+        UI._calculator.copiedData = nil
+        UI._calculator.copiedPart = nil
+        self:StartCalculatorCopyWatcher()
+        return true
+    end
+    return false
+end
+
+function UI:PlayCalculatorCopyFlash(row, part)
+    if not row then return end
+    local tex = part == "expression" and row.calcExpressionFlash or row.calcResultFlash
+    if not tex then return end
+    tex:SetAlpha(0.0)
+    tex:Show()
+    if tex.anim then
+        if tex.anim:IsPlaying() then tex.anim:Stop() end
+        tex.anim:Play()
+    elseif C_Timer and C_Timer.After then
+        tex:SetAlpha(0.35)
+        C_Timer.After(0.35, function()
+            if tex then
+                tex:SetAlpha(0.0)
+                tex:Hide()
+            end
+        end)
+    end
+end
+
+function UI:ConfirmCalculatorCopied()
+    local data = UI._calculator.activeData
+    local part = UI._calculator.activePart
+    if not data or (part ~= "expression" and part ~= "result") then return false end
+    self:RearmActiveCalculatorCopy("confirm")
+
+    UI._calculator.copiedData = data
+    UI._calculator.copiedPart = part
+    UI._calculator.copyComplete = true
+    UI._calculator.copyCompleteValue = UI._calculator.activeResult
+
+    local row = UI._calculator.activeRow
+    if not (row and row:IsShown() and row.data == data) then
+        row = nil
+        for i = 1, #resultButtons do
+            local candidate = resultButtons[i]
+            if candidate and candidate:IsShown() and candidate.data == data then
+                row = candidate
+                UI._calculator.activeRow = candidate
+                break
+            end
+        end
+    end
+
+    if row then
+        self:SetCalculatorCopyHighlight(row, part)
+        self:PlayCalculatorCopyFlash(row, part)
+    end
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            UI:ReleaseCalculatorCopyBox("confirm")
+        end)
+    else
+        self:ReleaseCalculatorCopyBox("confirm")
+    end
+    return true
+end
+
+function UI:RestoreCalculatorTarget(row)
+    if row and UI._calculator.activeData == row.data and UI._calculator.activeSource == "hover" then
+        self:ClearCalculatorCopyHighlight(row)
+        self:ReleaseCalculatorCopyBox()
+    elseif row and UI._calculator.activeData == row.data then
+        self:SetCalculatorCopyHighlight(row, UI._calculator.activePart)
+    elseif row then
+        self:SetCalculatorCopyHighlight(row, nil)
+    end
+end
+
+function UI:HoverCalculatorTarget(row, part)
+    if not row or not row.data or not row.data.calculatorResult then return end
+    if UI._calculator.activeSource ~= "hover" and UI._calculator.activeData then
+        self:ClearCalculatorCopyHighlight(UI._calculator.activeRow)
+        self:ReleaseCalculatorCopyBox()
+    end
+    self:ArmCalculatorPartFromRow(row, part, "hover")
+end
+
+function UI:IsCalculatorCopyConfirmKey(key)
+    return UI._calculator.activeData
+        and IsControlKeyDown and IsControlKeyDown()
+        and (key == "C" or key == "c")
+end
+
+function UI:HandleCalculatorCopyConfirmKey(key)
+    if not self:IsCalculatorCopyConfirmKey(key) then return false end
+    return self:ConfirmCalculatorCopied()
+end
+
+function UI:IsCalculatorCopyKey(key)
+    if not UI._calculator.activeData then return false end
+    if key == "LEFT" or key == "ARROWLEFT" or key == "RIGHT" or key == "ARROWRIGHT" then
+        return true
+    end
+    return IsControlKeyDown and IsControlKeyDown() and (key == "H" or key == "L")
+end
+
+function UI:HandleCalculatorCopyKey(key)
+    if not self:IsCalculatorCopyKey(key) then return false end
+    local row = UI._calculator.activeRow
+    if not (row and row:IsShown() and row.data == UI._calculator.activeData) then
+        for i = 1, #resultButtons do
+            local candidate = resultButtons[i]
+            if candidate and candidate:IsShown() and candidate.data == UI._calculator.activeData then
+                row = candidate
+                UI._calculator.activeRow = candidate
+                break
+            end
+        end
+    end
+    if not row then return true end
+
+    if key == "LEFT" or key == "ARROWLEFT" or key == "H" then
+        self:ArmCalculatorPartFromRow(row, "expression", "key")
+    else
+        self:ArmCalculatorPartFromRow(row, "result", "key")
+    end
+    return true
+end
+
+function UI:HandleCalculatorPasteIntoSearch(editBox, key)
+    if not editBox or not UI._calculator.copyCompleteValue then return false end
+    if not (IsControlKeyDown and IsControlKeyDown()) then return false end
+    if key ~= "V" and key ~= "v" then return false end
+
+    local expected = UI._calculator.copyCompleteValue
+    if expected == "" then return false end
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            if not searchFrame or searchFrame.editBox ~= editBox then return end
+            if not editBox:IsVisible() then return end
+            local current = editBox:GetText() or ""
+            if current ~= expected and strtrim(current) ~= strtrim(expected) then return end
+            if editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
+            UI:HideResults()
+            editBox:SetFocus()
+            editBox:SetCursorPosition(#current)
+        end)
+    end
+    return false
 end
 
 local function IsSpellbookOnlyAbility(data)
@@ -597,6 +1584,7 @@ end
 
 local function GetActionHint(data)
     if not data then return nil end
+    if data.calculatorResult then return "Select result for Ctrl+C" end
     if data.titleID then return "Select to apply as your title" end
     if data.mountID then return "Select to summon mount" end
     if data.petID or data.speciesID then return "Select to summon pet | Ctrl+click to show in journal" end
@@ -892,9 +1880,17 @@ local function ApplyResultRowFonts(row, theme)
     ScaleFont(row.sectionLabelText, "GameFontNormalSmall")
     ScaleFont(row.pathSubtext, theme.leafFont)
     ScaleFont(row.amountText, "GameFontNormalSmall")
+    ScaleFont(row.calcExpressionText, "GameFontHighlightLarge")
+    ScaleFont(row.calcArrowText, "GameFontHighlight")
+    ScaleFont(row.calcResultText, "GameFontHighlightLarge")
+    ScaleFont(row.calcExpressionHint, "GameFontDisableSmall")
+    ScaleFont(row.calcResultHint, "GameFontDisableSmall")
     ScaleFont(row.repBarText, "GameFontNormalSmall")
     ScaleFont(row.settingSliderValue, "GameFontNormalSmall")
     ScaleFont(row.shortcutNumberText, "GameFontDisableSmall")
+    if UI.LayoutResultShortcut then
+        UI:LayoutResultShortcut(row)
+    end
 end
 
 local function IsSecureActionResult(data)
@@ -924,6 +1920,35 @@ end
 
 local function ShouldShowResultShortcutHints()
     return not (EasyFind and EasyFind.db and EasyFind.db.showResultShortcutHints == false)
+end
+
+function UI:LayoutResultShortcut(row)
+    if not (row and row.shortcutGroup) then return end
+    local scale = EasyFind.db.fontSize or 1.0
+    local extra = mmax(0, scale - 1.0)
+    local numberW = mmax(9, mfloor(8 * scale + 5))
+    local groupW = mmax(RESULT_SHORTCUT_WIDTH, RESULT_SHORTCUT_ICON_SIZE + numberW + 14 + mfloor(extra * 12 + 0.5))
+    local rightPad = RESULT_SHORTCUT_RIGHT_PAD + mfloor(extra * 14 + 0.5)
+    local groupH = mmax(16, mfloor(16 * mmin(scale, 1.35) + 0.5))
+
+    row.shortcutGroup:ClearAllPoints()
+    row.shortcutGroup:SetPoint("RIGHT", row, "RIGHT", -rightPad, 0)
+    row.shortcutGroup:SetSize(groupW, groupH)
+
+    if row.shortcutNumberText then
+        row.shortcutNumberText:ClearAllPoints()
+        row.shortcutNumberText:SetPoint("RIGHT", row.shortcutGroup, "RIGHT", 0, 0)
+        row.shortcutNumberText:SetWidth(numberW)
+        row.shortcutNumberText:SetJustifyH("RIGHT")
+        if row.shortcutNumberText.SetWordWrap then row.shortcutNumberText:SetWordWrap(false) end
+        if row.shortcutNumberText.SetNonSpaceWrap then row.shortcutNumberText:SetNonSpaceWrap(false) end
+        if row.shortcutNumberText.SetMaxLines then row.shortcutNumberText:SetMaxLines(1) end
+    end
+    if row.shortcutAltIcon and row.shortcutNumberText then
+        row.shortcutAltIcon:ClearAllPoints()
+        row.shortcutAltIcon:SetSize(RESULT_SHORTCUT_ICON_SIZE, RESULT_SHORTCUT_ICON_SIZE)
+        row.shortcutAltIcon:SetPoint("RIGHT", row.shortcutNumberText, "LEFT", 2, 0)
+    end
 end
 
 function UI:CreateUnearnedTooltip()
@@ -1051,7 +2076,8 @@ end
 function UI:CreateSearchFrame()
     searchFrame = CreateFrame("Frame", "EasyFindSearchFrame", UIParent, "BackdropTemplate")
     UI.searchFrame = searchFrame
-    searchFrame:SetSize(250, ns.SEARCHBAR_HEIGHT)
+    local barH = self:GetSearchBarHeight()
+    searchFrame:SetSize(250, barH)
     -- FULLSCREEN_DIALOG keeps the search bar above the default UI's
     -- DIALOG-strata menus (Game Menu, Options panel, etc.) so opening
     -- the bar from inside any in-game menu still puts our results on
@@ -1066,7 +2092,8 @@ function UI:CreateSearchFrame()
         local pos = EasyFind.db.uiSearchPosition
         searchFrame:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4])
     else
-        searchFrame:SetPoint("TOP", UIParent, "TOP", 0, -12)
+        local point, relPoint, x, y = self:GetDefaultSearchBarPoint()
+        searchFrame:SetPoint(point, UIParent, relPoint, x, y)
     end
 
     local theme = GetActiveTheme()
@@ -1108,10 +2135,10 @@ function UI:CreateSearchFrame()
     -- doesn't crash, but the textures stay invisible.
     ns.SetSearchBorderShown(searchFrame, false)
     ns.SetRoundedRectBorderShown(containerFrame, true)
-    ns.SetRoundedRectBorderBgAlpha(containerFrame, EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
+        ns.SetRoundedRectBorderBgAlpha(containerFrame, EasyFind.db.searchBarOpacity or ns.DEFAULT_OPACITY)
 
     -- Static magnifying-glass icon (non-interactive, flush left)
-    local contentSz = ns.SEARCHBAR_HEIGHT * ns.SEARCHBAR_FILL
+    local contentSz = barH * ns.SEARCHBAR_FILL
     local iconSz = contentSz * ns.SEARCHBAR_ICON_SCALE
 
     local iconHolder = CreateFrame("Frame", nil, searchFrame)
@@ -1301,6 +2328,16 @@ function UI:CreateSearchFrame()
             editBox.UpdateAutocomplete()
         end
     end)
+    local function ResetPendingUISearch()
+        pendingUISearchFrame:Hide()
+        pendingUISearchText = ""
+        pendingUISearchGrew = false
+        pendingUISearchDue = 0
+        lastTypedLen = 0
+        historyIndex = 0
+        historyDraft = ""
+    end
+    editBox.ResetPendingSearch = ResetPendingUISearch
     local SEARCH_THROTTLE = 0.05  -- 50ms cap on search/render frequency
     editBox:SetScript("OnTextChanged", function(self, userInput)
         self.placeholder:SetShown(self:GetText() == "")
@@ -1313,7 +2350,12 @@ function UI:CreateSearchFrame()
         -- / Clear / etc. Without this gate every keystroke produces
         -- two searches (the user's and the autocomplete suffix's),
         -- doubling per-keystroke cost.
-        if not userInput then return end
+        if not userInput then
+            if self:GetText() == "" and self.ResetPendingSearch then
+                self:ResetPendingSearch()
+            end
+            return
+        end
         if self.IsAutocompleteBackspaceStrip and self:IsAutocompleteBackspaceStrip() then return end
         historyIndex = 0
         historyDraft = ""
@@ -1403,9 +2445,13 @@ function UI:CreateSearchFrame()
             selectedIndex = idx
             toggleFocused = false
             UI:UpdateSelectionHighlight()
+            local row = resultButtons[idx]
+            if row and row.data and row.data.calculatorResult then
+                UI:ArmCalculatorResultFromRow(row, "key")
+            end
             return
         end
-        UI:ActivateSelected()
+        UI:ActivateSelected("key")
     end)
 
     editBox:SetScript("OnEscapePressed", function(_)
@@ -1618,6 +2664,8 @@ function UI:CreateSearchFrame()
     -- editbox, otherwise it just types as a character and the user
     -- can't dismiss with the same key they used to open.
     editBox:SetScript("OnKeyDown", function(self, key)
+        UI:HandleCalculatorPasteIntoSearch(self, key)
+
         local shortcutIndex = GetResultShortcutIndex(key)
         if shortcutIndex then
             local shortcutResult = UI:ActivateVisibleResultShortcut(shortcutIndex)
@@ -1836,6 +2884,9 @@ function UI:CreateSearchFrame()
         if key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
            or key == "LALT" or key == "RALT" then return end
 
+        if UI:HandleCalculatorCopyConfirmKey(key) then return end
+        if UI:HandleCalculatorCopyKey(key) then return end
+
         -- Ctrl+H/J/K/L: vim-style nav aliases. J/K = down/up (also
         -- N/P emacs-style); add Shift to jump sections like Shift+Up/Down.
         -- H/L = focus cycle (Shift+Tab / Tab).
@@ -1942,7 +2993,7 @@ function UI:CreateSearchFrame()
                 local target = controls[toolbarFocus]
                 if target then target:Click() end
             else
-                UI:ActivateSelected()
+                UI:ActivateSelected("key")
             end
         elseif key == "ESCAPE" then
             -- Reset nav state inline (toolbarFocus / selectedIndex /
@@ -1980,6 +3031,22 @@ function UI:CreateSearchFrame()
     end
 
     navFrame:SetScript("OnKeyDown", function(self, key)
+        if UI:IsCalculatorCopyConfirmKey(key) then
+            UI:RearmActiveCalculatorCopy("confirm")
+            if C_Timer and C_Timer.After then
+                C_Timer.After(0, function()
+                    UI:ConfirmCalculatorCopied()
+                end)
+            else
+                UI:ConfirmCalculatorCopied()
+            end
+            -- Ctrl+C must not leak to gameplay keybinds. The hidden editbox is
+            -- already focused and selected; swallowing propagation still lets
+            -- the client copy that selected text.
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            return
+        end
+
         local shortcutIndex = GetResultShortcutIndex(key)
         if shortcutIndex then
             local shortcutResult = UI:ActivateVisibleResultShortcut(shortcutIndex)
@@ -2013,6 +3080,8 @@ function UI:CreateSearchFrame()
         if key == "DOWN" or key == "UP" or key == "PAGEDOWN" or key == "PAGEUP"
             or key == "HOME" or key == "END" or key == "TAB" or key == "ENTER"
             or key == "ESCAPE" then
+            consume = true
+        elseif UI:IsCalculatorCopyKey(key) then
             consume = true
         elseif IsControlKeyDown() and (key == "J" or key == "N" or key == "K"
             or key == "P" or key == "L" or key == "H") then
@@ -3122,7 +4191,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     subRow:HookScript("OnEnter", function()
                         if optHideTimer then optHideTimer:Cancel(); optHideTimer = nil end
                         syncOptions()
-                        optionsPopup:SetScale((EasyFind.db.uiSearchScale or 1.0) * (EasyFind.db.fontSize or 1.0))
+                        optionsPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
                         optionsPopup:ClearAllPoints()
                         optionsPopup:SetPoint("TOPLEFT", subRow, "TOPRIGHT", 4, 0)
                         optionsPopup:Show()
@@ -3217,7 +4286,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 if hideTimer then hideTimer:Cancel(); hideTimer = nil end
                 SetActiveFlyout(popup)
                 SyncSubChecks()
-                popup:SetScale((EasyFind.db.uiSearchScale or 1.0) * (EasyFind.db.fontSize or 1.0))
+                popup:SetScale(EasyFind.db.uiSearchScale or 1.0)
                 PositionPopup()
                 popup:Show()
             end
@@ -3411,7 +4480,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 if hideTimer then hideTimer:Cancel(); hideTimer = nil end
                 SetActiveFlyout(popup)
                 SyncRadio()
-                popup:SetScale((EasyFind.db.uiSearchScale or 1.0) * (EasyFind.db.fontSize or 1.0))
+                popup:SetScale(EasyFind.db.uiSearchScale or 1.0)
                 PositionPopup()
                 popup:Show()
             end
@@ -3602,7 +4671,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     diffPopup:Hide()
                 else
                     SyncDiffRadios()
-                    diffPopup:SetScale((EasyFind.db.uiSearchScale or 1.0) * (EasyFind.db.fontSize or 1.0))
+                    diffPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
                     diffPopup:ClearAllPoints()
                     diffPopup:SetPoint("TOPLEFT", diffBtn, "BOTTOMLEFT", 0, 2)
                     diffPopup:Show()
@@ -3877,7 +4946,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             csHL:SetColorTexture(1, 1, 1, 0.1)
             local function OpenClassFlyout()
                 LayoutClassFlyout()
-                classFlyout:SetScale((EasyFind.db.uiSearchScale or 1.0) * (EasyFind.db.fontSize or 1.0))
+                classFlyout:SetScale(EasyFind.db.uiSearchScale or 1.0)
                 classFlyout:ClearAllPoints()
                 classFlyout:SetPoint("TOPLEFT", classSelectBtn, "TOPRIGHT", 2, 6)
                 classFlyout:Show()
@@ -4038,7 +5107,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     specPopup:Hide()
                 else
                     LayoutSpecPopup()
-                    specPopup:SetScale((EasyFind.db.uiSearchScale or 1.0) * (EasyFind.db.fontSize or 1.0))
+                    specPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
                     specPopup:ClearAllPoints()
                     specPopup:SetPoint("TOPLEFT", specSelectRow, "BOTTOMLEFT", 0, 2)
                     specPopup:Show()
@@ -4162,7 +5231,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                         sr:SetChecked(EasyFind.db[sr.dbKey] ~= false)
                     end
                 end
-                gearOptionsPopup:SetScale((EasyFind.db.uiSearchScale or 1.0) * (EasyFind.db.fontSize or 1.0))
+                gearOptionsPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
                 gearOptionsPopup:ClearAllPoints()
                 gearOptionsPopup:SetPoint("TOPLEFT", row, "TOPRIGHT", 4, 0)
                 gearOptionsPopup:Show()
@@ -4484,7 +5553,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         if dropdown:IsShown() then
             dropdown:Hide()
         else
-            local barScale = (EasyFind.db.uiSearchScale or 1.0) * (EasyFind.db.fontSize or 1.0)
+            local barScale = EasyFind.db.uiSearchScale or 1.0
             dropdown:SetScale(barScale)
             local scale = anchorFrame:GetEffectiveScale() / (UIParent:GetEffectiveScale() * barScale)
             local right = anchorFrame:GetRight() * scale
@@ -4585,9 +5654,9 @@ end
 
 local function ApplyResultShortcutGutter(row)
     if not row or not row.shortcutGroup then return end
-    row.shortcutGroup:ClearAllPoints()
-    row.shortcutGroup:SetPoint("RIGHT", row, "RIGHT", -RESULT_SHORTCUT_RIGHT_PAD, 0)
-    row.shortcutGroup:SetSize(RESULT_SHORTCUT_WIDTH, 16)
+    if UI.LayoutResultShortcut then
+        UI:LayoutResultShortcut(row)
+    end
 
     ReplaceRightPointToShortcut(row, row.icon)
     ReplaceRightPointToShortcut(row, row.amountText)
@@ -4695,7 +5764,7 @@ function UI:ActivateVisibleResultShortcut(shortcutIndex)
             selectedIndex = i
             toggleFocused = false
             self:UpdateSelectionHighlight(true)
-            self:ActivateResultRow(row)
+            self:ActivateResultRow(row, "key")
             return "handled"
         end
     end
@@ -5039,6 +6108,7 @@ local SCRATCH = {
     isLastChild = {},
     catSepYPositions = {},
     aliasSeen = {},
+    calculatorResults = {},
     filteredResults = {},
     skipCategories = {},
 }
@@ -5471,9 +6541,143 @@ function UI:CreateResultButton(index)
     amountText:Hide()
     resultRow.amountText = amountText
 
+    local calcCard = CreateFrame("Frame", nil, resultRow)
+    ns.CreateRoundedRectBorder(calcCard)
+    ns.SetRoundedRectBarHeight(calcCard, 12)
+    for _, t in pairs(calcCard.combinedBorder.fill) do
+        t:SetVertexColor(0.17, 0.17, 0.18, 0.96)
+    end
+    for _, t in pairs(calcCard.combinedBorder.border) do
+        t:SetVertexColor(0.30, 0.30, 0.32, 0.85)
+    end
+    calcCard:Hide()
+    resultRow.calcCard = calcCard
+
+    local calcDivider = calcCard:CreateTexture(nil, "ARTWORK")
+    calcDivider:SetColorTexture(0.30, 0.30, 0.32, 0)
+    calcDivider:SetWidth(1)
+    resultRow.calcDivider = calcDivider
+
+    local calcDividerTop = calcCard:CreateTexture(nil, "ARTWORK")
+    calcDividerTop:SetColorTexture(0.30, 0.30, 0.32, 0.75)
+    calcDividerTop:SetWidth(1)
+    calcDividerTop:Hide()
+    resultRow.calcDividerTop = calcDividerTop
+
+    local calcDividerBottom = calcCard:CreateTexture(nil, "ARTWORK")
+    calcDividerBottom:SetColorTexture(0.30, 0.30, 0.32, 0.75)
+    calcDividerBottom:SetWidth(1)
+    calcDividerBottom:Hide()
+    resultRow.calcDividerBottom = calcDividerBottom
+
+    local calcExpressionHighlight = calcCard:CreateTexture(nil, "BORDER")
+    calcExpressionHighlight:SetColorTexture(1.0, 0.82, 0.22, 0.20)
+    calcExpressionHighlight:Hide()
+    resultRow.calcExpressionHighlight = calcExpressionHighlight
+
+    local calcResultHighlight = calcCard:CreateTexture(nil, "BORDER")
+    calcResultHighlight:SetColorTexture(1.0, 0.82, 0.22, 0.20)
+    calcResultHighlight:Hide()
+    resultRow.calcResultHighlight = calcResultHighlight
+
+    local calcExpressionFlash = calcCard:CreateTexture(nil, "OVERLAY")
+    calcExpressionFlash:SetColorTexture(0.48, 1.0, 0.62, 0.35)
+    calcExpressionFlash:Hide()
+    calcExpressionFlash.anim = calcExpressionFlash:CreateAnimationGroup()
+    local expressionFlashAlpha = calcExpressionFlash.anim:CreateAnimation("Alpha")
+    expressionFlashAlpha:SetFromAlpha(0.42)
+    expressionFlashAlpha:SetToAlpha(0)
+    expressionFlashAlpha:SetDuration(0.42)
+    expressionFlashAlpha:SetSmoothing("OUT")
+    calcExpressionFlash.anim:SetScript("OnFinished", function()
+        calcExpressionFlash:Hide()
+    end)
+    resultRow.calcExpressionFlash = calcExpressionFlash
+
+    local calcResultFlash = calcCard:CreateTexture(nil, "OVERLAY")
+    calcResultFlash:SetColorTexture(0.48, 1.0, 0.62, 0.35)
+    calcResultFlash:Hide()
+    calcResultFlash.anim = calcResultFlash:CreateAnimationGroup()
+    local resultFlashAlpha = calcResultFlash.anim:CreateAnimation("Alpha")
+    resultFlashAlpha:SetFromAlpha(0.42)
+    resultFlashAlpha:SetToAlpha(0)
+    resultFlashAlpha:SetDuration(0.42)
+    resultFlashAlpha:SetSmoothing("OUT")
+    calcResultFlash.anim:SetScript("OnFinished", function()
+        calcResultFlash:Hide()
+    end)
+    resultRow.calcResultFlash = calcResultFlash
+
+    local calcExpressionText = calcCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+    calcExpressionText:SetJustifyH("CENTER")
+    calcExpressionText:SetWordWrap(false)
+    calcExpressionText:SetTextColor(0.96, 0.96, 0.96, 1.0)
+    resultRow.calcExpressionText = calcExpressionText
+
+    local calcArrowText = calcCard:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    calcArrowText:SetText("=")
+    calcArrowText:SetTextColor(0.86, 0.86, 0.86, 1.0)
+    resultRow.calcArrowText = calcArrowText
+
+    local calcResultText = calcCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+    calcResultText:SetJustifyH("CENTER")
+    calcResultText:SetWordWrap(false)
+    calcResultText:SetTextColor(0.96, 0.96, 0.96, 1.0)
+    resultRow.calcResultText = calcResultText
+
+    local calcExpressionHint = calcCard:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    calcExpressionHint:SetText("Ctrl+C to copy")
+    calcExpressionHint:SetJustifyH("CENTER")
+    calcExpressionHint:SetTextColor(0.72, 0.72, 0.72, 1.0)
+    calcExpressionHint:SetPoint("TOP", calcExpressionText, "BOTTOM", 0, -1)
+    calcExpressionHint:Hide()
+    resultRow.calcExpressionHint = calcExpressionHint
+
+    local calcResultHint = calcCard:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    calcResultHint:SetText("Ctrl+C to copy")
+    calcResultHint:SetJustifyH("CENTER")
+    calcResultHint:SetTextColor(0.72, 0.72, 0.72, 1.0)
+    calcResultHint:SetPoint("TOP", calcResultText, "BOTTOM", 0, -1)
+    calcResultHint:Hide()
+    resultRow.calcResultHint = calcResultHint
+
+    local calcExpressionButton = CreateFrame("Button", nil, calcCard)
+    calcExpressionButton:RegisterForClicks("LeftButtonUp")
+    calcExpressionButton:SetFrameLevel(resultRow:GetFrameLevel() + 10)
+    calcExpressionButton:SetScript("OnEnter", function()
+        UI:HoverCalculatorTarget(resultRow, "expression")
+    end)
+    calcExpressionButton:SetScript("OnLeave", function()
+        UI:RestoreCalculatorTarget(resultRow)
+    end)
+    calcExpressionButton:SetScript("OnClick", function()
+        selectedIndex = index
+        toggleFocused = false
+        UI:UpdateSelectionHighlight(true)
+        UI:ArmCalculatorPartFromRow(resultRow, "expression", "click")
+    end)
+    calcExpressionButton:Hide()
+    resultRow.calcExpressionButton = calcExpressionButton
+
+    local calcResultButton = CreateFrame("Button", nil, calcCard)
+    calcResultButton:RegisterForClicks("LeftButtonUp")
+    calcResultButton:SetFrameLevel(resultRow:GetFrameLevel() + 10)
+    calcResultButton:SetScript("OnEnter", function()
+        UI:HoverCalculatorTarget(resultRow, "result")
+    end)
+    calcResultButton:SetScript("OnLeave", function()
+        UI:RestoreCalculatorTarget(resultRow)
+    end)
+    calcResultButton:SetScript("OnClick", function()
+        selectedIndex = index
+        toggleFocused = false
+        UI:UpdateSelectionHighlight(true)
+        UI:ArmCalculatorPartFromRow(resultRow, "result", "click")
+    end)
+    calcResultButton:Hide()
+    resultRow.calcResultButton = calcResultButton
+
     local shortcutGroup = CreateFrame("Frame", nil, resultRow)
-    shortcutGroup:SetPoint("RIGHT", resultRow, "RIGHT", -RESULT_SHORTCUT_RIGHT_PAD, 0)
-    shortcutGroup:SetSize(RESULT_SHORTCUT_WIDTH, 16)
     shortcutGroup:Hide()
     resultRow.shortcutGroup = shortcutGroup
 
@@ -5484,13 +6688,11 @@ function UI:CreateResultButton(index)
     resultRow.shortcutAltIcon = shortcutAltIcon
 
     local shortcutNumberText = shortcutGroup:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    shortcutNumberText:SetPoint("RIGHT", shortcutGroup, "RIGHT", 3, 0)
-    shortcutNumberText:SetWidth(7)
     shortcutNumberText:SetJustifyH("RIGHT")
     shortcutNumberText:SetTextColor(0.58, 0.58, 0.58, 0.85)
     shortcutNumberText:SetText("")
     resultRow.shortcutNumberText = shortcutNumberText
-    shortcutAltIcon:SetPoint("RIGHT", shortcutNumberText, "LEFT", 2, 0)
+    self:LayoutResultShortcut(resultRow)
 
     -- Right-aligned setting state widget (checkbox + optional checkmark
     -- overlay for boolean settings). For dropdowns we reuse amountText
@@ -6351,6 +7553,7 @@ function UI:CreateResultButton(index)
         end
         -- Right-click: show pin/unpin popup (plus Guide row if entry has a guide path)
         if mouseButton == "RightButton" and self.data then
+            if self.data.calculatorResult then return end
             local pinData = self.data
             local isPinned = IsUIItemPinned(pinData)
             local hasGuide = pinData.steps or pinData.transmogSetID
@@ -6880,7 +8083,11 @@ StaticPopupDialogs["EASYFIND_ADD_ALIAS"] = {
 function UI:PromptForAlias(data)
     if not data then return end
     local label = data.name or "this entry"
-    StaticPopup_Show("EASYFIND_ADD_ALIAS", label, nil, data)
+    local dialog = StaticPopup_Show("EASYFIND_ADD_ALIAS", label, nil, data)
+    if dialog then
+        dialog:SetFrameStrata("TOOLTIP")
+        dialog:SetFrameLevel(1000)
+    end
 end
 
 -- Step through search history from the editbox. Direction +1 = older,
@@ -6946,9 +8153,9 @@ function UI:OnSearchTextChanged(text, force)
         if ns.Database and ns.Database.CancelDynamicWarmup then
             ns.Database:CancelDynamicWarmup()
         end
-        -- Only show pins if the editbox still has focus (avoid re-showing
-        -- after SelectResult clears the text)
-        if searchFrame and searchFrame.editBox and searchFrame.editBox:HasFocus() then
+        -- Normally only show pins when focused. Forced refreshes (ESC clear,
+        -- pin-menu actions) also rebuild pins so stale typed results disappear.
+        if force or (searchFrame and searchFrame.editBox and searchFrame.editBox:HasFocus()) then
             self:ShowPinnedItems()
         else
             self:HideResults()
@@ -6957,7 +8164,8 @@ function UI:OnSearchTextChanged(text, force)
     end
 
     wipe(collapsedNodes)
-    local needsHeavy = ns.Database and ns.Database.QueryNeedsHeavySearchData
+    local calculatorData = self:EvaluateCalculatorExpression(text)
+    local needsHeavy = not calculatorData and ns.Database and ns.Database.QueryNeedsHeavySearchData
         and ns.Database:QueryNeedsHeavySearchData(text)
     if not force and not needsHeavy and ns.Database and ns.Database.CancelDynamicWarmup then
         ns.Database:CancelDynamicWarmup()
@@ -7011,7 +8219,13 @@ function UI:OnSearchTextChanged(text, force)
         end
     end
     local _perfT0 = ns.PERF and debugprofilestop() or 0
-    local results = ns.Database:SearchUI(text, skipCategories)
+    local results
+    if calculatorData then
+        results = SCRATCH.calculatorResults
+        wipe(results)
+    else
+        results = ns.Database:SearchUI(text, skipCategories)
+    end
     local _perfTSearch = ns.PERF and debugprofilestop() or 0
 
     -- Inject user-defined alias hits at the front. Aliases bypass
@@ -7089,12 +8303,15 @@ function UI:OnSearchTextChanged(text, force)
 
     -- Map Search: search static locations and dungeon entrances, merge into results
     local mapResults
-    if filters and filters.map ~= false and ns.MapSearch and ns.MapSearch.SearchForUI then
+    if not calculatorData and filters and filters.map ~= false and ns.MapSearch and ns.MapSearch.SearchForUI then
         mapResults = ns.MapSearch:SearchForUI(text)
     end
 
     wipe(flatCombined)
     local combined = flatCombined
+    if calculatorData then
+        combined[#combined + 1] = { data = calculatorData, score = math.huge }
+    end
     for ri = 1, #results do combined[#combined + 1] = results[ri] end
     if mapResults then
         for ri = 1, #mapResults do combined[#combined + 1] = mapResults[ri] end
@@ -7119,7 +8336,7 @@ function UI:OnSearchTextChanged(text, force)
     -- ScoreName so they interleave naturally with mount / toy / setting
     -- hits ranked off the same query, instead of clumping at a fixed
     -- band.
-    if text ~= "" and (not filters or filters.achievements ~= false) then
+    if not calculatorData and text ~= "" and (not filters or filters.achievements ~= false) then
         local achHits = self:RequestAchievementSearch(text)
         if achHits and ns.Database and ns.Database.ScoreName then
             local lowerQ = slower(text)
@@ -7155,7 +8372,7 @@ function UI:OnSearchTextChanged(text, force)
             e.isMatch = true
             e.isFlat = true
             e.flatCatKey = nil
-            e.isPinned = IsUIItemPinned(d) and true or false
+            e.isPinned = (not d.noPin and IsUIItemPinned(d)) and true or false
             e.data = d
         end
     end
@@ -7370,11 +8587,9 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     if theme.resultsBackdropBorderColor then
         resultsFrame:SetBackdropBorderColor(unpack(theme.resultsBackdropBorderColor))
     end
-    -- Width: in rounded-theme + dropdown-below mode, the dropdown
-    -- silhouette merges with the bar, so it has to match the bar's
-    -- exact width. Otherwise honor the user's saved customW (legacy
-    -- floating-results behavior).
-    local roundedDocked = theme.searchBarRounded and not EasyFind.db.uiResultsAbove
+    -- Rounded search/results use one shared silhouette whether results
+    -- open above or below, so the dropdown must match the bar width.
+    local roundedDocked = theme.searchBarRounded
     if roundedDocked and searchFrame then
         resultsFrame:SetWidth(searchFrame:GetWidth())
     else
@@ -7517,6 +8732,19 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 resultRow.sectionLabelLeft:Hide()
                 resultRow.sectionLabelRight:Hide()
             end
+            if resultRow.calcCard then resultRow.calcCard:Hide() end
+            if resultRow.calcDivider then resultRow.calcDivider:Hide() end
+            if resultRow.calcDividerTop then resultRow.calcDividerTop:Hide() end
+            if resultRow.calcDividerBottom then resultRow.calcDividerBottom:Hide() end
+            if resultRow.calcArrowText then resultRow.calcArrowText:Hide() end
+            if resultRow.calcExpressionHighlight then resultRow.calcExpressionHighlight:Hide() end
+            if resultRow.calcResultHighlight then resultRow.calcResultHighlight:Hide() end
+            if resultRow.calcExpressionFlash then resultRow.calcExpressionFlash:Hide() end
+            if resultRow.calcResultFlash then resultRow.calcResultFlash:Hide() end
+            if resultRow.calcExpressionHint then resultRow.calcExpressionHint:Hide() end
+            if resultRow.calcResultHint then resultRow.calcResultHint:Hide() end
+            if resultRow.calcExpressionButton then resultRow.calcExpressionButton:Hide() end
+            if resultRow.calcResultButton then resultRow.calcResultButton:Hide() end
 
             resultRow.data = data
             -- Reset every icon.* tooltip-identifier the OnEnter handler
@@ -8082,6 +9310,75 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     resultRow.text:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
                 end
                 resultRow.text:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
+                iconSet = true
+
+            -- Calculator rows use a Raycast-style result card instead of the
+            -- normal two-line flat row.
+            elseif data and data.calculatorResult and not entry.isPathNode then
+                resultRow.text:SetText("")
+                resultRow.amountText:Hide()
+                if resultRow.pathSubtext then resultRow.pathSubtext:Hide() end
+                if resultRow.flatCatIcon then resultRow.flatCatIcon:Hide() end
+                SetRowIcon(resultRow, "hidden", nil, rowIconSize)
+
+                local rightInset = showShortcutHints and 42 or 4
+                resultRow.calcCard:ClearAllPoints()
+                resultRow.calcCard:SetPoint("TOPLEFT", resultRow, "TOPLEFT", 4, -3)
+                resultRow.calcCard:SetPoint("BOTTOMRIGHT", resultRow, "BOTTOMRIGHT", -rightInset, 3)
+                resultRow.calcCard:Show()
+
+                resultRow.calcDivider:ClearAllPoints()
+                resultRow.calcDivider:SetPoint("TOP", resultRow.calcCard, "TOP", 0, -1)
+                resultRow.calcDivider:SetPoint("BOTTOM", resultRow.calcCard, "BOTTOM", 0, 1)
+                resultRow.calcDivider:Show()
+
+                resultRow.calcArrowText:ClearAllPoints()
+                resultRow.calcArrowText:SetPoint("CENTER", resultRow.calcCard, "CENTER", 0, 0)
+                resultRow.calcArrowText:Show()
+
+                resultRow.calcDividerTop:ClearAllPoints()
+                resultRow.calcDividerTop:SetPoint("TOP", resultRow.calcCard, "TOP", 0, -1)
+                resultRow.calcDividerTop:SetPoint("BOTTOM", resultRow.calcArrowText, "TOP", 0, 3)
+                resultRow.calcDividerTop:Show()
+
+                resultRow.calcDividerBottom:ClearAllPoints()
+                resultRow.calcDividerBottom:SetPoint("TOP", resultRow.calcArrowText, "BOTTOM", 0, -3)
+                resultRow.calcDividerBottom:SetPoint("BOTTOM", resultRow.calcCard, "BOTTOM", 0, 1)
+                resultRow.calcDividerBottom:Show()
+
+                resultRow.calcExpressionText:ClearAllPoints()
+                resultRow.calcExpressionText:SetPoint("LEFT", resultRow.calcCard, "LEFT", 12, 0)
+                resultRow.calcExpressionText:SetPoint("RIGHT", resultRow.calcDivider, "LEFT", -22, 0)
+                SetClippedText(resultRow.calcExpressionText, data.calculatorExpression or data.name or "")
+                resultRow.calcExpressionHighlight:ClearAllPoints()
+                resultRow.calcExpressionHighlight:SetPoint("TOPLEFT", resultRow.calcCard, "TOPLEFT", 1, 0)
+                resultRow.calcExpressionHighlight:SetPoint("BOTTOMRIGHT", resultRow.calcDivider, "BOTTOMLEFT", -1, 1)
+                resultRow.calcExpressionFlash:ClearAllPoints()
+                resultRow.calcExpressionFlash:SetPoint("TOPLEFT", resultRow.calcExpressionHighlight, "TOPLEFT")
+                resultRow.calcExpressionFlash:SetPoint("BOTTOMRIGHT", resultRow.calcExpressionHighlight, "BOTTOMRIGHT")
+
+                resultRow.calcResultText:ClearAllPoints()
+                resultRow.calcResultText:SetPoint("LEFT", resultRow.calcDivider, "RIGHT", 22, 0)
+                resultRow.calcResultText:SetPoint("RIGHT", resultRow.calcCard, "RIGHT", -12, 0)
+                SetClippedText(resultRow.calcResultText, data.calculatorResult)
+                resultRow.calcResultHighlight:ClearAllPoints()
+                resultRow.calcResultHighlight:SetPoint("TOPLEFT", resultRow.calcDivider, "TOPRIGHT", 1, 0)
+                resultRow.calcResultHighlight:SetPoint("BOTTOMRIGHT", resultRow.calcCard, "BOTTOMRIGHT", -1, 1)
+                resultRow.calcResultFlash:ClearAllPoints()
+                resultRow.calcResultFlash:SetPoint("TOPLEFT", resultRow.calcResultHighlight, "TOPLEFT")
+                resultRow.calcResultFlash:SetPoint("BOTTOMRIGHT", resultRow.calcResultHighlight, "BOTTOMRIGHT")
+                resultRow.calcExpressionButton:ClearAllPoints()
+                resultRow.calcExpressionButton:SetPoint("TOPLEFT", resultRow.calcCard, "TOPLEFT", 1, 0)
+                resultRow.calcExpressionButton:SetPoint("BOTTOMRIGHT", resultRow.calcDivider, "BOTTOMLEFT", -1, 1)
+                resultRow.calcExpressionButton:Show()
+
+                resultRow.calcResultButton:ClearAllPoints()
+                resultRow.calcResultButton:SetPoint("TOPLEFT", resultRow.calcDivider, "TOPRIGHT", 1, 0)
+                resultRow.calcResultButton:SetPoint("BOTTOMRIGHT", resultRow.calcCard, "BOTTOMRIGHT", -1, 1)
+                resultRow.calcResultButton:Show()
+
+                self:SetCalculatorCopyHighlight(resultRow, UI._calculator.activeData == data and UI._calculator.activePart or nil)
+
                 iconSet = true
 
             -- Mount/Toy/Pet leaves: icon goes to right side (same layout as currency icons)
@@ -8822,7 +10119,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             -- Re-apply flat anchoring last so layout is consistent across
             -- all categories and the path subtext is bounded by the rep bar
             -- when one is shown (so it stays out of the bar's horizontal area).
-            if entry.isFlat then
+            if entry.isFlat and not (data and data.calculatorResult) then
                 local catShown = resultRow.flatCatIcon and resultRow.flatCatIcon:IsShown()
                 local d = data
                 local mainIconOnRight = d and (d.mountID or d.toyItemID or d.petID
@@ -9007,6 +10304,19 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             resultRow.repBar:Hide()
             if resultRow.flatCatIcon then resultRow.flatCatIcon:Hide() end
             if resultRow.pathSubtext then resultRow.pathSubtext:Hide() end
+            if resultRow.calcCard then resultRow.calcCard:Hide() end
+            if resultRow.calcDivider then resultRow.calcDivider:Hide() end
+            if resultRow.calcDividerTop then resultRow.calcDividerTop:Hide() end
+            if resultRow.calcDividerBottom then resultRow.calcDividerBottom:Hide() end
+            if resultRow.calcArrowText then resultRow.calcArrowText:Hide() end
+            if resultRow.calcExpressionHighlight then resultRow.calcExpressionHighlight:Hide() end
+            if resultRow.calcResultHighlight then resultRow.calcResultHighlight:Hide() end
+            if resultRow.calcExpressionFlash then resultRow.calcExpressionFlash:Hide() end
+            if resultRow.calcResultFlash then resultRow.calcResultFlash:Hide() end
+            if resultRow.calcExpressionHint then resultRow.calcExpressionHint:Hide() end
+            if resultRow.calcResultHint then resultRow.calcResultHint:Hide() end
+            if resultRow.calcExpressionButton then resultRow.calcExpressionButton:Hide() end
+            if resultRow.calcResultButton then resultRow.calcResultButton:Hide() end
             if resultRow.shortcutGroup then resultRow.shortcutGroup:Hide() end
             for d = 1, MAX_DEPTH do
                 resultRow.treeVert[d]:Hide()
@@ -9070,34 +10380,38 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         end
     end
 
-    -- Anchor results above or below based on setting. The combined
-    -- silhouette (rounded-rect container) only makes sense when the
-    -- dropdown sits BELOW the bar; if the user has flipped to "above"
-    -- mode, fall back to the legacy gap-with-own-backdrop look.
+    -- Anchor results above or below based on setting. The rounded
+    -- container wraps the bar and dropdown in either orientation.
     local belowMode = not EasyFind.db.uiResultsAbove
     local roundedTheme = GetActiveTheme().searchBarRounded
     resultsFrame:ClearAllPoints()
     if belowMode then
         resultsFrame:SetPoint("TOP", searchFrame, "BOTTOM", 0, 0)
     else
-        resultsFrame:SetPoint("BOTTOM", searchFrame, "TOP", 0, -5)
+        resultsFrame:SetPoint("BOTTOM", searchFrame, "TOP", 0, 0)
     end
 
-    -- In rounded+below mode the resultsFrame backdrop is owned by
-    -- the container; clear its own and hide any bg atlas so the
-    -- unified silhouette reads as one shape.
-    if roundedTheme and belowMode then
+    -- In rounded mode the resultsFrame backdrop is owned by the
+    -- container; clear its own and hide any bg atlas so the unified
+    -- silhouette reads as one shape.
+    if roundedTheme then
         resultsFrame:SetBackdrop(nil)
         if resultsFrame.bgAtlasTex then resultsFrame.bgAtlasTex:Hide() end
         if containerFrame then
             containerFrame:ClearAllPoints()
-            containerFrame:SetPoint("TOPLEFT",     searchFrame,  "TOPLEFT",     0, 0)
-            containerFrame:SetPoint("TOPRIGHT",    searchFrame,  "TOPRIGHT",    0, 0)
-            containerFrame:SetPoint("BOTTOMLEFT",  resultsFrame, "BOTTOMLEFT",  0, 0)
-            containerFrame:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", 0, 0)
-            -- Divider line at the bar's bottom edge: doubles as the
-            -- visual separator between search content and results.
-            ns.SetRoundedRectDivider(containerFrame, searchFrame:GetHeight(), true)
+            if belowMode then
+                containerFrame:SetPoint("TOPLEFT",     searchFrame,  "TOPLEFT",     0, 0)
+                containerFrame:SetPoint("TOPRIGHT",    searchFrame,  "TOPRIGHT",    0, 0)
+                containerFrame:SetPoint("BOTTOMLEFT",  resultsFrame, "BOTTOMLEFT",  0, 0)
+                containerFrame:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", 0, 0)
+                ns.SetRoundedRectDivider(containerFrame, searchFrame:GetHeight(), true)
+            else
+                containerFrame:SetPoint("TOPLEFT",     resultsFrame, "TOPLEFT",     0, 0)
+                containerFrame:SetPoint("TOPRIGHT",    resultsFrame, "TOPRIGHT",    0, 0)
+                containerFrame:SetPoint("BOTTOMLEFT",  searchFrame,  "BOTTOMLEFT",  0, 0)
+                containerFrame:SetPoint("BOTTOMRIGHT", searchFrame,  "BOTTOMRIGHT", 0, 0)
+                ns.SetRoundedRectDivider(containerFrame, resultsFrame:GetHeight(), true)
+            end
         end
     end
 
@@ -9376,6 +10690,8 @@ function UI:HideResults()
     if activeKeybindBtn and activeKeybindBtn._stopCapture then
         activeKeybindBtn._stopCapture(activeKeybindBtn)
     end
+    self:ClearCalculatorCopyHighlight()
+    self:ReleaseCalculatorCopyBox()
     if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
     if searchFrame.ClearToolbarFocus then searchFrame.ClearToolbarFocus() end
     ClearResultShortcutBindings()
@@ -9642,7 +10958,7 @@ function UI:UpdateSelectionHighlight(skipRefocus)
     end
 end
 
-function UI:ActivateResultRow(resultRow)
+function UI:ActivateResultRow(resultRow, source)
     if not resultRow or not resultRow:IsShown() then return false end
     if resultRow.isUnearnedCurrency or resultRow.isPinHeader or resultRow.isSectionHeader then
         return true
@@ -9650,11 +10966,15 @@ function UI:ActivateResultRow(resultRow)
     if not resultRow.data then return false end
 
     if ActivateSettingResult(resultRow.data) then return true end
+    if resultRow.data.calculatorResult then
+        self:ArmCalculatorResultFromRow(resultRow, source or "click")
+        return true
+    end
     self:SelectResult(resultRow.data)
     return true
 end
 
-function UI:ActivateSelected()
+function UI:ActivateSelected(source)
     if selectedIndex > 0 and selectedIndex <= MAX_BUTTON_POOL then
         local resultRow = resultButtons[selectedIndex]
         if resultRow and resultRow:IsShown() then
@@ -9671,7 +10991,7 @@ function UI:ActivateSelected()
                     self:UpdateSelectionHighlight()
                 end
             else
-                self:ActivateResultRow(resultRow)
+                self:ActivateResultRow(resultRow, source or "key")
             end
             return
         end
@@ -10738,6 +12058,11 @@ end
 function UI:SelectResult(data, forceGuide)
     if not data then return end
     local useFast = not forceGuide
+
+    if data.calculatorResult then
+        self:ArmCalculatorResultForData(data)
+        return
+    end
 
     selectingResult = true
     searchFrame.editBox:SetText("")
@@ -12357,13 +13682,14 @@ function UI:HandleEscape()
     -- also lifts the popup above our results panel strata.
     if self:ShowUnappliedSettingsPopup() then return end
     if editBox and editBox:GetText() ~= "" then
+        if editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
         editBox:SetText("")
         if editBox.placeholder then editBox.placeholder:Show() end
-        -- SetText("") fires OnTextChanged -> OnSearchTextChanged which
-        -- calls ShowPinnedItems when the editbox still has focus, so
-        -- the pinned list lights up. Don't follow with RequestHideResults
-        -- here; that would close the results we just opened to pins.
         Refocus()
+        -- Programmatic SetText intentionally does not run the throttled
+        -- search path. Rebuild immediately so stale typed results are
+        -- replaced by pinned rows, or hidden when there are no pins.
+        self:OnSearchTextChanged("", true)
         return
     end
     self:Hide()
@@ -12606,7 +13932,7 @@ end
 
 function UI:UpdateOpacity()
     if not searchFrame then return end
-    local alpha = EasyFind.db.searchBarOpacity or DEFAULT_OPACITY
+    local alpha = EasyFind.db.searchBarOpacity or ns.DEFAULT_OPACITY
     if containerFrame then
         ns.SetRoundedRectBorderBgAlpha(containerFrame, alpha)
     end
@@ -12614,16 +13940,19 @@ end
 
 function UI:UpdateSearchBarTheme()
     if not searchFrame then return end
-    local scale = EasyFind.db.fontSize or 1.0
-    local alpha = EasyFind.db.searchBarOpacity or DEFAULT_OPACITY
+    local alpha = EasyFind.db.searchBarOpacity or ns.DEFAULT_OPACITY
     searchFrame:SetBackdrop(nil)
     -- Pill stays hidden; container provides the rounded silhouette.
     ns.SetSearchBorderShown(searchFrame, false)
     if containerFrame then
         ns.SetRoundedRectBorderShown(containerFrame, true)
-        ns.SetRoundedRectBarHeight(containerFrame, ns.SEARCHBAR_HEIGHT * scale)
+        ns.SetRoundedRectBarHeight(containerFrame, self:GetSearchBarHeight())
         ns.SetRoundedRectBorderBgAlpha(containerFrame, alpha)
     end
+end
+
+function UI:UpdateSearchBarHeight()
+    self:UpdateFontSize()
 end
 
 function UI:UpdateSmartShow()
@@ -12657,7 +13986,8 @@ end
 function UI:ResetPosition()
     if searchFrame then
         searchFrame:ClearAllPoints()
-        searchFrame:SetPoint("TOP", UIParent, "TOP", 0, -12)
+        local point, relPoint, x, y = self:GetDefaultSearchBarPoint()
+        searchFrame:SetPoint(point, UIParent, relPoint, x, y)
         EasyFind.db.uiSearchPosition = nil
     end
 end
@@ -12884,13 +14214,12 @@ function UI:ShowFirstTimeSetup()
     resizer:SetScript("OnLeave", GameTooltip_Hide)
 
     local function scaleResizerVisual()
-        local s = mmax(0.5, mmin(2.0, EasyFind.db.fontSize or 1.0))
-        resizer:SetSize(16 * s, 16 * s)
+        resizer:SetSize(16, 16)
     end
 
-    -- Dragging the bottom-left corner resizes the bar in two axes at once:
+    -- Dragging the bottom-left corner adjusts the search bar preview in two axes:
     --   horizontal  -> uiSearchWidth (symmetric growth around a locked top-center)
-    --   vertical    -> fontSize (which also grows the bar height downward)
+    --   vertical    -> uiSearchBarHeight
     --
     -- Uses OnMouseDown (not RegisterForDrag) so there's no 4-pixel drag
     -- threshold: the bar starts resizing the instant the cursor moves.
@@ -12922,7 +14251,7 @@ function UI:ShowFirstTimeSetup()
         -- without snapping the corner to the cursor at drag start.
         self.startCx, self.startCy = GetCursorPosition()
         self.startWidth = EasyFind.db.uiSearchWidth or 1.0
-        self.startFont = EasyFind.db.fontSize or 1.0
+        self.startBarHeight = UI:GetSearchBarHeight()
     end)
 
     local function stopResize(self)
@@ -12934,7 +14263,7 @@ function UI:ShowFirstTimeSetup()
         self.startCx = nil
         self.startCy = nil
         self.startWidth = nil
-        self.startFont = nil
+        self.startBarHeight = nil
 
         -- Persist the new TOP-anchored position so the bar sticks after drag.
         local point, _, relPoint, x, y = searchFrame:GetPoint()
@@ -12954,7 +14283,7 @@ function UI:ShowFirstTimeSetup()
             stopResize(self)
             return
         end
-        if not (self.startCx and self.startCy and self.startWidth and self.startFont) then return end
+        if not (self.startCx and self.startCy and self.startWidth and self.startBarHeight) then return end
 
         local cx, cy = GetCursorPosition()
         local effScale = searchFrame:GetEffectiveScale() or 1.0
@@ -12965,23 +14294,23 @@ function UI:ShowFirstTimeSetup()
         local dyScreen = cy - self.startCy
 
         -- Bottom-right corner: cursor moving RIGHT should grow the bar
-        -- symmetrically, cursor moving DOWN should grow the font/height.
+        -- symmetrically, cursor moving DOWN should grow the bar strip.
         --   d(uiSearchWidth) =  dxScreen / (effScale * 125)
-        --   d(fontSize)      = -dyScreen / (effScale * SEARCHBAR_HEIGHT)
+        --   d(barHeight)     = -dyScreen / effScale
         local newWidth = self.startWidth + dxScreen / (effScale * 125)
-        local newFont  = self.startFont  - dyScreen / (effScale * ns.SEARCHBAR_HEIGHT)
+        local newBarH  = self.startBarHeight - dyScreen / effScale
 
         newWidth = mmax(0.5, mmin(2.5, newWidth))
-        newFont = mmax(0.5, mmin(2.0, newFont))
+        newBarH = mmax(24, mmin(56, newBarH))
 
         EasyFind.db.uiSearchWidth = newWidth
-        EasyFind.db.fontSize = newFont
+        EasyFind.db.uiSearchBarHeight = newBarH
         UI:UpdateWidth()
-        UI:UpdateFontSize()
+        UI:UpdateSearchBarHeight()
         scaleResizerVisual()
     end)
 
-    -- Set the initial resizer size to match the current font scale
+    -- Set the initial resizer size.
     scaleResizerVisual()
 
     -- Fixed panel width — comfortably holds the keybind rows and
@@ -13278,14 +14607,12 @@ function UI:FlashLabel(labelText)
 end
 
 function UI:UpdateFontSize()
-    local scale = EasyFind.db.fontSize or 1.0
-
     if not searchFrame then return end
 
     ScaleFont(searchFrame.editBox, ns.SEARCHBAR_FONT)
     ScaleFont(searchFrame.editBox.placeholder, ns.SEARCHBAR_FONT)
 
-    local barH = ns.SEARCHBAR_HEIGHT * scale
+    local barH = UI:GetSearchBarHeight()
     local contentSz = barH * ns.SEARCHBAR_FILL
     local iconSz = contentSz * ns.SEARCHBAR_ICON_SCALE
     searchFrame:SetHeight(barH)
@@ -13300,7 +14627,7 @@ function UI:UpdateFontSize()
 
     local theme = GetActiveTheme()
     local WHITE8x8 = "Interface\\BUTTONS\\WHITE8x8"
-    local alpha = EasyFind.db.searchBarOpacity or DEFAULT_OPACITY
+    local alpha = EasyFind.db.searchBarOpacity or ns.DEFAULT_OPACITY
     if theme.searchBarRounded then
         searchFrame:SetBackdrop(nil)
         if containerFrame then
@@ -13316,8 +14643,8 @@ function UI:UpdateFontSize()
         searchFrame:SetBackdrop({
             bgFile = WHITE8x8,
             edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-            edgeSize = 20 * scale,
-            insets = { left = 5 * scale, right = 5 * scale, top = 5 * scale, bottom = 5 * scale }
+            edgeSize = 20,
+            insets = { left = 5, right = 5, top = 5, bottom = 5 }
         })
         searchFrame:SetBackdropColor(0, 0, 0, alpha)
     end

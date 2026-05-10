@@ -1175,7 +1175,13 @@ local function HighlightFoundElement(scrollBox, elementData)
     if not ns.Highlight or not ns.Highlight.HighlightFrame then return end
     SafeAfter(0.05, function()
         local frame = scrollBox.FindFrame and scrollBox:FindFrame(elementData)
-        if frame then ns.Highlight:HighlightFrame(frame) end
+        if frame then
+            ns.Highlight:HighlightFrame(frame, nil, function(target)
+                if not target or not target:IsVisible() then return false end
+                if not scrollBox.FindFrame then return true end
+                return scrollBox:FindFrame(elementData) == target
+            end)
+        end
     end)
 end
 
@@ -1305,7 +1311,9 @@ local function ScrollToBindingAction(action, headerName)
             local bindingFrame = FindBindingFrameInSection(sf, bindingIdx)
             if bindingFrame and bindingFrame:IsShown()
                and ns.Highlight and ns.Highlight.HighlightFrame then
-                ns.Highlight:HighlightFrame(bindingFrame)
+                ns.Highlight:HighlightFrame(bindingFrame, nil, function(target)
+                    return target and target:IsVisible()
+                end)
             end
         end)
     end

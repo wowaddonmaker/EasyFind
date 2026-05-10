@@ -48,6 +48,17 @@ local function canHoverDismiss()
     return not highlightShownAt or (GetTime() - highlightShownAt) >= HOVER_MIN_DISPLAY
 end
 
+local function isTerminalHighlight()
+    if not currentGuide or not currentGuide.steps then return true end
+    return currentStepIndex and currentStepIndex >= #currentGuide.steps
+end
+
+local function clearTerminalHighlight()
+    -- Use Cancel, not HideHighlight, so a guide ticker cannot recreate
+    -- the final highlight after hover, scroll virtualization, or panel close.
+    Highlight:Cancel()
+end
+
 local function GetContainerButtonLocation(button)
     if not button then return nil end
 
@@ -237,14 +248,11 @@ function Highlight:CreateHighlightFrame()
     --     ScrollBox button repurposed for a different spell after the user
     --     pages the spellbook. Caller passes a closure that re-checks
     --     identity (SpellFrameMatchesSelf etc.).
-    -- Repurpose watcher only -- no blanket visibility check. The
-    -- per-step UpdateGuide loop already advances/rewinds when the
-    -- destination panel changes; a blanket visibility watcher
-    -- false-positives on ScrollBox-virtualized targets (achievement
-    -- categories, currency rows, etc.) which briefly report not-shown
-    -- during their own re-render and would kill intermediate highlights.
-    -- Custom glow/spyglass targets can opt into hover-dismiss through
-    -- _hoverDismissFrame because they bypass the normal guide loop.
+    -- Visibility clears only run for terminal/no-guide highlights. The
+    -- per-step UpdateGuide loop still owns intermediate breadcrumb
+    -- behavior, avoiding false clears while ScrollBox categories rebuild.
+    -- Custom glow/spyglass targets opt into hover-dismiss through
+    -- _hoverDismissFrame because they bypass the regular border path.
     local watchAccum = 0
     highlightFrame:HookScript("OnUpdate", function(self, elapsed)
         watchAccum = watchAccum + elapsed
@@ -253,13 +261,23 @@ function Highlight:CreateHighlightFrame()
         local hoverFrame = self._hoverDismissFrame
         if hoverFrame and canHoverDismiss()
            and hoverFrame.IsMouseOver and hoverFrame:IsMouseOver() then
-            Highlight:HideHighlight()
+            clearTerminalHighlight()
             return
         end
         local target = self._targetFrame
+        local terminal = isTerminalHighlight()
+        if terminal and self._clearWhenTargetHidden and target
+           and target.IsVisible and not target:IsVisible() then
+            clearTerminalHighlight()
+            return
+        end
         local validator = self._targetValidator
         if validator and not validator(target) then
-            Highlight:HideHighlight()
+            if terminal then
+                clearTerminalHighlight()
+            else
+                Highlight:HideHighlight()
+            end
             return
         end
     end)
@@ -2690,6 +2708,8 @@ function Highlight:HighlightFrame(frame, instructionText, validator)
     -- (a ScrollBox button repurposed for a different spell after paging).
     highlightFrame._targetFrame = frame
     highlightFrame._targetValidator = validator
+    highlightFrame._hoverDismissFrame = frame
+    highlightFrame._clearWhenTargetHidden = true
 
     local bs = highlightFrame.borderSize
     local pad = 4
@@ -2782,6 +2802,7 @@ function Highlight:RegisterSearchIconWatch(button, validator)
     highlightFrame._targetFrame = button
     highlightFrame._targetValidator = validator
     highlightFrame._hoverDismissFrame = button
+    highlightFrame._clearWhenTargetHidden = true
     -- Hide the yellow border textures so the watcher's OnUpdate ticks
     -- without the standard highlight visuals showing on top of the
     -- native spyglass.
@@ -2850,6 +2871,7 @@ function Highlight:HighlightSpellbookSpell(row, validator)
     highlightFrame._targetFrame = row
     highlightFrame._targetValidator = validator
     highlightFrame._hoverDismissFrame = row
+    highlightFrame._clearWhenTargetHidden = true
     if highlightFrame.top    then highlightFrame.top:Hide() end
     if highlightFrame.bottom then highlightFrame.bottom:Hide() end
     if highlightFrame.left   then highlightFrame.left:Hide() end
@@ -2879,6 +2901,7 @@ function Highlight:HideHighlight()
         highlightFrame._targetFrame = nil
         highlightFrame._targetValidator = nil
         highlightFrame._hoverDismissFrame = nil
+        highlightFrame._clearWhenTargetHidden = nil
         highlightFrame:Hide()
         if highlightFrame.animGroup then highlightFrame.animGroup:Stop() end
         -- Restore yellow border textures hidden by HighlightTalentSearch.

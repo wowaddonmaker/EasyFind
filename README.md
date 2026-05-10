@@ -182,11 +182,10 @@ When you install EasyFind for the first time, you'll see an interactive setup ov
 | Command   |Description                          |
 | --------- |------------------------------------ |
 | <code>/ef</code> &nbsp; <code>/ef o</code> |Open the options panel               |
-| <code>/ef toggle</code> &nbsp; <code>/ef t</code> |Show/hide the search bar             |
 | <code>/ef clear</code> &nbsp; <code>/ef c</code> |Dismiss all active highlights and guides |
 | <code>/ef reset</code> &nbsp; <code>/ef r</code> |Reset all settings to defaults (opens confirmation dialog) |
-| <code>/ef setup</code> |Re-run the first-time setup overlay |
-| <code>/ef whatsnew</code> |Show the What's New dialog for the current version |
+| <code>/ef setup</code> |Re-run the tutorial |
+| <code>/ef whatsnew</code> |Show the current version tutorial or What's New panel |
 | <code>/ef bug</code> |Get a link to submit a bug report on GitHub |
 | <code>/ef feature</code> |Get a link to submit a feature request on GitHub |
 
