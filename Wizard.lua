@@ -209,7 +209,8 @@ local function BuildPage1(parent)
     logo:SetTexture("Interface\\AddOns\\EasyFind\\Textures\\Spyglass")
     logo:SetPoint("TOP", p, "TOP", 0, -40)
 
-    local title = HeaderText(p, "Welcome to EasyFind")
+    local version = ns.version or (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("EasyFind", "Version")) or "2.0.0"
+    local title = HeaderText(p, "Welcome to EasyFind v" .. version)
     title:SetPoint("TOP", logo, "BOTTOM", 0, -22)
     -- 50% larger than the GameFontNormalHuge baseline.
     do
@@ -217,7 +218,7 @@ local function BuildPage1(parent)
         if sz then title:SetFont(path, sz * 1.5, fl or "") end
     end
 
-    local sub = BodyText(p, "Your shortcut to anything in WoW.")
+    local sub = BodyText(p, "Your shortcut to everything in WoW.")
     sub:SetPoint("TOP", title, "BOTTOM", 0, -16)
     sub:SetWidth(WIZ_W - 120)
     sub:SetTextColor(TEXT_DIM[1], TEXT_DIM[2], TEXT_DIM[3], 1)
@@ -244,7 +245,7 @@ local function FeatureTile(parent, atlas, file, coords, title, desc, onClick)
     -- corner sizes) and skip a separate edge layer -- the rounded
     -- fill alone defines the shape.
     ns.CreateRoundedRectBorder(tile)
-    ns.SetRoundedRectBarHeight(tile, 12)
+    ns.SetRoundedRectBarHeight(tile, 10)
     ns.SetRoundedRectBorderBgAlpha(tile, 0.95)
     if tile.combinedBorder and tile.combinedBorder.fill then
         for _, t in pairs(tile.combinedBorder.fill) do
@@ -359,7 +360,7 @@ local function BuildPage2(parent)
     end
 
     local d1 = CreateDetailView("Search")
-    local d2 = CreateDetailView("Map Search")
+    local d2 = CreateDetailView("Map Search Tab")
     local d3 = CreateDetailView("Click & Right-click")
     local d4 = CreateDetailView("Pin Anything")
 
@@ -370,7 +371,7 @@ local function BuildPage2(parent)
     t1:SetPoint("TOPLEFT", grid, "TOPLEFT", 38, -96)
 
     local t2 = FeatureTile(grid, "Waypoint-MapPin-Untracked", nil, nil,
-        "Map Search",
+        "Map Search Tab",
         "Dedicated map browsing for banks, flight masters, dungeons, raids, and zones. Also reachable from Standard Search.",
         function() ShowDetail(d2) end)
     t2:SetPoint("TOPRIGHT", grid, "TOPRIGHT", -38, -96)
@@ -690,7 +691,7 @@ local function CreateFrameOnce()
     -- instead of half the frame height. Tint the fill dark gray
     -- (not pure black) so it reads as a panel rather than a void.
     ns.CreateRoundedRectBorder(f)
-    ns.SetRoundedRectBarHeight(f, 20)
+    ns.SetRoundedRectBarHeight(f, 16)
     ns.SetRoundedRectBorderBgAlpha(f, PANEL_BG_ALPHA)
     -- Hide the bright border ring; its corner cells render as visible
     -- horizontal bands against the gradient fill, breaking the smooth
@@ -824,7 +825,7 @@ local function CreateFrameOnce()
     footer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -BANNER_INSET, BANNER_INSET)
     footer:SetHeight(BANNER_H)
     ns.CreateRoundedRectBorder(footer)
-    ns.SetRoundedRectBarHeight(footer, 20)
+    ns.SetRoundedRectBarHeight(footer, 16)
     ns.SetRoundedRectBorderBgAlpha(footer, 1)
     if footer.combinedBorder and footer.combinedBorder.fill then
         for _, t in pairs(footer.combinedBorder.fill) do

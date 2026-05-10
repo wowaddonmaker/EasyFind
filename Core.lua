@@ -23,13 +23,12 @@ EasyFind.db = {}
 
 -- SavedVariables version. Increment when changing DB schema.
 -- Each migration runs once: if saved dbVersion < DB_VERSION, run all steps in order.
-local DB_VERSION = 8
+local DB_VERSION = 11
 
 -- SavedVariables defaults - new keys are auto-merged for existing users
 local DB_DEFAULTS = {
     dbVersion = DB_VERSION,
     visible = true,
-    enableUISearch = true,
     enableMapSearch = true,
     iconScale = 0.8,
     nativePinScale = 1.5,      -- Multiplier applied to a Blizzard map pin while EasyFind is glowing it
@@ -37,6 +36,7 @@ local DB_DEFAULTS = {
     uiSearchWidth = 1.54,  -- 0.88 * 1.75: results dropdown matches bar width now
     uiResultsScale = 1.0,
     uiResultsWidth = 350,
+    uiSearchBarHeight = ns.SEARCHBAR_HEIGHT or 30,
     searchBarOpacity = 0.75,  -- ns.DEFAULT_OPACITY
     fontSize = 0.9,            -- UI search font size multiplier (0.5-2.0)
     uiSearchPosition = nil,    -- {point, relPoint, x, y}
@@ -65,7 +65,6 @@ local DB_DEFAULTS = {
     autoTrackPins = true,      -- Auto super-track newly placed map pins
     uiResultsAbove = false,    -- Show UI search results above the search bar
     showResultShortcutHints = true,  -- Show Alt+number hints on UI search results
-    panelOpacity = 0.9,        -- Options panel background opacity
     showMinimapButton = true,  -- Show toggle button on minimap
     minimapButtonAngle = 200,  -- Position angle (degrees) around minimap edge
     globalSearchFilters = {    -- Global search category filters (all enabled by default)
@@ -205,6 +204,22 @@ local DB_MIGRATIONS = {
         if db.resultsTheme == "Retail" or db.resultsTheme == "Classic" then
             db.resultsTheme = "Modern"
         end
+    end,
+    -- [9] = Remove options menu opacity setting. The redesigned options
+    -- panel uses a fixed alpha to keep the Raycast-style shell consistent.
+    [9] = function(db)
+        db.panelOpacity = nil
+    end,
+    -- [10] = Persist search bar height separately from font size so
+    -- window resizing can scale the bar strip without changing text size.
+    [10] = function(db)
+        if not db.uiSearchBarHeight then db.uiSearchBarHeight = ns.SEARCHBAR_HEIGHT or 30 end
+    end,
+    -- [11] = 2.0.0 is a full onboarding reset. Existing users should
+    -- see the tutorial once instead of the legacy What's New popup.
+    [11] = function(db)
+        db.tutorialDone = false
+        db.lastSeenVersion = "2.0.0"
     end,
 }
 
@@ -405,11 +420,15 @@ local function OnInitialize()
                 end
             end
         elseif msg == "whatsnew" then
-            if ns.UI then ns.UI:ShowWhatsNew(ns.version) end
+            if ns.version == "2.0.0" and ns.Wizard and ns.Wizard.Show then
+                EasyFind.db.tutorialDone = false
+                ns.Wizard:Show()
+            elseif ns.UI then
+                ns.UI:ShowWhatsNew(ns.version)
+            end
         elseif msg == "help" or msg == "h" or msg == "?" then
             EasyFind:Print("Commands:")
             EasyFind:Print("  /ef: open options panel")
-            EasyFind:Print("  /ef toggle: show/hide search bar")
             EasyFind:Print("  /ef clear: dismiss highlights, pins, breadcrumbs")
             EasyFind:Print("  /ef reset: reset all settings")
             EasyFind:Print("  /ef bug: report a bug")
@@ -472,7 +491,6 @@ end
 -- providers that are loaded-and-clean, so re-entry only refreshes dirty ones.
 function EasyFind:EnsureDynamicLoaded()
     if not ns.Database then return end
-    if EasyFind.db.enableUISearch == false then return end
     if ns.Database.LoadDeferredSyncProvidersStaggered then
         ns.Database:LoadDeferredSyncProvidersStaggered()
     end
@@ -480,14 +498,12 @@ function EasyFind:EnsureDynamicLoaded()
         self._dynamicLoadTriggered = true
         if ns.Database.LoadHeavyDynamicSearchDataSync then
             SafeAfter(0.5, function()
-                if EasyFind.db.enableUISearch == false then return end
                 ns.Database:LoadHeavyDynamicSearchDataSync()
             end)
         end
         -- Late-arriving APIs (Wardrobe, Heirlooms) sometimes aren't ready in
         -- the first pass. Re-trigger after they've had time to populate.
         SafeAfter(3.0, function()
-            if EasyFind.db.enableUISearch == false then return end
             if ns.Database.LoadDeferredSyncProvidersStaggered then
                 ns.Database:LoadDeferredSyncProvidersStaggered()
             end
@@ -499,15 +515,13 @@ local function OnPlayerLogin()
     -- Kick off the time-sliced statistics enumeration immediately
     -- (2ms-per-tick budget, no load-screen block). Run it through the
     -- provider manager so later heavy-load requests don't restart it.
-    if ns.Database and ns.Database.EnsureDynamicProviderLoaded
-       and EasyFind.db.enableUISearch ~= false then
+    if ns.Database and ns.Database.EnsureDynamicProviderLoaded then
         ns.Database:EnsureDynamicProviderLoaded("statistics", function(changed)
             if changed and ns.Database.MarkDynamicProviderLoaded then
                 ns.Database:MarkDynamicProviderLoaded("statistics")
             end
         end)
-    elseif ns.Database and ns.Database.PopulateDynamicStatisticsAsync
-       and EasyFind.db.enableUISearch ~= false then
+    elseif ns.Database and ns.Database.PopulateDynamicStatisticsAsync then
         ns.Database:PopulateDynamicStatisticsAsync(function(changed)
             if changed and ns.Database.MarkDynamicProviderLoaded then
                 ns.Database:MarkDynamicProviderLoaded("statistics")
@@ -525,10 +539,8 @@ local function OnPlayerLogin()
     if EasyFind.db.enableMapSearch ~= false then
         SafeInit(ns.MapSearch,  "MapSearch")
     end
-    if EasyFind.db.enableUISearch ~= false then
-        SafeInit(ns.UI,        "UI")
-        SafeInit(ns.Highlight, "Highlight")
-    end
+    SafeInit(ns.UI,        "UI")
+    SafeInit(ns.Highlight, "Highlight")
     if EasyFind.db.enableMapSearch ~= false and ns.MapSearch and ns.MapSearch.WarmUISearchCaches then
         ns.MapSearch:WarmUISearchCaches()
     end
@@ -557,7 +569,6 @@ local function OnPlayerLogin()
     -- on the first search. Do not route this through the generic heavy
     -- chain; boss results should not sit behind Statistics/Loot.
     SafeAfter(1.0, function()
-        if EasyFind.db.enableUISearch == false then return end
         if ns.Database and ns.Database.EnsureDynamicProviderLoaded then
             ns.Database:EnsureDynamicProviderLoaded("bosses", function() end)
         end
@@ -580,12 +591,14 @@ local function OnPlayerLogin()
         end
     end)
 
-    -- What's New popup: show once per version for returning users
+    -- What's New popup: show once per version for returning users.
+    -- 2.0.0 uses the tutorial instead because the whole experience was rebuilt.
     local currentVersion = ns.version
     local lastSeen = EasyFind.db.lastSeenVersion
     if currentVersion and currentVersion ~= lastSeen then
-        -- Skip for brand-new installs (they get the first-time setup instead)
-        if lastSeen ~= nil or EasyFind.db.setupComplete then
+        if currentVersion == "2.0.0" then
+            EasyFind.db.tutorialDone = false
+        elseif lastSeen ~= nil or EasyFind.db.setupComplete then
             SafeAfter(1.5, function()
                 if ns.UI then ns.UI:ShowWhatsNew(currentVersion) end
             end)
@@ -682,7 +695,7 @@ end
 
 function EasyFind:ToggleFocusSearchUI()
     self:EnsureDynamicLoaded()
-    if WorldMapFrame and WorldMapFrame:IsShown() and ns.MapTab then
+    if EasyFind.db.enableMapSearch ~= false and WorldMapFrame and WorldMapFrame:IsShown() and ns.MapTab then
         ns.MapTab:Focus()
     elseif ns.UI then
         ns.UI:ToggleFocus()
@@ -690,6 +703,7 @@ function EasyFind:ToggleFocusSearchUI()
 end
 
 function EasyFind:FocusMapSearch()
+    if EasyFind.db.enableMapSearch == false then return end
     self:EnsureDynamicLoaded()
     if ns.MapTab then ns.MapTab:Focus() end
 end

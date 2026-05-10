@@ -119,6 +119,11 @@ function Aliases:Remove(aliasText)
     EasyFind.db.aliases[slower(strtrim(aliasText or ""))] = nil
 end
 
+function Aliases:ClearAll()
+    if not EasyFind or not EasyFind.db then return end
+    EasyFind.db.aliases = {}
+end
+
 -- Walk all stored aliases. cb(aliasText, info) for each entry.
 function Aliases:ForEach(cb)
     if not EasyFind or not EasyFind.db or not EasyFind.db.aliases then return end

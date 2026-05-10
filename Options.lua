@@ -11,18 +11,11 @@ local tinsert, tconcat = Utils.tinsert, Utils.tconcat
 local IsMouseButtonDown = IsMouseButtonDown
 
 local DEFAULT_OPACITY = ns.DEFAULT_OPACITY
-local TOOLTIP_BORDER = ns.TOOLTIP_BORDER
-local DARK_PANEL_BG = ns.DARK_PANEL_BG
+local OPTIONS_PANEL_ALPHA = 0.9
 
 local optionsFrame
 local isInitialized = false
 local blizzardRegistered = false
-
-local FRAME_BACKDROP = {
-    edgeFile = TOOLTIP_BORDER,
-    edgeSize = 16,
-    insets = { left = 4, right = 4, top = 4, bottom = 4 },
-}
 
 local NIL = {}
 local DEFAULT_UI_FILTERS = {
@@ -45,6 +38,7 @@ local UI_DEFAULTS = {
     fontSize = 0.9,
     uiSearchScale = 1.0,
     uiSearchWidth = 1.54,
+    uiSearchBarHeight = ns.SEARCHBAR_HEIGHT or 30,
     uiResultsScale = 1.0,
     uiResultsWidth = 350,
     uiSearchPosition = NIL,
@@ -84,9 +78,7 @@ local GENERAL_DEFAULTS = {
     showLoginMessage = true,
     showMinimapButton = true,
     minimapButtonAngle = 200,
-    panelOpacity = 0.9,
     visible = true,
-    enableUISearch = true,
     enableMapSearch = true,
     nativePinScale = 1.5,
     pinnedUIItems = {},
@@ -145,6 +137,7 @@ local function RefreshUIRuntime(resetPosition)
     if ns.UI.UpdateScale then ns.UI:UpdateScale() end
     if ns.UI.UpdateWidth then ns.UI:UpdateWidth() end
     if ns.UI.UpdateOpacity then ns.UI:UpdateOpacity() end
+    if ns.UI.UpdateSearchBarHeight then ns.UI:UpdateSearchBarHeight() end
     if ns.UI.UpdateSmartShow then ns.UI:UpdateSmartShow() end
     if ns.UI.UpdateFontSize then ns.UI:UpdateFontSize() end
     if ns.UI.RefreshResults then ns.UI:RefreshResults() end
@@ -169,21 +162,16 @@ end
 local function SyncOptionControls()
     if not optionsFrame then return end
 
-    if optionsFrame.panelOpacitySlider then optionsFrame.panelOpacitySlider:SetValue(EasyFind.db.panelOpacity or 0.9) end
-    if optionsFrame.opacitySlider then optionsFrame.opacitySlider:SetValue(EasyFind.db.searchBarOpacity or DEFAULT_OPACITY) end
-    if optionsFrame.uiFontSlider then optionsFrame.uiFontSlider:SetValue(EasyFind.db.fontSize or 0.9) end
-    if optionsFrame.mapIconSlider then optionsFrame.mapIconSlider:SetValue(EasyFind.db.iconScale or 0.8) end
+    if optionsFrame.opacityPresetRow then optionsFrame.opacityPresetRow:SetValue(EasyFind.db.searchBarOpacity or DEFAULT_OPACITY) end
+    if optionsFrame.uiFontPresetRow then optionsFrame.uiFontPresetRow:SetValue(EasyFind.db.fontSize or 0.9) end
+    if optionsFrame.mapIconPresetRow then optionsFrame.mapIconPresetRow:SetValue(EasyFind.db.iconScale or 0.8) end
+    if optionsFrame.recentCountStepper then optionsFrame.recentCountStepper:SetValue(EasyFind.db.mapTabRecentCount or 3) end
 
     if optionsFrame.autoHideCheckbox then optionsFrame.autoHideCheckbox:SetChecked(EasyFind.db.autoHide ~= false) end
     if optionsFrame.smartShowCheckbox then
-        local autoOn = EasyFind.db.autoHide ~= false
         optionsFrame.smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
-        optionsFrame.smartShowCheckbox:SetEnabled(not autoOn)
         local lbl = optionsFrame.smartShowCheckbox:GetFontString()
-        if lbl then
-            local g = autoOn and 0.5 or 1
-            lbl:SetTextColor(g, g, g)
-        end
+        if lbl then lbl:SetTextColor(1, 1, 1) end
     end
     if optionsFrame.staticOpacityCheckbox then optionsFrame.staticOpacityCheckbox:SetChecked(EasyFind.db.staticOpacity or false) end
     if optionsFrame.lockPositionCheckbox then optionsFrame.lockPositionCheckbox:SetChecked(EasyFind.db.lockPosition or false) end
@@ -193,9 +181,12 @@ local function SyncOptionControls()
     if optionsFrame.minimapBtnCheckbox then optionsFrame.minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton ~= false) end
     if optionsFrame.rareTrackCheckbox then optionsFrame.rareTrackCheckbox:SetChecked(EasyFind.db.alwaysShowRares or false) end
 
-    if optionsFrame.mapPinGroup then optionsFrame.mapPinGroup:UpdateVisuals() end
-    if optionsFrame.automationGroup then optionsFrame.automationGroup:UpdateVisuals() end
-    if optionsFrame.UpdateUIToggleVisual then optionsFrame.UpdateUIToggleVisual() end
+    if optionsFrame.mapTabShowRecentCheckbox then optionsFrame.mapTabShowRecentCheckbox:SetChecked(EasyFind.db.mapTabShowRecent ~= false) end
+    if optionsFrame.UpdateRecentCountEnabled then optionsFrame.UpdateRecentCountEnabled() end
+    if optionsFrame.mapPinHighlightCheckbox then optionsFrame.mapPinHighlightCheckbox:SetChecked(EasyFind.db.mapPinHighlight ~= false) end
+    if optionsFrame.blinkingPinsCheckbox then optionsFrame.blinkingPinsCheckbox:SetChecked(EasyFind.db.blinkingPins or false) end
+    if optionsFrame.autoTrackPinsCheckbox then optionsFrame.autoTrackPinsCheckbox:SetChecked(EasyFind.db.autoTrackPins ~= false) end
+    if optionsFrame.autoPinClearCheckbox then optionsFrame.autoPinClearCheckbox:SetChecked(EasyFind.db.autoPinClear ~= false) end
     if optionsFrame.UpdateMapToggleVisual then optionsFrame.UpdateMapToggleVisual() end
 
     if optionsFrame.indicatorBtnText then optionsFrame.indicatorBtnText:SetText(EasyFind.db.indicatorStyle or "EasyFind Arrow") end
@@ -207,34 +198,56 @@ local function SyncOptionControls()
         optionsFrame.colorBtnText:SetText(clr)
         optionsFrame.colorBtnText:SetTextColor(rgb[1], rgb[2], rgb[3])
     end
-    if optionsFrame.colorSwatch then optionsFrame.colorSwatch:SetColorTexture(rgb[1], rgb[2], rgb[3], 1) end
-
     if optionsFrame.toggleFocusBtn then optionsFrame.toggleFocusBtn:SetText(GetBindingKey("EASYFIND_TOGGLE_FOCUS") or "Not Bound") end
     if optionsFrame.mapFocusBtn then optionsFrame.mapFocusBtn:SetText(GetBindingKey("EASYFIND_MAP_FOCUS") or "Not Bound") end
     if optionsFrame.clearBtn then optionsFrame.clearBtn:SetText(GetBindingKey("EASYFIND_CLEAR") or "Not Bound") end
 end
 
--- Shared backdrop for selector buttons and flyout panels
-local SELECTOR_BACKDROP = {
-    bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-    edgeFile = TOOLTIP_BORDER,
-    tile = true, tileSize = 16, edgeSize = 12,
-    insets = { left = 2, right = 2, top = 2, bottom = 2 }
-}
+local function PaintRoundedFill(frame, r, g, b, a)
+    if not (frame and frame.combinedBorder and frame.combinedBorder.fill) then return end
+    for _, tex in pairs(frame.combinedBorder.fill) do
+        tex:SetVertexColor(r, g, b, a or 1)
+        tex:SetAlpha(a or 1)
+    end
+end
+
+local function HideRoundedFrameBorder(frame)
+    if not (frame and frame.combinedBorder and frame.combinedBorder.border) then return end
+    for _, tex in pairs(frame.combinedBorder.border) do tex:Hide() end
+end
+
+local function StyleSelectorButton(btnFrame, height)
+    btnFrame:SetBackdrop(nil)
+    ns.CreateRoundedRectBorder(btnFrame)
+    ns.SetRoundedRectBarHeight(btnFrame, mmin(height or 22, 10))
+    HideRoundedFrameBorder(btnFrame)
+    PaintRoundedFill(btnFrame, 0.095, 0.095, 0.108, 1)
+    btnFrame:HookScript("OnEnter", function(self)
+        if self:IsEnabled() then PaintRoundedFill(self, 0.155, 0.155, 0.172, 1) end
+    end)
+    btnFrame:HookScript("OnLeave", function(self)
+        if self:IsEnabled() then PaintRoundedFill(self, 0.095, 0.095, 0.108, 1) end
+    end)
+end
 
 -- Helper to create a flyout selector (button + dropdown panel + toggle + click-away)
 -- Returns: btnFrame, btnText, flyout
 local function CreateFlyoutSelector(parent, globalPrefix, width, anchor, initialText)
     local btnFrame = CreateFrame("Button", globalPrefix .. "Button", parent, "BackdropTemplate")
     btnFrame:SetSize(width, 22)
-    btnFrame:SetPoint("LEFT", anchor, "RIGHT", 8, 0)
-    btnFrame:SetBackdrop(SELECTOR_BACKDROP)
-    btnFrame:SetBackdropColor(0.1, 0.1, 0.1, 0.8)
-    btnFrame:SetBackdropBorderColor(0.6, 0.6, 0.6, 0.8)
+    btnFrame:SetPoint("RIGHT", parent, "RIGHT", -8, 0)
+    StyleSelectorButton(btnFrame, 22)
 
     local btnText = btnFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    btnText:SetPoint("CENTER")
+    btnText:SetPoint("LEFT", btnFrame, "LEFT", 8, 0)
+    btnText:SetPoint("RIGHT", btnFrame, "RIGHT", -18, 0)
+    btnText:SetJustifyH("CENTER")
     btnText:SetText(initialText)
+
+    local arrow = btnFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    arrow:SetPoint("RIGHT", btnFrame, "RIGHT", -6, 0)
+    arrow:SetText("v")
+    btnFrame.arrow = arrow
 
     return btnFrame, btnText
 end
@@ -244,14 +257,19 @@ end
 local function CreateFlyoutPanel(btnFrame, globalPrefix, width, numChoices)
     local flyout = CreateFrame("Frame", globalPrefix .. "Flyout", btnFrame, "BackdropTemplate")
     flyout:SetSize(width, numChoices * 20 + 6)
-    flyout:SetPoint("TOP", btnFrame, "BOTTOM", 0, -2)
+    flyout:SetPoint("TOPRIGHT", btnFrame, "BOTTOMRIGHT", 0, -2)
     flyout:SetFrameStrata("FULLSCREEN_DIALOG")
-    flyout:SetBackdrop(SELECTOR_BACKDROP)
-    flyout:SetBackdropColor(DARK_PANEL_BG[1], DARK_PANEL_BG[2], DARK_PANEL_BG[3], DARK_PANEL_BG[4])
+    flyout:SetBackdrop(nil)
+    ns.CreateRoundedRectBorder(flyout)
+    ns.SetRoundedRectBarHeight(flyout, 10)
+    HideRoundedFrameBorder(flyout)
+    PaintRoundedFill(flyout, 0.08, 0.08, 0.09, 1)
     flyout:Hide()
 
     btnFrame:SetScript("OnClick", function()
-        flyout:SetShown(not flyout:IsShown())
+        local opening = not flyout:IsShown()
+        flyout:SetShown(opening)
+        if btnFrame.arrow then btnFrame.arrow:SetText(opening and "^" or "v") end
     end)
 
     flyout:SetScript("OnShow", function(self)
@@ -265,6 +283,7 @@ local function CreateFlyoutPanel(btnFrame, globalPrefix, width, numChoices)
     end)
     flyout:SetScript("OnHide", function(self)
         self:SetScript("OnUpdate", nil)
+        if btnFrame.arrow then btnFrame.arrow:SetText("v") end
     end)
 
     return flyout
@@ -276,9 +295,24 @@ local function AddFlyoutOptions(flyout, choices, itemWidth, onSelect)
         local flyoutBtn = CreateFrame("Button", nil, flyout)
         flyoutBtn:SetSize(itemWidth, 18)
         flyoutBtn:SetPoint("TOPLEFT", flyout, "TOPLEFT", 3, -3 - (i - 1) * 20)
-        flyoutBtn:SetNormalFontObject("GameFontHighlightSmall")
-        flyoutBtn:SetHighlightFontObject("GameFontNormalSmall")
-        flyoutBtn:SetText(name)
+        local rowBg = CreateFrame("Frame", nil, flyoutBtn)
+        rowBg:SetAllPoints()
+        rowBg:EnableMouse(false)
+        ns.CreateRoundedRectBorder(rowBg)
+        ns.SetRoundedRectBarHeight(rowBg, 9)
+        HideRoundedFrameBorder(rowBg)
+        PaintRoundedFill(rowBg, 1, 1, 1, 0)
+        local label = flyoutBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetPoint("LEFT", flyoutBtn, "LEFT", 6, 0)
+        label:SetPoint("RIGHT", flyoutBtn, "RIGHT", -6, 0)
+        label:SetJustifyH("LEFT")
+        label:SetText(name)
+        flyoutBtn:SetScript("OnEnter", function()
+            PaintRoundedFill(rowBg, 1, 1, 1, 0.06)
+        end)
+        flyoutBtn:SetScript("OnLeave", function()
+            PaintRoundedFill(rowBg, 1, 1, 1, 0)
+        end)
         flyoutBtn:SetScript("OnClick", function()
             onSelect(name)
             flyout:Hide()
@@ -286,369 +320,460 @@ local function AddFlyoutOptions(flyout, choices, itemWidth, onSelect)
     end
 end
 
--- Helper to create a slider (anchored manually by caller)
-local function CreateSlider(parent, name, label, minVal, maxVal, step, tooltipText, formatFunc, defaultValue, unitSuffix)
-    local slider = CreateFrame("Slider", "EasyFindOptions" .. name .. "Slider", parent, "OptionsSliderTemplate")
-    slider:SetWidth(160)
-    slider:SetMinMaxValues(minVal, maxVal)
-    slider:SetValueStep(step)
-    slider:SetObeyStepOnDrag(true)
+-- Helper to create a Raycast-style toggle row (anchored manually by caller).
+-- This remains a CheckButton so existing option code can keep using
+-- SetChecked/GetChecked and OnClick callbacks.
+local function CreateCheckbox(parent, name, label, tooltipText, compact, width)
+    local frameName = name and ("EasyFindOptions" .. name .. "Checkbox") or nil
+    local rowH = compact and 22 or 28
+    local toggleW = compact and 28 or 32
+    local toggleH = compact and 14 or 16
+    local knobSize = toggleH - 2
+    local checkbox = CreateFrame("CheckButton", frameName, parent)
+    checkbox:SetSize(width or (compact and 220 or 330), rowH)
+    checkbox:RegisterForClicks("LeftButtonUp")
 
-    slider.Text = slider:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    slider.Text:SetPoint("BOTTOM", slider, "TOP", 0, 5)
-    slider.Text:SetText(label)
+    local rowBg = CreateFrame("Frame", nil, checkbox)
+    rowBg:SetAllPoints()
+    rowBg:EnableMouse(false)
+    ns.CreateRoundedRectBorder(rowBg)
+    ns.SetRoundedRectBarHeight(rowBg, 8)
+    HideRoundedFrameBorder(rowBg)
+    PaintRoundedFill(rowBg, 1, 1, 1, 0)
+    checkbox.rowBg = rowBg
 
-    -- Use custom format function or default to percentage
-    local isPercentage = not formatFunc  -- Track if using percentage format
-    local defaultFormat = function(val) return sformat("%.0f%%", val * 100) end
-    formatFunc = formatFunc or defaultFormat
+    local text = checkbox:CreateFontString(nil, "OVERLAY", compact and "GameFontHighlightSmall" or "GameFontNormalSmall")
+    text:SetPoint("LEFT", checkbox, "LEFT", compact and 6 or 8, 0)
+    text:SetJustifyH("LEFT")
+    text:SetText(label or "")
+    checkbox.Text = text
 
-    slider.Low:SetText(formatFunc(minVal))
-    slider.High:SetText(formatFunc(maxVal))
+    local track = CreateFrame("Frame", nil, checkbox)
+    track:SetSize(toggleW, toggleH)
+    track:SetPoint("RIGHT", checkbox, "RIGHT", compact and -4 or -8, 0)
+    track:EnableMouse(false)
+    ns.CreateRoundedRectBorder(track)
+    ns.SetRoundedRectBarHeight(track, toggleH)
+    HideRoundedFrameBorder(track)
+    checkbox.track = track
 
-    slider.valueText = slider:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-    slider.valueText:SetPoint("TOP", slider, "BOTTOM", 0, -2)
+    text:SetPoint("RIGHT", track, "LEFT", -8, 0)
 
-    -- Input box for precise value entry (shows just the number, no %)
-    local inputBox = CreateFrame("EditBox", nil, slider, "InputBoxTemplate")
-    inputBox:SetSize(30, 20)  -- Sized to fit 3 digits comfortably
-    inputBox:SetPoint("LEFT", slider, "RIGHT", 10, 0)
-    inputBox:SetAutoFocus(false)
-    inputBox:SetMaxLetters(3)
-    inputBox:SetTextInsets(3, 3, 0, 0)  -- Equal padding for centering
-    inputBox:SetJustifyH("CENTER")
-    -- Also set the font string justification directly
-    if inputBox.GetFontString then
-        local fs = inputBox:GetFontString()
-        if fs then fs:SetJustifyH("CENTER") end
-    end
+    local knob = CreateFrame("Frame", nil, track)
+    knob:SetSize(knobSize, knobSize)
+    knob:EnableMouse(false)
+    ns.CreateRoundedRectBorder(knob)
+    ns.SetRoundedRectBarHeight(knob, knobSize)
+    HideRoundedFrameBorder(knob)
+    PaintRoundedFill(knob, 0.96, 0.96, 0.96, 1)
+    checkbox.knob = knob
 
-    local suffixText = isPercentage and "%" or unitSuffix
-    if suffixText then
-        local suffixLabel = slider:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
-        suffixLabel:SetPoint("LEFT", inputBox, "RIGHT", 2, 0)
-        suffixLabel:SetText(suffixText)
-        slider.suffixLabel = suffixLabel
-    end
-
-    -- Helper to get display value (for percentage: multiply by 100)
-    local function getDisplayValue(sliderValue)
-        if isPercentage then
-            return mfloor(sliderValue * 100 + 0.5)
+    local function UpdateVisual(self)
+        local enabled = self:IsEnabled()
+        local checked = self:GetChecked()
+        local rowAlpha = self:IsMouseOver() and enabled and 0.055 or 0
+        PaintRoundedFill(self.rowBg, 1, 1, 1, rowAlpha)
+        if checked and enabled then
+            PaintRoundedFill(track, 0.17, 0.48, 0.72, 1)
+            text:SetTextColor(1, 1, 1, 1)
+        elseif checked then
+            PaintRoundedFill(track, 0.13, 0.25, 0.34, 1)
+            text:SetTextColor(0.55, 0.55, 0.55, 1)
+        elseif enabled then
+            PaintRoundedFill(track, 0.23, 0.23, 0.25, 1)
+            text:SetTextColor(0.88, 0.88, 0.88, 1)
         else
-            return mfloor(sliderValue + 0.5)
+            PaintRoundedFill(track, 0.13, 0.13, 0.14, 1)
+            text:SetTextColor(0.50, 0.50, 0.50, 1)
         end
-    end
 
-    -- Helper to convert display value to slider value
-    local function getSliderValue(displayValue)
-        if isPercentage then
-            return displayValue / 100
+        knob:ClearAllPoints()
+        if checked then
+            knob:SetPoint("RIGHT", track, "RIGHT", -1, 0)
         else
-            return displayValue
+            knob:SetPoint("LEFT", track, "LEFT", 1, 0)
         end
     end
 
-    inputBox:SetScript("OnEnterPressed", function(self)
-        local val = tonumber(self:GetText())
-        if val then
-            -- Valid number: clamp to bounds and update slider
-            local sliderVal = getSliderValue(val)
-            sliderVal = mmax(minVal, mmin(maxVal, sliderVal))
-            slider:SetValue(sliderVal)
-            -- Update input box to show the actual clamped value
-            self:SetText(tostring(getDisplayValue(sliderVal)))
-        else
-            -- Invalid input: revert to current slider value
-            self:SetText(tostring(getDisplayValue(slider:GetValue())))
-        end
-        self:ClearFocus()
-    end)
-
-    inputBox:SetScript("OnEscapePressed", function(self)
-        self:SetText(tostring(getDisplayValue(slider:GetValue())))
-        self:ClearFocus()
-    end)
-
-    -- Update both valueText and input box when slider changes
-    slider:SetScript("OnValueChanged", function(self, value)
-        self.valueText:SetText(formatFunc(value))
-        if not inputBox:HasFocus() then
-            inputBox:SetText(tostring(getDisplayValue(value)))
-        end
-    end)
-
-    -- Set initial value
-    inputBox:SetText(tostring(getDisplayValue(slider:GetValue())))
-
-    slider.inputBox = inputBox
-
-    if defaultValue then
-        local resetBtn = CreateFrame("Button", nil, slider)
-        resetBtn:SetSize(30, 12)
-        resetBtn:SetPoint("TOP", inputBox, "BOTTOM", 0, -1)
-        local resetText = resetBtn:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-        resetText:SetPoint("CENTER")
-        resetText:SetText("Reset")
-        resetBtn:SetScript("OnEnter", function()
-            resetText:SetTextColor(1, 1, 1)
-        end)
-        resetBtn:SetScript("OnLeave", function()
-            resetText:SetTextColor(0.5, 0.5, 0.5)
-        end)
-        resetBtn:SetScript("OnClick", function()
-            slider:SetValue(defaultValue)
-        end)
-        slider.resetBtn = resetBtn
+    local rawSetChecked = checkbox.SetChecked
+    checkbox.SetChecked = function(self, checked)
+        rawSetChecked(self, checked)
+        UpdateVisual(self)
+    end
+    checkbox.RefreshVisual = UpdateVisual
+    checkbox.GetFontString = function(self) return self.Text end
+    checkbox.SetText = function(self, value)
+        self.Text:SetText(value or "")
     end
 
-    if tooltipText then
-        slider:SetScript("OnEnter", function(self)
+    checkbox:HookScript("OnClick", UpdateVisual)
+    checkbox:HookScript("OnEnter", function(self)
+        UpdateVisual(self)
+        if tooltipText then
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetText(label)
             GameTooltip:AddLine(tooltipText, 1, 1, 1, true)
             GameTooltip:Show()
-        end)
-        slider:SetScript("OnLeave", GameTooltip_Hide)
-    end
+        end
+    end)
+    checkbox:HookScript("OnLeave", function(self)
+        UpdateVisual(self)
+        if tooltipText then GameTooltip_Hide() end
+    end)
+    checkbox:HookScript("OnEnable", UpdateVisual)
+    checkbox:HookScript("OnDisable", UpdateVisual)
 
-    return slider
-end
-
--- Helper to create a checkbox (anchored manually by caller)
-local function CreateCheckbox(parent, name, label, tooltipText)
-    local checkbox = CreateFrame("CheckButton", "EasyFindOptions" .. name .. "Checkbox", parent, "InterfaceOptionsCheckButtonTemplate")
-    checkbox.Text:SetText(label)
-
-    if tooltipText then
-        checkbox:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(label)
-            GameTooltip:AddLine(tooltipText, 1, 1, 1, true)
-            GameTooltip:Show()
-        end)
-        checkbox:SetScript("OnLeave", GameTooltip_Hide)
-    end
-
+    UpdateVisual(checkbox)
     return checkbox
-end
-
--- Multi-select dropdown: a label + button that opens a flyout with checkboxes.
--- optionDefs: array of { label, dbKey, default, tooltip, callback }
--- Returns a wrapper frame with :UpdateVisuals(), :SetGroupEnabled(bool),
--- :AddSlider(...), and .flyout / .checkRows / .sliders fields.
-local function CreateMultiSelectDropdown(parent, groupLabel, optionDefs, btnWidth, flyoutWidth)
-    btnWidth = btnWidth or 160
-    flyoutWidth = flyoutWidth or btnWidth
-
-    local wrapper = CreateFrame("Frame", nil, parent)
-    wrapper:SetHeight(22)
-
-    local label = wrapper:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    label:SetPoint("LEFT", 4, 0)
-    label:SetText(groupLabel .. ":")
-    wrapper.label = label
-
-    local btnFrame = CreateFrame("Button", nil, wrapper)
-    btnFrame:SetSize(btnWidth, 22)
-    wrapper.button = btnFrame
-
-    -- WoW-style dropdown button
-    local btnBg = btnFrame:CreateTexture(nil, "BACKGROUND")
-    btnBg:SetAllPoints()
-    btnBg:SetAtlas("common-dropdown-b-button-hover")
-    btnFrame.bg = btnBg
-
-    -- Summary text: comma-separated short names of active options
-    local function GetSummaryText()
-        local parts = {}
-        for _, def in ipairs(optionDefs) do
-            if not def.hiddenFromSummary then
-                local val = EasyFind.db[def.dbKey]
-                if val == nil then val = def.default end
-                if val then tinsert(parts, def.shortLabel or def.label) end
-            end
-        end
-        if #parts == 0 then return "None" end
-        return tconcat(parts, ", ")
-    end
-
-    local btnText = btnFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    btnText:SetPoint("LEFT", 4, 0)
-    btnText:SetPoint("RIGHT", -16, 0)
-    btnText:SetJustifyH("CENTER")
-    btnText:SetText(GetSummaryText())
-    wrapper.btnText = btnText
-
-    local arrow = btnFrame:CreateTexture(nil, "OVERLAY")
-    arrow:SetSize(16, 16)
-    arrow:SetPoint("RIGHT", -2, 0)
-    arrow:SetAtlas("common-dropdown-b-arrow-closed")
-    btnFrame.arrow = arrow
-
-    -- Flyout panel with checkboxes (and optional sliders via AddSlider).
-    -- Parented to UIParent so it isn't clipped by the options frame.
-    local ROW_H = 22
-    local flyout = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-    flyout:SetSize(flyoutWidth, #optionDefs * ROW_H + 8)
-    flyout:SetFrameStrata("FULLSCREEN_DIALOG")
-    flyout:SetFrameLevel(900)
-    flyout:SetBackdrop({
-        bgFile = "Interface\\BUTTONS\\WHITE8X8",
-        edgeFile = TOOLTIP_BORDER,
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 },
-    })
-    flyout:SetBackdropColor(0.08, 0.08, 0.08, 1)
-    flyout:Hide()
-    wrapper.flyout = flyout
-
-    -- Track vertical cursor for adding content (checkboxes, then sliders)
-    local contentH = #optionDefs * ROW_H + 4
-
-    btnFrame:SetScript("OnClick", function()
-        flyout:ClearAllPoints()
-        flyout:SetPoint("TOP", btnFrame, "BOTTOM", 0, -2)
-        local opening = not flyout:IsShown()
-        flyout:SetShown(opening)
-        arrow:SetAtlas(opening and "common-dropdown-b-arrow-open" or "common-dropdown-b-arrow-closed")
-    end)
-
-    -- Click-away to close
-    flyout:SetScript("OnShow", function(self)
-        self:SetScript("OnUpdate", function(self)
-            if not self:IsMouseOver() and not btnFrame:IsMouseOver() then
-                if IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton") then
-                    self:Hide()
-                end
-            end
-        end)
-    end)
-    flyout:SetScript("OnHide", function(self)
-        self:SetScript("OnUpdate", nil)
-        arrow:SetAtlas("common-dropdown-b-arrow-closed")
-    end)
-
-    wrapper.checkRows = {}
-    for i, def in ipairs(optionDefs) do
-        local row = CreateFrame("CheckButton", nil, flyout, "InterfaceOptionsCheckButtonTemplate")
-        local indent = def.indent and 16 or 0
-        row:SetPoint("TOPLEFT", flyout, "TOPLEFT", 4 + indent, -4 - (i - 1) * ROW_H)
-        row.Text:SetText(def.label)
-        row.Text:SetFontObject("GameFontHighlightSmall")
-
-        local val = EasyFind.db[def.dbKey]
-        if val == nil then val = def.default end
-        row:SetChecked(val)
-
-        row:SetScript("OnClick", function(self)
-            EasyFind.db[def.dbKey] = self:GetChecked()
-            btnText:SetText(GetSummaryText())
-            if def.callback then def.callback() end
-        end)
-
-        if def.tooltip then
-            row:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(def.label)
-                GameTooltip:AddLine(def.tooltip, 1, 1, 1, true)
-                GameTooltip:Show()
-            end)
-            row:SetScript("OnLeave", GameTooltip_Hide)
-        end
-
-        row.dbKey = def.dbKey
-        row.defaultVal = def.default
-        row.parentDbKey = def.parentDbKey
-        tinsert(wrapper.checkRows, row)
-    end
-
-    wrapper.sliders = {}
-
-    -- Update enabled state of child options based on parent
-    local function UpdateChildStates()
-        for _, row in ipairs(wrapper.checkRows) do
-            if row.parentDbKey then
-                local parentVal = EasyFind.db[row.parentDbKey]
-                if parentVal == nil then parentVal = true end
-                if parentVal then
-                    row:Enable()
-                    if row.Text then row.Text:SetTextColor(1, 1, 1) end
-                else
-                    row:Disable()
-                    if row.Text then row.Text:SetTextColor(0.5, 0.5, 0.5) end
-                end
-            end
-        end
-        for _, slider in ipairs(wrapper.sliders) do
-            if slider.parentDbKey then
-                local parentVal = EasyFind.db[slider.parentDbKey]
-                if parentVal == nil then parentVal = true end
-                if parentVal then
-                    slider:Enable()
-                    if slider.Text then slider.Text:SetTextColor(1.0, 0.82, 0.0) end
-                    if slider.Low then slider.Low:SetTextColor(0.7, 0.7, 0.7) end
-                    if slider.High then slider.High:SetTextColor(0.7, 0.7, 0.7) end
-                    if slider.valueText then slider.valueText:SetTextColor(1, 1, 1) end
-                    if slider.inputBox then slider.inputBox:Enable(); slider.inputBox:SetTextColor(1, 1, 1) end
-                    if slider.suffixLabel then slider.suffixLabel:SetTextColor(1, 1, 1) end
-                    if slider.resetBtn then slider.resetBtn:Enable() end
-                else
-                    slider:Disable()
-                    if slider.Text then slider.Text:SetTextColor(0.5, 0.5, 0.5) end
-                    if slider.Low then slider.Low:SetTextColor(0.4, 0.4, 0.4) end
-                    if slider.High then slider.High:SetTextColor(0.4, 0.4, 0.4) end
-                    if slider.valueText then slider.valueText:SetTextColor(0.4, 0.4, 0.4) end
-                    if slider.inputBox then slider.inputBox:Disable(); slider.inputBox:SetTextColor(0.4, 0.4, 0.4) end
-                    if slider.suffixLabel then slider.suffixLabel:SetTextColor(0.4, 0.4, 0.4) end
-                    if slider.resetBtn then slider.resetBtn:Disable() end
-                end
-            end
-        end
-    end
-
-    -- Hook OnClick to refresh child states after any toggle
-    for _, row in ipairs(wrapper.checkRows) do
-        row:HookScript("OnClick", function() UpdateChildStates() end)
-    end
-    UpdateChildStates()
-
-    -- Add a slider inside the flyout, below existing content.
-    -- Returns the slider frame. Uses the same API as CreateSlider.
-    function wrapper:AddSlider(name, sliderLabel, minVal, maxVal, step, tooltipText, formatFunc, defaultValue, unitSuffix, parentDbKey)
-        contentH = contentH + 18
-        local slider = CreateSlider(flyout, name, sliderLabel, minVal, maxVal, step, tooltipText, formatFunc, defaultValue, unitSuffix)
-        local sliderIndent = parentDbKey and 30 or 14
-        slider:SetWidth(flyoutWidth - 110 - (sliderIndent - 14))
-        slider:SetPoint("TOPLEFT", flyout, "TOPLEFT", sliderIndent, -contentH)
-        contentH = contentH + 36
-        flyout:SetHeight(contentH + 4)
-        slider.parentDbKey = parentDbKey
-        tinsert(self.sliders, slider)
-        if parentDbKey then UpdateChildStates() end
-        return slider
-    end
-
-    function wrapper:UpdateVisuals()
-        for _, row in ipairs(self.checkRows) do
-            local val = EasyFind.db[row.dbKey]
-            if val == nil then val = row.defaultVal end
-            row:SetChecked(val)
-        end
-        btnText:SetText(GetSummaryText())
-    end
-
-    function wrapper:SetGroupEnabled(enabled)
-        if enabled then btnFrame:Enable() else btnFrame:Disable() end
-        self:SetAlpha(enabled and 1.0 or 0.35)
-        if not enabled and flyout:IsShown() then flyout:Hide() end
-    end
-
-    return wrapper
 end
 
 local DISABLED_TEXT = { 0.5, 0.5, 0.5 }
 local NORMAL_TEXT = ns.GOLD_COLOR
+local OPTIONS_PANEL_SCALE = 0.88
+local TEXT_PRIMARY = { 1.00, 0.97, 0.86 }
+local TEXT_BODY = { 0.78, 0.78, 0.80 }
+local TEXT_DIM = { 0.55, 0.55, 0.58 }
+local NAV_SELECTED = { 0.15, 0.15, 0.17, 0.95 }
+local NAV_HOVER = { 0.11, 0.11, 0.13, 0.85 }
+local NAV_CLEAR = { 0, 0, 0, 0 }
+
+local function TintRoundedFill(frame, r, g, b)
+    if not (frame and frame.combinedBorder and frame.combinedBorder.fill) then return end
+    for _, tex in pairs(frame.combinedBorder.fill) do
+        tex:SetVertexColor(r, g, b, 1)
+        if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(false) end
+        if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
+    end
+end
+
+local function HideRoundedBorder(frame)
+    if not (frame and frame.combinedBorder and frame.combinedBorder.border) then return end
+    for _, tex in pairs(frame.combinedBorder.border) do tex:Hide() end
+end
+
+local function ApplyWizardPanelGloss(frame)
+    local fill = frame.combinedBorder and frame.combinedBorder.fill
+    if not fill then return end
+    local H = frame:GetHeight()
+    if not H or H <= 0 then return end
+    local corner = (frame.cbBarHeight or 32) / 2
+    local darkFrac = 0.90
+    local function smoothstep(t)
+        if t <= 0 then return 0 end
+        if t >= 1 then return 1 end
+        return t * t * (3 - 2 * t)
+    end
+    local function lerp(a, b, t) return a + (b - a) * t end
+    local function colorAtY(y)
+        local t = y / H
+        if t < darkFrac then t = 0 else t = smoothstep((t - darkFrac) / (1 - darkFrac)) end
+        return lerp(0.022, 0.20, t), lerp(0.022, 0.20, t), lerp(0.030, 0.22, t)
+    end
+    local function ramp(cell, yTop, yBot)
+        if not cell then return end
+        local r1, g1, b1 = colorAtY(yTop)
+        local r2, g2, b2 = colorAtY(yBot)
+        cell:SetGradient("VERTICAL", CreateColor(r2, g2, b2, 1), CreateColor(r1, g1, b1, 1))
+    end
+    ramp(fill.tl, 0, corner); ramp(fill.tm, 0, corner); ramp(fill.tr, 0, corner)
+    ramp(fill.ml, corner, H - corner); ramp(fill.mm, corner, H - corner); ramp(fill.mr, corner, H - corner)
+    ramp(fill.bl, H - corner, H); ramp(fill.bm, H - corner, H); ramp(fill.br, H - corner, H)
+end
+
+local function StyleWizardBackground(frame)
+    ns.CreateRoundedRectBorder(frame)
+    ns.SetRoundedRectBarHeight(frame, 16)
+    ns.SetRoundedRectBorderBgAlpha(frame, OPTIONS_PANEL_ALPHA)
+    HideRoundedBorder(frame)
+    TintRoundedFill(frame, 0.04, 0.04, 0.05)
+    ApplyWizardPanelGloss(frame)
+    frame:HookScript("OnSizeChanged", ApplyWizardPanelGloss)
+end
+
+local function CreateModernCloseButton(parent)
+    local closeBtn = CreateFrame("Button", nil, parent)
+    closeBtn:SetSize(18, 18)
+    closeBtn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -10)
+    local function MakeStroke()
+        local tex = closeBtn:CreateTexture(nil, "OVERLAY")
+        tex:SetTexture("Interface\\Buttons\\WHITE8x8")
+        tex:SetSize(16, 1.5)
+        tex:SetPoint("CENTER")
+        return tex
+    end
+    local stroke1 = MakeStroke(); stroke1:SetRotation(math.pi / 4)
+    local stroke2 = MakeStroke(); stroke2:SetRotation(-math.pi / 4)
+    local function SetColor(r, g, b)
+        stroke1:SetVertexColor(r, g, b, 1)
+        stroke2:SetVertexColor(r, g, b, 1)
+    end
+    SetColor(TEXT_DIM[1], TEXT_DIM[2], TEXT_DIM[3])
+    closeBtn:SetScript("OnEnter", function() SetColor(1, 1, 1) end)
+    closeBtn:SetScript("OnLeave", function() SetColor(TEXT_DIM[1], TEXT_DIM[2], TEXT_DIM[3]) end)
+    closeBtn:SetScript("OnClick", function() parent:Hide() end)
+    return closeBtn
+end
+
+local function SetModernButtonFill(btn, r, g, b)
+    if not (btn and btn.combinedBorder and btn.combinedBorder.fill) then return end
+    for _, tex in pairs(btn.combinedBorder.fill) do
+        tex:SetVertexColor(r, g, b, 1)
+    end
+end
+
+local function SetModernButtonAlpha(btn, alpha)
+    if not (btn and btn.combinedBorder and btn.combinedBorder.fill) then return end
+    for _, tex in pairs(btn.combinedBorder.fill) do tex:SetAlpha(alpha) end
+end
+
+local function SetNavButtonBg(btn, color)
+    SetModernButtonFill(btn, color[1], color[2], color[3])
+    SetModernButtonAlpha(btn, color[4] or 1)
+end
+
+local function CreateModernButton(parent, text, width, height)
+    local btn = CreateFrame("Button", nil, parent)
+    local rawSetSize = btn.SetSize
+    rawSetSize(btn, width or 120, height or 22)
+
+    ns.CreateRoundedRectBorder(btn)
+    ns.SetRoundedRectBarHeight(btn, mmin(height or 22, 10))
+    ns.SetRoundedRectBorderBgAlpha(btn, 1)
+    HideRoundedBorder(btn)
+    SetModernButtonFill(btn, 0.095, 0.095, 0.108)
+
+    local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    label:SetPoint("CENTER")
+    label:SetText(text or "")
+    label:SetTextColor(1, 1, 1, 1)
+    btn._label = label
+
+    btn.SetText = function(self, value)
+        if self._label then self._label:SetText(value or "") end
+    end
+    btn.GetText = function(self)
+        return self._label and self._label:GetText() or ""
+    end
+    btn.SetSize = function(self, w, h)
+        rawSetSize(self, w, h)
+        ns.SetRoundedRectBarHeight(self, mmin(h or self:GetHeight() or 22, 10))
+    end
+
+    local rawSetNormalFont = btn.SetNormalFontObject
+    btn.SetNormalFontObject = function(self, fontObject)
+        if rawSetNormalFont then rawSetNormalFont(self, fontObject) end
+        if self._label then self._label:SetFontObject(fontObject) end
+    end
+    local rawSetHighlightFont = btn.SetHighlightFontObject
+    btn.SetHighlightFontObject = function(self, fontObject)
+        if rawSetHighlightFont then rawSetHighlightFont(self, fontObject) end
+    end
+
+    btn:SetScript("OnEnter", function(self)
+        if self:IsEnabled() then SetModernButtonFill(self, 0.155, 0.155, 0.172) end
+    end)
+    btn:SetScript("OnLeave", function(self)
+        if self:IsEnabled() then SetModernButtonFill(self, 0.095, 0.095, 0.108) end
+    end)
+    btn:SetScript("OnMouseDown", function(self)
+        if self:IsEnabled() then SetModernButtonFill(self, 0.065, 0.065, 0.078) end
+    end)
+    btn:SetScript("OnMouseUp", function(self)
+        if self:IsEnabled() then
+            if self:IsMouseOver() then SetModernButtonFill(self, 0.155, 0.155, 0.172)
+            else SetModernButtonFill(self, 0.095, 0.095, 0.108) end
+        end
+    end)
+    btn:SetScript("OnDisable", function(self)
+        SetModernButtonFill(self, 0.070, 0.070, 0.080)
+        if self._label then self._label:SetTextColor(TEXT_DIM[1], TEXT_DIM[2], TEXT_DIM[3], 1) end
+    end)
+    btn:SetScript("OnEnable", function(self)
+        SetModernButtonFill(self, 0.095, 0.095, 0.108)
+        if self._label then self._label:SetTextColor(1, 1, 1, 1) end
+    end)
+
+    if text then btn:SetText(text) end
+    return btn
+end
+
+local function CreateSettingsGroup(parent, width, height)
+    local group = CreateFrame("Frame", nil, parent)
+    group:SetSize(width, height)
+    ns.CreateRoundedRectBorder(group)
+    ns.SetRoundedRectBarHeight(group, 8)
+    HideRoundedBorder(group)
+    PaintRoundedFill(group, 0.060, 0.060, 0.070, 0.94)
+    group.controls = {}
+    group.AddControl = function(self, control)
+        if control then tinsert(self.controls, control) end
+        return control
+    end
+    group.SetGroupEnabled = function(self, enabled)
+        self:SetAlpha(enabled and 1.0 or 0.35)
+        for _, control in ipairs(self.controls) do
+            if control.SetGroupEnabled then
+                control:SetGroupEnabled(enabled)
+            elseif control.Enable and control.Disable then
+                if enabled then control:Enable() else control:Disable() end
+            end
+        end
+    end
+    return group
+end
+
+local function FindNearestChoice(choices, value)
+    local best = choices[1]
+    local bestDelta
+    for _, choice in ipairs(choices) do
+        local delta = math.abs((value or choice.value) - choice.value)
+        if not bestDelta or delta < bestDelta then
+            best = choice
+            bestDelta = delta
+        end
+    end
+    return best
+end
+
+local function PaintPresetButton(btn, active, hover, enabled)
+    if not enabled then
+        SetModernButtonFill(btn, 0.070, 0.070, 0.080)
+        if btn._label then btn._label:SetTextColor(TEXT_DIM[1], TEXT_DIM[2], TEXT_DIM[3], 1) end
+    elseif active then
+        SetModernButtonFill(btn, 0.17, 0.48, 0.72)
+        if btn._label then btn._label:SetTextColor(1, 1, 1, 1) end
+    elseif hover then
+        SetModernButtonFill(btn, 0.155, 0.155, 0.172)
+        if btn._label then btn._label:SetTextColor(1, 1, 1, 1) end
+    else
+        SetModernButtonFill(btn, 0.095, 0.095, 0.108)
+        if btn._label then btn._label:SetTextColor(TEXT_BODY[1], TEXT_BODY[2], TEXT_BODY[3], 1) end
+    end
+end
+
+local function CreatePresetRow(parent, labelText, choices, getter, setter, tooltipText, width)
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetSize(width or 330, 28)
+    row.enabled = true
+
+    local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    label:SetPoint("LEFT", row, "LEFT", 8, 0)
+    local controlW = (#choices == 3) and 174 or 184
+    label:SetPoint("RIGHT", row, "RIGHT", -controlW - 18, 0)
+    label:SetJustifyH("LEFT")
+    label:SetText(labelText)
+    row.label = label
+
+    row.buttons = {}
+    local btnW = math.floor(controlW / #choices)
+    local right = -8
+    for i = #choices, 1, -1 do
+        local choice = choices[i]
+        local btn = CreateModernButton(row, choice.label, btnW, 20)
+        ns.SetRoundedRectBarHeight(btn, 16)
+        btn.choice = choice
+        btn:SetPoint("RIGHT", row, "RIGHT", right, 0)
+        right = right - btnW - 2
+        btn:SetScript("OnClick", function(self)
+            if not row.enabled then return end
+            setter(self.choice.value)
+            row:SetValue(self.choice.value)
+        end)
+        btn:SetScript("OnEnter", function(self)
+            PaintPresetButton(self, row.activeValue == self.choice.value, true, row.enabled)
+            if tooltipText then
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(labelText)
+                GameTooltip:AddLine(tooltipText, 1, 1, 1, true)
+                GameTooltip:Show()
+            end
+        end)
+        btn:SetScript("OnLeave", function(self)
+            PaintPresetButton(self, row.activeValue == self.choice.value, false, row.enabled)
+            if tooltipText then GameTooltip_Hide() end
+        end)
+        row.buttons[i] = btn
+    end
+
+    row.SetValue = function(self, value)
+        local choice = FindNearestChoice(choices, value)
+        self.activeValue = choice and choice.value
+        for _, btn in ipairs(self.buttons) do
+            PaintPresetButton(btn, self.activeValue == btn.choice.value, false, self.enabled)
+        end
+    end
+    row.SetGroupEnabled = function(self, enabled)
+        self.enabled = enabled
+        self:SetAlpha(enabled and 1.0 or 0.35)
+        for _, btn in ipairs(self.buttons) do
+            if enabled then btn:Enable() else btn:Disable() end
+            PaintPresetButton(btn, self.activeValue == btn.choice.value, false, enabled)
+        end
+    end
+
+    row:SetValue(getter())
+    return row
+end
+
+local function CreateStepperRow(parent, labelText, minVal, maxVal, getter, setter, tooltipText, width)
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetSize(width or 330, 28)
+    row.enabled = true
+
+    local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    label:SetPoint("LEFT", row, "LEFT", 8, 0)
+    label:SetPoint("RIGHT", row, "RIGHT", -112, 0)
+    label:SetJustifyH("LEFT")
+    label:SetText(labelText)
+
+    local plusBtn = CreateModernButton(row, "+", 24, 20)
+    plusBtn:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+    local valueText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    valueText:SetSize(32, 20)
+    valueText:SetPoint("RIGHT", plusBtn, "LEFT", -4, 0)
+    valueText:SetJustifyH("CENTER")
+    local minusBtn = CreateModernButton(row, "-", 24, 20)
+    minusBtn:SetPoint("RIGHT", valueText, "LEFT", -4, 0)
+
+    local function SetValue(value)
+        value = mmax(minVal, mmin(maxVal, mfloor((value or minVal) + 0.5)))
+        setter(value)
+        valueText:SetText(tostring(value))
+    end
+    local function Step(delta)
+        if row.enabled then SetValue((getter() or minVal) + delta) end
+    end
+    minusBtn:SetScript("OnClick", function() Step(-1) end)
+    plusBtn:SetScript("OnClick", function() Step(1) end)
+
+    if tooltipText then
+        row:EnableMouse(true)
+        row:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(labelText)
+            GameTooltip:AddLine(tooltipText, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+        row:SetScript("OnLeave", GameTooltip_Hide)
+    end
+
+    row.SetValue = function(_, value)
+        valueText:SetText(tostring(mmax(minVal, mmin(maxVal, mfloor((value or minVal) + 0.5)))))
+    end
+    row.SetGroupEnabled = function(self, enabled)
+        self.enabled = enabled
+        self:SetAlpha(enabled and 1.0 or 0.35)
+        if enabled then
+            minusBtn:Enable()
+            plusBtn:Enable()
+        else
+            minusBtn:Disable()
+            plusBtn:Disable()
+        end
+    end
+    row:SetValue(getter())
+    return row
+end
 
 local function SetControlsEnabled(controls, enabled)
     for _, ctrl in ipairs(controls) do
@@ -659,6 +784,7 @@ local function SetControlsEnabled(controls, enabled)
                 local r, g, b = enabled and 1.0 or DISABLED_TEXT[1], enabled and 1.0 or DISABLED_TEXT[2], enabled and 1.0 or DISABLED_TEXT[3]
                 ctrl.Text:SetTextColor(r, g, b)
             end
+            if ctrl.RefreshVisual then ctrl:RefreshVisual() end
         elseif objType == "Slider" then
             if enabled then ctrl:Enable() else ctrl:Disable() end
             if ctrl.Text then
@@ -690,17 +816,17 @@ end
 function Options:Initialize()
     if isInitialized then return end
 
-    local FRAME_W    = 380
-    local FRAME_H    = 380
+    local WINDOW_W   = 544
+    local WINDOW_H   = 408
+    local SIDEBAR_W  = 132
+    local FRAME_W    = WINDOW_W - SIDEBAR_W - 46
     local COL_LEFT   = 4      -- Left column offset within content frames
-    local BTN_OFFSET = 105    -- Label LEFT to button LEFT (aligns selectors/keybinds)
-    local CONTENT_Y  = -68    -- Y where tab content starts (below tab bar)
-    local CONTENT_H  = 294    -- Fixed content area height
 
-    -- Create the main options frame (fixed size)
+    -- Create the main options frame (same footprint as the onboarding wizard)
     optionsFrame = CreateFrame("Frame", "EasyFindOptionsFrame", UIParent, "BackdropTemplate")
     ns.optionsFrame = optionsFrame
-    optionsFrame:SetSize(FRAME_W, FRAME_H)
+    optionsFrame:SetSize(WINDOW_W, WINDOW_H)
+    optionsFrame:SetScale(OPTIONS_PANEL_SCALE)
     if EasyFind.db.optionsPosition then
         local pos = EasyFind.db.optionsPosition
         optionsFrame:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4])
@@ -719,60 +845,61 @@ function Options:Initialize()
         EasyFind.db.optionsPosition = {point, relPoint, x, y}
     end)
 
-    optionsFrame:SetBackdrop(FRAME_BACKDROP)
-    optionsFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
+    optionsFrame:SetBackdrop(nil)
 
-    local bgTex = optionsFrame:CreateTexture(nil, "BACKGROUND", nil, -1)
-    bgTex:SetPoint("TOPLEFT", 4, -4)
-    bgTex:SetPoint("BOTTOMRIGHT", -4, 4)
-    bgTex:SetAtlas("QuestLog-main-background", false)
-    bgTex:SetAlpha(EasyFind.db.panelOpacity or 0.9)
+    local bgTex = CreateFrame("Frame", nil, optionsFrame)
+    bgTex:SetAllPoints(optionsFrame)
+    bgTex:EnableMouse(false)
+    StyleWizardBackground(bgTex)
+    bgTex:SetAlpha(OPTIONS_PANEL_ALPHA)
     optionsFrame.bgTex = bgTex
 
-    -- Title
-    local title = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOP", optionsFrame, "TOP", 0, -16)
-    title:SetText("EasyFind Options")
+    local sidebar = CreateFrame("Frame", nil, optionsFrame)
+    sidebar:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 10, -10)
+    sidebar:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", 10, 10)
+    sidebar:SetWidth(SIDEBAR_W)
+    optionsFrame.sidebar = sidebar
+    ns.CreateRoundedRectBorder(sidebar)
+    ns.SetRoundedRectBarHeight(sidebar, 14)
+    ns.SetRoundedRectBorderBgAlpha(sidebar, 0.72)
+    HideRoundedBorder(sidebar)
+    TintRoundedFill(sidebar, 0.035, 0.035, 0.042)
+
+    local divider = optionsFrame:CreateTexture(nil, "ARTWORK")
+    divider:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 8, -2)
+    divider:SetPoint("BOTTOMLEFT", sidebar, "BOTTOMRIGHT", 8, 2)
+    divider:SetWidth(1)
+    divider:SetColorTexture(1, 1, 1, 0.08)
+
+    -- Sidebar title
+    local title = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    title:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 4, -6)
+    title:SetText("Settings")
+    title:SetTextColor(TEXT_BODY[1], TEXT_BODY[2], TEXT_BODY[3], 1)
     optionsFrame.titleText = title
 
     -- Close button
-    local closeBtn = CreateFrame("Button", nil, optionsFrame, "UIPanelCloseButton")
-    closeBtn:SetPoint("TOPRIGHT", optionsFrame, "TOPRIGHT", -5, -5)
+    local closeBtn = CreateModernCloseButton(optionsFrame)
     optionsFrame.closeBtn = closeBtn
 
-    -- Content border (all tabs render inside this)
-    local contentBorder = CreateFrame("Frame", nil, optionsFrame, "BackdropTemplate")
-    contentBorder:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 12, CONTENT_Y)
-    contentBorder:SetPoint("TOPRIGHT", optionsFrame, "TOPRIGHT", -12, CONTENT_Y)
-    contentBorder:SetHeight(CONTENT_H)
-    contentBorder:SetBackdrop({
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        edgeSize = 14,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    })
-    contentBorder:SetBackdropBorderColor(0.5, 0.5, 0.5, 0.6)
+    -- Content host (all tabs render inside this)
+    local contentBorder = CreateFrame("Frame", nil, optionsFrame)
+    contentBorder:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", SIDEBAR_W + 32, -46)
+    contentBorder:SetPoint("BOTTOMRIGHT", optionsFrame, "BOTTOMRIGHT", -14, 14)
+    optionsFrame.contentBorder = contentBorder
 
-    -- Tab system using WoW standard tab atlases (flipped for top attachment)
+    -- Left-sidebar tab system
     local tabFrames = {}
     local tabButtons = {}
-
-    -- Flip a texture vertically for top-attached tabs
-    local function FlipV(tex)
-        tex:SetTexCoord(0, 1, 1, 0)
-    end
 
     local function SetTabActive(btn, active)
         btn.isActive = active
         if active then
-            btn.leftActive:Show(); btn.midActive:Show(); btn.rightActive:Show()
-            btn.leftInactive:Hide(); btn.midInactive:Hide(); btn.rightInactive:Hide()
-            btn:SetHeight(32)
-            btn:GetFontString():SetTextColor(1, 1, 1)
+            SetNavButtonBg(btn, NAV_SELECTED)
+            btn.label:SetTextColor(TEXT_PRIMARY[1], TEXT_PRIMARY[2], TEXT_PRIMARY[3], 1)
         else
-            btn.leftActive:Hide(); btn.midActive:Hide(); btn.rightActive:Hide()
-            btn.leftInactive:Show(); btn.midInactive:Show(); btn.rightInactive:Show()
-            btn:SetHeight(28)
-            btn:GetFontString():SetTextColor(1.0, 0.82, 0.0)
+            SetNavButtonBg(btn, NAV_CLEAR)
+            btn.label:SetTextColor(TEXT_BODY[1], TEXT_BODY[2], TEXT_BODY[3], 1)
         end
     end
 
@@ -787,91 +914,41 @@ function Options:Initialize()
     local function CreateTab(tabName)
         local index = #tabFrames + 1
 
-        local btn = CreateFrame("Button", nil, optionsFrame)
-        btn:SetNormalFontObject("GameFontHighlightSmall")
-        btn:SetText(tabName)
+        local btn = CreateFrame("Button", nil, sidebar)
+        btn:SetSize(SIDEBAR_W - 16, 28)
+        btn:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 8, -34 - (index - 1) * 32)
+        ns.CreateRoundedRectBorder(btn)
+        ns.SetRoundedRectBarHeight(btn, 10)
+        ns.SetRoundedRectBorderBgAlpha(btn, 0)
+        HideRoundedBorder(btn)
+        SetNavButtonBg(btn, NAV_CLEAR)
 
-        local textW = btn:GetFontString():GetStringWidth()
-        local tabW = mmax(textW + 28, 48)
-        btn:SetSize(tabW, 28)
+        local label = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetPoint("LEFT", btn, "LEFT", 10, 0)
+        label:SetPoint("RIGHT", btn, "RIGHT", -10, 0)
+        label:SetJustifyH("LEFT")
+        label:SetText(tabName)
+        label:SetTextColor(TEXT_BODY[1], TEXT_BODY[2], TEXT_BODY[3], 1)
+        btn.label = label
 
-        local fs = btn:GetFontString()
-        fs:ClearAllPoints()
-        fs:SetPoint("CENTER", btn, "CENTER", -2, 0)
-        fs:SetJustifyH("CENTER")
-
-        -- Active state textures (flipped vertically for top attachment)
-        local la = btn:CreateTexture(nil, "BACKGROUND")
-        la:SetAtlas("uiframe-activetab-left"); la:SetSize(35, 32)
-        la:SetPoint("BOTTOMLEFT", 0, 0); FlipV(la); la:Hide()
-        btn.leftActive = la
-
-        local ma = btn:CreateTexture(nil, "BACKGROUND")
-        ma:SetAtlas("_uiframe-activetab-center")
-        ma:SetPoint("BOTTOMLEFT", la, "BOTTOMRIGHT", 0, 0)
-        ma:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -35, 0)
-        ma:SetHeight(32); FlipV(ma); ma:Hide()
-        btn.midActive = ma
-
-        local ra = btn:CreateTexture(nil, "BACKGROUND")
-        ra:SetAtlas("uiframe-activetab-right"); ra:SetSize(37, 32)
-        ra:SetPoint("BOTTOMRIGHT", 0, 0); FlipV(ra); ra:Hide()
-        btn.rightActive = ra
-
-        -- Inactive state textures (flipped)
-        local li = btn:CreateTexture(nil, "BACKGROUND")
-        li:SetAtlas("uiframe-tab-left"); li:SetSize(35, 28)
-        li:SetPoint("BOTTOMLEFT", 0, 0); FlipV(li)
-        btn.leftInactive = li
-
-        local mi = btn:CreateTexture(nil, "BACKGROUND")
-        mi:SetAtlas("_uiframe-tab-center")
-        mi:SetPoint("BOTTOMLEFT", li, "BOTTOMRIGHT", 0, 0)
-        mi:SetPoint("BOTTOMRIGHT", btn, "BOTTOMRIGHT", -35, 0)
-        mi:SetHeight(28); FlipV(mi)
-        btn.midInactive = mi
-
-        local ri = btn:CreateTexture(nil, "BACKGROUND")
-        ri:SetAtlas("uiframe-tab-right"); ri:SetSize(37, 28)
-        ri:SetPoint("BOTTOMRIGHT", 0, 0); FlipV(ri)
-        btn.rightInactive = ri
-
-        -- Hover: brighten inactive tabs and switch text to white
         btn:SetScript("OnEnter", function(self)
             if not self.isActive then
-                li:SetVertexColor(1.0, 1.0, 1.0)
-                mi:SetVertexColor(1.0, 1.0, 1.0)
-                ri:SetVertexColor(1.0, 1.0, 1.0)
-                self:GetFontString():SetTextColor(1, 1, 1)
+                SetNavButtonBg(self, NAV_HOVER)
+                self.label:SetTextColor(TEXT_PRIMARY[1], TEXT_PRIMARY[2], TEXT_PRIMARY[3], 1)
             end
         end)
         btn:SetScript("OnLeave", function(self)
             if not self.isActive then
-                li:SetVertexColor(0.75, 0.75, 0.75)
-                mi:SetVertexColor(0.75, 0.75, 0.75)
-                ri:SetVertexColor(0.75, 0.75, 0.75)
-                self:GetFontString():SetTextColor(1.0, 0.82, 0.0)
+                SetNavButtonBg(self, NAV_CLEAR)
+                self.label:SetTextColor(TEXT_BODY[1], TEXT_BODY[2], TEXT_BODY[3], 1)
             end
         end)
-
-        -- Start inactive tabs slightly darker so hover contrast is visible
-        li:SetVertexColor(0.75, 0.75, 0.75)
-        mi:SetVertexColor(0.75, 0.75, 0.75)
-        ri:SetVertexColor(0.75, 0.75, 0.75)
-
-        -- Position: tabs sit above the content border, bottom edges touching it
-        if index == 1 then
-            btn:SetPoint("BOTTOMLEFT", contentBorder, "TOPLEFT", 5, -2)
-        else
-            btn:SetPoint("BOTTOMLEFT", tabButtons[index - 1], "BOTTOMRIGHT", -8, 0)
-        end
         btn:SetScript("OnClick", function() SwitchToTab(index) end)
         tinsert(tabButtons, btn)
 
-        -- Content frame inside the border
+        -- Content frame in the main pane
         local content = CreateFrame("Frame", nil, contentBorder)
-        content:SetPoint("TOPLEFT", 6, -6)
-        content:SetPoint("BOTTOMRIGHT", -6, 6)
+        content:SetAllPoints(contentBorder)
         content:Hide()
         tinsert(tabFrames, content)
 
@@ -938,14 +1015,14 @@ function Options:Initialize()
     end
 
     local function MakeKeybindTooltip(keybindBtn, titleText, line1)
-        keybindBtn:SetScript("OnEnter", function(self)
+        keybindBtn:HookScript("OnEnter", function(self)
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             GameTooltip:SetText(titleText)
             GameTooltip:AddLine(line1, 1, 1, 1, true)
             GameTooltip:AddLine("Right-click to clear. Escape to cancel.", 0.7, 0.7, 0.7, true)
             GameTooltip:Show()
         end)
-        keybindBtn:SetScript("OnLeave", GameTooltip_Hide)
+        keybindBtn:HookScript("OnLeave", GameTooltip_Hide)
     end
 
     -- SECTION 1: General
@@ -954,7 +1031,7 @@ function Options:Initialize()
     local homeIcon = homeTab:CreateTexture(nil, "ARTWORK")
     homeIcon:SetSize(48, 48)
     homeIcon:SetPoint("TOPLEFT", homeTab, "TOPLEFT", 12, -4)
-    homeIcon:SetTexture("Interface\\MINIMAP\\Tracking\\None")
+    homeIcon:SetTexture("Interface\\AddOns\\EasyFind\\Textures\\Spyglass")
 
     local homeTitle = homeTab:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     homeTitle:SetPoint("LEFT", homeIcon, "RIGHT", 12, 6)
@@ -974,12 +1051,8 @@ function Options:Initialize()
         "|cFFFFD100Quick start:|r  Type in the search bar to find UI panels, map locations, "
         .. "and more. Click a result to navigate there.\n\n"
         .. "Use the |cFFFFD100filter button|r on the search bar to add mounts, toys, pets, and "
-        .. "map results to your searches. The world map also has its own search bars "
-        .. "for finding zones, dungeons, and points of interest directly on the map.\n\n"
-        .. "|cFFFFD100Slash commands:|r\n"
-        .. "  |cFF00FF00/ef|r  Open this options panel\n"
-        .. "  |cFF00FF00/ef c|r  Dismiss all highlights and pins\n"
-        .. "  |cFF00FF00/ef toggle|r  Show/hide search bar (try Smart Show, the minimap button, or a keybind in the |cFFFFD100Shortcuts|r tab instead)\n\n"
+        .. "map results to your searches. The world map's |cFFFFD100EasyFind|r tab handles "
+        .. "zones, dungeons, and points of interest directly on the map.\n\n"
         .. "For a full walkthrough, see the CurseForge page:"
     )
 
@@ -1021,7 +1094,7 @@ function Options:Initialize()
 
     local minimapBtnCheckbox = CreateCheckbox(sec3, "MinimapBtn", "Show Minimap Button",
         "When enabled, adds a small search icon button to the minimap edge.\n\nLeft-click the button to toggle the search bar.\nRight-click to open options.\nDrag to reposition it around the minimap.")
-    minimapBtnCheckbox:SetPoint("LEFT", loginMessageCheckbox, "RIGHT", 120, 0)
+    minimapBtnCheckbox:SetPoint("TOPLEFT", loginMessageCheckbox, "BOTTOMLEFT", 0, -2)
     minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton ~= false)
     minimapBtnCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.showMinimapButton = self:GetChecked()
@@ -1029,19 +1102,29 @@ function Options:Initialize()
     end)
     optionsFrame.minimapBtnCheckbox = minimapBtnCheckbox
 
-    local indicatorLabel = sec3:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    indicatorLabel:SetPoint("TOPLEFT", loginMessageCheckbox, "BOTTOMLEFT", 4, -10)
-    indicatorLabel:SetText("Indicator Style:")
+    local SELECTOR_ROW_W = FRAME_W - 16
+    local SELECTOR_BTN_W = 170
+    local function CreateSelectorRow(anchor, labelText)
+        local row = CreateFrame("Frame", nil, sec3)
+        row:SetSize(SELECTOR_ROW_W, 24)
+        row:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -8)
+        local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("LEFT", row, "LEFT", 8, 0)
+        label:SetPoint("RIGHT", row, "RIGHT", -SELECTOR_BTN_W - 18, 0)
+        label:SetJustifyH("LEFT")
+        label:SetText(labelText)
+        return row, label
+    end
+
+    local indicatorRow, indicatorLabel = CreateSelectorRow(minimapBtnCheckbox, "Indicator Style")
 
     local indicatorChoices = {"EasyFind Arrow", "Classic Quest Arrow", "Minimap Player Arrow", "Low-res Gauntlet", "HD Gauntlet"}
 
     local indicatorBtnFrame, indicatorBtnText = CreateFlyoutSelector(
-        sec3, "EasyFindIndicator", 120, indicatorLabel, EasyFind.db.indicatorStyle or "EasyFind Arrow"
+        indicatorRow, "EasyFindIndicator", SELECTOR_BTN_W, indicatorLabel, EasyFind.db.indicatorStyle or "EasyFind Arrow"
     )
-    indicatorBtnFrame:ClearAllPoints()
-    indicatorBtnFrame:SetPoint("LEFT", indicatorLabel, "LEFT", BTN_OFFSET, 0)
-    local indicatorFlyout = CreateFlyoutPanel(indicatorBtnFrame, "EasyFindIndicator", 120, #indicatorChoices)
-    AddFlyoutOptions(indicatorFlyout, indicatorChoices, 114, function(name)
+    local indicatorFlyout = CreateFlyoutPanel(indicatorBtnFrame, "EasyFindIndicator", SELECTOR_BTN_W, #indicatorChoices)
+    AddFlyoutOptions(indicatorFlyout, indicatorChoices, SELECTOR_BTN_W - 6, function(name)
         EasyFind.db.indicatorStyle = name
         indicatorBtnText:SetText(name)
         if ns.MapSearch then
@@ -1051,56 +1134,52 @@ function Options:Initialize()
     optionsFrame.indicatorBtnText = indicatorBtnText
     optionsFrame.indicatorFlyout = indicatorFlyout
 
-    local colorLabel = sec3:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    colorLabel:SetPoint("TOPLEFT", indicatorLabel, "BOTTOMLEFT", 0, -20)
-    colorLabel:SetText("Indicator Color:")
+    local colorRow, colorLabel = CreateSelectorRow(indicatorRow, "Indicator Color")
 
     local colorChoices = {"Yellow", "Gold", "Orange", "Red", "Green", "Blue", "Purple", "White"}
     local colorRGB = ns.INDICATOR_COLORS
 
     local colorBtnFrame, colorBtnText = CreateFlyoutSelector(
-        sec3, "EasyFindColor", 120, colorLabel, EasyFind.db.indicatorColor or "Yellow"
+        colorRow, "EasyFindColor", SELECTOR_BTN_W, colorLabel, EasyFind.db.indicatorColor or "Yellow"
     )
-    colorBtnFrame:ClearAllPoints()
-    colorBtnFrame:SetPoint("LEFT", colorLabel, "LEFT", BTN_OFFSET, 0)
     local currentColor = EasyFind.db.indicatorColor or "Yellow"
     local currentRGB = colorRGB[currentColor] or colorRGB.Yellow
     colorBtnText:SetTextColor(currentRGB[1], currentRGB[2], currentRGB[3])
 
-    local colorSwatch = colorBtnFrame:CreateTexture(nil, "ARTWORK")
-    colorSwatch:SetSize(14, 14)
-    colorSwatch:SetPoint("LEFT", colorBtnFrame, "LEFT", 6, 0)
-    colorSwatch:SetColorTexture(currentRGB[1], currentRGB[2], currentRGB[3], 1)
-
-    local colorFlyout = CreateFlyoutPanel(colorBtnFrame, "EasyFindColor", 120, #colorChoices)
+    local colorFlyout = CreateFlyoutPanel(colorBtnFrame, "EasyFindColor", SELECTOR_BTN_W, #colorChoices)
 
     for i, name in ipairs(colorChoices) do
         local rgb = colorRGB[name]
         local colorBtn = CreateFrame("Button", nil, colorFlyout)
-        colorBtn:SetSize(114, 18)
+        colorBtn:SetSize(SELECTOR_BTN_W - 6, 18)
         colorBtn:SetPoint("TOPLEFT", colorFlyout, "TOPLEFT", 3, -3 - (i - 1) * 20)
-
-        local swatch = colorBtn:CreateTexture(nil, "ARTWORK")
-        swatch:SetSize(12, 12)
-        swatch:SetPoint("LEFT", 2, 0)
-        swatch:SetColorTexture(rgb[1], rgb[2], rgb[3], 1)
+        local rowBg = CreateFrame("Frame", nil, colorBtn)
+        rowBg:SetAllPoints()
+        rowBg:EnableMouse(false)
+        ns.CreateRoundedRectBorder(rowBg)
+        ns.SetRoundedRectBarHeight(rowBg, 9)
+        HideRoundedFrameBorder(rowBg)
+        PaintRoundedFill(rowBg, 1, 1, 1, 0)
 
         local label = colorBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        label:SetPoint("LEFT", swatch, "RIGHT", 4, 0)
+        label:SetPoint("LEFT", colorBtn, "LEFT", 6, 0)
+        label:SetPoint("RIGHT", colorBtn, "RIGHT", -6, 0)
+        label:SetJustifyH("CENTER")
         label:SetText(name)
         label:SetTextColor(rgb[1], rgb[2], rgb[3])
 
         colorBtn:SetScript("OnEnter", function(self)
+            PaintRoundedFill(rowBg, 1, 1, 1, 0.06)
             label:SetTextColor(1, 1, 1)
         end)
         colorBtn:SetScript("OnLeave", function(self)
+            PaintRoundedFill(rowBg, 1, 1, 1, 0)
             label:SetTextColor(rgb[1], rgb[2], rgb[3])
         end)
         colorBtn:SetScript("OnClick", function()
             EasyFind.db.indicatorColor = name
             colorBtnText:SetText(name)
             colorBtnText:SetTextColor(rgb[1], rgb[2], rgb[3])
-            colorSwatch:SetColorTexture(rgb[1], rgb[2], rgb[3], 1)
             colorFlyout:Hide()
             if ns.MapSearch then
                 ns.MapSearch:RefreshIndicators()
@@ -1109,21 +1188,16 @@ function Options:Initialize()
     end
 
     optionsFrame.colorBtnText = colorBtnText
-    optionsFrame.colorSwatch = colorSwatch
     optionsFrame.colorFlyout = colorFlyout
 
-    local fontLabel = sec3:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    fontLabel:SetPoint("TOPLEFT", colorLabel, "BOTTOMLEFT", 0, -20)
-    fontLabel:SetText("Font:")
+    local fontRow, fontLabel = CreateSelectorRow(colorRow, "Font")
 
     local fontChoices = ns.FONT_CHOICES or {"Default", "Inter"}
     local fontBtnFrame, fontBtnText = CreateFlyoutSelector(
-        sec3, "EasyFindFont", 120, fontLabel, EasyFind.db.font or "Default"
+        fontRow, "EasyFindFont", SELECTOR_BTN_W, fontLabel, EasyFind.db.font or "Default"
     )
-    fontBtnFrame:ClearAllPoints()
-    fontBtnFrame:SetPoint("LEFT", fontLabel, "LEFT", BTN_OFFSET, 0)
-    local fontFlyout = CreateFlyoutPanel(fontBtnFrame, "EasyFindFont", 120, #fontChoices)
-    AddFlyoutOptions(fontFlyout, fontChoices, 114, function(name)
+    local fontFlyout = CreateFlyoutPanel(fontBtnFrame, "EasyFindFont", SELECTOR_BTN_W, #fontChoices)
+    AddFlyoutOptions(fontFlyout, fontChoices, SELECTOR_BTN_W - 6, function(name)
         EasyFind.db.font = name
         fontBtnText:SetText(name)
         if ns.RefreshAddonFont then ns.RefreshAddonFont() end
@@ -1131,119 +1205,63 @@ function Options:Initialize()
     optionsFrame.fontBtnText = fontBtnText
     optionsFrame.fontFlyout = fontFlyout
 
-    local panelOpacitySlider = CreateSlider(sec3, "PanelOpacity", "Options Menu Opacity", 0.3, 1.0, 0.05,
-        "Adjusts the opacity of the options panel background.", nil, 0.9)
-    panelOpacitySlider:SetPoint("TOPLEFT", fontLabel, "BOTTOMLEFT", 0, -30)
-    panelOpacitySlider:SetValue(EasyFind.db.panelOpacity or 0.9)
-    panelOpacitySlider:HookScript("OnValueChanged", function(self, value)
-        EasyFind.db.panelOpacity = value
-        if optionsFrame.bgTex then
-            optionsFrame.bgTex:SetAlpha(value)
-        end
-    end)
-    optionsFrame.panelOpacitySlider = panelOpacitySlider
-
-    local opacitySlider = CreateSlider(sec3, "Opacity", "Background Opacity", 0.0, 1.0, 0.05,
-        "Adjusts the background opacity of all search bars. Text and icons remain fully visible.", nil, DEFAULT_OPACITY)
-    opacitySlider:SetPoint("TOPLEFT", panelOpacitySlider, "BOTTOMLEFT", 0, -38)
-    opacitySlider:SetValue(EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
-    opacitySlider:HookScript("OnValueChanged", function(self, value)
-        EasyFind.db.searchBarOpacity = value
-        if ns.UI and ns.UI.UpdateOpacity then
-            ns.UI:UpdateOpacity()
-        end
-    end)
-    optionsFrame.opacitySlider = opacitySlider
-
     local RESET_BTN_W = 120
 
     -- SECTION 2: UI Search
     local sec1 = CreateTab("UI")
 
-    local uiEnableCheckbox = CreateCheckbox(sec1, "EnableUI", "Enable UI Search Module",
-        "Uncheck to disable the main UI search bar.\n\nRequires a UI reload to take effect.")
-    uiEnableCheckbox:SetPoint("TOPLEFT", sec1, "TOPLEFT", COL_LEFT, -6)
-    uiEnableCheckbox:SetChecked(EasyFind.db.enableUISearch ~= false)
-
-    local uiControls = {}
-    local function UpdateUIToggleVisual()
-        local enabled = EasyFind.db.enableUISearch ~= false
-        uiEnableCheckbox:SetChecked(enabled)
-        SetControlsEnabled(uiControls, enabled)
-    end
-    optionsFrame.UpdateUIToggleVisual = UpdateUIToggleVisual
-
-    uiEnableCheckbox:SetScript("OnClick", function(self)
-        if self:GetChecked() then
-            EasyFind.db.enableUISearch = true
-            UpdateUIToggleVisual()
-            StaticPopup_Show("EASYFIND_RELOAD_PROMPT")
-        else
-            StaticPopup_Show("EASYFIND_DISABLE_UI_SEARCH")
-            self:SetChecked(true)
-        end
-    end)
-
-    -- Gold separator under enable checkbox
-    local uiSep = sec1:CreateTexture(nil, "ARTWORK")
-    uiSep:SetPoint("TOPLEFT", sec1, "TOPLEFT", 6, -30)
-    uiSep:SetPoint("RIGHT", sec1, "RIGHT", -6, 0)
-    uiSep:SetHeight(1)
-    uiSep:SetColorTexture(0.8, 0.65, 0.0, 0.6)
-
-    local resizeUIBtn = CreateFrame("Button", nil, sec1, "UIPanelButtonTemplate")
+    local resizeUIBtn = CreateModernButton(sec1)
     resizeUIBtn:SetSize(160, 22)
     resizeUIBtn:SetPoint("BOTTOMLEFT", sec1, "BOTTOMLEFT", 8, 32)
     resizeUIBtn:SetText("Resize UI Search")
     resizeUIBtn:SetScript("OnClick", function()
         if ns.Rescaler then ns.Rescaler:Enter("ui") end
     end)
-    resizeUIBtn:SetScript("OnEnter", function(self)
+    resizeUIBtn:HookScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Visually resize the UI search bar and its results dropdown.\nDrag edges for width, corners for scale.")
+        GameTooltip:SetText("Visually resize the unified UI search window.\nDrag side edges for width and the top/bottom edge for results height.")
         GameTooltip:Show()
     end)
-    resizeUIBtn:SetScript("OnLeave", GameTooltip_Hide)
+    resizeUIBtn:HookScript("OnLeave", GameTooltip_Hide)
 
     local autoHideCheckbox = CreateCheckbox(sec1, "AutoHide", "Auto-Hide |cFF888888(Recommended)|r",
-        "Raycast-style: the search bar starts hidden and only appears when you press the keybind. Clicking outside the bar, results, or filter menu hides it again, as does selecting a result.\n\nWhen enabled, Smart Show is ignored.")
-    autoHideCheckbox:SetPoint("TOPLEFT", sec1, "TOPLEFT", 16, -38)
-    autoHideCheckbox:SetChecked(EasyFind.db.autoHide ~= false)
-    autoHideCheckbox:SetScript("OnClick", function(self)
-        local on = self:GetChecked()
-        EasyFind.db.autoHide = on
-        if on then
-            if ns.UI and ns.UI.Hide then ns.UI:Hide() end
-        else
-            if ns.UI and ns.UI.Show then ns.UI:Show(false) end
-        end
-        if optionsFrame.smartShowCheckbox then
-            optionsFrame.smartShowCheckbox:SetEnabled(not on)
-            local lbl = optionsFrame.smartShowCheckbox:GetFontString()
-            if lbl then lbl:SetTextColor(on and 0.5 or 1, on and 0.5 or 1, on and 0.5 or 1) end
-        end
-    end)
+        "Raycast-style: the search bar starts hidden and only appears when you press the keybind. Clicking outside the bar, results, or filter menu hides it again, as does selecting a result.")
+    autoHideCheckbox:SetPoint("TOPLEFT", sec1, "TOPLEFT", 16, -8)
     optionsFrame.autoHideCheckbox = autoHideCheckbox
 
     local smartShowCheckbox = CreateCheckbox(sec1, "SmartShow", "Smart Show",
-        "When enabled, the UI search bar hides itself until you move your mouse near its position.\n\nThe bar reappears when your mouse enters the area and fades away when you move away.\n\nIgnored when Auto-Hide is enabled.")
+        "The UI search bar hides itself until you move your mouse near its position.\n\nThe bar reappears when your mouse enters the area and fades away when you move away.")
     smartShowCheckbox:SetPoint("TOPLEFT", autoHideCheckbox, "BOTTOMLEFT", 0, -2)
-    smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
-    smartShowCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.smartShow = self:GetChecked()
-        if ns.UI and ns.UI.UpdateSmartShow then
-            ns.UI:UpdateSmartShow()
-        end
-    end)
-    if EasyFind.db.autoHide ~= false then
-        smartShowCheckbox:SetEnabled(false)
-        local lbl = smartShowCheckbox:GetFontString()
-        if lbl then lbl:SetTextColor(0.5, 0.5, 0.5) end
-    end
     optionsFrame.smartShowCheckbox = smartShowCheckbox
 
+    local function SetVisibilityMode(mode)
+        local smart = mode == "smart"
+        EasyFind.db.smartShow = smart
+        EasyFind.db.autoHide = not smart
+        autoHideCheckbox:SetChecked(not smart)
+        smartShowCheckbox:SetChecked(smart)
+        if smart then
+            if ns.UI and ns.UI.Show then ns.UI:Show(false) end
+            if ns.UI and ns.UI.UpdateSmartShow then ns.UI:UpdateSmartShow() end
+        else
+            if ns.UI and ns.UI.UpdateSmartShow then ns.UI:UpdateSmartShow() end
+            if ns.UI and ns.UI.Hide then ns.UI:Hide() end
+        end
+    end
+    autoHideCheckbox:SetScript("OnClick", function()
+        SetVisibilityMode("auto")
+    end)
+    smartShowCheckbox:SetScript("OnClick", function()
+        SetVisibilityMode("smart")
+    end)
+    local smartInitial = EasyFind.db.smartShow and EasyFind.db.autoHide == false
+    EasyFind.db.smartShow = smartInitial
+    EasyFind.db.autoHide = not smartInitial
+    autoHideCheckbox:SetChecked(not smartInitial)
+    smartShowCheckbox:SetChecked(smartInitial)
+
     local staticOpacityCheckbox = CreateCheckbox(sec1, "StaticOpacity", "Static Opacity",
-        "When enabled, the search bar keeps the same opacity at all times.\n\nWhen disabled (default), opacity is reduced while your character is moving so you can see the game world better, similar to how the World Map behaves.\n\nThis only applies to the main search bar. Map search bars follow the World Map's built-in fade behavior.")
+        "When enabled, the UI search bar keeps the same opacity at all times.\n\nWhen disabled (default), opacity is reduced while your character is moving so you can see the game world better, similar to how the World Map behaves.")
     staticOpacityCheckbox:SetPoint("TOPLEFT", smartShowCheckbox, "BOTTOMLEFT", 0, -2)
     staticOpacityCheckbox:SetChecked(EasyFind.db.staticOpacity or false)
     staticOpacityCheckbox:SetScript("OnClick", function(self)
@@ -1269,6 +1287,7 @@ function Options:Initialize()
     uiResultsAboveCheckbox:SetChecked(EasyFind.db.uiResultsAbove or false)
     uiResultsAboveCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.uiResultsAbove = self:GetChecked()
+        if ns.UI and ns.UI.RefreshResults then ns.UI:RefreshResults() end
     end)
     optionsFrame.uiResultsAboveCheckbox = uiResultsAboveCheckbox
 
@@ -1284,19 +1303,52 @@ function Options:Initialize()
     end)
     optionsFrame.resultShortcutHintsCheckbox = resultShortcutHintsCheckbox
 
-    local uiFontSlider = CreateSlider(sec1, "UIFontSize", "Font Size|cffff3333*|r", 0.5, 2.0, 0.1,
-        "Changing font size also affects search bar height and results window sizing.", nil, 1.0)
-    uiFontSlider:SetPoint("TOPLEFT", resultShortcutHintsCheckbox, "BOTTOMLEFT", 4, -20)
-    uiFontSlider:SetValue(EasyFind.db.fontSize or 1.0)
-    uiFontSlider:HookScript("OnValueChanged", function(self, value)
-        EasyFind.db.fontSize = value
-        if ns.UI and ns.UI.UpdateFontSize then
-            ns.UI:UpdateFontSize()
-        end
-    end)
-    optionsFrame.uiFontSlider = uiFontSlider
+    local opacityChoices = {
+        { label = "Light", value = 0.45 },
+        { label = "Balanced", value = DEFAULT_OPACITY },
+        { label = "Solid", value = 0.95 },
+    }
+    local opacityPresetRow = CreatePresetRow(sec1, "Background Opacity", opacityChoices,
+        function() return EasyFind.db.searchBarOpacity or DEFAULT_OPACITY end,
+        function(value)
+            EasyFind.db.searchBarOpacity = value
+            if ns.UI and ns.UI.UpdateOpacity then
+                ns.UI:UpdateOpacity()
+            end
+        end,
+        "Controls the UI search window background density. Text and icons remain fully visible.")
+    opacityPresetRow:SetPoint("TOPLEFT", resultShortcutHintsCheckbox, "BOTTOMLEFT", 0, -8)
+    optionsFrame.opacityPresetRow = opacityPresetRow
 
-    local resetUIBtn = CreateFrame("Button", nil, sec1, "UIPanelButtonTemplate")
+    local fontSizeChoices = {
+        { label = "Small", value = 0.80 },
+        { label = "Med", value = 0.90 },
+        { label = "Large", value = 1.15 },
+        { label = "XL", value = 1.35 },
+    }
+    local uiFontPresetRow = CreatePresetRow(sec1, "Font Size", fontSizeChoices,
+        function() return EasyFind.db.fontSize or 0.9 end,
+        function(value)
+            EasyFind.db.fontSize = value
+            if ns.UI and ns.UI.UpdateFontSize then
+                ns.UI:UpdateFontSize()
+            end
+        end,
+        "Adjusts UI search text size without resizing the search window.")
+    uiFontPresetRow:SetPoint("TOPLEFT", opacityPresetRow, "BOTTOMLEFT", 0, -2)
+    optionsFrame.uiFontPresetRow = uiFontPresetRow
+
+    local function RefreshUIPresetRows()
+        if optionsFrame.opacityPresetRow then
+            optionsFrame.opacityPresetRow:SetValue(EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
+        end
+        if optionsFrame.uiFontPresetRow then
+            optionsFrame.uiFontPresetRow:SetValue(EasyFind.db.fontSize or 0.9)
+        end
+    end
+    optionsFrame.RefreshUIPresetRows = RefreshUIPresetRows
+
+    local resetUIBtn = CreateModernButton(sec1)
     resetUIBtn:SetSize(RESET_BTN_W, 20)
     resetUIBtn:SetPoint("BOTTOMLEFT", sec1, "BOTTOMLEFT", 8, 8)
     resetUIBtn:SetText("Reset Settings")
@@ -1304,7 +1356,7 @@ function Options:Initialize()
         StaticPopup_Show("EASYFIND_RESET_UI")
     end)
 
-    local resetUIPosBtn = CreateFrame("Button", nil, sec1, "UIPanelButtonTemplate")
+    local resetUIPosBtn = CreateModernButton(sec1)
     resetUIPosBtn:SetSize(RESET_BTN_W, 20)
     resetUIPosBtn:SetPoint("LEFT", resetUIBtn, "RIGHT", 8, 0)
     resetUIPosBtn:SetText("Reset Positions")
@@ -1312,14 +1364,12 @@ function Options:Initialize()
         StaticPopup_Show("EASYFIND_RESET_UI_POS")
     end)
 
-    uiControls = { resizeUIBtn, resetUIBtn, resetUIPosBtn, uiFontSlider, autoHideCheckbox, smartShowCheckbox, staticOpacityCheckbox, lockPositionCheckbox, uiResultsAboveCheckbox, resultShortcutHintsCheckbox }
-    UpdateUIToggleVisual()
-
     -- SECTION 3: Map Search
     local sec2 = CreateTab("Map")
 
     local mapEnableCheckbox = CreateCheckbox(sec2, "EnableMap", "Enable Map Search Module",
-        "Uncheck to disable map search, pins, and map overlay features.\n\nRequires a UI reload to take effect.")
+        "Uncheck to disable map search, pins, map overlay features, and the EasyFind tab on the world map.\n\nRequires a UI reload to take effect.",
+        false, 222)
     mapEnableCheckbox:SetPoint("TOPLEFT", sec2, "TOPLEFT", COL_LEFT, -6)
     mapEnableCheckbox:SetChecked(EasyFind.db.enableMapSearch ~= false)
 
@@ -1328,6 +1378,7 @@ function Options:Initialize()
         local enabled = EasyFind.db.enableMapSearch ~= false
         mapEnableCheckbox:SetChecked(enabled)
         SetControlsEnabled(mapControls, enabled)
+        if optionsFrame.UpdateRecentCountEnabled then optionsFrame.UpdateRecentCountEnabled() end
     end
     optionsFrame.UpdateMapToggleVisual = UpdateMapToggleVisual
 
@@ -1344,14 +1395,121 @@ function Options:Initialize()
 
     -- Gold separator under enable checkbox
     local mapSep = sec2:CreateTexture(nil, "ARTWORK")
-    mapSep:SetPoint("TOPLEFT", sec2, "TOPLEFT", 6, -30)
+    mapSep:SetPoint("TOPLEFT", sec2, "TOPLEFT", 6, -40)
     mapSep:SetPoint("RIGHT", sec2, "RIGHT", -6, 0)
     mapSep:SetHeight(1)
     mapSep:SetColorTexture(0.8, 0.65, 0.0, 0.6)
 
-    local rareTrackCheckbox = CreateCheckbox(sec2, "RareTrack", "Auto-track Rares",
-        "When enabled, active rare mobs are always displayed as pins on the world map without needing to search.\n\nThis can also be toggled from the filter dropdown on the zone search bar.")
-    rareTrackCheckbox:SetPoint("TOPLEFT", sec2, "TOPLEFT", 16, -38)
+    local GROUP_W = FRAME_W - 16
+    local ROW_H = 28
+
+    local mapTabLabel = sec2:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    mapTabLabel:SetPoint("TOPLEFT", sec2, "TOPLEFT", 8, -48)
+    mapTabLabel:SetText("Map Tab")
+
+    local mapTabSettings = CreateSettingsGroup(sec2, GROUP_W, ROW_H * 2 + 8)
+    mapTabSettings:SetPoint("TOPLEFT", mapTabLabel, "BOTTOMLEFT", 0, -3)
+    optionsFrame.mapTabSettings = mapTabSettings
+
+    local mapTabShowRecentCheckbox = CreateCheckbox(mapTabSettings, "MapTabShowRecent", "Show Recent Searches",
+        "Show your recent search queries in the Map Search tab when the search box is empty.", false, GROUP_W)
+    mapTabShowRecentCheckbox:SetPoint("TOPLEFT", mapTabSettings, "TOPLEFT", 0, -4)
+    mapTabShowRecentCheckbox:SetChecked(EasyFind.db.mapTabShowRecent ~= false)
+    optionsFrame.mapTabShowRecentCheckbox = mapTabShowRecentCheckbox
+
+    local recentCountStepper = CreateStepperRow(mapTabSettings, "Recent Count", 1, 10,
+        function() return EasyFind.db.mapTabRecentCount or 3 end,
+        function(value)
+            EasyFind.db.mapTabRecentCount = value
+            local list = EasyFind.db.mapTabRecentSearches
+            if list then
+                while #list > value do table.remove(list) end
+            end
+            if ns.MapTab and ns.MapTab.RefreshIfOpen then ns.MapTab:RefreshIfOpen() end
+        end,
+        "How many recent searches to keep and display in the Map Search tab.", GROUP_W)
+    recentCountStepper:SetPoint("TOPLEFT", mapTabShowRecentCheckbox, "BOTTOMLEFT", 0, 0)
+    optionsFrame.recentCountStepper = recentCountStepper
+
+    local function UpdateRecentCountEnabled()
+        recentCountStepper:SetGroupEnabled(EasyFind.db.enableMapSearch ~= false and EasyFind.db.mapTabShowRecent ~= false)
+    end
+    optionsFrame.UpdateRecentCountEnabled = UpdateRecentCountEnabled
+    mapTabShowRecentCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.mapTabShowRecent = self:GetChecked()
+        UpdateRecentCountEnabled()
+        if ns.MapTab and ns.MapTab.RefreshIfOpen then ns.MapTab:RefreshIfOpen() end
+    end)
+    UpdateRecentCountEnabled()
+
+    mapTabSettings:AddControl(mapTabShowRecentCheckbox)
+    mapTabSettings:AddControl(recentCountStepper)
+
+    local mapIconsLabel = sec2:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    mapIconsLabel:SetPoint("TOPLEFT", mapTabSettings, "BOTTOMLEFT", 0, -6)
+    mapIconsLabel:SetText("EF Map Icons")
+
+    local mapIconSettings = CreateSettingsGroup(sec2, GROUP_W, ROW_H * 3 + 8)
+    mapIconSettings:SetPoint("TOPLEFT", mapIconsLabel, "BOTTOMLEFT", 0, -3)
+    optionsFrame.mapIconSettings = mapIconSettings
+
+    local mapPinHighlightCheckbox = CreateCheckbox(mapIconSettings, "MapPinHighlight", "Highlight Box",
+        "A yellow highlight box is drawn around map search pins. Disable to show only the pin icon and indicator arrow.", false, GROUP_W)
+    mapPinHighlightCheckbox:SetPoint("TOPLEFT", mapIconSettings, "TOPLEFT", 0, -4)
+    mapPinHighlightCheckbox:SetChecked(EasyFind.db.mapPinHighlight ~= false)
+    mapPinHighlightCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.mapPinHighlight = self:GetChecked()
+        if ns.MapSearch and ns.MapSearch.UpdatePinHighlight then ns.MapSearch:UpdatePinHighlight() end
+    end)
+    optionsFrame.mapPinHighlightCheckbox = mapPinHighlightCheckbox
+
+    local blinkingPinsCheckbox = CreateCheckbox(mapIconSettings, "BlinkingPins", "Blinking",
+        "Map search pins and highlight boxes pulse in sync with the indicator arrow. The indicator arrow always bobs.", false, GROUP_W)
+    blinkingPinsCheckbox:SetPoint("TOPLEFT", mapPinHighlightCheckbox, "BOTTOMLEFT", 0, 0)
+    blinkingPinsCheckbox:SetChecked(EasyFind.db.blinkingPins or false)
+    blinkingPinsCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.blinkingPins = self:GetChecked()
+        if ns.MapSearch and ns.MapSearch.UpdateBlinkingPins then ns.MapSearch:UpdateBlinkingPins() end
+    end)
+    optionsFrame.blinkingPinsCheckbox = blinkingPinsCheckbox
+
+    local iconSizeChoices = {
+        { label = "Small", value = 0.65 },
+        { label = "Med", value = 0.80 },
+        { label = "Large", value = 1.05 },
+        { label = "XL", value = 1.30 },
+    }
+    local mapIconPresetRow = CreatePresetRow(mapIconSettings, "Icon Size", iconSizeChoices,
+        function() return EasyFind.db.iconScale or 0.8 end,
+        function(value)
+            EasyFind.db.iconScale = value
+            if ns.MapSearch and ns.MapSearch.UpdateIconScales then
+                ns.MapSearch:UpdateIconScales()
+            end
+            local uiInd = _G["EasyFindIndicatorFrame"]
+            if uiInd then
+                uiInd:SetScale(EasyFind.db.iconScale or 0.8)
+            end
+        end,
+        "Adjusts the size of map search result icons on the world map.", GROUP_W)
+    mapIconPresetRow:SetPoint("TOPLEFT", blinkingPinsCheckbox, "BOTTOMLEFT", 0, 0)
+    optionsFrame.mapIconPresetRow = mapIconPresetRow
+
+    mapIconSettings:AddControl(mapPinHighlightCheckbox)
+    mapIconSettings:AddControl(blinkingPinsCheckbox)
+    mapIconSettings:AddControl(mapIconPresetRow)
+
+    local mapPinsLabel = sec2:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    mapPinsLabel:SetPoint("TOPLEFT", mapIconSettings, "BOTTOMLEFT", 0, -6)
+    mapPinsLabel:SetText("Map Pins")
+
+    local mapPinSettings = CreateSettingsGroup(sec2, GROUP_W, ROW_H * 3 + 8)
+    mapPinSettings:SetPoint("TOPLEFT", mapPinsLabel, "BOTTOMLEFT", 0, -3)
+    optionsFrame.mapPinSettings = mapPinSettings
+
+    local rareTrackCheckbox = CreateCheckbox(mapPinSettings, "RareTrack", "Auto-track Rares",
+        "When enabled, active rare mobs are always displayed as pins on the world map without needing to search.", false, GROUP_W)
+    rareTrackCheckbox:SetPoint("TOPLEFT", mapPinSettings, "TOPLEFT", 0, -4)
     rareTrackCheckbox:SetChecked(EasyFind.db.alwaysShowRares or false)
     rareTrackCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.alwaysShowRares = self:GetChecked()
@@ -1364,90 +1522,38 @@ function Options:Initialize()
     end)
     optionsFrame.rareTrackCheckbox = rareTrackCheckbox
 
-    local FLYOUT_W = 260
-
-    local mapTabGroup = CreateMultiSelectDropdown(sec2, "Map Tab", {
-        { label = "Show Recent Searches", shortLabel = "Recent", dbKey = "mapTabShowRecent", default = true,
-          tooltip = "Show your recent search queries in the Map Search tab when the search box is empty.\nClick any recent entry to rerun that search.",
-          callback = function() if ns.MapTab and ns.MapTab.RefreshIfOpen then ns.MapTab:RefreshIfOpen() end end },
-    }, nil, FLYOUT_W)
-    mapTabGroup:SetPoint("TOPLEFT", rareTrackCheckbox, "BOTTOMLEFT", 0, -6)
-    mapTabGroup:SetPoint("RIGHT", sec2, "RIGHT", -8, 0)
-    mapTabGroup.label:SetWidth(85)
-    mapTabGroup.label:SetJustifyH("LEFT")
-    mapTabGroup.button:SetPoint("LEFT", mapTabGroup.label, "RIGHT", 6, 0)
-    optionsFrame.mapTabGroup = mapTabGroup
-
-    local recentCountSlider = mapTabGroup:AddSlider("RecentCount", "Recent Count", 1, 10, 1,
-        "How many recent searches to keep and display in the Map Search tab.",
-        function(val) return tostring(mfloor(val + 0.5)) end, 3, "", "mapTabShowRecent")
-    recentCountSlider:SetValue(EasyFind.db.mapTabRecentCount or 3)
-    recentCountSlider:HookScript("OnValueChanged", function(_, value)
-        value = mfloor(value + 0.5)
-        EasyFind.db.mapTabRecentCount = value
-        -- Trim the stored list immediately if user shrank the cap.
-        local list = EasyFind.db.mapTabRecentSearches
-        if list then
-            while #list > value do table.remove(list) end
-        end
-        if ns.MapTab and ns.MapTab.RefreshIfOpen then ns.MapTab:RefreshIfOpen() end
+    local autoTrackPinsCheckbox = CreateCheckbox(mapPinSettings, "AutoTrackPins", "Auto Track Map Pins",
+        "Placing a map pin (Ctrl+Click) automatically starts Blizzard waypoint tracking.", false, GROUP_W)
+    autoTrackPinsCheckbox:SetPoint("TOPLEFT", rareTrackCheckbox, "BOTTOMLEFT", 0, 0)
+    autoTrackPinsCheckbox:SetChecked(EasyFind.db.autoTrackPins ~= false)
+    autoTrackPinsCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.autoTrackPins = self:GetChecked()
     end)
-    optionsFrame.recentCountSlider = recentCountSlider
+    optionsFrame.autoTrackPinsCheckbox = autoTrackPinsCheckbox
 
-    local mapPinGroup = CreateMultiSelectDropdown(sec2, "EF Map Icons", {
-        { label = "Highlight Box", shortLabel = "Highlight", dbKey = "mapPinHighlight", default = true,
-          tooltip = "A yellow highlight box is drawn around map search pins.\nDisable to show only the pin icon and indicator arrow.",
-          callback = function() if ns.MapSearch and ns.MapSearch.UpdatePinHighlight then ns.MapSearch:UpdatePinHighlight() end end },
-        { label = "Blinking", shortLabel = "Blink", dbKey = "blinkingPins", default = false,
-          tooltip = "Map search pins and highlight boxes pulse in sync with the indicator arrow.\nWhen disabled, pins and highlights are steady. The indicator arrow always bobs.",
-          callback = function() if ns.MapSearch and ns.MapSearch.UpdateBlinkingPins then ns.MapSearch:UpdateBlinkingPins() end end },
-    }, nil, FLYOUT_W)
-    mapPinGroup:SetPoint("TOPLEFT", mapTabGroup, "BOTTOMLEFT", 0, -6)
-    mapPinGroup:SetPoint("RIGHT", sec2, "RIGHT", -8, 0)
-    mapPinGroup.label:SetWidth(85)
-    mapPinGroup.label:SetJustifyH("LEFT")
-    mapPinGroup.button:SetPoint("LEFT", mapPinGroup.label, "RIGHT", 6, 0)
-    optionsFrame.mapPinGroup = mapPinGroup
-
-    local mapIconSlider = mapPinGroup:AddSlider("MapIcon", "Icon Size", 0.5, 2.0, 0.1,
-        "Adjusts the size of map search result icons on the world map.", nil, 0.8)
-    mapIconSlider:SetValue(EasyFind.db.iconScale or 0.8)
-    mapIconSlider:HookScript("OnValueChanged", function(self, value)
-        EasyFind.db.iconScale = value
-        if ns.MapSearch and ns.MapSearch.UpdateIconScales then
-            ns.MapSearch:UpdateIconScales()
-        end
-        local uiInd = _G["EasyFindIndicatorFrame"]
-        if uiInd then
-            uiInd:SetScale(EasyFind.db.iconScale or 0.8)
-        end
+    local autoPinClearCheckbox = CreateCheckbox(mapPinSettings, "AutoPinClear", "Auto Clear Map Pins",
+        "Your map pin is automatically cleared when Blizzard reports arrival. Disable if you prefer to clear pins manually.", false, GROUP_W)
+    autoPinClearCheckbox:SetPoint("TOPLEFT", autoTrackPinsCheckbox, "BOTTOMLEFT", 0, 0)
+    autoPinClearCheckbox:SetChecked(EasyFind.db.autoPinClear ~= false)
+    autoPinClearCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.autoPinClear = self:GetChecked()
     end)
-    optionsFrame.mapIconSlider = mapIconSlider
+    optionsFrame.autoPinClearCheckbox = autoPinClearCheckbox
 
-    local automationGroup = CreateMultiSelectDropdown(sec2, "Map Pins", {
-        { label = "Auto Track Map Pins", shortLabel = "Track", dbKey = "autoTrackPins", default = true,
-          tooltip = "Placing a map pin (Ctrl+Click) automatically starts Blizzard waypoint tracking.\nWhen disabled, you must click the pin to start tracking." },
-        { label = "Auto Clear Map Pins", shortLabel = "Clear", dbKey = "autoPinClear", default = true,
-          tooltip = "Your map pin is automatically cleared when Blizzard reports arrival.\nDisable if you prefer to clear pins manually." },
-    }, nil, FLYOUT_W)
-    automationGroup:SetPoint("TOPLEFT", mapPinGroup, "BOTTOMLEFT", 0, -6)
-    automationGroup:SetPoint("RIGHT", sec2, "RIGHT", -8, 0)
-    automationGroup.label:SetWidth(85)
-    automationGroup.label:SetJustifyH("LEFT")
-    automationGroup.button:SetPoint("LEFT", automationGroup.label, "RIGHT", 6, 0)
-    optionsFrame.automationGroup = automationGroup
+    mapPinSettings:AddControl(rareTrackCheckbox)
+    mapPinSettings:AddControl(autoTrackPinsCheckbox)
+    mapPinSettings:AddControl(autoPinClearCheckbox)
 
-    local resetMapBtn = CreateFrame("Button", nil, sec2, "UIPanelButtonTemplate")
+    local resetMapBtn = CreateModernButton(sec2)
     resetMapBtn:SetSize(RESET_BTN_W, 20)
-    resetMapBtn:SetPoint("BOTTOMLEFT", sec2, "BOTTOMLEFT", 8, 8)
+    resetMapBtn:SetPoint("TOPRIGHT", sec2, "TOPRIGHT", -8, -8)
     resetMapBtn:SetText("Reset Settings")
     resetMapBtn:SetScript("OnClick", function()
         StaticPopup_Show("EASYFIND_RESET_MAP")
     end)
 
     mapControls = {
-        resetMapBtn, rareTrackCheckbox,
-        mapPinGroup, automationGroup
+        resetMapBtn, mapTabSettings, mapIconSettings, mapPinSettings
     }
     UpdateMapToggleVisual()
 
@@ -1471,12 +1577,13 @@ function Options:Initialize()
         .. "|cFF00FF00PgUp/PgDn|r jump 5  |cFF00FF00Home/End|r first/last\n"
         .. "|cFF00FF00Shift+Up/Down|r or |cFF00FF00Ctrl+Shift+K/J|r jump section\n\n"
         .. "|cFFFFD100Other:|r\n"
-        .. "|cFF00FF00Shift+Drag|r reposition  |cFF00FF00Right-click|r pin/unpin\n"
-        .. "|cFF00FF00/ef toggle|r toggle the search bar\n"
+        .. "|cFF00FF00Shift+Drag|r reposition  |cFF00FF00Right-click|r pin/unpin\n\n"
+        .. "|cFFFFD100Slash commands:|r\n"
+        .. "|cFF00FF00/ef|r open options  |cFF00FF00/ef c|r clear highlights and pins\n"
     )
     -- Keybind buttons
-    local KEYBIND_ROW_H = 18
-    local KEYBIND_BTN_W = 80
+    local KEYBIND_ROW_H = 24
+    local KEYBIND_BTN_W = 116
 
     local keybindDefs = {
         { label = "Toggle Search Bar", action = "EASYFIND_TOGGLE_FOCUS" },
@@ -1495,7 +1602,7 @@ function Options:Initialize()
     -- "Toggle Search Bar:" exceed the small per-column allowance and
     -- bleed into the button area of the same row. One column with a
     -- wide label slot keeps every label clear of its button.
-    local KEYBIND_LABEL_W = 130
+    local KEYBIND_LABEL_W = 168
     for i, def in ipairs(keybindDefs) do
         local row = i - 1
 
@@ -1503,10 +1610,10 @@ function Options:Initialize()
         rowLabel:SetPoint("TOPLEFT", shortcutText, "BOTTOMLEFT", 0, -12 - row * KEYBIND_ROW_H)
         rowLabel:SetText(def.label .. ":")
 
-        local keybindBtn = CreateFrame("Button", nil, sec4, "UIPanelButtonTemplate")
+        local keybindBtn = CreateModernButton(sec4)
         keybindBtn:SetNormalFontObject("GameFontHighlightSmall")
         keybindBtn:SetHighlightFontObject("GameFontHighlightSmall")
-        keybindBtn:SetSize(KEYBIND_BTN_W, 18)
+        keybindBtn:SetSize(KEYBIND_BTN_W, 20)
         keybindBtn:SetPoint("LEFT", rowLabel, "LEFT", KEYBIND_LABEL_W, 0)
         keybindBtn:SetText(GetCurrentKeybindText(def.action))
         keybindBtn:SetScript("OnClick", function(self, button)
@@ -1534,66 +1641,210 @@ function Options:Initialize()
     optionsFrame.mapFocusBtn    = keybindButtons["EASYFIND_MAP_FOCUS"]
     optionsFrame.clearBtn       = keybindButtons["EASYFIND_CLEAR"]
 
-    -- Aliases panel: scrollable list with one row per saved alias.
-    -- Each row shows "alias -> entry name" and a small X button to
-    -- remove that alias. Entries that no longer resolve (mount
-    -- relearned with a different ID, etc.) still show so the user can
-    -- prune them.
-    local aliasHeader = sec4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    aliasHeader:SetPoint("TOPLEFT", shortcutText, "BOTTOMLEFT", 0, -12 - #keybindDefs * KEYBIND_ROW_H - 18)
-    aliasHeader:SetText("|cFFFFD100Saved Aliases:|r right-click any search result and choose Add Alias")
+    -- SECTION 5: Aliases
+    local aliasesTab = CreateTab("Aliases")
 
-    local aliasScroll = CreateFrame("ScrollFrame", nil, sec4, "UIPanelScrollFrameTemplate")
-    aliasScroll:SetPoint("TOPLEFT", aliasHeader, "BOTTOMLEFT", 0, -6)
-    aliasScroll:SetSize(FRAME_W - 80, 110)
+    local aliasTitle = aliasesTab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    aliasTitle:SetPoint("TOPLEFT", aliasesTab, "TOPLEFT", 8, -8)
+    aliasTitle:SetText("Saved Aliases")
+
+    local aliasHeader = aliasesTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    aliasHeader:SetPoint("TOPLEFT", aliasTitle, "BOTTOMLEFT", 0, -6)
+    aliasHeader:SetPoint("RIGHT", aliasesTab, "RIGHT", -10, 0)
+    aliasHeader:SetJustifyH("LEFT")
+    aliasHeader:SetText("Right-click any search result and choose Add Alias.")
+
+    local RefreshAliasList
+    local aliasTools = CreateFrame("Frame", nil, aliasesTab)
+    aliasTools:SetPoint("TOPLEFT", aliasHeader, "BOTTOMLEFT", 0, -8)
+    aliasTools:SetPoint("RIGHT", aliasesTab, "RIGHT", -8, 0)
+    aliasTools:SetHeight(24)
+
+    local clearAliasesBtn = CreateModernButton(aliasTools, "Clear All", 78, 22)
+    clearAliasesBtn:SetPoint("RIGHT", aliasTools, "RIGHT", 0, 0)
+
+    local aliasSearchShell = CreateFrame("Frame", nil, aliasTools)
+    aliasSearchShell:SetPoint("LEFT", aliasTools, "LEFT", 0, 0)
+    aliasSearchShell:SetPoint("RIGHT", clearAliasesBtn, "LEFT", -8, 0)
+    aliasSearchShell:SetHeight(22)
+    ns.CreateRoundedRectBorder(aliasSearchShell)
+    ns.SetRoundedRectBarHeight(aliasSearchShell, 10)
+    HideRoundedFrameBorder(aliasSearchShell)
+    PaintRoundedFill(aliasSearchShell, 0.075, 0.075, 0.085, 1)
+
+    local aliasSearchIcon = aliasSearchShell:CreateTexture(nil, "OVERLAY")
+    aliasSearchIcon:SetSize(13, 13)
+    aliasSearchIcon:SetPoint("LEFT", aliasSearchShell, "LEFT", 7, 0)
+    if aliasSearchIcon.SetAtlas then
+        aliasSearchIcon:SetAtlas("common-search-magnifyingglass")
+    else
+        aliasSearchIcon:SetTexture("Interface\\Common\\UI-Searchbox-Icon")
+    end
+    aliasSearchIcon:SetAlpha(0.65)
+
+    local aliasSearchBox = CreateFrame("EditBox", nil, aliasSearchShell)
+    aliasSearchBox:SetPoint("LEFT", aliasSearchIcon, "RIGHT", 6, 0)
+    aliasSearchBox:SetPoint("RIGHT", aliasSearchShell, "RIGHT", -8, 0)
+    aliasSearchBox:SetHeight(18)
+    aliasSearchBox:SetAutoFocus(false)
+    aliasSearchBox:SetFontObject("GameFontHighlightSmall")
+    aliasSearchBox:SetMaxLetters(64)
+
+    local aliasSearchPlaceholder = aliasSearchBox:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    aliasSearchPlaceholder:SetPoint("LEFT", aliasSearchBox, "LEFT", 0, 0)
+    aliasSearchPlaceholder:SetText("Search aliases")
+    aliasSearchPlaceholder:SetTextColor(0.55, 0.55, 0.58, 1)
+    aliasSearchBox.placeholder = aliasSearchPlaceholder
+    aliasSearchBox:SetScript("OnTextChanged", function(self)
+        aliasSearchPlaceholder:SetShown((self:GetText() or "") == "")
+        if RefreshAliasList then RefreshAliasList() end
+    end)
+    aliasSearchBox:SetScript("OnEscapePressed", function(self)
+        if (self:GetText() or "") ~= "" then
+            self:SetText("")
+        else
+            self:ClearFocus()
+        end
+    end)
+
+    local aliasList = CreateFrame("Frame", nil, aliasesTab)
+    aliasList:SetPoint("TOPLEFT", aliasTools, "BOTTOMLEFT", 0, -8)
+    aliasList:SetPoint("BOTTOMRIGHT", aliasesTab, "BOTTOMRIGHT", -8, 8)
+    ns.CreateRoundedRectBorder(aliasList)
+    ns.SetRoundedRectBarHeight(aliasList, 8)
+    HideRoundedFrameBorder(aliasList)
+    PaintRoundedFill(aliasList, 0.075, 0.075, 0.085, 0.92)
+
+    local aliasScroll = CreateFrame("ScrollFrame", nil, aliasList)
+    aliasScroll:SetPoint("TOPLEFT", aliasList, "TOPLEFT", 6, -6)
+    aliasScroll:SetPoint("BOTTOMRIGHT", aliasList, "BOTTOMRIGHT", -10, 6)
 
     local aliasContent = CreateFrame("Frame", nil, aliasScroll)
-    aliasContent:SetSize(FRAME_W - 100, 1)
+    aliasContent:SetSize(FRAME_W - 42, 1)
     aliasScroll:SetScrollChild(aliasContent)
+
+    local aliasScrollBar = ns.Utils and ns.Utils.CreateMinimalScrollBar and ns.Utils.CreateMinimalScrollBar(aliasScroll, aliasList)
+    local aliasEmpty = aliasContent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    aliasEmpty:SetPoint("TOPLEFT", aliasContent, "TOPLEFT", 8, -8)
+    aliasEmpty:SetText("No saved aliases.")
 
     local aliasRowPool = {}
     local function ReleaseAliasRows()
         for i = 1, #aliasRowPool do aliasRowPool[i]:Hide() end
     end
+    local function UpdateAliasScrollBar()
+        if not aliasScrollBar then return end
+        local contentH = aliasContent:GetHeight() or 0
+        local viewH = aliasScroll:GetHeight() or 0
+        if contentH > viewH + 1 then
+            aliasScrollBar:Show()
+            aliasScrollBar:UpdateThumb(contentH, viewH)
+        else
+            aliasScroll:SetVerticalScroll(0)
+            aliasScrollBar:Hide()
+        end
+    end
     local function AcquireAliasRow(idx)
         local row = aliasRowPool[idx]
         if row then row:Show(); return row end
         row = CreateFrame("Frame", nil, aliasContent)
-        row:SetSize(FRAME_W - 100, 18)
+        row:SetSize(FRAME_W - 42, 26)
+        row:EnableMouse(true)
+        row.bg = CreateFrame("Frame", nil, row)
+        row.bg:SetAllPoints()
+        row.bg:EnableMouse(false)
+        ns.CreateRoundedRectBorder(row.bg)
+        ns.SetRoundedRectBarHeight(row.bg, 8)
+        HideRoundedFrameBorder(row.bg)
+        PaintRoundedFill(row.bg, 1, 1, 1, 0)
         row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        row.text:SetPoint("LEFT", row, "LEFT", 4, 0)
+        row.text:SetPoint("LEFT", row, "LEFT", 8, 0)
         row.text:SetJustifyH("LEFT")
-        row.removeBtn = CreateFrame("Button", nil, row, "UIPanelCloseButton")
-        row.removeBtn:SetSize(20, 20)
-        row.removeBtn:SetPoint("RIGHT", row, "RIGHT", 0, 0)
+        row.removeBtn = CreateModernButton(row, "x", 20, 18)
+        row.removeBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+        row.text:SetPoint("RIGHT", row.removeBtn, "LEFT", -8, 0)
+        row:SetScript("OnEnter", function(self)
+            PaintRoundedFill(self.bg, 1, 1, 1, 0.055)
+        end)
+        row:SetScript("OnLeave", function(self)
+            PaintRoundedFill(self.bg, 1, 1, 1, 0)
+        end)
         aliasRowPool[idx] = row
         return row
     end
 
-    local function RefreshAliasList()
+    RefreshAliasList = function()
         ReleaseAliasRows()
-        if not ns.Aliases then return end
+        if not ns.Aliases then
+            clearAliasesBtn:Disable()
+            aliasEmpty:SetText("No saved aliases.")
+            aliasEmpty:Show()
+            return
+        end
+        local query = aliasSearchBox and aliasSearchBox:GetText() or ""
+        query = query:lower()
         local entries = {}
+        local total = 0
         ns.Aliases:ForEach(function(text, info)
-            entries[#entries + 1] = info
+            total = total + 1
+            local aliasText = info.text or text or ""
+            local targetName = info.name or ""
+            local haystack = (aliasText .. " " .. targetName):lower()
+            if query == "" or string.find(haystack, query, 1, true) then
+                entries[#entries + 1] = info
+            end
         end)
         table.sort(entries, function(a, b) return (a.text or ""):lower() < (b.text or ""):lower() end)
-        local y = -2
+        clearAliasesBtn:SetEnabled(total > 0)
+        clearAliasesBtn:SetAlpha(total > 0 and 1 or 0.45)
+        aliasEmpty:SetText(total == 0 and "No saved aliases." or "No aliases match.")
+        aliasEmpty:SetShown(#entries == 0)
+        local rowH = 28
+        local y = -4
         for i, info in ipairs(entries) do
             local row = AcquireAliasRow(i)
             row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", aliasContent, "TOPLEFT", 0, y)
+            row:SetPoint("TOPLEFT", aliasContent, "TOPLEFT", 4, y)
             row.text:SetText(("|cFFFFD100%s|r  -> %s"):format(info.text or "?", info.name or "?"))
             row.removeBtn:SetScript("OnClick", function()
                 if ns.Aliases then ns.Aliases:Remove(info.text) end
                 RefreshAliasList()
             end)
-            y = y - 18
+            y = y - rowH
         end
-        aliasContent:SetHeight(math.max(1, -y + 4))
+        aliasContent:SetHeight(math.max(32, -y + 4))
+        UpdateAliasScrollBar()
+        C_Timer.After(0, UpdateAliasScrollBar)
     end
-    sec4:HookScript("OnShow", RefreshAliasList)
+    aliasScroll:SetScript("OnSizeChanged", UpdateAliasScrollBar)
+    aliasContent:HookScript("OnSizeChanged", UpdateAliasScrollBar)
+    aliasesTab:HookScript("OnShow", RefreshAliasList)
     optionsFrame.RefreshAliasList = RefreshAliasList
+
+    StaticPopupDialogs["EASYFIND_CLEAR_ALIASES"] = {
+        text = "Clear all saved aliases?",
+        button1 = "Clear",
+        button2 = CANCEL or "Cancel",
+        OnAccept = function()
+            if ns.Aliases then ns.Aliases:ClearAll() end
+            RefreshAliasList()
+        end,
+        OnShow = function(self)
+            self:SetFrameStrata("TOOLTIP")
+            self:SetFrameLevel(1000)
+        end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3,
+    }
+    clearAliasesBtn:SetScript("OnClick", function()
+        local dialog = StaticPopup_Show("EASYFIND_CLEAR_ALIASES")
+        if dialog then
+            dialog:SetFrameStrata("TOOLTIP")
+            dialog:SetFrameLevel(1000)
+        end
+    end)
 
     -- Reset buttons (tips on Home tab)
 
@@ -1619,23 +1870,8 @@ function Options:Initialize()
         preferredIndex = 3,
     }
 
-    StaticPopupDialogs["EASYFIND_DISABLE_UI_SEARCH"] = {
-        text = "Disable UI Search?\n\nThis will remove the main search bar. You can re-enable it later from options.",
-        button1 = "Disable",
-        button2 = "Cancel",
-        OnAccept = function()
-            EasyFind.db.enableUISearch = false
-            UpdateUIToggleVisual()
-            StaticPopup_Show("EASYFIND_RELOAD_PROMPT")
-        end,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
-
     StaticPopupDialogs["EASYFIND_DISABLE_MAP_SEARCH"] = {
-        text = "Disable Map Search?\n\nThis will remove map search, pins, and map overlay features. You can re-enable it later from options.",
+        text = "Disable Map Search?\n\nThis will remove map search, pins, map overlay features, and the EasyFind tab on the world map. You can re-enable it later from options.",
         button1 = "Disable",
         button2 = "Cancel",
         OnAccept = function()
@@ -1698,23 +1934,23 @@ function Options:Initialize()
     }
 
     -- Reset buttons inside General tab (below last slider)
-    local resetAllBtn = CreateFrame("Button", nil, sec3, "UIPanelButtonTemplate")
+    local resetAllBtn = CreateModernButton(sec3)
     resetAllBtn:SetSize(RESET_BTN_W, 20)
     resetAllBtn:SetPoint("BOTTOMLEFT", sec3, "BOTTOMLEFT", 8, 8)
     resetAllBtn:SetText("Reset All Settings")
     resetAllBtn:SetScript("OnClick", function()
         StaticPopup_Show("EASYFIND_RESET_ALL")
     end)
-    resetAllBtn:SetScript("OnEnter", function(self)
+    resetAllBtn:HookScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:AddLine("Reset All Settings")
         GameTooltip:AddLine("Restores all options to their default values.", 1, 1, 1, true)
         GameTooltip:AddLine("Slash command: /ef reset", 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
-    resetAllBtn:SetScript("OnLeave", GameTooltip_Hide)
+    resetAllBtn:HookScript("OnLeave", GameTooltip_Hide)
 
-    local resetPosBtn = CreateFrame("Button", nil, sec3, "UIPanelButtonTemplate")
+    local resetPosBtn = CreateModernButton(sec3)
     resetPosBtn:SetSize(RESET_BTN_W, 20)
     resetPosBtn:SetPoint("LEFT", resetAllBtn, "RIGHT", 8, 0)
     resetPosBtn:SetText("Reset All Positions")
@@ -1737,52 +1973,38 @@ function Options:Initialize()
         .. "and any error messages you saw. Screenshots are great!"
     )
 
-    local bugBtn = CreateFrame("Button", nil, feedbackTab, "UIPanelButtonTemplate")
+    local bugBtn = CreateModernButton(feedbackTab)
     bugBtn:SetSize(RESET_BTN_W, 20)
     bugBtn:SetPoint("TOPLEFT", feedbackDesc, "BOTTOMLEFT", 0, -12)
     bugBtn:SetText("Report Bug")
     bugBtn:SetScript("OnClick", function()
         EasyFind:OpenBugReport()
     end)
-    bugBtn:SetScript("OnEnter", function(self)
+    bugBtn:HookScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:AddLine("Report Bug")
         GameTooltip:AddLine("Opens a link to submit a bug report on GitHub.", 1, 1, 1, true)
         GameTooltip:AddLine("Slash command: /ef bug", 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
-    bugBtn:SetScript("OnLeave", GameTooltip_Hide)
+    bugBtn:HookScript("OnLeave", GameTooltip_Hide)
 
-    local featureBtn = CreateFrame("Button", nil, feedbackTab, "UIPanelButtonTemplate")
+    local featureBtn = CreateModernButton(feedbackTab)
     featureBtn:SetSize(RESET_BTN_W, 20)
     featureBtn:SetPoint("LEFT", bugBtn, "RIGHT", 12, 0)
     featureBtn:SetText("Request Feature")
     featureBtn:SetScript("OnClick", function()
         EasyFind:OpenFeatureRequest()
     end)
-    featureBtn:SetScript("OnEnter", function(self)
+    featureBtn:HookScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
         GameTooltip:AddLine("Request Feature")
-        GameTooltip:AddLine("Opens a link to suggest a feature on GitHub.", 1, 1, 1, true)
+        GameTooltip:AddLine("Opens a link to submit a feature request on GitHub.", 1, 1, 1, true)
         GameTooltip:AddLine("Slash command: /ef feature", 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
-    featureBtn:SetScript("OnLeave", GameTooltip_Hide)
+    featureBtn:HookScript("OnLeave", GameTooltip_Hide)
 
-    local enjoyDesc = feedbackTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    enjoyDesc:SetPoint("TOPLEFT", bugBtn, "BOTTOMLEFT", 0, -18)
-    enjoyDesc:SetPoint("RIGHT", feedbackTab, "RIGHT", -12, 0)
-    enjoyDesc:SetJustifyH("LEFT")
-    enjoyDesc:SetSpacing(3)
-    enjoyDesc:SetText(
-        "If you're enjoying EasyFind, spreading the word or leaving a friendly "
-        .. "comment on the CurseForge page is always appreciated. "
-        .. "Copy the link below to share directly with friends:"
-    )
-
-    CreateURLBox(feedbackTab, "https://www.curseforge.com/wow/addons/easyfind", enjoyDesc, -6)
-
-    -- Show Home tab by default
     SwitchToTab(1)
 
     optionsFrame:Hide()
@@ -1798,7 +2020,7 @@ function Options:DoResetPositions()
 end
 
 function Options:DoResetAll()
-    local needsReload = (EasyFind.db.enableUISearch == false) or (EasyFind.db.enableMapSearch == false)
+    local needsReload = EasyFind.db.enableMapSearch == false
     ApplyDefaults(UI_DEFAULTS)
     ApplyDefaults(MAP_DEFAULTS)
     ApplyDefaults(GENERAL_DEFAULTS)
@@ -1857,6 +2079,7 @@ function Options:RegisterWithBlizzardOptions()
         optionsFrame.closeBtn:Hide()
         optionsFrame.bgTex:Hide()
         optionsFrame:SetBackdrop(nil)
+        optionsFrame:SetScale(1)
 
         -- Reparent into Blizzard panel
         optionsFrame:SetParent(self)
@@ -1915,54 +2138,10 @@ function Options:Show()
     end
 
     -- Refresh values from saved vars (nil-safe in case init partially failed)
-    if optionsFrame.panelOpacitySlider then optionsFrame.panelOpacitySlider:SetValue(EasyFind.db.panelOpacity or 0.9) end
-    if optionsFrame.opacitySlider then optionsFrame.opacitySlider:SetValue(EasyFind.db.searchBarOpacity or DEFAULT_OPACITY) end
-    if optionsFrame.uiFontSlider then optionsFrame.uiFontSlider:SetValue(EasyFind.db.fontSize or 0.9) end
-    if optionsFrame.mapIconSlider then optionsFrame.mapIconSlider:SetValue(EasyFind.db.iconScale or 0.8) end
-    if optionsFrame.autoHideCheckbox then
-        optionsFrame.autoHideCheckbox:SetChecked(EasyFind.db.autoHide ~= false)
-    end
-    optionsFrame.smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
-    do
-        local autoOn = EasyFind.db.autoHide ~= false
-        optionsFrame.smartShowCheckbox:SetEnabled(not autoOn)
-        local lbl = optionsFrame.smartShowCheckbox:GetFontString()
-        if lbl then
-            local g = autoOn and 0.5 or 1
-            lbl:SetTextColor(g, g, g)
-        end
-    end
-    optionsFrame.staticOpacityCheckbox:SetChecked(EasyFind.db.staticOpacity or false)
-    if optionsFrame.lockPositionCheckbox then
-        optionsFrame.lockPositionCheckbox:SetChecked(EasyFind.db.lockPosition or false)
-    end
-    optionsFrame.loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage ~= false)
-    optionsFrame.uiResultsAboveCheckbox:SetChecked(EasyFind.db.uiResultsAbove or false)
-    if optionsFrame.resultShortcutHintsCheckbox then
-        optionsFrame.resultShortcutHintsCheckbox:SetChecked(EasyFind.db.showResultShortcutHints ~= false)
-    end
-    optionsFrame.minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton or false)
-    if optionsFrame.mapPinGroup then optionsFrame.mapPinGroup:UpdateVisuals() end
-    if optionsFrame.automationGroup then optionsFrame.automationGroup:UpdateVisuals() end
-    optionsFrame.indicatorBtnText:SetText(EasyFind.db.indicatorStyle or "EasyFind Arrow")
-    if optionsFrame.fontBtnText then
-        optionsFrame.fontBtnText:SetText(EasyFind.db.font or "Default")
-    end
-    local clr = EasyFind.db.indicatorColor or "Yellow"
-    local rgb = ns.INDICATOR_COLORS[clr] or ns.INDICATOR_COLORS.Yellow
-    optionsFrame.colorBtnText:SetText(clr)
-    optionsFrame.colorBtnText:SetTextColor(rgb[1], rgb[2], rgb[3])
-    optionsFrame.colorSwatch:SetColorTexture(rgb[1], rgb[2], rgb[3], 1)
-
-    local key1 = GetBindingKey("EASYFIND_TOGGLE_FOCUS")
-    optionsFrame.toggleFocusBtn:SetText(key1 or "Not Bound")
-    local key2 = GetBindingKey("EASYFIND_MAP_FOCUS")
-    optionsFrame.mapFocusBtn:SetText(key2 or "Not Bound")
-    local key3 = GetBindingKey("EASYFIND_CLEAR")
-    optionsFrame.clearBtn:SetText(key3 or "Not Bound")
+    SyncOptionControls()
 
     if not self.embedded and optionsFrame.bgTex then
-        optionsFrame.bgTex:SetAlpha(EasyFind.db.panelOpacity or 0.9)
+        optionsFrame.bgTex:SetAlpha(OPTIONS_PANEL_ALPHA)
     end
     optionsFrame:Show()
 end
@@ -1973,9 +2152,9 @@ function Options:RestoreStandalone()
     optionsFrame.titleText:Show()
     optionsFrame.closeBtn:Show()
     optionsFrame.bgTex:Show()
-    optionsFrame.bgTex:SetAlpha(EasyFind.db.panelOpacity or 0.9)
-    optionsFrame:SetBackdrop(FRAME_BACKDROP)
-    optionsFrame:SetBackdropBorderColor(0.50, 0.48, 0.45, 1.0)
+    optionsFrame.bgTex:SetAlpha(OPTIONS_PANEL_ALPHA)
+    optionsFrame:SetBackdrop(nil)
+    optionsFrame:SetScale(OPTIONS_PANEL_SCALE)
 
     optionsFrame:SetParent(UIParent)
     optionsFrame:SetFrameStrata("DIALOG")

@@ -112,6 +112,12 @@ local RefreshCurrentSearch
 local ReleaseMapTabMemory
 local panel
 local selectedIsOurs = false
+local function IsMapSearchEnabled()
+    return not (EasyFind and EasyFind.db and EasyFind.db.enableMapSearch == false)
+end
+function MapTab:IsEnabled()
+    return IsMapSearchEnabled()
+end
 -- The Blizzard QuestMapFrame display mode that was active when our panel
 -- took over. SetDisplayMode(nil) clears qmf.displayMode, so when the map
 -- closes + reopens, Blizzard has no mode to restore and the sidebar
@@ -237,6 +243,7 @@ end
 -- OnMouseUp Show()'s the right panel; we just hide ours.
 -- ---------------------------------------------------------------------------
 local function ShowOurPanel()
+    if not IsMapSearchEnabled() then return end
     local qmf = _G["QuestMapFrame"]
     if not qmf or not panel then return end
     selectedIsOurs = true
@@ -2475,6 +2482,7 @@ end
 -- Focus entry for keybind (/ef map search focus)
 -- ---------------------------------------------------------------------------
 function MapTab:Focus()
+    if not IsMapSearchEnabled() then return false end
     if not initialized then self:Initialize() end
     -- ToggleWorldMap is a global available before Blizzard_WorldMap
     -- loads; calling it loads the addon and shows the map. After it
@@ -2489,7 +2497,7 @@ function MapTab:Focus()
     -- file consumes _pendingFocus to retry once the panel exists.
     if not panel or not tabFrame then
         MapTab._pendingFocus = true
-        return
+        return false
     end
     -- Synchronous tab swap: same path the user's tab click takes.
     -- The OnMouseUp handler invokes ShowOurPanel().
@@ -2507,9 +2515,11 @@ function MapTab:Focus()
             panel.searchBox:SetFocus()
         end
     end)
+    return true
 end
 
 function MapTab:OpenWithQuery(query)
+    if not IsMapSearchEnabled() then return false end
     if not initialized then self:Initialize() end
     if not WorldMapFrame or not WorldMapFrame:IsShown() then
         if ToggleWorldMap then ToggleWorldMap() end
@@ -2520,7 +2530,7 @@ function MapTab:OpenWithQuery(query)
     -- exists. Mirrors _pendingFocus.
     if not panel or not tabFrame then
         MapTab._pendingQuery = query
-        return
+        return false
     end
     -- Order matters: set the search text BEFORE invoking the tab's
     -- OnMouseUp. ShowOurPanel reads the current editbox text and runs
@@ -2550,6 +2560,7 @@ function MapTab:OpenWithQuery(query)
             panel.searchBox:ClearFocus()
         end
     end)
+    return true
 end
 
 -- ---------------------------------------------------------------------------
@@ -2583,6 +2594,13 @@ local function PlaceTab()
 end
 
 function MapTab:Initialize()
+    if not IsMapSearchEnabled() then
+        if initialized and tabFrame then tabFrame:Hide() end
+        if initialized and panel then
+            if panel.outer then panel.outer:Hide() else panel:Hide() end
+        end
+        return
+    end
     if initialized then return end
     local qmf = _G["QuestMapFrame"]
     if not qmf or not qmf.MapLegendTab then return end
@@ -2668,6 +2686,11 @@ function MapTab:Initialize()
     if WorldMapFrame and WorldMapFrame.IsMaximized then
         local function UpdateTabVisibility()
             if not tabFrame then return end
+            if not IsMapSearchEnabled() then
+                HideOurPanel()
+                tabFrame:Hide()
+                return
+            end
             if WorldMapFrame:IsMaximized() then
                 HideOurPanel()
                 tabFrame:Hide()
@@ -2712,6 +2735,7 @@ local eventFrame = CreateFrame("Frame")
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:SetScript("OnEvent", function(_, event, addonName)
+    if not IsMapSearchEnabled() then return end
     if event == "ADDON_LOADED" and addonName == "Blizzard_WorldMap" then
         SafeAfter(0, function() MapTab:Initialize() end)
     elseif event == "PLAYER_LOGIN" then
