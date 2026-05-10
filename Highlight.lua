@@ -648,7 +648,7 @@ function Highlight:UpdateGuide()
             for i = currentStepIndex - 1, 1, -1 do
                 local prevStep = currentGuide.steps[i]
                 if prevStep and prevStep.statisticsCategory then
-                    if not self:IsCategoryExpandedOrSelected(prevStep.statisticsCategory) then
+                    if not self:IsCategoryExpandedOrSelected(prevStep.statisticsCategory, prevStep.statisticsCategoryID) then
                         currentStepIndex = i
                         self:HideHighlight()
                         return
@@ -657,14 +657,14 @@ function Highlight:UpdateGuide()
             end
 
             -- Check if already on correct statistics category
-            if self:IsCategorySelectedByData(step.statisticsCategory) then
+            if self:IsCategorySelectedByData(step.statisticsCategory, step.statisticsCategoryID) then
                 if isLastStep then
                     self:Cancel()
                     return
                 end
                 -- Non-final: only advance if children are actually visible (parent expanded),
                 -- not just selected - clicking a collapsed parent selects it without showing children
-                local elementData = self:FindCategoryElementData(step.statisticsCategory)
+                local elementData = self:FindCategoryElementData(step.statisticsCategory, step.statisticsCategoryID)
                 if not elementData or not elementData.parent or not elementData.collapsed then
                     self:AdvanceStep()
                     return
@@ -675,7 +675,7 @@ function Highlight:UpdateGuide()
             -- For non-final steps: if the category is a parent that's expanded (children visible),
             -- skip ahead - don't force the user to re-select a parent they've already drilled into
             if not isLastStep then
-                local elementData = self:FindCategoryElementData(step.statisticsCategory)
+                local elementData = self:FindCategoryElementData(step.statisticsCategory, step.statisticsCategoryID)
                 if elementData and elementData.parent and not elementData.collapsed then
                     self:AdvanceStep()
                     return
@@ -683,7 +683,7 @@ function Highlight:UpdateGuide()
             end
 
             -- Not selected - find the button (scrolls into view automatically)
-            local categoryBtn = self:GetStatisticsCategoryButton(step.statisticsCategory)
+            local categoryBtn = self:GetStatisticsCategoryButton(step.statisticsCategory, step.statisticsCategoryID)
             if categoryBtn then
                 self:HighlightFrame(categoryBtn)
             else
@@ -799,7 +799,7 @@ function Highlight:UpdateGuide()
             for i = currentStepIndex - 1, 1, -1 do
                 local prevStep = currentGuide.steps[i]
                 if prevStep and prevStep.achievementCategory then
-                    if not self:IsCategoryExpandedOrSelected(prevStep.achievementCategory) then
+                    if not self:IsCategoryExpandedOrSelected(prevStep.achievementCategory, prevStep.achievementCategoryID) then
                         currentStepIndex = i
                         self:HideHighlight()
                         return
@@ -808,14 +808,14 @@ function Highlight:UpdateGuide()
             end
 
             -- Check if already on correct category
-            if self:IsCategorySelectedByData(step.achievementCategory) then
+            if self:IsCategorySelectedByData(step.achievementCategory, step.achievementCategoryID) then
                 if isLastStep then
                     self:Cancel()
                     return
                 end
                 -- Non-final: only advance if children are actually visible (parent expanded),
                 -- not just selected - clicking a collapsed parent selects it without showing children
-                local elementData = self:FindCategoryElementData(step.achievementCategory)
+                local elementData = self:FindCategoryElementData(step.achievementCategory, step.achievementCategoryID)
                 if not elementData or not elementData.parent or not elementData.collapsed then
                     self:AdvanceStep()
                     return
@@ -824,7 +824,7 @@ function Highlight:UpdateGuide()
             end
 
             -- Not selected - find the button (scrolls into view automatically)
-            local categoryBtn = self:GetAchievementCategoryButton(step.achievementCategory)
+            local categoryBtn = self:GetAchievementCategoryButton(step.achievementCategory, step.achievementCategoryID)
             if categoryBtn then
                 self:HighlightFrame(categoryBtn)
             else
@@ -2007,9 +2007,24 @@ end
 -- Element data: { id = <categoryID>, selected = true/false, parent = ..., isChild = ..., ... }
 -- Category names are resolved via GetCategoryInfo(elementData.id).
 
--- Shared helper: find element data in the ScrollBox data provider by category name.
+local function CategoryDataMatches(data, categoryName, categoryID)
+    if not data then return false end
+    local catID = tonumber(data.id)
+    if not catID then return false end
+
+    local numericCategoryID = tonumber(categoryID)
+    if numericCategoryID then return catID == numericCategoryID end
+
+    if categoryName and GetCategoryInfo then
+        local title = GetCategoryInfo(catID)
+        if title and slower(title) == slower(categoryName) then return true end
+    end
+    return false
+end
+
+-- Shared helper: find element data in the ScrollBox data provider by category name/id.
 -- Returns (elementData, scrollBox) or (nil, nil).
-function Highlight:FindCategoryElementData(categoryName)
+function Highlight:FindCategoryElementData(categoryName, categoryID)
     local categoriesFrame = _G["AchievementFrameCategories"]
     if not categoriesFrame or not categoriesFrame.ScrollBox then return nil, nil end
 
@@ -2017,20 +2032,11 @@ function Highlight:FindCategoryElementData(categoryName)
     local dataProvider = scrollBox.GetDataProvider and scrollBox:GetDataProvider()
     if not dataProvider then return nil, nil end
 
-    local categoryNameLower = slower(categoryName)
     local finder = dataProvider.FindElementDataByPredicate or dataProvider.FindByPredicate
     if not finder then return nil, nil end
 
     local elementData = finder(dataProvider, function(data)
-        if not data then return false end
-        -- Element data has an `id` field that is a numeric category ID (or "summary")
-        local catID = data.id
-        if not catID or type(catID) ~= "number" then return false end
-        if GetCategoryInfo then
-            local title = GetCategoryInfo(catID)
-            if title and slower(title) == categoryNameLower then return true end
-        end
-        return false
+        return CategoryDataMatches(data, categoryName, categoryID)
     end)
 
     return elementData, scrollBox
@@ -2040,22 +2046,19 @@ end
 -- Uses GetElementData().id → GetCategoryInfo() for reliable matching
 -- (AchievementCategoryTemplate stores text on btn.Button, not btn itself).
 -- Returns the button frame or nil.
-function Highlight:FindVisibleCategoryButton(categoryName)
+function Highlight:FindVisibleCategoryButton(categoryName, categoryID)
     local categoriesFrame = _G["AchievementFrameCategories"]
     if not categoriesFrame or not categoriesFrame.ScrollBox then return nil end
 
     local scrollBox = categoriesFrame.ScrollBox
-    local categoryNameLower = slower(categoryName)
 
     -- Primary: FindFrameByPredicate (cleanest ScrollBox API)
     if scrollBox.FindFrameByPredicate then
         local frame = scrollBox:FindFrameByPredicate(function(frame, elementData)
-            if not elementData or not elementData.id or type(elementData.id) ~= "number" then return false end
-            if GetCategoryInfo then
-                local title = GetCategoryInfo(elementData.id)
-                if title and slower(title) == categoryNameLower then return true end
-            end
-            return false
+            local data = elementData
+                or (frame and frame.GetElementData and frame:GetElementData())
+                or frame
+            return CategoryDataMatches(data, categoryName, categoryID)
         end)
         if frame then return frame end
     end
@@ -2065,11 +2068,8 @@ function Highlight:FindVisibleCategoryButton(categoryName)
         for _, btn in scrollBox:EnumerateFrames() do
             if btn and btn:IsShown() and btn.GetElementData then
                 local data = btn:GetElementData()
-                if data and data.id and type(data.id) == "number" and GetCategoryInfo then
-                    local title = GetCategoryInfo(data.id)
-                    if title and slower(title) == categoryNameLower then
-                        return btn
-                    end
+                if CategoryDataMatches(data, categoryName, categoryID) then
+                    return btn
                 end
             end
         end
@@ -2080,15 +2080,15 @@ end
 
 -- Shared helper: check if a category is currently selected.
 -- Uses elementData.selected (set by Blizzard's selection system).
-function Highlight:IsCategorySelectedByData(categoryName)
+function Highlight:IsCategorySelectedByData(categoryName, categoryID)
     -- Primary: check the data provider for elementData.selected
-    local elementData = self:FindCategoryElementData(categoryName)
+    local elementData = self:FindCategoryElementData(categoryName, categoryID)
     if elementData and elementData.selected then
         return true
     end
 
     -- Fallback: find visible button and check its elementData directly
-    local btn = self:FindVisibleCategoryButton(categoryName)
+    local btn = self:FindVisibleCategoryButton(categoryName, categoryID)
     if btn and btn.GetElementData then
         local btnData = btn:GetElementData()
         if btnData and btnData.selected then return true end
@@ -2100,8 +2100,8 @@ end
 -- Shared helper: check if a category is expanded (its children visible) OR selected.
 -- Used for prerequisite validation - a parent category doesn't need to be "selected"
 -- once its child is selected; it only needs to still be expanded.
-function Highlight:IsCategoryExpandedOrSelected(categoryName)
-    local elementData = self:FindCategoryElementData(categoryName)
+function Highlight:IsCategoryExpandedOrSelected(categoryName, categoryID)
+    local elementData = self:FindCategoryElementData(categoryName, categoryID)
     if not elementData then return false end
 
     -- If it's directly selected, obviously satisfied
@@ -2119,20 +2119,20 @@ end
 
 -- Shared helper: scroll to a category and return the button frame.
 -- Expands parent categories if needed via AchievementFrameCategories_ExpandToCategory.
-function Highlight:ScrollToCategoryButton(categoryName)
-    local elementData, scrollBox = self:FindCategoryElementData(categoryName)
+function Highlight:ScrollToCategoryButton(categoryName, categoryID)
+    local elementData, scrollBox = self:FindCategoryElementData(categoryName, categoryID)
     if not elementData or not scrollBox then return nil end
 
     -- If the category is hidden (parent collapsed), try to expand to it
     if elementData.hidden then
-        local catID = elementData.id
-        if catID and type(catID) == "number" and AchievementFrameCategories_ExpandToCategory then
+        local catID = tonumber(elementData.id)
+        if catID and AchievementFrameCategories_ExpandToCategory then
             AchievementFrameCategories_ExpandToCategory(catID)
             -- Data provider may have changed, re-find
             if AchievementFrameCategories_UpdateDataProvider then
                 AchievementFrameCategories_UpdateDataProvider()
             end
-            elementData, scrollBox = self:FindCategoryElementData(categoryName)
+            elementData, scrollBox = self:FindCategoryElementData(categoryName, categoryID)
             if not elementData or not scrollBox then return nil end
         end
     end
@@ -2140,16 +2140,16 @@ function Highlight:ScrollToCategoryButton(categoryName)
     -- Scroll to center the category in view
     local alignCenter = ScrollBoxConstants and ScrollBoxConstants.AlignCenter
     if scrollBox.ScrollToElementData then
-        scrollBox:ScrollToElementData(elementData, alignCenter)
+        pcall(scrollBox.ScrollToElementData, scrollBox, elementData, alignCenter)
     end
 
     -- Now find the visible button after scrolling
-    return self:FindVisibleCategoryButton(categoryName)
+    return self:FindVisibleCategoryButton(categoryName, categoryID)
 end
 
 -- STATISTICS CATEGORY
 
-function Highlight:IsStatisticsCategorySelected(categoryName)
+function Highlight:IsStatisticsCategorySelected(categoryName, categoryID)
     if not AchievementFrame or not AchievementFrame:IsShown() then
         return false
     end
@@ -2158,7 +2158,7 @@ function Highlight:IsStatisticsCategorySelected(categoryName)
     end
 
     -- Primary: check elementData.selected via data provider
-    if self:IsCategorySelectedByData(categoryName) then
+    if self:IsCategorySelectedByData(categoryName, categoryID) then
         return true
     end
 
@@ -2166,7 +2166,7 @@ function Highlight:IsStatisticsCategorySelected(categoryName)
     if currentGuide and currentStepIndex then
         local nextStep = currentGuide.steps[currentStepIndex + 1]
         if nextStep and nextStep.statisticsCategory then
-            local nextBtn = self:FindVisibleCategoryButton(nextStep.statisticsCategory)
+            local nextBtn = self:FindVisibleCategoryButton(nextStep.statisticsCategory, nextStep.statisticsCategoryID)
             if nextBtn then
                 return true
             end
@@ -2176,7 +2176,7 @@ function Highlight:IsStatisticsCategorySelected(categoryName)
     return false
 end
 
-function Highlight:GetStatisticsCategoryButton(categoryName)
+function Highlight:GetStatisticsCategoryButton(categoryName, categoryID)
     if not AchievementFrame or not AchievementFrame:IsShown() then
         return nil
     end
@@ -2185,22 +2185,22 @@ function Highlight:GetStatisticsCategoryButton(categoryName)
     end
 
     -- First: check currently visible buttons (fast, no scrolling)
-    local visibleBtn = self:FindVisibleCategoryButton(categoryName)
+    local visibleBtn = self:FindVisibleCategoryButton(categoryName, categoryID)
     if visibleBtn then return visibleBtn end
 
     -- Not visible: scroll to it via data provider
-    return self:ScrollToCategoryButton(categoryName)
+    return self:ScrollToCategoryButton(categoryName, categoryID)
 end
 
 -- ACHIEVEMENT/GUILD CATEGORY
 
-function Highlight:IsAchievementCategorySelected(categoryName)
+function Highlight:IsAchievementCategorySelected(categoryName, categoryID)
     if not AchievementFrame or not AchievementFrame:IsShown() then
         return false
     end
 
     -- Primary: check elementData.selected via data provider
-    if self:IsCategorySelectedByData(categoryName) then
+    if self:IsCategorySelectedByData(categoryName, categoryID) then
         return true
     end
 
@@ -2208,7 +2208,7 @@ function Highlight:IsAchievementCategorySelected(categoryName)
     if currentGuide and currentStepIndex then
         local nextStep = currentGuide.steps[currentStepIndex + 1]
         if nextStep and nextStep.achievementCategory then
-            local nextBtn = self:FindVisibleCategoryButton(nextStep.achievementCategory)
+            local nextBtn = self:FindVisibleCategoryButton(nextStep.achievementCategory, nextStep.achievementCategoryID)
             if nextBtn then
                 return true
             end
@@ -2218,18 +2218,18 @@ function Highlight:IsAchievementCategorySelected(categoryName)
     return false
 end
 
-function Highlight:GetAchievementCategoryButton(categoryName, noScroll)
+function Highlight:GetAchievementCategoryButton(categoryName, categoryID, noScroll)
     if not AchievementFrame or not AchievementFrame:IsShown() then
         return nil
     end
 
     -- First: check currently visible buttons (fast, no scrolling)
-    local visibleBtn = self:FindVisibleCategoryButton(categoryName)
+    local visibleBtn = self:FindVisibleCategoryButton(categoryName, categoryID)
     if visibleBtn then return visibleBtn end
 
     -- Not visible: scroll to it (unless noScroll requested by selection checks)
     if noScroll then return nil end
-    return self:ScrollToCategoryButton(categoryName)
+    return self:ScrollToCategoryButton(categoryName, categoryID)
 end
 
 -- Character Frame sidebar tab helpers (Character Stats, Titles, Equipment Manager)

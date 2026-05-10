@@ -496,18 +496,23 @@ function EasyFind:EnsureDynamicLoaded()
 end
 
 local function OnPlayerLogin()
-    -- Heavy synchronous statistics enumeration runs first so it lands
-    -- during the load-screen window — the player isn't controlling the
-    -- character yet, so the ~400 API calls are invisible. The dynamic
-    -- provider machinery checks `loaded` and skips this when the
-    -- staggered chain reaches it later.
-    if ns.Database and ns.Database.PopulateDynamicStatistics
+    -- Kick off the time-sliced statistics enumeration immediately
+    -- (2ms-per-tick budget, no load-screen block). Run it through the
+    -- provider manager so later heavy-load requests don't restart it.
+    if ns.Database and ns.Database.EnsureDynamicProviderLoaded
        and EasyFind.db.enableUISearch ~= false then
-        local ok = xpcall(ns.Database.PopulateDynamicStatistics,
-                          ErrorHandler, ns.Database)
-        if ok and ns.Database.MarkDynamicProviderLoaded then
-            ns.Database:MarkDynamicProviderLoaded("statistics")
-        end
+        ns.Database:EnsureDynamicProviderLoaded("statistics", function(changed)
+            if changed and ns.Database.MarkDynamicProviderLoaded then
+                ns.Database:MarkDynamicProviderLoaded("statistics")
+            end
+        end)
+    elseif ns.Database and ns.Database.PopulateDynamicStatisticsAsync
+       and EasyFind.db.enableUISearch ~= false then
+        ns.Database:PopulateDynamicStatisticsAsync(function(changed)
+            if changed and ns.Database.MarkDynamicProviderLoaded then
+                ns.Database:MarkDynamicProviderLoaded("statistics")
+            end
+        end)
     end
 
     local function SafeInit(mod, name)
@@ -547,15 +552,14 @@ local function OnPlayerLogin()
         EasyFind:EnsureDynamicLoaded()
     end
 
-    -- Background-load heavy async providers (bosses) a few seconds after
+    -- Background-load boss entries directly shortly after
     -- login so individual encounter names ("Professor Putricide") match
-    -- on the first search instead of requiring a "boss" / "icc" keyword
-    -- to trigger the lazy load. The async loader is time-sliced so the
-    -- ~1000 encounter scan doesn't stutter.
-    SafeAfter(5.0, function()
+    -- on the first search. Do not route this through the generic heavy
+    -- chain; boss results should not sit behind Statistics/Loot.
+    SafeAfter(1.0, function()
         if EasyFind.db.enableUISearch == false then return end
-        if ns.Database and ns.Database.LoadHeavyDynamicSearchData then
-            ns.Database:LoadHeavyDynamicSearchData(function() end)
+        if ns.Database and ns.Database.EnsureDynamicProviderLoaded then
+            ns.Database:EnsureDynamicProviderLoaded("bosses", function() end)
         end
     end)
 

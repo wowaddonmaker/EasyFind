@@ -1234,6 +1234,28 @@ local function HideOtherMenus(globalName, except)
     end
 end
 
+function Utils.HideCursorMenus(globalName)
+    local closedAny = false
+    local function hidePool(pool)
+        if not pool then return end
+        for i = 1, #pool do
+            local menu = pool[i]
+            if menu and menu:IsShown() then
+                menu:Hide()
+                closedAny = true
+            end
+        end
+    end
+    if globalName then
+        hidePool(cursorMenuPool[globalName])
+    else
+        for _, pool in pairs(cursorMenuPool) do
+            hidePool(pool)
+        end
+    end
+    return closedAny
+end
+
 function Utils.ShowCursorMenu(globalName, rows, opts)
     opts = opts or {}
 
@@ -1272,12 +1294,15 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             self._showedAt = GetTime()
             self._outsideSince = nil
             self._hasEntered = false
+            Utils.SafeCallMethod(self, "EnableKeyboard", true)
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
             self:RegisterEvent("GLOBAL_MOUSE_DOWN")
             self:RegisterEvent("GLOBAL_MOUSE_UP")
         end)
         menu:SetScript("OnHide", function(self)
             self._outsideSince = nil
             self._hasEntered = false
+            Utils.SafeCallMethod(self, "EnableKeyboard", false)
             self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
             self:UnregisterEvent("GLOBAL_MOUSE_UP")
             if self.rows then
@@ -1307,6 +1332,14 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             if event ~= "GLOBAL_MOUSE_DOWN" and event ~= "GLOBAL_MOUSE_UP" then return end
             if self._showedAt and (GetTime() - self._showedAt) < (self.clickGrace or 0.05) then return end
             if not MenuHasMouse(self) then self:Hide() end
+        end)
+        menu:SetScript("OnKeyDown", function(self, key)
+            if key == "ESCAPE" then
+                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+                self:Hide()
+            else
+                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
+            end
         end)
         cursorMenuPool[globalName] = cursorMenuPool[globalName] or {}
         local pool = cursorMenuPool[globalName]

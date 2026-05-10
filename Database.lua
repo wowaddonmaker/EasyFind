@@ -1597,9 +1597,11 @@ local function CacheLootInfo(database, lootInfo, inst, encName, encID, diff, sp,
     lootItemCache[itemID] = entry
 end
 
-function Database:CancelDynamicScans()
+function Database:CancelDynamicScans(includeBosses)
     lootScanGeneration = lootScanGeneration + 1
-    bossScanGeneration = bossScanGeneration + 1
+    if includeBosses then
+        bossScanGeneration = bossScanGeneration + 1
+    end
 end
 
 -- Called after PLAYER_LOGIN. Scans the Encounter Journal for current-tier loot
@@ -2554,6 +2556,10 @@ local CATEGORY_KEYWORD_OVERLAY = {
 }
 
 local CATEGORY_FLAG_GUILD = 0x00000001
+local RefreshStatisticsCategoryIDs
+local IsInStatisticsCategoryTree
+local MarkID
+local HasID
 
 local function buildCategoryEntry(opts)
     local nameLower = slower(opts.categoryName)
@@ -2586,40 +2592,26 @@ end
 -- actually contains for the current build.
 function Database:PopulateDynamicAchievements()
     if not GetCategoryList or not GetCategoryInfo then return false end
+    -- Midnight's GetCategoryList can include statistic tracker IDs.
+    -- Filter those from live category ancestry immediately; the async
+    -- Statistics pass later refreshes this provider with the full row-ID
+    -- set as a backup without blocking achievement results at login.
+
     RemoveEntriesByCategory("Achievement Category")
 
     local categories = GetCategoryList()
     if not categories then return false end
 
-    -- 12.0's GetCategoryList returns the union of achievement category
-    -- IDs AND every individual stat-row ID (each stat row is itself an
-    -- achievement ID and appears in this list with its stat name as
-    -- the "category" name). Build an exclusion set covering both:
-    -- every sidebar stats category + every stat row inside them.
-    local statsExclude = {}
-    if GetStatisticsCategoryList then
-        local statCats = GetStatisticsCategoryList()
-        if statCats then
-            for i = 1, #statCats do
-                local statCatID = statCats[i]
-                statsExclude[statCatID] = true
-                if GetCategoryNumAchievements and GetAchievementInfo then
-                    local total = GetCategoryNumAchievements(statCatID, true)
-                    for j = 1, (total or 0) do
-                        local statID = GetAchievementInfo(statCatID, j)
-                        if statID then statsExclude[statID] = true end
-                    end
-                end
-            end
-        end
-    end
+    local statsCatSet = RefreshStatisticsCategoryIDs()
 
     local catMap = {}
     for i = 1, #categories do
         local catID = categories[i]
-        if not statsExclude[catID] then
+        if not HasID(statsCatSet, catID) and not HasID(Database.statisticIDs, catID) then
             local name, parentID, flags = GetCategoryInfo(catID)
-            if name and name ~= "" then
+            if name and name ~= ""
+               and not IsInStatisticsCategoryTree(catID, parentID)
+               and not Database:IsStatisticAchievement(catID) then
                 catMap[catID] = {
                     id = catID, name = name, parentID = parentID,
                     isGuild = band(flags or 0, CATEGORY_FLAG_GUILD) == 1,
@@ -2641,7 +2633,6 @@ function Database:PopulateDynamicAchievements()
 
     local function emit(cat, parentChain, isGuildBranch)
         local prefix = isGuildBranch and "Guild: " or ""
-        local suffix = isGuildBranch and "" or " (Achievements)"
         local pathRoot = isGuildBranch
             and { "Achievements", "Guild Achievements" }
             or { "Achievements", "Personal Achievements" }
@@ -2653,14 +2644,23 @@ function Database:PopulateDynamicAchievements()
         local path = {}
         for i = 1, #pathRoot do path[i] = pathRoot[i] end
         for i = 1, #parentChain do
-            local pn = parentChain[i].name
-            steps[#steps + 1] = { waitForFrame = "AchievementFrame", achievementCategory = pn }
+            local parent = parentChain[i]
+            local pn = parent.name
+            steps[#steps + 1] = {
+                waitForFrame = "AchievementFrame",
+                achievementCategory = pn,
+                achievementCategoryID = parent.id,
+            }
             path[#path + 1] = pn
         end
-        steps[#steps + 1] = { waitForFrame = "AchievementFrame", achievementCategory = cat.name }
+        steps[#steps + 1] = {
+            waitForFrame = "AchievementFrame",
+            achievementCategory = cat.name,
+            achievementCategoryID = cat.id,
+        }
 
         uiSearchData[#uiSearchData + 1] = buildCategoryEntry({
-            displayName  = prefix .. cat.name .. suffix,
+            displayName  = prefix .. cat.name,
             categoryName = cat.name,
             category     = "Achievement Category",
             path         = path,
@@ -2690,18 +2690,276 @@ end
 -- show up under their own dedicated Statistics filter, not as
 -- duplicate "Achievement" rows.
 Database.statisticIDs = Database.statisticIDs or {}
+Database.statisticsCategoryIDs = Database.statisticsCategoryIDs or {}
+Database.statisticsCategoryChildIDs = Database.statisticsCategoryChildIDs or {}
+Database.statisticsComplete = Database.statisticsComplete or false
+Database.statisticsVersion = Database.statisticsVersion or 0
+
+MarkID = function(set, id)
+    if id == nil then return end
+    set[id] = true
+    local numericID = tonumber(id)
+    if numericID then set[numericID] = true end
+end
+
+HasID = function(set, id)
+    if id == nil then return false end
+    if set[id] == true then return true end
+    local numericID = tonumber(id)
+    return numericID and set[numericID] == true or false
+end
+
+RefreshStatisticsCategoryIDs = function(statCats)
+    wipe(Database.statisticsCategoryIDs)
+    wipe(Database.statisticsCategoryChildIDs)
+    if not statCats and GetStatisticsCategoryList then
+        statCats = GetStatisticsCategoryList()
+    end
+    if statCats then
+        for i = 1, #statCats do
+            MarkID(Database.statisticsCategoryIDs, statCats[i])
+        end
+    end
+    return Database.statisticsCategoryIDs
+end
+
+IsInStatisticsCategoryTree = function(categoryID, parentID)
+    if not categoryID then return false end
+    local statCats = Database.statisticsCategoryIDs
+    if HasID(statCats, categoryID) then return true end
+    if HasID(statCats, parentID) then return true end
+
+    local cached = Database.statisticsCategoryChildIDs[categoryID]
+    if cached ~= nil then return cached end
+
+    local current = parentID
+    local seen
+    while current and current ~= -1 do
+        if HasID(statCats, current) then
+            Database.statisticsCategoryChildIDs[categoryID] = true
+            return true
+        end
+        if not GetCategoryInfo then break end
+        seen = seen or {}
+        if seen[current] then break end
+        seen[current] = true
+        local _, nextParentID = GetCategoryInfo(current)
+        current = nextParentID
+    end
+
+    Database.statisticsCategoryChildIDs[categoryID] = false
+    return false
+end
 
 function Database:IsStatisticAchievement(achievementID)
-    return Database.statisticIDs[achievementID] == true
+    if not achievementID then return false end
+    if HasID(Database.statisticIDs, achievementID) then return true end
+    if not GetCategoryInfo then return false end
+    if not next(Database.statisticsCategoryIDs) then RefreshStatisticsCategoryIDs() end
+    local getAchievementCategory = _G["GetAchievementCategory"]
+    if getAchievementCategory then
+        local categoryID = getAchievementCategory(achievementID)
+        if IsInStatisticsCategoryTree(categoryID, nil) then return true end
+        local categoryParentID
+        if categoryID then
+            local _
+            _, categoryParentID = GetCategoryInfo(categoryID)
+        end
+        if IsInStatisticsCategoryTree(categoryID, categoryParentID) then return true end
+    end
+    local _, parentID = GetCategoryInfo(achievementID)
+    return IsInStatisticsCategoryTree(achievementID, parentID)
+end
+
+-- Cancel token for async stat scans -- bumping it during a scan
+-- causes the in-flight time-sliced loop to bail without writing.
+local statsScanGeneration = 0
+
+-- Time-sliced version of PopulateDynamicStatistics. The per-row
+-- enumeration is ~400 API calls; running it sync at PLAYER_LOGIN
+-- doubles the load screen, and running it sync in one frame
+-- post-login causes a visible hitch. Spread the work across frames
+-- with a small per-tick budget instead.
+function Database:PopulateDynamicStatisticsAsync(done)
+    if not GetStatisticsCategoryList or not GetCategoryInfo
+       or not C_Timer or not C_Timer.After then
+        local ok = self:PopulateDynamicStatistics()
+        done(ok)
+        return
+    end
+
+    RemoveEntriesByCategory("Statistic")
+    wipe(Database.statisticIDs)
+    Database.statisticsComplete = false
+    statsScanGeneration = statsScanGeneration + 1
+    local myGen = statsScanGeneration
+
+    local categories = GetStatisticsCategoryList()
+    if not categories then done(false); return end
+    RefreshStatisticsCategoryIDs(categories)
+
+    local catMap = {}
+    for i = 1, #categories do
+        local catID = categories[i]
+        local name, parentID = GetCategoryInfo(catID)
+        if name and name ~= "" then
+            catMap[catID] = { id = catID, name = name, parentID = parentID, children = {} }
+        end
+    end
+
+    local roots = {}
+    for _, cat in pairs(catMap) do
+        local parent = cat.parentID and cat.parentID ~= -1 and catMap[cat.parentID]
+        if parent then
+            parent.children[#parent.children + 1] = cat
+        else
+            roots[#roots + 1] = cat
+        end
+    end
+
+    -- Flat queue of per-row work items. The expensive per-category
+    -- setup (steps prefix, path, prototype with shared fields) is
+    -- built ONCE per category and stored on the queue item; per-row
+    -- work then only needs the API call + minimal entry construction.
+    --
+    -- Each entry uses an __index prototype to share the constant
+    -- fields (category, buttonFrame, flashLabel, keywords, path,
+    -- stepsPrefix) so each row only stores its unique fields
+    -- (name, nameLower, statisticID, full steps array).
+    local STAT_KEYWORDS_EMPTY = {}  -- shared empty
+    local queue = {}
+
+    local function enqueueCategory(cat, parentChain)
+        local stepsPrefix = {
+            { buttonFrame = "AchievementMicroButton" },
+            { waitForFrame = "AchievementFrame", tabIndex = 3 },
+        }
+        local path = { "Achievements", "Statistics" }
+        for i = 1, #parentChain do
+            local parent = parentChain[i]
+            local pn = parent.name
+            stepsPrefix[#stepsPrefix + 1] = {
+                waitForFrame = "AchievementFrame",
+                statisticsCategory = pn,
+                statisticsCategoryID = parent.id,
+            }
+            path[#path + 1] = pn
+        end
+        stepsPrefix[#stepsPrefix + 1] = {
+            waitForFrame = "AchievementFrame",
+            statisticsCategory = cat.name,
+            statisticsCategoryID = cat.id,
+        }
+        path[#path + 1] = cat.name
+
+        local proto = {
+            category      = "Statistic",
+            buttonFrame   = "AchievementMicroButton",
+            flashLabel    = "Statistics",
+            keywords      = STAT_KEYWORDS_EMPTY,
+            keywordsLower = STAT_KEYWORDS_EMPTY,
+            path          = path,
+        }
+        local protoMT = { __index = proto }
+        local prefixLen = #stepsPrefix
+
+        if GetCategoryNumAchievements then
+            local total = GetCategoryNumAchievements(cat.id) or 0
+            if total == 0 and #cat.children == 0 then
+                total = GetCategoryNumAchievements(cat.id, true) or 0
+            end
+            for i = 1, total do
+                queue[#queue + 1] = {
+                    catID = cat.id, rowIndex = i,
+                    stepsPrefix = stepsPrefix, prefixLen = prefixLen,
+                    protoMT = protoMT,
+                }
+            end
+        end
+
+        if #cat.children > 0 then
+            local nextChain = {}
+            for i = 1, #parentChain do nextChain[i] = parentChain[i] end
+            nextChain[#nextChain + 1] = cat
+            for i = 1, #cat.children do enqueueCategory(cat.children[i], nextChain) end
+        end
+    end
+    for i = 1, #roots do enqueueCategory(roots[i], {}) end
+
+    -- Per-row work: one API call, one slower, one steps copy, one
+    -- table allocation with metatable. ~0.05-0.1ms each instead of
+    -- the 0.5ms buildCategoryEntry path. Keywords are skipped
+    -- entirely; matching falls back to the unique stat name which
+    -- is sufficient (search engine handles word-substring on names).
+    local seenStatisticIDs = {}
+    local function processRow(item)
+        if not GetAchievementInfo then return end
+        local id, title = GetAchievementInfo(item.catID, item.rowIndex)
+        if not (id and title and title ~= "") then return end
+        if HasID(seenStatisticIDs, id) then
+            MarkID(Database.statisticIDs, id)
+            return
+        end
+        MarkID(seenStatisticIDs, id)
+        MarkID(Database.statisticIDs, id)
+        local stepsPrefix = item.stepsPrefix
+        local steps = {}
+        for s = 1, item.prefixLen do steps[s] = stepsPrefix[s] end
+        steps[item.prefixLen + 1] = {
+            waitForFrame = "AchievementFrame",
+            statisticID = id,
+            statisticName = title,
+        }
+        local entry = setmetatable({
+            name = title,
+            nameLower = slower(title),
+            statisticID = id,
+            steps = steps,
+        }, item.protoMT)
+        uiSearchData[#uiSearchData + 1] = entry
+    end
+
+    -- ~2ms per tick. With the prototype-based per-row work at
+    -- ~0.05-0.1ms each, ~25 rows fit per tick. ~2000 rows / 25 =
+    -- ~80 yields total. At 60fps that's ~1.3s, imperceptible per-tick.
+    local BUDGET_MS = 2
+    local cursor = 1
+    local function step()
+        if myGen ~= statsScanGeneration then
+            done(false, "cancelled")
+            return
+        end
+        local startMs = debugprofilestop and debugprofilestop() or 0
+        while cursor <= #queue do
+            processRow(queue[cursor])
+            cursor = cursor + 1
+            if debugprofilestop and (debugprofilestop() - startMs) > BUDGET_MS then
+                C_Timer.After(0, step)
+                return
+            end
+        end
+        -- Stats done; refresh achievements so the full stat row-ID set
+        -- is available as a backup to the live category-tree filter.
+        Database.statisticsComplete = true
+        Database.statisticsVersion = Database.statisticsVersion + 1
+        if Database.RefreshDynamicCategory then
+            Database:RefreshDynamicCategory("achievements")
+        end
+        done(true)
+    end
+    step()
 end
 
 function Database:PopulateDynamicStatistics()
     if not GetStatisticsCategoryList or not GetCategoryInfo then return false end
     RemoveEntriesByCategory("Statistic")
     wipe(Database.statisticIDs)
+    Database.statisticsComplete = false
+    statsScanGeneration = statsScanGeneration + 1
 
     local categories = GetStatisticsCategoryList()
     if not categories then return false end
+    RefreshStatisticsCategoryIDs(categories)
 
     local catMap = {}
     for i = 1, #categories do
@@ -2728,9 +2986,9 @@ function Database:PopulateDynamicStatistics()
     -- Each "row" in the Statistics tab is an achievement ID whose
     -- value is fetched via GetStatistic(achievementID). Walking
     -- GetCategoryNumAchievements + GetAchievementInfo gives us the
-    -- per-row IDs and titles for inline display. Heavy (~400 API
-    -- calls); call this synchronously at PLAYER_LOGIN so it lands
-    -- during the load-screen window where the cost is hidden.
+    -- per-row IDs and titles for inline display. This synchronous path
+    -- remains as a fallback for environments without C_Timer.
+    local seenStatisticIDs = {}
     local function emit(cat, parentChain)
         local baseSteps = {
             { buttonFrame = "AchievementMicroButton" },
@@ -2738,43 +2996,60 @@ function Database:PopulateDynamicStatistics()
         }
         local pathBase = { "Achievements", "Statistics" }
         for i = 1, #parentChain do
-            local pn = parentChain[i].name
-            baseSteps[#baseSteps + 1] = { waitForFrame = "AchievementFrame", statisticsCategory = pn }
+            local parent = parentChain[i]
+            local pn = parent.name
+            baseSteps[#baseSteps + 1] = {
+                waitForFrame = "AchievementFrame",
+                statisticsCategory = pn,
+                statisticsCategoryID = parent.id,
+            }
             pathBase[#pathBase + 1] = pn
         end
-        baseSteps[#baseSteps + 1] = { waitForFrame = "AchievementFrame", statisticsCategory = cat.name }
+        baseSteps[#baseSteps + 1] = {
+            waitForFrame = "AchievementFrame",
+            statisticsCategory = cat.name,
+            statisticsCategoryID = cat.id,
+        }
         pathBase[#pathBase + 1] = cat.name
 
         if GetCategoryNumAchievements and GetAchievementInfo then
-            local total = GetCategoryNumAchievements(cat.id, true)
+            local total = GetCategoryNumAchievements(cat.id)
+            if (total or 0) == 0 and #cat.children == 0 then
+                total = GetCategoryNumAchievements(cat.id, true)
+            end
             for i = 1, (total or 0) do
                 local id, title = GetAchievementInfo(cat.id, i)
                 if id and title and title ~= "" then
-                    Database.statisticIDs[id] = true
-                    local steps = {}
-                    for s = 1, #baseSteps do steps[s] = baseSteps[s] end
-                    -- Leaf step: ONLY statisticID + statisticName.
-                    -- Including statisticsCategory here would make the
-                    -- statisticsCategory handler match first (it runs
-                    -- before the statisticID handler) and Cancel the
-                    -- guide because the category is already selected.
-                    steps[#steps + 1] = {
-                        waitForFrame = "AchievementFrame",
-                        statisticID = id,
-                        statisticName = title,
-                    }
-                    local path = {}
-                    for p = 1, #pathBase do path[p] = pathBase[p] end
-                    local entry = buildCategoryEntry({
-                        displayName  = title,
-                        categoryName = title,
-                        category     = "Statistic",
-                        path         = path,
-                        steps        = steps,
-                        flashLabel   = "Statistics",
-                    })
-                    entry.statisticID = id
-                    uiSearchData[#uiSearchData + 1] = entry
+                    if HasID(seenStatisticIDs, id) then
+                        MarkID(Database.statisticIDs, id)
+                    else
+                        MarkID(seenStatisticIDs, id)
+                        MarkID(Database.statisticIDs, id)
+                        local steps = {}
+                        for s = 1, #baseSteps do steps[s] = baseSteps[s] end
+                        -- Leaf step: ONLY statisticID + statisticName.
+                        -- Including statisticsCategory here would make the
+                        -- statisticsCategory handler match first (it runs
+                        -- before the statisticID handler) and Cancel the
+                        -- guide because the category is already selected.
+                        steps[#steps + 1] = {
+                            waitForFrame = "AchievementFrame",
+                            statisticID = id,
+                            statisticName = title,
+                        }
+                        local path = {}
+                        for p = 1, #pathBase do path[p] = pathBase[p] end
+                        local entry = buildCategoryEntry({
+                            displayName  = title,
+                            categoryName = title,
+                            category     = "Statistic",
+                            path         = path,
+                            steps        = steps,
+                            flashLabel   = "Statistics",
+                        })
+                        entry.statisticID = id
+                        uiSearchData[#uiSearchData + 1] = entry
+                    end
                 end
             end
         end
@@ -2788,6 +3063,8 @@ function Database:PopulateDynamicStatistics()
     end
 
     for i = 1, #roots do emit(roots[i], {}) end
+    Database.statisticsComplete = true
+    Database.statisticsVersion = Database.statisticsVersion + 1
     return true
 end
 

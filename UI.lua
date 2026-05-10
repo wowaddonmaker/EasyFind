@@ -337,11 +337,7 @@ end
 local function GetFlatSubtext(data)
     if not data then return "" end
     if data.path and #data.path > 0 then
-        local cat = data.category
-        if data.achievementID or cat == "Achievement" or cat == "Achievements" then
-            return data.path[#data.path]
-        end
-        return tconcat(data.path, " > ")
+        return data.path[#data.path]
     end
     if data.mapSearchResult then
         local cat = data.category
@@ -1072,6 +1068,15 @@ function UI:CreateSearchFrame()
                 if searchFrame.editBox:HasFocus() then return end
                 if navFrame and navFrame:IsKeyboardEnabled() then return end
                 if strtrim(searchFrame.editBox:GetText()) ~= "" then return end
+                if UI._keepPinnedResultsOpenUntil then
+                    local keepUntil = UI._keepPinnedResultsOpenUntil
+                    UI._keepPinnedResultsOpenUntil = nil
+                    local now = GetTime and GetTime() or 0
+                    if now <= keepUntil and #GetAllPins() > 0 then
+                        UI:ShowPinnedItems()
+                        return
+                    end
+                end
                 -- Don't hide if spec/class flyouts are open
                 local sf = _G["EasyFindSpecFlyout"]
                 local ssf = _G["EasyFindSpecSubFlyout"]
@@ -4441,26 +4446,45 @@ local ACHIEVEMENT_PROTO = {
 local ACHIEVEMENT_MT = { __index = ACHIEVEMENT_PROTO }
 local achievementEntryByID = {}
 local achSearchCache = {}
+local achSearchStatsVersion
 local achSearchPending = nil
 local achSearchListener
 local achSearchPrewarmed = false
 local ACH_MAX_RESULTS = 8
+
+local function SyncAchievementSearchStatsVersion()
+    local version = ns.Database and ns.Database.statisticsVersion or 0
+    if achSearchStatsVersion == version then return end
+    wipe(achSearchCache)
+    wipe(achievementEntryByID)
+    achSearchPending = nil
+    achSearchStatsVersion = version
+end
 
 -- Walk the achievement's category chain root-down so the guide
 -- breadcrumbs through each parent before highlighting the achievement
 -- row. GetAchievementCategory + GetCategoryInfo (parentID) walks up
 -- toward -1 (root sentinel).
 local function BuildAchievementSteps(achievementID)
-    local steps = { { buttonFrame = "AchievementMicroButton" } }
+    local steps = {
+        { buttonFrame = "AchievementMicroButton" },
+        { waitForFrame = "AchievementFrame", tabIndex = 1 },
+    }
     local getCat   = _G["GetAchievementCategory"]
     local getInfo  = _G["GetCategoryInfo"]
     if not getCat or not getInfo then
-        steps[1].achievementID = achievementID
+        steps[#steps + 1] = {
+            waitForFrame = "AchievementFrame",
+            achievementID = achievementID,
+        }
         return steps
     end
     local catID = getCat(achievementID)
     if not catID or catID < 0 then
-        steps[1].achievementID = achievementID
+        steps[#steps + 1] = {
+            waitForFrame = "AchievementFrame",
+            achievementID = achievementID,
+        }
         return steps
     end
     local chain = {}
@@ -4470,14 +4494,16 @@ local function BuildAchievementSteps(achievementID)
         seen[current] = true
         local title, parentID = getInfo(current)
         if not title then break end
-        chain[#chain + 1] = title
+        chain[#chain + 1] = { id = current, name = title }
         current = parentID
     end
     -- Reverse so root-most appears first.
     for i = #chain, 1, -1 do
+        local cat = chain[i]
         steps[#steps + 1] = {
             waitForFrame = "AchievementFrame",
-            achievementCategory = chain[i],
+            achievementCategory = cat.name,
+            achievementCategoryID = cat.id,
         }
     end
     -- Final step targets the achievement itself.
@@ -4510,6 +4536,8 @@ local function GetOrCreateAchievementEntry(id, name, icon)
 end
 
 local function CollectAchievementSearchResults(query)
+    SyncAchievementSearchStatsVersion()
+
     local getNum = _G["GetNumFilteredAchievements"]
     local getID  = _G["GetFilteredAchievementID"]
     local getInfo = _G["GetAchievementInfo"]
@@ -4559,6 +4587,8 @@ end
 
 function UI:RequestAchievementSearch(query)
     if not query or #query < 2 then return nil end
+    SyncAchievementSearchStatsVersion()
+
     local cached = achSearchCache[query]
     if cached then return cached end
     local setSearch = _G["SetAchievementSearchString"]
@@ -4604,8 +4634,34 @@ UI._resultButtons = resultButtons
 
 local heavySearchLoading = false
 
+local function QueryLooksBossRelated(text)
+    if not text then return false end
+    for word in slower(text):gmatch("%S+") do
+        word = word:gsub("^%p+", ""):gsub("%p+$", "")
+        if word == "boss" or word == "bosses"
+           or word == "dungeon" or word == "dungeons"
+           or word == "raid" or word == "raids" then
+            return true
+        end
+    end
+    return false
+end
+
+local function RefreshSearchAfterHeavyLoad(anyChanged)
+    if not anyChanged then return end
+    local currentText = searchFrame and searchFrame.editBox and searchFrame.editBox:GetText()
+    if searchFrame and searchFrame.editBox and searchFrame.editBox:HasFocus()
+       and currentText and currentText ~= "" then
+        UI:OnSearchTextChanged(currentText, true)
+    end
+end
+
 local function MaybeLoadHeavySearchData(text, needsHeavy)
-    if heavySearchLoading or not ns.Database or not ns.Database.LoadHeavyDynamicSearchData then return end
+    if not ns.Database then return end
+    if QueryLooksBossRelated(text) and ns.Database.EnsureDynamicProviderLoaded then
+        ns.Database:EnsureDynamicProviderLoaded("bosses", RefreshSearchAfterHeavyLoad)
+    end
+    if heavySearchLoading or not ns.Database.LoadHeavyDynamicSearchData then return end
     if not needsHeavy then return end
     heavySearchLoading = true
     local started = ns.Database:LoadHeavyDynamicSearchData(function(anyChanged)
@@ -4615,12 +4671,7 @@ local function MaybeLoadHeavySearchData(text, needsHeavy)
         -- triggers heavy-load chain → callback → search → heavy-load
         -- chain → ... an infinite loop that allocates ~10 MB/sec across
         -- result re-rendering and SearchUI's per-iteration scratch.
-        if not anyChanged then return end
-        local currentText = searchFrame and searchFrame.editBox and searchFrame.editBox:GetText()
-        if searchFrame and searchFrame.editBox and searchFrame.editBox:HasFocus()
-           and currentText and currentText ~= "" then
-            UI:OnSearchTextChanged(currentText, true)
-        end
+        RefreshSearchAfterHeavyLoad(anyChanged)
     end)
     if not started then heavySearchLoading = false end
 end
@@ -5909,7 +5960,14 @@ function UI:CreateResultButton(index)
                 local editBox = searchFrame and searchFrame.editBox
                 local text = editBox and editBox:GetText() or ""
                 if text == "" then
+                    local pinsRemain = #GetAllPins() > 0
+                    UI._keepPinnedResultsOpenUntil = pinsRemain and ((GetTime and GetTime() or 0) + 0.25) or nil
                     UI:ShowPinnedItems()
+                    if pinsRemain and editBox
+                       and not (navFrame and navFrame:IsKeyboardEnabled()) then
+                        editBox.blockFocus = nil
+                        editBox:SetFocus()
+                    end
                 else
                     UI:OnSearchTextChanged(text, true)
                 end
@@ -8710,9 +8768,9 @@ local FILTER_POPUP_NAMES = {
 
 function UI:CloseFilterDropdownIfOpen()
     if not searchFrame then return false end
+    local closedAny = Utils.HideCursorMenus and Utils.HideCursorMenus() or false
     local dropdown = searchFrame.filterDropdown
-    if not dropdown then return false end
-    local closedAny = false
+    if not dropdown then return closedAny end
     -- Brute-force hide every named popup. classPopup is never registered
     -- in guardFrames; relying on the cascade-via-OnHide chain misses it
     -- when the parent popup is already hidden. Hide by name is idempotent
@@ -10495,6 +10553,8 @@ function UI:DirectOpen(data)
     -- child frames are available right after their parent is shown.
     -- The only exception is currency/reputation tab resync, which toggles
     -- tabs and needs one frame for the ScrollBox to rebuild.
+    local tabClickAttempts = {}
+    local categoryClickAttempts = {}
     local function executeFrom(start)
         for i = start, executeCount do
             local step = steps[i]
@@ -10591,6 +10651,28 @@ function UI:DirectOpen(data)
                        and step.waitForFrame ~= "PlayerSpellsFrame" then
                     ClickButton(Highlight:GetTabButton(step.waitForFrame, step.tabIndex))
                 end
+
+                local nextStep = steps[i + 1]
+                if step.waitForFrame == "AchievementFrame" and nextStep
+                   and (nextStep.achievementCategory or nextStep.statisticsCategory) then
+                    local tabReady = true
+                    if Highlight and Highlight.IsTabSelected then
+                        tabReady = Highlight:IsTabSelected("AchievementFrame", step.tabIndex)
+                    end
+                    if not tabReady then
+                        local key = tostring(i) .. ":tab:" .. tostring(step.tabIndex)
+                        tabClickAttempts[key] = (tabClickAttempts[key] or 0) + 1
+                        if tabClickAttempts[key] <= 6 then
+                            local resume = i
+                            C_Timer.After(0.05, function() executeFrom(resume) end)
+                            return
+                        end
+                    end
+
+                    local resume = i + 1
+                    C_Timer.After(0.05, function() executeFrom(resume) end)
+                    return
+                end
             end
 
             if step.sideTabIndex then
@@ -10607,7 +10689,23 @@ function UI:DirectOpen(data)
 
             local categoryToClick = step.statisticsCategory or step.achievementCategory
             if categoryToClick then
-                self:ClickAchievementCategory(categoryToClick)
+                local categoryID = step.statisticsCategoryID or step.achievementCategoryID
+                if not self:ClickAchievementCategory(categoryToClick, categoryID) then
+                    local key = tostring(i) .. ":" .. tostring(categoryID or categoryToClick)
+                    categoryClickAttempts[key] = (categoryClickAttempts[key] or 0) + 1
+                    if categoryClickAttempts[key] <= 6 then
+                        local resume = i
+                        C_Timer.After(0.05, function() executeFrom(resume) end)
+                        return
+                    end
+                end
+
+                local nextStep = steps[i + 1]
+                if nextStep and (nextStep.achievementCategory or nextStep.statisticsCategory) then
+                    local resume = i + 1
+                    C_Timer.After(0.05, function() executeFrom(resume) end)
+                    return
+                end
             end
 
             if step.achievementID then
@@ -10918,63 +11016,83 @@ function UI:ClickCharacterSidebar(sidebarIndex)
 end
 
 -- Helper function to click an achievement or statistics category button
-function UI:ClickAchievementCategory(categoryName)
+function UI:ClickAchievementCategory(categoryName, categoryID)
     if not AchievementFrame or not AchievementFrame:IsShown() then
         return false
     end
 
-    local categoryNameLower = slower(categoryName)
+    local numericCategoryID = tonumber(categoryID)
+    local categoryNameLower = categoryName and slower(categoryName) or nil
+    local function MatchesCategory(data)
+        if not data then return false end
+        local catID = data.id
+        local numericCatID = tonumber(catID)
+        if not numericCatID then return false end
+        if numericCategoryID then return numericCatID == numericCategoryID end
+        if categoryNameLower and GetCategoryInfo then
+            local title = GetCategoryInfo(catID)
+            if title and slower(title) == categoryNameLower then return true end
+        end
+        return false
+    end
+
+    local function UpdateCategories()
+        if AchievementFrameCategories_UpdateDataProvider then
+            AchievementFrameCategories_UpdateDataProvider()
+        end
+    end
 
     -- Primary: use the data provider to find the category and select it via Blizzard API
     local categoriesFrame = _G["AchievementFrameCategories"]
     if categoriesFrame and categoriesFrame.ScrollBox then
         local scrollBox = categoriesFrame.ScrollBox
+        if numericCategoryID and AchievementFrameCategories_ExpandToCategory then
+            AchievementFrameCategories_ExpandToCategory(numericCategoryID)
+            UpdateCategories()
+        end
         local dataProvider = scrollBox.GetDataProvider and scrollBox:GetDataProvider()
         if dataProvider then
             local finder = dataProvider.FindElementDataByPredicate or dataProvider.FindByPredicate
             if finder then
-                local elementData = finder(dataProvider, function(data)
-                    if not data then return false end
-                    local catID = data.id
-                    if not catID or type(catID) ~= "number" then return false end
-                    if GetCategoryInfo then
-                        local title = GetCategoryInfo(catID)
-                        if title and slower(title) == categoryNameLower then return true end
-                    end
-                    return false
-                end)
+                local elementData = finder(dataProvider, MatchesCategory)
                 if elementData then
                     -- Expand parent if hidden
                     if elementData.hidden and elementData.id and AchievementFrameCategories_ExpandToCategory then
-                        AchievementFrameCategories_ExpandToCategory(elementData.id)
-                        if AchievementFrameCategories_UpdateDataProvider then
-                            AchievementFrameCategories_UpdateDataProvider()
-                        end
+                        AchievementFrameCategories_ExpandToCategory(tonumber(elementData.id) or elementData.id)
+                        UpdateCategories()
+                        dataProvider = scrollBox.GetDataProvider and scrollBox:GetDataProvider() or dataProvider
+                        finder = dataProvider and (dataProvider.FindElementDataByPredicate or dataProvider.FindByPredicate)
                         -- Re-find after expanding
-                        elementData = finder(dataProvider, function(data)
-                            if not data then return false end
-                            local catID = data.id
-                            if not catID or type(catID) ~= "number" then return false end
-                            if GetCategoryInfo then
-                                local title = GetCategoryInfo(catID)
-                                if title and slower(title) == categoryNameLower then return true end
-                            end
-                            return false
-                        end)
+                        elementData = finder and finder(dataProvider, MatchesCategory)
                         if not elementData then return false end
                     end
                     -- Try Blizzard's official selection function
                     if AchievementFrameCategories_SelectElementData then
-                        AchievementFrameCategories_SelectElementData(elementData)
-                        return true
+                        if scrollBox.ScrollToElementData then
+                            local alignCenter = ScrollBoxConstants and ScrollBoxConstants.AlignCenter
+                            pcall(scrollBox.ScrollToElementData, scrollBox, elementData, alignCenter)
+                        end
+                        local ok = pcall(AchievementFrameCategories_SelectElementData, elementData)
+                        if ok then
+                            UpdateCategories()
+                            return true
+                        end
                     end
                     -- Fallback: scroll to it and click the visible button
-                    scrollBox:ScrollToElementData(elementData)
+                    if scrollBox.ScrollToElementData then
+                        pcall(scrollBox.ScrollToElementData, scrollBox, elementData)
+                    end
                     local frame = scrollBox.FindFrame and scrollBox:FindFrame(elementData)
-                    if frame and ClickButton(frame) then return true end
+                    if frame and ClickButton(frame.Button or frame) then return true end
                 end
             end
         end
+
+        local frame = Utils.ScrollBoxFindButton(scrollBox, function(btn)
+            local data = btn.GetElementData and btn:GetElementData()
+            return MatchesCategory(data)
+        end)
+        if frame and ClickButton(frame.Button or frame) then return true end
 
     end
 

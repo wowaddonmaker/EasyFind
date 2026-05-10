@@ -9,7 +9,7 @@ local dynamicProviders = {
     { key = "currencies",  category = "Currency",             fn = "PopulateDynamicCurrencies" },
     { key = "reputations", category = "Reputation",           fn = "PopulateDynamicReputations" },
     { key = "achievements", category = "Achievement Category", fn = "PopulateDynamicAchievements" },
-    { key = "statistics",  category = "Statistic",            fn = "PopulateDynamicStatistics" },
+    { key = "statistics",  category = "Statistic",            fn = "PopulateDynamicStatistics", asyncFn = "PopulateDynamicStatisticsAsync" },
     { key = "mounts",      category = "Mount",          fn = "PopulateDynamicMounts" },
     { key = "toys",        category = "Toy",            fn = "PopulateDynamicToys" },
     { key = "pets",        category = "Pet",            fn = "PopulateDynamicPets" },
@@ -63,18 +63,40 @@ local function FinishDynamicProvider(database, provider, ok, err, changed, onDon
     onDone(changed ~= false)
 end
 
+local function NotifyProviderWaiters(provider, changed)
+    local waiters = provider.waiting
+    provider.waiting = nil
+    provider.loading = false
+    if waiters then
+        for i = 1, #waiters do
+            waiters[i](changed)
+        end
+    end
+end
+
 local function RunDynamicProvider(database, provider, onDone)
     if provider.loaded and not provider.dirty then onDone(false); return end
+    if provider.loading then
+        provider.waiting = provider.waiting or {}
+        provider.waiting[#provider.waiting + 1] = onDone
+        return
+    end
+
     local pre = provider.pre and database[provider.pre]
     if pre then pre(database) end
 
     local asyncFn = provider.asyncFn and database[provider.asyncFn]
     if asyncFn then
+        provider.loading = true
+        provider.waiting = { onDone }
+        local function finishWaiters(changed)
+            NotifyProviderWaiters(provider, changed)
+        end
         local ok, err = xpcall(asyncFn, Utils.ErrorHandler, database, function(changed, asyncErr)
-            FinishDynamicProvider(database, provider, not asyncErr, asyncErr, changed, onDone)
+            FinishDynamicProvider(database, provider, not asyncErr, asyncErr, changed, finishWaiters)
         end)
         if not ok then
-            FinishDynamicProvider(database, provider, false, err, false, onDone)
+            FinishDynamicProvider(database, provider, false, err, false, finishWaiters)
         end
         return
     end
@@ -93,12 +115,14 @@ local function RunDynamicProvider(database, provider, onDone)
 end
 
 function Database:CancelDynamicWarmup()
-    if self.CancelDynamicScans then self:CancelDynamicScans() end
+    if self.CancelDynamicScans then self:CancelDynamicScans(false) end
 end
 
 function Database:MarkDynamicProviderLoaded(key)
     local provider = dynamicProviderByKey[key]
     if not provider then return end
+    provider.loading = false
+    provider.waiting = nil
     provider.loaded = true
     provider.dirty = false
 end
@@ -113,6 +137,13 @@ end
 function Database:IsDynamicProviderLoaded(key)
     local provider = dynamicProviderByKey[key]
     return provider and provider.loaded and not provider.dirty or false
+end
+
+function Database:EnsureDynamicProviderLoaded(key, onDone)
+    local provider = dynamicProviderByKey[key]
+    if not provider then return false end
+    RunDynamicProvider(self, provider, onDone or function() end)
+    return true
 end
 
 function Database:RefreshDynamicCategory(key)
@@ -178,9 +209,9 @@ end
 -- Synchronous heavy-data load. Used at PLAYER_LOGIN so the load
 -- screen absorbs the cost. Only loot (current spec) is scanned here —
 -- it's small and matches a common search ("ring", "haste ring"). Boss
--- scanning iterates ~1000+ encounters across every expansion tier and
--- adds noticeable post-login CPU; bosses lazy-load on the first "boss"
--- keyword via LoadHeavyDynamicSearchData instead.
+-- scanning iterates ~1000+ encounters across every expansion tier, so
+-- it runs through its async provider after login or on boss-related
+-- searches instead of blocking this sync path.
 local SYNC_HEAVY_KEYS = { loot = true }
 function Database:LoadHeavyDynamicSearchDataSync()
     for i = 1, #dynamicProviders do
@@ -243,7 +274,7 @@ function Database:LoadHeavyDynamicSearchData(onDone)
 end
 
 function Database:UnloadDynamicSearchData(includeCore)
-    self:CancelDynamicWarmup()
+    if self.CancelDynamicScans then self:CancelDynamicScans(true) end
     for i = 1, #dynamicProviders do
         local provider = dynamicProviders[i]
         if includeCore or provider.asyncFn then
