@@ -237,19 +237,25 @@ function Highlight:CreateHighlightFrame()
     --     ScrollBox button repurposed for a different spell after the user
     --     pages the spellbook. Caller passes a closure that re-checks
     --     identity (SpellFrameMatchesSelf etc.).
-    -- Repurpose watcher only -- NO hover-dismiss here, NO visibility
-    -- check. The per-step UpdateGuide loop already advances/rewinds
-    -- when the destination panel changes; a blanket visibility watcher
+    -- Repurpose watcher only -- no blanket visibility check. The
+    -- per-step UpdateGuide loop already advances/rewinds when the
+    -- destination panel changes; a blanket visibility watcher
     -- false-positives on ScrollBox-virtualized targets (achievement
     -- categories, currency rows, etc.) which briefly report not-shown
     -- during their own re-render and would kill intermediate highlights.
-    -- The validator path stays for explicit identity checks the caller
-    -- opted into (e.g. spellbook page-flip).
+    -- Custom glow/spyglass targets can opt into hover-dismiss through
+    -- _hoverDismissFrame because they bypass the normal guide loop.
     local watchAccum = 0
     highlightFrame:HookScript("OnUpdate", function(self, elapsed)
         watchAccum = watchAccum + elapsed
         if watchAccum < 0.1 then return end
         watchAccum = 0
+        local hoverFrame = self._hoverDismissFrame
+        if hoverFrame and canHoverDismiss()
+           and hoverFrame.IsMouseOver and hoverFrame:IsMouseOver() then
+            Highlight:HideHighlight()
+            return
+        end
         local target = self._targetFrame
         local validator = self._targetValidator
         if validator and not validator(target) then
@@ -2775,6 +2781,7 @@ function Highlight:RegisterSearchIconWatch(button, validator)
     highlightFrame._talentSearchBtn = button
     highlightFrame._targetFrame = button
     highlightFrame._targetValidator = validator
+    highlightFrame._hoverDismissFrame = button
     -- Hide the yellow border textures so the watcher's OnUpdate ticks
     -- without the standard highlight visuals showing on top of the
     -- native spyglass.
@@ -2782,6 +2789,9 @@ function Highlight:RegisterSearchIconWatch(button, validator)
     if highlightFrame.bottom then highlightFrame.bottom:Hide() end
     if highlightFrame.left   then highlightFrame.left:Hide() end
     if highlightFrame.right  then highlightFrame.right:Hide() end
+    if not highlightFrame:IsShown() then
+        highlightShownAt = GetTime()
+    end
     highlightFrame:Show()
     if highlightFrame.animGroup then highlightFrame.animGroup:Stop() end
 end
@@ -2839,10 +2849,14 @@ function Highlight:HighlightSpellbookSpell(row, validator)
     highlightFrame._spellbookGlowBtn = iconBtn
     highlightFrame._targetFrame = row
     highlightFrame._targetValidator = validator
+    highlightFrame._hoverDismissFrame = row
     if highlightFrame.top    then highlightFrame.top:Hide() end
     if highlightFrame.bottom then highlightFrame.bottom:Hide() end
     if highlightFrame.left   then highlightFrame.left:Hide() end
     if highlightFrame.right  then highlightFrame.right:Hide() end
+    if not highlightFrame:IsShown() then
+        highlightShownAt = GetTime()
+    end
     highlightFrame:Show()
     if highlightFrame.animGroup then highlightFrame.animGroup:Stop() end
 end
@@ -2864,6 +2878,7 @@ function Highlight:HideHighlight()
         highlightFrame._spellbookGlowBtn = nil
         highlightFrame._targetFrame = nil
         highlightFrame._targetValidator = nil
+        highlightFrame._hoverDismissFrame = nil
         highlightFrame:Hide()
         if highlightFrame.animGroup then highlightFrame.animGroup:Stop() end
         -- Restore yellow border textures hidden by HighlightTalentSearch.
