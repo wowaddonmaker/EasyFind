@@ -41,6 +41,7 @@ local UI_DEFAULTS = {
     lockPosition = false,
     staticOpacity = false,
     uiResultsAbove = false,
+    showResultShortcutHints = true,
     fontSize = 0.9,
     uiSearchScale = 1.0,
     uiSearchWidth = 1.54,
@@ -188,6 +189,7 @@ local function SyncOptionControls()
     if optionsFrame.lockPositionCheckbox then optionsFrame.lockPositionCheckbox:SetChecked(EasyFind.db.lockPosition or false) end
     if optionsFrame.loginMessageCheckbox then optionsFrame.loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage ~= false) end
     if optionsFrame.uiResultsAboveCheckbox then optionsFrame.uiResultsAboveCheckbox:SetChecked(EasyFind.db.uiResultsAbove or false) end
+    if optionsFrame.resultShortcutHintsCheckbox then optionsFrame.resultShortcutHintsCheckbox:SetChecked(EasyFind.db.showResultShortcutHints ~= false) end
     if optionsFrame.minimapBtnCheckbox then optionsFrame.minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton ~= false) end
     if optionsFrame.rareTrackCheckbox then optionsFrame.rareTrackCheckbox:SetChecked(EasyFind.db.alwaysShowRares or false) end
 
@@ -1270,9 +1272,21 @@ function Options:Initialize()
     end)
     optionsFrame.uiResultsAboveCheckbox = uiResultsAboveCheckbox
 
+    local resultShortcutHintsCheckbox = CreateCheckbox(sec1, "ResultShortcutHints", "Show Alt+Number Hints",
+        "When enabled, each visible UI search result shows a small Alt+1 through Alt+8 reminder.\n\nWhen disabled, the reminders are hidden but the Alt+number shortcuts still activate the same rows.")
+    resultShortcutHintsCheckbox:SetPoint("TOPLEFT", uiResultsAboveCheckbox, "BOTTOMLEFT", 0, -2)
+    resultShortcutHintsCheckbox:SetChecked(EasyFind.db.showResultShortcutHints ~= false)
+    resultShortcutHintsCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.showResultShortcutHints = self:GetChecked()
+        if ns.UI and ns.UI.RefreshResults then
+            ns.UI:RefreshResults()
+        end
+    end)
+    optionsFrame.resultShortcutHintsCheckbox = resultShortcutHintsCheckbox
+
     local uiFontSlider = CreateSlider(sec1, "UIFontSize", "Font Size|cffff3333*|r", 0.5, 2.0, 0.1,
         "Changing font size also affects search bar height and results window sizing.", nil, 1.0)
-    uiFontSlider:SetPoint("TOPLEFT", uiResultsAboveCheckbox, "BOTTOMLEFT", 4, -20)
+    uiFontSlider:SetPoint("TOPLEFT", resultShortcutHintsCheckbox, "BOTTOMLEFT", 4, -20)
     uiFontSlider:SetValue(EasyFind.db.fontSize or 1.0)
     uiFontSlider:HookScript("OnValueChanged", function(self, value)
         EasyFind.db.fontSize = value
@@ -1298,7 +1312,7 @@ function Options:Initialize()
         StaticPopup_Show("EASYFIND_RESET_UI_POS")
     end)
 
-    uiControls = { resizeUIBtn, resetUIBtn, resetUIPosBtn, uiFontSlider, autoHideCheckbox, smartShowCheckbox, staticOpacityCheckbox, lockPositionCheckbox, uiResultsAboveCheckbox }
+    uiControls = { resizeUIBtn, resetUIBtn, resetUIPosBtn, uiFontSlider, autoHideCheckbox, smartShowCheckbox, staticOpacityCheckbox, lockPositionCheckbox, uiResultsAboveCheckbox, resultShortcutHintsCheckbox }
     UpdateUIToggleVisual()
 
     -- SECTION 3: Map Search
@@ -1924,6 +1938,9 @@ function Options:Show()
     end
     optionsFrame.loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage ~= false)
     optionsFrame.uiResultsAboveCheckbox:SetChecked(EasyFind.db.uiResultsAbove or false)
+    if optionsFrame.resultShortcutHintsCheckbox then
+        optionsFrame.resultShortcutHintsCheckbox:SetChecked(EasyFind.db.showResultShortcutHints ~= false)
+    end
     optionsFrame.minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton or false)
     if optionsFrame.mapPinGroup then optionsFrame.mapPinGroup:UpdateVisuals() end
     if optionsFrame.automationGroup then optionsFrame.automationGroup:UpdateVisuals() end
