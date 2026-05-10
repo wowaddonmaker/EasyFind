@@ -145,12 +145,20 @@ local resultsFrame
 local containerFrame
 local resultButtons = {}
 local MAX_BUTTON_POOL = 100
+local RESULT_SHORTCUT_MAX = 8
+local RESULT_SHORTCUT_ICON = "Interface\\AddOns\\EasyFind\\textures\\alt-key"
+local RESULT_SHORTCUT_WIDTH = 34
+local RESULT_SHORTCUT_ICON_SIZE = 14
+local RESULT_SHORTCUT_RIGHT_PAD = 0
+local RESULT_SHORTCUT_GAP = -4
 -- Hard render cap on the search-match portion of the result list. Pinned
 -- items are counted separately. Pre-render cap in OnSearchTextChanged
 -- already trims to 15 before flattening; this is a backstop for any
 -- other call path (alias views, container expansion) that lands here.
 local MAX_SEARCH_RESULT_ROWS = 15
 local EnsureResultButton
+local resultShortcutFrame
+local petFavoriteOverrides = {}
 local inCombat = false
 local selectingResult = false  -- guard: suppress OnTextChanged re-renders during SelectResult
 local deferredRepRefreshPending = false  -- deferred re-render to let IsTruncated() settle
@@ -202,6 +210,12 @@ local FLAT_CATEGORY_ICONS = {
     -- Equipment Manager sidebar tab. Filled in by ResolveGearSetIcon().
     gearSet       = { atlas = "equipmentmanager-spec-border" },
 }
+
+local BOSS_PORTRAIT_TEXCOORD = { 0.22, 0.78, 0, 1 }
+
+local function IsBossResultData(data)
+    return data and data.encounterID and data.category == "Boss"
+end
 
 local function ResolveGearSetIcon()
     local entry = FLAT_CATEGORY_ICONS.gearSet
@@ -463,7 +477,7 @@ local function GetActionHint(data)
     if not data then return nil end
     if data.titleID then return "Select to apply as your title" end
     if data.mountID then return "Select to summon mount" end
-    if data.petID then return "Select to summon pet" end
+    if data.petID or data.speciesID then return "Select to summon pet | Ctrl+click to show in journal" end
     if data.toyItemID then
         return data.isToyboxOnly and "Select to show in Toy Box" or "Select to use toy"
     end
@@ -579,6 +593,34 @@ local function ShowPinPopup(_, isPinned, onPinAction, onGuide, onAddAlias, extra
         width = 96,
         rowHeight = 22,
     }, extra)
+end
+
+function UI:KeepPinnedResultsOpenBriefly()
+    if #GetAllPins() == 0 then return false end
+    UI._keepPinnedResultsOpenUntil = (GetTime and GetTime() or 0) + 0.35
+    if searchFrame and searchFrame.editBox
+       and strtrim(searchFrame.editBox:GetText() or "") == "" then
+        UI:ShowPinnedItems()
+    end
+    return true
+end
+
+local function IsOptionsSurfaceMouseOver()
+    local frame = ns.optionsFrame
+    if Utils.IsFrameOrChildMouseOver(frame) then return true end
+    if not frame then return false end
+    local guards = {
+        frame.indicatorFlyout,
+        frame.colorFlyout,
+        frame.fontFlyout,
+        frame.mapTabGroup and frame.mapTabGroup.flyout,
+        frame.mapPinGroup and frame.mapPinGroup.flyout,
+        frame.automationGroup and frame.automationGroup.flyout,
+    }
+    for i = 1, #guards do
+        if Utils.IsFrameOrChildMouseOver(guards[i]) then return true end
+    end
+    return false
 end
 
 local unearnedTooltip
@@ -740,6 +782,35 @@ local function ApplyResultRowFonts(row, theme)
     ScaleFont(row.amountText, "GameFontNormalSmall")
     ScaleFont(row.repBarText, "GameFontNormalSmall")
     ScaleFont(row.settingSliderValue, "GameFontNormalSmall")
+    ScaleFont(row.shortcutNumberText, "GameFontDisableSmall")
+end
+
+local function IsSecureActionResult(data)
+    return data and (data.outfitID or data.toyItemID
+        or (data.spellID and not IsSpellbookOnlyAbility(data))
+        or data.mountID or data.macroIndex or data.slashCommand
+        or (data.itemID and data.category == "Bag"))
+end
+
+local function GetResultShortcutIndex(key)
+    if not resultsFrame or not resultsFrame:IsShown() then return nil end
+    if not IsAltKeyDown or not IsAltKeyDown() then return nil end
+    if (IsControlKeyDown and IsControlKeyDown())
+       or (IsShiftKeyDown and IsShiftKeyDown()) then
+        return nil
+    end
+    local digit = tonumber(key)
+    if not digit then
+        digit = tonumber((key or ""):match("^NUMPAD([1-8])$"))
+    end
+    if digit and digit >= 1 and digit <= RESULT_SHORTCUT_MAX then
+        return digit
+    end
+    return nil
+end
+
+local function ShouldShowResultShortcutHints()
+    return not (EasyFind and EasyFind.db and EasyFind.db.showResultShortcutHints == false)
 end
 
 function UI:CreateUnearnedTooltip()
@@ -1036,6 +1107,7 @@ function UI:CreateSearchFrame()
         -- after the autocomplete strip.
         local onGuard = false
         if resultsFrame and resultsFrame:IsMouseOver() then onGuard = true end
+        if not onGuard and IsOptionsSurfaceMouseOver() then onGuard = true end
         if not onGuard then
             local guards = {
                 _G["EasyFindUIFilterDropdown"],
@@ -1074,6 +1146,9 @@ function UI:CreateSearchFrame()
                     local now = GetTime and GetTime() or 0
                     if now <= keepUntil and #GetAllPins() > 0 then
                         UI:ShowPinnedItems()
+                        if searchFrame.editBox.blockFocus then
+                            searchFrame.editBox.blockFocus = nil
+                        end
                         return
                     end
                 end
@@ -1083,6 +1158,7 @@ function UI:CreateSearchFrame()
                 if (sf and sf:IsShown()) or (ssf and ssf:IsShown()) then return end
                 local dd = _G["EasyFindUIFilterDropdown"]
                 if dd and dd:IsShown() then return end
+                if IsOptionsSurfaceMouseOver() then return end
                 UI:HideResults()
                 -- Now that results are hidden, let smart show fade the bar out
                 if EasyFind.db.smartShow then
@@ -1429,6 +1505,15 @@ function UI:CreateSearchFrame()
     -- editbox, otherwise it just types as a character and the user
     -- can't dismiss with the same key they used to open.
     editBox:SetScript("OnKeyDown", function(self, key)
+        local shortcutIndex = GetResultShortcutIndex(key)
+        if shortcutIndex then
+            local shortcutResult = UI:ActivateVisibleResultShortcut(shortcutIndex)
+            if shortcutResult then
+                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", shortcutResult == "binding")
+                return
+            end
+        end
+
         -- Match the keybind capture's combo format: ALT-CTRL-SHIFT-key.
         -- GetBindingAction is the correct API (GetBindingByKey doesn't
         -- exist) and returns the binding name for a given key combo.
@@ -1782,6 +1867,15 @@ function UI:CreateSearchFrame()
     end
 
     navFrame:SetScript("OnKeyDown", function(self, key)
+        local shortcutIndex = GetResultShortcutIndex(key)
+        if shortcutIndex then
+            local shortcutResult = UI:ActivateVisibleResultShortcut(shortcutIndex)
+            if shortcutResult then
+                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", shortcutResult == "binding")
+                return
+            end
+        end
+
         -- Secure-action rows: let Enter propagate to the override
         -- binding so the secure click dispatch fires (same as a mouse
         -- click). Without this navFrame swallows Enter and the
@@ -2054,6 +2148,7 @@ function UI:CreateSearchFrame()
         end
         if self:IsMouseOver() then return end
         if resultsFrame and resultsFrame:IsShown() and resultsFrame:IsMouseOver() then return end
+        if IsOptionsSurfaceMouseOver() then return end
         if activeKeybindBtn then return end
         local dropdown = self.filterDropdown
         if dropdown and dropdown:IsShown() and dropdown:IsMouseOver() then return end
@@ -2168,7 +2263,6 @@ local UI_FILTER_OPTIONS = {
     -- Title icon from PaperDollSidebarTab2 (Titles tab) spritesheet 514608.
     { key = "titles",      label = "Titles",      iconTex = 514608,
       iconCoords = { 0.016, 0.531, 0.324, 0.461 } },
-    { key = "ui",          label = "UI Elements", iconAtlas = "common-search-magnifyingglass" },
 }
 
 -- All filter keys (top-level + sub-filters in flyouts). Used by Toggle
@@ -2184,9 +2278,9 @@ local function ForEachFilterKey(callback)
     end
 end
 
--- Module-level helpers for bucketing UI search results into one of:
--- "achievements" / "currencies" / "reputations" / "ui" (UI elements).
--- Used both in the per-keystroke filter and category sort.
+-- Module-level helpers for bucketing UI search results into optional
+-- filter categories. Entries with no bucket are base UI search results
+-- and are always searchable.
 local UI_BUCKET_BY_CATEGORY = {
     ["Ability"]            = "abilities",
     ["Boss"]               = "bosses",
@@ -2208,15 +2302,16 @@ local UI_BUCKET_BY_CATEGORY = {
 }
 
 local function GetUIBucket(d)
-    -- Returns one of the bucket keys for non-collection / non-map UI
-    -- entries, or nil for entries handled by a separate dedicated filter.
+    -- Returns one of the bucket keys for filtered non-collection /
+    -- non-map UI entries, or nil for base entries / entries handled by
+    -- a separate dedicated filter.
     if not d then return nil end
     if d.mountID or d.toyItemID or d.petID or d.outfitID or d.heirloomItemID
        or d.transmogSetID
        or (d.itemID and d.category == "Loot") or d.mapSearchResult then
         return nil
     end
-    return UI_BUCKET_BY_CATEGORY[d.category] or "ui"
+    return UI_BUCKET_BY_CATEGORY[d.category]
 end
 
 -- Builds the Appearance Sets options popup: a class selector button +
@@ -4299,6 +4394,201 @@ function EnsureResultButton(index)
     return row
 end
 
+local function ReplaceRightPointToShortcut(row, frame)
+    local shortcut = row and row.shortcutGroup
+    if not shortcut or not frame or not frame.GetNumPoints then return false end
+    local count = frame:GetNumPoints()
+    if count == 0 then return false end
+
+    local points = {}
+    local changed = false
+    for i = 1, count do
+        local point, relTo, relPoint, xOfs, yOfs = frame:GetPoint(i)
+        if point == "RIGHT" and relTo == row and relPoint == "RIGHT" then
+            points[i] = { point, shortcut, "LEFT", -RESULT_SHORTCUT_GAP, yOfs or 0 }
+            changed = true
+        else
+            points[i] = { point, relTo, relPoint, xOfs or 0, yOfs or 0 }
+        end
+    end
+    if not changed then return false end
+
+    frame:ClearAllPoints()
+    for i = 1, #points do
+        local p = points[i]
+        if p[2] then
+            frame:SetPoint(p[1], p[2], p[3], p[4], p[5])
+        else
+            frame:SetPoint(p[1], p[4], p[5])
+        end
+    end
+    return true
+end
+
+local function RestoreRightPointFromShortcut(row, frame, xOfs)
+    local shortcut = row and row.shortcutGroup
+    if not shortcut or not frame or not frame.GetNumPoints then return false end
+    local count = frame:GetNumPoints()
+    if count == 0 then return false end
+
+    local points = {}
+    local changed = false
+    for i = 1, count do
+        local point, relTo, relPoint, oldX, yOfs = frame:GetPoint(i)
+        if point == "RIGHT" and relTo == shortcut and relPoint == "LEFT" then
+            points[i] = { point, row, "RIGHT", xOfs or -8, yOfs or 0 }
+            changed = true
+        else
+            points[i] = { point, relTo, relPoint, oldX or 0, yOfs or 0 }
+        end
+    end
+    if not changed then return false end
+
+    frame:ClearAllPoints()
+    for i = 1, #points do
+        local p = points[i]
+        if p[2] then
+            frame:SetPoint(p[1], p[2], p[3], p[4], p[5])
+        else
+            frame:SetPoint(p[1], p[4], p[5])
+        end
+    end
+    return true
+end
+
+local function RestoreResultShortcutGutter(row)
+    if not row or not row.shortcutGroup then return end
+    RestoreRightPointFromShortcut(row, row.icon, -5)
+    RestoreRightPointFromShortcut(row, row.amountText, -8)
+    RestoreRightPointFromShortcut(row, row.settingState, -8)
+    RestoreRightPointFromShortcut(row, row.settingSliderGroup, -6)
+    RestoreRightPointFromShortcut(row, row.settingKeybindGroup, -6)
+    RestoreRightPointFromShortcut(row, row.settingDropdownGroup, -6)
+    RestoreRightPointFromShortcut(row, row.repBar, -6)
+    RestoreRightPointFromShortcut(row, row.pinToggle, -8)
+    RestoreRightPointFromShortcut(row, row.text, -8)
+    RestoreRightPointFromShortcut(row, row.pathSubtext, -8)
+end
+
+local function ApplyResultShortcutGutter(row)
+    if not row or not row.shortcutGroup then return end
+    row.shortcutGroup:ClearAllPoints()
+    row.shortcutGroup:SetPoint("RIGHT", row, "RIGHT", -RESULT_SHORTCUT_RIGHT_PAD, 0)
+    row.shortcutGroup:SetSize(RESULT_SHORTCUT_WIDTH, 16)
+
+    ReplaceRightPointToShortcut(row, row.icon)
+    ReplaceRightPointToShortcut(row, row.amountText)
+    ReplaceRightPointToShortcut(row, row.settingState)
+    ReplaceRightPointToShortcut(row, row.settingSliderGroup)
+    ReplaceRightPointToShortcut(row, row.settingKeybindGroup)
+    ReplaceRightPointToShortcut(row, row.settingDropdownGroup)
+    ReplaceRightPointToShortcut(row, row.repBar)
+    ReplaceRightPointToShortcut(row, row.pinToggle)
+    ReplaceRightPointToShortcut(row, row.text)
+    ReplaceRightPointToShortcut(row, row.pathSubtext)
+end
+
+local function IsShortcutEligibleRow(row)
+    return row and row:IsShown() and row.data
+        and not row.isPinHeader and not row.isSectionHeader
+        and not row.isUnearnedCurrency
+end
+
+local function ClearResultShortcutBindings()
+    if resultShortcutFrame and not InCombatLockdown() then
+        ClearOverrideBindings(resultShortcutFrame)
+    end
+end
+
+function UI:UpdateVisibleResultShortcuts()
+    ClearResultShortcutBindings()
+    local showShortcutHints = ShouldShowResultShortcutHints()
+
+    for i = 1, MAX_BUTTON_POOL do
+        local row = resultButtons[i]
+        if not row then break end
+        row._efShortcutIndex = nil
+        row._efShortcutBindingReady = nil
+        if row.shortcutNumberText then row.shortcutNumberText:SetText("") end
+        if row.shortcutGroup then
+            row.shortcutGroup:Hide()
+        end
+    end
+
+    if not (resultsFrame and resultsFrame:IsShown()
+            and resultsFrame.scrollFrame and resultShortcutFrame) then
+        return
+    end
+
+    local scrollTop = resultsFrame.scrollFrame:GetVerticalScroll() or 0
+    local viewH = resultsFrame.scrollFrame:GetHeight() or 0
+    if viewH <= 0 then viewH = resultsFrame:GetHeight() or 0 end
+    local scrollBottom = scrollTop + viewH
+    local assigned = 0
+
+    for i = 1, MAX_BUTTON_POOL do
+        local row = resultButtons[i]
+        if not row then break end
+        if IsShortcutEligibleRow(row) then
+            local rowTop = row._efContentTop or 0
+            local rowBottom = row._efContentBottom or (rowTop + (row:GetHeight() or 0))
+            if rowBottom > scrollTop + 0.5 and rowTop < scrollBottom - 0.5 then
+                assigned = assigned + 1
+                if assigned <= RESULT_SHORTCUT_MAX then
+                    row._efShortcutIndex = assigned
+                    if showShortcutHints and row.shortcutNumberText then
+                        row.shortcutNumberText:SetText(tostring(assigned))
+                    end
+                    if row.shortcutGroup then
+                        row.shortcutGroup:SetShown(showShortcutHints)
+                    end
+                    if not InCombatLockdown() then
+                        local targetName
+                        if IsSecureActionResult(row.data) then
+                            targetName = row:GetName()
+                            row._efShortcutBindingReady = true
+                        else
+                            local proxy = resultShortcutFrame.shortcutButtons
+                                and resultShortcutFrame.shortcutButtons[assigned]
+                            if proxy then
+                                proxy._shortcutIndex = assigned
+                                targetName = proxy:GetName()
+                            end
+                        end
+                        if targetName then
+                            SetOverrideBindingClick(resultShortcutFrame, true, "ALT-" .. assigned, targetName, "LeftButton")
+                            SetOverrideBindingClick(resultShortcutFrame, true, "ALT-NUMPAD" .. assigned, targetName, "LeftButton")
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+function UI:ActivateVisibleResultShortcut(shortcutIndex)
+    if not shortcutIndex then return nil end
+    for i = 1, MAX_BUTTON_POOL do
+        local row = resultButtons[i]
+        if not row then break end
+        if row._efShortcutIndex == shortcutIndex and IsShortcutEligibleRow(row) then
+            if IsSecureActionResult(row.data) then
+                if row._efShortcutBindingReady then return "binding" end
+                if not InCombatLockdown() and ClickButton(row) then
+                    return "handled"
+                end
+                return "binding"
+            end
+            selectedIndex = i
+            toggleFocused = false
+            self:UpdateSelectionHighlight(true)
+            self:ActivateResultRow(row)
+            return "handled"
+        end
+    end
+    return nil
+end
+
 function UI:CreateResultsFrame()
     resultsFrame = CreateFrame("Frame", "EasyFindResultsFrame", searchFrame, "BackdropTemplate")
     resultsFrame:SetWidth(380)  -- Wide to accommodate tree indentation
@@ -4339,6 +4629,7 @@ function UI:CreateResultsFrame()
         if event ~= "GLOBAL_MOUSE_DOWN" then return end
         if self:IsMouseOver() then return end
         if searchFrame and searchFrame:IsMouseOver() then return end
+        if IsOptionsSurfaceMouseOver() then return end
         local guards = {
             _G["EasyFindUIFilterDropdown"],
             _G["EasyFindPinPopup"],
@@ -4382,6 +4673,20 @@ function UI:CreateResultsFrame()
 
     -- Minimal retail-style scrollbar (overlays right edge, no content squish)
     resultsFrame.scrollBar = ns.Utils.CreateMinimalScrollBar(scrollFrame, resultsFrame)
+    scrollFrame:HookScript("OnVerticalScroll", function()
+        UI:UpdateVisibleResultShortcuts()
+    end)
+
+    resultShortcutFrame = CreateFrame("Frame", nil, searchFrame)
+    resultShortcutFrame.shortcutButtons = {}
+    for i = 1, RESULT_SHORTCUT_MAX do
+        local proxy = CreateFrame("Button", "EasyFindResultShortcutButton" .. i, resultShortcutFrame)
+        proxy._shortcutIndex = i
+        proxy:SetScript("OnClick", function(self)
+            UI:ActivateVisibleResultShortcut(self._shortcutIndex)
+        end)
+        resultShortcutFrame.shortcutButtons[i] = proxy
+    end
 
     -- Pin section separator line (golden, shown between pinned items and search results)
     local pinSeparator = scrollChild:CreateTexture(nil, "ARTWORK")
@@ -5052,6 +5357,27 @@ function UI:CreateResultButton(index)
     amountText:SetTextColor(0.9, 0.82, 0.65, 1.0)
     amountText:Hide()
     resultRow.amountText = amountText
+
+    local shortcutGroup = CreateFrame("Frame", nil, resultRow)
+    shortcutGroup:SetPoint("RIGHT", resultRow, "RIGHT", -RESULT_SHORTCUT_RIGHT_PAD, 0)
+    shortcutGroup:SetSize(RESULT_SHORTCUT_WIDTH, 16)
+    shortcutGroup:Hide()
+    resultRow.shortcutGroup = shortcutGroup
+
+    local shortcutAltIcon = shortcutGroup:CreateTexture(nil, "OVERLAY")
+    shortcutAltIcon:SetTexture(RESULT_SHORTCUT_ICON)
+    shortcutAltIcon:SetSize(RESULT_SHORTCUT_ICON_SIZE, RESULT_SHORTCUT_ICON_SIZE)
+    shortcutAltIcon:SetVertexColor(0.58, 0.58, 0.58, 0.85)
+    resultRow.shortcutAltIcon = shortcutAltIcon
+
+    local shortcutNumberText = shortcutGroup:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    shortcutNumberText:SetPoint("RIGHT", shortcutGroup, "RIGHT", 1, 0)
+    shortcutNumberText:SetWidth(7)
+    shortcutNumberText:SetJustifyH("RIGHT")
+    shortcutNumberText:SetTextColor(0.58, 0.58, 0.58, 0.85)
+    shortcutNumberText:SetText("")
+    resultRow.shortcutNumberText = shortcutNumberText
+    shortcutAltIcon:SetPoint("RIGHT", shortcutNumberText, "LEFT", 2, 0)
 
     -- Right-aligned setting state widget (checkbox + optional checkmark
     -- overlay for boolean settings). For dropdowns we reuse amountText
@@ -5906,6 +6232,7 @@ function UI:CreateResultButton(index)
             local isPinned = IsUIItemPinned(pinData)
             local hasGuide = pinData.steps or pinData.transmogSetID
                 or (pinData.category == "Loot" and pinData.itemID)
+                or pinData.petID or pinData.speciesID
                 or pinData.mapSearchResult
             local onGuide = hasGuide and function()
                 UI:SelectResult(pinData, true)
@@ -5920,32 +6247,54 @@ function UI:CreateResultButton(index)
                 local isTracked = UI:IsAchievementTracked(achID)
                 extra = {
                     isTracked = isTracked,
-                    onTrack = function() UI:ToggleAchievementTracked(achID) end,
+                    onTrack = function()
+                        UI:KeepPinnedResultsOpenBriefly()
+                        UI:ToggleAchievementTracked(achID)
+                    end,
                 }
             elseif pinData.category == "Currency" and pinData.currencyID then
                 local cid = pinData.currencyID
                 extra = {
                     isOnBackpack = UI:IsCurrencyOnBackpack(cid),
-                    onToggleBackpack = function() UI:ToggleCurrencyBackpack(cid) end,
+                    onToggleBackpack = function()
+                        UI:KeepPinnedResultsOpenBriefly()
+                        UI:ToggleCurrencyBackpack(cid)
+                    end,
                 }
                 if UI:IsCurrencyTransferable(cid) then
-                    extra.onTransfer = function() UI:RouteCurrencyTransfer(pinData) end
+                    extra.onTransfer = function()
+                        UI:KeepPinnedResultsOpenBriefly()
+                        UI:RouteCurrencyTransfer(pinData)
+                    end
                 end
             elseif pinData.transmogSetID then
                 local sid = pinData.transmogSetID
                 extra = {
                     isFavorite = UI:IsTransmogSetFavorite(sid),
-                    onToggleFavorite = function() UI:ToggleTransmogSetFavorite(sid) end,
+                    onToggleFavorite = function()
+                        UI:KeepPinnedResultsOpenBriefly()
+                        UI:ToggleTransmogSetFavorite(sid)
+                    end,
                 }
             elseif pinData.petID then
                 local pid = pinData.petID
                 local cageable = UI:IsPetCageable(pid)
                 extra = {
-                    onSummon = function() UI:SummonPet(pid) end,
-                    onRename = function() UI:RenamePet(pid) end,
+                    onSummon = function()
+                        UI:KeepPinnedResultsOpenBriefly()
+                        UI:SummonPet(pid)
+                    end,
+                    onRename = function()
+                        UI:KeepPinnedResultsOpenBriefly()
+                        UI:RenamePet(pid)
+                    end,
                     isFavorite = UI:IsPetFavorite(pid),
-                    onToggleFavorite = function() UI:TogglePetFavorite(pid) end,
+                    onToggleFavorite = function()
+                        UI:KeepPinnedResultsOpenBriefly()
+                        UI:TogglePetFavorite(pid)
+                    end,
                     onCageOrRelease = function()
+                        UI:KeepPinnedResultsOpenBriefly()
                         if cageable then UI:CagePet(pid) else UI:ReleasePet(pid) end
                     end,
                     isCageable = cageable,
@@ -5960,8 +6309,7 @@ function UI:CreateResultButton(index)
                 local editBox = searchFrame and searchFrame.editBox
                 local text = editBox and editBox:GetText() or ""
                 if text == "" then
-                    local pinsRemain = #GetAllPins() > 0
-                    UI._keepPinnedResultsOpenUntil = pinsRemain and ((GetTime and GetTime() or 0) + 0.25) or nil
+                    local pinsRemain = UI:KeepPinnedResultsOpenBriefly()
                     UI:ShowPinnedItems()
                     if pinsRemain and editBox
                        and not (navFrame and navFrame:IsKeyboardEnabled()) then
@@ -6565,14 +6913,14 @@ function UI:OnSearchTextChanged(text, force)
     end
 
     -- Bucket-aware UI filter: drop UI entries whose bucket
-    -- (ui / abilities / achievements / currencies / reputations / bags
-    -- / options) is unchecked. Options is a parent toggle: when off,
-    -- both gameOptions and addonOptions buckets are treated as off.
+    -- (abilities / achievements / currencies / reputations / bags /
+    -- options) is unchecked. Base UI entries have no bucket and are
+    -- always searchable. Options is a parent toggle: when off, both
+    -- gameOptions and addonOptions buckets are treated as off.
     -- abilityHidePassives also drops isPassive ability rows here so
     -- the filter applies regardless of which bucket is on.
     local hidePassives = EasyFind.db.abilityHidePassives
-    if filters and (filters.ui == false or filters.abilities == false
-                    or filters.bosses == false
+    if filters and (filters.abilities == false or filters.bosses == false
                     or filters.achievements == false or filters.statistics == false
                     or filters.currencies == false or filters.reputations == false
                     or filters.bags == false or filters.macros == false
@@ -6654,10 +7002,10 @@ function UI:OnSearchTextChanged(text, force)
             local lowerQ = slower(text)
             local qLen = #lowerQ
             -- Blizzard's index returns matches across name + description
-            -- + criteria; we only want name matches here (the user has
-            -- the UI Elements filter for navigating to achievement
-            -- categories by their subtext). Drop anything ScoreName
-            -- can't rank against the name itself.
+            -- + criteria; we only want name matches here. Base UI entries
+            -- still cover direct navigation to achievement categories, so
+            -- drop anything ScoreName can't rank against the achievement
+            -- name itself.
             for ai = 1, #achHits do
                 local entry = achHits[ai]
                 local score = ns.Database:ScoreName(entry.nameLower, lowerQ, qLen)
@@ -7000,6 +7348,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 
     local yOffset = 0
     local pinEndYOffset = 0
+    local showShortcutHints = ShouldShowResultShortcutHints()
     wipe(SCRATCH.catSepYPositions)
     local catSepYPositions = SCRATCH.catSepYPositions
     local hasSideBySideRepBar = false
@@ -7026,6 +7375,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             -- the name and below the path so neither bleeds into the rep bar.
             local padL = theme.resultsPadLeft or 10
             local entryRowH = entry.isFlat and (rowH + flatExtraH) or rowH
+            local rowContentTop = yOffset
             resultRow:SetSize(resultsFrame:GetWidth() - padL * 2 - scrollInset, entryRowH)
             resultRow:ClearAllPoints()
             resultRow:SetPoint("TOPLEFT", resultsFrame.scrollChild, "TOPLEFT", padL, -yOffset)
@@ -7125,6 +7475,13 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             if resultRow.pinIcon then resultRow.pinIcon:Hide() end
             if resultRow.pinToggle then resultRow.pinToggle:Hide() end
             if resultRow.pinHeaderLine then resultRow.pinHeaderLine:Hide() end
+            resultRow._efShortcutIndex = nil
+            resultRow._efShortcutBindingReady = nil
+            resultRow._efContentTop = rowContentTop
+            resultRow._efContentBottom = rowContentTop + entryRowH
+            if resultRow.shortcutNumberText then resultRow.shortcutNumberText:SetText("") end
+            if resultRow.shortcutGroup then resultRow.shortcutGroup:Hide() end
+            RestoreResultShortcutGutter(resultRow)
 
             -- Tree connector drawing
             for d = 1, MAX_DEPTH do
@@ -7612,6 +7969,9 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     resultRow.icon:SetTexture(nil)
                     resultRow.icon:SetTexCoord(0, 1, 0, 1)
                     resultRow.icon:SetTexture(iconFileID)
+                    if IsBossResultData(data) then
+                        resultRow.icon:SetTexCoord(unpack(BOSS_PORTRAIT_TEXCOORD))
+                    end
                     resultRow.icon:SetSize(rowIconSize, rowIconSize)
                     resultRow.icon:ClearAllPoints()
                     resultRow.icon:SetPoint("RIGHT", resultRow, "RIGHT", rightOffset, 0)
@@ -8315,9 +8675,15 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     or (d.achievementID and d.category == "Achievement")
                     or d.mapSearchResult)
                 if rightSideIcon then
-                    local rightSize = entryRowH - 20
+                    local rightSize = entryRowH - 18
                     if rightSize < (theme.iconSize or 16) then
                         rightSize = theme.iconSize or 16
+                    end
+                    if IsBossResultData(d) then
+                        rightSize = entryRowH - 14
+                        if rightSize < (theme.iconSize or 16) then
+                            rightSize = theme.iconSize or 16
+                        end
                     end
                     resultRow.icon:SetSize(rightSize, rightSize)
                 else
@@ -8489,11 +8855,20 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             if hasPendingApply and resultRow.settingApplyExtH then
                 actualH = actualH + resultRow.settingApplyExtH + 2
             end
+            resultRow._efContentBottom = rowContentTop + actualH
+            if showShortcutHints and resultRow.data and not resultRow.isPinHeader
+               and not resultRow.isSectionHeader and not resultRow.isUnearnedCurrency then
+                ApplyResultShortcutGutter(resultRow)
+            end
             yOffset = yOffset + actualH
             resultRow:Show()
         elseif resultRow then
             resultRow:Hide()
             resultRow.isPinHeader = false
+            resultRow._efShortcutIndex = nil
+            resultRow._efShortcutBindingReady = nil
+            resultRow._efContentTop = nil
+            resultRow._efContentBottom = nil
             if not InCombatLockdown() then
                 resultRow:SetAttribute("type", nil)
                 resultRow:SetAttribute("toy", nil)
@@ -8508,6 +8883,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             resultRow.repBar:Hide()
             if resultRow.flatCatIcon then resultRow.flatCatIcon:Hide() end
             if resultRow.pathSubtext then resultRow.pathSubtext:Hide() end
+            if resultRow.shortcutGroup then resultRow.shortcutGroup:Hide() end
             for d = 1, MAX_DEPTH do
                 resultRow.treeVert[d]:Hide()
                 resultRow.treeElbow[d]:Hide()
@@ -8602,6 +8978,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     end
 
     resultsFrame:Show()
+    self:UpdateVisibleResultShortcuts()
 
     -- If any rep bar row is in side-by-side mode, schedule one deferred re-render so
     -- IsTruncated() can reflect the layout we just set (it reads the previous frame's state).
@@ -8832,15 +9209,18 @@ local function LiftPopupStrata(popup)
     popup._easyFindStrataLifted = true
     popup._easyFindOriginalStrata = popup:GetFrameStrata()
     popup:SetFrameStrata("TOOLTIP")
-    popup:HookScript("OnHide", function(self)
-        if self._easyFindStrataLifted then
-            if self._easyFindOriginalStrata then
-                self:SetFrameStrata(self._easyFindOriginalStrata)
+    if not popup._easyFindStrataRestoreHooked then
+        popup._easyFindStrataRestoreHooked = true
+        popup:HookScript("OnHide", function(self)
+            if self._easyFindStrataLifted then
+                if self._easyFindOriginalStrata then
+                    self:SetFrameStrata(self._easyFindOriginalStrata)
+                end
+                self._easyFindStrataLifted = nil
+                self._easyFindOriginalStrata = nil
             end
-            self._easyFindStrataLifted = nil
-            self._easyFindOriginalStrata = nil
-        end
-    end)
+        end)
+    end
 end
 
 -- Show the unapplied-settings popup (if not already up) and lift its
@@ -8874,6 +9254,7 @@ function UI:HideResults()
     end
     if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
     if searchFrame.ClearToolbarFocus then searchFrame.ClearToolbarFocus() end
+    ClearResultShortcutBindings()
     if not resultsFrame then return end
     resultsFrame:Hide()
     -- Collapse the combined container back to bar-only height: the
@@ -8905,7 +9286,12 @@ function UI:HideResults()
         local row = resultButtons[i]
         if row then
             row.data = nil
+            row._efShortcutIndex = nil
+            row._efShortcutBindingReady = nil
+            row._efContentTop = nil
+            row._efContentBottom = nil
             row:Hide()
+            if row.shortcutGroup then row.shortcutGroup:Hide() end
             if row.icon then
                 row.icon.mountID = nil
                 row.icon.toyItemID = nil
@@ -9132,19 +9518,22 @@ function UI:UpdateSelectionHighlight(skipRefocus)
     end
 end
 
+function UI:ActivateResultRow(resultRow)
+    if not resultRow or not resultRow:IsShown() then return false end
+    if resultRow.isUnearnedCurrency or resultRow.isPinHeader or resultRow.isSectionHeader then
+        return true
+    end
+    if not resultRow.data then return false end
+
+    if ActivateSettingResult(resultRow.data) then return true end
+    self:SelectResult(resultRow.data)
+    return true
+end
+
 function UI:ActivateSelected()
     if selectedIndex > 0 and selectedIndex <= MAX_BUTTON_POOL then
         local resultRow = resultButtons[selectedIndex]
         if resultRow and resultRow:IsShown() then
-            -- Don't allow activating unearned currencies
-            if resultRow.isUnearnedCurrency then
-                return
-            end
-
-            if resultRow.isPinHeader then
-                return
-            end
-
             if resultRow.isPathNode and toggleFocused then
                 -- Toggle collapse when focus is on the +/- control
                 local key = (resultRow.pathNodeName or "") .. "_" .. (resultRow.pathNodeDepth or 0)
@@ -9157,9 +9546,8 @@ function UI:ActivateSelected()
                     toggleFocused = savedToggle
                     self:UpdateSelectionHighlight()
                 end
-            elseif resultRow.data then
-                if ActivateSettingResult(resultRow.data) then return end
-                self:SelectResult(resultRow.data)
+            else
+                self:ActivateResultRow(resultRow)
             end
             return
         end
@@ -10083,6 +10471,146 @@ function UI:OpenAbilityInSpellbook(data)
     C_Timer.After(0.05, function() reveal(1) end)
 end
 
+local function GetPetJournalFrame()
+    return _G["PetJournal"]
+        or (CollectionsJournal and CollectionsJournal.PetJournal)
+        or (CollectionsJournal and CollectionsJournal.PetJournalFrame)
+end
+
+local function BuildPetJournalGuideData(data)
+    return {
+        name = data.name,
+        petID = data.petID,
+        speciesID = data.speciesID,
+        steps = {
+            { buttonFrame = "CollectionsMicroButton" },
+            { waitForFrame = "CollectionsJournal", tabIndex = 2 },
+            {
+                waitForFrame = "CollectionsJournal",
+                petID = data.petID,
+                speciesID = data.speciesID,
+                petName = data.name,
+            },
+        },
+    }
+end
+
+function UI:ResolvePetGUID(data)
+    if not data then return nil end
+    local guid = data.petID
+    if not (C_PetJournal and data.speciesID
+            and C_PetJournal.GetNumPets and C_PetJournal.GetPetInfoByIndex) then
+        return guid
+    end
+
+    local total = C_PetJournal.GetNumPets()
+    for i = 1, total or 0 do
+        local pid, sid, owned = C_PetJournal.GetPetInfoByIndex(i)
+        if owned and sid == data.speciesID then
+            return pid
+        end
+    end
+    return guid
+end
+
+local function PetElementMatches(edata, petID, speciesID, petName)
+    if not edata then return false end
+    local pid = edata.petID or edata.petGuid or edata.petGUID or edata.guid
+    if petID and pid == petID then return true end
+    local sid = edata.speciesID or edata.speciesId
+    if speciesID and sid == speciesID then return true end
+    local name = edata.name or edata.speciesName or edata.displayName
+    return petName and name and slower(name) == slower(petName)
+end
+
+local function PetFrameMatches(frame, petID, speciesID, petName)
+    if not frame then return false end
+    local edata = frame.GetElementData and frame:GetElementData()
+    if PetElementMatches(edata, petID, speciesID, petName) then return true end
+    if petID and (frame.petID == petID or frame.petGuid == petID or frame.petGUID == petID) then
+        return true
+    end
+    if speciesID and frame.speciesID == speciesID then return true end
+    local text = GetButtonText(frame)
+    return petName and text and slower(text) == slower(petName)
+end
+
+local function GetPetJournalScrollBox()
+    local petJournal = GetPetJournalFrame()
+    if not petJournal then return nil end
+    local candidates = {
+        petJournal.ScrollBox,
+        petJournal.PetList and petJournal.PetList.ScrollBox,
+        petJournal.List and petJournal.List.ScrollBox,
+        petJournal.listScroll and petJournal.listScroll.ScrollBox,
+        _G["PetJournalListScrollFrame"] and _G["PetJournalListScrollFrame"].ScrollBox,
+    }
+    for i = 1, #candidates do
+        if candidates[i] then return candidates[i] end
+    end
+    return nil
+end
+
+function UI:RevealPetInJournal(data)
+    if not data or not C_PetJournal then return nil end
+    local petName = data.petName or data.name
+
+    if C_PetJournal.SetFilterChecked then
+        local collectedFilter = _G["LE_PET_JOURNAL_FILTER_COLLECTED"]
+        local uncollectedFilter = _G["LE_PET_JOURNAL_FILTER_NOT_COLLECTED"]
+        if collectedFilter ~= nil then
+            pcall(C_PetJournal.SetFilterChecked, collectedFilter, true)
+        end
+        if uncollectedFilter ~= nil then
+            pcall(C_PetJournal.SetFilterChecked, uncollectedFilter, false)
+        end
+    end
+    if C_PetJournal.SetAllPetSourcesChecked then pcall(C_PetJournal.SetAllPetSourcesChecked, true) end
+    if C_PetJournal.SetAllPetTypesChecked then pcall(C_PetJournal.SetAllPetTypesChecked, true) end
+    -- Do not search for the pet by name here. Guide/direct-open should
+    -- leave the journal in its normal list view, scroll to the pet row,
+    -- and highlight it.
+    if C_PetJournal.SetSearchFilter then
+        local currentSearch = ""
+        if C_PetJournal.GetSearchFilter then
+            local ok, value = pcall(C_PetJournal.GetSearchFilter)
+            if ok and value then currentSearch = value end
+        end
+        if currentSearch ~= "" then
+            pcall(C_PetJournal.SetSearchFilter, "")
+        end
+    end
+
+    local petID = self:ResolvePetGUID(data)
+    if petID and petID ~= data.petID then data.petID = petID end
+
+    local petJournal = GetPetJournalFrame()
+    local selectPet = _G["PetJournal_SelectPet"]
+    if selectPet and petID then
+        pcall(selectPet, petID)
+        if petJournal then pcall(selectPet, petJournal, petID) end
+    end
+    if C_PetJournal.SetSelectedPet and petID then
+        pcall(C_PetJournal.SetSelectedPet, petID)
+    end
+
+    local scrollBox = GetPetJournalScrollBox()
+    if scrollBox then
+        Utils.ScrollBoxScrollTo(scrollBox, function(edata)
+            return PetElementMatches(edata, petID, data.speciesID, petName)
+        end)
+        local btn = Utils.ScrollBoxFindButton(scrollBox, function(frame)
+            return PetFrameMatches(frame, petID, data.speciesID, petName)
+        end)
+        if btn then return btn end
+    end
+
+    if petJournal and petName then
+        return SearchFrameTreeFuzzy(petJournal, slower(petName))
+    end
+    return nil
+end
+
 function UI:SelectResult(data, forceGuide)
     if not data then return end
     local useFast = not forceGuide
@@ -10260,25 +10788,22 @@ function UI:SelectResult(data, forceGuide)
         return
     end
 
-    -- Pet: summon/dismiss. Stored petID can go stale (released, caged,
-    -- traded) -- look up a fresh owned GUID by speciesID first, fall
-    -- back to the cached petID only as a last resort.
+    -- Pet: normal click summons. Guide and Ctrl+click route to the pet
+    -- in Collections > Pet Journal instead; Ctrl uses DirectOpen so it
+    -- skips the step-by-step guide and only highlights the destination.
     if data.petID or data.speciesID then
-        if C_PetJournal then
-            local guid = data.petID
-            if data.speciesID and C_PetJournal.FindPetIDByName then
-                -- Walk the journal to find any owned pet of this species.
-                if C_PetJournal.GetNumPets and C_PetJournal.GetPetInfoByIndex then
-                    local total = C_PetJournal.GetNumPets()
-                    for i = 1, total or 0 do
-                        local pid, sid, owned = C_PetJournal.GetPetInfoByIndex(i)
-                        if owned and sid == data.speciesID then
-                            guid = pid
-                            break
-                        end
-                    end
-                end
+        if forceGuide or (IsControlKeyDown and IsControlKeyDown()) then
+            local guideData = BuildPetJournalGuideData(data)
+            if useFast then
+                self:DirectOpen(guideData)
+            else
+                EasyFind:StartGuide(guideData)
             end
+            return
+        end
+
+        if C_PetJournal then
+            local guid = self:ResolvePetGUID(data)
             if guid and C_PetJournal.SummonPetByGUID then
                 C_PetJournal.SummonPetByGUID(guid)
                 if guid ~= data.petID then data.petID = guid end
@@ -11163,19 +11688,66 @@ function UI:SummonPet(petID)
     end
 end
 
-function UI:IsPetFavorite(petID)
-    if not petID or not C_PetJournal then return false end
+local function NormalizePetFavorite(value)
+    return value == true or value == 1
+end
+
+local function ReadPetFavoriteFromJournal(petID)
+    if not petID or not C_PetJournal then return nil end
     if C_PetJournal.GetPetInfoByPetID then
-        local ok, _, _, _, _, _, _, _, _, _, _, _, _, _, isFav = pcall(C_PetJournal.GetPetInfoByPetID, petID)
-        if ok and isFav then return true end
+        local ok, _, _, _, _, _, _, isFavorite = pcall(C_PetJournal.GetPetInfoByPetID, petID)
+        if ok and isFavorite ~= nil then return NormalizePetFavorite(isFavorite) end
     end
-    return false
+    if C_PetJournal.GetNumPets and C_PetJournal.GetPetInfoByIndex then
+        local total = C_PetJournal.GetNumPets()
+        for i = 1, total or 0 do
+            local pid, _, _, _, _, isFavorite = C_PetJournal.GetPetInfoByIndex(i)
+            if pid == petID then return NormalizePetFavorite(isFavorite) end
+        end
+    end
+    return nil
+end
+
+local function ReconcilePetFavoriteOverride(petID, expected, attemptsLeft)
+    if not petID or petFavoriteOverrides[petID] ~= expected then return end
+    local actual = ReadPetFavoriteFromJournal(petID)
+    if actual == expected then
+        petFavoriteOverrides[petID] = nil
+        if UI and UI.RefreshResults then UI:RefreshResults() end
+        return
+    end
+    if attemptsLeft and attemptsLeft > 0 and C_Timer and C_Timer.After then
+        C_Timer.After(0.15, function()
+            ReconcilePetFavoriteOverride(petID, expected, attemptsLeft - 1)
+        end)
+    end
+end
+
+function UI:IsPetFavorite(petID)
+    if not petID then return false end
+    if petFavoriteOverrides[petID] ~= nil then
+        return petFavoriteOverrides[petID]
+    end
+    local favorite = ReadPetFavoriteFromJournal(petID)
+    return favorite == true
 end
 
 function UI:TogglePetFavorite(petID)
     if not petID or not C_PetJournal or not C_PetJournal.SetFavorite then return end
     local fav = self:IsPetFavorite(petID)
-    pcall(C_PetJournal.SetFavorite, petID, (not fav) and 1 or 0)
+    local newFav = not fav
+    local ok = pcall(C_PetJournal.SetFavorite, petID, newFav and 1 or 0)
+    if ok then
+        petFavoriteOverrides[petID] = newFav
+    end
+    if self.RefreshResults and C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            if UI and UI.RefreshResults then UI:RefreshResults() end
+        end)
+        C_Timer.After(0.15, function()
+            ReconcilePetFavoriteOverride(petID, newFav, 8)
+        end)
+    end
 end
 
 -- Returns true when the pet is cage-eligible (tradeable). Blizzard's
@@ -11216,7 +11788,8 @@ StaticPopupDialogs["EASYFIND_PET_RELEASE_CONFIRM"] = {
 
 function UI:RenamePet(petID)
     if not petID then return end
-    StaticPopup_Show("EASYFIND_PET_RENAME", nil, nil, petID)
+    local popup = StaticPopup_Show("EASYFIND_PET_RENAME", nil, nil, petID)
+    LiftPopupStrata(popup or FindPopupSlot("EASYFIND_PET_RENAME"))
 end
 
 StaticPopupDialogs["EASYFIND_PET_RENAME"] = {

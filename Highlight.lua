@@ -485,6 +485,25 @@ function Highlight:UpdateGuide()
             return
         end
 
+        -- Battle pet terminal step. The UI module owns the Pet Journal
+        -- reveal logic because it already handles pet IDs/species IDs and
+        -- direct-open behavior; Guide only needs to highlight the row it
+        -- returns.
+        if step.petID or step.speciesID then
+            local row = ns.UI and ns.UI.RevealPetInJournal
+                and ns.UI:RevealPetInJournal(step)
+            if row then
+                self:HighlightFrame(row)
+                if canHoverDismiss() and row:IsMouseOver() then
+                    self:Cancel()
+                    return
+                end
+            elseif isLastStep then
+                self:ShowInstruction(step.text or "Find the pet in the Pet Journal")
+            end
+            return
+        end
+
         -- EJ tier + dungeon/raid tab (boss navigation). Sets the tier on
         -- the EJ then highlights the correct tab; advances when both
         -- the tab is active and the InstanceSelect ScrollBox is showing.
