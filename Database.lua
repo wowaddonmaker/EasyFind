@@ -2439,8 +2439,57 @@ function Database:PopulateDynamicBags()
     local getNumSlots = (CONT and CONT.GetContainerNumSlots) or GetContainerNumSlots
     local getItemInfo = (CONT and CONT.GetContainerItemInfo)  or GetContainerItemInfo
     local getItemInfoInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
-    local isEquippableItem = (C_Item and C_Item.IsEquippableItem) or _G.IsEquippableItem
     if not getNumSlots or not getItemInfo then return false end
+
+    local nonEquipLocs = {
+        INVTYPE_NON_EQUIP = true,
+        INVTYPE_NON_EQUIP_IGNORE = true,
+        INVTYPE_AMMO = true,
+        INVTYPE_QUIVER = true,
+    }
+    local equipLocs = {
+        INVTYPE_HEAD = true,
+        INVTYPE_NECK = true,
+        INVTYPE_SHOULDER = true,
+        INVTYPE_BODY = true,
+        INVTYPE_CHEST = true,
+        INVTYPE_ROBE = true,
+        INVTYPE_WAIST = true,
+        INVTYPE_LEGS = true,
+        INVTYPE_FEET = true,
+        INVTYPE_WRIST = true,
+        INVTYPE_HAND = true,
+        INVTYPE_FINGER = true,
+        INVTYPE_TRINKET = true,
+        INVTYPE_CLOAK = true,
+        INVTYPE_WEAPON = true,
+        INVTYPE_SHIELD = true,
+        INVTYPE_2HWEAPON = true,
+        INVTYPE_WEAPONMAINHAND = true,
+        INVTYPE_WEAPONOFFHAND = true,
+        INVTYPE_HOLDABLE = true,
+        INVTYPE_RANGED = true,
+        INVTYPE_RANGEDRIGHT = true,
+        INVTYPE_THROWN = true,
+        INVTYPE_RELIC = true,
+        INVTYPE_TABARD = true,
+        INVTYPE_BAG = true,
+        INVTYPE_PROFESSION_TOOL = true,
+        INVTYPE_PROFESSION_GEAR = true,
+    }
+    local function isRealEquipLoc(equipLoc)
+        return type(equipLoc) == "string"
+            and equipLocs[equipLoc] == true
+            and not nonEquipLocs[equipLoc]
+    end
+    local function getEquipLoc(itemID)
+        if not getItemInfoInstant then return nil end
+        local info, _, _, equipLoc = getItemInfoInstant(itemID)
+        if type(info) == "table" then
+            return info.itemEquipLoc or info.equipLoc or info.inventoryType
+        end
+        return equipLoc
+    end
 
     RemoveEntriesByCategory("Bag")
     if self.ResetSearchCache then self:ResetSearchCache() end
@@ -2478,12 +2527,8 @@ function Database:PopulateDynamicBags()
     for _, itemID in ipairs(order) do
         local info = itemMap[itemID]
         local name = info.link and info.link:match("%[(.-)%]") or (GetItemInfo and GetItemInfo(itemID)) or ("Item " .. itemID)
-        local equipLoc
-        if getItemInfoInstant then
-            local _, _, _, itemEquipLoc = getItemInfoInstant(itemID)
-            equipLoc = itemEquipLoc
-        end
-        local isEquippable = (equipLoc and equipLoc ~= "") or (isEquippableItem and isEquippableItem(itemID)) or false
+        local equipLoc = getEquipLoc(itemID)
+        local isEquippable = isRealEquipLoc(equipLoc)
         local first = info.locations[1]
         local bagBtn = first.bag == 0 and "MainMenuBarBackpackButton"
             or ("CharacterBag" .. (first.bag - 1) .. "Slot")

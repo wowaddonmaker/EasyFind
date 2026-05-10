@@ -473,6 +473,128 @@ local function AnchorGearTooltip(tooltip, ownerFrame)
     tooltip:SetOwner(ownerFrame, "ANCHOR_RIGHT")
 end
 
+function UI:OpenContainerBag(bag)
+    if bag == nil then return false end
+    if bag == 0 and OpenBackpack then
+        local ok = pcall(OpenBackpack)
+        if ok then return true end
+    end
+    local openBag = OpenBag or (C_Container and C_Container.OpenBag)
+    if openBag then
+        return pcall(openBag, bag)
+    end
+    return false
+end
+
+function UI:OpenContainerBagLocations(locations, fallbackBag)
+    local opened = false
+    if locations then
+        local seen = {}
+        for _, loc in ipairs(locations) do
+            if loc.bag ~= nil and not seen[loc.bag] then
+                seen[loc.bag] = true
+                opened = self:OpenContainerBag(loc.bag) or opened
+            end
+        end
+    elseif fallbackBag ~= nil then
+        opened = self:OpenContainerBag(fallbackBag) or opened
+    end
+    return opened
+end
+
+function UI:OpenBagItemLocation(data)
+    if not data then return end
+    self:OpenContainerBagLocations(data.bagLocations, data.bagID)
+    if data.steps and #data.steps >= 2 and ns.Highlight and ns.Highlight.StartGuideAtStep then
+        data.steps[2]._efContainerSlotFound = nil
+        ns.Highlight:StartGuideAtStep(data, 2)
+    end
+end
+
+UI.NON_EQUIP_LOCS = {
+    INVTYPE_NON_EQUIP = true,
+    INVTYPE_NON_EQUIP_IGNORE = true,
+    INVTYPE_AMMO = true,
+    INVTYPE_QUIVER = true,
+}
+
+UI.EQUIP_LOCS = {
+    INVTYPE_HEAD = true,
+    INVTYPE_NECK = true,
+    INVTYPE_SHOULDER = true,
+    INVTYPE_BODY = true,
+    INVTYPE_CHEST = true,
+    INVTYPE_ROBE = true,
+    INVTYPE_WAIST = true,
+    INVTYPE_LEGS = true,
+    INVTYPE_FEET = true,
+    INVTYPE_WRIST = true,
+    INVTYPE_HAND = true,
+    INVTYPE_FINGER = true,
+    INVTYPE_TRINKET = true,
+    INVTYPE_CLOAK = true,
+    INVTYPE_WEAPON = true,
+    INVTYPE_SHIELD = true,
+    INVTYPE_2HWEAPON = true,
+    INVTYPE_WEAPONMAINHAND = true,
+    INVTYPE_WEAPONOFFHAND = true,
+    INVTYPE_HOLDABLE = true,
+    INVTYPE_RANGED = true,
+    INVTYPE_RANGEDRIGHT = true,
+    INVTYPE_THROWN = true,
+    INVTYPE_RELIC = true,
+    INVTYPE_TABARD = true,
+    INVTYPE_BAG = true,
+    INVTYPE_PROFESSION_TOOL = true,
+    INVTYPE_PROFESSION_GEAR = true,
+}
+
+function UI:IsRealEquipLoc(slot)
+    return type(slot) == "string"
+        and self.EQUIP_LOCS[slot] == true
+        and not self.NON_EQUIP_LOCS[slot]
+end
+
+function UI:GetItemEquipLoc(itemID)
+    local getItemInfoInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    if not getItemInfoInstant then return nil end
+
+    local info, _, _, equipLoc = getItemInfoInstant(itemID)
+    if type(info) == "table" then
+        return info.itemEquipLoc or info.equipLoc or info.inventoryType
+    end
+    return equipLoc
+end
+
+function UI:GetBagItemActionKind(data)
+    if not data or not data.itemID or data.category ~= "Bag" then return nil end
+
+    -- Only treat items with a real gear slot as "equippable". Empty /
+    -- NON_EQUIP / AMMO / QUIVER are not gear slots.
+    local slot = data.equipLoc
+    if not self:IsRealEquipLoc(slot) then
+        slot = self:GetItemEquipLoc(data.itemID)
+    end
+    if self:IsRealEquipLoc(slot) then
+        return "equip"
+    end
+
+    local hasUseEffect = (C_Item and C_Item.GetItemSpell and C_Item.GetItemSpell(data.itemID))
+        or (GetItemSpell and GetItemSpell(data.itemID))
+    if hasUseEffect then return "use" end
+
+    if GetItemInfo then
+        local itemType = select(6, GetItemInfo(data.itemID))
+        if itemType == "Consumable" then
+            return "use"
+        elseif itemType == "Container" or itemType == "Quest" then
+            return "open"
+        end
+    end
+
+    return "show"
+end
+
 local function GetActionHint(data)
     if not data then return nil end
     if data.titleID then return "Select to apply as your title" end
@@ -490,25 +612,15 @@ local function GetActionHint(data)
     end
     if data.macroIndex then return "Select to run macro | Ctrl+click to edit" end
     if data.itemID and data.category == "Bag" then
-        -- Only treat items with a real gear slot as "equippable". Some
-        -- consumables flunk IsEquippableItem at the database level, so
-        -- key off equipLoc directly: empty / NON_EQUIP / AMMO / QUIVER
-        -- aren't gear slots and should still read "Select to use".
-        local slot = data.equipLoc
-        if slot and slot ~= "" and slot ~= "INVTYPE_NON_EQUIP"
-           and slot ~= "INVTYPE_AMMO" and slot ~= "INVTYPE_QUIVER" then
-            return "Select to equip item"
+        local actionKind = UI:GetBagItemActionKind(data)
+        if actionKind == "equip" then
+            return "Select to equip item | Ctrl+click to show in bags"
+        elseif actionKind == "open" then
+            return "Select to open item | Ctrl+click to show in bags"
+        elseif actionKind == "use" then
+            return "Select to use item | Ctrl+click to show in bags"
         end
-        -- Containers / quest items / wrapped boxes: the right-click
-        -- action opens the contents, not "use". GetItemInfo returns the
-        -- item type as the 6th value.
-        if GetItemInfo then
-            local itemType = select(6, GetItemInfo(data.itemID))
-            if itemType == "Container" or itemType == "Quest" then
-                return "Select to open item"
-            end
-        end
-        return "Select to use item"
+        return "Select to show in bags"
     end
     if data.mapSearchResult then
         if data.isZone then return "Select to open map to location" end
@@ -789,7 +901,8 @@ local function IsSecureActionResult(data)
     return data and (data.outfitID or data.toyItemID
         or (data.spellID and not IsSpellbookOnlyAbility(data))
         or data.mountID or data.macroIndex or data.slashCommand
-        or (data.itemID and data.category == "Bag"))
+        or (data.itemID and data.category == "Bag"
+            and UI:GetBagItemActionKind(data) ~= "show"))
 end
 
 local function GetResultShortcutIndex(key)
@@ -5371,7 +5484,7 @@ function UI:CreateResultButton(index)
     resultRow.shortcutAltIcon = shortcutAltIcon
 
     local shortcutNumberText = shortcutGroup:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    shortcutNumberText:SetPoint("RIGHT", shortcutGroup, "RIGHT", 1, 0)
+    shortcutNumberText:SetPoint("RIGHT", shortcutGroup, "RIGHT", 3, 0)
     shortcutNumberText:SetWidth(7)
     shortcutNumberText:SetJustifyH("RIGHT")
     shortcutNumberText:SetTextColor(0.58, 0.58, 0.58, 0.85)
@@ -6144,6 +6257,16 @@ function UI:CreateResultButton(index)
         -- open MacroFrame for editing instead. SelectResult's macro
         -- branch reads IsControlKeyDown() to pick the edit path.
         if d and d.macroIndex and IsControlKeyDown() then
+            self:SetAttribute("type", nil)
+            self._lastAttrType = nil
+            self._lastAttrKey = nil
+            self._lastAttrVal = nil
+            return
+        end
+
+        -- Ctrl + bag item: suppress secure /use or equip so PostClick can
+        -- route to the containing bag slot instead.
+        if d and d.itemID and d.category == "Bag" and IsControlKeyDown() then
             self:SetAttribute("type", nil)
             self._lastAttrType = nil
             self._lastAttrKey = nil
@@ -7440,7 +7563,8 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     -- and highlights the node. Skip the secure cast type so
                     -- only PostClick / SelectResult handle the talent path.
                     newType, newKey, newVal = "spell", "spell", data.spellName or data.spellID
-                elseif data and data.itemID and data.category == "Bag" then
+                elseif data and data.itemID and data.category == "Bag"
+                       and UI:GetBagItemActionKind(data) ~= "show" then
                     newType, newKey, newVal = "item", "item", data.name
                 elseif data and data.macroIndex and data.category == "Macro"
                        and data.macroBody and data.macroBody ~= "" then
@@ -10825,6 +10949,7 @@ function UI:SelectResult(data, forceGuide)
     -- open the bag(s) containing them and highlight the slot.
     if data.itemID and data.category == "Bag" then
         if useFast then
+            local showInBags = IsControlKeyDown and IsControlKeyDown()
             -- Skip bag-open for anything the secure click will already act
             -- on: explicit Use spells, equippable gear, AND broad item
             -- types that "use" via right-click without a Use:tooltip line
@@ -10832,33 +10957,10 @@ function UI:SelectResult(data, forceGuide)
             -- right-click-openable containers like lockboxes still hit
             -- the bag-open path, so the bag visibly pops AND the
             -- container opens -- the user only wants the latter.
-            local hasUseEffect = (C_Item and C_Item.GetItemSpell and C_Item.GetItemSpell(data.itemID))
-                or (GetItemSpell and GetItemSpell(data.itemID))
-            local isEquippable = IsEquippableItem and IsEquippableItem(data.itemID)
-            local itemType
-            if not hasUseEffect and not isEquippable and GetItemInfo then
-                itemType = select(6, GetItemInfo(data.itemID))
-            end
-            if hasUseEffect or isEquippable
-               or itemType == "Consumable" or itemType == "Container"
-               or itemType == "Quest" then
+            if not showInBags and self:GetBagItemActionKind(data) ~= "show" then
                 return
             end
-            local openBag = (C_Container and C_Container.OpenBag) or OpenBag
-            if openBag and data.bagLocations then
-                local seen = {}
-                for _, loc in ipairs(data.bagLocations) do
-                    if not seen[loc.bag] then
-                        seen[loc.bag] = true
-                        pcall(openBag, loc.bag)
-                    end
-                end
-            elseif openBag then
-                pcall(openBag, data.bagID)
-            end
-            if data.steps and #data.steps >= 2 and ns.Highlight and ns.Highlight.StartGuideAtStep then
-                ns.Highlight:StartGuideAtStep(data, 2)
-            end
+            self:OpenBagItemLocation(data)
             return
         end
         if not data.steps or #data.steps == 0 then return end
