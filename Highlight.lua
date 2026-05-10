@@ -48,6 +48,142 @@ local function canHoverDismiss()
     return not highlightShownAt or (GetTime() - highlightShownAt) >= HOVER_MIN_DISPLAY
 end
 
+local function GetContainerButtonLocation(button)
+    if not button then return nil end
+
+    local bag, slot
+    if button.GetBagID then
+        local ok, value = pcall(button.GetBagID, button)
+        if ok then bag = value end
+    end
+    if button.GetID then
+        local ok, value = pcall(button.GetID, button)
+        if ok then slot = value end
+    end
+    if button.GetItemLocation then
+        local ok, itemLocation = pcall(button.GetItemLocation, button)
+        if ok and itemLocation and itemLocation.GetBagAndSlot then
+            local okLoc, locBag, locSlot = pcall(itemLocation.GetBagAndSlot, itemLocation)
+            if okLoc then
+                bag = bag or locBag
+                slot = slot or locSlot
+            end
+        end
+    end
+    if bag == nil and button.GetParent then
+        local parent = button:GetParent()
+        if parent and parent.GetID then
+            local ok, value = pcall(parent.GetID, parent)
+            if ok then bag = value end
+        end
+    end
+
+    return bag, slot
+end
+
+local function IsContainerButtonLocation(button, bag, slot)
+    local buttonBag, buttonSlot = GetContainerButtonLocation(button)
+    return buttonBag == bag and buttonSlot == slot
+end
+
+function Highlight:FindContainerSlotButtonInFrame(frame, bag, slot)
+    if not frame or not frame:IsVisible() then return nil end
+
+    if frame.EnumerateValidItems then
+        for _, itemButton in frame:EnumerateValidItems() do
+            if itemButton and itemButton:IsVisible()
+               and IsContainerButtonLocation(itemButton, bag, slot) then
+                return itemButton
+            end
+        end
+    end
+
+    local frameName = frame.GetName and frame:GetName()
+    if frameName then
+        for i = 1, 200 do
+            local itemButton = _G[frameName .. "Item" .. i]
+            if itemButton and itemButton:IsVisible()
+               and IsContainerButtonLocation(itemButton, bag, slot) then
+                return itemButton
+            end
+        end
+    end
+
+    return nil
+end
+
+function Highlight:FindContainerSlotButton(bag, slot)
+    local button = self:FindContainerSlotButtonInFrame(_G.ContainerFrameCombinedBags, bag, slot)
+    if button then return button end
+
+    for i = 1, 13 do
+        button = self:FindContainerSlotButtonInFrame(_G["ContainerFrame" .. i], bag, slot)
+        if button then return button end
+    end
+
+    -- Classic fallback: old container buttons are indexed in reverse slot order.
+    local CONT = C_Container
+    local getSlots = (CONT and CONT.GetContainerNumSlots) or GetContainerNumSlots
+    for i = 1, 13 do
+        local frame = _G["ContainerFrame" .. i]
+        if frame and frame:IsVisible() and frame:GetID() == bag then
+            local ok, n = pcall(function() return getSlots and getSlots(bag) end)
+            local numSlots = (ok and n) or 0
+            if numSlots == 0 then
+                for c = 1, 40 do
+                    if not _G["ContainerFrame" .. i .. "Item" .. c] then
+                        numSlots = c - 1
+                        break
+                    end
+                end
+            end
+            local btnIdx = numSlots - slot + 1
+            return btnIdx >= 1 and _G["ContainerFrame" .. i .. "Item" .. btnIdx] or nil
+        end
+    end
+
+    return nil
+end
+
+function Highlight:HighlightContainerSlotStep(step)
+    local locations = step.allLocations or {{ bag = step.containerBag, slot = step.containerSlot }}
+
+    local found = false
+    for _, loc in ipairs(locations) do
+        local itemBtn = self:FindContainerSlotButton(loc.bag, loc.slot)
+        if itemBtn and itemBtn:IsVisible() then
+            if not found then
+                local bag, slot = loc.bag, loc.slot
+                step._efContainerSlotFound = true
+                self:HighlightFrame(itemBtn, nil, function(frame)
+                    return frame and frame:IsVisible()
+                        and IsContainerButtonLocation(frame, bag, slot)
+                end)
+                if canHoverDismiss() and itemBtn:IsMouseOver() then
+                    self:Cancel()
+                    return
+                end
+                found = true
+            else
+                local name = itemBtn:GetName()
+                local glow = name and _G[name .. "SearchOverlay"]
+                if glow then
+                    glow:SetVertexColor(1, 1, 0, 0.5)
+                    glow:Show()
+                end
+            end
+        end
+    end
+
+    if not found then
+        if step._efContainerSlotFound then
+            self:Cancel()
+            return
+        end
+        self:HideHighlight()
+    end
+end
+
 function Highlight:Initialize()
     if highlightFrame then return end
     self:CreateHighlightFrame()
@@ -440,6 +576,15 @@ function Highlight:UpdateGuide()
             C_Timer.After(2.5, function() self:Cancel() end)
             return
         end
+        return
+    end
+
+    -- Container item highlight (standalone step, no waitForFrame):
+    -- highlights the first visible slot and glows duplicates through
+    -- the bag search overlay. Opening bags is one-shot in SelectResult;
+    -- this ticker must not reopen bags after the user closes them.
+    if step.containerBag ~= nil and step.containerSlot then
+        self:HighlightContainerSlotStep(step)
         return
     end
 
@@ -1285,60 +1430,6 @@ function Highlight:UpdateGuide()
                     end
                 end
             end
-        end
-
-        -- Bag slot highlight: open all bags containing the item, glow
-        -- the first matching slot, and accent secondaries with the bag
-        -- search overlay so duplicates across bags are still visible.
-        if step.containerBag ~= nil and step.containerSlot then
-            local locations = step.allLocations or {{ bag = step.containerBag, slot = step.containerSlot }}
-            local CONT = C_Container
-            local openBag = (CONT and CONT.OpenBag) or OpenBag
-            local getSlots = (CONT and CONT.GetContainerNumSlots) or GetContainerNumSlots
-
-            if openBag then
-                local seen = {}
-                for _, loc in ipairs(locations) do
-                    if not seen[loc.bag] then
-                        seen[loc.bag] = true
-                        pcall(openBag, loc.bag)
-                    end
-                end
-            end
-
-            local found = false
-            for _, loc in ipairs(locations) do
-                for i = 1, 13 do
-                    local cf = _G["ContainerFrame" .. i]
-                    if cf and cf:IsShown() and cf:GetID() == loc.bag then
-                        local ok, n = pcall(function() return getSlots and getSlots(loc.bag) end)
-                        local numSlots = (ok and n) or 0
-                        if numSlots == 0 then
-                            for c = 1, 40 do
-                                if not _G["ContainerFrame" .. i .. "Item" .. c] then
-                                    numSlots = c - 1; break
-                                end
-                            end
-                        end
-                        local btnIdx = numSlots - loc.slot + 1
-                        local itemBtn = btnIdx >= 1 and _G["ContainerFrame" .. i .. "Item" .. btnIdx] or nil
-                        if itemBtn and itemBtn:IsShown() then
-                            if not found then
-                                self:HighlightFrame(itemBtn)
-                                found = true
-                            else
-                                local glow = _G[itemBtn:GetName() .. "SearchOverlay"]
-                                if glow then
-                                    glow:SetVertexColor(1, 1, 0, 0.5)
-                                    glow:Show()
-                                end
-                            end
-                        end
-                        break
-                    end
-                end
-            end
-            return
         end
 
         -- EJ instance button (ScrollBox with dynamic names, find by text)
