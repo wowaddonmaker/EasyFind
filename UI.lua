@@ -146,6 +146,11 @@ end
 
 local searchFrame
 local resultsFrame
+local selectedIndex = 0   -- 0 = none selected, 1..N = highlighted row
+local toggleFocused = false -- true = Tab moved focus to expand/collapse toggle
+local navFrame             -- Keyboard capture frame for results navigation
+local escCatcher           -- UISpecialFrames fallback for second-ESC-to-close
+local activeKeybindBtn
 -- Combined-frame backdrop: rounded-rect 9-slice that wraps the bar
 -- alone (collapsed to a pill when results are hidden) or the bar
 -- plus the results dropdown (rounded rectangle when open). Sibling
@@ -1024,7 +1029,33 @@ function UI:RearmActiveCalculatorCopy(source)
     local result = UI._calculator.activeResult
     if not result or result == "" then return false end
     if source == "ctrl" and UI._calculator.copyComplete then return false end
-    return self:CopyCalculatorResult(result, source or "active")
+    local ok = self:CopyCalculatorResult(result, source or "active")
+    if ok and source == "ctrl" then
+        self:SuspendCalculatorNavForCopy()
+    end
+    return ok
+end
+
+function UI:SuspendCalculatorNavForCopy()
+    if not navFrame then return end
+    UI._calculator.navSuspendedForCopy = navFrame:IsKeyboardEnabled()
+    Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
+end
+
+function UI:RestoreSearchFocusAfterCalculatorCopy()
+    UI._calculator.navSuspendedForCopy = nil
+    selectedIndex = 0
+    toggleFocused = false
+    if navFrame then
+        Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
+    end
+
+    local editBox = searchFrame and searchFrame.editBox
+    if editBox and editBox.IsVisible and editBox:IsVisible() then
+        editBox.blockFocus = nil
+        editBox:SetFocus()
+        editBox:SetCursorPosition(#(editBox:GetText() or ""))
+    end
 end
 
 function UI:EnsureCalculatorCopyWatcher()
@@ -1287,9 +1318,11 @@ function UI:ConfirmCalculatorCopied()
     if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
             UI:ReleaseCalculatorCopyBox("confirm")
+            UI:RestoreSearchFocusAfterCalculatorCopy()
         end)
     else
         self:ReleaseCalculatorCopyBox("confirm")
+        self:RestoreSearchFocusAfterCalculatorCopy()
     end
     return true
 end
@@ -1376,6 +1409,13 @@ function UI:HandleCalculatorPasteIntoSearch(editBox, key)
         end)
     end
     return false
+end
+
+function UI:ArmCalculatorSelectionForKeyboard(row)
+    if not row or not row:IsShown() or not row.data or not row.data.calculatorResult then
+        return false
+    end
+    return self:ArmCalculatorResultFromRow(row, "key")
 end
 
 local function IsSpellbookOnlyAbility(data)
@@ -1782,12 +1822,6 @@ local function SetRowIcon(btn, kind, value, iconSize)
     btn.icon:SetSize(sz, sz)
     btn.icon:Show()
 end
-
-local selectedIndex = 0   -- 0 = none selected, 1..N = highlighted row
-local toggleFocused = false -- true = Tab moved focus to expand/collapse toggle
-local navFrame             -- Keyboard capture frame for results navigation
-local escCatcher           -- UISpecialFrames fallback for second-ESC-to-close
-local activeKeybindBtn
 
 -- THEME DEFINITIONS
 local THEMES = {}
@@ -10929,6 +10963,9 @@ function UI:UpdateSelectionHighlight(skipRefocus)
             searchFrame.editBox:ClearFocus()
         end
         Utils.SafeCallMethod(navFrame, "EnableKeyboard", true)
+        if newSelRow and not toggleFocused and newSelRow.data and newSelRow.data.calculatorResult then
+            self:ArmCalculatorSelectionForKeyboard(newSelRow)
+        end
     else
         local wasNavigating = navFrame:IsKeyboardEnabled()
         Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
