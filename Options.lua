@@ -4,10 +4,9 @@ local Options = {}
 ns.Options = Options
 
 local Utils   = ns.Utils
-local sformat = Utils.sformat
 local mfloor, mmin, mmax = Utils.mfloor, Utils.mmin, Utils.mmax
-local tonumber, tostring = Utils.tonumber, Utils.tostring
-local tinsert, tconcat = Utils.tinsert, Utils.tconcat
+local tostring = Utils.tostring
+local tinsert = Utils.tinsert
 local IsMouseButtonDown = IsMouseButtonDown
 
 local OPTIONS_PANEL_ALPHA = 0.9
@@ -166,11 +165,6 @@ local function RefreshMapRuntime()
     if uiInd then uiInd:SetScale(EasyFind.db.iconScale or 0.8) end
 end
 
-local function ClearBinding(action)
-    local old1, old2 = GetBindingKey(action)
-    if old1 then SetBinding(old1) end
-    if old2 then SetBinding(old2) end
-end
 
 local function SyncOptionControls()
     if not optionsFrame then return end

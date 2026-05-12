@@ -10276,7 +10276,6 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     end
 
     local maxVisibleHeight = EasyFind.db.uiResultsHeight or 280
-    local willScroll = visibleN * rowH > maxVisibleHeight
     local scrollInset = 0
 
     wipe(SCRATCH.isLastChild)
