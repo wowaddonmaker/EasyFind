@@ -820,20 +820,6 @@ function BlizzOptionsSearch:HasPendingChange(variable)
     return settObj.pendingValue ~= nil
 end
 
-local function FlagsFor(setting)
-    local saveBindings, gxRestart, windowUpdate
-    if setting.HasCommitFlag and Settings and Settings.CommitFlag then
-        local function has(flag)
-            local ok, v = pcall(setting.HasCommitFlag, setting, flag)
-            return ok and v
-        end
-        saveBindings = has(Settings.CommitFlag.SaveBindings)
-        gxRestart    = has(Settings.CommitFlag.GxRestart)
-        windowUpdate = has(Settings.CommitFlag.UpdateWindow)
-    end
-    return saveBindings, gxRestart, windowUpdate
-end
-
 -- Apply / revert one specific setting (per-row Apply/Reset buttons).
 -- PROXY_ANTIALIASING is a "view" setting whose own SetValue closure
 -- only zeros the OTHER mode's CVar (fxaa or msaa); it assumes the

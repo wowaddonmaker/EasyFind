@@ -5,7 +5,6 @@ ns.Rescaler = Rescaler
 
 local Utils = ns.Utils
 local mmax, mmin, mfloor = Utils.mmax, Utils.mmin, Utils.mfloor
-local tinsert = Utils.tinsert
 local SafeCallMethod = Utils.SafeCallMethod
 
 local GOLD_COLOR = ns.GOLD_COLOR

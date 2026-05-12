@@ -20,6 +20,8 @@ globals = {
     "BINDING_NAME_EASYFIND_MAP_FOCUS",
     "EncounterJournal",
     "TransmogFrame",
+    "SettingsPanel",
+    "TokenFrame",
 }
 
 -- WoW API globals (read-only)
@@ -55,7 +57,7 @@ read_globals = {
     "CharacterStatsPane", "PaperDollTitlesPane", "PaperDollEquipmentManagerPane",
     "CurrencyFrame",
     "SpellBookFrame", "PlayerSpellsFrame", "CollectionsJournal",
-    "PVEFrame", "ReputationFrame", "TokenFrame", "TokenFramePopup",
+    "PVEFrame", "ReputationFrame", "TokenFramePopup",
     "GroupFinderFrame", "LFGListFrame", "HelpFrame", "ClassTalentFrame",
     "GameMenuFrame", "MacroFrame",
     "GuildMicroButton", "StoreMicroButton", "PlayerFrame", "StoreFrame",
@@ -125,7 +127,7 @@ read_globals = {
     "EasyFindDevDB",
 
     -- Blizzard settings frames
-    "SettingsPanel", "InterfaceOptionsFrame",
+    "InterfaceOptionsFrame",
 
     -- Constants, Enums, Mixins
     "Enum", "Settings", "BackdropTemplateMixin",
@@ -135,8 +137,22 @@ read_globals = {
 
     -- Font objects
     "Game15Font_Shadow", "GameFontNormal", "GameFontNormalSmall",
-    "GameFontHighlight", "GameFontHighlightSmall", "GameFontDisable",
-    "GameFontDisableSmall", "GameFontNormalLarge",
+    "GameFontHighlight", "GameFontHighlightSmall", "GameFontHighlightLarge",
+    "GameFontDisable", "GameFontDisableSmall", "GameFontNormalLarge",
+
+    -- Misc WoW API
+    "securecallfunction", "GetCVarBool", "GetCurrentKeyBoardFocus",
+    "IsKeyDown", "OpenBackpack", "OpenBag", "GetItemSpell",
+    "StaticPopup_Visible", "IsGraphicsSettingValueSupported",
+    "QuestScrollFrame", "LibStub",
+
+    -- Localization / faction strings
+    "FACTION_ALLIANCE", "FACTION_HORDE",
+    "SETTINGS_CONFIRM_DISCARD", "SETTINGS_UNAPPLIED_EXIT",
+    "SETTINGS_UNAPPLIED_APPLY_AND_EXIT", "SETTINGS_UNAPPLIED_CANCEL",
+
+    -- Currency filter enums
+    "CURRENCY_FILTER_TYPE_TRANSFERABLE", "CURRENCY_FILTER_TYPE_CHARACTER",
 }
 
 -- WoW callbacks have fixed signatures; unused args are normal
