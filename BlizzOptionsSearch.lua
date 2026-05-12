@@ -1318,7 +1318,7 @@ local function CollectEntries()
     local entries = {}
 
     -- Best-effort: resolve catIDs against the live category tree.
-    -- Safe to call even if SettingsPanel hasn't been opened yet —
+    -- Safe to call even if SettingsPanel hasn't been opened yet:
     -- it just leaves the lookup tables empty. HandleStep retries
     -- on demand when the user clicks an entry.
     ResolveCategoryIDs()
@@ -1328,7 +1328,7 @@ local function CollectEntries()
     -- variable is a phantom entry (CVar removed from the live panel in
     -- this client version). Skip those instead of injecting dead rows
     -- whose click does nothing. If nothing resolved, the registry
-    -- isn't ready yet — fall back to emitting all curated entries and
+    -- isn't ready yet, so fall back to emitting all curated entries and
     -- let the late re-pass at 3.0s prune.
     local registryReady = false
     for var in pairs(categoryIDByVariable) do
@@ -1725,7 +1725,7 @@ local function CollectAddonCategories()
         if not catName or catName == "" then return end
         local catNameLower = slower(catName)
         -- Path is rooted at "<addon> Settings" (e.g. "BugSack Settings")
-        -- instead of "AddOn Settings > <addon>" — the latter wastes a
+        -- instead of "AddOn Settings > <addon>". The latter wastes a
         -- whole row level on a constant string. For nested categories
         -- the subcategory name follows: "BugSack Settings > Tooltip".
         local rootName = (parentName or catName) .. " Settings"

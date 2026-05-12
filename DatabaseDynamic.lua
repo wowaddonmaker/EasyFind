@@ -172,7 +172,7 @@ end
 function Database:LoadDeferredSyncProvidersStaggered()
     -- Batch flag suppresses per-provider ResetSearchCache (which rebuilds
     -- the prefix index over the entire uiSearchData each time). Without
-    -- this each of the ~12 providers triggers a full rebuild — by the
+    -- this each of the ~12 providers triggers a full rebuild. By the
     -- end the prefix index has been rebuilt 12 times. We rebuild once
     -- at the end of the chain instead.
     self._dynamicBatchLoading = true
@@ -207,7 +207,7 @@ function Database:LoadDeferredSyncProvidersStaggered()
 end
 
 -- Synchronous heavy-data load. Used at PLAYER_LOGIN so the load
--- screen absorbs the cost. Only loot (current spec) is scanned here —
+-- screen absorbs the cost. Only loot (current spec) is scanned here:
 -- it's small and matches a common search ("ring", "haste ring"). Boss
 -- scanning iterates ~1000+ encounters across every expansion tier, so
 -- it runs through its async provider after login or on boss-related
