@@ -46,15 +46,11 @@ Utils.tostring = tostring
 Utils.tonumber = tonumber
 Utils.ErrorHandler = ErrorHandler
 
---- Call a protected function safely, suppressing errors during combat lockdown.
---- Returns true + results on success, false on failure.
 function Utils.SafeCall(func, ...)
     if InCombatLockdown() then return false end
     return pcall(func, ...)
 end
 
---- Call a protected method safely (e.g. frame:SetPropagateKeyboardInput).
---- Usage: Utils.SafeCallMethod(frame, "SetPropagateKeyboardInput", false)
 function Utils.SafeCallMethod(obj, method, ...)
     if InCombatLockdown() then return false end
     if not obj then return false end
@@ -63,9 +59,6 @@ function Utils.SafeCallMethod(obj, method, ...)
     return pcall(fn, obj, ...)
 end
 
---- Protected OnUpdate wrapper. If the handler errors, it self-cancels
---- to prevent per-frame error spam that can freeze the UI.
---- Pass nil handler to clear.
 function Utils.SafeOnUpdate(frame, handler)
     if not handler then
         frame:SetScript("OnUpdate", nil)
@@ -80,8 +73,6 @@ function Utils.SafeOnUpdate(frame, handler)
     end)
 end
 
---- Protected C_Timer.After wrapper. Catches errors in the callback
---- so a crash in a delayed call doesn't propagate unhandled.
 function Utils.SafeAfter(delay, fn)
     C_Timer.After(delay, function()
         local ok, err = xpcall(fn, ErrorHandler)
@@ -91,14 +82,6 @@ function Utils.SafeAfter(delay, fn)
     end)
 end
 
---- Key-repeat controller shared by UI search and MapTab nav. Holding
---- a key fires the action immediately, waits INITIAL seconds, then
---- ticks at a rate that accelerates from INITIAL toward FAST over
---- ACCEL seconds. Attach OnKeyUp to `Stop(key)` so releasing the key
---- stops the repeat. Pass the key so other keys pressed concurrently
---- don't cancel each other.
----
---- Returns a table: { Start(key, action), Stop(key?), IsKey(key) }.
 function Utils.CreateKeyRepeat(frame, initialDelay, fastDelay, accelDuration)
     initialDelay = initialDelay or 0.30
     fastDelay = fastDelay or 0.05
@@ -195,13 +178,9 @@ function Utils.AttachAutocomplete(editBox, opts)
             return false
         end
 
-        -- Abort if a user keystroke landed between when the search was
-        -- scheduled and now: WoW defers OnTextChanged by one frame, so
-        -- the in-flight char hasn't updated typedText yet but is already
-        -- in the editbox. Calling SetText here would overwrite it, and
-        -- the deferred OnTextChanged would then see no change vs.
-        -- typedText (we'd just set it to candidate) and silently drop
-        -- the keystroke.
+        -- WoW defers OnTextChanged by one frame, so the in-flight char
+        -- isn't in typedText yet. SetText here would overwrite it and the
+        -- deferred OnTextChanged would silently drop the keystroke.
         local liveText = editBox:GetText() or ""
         local liveCursor = editBox:GetCursorPosition() or #liveText
         local hasLiveSuggestion = currentCandidate ~= nil
@@ -278,14 +257,9 @@ function Utils.AttachAutocomplete(editBox, opts)
         local prevLen = #typedText
         typedText = typed
         local grew = #typedText > prevLen
-        -- Smooth-extend: when the user types a character that matches
-        -- the next character of the current candidate, re-attach the
-        -- suggestion in-place instead of clearing it and waiting for
-        -- the throttled re-render. This is the "Chrome omnibox" feel:
-        -- the highlighted suffix shrinks character by character without
-        -- flicker. Safe because we run synchronously inside
-        -- OnTextChanged (post-keystroke), not from the throttle's
-        -- OnUpdate, so there's no in-flight char to clobber.
+        -- Smooth-extend the candidate in-place: safe here because we run
+        -- synchronously inside OnTextChanged (post-keystroke), not from
+        -- the throttle's OnUpdate, so there's no in-flight char to clobber.
         local extended = false
         if grew and currentCandidate
            and #typed < #currentCandidate
@@ -306,13 +280,6 @@ function Utils.AttachAutocomplete(editBox, opts)
         end
         if onTypedChanged then onTypedChanged(self, typedText, prevText, grew) end
     end)
-
-    -- OnChar smooth-extend hook removed: it raced with OnTextChanged
-    -- when the user typed quickly, calling SetText mid-keystroke and
-    -- occasionally swallowing the next character. OnTextChanged below
-    -- still handles smooth extension when the typed prefix continues
-    -- to match the candidate, so the suggestion still grows as you
-    -- type without an extra SetText pass per character.
 
     editBox:HookScript("OnEditFocusLost", StripAutocomplete)
 
@@ -448,8 +415,6 @@ function Utils.AttachAutocomplete(editBox, opts)
     editBox.IsAutocompleteProgrammatic = function() return programmatic end
 end
 
---- Scroll a ScrollFrame so that the given child button is visible.
---- Uses the button's top/bottom relative to the scrollChild.
 function Utils.ScrollToButton(scrollFrame, button)
     if not scrollFrame or not button then return end
     local _, _, _, _, btnOffsetY = button:GetPoint(1)
@@ -473,33 +438,23 @@ ns.EYE_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\eye"
 ns.DARK_PANEL_BG = {0.1, 0.1, 0.1, 0.95}
 ns.SEARCH_WINDOW_FILL_COLOR = {0.052, 0.052, 0.060}
 ns.RESULT_ICON_SIZE = 18
-ns.SEARCHBAR_HEIGHT = 30      -- base search bar frame height (before font scaling)
-ns.SEARCHBAR_FILL = 0.55      -- fraction of bar height filled by text/icon
-ns.SEARCHBAR_ICON_SCALE = 0.75 -- icon size relative to editBox height (font glyphs are shorter than line height)
-ns.CLEAR_BTN_SIZE = 12         -- base clear button size (before font scaling)
+ns.SEARCHBAR_HEIGHT = 30
+ns.SEARCHBAR_FILL = 0.55
+ns.SEARCHBAR_ICON_SCALE = 0.75
+ns.CLEAR_BTN_SIZE = 12
 local EasyFindSearchFont = CreateFont("EasyFindSearchFont")
 local baseFont = Game15Font_Shadow or GameFontNormal
 EasyFindSearchFont:CopyFontObject(baseFont)
 EasyFindSearchFont:SetFont((baseFont:GetFont()), 12, select(3, baseFont:GetFont()))
 ns.SEARCHBAR_FONT = "EasyFindSearchFont"
 
--- Custom 3-part search bar border with chamfered corners.
--- Fill (BACKGROUND) and border (ARTWORK) use identical shapes from custom TGA textures.
--- Fill is tinted black with tunable opacity; border uses Blizzard's action bar gray.
 local SEARCH_TEX_FILL = "Interface\\AddOns\\EasyFind\\Textures\\SearchBarFill"
 local SEARCH_TEX_BORDER = "Interface\\AddOns\\EasyFind\\Textures\\SearchBarBorder"
 local CLEAR_BTN_TEX = "Interface\\AddOns\\EasyFind\\Textures\\clear-button"
--- 9-slice cap covers the leftmost / rightmost 37.5% of the texture
--- (0..0.375, 0.625..1) -- the texture itself has the curve in the
--- outer 64 tex px (a true semicircle, radius == half texture height)
--- followed by 32 tex px of flat top/bottom that buffer the cap/mid
--- 9-slice boundary. Cutting in the flat region lets the cap (rendered
--- at one horizontal scale) and the mid (rendered at another) join
+-- 9-slice cap = outer 37.5% of texture: curve lives in outer 64 px,
+-- followed by 32 px flat that buffers the cap/mid join. Cutting in the
+-- flat region lets cap and mid (rendered at different scales) join
 -- without a visible kink at the curve's tangent point.
---
--- Display cap_w = 0.75 * h. The curve occupies the OUTER 2/3 of the
--- cap (= 0.5 * h = h/2), which is the true semicircle proportion;
--- the inner 1/3 (= 0.25 * h) is flat extension before mid begins.
 local CAP_TEX_RATIO = 0.375
 local CAP_DISPLAY_RATIO = 0.75
 local TC_LEFT  = {0, CAP_TEX_RATIO, 0, 1}
@@ -555,26 +510,12 @@ function ns.CreateSearchBorder(frame)
     ApplyCapWidths(frame)
 end
 
--- ---------------------------------------------------------------------------
--- Rounded-rect 9-slice (combined search bar + results dropdown silhouette)
---
--- Used by the container frame that wraps both. Texture is 256x256 with
--- corner radius 64 (= 25% on each side), so the 9-slice cap ratio is
--- 0.25. Corner cells stay a fixed display size (cornerSize, normally
--- h_bar / 2 so it visually matches the bar's pill caps); top/bottom
--- edges stretch horizontally, left/right edges stretch vertically,
--- center fills the rest.
---
--- When the container's height equals 2 * cornerSize, the side edges
--- collapse to zero and the silhouette becomes a horizontal pill --
--- same shape the bar alone wants. When the container grows downward
--- (results open), only the side edges and center stretch; the
--- corners keep their shape. That gives us the "Google search bar
--- with dropdown" look in a single primitive.
--- ---------------------------------------------------------------------------
+-- 9-slice rounded-rect: corners stay fixed size (= bar height / 2 so they
+-- match the bar's pill caps); edges stretch. When container height equals
+-- 2 * cornerSize, the silhouette collapses to a horizontal pill.
 local COMBINED_TEX_FILL   = "Interface\\AddOns\\EasyFind\\Textures\\CombinedFill"
 local COMBINED_TEX_BORDER = "Interface\\AddOns\\EasyFind\\Textures\\CombinedBorder"
-local CR = 0.25  -- 9-slice corner ratio (cornerSize_tex / texSize) for the combined texture
+local CR = 0.25
 
 local TC9 = {
     tl = {0,        CR,     0,        CR    },
@@ -604,26 +545,22 @@ local function CreateNineSlice(frame, layer, texPath, vertR, vertG, vertB, vertA
 end
 
 local function AnchorNineSlice(frame, n, cornerSize)
-    -- Corners: pinned to each frame corner with explicit size.
     n.tl:ClearAllPoints(); n.tl:SetPoint("TOPLEFT");     n.tl:SetSize(cornerSize, cornerSize)
     n.tr:ClearAllPoints(); n.tr:SetPoint("TOPRIGHT");    n.tr:SetSize(cornerSize, cornerSize)
     n.bl:ClearAllPoints(); n.bl:SetPoint("BOTTOMLEFT");  n.bl:SetSize(cornerSize, cornerSize)
     n.br:ClearAllPoints(); n.br:SetPoint("BOTTOMRIGHT"); n.br:SetSize(cornerSize, cornerSize)
-    -- Top edge stretches between the two top corners; same for bottom.
     n.tm:ClearAllPoints()
     n.tm:SetPoint("TOPLEFT",  n.tl, "TOPRIGHT")
     n.tm:SetPoint("BOTTOMRIGHT", n.tr, "BOTTOMLEFT")
     n.bm:ClearAllPoints()
     n.bm:SetPoint("TOPLEFT",  n.bl, "TOPRIGHT")
     n.bm:SetPoint("BOTTOMRIGHT", n.br, "BOTTOMLEFT")
-    -- Left/right edges stretch between top and bottom corners.
     n.ml:ClearAllPoints()
     n.ml:SetPoint("TOPLEFT",  n.tl, "BOTTOMLEFT")
     n.ml:SetPoint("BOTTOMRIGHT", n.bl, "TOPRIGHT")
     n.mr:ClearAllPoints()
     n.mr:SetPoint("TOPLEFT",  n.tr, "BOTTOMLEFT")
     n.mr:SetPoint("BOTTOMRIGHT", n.br, "TOPRIGHT")
-    -- Center fills between the four edges.
     n.mm:ClearAllPoints()
     n.mm:SetPoint("TOPLEFT",  n.tl, "BOTTOMRIGHT")
     n.mm:SetPoint("BOTTOMRIGHT", n.br, "TOPLEFT")
@@ -643,17 +580,12 @@ function ns.CreateRoundedRectBorder(frame)
     local border = CreateNineSlice(frame, "ARTWORK",    COMBINED_TEX_BORDER, BORDER_R, BORDER_G, BORDER_B, 1)
     frame.combinedBorder = { fill = fill, border = border }
     ApplyContainerCornerSize(frame)
-    -- Keep corner cells a constant display size as the frame resizes
-    -- (results open / close, theme rescale, etc). The bar height drives
-    -- the corner; if a caller pins it via cbBarHeight the OnSizeChanged
-    -- still re-anchors against that pinned value.
     frame:HookScript("OnSizeChanged", ApplyContainerCornerSize)
 end
 
--- The container's corner radius tracks the BAR height, not the
--- container's own (which grows when results open). Callers must pin the
--- bar height via this setter once on creation and again whenever
--- fontSize / theme changes the bar's pixel height.
+-- Corner radius tracks BAR height, not container height (which grows
+-- when results open). Callers must pin it via this setter on creation
+-- and again whenever fontSize / theme changes the bar's pixel height.
 function ns.SetRoundedRectBarHeight(frame, h)
     frame.cbBarHeight = h
     ApplyContainerCornerSize(frame)
@@ -677,10 +609,6 @@ function ns.SetRoundedRectBorderFillColor(frame, r, g, b, a)
     end
 end
 
--- A 1-px horizontal divider that runs across the inside of the
--- container at the bottom of the bar's content area. Visible only
--- when the results dropdown is open; it doubles as the "bar's
--- bottom border" the user keeps as the search/results separator.
 function ns.CreateRoundedRectDivider(frame)
     if frame.combinedDivider then return frame.combinedDivider end
     local d = frame:CreateTexture(nil, "ARTWORK")
@@ -691,9 +619,6 @@ function ns.CreateRoundedRectDivider(frame)
     return d
 end
 
--- Position the divider at `yOffset` below the container's top, with a
--- small inset from each side so it doesn't bleed into the rounded
--- corners. yOffset should be the bar's height (= bar's bottom edge).
 function ns.SetRoundedRectDivider(frame, yOffset, shown)
     local d = frame.combinedDivider
     if not d then return end
@@ -741,7 +666,6 @@ local frameTextScratch = {}
 function Utils.GetButtonText(btn)
     if not btn then return nil end
 
-    -- Named text children (covers virtually every Blizzard button style)
     for _, key in ipairs(BUTTON_TEXT_KEYS) do
         local child = btn[key]
         if child and child.GetText then
@@ -750,13 +674,11 @@ function Utils.GetButtonText(btn)
         end
     end
 
-    -- Frame's own GetText (ButtonTemplate, etc.)
     if btn.GetText then
         local t = btn:GetText()
         if t then return t end
     end
 
-    -- Fallback: first FontString in regions
     for i = 1, select("#", btn:GetRegions()) do
         local region = select(i, btn:GetRegions())
         if region and region.GetObjectType and region:GetObjectType() == "FontString" then
@@ -782,7 +704,6 @@ function Utils.IsFrameOrChildMouseOver(frame)
     return false
 end
 
--- Collects all text from a frame into a single string for fuzzy matching.
 function Utils.GetAllFrameText(frame)
     if not frame then return nil end
     wipe(frameTextScratch)
@@ -815,36 +736,29 @@ function Utils.GetAllFrameText(frame)
     return nil
 end
 
--- Checks multiple properties/textures to detect if a button is selected or expanded.
 function Utils.IsButtonSelected(btn)
     if not btn then return false end
 
-    -- Explicit selection properties
     if btn.isSelected then return true end
     if btn.selected  then return true end
 
-    -- Expanded state (tree categories)
     if btn.collapsed == false then return true end
     if btn.isExpanded            then return true end
     if btn.expanded              then return true end
 
-    -- Highlight/selection textures
     if btn.highlight       and btn.highlight:IsShown()       then return true end
     if btn.selectedTexture and btn.selectedTexture:IsShown() then return true end
     if btn.SelectedTexture and btn.SelectedTexture:IsShown() then return true end
 
-    -- Background / selection highlight
     if btn.Selection  and btn.Selection:IsShown()  then return true end
     if btn.selection  and btn.selection:IsShown()  then return true end
     if btn.Background and btn.Background:IsShown() then return true end
 
-    -- Element data collapsed flag
     if btn.element and btn.element.collapsed == false then return true end
 
     return false
 end
 
--- Walks a frame hierarchy for a clickable child with exact text match (case-insensitive).
 function Utils.SearchFrameTree(frame, targetTextLower, maxDepth)
     maxDepth = maxDepth or 6
     local function search(f, depth)
@@ -867,7 +781,6 @@ function Utils.SearchFrameTree(frame, targetTextLower, maxDepth)
     return search(frame, 0)
 end
 
--- Walks a frame hierarchy for a clickable child whose text contains searchText.
 function Utils.SearchFrameTreeFuzzy(frame, searchTextLower, maxDepth)
     maxDepth = maxDepth or 6
     local function search(f, depth)
@@ -901,14 +814,12 @@ function Utils.ShallowCopy(src)
     return copy
 end
 
--- pcall-wrapped IsShown for frames that may be forbidden.
 function Utils.IsFrameShown(frame)
     if not frame then return false end
     local ok, shown = pcall(frame.IsShown, frame)
     return ok and shown
 end
 
--- Resolve a dotted path string (e.g. "PVEFrame.Tab1") to the actual frame.
 function Utils.GetFrameByPath(path)
     if not path then return nil end
     local parts = { strsplit(".", path) }
@@ -923,7 +834,6 @@ function Utils.GetFrameByPath(path)
     return current
 end
 
--- Thin scrollbar using minimal-scrollbar-* atlas textures, overlaid on the right edge.
 function Utils.CreateMinimalScrollBar(scrollFrame, parent)
     local THUMB_W = 3
     local EDGE_INSET = 4
@@ -952,7 +862,6 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
     thumb:SetWidth(THUMB_W)
     thumb:EnableMouse(true)
 
-    -- Pill shape: rect body + masked half-circle caps top/bottom.
     local capH = THUMB_W * 0.5
 
     local thumbBody = thumb:CreateTexture(nil, "ARTWORK")
@@ -996,9 +905,6 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
         if not bar.isDragging then SetThumbNormal() end
     end)
 
-    -- Activity-driven visibility. Bar is shown but at alpha 0 by default;
-    -- each interaction bumps it to full opacity, and after FADE_HOLD
-    -- seconds of idle it fades back over FADE_OUT seconds.
     bar:SetAlpha(0)
     bar._lastActivity = 0
     bar._fadingOut = false
@@ -1152,8 +1058,6 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
     bar:EnableMouseWheel(true)
     bar:SetScript("OnMouseWheel", function(_, delta) ScrollByDelta(delta) end)
 
-    -- Route the host scrollFrame's wheel through the same eased path so
-    -- wheel events on the content (not just over the thumb) feel smooth.
     scrollFrame:EnableMouseWheel(true)
     scrollFrame:SetScript("OnMouseWheel", function(_, delta) ScrollByDelta(delta) end)
 
@@ -1171,13 +1075,6 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
     return bar
 end
 
---- Scroll a ScrollBox to the first element matching matchFn.
---- Tries FindElementDataByPredicate → ScrollToElementData first.
---- Falls back to SetScrollPercentage(fallbackFraction) if the data provider
---- returns nothing (virtual providers with no stored collection).
---- @param scrollBox  ScrollBox frame
---- @param matchFn    function(elementData) -> bool
---- @param fallbackFraction  number 0-1 or nil (skip fallback)
 function Utils.ScrollBoxScrollTo(scrollBox, matchFn, fallbackFraction)
     if not scrollBox then return end
 
@@ -1199,10 +1096,6 @@ function Utils.ScrollBoxScrollTo(scrollBox, matchFn, fallbackFraction)
     end
 end
 
---- Find the first visible frame in a ScrollBox whose element data satisfies matchFn.
---- @param scrollBox  ScrollBox frame
---- @param matchFn    function(btn) -> bool  (receives the visible frame, not raw element data)
---- @return Frame or nil
 function Utils.ScrollBoxFindButton(scrollBox, matchFn)
     if not scrollBox or not scrollBox.EnumerateFrames then return nil end
     for _, btn in scrollBox:EnumerateFrames() do
@@ -1213,11 +1106,6 @@ function Utils.ScrollBoxFindButton(scrollBox, matchFn)
     return nil
 end
 
---- Click a button safely. Uses Click() which routes through the WoW frame
---- pipeline. Errors from protected functions (e.g. SetTab on Encounter
---- Journal tabs) are caught and suppressed.
---- @param btn        Frame with Click or OnClick
---- @param mouseButton string  default "LeftButton"
 function Utils.ClickButton(btn, mouseButton)
     if not btn then return false end
     mouseButton = mouseButton or "LeftButton"
@@ -1233,8 +1121,6 @@ function Utils.ClickButton(btn, mouseButton)
     return false
 end
 
--- Create a grey circle-X clear button (retail quest log style).
--- Returns the button; caller must set OnClick and OnEnter scripts.
 function Utils.CreateClearButton(parent, globalName)
     local btn = CreateFrame("Button", globalName, parent)
     btn:SetSize(ns.CLEAR_BTN_SIZE, ns.CLEAR_BTN_SIZE)
@@ -1257,13 +1143,9 @@ function Utils.CreateClearButton(parent, globalName)
     return btn
 end
 
--- Pool of (menu, rows) tuples keyed by globalName. We never destroy
--- WoW frames (they persist for the session), but we cycle through pool
--- members so each open uses a freshly-laid-out menu rather than mutating
--- one we just hid. This avoids a class of redraw / state-leak bugs where
--- the second open of a cached menu inherits stale flags from the first
--- close (e.g. backdrop tile dropped by Hide/Show, alpha stuck after
--- click, etc.).
+-- Pool cycles through members so each open uses a freshly-laid-out menu.
+-- Avoids state-leak bugs where the second open of a cached menu inherits
+-- stale flags from the first close (backdrop tile, alpha after click, etc).
 local cursorMenuPool = {}
 local cursorMenuCounter = 0
 
@@ -1311,8 +1193,6 @@ end
 function Utils.ShowCursorMenu(globalName, rows, opts)
     opts = opts or {}
 
-    -- Hide any sibling already-shown instance under this globalName so
-    -- we never have two cursor menus visible at once.
     HideOtherMenus(globalName, nil)
 
     local menu = FindFreeMenu(globalName)
@@ -1484,10 +1364,6 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
         end
     end
 
-    -- Auto-grow width to fit the widest row's label + icon. Use the
-    -- caller-provided width as a floor so short menus stay compact.
-    -- 8px LEFT pad + label + 4px gap + 14px icon (when present) + 8px
-    -- right pad ≈ label + 34.
     local needed = width
     local totalH = 0
     for i = 1, shown do
@@ -1507,8 +1383,6 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
     local scale = UIParent:GetEffectiveScale()
     local x, y = GetCursorPosition()
     menu:ClearAllPoints()
-    -- Anchor TOPLEFT to cursor so rows extend down-right like every
-    -- standard right-click menu (Windows / macOS / Blizzard's own).
     menu:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT",
         x / scale + (opts.offsetX or 0), y / scale + (opts.offsetY or 0))
     menu:Show()
@@ -1517,11 +1391,6 @@ end
 
 function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opts, extra)
     local rows = {}
-    -- Base section: same three rows on every entry, in a fixed order
-    -- (Add Alias → Pin → Guide). Each is gated by whether the
-    -- underlying action is meaningful for the entry; an unsupported
-    -- one is simply omitted rather than shown disabled, but the
-    -- relative order of the rows that ARE shown is stable.
     if onAddAlias then
         rows[#rows + 1] = { text = "Add Alias", onClick = onAddAlias }
     end
@@ -1530,8 +1399,6 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
         rows[#rows + 1] = { text = "Guide", icon = ns.EYE_ICON_TEX, onClick = onGuide }
     end
 
-    -- Extras section: category-specific actions. Collect into a local
-    -- list first so we can decide whether to emit a separator above it.
     local extras = {}
     if extra and extra.onTrack then
         extras[#extras + 1] = {
@@ -1592,24 +1459,6 @@ function Utils.SetIconTexture(textureObj, icon, fallback)
     end
 end
 
--- ---------------------------------------------------------------------------
--- Addon-wide font selection.
---
--- ns.FONT_CHOICES drives the Options dropdown. Each FontString that opts
--- into user-selectable fonts goes through ns.RegisterAddonFont(fs, weight,
--- sizeOverride, flags) which:
---   1. snapshots the FontString's existing font (path/size/flags) as the
---      "Default" baseline so we can revert without remembering Friz Quadrata
---      paths,
---   2. records the requested addon weight ("regular" / "semibold" / "bold")
---      so non-Default choices know which weight file to load,
---   3. tracks the FontString in a registry,
---   4. immediately applies the current user's choice.
---
--- ns.RefreshAddonFont() re-applies the current EasyFind.db.font to every
--- registered FontString -- call it from the Options selector callback. Modules
--- that want to participate just call RegisterAddonFont after CreateFontString.
--- ---------------------------------------------------------------------------
 local INTER_REGULAR  = "Interface\\AddOns\\EasyFind\\Fonts\\Inter-Regular.ttf"
 local INTER_SEMIBOLD = "Interface\\AddOns\\EasyFind\\Fonts\\Inter-SemiBold.ttf"
 local INTER_BOLD     = "Interface\\AddOns\\EasyFind\\Fonts\\Inter-Bold.ttf"

@@ -10,7 +10,7 @@ local ErrorHandler = Utils.ErrorHandler
 
 EasyFind = {}
 ns.EasyFind = EasyFind
-EasyFind._ns = ns  -- Expose namespace for dev tools (EasyFindDev)
+EasyFind._ns = ns
 
 BINDING_NAME_EASYFIND_TOGGLE_FOCUS = "Toggle Search Bar"
 BINDING_NAME_EASYFIND_CLEAR        = "Clear All Highlights"
@@ -21,60 +21,58 @@ ns.eventFrame = eventFrame
 
 EasyFind.db = {}
 
--- SavedVariables version. Increment when changing DB schema.
--- Each migration runs once: if saved dbVersion < DB_VERSION, run all steps in order.
+-- Increment when DB schema changes; migrations [N] run when savedVersion < N.
 local DB_VERSION = 17
 local REVAMPED_TUTORIAL_VERSION = "2.0.0"
 ns.REVAMPED_TUTORIAL_VERSION = REVAMPED_TUTORIAL_VERSION
 
--- SavedVariables defaults - new keys are auto-merged for existing users
 local DB_DEFAULTS = {
     dbVersion = DB_VERSION,
     visible = true,
     enableMapSearch = true,
     iconScale = 0.8,
-    nativePinScale = 1.5,      -- Multiplier applied to a Blizzard map pin while EasyFind is glowing it
+    nativePinScale = 1.5,
     uiSearchScale = 1.0,
-    uiSearchWidth = 1.54,  -- 0.88 * 1.75: results dropdown matches bar width now
+    uiSearchWidth = 1.54,
     uiResultsScale = 1.0,
     uiResultsWidth = 350,
     uiSearchBarHeight = ns.SEARCHBAR_HEIGHT or 30,
-    fontSize = 0.9,            -- UI search font size multiplier (0.5-2.0)
-    uiSearchPosition = nil,    -- {point, relPoint, x, y}
+    fontSize = 0.9,
+    uiSearchPosition = nil,
     localMapDirectOpen = true,
     globalMapDirectOpen = true,
-    autoHide = true,           -- Raycast-style: bar starts hidden; bind opens, click-out hides
-    smartShow = false,         -- Hide search bar until mouse hovers nearby (legacy alternate to autoHide)
-    lockPosition = false,      -- Disable drag-to-move on the search bar
-    tutorialDone = false,      -- True once the user has finished the onboarding wizard
-    resultsTheme = "Modern",  -- legacy; only "Modern" ships right now
-    font = "Default",          -- "Default" (Friz Quadrata) or "Inter"
-    indicatorStyle = "EasyFind Arrow",  -- Indicator texture style
-    indicatorColor = "Yellow",  -- Indicator color preset
-    uiResultsHeight = 280,     -- Visible height of UI search results panel in pixels
-    showTruncationMessage = true,  -- Show "more results available" message when truncated
-    hardResultsCap = false,    -- Hard cap on results (no "more results" message)
-    pinnedUIItems = {},        -- Pinned UI search results (persist across sessions, account-wide)
-    pinnedUIItemsPerChar = {}, -- Character-specific pins (mounts, toys, pets, outfits) keyed by "Name-Realm"
-    pinnedMapItems = {},       -- Pinned map search results (persist across sessions)
-    mapPinsCollapsed = false,  -- Whether the map search "Pinned" header is collapsed
-    showLoginMessage = false,  -- Show "EasyFind loaded!" message on login
-    showAliasMessages = true,  -- Show a short chat note when adding a search alias
-    blinkingPins = false,      -- Pulse map pins and highlights in sync with indicator bob
-    mapPinHighlight = true,    -- Show yellow highlight box around map pins
-    autoPinClear = true,       -- Auto-clear map pin when player arrives
-    autoTrackPins = true,      -- Auto super-track newly placed map pins
-    uiResultsAbove = false,    -- Show UI search results above the search bar
-    showResultShortcutHints = true,  -- Show Alt+number hints on UI search results
-    showMinimapButton = true,  -- Show toggle button on minimap
-    minimapButtonAngle = 200,  -- Position angle (degrees) around minimap edge
-    globalSearchFilters = {    -- Global search category filters (all enabled by default)
+    autoHide = true,
+    smartShow = false,
+    lockPosition = false,
+    tutorialDone = false,
+    resultsTheme = "Modern",
+    font = "Default",
+    indicatorStyle = "EasyFind Arrow",
+    indicatorColor = "Yellow",
+    uiResultsHeight = 280,
+    showTruncationMessage = true,
+    hardResultsCap = false,
+    pinnedUIItems = {},
+    pinnedUIItemsPerChar = {},
+    pinnedMapItems = {},
+    mapPinsCollapsed = false,
+    showLoginMessage = false,
+    showAliasMessages = true,
+    blinkingPins = false,
+    mapPinHighlight = true,
+    autoPinClear = true,
+    autoTrackPins = true,
+    uiResultsAbove = false,
+    showResultShortcutHints = true,
+    showMinimapButton = true,
+    minimapButtonAngle = 200,
+    globalSearchFilters = {
         zones = true,
         dungeons = true,
         raids = true,
         delves = true,
     },
-    localSearchFilters = {     -- Local (zone) search category filters (all enabled by default)
+    localSearchFilters = {
         instances = true,
         travel = true,
         services = true,
@@ -84,16 +82,16 @@ local DB_DEFAULTS = {
         zones = true,
         instances = true,
         flightpath = false,
-        travel = true,         -- Portals, ships, zeppelins, trams (separate from flight paths)
+        travel = true,
         services = true,
         rares = true,
     },
-    mapTabRecentSearches = {},  -- Most-recent-first list of past map search queries
-    mapTabShowRecent = true,    -- Toggle for showing recent searches when idle
-    mapTabRecentCount = 3,      -- Number of recent searches to keep / display (1-20)
-    mapTabAutoExpand = true,    -- Auto-expand a matched parent header to show all its world-hierarchy children
-    alwaysShowRares = false,  -- Persistent rare tracking: show active rares on map without searching
-    uiSearchFilters = {        -- UI search category filters (all enabled by default)
+    mapTabRecentSearches = {},
+    mapTabShowRecent = true,
+    mapTabRecentCount = 3,
+    mapTabAutoExpand = true,
+    alwaysShowRares = false,
+    uiSearchFilters = {
         achievements   = true,
         statistics     = false,
         currencies     = true,
@@ -118,40 +116,28 @@ local DB_DEFAULTS = {
         titles         = true,
         map            = true,
     },
-    lootSpecs = nil,           -- Loot search: nil = current spec only, table of {classID, specID} pairs when customized
-    lootSearchSlots = true,    -- Loot search: match by slot keywords (ring, helm, etc.)
-    lootSearchStats = true,    -- Loot search: match by stat keywords (haste, crit, etc.)
-    lootUpgradesOnly = false,  -- Loot search: only show items above equipped ilvl
+    lootSpecs = nil,
+    lootSearchSlots = true,
+    lootSearchStats = true,
+    lootUpgradesOnly = false,
     lootDifficulty = "normal",
-    -- Per-flyout "Hide tooltips" toggles. Keys mirror filter top-level
-    -- groups; when true, OnEnter on rows in that group skips the
-    -- gear/item tooltip entirely.
     hideTooltips = {
-        collections = false,    -- mounts/toys/pets/outfits/heirlooms/appearance sets
-        loot        = false,    -- gear search results
+        collections = false,
+        loot        = false,
     },
-    -- Currencies filter mode (mirrors the in-game CurrencyFrame
-    -- dropdown). "all" = show every currency the character has;
-    -- "warband" = only surface warband-transferable currencies.
     currencyFilterMode = "all",
-    -- Reputation filter mode (mirrors ReputationFrame's dropdown).
-    -- "all" / "warband" / "char". Persisted independently from
-    -- showLegacyReputations because Blizzard treats them as separate
-    -- filter axes.
     reputationFilterMode = "all",
     showLegacyReputations = false,
-    -- Spellbook ability filter: when true, hides passive abilities in
-    -- both EasyFind's results and Blizzard's spellbook page.
     abilityHidePassives = false,
-    appearanceSetClass = nil,         -- nil = player class, "all" = all, {classID=N} = specific
-    appearanceSetCollected = true,    -- Show collected sets
-    appearanceSetNotCollected = true, -- Show uncollected sets
-    appearanceSetPvE = true,          -- Show PvE sets (Dungeon/Raid)
-    appearanceSetPvP = true,          -- Show PvP sets
-    uiMapSearchLocal = true,   -- Map search in UI bar: true = local zone only, false = global
-    aliases = {},              -- User-defined search aliases: { [aliasText] = { kind, id, name } }
-    uiSearchHistory = {},      -- Shell-style search history (most recent at index 1, capped at uiSearchHistoryLimit)
-    uiSearchHistoryLimit = 500, -- Bash HISTSIZE default
+    appearanceSetClass = nil,
+    appearanceSetCollected = true,
+    appearanceSetNotCollected = true,
+    appearanceSetPvE = true,
+    appearanceSetPvP = true,
+    uiMapSearchLocal = true,
+    aliases = {},
+    uiSearchHistory = {},
+    uiSearchHistoryLimit = 500,
 }
 
 local function RequireRevampedTutorial(db)
@@ -171,9 +157,7 @@ local function CloneDefaultValue(value)
     return copy
 end
 
--- Keys preserved across the 2.0 settings reset: schema version,
--- onboarding state, and user-authored data (history, aliases, recents).
--- Everything else in DB_DEFAULTS gets restored to its default value.
+-- Keys preserved across the 2.0 settings reset; all others restored to defaults.
 local PRESERVED_KEYS = {
     dbVersion = true,
     tutorialDone = true,
@@ -231,7 +215,6 @@ local function ApplyFreshSettingsFor2(db)
 end
 
 local DB_MIGRATIONS = {
-    -- [1] = Consolidate ad-hoc migrations (maxResults rename, uiResultsWidth reset)
     [1] = function(db)
         if db.maxResults then
             if not db.uiMaxResults then db.uiMaxResults = db.maxResults end
@@ -240,11 +223,9 @@ local DB_MIGRATIONS = {
         end
         if db.uiResultsWidth == 1.0 then db.uiResultsWidth = 300 end
     end,
-    -- [2] = Widen default UI results panel from 300 to 350
     [2] = function(db)
         if db.uiResultsWidth == 300 then db.uiResultsWidth = 350 end
     end,
-    -- [3] = Replace row-count settings with pixel height
     [3] = function(db)
         if not db.uiResultsHeight then
             db.uiResultsHeight = db.uiMaxResults and (db.uiMaxResults * 28) or 280
@@ -252,69 +233,41 @@ local DB_MIGRATIONS = {
         db.uiMaxResults = nil
         db.mapMaxResults = nil
     end,
-    -- [4] = Combined search bar + results dropdown silhouette. The
-    -- results panel now matches the bar's width directly, so the
-    -- old 0.88 default would render the bar (and therefore the
-    -- dropdown) too narrow. Bump uiSearchWidth ~1.75x for everyone
-    -- whose width is at or below the old default; users who have
-    -- explicitly widened it past the old default keep their value.
     [4] = function(db)
         local w = db.uiSearchWidth
         if w == nil or w <= 0.88 then
             db.uiSearchWidth = 1.54
         end
     end,
-    -- [5] = Restore direct map navigation defaults.
     [5] = function(db)
         if db.localMapDirectOpen == false then db.localMapDirectOpen = true end
         if db.globalMapDirectOpen == false then db.globalMapDirectOpen = true end
     end,
-    -- [6] = Populate the split flightpath filter key. Flight paths default
-    -- off in the Map tab because they are noisy compared to deliberate
-    -- travel/location searches.
     [6] = function(db)
         if db.mapTabFilters and db.mapTabFilters.flightpath == nil then
             db.mapTabFilters.flightpath = false
         end
     end,
-    -- [8] = Theme rename: "Classic" and "Retail" renamed to
-    -- "Modern" (the new default), and "Retail" reused for the parchment
-    -- variant. Existing saves on the old "Retail" or "Classic" values
-    -- get pointed at "Modern" so nothing changes for them visually until
-    -- they pick the new "Retail" themselves.
     [8] = function(db)
         if db.resultsTheme == "Retail" or db.resultsTheme == "Classic" then
             db.resultsTheme = "Modern"
         end
     end,
-    -- [9] = Remove options menu opacity setting. The redesigned options
-    -- panel uses a fixed alpha to keep the Raycast-style shell consistent.
     [9] = function(db)
         db.panelOpacity = nil
     end,
-    -- [10] = Persist search bar height separately from font size so
-    -- window resizing can scale the bar strip without changing text size.
     [10] = function(db)
         if not db.uiSearchBarHeight then db.uiSearchBarHeight = ns.SEARCHBAR_HEIGHT or 30 end
     end,
-    -- [11] = 2.0.0 is a full onboarding reset. Existing users should
-    -- see the tutorial once instead of the legacy What's New popup.
     [11] = function(db)
         RequireRevampedTutorial(db)
     end,
-    -- [12] = Search window background is always solid now.
     [12] = function(db)
         db.searchBarOpacity = nil
     end,
-    -- [13] = Final 2.0 onboarding gate. Force the revamped tutorial
-    -- once for existing account-wide SavedVariables, and mark 2.0.0
-    -- as seen so the legacy What's New popup cannot compete with it.
     [13] = function(db)
         RequireRevampedTutorial(db)
     end,
-    -- [14] = Finalize search opacity and map-tab defaults for 2.0.
-    -- Search opacity is no longer user-controlled, and flight paths start
-    -- hidden in the Map tab unless the user turns them back on.
     [14] = function(db)
         db.staticOpacity = nil
         db.searchBarOpacity = nil
@@ -323,14 +276,9 @@ local DB_MIGRATIONS = {
             db.mapTabFilters.flightpath = false
         end
     end,
-    -- [15] = Make the login chat message opt-in for 2.0.
     [15] = function(db)
         db.showLoginMessage = false
     end,
-    -- [16] = Backfill the "already acknowledged revamped tutorial"
-    -- marker for accounts that completed the 2.0 tutorial on a dev
-    -- build before the marker existed. Accounts still pending the
-    -- tutorial keep tutorialDone=false and will see it once.
     [16] = function(db)
         if db.tutorialDone == true
            and db.lastSeenVersion == REVAMPED_TUTORIAL_VERSION
@@ -338,16 +286,11 @@ local DB_MIGRATIONS = {
             db.revampedTutorialVersion = REVAMPED_TUTORIAL_VERSION
         end
     end,
-    -- [17] = 2.0 is a release-scale redesign, not a normal incremental
-    -- update. Reset the released-era layout/options/filter/pin state to the
-    -- new defaults and remove retired settings so old SavedVariables cannot
-    -- keep stale search bars, opacity controls, or disabled categories.
     [17] = function(db)
         ApplyFreshSettingsFor2(db)
     end,
 }
 
--- Fields that are runtime-only and must not persist in SavedVariables
 local RUNTIME_FIELDS = {
     "firstInstall",
 }
@@ -432,7 +375,6 @@ local function OnInitialize()
         end
     end
 
-    -- Run sequential migrations
     for v = savedVersion + 1, DB_VERSION do
         if DB_MIGRATIONS[v] then
             DB_MIGRATIONS[v](EasyFindDB)
@@ -440,7 +382,6 @@ local function OnInitialize()
     end
     EasyFindDB.dbVersion = DB_VERSION
 
-    -- Reset values whose type doesn't match the default
     for k, v in pairs(EasyFindDB) do
         local default = DB_DEFAULTS[k]
         if default ~= nil and type(v) ~= type(default) then
@@ -450,10 +391,8 @@ local function OnInitialize()
 
     EasyFind.db = EasyFindDB
 
-    -- Read version from TOC for What's New detection
     ns.version = C_AddOns.GetAddOnMetadata(ADDON_NAME, "Version")
 
-    -- Primary slash command
     SLASH_EASYFIND1 = "/ef"
     SlashCmdList["EASYFIND"] = function(msg)
         msg = msg and msg:lower():trim() or ""
@@ -465,7 +404,6 @@ local function OnInitialize()
         elseif msg == "c" or msg == "clear" then
             EasyFind:ClearAll()
         elseif msg:find("^test ") then
-            -- /ef test Interface\\Path\\To\\Texture
             local texture = msg:match("^test%s+(.+)")
             if texture then
                 EasyFind:TestIndicatorTexture(texture)
@@ -605,12 +543,8 @@ local function InstallTransmogClassFilterHook()
     end)
 end
 
--- Lazy dynamic load: pulled the moment the user opens the search bar (or any
--- entry point that surfaces dynamic results). Other search-style addons follow
--- the same shape: nothing is scanned at PLAYER_LOGIN, so the player never sees
--- a post-load-screen stutter from us.
--- Calling repeatedly is safe: LoadDeferredSyncProvidersStaggered skips
--- providers that are loaded-and-clean, so re-entry only refreshes dirty ones.
+-- Lazy dynamic load pulled when the user opens the search bar. Safe to
+-- call repeatedly; loaded-and-clean providers are skipped.
 function EasyFind:EnsureDynamicLoaded()
     if not ns.Database then return end
     if ns.Database.LoadDeferredSyncProvidersStaggered then
@@ -623,8 +557,7 @@ function EasyFind:EnsureDynamicLoaded()
                 ns.Database:LoadHeavyDynamicSearchDataSync()
             end)
         end
-        -- Late-arriving APIs (Wardrobe, Heirlooms) sometimes aren't ready in
-        -- the first pass. Re-trigger after they've had time to populate.
+        -- Wardrobe / Heirlooms APIs sometimes aren't ready first pass.
         SafeAfter(3.0, function()
             if ns.Database.LoadDeferredSyncProvidersStaggered then
                 ns.Database:LoadDeferredSyncProvidersStaggered()
@@ -634,9 +567,6 @@ function EasyFind:EnsureDynamicLoaded()
 end
 
 local function OnPlayerLogin()
-    -- Kick off the time-sliced statistics enumeration immediately
-    -- (2ms-per-tick budget, no load-screen block). Run it through the
-    -- provider manager so later heavy-load requests don't restart it.
     if ns.Database and ns.Database.EnsureDynamicProviderLoaded then
         ns.Database:EnsureDynamicProviderLoaded("statistics", function(changed)
             if changed and ns.Database.MarkDynamicProviderLoaded then
@@ -674,11 +604,6 @@ local function OnPlayerLogin()
     end
     InstallTransmogClassFilterHook()
 
-    -- Pre-warm the search hot path eagerly: build the prefix index over
-    -- the static dataset immediately, then kick off the deferred dynamic
-    -- providers in the background so by the time the user opens the
-    -- search bar (post-login UI fade-in, minimap button click, etc.) the
-    -- index is ready and no first-keystroke build cost remains.
     if ns.Database then
         if ns.Database.WarmSearchHotPath then
             xpcall(ns.Database.WarmSearchHotPath, ErrorHandler, ns.Database)
@@ -686,35 +611,29 @@ local function OnPlayerLogin()
         EasyFind:EnsureDynamicLoaded()
     end
 
-    -- Background-load boss entries directly shortly after
-    -- login so individual encounter names ("Professor Putricide") match
-    -- on the first search. Do not route this through the generic heavy
-    -- chain; boss results should not sit behind Statistics/Loot.
+    -- Load bosses directly (not behind the heavy chain) so single
+    -- encounter names match on the first search.
     SafeAfter(1.0, function()
         if ns.Database and ns.Database.EnsureDynamicProviderLoaded then
             ns.Database:EnsureDynamicProviderLoaded("bosses", function() end)
         end
     end)
 
-    -- Pre-warm Blizzard's achievement search index off the user's typing
-    -- path. The index build is the lag source we used to hit on the
-    -- first achievement-related search; doing it once in the background
-    -- here makes per-keystroke achievement results instant later.
+    -- Pre-warm Blizzard's achievement search index off the typing path.
     SafeAfter(2.0, function()
         if ns.UI and ns.UI.PrewarmAchievementSearch then
             xpcall(ns.UI.PrewarmAchievementSearch, ErrorHandler, ns.UI)
         end
     end)
 
-    -- Minimap button (delayed slightly so Minimap frame is ready)
+    -- Delay so Minimap is ready.
     SafeAfter(0.6, function()
         if EasyFind.db.showMinimapButton then
             EasyFind:UpdateMinimapButton()
         end
     end)
 
-    -- What's New popup: show once per version for returning users.
-    -- 2.0.0 uses the tutorial instead because the whole experience was rebuilt.
+    -- 2.0.0 routes returning users to the tutorial instead of What's New.
     local currentVersion = ns.version
     local lastSeen = EasyFind.db.lastSeenVersion
     if currentVersion and currentVersion ~= lastSeen then
@@ -755,9 +674,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         self.loginHandled = true
         self:UnregisterEvent("PLAYER_LOGIN")
     elseif event == "PLAYER_ENTERING_WORLD" then
-        -- arg1 = isInitialLogin, arg2 = isReloadingUI
-        -- PLAYER_LOGIN does not fire on UI reloads, so use PLAYER_ENTERING_WORLD
-        -- as a fallback to ensure modules initialize after /reload.
+        -- PLAYER_LOGIN does not fire on /reload; arg2 = isReloadingUI.
         if arg2 and not self.loginHandled then
             OnPlayerLogin()
         end
@@ -798,7 +715,6 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
             MarkDynamicCategoryDirty("gearSets")
         end)
     elseif event == "PLAYER_LOGOUT" then
-        -- Strip runtime-only fields before SavedVariables serialization
         if EasyFindDB then
             for _, field in ipairs(RUNTIME_FIELDS) do
                 EasyFindDB[field] = nil
@@ -858,7 +774,6 @@ function EasyFind:Print(msg)
 end
 
 function EasyFind:TestIndicatorTexture(texturePath)
-    -- Create a test frame to preview the texture
     local testFrame = _G["EasyFindTextureTest"] or CreateFrame("Frame", "EasyFindTextureTest", UIParent, "BackdropTemplate")
     testFrame:SetSize(256, 256)
     testFrame:SetPoint("CENTER")
@@ -887,7 +802,6 @@ function EasyFind:TestIndicatorTexture(texturePath)
         testFrame.closeBtn:SetPoint("TOPRIGHT", -5, -5)
     end
 
-    -- Try to load the texture
     testFrame.texture:SetTexture(texturePath)
     testFrame.texture:SetVertexColor(ns.YELLOW_HIGHLIGHT[1], ns.YELLOW_HIGHLIGHT[2], ns.YELLOW_HIGHLIGHT[3], 1)
     testFrame.title:SetText("Testing: " .. texturePath)
@@ -899,7 +813,6 @@ end
 
 local minimapButton
 
--- Minimap shape quadrant table for non-round minimap support
 local minimapShapes = {
     ["ROUND"]                 = {true, true, true, true},
     ["SQUARE"]                = {false, false, false, false},
@@ -922,7 +835,6 @@ local function PositionMinimapButton(angle)
     local rad = mrad(angle)
     local cx, cy = mcos(rad), msin(rad)
 
-    -- Determine quadrant (1-4)
     local q = 1
     if cx < 0 then q = q + 1 end
     if cy > 0 then q = q + 2 end
@@ -935,10 +847,8 @@ local function PositionMinimapButton(angle)
 
     local x, y
     if quadTable[q] then
-        -- Rounded quadrant - place on circle
         x, y = cx * w, cy * h
     else
-        -- Squared quadrant - clamp to rectangle edge
         local dw = msqrt(2 * w * w) - 10
         local dh = msqrt(2 * h * h) - 10
         x = mmax(-w, mmin(cx * dw, w))
@@ -975,11 +885,9 @@ local function CreateMinimapButton()
     mmBtn:SetHighlightTexture(136477)
 
     mmBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    -- The search bar's autoHide handler fires on GLOBAL_MOUSE_DOWN before
-    -- our OnClick (which runs on mouseUp). Without these flags it would
-    -- close the bar first, then OnClick's toggle would see a hidden bar
-    -- and re-open it -- net effect: the click does nothing. Setting the
-    -- flag synchronously in OnMouseDown lets autoHide skip this click.
+    -- autoHide fires on GLOBAL_MOUSE_DOWN before our OnClick (mouseUp).
+    -- Set the flag synchronously in OnMouseDown so autoHide can skip
+    -- this click, otherwise toggle re-opens what autoHide just closed.
     mmBtn:HookScript("OnMouseDown", function(self, button)
         if button == "LeftButton" then
             EasyFind._minimapClickActive = true
@@ -1041,7 +949,6 @@ function EasyFind:UpdateMinimapButton()
     end
 end
 
--- Addon compartment button (## AddonCompartmentFunc in TOC)
 function EasyFind_OnAddonCompartmentClick(_, button)
     if button == "LeftButton" then
         EasyFind:ToggleSearchUI()

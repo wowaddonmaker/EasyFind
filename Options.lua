@@ -236,8 +236,6 @@ local function StyleSelectorButton(btnFrame, height)
     end)
 end
 
--- Helper to create a flyout selector (button + dropdown panel + toggle + click-away)
--- Returns: btnFrame, btnText, flyout
 local function CreateFlyoutSelector(parent, globalPrefix, width, anchor, initialText)
     local btnFrame = CreateFrame("Button", globalPrefix .. "Button", parent, "BackdropTemplate")
     btnFrame:SetSize(width, 22)
@@ -258,8 +256,6 @@ local function CreateFlyoutSelector(parent, globalPrefix, width, anchor, initial
     return btnFrame, btnText
 end
 
--- Create the flyout panel for a selector, with toggle and click-away behavior
--- Returns: flyout frame
 local function CreateFlyoutPanel(btnFrame, globalPrefix, width, numChoices)
     local flyout = CreateFrame("Frame", globalPrefix .. "Flyout", btnFrame, "BackdropTemplate")
     flyout:SetSize(width, numChoices * 20 + 6)
@@ -295,7 +291,6 @@ local function CreateFlyoutPanel(btnFrame, globalPrefix, width, numChoices)
     return flyout
 end
 
--- Add simple text options to a flyout panel
 local function AddFlyoutOptions(flyout, choices, itemWidth, onSelect)
     for i, name in ipairs(choices) do
         local flyoutBtn = CreateFrame("Button", nil, flyout)
@@ -326,9 +321,8 @@ local function AddFlyoutOptions(flyout, choices, itemWidth, onSelect)
     end
 end
 
--- Helper to create a Raycast-style toggle row (anchored manually by caller).
--- This remains a CheckButton so existing option code can keep using
--- SetChecked/GetChecked and OnClick callbacks.
+-- Stays a CheckButton so existing option code can keep using SetChecked /
+-- GetChecked and OnClick callbacks.
 local function CreateCheckbox(parent, name, label, tooltipText, compact, width)
     local frameName = name and ("EasyFindOptions" .. name .. "Checkbox") or nil
     local rowH = compact and 22 or 28
@@ -836,9 +830,8 @@ function Options:Initialize()
     local WINDOW_H   = 408
     local SIDEBAR_W  = 132
     local FRAME_W    = WINDOW_W - SIDEBAR_W - 46
-    local COL_LEFT   = 4      -- Left column offset within content frames
+    local COL_LEFT   = 4
 
-    -- Create the main options frame (same footprint as the onboarding wizard)
     optionsFrame = CreateFrame("Frame", "EasyFindOptionsFrame", UIParent, "BackdropTemplate")
     ns.optionsFrame = optionsFrame
     optionsFrame:SetSize(WINDOW_W, WINDOW_H)
@@ -887,24 +880,20 @@ function Options:Initialize()
     divider:SetWidth(1)
     divider:SetColorTexture(1, 1, 1, 0.08)
 
-    -- Sidebar title
     local title = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     title:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 4, -6)
     title:SetText("Settings")
     title:SetTextColor(TEXT_BODY[1], TEXT_BODY[2], TEXT_BODY[3], 1)
     optionsFrame.titleText = title
 
-    -- Close button
     local closeBtn = CreateModernCloseButton(optionsFrame)
     optionsFrame.closeBtn = closeBtn
 
-    -- Content host (all tabs render inside this)
     local contentBorder = CreateFrame("Frame", nil, optionsFrame)
     contentBorder:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", SIDEBAR_W + 32, -46)
     contentBorder:SetPoint("BOTTOMRIGHT", optionsFrame, "BOTTOMRIGHT", -14, 14)
     optionsFrame.contentBorder = contentBorder
 
-    -- Left-sidebar tab system
     local tabFrames = {}
     local tabButtons = {}
 
@@ -962,7 +951,6 @@ function Options:Initialize()
         btn:SetScript("OnClick", function() SwitchToTab(index) end)
         tinsert(tabButtons, btn)
 
-        -- Content frame in the main pane
         local content = CreateFrame("Frame", nil, contentBorder)
         content:SetAllPoints(contentBorder)
         content:Hide()
@@ -971,7 +959,6 @@ function Options:Initialize()
         return content
     end
 
-    -- Keybind helpers (defined early since Section 4 needs them)
     local function GetCurrentKeybindText(action)
         local key1, key2 = GetBindingKey(action)
         if key1 then return key1 end
@@ -1004,11 +991,10 @@ function Options:Initialize()
                     StopCapture(self, action)
                     return
                 end
-                -- Reject bare SPACE/ENTER/movement keys -- they're vital
-                -- defaults (jump, accept, WASD) and silently overwriting
-                -- them on a stray keypress during capture has bricked
-                -- spacebar after a /reload more than once. Only bind
-                -- these when modified.
+                -- Bare SPACE / ENTER / WASD silently overwriting jump,
+                -- accept, or movement on a stray capture-keypress has
+                -- bricked spacebar after /reload before. Only bind these
+                -- when modified.
                 local hasMod = IsAltKeyDown() or IsControlKeyDown() or IsShiftKeyDown()
                 if not hasMod and (key == "SPACE" or key == "ENTER"
                     or key == "W" or key == "A" or key == "S" or key == "D") then
@@ -1041,8 +1027,6 @@ function Options:Initialize()
         keybindBtn:HookScript("OnLeave", GameTooltip_Hide)
     end
 
-    -- SECTION 1: General
-    -- HOME TAB
     local homeTab = CreateTab("Home")
     local homeIcon = homeTab:CreateTexture(nil, "ARTWORK")
     homeIcon:SetSize(48, 48)
@@ -1096,8 +1080,6 @@ function Options:Initialize()
     CreateURLBox(homeTab, "https://www.curseforge.com/wow/addons/easyfind", homeDesc, -6)
 
     local sec3 = CreateTab("General & Binds")
-
-    -- General tab layout (no inner border, content fills the tab)
 
     local loginMessageCheckbox = CreateCheckbox(sec3, "LoginMessage", "Show Login Message",
         "When enabled, shows a short \"EasyFind loaded!\" message in chat when you log in.\n\nDisable to keep chat cleaner.")
@@ -1300,7 +1282,6 @@ function Options:Initialize()
 
     local RESET_BTN_W = 120
 
-    -- SECTION 2: UI Search
     local sec1 = CreateTab("Search")
 
     local resizeUIBtn = CreateModernButton(sec1)
@@ -1433,7 +1414,6 @@ function Options:Initialize()
         StaticPopup_Show("EASYFIND_RESET_UI_POS")
     end)
 
-    -- SECTION 3: Map
     local sec2 = CreateTab("Map")
 
     local mapEnableCheckbox = CreateCheckbox(sec2, "EnableMap", "Enable Map Search Module",
@@ -1462,7 +1442,6 @@ function Options:Initialize()
         end
     end)
 
-    -- Gold separator under enable checkbox
     local mapSep = sec2:CreateTexture(nil, "ARTWORK")
     mapSep:SetPoint("TOPLEFT", sec2, "TOPLEFT", 6, -40)
     mapSep:SetPoint("RIGHT", sec2, "RIGHT", -6, 0)
@@ -1641,10 +1620,7 @@ function Options:Initialize()
     }
     UpdateMapToggleVisual()
 
-    -- SECTION 4: Keyboard Shortcuts
     local sec4 = CreateTab("Shortcuts")
-
-    -- Shortcuts tab layout (no inner border)
 
     local shortcutText = sec4:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     shortcutText:SetPoint("TOPLEFT", sec4, "TOPLEFT", 8, -8)
@@ -1670,7 +1646,6 @@ function Options:Initialize()
         .. "|cFF00FF00/ef|r open options  |cFF00FF00/ef c|r clear highlights and pins\n"
     )
 
-    -- SECTION 5: Aliases
     local aliasesTab = CreateTab("Aliases")
 
     local aliasTitle = aliasesTab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
@@ -1875,8 +1850,6 @@ function Options:Initialize()
         end
     end)
 
-    -- Reset buttons (tips on Home tab)
-
     StaticPopupDialogs["EASYFIND_RESET_ALL"] = {
         text = "Reset all EasyFind settings to defaults?",
         button1 = "Reset",
@@ -1962,7 +1935,6 @@ function Options:Initialize()
         preferredIndex = 3,
     }
 
-    -- Reset buttons inside General tab (below last slider)
     local resetAllBtn = CreateModernButton(sec3)
     resetAllBtn:SetSize(RESET_BTN_W, 20)
     resetAllBtn:SetPoint("BOTTOMLEFT", sec3, "BOTTOMLEFT", 8, 8)
@@ -1987,7 +1959,6 @@ function Options:Initialize()
         StaticPopup_Show("EASYFIND_RESET_POSITIONS")
     end)
 
-    -- FEEDBACK TAB
     local feedbackTab = CreateTab("Feedback")
 
     local feedbackDesc = feedbackTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -2097,14 +2068,12 @@ function Options:RegisterWithBlizzardOptions()
         Options.embedded = true
         Options.embedding = true
 
-        -- Hide standalone chrome
         optionsFrame.titleText:Hide()
         optionsFrame.closeBtn:Hide()
         optionsFrame.bgTex:Hide()
         optionsFrame:SetBackdrop(nil)
         optionsFrame:SetScale(1)
 
-        -- Reparent into Blizzard panel
         optionsFrame:SetParent(self)
         optionsFrame:ClearAllPoints()
         optionsFrame:SetPoint("TOPLEFT", self, "TOPLEFT", 0, 34)
@@ -2129,8 +2098,6 @@ function Options:RegisterWithBlizzardOptions()
         InterfaceOptions_AddCategory(panel)
     end
 
-    -- Hook the root Blizzard settings frame so the search bar hides whenever
-    -- settings are open (regardless of which tab is active).
     local settingsRoot = SettingsPanel or InterfaceOptionsFrame
     if settingsRoot then
         local restoreOnClose = false
@@ -2155,12 +2122,10 @@ function Options:Show()
         self:Initialize()
     end
 
-    -- If called standalone while embedded in Blizzard panel, pull out
     if self.embedded and not self.embedding then
         self:RestoreStandalone()
     end
 
-    -- Refresh values from saved vars (nil-safe in case init partially failed)
     SyncOptionControls()
 
     if not self.embedded and optionsFrame.bgTex then

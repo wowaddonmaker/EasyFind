@@ -12,12 +12,7 @@ local mmin, mmax, mabs = Utils.mmin, Utils.mmax, Utils.mabs
 local C_CurrencyInfo = C_CurrencyInfo
 local band, lshift = bit.band, bit.lshift
 
--- Word split cache: avoids per-call gmatch + table creation in scoring hot path.
--- Key = lowercase string, value = array of words split on [%w']+.
--- FIFO-bounded so per-keystroke prefixes ("a", "ac", "ach", ...) do not
--- accumulate forever. Most recent prefixes stay in cache; oldest evict
--- when the ring buffer wraps. Cap of 256 covers normal typing patterns
--- with room to spare while keeping retained memory in the low-KB range.
+-- FIFO-bounded; oldest prefixes evict when the ring buffer wraps.
 local wordCache = {}
 local wordCacheKeys = {}
 local wordCacheHead = 1
@@ -39,21 +34,15 @@ local function GetWords(str)
     return words
 end
 
--- Reusable row tables for DamerauLevenshtein (avoids 3 table allocs per call)
 local dlPrev2, dlPrev, dlCurr = {}, {}, {}
 
--- Reusable scratch for ScoreName's per-word matching path. Was allocated
--- per-entry per-search in the multi-word query branch (3700+ entries x
--- many keystrokes per second = major GC pressure during typing).
 local scoreNameUsedWords = {}
 
--- Reusable sort comparator (avoids closure creation per SearchUI call)
 local function scoreDescending(a, b) return a.score > b.score end
 
 local uiSearchData = {}
-Database.uiSearchData = uiSearchData  -- exposed for container expansion
-Database._wordCache = wordCache        -- exposed for DevMem diagnostics
--- Track which currencyIDs are already in the static database
+Database.uiSearchData = uiSearchData
+Database._wordCache = wordCache
 local knownCurrencyIDs = {}
 
 local function RemoveEntriesByCategory(category)
@@ -92,11 +81,8 @@ function Database:Initialize()
     self:BuildUIDatabase()
 end
 
--- Defensive multi-spelling check for "is this currency warband-shared".
--- WoW has shipped at least three names / shapes for this concept across
--- builds; check all of them so detection doesn't regress when Blizzard
--- renames a field. Reused by both the per-currency populator and the
--- warband-fill pass.
+-- WoW has shipped three names/shapes for warband-shared currency; check all so
+-- detection doesn't regress when Blizzard renames a field.
 function Database:IsCurrencyAccountTransferable(currencyID)
     if not currencyID or not C_CurrencyInfo then return false end
     local fns = {
@@ -121,16 +107,12 @@ function Database:IsCurrencyAccountTransferable(currencyID)
     return false
 end
 
--- Called after PLAYER_LOGIN when C_CurrencyInfo is available
--- Scans the WoW currency list and injects any currencies not already in the static database
 function Database:PopulateDynamicCurrencies()
     if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return false end
 
     RemoveEntriesByCategory("Currency")
     wipe(knownCurrencyIDs)
 
-    -- Expand all collapsed headers so we can see every currency
-    -- Track which ones we expand so we can collapse them back afterward
     local headersWeExpanded = {}
     for pass = 1, 50 do
         local size = C_CurrencyInfo.GetCurrencyListSize()
@@ -147,36 +129,23 @@ function Database:PopulateDynamicCurrencies()
         if not didExpand then break end
     end
 
-    -- Read the full flat list and inject any missing currencies
     local size = C_CurrencyInfo.GetCurrencyListSize()
     local injected = 0
 
-    -- The steps that every currency inherits (open Character frame + Currency tab)
     local baseSteps = {
         { buttonFrame = "CharacterMicroButton" },
         { waitForFrame = "CharacterFrame", tabIndex = 3 },
     }
 
-    -- Track the nested header stack so we generate correct multi-level steps.
-    -- Each element: { name = "Legacy", depth = 0 }
-    -- The currencyListDepth field (11.0.0+) controls indentation:
-    --   0 = top-level header (Dungeon and Raid, Legacy, etc.)
-    --   1 = sub-header (War Within under Legacy)
-    --   etc.
-    -- For currencies (non-header), depth indicates which header they belong to.
-    local headerStack = {} -- ordered list, headerStack[1] = shallowest
+    local headerStack = {}
 
-    -- Helper: trim the stack so it only contains entries shallower than `depth`,
-    -- then push a new header at that depth.
     local function pushHeader(name, depth)
-        -- Remove anything at depth >= the new header's depth
         while #headerStack > 0 and headerStack[#headerStack].depth >= depth do
             headerStack[#headerStack] = nil
         end
         headerStack[#headerStack + 1] = { name = name, depth = depth }
     end
 
-    -- Helper: build currencyHeader steps for the full header chain
     local function buildHeaderSteps()
         local steps = {}
         for _, s in ipairs(baseSteps) do steps[#steps + 1] = s end
@@ -186,7 +155,6 @@ function Database:PopulateDynamicCurrencies()
         return steps
     end
 
-    -- Helper: build the path array for the current header chain
     local function buildPath()
         local path = {"Character Info", "Currency"}
         for _, h in ipairs(headerStack) do
@@ -195,7 +163,6 @@ function Database:PopulateDynamicCurrencies()
         return path
     end
 
-    -- Build a currencyID → icon map from the list scan (GetCurrencyListInfo is reliable)
     local currencyIconMap = {}
 
     for i = 1, size do
@@ -203,7 +170,6 @@ function Database:PopulateDynamicCurrencies()
         if info then
             local depth = info.currencyListDepth or 0
 
-            -- Capture icon for every currency we see
             if info.currencyID and info.iconFileID then
                 currencyIconMap[info.currencyID] = info.iconFileID
             end
@@ -211,7 +177,6 @@ function Database:PopulateDynamicCurrencies()
             if info.isHeader then
                 pushHeader(info.name, depth)
 
-                -- Also ensure the header group itself is searchable
                 local headerKey = "header_" .. slower(info.name)
                 if not knownCurrencyIDs[headerKey] then
                     knownCurrencyIDs[headerKey] = true
@@ -226,8 +191,6 @@ function Database:PopulateDynamicCurrencies()
                         steps = buildHeaderSteps(),
                         flashLabel = "Currency",
                     }
-                    -- The path for a header entry doesn't include itself
-                    -- (buildPath includes it, so remove the last element)
                     entry.path[#entry.path] = nil
                     entry.nameLower = slower(entry.name)
                     entry.keywordsLower = {}
@@ -238,16 +201,13 @@ function Database:PopulateDynamicCurrencies()
                     injected = injected + 1
                 end
             elseif info.currencyID and not knownCurrencyIDs[info.currencyID] then
-                -- This currency isn't in our static database - inject it
                 local currName = info.name
                 local immediateHeader = headerStack[#headerStack]
                 local immediateHeaderName = immediateHeader and immediateHeader.name or "Unknown"
 
-                -- Build steps: base + expand all parent headers + scroll to currency
                 local currSteps = buildHeaderSteps()
                 currSteps[#currSteps + 1] = { waitForFrame = "CharacterFrame", currencyID = info.currencyID }
 
-                -- Generate keywords: currency name words + "header currname"
                 local words = {}
                 local currNameLower = slower(currName)
                 for word in currNameLower:gmatch("%S+") do
@@ -286,7 +246,6 @@ function Database:PopulateDynamicCurrencies()
         Utils.DebugPrint("Injected", injected, "dynamic currency entries from C_CurrencyInfo")
     end
 
-    -- Resolve icons for ALL currency entries (static + dynamic) using the map we just built
     for _, item in ipairs(uiSearchData) do
         if not item.icon and item.steps then
             for _, step in ipairs(item.steps) do
@@ -298,8 +257,7 @@ function Database:PopulateDynamicCurrencies()
         end
     end
 
-    -- Collapse back any headers we expanded during scanning
-    -- Collapse from deepest first: iterate in reverse through the list
+    -- Collapse from deepest first (indices shift after each collapse).
     for pass = 1, 50 do
         local sz = C_CurrencyInfo.GetCurrencyListSize()
         local didCollapse = false
@@ -315,13 +273,9 @@ function Database:PopulateDynamicCurrencies()
         if not didCollapse then break end
     end
 
-    -- Warband-fill pass: surface warband-transferable currencies the
-    -- player has on OTHER characters (or has never touched on any
-    -- character but still exist account-wide). Without this, the
-    -- "All Warband Transferable" filter mode only shows currencies
-    -- the current character has interacted with, defeating the point.
-    -- Enumerate via the modern C_CurrencyInfo accessor when available;
-    -- fall back to a bounded ID scan only if nothing else works.
+    -- Surface warband-transferable currencies the player has on OTHER characters.
+    -- Without this, the "All Warband Transferable" filter only shows currencies
+    -- the current character has touched.
     do
         local extraIDs
         if C_CurrencyInfo.GetAccountCurrencyTypes then
@@ -366,14 +320,11 @@ function Database:PopulateDynamicCurrencies()
     return true
 end
 
--- Called after PLAYER_LOGIN when C_Reputation is available
--- Scans the WoW reputation list and injects factions as searchable entries
 function Database:PopulateDynamicReputations()
     if not C_Reputation or not C_Reputation.GetNumFactions then return false end
 
     RemoveEntriesByCategory("Reputation")
 
-    -- Expand all collapsed headers so we can see every faction
     local headersWeExpanded = {}
     for pass = 1, 50 do
         local numFactions = C_Reputation.GetNumFactions()
@@ -381,7 +332,6 @@ function Database:PopulateDynamicReputations()
         for i = 1, numFactions do
             local factionData = C_Reputation.GetFactionDataByIndex(i)
             if factionData and factionData.isHeader then
-                -- Check if header is collapsed using both new and old property names
                 local isCollapsed = false
                 if factionData.isHeaderExpanded ~= nil then
                     isCollapsed = not factionData.isHeaderExpanded
@@ -400,17 +350,14 @@ function Database:PopulateDynamicReputations()
         if not didExpand then break end
     end
 
-    -- Read the full flat list and build entries
     local numFactions = C_Reputation.GetNumFactions()
     local injected = 0
 
-    -- Base steps that every reputation inherits (open Character frame + Reputation tab)
     local baseSteps = {
         { buttonFrame = "CharacterMicroButton" },
         { waitForFrame = "CharacterFrame", tabIndex = 2 },
     }
 
-    -- Track both expansion headers and faction-group headers (they do nest!)
     local currentExpansion = nil
     local currentFactionGroup = nil
 
@@ -418,7 +365,6 @@ function Database:PopulateDynamicReputations()
     local function buildHeaderSteps()
         local steps = {}
         for _, s in ipairs(baseSteps) do steps[#steps + 1] = s end
-        -- Navigate through the header hierarchy: first expansion, then faction group
         if currentExpansion then
             steps[#steps + 1] = { waitForFrame = "CharacterFrame", factionHeader = currentExpansion }
         end
@@ -430,7 +376,6 @@ function Database:PopulateDynamicReputations()
 
     local function buildPath()
         local path = {"Character Info", "Reputation"}
-        -- Build hierarchical path: Expansion -> Faction Group (if exists)
         if currentExpansion then
             path[#path + 1] = currentExpansion
         end
@@ -440,9 +385,6 @@ function Database:PopulateDynamicReputations()
         return path
     end
 
-    -- Localized "Alliance" / "Horde" header names from globals when available;
-    -- fall back to lowercase string comparison for non-English clients that
-    -- don't expose them under these IDs.
     local ALLIANCE_HEADER = (FACTION_ALLIANCE or "Alliance"):lower()
     local HORDE_HEADER    = (FACTION_HORDE    or "Horde"):lower()
 
@@ -465,9 +407,6 @@ function Database:PopulateDynamicReputations()
         end
         keywords[#keywords + 1] = factionNameLower
 
-        -- Faction side: inferred from the parent group header. Factions
-        -- under an Alliance/Horde sub-header are faction-locked; the rest
-        -- are either-faction reputations.
         local factionSide
         if currentFactionGroup then
             local groupLower = slower(currentFactionGroup)
@@ -508,9 +447,7 @@ function Database:PopulateDynamicReputations()
                     currentExpansion = factionData.name
                     currentFactionGroup = nil
                 else
-                    -- Clear previous sibling faction group before processing
                     currentFactionGroup = nil
-                    -- Header-factions: inject all with factionID so they're searchable.
                     if factionData.factionID and factionData.factionID > 0 then
                         injectFaction(factionData)
                     end
@@ -526,14 +463,12 @@ function Database:PopulateDynamicReputations()
         Utils.DebugPrint("Injected", injected, "dynamic reputation entries from C_Reputation")
     end
 
-    -- Collapse back any headers we expanded during scanning
     for pass = 1, 50 do
         local numFactionsPost = C_Reputation.GetNumFactions()
         local didCollapse = false
         for i = numFactionsPost, 1, -1 do
             local factionData = C_Reputation.GetFactionDataByIndex(i)
             if factionData and factionData.isHeader and headersWeExpanded[factionData.name] then
-                -- Check if header is expanded using both property names
                 local isExpanded = false
                 if factionData.isHeaderExpanded ~= nil then
                     isExpanded = factionData.isHeaderExpanded
@@ -554,10 +489,6 @@ function Database:PopulateDynamicReputations()
     return true
 end
 
--- Called after PLAYER_LOGIN when C_MountJournal is available
--- Scans the player's collected mounts and injects them into the search database
--- Shared prototypes for mount/toy entries via __index.
--- Eliminates 5 hash slots per entry (~320 bytes each × ~1300 entries).
 local MOUNT_PROTO = {
     keywords     = {"mount", "ride"},
     keywordsLower = {"mount", "ride"},
@@ -637,7 +568,6 @@ local GEAR_SET_PROTO = {
 local GEAR_SET_MT = { __index = GEAR_SET_PROTO }
 
 
--- Map equip location strings to user-friendly search keywords
 local SLOT_KEYWORDS = {
     INVTYPE_HEAD            = {"helm", "helmet", "head"},
     INVTYPE_NECK            = {"neck", "necklace", "amulet"},
@@ -662,7 +592,6 @@ local SLOT_KEYWORDS = {
     INVTYPE_HOLDABLE        = {"off hand", "held"},
 }
 
--- Map item stat keys to search keywords
 local STAT_KEYWORD_MAP = {
     ITEM_MOD_CRIT_RATING_SHORT    = {"crit", "critical strike"},
     ITEM_MOD_HASTE_RATING_SHORT   = {"haste"},
@@ -740,7 +669,6 @@ function Database:QueryNeedsHeavySearchData(text)
     return false
 end
 
--- Slot display names for result text
 local SLOT_DISPLAY = {
     INVTYPE_HEAD = "Head", INVTYPE_NECK = "Neck", INVTYPE_SHOULDER = "Shoulder",
     INVTYPE_CHEST = "Chest", INVTYPE_ROBE = "Chest", INVTYPE_WAIST = "Waist",
@@ -752,30 +680,28 @@ local SLOT_DISPLAY = {
     INVTYPE_HOLDABLE = "Off Hand",
 }
 
--- Lowercased slot display names for category score boosting (query "legs" → loot first)
+-- Powers loot-category boost for slot queries (e.g. "legs").
 local lootSlotNames = {}
 for _, displayName in pairs(SLOT_DISPLAY) do
     lootSlotNames[slower(displayName)] = true
 end
 ns.lootSlotNames = lootSlotNames
 
--- EJ API compatibility: some functions migrated from EJ_* globals to C_EncounterJournal.*.
--- Prefer C_EncounterJournal (current) over globals (may be stale wrappers).
--- Resolved at call time because C_EJ functions may not exist until EncounterJournal_LoadUI().
+-- C_EncounterJournal functions may not exist until EncounterJournal_LoadUI(),
+-- so resolve at call time. Prefer the C_ namespace over stale EJ_* globals.
 local function EJ(name)
     return (C_EncounterJournal and C_EncounterJournal[name]) or _G["EJ_" .. name]
 end
 
-local lootEntries = {}       -- track injected entries for re-population
-local lootScanGeneration = 0 -- cancel stale scans when re-populating
+local lootEntries = {}
+local lootScanGeneration = 0
 local bossScanGeneration = 0
-local lootItemCache = {}     -- itemID -> entry (persists across spec/diff toggles)
-local lootSpecsScanned = {}  -- ["classID-specID"] = true
-Database._lootItemCache = lootItemCache         -- exposed for DevMem diagnostics
-Database._lootEntries = lootEntries             -- exposed for DevMem diagnostics
-Database._lootSpecsScanned = lootSpecsScanned   -- exposed for DevMem diagnostics
+local lootItemCache = {}
+local lootSpecsScanned = {}
+Database._lootItemCache = lootItemCache
+Database._lootEntries = lootEntries
+Database._lootSpecsScanned = lootSpecsScanned
 
--- Maps user-facing difficulty keys to EJ difficulty IDs per source type
 local LOOT_DIFF_IDS = {
     lfr     = { raid = 17 },
     normal  = { dungeon = 1,  raid = 14 },
@@ -783,7 +709,6 @@ local LOOT_DIFF_IDS = {
     mythic  = { dungeon = 23, raid = 16 },
 }
 
--- Get the EJ difficulty ID for the current loot difficulty setting.
 function Database:GetEJDifficultyID(sourceType)
     local diffKey = EasyFind.db.lootDifficulty or "normal"
     local diffIDs = LOOT_DIFF_IDS[diffKey]
@@ -798,9 +723,8 @@ function Database:SetEJDifficulty(diffID)
     if setDiff then setDiff(diffID) end
 end
 
--- Sync the EJ's difficulty for both dungeon and raid tabs.
--- EJ_SetDifficulty requires an instance of the matching type to be selected first.
--- Saves and restores the current instance selection to avoid side effects.
+-- EJ_SetDifficulty requires an instance of the matching type to be selected
+-- first, so this saves and restores the current selection.
 function Database:SyncEJDifficulty()
     local selectInst = EJ("SelectInstance")
     local getInst = EJ("GetInstanceByIndex")
@@ -808,9 +732,7 @@ function Database:SyncEJDifficulty()
     local getInstInfo = EJ("GetInstanceInfo")
     if not selectInst or not getInst or not setDiff then return end
 
-    -- Save current instance so we can restore it after
-    -- EJ_GetInstanceInfo returns: name, description, bgImage, buttonImage1, ..., mapID, journalInstanceID
-    -- journalInstanceID is at index 12
+    -- journalInstanceID is the 12th return of EJ_GetInstanceInfo.
     local savedInstID = getInstInfo and select(12, getInstInfo())
 
     local dungeonDiffID = self:GetEJDifficultyID("Dungeon")
@@ -831,14 +753,11 @@ function Database:SyncEJDifficulty()
         end
     end
 
-    -- Restore previous instance selection
     if savedInstID and savedInstID > 0 then
         selectInst(savedInstID)
     end
 end
 
--- Sync the EJ's internal loot filter to match EasyFind's lootFilter setting.
--- Called when the user changes the filter and before loot navigation.
 function Database:SyncEJLootFilter()
     local setFilter = EJ("SetLootFilter")
     if not setFilter then return end
@@ -859,10 +778,8 @@ function Database:SyncEJLootFilter()
     end
 end
 
--- Rebuild uiSearchData loot entries from cache based on current spec + difficulty selection.
--- No EJ scan needed: filters cached items by spec and difficulty match.
 local function RebuildLootSearchData()
-    -- Remove old loot entries (filter in place to avoid O(n^2) tremove)
+    -- Filter in place to avoid O(n^2) tremove.
     local writeIdx = 0
     for i = 1, #uiSearchData do
         if uiSearchData[i].category ~= "Loot" then
@@ -875,7 +792,6 @@ local function RebuildLootSearchData()
     end
     wipe(lootEntries)
 
-    -- Build spec lookup from current selection
     -- lootFilter: nil = current spec, "all" = all classes,
     --   {classID=N} = whole class, {classID=N, specID=M} = specific spec
     local lootFilter = EasyFind.db.lootFilter
@@ -899,10 +815,8 @@ local function RebuildLootSearchData()
         end
     end
 
-    -- Single difficulty selection
     local wantDiff = EasyFind.db.lootDifficulty or "normal"
 
-    -- Filter cache: include items matching selected spec AND selected difficulty
     for _, entry in pairs(lootItemCache) do
         local specMatch = wantAll
         if not specMatch then
@@ -923,15 +837,9 @@ local function RebuildLootSearchData()
     end
 end
 
--- Enrich a loot entry with stat keywords from its item link.
--- Called lazily when the entry first appears in results.
--- Difficulty priority for selecting which item link to display/use.
 local DIFF_PRIORITY = { "mythic", "heroic", "normal", "lfr" }
 
--- Returns the item link for a loot entry at the selected difficulty.
--- Falls back to highest available if the selected difficulty has no link.
--- Look up a transmog set's ID by exact name. Used to recover the setID for
--- pinned appearance sets that were saved before transmogSetID was persisted.
+-- Recovers setID for pinned sets saved before transmogSetID was persisted.
 function Database:GetTransmogSetIDByName(name)
     if not name or not C_TransmogSets or not C_TransmogSets.GetAllSets then return nil end
     local allSets = C_TransmogSets.GetAllSets()
@@ -945,9 +853,7 @@ end
 
 function Database:GetLootItemLink(entry)
     local links = entry.lootItemLinks
-    -- Pinned/serialized entries lose their lootItemLinks table when written
-    -- to SavedVariables. Fall back to the live loot cache by itemID so
-    -- existing pins keep working without needing to be re-pinned.
+    -- Serialized pins lose lootItemLinks, so fall back to the live cache.
     if not links and entry.itemID then
         local live = lootItemCache[entry.itemID]
         if live then links = live.lootItemLinks end
@@ -955,7 +861,6 @@ function Database:GetLootItemLink(entry)
     if not links then return nil end
     local selected = EasyFind.db.lootDifficulty or "normal"
     if links[selected] then return links[selected] end
-    -- Fallback: any available link
     for _, dk in ipairs(DIFF_PRIORITY) do
         if links[dk] then return links[dk] end
     end
@@ -984,11 +889,10 @@ function Database:EnrichLootStats(entry)
     entry._statsEnriched = true
 end
 
--- Outfit click-to-equip uses a temporary action bar slot.
--- PreClick finds an empty slot, places the outfit, then the secure
--- handler calls UseAction to equip it. PostClick clears the slot.
--- The slot is re-discovered each click to avoid overwriting user actions.
-local outfitEntries = {} -- track injected entries for re-population
+-- Outfit equip uses a temporary action bar slot rediscovered each click so we
+-- don't overwrite user actions: PreClick places the outfit, secure handler
+-- calls UseAction, PostClick clears the slot.
+local outfitEntries = {}
 
 function Database:PopulateDynamicMounts()
     if not C_MountJournal or not C_MountJournal.GetMountIDs then return false end
@@ -1014,8 +918,6 @@ function Database:PopulateDynamicMounts()
     return true
 end
 
--- Called after PLAYER_LOGIN when C_ToyBox is available
--- Scans the player's collected toys and injects them into the search database
 function Database:PopulateDynamicToys()
     if not C_ToyBox then return false end
 
@@ -1026,7 +928,6 @@ function Database:PopulateDynamicToys()
     local GetToyFromIndex = C_ToyBox.GetToyFromIndex
     if not GetToyInfo or not GetNumFilteredToys or not GetToyFromIndex then return false end
 
-    -- Save current filter state, set to show all collected toys only
     local hasFilterAPI = C_ToyBox.GetCollectedShown and C_ToyBox.SetCollectedShown
     local savedCollected = hasFilterAPI and C_ToyBox.GetCollectedShown()
     local savedUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
@@ -1045,13 +946,10 @@ function Database:PopulateDynamicToys()
         if itemID and itemID > 0 then
             local _, toyName, toyIcon = GetToyInfo(itemID)
             if toyName and toyName ~= "" then
-                -- Tag faction/class-restricted toys so the click handler
-                -- routes to ToyBox highlight instead of attempting a
-                -- secure use that would silently no-op. C_ToyBox.IsToyUsable
-                -- mirrors what Blizzard's own ToyBox UI uses for the Use
-                -- button enable state, unlike the broader IsUsableItem
-                -- which can flunk usable toys when the item info hasn't
-                -- been cached yet at PLAYER_LOGIN time.
+                -- Tag faction/class-restricted toys so the click handler routes to
+                -- ToyBox highlight instead of a silently no-op secure use.
+                -- IsToyUsable matches the default UI's Use button state; the broader
+                -- IsUsableItem can fail when item info isn't cached at PLAYER_LOGIN.
                 local isUsable = true
                 if C_ToyBox and C_ToyBox.IsToyUsable then
                     local ok, usable = pcall(C_ToyBox.IsToyUsable, itemID)
@@ -1069,7 +967,6 @@ function Database:PopulateDynamicToys()
         end
     end
 
-    -- Restore filter state
     if hasFilterAPI then C_ToyBox.SetCollectedShown(savedCollected) end
     if C_ToyBox.SetUncollectedShown then C_ToyBox.SetUncollectedShown(savedUncollected) end
     if C_ToyBox.SetFilterString then C_ToyBox.SetFilterString(savedString) end
@@ -1077,19 +974,15 @@ function Database:PopulateDynamicToys()
     return true
 end
 
--- Called after PLAYER_LOGIN when C_PetJournal is available
--- Scans the player's collected pets and injects them into the search database
 function Database:PopulateDynamicPets()
     if not C_PetJournal or not C_PetJournal.GetNumPets then return false end
 
     RemoveEntriesByCategory("Pet")
 
-    -- Save current filter state
     local savedCollected = C_PetJournal.IsFilterChecked and C_PetJournal.IsFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED)
     local savedNotCollected = C_PetJournal.IsFilterChecked and C_PetJournal.IsFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED)
     local savedString = C_PetJournal.GetSearchFilter and C_PetJournal.GetSearchFilter() or ""
 
-    -- Show all collected pets
     if C_PetJournal.SetFilterChecked then
         C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, true)
         C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, false)
@@ -1124,7 +1017,6 @@ function Database:PopulateDynamicPets()
         end
     end
 
-    -- Restore filter state
     if C_PetJournal.SetFilterChecked then
         if savedCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, savedCollected) end
         if savedNotCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, savedNotCollected) end
@@ -1133,10 +1025,6 @@ function Database:PopulateDynamicPets()
     return true
 end
 
--- Called after PLAYER_LOGIN when C_Heirloom is available.
--- Scans the heirloom catalog and injects any owned heirloom into the
--- search database. Click handler creates the heirloom item in the
--- player's bags via C_Heirloom.CreateHeirloom.
 function Database:PopulateDynamicHeirlooms()
     if not C_Heirloom or not C_Heirloom.GetHeirloomItemIDs then return false end
 
@@ -1171,11 +1059,8 @@ function Database:PopulateDynamicHeirlooms()
     return true
 end
 
--- Scan known character titles and inject as search entries. Click on a
--- title row sets it as the current title via SetCurrentTitle. Titles
--- come back from the API with a "%s" placeholder for the player's
--- name; we strip it for display so the row reads "the Insane" rather
--- than "%s the Insane".
+-- Title names contain a "%s" placeholder for the player name; strip it so
+-- "the Insane" displays instead of "%s the Insane".
 function Database:PopulateDynamicTitles()
     local getNum = GetNumTitles
     local getName = GetTitleName
@@ -1206,10 +1091,6 @@ function Database:PopulateDynamicTitles()
 end
 
 
--- Scan the player's saved Equipment Manager gear sets and inject as
--- search entries. Click on a row equips the set via
--- C_EquipmentSet.UseEquipmentSet (no protected-frame issues outside
--- combat). Per-set icons come from the saved iconFileID.
 function Database:PopulateDynamicGearSets()
     if not C_EquipmentSet or not C_EquipmentSet.GetEquipmentSetIDs then return false end
 
@@ -1236,12 +1117,9 @@ function Database:PopulateDynamicGearSets()
     return true
 end
 
--- Called after PLAYER_LOGIN when C_TransmogOutfitInfo is available.
--- Scans the player's saved transmog outfits and injects them into the search database.
 function Database:PopulateDynamicOutfits()
     if not C_TransmogOutfitInfo or not C_TransmogOutfitInfo.GetOutfitsInfo then return false end
 
-    -- Remove previous outfit entries (handles mid-session outfit changes)
     RemoveEntriesByCategory("Outfit")
     wipe(outfitEntries)
 
@@ -1263,8 +1141,6 @@ function Database:PopulateDynamicOutfits()
     return true
 end
 
--- Reads the default UI's transmog set filters and updates our saved settings.
--- Called before populate and when the filter dropdown opens.
 function Database:SyncTransmogSetFiltersFromUI()
     local db = EasyFind and EasyFind.db
     if not db then return end
@@ -1294,18 +1170,12 @@ function Database:SyncTransmogSetFiltersFromUI()
     end
 end
 
--- Called after PLAYER_LOGIN when C_TransmogSets is available.
--- Scans all transmog appearance sets and injects them into the search database.
--- Respects class, collected, and PvE/PvP filter settings.
 function Database:PopulateDynamicTransmogSets()
     if not C_TransmogSets or not C_TransmogSets.GetAllSets then return false end
 
-    -- Remove previous entries (handles mid-session filter changes)
     RemoveEntriesWithField("transmogSetID")
-    -- Invalidate incremental search cache. Without this, a query that was
-    -- typed before the repopulate (e.g. "cauldron" searched with Druid sets
-    -- active) would still reuse prevCandidates on the next extension and
-    -- miss the newly injected entries.
+    -- Without this, a query typed before repopulate (e.g. "cauldron" while
+    -- Druid sets were active) reuses prevCandidates and misses the new entries.
     if self.ResetSearchCache then self:ResetSearchCache() end
 
     local allSets = C_TransmogSets.GetAllSets()
@@ -1319,8 +1189,7 @@ function Database:PopulateDynamicTransmogSets()
     local showPvE = not db or db.appearanceSetPvE ~= false
     local showPvP = not db or db.appearanceSetPvP ~= false
 
-    -- Sync class filter to default UI. Guard against the hooksecurefunc in
-    -- Core.lua re-entering Populate from our own call here.
+    -- Guard against the Core.lua hooksecurefunc re-entering Populate.
     if C_TransmogSets.SetTransmogSetsClassFilter then
         EasyFind._tmogClassHookSuppress = true
         if not classFilter then
@@ -1332,7 +1201,6 @@ function Database:PopulateDynamicTransmogSets()
         EasyFind._tmogClassHookSuppress = false
     end
 
-    -- Sync collected/PvE/PvP filters to default UI
     -- BaseSetsFilter enum: 1=Collected, 2=Not Collected, 3=PvE, 4=PvP
     local syncFilter = C_TransmogSets.SetBaseSetsFilter or C_TransmogSets.SetSetsFilter
     if syncFilter then
@@ -1342,7 +1210,6 @@ function Database:PopulateDynamicTransmogSets()
         pcall(syncFilter, 4, showPvP)
     end
 
-    -- Refresh the default UI's sets list and class dropdown if loaded
     local wcf = _G["WardrobeCollectionFrame"]
     local scf = wcf and wcf.SetsCollectionFrame
     if scf and scf:IsShown() then
@@ -1350,18 +1217,16 @@ function Database:PopulateDynamicTransmogSets()
         if scf.UpdateUI then pcall(scf.UpdateUI, scf) end
         if scf.Refresh then pcall(scf.Refresh, scf) end
     end
-    -- Refresh class dropdown text
     if wcf and wcf.ClassDropdown and wcf.ClassDropdown.Update then
         pcall(wcf.ClassDropdown.Update, wcf.ClassDropdown)
     end
 
-    -- Determine class mask for filtering
     local wantMask
     if not classFilter then
         local _, _, cid = UnitClass("player")
         wantMask = cid and lshift(1, cid - 1) or 0
     elseif classFilter == "all" then
-        wantMask = nil -- accept all
+        wantMask = nil
     elseif type(classFilter) == "table" and classFilter.classID then
         wantMask = lshift(1, classFilter.classID - 1)
     end
@@ -1371,19 +1236,16 @@ function Database:PopulateDynamicTransmogSets()
 
     for i = 1, #allSets do
         local setInfo = allSets[i]
-        -- Only include base sets; variants share the same visuals and
-        -- aren't directly navigable in the Sets tab left list
+        -- Variants share visuals with their base set and aren't navigable in the Sets list.
         local isBaseSet = true
         if C_TransmogSets.GetBaseSetID then
             local bid = C_TransmogSets.GetBaseSetID(setInfo.setID)
             isBaseSet = not bid or bid == setInfo.setID
         end
         if isBaseSet and setInfo.name and setInfo.name ~= "" and not setInfo.hiddenUntilCollected then
-            -- Class filter: use classMask for specific class, or accept all
             local cm = setInfo.classMask or 0
             local classOk = not wantMask or cm == 0 or cm < 0 or band(cm, wantMask) ~= 0
 
-            -- PvE/PvP filter (check for known PvP label patterns)
             local label = setInfo.label or ""
             local labelLower = slower(label)
             local isPvP = sfind(labelLower, "pvp") or sfind(labelLower, "season")
@@ -1391,7 +1253,6 @@ function Database:PopulateDynamicTransmogSets()
                 or sfind(labelLower, "combatant")
             local sourceOk = (isPvP and showPvP) or (not isPvP and showPvE)
 
-            -- Collected filter
             local collected = setInfo.collected
             local collectedOk = true
             if not (showCollected and showNotCollected) then
@@ -1415,7 +1276,6 @@ function Database:PopulateDynamicTransmogSets()
                     end
                 end
 
-                -- Get icon from first appearance source
                 local icon
                 if GetSetPrimaryAppearances and GetSourceIcon then
                     local appearances = GetSetPrimaryAppearances(setInfo.setID)
@@ -1442,10 +1302,8 @@ function Database:PopulateDynamicTransmogSets()
 end
 
 function Database:FindEmptyActionSlot()
-    -- Scan from high to low for an empty slot.
-    -- Skip 121-168: bonus/override/vehicle/stance bars that may reject
-    -- non-class-specific actions (e.g., totem slots for shamans,
-    -- stance slots for druids/warriors).
+    -- Skip 121-168 (bonus/override/vehicle/stance bars) since they may reject
+    -- non-class-specific actions like totem or stance slots.
     for slot = 180, 169, -1 do
         if not HasAction(slot) then return slot end
     end
@@ -1604,28 +1462,23 @@ function Database:CancelDynamicScans(includeBosses)
     end
 end
 
--- Called after PLAYER_LOGIN. Scans the Encounter Journal for current-tier loot
--- and injects searchable entries. Caches results so spec toggles only filter
--- in memory without re-scanning. Only scans specs not yet in cache.
--- Optional scanAllSpecs: when true, pre-caches every class/spec combo (for loading screen).
+-- scanAllSpecs=true pre-caches every class/spec combo (loading screen path).
 function Database:PopulateDynamicLoot(scanAllSpecs)
     if InCombatLockdown() then return end
 
     local specPairs = BuildLootSpecPairs(scanAllSpecs)
     local needScan = GetLootSpecsToScan(specPairs)
 
-    -- All selected specs already cached: just rebuild from cache (instant)
     if #needScan == 0 then
         RebuildLootSearchData()
         return
     end
 
-    -- EJ loot tables require the UI to be loaded first
+    -- EJ loot tables require the UI loaded first.
     if not EncounterJournal then
         EncounterJournal_LoadUI()
     end
 
-    -- Resolve EJ APIs after UI load (some live on C_EncounterJournal, not global)
     local EJ_GetCurrentTier     = EJ("GetCurrentTier")
     local EJ_SelectTier         = EJ("SelectTier")
     local EJ_GetInstanceByIndex = EJ("GetInstanceByIndex")
@@ -1642,11 +1495,11 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
         return
     end
 
-    -- Bump generation so any in-flight staggered scan aborts
+    -- Bump generation so any in-flight staggered scan aborts.
     lootScanGeneration = lootScanGeneration + 1
     local myGen = lootScanGeneration
 
-    -- Suppress EJ UI events during scan
+    -- Suppress EJ UI events during scan.
     local ejFrame = _G["EncounterJournal"]
     local savedOnEvent
     if ejFrame then
@@ -1656,7 +1509,6 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
 
     local savedTier = EJ_GetCurrentTier and EJ_GetCurrentTier()
 
-    -- Collect all instances in the current tier
     local instances = {}
     local function collectInstances(isRaid)
         local idx = 1
@@ -1672,7 +1524,6 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
 
     local GetItemInfoInstant = GetItemInfoInstant
 
-    -- Build list of {diffKey, diffID} pairs per source type
     for _, inst in ipairs(instances) do
         if myGen ~= lootScanGeneration then break end
         EJ_SelectInstance(inst.id)
@@ -1711,7 +1562,6 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
         end
     end
 
-    -- Restore EJ state, mark specs cached, rebuild search data
     if savedTier and EJ_SelectTier then EJ_SelectTier(savedTier) end
     if ejFrame and savedOnEvent then ejFrame:SetScript("OnEvent", savedOnEvent) end
     for _, sp in ipairs(needScan) do
@@ -1907,11 +1757,6 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
     end)
 end
 
--- Macro search: scans the player's account-wide and per-character macros
--- and injects them as searchable entries. Direct click runs the macro;
--- guide mode opens MacroFrame, switches to the matching tab, and selects
--- the macro. Re-callable: clears prior Macro entries before re-injecting,
--- so calls from UPDATE_MACROS reflect renames/edits/deletes.
 function Database:PopulateDynamicMacros()
     if not GetNumMacros or not GetMacroInfo then return false end
 
@@ -1926,8 +1771,7 @@ function Database:PopulateDynamicMacros()
         if not name or name == "" then return end
         local nameLower = slower(name)
         local kw = { "macro", nameLower }
-        -- Index macro body words (slash command names, target names, etc.)
-        -- so /castsequence Hearthstone is reachable by typing "hearthstone".
+        -- Index macro body words so "/castsequence Hearthstone" is reachable by "hearthstone".
         if body and body ~= "" then
             local cleanBody = body:gsub("#show[^\n]*", ""):gsub("/", " ")
             for word in cleanBody:gmatch("[%w']+") do
@@ -1967,14 +1811,7 @@ function Database:PopulateDynamicMacros()
     return true
 end
 
--- Inject one entry per learned spell into uiSearchData. Retail Midnight
--- replaced GetSpellBookItemInfo's (slot, slotType) string-typed args
--- with (slotIndex, Enum.SpellBookSpellBank) and returns a single
--- SpellBookItemInfo table containing name, subName, actionID, iconID.
--- We use that path exclusively; pre-Midnight clients (Classic) skip
--- registration since this addon targets Midnight 12.0+.
 function Database:PopulateDynamicAbilities()
-    -- Strip prior pass so /reload-equivalent rebuilds don't double up.
     RemoveEntriesByCategory("Ability")
     if self.ResetSearchCache then self:ResetSearchCache() end
 
@@ -2048,11 +1885,8 @@ function Database:PopulateDynamicAbilities()
                     end
                 elseif FLYOUT_TYPE and itemInfo.itemType == FLYOUT_TYPE
                        and GetFlyoutInfoFn and GetFlyoutSlotInfoFn then
-                    -- Flyouts are containers (Switch Flight Style → Skyriding /
-                    -- Steady Flight, etc.). The flyout itself isn't castable,
-                    -- but its slot spells are. Scan and inject each, and use
-                    -- the flyout's own name as a keyword so "switch flight"
-                    -- finds the slot spells.
+                    -- The flyout itself isn't castable; inject its slot spells
+                    -- and keep the flyout name as a keyword so "switch flight" works.
                     local flyoutID = itemInfo.actionID
                     local flyoutName, _, numSlots, isKnown = GetFlyoutInfoFn(flyoutID)
                     if isKnown and numSlots and numSlots > 0 then
@@ -2084,14 +1918,9 @@ function Database:PopulateDynamicAbilities()
     return true
 end
 
--- Common community abbreviations for dungeons/raids whose initials
--- skip non-leading letters (e.g. "BWL" picks the W from blackWing) so
--- the standard initials/prefix scoring can't reach them. Listed as
--- per-instance keyword aliases: typing "bwl" gets the same 2-3 char
--- exact-match boost (140) that "icc" already gets via the prefix path.
--- Keys are lowercased instance names returned by EJ_GetInstanceByIndex.
--- Exposed on ns so MapSearch can inject the same aliases onto its
--- dungeon-entrance POIs and the two surfaces stay in sync.
+-- Dungeon/raid initialisms that pick non-leading letters (e.g. "BWL" from
+-- blackWing) which the standard prefix scoring can't reach. Exposed so
+-- MapSearch can inject the same aliases on dungeon-entrance POIs.
 local INSTANCE_ABBRS = {
     ["blackwing lair"]    = {"bwl"},
     ["blackrock depths"]  = {"brd"},
@@ -2152,12 +1981,7 @@ local function AddBossEntry(tier, isRaid, instID, instName, encName, encID, getC
     }
 end
 
--- Inject one entry per dungeon/raid boss across every expansion tier.
--- Click navigates the Encounter Journal to that boss. Icon is the
--- boss's first creature portrait (EJ_GetCreatureInfo[5]) so results
--- look like the EJ's own boss list.
 function Database:PopulateDynamicBosses()
-    -- Strip prior pass so re-runs don't double up.
     RemoveEntriesByCategory("Boss")
     if self.ResetSearchCache then self:ResetSearchCache() end
 
@@ -2176,8 +2000,7 @@ function Database:PopulateDynamicBosses()
         return
     end
 
-    -- Suppress EJ UI events during the scan so opening the journal
-    -- mid-scan can't fight us. Restore at the end.
+    -- Suppress EJ UI events so opening the journal mid-scan can't fight us.
     local ejFrame = _G["EncounterJournal"]
     local savedOnEvent
     if ejFrame then
@@ -2211,8 +2034,6 @@ function Database:PopulateDynamicBosses()
         end
     end
 
-    -- Restore prior tier and EJ event handler so the journal behaves
-    -- normally for the user's next interaction.
     if savedTier and selectTier then selectTier(savedTier) end
     if ejFrame and savedOnEvent then ejFrame:SetScript("OnEvent", savedOnEvent) end
 end
@@ -2328,11 +2149,6 @@ function Database:PopulateDynamicBossesAsync(done)
     end)
 end
 
--- Enumerate the player's class/spec talent tree(s) via C_Traits and
--- emit one search entry per selectable talent. Each entry remembers the
--- nodeID + entryID so the click handler can scroll the talents tree
--- into view, find the matching node button under PlayerSpellsFrame.
--- TalentsFrame.ButtonsParent, and highlight it.
 function Database:PopulateDynamicTalents()
     RemoveEntriesByCategory("Talent")
     if self.ResetSearchCache then self:ResetSearchCache() end
@@ -2375,10 +2191,7 @@ function Database:PopulateDynamicTalents()
         if seen[name .. "|" .. (spellID or 0)] then return end
         seen[name .. "|" .. (spellID or 0)] = true
 
-        -- Allocation: choice nodes pick one of their entries via
-        -- activeEntry; regular nodes report activeRank > 0 when the
-        -- player has put points in. Used by the row renderer to
-        -- desaturate the per-talent icon for unspecced talents.
+        -- Row renderer desaturates the icon for unspecced talents.
         local isAllocated
         if isChoice then
             isAllocated = nodeInfo.activeEntry and nodeInfo.activeEntry.entryID == entryID
@@ -2430,10 +2243,6 @@ function Database:PopulateDynamicTalents()
     return true
 end
 
--- Inject one entry per unique item carried in the player's bags. The
--- entry stores the first occupied location so guide mode can highlight
--- the right slot; drag-to-pickup uses the item ID to put the item on
--- the cursor (matching the in-game bag drag behavior).
 function Database:PopulateDynamicBags()
     local CONT = C_Container
     local getNumSlots = (CONT and CONT.GetContainerNumSlots) or GetContainerNumSlots
@@ -2505,7 +2314,7 @@ function Database:PopulateDynamicBags()
                 if type(raw) == "table" then
                     itemID, texture, link, count = raw.itemID, raw.iconFileID, raw.hyperlink, raw.stackCount
                 else
-                    -- Legacy multi-return (Classic-era layout)
+                    -- Classic-era multi-return layout.
                     texture = raw
                     local _
                     _, count, _, _, _, _, link, _, _, itemID = getItemInfo(bag, slot)
@@ -2573,9 +2382,8 @@ function Database:_ResetHeavyProviderCaches()
     wipe(lootSpecsScanned)
 end
 
--- Aliases the API category names don't carry. Keyed by lowercase name.
--- Words from the name are tokenized automatically by the search scorer,
--- so these only need acronyms and shortenings the user might type.
+-- Aliases the API category names don't carry. Words from the name itself
+-- are auto-tokenized; only put acronyms and shortenings here.
 local CATEGORY_KEYWORD_OVERLAY = {
     ["rated battlegrounds"]      = {"rbg", "rated bg"},
     ["alterac valley"]           = {"av"},
@@ -2631,16 +2439,11 @@ local function buildCategoryEntry(opts)
     return entry
 end
 
--- Walks GetCategoryList()/GetCategoryInfo() to build personal +
--- guild achievement category entries directly from the live registry,
--- so search results always match what the AchievementFrame sidebar
--- actually contains for the current build.
 function Database:PopulateDynamicAchievements()
     if not GetCategoryList or not GetCategoryInfo then return false end
-    -- Midnight's GetCategoryList can include statistic tracker IDs.
-    -- Filter those from live category ancestry immediately; the async
-    -- Statistics pass later refreshes this provider with the full row-ID
-    -- set as a backup without blocking achievement results at login.
+    -- Midnight's GetCategoryList can include statistic tracker IDs. Filter
+    -- them out here; the async Statistics pass refreshes us later with the
+    -- full row-ID set as a backup.
 
     RemoveEntriesByCategory("Achievement Category")
 
@@ -2725,15 +2528,10 @@ function Database:PopulateDynamicAchievements()
     return true
 end
 
--- Walks GetStatisticsCategoryList()/GetCategoryInfo() to emit the
--- Statistics tab's category tree. Same shape as achievements but
--- targets the Statistics tab (tabIndex = 3).
--- Set of achievement IDs that are statistic-tracker achievements.
--- Populated by PopulateDynamicStatistics; consumed by callers that
--- enumerate achievements via Blizzard's APIs (e.g. UI.lua's inline
--- achievement search) so they can filter stat-trackers out -- those
--- show up under their own dedicated Statistics filter, not as
--- duplicate "Achievement" rows.
+-- statisticIDs: achievement IDs that are statistic trackers. Populated by
+-- PopulateDynamicStatistics so consumers that enumerate achievements via
+-- Blizzard APIs can filter trackers out (they show under Statistics, not as
+-- duplicate Achievement rows).
 Database.statisticIDs = Database.statisticIDs or {}
 Database.statisticsCategoryIDs = Database.statisticsCategoryIDs or {}
 Database.statisticsCategoryChildIDs = Database.statisticsCategoryChildIDs or {}
@@ -2816,15 +2614,9 @@ function Database:IsStatisticAchievement(achievementID)
     return IsInStatisticsCategoryTree(achievementID, parentID)
 end
 
--- Cancel token for async stat scans -- bumping it during a scan
--- causes the in-flight time-sliced loop to bail without writing.
+-- Bumping during a scan causes the in-flight time-sliced loop to bail.
 local statsScanGeneration = 0
 
--- Time-sliced version of PopulateDynamicStatistics. The per-row
--- enumeration is ~400 API calls; running it sync at PLAYER_LOGIN
--- doubles the load screen, and running it sync in one frame
--- post-login causes a visible hitch. Spread the work across frames
--- with a small per-tick budget instead.
 function Database:PopulateDynamicStatisticsAsync(done)
     if not GetStatisticsCategoryList or not GetCategoryInfo
        or not C_Timer or not C_Timer.After then
@@ -2862,16 +2654,9 @@ function Database:PopulateDynamicStatisticsAsync(done)
         end
     end
 
-    -- Flat queue of per-row work items. The expensive per-category
-    -- setup (steps prefix, path, prototype with shared fields) is
-    -- built ONCE per category and stored on the queue item; per-row
-    -- work then only needs the API call + minimal entry construction.
-    --
-    -- Each entry uses an __index prototype to share the constant
-    -- fields (category, buttonFrame, flashLabel, keywords, path,
-    -- stepsPrefix) so each row only stores its unique fields
-    -- (name, nameLower, statisticID, full steps array).
-    local STAT_KEYWORDS_EMPTY = {}  -- shared empty
+    -- Per-category setup built once per category and shared via __index proto
+    -- so each row only stores its unique fields (name, statisticID, steps).
+    local STAT_KEYWORDS_EMPTY = {}
     local queue = {}
 
     local function enqueueCategory(cat, parentChain)
@@ -2931,11 +2716,7 @@ function Database:PopulateDynamicStatisticsAsync(done)
     end
     for i = 1, #roots do enqueueCategory(roots[i], {}) end
 
-    -- Per-row work: one API call, one slower, one steps copy, one
-    -- table allocation with metatable. ~0.05-0.1ms each instead of
-    -- the 0.5ms buildCategoryEntry path. Keywords are skipped
-    -- entirely; matching falls back to the unique stat name which
-    -- is sufficient (search engine handles word-substring on names).
+    -- Keywords skipped; the unique stat name is enough for the scorer.
     local seenStatisticIDs = {}
     local function processRow(item)
         if not GetAchievementInfo then return end
@@ -2964,9 +2745,6 @@ function Database:PopulateDynamicStatisticsAsync(done)
         uiSearchData[#uiSearchData + 1] = entry
     end
 
-    -- ~2ms per tick. With the prototype-based per-row work at
-    -- ~0.05-0.1ms each, ~25 rows fit per tick. ~2000 rows / 25 =
-    -- ~80 yields total. At 60fps that's ~1.3s, imperceptible per-tick.
     local BUDGET_MS = 2
     local cursor = 1
     local function step()
@@ -2983,8 +2761,8 @@ function Database:PopulateDynamicStatisticsAsync(done)
                 return
             end
         end
-        -- Stats done; refresh achievements so the full stat row-ID set
-        -- is available as a backup to the live category-tree filter.
+        -- Refresh achievements so the full stat row-ID set is available
+        -- as a backup to the live category-tree filter.
         Database.statisticsComplete = true
         Database.statisticsVersion = Database.statisticsVersion + 1
         if Database.RefreshDynamicCategory then
@@ -3027,12 +2805,7 @@ function Database:PopulateDynamicStatistics()
         end
     end
 
-    -- Emit one entry per individual stat row inside each category.
-    -- Each "row" in the Statistics tab is an achievement ID whose
-    -- value is fetched via GetStatistic(achievementID). Walking
-    -- GetCategoryNumAchievements + GetAchievementInfo gives us the
-    -- per-row IDs and titles for inline display. This synchronous path
-    -- remains as a fallback for environments without C_Timer.
+    -- Sync fallback path for environments without C_Timer.
     local seenStatisticIDs = {}
     local function emit(cat, parentChain)
         local baseSteps = {
@@ -3072,11 +2845,10 @@ function Database:PopulateDynamicStatistics()
                         MarkID(Database.statisticIDs, id)
                         local steps = {}
                         for s = 1, #baseSteps do steps[s] = baseSteps[s] end
-                        -- Leaf step: ONLY statisticID + statisticName.
-                        -- Including statisticsCategory here would make the
-                        -- statisticsCategory handler match first (it runs
-                        -- before the statisticID handler) and Cancel the
-                        -- guide because the category is already selected.
+                        -- Leaf step must be ONLY statisticID + statisticName.
+                        -- Including statisticsCategory here lets that handler
+                        -- match first (it runs before statisticID) and cancel
+                        -- the guide since the category is already selected.
                         steps[#steps + 1] = {
                             waitForFrame = "AchievementFrame",
                             statisticID = id,
@@ -3113,10 +2885,7 @@ function Database:PopulateDynamicStatistics()
     return true
 end
 
--- TREE FLATTENER
--- Walks the tree and produces flat entries for the search/highlight engines.
--- Children inherit: buttonFrame, category, and accumulate path + steps from parents.
-
+-- Children inherit buttonFrame/category and accumulate path + steps.
 function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, parentCategory)
     parentPath = parentPath or {}
     parentSteps = parentSteps or {}
@@ -3125,7 +2894,7 @@ function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, 
         local myButtonFrame = node.buttonFrame or parentButtonFrame
         local myCategory = node.category or parentCategory
 
-        -- Accumulate steps: reuse parent array when node adds nothing
+        -- Reuse parent array when node adds nothing.
         local mySteps
         if node.steps then
             mySteps = {}
@@ -3135,7 +2904,7 @@ function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, 
             mySteps = parentSteps
         end
 
-        -- Build the flat entry (path = parent names leading here, NOT including self)
+        -- path = parent names leading here, NOT including self.
         local entry = {
             name = node.name,
             keywords = node.keywords or {},
@@ -3145,7 +2914,6 @@ function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, 
             steps = mySteps,
         }
         for i = 1, #parentPath do entry.path[i] = parentPath[i] end
-        -- Copy optional fields
         if node.flashLabel then entry.flashLabel = node.flashLabel end
         if node.icon then entry.icon = node.icon end
         if node.available then entry.available = node.available end
@@ -3154,7 +2922,6 @@ function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, 
 
         uiSearchData[#uiSearchData + 1] = entry
 
-        -- Recurse into children with this node's name appended to the path
         if node.children then
             local childPath = {}
             for i = 1, #parentPath do childPath[i] = parentPath[i] end
@@ -3165,15 +2932,11 @@ function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, 
 end
 
 function Database:BuildUIDatabase()
-    -- UI TREE
     -- Each node: { name, keywords, [category], [buttonFrame], [steps], [children] }
-    --   - category: inherited from parent if omitted
-    --   - buttonFrame: inherited from parent if omitted
-    --   - steps: only THIS node's new steps (flattener prepends parent steps)
-    --   - path: auto-built from ancestor names (never specified manually)
+    -- category and buttonFrame inherit from parent; steps prepends parent steps;
+    -- path is auto-built from ancestor names.
     local uiTree = {
 
-        -- CHARACTER INFO
         {
             name = "Character Info",
             keywords = {"character", "char", "attributes"},
@@ -3228,7 +2991,6 @@ function Database:BuildUIDatabase()
             },
         },
 
-        -- PROFESSIONS
         {
             name = "Professions",
             keywords = {"professions", "profession", "crafting", "trade skills", "skills"},
@@ -3237,7 +2999,6 @@ function Database:BuildUIDatabase()
             steps = {{ buttonFrame = "ProfessionMicroButton" }},
         },
 
-        -- TALENTS & SPELLBOOK
         {
             name = "Talents & Spellbook",
             keywords = {"talents and spellbook", "class abilities"},
@@ -3278,7 +3039,6 @@ function Database:BuildUIDatabase()
             },
         },
 
-        -- ACHIEVEMENTS
         {
             name = "Achievements",
             keywords = {"achievement", "achievements", "achieve", "points"},
@@ -3291,31 +3051,17 @@ function Database:BuildUIDatabase()
                     keywords = {"achievements", "achievement tab", "personal achievements"},
                     category = "Achievements",
                     steps = {{ waitForFrame = "AchievementFrame", tabIndex = 1 }},
-                    -- Category entries are emitted at runtime by
-                    -- Database:PopulateDynamicAchievements() using
-                    -- GetCategoryList() / GetCategoryInfo() so the search
-                    -- index always matches the live AchievementFrame
-                    -- sidebar for the current build.
                 },
 
-                -- STATISTICS (Tab 3)
                 {
                     name = "Statistics",
                     keywords = {"statistics", "stats tab", "player statistics"},
                     category = "Achievements",
                     steps = {{ waitForFrame = "AchievementFrame", tabIndex = 3 }},
-                    -- Statistics category entries are emitted at runtime by
-                    -- Database:PopulateDynamicStatistics() using
-                    -- GetStatisticsCategoryList() / GetCategoryInfo() so the
-                    -- search index always matches the live AchievementFrame
-                    -- Statistics sidebar for the current build.
-                    -- Per-row stat entries (including duels) come from
-                    -- PopulateDynamicStatistics; no manual entries needed.
                 },
             },
         },
 
-        -- QUEST LOG
         {
             name = "Quest Log",
             keywords = {"quest", "quests", "objectives", "log", "journal"},
@@ -3324,7 +3070,6 @@ function Database:BuildUIDatabase()
             steps = {{ buttonFrame = "QuestLogMicroButton" }},
         },
 
-        -- HOUSING
         {
             name = "Housing Dashboard",
             keywords = {"housing", "house", "home", "dashboard", "player housing"},
@@ -3333,7 +3078,6 @@ function Database:BuildUIDatabase()
             steps = {{ buttonFrame = "HousingMicroButton" }},
         },
 
-        -- GUILD & COMMUNITIES
         {
             name = "Guild & Communities",
             keywords = {"guild", "communities", "social", "clan"},
@@ -3342,7 +3086,6 @@ function Database:BuildUIDatabase()
             steps = {{ buttonFrame = "GuildMicroButton" }},
         },
 
-        -- GROUP FINDER
         {
             name = "Group Finder",
             keywords = {"lfg", "lfd", "lfr", "finder", "queue", "group finder"},
@@ -3350,7 +3093,6 @@ function Database:BuildUIDatabase()
             buttonFrame = "LFDMicroButton",
             steps = {{ buttonFrame = "LFDMicroButton" }},
             children = {
-                -- PVE SECTION
                 {
                     name = "Dungeons & Raids",
                     keywords = {"dungeons", "raids", "dungeons and raids"},
@@ -3375,7 +3117,6 @@ function Database:BuildUIDatabase()
                     },
                 },
 
-                -- PVP SECTION
                 {
                     name = "Player vs. Player",
                     keywords = {"pvp", "player vs player", "battleground", "arena", "bg"},
@@ -3428,7 +3169,6 @@ function Database:BuildUIDatabase()
                     },
                 },
 
-                -- MYTHIC+ SECTION
                 {
                     name = "Mythic+ Dungeons",
                     keywords = {"mythic", "mythic+", "m+", "keystone", "mythic plus", "keys"},
@@ -3438,7 +3178,6 @@ function Database:BuildUIDatabase()
             },
         },
 
-        -- WARBAND COLLECTIONS
         {
             name = "Warband Collections",
             keywords = {"collections", "warband"},
@@ -3455,7 +3194,6 @@ function Database:BuildUIDatabase()
             },
         },
 
-        -- TRANSMOGRIFICATION
         {
             name = "Transmogrification",
             keywords = {"transmogrification", "transmog", "tmog", "mog", "wardrobe", "outfit", "outfits", "appearance", "keymog"},
@@ -3464,7 +3202,6 @@ function Database:BuildUIDatabase()
             steps = {{ loadTransmog = true }},
         },
 
-        -- ADVENTURE GUIDE
         {
             name = "Adventure Guide",
             keywords = {"adventure", "guide", "dungeon journal", "encounters", "loot", "boss", "journal"},
@@ -3484,12 +3221,9 @@ function Database:BuildUIDatabase()
             },
         },
 
-        -- GAME MENU / HELP / SHOP
-        -- /click routes through the secure dispatch so the micro
-        -- button's OnClick fires in a hardware-event context;
-        -- ToggleGameMenu's internal ClearTarget then succeeds. A
-        -- /run ShowUIPanel(GameMenuFrame) here forbid-errors on
-        -- ClearTarget because /run is not a hardware event.
+        -- /click routes through secure dispatch so the micro button's OnClick
+        -- fires from a hardware event; ToggleGameMenu's ClearTarget needs that.
+        -- /run ShowUIPanel(GameMenuFrame) here forbid-errors on ClearTarget.
         {
             name = "Game Menu",
             keywords = {"menu", "settings", "options", "escape", "esc", "logout", "quit", "exit", "interface"},
@@ -3515,7 +3249,6 @@ function Database:BuildUIDatabase()
             },
         },
 
-        -- PORTRAIT MENU OPTIONS (Auto-generated by Harvester)
         {
             name = "Portrait Menu",
             keywords = {"portrait", "portrait menu", "right click portrait", "player frame menu"},
@@ -3546,7 +3279,6 @@ function Database:BuildUIDatabase()
             },
         },
 
-        -- OTHER UI ELEMENTS (no tree hierarchy, standalone)
         {
             name = "Bags / Inventory",
             keywords = {"bags", "bag", "inventory", "backpack", "items", "storage"},
@@ -3590,11 +3322,8 @@ function Database:BuildUIDatabase()
             slashCommand = "/click GameTimeFrame",
         },
 
-        -- Quick action: dismiss any active companion. /dismisspet alone
-        -- only handles hunter/warlock pets, so the macrotext also toggles
-        -- the active battle-pet companion via SummonPetByGUID with the
-        -- currently-summoned GUID (which dismisses it). Two lines so one
-        -- click covers both kinds of "pet" the player might mean.
+        -- /dismisspet only handles hunter/warlock pets; the second line
+        -- toggles the active battle-pet companion (dismissing it).
         {
             name = "Dismiss Pet",
             keywords = {"dismiss", "dismiss pet", "pet", "companion", "summon",
@@ -3605,7 +3334,6 @@ function Database:BuildUIDatabase()
         },
     }
 
-    -- Flatten the tree into the flat uiSearchData array
     self:FlattenTree(uiTree)
 
     for _, item in ipairs(uiSearchData) do
@@ -3630,12 +3358,10 @@ function Database:BuildUIDatabase()
         end
     end
 
-    -- Tag entries with isPvP / isPvE for filter support
     local PVP_NAMES = {
         ["PvP Talents"] = true, ["War Mode"] = true, ["PvP Flag"] = true,
     }
     for _, item in ipairs(uiSearchData) do
-        -- PvP: explicit category, known PvP entries, or under Player vs. Player tree
         if item.category == "PvP" or PVP_NAMES[item.name]
             or sfind(item.name, "Player vs. Player", 1, true) then
             item.isPvP = true
@@ -3647,7 +3373,6 @@ function Database:BuildUIDatabase()
                 end
             end
         end
-        -- PvE: Group Finder PvE subtree (Dungeons & Raids, Mythic+)
         if not item.isPvP and item.path then
             local underGroupFinder = false
             for _, p in ipairs(item.path) do
@@ -3675,29 +3400,22 @@ function Database:BuildUIDatabase()
     end
 end
 
--- SEARCH SCORING HELPERS
--- Word-boundary matching, initials matching, and fuzzy/typo tolerance.
-
--- Pairs of words that are close in edit distance but semantically opposite.
--- Matching between these pairs is suppressed across initials and fuzzy scoring.
+-- Suppresses fuzzy/initials matches between word pairs that are close in
+-- edit distance but semantically opposite.
 local FUZZY_BLOCKLIST = {
     ["pvp"] = { ["pve"] = true },
     ["pve"] = { ["pvp"] = true },
-    -- "ability" / "abilities" appear as keywords on every ability entry
-    -- so multi-word queries like "feral abilities" can scope to a spec.
-    -- Block fuzzy hits between them and the literal stat "agility" so
-    -- typing "agility" doesn't drag every ability into the results.
+    -- "ability"/"abilities" are keywords on every Ability entry; without
+    -- this, typing "agility" drags every ability into results.
     ["agility"]   = { ["ability"] = true, ["abilities"] = true },
     ["ability"]   = { ["agility"] = true },
     ["abilities"] = { ["agility"] = true },
 }
 
--- Words that real abbreviations skip without comment ("lfg" = "Looking For
--- Group", "tot" = "Throne of Thunder"). Initials Strategy 2 may step over
--- these for free; skipping any non-stopword (a content word like "atrocity"
--- in "Shurrai, Atrocity of the Undersea") breaks the chain so unrelated
--- queries don't get a misleading high score from accidental letter
--- alignment.
+-- Initials Strategy 2 may step over these for free ("lfg" = Looking For
+-- Group, "tot" = Throne of Thunder). Hitting a non-stopword content word
+-- without matching breaks the chain so accidental letter alignment doesn't
+-- score (e.g. "sound" wrongly hitting "Shurrai, Atrocity of the Undersea").
 local INITIALS_STOPWORDS = {
     ["of"] = true, ["the"] = true, ["a"] = true, ["an"] = true,
     ["and"] = true, ["or"] = true, ["in"] = true, ["on"] = true,
@@ -3705,19 +3423,13 @@ local INITIALS_STOPWORDS = {
     ["with"] = true, ["from"] = true,
 }
 
--- A word boundary is the start of the string or right after a space/punctuation.
--- Returns true if found at a boundary, false if only found mid-word or not at all.
 function Database:FindAtWordBoundary(text, query)
-    -- Check at start of string. sfind avoids the per-call substring
-    -- allocation that ssub(text, 1, #query) would create.
     local found = sfind(text, query, 1, true)
     if not found then return false end
     if found == 1 then return true end
-    -- After word boundaries (space, dash, parenthesis, colon, slash, dot).
-    -- sbyte avoids creating a 1-char string per check.
+    -- 32=space 45=- 40=( 58=: 47=/ 46=.
     while found do
         local prev = sbyte(text, found - 1)
-        -- 32=space, 45=- 40=( 58=: 47=/ 46=.
         if prev == 32 or prev == 45 or prev == 40
            or prev == 58 or prev == 47 or prev == 46 then
             return true
@@ -3727,17 +3439,10 @@ function Database:FindAtWordBoundary(text, query)
     return false
 end
 
--- Score how well `query` matches as initials/abbreviation of words in `text`.
--- "rb" → "rated battlegrounds" = 130 (each char matches a word start)
--- "raba" → "random battleground" = 125 (prefix of words)
--- "ranb" → "random battleground" = 115 (longer prefix matching)
--- Returns 0 if no reasonable initials match found.
 function Database:ScoreInitials(text, query)
-    -- Use cached word split (input is already lowercase)
     local words = GetWords(text)
-    if #words < 2 then return 0 end  -- initials only make sense for multi-word
+    if #words < 2 then return 0 end
 
-    -- Blocklist: "pve" must never initials-match text containing word "pvp" (and vice versa)
     local blocked = FUZZY_BLOCKLIST[query]
     if blocked then
         for wi = 1, #words do
@@ -3748,8 +3453,7 @@ function Database:ScoreInitials(text, query)
     local queryLen = #query
     local numWords = #words
 
-    -- Strategy 1: Pure initials - each query char matches the first letter of consecutive words
-    -- "rb" → R(ated) B(attlegrounds)
+    -- Strategy 1: pure initials. "rb" → R(ated) B(attlegrounds).
     if queryLen <= numWords then
         local allMatch = true
         for i = 1, queryLen do
@@ -3759,21 +3463,13 @@ function Database:ScoreInitials(text, query)
             end
         end
         if allMatch then
-            -- Bonus for matching ALL words' initials (not partial)
             local bonus = (queryLen == numWords) and 135 or 130
             return bonus
         end
     end
 
-    -- Strategy 2: Prefix-of-words - each query segment matches the start
-    -- of a word, walking left-to-right. "raba" → "ra(ndom) ba(ttleground)"
-    -- greedily consumes query chars across consecutive words.
-    -- Once the chain has started (wordsMatched > 0), encountering a
-    -- non-stopword that doesn't match breaks the chain. Without this,
-    -- queries like "sound" wrongly initial-match "Shurrai, Atrocity of
-    -- the Undersea" via S(hurrai) o(f) und(ersea), skipping the content
-    -- word "atrocity" silently. Stopwords (of/the/and/...) may still be
-    -- skipped: that's what lets "tot" → "Throne of Thunder" work.
+    -- Strategy 2: greedy word-prefix walk. "raba" → ra(ndom) ba(ttleground).
+    -- Stopwords may be skipped (so "tot" → Throne Of Thunder works).
     local qi = 1
     local wordsMatched = 0
     for wi = 1, numWords do
@@ -3801,19 +3497,13 @@ function Database:ScoreInitials(text, query)
     return 0
 end
 
--- Score fuzzy/typo matching using Damerau-Levenshtein distance.
--- Only applied to individual words in `text` that are similar in length to `query`.
--- Returns a score > 0 if a close match is found, 0 otherwise.
-
 function Database:ScoreFuzzy(text, query, queryLen)
-    -- Length-scaled typo tolerance (1 edit per ~4 chars), the same
-    -- shape Algolia / Elasticsearch AUTO mode use. Without this scale,
-    -- a 5-char query like "skull" would fuzzy-match "spell" (2 edits)
-    -- and similar 40%-different words, drowning real results.
+    -- Length-scaled typo budget (1 edit per ~4 chars). Without this,
+    -- "skull" fuzzy-matches "spell" and similar unrelated 40%-diff words.
     local maxEdits
     if queryLen >= 8 then maxEdits = 2
     elseif queryLen >= 4 then maxEdits = 1
-    else return 0  -- queries under 4 chars: no fuzzy, substring covers them
+    else return 0
     end
 
     local queryFirst = sbyte(query, 1)
@@ -3822,12 +3512,7 @@ function Database:ScoreFuzzy(text, query, queryLen)
     local textWords = GetWords(text)
     for wi = 1, #textWords do
         local word = textWords[wi]
-        -- First-letter constraint (Algolia default). "easter" vs
-        -- "master" is a 1-edit match technically, but they're
-        -- semantically unrelated: typos almost never change the
-        -- first character, and this rule kills the false-positive
-        -- flood without dropping real typos like "achievmnts" →
-        -- "achievements".
+        -- First-letter must match: typos rarely hit the first char.
         if sbyte(word, 1) == queryFirst
            and not (blocked and blocked[word]) then
             local wordLen = #word
@@ -3846,10 +3531,7 @@ function Database:ScoreFuzzy(text, query, queryLen)
     return bestScore
 end
 
--- Requires first character match to avoid spurious hits like "ahn'" in "magtheridon's".
--- Uses sbyte() instead of ssub() inside the inner loop -- ssub creates a
--- fresh 1-char string per call which adds up to thousands of short-lived
--- strings per keystroke (3700 entries x queryLen iterations).
+-- First-char constraint avoids spurious hits like "ahn'" in "magtheridon's".
 function Database:IsSubsequence(word, query, queryLen)
     if sbyte(word, 1) ~= sbyte(query, 1) then return false end
     local wi = 1
@@ -3869,16 +3551,14 @@ function Database:IsSubsequence(word, query, queryLen)
         end
         if not found then return false end
     end
-    -- Reject sparse matches: "inn" in "instance" matches i(1)n(2)n(6) but span 6 > 5
+    -- Reject sparse matches: "inn" in "instance" hits i(1)n(2)n(6), span 6 > 5.
     return (wi - 1) - firstPos + 1 <= queryLen * 2 - 1
 end
 
--- Damerau-Levenshtein distance (supports transpositions).
--- Capped: returns early if distance exceeds 2 (saves CPU).
+-- Damerau-Levenshtein with transpositions, capped at 2.
 function Database:DamerauLevenshtein(s1, s2, len1, len2)
-    if mabs(len1 - len2) > 2 then return 3 end  -- too different, skip
+    if mabs(len1 - len2) > 2 then return 3 end
 
-    -- Reuse module-level tables (rotated each row, no allocation)
     local prev2, prev, curr = dlPrev2, dlPrev, dlCurr
 
     for j = 0, len2 do prev[j] = j end
@@ -3892,11 +3572,10 @@ function Database:DamerauLevenshtein(s1, s2, len1, len2)
             local c2 = sbyte(s2, j)
             local cost = (c1 == c2) and 0 or 1
             curr[j] = mmin(
-                prev[j] + 1,        -- deletion
-                curr[j - 1] + 1,    -- insertion
-                prev[j - 1] + cost  -- substitution
+                prev[j] + 1,
+                curr[j - 1] + 1,
+                prev[j - 1] + cost
             )
-            -- Transposition
             if i > 1 and j > 1
                 and c1 == sbyte(s2, j - 1)
                 and c1Prev == c2 then
@@ -3904,22 +3583,13 @@ function Database:DamerauLevenshtein(s1, s2, len1, len2)
             end
             if curr[j] < minInRow then minInRow = curr[j] end
         end
-        -- Early exit if the best possible in this row already exceeds threshold
         if minInRow > 2 then return 3 end
-        prev2, prev, curr = prev, curr, prev2  -- rotate rows
+        prev2, prev, curr = prev, curr, prev2
     end
     return prev[len2]
 end
 
--- Fast pre-filter: every distinct character in the query must appear
--- somewhere in `text`. Order and position don't matter so fuzzy
--- matchers tolerant of transpositions (e.g., "acheivement" vs
--- "achievement") still pass through to the real scorers. Missing a
--- single query char is a definitive "cannot match" signal.
---
--- Builds a small byte-set from the text per call. For stable text
--- (POI names), the caller should cache result at a higher level; for
--- one-off scoring this remains cheap: O(|text| + |query|).
+-- Fast pre-filter: every distinct char in query must appear somewhere in text.
 local reuseCouldMatchSet = {}
 function Database:CouldMatch(text, query)
     local tlen, qlen = #text, #query
@@ -3932,35 +3602,25 @@ function Database:CouldMatch(text, query)
     end
     for i = 1, qlen do
         local qb = query:byte(i)
-        if qb ~= 32 and not seen[qb] then  -- skip spaces (multi-word queries)
+        if qb ~= 32 and not seen[qb] then
             return false
         end
     end
     return true
 end
 
--- Unified name scoring: exact → starts-with → word-boundary → substring → initials → fuzzy.
--- All search features (UI, map zone, map POI) use this single function.
--- Returns a score ≥ 0. Caller decides the minimum threshold.
+-- exact → starts-with → word-boundary → substring → initials → fuzzy.
 function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
-    -- Trim trailing whitespace so "windrnr " behaves like "windrnr"
     if ssub(query, queryLen, queryLen) == " " then
         query = query:match("^(.-)%s+$") or query
         queryLen = #query
         if queryLen == 0 then return 0 end
     end
 
-    -- Cheap pre-filter: if the query's chars don't appear in order in
-    -- the name, no scoring path can match. Saves the subsequence +
-    -- fuzzy DP pass on the ~90%+ of entries that obviously don't match.
     if not Database:CouldMatch(nameLower, query) then return 0 end
 
     local score = 0
 
-    -- Whole-string matching (works for single and multi-word queries)
-    -- sfind(plain) avoids the per-entry substring allocation that
-    -- ssub(haystack, 1, n) == needle would create. With ~3700 entries
-    -- scored per keystroke this is the dominant per-search alloc.
     if nameLower == query then
         score = 200
     elseif sfind(nameLower, query, 1, true) == 1 then
@@ -3968,24 +3628,20 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
     elseif Database:FindAtWordBoundary(nameLower, query) then
         score = 120
     elseif sfind(nameLower, query, 1, true) then
-        score = 30   -- mid-word substring
+        score = 30
     end
 
-    -- Initials matching: "rb" → "Rated Battlegrounds"
     if score < 130 then
         local initScore = Database:ScoreInitials(nameLower, query)
         if initScore > score then score = initScore end
     end
 
-    -- Fuzzy/typo matching against whole query (queries >= 4 chars)
     if score < 100 and queryLen >= 4 then
         local fuzzyScore = Database:ScoreFuzzy(nameLower, query, queryLen)
         if fuzzyScore > score then score = fuzzyScore end
     end
 
-    -- Subsequence matching against name words for vowel-stripped abbreviations
-    -- Short queries (3-4): "qtr" → "quartermaster" (word must be 2x+ longer)
-    -- Longer queries (5-7): "windrnr" → "windrunner" (must cover 60%+ of word)
+    -- Vowel-stripped abbreviations: "qtr" → quartermaster, "windrnr" → windrunner.
     if score < 50 and queryLen >= 3 and not sfind(query, " ", 1, true) then
         local nameWords = GetWords(nameLower)
         for wi = 1, #nameWords do
@@ -4005,12 +3661,8 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
         end
     end
 
-    -- Per-word matching for multi-word queries:
-    -- Split query into words and score each against name words.
-    -- All query words must match for a score to be awarded.
-    -- Fires even when an inferior path already returned a low score
-    -- (e.g. mid-word substring 30) so a multi-word typo match like
-    -- "estern kingd" → "Eastern Kingdoms" can still surface.
+    -- Multi-word query: all words must match. Fires even after an inferior
+    -- low-score path so "estern kingd" → "Eastern Kingdoms" can still surface.
     if score < 100 and sfind(query, " ", 1, true) then
         local queryWords = optQueryWords
         if not queryWords then
@@ -4051,7 +3703,6 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
                                     ws = 40
                                 end
                             end
-                            -- Subsequence for vowel-stripped words
                             if ws == 0 and qwLen <= 8 and nwLen > qwLen and qwLen / nwLen >= 0.6 then
                                 if Database:IsSubsequence(nw, qw, qwLen) then
                                     ws = 45
@@ -4088,19 +3739,15 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
     return score
 end
 
--- Unified keyword scoring: additive score from matching against a list of keywords.
--- Returns a total score to ADD to the name score.
 function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
     if not keywordsLower then return 0 end
 
-    -- Trim trailing whitespace to match ScoreName behavior
     if ssub(query, queryLen, queryLen) == " " then
         query = query:match("^(.-)%s+$") or query
         queryLen = #query
         if queryLen == 0 then return 0 end
     end
 
-    -- Use pre-split query words if provided, otherwise split here
     local queryWords = optQueryWords
     if not queryWords then
         queryWords = {}
@@ -4109,9 +3756,9 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
         end
     end
 
-    -- Single-word query: take the BEST keyword match only (not sum).
-    -- Summing caused items with redundant keywords (e.g. "reputation" +
-    -- "reputation achievements") to outscore items with a better name match.
+    -- Single-word: take BEST kw match, not sum. Summing let items with
+    -- redundant keywords ("reputation" + "reputation achievements") beat
+    -- items with a better name match.
     local numKeywords = #keywordsLower
     if #queryWords == 1 then
         local best = 0
@@ -4119,14 +3766,13 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
             local kw = keywordsLower[ki]
             local kwScore = 0
             if kw == query then
-                -- Short abbreviations (2-3 chars) are intentional, boost above initials
+                -- Short abbreviations (2-3 chars) get boosted above initials.
                 kwScore = queryLen <= 3 and 140 or 80
             elseif sfind(kw, query, 1, true) == 1 then
                 kwScore = 70
             elseif Database:FindAtWordBoundary(kw, query) then
                 kwScore = 55
             end
-            -- Initials on keywords (skip for 1-2 char queries: penalty drops score below threshold)
             if kwScore < 60 and queryLen >= 3 then
                 local initScore = Database:ScoreInitials(kw, query)
                 if initScore > 0 then
@@ -4134,12 +3780,10 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
                     kwScore = mmax(kwScore, initScore - penalty)
                 end
             end
-            -- Fuzzy on keywords
             if kwScore < 40 and queryLen >= 4 then
                 local kf = Database:ScoreFuzzy(kw, query, queryLen)
                 if kf > 0 then kwScore = mmax(kwScore, kf) end
             end
-            -- Subsequence per-word in keywords
             if kwScore < 50 and queryLen >= 3 then
                 local kwWords = GetWords(kw)
                 for kwi = 1, #kwWords do
@@ -4163,13 +3807,9 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
         return best
     end
 
-    -- For multi-word queries, match each word separately and take best match per word.
-    -- All query words >= 2 chars must match at least one keyword; a single
-    -- unmatched word zeroes the total to prevent common words like "of" from
-    -- producing false positives. Single-character words are SKIPPED (not
-    -- failed) so a mid-type query like "feral a" still passes through entries
-    -- that match "feral", otherwise the prevCandidates incremental narrowing
-    -- chain inherits an empty set and "feral abil" silently returns nothing.
+    -- Multi-word: all words >= 2 chars must match. Single-char words are
+    -- SKIPPED (not failed) so mid-type queries like "feral a" don't empty
+    -- prevCandidates and silently kill the next "feral abil" extension.
     local total = 0
     for qwi = 1, #queryWords do
         local queryWord = queryWords[qwi]
@@ -4187,7 +3827,6 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
                 elseif Database:FindAtWordBoundary(kw, queryWord) then
                     kwScore = 55
                 end
-                -- Initials on keywords (skip for 1-2 char queries: penalty drops score below threshold)
                 if kwScore < 60 and queryWordLen >= 3 then
                     local initScore = Database:ScoreInitials(kw, queryWord)
                     if initScore > 0 then
@@ -4195,7 +3834,6 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
                         kwScore = mmax(kwScore, initScore - penalty)
                     end
                 end
-                -- Fuzzy on keywords
                 if kwScore < 40 and queryWordLen >= 4 then
                     local kf = Database:ScoreFuzzy(kw, queryWord, queryWordLen)
                     if kf > 0 then kwScore = mmax(kwScore, kf) end
@@ -4210,14 +3848,13 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
             end
             total = total + bestScore
         end
-        -- queryWordLen < 2: skipped (mid-type), don't fail entry
     end
 
     return total
 end
 
--- Incremental search state: when the user extends the previous query (e.g. "mou" → "moun"),
--- only re-score entries that matched before instead of the full dataset.
+-- When the user extends the previous query (e.g. "mou" → "moun"), only
+-- re-score entries that matched before instead of the full dataset.
 local function ScoreSingleFieldWord(fieldWord, queryWord, queryWordLen)
     if fieldWord == queryWord then return 100 end
     if sfind(fieldWord, queryWord, 1, true) == 1 then return 90 end
@@ -4289,12 +3926,9 @@ function Database:ScoreEntryFields(data, queryWords)
     end
 
     if matched < 2 then return 0 end
-    -- Discount entries whose match came purely from embedded keyword
-    -- text (no query word actually appeared in the entry's own name).
-    -- Without this, an item whose keyword list happens to contain
-    -- "Eastern Kingdoms" outranks the literal Eastern Kingdoms zone
-    -- because keyword sums (90 per word) beat name-only avg-capped
-    -- scoring (110 max).
+    -- Discount pure-keyword matches: keyword sums (90/word) beat the
+    -- avg-capped name-only score (110 max), so an item whose keyword list
+    -- contains "Eastern Kingdoms" would outrank the actual zone.
     if nameMatches == 0 then
         total = math.floor(total * 0.45)
     end
@@ -4435,11 +4069,8 @@ function Database:SearchUI(query, skipCategories)
         return resultsBuf
     end
 
-    -- First-call build: without a ready prefix index every search falls
-    -- through to a linear scan over uiSearchData. After dynamic providers
-    -- populate that's ~1500+ entries per keystroke. Build once on demand
-    -- so the FIRST search after reload doesn't pay the linear-scan cost
-    -- on every keystroke that follows.
+    -- Without a ready prefix index, every search linearly scans the full
+    -- 1500+ entry uiSearchData each keystroke. Build once on demand.
     if not prefixIndexReady then
         self:BuildSearchPrefixIndex()
     end
@@ -4447,7 +4078,7 @@ function Database:SearchUI(query, skipCategories)
     query = slower(query)
     local queryLen = #query
 
-    -- Pre-trim trailing whitespace once (avoids per-entry match() in scoring)
+    -- Pre-trim trailing whitespace so scoring doesn't match() per entry.
     if ssub(query, queryLen, queryLen) == " " then
         query = query:match("^(.-)%s+$") or query
         queryLen = #query
@@ -4460,16 +4091,10 @@ function Database:SearchUI(query, skipCategories)
         queryWords[#queryWords + 1] = w
     end
 
-    -- Detect "<instance> boss" style queries. When the user mentions
-    -- "boss" anywhere in the query, bosses are allowed to match by
-    -- their instance keyword (e.g. "icc boss" -> all ICC bosses).
-    -- Without "boss" present, bosses are restricted to name-only
-    -- matches so plain "raid"/"dungeon"/"icc" don't flood with them.
+    -- Gates: without "boss" in the query, bosses match name only ("icc"
+    -- alone shouldn't flood with bosses). Achievements (~175 entries with
+    -- broad keywords) are gated behind "ach"/"stat" or a strong name match.
     local bossQueryWord = false
-    -- Same gate for achievement entries: there are ~175 of them, and
-    -- nearly any common word (easter, mounts, kill, dungeon...) shows
-    -- up in some achievement keyword. Gate them behind the user
-    -- typing "ach"/"achievement"/etc. or a strong name match.
     local achQueryWord = false
     local lootStatQueryWord = false
     for qi = 1, #queryWords do
@@ -4486,7 +4111,6 @@ function Database:SearchUI(query, skipCategories)
         end
     end
 
-    -- Determine candidate set: incremental (previous matches) or full database
     local skipKey = skipCategories and (
         (skipCategories["Mount"] and "M" or "") ..
         (skipCategories["Toy"] and "T" or "") ..
@@ -4496,26 +4120,13 @@ function Database:SearchUI(query, skipCategories)
         (skipCategories["Loot"] and "L" or "")
     ) or ""
 
-    -- prevCandidates is missing entries the current (more permissive)
-    -- scoring pass would now match. Two distinct cases trigger this:
-    --
-    --   1. A gating flag flipped false → true on this keystroke
-    --      ("icc bos" → "icc boss" turns bossQueryWord on; "characters"
-    --      → "characters ach..." turns achQueryWord on). Boss /
-    --      achievement entries that previously failed the stricter
-    --      gate were never scored, so prevCandidates contains zero of
-    --      them.
-    --
-    --   2. A new word was just appended to a stat-keyword query
-    --      ("haste" → "haste ring"). lootStatQueryWord stays true
-    --      throughout, but loot rings are missing from the "ha"
-    --      prefix bucket (their lootStatKw is populated lazily, after
-    --      the index was built), so they never made it into
-    --      prevCandidates. Adding "ring" pulls them in via the "ri"
-    --      bucket on the multi-token path.
-    --
-    -- Either case bypasses extension for one keystroke and lets the
-    -- prefix lookup rebuild the candidate set.
+    -- prevCandidates can miss entries the now-more-permissive pass matches:
+    --   1. A gate flipped on ("icc bos" → "icc boss"). Boss/ach entries
+    --      were never scored before the flip.
+    --   2. A word was appended to a stat-keyword query ("haste" →
+    --      "haste ring"). Loot rings aren't in the "ha" prefix bucket
+    --      (lootStatKw is enriched lazily); the "ri" bucket pulls them in.
+    -- Either case bypasses extension and rebuilds via the prefix lookup.
     local prevLootStat, prevBossWord, prevAchWord = false, false, false
     local prevWordCount = 0
     if prevQuery ~= "" then
@@ -4543,8 +4154,6 @@ function Database:SearchUI(query, skipCategories)
     if prevLen > 0 and skipKey == prevSkipKey
         and queryLen > prevLen and ssub(query, 1, prevLen) == prevQuery
         and not gatingShifted then
-        -- Forward extension of the prior query: re-score the prior
-        -- candidates only. (Cheapest path.)
         searchSet = prevCandidates
     else
         if prefixIndexReady then
@@ -4585,9 +4194,8 @@ function Database:SearchUI(query, skipCategories)
                 if lootStatQueryWord and not data._statsEnriched then
                     Database:EnrichLootStats(data)
                 end
-                -- Loot: match by item name, slot, stats, and source keywords.
-                -- Each query word scores against all keyword types and takes
-                -- the best match. Words that match nothing eliminate the item.
+                -- Each query word scores against name + slot + stats + source
+                -- kws; best match wins; an unmatched word eliminates the item.
                 local totalScore = 0
 
                 local nameWords = GetWords(nameLower)
@@ -4596,11 +4204,9 @@ function Database:SearchUI(query, skipCategories)
                     local qwLen = #qw
                     local bestWord = 0
 
-                    -- Score against item name words (prefix match per word).
-                    -- Name match must outrank lootSourceKw (boss name)
-                    -- match below; otherwise loot whose own name contains
-                    -- the query gets buried under same-boss loot that
-                    -- only matched via the encounter name.
+                    -- Name match must outrank lootSourceKw (boss name) below,
+                    -- else loot named for the query gets buried under same-
+                    -- boss loot that only matched via the encounter name.
                     for ni = 1, #nameWords do
                         local nw = nameWords[ni]
                         if nw == qw then
@@ -4610,7 +4216,6 @@ function Database:SearchUI(query, skipCategories)
                         end
                     end
 
-                    -- Score against slot keywords
                     if data.lootSlotKw then
                         for ki = 1, #data.lootSlotKw do
                             local kw = data.lootSlotKw[ki]
@@ -4622,7 +4227,6 @@ function Database:SearchUI(query, skipCategories)
                         end
                     end
 
-                    -- Score against stat keywords
                     if data.lootStatKw then
                         for ki = 1, #data.lootStatKw do
                             local kw = data.lootStatKw[ki]
@@ -4634,12 +4238,9 @@ function Database:SearchUI(query, skipCategories)
                         end
                     end
 
-                    -- Score against source keywords (boss/dungeon name).
-                    -- Prefix match on a boss name is a strong real signal
-                    -- ("nexu" -> "Nexus-Point Xenas"), so its score must
-                    -- beat a 1-edit fuzzy hit (85) on an unrelated setting
-                    -- name like "Next View" -- otherwise gear from the
-                    -- searched encounter ranks below misspellings.
+                    -- Prefix on boss/dungeon name must beat 1-edit fuzzy (85)
+                    -- on unrelated names, so "nexu" -> Nexus-Point Xenas gear
+                    -- doesn't rank below misspellings of other entries.
                     if data.lootSourceKw then
                         for ki = 1, #data.lootSourceKw do
                             local kw = data.lootSourceKw[ki]
@@ -4660,18 +4261,13 @@ function Database:SearchUI(query, skipCategories)
 
                 score = totalScore
             elseif data.category == "Boss" and not bossQueryWord then
-                -- Bosses match by name only when the query doesn't
-                -- mention "boss". This prevents plain "raid"/"dungeon"
-                -- /"icc" from dragging every encounter into the list.
                 score = Database:ScoreName(nameLower, query, queryLen, queryWords)
             else
                 local cat = data.category
                 local isAchEntry = cat == "Achievements" or cat == "Guild Achievements"
                                    or cat == "Statistics"
                 if isAchEntry and not achQueryWord then
-                    -- Restrict achievement entries to strong name matches
-                    -- only (exact / prefix / starts-with-word). Skip the
-                    -- keyword score entirely so short common keyword
+                    -- Strong name matches only (skip kw score) so short kw
                     -- aliases don't drag every achievement category in.
                     if nameLower == query then
                         score = 200
@@ -4683,12 +4279,8 @@ function Database:SearchUI(query, skipCategories)
                         score = 0
                     end
                 else
-                    -- MAX, not SUM. Many entries put their lowercased name into
-                    -- keywordsLower (talents, abilities, mounts, ...), so a sum
-                    -- double-counts the same fuzzy hit -- "hearth" matching
-                    -- "heart" once via the name and once via the keyword
-                    -- silently doubles into 170, beating real 150 prefix
-                    -- matches like "Hearthstone Board".
+                    -- MAX, not SUM. Many entries duplicate their name into
+                    -- keywordsLower; a sum double-counts the same fuzzy hit.
                     score = mmax(
                         Database:ScoreName(nameLower, query, queryLen, queryWords),
                         Database:ScoreKeywords(data.keywordsLower, query, queryLen, queryWords)
@@ -4715,7 +4307,6 @@ function Database:SearchUI(query, skipCategories)
             end
         end
     end
-    -- Trim stale entries from previous search
     for i = candidateIdx + 1, #prevCandidates do
         prevCandidates[i] = nil
     end
@@ -4731,9 +4322,8 @@ function Database:SearchUI(query, skipCategories)
         end
         resultsN = SEARCH_RESULT_CAP
     end
-    -- Clear stale data refs on pool slots above the current result
-    -- count. Without this, a broad search followed by a narrow one
-    -- leaves the pool holding refs from the broad search forever.
+    -- Drop stale data refs so a broad-then-narrow search doesn't keep
+    -- the broad refs alive forever.
     for i = resultsN + 1, #resultEntryPool do
         local r = resultEntryPool[i]
         if r and r.data then
@@ -4745,9 +4335,8 @@ function Database:SearchUI(query, skipCategories)
     return results
 end
 
--- Static UI database must be built at load time (before ADDON_LOADED) so other
--- modules can reference uiSearchData during their own initialization.
--- Not routed through Core.lua SafeInit, so wrap here for error safety.
+-- Build at load time (before ADDON_LOADED) so other modules can reference
+-- uiSearchData during their own init. Not routed through SafeInit, so wrap.
 local initOk, initErr = pcall(Database.Initialize, Database)
 if not initOk then
     print("|cffff4444EasyFind Database failed to initialize: " .. tostring(initErr) .. "|r")

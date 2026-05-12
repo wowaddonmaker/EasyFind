@@ -16,9 +16,8 @@ local SIMPLE_FIELDS = {
     "itemID", "encounterID", "instanceID", "lootSlotName", "lootSourceName", "lootInstanceName", "lootSourceType",
     "transmogSetID",
     "factionID", "hasRepBar", "canQueue", "isPvP", "isPvE",
-    -- Map-search fields. Without these the row's render branch can't
-    -- recognize the entry as a map result, so the general icon goes
-    -- missing and the specific icon falls back to the LEFT slot.
+    -- Required for the row renderer to recognize a map result and
+    -- place icons in the correct slots.
     "mapSearchResult", "isZone", "mapID", "zoneName", "pathPrefix",
     "zoneMapType", "zoneParentMapID",
     "achievementID",
@@ -127,9 +126,6 @@ function UIPins.Pin(data)
     if not list then return end
     local clean = CleanForStorage(data)
     clean.isPinned = true
-    -- If a stale entry exists (e.g. saved before a new field was added
-    -- to SIMPLE_FIELDS), replace it in place so the next render picks
-    -- up the fresh fields.
     local key = UIPins.GetKey(data)
     for i, existing in ipairs(list) do
         if UIPins.GetKey(existing) == key then

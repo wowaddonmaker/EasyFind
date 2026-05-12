@@ -8,20 +8,6 @@ local C_Timer     = C_Timer
 local mfloor      = math.floor
 local mhuge       = math.huge
 
--- ---------------------------------------------------------------------
--- Frame-time recorder. An OnUpdate sampler captures every render
--- frame's elapsed delta while a scenario is running. From those
--- samples we derive avg, worst-case, and the count of frames slower
--- than 1/50s (perceptible stutter).
--- ---------------------------------------------------------------------
-
--- ---------------------------------------------------------------------
--- Per-table memory snapshot. Uses the same exposed-table list as
--- /efd mem so we can attribute heap deltas to specific structures
--- (uiSearchData, lootItemCache, hier/result pools, UI scratch, etc.)
--- without depending on EasyFindDev being loaded.
--- ---------------------------------------------------------------------
-
 local function EstimateSize(val, visited)
     if val == nil then return 0 end
     if not visited then visited = {} end
@@ -116,9 +102,6 @@ local sampleMax   = 0
 local stutterCount = 0
 local STUTTER_THRESHOLD = 1 / 50
 
--- Per-frame heap sampling alongside frame timings. Heap is sampled every
--- recording frame so we capture the live churn during a scenario, not
--- just bookended snapshots. Numbers are KB (collectgarbage("count")).
 local heapStartKB  = 0
 local heapMinKB    = mhuge
 local heapMaxKB    = 0
@@ -188,9 +171,6 @@ local function stopAndReport(label)
         color = "|cffffaa00"
     end
 
-    -- Heap stats relative to scenario start. peak = max during scenario;
-    -- delta = heap at scenario end vs scenario start (post-GC churn);
-    -- churn = peak - start (transient allocation pressure during scenario).
     local heapPeakDelta = heapMaxKB - heapStartKB
     local heapEndDelta  = heapLastKB - heapStartKB
     local heapColor = "|cff66ff66"
@@ -225,13 +205,8 @@ local function stopAndReport(label)
     agg.heapNetDeltaKB = agg.heapNetDeltaKB + heapEndDelta
 end
 
--- ---------------------------------------------------------------------
--- Search invocation. Bypasses the 50ms editbox debounce so each
--- "keystroke" runs on the frame it was scheduled, exactly like real
--- typing does once the debounce window expires. Mirrors the editbox
--- text so any code reading :GetText() stays consistent.
--- ---------------------------------------------------------------------
-
+-- Bypasses the 50ms editbox debounce so each simulated keystroke runs
+-- on the frame it was scheduled.
 local function fireSearch(text)
     if not ns.UI or not ns.UI.OnSearchTextChanged then return end
     if ns.UI.searchFrame and ns.UI.searchFrame.editBox then
@@ -243,12 +218,7 @@ end
 
 local function yieldNextFrame(fn) C_Timer.After(0, fn) end
 
--- ---------------------------------------------------------------------
--- Generic step driver. Walk a sequence of intermediate query strings,
--- each separated by `keyDelay` seconds. keyDelay <= 0 yields one frame
--- (16ms at 60fps), simulating a held key.
--- ---------------------------------------------------------------------
-
+-- keyDelay <= 0 yields one frame (~16ms), simulating a held key.
 local function runSequence(seq, keyDelay, onDone)
     local i = 0
     local function step()
@@ -266,11 +236,6 @@ local function runSequence(seq, keyDelay, onDone)
     end
     step()
 end
-
--- ---------------------------------------------------------------------
--- Sequence builders. Each returns an array of intermediate query
--- strings to feed the search box, simulating one logical interaction.
--- ---------------------------------------------------------------------
 
 local function seqType(text)
     local s = {}
@@ -293,7 +258,6 @@ local function seqTypeThenErase(text)
     return s
 end
 
--- Type prefix `pre`, backspace `n` chars, then append `suf`.
 local function seqTypeBackspaceType(pre, n, suf)
     local s = seqType(pre)
     local cur = pre
@@ -308,7 +272,6 @@ local function seqTypeBackspaceType(pre, n, suf)
     return s
 end
 
--- Oscillate: type the word, erase it, repeat `repeats` times.
 local function seqOscillate(word, repeats)
     local s = {}
     for r = 1, repeats do
@@ -318,8 +281,6 @@ local function seqOscillate(word, repeats)
     return s
 end
 
--- Type a chain of space-separated words, character by character (so
--- every intermediate state goes through the search).
 local function seqWordChain(words)
     local s = {}
     local cur = ""
@@ -335,12 +296,6 @@ local function seqWordChain(words)
     end
     return s
 end
-
--- ---------------------------------------------------------------------
--- Scenario orchestration. Each scenario records its own sample window
--- so per-scenario fps numbers are independent. Brief pause between
--- scenarios so a tail-end render doesn't bleed into the next sample.
--- ---------------------------------------------------------------------
 
 local function chain(scenarios, onDone)
     local i = 0
@@ -367,7 +322,6 @@ function Perf:Run()
         return
     end
 
-    -- reset aggregate
     agg.scenarios     = 0
     agg.sumAvg        = 0
     agg.sumWorst      = 0
@@ -381,7 +335,6 @@ function Perf:Run()
     agg.heapWorstChurnLabel = nil
     agg.heapNetDeltaKB = 0
 
-    -- GC baseline so per-scenario heap stats start from a clean number.
     collectgarbageRef("collect")
     local runStartHeapKB = collectgarbageRef("count")
     local snapBefore = TakeSnapshot()
@@ -393,9 +346,6 @@ function Perf:Run()
     if ns.UI and ns.UI.Show then ns.UI:Show(true) end
 
     local scenarios = {
-        --
-        -- Forward typing at varying speeds.
-        --
         { label = "type 'mountain' slow (150ms)",
           run = function(d) runSequence(seqType("mountain"), 0.15, d) end },
         { label = "type 'mountain' fast (60ms)",
@@ -413,12 +363,8 @@ function Perf:Run()
         { label = "type 'zzzqqq' (60ms, no matches)",
           run = function(d) runSequence(seqType("zzzqqq"), 0.06, d) end },
 
-        --
-        -- Erase from typed states. Erase paths cannot use the
-        -- prefix-extend incremental cache, so each backspace falls
-        -- back to a full scan over the dataset. This is the bucket
-        -- where fps drops are usually most painful.
-        --
+        -- Erase paths cannot use the prefix-extend incremental cache;
+        -- each backspace re-scans the full dataset.
         { label = "erase 'mountain' slow (150ms)",
           run = function(d) runSequence(seqErase("mountain"), 0.15, d) end },
         { label = "erase 'mountain' fast (60ms)",
@@ -430,10 +376,6 @@ function Perf:Run()
         { label = "erase 37-char gibberish HOLD",
           run = function(d) runSequence(seqErase(GIBBERISH_LONG), 0, d) end },
 
-        --
-        -- Type + erase combinations. These mirror real correction
-        -- patterns: typo, backspace a few chars, type the right ones.
-        --
         { label = "type 'mountin' -> back 2 -> 'ain'  (typo fix)",
           run = function(d) runSequence(seqTypeBackspaceType("mountin", 2, "ain"), 0.06, d) end },
         { label = "type 'rai' -> back 1 -> 'ider'  (typo fix)",
@@ -447,9 +389,6 @@ function Perf:Run()
         { label = "type 37-char gibberish then HOLD-backspace to empty",
           run = function(d) runSequence(seqTypeThenErase(GIBBERISH_LONG), 0, d) end },
 
-        --
-        -- Multi-word queries.
-        --
         { label = "chain 'icc boss' (60ms)",
           run = function(d) runSequence(seqWordChain({"icc","boss"}), 0.06, d) end },
         { label = "chain 'mount tank dungeon' (60ms)",
@@ -457,10 +396,6 @@ function Perf:Run()
         { label = "chain 5 words 'icc boss tank rare elite' (60ms)",
           run = function(d) runSequence(seqWordChain({"icc","boss","tank","rare","elite"}), 0.06, d) end },
 
-        --
-        -- Real-world stress: keep banging the bar with new queries
-        -- back to back without ever clearing all the way to empty.
-        --
         { label = "5x random word swap stress",
           run = function(d)
               local words = {"mount","mage","heal","raid","tank"}
@@ -494,10 +429,6 @@ function Perf:Run()
                 agg.worst * 1000, mfloor(1 / agg.worst + 0.5),
                 agg.worstLabel or "?"))
 
-            -- Memory summary: peak heap during the run, worst per-scenario
-            -- transient churn, and the net retained heap delta after all
-            -- scenarios. A negative net means GC reclaimed more than was
-            -- allocated; a large positive net is a leak.
             local runEndHeapKB = collectgarbageRef("count")
             local netRunDeltaKB = runEndHeapKB - runStartHeapKB
             local netColor = "|cff66ff66"
@@ -515,8 +446,6 @@ function Perf:Run()
                 netRunDeltaKB, agg.scenarios,
                 runStartHeapKB / 1024, runEndHeapKB / 1024))
 
-            -- Per-table snapshot diff to attribute the net delta to
-            -- specific caches/pools rather than just "the heap".
             collectgarbageRef("collect")
             local snapAfter = TakeSnapshot()
             EasyFind:Print(" ")

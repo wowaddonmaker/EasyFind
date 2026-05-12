@@ -1,9 +1,3 @@
--- Blizzard Settings panel search. Walks the live SettingsPanel
--- category tree (top-level categories AND subcategories) at register
--- time, caches each category id by name and by setting variable, then
--- registers searchable entries pointing at the cached id. Click =
--- ShowUIPanel(SettingsPanel) followed by Settings.OpenToCategory.
-
 local _, ns = ...
 local BlizzOptionsSearch = {}
 ns.BlizzOptionsSearch = BlizzOptionsSearch
@@ -24,9 +18,8 @@ local function SecureCall(fn, ...)
     return true
 end
 
--- Modern WoW exposes the categories via SettingsPanel:GetAllCategories.
--- The legacy Settings.GetCategoryList was removed in Midnight (12.0),
--- so callers that walked it returned nil and silently failed.
+-- Settings.GetCategoryList was removed in Midnight (12.0); the modern
+-- entry point is SettingsPanel:GetAllCategories.
 local function GetSettingsCategoryList()
     if SettingsPanel and SettingsPanel.GetAllCategories then
         local ok, list = pcall(SettingsPanel.GetAllCategories, SettingsPanel)
@@ -43,11 +36,8 @@ local function HasSettingsCategoryAccess()
         or (Settings and Settings.GetCategoryList) ~= nil
 end
 
--- Curated list of individual settings for direct search.
--- Format: { display name, CVar/variable, category name, type code, [min, max, step] }
+-- { display name, CVar/variable, category name, type code, [min, max, step] }
 -- type: c=checkbox, d=dropdown, s=slider
--- For sliders, min/max/step let the inline slider widget render
--- correctly. Step is the value increment per slider position.
 local SETTINGS_DATA = {
     -- Controls
     {"Sticky Targeting","deselectOnClick","Controls","c"},
@@ -234,13 +224,9 @@ local SETTINGS_DATA = {
 
 local TYPE_MAP = { c = "checkbox", d = "dropdown", s = "slider" }
 
--- Hardcoded option lists for CVar-based dropdowns the live SettingsPanel
--- can't enumerate (these aren't registered as Setting objects, so
--- GetOptionsForVariable's layout walk returns nil). Listed in the order
--- the in-game dropdown shows them so the inline picker reads naturally.
--- Each entry: { value, label }. Hardware-specific dropdowns (monitors,
--- sound devices, GPUs, resolutions) are intentionally omitted -- their
--- options are machine-dependent and can't be hardcoded sensibly.
+-- Hardcoded option lists for CVar dropdowns SettingsPanel cannot
+-- enumerate (not registered as Setting objects). Each entry:
+-- { value, label }. Hardware-dependent dropdowns are omitted.
 local CVAR_DROPDOWN_OPTIONS = {
     AUTOLOOTTOGGLE = {
         { value = "NONE",  label = "None" },
@@ -413,20 +399,13 @@ local CVAR_DROPDOWN_OPTIONS = {
     },
 }
 
--- Resolved tables, populated once at register time.
--- categoryIDByName[lowercaseName] = catID
--- categoryIDByVariable[variable] = catID (variable -> owning category)
 local categoryIDByName = {}
 local categoryIDByVariable = {}
 
--- Tooltip cache per variable. Filled lazily from three sources in
--- order of preference: the live SettingsPanel initializer's tooltip,
--- the Setting object's GetTooltip(), and OPTION_TOOLTIP_* globals.
 local settingTooltips = {}
 
--- Resolve a Blizzard OPTION_TOOLTIP_* global. Tries display name and
--- CVar name, both converted to SCREAMING_SNAKE_CASE. PROXY_ vars
--- never have tooltip globals, so skip them.
+-- Tries OPTION_TOOLTIP_<NAME> and OPTION_TOOLTIP_<CVAR>. PROXY_ vars
+-- never have tooltip globals.
 local function ResolveTooltipGlobal(displayName, cvar)
     if displayName then
         local fromName = "OPTION_TOOLTIP_" .. displayName:upper():gsub("[%s%-]+", "_"):gsub("[^A-Z0-9_]", "")
@@ -440,9 +419,6 @@ local function ResolveTooltipGlobal(displayName, cvar)
     end
 end
 
--- Look up cached tooltip; if nothing cached yet, try the live
--- SettingsPanel initializer for this variable. Falls back to nil
--- (caller should have its own fallback like the display name).
 local function GetTooltipForVariable(variable, displayName)
     if not variable then return nil end
     local cached = settingTooltips[variable]
@@ -450,7 +426,6 @@ local function GetTooltipForVariable(variable, displayName)
         return cached ~= false and cached or nil
     end
 
-    -- Try Setting:GetTooltip() first
     if Settings and Settings.GetSetting then
         local sok, settObj = pcall(Settings.GetSetting, variable)
         if sok and settObj and settObj.GetTooltip then
@@ -462,24 +437,19 @@ local function GetTooltipForVariable(variable, displayName)
         end
     end
 
-    -- Try the OPTION_TOOLTIP_* global
     local fromGlobal = ResolveTooltipGlobal(displayName, variable)
     if fromGlobal then
         settingTooltips[variable] = fromGlobal
         return fromGlobal
     end
 
-    -- Cache "no tooltip" so we don't re-walk on every hover
     settingTooltips[variable] = false
     return nil
 end
 BlizzOptionsSearch.GetTooltipForVariable = GetTooltipForVariable
 
--- Resolve dropdown options for `variable` at click time by scanning
--- live SettingsPanel layouts. Returns a normalized array of
--- { value, label } or nil if the variable isn't a dropdown / can't be
--- enumerated. Cached per variable since layouts don't change after
--- registration. False sentinel = "we looked, none available".
+-- Returns { value, label } array or nil. Cached per variable; false
+-- sentinel means "looked, none available".
 local optionsByVariable = {}
 local function NormalizeOptionTable(opts, setting)
     if type(opts) == "function" then
@@ -563,9 +533,8 @@ local function GetOptionsForVariable(variable)
     if cached ~= nil then
         return cached ~= false and cached or nil
     end
-    -- CVar dropdowns (AUTOLOOTTOGGLE, raidFramesHealthText, etc.) aren't
-    -- registered as Setting objects, so the SettingsPanel walker below
-    -- never finds them. Hardcoded list catches them first.
+    -- CVar dropdowns aren't registered as Setting objects; the
+    -- SettingsPanel walk can't find them. Hardcoded list first.
     local hardcoded = CVAR_DROPDOWN_OPTIONS[variable]
     if hardcoded then
         optionsByVariable[variable] = hardcoded
@@ -614,15 +583,13 @@ local function GetOptionsForVariable(variable)
 end
 BlizzOptionsSearch.GetOptionsForVariable = GetOptionsForVariable
 
--- Pull the slider's display formatter from the live registry so curated
--- SETTINGS_DATA entries (Mouse Look Speed, Camera Distance, etc.) show
--- the same value Blizzard's panel does instead of the raw CVar number
--- (e.g., PROXY_MOUSE_LOOK_SPEED raw 180 -> displayed "5.5").
+-- Slider display formatter from the live registry so curated entries
+-- render the same value Blizzard's panel does (e.g., raw 180 -> "5.5").
 local formatterByVariable = {}
 local function PickFormatter(formatters)
     if type(formatters) ~= "table" then return nil end
-    -- MinimalSliderWithSteppersMixin.Label = MakeEnum("Left","Right","Top","Min","Max")
-    -- Top (2) mirrors the live value above the thumb best.
+    -- MinimalSliderWithSteppersMixin.Label enum: Top (2) mirrors the
+    -- live value above the thumb best.
     local f = formatters[2] or formatters[1] or formatters[0]
         or formatters.Top or formatters.Right
     if type(f) == "function" then return f end
@@ -689,16 +656,14 @@ local function GetFormatterForVariable(variable)
 end
 BlizzOptionsSearch.GetFormatterForVariable = GetFormatterForVariable
 
--- Pending-apply tracking. Settings with CommitFlag.Apply (graphics
--- options, resolution, etc.) stage their value into setting.pendingValue
--- instead of writing through, so we mirror Blizzard's bottom-bar UX:
--- accumulate pending changes and let the user Apply / Revert as a batch.
+-- Apply-flagged settings (graphics, resolution, etc.) stage into
+-- setting.pendingValue. Mirror Blizzard's bottom-bar batch UX.
 local pendingApplySettings = {}
 local pendingChangeCallbacks = {}
 
 local function PendingCount()
-    -- Prune entries whose pendingValue cleared out from under us (user
-    -- opened Blizzard's panel and Applied / Cancelled there directly).
+    -- Prune entries whose pendingValue cleared from under us when the
+    -- user Applied / Cancelled in Blizzard's panel directly.
     local n = 0
     for setting in pairs(pendingApplySettings) do
         if setting.pendingValue ~= nil then
@@ -726,10 +691,6 @@ function BlizzOptionsSearch:GetPendingApplyCount()
     return PendingCount()
 end
 
--- Called by the inline editor right after Setting:SetValue. If the
--- setting has the Apply commit flag, the new value is staged in
--- setting.pendingValue and needs the user to commit; otherwise the
--- value is already live and we drop the entry.
 function BlizzOptionsSearch:NotePendingApply(variable)
     if not variable or not Settings or not Settings.GetSetting then return end
     local sok, settObj = pcall(Settings.GetSetting, variable)
@@ -743,16 +704,12 @@ function BlizzOptionsSearch:NotePendingApply(variable)
         pendingApplySettings[settObj] = settObj
         FirePendingChanged()
     elseif pendingApplySettings[settObj] then
-        -- Setting reverted to original via repeat-edit: drop it.
         pendingApplySettings[settObj] = nil
         FirePendingChanged()
     end
 end
 
--- Find the StaticPopup slot currently displaying the named popup.
--- Blizzard reuses StaticPopup1..4 across all popups; when one is busy
--- (e.g., our unapplied-changes popup), the next StaticPopup_Show lands
--- in a different slot. Walk all slots to find the one we want.
+-- Blizzard reuses StaticPopup1..4 slots; walk them to find one matching name.
 local function FindStaticPopupSlot(popupName)
     for i = 1, 4 do
         local p = _G["StaticPopup" .. i]
@@ -778,19 +735,11 @@ local function LiftPopupAndRefresh(popup)
     end)
 end
 
--- Apply all pending changes at once. Push them into SettingsPanel.modified
--- and run its CommitSettings(false) so Blizzard's full pipeline fires:
--- gx restart / window update / save bindings AND the
--- GAME_SETTINGS_TIMED_CONFIRMATION popup for any Revertable settings
--- in the batch (monitor, resolution, etc.).
 function BlizzOptionsSearch:ApplyPendingChanges()
     if not next(pendingApplySettings) then return end
-    -- Apply each pending setting via the same path the per-row Apply
-    -- button uses (ApplyVariable). That path is proven to actually
-    -- commit the value -- per-setting Commit() and SettingsPanel
-    -- writes both silently no-op on some build paths from addon code.
-    -- Snapshot variables first so wiping pendingApplySettings inside
-    -- ApplyVariable doesn't break iteration.
+    -- Route every pending setting through ApplyVariable (the proven
+    -- path). Snapshot the variable list first so wiping the table
+    -- mid-iteration doesn't break the loop.
     local vars = {}
     for setting in pairs(pendingApplySettings) do
         if setting.GetVariable then
@@ -812,7 +761,6 @@ function BlizzOptionsSearch:RevertPendingChanges()
     FirePendingChanged()
 end
 
--- True when a single variable has a staged-but-not-applied change.
 function BlizzOptionsSearch:HasPendingChange(variable)
     if not variable or not Settings or not Settings.GetSetting then return false end
     local sok, settObj = pcall(Settings.GetSetting, variable)
@@ -820,13 +768,10 @@ function BlizzOptionsSearch:HasPendingChange(variable)
     return settObj.pendingValue ~= nil
 end
 
--- Apply / revert one specific setting (per-row Apply/Reset buttons).
--- PROXY_ANTIALIASING is a "view" setting whose own SetValue closure
--- only zeros the OTHER mode's CVar (fxaa or msaa); it assumes the
--- chosen mode's CVar is already non-zero (Blizzard's UI relies on a
--- secondary "quality" dropdown the user fills in). For our inline
--- editor without that dropdown, default the dependent CVar to a
--- baseline so applying the parent actually turns AA on.
+-- PROXY_ANTIALIASING's SetValue zeros the OTHER mode's CVar and
+-- assumes the chosen mode's CVar is already non-zero. Without
+-- Blizzard's quality dropdown to pre-fill, default the dependent CVar
+-- to a baseline so applying the parent actually turns AA on.
 local PROXY_DEPENDENT_DEFAULTS = {
     PROXY_ANTIALIASING = function(value)
         if value == 1 and GetCVar and tonumber(GetCVar("ffxAntiAliasingMode")) == 0 then
@@ -842,10 +787,8 @@ local PROXY_DEPENDENT_DEFAULTS = {
     end,
 }
 
--- Settings whose own SetValue closure stages dependent Apply-flagged
--- settings (e.g., PROXY_ANTIALIASING's closure calls
--- aaSettings.fxaa:SetValue / aaSettings.msaa:SetValue). When we Apply
--- the parent, those dependents stay staged unless we also commit them.
+-- Parents whose SetValue closure stages Apply-flagged dependents; we
+-- must commit the dependents along with the parent.
 local PROXY_DEPENDENTS = {
     PROXY_ANTIALIASING = { "PROXY_FXAA", "PROXY_MSAA", "PROXY_MSAA_ALPHA" },
 }
@@ -879,14 +822,10 @@ function BlizzOptionsSearch:ApplyVariable(variable)
     local depsFn = PROXY_DEPENDENT_DEFAULTS[variable]
     if depsFn then pcall(depsFn, pending) end
 
-    -- Settings flagged Revertable (monitor, resolution, display mode)
-    -- need Blizzard's CommitSettings pipeline so the
-    -- GAME_SETTINGS_TIMED_CONFIRMATION popup ("Accept new options?
-    -- Reverting in 8 seconds.") fires. The popup is the user's only
-    -- escape hatch when a change leaves the screen unusable. Our
-    -- direct SetValue(immediate=true) path skips that, so route
-    -- through Blizzard for these specifically. Push parent + any
-    -- staged dependents into SettingsPanel.modified first.
+    -- Revertable settings (monitor, resolution, display mode) need
+    -- Blizzard's CommitSettings pipeline so GAME_SETTINGS_TIMED_CONFIRMATION
+    -- fires; without it the user has no escape if the change breaks the
+    -- screen. SetValue(immediate=true) skips that popup.
     local revertable = HasFlag(settObj, Settings.CommitFlag.Revertable)
     if revertable and SettingsPanel and SettingsPanel.CommitSettings
        and SettingsPanel.modified then
@@ -916,22 +855,15 @@ function BlizzOptionsSearch:ApplyVariable(variable)
     if settObj.SetValue then
         pcall(settObj.SetValue, settObj, pending, true)
     end
-    -- Parent's SetValue closure may have staged dependents (e.g.,
-    -- AA_NONE clears both fxaa and msaa via dep:SetValue, which stages
-    -- when the dep itself is Apply-flagged). Commit those too.
     CommitStagedDependents(variable)
     pendingApplySettings[settObj] = nil
     FirePendingChanged()
 end
 
--- Mirrors Blizzard's GAME_SETTINGS_CONFIRM_DISCARD popup so closing
--- our search panel with pending Apply-flagged settings prompts the
--- same three-button choice. Defined once at file load; the StaticPopup
--- registry keeps it across reloads.
--- Do NOT add `StaticPopupDialogs = StaticPopupDialogs or {}` here. The
--- write to the global slot taints StaticPopupDialogs even when the
--- value identity is preserved, and that taint propagates into
--- ShowUIPanel / UIParentPanelManager, crashing later panel opens.
+-- Mirror Blizzard's GAME_SETTINGS_CONFIRM_DISCARD popup.
+-- DO NOT write `StaticPopupDialogs = StaticPopupDialogs or {}`: any
+-- assignment to that global slot taints it (even preserving identity)
+-- and the taint propagates into ShowUIPanel / UIParentPanelManager.
 if StaticPopupDialogs and not StaticPopupDialogs["EASYFIND_UNAPPLIED_SETTINGS"] then
     StaticPopupDialogs["EASYFIND_UNAPPLIED_SETTINGS"] = {
         text = SETTINGS_CONFIRM_DISCARD or
@@ -953,8 +885,6 @@ if StaticPopupDialogs and not StaticPopupDialogs["EASYFIND_UNAPPLIED_SETTINGS"] 
         end,
         OnButton3 = function() end,
         OnHide = function()
-            -- Restore search bar focus when the popup dismisses, no
-            -- matter the path (button click, ESC, or click-away).
             if ns.UI and ns.UI.RefocusSearchEditBox then
                 ns.UI:RefocusSearchEditBox()
             end
@@ -972,7 +902,6 @@ function BlizzOptionsSearch:RevertVariable(variable)
     if not sok or not settObj or settObj.pendingValue == nil then return end
     if settObj.Revert then pcall(settObj.Revert, settObj) end
     pendingApplySettings[settObj] = nil
-    -- Discard any dependents the parent staged.
     local deps = PROXY_DEPENDENTS[variable]
     if deps then
         for i = 1, #deps do
@@ -986,9 +915,6 @@ function BlizzOptionsSearch:RevertVariable(variable)
     FirePendingChanged()
 end
 
--- Walk one category and its subcategories, recording id by name and
--- (where possible) by variable. SettingsPanel exposes the layout per
--- category; the layout has GetInitializers which return setting rows.
 local function CrawlCategory(cat)
     if not cat or not cat.GetID or not cat.GetName then return end
     local catID = cat:GetID()
@@ -997,14 +923,12 @@ local function CrawlCategory(cat)
         categoryIDByName[slower(catName)] = catID
     end
 
-    -- Walk initializers to discover which variables this category owns.
     if SettingsPanel and SettingsPanel.GetLayout then
         local lok, layout = pcall(SettingsPanel.GetLayout, SettingsPanel, cat)
         if lok and layout and layout.GetInitializers then
             local iok, inits = pcall(layout.GetInitializers, layout)
             if iok and inits then
                 for _, init in ipairs(inits) do
-                    -- Try several access paths since the mixin shape varies.
                     local setting
                     if init.GetSetting then
                         local sok, s = pcall(init.GetSetting, init)
@@ -1023,13 +947,8 @@ local function CrawlCategory(cat)
                             if not categoryIDByVariable[v] then
                                 categoryIDByVariable[v] = catID
                             end
-                            -- Pull tooltip text from the initializer's
-                            -- data.tooltip option (modern WoW stores
-                            -- it there) if not already cached. Wrap
-                            -- in pcall: data.tooltip can be a function
-                            -- generator (returns string) or a string,
-                            -- and data.options can be a function too,
-                            -- so blind indexing raises in some clients.
+                            -- data.tooltip / data.options can be string or
+                            -- function; blind indexing raises in some clients.
                             if settingTooltips[v] == nil then
                                 local tip
                                 pcall(function()
@@ -1066,7 +985,6 @@ local function CrawlCategory(cat)
         end
     end
 
-    -- Recurse into subcategories.
     if cat.GetSubcategories then
         local sok, subs = pcall(cat.GetSubcategories, cat)
         if sok and type(subs) == "table" then
@@ -1077,11 +995,7 @@ local function CrawlCategory(cat)
     end
 end
 
--- One-time crawl of the live category tree. Idempotent: re-crawling
--- after addons register late just fills in any new entries. Each
--- CrawlCategory call is pcalled so a misbehaving category (third-
--- party addon's setting registration, weird initializer shape) can't
--- abort the entire crawl and starve SETTINGS_DATA of category ids.
+-- Idempotent: re-crawl after late addon registrations fills in new entries.
 local function ResolveCategoryIDs()
     local list = GetSettingsCategoryList()
     if type(list) == "table" then
@@ -1099,10 +1013,8 @@ local function ResolveCategoryIDs()
     end
 end
 
--- Open the SettingsPanel (and load it lazily if needed). This is the
--- prerequisite for Settings.OpenToCategory navigation actually showing
--- the panel; on rare clients OpenToCategory alone doesn't trigger the
--- frame to be shown if the panel was never visible this session.
+-- Open SettingsPanel first; on some clients OpenToCategory alone
+-- doesn't show the frame if the panel hasn't been visible this session.
 local function ShowSettings()
     if not SettingsPanel then return end
     if SettingsPanel:IsShown() then return end
@@ -1113,8 +1025,6 @@ local function ShowSettings()
     end
 end
 
--- Find category id by name (case-insensitive). If we haven't crawled
--- yet, do so on demand.
 local function GetCategoryID(name)
     if not name or name == "" then return nil end
     local cached = categoryIDByName[slower(name)]
@@ -1123,7 +1033,6 @@ local function GetCategoryID(name)
     return categoryIDByName[slower(name)]
 end
 
--- Find category id that owns a given setting variable.
 local function GetCategoryIDForVariable(variable)
     if not variable then return nil end
     local cached = categoryIDByVariable[variable]
@@ -1133,7 +1042,6 @@ local function GetCategoryIDForVariable(variable)
 end
 BlizzOptionsSearch.GetCategoryIDForVariable = GetCategoryIDForVariable
 
--- Open settings panel to the named category. Returns true on success.
 local function OpenSettingsByName(name)
     local id = GetCategoryID(name)
     if not id then return false end
@@ -1153,9 +1061,6 @@ local function GetSettingsScrollBox()
         and SettingsPanel.Container.SettingsList.ScrollBox
 end
 
--- Highlight the visible row for an elementData in the settings list, so
--- the user lands on a clearly-marked row instead of having to scan the
--- whole panel for the thing they searched.
 local function HighlightFoundElement(scrollBox, elementData)
     if not scrollBox or not elementData then return end
     if not ns.Highlight or not ns.Highlight.HighlightFrame then return end
@@ -1194,7 +1099,6 @@ local function FindSettingElement(dp, variable)
     return nil
 end
 
--- Scroll to and highlight the row for a setting variable.
 local function ScrollToSettingVariable(variable)
     local scrollBox = GetSettingsScrollBox()
     if not scrollBox then return false end
@@ -1208,7 +1112,6 @@ local function ScrollToSettingVariable(variable)
 end
 BlizzOptionsSearch.ScrollToSettingVariable = ScrollToSettingVariable
 
--- Look up a binding's index from its action name (e.g., ACTIONBUTTON1).
 local function GetBindingIndexForAction(action)
     if not action or not GetNumBindings or not GetBinding then return nil end
     for i = 1, GetNumBindings() do
@@ -1218,10 +1121,7 @@ local function GetBindingIndexForAction(action)
     return nil
 end
 
--- Walk a SettingsKeybindingSection's child binding frames for one whose
--- bindingIndex matches. KeyBindingFrameBindingTemplateMixin:Init stashes
--- the initializer on self.initializer, so binding index lives at
--- frame.initializer.data.bindingIndex.
+-- Binding index lives at frame.initializer.data.bindingIndex.
 local function FindBindingFrameInSection(sectionFrame, bindingIndex)
     if not sectionFrame or not sectionFrame.Controls then return nil end
     for _, frame in ipairs(sectionFrame.Controls) do
@@ -1237,8 +1137,6 @@ local function FindBindingFrameInSection(sectionFrame, bindingIndex)
     return nil
 end
 
--- Scroll to a keybind: find the section by header name, expand it if
--- collapsed, then highlight the binding row inside.
 local function ScrollToBindingAction(action, headerName)
     if not action then return false end
     local scrollBox = GetSettingsScrollBox()
@@ -1248,8 +1146,7 @@ local function ScrollToBindingAction(action, headerName)
 
     local bindingIdx = GetBindingIndexForAction(action)
 
-    -- Locate the section element. Match by header name first; fall back
-    -- to any section whose bindingsCategories contains our index.
+    -- Match by header name first; fall back to bindingsCategories.
     local headerLower = headerName and slower(headerName) or nil
     local function matchSection(elementData)
         local inner = elementData and (elementData.data or elementData)
@@ -1281,10 +1178,8 @@ local function ScrollToBindingAction(action, headerName)
     local alignBegin = ScrollBoxConstants and ScrollBoxConstants.AlignBegin
     scrollBox:ScrollToElementData(section, alignBegin)
 
-    -- Expand if collapsed, wait for the section's child frames to lay
-    -- out, then highlight the actual binding row. The section frame may
-    -- be recycled across passes, so re-fetch it inside the deferred
-    -- callback rather than capturing the first reference.
+    -- Re-fetch the section frame inside the deferred callback; it may
+    -- be recycled across passes.
     local function expandThenHighlight()
         local sectionFrame = scrollBox.FindFrame and scrollBox:FindFrame(section)
         if not sectionFrame then return end
@@ -1309,36 +1204,20 @@ local function ScrollToBindingAction(action, headerName)
 end
 BlizzOptionsSearch.ScrollToBindingAction = ScrollToBindingAction
 
--- Collect name/path entries. SETTINGS_DATA always produces entries
--- regardless of whether the live Settings tree is available yet (the
--- category id resolves lazily at click time). Top-level / subcategory
--- entries from Settings.GetCategoryList are added on top when the
--- registry is reachable.
 local function CollectEntries()
     local entries = {}
 
-    -- Best-effort: resolve catIDs against the live category tree.
-    -- Safe to call even if SettingsPanel hasn't been opened yet:
-    -- it just leaves the lookup tables empty. HandleStep retries
-    -- on demand when the user clicks an entry.
     ResolveCategoryIDs()
 
-    -- Treat the live registry as authoritative: if at least one curated
-    -- variable resolves, assume the registry is up and any unresolved
-    -- variable is a phantom entry (CVar removed from the live panel in
-    -- this client version). Skip those instead of injecting dead rows
-    -- whose click does nothing. If nothing resolved, the registry
-    -- isn't ready yet, so fall back to emitting all curated entries and
-    -- let the late re-pass at 3.0s prune.
+    -- If any curated variable resolves, treat the registry as ready
+    -- and skip unresolved variables (phantom CVars removed from this
+    -- client). If nothing resolved, emit all curated entries; the
+    -- 3.0s late re-pass will prune.
     local registryReady = false
     for var in pairs(categoryIDByVariable) do
         if var then registryReady = true break end
     end
 
-    -- Curated individual settings (Auto Loot, Sticky Targeting, etc.).
-    -- These run unconditionally so they're always searchable, even on
-    -- a clean install where Settings.GetCategoryList isn't ready until
-    -- the user opens the panel.
     for si = 1, #SETTINGS_DATA do
         local row = SETTINGS_DATA[si]
         local name, var, catName, typeCode = row[1], row[2], row[3], row[4]
@@ -1357,7 +1236,6 @@ local function CollectEntries()
                 keywordsLower = kw,
                 category = "Game Settings",
                 path = { "Game Settings", catName },
-                -- Icon comes from category="Game Settings" cogwheel routing in UI.lua.
                 settingsCategory = catName,
                 settingCategoryID = catID,
                 settingVariable = var,
@@ -1376,9 +1254,6 @@ local function CollectEntries()
         end
     end
 
-    -- Top-level + subcategory entries from the live registry. Optional:
-    -- if the categories aren't ready yet, the curated entries above are
-    -- still present.
     local list = GetSettingsCategoryList()
     if type(list) ~= "table" then return entries end
 
@@ -1396,7 +1271,6 @@ local function CollectEntries()
             keywords = kw,
             keywordsLower = kw,
             category = "Game Settings",
-            -- Icon comes from category="Game Settings" cogwheel routing in UI.lua.
             settingsCategory = catName,
             settingCategoryID = catID,
             steps = { { settingsCategory = catName, settingCategoryID = catID } },
@@ -1421,11 +1295,8 @@ local function CollectEntries()
     return entries
 end
 
--- Walk WoW's binding table and emit one search entry per binding.
--- WoW exposes bindings via GetNumBindings + GetBinding(index): each
--- row is either a header (skip) or a real binding (command, category,
--- key1, key2, ...). The localized display name lives in the global
--- BINDING_NAME_<command>; the localized category in BINDING_HEADER_<x>.
+-- Localized name lives at _G["BINDING_NAME_"..action]; category at
+-- _G["BINDING_HEADER_"..category].
 local function CollectKeybindings()
     local entries = {}
     if not GetNumBindings or not GetBinding then return entries end
@@ -1436,8 +1307,6 @@ local function CollectKeybindings()
     for i = 1, n do
         local action, category = GetBinding(i)
         if action and (action == "HEADER_BLANK" or action:find("^HEADER_")) then
-            -- Header rows: stash the localized header text; falls back
-            -- to the raw category if the global isn't populated.
             local headerKey = "BINDING_HEADER_" .. (category or action:sub(8))
             local headerLoc = _G[headerKey]
             if type(headerLoc) == "string" and headerLoc ~= "" then
@@ -1477,12 +1346,6 @@ local function CollectKeybindings()
 end
 BlizzOptionsSearch.CollectKeybindings = CollectKeybindings
 
--- Inspect a category's initializers and emit one inline entry per
--- setting it owns. Returns inline entries for sliders / checkboxes /
--- dropdowns and a flag when the category had no inline-friendly
--- settings (so the caller still emits the category entry as a
--- fallback). The mixin shape varies between addons; everything is
--- pcalled so a malformed initializer doesn't abort the walk.
 local function WalkCategorySettings(cat, catName, catID, pathPrefix)
     local out = {}
     if not (cat and SettingsPanel and SettingsPanel.GetLayout) then
@@ -1493,12 +1356,9 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
     local iok, inits = pcall(layout.GetInitializers, layout)
     if not iok or not inits then return out end
 
-    -- Combined initializers from CreateSettingsCheckboxSliderInitializer
-    -- ("Use UI Scale" with the checkbox + companion slider in one row)
-    -- bundle two settings into one initializer at init.data.cbSetting +
-    -- init.data.sliderSetting. We emit a single "checkboxSlider" entry
-    -- so the row mirrors Blizzard's combined widget instead of showing
-    -- two separate searchable rows.
+    -- Combined checkbox+slider initializers (e.g. "Use UI Scale")
+    -- bundle two settings under init.data.cbSetting/sliderSetting.
+    -- Emit a single entry instead of two.
     local function inspectInit(init)
         local d = init.data
         if type(d) == "table" and d.cbSetting and d.sliderSetting then
@@ -1535,9 +1395,7 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
             if type(opts) == "table" then
                 sMin = opts.minValue
                 sMax = opts.maxValue
-                -- Settings.CreateSliderOptions stores steps as the
-                -- NUMBER OF STEPS across the range, not the per-tick
-                -- delta. Convert to step size: (max - min) / steps.
+                -- opts.steps = number of steps, not per-tick delta.
                 if opts.stepSize then
                     sStep = opts.stepSize
                 elseif opts.steps and opts.steps > 0 and sMax > sMin then
@@ -1588,10 +1446,6 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
             local vok, variable = pcall(setting.GetVariable, setting)
             local nok, settingName = pcall(setting.GetName, setting)
             if vok and variable and nok and settingName and settingName ~= "" then
-                -- Detect type from initializer shape and setting metadata.
-                -- Slider initializers expose a SliderOptions table on
-                -- init.data.options; checkbox initializers have a boolean
-                -- variable type; everything else falls into "dropdown".
                 local resolvedType, sMin, sMax, sStep, sFmt
                 local d = init.data
                 local opts = (type(d) == "table") and d.options or nil
@@ -1606,9 +1460,7 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
                     resolvedType = "slider"
                     sMin = opts.minValue
                     sMax = opts.maxValue
-                    -- Settings.CreateSliderOptions stores steps as the
-                -- NUMBER OF STEPS across the range, not the per-tick
-                -- delta. Convert to step size: (max - min) / steps.
+                    -- opts.steps = number of steps, not per-tick delta.
                 if opts.stepSize then
                     sStep = opts.stepSize
                 elseif opts.steps and opts.steps > 0 and sMax > sMin then
@@ -1616,11 +1468,8 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
                 else
                     sStep = 1
                 end
-                    -- Slider display value goes through Blizzard's
-                    -- formatter (uiScale 0.64 -> "64%", etc.). Labels
-                    -- are keyed by MinimalSliderWithSteppersMixin.Label
-                    -- (Left=0, Right=1, Top=2, Min=3, Max=4); Top
-                    -- mirrors the live value above the thumb best.
+                    -- Formatter label keys: Left=0, Right=1, Top=2,
+                    -- Min=3, Max=4. Top mirrors the live value best.
                     if type(opts.formatters) == "table" then
                         sFmt = opts.formatters[2] or opts.formatters[1]
                             or opts.formatters[0] or opts.formatters.Top
@@ -1640,11 +1489,6 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
                 end
                 if not resolvedType then resolvedType = "dropdown" end
 
-                -- Capture dropdown option list so the row can cycle
-                -- through values inline. Shape varies: array of
-                -- { value, label } / { value, text } / Selections-style
-                -- objects. We normalize to { value, label } pairs and
-                -- skip if the table doesn't look enumerable.
                 local settingOptions
                 if resolvedType == "dropdown" then
                     settingOptions = GetInitializerOptions(init, setting)
@@ -1687,9 +1531,6 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
     return out
 end
 
--- True iff cat belongs to the AddOns tab. Modern Settings categories
--- expose GetCategorySet() returning a Settings.CategorySet enum value;
--- if that's missing we fall back to checking a categorySet field.
 local function IsAddonCategory(cat)
     if not cat then return false end
     local addonSet = Settings and Settings.CategorySet and Settings.CategorySet.AddOns
@@ -1701,15 +1542,9 @@ local function IsAddonCategory(cat)
     if set == nil then set = cat.categorySet end
     if set == nil then return false end
     if addonSet ~= nil then return set == addonSet end
-    -- Older clients use a string or numeric tag
     return set == "AddOns" or set == 2
 end
 
--- Walk the AddOns tab of the SettingsPanel and emit:
---   1. one navigable entry per addon category (opens the panel), and
---   2. one inline entry per individual setting inside each category
---      (so addon checkboxes / sliders are toggleable from the search
---      results just like Game Options).
 local function CollectAddonCategories()
     local entries = {}
     if not Settings then return entries end
@@ -1724,10 +1559,6 @@ local function CollectAddonCategories()
         local catName = cat:GetName()
         if not catName or catName == "" then return end
         local catNameLower = slower(catName)
-        -- Path is rooted at "<addon> Settings" (e.g. "BugSack Settings")
-        -- instead of "AddOn Settings > <addon>". The latter wastes a
-        -- whole row level on a constant string. For nested categories
-        -- the subcategory name follows: "BugSack Settings > Tooltip".
         local rootName = (parentName or catName) .. " Settings"
         local pathPrefix = parentName and { rootName, catName } or { rootName }
 
@@ -1739,8 +1570,6 @@ local function CollectAddonCategories()
             keywords = kw,
             keywordsLower = kw,
             category = "AddOn Settings",
-            -- Top-level addon: no path (the name itself reads as the
-            -- addon). Subcategory: path is the parent's "X Settings".
             path = parentName and { rootName } or nil,
             settingsCategory = catName,
             settingCategoryID = catID,
@@ -1751,9 +1580,6 @@ local function CollectAddonCategories()
         for _, e in ipairs(inline) do tinsert(entries, e) end
     end
 
-    -- Try the typed accessor first (modern WoW exposes a category-set
-    -- arg on GetCategoryList). Fall back to walking everything and
-    -- filtering via IsAddonCategory.
     local gotTyped = false
     if Settings.CategorySet and Settings.GetCategoryList then
         local ok, list = pcall(Settings.GetCategoryList, Settings.CategorySet.AddOns)
@@ -1794,11 +1620,8 @@ local function CollectAddonCategories()
 end
 BlizzOptionsSearch.CollectAddonCategories = CollectAddonCategories
 
--- Hardcoded option lists for graphics-quality dropdowns whose options
--- live inside SettingsAdvancedQualityControlsMixin's private closures
--- (GetShadowQualityOptions etc.). Mirror Blizzard's Graphics.lua: same
--- value sets, same localized label globals, same hardware-validity
--- filter via IsGraphicsSettingValueSupported.
+-- Graphics-quality dropdown options live in private closures
+-- (GetShadowQualityOptions etc.). Mirror Blizzard's Graphics.lua.
 local function MakeQualityOpts(cvar, raid, optionDefs)
     return { cvar = cvar, raid = raid, optionDefs = optionDefs }
 end
@@ -1853,12 +1676,6 @@ local function BuildQualityOptions(spec)
     return out
 end
 
--- Walk Game (non-AddOn) categories for individual settings the curated
--- SETTINGS_DATA list doesn't surface (Use UI Scale, vsync, etc.). The
--- live registry is authoritative for what's actually in the panel
--- this build, so this captures settings Blizzard added without us
--- touching the curated list. Skip variables already in SETTINGS_DATA
--- so we don't double-emit.
 local function BuildCuratedVariableSet()
     local set = {}
     for i = 1, #SETTINGS_DATA do
@@ -1906,13 +1723,9 @@ local function CollectGameSettings()
             end
         end
     end
-    -- Fallback pass: SettingsPanel.settings holds every Setting object
-    -- registered via Settings.RegisterCVar/Proxy/AddOn. Custom container
-    -- initializers (Graphics Quality's BaseQualityControls, which bundles
-    -- Shadow Quality / Liquid Detail / etc. into one frame) hide their
-    -- child settings from layout:GetInitializers, so the walk above
-    -- misses them. Pull them straight from the registry as basic
-    -- navigation entries: click the row, panel opens to the category.
+    -- Custom container initializers (e.g. BaseQualityControls) hide
+    -- their child settings from layout:GetInitializers. Pull them
+    -- straight from SettingsPanel.settings as navigation entries.
     if SettingsPanel and SettingsPanel.settings then
         for setting, cat in pairs(SettingsPanel.settings) do
             if cat and not IsAddonCategory(cat) and setting.GetVariable then
@@ -1920,12 +1733,8 @@ local function CollectGameSettings()
                 if vok and variable and not emittedVars[variable] then
                     local nok, settingName = pcall(setting.GetName, setting)
                     if nok and settingName and settingName ~= "" then
-                        -- Base + Raid variants of each Graphics Quality
-                        -- setting share the same display name with
-                        -- different proxy variables (PROXY_SHADOW_QUALITY
-                        -- vs the raid one). Suffix the raid version so
-                        -- the search results don't show two identical
-                        -- rows.
+                        -- Base + Raid graphics quality settings share the
+                        -- same display name; suffix the raid version.
                         local displayName = settingName
                         local lowerVar = slower(variable)
                         if lowerVar:find("raid", 1, true) then
@@ -1935,12 +1744,8 @@ local function CollectGameSettings()
                         local catID = cat.GetID and cat:GetID()
                         local nameLower = slower(displayName)
                         local kw = { "setting", "option", "config", nameLower, slower(catName) }
-                        -- Booleans render with the inline checkbox row.
-                        -- Known graphics-quality dropdowns get a hardcoded
-                        -- option list so the inline dropdown widget works.
-                        -- Other non-boolean orphans fall back to "open the
-                        -- panel on click" since we can't enumerate their
-                        -- options from outside the custom mixin.
+                        -- Non-boolean orphans without a hardcoded option
+                        -- list fall back to "open the panel on click".
                         local resolvedType, settingOptions
                         local qspec = HARDCODED_OPTIONS[variable]
                         if qspec then
@@ -1977,8 +1782,6 @@ local function CollectGameSettings()
 end
 BlizzOptionsSearch.CollectGameSettings = CollectGameSettings
 
--- Register the collected entries into the Database. Called once
--- after PLAYER_LOGIN so Settings.* is fully populated.
 function BlizzOptionsSearch:Populate()
     if not ns.Database or not ns.Database.uiSearchData then return end
     local entries = CollectEntries()
@@ -2001,13 +1804,10 @@ function BlizzOptionsSearch:Populate()
     if ns.Database.ResetSearchCache then ns.Database:ResetSearchCache() end
 end
 
--- Step handler: open the Settings panel to the cached category id and
--- (when given) scroll to the specific setting row.
 function BlizzOptionsSearch:HandleStep(step)
     if not step then return false end
 
-    -- Prefer the cached id baked into the entry. Fall back to live
-    -- lookup so old SavedVariables-pinned entries still work.
+    -- Prefer the cached id; live lookup is fallback for old saves.
     local catID = step.settingCategoryID
     if not catID and step.settingVariable then
         catID = GetCategoryIDForVariable(step.settingVariable)
@@ -2016,9 +1816,6 @@ function BlizzOptionsSearch:HandleStep(step)
         catID = GetCategoryID(step.settingsCategory)
     end
 
-    -- Show the panel first. OpenToCategory in modern WoW is supposed
-    -- to do this itself, but doing it explicitly first ensures the
-    -- frame is up before navigation runs.
     ShowSettings()
 
     if catID and Settings and Settings.OpenToCategory then
@@ -2029,8 +1826,7 @@ function BlizzOptionsSearch:HandleStep(step)
         end
     end
 
-    -- Belt-and-suspenders scroll: some clients accept the second arg
-    -- to OpenToCategory, others ignore it. Scroll manually next frame.
+    -- Some clients ignore the second arg to OpenToCategory; scroll manually.
     if step.settingVariable then
         SafeAfter(0, function() ScrollToSettingVariable(step.settingVariable) end)
         SafeAfter(0.1, function() ScrollToSettingVariable(step.settingVariable) end)
@@ -2043,9 +1839,6 @@ function BlizzOptionsSearch:HandleStep(step)
     return catID ~= nil
 end
 
--- Schedule registration after PLAYER_LOGIN so Settings.GetCategoryList
--- has the full tree (some addons register late). Two passes catch
--- any stragglers that register on first frame.
 local registered = false
 local function Register()
     if registered then return end
@@ -2058,9 +1851,7 @@ f:RegisterEvent("PLAYER_LOGIN")
 f:SetScript("OnEvent", function()
     SafeAfter(0.5, Register)
     SafeAfter(3.0, function()
-        -- Re-collect after a longer delay to pick up addons that
-        -- register their settings categories during the first few
-        -- seconds. Uses a name-based dedupe so we don't double up.
+        -- Re-collect to pick up addons that register categories late.
         local seen = {}
         for _, e in ipairs(ns.Database.uiSearchData or {}) do
             if e.settingsCategory and not e.settingVariable then
@@ -2070,8 +1861,7 @@ f:SetScript("OnEvent", function()
         ResolveCategoryIDs()
         local fresh = CollectEntries()
         for _, e in ipairs(fresh) do
-            -- Skip individual settings: they were already injected
-            -- on the first pass and CollectEntries always re-emits them.
+            -- Skip per-variable entries already injected in pass 1.
             if not e.settingVariable and not seen[e.settingsCategory] then
                 tinsert(ns.Database.uiSearchData, e)
             end
