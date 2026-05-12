@@ -174,11 +174,7 @@ function Database:LoadDeferredSyncProvidersStaggered()
             if not provider.asyncFn
                and not (provider.loaded and not provider.dirty) then
                 RunDynamicProvider(self, provider, function()
-                    if C_Timer and C_Timer.After then
-                        C_Timer.After(0, step)
-                    else
-                        step()
-                    end
+                    Utils.SafeAfter(0, step)
                 end)
                 return
             end
@@ -238,11 +234,7 @@ function Database:LoadHeavyDynamicSearchData(onDone)
             if provider.asyncFn then
                 RunDynamicProvider(self, provider, function(changed)
                     if changed then anyChanged = true end
-                    if C_Timer and C_Timer.After then
-                        C_Timer.After(0.05, step)
-                    else
-                        step()
-                    end
+                    Utils.SafeAfter(0.05, step)
                 end)
                 return
             end

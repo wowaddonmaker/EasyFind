@@ -1769,7 +1769,7 @@ function UI:EnsureCalculatorCopyBox()
     box:SetAlpha(0)
     box:SetFontObject(GameFontNormal)
     box:SetAutoFocus(false)
-    box:EnableKeyboard(false)
+    Utils.SafeCallMethod(box, "EnableKeyboard", false)
     box:SetMaxLetters(0)
     box:SetScript("OnKeyDown", function(self, key)
         if UI:HandleCalculatorCopyKey(key) then
@@ -1836,15 +1836,13 @@ function UI:CopyCalculatorResult(result, source)
 
     UI._calculator.copyToken = (UI._calculator.copyToken or 0) + 1
     local token = UI._calculator.copyToken
-    if C_Timer and C_Timer.After then
-        C_Timer.After(0, function()
-            local copyBox = UI._calculator.copyBox
-            if UI._calculator.copyToken ~= token or not copyBox then return end
-            if copyBox:GetText() ~= result then return end
-            copyBox:SetFocus()
-            copyBox:HighlightText(0, -1)
-        end)
-    end
+    Utils.SafeAfter(0, function()
+        local copyBox = UI._calculator.copyBox
+        if UI._calculator.copyToken ~= token or not copyBox then return end
+        if copyBox:GetText() ~= result then return end
+        copyBox:SetFocus()
+        copyBox:HighlightText(0, -1)
+    end)
     return true
 end
 
@@ -1900,7 +1898,7 @@ function UI:EnsureCalculatorCopyWatcher()
             UI:ReleaseCalculatorCopyBox()
         end
     end)
-    frame:SetScript("OnUpdate", function(self)
+    Utils.SafeOnUpdate(frame, function(self)
         if not UI._calculator.activeData or not UI._calculator.activeResult then
             UI._calculator.ctrlWasDown = nil
             UI._calculator.copyKeyWasDown = nil
@@ -1918,13 +1916,9 @@ function UI:EnsureCalculatorCopyWatcher()
             and ((IsKeyDown("C") or IsKeyDown("c")) and true or false)
         if copyDown and not UI._calculator.copyKeyWasDown then
             UI:RearmActiveCalculatorCopy("confirm")
-            if C_Timer and C_Timer.After then
-                C_Timer.After(0, function()
-                    UI:ConfirmCalculatorCopied()
-                end)
-            else
+            Utils.SafeAfter(0, function()
                 UI:ConfirmCalculatorCopied()
-            end
+            end)
         end
         UI._calculator.copyKeyWasDown = copyDown and true or nil
     end)
@@ -2099,9 +2093,9 @@ function UI:PlayCalculatorCopyFlash(row, part)
     if tex.anim then
         if tex.anim:IsPlaying() then tex.anim:Stop() end
         tex.anim:Play()
-    elseif C_Timer and C_Timer.After then
+    else
         tex:SetAlpha(0.35)
-        C_Timer.After(0.35, function()
+        Utils.SafeAfter(0.35, function()
             if tex then
                 tex:SetAlpha(0.0)
                 tex:Hide()
@@ -2142,23 +2136,14 @@ function UI:ConfirmCalculatorCopied()
     if popupCopy then
         self:UpdateCalculatorPopupCopyVisual(UI._calculator.popupData)
     end
-    if C_Timer and C_Timer.After then
-        C_Timer.After(0, function()
-            UI:ReleaseCalculatorCopyBox("confirm")
-            if popupCopy then
-                UI:RestoreCalculatorPopupFocus()
-            else
-                UI:RestoreSearchFocusAfterCalculatorCopy()
-            end
-        end)
-    else
-        self:ReleaseCalculatorCopyBox("confirm")
+    Utils.SafeAfter(0, function()
+        UI:ReleaseCalculatorCopyBox("confirm")
         if popupCopy then
-            self:RestoreCalculatorPopupFocus()
+            UI:RestoreCalculatorPopupFocus()
         else
-            self:RestoreSearchFocusAfterCalculatorCopy()
+            UI:RestoreSearchFocusAfterCalculatorCopy()
         end
-    end
+    end)
     return true
 end
 
@@ -2231,18 +2216,16 @@ function UI:HandleCalculatorPasteIntoSearch(editBox, key)
 
     local expected = UI._calculator.copyCompleteValue
     if expected == "" then return false end
-    if C_Timer and C_Timer.After then
-        C_Timer.After(0, function()
-            if not searchFrame or searchFrame.editBox ~= editBox then return end
-            if not editBox:IsVisible() then return end
-            local current = editBox:GetText() or ""
-            if current ~= expected and strtrim(current) ~= strtrim(expected) then return end
-            if editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
-            UI:HideResults()
-            editBox:SetFocus()
-            editBox:SetCursorPosition(#current)
-        end)
-    end
+    Utils.SafeAfter(0, function()
+        if not searchFrame or searchFrame.editBox ~= editBox then return end
+        if not editBox:IsVisible() then return end
+        local current = editBox:GetText() or ""
+        if current ~= expected and strtrim(current) ~= strtrim(expected) then return end
+        if editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
+        UI:HideResults()
+        editBox:SetFocus()
+        editBox:SetCursorPosition(#current)
+    end)
     return false
 end
 
@@ -3200,7 +3183,7 @@ function UI:CreateSearchFrame()
     local pendingUISearchDue = 0
     local pendingUISearchFrame = CreateFrame("Frame")
     pendingUISearchFrame:Hide()
-    pendingUISearchFrame:SetScript("OnUpdate", function(self)
+    Utils.SafeOnUpdate(pendingUISearchFrame, function(self)
         if GetTime() < pendingUISearchDue then return end
         self:Hide()
         local typedNow = pendingUISearchText
@@ -3944,13 +3927,9 @@ function UI:CreateSearchFrame()
 
         if UI:IsCalculatorCopyConfirmKey(key) then
             UI:RearmActiveCalculatorCopy("confirm")
-            if C_Timer and C_Timer.After then
-                C_Timer.After(0, function()
-                    UI:ConfirmCalculatorCopied()
-                end)
-            else
+            Utils.SafeAfter(0, function()
                 UI:ConfirmCalculatorCopied()
-            end
+            end)
             -- Ctrl+C must not leak to gameplay keybinds. The hidden editbox is
             -- already focused and selected; swallowing propagation still lets
             -- the client copy that selected text.
@@ -4816,18 +4795,14 @@ function UI:HandleQuickFilterTextChanged(editBox)
     if self:UpdateQuickFilterSuggestions(editBox) then
         if editBox and editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
         if editBox and editBox.UpdateAutocomplete then
-            if C_Timer and C_Timer.After then
-                local box = editBox
-                C_Timer.After(0, function()
-                    if box and box:IsVisible() and box:HasFocus()
-                       and UI._quickFilterSuggestionsActive
-                       and box.UpdateAutocomplete then
-                        box.UpdateAutocomplete()
-                    end
-                end)
-            else
-                editBox.UpdateAutocomplete()
-            end
+            local box = editBox
+            Utils.SafeAfter(0, function()
+                if box and box:IsVisible() and box:HasFocus()
+                   and UI._quickFilterSuggestionsActive
+                   and box.UpdateAutocomplete then
+                    box.UpdateAutocomplete()
+                end
+            end)
         end
         return true
     end
@@ -6532,7 +6507,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 end
             end)
 
-            classFlyout:SetScript("OnUpdate", function(self)
+            Utils.SafeOnUpdate(classFlyout, function(self)
                 if self:IsKeyboardEnabled() then return end
                 if not self:IsMouseOver() and not specPopup:IsMouseOver() then
                     if not self._leaveTimer then
@@ -6916,7 +6891,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     -- check, right-clicking outside dismisses the search bar (whose handler
     -- listens for GLOBAL_MOUSE_DOWN regardless of button) but leaves the
     -- filter dropdown stuck open.
-    dropdown:SetScript("OnUpdate", function(self)
+    Utils.SafeOnUpdate(dropdown, function(self)
         if self:IsShown()
            and (IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton")) then
             if not self:IsMouseOver() and not toggleBtn:IsMouseOver() then
@@ -12302,18 +12277,16 @@ function UI:HideResults()
 
     idleTrimSerial = idleTrimSerial + 1
     local serial = idleTrimSerial
-    if C_Timer and C_Timer.After then
-        C_Timer.After(60, function()
-            if serial ~= idleTrimSerial then return end
-            if resultsFrame and resultsFrame:IsShown() then return end
-            if ns.Database and ns.Database.TrimSearchMemory then
-                ns.Database:TrimSearchMemory()
-            end
-            if ns.MapSearch and ns.MapSearch.TrimSearchMemory then
-                ns.MapSearch:TrimSearchMemory()
-            end
-        end)
-    end
+    Utils.SafeAfter(60, function()
+        if serial ~= idleTrimSerial then return end
+        if resultsFrame and resultsFrame:IsShown() then return end
+        if ns.Database and ns.Database.TrimSearchMemory then
+            ns.Database:TrimSearchMemory()
+        end
+        if ns.MapSearch and ns.MapSearch.TrimSearchMemory then
+            ns.MapSearch:TrimSearchMemory()
+        end
+    end)
 end
 
 function UI:ShowPinnedItems()
@@ -13956,7 +13929,7 @@ local function RevealEJEncounter(step)
         end
     end
     reveal()
-    if C_Timer and C_Timer.After then C_Timer.After(0.05, reveal) end
+    Utils.SafeAfter(0.05, reveal)
 end
 
 -- Direct open mode - programmatically navigates to the target as far as possible.
@@ -15753,7 +15726,7 @@ function UI:ShowFirstTimeSetup()
     -- Gentle pulse on the gold fill
     local pulseUp = true
     local pulseAlpha = 0.20
-    glow:SetScript("OnUpdate", function(self, elapsed)
+    Utils.SafeOnUpdate(glow, function(self, elapsed)
         if pulseUp then
             pulseAlpha = pulseAlpha + elapsed * 0.12
             if pulseAlpha >= 0.35 then pulseAlpha = 0.35; pulseUp = false end
@@ -15863,7 +15836,7 @@ function UI:ShowFirstTimeSetup()
         stopResize(self)
     end)
 
-    resizer:SetScript("OnUpdate", function(self)
+    Utils.SafeOnUpdate(resizer, function(self)
         if not self.dragging then return end
         -- If the user released the button outside the hitbox, OnMouseUp
         -- won't fire - bail out when we detect the button is no longer down.
@@ -16124,14 +16097,14 @@ function UI:ShowFirstTimeSetup()
     gotItBtn:SetScript("OnClick", FinishSetup)
 
     -- Escape closes the whole tutorial from the positioning panel.
-    panel:EnableKeyboard(true)
-    panel:SetPropagateKeyboardInput(true)
+    Utils.SafeCallMethod(panel, "EnableKeyboard", true)
+    Utils.SafeCallMethod(panel, "SetPropagateKeyboardInput", true)
     panel:SetScript("OnKeyDown", function(self, key)
         if key == "ESCAPE" then
-            self:SetPropagateKeyboardInput(false)
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
             FinishSetup()
         else
-            self:SetPropagateKeyboardInput(true)
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
         end
     end)
 

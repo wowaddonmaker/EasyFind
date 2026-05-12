@@ -11,9 +11,19 @@ local tinsert, tsort, tconcat, tremove = Utils.tinsert, Utils.tsort, Utils.tconc
 local sfind, slower, ssub = Utils.sfind, Utils.slower, Utils.ssub
 local mmin, mmax, mpi, mfloor = Utils.mmin, Utils.mmax, Utils.mpi, Utils.mfloor
 local pcall, tostring = Utils.pcall, Utils.tostring
+local SafeAfter = Utils.SafeAfter
 local GetMapParentID = MapUtils.GetParentMapID
 local GetMapPath = MapUtils.GetMapPath
 local ZONE_ABBREVIATIONS = MapUtils.ZONE_ABBREVIATIONS
+
+local function ZoneMatchLess(a, b)
+    if a.score ~= b.score then return a.score > b.score end
+    return a.name < b.name
+end
+
+local function PinYAsc(a, b)
+    return (a.y or 0) < (b.y or 0)
+end
 
 local GOLD_COLOR = ns.GOLD_COLOR
 local YELLOW_HIGHLIGHT = ns.YELLOW_HIGHLIGHT
@@ -743,7 +753,7 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
         end
     end)
 
-    dropdown:SetScript("OnUpdate", function(self)
+    Utils.SafeOnUpdate(dropdown, function(self)
         if self:IsShown() and IsMouseButtonDown("LeftButton") then
             if not self:IsMouseOver() and not toggleBtn:IsMouseOver() then
                 self:Hide()
@@ -1246,12 +1256,7 @@ function MapSearch:SearchZones(query)
         end
     end
 
-    tsort(matches, function(a, b)
-        if a.score ~= b.score then
-            return a.score > b.score
-        end
-        return a.name < b.name
-    end)
+    tsort(matches, ZoneMatchLess)
 
     if #matches > 0 then
         CachePut(cache, query, matches)
@@ -2966,13 +2971,9 @@ do
         -- Reset helpers are below this block, so go through the namespace.
         if ns.MapSearch.ResetSearchZonesCache then ns.MapSearch.ResetSearchZonesCache() end
         if ns.MapSearch.ResetSearchPoisCache  then ns.MapSearch.ResetSearchPoisCache()  end
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0.2, function()
-                if ns.MapSearch.BuildWorldZoneCache then ns.MapSearch:BuildWorldZoneCache() end
-            end)
-        elseif ns.MapSearch.BuildWorldZoneCache then
-            ns.MapSearch:BuildWorldZoneCache()
-        end
+        SafeAfter(0.2, function()
+            if ns.MapSearch.BuildWorldZoneCache then ns.MapSearch:BuildWorldZoneCache() end
+        end)
     end)
 end
 
@@ -4513,7 +4514,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
     end
 
     -- Sort north-to-south (ascending y) so southern pins render on top
-    tsort(instances, function(a, b) return (a.y or 0) < (b.y or 0) end)
+    tsort(instances, PinYAsc)
 
     -- Show each instance with pin, highlight box, and indicator
     for i, instance in ipairs(instances) do
