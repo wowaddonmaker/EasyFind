@@ -25,7 +25,6 @@ EasyFind.db = {}
 -- Each migration runs once: if saved dbVersion < DB_VERSION, run all steps in order.
 local DB_VERSION = 17
 local REVAMPED_TUTORIAL_VERSION = "2.0.0"
-local FRESH_SETTINGS_VERSION = "2.0.0"
 ns.REVAMPED_TUTORIAL_VERSION = REVAMPED_TUTORIAL_VERSION
 
 -- SavedVariables defaults - new keys are auto-merged for existing users
@@ -172,68 +171,16 @@ local function CloneDefaultValue(value)
     return copy
 end
 
-local FRESH_SETTINGS_KEYS = {
-    "visible",
-    "enableMapSearch",
-    "iconScale",
-    "nativePinScale",
-    "uiSearchScale",
-    "uiSearchWidth",
-    "uiResultsScale",
-    "uiResultsWidth",
-    "uiSearchBarHeight",
-    "fontSize",
-    "uiSearchPosition",
-    "localMapDirectOpen",
-    "globalMapDirectOpen",
-    "autoHide",
-    "smartShow",
-    "lockPosition",
-    "resultsTheme",
-    "font",
-    "indicatorStyle",
-    "indicatorColor",
-    "uiResultsHeight",
-    "showTruncationMessage",
-    "hardResultsCap",
-    "pinnedUIItems",
-    "pinnedUIItemsPerChar",
-    "pinnedMapItems",
-    "mapPinsCollapsed",
-    "showLoginMessage",
-    "showAliasMessages",
-    "blinkingPins",
-    "mapPinHighlight",
-    "autoPinClear",
-    "autoTrackPins",
-    "uiResultsAbove",
-    "showResultShortcutHints",
-    "showMinimapButton",
-    "minimapButtonAngle",
-    "globalSearchFilters",
-    "localSearchFilters",
-    "mapTabFilters",
-    "mapTabShowRecent",
-    "mapTabRecentCount",
-    "mapTabAutoExpand",
-    "alwaysShowRares",
-    "uiSearchFilters",
-    "lootSpecs",
-    "lootSearchSlots",
-    "lootSearchStats",
-    "lootUpgradesOnly",
-    "lootDifficulty",
-    "hideTooltips",
-    "currencyFilterMode",
-    "reputationFilterMode",
-    "showLegacyReputations",
-    "abilityHidePassives",
-    "appearanceSetClass",
-    "appearanceSetCollected",
-    "appearanceSetNotCollected",
-    "appearanceSetPvE",
-    "appearanceSetPvP",
-    "uiMapSearchLocal",
+-- Keys preserved across the 2.0 settings reset: schema version,
+-- onboarding state, and user-authored data (history, aliases, recents).
+-- Everything else in DB_DEFAULTS gets restored to its default value.
+local PRESERVED_KEYS = {
+    dbVersion = true,
+    tutorialDone = true,
+    mapTabRecentSearches = true,
+    aliases = true,
+    uiSearchHistory = true,
+    uiSearchHistoryLimit = true,
 }
 
 local RETIRED_SETTINGS_KEYS = {
@@ -270,18 +217,16 @@ local RETIRED_SETTINGS_KEYS = {
 }
 
 local function ApplyFreshSettingsFor2(db)
-    if db.freshSettingsVersion == FRESH_SETTINGS_VERSION then return end
-
-    for i = 1, #FRESH_SETTINGS_KEYS do
-        local key = FRESH_SETTINGS_KEYS[i]
-        db[key] = CloneDefaultValue(DB_DEFAULTS[key])
+    for key, defaultValue in pairs(DB_DEFAULTS) do
+        if not PRESERVED_KEYS[key] then
+            db[key] = CloneDefaultValue(defaultValue)
+        end
     end
 
     for i = 1, #RETIRED_SETTINGS_KEYS do
         db[RETIRED_SETTINGS_KEYS[i]] = nil
     end
 
-    db.freshSettingsVersion = FRESH_SETTINGS_VERSION
     RequireRevampedTutorial(db)
 end
 
@@ -773,11 +718,11 @@ local function OnPlayerLogin()
     local currentVersion = ns.version
     local lastSeen = EasyFind.db.lastSeenVersion
     if currentVersion and currentVersion ~= lastSeen then
-        if currentVersion == "2.0.0" then
-            if EasyFind.db.revampedTutorialVersion ~= REVAMPED_TUTORIAL_VERSION then
-                EasyFind.db.tutorialDone = false
-            end
-        elseif lastSeen ~= nil or EasyFind.db.setupComplete then
+        if currentVersion == REVAMPED_TUTORIAL_VERSION
+           and EasyFind.db.revampedTutorialVersion ~= REVAMPED_TUTORIAL_VERSION then
+            EasyFind.db.tutorialDone = false
+        elseif currentVersion ~= REVAMPED_TUTORIAL_VERSION
+               and (lastSeen ~= nil or EasyFind.db.setupComplete) then
             SafeAfter(1.5, function()
                 if ns.UI then ns.UI:ShowWhatsNew(currentVersion) end
             end)
