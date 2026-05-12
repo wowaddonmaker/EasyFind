@@ -9822,7 +9822,14 @@ function UI:OnSearchTextChanged(text, force)
             for i = #aliasMatches, 1, -1 do
                 local hit = aliasMatches[i]
                 if not seen[hit.data] then
-                    tinsert(results, 1, { data = hit.data, score = math.huge, isAlias = true })
+                    local data = hit.data
+                    if data and data.mapSearchResult then
+                        local wrapped = {}
+                        for k, v in pairs(data) do wrapped[k] = v end
+                        wrapped.query = (hit.alias and hit.alias.text) or text
+                        data = wrapped
+                    end
+                    tinsert(results, 1, { data = data, score = math.huge, isAlias = true })
                     seen[hit.data] = true
                 end
             end
