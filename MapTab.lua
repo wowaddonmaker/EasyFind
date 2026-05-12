@@ -329,13 +329,18 @@ local function HideOurPanel()
     RefreshSelectGlows()
 end
 
-local function ShowPopup(isPinned, onPin, onGuide)
-    Utils.ShowPinMenu("EasyFindMapTabPopup", isPinned, onPin, onGuide, nil, {
+local function PromptAlias(data)
+    if ns.UI and ns.UI.PromptForAlias then
+        ns.UI:PromptForAlias(data)
+    end
+end
+
+local function ShowPopup(isPinned, onPin, onGuide, onAddAlias)
+    Utils.ShowPinMenu("EasyFindPinPopup", isPinned, onPin, onGuide, onAddAlias, {
+        strata = "TOOLTIP",
+        level = 100,
         width = 96,
         rowHeight = 22,
-        offsetX = -8,
-        offsetY = -8,
-        clickGrace = 0.15,
     })
 end
 
@@ -350,7 +355,7 @@ local function CreateResultRow(parent)
     -- focused) absorbs the mouseUp before OnClick fires, requiring a
     -- second click to actually activate the row. Down registration runs
     -- the action immediately on press so focus changes can't interfere.
-    row:RegisterForClicks("LeftButtonDown", "RightButtonDown")
+    row:RegisterForClicks("LeftButtonDown", "RightButtonUp")
     row:EnableMouse(true)
     row:HookScript("OnMouseDown", function()
         if panel and panel.searchBox and panel.searchBox.HasFocus and panel.searchBox:HasFocus() then
@@ -498,7 +503,7 @@ local function RowOnClick(row, button)
         ShowPopup(isPinned, function()
             if isPinned then MapSearch:UnpinMapItem(data) else MapSearch:PinMapItem(data) end
             RefreshCurrentSearch()
-        end, function() TriggerResultSelect(data, false) end)
+        end, function() TriggerResultSelect(data, false) end, function() PromptAlias(data) end)
         return
     end
 
@@ -610,7 +615,7 @@ local function CreateGroupHeader(parent)
     hdr:SetHeight(GROUP_HEADER_H)
     -- See CreateResultRow: activate on press to bypass focus-transition
     -- mouseUp absorption.
-    hdr:RegisterForClicks("LeftButtonDown", "RightButtonDown")
+    hdr:RegisterForClicks("LeftButtonDown", "RightButtonUp")
     hdr:HookScript("OnMouseDown", function()
         if panel and panel.searchBox and panel.searchBox.HasFocus and panel.searchBox:HasFocus() then
             panel.searchBox:ClearFocus()
@@ -1052,7 +1057,7 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
                 navigateData.collapsed = nil
             end
             RefreshCurrentSearch()
-        end, function() TriggerResultSelect(navigateData, false) end)
+        end, function() TriggerResultSelect(navigateData, false) end, function() PromptAlias(navigateData) end)
     end
 
     local function renderEntries(entries, sectionKey)
@@ -1250,7 +1255,7 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
                     ShowPopup(true, function()
                         MapSearch:UnpinMapItem(pinRef)
                         RefreshCurrentSearch()
-                    end, function() TriggerResultSelect(pinRef, false) end)
+                    end, function() TriggerResultSelect(pinRef, false) end, function() PromptAlias(pinRef) end)
                 end
                 placeGroupHeader(pinRef.name, "pinned:" .. pinRef.zoneMapID,
                     nil, collapsed, pinRef, true, onToggle, onRightClick)
@@ -1289,6 +1294,42 @@ if Enum and Enum.UIMapType then
     EXCLUDE_FROM_LOCAL_MAPTYPES[Enum.UIMapType.Continent] = true
 end
 
+local function ResultDedupeKey(r)
+    if not r then return "" end
+    local name = r.name or ""
+    if r.category == "flightmaster" then
+        return "fm:" .. name
+    end
+    if r.isDungeonEntrance then
+        return "instance:" .. tostring(r.entranceMapID or r.mapID or r.coordMapID or 0)
+            .. ":" .. name
+    end
+    if r.isZone and r.zoneMapID then
+        return "zone:" .. tostring(r.zoneMapID)
+    end
+    local mapID = r.mapID or r.coordMapID or r.entranceMapID
+        or r.zoneMapID or r.parentMapID or 0
+    local x = r.x or r.entranceX or 0
+    local y = r.y or r.entranceY or 0
+    return tostring(r.category or "location") .. ":" .. tostring(mapID)
+        .. ":" .. name .. ":" .. tostring(x) .. ":" .. tostring(y)
+end
+
+local function IsMapTabAliasData(data)
+    return data and (data.mapSearchResult or data.isZone or data.isDungeonEntrance
+        or data.zoneMapID or data.entranceMapID
+        or (data.category and (data.x or data.entranceX or data.mapID or data.coordMapID)))
+end
+
+local function ResultIsOnViewedMap(data, viewedMapID)
+    if not data or not viewedMapID then return false end
+    return data.mapID == viewedMapID
+        or data.coordMapID == viewedMapID
+        or data.entranceMapID == viewedMapID
+        or data.zoneMapID == viewedMapID
+        or data.parentMapID == viewedMapID
+end
+
 -- Filter by mapTabFilters (category bucket) and strip duplicates that
 -- already appear in a previous list. Preserves result ordering from
 -- BuildResults. When isLocal is true, also excludes continent-level and
@@ -1312,12 +1353,7 @@ local function FilterAndDedupe(results, seen, isLocal)
                 -- so the same FM has different (x,y) in each set. Key FMs
                 -- by name alone so the local pass claims it first and the
                 -- global pass dedupes cleanly.
-                local key
-                if r.category == "flightmaster" then
-                    key = "fm:" .. (r.name or "")
-                else
-                    key = (r.mapID or 0) .. ":" .. (r.name or "") .. ":" .. (r.x or 0) .. ":" .. (r.y or 0)
-                end
+                local key = ResultDedupeKey(r)
                 if not seen[key] then
                     seen[key] = true
                     local bucket = getBucket and getBucket(r) or "other"
@@ -1517,6 +1553,27 @@ function MapTab:RunSearch(text)
     if myGen ~= lastQueryGen then return end
     local globalFiltered = FilterAndDedupe(globalRaw, seen, false)
 
+    if ns.Aliases then
+        local aliasMatches = ns.Aliases:GetMatches(text:lower())
+        if aliasMatches then
+            local viewedMapID = WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID()
+            for i = #aliasMatches, 1, -1 do
+                local data = aliasMatches[i] and aliasMatches[i].data
+                if IsMapTabAliasData(data) then
+                    local key = ResultDedupeKey(data)
+                    if not seen[key] then
+                        seen[key] = true
+                        if ResultIsOnViewedMap(data, viewedMapID) then
+                            tinsert(localFiltered, 1, data)
+                        else
+                            tinsert(globalFiltered, 1, data)
+                        end
+                    end
+                end
+            end
+        end
+    end
+
     -- Pull duplicate-named zones out of globalFiltered into version groups.
     -- Names matching 2+ entries collapse into one header that lists every
     -- variant (highest-mapID first as a "newest" heuristic). The header
@@ -1617,7 +1674,7 @@ end
 
 -- ---------------------------------------------------------------------------
 -- Keyboard navigation helpers. Wiring: the search box captures arrow /
--- Ctrl+J/K / Enter / Esc while focused and consumes them, falling back
+-- Alt+J/K / Enter / Esc while focused and consumes them, falling back
 -- to typing for anything else. When the user navigates down from the
 -- search box, focus drops onto navFrame, which captures j/k/Enter/Esc
 -- directly so the user can keep navigating without reclaiming keyboard
@@ -1748,13 +1805,13 @@ end
 -- true if the key was consumed. `keepSearchFocus` is true when the call
 -- site is the editbox; false when it's the navFrame.
 HandleNavKey = function(key, keepSearchFocus)
-    local ctrl = IsControlKeyDown()
-    if key == "DOWN" or (ctrl and key == "J") then
+    local alt = IsAltKeyDown()
+    if key == "DOWN" or (alt and key == "J") then
         if #visibleNavRows == 0 then return false end
         -- Keying into results always drops editbox focus and hands
         -- keyboard capture to navFrame, so subsequent keys move the
         -- selection without retyping in the box. Applies to both
-        -- arrow and Ctrl+J — they behave identically.
+        -- arrow and Alt+J behave identically.
         if keepSearchFocus and panel and panel.searchBox then
             panel.searchBox:ClearFocus()
         end
@@ -1771,7 +1828,7 @@ HandleNavKey = function(key, keepSearchFocus)
             MoveNavSelection(1)
         end
         return true
-    elseif key == "UP" or (ctrl and key == "K") then
+    elseif key == "UP" or (alt and key == "K") then
         if #visibleNavRows == 0 then return false end
         -- Up from the first row (or from no selection): exit back to
         -- the search box so the user can resume typing symmetrically
@@ -1946,7 +2003,7 @@ local function CreateSearchBox(parent)
         end,
         onAccepted = function(text, source)
             if text and text ~= "" then MapTab:RunSearch(text) end
-            if source ~= "right" and source ~= "ctrl-l" and source ~= "click" then
+            if source ~= "right" and source ~= "alt-l" and source ~= "click" then
                 MapTab:PushRecentSearch(text)
             end
         end,
@@ -1956,7 +2013,7 @@ local function CreateSearchBox(parent)
         UpdateClear(self)
     end)
 
-    -- Keyboard nav: consume arrow / Ctrl+J/K / Esc while the editbox
+    -- Keyboard nav: consume arrow / Alt+J/K / Esc while the editbox
     -- is focused. WoW editboxes default to propagating every keystroke
     -- to the binding system, which fires player keybinds while the user
     -- is typing — so we unconditionally clamp propagation to false at
@@ -1968,8 +2025,8 @@ local function CreateSearchBox(parent)
                 self:AcceptAutocomplete("right")
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
                 return
-            elseif key == "L" and IsControlKeyDown() then
-                self:AcceptAutocomplete("ctrl-l")
+            elseif key == "L" and IsAltKeyDown() then
+                self:AcceptAutocomplete("alt-l")
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
                 return
             end
@@ -1977,7 +2034,7 @@ local function CreateSearchBox(parent)
         -- Keep nav keys from racing a pending search render.
         if pendingSearchTimer
            and (key == "DOWN" or key == "UP"
-                or (IsControlKeyDown() and (key == "J" or key == "K"))) then
+                or (IsAltKeyDown() and (key == "J" or key == "K"))) then
             CancelPendingSearch()
         end
         HandleNavKey(key, true)

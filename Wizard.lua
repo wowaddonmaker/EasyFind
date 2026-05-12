@@ -529,19 +529,17 @@ local function BuildPage3(parent)
     local title = HeaderText(p, "Pick your hotkeys", "GameFontNormalLarge")
     title:SetPoint("TOP", p, "TOP", 0, -36)
 
-    local sub = BodyText(p,
-        "These are the key combos that open each search bar.\n" ..
-        "Ctrl+Space and Ctrl+M are clean defaults, but anything works.")
+    local sub = BodyText(p, "")
     sub:SetPoint("TOP", title, "BOTTOM", 0, -10)
     sub:SetWidth(WIZ_W - 100)
 
     local uiKb  = CreateKbWidget(p, TOGGLE_ACTION, "Search Bar")
-    local mapKb = CreateKbWidget(p, MAP_ACTION,    "Map Search")
+    local mapKb = CreateKbWidget(p, MAP_ACTION,    "Map Search Tab")
     kbWidgets = { uiKb, mapKb }
 
     -- Stacked layout: search bar on top, map search below.
     uiKb.label:SetPoint("RIGHT", uiKb.btn, "LEFT", -14, 0)
-    uiKb.btn:SetPoint("TOP", sub, "BOTTOM", 40, -28)
+    uiKb.btn:SetPoint("TOP", sub, "BOTTOM", 40, -38)
 
     mapKb.label:SetPoint("RIGHT", mapKb.btn, "LEFT", -14, 0)
     mapKb.btn:SetPoint("TOP", uiKb.btn, "BOTTOM", 0, -16)
@@ -556,16 +554,6 @@ local function BuildPage3(parent)
 
     p.OnEnter = function()
         if kbWaitingFor then StopKeybindCapture() end
-        -- First-time default: if the player hasn't bound the map
-        -- search yet, suggest CTRL-M. Doesn't override existing
-        -- bindings or other actions already on that combo.
-        if not GetBindingKey(MAP_ACTION) then
-            local ownerOfCtrlM = GetBindingAction and GetBindingAction("CTRL-M")
-            if not ownerOfCtrlM or ownerOfCtrlM == "" then
-                SetBinding("CTRL-M", MAP_ACTION)
-                SaveBindings(GetCurrentBindingSet())
-            end
-        end
         for i = 1, #kbWidgets do RefreshKbWidget(kbWidgets[i]) end
     end
 
@@ -628,7 +616,7 @@ local function BuildPage4(parent)
 
     local r3 = BulletRow(p,
         "Reset its spot",
-        "Type :reset in the search bar to send it back to the top of the screen, or use Reset Positions in Options.")
+        "Type /reset in the search bar to send it back to the top of the screen, or use Reset Positions in Options.")
     r3:SetPoint("TOPLEFT", r2, "BOTTOMLEFT", 0, -10)
 
     local r4 = BulletRow(p,
@@ -795,7 +783,6 @@ local function CreateFrameOnce()
         BuildPage1(pageHost),
         BuildPage2(pageHost),
         BuildPage3(pageHost),
-        BuildPage4(pageHost),
     }
 
     -- Footer banner: a self-contained rounded panel floating inside

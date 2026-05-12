@@ -57,6 +57,7 @@ end
 --- Usage: Utils.SafeCallMethod(frame, "SetPropagateKeyboardInput", false)
 function Utils.SafeCallMethod(obj, method, ...)
     if InCombatLockdown() then return false end
+    if not obj then return false end
     local fn = obj[method]
     if not fn then return false end
     return pcall(fn, obj, ...)

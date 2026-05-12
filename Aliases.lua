@@ -12,6 +12,26 @@ local Utils = ns.Utils
 local sfind, slower, strtrim = Utils.sfind, Utils.slower, strtrim
 local tinsert = Utils.tinsert
 
+local function IsMapAliasTarget(data)
+    return data and (data.mapSearchResult or data.isZone or data.isDungeonEntrance
+        or data.zoneMapID or data.entranceMapID
+        or (data.category and (data.x or data.entranceX or data.mapID or data.coordMapID)))
+end
+
+local function MapAliasKey(data)
+    local name = slower(data.name or "")
+    if name == "" then return nil end
+    local mapID = data.mapID or data.coordMapID or data.zoneMapID
+        or data.entranceMapID or data.parentMapID
+        or (WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID())
+        or 0
+    local x = data.x or data.entranceX or 0
+    local y = data.y or data.entranceY or 0
+    return "map:" .. (data.category or "location") .. ":" .. tostring(mapID)
+        .. ":" .. name .. ":" .. tostring(math.floor(x * 10000 + 0.5))
+        .. ":" .. tostring(math.floor(y * 10000 + 0.5))
+end
+
 -- Build a stable, type-prefixed key for a Database entry. Used both
 -- to record an alias target and to find the matching entry later.
 -- Returns nil when the entry doesn't expose a stable identifier
@@ -31,6 +51,9 @@ function Aliases:GetEntryKey(data)
             local cid = data.steps[i].currencyID
             if cid then return "currency:" .. cid end
         end
+    end
+    if IsMapAliasTarget(data) then
+        return MapAliasKey(data)
     end
     -- UI Elements: identify by full path + name. Path may be empty
     -- for top-level entries, so fall back to the bare name.
@@ -82,20 +105,24 @@ function Aliases:Add(aliasText, data)
     -- recover them later. Snapshot the renderable fields so the alias
     -- hit still works after a /reload.
     local snapshot
-    if data.mapSearchResult then
+    if IsMapAliasTarget(data) then
+        local currentMapID = WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID()
         snapshot = {
             name = data.name,
             nameLower = data.nameLower,
             category = data.category,
             icon = data.icon,
             mapSearchResult = true,
-            mapID = data.mapID,
+            mapID = data.mapID or data.coordMapID or data.entranceMapID or data.zoneMapID or currentMapID,
             zoneName = data.zoneName,
             pathPrefix = data.pathPrefix,
             x = data.x, y = data.y,
             keywords = data.keywords,
             isZone = data.isZone,
             zoneMapID = data.zoneMapID,
+            zoneParentMapID = data.zoneParentMapID,
+            parentMapID = data.parentMapID,
+            coordMapID = data.coordMapID,
             entranceMapID = data.entranceMapID,
             entranceX = data.entranceX,
             entranceY = data.entranceY,

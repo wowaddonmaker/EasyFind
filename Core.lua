@@ -14,7 +14,7 @@ EasyFind._ns = ns  -- Expose namespace for dev tools (EasyFindDev)
 
 BINDING_NAME_EASYFIND_TOGGLE_FOCUS = "Toggle Search Bar"
 BINDING_NAME_EASYFIND_CLEAR        = "Clear All Highlights"
-BINDING_NAME_EASYFIND_MAP_FOCUS    = "Open Map Search"
+BINDING_NAME_EASYFIND_MAP_FOCUS    = "Open Map Search Tab"
 
 local eventFrame = CreateFrame("Frame")
 ns.eventFrame = eventFrame
@@ -23,7 +23,7 @@ EasyFind.db = {}
 
 -- SavedVariables version. Increment when changing DB schema.
 -- Each migration runs once: if saved dbVersion < DB_VERSION, run all steps in order.
-local DB_VERSION = 12
+local DB_VERSION = 15
 
 -- SavedVariables defaults - new keys are auto-merged for existing users
 local DB_DEFAULTS = {
@@ -52,12 +52,12 @@ local DB_DEFAULTS = {
     uiResultsHeight = 280,     -- Visible height of UI search results panel in pixels
     showTruncationMessage = true,  -- Show "more results available" message when truncated
     hardResultsCap = false,    -- Hard cap on results (no "more results" message)
-    staticOpacity = true,      -- Keep opacity constant while moving (default-on with toggle/autoHide UX)
     pinnedUIItems = {},        -- Pinned UI search results (persist across sessions, account-wide)
     pinnedUIItemsPerChar = {}, -- Character-specific pins (mounts, toys, pets, outfits) keyed by "Name-Realm"
     pinnedMapItems = {},       -- Pinned map search results (persist across sessions)
     mapPinsCollapsed = false,  -- Whether the map search "Pinned" header is collapsed
-    showLoginMessage = true,   -- Show "EasyFind loaded!" message on login
+    showLoginMessage = false,  -- Show "EasyFind loaded!" message on login
+    showAliasMessages = true,  -- Show a short chat note when adding a search alias
     blinkingPins = false,      -- Pulse map pins and highlights in sync with indicator bob
     mapPinHighlight = true,    -- Show yellow highlight box around map pins
     autoPinClear = true,       -- Auto-clear map pin when player arrives
@@ -81,7 +81,7 @@ local DB_DEFAULTS = {
     mapTabFilters = {
         zones = true,
         instances = true,
-        flightpath = true,
+        flightpath = false,
         travel = true,         -- Portals, ships, zeppelins, trams (separate from flight paths)
         services = true,
         rares = true,
@@ -93,7 +93,7 @@ local DB_DEFAULTS = {
     alwaysShowRares = false,  -- Persistent rare tracking: show active rares on map without searching
     uiSearchFilters = {        -- UI search category filters (all enabled by default)
         achievements   = true,
-        statistics     = true,
+        statistics     = false,
         currencies     = true,
         reputations    = true,
         collections    = true,
@@ -191,11 +191,12 @@ local DB_MIGRATIONS = {
         if db.localMapDirectOpen == false then db.localMapDirectOpen = true end
         if db.globalMapDirectOpen == false then db.globalMapDirectOpen = true end
     end,
-    -- [6] = Populate the split flightpath filter key. The current
-    -- default is enabled so the filter menu starts fully checked.
+    -- [6] = Populate the split flightpath filter key. Flight paths default
+    -- off in the Map tab because they are noisy compared to deliberate
+    -- travel/location searches.
     [6] = function(db)
         if db.mapTabFilters and db.mapTabFilters.flightpath == nil then
-            db.mapTabFilters.flightpath = true
+            db.mapTabFilters.flightpath = false
         end
     end,
     -- [8] = Theme rename: "Classic" and "Retail" renamed to
@@ -227,6 +228,28 @@ local DB_MIGRATIONS = {
     -- [12] = Search window background is always solid now.
     [12] = function(db)
         db.searchBarOpacity = nil
+    end,
+    -- [13] = Final 2.0 onboarding gate. Force the revamped tutorial
+    -- once for existing account-wide SavedVariables, and mark 2.0.0
+    -- as seen so the legacy What's New popup cannot compete with it.
+    [13] = function(db)
+        db.tutorialDone = false
+        db.lastSeenVersion = "2.0.0"
+    end,
+    -- [14] = Finalize search opacity and map-tab defaults for 2.0.
+    -- Search opacity is no longer user-controlled, and flight paths start
+    -- hidden in the Map tab unless the user turns them back on.
+    [14] = function(db)
+        db.staticOpacity = nil
+        db.searchBarOpacity = nil
+        db.suggestedKeybindsApplied = nil
+        if db.mapTabFilters then
+            db.mapTabFilters.flightpath = false
+        end
+    end,
+    -- [15] = Make the login chat message opt-in for 2.0.
+    [15] = function(db)
+        db.showLoginMessage = false
     end,
 }
 
@@ -302,6 +325,7 @@ local function OnInitialize()
     if not EasyFindDB then
         EasyFindDB = { firstInstall = true }
     end
+    local savedVersion = EasyFindDB.dbVersion or 0
     for k, v in pairs(DB_DEFAULTS) do
         if EasyFindDB[k] == nil then
             EasyFindDB[k] = v
@@ -315,7 +339,6 @@ local function OnInitialize()
     end
 
     -- Run sequential migrations
-    local savedVersion = EasyFindDB.dbVersion or 0
     for v = savedVersion + 1, DB_VERSION do
         if DB_MIGRATIONS[v] then
             DB_MIGRATIONS[v](EasyFindDB)
@@ -442,12 +465,10 @@ local function OnInitialize()
             EasyFind:Print("  /ef feature: request a feature")
         elseif msg == "" then
             EasyFind:OpenOptions()
-        else
-            print("|cFFFFFF00Type '/ef help' for a list of commands.|r")
         end
     end
 
-    if EasyFind.db.showLoginMessage ~= false then
+    if EasyFind.db.showLoginMessage == true then
         EasyFind:Print("EasyFind loaded. Use /ef o to open options. (Disable this message in General settings.)")
     end
 end
