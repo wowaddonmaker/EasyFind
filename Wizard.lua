@@ -165,8 +165,8 @@ local function FinishWizard(openBar)
     EasyFind.db.setupComplete = true
     if ns.version then
         EasyFind.db.lastSeenVersion = ns.version
-        if ns.version == (ns.REVAMPED_TUTORIAL_VERSION or "2.0.0") then
-            EasyFind.db.revampedTutorialVersion = ns.REVAMPED_TUTORIAL_VERSION or "2.0.0"
+        if ns.version == ns.REVAMPED_TUTORIAL_VERSION then
+            EasyFind.db.revampedTutorialVersion = ns.REVAMPED_TUTORIAL_VERSION
         end
     end
     SafeCallMethod(frame, "EnableKeyboard", false)
