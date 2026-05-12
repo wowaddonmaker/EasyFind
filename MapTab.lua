@@ -16,6 +16,9 @@ local GameTooltip = GameTooltip
 local GameTooltip_Hide = GameTooltip_Hide
 local C_Timer = C_Timer
 
+local function NameLess(a, b) return a.name < b.name end
+local function ZoneMapIDDesc(a, b) return (a.zoneMapID or 0) > (b.zoneMapID or 0) end
+
 local TAB_W, TAB_H       = 42, 55
 local TAB_ICON_SIZE      = 20
 local TAB_ICON_GOLD      = {1.00, 0.82, 0.00}
@@ -73,7 +76,7 @@ local function GetWorldChildren(mapID)
             end
         end
     end
-    table.sort(result, function(a, b) return a.name < b.name end)
+    table.sort(result, NameLess)
     worldChildrenCache[mapID] = result
     return result
 end
@@ -129,7 +132,7 @@ local function SchedulePendingSearch(editBox, typed, grew)
     if not pendingSearchFrame then
         pendingSearchFrame = CreateFrame("Frame")
         pendingSearchFrame:Hide()
-        pendingSearchFrame:SetScript("OnUpdate", function(self)
+        Utils.SafeOnUpdate(pendingSearchFrame, function(self)
             self:Hide()
             local box = pendingSearchEditBox
             local text = pendingSearchText or ""
@@ -1021,9 +1024,7 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
                             if #variants == 1 then
                                 placeRow(variants[1], 18, e.name)
                             else
-                                table.sort(variants, function(a, b)
-                                    return (a.zoneMapID or 0) > (b.zoneMapID or 0)
-                                end)
+                                table.sort(variants, ZoneMapIDDesc)
                                 local subKey = groupKey .. ":var:" .. n
                                 local stored = collapsedDb[subKey]
                                 local subCollapsed = stored ~= false
@@ -1424,9 +1425,7 @@ function MapTab:RunSearch(text)
         local removed = {}
         for _, list in pairs(byName) do
             if #list >= 2 then
-                table.sort(list, function(a, b)
-                    return (a.zoneMapID or 0) > (b.zoneMapID or 0)
-                end)
+                table.sort(list, ZoneMapIDDesc)
                 for j = 1, #list do removed[list[j]] = true end
                 versionGroups = versionGroups or {}
                 versionGroups[#versionGroups + 1] = {
@@ -1508,14 +1507,10 @@ local function EnsureNavFrame()
     if navFrame then return navFrame end
     if not panel then return nil end
     navFrame = CreateFrame("Frame", nil, panel)
-    navFrame:EnableKeyboard(false)
-    navFrame:SetPropagateKeyboardInput(true)
+    Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
+    Utils.SafeCallMethod(navFrame, "SetPropagateKeyboardInput", true)
     navFrame:SetScript("OnKeyDown", function(self, key)
-        if HandleNavKey(key, false) then
-            self:SetPropagateKeyboardInput(false)
-        else
-            self:SetPropagateKeyboardInput(true)
-        end
+        Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", not HandleNavKey(key, false))
     end)
     navFrame:SetScript("OnKeyUp", function(_, key)
         if navKeyRepeat and navKeyRepeat.IsKey(key) then

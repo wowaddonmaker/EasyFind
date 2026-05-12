@@ -128,11 +128,7 @@ local function ResetOptionsPosition()
 end
 
 local function RunSoon(fn)
-    if C_Timer and C_Timer.After then
-        C_Timer.After(0, fn)
-    else
-        fn()
-    end
+    Utils.SafeAfter(0, fn)
 end
 
 local function ClearMapRuntime()

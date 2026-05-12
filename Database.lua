@@ -1568,13 +1568,9 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
         lootSpecsScanned[sp.classID .. "-" .. sp.specID] = true
     end
     RebuildLootSearchData()
-    if C_Timer and C_Timer.After then
-        C_Timer.After(0, function()
-            collectgarbage("step", 200)
-        end)
-    else
+    Utils.SafeAfter(0, function()
         collectgarbage("step", 200)
-    end
+    end)
 end
 
 function Database:PopulateDynamicLootAsync(done, scanAllSpecs)

@@ -695,14 +695,14 @@ local function CreateFrameOnce()
 
     f:SetScript("OnKeyDown", function(self, key)
         if kbWaitingFor then
-            self:SetPropagateKeyboardInput(true)
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
             return
         end
         if key == "ESCAPE" then
-            self:SetPropagateKeyboardInput(false)
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
             FinishWizard(false)
         else
-            self:SetPropagateKeyboardInput(true)
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
         end
     end)
 
