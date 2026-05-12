@@ -18,7 +18,7 @@ local blizzardRegistered = false
 
 local NIL = {}
 local DEFAULT_UI_FILTERS = {
-    ui = true, achievements = true, statistics = false, currencies = true,
+    achievements = true, statistics = false, currencies = true,
     reputations = true, collections = true, gameOptions = true,
     addonOptions = true, mounts = true, toys = true, pets = true,
     outfits = true, heirlooms = true, loot = true, appearanceSets = true,
