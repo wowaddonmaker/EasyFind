@@ -1,9 +1,3 @@
--- User-defined search aliases. Each alias maps a short user-typed
--- string to a stable identifier that points at one Database entry.
--- Aliases survive reloads/relogs (stored in EasyFindDB.aliases) and
--- inject the matching entry into the search results when the user
--- types text that prefix-matches the alias.
-
 local _, ns = ...
 local Aliases = {}
 ns.Aliases = Aliases
@@ -32,10 +26,6 @@ local function MapAliasKey(data)
         .. ":" .. tostring(math.floor(y * 10000 + 0.5))
 end
 
--- Build a stable, type-prefixed key for a Database entry. Used both
--- to record an alias target and to find the matching entry later.
--- Returns nil when the entry doesn't expose a stable identifier
--- (e.g. transient pin headers).
 function Aliases:GetEntryKey(data)
     if not data then return nil end
     if data.mountID       then return "mount:"          .. data.mountID end
@@ -55,8 +45,6 @@ function Aliases:GetEntryKey(data)
     if IsMapAliasTarget(data) then
         return MapAliasKey(data)
     end
-    -- UI Elements: identify by full path + name. Path may be empty
-    -- for top-level entries, so fall back to the bare name.
     if data.path and #data.path > 0 then
         return "ui:" .. table.concat(data.path, ">") .. ">" .. (data.name or "")
     end
@@ -64,11 +52,6 @@ function Aliases:GetEntryKey(data)
     return nil
 end
 
--- Find the live Database entry that matches a stored alias key. The
--- live entry is what the renderer needs (icons, tooltip targets,
--- secure attributes) so the alias hit looks identical to a normal
--- search hit. Returns nil if the entry has been removed (e.g. mount
--- relearned with a different ID).
 function Aliases:FindEntryByKey(key)
     if not key or not ns.Database or not ns.Database.uiSearchData then return nil end
     local data = ns.Database.uiSearchData
@@ -76,9 +59,6 @@ function Aliases:FindEntryByKey(key)
         local entry = data[i]
         if Aliases:GetEntryKey(entry) == key then return entry end
     end
-    -- Map results don't live in uiSearchData (they come from
-    -- MapSearch:SearchForUI). Fall back to the snapshot stored when
-    -- the alias was added so the alias hit still renders.
     if EasyFind and EasyFind.db and EasyFind.db.aliases then
         for _, info in pairs(EasyFind.db.aliases) do
             if info.key == key and info.snapshot then
@@ -89,9 +69,6 @@ function Aliases:FindEntryByKey(key)
     return nil
 end
 
--- Persist an alias. The text is trimmed and lowercased so search
--- matching can stay case-insensitive without per-keystroke lower()
--- calls. Replaces any prior alias with the same text.
 function Aliases:Add(aliasText, data)
     if not EasyFind or not EasyFind.db then return false end
     aliasText = strtrim(aliasText or "")
@@ -101,9 +78,6 @@ function Aliases:Add(aliasText, data)
     if type(EasyFind.db.aliases) ~= "table" then
         EasyFind.db.aliases = {}
     end
-    -- Map results aren't in uiSearchData, so FindEntryByKey can't
-    -- recover them later. Snapshot the renderable fields so the alias
-    -- hit still works after a /reload.
     local snapshot
     if IsMapAliasTarget(data) then
         local currentMapID = WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID()
@@ -140,7 +114,6 @@ function Aliases:Add(aliasText, data)
     return true
 end
 
--- Remove a previously stored alias by its (case-insensitive) text.
 function Aliases:Remove(aliasText)
     if not EasyFind or not EasyFind.db or not EasyFind.db.aliases then return end
     EasyFind.db.aliases[slower(strtrim(aliasText or ""))] = nil
@@ -151,7 +124,6 @@ function Aliases:ClearAll()
     EasyFind.db.aliases = {}
 end
 
--- Walk all stored aliases. cb(aliasText, info) for each entry.
 function Aliases:ForEach(cb)
     if not EasyFind or not EasyFind.db or not EasyFind.db.aliases then return end
     for _, info in pairs(EasyFind.db.aliases) do
@@ -159,9 +131,6 @@ function Aliases:ForEach(cb)
     end
 end
 
--- Look up entries whose alias prefix-matches the lowercase query.
--- Returns a list of `{ data = liveEntry, alias = info }` so callers
--- can highlight the alias text in the result row if they want.
 function Aliases:GetMatches(queryLower)
     if not queryLower or queryLower == "" then return nil end
     if not EasyFind or not EasyFind.db or not EasyFind.db.aliases then return nil end

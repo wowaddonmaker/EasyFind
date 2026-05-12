@@ -27,11 +27,6 @@ local TEXT_DIM       = { 0.55, 0.55, 0.58 }
 
 local DOT_FILLED = "Interface\\COMMON\\Indicator-Yellow"
 
--- Wizard FontStrings opt into the user-selectable font system. The
--- registry tracks each one so the Options "Font" selector can re-apply
--- on change without re-creating the wizard. By default it's "Default"
--- (Friz Quadrata via the original GameFont template); picking "Inter"
--- swaps each registered string to the matching Inter weight.
 local function ApplyInter(fs, weight, sizeOverride, flags)
     if ns.RegisterAddonFont then
         ns.RegisterAddonFont(fs, weight, sizeOverride, flags)
@@ -44,11 +39,6 @@ local pageIdx = 1
 local dots = {}
 local backBtn, nextBtn
 
--- Two visual styles, both monochrome:
---   solid   : subtle dark fill, dim text that brightens on hover
---   ghost   : no fill at all, dim text that brightens on hover
---   rounded : same TC9 rounded-pill silhouette the keybind buttons use,
---             dark gray fill, white text always
 local function MakeButton(parent, text, variant, w)
     local b = CreateFrame("Button", nil, parent)
     local h = (variant == "rounded") and 26 or 24
@@ -62,15 +52,9 @@ local function MakeButton(parent, text, variant, w)
 
     if variant == "rounded" then
         ns.CreateRoundedRectBorder(b)
-        -- Half this gives the corner radius. ~5px corners read as
-        -- "rounded but not a pill" -- enough softness to feel
-        -- modern, not so much it loses button identity.
         ns.SetRoundedRectBarHeight(b, 10)
         ns.SetRoundedRectBorderBgAlpha(b, 1)
-        -- Hide the perimeter ring entirely; at 5-px corners the
-        -- 256-px border texture downscales to a stairstep that no
-        -- amount of pixel-snap tweaking smooths over. Just the fill
-        -- silhouette reads as a clean rounded rectangle.
+        -- Border ring hidden: 256px texture aliases badly at ~5px corners.
         if b.combinedBorder and b.combinedBorder.border then
             for _, t in pairs(b.combinedBorder.border) do
                 t:Hide()
@@ -185,8 +169,6 @@ end
 
 local function HeaderText(parent, text, font)
     local fs = parent:CreateFontString(nil, "OVERLAY", font or "GameFontNormalHuge")
-    -- Inter SemiBold at the size already implied by the GameFont
-    -- template (the SetFont call below preserves size automatically).
     ApplyInter(fs, "semibold")
     fs:SetText(text)
     fs:SetTextColor(TEXT_PRIM[1], TEXT_PRIM[2], TEXT_PRIM[3], 1)
@@ -215,7 +197,6 @@ local function BuildPage1(parent)
     local version = ns.version or (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("EasyFind", "Version")) or "2.0.0"
     local title = HeaderText(p, "Welcome to EasyFind v" .. version)
     title:SetPoint("TOP", logo, "BOTTOM", 0, -22)
-    -- 50% larger than the GameFontNormalHuge baseline.
     do
         local path, sz, fl = title:GetFont()
         if sz then title:SetFont(path, sz * 1.5, fl or "") end
@@ -230,10 +211,7 @@ local function BuildPage1(parent)
 end
 
 local function FeatureTile(parent, atlas, file, coords, title, desc, onClick)
-    -- Holder owns the external anchor (TOPLEFT/TOPRIGHT in BuildPage2).
-    -- The tile inside is pinned to the holder's CENTER so SetScale
-    -- grows the tile symmetrically around its midpoint instead of
-    -- expanding from a corner.
+    -- Tile anchored to holder CENTER so hover SetScale grows symmetrically.
     local holder = CreateFrame("Frame", nil, parent)
     holder:SetSize(222, 112)
 
@@ -242,11 +220,6 @@ local function FeatureTile(parent, atlas, file, coords, title, desc, onClick)
     tile:SetPoint("CENTER", holder, "CENTER", 0, 0)
     tile:RegisterForClicks("LeftButtonUp")
 
-    -- Soft rounded silhouette via the same TC9 fill the search bar
-    -- uses; corner radius = ~6px so the box reads as "rounded but not
-    -- a pill". Hide the bright perimeter ring (it aliases at small
-    -- corner sizes) and skip a separate edge layer -- the rounded
-    -- fill alone defines the shape.
     ns.CreateRoundedRectBorder(tile)
     ns.SetRoundedRectBarHeight(tile, 10)
     ns.SetRoundedRectBorderBgAlpha(tile, 0.95)
@@ -287,9 +260,6 @@ local function FeatureTile(parent, atlas, file, coords, title, desc, onClick)
     body:SetPoint("RIGHT", tile, "RIGHT", -12, 0)
     ApplyInter(body, "regular")
 
-    -- Hover lift: scale the tile up symmetrically. Because the tile
-    -- is anchored to the holder's CENTER, SetScale grows it outward
-    -- around that midpoint rather than expanding from a corner.
     tile:SetScript("OnEnter", function(self)
         self:SetScale(1.04)
         if self.combinedBorder and self.combinedBorder.fill then
@@ -317,9 +287,6 @@ end
 local function BuildPage2(parent)
     local p = MakePage(parent)
 
-    -- Page 2 has two states: a 4-tile grid and per-tile detail views.
-    -- Both states are full-page subframes; clicking a tile swaps grid
-    -- for that tile's detail; the in-detail back arrow returns to grid.
     local grid = CreateFrame("Frame", nil, p)
     grid:SetAllPoints(p)
 
@@ -384,8 +351,7 @@ local function BuildPage2(parent)
         function() ShowDetail(d2) end)
     t2:SetPoint("TOPRIGHT", grid, "TOPRIGHT", -38, -96)
 
-    -- Anchor lower-row tiles directly to the grid so a tile's hover
-    -- scale doesn't ripple position changes onto its neighbor.
+    -- Anchor each lower tile to the grid so a hover scale doesn't move its sibling.
     local t3 = FeatureTile(grid, "UI-HUD-MicroMenu-SpellbookAbilities-Up", nil, nil,
         "Item/Ability Use",
         "Cast, use, equip, summon, swap, or open supported results directly from the list.",
@@ -398,16 +364,11 @@ local function BuildPage2(parent)
         function() ShowDetail(d4) end)
     t4:SetPoint("TOPRIGHT", grid, "TOPRIGHT", -38, -222)
 
-    -- Reset to grid each time the page is entered so navigating away
-    -- and back doesn't leave a stale detail view open.
     p.OnEnter = ShowGrid
 
     return p
 end
 
--- One capture-button widget per binding. Rounded gray fill matching
--- the rest of the modern EasyFind controls. Right-click clears the
--- binding, Esc cancels capture.
 local kbWidgets = {}
 local kbWaitingFor
 
@@ -439,12 +400,9 @@ local function CreateKbWidget(parent, action, label)
     btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     w.btn = btn
 
-    -- Rounded silhouette (corner radius = btnHeight/2 = 20px = full pill).
     ns.CreateRoundedRectBorder(btn)
     ns.SetRoundedRectBarHeight(btn, 40)
     ns.SetRoundedRectBorderBgAlpha(btn, 1)
-    -- Hide the perimeter ring; the fill silhouette alone reads as a
-    -- clean rounded rectangle and avoids the aliased outline.
     if btn.combinedBorder and btn.combinedBorder.border then
         for _, t in pairs(btn.combinedBorder.border) do
             t:Hide()
@@ -540,7 +498,6 @@ local function BuildPage3(parent)
     local mapKb = CreateKbWidget(p, MAP_ACTION,    "Map Search Tab")
     kbWidgets = { uiKb, mapKb }
 
-    -- Stacked layout: search bar on top, map search below.
     uiKb.label:SetPoint("RIGHT", uiKb.btn, "LEFT", -14, 0)
     uiKb.btn:SetPoint("TOP", sub, "BOTTOM", 40, -38)
 
@@ -570,8 +527,6 @@ local function CreateFrameOnce()
 
     local f = CreateFrame("Frame", "EasyFindWizard", UIParent)
     f:SetSize(WIZ_W, WIZ_H)
-    -- Shrink the wizard's overall footprint without resizing internal
-    -- layout (fonts, buttons, anchors all stay the same pixel sizes).
     f:SetScale(0.88)
     f:SetPoint("CENTER")
     f:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -584,16 +539,10 @@ local function CreateFrameOnce()
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
     frame = f
 
-    -- Same rounded rect 9-slice the search bar / results panel use.
-    -- Pin a small bar height so the corner radius is fixed at ~10px
-    -- instead of half the frame height. Tint the fill dark gray
-    -- (not pure black) so it reads as a panel rather than a void.
     ns.CreateRoundedRectBorder(f)
     ns.SetRoundedRectBarHeight(f, 16)
     ns.SetRoundedRectBorderBgAlpha(f, PANEL_BG_ALPHA)
-    -- Hide the bright border ring; its corner cells render as visible
-    -- horizontal bands against the gradient fill, breaking the smooth
-    -- top-to-bottom gloss. The fill silhouette is enough.
+    -- Border ring hidden: its corner cells band against the gradient fill.
     if f.combinedBorder and f.combinedBorder.border then
         for _, t in pairs(f.combinedBorder.border) do
             t:Hide()
@@ -605,13 +554,8 @@ local function CreateFrameOnce()
         end
     end
 
-    -- Glossy sheen: one continuous vertical gradient mapped across the
-    -- 9-slice. Each cell receives gradient stops sampled from its
-    -- vertical position in the frame (top corners get the top of the
-    -- ramp, middle row spans the bulk of the gradient, bottom corners
-    -- get the bottom). The result reads as one smooth top-to-bottom
-    -- gloss across the whole panel; the texture's alpha handles the
-    -- rounded silhouette so nothing pokes past the corners.
+    -- Single vertical gradient mapped across the 9-slice; each cell's
+    -- gradient stops are sampled from its vertical position in the frame.
     local function ApplyGloss(self)
         local fill = self.combinedBorder and self.combinedBorder.fill
         if not fill then return end
@@ -619,13 +563,10 @@ local function CreateFrameOnce()
         if not H or H <= 0 then return end
         local corner = (self.cbBarHeight or 32) / 2
 
-        -- Visible banding from 8-bit color comes from too few color
-        -- steps spread across too many pixels. To make bands
-        -- effectively invisible we PACK a wide brightness range into
-        -- the transition zone -- many 8-bit color values per pixel
-        -- means each band is only a couple pixels tall. Smoothstep
-        -- on top so the slope varies and bands can't space evenly.
-        local DARK_FRAC = 0.90  -- top 90% pure dark base; transition concentrated in bottom 10%
+        -- Pack the brightness ramp into the bottom 10% so 8-bit banding
+        -- collapses into a couple-pixel transition; smoothstep so the
+        -- slope varies and bands cannot space evenly.
+        local DARK_FRAC = 0.90
         local function smoothstep(t)
             if t <= 0 then return 0 end
             if t >= 1 then return 1 end
@@ -636,14 +577,13 @@ local function CreateFrameOnce()
             local t = y / H
             if t < DARK_FRAC then t = 0
             else t = smoothstep((t - DARK_FRAC) / (1 - DARK_FRAC)) end
-            return lerp(0.022, 0.20, t),  -- r
-                   lerp(0.022, 0.20, t),  -- g
-                   lerp(0.030, 0.22, t)   -- b
+            return lerp(0.022, 0.20, t),
+                   lerp(0.022, 0.20, t),
+                   lerp(0.030, 0.22, t)
         end
 
-        -- Relaxed pixel snapping lets the GPU sub-pixel-blend the
-        -- vertex colors instead of hard-aligning each color stop to
-        -- the nearest pixel row, which softens the transitions.
+        -- Relaxed pixel snapping lets the GPU sub-pixel-blend vertex
+        -- colors instead of snapping color stops to the nearest pixel row.
         for _, cell in pairs(fill) do
             if cell.SetSnapToPixelGrid then cell:SetSnapToPixelGrid(false) end
             if cell.SetTexelSnappingBias then cell:SetTexelSnappingBias(0) end
@@ -653,7 +593,7 @@ local function CreateFrameOnce()
             if not cell then return end
             local r1, g1, b1 = colorAtY(yTop)
             local r2, g2, b2 = colorAtY(yBot)
-            -- VERTICAL gradient: first color = bottom, second = top.
+            -- VERTICAL: first color is bottom, second is top.
             cell:SetGradient("VERTICAL",
                 CreateColor(r2, g2, b2, 1),
                 CreateColor(r1, g1, b1, 1))
@@ -676,8 +616,7 @@ local function CreateFrameOnce()
     ApplyGloss(f)
     f:HookScript("OnSizeChanged", ApplyGloss)
 
-    -- Crisp X built from two rotated 1px lines so it stays sharp at
-    -- any UI scale (no font hinting, no texture filtering blur).
+    -- Two rotated 1px lines so the X stays sharp at any UI scale.
     local closeBtn = CreateFrame("Button", nil, f)
     closeBtn:SetSize(18, 18)
     closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -10)
@@ -701,8 +640,6 @@ local function CreateFrameOnce()
 
     local pageHost = CreateFrame("Frame", nil, f)
     pageHost:SetPoint("TOPLEFT", f, "TOPLEFT", 8, -8)
-    -- Leave room for the inset banner: BANNER_INSET (6) + BANNER_H (38)
-    -- + a small gap (4) so page content doesn't kiss the banner top.
     pageHost:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -8, 6 + BANNER_H + 4)
 
     pages = {
@@ -711,11 +648,6 @@ local function CreateFrameOnce()
         BuildPage3(pageHost),
     }
 
-    -- Footer banner: a self-contained rounded panel floating inside
-    -- the main window with the same corner radius as the wizard
-    -- frame, inset a few pixels on every edge so it reads as its own
-    -- element. Slightly darker than the gradient base but not pitch
-    -- black -- enough contrast to anchor the back/continue cluster.
     local BANNER_INSET = 6
     local footer = CreateFrame("Frame", nil, f)
     footer:SetPoint("BOTTOMLEFT",  f, "BOTTOMLEFT",  BANNER_INSET, BANNER_INSET)
@@ -735,13 +667,9 @@ local function CreateFrameOnce()
         for _, t in pairs(footer.combinedBorder.border) do t:Hide() end
     end
 
-    -- Page indicator dots: vertically centered in the banner, anchored
-    -- to the LEFT so they stay flush left.
     local DOT_GAP = 14
     local DOT_SZ  = 9
     local DOT_ACTIVE = 11
-    -- Dots and buttons live INSIDE the banner so they render above
-    -- the banner's rounded fill instead of being hidden behind it.
     for i = 1, #pages do
         local d = footer:CreateTexture(nil, "OVERLAY")
         d:SetSize(DOT_SZ, DOT_SZ)
@@ -750,9 +678,6 @@ local function CreateFrameOnce()
         dots[i] = d
     end
 
-    -- Right cluster: [Back] [Continue]. Continue is the only action
-    -- button (rounded fill, white text); Back stays as a quiet ghost
-    -- link. To skip, the user clicks the X in the top-right.
     nextBtn = MakeButton(footer, "Continue", "rounded", 96)
     nextBtn:SetPoint("RIGHT", footer, "RIGHT", -10, 0)
 

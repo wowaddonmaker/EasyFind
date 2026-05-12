@@ -157,24 +157,13 @@ function Database:RefreshDynamicCategory(key)
     return changed
 end
 
--- LoadCoreDynamicSearchData is now a no-op stub: every provider runs on
--- its own frame via LoadDeferredSyncProvidersStaggered after PLAYER_LOGIN.
--- Spreading the cost across ~12 frames means no single frame's added
--- work is visible as a stutter, matching the pre-refactor experience.
 function Database:LoadCoreDynamicSearchData()
     return false
 end
 
--- Run every sync (non-async) provider one per frame. Each provider runs
--- in its own frame, so no single frame stacks the cost of multiple
--- collection / spell-book / EJ scans. ~12 frames (~200ms at 60fps) for
--- all sync providers to populate after login.
 function Database:LoadDeferredSyncProvidersStaggered()
-    -- Batch flag suppresses per-provider ResetSearchCache (which rebuilds
-    -- the prefix index over the entire uiSearchData each time). Without
-    -- this each of the ~12 providers triggers a full rebuild. By the
-    -- end the prefix index has been rebuilt 12 times. We rebuild once
-    -- at the end of the chain instead.
+    -- Suppress per-provider ResetSearchCache; rebuild the prefix index
+    -- once at the end of the staggered chain.
     self._dynamicBatchLoading = true
     self._dynamicBatchChanged = false
     local index = 1
@@ -198,20 +187,14 @@ function Database:LoadDeferredSyncProvidersStaggered()
         self._dynamicBatchLoading = false
         self._dynamicBatchChanged = false
         if changed and self.ResetSearchCache then self:ResetSearchCache() end
-        -- Pre-warm the prefix index off the loaded dataset so the very
-        -- first user search doesn't pay the build cost on the keystroke.
-        -- Cheap if already ready; rebuilds via ResetSearchCache otherwise.
         if self.WarmSearchHotPath then self:WarmSearchHotPath() end
     end
     step()
 end
 
--- Synchronous heavy-data load. Used at PLAYER_LOGIN so the load
--- screen absorbs the cost. Only loot (current spec) is scanned here:
--- it's small and matches a common search ("ring", "haste ring"). Boss
--- scanning iterates ~1000+ encounters across every expansion tier, so
--- it runs through its async provider after login or on boss-related
--- searches instead of blocking this sync path.
+-- Sync heavy load at PLAYER_LOGIN absorbs cost during the load screen.
+-- Only loot (current spec) runs here; boss scanning iterates ~1000+
+-- encounters and runs via its async provider instead.
 local SYNC_HEAVY_KEYS = { loot = true }
 function Database:LoadHeavyDynamicSearchDataSync()
     for i = 1, #dynamicProviders do
@@ -222,9 +205,8 @@ function Database:LoadHeavyDynamicSearchDataSync()
             if fn then
                 local pre = provider.pre and self[provider.pre]
                 if pre then pre(self) end
-                -- Loot scans ONLY the current spec at login (scanAllSpecs=false).
-                -- Spec toggles in the loot filter dropdown trigger a lazy scan
-                -- for that spec via the async path.
+                -- Loot scans only the current spec at login; spec
+                -- toggles trigger a lazy scan for that spec.
                 local ok, err = xpcall(fn, Utils.ErrorHandler, self)
                 if ok then
                     provider.loaded = true

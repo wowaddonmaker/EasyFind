@@ -26,17 +26,17 @@ local DEFAULT_BAR_HEIGHT = ns.SEARCHBAR_HEIGHT or 30
 local DEFAULT_RESULTS_HEIGHT = 280
 
 local activeMode = nil
-local activeSearchBar = nil   -- the mock search bar being rescaled
-local liveSearchBar = nil     -- real search bar hidden while editing
+local activeSearchBar = nil
+local liveSearchBar = nil
 local liveResultsFrame = nil
 local liveContainerFrame = nil
 local liveState = nil
-local backdrop = nil          -- full-screen dim
-local barOverlay = nil        -- glow around search bar
-local donePanel = nil         -- instruction + Done button
-local mockSearchBar = nil     -- inert mock bar for resize mode
-local mockWindowFrame = nil   -- unified background behind mock bar/results
-local previewResults = nil    -- fake results frame for preview
+local backdrop = nil
+local barOverlay = nil
+local donePanel = nil
+local mockSearchBar = nil
+local mockWindowFrame = nil
+local previewResults = nil
 
 local function GetResultsHeight()
     return EasyFind.db.uiResultsHeight or DEFAULT_RESULTS_HEIGHT
@@ -64,8 +64,6 @@ end
 local function GetFontScale()
     return EasyFind.db.fontSize or 1.0
 end
-
--- Helpers
 
 local function ClampWidth(v)
     return mmax(MIN_WIDTH, mmin(MAX_WIDTH, v))
@@ -187,7 +185,6 @@ local function CreateDimLabel(parent, anchor, relPoint, xOff, yOff, prefix)
     return box
 end
 
--- Create a resize handle at a given edge/corner
 local function CreateHandle(parent, point, xOff, yOff, cursor, isHorizontal)
     local handle = CreateFrame("Button", nil, parent)
     handle:SetFrameLevel(parent:GetFrameLevel() + 10)
@@ -209,7 +206,6 @@ local function CreateHandle(parent, point, xOff, yOff, cursor, isHorizontal)
     handle:EnableMouse(true)
     handle:RegisterForDrag("LeftButton")
 
-    -- Visual indicator on hover
     local tex = handle:CreateTexture(nil, "OVERLAY")
     tex:SetAllPoints()
     tex:SetColorTexture(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0)
@@ -248,7 +244,6 @@ local function CreateScaleHandle(parent, point, xOff, yOff, flipH, flipV)
     return handle
 end
 
--- Create a golden glow overlay around a target frame
 local function CreateGlowOverlay(name, parent, target)
     local glow = CreateFrame("Frame", name, parent, "BackdropTemplate")
     glow:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -324,8 +319,6 @@ local function CreateModernButton(parent, text, width, height)
 
     return btn
 end
-
--- Preview results (fake rows to show results area)
 
 local function CreatePreviewResults(parent, targetFrame, width, heightPx, anchorAbove, leftAligned, flushDock)
     local fontScale = GetFontScale()
@@ -516,8 +509,6 @@ local function CreateMockWindowFrame(parent, searchBar, preview, anchorAbove)
     return frame
 end
 
--- Dimension label wiring
-
 local function WireDimLabel(box, getter, setter)
     box:SetText(mfloor(getter() + 0.5))
     box:SetScript("OnEnterPressed", function(self)
@@ -533,8 +524,6 @@ local function WireDimLabel(box, getter, setter)
         self:ClearFocus()
     end)
 end
-
--- Width drag handler
 
 local function SetupWidthDrag(handle, getWidth, setWidth, widthLabel, side)
     handle:SetScript("OnDragStart", function(self)
@@ -552,9 +541,8 @@ local function SetupWidthDrag(handle, getWidth, setWidth, widthLabel, side)
         cx = cx / UIParent:GetEffectiveScale()
         if self.lastX then
             local dx = cx - self.lastX
-            -- Right edge: positive dx = wider. Left edge: negative dx = wider.
             if side == "LEFT" then dx = -dx end
-            -- Width changes apply to both sides, so each edge moves half
+            -- Width applies symmetrically so each edge contributes half.
             local newW = ClampWidth(getWidth() + dx * 2)
             setWidth(newW)
             if widthLabel and not widthLabel:HasFocus() then
@@ -564,8 +552,6 @@ local function SetupWidthDrag(handle, getWidth, setWidth, widthLabel, side)
         self.lastX = cx
     end)
 end
-
--- Height drag handler
 
 local function SetupHeightDrag(handle, preview, heightBox, anchorAbove)
     handle:SetScript("OnDragStart", function(self)
@@ -623,8 +609,6 @@ local function SetupCornerDrag(handle, getWidth, setWidth, widthBox, preview, he
         SetUnifiedWindowHeight(newH, self.barRatio, preview, heightBox, anchorAbove)
     end)
 end
-
--- Build overlays for a target
 
 local function BuildUnifiedWindowOverlay(parent, searchBar, preview, anchorAbove)
     local overlay = CreateGlowOverlay("EasyFindRescaleWindowGlow", parent, searchBar)
@@ -686,8 +670,6 @@ local function BuildUnifiedWindowOverlay(parent, searchBar, preview, anchorAbove
     return overlay
 end
 
--- Done panel
-
 local function CreateDonePanel(parent)
     local BACK_W = 110
     local DONE_W = 80
@@ -708,8 +690,6 @@ local function CreateDonePanel(parent)
 
     return panel
 end
-
--- Full-screen dim backdrop
 
 local function GetOrCreateBackdrop()
     if backdrop then return backdrop end
@@ -735,8 +715,6 @@ local function GetOrCreateBackdrop()
 
     return backdrop
 end
-
--- Enter rescale mode
 
 function Rescaler:Enter(mode)
     if activeMode then
@@ -779,13 +757,11 @@ function Rescaler:Enter(mode)
     local getBarWidth = function() return mockSearchBar:GetWidth() end
     local setBarWidth = setUiWidth
 
-    -- Hide options panel
     local optPanel = _G["EasyFindOptionsFrame"]
     if optPanel and optPanel:IsShown() then
         optPanel:Hide()
     end
 
-    -- Dim backdrop
     local bg = GetOrCreateBackdrop()
     bg:Show()
     SafeCallMethod(bg, "EnableKeyboard", true)
@@ -794,7 +770,6 @@ function Rescaler:Enter(mode)
     mockSearchBar:Show()
     activeSearchBar = mockSearchBar
 
-    -- Preview results (fake rows so user sees the results area)
     local resultsAbove = EasyFind.db.uiResultsAbove
     local currentTotal = GetUnifiedWindowHeight()
     local currentRatio = GetSearchBarHeight() / mmax(1, currentTotal)
@@ -808,11 +783,10 @@ function Rescaler:Enter(mode)
         if mockWindowFrame and mockWindowFrame.UpdateLayout then mockWindowFrame:UpdateLayout() end
     end)
 
-    -- One overlay around the combined bar + results silhouette.
     barOverlay = BuildUnifiedWindowOverlay(bg, mockSearchBar, previewResults, resultsAbove)
     barOverlay:Show()
 
-    -- If height label is near screen edge, flip it inside the overlay
+    -- Flip height label inside the overlay when near a screen edge.
     local resizeEdge = resultsAbove and barOverlay:GetTop() or barOverlay:GetBottom()
     local screenLimit = resultsAbove and UIParent:GetTop() or 0
     local nearEdge = resultsAbove and (resizeEdge and screenLimit and (screenLimit - resizeEdge) < 40)
@@ -827,8 +801,6 @@ function Rescaler:Enter(mode)
         barOverlay.heightInside = true
     end
 
-    -- Wire unified window width. The bar and preview resize in lockstep
-    -- because the current UI uses one combined silhouette.
     local function setBarWidthAndPreview(w)
         setBarWidth(w)
         previewResults:SetWidth(mockSearchBar:GetWidth())
@@ -842,7 +814,6 @@ function Rescaler:Enter(mode)
         barOverlay.widthBox:SetText(mfloor(defW + 0.5))
     end)
 
-    -- Wire unified window height. The search bar strip and result rows resize together.
     barOverlay.heightBox:SetText(mfloor(GetUnifiedWindowHeight() + 0.5))
     barOverlay.heightBox:SetScript("OnEnterPressed", function(self)
         local val = tonumber(self:GetText())
@@ -878,7 +849,6 @@ function Rescaler:Enter(mode)
     SetupCornerDrag(barOverlay.scaleHandle, getBarWidth, setBarWidthAndPreview, barOverlay.widthBox, previewResults, barOverlay.heightBox, resultsAbove)
     SetupHeightDrag(barOverlay.heightHandle, previewResults, barOverlay.heightBox, resultsAbove)
 
-    -- Done panel
     donePanel = CreateDonePanel(bg)
     donePanel:SetPoint("TOP", barOverlay, "BOTTOM", 0, -50)
     donePanel.doneBtn:SetScript("OnClick", function()
@@ -890,12 +860,9 @@ function Rescaler:Enter(mode)
     donePanel:Show()
 end
 
--- Exit rescale mode
-
 function Rescaler:Exit(reopenOptions)
     if not activeMode then return end
 
-    -- Clean up all overlay frames
     if barOverlay then
         if barOverlay.leftHandle then barOverlay.leftHandle:SetScript("OnUpdate", nil) end
         if barOverlay.rightHandle then barOverlay.rightHandle:SetScript("OnUpdate", nil) end
