@@ -63,7 +63,7 @@ local function GetWorldChildren(mapID)
     -- Blizzard's mapType. The API marks instanced cities (Dalaran,
     -- etc.) as Dungeon, so an mt-based dungeon glyph mis-fires on
     -- cities. Synthesized expansions of a continent never contain
-    -- real dungeons anyway — those live inside zones, not directly
+    -- real dungeons anyway: those live inside zones, not directly
     -- under the continent.
     local children = GetMapChildrenInfo(mapID, nil, false)
     if children then
@@ -404,7 +404,7 @@ local function CreateResultRow(parent)
     row.text = text
 
     -- Single highlight texture covers mouse hover AND keyboard
-    -- selection via LockHighlight, so both paths look identical —
+    -- selection via LockHighlight, so both paths look identical:
     -- Blizzard's tapered quest-log row glow atlas. Mouse hover shows
     -- it automatically; UpdateNavHighlight calls LockHighlight on the
     -- keyboard-selected row to pin it on.
@@ -437,7 +437,7 @@ end
 -- Timestamp of the most recent keystroke in the search box. Hover
 -- previews are suppressed for a short window afterwards, because every
 -- keystroke re-renders the result rows and WoW fires OnEnter for any
--- row that appears under a stationary cursor — which was showing preview
+-- row that appears under a stationary cursor, which was showing preview
 -- pins and highlighting the map without the user moving their mouse.
 local lastTypeTime = 0
 local HOVER_PREVIEW_TYPING_GUARD = 0.3
@@ -723,7 +723,7 @@ local function AcquireGroupHeader(parent, labelText, groupKey, count, collapsed,
     hdr.label:SetText(labelText or "")
     hdr.toggleBtn.icon:SetAtlas(collapsed and "QuestLog-icon-expand" or "QuestLog-icon-shrink")
     -- Hide the toggle button entirely when there are no children to
-    -- expand — clicking it would otherwise look broken.
+    -- expand. Clicking it would otherwise look broken.
     hdr.toggleBtn:SetShown(hasChildren and true or false)
     hdr.groupKey = groupKey
     hdr.navigateData = navigateData
@@ -742,7 +742,7 @@ local function AcquireGroupHeader(parent, labelText, groupKey, count, collapsed,
         end
     end)
     hdr:SetScript("OnClick", function(self, button)
-        -- Body click ONLY navigates — never toggles. Skip entirely if
+        -- Body click ONLY navigates, never toggles. Skip entirely if
         -- the toggle button is under the cursor (WoW has occasionally
         -- surprising click routing with nested clickable children).
         if self.toggleBtn and self.toggleBtn:IsMouseOver() then return end
@@ -882,8 +882,8 @@ local function GroupBySharedParent(results)
         end
     end
     -- Demotion rule: a group keeps its header whenever it has a parent
-    -- zone (navigateData) — even with zero children in the current
-    -- result set — so a continent with children in the world hierarchy
+    -- zone (navigateData), even with zero children in the current
+    -- result set, so a continent with children in the world hierarchy
     -- never displays as a solitary flat row. Single-child groups
     -- without a matching parent still collapse to flat so standalone
     -- leaves don't gain a useless wrapping header.
@@ -924,7 +924,7 @@ local function GroupBySharedParent(results)
             -- Any subgroup with at least one child gets a collapsible
             -- header (synthesized if the zone itself wasn't matched).
             -- A zone match with zero children renders as a plain loose
-            -- row — no point in a collapsible header for nothing.
+            -- row. No point in a collapsible header for nothing.
             local keptOrder = {}
             for _, sub in ipairs(subgroupOrder) do
                 if #sub.items == 0 and sub.headerData then
@@ -1067,8 +1067,8 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
             elseif e.type == "version" then
                 -- Version group: same name, multiple mapIDs (e.g. Dalaran
                 -- exists in Northrend and Broken Isles). Default-collapsed
-                -- so the bare name shows; expanding lists each variant —
-                -- their pathPrefix already disambiguates ("Crystalsong
+                -- so the bare name shows; expanding lists each variant.
+                -- Their pathPrefix already disambiguates ("Crystalsong
                 -- Forest" / "Broken Isles"). Header navigates to newest.
                 local groupKey = sectionKey .. ":version:" .. e.name
                 local stored = collapsedDb[groupKey]
@@ -1094,7 +1094,7 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
                 --      synthesized, navigateData): show ALL world-
                 --      hierarchy children. "I asked for Eastern
                 --      Kingdoms, give me the whole continent."
-                --  (2) Parent didn't match — group exists only because
+                --  (2) Parent didn't match: group exists only because
                 --      multiple children matched (or one child + a
                 --      synthesized parent header for click-to-navigate):
                 --      show just the matched children. Surfacing every
@@ -1349,7 +1349,7 @@ local function FilterAndDedupe(results, seen, isLocal)
             if not excludeLocal then
                 -- FMs are now scanned both locally (current map) and globally
                 -- (every zone). The local scan uses the viewed map's coords
-                -- while the global scan uses each home zone's own coords —
+                -- while the global scan uses each home zone's own coords,
                 -- so the same FM has different (x,y) in each set. Key FMs
                 -- by name alone so the local pass claims it first and the
                 -- global pass dedupes cleanly.
@@ -1369,7 +1369,7 @@ end
 
 -- Does a single token match a POI via any available facet? Token must
 -- already be lowercase. Checks name, keywords, category (with plural/
--- singular flex), pathPrefix, ancestor zone names, and — for ancestors —
+-- singular flex), pathPrefix, ancestor zone names, and (for ancestors)
 -- falls back to expanding the token through ZONE_ABBREVIATIONS so "nr"
 -- resolves against "northrend".
 local function POIMatchesToken(poi, t)
@@ -1643,7 +1643,7 @@ function MapTab:RunSearch(text)
 
     -- Stash top N result names (locals first, then globals) for
     -- autocomplete. Ghost/Tab picks the first name whose lowercase
-    -- prefix matches the typed text — so a fuzzy-winning non-prefix
+    -- prefix matches the typed text, so a fuzzy-winning non-prefix
     -- match doesn't prevent a slightly-lower-scored prefix match from
     -- being suggested. Covers cases like typing "dragon i" when the
     -- top scorer is "Dragonblight" (no space) but "Dragon Isles" is
@@ -1718,7 +1718,7 @@ local function UpdateNavHighlight()
         if f then
             local selected = (i == navRowIndex)
             -- Group headers (hoverOverlay present): mirror mouse hover
-            -- exactly — show the same hoverOverlay atlas and brighten
+            -- exactly: show the same hoverOverlay atlas and brighten
             -- the label. Same pattern UI.lua uses for its headerTab.
             if f.hoverOverlay then
                 f.hoverOverlay:SetShown(selected)
@@ -1893,7 +1893,7 @@ HandleNavKey = function(key, keepSearchFocus)
             -- the next Esc would clear editbox focus, then navFrame
             -- (still keyboard-enabled with navRowIndex > 0) would
             -- pick up the propagated key and re-focus the search
-            -- bar via the Esc branch — instead of closing the map.
+            -- bar via the Esc branch, instead of closing the map.
             SetNavRowIndex(0)
             SetNavFrameCapture(false)
             if panel and panel.searchBox then panel.searchBox:ClearFocus() end
@@ -1976,7 +1976,7 @@ local function CreateSearchBox(parent)
     end
 
     -- Walks panel.topResultCandidates in scoring order and returns the
-    -- first name whose lowercase prefix matches the query — lets
+    -- first name whose lowercase prefix matches the query. Lets
     -- autocomplete fall back past a fuzzy winner that doesn't prefix-
     -- match (e.g. "dragon i" skipping "Dragonblight" to suggest
     -- "Dragon Isles").
@@ -2019,7 +2019,7 @@ local function CreateSearchBox(parent)
     -- Keyboard nav: consume arrow / Alt+J/K / Esc while the editbox
     -- is focused. WoW editboxes default to propagating every keystroke
     -- to the binding system, which fires player keybinds while the user
-    -- is typing — so we unconditionally clamp propagation to false at
+    -- is typing, so we unconditionally clamp propagation to false at
     -- the end. ENTER routes through HandleNavKey, which activates a
     -- highlighted row or falls through to push-to-recents below.
     editBox:HookScript("OnKeyDown", function(self, key)
@@ -2307,7 +2307,7 @@ local function CreatePanel(qmf)
     -- p is the ListContainer equivalent. Sized like WQT_WorldQuestFrame:
     -- ContentsAnchor with insets y=-29 top, x=-22 right. This is a
     -- larger rect than QuestScrollFrame, which is why WQT's paper
-    -- pattern renders at the same scale as Blizzard's — the atlas
+    -- pattern renders at the same scale as Blizzard's: the atlas
     -- stretches over a larger area.
     local p = CreateFrame("Frame", "EasyFindMapSearchPanel", outer)
     p:SetPoint("TOPLEFT", anchor, "TOPLEFT", 0, -29)
@@ -2316,7 +2316,7 @@ local function CreatePanel(qmf)
     p.outer = outer
     outer:Hide()
 
-    -- Paper backdrop fills p exactly — matches WQT_ListContainer.Background
+    -- Paper backdrop fills p exactly, matches WQT_ListContainer.Background
     -- (TOPLEFT + BOTTOMRIGHT to ListContainer). No bleed past the border.
     local paper = p:CreateTexture(nil, "BACKGROUND", nil, -1)
     paper:SetAtlas("QuestLog-main-background", true)
@@ -2335,7 +2335,7 @@ local function CreatePanel(qmf)
     -- The template inherits NineSlicePanel which spans the full rect with
     -- mouse enabled. Sitting two levels above the result rows it ate the
     -- first click on every row (loss of editbox focus + border absorption
-    -- meant the user had to click twice). Border is decorative chrome — it
+    -- meant the user had to click twice). Border is decorative chrome, it
     -- never needs mouse input.
     border:EnableMouse(false)
     p.border = border
@@ -2402,7 +2402,7 @@ local function CreatePanel(qmf)
     -- Copy QuestScrollFrame.SearchBox's anchors AND explicit size onto
     -- our search box. Frame inspector confirms Blizzard uses a fixed
     -- 301x20 SetSize, so we re-apply it after ClearAllPoints to
-    -- guarantee our frame matches — otherwise the last flex-anchored
+    -- guarantee our frame matches, otherwise the last flex-anchored
     -- width lingers and we resolve to a different rect.
     p.AlignToBlizzardSearch = function()
         local qsb = _G["QuestScrollFrame"] and QuestScrollFrame.SearchBox
@@ -2505,7 +2505,7 @@ local function CreatePanel(qmf)
     -- "Auto expand headers" checkbox to the right of the recent toggle.
     -- When on (default), a matched zone header lists every child the
     -- world hierarchy says lives under it. When off, only children
-    -- whose names actually match the query show up — handy when you
+    -- whose names actually match the query show up. Handy when you
     -- want a focused list instead of a continent's full roster.
     local expandCheck = CreateFrame("CheckButton", "EasyFindMapTabAutoExpandCheck", p, "UICheckButtonTemplate")
     expandCheck:SetSize(20, 20)
@@ -2602,7 +2602,7 @@ function MapTab:OpenWithQuery(query)
     -- a synchronous RunSearch on every show, so seeding the text first
     -- means the panel's first render already uses our query instead of
     -- briefly flashing an empty / recent-searches state. ClearFocus
-    -- prevents the editbox from grabbing keyboard input — the user
+    -- prevents the editbox from grabbing keyboard input. The user
     -- triggered this by clicking a result, so they expect to keep
     -- moving with WASD.
     if panel.searchBox then

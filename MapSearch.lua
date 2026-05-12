@@ -602,7 +602,7 @@ ns.MapSearch = ns.MapSearch or MapSearch
 ns.MapSearch.GetCategoryIcon = GetCategoryIcon
 
 -- GetFilterBucket lives below the CATEGORIES table so it can reference
--- it as an upvalue (Lua resolves at definition time — declaring this
+-- it as an upvalue (Lua resolves at definition time, so declaring this
 -- function above CATEGORIES would silently treat the name as a global
 -- and every parent-based lookup would return nil).
 
@@ -882,7 +882,7 @@ function MapSearch:CreateHighlightFrame()
     highlightFrame:SetSize(64, 64)
     highlightFrame:SetFrameStrata("TOOLTIP")
     highlightFrame:SetFrameLevel(2000)
-    -- Decoration only — never absorb clicks even if it ends up over a
+    -- Decoration only, never absorb clicks even if it ends up over a
     -- clickable region in some map mode (maximized canvas, etc.).
     highlightFrame:EnableMouse(false)
     highlightFrame:Hide()
@@ -905,7 +905,7 @@ function MapSearch:CreateHighlightFrame()
 
     -- Indicator pointing down to the location. Parented to the canvas
     -- (sibling of waypointPin / highlightFrame) and anchored explicitly
-    -- on every show — never reparented. Reparenting between hovers had
+    -- on every show, never reparented. Reparenting between hovers had
     -- inconsistent timing on some result rows where the indicator would
     -- inherit a stale Hidden state and never repaint.
     indicatorFrame = CreateFrame("Frame", "EasyFindMapIndicator", WorldMapFrame.ScrollContainer.Child)
@@ -1015,7 +1015,7 @@ function MapSearch:CreateZoneHighlightFrame()
     zoneHighlightFrame:SetFrameStrata("TOOLTIP")  -- High strata to be visible
     zoneHighlightFrame:SetFrameLevel(400)
     zoneHighlightFrame:SetAllPoints(WorldMapFrame.ScrollContainer.Child)
-    -- Decorative overlay only — must never absorb clicks. At TOOLTIP
+    -- Decorative overlay only, must never absorb clicks. At TOOLTIP
     -- strata it's the topmost frame in WorldMapFrame; if the canvas
     -- extents reach under the MapTab side panel (maximized map), a
     -- mouse-enabled overlay there would eat row clicks.
@@ -1349,7 +1349,7 @@ function MapSearch:SearchZones(query)
 
         -- Ancestor matching is intentionally NOT done here. If the
         -- parent zone matches the query, the renderer expands ALL of
-        -- its children via GetWorldChildren — no need to inject
+        -- its children via GetWorldChildren, no need to inject
         -- partial children into the results, which produced the
         -- inconsistent "only some children show" behavior where
         -- whether a child surfaced depended on whether its name
@@ -1657,7 +1657,7 @@ function MapSearch:PreviewZoneHighlight(mapID)
     local clampedT = mmax(0, top)
     local clampedB = mmin(1, bottom)
     if (clampedR - clampedL) < 0.01 or (clampedB - clampedT) < 0.01 then return end
-    -- Clamped rect covers essentially the whole canvas — it's a
+    -- Clamped rect covers essentially the whole canvas: it's a
     -- "this zone is the entire view" case. No useful preview.
     if (clampedR - clampedL) >= 0.95 and (clampedB - clampedT) >= 0.95 then return end
 
@@ -3251,7 +3251,7 @@ end
 
 -- Local-scope caches (SearchZones local_, SearchPOIs local_,
 -- localScanCache) are tied to whichever map WorldMapFrame currently
--- shows — its direct child zones, dungeon entrances, etc. The
+-- shows: its direct child zones, dungeon entrances, etc. The
 -- character-zone events above DON'T fire when the player navigates
 -- the world map UI to another zone, so without this hook a previous
 -- map's child zones would bleed into "This Zone (currentMap)" results.
@@ -3279,7 +3279,7 @@ end
 -- Runs every scan needed for local-mode BuildResults in one shot and
 -- caches the result keyed on mapID. Typing `delve` used to rescan the
 -- current map's POIs, dungeon entrances, flight masters, and vignettes
--- on every keystroke — each scan calls Blizzard APIs repeatedly and
+-- on every keystroke: each scan calls Blizzard APIs repeatedly and
 -- adds up to hundreds of milliseconds per search in a busy zone. A
 -- 1-second TTL is long enough to coalesce a typing burst but short
 -- enough that a freshly-placed pin shows up on the user's next natural
@@ -3560,7 +3560,7 @@ function MapSearch:ScanAllFlightMasters()
                 -- Zones only. A continent scan returns the same nodes
                 -- as its child zones (just expressed in continent
                 -- coordinates), and the recursion below already covers
-                -- every zone — so scanning continents would just
+                -- every zone, so scanning continents would just
                 -- produce a duplicate of every FM with a coordMapID
                 -- that's wrong for whichever map the player is viewing.
                 if mt == Enum.UIMapType.Zone then
@@ -4230,7 +4230,7 @@ function MapSearch:BuildResults(text, isGlobal, skipPins)
         -- the global instance cache invalidates). SearchPOIs mutates
         -- poi.score / duplicateKey / allInstances on every match, and
         -- the first-pass pass-through (`if poi.isZone and poi.score`)
-        -- blindly trusts the score field on the next call — so a prior
+        -- blindly trusts the score field on the next call, so a prior
         -- "raid" or "dungeon" search leaves every instance scored 150,
         -- and an unrelated query like "tol" inherits the lot. Clear
         -- before each scan to force fresh scoring and dedup.
@@ -4525,7 +4525,7 @@ function MapSearch:SearchPOIs(pois, query, noCache)
     end
     -- Cached candidates carry poi.score from the previous query's
     -- scoring run. The first-pass pass-through (`if poi.isZone and
-    -- poi.score`) would treat that as the current score — so typing
+    -- poi.score`) would treat that as the current score, so typing
     -- "to" then "tol" pulls Cape of Stranglethorn (which scored on
     -- "to" via initials) into "tol" with the old score intact. Clear
     -- per-entry score so the narrowed pass re-scores fresh.
@@ -4720,7 +4720,7 @@ function MapSearch:SelectResult(data, directOverride)
             elseif directMode then
                 -- Direct (Fast) mode: every zone click zooms straight into the
                 -- zone's own map. Skipping NavigateToEntrance keeps behavior
-                -- uniform — without this, sub-zones with entrance coords
+                -- uniform: without this, sub-zones with entrance coords
                 -- (Vale of Eternal Blossoms, etc.) would pin on the parent
                 -- and require a second click on the pin to actually enter.
                 DebugPrint("[EasyFind] SelectResult → ZONE DIRECT branch, zoneMapID=", data.zoneMapID)
@@ -5094,7 +5094,7 @@ function MapSearch:ShowWaypointAt(x, y, icon, category, arrowOnly)
     -- by zoneHighlightFrame, so pin chrome (icon, glow, highlight box)
     -- would clutter it. Hide pin and highlight, then anchor the
     -- indicator at the zone center on the canvas. The indicator is a
-    -- permanent canvas child — no reparenting between calls.
+    -- permanent canvas child, no reparenting between calls.
     if arrowOnly then
         waypointPin:Hide()
         highlightFrame:Hide()
@@ -5258,7 +5258,7 @@ function MapSearch:HighlightPin(pin, x, y, icon, category)
 end
 
 -- Shared hover-preview entry point. Shows the hovered pin ALONGSIDE
--- any pin the user already clicked, by reusing ShowMultipleWaypoints —
+-- any pin the user already clicked, by reusing ShowMultipleWaypoints,
 -- same mechanism that handles multi-instance results like auction
 -- houses. Saves activePinState on first preview so EndHoverPreview can
 -- cleanly restore to the clicked-only state when the cursor moves off.
@@ -5275,7 +5275,7 @@ function MapSearch:RunHoverPreview(data)
 
     -- Zone-area preview: when hovering a zone result, draw a translucent
     -- rect where the zone sits on the currently-viewed map. Strictly
-    -- visible-only — PreviewZoneHighlight bails when the zone isn't on
+    -- visible-only: PreviewZoneHighlight bails when the zone isn't on
     -- this map, when we're already inside it, and never changes maps.
     self._previewingZone = nil
     if data.isZone and data.zoneMapID and self.PreviewZoneHighlight then
@@ -5336,7 +5336,7 @@ function MapSearch:RunHoverPreview(data)
         end
     end
 
-    -- Always restore activePinState — even to nil — so hover never
+    -- Always restore activePinState (even to nil) so hover never
     -- persists as the "active" clicked pin. Without unconditional
     -- restoration, hovering when nothing is clicked would silently
     -- promote the previewed pin into the real active state, which
@@ -5437,7 +5437,7 @@ function MapSearch:GetPreviewCoords(data)
         -- Filter instances to those whose (x,y) are valid on the
         -- currently viewed map. FMs scanned at both continent and
         -- zone level merge into a single result with multiple
-        -- instances; without this filter, both render — and one is
+        -- instances; without this filter, both render, and one is
         -- always at the wrong pixel for whichever map you're on.
         local valid = {}
         for i = 1, #data.allInstances do
@@ -5758,7 +5758,7 @@ function MapSearch:SearchForUI(query)
     local searchMapID = GetBestMapForUnit("player") or (WorldMapFrame and WorldMapFrame:GetMapID())
 
     -- Gather POIs from both local and global sources in a single pass
-    -- so the UI bar shows results regardless of zone scope — matching
+    -- so the UI bar shows results regardless of zone scope, matching
     -- how the MapTab surfaces both "This Zone" and "Across the World"
     -- content without asking the user to pick.
     wipe(reuseUISearchPOIs)
@@ -5915,7 +5915,7 @@ function MapSearch:SearchForUI(query)
     -- same buckets the user picked there. Mirrors FilterAndDedupe in
     -- MapTab.lua: any POI whose bucket is explicitly disabled
     -- (filters[bucket] == false) drops out. Buckets without a saved
-    -- value default to enabled — same convention DB_DEFAULTS uses.
+    -- value default to enabled, same convention DB_DEFAULTS uses.
     do
         local mtFilters = EasyFind.db.mapTabFilters
         if mtFilters then
@@ -6036,7 +6036,7 @@ function MapSearch:HandleUISearchClick(data, forceGuide)
     else
         -- Local POI: open the world map at the POI's zone and show the
         -- visual pin on the canvas. We deliberately do NOT call
-        -- SetUserWaypoint / SetSuperTrackedUserWaypoint here — the user
+        -- SetUserWaypoint / SetSuperTrackedUserWaypoint here: the user
         -- has to click the on-canvas pin's tracking icon to actually
         -- start tracking, matching the way clicking the small map pin
         -- works elsewhere in the addon (and Blizzard's own UI).

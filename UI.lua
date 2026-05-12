@@ -2260,7 +2260,7 @@ end
 -- Hint shown only on the currently-selected row, replacing the normal
 -- subtext so the user knows what Enter / left-click will do without
 -- cluttering every other row. Returns nil for entries whose action
--- isn't worth labelling (UI navigation, settings — the row name itself
+-- isn't worth labelling (UI navigation, settings: the row name itself
 -- already tells you what happens).
 -- Default tooltip placement for non-gear results. The default UI sets
 -- the tooltip's bottom-right corner just up-and-left of the cursor
@@ -3284,7 +3284,7 @@ function UI:CreateSearchFrame()
         -- swallows the Enter when there's a text selection (treating
         -- it like a "deselect" rather than confirm), so without this
         -- the user's first Enter visually clears the highlight but
-        -- doesn't focus the result row — they'd have to press Enter
+        -- doesn't focus the result row, they'd have to press Enter
         -- a second time. Stripping here puts the text back to what
         -- the user typed before WoW's default handler runs.
         if self.StripAutocomplete then self:StripAutocomplete() end
@@ -3469,7 +3469,7 @@ function UI:CreateSearchFrame()
     -- (dark hover bg, blue ADD highlight) and just clips the shape.
     if theme.searchBarRounded and filterBtn.CreateMaskTexture then
         local CIRCLE_TEX = "Interface\\AddOns\\EasyFind\\Textures\\FilterButtonCircle"
-        -- Inner circle (clips hover bg + highlight) — keep the same radius
+        -- Inner circle (clips hover bg + highlight): keep the same radius
         -- as the gold ring's inner edge so the ring sits flush around it.
         local innerInset = 6
         local circleMask = filterBtn:CreateMaskTexture(nil, "ARTWORK")
@@ -3861,7 +3861,7 @@ function UI:CreateSearchFrame()
             -- Toggling also rebuilds the result list (via
             -- ShowHierarchicalResults), which wipes selectedIndex.
             -- Snapshot the row's identity first so the same header can
-            -- be re-selected after the rebuild — letting the user spam
+            -- be re-selected after the rebuild, letting the user spam
             -- Space to collapse/expand without losing selection.
             if selectedIndex > 0 then
                 local row = resultButtons[selectedIndex]
@@ -3990,7 +3990,7 @@ function UI:CreateSearchFrame()
         -- Secure-action rows: let Enter propagate to the override
         -- binding so the secure click dispatch fires (same as a mouse
         -- click). Without this navFrame swallows Enter and the
-        -- override binding never sees the key — abilities, mounts,
+        -- override binding never sees the key. Abilities, mounts,
         -- macros, bag items, toys, outfits all need this gate.
         if key == "ENTER" and selectedIndex > 0 and not InCombatLockdown() then
             local selRow = resultButtons[selectedIndex]
@@ -6961,7 +6961,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     if fb.UnlockHighlight then fb:UnlockHighlight() end
                 end
             end
-            -- Skip the ClearFocus when HandleEscape is driving the close —
+            -- Skip the ClearFocus when HandleEscape is driving the close,
             -- it intentionally refocuses the editbox so the user can keep
             -- typing. ClearFocus + same-frame SetFocus can lose to internal
             -- editbox state, hence the flag instead of relying on order.
@@ -6973,7 +6973,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     end)
 
     -- Close when clicking outside (but not when interacting with sub-filter popups).
-    -- Both LeftButton AND RightButton trigger close — without the right-button
+    -- Both LeftButton AND RightButton trigger close: without the right-button
     -- check, right-clicking outside dismisses the search bar (whose handler
     -- listens for GLOBAL_MOUSE_DOWN regardless of button) but leaves the
     -- filter dropdown stuck open.
@@ -7270,7 +7270,7 @@ function UI:CreateResultsFrame()
     -- Click-outside-to-close: hides the results frame on any click that
     -- isn't on the search bar, results frame, or one of its associated
     -- popups (filter dropdown, pin/right-click menu, gear/collections
-    -- option popups). Hover-out doesn't close — that's too sensitive.
+    -- option popups). Hover-out doesn't close: that's too sensitive.
     resultsFrame:SetScript("OnShow", function(self)
         self:RegisterEvent("GLOBAL_MOUSE_DOWN")
     end)
@@ -7722,7 +7722,7 @@ local function WriteSettingVariable(variable, value)
         end
     end
     -- CVar fallback for raw CVars not registered with the Settings panel.
-    -- Booleans need explicit "1"/"0" — tostring(true) gives "true", which
+    -- Booleans need explicit "1"/"0": tostring(true) gives "true", which
     -- a CVar slot would store literally and break the next read.
     if SetCVar then
         local cvarVal
@@ -7757,7 +7757,7 @@ local function ActivateSettingResult(data, ctrlHeld)
 end
 
 -- Within-group ordering for flat-list mode. Score-first so the best
--- matches stay at the top — alphabetical was burying high-scoring
+-- matches stay at the top. Alphabetical was burying high-scoring
 -- prefix matches (e.g. "Skull Bash" for query "skull") below low-
 -- scoring fuzzy matches (e.g. "Armor Skills" via "skill"). Path/name
 -- only break ties between equally-scored results so siblings under
@@ -8894,7 +8894,7 @@ function UI:CreateResultButton(index)
     -- position, OnUpdate watches for movement, and the actual
     -- Pickup* call happens once the cursor has moved past the
     -- 5px drag threshold. Plain shift+click without movement
-    -- does nothing — matches Blizzard's action-bar drag feel.
+    -- does nothing, matches Blizzard's action-bar drag feel.
     -- C_Spell.PickupSpell is preferred over the legacy global since
     -- Midnight phased PickupSpell out for some spells.
     local function PickupSpellCompat(spellID)
@@ -8985,7 +8985,7 @@ function UI:CreateResultButton(index)
         local d = self.data
 
         -- Shift held: kill the cast for this click. The pickup (if any)
-        -- happens via the OnMouseDown / OnUpdate drag detection above —
+        -- happens via the OnMouseDown / OnUpdate drag detection above:
         -- this branch only ensures the secure handler is a no-op so
         -- nothing fires when the user hasn't moved yet. Setting the
         -- skip-navigation flag here (not waiting for OnUpdate) is what
@@ -9404,7 +9404,7 @@ function UI:CreateResultButton(index)
             -- mount / toy / pet / outfit / heirloom / appearance set
             -- group; loot (the gear flyout's "Hide tooltips") covers
             -- itemized gear results AND any bag item that's actual
-            -- gear — the entry being a "Bag" by category is incidental
+            -- gear. The entry being a "Bag" by category is incidental
             -- to where it lives, the user-facing class of thing is
             -- "gear" either way.
             local ht = EasyFind.db.hideTooltips
@@ -9703,7 +9703,7 @@ function UI:OnSearchTextChanged(text, force)
     -- A pending OnTextChanged timer can fire after focus has shifted
     -- away from the editbox (user clicked outside, OR clicked an
     -- inline child widget like a slider that StripAutocomplete then
-    -- triggers a SetText on via the focus-loss hook). Just bail —
+    -- triggers a SetText on via the focus-loss hook). Just bail:
     -- don't re-render, but also don't hide. The outside-click paths
     -- (GLOBAL_MOUSE_DOWN, OnEditFocusLost) decide whether to actually
     -- hide based on cursor position. Calling HideResults here also
@@ -10095,12 +10095,12 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     -- data refs and same depth at every index) AND the relevant view
     -- state (theme, collapse state, results-above) hasn't
     -- changed since the last render, the visible output would be byte-
-    -- for-byte identical. Skip the entire per-row layout pass — this is
+    -- for-byte identical. Skip the entire per-row layout pass: this is
     -- the typical case during typing once the top results stabilize.
     do
         -- collapsedNodes is wiped to a fresh empty table on every
         -- search, so identity comparison would always miss during
-        -- typing. Snapshot a single key (or nil if empty) — a click on
+        -- typing. Snapshot a single key (or nil if empty): a click on
         -- a collapse toggle adds or removes a key, which we'll see.
         local theme = EasyFind.db.resultsTheme
         local above = EasyFind.db.uiResultsAbove
@@ -10381,7 +10381,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             resultRow.data = data
             -- Reset every icon.* tooltip-identifier the OnEnter handler
             -- looks at. Without this, rows recycled from a previous
-            -- render leak their old category's tooltip — e.g. a row
+            -- render leak their old category's tooltip, e.g. a row
             -- that was "Felfire Hawk" (mount) becoming "Bronze Bullion"
             -- (currency) keeps icon.mountID set, so OnEnter shows the
             -- mount tooltip instead. Only the mount/toy/.../bag branch
@@ -12485,7 +12485,7 @@ end
 function UI:MoveSelection(delta)
     -- CountVisibleResults walks the button pool and trusts each row's
     -- :IsShown(), but child rows of a hidden resultsFrame still report
-    -- shown — so a leftover row from a prior search would let Alt+J
+    -- shown, so a leftover row from a prior search would let Alt+J
     -- yank focus into nothing on an empty bar. Gate on the frame.
     if not resultsFrame or not resultsFrame:IsShown() then return end
     local visibleCount = self:CountVisibleResults()
@@ -13889,7 +13889,7 @@ function UI:SelectResult(data, forceGuide)
         return
     end
 
-    -- Gear set: equip via Equipment Manager. Skipped in combat — the
+    -- Gear set: equip via Equipment Manager. Skipped in combat, the
     -- API silently fails there, so no point trying.
     if data.gearSetID then
         if InCombatLockdown() then return end
@@ -13959,7 +13959,7 @@ function UI:SelectResult(data, forceGuide)
     end
 
     -- Bag item: usable items (consumables, equippables) fire /use via the
-    -- SecureActionButton on click — no bag UI needed. Non-usable items
+    -- SecureActionButton on click: no bag UI needed. Non-usable items
     -- open the bag(s) containing them and highlight the slot.
     if data.itemID and data.category == "Bag" then
         if useFast then
@@ -13981,7 +13981,7 @@ function UI:SelectResult(data, forceGuide)
     end
 
     -- Macro: default click runs the macro (handled by the row's secure
-    -- macro attribute). Ctrl+click opens MacroFrame for editing —
+    -- macro attribute). Ctrl+click opens MacroFrame for editing:
     -- PreClick clears the secure type when Ctrl is held so the macro
     -- doesn't also fire. Right-click → Guide opens MacroFrame as a
     -- guide via forceGuide=true.
@@ -14594,7 +14594,7 @@ function UI:DirectOpen(data)
         end
 
         -- Hand off remaining steps to the guided highlight. DirectOpen
-        -- is left-click "open + show me where" — not the right-click
+        -- is left-click "open + show me where", not the right-click
         -- guided walkthrough, so flag the data so the highlight ticker
         -- cancels (instead of rewinding to step 1 and reopening) if the
         -- user closes the parent window with the highlight still active.
@@ -14984,7 +14984,7 @@ function UI:IsCurrencyOnBackpack(currencyID)
     if not currencyID or currencyID == 0 or not C_CurrencyInfo then return false end
     -- The enumeration list is authoritative. The CurrencyInfo struct's
     -- `isShowInBackpack` flag in modern builds indicates *capability*
-    -- (the currency is allowed to be tracked), not current state — so
+    -- (the currency is allowed to be tracked), not current state, so
     -- using it always read as on, the toggle always tried to add, and
     -- removal silently no-op'd.
     local getInfo = C_CurrencyInfo.GetBackpackCurrencyInfo
@@ -14999,7 +14999,7 @@ function UI:IsCurrencyOnBackpack(currencyID)
             -- name="" / nil quantity instead of returning nil; without
             -- this guard, comparing against currencyID still works but
             -- we'd false-positive if the caller ever passed 0 or nil
-            -- through (defended above) — keep the explicit check so a
+            -- through (defended above): keep the explicit check so a
             -- future mistake at a call site can't bite.
             if id and id ~= 0 and id == currencyID then return true end
         end
@@ -15294,7 +15294,7 @@ function UI:Show(andFocus)
     searchFrame:Show()
     -- Belt-and-suspenders: OnShow hook also calls this, but if searchFrame
     -- was already shown the hook didn't fire and escCatcher would be left
-    -- hidden — leaving ESC without a target when the editbox is unfocused.
+    -- hidden, leaving ESC without a target when the editbox is unfocused.
     if escCatcher then escCatcher:Show() end
     EasyFind.db.visible = true
     if EasyFind.db.smartShow and not EasyFind.db.autoHide then
@@ -16037,7 +16037,7 @@ function UI:ShowFirstTimeSetup()
     -- Set the initial resizer size.
     scaleResizerVisual()
 
-    -- Fixed panel width — comfortably holds the keybind rows and
+    -- Fixed panel width: comfortably holds the keybind rows and
     -- two-button bottom strip without wrapping.
     local panelWidth = 290
 
@@ -16094,7 +16094,7 @@ function UI:ShowFirstTimeSetup()
     smartDesc:SetText("|cff999999Bar hides when your mouse moves away and reappears when you hover near it.|r")
 
     -- Keybind rows. Each row = [label] [keybind button] [recommended hint].
-    -- Click the button to capture a key, right-click to clear, Esc to cancel —
+    -- Click the button to capture a key, right-click to clear, Esc to cancel,
     -- mirrors the keybind UI in /ef Options > Shortcuts.
     local function GetKeybindLabel(action)
         local k1 = GetBindingKey(action)

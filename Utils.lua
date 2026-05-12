@@ -95,7 +95,7 @@ end
 --- a key fires the action immediately, waits INITIAL seconds, then
 --- ticks at a rate that accelerates from INITIAL toward FAST over
 --- ACCEL seconds. Attach OnKeyUp to `Stop(key)` so releasing the key
---- stops the repeat — pass the key so other keys pressed concurrently
+--- stops the repeat. Pass the key so other keys pressed concurrently
 --- don't cancel each other.
 ---
 --- Returns a table: { Start(key, action), Stop(key?), IsKey(key) }.

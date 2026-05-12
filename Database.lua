@@ -319,7 +319,7 @@ function Database:PopulateDynamicCurrencies()
     -- player has on OTHER characters (or has never touched on any
     -- character but still exist account-wide). Without this, the
     -- "All Warband Transferable" filter mode only shows currencies
-    -- the current character has interacted with — defeating the point.
+    -- the current character has interacted with, defeating the point.
     -- Enumerate via the modern C_CurrencyInfo accessor when available;
     -- fall back to a bounded ID scan only if nothing else works.
     do
@@ -2050,7 +2050,7 @@ function Database:PopulateDynamicAbilities()
                        and GetFlyoutInfoFn and GetFlyoutSlotInfoFn then
                     -- Flyouts are containers (Switch Flight Style → Skyriding /
                     -- Steady Flight, etc.). The flyout itself isn't castable,
-                    -- but its slot spells are — scan and inject each, and use
+                    -- but its slot spells are. Scan and inject each, and use
                     -- the flyout's own name as a keyword so "switch flight"
                     -- finds the slot spells.
                     local flyoutID = itemInfo.actionID
@@ -2087,7 +2087,7 @@ end
 -- Common community abbreviations for dungeons/raids whose initials
 -- skip non-leading letters (e.g. "BWL" picks the W from blackWing) so
 -- the standard initials/prefix scoring can't reach them. Listed as
--- per-instance keyword aliases — typing "bwl" gets the same 2-3 char
+-- per-instance keyword aliases: typing "bwl" gets the same 2-3 char
 -- exact-match boost (140) that "icc" already gets via the prefix path.
 -- Keys are lowercased instance names returned by EJ_GetInstanceByIndex.
 -- Exposed on ns so MapSearch can inject the same aliases onto its
@@ -3773,7 +3773,7 @@ function Database:ScoreInitials(text, query)
     -- queries like "sound" wrongly initial-match "Shurrai, Atrocity of
     -- the Undersea" via S(hurrai) o(f) und(ersea), skipping the content
     -- word "atrocity" silently. Stopwords (of/the/and/...) may still be
-    -- skipped — that's what lets "tot" → "Throne of Thunder" work.
+    -- skipped: that's what lets "tot" → "Throne of Thunder" work.
     local qi = 1
     local wordsMatched = 0
     for wi = 1, numWords do
@@ -3824,7 +3824,7 @@ function Database:ScoreFuzzy(text, query, queryLen)
         local word = textWords[wi]
         -- First-letter constraint (Algolia default). "easter" vs
         -- "master" is a 1-edit match technically, but they're
-        -- semantically unrelated — typos almost never change the
+        -- semantically unrelated: typos almost never change the
         -- first character, and this rule kills the false-positive
         -- flood without dropping real typos like "achievmnts" →
         -- "achievements".
@@ -3919,7 +3919,7 @@ end
 --
 -- Builds a small byte-set from the text per call. For stable text
 -- (POI names), the caller should cache result at a higher level; for
--- one-off scoring this remains cheap — O(|text| + |query|).
+-- one-off scoring this remains cheap: O(|text| + |query|).
 local reuseCouldMatchSet = {}
 function Database:CouldMatch(text, query)
     local tlen, qlen = #text, #query
@@ -4168,7 +4168,7 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
     -- unmatched word zeroes the total to prevent common words like "of" from
     -- producing false positives. Single-character words are SKIPPED (not
     -- failed) so a mid-type query like "feral a" still passes through entries
-    -- that match "feral" — otherwise the prevCandidates incremental narrowing
+    -- that match "feral", otherwise the prevCandidates incremental narrowing
     -- chain inherits an empty set and "feral abil" silently returns nothing.
     local total = 0
     for qwi = 1, #queryWords do
