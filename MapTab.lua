@@ -1448,6 +1448,10 @@ function MapTab:RunSearch(text)
     local scrollFrame = panel.scrollFrame
     local MapSearch = ns.MapSearch
     local pinned = BuildPinnedSection()
+    local aliasMatches
+    if ns.Aliases and text ~= "" then
+        aliasMatches = ns.Aliases:GetMatches(text:lower())
+    end
 
     -- Preserve scroll when the query is unchanged (refresh path: pin
     -- toggles, group collapse, filter changes). Reset to the top on a
@@ -1470,7 +1474,7 @@ function MapTab:RunSearch(text)
         sessionCollapsedQuery = text
     end
 
-    if #text < 2 then
+    if #text < 2 and not aliasMatches then
         local showRecent = EasyFind.db.mapTabShowRecent
         local recentList = showRecent and EasyFind.db.mapTabRecentSearches
         local limit = MapTab.GetRecentLimit and MapTab.GetRecentLimit() or 3
@@ -1525,11 +1529,39 @@ function MapTab:RunSearch(text)
     -- results are filtered out of local via isLocal=true so they
     -- don't pollute "This Zone" on a world/continent map.
     local localFiltered = FilterAndDedupe(localRaw, seen, true)
-    local localEntries = GroupBySharedParent(localFiltered)
+    local localEntries
+    local globalRaw
+    if multiToken then
+        globalRaw = BuildMultiTokenResults(tokens, true)
+    else
+        globalRaw = MapSearch:BuildResults(text, true, true)
+    end
+    if myGen ~= lastQueryGen then return end
+    local globalFiltered = FilterAndDedupe(globalRaw, seen, false)
+
+    if aliasMatches then
+        local viewedMapID = WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID()
+        for i = #aliasMatches, 1, -1 do
+            local data = aliasMatches[i] and aliasMatches[i].data
+            if IsMapTabAliasData(data) then
+                local key = ResultDedupeKey(data)
+                if not seen[key] then
+                    seen[key] = true
+                    if ResultIsOnViewedMap(data, viewedMapID) then
+                        tinsert(localFiltered, 1, data)
+                    else
+                        tinsert(globalFiltered, 1, data)
+                    end
+                end
+            end
+        end
+    end
+
+    localEntries = GroupBySharedParent(localFiltered)
     -- A continent/world-type zone match (e.g. "Eastern Kingdoms" while
     -- viewing EK) is dropped from local by EXCLUDE_FROM_LOCAL_MAPTYPES,
     -- so its "This Zone" group ends up with synthesized navigateData
-    -- and parentMatched stays false — auto-expand never fires. Promote
+    -- and parentMatched stays false - auto-expand never fires. Promote
     -- the synthesized header back to the real result so the renderer's
     -- parentMatched check sees it.
     for i = 1, #localRaw do
@@ -1540,35 +1572,6 @@ function MapTab:RunSearch(text)
                 if e.type == "group" and e.ancestorMapID == r.zoneMapID
                    and e.navigateData and e.navigateData.synthesized then
                     e.navigateData = r
-                end
-            end
-        end
-    end
-    local globalRaw
-    if multiToken then
-        globalRaw = BuildMultiTokenResults(tokens, true)
-    else
-        globalRaw = MapSearch:BuildResults(text, true, true)
-    end
-    if myGen ~= lastQueryGen then return end
-    local globalFiltered = FilterAndDedupe(globalRaw, seen, false)
-
-    if ns.Aliases then
-        local aliasMatches = ns.Aliases:GetMatches(text:lower())
-        if aliasMatches then
-            local viewedMapID = WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID()
-            for i = #aliasMatches, 1, -1 do
-                local data = aliasMatches[i] and aliasMatches[i].data
-                if IsMapTabAliasData(data) then
-                    local key = ResultDedupeKey(data)
-                    if not seen[key] then
-                        seen[key] = true
-                        if ResultIsOnViewedMap(data, viewedMapID) then
-                            tinsert(localFiltered, 1, data)
-                        else
-                            tinsert(globalFiltered, 1, data)
-                        end
-                    end
                 end
             end
         end
