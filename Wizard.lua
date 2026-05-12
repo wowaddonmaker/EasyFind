@@ -339,7 +339,7 @@ local function BuildPage2(parent)
         d:Show()
     end
 
-    local function CreateDetailView(headerText)
+    local function CreateDetailView(headerText, detailText)
         local d = CreateFrame("Frame", nil, p)
         d:SetAllPoints(p)
         d:Hide()
@@ -351,7 +351,7 @@ local function BuildPage2(parent)
         local h = HeaderText(d, headerText, "GameFontNormalLarge")
         h:SetPoint("TOP", d, "TOP", 0, -28)
 
-        local body = BodyText(d, "Details coming soon.")
+        local body = BodyText(d, detailText or "")
         body:SetPoint("TOP", h, "BOTTOM", 0, -16)
         body:SetWidth(WIZ_W - 120)
 
@@ -359,10 +359,15 @@ local function BuildPage2(parent)
         return d
     end
 
-    local d1 = CreateDetailView("Search")
-    local d2 = CreateDetailView("Map Search Tab")
-    local d3 = CreateDetailView("Click & Right-click")
-    local d4 = CreateDetailView("Pin Anything")
+    local d1 = CreateDetailView("Search",
+        "Search panels, settings, achievements, statistics, abilities, talents, titles, reputations, currencies, mounts, toys, pets, outfits, transmogs, heirlooms, gear sets, bag items, bosses, loot, macros, map places, and addon options.\n\n" ..
+        "Right-click a result for contextual actions like Guide, Pin, Add Alias, favorite toggles, tracking, pet actions, and other row-specific tools. Pins keep important results available before typing; aliases let your own words find the same result.")
+    local d2 = CreateDetailView("Map Search Tab",
+        "Use the Map Search tab for location-first browsing: banks, flight masters, dungeons, raids, zones, and useful points of interest.")
+    local d3 = CreateDetailView("Item/Ability Use",
+        "Use supported results directly from the list: cast abilities, summon mounts and pets, use toys, swap outfits, view or try on transmogs, add heirlooms to bags, consume usable bag items, equip gear from bags, and open ordinary bag items in their bag slot.")
+    local d4 = CreateDetailView("Calculator",
+        "Type math straight into search, including 1+23, 1*7, sin(30), tan(45), or 5!. Select the expression or result and press Ctrl+C, or press Alt+C to open the calculator.")
 
     local t1 = FeatureTile(grid, nil, "Interface\\AddOns\\EasyFind\\Textures\\Spyglass", nil,
         "Search",
@@ -379,14 +384,14 @@ local function BuildPage2(parent)
     -- Anchor lower-row tiles directly to the grid so a tile's hover
     -- scale doesn't ripple position changes onto its neighbor.
     local t3 = FeatureTile(grid, "UI-HUD-MicroMenu-SpellbookAbilities-Up", nil, nil,
-        "Click & Right-click",
-        "Left-click activates the result (cast, use, equip, navigate). Right-click opens Pin / Alias / Guide menu.",
+        "Item/Ability Use",
+        "Cast, use, equip, summon, swap, or open supported results directly from the list.",
         function() ShowDetail(d3) end)
     t3:SetPoint("TOPLEFT", grid, "TOPLEFT", 38, -222)
 
-    local t4 = FeatureTile(grid, "Waypoint-MapPin-ChatIcon", nil, nil,
-        "Pin Anything",
-        "Pin frequently-used results for quick access.",
+    local t4 = FeatureTile(grid, nil, "Interface\\Icons\\INV_Misc_Note_05", nil,
+        "Calculator",
+        "Type expressions, copy the result, or open the full calculator with Alt+C.",
         function() ShowDetail(d4) end)
     t4:SetPoint("TOPRIGHT", grid, "TOPRIGHT", -38, -222)
 
@@ -397,12 +402,9 @@ local function BuildPage2(parent)
     return p
 end
 
--- One capture-button widget per binding. Rounded fill (same TC9
--- 9-slice the search bar uses, pinned at button height for a true
--- pill silhouette) plus a soft center glow stack -- two stacked
--- white squares with low alpha and ADD blend, the smaller one
--- brighter, fading outward like a worn-down key polished by years
--- of presses. Right-click clears the binding, Esc cancels capture.
+-- One capture-button widget per binding. Rounded gray fill matching
+-- the rest of the modern EasyFind controls. Right-click clears the
+-- binding, Esc cancels capture.
 local kbWidgets = {}
 local kbWaitingFor
 
@@ -451,40 +453,22 @@ local function CreateKbWidget(parent, action, label)
         end
     end
 
-    -- Worn-key center glow: two horizontal-gradient halves meeting at
-    -- the button's centerline. Each half fades from transparent at
-    -- the outer edge to a soft warm tint at the centerline, so the
-    -- composite peaks in the middle and dies away symmetrically.
-    -- ADD blend keeps the rounded silhouette unaffected. Glow height
-    -- is kept inside the rounded interior so its rectangular top
-    -- and bottom edges fall within the flat middle of the pill.
-    local function MakeGlowHalf(anchorEdge, fromAlpha, toAlpha)
-        local g = btn:CreateTexture(nil, "ARTWORK")
-        g:SetTexture("Interface\\Buttons\\WHITE8x8")
-        g:SetBlendMode("ADD")
-        g:SetSize(80, 18)
-        g:SetPoint(anchorEdge, btn, "CENTER", 0, 0)
-        g:SetGradient("HORIZONTAL",
-            CreateColor(1, 0.96, 0.82, fromAlpha),
-            CreateColor(1, 0.96, 0.82, toAlpha))
-        return g
-    end
-    local glowL = MakeGlowHalf("RIGHT", 0, 0.07)
-    local glowR = MakeGlowHalf("LEFT",  0.07, 0)
-
     local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     fs:SetPoint("CENTER")
     ApplyInter(fs, "semibold")
     btn._label = fs
 
+    local function tintFill(rr, gg, bb)
+        if not (btn.combinedBorder and btn.combinedBorder.fill) then return end
+        for _, t in pairs(btn.combinedBorder.fill) do
+            t:SetVertexColor(rr, gg, bb, 1)
+        end
+    end
+
     local function setHover(hover)
-        local peak = hover and 0.14 or 0.07
-        glowL:SetGradient("HORIZONTAL",
-            CreateColor(1, 0.96, 0.82, 0),
-            CreateColor(1, 0.96, 0.82, peak))
-        glowR:SetGradient("HORIZONTAL",
-            CreateColor(1, 0.96, 0.82, peak),
-            CreateColor(1, 0.96, 0.82, 0))
+        tintFill(hover and 0.24 or 0.18,
+                 hover and 0.24 or 0.18,
+                 hover and 0.26 or 0.20)
         fs:SetTextColor(hover and 1 or TEXT_PRIM[1],
                         hover and 1 or TEXT_PRIM[2],
                         hover and 1 or TEXT_PRIM[3], 1)

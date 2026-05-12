@@ -10,7 +10,6 @@ local tonumber, tostring = Utils.tonumber, Utils.tostring
 local tinsert, tconcat = Utils.tinsert, Utils.tconcat
 local IsMouseButtonDown = IsMouseButtonDown
 
-local DEFAULT_OPACITY = ns.DEFAULT_OPACITY
 local OPTIONS_PANEL_ALPHA = 0.9
 
 local optionsFrame
@@ -20,13 +19,19 @@ local blizzardRegistered = false
 local NIL = {}
 local DEFAULT_UI_FILTERS = {
     ui = true, achievements = true, statistics = true, currencies = true,
-    reputations = true, collections = true, mounts = true, toys = true,
-    pets = true, outfits = true, heirlooms = true, loot = true,
-    appearanceSets = true, bags = true, macros = true, options = true,
-    abilities = true, bosses = true, map = true,
+    reputations = true, collections = true, gameOptions = true,
+    addonOptions = true, mounts = true, toys = true, pets = true,
+    outfits = true, heirlooms = true, loot = true, appearanceSets = true,
+    bags = true, macros = true, options = true, abilities = true,
+    bosses = true, gearSets = true, talents = true, titles = true,
+    map = true,
 }
 local DEFAULT_GLOBAL_SEARCH_FILTERS = { zones = true, dungeons = true, raids = true, delves = true }
 local DEFAULT_LOCAL_SEARCH_FILTERS = { instances = true, travel = true, services = true, rares = true }
+local DEFAULT_MAP_TAB_FILTERS = {
+    zones = true, instances = true, flightpath = true, travel = true,
+    services = true, rares = true,
+}
 
 local UI_DEFAULTS = {
     smartShow = false,
@@ -65,11 +70,11 @@ local MAP_DEFAULTS = {
     autoTrackPins = true,
     globalSearchFilters = DEFAULT_GLOBAL_SEARCH_FILTERS,
     localSearchFilters = DEFAULT_LOCAL_SEARCH_FILTERS,
+    mapTabFilters = DEFAULT_MAP_TAB_FILTERS,
     alwaysShowRares = false,
 }
 
 local GENERAL_DEFAULTS = {
-    searchBarOpacity = DEFAULT_OPACITY,
     tutorialDone = false,
     resultsTheme = "Modern",
     font = "Default",
@@ -162,7 +167,6 @@ end
 local function SyncOptionControls()
     if not optionsFrame then return end
 
-    if optionsFrame.opacityPresetRow then optionsFrame.opacityPresetRow:SetValue(EasyFind.db.searchBarOpacity or DEFAULT_OPACITY) end
     if optionsFrame.uiFontPresetRow then optionsFrame.uiFontPresetRow:SetValue(EasyFind.db.fontSize or 0.9) end
     if optionsFrame.mapIconPresetRow then optionsFrame.mapIconPresetRow:SetValue(EasyFind.db.iconScale or 0.8) end
     if optionsFrame.recentCountStepper then optionsFrame.recentCountStepper:SetValue(EasyFind.db.mapTabRecentCount or 3) end
@@ -863,7 +867,7 @@ function Options:Initialize()
     ns.SetRoundedRectBarHeight(sidebar, 14)
     ns.SetRoundedRectBorderBgAlpha(sidebar, 0.72)
     HideRoundedBorder(sidebar)
-    TintRoundedFill(sidebar, 0.035, 0.035, 0.042)
+    TintRoundedFill(sidebar, 0.022, 0.022, 0.028)
 
     local divider = optionsFrame:CreateTexture(nil, "ARTWORK")
     divider:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 8, -2)
@@ -1303,23 +1307,6 @@ function Options:Initialize()
     end)
     optionsFrame.resultShortcutHintsCheckbox = resultShortcutHintsCheckbox
 
-    local opacityChoices = {
-        { label = "Light", value = 0.45 },
-        { label = "Balanced", value = DEFAULT_OPACITY },
-        { label = "Solid", value = 0.95 },
-    }
-    local opacityPresetRow = CreatePresetRow(sec1, "Background Opacity", opacityChoices,
-        function() return EasyFind.db.searchBarOpacity or DEFAULT_OPACITY end,
-        function(value)
-            EasyFind.db.searchBarOpacity = value
-            if ns.UI and ns.UI.UpdateOpacity then
-                ns.UI:UpdateOpacity()
-            end
-        end,
-        "Controls the UI search window background density. Text and icons remain fully visible.")
-    opacityPresetRow:SetPoint("TOPLEFT", resultShortcutHintsCheckbox, "BOTTOMLEFT", 0, -8)
-    optionsFrame.opacityPresetRow = opacityPresetRow
-
     local fontSizeChoices = {
         { label = "Small", value = 0.80 },
         { label = "Med", value = 0.90 },
@@ -1335,13 +1322,10 @@ function Options:Initialize()
             end
         end,
         "Adjusts UI search text size without resizing the search window.")
-    uiFontPresetRow:SetPoint("TOPLEFT", opacityPresetRow, "BOTTOMLEFT", 0, -2)
+    uiFontPresetRow:SetPoint("TOPLEFT", resultShortcutHintsCheckbox, "BOTTOMLEFT", 0, -8)
     optionsFrame.uiFontPresetRow = uiFontPresetRow
 
     local function RefreshUIPresetRows()
-        if optionsFrame.opacityPresetRow then
-            optionsFrame.opacityPresetRow:SetValue(EasyFind.db.searchBarOpacity or DEFAULT_OPACITY)
-        end
         if optionsFrame.uiFontPresetRow then
             optionsFrame.uiFontPresetRow:SetValue(EasyFind.db.fontSize or 0.9)
         end
@@ -1576,6 +1560,10 @@ function Options:Initialize()
         .. "|cFF00FF00Tab/Shift+Tab|r or |cFF00FF00Ctrl+L/H|r  Cycle focus to nav buttons\n"
         .. "|cFF00FF00PgUp/PgDn|r jump 5  |cFF00FF00Home/End|r first/last\n"
         .. "|cFF00FF00Shift+Up/Down|r or |cFF00FF00Ctrl+Shift+K/J|r jump section\n\n"
+        .. "|cFFFFD100Quick filters:|r\n"
+        .. "Type |cFF00FF00@|r for category filters. Examples: |cFF00FF00@m|r mounts, |cFF00FF00@s|r statistics, |cFF00FF00@g|r gear. |cFF00FF00Tab/Space|r selects a category.\n\n"
+        .. "|cFFFFD100Calculator:|r\n"
+        .. "Type math into search. |cFF00FF00Alt+C|r opens the calculator.\n\n"
         .. "|cFFFFD100Other:|r\n"
         .. "|cFF00FF00Shift+Drag|r reposition  |cFF00FF00Right-click|r pin/unpin\n\n"
         .. "|cFFFFD100Slash commands:|r\n"
