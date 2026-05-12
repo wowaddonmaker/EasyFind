@@ -18,7 +18,7 @@ local blizzardRegistered = false
 
 local NIL = {}
 local DEFAULT_UI_FILTERS = {
-    ui = true, achievements = true, statistics = true, currencies = true,
+    ui = true, achievements = true, statistics = false, currencies = true,
     reputations = true, collections = true, gameOptions = true,
     addonOptions = true, mounts = true, toys = true, pets = true,
     outfits = true, heirlooms = true, loot = true, appearanceSets = true,
@@ -29,7 +29,7 @@ local DEFAULT_UI_FILTERS = {
 local DEFAULT_GLOBAL_SEARCH_FILTERS = { zones = true, dungeons = true, raids = true, delves = true }
 local DEFAULT_LOCAL_SEARCH_FILTERS = { instances = true, travel = true, services = true, rares = true }
 local DEFAULT_MAP_TAB_FILTERS = {
-    zones = true, instances = true, flightpath = true, travel = true,
+    zones = true, instances = true, flightpath = false, travel = true,
     services = true, rares = true,
 }
 
@@ -37,7 +37,6 @@ local UI_DEFAULTS = {
     smartShow = false,
     autoHide = true,
     lockPosition = false,
-    staticOpacity = false,
     uiResultsAbove = false,
     showResultShortcutHints = true,
     fontSize = 0.9,
@@ -80,7 +79,8 @@ local GENERAL_DEFAULTS = {
     font = "Default",
     indicatorStyle = "EasyFind Arrow",
     indicatorColor = "Yellow",
-    showLoginMessage = true,
+    showLoginMessage = false,
+    showAliasMessages = true,
     showMinimapButton = true,
     minimapButtonAngle = 200,
     visible = true,
@@ -125,6 +125,14 @@ local function ResetOptionsPosition()
     if optionsFrame then
         optionsFrame:ClearAllPoints()
         optionsFrame:SetPoint("TOP", UIParent, "TOP", 0, -100)
+    end
+end
+
+local function RunSoon(fn)
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0, fn)
+    else
+        fn()
     end
 end
 
@@ -177,9 +185,9 @@ local function SyncOptionControls()
         local lbl = optionsFrame.smartShowCheckbox:GetFontString()
         if lbl then lbl:SetTextColor(1, 1, 1) end
     end
-    if optionsFrame.staticOpacityCheckbox then optionsFrame.staticOpacityCheckbox:SetChecked(EasyFind.db.staticOpacity or false) end
     if optionsFrame.lockPositionCheckbox then optionsFrame.lockPositionCheckbox:SetChecked(EasyFind.db.lockPosition or false) end
-    if optionsFrame.loginMessageCheckbox then optionsFrame.loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage ~= false) end
+    if optionsFrame.loginMessageCheckbox then optionsFrame.loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage == true) end
+    if optionsFrame.aliasMessageCheckbox then optionsFrame.aliasMessageCheckbox:SetChecked(EasyFind.db.showAliasMessages ~= false) end
     if optionsFrame.uiResultsAboveCheckbox then optionsFrame.uiResultsAboveCheckbox:SetChecked(EasyFind.db.uiResultsAbove or false) end
     if optionsFrame.resultShortcutHintsCheckbox then optionsFrame.resultShortcutHintsCheckbox:SetChecked(EasyFind.db.showResultShortcutHints ~= false) end
     if optionsFrame.minimapBtnCheckbox then optionsFrame.minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton ~= false) end
@@ -432,11 +440,12 @@ local function CreateCheckbox(parent, name, label, tooltipText, compact, width)
 end
 
 local DISABLED_TEXT = { 0.5, 0.5, 0.5 }
-local NORMAL_TEXT = ns.GOLD_COLOR
+local NORMAL_TEXT = {1.0, 1.0, 1.0}
 local OPTIONS_PANEL_SCALE = 0.88
 local TEXT_PRIMARY = { 1.00, 0.97, 0.86 }
 local TEXT_BODY = { 0.78, 0.78, 0.80 }
 local TEXT_DIM = { 0.55, 0.55, 0.58 }
+local SECTION_TITLE_TEXT = ns.GOLD_COLOR or { 1.0, 0.82, 0.0 }
 local NAV_SELECTED = { 0.15, 0.15, 0.17, 0.95 }
 local NAV_HOVER = { 0.11, 0.11, 0.13, 0.85 }
 local NAV_CLEAR = { 0, 0, 0, 0 }
@@ -665,6 +674,7 @@ local function CreatePresetRow(parent, labelText, choices, getter, setter, toolt
     local controlW = (#choices == 3) and 174 or 184
     label:SetPoint("RIGHT", row, "RIGHT", -controlW - 18, 0)
     label:SetJustifyH("LEFT")
+    label:SetTextColor(NORMAL_TEXT[1], NORMAL_TEXT[2], NORMAL_TEXT[3], 1)
     label:SetText(labelText)
     row.label = label
 
@@ -680,8 +690,9 @@ local function CreatePresetRow(parent, labelText, choices, getter, setter, toolt
         right = right - btnW - 2
         btn:SetScript("OnClick", function(self)
             if not row.enabled then return end
-            setter(self.choice.value)
-            row:SetValue(self.choice.value)
+            local value = self.choice.value
+            row:SetValue(value)
+            RunSoon(function() setter(value) end)
         end)
         btn:SetScript("OnEnter", function(self)
             PaintPresetButton(self, row.activeValue == self.choice.value, true, row.enabled)
@@ -709,6 +720,10 @@ local function CreatePresetRow(parent, labelText, choices, getter, setter, toolt
     row.SetGroupEnabled = function(self, enabled)
         self.enabled = enabled
         self:SetAlpha(enabled and 1.0 or 0.35)
+        if self.label then
+            local c = enabled and NORMAL_TEXT or DISABLED_TEXT
+            self.label:SetTextColor(c[1], c[2], c[3], 1)
+        end
         for _, btn in ipairs(self.buttons) do
             if enabled then btn:Enable() else btn:Disable() end
             PaintPresetButton(btn, self.activeValue == btn.choice.value, false, enabled)
@@ -728,6 +743,7 @@ local function CreateStepperRow(parent, labelText, minVal, maxVal, getter, sette
     label:SetPoint("LEFT", row, "LEFT", 8, 0)
     label:SetPoint("RIGHT", row, "RIGHT", -112, 0)
     label:SetJustifyH("LEFT")
+    label:SetTextColor(NORMAL_TEXT[1], NORMAL_TEXT[2], NORMAL_TEXT[3], 1)
     label:SetText(labelText)
 
     local plusBtn = CreateModernButton(row, "+", 24, 20)
@@ -767,6 +783,8 @@ local function CreateStepperRow(parent, labelText, minVal, maxVal, getter, sette
     row.SetGroupEnabled = function(self, enabled)
         self.enabled = enabled
         self:SetAlpha(enabled and 1.0 or 0.35)
+        local c = enabled and NORMAL_TEXT or DISABLED_TEXT
+        label:SetTextColor(c[1], c[2], c[3], 1)
         if enabled then
             minusBtn:Enable()
             plusBtn:Enable()
@@ -1047,7 +1065,7 @@ function Options:Initialize()
     homeVersion:SetText("|cFF888888v" .. (tocVersion or "") .. "|r")
 
     local homeDesc = homeTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    homeDesc:SetPoint("TOPLEFT", homeIcon, "BOTTOMLEFT", 0, -4)
+    homeDesc:SetPoint("TOPLEFT", homeIcon, "BOTTOMLEFT", 0, -14)
     homeDesc:SetPoint("RIGHT", homeTab, "RIGHT", -12, 0)
     homeDesc:SetJustifyH("LEFT")
     homeDesc:SetSpacing(3)
@@ -1083,14 +1101,14 @@ function Options:Initialize()
 
     CreateURLBox(homeTab, "https://www.curseforge.com/wow/addons/easyfind", homeDesc, -6)
 
-    local sec3 = CreateTab("General")
+    local sec3 = CreateTab("General & Binds")
 
     -- General tab layout (no inner border, content fills the tab)
 
     local loginMessageCheckbox = CreateCheckbox(sec3, "LoginMessage", "Show Login Message",
         "When enabled, shows a short \"EasyFind loaded!\" message in chat when you log in.\n\nDisable to keep chat cleaner.")
     loginMessageCheckbox:SetPoint("TOPLEFT", sec3, "TOPLEFT", 8, -8)
-    loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage ~= false)
+    loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage == true)
     loginMessageCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.showLoginMessage = self:GetChecked()
     end)
@@ -1098,7 +1116,16 @@ function Options:Initialize()
 
     local minimapBtnCheckbox = CreateCheckbox(sec3, "MinimapBtn", "Show Minimap Button",
         "When enabled, adds a small search icon button to the minimap edge.\n\nLeft-click the button to toggle the search bar.\nRight-click to open options.\nDrag to reposition it around the minimap.")
-    minimapBtnCheckbox:SetPoint("TOPLEFT", loginMessageCheckbox, "BOTTOMLEFT", 0, -2)
+    local aliasMessageCheckbox = CreateCheckbox(sec3, "AliasMessages", "Show Alias Messages",
+        "When enabled, adding an alias prints a short chat note pointing back to the Aliases tab.")
+    aliasMessageCheckbox:SetPoint("TOPLEFT", loginMessageCheckbox, "BOTTOMLEFT", 0, -2)
+    aliasMessageCheckbox:SetChecked(EasyFind.db.showAliasMessages ~= false)
+    aliasMessageCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.showAliasMessages = self:GetChecked()
+    end)
+    optionsFrame.aliasMessageCheckbox = aliasMessageCheckbox
+
+    minimapBtnCheckbox:SetPoint("TOPLEFT", aliasMessageCheckbox, "BOTTOMLEFT", 0, -2)
     minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton ~= false)
     minimapBtnCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.showMinimapButton = self:GetChecked()
@@ -1116,6 +1143,7 @@ function Options:Initialize()
         label:SetPoint("LEFT", row, "LEFT", 8, 0)
         label:SetPoint("RIGHT", row, "RIGHT", -SELECTOR_BTN_W - 18, 0)
         label:SetJustifyH("LEFT")
+        label:SetTextColor(NORMAL_TEXT[1], NORMAL_TEXT[2], NORMAL_TEXT[3], 1)
         label:SetText(labelText)
         return row, label
     end
@@ -1170,7 +1198,7 @@ function Options:Initialize()
         label:SetPoint("RIGHT", colorBtn, "RIGHT", -6, 0)
         label:SetJustifyH("CENTER")
         label:SetText(name)
-        label:SetTextColor(rgb[1], rgb[2], rgb[3])
+        label:SetTextColor(NORMAL_TEXT[1], NORMAL_TEXT[2], NORMAL_TEXT[3], 1)
 
         colorBtn:SetScript("OnEnter", function(self)
             PaintRoundedFill(rowBg, 1, 1, 1, 0.06)
@@ -1178,7 +1206,7 @@ function Options:Initialize()
         end)
         colorBtn:SetScript("OnLeave", function(self)
             PaintRoundedFill(rowBg, 1, 1, 1, 0)
-            label:SetTextColor(rgb[1], rgb[2], rgb[3])
+            label:SetTextColor(NORMAL_TEXT[1], NORMAL_TEXT[2], NORMAL_TEXT[3], 1)
         end)
         colorBtn:SetScript("OnClick", function()
             EasyFind.db.indicatorColor = name
@@ -1209,10 +1237,77 @@ function Options:Initialize()
     optionsFrame.fontBtnText = fontBtnText
     optionsFrame.fontFlyout = fontFlyout
 
+    local keybindHeader = sec3:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    keybindHeader:SetPoint("TOPLEFT", fontRow, "BOTTOMLEFT", 8, -18)
+    keybindHeader:SetText("Keybindings")
+    keybindHeader:SetTextColor(SECTION_TITLE_TEXT[1], SECTION_TITLE_TEXT[2], SECTION_TITLE_TEXT[3], 1)
+
+    local keybindDefs = {
+        { label = "Toggle Search Bar", action = "EASYFIND_TOGGLE_FOCUS" },
+        { label = "Open Map Search Tab", action = "EASYFIND_MAP_FOCUS" },
+        { label = "Clear All",         action = "EASYFIND_CLEAR" },
+    }
+
+    local keybindTooltips = {
+        EASYFIND_TOGGLE_FOCUS = { "Toggle Search Bar", "Opens and focuses the UI search bar in one press. Press again to close." },
+        EASYFIND_MAP_FOCUS    = { "Open Map Search Tab", "Opens the world map, switches to the EasyFind Map Search tab, and focuses its search box." },
+        EASYFIND_CLEAR        = { "Clear All", "Dismisses all active highlights, map pins, zone highlights, and pending waypoints." },
+    }
+
+    local keybindButtons = {}
+    local KEYBIND_ROW_H = 24
+    local KEYBIND_BTN_W = 116
+    local KEYBIND_LABEL_W = 168
+    local keybindSettings = CreateSettingsGroup(sec3, SELECTOR_ROW_W, KEYBIND_ROW_H * #keybindDefs + 8)
+    keybindSettings:SetPoint("TOPLEFT", keybindHeader, "BOTTOMLEFT", 0, -3)
+    optionsFrame.keybindSettings = keybindSettings
+
+    for i, def in ipairs(keybindDefs) do
+        local row = i - 1
+
+        local rowFrame = CreateFrame("Frame", nil, keybindSettings)
+        rowFrame:SetSize(SELECTOR_ROW_W, KEYBIND_ROW_H)
+        rowFrame:SetPoint("TOPLEFT", keybindSettings, "TOPLEFT", 0, -4 - row * KEYBIND_ROW_H)
+
+        local rowLabel = rowFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        rowLabel:SetPoint("LEFT", rowFrame, "LEFT", 8, 0)
+        rowLabel:SetText(def.label .. ":")
+        rowLabel:SetTextColor(NORMAL_TEXT[1], NORMAL_TEXT[2], NORMAL_TEXT[3], 1)
+
+        local keybindBtn = CreateModernButton(rowFrame)
+        keybindBtn:SetNormalFontObject("GameFontHighlightSmall")
+        keybindBtn:SetHighlightFontObject("GameFontHighlightSmall")
+        keybindBtn:SetSize(KEYBIND_BTN_W, 20)
+        keybindBtn:SetPoint("LEFT", rowLabel, "LEFT", KEYBIND_LABEL_W, 0)
+        keybindBtn:SetText(GetCurrentKeybindText(def.action))
+        keybindBtn:SetScript("OnClick", function(self, button)
+            if button == "RightButton" then
+                local old1, old2 = GetBindingKey(def.action)
+                if old1 then SetBinding(old1) end
+                if old2 then SetBinding(old2) end
+                SaveBindings(GetCurrentBindingSet())
+                self:SetText("Not Bound")
+            else
+                StartCapture(self, def.action)
+            end
+        end)
+        keybindBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+
+        local tip = keybindTooltips[def.action]
+        if tip then
+            MakeKeybindTooltip(keybindBtn, tip[1], tip[2])
+        end
+
+        keybindButtons[def.action] = keybindBtn
+    end
+    optionsFrame.toggleFocusBtn = keybindButtons["EASYFIND_TOGGLE_FOCUS"]
+    optionsFrame.mapFocusBtn    = keybindButtons["EASYFIND_MAP_FOCUS"]
+    optionsFrame.clearBtn       = keybindButtons["EASYFIND_CLEAR"]
+
     local RESET_BTN_W = 120
 
     -- SECTION 2: UI Search
-    local sec1 = CreateTab("UI")
+    local sec1 = CreateTab("Search")
 
     local resizeUIBtn = CreateModernButton(sec1)
     resizeUIBtn:SetSize(160, 22)
@@ -1244,13 +1339,15 @@ function Options:Initialize()
         EasyFind.db.autoHide = not smart
         autoHideCheckbox:SetChecked(not smart)
         smartShowCheckbox:SetChecked(smart)
-        if smart then
-            if ns.UI and ns.UI.Show then ns.UI:Show(false) end
-            if ns.UI and ns.UI.UpdateSmartShow then ns.UI:UpdateSmartShow() end
-        else
-            if ns.UI and ns.UI.UpdateSmartShow then ns.UI:UpdateSmartShow() end
-            if ns.UI and ns.UI.Hide then ns.UI:Hide() end
-        end
+        RunSoon(function()
+            if EasyFind.db.smartShow then
+                if ns.UI and ns.UI.Show then ns.UI:Show(false) end
+                if ns.UI and ns.UI.UpdateSmartShow then ns.UI:UpdateSmartShow() end
+            else
+                if ns.UI and ns.UI.UpdateSmartShow then ns.UI:UpdateSmartShow() end
+                if ns.UI and ns.UI.Hide then ns.UI:Hide() end
+            end
+        end)
     end
     autoHideCheckbox:SetScript("OnClick", function()
         SetVisibilityMode("auto")
@@ -1264,21 +1361,9 @@ function Options:Initialize()
     autoHideCheckbox:SetChecked(not smartInitial)
     smartShowCheckbox:SetChecked(smartInitial)
 
-    local staticOpacityCheckbox = CreateCheckbox(sec1, "StaticOpacity", "Static Opacity",
-        "When enabled, the UI search bar keeps the same opacity at all times.\n\nWhen disabled (default), opacity is reduced while your character is moving so you can see the game world better, similar to how the World Map behaves.")
-    staticOpacityCheckbox:SetPoint("TOPLEFT", smartShowCheckbox, "BOTTOMLEFT", 0, -2)
-    staticOpacityCheckbox:SetChecked(EasyFind.db.staticOpacity or false)
-    staticOpacityCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.staticOpacity = self:GetChecked()
-        if ns.UI and ns.UI.UpdateOpacity then
-            ns.UI:UpdateOpacity()
-        end
-    end)
-    optionsFrame.staticOpacityCheckbox = staticOpacityCheckbox
-
     local lockPositionCheckbox = CreateCheckbox(sec1, "LockPosition", "Lock Position",
-        "When enabled, the search bar can't be dragged. Useful if you've placed it exactly where you want and don't want to bump it by accident.\n\nReset Positions and the :reset command still work.")
-    lockPositionCheckbox:SetPoint("TOPLEFT", staticOpacityCheckbox, "BOTTOMLEFT", 0, -2)
+        "When enabled, the search bar can't be dragged. Useful if you've placed it exactly where you want and don't want to bump it by accident.\n\nReset Positions and the /reset command still work.")
+    lockPositionCheckbox:SetPoint("TOPLEFT", smartShowCheckbox, "BOTTOMLEFT", 0, -2)
     lockPositionCheckbox:SetChecked(EasyFind.db.lockPosition or false)
     lockPositionCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.lockPosition = self:GetChecked()
@@ -1291,7 +1376,10 @@ function Options:Initialize()
     uiResultsAboveCheckbox:SetChecked(EasyFind.db.uiResultsAbove or false)
     uiResultsAboveCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.uiResultsAbove = self:GetChecked()
-        if ns.UI and ns.UI.RefreshResults then ns.UI:RefreshResults() end
+        if self.RefreshVisual then self:RefreshVisual() end
+        RunSoon(function()
+            if ns.UI and ns.UI.RefreshResults then ns.UI:RefreshResults() end
+        end)
     end)
     optionsFrame.uiResultsAboveCheckbox = uiResultsAboveCheckbox
 
@@ -1301,9 +1389,12 @@ function Options:Initialize()
     resultShortcutHintsCheckbox:SetChecked(EasyFind.db.showResultShortcutHints ~= false)
     resultShortcutHintsCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.showResultShortcutHints = self:GetChecked()
-        if ns.UI and ns.UI.RefreshResults then
-            ns.UI:RefreshResults()
-        end
+        if self.RefreshVisual then self:RefreshVisual() end
+        RunSoon(function()
+            if ns.UI and ns.UI.RefreshResults then
+                ns.UI:RefreshResults()
+            end
+        end)
     end)
     optionsFrame.resultShortcutHintsCheckbox = resultShortcutHintsCheckbox
 
@@ -1348,7 +1439,7 @@ function Options:Initialize()
         StaticPopup_Show("EASYFIND_RESET_UI_POS")
     end)
 
-    -- SECTION 3: Map Search
+    -- SECTION 3: Map
     local sec2 = CreateTab("Map")
 
     local mapEnableCheckbox = CreateCheckbox(sec2, "EnableMap", "Enable Map Search Module",
@@ -1390,6 +1481,7 @@ function Options:Initialize()
     local mapTabLabel = sec2:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     mapTabLabel:SetPoint("TOPLEFT", sec2, "TOPLEFT", 8, -48)
     mapTabLabel:SetText("Map Tab")
+    mapTabLabel:SetTextColor(SECTION_TITLE_TEXT[1], SECTION_TITLE_TEXT[2], SECTION_TITLE_TEXT[3], 1)
 
     local mapTabSettings = CreateSettingsGroup(sec2, GROUP_W, ROW_H * 2 + 8)
     mapTabSettings:SetPoint("TOPLEFT", mapTabLabel, "BOTTOMLEFT", 0, -3)
@@ -1421,8 +1513,11 @@ function Options:Initialize()
     optionsFrame.UpdateRecentCountEnabled = UpdateRecentCountEnabled
     mapTabShowRecentCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.mapTabShowRecent = self:GetChecked()
+        if self.RefreshVisual then self:RefreshVisual() end
         UpdateRecentCountEnabled()
-        if ns.MapTab and ns.MapTab.RefreshIfOpen then ns.MapTab:RefreshIfOpen() end
+        RunSoon(function()
+            if ns.MapTab and ns.MapTab.RefreshIfOpen then ns.MapTab:RefreshIfOpen() end
+        end)
     end)
     UpdateRecentCountEnabled()
 
@@ -1432,6 +1527,7 @@ function Options:Initialize()
     local mapIconsLabel = sec2:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     mapIconsLabel:SetPoint("TOPLEFT", mapTabSettings, "BOTTOMLEFT", 0, -6)
     mapIconsLabel:SetText("EF Map Icons")
+    mapIconsLabel:SetTextColor(SECTION_TITLE_TEXT[1], SECTION_TITLE_TEXT[2], SECTION_TITLE_TEXT[3], 1)
 
     local mapIconSettings = CreateSettingsGroup(sec2, GROUP_W, ROW_H * 3 + 8)
     mapIconSettings:SetPoint("TOPLEFT", mapIconsLabel, "BOTTOMLEFT", 0, -3)
@@ -1443,7 +1539,10 @@ function Options:Initialize()
     mapPinHighlightCheckbox:SetChecked(EasyFind.db.mapPinHighlight ~= false)
     mapPinHighlightCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.mapPinHighlight = self:GetChecked()
-        if ns.MapSearch and ns.MapSearch.UpdatePinHighlight then ns.MapSearch:UpdatePinHighlight() end
+        if self.RefreshVisual then self:RefreshVisual() end
+        RunSoon(function()
+            if ns.MapSearch and ns.MapSearch.UpdatePinHighlight then ns.MapSearch:UpdatePinHighlight() end
+        end)
     end)
     optionsFrame.mapPinHighlightCheckbox = mapPinHighlightCheckbox
 
@@ -1453,7 +1552,10 @@ function Options:Initialize()
     blinkingPinsCheckbox:SetChecked(EasyFind.db.blinkingPins or false)
     blinkingPinsCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.blinkingPins = self:GetChecked()
-        if ns.MapSearch and ns.MapSearch.UpdateBlinkingPins then ns.MapSearch:UpdateBlinkingPins() end
+        if self.RefreshVisual then self:RefreshVisual() end
+        RunSoon(function()
+            if ns.MapSearch and ns.MapSearch.UpdateBlinkingPins then ns.MapSearch:UpdateBlinkingPins() end
+        end)
     end)
     optionsFrame.blinkingPinsCheckbox = blinkingPinsCheckbox
 
@@ -1486,6 +1588,7 @@ function Options:Initialize()
     local mapPinsLabel = sec2:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     mapPinsLabel:SetPoint("TOPLEFT", mapIconSettings, "BOTTOMLEFT", 0, -6)
     mapPinsLabel:SetText("Map Pins")
+    mapPinsLabel:SetTextColor(SECTION_TITLE_TEXT[1], SECTION_TITLE_TEXT[2], SECTION_TITLE_TEXT[3], 1)
 
     local mapPinSettings = CreateSettingsGroup(sec2, GROUP_W, ROW_H * 3 + 8)
     mapPinSettings:SetPoint("TOPLEFT", mapPinsLabel, "BOTTOMLEFT", 0, -3)
@@ -1497,12 +1600,15 @@ function Options:Initialize()
     rareTrackCheckbox:SetChecked(EasyFind.db.alwaysShowRares or false)
     rareTrackCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.alwaysShowRares = self:GetChecked()
-        if ns.MapSearch then
-            ns.MapSearch:UpdateRareTracking()
-            if ns.MapSearch.UpdateAutoTrackLabel then
-                ns.MapSearch:UpdateAutoTrackLabel()
+        if self.RefreshVisual then self:RefreshVisual() end
+        RunSoon(function()
+            if ns.MapSearch then
+                ns.MapSearch:UpdateRareTracking()
+                if ns.MapSearch.UpdateAutoTrackLabel then
+                    ns.MapSearch:UpdateAutoTrackLabel()
+                end
             end
-        end
+        end)
     end)
     optionsFrame.rareTrackCheckbox = rareTrackCheckbox
 
@@ -1556,78 +1662,19 @@ function Options:Initialize()
         .. "|cFF00FF00Down|r enter results  |cFF00FF00Enter|r activate  |cFF00FF00Esc|r unfocus\n"
         .. "|cFF00FF00Tab / Shift+Tab|r cycle search/clear/filter buttons\n\n"
         .. "|cFFFFD100Results list:|r\n"
-        .. "|cFF00FF00Up/Down|r or |cFF00FF00Ctrl+K/J|r  Move through results\n"
-        .. "|cFF00FF00Tab/Shift+Tab|r or |cFF00FF00Ctrl+L/H|r  Cycle focus to nav buttons\n"
+        .. "|cFF00FF00Up/Down|r or |cFF00FF00Alt+K/J|r  Move through results\n"
+        .. "|cFF00FF00Tab/Shift+Tab|r or |cFF00FF00Alt+L/H|r  Cycle focus to nav buttons\n"
         .. "|cFF00FF00PgUp/PgDn|r jump 5  |cFF00FF00Home/End|r first/last\n"
-        .. "|cFF00FF00Shift+Up/Down|r or |cFF00FF00Ctrl+Shift+K/J|r jump section\n\n"
+        .. "|cFF00FF00Shift+Up/Down|r or |cFF00FF00Alt+Shift+K/J|r jump section\n\n"
         .. "|cFFFFD100Quick filters:|r\n"
         .. "Type |cFF00FF00@|r for category filters. Examples: |cFF00FF00@m|r mounts, |cFF00FF00@s|r statistics, |cFF00FF00@g|r gear. |cFF00FF00Tab/Space|r selects a category.\n\n"
         .. "|cFFFFD100Calculator:|r\n"
-        .. "Type math into search. |cFF00FF00Alt+C|r opens the calculator.\n\n"
+        .. "Type math into search for an inline result, or press |cFF00FF00Alt+C|r from the focused search bar to open the calculator.\n\n"
         .. "|cFFFFD100Other:|r\n"
         .. "|cFF00FF00Shift+Drag|r reposition  |cFF00FF00Right-click|r pin/unpin\n\n"
         .. "|cFFFFD100Slash commands:|r\n"
         .. "|cFF00FF00/ef|r open options  |cFF00FF00/ef c|r clear highlights and pins\n"
     )
-    -- Keybind buttons
-    local KEYBIND_ROW_H = 24
-    local KEYBIND_BTN_W = 116
-
-    local keybindDefs = {
-        { label = "Toggle Search Bar", action = "EASYFIND_TOGGLE_FOCUS" },
-        { label = "Open Map Search",   action = "EASYFIND_MAP_FOCUS" },
-        { label = "Clear All",         action = "EASYFIND_CLEAR" },
-    }
-
-    local keybindTooltips = {
-        EASYFIND_TOGGLE_FOCUS = { "Toggle Search Bar", "Opens and focuses the UI search bar in one press. Press again to close." },
-        EASYFIND_MAP_FOCUS    = { "Open Map Search", "Opens the world map, switches to the EasyFind Map Search tab, and focuses its search box." },
-        EASYFIND_CLEAR        = { "Clear All", "Dismisses all active highlights, map pins, zone highlights, and pending waypoints." },
-    }
-
-    local keybindButtons = {}
-    -- Single column. Two-column layout overlapped because labels like
-    -- "Toggle Search Bar:" exceed the small per-column allowance and
-    -- bleed into the button area of the same row. One column with a
-    -- wide label slot keeps every label clear of its button.
-    local KEYBIND_LABEL_W = 168
-    for i, def in ipairs(keybindDefs) do
-        local row = i - 1
-
-        local rowLabel = sec4:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        rowLabel:SetPoint("TOPLEFT", shortcutText, "BOTTOMLEFT", 0, -12 - row * KEYBIND_ROW_H)
-        rowLabel:SetText(def.label .. ":")
-
-        local keybindBtn = CreateModernButton(sec4)
-        keybindBtn:SetNormalFontObject("GameFontHighlightSmall")
-        keybindBtn:SetHighlightFontObject("GameFontHighlightSmall")
-        keybindBtn:SetSize(KEYBIND_BTN_W, 20)
-        keybindBtn:SetPoint("LEFT", rowLabel, "LEFT", KEYBIND_LABEL_W, 0)
-        keybindBtn:SetText(GetCurrentKeybindText(def.action))
-        keybindBtn:SetScript("OnClick", function(self, button)
-            if button == "RightButton" then
-                local old1, old2 = GetBindingKey(def.action)
-                if old1 then SetBinding(old1) end
-                if old2 then SetBinding(old2) end
-                SaveBindings(GetCurrentBindingSet())
-                self:SetText("Not Bound")
-
-            else
-                StartCapture(self, def.action)
-            end
-        end)
-        keybindBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-
-        local tip = keybindTooltips[def.action]
-        if tip then
-            MakeKeybindTooltip(keybindBtn, tip[1], tip[2])
-        end
-
-        keybindButtons[def.action] = keybindBtn
-    end
-    optionsFrame.toggleFocusBtn = keybindButtons["EASYFIND_TOGGLE_FOCUS"]
-    optionsFrame.mapFocusBtn    = keybindButtons["EASYFIND_MAP_FOCUS"]
-    optionsFrame.clearBtn       = keybindButtons["EASYFIND_CLEAR"]
 
     -- SECTION 5: Aliases
     local aliasesTab = CreateTab("Aliases")
@@ -2015,16 +2062,10 @@ function Options:DoResetAll()
     ResetOptionsPosition()
     ClearMapRuntime()
 
-    ClearBinding("EASYFIND_TOGGLE_FOCUS")
-    ClearBinding("EASYFIND_MAP_FOCUS")
-    ClearBinding("EASYFIND_CLEAR")
-    SaveBindings(GetCurrentBindingSet())
-
     SyncOptionControls()
     if ns.RefreshAddonFont then ns.RefreshAddonFont() end
     RefreshUIRuntime(true)
     RefreshMapRuntime()
-    if _G["EasyFindSearchFrame"] and ns.UI and ns.UI.Show then ns.UI:Show() end
     EasyFind:UpdateMinimapButton()
 
     if needsReload then

@@ -3616,6 +3616,8 @@ function MapSearch:GetStaticLocations(mapID)
                 category = loc.category,
                 icon = loc.icon,  -- nil is fine, GetCategoryIcon will handle it
                 isStatic = true,
+                mapID = mapID,
+                coordMapID = mapID,
                 x = loc.x,
                 y = loc.y,
                 keywords = loc.keywords,
@@ -3640,6 +3642,8 @@ function MapSearch:GetStaticLocations(mapID)
                     category = poi.category or "unknown",
                     icon = nil,  -- Let category icon be used
                     isStatic = true,
+                    mapID = mapID,
+                    coordMapID = mapID,
                     x = poi.x,
                     y = poi.y,
                     keywords = {},
@@ -3657,12 +3661,10 @@ end
 
 function MapSearch:ScanVignettes(mapID)
     local rares = {}
-    if not GetVignettes then return rares end
+    if not GetVignettes or not GetVignettePosition then return rares end
 
     mapID = mapID or WorldMapFrame:GetMapID()
     if not mapID then return rares end
-    local playerMapID = GetBestMapForUnit("player")
-
     local guids = GetVignettes()
     if not guids then return rares end
 
@@ -3671,11 +3673,10 @@ function MapSearch:ScanVignettes(mapID)
         if info and info.name and not info.isDead then
             local atlas = info.atlasName
             if atlas == "VignetteKill" or atlas == "VignetteKillElite" then
-                -- Try viewed map first, fall back to player's zone (sub-zone mismatch)
+                -- Keep the Map tab strict to the viewed map. Falling back
+                -- to the player's map makes "This Zone" show unrelated rares
+                -- when the user is browsing another zone.
                 local pos = GetVignettePosition(guid, mapID)
-                if not pos and playerMapID and playerMapID ~= mapID then
-                    pos = GetVignettePosition(guid, playerMapID)
-                end
                 if pos then
                     local entry = {
                         name = info.name,
@@ -3691,21 +3692,6 @@ function MapSearch:ScanVignettes(mapID)
             end
         end
     end
-
-    -- Aggregate "Rares" entry always present so the tracking toggle is accessible
-    local instances = {}
-    for _, rare in ipairs(rares) do
-        instances[#instances + 1] = rare
-    end
-    local aggregate = {
-        name = "Rares",
-        category = "rare",
-        icon = CATEGORY_ICONS.rare,
-        keywords = {"rare", "rares"},
-        isAggregate = true,
-        allInstances = instances,
-    }
-    rares[#rares + 1] = PreparePOI(aggregate)
 
     return rares
 end
@@ -4345,14 +4331,6 @@ function MapSearch:BuildResults(text, isGlobal, skipPins)
         -- dungeon / raid / delve entrances as additional candidates so
         -- a name or abbreviation hit surfaces them regardless of
         -- current zone. They still get scored alongside local POIs.
-        local globalInstances = self:GetGlobalInstanceCache()
-        for _, poi in ipairs(globalInstances) do
-            local nameLower = GetNameLower(poi)
-            if not zoneNames[nameLower] and not existingNames[nameLower] then
-                tinsert(allPOIs, poi)
-                existingNames[nameLower] = true
-            end
-        end
     end
 
     local results = self:SearchPOIs(allPOIs, text)

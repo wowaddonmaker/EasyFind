@@ -273,7 +273,8 @@ local REP_FACTION_ICONS = {
 
 local function GetFlatCategoryIcon(data)
     if not data then return nil end
-    if data.calculatorResult then return FLAT_CATEGORY_ICONS.calculator end
+    if data.calculatorResult or data.calculatorLauncher then return FLAT_CATEGORY_ICONS.calculator end
+    if data.searchCommand then return FLAT_CATEGORY_ICONS.setting end
     if data.quickFilterDef then
         local key = data.quickFilterDef.key
         if key == "abilities" then return FLAT_CATEGORY_ICONS.ability end
@@ -398,6 +399,8 @@ end
 local function GetFlatSubtext(data)
     if not data then return "" end
     if data.calculatorResult then return "Expression" end
+    if data.calculatorLauncher then return "Alt+C to open" end
+    if data.searchCommandDesc then return data.searchCommandDesc end
     if data.quickFilterAliasText then return data.quickFilterAliasText end
     if data.quickFilterDef then return data.quickFilterDef.label or "Quick Filter" end
     if data.path and #data.path > 0 then
@@ -443,6 +446,15 @@ end
 
 UI._calculator = {
     PATH = { "Calculator" },
+    LAUNCHER = {
+        name = "Calculator",
+        nameLower = "calculator",
+        category = "Calculator",
+        path = { "Calculator" },
+        noPin = true,
+        calculatorLauncher = true,
+        keywords = { "calculator", "calc", "math" },
+    },
     FUNCTIONS = {
         abs = true, acos = true, acosd = true, asin = true, asind = true,
         atan = true, atan2 = true, atand = true, ceil = true, cos = true,
@@ -453,6 +465,35 @@ UI._calculator = {
         sqrt = true, tan = true, tand = true, tanh = true,
     },
 }
+
+UI.searchBarCommands = {
+    {
+        command = "reset",
+        display = "/reset",
+        desc = "Reset search bar position and size",
+        aliases = { "reset", "resetpos", "resetposition" },
+    },
+    {
+        command = "resize",
+        display = "/resize",
+        desc = "Resize the search window",
+        aliases = { "resize", "rescale" },
+    },
+    {
+        command = "options",
+        display = "/options",
+        desc = "Open EasyFind options",
+        aliases = { "options", "o", "config", "settings" },
+    },
+    {
+        command = "tutorial",
+        display = "/tutorial",
+        desc = "Open the EasyFind tutorial",
+        aliases = { "tutorial", "wizard", "welcome" },
+    },
+}
+UI.searchBarCommandEntries = {}
+UI.searchBarCommandData = {}
 
 function UI._calculator.IsFinite(value)
     return type(value) == "number" and value == value
@@ -750,8 +791,13 @@ function UI._calculator.Tokenize(text)
             repeat
                 i = i + 1
                 ch = i <= n and text:sub(i, i) or ""
-            until ch == "" or not ch:match("[%w_]")
-            tokens[#tokens + 1] = { type = "ident", value = slower(text:sub(start, i - 1)) }
+            until ch == "" or not ch:match("[%a_]")
+            local ident = slower(text:sub(start, i - 1))
+            if ident == "atan" and i <= n and text:sub(i, i) == "2" then
+                ident = "atan2"
+                i = i + 1
+            end
+            tokens[#tokens + 1] = { type = "ident", value = ident }
         elseif ch == "+" or ch == "-" or ch == "*" or ch == "/"
             or ch == "^" or ch == "%" or ch == "!" or ch == "(" or ch == ")" then
             tokens[#tokens + 1] = { type = "op", value = ch }
@@ -966,6 +1012,121 @@ function UI:EvaluateCalculatorExpression(raw)
     }
 end
 
+function UI:GetCalculatorLauncherMatch(raw)
+    raw = slower(strtrim(raw or ""))
+    if raw == "" then return nil end
+    local launcher = UI._calculator.LAUNCHER
+    if sfind("calculator", raw, 1, true) == 1
+       or sfind("calc", raw, 1, true) == 1
+       or raw == "math" then
+        return launcher
+    end
+    return nil
+end
+
+function UI:RunSearchBarCommand(command)
+    command = slower(strtrim(tostring(command or "")):gsub("^/", ""))
+    if command == "" then return false end
+
+    local canonical
+    for i = 1, #self.searchBarCommands do
+        local def = self.searchBarCommands[i]
+        for ai = 1, #def.aliases do
+            if command == def.aliases[ai] then
+                canonical = def.command
+                break
+            end
+        end
+        if canonical then break end
+    end
+    if not canonical then return false end
+
+    local editBox = searchFrame and searchFrame.editBox
+    if editBox then
+        if editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
+        editBox:SetText("")
+        editBox:SetCursorPosition(0)
+        if editBox.placeholder then editBox.placeholder:Show() end
+    end
+    self:HideResults()
+
+    if canonical == "reset" then
+        StaticPopup_Show("EASYFIND_RESET_SEARCH_BAR")
+    elseif canonical == "resize" then
+        if ns.Rescaler and ns.Rescaler.Enter then
+            ns.Rescaler:Enter("ui")
+        end
+    elseif canonical == "options" then
+        EasyFind:OpenOptions()
+    elseif canonical == "tutorial" then
+        if ns.Wizard and ns.Wizard.Show then
+            EasyFind.db.tutorialDone = false
+            ns.Wizard:Show()
+        end
+    end
+    return true
+end
+
+function UI:GetSearchBarCommandSuggestionEntries(text)
+    text = strtrim(text or "")
+    local token = text:match("^/([%w]*)$")
+    if token == nil then return nil end
+    token = slower(token)
+
+    local entries = self.searchBarCommandEntries
+    local dataPool = self.searchBarCommandData
+    local n = 0
+    for i = 1, #self.searchBarCommands do
+        local def = self.searchBarCommands[i]
+        local matches = token == ""
+        if not matches then
+            local displayToken = slower((def.display or ""):gsub("^/", ""))
+            matches = sfind(displayToken, token, 1, true) == 1
+            if not matches then
+                for ai = 1, #def.aliases do
+                    if sfind(def.aliases[ai], token, 1, true) == 1 then
+                        matches = true
+                        break
+                    end
+                end
+            end
+        end
+        if matches then
+            n = n + 1
+            local data = dataPool[n]
+            if not data then
+                data = {}
+                dataPool[n] = data
+            end
+            wipe(data)
+            data.name = def.display
+            data.nameLower = slower(def.display)
+            data.category = "Command"
+            data.path = { "Search Bar" }
+            data.noPin = true
+            data.searchCommand = def.command
+            data.searchCommandDesc = def.desc
+
+            local entry = entries[n]
+            if not entry then
+                entry = {}
+                entries[n] = entry
+            end
+            entry.name = data.name
+            entry.depth = 0
+            entry.isPathNode = false
+            entry.isMatch = true
+            entry.isFlat = true
+            entry.flatCatKey = nil
+            entry.isPinned = false
+            entry.data = data
+        end
+    end
+    for i = n + 1, #entries do entries[i] = nil end
+    for i = n + 1, #dataPool do dataPool[i] = nil end
+    return n > 0 and entries or nil
+end
+
 function UI:SetCalculatorRoundedFill(frame, r, g, b, a, br, bg, bb, ba)
     if not (frame and frame.combinedBorder) then return end
     if frame.combinedBorder.fill then
@@ -1049,8 +1210,12 @@ function UI:RefreshCalculatorPopup()
     local text = strtrim(raw)
     local submitted = UI._calculator.popupSubmitted
         and UI._calculator.popupSubmittedText == raw
-    local data = submitted and self:EvaluateCalculatorExpression(raw) or nil
+    local data = text ~= "" and self:EvaluateCalculatorExpression(raw) or nil
     UI._calculator.popupData = data
+    if UI._calculator.activeSource == "calculator"
+       and (not data or UI._calculator.activeResult ~= data.calculatorResult) then
+        self:ClearCalculatorPopupCopyTarget(true)
+    end
     if frame.clearInputButton then
         if text ~= "" then
             frame.clearInputButton:Show()
@@ -1060,17 +1225,24 @@ function UI:RefreshCalculatorPopup()
     end
     if submitted and data then
         frame.resultText:SetText(data.calculatorResult)
-        frame.expressionText:SetText(data.calculatorExpression)
+        if frame.expressionText then frame.expressionText:Hide() end
         frame.resultText:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1)
         if frame.hintText then frame.hintText:Hide() end
         self:SetCalculatorRoundedFill(frame.resultCard, 0.19, 0.16, 0.10, 0.98, 0.76, 0.56, 0.22, 0.90)
+    elseif data then
+        frame.resultText:SetText(data.calculatorResult)
+        if frame.expressionText then frame.expressionText:Hide() end
+        frame.resultText:SetTextColor(0.86, 0.86, 0.88, 1)
+        if frame.hintText then frame.hintText:Hide() end
+        self:SetCalculatorRoundedFill(frame.resultCard, 0.13, 0.13, 0.145, 0.96, 0.28, 0.28, 0.30, 0.75)
     else
         frame.resultText:SetText(submitted and text ~= "" and "-" or "")
-        frame.expressionText:SetText(text ~= "" and text or "Type an expression")
+        if frame.expressionText then frame.expressionText:Hide() end
         frame.resultText:SetTextColor(0.58, 0.58, 0.60, 1)
         if frame.hintText then frame.hintText:Hide() end
         self:SetCalculatorRoundedFill(frame.resultCard, 0.13, 0.13, 0.145, 0.96, 0.28, 0.28, 0.30, 0.75)
     end
+    self:UpdateCalculatorPopupCopyVisual(data)
 end
 
 function UI:InsertCalculatorPopupText(text)
@@ -1125,8 +1297,12 @@ function UI:SubmitCalculatorPopupExpression(raw)
 end
 
 function UI:IsCalculatorPopupSubmitKey(key)
-    return key == "ENTER"
-        or key == "="
+    if key == "ENTER" then return true end
+    if IsShiftKeyDown and IsShiftKeyDown()
+       and (key == "=" or key == "EQUAL" or key == "EQUALS") then
+        return false
+    end
+    return key == "="
         or key == "EQUAL"
         or key == "EQUALS"
         or key == "NUMPADEQUALS"
@@ -1162,23 +1338,89 @@ function UI:QueueCalculatorPopupEqualsSubmit(editBox)
     end)
 end
 
-function UI:ArmCalculatorPopupResult()
-    local data = UI._calculator.popupData
-    if not data or not data.calculatorResult then return false end
+function UI:UpdateCalculatorPopupCopyVisual(data)
+    local frame = UI._calculator.popupFrame
+    if not (frame and frame.resultCard and frame.resultText) then return end
+    local result = data and data.calculatorResult
+    local active = result
+        and UI._calculator.activeSource == "calculator"
+        and UI._calculator.activePart == "result"
+        and UI._calculator.activeResult == result
+    local copied = active
+        and UI._calculator.copyComplete
+        and UI._calculator.copyCompleteValue == result
+
+    frame.resultText:ClearAllPoints()
+    if active then
+        frame.resultText:SetPoint("TOPLEFT", frame.resultCard, "TOPLEFT", 12, -8)
+        frame.resultText:SetPoint("RIGHT", frame.resultCard, "RIGHT", -12, 0)
+        frame.resultText:SetTextColor(
+            copied and 0.48 or GOLD_COLOR[1],
+            copied and 1.0 or GOLD_COLOR[2],
+            copied and 0.62 or GOLD_COLOR[3],
+            1)
+        if frame.hintText then
+            frame.hintText:SetText(copied and "Now Ctrl+V to paste" or "Ctrl+C to copy")
+            frame.hintText:SetTextColor(copied and 0.48 or 0.72, copied and 1.0 or 0.72, copied and 0.62 or 0.72, 1)
+            frame.hintText:Show()
+        end
+        self:SetCalculatorRoundedFill(frame.resultCard, 0.22, 0.18, 0.11, 1, 0.95, 0.72, 0.28, 1)
+    else
+        frame.resultText:SetPoint("LEFT", frame.resultCard, "LEFT", 12, 0)
+        frame.resultText:SetPoint("RIGHT", frame.resultCard, "RIGHT", -12, 0)
+    end
+end
+
+function UI:ClearCalculatorPopupCopyTarget(release)
+    if UI._calculator.activeSource ~= "calculator" then return end
     UI._calculator.activeRow = nil
-    UI._calculator.activeData = data
-    UI._calculator.activeResult = data.calculatorResult
-    UI._calculator.activePart = "result"
-    UI._calculator.activeSource = "calculator"
+    UI._calculator.activeData = nil
+    UI._calculator.activeResult = nil
+    UI._calculator.activePart = nil
+    UI._calculator.activeSource = nil
+    UI._calculator.popupArmedSource = nil
     UI._calculator.copyComplete = nil
     UI._calculator.copyCompleteValue = nil
     UI._calculator.copiedData = nil
     UI._calculator.copiedPart = nil
-    if self:CopyCalculatorResult(data.calculatorResult, "calculator") then
-        self:StartCalculatorCopyWatcher()
-        return true
+    UI._calculator.ctrlWasDown = nil
+    UI._calculator.copyKeyWasDown = nil
+    if UI._calculator.copyWatcher then
+        UI._calculator.copyWatcher:Hide()
     end
-    return false
+    if release then
+        self:ReleaseCalculatorCopyBox()
+    end
+end
+
+function UI:ArmCalculatorPopupResult(source)
+    local data = UI._calculator.popupData
+    if not data or not data.calculatorResult then return false end
+    source = source or "click"
+    local result = data.calculatorResult
+    local completedHover = source == "hover" and UI._calculator.copyComplete
+    if source ~= "ctrl" and source ~= "confirm" and not completedHover then
+        UI._calculator.copyComplete = nil
+        UI._calculator.copyCompleteValue = nil
+    end
+    if UI._calculator.activeResult ~= result then
+        UI._calculator.copiedData = nil
+        UI._calculator.copiedPart = nil
+    end
+    if source ~= "hover" or ((IsControlKeyDown and IsControlKeyDown()) and not UI._calculator.copyComplete) then
+        if not self:CopyCalculatorResult(result, "calculator") then
+            return false
+        end
+    end
+    UI._calculator.activeRow = nil
+    UI._calculator.activeData = data
+    UI._calculator.activeResult = result
+    UI._calculator.activePart = "result"
+    UI._calculator.activeSource = "calculator"
+    UI._calculator.popupArmedSource = source
+    self:UpdateCalculatorPopupCopyVisual(data)
+    self:StartCalculatorCopyWatcher()
+    return true
 end
 
 function UI:RestoreCalculatorPopupFocus()
@@ -1194,9 +1436,19 @@ function UI:EnsureCalculatorFrame()
     local frame = UI._calculator.popupFrame
     if frame then return frame end
 
+    local CALC_PAD = 14
+    local CALC_BUTTON_W = 40
+    local CALC_BUTTON_H = 24
+    local CALC_BUTTON_GAP_X = 4
+    local CALC_BUTTON_GAP_Y = 4
+    local CALC_COLS = 5
+    local CALC_W = CALC_PAD * 2
+        + CALC_BUTTON_W * CALC_COLS
+        + CALC_BUTTON_GAP_X * (CALC_COLS - 1)
+
     frame = CreateFrame("Frame", "EasyFindCalculatorFrame", UIParent)
     UI._calculator.popupFrame = frame
-    frame:SetSize(284, 304)
+    frame:SetSize(CALC_W, 304)
     frame:SetPoint("CENTER")
     frame:SetFrameStrata("FULLSCREEN_DIALOG")
     frame:SetFrameLevel(900)
@@ -1212,7 +1464,7 @@ function UI:EnsureCalculatorFrame()
     self:SetCalculatorRoundedFill(frame, 0.055, 0.055, 0.064, 0.98, 0.30, 0.30, 0.32, 0.95)
 
     local glyph = self:CreateCalculatorGlyph(frame, 22)
-    glyph:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -12)
+    glyph:SetPoint("TOPLEFT", frame, "TOPLEFT", CALC_PAD, -12)
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("LEFT", glyph, "RIGHT", 8, 0)
@@ -1221,7 +1473,7 @@ function UI:EnsureCalculatorFrame()
 
     local close = CreateFrame("Button", nil, frame)
     close:SetSize(18, 18)
-    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -14, -12)
+    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -CALC_PAD, -12)
     local function makeCloseStroke()
         local tex = close:CreateTexture(nil, "OVERLAY")
         tex:SetTexture("Interface\\Buttons\\WHITE8x8")
@@ -1241,8 +1493,8 @@ function UI:EnsureCalculatorFrame()
     close:SetScript("OnClick", function() frame:Hide() end)
 
     local inputShell = CreateFrame("Frame", nil, frame)
-    inputShell:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -44)
-    inputShell:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -14, -44)
+    inputShell:SetPoint("TOPLEFT", frame, "TOPLEFT", CALC_PAD, -44)
+    inputShell:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -CALC_PAD, -44)
     inputShell:SetHeight(38)
     ns.CreateRoundedRectBorder(inputShell)
     ns.SetRoundedRectBarHeight(inputShell, 10)
@@ -1346,37 +1598,42 @@ function UI:EnsureCalculatorFrame()
     expressionText:SetPoint("RIGHT", resultCard, "RIGHT", -12, 0)
     expressionText:SetJustifyH("LEFT")
     expressionText:SetTextColor(0.66, 0.66, 0.68, 1)
+    expressionText:Hide()
 
     local resultText = resultCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
     frame.resultText = resultText
-    resultText:SetPoint("BOTTOMRIGHT", resultCard, "BOTTOMRIGHT", -12, 10)
-    resultText:SetJustifyH("RIGHT")
+    resultText:SetPoint("LEFT", resultCard, "LEFT", 12, 0)
+    resultText:SetPoint("RIGHT", resultCard, "RIGHT", -12, 0)
+    resultText:SetWidth(CALC_W - CALC_PAD * 2 - 16)
+    resultText:SetJustifyH("LEFT")
     resultText:SetText("-")
 
     local hintText = resultCard:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     frame.hintText = hintText
     hintText:SetPoint("BOTTOMLEFT", resultCard, "BOTTOMLEFT", 12, 10)
-    hintText:SetPoint("RIGHT", resultText, "LEFT", -8, 0)
+    hintText:SetPoint("RIGHT", resultCard, "RIGHT", -12, 0)
     hintText:SetJustifyH("LEFT")
     hintText:SetTextColor(0.54, 0.54, 0.56, 1)
     hintText:Hide()
 
     resultCard:SetScript("OnEnter", function(self)
-        if UI._calculator.popupData then
-            UI:SetCalculatorRoundedFill(self, 0.22, 0.18, 0.11, 1, 0.95, 0.72, 0.28, 1)
-        end
+        UI:ArmCalculatorPopupResult("hover")
     end)
     resultCard:SetScript("OnLeave", function(self)
+        if UI._calculator.activeSource == "calculator"
+           and UI._calculator.popupArmedSource == "hover" then
+            UI:ClearCalculatorPopupCopyTarget(true)
+        end
         UI:RefreshCalculatorPopup()
     end)
     resultCard:SetScript("OnClick", function()
-        UI:ArmCalculatorPopupResult()
+        UI:ArmCalculatorPopupResult("click")
     end)
 
     local function makeButton(label, insertText)
         local b = CreateFrame("Button", nil, frame)
-        b:SetSize(48, 24)
-        UI:StyleCalculatorButton(b, 24)
+        b:SetSize(CALC_BUTTON_W, CALC_BUTTON_H)
+        UI:StyleCalculatorButton(b, CALC_BUTTON_H)
         b.text = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         b.text:SetPoint("CENTER")
         b.text:SetText(label)
@@ -1410,26 +1667,19 @@ function UI:EnsureCalculatorFrame()
         for col = 1, #rows[row] do
             local spec = rows[row][col]
             local b = makeButton(spec[1], spec[2])
-            b:SetPoint("TOPLEFT", frame, "TOPLEFT", 14 + (col - 1) * 52, gridTop - (row - 1) * 28)
+            b:SetPoint(
+                "TOPLEFT", frame, "TOPLEFT",
+                CALC_PAD + (col - 1) * (CALC_BUTTON_W + CALC_BUTTON_GAP_X),
+                gridTop - (row - 1) * (CALC_BUTTON_H + CALC_BUTTON_GAP_Y)
+            )
         end
     end
 
-    frame:SetScript("OnShow", function(self)
-        self:RegisterEvent("GLOBAL_MOUSE_DOWN")
-    end)
     frame:SetScript("OnHide", function(self)
-        self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
         if UI._calculator.activeSource == "calculator" then
             UI:ClearCalculatorCopyHighlight()
             UI:ReleaseCalculatorCopyBox()
         end
-    end)
-    frame:SetScript("OnEvent", function(self, event)
-        if event ~= "GLOBAL_MOUSE_DOWN" then return end
-        if self:IsMouseOver() then return end
-        if searchFrame and searchFrame:IsMouseOver() then return end
-        if resultsFrame and resultsFrame:IsMouseOver() then return end
-        self:Hide()
     end)
     frame:Hide()
     self:RefreshCalculatorPopup()
@@ -1454,6 +1704,7 @@ function UI:CloseSearchForCalculator()
 end
 
 function UI:OpenCalculator(expression, deferFocus)
+    expression = tostring(expression or "")
     self:CloseSearchForCalculator()
 
     local frame = self:EnsureCalculatorFrame()
@@ -1462,8 +1713,8 @@ function UI:OpenCalculator(expression, deferFocus)
     UI._calculator.popupSubmittedText = nil
     UI._calculator.popupData = nil
     if editBox then
-        editBox:SetText("")
-        editBox:SetCursorPosition(0)
+        editBox:SetText(expression)
+        editBox:SetCursorPosition(#expression)
     end
     frame:ClearAllPoints()
     frame:SetPoint("CENTER")
@@ -1495,7 +1746,12 @@ end
 
 function UI:HandleCalculatorOpenShortcut(editBox, key)
     if not self:IsCalculatorOpenShortcut(key) then return false end
-    local expression = editBox and editBox.GetText and editBox:GetText()
+    local expression = ""
+    if editBox and editBox.GetText then
+        local text = editBox:GetText() or ""
+        local cursor = editBox.GetCursorPosition and editBox:GetCursorPosition() or #text
+        expression = text:sub(1, cursor)
+    end
     self:OpenCalculator(expression, true)
     return true
 end
@@ -1883,6 +2139,9 @@ function UI:ConfirmCalculatorCopied()
         self:SetCalculatorCopyHighlight(row, part)
         self:PlayCalculatorCopyFlash(row, part)
     end
+    if popupCopy then
+        self:UpdateCalculatorPopupCopyVisual(UI._calculator.popupData)
+    end
     if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
             UI:ReleaseCalculatorCopyBox("confirm")
@@ -1939,7 +2198,7 @@ function UI:IsCalculatorCopyKey(key)
     if key == "LEFT" or key == "ARROWLEFT" or key == "RIGHT" or key == "ARROWRIGHT" then
         return true
     end
-    return IsControlKeyDown and IsControlKeyDown() and (key == "H" or key == "L")
+    return IsAltKeyDown and IsAltKeyDown() and (key == "H" or key == "L")
 end
 
 function UI:HandleCalculatorCopyKey(key)
@@ -2323,8 +2582,34 @@ function UI:KeepPinnedResultsOpenBriefly()
 end
 
 local function IsOptionsSurfaceMouseOver()
+    local function hasFocus(frame)
+        if not frame or not frame:IsShown() then return false end
+        if GetMouseFoci then
+            local foci = GetMouseFoci()
+            if foci then
+                for i = 1, #foci do
+                    local f = foci[i]
+                    while f do
+                        if f == frame then return true end
+                        f = f.GetParent and f:GetParent()
+                    end
+                end
+            end
+        elseif GetMouseFocus then
+            local f = GetMouseFocus()
+            while f do
+                if f == frame then return true end
+                f = f.GetParent and f:GetParent()
+            end
+        end
+        return false
+    end
+    local function isInside(frame)
+        return Utils.IsFrameOrChildMouseOver(frame) or hasFocus(frame)
+    end
+
     local frame = ns.optionsFrame
-    if Utils.IsFrameOrChildMouseOver(frame) then return true end
+    if isInside(frame) then return true end
     if not frame then return false end
     local guards = {
         frame.indicatorFlyout,
@@ -2335,7 +2620,7 @@ local function IsOptionsSurfaceMouseOver()
         frame.automationGroup and frame.automationGroup.flyout,
     }
     for i = 1, #guards do
-        if Utils.IsFrameOrChildMouseOver(guards[i]) then return true end
+        if isInside(guards[i]) then return true end
     end
     return false
 end
@@ -2836,7 +3121,7 @@ function UI:CreateSearchFrame()
         else
             -- Refocus with leftover text: select all so the user can
             -- start typing fresh (overwrites) or hit Right Arrow /
-            -- Ctrl+L to keep editing from the end.
+            -- Alt+L to keep editing from the end.
             self:HighlightText(0, #text)
             self:SetCursorPosition(#text)
             -- Re-show results if they were closed by a prior click-out.
@@ -3006,30 +3291,10 @@ function UI:CreateSearchFrame()
         local typed = strtrim(self:GetText() or "")
 
         -- /command parser. Anything starting with "/" is treated as a
-        -- bar command, not a search query. /reset snaps the bar back to
-        -- the top of the screen, /resize opens the drag-to-resize overlay.
+        -- bar command, not a search query. /reset restores the default
+        -- position and size, /resize opens the drag-to-resize overlay.
         if typed:sub(1, 1) == "/" then
-            local cmd = typed:lower():sub(2)
-            self:SetText("")
-            self.placeholder:Show()
-            UI:HideResults()
-            if cmd == "reset" or cmd == "resetpos" or cmd == "resetposition" then
-                UI:ResetPosition()
-                EasyFind:Print("Search bar position reset.")
-            elseif cmd == "resize" or cmd == "rescale" then
-                if ns.Rescaler and ns.Rescaler.Enter then
-                    ns.Rescaler:Enter("ui")
-                end
-            elseif cmd == "options" or cmd == "o" or cmd == "config" or cmd == "settings" then
-                EasyFind:OpenOptions()
-            elseif cmd == "tutorial" or cmd == "wizard" or cmd == "welcome" then
-                if ns.Wizard and ns.Wizard.Show then
-                    EasyFind.db.tutorialDone = false
-                    ns.Wizard:Show()
-                end
-            else
-                EasyFind:Print("Unknown command: /" .. cmd)
-            end
+            UI:RunSearchBarCommand(typed)
             return
         end
 
@@ -3349,8 +3614,8 @@ function UI:CreateSearchFrame()
                 self:AcceptAutocomplete("right")
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
                 return
-            elseif key == "L" and IsControlKeyDown() then
-                self:AcceptAutocomplete("ctrl-l")
+            elseif key == "L" and IsAltKeyDown() then
+                self:AcceptAutocomplete("alt-l")
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
                 return
             end
@@ -3369,8 +3634,8 @@ function UI:CreateSearchFrame()
         -- into the results list. Drop-into-results works regardless
         -- of buffer content: the user wants keyboard nav into rows
         -- without having to press Enter first, even mid-edit.
-        local isUpHist   = key == "UP"   or (IsControlKeyDown() and (key == "K" or key == "P"))
-        local isDownHist = key == "DOWN" or (IsControlKeyDown() and (key == "J" or key == "N"))
+        local isUpHist   = key == "UP"   or (IsAltKeyDown() and key == "K")
+        local isDownHist = key == "DOWN" or (IsAltKeyDown() and key == "J")
         if isUpHist then
             if UI:NavigateSearchHistory(1) then
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
@@ -3387,7 +3652,7 @@ function UI:CreateSearchFrame()
                 return
             end
             -- historyIndex == 0 (live draft): fall through to result
-            -- nav so DOWN/Ctrl+J jumps into the first row.
+            -- nav so DOWN/Alt+J jumps into the first row.
         end
 
         if resultsFrame and resultsFrame:IsShown() and selectedIndex == 0 then
@@ -3397,17 +3662,17 @@ function UI:CreateSearchFrame()
                 if key == "DOWN" then UI:MoveSelection(1) end
             end
         end
-        -- Ctrl+J/K (and the emacs-equivalent Ctrl+N/P) walk into the
+        -- Alt+J/K walks into the
         -- result list once history navigation has been exhausted by
         -- the branch above. Single-step only (no key-repeat) because
         -- MoveSelection transfers keyboard focus to navFrame and the
         -- subsequent KeyUp event gets lost in the focus transition,
         -- leaving the repeat ticker firing forever and cascading
         -- through the entire result list.
-        if IsControlKeyDown() then
-            if key == "J" or key == "N" then
+        if IsAltKeyDown() then
+            if key == "J" then
                 UI:MoveSelection(1)
-            elseif key == "K" or key == "P" then
+            elseif key == "K" then
                 UI:MoveSelection(-1)
             end
         end
@@ -3496,7 +3761,7 @@ function UI:CreateSearchFrame()
 
     -- Cycle focus through editBox → [clearBtn] → filterBtn → row →
     -- toggle button (chevron / pin toggle) and back. Shared by Tab,
-    -- Shift+Tab, and the Ctrl+L / Ctrl+H vim aliases below.
+    -- Shift+Tab, and the Alt+L / Alt+H vim aliases below.
     local function CycleFocus(reverse)
         if reverse then
             if selectedIndex > 0 and toggleFocused then
@@ -3545,27 +3810,27 @@ function UI:CreateSearchFrame()
         if UI:HandleCalculatorCopyConfirmKey(key) then return end
         if UI:HandleCalculatorCopyKey(key) then return end
 
-        -- Ctrl+H/J/K/L: vim-style nav aliases. J/K = down/up (also
-        -- N/P emacs-style); add Shift to jump sections like Shift+Up/Down.
+        -- Alt+H/J/K/L: vim-style nav aliases. J/K = down/up;
+        -- add Shift to jump sections like Shift+Up/Down.
         -- H/L = focus cycle (Shift+Tab / Tab).
-        if IsControlKeyDown() and (key == "J" or key == "N") then
+        if IsAltKeyDown() and key == "J" then
             if IsShiftKeyDown() then
                 UI:JumpToNextSection(1)
             else
                 StartKeyRepeat(key, function() UI:MoveSelection(1) end)
             end
             return
-        elseif IsControlKeyDown() and (key == "K" or key == "P") then
+        elseif IsAltKeyDown() and key == "K" then
             if IsShiftKeyDown() then
                 UI:JumpToNextSection(-1)
             else
                 StartKeyRepeat(key, function() UI:MoveSelection(-1) end)
             end
             return
-        elseif IsControlKeyDown() and key == "L" then
+        elseif IsAltKeyDown() and key == "L" then
             CycleFocus(false)
             return
-        elseif IsControlKeyDown() and key == "H" then
+        elseif IsAltKeyDown() and key == "H" then
             CycleFocus(true)
             return
         end
@@ -3749,8 +4014,7 @@ function UI:CreateSearchFrame()
             consume = true
         elseif UI:IsCalculatorCopyKey(key) then
             consume = true
-        elseif IsControlKeyDown() and (key == "J" or key == "N" or key == "K"
-            or key == "P" or key == "L" or key == "H") then
+        elseif IsAltKeyDown() and (key == "J" or key == "K" or key == "L" or key == "H") then
             consume = true
         elseif key == "SPACE" then
             -- Only consume SPACE when it would do something here:
@@ -3800,7 +4064,7 @@ function UI:CreateSearchFrame()
     end)
 
     -- Tab confirms autocomplete suggestion only. Toolbar nav (clear /
-    -- filter buttons) is handled by Left/Right and Ctrl+H/Ctrl+L
+    -- filter buttons) is handled by Left/Right and Alt+H/Alt+L
     -- elsewhere; routing Tab into it stomped the autocomplete confirm.
 
     -- Plain drag moves the bar (no modifier required). Lock Position
@@ -3822,12 +4086,7 @@ function UI:CreateSearchFrame()
     self:UpdateScale()
     self:UpdateOpacity()
 
-    -- Movement fade: reduce opacity while player is moving (like the world map)
-    local MOVE_FADE_FACTOR = 0.4
-    local moveFading = false  -- true when alpha is reduced due to movement
-
     local function GetEffectiveAlpha()
-        if moveFading then return MOVE_FADE_FACTOR end
         return 1.0
     end
     searchFrame.getEffectiveAlpha = GetEffectiveAlpha
@@ -3905,44 +4164,6 @@ function UI:CreateSearchFrame()
             smartShowTimer = nil
         end
     end
-
-    -- OnUpdate: detect movement and adjust opacity accordingly (throttled to ~10Hz)
-    local moveCheckAccum = 0
-    searchFrame:HookScript("OnUpdate", function(self, elapsed)
-        moveCheckAccum = moveCheckAccum + elapsed
-        if moveCheckAccum < 0.1 then return end
-        moveCheckAccum = 0
-
-        if EasyFind.db.staticOpacity then
-            if moveFading then
-                moveFading = false
-                self:SetAlpha(1.0)
-            end
-            return
-        end
-        if EasyFind.db.smartShow and not smartShowVisible then return end
-        -- While the player is resizing the bar, keep it fully visible so
-        -- they can see the live size/font changes.
-        if self.resizing then
-            if moveFading then
-                moveFading = false
-                UIFrameFadeRemoveFrame(self)
-                self:SetAlpha(1.0)
-            end
-            return
-        end
-
-        local speed = GetUnitSpeed("player")
-        local hovering = self:IsMouseOver()
-            or (resultsFrame and resultsFrame:IsShown() and resultsFrame:IsMouseOver())
-        local shouldFade = speed > 0 and not hovering
-
-        if shouldFade ~= moveFading then
-            moveFading = shouldFade
-            UIFrameFadeRemoveFrame(self)
-            self:SetAlpha(GetEffectiveAlpha())
-        end
-    end)
 
     -- UI search filter dropdown
     self:CreateUIFilterDropdown(filterBtn, searchFrame, editBox)
@@ -4336,7 +4557,7 @@ end
 function UI:QuickFilterAllowsData(data, quickFilter)
     local def = quickFilter or self._quickFilter
     if not def then return true end
-    if not data or data.calculatorResult then return false end
+    if not data or data.calculatorResult or data.calculatorLauncher or data.searchCommand then return false end
 
     if data.mapSearchResult then return def.key == "map" end
     if def.key == "map" then return false end
@@ -6895,6 +7116,7 @@ local function IsShortcutEligibleRow(row)
         and not row.isPinHeader and not row.isSectionHeader
         and not row.isUnearnedCurrency
         and not row.data.calculatorResult
+        and not row.data.calculatorLauncher
 end
 
 local function ClearResultShortcutBindings()
@@ -9389,6 +9611,11 @@ StaticPopupDialogs["EASYFIND_ADD_ALIAS"] = {
         local txt = eb and eb:GetText() or ""
         if strtrim(txt) == "" then return end
         if ns.Aliases and ns.Aliases:Add(txt, data) then
+            local aliasText = strtrim(txt)
+            local targetName = data and data.name or "this entry"
+            if EasyFind and EasyFind.Print and EasyFind.db and EasyFind.db.showAliasMessages ~= false then
+                EasyFind:Print("New alias: " .. aliasText .. " -> " .. targetName .. ". View this and any other existing aliases in the Aliases tab of the options menu.")
+            end
             local searchEditBox = searchFrame and searchFrame.editBox
             local current = searchEditBox and searchEditBox:GetText() or ""
             if current ~= "" then UI:OnSearchTextChanged(current) end
@@ -9401,6 +9628,25 @@ StaticPopupDialogs["EASYFIND_ADD_ALIAS"] = {
     EditBoxOnEscapePressed = function(self)
         self:GetParent():Hide()
     end,
+}
+
+StaticPopupDialogs["EASYFIND_RESET_SEARCH_BAR"] = {
+    text = "Reset the search bar to its default position and size?",
+    button1 = "Reset",
+    button2 = CANCEL or "Cancel",
+    OnShow = function(self)
+        self:SetFrameStrata("TOOLTIP")
+        self:SetFrameLevel(1000)
+    end,
+    OnAccept = function()
+        if ns.UI and ns.UI.ResetPositionAndSize then
+            ns.UI:ResetPositionAndSize()
+        end
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
 }
 
 function UI:PromptForAlias(data)
@@ -9487,9 +9733,17 @@ function UI:OnSearchTextChanged(text, force)
         return
     end
 
+    local commandEntries = (not quickFilter) and self:GetSearchBarCommandSuggestionEntries(text)
+    if commandEntries then
+        self:ShowHierarchicalResults(commandEntries)
+        return
+    end
+
     wipe(collapsedNodes)
     local calculatorData = (not quickFilter) and self:EvaluateCalculatorExpression(text) or nil
-    local needsHeavy = not calculatorData and (
+    local calculatorLauncher = (not quickFilter and not calculatorData)
+        and self:GetCalculatorLauncherMatch(text) or nil
+    local needsHeavy = not calculatorData and not calculatorLauncher and (
         (ns.Database and ns.Database.QueryNeedsHeavySearchData
             and ns.Database:QueryNeedsHeavySearchData(text))
         or self:QuickFilterNeedsHeavyData(quickFilter)
@@ -9547,7 +9801,7 @@ function UI:OnSearchTextChanged(text, force)
     end
     local _perfT0 = ns.PERF and debugprofilestop() or 0
     local results
-    if calculatorData then
+    if calculatorData or calculatorLauncher then
         results = SCRATCH.calculatorResults
         wipe(results)
     else
@@ -9645,7 +9899,7 @@ function UI:OnSearchTextChanged(text, force)
 
     -- Map Search: search static locations and dungeon entrances, merge into results
     local mapResults
-    if not calculatorData and ns.MapSearch and ns.MapSearch.SearchForUI
+    if not calculatorData and not calculatorLauncher and ns.MapSearch and ns.MapSearch.SearchForUI
        and ((quickFilter and quickFilter.key == "map")
             or (not quickFilter and filters and filters.map ~= false)) then
         mapResults = ns.MapSearch:SearchForUI(text)
@@ -9655,6 +9909,8 @@ function UI:OnSearchTextChanged(text, force)
     local combined = flatCombined
     if calculatorData then
         combined[#combined + 1] = { data = calculatorData, score = math.huge }
+    elseif calculatorLauncher then
+        combined[#combined + 1] = { data = calculatorLauncher, score = math.huge }
     end
     for ri = 1, #results do combined[#combined + 1] = results[ri] end
     if mapResults then
@@ -9680,7 +9936,7 @@ function UI:OnSearchTextChanged(text, force)
     -- ScoreName so they interleave naturally with mount / toy / setting
     -- hits ranked off the same query, instead of clumping at a fixed
     -- band.
-    if not calculatorData and text ~= ""
+    if not calculatorData and not calculatorLauncher and text ~= ""
        and ((quickFilter and quickFilter.key == "achievements")
             or (not quickFilter and (not filters or filters.achievements ~= false))) then
         local achHits = self:RequestAchievementSearch(text)
@@ -10077,6 +10333,10 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 local calcRowH = mfloor(86 * fontScale + 0.5)
                 if calcRowH < 76 then calcRowH = 76 end
                 if entryRowH < calcRowH then entryRowH = calcRowH end
+            elseif data and data.calculatorLauncher and not entry.isPathNode then
+                local actionRowH = mfloor(30 * fontScale + 0.5)
+                if actionRowH < 28 then actionRowH = 28 end
+                if entryRowH < actionRowH then entryRowH = actionRowH end
             end
             local rowContentTop = yOffset
             resultRow:SetSize(resultsFrame:GetWidth() - padL * 2 - scrollInset, entryRowH)
@@ -10750,6 +11010,20 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 resultRow.calcResultButton:Show()
 
                 self:SetCalculatorCopyHighlight(resultRow, UI._calculator.activeData == data and UI._calculator.activePart or nil)
+
+                iconSet = true
+
+            elseif data and data.calculatorLauncher and not entry.isPathNode then
+                resultRow.text:SetText("")
+                resultRow.amountText:Hide()
+                if resultRow.pathSubtext then resultRow.pathSubtext:Hide() end
+                if resultRow.flatCatIcon then resultRow.flatCatIcon:Hide() end
+                SetRowIcon(resultRow, "hidden", nil, rowIconSize)
+
+                resultRow.calcActionBar:ClearAllPoints()
+                resultRow.calcActionBar:SetPoint("TOPLEFT", resultRow, "TOPLEFT", 4, -3)
+                resultRow.calcActionBar:SetPoint("BOTTOMRIGHT", resultRow, "BOTTOMRIGHT", -4, 3)
+                resultRow.calcActionBar:Show()
 
                 iconSet = true
 
@@ -11491,7 +11765,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             -- Re-apply flat anchoring last so layout is consistent across
             -- all categories and the path subtext is bounded by the rep bar
             -- when one is shown (so it stays out of the bar's horizontal area).
-            if entry.isFlat and not (data and data.calculatorResult) then
+            if entry.isFlat and not (data and (data.calculatorResult or data.calculatorLauncher)) then
                 local catShown = resultRow.flatCatIcon and resultRow.flatCatIcon:IsShown()
                 local d = data
                 local mainIconOnRight = d and (d.mountID or d.toyItemID or d.petID
@@ -12205,7 +12479,7 @@ end
 function UI:MoveSelection(delta)
     -- CountVisibleResults walks the button pool and trusts each row's
     -- :IsShown(), but child rows of a hidden resultsFrame still report
-    -- shown — so a leftover row from a prior search would let Ctrl+J
+    -- shown — so a leftover row from a prior search would let Alt+J
     -- yank focus into nothing on an empty bar. Gate on the frame.
     if not resultsFrame or not resultsFrame:IsShown() then return end
     local visibleCount = self:CountVisibleResults()
@@ -12352,6 +12626,12 @@ function UI:ActivateResultRow(resultRow, source)
 
     if resultRow.data.quickFilterDef then
         return self:ApplyQuickFilter(resultRow.data.quickFilterDef, "")
+    end
+    if resultRow.data.searchCommand then
+        return self:RunSearchBarCommand("/" .. resultRow.data.searchCommand)
+    end
+    if resultRow.data.calculatorLauncher then
+        return self:OpenCalculator("")
     end
     if ActivateSettingResult(resultRow.data) then return true end
     if resultRow.data.calculatorResult then
@@ -13449,6 +13729,16 @@ function UI:SelectResult(data, forceGuide)
 
     if data.quickFilterDef then
         self:ApplyQuickFilter(data.quickFilterDef, "")
+        return
+    end
+
+    if data.searchCommand then
+        self:RunSearchBarCommand("/" .. data.searchCommand)
+        return
+    end
+
+    if data.calculatorLauncher then
+        self:OpenCalculator("")
         return
     end
 
@@ -15383,6 +15673,9 @@ function UI:UpdateSmartShow()
         if searchFrame.cancelSmartShowTimer then searchFrame.cancelSmartShowTimer() end
         UIFrameFadeRemoveFrame(searchFrame)
         searchFrame.setSmartShowVisible(true)
+        if EasyFind.db.autoHide then
+            return
+        end
         if EasyFind.db.visible ~= false and not inCombat then
             local alpha = searchFrame.getEffectiveAlpha and searchFrame.getEffectiveAlpha() or 1.0
             searchFrame:SetAlpha(alpha)
@@ -15398,6 +15691,23 @@ function UI:ResetPosition()
         searchFrame:SetPoint(point, UIParent, relPoint, x, y)
         EasyFind.db.uiSearchPosition = nil
     end
+end
+
+function UI:ResetPositionAndSize()
+    if EasyFind and EasyFind.db then
+        EasyFind.db.uiSearchPosition = nil
+        EasyFind.db.uiSearchScale = 1.0
+        EasyFind.db.uiSearchWidth = 1.54
+        EasyFind.db.uiSearchBarHeight = ns.SEARCHBAR_HEIGHT or 30
+        EasyFind.db.uiResultsScale = 1.0
+        EasyFind.db.uiResultsWidth = 350
+        EasyFind.db.uiResultsHeight = 280
+    end
+    self:ResetPosition()
+    self:UpdateScale()
+    self:UpdateWidth()
+    self:UpdateSearchBarHeight()
+    self:RefreshResults()
 end
 
 -- WHAT'S NEW POPUP
@@ -15777,23 +16087,6 @@ function UI:ShowFirstTimeSetup()
     smartDesc:SetJustifyH("LEFT")
     smartDesc:SetText("|cff999999Bar hides when your mouse moves away and reappears when you hover near it.|r")
 
-    -- Fade While Moving checkbox (default checked - staticOpacity defaults to false, meaning fade IS active)
-    local fadeCheckbox = CreateFrame("CheckButton", nil, panel, "InterfaceOptionsCheckButtonTemplate")
-    fadeCheckbox:SetPoint("TOPLEFT", smartShowCheckbox, "TOPLEFT", 0, -(26 + smartDesc:GetStringHeight() + 8))
-    fadeCheckbox.Text:SetText("|cffFFD100Fade While Moving|r")
-    fadeCheckbox:SetChecked(true)
-    fadeCheckbox:SetScript("OnClick", function(self)
-        -- Update live so the user can see the effect immediately
-        EasyFind.db.staticOpacity = not self:GetChecked()
-    end)
-
-    local fadeDesc = fadeCheckbox:CreateFontString(nil, "OVERLAY")
-    fadeDesc:SetFontObject(fadeCheckbox.Text:GetFontObject())
-    fadeDesc:SetPoint("TOPLEFT", fadeCheckbox.Text, "BOTTOMLEFT", 0, -2)
-    fadeDesc:SetWidth(panelWidth - 60)
-    fadeDesc:SetJustifyH("LEFT")
-    fadeDesc:SetText("|cff999999Reduces bar opacity while you're moving.|r")
-
     -- Keybind rows. Each row = [label] [keybind button] [recommended hint].
     -- Click the button to capture a key, right-click to clear, Esc to cancel —
     -- mirrors the keybind UI in /ef Options > Shortcuts.
@@ -15822,7 +16115,7 @@ function UI:ShowFirstTimeSetup()
     -- so it reads as a labeled subsection rather than two loose buttons.
     local keybindHeader = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     keybindHeader:SetText("Keybindings")
-    keybindHeader:SetPoint("TOP", fadeDesc, "BOTTOM", 0, -14)
+    keybindHeader:SetPoint("TOP", smartDesc, "BOTTOM", 0, -16)
 
     local keybindDivider = panel:CreateTexture(nil, "ARTWORK")
     keybindDivider:SetColorTexture(1, 1, 1, 0.18)
@@ -15955,7 +16248,6 @@ function UI:ShowFirstTimeSetup()
 
         -- Apply preferences from setup checkboxes
         EasyFind.db.smartShow = smartShowCheckbox:GetChecked()
-        EasyFind.db.staticOpacity = not fadeCheckbox:GetChecked()
         UI:UpdateSmartShow()
 
         -- Record current version so What's New won't fire on next login
