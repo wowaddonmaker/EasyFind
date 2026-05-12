@@ -205,18 +205,11 @@ local function SyncOptionControls()
     if optionsFrame.clearBtn then optionsFrame.clearBtn:SetText(GetBindingKey("EASYFIND_CLEAR") or "Not Bound") end
 end
 
-local function PaintRoundedFill(frame, r, g, b, a)
-    if not (frame and frame.combinedBorder and frame.combinedBorder.fill) then return end
-    for _, tex in pairs(frame.combinedBorder.fill) do
-        tex:SetVertexColor(r, g, b, a or 1)
-        tex:SetAlpha(a or 1)
-    end
+local PaintRoundedFill = ns.SetRoundedRectFill
+local function HideRoundedBorder(frame)
+    ns.SetRoundedRectBorderEdgeShown(frame, false)
 end
-
-local function HideRoundedFrameBorder(frame)
-    if not (frame and frame.combinedBorder and frame.combinedBorder.border) then return end
-    for _, tex in pairs(frame.combinedBorder.border) do tex:Hide() end
-end
+local HideRoundedFrameBorder = HideRoundedBorder
 
 local function StyleSelectorButton(btnFrame, height)
     btnFrame:SetBackdrop(nil)
@@ -435,17 +428,7 @@ local NAV_HOVER = { 0.11, 0.11, 0.13, 0.85 }
 local NAV_CLEAR = { 0, 0, 0, 0 }
 
 local function TintRoundedFill(frame, r, g, b)
-    if not (frame and frame.combinedBorder and frame.combinedBorder.fill) then return end
-    for _, tex in pairs(frame.combinedBorder.fill) do
-        tex:SetVertexColor(r, g, b, 1)
-        if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(false) end
-        if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
-    end
-end
-
-local function HideRoundedBorder(frame)
-    if not (frame and frame.combinedBorder and frame.combinedBorder.border) then return end
-    for _, tex in pairs(frame.combinedBorder.border) do tex:Hide() end
+    ns.SetRoundedRectFill(frame, r, g, b, 1, true)
 end
 
 local function ApplyWizardPanelGloss(frame)
@@ -511,20 +494,11 @@ local function CreateModernCloseButton(parent)
     return closeBtn
 end
 
-local function SetModernButtonFill(btn, r, g, b)
-    if not (btn and btn.combinedBorder and btn.combinedBorder.fill) then return end
-    for _, tex in pairs(btn.combinedBorder.fill) do
-        tex:SetVertexColor(r, g, b, 1)
-    end
-end
-
-local function SetModernButtonAlpha(btn, alpha)
-    if not (btn and btn.combinedBorder and btn.combinedBorder.fill) then return end
-    for _, tex in pairs(btn.combinedBorder.fill) do tex:SetAlpha(alpha) end
-end
+local SetModernButtonFill = ns.SetRoundedRectBorderFillColor
+local SetModernButtonAlpha = ns.SetRoundedRectBorderBgAlpha
 
 local function SetNavButtonBg(btn, color)
-    SetModernButtonFill(btn, color[1], color[2], color[3])
+    SetModernButtonFill(btn, color[1], color[2], color[3], 1)
     SetModernButtonAlpha(btn, color[4] or 1)
 end
 
