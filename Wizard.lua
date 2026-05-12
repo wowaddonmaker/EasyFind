@@ -163,8 +163,11 @@ local function FinishWizard(openBar)
     if not frame then return end
     EasyFind.db.tutorialDone = true
     EasyFind.db.setupComplete = true
-    if EasyFind.db.lastSeenVersion == nil then
+    if ns.version then
         EasyFind.db.lastSeenVersion = ns.version
+        if ns.version == (ns.REVAMPED_TUTORIAL_VERSION or "2.0.0") then
+            EasyFind.db.revampedTutorialVersion = ns.REVAMPED_TUTORIAL_VERSION or "2.0.0"
+        end
     end
     SafeCallMethod(frame, "EnableKeyboard", false)
     frame:Hide()

@@ -23,7 +23,10 @@ EasyFind.db = {}
 
 -- SavedVariables version. Increment when changing DB schema.
 -- Each migration runs once: if saved dbVersion < DB_VERSION, run all steps in order.
-local DB_VERSION = 15
+local DB_VERSION = 17
+local REVAMPED_TUTORIAL_VERSION = "2.0.0"
+local FRESH_SETTINGS_VERSION = "2.0.0"
+ns.REVAMPED_TUTORIAL_VERSION = REVAMPED_TUTORIAL_VERSION
 
 -- SavedVariables defaults - new keys are auto-merged for existing users
 local DB_DEFAULTS = {
@@ -152,6 +155,136 @@ local DB_DEFAULTS = {
     uiSearchHistoryLimit = 500, -- Bash HISTSIZE default
 }
 
+local function RequireRevampedTutorial(db)
+    if db.revampedTutorialVersion ~= REVAMPED_TUTORIAL_VERSION then
+        db.tutorialDone = false
+        db.lastSeenVersion = REVAMPED_TUTORIAL_VERSION
+    end
+end
+
+local function CloneDefaultValue(value)
+    if type(value) ~= "table" then return value end
+
+    local copy = {}
+    for k, v in pairs(value) do
+        copy[k] = CloneDefaultValue(v)
+    end
+    return copy
+end
+
+local FRESH_SETTINGS_KEYS = {
+    "visible",
+    "enableMapSearch",
+    "iconScale",
+    "nativePinScale",
+    "uiSearchScale",
+    "uiSearchWidth",
+    "uiResultsScale",
+    "uiResultsWidth",
+    "uiSearchBarHeight",
+    "fontSize",
+    "uiSearchPosition",
+    "localMapDirectOpen",
+    "globalMapDirectOpen",
+    "autoHide",
+    "smartShow",
+    "lockPosition",
+    "resultsTheme",
+    "font",
+    "indicatorStyle",
+    "indicatorColor",
+    "uiResultsHeight",
+    "showTruncationMessage",
+    "hardResultsCap",
+    "pinnedUIItems",
+    "pinnedUIItemsPerChar",
+    "pinnedMapItems",
+    "mapPinsCollapsed",
+    "showLoginMessage",
+    "showAliasMessages",
+    "blinkingPins",
+    "mapPinHighlight",
+    "autoPinClear",
+    "autoTrackPins",
+    "uiResultsAbove",
+    "showResultShortcutHints",
+    "showMinimapButton",
+    "minimapButtonAngle",
+    "globalSearchFilters",
+    "localSearchFilters",
+    "mapTabFilters",
+    "mapTabShowRecent",
+    "mapTabRecentCount",
+    "mapTabAutoExpand",
+    "alwaysShowRares",
+    "uiSearchFilters",
+    "lootSpecs",
+    "lootSearchSlots",
+    "lootSearchStats",
+    "lootUpgradesOnly",
+    "lootDifficulty",
+    "hideTooltips",
+    "currencyFilterMode",
+    "reputationFilterMode",
+    "showLegacyReputations",
+    "abilityHidePassives",
+    "appearanceSetClass",
+    "appearanceSetCollected",
+    "appearanceSetNotCollected",
+    "appearanceSetPvE",
+    "appearanceSetPvP",
+    "uiMapSearchLocal",
+}
+
+local RETIRED_SETTINGS_KEYS = {
+    "enableUISearch",
+    "mapSearchScale",
+    "mapSearchWidth",
+    "mapResultsScale",
+    "mapResultsWidth",
+    "mapFontSize",
+    "mapResultsHeight",
+    "mapResultsAbove",
+    "mapSearchPosition",
+    "globalSearchPosition",
+    "mapSearchPositionMax",
+    "globalSearchPositionMax",
+    "mapSearchYOffset",
+    "hideSearchBarsMaximized",
+    "directOpen",
+    "mapSmartShow",
+    "pinsCollapsed",
+    "arrivalDistance",
+    "minimapArrowGlow",
+    "glowOnlyEasyFind",
+    "minimapGuideCircle",
+    "circleOnlyEasyFind",
+    "guideCircleScale",
+    "minimapPinGlow",
+    "panelOpacity",
+    "searchBarOpacity",
+    "staticOpacity",
+    "suggestedKeybindsApplied",
+    "optionsPosition",
+    "lootFilter",
+}
+
+local function ApplyFreshSettingsFor2(db)
+    if db.freshSettingsVersion == FRESH_SETTINGS_VERSION then return end
+
+    for i = 1, #FRESH_SETTINGS_KEYS do
+        local key = FRESH_SETTINGS_KEYS[i]
+        db[key] = CloneDefaultValue(DB_DEFAULTS[key])
+    end
+
+    for i = 1, #RETIRED_SETTINGS_KEYS do
+        db[RETIRED_SETTINGS_KEYS[i]] = nil
+    end
+
+    db.freshSettingsVersion = FRESH_SETTINGS_VERSION
+    RequireRevampedTutorial(db)
+end
+
 local DB_MIGRATIONS = {
     -- [1] = Consolidate ad-hoc migrations (maxResults rename, uiResultsWidth reset)
     [1] = function(db)
@@ -222,8 +355,7 @@ local DB_MIGRATIONS = {
     -- [11] = 2.0.0 is a full onboarding reset. Existing users should
     -- see the tutorial once instead of the legacy What's New popup.
     [11] = function(db)
-        db.tutorialDone = false
-        db.lastSeenVersion = "2.0.0"
+        RequireRevampedTutorial(db)
     end,
     -- [12] = Search window background is always solid now.
     [12] = function(db)
@@ -233,8 +365,7 @@ local DB_MIGRATIONS = {
     -- once for existing account-wide SavedVariables, and mark 2.0.0
     -- as seen so the legacy What's New popup cannot compete with it.
     [13] = function(db)
-        db.tutorialDone = false
-        db.lastSeenVersion = "2.0.0"
+        RequireRevampedTutorial(db)
     end,
     -- [14] = Finalize search opacity and map-tab defaults for 2.0.
     -- Search opacity is no longer user-controlled, and flight paths start
@@ -250,6 +381,24 @@ local DB_MIGRATIONS = {
     -- [15] = Make the login chat message opt-in for 2.0.
     [15] = function(db)
         db.showLoginMessage = false
+    end,
+    -- [16] = Backfill the "already acknowledged revamped tutorial"
+    -- marker for accounts that completed the 2.0 tutorial on a dev
+    -- build before the marker existed. Accounts still pending the
+    -- tutorial keep tutorialDone=false and will see it once.
+    [16] = function(db)
+        if db.tutorialDone == true
+           and db.lastSeenVersion == REVAMPED_TUTORIAL_VERSION
+           and db.revampedTutorialVersion ~= REVAMPED_TUTORIAL_VERSION then
+            db.revampedTutorialVersion = REVAMPED_TUTORIAL_VERSION
+        end
+    end,
+    -- [17] = 2.0 is a release-scale redesign, not a normal incremental
+    -- update. Reset the released-era layout/options/filter/pin state to the
+    -- new defaults and remove retired settings so old SavedVariables cannot
+    -- keep stale search bars, opacity controls, or disabled categories.
+    [17] = function(db)
+        ApplyFreshSettingsFor2(db)
     end,
 }
 
@@ -625,7 +774,9 @@ local function OnPlayerLogin()
     local lastSeen = EasyFind.db.lastSeenVersion
     if currentVersion and currentVersion ~= lastSeen then
         if currentVersion == "2.0.0" then
-            EasyFind.db.tutorialDone = false
+            if EasyFind.db.revampedTutorialVersion ~= REVAMPED_TUTORIAL_VERSION then
+                EasyFind.db.tutorialDone = false
+            end
         elseif lastSeen ~= nil or EasyFind.db.setupComplete then
             SafeAfter(1.5, function()
                 if ns.UI then ns.UI:ShowWhatsNew(currentVersion) end
