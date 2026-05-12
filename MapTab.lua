@@ -112,6 +112,8 @@ local RefreshCurrentSearch
 local ReleaseMapTabMemory
 local panel
 local selectedIsOurs = false
+local lastSelectedWasOurs = false
+local restoringBlizzardDisplayMode = false
 local function IsMapSearchEnabled()
     return not (EasyFind and EasyFind.db and EasyFind.db.enableMapSearch == false)
 end
@@ -247,6 +249,7 @@ local function ShowOurPanel()
     local qmf = _G["QuestMapFrame"]
     if not qmf or not panel then return end
     selectedIsOurs = true
+    lastSelectedWasOurs = true
     -- Measure Blizzard's SearchBox BEFORE we hide QuestsFrame, so its
     -- GetLeft/GetRight return live values. Cache is reused for
     -- subsequent shows if Blizzard's panel isn't visible later.
@@ -304,7 +307,9 @@ local function HideOurPanel()
     if qmf and qmf.SetDisplayMode and qmf.displayMode == nil then
         local restore = prevBlizzardDisplayMode or qmf.QuestsFrame
         if restore then
+            restoringBlizzardDisplayMode = true
             pcall(qmf.SetDisplayMode, qmf, restore)
+            restoringBlizzardDisplayMode = false
         end
     end
     prevBlizzardDisplayMode = nil
@@ -2595,6 +2600,7 @@ end
 
 function MapTab:Initialize()
     if not IsMapSearchEnabled() then
+        lastSelectedWasOurs = false
         if initialized and tabFrame then tabFrame:Hide() end
         if initialized and panel then
             if panel.outer then panel.outer:Hide() else panel:Hide() end
@@ -2615,14 +2621,24 @@ function MapTab:Initialize()
     -- lwmt:SetDisplayMode(mode). Hook both so we catch every switch.
     if qmf.SetDisplayMode then
         hooksecurefunc(qmf, "SetDisplayMode", function(_, displayMode)
-            if displayMode and selectedIsOurs then HideOurPanel() end
+            if displayMode then
+                if not restoringBlizzardDisplayMode then
+                    lastSelectedWasOurs = false
+                end
+                if selectedIsOurs then HideOurPanel() end
+            end
         end)
     end
     if LibStub then
         local ok, lwmt = pcall(LibStub, "LibWorldMapTabs", true)
         if ok and lwmt and type(lwmt.SetDisplayMode) == "function" then
             hooksecurefunc(lwmt, "SetDisplayMode", function(_, displayMode)
-                if displayMode and selectedIsOurs then HideOurPanel() end
+                if displayMode then
+                    if not restoringBlizzardDisplayMode then
+                        lastSelectedWasOurs = false
+                    end
+                    if selectedIsOurs then HideOurPanel() end
+                end
             end)
         end
     end
@@ -2641,12 +2657,32 @@ function MapTab:Initialize()
                     panel.MeasureBlizzardSearch()
                 end
             end)
-            -- If a Focus() request opened the map, switch to our tab
-            -- after Blizzard's OnShow handlers (which restore the last
-            -- tab) have all run. SafeAfter(0) puts us at the end of
-            -- this frame's pending callbacks, AFTER Blizzard's restore.
+            local function shouldRestoreEasyFindTab()
+                return lastSelectedWasOurs
+                    and not MapTab._pendingFocus
+                    and MapTab._pendingQuery == nil
+                    and IsMapSearchEnabled()
+                    and not (WorldMapFrame.IsMaximized and WorldMapFrame:IsMaximized())
+            end
+            local function restoreEasyFindTab()
+                if shouldRestoreEasyFindTab()
+                   and panel
+                   and WorldMapFrame and WorldMapFrame:IsShown() then
+                    ShowOurPanel()
+                end
+            end
+            -- If a Focus() request opened the map, switch immediately
+            -- so the native tab does not flash first. The next-frame
+            -- pass defends against late tab restoration from Blizzard
+            -- or another map-tab addon.
             if MapTab._pendingFocus then
                 MapTab._pendingFocus = nil
+                if panel then
+                    ShowOurPanel()
+                    if panel.searchBox and panel:IsShown() then
+                        panel.searchBox:SetFocus()
+                    end
+                end
                 SafeAfter(0, function()
                     if panel then
                         ShowOurPanel()
@@ -2662,6 +2698,13 @@ function MapTab:Initialize()
             if MapTab._pendingQuery ~= nil and not MapTab._pendingFocus then
                 local q = MapTab._pendingQuery
                 MapTab._pendingQuery = nil
+                if panel then
+                    ShowOurPanel()
+                    if panel.searchBox and panel:IsShown() then
+                        panel.searchBox:SetText(q or "")
+                        panel.searchBox:ClearFocus()
+                    end
+                end
                 SafeAfter(0, function()
                     if panel then
                         ShowOurPanel()
@@ -2672,9 +2715,22 @@ function MapTab:Initialize()
                     end
                 end)
             end
+            if shouldRestoreEasyFindTab() then
+                restoreEasyFindTab()
+                SafeAfter(0, restoreEasyFindTab)
+            else
+                SafeAfter(0, function()
+                    local q = _G["QuestMapFrame"]
+                    if q and q.SetDisplayMode and q.displayMode == nil and not selectedIsOurs then
+                        local restore = prevBlizzardDisplayMode or q.QuestsFrame
+                        if restore then pcall(q.SetDisplayMode, q, restore) end
+                    end
+                end)
+            end
         end)
         WorldMapFrame:HookScript("OnHide", function()
             if selectedIsOurs then
+                lastSelectedWasOurs = true
                 HideOurPanel()
             elseif ReleaseMapTabMemory then
                 ReleaseMapTabMemory(true)

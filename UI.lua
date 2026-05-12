@@ -3,6 +3,12 @@ local _, ns = ...
 local UI = {}
 ns.UI = UI
 
+function UI:ApplySearchWindowFill(frame)
+    if not (frame and ns.SetRoundedRectBorderFillColor) then return end
+    local c = ns.SEARCH_WINDOW_FILL_COLOR or {0.052, 0.052, 0.060}
+    ns.SetRoundedRectBorderFillColor(frame, c[1], c[2], c[3], 1)
+end
+
 local Utils = ns.Utils
 local UIPins = ns.UIPins
 local GetButtonText         = Utils.GetButtonText
@@ -165,6 +171,7 @@ local RESULT_SHORTCUT_WIDTH = 34
 local RESULT_SHORTCUT_ICON_SIZE = 14
 local RESULT_SHORTCUT_RIGHT_PAD = 0
 local RESULT_SHORTCUT_GAP = -4
+local CALCULATOR_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\calculator-icon"
 -- Hard render cap on the search-match portion of the result list. Pinned
 -- items are counted separately. Pre-render cap in OnSearchTextChanged
 -- already trims to 15 before flattening; this is a backstop for any
@@ -219,7 +226,7 @@ local FLAT_CATEGORY_ICONS = {
     -- glance from the silvery-grey game-settings cogwheel.
     settingAddon  = { atlas = "QuestLog-icon-setting", color = { 1.0, 0.78, 0.35 } },
     title         = { tex = 514608, coords = { 0.016, 0.531, 0.324, 0.461 } },
-    calculator    = { tex = "Interface\\Icons\\INV_Misc_Note_05" },
+    calculator    = { tex = CALCULATOR_ICON_TEX },
     -- Resolved lazily from PaperDollSidebarTab3 so the icon always
     -- matches whatever sprite-sheet region Blizzard uses for the
     -- Equipment Manager sidebar tab. Filled in by ResolveGearSetIcon().
@@ -267,6 +274,30 @@ local REP_FACTION_ICONS = {
 local function GetFlatCategoryIcon(data)
     if not data then return nil end
     if data.calculatorResult then return FLAT_CATEGORY_ICONS.calculator end
+    if data.quickFilterDef then
+        local key = data.quickFilterDef.key
+        if key == "abilities" then return FLAT_CATEGORY_ICONS.ability end
+        if key == "achievements" then return FLAT_CATEGORY_ICONS.achievement end
+        if key == "statistics" then return FLAT_CATEGORY_ICONS.statistic end
+        if key == "bags" then return FLAT_CATEGORY_ICONS.bag end
+        if key == "bosses" then return FLAT_CATEGORY_ICONS.boss end
+        if key == "macros" then return FLAT_CATEGORY_ICONS.macro end
+        if key == "collections" then return FLAT_CATEGORY_ICONS.mount end
+        if key == "appearanceSets" then return FLAT_CATEGORY_ICONS.appearanceSet end
+        if key == "heirlooms" then return FLAT_CATEGORY_ICONS.heirloom end
+        if key == "mounts" then return FLAT_CATEGORY_ICONS.mount end
+        if key == "outfits" then return FLAT_CATEGORY_ICONS.outfit end
+        if key == "pets" then return FLAT_CATEGORY_ICONS.pet end
+        if key == "toys" then return FLAT_CATEGORY_ICONS.toy end
+        if key == "gearSets" then return FLAT_CATEGORY_ICONS.gearSet end
+        if key == "currencies" then return FLAT_CATEGORY_ICONS.currency end
+        if key == "loot" then return FLAT_CATEGORY_ICONS.loot end
+        if key == "map" then return FLAT_CATEGORY_ICONS.map end
+        if key == "reputations" then return FLAT_CATEGORY_ICONS.reputation end
+        if key == "talents" then return FLAT_CATEGORY_ICONS.talent end
+        if key == "titles" then return FLAT_CATEGORY_ICONS.title end
+        return FLAT_CATEGORY_ICONS.setting
+    end
     if data.mountID then return FLAT_CATEGORY_ICONS.mount end
     if data.toyItemID then return FLAT_CATEGORY_ICONS.toy end
     if data.petID then return FLAT_CATEGORY_ICONS.pet end
@@ -367,6 +398,8 @@ end
 local function GetFlatSubtext(data)
     if not data then return "" end
     if data.calculatorResult then return "Expression" end
+    if data.quickFilterAliasText then return data.quickFilterAliasText end
+    if data.quickFilterDef then return data.quickFilterDef.label or "Quick Filter" end
     if data.path and #data.path > 0 then
         return data.path[#data.path]
     end
@@ -933,6 +966,540 @@ function UI:EvaluateCalculatorExpression(raw)
     }
 end
 
+function UI:SetCalculatorRoundedFill(frame, r, g, b, a, br, bg, bb, ba)
+    if not (frame and frame.combinedBorder) then return end
+    if frame.combinedBorder.fill then
+        for _, tex in pairs(frame.combinedBorder.fill) do
+            tex:SetVertexColor(r, g, b, 1)
+            tex:SetAlpha(a or 1)
+            if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(false) end
+            if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
+        end
+    end
+    if frame.combinedBorder.border then
+        for _, tex in pairs(frame.combinedBorder.border) do
+            tex:SetVertexColor(br or 0.30, bg or 0.30, bb or 0.32, ba or 0.85)
+            if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(false) end
+            if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
+        end
+    end
+end
+
+function UI:HideCalculatorRoundedBorder(frame)
+    if not (frame and frame.combinedBorder and frame.combinedBorder.border) then return end
+    for _, tex in pairs(frame.combinedBorder.border) do
+        tex:Hide()
+    end
+end
+
+function UI:StyleCalculatorButton(btn, height)
+    if not btn then return end
+    if not btn.combinedBorder then
+        ns.CreateRoundedRectBorder(btn)
+    end
+    ns.SetRoundedRectBarHeight(btn, mmin(height or btn:GetHeight() or 22, 10))
+    ns.SetRoundedRectBorderBgAlpha(btn, 1)
+    self:HideCalculatorRoundedBorder(btn)
+    self:SetCalculatorRoundedFill(btn, 0.095, 0.095, 0.108, 1)
+    btn:SetScript("OnEnter", function(self)
+        if self:IsEnabled() then UI:SetCalculatorRoundedFill(self, 0.155, 0.155, 0.172, 1) end
+    end)
+    btn:SetScript("OnLeave", function(self)
+        if self:IsEnabled() then UI:SetCalculatorRoundedFill(self, 0.095, 0.095, 0.108, 1) end
+    end)
+    btn:SetScript("OnMouseDown", function(self)
+        if self:IsEnabled() then UI:SetCalculatorRoundedFill(self, 0.065, 0.065, 0.078, 1) end
+    end)
+    btn:SetScript("OnMouseUp", function(self)
+        if not self:IsEnabled() then return end
+        if self:IsMouseOver() then
+            UI:SetCalculatorRoundedFill(self, 0.155, 0.155, 0.172, 1)
+        else
+            UI:SetCalculatorRoundedFill(self, 0.095, 0.095, 0.108, 1)
+        end
+    end)
+end
+
+function UI:CreateCalculatorGlyph(parent, size)
+    local glyph = CreateFrame("Frame", nil, parent)
+    size = size or 22
+    glyph:SetSize(size, size)
+    ns.CreateRoundedRectBorder(glyph)
+    ns.SetRoundedRectBarHeight(glyph, mmin(size, 10))
+    ns.SetRoundedRectBorderBgAlpha(glyph, 1)
+    self:HideCalculatorRoundedBorder(glyph)
+    self:SetCalculatorRoundedFill(glyph, 0.095, 0.095, 0.108, 1)
+
+    local icon = glyph:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("TOPLEFT", glyph, "TOPLEFT", 3, -3)
+    icon:SetPoint("BOTTOMRIGHT", glyph, "BOTTOMRIGHT", -3, 3)
+    icon:SetTexture(FLAT_CATEGORY_ICONS.calculator.tex)
+    icon:SetTexCoord(0, 1, 0, 1)
+    icon:SetVertexColor(1, 1, 1, 1)
+    glyph.icon = icon
+    return glyph
+end
+
+function UI:RefreshCalculatorPopup()
+    local frame = UI._calculator.popupFrame
+    local editBox = UI._calculator.popupEditBox
+    if not frame or not editBox then return end
+
+    local raw = editBox:GetText() or ""
+    local text = strtrim(raw)
+    local submitted = UI._calculator.popupSubmitted
+        and UI._calculator.popupSubmittedText == raw
+    local data = submitted and self:EvaluateCalculatorExpression(raw) or nil
+    UI._calculator.popupData = data
+    if frame.clearInputButton then
+        if text ~= "" then
+            frame.clearInputButton:Show()
+        else
+            frame.clearInputButton:Hide()
+        end
+    end
+    if submitted and data then
+        frame.resultText:SetText(data.calculatorResult)
+        frame.expressionText:SetText(data.calculatorExpression)
+        frame.resultText:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1)
+        if frame.hintText then frame.hintText:Hide() end
+        self:SetCalculatorRoundedFill(frame.resultCard, 0.19, 0.16, 0.10, 0.98, 0.76, 0.56, 0.22, 0.90)
+    else
+        frame.resultText:SetText(submitted and text ~= "" and "-" or "")
+        frame.expressionText:SetText(text ~= "" and text or "Type an expression")
+        frame.resultText:SetTextColor(0.58, 0.58, 0.60, 1)
+        if frame.hintText then frame.hintText:Hide() end
+        self:SetCalculatorRoundedFill(frame.resultCard, 0.13, 0.13, 0.145, 0.96, 0.28, 0.28, 0.30, 0.75)
+    end
+end
+
+function UI:InsertCalculatorPopupText(text)
+    local editBox = UI._calculator.popupEditBox
+    if not editBox then return end
+    text = tostring(text or "")
+    if text == "" then return end
+
+    local current = editBox:GetText() or ""
+    local pos = editBox:GetCursorPosition() or #current
+    editBox:SetText(current:sub(1, pos) .. text .. current:sub(pos + 1))
+    editBox:SetCursorPosition(pos + #text)
+    editBox:SetFocus()
+    self:RefreshCalculatorPopup()
+end
+
+function UI:BackspaceCalculatorPopup()
+    local editBox = UI._calculator.popupEditBox
+    if not editBox then return end
+    local current = editBox:GetText() or ""
+    local pos = editBox:GetCursorPosition() or #current
+    if pos <= 0 then return end
+    editBox:SetText(current:sub(1, pos - 1) .. current:sub(pos + 1))
+    editBox:SetCursorPosition(pos - 1)
+    editBox:SetFocus()
+    self:RefreshCalculatorPopup()
+end
+
+function UI:UseCalculatorPopupResult()
+    local editBox = UI._calculator.popupEditBox
+    if not editBox then return false end
+    return self:SubmitCalculatorPopupExpression(editBox:GetText() or "")
+end
+
+function UI:SubmitCalculatorPopupExpression(raw)
+    local editBox = UI._calculator.popupEditBox
+    if not editBox then return false end
+    raw = tostring(raw or "")
+    raw = raw:gsub("%s*=$", "")
+    UI._calculator.popupSubmitting = true
+    UI._calculator.popupSubmitted = true
+    UI._calculator.popupSubmittedText = raw
+    UI._calculator.popupData = self:EvaluateCalculatorExpression(raw)
+    if editBox:GetText() ~= raw then
+        editBox:SetText(raw)
+    end
+    editBox:SetCursorPosition(#raw)
+    editBox:SetFocus()
+    UI._calculator.popupSubmitting = nil
+    self:RefreshCalculatorPopup()
+    return UI._calculator.popupData and true or false
+end
+
+function UI:IsCalculatorPopupSubmitKey(key)
+    return key == "ENTER"
+        or key == "="
+        or key == "EQUAL"
+        or key == "EQUALS"
+        or key == "NUMPADEQUALS"
+end
+
+function UI:SwallowCalculatorPopupChar(editBox)
+    if not editBox then return end
+    Utils.SafeCallMethod(editBox, "SetPropagateKeyboardInput", false)
+    if not editBox.SetEnabled then return end
+
+    editBox:SetEnabled(false)
+    Utils.SafeAfter(0, function()
+        local frame = UI._calculator.popupFrame
+        if frame and frame:IsShown() and editBox:IsVisible() then
+            editBox:SetEnabled(true)
+            editBox:SetFocus()
+            editBox:SetCursorPosition(#(editBox:GetText() or ""))
+        end
+    end)
+end
+
+function UI:QueueCalculatorPopupEqualsSubmit(editBox)
+    if UI._calculator.popupEqualSubmitQueued then return end
+    UI._calculator.popupEqualSubmitQueued = true
+    Utils.SafeAfter(0, function()
+        UI._calculator.popupEqualSubmitQueued = nil
+        local frame = UI._calculator.popupFrame
+        if not (frame and frame:IsShown() and editBox and editBox:IsVisible()) then return end
+        local raw = editBox:GetText() or ""
+        if raw:match("%s*=$") then
+            UI:SubmitCalculatorPopupExpression(raw)
+        end
+    end)
+end
+
+function UI:ArmCalculatorPopupResult()
+    local data = UI._calculator.popupData
+    if not data or not data.calculatorResult then return false end
+    UI._calculator.activeRow = nil
+    UI._calculator.activeData = data
+    UI._calculator.activeResult = data.calculatorResult
+    UI._calculator.activePart = "result"
+    UI._calculator.activeSource = "calculator"
+    UI._calculator.copyComplete = nil
+    UI._calculator.copyCompleteValue = nil
+    UI._calculator.copiedData = nil
+    UI._calculator.copiedPart = nil
+    if self:CopyCalculatorResult(data.calculatorResult, "calculator") then
+        self:StartCalculatorCopyWatcher()
+        return true
+    end
+    return false
+end
+
+function UI:RestoreCalculatorPopupFocus()
+    local frame = UI._calculator.popupFrame
+    local editBox = UI._calculator.popupEditBox
+    if frame and frame:IsShown() and editBox and editBox:IsVisible() then
+        editBox:SetFocus()
+        editBox:SetCursorPosition(#(editBox:GetText() or ""))
+    end
+end
+
+function UI:EnsureCalculatorFrame()
+    local frame = UI._calculator.popupFrame
+    if frame then return frame end
+
+    frame = CreateFrame("Frame", "EasyFindCalculatorFrame", UIParent)
+    UI._calculator.popupFrame = frame
+    frame:SetSize(284, 304)
+    frame:SetPoint("CENTER")
+    frame:SetFrameStrata("FULLSCREEN_DIALOG")
+    frame:SetFrameLevel(900)
+    frame:SetClampedToScreen(true)
+    frame:EnableMouse(true)
+    frame:SetMovable(true)
+    frame:RegisterForDrag("LeftButton")
+    frame:SetScript("OnDragStart", frame.StartMoving)
+    frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
+    ns.CreateRoundedRectBorder(frame)
+    ns.SetRoundedRectBarHeight(frame, 14)
+    ns.SetRoundedRectBorderBgAlpha(frame, 0.98)
+    self:SetCalculatorRoundedFill(frame, 0.055, 0.055, 0.064, 0.98, 0.30, 0.30, 0.32, 0.95)
+
+    local glyph = self:CreateCalculatorGlyph(frame, 22)
+    glyph:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -12)
+
+    local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("LEFT", glyph, "RIGHT", 8, 0)
+    title:SetText("Calculator")
+    title:SetTextColor(1, 1, 1, 1)
+
+    local close = CreateFrame("Button", nil, frame)
+    close:SetSize(18, 18)
+    close:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -14, -12)
+    local function makeCloseStroke()
+        local tex = close:CreateTexture(nil, "OVERLAY")
+        tex:SetTexture("Interface\\Buttons\\WHITE8x8")
+        tex:SetSize(16, 1.5)
+        tex:SetPoint("CENTER")
+        return tex
+    end
+    local closeStroke1 = makeCloseStroke(); closeStroke1:SetRotation(math.pi / 4)
+    local closeStroke2 = makeCloseStroke(); closeStroke2:SetRotation(-math.pi / 4)
+    local function setCloseColor(r, g, b)
+        closeStroke1:SetVertexColor(r, g, b, 1)
+        closeStroke2:SetVertexColor(r, g, b, 1)
+    end
+    setCloseColor(0.55, 0.55, 0.58)
+    close:SetScript("OnEnter", function() setCloseColor(1, 1, 1) end)
+    close:SetScript("OnLeave", function() setCloseColor(0.55, 0.55, 0.58) end)
+    close:SetScript("OnClick", function() frame:Hide() end)
+
+    local inputShell = CreateFrame("Frame", nil, frame)
+    inputShell:SetPoint("TOPLEFT", frame, "TOPLEFT", 14, -44)
+    inputShell:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -14, -44)
+    inputShell:SetHeight(38)
+    ns.CreateRoundedRectBorder(inputShell)
+    ns.SetRoundedRectBarHeight(inputShell, 10)
+    ns.SetRoundedRectBorderBgAlpha(inputShell, 1)
+    self:SetCalculatorRoundedFill(inputShell, 0.105, 0.105, 0.118, 1, 0.26, 0.26, 0.28, 0.90)
+
+    local clearInput = CreateFrame("Button", nil, inputShell)
+    frame.clearInputButton = clearInput
+    clearInput:SetSize(18, 18)
+    clearInput:SetPoint("RIGHT", inputShell, "RIGHT", -9, 0)
+    local function makeClearStroke()
+        local tex = clearInput:CreateTexture(nil, "OVERLAY")
+        tex:SetTexture("Interface\\Buttons\\WHITE8x8")
+        tex:SetSize(12, 1.4)
+        tex:SetPoint("CENTER")
+        return tex
+    end
+    local clearStroke1 = makeClearStroke(); clearStroke1:SetRotation(math.pi / 4)
+    local clearStroke2 = makeClearStroke(); clearStroke2:SetRotation(-math.pi / 4)
+    local function setClearColor(r, g, b)
+        clearStroke1:SetVertexColor(r, g, b, 1)
+        clearStroke2:SetVertexColor(r, g, b, 1)
+    end
+    setClearColor(0.58, 0.58, 0.60)
+    clearInput:SetScript("OnEnter", function() setClearColor(1, 0.82, 0.36) end)
+    clearInput:SetScript("OnLeave", function() setClearColor(0.58, 0.58, 0.60) end)
+    clearInput:Hide()
+
+    local editBox = CreateFrame("EditBox", nil, inputShell)
+    UI._calculator.popupEditBox = editBox
+    editBox:SetPoint("LEFT", inputShell, "LEFT", 12, 0)
+    editBox:SetPoint("RIGHT", clearInput, "LEFT", -6, 0)
+    editBox:SetHeight(30)
+    editBox:SetAutoFocus(false)
+    editBox:SetFontObject(GameFontHighlightLarge)
+    editBox:SetTextColor(0.96, 0.96, 0.96, 1)
+    editBox:SetJustifyH("LEFT")
+    editBox:SetScript("OnTextChanged", function(self)
+        local raw = self:GetText() or ""
+        if raw:match("%s*=$") then
+            UI:QueueCalculatorPopupEqualsSubmit(self)
+            return
+        end
+        if not UI._calculator.popupSubmitting then
+            UI._calculator.popupSubmitted = nil
+            UI._calculator.popupSubmittedText = nil
+            UI._calculator.popupData = nil
+        end
+        UI:RefreshCalculatorPopup()
+    end)
+    editBox:SetScript("OnEscapePressed", function()
+        frame:Hide()
+    end)
+    editBox:SetScript("OnEnterPressed", function()
+        UI:UseCalculatorPopupResult()
+    end)
+    editBox:SetScript("OnKeyDown", function(self, key)
+        if UI:HandleCalculatorCopyConfirmKey(key) then
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            return
+        end
+        if key == "ESCAPE" then
+            frame:Hide()
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            return
+        end
+        if UI:IsCalculatorPopupSubmitKey(key) then
+            UI:UseCalculatorPopupResult()
+            if key ~= "ENTER" then
+                UI:SwallowCalculatorPopupChar(self)
+            else
+                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            end
+            return
+        end
+        Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+    end)
+    clearInput:SetScript("OnClick", function()
+        UI._calculator.popupSubmitted = nil
+        UI._calculator.popupSubmittedText = nil
+        UI._calculator.popupData = nil
+        editBox:SetText("")
+        editBox:SetFocus()
+        UI:RefreshCalculatorPopup()
+    end)
+
+    local resultCard = CreateFrame("Button", nil, frame)
+    frame.resultCard = resultCard
+    resultCard:SetPoint("TOPLEFT", inputShell, "BOTTOMLEFT", 0, -8)
+    resultCard:SetPoint("TOPRIGHT", inputShell, "BOTTOMRIGHT", 0, -8)
+    resultCard:SetHeight(58)
+    resultCard:RegisterForClicks("LeftButtonUp")
+    ns.CreateRoundedRectBorder(resultCard)
+    ns.SetRoundedRectBarHeight(resultCard, 10)
+    ns.SetRoundedRectBorderBgAlpha(resultCard, 1)
+    self:SetCalculatorRoundedFill(resultCard, 0.13, 0.13, 0.145, 0.96, 0.28, 0.28, 0.30, 0.75)
+
+    local expressionText = resultCard:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    frame.expressionText = expressionText
+    expressionText:SetPoint("TOPLEFT", resultCard, "TOPLEFT", 12, -8)
+    expressionText:SetPoint("RIGHT", resultCard, "RIGHT", -12, 0)
+    expressionText:SetJustifyH("LEFT")
+    expressionText:SetTextColor(0.66, 0.66, 0.68, 1)
+
+    local resultText = resultCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
+    frame.resultText = resultText
+    resultText:SetPoint("BOTTOMRIGHT", resultCard, "BOTTOMRIGHT", -12, 10)
+    resultText:SetJustifyH("RIGHT")
+    resultText:SetText("-")
+
+    local hintText = resultCard:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    frame.hintText = hintText
+    hintText:SetPoint("BOTTOMLEFT", resultCard, "BOTTOMLEFT", 12, 10)
+    hintText:SetPoint("RIGHT", resultText, "LEFT", -8, 0)
+    hintText:SetJustifyH("LEFT")
+    hintText:SetTextColor(0.54, 0.54, 0.56, 1)
+    hintText:Hide()
+
+    resultCard:SetScript("OnEnter", function(self)
+        if UI._calculator.popupData then
+            UI:SetCalculatorRoundedFill(self, 0.22, 0.18, 0.11, 1, 0.95, 0.72, 0.28, 1)
+        end
+    end)
+    resultCard:SetScript("OnLeave", function(self)
+        UI:RefreshCalculatorPopup()
+    end)
+    resultCard:SetScript("OnClick", function()
+        UI:ArmCalculatorPopupResult()
+    end)
+
+    local function makeButton(label, insertText)
+        local b = CreateFrame("Button", nil, frame)
+        b:SetSize(48, 24)
+        UI:StyleCalculatorButton(b, 24)
+        b.text = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        b.text:SetPoint("CENTER")
+        b.text:SetText(label)
+        b.text:SetTextColor(0.95, 0.95, 0.95, 1)
+        b:HookScript("OnClick", function()
+            if label == "C" then
+                editBox:SetText("")
+                editBox:SetFocus()
+            elseif label == "Back" then
+                UI:BackspaceCalculatorPopup()
+            elseif label == "=" then
+                UI:UseCalculatorPopupResult()
+            elseif insertText then
+                UI:InsertCalculatorPopupText(insertText)
+            else
+                UI:InsertCalculatorPopupText(label)
+            end
+        end)
+        return b
+    end
+
+    local rows = {
+        { { "sin", "sin(" }, { "cos", "cos(" }, { "tan", "tan(" }, { "(", "(" }, { ")", ")" } },
+        { { "7" }, { "8" }, { "9" }, { "/", "/" }, { "C" } },
+        { { "4" }, { "5" }, { "6" }, { "*", "*" }, { "Back" } },
+        { { "1" }, { "2" }, { "3" }, { "-", "-" }, { "!" } },
+        { { "0" }, { "." }, { "=", nil }, { "+", "+" }, { "^", "^" } },
+    }
+    local gridTop = -154
+    for row = 1, #rows do
+        for col = 1, #rows[row] do
+            local spec = rows[row][col]
+            local b = makeButton(spec[1], spec[2])
+            b:SetPoint("TOPLEFT", frame, "TOPLEFT", 14 + (col - 1) * 52, gridTop - (row - 1) * 28)
+        end
+    end
+
+    frame:SetScript("OnShow", function(self)
+        self:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    end)
+    frame:SetScript("OnHide", function(self)
+        self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+        if UI._calculator.activeSource == "calculator" then
+            UI:ClearCalculatorCopyHighlight()
+            UI:ReleaseCalculatorCopyBox()
+        end
+    end)
+    frame:SetScript("OnEvent", function(self, event)
+        if event ~= "GLOBAL_MOUSE_DOWN" then return end
+        if self:IsMouseOver() then return end
+        if searchFrame and searchFrame:IsMouseOver() then return end
+        if resultsFrame and resultsFrame:IsMouseOver() then return end
+        self:Hide()
+    end)
+    frame:Hide()
+    self:RefreshCalculatorPopup()
+    return frame
+end
+
+function UI:CloseSearchForCalculator()
+    if searchFrame and searchFrame.editBox then
+        local editBox = searchFrame.editBox
+        if editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
+        editBox:SetText("")
+        editBox:ClearFocus()
+        if editBox.placeholder then editBox.placeholder:Show() end
+    end
+    self:ClearQuickFilter(false)
+    self:HideQuickFilterSuggestions()
+    if searchFrame and searchFrame:IsShown() then
+        self:Hide()
+    else
+        self:HideResults()
+    end
+end
+
+function UI:OpenCalculator(expression, deferFocus)
+    self:CloseSearchForCalculator()
+
+    local frame = self:EnsureCalculatorFrame()
+    local editBox = UI._calculator.popupEditBox
+    UI._calculator.popupSubmitted = nil
+    UI._calculator.popupSubmittedText = nil
+    UI._calculator.popupData = nil
+    if editBox then
+        editBox:SetText("")
+        editBox:SetCursorPosition(0)
+    end
+    frame:ClearAllPoints()
+    frame:SetPoint("CENTER")
+    frame:Show()
+    frame:Raise()
+    if editBox and not deferFocus then
+        editBox:SetFocus()
+    elseif editBox and C_Timer and C_Timer.After then
+        C_Timer.After(0, function()
+            if frame and frame:IsShown() and editBox:IsVisible() then
+                editBox:SetFocus()
+                editBox:SetCursorPosition(#(editBox:GetText() or ""))
+            end
+        end)
+    end
+    self:RefreshCalculatorPopup()
+    return true
+end
+
+function UI:IsCalculatorOpenShortcut(key)
+    if key ~= "C" and key ~= "c" then return false end
+    if not IsAltKeyDown or not IsAltKeyDown() then return false end
+    if (IsControlKeyDown and IsControlKeyDown())
+       or (IsShiftKeyDown and IsShiftKeyDown()) then
+        return false
+    end
+    return true
+end
+
+function UI:HandleCalculatorOpenShortcut(editBox, key)
+    if not self:IsCalculatorOpenShortcut(key) then return false end
+    local expression = editBox and editBox.GetText and editBox:GetText()
+    self:OpenCalculator(expression, true)
+    return true
+end
+
 function UI:EnsureCalculatorCopyBox()
     local box = UI._calculator.copyBox
     if box then return box end
@@ -1291,6 +1858,7 @@ function UI:ConfirmCalculatorCopied()
     local data = UI._calculator.activeData
     local part = UI._calculator.activePart
     if not data or (part ~= "expression" and part ~= "result") then return false end
+    local popupCopy = UI._calculator.activeSource == "calculator"
     self:RearmActiveCalculatorCopy("confirm")
 
     UI._calculator.copiedData = data
@@ -1318,11 +1886,19 @@ function UI:ConfirmCalculatorCopied()
     if C_Timer and C_Timer.After then
         C_Timer.After(0, function()
             UI:ReleaseCalculatorCopyBox("confirm")
-            UI:RestoreSearchFocusAfterCalculatorCopy()
+            if popupCopy then
+                UI:RestoreCalculatorPopupFocus()
+            else
+                UI:RestoreSearchFocusAfterCalculatorCopy()
+            end
         end)
     else
         self:ReleaseCalculatorCopyBox("confirm")
-        self:RestoreSearchFocusAfterCalculatorCopy()
+        if popupCopy then
+            self:RestoreCalculatorPopupFocus()
+        else
+            self:RestoreSearchFocusAfterCalculatorCopy()
+        end
     end
     return true
 end
@@ -1625,6 +2201,7 @@ end
 local function GetActionHint(data)
     if not data then return nil end
     if data.calculatorResult then return "Select result for Ctrl+C" end
+    if data.quickFilterDef then return "Select to filter results" end
     if data.titleID then return "Select to apply as your title" end
     if data.mountID then return "Select to summon mount" end
     if data.petID or data.speciesID then return "Select to summon pet | Ctrl+click to show in journal" end
@@ -1919,6 +2496,10 @@ local function ApplyResultRowFonts(row, theme)
     ScaleFont(row.calcResultText, "GameFontHighlightLarge")
     ScaleFont(row.calcExpressionHint, "GameFontDisableSmall")
     ScaleFont(row.calcResultHint, "GameFontDisableSmall")
+    ScaleFont(row.calcActionTitle, "GameFontHighlightSmall")
+    ScaleFont(row.calcActionDesc, "GameFontDisableSmall")
+    ScaleFont(row.calcActionKey, "GameFontDisableSmall")
+    ScaleFont(row.calcActionAfter, "GameFontDisableSmall")
     ScaleFont(row.repBarText, "GameFontNormalSmall")
     ScaleFont(row.settingSliderValue, "GameFontNormalSmall")
     ScaleFont(row.shortcutNumberText, "GameFontDisableSmall")
@@ -2149,6 +2730,7 @@ function UI:CreateSearchFrame()
     ns.CreateRoundedRectBorder(containerFrame)
     ns.CreateRoundedRectDivider(containerFrame)
     ns.SetRoundedRectBarHeight(containerFrame, searchFrame:GetHeight())
+    self:ApplySearchWindowFill(containerFrame)
 
     -- Sibling-of-searchFrame so the container's textures sit BEHIND
     -- the bar's content (children would render in front). The trade-
@@ -2169,7 +2751,7 @@ function UI:CreateSearchFrame()
     -- doesn't crash, but the textures stay invisible.
     ns.SetSearchBorderShown(searchFrame, false)
     ns.SetRoundedRectBorderShown(containerFrame, true)
-        ns.SetRoundedRectBorderBgAlpha(containerFrame, EasyFind.db.searchBarOpacity or ns.DEFAULT_OPACITY)
+    ns.SetRoundedRectBorderBgAlpha(containerFrame, ns.SEARCH_WINDOW_ALPHA or 0.95)
 
     -- Static magnifying-glass icon (non-interactive, flush left)
     local contentSz = barH * ns.SEARCHBAR_FILL
@@ -2189,6 +2771,7 @@ function UI:CreateSearchFrame()
     iconHolder.icon = searchIcon
     searchFrame.searchIcon = searchIcon
     searchFrame.modeBtn = iconHolder
+    searchFrame.iconHolder = iconHolder
 
     -- Editbox
     local editBox = CreateFrame("EditBox", "EasyFindSearchBox", searchFrame)
@@ -2393,6 +2976,7 @@ function UI:CreateSearchFrame()
         if self.IsAutocompleteBackspaceStrip and self:IsAutocompleteBackspaceStrip() then return end
         historyIndex = 0
         historyDraft = ""
+        if UI:HandleQuickFilterTextChanged(self) then return end
         -- Search query is the text up to the cursor -- anything past
         -- the cursor is unaccepted autocomplete suffix and must not
         -- feed into search results. Programmatic autocomplete SetText
@@ -2521,6 +3105,11 @@ function UI:CreateSearchFrame()
             for i = 1, MAX_BUTTON_POOL do
                 local row = resultButtons[i]
                 if not row or not row:IsShown() then break end
+                local quickDef = row.data and row.data.quickFilterDef
+                local quickToken = quickDef and UI:GetQuickFilterCompletionToken(quickDef, typed)
+                if quickToken then
+                    return quickToken
+                end
                 local rawName = row.data and row.data.name
                 local nm = StripMarkup(rawName)
                 if nm and #nm >= #typed then
@@ -2532,8 +3121,32 @@ function UI:CreateSearchFrame()
             end
             return nil
         end,
+        backspaceAutocompleteTarget = function(_, typed)
+            if not UI._quickFilterSuggestionsActive or not typed then return nil end
+            if not typed:match("^%s*@[%w_%-:]*$") then return nil end
+            local text = typed:sub(1, -2)
+            return text, #text
+        end,
+        onBackspaceAutocompleteRestored = function(box, text)
+            if box and box.placeholder then
+                box.placeholder:SetShown((box:GetText() or "") == "")
+            end
+            if box and box.ResetPendingSearch then
+                box:ResetPendingSearch()
+            end
+            if box and UI:UpdateQuickFilterSuggestions(box) then
+                return
+            end
+            UI:OnSearchTextChanged(text or "", true)
+        end,
         onAccepted = function(text)
-            if text and text ~= "" then UI:OnSearchTextChanged(text, true) end
+            if text and text ~= "" then
+                local box = searchFrame and searchFrame.editBox
+                if box and text:match("^%s*@[%w_%-:]+$") and UI:UpdateQuickFilterSuggestions(box) then
+                    return
+                end
+                UI:OnSearchTextChanged(text, true)
+            end
         end,
     })
 
@@ -2660,6 +3273,8 @@ function UI:CreateSearchFrame()
     editBox:ClearAllPoints()
     editBox:SetPoint("LEFT", iconHolder, "RIGHT", 0, 0)
     editBox:SetPoint("RIGHT", filterBtn, "LEFT", -4, 0)
+    self:CreateQuickFilterPill(searchFrame, editBox, iconHolder, filterBtn)
+    self:UpdateQuickFilterPill()
 
     -- Click anywhere on the search frame to focus the editbox (enables blinking cursor).
     -- Use HookScript to preserve SmartShow OnLeave handlers;
@@ -2699,6 +3314,14 @@ function UI:CreateSearchFrame()
     -- can't dismiss with the same key they used to open.
     editBox:SetScript("OnKeyDown", function(self, key)
         UI:HandleCalculatorPasteIntoSearch(self, key)
+        if UI:HandleCalculatorOpenShortcut(self, key) then
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            return
+        end
+        if UI:HandleQuickFilterKeyDown(self, key) then
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            return
+        end
 
         local shortcutIndex = GetResultShortcutIndex(key)
         if shortcutIndex then
@@ -2918,6 +3541,7 @@ function UI:CreateSearchFrame()
         if key == "LSHIFT" or key == "RSHIFT" or key == "LCTRL" or key == "RCTRL"
            or key == "LALT" or key == "RALT" then return end
 
+        if UI:HandleCalculatorOpenShortcut(searchFrame and searchFrame.editBox, key) then return end
         if UI:HandleCalculatorCopyConfirmKey(key) then return end
         if UI:HandleCalculatorCopyKey(key) then return end
 
@@ -3020,6 +3644,9 @@ function UI:CreateSearchFrame()
             UI:JumpToEnd()
         elseif key == "TAB" then
             -- Ring order: editBox → [clearBtn] → filterBtn → wrap back to editBox
+            if UI._quickFilterSuggestionsActive and UI:AcceptQuickFilterSuggestion() then
+                return
+            end
             CycleFocus(IsShiftKeyDown())
         elseif key == "ENTER" then
             if toolbarFocus > 0 then
@@ -3065,6 +3692,11 @@ function UI:CreateSearchFrame()
     end
 
     navFrame:SetScript("OnKeyDown", function(self, key)
+        if UI:HandleCalculatorOpenShortcut(searchFrame and searchFrame.editBox, key) then
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            return
+        end
+
         if UI:IsCalculatorCopyConfirmKey(key) then
             UI:RearmActiveCalculatorCopy("confirm")
             if C_Timer and C_Timer.After then
@@ -3326,6 +3958,7 @@ function UI:CreateSearchFrame()
     end)
     searchFrame:HookScript("OnHide", function(self)
         self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+        UI:HideQuickFilterSuggestions()
     end)
     searchFrame:HookScript("OnEvent", function(self, event)
         if event ~= "GLOBAL_MOUSE_DOWN" then return end
@@ -3528,6 +4161,559 @@ local function GetUIBucket(d)
         return nil
     end
     return UI_BUCKET_BY_CATEGORY[d.category]
+end
+
+UI.quickFilterOptions = {
+    { key = "abilities",      canonical = "abilities",       label = "Abilities",       categories = { "Ability" }, aliases = { "ab", "ability", "abilities", "spell", "spells" } },
+    { key = "achievements",   canonical = "achievements",    label = "Achievements",    categories = { "Achievement", "Achievements", "Achievement Category", "Guild Achievements" }, aliases = { "a", "ach", "achievement", "achievements" } },
+    { key = "statistics",     canonical = "statistics",      label = "Statistics",      categories = { "Statistic", "Statistics" }, aliases = { "s", "stat", "stats", "statistic", "statistics" } },
+    { key = "bags",           canonical = "bags",            label = "Bags",            categories = { "Bag" }, aliases = { "b", "bag", "bags" } },
+    { key = "bosses",         canonical = "bosses",          label = "Bosses",          categories = { "Boss" }, aliases = { "bo", "boss", "bosses", "encounter", "encounters" } },
+    { key = "macros",         canonical = "macros",          label = "Macros",          categories = { "Macro" }, aliases = { "ma", "macro", "macros" } },
+    { key = "collections",    canonical = "collections",     label = "Collections",     categories = { "Mount", "Toy", "Pet", "Outfit", "Heirloom", "Appearance Set" }, aliases = { "co", "col", "collection", "collections" } },
+    { key = "appearanceSets", canonical = "appearance-sets", label = "Appearance Sets", categories = { "Appearance Set" }, aliases = { "as", "appearance", "appearances", "appearance-set", "appearance-sets", "appset", "appsets", "transmog" } },
+    { key = "heirlooms",      canonical = "heirlooms",       label = "Heirlooms",       categories = { "Heirloom" }, aliases = { "h", "heirloom", "heirlooms" } },
+    { key = "mounts",         canonical = "mounts",          label = "Mounts",          categories = { "Mount" }, aliases = { "m", "mount", "mounts" } },
+    { key = "outfits",        canonical = "outfits",         label = "Outfits",         categories = { "Outfit" }, aliases = { "of", "outfit", "outfits" } },
+    { key = "pets",           canonical = "pets",            label = "Pets",            categories = { "Pet" }, aliases = { "p", "pet", "pets" } },
+    { key = "toys",           canonical = "toys",            label = "Toys",            categories = { "Toy" }, aliases = { "to", "toy", "toys" } },
+    { key = "gearSets",       canonical = "gear-sets",       label = "Gear Sets",       categories = { "Gear Set" }, aliases = { "gs", "gearset", "gearsets", "gear-set", "gear-sets", "equipment-set", "equipment-sets" } },
+    { key = "currencies",     canonical = "currencies",      label = "Currencies",      categories = { "Currency" }, aliases = { "c", "cur", "currency", "currencies" } },
+    { key = "loot",           canonical = "gear",            label = "Gear",            categories = { "Loot" }, aliases = { "g", "gear", "loot", "item", "items" } },
+    { key = "map",            canonical = "map",             label = "Map Search",      aliases = { "map", "maps", "zone", "zones", "location", "locations" } },
+    { key = "options",        canonical = "options",         label = "Options",         categories = { "Game Settings", "AddOn Settings" }, aliases = { "op", "opt", "option", "options", "setting", "settings" } },
+    { key = "gameOptions",    canonical = "game-options",    label = "Game Options",    categories = { "Game Settings" }, aliases = { "go", "game", "game-option", "game-options", "game-setting", "game-settings" } },
+    { key = "addonOptions",   canonical = "addon-options",   label = "AddOn Options",   categories = { "AddOn Settings" }, aliases = { "ao", "addon", "addons", "addon-option", "addon-options", "addon-setting", "addon-settings" } },
+    { key = "reputations",    canonical = "reputations",     label = "Reputations",     categories = { "Reputation" }, aliases = { "r", "rep", "reps", "reputation", "reputations" } },
+    { key = "talents",        canonical = "talents",         label = "Talents",         categories = { "Talent" }, aliases = { "ta", "tal", "talent", "talents" } },
+    { key = "titles",         canonical = "titles",          label = "Titles",          categories = { "Title" }, aliases = { "ti", "title", "titles" } },
+}
+
+UI.quickFilterByAlias = {}
+
+for i = 1, #UI.quickFilterOptions do
+    local def = UI.quickFilterOptions[i]
+    def.order = i
+    def.token = "@" .. def.canonical
+    def.categoryLookup = {}
+    if def.categories then
+        for ci = 1, #def.categories do
+            def.categoryLookup[def.categories[ci]] = true
+        end
+    end
+    def.bucketLookup = { [def.key] = true }
+    if def.key == "collections" then
+        def.bucketLookup.mounts = true
+        def.bucketLookup.toys = true
+        def.bucketLookup.pets = true
+        def.bucketLookup.outfits = true
+        def.bucketLookup.heirlooms = true
+        def.bucketLookup.appearanceSets = true
+    elseif def.key == "options" then
+        def.bucketLookup.gameOptions = true
+        def.bucketLookup.addonOptions = true
+    end
+    UI.quickFilterByAlias[slower(def.canonical)] = def
+    if def.aliases then
+        for ai = 1, #def.aliases do
+            UI.quickFilterByAlias[slower(def.aliases[ai])] = def
+        end
+    end
+end
+
+UI.quickFilterSuggestionBuf = {}
+UI.quickFilterSuggestionEntries = {}
+UI.quickFilterSuggestionData = {}
+
+function UI:QuickFilterMatchRank(def, token)
+    token = slower(token or "")
+    if token == "" then
+        if def.nestedParent then return nil end
+        return 100 + (def.order or 0)
+    end
+    if slower(def.canonical) == token then return 0 end
+    if def.aliases then
+        for i = 1, #def.aliases do
+            if slower(def.aliases[i]) == token then return 1 end
+        end
+    end
+    if sfind(slower(def.canonical), token, 1, true) == 1 then return 10 + (def.order or 0) end
+    if def.aliases then
+        for i = 1, #def.aliases do
+            if sfind(slower(def.aliases[i]), token, 1, true) == 1 then return 20 + (def.order or 0) end
+        end
+    end
+    return nil
+end
+
+function UI:ResolveQuickFilterToken(token)
+    if not token or token == "" then return nil end
+    token = slower(token:gsub("^@", ""):gsub("_", "-"))
+    local direct = UI.quickFilterByAlias[token]
+    if direct then return direct end
+
+    local found, matches = nil, 0
+    for i = 1, #UI.quickFilterOptions do
+        local def = UI.quickFilterOptions[i]
+        local matched = sfind(slower(def.canonical), token, 1, true) == 1
+        if not matched and def.aliases then
+            for ai = 1, #def.aliases do
+                if sfind(slower(def.aliases[ai]), token, 1, true) == 1 then
+                    matched = true
+                    break
+                end
+            end
+        end
+        if matched then
+            found = def
+            matches = matches + 1
+            if matches > 1 then return nil end
+        end
+    end
+    return found
+end
+
+function UI.QuickFilterSuggestionLess(a, b)
+    if a.rank == b.rank then
+        return (a.def.order or 0) < (b.def.order or 0)
+    end
+    return a.rank < b.rank
+end
+
+function UI:GetQuickFilter()
+    return self._quickFilter
+end
+
+function UI:GetQuickFilterCompletionToken(def, typed)
+    if not def then return nil end
+    typed = slower(typed or "")
+    local tokens = def.completionTokens
+    if tokens then
+        for i = 1, #tokens do
+            local token = tokens[i]
+            if token and #token >= #typed
+               and slower(token:sub(1, #typed)) == typed
+               and slower(token) ~= typed then
+                return token
+            end
+        end
+    end
+    local token = def.token
+    if token and #token >= #typed
+       and slower(token:sub(1, #typed)) == typed
+       and slower(token) ~= typed then
+        return token
+    end
+    return nil
+end
+
+function UI:GetQuickFilterDisplayToken(def)
+    if not def then return "" end
+    if def.displayToken then return def.displayToken end
+
+    local alias = def.canonical
+    local aliasLen = #(alias or "")
+    if def.aliases then
+        for i = 1, #def.aliases do
+            local candidate = def.aliases[i]
+            if candidate and #candidate < aliasLen then
+                alias = candidate
+                aliasLen = #candidate
+            end
+        end
+    end
+    def.displayToken = "@" .. (alias or def.canonical)
+    return def.displayToken
+end
+
+function UI:GetQuickFilterAliasText(def)
+    if not def then return "Quick Filter" end
+    if def.aliasText then return def.aliasText end
+    def.aliasText = (def.label or "Quick Filter")
+    return def.aliasText
+end
+
+function UI:QuickFilterAllowsData(data, quickFilter)
+    local def = quickFilter or self._quickFilter
+    if not def then return true end
+    if not data or data.calculatorResult then return false end
+
+    if data.mapSearchResult then return def.key == "map" end
+    if def.key == "map" then return false end
+
+    if def.key == "mounts" then return data.mountID and true or false end
+    if def.key == "toys" then return data.toyItemID and true or false end
+    if def.key == "pets" then return data.petID and true or false end
+    if def.key == "outfits" then return data.outfitID and true or false end
+    if def.key == "heirlooms" then return data.heirloomItemID and true or false end
+    if def.key == "appearanceSets" then return data.transmogSetID and true or false end
+    if def.key == "collections" then
+        return (data.mountID or data.toyItemID or data.petID or data.outfitID
+            or data.heirloomItemID or data.transmogSetID) and true or false
+    end
+    if def.key == "loot" then
+        return (data.itemID and data.category == "Loot") and true or false
+    end
+
+    if data.category and def.categoryLookup and def.categoryLookup[data.category] then
+        return true
+    end
+    local bucket = GetUIBucket(data)
+    return bucket and def.bucketLookup and def.bucketLookup[bucket] or false
+end
+
+function UI:SetQuickFilterPillFill(frame, r, g, b, a)
+    if not (frame and frame.combinedBorder and frame.combinedBorder.fill) then return end
+    for _, tex in pairs(frame.combinedBorder.fill) do
+        tex:SetVertexColor(r, g, b, 1)
+        tex:SetAlpha(a or 1)
+        if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(false) end
+        if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
+    end
+end
+
+function UI:HideQuickFilterPillBorder(frame)
+    if not (frame and frame.combinedBorder and frame.combinedBorder.border) then return end
+    for _, tex in pairs(frame.combinedBorder.border) do tex:Hide() end
+end
+
+function UI:CreateQuickFilterPill(frame, editBox, iconHolder, filterBtn)
+    if not frame or frame.quickFilterPill then return end
+    local pill = CreateFrame("Button", "EasyFindQuickFilterPill", frame)
+    pill:SetFrameLevel(frame:GetFrameLevel() + 35)
+    pill:SetHeight(mmax(18, (editBox and editBox:GetHeight() or 20) - 3))
+    pill:SetPoint("LEFT", iconHolder, "RIGHT", 2, 0)
+    pill:EnableMouse(true)
+    ns.CreateRoundedRectBorder(pill)
+    ns.SetRoundedRectBarHeight(pill, 10)
+    ns.SetRoundedRectBorderBgAlpha(pill, 1)
+    self:HideQuickFilterPillBorder(pill)
+    self:SetQuickFilterPillFill(pill, 0.095, 0.095, 0.108, 1)
+
+    local text = pill:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    text:SetPoint("LEFT", 8, 0)
+    text:SetPoint("RIGHT", -8, 0)
+    text:SetJustifyH("CENTER")
+    text:SetWordWrap(false)
+    text:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1)
+    pill.text = text
+
+    pill:SetScript("OnClick", function()
+        UI:ClearQuickFilter(true)
+        if editBox then
+            editBox.blockFocus = nil
+            editBox:SetFocus()
+        end
+    end)
+    pill:SetScript("OnEnter", function(self)
+        UI:SetQuickFilterPillFill(self, 0.155, 0.155, 0.172, 1)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+        GameTooltip:SetText("Quick Filter")
+        GameTooltip:AddLine("Click or press Backspace on an empty search to clear.", 1, 1, 1, true)
+        GameTooltip:Show()
+    end)
+    pill:SetScript("OnLeave", function(self)
+        UI:SetQuickFilterPillFill(self, 0.095, 0.095, 0.108, 1)
+        GameTooltip_Hide()
+    end)
+    pill:Hide()
+
+    frame.quickFilterPill = pill
+    frame.quickFilterEditBox = editBox
+    frame.quickFilterIconHolder = iconHolder
+    frame.quickFilterFilterBtn = filterBtn
+end
+
+function UI:UpdateQuickFilterPill()
+    local frame = searchFrame
+    if not frame or not frame.quickFilterEditBox then return end
+    local editBox = frame.quickFilterEditBox
+    local iconHolder = frame.quickFilterIconHolder
+    local filterBtn = frame.quickFilterFilterBtn
+    local pill = frame.quickFilterPill
+    local active = self._quickFilter
+
+    editBox:ClearAllPoints()
+    if active and pill then
+        pill.text:SetText(active.token)
+        local w = (pill.text:GetStringWidth() or 0) + 18
+        pill:SetWidth(mmax(52, w))
+        pill:Show()
+        editBox:SetPoint("LEFT", pill, "RIGHT", 5, 0)
+    else
+        if pill then pill:Hide() end
+        editBox:SetPoint("LEFT", iconHolder, "RIGHT", 0, 0)
+    end
+    if filterBtn then
+        editBox:SetPoint("RIGHT", filterBtn, "LEFT", -4, 0)
+    else
+        editBox:SetPoint("RIGHT", frame, "RIGHT", -8, 0)
+    end
+end
+
+function UI:HideQuickFilterSuggestions()
+    self._quickFilterSuggestionsActive = nil
+    self._quickFilterFirstSuggestion = nil
+end
+
+function UI:GetQuickFilterSuggestionEntries(token)
+    local suggestions = self.quickFilterSuggestionBuf
+    wipe(suggestions)
+    local n = 0
+    token = (token or ""):gsub("_", "-")
+    for i = 1, #self.quickFilterOptions do
+        local def = self.quickFilterOptions[i]
+        local rank = self:QuickFilterMatchRank(def, token)
+        if rank then
+            n = n + 1
+            local item = suggestions[n] or {}
+            item.def = def
+            item.rank = rank
+            suggestions[n] = item
+        end
+    end
+    for i = n + 1, #suggestions do suggestions[i] = nil end
+    if n == 0 then return nil end
+    tsort(suggestions, UI.QuickFilterSuggestionLess)
+
+    local entries = self.quickFilterSuggestionEntries
+    local dataPool = self.quickFilterSuggestionData
+    for i = 1, n do
+        local def = suggestions[i].def
+        local data = dataPool[i]
+        if not data then
+            data = {}
+            dataPool[i] = data
+        end
+        wipe(data)
+        data.name = self:GetQuickFilterDisplayToken(def)
+        data.nameLower = slower(data.name)
+        data.category = "Quick Filter"
+        data.noPin = true
+        data.quickFilterDef = def
+        data.quickFilterAliasText = self:GetQuickFilterAliasText(def)
+
+        local entry = entries[i]
+        if not entry then
+            entry = {}
+            entries[i] = entry
+        end
+        entry.name = data.name
+        entry.depth = 0
+        entry.isPathNode = false
+        entry.isMatch = true
+        entry.isFlat = true
+        entry.flatCatKey = nil
+        entry.isPinned = false
+        entry.data = data
+    end
+    for i = n + 1, #entries do entries[i] = nil end
+    for i = n + 1, #dataPool do dataPool[i] = nil end
+    return entries, suggestions[1].def
+end
+
+function UI:UpdateQuickFilterSuggestions(editBox)
+    if self._quickFilter then
+        self:HideQuickFilterSuggestions()
+        return false
+    end
+    editBox = editBox or (searchFrame and searchFrame.editBox)
+    if not editBox then return false end
+
+    local cursor = editBox:GetCursorPosition() or #(editBox:GetText() or "")
+    local typed = (editBox:GetText() or ""):sub(1, cursor)
+    local token = typed:match("^%s*@([%w_%-:]*)$")
+    if not token then
+        self:HideQuickFilterSuggestions()
+        return false
+    end
+
+    local entries, firstDef = self:GetQuickFilterSuggestionEntries(token)
+    self._quickFilterSuggestionsActive = true
+    self._quickFilterFirstSuggestion = firstDef
+    if entries then
+        self:ShowHierarchicalResults(entries)
+    else
+        self:HideResults()
+    end
+    return true
+end
+
+function UI:GetSelectedQuickFilterSuggestion()
+    if selectedIndex > 0 then
+        local row = resultButtons[selectedIndex]
+        local def = row and row:IsShown() and row.data and row.data.quickFilterDef
+        if def then return def end
+    end
+    return self._quickFilterFirstSuggestion
+end
+
+function UI:AcceptQuickFilterSuggestion()
+    if not self._quickFilterSuggestionsActive then return false end
+    local def = self:GetSelectedQuickFilterSuggestion()
+    if not def then return false end
+    return self:ApplyQuickFilter(def, "")
+end
+
+function UI:ApplyQuickFilter(def, remainingText)
+    if not def then return false end
+    self._quickFilter = def
+    self:HideQuickFilterSuggestions()
+    self:UpdateQuickFilterPill()
+
+    local editBox = searchFrame and searchFrame.editBox
+    remainingText = remainingText or ""
+    if editBox then
+        if editBox and editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
+        editBox:SetText(remainingText)
+        editBox:SetCursorPosition(#remainingText)
+        if editBox.placeholder then editBox.placeholder:SetShown(remainingText == "") end
+        editBox.blockFocus = nil
+        editBox:SetFocus()
+    end
+    self:OnSearchTextChanged(remainingText, true)
+    return true
+end
+
+function UI:ClearQuickFilter(refresh)
+    if not self._quickFilter then return false end
+    self._quickFilter = nil
+    self:HideQuickFilterSuggestions()
+    self:UpdateQuickFilterPill()
+    if refresh then
+        local editBox = searchFrame and searchFrame.editBox
+        self:OnSearchTextChanged(editBox and editBox:GetText() or "", true)
+    end
+    return true
+end
+
+function UI:TryAcceptQuickFilterToken(editBox, includeWhitespace)
+    if self._quickFilter or not editBox then return false end
+    local text = editBox:GetText() or ""
+    local hasAutocomplete = editBox.HasAutocomplete and editBox:HasAutocomplete()
+    local cursor = editBox:GetCursorPosition() or #text
+    local before = text:sub(1, cursor)
+    local token, after
+    if includeWhitespace then
+        token, after = before:match("^%s*@([%w_%-:]+)%s+(.*)$")
+    else
+        token = before:match("^%s*@([%w_%-:]+)$")
+    end
+    if not token then return false end
+
+    local def = self:ResolveQuickFilterToken(token)
+    if not def then return false end
+    local remaining
+    if includeWhitespace then
+        remaining = (after or "") .. text:sub(cursor + 1)
+    elseif hasAutocomplete then
+        remaining = ""
+    else
+        remaining = text:sub(cursor + 1)
+    end
+    remaining = remaining:gsub("^%s+", "")
+    return self:ApplyQuickFilter(def, remaining)
+end
+
+function UI:HandleQuickFilterTextChanged(editBox)
+    if self:TryAcceptQuickFilterToken(editBox, true) then return true end
+    if self:UpdateQuickFilterSuggestions(editBox) then
+        if editBox and editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
+        if editBox and editBox.UpdateAutocomplete then
+            if C_Timer and C_Timer.After then
+                local box = editBox
+                C_Timer.After(0, function()
+                    if box and box:IsVisible() and box:HasFocus()
+                       and UI._quickFilterSuggestionsActive
+                       and box.UpdateAutocomplete then
+                        box.UpdateAutocomplete()
+                    end
+                end)
+            else
+                editBox.UpdateAutocomplete()
+            end
+        end
+        return true
+    end
+    return false
+end
+
+function UI:HandleQuickFilterSuggestionBackspace(editBox)
+    if not (self._quickFilterSuggestionsActive and editBox) then return false end
+
+    if editBox.StripAutocomplete then
+        editBox:StripAutocomplete()
+    end
+
+    local text = editBox:GetText() or ""
+    local cursor = editBox:GetCursorPosition() or #text
+    if cursor <= 0 then return false end
+
+    local before = text:sub(1, cursor)
+    if not before:match("^%s*@[%w_%-:]*$") then return false end
+
+    local newBefore = before:sub(1, -2)
+    local newText = newBefore .. text:sub(cursor + 1)
+    local function applyBackspace()
+        if not editBox then return end
+        if editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
+        editBox:SetText(newText)
+        editBox:SetCursorPosition(#newBefore)
+        editBox:HighlightText(0, 0)
+        if editBox.placeholder then
+            editBox.placeholder:SetShown(newText == "")
+        end
+
+        if not UI:UpdateQuickFilterSuggestions(editBox) then
+            UI:OnSearchTextChanged(newText, true)
+        end
+    end
+
+    if Utils and Utils.SafeAfter then
+        Utils.SafeAfter(0, applyBackspace)
+    else
+        applyBackspace()
+    end
+    return true
+end
+
+function UI:HandleQuickFilterKeyDown(editBox, key)
+    if key == "BACKSPACE" and self._quickFilter and editBox
+       and (editBox:GetText() or "") == "" then
+        return self:ClearQuickFilter(true)
+    end
+    if key == "BACKSPACE" and self:HandleQuickFilterSuggestionBackspace(editBox) then
+        return true
+    end
+
+    if self._quickFilterSuggestionsActive and key == "TAB" then
+        if editBox and editBox.HasAutocomplete and editBox:HasAutocomplete()
+           and editBox.AcceptAutocomplete
+           and editBox:AcceptAutocomplete("tab") then
+            return self:TryAcceptQuickFilterToken(editBox, false) or true
+        end
+        return self:AcceptQuickFilterSuggestion()
+    end
+    if self._quickFilterSuggestionsActive and key == "ENTER" then
+        return self:AcceptQuickFilterSuggestion()
+    end
+    if key == "SPACE" then
+        if self:TryAcceptQuickFilterToken(editBox, false) then
+            self:SuppressQuickFilterLeakedText(" ")
+            return true
+        end
+        if self._quickFilterSuggestionsActive then
+            if self:AcceptQuickFilterSuggestion() then
+                self:SuppressQuickFilterLeakedText(" ")
+                return true
+            end
+        end
+    end
+    return false
+end
+
+function UI:QuickFilterNeedsHeavyData(def)
+    return def and (def.key == "loot" or def.key == "bosses")
 end
 
 -- Builds the Appearance Sets options popup: a class selector button +
@@ -5708,6 +6894,7 @@ local function IsShortcutEligibleRow(row)
     return row and row:IsShown() and row.data
         and not row.isPinHeader and not row.isSectionHeader
         and not row.isUnearnedCurrency
+        and not row.data.calculatorResult
 end
 
 local function ClearResultShortcutBindings()
@@ -5782,6 +6969,28 @@ function UI:UpdateVisibleResultShortcuts()
     end
 end
 
+function UI:SuppressQuickFilterLeakedText(leakedText)
+    local editBox = searchFrame and searchFrame.editBox
+    if not (editBox and C_Timer and C_Timer.After) then return end
+    leakedText = tostring(leakedText or "")
+    if leakedText == "" then return end
+
+    local function clearLeakedText()
+        if not (searchFrame and searchFrame:IsShown() and editBox:IsVisible()) then return end
+        if not self._quickFilter then return end
+        if (editBox:GetText() or "") ~= leakedText then return end
+        if editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
+        editBox:SetText("")
+        editBox:SetCursorPosition(0)
+        editBox.blockFocus = nil
+        editBox:SetFocus()
+        self:OnSearchTextChanged("", true)
+    end
+
+    C_Timer.After(0, clearLeakedText)
+    C_Timer.After(0.03, clearLeakedText)
+end
+
 function UI:ActivateVisibleResultShortcut(shortcutIndex)
     if not shortcutIndex then return nil end
     for i = 1, MAX_BUTTON_POOL do
@@ -5798,6 +7007,11 @@ function UI:ActivateVisibleResultShortcut(shortcutIndex)
             selectedIndex = i
             toggleFocused = false
             self:UpdateSelectionHighlight(true)
+            if row.data and row.data.quickFilterDef then
+                self:ApplyQuickFilter(row.data.quickFilterDef, "")
+                self:SuppressQuickFilterLeakedText(shortcutIndex)
+                return "quickFilter"
+            end
             self:ActivateResultRow(row, "key")
             return "handled"
         end
@@ -5855,6 +7069,7 @@ function UI:CreateResultsFrame()
             _G["EasyFindDiffPopup"],
             _G["EasyFindSpecPopup"],
             _G["EasyFindSpecFlyout"],
+            _G["EasyFindCalculatorFrame"],
             -- Blizzard's StaticPopup slots: clicks on our unapplied-
             -- settings popup buttons (Apply / Exit / Cancel) must not
             -- register as "outside" or they'd trigger an extra
@@ -5882,6 +7097,15 @@ function UI:CreateResultsFrame()
     -- CreateMinimalScrollBar so wheel events route through the eased path.
     local scrollFrame = CreateFrame("ScrollFrame", nil, resultsFrame)
     resultsFrame.scrollFrame = scrollFrame
+
+    local quickFilterHelp = resultsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    quickFilterHelp:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 12, -8)
+    quickFilterHelp:SetPoint("TOPRIGHT", resultsFrame, "TOPRIGHT", -12, -8)
+    quickFilterHelp:SetJustifyH("LEFT")
+    quickFilterHelp:SetTextColor(0.78, 0.78, 0.80, 1)
+    quickFilterHelp:SetText("|cffffd100Quick filters:|r @m, @s, @g. Tab/Space selects a category.")
+    quickFilterHelp:Hide()
+    resultsFrame.quickFilterHelp = quickFilterHelp
 
     local scrollChild = CreateFrame("Frame", nil, scrollFrame)
     scrollFrame:SetScrollChild(scrollChild)
@@ -6144,6 +7368,7 @@ local SCRATCH = {
     aliasSeen = {},
     calculatorResults = {},
     filteredResults = {},
+    quickFilterResults = {},
     skipCategories = {},
 }
 
@@ -6579,10 +7804,10 @@ function UI:CreateResultButton(index)
     ns.CreateRoundedRectBorder(calcCard)
     ns.SetRoundedRectBarHeight(calcCard, 12)
     for _, t in pairs(calcCard.combinedBorder.fill) do
-        t:SetVertexColor(0.17, 0.17, 0.18, 0.96)
+        t:SetVertexColor(0.095, 0.095, 0.108, 1)
     end
     for _, t in pairs(calcCard.combinedBorder.border) do
-        t:SetVertexColor(0.30, 0.30, 0.32, 0.85)
+        t:SetVertexColor(0.34, 0.34, 0.36, 0.92)
     end
     calcCard:Hide()
     resultRow.calcCard = calcCard
@@ -6593,13 +7818,13 @@ function UI:CreateResultButton(index)
     resultRow.calcDivider = calcDivider
 
     local calcDividerTop = calcCard:CreateTexture(nil, "ARTWORK")
-    calcDividerTop:SetColorTexture(0.30, 0.30, 0.32, 0.75)
+    calcDividerTop:SetColorTexture(0.34, 0.34, 0.36, 0.86)
     calcDividerTop:SetWidth(1)
     calcDividerTop:Hide()
     resultRow.calcDividerTop = calcDividerTop
 
     local calcDividerBottom = calcCard:CreateTexture(nil, "ARTWORK")
-    calcDividerBottom:SetColorTexture(0.30, 0.30, 0.32, 0.75)
+    calcDividerBottom:SetColorTexture(0.34, 0.34, 0.36, 0.86)
     calcDividerBottom:SetWidth(1)
     calcDividerBottom:Hide()
     resultRow.calcDividerBottom = calcDividerBottom
@@ -6710,6 +7935,70 @@ function UI:CreateResultButton(index)
     end)
     calcResultButton:Hide()
     resultRow.calcResultButton = calcResultButton
+
+    local calcActionBar = CreateFrame("Button", nil, resultRow)
+    calcActionBar:RegisterForClicks("LeftButtonUp")
+    calcActionBar:SetFrameLevel(resultRow:GetFrameLevel() + 10)
+    self:StyleCalculatorButton(calcActionBar, 22)
+    calcActionBar:SetScript("OnClick", function()
+        selectedIndex = index
+        toggleFocused = false
+        UI:UpdateSelectionHighlight(true)
+        local data = resultRow.data
+        UI:OpenCalculator(data and data.calculatorExpression or nil)
+    end)
+    calcActionBar:Hide()
+    resultRow.calcActionBar = calcActionBar
+
+    local calcActionIcon = calcActionBar:CreateTexture(nil, "ARTWORK")
+    calcActionIcon:SetSize(15, 15)
+    calcActionIcon:SetPoint("LEFT", calcActionBar, "LEFT", 8, 0)
+    calcActionIcon:SetTexture(FLAT_CATEGORY_ICONS.calculator.tex)
+    calcActionIcon:SetTexCoord(0, 1, 0, 1)
+    resultRow.calcActionIcon = calcActionIcon
+
+    local calcActionTitle = calcActionBar:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    calcActionTitle:SetPoint("LEFT", calcActionIcon, "RIGHT", 7, 0)
+    calcActionTitle:SetJustifyH("LEFT")
+    calcActionTitle:SetText("Calculator")
+    calcActionTitle:SetTextColor(0.96, 0.96, 0.96, 1)
+    calcActionTitle:SetWordWrap(false)
+    if calcActionTitle.SetMaxLines then calcActionTitle:SetMaxLines(1) end
+    resultRow.calcActionTitle = calcActionTitle
+
+    local calcActionDesc = calcActionBar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    calcActionDesc:SetPoint("LEFT", calcActionTitle, "RIGHT", 5, 0)
+    calcActionDesc:SetText("")
+    calcActionDesc:SetTextColor(0.58, 0.58, 0.60, 1)
+    calcActionDesc:SetWordWrap(false)
+    if calcActionDesc.SetMaxLines then calcActionDesc:SetMaxLines(1) end
+    calcActionDesc:Hide()
+    resultRow.calcActionDesc = calcActionDesc
+
+    local calcActionAfter = calcActionBar:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    calcActionAfter:SetPoint("RIGHT", calcActionBar, "RIGHT", -10, 0)
+    calcActionAfter:SetText("to open")
+    calcActionAfter:SetTextColor(0.58, 0.58, 0.60, 1)
+    calcActionAfter:SetWordWrap(false)
+    if calcActionAfter.SetMaxLines then calcActionAfter:SetMaxLines(1) end
+    resultRow.calcActionAfter = calcActionAfter
+
+    local calcActionKeyCap = CreateFrame("Frame", nil, calcActionBar)
+    calcActionKeyCap:SetSize(38, 15)
+    calcActionKeyCap:SetPoint("RIGHT", calcActionAfter, "LEFT", -6, 0)
+    ns.CreateRoundedRectBorder(calcActionKeyCap)
+    ns.SetRoundedRectBarHeight(calcActionKeyCap, 7)
+    ns.SetRoundedRectBorderBgAlpha(calcActionKeyCap, 1)
+    self:SetCalculatorRoundedFill(calcActionKeyCap, 0.13, 0.13, 0.15, 1, 0.30, 0.30, 0.32, 0.95)
+    resultRow.calcActionKeyCap = calcActionKeyCap
+
+    local calcActionKey = calcActionKeyCap:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    calcActionKey:SetPoint("CENTER")
+    calcActionKey:SetText("Alt+C")
+    calcActionKey:SetTextColor(0.86, 0.86, 0.88, 1)
+    calcActionKey:SetWordWrap(false)
+    if calcActionKey.SetMaxLines then calcActionKey:SetMaxLines(1) end
+    resultRow.calcActionKey = calcActionKey
 
     local shortcutGroup = CreateFrame("Frame", nil, resultRow)
     shortcutGroup:Hide()
@@ -7587,7 +8876,7 @@ function UI:CreateResultButton(index)
         end
         -- Right-click: show pin/unpin popup (plus Guide row if entry has a guide path)
         if mouseButton == "RightButton" and self.data then
-            if self.data.calculatorResult then return end
+            if self.data.calculatorResult or self.data.quickFilterDef then return end
             local pinData = self.data
             local isPinned = IsUIItemPinned(pinData)
             local hasGuide = pinData.steps or pinData.transmogSetID
@@ -8183,6 +9472,7 @@ function UI:OnSearchTextChanged(text, force)
     -- Treat whitespace-only as empty (pins show on focus, not on blank spaces)
     if text then text = strtrim(text) end
     ClearResultTooltips()
+    local quickFilter = self:GetQuickFilter()
     if not text or text == "" then
         if ns.Database and ns.Database.CancelDynamicWarmup then
             ns.Database:CancelDynamicWarmup()
@@ -8198,9 +9488,12 @@ function UI:OnSearchTextChanged(text, force)
     end
 
     wipe(collapsedNodes)
-    local calculatorData = self:EvaluateCalculatorExpression(text)
-    local needsHeavy = not calculatorData and ns.Database and ns.Database.QueryNeedsHeavySearchData
-        and ns.Database:QueryNeedsHeavySearchData(text)
+    local calculatorData = (not quickFilter) and self:EvaluateCalculatorExpression(text) or nil
+    local needsHeavy = not calculatorData and (
+        (ns.Database and ns.Database.QueryNeedsHeavySearchData
+            and ns.Database:QueryNeedsHeavySearchData(text))
+        or self:QuickFilterNeedsHeavyData(quickFilter)
+    )
     if not force and not needsHeavy and ns.Database and ns.Database.CancelDynamicWarmup then
         ns.Database:CancelDynamicWarmup()
     end
@@ -8210,7 +9503,7 @@ function UI:OnSearchTextChanged(text, force)
     -- Collection items (mounts/toys/pets/outfits/appearance sets) are
     -- skipped when their own filter is off OR the parent Collections
     -- toggle is off. Loot is independent.
-    local filters = EasyFind.db.uiSearchFilters
+    local filters = quickFilter and nil or EasyFind.db.uiSearchFilters
     local collectionsOff = filters and filters.collections == false
     local optionsOff = filters and filters.options == false
     local skipCategories
@@ -8283,6 +9576,21 @@ function UI:OnSearchTextChanged(text, force)
         end
     end
 
+    if quickFilter then
+        wipe(SCRATCH.quickFilterResults)
+        local filtered = SCRATCH.quickFilterResults
+        local fi = 0
+        for ri = 1, #results do
+            local r = results[ri]
+            if r and self:QuickFilterAllowsData(r.data, quickFilter) then
+                fi = fi + 1
+                filtered[fi] = r
+            end
+        end
+        for i = fi + 1, #filtered do filtered[i] = nil end
+        results = filtered
+    end
+
     -- Bucket-aware UI filter: drop UI entries whose bucket
     -- (abilities / achievements / currencies / reputations / bags /
     -- options) is unchecked. Base UI entries have no bucket and are
@@ -8337,7 +9645,9 @@ function UI:OnSearchTextChanged(text, force)
 
     -- Map Search: search static locations and dungeon entrances, merge into results
     local mapResults
-    if not calculatorData and filters and filters.map ~= false and ns.MapSearch and ns.MapSearch.SearchForUI then
+    if not calculatorData and ns.MapSearch and ns.MapSearch.SearchForUI
+       and ((quickFilter and quickFilter.key == "map")
+            or (not quickFilter and filters and filters.map ~= false)) then
         mapResults = ns.MapSearch:SearchForUI(text)
     end
 
@@ -8370,7 +9680,9 @@ function UI:OnSearchTextChanged(text, force)
     -- ScoreName so they interleave naturally with mount / toy / setting
     -- hits ranked off the same query, instead of clumping at a fixed
     -- band.
-    if not calculatorData and text ~= "" and (not filters or filters.achievements ~= false) then
+    if not calculatorData and text ~= ""
+       and ((quickFilter and quickFilter.key == "achievements")
+            or (not quickFilter and (not filters or filters.achievements ~= false))) then
         local achHits = self:RequestAchievementSearch(text)
         if achHits and ns.Database and ns.Database.ScoreName then
             local lowerQ = slower(text)
@@ -8534,6 +9846,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         local searchW = searchFrame and searchFrame:GetWidth() or 0
         local customResultsW = EasyFind.db.uiResultsWidth or 0
         local maxResultsH = EasyFind.db.uiResultsHeight or 280
+        local quickFilterHelp = self._quickFilterSuggestionsActive and 1 or 0
         local n = #hierarchical
         local last = self._lastRenderSig
         local same = last and last.n == n
@@ -8544,6 +9857,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             and last.searchW == searchW
             and last.customResultsW == customResultsW
             and last.maxResultsH == maxResultsH
+            and last.quickFilterHelp == quickFilterHelp
             and resultsFrame:IsShown()
         if same then
             for hi = 1, n do
@@ -8571,6 +9885,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
         last.searchW = searchW
         last.customResultsW = customResultsW
         last.maxResultsH = maxResultsH
+        last.quickFilterHelp = quickFilterHelp
         for hi = 1, n do
             local e = hierarchical[hi]
             local stride = (hi - 1) * 3
@@ -8597,6 +9912,16 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     if padT < theme.resultsPadTop then padT = theme.resultsPadTop end
     local padB = mfloor((theme.resultsPadBot or 0) * fontScale + 0.5)
     if padB < theme.resultsPadBot then padB = theme.resultsPadBot end
+    local quickFilterHelpH = 0
+    if resultsFrame.quickFilterHelp then
+        if self._quickFilterSuggestionsActive then
+            quickFilterHelpH = 22
+            resultsFrame.quickFilterHelp:SetShown(true)
+        else
+            resultsFrame.quickFilterHelp:Hide()
+        end
+    end
+    padT = padT + quickFilterHelpH
 
     -- Scale row icons to match leaf font height so icon top/bottom
     -- align with text top/bottom instead of overflowing the cap line.
@@ -8682,7 +10007,8 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     end
 
     local count = mmin(visibleN, MAX_BUTTON_POOL)
-    if pinSlots < visibleN then
+    local bypassSearchRowCap = self._quickFilterSuggestionsActive
+    if not bypassSearchRowCap and pinSlots < visibleN then
         count = mmin(count, pinSlots + MAX_SEARCH_RESULT_ROWS)
     end
 
@@ -8747,6 +10073,11 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             -- the name and below the path so neither bleeds into the rep bar.
             local padL = theme.resultsPadLeft or 10
             local entryRowH = entry.isFlat and (rowH + flatExtraH) or rowH
+            if data and data.calculatorResult and not entry.isPathNode then
+                local calcRowH = mfloor(86 * fontScale + 0.5)
+                if calcRowH < 76 then calcRowH = 76 end
+                if entryRowH < calcRowH then entryRowH = calcRowH end
+            end
             local rowContentTop = yOffset
             resultRow:SetSize(resultsFrame:GetWidth() - padL * 2 - scrollInset, entryRowH)
             resultRow:ClearAllPoints()
@@ -8779,6 +10110,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             if resultRow.calcResultHint then resultRow.calcResultHint:Hide() end
             if resultRow.calcExpressionButton then resultRow.calcExpressionButton:Hide() end
             if resultRow.calcResultButton then resultRow.calcResultButton:Hide() end
+            if resultRow.calcActionBar then resultRow.calcActionBar:Hide() end
 
             resultRow.data = data
             -- Reset every icon.* tooltip-identifier the OnEnter handler
@@ -9355,10 +10687,16 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 if resultRow.flatCatIcon then resultRow.flatCatIcon:Hide() end
                 SetRowIcon(resultRow, "hidden", nil, rowIconSize)
 
-                local rightInset = showShortcutHints and 42 or 4
+                local actionH = mmax(20, mfloor(22 * fontScale + 0.5))
+                resultRow.calcActionBar:ClearAllPoints()
+                resultRow.calcActionBar:SetPoint("BOTTOMLEFT", resultRow, "BOTTOMLEFT", 4, 3)
+                resultRow.calcActionBar:SetPoint("BOTTOMRIGHT", resultRow, "BOTTOMRIGHT", -4, 3)
+                resultRow.calcActionBar:SetHeight(actionH)
+                resultRow.calcActionBar:Show()
+
                 resultRow.calcCard:ClearAllPoints()
                 resultRow.calcCard:SetPoint("TOPLEFT", resultRow, "TOPLEFT", 4, -3)
-                resultRow.calcCard:SetPoint("BOTTOMRIGHT", resultRow, "BOTTOMRIGHT", -rightInset, 3)
+                resultRow.calcCard:SetPoint("BOTTOMRIGHT", resultRow.calcActionBar, "TOPRIGHT", 0, 4)
                 resultRow.calcCard:Show()
 
                 resultRow.calcDivider:ClearAllPoints()
@@ -10351,6 +11689,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             if resultRow.calcResultHint then resultRow.calcResultHint:Hide() end
             if resultRow.calcExpressionButton then resultRow.calcExpressionButton:Hide() end
             if resultRow.calcResultButton then resultRow.calcResultButton:Hide() end
+            if resultRow.calcActionBar then resultRow.calcActionBar:Hide() end
             if resultRow.shortcutGroup then resultRow.shortcutGroup:Hide() end
             for d = 1, MAX_DEPTH do
                 resultRow.treeVert[d]:Hide()
@@ -10812,21 +12151,30 @@ function UI:ShowPinnedItems()
 
     wipe(collapsedNodes)
     local entries = pinnedOnlyEntries
-    for i, pin in ipairs(pins) do
-        local e = entries[i]
-        if not e then
-            e = {}
-            entries[i] = e
+    local quickFilter = self:GetQuickFilter()
+    local n = 0
+    for _, pin in ipairs(pins) do
+        if not quickFilter or self:QuickFilterAllowsData(pin, quickFilter) then
+            n = n + 1
+            local e = entries[n]
+            if not e then
+                e = {}
+                entries[n] = e
+            end
+            e.name = pin.name
+            e.depth = 0
+            e.isPathNode = false
+            e.isMatch = true
+            e.isPinned = true
+            e.isFlat = true
+            e.data = pin
         end
-        e.name = pin.name
-        e.depth = 0
-        e.isPathNode = false
-        e.isMatch = true
-        e.isPinned = true
-        e.isFlat = true
-        e.data = pin
     end
-    for i = #pins + 1, #entries do
+    if n == 0 then
+        self:HideResults()
+        return
+    end
+    for i = n + 1, #entries do
         entries[i] = nil
     end
     self:ShowHierarchicalResults(entries)
@@ -11002,6 +12350,9 @@ function UI:ActivateResultRow(resultRow, source)
     end
     if not resultRow.data then return false end
 
+    if resultRow.data.quickFilterDef then
+        return self:ApplyQuickFilter(resultRow.data.quickFilterDef, "")
+    end
     if ActivateSettingResult(resultRow.data) then return true end
     if resultRow.data.calculatorResult then
         self:ArmCalculatorResultFromRow(resultRow, source or "click")
@@ -12095,6 +13446,11 @@ end
 function UI:SelectResult(data, forceGuide)
     if not data then return end
     local useFast = not forceGuide
+
+    if data.quickFilterDef then
+        self:ApplyQuickFilter(data.quickFilterDef, "")
+        return
+    end
 
     if data.calculatorResult then
         self:ArmCalculatorResultForData(data)
@@ -13630,6 +14986,15 @@ end
 function UI:Show(andFocus)
     if not searchFrame then return end
     if inCombat then return end
+    local wasShown = searchFrame:IsShown()
+    if not wasShown and self._quickFilter then
+        self:ClearQuickFilter(false)
+        if searchFrame.editBox then
+            if searchFrame.editBox.ResetPendingSearch then searchFrame.editBox:ResetPendingSearch() end
+            searchFrame.editBox:SetText("")
+            if searchFrame.editBox.placeholder then searchFrame.editBox.placeholder:Show() end
+        end
+    end
     searchFrame:Show()
     -- Belt-and-suspenders: OnShow hook also calls this, but if searchFrame
     -- was already shown the hook didn't fire and escCatcher would be left
@@ -13718,10 +15083,14 @@ function UI:HandleEscape()
     -- exact pre-ESC state (text, scroll, pending change). The helper
     -- also lifts the popup above our results panel strata.
     if self:ShowUnappliedSettingsPopup() then return end
-    if editBox and editBox:GetText() ~= "" then
-        if editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
-        editBox:SetText("")
-        if editBox.placeholder then editBox.placeholder:Show() end
+    if (editBox and editBox:GetText() ~= "") or self._quickFilter then
+        if editBox and editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
+        if editBox then
+            editBox:SetText("")
+            if editBox.placeholder then editBox.placeholder:Show() end
+        end
+        self:ClearQuickFilter(false)
+        self:HideQuickFilterSuggestions()
         Refocus()
         -- Programmatic SetText intentionally does not run the throttled
         -- search path. Rebuild immediately so stale typed results are
@@ -13969,21 +15338,23 @@ end
 
 function UI:UpdateOpacity()
     if not searchFrame then return end
-    local alpha = EasyFind.db.searchBarOpacity or ns.DEFAULT_OPACITY
+    local alpha = ns.SEARCH_WINDOW_ALPHA or 0.95
     if containerFrame then
+        self:ApplySearchWindowFill(containerFrame)
         ns.SetRoundedRectBorderBgAlpha(containerFrame, alpha)
     end
 end
 
 function UI:UpdateSearchBarTheme()
     if not searchFrame then return end
-    local alpha = EasyFind.db.searchBarOpacity or ns.DEFAULT_OPACITY
+    local alpha = ns.SEARCH_WINDOW_ALPHA or 0.95
     searchFrame:SetBackdrop(nil)
     -- Pill stays hidden; container provides the rounded silhouette.
     ns.SetSearchBorderShown(searchFrame, false)
     if containerFrame then
         ns.SetRoundedRectBorderShown(containerFrame, true)
         ns.SetRoundedRectBarHeight(containerFrame, self:GetSearchBarHeight())
+        self:ApplySearchWindowFill(containerFrame)
         ns.SetRoundedRectBorderBgAlpha(containerFrame, alpha)
     end
 end
@@ -14664,11 +16035,12 @@ function UI:UpdateFontSize()
 
     local theme = GetActiveTheme()
     local WHITE8x8 = "Interface\\BUTTONS\\WHITE8x8"
-    local alpha = EasyFind.db.searchBarOpacity or ns.DEFAULT_OPACITY
+    local alpha = ns.SEARCH_WINDOW_ALPHA or 0.95
     if theme.searchBarRounded then
         searchFrame:SetBackdrop(nil)
         if containerFrame then
             ns.SetRoundedRectBarHeight(containerFrame, barH)
+            self:ApplySearchWindowFill(containerFrame)
             ns.SetRoundedRectBorderBgAlpha(containerFrame, alpha)
             -- If results are open, the divider stays at the bar's
             -- new bottom (= barH).
@@ -14683,7 +16055,8 @@ function UI:UpdateFontSize()
             edgeSize = 20,
             insets = { left = 5, right = 5, top = 5, bottom = 5 }
         })
-        searchFrame:SetBackdropColor(0, 0, 0, alpha)
+        local c = ns.SEARCH_WINDOW_FILL_COLOR or {0.052, 0.052, 0.060}
+        searchFrame:SetBackdropColor(c[1], c[2], c[3], alpha)
     end
 
     for i = 1, #resultButtons do

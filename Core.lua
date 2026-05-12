@@ -23,7 +23,7 @@ EasyFind.db = {}
 
 -- SavedVariables version. Increment when changing DB schema.
 -- Each migration runs once: if saved dbVersion < DB_VERSION, run all steps in order.
-local DB_VERSION = 11
+local DB_VERSION = 12
 
 -- SavedVariables defaults - new keys are auto-merged for existing users
 local DB_DEFAULTS = {
@@ -37,7 +37,6 @@ local DB_DEFAULTS = {
     uiResultsScale = 1.0,
     uiResultsWidth = 350,
     uiSearchBarHeight = ns.SEARCHBAR_HEIGHT or 30,
-    searchBarOpacity = 0.75,  -- ns.DEFAULT_OPACITY
     fontSize = 0.9,            -- UI search font size multiplier (0.5-2.0)
     uiSearchPosition = nil,    -- {point, relPoint, x, y}
     localMapDirectOpen = true,
@@ -82,7 +81,7 @@ local DB_DEFAULTS = {
     mapTabFilters = {
         zones = true,
         instances = true,
-        flightpath = false,    -- Off by default: zone maps are dense with flight masters
+        flightpath = true,
         travel = true,         -- Portals, ships, zeppelins, trams (separate from flight paths)
         services = true,
         rares = true,
@@ -94,9 +93,12 @@ local DB_DEFAULTS = {
     alwaysShowRares = false,  -- Persistent rare tracking: show active rares on map without searching
     uiSearchFilters = {        -- UI search category filters (all enabled by default)
         achievements   = true,
+        statistics     = true,
         currencies     = true,
         reputations    = true,
         collections    = true,
+        gameOptions    = true,
+        addonOptions   = true,
         mounts         = true,
         toys           = true,
         pets           = true,
@@ -109,6 +111,9 @@ local DB_DEFAULTS = {
         options        = true,
         abilities      = true,
         bosses         = true,
+        gearSets       = true,
+        talents        = true,
+        titles         = true,
         map            = true,
     },
     lootSpecs = nil,           -- Loot search: nil = current spec only, table of {classID, specID} pairs when customized
@@ -186,13 +191,11 @@ local DB_MIGRATIONS = {
         if db.localMapDirectOpen == false then db.localMapDirectOpen = true end
         if db.globalMapDirectOpen == false then db.globalMapDirectOpen = true end
     end,
-    -- [6] = Default flightpath filter to off in MapTab. Pre-existing
-    -- mapTabFilters tables won't have the key (added when we split
-    -- flight masters out of the Travel bucket), so they default to nil
-    -- = enabled. Force false unless the user explicitly turned it on.
+    -- [6] = Populate the split flightpath filter key. The current
+    -- default is enabled so the filter menu starts fully checked.
     [6] = function(db)
         if db.mapTabFilters and db.mapTabFilters.flightpath == nil then
-            db.mapTabFilters.flightpath = false
+            db.mapTabFilters.flightpath = true
         end
     end,
     -- [8] = Theme rename: "Classic" and "Retail" renamed to
@@ -220,6 +223,10 @@ local DB_MIGRATIONS = {
     [11] = function(db)
         db.tutorialDone = false
         db.lastSeenVersion = "2.0.0"
+    end,
+    -- [12] = Search window background is always solid now.
+    [12] = function(db)
+        db.searchBarOpacity = nil
     end,
 }
 

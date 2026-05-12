@@ -143,11 +143,14 @@ function Utils.AttachAutocomplete(editBox, opts)
     local findCandidate = opts.findCandidate
     local onTypedChanged = opts.onTypedChanged
     local onAccepted = opts.onAccepted
+    local backspaceAutocompleteTarget = opts.backspaceAutocompleteTarget
+    local onBackspaceAutocompleteRestored = opts.onBackspaceAutocompleteRestored
     local typedText = ""
     local programmatic = false
     local currentCandidate = nil
     local smoothExtendDone = false
     local restoreBackspaceText, restoreBackspaceCursor
+    local restoreBackspaceNotify = false
     local mouseAcceptCandidate
     local mouseAcceptTypedLen
     local backspaceStripActive = false
@@ -241,7 +244,9 @@ function Utils.AttachAutocomplete(editBox, opts)
         if restoreBackspaceText then
             local restoreText = restoreBackspaceText
             local restoreCursor = restoreBackspaceCursor or #restoreText
+            local notify = restoreBackspaceNotify
             restoreBackspaceText, restoreBackspaceCursor = nil, nil
+            restoreBackspaceNotify = false
             backspaceStripActive = false
             if current ~= restoreText then
                 programmatic = true
@@ -251,6 +256,11 @@ function Utils.AttachAutocomplete(editBox, opts)
                 programmatic = false
             end
             typedText = ssub(restoreText, 1, restoreCursor)
+            currentCandidate = nil
+            smoothExtendDone = false
+            if notify and onBackspaceAutocompleteRestored then
+                onBackspaceAutocompleteRestored(self, typedText)
+            end
             return
         end
         local cursorPos = self:GetCursorPosition() or #current
@@ -364,13 +374,46 @@ function Utils.AttachAutocomplete(editBox, opts)
 
     editBox:HookScript("OnKeyDown", function(self, key)
         if key == "BACKSPACE" and HasAutocomplete() then
+            local targetText, targetCursor
+            if backspaceAutocompleteTarget then
+                targetText, targetCursor = backspaceAutocompleteTarget(self, typedText, currentCandidate)
+            end
+            if targetText == nil then
+                targetText = typedText
+                targetCursor = #typedText
+                restoreBackspaceNotify = false
+            else
+                targetText = tostring(targetText)
+                if targetCursor == nil then targetCursor = #targetText end
+                restoreBackspaceNotify = true
+            end
             backspaceStripActive = true
-            restoreBackspaceText = typedText
-            restoreBackspaceCursor = #typedText
+            restoreBackspaceText = targetText
+            restoreBackspaceCursor = targetCursor
             StripAutocomplete()
             if C_Timer then
                 C_Timer.After(0, function()
+                    if restoreBackspaceText and restoreBackspaceNotify then
+                        local restoreText = restoreBackspaceText
+                        local restoreCursor = restoreBackspaceCursor or #restoreText
+                        restoreBackspaceText, restoreBackspaceCursor = nil, nil
+                        restoreBackspaceNotify = false
+                        backspaceStripActive = false
+                        programmatic = true
+                        self:SetText(restoreText)
+                        self:SetCursorPosition(restoreCursor)
+                        self:HighlightText(0, 0)
+                        programmatic = false
+                        typedText = ssub(restoreText, 1, restoreCursor)
+                        currentCandidate = nil
+                        smoothExtendDone = false
+                        if onBackspaceAutocompleteRestored then
+                            onBackspaceAutocompleteRestored(self, typedText)
+                        end
+                        return
+                    end
                     restoreBackspaceText, restoreBackspaceCursor = nil, nil
+                    restoreBackspaceNotify = false
                     backspaceStripActive = false
                 end)
             end
@@ -423,10 +466,11 @@ end
 
 ns.GOLD_COLOR = {1.0, 0.82, 0.0}
 ns.YELLOW_HIGHLIGHT = {1, 1, 0}
-ns.DEFAULT_OPACITY = 0.75
+ns.SEARCH_WINDOW_ALPHA = 0.95
 ns.TOOLTIP_BORDER = "Interface\\Tooltips\\UI-Tooltip-Border"
 ns.EYE_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\eye"
 ns.DARK_PANEL_BG = {0.1, 0.1, 0.1, 0.95}
+ns.SEARCH_WINDOW_FILL_COLOR = {0.052, 0.052, 0.060}
 ns.RESULT_ICON_SIZE = 18
 ns.SEARCHBAR_HEIGHT = 30      -- base search bar frame height (before font scaling)
 ns.SEARCHBAR_FILL = 0.55      -- fraction of bar height filled by text/icon
@@ -623,6 +667,13 @@ end
 function ns.SetRoundedRectBorderBgAlpha(frame, alpha)
     if not frame.combinedBorder then return end
     for _, t in pairs(frame.combinedBorder.fill) do t:SetAlpha(alpha) end
+end
+
+function ns.SetRoundedRectBorderFillColor(frame, r, g, b, a)
+    if not frame.combinedBorder then return end
+    for _, t in pairs(frame.combinedBorder.fill) do
+        t:SetVertexColor(r, g, b, a or 1)
+    end
 end
 
 -- A 1-px horizontal divider that runs across the inside of the
