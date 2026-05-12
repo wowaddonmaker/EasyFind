@@ -609,6 +609,11 @@ function ns.SetRoundedRectBorderFillColor(frame, r, g, b, a)
     end
 end
 
+local function DisablePixelSnap(t)
+    if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(false) end
+    if t.SetTexelSnappingBias then t:SetTexelSnappingBias(0) end
+end
+
 -- Paint fill color AND alpha, plus optionally disable pixel snapping so
 -- the texture renders at sub-pixel positions cleanly (used by buttons
 -- and cards that get color-animated, where snap can cause shimmering).
@@ -618,10 +623,7 @@ function ns.SetRoundedRectFill(frame, r, g, b, a, snapOff)
     for _, t in pairs(frame.combinedBorder.fill) do
         t:SetVertexColor(r, g, b, a)
         t:SetAlpha(a)
-        if snapOff then
-            if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(false) end
-            if t.SetTexelSnappingBias then t:SetTexelSnappingBias(0) end
-        end
+        if snapOff then DisablePixelSnap(t) end
     end
 end
 
@@ -629,10 +631,7 @@ function ns.SetRoundedRectBorderColor(frame, r, g, b, a, snapOff)
     if not (frame and frame.combinedBorder and frame.combinedBorder.border) then return end
     for _, t in pairs(frame.combinedBorder.border) do
         t:SetVertexColor(r, g, b, a or 1)
-        if snapOff then
-            if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(false) end
-            if t.SetTexelSnappingBias then t:SetTexelSnappingBias(0) end
-        end
+        if snapOff then DisablePixelSnap(t) end
     end
 end
 
