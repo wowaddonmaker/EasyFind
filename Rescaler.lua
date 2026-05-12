@@ -263,16 +263,10 @@ local function CreateGlowOverlay(name, parent, target)
 end
 
 local function HideRoundedFrameBorder(frame)
-    if not (frame and frame.combinedBorder and frame.combinedBorder.border) then return end
-    for _, tex in pairs(frame.combinedBorder.border) do tex:Hide() end
+    ns.SetRoundedRectBorderEdgeShown(frame, false)
 end
 
-local function SetModernButtonFill(btn, r, g, b)
-    if not (btn and btn.combinedBorder and btn.combinedBorder.fill) then return end
-    for _, tex in pairs(btn.combinedBorder.fill) do
-        tex:SetVertexColor(r, g, b, 1)
-    end
-end
+local SetModernButtonFill = ns.SetRoundedRectBorderFillColor
 
 local function CreateModernButton(parent, text, width, height)
     local btn = CreateFrame("Button", nil, parent)

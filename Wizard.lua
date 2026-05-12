@@ -55,22 +55,9 @@ local function MakeButton(parent, text, variant, w)
         ns.SetRoundedRectBarHeight(b, 10)
         ns.SetRoundedRectBorderBgAlpha(b, 1)
         -- Border ring hidden: 256px texture aliases badly at ~5px corners.
-        if b.combinedBorder and b.combinedBorder.border then
-            for _, t in pairs(b.combinedBorder.border) do
-                t:Hide()
-            end
-        end
-        if b.combinedBorder and b.combinedBorder.fill then
-            for _, t in pairs(b.combinedBorder.fill) do
-                if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(false) end
-                if t.SetTexelSnappingBias then t:SetTexelSnappingBias(0) end
-            end
-        end
+        ns.SetRoundedRectBorderEdgeShown(b, false)
         local function tintFill(rr, gg, bb)
-            if not (b.combinedBorder and b.combinedBorder.fill) then return end
-            for _, t in pairs(b.combinedBorder.fill) do
-                t:SetVertexColor(rr, gg, bb, 1)
-            end
+            ns.SetRoundedRectFill(b, rr, gg, bb, 1, true)
         end
         tintFill(0.18, 0.18, 0.20)
         fs:SetTextColor(1, 1, 1, 1)
@@ -223,16 +210,8 @@ local function FeatureTile(parent, atlas, file, coords, title, desc, onClick)
     ns.CreateRoundedRectBorder(tile)
     ns.SetRoundedRectBarHeight(tile, 10)
     ns.SetRoundedRectBorderBgAlpha(tile, 0.95)
-    if tile.combinedBorder and tile.combinedBorder.fill then
-        for _, t in pairs(tile.combinedBorder.fill) do
-            t:SetVertexColor(0.05, 0.05, 0.06, 1)
-            if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(false) end
-            if t.SetTexelSnappingBias then t:SetTexelSnappingBias(0) end
-        end
-    end
-    if tile.combinedBorder and tile.combinedBorder.border then
-        for _, t in pairs(tile.combinedBorder.border) do t:Hide() end
-    end
+    ns.SetRoundedRectFill(tile, 0.05, 0.05, 0.06, 1, true)
+    ns.SetRoundedRectBorderEdgeShown(tile, false)
 
     local icon = tile:CreateTexture(nil, "ARTWORK")
     icon:SetSize(36, 36)
@@ -262,19 +241,11 @@ local function FeatureTile(parent, atlas, file, coords, title, desc, onClick)
 
     tile:SetScript("OnEnter", function(self)
         self:SetScale(1.04)
-        if self.combinedBorder and self.combinedBorder.fill then
-            for _, t in pairs(self.combinedBorder.fill) do
-                t:SetVertexColor(0.09, 0.09, 0.11, 1)
-            end
-        end
+        ns.SetRoundedRectBorderFillColor(self, 0.09, 0.09, 0.11, 1)
     end)
     tile:SetScript("OnLeave", function(self)
         self:SetScale(1.00)
-        if self.combinedBorder and self.combinedBorder.fill then
-            for _, t in pairs(self.combinedBorder.fill) do
-                t:SetVertexColor(0.05, 0.05, 0.06, 1)
-            end
-        end
+        ns.SetRoundedRectBorderFillColor(self, 0.05, 0.05, 0.06, 1)
     end)
     if onClick then
         tile:SetScript("OnClick", onClick)
@@ -403,16 +374,8 @@ local function CreateKbWidget(parent, action, label)
     ns.CreateRoundedRectBorder(btn)
     ns.SetRoundedRectBarHeight(btn, 40)
     ns.SetRoundedRectBorderBgAlpha(btn, 1)
-    if btn.combinedBorder and btn.combinedBorder.border then
-        for _, t in pairs(btn.combinedBorder.border) do
-            t:Hide()
-        end
-    end
-    if btn.combinedBorder and btn.combinedBorder.fill then
-        for _, t in pairs(btn.combinedBorder.fill) do
-            t:SetVertexColor(0.18, 0.18, 0.20, 1)
-        end
-    end
+    ns.SetRoundedRectBorderEdgeShown(btn, false)
+    ns.SetRoundedRectBorderFillColor(btn, 0.18, 0.18, 0.20, 1)
 
     local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     fs:SetPoint("CENTER")
@@ -420,10 +383,7 @@ local function CreateKbWidget(parent, action, label)
     btn._label = fs
 
     local function tintFill(rr, gg, bb)
-        if not (btn.combinedBorder and btn.combinedBorder.fill) then return end
-        for _, t in pairs(btn.combinedBorder.fill) do
-            t:SetVertexColor(rr, gg, bb, 1)
-        end
+        ns.SetRoundedRectBorderFillColor(btn, rr, gg, bb, 1)
     end
 
     local function setHover(hover)
@@ -543,16 +503,8 @@ local function CreateFrameOnce()
     ns.SetRoundedRectBarHeight(f, 16)
     ns.SetRoundedRectBorderBgAlpha(f, PANEL_BG_ALPHA)
     -- Border ring hidden: its corner cells band against the gradient fill.
-    if f.combinedBorder and f.combinedBorder.border then
-        for _, t in pairs(f.combinedBorder.border) do
-            t:Hide()
-        end
-    end
-    if f.combinedBorder and f.combinedBorder.fill then
-        for _, t in pairs(f.combinedBorder.fill) do
-            t:SetVertexColor(0.04, 0.04, 0.05, 1)
-        end
-    end
+    ns.SetRoundedRectBorderEdgeShown(f, false)
+    ns.SetRoundedRectBorderFillColor(f, 0.04, 0.04, 0.05, 1)
 
     -- Single vertical gradient mapped across the 9-slice; each cell's
     -- gradient stops are sampled from its vertical position in the frame.
@@ -656,16 +608,8 @@ local function CreateFrameOnce()
     ns.CreateRoundedRectBorder(footer)
     ns.SetRoundedRectBarHeight(footer, 16)
     ns.SetRoundedRectBorderBgAlpha(footer, 1)
-    if footer.combinedBorder and footer.combinedBorder.fill then
-        for _, t in pairs(footer.combinedBorder.fill) do
-            t:SetVertexColor(0.075, 0.075, 0.085, 1)
-            if t.SetSnapToPixelGrid then t:SetSnapToPixelGrid(false) end
-            if t.SetTexelSnappingBias then t:SetTexelSnappingBias(0) end
-        end
-    end
-    if footer.combinedBorder and footer.combinedBorder.border then
-        for _, t in pairs(footer.combinedBorder.border) do t:Hide() end
-    end
+    ns.SetRoundedRectFill(footer, 0.075, 0.075, 0.085, 1, true)
+    ns.SetRoundedRectBorderEdgeShown(footer, false)
 
     local DOT_GAP = 14
     local DOT_SZ  = 9

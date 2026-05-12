@@ -1128,29 +1128,12 @@ function UI:GetSearchBarCommandSuggestionEntries(text)
 end
 
 function UI:SetCalculatorRoundedFill(frame, r, g, b, a, br, bg, bb, ba)
-    if not (frame and frame.combinedBorder) then return end
-    if frame.combinedBorder.fill then
-        for _, tex in pairs(frame.combinedBorder.fill) do
-            tex:SetVertexColor(r, g, b, 1)
-            tex:SetAlpha(a or 1)
-            if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(false) end
-            if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
-        end
-    end
-    if frame.combinedBorder.border then
-        for _, tex in pairs(frame.combinedBorder.border) do
-            tex:SetVertexColor(br or 0.30, bg or 0.30, bb or 0.32, ba or 0.85)
-            if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(false) end
-            if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
-        end
-    end
+    ns.SetRoundedRectFill(frame, r, g, b, a, true)
+    ns.SetRoundedRectBorderColor(frame, br or 0.30, bg or 0.30, bb or 0.32, ba or 0.85, true)
 end
 
 function UI:HideCalculatorRoundedBorder(frame)
-    if not (frame and frame.combinedBorder and frame.combinedBorder.border) then return end
-    for _, tex in pairs(frame.combinedBorder.border) do
-        tex:Hide()
-    end
+    ns.SetRoundedRectBorderEdgeShown(frame, false)
 end
 
 function UI:StyleCalculatorButton(btn, height)
@@ -4538,18 +4521,11 @@ function UI:QuickFilterAllowsData(data, quickFilter)
 end
 
 function UI:SetQuickFilterPillFill(frame, r, g, b, a)
-    if not (frame and frame.combinedBorder and frame.combinedBorder.fill) then return end
-    for _, tex in pairs(frame.combinedBorder.fill) do
-        tex:SetVertexColor(r, g, b, 1)
-        tex:SetAlpha(a or 1)
-        if tex.SetSnapToPixelGrid then tex:SetSnapToPixelGrid(false) end
-        if tex.SetTexelSnappingBias then tex:SetTexelSnappingBias(0) end
-    end
+    ns.SetRoundedRectFill(frame, r, g, b, a, true)
 end
 
 function UI:HideQuickFilterPillBorder(frame)
-    if not (frame and frame.combinedBorder and frame.combinedBorder.border) then return end
-    for _, tex in pairs(frame.combinedBorder.border) do tex:Hide() end
+    ns.SetRoundedRectBorderEdgeShown(frame, false)
 end
 
 function UI:CreateQuickFilterPill(frame, editBox, iconHolder, filterBtn)
@@ -7933,12 +7909,8 @@ function UI:CreateResultButton(index)
     local calcCard = CreateFrame("Frame", nil, resultRow)
     ns.CreateRoundedRectBorder(calcCard)
     ns.SetRoundedRectBarHeight(calcCard, 12)
-    for _, t in pairs(calcCard.combinedBorder.fill) do
-        t:SetVertexColor(0.095, 0.095, 0.108, 1)
-    end
-    for _, t in pairs(calcCard.combinedBorder.border) do
-        t:SetVertexColor(0.34, 0.34, 0.36, 0.92)
-    end
+    ns.SetRoundedRectBorderFillColor(calcCard, 0.095, 0.095, 0.108, 1)
+    ns.SetRoundedRectBorderColor(calcCard, 0.34, 0.34, 0.36, 0.92)
     calcCard:Hide()
     resultRow.calcCard = calcCard
 
