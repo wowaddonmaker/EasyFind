@@ -2070,7 +2070,7 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
     end
 
     -- Ancestor target: highlight breadcrumb directly, else DCA overshoots.
-    local currentParentChain = self:GetMapPath(currentMapID)
+    local currentParentChain = GetMapPath(currentMapID)
     for i = 1, #currentParentChain - 1 do
         if currentParentChain[i].mapID == targetMapID then
             DebugPrint("[EasyFind] Target is ancestor of current map, highlighting breadcrumb")
@@ -2175,8 +2175,8 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
         end
     end
 
-    local targetParentPath = self:GetMapPath(targetParentMapID)
-    local currentPath = self:GetMapPath(currentMapID)
+    local targetParentPath = GetMapPath(targetParentMapID)
+    local currentPath = GetMapPath(currentMapID)
 
     DebugPrint("[EasyFind] Target parent path:")
     for i, p in ipairs(targetParentPath) do
@@ -2254,10 +2254,6 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
     self:HighlightBreadcrumbForNavigation(dcaMapID, targetMapID, targetParentPath, dcaIndex)
 end
 
-function MapSearch:GetMapPath(mapID)
-    return GetMapPath(mapID)
-end
-
 function MapSearch:HighlightBreadcrumbForNavigation(dcaMapID, finalTargetMapID, targetParentPath, dcaIndex)
     DebugPrint("[EasyFind] HighlightBreadcrumbForNavigation: DCA=", dcaMapID, "finalTarget=", finalTargetMapID)
 
@@ -2300,7 +2296,7 @@ function MapSearch:HighlightBreadcrumbForNavigation(dcaMapID, finalTargetMapID, 
     else
         DebugPrint("[EasyFind] No button found, walking current path for fallback")
         local currentMapID = WorldMapFrame:GetMapID()
-        local currentPath = self:GetMapPath(currentMapID)
+        local currentPath = GetMapPath(currentMapID)
         for i = 1, #currentPath - 1 do
             local breadcrumbBtn = self:FindBreadcrumbButton(navBar, currentPath[i].mapID)
             if breadcrumbBtn and breadcrumbBtn:IsShown() then

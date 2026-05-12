@@ -5,8 +5,8 @@ ns.MapTab = MapTab
 
 local Utils = ns.Utils
 local MapUtils = ns.MapUtils
-local SafeAfter = Utils and Utils.SafeAfter or function(delay, fn) C_Timer.After(delay, fn) end
-local tinsert = Utils and Utils.tinsert or table.insert
+local SafeAfter = Utils.SafeAfter
+local tinsert = Utils.tinsert
 local tremove = table.remove
 
 local GOLD_COLOR = ns.GOLD_COLOR or {1.0, 0.82, 0.0}
@@ -37,8 +37,6 @@ local ROW_POOL_RETAIN  = 80
 local HEADER_POOL_RETAIN = 40
 local SECTION_POOL_RETAIN = 12
 
-
-MapTab.GetTopAncestor = function(_, mapID) return GetTopAncestor(mapID) end
 
 local worldChildrenCache = {}
 local function GetWorldChildren(mapID)

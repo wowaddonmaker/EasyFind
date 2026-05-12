@@ -5,7 +5,7 @@ ns.Wizard = Wizard
 
 local Utils = ns.Utils
 local SafeCallMethod = Utils.SafeCallMethod
-local SafeAfter = Utils.SafeAfter or function(d, fn) C_Timer.After(d, fn) end
+local SafeAfter = Utils.SafeAfter
 
 local CreateFrame   = CreateFrame
 local UIParent      = UIParent
