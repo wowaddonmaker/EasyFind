@@ -30,7 +30,6 @@ local GetTopAncestor = MapUtils.GetTopAncestor
 local GetZoneUnderAncestor = MapUtils.GetZoneUnderAncestor
 local GetAncestorNames = MapUtils.GetAncestorNames
 local ExpandZoneAbbrev = MapUtils.ExpandZoneAbbrev
-local BuildFullBreadcrumb = MapUtils.BuildBreadcrumb
 
 local ROW_HEIGHT       = 22
 local ROW_ICON_SIZE    = 17
@@ -441,13 +440,6 @@ local function RowOnEnter(row)
             row.deleteBtn:Show()
         else
             HoverPreview(row.data)
-            local crumb = BuildFullBreadcrumb(row.data)
-            if crumb and crumb ~= "" then
-                GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
-                GameTooltip:ClearLines()
-                GameTooltip:AddLine(crumb, 1, 1, 1, true)
-                GameTooltip:Show()
-            end
         end
     end
 end

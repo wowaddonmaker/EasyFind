@@ -1779,10 +1779,15 @@ function UI:ReleaseCalculatorCopyBox(source)
     if source and UI._calculator.copySource ~= source then return end
 
     UI._calculator.copyToken = (UI._calculator.copyToken or 0) + 1
-    UI._calculator.copySource = nil
 
     local prev = UI._calculator.prevFocus
     local box = UI._calculator.copyBox
+    local restoreFocus = UI._calculator.copyFocused
+        or UI._calculator.copySource ~= nil
+        or UI._calculator.prevFocus ~= nil
+        or (box and box.HasFocus and box:HasFocus())
+
+    UI._calculator.copySource = nil
     UI._calculator.releasingCopyBox = true
     if box then
         box:HighlightText(0, 0)
@@ -1792,8 +1797,12 @@ function UI:ReleaseCalculatorCopyBox(source)
     UI._calculator.copyFocused = nil
 
     UI._calculator.prevFocus = nil
+    if not restoreFocus then return end
     if not (prev and prev.SetFocus and prev.IsVisible and prev:IsVisible()) then
         prev = searchFrame and searchFrame.editBox
+    end
+    if prev and (prev.blockFocus or prev._dragMoving) then
+        prev = nil
     end
     if prev and prev.SetFocus and prev.IsVisible and prev:IsVisible() then
         prev:SetFocus()
@@ -3083,6 +3092,13 @@ function UI:CreateSearchFrame()
     editBox:SetScript("OnEditFocusLost", function(self)
         -- Skip cleanup when SelectResult is actively clearing text/focus
         if selectingResult then return end
+        -- Shift-drag deliberately clears focus while blockFocus is set so
+        -- the editbox does not steal the drag. Do not run the normal
+        -- click-outside cleanup path from that synthetic focus loss.
+        if self._dragMoving then
+            self:HighlightText(0, 0)
+            return
+        end
         -- Drop any active text highlight (the focus-gained "select all"
         -- or autocomplete suffix) so leftover text doesn't keep its
         -- selection box after we click away. Re-focus re-applies it.
