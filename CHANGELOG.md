@@ -4,6 +4,12 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [2.0.0] - 2026-05-13
+
+EasyFind 2.0 is a full rewrite of the search and map experience. Launch the in-game tutorial to see what's new.
+
+---
+
 ## [1.5.0] - 2026-04-07
 
 ### Added
