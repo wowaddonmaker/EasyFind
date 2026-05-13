@@ -15,33 +15,40 @@ globals = {
     "SlashCmdList",
     "StaticPopupDialogs",
     "SLASH_EASYFIND1",
-    "BINDING_NAME_EASYFIND_TOGGLE",
-    "BINDING_NAME_EASYFIND_FOCUS",
     "BINDING_NAME_EASYFIND_TOGGLE_FOCUS",
     "BINDING_NAME_EASYFIND_CLEAR",
+    "BINDING_NAME_EASYFIND_MAP_FOCUS",
     "EncounterJournal",
     "TransmogFrame",
+    "SettingsPanel",
+    "TokenFrame",
 }
 
 -- WoW API globals (read-only)
 read_globals = {
     -- WoW Lua extensions
-    "debugstack", "strsplit", "strtrim", "wipe", "hooksecurefunc",
+    "bit",
+    "debugstack", "debugprofilestart", "debugprofilestop", "strsplit", "strtrim", "wipe", "hooksecurefunc",
     "format", "time", "date",
 
+    -- Menus
+    "MenuUtil",
+
     -- Core API
-    "CreateFrame", "CreateFont", "CreateVector2D",
-    "GetTime", "GetLocale", "GetCVar", "GetCursorPosition", "GetRealmName",
+    "CreateFrame", "CreateFont", "CreateVector2D", "CreateColor",
+    "GetTime", "GetLocale", "GetCVar", "SetCVar", "GetCursorPosition", "GetRealmName",
     "GetAddOnMetadata", "GetAtlasInfo", "GetMinimapShape",
-    "GetBindingKey", "GetCurrentBindingSet", "SaveBindings", "SetBinding",
+    "GetBindingKey", "GetBindingAction", "GetCurrentBindingSet", "SaveBindings", "SetBinding",
+    "GetNumBindings", "GetBinding",
     "GetCategoryInfo", "GetPlayerFacing",
-    "SetPortraitTexture", "ShowUIPanel", "ToggleWorldMap", "ToggleDropDownMenu",
+    "SetPortraitTexture", "ShowUIPanel", "HideUIPanel", "ToggleWorldMap", "ToggleDropDownMenu",
     "InterfaceOptions_AddCategory", "InCombatLockdown",
     "IsShiftKeyDown", "IsMouseButtonDown", "IsAltKeyDown", "IsControlKeyDown",
     "IsInGroup", "IsInInstance", "IsIndoors", "UnitIsGroupLeader",
     "UnitFactionGroup", "UnitPosition",
     "StaticPopup_Show", "GameTooltip_Hide", "PlaySound", "ReloadUI",
     "GetSpellInfo", "GetItemInfo", "UseToyByItemID",
+    "GetMacroSpell", "GetMacroItem",
     "PanelTemplates_GetSelectedTab",
 
     -- Frames and UI objects
@@ -50,8 +57,9 @@ read_globals = {
     "CharacterStatsPane", "PaperDollTitlesPane", "PaperDollEquipmentManagerPane",
     "CurrencyFrame",
     "SpellBookFrame", "PlayerSpellsFrame", "CollectionsJournal",
-    "PVEFrame", "ReputationFrame", "TokenFrame",
+    "PVEFrame", "ReputationFrame", "TokenFramePopup",
     "GroupFinderFrame", "LFGListFrame", "HelpFrame", "ClassTalentFrame",
+    "GameMenuFrame", "MacroFrame",
     "GuildMicroButton", "StoreMicroButton", "PlayerFrame", "StoreFrame",
     "LFDParentFrame", "RaidFinderFrame",
     "LFGListPVEStub", "LFGListPVPStub",
@@ -59,24 +67,38 @@ read_globals = {
     "PVPQueueFrame",
     "AchievementFrameCategories_ExpandToCategory",
     "AchievementFrameCategories_UpdateDataProvider",
+    "AchievementFrame_LoadUI", "AchievementFrame_SelectAchievement",
+    "OpenAchievementFrameToAchievement",
+    "AchievementFrame", "GetCategoryList", "GetCategoryNumAchievements",
+    "GetStatisticsCategoryList", "GetStatistic",
+    "GetAchievementInfo",
+    "SetAchievementSearchString", "GetNumFilteredAchievements",
+    "GetFilteredAchievementID",
+    "AddTrackedAchievement", "RemoveTrackedAchievement",
+    "IsTrackedAchievement", "AchievementFrame_ToggleTracking",
+    "C_ContentTracking",
  "Transmog_LoadUI",
-    "EncounterJournal_LoadUI", "PanelTemplates_SetTab",
+    "EncounterJournal_LoadUI", "EncounterJournal_DisplayInstance",
+    "EncounterJournal_DisplayEncounter", "PanelTemplates_SetTab",
     "Menu", "ScrollBoxConstants",
 
     -- C_* namespaces
-    "C_AddOns", "C_AchievementInfo", "C_AreaPoiInfo", "C_CurrencyInfo", "C_Item",
-    "C_EncounterJournal", "C_GossipInfo", "C_MajorFactions", "C_Map",
+    "C_AddOns", "C_AchievementInfo", "C_AreaPoiInfo", "C_ClassTalents",
+    "C_CurrencyInfo", "C_EquipmentSet", "C_Item",
+    "C_EncounterJournal", "C_GossipInfo", "C_Heirloom", "C_MajorFactions", "C_Map",
     "C_Minimap", "C_MountJournal", "C_Navigation", "C_PetJournal",
     "C_Reputation", "C_SuperTrack", "C_TaxiMap", "C_Texture", "C_Timer",
-    "C_ToyBox", "C_TransmogOutfitInfo", "C_VignetteInfo",
+    "C_ToyBox", "C_Traits", "C_TransmogCollection", "C_TransmogOutfitInfo",
+    "C_TransmogSets", "C_VignetteInfo",
 
     -- UI utility functions
     "UIFrameFadeIn", "UIFrameFadeOut", "UIFrameFadeRemoveFrame",
     "AchievementFrameCategories_SelectElementData",
-    "UnitPopup_ShowMenu", "BattlePetToolTip_ShowLink",
+    "UnitPopup_ShowMenu", "BattlePetToolTip_ShowLink", "BattlePetTooltip",
     "GetUnitSpeed", "GetItemCooldown", "EJ_GetInstanceInfo", "UnitName",
     "GetItemInfoInstant", "GetItemStats", "GetSpecialization", "GetSpecializationInfo",
-    "UnitClass", "GetLootSpecialization", "DressUpItemLink",
+    "GetNumTitles", "GetTitleName", "IsTitleKnown", "GetCurrentTitle", "SetCurrentTitle",
+    "UnitClass", "GetLootSpecialization", "DressUpItemLink", "DressUpTransmogSet",
     "GetNumClasses", "GetClassInfo", "GetNumSpecializationsForClassID",
     "GetSpecializationInfoForClassID", "RAID_CLASS_COLORS",
     "EJ_GetCurrentTier", "EJ_SelectTier", "EJ_GetInstanceByIndex",
@@ -84,6 +106,18 @@ read_globals = {
     "EJ_SetDifficulty", "EJ_SetLootFilter", "EJ_SetSlotFilter",
     "EJ_GetNumLoot", "EJ_GetLootInfoByIndex",
     "HasAction", "PlaceAction", "PickupAction", "ClearCursor", "GetActionCooldown",
+    "PickupSpell", "PickupItem", "PickupMacro", "C_Spell",
+    "GetCursorInfo", "GetMouseFoci", "GetMouseFocus",
+    "SetCursor", "ResetCursor",
+    "ACCEPT", "CANCEL", "StaticPopup_Show",
+    "C_SpellBook", "C_Container", "GetNumSpellTabs", "GetSpellTabInfo",
+    "GetSpellBookItemInfo", "GetSpellBookItemName", "GetSpellBookItemTexture",
+    "GetFlyoutInfo", "GetFlyoutSlotInfo",
+    "GetContainerNumSlots", "GetContainerItemInfo", "PickupContainerItem",
+    "NUM_BAG_SLOTS", "GetNumMacros", "GetMacroInfo", "MAX_ACCOUNT_MACROS",
+    "ShowMacroFrame", "MacroFrame", "MacroFrame_SelectMacro", "MacroFrame_Update",
+    "MacroFrame_OnTabChanged", "PanelTemplates_SetTab", "C_AddOns", "LoadAddOn",
+    "CreateMacro",
     "SetOverrideBindingClick", "ClearOverrideBindings",
 
     -- Data types
@@ -93,7 +127,7 @@ read_globals = {
     "EasyFindDevDB",
 
     -- Blizzard settings frames
-    "SettingsPanel", "InterfaceOptionsFrame",
+    "InterfaceOptionsFrame",
 
     -- Constants, Enums, Mixins
     "Enum", "Settings", "BackdropTemplateMixin",
@@ -103,8 +137,22 @@ read_globals = {
 
     -- Font objects
     "Game15Font_Shadow", "GameFontNormal", "GameFontNormalSmall",
-    "GameFontHighlight", "GameFontHighlightSmall", "GameFontDisable",
-    "GameFontDisableSmall", "GameFontNormalLarge",
+    "GameFontHighlight", "GameFontHighlightSmall", "GameFontHighlightLarge",
+    "GameFontDisable", "GameFontDisableSmall", "GameFontNormalLarge",
+
+    -- Misc WoW API
+    "securecallfunction", "GetCVarBool", "GetCurrentKeyBoardFocus",
+    "IsKeyDown", "OpenBackpack", "OpenBag", "GetItemSpell",
+    "StaticPopup_Visible", "IsGraphicsSettingValueSupported",
+    "QuestScrollFrame", "LibStub",
+
+    -- Localization / faction strings
+    "FACTION_ALLIANCE", "FACTION_HORDE",
+    "SETTINGS_CONFIRM_DISCARD", "SETTINGS_UNAPPLIED_EXIT",
+    "SETTINGS_UNAPPLIED_APPLY_AND_EXIT", "SETTINGS_UNAPPLIED_CANCEL",
+
+    -- Currency filter enums
+    "CURRENCY_FILTER_TYPE_TRANSFERABLE", "CURRENCY_FILTER_TYPE_CHARACTER",
 }
 
 -- WoW callbacks have fixed signatures; unused args are normal
