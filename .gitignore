@@ -9,6 +9,10 @@ archive/
 *.swo
 *~
 
+# Dev workspace artifacts
+target/
+.claude/
+
 # OS files
 Thumbs.db
 .DS_Store

@@ -24,8 +24,76 @@ local PANEL_BG_ALPHA = 0.97
 local TEXT_PRIM      = { 1.00, 0.97, 0.86 }
 local TEXT_BODY      = { 0.78, 0.78, 0.80 }
 local TEXT_DIM       = { 0.55, 0.55, 0.58 }
+local TUTORIAL_IMAGE_TINT = 0.82
 
 local DOT_FILLED = "Interface\\COMMON\\Indicator-Yellow"
+local MAP_SEARCH_TUTORIAL_IMAGE = "Interface\\AddOns\\EasyFind\\tutorial-map-search"
+local CALCULATOR_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\calculator-icon"
+local SEARCH_TUTORIAL_SLIDES = {
+    {
+        image = "Interface\\AddOns\\EasyFind\\tutorial-search-01",
+        w = 651, h = 202,
+        text = "Search across gear, loot, panels, settings, collections, currencies, achievements, map places, and more.",
+    },
+    {
+        image = "Interface\\AddOns\\EasyFind\\tutorial-search-02",
+        w = 655, h = 267,
+        text = "Results show icons, categories, and Alt+number. Press the matching Alt+number to instantly activate that row.",
+    },
+    {
+        image = "Interface\\AddOns\\EasyFind\\tutorial-search-09",
+        w = 486, h = 218,
+        text = "Pin important results so they stay available before you type.",
+    },
+    {
+        image = "Interface\\AddOns\\EasyFind\\tutorial-search-03",
+        w = 662, h = 611,
+        text = "Use the filter menu to choose which result groups appear in your general search.",
+    },
+    {
+        image = "Interface\\AddOns\\EasyFind\\tutorial-search-05",
+        w = 657, h = 593,
+        text = "Type @ to see available quick filters, then Tab or Space to select one.",
+    },
+    {
+        image = "Interface\\AddOns\\EasyFind\\tutorial-search-04",
+        w = 672, h = 220,
+        text = "Quick filters let you search inside one category without opening the filter menu.",
+    },
+    {
+        image = "Interface\\AddOns\\EasyFind\\tutorial-search-06",
+        w = 660, h = 267,
+        text = "Quick filters let you search inside one category without opening the filter menu.",
+    },
+    {
+        image = "Interface\\AddOns\\EasyFind\\tutorial-search-07",
+        w = 658, h = 276,
+        text = "Supported results can run directly from search, including macros and other actionable rows.",
+    },
+    {
+        image = "Interface\\AddOns\\EasyFind\\tutorial-search-08",
+        w = 638, h = 498,
+        text = "Search settings and adjust matching controls inline without leaving the results.",
+    },
+}
+local USE_TUTORIAL_SLIDES = {
+    {
+        image = "Interface\\AddOns\\EasyFind\\tutorial-use-01",
+        w = 658, h = 152,
+        text = "Equip gear sets directly from search.",
+    },
+    {
+        image = "Interface\\AddOns\\EasyFind\\tutorial-use-02",
+        w = 658, h = 276,
+        text = "Run macros from results, or Ctrl-click to edit them.",
+    },
+    {
+        image = "Interface\\AddOns\\EasyFind\\tutorial-use-03",
+        w = 663, h = 388,
+        text = "Use toys and other supported items directly from the list.",
+    },
+}
+local CALCULATOR_TUTORIAL_IMAGE = "Interface\\AddOns\\EasyFind\\tutorial-calculator-visual"
 
 local function ApplyInter(fs, weight, sizeOverride, flags)
     if ns.RegisterAddonFont then
@@ -41,18 +109,18 @@ local backBtn, nextBtn
 
 local function MakeButton(parent, text, variant, w)
     local b = CreateFrame("Button", nil, parent)
-    local h = (variant == "rounded") and 26 or 24
+    local h = (variant == "rounded") and 20 or 18
     b:SetSize(w or 96, h)
 
     local fs = b:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("CENTER")
     fs:SetText(text)
-    ApplyInter(fs, "semibold", 12)
+    ApplyInter(fs, "semibold", 10)
     b._label = fs
 
     if variant == "rounded" then
         ns.CreateRoundedRectBorder(b)
-        ns.SetRoundedRectBarHeight(b, 10)
+        ns.SetRoundedRectBarHeight(b, 8)
         ns.SetRoundedRectBorderBgAlpha(b, 1)
         -- Border ring hidden: 256px texture aliases badly at ~5px corners.
         ns.SetRoundedRectBorderEdgeShown(b, false)
@@ -173,6 +241,14 @@ local function BodyText(parent, text)
     return fs
 end
 
+local function FitSize(srcW, srcH, maxW, maxH)
+    if not srcW or not srcH or srcW <= 0 or srcH <= 0 then
+        return maxW, maxH
+    end
+    local scale = math.min(maxW / srcW, maxH / srcH)
+    return srcW * scale, srcH * scale
+end
+
 local function BuildPage1(parent)
     local p = MakePage(parent)
 
@@ -280,7 +356,8 @@ local function BuildPage2(parent)
         d:Show()
     end
 
-    local function CreateDetailView(headerText, detailText)
+    local function CreateDetailView(headerText, detailText, opts)
+        opts = opts or {}
         local d = CreateFrame("Frame", nil, p)
         d:SetAllPoints(p)
         d:Hide()
@@ -292,27 +369,132 @@ local function BuildPage2(parent)
         local h = HeaderText(d, headerText, "GameFontNormalLarge")
         h:SetPoint("TOP", d, "TOP", 0, -28)
 
-        local body = BodyText(d, detailText or "")
-        body:SetPoint("TOP", h, "BOTTOM", 0, -16)
-        body:SetWidth(WIZ_W - 120)
+        if opts.image then
+            local image = d:CreateTexture(nil, "ARTWORK")
+            image:SetTexture(opts.image)
+            image:SetSize(opts.imageW or 410, opts.imageH or 233)
+            image:SetPoint("TOP", h, "BOTTOM", 0, -12)
+            image:SetTexCoord(0, 1, 0, 1)
+            image:SetVertexColor(TUTORIAL_IMAGE_TINT, TUTORIAL_IMAGE_TINT, TUTORIAL_IMAGE_TINT, 1)
+
+            local body = BodyText(d, detailText or "")
+            body:SetPoint("TOP", image, "BOTTOM", 0, -10)
+            body:SetWidth(opts.textW or (WIZ_W - 96))
+            body:SetJustifyH("LEFT")
+            body:SetSpacing(2)
+        else
+            local body = BodyText(d, detailText or "")
+            body:SetPoint("TOP", h, "BOTTOM", 0, -16)
+            body:SetWidth(WIZ_W - 120)
+        end
 
         detailViews[#detailViews + 1] = d
         return d
     end
 
-    local d1 = CreateDetailView("Search",
-        "Search panels, settings, achievements, statistics, abilities, talents, titles, reputations, currencies, mounts, toys, pets, outfits, transmogs, heirlooms, gear sets, bag items, bosses, loot, macros, map places, and addon options.\n\n" ..
-        "Right-click a result for contextual actions like Guide, Pin, Add Alias, favorite toggles, tracking, pet actions, and other row-specific tools. Pins keep important results available before typing; aliases let your own words find the same result.")
+    local function CreateCarouselDetailView(headerText, slides)
+        local d = CreateFrame("Frame", nil, p)
+        d:SetAllPoints(p)
+        d:Hide()
+
+        local back = MakeButton(d, "< Back", "ghost", 52)
+        back:SetPoint("TOPLEFT", d, "TOPLEFT", 12, -10)
+        back:SetScript("OnClick", ShowGrid)
+
+        local h = HeaderText(d, headerText, "GameFontNormalLarge")
+        h:SetPoint("TOP", d, "TOP", 0, -28)
+
+        local image = d:CreateTexture(nil, "ARTWORK")
+        image:SetPoint("TOP", h, "BOTTOM", 0, -10)
+        image:SetTexCoord(0, 1, 0, 1)
+
+        local slideText = BodyText(d, "")
+        slideText:SetPoint("TOP", image, "BOTTOM", 0, -8)
+        slideText:SetWidth(WIZ_W - 104)
+        slideText:SetJustifyH("LEFT")
+        slideText:SetSpacing(2)
+
+        local controls = CreateFrame("Frame", nil, d)
+        controls:SetSize(148, 18)
+        controls:SetPoint("BOTTOM", d, "BOTTOM", 0, 6)
+
+        local prev = MakeButton(controls, "<", "ghost", 26)
+        prev:SetPoint("LEFT", controls, "LEFT", 0, 0)
+
+        local next = MakeButton(controls, ">", "ghost", 26)
+        next:SetPoint("RIGHT", controls, "RIGHT", 0, 0)
+
+        local counter = controls:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        counter:SetPoint("CENTER", controls, "CENTER", 0, 0)
+        counter:SetTextColor(TEXT_DIM[1], TEXT_DIM[2], TEXT_DIM[3], 1)
+        ApplyInter(counter, "regular", 10)
+
+        local idx = 1
+        local function ShowSlide(newIdx)
+            local count = #slides
+            if count == 0 then return end
+            if newIdx < 1 then newIdx = count end
+            if newIdx > count then newIdx = 1 end
+            idx = newIdx
+
+            local slide = slides[idx]
+            image:SetTexture(slide.image)
+            image:SetVertexColor(TUTORIAL_IMAGE_TINT, TUTORIAL_IMAGE_TINT, TUTORIAL_IMAGE_TINT, 1)
+            local w, hgt = FitSize(slide.w, slide.h, 486, 218)
+            image:SetSize(w, hgt)
+            slideText:SetText(slide.text or "")
+            counter:SetText(idx .. " / " .. count)
+        end
+
+        prev:SetScript("OnClick", function() ShowSlide(idx - 1) end)
+        next:SetScript("OnClick", function() ShowSlide(idx + 1) end)
+        d.OnEnter = function() ShowSlide(idx) end
+        ShowSlide(1)
+
+        detailViews[#detailViews + 1] = d
+        return d
+    end
+
+    local function CreateCalculatorDetailView()
+        local d = CreateFrame("Frame", nil, p)
+        d:SetAllPoints(p)
+        d:Hide()
+
+        local back = MakeButton(d, "< Back", "ghost", 52)
+        back:SetPoint("TOPLEFT", d, "TOPLEFT", 12, -10)
+        back:SetScript("OnClick", ShowGrid)
+
+        local h = HeaderText(d, "Calculator", "GameFontNormalLarge")
+        h:SetPoint("TOP", d, "TOP", 0, -28)
+
+        local visual = d:CreateTexture(nil, "ARTWORK")
+        visual:SetTexture(CALCULATOR_TUTORIAL_IMAGE)
+        visual:SetSize(486, 224)
+        visual:SetPoint("TOP", h, "BOTTOM", 0, -10)
+        visual:SetTexCoord(0, 1, 0, 1)
+        visual:SetVertexColor(TUTORIAL_IMAGE_TINT, TUTORIAL_IMAGE_TINT, TUTORIAL_IMAGE_TINT, 1)
+
+        local body = BodyText(d,
+            "Type math into search for instant results, or search calculator and press Alt+C to open the full calculator.")
+        body:SetPoint("TOP", visual, "BOTTOM", 0, -10)
+        body:SetWidth(WIZ_W - 104)
+        body:SetJustifyH("LEFT")
+        body:SetSpacing(2)
+
+        detailViews[#detailViews + 1] = d
+        return d
+    end
+
+    local d1 = CreateCarouselDetailView("Search", SEARCH_TUTORIAL_SLIDES)
     local d2 = CreateDetailView("Map Search Tab",
-        "Use the Map Search tab for location-first browsing: banks, flight masters, dungeons, raids, zones, and useful points of interest.")
-    local d3 = CreateDetailView("Item/Ability Use",
-        "Use supported results directly from the list: cast abilities, summon mounts and pets, use toys, swap outfits, view or try on transmogs, add heirlooms to bags, consume usable bag items, equip gear from bags, and open ordinary bag items in their bag slot.")
-    local d4 = CreateDetailView("Calculator",
-        "Type math straight into search, including 1+23, 1*7, sin(30), tan(45), or 5!. Select the expression or result and press Ctrl+C, or press Alt+C to open the calculator.")
+        "Search the map you're viewing. \"This Zone\" shows matches for the current map, while \"Across the World\" groups broader results by continent and zone. Built for quickly moving between zones and previewing POIs on hover; the same results are available from the main search bar, just without the nested map layout.",
+        { image = MAP_SEARCH_TUTORIAL_IMAGE, imageW = 486, imageH = 224, textW = WIZ_W - 92 })
+    local d3 = CreateCarouselDetailView("Item/Ability Use", USE_TUTORIAL_SLIDES)
+    local d4 = CreateCalculatorDetailView()
 
     local t1 = FeatureTile(grid, nil, "Interface\\AddOns\\EasyFind\\Textures\\Spyglass", nil,
         "Search",
-        "Search any panel, tab, setting, mount, toy, currency, achievement, or vendor item.",
+        "Search any panel, tab, setting, mount, toy, currency, achievement, and more.",
         function() ShowDetail(d1) end)
     t1:SetPoint("TOPLEFT", grid, "TOPLEFT", 38, -96)
 
@@ -329,7 +511,7 @@ local function BuildPage2(parent)
         function() ShowDetail(d3) end)
     t3:SetPoint("TOPLEFT", grid, "TOPLEFT", 38, -222)
 
-    local t4 = FeatureTile(grid, nil, "Interface\\Icons\\INV_Misc_Note_05", nil,
+    local t4 = FeatureTile(grid, nil, CALCULATOR_ICON_TEX, nil,
         "Calculator",
         "Type expressions, copy the result, or open the full calculator with Alt+C.",
         function() ShowDetail(d4) end)
@@ -480,7 +662,7 @@ local function BuildPage3(parent)
     return p
 end
 
-local BANNER_H = 38
+local BANNER_H = 29
 
 local function CreateFrameOnce()
     if frame then return frame end
@@ -600,33 +782,33 @@ local function CreateFrameOnce()
         BuildPage3(pageHost),
     }
 
-    local BANNER_INSET = 6
+    local BANNER_INSET = 5
     local footer = CreateFrame("Frame", nil, f)
     footer:SetPoint("BOTTOMLEFT",  f, "BOTTOMLEFT",  BANNER_INSET, BANNER_INSET)
     footer:SetPoint("BOTTOMRIGHT", f, "BOTTOMRIGHT", -BANNER_INSET, BANNER_INSET)
     footer:SetHeight(BANNER_H)
     ns.CreateRoundedRectBorder(footer)
-    ns.SetRoundedRectBarHeight(footer, 16)
+    ns.SetRoundedRectBarHeight(footer, 12)
     ns.SetRoundedRectBorderBgAlpha(footer, 1)
     ns.SetRoundedRectFill(footer, 0.075, 0.075, 0.085, 1, true)
     ns.SetRoundedRectBorderEdgeShown(footer, false)
 
-    local DOT_GAP = 14
-    local DOT_SZ  = 9
-    local DOT_ACTIVE = 11
+    local DOT_GAP = 11
+    local DOT_SZ  = 7
+    local DOT_ACTIVE = 9
     for i = 1, #pages do
         local d = footer:CreateTexture(nil, "OVERLAY")
         d:SetSize(DOT_SZ, DOT_SZ)
         d:SetTexture(DOT_FILLED)
-        d:SetPoint("LEFT", footer, "LEFT", 14 + DOT_ACTIVE / 2 + (i - 1) * (DOT_SZ + DOT_GAP), 0)
+        d:SetPoint("LEFT", footer, "LEFT", 12 + DOT_ACTIVE / 2 + (i - 1) * (DOT_SZ + DOT_GAP), 0)
         dots[i] = d
     end
 
-    nextBtn = MakeButton(footer, "Continue", "rounded", 96)
-    nextBtn:SetPoint("RIGHT", footer, "RIGHT", -10, 0)
+    nextBtn = MakeButton(footer, "Continue", "rounded", 78)
+    nextBtn:SetPoint("RIGHT", footer, "RIGHT", -8, 0)
 
-    backBtn = MakeButton(footer, "Back", "ghost", 50)
-    backBtn:SetPoint("RIGHT", nextBtn, "LEFT", -6, 0)
+    backBtn = MakeButton(footer, "Back", "ghost", 42)
+    backBtn:SetPoint("RIGHT", nextBtn, "LEFT", -5, 0)
     backBtn:SetScript("OnClick", function() ShowPage(pageIdx - 1) end)
 
     nextBtn:SetScript("OnClick", function()
