@@ -14075,6 +14075,10 @@ function UI:SelectResult(data, forceGuide)
         self:Hide()
     else
         self:HideResults()
+        -- selecting a result ends the search; let Smart Show tuck the bar
+        if EasyFind.db.smartShow then
+            searchFrame.smartShowFadeOut()
+        end
     end
 
     -- Slash-command actions (e.g. Pet Dismiss → /dismisspet) fire via
