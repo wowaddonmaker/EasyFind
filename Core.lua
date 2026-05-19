@@ -806,7 +806,8 @@ function EasyFind:ToggleFocusSearchUI()
     self:EnsureDynamicLoaded()
     if EasyFind.db.enableMapSearch ~= false and WorldMapFrame and WorldMapFrame:IsShown() and ns.MapTab then
         ns.MapTab:Focus()
-    elseif ns.UI then
+    elseif ns.UI and not EasyFind.db.smartShow then
+        -- Smart Show owns the bar's visibility; the toggle keybind is disabled
         ns.UI:ToggleFocus()
     end
 end

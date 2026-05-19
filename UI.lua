@@ -15993,8 +15993,10 @@ function UI:UpdateSmartShow()
     if not searchFrame then return end
     local enabled = EasyFind.db.smartShow
     if enabled then
+        -- Smart Show owns the bar; force it enabled (keybind toggle is off).
+        EasyFind.db.visible = true
         searchFrame.hoverZone:Show()
-        if EasyFind.db.visible ~= false and not inCombat then
+        if not inCombat then
             searchFrame:SetAlpha(0)
             searchFrame:Show()
             searchFrame.setSmartShowVisible(false)
