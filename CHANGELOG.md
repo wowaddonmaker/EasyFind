@@ -4,6 +4,21 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [2.0.1] - 2026-05-19
+
+### Fixed
+- Search now matches words that follow a hyphen, so "alias" finds "Anti-Aliasing" and "fov" finds "Field of View"
+- The "Transfer" option in a currency's right-click menu now reliably opens the currency transfer window
+
+### Changed
+- "vsync" now finds the Vertical Sync graphics setting
+- Per-button action bar keybindings (such as "Action Bar 3 Button 3") no longer clutter search results; the action bars themselves still appear
+- Removed the redundant "Achievements Tab" entry from search results
+- Improved the reveal behavior for collection search results
+- The hotkey step of the tutorial now shows the recommended keybinds
+
+---
+
 ## [2.0.0] - 2026-05-13
 
 EasyFind 2.0 is a full rewrite of the search and map experience. Launch the in-game tutorial to see what's new.
