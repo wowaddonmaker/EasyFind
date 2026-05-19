@@ -200,9 +200,9 @@ local function SyncOptionControls()
         optionsFrame.colorBtnText:SetText(clr)
         optionsFrame.colorBtnText:SetTextColor(rgb[1], rgb[2], rgb[3])
     end
-    if optionsFrame.toggleFocusBtn then optionsFrame.toggleFocusBtn:SetText(GetBindingKey("EASYFIND_TOGGLE_FOCUS") or "Not Bound") end
-    if optionsFrame.mapFocusBtn then optionsFrame.mapFocusBtn:SetText(GetBindingKey("EASYFIND_MAP_FOCUS") or "Not Bound") end
-    if optionsFrame.clearBtn then optionsFrame.clearBtn:SetText(GetBindingKey("EASYFIND_CLEAR") or "Not Bound") end
+    if optionsFrame.toggleFocusBtn then optionsFrame.toggleFocusBtn:SetText(GetBindingKey("EASYFIND_TOGGLE_FOCUS") or EasyFind:GetAccountKeybind("EASYFIND_TOGGLE_FOCUS") or "Not Bound") end
+    if optionsFrame.mapFocusBtn then optionsFrame.mapFocusBtn:SetText(GetBindingKey("EASYFIND_MAP_FOCUS") or EasyFind:GetAccountKeybind("EASYFIND_MAP_FOCUS") or "Not Bound") end
+    if optionsFrame.clearBtn then optionsFrame.clearBtn:SetText(GetBindingKey("EASYFIND_CLEAR") or EasyFind:GetAccountKeybind("EASYFIND_CLEAR") or "Not Bound") end
 end
 
 local PaintRoundedFill = ns.SetRoundedRectFill
@@ -933,7 +933,7 @@ function Options:Initialize()
         local key1, key2 = GetBindingKey(action)
         if key1 then return key1 end
         if key2 then return key2 end
-        return "Not Bound"
+        return EasyFind:GetAccountKeybind(action) or "Not Bound"
     end
 
     local function StopCapture(keybindBtn, action)
@@ -975,11 +975,7 @@ function Options:Initialize()
                 if IsControlKeyDown() then combo = combo .. "CTRL-"  end
                 if IsShiftKeyDown() then combo = combo .. "SHIFT-" end
                 combo = combo .. key
-                local old1, old2 = GetBindingKey(action)
-                if old1 then SetBinding(old1) end
-                if old2 then SetBinding(old2) end
-                SetBinding(combo, action)
-                SaveBindings(GetCurrentBindingSet())
+                EasyFind:SetAccountKeybind(action, combo)
                 StopCapture(self, action)
 
             end)
@@ -1204,8 +1200,15 @@ function Options:Initialize()
     local KEYBIND_ROW_H = 24
     local KEYBIND_BTN_W = 116
     local KEYBIND_LABEL_W = 168
+    local keybindWarn = sec3:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    keybindWarn:SetPoint("TOPLEFT", keybindHeader, "BOTTOMLEFT", 0, -4)
+    keybindWarn:SetWidth(SELECTOR_ROW_W - 8)
+    keybindWarn:SetJustifyH("LEFT")
+    keybindWarn:SetText("Applies to every char, taking priority over whatever else uses that key.")
+    keybindWarn:SetTextColor(0.95, 0.36, 0.30, 1)
+
     local keybindSettings = CreateSettingsGroup(sec3, SELECTOR_ROW_W, KEYBIND_ROW_H * #keybindDefs + 8)
-    keybindSettings:SetPoint("TOPLEFT", keybindHeader, "BOTTOMLEFT", 0, -3)
+    keybindSettings:SetPoint("TOPLEFT", keybindWarn, "BOTTOMLEFT", 0, -4)
     optionsFrame.keybindSettings = keybindSettings
 
     for i, def in ipairs(keybindDefs) do
@@ -1228,10 +1231,7 @@ function Options:Initialize()
         keybindBtn:SetText(GetCurrentKeybindText(def.action))
         keybindBtn:SetScript("OnClick", function(self, button)
             if button == "RightButton" then
-                local old1, old2 = GetBindingKey(def.action)
-                if old1 then SetBinding(old1) end
-                if old2 then SetBinding(old2) end
-                SaveBindings(GetCurrentBindingSet())
+                EasyFind:SetAccountKeybind(def.action, nil)
                 self:SetText("Not Bound")
             else
                 StartCapture(self, def.action)

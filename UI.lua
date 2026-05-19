@@ -16419,7 +16419,7 @@ function UI:ShowFirstTimeSetup()
     -- Click the button to capture a key, right-click to clear, Esc to cancel,
     -- mirrors the keybind UI in /ef Options > Shortcuts.
     local function GetKeybindLabel(action)
-        local k1 = GetBindingKey(action)
+        local k1 = GetBindingKey(action) or EasyFind:GetAccountKeybind(action)
         return k1 or "Not Bound"
     end
 
@@ -16480,10 +16480,7 @@ function UI:ShowFirstTimeSetup()
         btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
         btn:SetScript("OnClick", function(self, mouseButton)
             if mouseButton == "RightButton" then
-                local o1, o2 = GetBindingKey(action)
-                if o1 then SetBinding(o1) end
-                if o2 then SetBinding(o2) end
-                SaveBindings(GetCurrentBindingSet())
+                EasyFind:SetAccountKeybind(action, nil)
                 self:SetText("Not Bound")
                 return
             end
@@ -16517,11 +16514,7 @@ function UI:ShowFirstTimeSetup()
                 if IsControlKeyDown() then combo = combo .. "CTRL-" end
                 if IsShiftKeyDown() then combo = combo .. "SHIFT-" end
                 combo = combo .. key
-                local o1, o2 = GetBindingKey(action)
-                if o1 then SetBinding(o1) end
-                if o2 then SetBinding(o2) end
-                SetBinding(combo, action)
-                SaveBindings(GetCurrentBindingSet())
+                EasyFind:SetAccountKeybind(action, combo)
                 StopKeybindCapture(s, action)
             end)
         end)

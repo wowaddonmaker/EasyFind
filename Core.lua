@@ -12,10 +12,6 @@ EasyFind = {}
 ns.EasyFind = EasyFind
 EasyFind._ns = ns
 
-BINDING_NAME_EASYFIND_TOGGLE_FOCUS = "Toggle Search Bar"
-BINDING_NAME_EASYFIND_CLEAR        = "Clear All Highlights"
-BINDING_NAME_EASYFIND_MAP_FOCUS    = "Open Map Search Tab"
-
 local eventFrame = CreateFrame("Frame")
 ns.eventFrame = eventFrame
 
@@ -45,6 +41,7 @@ local DB_DEFAULTS = {
     smartShow = false,
     lockPosition = false,
     tutorialDone = false,
+    accountKeybinds = {},
     resultsTheme = "Modern",
     font = "Default",
     indicatorStyle = "EasyFind Arrow",
@@ -566,6 +563,69 @@ function EasyFind:EnsureDynamicLoaded()
     end
 end
 
+-- EasyFind's keybinds are fully addon-managed: the chosen key is stored
+-- account-wide in EasyFindDB and applied as an override-click each login.
+-- They are not WoW named bindings, so they never appear in Blizzard's
+-- keybinding panel and work the same on every character.
+local EASYFIND_BINDINGS = { "EASYFIND_TOGGLE_FOCUS", "EASYFIND_MAP_FOCUS", "EASYFIND_CLEAR" }
+local EASYFIND_BINDING_LOOKUP = {}
+for i = 1, #EASYFIND_BINDINGS do EASYFIND_BINDING_LOOKUP[EASYFIND_BINDINGS[i]] = true end
+
+local bindingOverrideOwner = CreateFrame("Frame")
+
+local KEYBIND_BUTTON = {
+    EASYFIND_TOGGLE_FOCUS = "EasyFindKeybindToggleButton",
+    EASYFIND_MAP_FOCUS    = "EasyFindKeybindMapButton",
+    EASYFIND_CLEAR        = "EasyFindKeybindClearButton",
+}
+do
+    local toggleBtn = CreateFrame("Button", "EasyFindKeybindToggleButton", UIParent)
+    toggleBtn:Hide()
+    toggleBtn:SetScript("OnClick", function() EasyFind:ToggleFocusSearchUI() end)
+    local mapBtn = CreateFrame("Button", "EasyFindKeybindMapButton", UIParent)
+    mapBtn:Hide()
+    mapBtn:SetScript("OnClick", function() EasyFind:FocusMapSearch() end)
+    local clearBtn = CreateFrame("Button", "EasyFindKeybindClearButton", UIParent)
+    clearBtn:Hide()
+    clearBtn:SetScript("OnClick", function() EasyFind:ClearAll() end)
+end
+
+local function ApplyAccountKeybinds()
+    local store = EasyFindDB and EasyFindDB.accountKeybinds
+    if not store then return end
+    if InCombatLockdown() then
+        bindingOverrideOwner:RegisterEvent("PLAYER_REGEN_ENABLED")
+        return
+    end
+    ClearOverrideBindings(bindingOverrideOwner)
+    for i = 1, #EASYFIND_BINDINGS do
+        local action = EASYFIND_BINDINGS[i]
+        local key = store[action]
+        if key and key ~= "" then
+            SetOverrideBindingClick(bindingOverrideOwner, true, key, KEYBIND_BUTTON[action])
+        end
+    end
+end
+
+bindingOverrideOwner:SetScript("OnEvent", function(self)
+    self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+    ApplyAccountKeybinds()
+end)
+
+-- Called by EasyFind's keybind UI when the user binds (key) or clears (nil) a
+-- shortcut. Stores it account-wide and re-applies the override immediately.
+function EasyFind:SetAccountKeybind(action, key)
+    if not (action and EASYFIND_BINDING_LOOKUP[action] and EasyFindDB) then return end
+    EasyFindDB.accountKeybinds = EasyFindDB.accountKeybinds or {}
+    if key == "" then key = nil end
+    EasyFindDB.accountKeybinds[action] = key
+    ApplyAccountKeybinds()
+end
+
+EasyFind.GetAccountKeybind = function(_, action)
+    return EasyFindDB and EasyFindDB.accountKeybinds and EasyFindDB.accountKeybinds[action]
+end
+
 local function OnPlayerLogin()
     if ns.Database and ns.Database.EnsureDynamicProviderLoaded then
         ns.Database:EnsureDynamicProviderLoaded("statistics", function(changed)
@@ -647,6 +707,16 @@ local function OnPlayerLogin()
         --     end)
         EasyFind.db.lastSeenVersion = currentVersion
     end
+
+    EasyFindDB.accountKeybinds = EasyFindDB.accountKeybinds or {}
+    for i = 1, #EASYFIND_BINDINGS do
+        local action = EASYFIND_BINDINGS[i]
+        if not EasyFindDB.accountKeybinds[action] then
+            local existing = GetBindingKey(action)
+            if existing then EasyFindDB.accountKeybinds[action] = existing end
+        end
+    end
+    ApplyAccountKeybinds()
 end
 
 local outfitRefreshTimer

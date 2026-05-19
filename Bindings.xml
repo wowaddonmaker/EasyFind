@@ -1,11 +1,2 @@
 <Bindings>
-	<Binding name="EASYFIND_TOGGLE_FOCUS" category="EasyFind">
-		EasyFind:ToggleFocusSearchUI()
-	</Binding>
-	<Binding name="EASYFIND_CLEAR" category="EasyFind">
-		EasyFind:ClearAll()
-	</Binding>
-	<Binding name="EASYFIND_MAP_FOCUS" category="EasyFind">
-		EasyFind:FocusMapSearch()
-	</Binding>
 </Bindings>

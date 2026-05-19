@@ -10,9 +10,6 @@ local SafeAfter = Utils.SafeAfter
 local CreateFrame   = CreateFrame
 local UIParent      = UIParent
 local GetBindingKey = GetBindingKey
-local SetBinding    = SetBinding
-local SaveBindings  = SaveBindings
-local GetCurrentBindingSet = GetCurrentBindingSet
 local IsAltKeyDown, IsControlKeyDown, IsShiftKeyDown = IsAltKeyDown, IsControlKeyDown, IsShiftKeyDown
 
 local GOLD       = ns.GOLD_COLOR or { 1.0, 0.82, 0.0 }
@@ -526,7 +523,7 @@ local kbWidgets = {}
 local kbWaitingFor
 
 local function RefreshKbWidget(widget)
-    local cur = GetBindingKey(widget.action)
+    local cur = GetBindingKey(widget.action) or EasyFind:GetAccountKeybind(widget.action)
     widget.btn._label:SetText(cur or "Not bound")
 end
 
@@ -582,10 +579,7 @@ local function CreateKbWidget(parent, action, label)
 
     btn:SetScript("OnClick", function(self, mouseButton)
         if mouseButton == "RightButton" then
-            local o1, o2 = GetBindingKey(action)
-            if o1 then SetBinding(o1) end
-            if o2 then SetBinding(o2) end
-            SaveBindings(GetCurrentBindingSet())
+            EasyFind:SetAccountKeybind(action, nil)
             RefreshKbWidget(w)
             return
         end
@@ -614,11 +608,7 @@ local function CreateKbWidget(parent, action, label)
             if IsControlKeyDown() then combo = combo .. "CTRL-"  end
             if IsShiftKeyDown()   then combo = combo .. "SHIFT-" end
             combo = combo .. key
-            local o1, o2 = GetBindingKey(action)
-            if o1 then SetBinding(o1) end
-            if o2 then SetBinding(o2) end
-            SetBinding(combo, action)
-            SaveBindings(GetCurrentBindingSet())
+            EasyFind:SetAccountKeybind(action, combo)
             StopKeybindCapture()
         end)
     end)
@@ -678,6 +668,14 @@ local function BuildPage3(parent)
     hint:SetWidth(WIZ_W - 100)
     hint:SetJustifyH("CENTER")
     ApplyInter(hint, "regular")
+
+    local kbWarn = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    kbWarn:SetText("Applies to every char, taking priority over whatever else uses that key.")
+    kbWarn:SetTextColor(0.95, 0.36, 0.30, 1)
+    kbWarn:SetPoint("BOTTOM", hint, "TOP", 0, 8)
+    kbWarn:SetWidth(WIZ_W - 100)
+    kbWarn:SetJustifyH("CENTER")
+    ApplyInter(kbWarn, "regular")
 
     p.OnEnter = function()
         if kbWaitingFor then StopKeybindCapture() end
