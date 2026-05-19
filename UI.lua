@@ -15543,23 +15543,41 @@ end
 function UI:RouteCurrencyTransfer(pinData)
     if not pinData then return end
     local currencyID = pinData.currencyID
+    self:SelectResult(pinData)
+    if not (currencyID and Utils and Utils.SafeAfter and ns.Highlight) then return end
 
-    local menu = _G["CurrencyTransferMenu"]
-    if not menu and C_AddOns and C_AddOns.LoadAddOn then
-        pcall(C_AddOns.LoadAddOn, "Blizzard_CurrencyTransferMenu")
-        menu = _G["CurrencyTransferMenu"]
+    local rowClicked = false
+    local highlightDone = false
+
+    local function highlightTransferBtn()
+        if highlightDone then return end
+        local popup = _G["TokenFramePopup"]
+        local btn = popup and popup.CurrencyTransferToggleButton
+        if btn and btn:IsShown() then
+            highlightDone = true
+            ns.Highlight:StartGuide({
+                steps = {
+                    { buttonFrame = "TokenFramePopup.CurrencyTransferToggleButton" }
+                }
+            })
+        end
     end
 
-    if not (currencyID and menu and menu.SetCurrency) then
-        self:SelectResult(pinData)
-        return
+    local function clickRow()
+        if rowClicked then return end
+        local rowBtn = ns.Highlight:GetCurrencyRowButton(currencyID)
+        if rowBtn and rowBtn:IsShown() and rowBtn.Click then
+            rowClicked = true
+            rowBtn:Click()
+            Utils.SafeAfter(0.1, highlightTransferBtn)
+            Utils.SafeAfter(0.3, highlightTransferBtn)
+            Utils.SafeAfter(0.6, highlightTransferBtn)
+        end
     end
 
-    self:FinishResultSelection()
-    menu:SetCurrency(currencyID)
-    if not menu:IsShown() then
-        menu:Show()
-    end
+    Utils.SafeAfter(0.15, clickRow)
+    Utils.SafeAfter(0.35, clickRow)
+    Utils.SafeAfter(0.6, clickRow)
 end
 
 -- Open the AchievementFrame to a specific achievement. Tries Blizzard's
