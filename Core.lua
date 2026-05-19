@@ -633,19 +633,18 @@ local function OnPlayerLogin()
         end
     end)
 
-    -- 2.0.0 routes returning users to the tutorial instead of What's New.
     local currentVersion = ns.version
     local lastSeen = EasyFind.db.lastSeenVersion
     if currentVersion and currentVersion ~= lastSeen then
         if currentVersion == REVAMPED_TUTORIAL_VERSION
            and EasyFind.db.revampedTutorialVersion ~= REVAMPED_TUTORIAL_VERSION then
             EasyFind.db.tutorialDone = false
-        elseif currentVersion ~= REVAMPED_TUTORIAL_VERSION
-               and (lastSeen ~= nil or EasyFind.db.setupComplete) then
-            SafeAfter(1.5, function()
-                if ns.UI then ns.UI:ShowWhatsNew(currentVersion) end
-            end)
         end
+        -- elseif currentVersion ~= REVAMPED_TUTORIAL_VERSION
+        --        and (lastSeen ~= nil or EasyFind.db.setupComplete) then
+        --     SafeAfter(1.5, function()
+        --         if ns.UI then ns.UI:ShowWhatsNew(currentVersion) end
+        --     end)
         EasyFind.db.lastSeenVersion = currentVersion
     end
 end
