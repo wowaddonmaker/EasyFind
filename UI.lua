@@ -15546,38 +15546,25 @@ function UI:RouteCurrencyTransfer(pinData)
     self:SelectResult(pinData)
     if not (currencyID and Utils and Utils.SafeAfter and ns.Highlight) then return end
 
-    local rowClicked = false
+    -- Auto-clicking the currency row taints the final transfer call, so we
+    -- let the player click it; then we move the highlight to Transfer.
     local highlightDone = false
-
-    local function highlightTransferBtn()
+    local function watchForPopup(remaining)
         if highlightDone then return end
         local popup = _G["TokenFramePopup"]
         local btn = popup and popup.CurrencyTransferToggleButton
-        if btn and btn:IsShown() then
+        if popup and popup:IsShown() and btn and btn:IsShown() then
             highlightDone = true
             ns.Highlight:StartGuide({
-                steps = {
-                    { buttonFrame = "TokenFramePopup.CurrencyTransferToggleButton" }
-                }
+                steps = { { buttonFrame = "TokenFramePopup.CurrencyTransferToggleButton" } }
             })
+            return
+        end
+        if remaining > 0 then
+            Utils.SafeAfter(0.2, function() watchForPopup(remaining - 1) end)
         end
     end
-
-    local function clickRow()
-        if rowClicked then return end
-        local rowBtn = ns.Highlight:GetCurrencyRowButton(currencyID)
-        if rowBtn and rowBtn:IsShown() and rowBtn.Click then
-            rowClicked = true
-            rowBtn:Click()
-            Utils.SafeAfter(0.1, highlightTransferBtn)
-            Utils.SafeAfter(0.3, highlightTransferBtn)
-            Utils.SafeAfter(0.6, highlightTransferBtn)
-        end
-    end
-
-    Utils.SafeAfter(0.15, clickRow)
-    Utils.SafeAfter(0.35, clickRow)
-    Utils.SafeAfter(0.6, clickRow)
+    Utils.SafeAfter(0.2, function() watchForPopup(50) end)
 end
 
 -- Open the AchievementFrame to a specific achievement. Tries Blizzard's
