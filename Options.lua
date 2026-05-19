@@ -1195,7 +1195,7 @@ function Options:Initialize()
 
     local keybindHeader = sec3:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     keybindHeader:SetPoint("TOPLEFT", fontRow, "BOTTOMLEFT", 8, -18)
-    keybindHeader:SetText("Keybindings")
+    keybindHeader:SetText("Keybindings (applies to every character)")
     keybindHeader:SetTextColor(SECTION_TITLE_TEXT[1], SECTION_TITLE_TEXT[2], SECTION_TITLE_TEXT[3], 1)
 
     local keybindDefs = {
@@ -1214,15 +1214,8 @@ function Options:Initialize()
     local KEYBIND_ROW_H = 24
     local KEYBIND_BTN_W = 116
     local KEYBIND_LABEL_W = 168
-    local keybindWarn = sec3:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    keybindWarn:SetPoint("TOPLEFT", keybindHeader, "BOTTOMLEFT", 0, -4)
-    keybindWarn:SetWidth(SELECTOR_ROW_W - 8)
-    keybindWarn:SetJustifyH("LEFT")
-    keybindWarn:SetText("Applies to every char, taking priority over whatever else uses that key.")
-    keybindWarn:SetTextColor(0.95, 0.36, 0.30, 1)
-
     local keybindSettings = CreateSettingsGroup(sec3, SELECTOR_ROW_W, KEYBIND_ROW_H * #keybindDefs + 8)
-    keybindSettings:SetPoint("TOPLEFT", keybindWarn, "BOTTOMLEFT", 0, -4)
+    keybindSettings:SetPoint("TOPLEFT", keybindHeader, "BOTTOMLEFT", 0, -3)
     optionsFrame.keybindSettings = keybindSettings
 
     for i, def in ipairs(keybindDefs) do
@@ -1384,7 +1377,7 @@ function Options:Initialize()
 
     local resetUIBtn = CreateModernButton(sec1)
     resetUIBtn:SetSize(RESET_BTN_W, 20)
-    resetUIBtn:SetPoint("BOTTOMLEFT", sec1, "BOTTOMLEFT", 8, 8)
+    resetUIBtn:SetPoint("BOTTOMLEFT", sec1, "BOTTOMLEFT", 16, 8)
     resetUIBtn:SetText("Reset Settings")
     resetUIBtn:SetScript("OnClick", function()
         StaticPopup_Show("EASYFIND_RESET_UI")
@@ -1921,7 +1914,7 @@ function Options:Initialize()
 
     local resetAllBtn = CreateModernButton(sec3)
     resetAllBtn:SetSize(RESET_BTN_W, 20)
-    resetAllBtn:SetPoint("BOTTOMLEFT", sec3, "BOTTOMLEFT", 8, 8)
+    resetAllBtn:SetPoint("BOTTOMLEFT", sec3, "BOTTOMLEFT", 16, 8)
     resetAllBtn:SetText("Reset All Settings")
     resetAllBtn:SetScript("OnClick", function()
         StaticPopup_Show("EASYFIND_RESET_ALL")

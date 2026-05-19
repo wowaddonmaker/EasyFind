@@ -619,7 +619,7 @@ end
 local function BuildPage3(parent)
     local p = MakePage(parent)
 
-    local title = HeaderText(p, "Pick your hotkeys", "GameFontNormalLarge")
+    local title = HeaderText(p, "Pick your hotkeys (applies to every character)", "GameFontNormalLarge")
     title:SetPoint("TOP", p, "TOP", 0, -36)
 
     local sub = BodyText(p, "")
@@ -668,14 +668,6 @@ local function BuildPage3(parent)
     hint:SetWidth(WIZ_W - 100)
     hint:SetJustifyH("CENTER")
     ApplyInter(hint, "regular")
-
-    local kbWarn = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    kbWarn:SetText("Applies to every char, taking priority over whatever else uses that key.")
-    kbWarn:SetTextColor(0.95, 0.36, 0.30, 1)
-    kbWarn:SetPoint("BOTTOM", hint, "TOP", 0, 8)
-    kbWarn:SetWidth(WIZ_W - 100)
-    kbWarn:SetJustifyH("CENTER")
-    ApplyInter(kbWarn, "regular")
 
     p.OnEnter = function()
         if kbWaitingFor then StopKeybindCapture() end
