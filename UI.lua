@@ -14042,6 +14042,22 @@ function UI:RevealPetInJournal(data)
     return nil
 end
 
+function UI:FinishResultSelection()
+    selectingResult = true
+    searchFrame.editBox:SetText("")
+    searchFrame.editBox:ClearFocus()
+    searchFrame.editBox.placeholder:Show()
+    selectingResult = false
+    if EasyFind.db.autoHide then
+        self:Hide()
+    else
+        self:HideResults()
+        if EasyFind.db.smartShow then
+            searchFrame.smartShowFadeOut()
+        end
+    end
+end
+
 function UI:SelectResult(data, forceGuide)
     if not data then return end
     local useFast = not forceGuide
@@ -14066,20 +14082,7 @@ function UI:SelectResult(data, forceGuide)
         return
     end
 
-    selectingResult = true
-    searchFrame.editBox:SetText("")
-    searchFrame.editBox:ClearFocus()
-    searchFrame.editBox.placeholder:Show()
-    selectingResult = false
-    if EasyFind.db.autoHide then
-        self:Hide()
-    else
-        self:HideResults()
-        -- selecting a result ends the search; let Smart Show tuck the bar
-        if EasyFind.db.smartShow then
-            searchFrame.smartShowFadeOut()
-        end
-    end
+    self:FinishResultSelection()
 
     -- Slash-command actions (e.g. Pet Dismiss → /dismisspet) fire via
     -- the secure macrotext attribute set when the row was rendered. The
@@ -15540,37 +15543,23 @@ end
 function UI:RouteCurrencyTransfer(pinData)
     if not pinData then return end
     local currencyID = pinData.currencyID
-    self:SelectResult(pinData)
-    if not (currencyID and Utils and Utils.SafeAfter and ns.Highlight) then return end
 
-    local rowClicked, toggleClicked = false, false
-
-    local function clickToggle()
-        if toggleClicked then return end
-        local popup = _G["TokenFramePopup"]
-        local btn = popup and popup.CurrencyTransferToggleButton
-        if btn and btn:IsShown() and (not btn.IsEnabled or btn:IsEnabled())
-           and btn.Click then
-            toggleClicked = true
-            btn:Click()
-        end
+    local menu = _G["CurrencyTransferMenu"]
+    if not menu and C_AddOns and C_AddOns.LoadAddOn then
+        pcall(C_AddOns.LoadAddOn, "Blizzard_CurrencyTransferMenu")
+        menu = _G["CurrencyTransferMenu"]
     end
 
-    local function clickRow()
-        if rowClicked then return end
-        local rowBtn = ns.Highlight:GetCurrencyRowButton(currencyID)
-        if rowBtn and rowBtn:IsShown() and rowBtn.Click then
-            rowClicked = true
-            rowBtn:Click()
-            Utils.SafeAfter(0.1, clickToggle)
-            Utils.SafeAfter(0.3, clickToggle)
-        end
+    if not (currencyID and menu and menu.SetCurrency) then
+        self:SelectResult(pinData)
+        return
     end
 
-    -- retry: the Character frame open and ScrollBox layout take a few frames
-    Utils.SafeAfter(0.15, clickRow)
-    Utils.SafeAfter(0.35, clickRow)
-    Utils.SafeAfter(0.6, clickRow)
+    self:FinishResultSelection()
+    menu:SetCurrency(currencyID)
+    if not menu:IsShown() then
+        menu:Show()
+    end
 end
 
 -- Open the AchievementFrame to a specific achievement. Tries Blizzard's
