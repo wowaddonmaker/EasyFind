@@ -15668,7 +15668,8 @@ function UI:Hide()
     searchFrame.editBox.placeholder:SetShown(searchFrame.editBox:GetText() == "")
     EasyFind.db.visible = false
 
-    searchFrame.hoverZone:SetShown(EasyFind.db.smartShow)
+    -- Bar is toggled off: the hover zone must not linger and eat clicks.
+    searchFrame.hoverZone:Hide()
 end
 
 -- Unified ESC handler: collapses every menu state we care about into one
@@ -15993,13 +15994,16 @@ function UI:UpdateSmartShow()
     if not searchFrame then return end
     local enabled = EasyFind.db.smartShow
     if enabled then
-        -- Smart Show owns the bar; force it enabled (keybind toggle is off).
+        -- Smart Show owns the bar; it stays enabled and starts shown, then
+        -- tucks away on its own if the mouse isn't near it.
         EasyFind.db.visible = true
         searchFrame.hoverZone:Show()
         if not inCombat then
-            searchFrame:SetAlpha(0)
             searchFrame:Show()
-            searchFrame.setSmartShowVisible(false)
+            searchFrame.smartShowFadeIn()
+            C_Timer.After(1.5, function()
+                if EasyFind.db.smartShow then searchFrame.smartShowFadeOut() end
+            end)
         end
     else
         -- Disable smart show: hide hover zone, cancel any pending fade-out
