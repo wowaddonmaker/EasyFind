@@ -641,10 +641,35 @@ local function BuildPage3(parent)
     kbWidgets = { uiKb, mapKb }
 
     uiKb.label:SetPoint("RIGHT", uiKb.btn, "LEFT", -14, 0)
-    uiKb.btn:SetPoint("TOP", sub, "BOTTOM", 40, -38)
+    uiKb.btn:SetPoint("TOP", sub, "BOTTOM", 0, -38)
 
     mapKb.label:SetPoint("RIGHT", mapKb.btn, "LEFT", -14, 0)
-    mapKb.btn:SetPoint("TOP", uiKb.btn, "BOTTOM", 0, -16)
+    mapKb.btn:SetPoint("TOP", uiKb.btn, "BOTTOM", 0, -32)
+
+    -- recommended bindings, shown as a labeled column to the right of the buttons
+    local uiRec = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    uiRec:SetText("Alt + Space")
+    uiRec:SetPoint("LEFT", uiKb.btn, "RIGHT", 16, 0)
+    uiRec:SetTextColor(TEXT_PRIM[1], TEXT_PRIM[2], TEXT_PRIM[3], 1)
+    ApplyInter(uiRec, "semibold")
+
+    local mapRec = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    mapRec:SetText("Alt + M")
+    mapRec:SetPoint("LEFT", mapKb.btn, "RIGHT", 16, 0)
+    mapRec:SetTextColor(TEXT_PRIM[1], TEXT_PRIM[2], TEXT_PRIM[3], 1)
+    ApplyInter(mapRec, "semibold")
+
+    local recHeader = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    recHeader:SetText("Recommended")
+    recHeader:SetPoint("BOTTOMLEFT", uiRec, "TOPLEFT", 0, 10)
+    recHeader:SetTextColor(TEXT_DIM[1], TEXT_DIM[2], TEXT_DIM[3], 1)
+    ApplyInter(recHeader, "regular")
+
+    local recHeader2 = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    recHeader2:SetText("Recommended")
+    recHeader2:SetPoint("BOTTOMLEFT", mapRec, "TOPLEFT", 0, 10)
+    recHeader2:SetTextColor(TEXT_DIM[1], TEXT_DIM[2], TEXT_DIM[3], 1)
+    ApplyInter(recHeader2, "regular")
 
     local hint = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint:SetText("Click a button, then press your keys. Right-click to clear. Esc cancels capture.")

@@ -3043,13 +3043,6 @@ function Database:BuildUIDatabase()
             steps = {{ buttonFrame = "AchievementMicroButton" }},
             children = {
                 {
-                    name = "Achievements Tab",
-                    keywords = {"achievements", "achievement tab", "personal achievements"},
-                    category = "Achievements",
-                    steps = {{ waitForFrame = "AchievementFrame", tabIndex = 1 }},
-                },
-
-                {
                     name = "Statistics",
                     keywords = {"statistics", "stats tab", "player statistics"},
                     category = "Achievements",
@@ -3955,7 +3948,9 @@ end
 
 local function IndexPrefixText(entry, text)
     if not text then return end
-    for word in text:gmatch("%S+") do
+    -- Tokenize like GetWords (split on hyphens/punctuation, not just spaces) so
+    -- a sub-word such as "aliasing" in "anti-aliasing" is independently indexed.
+    for word in text:gmatch("[%w']+") do
         local len = #word
         if len >= 1 then AddPrefixIndexEntry(entry, ssub(word, 1, 1)) end
         if len >= 2 then AddPrefixIndexEntry(entry, ssub(word, 1, 2)) end

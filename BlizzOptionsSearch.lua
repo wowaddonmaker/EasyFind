@@ -1204,6 +1204,11 @@ local function ScrollToBindingAction(action, headerName)
 end
 BlizzOptionsSearch.ScrollToBindingAction = ScrollToBindingAction
 
+-- Extra search keywords for settings whose common name differs from the label.
+local SETTING_EXTRA_KEYWORDS = {
+    PROXY_VERTICAL_SYNC = { "vsync" },
+}
+
 local function CollectEntries()
     local entries = {}
 
@@ -1226,6 +1231,10 @@ local function CollectEntries()
         local catLower = slower(catName)
         local resolved = TYPE_MAP[typeCode] or "other"
         local kw = { "setting", "option", "config", catLower, nameLower }
+        local extraKw = SETTING_EXTRA_KEYWORDS[var]
+        if extraKw then
+            for ei = 1, #extraKw do kw[#kw + 1] = extraKw[ei] end
+        end
         local resolvedCatID = GetCategoryIDForVariable(var)
         if not (registryReady and not resolvedCatID) then
             local catID = resolvedCatID or GetCategoryID(catName)
@@ -1295,6 +1304,15 @@ local function CollectEntries()
     return entries
 end
 
+-- Per-button action bar keybindings (Action Bar N Button M, Action Button N)
+-- are excluded from search: the default UI's hover-to-bind handles those, and
+-- they otherwise flood results. The "Action Bar N" toggles are a separate list.
+local function IsActionBarButtonBinding(action)
+    return action:find("^ACTIONBUTTON%d+$") ~= nil
+        or action:find("^MULTIACTIONBAR%d+BUTTON%d+$") ~= nil
+        or action:find("^BONUSACTIONBUTTON%d+$") ~= nil
+end
+
 -- Localized name lives at _G["BINDING_NAME_"..action]; category at
 -- _G["BINDING_HEADER_"..category].
 local function CollectKeybindings()
@@ -1314,7 +1332,7 @@ local function CollectKeybindings()
             elseif type(category) == "string" and category ~= "" then
                 currentHeader = category
             end
-        elseif action and action ~= "" then
+        elseif action and action ~= "" and not IsActionBarButtonBinding(action) then
             local nameKey = "BINDING_NAME_" .. action
             local displayName = _G[nameKey]
             if type(displayName) ~= "string" or displayName == "" then

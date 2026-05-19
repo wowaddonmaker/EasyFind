@@ -15529,22 +15529,44 @@ function UI:IsCurrencyTransferable(currencyID)
        and ns.Database:IsCurrencyAccountTransferable(currencyID) or false
 end
 
--- Open the Currency tab to the given currency, then click the
--- TokenFramePopup's transfer toggle. The first half mirrors what a
--- left-click on the row would do; we then chain a deferred click on
--- the transfer button once the popup is laid out.
+-- Open the Currency tab and walk the live transfer flow: SelectResult only
+-- opens the tab and highlights the row, but the Transfer button lives in
+-- TokenFramePopup, which appears only once the currency row is clicked. So
+-- click the row, then its Transfer toggle, which opens CurrencyTransferMenu.
 function UI:RouteCurrencyTransfer(pinData)
     if not pinData then return end
+    local currencyID = pinData.currencyID
     self:SelectResult(pinData)
-    if not Utils or not Utils.SafeAfter then return end
-    local function clickTransfer()
-        local btn = _G["TokenFramePopup"] and _G["TokenFramePopup"].CurrencyTransferToggleButton
-        if btn and btn:IsShown() and btn.Click then
+    if not (currencyID and Utils and Utils.SafeAfter and ns.Highlight) then return end
+
+    local rowClicked, toggleClicked = false, false
+
+    local function clickToggle()
+        if toggleClicked then return end
+        local popup = _G["TokenFramePopup"]
+        local btn = popup and popup.CurrencyTransferToggleButton
+        if btn and btn:IsShown() and (not btn.IsEnabled or btn:IsEnabled())
+           and btn.Click then
+            toggleClicked = true
             btn:Click()
         end
     end
-    Utils.SafeAfter(0.1, clickTransfer)
-    Utils.SafeAfter(0.25, clickTransfer)
+
+    local function clickRow()
+        if rowClicked then return end
+        local rowBtn = ns.Highlight:GetCurrencyRowButton(currencyID)
+        if rowBtn and rowBtn:IsShown() and rowBtn.Click then
+            rowClicked = true
+            rowBtn:Click()
+            Utils.SafeAfter(0.1, clickToggle)
+            Utils.SafeAfter(0.3, clickToggle)
+        end
+    end
+
+    -- retry: the Character frame open and ScrollBox layout take a few frames
+    Utils.SafeAfter(0.15, clickRow)
+    Utils.SafeAfter(0.35, clickRow)
+    Utils.SafeAfter(0.6, clickRow)
 end
 
 -- Open the AchievementFrame to a specific achievement. Tries Blizzard's
