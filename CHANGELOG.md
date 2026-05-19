@@ -10,6 +10,7 @@ All notable changes to EasyFind will be documented in this file.
 - Search now matches words that follow a hyphen, so "alias" finds "Anti-Aliasing" and "fov" finds "Field of View"
 - The "Transfer" option in a currency's right-click menu now reliably opens the currency transfer window
 - EasyFind's keybinds now apply on every character (including with character-specific key bindings) and are set from EasyFind's options instead of Blizzard's keybinding panel
+- Options on/off toggles flip the moment you click them, instead of waiting for the next mouse-over
 
 ### Changed
 - "vsync" now finds the Vertical Sync graphics setting

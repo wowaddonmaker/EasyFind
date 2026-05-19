@@ -395,6 +395,20 @@ local function CreateCheckbox(parent, name, label, tooltipText, compact, width)
         self.Text:SetText(value or "")
     end
 
+    -- Callers SetScript their own OnClick, which wipes a HookScript; wrap
+    -- SetScript so the toggle always repaints synchronously on click.
+    local rawSetScript = checkbox.SetScript
+    checkbox.SetScript = function(self, scriptType, handler)
+        if scriptType == "OnClick" and handler then
+            rawSetScript(self, "OnClick", function(s, ...)
+                UpdateVisual(s)
+                handler(s, ...)
+            end)
+        else
+            rawSetScript(self, scriptType, handler)
+        end
+    end
+
     checkbox:HookScript("OnClick", UpdateVisual)
     checkbox:HookScript("OnEnter", function(self)
         UpdateVisual(self)
