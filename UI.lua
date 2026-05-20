@@ -376,7 +376,11 @@ local function SetClippedText(fs, text)
     -- the natural string width when the text overflows, which then
     -- causes the trim loop to stop at a string that's far shorter than
     -- the actual visible bound (premature ellipsis with empty space
-    -- before the next element).
+    -- before the next element). Callers must invoke this AFTER the
+    -- text's final RIGHT anchor target has its size for this row --
+    -- e.g. after amountText:SetText or after re-anchoring to the boss
+    -- icon -- otherwise the clip uses the previous row's leftover
+    -- bound and over-truncates.
     local left, right = fs:GetLeft(), fs:GetRight()
     local maxW
     if left and right and right > left then
@@ -10763,6 +10767,11 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     resultRow.text:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
                 end
                 resultRow.text:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
+                -- Re-clip now that amountText (and therefore text's right
+                -- boundary) has its final position for this row. The earlier
+                -- SetClippedText ran against the previous row's amountText
+                -- width, which truncated some currencies unnecessarily.
+                SetClippedText(resultRow.text, entry.name)
                 iconSet = true
 
             -- Statistic rows: show the live stat value inline via amountText.
@@ -10812,6 +10821,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     resultRow.text:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
                 end
                 resultRow.text:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
+                SetClippedText(resultRow.text, entry.name)
                 iconSet = true
 
             -- Calculator rows use a Raycast-style result card instead of the
@@ -11000,6 +11010,10 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 resultRow.text:ClearAllPoints()
                 resultRow.text:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
                 resultRow.text:SetPoint("RIGHT", resultRow.icon, "LEFT", -4, 0)
+                -- Re-clip against the new RIGHT bound (icon:LEFT) -- the
+                -- path branch's earlier SetClippedText ran against
+                -- amountText:LEFT from the previous row.
+                SetClippedText(resultRow.text, entry.name)
                 iconSet = true
 
             -- Loot items: icon on right with source name inline
@@ -11068,6 +11082,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 else
                     resultRow.text:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
                 end
+                SetClippedText(resultRow.text, entry.name)
                 iconSet = true
 
             -- Reputation leaves: faction-side crest on the LEFT, rep bar on
