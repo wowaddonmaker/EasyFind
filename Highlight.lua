@@ -30,6 +30,7 @@ local highlightFrame
 local indicatorFrame
 local instructionFrame
 local contextTooltip
+local scrollHintFrame
 local currentGuide
 local currentStepIndex
 local stepTicker
@@ -1015,7 +1016,8 @@ function Highlight:UpdateGuide()
                     for i = 1, size do
                         local info = C_CurrencyInfo.GetCurrencyListInfo(i)
                         if info and info.isHeader and not info.isHeaderExpanded then
-                            local headerBtn = self:GetCurrencyHeaderButton(info.name)
+                            -- FindVisibleCurrencyHeaderButton: no scroll, no taint.
+                            local headerBtn = self:FindVisibleCurrencyHeaderButton(info.name)
                             if headerBtn then
                                 self:HighlightFrame(headerBtn)
                                 return
@@ -1030,7 +1032,11 @@ function Highlight:UpdateGuide()
                 return
             end
 
-            local headerBtn = self:GetCurrencyHeaderButton(step.currencyHeader)
+            -- FindVisibleCurrencyHeaderButton instead of GetCurrencyHeaderButton:
+            -- the latter calls ScrollBoxScrollTo internally, which taints
+            -- ScrollBar state and blocks the protected currency transfer
+            -- Confirm. Off-screen header just hides until player scrolls.
+            local headerBtn = self:FindVisibleCurrencyHeaderButton(step.currencyHeader)
             if headerBtn then
                 self:HighlightFrame(headerBtn)
                 return
@@ -1076,7 +1082,10 @@ function Highlight:UpdateGuide()
                 end
             end
 
-            self:ScrollToCurrencyRow(step.currencyID)
+            -- No ScrollToCurrencyRow call: it taints ScrollBar state and
+            -- blocks the protected transfer Confirm. If the row is off-screen
+            -- the player has to scroll to it -- the instruction text below
+            -- prompts them.
             local currencyBtn = self:GetCurrencyRowButton(step.currencyID)
             if currencyBtn then
                 self:HighlightFrame(currencyBtn)
@@ -2387,7 +2396,7 @@ function Highlight:GetSideTabButton(frameName, sideTabIndex)
     return nil
 end
 
-function Highlight:HighlightFrame(frame, instructionText, validator)
+function Highlight:HighlightFrame(frame, instructionText, validator, noHoverDismiss)
     if not frame or not frame:IsShown() then
         self:HideHighlight()
         return
@@ -2395,7 +2404,7 @@ function Highlight:HighlightFrame(frame, instructionText, validator)
 
     highlightFrame._targetFrame = frame
     highlightFrame._targetValidator = validator
-    highlightFrame._hoverDismissFrame = frame
+    highlightFrame._hoverDismissFrame = (not noHoverDismiss) and frame or nil
     highlightFrame._clearWhenTargetHidden = true
 
     local bs = highlightFrame.borderSize
@@ -2579,6 +2588,10 @@ function Highlight:HideHighlight()
     if indicatorFrame then
         indicatorFrame:Hide()
         if indicatorFrame.animGroup then indicatorFrame.animGroup:Stop() end
+    end
+    if scrollHintFrame then
+        scrollHintFrame:Hide()
+        if scrollHintFrame.animGroup then scrollHintFrame.animGroup:Stop() end
     end
     if instructionFrame then
         instructionFrame:Hide()
@@ -2845,6 +2858,354 @@ function Highlight:ScrollToCurrencyRow(currencyID)
         if data.currencyIndex == targetIndex then return true end
         return false
     end, fraction)
+end
+
+-- Tutorial-style "scroll up" / "scroll down" arrow anchored to the top or
+-- bottom of the TokenFrame's ScrollBox, with a label next to it. Used when
+-- we can't auto-scroll (taint would block the protected transfer Confirm)
+-- but want to nudge the player toward where the row actually is.
+function Highlight:CreateScrollHintFrame()
+    if scrollHintFrame then return end
+    scrollHintFrame = CreateFrame("Frame", "EasyFindScrollHintFrame", UIParent)
+    scrollHintFrame:SetFrameStrata("TOOLTIP")
+    scrollHintFrame:SetFrameLevel(500)
+    scrollHintFrame:Hide()
+
+    local iconSize = ns.ICON_SIZE or 48
+    scrollHintFrame:SetSize(iconSize, iconSize)
+
+    if ns.CreateIndicatorTextures then
+        ns.CreateIndicatorTextures(scrollHintFrame, iconSize, ns.ICON_GLOW_SIZE)
+    end
+
+    local animGroup = scrollHintFrame:CreateAnimationGroup()
+    animGroup:SetLooping("BOUNCE")
+    local trans = animGroup:CreateAnimation("Translation")
+    trans:SetDuration(0.4)
+    scrollHintFrame.animGroup = animGroup
+    scrollHintFrame.animTranslation = trans
+
+    local text = scrollHintFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    text:SetPoint("LEFT", scrollHintFrame, "RIGHT", 8, 0)
+    scrollHintFrame.text = text
+end
+
+function Highlight:ShowScrollHint(direction)
+    self:CreateScrollHintFrame()
+    if not scrollHintFrame then return end
+    local sb = TokenFrame and TokenFrame.ScrollBox
+    if not sb then return end
+
+    scrollHintFrame.indicatorDirection = direction
+    if ns.UpdateIndicator then ns.UpdateIndicator(scrollHintFrame) end
+    if scrollHintFrame.text then
+        scrollHintFrame.text:SetText(direction == "up" and "Scroll up" or "Scroll down")
+    end
+
+    scrollHintFrame:ClearAllPoints()
+    local trans = scrollHintFrame.animTranslation
+    if direction == "up" then
+        -- Anchor inside ScrollBox so the arrow's tip sits at the top edge.
+        scrollHintFrame:SetPoint("TOP", sb, "TOP", -40, 0)
+        if trans then trans:SetOffset(0, 6) end
+    else
+        scrollHintFrame:SetPoint("BOTTOM", sb, "BOTTOM", -40, 0)
+        if trans then trans:SetOffset(0, -6) end
+    end
+
+    scrollHintFrame:Show()
+    if scrollHintFrame.animGroup and not scrollHintFrame.animGroup:IsPlaying() then
+        scrollHintFrame.animGroup:Play()
+    end
+end
+
+function Highlight:HideScrollHint()
+    if not scrollHintFrame then return end
+    scrollHintFrame:Hide()
+    if scrollHintFrame.animGroup then scrollHintFrame.animGroup:Stop() end
+end
+
+-- Walks the currency list to find the header containing the given currency
+-- and returns its info table (has .name, .isHeaderExpanded). Used to detect
+-- "row is hidden because its header is collapsed" so we can prompt the
+-- player to click the header instead of scrolling pointlessly.
+function Highlight:GetCurrencyHeaderForCurrency(currencyID)
+    if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return nil end
+    local size = C_CurrencyInfo.GetCurrencyListSize()
+    local targetIndex, targetDepth
+    for i = 1, size do
+        local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+        if info and not info.isHeader and info.currencyID == currencyID then
+            targetIndex = i
+            targetDepth = info.currencyListDepth or 0
+            break
+        end
+    end
+    if not targetIndex then return nil end
+    for i = targetIndex - 1, 1, -1 do
+        local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+        if info and info.isHeader and (info.currencyListDepth or 0) < targetDepth then
+            return info
+        end
+    end
+    return nil
+end
+
+-- True only when the button's full vertical extent is inside the ScrollBox
+-- viewport (not clipped at top or bottom). Partial visibility shouldn't
+-- count as "in view" for header highlighting -- the player needs to be
+-- able to click it cleanly.
+local function isButtonFullyVisible(btn)
+    if not (TokenFrame and TokenFrame.ScrollBox and btn) then return false end
+    local boxTop = TokenFrame.ScrollBox.GetTop and TokenFrame.ScrollBox:GetTop()
+    local boxBottom = TokenFrame.ScrollBox.GetBottom and TokenFrame.ScrollBox:GetBottom()
+    if not (boxTop and boxBottom) then return false end
+    local bt = btn.GetTop and btn:GetTop()
+    local bb = btn.GetBottom and btn:GetBottom()
+    if not (bt and bb) then return false end
+    return bt <= boxTop and bb >= boxBottom
+end
+
+-- Finds a currency header button currently rendered by the ScrollBox.
+-- Read-only (no scroll), so doesn't taint. Matches first by the header's
+-- currencyIndex in C_CurrencyInfo's list (Blizzard's own GetCurrencyHeaderButton
+-- uses this approach), then falls back to visible button text.
+function Highlight:FindVisibleCurrencyHeaderButton(headerName)
+    if not TokenFrame or not TokenFrame.ScrollBox then return nil end
+    if not TokenFrame.ScrollBox.EnumerateFrames then return nil end
+    local lower = slower(headerName)
+
+    local targetIndex
+    if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyListSize then
+        local size = C_CurrencyInfo.GetCurrencyListSize()
+        for i = 1, size do
+            local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+            if info and info.isHeader and info.name and slower(info.name) == lower then
+                targetIndex = i
+                break
+            end
+        end
+    end
+
+    for _, btn in TokenFrame.ScrollBox:EnumerateFrames() do
+        if btn and btn:IsShown() and isButtonFullyVisible(btn) then
+            local data = btn.elementData or (btn.GetElementData and btn:GetElementData())
+            if data and targetIndex and data.currencyIndex == targetIndex then
+                return btn
+            end
+            local text = GetButtonText(btn)
+            if text and slower(text) == lower then return btn end
+        end
+    end
+    return nil
+end
+
+-- Looks up the target currency's index in the list and the indices currently
+-- rendered by the ScrollBox, then returns "up" or "down" indicating which
+-- way the player needs to scroll to bring the target into view. Returns nil
+-- if the row is already in view or the data isn't available.
+function Highlight:GetCurrencyScrollDirection(currencyID)
+    if not TokenFrame or not TokenFrame:IsShown() or not TokenFrame.ScrollBox then return nil end
+    if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return nil end
+
+    local size = C_CurrencyInfo.GetCurrencyListSize()
+    local targetIndex
+    for i = 1, size do
+        local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+        if info and not info.isHeader and info.currencyID == currencyID then
+            targetIndex = i
+            break
+        end
+    end
+    if not targetIndex then return nil end
+
+    local minVisible, maxVisible
+    if TokenFrame.ScrollBox.EnumerateFrames then
+        for _, btn in TokenFrame.ScrollBox:EnumerateFrames() do
+            if btn and btn:IsShown() then
+                local d = btn.GetElementData and btn:GetElementData()
+                if d and d.currencyIndex then
+                    if not minVisible or d.currencyIndex < minVisible then minVisible = d.currencyIndex end
+                    if not maxVisible or d.currencyIndex > maxVisible then maxVisible = d.currencyIndex end
+                end
+            end
+        end
+    end
+    if minVisible and targetIndex < minVisible then return "up" end
+    if maxVisible and targetIndex > maxVisible then return "down" end
+    return nil
+end
+
+-- Highlights the currency's row if it's visible right now, otherwise shows a
+-- "scroll up/down to find <name>" hint and polls for the row to come into
+-- view (when the player mousewheels to it). No ScrollBox method calls --
+-- those would taint state and block the protected transfer Confirm call.
+-- Looks up a header by name in C_CurrencyInfo's list and returns its info
+-- table and index (or nil if not found). Works even when the header is
+-- collapsed -- headers are in the iteration; only their sub-items aren't.
+local function lookupHeaderInfo(headerName)
+    if not headerName or not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return nil end
+    local size = C_CurrencyInfo.GetCurrencyListSize()
+    local lower = slower(headerName)
+    for i = 1, size do
+        local info = C_CurrencyInfo.GetCurrencyListInfo(i)
+        if info and info.isHeader and info.name and slower(info.name) == lower then
+            return info, i
+        end
+    end
+    return nil
+end
+
+-- Direction to scroll to bring a given currencyIndex fully into view.
+-- Uses only fully-visible buttons to compute min/max so partially-clipped
+-- targets correctly return "up"/"down" instead of nil.
+local function directionToIndex(targetIndex)
+    if not targetIndex then return nil end
+    if not (TokenFrame and TokenFrame.ScrollBox and TokenFrame.ScrollBox.EnumerateFrames) then return nil end
+    local minVisible, maxVisible
+    for _, btn in TokenFrame.ScrollBox:EnumerateFrames() do
+        if btn and btn:IsShown() and isButtonFullyVisible(btn) then
+            local d = btn.GetElementData and btn:GetElementData()
+            if d and d.currencyIndex then
+                if not minVisible or d.currencyIndex < minVisible then minVisible = d.currencyIndex end
+                if not maxVisible or d.currencyIndex > maxVisible then maxVisible = d.currencyIndex end
+            end
+        end
+    end
+    if minVisible and targetIndex < minVisible then return "up" end
+    if maxVisible and targetIndex > maxVisible then return "down" end
+    return nil
+end
+
+function Highlight:HighlightCurrencyRowOrHint(currencyID, expectedHeaderChain)
+    if not TokenFrame or not TokenFrame:IsVisible() then return end
+
+    local function watchForHover(frame)
+        local function checkHover()
+            if frame:IsMouseOver() then
+                self:HideHighlight()
+            else
+                C_Timer.After(0.1, checkHover)
+            end
+        end
+        C_Timer.After(0.3, checkHover)
+    end
+
+    -- Header-target mode: no currencyID, so the LAST header in the chain
+    -- is the destination, and the parents to walk for blockers are the
+    -- preceding entries. Row-target mode: the entire chain is parents.
+    local targetHeaderName
+    local parentChain = expectedHeaderChain
+    if not currencyID and expectedHeaderChain and #expectedHeaderChain > 0 then
+        targetHeaderName = expectedHeaderChain[#expectedHeaderChain]
+        parentChain = {}
+        for i = 1, #expectedHeaderChain - 1 do
+            parentChain[i] = expectedHeaderChain[i]
+        end
+    end
+
+    local lastKind, lastTarget
+    local function applyState()
+        if currencyID then
+            local row = self:GetCurrencyRowButton(currencyID)
+            if row then
+                if lastKind ~= "target" or lastTarget ~= row then
+                    self:HideScrollHint()
+                    self:HighlightFrame(row, nil)
+                    watchForHover(row)
+                    lastKind, lastTarget = "target", row
+                end
+                return "done"
+            end
+        elseif targetHeaderName then
+            local btn = self:FindVisibleCurrencyHeaderButton(targetHeaderName)
+            if btn then
+                if lastKind ~= "target" or lastTarget ~= btn then
+                    self:HideScrollHint()
+                    self:HighlightFrame(btn, nil)
+                    watchForHover(btn)
+                    lastKind, lastTarget = "target", btn
+                end
+                return "done"
+            end
+        end
+
+        local blocker
+        if parentChain then
+            for _, name in ipairs(parentChain) do
+                local info = lookupHeaderInfo(name)
+                if info and not info.isHeaderExpanded then
+                    blocker = info
+                    break
+                end
+            end
+        end
+        if not blocker and currencyID then
+            local fallback = self:GetCurrencyHeaderForCurrency(currencyID)
+            if fallback and not fallback.isHeaderExpanded then
+                blocker = fallback
+            end
+        end
+
+        if blocker then
+            local btn = self:FindVisibleCurrencyHeaderButton(blocker.name)
+            if btn then
+                if lastKind ~= "header" or lastTarget ~= btn then
+                    self:HideScrollHint()
+                    self:HighlightFrame(btn, nil, nil, true)
+                    lastKind, lastTarget = "header", btn
+                end
+                return "wait"
+            end
+            local _, blockerIndex = lookupHeaderInfo(blocker.name)
+            local direction = directionToIndex(blockerIndex) or "down"
+            if lastKind ~= "scroll" or lastTarget ~= direction then
+                self:HideHighlight()
+                self:ShowScrollHint(direction)
+                lastKind, lastTarget = "scroll", direction
+            end
+            return "wait"
+        end
+
+        local direction
+        if currencyID then
+            direction = self:GetCurrencyScrollDirection(currencyID) or "down"
+        elseif targetHeaderName then
+            local _, idx = lookupHeaderInfo(targetHeaderName)
+            direction = directionToIndex(idx) or "down"
+        else
+            direction = "down"
+        end
+        if lastKind ~= "scroll" or lastTarget ~= direction then
+            self:HideHighlight()
+            self:ShowScrollHint(direction)
+            lastKind, lastTarget = "scroll", direction
+        end
+        return "wait"
+    end
+
+    if applyState() == "done" then return end
+
+    local ticks = 0
+    local pollTicker
+    pollTicker = C_Timer.NewTicker(0.2, function()
+        ticks = ticks + 1
+        if ticks > 150 then
+            if pollTicker then pollTicker:Cancel(); pollTicker = nil end
+            self:HideScrollHint()
+            self:HideHighlight()
+            return
+        end
+        if not (TokenFrame and TokenFrame:IsVisible()) then
+            if pollTicker then pollTicker:Cancel(); pollTicker = nil end
+            self:HideScrollHint()
+            self:HideHighlight()
+            return
+        end
+        if applyState() == "done" then
+            if pollTicker then pollTicker:Cancel(); pollTicker = nil end
+        end
+    end)
 end
 
 function Highlight:GetCurrencyRowButton(currencyID)

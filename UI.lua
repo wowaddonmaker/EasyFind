@@ -3541,6 +3541,11 @@ function UI:CreateSearchFrame()
     -- editbox, otherwise it just types as a character and the user
     -- can't dismiss with the same key they used to open.
     editBox:SetScript("OnKeyDown", function(self, key)
+        -- Alt+letter: set propagate=false up front; late suppression can leak
+        -- the char into the editbox before OnChar sees the new state.
+        if IsAltKeyDown() and key and key:match("^[A-Z]$") then
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+        end
         UI:HandleCalculatorPasteIntoSearch(self, key)
         if UI:HandleCalculatorOpenShortcut(self, key) then
             Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
@@ -14440,27 +14445,14 @@ function UI:DirectOpen(data)
         end
     end
 
-    -- For currency steps, pre-expand all needed headers via API (synchronous
-    -- data update) and track that we need a TokenFrame resync after the tab opens.
+    -- For currency steps: don't pre-expand headers, don't resync. Both
+    -- ExpandCurrencyList and the tab-toggle resync write ScrollBar /
+    -- ScrollBox state via Blizzard's refresh / OnShow handlers, and those
+    -- writes get attributed to us (we triggered them) -- which blocks the
+    -- protected RequestCurrencyFromAccountCharacter call at Confirm.
+    -- HighlightCurrencyRowOrHint polls for the row to come into view once
+    -- the player expands the header / scrolls themselves.
     local needsCurrencyResync = false
-    for _, step in ipairs(steps) do
-        if step.currencyHeader then
-            needsCurrencyResync = true
-            local headerNameLower = slower(step.currencyHeader)
-            if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyListSize then
-                local size = C_CurrencyInfo.GetCurrencyListSize()
-                for i = 1, size do
-                    local info = C_CurrencyInfo.GetCurrencyListInfo(i)
-                    if info and info.isHeader and info.name and slower(info.name) == headerNameLower then
-                        if not info.isHeaderExpanded then
-                            C_CurrencyInfo.ExpandCurrencyList(i, true)
-                        end
-                        break
-                    end
-                end
-            end
-        end
-    end
 
     -- Determine whether a step is "navigable" (can be auto-executed) vs "highlight-only"
     -- (just points at a UI region the user needs to see).
@@ -14496,10 +14488,8 @@ function UI:DirectOpen(data)
     local lastStep = steps[totalSteps]
     local finalStepNavigable = isStepNavigable(lastStep)
 
-    -- Queue entries (canQueue): navigate to the panel but highlight the final step
-    -- instead of clicking it. Auto-clicking taints the frame, blocking protected
-    -- queue actions (JoinBattlefield, etc.) when the user clicks them afterward.
-    -- TODO: investigate ForceInsecureReset() as alternative
+    -- Auto-clicking the final step taints state that blocks protected actions
+    -- (JoinBattlefield, etc.).
     if data.canQueue and finalStepNavigable then
         finalStepNavigable = false
     end
@@ -14868,26 +14858,44 @@ function UI:DirectOpen(data)
             -- Currency/faction headers pre-expanded via API, nothing to execute
 
             if step.currencyID then
-                Highlight:ScrollToCurrencyRow(step.currencyID)
+                -- No auto-scroll for currencies: the ScrollBox method calls
+                -- taint ScrollBar state, which blocks the protected currency
+                -- transfer Confirm. The hint + polling in HighlightCurrencyRowOrHint
+                -- handles the no-scroll UX (instruction text + auto-highlight
+                -- once the row comes into view as the player mousewheels).
+                -- Collect ALL ancestor header names in order from outermost
+                -- to innermost. Nested currencies need each level expanded
+                -- in order; the outermost collapsed one is what to highlight
+                -- first because inner headers aren't visible until outer
+                -- headers are expanded.
+                local headerChain = {}
+                for j = 1, i - 1 do
+                    if steps[j].currencyHeader then
+                        headerChain[#headerChain + 1] = steps[j].currencyHeader
+                    end
+                end
                 if i == executeCount then
-                    -- ScrollBox needs one frame to update after scroll; defer highlight
                     local cID = step.currencyID
+                    local chain = headerChain
                     C_Timer.After(0.05, function()
-                        local currencyRow = Highlight:GetCurrencyRowButton(cID)
-                        if currencyRow then
-                            Highlight:HighlightFrame(currencyRow, nil)
-                            local checkHover
-                            checkHover = function()
-                                if currencyRow:IsMouseOver() then
-                                    Highlight:HideHighlight()
-                                else
-                                    C_Timer.After(0.1, checkHover)
-                                end
-                            end
-                            C_Timer.After(0.3, checkHover)
-                        end
+                        Highlight:HighlightCurrencyRowOrHint(cID, chain)
                     end)
                 end
+            end
+
+            -- Header-level entry (e.g. "War Within Currencies"): no currencyID,
+            -- the last currencyHeader step IS the destination.
+            if step.currencyHeader and i == executeCount and not step.currencyID then
+                local fullChain = {}
+                for j = 1, i do
+                    if steps[j].currencyHeader then
+                        fullChain[#fullChain + 1] = steps[j].currencyHeader
+                    end
+                end
+                local chain = fullChain
+                C_Timer.After(0.05, function()
+                    Highlight:HighlightCurrencyRowOrHint(nil, chain)
+                end)
             end
 
             if step.factionID then
@@ -15748,7 +15756,7 @@ function UI:ExpandCurrencyHeader(headerName)
         local info = C_CurrencyInfo.GetCurrencyListInfo(i)
         if info and info.isHeader and info.name and slower(info.name) == headerNameLower then
             if not info.isHeaderExpanded then
-                C_CurrencyInfo.ExpandCurrencyList(i, true)
+                SecureCall(C_CurrencyInfo.ExpandCurrencyList, i, true)
             end
             return true
         end
