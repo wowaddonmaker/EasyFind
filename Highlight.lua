@@ -397,6 +397,17 @@ function Highlight:StartGuide(guideData)
         return
     end
 
+    -- Currency guides cancel on close instead of rewinding to step 1 --
+    -- player closing the window is "abandon", not "go back to the start".
+    if not guideData.noCourseCorrect then
+        for _, s in ipairs(guideData.steps) do
+            if s.currencyHeader or s.currencyID then
+                guideData.noCourseCorrect = true
+                break
+            end
+        end
+    end
+
     currentGuide = guideData
     currentStepIndex = 1
 
@@ -966,138 +977,23 @@ function Highlight:UpdateGuide()
             return
         end
 
-        if step.currencyHeader then
-            local requiredTabIndex = nil
-            for i = currentStepIndex - 1, 1, -1 do
-                local prevStep = currentGuide.steps[i]
-                if prevStep and prevStep.tabIndex then
-                    requiredTabIndex = prevStep.tabIndex
-                    break
+        if step.currencyHeader or step.currencyID then
+            -- Hand off the rest of currency navigation to the unified state
+            -- machine (which handles header expansion, scroll arrows, and
+            -- final highlight uniformly with the DirectOpen path). The
+            -- per-step guide logic was duplicating that work and dropping
+            -- to a text instruction when the row was off-screen.
+            local headerChain = {}
+            for j = 1, #currentGuide.steps do
+                local s = currentGuide.steps[j]
+                if s and s.currencyHeader then
+                    headerChain[#headerChain + 1] = s.currencyHeader
                 end
             end
-
-            if requiredTabIndex then
-                local currentTab = self:GetCurrentTabIndex(step.waitForFrame or "CharacterFrame")
-                if currentTab and currentTab ~= requiredTabIndex then
-                    for i = currentStepIndex - 1, 1, -1 do
-                        local prevStep = currentGuide.steps[i]
-                        if prevStep and prevStep.tabIndex == requiredTabIndex then
-                            currentStepIndex = i
-                            self:HideHighlight()
-                            return
-                        end
-                    end
-                end
-            end
-
-            local headerState = self:IsCurrencyHeaderExpanded(step.currencyHeader)
-
-            if headerState == true then
-                if isLastStep then
-                    self:Cancel()
-                else
-                    self:AdvanceStep()
-                end
-                return
-            end
-
-            if headerState == nil then
-                for i = currentStepIndex - 1, 1, -1 do
-                    local prevStep = currentGuide.steps[i]
-                    if prevStep and prevStep.currencyHeader then
-                        currentStepIndex = i
-                        self:HideHighlight()
-                        return
-                    end
-                end
-
-                if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyListSize then
-                    local size = C_CurrencyInfo.GetCurrencyListSize()
-                    for i = 1, size do
-                        local info = C_CurrencyInfo.GetCurrencyListInfo(i)
-                        if info and info.isHeader and not info.isHeaderExpanded then
-                            -- FindVisibleCurrencyHeaderButton: no scroll, no taint.
-                            local headerBtn = self:FindVisibleCurrencyHeaderButton(info.name)
-                            if headerBtn then
-                                self:HighlightFrame(headerBtn)
-                                return
-                            else
-                                self:HideHighlight()
-                                return
-                            end
-                        end
-                    end
-                end
-                self:HideHighlight()
-                return
-            end
-
-            -- FindVisibleCurrencyHeaderButton instead of GetCurrencyHeaderButton:
-            -- the latter calls ScrollBoxScrollTo internally, which taints
-            -- ScrollBar state and blocks the protected currency transfer
-            -- Confirm. Off-screen header just hides until player scrolls.
-            local headerBtn = self:FindVisibleCurrencyHeaderButton(step.currencyHeader)
-            if headerBtn then
-                self:HighlightFrame(headerBtn)
-                return
-            else
-                self:HideHighlight()
-                return
-            end
-        end
-
-        if step.currencyID then
-            local requiredTabIndex = nil
-            for i = currentStepIndex - 1, 1, -1 do
-                local prevStep = currentGuide.steps[i]
-                if prevStep and prevStep.tabIndex then
-                    requiredTabIndex = prevStep.tabIndex
-                    break
-                end
-            end
-
-            if requiredTabIndex then
-                local currentTab = self:GetCurrentTabIndex(step.waitForFrame or "CharacterFrame")
-                if currentTab and currentTab ~= requiredTabIndex then
-                    for i = currentStepIndex - 1, 1, -1 do
-                        local prevStep = currentGuide.steps[i]
-                        if prevStep and prevStep.tabIndex == requiredTabIndex then
-                            currentStepIndex = i
-                            self:HideHighlight()
-                            return
-                        end
-                    end
-                end
-            end
-
-            for i = currentStepIndex - 1, 1, -1 do
-                local prevStep = currentGuide.steps[i]
-                if prevStep and prevStep.currencyHeader then
-                    local state = self:IsCurrencyHeaderExpanded(prevStep.currencyHeader)
-                    if state ~= true then
-                        currentStepIndex = i
-                        self:HideHighlight()
-                        return
-                    end
-                end
-            end
-
-            -- No ScrollToCurrencyRow call: it taints ScrollBar state and
-            -- blocks the protected transfer Confirm. If the row is off-screen
-            -- the player has to scroll to it -- the instruction text below
-            -- prompts them.
-            local currencyBtn = self:GetCurrencyRowButton(step.currencyID)
-            if currencyBtn then
-                self:HighlightFrame(currencyBtn)
-                if canHoverDismiss() and currencyBtn:IsMouseOver() then
-                    self:Cancel()
-                    return
-                end
-            elseif isLastStep then
-                local info = C_CurrencyInfo and C_CurrencyInfo.GetCurrencyInfo and C_CurrencyInfo.GetCurrencyInfo(step.currencyID)
-                local name = info and info.name or ("Currency " .. step.currencyID)
-                self:ShowInstruction(step.text or "Look for '" .. name .. "' in the currency list")
-            end
+            local lastStep = currentGuide.steps[#currentGuide.steps]
+            local cID = lastStep and lastStep.currencyID
+            self:Cancel()
+            self:HighlightCurrencyRowOrHint(cID, headerChain)
             return
         end
 
@@ -3077,8 +2973,19 @@ local function directionToIndex(targetIndex)
     return nil
 end
 
+-- Setter consumed by the next call to HighlightCurrencyRowOrHint; used by
+-- the right-click "Transfer" flow to keep the currency-row highlight
+-- persistent (no hover-dismiss) because clicking the row is just an
+-- intermediate step toward the Transfer button on the popup.
+function Highlight:SetPersistentCurrencyHighlight(persistent)
+    self._persistentCurrencyHighlight = persistent and true or nil
+end
+
 function Highlight:HighlightCurrencyRowOrHint(currencyID, expectedHeaderChain)
     if not TokenFrame or not TokenFrame:IsVisible() then return end
+
+    local persistent = self._persistentCurrencyHighlight
+    self._persistentCurrencyHighlight = nil
 
     local function watchForHover(frame)
         local function checkHover()
@@ -3111,8 +3018,8 @@ function Highlight:HighlightCurrencyRowOrHint(currencyID, expectedHeaderChain)
             if row then
                 if lastKind ~= "target" or lastTarget ~= row then
                     self:HideScrollHint()
-                    self:HighlightFrame(row, nil)
-                    watchForHover(row)
+                    self:HighlightFrame(row, nil, nil, persistent)
+                    if not persistent then watchForHover(row) end
                     lastKind, lastTarget = "target", row
                 end
                 return "done"
@@ -3122,8 +3029,8 @@ function Highlight:HighlightCurrencyRowOrHint(currencyID, expectedHeaderChain)
             if btn then
                 if lastKind ~= "target" or lastTarget ~= btn then
                     self:HideScrollHint()
-                    self:HighlightFrame(btn, nil)
-                    watchForHover(btn)
+                    self:HighlightFrame(btn, nil, nil, persistent)
+                    if not persistent then watchForHover(btn) end
                     lastKind, lastTarget = "target", btn
                 end
                 return "done"

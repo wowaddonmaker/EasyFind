@@ -15551,6 +15551,12 @@ end
 function UI:RouteCurrencyTransfer(pinData)
     if not pinData then return end
     local currencyID = pinData.currencyID
+    -- Keep the currency-row highlight persistent (no hover-dismiss) because
+    -- it's an intermediate step here -- the destination is the Transfer
+    -- button on the popup, not the row itself.
+    if ns.Highlight and ns.Highlight.SetPersistentCurrencyHighlight then
+        ns.Highlight:SetPersistentCurrencyHighlight(true)
+    end
     self:SelectResult(pinData)
     if not (currencyID and Utils and Utils.SafeAfter and ns.Highlight) then return end
 
