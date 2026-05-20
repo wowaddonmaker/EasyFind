@@ -24,73 +24,73 @@ local TEXT_DIM       = { 0.55, 0.55, 0.58 }
 local TUTORIAL_IMAGE_TINT = 0.82
 
 local DOT_FILLED = "Interface\\COMMON\\Indicator-Yellow"
-local MAP_SEARCH_TUTORIAL_IMAGE = "Interface\\AddOns\\EasyFind\\tutorial-map-search"
+local MAP_SEARCH_TUTORIAL_IMAGE = "Interface\\AddOns\\EasyFind\\Images\\tutorial-map-search"
 local CALCULATOR_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\calculator-icon"
 local SEARCH_TUTORIAL_SLIDES = {
     {
-        image = "Interface\\AddOns\\EasyFind\\tutorial-search-01",
+        image = "Interface\\AddOns\\EasyFind\\Images\\tutorial-search-01",
         w = 651, h = 202,
         text = "Search across gear, loot, panels, settings, collections, currencies, achievements, map places, and more.",
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\tutorial-search-02",
+        image = "Interface\\AddOns\\EasyFind\\Images\\tutorial-search-02",
         w = 655, h = 267,
         text = "Results show icons, categories, and Alt+number. Press the matching Alt+number to instantly activate that row.",
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\tutorial-search-09",
+        image = "Interface\\AddOns\\EasyFind\\Images\\tutorial-search-09",
         w = 486, h = 218,
         text = "Pin important results so they stay available before you type.",
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\tutorial-search-03",
+        image = "Interface\\AddOns\\EasyFind\\Images\\tutorial-search-03",
         w = 662, h = 611,
         text = "Use the filter menu to choose which result groups appear in your general search.",
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\tutorial-search-05",
+        image = "Interface\\AddOns\\EasyFind\\Images\\tutorial-search-05",
         w = 657, h = 593,
         text = "Type @ to see available quick filters, then Tab or Space to select one.",
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\tutorial-search-04",
+        image = "Interface\\AddOns\\EasyFind\\Images\\tutorial-search-04",
         w = 672, h = 220,
         text = "Quick filters let you search inside one category without opening the filter menu.",
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\tutorial-search-06",
+        image = "Interface\\AddOns\\EasyFind\\Images\\tutorial-search-06",
         w = 660, h = 267,
         text = "Quick filters let you search inside one category without opening the filter menu.",
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\tutorial-search-07",
+        image = "Interface\\AddOns\\EasyFind\\Images\\tutorial-search-07",
         w = 658, h = 276,
         text = "Supported results can run directly from search, including macros and other actionable rows.",
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\tutorial-search-08",
+        image = "Interface\\AddOns\\EasyFind\\Images\\tutorial-search-08",
         w = 638, h = 498,
         text = "Search settings and adjust matching controls inline without leaving the results.",
     },
 }
 local USE_TUTORIAL_SLIDES = {
     {
-        image = "Interface\\AddOns\\EasyFind\\tutorial-use-01",
+        image = "Interface\\AddOns\\EasyFind\\Images\\tutorial-use-01",
         w = 658, h = 152,
         text = "Equip gear sets directly from search.",
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\tutorial-use-02",
+        image = "Interface\\AddOns\\EasyFind\\Images\\tutorial-use-02",
         w = 658, h = 276,
         text = "Run macros from results, or Ctrl-click to edit them.",
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\tutorial-use-03",
+        image = "Interface\\AddOns\\EasyFind\\Images\\tutorial-use-03",
         w = 663, h = 388,
         text = "Use toys and other supported items directly from the list.",
     },
 }
-local CALCULATOR_TUTORIAL_IMAGE = "Interface\\AddOns\\EasyFind\\tutorial-calculator-visual"
+local CALCULATOR_TUTORIAL_IMAGE = "Interface\\AddOns\\EasyFind\\Images\\tutorial-calculator-visual"
 
 local function ApplyInter(fs, weight, sizeOverride, flags)
     if ns.RegisterAddonFont then

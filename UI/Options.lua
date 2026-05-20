@@ -434,8 +434,8 @@ local DISABLED_TEXT = { 0.5, 0.5, 0.5 }
 local NORMAL_TEXT = {1.0, 1.0, 1.0}
 local OPTIONS_PANEL_SCALE = 0.88
 local TEXT_PRIMARY = { 1.00, 0.97, 0.86 }
-local TEXT_BODY = { 0.78, 0.78, 0.80 }
-local TEXT_DIM = { 0.55, 0.55, 0.58 }
+local TEXT_BODY = ns.TEXT_BODY
+local TEXT_DIM = ns.TEXT_DIM
 local SECTION_TITLE_TEXT = ns.GOLD_COLOR or { 1.0, 0.82, 0.0 }
 local NAV_SELECTED = { 0.15, 0.15, 0.17, 0.95 }
 local NAV_HOVER = { 0.11, 0.11, 0.13, 0.85 }
@@ -516,71 +516,7 @@ local function SetNavButtonBg(btn, color)
     SetModernButtonAlpha(btn, color[4] or 1)
 end
 
-local function CreateModernButton(parent, text, width, height)
-    local btn = CreateFrame("Button", nil, parent)
-    local rawSetSize = btn.SetSize
-    rawSetSize(btn, width or 120, height or 22)
-
-    ns.CreateRoundedRectBorder(btn)
-    ns.SetRoundedRectBarHeight(btn, mmin(height or 22, 10))
-    ns.SetRoundedRectBorderBgAlpha(btn, 1)
-    HideRoundedBorder(btn)
-    SetModernButtonFill(btn, 0.095, 0.095, 0.108)
-
-    local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    label:SetPoint("CENTER")
-    label:SetText(text or "")
-    label:SetTextColor(1, 1, 1, 1)
-    btn._label = label
-
-    btn.SetText = function(self, value)
-        if self._label then self._label:SetText(value or "") end
-    end
-    btn.GetText = function(self)
-        return self._label and self._label:GetText() or ""
-    end
-    btn.SetSize = function(self, w, h)
-        rawSetSize(self, w, h)
-        ns.SetRoundedRectBarHeight(self, mmin(h or self:GetHeight() or 22, 10))
-    end
-
-    local rawSetNormalFont = btn.SetNormalFontObject
-    btn.SetNormalFontObject = function(self, fontObject)
-        if rawSetNormalFont then rawSetNormalFont(self, fontObject) end
-        if self._label then self._label:SetFontObject(fontObject) end
-    end
-    local rawSetHighlightFont = btn.SetHighlightFontObject
-    btn.SetHighlightFontObject = function(self, fontObject)
-        if rawSetHighlightFont then rawSetHighlightFont(self, fontObject) end
-    end
-
-    btn:SetScript("OnEnter", function(self)
-        if self:IsEnabled() then SetModernButtonFill(self, 0.155, 0.155, 0.172) end
-    end)
-    btn:SetScript("OnLeave", function(self)
-        if self:IsEnabled() then SetModernButtonFill(self, 0.095, 0.095, 0.108) end
-    end)
-    btn:SetScript("OnMouseDown", function(self)
-        if self:IsEnabled() then SetModernButtonFill(self, 0.065, 0.065, 0.078) end
-    end)
-    btn:SetScript("OnMouseUp", function(self)
-        if self:IsEnabled() then
-            if self:IsMouseOver() then SetModernButtonFill(self, 0.155, 0.155, 0.172)
-            else SetModernButtonFill(self, 0.095, 0.095, 0.108) end
-        end
-    end)
-    btn:SetScript("OnDisable", function(self)
-        SetModernButtonFill(self, 0.070, 0.070, 0.080)
-        if self._label then self._label:SetTextColor(TEXT_DIM[1], TEXT_DIM[2], TEXT_DIM[3], 1) end
-    end)
-    btn:SetScript("OnEnable", function(self)
-        SetModernButtonFill(self, 0.095, 0.095, 0.108)
-        if self._label then self._label:SetTextColor(1, 1, 1, 1) end
-    end)
-
-    if text then btn:SetText(text) end
-    return btn
-end
+local CreateModernButton = ns.CreateModernButton
 
 local function CreateSettingsGroup(parent, width, height)
     local group = CreateFrame("Frame", nil, parent)

@@ -63,13 +63,7 @@ function TutorialBox.ApplyStyle(target, opts)
     addVEdge("TOPRIGHT", "BOTTOMRIGHT", true)
 
     if not opts.noPulse then
-        local pulseAG = glow:CreateAnimationGroup()
-        pulseAG:SetLooping("BOUNCE")
-        local pulseAnim = pulseAG:CreateAnimation("Alpha")
-        pulseAnim:SetFromAlpha(0.65)
-        pulseAnim:SetToAlpha(1.0)
-        pulseAnim:SetDuration(0.9)
-        pulseAnim:SetSmoothing("IN_OUT")
+        local pulseAG = ns.CreateBouncePulse(glow, 0.65, 1.0, 0.9, "IN_OUT")
         pulseAG:Play()
         target:HookScript("OnShow", function() pulseAG:Restart() end)
     end

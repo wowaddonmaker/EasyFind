@@ -59,6 +59,13 @@ function Utils.SafeCallMethod(obj, method, ...)
     return pcall(fn, obj, ...)
 end
 
+function Utils.TryGet(obj, methodName)
+    if not (obj and obj[methodName]) then return nil end
+    local ok, a, b, c, d = pcall(obj[methodName], obj)
+    if not ok then return nil end
+    return a, b, c, d
+end
+
 function Utils.SafeOnUpdate(frame, handler)
     if not handler then
         frame:SetScript("OnUpdate", nil)
@@ -438,6 +445,12 @@ ns.EYE_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\eye"
 ns.DARK_PANEL_BG = {0.1, 0.1, 0.1, 0.95}
 ns.SEARCH_WINDOW_FILL_COLOR = {0.052, 0.052, 0.060}
 ns.RESULT_ICON_SIZE = 18
+ns.TEXT_BODY = {0.78, 0.78, 0.80}
+ns.TEXT_DIM = {0.55, 0.55, 0.58}
+ns.BTN_FILL_NORMAL = {0.095, 0.095, 0.108}
+ns.BTN_FILL_HOVER = {0.155, 0.155, 0.172}
+ns.BTN_FILL_PRESSED = {0.065, 0.065, 0.078}
+ns.BTN_FILL_DISABLED = {0.070, 0.070, 0.080}
 ns.SEARCHBAR_HEIGHT = 30
 ns.SEARCHBAR_FILL = 0.55
 ns.SEARCHBAR_ICON_SCALE = 0.75
@@ -638,6 +651,94 @@ end
 function ns.SetRoundedRectBorderEdgeShown(frame, shown)
     if not (frame and frame.combinedBorder and frame.combinedBorder.border) then return end
     for _, t in pairs(frame.combinedBorder.border) do t:SetShown(shown) end
+end
+
+function ns.CreateModernButton(parent, text, width, height)
+    local btn = CreateFrame("Button", nil, parent)
+    local rawSetSize = btn.SetSize
+    rawSetSize(btn, width or 120, height or 22)
+
+    ns.CreateRoundedRectBorder(btn)
+    ns.SetRoundedRectBarHeight(btn, mmin(height or 22, 10))
+    ns.SetRoundedRectBorderBgAlpha(btn, 1)
+    ns.SetRoundedRectBorderEdgeShown(btn, false)
+    ns.SetRoundedRectBorderFillColor(btn, unpack(ns.BTN_FILL_NORMAL))
+
+    local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    label:SetPoint("CENTER")
+    label:SetText(text or "")
+    label:SetTextColor(1, 1, 1, 1)
+    btn._label = label
+
+    btn.SetText = function(self, value)
+        if self._label then self._label:SetText(value or "") end
+    end
+    btn.GetText = function(self)
+        return self._label and self._label:GetText() or ""
+    end
+    btn.SetSize = function(self, w, h)
+        rawSetSize(self, w, h)
+        ns.SetRoundedRectBarHeight(self, mmin(h or self:GetHeight() or 22, 10))
+    end
+
+    local rawSetNormalFont = btn.SetNormalFontObject
+    btn.SetNormalFontObject = function(self, fontObject)
+        if rawSetNormalFont then rawSetNormalFont(self, fontObject) end
+        if self._label then self._label:SetFontObject(fontObject) end
+    end
+    local rawSetHighlightFont = btn.SetHighlightFontObject
+    btn.SetHighlightFontObject = function(self, fontObject)
+        if rawSetHighlightFont then rawSetHighlightFont(self, fontObject) end
+    end
+
+    btn:SetScript("OnEnter", function(self)
+        if self:IsEnabled() then ns.SetRoundedRectBorderFillColor(self, unpack(ns.BTN_FILL_HOVER)) end
+    end)
+    btn:SetScript("OnLeave", function(self)
+        if self:IsEnabled() then ns.SetRoundedRectBorderFillColor(self, unpack(ns.BTN_FILL_NORMAL)) end
+    end)
+    btn:SetScript("OnMouseDown", function(self)
+        if self:IsEnabled() then ns.SetRoundedRectBorderFillColor(self, unpack(ns.BTN_FILL_PRESSED)) end
+    end)
+    btn:SetScript("OnMouseUp", function(self)
+        if not self:IsEnabled() then return end
+        if self:IsMouseOver() then
+            ns.SetRoundedRectBorderFillColor(self, unpack(ns.BTN_FILL_HOVER))
+        else
+            ns.SetRoundedRectBorderFillColor(self, unpack(ns.BTN_FILL_NORMAL))
+        end
+    end)
+    btn:SetScript("OnDisable", function(self)
+        ns.SetRoundedRectBorderFillColor(self, unpack(ns.BTN_FILL_DISABLED))
+        if self._label then self._label:SetTextColor(ns.TEXT_DIM[1], ns.TEXT_DIM[2], ns.TEXT_DIM[3], 1) end
+    end)
+    btn:SetScript("OnEnable", function(self)
+        ns.SetRoundedRectBorderFillColor(self, unpack(ns.BTN_FILL_NORMAL))
+        if self._label then self._label:SetTextColor(1, 1, 1, 1) end
+    end)
+
+    if text then btn:SetText(text) end
+    return btn
+end
+
+function ns.CreateBouncePulse(region, fromAlpha, toAlpha, duration, smoothing)
+    local animGroup = region:CreateAnimationGroup()
+    animGroup:SetLooping("BOUNCE")
+    local alpha = animGroup:CreateAnimation("Alpha")
+    alpha:SetFromAlpha(fromAlpha or 1)
+    alpha:SetToAlpha(toAlpha or 0.4)
+    alpha:SetDuration(duration or 0.5)
+    if smoothing then alpha:SetSmoothing(smoothing) end
+    return animGroup, alpha
+end
+
+function ns.CreateBounceFloat(region, offsetX, offsetY, duration)
+    local animGroup = region:CreateAnimationGroup()
+    animGroup:SetLooping("BOUNCE")
+    local trans = animGroup:CreateAnimation("Translation")
+    trans:SetOffset(offsetX or 0, offsetY or 0)
+    trans:SetDuration(duration or 0.4)
+    return animGroup, trans
 end
 
 function ns.CreateRoundedRectDivider(frame)

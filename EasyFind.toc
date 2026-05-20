@@ -3,28 +3,54 @@
 ## Notes: Search and locate UI elements and map locations with ease
 ## Author: justawower
 ## Version: 2.0.1
-## IconTexture: Interface\AddOns\EasyFind\Textures\SpyglassMinimap
+## IconTexture: Interface\AddOns\EasyFind\textures\SpyglassMinimap
 ## Category: UI
 ## AddonCompartmentFunc: EasyFind_OnAddonCompartmentClick
 ## SavedVariables: EasyFindDB
 ## DefaultState: enabled
 
-Utils.lua
-MapUtils.lua
-Core.lua
-Database.lua
-DatabaseDynamic.lua
-StaticLocations.lua
-TutorialBox.lua
-ChevronConfig.lua
-Aliases.lua
-UIPins.lua
-UI.lua
-Wizard.lua
-Perf.lua
-Highlight.lua
-MapSearch.lua
-MapTab.lua
-Rescaler.lua
-BlizzOptionsSearch.lua
-Options.lua
+Shared/Utils.lua
+Shared/MapUtils.lua
+MapSearch/Data.lua
+MapSearch/POIRules.lua
+MapSearch/Indicators.lua
+MapSearch/Frames.lua
+Core/Main.lua
+Database/Main.lua
+Database/Search.lua
+Database/Dynamic.lua
+Database/StaticLocations.lua
+Shared/TutorialBox.lua
+Shared/ChevronConfig.lua
+Shared/Aliases.lua
+Shared/UIPins.lua
+UI/Main.lua
+UI/CalculatorCore.lua
+UI/CalculatorPopup.lua
+UI/ResultActions.lua
+UI/Filters.lua
+UI/Results.lua
+UI/ResultRows.lua
+UI/ResultNavigation.lua
+UI/Setup.lua
+UI/Wizard.lua
+Shared/Perf.lua
+UI/Highlight.lua
+MapSearch/Main.lua
+MapSearch/ZoneHighlight.lua
+MapSearch/ZoneNavigation.lua
+MapSearch/ZoneBreadcrumbs.lua
+MapSearch/Navigation.lua
+MapSearch/PinHighlight.lua
+MapSearch/PinUpdates.lua
+MapSearch/Preview.lua
+MapSearch/UINavigation.lua
+MapSearch/Search.lua
+MapSearch/SearchSources.lua
+MapSearch/SearchScanners.lua
+MapSearch/SearchResults.lua
+MapSearch/Zones.lua
+MapSearch/MapTab.lua
+UI/Rescaler.lua
+UI/BlizzOptionsSearch.lua
+UI/Options.lua

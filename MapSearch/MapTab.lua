@@ -1869,7 +1869,7 @@ local FILTER_OPTIONS = {
 }
 
 -- Sub-row that only shows while the parent Rares filter is checked.
--- Mirrors `alwaysShowRares` in SavedVariables (shared with Options.lua).
+-- Mirrors `alwaysShowRares` in SavedVariables (shared with UI/Options.lua).
 local AUTO_TRACK_ROW_H = 18
 local function AttachAutoTrackRow(dropdown)
     local raresRow

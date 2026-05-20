@@ -228,13 +228,7 @@ function Highlight:CreateHighlightFrame()
 
     highlightFrame.borderSize = borderSize
 
-    local animGroup = highlightFrame:CreateAnimationGroup()
-    animGroup:SetLooping("BOUNCE")
-    local alpha = animGroup:CreateAnimation("Alpha")
-    alpha:SetFromAlpha(1)
-    alpha:SetToAlpha(0.3)
-    alpha:SetDuration(0.5)
-    highlightFrame.animGroup = animGroup
+    highlightFrame.animGroup = ns.CreateBouncePulse(highlightFrame, 1, 0.3, 0.5)
 
     -- Throttled visibility + identity watcher. IsVisible (unlike IsShown)
     -- reflects parent-chain visibility, so cascade-hides trigger a clear.
@@ -292,12 +286,7 @@ function Highlight:CreateIndicatorFrame()
         indicatorFrame.indicator = ind
     end
 
-    local animGroup = indicatorFrame:CreateAnimationGroup()
-    animGroup:SetLooping("BOUNCE")
-    local trans = animGroup:CreateAnimation("Translation")
-    trans:SetOffset(0, -10)
-    trans:SetDuration(0.4)
-    indicatorFrame.animGroup = animGroup
+    indicatorFrame.animGroup = ns.CreateBounceFloat(indicatorFrame, 0, -10, 0.4)
 end
 
 function Highlight:CreateInstructionFrame()
@@ -2424,13 +2413,7 @@ function Highlight:HighlightSpellbookSpell(row, validator)
         glow:SetPoint("CENTER", iconBtn, "CENTER", 0, 0)
         glow:SetSize(w * 1.4, h * 1.4)
         glow:SetBlendMode("ADD")
-        local ag = glow:CreateAnimationGroup()
-        ag:SetLooping("BOUNCE")
-        local pulse = ag:CreateAnimation("Alpha")
-        pulse:SetFromAlpha(0.85)
-        pulse:SetToAlpha(1.6)
-        pulse:SetDuration(0.7)
-        glow._efPulse = ag
+        glow._efPulse = ns.CreateBouncePulse(glow, 0.85, 1.6, 0.7)
         iconBtn._efSearchGlow = glow
     end
     glow:SetAlpha(1.6)
@@ -2774,10 +2757,7 @@ function Highlight:CreateScrollHintFrame()
         ns.CreateIndicatorTextures(scrollHintFrame, iconSize, ns.ICON_GLOW_SIZE)
     end
 
-    local animGroup = scrollHintFrame:CreateAnimationGroup()
-    animGroup:SetLooping("BOUNCE")
-    local trans = animGroup:CreateAnimation("Translation")
-    trans:SetDuration(0.4)
+    local animGroup, trans = ns.CreateBounceFloat(scrollHintFrame, 0, 0, 0.4)
     scrollHintFrame.animGroup = animGroup
     scrollHintFrame.animTranslation = trans
 

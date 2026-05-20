@@ -262,57 +262,7 @@ local function CreateGlowOverlay(name, parent, target)
     return glow
 end
 
-local function HideRoundedFrameBorder(frame)
-    ns.SetRoundedRectBorderEdgeShown(frame, false)
-end
-
-local SetModernButtonFill = ns.SetRoundedRectBorderFillColor
-
-local function CreateModernButton(parent, text, width, height)
-    local btn = CreateFrame("Button", nil, parent)
-    local rawSetSize = btn.SetSize
-    rawSetSize(btn, width or 100, height or 22)
-
-    ns.CreateRoundedRectBorder(btn)
-    ns.SetRoundedRectBarHeight(btn, mmin(height or 22, 10))
-    ns.SetRoundedRectBorderBgAlpha(btn, 1)
-    HideRoundedFrameBorder(btn)
-    SetModernButtonFill(btn, 0.095, 0.095, 0.108)
-
-    local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    label:SetPoint("CENTER")
-    label:SetText(text or "")
-    label:SetTextColor(1, 1, 1, 1)
-    btn._label = label
-
-    btn.SetText = function(self, value)
-        if self._label then self._label:SetText(value or "") end
-    end
-    btn.GetText = function(self)
-        return self._label and self._label:GetText() or ""
-    end
-    btn.SetSize = function(self, w, h)
-        rawSetSize(self, w, h)
-        ns.SetRoundedRectBarHeight(self, mmin(h or self:GetHeight() or 22, 10))
-    end
-
-    btn:SetScript("OnEnter", function(self)
-        if self:IsEnabled() then SetModernButtonFill(self, 0.155, 0.155, 0.172) end
-    end)
-    btn:SetScript("OnLeave", function(self)
-        if self:IsEnabled() then SetModernButtonFill(self, 0.095, 0.095, 0.108) end
-    end)
-    btn:SetScript("OnMouseDown", function(self)
-        if self:IsEnabled() then SetModernButtonFill(self, 0.065, 0.065, 0.078) end
-    end)
-    btn:SetScript("OnMouseUp", function(self)
-        if not self:IsEnabled() then return end
-        if self:IsMouseOver() then SetModernButtonFill(self, 0.155, 0.155, 0.172)
-        else SetModernButtonFill(self, 0.095, 0.095, 0.108) end
-    end)
-
-    return btn
-end
+local CreateModernButton = ns.CreateModernButton
 
 local function CreatePreviewResults(parent, targetFrame, width, heightPx, anchorAbove, leftAligned, flushDock)
     local fontScale = GetFontScale()
