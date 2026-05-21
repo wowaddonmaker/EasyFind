@@ -50,6 +50,11 @@ end
 function MapSearch:GetActivePinState()
     return activePinState
 end
+
+function MapSearch:ClearActivePinState()
+    activePinState = nil
+    self._savedPinState = nil
+end
 local loadingScreenFrame = CreateFrame("Frame")
 loadingScreenFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
 loadingScreenFrame:RegisterEvent("USER_WAYPOINT_UPDATED")
@@ -196,6 +201,7 @@ function MapSearch:CreateHighlightFrame()
             GameTooltip:AddLine("Right-click to dismiss", 0.6, 0.6, 0.6)
             GameTooltip:Show()
         else
+            MapSearch:ClearActivePinState()
             MapSearch:ClearHighlight()
         end
     end)
@@ -635,6 +641,7 @@ function MapSearch:ShowMultipleWaypoints(instances)
                             GameTooltip:AddLine("Right-click to dismiss", 0.6, 0.6, 0.6)
                             GameTooltip:Show()
                         else
+                            MapSearch:ClearActivePinState()
                             MapSearch:ClearHighlight()
                         end
                     end)
@@ -928,7 +935,6 @@ function MapSearch:ClearAll()
     -- Notify the UI search bar to refresh its clear-button state.
     self:RefreshAllClearButtons()
 end
-
 
 
 

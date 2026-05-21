@@ -15,6 +15,11 @@ local optionsFrame
 local isInitialized = false
 local blizzardRegistered = false
 
+local VISIBILITY_AUTO = 0
+local VISIBILITY_SMART = 1
+local RESULTS_BELOW = 0
+local RESULTS_ABOVE = 1
+
 local NIL = {}
 local DEFAULT_UI_FILTERS = {
     achievements = true, statistics = false, currencies = true,
@@ -161,6 +166,20 @@ local function RefreshMapRuntime()
     if uiInd then uiInd:SetScale(EasyFind.db.iconScale or 0.8) end
 end
 
+local function GetVisibilityModeValue()
+    return EasyFind and EasyFind.db
+        and EasyFind.db.smartShow
+        and EasyFind.db.autoHide == false
+        and VISIBILITY_SMART
+        or VISIBILITY_AUTO
+end
+
+local function GetResultsDirectionValue()
+    return EasyFind and EasyFind.db
+        and EasyFind.db.uiResultsAbove
+        and RESULTS_ABOVE
+        or RESULTS_BELOW
+end
 
 local function SyncOptionControls()
     if not optionsFrame then return end
@@ -169,16 +188,11 @@ local function SyncOptionControls()
     if optionsFrame.mapIconPresetRow then optionsFrame.mapIconPresetRow:SetValue(EasyFind.db.iconScale or 0.8) end
     if optionsFrame.recentCountStepper then optionsFrame.recentCountStepper:SetValue(EasyFind.db.mapTabRecentCount or 3) end
 
-    if optionsFrame.autoHideCheckbox then optionsFrame.autoHideCheckbox:SetChecked(EasyFind.db.autoHide ~= false) end
-    if optionsFrame.smartShowCheckbox then
-        optionsFrame.smartShowCheckbox:SetChecked(EasyFind.db.smartShow or false)
-        local lbl = optionsFrame.smartShowCheckbox:GetFontString()
-        if lbl then lbl:SetTextColor(1, 1, 1) end
-    end
+    if optionsFrame.visibilityModeRow then optionsFrame.visibilityModeRow:SetValue(GetVisibilityModeValue()) end
     if optionsFrame.lockPositionCheckbox then optionsFrame.lockPositionCheckbox:SetChecked(EasyFind.db.lockPosition or false) end
     if optionsFrame.loginMessageCheckbox then optionsFrame.loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage == true) end
     if optionsFrame.aliasMessageCheckbox then optionsFrame.aliasMessageCheckbox:SetChecked(EasyFind.db.showAliasMessages ~= false) end
-    if optionsFrame.uiResultsAboveCheckbox then optionsFrame.uiResultsAboveCheckbox:SetChecked(EasyFind.db.uiResultsAbove or false) end
+    if optionsFrame.resultsDirectionRow then optionsFrame.resultsDirectionRow:SetValue(GetResultsDirectionValue()) end
     if optionsFrame.resultShortcutHintsCheckbox then optionsFrame.resultShortcutHintsCheckbox:SetChecked(EasyFind.db.showResultShortcutHints ~= false) end
     if optionsFrame.minimapBtnCheckbox then optionsFrame.minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton ~= false) end
     if optionsFrame.rareTrackCheckbox then optionsFrame.rareTrackCheckbox:SetChecked(EasyFind.db.alwaysShowRares or false) end
@@ -1211,22 +1225,12 @@ function Options:Initialize()
     end)
     resizeUIBtn:HookScript("OnLeave", GameTooltip_Hide)
 
-    local autoHideCheckbox = CreateCheckbox(sec1, "AutoHide", "Auto-Hide |cFF888888(Recommended)|r",
-        "Raycast-style: the search bar starts hidden and only appears when you press the keybind. Clicking outside the bar, results, or filter menu hides it again, as does selecting a result.")
-    autoHideCheckbox:SetPoint("TOPLEFT", sec1, "TOPLEFT", 16, -8)
-    optionsFrame.autoHideCheckbox = autoHideCheckbox
-
-    local smartShowCheckbox = CreateCheckbox(sec1, "SmartShow", "Smart Show",
-        "The UI search bar hides itself until you move your mouse near its position.\n\nThe bar reappears when your mouse enters the area and fades away when you move away.")
-    smartShowCheckbox:SetPoint("TOPLEFT", autoHideCheckbox, "BOTTOMLEFT", 0, -2)
-    optionsFrame.smartShowCheckbox = smartShowCheckbox
-
-    local function SetVisibilityMode(mode)
-        local smart = mode == "smart"
+    local visibilityModeRow
+    local function ApplyVisibilityMode(value)
+        local smart = value == VISIBILITY_SMART
         EasyFind.db.smartShow = smart
         EasyFind.db.autoHide = not smart
-        autoHideCheckbox:SetChecked(not smart)
-        smartShowCheckbox:SetChecked(smart)
+        if visibilityModeRow then visibilityModeRow:SetValue(value) end
         RunSoon(function()
             if EasyFind.db.smartShow then
                 if ns.UI and ns.UI.Show then ns.UI:Show(false) end
@@ -1237,43 +1241,70 @@ function Options:Initialize()
             end
         end)
     end
-    autoHideCheckbox:SetScript("OnClick", function()
-        SetVisibilityMode("auto")
-    end)
-    smartShowCheckbox:SetScript("OnClick", function()
-        SetVisibilityMode("smart")
-    end)
-    local smartInitial = EasyFind.db.smartShow and EasyFind.db.autoHide == false
-    EasyFind.db.smartShow = smartInitial
-    EasyFind.db.autoHide = not smartInitial
-    autoHideCheckbox:SetChecked(not smartInitial)
-    smartShowCheckbox:SetChecked(smartInitial)
+
+    local function SetVisibilityMode(value, confirmed)
+        local current = GetVisibilityModeValue()
+        if value == VISIBILITY_SMART and current ~= VISIBILITY_SMART and not confirmed then
+            if visibilityModeRow then visibilityModeRow:SetValue(current) end
+            local dialog = StaticPopup_Show("EASYFIND_CONFIRM_SMART_SHOW")
+            if dialog then
+                dialog:SetFrameStrata("TOOLTIP")
+                dialog:SetFrameLevel(1000)
+            end
+            return
+        end
+        ApplyVisibilityMode(value)
+    end
+
+    visibilityModeRow = CreatePresetRow(sec1, "Visibility:",
+        {
+            { label = "Auto-Hide", value = VISIBILITY_AUTO },
+            { label = "Smart Show", value = VISIBILITY_SMART },
+        },
+        GetVisibilityModeValue,
+        function(value) SetVisibilityMode(value, false) end,
+        "Auto-Hide opens EasyFind only from your keybind and hides it after use. Smart Show uses a hover zone near the search bar.",
+        330)
+    visibilityModeRow:SetPoint("TOPLEFT", sec1, "TOPLEFT", 16, -8)
+    optionsFrame.visibilityModeRow = visibilityModeRow
+
+    local initialVisibility = GetVisibilityModeValue()
+    EasyFind.db.smartShow = initialVisibility == VISIBILITY_SMART
+    EasyFind.db.autoHide = initialVisibility ~= VISIBILITY_SMART
+    visibilityModeRow:SetValue(initialVisibility)
 
     local lockPositionCheckbox = CreateCheckbox(sec1, "LockPosition", "Lock Position",
         "When enabled, the search bar can't be dragged. Useful if you've placed it exactly where you want and don't want to bump it by accident.\n\nReset Positions and the /reset command still work.")
-    lockPositionCheckbox:SetPoint("TOPLEFT", smartShowCheckbox, "BOTTOMLEFT", 0, -2)
+    lockPositionCheckbox:SetPoint("TOPLEFT", visibilityModeRow, "BOTTOMLEFT", 0, -2)
     lockPositionCheckbox:SetChecked(EasyFind.db.lockPosition or false)
     lockPositionCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.lockPosition = self:GetChecked()
     end)
     optionsFrame.lockPositionCheckbox = lockPositionCheckbox
 
-    local uiResultsAboveCheckbox = CreateCheckbox(sec1, "UIResultsAbove", "UI Results Above",
-        "When enabled, the UI search bar shows results above the bar instead of below.\n\nUseful if you place the search bar near the bottom of your screen.")
-    uiResultsAboveCheckbox:SetPoint("TOPLEFT", lockPositionCheckbox, "BOTTOMLEFT", 0, -2)
-    uiResultsAboveCheckbox:SetChecked(EasyFind.db.uiResultsAbove or false)
-    uiResultsAboveCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.uiResultsAbove = self:GetChecked()
-        if self.RefreshVisual then self:RefreshVisual() end
-        RunSoon(function()
-            if ns.UI and ns.UI.RefreshResults then ns.UI:RefreshResults() end
-        end)
-    end)
-    optionsFrame.uiResultsAboveCheckbox = uiResultsAboveCheckbox
+    local resultsDirectionRow = CreatePresetRow(sec1, "Results direction",
+        {
+            { label = "Below", value = RESULTS_BELOW },
+            { label = "Above", value = RESULTS_ABOVE },
+        },
+        GetResultsDirectionValue,
+        function(value)
+            EasyFind.db.uiResultsAbove = value == RESULTS_ABOVE
+            if optionsFrame.resultsDirectionRow then
+                optionsFrame.resultsDirectionRow:SetValue(value)
+            end
+            RunSoon(function()
+                if ns.UI and ns.UI.RefreshResults then ns.UI:RefreshResults() end
+            end)
+        end,
+        "Choose whether UI search results open below or above the search bar.",
+        330)
+    resultsDirectionRow:SetPoint("TOPLEFT", lockPositionCheckbox, "BOTTOMLEFT", 0, -2)
+    optionsFrame.resultsDirectionRow = resultsDirectionRow
 
     local resultShortcutHintsCheckbox = CreateCheckbox(sec1, "ResultShortcutHints", "Show Alt+Number Hints",
         "When enabled, each visible UI search result shows a small Alt+1 through Alt+8 reminder.\n\nWhen disabled, the reminders are hidden but the Alt+number shortcuts still activate the same rows.")
-    resultShortcutHintsCheckbox:SetPoint("TOPLEFT", uiResultsAboveCheckbox, "BOTTOMLEFT", 0, -2)
+    resultShortcutHintsCheckbox:SetPoint("TOPLEFT", resultsDirectionRow, "BOTTOMLEFT", 0, -2)
     resultShortcutHintsCheckbox:SetChecked(EasyFind.db.showResultShortcutHints ~= false)
     resultShortcutHintsCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.showResultShortcutHints = self:GetChecked()
@@ -1737,6 +1768,28 @@ function Options:Initialize()
     aliasContent:HookScript("OnSizeChanged", UpdateAliasScrollBar)
     aliasesTab:HookScript("OnShow", RefreshAliasList)
     optionsFrame.RefreshAliasList = RefreshAliasList
+
+    StaticPopupDialogs["EASYFIND_CONFIRM_SMART_SHOW"] = {
+        text = "Switch to Smart Show?\n\nAuto-Hide is recommended because it only opens EasyFind from your keybind and avoids accidental hover activation. Smart Show uses a hover zone near the search bar and can feel less predictable.\n\nSwitch anyway?",
+        button1 = "Use Smart Show",
+        button2 = "Keep Auto-Hide",
+        OnAccept = function()
+            SetVisibilityMode(VISIBILITY_SMART, true)
+        end,
+        OnCancel = function()
+            if optionsFrame and optionsFrame.visibilityModeRow then
+                optionsFrame.visibilityModeRow:SetValue(GetVisibilityModeValue())
+            end
+        end,
+        OnShow = function(self)
+            self:SetFrameStrata("TOOLTIP")
+            self:SetFrameLevel(1000)
+        end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        preferredIndex = 3,
+    }
 
     StaticPopupDialogs["EASYFIND_CLEAR_ALIASES"] = {
         text = "Clear all saved aliases?",
