@@ -43,6 +43,9 @@ local UI_FILTER_OPTIONS = {
               { value = "earned",     label = ACHIEVEMENT_FILTER_LABELS.earned },
               { value = "incomplete", label = ACHIEVEMENT_FILTER_LABELS.incomplete },
           },
+          checkboxes = {
+              { dbKey = "hideAchievementHeaders", label = "Hide achievement headers" },
+          },
       } },
     { key = "statistics",  label = "Statistics",  iconTex = 1121272,
       iconCoords = { 0.1997, 0.2437, 0.5933, 0.6266 } },
@@ -348,6 +351,7 @@ function UI:QuickFilterAllowsData(data, quickFilter)
 
     if data.mapSearchResult then return def.key == "map" end
     if def.key == "map" then return false end
+    if EasyFind.db.hideAchievementHeaders and data.category == "Achievement Category" then return false end
 
     if def.key == "mounts" then return data.mountID and true or false end
     if def.key == "toys" then return data.toyItemID and true or false end

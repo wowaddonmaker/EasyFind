@@ -125,6 +125,7 @@ local DB_DEFAULTS = {
     currencyFilterMode = "all",
     reputationFilterMode = "all",
     achievementFilterMode = "all",
+    hideAchievementHeaders = true,
     showLegacyReputations = false,
     abilityHidePassives = false,
     appearanceSetClass = nil,

@@ -1020,6 +1020,7 @@ function UI:OnSearchTextChanged(text, force)
     -- abilityHidePassives also drops isPassive ability rows here so
     -- the filter applies regardless of which bucket is on.
     local hidePassives = EasyFind.db.abilityHidePassives
+    local hideAchievementHeaders = EasyFind.db.hideAchievementHeaders
     if filters and (filters.abilities == false or filters.bosses == false
                     or filters.achievements == false or filters.statistics == false
                     or filters.currencies == false or filters.reputations == false
@@ -1028,7 +1029,7 @@ function UI:OnSearchTextChanged(text, force)
                     or filters.gameOptions == false or filters.addonOptions == false
                     or filters.titles == false or filters.gearSets == false
                     or filters.talents == false
-                    or hidePassives) then
+                    or hidePassives or hideAchievementHeaders) then
         wipe(SCRATCH.filteredResults)
         local filtered = SCRATCH.filteredResults
         local fi = 0
@@ -1044,7 +1045,10 @@ function UI:OnSearchTextChanged(text, force)
                 local parentOff = optionsOff
                     and (bucket == "gameOptions" or bucket == "addonOptions")
                 local passiveOff = hidePassives and d and d.category == "Ability" and d.isPassive
-                if not passiveOff and (not bucket or (not bucketOff and not parentOff)) then
+                local headerOff = hideAchievementHeaders and d
+                    and d.category == "Achievement Category"
+                if not passiveOff and not headerOff
+                   and (not bucket or (not bucketOff and not parentOff)) then
                     fi = fi + 1
                     filtered[fi] = r
                 end

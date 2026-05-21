@@ -58,6 +58,7 @@ local UI_DEFAULTS = {
     lootUpgradesOnly = false,
     lootDifficulty = "normal",
     achievementFilterMode = "all",
+    hideAchievementHeaders = true,
     appearanceSetClass = NIL,
     appearanceSetCollected = true,
     appearanceSetNotCollected = true,
