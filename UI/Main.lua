@@ -859,13 +859,19 @@ function UI:SyncOutfitPins()
     UIPins.SyncOutfits()
 end
 
-local function ShowPinPopup(_, isPinned, onPinAction, onGuide, onAddAlias, extra)
-    Utils.ShowPinMenu("EasyFindPinPopup", isPinned, onPinAction, onGuide, onAddAlias, {
+local function ShowPinPopup(anchorFrame, isPinned, onPinAction, onGuide, onAddAlias, extra)
+    local opts = {
         strata = "TOOLTIP",
         level = 100,
         width = 96,
         rowHeight = 22,
-    }, extra)
+    }
+    if extra and extra.keyboardMode then
+        opts.keyboardMode = true
+        opts.anchorFrame = anchorFrame
+        opts.onHide = extra.onHide
+    end
+    return Utils.ShowPinMenu("EasyFindPinPopup", isPinned, onPinAction, onGuide, onAddAlias, opts, extra)
 end
 
 function UI:KeepPinnedResultsOpenBriefly()
@@ -1616,8 +1622,59 @@ function UI:CreateSearchFrame()
     end
     editBox.ResetPendingSearch = ResetPendingUISearch
     local SEARCH_THROTTLE = 0.05  -- 50ms cap on search/render frequency
+    local altNavSuppressToken = 0
+    local function IsSuppressedAltNavLeak(currentText, suppress)
+        if not suppress then return false end
+        local key = suppress.key
+        if not key or key == "" then return true end
+        local restoreText = suppress.text or ""
+        if currentText == restoreText then return true end
+
+        local lowerCurrent = (currentText or ""):lower()
+        local cursor = suppress.cursor or #restoreText
+        if cursor < 0 then cursor = 0 end
+        if cursor > #restoreText then cursor = #restoreText end
+        if (restoreText:sub(1, cursor) .. key .. restoreText:sub(cursor + 1)):lower() == lowerCurrent then
+            return true
+        end
+        if #currentText ~= #restoreText + #key then return false end
+        for pos = 0, #restoreText do
+            if (restoreText:sub(1, pos) .. key .. restoreText:sub(pos + 1)):lower() == lowerCurrent then
+                return true
+            end
+        end
+        return false
+    end
+
+    local function SuppressNextAltNavChar(box, key)
+        if not box then return end
+        altNavSuppressToken = altNavSuppressToken + 1
+        local token = altNavSuppressToken
+        box._easyFindSuppressAltNavChar = {
+            key = key and key:lower(),
+            text = box:GetText() or "",
+            cursor = box:GetCursorPosition() or #(box:GetText() or ""),
+        }
+        Utils.SafeAfter(0.20, function()
+            if altNavSuppressToken == token then
+                box._easyFindSuppressAltNavChar = nil
+            end
+        end)
+    end
+
     editBox:SetScript("OnTextChanged", function(self, userInput)
         self.placeholder:SetShown(self:GetText() == "")
+        local suppress = self._easyFindSuppressAltNavChar
+        if userInput and suppress then
+            self._easyFindSuppressAltNavChar = nil
+            if IsSuppressedAltNavLeak(self:GetText() or "", suppress) then
+                local restoreText = suppress.text or ""
+                self:SetText(restoreText)
+                self:SetCursorPosition(suppress.cursor or #restoreText)
+                self.placeholder:SetShown(restoreText == "")
+                return
+            end
+        end
         -- Skip every non-user text change. WoW defers OnTextChanged
         -- dispatch by one frame, so by the time the autocomplete's
         -- programmatic SetText fires this handler the in-band
@@ -1942,6 +1999,70 @@ function UI:CreateSearchFrame()
     searchFrame.StartKeyRepeat = StartKeyRepeat
     searchFrame.StopKeyRepeat  = StopKeyRepeat
     searchFrame.IsRepeatKey    = keyRepeat.IsKey
+    searchFrame.IsAltNavRepeatKey = function()
+        return keyRepeat.IsKey("J") or keyRepeat.IsKey("K")
+    end
+
+    local function RefocusEditBoxAfterNav()
+        if selectedIndex ~= 0 then return end
+        if not searchFrame or not searchFrame:IsShown() then return end
+        if not editBox or editBox:HasFocus() then return end
+        editBox.blockFocus = nil
+        editBox:SetFocus()
+    end
+
+    local function StopRepeatAndMaybeRefocus(key)
+        if keyRepeat.IsKey(key) then
+            StopKeyRepeat(key)
+            RefocusEditBoxAfterNav()
+        end
+    end
+
+    local function RefocusEditBoxAfterAltNavRelease(key)
+        if IsAltKeyDown() or (IsKeyDown and key and IsKeyDown(key)) then
+            Utils.SafeAfter(0.03, function()
+                RefocusEditBoxAfterAltNavRelease(key)
+            end)
+            return
+        end
+        RefocusEditBoxAfterNav()
+    end
+
+    local function StopAltRepeatIfReleased(key)
+        if IsAltKeyDown() then
+            return false
+        end
+        StopKeyRepeat(key)
+        Utils.SafeAfter(0.05, function()
+            RefocusEditBoxAfterAltNavRelease(key)
+        end)
+        return true
+    end
+
+    local function StepAltJ()
+        if historyIndex > 0 then
+            return UI:NavigateSearchHistory(-1)
+        end
+        return UI:MoveSelection(1, true, true)
+    end
+
+    local function StepAltK()
+        if selectedIndex > 0 then
+            return UI:MoveSelection(-1, true, true)
+        end
+        return UI:NavigateSearchHistory(1)
+    end
+
+    local function StartAltNavRepeat(key, step)
+        StartKeyRepeat(key, function()
+            if StopAltRepeatIfReleased(key) then return end
+            if not step() then
+                StopKeyRepeat(key)
+                RefocusEditBoxAfterAltNavRelease(key)
+            end
+        end)
+        SuppressNextAltNavChar(editBox, key)
+    end
 
     -- Arrow key / Tab navigation for results dropdown.
     -- IMPORTANT: Block propagation while the editbox has focus so that
@@ -1951,9 +2072,10 @@ function UI:CreateSearchFrame()
     -- editbox, otherwise it just types as a character and the user
     -- can't dismiss with the same key they used to open.
     editBox:SetScript("OnKeyDown", function(self, key)
+        local navKey = key and key:upper() or key
         -- Alt+letter: set propagate=false up front; late suppression can leak
         -- the char into the editbox before OnChar sees the new state.
-        if IsAltKeyDown() and key and key:match("^[A-Z]$") then
+        if IsAltKeyDown() and navKey and navKey:match("^[A-Z]$") then
             Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
         end
         UI:HandleCalculatorPasteIntoSearch(self, key)
@@ -1992,7 +2114,7 @@ function UI:CreateSearchFrame()
                 self:AcceptAutocomplete("right")
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
                 return
-            elseif key == "L" and IsAltKeyDown() then
+            elseif navKey == "L" and IsAltKeyDown() then
                 self:AcceptAutocomplete("alt-l")
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
                 return
@@ -2012,8 +2134,20 @@ function UI:CreateSearchFrame()
         -- into the results list. Drop-into-results works regardless
         -- of buffer content: the user wants keyboard nav into rows
         -- without having to press Enter first, even mid-edit.
-        local isUpHist   = key == "UP"   or (IsAltKeyDown() and key == "K")
-        local isDownHist = key == "DOWN" or (IsAltKeyDown() and key == "J")
+        local isAltJ = IsAltKeyDown() and navKey == "J"
+        local isAltK = IsAltKeyDown() and navKey == "K"
+        if isAltK then
+            StartAltNavRepeat(navKey, StepAltK)
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            return
+        elseif isAltJ then
+            StartAltNavRepeat(navKey, StepAltJ)
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            return
+        end
+
+        local isUpHist   = key == "UP"
+        local isDownHist = key == "DOWN"
         if isUpHist then
             if UI:NavigateSearchHistory(1) then
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
@@ -2040,20 +2174,6 @@ function UI:CreateSearchFrame()
                 if key == "DOWN" then UI:MoveSelection(1) end
             end
         end
-        -- Alt+J/K walks into the
-        -- result list once history navigation has been exhausted by
-        -- the branch above. Single-step only (no key-repeat) because
-        -- MoveSelection transfers keyboard focus to navFrame and the
-        -- subsequent KeyUp event gets lost in the focus transition,
-        -- leaving the repeat ticker firing forever and cascading
-        -- through the entire result list.
-        if IsAltKeyDown() then
-            if key == "J" then
-                UI:MoveSelection(1)
-            elseif key == "K" then
-                UI:MoveSelection(-1)
-            end
-        end
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
     end)
 
@@ -2061,7 +2181,7 @@ function UI:CreateSearchFrame()
     -- editbox needs to terminate its hold-repeat ticker on release here
     -- too, otherwise it keeps stepping after the user lets go.
     editBox:SetScript("OnKeyUp", function(_, key)
-        if keyRepeat.IsKey(key) then StopKeyRepeat(key) end
+        StopRepeatAndMaybeRefocus(key)
     end)
 
     searchFrame.editBox = editBox
@@ -2193,14 +2313,14 @@ function UI:CreateSearchFrame()
             if IsShiftKeyDown() then
                 UI:JumpToNextSection(1)
             else
-                StartKeyRepeat(key, function() UI:MoveSelection(1) end)
+                StartAltNavRepeat(key, StepAltJ)
             end
             return
         elseif IsAltKeyDown() and key == "K" then
             if IsShiftKeyDown() then
                 UI:JumpToNextSection(-1)
             else
-                StartKeyRepeat(key, function() UI:MoveSelection(-1) end)
+                StartAltNavRepeat(key, StepAltK)
             end
             return
         elseif IsAltKeyDown() and key == "L" then
@@ -2286,6 +2406,13 @@ function UI:CreateSearchFrame()
         elseif key == "TAB" then
             if UI._quickFilterSuggestionsActive and UI:AcceptQuickFilterSuggestion() then
                 return
+            end
+            if not IsShiftKeyDown() and selectedIndex > 0 and not toggleFocused then
+                local row = resultButtons[selectedIndex]
+                if row and UI.ShowResultContextMenu and UI:ShowResultContextMenu(row, true) then
+                    if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
+                    return
+                end
             end
             CycleFocus(IsShiftKeyDown())
         elseif key == "ENTER" then
@@ -2406,7 +2533,7 @@ function UI:CreateSearchFrame()
         end
     end)
     navFrame:SetScript("OnKeyUp", function(_, key)
-        if keyRepeat.IsKey(key) then StopKeyRepeat(key) end
+        StopRepeatAndMaybeRefocus(key)
     end)
 
     -- UISpecialFrames fallback: shown whenever the search bar is visible so

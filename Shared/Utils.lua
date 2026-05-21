@@ -97,12 +97,12 @@ function Utils.CreateKeyRepeat(frame, initialDelay, fastDelay, accelDuration)
     local repeatActive = false
 
     local function Start(key, action)
-        action()
         repeatKey = key
         repeatAction = action
         repeatHeld = 0
         repeatNext = initialDelay
         repeatActive = true
+        action()
     end
     local function Stop(key)
         if not key or repeatKey == key then
@@ -1354,6 +1354,63 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             end
             return false
         end
+        local function PaintKeyboardSelection(self)
+            if not self.rows then return end
+            for i = 1, #self.rows do
+                local row = self.rows[i]
+                if row and row.UnlockHighlight then row:UnlockHighlight() end
+                if row and row.keyboardOverlay then
+                    row.keyboardOverlay:SetShown(self.keyboardIndex == i)
+                end
+            end
+            local row = self.rows[self.keyboardIndex or 0]
+            if row and row.LockHighlight then row:LockHighlight() end
+        end
+        local function IsSelectableRow(row)
+            return row and row:IsShown() and not row.isSeparator
+        end
+        local function SetKeyboardIndex(self, index)
+            if not self.rows then return false end
+            if not index then
+                self.keyboardIndex = nil
+                PaintKeyboardSelection(self)
+                return false
+            end
+            if index < 1 then index = #self.rows end
+            if index > #self.rows then index = 1 end
+            local start = index
+            repeat
+                local row = self.rows[index]
+                if IsSelectableRow(row) then
+                    self.keyboardIndex = index
+                    PaintKeyboardSelection(self)
+                    return true
+                end
+                index = index + 1
+                if index > #self.rows then index = 1 end
+            until index == start
+            self.keyboardIndex = nil
+            PaintKeyboardSelection(self)
+            return false
+        end
+        local function MoveKeyboardIndex(self, delta)
+            if not self.rows then return false end
+            local index = (self.keyboardIndex or (delta > 0 and 0 or #self.rows + 1)) + delta
+            if index < 1 then index = #self.rows end
+            if index > #self.rows then index = 1 end
+            return SetKeyboardIndex(self, index)
+        end
+        local function ActivateKeyboardIndex(self)
+            local row = self.rows and self.rows[self.keyboardIndex or 0]
+            if not IsSelectableRow(row) then return false end
+            local onClick = row.onClick
+            self:Hide()
+            if onClick then onClick() end
+            return true
+        end
+        menu.SetKeyboardIndex = SetKeyboardIndex
+        menu.MoveKeyboardIndex = MoveKeyboardIndex
+        menu.ActivateKeyboardIndex = ActivateKeyboardIndex
         menu:SetScript("OnShow", function(self)
             self._showedAt = GetTime()
             self._outsideSince = nil
@@ -1362,10 +1419,16 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
             self:RegisterEvent("GLOBAL_MOUSE_DOWN")
             self:RegisterEvent("GLOBAL_MOUSE_UP")
+            if self.keyboardMode then
+                SetKeyboardIndex(self, self.keyboardIndex or 1)
+            else
+                SetKeyboardIndex(self, nil)
+            end
         end)
         menu:SetScript("OnHide", function(self)
             self._outsideSince = nil
             self._hasEntered = false
+            SetKeyboardIndex(self, nil)
             Utils.SafeCallMethod(self, "EnableKeyboard", false)
             self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
             self:UnregisterEvent("GLOBAL_MOUSE_UP")
@@ -1375,6 +1438,9 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                     if row then row:Hide() end
                 end
             end
+            local onHide = self.onHide
+            self.onHide = nil
+            if onHide then onHide(self) end
         end)
         menu:SetScript("OnUpdate", function(self)
             if MenuHasMouse(self) then
@@ -1398,9 +1464,19 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             if not MenuHasMouse(self) then self:Hide() end
         end)
         menu:SetScript("OnKeyDown", function(self, key)
-            if key == "ESCAPE" then
+            local navKey = key and key:upper() or key
+            if navKey == "ESCAPE" then
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
                 self:Hide()
+            elseif navKey == "DOWN" or (IsAltKeyDown and IsAltKeyDown() and navKey == "J") then
+                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+                MoveKeyboardIndex(self, 1)
+            elseif navKey == "UP" or (IsAltKeyDown and IsAltKeyDown() and navKey == "K") then
+                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+                MoveKeyboardIndex(self, -1)
+            elseif navKey == "ENTER" or navKey == "SPACE" then
+                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+                ActivateKeyboardIndex(self)
             else
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
             end
@@ -1415,6 +1491,9 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
     menu:SetFrameLevel(opts.level or 10000)
     menu.outsideDelay = opts.outsideDelay or 0.3
     menu.clickGrace = opts.clickGrace or 0.05
+    menu.keyboardMode = opts.keyboardMode and true or false
+    menu.keyboardIndex = nil
+    menu.onHide = opts.onHide
 
     local rowH = opts.rowHeight or 22
     local width = opts.width or 96
@@ -1447,6 +1526,8 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             local sepH = 7
             row:SetHeight(isSep and sepH or rowH)
             if isSep then
+                row.isSeparator = true
+                row.onClick = nil
                 row.label:SetText("")
                 row.icon:Hide()
                 row.sep:Show()
@@ -1456,6 +1537,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 row:SetScript("OnMouseDown", nil)
                 row:SetScript("OnClick", nil)
             else
+                row.isSeparator = nil
                 row.label:SetText(def.text or "")
                 if def.icon then
                     row.icon:SetTexture(def.icon)
@@ -1468,6 +1550,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 local hl = row:GetHighlightTexture()
                 if hl then hl:SetAlpha(1) end
                 local onClick = def.onClick
+                row.onClick = onClick
                 row:SetScript("OnMouseDown", function(_, button)
                     if button ~= "LeftButton" then return end
                     menu:Hide()
@@ -1512,11 +1595,16 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
         end
     end
     menu:SetSize(needed, totalH + 8)
-    local scale = UIParent:GetEffectiveScale()
-    local x, y = GetCursorPosition()
     menu:ClearAllPoints()
-    menu:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT",
-        x / scale + (opts.offsetX or 0), y / scale + (opts.offsetY or 0))
+    if opts.anchorFrame then
+        menu:SetPoint(opts.point or "TOPLEFT", opts.anchorFrame, opts.relativePoint or "TOPRIGHT",
+            opts.offsetX or 4, opts.offsetY or 0)
+    else
+        local scale = UIParent:GetEffectiveScale()
+        local x, y = GetCursorPosition()
+        menu:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT",
+            x / scale + (opts.offsetX or 0), y / scale + (opts.offsetY or 0))
+    end
     menu:Show()
     return menu
 end

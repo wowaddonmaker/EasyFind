@@ -190,6 +190,121 @@ end
 function UI:ActivateSettingResult(data, ctrlHeld)
     return ActivateSettingResult(data, ctrlHeld)
 end
+
+function UI:ShowResultContextMenu(row, keyboardMode)
+    if not row or not row.data then return false end
+    if row.data.calculatorResult or row.data.quickFilterDef then return false end
+
+    local pinData = row.data
+    local isPinned = IsUIItemPinned(pinData)
+    local hasGuide = pinData.steps or pinData.transmogSetID
+        or (pinData.category == "Loot" and pinData.itemID)
+        or pinData.petID or pinData.speciesID
+        or pinData.mapSearchResult
+    local onGuide = hasGuide and function()
+        UI:SelectResult(pinData, true)
+    end or nil
+    local canAlias = ns.Aliases and ns.Aliases:GetEntryKey(pinData) ~= nil
+    local onAddAlias = canAlias and function()
+        UI:PromptForAlias(pinData)
+    end or nil
+    local extra
+    if pinData.achievementID and pinData.category == "Achievement" then
+        local achID = pinData.achievementID
+        local isTracked = UI:IsAchievementTracked(achID)
+        extra = {
+            isTracked = isTracked,
+            onTrack = function()
+                UI:KeepPinnedResultsOpenBriefly()
+                UI:ToggleAchievementTracked(achID)
+            end,
+        }
+    elseif pinData.category == "Currency" and pinData.currencyID then
+        local cid = pinData.currencyID
+        extra = {
+            isOnBackpack = UI:IsCurrencyOnBackpack(cid),
+            onToggleBackpack = function()
+                UI:KeepPinnedResultsOpenBriefly()
+                UI:ToggleCurrencyBackpack(cid)
+            end,
+        }
+        if UI:IsCurrencyTransferable(cid) then
+            extra.onTransfer = function()
+                UI:KeepPinnedResultsOpenBriefly()
+                UI:RouteCurrencyTransfer(pinData)
+            end
+        end
+    elseif pinData.transmogSetID then
+        local sid = pinData.transmogSetID
+        extra = {
+            isFavorite = UI:IsTransmogSetFavorite(sid),
+            onToggleFavorite = function()
+                UI:KeepPinnedResultsOpenBriefly()
+                UI:ToggleTransmogSetFavorite(sid)
+            end,
+        }
+    elseif pinData.petID then
+        local pid = pinData.petID
+        local cageable = UI:IsPetCageable(pid)
+        extra = {
+            onSummon = function()
+                UI:KeepPinnedResultsOpenBriefly()
+                UI:SummonPet(pid)
+            end,
+            onRename = function()
+                UI:KeepPinnedResultsOpenBriefly()
+                UI:RenamePet(pid)
+            end,
+            isFavorite = UI:IsPetFavorite(pid),
+            onToggleFavorite = function()
+                UI:KeepPinnedResultsOpenBriefly()
+                UI:TogglePetFavorite(pid)
+            end,
+            onCageOrRelease = function()
+                UI:KeepPinnedResultsOpenBriefly()
+                if cageable then UI:CagePet(pid) else UI:ReleasePet(pid) end
+            end,
+            isCageable = cageable,
+        }
+    end
+
+    extra = extra or {}
+    if keyboardMode then
+        extra.keyboardMode = true
+        extra.onHide = function()
+            local navFrame = UI:GetNavFrame()
+            if navFrame and UI:GetSelectedIndex() > 0
+               and UI:GetSearchFrame() and UI:GetSearchFrame():IsShown() then
+                Utils.SafeCallMethod(navFrame, "EnableKeyboard", true)
+            end
+        end
+        local navFrame = UI:GetNavFrame()
+        if navFrame then Utils.SafeCallMethod(navFrame, "EnableKeyboard", false) end
+    end
+
+    UI:ShowPinPopup(row, isPinned, function()
+        if isPinned then
+            UnpinUIItem(pinData)
+        else
+            PinUIItem(pinData)
+        end
+        local editBox = UI:GetSearchFrame() and UI:GetSearchFrame().editBox
+        local text = editBox and editBox:GetText() or ""
+        if text == "" then
+            local pinsRemain = UI:KeepPinnedResultsOpenBriefly()
+            UI:ShowPinnedItems()
+            if pinsRemain and editBox
+               and not (UI:GetNavFrame() and UI:GetNavFrame():IsKeyboardEnabled()) then
+                editBox.blockFocus = nil
+                editBox:SetFocus()
+            end
+        else
+            UI:OnSearchTextChanged(text, true)
+        end
+    end, onGuide, onAddAlias, extra)
+    return true
+end
+
 -- Custom popup for inline setting dropdowns. Replaces MenuUtil.CreateContextMenu
 -- because MenuUtil's option buttons can have a click target that's narrower than
 -- the visible label for very long strings, which silently swallows selection.
@@ -1500,99 +1615,7 @@ function UI:CreateResultButton(index)
         end
         -- Right-click: show pin/unpin popup (plus Guide row if entry has a guide path)
         if mouseButton == "RightButton" and self.data then
-            if self.data.calculatorResult or self.data.quickFilterDef then return end
-            local pinData = self.data
-            local isPinned = IsUIItemPinned(pinData)
-            local hasGuide = pinData.steps or pinData.transmogSetID
-                or (pinData.category == "Loot" and pinData.itemID)
-                or pinData.petID or pinData.speciesID
-                or pinData.mapSearchResult
-            local onGuide = hasGuide and function()
-                UI:SelectResult(pinData, true)
-            end or nil
-            local canAlias = ns.Aliases and ns.Aliases:GetEntryKey(pinData) ~= nil
-            local onAddAlias = canAlias and function()
-                UI:PromptForAlias(pinData)
-            end or nil
-            local extra
-            if pinData.achievementID and pinData.category == "Achievement" then
-                local achID = pinData.achievementID
-                local isTracked = UI:IsAchievementTracked(achID)
-                extra = {
-                    isTracked = isTracked,
-                    onTrack = function()
-                        UI:KeepPinnedResultsOpenBriefly()
-                        UI:ToggleAchievementTracked(achID)
-                    end,
-                }
-            elseif pinData.category == "Currency" and pinData.currencyID then
-                local cid = pinData.currencyID
-                extra = {
-                    isOnBackpack = UI:IsCurrencyOnBackpack(cid),
-                    onToggleBackpack = function()
-                        UI:KeepPinnedResultsOpenBriefly()
-                        UI:ToggleCurrencyBackpack(cid)
-                    end,
-                }
-                if UI:IsCurrencyTransferable(cid) then
-                    extra.onTransfer = function()
-                        UI:KeepPinnedResultsOpenBriefly()
-                        UI:RouteCurrencyTransfer(pinData)
-                    end
-                end
-            elseif pinData.transmogSetID then
-                local sid = pinData.transmogSetID
-                extra = {
-                    isFavorite = UI:IsTransmogSetFavorite(sid),
-                    onToggleFavorite = function()
-                        UI:KeepPinnedResultsOpenBriefly()
-                        UI:ToggleTransmogSetFavorite(sid)
-                    end,
-                }
-            elseif pinData.petID then
-                local pid = pinData.petID
-                local cageable = UI:IsPetCageable(pid)
-                extra = {
-                    onSummon = function()
-                        UI:KeepPinnedResultsOpenBriefly()
-                        UI:SummonPet(pid)
-                    end,
-                    onRename = function()
-                        UI:KeepPinnedResultsOpenBriefly()
-                        UI:RenamePet(pid)
-                    end,
-                    isFavorite = UI:IsPetFavorite(pid),
-                    onToggleFavorite = function()
-                        UI:KeepPinnedResultsOpenBriefly()
-                        UI:TogglePetFavorite(pid)
-                    end,
-                    onCageOrRelease = function()
-                        UI:KeepPinnedResultsOpenBriefly()
-                        if cageable then UI:CagePet(pid) else UI:ReleasePet(pid) end
-                    end,
-                    isCageable = cageable,
-                }
-            end
-            UI:ShowPinPopup(self, isPinned, function()
-                if isPinned then
-                    UnpinUIItem(pinData)
-                else
-                    PinUIItem(pinData)
-                end
-                local editBox = UI:GetSearchFrame() and UI:GetSearchFrame().editBox
-                local text = editBox and editBox:GetText() or ""
-                if text == "" then
-                    local pinsRemain = UI:KeepPinnedResultsOpenBriefly()
-                    UI:ShowPinnedItems()
-                    if pinsRemain and editBox
-                       and not (UI:GetNavFrame() and UI:GetNavFrame():IsKeyboardEnabled()) then
-                        editBox.blockFocus = nil
-                        editBox:SetFocus()
-                    end
-                else
-                    UI:OnSearchTextChanged(text, true)
-                end
-            end, onGuide, onAddAlias, extra)
+            UI:ShowResultContextMenu(self, false)
             return
         end
 

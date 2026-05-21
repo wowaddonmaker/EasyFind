@@ -813,7 +813,12 @@ function UI:NavigateSearchHistory(direction)
     -- the OnTextChanged hook now ignores (so the autocomplete suffix can't
     -- feed back into the search query). History nav still wants a fresh
     -- result render for the recalled query, so kick it manually.
-    UI:OnSearchTextChanged(editBox:GetText() or "")
+    local searchFrame = UI:GetSearchFrame()
+    local preserveRepeat = searchFrame and searchFrame.IsAltNavRepeatKey
+        and searchFrame.IsAltNavRepeatKey()
+    UI._preserveSearchNavRepeat = preserveRepeat or nil
+    UI:OnSearchTextChanged(editBox:GetText() or "", true)
+    UI._preserveSearchNavRepeat = nil
     return true
 end
 
@@ -3188,5 +3193,5 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 
     UI:SetSelectedIndex(0)
     UI:SetToggleFocused(false)
-    self:UpdateSelectionHighlight()
+    self:UpdateSelectionHighlight(nil, UI._preserveSearchNavRepeat)
 end

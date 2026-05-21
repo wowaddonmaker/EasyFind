@@ -288,7 +288,9 @@ function UI:HideResults()
     UI:StopActiveKeybindCapture()
     self:ClearCalculatorCopyHighlight()
     self:ReleaseCalculatorCopyBox()
-    if UI:GetSearchFrame().StopKeyRepeat then UI:GetSearchFrame().StopKeyRepeat() end
+    if UI:GetSearchFrame().StopKeyRepeat and not UI._preserveSearchNavRepeat then
+        UI:GetSearchFrame().StopKeyRepeat()
+    end
     if UI:GetSearchFrame().ClearToolbarFocus then UI:GetSearchFrame().ClearToolbarFocus() end
     UI:ClearResultShortcutBindings()
     if not ResultsFrame() then return end
@@ -342,7 +344,7 @@ function UI:HideResults()
     end
     UI:SetSelectedIndex(0)
     UI:SetToggleFocused(false)
-    self:UpdateSelectionHighlight(true)
+    self:UpdateSelectionHighlight(true, UI._preserveSearchNavRepeat)
 
     if ns.Database and ns.Database.CancelDynamicWarmup then
         ns.Database:CancelDynamicWarmup()
@@ -423,16 +425,17 @@ function UI:CountVisibleResults()
     return count
 end
 
-function UI:MoveSelection(delta)
+function UI:MoveSelection(delta, skipRefocus, keepRepeat)
     -- CountVisibleResults walks the button pool and trusts each row's
     -- :IsShown(), but child rows of a hidden ResultsFrame() still report
     -- shown, so a leftover row from a prior search would let Alt+J
     -- yank focus into nothing on an empty bar. Gate on the frame.
-    if not ResultsFrame() or not ResultsFrame():IsShown() then return end
+    if not ResultsFrame() or not ResultsFrame():IsShown() then return false end
     local visibleCount = self:CountVisibleResults()
-    if visibleCount == 0 then return end
+    if visibleCount == 0 then return false end
 
-    local newIndex = UI:GetSelectedIndex() + delta
+    local oldIndex = UI:GetSelectedIndex()
+    local newIndex = oldIndex + delta
     if EasyFind.db.uiResultsAbove then
         -- Above: exit to editbox past last result, clamp at first
         if newIndex > visibleCount then newIndex = 0
@@ -445,7 +448,8 @@ function UI:MoveSelection(delta)
 
     UI:SetSelectedIndex(newIndex)
     UI:SetToggleFocused(false)
-    self:UpdateSelectionHighlight()
+    self:UpdateSelectionHighlight(skipRefocus, keepRepeat)
+    return newIndex ~= oldIndex
 end
 
 function UI:JumpToStart()
@@ -498,7 +502,7 @@ function UI:JumpToNextSection(direction)
     end
 end
 
-function UI:UpdateSelectionHighlight(skipRefocus)
+function UI:UpdateSelectionHighlight(skipRefocus, keepRepeat)
     -- Action-hint overlay: replaces the selected row's pathSubtext with
     -- a "Select to ..." hint so the user knows what Enter / left-click
     -- will do, without cluttering every row. Restored to the canonical
@@ -537,7 +541,7 @@ function UI:UpdateSelectionHighlight(skipRefocus)
     else
         local wasNavigating = UI:GetNavFrame():IsKeyboardEnabled()
         Utils.SafeCallMethod(UI:GetNavFrame(), "EnableKeyboard", false)
-        if UI:GetSearchFrame().StopKeyRepeat then UI:GetSearchFrame().StopKeyRepeat() end
+        if not keepRepeat and UI:GetSearchFrame().StopKeyRepeat then UI:GetSearchFrame().StopKeyRepeat() end
         if wasNavigating and not skipRefocus and not UI:GetSearchFrame().editBox:HasFocus() then
             UI:GetSearchFrame().editBox.blockFocus = nil
             UI:GetSearchFrame().editBox:SetFocus()
@@ -756,4 +760,3 @@ function UI:ApplyTransmogBrowseMode()
         end)
     end
 end
-
