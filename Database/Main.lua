@@ -1436,9 +1436,11 @@ end
 
 -- scanAllSpecs=true pre-caches every class/spec combo (loading screen path).
 function Database:PopulateDynamicLoot(scanAllSpecs)
-    if InCombatLockdown() then return end
+    if InCombatLockdown() then return false end
 
     local specPairs = BuildLootSpecPairs(scanAllSpecs)
+    if #specPairs == 0 then return false end
+
     local needScan = GetLootSpecsToScan(specPairs)
 
     if #needScan == 0 then
@@ -1464,7 +1466,7 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
 
     if not EJ_GetCurrentTier or not EJ_GetInstanceByIndex or not EJ_GetLootInfoByIndex then
         Utils.DebugPrint("Loot scan aborted: EJ APIs not available")
-        return
+        return false
     end
 
     -- Bump generation so any in-flight staggered scan aborts.
@@ -1546,14 +1548,19 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
 end
 
 function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
-    if InCombatLockdown() then done(false); return end
+    if InCombatLockdown() then done(false, "cancelled"); return end
     if not C_Timer or not C_Timer.After then
-        self:PopulateDynamicLoot(scanAllSpecs)
-        done(true)
+        local ready = self:PopulateDynamicLoot(scanAllSpecs)
+        done(ready ~= false, ready == false and "cancelled" or nil)
         return
     end
 
     local specPairs = BuildLootSpecPairs(scanAllSpecs)
+    if #specPairs == 0 then
+        done(false, "cancelled")
+        return
+    end
+
     local needScan = GetLootSpecsToScan(specPairs)
     if #needScan == 0 then
         RebuildLootSearchData()
@@ -1577,7 +1584,7 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
     local EJ_GetLootInfoByIndex = EJ("GetLootInfoByIndex")
 
     if not EJ_GetCurrentTier or not EJ_GetInstanceByIndex or not EJ_GetLootInfoByIndex then
-        done(false)
+        done(false, "cancelled")
         return
     end
 

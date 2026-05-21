@@ -203,15 +203,18 @@ function Database:LoadHeavyDynamicSearchDataSync()
                 if pre then pre(self) end
                 -- Loot scans only the current spec at login; spec
                 -- toggles trigger a lazy scan for that spec.
-                local ok, err = xpcall(fn, Utils.ErrorHandler, self)
-                if ok then
+                local ok, readyOrErr = xpcall(fn, Utils.ErrorHandler, self)
+                if ok and readyOrErr ~= false then
                     provider.loaded = true
                     provider.dirty = false
+                elseif ok then
+                    provider.loaded = false
+                    provider.dirty = true
                 else
                     provider.loaded = false
                     if EasyFind and EasyFind.Print then
                         EasyFind:Print("|cffff4444" .. provider.key
-                            .. " sync load failed: " .. tostring(err) .. "|r")
+                            .. " sync load failed: " .. tostring(readyOrErr) .. "|r")
                     end
                 end
             end

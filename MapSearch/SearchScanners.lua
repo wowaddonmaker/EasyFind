@@ -32,7 +32,6 @@ local PreparePOIList = Search.PreparePOIList
 
 Search.staticLocationCache = Search.staticLocationCache or {}
 Search.emptyStaticLocations = Search.emptyStaticLocations or {}
-Search.Search.cachedAllFlightMasters = Search.Search.cachedAllFlightMasters or nil
 local staticLocationCache = Search.staticLocationCache
 local emptyStaticLocations = Search.emptyStaticLocations
 function MapSearch:ScanFlightMasters(mapID)

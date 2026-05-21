@@ -222,6 +222,11 @@ end
 function UI:SetToggleFocused(focused)
     toggleFocused = focused and true or false
 end
+
+function UI:GetToggleFocused()
+    return toggleFocused
+end
+
 function UI:GetContainerFrame()
     return containerFrame
 end
@@ -421,6 +426,10 @@ end
 
 function UI:GetFlatCategoryIcon(data)
     return GetFlatCategoryIcon(data)
+end
+
+function UI:GetRepFactionIcon(factionSide)
+    return REP_FACTION_ICONS[factionSide or "either"]
 end
 
 -- Compose the small subtext shown under a flat-list result (Alfred-style).
@@ -913,6 +922,10 @@ local function IsOptionsSurfaceMouseOver()
     return false
 end
 
+function UI:IsOptionsSurfaceMouseOver()
+    return IsOptionsSurfaceMouseOver()
+end
+
 local unearnedTooltip
 
 function UI:GetUnearnedTooltip()
@@ -1091,6 +1104,10 @@ function UI:ClearActionHint()
     return ClearActionHint()
 end
 
+function UI:IsActionHintRow(row)
+    return actionHintRow == row
+end
+
 function UI:ApplyActionHint(row)
     return ApplyActionHint(row)
 end
@@ -1117,6 +1134,10 @@ end
 
 function UI:ApplyResultRowFonts(row, theme)
     return ApplyResultRowFonts(row, theme)
+end
+
+function UI:IsSpellbookOnlyAbility(data)
+    return IsSpellbookOnlyAbility(data)
 end
 
 function UI:IsSecureActionResult(data)
@@ -2628,6 +2649,10 @@ function UI:Show(andFocus)
         end
     end
     searchFrame:Show()
+    if not (EasyFind.db.smartShow and not EasyFind.db.autoHide) then
+        local alpha = searchFrame.getEffectiveAlpha and searchFrame.getEffectiveAlpha() or 1.0
+        searchFrame:SetAlpha(alpha)
+    end
     -- Belt-and-suspenders: OnShow hook also calls this, but if searchFrame
     -- was already shown the hook didn't fire and escCatcher would be left
     -- hidden, leaving ESC without a target when the editbox is unfocused.
@@ -2865,7 +2890,8 @@ end
 
 function UI:Toggle()
     if not searchFrame then return end
-    if searchFrame:IsShown() and EasyFind.db.visible ~= false then
+    local tuckedBySmartShow = EasyFind.db.autoHide and (searchFrame:GetAlpha() or 1) <= 0.01
+    if searchFrame:IsShown() and EasyFind.db.visible ~= false and not tuckedBySmartShow then
         self:Hide()
     else
         self:Show(false)
@@ -2875,7 +2901,8 @@ end
 function UI:ToggleFocus()
     if not searchFrame then return end
     if inCombat then return end
-    if searchFrame:IsShown() then
+    local tuckedBySmartShow = EasyFind.db.autoHide and (searchFrame:GetAlpha() or 1) <= 0.01
+    if searchFrame:IsShown() and EasyFind.db.visible ~= false and not tuckedBySmartShow then
         self:Hide()
     else
         self:Show(false)
@@ -3013,12 +3040,12 @@ function UI:UpdateSmartShow()
         if searchFrame.cancelSmartShowTimer then searchFrame.cancelSmartShowTimer() end
         UIFrameFadeRemoveFrame(searchFrame)
         searchFrame.setSmartShowVisible(true)
+        local alpha = searchFrame.getEffectiveAlpha and searchFrame.getEffectiveAlpha() or 1.0
+        searchFrame:SetAlpha(alpha)
         if EasyFind.db.autoHide then
             return
         end
         if EasyFind.db.visible ~= false and not inCombat then
-            local alpha = searchFrame.getEffectiveAlpha and searchFrame.getEffectiveAlpha() or 1.0
-            searchFrame:SetAlpha(alpha)
             searchFrame:Show()
         end
     end
