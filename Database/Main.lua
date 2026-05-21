@@ -2906,6 +2906,53 @@ function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, 
     end
 end
 
+local GROUP_FINDER_SUBCATEGORY_ICONS = {
+    dungeonFinder = { icon = 133076, frame = "GroupFinderFrameGroupButton1" },
+    raidFinder = { icon = 341547, frame = "GroupFinderFrameGroupButton2" },
+    premadeGroups = { icon = 464820, frame = "GroupFinderFrameGroupButton3" },
+    pvpQuickMatch = { icon = 236396, frame = "PVPQueueFrame.CategoryButton1" },
+    pvpRated = { icon = 236368, frame = "PVPQueueFrame.CategoryButton2" },
+    pvpPremade = { icon = 464820, frame = "PVPQueueFrame.CategoryButton3" },
+    pvpTraining = { icon = 236179, frame = "PVPQueueFrame.CategoryButton4" },
+}
+
+local function EntryIsUnderGroupFinder(item)
+    if item and item.buttonFrame == "LFDMicroButton" then return true end
+    local steps = item and item.steps
+    if not steps then return false end
+    for i = 1, #steps do
+        if steps[i] and steps[i].buttonFrame == "LFDMicroButton" then return true end
+    end
+    return false
+end
+
+local function GetGroupFinderSubcategoryIcon(item)
+    local steps = item and item.steps
+    if not steps then return nil end
+    for i = 1, #steps do
+        local step = steps[i]
+        if step then
+            if step.pvpSideTabIndex == 1 then return GROUP_FINDER_SUBCATEGORY_ICONS.pvpQuickMatch end
+            if step.pvpSideTabIndex == 2 then return GROUP_FINDER_SUBCATEGORY_ICONS.pvpRated end
+            if step.pvpSideTabIndex == 3 then return GROUP_FINDER_SUBCATEGORY_ICONS.pvpPremade end
+            if step.pvpSideTabIndex == 4 then return GROUP_FINDER_SUBCATEGORY_ICONS.pvpTraining end
+            if step.sideTabIndex == 1 then return GROUP_FINDER_SUBCATEGORY_ICONS.dungeonFinder end
+            if step.sideTabIndex == 2 then return GROUP_FINDER_SUBCATEGORY_ICONS.raidFinder end
+            if step.sideTabIndex == 3 then return GROUP_FINDER_SUBCATEGORY_ICONS.premadeGroups end
+        end
+    end
+    return nil
+end
+
+local function ApplyGroupFinderSubcategoryIcon(item)
+    if item.specificIcon or item.specificIconFrame or not EntryIsUnderGroupFinder(item) then return end
+    local iconDef = GetGroupFinderSubcategoryIcon(item)
+    if iconDef then
+        item.specificIcon = iconDef.icon
+        item.specificIconFrame = iconDef.frame
+    end
+end
+
 function Database:BuildUIDatabase()
     -- Each node: { name, keywords, [category], [buttonFrame], [steps], [children] }
     -- category and buttonFrame inherit from parent; steps prepends parent steps;
@@ -3330,6 +3377,7 @@ function Database:BuildUIDatabase()
         ["PvP Talents"] = true, ["War Mode"] = true, ["PvP Flag"] = true,
     }
     for _, item in ipairs(uiSearchData) do
+        ApplyGroupFinderSubcategoryIcon(item)
         if item.category == "PvP" or PVP_NAMES[item.name]
             or sfind(item.name, "Player vs. Player", 1, true) then
             item.isPvP = true

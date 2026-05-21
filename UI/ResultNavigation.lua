@@ -337,7 +337,9 @@ function UI:HideResults()
                 row.icon.spellID = nil
                 row.icon.outfitID = nil
                 row.icon.heirloomItemID = nil
+                row.icon.gearSetID = nil
                 row.icon.bagItemID = nil
+                row.icon.achievementID = nil
                 row.icon.lootItemID = nil
             end
         end

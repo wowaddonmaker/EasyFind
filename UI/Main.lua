@@ -317,6 +317,7 @@ local FLAT_CATEGORY_ICONS = {
     macro         = { tex = "Interface\\MacroFrame\\MacroFrame-Icon" },
     bag           = { atlas = "bag-main" },
     loot          = { tex = 522972, coords = { 0.730, 0.824, 0.618, 0.660 } },
+    menuBar       = { tex = "Interface\\AddOns\\EasyFind\\Images\\menu-bar" },
     setting       = { atlas = "QuestLog-icon-setting" },
     -- Addon settings get a warm tint so they're distinguishable at a
     -- glance from the silvery-grey game-settings cogwheel.
@@ -410,6 +411,7 @@ local function GetFlatCategoryIcon(data)
     if data.itemID and data.category == "Loot" then return FLAT_CATEGORY_ICONS.loot end
     if data.category == "Game Settings" then return FLAT_CATEGORY_ICONS.setting end
     if data.category == "AddOn Settings" then return FLAT_CATEGORY_ICONS.settingAddon end
+    if data.category == "Menu Bar" and data.buttonFrame then return FLAT_CATEGORY_ICONS.menuBar end
     if data.category == "Currency" then return FLAT_CATEGORY_ICONS.currency end
     if data.statisticID or data.category == "Statistic" then return FLAT_CATEGORY_ICONS.statistic end
     if data.titleID then return FLAT_CATEGORY_ICONS.title end
@@ -972,7 +974,9 @@ local function SetRowIcon(btn, kind, value, iconSize)
     btn.icon.spellID = nil
     btn.icon.outfitID = nil
     btn.icon.heirloomItemID = nil
+    btn.icon.gearSetID = nil
     btn.icon.bagItemID = nil
+    btn.icon.achievementID = nil
     btn.icon.lootItemID = nil
     if btn.iconCooldown then btn.iconCooldown:Hide() end
     if btn._lockOverlay then btn._lockOverlay:Hide() end
@@ -1622,56 +1626,12 @@ function UI:CreateSearchFrame()
     end
     editBox.ResetPendingSearch = ResetPendingUISearch
     local SEARCH_THROTTLE = 0.05  -- 50ms cap on search/render frequency
-    local altNavSuppressToken = 0
-    local function IsSuppressedAltNavLeak(currentText, suppress)
-        if not suppress then return false end
-        local key = suppress.key
-        if not key or key == "" then return true end
-        local restoreText = suppress.text or ""
-        if currentText == restoreText then return true end
-
-        local lowerCurrent = (currentText or ""):lower()
-        local cursor = suppress.cursor or #restoreText
-        if cursor < 0 then cursor = 0 end
-        if cursor > #restoreText then cursor = #restoreText end
-        if (restoreText:sub(1, cursor) .. key .. restoreText:sub(cursor + 1)):lower() == lowerCurrent then
-            return true
-        end
-        if #currentText ~= #restoreText + #key then return false end
-        for pos = 0, #restoreText do
-            if (restoreText:sub(1, pos) .. key .. restoreText:sub(pos + 1)):lower() == lowerCurrent then
-                return true
-            end
-        end
-        return false
-    end
-
-    local function SuppressNextAltNavChar(box, key)
-        if not box then return end
-        altNavSuppressToken = altNavSuppressToken + 1
-        local token = altNavSuppressToken
-        box._easyFindSuppressAltNavChar = {
-            key = key and key:lower(),
-            text = box:GetText() or "",
-            cursor = box:GetCursorPosition() or #(box:GetText() or ""),
-        }
-        Utils.SafeAfter(0.20, function()
-            if altNavSuppressToken == token then
-                box._easyFindSuppressAltNavChar = nil
-            end
-        end)
-    end
-
     editBox:SetScript("OnTextChanged", function(self, userInput)
         self.placeholder:SetShown(self:GetText() == "")
-        local suppress = self._easyFindSuppressAltNavChar
-        if userInput and suppress then
-            self._easyFindSuppressAltNavChar = nil
-            if IsSuppressedAltNavLeak(self:GetText() or "", suppress) then
-                local restoreText = suppress.text or ""
-                self:SetText(restoreText)
-                self:SetCursorPosition(suppress.cursor or #restoreText)
-                self.placeholder:SetShown(restoreText == "")
+        if userInput then
+            local restored, restoreText = Utils.ConsumeSuppressedAltNavChar(self)
+            if restored then
+                self.placeholder:SetShown((restoreText or "") == "")
                 return
             end
         end
@@ -2018,27 +1978,6 @@ function UI:CreateSearchFrame()
         end
     end
 
-    local function RefocusEditBoxAfterAltNavRelease(key)
-        if IsAltKeyDown() or (IsKeyDown and key and IsKeyDown(key)) then
-            Utils.SafeAfter(0.03, function()
-                RefocusEditBoxAfterAltNavRelease(key)
-            end)
-            return
-        end
-        RefocusEditBoxAfterNav()
-    end
-
-    local function StopAltRepeatIfReleased(key)
-        if IsAltKeyDown() then
-            return false
-        end
-        StopKeyRepeat(key)
-        Utils.SafeAfter(0.05, function()
-            RefocusEditBoxAfterAltNavRelease(key)
-        end)
-        return true
-    end
-
     local function StepAltJ()
         if historyIndex > 0 then
             return UI:NavigateSearchHistory(-1)
@@ -2054,14 +1993,7 @@ function UI:CreateSearchFrame()
     end
 
     local function StartAltNavRepeat(key, step)
-        StartKeyRepeat(key, function()
-            if StopAltRepeatIfReleased(key) then return end
-            if not step() then
-                StopKeyRepeat(key)
-                RefocusEditBoxAfterAltNavRelease(key)
-            end
-        end)
-        SuppressNextAltNavChar(editBox, key)
+        Utils.StartAltNavRepeat(keyRepeat, key, editBox, step, RefocusEditBoxAfterNav)
     end
 
     -- Arrow key / Tab navigation for results dropdown.

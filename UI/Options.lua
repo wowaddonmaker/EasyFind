@@ -57,6 +57,7 @@ local UI_DEFAULTS = {
     lootSearchStats = true,
     lootUpgradesOnly = false,
     lootDifficulty = "normal",
+    achievementFilterMode = "all",
     appearanceSetClass = NIL,
     appearanceSetCollected = true,
     appearanceSetNotCollected = true,

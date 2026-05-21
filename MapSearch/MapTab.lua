@@ -120,7 +120,20 @@ local pendingSearchFrame
 local pendingSearchText
 local pendingSearchGrew
 local pendingSearchEditBox
-local function CancelPendingSearch()
+local CancelPendingSearch
+local function RunPendingSearchNow()
+    if not pendingSearchTimer then return false end
+    local box = pendingSearchEditBox
+    local text = pendingSearchText or ""
+    local shouldAutocomplete = pendingSearchGrew
+    CancelPendingSearch()
+    MapTab:RunSearch(text)
+    if shouldAutocomplete and box and box.UpdateAutocomplete then
+        box:UpdateAutocomplete()
+    end
+    return true
+end
+CancelPendingSearch = function()
     if pendingSearchFrame then pendingSearchFrame:Hide() end
     pendingSearchTimer = nil
     pendingSearchText = nil
@@ -1494,6 +1507,8 @@ end
 -- the editbox. Re-typing or Esc hands focus back.
 
 local HandleNavKey
+local RefocusSearchBox
+local RefocusSearchBoxAfterAltNav
 
 local function EnsureNavFrame()
     if navFrame then return navFrame end
@@ -1505,8 +1520,16 @@ local function EnsureNavFrame()
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", not HandleNavKey(key, false))
     end)
     navFrame:SetScript("OnKeyUp", function(_, key)
-        if navKeyRepeat and navKeyRepeat.IsKey(key) then
-            navKeyRepeat.Stop(key)
+        local navKey = Utils.NormalizeKey(key)
+        if navKeyRepeat and navKeyRepeat.IsKey(navKey) then
+            navKeyRepeat.Stop(navKey)
+            if navRowIndex == 0 then
+                if navKey == "J" or navKey == "K" then
+                    RefocusSearchBoxAfterAltNav(navKey)
+                else
+                    RefocusSearchBox()
+                end
+            end
         end
     end)
     navKeyRepeat = Utils.CreateKeyRepeat(navFrame)
@@ -1563,6 +1586,17 @@ local function SetNavFrameCapture(on)
     if not on and navKeyRepeat then navKeyRepeat.Stop() end
 end
 
+RefocusSearchBox = function()
+    if navRowIndex ~= 0 then return end
+    if not (panel and panel.searchBox) then return end
+    panel.searchBox._blockAutoFocus = nil
+    panel.searchBox:SetFocus()
+end
+
+RefocusSearchBoxAfterAltNav = function(key)
+    Utils.ScheduleAfterAltNavRelease(key, RefocusSearchBox)
+end
+
 local function SetNavRowIndex(i)
     if i < 0 then i = 0 end
     if i > #visibleNavRows then i = #visibleNavRows end
@@ -1571,11 +1605,45 @@ local function SetNavRowIndex(i)
 end
 
 local function MoveNavSelection(delta)
-    if #visibleNavRows == 0 then return end
+    if #visibleNavRows == 0 then return false end
     local newIdx = navRowIndex + delta
     if newIdx < 1 then newIdx = 1 end
     if newIdx > #visibleNavRows then newIdx = #visibleNavRows end
+    if newIdx == navRowIndex then return false end
     SetNavRowIndex(newIdx)
+    return true
+end
+
+local function MoveNavSelectionUpOrExit()
+    if #visibleNavRows == 0 then return false end
+    if navRowIndex <= 1 then
+        SetNavRowIndex(0)
+        SetNavFrameCapture(false)
+        return false
+    end
+    return MoveNavSelection(-1)
+end
+
+local function FindFirstNavRowIndex()
+    local fallback
+    for i = 1, #visibleNavRows do
+        local row = visibleNavRows[i]
+        local data = row and (row.data or row.navigateData)
+        if data then
+            if not fallback then fallback = i end
+            if not data.isRecentSearch and not data.isPinned then return i end
+        end
+    end
+    return fallback
+end
+
+local function SelectFirstNavRow()
+    local idx = FindFirstNavRowIndex()
+    if not idx then return false end
+    if panel and panel.searchBox then panel.searchBox:ClearFocus() end
+    SetNavFrameCapture(true)
+    SetNavRowIndex(idx)
+    return true
 end
 
 local function ActivateNavSelection()
@@ -1592,36 +1660,51 @@ end
 
 -- keepSearchFocus is true from editbox OnKeyDown, false from navFrame.
 HandleNavKey = function(key, keepSearchFocus)
-    local alt = IsAltKeyDown()
-    if key == "DOWN" or (alt and key == "J") then
+    local delta, altNav, navKey = Utils.GetVerticalNavIntent(key)
+    if delta == 1 then
         if #visibleNavRows == 0 then return false end
         if keepSearchFocus and panel and panel.searchBox then
             panel.searchBox:ClearFocus()
         end
         SetNavFrameCapture(true)
-        if navKeyRepeat then
-            navKeyRepeat.Start(key, function() MoveNavSelection(1) end)
+        if altNav then
+            Utils.StartAltNavRepeat(navKeyRepeat, navKey, panel and panel.searchBox,
+                function() return MoveNavSelection(1) end)
         else
-            MoveNavSelection(1)
+            Utils.StartKeyRepeatOnce(navKeyRepeat, navKey, function()
+                return MoveNavSelection(1)
+            end)
         end
         return true
-    elseif key == "UP" or (alt and key == "K") then
+    elseif delta == -1 then
         if #visibleNavRows == 0 then return false end
         -- Up from the first row exits back to the search box.
         if navRowIndex <= 1 then
             SetNavRowIndex(0)
             SetNavFrameCapture(false)
-            if panel and panel.searchBox then panel.searchBox:SetFocus() end
+            if keepSearchFocus then
+                if altNav then Utils.SuppressNextAltNavChar(panel and panel.searchBox, navKey) end
+            elseif altNav then
+                RefocusSearchBoxAfterAltNav(navKey)
+            else
+                RefocusSearchBox()
+            end
             return true
         end
         if keepSearchFocus and panel and panel.searchBox then
             panel.searchBox:ClearFocus()
         end
         SetNavFrameCapture(true)
-        if navKeyRepeat then
-            navKeyRepeat.Start(key, function() MoveNavSelection(-1) end)
+        if altNav then
+            Utils.StartAltNavRepeat(navKeyRepeat, navKey, panel and panel.searchBox,
+                MoveNavSelectionUpOrExit,
+                RefocusSearchBox)
         else
-            MoveNavSelection(-1)
+            Utils.StartKeyRepeatOnce(navKeyRepeat, navKey, function()
+                local moved = MoveNavSelectionUpOrExit()
+                if not moved and navRowIndex == 0 then RefocusSearchBox() end
+                return moved
+            end)
         end
         return true
     elseif key == "SPACE" then
@@ -1661,7 +1744,7 @@ HandleNavKey = function(key, keepSearchFocus)
             if panel and panel.searchBox then panel.searchBox:ClearFocus() end
             return true
         end
-        return false
+        return SelectFirstNavRow()
     elseif key == "ESCAPE" then
         if not keepSearchFocus then
             -- First Esc clears selection and refocuses search; second
@@ -1739,6 +1822,12 @@ local function CreateSearchBox(parent)
     end
     editBox.FindPrefixCandidate = FindPrefixCandidate
 
+    Utils.AttachAltNavCharSuppressor(editBox, function(self, restoredText)
+        UpdateClear(self)
+        if pendingSearchTimer then CancelPendingSearch() end
+        if currentQuery ~= restoredText then MapTab:RunSearch(restoredText or "") end
+    end)
+
     Utils.AttachAutocomplete(editBox, {
         findCandidate = FindPrefixCandidate,
         onTypedChanged = function(self, typed, _, grew)
@@ -1762,30 +1851,45 @@ local function CreateSearchBox(parent)
     -- binding system, firing player keybinds while the user types.
     -- Always clamp propagation to false at the end.
     editBox:HookScript("OnKeyDown", function(self, key)
+        local navKey = Utils.NormalizeKey(key)
+        if IsAltKeyDown() and navKey and navKey:match("^[A-Z]$") then
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+        end
+        if IsAltKeyDown() and (navKey == "J" or navKey == "K") then
+            Utils.SuppressNextAltNavChar(self, navKey)
+        end
         if self.HasAutocomplete and self:HasAutocomplete() and self.AcceptAutocomplete then
-            if key == "RIGHT" or key == "ARROWRIGHT" then
+            if navKey == "RIGHT" or navKey == "ARROWRIGHT" then
                 self:AcceptAutocomplete("right")
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
                 return
-            elseif key == "L" and IsAltKeyDown() then
+            elseif navKey == "L" and IsAltKeyDown() then
                 self:AcceptAutocomplete("alt-l")
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
                 return
             end
         end
         if pendingSearchTimer
-           and (key == "DOWN" or key == "UP"
-                or (IsAltKeyDown() and (key == "J" or key == "K"))) then
-            CancelPendingSearch()
+           and (navKey == "DOWN" or navKey == "UP" or navKey == "ENTER"
+                or (IsAltKeyDown() and (navKey == "J" or navKey == "K"))) then
+            RunPendingSearchNow()
         end
-        HandleNavKey(key, true)
+        HandleNavKey(navKey, true)
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
     end)
     -- WoW pairs OnKeyUp to the original frame regardless of focus
     -- changes mid-press, so the navFrame handler isn't always reached.
     editBox:HookScript("OnKeyUp", function(_, key)
-        if navKeyRepeat and navKeyRepeat.IsKey(key) then
-            navKeyRepeat.Stop(key)
+        local navKey = Utils.NormalizeKey(key)
+        if navKeyRepeat and navKeyRepeat.IsKey(navKey) then
+            navKeyRepeat.Stop(navKey)
+            if navRowIndex == 0 then
+                if navKey == "J" or navKey == "K" then
+                    RefocusSearchBoxAfterAltNav(navKey)
+                else
+                    RefocusSearchBox()
+                end
+            end
         end
     end)
 
@@ -1809,6 +1913,7 @@ local function CreateSearchBox(parent)
 
     editBox:HookScript("OnEnterPressed", function(self)
         if navRowIndex > 0 then return end
+        RunPendingSearchNow()
         local current = self:GetText() or ""
         local typed = self.GetTypedText and self:GetTypedText() or current
         local accepted = false
@@ -1820,7 +1925,8 @@ local function CreateSearchBox(parent)
             current = self:GetText() or ""
         end
         if not accepted then MapTab:PushRecentSearch(current) end
-        self:ClearFocus()
+        if current ~= currentQuery then MapTab:RunSearch(current) end
+        SelectFirstNavRow()
     end)
     return editBox
 end

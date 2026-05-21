@@ -17,6 +17,13 @@ local UIParent = UIParent
 local GameTooltip = GameTooltip
 local GameTooltip_Hide = GameTooltip_Hide
 local wipe = wipe
+
+local ACHIEVEMENT_FILTER_LABELS = {
+    all = _G["ALL"] or "All",
+    earned = _G["ACHIEVEMENT_FILTER_EARNED"] or _G["EARNED"] or "Earned",
+    incomplete = _G["ACHIEVEMENT_FILTER_INCOMPLETE"] or _G["INCOMPLETE"] or "Incomplete",
+}
+
 local UI_FILTER_OPTIONS = {
     -- Abilities: boss-skull icon from the Encounter Journal boss tab
     -- spritesheet (texture 522972).
@@ -28,7 +35,15 @@ local UI_FILTER_OPTIONS = {
                 onChange = function(v) if UI.ApplySpellBookHidePassives then UI:ApplySpellBookHidePassives(v) end end },
           },
       } },
-    { key = "achievements", label = "Achievements", iconAtlas = "UI-HUD-MicroMenu-Achievements-Up" },
+    { key = "achievements", label = "Achievements", iconAtlas = "UI-HUD-MicroMenu-Achievements-Up",
+      flyoutRadio = {
+          dbKey = "achievementFilterMode",
+          options = {
+              { value = "all",        label = ACHIEVEMENT_FILTER_LABELS.all },
+              { value = "earned",     label = ACHIEVEMENT_FILTER_LABELS.earned },
+              { value = "incomplete", label = ACHIEVEMENT_FILTER_LABELS.incomplete },
+          },
+      } },
     { key = "statistics",  label = "Statistics",  iconTex = 1121272,
       iconCoords = { 0.1997, 0.2437, 0.5933, 0.6266 } },
     { key = "bags",        label = "Bags",        iconAtlas = "bag-main" },
@@ -1017,6 +1032,20 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     dropdown.guardFrames = dropdownGuardFrames
     dropdown:SetClampedToScreen(true)
 
+    local function RefocusSearchEditBox()
+        if not (searchEditBox and searchEditBox.SetFocus) then return end
+        searchEditBox.blockFocus = nil
+        searchEditBox:SetFocus()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                if dropdown:IsShown() and searchEditBox and not searchEditBox:HasFocus() then
+                    searchEditBox.blockFocus = nil
+                    searchEditBox:SetFocus()
+                end
+            end)
+        end
+    end
+
     dropdown:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
         edgeFile = TOOLTIP_BORDER,
@@ -1347,6 +1376,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     if searchEditBox:GetText() ~= "" then
                         UI:OnSearchTextChanged(searchEditBox:GetText())
                     end
+                    RefocusSearchEditBox()
                 end)
 
                 subRows[si] = subRow
@@ -1587,6 +1617,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     if searchEditBox:GetText() ~= "" then
                         UI:OnSearchTextChanged(searchEditBox:GetText())
                     end
+                    RefocusSearchEditBox()
                 end)
 
                 radioRows[ri] = rRow
@@ -1631,6 +1662,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     if searchEditBox:GetText() ~= "" then
                         UI:OnSearchTextChanged(searchEditBox:GetText())
                     end
+                    RefocusSearchEditBox()
                 end)
                 checkboxRows[ci] = cRow
             end
@@ -2468,6 +2500,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             if searchEditBox:GetText() ~= "" then
                 UI:OnSearchTextChanged(searchEditBox:GetText())
             end
+            RefocusSearchEditBox()
         end)
 
         checkRows[opt.key] = row
@@ -2600,6 +2633,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         if searchEditBox:GetText() ~= "" then
             UI:OnSearchTextChanged(searchEditBox:GetText())
         end
+        RefocusSearchEditBox()
     end)
 
     LayoutDropdown()
@@ -2724,6 +2758,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             dropdown:ClearAllPoints()
             dropdown:SetPoint("TOPRIGHT", UIParent, "BOTTOMLEFT", right, bottom)
             dropdown:Show()
+            RefocusSearchEditBox()
         end
     end)
 

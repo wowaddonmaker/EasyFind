@@ -128,6 +128,144 @@ function Utils.CreateKeyRepeat(frame, initialDelay, fastDelay, accelDuration)
     return { Start = Start, Stop = Stop, IsKey = IsKey }
 end
 
+function Utils.NormalizeKey(key)
+    return type(key) == "string" and key:upper() or key
+end
+
+function Utils.GetVerticalNavIntent(key)
+    local navKey = Utils.NormalizeKey(key)
+    if navKey == "DOWN" then return 1, false, navKey end
+    if navKey == "UP" then return -1, false, navKey end
+    if IsAltKeyDown and IsAltKeyDown() then
+        if navKey == "J" then return 1, true, navKey end
+        if navKey == "K" then return -1, true, navKey end
+    end
+    return nil, false, navKey
+end
+
+function Utils.IsSuppressedAltNavLeak(currentText, suppress)
+    if not suppress then return false end
+    local key = suppress.key
+    if not key or key == "" then return true end
+    local restoreText = suppress.text or ""
+    currentText = currentText or ""
+    if currentText == restoreText then return true end
+
+    local lowerCurrent = currentText:lower()
+    local cursor = suppress.cursor or #restoreText
+    if cursor < 0 then cursor = 0 end
+    if cursor > #restoreText then cursor = #restoreText end
+    if (restoreText:sub(1, cursor) .. key .. restoreText:sub(cursor + 1)):lower() == lowerCurrent then
+        return true
+    end
+    if #currentText ~= #restoreText + #key then return false end
+    for pos = 0, #restoreText do
+        if (restoreText:sub(1, pos) .. key .. restoreText:sub(pos + 1)):lower() == lowerCurrent then
+            return true
+        end
+    end
+    return false
+end
+
+function Utils.SuppressNextAltNavChar(box, key, ttl)
+    if not box then return end
+    local token = (box._easyFindSuppressAltNavToken or 0) + 1
+    box._easyFindSuppressAltNavToken = token
+    box._easyFindSuppressAltNavChar = {
+        key = key and tostring(key):lower(),
+        text = box.GetText and (box:GetText() or "") or "",
+        cursor = box.GetCursorPosition and (box:GetCursorPosition() or #(box:GetText() or "")) or 0,
+    }
+    Utils.SafeAfter(ttl or 0.20, function()
+        if box._easyFindSuppressAltNavToken == token then
+            box._easyFindSuppressAltNavChar = nil
+        end
+    end)
+end
+
+function Utils.ConsumeSuppressedAltNavChar(box)
+    if not box then return false end
+    local suppress = box._easyFindSuppressAltNavChar
+    if not suppress then return false end
+    box._easyFindSuppressAltNavChar = nil
+    local currentText = box.GetText and (box:GetText() or "") or ""
+    if not Utils.IsSuppressedAltNavLeak(currentText, suppress) then return false end
+
+    local restoreText = suppress.text or ""
+    if box.SetText then box:SetText(restoreText) end
+    if box.SetCursorPosition then box:SetCursorPosition(suppress.cursor or #restoreText) end
+    if box.HighlightText then box:HighlightText(0, 0) end
+    return true, restoreText
+end
+
+function Utils.AttachAltNavCharSuppressor(editBox, onRestored)
+    if not editBox or editBox._easyFindAltNavSuppressHooked then return end
+    editBox._easyFindAltNavSuppressHooked = true
+    editBox:HookScript("OnTextChanged", function(self, userInput)
+        if not userInput then return end
+        local restored, restoreText = Utils.ConsumeSuppressedAltNavChar(self)
+        if restored and onRestored then onRestored(self, restoreText) end
+    end)
+end
+
+function Utils.AfterAltNavReleased(key, callback)
+    local navKey = Utils.NormalizeKey(key)
+    if (IsAltKeyDown and IsAltKeyDown())
+       or (IsKeyDown and navKey and IsKeyDown(navKey)) then
+        Utils.SafeAfter(0.03, function()
+            Utils.AfterAltNavReleased(navKey, callback)
+        end)
+        return false
+    end
+    if callback then callback() end
+    return true
+end
+
+function Utils.ScheduleAfterAltNavRelease(key, callback, delay)
+    Utils.SafeAfter(delay or 0.05, function()
+        Utils.AfterAltNavReleased(key, callback)
+    end)
+end
+
+function Utils.StartKeyRepeatOnce(repeater, key, step)
+    key = Utils.NormalizeKey(key)
+    if not (repeater and repeater.Start) then
+        return not step or step() ~= false
+    end
+    if repeater.IsKey and repeater.IsKey(key) then return true end
+    repeater.Start(key, function()
+        if step and step() == false then
+            if repeater.Stop then repeater.Stop(key) end
+        end
+    end)
+    return true
+end
+
+function Utils.StartAltNavRepeat(repeater, key, editBox, step, onReleased)
+    key = Utils.NormalizeKey(key)
+    Utils.SuppressNextAltNavChar(editBox, key)
+    if not (repeater and repeater.Start) then
+        local moved = not step or step() ~= false
+        if not moved and onReleased then Utils.ScheduleAfterAltNavRelease(key, onReleased) end
+        return moved
+    end
+    if repeater.IsKey and repeater.IsKey(key) then return true end
+    repeater.Start(key, function()
+        local altHeld = IsAltKeyDown and IsAltKeyDown()
+        local keyHeld = not IsKeyDown or IsKeyDown(key)
+        if not altHeld or not keyHeld then
+            if repeater.Stop then repeater.Stop(key) end
+            if onReleased then Utils.ScheduleAfterAltNavRelease(key, onReleased) end
+            return
+        end
+        if step and step() == false then
+            if repeater.Stop then repeater.Stop(key) end
+            if onReleased then Utils.ScheduleAfterAltNavRelease(key, onReleased) end
+        end
+    end)
+    return true
+end
+
 function Utils.AttachAutocomplete(editBox, opts)
     if not editBox or not opts or type(opts.findCandidate) ~= "function" then return end
 

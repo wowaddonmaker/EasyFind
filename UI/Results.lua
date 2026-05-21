@@ -453,9 +453,26 @@ local achievementEntryByID = {}
 local achSearchCache = {}
 local achSearchStatsVersion
 local achSearchPending = nil
+local achSearchCurrentQuery = nil
 local achSearchListener
 local achSearchPrewarmed = false
 local ACH_MAX_RESULTS = 8
+
+local function GetAchievementFilterMode()
+    local mode = EasyFind and EasyFind.db and EasyFind.db.achievementFilterMode or "all"
+    if mode == "earned" or mode == "incomplete" then return mode end
+    return "all"
+end
+
+local function AchievementSearchCacheKey(query, mode)
+    return (mode or "all") .. "\31" .. (query or "")
+end
+
+local function AchievementPassesFilter(completed, mode)
+    if mode == "earned" then return completed == true end
+    if mode == "incomplete" then return completed ~= true end
+    return true
+end
 
 local function SyncAchievementSearchStatsVersion()
     local version = ns.Database and ns.Database.statisticsVersion or 0
@@ -463,6 +480,7 @@ local function SyncAchievementSearchStatsVersion()
     wipe(achSearchCache)
     wipe(achievementEntryByID)
     achSearchPending = nil
+    achSearchCurrentQuery = nil
     achSearchStatsVersion = version
 end
 
@@ -541,8 +559,9 @@ local function GetOrCreateAchievementEntry(id, name, icon)
     return entry
 end
 
-local function CollectAchievementSearchResults(query)
+local function CollectAchievementSearchResults(query, mode)
     SyncAchievementSearchStatsVersion()
+    mode = mode or GetAchievementFilterMode()
 
     local getNum = _G["GetNumFilteredAchievements"]
     local getID  = _G["GetFilteredAchievementID"]
@@ -550,15 +569,15 @@ local function CollectAchievementSearchResults(query)
     if not getNum or not getID or not getInfo then return nil end
     local count = getNum() or 0
     if count == 0 then return {} end
-    local capped = count > ACH_MAX_RESULTS and ACH_MAX_RESULTS or count
     local results = {}
     local isStat = ns.Database and ns.Database.IsStatisticAchievement
         and function(id) return ns.Database:IsStatisticAchievement(id) end
-    for i = 1, capped do
+    for i = 1, count do
+        if #results >= ACH_MAX_RESULTS then break end
         local id = getID(i)
         if id and not (isStat and isStat(id)) then
-            local _, name, _, _, _, _, _, _, _, icon = getInfo(id)
-            if name and name ~= "" then
+            local _, name, _, completed, _, _, _, _, _, icon = getInfo(id)
+            if name and name ~= "" and AchievementPassesFilter(completed, mode) then
                 results[#results + 1] = GetOrCreateAchievementEntry(id, name, icon)
             end
         end
@@ -570,12 +589,18 @@ local function EnsureAchievementSearchListener()
     if achSearchListener then return end
     achSearchListener = CreateFrame("Frame")
     achSearchListener:RegisterEvent("ACHIEVEMENT_SEARCH_UPDATED")
-    achSearchListener:SetScript("OnEvent", function()
+    achSearchListener:RegisterEvent("ACHIEVEMENT_EARNED")
+    achSearchListener:SetScript("OnEvent", function(_, event)
+        if event == "ACHIEVEMENT_EARNED" then
+            wipe(achSearchCache)
+            return
+        end
         local pending = achSearchPending
         if not pending then return end
         achSearchPending = nil
-        local results = CollectAchievementSearchResults(pending)
-        if results then achSearchCache[pending] = results end
+        achSearchCurrentQuery = pending.query
+        local results = CollectAchievementSearchResults(pending.query, pending.mode)
+        if results then achSearchCache[pending.key] = results end
         local eb = UI:GetSearchFrame() and UI:GetSearchFrame().editBox
         if eb then
             -- Compare against the typed prefix (cursor-position cut),
@@ -584,7 +609,7 @@ local function EnsureAchievementSearchListener()
             local full = eb:GetText() or ""
             local cursor = eb:GetCursorPosition() or #full
             local typedPrefix = strtrim(full:sub(1, cursor))
-            if typedPrefix == pending then
+            if typedPrefix == pending.query then
                 UI:OnSearchTextChanged(typedPrefix, true)
             end
         end
@@ -595,12 +620,21 @@ function UI:RequestAchievementSearch(query)
     if not query or #query < 2 then return nil end
     SyncAchievementSearchStatsVersion()
 
-    local cached = achSearchCache[query]
+    local mode = GetAchievementFilterMode()
+    local cacheKey = AchievementSearchCacheKey(query, mode)
+    local cached = achSearchCache[cacheKey]
     if cached then return cached end
+    if achSearchCurrentQuery == query then
+        local results = CollectAchievementSearchResults(query, mode)
+        if results then
+            achSearchCache[cacheKey] = results
+            return results
+        end
+    end
     local setSearch = _G["SetAchievementSearchString"]
     if not setSearch then return nil end
     EnsureAchievementSearchListener()
-    achSearchPending = query
+    achSearchPending = { query = query, mode = mode, key = cacheKey }
     pcall(setSearch, query)
     return nil
 end
@@ -1204,6 +1238,51 @@ local function GetButtonIcon(frameName)
     return nil
 end
 
+local function GetFrameArtworkIcon(frameName)
+    local frame = Utils.GetFrameByPath(frameName) or _G[frameName]
+    if not (frame and frame.GetRegions) then return nil end
+
+    local fallback
+    for i = 1, select("#", frame:GetRegions()) do
+        local region = select(i, frame:GetRegions())
+        if region and region.GetObjectType and region:GetObjectType() == "Texture" then
+            local texture = region:GetTexture()
+            local atlas = region.GetAtlas and region:GetAtlas()
+            local layer = region.GetDrawLayer and region:GetDrawLayer()
+            if texture and type(texture) == "number" and not atlas and layer == "ARTWORK" then
+                local w, h = region:GetSize()
+                if w and h and w >= 16 and h >= 16 and w <= 100 and h <= 100 then
+                    return texture
+                end
+                if not fallback then fallback = texture end
+            end
+        end
+    end
+    return fallback
+end
+
+local function IsMenuBarSpecificIconData(data)
+    return data and data.category == "Menu Bar" and data.buttonFrame
+end
+
+local function SetButtonFrameIcon(resultRow, frameName, iconSize)
+    if frameName == "CharacterMicroButton" then
+        UI:SetRowIcon(resultRow, "hidden", nil, iconSize)
+        SetPortraitTexture(resultRow.icon, "player")
+        resultRow.icon:SetTexCoord(0, 1, 0, 1)
+        resultRow.icon:SetSize(iconSize, iconSize)
+        resultRow.icon:Show()
+        return true
+    end
+
+    local texture, isAtlas = GetButtonIcon(frameName)
+    if not texture then return false end
+
+    local kind = isAtlas and "atlas" or "file"
+    UI:SetRowIcon(resultRow, kind, texture, iconSize)
+    return true
+end
+
 function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
     if not hierarchical or #hierarchical == 0 then
         self:HideResults()
@@ -1515,7 +1594,9 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                 resultRow.icon.spellID = nil
                 resultRow.icon.outfitID = nil
                 resultRow.icon.heirloomItemID = nil
+                resultRow.icon.gearSetID = nil
                 resultRow.icon.bagItemID = nil
+                resultRow.icon.achievementID = nil
                 resultRow.icon.lootItemID = nil
             end
             -- Secure action attributes. Cache the (type, value) we last
@@ -1796,9 +1877,25 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     -- has a visual anchor next to the name+path stack.
                     local catIconDef = UI:GetFlatCategoryIcon(data)
                     local leftAnchor
+                    if not catIconDef and data and (data.specificIcon or data.specificIconFrame)
+                       and data.buttonFrame then
+                        catIconDef = { buttonFrame = data.buttonFrame }
+                    end
                     if catIconDef then
                         local sz = entryRowH - 16
-                        if catIconDef.atlas then
+                        if catIconDef.buttonFrame then
+                            local texture, isAtlas = GetButtonIcon(catIconDef.buttonFrame)
+                            if isAtlas then
+                                resultRow.flatCatIcon:SetAtlas(texture)
+                                resultRow.flatCatIcon:SetTexCoord(0, 1, 0, 1)
+                            elseif texture then
+                                resultRow.flatCatIcon:SetTexture(texture)
+                                resultRow.flatCatIcon:SetTexCoord(0, 1, 0, 1)
+                            else
+                                resultRow.flatCatIcon:SetTexture(134400)
+                                resultRow.flatCatIcon:SetTexCoord(0, 1, 0, 1)
+                            end
+                        elseif catIconDef.atlas then
                             resultRow.flatCatIcon:SetAtlas(catIconDef.atlas)
                             resultRow.flatCatIcon:SetTexCoord(0, 1, 0, 1)
                         else
@@ -2150,8 +2247,54 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
 
                 iconSet = true
 
-            -- Mount/Toy/Pet leaves: icon goes to right side (same layout as currency icons)
-            elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.outfitID or data.heirloomItemID or data.transmogSetID or (data.spellID and data.category == "Ability") or (data.spellID and data.category == "Talent") or (data.encounterID and data.category == "Boss") or (data.macroIndex and data.category == "Macro") or (data.bagID and data.category == "Bag")) then
+            -- Entry-specific leaf icons: keep the category icon on the
+            -- left in flat mode, and put the specific item/spell/achievement
+            -- art on the right.
+            elseif not iconSet and data and (data.specificIcon or data.specificIconFrame) then
+                local specificIcon = data.specificIcon
+                if not specificIcon and data.specificIconFrame then
+                    specificIcon = GetFrameArtworkIcon(data.specificIconFrame)
+                end
+                if specificIcon then
+                    UI:SetRowIcon(resultRow, "file", specificIcon, rowIconSize)
+                    resultRow.icon:ClearAllPoints()
+                    resultRow.icon:SetPoint("RIGHT", resultRow, "RIGHT", -5, 0)
+                    resultRow.icon:SetVertexColor(1, 1, 1, 1)
+                else
+                    UI:SetRowIcon(resultRow, "hidden", nil, rowIconSize)
+                end
+                resultRow.amountText:Hide()
+                resultRow.text:ClearAllPoints()
+                resultRow.text:SetPoint("LEFT", resultRow, "LEFT", depth * indPx + 4, 0)
+                if specificIcon then
+                    resultRow.text:SetPoint("RIGHT", resultRow.icon, "LEFT", -4, 0)
+                else
+                    resultRow.text:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
+                end
+                SetClippedText(resultRow.text, entry.name)
+                iconSet = true
+
+            elseif not iconSet and IsMenuBarSpecificIconData(data) then
+                local hasSpecificIcon = SetButtonFrameIcon(resultRow, data.buttonFrame, rowIconSize)
+                if hasSpecificIcon then
+                    resultRow.icon:ClearAllPoints()
+                    resultRow.icon:SetPoint("RIGHT", resultRow, "RIGHT", -5, 0)
+                    resultRow.icon:SetVertexColor(1, 1, 1, 1)
+                else
+                    UI:SetRowIcon(resultRow, "hidden", nil, rowIconSize)
+                end
+                resultRow.amountText:Hide()
+                resultRow.text:ClearAllPoints()
+                resultRow.text:SetPoint("LEFT", resultRow, "LEFT", depth * indPx + 4, 0)
+                if hasSpecificIcon then
+                    resultRow.text:SetPoint("RIGHT", resultRow.icon, "LEFT", -4, 0)
+                else
+                    resultRow.text:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
+                end
+                SetClippedText(resultRow.text, entry.name)
+                iconSet = true
+
+            elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.outfitID or data.heirloomItemID or data.gearSetID or data.transmogSetID or (data.spellID and data.category == "Ability") or (data.spellID and data.category == "Talent") or (data.encounterID and data.category == "Boss") or (data.macroIndex and data.category == "Macro") or (data.bagID and data.category == "Bag") or (data.achievementID and data.category == "Achievement")) then
                 local iconFileID = data.icon
                 local rightOffset = -5
 
@@ -2172,7 +2315,9 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     resultRow.icon.spellID = data.spellID
                     resultRow.icon.outfitID = data.outfitID
                     resultRow.icon.heirloomItemID = data.heirloomItemID
+                    resultRow.icon.gearSetID = data.gearSetID
                     resultRow.icon.bagItemID = (data.category == "Bag") and data.itemID or nil
+                    resultRow.icon.achievementID = data.achievementID
                     resultRow.icon.lootItemID = nil
                     -- Red tint on mount icons when in combat (can't mount)
                     if data.mountID and InCombatLockdown() then
@@ -2862,13 +3007,18 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     or (d.macroIndex and d.category == "Macro")
                     or (d.bagID and d.category == "Bag")
                     or (d.achievementID and d.category == "Achievement")
+                    or d.gearSetID
+                    or IsMenuBarSpecificIconData(d)
+                    or d.specificIcon or d.specificIconFrame
                     or d.mapSearchResult)
                 if rightSideIcon then
                     local rightSize = entryRowH - 18
                     if rightSize < (theme.iconSize or 16) then
                         rightSize = theme.iconSize or 16
                     end
-                    if IsBossResultData(d) then
+                    if IsMenuBarSpecificIconData(d) then
+                        rightSize = entryRowH - 8
+                    elseif IsBossResultData(d) then
                         rightSize = entryRowH - 14
                         if rightSize < (theme.iconSize or 16) then
                             rightSize = theme.iconSize or 16
@@ -2900,6 +3050,9 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     or (d.macroIndex and d.category == "Macro")
                     or (d.bagID and d.category == "Bag")
                     or (d.achievementID and d.category == "Achievement")
+                    or d.gearSetID
+                    or IsMenuBarSpecificIconData(d)
+                    or d.specificIcon or d.specificIconFrame
                     or d.mapSearchResult)
 
                 local leftAnchor

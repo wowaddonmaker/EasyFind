@@ -1940,6 +1940,11 @@ function UI:CreateResultButton(index)
                 AnchorGearTooltip(GameTooltip, self)
                 GameTooltip:SetItemByID(self.icon.heirloomItemID)
                 GameTooltip:Show()
+            elseif self.icon.gearSetID then
+                AnchorTooltipAtCursor(GameTooltip, self)
+                GameTooltip:SetText(self.data and self.data.name or "Gear Set")
+                GameTooltip:AddLine("Click to equip", 1, 0.82, 0)
+                GameTooltip:Show()
             -- Ability tooltip (must come after mount, since mount entries
             -- carry both mountID and spellID and use the mount tooltip).
             elseif self.icon.spellID then
