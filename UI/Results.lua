@@ -232,6 +232,17 @@ function UI:UpdateVisibleResultShortcuts()
     end
 end
 
+local function MarkResultShortcutActivation(row)
+    UI._resultShortcutActivation = row or true
+    if C_Timer and C_Timer.After then
+        C_Timer.After(0.15, function()
+            if UI._resultShortcutActivation == row or UI._resultShortcutActivation == true then
+                UI._resultShortcutActivation = nil
+            end
+        end)
+    end
+end
+
 function UI:SuppressQuickFilterLeakedText(leakedText)
     local editBox = UI:GetSearchFrame() and UI:GetSearchFrame().editBox
     if not (editBox and C_Timer and C_Timer.After) then return end
@@ -261,9 +272,16 @@ function UI:ActivateVisibleResultShortcut(shortcutIndex)
         if not row then break end
         if row._efShortcutIndex == shortcutIndex and IsShortcutEligibleRow(row) then
             if UI:IsSecureActionResult(row.data) then
-                if row._efShortcutBindingReady then return "binding" end
-                if not InCombatLockdown() and ClickButton(row) then
-                    return "handled"
+                if row._efShortcutBindingReady then
+                    MarkResultShortcutActivation(row)
+                    return "binding"
+                end
+                if not InCombatLockdown() then
+                    MarkResultShortcutActivation(row)
+                    if ClickButton(row) then
+                        return "handled"
+                    end
+                    UI._resultShortcutActivation = nil
                 end
                 return "binding"
             end
@@ -275,7 +293,9 @@ function UI:ActivateVisibleResultShortcut(shortcutIndex)
                 self:SuppressQuickFilterLeakedText(shortcutIndex)
                 return "quickFilter"
             end
+            MarkResultShortcutActivation(row)
             self:ActivateResultRow(row, "key")
+            UI._resultShortcutActivation = nil
             return "handled"
         end
     end
@@ -1630,7 +1650,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     -- secure use type so PostClick can route them to the
                     -- ToyBox instead of silently no-op'ing on click.
                     newType, newKey, newVal = "toy", "toy", data.toyItemID
-                elseif data and data.mountID then
+                elseif data and data.mountID and UI:IsMountSummonable(data) then
                     newType, newKey, newVal = "macro", "macrotext", "/cancelform [form]"
                 elseif data and data.outfitID then
                     newType, newKey, newVal = "action", "action", 0

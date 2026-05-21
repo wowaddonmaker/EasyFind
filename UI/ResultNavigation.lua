@@ -556,10 +556,7 @@ function UI:UpdateSelectionHighlight(skipRefocus, keepRepeat)
     if not InCombatLockdown() then
         local selRow = UI:GetSelectedIndex() > 0 and UI:GetResultButtons()[UI:GetSelectedIndex()]
         local rd = selRow and selRow.data
-        local secureRow = rd and (rd.outfitID or rd.toyItemID
-            or (rd.spellID and not UI:IsSpellbookOnlyAbility(rd))
-            or rd.mountID or rd.macroIndex or rd.slashCommand
-            or (rd.itemID and rd.category == "Bag"))
+        local secureRow = rd and UI:IsSecureActionResult(rd)
         if secureRow then
             local btnName = selRow:GetName()
             if btnName then

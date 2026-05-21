@@ -556,6 +556,116 @@ function UI:GetMountJournalDisplayFraction(mountID)
     return nil
 end
 
+local function ResolveMountSpellID(data)
+    if not (data and data.mountID) then return nil end
+    if data.spellID then return data.spellID end
+    if C_MountJournal and C_MountJournal.GetMountInfoByID then
+        local ok, _, spellID = pcall(C_MountJournal.GetMountInfoByID, data.mountID)
+        if ok then return spellID end
+    end
+    return nil
+end
+
+local function GetSpellLinkCompat(spellID)
+    if not spellID then return nil end
+    if C_Spell and C_Spell.GetSpellLink then
+        local ok, link = pcall(C_Spell.GetSpellLink, spellID)
+        if ok and link then return link end
+    end
+    local getSpellLink = _G["GetSpellLink"]
+    if getSpellLink then
+        local ok, link = pcall(getSpellLink, spellID)
+        if ok and link then return link end
+    end
+    return nil
+end
+
+local function GetMountJournalLink(data)
+    if data and data.mountID and C_MountJournal and C_MountJournal.GetMountLink then
+        local ok, link = pcall(C_MountJournal.GetMountLink, data.mountID)
+        if ok and link then return link end
+    end
+    return nil
+end
+
+local function IsAnyDressUpFrameShown()
+    local frames = { "DressUpFrame", "SideDressUpFrame", "TransmogAndMountDressupFrame" }
+    for _, frameName in ipairs(frames) do
+        local frame = _G[frameName]
+        if frame and frame.IsShown and frame:IsShown() then return true end
+    end
+    return false
+end
+
+local function LoadDressUpUI()
+    if C_AddOns and C_AddOns.LoadAddOn then
+        pcall(C_AddOns.LoadAddOn, "Blizzard_UIPanels_Game")
+    elseif LoadAddOn then
+        pcall(LoadAddOn, "Blizzard_UIPanels_Game")
+    end
+end
+
+local function TryPreviewMountInDressUp(data)
+    if not (data and data.mountID) then return false end
+    local spellID = ResolveMountSpellID(data)
+    local spellLink = GetSpellLinkCompat(spellID)
+    local mountLink = GetMountJournalLink(data)
+
+    LoadDressUpUI()
+
+    local dressUpMountLink = _G["DressUpMountLink"]
+    if dressUpMountLink then
+        if spellLink then
+            local ok = pcall(dressUpMountLink, spellLink)
+            if ok and IsAnyDressUpFrameShown() then return true end
+        end
+        if mountLink and mountLink ~= spellLink then
+            local ok = pcall(dressUpMountLink, mountLink)
+            if ok and IsAnyDressUpFrameShown() then return true end
+        end
+    end
+
+    local dressUpSpellLink = _G["DressUpSpellLink"]
+    if dressUpSpellLink and spellLink then
+        local ok = pcall(dressUpSpellLink, spellLink)
+        if ok and IsAnyDressUpFrameShown() then return true end
+    end
+
+    local dressUpMount = _G["DressUpMount"]
+    if dressUpMount then
+        local ok = pcall(dressUpMount, data.mountID)
+        if ok and IsAnyDressUpFrameShown() then return true end
+        if spellID then
+            ok = pcall(dressUpMount, spellID)
+            if ok and IsAnyDressUpFrameShown() then return true end
+        end
+    end
+
+    return false
+end
+
+function UI:PreviewMountInDressUp(data)
+    if TryPreviewMountInDressUp(data) then return true end
+    if C_Timer and C_Timer.After then
+        local previewData = {
+            mountID = data and data.mountID,
+            spellID = data and ResolveMountSpellID(data),
+            name = data and data.name,
+        }
+        local function retry(attemptsLeft)
+            if TryPreviewMountInDressUp(previewData) or IsAnyDressUpFrameShown() then return end
+            if attemptsLeft > 0 then
+                C_Timer.After(0.05, function() retry(attemptsLeft - 1) end)
+            else
+                UI:OpenMountInJournal(previewData)
+            end
+        end
+        C_Timer.After(0, function() retry(2) end)
+        return true
+    end
+    return false
+end
+
 function UI:MountElementMatches(edata, mountID, spellID, mountName)
     if not edata then return false end
     if type(edata) == "number" then return mountID and edata == mountID end
@@ -593,11 +703,7 @@ end
 function UI:RevealMountInJournal(data)
     if not (data and data.mountID) then return nil end
 
-    local spellID = data.spellID
-    if not spellID and C_MountJournal and C_MountJournal.GetMountInfoByID then
-        local ok, _, sid = pcall(C_MountJournal.GetMountInfoByID, data.mountID)
-        if ok then spellID = sid end
-    end
+    local spellID = ResolveMountSpellID(data)
 
     if C_MountJournal then
         if C_MountJournal.SetAllSourceFilters then pcall(C_MountJournal.SetAllSourceFilters, true) end
@@ -605,11 +711,15 @@ function UI:RevealMountInJournal(data)
         if C_MountJournal.SetCollectedFilterSetting then
             local collectedFilter = _G["LE_MOUNT_JOURNAL_FILTER_COLLECTED"]
             local uncollectedFilter = _G["LE_MOUNT_JOURNAL_FILTER_NOT_COLLECTED"]
+            local unusableFilter = _G["LE_MOUNT_JOURNAL_FILTER_UNUSABLE"]
             if collectedFilter ~= nil then
                 pcall(C_MountJournal.SetCollectedFilterSetting, collectedFilter, true)
             end
             if uncollectedFilter ~= nil then
-                pcall(C_MountJournal.SetCollectedFilterSetting, uncollectedFilter, false)
+                pcall(C_MountJournal.SetCollectedFilterSetting, uncollectedFilter, true)
+            end
+            if unusableFilter ~= nil then
+                pcall(C_MountJournal.SetCollectedFilterSetting, unusableFilter, true)
             end
         end
         if C_MountJournal.SetSearch then
@@ -1461,10 +1571,10 @@ function UI:SelectResult(data, forceGuide)
         return
     end
 
-    -- Outfit: default click equips via SecureActionButton. Ctrl-click
+    -- Outfit: default click equips via SecureActionButton. Alt+click
     -- suppresses that secure action in PreClick and opens the outfit list.
     if data.outfitID then
-        if forceGuide or (IsControlKeyDown and IsControlKeyDown()) then
+        if forceGuide or UI:IsSourceModifierHeld() then
             self:OpenOutfitInTransmog(data)
         end
         return
@@ -1539,10 +1649,15 @@ function UI:SelectResult(data, forceGuide)
         return
     end
 
-    -- Mount: default click summons/dismisses. Ctrl-click opens the mount
-    -- in Collections > Mounts instead.
+    -- Mount: summon only when the mount is actually usable here. Alt+click
+    -- opens Collections > Mounts; Ctrl+click uses Blizzard's mount preview.
     if data.mountID then
-        if forceGuide or (IsControlKeyDown and IsControlKeyDown()) then
+        if IsControlKeyDown and IsControlKeyDown() then
+            if self:PreviewMountInDressUp(data) then return end
+            self:OpenMountInJournal(data)
+            return
+        end
+        if forceGuide or UI:IsSourceModifierHeld() or not self:IsMountSummonable(data) then
             self:OpenMountInJournal(data)
             return
         end
@@ -1579,10 +1694,10 @@ function UI:SelectResult(data, forceGuide)
     end
 
     -- Toy: default click uses via the SecureActionButton type=toy
-    -- attribute. Ctrl-click and unusable toys route to the ToyBox.
+    -- attribute. Alt+click and unusable toys route to the ToyBox.
     if data.toyItemID then
         if data.isToyboxOnly or forceGuide
-           or (IsControlKeyDown and IsControlKeyDown()) then
+           or UI:IsSourceModifierHeld() then
             self:OpenToyInToyBox(data)
         end
         return
@@ -1603,11 +1718,11 @@ function UI:SelectResult(data, forceGuide)
         return
     end
 
-    -- Pet: normal click summons. Guide and Ctrl+click route to the pet
-    -- in Collections > Pet Journal instead; Ctrl uses DirectOpen so it
+    -- Pet: normal click summons. Guide and Alt+click route to the pet
+    -- in Collections > Pet Journal instead; Alt uses DirectOpen so it
     -- skips the step-by-step guide and only highlights the destination.
     if data.petID or data.speciesID then
-        if forceGuide or (IsControlKeyDown and IsControlKeyDown()) then
+        if forceGuide or UI:IsSourceModifierHeld() then
             local guideData = BuildPetJournalGuideData(data)
             if useFast then
                 self:DirectOpen(guideData)
@@ -1639,7 +1754,12 @@ function UI:SelectResult(data, forceGuide)
     -- open the bag(s) containing them and highlight the slot.
     if data.itemID and data.category == "Bag" then
         if useFast then
-            local showInBags = IsControlKeyDown and IsControlKeyDown()
+            local actionKind = self:GetBagItemActionKind(data)
+            if IsControlKeyDown and IsControlKeyDown() and actionKind == "equip"
+               and data.bagItemLink and DressUpItemLink then
+                if DressUpItemLink(data.bagItemLink) then return end
+            end
+            local showInBags = UI:IsSourceModifierHeld()
             -- Skip bag-open for anything the secure click will already act
             -- on: explicit Use spells, equippable gear, AND broad item
             -- types that "use" via right-click without a Use:tooltip line
@@ -1647,7 +1767,7 @@ function UI:SelectResult(data, forceGuide)
             -- right-click-openable containers like lockboxes still hit
             -- the bag-open path, so the bag visibly pops AND the
             -- container opens -- the user only wants the latter.
-            if not showInBags and self:GetBagItemActionKind(data) ~= "show" then
+            if not showInBags and actionKind ~= "show" then
                 return
             end
             self:OpenBagItemLocation(data)
@@ -1657,12 +1777,12 @@ function UI:SelectResult(data, forceGuide)
     end
 
     -- Macro: default click runs the macro (handled by the row's secure
-    -- macro attribute). Ctrl+click opens MacroFrame for editing:
-    -- PreClick clears the secure type when Ctrl is held so the macro
+    -- macro attribute). Alt+click opens MacroFrame for editing:
+    -- PreClick clears the secure type when Alt is held so the macro
     -- guide via forceGuide=true.
     if data.macroIndex then
         if useFast then
-            if IsControlKeyDown() then
+            if UI:IsSourceModifierHeld() then
                 UI:OpenMacroFrameAt(data.macroIndex, data.macroIsChar)
             end
             return

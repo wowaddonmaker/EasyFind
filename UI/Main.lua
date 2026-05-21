@@ -558,6 +558,16 @@ local function IsSpellbookOnlyAbility(data)
     return data and data.category == "Ability" and data.spellID and data.isSpellbookOnly
 end
 
+local function IsMountSummonable(data)
+    if not (data and data.mountID and data.isCollected) then return false end
+    if data.isUsable == false or data.shouldHideOnChar then return false end
+    return true
+end
+
+local function IsSourceModifierHeld()
+    return IsAltKeyDown and IsAltKeyDown() and not UI._resultShortcutActivation
+end
+
 -- Hint shown only on the currently-selected row, replacing the normal
 -- subtext so the user knows what Enter / left-click will do without
 -- cluttering every other row. Returns nil for entries whose action
@@ -762,44 +772,49 @@ local function GetActionHint(data)
     if not data then return nil end
     if data.calculatorResult then return "Select result for Ctrl+C" end
     if data.quickFilterDef then return "Select to filter results" end
-    if data.titleID then return "Select to apply as your title" end
-    if data.mountID then return "Select to summon mount | Ctrl+click to show in journal" end
-    if data.petID or data.speciesID then return "Select to summon pet | Ctrl+click to show in journal" end
+    if data.titleID then return "Click apply title" end
+    if data.mountID then
+        if IsMountSummonable(data) then
+            return "Click summon | Alt journal | Ctrl preview | Shift drag"
+        end
+        return "Click journal | Ctrl preview | Shift drag"
+    end
+    if data.petID or data.speciesID then return "Click summon | Alt journal | Shift drag" end
     if data.toyItemID then
-        return data.isToyboxOnly and "Select to show in Toy Box" or "Select to use toy | Ctrl+click to show in Toy Box"
+        return data.isToyboxOnly and "Click Toy Box" or "Click use | Alt Toy Box | Shift drag"
     end
-    if data.heirloomItemID then return "Select to add heirloom to bags" end
-    if data.outfitID then return "Select to wear outfit | Ctrl+click to show in transmogrification" end
-    if data.gearSetID then return "Select to equip gear set" end
-    if data.transmogSetID then return "Select to preview | Ctrl+click to try on" end
+    if data.heirloomItemID then return "Click add heirloom to bags" end
+    if data.outfitID then return "Click wear | Alt transmogrifier | Shift drag" end
+    if data.gearSetID then return "Click equip gear set" end
+    if data.transmogSetID then return "Click wardrobe | Ctrl try on" end
     if data.spellID and data.category == "Ability" then
-        return IsSpellbookOnlyAbility(data) and "Select to show in spellbook" or "Select to cast"
+        return IsSpellbookOnlyAbility(data) and "Click spellbook" or "Click cast | Shift drag"
     end
-    if data.macroIndex then return "Select to run macro | Ctrl+click to edit" end
+    if data.macroIndex then return "Click run | Alt edit | Shift drag" end
     if data.itemID and data.category == "Bag" then
         local actionKind = UI:GetBagItemActionKind(data)
         if actionKind == "equip" then
-            return "Select to equip item | Ctrl+click to show in bags"
+            return "Click equip | Alt bags | Ctrl try on | Shift drag"
         elseif actionKind == "open" then
-            return "Select to open item | Ctrl+click to show in bags"
+            return "Click open | Alt bags | Shift drag"
         elseif actionKind == "use" then
-            return "Select to use item | Ctrl+click to show in bags"
+            return "Click use | Alt bags | Shift drag"
         end
-        return "Select to show in bags"
+        return "Click bags | Shift drag"
     end
     if data.mapSearchResult then
-        if data.isZone then return "Select to open map to location" end
-        return "Select to pin location on map"
+        if data.isZone then return "Click open map" end
+        return "Click pin on map"
     end
     if data.encounterID and data.category == "Boss" then
-        return "Select to open Encounter Journal"
+        return "Click Encounter Journal"
     end
     if (data.settingType == "checkbox" or data.settingType == "checkboxSlider")
        and data.settingVariable then
-        return "Select to toggle | Ctrl+click to open settings menu"
+        return "Click toggle | Alt settings"
     end
     if data.settingVariable or data.bindingAction then
-        return "Select to open settings menu"
+        return "Click settings"
     end
     return nil
 end
@@ -1101,7 +1116,8 @@ end
 local function IsSecureActionResult(data)
     return data and (data.outfitID or data.toyItemID
         or (data.spellID and not IsSpellbookOnlyAbility(data))
-        or data.mountID or data.macroIndex or data.slashCommand
+        or (data.mountID and IsMountSummonable(data))
+        or data.macroIndex or data.slashCommand
         or (data.itemID and data.category == "Bag"
             and UI:GetBagItemActionKind(data) ~= "show"))
 end
@@ -1148,6 +1164,14 @@ end
 
 function UI:IsSpellbookOnlyAbility(data)
     return IsSpellbookOnlyAbility(data)
+end
+
+function UI:IsMountSummonable(data)
+    return IsMountSummonable(data)
+end
+
+function UI:IsSourceModifierHeld()
+    return IsSourceModifierHeld()
 end
 
 function UI:IsSecureActionResult(data)
@@ -2424,15 +2448,11 @@ function UI:CreateSearchFrame()
         -- Secure-action rows: let Enter propagate to the override
         -- binding so the secure click dispatch fires (same as a mouse
         -- click). Without this navFrame swallows Enter and the
-        -- override binding never sees the key. Abilities, mounts,
-        -- macros, bag items, toys, outfits all need this gate.
+        -- override binding never sees the key.
         if key == "ENTER" and selectedIndex > 0 and not InCombatLockdown() then
             local selRow = resultButtons[selectedIndex]
             local rd = selRow and selRow.data
-            if rd and (rd.outfitID or rd.toyItemID
-               or (rd.spellID and not IsSpellbookOnlyAbility(rd))
-               or rd.mountID or rd.macroIndex or rd.slashCommand
-               or (rd.itemID and rd.category == "Bag")) then
+            if rd and UI:IsSecureActionResult(rd) then
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
                 return
             end

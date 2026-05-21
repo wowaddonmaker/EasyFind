@@ -167,11 +167,11 @@ end
 function UI:WriteSettingVariable(variable, value)
     return WriteSettingVariable(variable, value)
 end
-local function ActivateSettingResult(data, ctrlHeld)
+local function ActivateSettingResult(data, openMenuHeld)
     if not data or not data.settingVariable then return false end
     local stype = data.settingType
-    if (stype == "checkbox" or stype == "checkboxSlider") and not ctrlHeld then
-        -- Plain click toggles inline. Ctrl+click falls through to open
+    if (stype == "checkbox" or stype == "checkboxSlider") and not openMenuHeld then
+        -- Plain click toggles inline. Alt+click falls through to open
         -- the in-game Settings panel for the same variable. For
         -- checkboxSlider, the cb variable lives at data.settingVariable
         -- so the existing toggle path Just Works.
@@ -187,8 +187,8 @@ local function ActivateSettingResult(data, ctrlHeld)
     return true
 end
 
-function UI:ActivateSettingResult(data, ctrlHeld)
-    return ActivateSettingResult(data, ctrlHeld)
+function UI:ActivateSettingResult(data, openMenuHeld)
+    return ActivateSettingResult(data, openMenuHeld)
 end
 
 function UI:ShowResultContextMenu(row, keyboardMode)
@@ -1550,11 +1550,19 @@ function UI:CreateResultButton(index)
             return
         end
 
-        -- Ctrl + secure action: suppress the default activation so
-        -- PostClick can reveal the owning Blizzard UI instead.
-        if d and IsControlKeyDown()
-           and (d.macroIndex or d.mountID or d.toyItemID or d.outfitID
-                or (d.itemID and d.category == "Bag")) then
+        -- Alt+click is the "show owning UI" modifier. Ctrl remains for
+        -- Blizzard-style previews such as mounts and equippable bag items.
+        local sourceModifierHeld = UI:IsSourceModifierHeld()
+        local ctrlHeld = IsControlKeyDown and IsControlKeyDown()
+        local bagItemKind = (d and d.itemID and d.category == "Bag")
+            and UI:GetBagItemActionKind(d)
+        local suppressSecureClick = d and (
+            (sourceModifierHeld and (d.macroIndex or d.mountID or d.toyItemID
+                or d.outfitID or (d.itemID and d.category == "Bag")))
+            or (d.mountID and (ctrlHeld or not UI:IsMountSummonable(d)))
+            or (ctrlHeld and bagItemKind == "equip")
+        )
+        if suppressSecureClick then
             self:SetAttribute("type", nil)
             self._lastAttrType = nil
             self._lastAttrKey = nil
@@ -1605,7 +1613,7 @@ function UI:CreateResultButton(index)
         -- garrison hearthstone, etc.). Outfit cooldown is a real swap-lockout
         -- we manage ourselves, so it's safe to gate on.
         if self.data and mouseButton == "LeftButton" and self.data.outfitID
-           and not (IsControlKeyDown and IsControlKeyDown())
+           and not UI:IsSourceModifierHeld()
            and outfitCdStart > 0
            and outfitCdDuration - (GetTime() - outfitCdStart) > 0 then
             if UI:GetSearchFrame() and UI:GetSearchFrame().editBox and not UI:GetNavFrame():IsKeyboardEnabled() then
@@ -1649,13 +1657,13 @@ function UI:CreateResultButton(index)
             return
         end
 
-        -- Setting click. Checkbox: toggle inline (Ctrl+click opens the
+        -- Setting click. Checkbox: toggle inline (Alt+click opens the
         -- panel). Everything else (slider / keybind / dropdown): open
         -- the panel so the user lands on the setting they searched for.
         -- Inline editors (slider drag, kb1/kb2 capture, dropdown
         -- paddles) sit on top of the row and consume their own clicks,
         -- so reaching this handler means the user clicked the label.
-        if ActivateSettingResult(self.data, IsControlKeyDown()) then return end
+        if ActivateSettingResult(self.data, UI:IsSourceModifierHeld()) then return end
 
         if self.isPinHeader then
             return
