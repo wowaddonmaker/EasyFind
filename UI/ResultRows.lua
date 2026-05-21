@@ -234,6 +234,15 @@ function UI:ShowResultContextMenu(row, keyboardMode)
                 UI:RouteCurrencyTransfer(pinData)
             end
         end
+    elseif pinData.category == "Reputation" and pinData.factionID then
+        local fid = pinData.factionID
+        extra = {
+            isWatchedFaction = UI:IsReputationWatched(fid),
+            onToggleWatchedFaction = function()
+                UI:KeepPinnedResultsOpenBriefly()
+                UI:ToggleReputationWatched(fid)
+            end,
+        }
     elseif pinData.transmogSetID then
         local sid = pinData.transmogSetID
         extra = {

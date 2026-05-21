@@ -1661,6 +1661,12 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
     if extra and extra.onTransfer then
         extras[#extras + 1] = { text = "Transfer", onClick = extra.onTransfer }
     end
+    if extra and extra.onToggleWatchedFaction then
+        extras[#extras + 1] = {
+            text = extra.isWatchedFaction and "Hide XP bar" or "Show as XP bar",
+            onClick = extra.onToggleWatchedFaction,
+        }
+    end
     if extra and extra.onSummon then
         extras[#extras + 1] = { text = "Summon", onClick = extra.onSummon }
     end

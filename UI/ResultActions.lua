@@ -2754,6 +2754,73 @@ function UI:ApplyReputationShowLegacy(show)
     end
 end
 
+local function GetReputationFactionIndexByID(factionID)
+    if not factionID or not C_Reputation or not C_Reputation.GetNumFactions then return nil end
+    local numFactions = C_Reputation.GetNumFactions()
+    for i = 1, numFactions do
+        local factionData = C_Reputation.GetFactionDataByIndex(i)
+        if factionData and factionData.factionID == factionID then
+            return i, factionData
+        end
+    end
+    return nil
+end
+
+function UI:IsReputationWatched(factionID)
+    if not factionID then return false end
+    if C_Reputation then
+        if C_Reputation.GetFactionDataByID then
+            local ok, factionData = pcall(C_Reputation.GetFactionDataByID, factionID)
+            if ok and factionData and factionData.isWatched then return true end
+        end
+        if C_Reputation.GetWatchedFactionData then
+            local ok, watchedData = pcall(C_Reputation.GetWatchedFactionData)
+            if ok and watchedData and watchedData.factionID == factionID then return true end
+        end
+    end
+
+    local getWatched = _G["GetWatchedFactionInfo"]
+    if getWatched then
+        local ok, _, _, _, _, _, watchedFactionID = pcall(getWatched)
+        if ok and watchedFactionID == factionID then return true end
+    end
+    return false
+end
+
+local function RefreshReputationSurfaces()
+    if ReputationFrame and ReputationFrame:IsShown() then
+        if ReputationFrame.Update then pcall(ReputationFrame.Update, ReputationFrame) end
+        RefreshDropdownLabel(ReputationFrame.filterDropdown)
+    end
+    if UI and UI.RefreshResults then UI:RefreshResults() end
+end
+
+function UI:ToggleReputationWatched(factionID)
+    if not factionID then return false end
+
+    local clearWatch = UI:IsReputationWatched(factionID)
+    if C_Reputation and C_Reputation.SetWatchedFactionByID then
+        local ok = pcall(C_Reputation.SetWatchedFactionByID, clearWatch and 0 or factionID)
+        if ok then
+            RefreshReputationSurfaces()
+            return true
+        end
+    end
+
+    local setWatchedIndex = _G["SetWatchedFactionIndex"]
+    if setWatchedIndex then
+        local factionIndex = clearWatch and 0 or GetReputationFactionIndexByID(factionID)
+        if factionIndex then
+            local ok = pcall(setWatchedIndex, factionIndex)
+            if ok then
+                RefreshReputationSurfaces()
+                return true
+            end
+        end
+    end
+    return false
+end
+
 -- Hide Passives. CVar-backed: spellBookHidePassives ("0" / "1").
 -- Mirrors SpellBookFrameMixin:SetupSettingsDropdown's SetSelected logic.
 function UI:ApplySpellBookHidePassives(hide)
