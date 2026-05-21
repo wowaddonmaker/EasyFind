@@ -244,8 +244,16 @@ end
 function Utils.StartAltNavRepeat(repeater, key, editBox, step, onReleased)
     key = Utils.NormalizeKey(key)
     Utils.SuppressNextAltNavChar(editBox, key)
-    if not (repeater and repeater.Start) then
+    local function RunStep()
         local moved = not step or step() ~= false
+        -- History navigation can change the editbox text during the keydown.
+        -- Refresh the snapshot so a late leaked J/K restores the new text,
+        -- not the text that existed before the history step.
+        Utils.SuppressNextAltNavChar(editBox, key)
+        return moved
+    end
+    if not (repeater and repeater.Start) then
+        local moved = RunStep()
         if not moved and onReleased then Utils.ScheduleAfterAltNavRelease(key, onReleased) end
         return moved
     end
@@ -258,7 +266,7 @@ function Utils.StartAltNavRepeat(repeater, key, editBox, step, onReleased)
             if onReleased then Utils.ScheduleAfterAltNavRelease(key, onReleased) end
             return
         end
-        if step and step() == false then
+        if not RunStep() then
             if repeater.Stop then repeater.Stop(key) end
             if onReleased then Utils.ScheduleAfterAltNavRelease(key, onReleased) end
         end

@@ -466,6 +466,68 @@ local MOUNT_PROTO = {
 }
 local MOUNT_MT = { __index = MOUNT_PROTO }
 
+local MOUNT_TYPE_GROUND_ONLY = 230
+local MOUNT_TYPE_AMPHIBIOUS = 231
+local MOUNT_TYPE_AQUATIC = 254
+local MOUNT_TYPE_RIDE_ALONG = 412
+
+local function MountTypePassesFilters(mountTypeID, db)
+    if not mountTypeID then return true end
+    local ground = not db or db.mountTypeGround ~= false
+    local flying = not db or db.mountTypeFlying ~= false
+    local aquatic = not db or db.mountTypeAquatic ~= false
+    local rideAlong = not db or db.mountTypeRideAlong ~= false
+
+    if mountTypeID == MOUNT_TYPE_GROUND_ONLY then return ground end
+    if mountTypeID == MOUNT_TYPE_AMPHIBIOUS then return ground or aquatic end
+    if mountTypeID == MOUNT_TYPE_AQUATIC then return aquatic end
+    if mountTypeID == MOUNT_TYPE_RIDE_ALONG then return rideAlong end
+    return flying
+end
+
+function Database:MountPassesSearchFilters(data)
+    if not data or not data.mountID then return false end
+    local db = EasyFind and EasyFind.db
+    if not db then return true end
+
+    local isCollected = data.isCollected
+    local isUsable = data.isUsable
+    local shouldHideOnChar = data.shouldHideOnChar
+    local sourceType = data.mountSourceType
+    local mountTypeID = data.mountTypeID
+    if (isCollected == nil or isUsable == nil or shouldHideOnChar == nil
+        or sourceType == nil or mountTypeID == nil)
+       and C_MountJournal and C_MountJournal.GetMountInfoByID then
+        local _, _, _, _, fetchedUsable, fetchedSourceType, _, _, _, fetchedHide, fetchedCollected =
+            C_MountJournal.GetMountInfoByID(data.mountID)
+        if isCollected == nil then isCollected = fetchedCollected end
+        if isUsable == nil then isUsable = fetchedUsable end
+        if shouldHideOnChar == nil then shouldHideOnChar = fetchedHide end
+        if sourceType == nil then sourceType = fetchedSourceType end
+        if mountTypeID == nil and C_MountJournal.GetMountInfoExtraByID then
+            local _, _, _, _, fetchedMountTypeID = C_MountJournal.GetMountInfoExtraByID(data.mountID)
+            mountTypeID = fetchedMountTypeID
+        end
+    end
+
+    if isCollected then
+        if db.mountFilterCollected == false then return false end
+    elseif db.mountFilterNotCollected == false then
+        return false
+    end
+
+    local unusableOnThisChar = shouldHideOnChar or (isCollected and isUsable == false)
+    if unusableOnThisChar and not db.mountFilterUnusable then return false end
+    if not MountTypePassesFilters(mountTypeID, db) then return false end
+
+    local sourceFilters = db.mountSourceFilters
+    if sourceType and type(sourceFilters) == "table" and sourceFilters[sourceType] == false then
+        return false
+    end
+
+    return true
+end
+
 local TOY_PROTO = {
     keywords     = {"toy", "fun"},
     keywordsLower = {"toy", "fun"},
@@ -875,16 +937,28 @@ function Database:PopulateDynamicMounts()
     if not mountIDs then return false end
 
     for _, mountID in ipairs(mountIDs) do
-        local name, spellID, icon, _, _, _, _,
+        local name, spellID, icon, _, isUsable, sourceType, _,
               _, _, shouldHideOnChar, isCollected = C_MountJournal.GetMountInfoByID(mountID)
-        if name and isCollected and not shouldHideOnChar then
-            uiSearchData[#uiSearchData + 1] = setmetatable({
+        if name then
+            local mountTypeID
+            if C_MountJournal.GetMountInfoExtraByID then
+                mountTypeID = select(5, C_MountJournal.GetMountInfoExtraByID(mountID))
+            end
+            local entry = {
                 name = name,
                 icon = icon,
                 mountID = mountID,
                 spellID = spellID,
+                isCollected = isCollected and true or false,
+                isUsable = isUsable and true or false,
+                shouldHideOnChar = shouldHideOnChar and true or false,
+                mountSourceType = sourceType,
+                mountTypeID = mountTypeID,
                 nameLower = slower(name),
-            }, MOUNT_MT)
+            }
+            if self:MountPassesSearchFilters(entry) then
+                uiSearchData[#uiSearchData + 1] = setmetatable(entry, MOUNT_MT)
+            end
         end
     end
     return true
@@ -2407,6 +2481,7 @@ local function buildCategoryEntry(opts)
         path = opts.path,
         steps = opts.steps,
         flashLabel = opts.flashLabel,
+        isGuildAchievement = opts.isGuildAchievement and true or nil,
     }
     entry.nameLower = slower(opts.displayName)
     entry.keywordsLower = {}
@@ -2489,6 +2564,7 @@ function Database:PopulateDynamicAchievements()
             path         = path,
             steps        = steps,
             flashLabel   = "Achievements",
+            isGuildAchievement = isGuildBranch,
         })
 
         if #cat.children > 0 then

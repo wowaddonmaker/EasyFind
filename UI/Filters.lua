@@ -45,6 +45,7 @@ local UI_FILTER_OPTIONS = {
           },
           checkboxes = {
               { dbKey = "hideAchievementHeaders", label = "Hide achievement headers" },
+              { dbKey = "hideGuildAchievements", label = "Hide guild achievements" },
           },
       } },
     { key = "statistics",  label = "Statistics",  iconTex = 1121272,
@@ -58,7 +59,7 @@ local UI_FILTER_OPTIONS = {
       flyoutSubFilters = {
           { key = "appearanceSets", label = "Appearance Sets", iconTex = "Interface\\Icons\\INV_Helmet_03", hasOptions = true },
           { key = "heirlooms",      label = "Heirlooms",       iconTex = 133877 },
-          { key = "mounts",         label = "Mounts",          iconTex = 132261 },
+          { key = "mounts",         label = "Mounts",          iconTex = 132261, hasOptions = true },
           { key = "outfits",        label = "Outfits",         iconTex = 132649 },
           { key = "pets",           label = "Pets",            iconTex = 631719 },
           { key = "toys",           label = "Toys",            iconTex = 454046 },
@@ -172,6 +173,23 @@ end
 
 function UI:GetUIBucket(data)
     return GetUIBucket(data)
+end
+
+function UI:IsGuildAchievementData(data)
+    if not data then return false end
+    if data.isGuildAchievement then return true end
+    local steps = data.steps
+    if not steps then return false end
+    for i = 1, #steps do
+        local step = steps[i]
+        if step and step.waitForFrame == "AchievementFrame" and tonumber(step.tabIndex) == 2 then
+            return true
+        end
+        if step and step.buttonFrame == "AchievementFrameTab2" then
+            return true
+        end
+    end
+    return false
 end
 
 UI.quickFilterOptions = {
@@ -352,6 +370,11 @@ function UI:QuickFilterAllowsData(data, quickFilter)
     if data.mapSearchResult then return def.key == "map" end
     if def.key == "map" then return false end
     if EasyFind.db.hideAchievementHeaders and data.category == "Achievement Category" then return false end
+    if EasyFind.db.hideGuildAchievements and self:IsGuildAchievementData(data) then return false end
+    if data.mountID and ns.Database and ns.Database.MountPassesSearchFilters
+       and not ns.Database:MountPassesSearchFilters(data) then
+        return false
+    end
 
     if def.key == "mounts" then return data.mountID and true or false end
     if def.key == "toys" then return data.toyItemID and true or false end
@@ -717,6 +740,266 @@ function UI:QuickFilterNeedsHeavyData(def)
     return def and (def.key == "loot" or def.key == "bosses")
 end
 
+local MOUNT_SOURCE_FALLBACK_LABELS = {
+    [1] = "Drop",
+    [2] = "Quest",
+    [3] = "Vendor",
+    [4] = "Profession",
+    [5] = "Achievement",
+    [6] = "World Event",
+    [7] = "Promotion",
+    [8] = "Trading Post",
+    [9] = "Discovery",
+}
+
+local function MountSourceLabel(sourceType)
+    return _G["MOUNT_JOURNAL_FILTER_SOURCE_" .. tostring(sourceType)]
+        or _G["MOUNT_JOURNAL_FILTER_" .. tostring(sourceType)]
+        or _G["BATTLE_PET_SOURCE_" .. tostring(sourceType)]
+        or MOUNT_SOURCE_FALLBACK_LABELS[sourceType]
+        or ("Source " .. tostring(sourceType))
+end
+
+local function CollectMountSourceDefs()
+    local seen = {}
+    local defs = {}
+    if C_MountJournal and C_MountJournal.GetMountIDs and C_MountJournal.GetMountInfoByID then
+        local mountIDs = C_MountJournal.GetMountIDs()
+        if mountIDs then
+            for _, mountID in ipairs(mountIDs) do
+                local sourceType = select(6, C_MountJournal.GetMountInfoByID(mountID))
+                if sourceType and not seen[sourceType] then
+                    seen[sourceType] = true
+                    defs[#defs + 1] = { sourceType = sourceType, label = MountSourceLabel(sourceType) }
+                end
+            end
+        end
+    end
+    tsort(defs, function(a, b)
+        if a.sourceType ~= b.sourceType then return a.sourceType < b.sourceType end
+        return a.label < b.label
+    end)
+    return defs
+end
+
+function UI:BuildMountOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox)
+    local OPTIONS_WIDTH = 160
+    local SOURCE_WIDTH = 170
+    local ROW_H = 22
+    local PAD = 6
+    local HEADER_H = 20
+
+    local function ApplyFilterSelection()
+        if ns.Database and ns.Database.RefreshDynamicCategory then
+            ns.Database:RefreshDynamicCategory("mounts")
+        end
+        if searchEditBox and searchEditBox:GetText() ~= "" then
+            UI:OnSearchTextChanged(searchEditBox:GetText())
+        end
+    end
+
+    local optionsPopup = CreateFrame("Frame", "EasyFindMountOptionsPopup", UIParent, "BackdropTemplate")
+    optionsPopup:SetFrameStrata("TOOLTIP")
+    StylePopup(optionsPopup)
+    optionsPopup:EnableMouse(true)
+    optionsPopup:Hide()
+
+    local sourcePopup = CreateFrame("Frame", "EasyFindMountSourcePopup", UIParent, "BackdropTemplate")
+    sourcePopup:SetFrameStrata("TOOLTIP")
+    sourcePopup:SetFrameLevel(optionsPopup:GetFrameLevel() + 20)
+    StylePopup(sourcePopup)
+    sourcePopup:EnableMouse(true)
+    sourcePopup:Hide()
+
+    local sourceRows = {}
+    local function EnsureSourceFilters()
+        EasyFind.db.mountSourceFilters = EasyFind.db.mountSourceFilters or {}
+        return EasyFind.db.mountSourceFilters
+    end
+
+    local function CreatePlainRow(parent, text)
+        local row = CreateFrame("Button", nil, parent)
+        row:SetSize(SOURCE_WIDTH - PAD * 2, ROW_H)
+        local label = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        label:SetPoint("LEFT", 14, 0)
+        label:SetText(text)
+        local hl = row:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+        return row
+    end
+
+    local checkAllRow = CreatePlainRow(sourcePopup, _G["CHECK_ALL"] or "Check All")
+    local uncheckAllRow = CreatePlainRow(sourcePopup, _G["UNCHECK_ALL"] or "Uncheck All")
+
+    local function LayoutSourcePopup()
+        local defs = CollectMountSourceDefs()
+        local filters = EnsureSourceFilters()
+        checkAllRow:ClearAllPoints()
+        checkAllRow:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -PAD)
+        uncheckAllRow:ClearAllPoints()
+        uncheckAllRow:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -(PAD + ROW_H))
+
+        for i = #sourceRows, #defs + 1, -1 do
+            sourceRows[i]:Hide()
+        end
+        for i, def in ipairs(defs) do
+            local row = sourceRows[i]
+            if not row then
+                row = CreateFrame("CheckButton", nil, sourcePopup)
+                row:SetSize(SOURCE_WIDTH - PAD * 2, ROW_H)
+                row:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+                row:GetNormalTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
+                row:GetNormalTexture():ClearAllPoints()
+                row:GetNormalTexture():SetPoint("LEFT", 4, 0)
+                row:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+                row:GetCheckedTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
+                row:GetCheckedTexture():ClearAllPoints()
+                row:GetCheckedTexture():SetPoint("LEFT", 4, 0)
+                row.text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+                row.text:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
+                local hl = row:CreateTexture(nil, "HIGHLIGHT")
+                hl:SetAllPoints()
+                hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+                row:SetScript("OnClick", function(self)
+                    EnsureSourceFilters()[self.sourceType] = self:GetChecked() and nil or false
+                    ApplyFilterSelection()
+                end)
+                sourceRows[i] = row
+            end
+            row.sourceType = def.sourceType
+            row.text:SetText(def.label)
+            row:SetChecked(filters[def.sourceType] ~= false)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -(PAD + (i + 1) * ROW_H))
+            row:Show()
+        end
+        sourcePopup:SetSize(SOURCE_WIDTH, PAD * 2 + (2 + #defs) * ROW_H)
+    end
+
+    checkAllRow:SetScript("OnClick", function()
+        wipe(EnsureSourceFilters())
+        LayoutSourcePopup()
+        ApplyFilterSelection()
+    end)
+    uncheckAllRow:SetScript("OnClick", function()
+        local filters = EnsureSourceFilters()
+        for _, def in ipairs(CollectMountSourceDefs()) do
+            filters[def.sourceType] = false
+        end
+        LayoutSourcePopup()
+        ApplyFilterSelection()
+    end)
+
+    local function CreateCheckRow(def, y)
+        local row = CreateFrame("CheckButton", nil, optionsPopup)
+        row:SetSize(OPTIONS_WIDTH - PAD * 2, ROW_H)
+        row:SetPoint("TOPLEFT", optionsPopup, "TOPLEFT", PAD, y)
+        row:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+        row:GetNormalTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
+        row:GetNormalTexture():ClearAllPoints()
+        row:GetNormalTexture():SetPoint("LEFT", 4, 0)
+        row:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+        row:GetCheckedTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
+        row:GetCheckedTexture():ClearAllPoints()
+        row:GetCheckedTexture():SetPoint("LEFT", 4, 0)
+        local text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        text:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
+        text:SetText(def.label)
+        local hl = row:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+        row.dbKey = def.dbKey
+        row:SetScript("OnClick", function(self)
+            EasyFind.db[self.dbKey] = self:GetChecked() and true or false
+            ApplyFilterSelection()
+        end)
+        return row
+    end
+
+    local rows = {}
+    local y = -PAD
+    local filterDefs = {
+        { dbKey = "mountFilterCollected",    label = _G["COLLECTED"] or "Collected" },
+        { dbKey = "mountFilterNotCollected", label = _G["NOT_COLLECTED"] or "Not Collected" },
+        { dbKey = "mountFilterUnusable",     label = _G["UNUSABLE"] or "Unusable" },
+    }
+    for _, def in ipairs(filterDefs) do
+        rows[#rows + 1] = CreateCheckRow(def, y)
+        y = y - ROW_H
+    end
+
+    local typeHeader = optionsPopup:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+    typeHeader:SetPoint("TOPLEFT", optionsPopup, "TOPLEFT", PAD + 8, y - 2)
+    typeHeader:SetText(_G["TYPE"] or "Type")
+    y = y - HEADER_H
+
+    local typeDefs = {
+        { dbKey = "mountTypeGround",    label = _G["GROUND"] or "Ground" },
+        { dbKey = "mountTypeFlying",    label = _G["FLYING"] or "Flying" },
+        { dbKey = "mountTypeAquatic",   label = _G["AQUATIC"] or "Aquatic" },
+        { dbKey = "mountTypeRideAlong", label = _G["RIDE_ALONG"] or "Ride Along" },
+    }
+    for _, def in ipairs(typeDefs) do
+        rows[#rows + 1] = CreateCheckRow(def, y)
+        y = y - ROW_H
+    end
+
+    local sourcesRow = CreateFrame("Button", nil, optionsPopup)
+    sourcesRow:SetSize(OPTIONS_WIDTH - PAD * 2, ROW_H)
+    sourcesRow:SetPoint("TOPLEFT", optionsPopup, "TOPLEFT", PAD, y)
+    local sourcesText = sourcesRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    sourcesText:SetPoint("LEFT", 14, 0)
+    sourcesText:SetText(_G["SOURCES"] or "Sources")
+    local sourceChev = sourcesRow:CreateTexture(nil, "OVERLAY")
+    sourceChev:SetAtlas("common-icon-forwardarrow")
+    sourceChev:SetSize(CHECK_SIZE, CHECK_SIZE)
+    sourceChev:SetPoint("RIGHT", -4, 0)
+    local sourceHL = sourcesRow:CreateTexture(nil, "HIGHLIGHT")
+    sourceHL:SetAllPoints()
+    sourceHL:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+
+    optionsPopup:SetSize(OPTIONS_WIDTH, PAD * 2 + #filterDefs * ROW_H + HEADER_H + #typeDefs * ROW_H + ROW_H)
+
+    local sourceHideTimer
+    local function HideSourceNow()
+        if sourcePopup:IsMouseOver() or sourcesRow:IsMouseOver() then return end
+        sourcePopup:Hide()
+    end
+    local function ScheduleHideSource()
+        if sourceHideTimer then sourceHideTimer:Cancel() end
+        sourceHideTimer = C_Timer.NewTimer(0.15, function()
+            sourceHideTimer = nil
+            HideSourceNow()
+        end)
+    end
+    local function ShowSourcePopup()
+        if sourceHideTimer then sourceHideTimer:Cancel(); sourceHideTimer = nil end
+        LayoutSourcePopup()
+        sourcePopup:SetScale(optionsPopup:GetScale())
+        sourcePopup:SetFrameLevel(optionsPopup:GetFrameLevel() + 10)
+        sourcePopup:ClearAllPoints()
+        sourcePopup:SetPoint("TOPLEFT", sourcesRow, "TOPRIGHT", 4, 0)
+        sourcePopup:Show()
+    end
+    sourcesRow:SetScript("OnEnter", ShowSourcePopup)
+    sourcesRow:SetScript("OnLeave", ScheduleHideSource)
+    sourcePopup:HookScript("OnEnter", function()
+        if sourceHideTimer then sourceHideTimer:Cancel(); sourceHideTimer = nil end
+    end)
+    sourcePopup:HookScript("OnLeave", ScheduleHideSource)
+
+    local function SyncOptions()
+        for _, row in ipairs(rows) do
+            row:SetChecked(EasyFind.db[row.dbKey] ~= false)
+        end
+        LayoutSourcePopup()
+    end
+
+    optionsPopup:HookScript("OnHide", function() sourcePopup:Hide() end)
+    return optionsPopup, SyncOptions, sourcePopup
+end
+
 -- Builds the Appearance Sets options popup: a class selector button +
 -- four checkboxes (Collected, Not Collected, PvE, PvP). Returns the
 -- popup frame and a sync function that re-reads EasyFind.db state.
@@ -1036,18 +1319,8 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     dropdown.guardFrames = dropdownGuardFrames
     dropdown:SetClampedToScreen(true)
 
-    local function RefocusSearchEditBox()
-        if not (searchEditBox and searchEditBox.SetFocus) then return end
-        searchEditBox.blockFocus = nil
-        searchEditBox:SetFocus()
-        if C_Timer and C_Timer.After then
-            C_Timer.After(0, function()
-                if dropdown:IsShown() and searchEditBox and not searchEditBox:HasFocus() then
-                    searchEditBox.blockFocus = nil
-                    searchEditBox:SetFocus()
-                end
-            end)
-        end
+    local function KeepSearchEditBoxUnfocused()
+        if searchEditBox and searchEditBox.ClearFocus then searchEditBox:ClearFocus() end
     end
 
     dropdown:SetBackdrop({
@@ -1313,6 +1586,10 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 if self:IsMouseOver() or row:IsMouseOver() then return end
                 local opts = self._appearanceSetOptionsPopup
                 if opts and opts:IsShown() and opts:IsMouseOver() then return end
+                opts = self._mountOptionsPopup
+                if opts and opts:IsShown() and opts:IsMouseOver() then return end
+                opts = self._mountSourcePopup
+                if opts and opts:IsShown() and opts:IsMouseOver() then return end
                 self:Hide()
             end)
 
@@ -1380,7 +1657,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     if searchEditBox:GetText() ~= "" then
                         UI:OnSearchTextChanged(searchEditBox:GetText())
                     end
-                    RefocusSearchEditBox()
+                    KeepSearchEditBoxUnfocused()
                 end)
 
                 subRows[si] = subRow
@@ -1429,6 +1706,55 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     popup:HookScript("OnHide", function() optionsPopup:Hide() end)
                     dropdown:HookScript("OnHide", function() optionsPopup:Hide() end)
                 end
+
+                if sub.hasOptions and sub.key == "mounts" then
+                    local optionsPopup, syncOptions, sourcePopup = UI:BuildMountOptionsPopup(
+                        StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox)
+                    UI._SyncMountOptions = syncOptions
+                    optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
+                    optionsPopup._owningRow = subRow
+                    popup._mountOptionsPopup = optionsPopup
+                    popup._mountSourcePopup = sourcePopup
+                    dropdownGuardFrames[#dropdownGuardFrames + 1] = optionsPopup
+                    dropdownGuardFrames[#dropdownGuardFrames + 1] = sourcePopup
+
+                    local optHideTimer
+                    local function HideOptionsNow()
+                        if optionsPopup:IsMouseOver() or sourcePopup:IsMouseOver()
+                           or subRow:IsMouseOver() then
+                            return
+                        end
+                        optionsPopup:Hide()
+                    end
+                    local function ScheduleHideOptions()
+                        if optHideTimer then optHideTimer:Cancel() end
+                        optHideTimer = C_Timer.NewTimer(0.15, function()
+                            optHideTimer = nil
+                            HideOptionsNow()
+                        end)
+                    end
+
+                    subRow:HookScript("OnEnter", function()
+                        if optHideTimer then optHideTimer:Cancel(); optHideTimer = nil end
+                        syncOptions()
+                        optionsPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
+                        optionsPopup:ClearAllPoints()
+                        optionsPopup:SetPoint("TOPLEFT", subRow, "TOPRIGHT", 4, 0)
+                        optionsPopup:Show()
+                    end)
+                    subRow:HookScript("OnLeave", ScheduleHideOptions)
+                    optionsPopup:HookScript("OnEnter", function()
+                        if optHideTimer then optHideTimer:Cancel(); optHideTimer = nil end
+                    end)
+                    optionsPopup:HookScript("OnLeave", ScheduleHideOptions)
+                    sourcePopup:HookScript("OnEnter", function()
+                        if optHideTimer then optHideTimer:Cancel(); optHideTimer = nil end
+                    end)
+                    sourcePopup:HookScript("OnLeave", ScheduleHideOptions)
+
+                    popup:HookScript("OnHide", function() optionsPopup:Hide() end)
+                    dropdown:HookScript("OnHide", function() optionsPopup:Hide() end)
+                end
             end
             -- Sibling sub-rows hide the appearance set options popup so it
             -- doesn't linger when the cursor moves to a non-options row.
@@ -1436,6 +1762,16 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 local optionsPopup = popup._appearanceSetOptionsPopup
                 for _, srOther in ipairs(subRows) do
                     if srOther ~= subRows.appearanceSets then
+                        srOther:HookScript("OnEnter", function()
+                            optionsPopup:Hide()
+                        end)
+                    end
+                end
+            end
+            if popup._mountOptionsPopup then
+                local optionsPopup = popup._mountOptionsPopup
+                for _, srOther in ipairs(subRows) do
+                    if srOther ~= subRows.mounts then
                         srOther:HookScript("OnEnter", function()
                             optionsPopup:Hide()
                         end)
@@ -1519,6 +1855,16 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 if popup._appearanceSetOptionsPopup
                     and popup._appearanceSetOptionsPopup:IsShown()
                     and popup._appearanceSetOptionsPopup:IsMouseOver() then
+                    return
+                end
+                if popup._mountOptionsPopup
+                    and popup._mountOptionsPopup:IsShown()
+                    and popup._mountOptionsPopup:IsMouseOver() then
+                    return
+                end
+                if popup._mountSourcePopup
+                    and popup._mountSourcePopup:IsShown()
+                    and popup._mountSourcePopup:IsMouseOver() then
                     return
                 end
                 popup:Hide()
@@ -1621,7 +1967,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     if searchEditBox:GetText() ~= "" then
                         UI:OnSearchTextChanged(searchEditBox:GetText())
                     end
-                    RefocusSearchEditBox()
+                    KeepSearchEditBoxUnfocused()
                 end)
 
                 radioRows[ri] = rRow
@@ -1666,7 +2012,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     if searchEditBox:GetText() ~= "" then
                         UI:OnSearchTextChanged(searchEditBox:GetText())
                     end
-                    RefocusSearchEditBox()
+                    KeepSearchEditBoxUnfocused()
                 end)
                 checkboxRows[ci] = cRow
             end
@@ -2504,7 +2850,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             if searchEditBox:GetText() ~= "" then
                 UI:OnSearchTextChanged(searchEditBox:GetText())
             end
-            RefocusSearchEditBox()
+            KeepSearchEditBoxUnfocused()
         end)
 
         checkRows[opt.key] = row
@@ -2637,7 +2983,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         if searchEditBox:GetText() ~= "" then
             UI:OnSearchTextChanged(searchEditBox:GetText())
         end
-        RefocusSearchEditBox()
+        KeepSearchEditBoxUnfocused()
     end)
 
     LayoutDropdown()
@@ -2687,11 +3033,17 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 UI._SyncAppearanceSetOptions()
             end
         end
-        if UI:GetSearchFrame().filterBtn and UI:GetSearchFrame().filterBtn.keyboardFocused then
-            dropdownKeyboardMode = true
-            Utils.SafeCallMethod(UI:GetNavFrame(), "EnableKeyboard", false)
-            Utils.SafeCallMethod(self, "EnableKeyboard", true)
+        if UI._SyncMountOptions then
+            UI._SyncMountOptions()
+        end
+        local filterBtn = UI:GetSearchFrame().filterBtn
+        dropdownKeyboardMode = filterBtn and filterBtn.keyboardFocused or false
+        Utils.SafeCallMethod(UI:GetNavFrame(), "EnableKeyboard", false)
+        Utils.SafeCallMethod(self, "EnableKeyboard", true)
+        if dropdownKeyboardMode then
             SetDropdownFocus(1)
+        else
+            ClearDropdownFocus()
         end
     end)
 
@@ -2699,8 +3051,9 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     dropdown:HookScript("OnHide", function(self)
         ClearDropdownFocus()
         Utils.SafeCallMethod(self, "EnableKeyboard", false)
-        if self._escapedViaKeyboard then
-            self._escapedViaKeyboard = nil
+        local escapedViaKeyboard = self._escapedViaKeyboard
+        self._escapedViaKeyboard = nil
+        if escapedViaKeyboard and not UI._escClosingMenus then
             dropdownKeyboardMode = false
             Utils.SafeCallMethod(UI:GetNavFrame(), "EnableKeyboard", true)
         else
@@ -2762,7 +3115,7 @@ function UI:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             dropdown:ClearAllPoints()
             dropdown:SetPoint("TOPRIGHT", UIParent, "BOTTOMLEFT", right, bottom)
             dropdown:Show()
-            RefocusSearchEditBox()
+            KeepSearchEditBoxUnfocused()
         end
     end)
 

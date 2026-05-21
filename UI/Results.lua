@@ -17,6 +17,7 @@ local CreateFrame = CreateFrame
 local C_Timer = C_Timer
 local InCombatLockdown = InCombatLockdown
 local wipe = wipe
+local band = bit.band
 
 local MAX_BUTTON_POOL = 100
 local RESULT_SHORTCUT = UI.RESULT_SHORTCUT
@@ -457,6 +458,7 @@ local achSearchCurrentQuery = nil
 local achSearchListener
 local achSearchPrewarmed = false
 local ACH_MAX_RESULTS = 8
+local ACHIEVEMENT_CATEGORY_FLAG_GUILD = 0x00000001
 
 local function GetAchievementFilterMode()
     local mode = EasyFind and EasyFind.db and EasyFind.db.achievementFilterMode or "all"
@@ -488,10 +490,11 @@ end
 -- breadcrumbs through each parent before highlighting the achievement
 -- row. GetAchievementCategory + GetCategoryInfo (parentID) walks up
 -- toward -1 (root sentinel).
-local function BuildAchievementSteps(achievementID)
+local function BuildAchievementSteps(achievementID, knownGuildAchievement)
+    local isGuildAchievement = knownGuildAchievement and true or false
     local steps = {
         { buttonFrame = "AchievementMicroButton" },
-        { waitForFrame = "AchievementFrame", tabIndex = 1 },
+        { waitForFrame = "AchievementFrame", tabIndex = isGuildAchievement and 2 or 1 },
     }
     local getCat   = _G["GetAchievementCategory"]
     local getInfo  = _G["GetCategoryInfo"]
@@ -500,7 +503,7 @@ local function BuildAchievementSteps(achievementID)
             waitForFrame = "AchievementFrame",
             achievementID = achievementID,
         }
-        return steps
+        return steps, isGuildAchievement
     end
     local catID = getCat(achievementID)
     if not catID or catID < 0 then
@@ -508,18 +511,22 @@ local function BuildAchievementSteps(achievementID)
             waitForFrame = "AchievementFrame",
             achievementID = achievementID,
         }
-        return steps
+        return steps, isGuildAchievement
     end
     local chain = {}
     local seen = {}
     local current = catID
     while current and current > 0 and not seen[current] do
         seen[current] = true
-        local title, parentID = getInfo(current)
+        local title, parentID, flags = getInfo(current)
         if not title then break end
+        if flags and band(flags, ACHIEVEMENT_CATEGORY_FLAG_GUILD) == ACHIEVEMENT_CATEGORY_FLAG_GUILD then
+            isGuildAchievement = true
+        end
         chain[#chain + 1] = { id = current, name = title }
         current = parentID
     end
+    steps[2].tabIndex = isGuildAchievement and 2 or 1
     -- Reverse so root-most appears first.
     for i = #chain, 1, -1 do
         local cat = chain[i]
@@ -534,18 +541,20 @@ local function BuildAchievementSteps(achievementID)
         waitForFrame = "AchievementFrame",
         achievementID = achievementID,
     }
-    return steps
+    return steps, isGuildAchievement
 end
 
-local function GetOrCreateAchievementEntry(id, name, icon)
+local function GetOrCreateAchievementEntry(id, name, icon, knownGuildAchievement)
     local entry = achievementEntryByID[id]
+    local steps, isGuildAchievement = BuildAchievementSteps(id, knownGuildAchievement)
     if entry then
         if name and entry.name ~= name then
             entry.name = name
             entry.nameLower = slower(name)
         end
         if icon and entry.icon ~= icon then entry.icon = icon end
-        entry.steps = BuildAchievementSteps(id)
+        entry.steps = steps
+        entry.isGuildAchievement = isGuildAchievement or nil
         return entry
     end
     entry = setmetatable({
@@ -553,7 +562,8 @@ local function GetOrCreateAchievementEntry(id, name, icon)
         nameLower = slower(name or ""),
         achievementID = id,
         icon = icon,
-        steps = BuildAchievementSteps(id),
+        steps = steps,
+        isGuildAchievement = isGuildAchievement or nil,
     }, ACHIEVEMENT_MT)
     achievementEntryByID[id] = entry
     return entry
@@ -576,9 +586,9 @@ local function CollectAchievementSearchResults(query, mode)
         if #results >= ACH_MAX_RESULTS then break end
         local id = getID(i)
         if id and not (isStat and isStat(id)) then
-            local _, name, _, completed, _, _, _, _, _, icon = getInfo(id)
+            local _, name, _, completed, _, _, _, _, _, icon, _, isGuild = getInfo(id)
             if name and name ~= "" and AchievementPassesFilter(completed, mode) then
-                results[#results + 1] = GetOrCreateAchievementEntry(id, name, icon)
+                results[#results + 1] = GetOrCreateAchievementEntry(id, name, icon, isGuild)
             end
         end
     end
@@ -1021,6 +1031,7 @@ function UI:OnSearchTextChanged(text, force)
     -- the filter applies regardless of which bucket is on.
     local hidePassives = EasyFind.db.abilityHidePassives
     local hideAchievementHeaders = EasyFind.db.hideAchievementHeaders
+    local hideGuildAchievements = EasyFind.db.hideGuildAchievements
     if filters and (filters.abilities == false or filters.bosses == false
                     or filters.achievements == false or filters.statistics == false
                     or filters.currencies == false or filters.reputations == false
@@ -1029,7 +1040,7 @@ function UI:OnSearchTextChanged(text, force)
                     or filters.gameOptions == false or filters.addonOptions == false
                     or filters.titles == false or filters.gearSets == false
                     or filters.talents == false
-                    or hidePassives or hideAchievementHeaders) then
+                    or hidePassives or hideAchievementHeaders or hideGuildAchievements) then
         wipe(SCRATCH.filteredResults)
         local filtered = SCRATCH.filteredResults
         local fi = 0
@@ -1047,7 +1058,8 @@ function UI:OnSearchTextChanged(text, force)
                 local passiveOff = hidePassives and d and d.category == "Ability" and d.isPassive
                 local headerOff = hideAchievementHeaders and d
                     and d.category == "Achievement Category"
-                if not passiveOff and not headerOff
+                local guildAchievementOff = hideGuildAchievements and self:IsGuildAchievementData(d)
+                if not passiveOff and not headerOff and not guildAchievementOff
                    and (not bucket or (not bucketOff and not parentOff)) then
                     fi = fi + 1
                     filtered[fi] = r
@@ -1121,7 +1133,8 @@ function UI:OnSearchTextChanged(text, force)
             for ai = 1, #achHits do
                 local entry = achHits[ai]
                 local score = ns.Database:ScoreName(entry.nameLower, lowerQ, qLen)
-                if score and score > 0 then
+                if score and score > 0
+                   and not (hideGuildAchievements and self:IsGuildAchievementData(entry)) then
                     combined[#combined + 1] = { data = entry, score = score }
                 end
             end

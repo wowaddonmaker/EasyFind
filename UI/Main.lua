@@ -1972,6 +1972,7 @@ function UI:CreateSearchFrame()
     end
 
     local function StopRepeatAndMaybeRefocus(key)
+        key = Utils.NormalizeKey(key)
         if keyRepeat.IsKey(key) then
             StopKeyRepeat(key)
             RefocusEditBoxAfterNav()
@@ -2009,6 +2010,9 @@ function UI:CreateSearchFrame()
         -- the char into the editbox before OnChar sees the new state.
         if IsAltKeyDown() and navKey and navKey:match("^[A-Z]$") then
             Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+        end
+        if IsAltKeyDown() and (navKey == "J" or navKey == "K") then
+            Utils.SuppressNextAltNavChar(self, navKey)
         end
         UI:HandleCalculatorPasteIntoSearch(self, key)
         if UI:HandleCalculatorOpenShortcut(self, key) then
