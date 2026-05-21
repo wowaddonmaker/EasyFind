@@ -234,18 +234,16 @@ end
 
 local function MarkResultShortcutActivation(row)
     UI._resultShortcutActivation = row or true
-    if C_Timer and C_Timer.After then
-        C_Timer.After(0.15, function()
-            if UI._resultShortcutActivation == row or UI._resultShortcutActivation == true then
-                UI._resultShortcutActivation = nil
-            end
-        end)
-    end
+    Utils.SafeAfter(0.15, function()
+        if UI._resultShortcutActivation == row or UI._resultShortcutActivation == true then
+            UI._resultShortcutActivation = nil
+        end
+    end)
 end
 
 function UI:SuppressQuickFilterLeakedText(leakedText)
     local editBox = UI:GetSearchFrame() and UI:GetSearchFrame().editBox
-    if not (editBox and C_Timer and C_Timer.After) then return end
+    if not editBox then return end
     leakedText = tostring(leakedText or "")
     if leakedText == "" then return end
 
@@ -261,8 +259,8 @@ function UI:SuppressQuickFilterLeakedText(leakedText)
         self:OnSearchTextChanged("", true)
     end
 
-    C_Timer.After(0, clearLeakedText)
-    C_Timer.After(0.03, clearLeakedText)
+    Utils.SafeAfter(0, clearLeakedText)
+    Utils.SafeAfter(0.03, clearLeakedText)
 end
 
 function UI:ActivateVisibleResultShortcut(shortcutIndex)
@@ -600,12 +598,12 @@ local function CollectAchievementSearchResults(query, mode)
     local count = getNum() or 0
     if count == 0 then return {} end
     local results = {}
-    local isStat = ns.Database and ns.Database.IsStatisticAchievement
-        and function(id) return ns.Database:IsStatisticAchievement(id) end
+    local database = ns.Database
+    local canCheckStat = database and database.IsStatisticAchievement
     for i = 1, count do
         if #results >= ACH_MAX_RESULTS then break end
         local id = getID(i)
-        if id and not (isStat and isStat(id)) then
+        if id and not (canCheckStat and database:IsStatisticAchievement(id)) then
             local _, name, _, completed, _, _, _, _, _, icon, _, isGuild = getInfo(id)
             if name and name ~= "" and AchievementPassesFilter(completed, mode) then
                 results[#results + 1] = GetOrCreateAchievementEntry(id, name, icon, isGuild)
@@ -1280,8 +1278,9 @@ local function GetFrameArtworkIcon(frameName)
     if not (frame and frame.GetRegions) then return nil end
 
     local fallback
-    for i = 1, select("#", frame:GetRegions()) do
-        local region = select(i, frame:GetRegions())
+    local regions = { frame:GetRegions() }
+    for i = 1, #regions do
+        local region = regions[i]
         if region and region.GetObjectType and region:GetObjectType() == "Texture" then
             local texture = region:GetTexture()
             local atlas = region.GetAtlas and region:GetAtlas()
@@ -1625,16 +1624,7 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             -- reputation, achievement, settings never enter that branch
             -- and used to inherit stale state.
             if resultRow.icon then
-                resultRow.icon.mountID = nil
-                resultRow.icon.toyItemID = nil
-                resultRow.icon.petID = nil
-                resultRow.icon.spellID = nil
-                resultRow.icon.outfitID = nil
-                resultRow.icon.heirloomItemID = nil
-                resultRow.icon.gearSetID = nil
-                resultRow.icon.bagItemID = nil
-                resultRow.icon.achievementID = nil
-                resultRow.icon.lootItemID = nil
+                UI.ClearRowIconLeafIDs(resultRow.icon)
             end
             -- Secure action attributes. Cache the (type, value) we last
             -- applied to this row so we only re-issue SetAttribute when
@@ -1677,11 +1667,11 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     -- applying the new one so stale attributes from the
                     -- prior data don't leak through.
                     if resultRow._lastAttrKey then
-                        resultRow:SetAttribute(resultRow._lastAttrKey, nil)
+                        Utils.SafeCallMethod(resultRow, "SetAttribute", resultRow._lastAttrKey, nil)
                     end
-                    resultRow:SetAttribute("type", newType)
+                    Utils.SafeCallMethod(resultRow, "SetAttribute", "type", newType)
                     if newKey then
-                        resultRow:SetAttribute(newKey, newVal)
+                        Utils.SafeCallMethod(resultRow, "SetAttribute", newKey, newVal)
                     end
                     resultRow._lastAttrType = newType
                     resultRow._lastAttrKey  = newKey
@@ -2447,12 +2437,8 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
                     resultRow.icon:ClearAllPoints()
                     resultRow.icon:SetPoint("RIGHT", resultRow, "RIGHT", -5, 0)
                     resultRow.icon:Show()
+                    UI.ClearRowIconLeafIDs(resultRow.icon)
                     resultRow.icon.lootItemID = data.itemID
-                    resultRow.icon.mountID = nil
-                    resultRow.icon.toyItemID = nil
-                    resultRow.icon.petID = nil
-                    resultRow.icon.spellID = nil
-                    resultRow.icon.outfitID = nil
                     resultRow.icon:SetVertexColor(1, 1, 1, 1)
                 else
                     UI:SetRowIcon(resultRow, "hidden", nil, rowIconSize)
@@ -3247,12 +3233,12 @@ function UI:ShowHierarchicalResults(hierarchical, preserveScroll)
             resultRow._efContentTop = nil
             resultRow._efContentBottom = nil
             if not InCombatLockdown() then
-                resultRow:SetAttribute("type", nil)
-                resultRow:SetAttribute("toy", nil)
-                resultRow:SetAttribute("action", nil)
-                resultRow:SetAttribute("spell", nil)
-                resultRow:SetAttribute("macro", nil)
-                resultRow:SetAttribute("macrotext", nil)
+                Utils.SafeCallMethod(resultRow, "SetAttribute", "type", nil)
+                Utils.SafeCallMethod(resultRow, "SetAttribute", "toy", nil)
+                Utils.SafeCallMethod(resultRow, "SetAttribute", "action", nil)
+                Utils.SafeCallMethod(resultRow, "SetAttribute", "spell", nil)
+                Utils.SafeCallMethod(resultRow, "SetAttribute", "macro", nil)
+                Utils.SafeCallMethod(resultRow, "SetAttribute", "macrotext", nil)
             end
             if resultRow.headerGrad then resultRow.headerGrad:Hide() end
             if resultRow.headerTab then resultRow.headerTab:Hide() end

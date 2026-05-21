@@ -11,7 +11,6 @@ local pcall = Utils.pcall
 
 local YELLOW_HIGHLIGHT = ns.YELLOW_HIGHLIGHT
 local CreateFrame = CreateFrame
-local C_Timer = C_Timer
 local GameTooltip = GameTooltip
 local GameTooltip_Hide = GameTooltip_Hide
 local hooksecurefunc = hooksecurefunc
@@ -101,7 +100,7 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
         return
     end
 
-    C_Timer.After(0, function()
+    Utils.SafeAfter(0, function()
         if ns.MapSearch then
             ns.MapSearch:ClearAll()
             ns.MapSearch:ClearZoneHighlight()
@@ -240,7 +239,7 @@ local function RestoreActivePinsOnMapShow(self)
         local currentMapID = WorldMapFrame:GetMapID()
         local playerMapID = GetBestMapForUnit("player")
         if currentMapID == activePinState.mapID and playerMapID == activePinState.mapID then
-            C_Timer.After(0, function()
+            Utils.SafeAfter(0, function()
                 if activePinState and activePinState.instances then
                     self:ShowMultipleWaypoints(activePinState.instances)
                 elseif activePinState then
@@ -254,7 +253,7 @@ local function RestoreActivePinsOnMapShow(self)
     end
 
     if not activePinState and EasyFind.db.alwaysShowRares then
-        C_Timer.After(0, function()
+        Utils.SafeAfter(0, function()
             self:UpdateRareTracking()
         end)
     end
@@ -267,7 +266,7 @@ local function ClearTransientMapState(self)
 end
 
 local function ShowPendingWaypoint(self, waypoint)
-    C_Timer.After(0.1, function()
+    Utils.SafeAfter(0.1, function()
         self:ClearZoneHighlight()
         self:ShowWaypointAt(waypoint.x, waypoint.y, waypoint.icon, waypoint.category)
     end)
@@ -330,7 +329,7 @@ local function HandlePendingZoneMapChange(self, savedPendingZone, newMapID, newM
         end
     else
         DebugPrint("[EasyFind] OnMapChanged - reguiding to:", savedPendingZone)
-        C_Timer.After(0.1, function()
+        Utils.SafeAfter(0.1, function()
             self:HighlightZoneOnMap(savedPendingZone)
         end)
     end
@@ -355,7 +354,7 @@ local function HandleIdleMapChange(self, newMapID)
     end
     self:ClearZoneHighlight()
     if EasyFind.db.alwaysShowRares then
-        C_Timer.After(0, function() self:UpdateRareTracking() end)
+        Utils.SafeAfter(0, function() self:UpdateRareTracking() end)
     end
 end
 
@@ -935,6 +934,5 @@ function MapSearch:ClearAll()
     -- Notify the UI search bar to refresh its clear-button state.
     self:RefreshAllClearButtons()
 end
-
 
 

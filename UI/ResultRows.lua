@@ -1454,7 +1454,19 @@ function UI:CreateResultButton(index)
             PickupSpell(spellID)
         end
     end
+    local function CanPickupRowAction(d)
+        if not d then return false end
+        if d.mountID then return UI:IsMountSummonable(d) end
+        if d.toyItemID then return not d.isToyboxOnly end
+        if d.petID then return true end
+        if d.outfitID or d.macroIndex then return true end
+        if d.spellID then
+            return d.category == "Ability" and not UI:IsSpellbookOnlyAbility(d)
+        end
+        return (d.bagID and d.bagSlot) or d.itemID
+    end
     local function PickupRowAction(d)
+        if not CanPickupRowAction(d) then return end
         if InCombatLockdown() then return end
         ClearCursor()
         if d.mountID and C_MountJournal and C_MountJournal.GetMountInfoByID then
@@ -1488,7 +1500,7 @@ function UI:CreateResultButton(index)
     resultRow:HookScript("OnMouseDown", function(self, button)
         if button ~= "LeftButton" then return end
         if not IsShiftKeyDown() then return end
-        if not self.data then return end
+        if not CanPickupRowAction(self.data) then return end
         local x, y = GetCursorPosition()
         self._dragOriginX, self._dragOriginY = x, y
     end)
@@ -1541,8 +1553,8 @@ function UI:CreateResultButton(index)
         -- skip-navigation flag here (not waiting for OnUpdate) is what
         -- prevents PostClick from closing the window before OnUpdate
         -- has had a chance to detect movement and pick up the action.
-        if d and IsShiftKeyDown() then
-            self:SetAttribute("type", nil)
+        if d and IsShiftKeyDown() and CanPickupRowAction(d) then
+            Utils.SafeCallMethod(self, "SetAttribute", "type", nil)
             self._lastAttrType = nil
             self._lastAttrKey = nil
             self._lastAttrVal = nil
@@ -1558,12 +1570,13 @@ function UI:CreateResultButton(index)
             and UI:GetBagItemActionKind(d)
         local suppressSecureClick = d and (
             (sourceModifierHeld and (d.macroIndex or d.mountID or d.toyItemID
-                or d.outfitID or (d.itemID and d.category == "Bag")))
+                or d.outfitID or (d.spellID and d.category == "Ability")
+                or (d.itemID and d.category == "Bag")))
             or (d.mountID and (ctrlHeld or not UI:IsMountSummonable(d)))
             or (ctrlHeld and bagItemKind == "equip")
         )
         if suppressSecureClick then
-            self:SetAttribute("type", nil)
+            Utils.SafeCallMethod(self, "SetAttribute", "type", nil)
             self._lastAttrType = nil
             self._lastAttrKey = nil
             self._lastAttrVal = nil
@@ -1580,13 +1593,13 @@ function UI:CreateResultButton(index)
         local tempSlot = ns.Database and ns.Database:FindEmptyActionSlot()
         if not tempSlot then
             self._outfitSlot = nil
-            self:SetAttribute("type", nil)
-            self:SetAttribute("action", nil)
+            Utils.SafeCallMethod(self, "SetAttribute", "type", nil)
+            Utils.SafeCallMethod(self, "SetAttribute", "action", nil)
             return
         end
         self._outfitSlot = tempSlot
         self._outfitID = outfitID
-        self:SetAttribute("action", tempSlot)
+        Utils.SafeCallMethod(self, "SetAttribute", "action", tempSlot)
         if C_TransmogOutfitInfo and C_TransmogOutfitInfo.PickupOutfit then
             C_TransmogOutfitInfo.PickupOutfit(outfitID)
             PlaceAction(tempSlot)
@@ -1594,8 +1607,8 @@ function UI:CreateResultButton(index)
             if not HasAction(tempSlot) then
                 self._outfitSlot = nil
                 self._outfitID = nil
-                self:SetAttribute("type", nil)
-                self:SetAttribute("action", nil)
+                Utils.SafeCallMethod(self, "SetAttribute", "type", nil)
+                Utils.SafeCallMethod(self, "SetAttribute", "action", nil)
             end
         end
     end)
@@ -1636,7 +1649,7 @@ function UI:CreateResultButton(index)
                 self._outfitID = nil
             end
             -- Delay slot cleanup one frame so UseAction fully completes
-            C_Timer.After(0, function()
+            Utils.SafeAfter(0, function()
                 -- Read actual cooldown duration if available
                 local start, dur = GetActionCooldown(slot)
                 if start and dur and dur > 0 then
@@ -1890,9 +1903,17 @@ function UI:CreateResultButton(index)
                 AnchorTooltipAtCursor(GameTooltip, self)
                 GameTooltip:SetToyByItemID(toyItemID)
                 GameTooltip:Show()
-                self.toyTooltipTicker = C_Timer.NewTicker(1, function()
-                    if GameTooltip:IsOwned(self) then
-                        GameTooltip:SetToyByItemID(toyItemID)
+                self.toyTooltipTicker = C_Timer.NewTicker(1, function(ticker)
+                    local ok = Utils.xpcall(function()
+                        if GameTooltip:IsOwned(self) then
+                            GameTooltip:SetToyByItemID(toyItemID)
+                        end
+                    end, Utils.ErrorHandler)
+                    if not ok then
+                        ticker:Cancel()
+                        if self.toyTooltipTicker == ticker then
+                            self.toyTooltipTicker = nil
+                        end
                     end
                 end)
             -- Pet tooltip (use BattlePetToolTip via the link, since GameTooltip

@@ -770,51 +770,51 @@ end
 
 local function GetActionHint(data)
     if not data then return nil end
-    if data.calculatorResult then return "Select result for Ctrl+C" end
-    if data.quickFilterDef then return "Select to filter results" end
-    if data.titleID then return "Click apply title" end
+    if data.calculatorResult then return "Select: copy result" end
+    if data.quickFilterDef then return "Select: filter results" end
+    if data.titleID then return "Click: apply title" end
     if data.mountID then
         if IsMountSummonable(data) then
-            return "Click summon | Alt journal | Ctrl preview | Shift drag"
+            return "Click: summon | Alt: journal | Ctrl: preview | Shift: drag"
         end
-        return "Click journal | Ctrl preview | Shift drag"
+        return "Click: journal | Ctrl: preview"
     end
-    if data.petID or data.speciesID then return "Click summon | Alt journal | Shift drag" end
+    if data.petID or data.speciesID then return "Click: summon | Alt: journal | Shift: drag" end
     if data.toyItemID then
-        return data.isToyboxOnly and "Click Toy Box" or "Click use | Alt Toy Box | Shift drag"
+        return data.isToyboxOnly and "Click: toy box" or "Click: use | Alt: toy box | Shift: drag"
     end
-    if data.heirloomItemID then return "Click add heirloom to bags" end
-    if data.outfitID then return "Click wear | Alt transmogrifier | Shift drag" end
-    if data.gearSetID then return "Click equip gear set" end
-    if data.transmogSetID then return "Click wardrobe | Ctrl try on" end
+    if data.heirloomItemID then return "Click: add to bags" end
+    if data.outfitID then return "Click: wear | Alt: transmog | Shift: drag" end
+    if data.gearSetID then return "Click: equip gear set" end
+    if data.transmogSetID then return "Click: wardrobe | Ctrl: try on" end
     if data.spellID and data.category == "Ability" then
-        return IsSpellbookOnlyAbility(data) and "Click spellbook" or "Click cast | Shift drag"
+        return IsSpellbookOnlyAbility(data) and "Click: spellbook" or "Click: cast | Alt: spellbook | Shift: drag"
     end
-    if data.macroIndex then return "Click run | Alt edit | Shift drag" end
+    if data.macroIndex then return "Click: run | Alt: edit | Shift: drag" end
     if data.itemID and data.category == "Bag" then
         local actionKind = UI:GetBagItemActionKind(data)
         if actionKind == "equip" then
-            return "Click equip | Alt bags | Ctrl try on | Shift drag"
+            return "Click: equip | Alt: bags | Ctrl: try on | Shift: drag"
         elseif actionKind == "open" then
-            return "Click open | Alt bags | Shift drag"
+            return "Click: open | Alt: bags | Shift: drag"
         elseif actionKind == "use" then
-            return "Click use | Alt bags | Shift drag"
+            return "Click: use | Alt: bags | Shift: drag"
         end
-        return "Click bags | Shift drag"
+        return "Click: bags | Shift: drag"
     end
     if data.mapSearchResult then
-        if data.isZone then return "Click open map" end
-        return "Click pin on map"
+        if data.isZone then return "Click: open map" end
+        return "Click: pin on map"
     end
     if data.encounterID and data.category == "Boss" then
-        return "Click Encounter Journal"
+        return "Click: encounter journal"
     end
     if (data.settingType == "checkbox" or data.settingType == "checkboxSlider")
        and data.settingVariable then
-        return "Click toggle | Alt settings"
+        return "Click: toggle | Alt: settings"
     end
     if data.settingVariable or data.bindingAction then
-        return "Click settings"
+        return "Click: settings"
     end
     return nil
 end
@@ -977,22 +977,27 @@ local function ClearResultTooltips()
     end
 end
 
+local function ClearRowIconLeafIDs(icon)
+    icon.mountID = nil
+    icon.toyItemID = nil
+    icon.petID = nil
+    icon.spellID = nil
+    icon.outfitID = nil
+    icon.heirloomItemID = nil
+    icon.gearSetID = nil
+    icon.bagItemID = nil
+    icon.achievementID = nil
+    icon.lootItemID = nil
+end
+UI.ClearRowIconLeafIDs = ClearRowIconLeafIDs
+
 local function SetRowIcon(btn, kind, value, iconSize)
     local sz = iconSize or 16
     btn.icon:SetTexture(nil)
     btn.icon:SetTexCoord(0, 1, 0, 1)
     btn.icon:SetVertexColor(1, 1, 1, 1)
     -- Clear mount/toy/pet tooltip data and cooldown from previous render
-    btn.icon.mountID = nil
-    btn.icon.toyItemID = nil
-    btn.icon.petID = nil
-    btn.icon.spellID = nil
-    btn.icon.outfitID = nil
-    btn.icon.heirloomItemID = nil
-    btn.icon.gearSetID = nil
-    btn.icon.bagItemID = nil
-    btn.icon.achievementID = nil
-    btn.icon.lootItemID = nil
+    ClearRowIconLeafIDs(btn.icon)
     if btn.iconCooldown then btn.iconCooldown:Hide() end
     if btn._lockOverlay then btn._lockOverlay:Hide() end
     if kind == "atlas" then
@@ -1323,8 +1328,8 @@ function UI:Initialize()
     -- Block for two frames (enough for WoW's auto-focus to fire and get rejected).
     searchFrame.editBox.blockFocus = true
     searchFrame.editBox:ClearFocus()
-    C_Timer.After(0, function()
-        C_Timer.After(0, function()
+    Utils.SafeAfter(0, function()
+        Utils.SafeAfter(0, function()
             if searchFrame and searchFrame.editBox then
                 searchFrame.editBox.blockFocus = nil
                 searchFrame.editBox:ClearFocus()
@@ -1335,7 +1340,7 @@ function UI:Initialize()
     -- First-run wizard for new installs (sleek central modal, no in-place
     -- overlay). Bar stays hidden until the user finishes the tutorial.
     if not EasyFind.db.tutorialDone then
-        C_Timer.After(0.3, function()
+        Utils.SafeAfter(0.3, function()
             if ns.Wizard and ns.Wizard.Show then ns.Wizard:Show() end
         end)
     end
@@ -1586,7 +1591,7 @@ function UI:CreateSearchFrame()
             -- Defer hide by one frame so pending pin/result clicks (LeftButtonDown)
             -- can fire before the results frame is hidden.  Without the delay the
             -- parent frame hides and the child button never receives its OnClick.
-            C_Timer.After(0, function()
+            Utils.SafeAfter(0, function()
                 if selectingResult then return end
                 if searchFrame.editBox:HasFocus() then return end
                 if navFrame and navFrame:IsKeyboardEnabled() then return end
@@ -2587,7 +2592,7 @@ function UI:CreateSearchFrame()
             if hoverZone:IsMouseOver() or searchFrame:IsMouseOver() then return end
             smartShowVisible = false
             UIFrameFadeOut(searchFrame, 0.25, searchFrame:GetAlpha(), 0)
-            C_Timer.After(0.25, function()
+            Utils.SafeAfter(0.25, function()
                 if not smartShowVisible and EasyFind.db.smartShow then
                     searchFrame:SetAlpha(0)
                 end
@@ -2710,7 +2715,7 @@ function UI:Focus()
         searchFrame.editBox:ClearFocus()
     else
         -- Delay by one frame so the keybind key-press doesn't get typed
-        C_Timer.After(0, function()
+        Utils.SafeAfter(0, function()
             if searchFrame and searchFrame:IsShown() then
                 searchFrame.editBox.blockFocus = nil
                 searchFrame.editBox:SetFocus()
@@ -2744,14 +2749,14 @@ function UI:Show(andFocus)
     if EasyFind.db.smartShow and not EasyFind.db.autoHide then
         searchFrame.hoverZone:Show()
         searchFrame.smartShowFadeIn()
-        C_Timer.After(1.5, function()
+        Utils.SafeAfter(1.5, function()
             if EasyFind.db.smartShow then
                 searchFrame.smartShowFadeOut()
             end
         end)
     end
     if andFocus or EasyFind.db.autoHide then
-        C_Timer.After(0, function()
+        Utils.SafeAfter(0, function()
             if searchFrame:IsShown() then
                 searchFrame.editBox.blockFocus = nil
                 searchFrame.editBox:SetFocus()
@@ -2799,13 +2804,13 @@ function UI:HandleEscape()
         -- subsequent SetFocus on an already-focused editbox is a no-op.
         editBox.blockFocus = nil
         editBox:SetFocus()
-        C_Timer.After(0, function()
+        Utils.SafeAfter(0, function()
             if not searchFrame or not searchFrame:IsShown() or not editBox then return end
             if editBox:HasFocus() then return end
             editBox.blockFocus = nil
             editBox:SetFocus()
         end)
-        C_Timer.After(0.05, function()
+        Utils.SafeAfter(0.05, function()
             if not searchFrame or not searchFrame:IsShown() or not editBox then return end
             if editBox:HasFocus() then return end
             editBox.blockFocus = nil
@@ -2989,7 +2994,7 @@ function UI:ToggleFocus()
         self:Hide()
     else
         self:Show(false)
-        C_Timer.After(0, function()
+        Utils.SafeAfter(0, function()
             if searchFrame and searchFrame:IsShown() then
                 searchFrame.editBox.blockFocus = nil
                 searchFrame.editBox:SetFocus()
@@ -3111,7 +3116,7 @@ function UI:UpdateSmartShow()
         if not inCombat then
             searchFrame:Show()
             searchFrame.smartShowFadeIn()
-            C_Timer.After(1.5, function()
+            Utils.SafeAfter(1.5, function()
                 if EasyFind.db.smartShow then searchFrame.smartShowFadeOut() end
             end)
         end

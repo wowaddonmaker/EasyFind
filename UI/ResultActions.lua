@@ -11,7 +11,6 @@ local slower = Utils.slower
 local mfloor = Utils.mfloor
 
 local CreateFrame = CreateFrame
-local C_Timer = C_Timer
 local InCombatLockdown = InCombatLockdown
 local function ExtractSlot(value)
     return value.slotIndex
@@ -588,10 +587,11 @@ local function GetMountJournalLink(data)
     return nil
 end
 
+local DRESSUP_FRAME_NAMES = { "DressUpFrame", "SideDressUpFrame", "TransmogAndMountDressupFrame" }
+
 local function IsAnyDressUpFrameShown()
-    local frames = { "DressUpFrame", "SideDressUpFrame", "TransmogAndMountDressupFrame" }
-    for _, frameName in ipairs(frames) do
-        local frame = _G[frameName]
+    for i = 1, #DRESSUP_FRAME_NAMES do
+        local frame = _G[DRESSUP_FRAME_NAMES[i]]
         if frame and frame.IsShown and frame:IsShown() then return true end
     end
     return false
@@ -605,6 +605,12 @@ local function LoadDressUpUI()
     end
 end
 
+local function TryDressUp(fn, arg)
+    if not fn then return false end
+    local ok = pcall(fn, arg)
+    return ok and IsAnyDressUpFrameShown()
+end
+
 local function TryPreviewMountInDressUp(data)
     if not (data and data.mountID) then return false end
     local spellID = ResolveMountSpellID(data)
@@ -615,30 +621,16 @@ local function TryPreviewMountInDressUp(data)
 
     local dressUpMountLink = _G["DressUpMountLink"]
     if dressUpMountLink then
-        if spellLink then
-            local ok = pcall(dressUpMountLink, spellLink)
-            if ok and IsAnyDressUpFrameShown() then return true end
-        end
-        if mountLink and mountLink ~= spellLink then
-            local ok = pcall(dressUpMountLink, mountLink)
-            if ok and IsAnyDressUpFrameShown() then return true end
-        end
+        if spellLink and TryDressUp(dressUpMountLink, spellLink) then return true end
+        if mountLink and mountLink ~= spellLink and TryDressUp(dressUpMountLink, mountLink) then return true end
     end
 
-    local dressUpSpellLink = _G["DressUpSpellLink"]
-    if dressUpSpellLink and spellLink then
-        local ok = pcall(dressUpSpellLink, spellLink)
-        if ok and IsAnyDressUpFrameShown() then return true end
-    end
+    if spellLink and TryDressUp(_G["DressUpSpellLink"], spellLink) then return true end
 
     local dressUpMount = _G["DressUpMount"]
     if dressUpMount then
-        local ok = pcall(dressUpMount, data.mountID)
-        if ok and IsAnyDressUpFrameShown() then return true end
-        if spellID then
-            ok = pcall(dressUpMount, spellID)
-            if ok and IsAnyDressUpFrameShown() then return true end
-        end
+        if TryDressUp(dressUpMount, data.mountID) then return true end
+        if spellID and TryDressUp(dressUpMount, spellID) then return true end
     end
 
     return false
@@ -646,21 +638,16 @@ end
 
 function UI:PreviewMountInDressUp(data)
     if TryPreviewMountInDressUp(data) then return true end
-    if C_Timer and C_Timer.After then
-        local previewData = {
-            mountID = data and data.mountID,
-            spellID = data and ResolveMountSpellID(data),
-            name = data and data.name,
-        }
+    if Utils.SafeAfter then
         local function retry(attemptsLeft)
-            if TryPreviewMountInDressUp(previewData) or IsAnyDressUpFrameShown() then return end
+            if TryPreviewMountInDressUp(data) or IsAnyDressUpFrameShown() then return end
             if attemptsLeft > 0 then
-                C_Timer.After(0.05, function() retry(attemptsLeft - 1) end)
+                Utils.SafeAfter(0.05, function() retry(attemptsLeft - 1) end)
             else
-                UI:OpenMountInJournal(previewData)
+                UI:OpenMountInJournal(data)
             end
         end
-        C_Timer.After(0, function() retry(2) end)
+        Utils.SafeAfter(0, function() retry(2) end)
         return true
     end
     return false
@@ -761,7 +748,7 @@ function UI:OpenMountInJournal(data)
             local micro = _G["CollectionsMicroButton"]
             if micro then ClickButton(micro) end
             if attempt < 30 then
-                C_Timer.After(0.05, function() step(attempt + 1) end)
+                Utils.SafeAfter(0.05, function() step(attempt + 1) end)
             end
             return
         end
@@ -771,7 +758,7 @@ function UI:OpenMountInJournal(data)
                 and highlight:GetTabButton("CollectionsJournal", MOUNT_TAB)
             if tab then ClickButton(tab) end
             if attempt < 30 then
-                C_Timer.After(0, function() step(attempt + 1) end)
+                Utils.SafeAfter(0, function() step(attempt + 1) end)
             end
             return
         end
@@ -779,7 +766,7 @@ function UI:OpenMountInJournal(data)
         local row = self:RevealMountInJournal(data)
         if row and self:HighlightRevealedFrame(row) then return end
         if attempt < 30 then
-            C_Timer.After(0.05, function() step(attempt + 1) end)
+            Utils.SafeAfter(0.05, function() step(attempt + 1) end)
         end
     end
 
@@ -1075,7 +1062,7 @@ function UI:OpenOutfitInTransmog(data)
         if not (TransmogFrame and TransmogFrame:IsShown()) then
             showTransmogFrame()
             if attempt < 30 then
-                C_Timer.After(0.05, function() step(attempt + 1) end)
+                Utils.SafeAfter(0.05, function() step(attempt + 1) end)
             end
             return
         end
@@ -1086,7 +1073,7 @@ function UI:OpenOutfitInTransmog(data)
         local row = self:RevealOutfitInTransmog(data)
         if row and self:HighlightRevealedFrame(row) then return end
         if attempt < 30 then
-            C_Timer.After(0.05, function() step(attempt + 1) end)
+            Utils.SafeAfter(0.05, function() step(attempt + 1) end)
         end
     end
 
@@ -1106,7 +1093,7 @@ function UI:OpenToyInToyBox(data)
             local micro = _G["CollectionsMicroButton"]
             if micro then ClickButton(micro) end
             if attempt < 30 then
-                C_Timer.After(0.05, function() step(attempt + 1) end)
+                Utils.SafeAfter(0.05, function() step(attempt + 1) end)
             end
             return
         end
@@ -1116,14 +1103,14 @@ function UI:OpenToyInToyBox(data)
                 and highlight:GetTabButton("CollectionsJournal", TOY_TAB)
             if tab then ClickButton(tab) end
             if attempt < 30 then
-                C_Timer.After(0, function() step(attempt + 1) end)
+                Utils.SafeAfter(0, function() step(attempt + 1) end)
             end
             return
         end
         local row = self:RevealToyInToyBox(data)
         if row and self:HighlightRevealedFrame(row) then return end
         if attempt < 30 then
-            C_Timer.After(0.05, function() step(attempt + 1) end)
+            Utils.SafeAfter(0.05, function() step(attempt + 1) end)
         end
     end
 
@@ -1145,7 +1132,7 @@ function UI:OpenTalentInTalentsTab(data)
         if not (frame and frame:IsShown()) then
             UI:OpenPlayerSpellsFrame(TALENTS_TAB)
             if attempt < 30 then
-                C_Timer.After(0.05, function() ensureFrameOnTab(attempt + 1) end)
+                Utils.SafeAfter(0.05, function() ensureFrameOnTab(attempt + 1) end)
             end
             return
         end
@@ -1155,7 +1142,7 @@ function UI:OpenTalentInTalentsTab(data)
                 and highlight:GetTabButton("PlayerSpellsFrame", TALENTS_TAB)
             if tab then ClickButton(tab) end
             if attempt < 30 then
-                C_Timer.After(0, function() ensureFrameOnTab(attempt + 1) end)
+                Utils.SafeAfter(0, function() ensureFrameOnTab(attempt + 1) end)
             end
             return
         end
@@ -1227,10 +1214,10 @@ function UI:OpenTalentInTalentsTab(data)
                 return
             end
             if tries < 20 then
-                C_Timer.After(0.05, showSpyglass)
+                Utils.SafeAfter(0.05, showSpyglass)
             end
         end
-        C_Timer.After(0, showSpyglass)
+        Utils.SafeAfter(0, showSpyglass)
     end
 
     ensureFrameOnTab(1)
@@ -1267,14 +1254,14 @@ function UI:OpenAbilityInSpellbook(data)
         local frame = _G["PlayerSpellsFrame"]
         if needsRetry then
             if attempt < 36 then
-                C_Timer.After(0.05, function() reveal(attempt + 1) end)
+                Utils.SafeAfter(0.05, function() reveal(attempt + 1) end)
             end
             return
         end
         local root = frame and frame.SpellBookFrame
         if not root or not root:IsShown() then
             if attempt < 36 then
-                C_Timer.After(0.05, function() reveal(attempt + 1) end)
+                Utils.SafeAfter(0.05, function() reveal(attempt + 1) end)
             end
             return
         end
@@ -1289,7 +1276,7 @@ function UI:OpenAbilityInSpellbook(data)
                 pagesAdvanced = 0
                 ClickButton(tab)
                 if attempt < 36 then
-                    C_Timer.After(0, function() reveal(attempt + 1) end)
+                    Utils.SafeAfter(0, function() reveal(attempt + 1) end)
                 end
                 return
             end
@@ -1301,7 +1288,7 @@ function UI:OpenAbilityInSpellbook(data)
             triedElementScroll = true
             targetElement = FindSpellElementInSection(paged, data)
             if targetElement and ScrollSpellbookToElement(paged, targetElement) then
-                C_Timer.After(0, function() reveal(attempt + 1) end)
+                Utils.SafeAfter(0, function() reveal(attempt + 1) end)
                 return
             end
         end
@@ -1343,22 +1330,22 @@ function UI:OpenAbilityInSpellbook(data)
             RewindSpellbookToFirstPage(frame)
             rewound = true
             pagesAdvanced = 0
-            C_Timer.After(0, function() reveal(attempt + 1) end)
+            Utils.SafeAfter(0, function() reveal(attempt + 1) end)
             return
         end
 
         if pagesAdvanced < MAX_PAGES
            and ClickSpellbookPage(frame, "NextPageButton") then
             pagesAdvanced = pagesAdvanced + 1
-            C_Timer.After(0, function() reveal(attempt + 1) end)
+            Utils.SafeAfter(0, function() reveal(attempt + 1) end)
             return
         end
         if attempt < 36 then
-            C_Timer.After(0.05, function() reveal(attempt + 1) end)
+            Utils.SafeAfter(0.05, function() reveal(attempt + 1) end)
         end
     end
 
-    C_Timer.After(0.05, function() reveal(1) end)
+    Utils.SafeAfter(0.05, function() reveal(1) end)
 end
 
 local function GetPetJournalFrame()
@@ -1712,7 +1699,7 @@ function UI:SelectResult(data, forceGuide)
     end
 
     if data.spellID then
-        if forceGuide or UI:IsSpellbookOnlyAbility(data) then
+        if forceGuide or UI:IsSourceModifierHeld() or UI:IsSpellbookOnlyAbility(data) then
             self:OpenAbilityInSpellbook(data)
         end
         return
@@ -2013,7 +2000,7 @@ function UI:DirectOpen(data)
                         -- Skip the tab step, continue from the step after it.
                         -- Defer one frame so the ScrollBox populates its items.
                         local resume = i + 2
-                        C_Timer.After(0, function() executeFrom(resume) end)
+                        Utils.SafeAfter(0, function() executeFrom(resume) end)
                         return
                     end
                     -- Boss navigation: set tier + dungeon/raid tab before showing
@@ -2031,7 +2018,7 @@ function UI:DirectOpen(data)
                         local tabBtn = Highlight:GetTabButton("EncounterJournal", tabIdx)
                         if tabBtn then ClickButton(tabBtn) end
                         local resume = i + 2
-                        C_Timer.After(0, function() executeFrom(resume) end)
+                        Utils.SafeAfter(0, function() executeFrom(resume) end)
                         return
                     end
                 end
@@ -2056,7 +2043,7 @@ function UI:DirectOpen(data)
                     UI:OpenCharacterFrame(1)
                     local tabIdx = step.tabIndex
                     local resume = i + 1
-                    C_Timer.After(0.05, function()
+                    Utils.SafeAfter(0.05, function()
                         UI:OpenCharacterFrame(tabIdx)
                         executeFrom(resume)
                     end)
@@ -2084,13 +2071,13 @@ function UI:DirectOpen(data)
                         tabClickAttempts[key] = (tabClickAttempts[key] or 0) + 1
                         if tabClickAttempts[key] <= 6 then
                             local resume = i
-                            C_Timer.After(0.05, function() executeFrom(resume) end)
+                            Utils.SafeAfter(0.05, function() executeFrom(resume) end)
                             return
                         end
                     end
 
                     local resume = i + 1
-                    C_Timer.After(0.05, function() executeFrom(resume) end)
+                    Utils.SafeAfter(0.05, function() executeFrom(resume) end)
                     return
                 end
             end
@@ -2115,7 +2102,7 @@ function UI:DirectOpen(data)
                     categoryClickAttempts[key] = (categoryClickAttempts[key] or 0) + 1
                     if categoryClickAttempts[key] <= 6 then
                         local resume = i
-                        C_Timer.After(0.05, function() executeFrom(resume) end)
+                        Utils.SafeAfter(0.05, function() executeFrom(resume) end)
                         return
                     end
                 end
@@ -2123,7 +2110,7 @@ function UI:DirectOpen(data)
                 local nextStep = steps[i + 1]
                 if nextStep and (nextStep.achievementCategory or nextStep.statisticsCategory) then
                     local resume = i + 1
-                    C_Timer.After(0.05, function() executeFrom(resume) end)
+                    Utils.SafeAfter(0.05, function() executeFrom(resume) end)
                     return
                 end
             end
@@ -2145,7 +2132,7 @@ function UI:DirectOpen(data)
                 -- rebuild with the new tier's instances before we look up
                 -- the target instance by name.
                 local resume = i + 1
-                C_Timer.After(0, function() executeFrom(resume) end)
+                Utils.SafeAfter(0, function() executeFrom(resume) end)
                 return
             end
 
@@ -2174,7 +2161,7 @@ function UI:DirectOpen(data)
                 local nextStep = steps[i + 1]
                 if nextStep and (nextStep.ejBoss or nextStep.ejLootTab) then
                     local resume = i + 1
-                    C_Timer.After(0.05, function() executeFrom(resume) end)
+                    Utils.SafeAfter(0.05, function() executeFrom(resume) end)
                     return
                 end
             end
@@ -2207,7 +2194,7 @@ function UI:DirectOpen(data)
                 local nextStep = steps[i + 1]
                 if nextStep and nextStep.ejLootTab then
                     local resume = i + 1
-                    C_Timer.After(0.05, function() executeFrom(resume) end)
+                    Utils.SafeAfter(0.05, function() executeFrom(resume) end)
                     return
                 end
             end
@@ -2232,7 +2219,7 @@ function UI:DirectOpen(data)
                 if scrollBox then
                     local targetID = step.ejLootItem
                     local itemName = step.ejLootItemName
-                    C_Timer.After(0.05, function()
+                    Utils.SafeAfter(0.05, function()
                         local itemBtn = Utils.ScrollBoxFindButton(scrollBox, function(btn)
                             local edata = btn.GetElementData and btn:GetElementData()
                             if edata and edata.itemID == targetID then return true end
@@ -2252,10 +2239,10 @@ function UI:DirectOpen(data)
                                 if itemBtn:IsMouseOver() then
                                     Highlight:HideHighlight()
                                 else
-                                    C_Timer.After(0.1, checkHover)
+                                    Utils.SafeAfter(0.1, checkHover)
                                 end
                             end
-                            C_Timer.After(0.3, checkHover)
+                            Utils.SafeAfter(0.3, checkHover)
                         end
                     end)
                 end
@@ -2281,7 +2268,7 @@ function UI:DirectOpen(data)
                 end
                 if i < executeCount then
                     local resume = i + 1
-                    C_Timer.After(0.1, function() executeFrom(resume) end)
+                    Utils.SafeAfter(0.1, function() executeFrom(resume) end)
                     return
                 end
             end
@@ -2291,7 +2278,7 @@ function UI:DirectOpen(data)
                 local scf = _G["WardrobeCollectionFrame"]
                     and _G["WardrobeCollectionFrame"].SetsCollectionFrame
                 if scf then
-                    C_Timer.After(0.1, function()
+                    Utils.SafeAfter(0.1, function()
                         local lc = scf.ListContainer
                         local scrollBox = lc and lc.ScrollBox
                         if scrollBox and scrollBox.SetScrollPercentage then
@@ -2339,7 +2326,7 @@ function UI:DirectOpen(data)
                 if i == executeCount then
                     local cID = step.currencyID
                     local chain = headerChain
-                    C_Timer.After(0.05, function()
+                    Utils.SafeAfter(0.05, function()
                         Highlight:HighlightCurrencyRowOrHint(cID, chain)
                     end)
                 end
@@ -2355,7 +2342,7 @@ function UI:DirectOpen(data)
                     end
                 end
                 local chain = fullChain
-                C_Timer.After(0.05, function()
+                Utils.SafeAfter(0.05, function()
                     Highlight:HighlightCurrencyRowOrHint(nil, chain)
                 end)
             end
@@ -2364,7 +2351,7 @@ function UI:DirectOpen(data)
                 Highlight:ScrollToFactionRow(step.factionID)
                 if i == executeCount then
                     local fID = step.factionID
-                    C_Timer.After(0.05, function()
+                    Utils.SafeAfter(0.05, function()
                         local factionRow = Highlight:GetFactionRowButton(fID)
                         if factionRow then
                             Highlight:HighlightFrame(factionRow, nil)
@@ -2373,10 +2360,10 @@ function UI:DirectOpen(data)
                                 if factionRow:IsMouseOver() then
                                     Highlight:HideHighlight()
                                 else
-                                    C_Timer.After(0.1, checkHover)
+                                    Utils.SafeAfter(0.1, checkHover)
                                 end
                             end
-                            C_Timer.After(0.3, checkHover)
+                            Utils.SafeAfter(0.3, checkHover)
                         end
                     end)
                 end
@@ -2424,7 +2411,7 @@ function UI:ClickCharacterSidebar(sidebarIndex)
             return ClickButton(sidebarTab)
         else
             -- Tab exists but isn't shown yet - try after a brief delay
-            C_Timer.After(0.2, function()
+            Utils.SafeAfter(0.2, function()
                 if sidebarTab:IsShown() then ClickButton(sidebarTab) end
             end)
             return true
@@ -2625,8 +2612,8 @@ local function ReconcilePetFavoriteOverride(petID, expected, attemptsLeft)
         if UI and UI.RefreshResults then UI:RefreshResults() end
         return
     end
-    if attemptsLeft and attemptsLeft > 0 and C_Timer and C_Timer.After then
-        C_Timer.After(0.15, function()
+    if attemptsLeft and attemptsLeft > 0 and Utils.SafeAfter then
+        Utils.SafeAfter(0.15, function()
             ReconcilePetFavoriteOverride(petID, expected, attemptsLeft - 1)
         end)
     end
@@ -2649,11 +2636,11 @@ function UI:TogglePetFavorite(petID)
     if ok then
         UI:GetPetFavoriteOverrides()[petID] = newFav
     end
-    if self.RefreshResults and C_Timer and C_Timer.After then
-        C_Timer.After(0, function()
+    if self.RefreshResults and Utils.SafeAfter then
+        Utils.SafeAfter(0, function()
             if UI and UI.RefreshResults then UI:RefreshResults() end
         end)
-        C_Timer.After(0.15, function()
+        Utils.SafeAfter(0.15, function()
             ReconcilePetFavoriteOverride(petID, newFav, 8)
         end)
     end
@@ -3176,11 +3163,11 @@ function UI:OpenMacroFrameAt(macroIdx, isChar)
         return clicked
     end
     if not clickSlot() then
-        C_Timer.After(0, function()
+        Utils.SafeAfter(0, function()
             if not clickSlot() then
-                C_Timer.After(0.1, function()
+                Utils.SafeAfter(0.1, function()
                     if not clickSlot() then
-                        C_Timer.After(0.3, clickSlot)
+                        Utils.SafeAfter(0.3, clickSlot)
                     end
                 end)
             end

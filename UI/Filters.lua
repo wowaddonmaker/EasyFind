@@ -176,20 +176,7 @@ function UI:GetUIBucket(data)
 end
 
 function UI:IsGuildAchievementData(data)
-    if not data then return false end
-    if data.isGuildAchievement then return true end
-    local steps = data.steps
-    if not steps then return false end
-    for i = 1, #steps do
-        local step = steps[i]
-        if step and step.waitForFrame == "AchievementFrame" and tonumber(step.tabIndex) == 2 then
-            return true
-        end
-        if step and step.buttonFrame == "AchievementFrameTab2" then
-            return true
-        end
-    end
-    return false
+    return data and data.isGuildAchievement == true
 end
 
 UI.quickFilterOptions = {
@@ -760,14 +747,21 @@ local function MountSourceLabel(sourceType)
         or ("Source " .. tostring(sourceType))
 end
 
+local function SortMountSourceDefs(a, b)
+    if a.sourceType ~= b.sourceType then return a.sourceType < b.sourceType end
+    return a.label < b.label
+end
+
+local cachedMountSourceDefs
 local function CollectMountSourceDefs()
+    if cachedMountSourceDefs then return cachedMountSourceDefs end
     local seen = {}
     local defs = {}
     if C_MountJournal and C_MountJournal.GetMountIDs and C_MountJournal.GetMountInfoByID then
         local mountIDs = C_MountJournal.GetMountIDs()
         if mountIDs then
-            for _, mountID in ipairs(mountIDs) do
-                local sourceType = select(6, C_MountJournal.GetMountInfoByID(mountID))
+            for i = 1, #mountIDs do
+                local sourceType = select(6, C_MountJournal.GetMountInfoByID(mountIDs[i]))
                 if sourceType and not seen[sourceType] then
                     seen[sourceType] = true
                     defs[#defs + 1] = { sourceType = sourceType, label = MountSourceLabel(sourceType) }
@@ -775,11 +769,19 @@ local function CollectMountSourceDefs()
             end
         end
     end
-    tsort(defs, function(a, b)
-        if a.sourceType ~= b.sourceType then return a.sourceType < b.sourceType end
-        return a.label < b.label
-    end)
+    tsort(defs, SortMountSourceDefs)
+    cachedMountSourceDefs = defs
     return defs
+end
+
+local mountSourceInvalidator
+local function EnsureMountSourceInvalidator()
+    if mountSourceInvalidator then return end
+    mountSourceInvalidator = CreateFrame("Frame")
+    mountSourceInvalidator:RegisterEvent("NEW_MOUNT_ADDED")
+    mountSourceInvalidator:SetScript("OnEvent", function()
+        cachedMountSourceDefs = nil
+    end)
 end
 
 function UI:BuildMountOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox)
@@ -797,6 +799,8 @@ function UI:BuildMountOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, 
             UI:OnSearchTextChanged(searchEditBox:GetText())
         end
     end
+
+    EnsureMountSourceInvalidator()
 
     local optionsPopup = CreateFrame("Frame", "EasyFindMountOptionsPopup", UIParent, "BackdropTemplate")
     optionsPopup:SetFrameStrata("TOOLTIP")

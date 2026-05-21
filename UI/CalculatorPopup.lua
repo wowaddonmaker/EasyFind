@@ -7,7 +7,6 @@ local mmin = Utils.mmin
 
 local GOLD_COLOR = ns.GOLD_COLOR
 local CreateFrame = CreateFrame
-local C_Timer = C_Timer
 local UIParent = UIParent
 
 local function GetSearchFrame()
@@ -599,8 +598,8 @@ function UI:OpenCalculator(expression, deferFocus)
     frame:Raise()
     if editBox and not deferFocus then
         editBox:SetFocus()
-    elseif editBox and C_Timer and C_Timer.After then
-        C_Timer.After(0, function()
+    elseif editBox then
+        Utils.SafeAfter(0, function()
             if frame and frame:IsShown() and editBox:IsVisible() then
                 editBox:SetFocus()
                 editBox:SetCursorPosition(#(editBox:GetText() or ""))

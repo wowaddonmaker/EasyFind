@@ -490,37 +490,18 @@ function Database:MountPassesSearchFilters(data)
     local db = EasyFind and EasyFind.db
     if not db then return true end
 
-    local isCollected = data.isCollected
-    local isUsable = data.isUsable
-    local shouldHideOnChar = data.shouldHideOnChar
-    local sourceType = data.mountSourceType
-    local mountTypeID = data.mountTypeID
-    if (isCollected == nil or isUsable == nil or shouldHideOnChar == nil
-        or sourceType == nil or mountTypeID == nil)
-       and C_MountJournal and C_MountJournal.GetMountInfoByID then
-        local _, _, _, _, fetchedUsable, fetchedSourceType, _, _, _, fetchedHide, fetchedCollected =
-            C_MountJournal.GetMountInfoByID(data.mountID)
-        if isCollected == nil then isCollected = fetchedCollected end
-        if isUsable == nil then isUsable = fetchedUsable end
-        if shouldHideOnChar == nil then shouldHideOnChar = fetchedHide end
-        if sourceType == nil then sourceType = fetchedSourceType end
-        if mountTypeID == nil and C_MountJournal.GetMountInfoExtraByID then
-            local _, _, _, _, fetchedMountTypeID = C_MountJournal.GetMountInfoExtraByID(data.mountID)
-            mountTypeID = fetchedMountTypeID
-        end
-    end
-
-    if isCollected then
+    if data.isCollected then
         if db.mountFilterCollected == false then return false end
     elseif db.mountFilterNotCollected == false then
         return false
     end
 
-    local unusableOnThisChar = shouldHideOnChar or (isCollected and isUsable == false)
+    local unusableOnThisChar = data.shouldHideOnChar or (data.isCollected and data.isUsable == false)
     if unusableOnThisChar and not db.mountFilterUnusable then return false end
-    if not MountTypePassesFilters(mountTypeID, db) then return false end
+    if not MountTypePassesFilters(data.mountTypeID, db) then return false end
 
     local sourceFilters = db.mountSourceFilters
+    local sourceType = data.mountSourceType
     if sourceType and type(sourceFilters) == "table" and sourceFilters[sourceType] == false then
         return false
     end
@@ -1623,7 +1604,7 @@ end
 
 function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
     if InCombatLockdown() then done(false, "cancelled"); return end
-    if not C_Timer or not C_Timer.After then
+    if not Utils.SafeAfter then
         local ready = self:PopulateDynamicLoot(scanAllSpecs)
         done(ready ~= false, ready == false and "cancelled" or nil)
         return
@@ -1791,7 +1772,7 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
             end
 
             if debugprofilestop and (debugprofilestop() - start) >= budgetMs then
-                C_Timer.After(0, function()
+                Utils.SafeAfter(0, function()
                     local ok, err = xpcall(step, Utils.ErrorHandler)
                     if not ok then finish(false, err) end
                 end)
@@ -1800,7 +1781,7 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
         end
     end
 
-    C_Timer.After(0, function()
+    Utils.SafeAfter(0, function()
         local ok, err = xpcall(step, Utils.ErrorHandler)
         if not ok then finish(false, err) end
     end)
@@ -2088,7 +2069,7 @@ function Database:PopulateDynamicBosses()
 end
 
 function Database:PopulateDynamicBossesAsync(done)
-    if not C_Timer or not C_Timer.After then
+    if not Utils.SafeAfter then
         self:PopulateDynamicBosses()
         done(true)
         return
@@ -2181,7 +2162,7 @@ function Database:PopulateDynamicBossesAsync(done)
             end
 
             if debugprofilestop and (debugprofilestop() - start) >= budgetMs then
-                C_Timer.After(0, function()
+                Utils.SafeAfter(0, function()
                     local ok, err = xpcall(step, Utils.ErrorHandler)
                     if not ok then finish(false, err) end
                 end)
@@ -2192,7 +2173,7 @@ function Database:PopulateDynamicBossesAsync(done)
         finish(true)
     end
 
-    C_Timer.After(0, function()
+    Utils.SafeAfter(0, function()
         local ok, err = xpcall(step, Utils.ErrorHandler)
         if not ok then finish(false, err) end
     end)
@@ -2670,7 +2651,7 @@ local statsScanGeneration = 0
 
 function Database:PopulateDynamicStatisticsAsync(done)
     if not GetStatisticsCategoryList or not GetCategoryInfo
-       or not C_Timer or not C_Timer.After then
+       or not Utils.SafeAfter then
         local ok = self:PopulateDynamicStatistics()
         done(ok)
         return
@@ -2808,7 +2789,7 @@ function Database:PopulateDynamicStatisticsAsync(done)
             processRow(queue[cursor])
             cursor = cursor + 1
             if debugprofilestop and (debugprofilestop() - startMs) > BUDGET_MS then
-                C_Timer.After(0, step)
+                Utils.SafeAfter(0, step)
                 return
             end
         end
@@ -2856,7 +2837,7 @@ function Database:PopulateDynamicStatistics()
         end
     end
 
-    -- Sync fallback path for environments without C_Timer.
+    -- Sync fallback path when timers are unavailable.
     local seenStatisticIDs = {}
     local function emit(cat, parentChain)
         local baseSteps = {

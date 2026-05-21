@@ -21,6 +21,8 @@ local TOOLTIP_BORDER     = ns.TOOLTIP_BORDER
 
 local CreateFrame        = CreateFrame
 local C_Timer            = C_Timer
+local GetCurrentEncounter = C_EncounterJournal and C_EncounterJournal.GetCurrentEncounter
+local EJ_GetCurrentEncounter = _G["EJ_GetCurrentEncounter"]
 local GetTime            = GetTime
 local UIParent           = UIParent
 
@@ -383,7 +385,7 @@ function Highlight:StartGuide(guideData)
     if not guideData or not guideData.steps or #guideData.steps == 0 then
         if guideData and guideData.steps and guideData.steps[1] and guideData.steps[1].customText then
             self:ShowInstruction(guideData.steps[1].customText)
-            C_Timer.After(5, function() self:Cancel() end)
+            Utils.SafeAfter(5, function() self:Cancel() end)
         end
         return
     end
@@ -475,7 +477,7 @@ function Highlight:UpdateGuide()
 
     if step.customText then
         self:ShowInstruction(step.customText)
-        C_Timer.After(5, function() self:Cancel() end)
+        Utils.SafeAfter(5, function() self:Cancel() end)
         return
     end
 
@@ -542,7 +544,7 @@ function Highlight:UpdateGuide()
         else
             self:HideHighlight()
             self:ShowInstruction("'" .. step.gameMenuText .. "' is not in the Game Menu")
-            C_Timer.After(2.5, function() self:Cancel() end)
+            Utils.SafeAfter(2.5, function() self:Cancel() end)
         end
         return
     end
@@ -569,7 +571,7 @@ function Highlight:UpdateGuide()
         else
             self:HideHighlight()
             self:ShowInstruction("'" .. step.portraitMenuOption .. "' is not available here")
-            C_Timer.After(2.5, function() self:Cancel() end)
+            Utils.SafeAfter(2.5, function() self:Cancel() end)
             return
         end
         return
@@ -1181,8 +1183,7 @@ function Highlight:UpdateGuide()
                     local currentEnc = (infoFrame and infoFrame.encounterID)
                         or (ej and ej.encounterID)
                     if not currentEnc then
-                        local getEnc = (C_EncounterJournal and C_EncounterJournal.GetCurrentEncounter)
-                            or _G["EJ_GetCurrentEncounter"]
+                        local getEnc = GetCurrentEncounter or EJ_GetCurrentEncounter
                         if getEnc then currentEnc = getEnc() end
                     end
                     if currentEnc and currentEnc ~= prev.ejEncounterID then
@@ -1231,8 +1232,7 @@ function Highlight:UpdateGuide()
                 local currentEnc = (infoFrame and infoFrame.encounterID)
                     or (ej and ej.encounterID)
                 if not currentEnc then
-                    local getEnc = (C_EncounterJournal and C_EncounterJournal.GetCurrentEncounter)
-                        or _G["EJ_GetCurrentEncounter"]
+                    local getEnc = GetCurrentEncounter or EJ_GetCurrentEncounter
                     if getEnc then currentEnc = getEnc() end
                 end
                 if not currentEnc then
@@ -3118,10 +3118,10 @@ function Highlight:HighlightCurrencyRowOrHint(currencyID, expectedHeaderChain)
             if frame:IsMouseOver() then
                 self:HideHighlight()
             else
-                C_Timer.After(0.1, checkHover)
+                Utils.SafeAfter(0.1, checkHover)
             end
         end
-        C_Timer.After(0.3, checkHover)
+        Utils.SafeAfter(0.3, checkHover)
     end
 
     -- Header-target mode: no currencyID, so the LAST header in the chain
@@ -3222,21 +3222,28 @@ function Highlight:HighlightCurrencyRowOrHint(currencyID, expectedHeaderChain)
     local ticks = 0
     local pollTicker
     pollTicker = C_Timer.NewTicker(0.2, function()
-        ticks = ticks + 1
-        if ticks > 150 then
+        local ok = xpcall(function()
+            ticks = ticks + 1
+            if ticks > 150 then
+                if pollTicker then pollTicker:Cancel(); pollTicker = nil end
+                self:HideScrollHint()
+                self:HideHighlight()
+                return
+            end
+            if not (TokenFrame and TokenFrame:IsVisible()) then
+                if pollTicker then pollTicker:Cancel(); pollTicker = nil end
+                self:HideScrollHint()
+                self:HideHighlight()
+                return
+            end
+            if applyState() == "done" then
+                if pollTicker then pollTicker:Cancel(); pollTicker = nil end
+            end
+        end, ErrorHandler)
+        if not ok then
             if pollTicker then pollTicker:Cancel(); pollTicker = nil end
             self:HideScrollHint()
             self:HideHighlight()
-            return
-        end
-        if not (TokenFrame and TokenFrame:IsVisible()) then
-            if pollTicker then pollTicker:Cancel(); pollTicker = nil end
-            self:HideScrollHint()
-            self:HideHighlight()
-            return
-        end
-        if applyState() == "done" then
-            if pollTicker then pollTicker:Cancel(); pollTicker = nil end
         end
     end)
 end

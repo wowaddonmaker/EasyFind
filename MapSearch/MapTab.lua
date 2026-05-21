@@ -14,7 +14,8 @@ local GOLD_COLOR = ns.GOLD_COLOR or {1.0, 0.82, 0.0}
 local CreateFrame = CreateFrame
 local GameTooltip = GameTooltip
 local GameTooltip_Hide = GameTooltip_Hide
-local C_Timer = C_Timer
+local GetMapChildrenInfo = C_Map and C_Map.GetMapChildrenInfo
+local GetMapInfo = C_Map and C_Map.GetMapInfo
 
 local function NameLess(a, b) return a.name < b.name end
 local function ZoneMapIDDesc(a, b) return (a.zoneMapID or 0) > (b.zoneMapID or 0) end
@@ -46,7 +47,6 @@ local function GetWorldChildren(mapID)
     local cached = worldChildrenCache[mapID]
     if cached then return cached end
     local result = {}
-    local GetMapChildrenInfo = C_Map and C_Map.GetMapChildrenInfo
     if not GetMapChildrenInfo then
         worldChildrenCache[mapID] = result
         return result
@@ -1129,7 +1129,7 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
     end
     if localEntries and #localEntries > 0 then
         local currentMapID = WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID()
-        local currentMapInfo = currentMapID and C_Map and C_Map.GetMapInfo and C_Map.GetMapInfo(currentMapID)
+        local currentMapInfo = currentMapID and GetMapInfo and GetMapInfo(currentMapID)
         local sectionLabel = currentMapInfo and ("This Zone (" .. currentMapInfo.name .. ")") or "This Zone"
         placeSectionLabel(sectionLabel)
         renderEntries(localEntries, "local")
@@ -1510,6 +1510,18 @@ local HandleNavKey
 local RefocusSearchBox
 local RefocusSearchBoxAfterAltNav
 
+local function StopNavRepeatAndRefocus(key)
+    local navKey = Utils.NormalizeKey(key)
+    if not (navKeyRepeat and navKeyRepeat.IsKey(navKey)) then return end
+    navKeyRepeat.Stop(navKey)
+    if navRowIndex ~= 0 then return end
+    if navKey == "J" or navKey == "K" then
+        RefocusSearchBoxAfterAltNav(navKey)
+    else
+        RefocusSearchBox()
+    end
+end
+
 local function EnsureNavFrame()
     if navFrame then return navFrame end
     if not panel then return nil end
@@ -1520,17 +1532,7 @@ local function EnsureNavFrame()
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", not HandleNavKey(key, false))
     end)
     navFrame:SetScript("OnKeyUp", function(_, key)
-        local navKey = Utils.NormalizeKey(key)
-        if navKeyRepeat and navKeyRepeat.IsKey(navKey) then
-            navKeyRepeat.Stop(navKey)
-            if navRowIndex == 0 then
-                if navKey == "J" or navKey == "K" then
-                    RefocusSearchBoxAfterAltNav(navKey)
-                else
-                    RefocusSearchBox()
-                end
-            end
-        end
+        StopNavRepeatAndRefocus(key)
     end)
     navKeyRepeat = Utils.CreateKeyRepeat(navFrame)
     return navFrame
@@ -1784,8 +1786,8 @@ local function CreateSearchBox(parent)
     end)
     editBox:HookScript("OnMouseDown", function(self) self._blockAutoFocus = nil end)
     editBox:ClearFocus()
-    C_Timer.After(0, function()
-        C_Timer.After(0, function()
+    SafeAfter(0, function()
+        SafeAfter(0, function()
             if editBox then editBox._blockAutoFocus = nil; editBox:ClearFocus() end
         end)
     end)
@@ -1880,17 +1882,7 @@ local function CreateSearchBox(parent)
     -- WoW pairs OnKeyUp to the original frame regardless of focus
     -- changes mid-press, so the navFrame handler isn't always reached.
     editBox:HookScript("OnKeyUp", function(_, key)
-        local navKey = Utils.NormalizeKey(key)
-        if navKeyRepeat and navKeyRepeat.IsKey(navKey) then
-            navKeyRepeat.Stop(navKey)
-            if navRowIndex == 0 then
-                if navKey == "J" or navKey == "K" then
-                    RefocusSearchBoxAfterAltNav(navKey)
-                else
-                    RefocusSearchBox()
-                end
-            end
-        end
+        StopNavRepeatAndRefocus(key)
     end)
 
     -- SearchBoxTemplate doesn't always grab focus cleanly after clicks
@@ -2335,7 +2327,7 @@ function MapTab:Focus()
     if clickHandler then clickHandler(tabFrame, "LeftButton") end
     -- Re-apply on next frame against async tab restoration that fires
     -- after this OnShow chain settles.
-    C_Timer.After(0, function()
+    SafeAfter(0, function()
         if not panel then return end
         if not panel:IsShown() and clickHandler then
             clickHandler(tabFrame, "LeftButton")
@@ -2368,7 +2360,7 @@ function MapTab:OpenWithQuery(query)
     end
     local clickHandler = tabFrame:GetScript("OnMouseUp")
     if clickHandler then clickHandler(tabFrame, "LeftButton") end
-    C_Timer.After(0, function()
+    SafeAfter(0, function()
         if not panel then return end
         if not panel:IsShown() and clickHandler then
             clickHandler(tabFrame, "LeftButton")

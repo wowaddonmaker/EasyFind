@@ -9,7 +9,11 @@ local tostring = Utils.tostring
 local tinsert = Utils.tinsert
 local IsMouseButtonDown = IsMouseButtonDown
 
+local SMALL_HIGHLIGHT_FONT = _G["GameFontHighlightSmall"] or _G["GameFontNormalSmall"] or _G["GameFontNormal"]
+
 local OPTIONS_PANEL_ALPHA = 0.9
+local OPTIONS_FRAME_STRATA = "FULLSCREEN_DIALOG"
+local OPTIONS_FRAME_LEVEL = 700
 
 local optionsFrame
 local isInitialized = false
@@ -275,6 +279,7 @@ local function CreateFlyoutPanel(btnFrame, globalPrefix, width, numChoices)
     flyout:SetSize(width, numChoices * 20 + 6)
     flyout:SetPoint("TOPRIGHT", btnFrame, "BOTTOMRIGHT", 0, -2)
     flyout:SetFrameStrata("FULLSCREEN_DIALOG")
+    flyout:SetFrameLevel((optionsFrame and optionsFrame:GetFrameLevel() or OPTIONS_FRAME_LEVEL) + 20)
     flyout:SetBackdrop(nil)
     ns.CreateRoundedRectBorder(flyout)
     ns.SetRoundedRectBarHeight(flyout, 10)
@@ -289,6 +294,7 @@ local function CreateFlyoutPanel(btnFrame, globalPrefix, width, numChoices)
     end)
 
     flyout:SetScript("OnShow", function(self)
+        self:SetFrameLevel((optionsFrame and optionsFrame:GetFrameLevel() or OPTIONS_FRAME_LEVEL) + 20)
         self:SetScript("OnUpdate", function(self)
             if not self:IsMouseOver() and not btnFrame:IsMouseOver() then
                 if IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton") then
@@ -597,7 +603,108 @@ local function PaintPresetButton(btn, active, hover, enabled)
     end
 end
 
+local function CreateSegmentedPresetRow(parent, labelText, choices, getter, setter, tooltipText, width)
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetSize(width or 330, 30)
+    row.enabled = true
+
+    local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    label:SetPoint("LEFT", row, "LEFT", 8, 0)
+    label:SetPoint("RIGHT", row, "RIGHT", -214, 0)
+    label:SetJustifyH("LEFT")
+    label:SetTextColor(NORMAL_TEXT[1], NORMAL_TEXT[2], NORMAL_TEXT[3], 1)
+    label:SetText(labelText)
+    row.label = label
+
+    local trackW, trackH = 198, 24
+    local track = CreateFrame("Frame", nil, row, "BackdropTemplate")
+    track:SetSize(trackW, trackH)
+    track:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+    ns.CreateRoundedRectBorder(track)
+    ns.SetRoundedRectBarHeight(track, trackH)
+    ns.SetRoundedRectFill(track, 0.045, 0.047, 0.055, 0.96, true)
+    HideRoundedFrameBorder(track)
+    row.track = track
+
+    local node = CreateFrame("Frame", nil, track, "BackdropTemplate")
+    node:SetFrameLevel(track:GetFrameLevel() + 1)
+    node:SetHeight(trackH - 4)
+    ns.CreateRoundedRectBorder(node)
+    ns.SetRoundedRectBarHeight(node, trackH - 4)
+    HideRoundedFrameBorder(node)
+    ns.SetRoundedRectFill(node, 0.17, 0.48, 0.72, 1, true)
+    row.node = node
+
+    row.buttons = {}
+    local halfW = (trackW - 4) / 2
+    for i = 1, 2 do
+        local choice = choices[i]
+        local btn = CreateFrame("Button", nil, track)
+        btn:SetFrameLevel(track:GetFrameLevel() + 2)
+        btn:SetSize(halfW, trackH)
+        btn:SetPoint("LEFT", track, "LEFT", 2 + (i - 1) * halfW, 0)
+        btn.choice = choice
+        local text = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        text:SetPoint("CENTER")
+        text:SetText(choice.label)
+        btn._label = text
+        btn:SetScript("OnClick", function(self)
+            if not row.enabled then return end
+            local value = self.choice.value
+            row:SetValue(value)
+            RunSoon(function() setter(value) end)
+        end)
+        btn:SetScript("OnEnter", function(self)
+            if tooltipText then
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(labelText)
+                GameTooltip:AddLine(tooltipText, 1, 1, 1, true)
+                GameTooltip:Show()
+            end
+        end)
+        btn:SetScript("OnLeave", function()
+            if tooltipText then GameTooltip_Hide() end
+        end)
+        row.buttons[i] = btn
+    end
+
+    row.SetValue = function(self, value)
+        local choice = FindNearestChoice(choices, value)
+        self.activeValue = choice and choice.value
+        local activeIndex = self.activeValue == choices[2].value and 2 or 1
+        node:ClearAllPoints()
+        node:SetWidth(halfW)
+        node:SetPoint("LEFT", track, "LEFT", 2 + (activeIndex - 1) * halfW, 0)
+        for i, btn in ipairs(self.buttons) do
+            local active = activeIndex == i
+            local enabled = self.enabled
+            local c = enabled and (active and NORMAL_TEXT or TEXT_BODY) or DISABLED_TEXT
+            btn._label:SetTextColor(c[1], c[2], c[3], 1)
+        end
+    end
+    row.SetGroupEnabled = function(self, enabled)
+        self.enabled = enabled
+        self:SetAlpha(enabled and 1.0 or 0.35)
+        if self.label then
+            local c = enabled and NORMAL_TEXT or DISABLED_TEXT
+            self.label:SetTextColor(c[1], c[2], c[3], 1)
+        end
+        ns.SetRoundedRectFill(track, enabled and 0.045 or 0.035, enabled and 0.047 or 0.035, enabled and 0.055 or 0.040, 0.96, true)
+        for _, btn in ipairs(self.buttons) do
+            if enabled then btn:Enable() else btn:Disable() end
+        end
+        self:SetValue(self.activeValue or getter())
+    end
+
+    row:SetValue(getter())
+    return row
+end
+
 local function CreatePresetRow(parent, labelText, choices, getter, setter, tooltipText, width)
+    if #choices == 2 then
+        return CreateSegmentedPresetRow(parent, labelText, choices, getter, setter, tooltipText, width)
+    end
+
     local row = CreateFrame("Frame", nil, parent)
     row:SetSize(width or 330, 28)
     row.enabled = true
@@ -787,7 +894,8 @@ function Options:Initialize()
     else
         optionsFrame:SetPoint("TOP", UIParent, "TOP", 0, -100)
     end
-    optionsFrame:SetFrameStrata("DIALOG")
+    optionsFrame:SetFrameStrata(OPTIONS_FRAME_STRATA)
+    optionsFrame:SetFrameLevel(OPTIONS_FRAME_LEVEL)
     optionsFrame:SetMovable(true)
     optionsFrame:EnableMouse(true)
     optionsFrame:SetClampedToScreen(true)
@@ -1006,7 +1114,7 @@ function Options:Initialize()
         box:SetSize(FRAME_W - 60, 18)
         box:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, yOff)
         box:SetAutoFocus(false)
-        box:SetFontObject("GameFontHighlightSmall")
+        box:SetFontObject(SMALL_HIGHLIGHT_FONT)
         box:SetText(url)
         box:SetCursorPosition(0)
         box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
@@ -1223,8 +1331,8 @@ function Options:Initialize()
     local sec1 = CreateTab("Search")
 
     local resizeUIBtn = CreateModernButton(sec1)
-    resizeUIBtn:SetSize(160, 22)
-    resizeUIBtn:SetPoint("BOTTOMLEFT", sec1, "BOTTOMLEFT", 8, 32)
+    resizeUIBtn:SetSize(RESET_BTN_W, 20)
+    resizeUIBtn:SetPoint("BOTTOMLEFT", sec1, "BOTTOMLEFT", 16, 32)
     resizeUIBtn:SetText("Resize UI Search")
     resizeUIBtn:SetScript("OnClick", function()
         if ns.Rescaler then ns.Rescaler:Enter("ui") end
@@ -1253,17 +1361,7 @@ function Options:Initialize()
         end)
     end
 
-    local function SetVisibilityMode(value, confirmed)
-        local current = GetVisibilityModeValue()
-        if value == VISIBILITY_SMART and current ~= VISIBILITY_SMART and not confirmed then
-            if visibilityModeRow then visibilityModeRow:SetValue(current) end
-            local dialog = StaticPopup_Show("EASYFIND_CONFIRM_SMART_SHOW")
-            if dialog then
-                dialog:SetFrameStrata("TOOLTIP")
-                dialog:SetFrameLevel(1000)
-            end
-            return
-        end
+    local function SetVisibilityMode(value)
         ApplyVisibilityMode(value)
     end
 
@@ -1273,8 +1371,8 @@ function Options:Initialize()
             { label = "Smart Show", value = VISIBILITY_SMART },
         },
         GetVisibilityModeValue,
-        function(value) SetVisibilityMode(value, false) end,
-        "Auto-Hide opens EasyFind only from your keybind and hides it after use. Smart Show uses a hover zone near the search bar.",
+        SetVisibilityMode,
+        "Auto-Hide opens EasyFind from your keybind and hides it when you press Escape or click away. Smart Show uses a hover zone near the search bar.",
         330)
     visibilityModeRow:SetPoint("TOPLEFT", sec1, "TOPLEFT", 16, -8)
     optionsFrame.visibilityModeRow = visibilityModeRow
@@ -1310,7 +1408,7 @@ function Options:Initialize()
         end,
         "Choose whether UI search results open below or above the search bar.",
         330)
-    resultsDirectionRow:SetPoint("TOPLEFT", lockPositionCheckbox, "BOTTOMLEFT", 0, -2)
+    resultsDirectionRow:SetPoint("TOPLEFT", visibilityModeRow, "BOTTOMLEFT", 0, -2)
     optionsFrame.resultsDirectionRow = resultsDirectionRow
 
     local resultShortcutHintsCheckbox = CreateCheckbox(sec1, "ResultShortcutHints", "Show Alt+Number Hints",
@@ -1343,8 +1441,13 @@ function Options:Initialize()
             end
         end,
         "Adjusts UI search text size without resizing the search window.")
-    uiFontPresetRow:SetPoint("TOPLEFT", resultShortcutHintsCheckbox, "BOTTOMLEFT", 0, -8)
+    uiFontPresetRow:SetPoint("TOPLEFT", resultsDirectionRow, "BOTTOMLEFT", 0, -8)
     optionsFrame.uiFontPresetRow = uiFontPresetRow
+
+    lockPositionCheckbox:ClearAllPoints()
+    lockPositionCheckbox:SetPoint("TOPLEFT", uiFontPresetRow, "BOTTOMLEFT", 0, -8)
+    resultShortcutHintsCheckbox:ClearAllPoints()
+    resultShortcutHintsCheckbox:SetPoint("TOPLEFT", lockPositionCheckbox, "BOTTOMLEFT", 0, -2)
 
     local function RefreshUIPresetRows()
         if optionsFrame.uiFontPresetRow then
@@ -1646,7 +1749,7 @@ function Options:Initialize()
     aliasSearchBox:SetPoint("RIGHT", aliasSearchShell, "RIGHT", -8, 0)
     aliasSearchBox:SetHeight(18)
     aliasSearchBox:SetAutoFocus(false)
-    aliasSearchBox:SetFontObject("GameFontHighlightSmall")
+    aliasSearchBox:SetFontObject(SMALL_HIGHLIGHT_FONT)
     aliasSearchBox:SetMaxLetters(64)
 
     local aliasSearchPlaceholder = aliasSearchBox:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
@@ -1773,34 +1876,12 @@ function Options:Initialize()
         end
         aliasContent:SetHeight(math.max(32, -y + 4))
         UpdateAliasScrollBar()
-        C_Timer.After(0, UpdateAliasScrollBar)
+        Utils.SafeAfter(0, UpdateAliasScrollBar)
     end
     aliasScroll:SetScript("OnSizeChanged", UpdateAliasScrollBar)
     aliasContent:HookScript("OnSizeChanged", UpdateAliasScrollBar)
     aliasesTab:HookScript("OnShow", RefreshAliasList)
     optionsFrame.RefreshAliasList = RefreshAliasList
-
-    StaticPopupDialogs["EASYFIND_CONFIRM_SMART_SHOW"] = {
-        text = "Switch to Smart Show?\n\nAuto-Hide is recommended because it only opens EasyFind from your keybind and avoids accidental hover activation. Smart Show uses a hover zone near the search bar and can feel less predictable.\n\nSwitch anyway?",
-        button1 = "Use Smart Show",
-        button2 = "Keep Auto-Hide",
-        OnAccept = function()
-            SetVisibilityMode(VISIBILITY_SMART, true)
-        end,
-        OnCancel = function()
-            if optionsFrame and optionsFrame.visibilityModeRow then
-                optionsFrame.visibilityModeRow:SetValue(GetVisibilityModeValue())
-            end
-        end,
-        OnShow = function(self)
-            self:SetFrameStrata("TOOLTIP")
-            self:SetFrameLevel(1000)
-        end,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
 
     StaticPopupDialogs["EASYFIND_CLEAR_ALIASES"] = {
         text = "Clear all saved aliases?",
@@ -2107,8 +2188,11 @@ function Options:Show()
 
     if not self.embedded and optionsFrame.bgTex then
         optionsFrame.bgTex:SetAlpha(OPTIONS_PANEL_ALPHA)
+        optionsFrame:SetFrameStrata(OPTIONS_FRAME_STRATA)
+        optionsFrame:SetFrameLevel(OPTIONS_FRAME_LEVEL)
     end
     optionsFrame:Show()
+    optionsFrame:Raise()
 end
 
 function Options:RestoreStandalone()
@@ -2122,7 +2206,8 @@ function Options:RestoreStandalone()
     optionsFrame:SetScale(OPTIONS_PANEL_SCALE)
 
     optionsFrame:SetParent(UIParent)
-    optionsFrame:SetFrameStrata("DIALOG")
+    optionsFrame:SetFrameStrata(OPTIONS_FRAME_STRATA)
+    optionsFrame:SetFrameLevel(OPTIONS_FRAME_LEVEL)
     optionsFrame:SetMovable(true)
     optionsFrame:RegisterForDrag("LeftButton")
 

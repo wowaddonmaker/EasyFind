@@ -333,16 +333,7 @@ function UI:HideResults()
             row:Hide()
             if row.shortcutGroup then row.shortcutGroup:Hide() end
             if row.icon then
-                row.icon.mountID = nil
-                row.icon.toyItemID = nil
-                row.icon.petID = nil
-                row.icon.spellID = nil
-                row.icon.outfitID = nil
-                row.icon.heirloomItemID = nil
-                row.icon.gearSetID = nil
-                row.icon.bagItemID = nil
-                row.icon.achievementID = nil
-                row.icon.lootItemID = nil
+                UI.ClearRowIconLeafIDs(row.icon)
             end
         end
     end

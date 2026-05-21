@@ -512,8 +512,8 @@ function Utils.AttachAutocomplete(editBox, opts)
             restoreBackspaceText = targetText
             restoreBackspaceCursor = targetCursor
             StripAutocomplete()
-            if C_Timer then
-                C_Timer.After(0, function()
+            if Utils.SafeAfter then
+                Utils.SafeAfter(0, function()
                     if restoreBackspaceText and restoreBackspaceNotify then
                         local restoreText = restoreBackspaceText
                         local restoreCursor = restoreBackspaceCursor or #restoreText
@@ -1344,7 +1344,7 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
         self._lastActivity = 0
         self._fadingOut = false
         self._scrollTarget = nil
-        C_Timer.After(0, function()
+        Utils.SafeAfter(0, function()
             if self:IsShown() then self:UpdateThumb() end
         end)
     end)

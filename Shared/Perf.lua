@@ -3,8 +3,9 @@ local _, ns = ...
 local Perf = {}
 ns.Perf = Perf
 
+local Utils = ns.Utils
+local SafeAfter = Utils.SafeAfter
 local CreateFrame = CreateFrame
-local C_Timer     = C_Timer
 local mfloor      = math.floor
 local mhuge       = math.huge
 
@@ -216,7 +217,7 @@ local function fireSearch(text)
     ns.UI:OnSearchTextChanged(text)
 end
 
-local function yieldNextFrame(fn) C_Timer.After(0, fn) end
+local function yieldNextFrame(fn) SafeAfter(0, fn) end
 
 -- keyDelay <= 0 yields one frame (~16ms), simulating a held key.
 local function runSequence(seq, keyDelay, onDone)
@@ -224,14 +225,14 @@ local function runSequence(seq, keyDelay, onDone)
     local function step()
         i = i + 1
         if i > #seq then
-            C_Timer.After(0.20, onDone)
+            SafeAfter(0.20, onDone)
             return
         end
         fireSearch(seq[i])
         if keyDelay <= 0 then
             yieldNextFrame(step)
         else
-            C_Timer.After(keyDelay, step)
+            SafeAfter(keyDelay, step)
         end
     end
     step()
@@ -306,7 +307,7 @@ local function chain(scenarios, onDone)
         startRecording()
         s.run(function()
             stopAndReport(s.label)
-            C_Timer.After(0.20, next)
+            SafeAfter(0.20, next)
         end)
     end
     next()
@@ -402,7 +403,7 @@ function Perf:Run()
               local i = 0
               local function loop()
                   i = i + 1
-                  if i > #words then C_Timer.After(0.20, d) return end
+                  if i > #words then SafeAfter(0.20, d) return end
                   runSequence(seqType(words[i]), 0.05, function()
                       runSequence(seqErase(words[i]), 0, loop)
                   end)

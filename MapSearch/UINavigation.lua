@@ -1,6 +1,10 @@
 local _, ns = ...
 
 local MapSearch = ns.MapSearch
+local Utils = ns.Utils
+local DebugPrint = Utils.DebugPrint
+local xpcall = Utils.xpcall
+local ErrorHandler = Utils.ErrorHandler
 local C_Timer = C_Timer
 
 -- Handle click on a map search result from the UI search bar.
@@ -85,33 +89,40 @@ function MapSearch:SetPendingNavigation(data)
     end
     local elapsed = 0
     self._pendingNavTicker = C_Timer.NewTicker(0.1, function(ticker)
-        elapsed = elapsed + 0.1
-        -- Timeout after 30 seconds
-        if elapsed > 30 then
-            ticker:Cancel()
-            self._pendingNavTicker = nil
-            pendingMapNav = nil
-            return
-        end
-        if not pendingMapNav then
-            ticker:Cancel()
-            self._pendingNavTicker = nil
-            return
-        end
-        if WorldMapFrame and WorldMapFrame:IsShown() then
-            ticker:Cancel()
-            self._pendingNavTicker = nil
-            local nav = pendingMapNav
-            pendingMapNav = nil
-            if ns.Highlight then ns.Highlight:Cancel() end
-            -- For local POIs, pre-navigate to their map so SelectResult
-            -- can place the pin. For zones/instances, SelectResult handles
-            -- its own navigation (breadcrumbs, entrance highlighting, etc.)
-            if nav.mapID and not nav.isZone and not nav.isDungeonEntrance then
-                WorldMapFrame:SetMapID(nav.mapID)
+        local ok, err = xpcall(function()
+            elapsed = elapsed + 0.1
+            -- Timeout after 30 seconds
+            if elapsed > 30 then
+                ticker:Cancel()
+                self._pendingNavTicker = nil
+                pendingMapNav = nil
+                return
             end
-            MapSearch:SelectResult(nav)
+            if not pendingMapNav then
+                ticker:Cancel()
+                self._pendingNavTicker = nil
+                return
+            end
+            if WorldMapFrame and WorldMapFrame:IsShown() then
+                ticker:Cancel()
+                self._pendingNavTicker = nil
+                local nav = pendingMapNav
+                pendingMapNav = nil
+                if ns.Highlight then ns.Highlight:Cancel() end
+                -- For local POIs, pre-navigate to their map so SelectResult
+                -- can place the pin. For zones/instances, SelectResult handles
+                -- its own navigation (breadcrumbs, entrance highlighting, etc.)
+                if nav.mapID and not nav.isZone and not nav.isDungeonEntrance then
+                    WorldMapFrame:SetMapID(nav.mapID)
+                end
+                MapSearch:SelectResult(nav)
+            end
+        end, ErrorHandler)
+        if not ok then
+            ticker:Cancel()
+            self._pendingNavTicker = nil
+            pendingMapNav = nil
+            DebugPrint("[EasyFind] Pending map navigation stopped:", err)
         end
     end)
 end
-

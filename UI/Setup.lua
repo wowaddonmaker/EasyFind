@@ -3,6 +3,8 @@ local _, ns = ...
 local UI = ns.UI
 local Utils = ns.Utils
 local mmin, mmax = Utils.mmin, Utils.mmax
+local xpcall = Utils.xpcall
+local ErrorHandler = Utils.ErrorHandler
 
 local GOLD_COLOR = ns.GOLD_COLOR
 local TOOLTIP_BORDER = ns.TOOLTIP_BORDER
@@ -519,7 +521,7 @@ function UI:FlashLabel(labelText)
     local flashCount = 0
     local ticker
     ticker = C_Timer.NewTicker(0.3, function()
-        local ok, _ = pcall(function()
+        local ok = xpcall(function()
             flashCount = flashCount + 1
             if flashCount % 2 == 0 then
                 label:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
@@ -531,10 +533,9 @@ function UI:FlashLabel(labelText)
                 label:SetTextColor(originalR, originalG, originalB)
                 ticker:Cancel()
             end
-        end)
+        end, ErrorHandler)
         if not ok then
             ticker:Cancel()
         end
     end)
 end
-

@@ -10,6 +10,8 @@ local SafeCallMethod = Utils.SafeCallMethod
 local GOLD_COLOR = ns.GOLD_COLOR
 local TOOLTIP_BORDER = ns.TOOLTIP_BORDER
 
+local SMALL_HIGHLIGHT_FONT = _G["GameFontHighlightSmall"] or _G["GameFontNormalSmall"] or _G["GameFontNormal"]
+
 local MIN_WIDTH = 150
 local MAX_WIDTH = 600
 local HANDLE_SIZE = 10
@@ -163,7 +165,7 @@ local function CreateDimLabel(parent, anchor, relPoint, xOff, yOff, prefix)
     box:SetAutoFocus(false)
     box:SetMaxLetters(5)
     box:SetJustifyH("CENTER")
-    box:SetFontObject("GameFontHighlightSmall")
+    box:SetFontObject(SMALL_HIGHLIGHT_FONT)
 
     if prefix then
         local pfx = parent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
@@ -588,7 +590,7 @@ local function BuildUnifiedWindowOverlay(parent, searchBar, preview, anchorAbove
     heightBox:SetAutoFocus(false)
     heightBox:SetMaxLetters(3)
     heightBox:SetJustifyH("CENTER")
-    heightBox:SetFontObject("GameFontHighlightSmall")
+    heightBox:SetFontObject(SMALL_HIGHLIGHT_FONT)
 
     local heightPfx = overlay:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     heightPfx:SetText("Height:")

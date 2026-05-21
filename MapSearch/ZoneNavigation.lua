@@ -10,7 +10,6 @@ local mmin = Utils.mmin
 local pcall = Utils.pcall
 
 local ZONE_PARENT_OVERRIDES = MapUtils.PARENT_OVERRIDES or {}
-local C_Timer = C_Timer
 local GetMapInfo = C_Map.GetMapInfo
 local GetMapInfoAtPosition = C_Map.GetMapInfoAtPosition
 local GetMapParentID = MapUtils.GetParentMapID
@@ -104,7 +103,7 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
                         if targetArea < containArea * 0.25 then
                             DebugPrint("[EasyFind] CASE 1: city inside", containing.name, "- routing through it")
                             self.pendingZoneHighlight = targetMapID
-                            C_Timer.After(0.05, function()
+                            Utils.SafeAfter(0.05, function()
                                 self:HighlightZone(containing.mapID)
                             end)
                             return
@@ -120,7 +119,7 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
                         if targetArea < surroundArea * 0.25 then
                             DebugPrint("[EasyFind] CASE 1: city surrounded by", surrounding.name, "- routing through it")
                             self.pendingZoneHighlight = targetMapID
-                            C_Timer.After(0.05, function()
+                            Utils.SafeAfter(0.05, function()
                                 self:HighlightZone(surrounding.mapID)
                             end)
                             return
@@ -132,7 +131,7 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
 
         -- Keep pending so OnMapChanged can stop the chain on arrival.
         self.pendingZoneHighlight = targetMapID
-        C_Timer.After(0.05, function()
+        Utils.SafeAfter(0.05, function()
             self:HighlightZone(targetMapID)
         end)
         return
@@ -149,7 +148,7 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
                 if resolvedInfo and resolvedInfo.mapID == targetMapID then
                     DebugPrint("[EasyFind] CASE 1b: Target visible on current map (containing zone)")
                     self.pendingZoneHighlight = targetMapID
-                    C_Timer.After(0.05, function()
+                    Utils.SafeAfter(0.05, function()
                         self:HighlightZone(targetMapID)
                     end)
                     return
@@ -187,7 +186,7 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
     if not dcaMapID then
         DebugPrint("[EasyFind] ERROR: No common ancestor, falling back to direct nav")
         WorldMapFrame:SetMapID(targetParentMapID)
-        C_Timer.After(0.1, function()
+        Utils.SafeAfter(0.1, function()
             self:HighlightZone(targetMapID)
         end)
         return
@@ -203,12 +202,12 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
             DebugPrint("[EasyFind] Next step: highlight", nextStepInfo and nextStepInfo.name or "nil", "ID:", nextStepMapID)
             self.pendingZoneHighlight = targetMapID
             DebugPrint("[EasyFind] Set pendingZoneHighlight to", targetMapID)
-            C_Timer.After(0.05, function()
+            Utils.SafeAfter(0.05, function()
                 self:HighlightZone(nextStepMapID)
             end)
         else
             DebugPrint("[EasyFind] Edge case: at target parent, highlighting target")
-            C_Timer.After(0.05, function()
+            Utils.SafeAfter(0.05, function()
                 self:HighlightZone(targetMapID)
             end)
         end
@@ -224,7 +223,7 @@ function MapSearch:HighlightZoneOnMap(targetMapID, zoneName)
             if cX > -0.1 and cX < 1.1 and cY > -0.1 and cY < 1.1 then
                 DebugPrint("[EasyFind] CASE 2b: Target projects onto current zone, trying HighlightZone")
                 self.pendingZoneHighlight = targetMapID
-                C_Timer.After(0.05, function()
+                Utils.SafeAfter(0.05, function()
                     self:HighlightZone(targetMapID)
                 end)
                 return
