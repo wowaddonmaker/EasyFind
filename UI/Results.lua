@@ -527,6 +527,7 @@ local function GetOrCreateAchievementEntry(id, name, icon)
             entry.nameLower = slower(name)
         end
         if icon and entry.icon ~= icon then entry.icon = icon end
+        entry.steps = BuildAchievementSteps(id)
         return entry
     end
     entry = setmetatable({

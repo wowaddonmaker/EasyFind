@@ -1408,9 +1408,17 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             if onClick then onClick() end
             return true
         end
+        local function FocusKeyboard(self, index)
+            self.keyboardMode = true
+            Utils.SafeCallMethod(self, "EnableKeyboard", true)
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            if self.Raise then self:Raise() end
+            SetKeyboardIndex(self, index or 1)
+        end
         menu.SetKeyboardIndex = SetKeyboardIndex
         menu.MoveKeyboardIndex = MoveKeyboardIndex
         menu.ActivateKeyboardIndex = ActivateKeyboardIndex
+        menu.FocusKeyboard = FocusKeyboard
         menu:SetScript("OnShow", function(self)
             self._showedAt = GetTime()
             self._outsideSince = nil
@@ -1420,7 +1428,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             self:RegisterEvent("GLOBAL_MOUSE_DOWN")
             self:RegisterEvent("GLOBAL_MOUSE_UP")
             if self.keyboardMode then
-                SetKeyboardIndex(self, self.keyboardIndex or 1)
+                FocusKeyboard(self, self.keyboardIndex or 1)
             else
                 SetKeyboardIndex(self, nil)
             end
@@ -1520,6 +1528,12 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 row.sep:SetPoint("LEFT", row, "LEFT", 6, 0)
                 row.sep:SetPoint("RIGHT", row, "RIGHT", -6, 0)
                 row.sep:Hide()
+                row.keyboardOverlay = row:CreateTexture(nil, "OVERLAY")
+                row.keyboardOverlay:SetAllPoints()
+                row.keyboardOverlay:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
+                row.keyboardOverlay:SetBlendMode("ADD")
+                row.keyboardOverlay:SetAlpha(0.85)
+                row.keyboardOverlay:Hide()
                 menu.rows[shown] = row
             end
             local isSep = def.isSeparator
@@ -1574,6 +1588,9 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
         local row = menu.rows[i]
         if row then
             row:Hide()
+            row.isSeparator = nil
+            row.onClick = nil
+            if row.keyboardOverlay then row.keyboardOverlay:Hide() end
             row:SetScript("OnClick", nil)
             row:SetScript("OnMouseDown", nil)
         end
@@ -1606,6 +1623,15 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             x / scale + (opts.offsetX or 0), y / scale + (opts.offsetY or 0))
     end
     menu:Show()
+    if menu.keyboardMode and menu.FocusKeyboard then
+        menu:FocusKeyboard(1)
+        local focusMenu = menu
+        Utils.SafeAfter(0, function()
+            if focusMenu and focusMenu:IsShown() and focusMenu.keyboardMode and focusMenu.FocusKeyboard then
+                focusMenu:FocusKeyboard(1)
+            end
+        end)
+    end
     return menu
 end
 

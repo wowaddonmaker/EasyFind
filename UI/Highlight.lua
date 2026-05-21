@@ -35,6 +35,8 @@ local currentGuide
 local currentStepIndex
 local stepTicker
 local highlightShownAt
+local RepairAchievementCategoryGuideSteps
+local InsertMissingAchievementCategoryParentStep
 
 -- Hover-to-dismiss fires only on the final step (or a single-highlight
 -- with no guide). Intermediate steps must persist or hover would
@@ -384,6 +386,10 @@ function Highlight:StartGuide(guideData)
             C_Timer.After(5, function() self:Cancel() end)
         end
         return
+    end
+
+    if RepairAchievementCategoryGuideSteps then
+        RepairAchievementCategoryGuideSteps(guideData)
     end
 
     -- Currency guides cancel on close instead of rewinding to step 1 --
@@ -862,6 +868,10 @@ function Highlight:UpdateGuide()
         if step.achievementCategory then
             if not (AchievementFrame and AchievementFrame:IsShown()) then
                 self:Cancel()
+                return
+            end
+            if InsertMissingAchievementCategoryParentStep(step) then
+                self:HideHighlight()
                 return
             end
             local requiredTabIndex = nil
@@ -1816,6 +1826,142 @@ local function CategoryDataMatches(data, categoryName, categoryID)
         if title and slower(title) == slower(categoryName) then return true end
     end
     return false
+end
+
+local function CurrentGuideHasPriorAchievementCategoryID(categoryID)
+    local numericCategoryID = tonumber(categoryID)
+    if not numericCategoryID or not currentGuide or not currentGuide.steps or not currentStepIndex then
+        return false
+    end
+    for i = currentStepIndex - 1, 1, -1 do
+        local step = currentGuide.steps[i]
+        if step and tonumber(step.achievementCategoryID) == numericCategoryID then
+            return true
+        end
+    end
+    return false
+end
+
+local function GetAchievementCategoryInfo(categoryID)
+    local numericCategoryID = tonumber(categoryID)
+    if not numericCategoryID or not GetCategoryInfo then return nil end
+    local name, parentID = GetCategoryInfo(numericCategoryID)
+    if not name or name == "" then return nil end
+    return {
+        id = numericCategoryID,
+        name = name,
+        parentID = tonumber(parentID),
+    }
+end
+
+local function BuildAchievementCategoryChain(categoryID)
+    if not GetCategoryInfo then return nil end
+    local chain = {}
+    local seen = {}
+    local current = tonumber(categoryID)
+
+    while current and current > 0 and not seen[current] do
+        seen[current] = true
+        local info = GetAchievementCategoryInfo(current)
+        if not info then break end
+        chain[#chain + 1] = info
+        current = info.parentID
+    end
+
+    if #chain == 0 then return nil end
+    local rootDown = {}
+    for i = #chain, 1, -1 do
+        rootDown[#rootDown + 1] = chain[i]
+    end
+    return rootDown
+end
+
+local function StepHasAchievementCategoryID(step, categoryID)
+    local numericCategoryID = tonumber(categoryID)
+    return step and numericCategoryID
+        and tonumber(step.achievementCategoryID) == numericCategoryID
+end
+
+local function StepListHasAchievementCategoryID(steps, categoryID)
+    if not steps then return false end
+    for i = 1, #steps do
+        if StepHasAchievementCategoryID(steps[i], categoryID) then return true end
+    end
+    return false
+end
+
+local function BuildAchievementCategoryStep(sourceStep, category)
+    return {
+        waitForFrame = sourceStep.waitForFrame or "AchievementFrame",
+        achievementCategory = category.name,
+        achievementCategoryID = category.id,
+    }
+end
+
+RepairAchievementCategoryGuideSteps = function(guideData)
+    local steps = guideData and guideData.steps
+    if not steps or #steps == 0 or not GetCategoryInfo then return end
+
+    local repaired = {}
+    local changed = false
+    for i = 1, #steps do
+        local step = steps[i]
+        if step and step.achievementCategory and step.achievementCategoryID then
+            local chain = BuildAchievementCategoryChain(step.achievementCategoryID)
+            if chain then
+                local leaf = chain[#chain]
+                if leaf and leaf.name and step.achievementCategory ~= leaf.name then
+                    step.achievementCategory = leaf.name
+                    changed = true
+                end
+            end
+            if chain and #chain > 1 then
+                for c = 1, #chain - 1 do
+                    local category = chain[c]
+                    if not StepListHasAchievementCategoryID(repaired, category.id) then
+                        repaired[#repaired + 1] = BuildAchievementCategoryStep(step, category)
+                        changed = true
+                    end
+                end
+            end
+        end
+
+        repaired[#repaired + 1] = step
+    end
+
+    if changed then
+        guideData.steps = repaired
+    end
+end
+
+InsertMissingAchievementCategoryParentStep = function(step)
+    local categoryID = step and tonumber(step.achievementCategoryID)
+    if not categoryID or CurrentGuideHasPriorAchievementCategoryID(categoryID) then return false end
+
+    local chain = BuildAchievementCategoryChain(categoryID)
+    if not chain or #chain < 2 then return false end
+
+    local missingParent
+    for i = #chain - 1, 1, -1 do
+        local category = chain[i]
+        if not CurrentGuideHasPriorAchievementCategoryID(category.id) then
+            missingParent = category
+            break
+        end
+    end
+    if not missingParent then return false end
+
+    local steps = currentGuide and currentGuide.steps
+    if not steps or not currentStepIndex then return false end
+    for i = #steps, currentStepIndex, -1 do
+        steps[i + 1] = steps[i]
+    end
+    steps[currentStepIndex] = {
+        waitForFrame = "AchievementFrame",
+        achievementCategory = missingParent.name,
+        achievementCategoryID = missingParent.id,
+    }
+    return true
 end
 
 function Highlight:FindCategoryElementData(categoryName, categoryID)

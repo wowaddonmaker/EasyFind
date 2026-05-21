@@ -269,6 +269,18 @@ function UI:ShowResultContextMenu(row, keyboardMode)
     end
 
     extra = extra or {}
+    local function FocusKeyboardMenu(menu)
+        if not keyboardMode or not menu or not menu:IsShown() then return end
+        local navFrame = UI:GetNavFrame()
+        if navFrame then Utils.SafeCallMethod(navFrame, "EnableKeyboard", false) end
+        if menu.FocusKeyboard then
+            menu:FocusKeyboard(1)
+        else
+            Utils.SafeCallMethod(menu, "EnableKeyboard", true)
+            Utils.SafeCallMethod(menu, "SetPropagateKeyboardInput", false)
+            if menu.SetKeyboardIndex then menu.SetKeyboardIndex(menu, 1) end
+        end
+    end
     if keyboardMode then
         extra.keyboardMode = true
         extra.onHide = function()
@@ -282,7 +294,7 @@ function UI:ShowResultContextMenu(row, keyboardMode)
         if navFrame then Utils.SafeCallMethod(navFrame, "EnableKeyboard", false) end
     end
 
-    UI:ShowPinPopup(row, isPinned, function()
+    local menu = UI:ShowPinPopup(row, isPinned, function()
         if isPinned then
             UnpinUIItem(pinData)
         else
@@ -302,7 +314,11 @@ function UI:ShowResultContextMenu(row, keyboardMode)
             UI:OnSearchTextChanged(text, true)
         end
     end, onGuide, onAddAlias, extra)
-    return true
+    FocusKeyboardMenu(menu)
+    Utils.SafeAfter(0, function()
+        FocusKeyboardMenu(menu)
+    end)
+    return menu and true or false
 end
 
 -- Custom popup for inline setting dropdowns. Replaces MenuUtil.CreateContextMenu
