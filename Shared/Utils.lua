@@ -46,24 +46,63 @@ Utils.tostring = tostring
 Utils.tonumber = tonumber
 Utils.ErrorHandler = ErrorHandler
 
-function Utils.SafeCall(func, ...)
-    if InCombatLockdown() then return false end
-    return pcall(func, ...)
-end
-
 function Utils.SafeCallMethod(obj, method, ...)
     if InCombatLockdown() then return false end
     if not obj then return false end
     local fn = obj[method]
     if not fn then return false end
-    return pcall(fn, obj, ...)
+    local ok, result = xpcall(fn, ErrorHandler, obj, ...)
+    if not ok then
+        Utils.DebugPrint("SafeCallMethod failed: " .. tostring(result))
+    end
+    return ok, result
 end
 
-function Utils.TryGet(obj, methodName)
-    if not (obj and obj[methodName]) then return nil end
-    local ok, a, b, c, d = pcall(obj[methodName], obj)
-    if not ok then return nil end
-    return a, b, c, d
+function Utils.FindFactionByPredicate(predicate)
+    if not C_Reputation or not C_Reputation.GetNumFactions or not C_Reputation.GetFactionDataByIndex then
+        return nil
+    end
+    local n = C_Reputation.GetNumFactions()
+    for i = 1, n do
+        local factionData = C_Reputation.GetFactionDataByIndex(i)
+        if factionData and predicate(factionData) then
+            return i, factionData
+        end
+    end
+end
+
+function Utils.LoadBlizzardAddOn(name)
+    if C_AddOns and C_AddOns.LoadAddOn then
+        pcall(C_AddOns.LoadAddOn, name)
+    elseif LoadAddOn then
+        pcall(LoadAddOn, name)
+    end
+end
+
+function Utils.DeepCopy(value)
+    if type(value) ~= "table" then return value end
+    local copy = {}
+    for k, v in pairs(value) do copy[k] = Utils.DeepCopy(v) end
+    return copy
+end
+
+function Utils.SecureCall(fn, ...)
+    if not fn then return false end
+    if securecallfunction then
+        securecallfunction(fn, ...)
+    else
+        local ok, err = xpcall(fn, ErrorHandler, ...)
+        if not ok then
+            Utils.DebugPrint("SecureCall fallback failed: " .. tostring(err))
+            return false
+        end
+    end
+    return true
+end
+
+function Utils.RGB(c, alpha)
+    if alpha == nil then return c[1], c[2], c[3] end
+    return c[1], c[2], c[3], alpha
 end
 
 function Utils.SafeOnUpdate(frame, handler)
@@ -132,6 +171,44 @@ function Utils.NormalizeKey(key)
     return type(key) == "string" and key:upper() or key
 end
 
+-- WoW's OnKeyDown reports arrow keys as "UP"/"DOWN"/"LEFT"/"RIGHT" but
+-- IsKeyDown() requires "UPARROW"/"DOWNARROW"/"LEFTARROW"/"RIGHTARROW".
+-- This wraps the inconsistency so callers can pass the OnKeyDown-style
+-- name and still get the right answer for held arrow keys.
+local IS_KEY_DOWN_ALIASES = {
+    UP = "UPARROW", DOWN = "DOWNARROW",
+    LEFT = "LEFTARROW", RIGHT = "RIGHTARROW",
+}
+function Utils.IsPhysicalKeyDown(key)
+    if not IsKeyDown or not key then return false end
+    return IsKeyDown(IS_KEY_DOWN_ALIASES[key] or key) and true or false
+end
+
+local MODIFIER_KEYS = {
+    LSHIFT = true, RSHIFT = true,
+    LCTRL = true, RCTRL = true,
+    LALT = true, RALT = true,
+}
+function Utils.IsModifierKey(key)
+    return MODIFIER_KEYS[key] == true
+end
+
+local RESERVED_BARE_KEYS = {
+    SPACE = true, ENTER = true, RETURN = true,
+    W = true, A = true, S = true, D = true,
+}
+function Utils.IsReservedBareKey(key)
+    return RESERVED_BARE_KEYS[key] == true
+end
+
+function Utils.ModifierCombo(key)
+    local combo = ""
+    if IsAltKeyDown and IsAltKeyDown() then combo = combo .. "ALT-" end
+    if IsControlKeyDown and IsControlKeyDown() then combo = combo .. "CTRL-" end
+    if IsShiftKeyDown and IsShiftKeyDown() then combo = combo .. "SHIFT-" end
+    return combo .. (key or "")
+end
+
 function Utils.GetVerticalNavIntent(key)
     local navKey = Utils.NormalizeKey(key)
     if navKey == "DOWN" then return 1, false, navKey end
@@ -176,7 +253,13 @@ function Utils.SuppressNextAltNavChar(box, key, ttl)
         text = box.GetText and (box:GetText() or "") or "",
         cursor = box.GetCursorPosition and (box:GetCursorPosition() or #(box:GetText() or "")) or 0,
     }
-    Utils.SafeAfter(ttl or 0.20, function()
+    -- TTL is a safety backstop in case the consumer never fires. It needs
+    -- to outlive the ticker's initialDelay (0.30s) plus the worst-case
+    -- OnTextChanged deferral, otherwise the snapshot can expire exactly
+    -- when an OS auto-repeated character lands. 1.0s is conservative
+    -- without being so long that stale snapshots interfere with normal
+    -- typing.
+    Utils.SafeAfter(ttl or 1.0, function()
         if box._easyFindSuppressAltNavToken == token then
             box._easyFindSuppressAltNavChar = nil
         end
@@ -195,6 +278,12 @@ function Utils.ConsumeSuppressedAltNavChar(box)
     if box.SetText then box:SetText(restoreText) end
     if box.SetCursorPosition then box:SetCursorPosition(suppress.cursor or #restoreText) end
     if box.HighlightText then box:HighlightText(0, 0) end
+    -- Re-arm the snapshot so OS-level key auto-repeat (which keeps firing
+    -- char-insert events at ~20Hz while the user holds Alt+J/K) keeps
+    -- getting caught. Without this, only the first leaked character is
+    -- restored; subsequent auto-repeats leak through until the next ticker
+    -- tick re-arms (~300ms away).
+    Utils.SuppressNextAltNavChar(box, suppress.key)
     return true, restoreText
 end
 
@@ -211,7 +300,7 @@ end
 function Utils.AfterAltNavReleased(key, callback)
     local navKey = Utils.NormalizeKey(key)
     if (IsAltKeyDown and IsAltKeyDown())
-       or (IsKeyDown and navKey and IsKeyDown(navKey)) then
+       or (navKey and Utils.IsPhysicalKeyDown(navKey)) then
         Utils.SafeAfter(0.03, function()
             Utils.AfterAltNavReleased(navKey, callback)
         end)
@@ -260,7 +349,7 @@ function Utils.StartAltNavRepeat(repeater, key, editBox, step, onReleased)
     if repeater.IsKey and repeater.IsKey(key) then return true end
     repeater.Start(key, function()
         local altHeld = IsAltKeyDown and IsAltKeyDown()
-        local keyHeld = not IsKeyDown or IsKeyDown(key)
+        local keyHeld = Utils.IsPhysicalKeyDown(key)
         if not altHeld or not keyHeld then
             if repeater.Stop then repeater.Stop(key) end
             if onReleased then Utils.ScheduleAfterAltNavRelease(key, onReleased) end
@@ -274,298 +363,321 @@ function Utils.StartAltNavRepeat(repeater, key, editBox, step, onReleased)
     return true
 end
 
+local function AutocompleteHas(state)
+    return state.currentCandidate ~= nil and (state.editBox:GetText() or "") ~= state.typedText
+end
+
+local function AutocompleteNormalize(state, candidate)
+    if not candidate or candidate == "" or state.typedText == "" then return nil end
+    candidate = slower(candidate)
+    local typedLen = #state.typedText
+    if typedLen >= #candidate then return nil end
+    if slower(ssub(candidate, 1, typedLen)) ~= slower(state.typedText) then
+        return nil
+    end
+    return candidate
+end
+
+local function AutocompleteStrip(state)
+    local editBox = state.editBox
+    local hadAutocomplete = AutocompleteHas(state)
+    if hadAutocomplete then
+        state.programmatic = true
+        editBox:SetText(state.typedText)
+        editBox:SetCursorPosition(#state.typedText)
+        editBox:HighlightText(0, 0)
+        state.programmatic = false
+    else
+        editBox:HighlightText(0, 0)
+    end
+    state.currentCandidate = nil
+    state.smoothExtendDone = false
+    return hadAutocomplete
+end
+
+local function AutocompleteRender(state, candidate)
+    candidate = AutocompleteNormalize(state, candidate)
+    if not candidate then
+        AutocompleteStrip(state)
+        return false
+    end
+
+    local editBox = state.editBox
+    -- WoW defers OnTextChanged by one frame, so the in-flight char
+    -- isn't in typedText yet. SetText here would overwrite it and the
+    -- deferred OnTextChanged would silently drop the keystroke.
+    local liveText = editBox:GetText() or ""
+    local liveCursor = editBox:GetCursorPosition() or #liveText
+    local hasLiveSuggestion = state.currentCandidate ~= nil
+                              and liveText == state.currentCandidate
+                              and liveCursor == #state.typedText
+    local liveTyped = ssub(liveText, 1, liveCursor)
+    if not hasLiveSuggestion and liveTyped ~= state.typedText then
+        return false
+    end
+
+    local typedLen = #state.typedText
+    state.typedText = ssub(candidate, 1, typedLen)
+    state.currentCandidate = candidate
+
+    state.programmatic = true
+    if editBox:GetText() ~= candidate then
+        editBox:SetText(candidate)
+    end
+    editBox:SetCursorPosition(typedLen)
+    editBox:HighlightText(typedLen, #candidate)
+    state.programmatic = false
+    return true
+end
+
+local function AutocompleteApply(state)
+    local editBox = state.editBox
+    if state.programmatic or state.typedText == "" or not editBox:HasFocus() then
+        AutocompleteStrip(state)
+        return
+    end
+    if state.smoothExtendDone then
+        state.smoothExtendDone = false
+        return
+    end
+    AutocompleteRender(state, state.findCandidate(state.typedText))
+end
+
+local function AutocompleteRestoreBackspace(state, box)
+    if state.restoreBackspaceText and state.restoreBackspaceNotify then
+        local restoreText = state.restoreBackspaceText
+        local restoreCursor = state.restoreBackspaceCursor or #restoreText
+        state.restoreBackspaceText, state.restoreBackspaceCursor = nil, nil
+        state.restoreBackspaceNotify = false
+        state.backspaceStripActive = false
+        state.programmatic = true
+        box:SetText(restoreText)
+        box:SetCursorPosition(restoreCursor)
+        box:HighlightText(0, 0)
+        state.programmatic = false
+        state.typedText = ssub(restoreText, 1, restoreCursor)
+        state.currentCandidate = nil
+        state.smoothExtendDone = false
+        if state.onBackspaceAutocompleteRestored then
+            state.onBackspaceAutocompleteRestored(box, state.typedText)
+        end
+        return
+    end
+    state.restoreBackspaceText, state.restoreBackspaceCursor = nil, nil
+    state.restoreBackspaceNotify = false
+    state.backspaceStripActive = false
+end
+
+local function AutocompleteOnTextChanged(state, box, userInput)
+    if state.programmatic then return end
+    local current = box:GetText() or ""
+    if state.restoreBackspaceText then
+        local restoreText = state.restoreBackspaceText
+        local restoreCursor = state.restoreBackspaceCursor or #restoreText
+        local notify = state.restoreBackspaceNotify
+        state.restoreBackspaceText, state.restoreBackspaceCursor = nil, nil
+        state.restoreBackspaceNotify = false
+        state.backspaceStripActive = false
+        if current ~= restoreText then
+            state.programmatic = true
+            box:SetText(restoreText)
+            box:SetCursorPosition(restoreCursor)
+            box:HighlightText(0, 0)
+            state.programmatic = false
+        end
+        state.typedText = ssub(restoreText, 1, restoreCursor)
+        state.currentCandidate = nil
+        state.smoothExtendDone = false
+        if notify and state.onBackspaceAutocompleteRestored then
+            state.onBackspaceAutocompleteRestored(box, state.typedText)
+        end
+        return
+    end
+    local cursorPos = box:GetCursorPosition() or #current
+    if not userInput and cursorPos == 0 and current ~= "" then
+        cursorPos = #current
+    end
+    local typed = ssub(current, 1, cursorPos)
+    if state.charDispatchedTyped and typed == state.charDispatchedTyped then
+        state.charDispatchedTyped = nil
+        return
+    end
+    if typed == state.typedText then return end
+    local prevText = state.typedText
+    local prevLen = #state.typedText
+    state.typedText = typed
+    local grew = #state.typedText > prevLen
+    -- Smooth-extend the candidate in-place: safe here because we run
+    -- synchronously inside OnTextChanged (post-keystroke), not from
+    -- the throttle's OnUpdate, so there's no in-flight char to clobber.
+    local extended = false
+    if grew and state.currentCandidate
+       and #typed < #state.currentCandidate
+       and slower(ssub(state.currentCandidate, 1, #typed)) == slower(typed) then
+        local typedLen = #typed
+        state.programmatic = true
+        if box:GetText() ~= state.currentCandidate then
+            box:SetText(state.currentCandidate)
+        end
+        box:SetCursorPosition(typedLen)
+        box:HighlightText(typedLen, #state.currentCandidate)
+        state.programmatic = false
+        extended = true
+    end
+    if not extended then
+        state.currentCandidate = nil
+        box:HighlightText(0, 0)
+    end
+    if state.onTypedChanged then state.onTypedChanged(box, state.typedText, prevText, grew) end
+end
+
+local function AutocompleteAccept(state, box, source, cursorPos)
+    local candidate = state.currentCandidate
+    if not candidate or candidate == "" then return false end
+    if cursorPos then
+        if cursorPos < 0 then cursorPos = 0 end
+        if cursorPos > #candidate then cursorPos = #candidate end
+    end
+    if not box:HasFocus() then box:SetFocus() end
+    state.programmatic = true
+    box:SetText(candidate)
+    box:SetCursorPosition(cursorPos or #candidate)
+    box:HighlightText(0, 0)
+    state.programmatic = false
+    state.typedText = candidate
+    state.currentCandidate = nil
+    state.smoothExtendDone = false
+    if state.onAccepted then state.onAccepted(candidate, source) end
+    return true
+end
+
+local function AutocompleteOnMouseDown(state, button)
+    if button ~= "LeftButton" then return end
+    state.mouseAcceptCandidate = AutocompleteHas(state) and state.currentCandidate or nil
+    state.mouseAcceptTypedLen = state.mouseAcceptCandidate and #state.typedText or nil
+end
+
+local function AutocompleteOnMouseUp(state, box, button)
+    if button ~= "LeftButton" or not state.mouseAcceptCandidate then return end
+    local candidate = state.mouseAcceptCandidate
+    local typedLen = state.mouseAcceptTypedLen or #state.typedText
+    state.mouseAcceptCandidate = nil
+    state.mouseAcceptTypedLen = nil
+    if (box:GetText() or "") ~= candidate then return end
+    local cursorPos = box:GetCursorPosition() or #candidate
+    if cursorPos < typedLen then
+        local prefix = ssub(candidate, 1, typedLen)
+        state.programmatic = true
+        box:SetText(prefix)
+        box:SetCursorPosition(cursorPos)
+        box:HighlightText(0, 0)
+        state.programmatic = false
+        state.typedText = prefix
+        state.currentCandidate = nil
+        state.smoothExtendDone = false
+        return
+    end
+    state.typedText = candidate
+    state.currentCandidate = nil
+    state.smoothExtendDone = false
+    box:HighlightText(0, 0)
+    if state.onAccepted then state.onAccepted(candidate, "click") end
+end
+
+local function AutocompleteOnBackspace(state, box)
+    local targetText, targetCursor
+    if state.backspaceAutocompleteTarget then
+        targetText, targetCursor = state.backspaceAutocompleteTarget(box, state.typedText, state.currentCandidate)
+    end
+    if targetText == nil then
+        targetText = state.typedText
+        targetCursor = #state.typedText
+        state.restoreBackspaceNotify = false
+    else
+        targetText = tostring(targetText)
+        if targetCursor == nil then targetCursor = #targetText end
+        state.restoreBackspaceNotify = true
+    end
+    state.backspaceStripActive = true
+    state.restoreBackspaceText = targetText
+    state.restoreBackspaceCursor = targetCursor
+    AutocompleteStrip(state)
+    if Utils.SafeAfter then
+        Utils.SafeAfter(0, function()
+            AutocompleteRestoreBackspace(state, box)
+        end)
+    end
+    if Utils.SafeCallMethod then
+        Utils.SafeCallMethod(box, "SetPropagateKeyboardInput", false)
+    end
+end
+
+local function AutocompleteOnKeyDown(state, box, key)
+    if key == "BACKSPACE" and AutocompleteHas(state) then
+        AutocompleteOnBackspace(state, box)
+        return
+    end
+    local source
+    if key == "RIGHT" or key == "ARROWRIGHT" then
+        source = "right"
+    elseif key == "L" and IsControlKeyDown() then
+        source = "ctrl-l"
+    end
+    if source and AutocompleteAccept(state, box, source) and Utils.SafeCallMethod then
+        Utils.SafeCallMethod(box, "SetPropagateKeyboardInput", false)
+    end
+end
+
 function Utils.AttachAutocomplete(editBox, opts)
     if not editBox or not opts or type(opts.findCandidate) ~= "function" then return end
 
-    local findCandidate = opts.findCandidate
-    local onTypedChanged = opts.onTypedChanged
-    local onAccepted = opts.onAccepted
-    local backspaceAutocompleteTarget = opts.backspaceAutocompleteTarget
-    local onBackspaceAutocompleteRestored = opts.onBackspaceAutocompleteRestored
-    local typedText = ""
-    local programmatic = false
-    local currentCandidate = nil
-    local smoothExtendDone = false
-    local restoreBackspaceText, restoreBackspaceCursor
-    local restoreBackspaceNotify = false
-    local mouseAcceptCandidate
-    local mouseAcceptTypedLen
-    local backspaceStripActive = false
-    local charDispatchedTyped
-
-    local function HasAutocomplete()
-        return currentCandidate ~= nil and (editBox:GetText() or "") ~= typedText
-    end
-
-    local function NormalizeCandidate(candidate)
-        if not candidate or candidate == "" or typedText == "" then return nil end
-        candidate = slower(candidate)
-        local typedLen = #typedText
-        if typedLen >= #candidate then return nil end
-        if slower(ssub(candidate, 1, typedLen)) ~= slower(typedText) then
-            return nil
-        end
-        return candidate
-    end
-
-    local function StripAutocomplete()
-        local hadAutocomplete = HasAutocomplete()
-        if hadAutocomplete then
-            programmatic = true
-            editBox:SetText(typedText)
-            editBox:SetCursorPosition(#typedText)
-            editBox:HighlightText(0, 0)
-            programmatic = false
-        else
-            editBox:HighlightText(0, 0)
-        end
-        currentCandidate = nil
-        smoothExtendDone = false
-        return hadAutocomplete
-    end
-
-    local function RenderCandidate(candidate)
-        candidate = NormalizeCandidate(candidate)
-        if not candidate then
-            StripAutocomplete()
-            return false
-        end
-
-        -- WoW defers OnTextChanged by one frame, so the in-flight char
-        -- isn't in typedText yet. SetText here would overwrite it and the
-        -- deferred OnTextChanged would silently drop the keystroke.
-        local liveText = editBox:GetText() or ""
-        local liveCursor = editBox:GetCursorPosition() or #liveText
-        local hasLiveSuggestion = currentCandidate ~= nil
-                                  and liveText == currentCandidate
-                                  and liveCursor == #typedText
-        local liveTyped = ssub(liveText, 1, liveCursor)
-        if not hasLiveSuggestion and liveTyped ~= typedText then
-            return false
-        end
-
-        local typedLen = #typedText
-        typedText = ssub(candidate, 1, typedLen)
-        currentCandidate = candidate
-
-        programmatic = true
-        if editBox:GetText() ~= candidate then
-            editBox:SetText(candidate)
-        end
-        editBox:SetCursorPosition(typedLen)
-        editBox:HighlightText(typedLen, #candidate)
-        programmatic = false
-        return true
-    end
-
-    local function ApplyAutocomplete()
-        if programmatic or typedText == "" or not editBox:HasFocus() then
-            StripAutocomplete()
-            return
-        end
-        if smoothExtendDone then
-            smoothExtendDone = false
-            return
-        end
-        local candidate = findCandidate(typedText)
-        RenderCandidate(candidate)
-    end
+    local state = {
+        editBox = editBox,
+        findCandidate = opts.findCandidate,
+        onTypedChanged = opts.onTypedChanged,
+        onAccepted = opts.onAccepted,
+        backspaceAutocompleteTarget = opts.backspaceAutocompleteTarget,
+        onBackspaceAutocompleteRestored = opts.onBackspaceAutocompleteRestored,
+        typedText = "",
+        programmatic = false,
+        currentCandidate = nil,
+        smoothExtendDone = false,
+        restoreBackspaceNotify = false,
+        backspaceStripActive = false,
+    }
 
     editBox:HookScript("OnTextChanged", function(self, userInput)
-        if programmatic then return end
-        local current = self:GetText() or ""
-        if restoreBackspaceText then
-            local restoreText = restoreBackspaceText
-            local restoreCursor = restoreBackspaceCursor or #restoreText
-            local notify = restoreBackspaceNotify
-            restoreBackspaceText, restoreBackspaceCursor = nil, nil
-            restoreBackspaceNotify = false
-            backspaceStripActive = false
-            if current ~= restoreText then
-                programmatic = true
-                self:SetText(restoreText)
-                self:SetCursorPosition(restoreCursor)
-                self:HighlightText(0, 0)
-                programmatic = false
-            end
-            typedText = ssub(restoreText, 1, restoreCursor)
-            currentCandidate = nil
-            smoothExtendDone = false
-            if notify and onBackspaceAutocompleteRestored then
-                onBackspaceAutocompleteRestored(self, typedText)
-            end
-            return
-        end
-        local cursorPos = self:GetCursorPosition() or #current
-        if not userInput and cursorPos == 0 and current ~= "" then
-            cursorPos = #current
-        end
-        local typed = ssub(current, 1, cursorPos)
-        if charDispatchedTyped and typed == charDispatchedTyped then
-            charDispatchedTyped = nil
-            return
-        end
-        if typed == typedText then return end
-        local prevText = typedText
-        local prevLen = #typedText
-        typedText = typed
-        local grew = #typedText > prevLen
-        -- Smooth-extend the candidate in-place: safe here because we run
-        -- synchronously inside OnTextChanged (post-keystroke), not from
-        -- the throttle's OnUpdate, so there's no in-flight char to clobber.
-        local extended = false
-        if grew and currentCandidate
-           and #typed < #currentCandidate
-           and slower(ssub(currentCandidate, 1, #typed)) == slower(typed) then
-            local typedLen = #typed
-            programmatic = true
-            if self:GetText() ~= currentCandidate then
-                self:SetText(currentCandidate)
-            end
-            self:SetCursorPosition(typedLen)
-            self:HighlightText(typedLen, #currentCandidate)
-            programmatic = false
-            extended = true
-        end
-        if not extended then
-            currentCandidate = nil
-            self:HighlightText(0, 0)
-        end
-        if onTypedChanged then onTypedChanged(self, typedText, prevText, grew) end
+        AutocompleteOnTextChanged(state, self, userInput)
     end)
-
-    editBox:HookScript("OnEditFocusLost", StripAutocomplete)
-
-    local function AcceptAutocomplete(self, source, cursorPos)
-        local candidate = currentCandidate
-        if not candidate or candidate == "" then return false end
-        if cursorPos then
-            if cursorPos < 0 then cursorPos = 0 end
-            if cursorPos > #candidate then cursorPos = #candidate end
-        end
-        if not self:HasFocus() then self:SetFocus() end
-        programmatic = true
-        self:SetText(candidate)
-        self:SetCursorPosition(cursorPos or #candidate)
-        self:HighlightText(0, 0)
-        programmatic = false
-        typedText = candidate
-        currentCandidate = nil
-        smoothExtendDone = false
-        if onAccepted then onAccepted(candidate, source) end
-        return true
-    end
-
+    editBox:HookScript("OnEditFocusLost", function()
+        AutocompleteStrip(state)
+    end)
     editBox:HookScript("OnMouseDown", function(_, button)
-        if button ~= "LeftButton" then return end
-        mouseAcceptCandidate = HasAutocomplete() and currentCandidate or nil
-        mouseAcceptTypedLen = mouseAcceptCandidate and #typedText or nil
+        AutocompleteOnMouseDown(state, button)
     end)
-
     editBox:HookScript("OnMouseUp", function(self, button)
-        if button ~= "LeftButton" or not mouseAcceptCandidate then return end
-        local candidate = mouseAcceptCandidate
-        local typedLen = mouseAcceptTypedLen or #typedText
-        mouseAcceptCandidate = nil
-        mouseAcceptTypedLen = nil
-        if (self:GetText() or "") ~= candidate then return end
-        local cursorPos = self:GetCursorPosition() or #candidate
-        if cursorPos < typedLen then
-            local prefix = ssub(candidate, 1, typedLen)
-            programmatic = true
-            self:SetText(prefix)
-            self:SetCursorPosition(cursorPos)
-            self:HighlightText(0, 0)
-            programmatic = false
-            typedText = prefix
-            currentCandidate = nil
-            smoothExtendDone = false
-            return
-        end
-        typedText = candidate
-        currentCandidate = nil
-        smoothExtendDone = false
-        self:HighlightText(0, 0)
-        if onAccepted then onAccepted(candidate, "click") end
+        AutocompleteOnMouseUp(state, self, button)
     end)
-
     editBox:HookScript("OnTabPressed", function(self)
-        AcceptAutocomplete(self, "tab")
+        AutocompleteAccept(state, self, "tab")
     end)
-
     editBox:HookScript("OnKeyDown", function(self, key)
-        if key == "BACKSPACE" and HasAutocomplete() then
-            local targetText, targetCursor
-            if backspaceAutocompleteTarget then
-                targetText, targetCursor = backspaceAutocompleteTarget(self, typedText, currentCandidate)
-            end
-            if targetText == nil then
-                targetText = typedText
-                targetCursor = #typedText
-                restoreBackspaceNotify = false
-            else
-                targetText = tostring(targetText)
-                if targetCursor == nil then targetCursor = #targetText end
-                restoreBackspaceNotify = true
-            end
-            backspaceStripActive = true
-            restoreBackspaceText = targetText
-            restoreBackspaceCursor = targetCursor
-            StripAutocomplete()
-            if Utils.SafeAfter then
-                Utils.SafeAfter(0, function()
-                    if restoreBackspaceText and restoreBackspaceNotify then
-                        local restoreText = restoreBackspaceText
-                        local restoreCursor = restoreBackspaceCursor or #restoreText
-                        restoreBackspaceText, restoreBackspaceCursor = nil, nil
-                        restoreBackspaceNotify = false
-                        backspaceStripActive = false
-                        programmatic = true
-                        self:SetText(restoreText)
-                        self:SetCursorPosition(restoreCursor)
-                        self:HighlightText(0, 0)
-                        programmatic = false
-                        typedText = ssub(restoreText, 1, restoreCursor)
-                        currentCandidate = nil
-                        smoothExtendDone = false
-                        if onBackspaceAutocompleteRestored then
-                            onBackspaceAutocompleteRestored(self, typedText)
-                        end
-                        return
-                    end
-                    restoreBackspaceText, restoreBackspaceCursor = nil, nil
-                    restoreBackspaceNotify = false
-                    backspaceStripActive = false
-                end)
-            end
-            if Utils.SafeCallMethod then
-                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
-            end
-            return
-        end
-        local source
-        if key == "RIGHT" or key == "ARROWRIGHT" then
-            source = "right"
-        elseif key == "L" and IsControlKeyDown() then
-            source = "ctrl-l"
-        end
-        if source
-           and AcceptAutocomplete(self, source) then
-            if Utils.SafeCallMethod then
-                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
-            end
-        end
+        AutocompleteOnKeyDown(state, self, key)
     end)
 
-    editBox.UpdateAutocomplete = ApplyAutocomplete
-    editBox.StripAutocomplete  = StripAutocomplete
-    editBox.AcceptAutocomplete = function(self, source, cursorPos)
-        return AcceptAutocomplete(self, source, cursorPos)
+    editBox.UpdateAutocomplete = function()
+        return AutocompleteApply(state)
     end
-    editBox.GetTypedText       = function() return typedText end
-    editBox.HasAutocomplete    = function() return HasAutocomplete() end
-    editBox.IsAutocompleteBackspaceStrip = function() return backspaceStripActive end
-    editBox.IsAutocompleteProgrammatic = function() return programmatic end
+    editBox.StripAutocomplete = function()
+        return AutocompleteStrip(state)
+    end
+    editBox.AcceptAutocomplete = function(self, source, cursorPos)
+        return AutocompleteAccept(state, self, source, cursorPos)
+    end
+    editBox.GetTypedText = function() return state.typedText end
+    editBox.HasAutocomplete = function() return AutocompleteHas(state) end
+    editBox.IsAutocompleteBackspaceStrip = function() return state.backspaceStripActive end
+    editBox.IsAutocompleteProgrammatic = function() return state.programmatic end
 end
 
 function Utils.ScrollToButton(scrollFrame, button)
@@ -587,10 +699,65 @@ ns.GOLD_COLOR = {1.0, 0.82, 0.0}
 ns.YELLOW_HIGHLIGHT = {1, 1, 0}
 ns.SEARCH_WINDOW_ALPHA = 0.95
 ns.TOOLTIP_BORDER = "Interface\\Tooltips\\UI-Tooltip-Border"
+
+ns.NON_EQUIP_LOCS = {
+    INVTYPE_NON_EQUIP = true,
+    INVTYPE_NON_EQUIP_IGNORE = true,
+    INVTYPE_AMMO = true,
+    INVTYPE_QUIVER = true,
+}
+
+ns.EQUIP_LOCS = {
+    INVTYPE_HEAD = true,
+    INVTYPE_NECK = true,
+    INVTYPE_SHOULDER = true,
+    INVTYPE_BODY = true,
+    INVTYPE_CHEST = true,
+    INVTYPE_ROBE = true,
+    INVTYPE_WAIST = true,
+    INVTYPE_LEGS = true,
+    INVTYPE_FEET = true,
+    INVTYPE_WRIST = true,
+    INVTYPE_HAND = true,
+    INVTYPE_FINGER = true,
+    INVTYPE_TRINKET = true,
+    INVTYPE_CLOAK = true,
+    INVTYPE_WEAPON = true,
+    INVTYPE_SHIELD = true,
+    INVTYPE_2HWEAPON = true,
+    INVTYPE_WEAPONMAINHAND = true,
+    INVTYPE_WEAPONOFFHAND = true,
+    INVTYPE_HOLDABLE = true,
+    INVTYPE_RANGED = true,
+    INVTYPE_RANGEDRIGHT = true,
+    INVTYPE_THROWN = true,
+    INVTYPE_RELIC = true,
+    INVTYPE_TABARD = true,
+    INVTYPE_BAG = true,
+    INVTYPE_PROFESSION_TOOL = true,
+    INVTYPE_PROFESSION_GEAR = true,
+}
+
+function Utils.IsRealEquipLoc(slot)
+    return type(slot) == "string"
+        and ns.EQUIP_LOCS[slot] == true
+        and not ns.NON_EQUIP_LOCS[slot]
+end
+
+function Utils.GetItemEquipLoc(itemID)
+    local getItemInfoInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    if not getItemInfoInstant then return nil end
+    local info, _, _, equipLoc = getItemInfoInstant(itemID)
+    if type(info) == "table" then
+        return info.itemEquipLoc or info.equipLoc or info.inventoryType
+    end
+    return equipLoc
+end
 ns.EYE_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\eye"
 ns.DARK_PANEL_BG = {0.1, 0.1, 0.1, 0.95}
 ns.SEARCH_WINDOW_FILL_COLOR = {0.052, 0.052, 0.060}
 ns.RESULT_ICON_SIZE = 18
+ns.TEXT_PRIMARY = {1.00, 0.97, 0.86}
 ns.TEXT_BODY = {0.78, 0.78, 0.80}
 ns.TEXT_DIM = {0.55, 0.55, 0.58}
 ns.BTN_FILL_NORMAL = {0.095, 0.095, 0.108}
@@ -607,9 +774,9 @@ EasyFindSearchFont:CopyFontObject(baseFont)
 EasyFindSearchFont:SetFont((baseFont:GetFont()), 12, select(3, baseFont:GetFont()))
 ns.SEARCHBAR_FONT = "EasyFindSearchFont"
 
-local SEARCH_TEX_FILL = "Interface\\AddOns\\EasyFind\\Textures\\SearchBarFill"
-local SEARCH_TEX_BORDER = "Interface\\AddOns\\EasyFind\\Textures\\SearchBarBorder"
-local CLEAR_BTN_TEX = "Interface\\AddOns\\EasyFind\\Textures\\clear-button"
+local SEARCH_TEX_FILL = "Interface\\AddOns\\EasyFind\\textures\\SearchBarFill"
+local SEARCH_TEX_BORDER = "Interface\\AddOns\\EasyFind\\textures\\SearchBarBorder"
+local CLEAR_BTN_TEX = "Interface\\AddOns\\EasyFind\\textures\\clear-button"
 -- 9-slice cap = outer 37.5% of texture: curve lives in outer 64 px,
 -- followed by 32 px flat that buffers the cap/mid join. Cutting in the
 -- flat region lets cap and mid (rendered at different scales) join
@@ -672,8 +839,8 @@ end
 -- 9-slice rounded-rect: corners stay fixed size (= bar height / 2 so they
 -- match the bar's pill caps); edges stretch. When container height equals
 -- 2 * cornerSize, the silhouette collapses to a horizontal pill.
-local COMBINED_TEX_FILL   = "Interface\\AddOns\\EasyFind\\Textures\\CombinedFill"
-local COMBINED_TEX_BORDER = "Interface\\AddOns\\EasyFind\\Textures\\CombinedBorder"
+local COMBINED_TEX_FILL   = "Interface\\AddOns\\EasyFind\\textures\\CombinedFill"
+local COMBINED_TEX_BORDER = "Interface\\AddOns\\EasyFind\\textures\\CombinedBorder"
 local CR = 0.25
 
 local TC9 = {
@@ -944,8 +1111,8 @@ local frameTextScratch = {}
 function Utils.GetButtonText(btn)
     if not btn then return nil end
 
-    for _, key in ipairs(BUTTON_TEXT_KEYS) do
-        local child = btn[key]
+    for i = 1, #BUTTON_TEXT_KEYS do
+        local child = btn[BUTTON_TEXT_KEYS[i]]
         if child and child.GetText then
             local t = child:GetText()
             if t then return t end
@@ -957,8 +1124,10 @@ function Utils.GetButtonText(btn)
         if t then return t end
     end
 
-    for i = 1, select("#", btn:GetRegions()) do
-        local region = select(i, btn:GetRegions())
+    local n = select("#", btn:GetRegions())
+    local regions = { btn:GetRegions() }
+    for i = 1, n do
+        local region = regions[i]
         if region and region.GetObjectType and region:GetObjectType() == "FontString" then
             local t = region.GetText and region:GetText()
             if t then return t end
@@ -982,13 +1151,85 @@ function Utils.IsFrameOrChildMouseOver(frame)
     return false
 end
 
+function Utils.IsFrameVisiblyMouseOver(frame)
+    if type(frame) ~= "table" or not frame.IsMouseOver then return false end
+    if frame.IsShown and not frame:IsShown() then return false end
+    return frame:IsMouseOver()
+end
+
+function Utils.AttachHoverPopup(owner, popup, opts)
+    if not owner or not popup then return nil end
+    opts = opts or {}
+
+    local delay = opts.delay or 0.15
+    local extraGuards = opts.extraGuards or {}
+    local hideTimer
+
+    local function CancelHide()
+        if hideTimer then
+            hideTimer:Cancel()
+            hideTimer = nil
+        end
+    end
+
+    local function GuardIsMouseOver(guard)
+        if type(guard) == "function" then
+            return Utils.IsFrameVisiblyMouseOver(guard())
+        end
+        return Utils.IsFrameVisiblyMouseOver(guard)
+    end
+
+    local function ShouldStayOpen()
+        if owner.IsMouseOver and owner:IsMouseOver() then return true end
+        if popup.IsMouseOver and popup:IsMouseOver() then return true end
+        for i = 1, #extraGuards do
+            if GuardIsMouseOver(extraGuards[i]) then return true end
+        end
+        return opts.keepOpen and opts.keepOpen(owner, popup) or false
+    end
+
+    local function HideNow()
+        if ShouldStayOpen() then return end
+        popup:Hide()
+    end
+
+    local function ScheduleHide()
+        CancelHide()
+        hideTimer = C_Timer.NewTimer(delay, function()
+            hideTimer = nil
+            HideNow()
+        end)
+    end
+
+    local function Show()
+        CancelHide()
+        if opts.onShow then
+            opts.onShow(owner, popup)
+        else
+            popup:Show()
+        end
+    end
+
+    owner:HookScript("OnEnter", Show)
+    owner:HookScript("OnLeave", ScheduleHide)
+    popup:HookScript("OnEnter", CancelHide)
+    popup:HookScript("OnLeave", ScheduleHide)
+
+    return {
+        CancelHide = CancelHide,
+        HideNow = HideNow,
+        ScheduleHide = ScheduleHide,
+        Show = Show,
+    }
+end
+
 function Utils.GetAllFrameText(frame)
     if not frame then return nil end
     wipe(frameTextScratch)
     local texts = frameTextScratch
 
-    for _, key in ipairs(FRAME_TEXT_KEYS) do
-        local child = frame[key]
+    for i = 1, #FRAME_TEXT_KEYS do
+        local child = frame[FRAME_TEXT_KEYS[i]]
         if child and child.GetText then
             local t = child:GetText()
             if t then texts[#texts + 1] = t end
@@ -1000,8 +1241,10 @@ function Utils.GetAllFrameText(frame)
         if t then texts[#texts + 1] = t end
     end
 
-    for i = 1, select("#", frame:GetRegions()) do
-        local region = select(i, frame:GetRegions())
+    local n = select("#", frame:GetRegions())
+    local regions = { frame:GetRegions() }
+    for i = 1, n do
+        local region = regions[i]
         if region and region.GetObjectType and region:GetObjectType() == "FontString" then
             local t = region.GetText and region:GetText()
             if t then texts[#texts + 1] = t end
@@ -1082,14 +1325,6 @@ function Utils.SearchFrameTreeFuzzy(frame, searchTextLower, maxDepth)
         return nil
     end
     return search(frame, 0)
-end
-
-function Utils.ShallowCopy(src)
-    local copy = {}
-    for k, v in pairs(src) do
-        copy[k] = v
-    end
-    return copy
 end
 
 function Utils.IsFrameShown(frame)
@@ -1388,13 +1623,16 @@ function Utils.ClickButton(btn, mouseButton)
     if not btn then return false end
     mouseButton = mouseButton or "LeftButton"
     if btn.Click then
-        pcall(btn.Click, btn, mouseButton)
-        return true
+        local ok, err = xpcall(btn.Click, ErrorHandler, btn, mouseButton)
+        if ok then return true end
+        Utils.DebugPrint("Button click failed: " .. tostring(err))
+        return false
     end
     local hasScript, onClick = pcall(btn.GetScript, btn, "OnClick")
     if hasScript and onClick then
-        pcall(onClick, btn, mouseButton)
-        return true
+        local ok, err = xpcall(onClick, ErrorHandler, btn, mouseButton)
+        if ok then return true end
+        Utils.DebugPrint("Button OnClick failed: " .. tostring(err))
     end
     return false
 end
@@ -1468,178 +1706,197 @@ function Utils.HideCursorMenus(globalName)
     return closedAny
 end
 
+local function CursorMenuHasMouse(self)
+    if self:IsMouseOver() then return true end
+    if self.rows then
+        for i = 1, #self.rows do
+            if Utils.IsFrameVisiblyMouseOver(self.rows[i]) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local function CursorMenuIsSelectableRow(row)
+    return row and row:IsShown() and not row.isSeparator
+end
+
+local function CursorMenuPaintKeyboardSelection(self)
+    if not self.rows then return end
+    for i = 1, #self.rows do
+        local row = self.rows[i]
+        if row and row.UnlockHighlight then row:UnlockHighlight() end
+        if row and row.keyboardOverlay then
+            row.keyboardOverlay:SetShown(self.keyboardIndex == i)
+        end
+    end
+    local row = self.rows[self.keyboardIndex or 0]
+    if row and row.LockHighlight then row:LockHighlight() end
+end
+
+local function CursorMenuSetKeyboardIndex(self, index)
+    if not self.rows then return false end
+    if not index then
+        self.keyboardIndex = nil
+        CursorMenuPaintKeyboardSelection(self)
+        return false
+    end
+    if index < 1 then index = #self.rows end
+    if index > #self.rows then index = 1 end
+    local start = index
+    repeat
+        local row = self.rows[index]
+        if CursorMenuIsSelectableRow(row) then
+            self.keyboardIndex = index
+            CursorMenuPaintKeyboardSelection(self)
+            return true
+        end
+        index = index + 1
+        if index > #self.rows then index = 1 end
+    until index == start
+    self.keyboardIndex = nil
+    CursorMenuPaintKeyboardSelection(self)
+    return false
+end
+
+local function CursorMenuMoveKeyboardIndex(self, delta)
+    if not self.rows then return false end
+    local index = (self.keyboardIndex or (delta > 0 and 0 or #self.rows + 1)) + delta
+    if index < 1 then index = #self.rows end
+    if index > #self.rows then index = 1 end
+    return CursorMenuSetKeyboardIndex(self, index)
+end
+
+local function CursorMenuActivateKeyboardIndex(self)
+    local row = self.rows and self.rows[self.keyboardIndex or 0]
+    if not CursorMenuIsSelectableRow(row) then return false end
+    local onClick = row.onClick
+    self:Hide()
+    if onClick then onClick() end
+    return true
+end
+
+local function CursorMenuFocusKeyboard(self, index)
+    self.keyboardMode = true
+    Utils.SafeCallMethod(self, "EnableKeyboard", true)
+    Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+    if self.Raise then self:Raise() end
+    CursorMenuSetKeyboardIndex(self, index or 1)
+end
+
+local function CursorMenuOnShow(self)
+    self._showedAt = GetTime()
+    self._outsideSince = nil
+    self._hasEntered = false
+    Utils.SafeCallMethod(self, "EnableKeyboard", true)
+    Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+    self:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    self:RegisterEvent("GLOBAL_MOUSE_UP")
+    if self.keyboardMode then
+        CursorMenuFocusKeyboard(self, self.keyboardIndex or 1)
+    else
+        CursorMenuSetKeyboardIndex(self, nil)
+    end
+end
+
+local function CursorMenuOnHide(self)
+    self._outsideSince = nil
+    self._hasEntered = false
+    CursorMenuSetKeyboardIndex(self, nil)
+    Utils.SafeCallMethod(self, "EnableKeyboard", false)
+    self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+    self:UnregisterEvent("GLOBAL_MOUSE_UP")
+    if self.rows then
+        for i = 1, #self.rows do
+            local row = self.rows[i]
+            if row then row:Hide() end
+        end
+    end
+    local onHide = self.onHide
+    self.onHide = nil
+    if onHide then onHide(self) end
+end
+
+local function CursorMenuOnUpdate(self)
+    if CursorMenuHasMouse(self) then
+        self._outsideSince = nil
+        self._hasEntered = true
+        return
+    end
+    if not self._hasEntered then return end
+    local now = GetTime()
+    if not self._outsideSince then
+        self._outsideSince = now
+        return
+    end
+    if now - self._outsideSince > (self.outsideDelay or 0.3) then
+        self:Hide()
+    end
+end
+
+local function CursorMenuOnEvent(self, event)
+    if event ~= "GLOBAL_MOUSE_DOWN" and event ~= "GLOBAL_MOUSE_UP" then return end
+    if self._showedAt and (GetTime() - self._showedAt) < (self.clickGrace or 0.05) then return end
+    if not CursorMenuHasMouse(self) then self:Hide() end
+end
+
+local function CursorMenuOnKeyDown(self, key)
+    local navKey = key and key:upper() or key
+    if navKey == "ESCAPE" then
+        Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+        self:Hide()
+    elseif navKey == "DOWN" or (IsAltKeyDown and IsAltKeyDown() and navKey == "J") then
+        Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+        CursorMenuMoveKeyboardIndex(self, 1)
+    elseif navKey == "UP" or (IsAltKeyDown and IsAltKeyDown() and navKey == "K") then
+        Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+        CursorMenuMoveKeyboardIndex(self, -1)
+    elseif navKey == "ENTER" or navKey == "SPACE" then
+        Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+        CursorMenuActivateKeyboardIndex(self)
+    else
+        Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
+    end
+end
+
+local function CreateCursorMenu(globalName)
+    cursorMenuCounter = cursorMenuCounter + 1
+    local frameName = globalName .. "_" .. cursorMenuCounter
+    local menu = CreateFrame("Frame", frameName, UIParent, "BackdropTemplate")
+    menu:EnableMouse(true)
+    menu.rows = {}
+    menu:SetBackdrop({
+        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
+        edgeFile = ns.TOOLTIP_BORDER,
+        tile = true, tileSize = 16, edgeSize = 12,
+        insets = { left = 2, right = 2, top = 2, bottom = 2 }
+    })
+    if ns.DARK_PANEL_BG then menu:SetBackdropColor(unpack(ns.DARK_PANEL_BG)) end
+
+    menu.SetKeyboardIndex = CursorMenuSetKeyboardIndex
+    menu.MoveKeyboardIndex = CursorMenuMoveKeyboardIndex
+    menu.ActivateKeyboardIndex = CursorMenuActivateKeyboardIndex
+    menu.FocusKeyboard = CursorMenuFocusKeyboard
+    menu:SetScript("OnShow", CursorMenuOnShow)
+    menu:SetScript("OnHide", CursorMenuOnHide)
+    menu:SetScript("OnUpdate", CursorMenuOnUpdate)
+    menu:SetScript("OnEvent", CursorMenuOnEvent)
+    menu:SetScript("OnKeyDown", CursorMenuOnKeyDown)
+
+    cursorMenuPool[globalName] = cursorMenuPool[globalName] or {}
+    local pool = cursorMenuPool[globalName]
+    pool[#pool + 1] = menu
+    if not _G[globalName] then _G[globalName] = menu end
+    return menu
+end
+
 function Utils.ShowCursorMenu(globalName, rows, opts)
     opts = opts or {}
 
     HideOtherMenus(globalName, nil)
 
-    local menu = FindFreeMenu(globalName)
-    if not menu then
-        cursorMenuCounter = cursorMenuCounter + 1
-        local frameName = globalName .. "_" .. cursorMenuCounter
-        menu = CreateFrame("Frame", frameName, UIParent, "BackdropTemplate")
-        menu:EnableMouse(true)
-        menu.rows = {}
-        menu:SetBackdrop({
-            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-            edgeFile = ns.TOOLTIP_BORDER,
-            tile = true, tileSize = 16, edgeSize = 12,
-            insets = { left = 2, right = 2, top = 2, bottom = 2 }
-        })
-        local bg = ns.DARK_PANEL_BG
-        if bg then menu:SetBackdropColor(bg[1], bg[2], bg[3], bg[4]) end
-        local function MenuHasMouse(self)
-            if self:IsMouseOver() then return true end
-            if self.rows then
-                for i = 1, #self.rows do
-                    local row = self.rows[i]
-                    if row and row:IsShown() and row:IsMouseOver() then
-                        return true
-                    end
-                end
-            end
-            return false
-        end
-        local function PaintKeyboardSelection(self)
-            if not self.rows then return end
-            for i = 1, #self.rows do
-                local row = self.rows[i]
-                if row and row.UnlockHighlight then row:UnlockHighlight() end
-                if row and row.keyboardOverlay then
-                    row.keyboardOverlay:SetShown(self.keyboardIndex == i)
-                end
-            end
-            local row = self.rows[self.keyboardIndex or 0]
-            if row and row.LockHighlight then row:LockHighlight() end
-        end
-        local function IsSelectableRow(row)
-            return row and row:IsShown() and not row.isSeparator
-        end
-        local function SetKeyboardIndex(self, index)
-            if not self.rows then return false end
-            if not index then
-                self.keyboardIndex = nil
-                PaintKeyboardSelection(self)
-                return false
-            end
-            if index < 1 then index = #self.rows end
-            if index > #self.rows then index = 1 end
-            local start = index
-            repeat
-                local row = self.rows[index]
-                if IsSelectableRow(row) then
-                    self.keyboardIndex = index
-                    PaintKeyboardSelection(self)
-                    return true
-                end
-                index = index + 1
-                if index > #self.rows then index = 1 end
-            until index == start
-            self.keyboardIndex = nil
-            PaintKeyboardSelection(self)
-            return false
-        end
-        local function MoveKeyboardIndex(self, delta)
-            if not self.rows then return false end
-            local index = (self.keyboardIndex or (delta > 0 and 0 or #self.rows + 1)) + delta
-            if index < 1 then index = #self.rows end
-            if index > #self.rows then index = 1 end
-            return SetKeyboardIndex(self, index)
-        end
-        local function ActivateKeyboardIndex(self)
-            local row = self.rows and self.rows[self.keyboardIndex or 0]
-            if not IsSelectableRow(row) then return false end
-            local onClick = row.onClick
-            self:Hide()
-            if onClick then onClick() end
-            return true
-        end
-        local function FocusKeyboard(self, index)
-            self.keyboardMode = true
-            Utils.SafeCallMethod(self, "EnableKeyboard", true)
-            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
-            if self.Raise then self:Raise() end
-            SetKeyboardIndex(self, index or 1)
-        end
-        menu.SetKeyboardIndex = SetKeyboardIndex
-        menu.MoveKeyboardIndex = MoveKeyboardIndex
-        menu.ActivateKeyboardIndex = ActivateKeyboardIndex
-        menu.FocusKeyboard = FocusKeyboard
-        menu:SetScript("OnShow", function(self)
-            self._showedAt = GetTime()
-            self._outsideSince = nil
-            self._hasEntered = false
-            Utils.SafeCallMethod(self, "EnableKeyboard", true)
-            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
-            self:RegisterEvent("GLOBAL_MOUSE_DOWN")
-            self:RegisterEvent("GLOBAL_MOUSE_UP")
-            if self.keyboardMode then
-                FocusKeyboard(self, self.keyboardIndex or 1)
-            else
-                SetKeyboardIndex(self, nil)
-            end
-        end)
-        menu:SetScript("OnHide", function(self)
-            self._outsideSince = nil
-            self._hasEntered = false
-            SetKeyboardIndex(self, nil)
-            Utils.SafeCallMethod(self, "EnableKeyboard", false)
-            self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
-            self:UnregisterEvent("GLOBAL_MOUSE_UP")
-            if self.rows then
-                for i = 1, #self.rows do
-                    local row = self.rows[i]
-                    if row then row:Hide() end
-                end
-            end
-            local onHide = self.onHide
-            self.onHide = nil
-            if onHide then onHide(self) end
-        end)
-        menu:SetScript("OnUpdate", function(self)
-            if MenuHasMouse(self) then
-                self._outsideSince = nil
-                self._hasEntered = true
-                return
-            end
-            if not self._hasEntered then return end
-            local now = GetTime()
-            if not self._outsideSince then
-                self._outsideSince = now
-                return
-            end
-            if now - self._outsideSince > (self.outsideDelay or 0.3) then
-                self:Hide()
-            end
-        end)
-        menu:SetScript("OnEvent", function(self, event)
-            if event ~= "GLOBAL_MOUSE_DOWN" and event ~= "GLOBAL_MOUSE_UP" then return end
-            if self._showedAt and (GetTime() - self._showedAt) < (self.clickGrace or 0.05) then return end
-            if not MenuHasMouse(self) then self:Hide() end
-        end)
-        menu:SetScript("OnKeyDown", function(self, key)
-            local navKey = key and key:upper() or key
-            if navKey == "ESCAPE" then
-                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
-                self:Hide()
-            elseif navKey == "DOWN" or (IsAltKeyDown and IsAltKeyDown() and navKey == "J") then
-                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
-                MoveKeyboardIndex(self, 1)
-            elseif navKey == "UP" or (IsAltKeyDown and IsAltKeyDown() and navKey == "K") then
-                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
-                MoveKeyboardIndex(self, -1)
-            elseif navKey == "ENTER" or navKey == "SPACE" then
-                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
-                ActivateKeyboardIndex(self)
-            else
-                Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
-            end
-        end)
-        cursorMenuPool[globalName] = cursorMenuPool[globalName] or {}
-        local pool = cursorMenuPool[globalName]
-        pool[#pool + 1] = menu
-        if not _G[globalName] then _G[globalName] = menu end
-    end
+    local menu = FindFreeMenu(globalName) or CreateCursorMenu(globalName)
 
     menu:SetFrameStrata(opts.strata or "TOOLTIP")
     menu:SetFrameLevel(opts.level or 10000)
@@ -1846,8 +2103,7 @@ function Utils.SetIconTexture(textureObj, icon, fallback)
     textureObj:SetTexCoord(0, 1, 0, 1)
     if type(icon) == "table" and icon.file then
         textureObj:SetTexture(icon.file)
-        local c = icon.coords
-        if c then textureObj:SetTexCoord(c[1], c[2], c[3], c[4]) end
+        if icon.coords then textureObj:SetTexCoord(unpack(icon.coords)) end
     elseif type(icon) == "string" and ssub(icon, 1, 6) == "atlas:" then
         textureObj:SetAtlas(ssub(icon, 7), false)
     elseif icon then
