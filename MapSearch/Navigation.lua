@@ -500,6 +500,24 @@ function MapSearch:SelectResult(data, directOverride)
             directMode = EasyFind.db.localMapDirectOpen or false
         end
 
+        -- Dungeon/raid/delve entrance: even when the data also carries
+        -- isZone+zoneMapID (promoted instance entries from the global
+        -- cache do), route through the entrance path so the player
+        -- always lands at the actual entrance with a highlight on the
+        -- in-game pin. Without this, MapTab clicks on instances fall
+        -- into the zone branch and (in guide mode, the default) only
+        -- draw a zone outline — no entrance highlight until the user
+        -- enters the zone. Mirrors what HandleUISearchClick does for
+        -- the main search bar.
+        if data.isDungeonEntrance and data.entranceMapID
+           and data.entranceX and data.entranceY then
+            DebugPrint("[EasyFind] SelectResult -> ENTRANCE-FIRST branch, entranceMapID=", data.entranceMapID)
+            self:NavigateToEntrance(data.name, data.entranceX, data.entranceY,
+                data.entranceIcon or data.icon, data.entranceCategory or data.category,
+                data.entranceMapID, directMode, data.pin)
+            return
+        end
+
         -- Handle zone selection
         if data.isZone and data.zoneMapID then
             -- Orphan zones have no physical position on any parent map

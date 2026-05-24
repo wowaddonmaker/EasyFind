@@ -205,10 +205,40 @@ function MapSearch:EndHoverPreview()
         self:ClearZoneHighlight(true)
         self._previewingZone = nil
     end
-    self:ClearHighlight()
     local saved = self._savedPinState
     self._savedPinState = nil
-    if saved and saved.mapID == WorldMapFrame:GetMapID() then
+    local mapID = WorldMapFrame and WorldMapFrame:GetMapID()
+    -- If a click committed a new active pin state during this hover
+    -- (or shortly after, once a cross-map navigation settled),
+    -- activePinState now points at it. ClearHighlight + restore-saved
+    -- would wipe what the click just placed, leaving the user without
+    -- the highlight they explicitly triggered. Detect by comparing
+    -- against the pre-hover snapshot and render the committed state
+    -- instead.
+    local current = self:GetActivePinState()
+    local function stateOnMap(s)
+        return s and s.mapID == mapID
+            and (s.instances or (s.x and s.y))
+    end
+    local function statesDiffer(a, b)
+        if not a or not b then return a ~= b end
+        if a.mapID ~= b.mapID then return true end
+        if a.x ~= b.x or a.y ~= b.y then return true end
+        return false
+    end
+    if stateOnMap(current) and statesDiffer(current, saved) then
+        -- Re-render the committed pin without disturbing it.
+        self:ClearHighlight()
+        if current.instances then
+            self:ShowMultipleWaypoints(current.instances)
+        else
+            self:ShowWaypointAt(current.x, current.y, current.icon, current.category)
+        end
+        self:SetActivePinState(current)
+        return
+    end
+    self:ClearHighlight()
+    if saved and saved.mapID == mapID then
         if saved.instances then
             self:ShowMultipleWaypoints(saved.instances)
         elseif saved.x and saved.y then
