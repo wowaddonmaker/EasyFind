@@ -5,15 +5,19 @@ ns.MapTab = MapTab
 
 local Utils = ns.Utils
 local MapUtils = ns.MapUtils
+local ResultHandlers = ns.ResultHandlers
 local SafeAfter = Utils.SafeAfter
 local tinsert = Utils.tinsert
-local tremove = table.remove
+local tremove = Utils.tremove
+local tsort = Utils.tsort
+local mmin, mmax = Utils.mmin, Utils.mmax
 
-local GOLD_COLOR = ns.GOLD_COLOR or {1.0, 0.82, 0.0}
+local GOLD_COLOR = ns.GOLD_COLOR
 
 local CreateFrame = CreateFrame
 local GameTooltip = GameTooltip
 local GameTooltip_Hide = GameTooltip_Hide
+local IsAltKeyDown = IsAltKeyDown
 local GetMapChildrenInfo = C_Map and C_Map.GetMapChildrenInfo
 local GetMapInfo = C_Map and C_Map.GetMapInfo
 
@@ -40,6 +44,16 @@ local ROW_POOL_RETAIN  = 80
 local HEADER_POOL_RETAIN = 40
 local SECTION_POOL_RETAIN = 12
 
+
+local SEARCH_SCRATCH = {
+    tokens = {},
+    seen = {},
+    seenKeys = {},
+    candidates = {},
+    multiTokenCandidates = {},
+    versionByName = {},
+    candidateNames = {},
+}
 
 local worldChildrenCache = {}
 local function GetWorldChildren(mapID)
@@ -75,7 +89,7 @@ local function GetWorldChildren(mapID)
             end
         end
     end
-    table.sort(result, NameLess)
+    tsort(result, NameLess)
     worldChildrenCache[mapID] = result
     return result
 end
@@ -83,7 +97,6 @@ end
 do
     local inv = CreateFrame("Frame")
     inv:RegisterEvent("PLAYER_ENTERING_WORLD")
-    inv:RegisterEvent("ZONE_CHANGED_NEW_AREA")
     inv:SetScript("OnEvent", function() worldChildrenCache = {} end)
 end
 
@@ -211,7 +224,7 @@ local function RefreshSelectGlows()
     end
     if tabFrame and tabFrame._efIcon then
         local c = selectedIsOurs and TAB_ICON_GOLD or TAB_ICON_DIM
-        tabFrame._efIcon:SetVertexColor(c[1], c[2], c[3])
+        tabFrame._efIcon:SetVertexColor(Utils.RGB(c))
     end
 end
 
@@ -292,8 +305,8 @@ local function HideOurPanel()
 end
 
 local function PromptAlias(data)
-    if ns.UI and ns.UI.PromptForAlias then
-        ns.UI:PromptForAlias(data)
+    if ResultHandlers and ResultHandlers.PromptForAlias then
+        ResultHandlers:PromptForAlias(data)
     end
 end
 
@@ -491,18 +504,18 @@ local function CreateSectionLabel(parent)
     hdr:SetHeight(SECTION_HEADER_H)
     local fs = hdr:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     fs:SetPoint("CENTER", hdr, "CENTER", 0, 0)
-    fs:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
+    fs:SetTextColor(Utils.RGB(GOLD_COLOR))
     hdr.label = fs
     local lineLeft = hdr:CreateTexture(nil, "ARTWORK")
     lineLeft:SetHeight(1)
     lineLeft:SetPoint("LEFT", hdr, "LEFT", 6, 0)
     lineLeft:SetPoint("RIGHT", fs, "LEFT", -6, 0)
-    lineLeft:SetColorTexture(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.4)
+    lineLeft:SetColorTexture(Utils.RGB(GOLD_COLOR, 0.4))
     local lineRight = hdr:CreateTexture(nil, "ARTWORK")
     lineRight:SetHeight(1)
     lineRight:SetPoint("LEFT", fs, "RIGHT", 6, 0)
     lineRight:SetPoint("RIGHT", hdr, "RIGHT", -6, 0)
-    lineRight:SetColorTexture(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.4)
+    lineRight:SetColorTexture(Utils.RGB(GOLD_COLOR, 0.4))
     return hdr
 end
 
@@ -633,7 +646,7 @@ local function AcquireGroupHeader(parent, labelText, groupKey, count, collapsed,
     hdr.navigateData = navigateData
     hdr._matchColor = navigateData ~= nil
     if navigateData then
-        hdr.label:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1.0)
+        hdr.label:SetTextColor(Utils.RGB(GOLD_COLOR, 1.0))
     else
         hdr.label:SetTextColor(0.60, 0.58, 0.55, 1.0)
     end
@@ -868,7 +881,7 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
         local name = data.name or ""
         row.icon:Show()
         if data.isZone then
-            row.text:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3])
+            row.text:SetTextColor(Utils.RGB(GOLD_COLOR))
         else
             row.text:SetTextColor(1, 1, 1)
         end
@@ -1029,7 +1042,7 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
                             if #variants == 1 then
                                 placeRow(variants[1], 18, e.name)
                             else
-                                table.sort(variants, ZoneMapIDDesc)
+                                tsort(variants, ZoneMapIDDesc)
                                 local subKey = groupKey .. ":var:" .. n
                                 local stored = collapsedDb[subKey]
                                 local subCollapsed = stored ~= false
@@ -1138,7 +1151,7 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
         placeSectionLabel("Across the World")
         renderEntries(globalEntries, "global")
     end
-    scrollChild:SetHeight(math.max(1, y + 4))
+    scrollChild:SetHeight(mmax(1, y + 4))
 end
 
 -- ZONE results with these mapTypes are too coarse to be "local"
@@ -1255,8 +1268,10 @@ end
 local function BuildMultiTokenResults(tokens, isGlobal)
     local MapSearch = ns.MapSearch
     if not MapSearch or not MapSearch.BuildResults then return {} end
-    local seenKeys = {}
-    local candidates = {}
+    local seenKeys = SEARCH_SCRATCH.seenKeys
+    local candidates = SEARCH_SCRATCH.multiTokenCandidates
+    wipe(seenKeys)
+    wipe(candidates)
     for _, tok in ipairs(tokens) do
         local perRef = MapSearch:BuildResults(tok, isGlobal, true)
         for i = 1, #perRef do
@@ -1308,8 +1323,8 @@ function MapTab:RunSearch(text)
     lastRenderedQuery = text
     local function restoreScroll()
         if not scrollFrame then return end
-        local maxScroll = math.max(0, (scrollChild:GetHeight() or 0) - (scrollFrame:GetHeight() or 0))
-        scrollFrame:SetVerticalScroll(math.min(savedScroll, maxScroll))
+        local maxScroll = mmax(0, (scrollChild:GetHeight() or 0) - (scrollFrame:GetHeight() or 0))
+        scrollFrame:SetVerticalScroll(mmin(savedScroll, maxScroll))
     end
 
     -- Reset collapse state on text change so each new search starts with
@@ -1348,13 +1363,15 @@ function MapTab:RunSearch(text)
 
     -- Multi-token queries switch to per-token matching with ancestor
     -- awareness so "northrend raid" means "raids under Northrend".
-    local tokens = {}
+    local tokens = SEARCH_SCRATCH.tokens
+    wipe(tokens)
     for tok in text:gmatch("%S+") do tokens[#tokens + 1] = tok end
     local multiToken = #tokens > 1
 
     -- BuildResults returns a reusable module-level table; the second
     -- call wipes it. Shallow-copy before calling again.
-    local seen = {}
+    local seen = SEARCH_SCRATCH.seen
+    wipe(seen)
     local localRaw
     if multiToken then
         localRaw = BuildMultiTokenResults(tokens, false)
@@ -1430,7 +1447,7 @@ function MapTab:RunSearch(text)
         local removed = {}
         for _, list in pairs(byName) do
             if #list >= 2 then
-                table.sort(list, ZoneMapIDDesc)
+                tsort(list, ZoneMapIDDesc)
                 for j = 1, #list do removed[list[j]] = true end
                 versionGroups = versionGroups or {}
                 versionGroups[#versionGroups + 1] = {
@@ -1475,15 +1492,16 @@ function MapTab:RunSearch(text)
     -- typed text, so a fuzzy-winning non-prefix doesn't shadow a slightly
     -- lower-scored prefix match. Stash a window of candidates here.
     local CANDIDATE_CAP = 12
-    local candidates = {}
+    local candidates = SEARCH_SCRATCH.candidateNames
+    wipe(candidates)
     if localFiltered then
-        for i = 1, math.min(#localFiltered, CANDIDATE_CAP) do
+        for i = 1, mmin(#localFiltered, CANDIDATE_CAP) do
             if localFiltered[i] and localFiltered[i].name then
                 candidates[#candidates + 1] = localFiltered[i].name
             end
         end
     end
-    for i = 1, math.min(#globalFiltered, CANDIDATE_CAP) do
+    for i = 1, mmin(#globalFiltered, CANDIDATE_CAP) do
         if globalFiltered[i] and globalFiltered[i].name then
             candidates[#candidates + 1] = globalFiltered[i].name
         end
@@ -1967,7 +1985,7 @@ local FILTER_OPTIONS = {
 }
 
 -- Sub-row that only shows while the parent Rares filter is checked.
--- Mirrors `alwaysShowRares` in SavedVariables (shared with UI/Options.lua).
+-- Mirrors `alwaysShowRares` in SavedVariables (shared with Options/OptionsPanel.lua).
 local AUTO_TRACK_ROW_H = 18
 local function AttachAutoTrackRow(dropdown)
     local raresRow
@@ -2070,7 +2088,7 @@ local function CreateTabFrame(qmf)
     icon:SetAtlas("common-search-magnifyingglass", false)
     icon:SetSize(TAB_ICON_SIZE, TAB_ICON_SIZE)
     icon:SetPoint("CENTER", tab, "CENTER", 0, 0)
-    icon:SetVertexColor(TAB_ICON_DIM[1], TAB_ICON_DIM[2], TAB_ICON_DIM[3])
+    icon:SetVertexColor(Utils.RGB(TAB_ICON_DIM))
     tab._efIcon = icon
 
     local selectGlow = tab:CreateTexture(nil, "OVERLAY")
@@ -2155,7 +2173,7 @@ local function CreatePanel(qmf)
                 if key == "rares" and dropdown.UpdateAutoTrackRow then
                     dropdown:UpdateAutoTrackRow()
                 end
-                local uiMod = ns.UI
+                local uiMod = ns.Search
                 local uiSb = uiMod and uiMod.searchFrame and uiMod.searchFrame.editBox
                 if uiMod and uiMod.OnSearchTextChanged
                    and uiSb and uiSb:IsShown() then
@@ -2211,7 +2229,7 @@ local function CreatePanel(qmf)
     scrollFrame:HookScript("OnSizeChanged", function(_, w) scrollChild:SetWidth(w) end)
     scrollChild:SetWidth(scrollFrame:GetWidth())
     scrollFrame:SetScript("OnMouseWheel", function(self, delta)
-        local maxScroll = math.max(0, scrollChild:GetHeight() - self:GetHeight())
+        local maxScroll = mmax(0, scrollChild:GetHeight() - self:GetHeight())
         local cur = self:GetVerticalScroll() or 0
         local target = cur - delta * 24
         if target < 0 then target = 0 end
@@ -2230,17 +2248,17 @@ local function CreatePanel(qmf)
         local contentH = scrollChild:GetHeight() or 0
         local viewH = scrollFrame:GetHeight() or 0
         if scrollBar.SetVisibleExtentPercentage then
-            local extent = contentH > 0 and math.min(1, viewH / contentH) or 1
+            local extent = contentH > 0 and mmin(1, viewH / contentH) or 1
             scrollBar:SetVisibleExtentPercentage(extent)
         end
         if scrollBar.SetScrollPercentage then
-            local maxScroll = math.max(1, contentH - viewH)
+            local maxScroll = mmax(1, contentH - viewH)
             scrollBar:SetScrollPercentage((scrollFrame:GetVerticalScroll() or 0) / maxScroll)
         end
     end
     if scrollBar.RegisterCallback and scrollBar.Event and scrollBar.Event.OnScroll then
         scrollBar:RegisterCallback(scrollBar.Event.OnScroll, function(_, pct)
-            local maxScroll = math.max(0, (scrollChild:GetHeight() or 0) - (scrollFrame:GetHeight() or 0))
+            local maxScroll = mmax(0, (scrollChild:GetHeight() or 0) - (scrollFrame:GetHeight() or 0))
             scrollFrame:SetVerticalScroll(pct * maxScroll)
         end, p)
     end

@@ -5,6 +5,14 @@ local Utils = ns.Utils
 
 if not Database then return end
 
+-- Scheduler is loaded earlier in the .toc. ns.Scheduler is the singleton
+-- used by the addon at runtime. Tests can pre-populate ns.Scheduler with
+-- a per-test instance before loading this file to assert deterministic
+-- behavior via scheduler:Step.
+local function getScheduler()
+    return ns.Scheduler
+end
+
 local dynamicProviders = {
     { key = "currencies",  category = "Currency",             fn = "PopulateDynamicCurrencies" },
     { key = "reputations", category = "Reputation",           fn = "PopulateDynamicReputations" },
@@ -66,7 +74,6 @@ end
 local function NotifyProviderWaiters(provider, changed)
     local waiters = provider.waiting
     provider.waiting = nil
-    provider.loading = false
     if waiters then
         for i = 1, #waiters do
             waiters[i](changed)
@@ -74,12 +81,19 @@ local function NotifyProviderWaiters(provider, changed)
     end
 end
 
-local function RunDynamicProvider(database, provider, onDone)
-    if provider.loaded and not provider.dirty then onDone(false); return end
-    if provider.loading then
-        provider.waiting = provider.waiting or {}
-        provider.waiting[#provider.waiting + 1] = onDone
-        return
+-- Per-provider job IDs are namespaced under "dynamic:" so the scheduler
+-- can group-cancel them and so they don't collide with future job names.
+local function jobIdForProvider(provider)
+    return "dynamic:" .. provider.key
+end
+
+-- The actual work the scheduler's run() invokes. Behavior matches the
+-- old RunDynamicProvider closely: pre-fn, then sync or async dispatch,
+-- with FinishDynamicProvider managing loaded/dirty flags.
+local function runProviderJob(database, provider, schedDone)
+    local function finishWaiters(changed)
+        NotifyProviderWaiters(provider, changed)
+        schedDone()
     end
 
     local pre = provider.pre and database[provider.pre]
@@ -87,11 +101,6 @@ local function RunDynamicProvider(database, provider, onDone)
 
     local asyncFn = provider.asyncFn and database[provider.asyncFn]
     if asyncFn then
-        provider.loading = true
-        provider.waiting = { onDone }
-        local function finishWaiters(changed)
-            NotifyProviderWaiters(provider, changed)
-        end
         local ok, err = xpcall(asyncFn, Utils.ErrorHandler, database, function(changed, asyncErr)
             FinishDynamicProvider(database, provider, not asyncErr, asyncErr, changed, finishWaiters)
         end)
@@ -102,16 +111,66 @@ local function RunDynamicProvider(database, provider, onDone)
     end
 
     local fn = database[provider.fn]
-    if not fn then onDone(false); return end
+    if not fn then
+        NotifyProviderWaiters(provider, false)
+        schedDone()
+        return
+    end
 
     local ok, readyOrErr = xpcall(fn, Utils.ErrorHandler, database)
     if ok and readyOrErr == false then
         provider.loaded = false
         provider.dirty = true
-        onDone(false)
+        NotifyProviderWaiters(provider, false)
+        schedDone()
         return
     end
-    FinishDynamicProvider(database, provider, ok, readyOrErr, true, onDone)
+    FinishDynamicProvider(database, provider, ok, readyOrErr, true, finishWaiters)
+end
+
+-- Registers all dynamic provider jobs against the active scheduler.
+-- Idempotent: re-registering the same id overwrites cleanly so reloading
+-- this file in tests doesn't multi-register.
+local function ensureJobsRegistered(database)
+    local sched = getScheduler()
+    if not sched then return nil end
+    if database._dynamicJobsRegistered == sched then return sched end
+    database._dynamicJobsRegistered = sched
+    for i = 1, #dynamicProviders do
+        local provider = dynamicProviders[i]
+        sched:Register(jobIdForProvider(provider), {
+            cancelGroup = "dynamic",
+            run = function(_, done)
+                runProviderJob(database, provider, done)
+            end,
+        })
+    end
+    return sched
+end
+
+local function RunDynamicProvider(database, provider, onDone)
+    if provider.loaded and not provider.dirty then onDone(false); return end
+
+    -- Append to waiters before enqueueing so a synchronous run that fires
+    -- waiters inside its done() picks up this caller.
+    provider.waiting = provider.waiting or {}
+    provider.waiting[#provider.waiting + 1] = onDone
+
+    local sched = ensureJobsRegistered(database)
+    if not sched then
+        -- Scheduler unavailable (very early load); fall back to immediate
+        -- inline run so functionality is preserved.
+        runProviderJob(database, provider, function() end)
+        return
+    end
+    local jobId = jobIdForProvider(provider)
+    -- Only Reset complete jobs; resetting a "running" async job would let
+    -- a second Enqueue start the work concurrently.
+    if sched:Status(jobId) == "complete" then
+        sched:Reset(jobId)
+    end
+    sched:Enqueue(jobId)
+    sched:Step(0)
 end
 
 function Database:CancelDynamicWarmup()

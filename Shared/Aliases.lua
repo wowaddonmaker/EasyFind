@@ -1,9 +1,19 @@
 local _, ns = ...
+
+---@class AliasInfo
+---@field text string original (untrimmed) alias text
+---@field key string canonical entry key produced by Aliases:GetEntryKey
+---@field name string display name of the aliased entry
+---@field snapshot table? captured fields for map/zone aliases (see Aliases:Add)
+
+---@class Aliases
 local Aliases = {}
-ns.Aliases = Aliases
+if ns then ns.Aliases = Aliases end
 
 local Utils = ns.Utils
 local sfind, slower, strtrim = Utils.sfind, Utils.slower, strtrim
+local sformat = string.format
+local mfloor = Utils.mfloor
 local tinsert = Utils.tinsert
 
 local function IsMapAliasTarget(data)
@@ -21,11 +31,15 @@ local function MapAliasKey(data)
         or 0
     local x = data.x or data.entranceX or 0
     local y = data.y or data.entranceY or 0
-    return "map:" .. (data.category or "location") .. ":" .. tostring(mapID)
-        .. ":" .. name .. ":" .. tostring(math.floor(x * 10000 + 0.5))
-        .. ":" .. tostring(math.floor(y * 10000 + 0.5))
+    return sformat("map:%s:%d:%s:%d:%d",
+        data.category or "location", mapID, name,
+        mfloor(x * 10000 + 0.5), mfloor(y * 10000 + 0.5))
 end
 
+---Returns the canonical key for an entry, used to dedupe aliases and to
+---look an entry up later. Returns nil if the entry has no identifying fields.
+---@param data table?
+---@return string?
 function Aliases:GetEntryKey(data)
     if not data then return nil end
     if data.mountID       then return "mount:"          .. data.mountID end
@@ -69,6 +83,11 @@ function Aliases:FindEntryByKey(key)
     return nil
 end
 
+---Stores an alias pointing at the given entry. Returns true on success,
+---false if the alias text or entry is unsuitable.
+---@param aliasText string
+---@param data table
+---@return boolean
 function Aliases:Add(aliasText, data)
     if not EasyFind or not EasyFind.db then return false end
     aliasText = strtrim(aliasText or "")
@@ -131,6 +150,10 @@ function Aliases:ForEach(cb)
     end
 end
 
+---Returns aliases whose stored key contains the (already-lowered) query as
+---a substring. Nil if there are no matches or no query.
+---@param queryLower string?
+---@return { data: table, alias: AliasInfo }[]?
 function Aliases:GetMatches(queryLower)
     if not queryLower or queryLower == "" then return nil end
     if not EasyFind or not EasyFind.db or not EasyFind.db.aliases then return nil end
@@ -146,3 +169,5 @@ function Aliases:GetMatches(queryLower)
     end
     return out
 end
+
+return Aliases

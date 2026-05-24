@@ -4,9 +4,16 @@ local Database = {}
 ns.Database = Database
 
 local Utils   = ns.Utils
-local ipairs = Utils.ipairs
+local ipairs, pairs = Utils.ipairs, Utils.pairs
 local sfind, slower, ssub = Utils.sfind, Utils.slower, Utils.ssub
+local select, type, tostring = select, type, tostring
+local wipe = wipe
 local C_CurrencyInfo = C_CurrencyInfo
+local C_Reputation = C_Reputation
+local C_MountJournal = C_MountJournal
+local C_ToyBox = C_ToyBox
+local C_PetJournal = C_PetJournal
+local C_EncounterJournal = C_EncounterJournal
 local band, lshift = bit.band, bit.lshift
 
 local uiSearchData = {}
@@ -157,7 +164,6 @@ function Database:PopulateDynamicCurrencies()
                         buttonFrame = "CharacterMicroButton",
                         path = buildPath(),
                         steps = buildHeaderSteps(),
-                        flashLabel = "Currency",
                     }
                     entry.path[#entry.path] = nil
                     entry.nameLower = slower(entry.name)
@@ -193,7 +199,6 @@ function Database:PopulateDynamicCurrencies()
                     buttonFrame = "CharacterMicroButton",
                     path = buildPath(),
                     steps = currSteps,
-                    flashLabel = "Currency",
                     icon = info.iconFileID or nil,
                     currencyID = info.currencyID,
                     isAccountTransferable = isAccountTransferable,
@@ -270,7 +275,6 @@ function Database:PopulateDynamicCurrencies()
                                 { waitForFrame = "CharacterFrame", tabIndex = 3 },
                                 { waitForFrame = "CharacterFrame", currencyID = cid },
                             },
-                            flashLabel = "Currency",
                             icon = (fok and finfo.iconFileID) or nil,
                             currencyID = cid,
                             isAccountTransferable = true,
@@ -326,9 +330,8 @@ function Database:PopulateDynamicReputations()
         { waitForFrame = "CharacterFrame", tabIndex = 2 },
     }
 
-    local currentExpansion = nil
-    local currentFactionGroup = nil
-
+    local currentExpansion
+    local currentFactionGroup
 
     local function buildHeaderSteps()
         local steps = {}
@@ -528,8 +531,8 @@ local PET_PROTO = {
 local PET_MT = { __index = PET_PROTO }
 
 local OUTFIT_PROTO = {
-    keywords     = {"outfit", "transmog", "tmog", "mog", "appearance", "keymog"},
-    keywordsLower = {"outfit", "transmog", "tmog", "mog", "appearance", "keymog"},
+    keywords     = {"outfit", "appearance", "keymog"},
+    keywordsLower = {"outfit", "appearance", "keymog"},
     category     = "Outfit",
     path         = {},
     steps        = {},
@@ -638,11 +641,11 @@ local function GetHeavySearchWordLookup()
         "loot", "item", "gear", "armor", "boss", "bosses",
         "dungeon", "raid", "weapon",
     })
-    for equipLoc, words in _G.pairs(SLOT_KEYWORDS) do
+    for equipLoc, words in pairs(SLOT_KEYWORDS) do
         AddHeavySearchWord(_G[equipLoc])
         AddHeavySearchWords(words)
     end
-    for statKey, words in _G.pairs(STAT_KEYWORD_MAP) do
+    for statKey, words in pairs(STAT_KEYWORD_MAP) do
         AddHeavySearchWord(_G[statKey])
         AddHeavySearchWords(words)
     end
@@ -653,7 +656,7 @@ local statSearchWordLookup
 local function IsLootStatSearchWord(word)
     if not statSearchWordLookup then
         statSearchWordLookup = {}
-        for statKey, words in _G.pairs(STAT_KEYWORD_MAP) do
+        for statKey, words in pairs(STAT_KEYWORD_MAP) do
             local label = _G[statKey]
             if label then
                 for part in slower(label):gmatch("%S+") do
@@ -677,7 +680,11 @@ end
 function Database:QueryNeedsHeavySearchData(text)
     if not text then return false end
     local lookup = GetHeavySearchWordLookup()
-    for word in slower(text):gmatch("%S+") do
+    local query = slower(text)
+    if self.NormalizeSearchQuery then
+        query = self:NormalizeSearchQuery(query)
+    end
+    for word in query:gmatch("%S+") do
         word = word:gsub("^%p+", ""):gsub("%p+$", "")
         if lookup[word] then return true end
     end
@@ -695,13 +702,6 @@ local SLOT_DISPLAY = {
     INVTYPE_HOLDABLE = "Off Hand",
 }
 
--- Powers loot-category boost for slot queries (e.g. "legs").
-local lootSlotNames = {}
-for _, displayName in pairs(SLOT_DISPLAY) do
-    lootSlotNames[slower(displayName)] = true
-end
-ns.lootSlotNames = lootSlotNames
-
 -- C_EncounterJournal functions may not exist until EncounterJournal_LoadUI(),
 -- so resolve at call time. Prefer the C_ namespace over stale EJ_* globals.
 local function EJ(name)
@@ -713,9 +713,6 @@ local lootScanGeneration = 0
 local bossScanGeneration = 0
 local lootItemCache = {}
 local lootSpecsScanned = {}
-Database._lootItemCache = lootItemCache
-Database._lootEntries = lootEntries
-Database._lootSpecsScanned = lootSpecsScanned
 
 local LOOT_DIFF_IDS = {
     lfr     = { raid = 17 },
@@ -903,11 +900,6 @@ function Database:EnrichLootStats(entry)
     entry.lootStatKw = statKw
     entry._statsEnriched = true
 end
-
--- Outfit equip uses a temporary action bar slot rediscovered each click so we
--- don't overwrite user actions: PreClick places the outfit, secure handler
--- calls UseAction, PostClick clears the slot.
-local outfitEntries = {}
 
 function Database:PopulateDynamicMounts()
     if not C_MountJournal or not C_MountJournal.GetMountIDs then return false end
@@ -1148,21 +1140,19 @@ function Database:PopulateDynamicOutfits()
     if not C_TransmogOutfitInfo or not C_TransmogOutfitInfo.GetOutfitsInfo then return false end
 
     RemoveEntriesByCategory("Outfit")
-    wipe(outfitEntries)
-
     local outfits = C_TransmogOutfitInfo.GetOutfitsInfo()
     if not outfits then return false end
 
-    for _, info in ipairs(outfits) do
+    for index, info in ipairs(outfits) do
         if not info.isDisabled then
             local entry = setmetatable({
                 name = info.name,
                 icon = info.icon,
                 outfitID = info.outfitID,
+                outfitIndex = index,
                 nameLower = slower(info.name),
             }, OUTFIT_MT)
             uiSearchData[#uiSearchData + 1] = entry
-            outfitEntries[#outfitEntries + 1] = entry
         end
     end
     return true
@@ -1289,7 +1279,7 @@ function Database:PopulateDynamicTransmogSets()
 
             if classOk and sourceOk and collectedOk then
                 local nameLower = slower(setInfo.name)
-                local kw = {"set", "transmog", "appearance"}
+                local kw = {"set", "transmog", "tmog", "xmog", "appearance"}
                 local kwLen = 3
                 if label ~= "" then
                     kwLen = kwLen + 1
@@ -1326,17 +1316,6 @@ function Database:PopulateDynamicTransmogSets()
         end
     end
     return true
-end
-
-function Database:FindEmptyActionSlot()
-    -- Skip 121-168 (bonus/override/vehicle/stance bars) since they may reject
-    -- non-class-specific actions like totem or stance slots.
-    for slot = 180, 169, -1 do
-        if not HasAction(slot) then return slot end
-    end
-    for slot = 120, 1, -1 do
-        if not HasAction(slot) then return slot end
-    end
 end
 
 local function BuildLootSpecPairs(scanAllSpecs)
@@ -1400,14 +1379,14 @@ local function GetLootSpecsToScan(specPairs)
 end
 
 local function GetLootDiffPairs(isRaid)
-    local pairs = {}
+    local diffPairs = {}
     local st = isRaid and "raid" or "dungeon"
-    for diffKey, ids in _G.pairs(LOOT_DIFF_IDS) do
+    for diffKey, ids in pairs(LOOT_DIFF_IDS) do
         if ids[st] then
-            pairs[#pairs + 1] = { key = diffKey, id = ids[st] }
+            diffPairs[#diffPairs + 1] = { key = diffKey, id = ids[st] }
         end
     end
-    return pairs
+    return diffPairs
 end
 
 local function CacheLootInfo(database, lootInfo, inst, encName, encID, diff, sp, spKey, GetItemInfoInstantFn)
@@ -1906,8 +1885,7 @@ function Database:PopulateDynamicAbilities()
             local itemInfo = SBOOK.GetSpellBookItemInfo(s, BANK)
             if itemInfo and itemInfo.name and itemInfo.name ~= "" and itemInfo.actionID then
                 if (not SPELL_TYPE or itemInfo.itemType == SPELL_TYPE) then
-                    local seenKey = tostring(itemInfo.actionID) .. ":" .. tostring(tab)
-                        .. ":" .. tostring(lineSpecID or "")
+                    local seenKey = itemInfo.actionID .. ":" .. tab .. ":" .. (lineSpecID or "")
                     if not seen[seenKey] then
                         seen[seenKey] = true
                         injectAbility(itemInfo.name, itemInfo.subName, itemInfo.actionID,
@@ -2277,58 +2255,10 @@ function Database:PopulateDynamicBags()
     local CONT = C_Container
     local getNumSlots = (CONT and CONT.GetContainerNumSlots) or GetContainerNumSlots
     local getItemInfo = (CONT and CONT.GetContainerItemInfo)  or GetContainerItemInfo
-    local getItemInfoInstant = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
     if not getNumSlots or not getItemInfo then return false end
 
-    local nonEquipLocs = {
-        INVTYPE_NON_EQUIP = true,
-        INVTYPE_NON_EQUIP_IGNORE = true,
-        INVTYPE_AMMO = true,
-        INVTYPE_QUIVER = true,
-    }
-    local equipLocs = {
-        INVTYPE_HEAD = true,
-        INVTYPE_NECK = true,
-        INVTYPE_SHOULDER = true,
-        INVTYPE_BODY = true,
-        INVTYPE_CHEST = true,
-        INVTYPE_ROBE = true,
-        INVTYPE_WAIST = true,
-        INVTYPE_LEGS = true,
-        INVTYPE_FEET = true,
-        INVTYPE_WRIST = true,
-        INVTYPE_HAND = true,
-        INVTYPE_FINGER = true,
-        INVTYPE_TRINKET = true,
-        INVTYPE_CLOAK = true,
-        INVTYPE_WEAPON = true,
-        INVTYPE_SHIELD = true,
-        INVTYPE_2HWEAPON = true,
-        INVTYPE_WEAPONMAINHAND = true,
-        INVTYPE_WEAPONOFFHAND = true,
-        INVTYPE_HOLDABLE = true,
-        INVTYPE_RANGED = true,
-        INVTYPE_RANGEDRIGHT = true,
-        INVTYPE_THROWN = true,
-        INVTYPE_RELIC = true,
-        INVTYPE_TABARD = true,
-        INVTYPE_BAG = true,
-        INVTYPE_PROFESSION_TOOL = true,
-        INVTYPE_PROFESSION_GEAR = true,
-    }
-    local function isRealEquipLoc(equipLoc)
-        return type(equipLoc) == "string"
-            and equipLocs[equipLoc] == true
-            and not nonEquipLocs[equipLoc]
-    end
-    local function getEquipLoc(itemID)
-        if not getItemInfoInstant then return nil end
-        local info, _, _, equipLoc = getItemInfoInstant(itemID)
-        if type(info) == "table" then
-            return info.itemEquipLoc or info.equipLoc or info.inventoryType
-        end
-        return equipLoc
-    end
+    local isRealEquipLoc = Utils.IsRealEquipLoc
+    local getEquipLoc = Utils.GetItemEquipLoc
 
     RemoveEntriesByCategory("Bag")
     if self.ResetSearchCache then self:ResetSearchCache() end
@@ -2403,7 +2333,6 @@ function Database:_ResetDynamicProviderCaches()
     wipe(lootEntries)
     wipe(lootItemCache)
     wipe(lootSpecsScanned)
-    wipe(outfitEntries)
 end
 
 function Database:_ResetHeavyProviderCaches()
@@ -2461,7 +2390,6 @@ local function buildCategoryEntry(opts)
         buttonFrame = "AchievementMicroButton",
         path = opts.path,
         steps = opts.steps,
-        flashLabel = opts.flashLabel,
         isGuildAchievement = opts.isGuildAchievement and true or nil,
     }
     entry.nameLower = slower(opts.displayName)
@@ -2544,7 +2472,6 @@ function Database:PopulateDynamicAchievements()
             category     = "Achievement Category",
             path         = path,
             steps        = steps,
-            flashLabel   = "Achievements",
             isGuildAchievement = isGuildBranch,
         })
 
@@ -2717,7 +2644,6 @@ function Database:PopulateDynamicStatisticsAsync(done)
         local proto = {
             category      = "Statistic",
             buttonFrame   = "AchievementMicroButton",
-            flashLabel    = "Statistics",
             keywords      = STAT_KEYWORDS_EMPTY,
             keywordsLower = STAT_KEYWORDS_EMPTY,
             path          = path,
@@ -2777,7 +2703,8 @@ function Database:PopulateDynamicStatisticsAsync(done)
         uiSearchData[#uiSearchData + 1] = entry
     end
 
-    local BUDGET_MS = 2
+    -- Wider budget for the post-login scan: 2ms left stats unsearchable for seconds.
+    local BUDGET_MS = 6
     local cursor = 1
     local function step()
         if myGen ~= statsScanGeneration then
@@ -2894,7 +2821,6 @@ function Database:PopulateDynamicStatistics()
                             category     = "Statistic",
                             path         = path,
                             steps        = steps,
-                            flashLabel   = "Statistics",
                         })
                         entry.statisticID = id
                         uiSearchData[#uiSearchData + 1] = entry
@@ -2946,7 +2872,6 @@ function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, 
             steps = mySteps,
         }
         for i = 1, #parentPath do entry.path[i] = parentPath[i] end
-        if node.flashLabel then entry.flashLabel = node.flashLabel end
         if node.icon then entry.icon = node.icon end
         if node.available then entry.available = node.available end
         if node.canQueue then entry.canQueue = true end
@@ -3062,7 +2987,6 @@ function Database:BuildUIDatabase()
                     name = "Currency",
                     keywords = {"currency", "currencies", "tokens", "money"},
                     category = "Character Info",
-                    flashLabel = "Currency",
                     steps = {
                         { waitForFrame = "CharacterFrame", tabIndex = 3 },
                     },
@@ -3128,7 +3052,7 @@ function Database:BuildUIDatabase()
                 {
                     name = "Statistics",
                     keywords = {"statistics", "stats tab", "player statistics"},
-                    category = "Achievements",
+                    category = "Statistics",
                     steps = {{ waitForFrame = "AchievementFrame", tabIndex = 3 }},
                 },
             },
@@ -3261,14 +3185,14 @@ function Database:BuildUIDatabase()
                 { name = "Pet Journal", keywords = {"pets", "pet", "battle pets", "companion", "pet collection", "critter", "pet journal"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 2 }} },
                 { name = "Toy Box", keywords = {"toys", "toy", "toybox", "toy box", "fun items"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 3 }} },
                 { name = "Heirlooms", keywords = {"heirlooms", "heirloom", "leveling gear", "bind on account", "boa"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 4 }} },
-                { name = "Appearances (Transmog)", keywords = {"transmog", "tmog", "transmogrification", "appearance", "appearances", "wardrobe", "cosmetic", "looks", "mog"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 5, text = "Click the Appearances tab" }} },
+                { name = "Appearances (Transmog)", keywords = {"transmog", "tmog", "xmog", "transmogrification", "appearance", "appearances", "wardrobe", "cosmetic", "looks", "mog"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 5, text = "Click the Appearances tab" }} },
                 { name = "Campsites", keywords = {"campsites", "campsite", "camp", "camping", "rest area"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 6 }} },
             },
         },
 
         {
             name = "Transmogrification",
-            keywords = {"transmogrification", "transmog", "tmog", "mog", "wardrobe", "outfit", "outfits", "appearance", "keymog"},
+            keywords = {"transmogrification", "transmog", "tmog", "xmog", "mog", "wardrobe", "appearance", "keymog"},
             category = "Transmogrification",
             icon = { file = 6119963, coords = { 0.0183, 0.2629, 0.0131, 0.5152 } },
             steps = {{ loadTransmog = true }},
@@ -3317,7 +3241,7 @@ function Database:BuildUIDatabase()
             buttonFrame = "StoreMicroButton",
             steps = {{ buttonFrame = "StoreMicroButton" }},
             children = {
-                { name = "Shop Appearances", keywords = {"transmog", "tmog", "appearance"}, category = "Shop", steps = {{ waitForFrame = "StoreFrame", text = "Browse the Appearances section in the shop" }} },
+                { name = "Shop Appearances", keywords = {"shop appearances", "appearance"}, category = "Shop", steps = {{ waitForFrame = "StoreFrame", text = "Browse the Appearances section in the shop" }} },
             },
         },
 
@@ -3475,7 +3399,7 @@ end
 
 -- Build at load time (before ADDON_LOADED) so other modules can reference
 -- uiSearchData during their own init. Not routed through SafeInit, so wrap.
-local initOk, initErr = pcall(Database.Initialize, Database)
+local initOk, initErr = xpcall(Database.Initialize, Utils.ErrorHandler, Database)
 if not initOk then
     print("|cffff4444EasyFind Database failed to initialize: " .. tostring(initErr) .. "|r")
 end

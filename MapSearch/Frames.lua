@@ -3,10 +3,10 @@ local _, ns = ...
 local Frames = {}
 ns.MapSearchFrames = Frames
 
-local Data = ns.MapSearchData or {}
+local Utils = ns.Utils
 local CreateFrame = CreateFrame
-local STAR_GLOW_TEXTURE = Data.STAR_GLOW_TEXTURE or "Interface\\Cooldown\\star4"
-local ANIM_DURATION = Data.ANIM_DURATION or 0.5
+local STAR_GLOW_TEXTURE = ns.MAP_SEARCH_STAR_GLOW_TEXTURE or "Interface\\Cooldown\\star4"
+local ANIM_DURATION = 0.5
 
 function Frames.AttachBounceAnimation(frame, opts)
     opts = opts or {}
@@ -36,23 +36,23 @@ function Frames.AttachBounceAnimation(frame, opts)
 end
 
 function Frames.AddHighlightBorderTextures(frame, color, alpha)
-    color = color or ns.YELLOW_HIGHLIGHT or { 1, 1, 0 }
+    color = color or ns.YELLOW_HIGHLIGHT
     alpha = alpha or 1
 
     local top = frame:CreateTexture(nil, "OVERLAY")
-    top:SetColorTexture(color[1], color[2], color[3], alpha)
+    top:SetColorTexture(Utils.RGB(color, alpha))
     frame.top = top
 
     local bottom = frame:CreateTexture(nil, "OVERLAY")
-    bottom:SetColorTexture(color[1], color[2], color[3], alpha)
+    bottom:SetColorTexture(Utils.RGB(color, alpha))
     frame.bottom = bottom
 
     local left = frame:CreateTexture(nil, "OVERLAY")
-    left:SetColorTexture(color[1], color[2], color[3], alpha)
+    left:SetColorTexture(Utils.RGB(color, alpha))
     frame.left = left
 
     local right = frame:CreateTexture(nil, "OVERLAY")
-    right:SetColorTexture(color[1], color[2], color[3], alpha)
+    right:SetColorTexture(Utils.RGB(color, alpha))
     frame.right = right
 end
 
@@ -73,7 +73,7 @@ end
 
 function Frames.AddWaypointPinVisuals(pin, opts)
     opts = opts or {}
-    local color = opts.color or ns.YELLOW_HIGHLIGHT or { 1, 1, 0 }
+    local color = opts.color or ns.YELLOW_HIGHLIGHT
 
     local icon = pin:CreateTexture(nil, "ARTWORK")
     icon:SetAllPoints()
@@ -83,7 +83,7 @@ function Frames.AddWaypointPinVisuals(pin, opts)
     if opts.glowSize then glow:SetSize(opts.glowSize, opts.glowSize) end
     glow:SetPoint("CENTER")
     glow:SetTexture(opts.glowTexture or STAR_GLOW_TEXTURE)
-    glow:SetVertexColor(color[1], color[2], color[3], opts.glowAlpha or 0.8)
+    glow:SetVertexColor(Utils.RGB(color, opts.glowAlpha or 0.8))
     glow:SetBlendMode("ADD")
     pin.glow = glow
 

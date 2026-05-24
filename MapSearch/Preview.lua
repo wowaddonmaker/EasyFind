@@ -2,10 +2,13 @@ local _, ns = ...
 
 local MapSearch = ns.MapSearch
 local Utils = ns.Utils
+local MapUtils = ns.MapUtils
 local pcall = Utils.pcall
 
 local GetMapInfo = C_Map.GetMapInfo
 local GetMapRectOnMap = C_Map.GetMapRectOnMap
+local GetMapRectViaContinent = MapUtils.GetMapRectViaContinent
+local ResolveZoneForMap = MapUtils.ResolveZoneForMap
 
 -- Resolve preview-able coordinates for a search result on the current map.
 -- Returns {x, y, icon, category} or {instances} or nil if not previewable.
@@ -71,7 +74,7 @@ function MapSearch:GetPreviewCoords(data)
     -- because the zone outline already conveys "this is a zone".
     if data.isZone and data.zoneMapID then
         local zMap = data.zoneMapID
-        local resolved = self:ResolveZoneForMap(zMap, currentMapID)
+        local resolved = ResolveZoneForMap(zMap, currentMapID)
         if resolved ~= zMap then zMap = resolved end
         -- Strict direct-child gate (matches PreviewZoneHighlight): only
         -- show the bouncing arrow when the zone's parentMapID is the
@@ -81,7 +84,7 @@ function MapSearch:GetPreviewCoords(data)
             local ok, left, right, top, bottom = pcall(GetMapRectOnMap, zMap, currentMapID)
             if ok and left then
                 if left == 0 and right == 0 and top == 0 and bottom == 0 then
-                    local pL, pR, pT, pB = self:GetMapRectViaContinent(zMap, currentMapID)
+                    local pL, pR, pT, pB = GetMapRectViaContinent(zMap, currentMapID)
                     if pL then left, right, top, bottom = pL, pR, pT, pB end
                 end
                 if left and (right - left) > 0.005 and (bottom - top) > 0.005
@@ -242,4 +245,3 @@ function MapSearch:ClearUIPreview()
         end
     end
 end
-

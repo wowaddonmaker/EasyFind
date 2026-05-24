@@ -32,7 +32,7 @@ local DB_DEFAULTS = {
     uiSearchWidth = 1.54,
     uiResultsScale = 1.0,
     uiResultsWidth = 350,
-    uiSearchBarHeight = ns.SEARCHBAR_HEIGHT or 30,
+    uiSearchBarHeight = ns.SEARCHBAR_HEIGHT,
     fontSize = 0.9,
     uiSearchPosition = nil,
     localMapDirectOpen = true,
@@ -155,15 +155,7 @@ local function RequireRevampedTutorial(db)
     end
 end
 
-local function CloneDefaultValue(value)
-    if type(value) ~= "table" then return value end
-
-    local copy = {}
-    for k, v in pairs(value) do
-        copy[k] = CloneDefaultValue(v)
-    end
-    return copy
-end
+local CloneDefaultValue = ns.Utils.DeepCopy
 
 -- Keys preserved across the 2.0 settings reset; all others restored to defaults.
 local PRESERVED_KEYS = {
@@ -176,36 +168,36 @@ local PRESERVED_KEYS = {
 }
 
 local RETIRED_SETTINGS_KEYS = {
-    "enableUISearch",
-    "mapSearchScale",
-    "mapSearchWidth",
-    "mapResultsScale",
-    "mapResultsWidth",
-    "mapFontSize",
-    "mapResultsHeight",
-    "mapResultsAbove",
-    "mapSearchPosition",
-    "globalSearchPosition",
-    "mapSearchPositionMax",
-    "globalSearchPositionMax",
-    "mapSearchYOffset",
-    "hideSearchBarsMaximized",
-    "directOpen",
-    "mapSmartShow",
-    "pinsCollapsed",
-    "arrivalDistance",
-    "minimapArrowGlow",
-    "glowOnlyEasyFind",
-    "minimapGuideCircle",
-    "circleOnlyEasyFind",
-    "guideCircleScale",
-    "minimapPinGlow",
-    "panelOpacity",
-    "searchBarOpacity",
-    "staticOpacity",
-    "suggestedKeybindsApplied",
-    "optionsPosition",
-    "lootFilter",
+    enableUISearch = true,
+    mapSearchScale = true,
+    mapSearchWidth = true,
+    mapResultsScale = true,
+    mapResultsWidth = true,
+    mapFontSize = true,
+    mapResultsHeight = true,
+    mapResultsAbove = true,
+    mapSearchPosition = true,
+    globalSearchPosition = true,
+    mapSearchPositionMax = true,
+    globalSearchPositionMax = true,
+    mapSearchYOffset = true,
+    hideSearchBarsMaximized = true,
+    directOpen = true,
+    mapSmartShow = true,
+    pinsCollapsed = true,
+    arrivalDistance = true,
+    minimapArrowGlow = true,
+    glowOnlyEasyFind = true,
+    minimapGuideCircle = true,
+    circleOnlyEasyFind = true,
+    guideCircleScale = true,
+    minimapPinGlow = true,
+    panelOpacity = true,
+    searchBarOpacity = true,
+    staticOpacity = true,
+    suggestedKeybindsApplied = true,
+    optionsPosition = true,
+    lootFilter = true,
 }
 
 local function ApplyFreshSettingsFor2(db)
@@ -215,8 +207,8 @@ local function ApplyFreshSettingsFor2(db)
         end
     end
 
-    for i = 1, #RETIRED_SETTINGS_KEYS do
-        db[RETIRED_SETTINGS_KEYS[i]] = nil
+    for key in pairs(RETIRED_SETTINGS_KEYS) do
+        db[key] = nil
     end
 
     RequireRevampedTutorial(db)
@@ -265,7 +257,7 @@ local DB_MIGRATIONS = {
         db.panelOpacity = nil
     end,
     [10] = function(db)
-        if not db.uiSearchBarHeight then db.uiSearchBarHeight = ns.SEARCHBAR_HEIGHT or 30 end
+        if not db.uiSearchBarHeight then db.uiSearchBarHeight = ns.SEARCHBAR_HEIGHT end
     end,
     [11] = function(db)
         RequireRevampedTutorial(db)
@@ -408,24 +400,9 @@ local function OnInitialize()
             EasyFind:OpenOptions()
         elseif msg == "toggle" or msg == "t" then
             EasyFind:EnsureDynamicLoaded()
-            if ns.UI then ns.UI:Toggle() end
+            if ns.Search then ns.Search:Toggle() end
         elseif msg == "c" or msg == "clear" then
             EasyFind:ClearAll()
-        elseif msg:find("^test ") then
-            local texture = msg:match("^test%s+(.+)")
-            if texture then
-                EasyFind:TestIndicatorTexture(texture)
-            else
-                EasyFind:Print("Usage: /ef test <texture_path>")
-                EasyFind:Print("Example: /ef test Interface\\\\MINIMAP\\\\MiniMap-QuestArrow")
-            end
-        elseif msg == "noborder" then
-            local sf = _G["EasyFindSearchFrame"]
-            if sf then
-                ns.SetSearchBorderShown(sf, false)
-                sf:SetBackdrop(nil)
-                EasyFind:Print("Border hidden - /reload to restore")
-            end
         elseif msg == "r" or msg == "reset" then
             if ns.Options then
                 ns.Options:Initialize()
@@ -440,61 +417,12 @@ local function OnInitialize()
                 EasyFind.db.tutorialDone = false
                 ns.Wizard:Show()
             end
-        elseif msg == "perf" then
-            ns.PERF = not ns.PERF
-            EasyFind:Print("Perf logging " .. (ns.PERF and "ON" or "OFF"))
-            if ns.PERF and ns.UI then
-                EasyFind:Print(string.format(
-                    "Render so far: %d skipped, %d ran",
-                    ns.UI._renderSkips or 0, ns.UI._renderRuns or 0))
-            end
-        elseif msg == "test" or msg == "perftest" then
-            if ns.Perf and ns.Perf.Run then
-                ns.Perf:Run()
-            else
-                EasyFind:Print("Perf module not loaded")
-            end
-        elseif msg == "ejdump" then
-            local info = _G["EncounterJournalEncounterFrameInfo"]
-            if not info then print("No EncounterJournalEncounterFrameInfo"); return end
-            print("--- EJ Loot Container Dump ---")
-            local lc = info.LootContainer
-            print("LootContainer: " .. tostring(lc) .. " shown:" .. tostring(lc and lc:IsShown()))
-            if lc then
-                local sb = lc.ScrollBox
-                print("  .ScrollBox: " .. tostring(sb))
-                if sb then
-                    print("  .ScrollBox:IsShown(): " .. tostring(sb:IsShown()))
-                    print("  has EnumerateFrames: " .. tostring(sb.EnumerateFrames ~= nil))
-                    if sb.EnumerateFrames then
-                        local count = 0
-                        for _, btn in sb:EnumerateFrames() do
-                            count = count + 1
-                            local text = ns.Utils.GetButtonText(btn)
-                            print("    [" .. count .. "] " .. tostring(text) .. " shown:" .. tostring(btn:IsShown()))
-                        end
-                        print("  total frames: " .. count)
-                    end
-                    local st = sb.ScrollTarget
-                    print("  .ScrollTarget: " .. tostring(st))
-                    if st then
-                        local kids = { st:GetChildren() }
-                        print("  ScrollTarget children: " .. #kids)
-                        for i, kid in ipairs(kids) do
-                            if i <= 5 then
-                                local text = ns.Utils.GetButtonText(kid)
-                                print("    [" .. i .. "] " .. tostring(text) .. " shown:" .. tostring(kid:IsShown()))
-                            end
-                        end
-                    end
-                end
-            end
         elseif msg == "whatsnew" then
             if ns.version == "2.0.0" and ns.Wizard and ns.Wizard.Show then
                 EasyFind.db.tutorialDone = false
                 ns.Wizard:Show()
-            elseif ns.UI then
-                ns.UI:ShowWhatsNew(ns.version)
+            elseif ns.Search then
+                ns.Search:ShowWhatsNew(ns.version)
             end
         elseif msg == "help" or msg == "h" or msg == "?" then
             EasyFind:Print("Commands:")
@@ -519,8 +447,8 @@ local function MarkDynamicCategoryDirty(key)
     if ns.Database and ns.Database.MarkDynamicCategoryDirty then
         ns.Database:MarkDynamicCategoryDirty(key)
     end
-    if ns.UI and ns.UI.RebuildOpenResults then
-        ns.UI:RebuildOpenResults()
+    if ns.Search and ns.Search.RebuildOpenResults then
+        ns.Search:RebuildOpenResults()
     end
 end
 
@@ -638,6 +566,14 @@ EasyFind.GetAccountKeybind = function(_, action)
 end
 
 local function OnPlayerLogin()
+    -- Start the async scheduler's OnUpdate pump with a 2ms per-frame budget.
+    -- Dynamic provider coalescing and any future debounced/dep-aware jobs
+    -- run on this pump.
+    if ns.Scheduler and not ns.Scheduler._pumpFrame then
+        ns.Scheduler:SetBudgetMs(2)
+        ns.Scheduler:StartPump(CreateFrame("Frame"))
+    end
+
     if ns.Database and ns.Database.EnsureDynamicProviderLoaded then
         ns.Database:EnsureDynamicProviderLoaded("statistics", function(changed)
             if changed and ns.Database.MarkDynamicProviderLoaded then
@@ -662,7 +598,7 @@ local function OnPlayerLogin()
     if EasyFind.db.enableMapSearch ~= false then
         SafeInit(ns.MapSearch,  "MapSearch")
     end
-    SafeInit(ns.UI,        "UI")
+    SafeInit(ns.Search,        "UI")
     SafeInit(ns.Highlight, "Highlight")
     if EasyFind.db.enableMapSearch ~= false and ns.MapSearch and ns.MapSearch.WarmUISearchCaches then
         ns.MapSearch:WarmUISearchCaches()
@@ -690,10 +626,10 @@ local function OnPlayerLogin()
         end
     end)
 
-    -- Pre-warm Blizzard's achievement search index off the typing path.
-    SafeAfter(2.0, function()
-        if ns.UI and ns.UI.PrewarmAchievementSearch then
-            xpcall(ns.UI.PrewarmAchievementSearch, ErrorHandler, ns.UI)
+    -- Pre-warm Blizzard's achievement search index; LoadUI + first index build are slow.
+    SafeAfter(0.5, function()
+        if ns.Search and ns.Search.PrewarmAchievementSearch then
+            xpcall(ns.Search.PrewarmAchievementSearch, ErrorHandler, ns.Search)
         end
     end)
 
@@ -714,7 +650,7 @@ local function OnPlayerLogin()
         -- elseif currentVersion ~= REVAMPED_TUTORIAL_VERSION
         --        and (lastSeen ~= nil or EasyFind.db.setupComplete) then
         --     SafeAfter(1.5, function()
-        --         if ns.UI then ns.UI:ShowWhatsNew(currentVersion) end
+        --         if ns.Search then ns.Search:ShowWhatsNew(currentVersion) end
         --     end)
         EasyFind.db.lastSeenVersion = currentVersion
     end
@@ -764,8 +700,8 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         outfitRefreshTimer = C_Timer.NewTimer(0.5, function()
             outfitRefreshTimer = nil
             MarkDynamicCategoryDirty("outfits")
-            if ns.UIPins and ns.UIPins.SyncOutfits then
-                ns.UIPins.SyncOutfits()
+            if ns.SearchPins and ns.SearchPins.SyncOutfits then
+                ns.SearchPins.SyncOutfits()
             end
         end)
     elseif event == "TRANSMOG_COLLECTION_UPDATED" then
@@ -805,20 +741,20 @@ end)
 
 function EasyFind:ToggleSearchUI()
     self:EnsureDynamicLoaded()
-    if ns.UI then ns.UI:Toggle() end
+    if ns.Search then ns.Search:Toggle() end
 end
 
 function EasyFind:FocusSearchUI()
     self:EnsureDynamicLoaded()
-    if ns.UI then ns.UI:Focus() end
+    if ns.Search then ns.Search:Focus() end
 end
 
 function EasyFind:ToggleFocusSearchUI()
     self:EnsureDynamicLoaded()
     if EasyFind.db.enableMapSearch ~= false and WorldMapFrame and WorldMapFrame:IsShown() and ns.MapTab then
         ns.MapTab:Focus()
-    elseif ns.UI then
-        ns.UI:ToggleFocus()
+    elseif ns.Search then
+        ns.Search:ToggleFocus()
     end
 end
 
@@ -851,44 +787,6 @@ end
 
 function EasyFind:Print(msg)
     print(sformat("|cFF00FF00EasyFind:|r %s", msg))
-end
-
-function EasyFind:TestIndicatorTexture(texturePath)
-    local testFrame = _G["EasyFindTextureTest"] or CreateFrame("Frame", "EasyFindTextureTest", UIParent, "BackdropTemplate")
-    testFrame:SetSize(256, 256)
-    testFrame:SetPoint("CENTER")
-    testFrame:SetFrameStrata("FULLSCREEN_DIALOG")
-    testFrame:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true, tileSize = 32, edgeSize = 32,
-        insets = { left = 11, right = 12, top = 12, bottom = 11 }
-    })
-    testFrame:SetBackdropColor(0, 0, 0, 0.9)
-
-    if not testFrame.texture then
-        testFrame.texture = testFrame:CreateTexture(nil, "ARTWORK")
-        testFrame.texture:SetSize(200, 200)
-        testFrame.texture:SetPoint("CENTER")
-    end
-
-    if not testFrame.title then
-        testFrame.title = testFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-        testFrame.title:SetPoint("TOP", 0, -15)
-    end
-
-    if not testFrame.closeBtn then
-        testFrame.closeBtn = CreateFrame("Button", nil, testFrame, "UIPanelCloseButton")
-        testFrame.closeBtn:SetPoint("TOPRIGHT", -5, -5)
-    end
-
-    testFrame.texture:SetTexture(texturePath)
-    testFrame.texture:SetVertexColor(ns.YELLOW_HIGHLIGHT[1], ns.YELLOW_HIGHLIGHT[2], ns.YELLOW_HIGHLIGHT[3], 1)
-    testFrame.title:SetText("Testing: " .. texturePath)
-    testFrame:Show()
-
-    EasyFind:Print("Testing texture: " .. texturePath)
-    EasyFind:Print("Close the preview window to dismiss.")
 end
 
 local minimapButton
@@ -959,7 +857,7 @@ local function CreateMinimapButton()
 
     local icon = mmBtn:CreateTexture(nil, "ARTWORK")
     icon:SetSize(14, 14)
-    icon:SetTexture("Interface\\AddOns\\EasyFind\\Textures\\SpyglassMinimap")
+    icon:SetTexture("Interface\\AddOns\\EasyFind\\textures\\SpyglassMinimap")
     icon:SetPoint("CENTER")
 
     mmBtn:SetHighlightTexture(136477)
@@ -987,16 +885,22 @@ local function CreateMinimapButton()
     end)
 
     mmBtn:RegisterForDrag("LeftButton")
+    local DRAG_TICK = 0.03
+    local function MinimapDragTick(self, elapsed)
+        self._dragAccum = (self._dragAccum or 0) + elapsed
+        if self._dragAccum < DRAG_TICK then return end
+        self._dragAccum = 0
+        local mx, my = Minimap:GetCenter()
+        local cx, cy = GetCursorPosition()
+        local scale = Minimap:GetEffectiveScale()
+        cx, cy = cx / scale, cy / scale
+        local angle = mdeg(matan2(cy - my, cx - mx))
+        EasyFind.db.minimapButtonAngle = angle
+        PositionMinimapButton(angle)
+    end
     mmBtn:SetScript("OnDragStart", function(self)
-        self:SetScript("OnUpdate", function(self)
-            local mx, my = Minimap:GetCenter()
-            local cx, cy = GetCursorPosition()
-            local scale = Minimap:GetEffectiveScale()
-            cx, cy = cx / scale, cy / scale
-            local angle = mdeg(matan2(cy - my, cx - mx))
-            EasyFind.db.minimapButtonAngle = angle
-            PositionMinimapButton(angle)
-        end)
+        self._dragAccum = 0
+        self:SetScript("OnUpdate", MinimapDragTick)
     end)
     mmBtn:SetScript("OnDragStop", function(self)
         self:SetScript("OnUpdate", nil)

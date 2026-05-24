@@ -7,9 +7,9 @@ local Utils     = ns.Utils
 local pairs, ipairs, type = Utils.pairs, Utils.ipairs, Utils.type
 local tinsert, tremove = Utils.tinsert, Utils.tremove
 local sfind = Utils.sfind
-local MapSearchData = ns.MapSearchData or {}
-local CATEGORY_ICONS = MapSearchData.CATEGORY_ICONS or {}
-local CATEGORIES = MapSearchData.CATEGORIES or {}
+local MapSearchData = ns.MapSearchData
+local CATEGORY_ICONS = MapSearchData.CATEGORY_ICONS
+local CATEGORIES = MapSearchData.CATEGORIES
 
 
 local GOLD_COLOR = ns.GOLD_COLOR
@@ -132,7 +132,7 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
     local header = dropdown:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     header:SetPoint("TOPLEFT", 12, -PADDING_TOP)
     header:SetText("Show:")
-    header:SetTextColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 1)
+    header:SetTextColor(Utils.RGB(GOLD_COLOR, 1))
 
     local checkRows = {}
     local checkRowsByIndex = {}

@@ -1,13 +1,57 @@
 local _, ns = ...
 
-local Data = ns.MapSearchData or {}
-local Utils = ns.Utils or {}
+local Utils = ns.Utils
 local unpack = unpack
 local mpi = Utils.mpi or math.pi
 
-local STAR_GLOW_TEXTURE = Data.STAR_GLOW_TEXTURE or "Interface\\Cooldown\\star4"
-local INDICATOR_STYLES = Data.INDICATOR_STYLES or {}
-local INDICATOR_COLORS = Data.INDICATOR_COLORS or {}
+local STAR_GLOW_TEXTURE = "Interface\\Cooldown\\star4"
+ns.MAP_SEARCH_STAR_GLOW_TEXTURE = STAR_GLOW_TEXTURE
+local INDICATOR_STYLES = {
+    ["Classic Quest Arrow"] = {
+        texture = "Interface\\MINIMAP\\MiniMap-QuestArrow",
+        texCoord = nil,
+        preRotated = false,
+    },
+    ["EasyFind Arrow"] = {
+        texture = "Interface\\AddOns\\EasyFind\\MapSearch\\Images\\arrow-hq",
+        texCoord = nil,
+        preRotated = true,
+    },
+    ["Minimap Player Arrow"] = {
+        texture = "Interface\\Minimap\\MinimapArrow",
+        texCoord = nil,
+        preRotated = false,
+    },
+    ["Low-res Gauntlet"] = {
+        texture = "Interface\\CURSOR\\Point",
+        texCoord = nil,
+        preRotated = true,
+        rotation = 2.356,
+        offsetX = 0,
+        offsetY = 0,
+    },
+    ["HD Gauntlet"] = {
+        texture = 6116532,
+        texCoord = {0.000, 0.240, 0.000, 0.420},
+        preRotated = true,
+        rotation = 2.356,
+        offsetX = 0,
+        offsetY = 0,
+    },
+}
+
+local INDICATOR_COLORS = {
+    ["Yellow"]  = {1.0, 1.0, 0.0},
+    ["Gold"]    = {1.0, 0.82, 0.0},
+    ["Orange"]  = {1.0, 0.5, 0.0},
+    ["Red"]     = {1.0, 0.2, 0.2},
+    ["Green"]   = {0.2, 1.0, 0.2},
+    ["Blue"]    = {0.3, 0.6, 1.0},
+    ["Purple"]  = {0.7, 0.3, 1.0},
+    ["White"]   = {1.0, 1.0, 1.0},
+}
+
+ns.INDICATOR_COLORS = INDICATOR_COLORS
 
 local function GetIndicatorColor()
     local colorName = EasyFind.db.indicatorColor or "Yellow"
@@ -63,7 +107,7 @@ function ns.CreateIndicatorTextures(parentFrame, iconSize, glowSize)
     if style.texCoord then
         ind:SetTexCoord(unpack(style.texCoord))
     end
-    ind:SetVertexColor(color[1], color[2], color[3], 1)
+    ind:SetVertexColor(Utils.RGB(color, 1))
     local indicatorRotation = 0
     if style.rotation then
         indicatorRotation = style.rotation
@@ -78,7 +122,7 @@ function ns.CreateIndicatorTextures(parentFrame, iconSize, glowSize)
         glow:SetSize(glowSize, glowSize)
         glow:SetPoint("CENTER")
         glow:SetTexture(STAR_GLOW_TEXTURE)
-        glow:SetVertexColor(color[1], color[2], color[3], 0.35)
+        glow:SetVertexColor(Utils.RGB(color, 0.35))
         glow:SetBlendMode("ADD")
         parentFrame.glow = glow
     end
@@ -112,7 +156,7 @@ function ns.UpdateIndicator(parentFrame)
         indicatorRotation = mpi
     end
     tex:SetRotation(indicatorRotation)
-    tex:SetVertexColor(color[1], color[2], color[3], 1)
+    tex:SetVertexColor(Utils.RGB(color, 1))
     tex:ClearAllPoints()
     tex:SetPoint("CENTER", parentFrame, "CENTER", ox, oy)
 
@@ -123,7 +167,7 @@ function ns.UpdateIndicator(parentFrame)
     end
 
     if parentFrame.glow then
-        parentFrame.glow:SetVertexColor(color[1], color[2], color[3], 0.35)
+        parentFrame.glow:SetVertexColor(Utils.RGB(color, 0.35))
     end
 
     -- Map indicators handle scale in their own sizing code.

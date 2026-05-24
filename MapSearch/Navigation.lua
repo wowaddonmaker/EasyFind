@@ -2,6 +2,7 @@ local _, ns = ...
 
 local MapSearch = ns.MapSearch
 local Utils = ns.Utils
+local MapUtils = ns.MapUtils
 local MapFrames = ns.MapSearchFrames
 local DebugPrint = Utils.DebugPrint
 
@@ -23,6 +24,7 @@ local HasUserWaypoint = C_Map.HasUserWaypoint
 local ClearUserWaypoint = C_Map.ClearUserWaypoint
 local GetDungeonEntrancesForMap = C_EncounterJournal and C_EncounterJournal.GetDungeonEntrancesForMap
 local SetSuperTrackedVignette = C_SuperTrack and C_SuperTrack.SetSuperTrackedVignette
+local IsOrphanZone = MapUtils.IsOrphanZone
 
 local function PinYAsc(a, b)
     return (a.y or 0) < (b.y or 0)
@@ -429,7 +431,7 @@ function MapSearch:NavigateToEntrance(name, x, y, icon, category, targetMapID, d
         self:ShowWaypointAt(ex, ey, icon, category)
         return
     end
-    if self:IsOrphanZone(targetMapID) or directMode then
+    if IsOrphanZone(targetMapID) or directMode then
         self:ClearZoneHighlight()
         self.pendingWaypoint = {x = x, y = y, icon = icon, category = category, mapID = targetMapID}
         WorldMapFrame:SetMapID(targetMapID)
@@ -479,7 +481,7 @@ function MapSearch:SelectResult(data, directOverride)
             -- Orphan zones have no physical position on any parent map
             -- (e.g. Vision of Stormwind). Snap directly since there's nothing
             -- to highlight or guide through.
-            if self:IsOrphanZone(data.zoneMapID) then
+            if IsOrphanZone(data.zoneMapID) then
                 DebugPrint("[EasyFind] SelectResult -> ORPHAN ZONE, snapping directly to", data.zoneMapID)
                 self:ClearZoneHighlight()
                 WorldMapFrame:SetMapID(data.zoneMapID)
@@ -509,7 +511,6 @@ function MapSearch:SelectResult(data, directOverride)
             return
         end
 
-        -- Check if this POI has multiple instances (duplicates) or aggregate
         if data.allInstances and #data.allInstances > 1 then
             -- Show ALL instances on the map
             self:ShowMultipleWaypoints(data.allInstances)
@@ -934,5 +935,4 @@ function MapSearch:ClearAll()
     -- Notify the UI search bar to refresh its clear-button state.
     self:RefreshAllClearButtons()
 end
-
 

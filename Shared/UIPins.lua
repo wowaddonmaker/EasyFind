@@ -10,7 +10,7 @@ local tconcat, tinsert, tremove = Utils.tconcat, Utils.tinsert, Utils.tremove
 local charKey
 
 local SIMPLE_FIELDS = {
-    "name", "nameLower", "category", "buttonFrame", "flashLabel", "icon",
+    "name", "nameLower", "category", "buttonFrame", "icon",
     "specificIcon", "specificIconFrame",
     "mountID", "spellID", "toyItemID", "petID", "speciesID", "outfitID", "heirloomItemID",
     "macroIndex", "macroIsChar", "bagID", "bagSlot", "bagItemLink",
@@ -168,8 +168,8 @@ function UIPins.SyncOutfits()
     if not outfits then return end
 
     local lookup = {}
-    for _, info in ipairs(outfits) do
-        lookup[info.outfitID] = info
+    for index, info in ipairs(outfits) do
+        lookup[info.outfitID] = { info = info, index = index }
     end
 
     local function syncList(pins)
@@ -177,11 +177,13 @@ function UIPins.SyncOutfits()
         for i = #pins, 1, -1 do
             local pin = pins[i]
             if pin.outfitID then
-                local info = lookup[pin.outfitID]
-                if info then
+                local outfit = lookup[pin.outfitID]
+                if outfit then
+                    local info = outfit.info
                     pin.name = info.name
                     pin.nameLower = info.name:lower()
                     pin.icon = info.icon
+                    pin.outfitIndex = outfit.index
                 else
                     tremove(pins, i)
                 end

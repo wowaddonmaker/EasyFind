@@ -158,3 +158,7 @@ read_globals = {
 -- WoW callbacks have fixed signatures; unused args are normal
 unused_args = false
 self = false
+
+exclude_files = {
+    "dev/tests/vendor/*",
+}

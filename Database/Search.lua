@@ -1,5 +1,10 @@
 local _, ns = ...
 
+---@class SearchResult
+---@field data table the underlying entry (mount/toy/UI node/etc.)
+---@field score number ranking score, higher is better
+---@field isAlias boolean? true when this row was resolved from a saved alias
+
 local Database = ns.Database
 local Utils = ns.Utils
 
@@ -7,8 +12,11 @@ if not Database then return end
 
 local tsort = Utils.tsort
 local sfind, slower, ssub = Utils.sfind, Utils.slower, Utils.ssub
+local sgsub = string.gsub
 local sbyte = string.byte
-local mmin, mmax, mabs = Utils.mmin, Utils.mmax, Utils.mabs
+local mmin, mmax, mabs, mfloor = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mfloor
+local pairs = Utils.pairs
+local wipe = wipe
 local uiSearchData = Database.uiSearchData
 
 local function IsLootStatSearchWord(word)
@@ -34,6 +42,20 @@ local function GetWords(str)
     if wordCacheHead > WORD_CACHE_MAX then wordCacheHead = 1 end
     wordCache[str] = words
     return words
+end
+
+local SEARCH_WORD_SYNONYMS = {
+    tmog = "transmog",
+    xmog = "transmog",
+}
+
+---Rewrites recognized search-word synonyms (tmog/xmog -> transmog) so
+---matching is consistent regardless of which form the user typed.
+---@param query string?
+---@return string?
+function Database:NormalizeSearchQuery(query)
+    if not query or query == "" then return query end
+    return (sgsub(query, "%f[%w](%w+)%f[%W]", SEARCH_WORD_SYNONYMS))
 end
 
 local dlPrev2, dlPrev, dlCurr = {}, {}, {}
@@ -65,6 +87,11 @@ local INITIALS_STOPWORDS = {
     ["with"] = true, ["from"] = true,
 }
 
+---True if `query` appears in `text` at the start or after a word
+---separator (space, hyphen, paren, colon, slash, period).
+---@param text string
+---@param query string
+---@return boolean
 function Database:FindAtWordBoundary(text, query)
     local found = sfind(text, query, 1, true)
     if not found then return false end
@@ -95,7 +122,7 @@ function Database:ScoreInitials(text, query)
     local queryLen = #query
     local numWords = #words
 
-    -- Strategy 1: pure initials. "rb" → R(ated) B(attlegrounds).
+    -- Strategy 1: pure initials. "rb" -> R(ated) B(attlegrounds).
     if queryLen <= numWords then
         local allMatch = true
         for i = 1, queryLen do
@@ -110,8 +137,8 @@ function Database:ScoreInitials(text, query)
         end
     end
 
-    -- Strategy 2: greedy word-prefix walk. "raba" → ra(ndom) ba(ttleground).
-    -- Stopwords may be skipped (so "tot" → Throne Of Thunder works).
+    -- Strategy 2: greedy word-prefix walk. "raba" -> ra(ndom) ba(ttleground).
+    -- Stopwords may be skipped (so "tot" -> Throne Of Thunder works).
     local qi = 1
     local wordsMatched = 0
     for wi = 1, numWords do
@@ -251,7 +278,7 @@ function Database:CouldMatch(text, query)
     return true
 end
 
--- exact → starts-with → word-boundary → substring → initials → fuzzy.
+-- exact -> starts-with -> word-boundary -> substring -> initials -> fuzzy.
 function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
     if ssub(query, queryLen, queryLen) == " " then
         query = query:match("^(.-)%s+$") or query
@@ -283,7 +310,7 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
         if fuzzyScore > score then score = fuzzyScore end
     end
 
-    -- Vowel-stripped abbreviations: "qtr" → quartermaster, "windrnr" → windrunner.
+    -- Vowel-stripped abbreviations: "qtr" -> quartermaster, "windrnr" -> windrunner.
     if score < 50 and queryLen >= 3 and not sfind(query, " ", 1, true) then
         local nameWords = GetWords(nameLower)
         for wi = 1, #nameWords do
@@ -304,15 +331,9 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
     end
 
     -- Multi-word query: all words must match. Fires even after an inferior
-    -- low-score path so "estern kingd" → "Eastern Kingdoms" can still surface.
-    if score < 100 and sfind(query, " ", 1, true) then
+    -- low-score path so "estern kingd" -> "Eastern Kingdoms" can still surface.
+    if score < 100 and sfind(query, " ", 1, true) and optQueryWords then
         local queryWords = optQueryWords
-        if not queryWords then
-            queryWords = {}
-            for w in query:gmatch("%S+") do
-                queryWords[#queryWords + 1] = w
-            end
-        end
         if #queryWords >= 2 then
             local nameWords = GetWords(nameLower)
             local allMatched = true
@@ -391,12 +412,7 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
     end
 
     local queryWords = optQueryWords
-    if not queryWords then
-        queryWords = {}
-        for word in query:gmatch("%S+") do
-            queryWords[#queryWords + 1] = word
-        end
-    end
+    if not queryWords then return 0 end
 
     -- Single-word: take BEST kw match, not sum. Summing let items with
     -- redundant keywords ("reputation" + "reputation achievements") beat
@@ -495,7 +511,7 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
     return total
 end
 
--- When the user extends the previous query (e.g. "mou" → "moun"), only
+-- When the user extends the previous query (e.g. "mou" -> "moun"), only
 -- re-score entries that matched before instead of the full dataset.
 local function ScoreSingleFieldWord(fieldWord, queryWord, queryWordLen)
     if fieldWord == queryWord then return 100 end
@@ -530,6 +546,7 @@ local function ScoreFieldWords(words, queryWord, queryWordLen)
     return best
 end
 
+local keywordWordListsScratch = {}
 function Database:ScoreEntryFields(data, queryWords)
     if not queryWords or #queryWords < 2 then return 0 end
     local total = 0
@@ -538,21 +555,25 @@ function Database:ScoreEntryFields(data, queryWords)
     local nameWords = GetWords(data.nameLower or "")
     local keywordsLower = data.keywordsLower
 
+    local keywordWordLists = keywordWordListsScratch
+    local kwCount = keywordsLower and #keywordsLower or 0
+    for ki = 1, kwCount do
+        keywordWordLists[ki] = GetWords(keywordsLower[ki])
+    end
+
     for qi = 1, #queryWords do
         local qw = queryWords[qi]
         local qwLen = #qw
         if qwLen >= 2 or (qwLen == 1 and qi == #queryWords and matched > 0) then
             local nameBest = ScoreFieldWords(nameWords, qw, qwLen)
             local kwBest = 0
-            if keywordsLower then
-                for ki = 1, #keywordsLower do
-                    local kw = keywordsLower[ki]
-                    local kwScore = ScoreSingleFieldWord(kw, qw, qwLen)
-                    if kwScore < 90 then
-                        kwScore = mmax(kwScore, ScoreFieldWords(GetWords(kw), qw, qwLen))
-                    end
-                    if kwScore > kwBest then kwBest = kwScore end
+            for ki = 1, kwCount do
+                local kw = keywordsLower[ki]
+                local kwScore = ScoreSingleFieldWord(kw, qw, qwLen)
+                if kwScore < 90 then
+                    kwScore = mmax(kwScore, ScoreFieldWords(keywordWordLists[ki], qw, qwLen))
                 end
+                if kwScore > kwBest then kwBest = kwScore end
             end
             local best
             if nameBest > 0 then
@@ -572,7 +593,7 @@ function Database:ScoreEntryFields(data, queryWords)
     -- avg-capped name-only score (110 max), so an item whose keyword list
     -- contains "Eastern Kingdoms" would outrank the actual zone.
     if nameMatches == 0 then
-        total = math.floor(total * 0.45)
+        total = mfloor(total * 0.45)
     end
     return total + matched * 5
 end
@@ -586,7 +607,6 @@ local prefixIndexSeen = {}
 local prefixIndexReady = false
 local prefixCandidateBuf = {}
 local prefixCandidateSeen = {}
-Database._prefixIndex = prefixIndex
 
 local function AddPrefixIndexEntry(entry, prefix)
     if prefixIndexSeen[prefix] == entry then return end
@@ -691,8 +711,6 @@ end
 local resultsBuf = {}
 local resultsQueryWords = {}
 local resultEntryPool = {}
-Database._resultsBuf = resultsBuf
-Database._resultEntryPool = resultEntryPool
 
 function Database:TrimSearchMemory()
     self:UnloadDynamicSearchData()
@@ -719,12 +737,13 @@ function Database:SearchUI(query, skipCategories)
         self:BuildSearchPrefixIndex()
     end
 
-    query = slower(query)
+    query = Database:NormalizeSearchQuery(slower(query))
     local queryLen = #query
 
     -- Pre-trim trailing whitespace so scoring doesn't match() per entry.
     if ssub(query, queryLen, queryLen) == " " then
         query = query:match("^(.-)%s+$") or query
+        query = Database:NormalizeSearchQuery(query)
         queryLen = #query
         if queryLen == 0 then prevQuery = ""; wipe(prevCandidates); wipe(resultsBuf); return resultsBuf end
     end
@@ -761,13 +780,14 @@ function Database:SearchUI(query, skipCategories)
         (skipCategories["Pet"] and "P" or "") ..
         (skipCategories["Outfit"] and "O" or "") ..
         (skipCategories["Heirloom"] and "H" or "") ..
-        (skipCategories["Loot"] and "L" or "")
+        (skipCategories["Loot"] and "L" or "") ..
+        (skipCategories["Statistic"] and "S" or "")
     ) or ""
 
     -- prevCandidates can miss entries the now-more-permissive pass matches:
-    --   1. A gate flipped on ("icc bos" → "icc boss"). Boss/ach entries
+    --   1. A gate flipped on ("icc bos" -> "icc boss"). Boss/ach entries
     --      were never scored before the flip.
-    --   2. A word was appended to a stat-keyword query ("haste" →
+    --   2. A word was appended to a stat-keyword query ("haste" ->
     --      "haste ring"). Loot rings aren't in the "ha" prefix bucket
     --      (lootStatKw is enriched lazily); the "ri" bucket pulls them in.
     -- Either case bypasses extension and rebuilds via the prefix lookup.
@@ -800,18 +820,14 @@ function Database:SearchUI(query, skipCategories)
         and not gatingShifted then
         searchSet = prevCandidates
     else
-        if prefixIndexReady then
-            if #queryWords >= 2 then
-                searchSet = GetMultiTokenPrefixCandidates(queryWords)
-            else
-                local key2 = ssub(query, 1, 2)
-                searchSet = GetPrefixBucket(key2)
-                if not searchSet then
-                    searchSet = GetPrefixBucket(ssub(query, 1, 1))
-                end
-            end
+        if #queryWords >= 2 then
+            searchSet = GetMultiTokenPrefixCandidates(queryWords)
         else
-            searchSet = uiSearchData
+            local key2 = ssub(query, 1, 2)
+            searchSet = GetPrefixBucket(key2)
+            if not searchSet then
+                searchSet = GetPrefixBucket(ssub(query, 1, 1))
+            end
         end
         if not searchSet or #searchSet == 0 then
             wipe(resultsBuf)
@@ -908,8 +924,7 @@ function Database:SearchUI(query, skipCategories)
                 score = Database:ScoreName(nameLower, query, queryLen, queryWords)
             else
                 local cat = data.category
-                local isAchEntry = cat == "Achievements" or cat == "Guild Achievements"
-                                   or cat == "Statistics"
+                local isAchEntry = cat == "Achievement Category" or cat == "Statistic"
                 if isAchEntry and not achQueryWord then
                     -- Strong name matches only (skip kw score) so short kw
                     -- aliases don't drag every achievement category in.
@@ -978,4 +993,6 @@ function Database:SearchUI(query, skipCategories)
     end
     return results
 end
+
+return Database
 
