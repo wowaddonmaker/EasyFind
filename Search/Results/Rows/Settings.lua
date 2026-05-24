@@ -102,15 +102,13 @@ local function ActivateSettingResult(data, openMenuHeld)
         -- checkboxSlider, the cb variable lives at data.settingVariable
         -- so the existing toggle path Just Works.
         Results:ToggleSettingCheckbox(data)
-    else
-        -- Slider / keybind / dropdown / unknown: open the Settings
-        -- panel for that variable. Inline editors (slider drag, kb1/kb2
-        -- capture, dropdown paddles) sit on top of the row and consume
-        -- their own clicks, so the row click reaching us means the user
-        -- clicked the label area and wants to navigate to the setting.
-        Results:OpenSettingNoClose(data)
+        return true
     end
-    return true
+    -- Slider / keybind / dropdown / unknown: let the caller fall through
+    -- to the normal SelectResult path. SelectResult clears the search
+    -- bar and dismisses results before dispatching to HandleStep, which
+    -- gives navigation clicks the same behavior as every other row.
+    return false
 end
 
 function Rows:ActivateSettingResult(data, openMenuHeld)

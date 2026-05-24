@@ -55,9 +55,17 @@ function MapSearch:GetPreviewCoords(data)
     end
     -- Coords on the current map: use directly. Forward the live pin
     -- reference (when present) so previews can glow the native icon
-    -- in place of stamping an overlay.
+    -- in place of stamping an overlay. Global "Across the World"
+    -- results come from a cache that doesn't carry pin refs; fall back
+    -- to a by-name lookup on the live canvas so those results still
+    -- get the native-pin highlight when they happen to be in view.
     if px and py and (not pMapID or pMapID == currentMapID) then
-        return { x = px, y = py, icon = pIcon, category = pCat, pin = data.pin }
+        local pin = data.pin
+        if (not pin or not pin:IsShown())
+           and self.FindNativePinByName and data.name then
+            pin = self:FindNativePinByName(data.name)
+        end
+        return { x = px, y = py, icon = pIcon, category = pCat, pin = pin }
     end
     -- Coords on a different map: check if entrance is visible here
     if data.isDungeonEntrance or data.category == "dungeon"

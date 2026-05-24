@@ -439,6 +439,31 @@ local function ScanPinAtlasIdentity(pin)
     return atlasName, atlasCategory, atlasIcon
 end
 
+-- Returns the live native canvas pin whose GetPinInfo name matches the
+-- given name (case-insensitive). Used when hovering / clicking results
+-- whose data.pin was lost across the local-vs-global cache boundary
+-- (AppendGlobalInstanceSearchSources doesn't carry pin references), so
+-- highlight can still glow the in-game pin instead of falling back to an
+-- EasyFind waypoint overlay.
+function MapSearch:FindNativePinByName(name)
+    if not name or name == "" then return nil end
+    local canvas = WorldMapFrame and WorldMapFrame.ScrollContainer
+        and WorldMapFrame.ScrollContainer.Child
+    if not canvas then return nil end
+    local needle = slower(name)
+    local count = select("#", canvas:GetChildren())
+    for i = 1, count do
+        local pin = select(i, canvas:GetChildren())
+        if pin and pin:IsShown() then
+            local info = self:GetPinInfo(pin)
+            if info and info.name and slower(info.name) == needle then
+                return pin
+            end
+        end
+    end
+    return nil
+end
+
 function MapSearch:GetPinInfo(pin)
     if not pin or not pin:IsShown() then return nil end
 

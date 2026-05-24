@@ -270,7 +270,19 @@ end
 local function ShowPendingWaypoint(self, waypoint)
     Utils.SafeAfter(0.1, function()
         self:ClearZoneHighlight()
-        self:ShowWaypointAt(waypoint.x, waypoint.y, waypoint.icon, waypoint.category)
+        -- After the map change settles, the destination's native pins
+        -- have spawned. Glow the in-game pin if we can find it by name
+        -- so click matches hover; fall back to the EasyFind waypoint
+        -- when the pin isn't present (or doesn't carry a usable name).
+        local pin
+        if waypoint.name and self.FindNativePinByName then
+            pin = self:FindNativePinByName(waypoint.name)
+        end
+        if pin and pin:IsShown() then
+            self:HighlightPin(pin, waypoint.x, waypoint.y, waypoint.icon, waypoint.category)
+        else
+            self:ShowWaypointAt(waypoint.x, waypoint.y, waypoint.icon, waypoint.category)
+        end
     end)
 end
 
@@ -420,23 +432,35 @@ end
 -- If already on the target map, shows waypoint directly.
 -- Otherwise checks if the entrance is visible on the current map,
 -- falling back to map navigation with a pending waypoint.
-function MapSearch:NavigateToEntrance(name, x, y, icon, category, targetMapID, directMode)
+function MapSearch:NavigateToEntrance(name, x, y, icon, category, targetMapID, directMode, pin)
     local currentMapID = WorldMapFrame:GetMapID()
+    local function showAt(px, py)
+        local livePin = pin
+        if (not livePin or not livePin:IsShown())
+           and self.FindNativePinByName and name then
+            livePin = self:FindNativePinByName(name)
+        end
+        if livePin and livePin:IsShown() then
+            self:HighlightPin(livePin, px, py, icon, category)
+        else
+            self:ShowWaypointAt(px, py, icon, category)
+        end
+    end
     if currentMapID == targetMapID then
-        self:ShowWaypointAt(x, y, icon, category)
+        showAt(x, y)
         return
     end
     local ex, ey = self:FindEntranceOnMap(name, currentMapID)
     if ex then
-        self:ShowWaypointAt(ex, ey, icon, category)
+        showAt(ex, ey)
         return
     end
     if IsOrphanZone(targetMapID) or directMode then
         self:ClearZoneHighlight()
-        self.pendingWaypoint = {x = x, y = y, icon = icon, category = category, mapID = targetMapID}
+        self.pendingWaypoint = {x = x, y = y, icon = icon, category = category, mapID = targetMapID, name = name}
         WorldMapFrame:SetMapID(targetMapID)
     else
-        self.pendingWaypoint = {x = x, y = y, icon = icon, category = category, mapID = targetMapID}
+        self.pendingWaypoint = {x = x, y = y, icon = icon, category = category, mapID = targetMapID, name = name}
         self:HighlightZoneOnMap(targetMapID, name)
     end
 end
@@ -507,7 +531,7 @@ function MapSearch:SelectResult(data, directOverride)
         -- Dungeon/raid entrance from global search: navigate to zone, then show waypoint
         if data.isDungeonEntrance and data.entranceMapID then
             DebugPrint("[EasyFind] SelectResult -> DUNGEON ENTRANCE branch, entranceMapID=", data.entranceMapID)
-            self:NavigateToEntrance(data.name, data.x, data.y, data.icon, data.category, data.entranceMapID, directMode)
+            self:NavigateToEntrance(data.name, data.x, data.y, data.icon, data.category, data.entranceMapID, directMode, data.pin)
             return
         end
 

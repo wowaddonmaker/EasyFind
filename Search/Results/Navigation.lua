@@ -80,9 +80,11 @@ function Results:ToggleSettingCheckbox(data)
         Rows:WriteSettingVariable(var, curVal == 1 and 0 or 1)
     end
     -- Refresh the row so the checkbox state updates without closing
-    -- the search panel. Keeps focus on the editbox so the user can
-    -- toggle multiple settings without retyping.
-    self:RefreshResults()
+    -- the search panel. RefreshResults lives on Search, not Results,
+    -- so calling self:RefreshResults() here would silently no-op and
+    -- the on-screen checkbox would stay stale until the result list
+    -- rebuilt from scratch.
+    Search:RefreshResults()
     if Search:GetSearchFrame() and Search:GetSearchFrame().editBox
        and not (Search:GetNavFrame() and Search:GetNavFrame():IsKeyboardEnabled()) then
         Search:GetSearchFrame().editBox.blockFocus = nil
@@ -121,7 +123,7 @@ function Results:CycleSettingDropdown(data, direction)
 
     if not Rows:WriteSettingVariable(var, nextVal) then return false end
 
-    self:RefreshResults()
+    Search:RefreshResults()
     if Search:GetSearchFrame() and Search:GetSearchFrame().editBox
        and not (Search:GetNavFrame() and Search:GetNavFrame():IsKeyboardEnabled()) then
         Search:GetSearchFrame().editBox.blockFocus = nil
@@ -133,7 +135,7 @@ end
 function Results:SetSettingDropdownValue(data, value)
     if not data or not data.settingVariable then return false end
     if not Rows:WriteSettingVariable(data.settingVariable, value) then return false end
-    self:RefreshResults()
+    Search:RefreshResults()
     if Search:GetSearchFrame() and Search:GetSearchFrame().editBox
        and not (Search:GetNavFrame() and Search:GetNavFrame():IsKeyboardEnabled()) then
         Search:GetSearchFrame().editBox.blockFocus = nil
@@ -153,7 +155,7 @@ function Results:OpenSettingNoClose(data)
     end
     -- Refresh in case the panel itself altered values that affect the
     -- displayed amountText (e.g. dropdown selection updated).
-    self:RefreshResults()
+    Search:RefreshResults()
 end
 
 -- Close the filter dropdown and any nested sub-popups in one call.

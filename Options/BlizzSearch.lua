@@ -11,6 +11,7 @@ local pcall = pcall
 
 local SecureCall = Utils.SecureCall
 
+
 -- Settings.GetCategoryList was removed in Midnight (12.0); the modern
 -- entry point is SettingsPanel:GetAllCategories.
 local function GetSettingsCategoryList()
@@ -1069,38 +1070,305 @@ local function HighlightFoundElement(scrollBox, elementData)
     end)
 end
 
+local function SettingMatches(setting, variable)
+    if not setting or not setting.GetVariable then return false end
+    local ok, v = pcall(setting.GetVariable, setting)
+    return ok and v == variable
+end
+
+-- Returns (elementData, matchKind) where matchKind is "direct" for a
+-- standard single-setting initializer or "container" for an initializer
+-- that bundles many child settings (BaseQualityControls etc.). Container
+-- matches need a different scroll alignment because the data-provider
+-- element is ONE row but the rendered frame is a tall block, so centering
+-- the top of the block leaves the target child off-screen.
 local function FindSettingElement(dp, variable)
     if not dp then return nil end
-    local function matches(elementData)
+    local function classify(elementData)
         local inner = elementData and (elementData.data or elementData)
-        local setting = inner and inner.setting
-        if setting and setting.GetVariable then
-            return setting:GetVariable() == variable
+        if not inner then return false end
+        if SettingMatches(inner.setting, variable) then return "direct" end
+        if SettingMatches(inner.cbSetting, variable) then return "direct" end
+        if SettingMatches(inner.sliderSetting, variable) then return "direct" end
+        if type(inner.settings) == "table" then
+            for _, child in pairs(inner.settings) do
+                if SettingMatches(child, variable) then return "container" end
+            end
+        end
+        if type(inner.raidSettings) == "table" then
+            for _, child in pairs(inner.raidSettings) do
+                if SettingMatches(child, variable) then return "container" end
+            end
         end
         return false
     end
+    -- Prefer direct matches over container matches: if a standalone row
+    -- and a container both reference the same Setting object, scroll to
+    -- the standalone row.
+    local containerHit, containerKind
     if dp.FindElementDataByPredicate then
-        local found = dp:FindElementDataByPredicate(matches)
-        if found then return found end
+        local direct = dp:FindElementDataByPredicate(function(ed)
+            return classify(ed) == "direct"
+        end)
+        if direct then return direct, "direct" end
+        containerHit = dp:FindElementDataByPredicate(function(ed)
+            return classify(ed) == "container"
+        end)
+        if containerHit then return containerHit, "container" end
     end
     if dp.GetSize and dp.Find then
         for si = 1, dp:GetSize() do
             local ed = dp:Find(si)
-            if matches(ed) then return ed end
+            local kind = classify(ed)
+            if kind == "direct" then return ed, "direct" end
+            if kind == "container" and not containerHit then
+                containerHit, containerKind = ed, "container"
+            end
         end
+        if containerHit then return containerHit, containerKind end
     end
     return nil
+end
+
+-- Walk a container row's rendered frame to find the child sub-frame that
+-- corresponds to the target variable. BaseQualityControls names its
+-- per-setting child rows by the row's section name (ViewDistance,
+-- ShadowQuality, etc.), with the variable they wrap exposed via
+-- child.Initializer.data.setting / .cbSetting / .sliderSetting. Without
+-- this lookup, scrolling lands on the container's top and leaves a
+-- later child below the fold.
+-- BaseQualityControls creates its per-setting child rows from C++ without
+-- attaching an `initializer` to each, so the standard "walk and match by
+-- setting" lookup finds nothing. Map each PROXY_* variable to the
+-- well-known frame-name suffix (matches Blizzard's hardcoded child names
+-- in SharedXML/Settings/Blizzard_BaseQualityControlsTemplate.xml).
+local CONTAINER_CHILD_FRAME_SUFFIX = {
+    PROXY_GRAPHICS_QUALITY        = "GraphicsQuality",
+    PROXY_RAID_GRAPHICS_QUALITY   = "GraphicsQuality",
+    PROXY_VIEW_DISTANCE           = "ViewDistance",
+    PROXY_RAID_VIEW_DISTANCE      = "ViewDistance",
+    PROXY_ENVIRONMENT_DETAIL      = "EnvironmentDetail",
+    PROXY_RAID_ENVIRONMENT_DETAIL = "EnvironmentDetail",
+    PROXY_GROUND_CLUTTER          = "GroundClutter",
+    PROXY_RAID_GROUND_CLUTTER     = "GroundClutter",
+    PROXY_SHADOW_QUALITY          = "ShadowQuality",
+    PROXY_RAID_SHADOW_QUALITY     = "ShadowQuality",
+    PROXY_LIQUID_DETAIL           = "LiquidDetail",
+    PROXY_RAID_LIQUID_DETAIL      = "LiquidDetail",
+    PROXY_PARTICLE_DENSITY        = "ParticleDensity",
+    PROXY_RAID_PARTICLE_DENSITY   = "ParticleDensity",
+    PROXY_SSAO                    = "SSAO",
+    PROXY_RAID_SSAO               = "SSAO",
+    PROXY_DEPTH_EFFECTS           = "DepthEffects",
+    PROXY_RAID_DEPTH_EFFECTS      = "DepthEffects",
+    PROXY_COMPUTE_EFFECTS         = "ComputeEffects",
+    PROXY_RAID_COMPUTE_EFFECTS    = "ComputeEffects",
+    PROXY_OUTLINE_MODE            = "OutlineMode",
+    PROXY_RAID_OUTLINE_MODE       = "OutlineMode",
+    PROXY_TEXTURE_RESOLUTION      = "TextureResolution",
+    PROXY_RAID_TEXTURE_RESOLUTION = "TextureResolution",
+    PROXY_SPELL_DENSITY           = "SpellDensity",
+    PROXY_RAID_SPELL_DENSITY      = "SpellDensity",
+    PROXY_PROJECTED_TEXTURES      = "ProjectedTextures",
+    PROXY_RAID_PROJECTED_TEXTURES = "ProjectedTextures",
+}
+
+local function FindChildFrameForVariable(containerFrame, variable)
+    if not containerFrame or not containerFrame.GetChildren then return nil end
+    -- 1) Try the initializer-based lookup first for normal row frames
+    --    (combined checkbox+slider rows, plain setting rows).
+    local function check(frame, depth)
+        if not frame or depth > 6 then return nil end
+        local init = frame.initializer or frame.Initializer
+        local data = (init and init.data) or frame.data
+        if data then
+            if SettingMatches(data.setting, variable) then return frame end
+            if SettingMatches(data.cbSetting, variable) then return frame end
+            if SettingMatches(data.sliderSetting, variable) then return frame end
+        end
+        if frame.GetChildren then
+            local kids = { frame:GetChildren() }
+            for i = 1, #kids do
+                local hit = check(kids[i], depth + 1)
+                if hit then return hit end
+            end
+        end
+        return nil
+    end
+    local hit = check(containerFrame, 0)
+    if hit then return hit end
+
+    -- 2) Fall back to frame-name matching for BaseQualityControls-style
+    --    children that have no per-row initializer. Prefer visible
+    --    frames so a hidden Base-tab row doesn't shadow the live Raid-
+    --    tab row (or vice versa) when both share the same suffix.
+    local suffix = CONTAINER_CHILD_FRAME_SUFFIX[variable]
+    if suffix then
+        local visibleHit, hiddenHit
+        local function findByName(frame, depth)
+            if not frame or depth > 6 then return end
+            if frame.GetDebugName then
+                local ok, name = pcall(frame.GetDebugName, frame)
+                if ok and name and name:sub(-(#suffix + 1)) == "." .. suffix then
+                    if frame.IsVisible and frame:IsVisible() then
+                        visibleHit = frame
+                    elseif not hiddenHit then
+                        hiddenHit = frame
+                    end
+                end
+            end
+            if visibleHit then return end
+            if frame.GetChildren then
+                local kids = { frame:GetChildren() }
+                for i = 1, #kids do
+                    findByName(kids[i], depth + 1)
+                    if visibleHit then return end
+                end
+            end
+        end
+        findByName(containerFrame, 0)
+        return visibleHit or hiddenHit
+    end
+    return nil
+end
+
+-- Returns true if the variable belongs to the Raid and Battleground tab
+-- inside BaseQualityControls. Identified by the canonical PROXY_RAID_*
+-- naming Blizzard uses for the raid variants.
+local function IsRaidQualityVariable(variable)
+    return type(variable) == "string" and variable:find("^PROXY_RAID_") ~= nil
+end
+
+-- Walks the container's children to find a tab button by name suffix and
+-- clicks it. Used to flip BaseQualityControls into the Raid tab when the
+-- target variable is one of the raid variants.
+local function ClickTabBySuffix(containerFrame, suffix)
+    if not containerFrame or not containerFrame.GetChildren then return false end
+    local function find(frame, depth)
+        if not frame or depth > 4 then return nil end
+        if frame.GetDebugName then
+            local ok, name = pcall(frame.GetDebugName, frame)
+            if ok and name and name:sub(-(#suffix + 1)) == "." .. suffix then
+                return frame
+            end
+        end
+        if frame.GetChildren then
+            local kids = { frame:GetChildren() }
+            for i = 1, #kids do
+                local h = find(kids[i], depth + 1)
+                if h then return h end
+            end
+        end
+        return nil
+    end
+    local tab = find(containerFrame, 0)
+    if tab and tab.Click then
+        pcall(tab.Click, tab)
+        return true
+    end
+    return false
+end
+
+-- Given an outer container frame and a target child frame, return the
+-- vertical pixel offset of the child relative to the container's top.
+-- Used to convert a container-row scroll into a child-aware scroll.
+local function ChildTopOffset(container, child)
+    if not container or not child or not child.GetTop or not container.GetTop then
+        return 0
+    end
+    local cTop = container:GetTop()
+    local childTop = child:GetTop()
+    if not cTop or not childTop then return 0 end
+    return cTop - childTop
 end
 
 local function ScrollToSettingVariable(variable)
     local scrollBox = GetSettingsScrollBox()
     if not scrollBox then return false end
     local dp = scrollBox.GetDataProvider and scrollBox:GetDataProvider()
-    local found = FindSettingElement(dp, variable)
+    local found, kind = FindSettingElement(dp, variable)
     if not found then return false end
+
+    local alignBegin = ScrollBoxConstants and ScrollBoxConstants.AlignBegin
     local alignCenter = ScrollBoxConstants and ScrollBoxConstants.AlignCenter
-    scrollBox:ScrollToElementData(found, alignCenter)
-    HighlightFoundElement(scrollBox, found)
+    -- Direct rows: center via Blizzard's built-in alignment. Container
+    -- rows: scroll to begin first (so the container's children render
+    -- below the fold predictably), then nudge to center the actual
+    -- target child below.
+    if kind == "container" then
+        scrollBox:ScrollToElementData(found, alignBegin or alignCenter)
+        SafeAfter(0, function()
+            local outer = scrollBox.FindFrame and scrollBox:FindFrame(found)
+            if not outer then return end
+            -- For Raid* variables, click the "Raid and Battleground" tab
+            -- inside the container first so the raid version of the
+            -- row becomes the visible/selected one. Without this, the
+            -- panel is left on the Base tab and the user doesn't see
+            -- the actual setting they searched for. Defer the child
+            -- lookup one frame so the tab swap has settled before we
+            -- grab the row reference — otherwise we end up holding a
+            -- Base-tab frame that goes hidden the next frame and the
+            -- highlight watchdog clears it immediately.
+            local tabSwapped = false
+            if IsRaidQualityVariable(variable) then
+                tabSwapped = ClickTabBySuffix(outer, "RaidTab")
+            else
+                tabSwapped = ClickTabBySuffix(outer, "BaseTab")
+            end
+            local function continueAfterSwap()
+                local child = FindChildFrameForVariable(outer, variable)
+                if not child then
+                    -- Couldn't find the specific child row; fall back
+                    -- to highlighting the container so something pulses.
+                    HighlightFoundElement(scrollBox, found)
+                    return
+                end
+                local offset = ChildTopOffset(outer, child)
+                if offset > 0
+                   and scrollBox.SetScrollPercentage and scrollBox.GetScrollPercentage
+                   and scrollBox.GetDerivedScrollRange and scrollBox.GetHeight then
+                    local range = scrollBox:GetDerivedScrollRange()
+                    if range and range > 0 then
+                        local curScroll = (scrollBox:GetScrollPercentage() or 0) * range
+                        local vH = scrollBox:GetHeight() or 0
+                        local cH = (child.GetHeight and child:GetHeight()) or 24
+                        local desiredScroll = curScroll + offset + cH / 2 - vH / 2
+                        local newPercent = math.max(0, math.min(1, desiredScroll / range))
+                        scrollBox:SetScrollPercentage(newPercent)
+                    end
+                end
+                -- Highlight the specific row, not the entire container.
+                -- Defer one more frame so a freshly-swapped Raid-tab row
+                -- has its final visible state before the highlight
+                -- watchdog evaluates target:IsVisible().
+                SafeAfter(0, function()
+                    local refetched = FindChildFrameForVariable(
+                        scrollBox.FindFrame and scrollBox:FindFrame(found), variable)
+                    local target = refetched or child
+                    if target and target:IsShown()
+                       and ns.Highlight and ns.Highlight.HighlightFrame then
+                        ns.Highlight:HighlightFrame(target, nil, function(t)
+                            return t and t:IsVisible()
+                        end)
+                    end
+                end)
+            end
+            -- Tab click swaps which child rows are visible/realized.
+            -- Defer one frame after the click so the swap finishes
+            -- before we measure or grab references; otherwise we hold
+            -- a stale frame that goes hidden and the watchdog clears
+            -- the highlight immediately.
+            if tabSwapped then
+                SafeAfter(0, continueAfterSwap)
+            else
+                continueAfterSwap()
+            end
+        end)
+    else
+        scrollBox:ScrollToElementData(found, alignCenter or alignBegin)
+        HighlightFoundElement(scrollBox, found)
+    end
+
     return true
 end
 BlizzOptionsSearch.ScrollToSettingVariable = ScrollToSettingVariable
@@ -1171,8 +1439,32 @@ local function ScrollToBindingAction(action, headerName)
     local alignBegin = ScrollBoxConstants and ScrollBoxConstants.AlignBegin
     scrollBox:ScrollToElementData(section, alignBegin)
 
-    -- Re-fetch the section frame inside the deferred callback; it may
-    -- be recycled across passes.
+    -- The section header is ONE data-provider element but renders many
+    -- binding child rows underneath. ScrollToElementData puts the header
+    -- at the top of the viewport, so a binding ten rows down is still
+    -- off-screen. Re-fetch the section frame after layout, find the
+    -- specific binding sub-frame, and center it in the viewport when
+    -- possible (clamps to the edges near the start/end of the list).
+    local function ScrollSectionToChild(child)
+        if not child or not child.GetTop then return end
+        local sf = scrollBox.FindFrame and scrollBox:FindFrame(section)
+        if not sf or not sf.GetTop then return end
+        local sTop, cTop = sf:GetTop(), child:GetTop()
+        if not sTop or not cTop then return end
+        local offset = sTop - cTop
+        if offset <= 0 then return end
+        if not (scrollBox.SetScrollPercentage and scrollBox.GetScrollPercentage
+                and scrollBox.GetDerivedScrollRange and scrollBox.GetHeight) then return end
+        local range = scrollBox:GetDerivedScrollRange()
+        if not range or range <= 0 then return end
+        local curScroll = (scrollBox:GetScrollPercentage() or 0) * range
+        local vH = scrollBox:GetHeight() or 0
+        local cH = (child.GetHeight and child:GetHeight()) or 24
+        local desiredScroll = curScroll + offset + cH / 2 - vH / 2
+        local newPercent = math.max(0, math.min(1, desiredScroll / range))
+        scrollBox:SetScrollPercentage(newPercent)
+    end
+
     local function expandThenHighlight()
         local sectionFrame = scrollBox.FindFrame and scrollBox:FindFrame(section)
         if not sectionFrame then return end
@@ -1183,12 +1475,21 @@ local function ScrollToBindingAction(action, headerName)
             local sf = scrollBox.FindFrame and scrollBox:FindFrame(section)
             if not sf or not bindingIdx then return end
             local bindingFrame = FindBindingFrameInSection(sf, bindingIdx)
-            if bindingFrame and bindingFrame:IsShown()
-               and ns.Highlight and ns.Highlight.HighlightFrame then
-                ns.Highlight:HighlightFrame(bindingFrame, nil, function(target)
-                    return target and target:IsVisible()
-                end)
-            end
+            if not bindingFrame then return end
+            ScrollSectionToChild(bindingFrame)
+            -- After the nudge, the binding may have moved; defer the
+            -- highlight one more frame so the border lands on the row's
+            -- final on-screen position.
+            SafeAfter(0, function()
+                local refetch = FindBindingFrameInSection(sf, bindingIdx)
+                local target = refetch or bindingFrame
+                if target and target:IsShown()
+                   and ns.Highlight and ns.Highlight.HighlightFrame then
+                    ns.Highlight:HighlightFrame(target, nil, function(t)
+                        return t and t:IsVisible()
+                    end)
+                end
+            end)
         end)
     end
     SafeAfter(0.05, expandThenHighlight)
@@ -1262,8 +1563,8 @@ local function CollectEntries()
     local function addCategoryEntry(cat, parentName)
         if not cat or not cat.GetName then return end
         local catName = cat:GetName()
-        if not catName or catName == "" then return end
         local catID = cat.GetID and cat:GetID()
+        if not catName or catName == "" then return end
         local catNameLower = slower(catName)
         local kw = { "settings", "options", catNameLower }
         if parentName then kw[#kw + 1] = slower(parentName) end
@@ -1318,10 +1619,24 @@ local function CollectKeybindings()
     for i = 1, n do
         local action, category = GetBinding(i)
         if action and (action == "HEADER_BLANK" or action:find("^HEADER_")) then
-            local headerKey = "BINDING_HEADER_" .. (category or action:sub(8))
-            local headerLoc = _G[headerKey]
-            if type(headerLoc) == "string" and headerLoc ~= "" then
-                currentHeader = headerLoc
+            -- Some clients return the localization key directly as the
+            -- category (e.g., "BINDING_HEADER_INTERFACE"); others return
+            -- the bare token ("INTERFACE") and expect us to prepend
+            -- BINDING_HEADER_. Try both, and only fall through to the
+            -- raw token when neither resolves — without this fallback
+            -- chain the subtext for a row ends up showing the literal
+            -- "BINDING_HEADER_INTERFACE" string instead of the
+            -- localized display name.
+            local function resolveHeader(key)
+                if type(key) ~= "string" or key == "" then return nil end
+                local v = _G[key]
+                if type(v) == "string" and v ~= "" then return v end
+                return nil
+            end
+            local resolved = resolveHeader(category)
+                or resolveHeader("BINDING_HEADER_" .. (category or action:sub(8)))
+            if resolved then
+                currentHeader = resolved
             elseif type(category) == "string" and category ~= "" then
                 currentHeader = category
             end
@@ -1363,15 +1678,19 @@ BlizzOptionsSearch.CollectKeybindings = CollectKeybindings
 -- but the Setting object's GetVariable() returns the PROXY_* name. We key
 -- on what GetVariable() actually returns. Values verified via /devqs on
 -- Midnight 12.0.
+-- Blizzard's internal range is 0-9 but the in-game slider displays 1-10
+-- (their formatter adds 1). Mirror that with `plusOne` so our inline
+-- slider label matches what the player sees in the Settings panel.
+local function PlusOneFormatter(v) return tostring((tonumber(v) or 0) + 1) end
 local QUALITY_SLIDER_OVERRIDES = {
-    PROXY_GRAPHICS_QUALITY        = { min = 0, max = 9, step = 1 },
-    PROXY_RAID_GRAPHICS_QUALITY   = { min = 0, max = 9, step = 1 },
-    PROXY_VIEW_DISTANCE           = { min = 0, max = 9, step = 1 },
-    PROXY_RAID_VIEW_DISTANCE      = { min = 0, max = 9, step = 1 },
-    PROXY_ENVIRONMENT_DETAIL      = { min = 0, max = 9, step = 1 },
-    PROXY_RAID_ENVIRONMENT_DETAIL = { min = 0, max = 9, step = 1 },
-    PROXY_GROUND_CLUTTER          = { min = 0, max = 9, step = 1 },
-    PROXY_RAID_GROUND_CLUTTER     = { min = 0, max = 9, step = 1 },
+    PROXY_GRAPHICS_QUALITY        = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
+    PROXY_RAID_GRAPHICS_QUALITY   = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
+    PROXY_VIEW_DISTANCE           = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
+    PROXY_RAID_VIEW_DISTANCE      = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
+    PROXY_ENVIRONMENT_DETAIL      = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
+    PROXY_RAID_ENVIRONMENT_DETAIL = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
+    PROXY_GROUND_CLUTTER          = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
+    PROXY_RAID_GROUND_CLUTTER     = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
 }
 
 local function WalkCategorySettings(cat, catName, catID, pathPrefix)
@@ -1511,6 +1830,7 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
                 settingMin = sliderInfo.min,
                 settingMax = sliderInfo.max,
                 settingStep = sliderInfo.step,
+                settingFormatter = sliderInfo.formatter,
                 steps = {
                     { settingsCategory = catName, settingCategoryID = catID,
                       settingVariable = variable },
@@ -1841,11 +2161,12 @@ local function CollectGameSettings()
                         -- hardcoded dropdown, then boolean checkbox, else
                         -- "open the panel on click" fallback.
                         local resolvedType, settingOptions
-                        local sMin, sMax, sStep
+                        local sMin, sMax, sStep, sFmt
                         local slider = QUALITY_SLIDER_OVERRIDES[variable]
                         if slider then
                             resolvedType = "slider"
                             sMin, sMax, sStep = slider.min, slider.max, slider.step
+                            sFmt = slider.formatter
                         else
                             local qspec = HARDCODED_OPTIONS[variable]
                             if qspec then
@@ -1871,6 +2192,7 @@ local function CollectGameSettings()
                             settingMin = sMin,
                             settingMax = sMax,
                             settingStep = sStep,
+                            settingFormatter = sFmt,
                             steps = {
                                 { settingsCategory = catName, settingCategoryID = catID,
                                   settingVariable = variable },
@@ -1890,23 +2212,47 @@ BlizzOptionsSearch.CollectGameSettings = CollectGameSettings
 
 function BlizzOptionsSearch:Populate()
     if not ns.Database or not ns.Database.uiSearchData then return end
-    local entries = CollectEntries()
     local data = ns.Database.uiSearchData
-    for i = 1, #entries do
-        tinsert(data, entries[i])
-    end
+
+    local entries = CollectEntries()
     local kb = CollectKeybindings()
-    for i = 1, #kb do
-        tinsert(data, kb[i])
-    end
     local addonEntries = CollectAddonCategories()
-    for i = 1, #addonEntries do
-        tinsert(data, addonEntries[i])
-    end
     local gameEntries = CollectGameSettings()
-    for i = 1, #gameEntries do
-        tinsert(data, gameEntries[i])
+
+    -- Post-pass dedupe: any Game Settings entry that collides with an
+    -- AddOn Settings entry by (name + settingsCategory) is dropped.
+    -- This is the simplest place to catch duplicates regardless of
+    -- which pipeline (CollectEntries' addCategoryEntry, CollectGame
+    -- Settings' main/orphan loops) emitted them, since IsAddonCategory
+    -- can be inconsistent for addons that don't register via
+    -- Settings.CategorySet.AddOns. Addons win because their entries
+    -- have correct subtext ("<addon> Settings") and category.
+    local addonKeys = {}
+    local function dedupeKey(e)
+        return (e.name or "") .. "\31" .. (e.settingsCategory or "")
     end
+    for i = 1, #addonEntries do
+        local e = addonEntries[i]
+        if e.category == "AddOn Settings" then
+            addonKeys[dedupeKey(e)] = true
+        end
+    end
+    local function pushFiltered(src)
+        for i = 1, #src do
+            local e = src[i]
+            if not (e.category == "Game Settings" and addonKeys[dedupeKey(e)]) then
+                tinsert(data, e)
+            end
+        end
+    end
+
+    -- Order matches what search ranking expects: curated -> keybinds ->
+    -- addons -> dynamic game.
+    pushFiltered(entries)
+    pushFiltered(kb)
+    for i = 1, #addonEntries do tinsert(data, addonEntries[i]) end
+    pushFiltered(gameEntries)
+
     if ns.Database.ResetSearchCache then ns.Database:ResetSearchCache() end
 end
 
@@ -1932,14 +2278,39 @@ function BlizzOptionsSearch:HandleStep(step)
         end
     end
 
-    -- Some clients ignore the second arg to OpenToCategory; scroll manually.
+    -- Settings.OpenToCategory ignores the second arg in many builds, and
+    -- even when it doesn't, the SettingsList's ScrollBox data provider
+    -- isn't repopulated for the new category until a frame or two later.
+    -- A single SafeAfter(0) retry hits the OLD category's data provider
+    -- and finds nothing. Retry across a few frames so the scroll fires as
+    -- soon as the new data provider lands (mirrors how
+    -- ClickAchievementCategory explicitly refreshes its data provider
+    -- before searching, except here we have no public refresh hook so we
+    -- poll instead).
+    -- Retry chain stops as soon as one attempt succeeds. Without the
+    -- shared `done` flag, every retry re-scrolls a freshly-populated
+    -- data provider, fighting itself and producing a visible spazz
+    -- before settling.
     if step.settingVariable then
-        SafeAfter(0, function() ScrollToSettingVariable(step.settingVariable) end)
-        SafeAfter(0.1, function() ScrollToSettingVariable(step.settingVariable) end)
+        local variable = step.settingVariable
+        local done = false
+        local function tryScroll()
+            if done then return end
+            if ScrollToSettingVariable(variable) then done = true end
+        end
+        for _, delay in ipairs({ 0, 0.05, 0.15, 0.3, 0.6 }) do
+            SafeAfter(delay, tryScroll)
+        end
     elseif step.bindingAction then
-        local header = step.bindingHeader
-        SafeAfter(0, function() ScrollToBindingAction(step.bindingAction, header) end)
-        SafeAfter(0.15, function() ScrollToBindingAction(step.bindingAction, header) end)
+        local action, header = step.bindingAction, step.bindingHeader
+        local done = false
+        local function tryBinding()
+            if done then return end
+            if ScrollToBindingAction(action, header) then done = true end
+        end
+        for _, delay in ipairs({ 0, 0.05, 0.15, 0.3, 0.6 }) do
+            SafeAfter(delay, tryBinding)
+        end
     end
 
     return catID ~= nil
