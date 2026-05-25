@@ -22,24 +22,25 @@ local uiSearchData = Database.uiSearchData
 local function IsLootStatSearchWord(word)
     return Database:IsLootStatSearchWord(word)
 end
--- FIFO-bounded; oldest prefixes evict when the ring buffer wraps.
+-- Unbounded string-keyed word cache. The previous FIFO-256 design
+-- thrashed for scoring: a single keystroke scoring 5000+ entries
+-- triggered ~25,000 GetWords calls, evicting and re-allocating most
+-- tables and producing 3-5 MB of transient garbage per keystroke.
+-- The working set is bounded by unique strings in the dataset
+-- (~7000 names + keywords + a handful of live queries) so the cache
+-- self-limits at ~700 KB and never thrashes once filled.
 local wordCache = {}
-local wordCacheKeys = {}
-local wordCacheHead = 1
-local WORD_CACHE_MAX = 256
+Database._wordCache = wordCache
+local EMPTY_WORDS = {}
 
 local function GetWords(str)
+    if not str or str == "" then return EMPTY_WORDS end
     local cached = wordCache[str]
     if cached then return cached end
     local words = {}
     for w in str:gmatch("[%w']+") do
         words[#words + 1] = w
     end
-    local oldKey = wordCacheKeys[wordCacheHead]
-    if oldKey then wordCache[oldKey] = nil end
-    wordCacheKeys[wordCacheHead] = str
-    wordCacheHead = wordCacheHead + 1
-    if wordCacheHead > WORD_CACHE_MAX then wordCacheHead = 1 end
     wordCache[str] = words
     return words
 end
@@ -553,7 +554,9 @@ function Database:ScoreEntryFields(data, queryWords)
     local matched = 0
     local nameMatches = 0
     local nameWords = GetWords(data.nameLower or "")
-    local keywordsLower = data.keywordsLower
+    -- Fall back to keywords when keywordsLower is omitted (most providers
+    -- skip the duplicate field when the keyword list is already lowercase).
+    local keywordsLower = data.keywordsLower or data.keywords
 
     local keywordWordLists = keywordWordListsScratch
     local kwCount = keywordsLower and #keywordsLower or 0
@@ -644,7 +647,7 @@ function Database:BuildSearchPrefixIndex()
     for i = 1, #uiSearchData do
         local entry = uiSearchData[i]
         IndexPrefixText(entry, entry.nameLower)
-        IndexPrefixList(entry, entry.keywordsLower)
+        IndexPrefixList(entry, entry.keywordsLower or entry.keywords)
         IndexPrefixList(entry, entry.lootSlotKw)
         IndexPrefixList(entry, entry.lootStatKw)
         IndexPrefixList(entry, entry.lootSourceKw)
@@ -718,8 +721,6 @@ function Database:TrimSearchMemory()
     wipe(resultsQueryWords)
     wipe(resultEntryPool)
     wipe(wordCache)
-    wipe(wordCacheKeys)
-    wordCacheHead = 1
     ClearPrefixBuckets()
 end
 
@@ -942,7 +943,7 @@ function Database:SearchUI(query, skipCategories)
                     -- keywordsLower; a sum double-counts the same fuzzy hit.
                     score = mmax(
                         Database:ScoreName(nameLower, query, queryLen, queryWords),
-                        Database:ScoreKeywords(data.keywordsLower, query, queryLen, queryWords)
+                        Database:ScoreKeywords(data.keywordsLower or data.keywords, query, queryLen, queryWords)
                     )
                     if #queryWords >= 2 then
                         score = mmax(score, Database:ScoreEntryFields(data, queryWords))

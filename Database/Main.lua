@@ -20,6 +20,13 @@ local uiSearchData = {}
 Database.uiSearchData = uiSearchData
 local knownCurrencyIDs = {}
 
+-- Module-wide shared empty keyword table. FlattenTree entries without
+-- per-node keywords previously each got a fresh `{}`. Reference-sharing
+-- one immutable empty table is safe because nothing tinserts into
+-- entry.keywords on these entries (the search prefix index treats it
+-- as a list-of-strings; an empty list yields no matches either way).
+local EMPTY_KEYWORDS = {}
+
 local function RemoveEntriesByCategory(category)
     local writeIdx = 0
     for i = 1, #uiSearchData do
@@ -219,9 +226,13 @@ function Database:PopulateDynamicCurrencies()
         Utils.DebugPrint("Injected", injected, "dynamic currency entries from C_CurrencyInfo")
     end
 
+    -- Use rawget so lazy-hydrated entries (Boss, Statistic) aren't
+    -- force-materialized just for an icon scan they can't satisfy:
+    -- their steps never reference currencyIDs.
     for _, item in ipairs(uiSearchData) do
-        if not item.icon and item.steps then
-            for _, step in ipairs(item.steps) do
+        local steps = rawget(item, "steps")
+        if not item.icon and steps then
+            for _, step in ipairs(steps) do
                 if step.currencyID and currencyIconMap[step.currencyID] then
                     item.icon = currencyIconMap[step.currencyID]
                     break
@@ -333,7 +344,18 @@ function Database:PopulateDynamicReputations()
     local currentExpansion
     local currentFactionGroup
 
-    local function buildHeaderSteps()
+    -- Per-(expansion, group) MT cache. All factions sharing the same
+    -- expansion+group inherit category/buttonFrame/path/header-step-prefix
+    -- via __index. Only `name`/`nameLower`/`keywords`/`keywordsLower`/
+    -- `factionID`/`factionSide`/`hasRepBar` plus the trailing factionID
+    -- step are per-entry; the leading nav steps live on the proto's
+    -- `steps` field.
+    local repMTByKey = {}
+    local function getRepMT()
+        local key = (currentExpansion or "") .. "\31" .. (currentFactionGroup or "")
+        local cached = repMTByKey[key]
+        if cached then return cached end
+
         local steps = {}
         for _, s in ipairs(baseSteps) do steps[#steps + 1] = s end
         if currentExpansion then
@@ -342,18 +364,35 @@ function Database:PopulateDynamicReputations()
         if currentFactionGroup then
             steps[#steps + 1] = { waitForFrame = "CharacterFrame", factionHeader = currentFactionGroup }
         end
-        return steps
-    end
 
-    local function buildPath()
-        local path = {"Character Info", "Reputation"}
-        if currentExpansion then
-            path[#path + 1] = currentExpansion
-        end
-        if currentFactionGroup then
-            path[#path + 1] = currentFactionGroup
-        end
-        return path
+        local path = { "Character Info", "Reputation" }
+        if currentExpansion then path[#path + 1] = currentExpansion end
+        if currentFactionGroup then path[#path + 1] = currentFactionGroup end
+
+        local prefixLen = #steps
+        local proto = {
+            category    = "Reputation",
+            buttonFrame = "CharacterMicroButton",
+            path        = path,
+        }
+        local mt = {
+            __index = function(t, k)
+                if k == "steps" then
+                    local v = {}
+                    for i = 1, prefixLen do v[i] = steps[i] end
+                    v[prefixLen + 1] = {
+                        waitForFrame = "CharacterFrame",
+                        factionID = t.factionID,
+                    }
+                    rawset(t, "steps", v)
+                    return v
+                end
+                return proto[k]
+            end,
+            __index_proto = proto,
+        }
+        repMTByKey[key] = mt
+        return mt
     end
 
     local ALLIANCE_HEADER = (FACTION_ALLIANCE or "Alliance"):lower()
@@ -363,11 +402,6 @@ function Database:PopulateDynamicReputations()
         local isDiscovered = (factionData.currentStanding and factionData.currentStanding > 0) or
                              (factionData.isWatched == true)
         if not isDiscovered then return end
-
-        local steps = buildHeaderSteps()
-        steps[#steps + 1] = { waitForFrame = "CharacterFrame", factionID = factionData.factionID }
-
-        local path = buildPath()
 
         local keywords = {}
         local factionNameLower = slower(factionData.name)
@@ -388,25 +422,14 @@ function Database:PopulateDynamicReputations()
             end
         end
 
-        local entry = {
-            name = factionData.name,
-            keywords = keywords,
-            category = "Reputation",
-            buttonFrame = "CharacterMicroButton",
-            path = path,
-            steps = steps,
-            factionID = factionData.factionID,
-            factionSide = factionSide,
-            hasRepBar = not factionData.isHeader or factionData.isHeaderWithRep,
-        }
-
-        entry.nameLower = factionNameLower
-        entry.keywordsLower = {}
-        for j, kw in ipairs(entry.keywords) do
-            entry.keywordsLower[j] = kw
-        end
-
-        uiSearchData[#uiSearchData + 1] = entry
+        uiSearchData[#uiSearchData + 1] = setmetatable({
+            name           = factionData.name,
+            nameLower      = factionNameLower,
+            keywords       = keywords,
+            factionID      = factionData.factionID,
+            factionSide    = factionSide,
+            hasRepBar      = not factionData.isHeader or factionData.isHeaderWithRep,
+        }, getRepMT())
         injected = injected + 1
     end
 
@@ -555,6 +578,31 @@ local LOOT_PROTO = {
     lootEntry   = true, -- use loot-specific scoring (toggle-aware keyword matching)
 }
 local LOOT_MT = { __index = LOOT_PROTO }
+
+-- Per-encounter MT cache. Every loot drop from the same encounter
+-- shares `encounterID`, `instanceID`, `lootSourceName`, `lootInstanceName`,
+-- `lootSourceType` plus all the LOOT_PROTO statics. With ~50 unique
+-- encounters across ~138 loot entries, hoisting these 5 fields onto a
+-- shared proto removes them from per-entry storage.
+local lootEncounterMTCache = {}
+local function GetLootEncounterMT(encID, instID, encName, instName, isRaid)
+    local cached = lootEncounterMTCache[encID]
+    if cached then return cached end
+    local proto = {
+        category         = "Loot",
+        path             = LOOT_PROTO.path,
+        steps            = LOOT_PROTO.steps,
+        lootEntry        = true,
+        encounterID      = encID,
+        instanceID       = instID,
+        lootSourceName   = encName,
+        lootInstanceName = instName,
+        lootSourceType   = isRaid and "Raid" or "Dungeon",
+    }
+    local mt = { __index = proto }
+    lootEncounterMTCache[encID] = mt
+    return mt
+end
 
 local TRANSMOG_SET_PROTO = {
     category = "Appearance Set",
@@ -1310,7 +1358,6 @@ function Database:PopulateDynamicTransmogSets()
                     transmogSetID = setInfo.setID,
                     icon = icon,
                     keywords = kw,
-                    keywordsLower = kw,
                 }, TRANSMOG_SET_MT)
             end
         end
@@ -1439,21 +1486,15 @@ local function CacheLootInfo(database, lootInfo, inst, encName, encID, diff, sp,
         nameLower = slower(itemName),
         icon = lootInfo.icon or instIcon,
         itemID = itemID,
-        encounterID = encID,
-        instanceID = inst.id,
-        keywords = {},
-        keywordsLower = {},
+        keywords = EMPTY_KEYWORDS,
         lootSlotKw = slotKws,
         lootSourceKw = sourceKws,
         lootStatKw = {},
         lootItemLinks = itemLinks,
         lootSlotName = equipLoc and SLOT_DISPLAY[equipLoc],
-        lootSourceName = encName,
-        lootInstanceName = inst.name,
-        lootSourceType = inst.isRaid and "Raid" or "Dungeon",
         _cachedSpecs = { spKey },
         _cachedDiffs = { diff.key },
-    }, LOOT_MT)
+    }, GetLootEncounterMT(encID, inst.id, encName, inst.name, inst.isRaid))
 
     if lootInfo.link then
         database:EnrichLootStats(entry)
@@ -1793,7 +1834,6 @@ function Database:PopulateDynamicMacros()
             name = name,
             nameLower = nameLower,
             keywords = kw,
-            keywordsLower = kw,
             category = "Macro",
             icon = iconTexture,
             macroIndex = macroIdx,
@@ -1849,7 +1889,6 @@ function Database:PopulateDynamicAbilities()
             name = displayName,
             nameLower = nameLower,
             keywords = kw,
-            keywordsLower = kw,
             category = "Ability",
             treeName = lineName,
             isOffSpec = isOffSpec or false,
@@ -1947,17 +1986,68 @@ local INSTANCE_ABBRS = {
 }
 ns.INSTANCE_ABBRS = INSTANCE_ABBRS
 
-local function AddBossEntry(tier, isRaid, instID, instName, encName, encID, getCreatureInfo)
-    local nameLower = slower(encName)
+-- Boss entries are the biggest single category in uiSearchData (~3 MB
+-- on a fully-loaded EJ tier set). path is only read at render time for
+-- entries currently in view; steps is only read on click. Stripping both
+-- from the stored entry and hydrating lazily on first access (cached
+-- back onto the entry afterward) drops the cold per-entry footprint
+-- substantially while keeping data.path / data.steps callers unchanged.
+-- Per-instance metatable cache. Every Boss entry in the same instance
+-- shares everything except name/nameLower/encounterID/icon, so the
+-- proto+lazy-step factory is built once per instance and reused. Cache
+-- is wiped at the start of each Boss scan to handle EJ patches that
+-- re-id an instance.
+local bossInstanceMTCache = {}
+
+local function ClearBossInstanceCache()
+    wipe(bossInstanceMTCache)
+end
+
+local function GetBossInstanceMT(tier, isRaid, instID, instName)
+    local cached = bossInstanceMTCache[instID]
+    if cached then return cached end
+
     local instLower = slower(instName or "")
     local kw = { instLower, "boss", "bosses" }
     local abbrs = INSTANCE_ABBRS[instLower]
     if abbrs then
-        for ai = 1, #abbrs do
-            kw[#kw + 1] = abbrs[ai]
-        end
+        for ai = 1, #abbrs do kw[#kw + 1] = abbrs[ai] end
     end
 
+    local pathArr = { isRaid and "Raid" or "Dungeon", instName }
+    local baseStep1 = { buttonFrame = "EJMicroButton" }
+    local baseStep2 = { waitForFrame = "EncounterJournal", ejTier = tier, ejTabIsRaid = isRaid }
+    local baseStep3 = { waitForFrame = "EncounterJournal", ejInstance = instName, ejInstanceID = instID }
+
+    local proto = {
+        category          = "Boss",
+        isRaidBoss        = isRaid,
+        ejTier            = tier,
+        instanceID        = instID,
+        instanceName      = instName,
+        instanceNameLower = instLower,
+        keywords          = kw,
+        path              = pathArr,
+    }
+    local mt = {
+        __index = function(t, k)
+            if k == "steps" then
+                local v = {
+                    baseStep1, baseStep2, baseStep3,
+                    { waitForFrame = "EncounterJournal", ejBoss = t.name, ejEncounterID = t.encounterID },
+                }
+                rawset(t, "steps", v)
+                return v
+            end
+            return proto[k]
+        end,
+        __index_proto = proto,
+    }
+    bossInstanceMTCache[instID] = mt
+    return mt
+end
+
+local function AddBossEntry(tier, isRaid, instID, instName, encName, encID, getCreatureInfo)
     local icon
     if getCreatureInfo then
         local ok, _, _, _, _, iconImage = pcall(getCreatureInfo, 1, encID)
@@ -1966,31 +2056,18 @@ local function AddBossEntry(tier, isRaid, instID, instName, encName, encID, getC
         end
     end
 
-    uiSearchData[#uiSearchData + 1] = {
+    local entry = setmetatable({
         name = encName,
-        nameLower = nameLower,
-        keywords = kw,
-        keywordsLower = kw,
-        category = "Boss",
-        icon = icon,
+        nameLower = slower(encName),
         encounterID = encID,
-        instanceID = instID,
-        instanceName = instName,
-        instanceNameLower = instLower,
-        isRaidBoss = isRaid,
-        ejTier = tier,
-        path = { isRaid and "Raid" or "Dungeon", instName },
-        steps = {
-            { buttonFrame = "EJMicroButton" },
-            { waitForFrame = "EncounterJournal", ejTier = tier, ejTabIsRaid = isRaid },
-            { waitForFrame = "EncounterJournal", ejInstance = instName, ejInstanceID = instID },
-            { waitForFrame = "EncounterJournal", ejBoss = encName, ejEncounterID = encID },
-        },
-    }
+        icon = icon,
+    }, GetBossInstanceMT(tier, isRaid, instID, instName))
+    uiSearchData[#uiSearchData + 1] = entry
 end
 
 function Database:PopulateDynamicBosses()
     RemoveEntriesByCategory("Boss")
+    ClearBossInstanceCache()
     if self.ResetSearchCache then self:ResetSearchCache() end
 
     if not EncounterJournal then
@@ -2054,6 +2131,7 @@ function Database:PopulateDynamicBossesAsync(done)
     end
 
     RemoveEntriesByCategory("Boss")
+    ClearBossInstanceCache()
     if self.ResetSearchCache then self:ResetSearchCache() end
 
     if not EncounterJournal then
@@ -2175,6 +2253,44 @@ function Database:PopulateDynamicTalents()
         return false
     end
 
+    -- Per-tree proto. Talents in the same tree share category, keywords,
+    -- buttonFrame, path, talentConfigID, talentTreeID, and the first two
+    -- navigation steps. With ~3 trees driving ~140 entries, each entry
+    -- shrinks from 15 fields to 7.
+    local treeMTByID = {}
+    local SHARED_TALENT_KW = { "talent", "talents", "spec" }
+    local function getTreeMT(treeID)
+        local cached = treeMTByID[treeID]
+        if cached then return cached end
+        local baseStep1 = { buttonFrame = "PlayerSpellsMicroButton" }
+        local baseStep2 = { waitForFrame = "PlayerSpellsFrame", tabIndex = 2 }
+        local proto = {
+            category       = "Talent",
+            buttonFrame    = "PlayerSpellsMicroButton",
+            keywords       = SHARED_TALENT_KW,
+            keywordsLower  = SHARED_TALENT_KW,
+            path           = { "Talents" },
+            talentConfigID = configID,
+            talentTreeID   = treeID,
+        }
+        local mt = {
+            __index = function(t, k)
+                if k == "steps" then
+                    local v = {
+                        baseStep1, baseStep2,
+                        { talentNodeID = t.talentNodeID, talentTreeID = treeID },
+                    }
+                    rawset(t, "steps", v)
+                    return v
+                end
+                return proto[k]
+            end,
+            __index_proto = proto,
+        }
+        treeMTByID[treeID] = mt
+        return mt
+    end
+
     local seen = {}
 
     local function injectEntry(treeID, nodeID, entryID, isChoice, nodeInfo)
@@ -2207,31 +2323,17 @@ function Database:PopulateDynamicTalents()
             isAllocated = (nodeInfo.activeRank or 0) > 0
         end
 
-        local nameLower = slower(name)
-        local kw = { "talent", "talents", "spec", nameLower }
-        uiSearchData[#uiSearchData + 1] = {
+        uiSearchData[#uiSearchData + 1] = setmetatable({
             name = name,
-            nameLower = nameLower,
-            keywords = kw,
-            keywordsLower = kw,
-            category = "Talent",
+            nameLower = slower(name),
             icon = icon,
             spellID = spellID,
             spellName = name,
-            talentConfigID = configID,
-            talentTreeID = treeID,
             talentNodeID = nodeID,
             talentEntryID = entryID,
             talentIsChoice = isChoice or false,
             talentIsAllocated = isAllocated and true or false,
-            buttonFrame = "PlayerSpellsMicroButton",
-            path = { "Talents" },
-            steps = {
-                { buttonFrame = "PlayerSpellsMicroButton" },
-                { waitForFrame = "PlayerSpellsFrame", tabIndex = 2 },
-                { talentNodeID = nodeID, talentTreeID = treeID },
-            },
-        }
+        }, getTreeMT(treeID))
     end
 
     for _, treeID in ipairs(configInfo.treeIDs) do
@@ -2307,7 +2409,6 @@ function Database:PopulateDynamicBags()
             name = name,
             nameLower = nameLower,
             keywords = kw,
-            keywordsLower = kw,
             category = "Bag",
             icon = info.texture,
             itemID = itemID,
@@ -2333,12 +2434,14 @@ function Database:_ResetDynamicProviderCaches()
     wipe(lootEntries)
     wipe(lootItemCache)
     wipe(lootSpecsScanned)
+    wipe(lootEncounterMTCache)
 end
 
 function Database:_ResetHeavyProviderCaches()
     wipe(lootEntries)
     wipe(lootItemCache)
     wipe(lootSpecsScanned)
+    wipe(lootEncounterMTCache)
 end
 
 -- Aliases the API category names don't carry. Words from the name itself
@@ -2648,8 +2751,24 @@ function Database:PopulateDynamicStatisticsAsync(done)
             keywordsLower = STAT_KEYWORDS_EMPTY,
             path          = path,
         }
-        local protoMT = { __index = proto }
         local prefixLen = #stepsPrefix
+        local protoMT = {
+            __index = function(t, k)
+                if k == "steps" then
+                    local steps = {}
+                    for s = 1, prefixLen do steps[s] = stepsPrefix[s] end
+                    steps[prefixLen + 1] = {
+                        waitForFrame = "AchievementFrame",
+                        statisticID = t.statisticID,
+                        statisticName = t.name,
+                    }
+                    rawset(t, "steps", steps)
+                    return steps
+                end
+                return proto[k]
+            end,
+            __index_proto = proto,
+        }
 
         if GetCategoryNumAchievements then
             local total = GetCategoryNumAchievements(cat.id) or 0
@@ -2659,7 +2778,6 @@ function Database:PopulateDynamicStatisticsAsync(done)
             for i = 1, total do
                 queue[#queue + 1] = {
                     catID = cat.id, rowIndex = i,
-                    stepsPrefix = stepsPrefix, prefixLen = prefixLen,
                     protoMT = protoMT,
                 }
             end
@@ -2686,19 +2804,10 @@ function Database:PopulateDynamicStatisticsAsync(done)
         end
         MarkID(seenStatisticIDs, id)
         MarkID(Database.statisticIDs, id)
-        local stepsPrefix = item.stepsPrefix
-        local steps = {}
-        for s = 1, item.prefixLen do steps[s] = stepsPrefix[s] end
-        steps[item.prefixLen + 1] = {
-            waitForFrame = "AchievementFrame",
-            statisticID = id,
-            statisticName = title,
-        }
         local entry = setmetatable({
             name = title,
             nameLower = slower(title),
             statisticID = id,
-            steps = steps,
         }, item.protoMT)
         uiSearchData[#uiSearchData + 1] = entry
     end
@@ -2844,6 +2953,33 @@ function Database:PopulateDynamicStatistics()
 end
 
 -- Children inherit buttonFrame/category and accumulate path + steps.
+-- The five shared fields (category, buttonFrame, path, steps, keywords)
+-- live on a per-(category, buttonFrame, path, steps, keywords) proto MT
+-- so each entry only stores its unique fields (name + optional icon/etc).
+-- Most siblings collapse to the same MT, dropping hash slots from 6-7
+-- to 1-2 per entry. With Lua's power-of-2 hash sizing that's cap=8 to
+-- cap=2 (~192 bytes per entry × ~500 static entries).
+local flattenMTCache = {}
+local function GetFlattenMT(category, buttonFrame, path, steps, keywords)
+    local key = (category or "") .. "\31"
+             .. (buttonFrame or "") .. "\31"
+             .. tostring(path) .. "\31"
+             .. tostring(steps) .. "\31"
+             .. tostring(keywords)
+    local cached = flattenMTCache[key]
+    if cached then return cached end
+    local proto = {
+        category    = category,
+        buttonFrame = buttonFrame,
+        path        = path,
+        steps       = steps,
+        keywords    = keywords,
+    }
+    local mt = { __index = proto }
+    flattenMTCache[key] = mt
+    return mt
+end
+
 function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, parentCategory)
     parentPath = parentPath or {}
     parentSteps = parentSteps or {}
@@ -2862,16 +2998,9 @@ function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, 
             mySteps = parentSteps
         end
 
-        -- path = parent names leading here, NOT including self.
-        local entry = {
-            name = node.name,
-            keywords = node.keywords or {},
-            category = myCategory,
-            buttonFrame = myButtonFrame,
-            path = {},
-            steps = mySteps,
-        }
-        for i = 1, #parentPath do entry.path[i] = parentPath[i] end
+        local myKeywords = node.keywords or EMPTY_KEYWORDS
+        local mt = GetFlattenMT(myCategory, myButtonFrame, parentPath, mySteps, myKeywords)
+        local entry = setmetatable({ name = node.name }, mt)
         if node.icon then entry.icon = node.icon end
         if node.available then entry.available = node.available end
         if node.canQueue then entry.canQueue = true end
@@ -3345,9 +3474,10 @@ function Database:BuildUIDatabase()
                 local lowered = {}
                 for i = 1, #kws do lowered[i] = slower(kws[i]) end
                 item.keywordsLower = lowered
-            else
-                item.keywordsLower = kws
             end
+            -- When `kws` is already lowercase, leave keywordsLower nil.
+            -- Readers fall back to entry.keywords, saving one hash slot
+            -- per entry. Across ~5000 entries that's ~160 KB.
         end
         if not item.icon and not item.buttonFrame then
             item.icon = 134400

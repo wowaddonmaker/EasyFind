@@ -8,8 +8,33 @@ local tinsert = Utils.tinsert
 local slower = Utils.slower
 local SafeAfter = Utils.SafeAfter
 local pcall = pcall
+local setmetatable = setmetatable
+local tconcat = table.concat
 
 local SecureCall = Utils.SecureCall
+
+-- Per-category proto cache. Entries with the same (category, catName,
+-- pathArr) share `category`/`path`/`settingsCategory`/`settingCategoryID`
+-- via __index, so each entry only stores its unique fields. With ~15-20
+-- unique catNames driving 599 game-settings entries the win is huge.
+-- Keyed on a string concat so identical paths reuse one MT regardless
+-- of which builder created them.
+local settingsCatMTCache = {}
+local function GetSettingsCatMT(category, catName, catID, pathArr)
+    local pathKey = pathArr and tconcat(pathArr, "\31") or ""
+    local key = category .. "\31" .. (catName or "") .. "\31" .. pathKey
+    local cached = settingsCatMTCache[key]
+    if cached then return cached end
+    local proto = {
+        category          = category,
+        path              = pathArr,
+        settingsCategory  = catName,
+        settingCategoryID = catID,
+    }
+    local mt = { __index = proto }
+    settingsCatMTCache[key] = mt
+    return mt
+end
 
 
 -- Settings.GetCategoryList was removed in Midnight (12.0); the modern
@@ -1532,15 +1557,12 @@ local function CollectEntries()
         local resolvedCatID = GetCategoryIDForVariable(var)
         if not (registryReady and not resolvedCatID) then
             local catID = resolvedCatID or GetCategoryID(catName)
-            tinsert(entries, {
+            local mt = GetSettingsCatMT("Game Settings", catName, catID,
+                { "Game Settings", catName })
+            tinsert(entries, setmetatable({
                 name = name,
                 nameLower = nameLower,
                 keywords = kw,
-                keywordsLower = kw,
-                category = "Game Settings",
-                path = { "Game Settings", catName },
-                settingsCategory = catName,
-                settingCategoryID = catID,
                 settingVariable = var,
                 settingType = resolved,
                 settingMin = sMin,
@@ -1553,7 +1575,7 @@ local function CollectEntries()
                         settingVariable = var,
                     },
                 },
-            })
+            }, mt))
         end
     end
 
@@ -1568,18 +1590,14 @@ local function CollectEntries()
         local catNameLower = slower(catName)
         local kw = { "settings", "options", catNameLower }
         if parentName then kw[#kw + 1] = slower(parentName) end
-        local entry = {
+        local pathArr = parentName and { "Game Settings", parentName } or nil
+        local mt = GetSettingsCatMT("Game Settings", catName, catID, pathArr)
+        tinsert(entries, setmetatable({
             name = catName,
             nameLower = catNameLower,
             keywords = kw,
-            keywordsLower = kw,
-            category = "Game Settings",
-            settingsCategory = catName,
-            settingCategoryID = catID,
             steps = { { settingsCategory = catName, settingCategoryID = catID } },
-        }
-        if parentName then entry.path = { "Game Settings", parentName } end
-        tinsert(entries, entry)
+        }, mt))
     end
 
     for _, cat in ipairs(list) do
@@ -1648,14 +1666,12 @@ local function CollectKeybindings()
             end
             local nameLower = slower(displayName)
             local kw = { "keybind", "binding", "key", nameLower, slower(currentHeader) }
-            tinsert(entries, {
+            local mt = GetSettingsCatMT("Game Settings", "Keybindings", nil,
+                { "Game Settings", "Keybindings", currentHeader })
+            tinsert(entries, setmetatable({
                 name = displayName,
                 nameLower = nameLower,
                 keywords = kw,
-                keywordsLower = kw,
-                category = "Game Settings",
-                path = { "Game Settings", "Keybindings", currentHeader },
-                settingsCategory = "Keybindings",
                 settingType = "keybind",
                 bindingAction = action,
                 steps = {
@@ -1665,7 +1681,7 @@ local function CollectKeybindings()
                         bindingHeader = currentHeader,
                     },
                 },
-            })
+            }, mt))
         end
     end
     return entries
@@ -1693,7 +1709,9 @@ local QUALITY_SLIDER_OVERRIDES = {
     PROXY_RAID_GROUND_CLUTTER     = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
 }
 
-local function WalkCategorySettings(cat, catName, catID, pathPrefix)
+local function WalkCategorySettings(cat, catName, catID, pathPrefix, entryCategory)
+    entryCategory = entryCategory or "AddOn Settings"
+    local catMT = GetSettingsCatMT(entryCategory, catName, catID, pathPrefix)
     local out = {}
     if not (cat and SettingsPanel and SettingsPanel.GetLayout) then
         return out
@@ -1771,15 +1789,10 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
             end
             local nameLower = slower(label)
             local kw = { "addon", "setting", "option", nameLower, slower(catName or "") }
-            tinsert(out, {
+            tinsert(out, setmetatable({
                 name = label,
                 nameLower = nameLower,
                 keywords = kw,
-                keywordsLower = kw,
-                category = "AddOn Settings",
-                path = pathPrefix,
-                settingsCategory = catName,
-                settingCategoryID = catID,
                 settingVariable = cvar,
                 cbVariable = cvar,
                 sliderVariable = svar,
@@ -1792,7 +1805,7 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
                     { settingsCategory = catName, settingCategoryID = catID,
                       settingVariable = cvar },
                 },
-            })
+            }, catMT))
         end
       elseif info.container then
         -- Container initializer (BaseQualityControls): the C++ template
@@ -1816,15 +1829,10 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
             if isRaid then displayName = settingName .. " (Raid)" end
             local nameLower = slower(displayName)
             local kw = { "setting", "option", "config", nameLower, slower(catName or "") }
-            tinsert(out, {
+            tinsert(out, setmetatable({
                 name = displayName,
                 nameLower = nameLower,
                 keywords = kw,
-                keywordsLower = kw,
-                category = "AddOn Settings",
-                path = pathPrefix,
-                settingsCategory = catName,
-                settingCategoryID = catID,
                 settingVariable = variable,
                 settingType = "slider",
                 settingMin = sliderInfo.min,
@@ -1835,7 +1843,7 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
                     { settingsCategory = catName, settingCategoryID = catID,
                       settingVariable = variable },
                 },
-            })
+            }, catMT))
         end
         if d.settings then
             for _, setting in pairs(d.settings) do emitContainerSlider(setting, false) end
@@ -1902,15 +1910,10 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
                     "addon", "setting", "option",
                     nameLower, slower(catName or ""),
                 }
-                local entry = {
+                tinsert(out, setmetatable({
                     name = settingName,
                     nameLower = nameLower,
                     keywords = kw,
-                    keywordsLower = kw,
-                    category = "AddOn Settings",
-                    path = pathPrefix,
-                    settingsCategory = catName,
-                    settingCategoryID = catID,
                     settingVariable = variable,
                     settingType = resolvedType,
                     settingMin = sMin,
@@ -1925,8 +1928,7 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix)
                             settingVariable = variable,
                         },
                     },
-                }
-                tinsert(out, entry)
+                }, catMT))
             end
         end
       end
@@ -1967,19 +1969,16 @@ local function CollectAddonCategories()
 
         local kw = { "addon", "settings", "options", catNameLower }
         if parentName then kw[#kw + 1] = slower(parentName) end
-        tinsert(entries, {
+        local mt = GetSettingsCatMT("AddOn Settings", catName, catID,
+            parentName and { rootName } or nil)
+        tinsert(entries, setmetatable({
             name = catName,
             nameLower = catNameLower,
             keywords = kw,
-            keywordsLower = kw,
-            category = "AddOn Settings",
-            path = parentName and { rootName } or nil,
-            settingsCategory = catName,
-            settingCategoryID = catID,
             steps = { { settingsCategory = catName, settingCategoryID = catID } },
-        })
+        }, mt))
 
-        local inline = WalkCategorySettings(cat, catName, catID, pathPrefix)
+        local inline = WalkCategorySettings(cat, catName, catID, pathPrefix, "AddOn Settings")
         for _, e in ipairs(inline) do tinsert(entries, e) end
     end
 
@@ -2106,10 +2105,9 @@ local function CollectGameSettings()
         local catName = cat:GetName()
         if not catName or catName == "" then return end
         local pathPrefix = { "Game Settings", catName }
-        local inline = WalkCategorySettings(cat, catName, catID, pathPrefix)
+        local inline = WalkCategorySettings(cat, catName, catID, pathPrefix, "Game Settings")
         for _, e in ipairs(inline) do
             if not emittedVars[e.settingVariable] then
-                e.category = "Game Settings"
                 tinsert(entries, e)
                 emittedVars[e.settingVariable] = true
                 emittedNameKeys[nameKey(catName, e.name)] = true
@@ -2177,15 +2175,12 @@ local function CollectGameSettings()
                                 if tok and vt == "boolean" then resolvedType = "checkbox" end
                             end
                         end
-                        tinsert(entries, {
+                        local mt = GetSettingsCatMT("Game Settings", catName, catID,
+                            { "Game Settings", catName })
+                        tinsert(entries, setmetatable({
                             name = displayName,
                             nameLower = nameLower,
                             keywords = kw,
-                            keywordsLower = kw,
-                            category = "Game Settings",
-                            path = { "Game Settings", catName },
-                            settingsCategory = catName,
-                            settingCategoryID = catID,
                             settingVariable = variable,
                             settingType = resolvedType,
                             settingOptions = settingOptions,
@@ -2197,7 +2192,7 @@ local function CollectGameSettings()
                                 { settingsCategory = catName, settingCategoryID = catID,
                                   settingVariable = variable },
                             },
-                        })
+                        }, mt))
                         emittedVars[variable] = true
                         emittedNameKeys[nameKey(catName, displayName)] = true
                         end
