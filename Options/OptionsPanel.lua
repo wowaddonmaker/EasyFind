@@ -4,6 +4,7 @@ local Options = {}
 ns.Options = Options
 
 local Utils   = ns.Utils
+local L       = ns.L
 local mfloor, mmin, mmax = Utils.mfloor, Utils.mmin, Utils.mmax
 local tostring = Utils.tostring
 local tinsert = Utils.tinsert
@@ -1870,8 +1871,8 @@ function Options:Initialize()
     optionsFrame.RefreshAliasList = RefreshAliasList
 
     StaticPopupDialogs["EASYFIND_CLEAR_ALIASES"] = {
-        text = "Clear all saved aliases?",
-        button1 = "Clear",
+        text = L["POPUP_CLEAR_ALIASES"],
+        button1 = _G["CLEAR"] or "Clear",
         button2 = CANCEL or "Cancel",
         OnAccept = function()
             if ns.Aliases then ns.Aliases:ClearAll() end
@@ -1888,9 +1889,9 @@ function Options:Initialize()
     end)
 
     StaticPopupDialogs["EASYFIND_RESET_ALL"] = {
-        text = "Reset all EasyFind settings to defaults?",
-        button1 = "Reset",
-        button2 = "Cancel",
+        text = L["POPUP_RESET_ALL_SETTINGS"],
+        button1 = _G["RESET"] or "Reset",
+        button2 = _G["CANCEL"] or "Cancel",
         OnAccept = function() Options:DoResetAll() end,
         OnShow = LiftPopupAboveOptions,
         timeout = 0,
@@ -1900,9 +1901,9 @@ function Options:Initialize()
     }
 
     StaticPopupDialogs["EASYFIND_RESET_POSITIONS"] = {
-        text = "Reset all EasyFind positions to defaults?",
-        button1 = "Reset",
-        button2 = "Cancel",
+        text = L["POPUP_RESET_ALL_POSITIONS"],
+        button1 = _G["RESET"] or "Reset",
+        button2 = _G["CANCEL"] or "Cancel",
         OnAccept = function() Options:DoResetPositions() end,
         OnShow = LiftPopupAboveOptions,
         timeout = 0,
@@ -1912,9 +1913,9 @@ function Options:Initialize()
     }
 
     StaticPopupDialogs["EASYFIND_DISABLE_MAP_SEARCH"] = {
-        text = "Disable Map Search?\n\nThis will remove map search, pins, map overlay features, and the EasyFind tab on the world map. You can re-enable it later from options.",
-        button1 = "Disable",
-        button2 = "Cancel",
+        text = L["POPUP_DISABLE_MAP_SEARCH"] .. "\n\nThis will remove map search, pins, map overlay features, and the EasyFind tab on the world map. You can re-enable it later from options.",
+        button1 = _G["DISABLE"] or "Disable",
+        button2 = _G["CANCEL"] or "Cancel",
         OnAccept = function()
             EasyFind.db.enableMapSearch = false
             UpdateMapToggleVisual()
@@ -1932,8 +1933,8 @@ function Options:Initialize()
     }
 
     StaticPopupDialogs["EASYFIND_RELOAD_PROMPT"] = {
-        text = "Reload UI to apply changes?",
-        button1 = "Reload Now",
+        text = L["POPUP_RELOAD_UI"],
+        button1 = _G["RELOADUI"] or "Reload Now",
         button2 = "Later",
         OnAccept = function() ReloadUI() end,
         OnShow = LiftPopupAboveOptions,
@@ -1944,9 +1945,9 @@ function Options:Initialize()
     }
 
     StaticPopupDialogs["EASYFIND_RESET_UI"] = {
-        text = "Reset UI Search settings to defaults?",
-        button1 = "Reset",
-        button2 = "Cancel",
+        text = L["POPUP_RESET_UI_SEARCH_SETTINGS"],
+        button1 = _G["RESET"] or "Reset",
+        button2 = _G["CANCEL"] or "Cancel",
         OnAccept = function() Options:DoResetUI() end,
         OnShow = LiftPopupAboveOptions,
         timeout = 0,
@@ -1956,9 +1957,9 @@ function Options:Initialize()
     }
 
     StaticPopupDialogs["EASYFIND_RESET_MAP"] = {
-        text = "Reset Map Search settings to defaults?",
-        button1 = "Reset",
-        button2 = "Cancel",
+        text = L["POPUP_RESET_MAP_SEARCH_SETTINGS"],
+        button1 = _G["RESET"] or "Reset",
+        button2 = _G["CANCEL"] or "Cancel",
         OnAccept = function() Options:DoResetMap() end,
         OnShow = LiftPopupAboveOptions,
         timeout = 0,
@@ -1968,9 +1969,9 @@ function Options:Initialize()
     }
 
     StaticPopupDialogs["EASYFIND_RESET_UI_POS"] = {
-        text = "Reset UI Search positions to defaults?",
-        button1 = "Reset",
-        button2 = "Cancel",
+        text = L["POPUP_RESET_UI_SEARCH_POSITIONS"],
+        button1 = _G["RESET"] or "Reset",
+        button2 = _G["CANCEL"] or "Cancel",
         OnAccept = function() Options:DoResetUIPositions() end,
         OnShow = LiftPopupAboveOptions,
         timeout = 0,

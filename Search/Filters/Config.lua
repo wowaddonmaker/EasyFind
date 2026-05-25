@@ -15,7 +15,7 @@ local ACHIEVEMENT_FILTER_LABELS = {
 local UI_FILTER_OPTIONS = {
     -- Abilities: boss-skull icon from the Encounter Journal boss tab
     -- spritesheet (texture 522972).
-    { key = "abilities",   label = "Abilities",   iconTex = 522972,
+    { key = "abilities",   label = _G["ABILITIES"] or "Abilities",   iconTex = 522972,
       iconCoords = { 0.904, 0.996, 0.707, 0.748 },
       flyoutRadio = {
           checkboxes = {
@@ -23,7 +23,7 @@ local UI_FILTER_OPTIONS = {
                 onChange = function(v) if Search.ApplySpellBookHidePassives then Search:ApplySpellBookHidePassives(v) end end },
           },
       } },
-    { key = "achievements", label = "Achievements", iconAtlas = "UI-HUD-MicroMenu-Achievements-Up",
+    { key = "achievements", label = _G["ACHIEVEMENTS"] or "Achievements", iconAtlas = "UI-HUD-MicroMenu-Achievements-Up",
       flyoutRadio = {
           dbKey = "achievementFilterMode",
           options = {
@@ -36,24 +36,24 @@ local UI_FILTER_OPTIONS = {
               { dbKey = "hideGuildAchievements", label = "Hide guild achievements" },
           },
       } },
-    { key = "statistics",  label = "Statistics",  iconTex = 1121272,
+    { key = "statistics",  label = _G["STATISTICS"] or "Statistics",  iconTex = 1121272,
       iconCoords = { 0.1997, 0.2437, 0.5933, 0.6266 } },
-    { key = "bags",        label = "Bags",        iconAtlas = "bag-main" },
+    { key = "bags",        label = _G["BAGSLOT"] or _G["BAGS"] or "Bags",        iconAtlas = "bag-main" },
     -- Bosses: EJ overview tab icon from texture 522972.
     { key = "bosses",      label = "Bosses",      iconTex = 522972,
       iconCoords = { 0.855, 0.949, 0.524, 0.566 } },
-    { key = "macros",      label = "Macros",      iconTex = "Interface\\MacroFrame\\MacroFrame-Icon" },
-    { key = "collections",  label = "Collections",  iconAtlas = "UI-HUD-MicroMenu-Collections-Up",
+    { key = "macros",      label = _G["MACROS"] or "Macros",      iconTex = "Interface\\MacroFrame\\MacroFrame-Icon" },
+    { key = "collections",  label = _G["COLLECTIONS"] or "Collections",  iconAtlas = "UI-HUD-MicroMenu-Collections-Up",
       flyoutSubFilters = {
-          { key = "appearanceSets", label = "Appearance Sets", iconTex = "Interface\\Icons\\INV_Helmet_03", hasOptions = true },
-          { key = "heirlooms",      label = "Heirlooms",       iconTex = 133877 },
-          { key = "mounts",         label = "Mounts",          iconTex = 132261, hasOptions = true },
+          { key = "appearanceSets", label = _G["WARDROBE_SETS_TAB"] or "Appearance Sets", iconTex = "Interface\\Icons\\INV_Helmet_03", hasOptions = true },
+          { key = "heirlooms",      label = _G["HEIRLOOMS"] or "Heirlooms",       iconTex = 133877 },
+          { key = "mounts",         label = _G["MOUNTS"] or "Mounts",          iconTex = 132261, hasOptions = true },
           { key = "outfits",        label = "Outfits",         iconTex = 132649 },
-          { key = "pets",           label = "Pets",            iconTex = 631719 },
-          { key = "toys",           label = "Toys",            iconTex = 454046 },
+          { key = "pets",           label = _G["PETS"] or "Pets",            iconTex = 631719 },
+          { key = "toys",           label = _G["TOYS"] or _G["TOY_BOX"] or "Toys",            iconTex = 454046 },
       } },
-    { key = "gearSets",    label = "Gear Sets",   iconAtlas = "equipmentmanager-spec-border" },
-    { key = "currencies",  label = "Currencies",  iconTex = 136452,
+    { key = "gearSets",    label = _G["EQUIPMENT_MANAGER"] or "Gear Sets",   iconAtlas = "equipmentmanager-spec-border" },
+    { key = "currencies",  label = _G["CURRENCY"] or "Currencies",  iconTex = 136452,
       flyoutRadio = {
           dbKey = "currencyFilterMode",
           options = {
@@ -81,19 +81,19 @@ local UI_FILTER_OPTIONS = {
           { key = "services",   label = "Services",     dbTable = "mapTabFilters" },
           { key = "rares",      label = "Rares",        dbTable = "mapTabFilters" },
       } },
-    { key = "options",     label = "Options",     iconTex = 1121272,
+    { key = "options",     label = _G["OPTIONS"] or "Options",     iconTex = 1121272,
       iconCoords = { 0.4451, 0.4705, 0.8079, 0.8344 },
       flyoutSubFilters = {
           { key = "gameOptions",  label = "Game Options",  iconAtlas = "QuestLog-icon-setting" },
           { key = "addonOptions", label = "AddOn Options", iconAtlas = "QuestLog-icon-setting", iconColor = { 1.0, 0.78, 0.35 } },
       } },
-    { key = "reputations", label = "Reputations", iconTex = 1121272,
+    { key = "reputations", label = _G["REPUTATION"] or "Reputations", iconTex = 1121272,
       iconCoords = { 0.3783, 0.4072, 0.9066, 0.9350 },
       flyoutRadio = {
           dbKey = "reputationFilterMode",
           options = {
-              { value = "all",     label = "All" },
-              { value = "warband", label = "Warband" },
+              { value = "all",     label = _G["ALL"] or "All" },
+              { value = "warband", label = _G["WARBAND"] or "Warband" },
               { value = "char",    label = (UnitName and UnitName("player")) or "This Character" },
           },
           onChange = function(v) if Search.ApplyReputationFilter then Search:ApplyReputationFilter(v) end end,
@@ -104,9 +104,9 @@ local UI_FILTER_OPTIONS = {
       } },
     -- Talents: leaf icon from the talents atlas spritesheet (4556093),
     -- visually consistent with the in-game talent tree.
-    { key = "talents",     label = "Talents",     iconAtlas = "UI-HUD-MicroMenu-SpecTalents-Up" },
+    { key = "talents",     label = _G["TALENTS"] or "Talents",     iconAtlas = "UI-HUD-MicroMenu-SpecTalents-Up" },
     -- Title icon from PaperDollSidebarTab2 (Titles tab) spritesheet 514608.
-    { key = "titles",      label = "Titles",      iconTex = 514608,
+    { key = "titles",      label = _G["TITLES"] or _G["PAPERDOLL_SIDEBAR_TITLES"] or "Titles",      iconTex = 514608,
       iconCoords = { 0.016, 0.531, 0.324, 0.461 } },
 }
 

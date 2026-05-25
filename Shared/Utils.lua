@@ -2,6 +2,7 @@ local _, ns = ...
 
 local Utils = {}
 ns.Utils = Utils
+local L = ns.L
 
 local pairs, ipairs, type, select, unpack, next = pairs, ipairs, type, select, unpack, next
 local tinsert, tsort, tconcat, tremove = table.insert, table.sort, table.concat, table.remove
@@ -2041,50 +2042,50 @@ end
 function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opts, extra)
     local rows = {}
     if onAddAlias then
-        rows[#rows + 1] = { text = "Add Alias", onClick = onAddAlias }
+        rows[#rows + 1] = { text = L["CTX_ADD_ALIAS"], onClick = onAddAlias }
     end
-    rows[#rows + 1] = { text = isPinned and "Unpin" or "Pin", onClick = onPin }
+    rows[#rows + 1] = { text = isPinned and L["CTX_UNPIN"] or L["CTX_PIN"], onClick = onPin }
     if onGuide then
-        rows[#rows + 1] = { text = "Guide", icon = ns.EYE_ICON_TEX, onClick = onGuide }
+        rows[#rows + 1] = { text = L["CTX_GUIDE"], icon = ns.EYE_ICON_TEX, onClick = onGuide }
     end
 
     local extras = {}
     if extra and extra.onTrack then
         extras[#extras + 1] = {
-            text = extra.isTracked and "Untrack" or "Track",
+            text = extra.isTracked and L["CTX_UNTRACK"] or L["CTX_TRACK"],
             onClick = extra.onTrack,
         }
     end
     if extra and extra.onToggleBackpack then
         extras[#extras + 1] = {
-            text = extra.isOnBackpack and "Remove from backpack" or "Show on backpack",
+            text = extra.isOnBackpack and L["CTX_REMOVE_FROM_BACKPACK"] or L["CTX_SHOW_ON_BACKPACK"],
             onClick = extra.onToggleBackpack,
         }
     end
     if extra and extra.onTransfer then
-        extras[#extras + 1] = { text = "Transfer", onClick = extra.onTransfer }
+        extras[#extras + 1] = { text = L["CTX_TRANSFER"], onClick = extra.onTransfer }
     end
     if extra and extra.onToggleWatchedFaction then
         extras[#extras + 1] = {
-            text = extra.isWatchedFaction and "Hide XP bar" or "Show as XP bar",
+            text = extra.isWatchedFaction and L["CTX_HIDE_XP_BAR"] or L["CTX_SHOW_XP_BAR"],
             onClick = extra.onToggleWatchedFaction,
         }
     end
     if extra and extra.onSummon then
-        extras[#extras + 1] = { text = "Summon", onClick = extra.onSummon }
+        extras[#extras + 1] = { text = L["CTX_SUMMON"], onClick = extra.onSummon }
     end
     if extra and extra.onRename then
-        extras[#extras + 1] = { text = "Rename", onClick = extra.onRename }
+        extras[#extras + 1] = { text = L["CTX_RENAME"], onClick = extra.onRename }
     end
     if extra and extra.onToggleFavorite then
         extras[#extras + 1] = {
-            text = extra.isFavorite and "Remove favorite" or "Set favorite",
+            text = extra.isFavorite and L["CTX_REMOVE_FAVORITE"] or L["CTX_SET_FAVORITE"],
             onClick = extra.onToggleFavorite,
         }
     end
     if extra and extra.onCageOrRelease then
         extras[#extras + 1] = {
-            text = extra.isCageable and "Put in cage" or "Release",
+            text = extra.isCageable and L["CTX_PUT_IN_CAGE"] or L["CTX_RELEASE"],
             onClick = extra.onCageOrRelease,
         }
     end

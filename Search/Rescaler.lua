@@ -4,6 +4,7 @@ local Rescaler = {}
 ns.Rescaler = Rescaler
 
 local Utils = ns.Utils
+local L = ns.L
 local mmax, mmin, mfloor = Utils.mmax, Utils.mmin, Utils.mfloor
 local SafeCallMethod = Utils.SafeCallMethod
 
@@ -147,9 +148,9 @@ local function AddResetButton(editBox, onConfirm)
 end
 
 StaticPopupDialogs["EASYFIND_RESET_FIELD"] = {
-    text = "Reset this field to its default value?",
-    button1 = "Yes",
-    button2 = "No",
+    text = L["PROMPT_RESET_FIELD"],
+    button1 = _G["YES"] or "Yes",
+    button2 = _G["NO"] or "No",
     OnAccept = function(self, data)
         if data and data.callback then data.callback() end
     end,

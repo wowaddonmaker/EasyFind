@@ -4,6 +4,7 @@ local Wizard = {}
 ns.Wizard = Wizard
 
 local Utils = ns.Utils
+local L = ns.L
 local SafeCallMethod = Utils.SafeCallMethod
 local SafeAfter = Utils.SafeAfter
 
@@ -38,55 +39,55 @@ local SEARCH_TUTORIAL_SLIDES = {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-01-hires",
         texCoord = TutorialTexCoord(1302, 404, 2048, 512),
         w = 651, h = 202,
-        text = "Search across gear, loot, panels, settings, collections, currencies, achievements, map places, and more.",
+        text = L["TUT_SLIDE_SEARCH_INTRO"],
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-02-hires",
         texCoord = TutorialTexCoord(1310, 534, 2048, 1024),
         w = 655, h = 267,
-        text = "Results show icons, categories, and Alt+number. Press the matching Alt+number to instantly activate that row.",
+        text = L["TUT_SLIDE_ALT_NUMBERS"],
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-09-hires",
         texCoord = TutorialTexCoord(972, 436, 1024, 512),
         w = 486, h = 218,
-        text = "Pin important results so they stay available before you type.",
+        text = L["TUT_SLIDE_PINNING"],
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-03-hires",
         texCoord = TutorialTexCoord(1324, 1222, 2048, 2048),
         w = 662, h = 611,
-        text = "Use the filter menu to choose which result groups appear in your general search.",
+        text = L["TUT_SLIDE_FILTER_MENU"],
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-05-hires",
         texCoord = TutorialTexCoord(1314, 1186, 2048, 2048),
         w = 657, h = 593,
-        text = "Type @ to see available quick filters, then Tab or Space to select one.",
+        text = L["TUT_SLIDE_AT_PREFIX"],
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-04-hires",
         texCoord = TutorialTexCoord(1344, 440, 2048, 512),
         w = 672, h = 220,
-        text = "Quick filters let you search inside one category without opening the filter menu.",
+        text = L["TUT_SLIDE_QUICK_FILTERS"],
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-06-hires",
         texCoord = TutorialTexCoord(1320, 534, 2048, 1024),
         w = 660, h = 267,
-        text = "Quick filters let you search inside one category without opening the filter menu.",
+        text = L["TUT_SLIDE_QUICK_FILTERS"],
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-07-hires",
         texCoord = TutorialTexCoord(1316, 552, 2048, 1024),
         w = 658, h = 276,
-        text = "Supported results can run directly from search, including macros and other actionable rows.",
+        text = L["TUT_SLIDE_MACROS"],
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-08-hires",
         texCoord = TutorialTexCoord(1292, 530, 2048, 1024),
         w = 646, h = 265,
-        text = "Search settings and adjust matching controls inline without leaving the results.",
+        text = L["TUT_SLIDE_INLINE_SETTINGS"],
     },
 }
 local USE_TUTORIAL_SLIDES = {
@@ -94,19 +95,19 @@ local USE_TUTORIAL_SLIDES = {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-01-hires",
         texCoord = TutorialTexCoord(1316, 304, 2048, 512),
         w = 658, h = 152,
-        text = "Equip gear sets directly from search.",
+        text = L["TUT_SLIDE_USE_GEAR"],
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-02-hires",
         texCoord = TutorialTexCoord(1316, 552, 2048, 1024),
         w = 658, h = 276,
-        text = "Run macros from results, or Ctrl-click to edit them.",
+        text = L["TUT_SLIDE_USE_MACROS"],
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-03-hires",
         texCoord = TutorialTexCoord(1314, 890, 2048, 1024),
         w = 657, h = 445,
-        text = "Use toys and other supported items directly from the list.",
+        text = L["TUT_SLIDE_USE_TOYS"],
     },
 }
 local CALCULATOR_TUTORIAL_IMAGE = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-calculator-visual-hires"
@@ -285,14 +286,14 @@ local function BuildPage1(parent)
     logo:SetPoint("TOP", p, "TOP", 0, -40)
 
     local version = ns.version or (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("EasyFind", "Version")) or "2.0.0"
-    local title = HeaderText(p, "Welcome to EasyFind v" .. version)
+    local title = HeaderText(p, L["TUT_WELCOME_TITLE"]:format(version))
     title:SetPoint("TOP", logo, "BOTTOM", 0, -22)
     do
         local path, sz, fl = title:GetFont()
         if sz then title:SetFont(path, sz * 1.5, fl or "") end
     end
 
-    local sub = BodyText(p, "Your shortcut to everything in WoW.")
+    local sub = BodyText(p, L["TUT_WELCOME_SUBTITLE"])
     sub:SetPoint("TOP", title, "BOTTOM", 0, -16)
     sub:SetWidth(WIZ_W - 120)
     sub:SetTextColor(Utils.RGB(TEXT_DIM, 1))
@@ -364,10 +365,10 @@ local function BuildPage2(parent)
     local grid = CreateFrame("Frame", nil, p)
     grid:SetAllPoints(p)
 
-    local title = HeaderText(grid, "What you can do", "GameFontNormalLarge")
+    local title = HeaderText(grid, L["TUT_FEATURES_TITLE"], "GameFontNormalLarge")
     title:SetPoint("TOP", grid, "TOP", 0, -28)
 
-    local sub = BodyText(grid, "Type once. Find anything.")
+    local sub = BodyText(grid, L["TUT_FEATURES_SUBTITLE"])
     sub:SetPoint("TOP", title, "BOTTOM", 0, -6)
 
     local detailViews = {}

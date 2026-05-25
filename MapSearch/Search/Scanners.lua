@@ -42,6 +42,9 @@ function MapSearch:ScanFlightMasters(mapID)
     local nodes = C_TaxiMap.GetTaxiNodesForMap(mapID)
     if not nodes then return results end
 
+    -- UnitFactionGroup returns one of "Alliance" / "Horde" / "Neutral"
+    -- as a stable, locale-independent string (Blizzard enum-like return,
+    -- not a localized display label) — safe to compare against literals.
     local playerFaction = UnitFactionGroup("player")
     local FPFaction = Enum.FlightPathFaction
 

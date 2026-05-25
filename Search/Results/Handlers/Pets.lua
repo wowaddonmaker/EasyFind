@@ -4,6 +4,7 @@ local Search = ns.Search
 local Handlers = ns.ResultHandlers
 local Results = ns.Results
 local Utils = ns.Utils
+local L = ns.L
 
 local GetButtonText = Utils.GetButtonText
 local SearchFrameTreeFuzzy = Utils.SearchFrameTreeFuzzy
@@ -241,7 +242,7 @@ function Handlers:ReleasePet(petID)
 end
 
 StaticPopupDialogs["EASYFIND_PET_RELEASE_CONFIRM"] = {
-    text = "Are you sure you want to permanently release this pet? This cannot be undone.",
+    text = L["PROMPT_RELEASE_PET"],
     button1 = ACCEPT or "OK",
     button2 = CANCEL or "Cancel",
     timeout = 0,
@@ -261,7 +262,7 @@ function Handlers:RenamePet(petID)
 end
 
 StaticPopupDialogs["EASYFIND_PET_RENAME"] = {
-    text = "New name for this pet:",
+    text = L["PROMPT_RENAME_PET"],
     button1 = ACCEPT or "OK",
     button2 = CANCEL or "Cancel",
     hasEditBox = true,

@@ -4,6 +4,7 @@ local Database = {}
 ns.Database = Database
 
 local Utils   = ns.Utils
+local L       = ns.L
 local ipairs, pairs = Utils.ipairs, Utils.pairs
 local sfind, slower, ssub = Utils.sfind, Utils.slower, Utils.ssub
 local select, type, tostring = select, type, tostring
@@ -2980,13 +2981,20 @@ local function GetFlattenMT(category, buttonFrame, path, steps, keywords)
     return mt
 end
 
-function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, parentCategory)
+function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, parentCategory, parentIsPvP, parentIsPvE)
     parentPath = parentPath or {}
     parentSteps = parentSteps or {}
 
     for _, node in ipairs(tree) do
         local myButtonFrame = node.buttonFrame or parentButtonFrame
         local myCategory = node.category or parentCategory
+        -- isPvP/isPvE propagate from any ancestor node that set the flag.
+        -- Defining the flag at the tree level avoids the previous post-
+        -- flatten loop that string-matched path elements ("Group Finder",
+        -- "Dungeons & Raids", "Player vs. Player") and broke on non-
+        -- English clients.
+        local myIsPvP = node.isPvP or parentIsPvP or nil
+        local myIsPvE = node.isPvE or parentIsPvE or nil
 
         -- Reuse parent array when node adds nothing.
         local mySteps
@@ -3005,6 +3013,8 @@ function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, 
         if node.available then entry.available = node.available end
         if node.canQueue then entry.canQueue = true end
         if node.slashCommand then entry.slashCommand = node.slashCommand end
+        if myIsPvP then entry.isPvP = true end
+        if myIsPvE then entry.isPvE = true end
 
         uiSearchData[#uiSearchData + 1] = entry
 
@@ -3012,7 +3022,7 @@ function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, 
             local childPath = {}
             for i = 1, #parentPath do childPath[i] = parentPath[i] end
             childPath[#childPath + 1] = node.name
-            self:FlattenTree(node.children, childPath, mySteps, myButtonFrame, myCategory)
+            self:FlattenTree(node.children, childPath, mySteps, myButtonFrame, myCategory, myIsPvP, myIsPvE)
         end
     end
 end
@@ -3071,14 +3081,14 @@ function Database:BuildUIDatabase()
     local uiTree = {
 
         {
-            name = "Character Info",
+            name = _G["CHARACTER_BUTTON"] or "Character Info",
             keywords = {"character", "char", "attributes"},
             category = "Menu Bar",
             buttonFrame = "CharacterMicroButton",
             steps = {{ buttonFrame = "CharacterMicroButton" }},
             children = {
                 {
-                    name = "Character Stats",
+                    name = _G["PAPERDOLL_SIDEBAR_STATS"] or "Character Stats",
                     keywords = {"character stats", "character sheet", "paperdoll", "equipment", "gear stats", "item level"},
                     category = "Character Info",
                     steps = {
@@ -3087,7 +3097,7 @@ function Database:BuildUIDatabase()
                     },
                 },
                 {
-                    name = "Titles",
+                    name = _G["PAPERDOLL_SIDEBAR_TITLES"] or _G["TITLES"] or "Titles",
                     keywords = {"titles", "title", "name title"},
                     category = "Character Info",
                     steps = {
@@ -3096,7 +3106,7 @@ function Database:BuildUIDatabase()
                     },
                 },
                 {
-                    name = "Equipment Manager",
+                    name = _G["EQUIPMENT_MANAGER"] or "Equipment Manager",
                     keywords = {"equipment manager", "gear sets", "equipment sets", "outfitter", "save gear", "load gear", "gear manager"},
                     category = "Character Info",
                     steps = {
@@ -3105,7 +3115,7 @@ function Database:BuildUIDatabase()
                     },
                 },
                 {
-                    name = "Reputation",
+                    name = _G["REPUTATION"] or "Reputation",
                     keywords = {"reputation", "rep", "faction", "factions", "standing", "renown"},
                     category = "Character Info",
                     steps = {
@@ -3113,7 +3123,7 @@ function Database:BuildUIDatabase()
                     },
                 },
                 {
-                    name = "Currency",
+                    name = _G["CURRENCY"] or "Currency",
                     keywords = {"currency", "currencies", "tokens", "money"},
                     category = "Character Info",
                     steps = {
@@ -3124,7 +3134,7 @@ function Database:BuildUIDatabase()
         },
 
         {
-            name = "Professions",
+            name = _G["TRADE_SKILLS"] or _G["PROFESSIONS_BUTTON"] or "Professions",
             keywords = {"professions", "profession", "crafting", "trade skills", "skills"},
             category = "Menu Bar",
             buttonFrame = "ProfessionMicroButton",
@@ -3139,31 +3149,33 @@ function Database:BuildUIDatabase()
             steps = {{ buttonFrame = "PlayerSpellsMicroButton" }},
             children = {
                 {
-                    name = "Specialization",
+                    name = _G["SPECIALIZATION"] or "Specialization",
                     keywords = {"specialization", "spec", "class spec", "change spec", "switch spec"},
                     category = "Talents",
                     steps = {{ waitForFrame = "PlayerSpellsFrame", tabIndex = 1 }},
                 },
                 {
-                    name = "Talents",
+                    name = _G["TALENTS"] or "Talents",
                     keywords = {"talent tree", "talent points", "class talents", "hero talents", "talents"},
                     category = "Talents",
                     steps = {{ waitForFrame = "PlayerSpellsFrame", tabIndex = 2 }},
                     children = {
                         {
-                            name = "PvP Talents",
+                            name = _G["TALENT_FRAME_DROP_DOWN_PVP_TALENTS"] or _G["PVP_TALENTS"] or "PvP Talents",
+                            isPvP = true,
                             keywords = {"pvp talents", "pvp abilities", "battleground talents", "pvp"},
-                            steps = {{ waitForFrame = "PlayerSpellsFrame", regionFrames = { "FIND_PVP_TALENTS" }, text = "PvP Talents are at the bottom right of the Talents pane" }},
+                            steps = {{ waitForFrame = "PlayerSpellsFrame", regionFrames = { "FIND_PVP_TALENTS" }, text = L["GUIDE_PVP_TALENTS_LOC"] }},
                         },
                         {
-                            name = "War Mode",
+                            name = _G["WAR_MODE"] or _G["PVP_LABEL_WAR_MODE"] or "War Mode",
+                            isPvP = true,
                             keywords = {"war mode", "warmode", "pvp toggle", "world pvp", "pvp on", "pvp off", "pvp"},
                             steps = {{ waitForFrame = "PlayerSpellsFrame", regionFrames = { "PlayerSpellsFrame.TalentsFrame.WarmodeButton" } }},
                         },
                     },
                 },
                 {
-                    name = "Spellbook",
+                    name = _G["SPELLBOOK"] or "Spellbook",
                     keywords = {"spellbook", "spells", "abilities", "skills", "spell book"},
                     category = "Talents",
                     steps = {{ waitForFrame = "PlayerSpellsFrame", tabIndex = 3 }},
@@ -3172,14 +3184,14 @@ function Database:BuildUIDatabase()
         },
 
         {
-            name = "Achievements",
+            name = _G["ACHIEVEMENTS"] or "Achievements",
             keywords = {"achievement", "achievements", "achieve", "points"},
             category = "Menu Bar",
             buttonFrame = "AchievementMicroButton",
             steps = {{ buttonFrame = "AchievementMicroButton" }},
             children = {
                 {
-                    name = "Statistics",
+                    name = _G["STATISTICS"] or "Statistics",
                     keywords = {"statistics", "stats tab", "player statistics"},
                     category = "Statistics",
                     steps = {{ waitForFrame = "AchievementFrame", tabIndex = 3 }},
@@ -3188,7 +3200,7 @@ function Database:BuildUIDatabase()
         },
 
         {
-            name = "Quest Log",
+            name = _G["QUESTLOG_BUTTON"] or _G["QUEST_LOG"] or "Quest Log",
             keywords = {"quest", "quests", "objectives", "log", "journal"},
             category = "Menu Bar",
             buttonFrame = "QuestLogMicroButton",
@@ -3212,7 +3224,7 @@ function Database:BuildUIDatabase()
         },
 
         {
-            name = "Group Finder",
+            name = _G["LFG_TITLE"] or _G["GROUP_FINDER"] or "Group Finder",
             keywords = {"lfg", "lfd", "lfr", "finder", "queue", "group finder"},
             category = "Menu Bar",
             buttonFrame = "LFDMicroButton",
@@ -3220,30 +3232,32 @@ function Database:BuildUIDatabase()
             children = {
                 {
                     name = "Dungeons & Raids",
+                    isPvE = true,
                     keywords = {"dungeons", "raids", "dungeons and raids"},
                     category = "Group Finder",
                     steps = {{ waitForFrame = "PVEFrame", tabIndex = 1 }},
                     children = {
-                        { name = "Dungeon Finder", keywords = {"dungeon finder", "lfd", "random dungeon", "heroic dungeon", "normal dungeon", "dungeon queue"}, canQueue = true, steps = {{ waitForFrame = "PVEFrame", sideTabIndex = 1 }} },
-                        { name = "Raid Finder", keywords = {"raid finder", "lfr", "looking for raid", "raid queue", "random raid"}, canQueue = true, steps = {{ waitForFrame = "PVEFrame", sideTabIndex = 2 }} },
+                        { name = _G["LOOKING_FOR_DUNGEON"] or _G["DUNGEON_FINDER"] or "Dungeon Finder", keywords = {"dungeon finder", "lfd", "random dungeon", "heroic dungeon", "normal dungeon", "dungeon queue"}, canQueue = true, steps = {{ waitForFrame = "PVEFrame", sideTabIndex = 1 }} },
+                        { name = _G["RAID_FINDER"] or _G["LOOKING_FOR_RAID"] or "Raid Finder", keywords = {"raid finder", "lfr", "looking for raid", "raid queue", "random raid"}, canQueue = true, steps = {{ waitForFrame = "PVEFrame", sideTabIndex = 2 }} },
                         {
                             name = "Premade Groups (PvE)",
                             keywords = {"premade", "premade groups", "custom group", "find group", "make group", "list group"},
                             steps = {{ waitForFrame = "PVEFrame", sideTabIndex = 3 }},
                             children = {
-                                { name = "Questing (Premade)", keywords = {"questing", "quest", "quest group", "quest lfg", "find quest group", "premade questing"}, steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Questing", text = "Select Questing from the Premade Groups list" }} },
-                                { name = "Delves (Premade)", keywords = {"delves", "delve group", "delve lfg", "find delve group", "premade delves", "delve"}, steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Delves", text = "Select Delves from the Premade Groups list" }} },
-                                { name = "Dungeons (Premade)", keywords = {"dungeons", "dungeon group", "dungeon lfg", "find dungeon group", "premade dungeons", "m+ group", "mythic group"}, steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Dungeons", text = "Select Dungeons from the Premade Groups list" }} },
-                                { name = "Raids - The War Within (Premade)", keywords = {"raids", "raids the war within", "raid group", "raid lfg", "find raid group", "premade raids", "tww raid", "war within raid", "nerub-ar", "liberation of undermine"}, steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Raids - The War Within", text = "Select Raids - The War Within from the Premade Groups list" }} },
-                                { name = "Raids - Legacy (Premade)", keywords = {"raids", "raids legacy", "legacy raid", "old raid", "legacy raid group", "legacy lfg", "transmog raid", "tmog raid", "mount run"}, steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Raids - Legacy", text = "Select Raids - Legacy from the Premade Groups list" }} },
-                                { name = "Custom PvE Group", keywords = {"custom", "custom pve", "custom group", "custom lfg", "pve custom"}, steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Custom", text = "Select Custom from the Premade Groups list" }} },
+                                { name = "Questing (Premade)", keywords = {"questing", "quest", "quest group", "quest lfg", "find quest group", "premade questing"}, steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Questing", text = L["GUIDE_PREMADE_QUESTING"] }} },
+                                { name = "Delves (Premade)", keywords = {"delves", "delve group", "delve lfg", "find delve group", "premade delves", "delve"}, steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Delves", text = L["GUIDE_PREMADE_DELVES"] }} },
+                                { name = "Dungeons (Premade)", keywords = {"dungeons", "dungeon group", "dungeon lfg", "find dungeon group", "premade dungeons", "m+ group", "mythic group"}, steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Dungeons", text = L["GUIDE_PREMADE_DUNGEONS"] }} },
+                                { name = "Raids - The War Within (Premade)", keywords = {"raids", "raids the war within", "raid group", "raid lfg", "find raid group", "premade raids", "tww raid", "war within raid", "nerub-ar", "liberation of undermine"}, steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Raids - The War Within", text = L["GUIDE_PREMADE_RAIDS_TWW"] }} },
+                                { name = "Raids - Legacy (Premade)", keywords = {"raids", "raids legacy", "legacy raid", "old raid", "legacy raid group", "legacy lfg", "transmog raid", "tmog raid", "mount run"}, steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Raids - Legacy", text = L["GUIDE_PREMADE_RAIDS_LEGACY"] }} },
+                                { name = "Custom PvE Group", keywords = {"custom", "custom pve", "custom group", "custom lfg", "pve custom"}, steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Custom", text = L["GUIDE_PREMADE_CUSTOM_PVE"] }} },
                             },
                         },
                     },
                 },
 
                 {
-                    name = "Player vs. Player",
+                    name = _G["PVP"] or _G["PLAYER_V_PLAYER"] or "Player vs. Player",
+                    isPvP = true,
                     keywords = {"pvp", "player vs player", "battleground", "arena", "bg"},
                     category = "Group Finder",
                     steps = {{ waitForFrame = "PVEFrame", tabIndex = 2 }},
@@ -3253,10 +3267,10 @@ function Database:BuildUIDatabase()
                             keywords = {"quick match", "random bg", "random battleground", "casual pvp", "unrated", "pvp"},
                             steps = {{ waitForFrame = "PVEFrame", pvpSideTabIndex = 1 }},
                             children = {
-                                { name = "Arena Skirmish", keywords = {"arena skirmish", "skirmish", "unrated arena", "casual arena", "arena"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.BonusFrame.Arena1Button", "HonorFrame.ArenaSkirmish"}, searchButtonText = "Arena Skirmish", text = "Select Arena Skirmish from the list" }} },
-                                { name = "Random Battleground", keywords = {"random bg", "random battleground", "casual bg", "unrated bg", "battleground"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.BonusFrame.RandomBGButton", "HonorFrame.RandomBG"}, searchButtonText = "Random Battlegrounds", text = "Select Random Battlegrounds from the list" }} },
-                                { name = "Random Epic Battleground", keywords = {"random epic bg", "random epic battleground", "epic bg", "epic battleground", "ashran", "alterac", "isle of conquest"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.BonusFrame.RandomEpicBGButton", "HonorFrame.RandomEpicBG"}, searchButtonText = "Random Epic Battlegrounds", text = "Select Random Epic Battlegrounds from the list" }} },
-                                { name = "Brawl", keywords = {"brawl", "pvp brawl", "weekly brawl", "packed house"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.BonusFrame.BrawlButton"}, searchButtonText = "Brawl", text = "Select the Brawl option from the list" }} },
+                                { name = "Arena Skirmish", keywords = {"arena skirmish", "skirmish", "unrated arena", "casual arena", "arena"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.BonusFrame.Arena1Button", "HonorFrame.ArenaSkirmish"}, searchButtonText = "Arena Skirmish", text = L["GUIDE_ARENA_SKIRMISH"] }} },
+                                { name = "Random Battleground", keywords = {"random bg", "random battleground", "casual bg", "unrated bg", "battleground"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.BonusFrame.RandomBGButton", "HonorFrame.RandomBG"}, searchButtonText = "Random Battlegrounds", text = L["GUIDE_RANDOM_BG"] }} },
+                                { name = "Random Epic Battleground", keywords = {"random epic bg", "random epic battleground", "epic bg", "epic battleground", "ashran", "alterac", "isle of conquest"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.BonusFrame.RandomEpicBGButton", "HonorFrame.RandomEpicBG"}, searchButtonText = "Random Epic Battlegrounds", text = L["GUIDE_RANDOM_EPIC_BG"] }} },
+                                { name = "Brawl", keywords = {"brawl", "pvp brawl", "weekly brawl", "packed house"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"HonorFrame.BonusFrame.BrawlButton"}, searchButtonText = "Brawl", text = L["GUIDE_BRAWL"] }} },
                             },
                         },
                         {
@@ -3264,11 +3278,11 @@ function Database:BuildUIDatabase()
                             keywords = {"rated", "rated pvp", "conquest", "pvp"},
                             steps = {{ waitForFrame = "PVEFrame", pvpSideTabIndex = 2 }},
                             children = {
-                                { name = "Solo Shuffle", keywords = {"solo shuffle", "shuffle", "solo arena", "arena"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.RatedSoloShuffle"}, searchButtonText = "Solo Arena", text = "Solo Shuffle is the first option in the Rated panel" }} },
-                                { name = "2v2 Arena", keywords = {"2v2", "2s", "twos", "2v2 arena", "two vs two", "arena"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.Arena2v2"}, searchButtonText = "2v2", text = "2v2 Arena is in the Rated panel" }} },
-                                { name = "3v3 Arena", keywords = {"3v3", "3s", "threes", "3v3 arena", "three vs three", "arena"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.Arena3v3"}, searchButtonText = "3v3", text = "3v3 Arena is in the Rated panel" }} },
-                                { name = "Rated Battlegrounds", keywords = {"rbg", "rated bg", "rated battleground", "rated battlegrounds", "10v10", "ten vs ten"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.RatedBG"}, text = "Rated Battlegrounds is in the Rated panel" }} },
-                                { name = "Solo Battlegrounds (Blitz)", keywords = {"solo bg", "solo battleground", "solo battlegrounds", "battleground", "blitz", "battleground blitz"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.RatedBGBlitz"}, searchButtonText = "Solo Battlegrounds", text = "Solo Battlegrounds (Blitz) is in the Rated panel" }} },
+                                { name = "Solo Shuffle", keywords = {"solo shuffle", "shuffle", "solo arena", "arena"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.RatedSoloShuffle"}, searchButtonText = "Solo Arena", text = L["GUIDE_SOLO_SHUFFLE"] }} },
+                                { name = "2v2 Arena", keywords = {"2v2", "2s", "twos", "2v2 arena", "two vs two", "arena"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.Arena2v2"}, searchButtonText = "2v2", text = L["GUIDE_2V2_ARENA"] }} },
+                                { name = "3v3 Arena", keywords = {"3v3", "3s", "threes", "3v3 arena", "three vs three", "arena"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.Arena3v3"}, searchButtonText = "3v3", text = L["GUIDE_3V3_ARENA"] }} },
+                                { name = "Rated Battlegrounds", keywords = {"rbg", "rated bg", "rated battleground", "rated battlegrounds", "10v10", "ten vs ten"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.RatedBG"}, text = L["GUIDE_RATED_BG"] }} },
+                                { name = "Solo Battlegrounds (Blitz)", keywords = {"solo bg", "solo battleground", "solo battlegrounds", "battleground", "blitz", "battleground blitz"}, category = "PvP", canQueue = true, steps = {{ waitForFrame = "PVEFrame", regionFrames = {"ConquestFrame.RatedBGBlitz"}, searchButtonText = "Solo Battlegrounds", text = L["GUIDE_BLITZ"] }} },
                             },
                         },
                         {
@@ -3276,11 +3290,11 @@ function Database:BuildUIDatabase()
                             keywords = {"pvp premade", "pvp groups", "bg group", "pvp"},
                             steps = {{ waitForFrame = "PVEFrame", pvpSideTabIndex = 3 }},
                             children = {
-                                { name = "Arenas (Premade)", keywords = {"arena premade", "arena group", "arena lfg", "find arena", "arena"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Arenas", text = "Select Arenas from the Premade Groups list" }} },
-                                { name = "Arena Skirmishes (Premade)", keywords = {"arena skirmish premade", "skirmish group", "skirmish lfg", "skirmish"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Arena Skirmishes", text = "Select Arena Skirmishes from the Premade Groups list" }} },
-                                { name = "Battlegrounds (Premade)", keywords = {"bg premade", "battleground group", "bg lfg", "find bg", "battleground"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Battlegrounds", text = "Select Battlegrounds from the Premade Groups list" }} },
-                                { name = "Rated Battlegrounds (Premade)", keywords = {"rated bg premade", "rbg premade", "rbg group", "rbg lfg", "rated battleground"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Rated Battlegrounds", text = "Select Rated Battlegrounds from the Premade Groups list" }} },
-                                { name = "Custom PvP Group", keywords = {"custom pvp", "custom group", "custom lfg", "pvp custom", "custom"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Custom", text = "Select Custom from the Premade Groups list" }} },
+                                { name = "Arenas (Premade)", keywords = {"arena premade", "arena group", "arena lfg", "find arena", "arena"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Arenas", text = L["GUIDE_PREMADE_ARENAS"] }} },
+                                { name = "Arena Skirmishes (Premade)", keywords = {"arena skirmish premade", "skirmish group", "skirmish lfg", "skirmish"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Arena Skirmishes", text = L["GUIDE_PREMADE_ARENA_SKIRMISHES"] }} },
+                                { name = "Battlegrounds (Premade)", keywords = {"bg premade", "battleground group", "bg lfg", "find bg", "battleground"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Battlegrounds", text = L["GUIDE_PREMADE_BATTLEGROUNDS"] }} },
+                                { name = "Rated Battlegrounds (Premade)", keywords = {"rated bg premade", "rbg premade", "rbg group", "rbg lfg", "rated battleground"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Rated Battlegrounds", text = L["GUIDE_PREMADE_RATED_BG"] }} },
+                                { name = "Custom PvP Group", keywords = {"custom pvp", "custom group", "custom lfg", "pvp custom", "custom"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", searchButtonText = "Custom", text = L["GUIDE_PREMADE_CUSTOM_PVP"] }} },
                             },
                         },
                         {
@@ -3288,7 +3302,7 @@ function Database:BuildUIDatabase()
                             keywords = {"training", "training grounds", "practice", "pvp"},
                             steps = {{ waitForFrame = "PVEFrame", pvpSideTabIndex = 4 }},
                             children = {
-                                { name = "Random Battlegrounds (Training Grounds)", keywords = {"random bg", "random battleground", "random battlegrounds", "training battleground", "bonus battleground"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", regionFrames = {"TrainingGroundsFrame.BonusTrainingGroundList.RandomTrainingGroundButton"}, searchButtonText = "Random Battlegrounds", text = "Select Random Battlegrounds in Training Grounds" }} },
+                                { name = "Random Battlegrounds (Training Grounds)", keywords = {"random bg", "random battleground", "random battlegrounds", "training battleground", "bonus battleground"}, category = "PvP", steps = {{ waitForFrame = "PVEFrame", regionFrames = {"TrainingGroundsFrame.BonusTrainingGroundList.RandomTrainingGroundButton"}, searchButtonText = "Random Battlegrounds", text = L["GUIDE_TRAINING_GROUNDS_RBG"] }} },
                             },
                         },
                     },
@@ -3296,6 +3310,7 @@ function Database:BuildUIDatabase()
 
                 {
                     name = "Mythic+ Dungeons",
+                    isPvE = true,
                     keywords = {"mythic", "mythic+", "m+", "keystone", "mythic plus", "keys"},
                     category = "Group Finder",
                     steps = {{ waitForFrame = "PVEFrame", tabIndex = 3 }},
@@ -3310,11 +3325,11 @@ function Database:BuildUIDatabase()
             buttonFrame = "CollectionsMicroButton",
             steps = {{ buttonFrame = "CollectionsMicroButton" }},
             children = {
-                { name = "Mounts", keywords = {"mounts", "mount", "riding", "mount collection", "flying"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 1 }} },
-                { name = "Pet Journal", keywords = {"pets", "pet", "battle pets", "companion", "pet collection", "critter", "pet journal"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 2 }} },
-                { name = "Toy Box", keywords = {"toys", "toy", "toybox", "toy box", "fun items"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 3 }} },
-                { name = "Heirlooms", keywords = {"heirlooms", "heirloom", "leveling gear", "bind on account", "boa"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 4 }} },
-                { name = "Appearances (Transmog)", keywords = {"transmog", "tmog", "xmog", "transmogrification", "appearance", "appearances", "wardrobe", "cosmetic", "looks", "mog"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 5, text = "Click the Appearances tab" }} },
+                { name = _G["MOUNTS"] or "Mounts", keywords = {"mounts", "mount", "riding", "mount collection", "flying"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 1 }} },
+                { name = _G["PET_JOURNAL"] or _G["PETS"] or "Pet Journal", keywords = {"pets", "pet", "battle pets", "companion", "pet collection", "critter", "pet journal"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 2 }} },
+                { name = _G["TOY_BOX"] or "Toy Box", keywords = {"toys", "toy", "toybox", "toy box", "fun items"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 3 }} },
+                { name = _G["HEIRLOOMS"] or "Heirlooms", keywords = {"heirlooms", "heirloom", "leveling gear", "bind on account", "boa"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 4 }} },
+                { name = "Appearances (Transmog)", keywords = {"transmog", "tmog", "xmog", "transmogrification", "appearance", "appearances", "wardrobe", "cosmetic", "looks", "mog"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 5, text = L["GUIDE_APPEARANCES_TAB"] }} },
                 { name = "Campsites", keywords = {"campsites", "campsite", "camp", "camping", "rest area"}, category = "Warband Collections", steps = {{ waitForFrame = "CollectionsJournal", tabIndex = 6 }} },
             },
         },
@@ -3328,21 +3343,21 @@ function Database:BuildUIDatabase()
         },
 
         {
-            name = "Adventure Guide",
+            name = _G["ADVENTURE_JOURNAL"] or _G["ENCOUNTER_JOURNAL"] or "Adventure Guide",
             keywords = {"adventure", "guide", "dungeon journal", "encounters", "loot", "boss", "journal"},
             category = "Menu Bar",
             buttonFrame = "EJMicroButton",
             steps = {{ buttonFrame = "EJMicroButton" }},
             children = {
-                { name = "Journeys", keywords = {"journeys", "journey", "adventure journeys"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 1, text = "Click the Journeys tab" }}, children = {
+                { name = "Journeys", keywords = {"journeys", "journey", "adventure journeys"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 1, text = L["GUIDE_JOURNEYS_TAB"] }}, children = {
                     { name = "Great Vault (Rewards)", keywords = {"great vault", "vault", "weekly rewards", "weekly chest", "rewards"}, category = "Adventure Guide", icon = { file = 1121272, coords = { 0.2007, 0.2407, 0.5456, 0.5862 } }, steps = {{ buttonFrame = "EncounterJournalInstanceSelect.GreatVaultButton" }} },
                 }},
-                { name = "Traveler's Log", keywords = {"traveler", "travelers log", "traveler log", "travel log"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 2, text = "Click the Traveler's Log tab" }} },
-                { name = "Suggested Content", keywords = {"suggested", "suggested content", "recommendations"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 3, text = "Click the Suggested Content tab" }} },
-                { name = "Dungeons (Journal)", keywords = {"dungeon journal", "dungeon guide", "dungeon encounters", "dungeon bosses"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 4, text = "Click the Dungeons tab" }} },
-                { name = "Raids (Journal)", keywords = {"raid journal", "raid guide", "raid encounters", "raid bosses"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 5, text = "Click the Raids tab" }} },
-                { name = "Item Sets", keywords = {"item sets", "tier sets", "set bonuses", "class sets"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 6, text = "Click the Item Sets tab" }} },
-                { name = "Tutorials", keywords = {"tutorials", "tutorial", "help guide", "how to"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 7, text = "Click the Tutorials tab" }} },
+                { name = "Traveler's Log", keywords = {"traveler", "travelers log", "traveler log", "travel log"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 2, text = L["GUIDE_TRAVELERS_LOG_TAB"] }} },
+                { name = "Suggested Content", keywords = {"suggested", "suggested content", "recommendations"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 3, text = L["GUIDE_SUGGESTED_CONTENT_TAB"] }} },
+                { name = "Dungeons (Journal)", keywords = {"dungeon journal", "dungeon guide", "dungeon encounters", "dungeon bosses"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 4, text = L["GUIDE_DUNGEONS_TAB"] }} },
+                { name = "Raids (Journal)", keywords = {"raid journal", "raid guide", "raid encounters", "raid bosses"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 5, text = L["GUIDE_RAIDS_TAB"] }} },
+                { name = "Item Sets", keywords = {"item sets", "tier sets", "set bonuses", "class sets"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 6, text = L["GUIDE_ITEM_SETS_TAB"] }} },
+                { name = "Tutorials", keywords = {"tutorials", "tutorial", "help guide", "how to"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 7, text = L["GUIDE_TUTORIALS_TAB"] }} },
             },
         },
 
@@ -3350,27 +3365,27 @@ function Database:BuildUIDatabase()
         -- fires from a hardware event; ToggleGameMenu's ClearTarget needs that.
         -- /run ShowUIPanel(GameMenuFrame) here forbid-errors on ClearTarget.
         {
-            name = "Game Menu",
+            name = _G["MAINMENU_BUTTON"] or _G["GAMEMENU_BUTTON"] or "Game Menu",
             keywords = {"menu", "settings", "options", "escape", "esc", "logout", "quit", "exit", "interface"},
             category = "Menu Bar",
             buttonFrame = "MainMenuMicroButton",
             slashCommand = "/click MainMenuMicroButton",
         },
         {
-            name = "Help",
+            name = _G["HELP_BUTTON"] or _G["HELP_LABEL"] or "Help",
             keywords = {"help", "support", "ticket", "bug", "report", "gm"},
             category = "Menu Bar",
             buttonFrame = "HelpMicroButton",
             steps = {{ buttonFrame = "HelpMicroButton" }},
         },
         {
-            name = "Shop",
+            name = _G["BLIZZARD_STORE"] or _G["STORE"] or "Shop",
             keywords = {"shop", "store", "blizzard shop", "cash shop", "buy", "purchase", "micro transaction"},
             category = "Menu Bar",
             buttonFrame = "StoreMicroButton",
             steps = {{ buttonFrame = "StoreMicroButton" }},
             children = {
-                { name = "Shop Appearances", keywords = {"shop appearances", "appearance"}, category = "Shop", steps = {{ waitForFrame = "StoreFrame", text = "Browse the Appearances section in the shop" }} },
+                { name = "Shop Appearances", keywords = {"shop appearances", "appearance"}, category = "Shop", steps = {{ waitForFrame = "StoreFrame", text = L["GUIDE_SHOP_APPEARANCES"] }} },
             },
         },
 
@@ -3400,19 +3415,19 @@ function Database:BuildUIDatabase()
                 },
                 { name = "Edit Mode", keywords = {"edit mode", "ui layout", "customize ui", "move frames", "hud edit", "ui editor"}, steps = {{ portraitMenuOption = "Edit Mode" }} },
                 { name = "Voice Chat", keywords = {"voice chat", "voice", "voip", "talk", "microphone", "mic"}, steps = {{ portraitMenuOption = "Voice Chat" }} },
-                { name = "PvP Flag", keywords = {"pvp flag", "pvp toggle", "player vs player flag", "pvp enable", "war mode"}, steps = {{ portraitMenuOption = "PvP Flag" }} },
+                { name = "PvP Flag", isPvP = true, keywords = {"pvp flag", "pvp toggle", "player vs player flag", "pvp enable", "war mode"}, steps = {{ portraitMenuOption = "PvP Flag" }} },
             },
         },
 
         {
-            name = "Bags / Inventory",
+            name = _G["BAGSLOT"] or _G["INVENTORY_TOOLTIP"] or "Bags / Inventory",
             keywords = {"bags", "bag", "inventory", "backpack", "items", "storage"},
             category = "Inventory",
             iconAtlas = "bag-main",
             steps = {{ buttonFrame = "MainMenuBarBackpackButton" }},
         },
         {
-            name = "Friends List",
+            name = _G["FRIENDS_LIST"] or _G["FRIENDS"] or "Friends List",
             keywords = {"friends", "social", "bnet", "battlenet", "contacts", "whisper", "online"},
             category = "Social",
             icon = 132175,
@@ -3440,7 +3455,7 @@ function Database:BuildUIDatabase()
             slashCommand = "/run MinimapCluster:SetShown(not MinimapCluster:IsShown())",
         },
         {
-            name = "Calendar",
+            name = _G["CALENDAR"] or "Calendar",
             keywords = {"calendar", "events", "holidays", "schedule"},
             category = "Social",
             icon = 134939,
@@ -3484,45 +3499,14 @@ function Database:BuildUIDatabase()
         end
     end
 
-    local PVP_NAMES = {
-        ["PvP Talents"] = true, ["War Mode"] = true, ["PvP Flag"] = true,
-    }
+    -- isPvP / isPvE are set during FlattenTree from explicit flags on the
+    -- uiTree nodes — see "Player vs. Player", "Dungeons & Raids", etc.
+    -- Entries with category="PvP" (individual PvP queue rows like Arena
+    -- Skirmish) also count as PvP for filter purposes.
     for _, item in ipairs(uiSearchData) do
         ApplyGroupFinderSubcategoryIcon(item)
-        if item.category == "PvP" or PVP_NAMES[item.name]
-            or sfind(item.name, "Player vs. Player", 1, true) then
+        if not item.isPvP and item.category == "PvP" then
             item.isPvP = true
-        elseif item.path then
-            for _, p in ipairs(item.path) do
-                if sfind(p, "Player vs. Player", 1, true) then
-                    item.isPvP = true
-                    break
-                end
-            end
-        end
-        if not item.isPvP and item.path then
-            local underGroupFinder = false
-            for _, p in ipairs(item.path) do
-                if p == "Group Finder" then underGroupFinder = true end
-                if underGroupFinder and (p == "Dungeons & Raids" or p == "Mythic+ Dungeons") then
-                    item.isPvE = true
-                    break
-                end
-            end
-        end
-        if not item.isPvE then
-            local n = item.name
-            if (n == "Dungeons & Raids" or n == "Dungeon Finder" or n == "Raid Finder"
-                or n == "Mythic+ Dungeons" or n == "Premade Groups (PvE)") then
-                if item.path then
-                    for _, p in ipairs(item.path) do
-                        if p == "Group Finder" then
-                            item.isPvE = true
-                            break
-                        end
-                    end
-                end
-            end
         end
     end
 end
@@ -3531,5 +3515,5 @@ end
 -- uiSearchData during their own init. Not routed through SafeInit, so wrap.
 local initOk, initErr = xpcall(Database.Initialize, Utils.ErrorHandler, Database)
 if not initOk then
-    print("|cffff4444EasyFind Database failed to initialize: " .. tostring(initErr) .. "|r")
+    print("|cffff4444" .. L["ERR_DATABASE_INIT_FAILED"] .. tostring(initErr) .. "|r")
 end

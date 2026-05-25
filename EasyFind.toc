@@ -9,6 +9,10 @@
 ## SavedVariables: EasyFindDB
 ## DefaultState: enabled
 
+Shared/Localization.lua
+Locales/enUS.lua
+Locales/deDE.lua
+Locales/frFR.lua
 Shared/Utils.lua
 Shared/SearchText.lua
 Shared/Scheduler.lua

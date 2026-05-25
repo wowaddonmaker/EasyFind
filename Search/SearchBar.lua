@@ -10,6 +10,7 @@ local Icons = ns.ResultIcons
 local Handlers = ns.ResultHandlers
 local Rows = ns.ResultRows
 local Shortcuts = ns.ResultShortcuts
+local L = ns.L
 
 local Utils = ns.Utils
 local ClickButton           = Utils.ClickButton
@@ -2104,8 +2105,8 @@ function Search:ResetPositionAndSize()
 end
 
 StaticPopupDialogs["EASYFIND_RESET_SEARCH_BAR"] = {
-    text = "Reset the search bar to its default position and size?",
-    button1 = "Reset",
+    text = L["PROMPT_RESET_SEARCH_BAR"],
+    button1 = _G["RESET"] or "Reset",
     button2 = CANCEL or "Cancel",
     OnShow = function(self)
         self:SetFrameStrata("TOOLTIP")

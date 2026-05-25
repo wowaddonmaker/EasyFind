@@ -72,11 +72,23 @@ function Handlers:GetBagItemActionKind(data)
         or (GetItemSpell and GetItemSpell(data.itemID))
     if hasUseEffect then return "use" end
 
-    if GetItemInfo then
-        local itemType = select(6, GetItemInfo(data.itemID))
-        if itemType == "Consumable" then
+    -- Compare against the numeric itemClassID rather than the localized
+    -- itemType string. GetItemInfo's position-6 return is the LOCALIZED
+    -- type name ("Consumable", "Konsumartikel", "Consumable" in French,
+    -- etc.) so a string check breaks on non-English clients. ClassID is
+    -- the stable enum: 0 = Consumable, 1 = Container, 12 = Quest item.
+    if GetItemInfoInstant then
+        local _, _, _, _, _, classID = GetItemInfoInstant(data.itemID)
+        if classID == 0 then
             return "use"
-        elseif itemType == "Container" or itemType == "Quest" then
+        elseif classID == 1 or classID == 12 then
+            return "open"
+        end
+    elseif GetItemInfo then
+        local classID = select(12, GetItemInfo(data.itemID))
+        if classID == 0 then
+            return "use"
+        elseif classID == 1 or classID == 12 then
             return "open"
         end
     end

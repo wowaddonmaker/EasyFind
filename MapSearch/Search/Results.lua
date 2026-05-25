@@ -4,6 +4,7 @@ local MapSearch = ns.MapSearch
 local Utils = ns.Utils
 local MapSearchData = ns.MapSearchData
 local Search = ns.MapSearchSearch
+local L = ns.L
 
 local pairs, ipairs = Utils.pairs, Utils.ipairs
 local tinsert, tsort, tremove = Utils.tinsert, Utils.tsort, Utils.tremove
@@ -173,7 +174,7 @@ function MapSearch:BuildResults(text, isGlobal, skipPins)
         local pinnedKeys = reusePinnedKeys
         local pinned = reusePinned
         -- Header row
-        tinsert(pinned, { isPinHeader = true, name = "Pinned" })
+        tinsert(pinned, { isPinHeader = true, name = L["HEADER_PINNED"] })
         if not EasyFind.db.mapPinsCollapsed then
             for _, pin in ipairs(pins) do
                 local copy = {}

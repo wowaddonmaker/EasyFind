@@ -2,10 +2,11 @@ local _, ns = ...
 
 local Search = ns.Search
 local Handlers = ns.ResultHandlers
+local L = ns.L
 
 -- Prompt the user for an alias text and bind it to `data`.
 StaticPopupDialogs["EASYFIND_ADD_ALIAS"] = {
-    text = "Alias for %s:",
+    text = L["PROMPT_ALIAS_FOR"],
     button1 = ACCEPT or "OK",
     button2 = CANCEL or "Cancel",
     hasEditBox = true,
