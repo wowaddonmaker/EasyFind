@@ -7,13 +7,22 @@ local _, ns = ...
 
 local Database = ns.Database
 local Utils = ns.Utils
+local SearchText = ns.SearchText
 
 if not Database then return end
 
 local tsort = Utils.tsort
-local sfind, slower, ssub = Utils.sfind, Utils.slower, Utils.ssub
+local sfind, ssub = Utils.sfind, Utils.ssub
 local sgsub = string.gsub
 local sbyte = string.byte
+
+-- All search-side casing flows through SearchText.Normalize so non-ASCII
+-- (German umlauts, French accents, etc.) lowercase correctly. WoW's
+-- string.lower is ASCII-only and would leave "ÜBERMACHT" partially
+-- uppercase. Normalize is ASCII-fast-path internally for the common case.
+local slower = SearchText.Normalize
+local stokenize = SearchText.Tokenize
+local isAscii = SearchText.IsAscii
 local mmin, mmax, mabs, mfloor = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mfloor
 local pairs = Utils.pairs
 local wipe = wipe
@@ -33,13 +42,21 @@ local wordCache = {}
 Database._wordCache = wordCache
 local EMPTY_WORDS = {}
 
+-- ASCII path uses gmatch which is fast and well-tested; non-ASCII routes
+-- through SearchText.Tokenize so "Übermacht" splits at the right places
+-- (the %w pattern only matches ASCII alphanumerics).
 local function GetWords(str)
     if not str or str == "" then return EMPTY_WORDS end
     local cached = wordCache[str]
     if cached then return cached end
-    local words = {}
-    for w in str:gmatch("[%w']+") do
-        words[#words + 1] = w
+    local words
+    if isAscii(str) then
+        words = {}
+        for w in str:gmatch("[%w']+") do
+            words[#words + 1] = w
+        end
+    else
+        words = stokenize(str)
     end
     wordCache[str] = words
     return words
@@ -626,10 +643,22 @@ local function IndexPrefixText(entry, text)
     if not text then return end
     -- Tokenize like GetWords (split on hyphens/punctuation, not just spaces) so
     -- a sub-word such as "aliasing" in "anti-aliasing" is independently indexed.
-    for word in text:gmatch("[%w']+") do
-        local len = #word
-        if len >= 1 then AddPrefixIndexEntry(entry, ssub(word, 1, 1)) end
-        if len >= 2 then AddPrefixIndexEntry(entry, ssub(word, 1, 2)) end
+    -- ASCII path uses gmatch; non-ASCII routes through SearchText.Tokenize so
+    -- non-Latin scripts and accented characters index correctly.
+    if isAscii(text) then
+        for word in text:gmatch("[%w']+") do
+            local len = #word
+            if len >= 1 then AddPrefixIndexEntry(entry, ssub(word, 1, 1)) end
+            if len >= 2 then AddPrefixIndexEntry(entry, ssub(word, 1, 2)) end
+        end
+    else
+        local words = stokenize(text)
+        for i = 1, #words do
+            local word = words[i]
+            local len = #word
+            if len >= 1 then AddPrefixIndexEntry(entry, ssub(word, 1, 1)) end
+            if len >= 2 then AddPrefixIndexEntry(entry, ssub(word, 1, 2)) end
+        end
     end
 end
 

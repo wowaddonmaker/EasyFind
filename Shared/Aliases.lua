@@ -11,10 +11,17 @@ local Aliases = {}
 if ns then ns.Aliases = Aliases end
 
 local Utils = ns.Utils
-local sfind, slower, strtrim = Utils.sfind, Utils.slower, strtrim
+local SearchText = ns.SearchText
+local sfind, strtrim = Utils.sfind, strtrim
 local sformat = string.format
 local mfloor = Utils.mfloor
 local tinsert = Utils.tinsert
+
+-- All alias keys go through SearchText.Normalize so non-English user input
+-- ("Münzen", "Élune", etc.) lowercases consistently. WoW's string.lower
+-- is ASCII-only and leaves non-ASCII bytes untouched, which would make
+-- "MÜNZEN" and "münzen" hash to different keys.
+local normalize = SearchText.Normalize
 
 local function IsMapAliasTarget(data)
     return data and (data.mapSearchResult or data.isZone or data.isDungeonEntrance
@@ -23,7 +30,7 @@ local function IsMapAliasTarget(data)
 end
 
 local function MapAliasKey(data)
-    local name = slower(data.name or "")
+    local name = normalize(data.name or "")
     if name == "" then return nil end
     local mapID = data.mapID or data.coordMapID or data.zoneMapID
         or data.entranceMapID or data.parentMapID
@@ -124,7 +131,7 @@ function Aliases:Add(aliasText, data)
             isDungeonEntrance = data.isDungeonEntrance,
         }
     end
-    EasyFind.db.aliases[slower(aliasText)] = {
+    EasyFind.db.aliases[normalize(aliasText)] = {
         text = aliasText,
         key  = key,
         name = data.name or aliasText,
@@ -135,7 +142,7 @@ end
 
 function Aliases:Remove(aliasText)
     if not EasyFind or not EasyFind.db or not EasyFind.db.aliases then return end
-    EasyFind.db.aliases[slower(strtrim(aliasText or ""))] = nil
+    EasyFind.db.aliases[normalize(strtrim(aliasText or ""))] = nil
 end
 
 function Aliases:ClearAll()

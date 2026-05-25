@@ -3,10 +3,14 @@ local _, ns = ...
 local MapSearch = ns.MapSearch
 local Utils = ns.Utils
 local MapSearchData = ns.MapSearchData
+local SearchText = ns.SearchText
 
 local pairs, ipairs = Utils.pairs, Utils.ipairs
 local tinsert = Utils.tinsert
-local sfind, slower = Utils.sfind, Utils.slower
+local sfind = Utils.sfind
+-- UTF-8 aware lowercase so localized map/POI names (Eisenschmiede,
+-- Élwynn-Wald, etc.) compare against the user's typed query correctly.
+local slower = SearchText.Normalize
 
 local CATEGORIES = MapSearchData.CATEGORIES
 

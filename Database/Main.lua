@@ -5,8 +5,14 @@ ns.Database = Database
 
 local Utils   = ns.Utils
 local L       = ns.L
+local SearchText = ns.SearchText
 local ipairs, pairs = Utils.ipairs, Utils.pairs
-local sfind, slower, ssub = Utils.sfind, Utils.slower, Utils.ssub
+local sfind, ssub = Utils.sfind, Utils.ssub
+-- All index-side casing uses SearchText.Normalize so entry.nameLower and
+-- entry.keywordsLower for non-English text actually lowercase (string.lower
+-- skips bytes >= 0x80, leaving "Übermacht" partly uppercase). The search
+-- pipeline uses the same Normalize on queries, so both sides agree.
+local slower = SearchText.Normalize
 local select, type, tostring = select, type, tostring
 local wipe = wipe
 local C_CurrencyInfo = C_CurrencyInfo
@@ -928,6 +934,13 @@ function Database:GetLootItemLink(entry)
     return nil
 end
 
+-- Loot entries whose stats weren't in the client cache when we tried
+-- to enrich them. GET_ITEM_INFO_RECEIVED retries these once the server
+-- replies, then refreshes the active search so newly-enriched matches
+-- surface without the user having to retype.
+local pendingStatEnrichment = {}
+Database._pendingStatEnrichment = pendingStatEnrichment
+
 function Database:EnrichLootStats(entry)
     if entry._statsEnriched then return end
     local link = Database:GetLootItemLink(entry)
@@ -937,7 +950,17 @@ function Database:EnrichLootStats(entry)
     if not stats and entry.itemID then
         stats = GetItemStatsFn("item:" .. entry.itemID)
     end
-    if not stats then return end
+    if not stats then
+        -- Server hasn't sent item info yet. Queue for retry on
+        -- GET_ITEM_INFO_RECEIVED and nudge the client to fetch.
+        if entry.itemID then
+            pendingStatEnrichment[entry.itemID] = entry
+            if C_Item and C_Item.RequestLoadItemDataByID then
+                pcall(C_Item.RequestLoadItemDataByID, entry.itemID)
+            end
+        end
+        return
+    end
     local statKw = entry.lootStatKw or {}
     for statKey, searchWords in pairs(STAT_KEYWORD_MAP) do
         if stats[statKey] then
@@ -948,6 +971,22 @@ function Database:EnrichLootStats(entry)
     end
     entry.lootStatKw = statKw
     entry._statsEnriched = true
+end
+
+-- Called from the GET_ITEM_INFO_RECEIVED event handler. Returns true
+-- when at least one queued entry successfully enriched, so the caller
+-- can decide whether to re-run the active search.
+function Database:ResolvePendingStatEnrichment(itemID, success)
+    if not success then
+        -- Failed fetch: drop the pending entry so we don't retry forever.
+        pendingStatEnrichment[itemID] = nil
+        return false
+    end
+    local entry = pendingStatEnrichment[itemID]
+    if not entry then return false end
+    pendingStatEnrichment[itemID] = nil
+    Database:EnrichLootStats(entry)
+    return entry._statsEnriched == true
 end
 
 function Database:PopulateDynamicMounts()
@@ -2436,6 +2475,7 @@ function Database:_ResetDynamicProviderCaches()
     wipe(lootItemCache)
     wipe(lootSpecsScanned)
     wipe(lootEncounterMTCache)
+    wipe(pendingStatEnrichment)
 end
 
 function Database:_ResetHeavyProviderCaches()
@@ -2443,6 +2483,7 @@ function Database:_ResetHeavyProviderCaches()
     wipe(lootItemCache)
     wipe(lootSpecsScanned)
     wipe(lootEncounterMTCache)
+    wipe(pendingStatEnrichment)
 end
 
 -- Aliases the API category names don't carry. Words from the name itself
@@ -2480,7 +2521,9 @@ local HasID
 local function buildCategoryEntry(opts)
     local nameLower = slower(opts.categoryName)
     local kw = { nameLower }
-    for w in nameLower:gmatch("[%w']+") do
+    local words = SearchText.Tokenize(nameLower)
+    for i = 1, #words do
+        local w = words[i]
         if #w > 2 and w ~= nameLower then kw[#kw + 1] = w end
     end
     local overlay = CATEGORY_KEYWORD_OVERLAY[nameLower]

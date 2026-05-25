@@ -6,9 +6,10 @@ local Tooltips = ns.ResultTooltips
 local Filters = ns.Filters
 local Utils = ns.Utils
 local UIPins = ns.UIPins
+local SearchText = ns.SearchText
 
 local ipairs, pairs = Utils.ipairs, Utils.pairs
-local slower = Utils.slower
+local slower = SearchText.Normalize
 local tinsert, tsort = Utils.tinsert, Utils.tsort
 local wipe = wipe
 
@@ -45,6 +46,35 @@ local function RefreshSearchAfterHeavyLoad(anyChanged)
         Search:OnSearchTextChanged(currentText, true)
     end
 end
+
+-- GET_ITEM_INFO_RECEIVED arrives async after the client requests item
+-- data from the server. Loot stat enrichment ("haste ring") queues the
+-- item when GetItemStats returns nil for an uncached item; this handler
+-- retries enrichment and refreshes the active search so newly-matchable
+-- loot surfaces without the user having to retype.
+--
+-- Throttled with SafeAfter(0.15) so a burst of arrivals coalesces into
+-- one search refresh instead of N.
+local itemInfoFrame = CreateFrame("Frame")
+local pendingItemRefresh = false
+local function RefreshSearchAfterItemInfo()
+    pendingItemRefresh = false
+    local frame = Search:GetSearchFrame()
+    local editBox = frame and frame.editBox
+    local currentText = editBox and editBox:GetText()
+    if editBox and editBox:HasFocus() and currentText and currentText ~= "" then
+        Search:OnSearchTextChanged(currentText, true)
+    end
+end
+itemInfoFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+itemInfoFrame:SetScript("OnEvent", function(_, _, itemID, success)
+    if not ns.Database or not ns.Database.ResolvePendingStatEnrichment then return end
+    local enriched = ns.Database:ResolvePendingStatEnrichment(itemID, success)
+    if enriched and not pendingItemRefresh then
+        pendingItemRefresh = true
+        Utils.SafeAfter(0.15, RefreshSearchAfterItemInfo)
+    end
+end)
 
 local function MaybeLoadHeavySearchData(text, needsHeavy, filters)
     if not ns.Database then return end
