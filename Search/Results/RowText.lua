@@ -34,20 +34,16 @@ end
 -- titles and any other single-line label that must clip cleanly
 -- instead of overflowing into the next row's space (WoW doesn't
 -- auto-add ellipses for anchor-clipped FontStrings).
-function Text:SetClippedText(fs, text)
-    if not fs then return end
-    fs:SetText(text or "")
-    if not text or text == "" then return end
+local function applyClip(fs)
+    local text = fs._unclippedText
+    if not text or text == "" then
+        fs:SetText("")
+        return
+    end
+    fs:SetText(text)
     -- Use anchor-derived bounds (GetLeft / GetRight) instead of
     -- GetWidth(): GetWidth() on an L+R anchored FontString can return
-    -- the natural string width when the text overflows, which then
-    -- causes the trim loop to stop at a string that's far shorter than
-    -- the actual visible bound (premature ellipsis with empty space
-    -- before the next element). Callers must invoke this AFTER the
-    -- text's final RIGHT anchor target has its size for this row --
-    -- e.g. after amountText:SetText or after re-anchoring to the boss
-    -- icon -- otherwise the clip uses the previous row's leftover
-    -- bound and over-truncates.
+    -- the natural string width when the text overflows.
     local left, right = fs:GetLeft(), fs:GetRight()
     local maxW
     if left and right and right > left then
@@ -66,6 +62,27 @@ function Text:SetClippedText(fs, text)
         if w <= maxW then return end
     end
 end
+
+function Text:SetClippedText(fs, text)
+    if not fs then return end
+    fs._unclippedText = text or ""
+    applyClip(fs)
+    -- Re-clip on parent-frame size changes so a later layout pass (e.g.
+    -- when the row's right-side widget shows / hides / re-anchors after
+    -- the row's title was already set) doesn't leave the title clipped
+    -- against the previous bound. Idempotent: re-clipping uses the
+    -- stored original text, never the already-trimmed string.
+    if not fs._sizeHookInstalled then
+        fs._sizeHookInstalled = true
+        local parent = fs:GetParent()
+        if parent and parent.HookScript then
+            parent:HookScript("OnSizeChanged", function()
+                if fs._unclippedText then applyClip(fs) end
+            end)
+        end
+    end
+end
+
 
 function Text:GetFlatSubtext(data)
     if not data then return "" end

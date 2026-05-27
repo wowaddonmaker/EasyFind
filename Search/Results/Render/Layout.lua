@@ -56,6 +56,8 @@ function Render.ApplyFlatResultAnchoring(resultRow, entry, state)
         rightAnchor, rightOffset = resultRow.icon, -4
     elseif resultRow.settingSliderGroup and resultRow.settingSliderGroup:IsShown() then
         rightAnchor, rightOffset = resultRow.settingSliderGroup, -4
+    elseif resultRow.settingDropdownGroup and resultRow.settingDropdownGroup:IsShown() then
+        rightAnchor, rightOffset = resultRow.settingDropdownGroup, -4
     elseif resultRow.settingKeybindGroup and resultRow.settingKeybindGroup:IsShown() then
         rightAnchor, rightOffset = resultRow.settingKeybindGroup, -4
     elseif resultRow.settingState and resultRow.settingState:IsShown() then

@@ -42,7 +42,6 @@ L["GUIDE_DUNGEONS_TAB"]                 = "Click the Dungeons tab"
 L["GUIDE_RAIDS_TAB"]                    = "Click the Raids tab"
 L["GUIDE_ITEM_SETS_TAB"]                = "Click the Item Sets tab"
 L["GUIDE_TUTORIALS_TAB"]                = "Click the Tutorials tab"
-L["GUIDE_SHOP_APPEARANCES"]             = "Browse the Appearances section in the shop"
 L["ERR_DATABASE_INIT_FAILED"]           = "EasyFind Database failed to initialize: "
 
 -- =============================================================================
@@ -120,6 +119,72 @@ L["POPUP_RESET_UI_SEARCH_SETTINGS"]     = "Reset UI Search settings to defaults?
 L["POPUP_RESET_MAP_SEARCH_SETTINGS"]    = "Reset Map Search settings to defaults?"
 L["POPUP_RESET_UI_SEARCH_POSITIONS"]    = "Reset UI Search positions to defaults?"
 
+-- Tab titles missing earlier
+L["OPT_TAB_SHORTCUTS"]                  = "Shortcuts"
+L["OPT_TAB_FEEDBACK"]                   = "Feedback"
+L["OPT_SETTINGS_TITLE"]                 = "Settings"
+L["OPT_KB_PRESS_KEY"]                   = "Press a key..."
+L["OPT_KB_NOT_BOUND"]                   = "Not Bound"
+L["OPT_ADDON_NAME"]                     = "EasyFind"
+L["OPT_ICON_SIZE"]                      = "Icon Size"
+L["OPT_FONT_SIZE"]                      = "Font Size"
+L["OPT_CLEAR_ALL_BTN"]                  = "Clear All"
+
+-- Checkbox tooltips and helper text
+L["OPT_LOGIN_MESSAGE_TT"]               = "When enabled, shows a short \"EasyFind loaded!\" message in chat when you log in.\n\nDisable to keep chat cleaner."
+L["OPT_MINIMAP_BTN_TT"]                 = "When enabled, adds a small search icon button to the minimap edge.\n\nLeft-click the button to toggle the search bar.\nRight-click to open options.\nDrag to reposition it around the minimap."
+L["OPT_ALIAS_MSG_TT"]                   = "When enabled, adding an alias prints a short chat note pointing back to the Aliases tab."
+L["OPT_RESIZE_UI_TT"]                   = "Visually resize the unified UI search window.\nDrag side edges for width and the top/bottom edge for results height."
+L["OPT_LOCK_POSITION_TT"]               = "When enabled, the search bar can't be dragged. Useful if you've placed it exactly where you want and don't want to bump it by accident.\n\nReset Positions and the /reset command still work."
+L["OPT_RESULTS_DIRECTION_TT"]           = "Choose whether UI search results open below or above the search bar."
+L["OPT_FONT_SIZE_TT"]                   = "Adjusts UI search text size without resizing the search window."
+L["OPT_ALT_HINTS_TT"]                   = "When enabled, each visible UI search result shows a small Alt+1 through Alt+8 reminder.\n\nWhen disabled, the reminders are hidden but the Alt+number shortcuts still activate the same rows."
+L["OPT_ENABLE_MAP_TT"]                  = "Uncheck to disable map search, pins, map overlay features, and the EasyFind tab on the world map.\n\nRequires a UI reload to take effect."
+L["OPT_SHOW_RECENT_TT"]                 = "Show your recent search queries in the Map Search tab when the search box is empty."
+L["OPT_RECENT_COUNT_TT"]                = "How many recent searches to keep and display in the Map Search tab."
+L["OPT_HIGHLIGHT_BOX_TT"]               = "A yellow highlight box is drawn around map search pins. Disable to show only the pin icon and indicator arrow."
+L["OPT_BLINKING_TT"]                    = "Map search pins and highlight boxes pulse in sync with the indicator arrow. The indicator arrow always bobs."
+L["OPT_ICON_SIZE_TT"]                   = "Adjusts the size of map search result icons on the world map."
+L["OPT_AUTO_TRACK_RARES_TT"]            = "When enabled, active rare mobs are always displayed as pins on the world map without needing to search."
+L["OPT_AUTO_TRACK_PINS_TT"]             = "Placing a map pin (Ctrl+Click) automatically starts Blizzard waypoint tracking."
+L["OPT_AUTO_PIN_CLEAR_TT"]              = "Your map pin is automatically cleared when Blizzard reports arrival. Disable if you prefer to clear pins manually."
+
+-- Multi-line text blocks
+L["OPT_SHORTCUTS_TEXT"]                 =
+    "|cFFFFD100Search box:|r\n"
+    .. "|cFF00FF00Down|r enter results  |cFF00FF00Enter|r activate  |cFF00FF00Esc|r unfocus\n"
+    .. "|cFF00FF00Tab / Shift+Tab|r cycle search/clear/filter buttons\n\n"
+    .. "|cFFFFD100Results list:|r\n"
+    .. "|cFF00FF00Up/Down|r or |cFF00FF00Alt+K/J|r  Move through results\n"
+    .. "|cFF00FF00Tab/Shift+Tab|r or |cFF00FF00Alt+L/H|r  Cycle focus to nav buttons\n"
+    .. "|cFF00FF00PgUp/PgDn|r jump 5  |cFF00FF00Home/End|r first/last\n"
+    .. "|cFF00FF00Shift+Up/Down|r or |cFF00FF00Alt+Shift+K/J|r jump section\n\n"
+    .. "|cFFFFD100Quick filters:|r\n"
+    .. "Type |cFF00FF00@|r for category filters. Examples: |cFF00FF00@m|r mounts, |cFF00FF00@s|r statistics, |cFF00FF00@g|r gear. |cFF00FF00Tab/Space|r selects a category.\n\n"
+    .. "|cFFFFD100Calculator:|r\n"
+    .. "Type math into search for an inline result, or press |cFF00FF00Alt+C|r from the focused search bar to open the calculator.\n\n"
+    .. "|cFFFFD100Other:|r\n"
+    .. "|cFF00FF00Shift+Drag|r reposition  |cFF00FF00Right-click|r pin/unpin\n\n"
+    .. "|cFFFFD100Slash commands:|r\n"
+    .. "|cFF00FF00/ef|r open options  |cFF00FF00/ef c|r clear highlights and pins\n"
+L["OPT_FEEDBACK_DESC"]                  =
+    "Found a bug or have an idea for a new feature? Clicking either button "
+    .. "below will give you a link to submit your feedback.\n\n"
+    .. "When reporting a bug, please include what you were doing when it happened "
+    .. "and any error messages you saw. Screenshots are great!"
+L["OPT_REPORT_BUG_TT_DESC"]             = "Opens a link to submit a bug report on GitHub."
+L["OPT_REPORT_BUG_TT_CMD"]              = "Slash command: /ef bug"
+L["OPT_REQUEST_FEATURE_TT_DESC"]        = "Opens a link to submit a feature request on GitHub."
+L["OPT_REQUEST_FEATURE_TT_CMD"]         = "Slash command: /ef feature"
+L["OPT_KB_TOGGLE_TT_DESC"]              = "Opens and focuses the UI search bar in one press. Press again to close."
+L["OPT_KB_MAP_TT_DESC"]                 = "Opens the world map, switches to the EasyFind Map Search tab, and focuses its search box."
+L["OPT_KB_CLEAR_TT_DESC"]               = "Dismisses all active highlights, map pins, zone highlights, and pending waypoints."
+L["OPT_RESET_ALL_TT_DESC"]              = "Restores all options to their default values."
+L["OPT_RESET_ALL_TT_CMD"]               = "Slash command: /ef reset"
+L["OPT_RESET_POS_TT_DESC"]              = "Resets all EasyFind frame positions to their defaults."
+L["OPT_RESET_POS_TT_CMD"]               = "Slash command: /ef reset positions"
+L["OPT_KB_CLEAR_HINT"]                  = "Right-click to clear. Escape to cancel."
+
 -- =============================================================================
 -- Onboarding/TutorialWizard.lua + WhatsNew.lua
 -- =============================================================================
@@ -155,10 +220,25 @@ L["TUT_SLIDE_USE_GEAR"]                 = "Equip gear sets directly from search.
 L["TUT_SLIDE_USE_MACROS"]               = "Run macros from results, or Ctrl-click to edit them."
 L["TUT_SLIDE_USE_TOYS"]                 = "Use toys and other supported items directly from the list."
 L["TUT_MAP_TAB_DESC"]                   = "Search the map you're viewing. \"This Zone\" shows matches for the current map, while \"Across the World\" groups broader results by continent and zone. Built for quickly moving between zones and previewing POIs on hover; the same results are available from the main search bar, just without the nested map layout."
+L["TUT_BTN_BACK"]                       = "Back"
+L["TUT_BTN_BACK_ARROW"]                 = "< Back"
+L["TUT_KB_NOT_BOUND"]                   = "Not bound"
+L["TUT_KB_PRESS_KEY"]                   = "Press a key..."
 
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - New Features"
 L["WHATSNEW_FULL_CHANGELOG"]            = "Full changelog on CurseForge and GitHub"
 L["WHATSNEW_GOT_IT"]                    = "Got it"
+-- The body is rewritten per release. Edit this single string each version.
+L["WHATSNEW_BODY"]                      =
+    "|cffFFD100\226\128\162|r |cffffffffLoot Search|r\n" ..
+    "        Search dungeon and raid loot by name, slot, stats, or source\n" ..
+    "        Filter by class, spec, and difficulty\n" ..
+    "        Click to navigate directly to the item in the Encounter Journal\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffTransmog Outfits|r\n" ..
+    "        Saved outfits appear in search results, click to equip\n" ..
+    "        Browse the transmog window without a vendor (search \"tmog\")\n" ..
+    "\n|cff999999Enable Loot and Outfits in the filter dropdown (arrow button\n" ..
+    "inside the search bar) to see these results.|r"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels

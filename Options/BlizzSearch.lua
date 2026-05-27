@@ -55,190 +55,194 @@ local function HasSettingsCategoryAccess()
         or (Settings and Settings.GetCategoryList) ~= nil
 end
 
--- { display name, CVar/variable, category name, type code, [min, max, step] }
+-- { CVar/variable, category name, type code, [min, max, step] }
 -- type: c=checkbox, d=dropdown, s=slider
+-- Display names come from Blizzard's Settings API at scan time (see
+-- GetSettingDisplayName below). Variables Blizzard doesn't register
+-- need an English entry in SETTING_NAME_FALLBACK; rows that resolve
+-- neither way drop out of search rather than show untranslated text.
 local SETTINGS_DATA = {
     -- Controls
-    {"Sticky Targeting","deselectOnClick","Controls","c"},
-    {"Auto Dismount in Flight","autoDismountFlying","Controls","c"},
-    {"Auto Clear AFK","autoClearAFK","Controls","c"},
-    {"Interact On Left Click","interactOnLeftClick","Controls","c"},
-    {"Open Loot Window at Mouse","lootUnderMouse","Controls","c"},
-    {"Auto Loot","autoLootDefault","Controls","c"},
-    {"Auto Loot Key","AUTOLOOTTOGGLE","Controls","d"},
-    {"Enable Interact Key","PROXY_ENABLE_INTERACT","Controls","c"},
-    {"Interact Key Sound Cue","softTargettingInteractKeySound","Controls","c"},
-    {"Lock Cursor to Window","ClipCursor","Controls","c"},
-    {"Invert Mouse","mouseInvertPitch","Controls","c"},
-    {"Mouse Look Speed","PROXY_MOUSE_LOOK_SPEED","Controls","s",90,270,18},
-    {"Water Collision","cameraWaterCollision","Controls","c"},
-    {"Auto Follow Speed","PROXY_CAMERA_SPEED","Controls","s",90,270,18},
-    {"Camera Following Style","cameraSmoothStyle","Controls","d"},
-    {"Max Camera Distance","cameraDistanceMaxZoomFactor","Controls","s",1,2,0.1},
-    {"Follow Terrain","cameraTerrainTilt","Controls","c"},
-    {"Head Bob","cameraBobbing","Controls","c"},
-    {"Smart Pivot","cameraPivot","Controls","c"},
+    {"deselectOnClick","Controls","c"},
+    {"autoDismountFlying","Controls","c"},
+    {"autoClearAFK","Controls","c"},
+    {"interactOnLeftClick","Controls","c"},
+    {"lootUnderMouse","Controls","c"},
+    {"autoLootDefault","Controls","c"},
+    {"AUTOLOOTTOGGLE","Controls","d"},
+    {"PROXY_ENABLE_INTERACT","Controls","c"},
+    {"softTargettingInteractKeySound","Controls","c"},
+    {"ClipCursor","Controls","c"},
+    {"mouseInvertPitch","Controls","c"},
+    {"PROXY_MOUSE_LOOK_SPEED","Controls","s",90,270,18},
+    {"cameraWaterCollision","Controls","c"},
+    {"PROXY_CAMERA_SPEED","Controls","s",90,270,18},
+    {"cameraSmoothStyle","Controls","d"},
+    {"cameraDistanceMaxZoomFactor","Controls","s",1,2,0.1},
+    {"cameraTerrainTilt","Controls","c"},
+    {"cameraBobbing","Controls","c"},
+    {"cameraPivot","Controls","c"},
     -- Interface
-    {"My Name","UnitNameOwn","Interface","c"},
-    {"NPC Names","PROXY_NPC_NAMES","Interface","d"},
-    {"Critters and Companions","UnitNameNonCombatCreatureName","Interface","c"},
-    {"Friendly Players","UnitNameFriendlyPlayerName","Interface","c"},
-    {"Friendly Minions","UnitNameFriendlyMinionName","Interface","c"},
-    {"Enemy Players","UnitNameEnemyPlayerName","Interface","c"},
-    {"Enemy Minions","UnitNameEnemyMinionName","Interface","c"},
-    {"Always Show Nameplates","nameplateShowAll","Interface","c"},
-    {"Enemy Unit Nameplates","nameplateShowEnemies","Interface","c"},
-    {"Enemy Minion Nameplates","nameplateShowEnemyMinions","Interface","c"},
-    {"Minor Enemy Nameplates","nameplateShowEnemyMinus","Interface","c"},
-    {"Friendly Player Nameplates","nameplateShowFriends","Interface","c"},
-    {"Friendly Minion Nameplates","nameplateShowFriendlyMinions","Interface","c"},
-    {"Nameplate Motion Type","nameplateMotion","Interface","d"},
-    {"Nameplate Distance","nameplateMaxDistance","Interface","s",20,41,1},
-    {"Nameplate Cast Bars","nameplateShowCastBars","Interface","c"},
-    {"Tutorials","showTutorials","Interface","c"},
-    {"Status Text","PROXY_STATUS_TEXT","Interface","d"},
-    {"Chat Bubbles","PROXY_CHAT_BUBBLES","Interface","d"},
-    {"Show Helm","PROXY_SHOW_HELM","Interface","c"},
-    {"Show Cloak","PROXY_SHOW_CLOAK","Interface","c"},
-    {"Instant Quest Text","instantQuestText","Interface","c"},
-    {"Automatic Quest Tracking","autoQuestWatch","Interface","c"},
-    {"Show Free Bag Space","displayFreeBagSlots","Interface","c"},
-    {"Consolidate Buffs","consolidateBuffs","Interface","c"},
-    {"Hide Zone Objective Tracker","hideOutdoorWorldState","Interface","c"},
-    {"Show Minimap Clock","showMinimapClock","Interface","c"},
-    {"Beginner Tooltips","showNewbieTips","Interface","c"},
-    {"Loading Screen Tips","showLoadingScreenTips","Interface","c"},
-    {"Show Enemy Cast Bar","showTargetCastbar","Interface","c"},
-    {"Dynamic Buff and Debuff Size","showDynamicBuffSize","Interface","c"},
-    {"Incoming Heals for Unit Frames","unitFramesDisplayIncomingHeals","Interface","c"},
-    {"Classic Guild UI","useClassicGuildUI","Interface","c"},
-    {"Display Power Bars","raidFramesDisplayPowerBars","Interface","c"},
-    {"Display Only Healer Power Bars","raidFramesDisplayOnlyHealerPowerBars","Interface","c"},
-    {"Display Class Colors","raidFramesDisplayClassColor","Interface","c"},
-    {"Display Pets","raidOptionDisplayPets","Interface","c"},
-    {"Display Main Tank and Assist","raidOptionDisplayMainTankAndAssist","Interface","c"},
-    {"Show Debuffs","raidFramesDisplayDebuffs","Interface","c"},
-    {"Display Only Dispellable Debuffs","raidFramesDisplayOnlyDispellableDebuffs","Interface","c"},
-    {"Display Health Text","raidFramesHealthText","Interface","d"},
+    {"UnitNameOwn","Interface","c"},
+    {"PROXY_NPC_NAMES","Interface","d"},
+    {"UnitNameNonCombatCreatureName","Interface","c"},
+    {"UnitNameFriendlyPlayerName","Interface","c"},
+    {"UnitNameFriendlyMinionName","Interface","c"},
+    {"UnitNameEnemyPlayerName","Interface","c"},
+    {"UnitNameEnemyMinionName","Interface","c"},
+    {"nameplateShowAll","Interface","c"},
+    {"nameplateShowEnemies","Interface","c"},
+    {"nameplateShowEnemyMinions","Interface","c"},
+    {"nameplateShowEnemyMinus","Interface","c"},
+    {"nameplateShowFriends","Interface","c"},
+    {"nameplateShowFriendlyMinions","Interface","c"},
+    {"nameplateMotion","Interface","d"},
+    {"nameplateMaxDistance","Interface","s",20,41,1},
+    {"nameplateShowCastBars","Interface","c"},
+    {"showTutorials","Interface","c"},
+    {"PROXY_STATUS_TEXT","Interface","d"},
+    {"PROXY_CHAT_BUBBLES","Interface","d"},
+    {"PROXY_SHOW_HELM","Interface","c"},
+    {"PROXY_SHOW_CLOAK","Interface","c"},
+    {"instantQuestText","Interface","c"},
+    {"autoQuestWatch","Interface","c"},
+    {"displayFreeBagSlots","Interface","c"},
+    {"consolidateBuffs","Interface","c"},
+    {"hideOutdoorWorldState","Interface","c"},
+    {"showMinimapClock","Interface","c"},
+    {"showNewbieTips","Interface","c"},
+    {"showLoadingScreenTips","Interface","c"},
+    {"showTargetCastbar","Interface","c"},
+    {"showDynamicBuffSize","Interface","c"},
+    {"unitFramesDisplayIncomingHeals","Interface","c"},
+    {"useClassicGuildUI","Interface","c"},
+    {"raidFramesDisplayPowerBars","Interface","c"},
+    {"raidFramesDisplayOnlyHealerPowerBars","Interface","c"},
+    {"raidFramesDisplayClassColor","Interface","c"},
+    {"raidOptionDisplayPets","Interface","c"},
+    {"raidOptionDisplayMainTankAndAssist","Interface","c"},
+    {"raidFramesDisplayDebuffs","Interface","c"},
+    {"raidFramesDisplayOnlyDispellableDebuffs","Interface","c"},
+    {"raidFramesHealthText","Interface","d"},
     -- Action Bars
-    {"Action Bar 2","PROXY_SHOW_ACTIONBAR_2","Action Bars","c"},
-    {"Action Bar 3","PROXY_SHOW_ACTIONBAR_3","Action Bars","c"},
-    {"Action Bar 4","PROXY_SHOW_ACTIONBAR_4","Action Bars","c"},
-    {"Action Bar 5","PROXY_SHOW_ACTIONBAR_5","Action Bars","c"},
-    {"Action Bar 6","PROXY_SHOW_ACTIONBAR_6","Action Bars","c"},
-    {"Action Bar 7","PROXY_SHOW_ACTIONBAR_7","Action Bars","c"},
-    {"Action Bar 8","PROXY_SHOW_ACTIONBAR_8","Action Bars","c"},
-    {"Show Numbers for Cooldowns","countdownForCooldowns","Action Bars","c"},
+    {"PROXY_SHOW_ACTIONBAR_2","Action Bars","c"},
+    {"PROXY_SHOW_ACTIONBAR_3","Action Bars","c"},
+    {"PROXY_SHOW_ACTIONBAR_4","Action Bars","c"},
+    {"PROXY_SHOW_ACTIONBAR_5","Action Bars","c"},
+    {"PROXY_SHOW_ACTIONBAR_6","Action Bars","c"},
+    {"PROXY_SHOW_ACTIONBAR_7","Action Bars","c"},
+    {"PROXY_SHOW_ACTIONBAR_8","Action Bars","c"},
+    {"countdownForCooldowns","Action Bars","c"},
     -- Combat
-    {"Raid Self Highlight","PROXY_SELF_HIGHLIGHT","Combat","d"},
-    {"Target of Target","showTargetOfTarget","Combat","c"},
-    {"Do Not Flash Screen at Low Health","doNotFlashLowHealthWarning","Combat","c"},
-    {"Loss of Control Alerts","lossOfControl","Combat","c"},
-    {"Enable Floating Combat Text","enableFloatingCombatText","Combat","c"},
-    {"Combat Text Float Mode","floatingCombatTextFloatMode","Combat","d"},
-    {"Low Mana & Health","floatingCombatTextLowManaHealth","Combat","c"},
-    {"Auras","floatingCombatTextAuras","Combat","c"},
-    {"Fading Auras","floatingCombatTextAuraFade","Combat","c"},
-    {"Combat State","floatingCombatTextCombatState","Combat","c"},
-    {"Dodges/Parries/Misses","floatingCombatTextDodgeParryMiss","Combat","c"},
-    {"Damage Reduction","floatingCombatTextDamageReduction","Combat","c"},
-    {"Reputation Changes","floatingCombatTextRepChanges","Combat","c"},
-    {"Reactive Spells & Abilities","floatingCombatTextReactives","Combat","c"},
-    {"Friendly Healer Names","floatingCombatTextFriendlyHealers","Combat","c"},
-    {"Combo Points","floatingCombatTextComboPoints","Combat","c"},
-    {"Energy Gains","floatingCombatTextEnergyGains","Combat","c"},
-    {"Honor Gained","floatingCombatTextHonorGains","Combat","c"},
-    {"Self Cast","PROXY_SELF_CAST","Combat","d"},
-    {"Self Cast Key","SELFCAST","Combat","d"},
-    {"Focus Cast Key","FOCUSCAST","Combat","d"},
-    {"Enable Action Targeting","PROXY_ACTION_TARGETING","Combat","c"},
-    {"Target Damage","floatingCombatTextCombatDamage","Combat","c"},
-    {"Periodic Damage","floatingCombatTextCombatLogPeriodicSpells","Combat","c"},
-    {"Pet Damage","floatingCombatTextPetMeleeDamage","Combat","c"},
-    {"Healing","floatingCombatTextCombatHealing","Combat","c"},
-    {"Auto Attack/Auto Shot","autoRangedCombat","Combat","c"},
+    {"PROXY_SELF_HIGHLIGHT","Combat","d"},
+    {"showTargetOfTarget","Combat","c"},
+    {"doNotFlashLowHealthWarning","Combat","c"},
+    {"lossOfControl","Combat","c"},
+    {"enableFloatingCombatText","Combat","c"},
+    {"floatingCombatTextFloatMode","Combat","d"},
+    {"floatingCombatTextLowManaHealth","Combat","c"},
+    {"floatingCombatTextAuras","Combat","c"},
+    {"floatingCombatTextAuraFade","Combat","c"},
+    {"floatingCombatTextCombatState","Combat","c"},
+    {"floatingCombatTextDodgeParryMiss","Combat","c"},
+    {"floatingCombatTextDamageReduction","Combat","c"},
+    {"floatingCombatTextRepChanges","Combat","c"},
+    {"floatingCombatTextReactives","Combat","c"},
+    {"floatingCombatTextFriendlyHealers","Combat","c"},
+    {"floatingCombatTextComboPoints","Combat","c"},
+    {"floatingCombatTextEnergyGains","Combat","c"},
+    {"floatingCombatTextHonorGains","Combat","c"},
+    {"PROXY_SELF_CAST","Combat","d"},
+    {"SELFCAST","Combat","d"},
+    {"FOCUSCAST","Combat","d"},
+    {"PROXY_ACTION_TARGETING","Combat","c"},
+    {"floatingCombatTextCombatDamage","Combat","c"},
+    {"floatingCombatTextCombatLogPeriodicSpells","Combat","c"},
+    {"floatingCombatTextPetMeleeDamage","Combat","c"},
+    {"floatingCombatTextCombatHealing","Combat","c"},
+    {"autoRangedCombat","Combat","c"},
     -- Social
-    {"Disable Chat","PROXY_DISABLE_CHAT","Social","c"},
-    {"Mature Language Filter","profanityFilter","Social","c"},
-    {"Guild Member Alert","guildMemberNotify","Social","c"},
-    {"Block Trades","blockTrades","Social","c"},
-    {"Block Guild Invites","PROXY_BLOCK_GUILD_INVITES","Social","c"},
-    {"Restrict Calendar Invites","restrictCalendarInvites","Social","c"},
-    {"Block Chat Channel Invites","blockChannelInvites","Social","c"},
-    {"Online Friends","showToastOnline","Social","c"},
-    {"Offline Friends","showToastOffline","Social","c"},
-    {"Broadcast Updates","showToastBroadcast","Social","c"},
-    {"Real ID and BattleTag Friend Requests","showToastFriendRequest","Social","c"},
-    {"Show Toast Window","showToastWindow","Social","c"},
-    {"Chat Style","chatStyle","Social","d"},
-    {"New Whispers","whisperMode","Social","d"},
-    {"Chat Timestamps","showTimestamps","Social","d"},
+    {"PROXY_DISABLE_CHAT","Social","c"},
+    {"profanityFilter","Social","c"},
+    {"guildMemberNotify","Social","c"},
+    {"blockTrades","Social","c"},
+    {"PROXY_BLOCK_GUILD_INVITES","Social","c"},
+    {"restrictCalendarInvites","Social","c"},
+    {"blockChannelInvites","Social","c"},
+    {"showToastOnline","Social","c"},
+    {"showToastOffline","Social","c"},
+    {"showToastBroadcast","Social","c"},
+    {"showToastFriendRequest","Social","c"},
+    {"showToastWindow","Social","c"},
+    {"chatStyle","Social","d"},
+    {"whisperMode","Social","d"},
+    {"showTimestamps","Social","d"},
     -- Keybindings
-    {"Character Specific Key Bindings","PROXY_CHARACTER_SPECIFIC_BINDINGS","Keybindings","c"},
+    {"PROXY_CHARACTER_SPECIFIC_BINDINGS","Keybindings","c"},
     -- General / Accessibility
-    {"Show Move Pad","enableMovePad","General","c"},
-    {"Minimum Character Name Size","PROXY_MINIMUM_CHARACTER_NAME_SIZE","General","s",0,64,2},
-    {"Motion Sickness","PROXY_SICKNESS","General","c"},
-    {"Camera Shake","PROXY_SICKNESS_SHAKE","General","d"},
-    {"Cursor Size","cursorSizePreferred","General","d"},
-    {"Show Target Tooltip","PROXY_TARGET_TOOLTIP","General","c"},
-    {"Interact Key Icons","PROXY_INTERACT_ICONS","General","d"},
+    {"enableMovePad","General","c"},
+    {"PROXY_MINIMUM_CHARACTER_NAME_SIZE","General","s",0,64,2},
+    {"PROXY_SICKNESS","General","c"},
+    {"PROXY_SICKNESS_SHAKE","General","d"},
+    {"cursorSizePreferred","General","d"},
+    {"PROXY_TARGET_TOOLTIP","General","c"},
+    {"PROXY_INTERACT_ICONS","General","d"},
     -- Colorblind Mode
-    {"Enable UI Colorblind Mode","colorblindMode","Colorblind Mode","c"},
-    {"Colorblind Filter","colorblindSimulator","Colorblind Mode","d"},
-    {"Colorblind Strength","colorblindWeaknessFactor","Colorblind Mode","s",0,1,0.05},
+    {"colorblindMode","Colorblind Mode","c"},
+    {"colorblindSimulator","Colorblind Mode","d"},
+    {"colorblindWeaknessFactor","Colorblind Mode","s",0,1,0.05},
     -- Subtitles
-    {"Cinematic Subtitles","movieSubtitle","Subtitles","c"},
-    {"Subtitles Background","PROXY_MOVIE_SUBTITLE_BACKGROUND","Subtitles","d"},
+    {"movieSubtitle","Subtitles","c"},
+    {"PROXY_MOVIE_SUBTITLE_BACKGROUND","Subtitles","d"},
     -- Graphics
-    {"Monitor","PROXY_PRIMARY_MONITOR","Graphics","d"},
-    {"Display Mode","PROXY_DISPLAY_MODE","Graphics","d"},
-    {"Window Size","PROXY_RESOLUTION","Graphics","d"},
-    {"Render Scale","PROXY_RESOLUTION_RENDER_SCALE","Graphics","s",0.333,2,0.05},
-    {"Vertical Sync","PROXY_VERTICAL_SYNC","Graphics","d"},
-    {"Low Latency Mode","LowLatencyMode","Graphics","d"},
-    {"Anti-Aliasing","PROXY_ANTIALIASING","Graphics","d"},
-    {"Image-Based Techniques","PROXY_FXAA","Graphics","d"},
-    {"Multisample Techniques","PROXY_MSAA","Graphics","d"},
-    {"Multisample Alpha-Test","PROXY_MSAA_ALPHA","Graphics","c"},
-    {"Camera FOV","PROXY_CAMERA_FOV","Graphics","s"},
-    {"Triple Buffering","PROXY_TRIPLE_BUFFERING","Graphics","c"},
-    {"Texture Filtering","textureFilteringMode","Graphics","d"},
-    {"Ray Traced Shadows","shadowrt","Graphics","d"},
-    {"Resample Quality","ResampleQuality","Graphics","d"},
-    {"VRS Mode","vrsValar","Graphics","d"},
-    {"Graphics API","PROXY_GRAPHICS_API","Graphics","d"},
-    {"Resample Sharpness","PROXY_RESAMPLE_SHARPNESS","Graphics","s"},
-    {"Contrast","Contrast","Graphics","s"},
-    {"Brightness","Brightness","Graphics","s"},
-    {"Gamma","Gamma","Graphics","s"},
-    {"Optional GPU Features","PROXY_OPT_GPU_FEATURES","Graphics","c"},
-    {"Async Resource Creation","PROXY_DEVICE_MT","Graphics","c"},
-    {"Multithreaded Rendering","PROXY_CMDLIST_MT","Graphics","c"},
-    {"Advanced Work Submit","PROXY_ADV_WORK_SUBMIT","Graphics","c"},
+    {"PROXY_PRIMARY_MONITOR","Graphics","d"},
+    {"PROXY_DISPLAY_MODE","Graphics","d"},
+    {"PROXY_RESOLUTION","Graphics","d"},
+    {"PROXY_RESOLUTION_RENDER_SCALE","Graphics","s",0.333,2,0.05},
+    {"PROXY_VERTICAL_SYNC","Graphics","d"},
+    {"LowLatencyMode","Graphics","d"},
+    {"PROXY_ANTIALIASING","Graphics","d"},
+    {"PROXY_FXAA","Graphics","d"},
+    {"PROXY_MSAA","Graphics","d"},
+    {"PROXY_MSAA_ALPHA","Graphics","c"},
+    {"PROXY_CAMERA_FOV","Graphics","s"},
+    {"PROXY_TRIPLE_BUFFERING","Graphics","c"},
+    {"textureFilteringMode","Graphics","d"},
+    {"shadowrt","Graphics","d"},
+    {"ResampleQuality","Graphics","d"},
+    {"vrsValar","Graphics","d"},
+    {"PROXY_GRAPHICS_API","Graphics","d"},
+    {"PROXY_RESAMPLE_SHARPNESS","Graphics","s"},
+    {"Contrast","Graphics","s"},
+    {"Brightness","Graphics","s"},
+    {"Gamma","Graphics","s"},
+    {"PROXY_OPT_GPU_FEATURES","Graphics","c"},
+    {"PROXY_DEVICE_MT","Graphics","c"},
+    {"PROXY_CMDLIST_MT","Graphics","c"},
+    {"PROXY_ADV_WORK_SUBMIT","Graphics","c"},
     -- Audio
-    {"Enable Sound","Sound_EnableAllSound","Audio","c"},
-    {"Master Volume","Sound_MasterVolume","Audio","s"},
-    {"Music Volume","Sound_MusicVolume","Audio","s"},
-    {"Effects Volume","Sound_SFXVolume","Audio","s"},
-    {"Ambience Volume","Sound_AmbienceVolume","Audio","s"},
-    {"Dialog Volume","Sound_DialogVolume","Audio","s"},
-    {"Enable Music","Sound_EnableMusic","Audio","c"},
-    {"Loop Music","Sound_ZoneMusicNoDelay","Audio","c"},
-    {"Pet Battle Music","Sound_EnablePetBattleMusic","Audio","c"},
-    {"Sound Effects","Sound_EnableSFX","Audio","c"},
-    {"Enable Pet Sounds","Sound_EnablePetSounds","Audio","c"},
-    {"Emote Sounds","Sound_EnableEmoteSounds","Audio","c"},
-    {"Enable Dialog","Sound_EnableDialog","Audio","c"},
-    {"Error Speech","Sound_EnableErrorSpeech","Audio","c"},
-    {"Ambient Sounds","Sound_EnableAmbience","Audio","c"},
-    {"Sound in Background","Sound_EnableSoundWhenGameIsInBG","Audio","c"},
-    {"Enable Reverb","Sound_EnableReverb","Audio","c"},
-    {"Distance Filtering","Sound_EnablePositionalLowPassFilter","Audio","c"},
+    {"Sound_EnableAllSound","Audio","c"},
+    {"Sound_MasterVolume","Audio","s"},
+    {"Sound_MusicVolume","Audio","s"},
+    {"Sound_SFXVolume","Audio","s"},
+    {"Sound_AmbienceVolume","Audio","s"},
+    {"Sound_DialogVolume","Audio","s"},
+    {"Sound_EnableMusic","Audio","c"},
+    {"Sound_ZoneMusicNoDelay","Audio","c"},
+    {"Sound_EnablePetBattleMusic","Audio","c"},
+    {"Sound_EnableSFX","Audio","c"},
+    {"Sound_EnablePetSounds","Audio","c"},
+    {"Sound_EnableEmoteSounds","Audio","c"},
+    {"Sound_EnableDialog","Audio","c"},
+    {"Sound_EnableErrorSpeech","Audio","c"},
+    {"Sound_EnableAmbience","Audio","c"},
+    {"Sound_EnableSoundWhenGameIsInBG","Audio","c"},
+    {"Sound_EnableReverb","Audio","c"},
+    {"Sound_EnablePositionalLowPassFilter","Audio","c"},
     -- Network
-    {"Optimize Network for Speed","disableServerNagle","Network","c"},
-    {"Enable IPv6 when available","useIPv6","Network","c"},
-    {"Advanced Combat Logging","advancedCombatLogging","Network","c"},
+    {"disableServerNagle","Network","c"},
+    {"useIPv6","Network","c"},
+    {"advancedCombatLogging","Network","c"},
 }
 
 local TYPE_MAP = { c = "checkbox", d = "dropdown", s = "slider" }
@@ -246,80 +250,85 @@ local TYPE_MAP = { c = "checkbox", d = "dropdown", s = "slider" }
 -- Hardcoded option lists for CVar dropdowns SettingsPanel cannot
 -- enumerate (not registered as Setting objects). Each entry:
 -- { value, label }. Hardware-dependent dropdowns are omitted.
+local NONE_LABEL = _G["NONE"] or "None"
+local ALT_KEY_LABEL = _G["ALT_KEY"] or "ALT key"
+local CTRL_KEY_LABEL = _G["CTRL_KEY"] or "CTRL key"
+local SHIFT_KEY_LABEL = _G["SHIFT_KEY"] or "SHIFT key"
+local ALL_LABEL = _G["ALL"] or "All"
 local CVAR_DROPDOWN_OPTIONS = {
     AUTOLOOTTOGGLE = {
-        { value = "NONE",  label = "None" },
-        { value = "ALT",   label = "ALT key" },
-        { value = "CTRL",  label = "CTRL key" },
-        { value = "SHIFT", label = "SHIFT key" },
+        { value = "NONE",  label = NONE_LABEL },
+        { value = "ALT",   label = ALT_KEY_LABEL },
+        { value = "CTRL",  label = CTRL_KEY_LABEL },
+        { value = "SHIFT", label = SHIFT_KEY_LABEL },
     },
     PROXY_NPC_NAMES = {
-        { value = "1", label = "Quest NPCs" },
-        { value = "2", label = "Hostile NPCs" },
-        { value = "3", label = "Hostile and Interactive NPCs" },
-        { value = "4", label = "All NPCs" },
-        { value = "5", label = "None" },
+        { value = "1", label = _G["NPC_NAMES_DROPDOWN_TRACKED"] or "Quest NPCs" },
+        { value = "2", label = _G["NPC_NAMES_DROPDOWN_HOSTILE"] or "Hostile and Quest NPCs" },
+        { value = "3", label = _G["NPC_NAMES_DROPDOWN_INTERACTIVE"] or "Hostile, Quest, and Interactive NPCs" },
+        { value = "4", label = _G["NPC_NAMES_DROPDOWN_ALL"] or "All NPCs" },
+        { value = "5", label = _G["NPC_NAMES_DROPDOWN_NONE"] or NONE_LABEL },
     },
     nameplateMotion = {
-        { value = "0", label = "Overlapping Nameplates" },
-        { value = "1", label = "Stacking Nameplates" },
+        { value = "0", label = _G["UNIT_NAMEPLATES_TYPE_1"] or "Overlapping Nameplates" },
+        { value = "1", label = _G["UNIT_NAMEPLATES_TYPE_2"] or "Stacking Nameplates" },
     },
     PROXY_STATUS_TEXT = {
-        { value = "1", label = "Numeric Value" },
-        { value = "2", label = "Percentage" },
-        { value = "3", label = "Both" },
-        { value = "4", label = "None" },
+        { value = "1", label = _G["STATUS_TEXT_VALUE"] or "Numeric Value" },
+        { value = "2", label = _G["STATUS_TEXT_PERCENT"] or "Percentage" },
+        { value = "3", label = _G["STATUS_TEXT_BOTH"] or "Both" },
+        { value = "4", label = NONE_LABEL },
     },
     PROXY_CHAT_BUBBLES = {
-        { value = "1", label = "All" },
-        { value = "2", label = "None" },
-        { value = "3", label = "Exclude party chat" },
+        { value = "1", label = ALL_LABEL },
+        { value = "2", label = NONE_LABEL },
+        { value = "3", label = _G["CHAT_BUBBLES_EXCLUDE_PARTY_CHAT"] or "Exclude party chat" },
     },
     raidFramesHealthText = {
-        { value = "none",       label = "None" },
-        { value = "health",     label = "Health Remaining" },
-        { value = "losthealth", label = "Health Lost" },
-        { value = "perc",       label = "Health Percentage" },
+        { value = "none",       label = NONE_LABEL },
+        { value = "health",     label = _G["RAID_HEALTH_TEXT_HEALTH"] or "Health Remaining" },
+        { value = "losthealth", label = _G["RAID_HEALTH_TEXT_LOSTHEALTH"] or "Health Lost" },
+        { value = "perc",       label = _G["RAID_HEALTH_TEXT_PERC"] or "Health Percentage" },
     },
     PROXY_SELF_HIGHLIGHT = {
-        { value = "0", label = "Off" },
-        { value = "1", label = "Circle" },
-        { value = "2", label = "Icon" },
-        { value = "3", label = "Circle and Icon" },
+        { value = "0", label = _G["OFF"] or "Off" },
+        { value = "1", label = _G["SELF_HIGHLIGHT_MODE_CIRCLE"] or "Circle" },
+        { value = "2", label = _G["SELF_HIGHLIGHT_MODE_ICON"] or "Icon" },
+        { value = "3", label = _G["SELF_HIGHLIGHT_MODE_CIRCLE_AND_ICON"] or "Circle and Icon" },
     },
     floatingCombatTextFloatMode = {
-        { value = "1", label = "Scroll Up" },
-        { value = "2", label = "Scroll Down" },
-        { value = "3", label = "Arc" },
+        { value = "1", label = _G["COMBAT_TEXT_SCROLL_UP"] or "Scroll Up" },
+        { value = "2", label = _G["COMBAT_TEXT_SCROLL_DOWN"] or "Scroll Down" },
+        { value = "3", label = _G["COMBAT_TEXT_SCROLL_ARC"] or "Arc" },
     },
     PROXY_SELF_CAST = {
-        { value = "1", label = "None" },
-        { value = "2", label = "Auto" },
-        { value = "3", label = "Key Press" },
-        { value = "4", label = "Auto and Key Press" },
+        { value = "1", label = NONE_LABEL },
+        { value = "2", label = _G["SELF_CAST_AUTO"] or "Auto" },
+        { value = "3", label = _G["SELF_CAST_KEY_PRESS"] or "Key Press" },
+        { value = "4", label = _G["SELF_CAST_AUTO_AND_KEY_PRESS"] or "Auto and Key Press" },
     },
     SELFCAST = {
-        { value = "ALT",   label = "ALT key" },
-        { value = "CTRL",  label = "CTRL key" },
-        { value = "SHIFT", label = "SHIFT key" },
+        { value = "ALT",   label = ALT_KEY_LABEL },
+        { value = "CTRL",  label = CTRL_KEY_LABEL },
+        { value = "SHIFT", label = SHIFT_KEY_LABEL },
     },
     FOCUSCAST = {
-        { value = "NONE",  label = "None" },
-        { value = "ALT",   label = "ALT key" },
-        { value = "CTRL",  label = "CTRL key" },
-        { value = "SHIFT", label = "SHIFT key" },
+        { value = "NONE",  label = NONE_LABEL },
+        { value = "ALT",   label = ALT_KEY_LABEL },
+        { value = "CTRL",  label = CTRL_KEY_LABEL },
+        { value = "SHIFT", label = SHIFT_KEY_LABEL },
     },
     chatStyle = {
-        { value = "classic", label = "Classic Style" },
-        { value = "im",      label = "IM Style" },
+        { value = "classic", label = _G["CLASSIC_STYLE"] or "Classic Style" },
+        { value = "im",      label = _G["IM_STYLE"] or "IM Style" },
     },
     whisperMode = {
-        { value = "inline",            label = "In-line" },
-        { value = "popout",            label = "New Tab" },
-        { value = "popout_and_inline", label = "Both" },
+        { value = "inline",            label = _G["CONVERSATION_MODE_INLINE"] or "In-line" },
+        { value = "popout",            label = _G["CONVERSATION_MODE_POPOUT"] or "New Tab" },
+        { value = "popout_and_inline", label = _G["CONVERSATION_MODE_POPOUT_AND_INLINE"] or "Both" },
     },
     showTimestamps = {
-        { value = "none",          label = "None" },
+        { value = "none",          label = NONE_LABEL },
         { value = "%H:%M ",        label = "15:27" },
         { value = "%I:%M ",        label = "03:27" },
         { value = "%H:%M:%S ",     label = "15:27:32" },
@@ -328,12 +337,12 @@ local CVAR_DROPDOWN_OPTIONS = {
         { value = "%I:%M:%S %p ",  label = "03:27:32 PM" },
     },
     PROXY_SICKNESS_SHAKE = {
-        { value = "1", label = "None" },
-        { value = "2", label = "Full" },
-        { value = "3", label = "Reduced" },
+        { value = "1", label = NONE_LABEL },
+        { value = "2", label = _G["SHAKE_INTENSITY_FULL"] or "Full" },
+        { value = "3", label = _G["SHAKE_INTENSITY_REDUCED"] or "Reduced" },
     },
     cursorSizePreferred = {
-        { value = "-1", label = "Default" },
+        { value = "-1", label = _G["CURSOR_SIZE_DEFAULT"] or "Default" },
         { value = "0",  label = "32x32" },
         { value = "1",  label = "48x48" },
         { value = "2",  label = "64x64" },
@@ -341,80 +350,80 @@ local CVAR_DROPDOWN_OPTIONS = {
         { value = "4",  label = "128x128" },
     },
     PROXY_INTERACT_ICONS = {
-        { value = "1", label = "NPCs Only" },
-        { value = "2", label = "Show All" },
-        { value = "3", label = "Show None" },
+        { value = "1", label = _G["INTERACT_ICONS_DEFAULT"] or "NPCs Only (Default)" },
+        { value = "2", label = _G["INTERACT_ICONS_SHOW_ALL"] or "Show All" },
+        { value = "3", label = _G["INTERACT_ICONS_SHOW_NONE"] or "Show None" },
     },
     colorblindSimulator = {
-        { value = "0", label = "None" },
-        { value = "1", label = "Protanopia" },
-        { value = "2", label = "Deuteranopia" },
-        { value = "3", label = "Tritanopia" },
+        { value = "0", label = NONE_LABEL },
+        { value = "1", label = _G["COLORBLIND_OPTION_PROTANOPIA"] or "Protanopia" },
+        { value = "2", label = _G["COLORBLIND_OPTION_DEUTERANOPIA"] or "Deuteranopia" },
+        { value = "3", label = _G["COLORBLIND_OPTION_TRITANOPIA"] or "Tritanopia" },
     },
     PROXY_MOVIE_SUBTITLE_BACKGROUND = {
-        { value = "1", label = "None" },
-        { value = "2", label = "Dark" },
-        { value = "3", label = "Light" },
+        { value = "1", label = NONE_LABEL },
+        { value = "2", label = _G["CINEMATIC_SUBTITLES_BACKGROUND_OPTION_DARK"] or "Dark" },
+        { value = "3", label = _G["CINEMATIC_SUBTITLES_BACKGROUND_OPTION_LIGHT"] or "Light" },
     },
     LowLatencyMode = {
-        { value = "0", label = "Disabled" },
-        { value = "1", label = "Built-in" },
-        { value = "2", label = "NVIDIA Reflex" },
-        { value = "3", label = "NVIDIA Reflex + Boost" },
-        { value = "4", label = "Intel XeLL" },
+        { value = "0", label = _G["VIDEO_OPTIONS_DISABLED"] or "Disabled" },
+        { value = "1", label = _G["VIDEO_OPTIONS_BUILTIN"] or "Built-in" },
+        { value = "2", label = _G["VIDEO_OPTIONS_NVIDIA_REFLEX"] or "NVIDIA Reflex" },
+        { value = "3", label = _G["VIDEO_OPTIONS_NVIDIA_REFLEX_BOOST"] or "NVIDIA Reflex + Boost" },
+        { value = "4", label = _G["VIDEO_OPTIONS_INTEL_XELL"] or "Intel XeLL" },
     },
     PROXY_ANTIALIASING = {
-        { value = "0", label = "None" },
+        { value = "0", label = NONE_LABEL },
         { value = "1", label = "Image-Based" },
         { value = "2", label = "Multisample" },
-        { value = "3", label = "Advanced" },
+        { value = "3", label = _G["ADVANCED_LABEL"] or "Advanced" },
     },
     PROXY_FXAA = {
-        { value = "0", label = "None" },
-        { value = "1", label = "FXAA Low" },
-        { value = "2", label = "FXAA High" },
-        { value = "3", label = "CMAA" },
+        { value = "0", label = NONE_LABEL },
+        { value = "1", label = _G["ANTIALIASING_FXAA_LOW"] or "FXAA Low" },
+        { value = "2", label = _G["ANTIALIASING_FXAA_HIGH"] or "FXAA High" },
+        { value = "3", label = _G["ANTIALIASING_CMAA"] or "CMAA" },
     },
     PROXY_MSAA = {
-        { value = "0", label = "None" },
+        { value = "0", label = NONE_LABEL },
         { value = "1", label = "2x" },
         { value = "2", label = "4x" },
         { value = "3", label = "8x" },
     },
     textureFilteringMode = {
-        { value = "0", label = "Bilinear" },
-        { value = "1", label = "Trilinear" },
+        { value = "0", label = _G["VIDEO_OPTIONS_BILINEAR"] or "Bilinear" },
+        { value = "1", label = _G["VIDEO_OPTIONS_TRILINEAR"] or "Trilinear" },
         { value = "2", label = "2x Anisotropic" },
         { value = "3", label = "4x Anisotropic" },
         { value = "4", label = "8x Anisotropic" },
         { value = "5", label = "16x Anisotropic" },
     },
     shadowrt = {
-        { value = "0", label = "Disabled" },
-        { value = "1", label = "Fair" },
-        { value = "2", label = "Good" },
-        { value = "3", label = "High" },
+        { value = "0", label = _G["VIDEO_OPTIONS_DISABLED"] or "Disabled" },
+        { value = "1", label = _G["VIDEO_QUALITY_LABEL2"] or "Fair" },
+        { value = "2", label = _G["VIDEO_QUALITY_LABEL3"] or "Good" },
+        { value = "3", label = _G["VIDEO_QUALITY_LABEL4"] or "High" },
     },
     ResampleQuality = {
-        { value = "0", label = "Point" },
-        { value = "1", label = "Bilinear" },
-        { value = "2", label = "Bicubic" },
-        { value = "3", label = "FidelityFX Super Resolution" },
+        { value = "0", label = _G["RESAMPLE_QUALITY_POINT"] or "Point" },
+        { value = "1", label = _G["RESAMPLE_QUALITY_BILINEAR"] or "Bilinear" },
+        { value = "2", label = _G["RESAMPLE_QUALITY_BICUBIC"] or "Bicubic" },
+        { value = "3", label = _G["RESAMPLE_QUALITY_FSR"] or "FidelityFX Super Resolution" },
     },
     vrsValar = {
-        { value = "0", label = "Disabled" },
-        { value = "1", label = "Standard" },
-        { value = "2", label = "Aggressive" },
+        { value = "0", label = _G["VIDEO_OPTIONS_DISABLED"] or "Disabled" },
+        { value = "1", label = _G["VIDEO_OPTIONS_STANDARD"] or "Standard" },
+        { value = "2", label = _G["VIDEO_OPTIONS_AGGRESSIVE"] or "Aggressive" },
     },
     cameraSmoothStyle = {
-        { value = "0", label = "Never" },
-        { value = "1", label = "Smart" },
-        { value = "2", label = "Always" },
-        { value = "4", label = "Only when moving" },
+        { value = "0", label = _G["CAMERA_NEVER"] or "Never adjust camera" },
+        { value = "1", label = _G["CAMERA_SMART"] or "Only horizontal when moving" },
+        { value = "2", label = _G["CAMERA_ALWAYS"] or "Always adjust camera" },
+        { value = "4", label = _G["CAMERA_SMARTER"] or "Only when moving" },
     },
     PROXY_GRAPHICS_API = {
-        { value = "d3d11", label = "DirectX 11" },
-        { value = "d3d12", label = "DirectX 12" },
+        { value = "d3d11", label = _G["GXAPI_D3D11"] or "DirectX 11" },
+        { value = "d3d12", label = _G["GXAPI_D3D12"] or "DirectX 12" },
     },
 }
 
@@ -1528,6 +1537,41 @@ local SETTING_EXTRA_KEYWORDS = {
     PROXY_VERTICAL_SYNC = { "vsync" },
 }
 
+-- English fallback names for the few variables Blizzard hasn't
+-- registered as Setting objects, so Settings.GetSetting returns nil.
+-- Audited against Midnight 12.0 in-game; everything else listed in
+-- SETTINGS_DATA resolves via the API and picks up the localized name
+-- automatically. Non-English clients see the English string for the
+-- entries below (Blizzard exposes no localized one for them).
+--
+-- If a new SETTINGS_DATA row goes missing from search, run
+-- `/run local s=Settings.GetSetting("yourVar"); print(s and s:GetName())`
+-- in-game. If it prints a string, no entry needed here. If nil, add it.
+local SETTING_NAME_FALLBACK = {
+    nameplateMotion             = _G["UNIT_NAMEPLATES_TYPES"] or "Nameplate Motion Type",
+    floatingCombatTextFloatMode = _G["COMBAT_TEXT_FLOAT_MODE_LABEL"] or "Combat Text Float Mode",
+}
+
+-- Resolve a setting's display name through Blizzard's Settings API. Each
+-- registered variable has a Setting object with :GetName() returning the
+-- LOCALIZED display string. Falling back to the hardcoded English in
+-- SETTINGS_DATA only when the variable isn't registered (some PROXY_*
+-- shims or settings removed in newer patches). This gives non-English
+-- clients free translations for the ~130 game settings the user can
+-- search, without us maintaining locale tables for Blizzard's own labels.
+local function GetSettingDisplayName(variable, fallback)
+    if Settings and Settings.GetSetting then
+        local ok, setting = pcall(Settings.GetSetting, variable)
+        if ok and setting and setting.GetName then
+            local nameOk, name = pcall(setting.GetName, setting)
+            if nameOk and type(name) == "string" and name ~= "" then
+                return name
+            end
+        end
+    end
+    return fallback
+end
+
 local function CollectEntries()
     local entries = {}
 
@@ -1544,8 +1588,20 @@ local function CollectEntries()
 
     for si = 1, #SETTINGS_DATA do
         local row = SETTINGS_DATA[si]
-        local name, var, catName, typeCode = row[1], row[2], row[3], row[4]
-        local sMin, sMax, sStep = row[5], row[6], row[7]
+        local var, catName, typeCode = row[1], row[2], row[3]
+        local sMin, sMax, sStep = row[4], row[5], row[6]
+        -- Settings API is the source of truth for display names. The
+        -- SETTING_NAME_FALLBACK table only covers the handful of CVar
+        -- dropdowns Blizzard hasn't registered as Setting objects; for
+        -- those, the English label shows on every locale (Blizzard
+        -- doesn't expose a localized one). Variables resolved by the API
+        -- pick up the localized name automatically.
+        local apiName = GetSettingDisplayName(var, nil)
+        local fallbackName = SETTING_NAME_FALLBACK[var]
+        local name = apiName or fallbackName
+        if not name or name == "" then
+            -- Variable unregistered AND no fallback; skip.
+        else
         local nameLower = slower(name)
         local catLower = slower(catName)
         local resolved = TYPE_MAP[typeCode] or "other"
@@ -1577,6 +1633,7 @@ local function CollectEntries()
                 },
             }, mt))
         end
+        end -- name-resolved branch
     end
 
     local list = GetSettingsCategoryList()
@@ -2074,9 +2131,15 @@ local function BuildQualityOptions(spec)
 end
 
 local function BuildCuratedVariableSet()
+    -- SETTINGS_DATA row layout is {variable, category, type, ...} so the
+    -- variable name is at index 1. Reading index 2 (the old slot when
+    -- the rows started with an English display name) silently filled
+    -- this set with category strings and broke the cross-pipeline dedupe
+    -- — CollectGameSettings then re-emitted every variable already in
+    -- the curated list, producing duplicate Auto Loot etc.
     local set = {}
     for i = 1, #SETTINGS_DATA do
-        local v = SETTINGS_DATA[i] and SETTINGS_DATA[i][2]
+        local v = SETTINGS_DATA[i] and SETTINGS_DATA[i][1]
         if v then set[v] = true end
     end
     return set
@@ -2096,6 +2159,23 @@ local function CollectGameSettings()
     local function nameKey(catName, displayName)
         return (catName or "") .. "\31" .. (displayName or "")
     end
+    -- Pre-populate emittedNameKeys with the API-resolved names for every
+    -- curated variable. Otherwise: when a curated entry gets skipped by
+    -- the emittedVars check, its NAME never lands in emittedNameKeys, and
+    -- a second variable that happens to share that localized display name
+    -- (e.g. cameraSmoothStyle vs cameraSmoothTrackingStyle — both resolve
+    -- to "Camera Following Style") slips through and duplicates the row.
+    for i = 1, #SETTINGS_DATA do
+        local row = SETTINGS_DATA[i]
+        local var, catName = row[1], row[2]
+        if var and catName then
+            local apiName = GetSettingDisplayName(var, nil)
+                or SETTING_NAME_FALLBACK[var]
+            if apiName then
+                emittedNameKeys[nameKey(catName, apiName)] = true
+            end
+        end
+    end
     local function emit(cat, parentName)
         if not cat or not cat.GetName then return end
         if IsAddonCategory(cat) then return end
@@ -2107,7 +2187,8 @@ local function CollectGameSettings()
         local pathPrefix = { "Game Settings", catName }
         local inline = WalkCategorySettings(cat, catName, catID, pathPrefix, "Game Settings")
         for _, e in ipairs(inline) do
-            if not emittedVars[e.settingVariable] then
+            if not emittedVars[e.settingVariable]
+               and not emittedNameKeys[nameKey(catName, e.name)] then
                 tinsert(entries, e)
                 emittedVars[e.settingVariable] = true
                 emittedNameKeys[nameKey(catName, e.name)] = true

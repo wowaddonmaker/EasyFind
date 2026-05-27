@@ -207,11 +207,11 @@ local function ShowPage(i)
     end
     backBtn:SetShown(i > 1)
     if i == #pages then
-        nextBtn._label:SetText("Open Bar")
+        nextBtn._label:SetText(L["TUT_BTN_OPEN_BAR"])
     elseif i == 1 then
-        nextBtn._label:SetText("Get Started")
+        nextBtn._label:SetText(L["TUT_BTN_GET_STARTED"])
     else
-        nextBtn._label:SetText("Continue")
+        nextBtn._label:SetText(L["TUT_BTN_CONTINUE"])
     end
     if pages[i].OnEnter then pages[i].OnEnter() end
 end
@@ -390,7 +390,7 @@ local function BuildPage2(parent)
         d:SetAllPoints(p)
         d:Hide()
 
-        local back = MakeButton(d, "< Back", "ghost", 64)
+        local back = MakeButton(d, L["TUT_BTN_BACK_ARROW"], "ghost", 64)
         back:SetPoint("TOPLEFT", d, "TOPLEFT", 12, -10)
         back:SetScript("OnClick", ShowGrid)
 
@@ -423,7 +423,7 @@ local function BuildPage2(parent)
         d:SetAllPoints(p)
         d:Hide()
 
-        local back = MakeButton(d, "< Back", "ghost", 52)
+        local back = MakeButton(d, L["TUT_BTN_BACK_ARROW"], "ghost", 52)
         back:SetPoint("TOPLEFT", d, "TOPLEFT", 12, -10)
         back:SetScript("OnClick", ShowGrid)
 
@@ -484,11 +484,11 @@ local function BuildPage2(parent)
         d:SetAllPoints(p)
         d:Hide()
 
-        local back = MakeButton(d, "< Back", "ghost", 52)
+        local back = MakeButton(d, L["TUT_BTN_BACK_ARROW"], "ghost", 52)
         back:SetPoint("TOPLEFT", d, "TOPLEFT", 12, -10)
         back:SetScript("OnClick", ShowGrid)
 
-        local h = HeaderText(d, "Calculator", "GameFontNormalLarge")
+        local h = HeaderText(d, L["TUT_FEATURE_CALCULATOR"], "GameFontNormalLarge")
         h:SetPoint("TOP", d, "TOP", 0, -28)
 
         local visual = d:CreateTexture(nil, "ARTWORK")
@@ -507,35 +507,35 @@ local function BuildPage2(parent)
         return d
     end
 
-    local d1 = CreateCarouselDetailView("Search", SEARCH_TUTORIAL_SLIDES)
-    local d2 = CreateDetailView("Map Search Tab",
-        "Search the map you're viewing. \"This Zone\" shows matches for the current map, while \"Across the World\" groups broader results by continent and zone. Built for quickly moving between zones and previewing POIs on hover; the same results are available from the main search bar, just without the nested map layout.",
+    local d1 = CreateCarouselDetailView(L["TUT_FEATURE_SEARCH"], SEARCH_TUTORIAL_SLIDES)
+    local d2 = CreateDetailView(L["TUT_FEATURE_MAP"],
+        L["TUT_MAP_TAB_DESC"],
         { image = MAP_SEARCH_TUTORIAL_IMAGE, texCoord = MAP_SEARCH_TUTORIAL_TEXCOORD, imageW = 486, imageH = 224, textW = WIZ_W - 92 })
-    local d3 = CreateCarouselDetailView("Item/Ability Use", USE_TUTORIAL_SLIDES)
+    local d3 = CreateCarouselDetailView(L["TUT_FEATURE_ACTIONS"], USE_TUTORIAL_SLIDES)
     local d4 = CreateCalculatorDetailView()
 
     local t1 = FeatureTile(grid, nil, "Interface\\AddOns\\EasyFind\\textures\\Spyglass", nil,
-        "Search",
-        "Search any panel, tab, setting, mount, toy, currency, achievement, and more.",
+        L["TUT_FEATURE_SEARCH"],
+        L["TUT_FEATURE_SEARCH_DESC"],
         function() ShowDetail(d1) end)
     t1:SetPoint("TOPLEFT", grid, "TOPLEFT", 38, -96)
 
     local t2 = FeatureTile(grid, "Waypoint-MapPin-Untracked", nil, nil,
-        "Map Search Tab",
-        "Dedicated map browsing for banks, flight masters, dungeons, raids, and zones. Also reachable from Standard Search.",
+        L["TUT_FEATURE_MAP"],
+        L["TUT_FEATURE_MAP_DESC"],
         function() ShowDetail(d2) end)
     t2:SetPoint("TOPRIGHT", grid, "TOPRIGHT", -38, -96)
 
     -- Anchor each lower tile to the grid so a hover scale doesn't move its sibling.
     local t3 = FeatureTile(grid, "UI-HUD-MicroMenu-SpellbookAbilities-Up", nil, nil,
-        "Item/Ability Use",
-        "Cast, use, equip, summon, swap, or open supported results directly from the list.",
+        L["TUT_FEATURE_ACTIONS"],
+        L["TUT_FEATURE_ACTIONS_DESC"],
         function() ShowDetail(d3) end)
     t3:SetPoint("TOPLEFT", grid, "TOPLEFT", 38, -222)
 
     local t4 = FeatureTile(grid, nil, CALCULATOR_ICON_TEX, nil,
-        "Calculator",
-        "Type expressions, copy the result, or open the full calculator with Alt+C.",
+        L["TUT_FEATURE_CALCULATOR"],
+        L["TUT_FEATURE_CALCULATOR_DESC"],
         function() ShowDetail(d4) end)
     t4:SetPoint("TOPRIGHT", grid, "TOPRIGHT", -38, -222)
 
@@ -549,7 +549,7 @@ local kbWaitingFor
 
 local function RefreshKbWidget(widget)
     local cur = GetBindingKey(widget.action) or EasyFind:GetAccountKeybind(widget.action)
-    widget.btn._label:SetText(cur or "Not bound")
+    widget.btn._label:SetText(cur or L["TUT_KB_NOT_BOUND"])
 end
 
 local function StopKeybindCapture()
@@ -614,7 +614,7 @@ local function CreateKbWidget(parent, action, label)
         end
         if kbWaitingFor then StopKeybindCapture() end
         kbWaitingFor = w
-        self._label:SetText("Press a key...")
+        self._label:SetText(L["TUT_KB_PRESS_KEY"])
         SafeCallMethod(self, "EnableKeyboard", true)
         self:SetScript("OnKeyDown", function(s, key)
             if Utils.IsModifierKey(key) then return end
@@ -635,15 +635,15 @@ end
 local function BuildPage3(parent)
     local p = MakePage(parent)
 
-    local title = HeaderText(p, "Pick your hotkeys (applies to every character)", "GameFontNormalLarge")
+    local title = HeaderText(p, L["TUT_KEYBIND_HEADER"], "GameFontNormalLarge")
     title:SetPoint("TOP", p, "TOP", 0, -36)
 
     local sub = BodyText(p, "")
     sub:SetPoint("TOP", title, "BOTTOM", 0, -10)
     sub:SetWidth(WIZ_W - 100)
 
-    local uiKb  = CreateKbWidget(p, TOGGLE_ACTION, "Search Bar")
-    local mapKb = CreateKbWidget(p, MAP_ACTION,    "Map Search Tab")
+    local uiKb  = CreateKbWidget(p, TOGGLE_ACTION, L["TUT_KEYBIND_SEARCH_BAR"])
+    local mapKb = CreateKbWidget(p, MAP_ACTION,    L["TUT_KEYBIND_MAP_TAB"])
     kbWidgets = { uiKb, mapKb }
 
     uiKb.label:SetPoint("RIGHT", uiKb.btn, "LEFT", -14, 0)
@@ -666,19 +666,19 @@ local function BuildPage3(parent)
     ApplyInter(mapRec, "semibold")
 
     local recHeader = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    recHeader:SetText("Recommended")
+    recHeader:SetText(L["TUT_KEYBIND_RECOMMENDED"])
     recHeader:SetPoint("BOTTOMLEFT", uiRec, "TOPLEFT", 0, 10)
     recHeader:SetTextColor(Utils.RGB(TEXT_DIM, 1))
     ApplyInter(recHeader, "regular")
 
     local recHeader2 = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    recHeader2:SetText("Recommended")
+    recHeader2:SetText(L["TUT_KEYBIND_RECOMMENDED"])
     recHeader2:SetPoint("BOTTOMLEFT", mapRec, "TOPLEFT", 0, 10)
     recHeader2:SetTextColor(Utils.RGB(TEXT_DIM, 1))
     ApplyInter(recHeader2, "regular")
 
     local hint = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    hint:SetText("Click a button, then press your keys. Right-click to clear. Esc cancels capture.")
+    hint:SetText(L["TUT_KEYBIND_CAPTURE_HINT"])
     hint:SetTextColor(Utils.RGB(TEXT_DIM, 1))
     hint:SetPoint("BOTTOM", p, "BOTTOM", 0, 22)
     hint:SetWidth(WIZ_W - 100)
@@ -835,10 +835,10 @@ local function CreateFrameOnce()
         dots[i] = d
     end
 
-    nextBtn = MakeButton(footer, "Continue", "rounded", 78)
+    nextBtn = MakeButton(footer, L["TUT_BTN_CONTINUE"], "rounded", 78)
     nextBtn:SetPoint("RIGHT", footer, "RIGHT", -8, 0)
 
-    backBtn = MakeButton(footer, "Back", "ghost", 42)
+    backBtn = MakeButton(footer, L["TUT_BTN_BACK"], "ghost", 42)
     backBtn:SetPoint("RIGHT", nextBtn, "LEFT", -5, 0)
     backBtn:SetScript("OnClick", function() ShowPage(pageIdx - 1) end)
 

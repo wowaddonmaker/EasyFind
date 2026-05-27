@@ -45,7 +45,7 @@ function Rows.CreateSettingWidgets(resultRow)
     -- above the parent row so clicks land on the widget, not the row.
     local sliderGroup = CreateFrame("Frame", nil, resultRow)
     sliderGroup:SetSize(140, 18)
-    sliderGroup:SetPoint("RIGHT", resultRow, "RIGHT", -6, 0)
+    sliderGroup:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
     sliderGroup:SetFrameLevel(resultRow:GetFrameLevel() + 5)
     sliderGroup:Hide()
     resultRow.settingSliderGroup = sliderGroup
@@ -376,7 +376,7 @@ function Rows.CreateSettingWidgets(resultRow)
     -- variant), so we use the hover atlas as the always-visible body.
     local dropdownGroup = CreateFrame("Frame", nil, resultRow)
     dropdownGroup:SetSize(180, 25)
-    dropdownGroup:SetPoint("RIGHT", resultRow, "RIGHT", -6, 0)
+    dropdownGroup:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
     dropdownGroup:SetFrameLevel(resultRow:GetFrameLevel() + 5)
     dropdownGroup:Hide()
     resultRow.settingDropdownGroup = dropdownGroup
@@ -407,10 +407,17 @@ function Rows.CreateSettingWidgets(resultRow)
     ddNext:SetPoint("RIGHT", dropdownGroup, "RIGHT", 0, 0)
     resultRow.settingDropdownNext = ddNext
 
+    -- common-dropdown-c-button-hover-2 has ~4px of transparent padding
+    -- baked into each atlas edge. Even with 0px anchors there's a visible
+    -- gap because the texture doesn't reach the frame edge. Pulling the
+    -- center button 4px INTO each paddle's frame parks it inside the
+    -- paddle's transparent margin so the visible textures abut cleanly.
+    local PADDLE_OVERLAP = 6
     local ddCenter = CreateFrame("Button", nil, dropdownGroup)
-    ddCenter:SetPoint("LEFT", ddPrev, "RIGHT", 2, 0)
-    ddCenter:SetPoint("RIGHT", ddNext, "LEFT", -2, 0)
+    ddCenter:SetPoint("LEFT", ddPrev, "RIGHT", -PADDLE_OVERLAP, 0)
+    ddCenter:SetPoint("RIGHT", ddNext, "LEFT", PADDLE_OVERLAP, 0)
     ddCenter:SetHeight(25)
+    ddCenter:SetFrameLevel(ddPrev:GetFrameLevel() + 1)
     local ddBg = ddCenter:CreateTexture(nil, "BACKGROUND")
     ddBg:SetAllPoints()
     ddBg:SetAtlas("common-dropdown-c-button-hover-1", false)
@@ -438,18 +445,45 @@ function Rows.CreateSettingWidgets(resultRow)
     -- Width-bounded truncation with ellipses. Anchor-clipped FontStrings
     -- silently chop with no marker, so we measure and append "..." when
     -- the value would overflow the chevron-padded button.
-    resultRow.SetSettingDropdownText = function(self, value)
-        local btn = self.settingDropdownLabel
-        if not btn then return end
-        value = value or ""
+    -- Compute the maximum text width by measuring from the button's LEFT
+    -- and the chevron texture's LEFT — completely programmatic, so any
+    -- future relayout / locale change picks up the right truncation
+    -- automatically. Returns nil when positions aren't yet computed; the
+    -- caller defers truncation to OnSizeChanged in that case.
+    --
+    -- The text is JustifyH="CENTER", so once we know the width budget we
+    -- still have to account for centering: the wider the FontString's
+    -- anchored region vs. the actual text, the more padding falls on each
+    -- side. To guarantee a fixed VISIBLE gap before the chevron, the
+    -- truncated text width must equal (anchored-region-width - 2*gap).
+    local TEXT_LEFT_PAD       = 8   -- matches ddTxt:SetPoint("LEFT", btn, 8, 0)
+    local FS_RIGHT_OFFSET     = 4   -- matches ddTxt:SetPoint("RIGHT", arrow, -4, 0)
+    local TEXT_TO_CHEVRON_GAP = 16  -- desired VISIBLE px between text and chevron
+    local function ComputeMaxTextW(btn)
+        local btnLeft = btn:GetLeft()
+        local arrowLeft = ddArrow:GetLeft()
+        if not btnLeft or not arrowLeft then return nil end
+        -- The FontString's anchored region: LEFT = btnLeft + TEXT_LEFT_PAD,
+        -- RIGHT = arrowLeft - FS_RIGHT_OFFSET. Width = (arrowLeft - btnLeft
+        -- - TEXT_LEFT_PAD - FS_RIGHT_OFFSET). For VISIBLE gap of G with
+        -- CENTER justification, text width must be (region - 2G + 2*FS_RIGHT_OFFSET).
+        local regionW = arrowLeft - btnLeft - TEXT_LEFT_PAD - FS_RIGHT_OFFSET
+        local maxW = regionW - 2 * (TEXT_TO_CHEVRON_GAP - FS_RIGHT_OFFSET)
+        if maxW <= 0 then return nil end
+        return maxW
+    end
+
+    local function ApplyDropdownTruncation(btn)
+        local value = btn._fullText
+        if not value or value == "" then
+            btn:SetText("")
+            return
+        end
         btn:SetText(value)
         local fs = btn:GetFontString()
         if not fs then return end
-        local btnW = btn:GetWidth() or 0
-        -- Reserve room for: 8px left pad + chevron at -8 from right (12 wide,
-        -- so 20 from right edge) + 8px gap before the chevron = 36 total.
-        local maxW = btnW - 38
-        if maxW <= 0 or #value == 0 then return end
+        local maxW = ComputeMaxTextW(btn)
+        if not maxW then return end -- not laid out yet; OnSizeChanged retries
         local function getW()
             return (fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth())
                 or (fs.GetStringWidth and fs:GetStringWidth())
@@ -460,6 +494,20 @@ function Rows.CreateSettingWidgets(resultRow)
             btn:SetText(value:sub(1, cut) .. "...")
             if getW() <= maxW then return end
         end
+    end
+
+    -- Re-truncate whenever the button gets a new width (first layout,
+    -- window resize, etc). Stores the unmodified value so we re-truncate
+    -- from the original, not from the already-cut string.
+    ddCenter:HookScript("OnSizeChanged", function(self)
+        if self._fullText then ApplyDropdownTruncation(self) end
+    end)
+
+    resultRow.SetSettingDropdownText = function(self, value)
+        local btn = self.settingDropdownLabel
+        if not btn then return end
+        btn._fullText = value or ""
+        ApplyDropdownTruncation(btn)
     end
 
     -- Open our custom dropdown popup on click. Reads opts/current value

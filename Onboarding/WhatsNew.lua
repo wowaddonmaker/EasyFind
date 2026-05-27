@@ -1,6 +1,7 @@
 local _, ns = ...
 
 local Onboarding = ns.Onboarding
+local L = ns.L
 
 local CreateFrame = CreateFrame
 local UIParent = UIParent
@@ -33,7 +34,7 @@ function Onboarding:ShowWhatsNew(version)
 
     local title = f:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("TOP", 0, -16)
-    title:SetText("|cffFFD100EasyFind|r - New Features")
+    title:SetText(L["WHATSNEW_TITLE"])
 
     local verText = f:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     verText:SetPoint("TOP", title, "BOTTOM", 0, -4)
@@ -44,26 +45,16 @@ function Onboarding:ShowWhatsNew(version)
     body:SetWidth(f:GetWidth() - 32)
     body:SetJustifyH("LEFT")
     body:SetSpacing(4)
-    body:SetText(
-        "|cffFFD100\226\128\162|r |cffffffffLoot Search|r\n" ..
-        "        Search dungeon and raid loot by name, slot, stats, or source\n" ..
-        "        Filter by class, spec, and difficulty\n" ..
-        "        Click to navigate directly to the item in the Encounter Journal\n" ..
-        "|cffFFD100\226\128\162|r |cffffffffTransmog Outfits|r\n" ..
-        "        Saved outfits appear in search results, click to equip\n" ..
-        "        Browse the transmog window without a vendor (search \"tmog\")\n" ..
-        "\n|cff999999Enable Loot and Outfits in the filter dropdown (arrow button\n" ..
-        "inside the search bar) to see these results.|r"
-    )
+    body:SetText(L["WHATSNEW_BODY"])
 
     local footer = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     footer:SetPoint("TOP", body, "BOTTOM", 0, -12)
-    footer:SetText("Full changelog on CurseForge and GitHub")
+    footer:SetText(L["WHATSNEW_FULL_CHANGELOG"])
 
     local okBtn = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
     okBtn:SetSize(90, 24)
     okBtn:SetPoint("TOP", footer, "BOTTOM", 0, -8)
-    okBtn:SetText("Got it")
+    okBtn:SetText(L["WHATSNEW_GOT_IT"])
     okBtn:SetScript("OnClick", function()
         f:Hide()
     end)
