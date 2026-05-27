@@ -10,38 +10,8 @@ if not L then return end
 -- ship a partial locale by section (Options first, then Tutorial, etc).
 
 -- =============================================================================
--- Database/Main.lua  --  guide step instructions
+-- Database/Main.lua  --  errors
 -- =============================================================================
-L["GUIDE_PVP_TALENTS_LOC"]              = "PvP Talents are at the bottom right of the Talents pane"
-L["GUIDE_PREMADE_QUESTING"]             = "Select Questing from the Premade Groups list"
-L["GUIDE_PREMADE_DELVES"]               = "Select Delves from the Premade Groups list"
-L["GUIDE_PREMADE_DUNGEONS"]             = "Select Dungeons from the Premade Groups list"
-L["GUIDE_PREMADE_RAIDS_TWW"]            = "Select Raids - The War Within from the Premade Groups list"
-L["GUIDE_PREMADE_RAIDS_LEGACY"]         = "Select Raids - Legacy from the Premade Groups list"
-L["GUIDE_PREMADE_CUSTOM_PVE"]           = "Select Custom from the Premade Groups list"
-L["GUIDE_ARENA_SKIRMISH"]               = "Select Arena Skirmish from the list"
-L["GUIDE_RANDOM_BG"]                    = "Select Random Battlegrounds from the list"
-L["GUIDE_RANDOM_EPIC_BG"]               = "Select Random Epic Battlegrounds from the list"
-L["GUIDE_BRAWL"]                        = "Select the Brawl option from the list"
-L["GUIDE_SOLO_SHUFFLE"]                 = "Solo Shuffle is the first option in the Rated panel"
-L["GUIDE_2V2_ARENA"]                    = "2v2 Arena is in the Rated panel"
-L["GUIDE_3V3_ARENA"]                    = "3v3 Arena is in the Rated panel"
-L["GUIDE_RATED_BG"]                     = "Rated Battlegrounds is in the Rated panel"
-L["GUIDE_BLITZ"]                        = "Solo Battlegrounds (Blitz) is in the Rated panel"
-L["GUIDE_PREMADE_ARENAS"]               = "Select Arenas from the Premade Groups list"
-L["GUIDE_PREMADE_ARENA_SKIRMISHES"]     = "Select Arena Skirmishes from the Premade Groups list"
-L["GUIDE_PREMADE_BATTLEGROUNDS"]        = "Select Battlegrounds from the Premade Groups list"
-L["GUIDE_PREMADE_RATED_BG"]             = "Select Rated Battlegrounds from the Premade Groups list"
-L["GUIDE_PREMADE_CUSTOM_PVP"]           = "Select Custom from the Premade Groups list"
-L["GUIDE_TRAINING_GROUNDS_RBG"]         = "Select Random Battlegrounds in Training Grounds"
-L["GUIDE_APPEARANCES_TAB"]              = "Click the Appearances tab"
-L["GUIDE_JOURNEYS_TAB"]                 = "Click the Journeys tab"
-L["GUIDE_TRAVELERS_LOG_TAB"]            = "Click the Traveler's Log tab"
-L["GUIDE_SUGGESTED_CONTENT_TAB"]        = "Click the Suggested Content tab"
-L["GUIDE_DUNGEONS_TAB"]                 = "Click the Dungeons tab"
-L["GUIDE_RAIDS_TAB"]                    = "Click the Raids tab"
-L["GUIDE_ITEM_SETS_TAB"]                = "Click the Item Sets tab"
-L["GUIDE_TUTORIALS_TAB"]                = "Click the Tutorials tab"
 L["ERR_DATABASE_INIT_FAILED"]           = "EasyFind Database failed to initialize: "
 
 -- =============================================================================
