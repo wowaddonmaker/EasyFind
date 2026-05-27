@@ -1380,6 +1380,19 @@ local function HandleWaitSearchButtonText(self, step, isLastStep)
     return true
 end
 
+local function HandleWaitLfgCategoryID(self, step, isLastStep)
+    local btn = self:FindLfgCategoryButton(step.lfgCategoryID, step.lfgFilters)
+    if btn then
+        self:HighlightFrame(btn)
+        if canHoverDismiss() and btn:IsMouseOver() then
+            self:Cancel()
+        end
+    elseif isLastStep then
+        self:ShowInstruction(step.text or "Pick the matching category in the Premade Groups list")
+    end
+    return true
+end
+
 local WAIT_STEP_HANDLERS = {
     { key = "tabIndex", fn = HandleWaitTabIndex },
     { condition = function(step) return step.petID or step.speciesID end, fn = HandleWaitPetJournal },
@@ -1406,11 +1419,12 @@ local WAIT_STEP_HANDLERS = {
     { key = "talentNodeID", fn = HandleWaitTalentNode },
     {
         condition = function(step)
-            return step.text and not step.regionFrames and not step.regionFrame and not step.searchButtonText
+            return step.text and not step.regionFrames and not step.regionFrame and not step.searchButtonText and not step.lfgCategoryID
         end,
         fn = HandleWaitTextInstruction,
     },
     { condition = function(step) return step.regionFrames or step.regionFrame end, fn = HandleWaitRegion },
+    { key = "lfgCategoryID", fn = HandleWaitLfgCategoryID },
     { key = "searchButtonText", fn = HandleWaitSearchButtonText },
 }
 
@@ -2131,6 +2145,29 @@ function Highlight:GetSidebarTabButton(sidebarIndex)
         end
     end
 
+    return nil
+end
+
+-- Find a Premade Groups category button by Blizzard's stable categoryID
+-- (locale-independent, unlike text-matching button labels). When two
+-- buttons share a categoryID (e.g. "Raids - The War Within" vs
+-- "Raids - Legacy" are both categoryID 3 split by recommended-vs-not
+-- filter flags), filters narrows the match -- pass the expected
+-- Enum.LFGListFilter combination. The Group Finder must be open to the
+-- Premade Groups tab for the buttons to be present; the prior
+-- pvpSideTabIndex/sideTabIndex step handles that.
+function Highlight:FindLfgCategoryButton(categoryID, filters)
+    if not categoryID or not LFGListFrame then return nil end
+    local cs = LFGListFrame.CategorySelection
+    if not cs or not cs.CategoryButtons then return nil end
+    for i = 1, #cs.CategoryButtons do
+        local btn = cs.CategoryButtons[i]
+        if btn and btn.categoryID == categoryID and btn:IsShown() then
+            if not filters or btn.filters == filters then
+                return btn
+            end
+        end
+    end
     return nil
 end
 

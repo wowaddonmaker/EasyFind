@@ -578,7 +578,9 @@ function Guide:DirectOpen(data)
                 end
             end
 
-            if step.searchButtonText then
+            if step.lfgCategoryID then
+                ClickButton(Highlight:FindLfgCategoryButton(step.lfgCategoryID, step.lfgFilters))
+            elseif step.searchButtonText then
                 local parentFrame = step.waitForFrame and _G[step.waitForFrame]
                 if parentFrame then
                     ClickButton(SearchFrameTreeFuzzy(parentFrame, slower(step.searchButtonText)))
