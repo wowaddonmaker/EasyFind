@@ -10,8 +10,26 @@ if not L then return end
 -- ship a partial locale by section (Options first, then Tutorial, etc).
 
 -- =============================================================================
--- Database/Main.lua  --  errors
+-- Database/Main.lua  --  uiTree composite names and stuck entries
 -- =============================================================================
+-- Shared disambiguator suffixes (reused across many uiTree leaves).
+L["UITREE_SUFFIX_PREMADE"]              = " (Premade)"
+L["UITREE_SUFFIX_JOURNAL"]              = " (Journal)"
+L["UITREE_SUFFIX_BLITZ"]                = " (Blitz)"
+L["UITREE_SUFFIX_REWARDS"]              = " (Rewards)"
+L["UITREE_SUFFIX_TRAINING_GROUNDS"]     = " (Training Grounds)"
+L["UITREE_SUFFIX_PVE_GROUP"]            = " PvE Group"
+L["UITREE_SUFFIX_PVP_GROUP"]            = " PvP Group"
+-- Base names with no clean Blizzard global.
+L["UITREE_LEGACY"]                      = "Legacy"
+L["UITREE_ARENAS"]                      = "Arenas"
+L["UITREE_SOLO_BATTLEGROUNDS"]          = "Solo Battlegrounds"
+L["UITREE_RANDOM_BATTLEGROUNDS"]        = "Random Battlegrounds"
+L["UITREE_GREAT_VAULT"]                 = "Great Vault"
+L["UITREE_PORTRAIT_MENU"]               = "Portrait Menu"
+L["UITREE_TOGGLE_WORLD_MAP"]            = "Toggle World Map"
+L["UITREE_CALENDAR"]                    = "Calendar"
+L["UITREE_DISMISS_PET"]                 = "Dismiss Pet"
 L["ERR_DATABASE_INIT_FAILED"]           = "EasyFind Database failed to initialize: "
 
 -- =============================================================================
