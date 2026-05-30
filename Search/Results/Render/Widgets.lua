@@ -286,16 +286,9 @@ function Render.CalculatorRow(self, resultRow, data, state)
     Icons:SetRowIcon(resultRow, "hidden", nil, state.rowIconSize)
 
     if data.calculatorResult then
-        local actionH = mmax(20, mfloor(22 * state.fontScale + 0.5))
-        resultRow.calcActionBar:ClearAllPoints()
-        resultRow.calcActionBar:SetPoint("BOTTOMLEFT", resultRow, "BOTTOMLEFT", 4, 3)
-        resultRow.calcActionBar:SetPoint("BOTTOMRIGHT", resultRow, "BOTTOMRIGHT", -4, 3)
-        resultRow.calcActionBar:SetHeight(actionH)
-        resultRow.calcActionBar:Show()
-
         resultRow.calcCard:ClearAllPoints()
         resultRow.calcCard:SetPoint("TOPLEFT", resultRow, "TOPLEFT", 4, -3)
-        resultRow.calcCard:SetPoint("BOTTOMRIGHT", resultRow.calcActionBar, "TOPRIGHT", 0, 4)
+        resultRow.calcCard:SetPoint("BOTTOMRIGHT", resultRow, "BOTTOMRIGHT", -4, 3)
         resultRow.calcCard:Show()
 
         resultRow.calcDivider:ClearAllPoints()
@@ -352,9 +345,5 @@ function Render.CalculatorRow(self, resultRow, data, state)
         return true
     end
 
-    resultRow.calcActionBar:ClearAllPoints()
-    resultRow.calcActionBar:SetPoint("TOPLEFT", resultRow, "TOPLEFT", 4, -3)
-    resultRow.calcActionBar:SetPoint("BOTTOMRIGHT", resultRow, "BOTTOMRIGHT", -4, 3)
-    resultRow.calcActionBar:Show()
     return true
 end

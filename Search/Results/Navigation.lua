@@ -6,6 +6,7 @@ local Rows = ns.ResultRows
 local Icons = ns.ResultIcons
 local Handlers = ns.ResultHandlers
 local Utils = ns.Utils
+local Calculator = ns.Calculator
 local UIPins = ns.UIPins
 local GOLD_COLOR = ns.GOLD_COLOR
 
@@ -551,8 +552,26 @@ function Results:UpdateSelectionHighlight(skipRefocus, keepRepeat)
         Utils.SafeCallMethod(Search:GetNavFrame(), "EnableKeyboard", true)
         if newSelRow and not Search:GetToggleFocused() and newSelRow.data and newSelRow.data.calculatorResult then
             self:ArmCalculatorSelectionForKeyboard(newSelRow)
+            -- Holding Down would otherwise cascade past the math row to
+            -- the launcher beneath it after the initial-delay tick. Stop
+            -- the repeat so a long press parks on the math row with the
+            -- result armed; a fresh press still moves on.
+            local searchFrame = Search:GetSearchFrame()
+            if searchFrame and searchFrame.StopKeyRepeat then
+                searchFrame.StopKeyRepeat()
+            end
+        elseif Calculator and Calculator._calculator and Calculator._calculator.activeData then
+            -- Selection moved off the math row; clear the armed
+            -- expression/result tint so it doesn't linger on the math
+            -- card while a different row is selected.
+            Calculator:ClearCalculatorCopyHighlight()
         end
     else
+        if Calculator and Calculator._calculator and Calculator._calculator.activeData then
+            -- Selection left the result list (back to the search bar);
+            -- clear the armed expression/result tint too.
+            Calculator:ClearCalculatorCopyHighlight()
+        end
         local wasNavigating = Search:GetNavFrame():IsKeyboardEnabled()
         Utils.SafeCallMethod(Search:GetNavFrame(), "EnableKeyboard", false)
         -- Same guard as HideResults: don't kill an active nav-repeat

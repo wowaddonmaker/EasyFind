@@ -87,7 +87,7 @@ end
 function Text:GetFlatSubtext(data)
     if not data then return "" end
     if data.calculatorResult then return "Expression" end
-    if data.calculatorLauncher then return "Alt+C to open" end
+    if data.calculatorLauncher then return "" end
     if data.searchCommandDesc then return data.searchCommandDesc end
     if data.quickFilterAliasText then return data.quickFilterAliasText end
     if data.quickFilterDef then return data.quickFilterDef.label or "Quick Filter" end

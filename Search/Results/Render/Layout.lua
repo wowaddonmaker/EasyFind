@@ -38,7 +38,7 @@ end
 
 function Render.ApplyFlatResultAnchoring(resultRow, entry, state)
     local data = entry.data
-    if not entry.isFlat or (data and (data.calculatorResult or data.calculatorLauncher)) then return end
+    if not entry.isFlat or (data and data.calculatorResult) then return end
 
     local catShown = resultRow.flatCatIcon and resultRow.flatCatIcon:IsShown()
     local mainIconOnRight = IsRightSideIconData(data)
@@ -198,7 +198,6 @@ function Render.HideUnusedResultRow(resultRow)
     if resultRow.calcResultHint then resultRow.calcResultHint:Hide() end
     if resultRow.calcExpressionButton then resultRow.calcExpressionButton:Hide() end
     if resultRow.calcResultButton then resultRow.calcResultButton:Hide() end
-    if resultRow.calcActionBar then resultRow.calcActionBar:Hide() end
     if resultRow.shortcutGroup then resultRow.shortcutGroup:Hide() end
     for d = 1, MAX_DEPTH do
         resultRow.treeVert[d]:Hide()

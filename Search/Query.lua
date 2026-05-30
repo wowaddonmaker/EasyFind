@@ -323,7 +323,12 @@ function Search:OnSearchTextChanged(text, force)
     wipe(flatCombined)
     local combined = flatCombined
     if calculatorData then
+        -- Math row at the top; launcher row sits beneath it so the user
+        -- can open the popup with the current expression. Two distinct
+        -- scores so the math row always sorts above (math.huge - 1 is
+        -- still math.huge in IEEE doubles, so use a finite huge instead).
         combined[#combined + 1] = { data = calculatorData, score = math.huge }
+        combined[#combined + 1] = { data = ns.Calculator._calculator.LAUNCHER, score = 1e308 }
     elseif calculatorLauncher then
         combined[#combined + 1] = { data = calculatorLauncher, score = math.huge }
     end

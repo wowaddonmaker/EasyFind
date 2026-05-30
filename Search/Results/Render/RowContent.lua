@@ -202,7 +202,7 @@ function Render.RowContent(owner, resultRow, entry, state, isUnearnedCurrency)
         Render.SetClippedText(resultRow.text, entry.name)
         iconSet = true
 
-    elseif data and (data.calculatorResult or data.calculatorLauncher) and not entry.isPathNode then
+    elseif data and data.calculatorResult and not entry.isPathNode then
         iconSet = Render.CalculatorRow(owner, resultRow, data, state)
 
     -- Entry-specific leaf icons: keep the category icon on the

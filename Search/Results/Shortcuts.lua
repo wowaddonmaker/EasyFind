@@ -187,7 +187,6 @@ local function IsShortcutEligibleRow(row)
         and not row.isPinHeader and not row.isSectionHeader
         and not row.isUnearnedCurrency
         and not row.data.calculatorResult
-        and not row.data.calculatorLauncher
 end
 local function ClearResultShortcutBindings()
     RefreshShortcutFrames()

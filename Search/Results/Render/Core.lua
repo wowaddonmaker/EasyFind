@@ -285,13 +285,12 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
             local padL = theme.resultsPadLeft or 10
             local entryRowH = entry.isFlat and (rowH + flatExtraH) or rowH
             if data and data.calculatorResult and not entry.isPathNode then
-                local calcRowH = mfloor(86 * fontScale + 0.5)
-                if calcRowH < 76 then calcRowH = 76 end
+                -- Sized to fit the math card itself; the old 86 was sized
+                -- for card + launcher action bar combined, which is now a
+                -- separate row.
+                local calcRowH = mfloor(56 * fontScale + 0.5)
+                if calcRowH < 50 then calcRowH = 50 end
                 if entryRowH < calcRowH then entryRowH = calcRowH end
-            elseif data and data.calculatorLauncher and not entry.isPathNode then
-                local actionRowH = mfloor(30 * fontScale + 0.5)
-                if actionRowH < 28 then actionRowH = 28 end
-                if entryRowH < actionRowH then entryRowH = actionRowH end
             end
             local rowContentTop = yOffset
             resultRow:SetSize(resultsFrame:GetWidth() - padL * 2 - scrollInset, entryRowH)
@@ -327,7 +326,6 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
             if resultRow.calcResultHint then resultRow.calcResultHint:Hide() end
             if resultRow.calcExpressionButton then resultRow.calcExpressionButton:Hide() end
             if resultRow.calcResultButton then resultRow.calcResultButton:Hide() end
-            if resultRow.calcActionBar then resultRow.calcActionBar:Hide() end
 
             resultRow.data = data
             -- Recycled rows can leak icon.mountID etc. into the OnEnter
