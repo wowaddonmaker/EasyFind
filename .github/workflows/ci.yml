@@ -113,3 +113,42 @@ jobs:
           fi
 
           exit $EXIT_CODE
+
+  localization:
+    name: Localization
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Verify locale parity and L[] references
+        run: |
+          EXIT_CODE=0
+          ENUS=Locales/enUS.lua
+          if [[ ! -f "$ENUS" ]]; then echo "FAIL: $ENUS missing"; exit 1; fi
+          keys() { grep -oP '^L\["\K[^"]+' "$1" | sort -u; }
+
+          # 1. Every locale file carries the exact enUS key set (no missing, no stray).
+          ENUS_KEYS="$(keys "$ENUS")"
+          for f in Locales/*.lua; do
+            [[ "$f" == "$ENUS" || "$f" == "Locales/Localization.lua" ]] && continue
+            DIFF="$(comm -3 <(echo "$ENUS_KEYS") <(keys "$f"))"
+            if [[ -n "$DIFF" ]]; then
+              echo "FAIL: $f key set differs from enUS (< missing in $f, > stray in $f):"
+              echo "$DIFF"
+              EXIT_CODE=1
+            fi
+          done
+
+          # 2. Every L["KEY"] referenced in shipped code is defined in enUS.lua.
+          #    Locale files (definitions) are excluded; dynamic L[var] lookups
+          #    don't match L["..."] and are intentionally not checked.
+          USED="$(grep -rhoP 'L\["\K[^"]+' --include='*.lua' --exclude-dir=Locales --exclude-dir=dev . | sort -u || true)"
+          while IFS= read -r k; do
+            [[ -z "$k" ]] && continue
+            if ! grep -qxF "$k" <(echo "$ENUS_KEYS"); then
+              echo "FAIL: L[\"$k\"] used in code but not defined in enUS.lua"
+              EXIT_CODE=1
+            fi
+          done <<< "$USED"
+
+          if [[ $EXIT_CODE -eq 0 ]]; then echo "Localization OK: all locales match enUS and all L[] keys are defined."; fi
+          exit $EXIT_CODE
