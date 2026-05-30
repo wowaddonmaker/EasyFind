@@ -3,6 +3,7 @@ local _, ns = ...
 local Search = ns.Search
 local Calculator = ns.Calculator
 local Utils = ns.Utils
+local L = ns.L
 
 local pairs = Utils.pairs
 local sfind, slower = Utils.sfind, Utils.slower
@@ -13,13 +14,17 @@ local function GetSearchFrame()
     return Search:GetSearchFrame()
 end
 
+-- Localized display name; nameLower/keywords stay English so the
+-- launcher still matches "calc"/"math" typed in any locale.
+local CALC_NAME = L["UITREE_CALCULATOR"]
+
 Calculator._calculator = {
-    PATH = { "Calculator" },
+    PATH = { CALC_NAME },
     LAUNCHER = {
-        name = "Calculator",
+        name = CALC_NAME,
         nameLower = "calculator",
-        category = "Calculator",
-        path = { "Calculator" },
+        category = CALC_NAME,
+        path = { CALC_NAME },
         noPin = true,
         calculatorLauncher = true,
         keywords = { "calculator", "calc", "math" },

@@ -23,6 +23,7 @@ L["UITREE_PORTRAIT_MENU"]               = "초상화 메뉴"
 L["UITREE_TOGGLE_WORLD_MAP"]            = "세계 지도 열기"
 L["UITREE_CALENDAR"]                    = "달력"
 L["UITREE_DISMISS_PET"]                 = "소환수 돌려보내기"
+L["UITREE_CALCULATOR"]                  = "계산기"
 L["ERR_DATABASE_INIT_FAILED"]           = "EasyFind 데이터베이스 초기화에 실패했습니다: "
 
 -- Options panel

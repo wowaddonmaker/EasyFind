@@ -23,6 +23,7 @@ L["UITREE_PORTRAIT_MENU"]               = "Menu do Retrato"
 L["UITREE_TOGGLE_WORLD_MAP"]            = "Alternar Mapa do Mundo"
 L["UITREE_CALENDAR"]                    = "Calendário"
 L["UITREE_DISMISS_PET"]                 = "Dispensar Mascote"
+L["UITREE_CALCULATOR"]                  = "Calculadora"
 L["ERR_DATABASE_INIT_FAILED"]           = "Falha ao inicializar o banco de dados do EasyFind: "
 
 -- Options panel

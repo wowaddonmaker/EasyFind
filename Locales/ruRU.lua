@@ -23,6 +23,7 @@ L["UITREE_PORTRAIT_MENU"]               = "Меню портрета"
 L["UITREE_TOGGLE_WORLD_MAP"]            = "Открыть карту мира"
 L["UITREE_CALENDAR"]                    = "Календарь"
 L["UITREE_DISMISS_PET"]                 = "Отозвать питомца"
+L["UITREE_CALCULATOR"]                  = "Калькулятор"
 L["ERR_DATABASE_INIT_FAILED"]           = "Не удалось инициализировать базу данных EasyFind: "
 
 -- Options panel

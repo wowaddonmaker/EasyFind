@@ -25,6 +25,7 @@ L["UITREE_PORTRAIT_MENU"]               = "Porträtmenü"
 L["UITREE_TOGGLE_WORLD_MAP"]            = "Weltkarte umschalten"
 L["UITREE_CALENDAR"]                    = "Kalender"
 L["UITREE_DISMISS_PET"]                 = "Begleiter entlassen"
+L["UITREE_CALCULATOR"]                  = "Rechner"
 L["ERR_DATABASE_INIT_FAILED"]           = "EasyFind-Datenbank konnte nicht initialisiert werden: "
 
 -- Options panel

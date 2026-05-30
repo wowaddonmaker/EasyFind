@@ -30,6 +30,7 @@ L["UITREE_PORTRAIT_MENU"]               = "Portrait Menu"
 L["UITREE_TOGGLE_WORLD_MAP"]            = "Toggle World Map"
 L["UITREE_CALENDAR"]                    = "Calendar"
 L["UITREE_DISMISS_PET"]                 = "Dismiss Pet"
+L["UITREE_CALCULATOR"]                  = "Calculator"
 L["ERR_DATABASE_INIT_FAILED"]           = "EasyFind Database failed to initialize: "
 
 -- =============================================================================

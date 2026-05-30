@@ -23,6 +23,7 @@ L["UITREE_PORTRAIT_MENU"]               = "头像菜单"
 L["UITREE_TOGGLE_WORLD_MAP"]            = "切换世界地图"
 L["UITREE_CALENDAR"]                    = "日历"
 L["UITREE_DISMISS_PET"]                 = "解散宠物"
+L["UITREE_CALCULATOR"]                  = "计算器"
 L["ERR_DATABASE_INIT_FAILED"]           = "EasyFind 数据库初始化失败："
 
 -- Options panel
