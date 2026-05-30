@@ -155,6 +155,14 @@ function Utils.CreateKeyRepeat(frame, initialDelay, fastDelay, accelDuration)
 
     frame:HookScript("OnUpdate", function(_, elapsed)
         if not repeatActive then return end
+        -- Stop when the key is released. Arrow-key OnKeyUp is not reliably
+        -- delivered to keyboard-enabled frames, so the OnKeyUp handlers
+        -- alone let a single tap cascade. Polling the physical key state
+        -- here is what Alt+J already does via its own ticker check.
+        if repeatKey and not Utils.IsPhysicalKeyDown(repeatKey) then
+            Stop(repeatKey)
+            return
+        end
         repeatHeld = repeatHeld + elapsed
         repeatNext = repeatNext - elapsed
         if repeatNext <= 0 then
@@ -172,17 +180,13 @@ function Utils.NormalizeKey(key)
     return type(key) == "string" and key:upper() or key
 end
 
--- WoW's OnKeyDown reports arrow keys as "UP"/"DOWN"/"LEFT"/"RIGHT" but
--- IsKeyDown() requires "UPARROW"/"DOWNARROW"/"LEFTARROW"/"RIGHTARROW".
--- This wraps the inconsistency so callers can pass the OnKeyDown-style
--- name and still get the right answer for held arrow keys.
-local IS_KEY_DOWN_ALIASES = {
-    UP = "UPARROW", DOWN = "DOWNARROW",
-    LEFT = "LEFTARROW", RIGHT = "RIGHTARROW",
-}
+-- IsKeyDown uses the same names OnKeyDown reports ("UP"/"DOWN"/etc.).
+-- An earlier "...ARROW" alias table was wrong: IsKeyDown("DOWNARROW")
+-- returns nil, so the guard always read released and arrow repeats never
+-- stopped. Verified in-game: IsKeyDown("DOWN") is true while held.
 function Utils.IsPhysicalKeyDown(key)
     if not IsKeyDown or not key then return false end
-    return IsKeyDown(IS_KEY_DOWN_ALIASES[key] or key) and true or false
+    return IsKeyDown(key) and true or false
 end
 
 local MODIFIER_KEYS = {
