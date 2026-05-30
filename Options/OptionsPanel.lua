@@ -15,6 +15,30 @@ local IsShiftKeyDown = IsShiftKeyDown
 
 local SMALL_HIGHLIGHT_FONT = _G["GameFontHighlightSmall"] or _G["GameFontNormalSmall"] or _G["GameFontNormal"]
 
+-- Indicator style and color are stored in the DB as stable English keys
+-- (locale-independent). These map a stored key to its localized display
+-- label so the picker shows translated text without changing the value.
+local STYLE_LABEL_KEY = {
+    ["EasyFind Arrow"]      = "OPT_INDICATOR_STYLE_EASYFIND",
+    ["Classic Quest Arrow"] = "OPT_INDICATOR_STYLE_CLASSIC",
+    ["Minimap Player Arrow"] = "OPT_INDICATOR_STYLE_MINIMAP",
+    ["Low-res Gauntlet"]    = "OPT_INDICATOR_STYLE_LOWRES",
+    ["HD Gauntlet"]         = "OPT_INDICATOR_STYLE_HD",
+}
+local COLOR_LABEL_KEY = {
+    Yellow = "OPT_COLOR_YELLOW", Gold = "OPT_COLOR_GOLD", Orange = "OPT_COLOR_ORANGE",
+    Red = "OPT_COLOR_RED", Green = "OPT_COLOR_GREEN", Blue = "OPT_COLOR_BLUE",
+    Purple = "OPT_COLOR_PURPLE", White = "OPT_COLOR_WHITE",
+}
+local function StyleLabel(value)
+    local key = value and STYLE_LABEL_KEY[value]
+    return (key and L[key]) or value
+end
+local function ColorLabel(value)
+    local key = value and COLOR_LABEL_KEY[value]
+    return (key and L[key]) or value
+end
+
 local OPTIONS_PANEL_ALPHA = 0.9
 local OPTIONS_FRAME_STRATA = "FULLSCREEN_DIALOG"
 local OPTIONS_FRAME_LEVEL = 700
@@ -223,18 +247,18 @@ local function SyncOptionControls()
     if optionsFrame.autoPinClearCheckbox then optionsFrame.autoPinClearCheckbox:SetChecked(EasyFind.db.autoPinClear ~= false) end
     if optionsFrame.UpdateMapToggleVisual then optionsFrame.UpdateMapToggleVisual() end
 
-    if optionsFrame.indicatorBtnText then optionsFrame.indicatorBtnText:SetText(EasyFind.db.indicatorStyle or "EasyFind Arrow") end
-    if optionsFrame.fontBtnText then optionsFrame.fontBtnText:SetText(EasyFind.db.font or "Default") end
+    if optionsFrame.indicatorBtnText then optionsFrame.indicatorBtnText:SetText(StyleLabel(EasyFind.db.indicatorStyle or "EasyFind Arrow")) end
+    if optionsFrame.fontBtnText then optionsFrame.fontBtnText:SetText(EasyFind.db.font or (_G["DEFAULT"] or "Default")) end
 
     local clr = EasyFind.db.indicatorColor or "Yellow"
     local rgb = ns.INDICATOR_COLORS[clr] or ns.INDICATOR_COLORS.Yellow
     if optionsFrame.colorBtnText then
-        optionsFrame.colorBtnText:SetText(clr)
+        optionsFrame.colorBtnText:SetText(ColorLabel(clr))
         optionsFrame.colorBtnText:SetTextColor(Utils.RGB(rgb))
     end
-    if optionsFrame.toggleFocusBtn then optionsFrame.toggleFocusBtn:SetText(GetBindingKey("EASYFIND_TOGGLE_FOCUS") or EasyFind:GetAccountKeybind("EASYFIND_TOGGLE_FOCUS") or L["OPT_KB_NOT_BOUND"]) end
-    if optionsFrame.mapFocusBtn then optionsFrame.mapFocusBtn:SetText(GetBindingKey("EASYFIND_MAP_FOCUS") or EasyFind:GetAccountKeybind("EASYFIND_MAP_FOCUS") or L["OPT_KB_NOT_BOUND"]) end
-    if optionsFrame.clearBtn then optionsFrame.clearBtn:SetText(GetBindingKey("EASYFIND_CLEAR") or EasyFind:GetAccountKeybind("EASYFIND_CLEAR") or L["OPT_KB_NOT_BOUND"]) end
+    if optionsFrame.toggleFocusBtn then optionsFrame.toggleFocusBtn:SetText(GetBindingKey("EASYFIND_TOGGLE_FOCUS") or EasyFind:GetAccountKeybind("EASYFIND_TOGGLE_FOCUS") or (_G["NOT_BOUND"] or "Not Bound")) end
+    if optionsFrame.mapFocusBtn then optionsFrame.mapFocusBtn:SetText(GetBindingKey("EASYFIND_MAP_FOCUS") or EasyFind:GetAccountKeybind("EASYFIND_MAP_FOCUS") or (_G["NOT_BOUND"] or "Not Bound")) end
+    if optionsFrame.clearBtn then optionsFrame.clearBtn:SetText(GetBindingKey("EASYFIND_CLEAR") or EasyFind:GetAccountKeybind("EASYFIND_CLEAR") or (_G["NOT_BOUND"] or "Not Bound")) end
 end
 
 local PaintRoundedFill = ns.SetRoundedRectFill
@@ -314,7 +338,7 @@ local function CreateFlyoutPanel(btnFrame, globalPrefix, width, numChoices)
     return flyout
 end
 
-local function AddFlyoutOptions(flyout, choices, itemWidth, onSelect)
+local function AddFlyoutOptions(flyout, choices, itemWidth, onSelect, labelFn)
     for i, name in ipairs(choices) do
         local flyoutBtn = CreateFrame("Button", nil, flyout)
         flyoutBtn:SetSize(itemWidth, 18)
@@ -330,7 +354,7 @@ local function AddFlyoutOptions(flyout, choices, itemWidth, onSelect)
         label:SetPoint("LEFT", flyoutBtn, "LEFT", 6, 0)
         label:SetPoint("RIGHT", flyoutBtn, "RIGHT", -6, 0)
         label:SetJustifyH("LEFT")
-        label:SetText(name)
+        label:SetText(labelFn and labelFn(name) or name)
         flyoutBtn:SetScript("OnEnter", function()
             PaintRoundedFill(rowBg, 1, 1, 1, 0.06)
         end)
@@ -1019,7 +1043,7 @@ function Options:Initialize()
         local key1, key2 = GetBindingKey(action)
         if key1 then return key1 end
         if key2 then return key2 end
-        return EasyFind:GetAccountKeybind(action) or L["OPT_KB_NOT_BOUND"]
+        return EasyFind:GetAccountKeybind(action) or (_G["NOT_BOUND"] or "Not Bound")
     end
 
     local function StopCapture(keybindBtn, action)
@@ -1169,16 +1193,16 @@ function Options:Initialize()
     local indicatorChoices = {"EasyFind Arrow", "Classic Quest Arrow", "Minimap Player Arrow", "Low-res Gauntlet", "HD Gauntlet"}
 
     local indicatorBtnFrame, indicatorBtnText = CreateFlyoutSelector(
-        indicatorRow, "EasyFindIndicator", SELECTOR_BTN_W, indicatorLabel, EasyFind.db.indicatorStyle or "EasyFind Arrow"
+        indicatorRow, "EasyFindIndicator", SELECTOR_BTN_W, indicatorLabel, StyleLabel(EasyFind.db.indicatorStyle or "EasyFind Arrow")
     )
     local indicatorFlyout = CreateFlyoutPanel(indicatorBtnFrame, "EasyFindIndicator", SELECTOR_BTN_W, #indicatorChoices)
     AddFlyoutOptions(indicatorFlyout, indicatorChoices, SELECTOR_BTN_W - 6, function(name)
         EasyFind.db.indicatorStyle = name
-        indicatorBtnText:SetText(name)
+        indicatorBtnText:SetText(StyleLabel(name))
         if ns.MapSearch then
             ns.MapSearch:RefreshIndicators()
         end
-    end)
+    end, StyleLabel)
     optionsFrame.indicatorBtnText = indicatorBtnText
     optionsFrame.indicatorFlyout = indicatorFlyout
 
@@ -1188,7 +1212,7 @@ function Options:Initialize()
     local colorRGB = ns.INDICATOR_COLORS
 
     local colorBtnFrame, colorBtnText = CreateFlyoutSelector(
-        colorRow, "EasyFindColor", SELECTOR_BTN_W, colorLabel, EasyFind.db.indicatorColor or "Yellow"
+        colorRow, "EasyFindColor", SELECTOR_BTN_W, colorLabel, ColorLabel(EasyFind.db.indicatorColor or "Yellow")
     )
     local currentColor = EasyFind.db.indicatorColor or "Yellow"
     local currentRGB = colorRGB[currentColor] or colorRGB.Yellow
@@ -1213,7 +1237,7 @@ function Options:Initialize()
         label:SetPoint("LEFT", colorBtn, "LEFT", 6, 0)
         label:SetPoint("RIGHT", colorBtn, "RIGHT", -6, 0)
         label:SetJustifyH("CENTER")
-        label:SetText(name)
+        label:SetText(ColorLabel(name))
         label:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
 
         colorBtn:SetScript("OnEnter", function(self)
@@ -1226,7 +1250,7 @@ function Options:Initialize()
         end)
         colorBtn:SetScript("OnClick", function()
             EasyFind.db.indicatorColor = name
-            colorBtnText:SetText(name)
+            colorBtnText:SetText(ColorLabel(name))
             colorBtnText:SetTextColor(Utils.RGB(rgb))
             colorFlyout:Hide()
             if ns.MapSearch then
@@ -1299,7 +1323,7 @@ function Options:Initialize()
         keybindBtn:SetScript("OnClick", function(self, button)
             if button == "RightButton" then
                 EasyFind:SetAccountKeybind(def.action, nil)
-                self:SetText(L["OPT_KB_NOT_BOUND"])
+                self:SetText((_G["NOT_BOUND"] or "Not Bound"))
             else
                 StartCapture(self, def.action)
             end
@@ -1986,6 +2010,14 @@ function Options:Initialize()
     resetPosBtn:SetScript("OnClick", function()
         StaticPopup_Show("EASYFIND_RESET_POSITIONS")
     end)
+    resetPosBtn:HookScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_TOP")
+        GameTooltip:AddLine(L["OPT_RESET_ALL_POSITIONS"])
+        GameTooltip:AddLine(L["OPT_RESET_POS_TT_DESC"], 1, 1, 1, true)
+        GameTooltip:AddLine(L["OPT_RESET_POS_TT_CMD"], 0.7, 0.7, 0.7)
+        GameTooltip:Show()
+    end)
+    resetPosBtn:HookScript("OnLeave", GameTooltip_Hide)
 
     local feedbackTab = CreateTab(L["OPT_TAB_FEEDBACK"])
 

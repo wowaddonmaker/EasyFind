@@ -4,6 +4,7 @@ local MapTab = {}
 ns.MapTab = MapTab
 
 local Utils = ns.Utils
+local L = ns.L
 local MapUtils = ns.MapUtils
 local ResultHandlers = ns.ResultHandlers
 local SafeAfter = Utils.SafeAfter
@@ -1790,7 +1791,7 @@ local function CreateSearchBox(parent)
     editBox:SetAutoFocus(false)
     editBox:SetMaxLetters(60)
     if editBox.Instructions then
-        editBox.Instructions:SetText("Search for POIs, zones, instances...")
+        editBox.Instructions:SetText(L["MAP_SEARCH_PLACEHOLDER"])
     end
 
     -- WoW silently focuses visible EditBoxes after creation despite
@@ -2009,7 +2010,7 @@ local function AttachAutoTrackRow(dropdown)
 
     local label = subRow:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
     label:SetPoint("LEFT", subRow:GetNormalTexture(), "RIGHT", 4, 0)
-    label:SetText("Auto-track")
+    label:SetText(L["MAP_AUTO_TRACK"])
 
     local hl = subRow:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints()
@@ -2027,8 +2028,8 @@ local function AttachAutoTrackRow(dropdown)
     end)
     subRow:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Auto-track Rares")
-        GameTooltip:AddLine("Keep active rares shown on the map continuously.", 1, 1, 1, true)
+        GameTooltip:SetText(L["MAP_AUTO_TRACK_RARES"])
+        GameTooltip:AddLine(L["MAP_AUTO_TRACK_RARES_TT"], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     subRow:SetScript("OnLeave", GameTooltip_Hide)
@@ -2060,8 +2061,8 @@ local function CreateFilterCog(parent)
     hoverTex:SetAlpha(0.4)
     cog:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Filter Results")
-        GameTooltip:AddLine("Toggle category filters.", 0.7, 0.7, 0.7, true)
+        GameTooltip:SetText(L["FILTER_RESULTS"])
+        GameTooltip:AddLine(L["MAP_FILTER_TT"], 0.7, 0.7, 0.7, true)
         GameTooltip:Show()
     end)
     cog:SetScript("OnLeave", GameTooltip_Hide)
@@ -2106,8 +2107,8 @@ local function CreateTabFrame(qmf)
     end)
     tab:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("EasyFind Map Search")
-        GameTooltip:AddLine("Search POIs, flight masters, zones, dungeons, raids, and more.", 1, 1, 1, true)
+        GameTooltip:SetText(L["MAP_SEARCH_TITLE"])
+        GameTooltip:AddLine(L["MAP_SEARCH_TT"], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     tab:SetScript("OnLeave", GameTooltip_Hide)
@@ -2280,7 +2281,7 @@ local function CreatePanel(qmf)
     recentCheck:SetHitRectInsets(0, -120, 0, 0)
     local recentLabel = recentCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     recentLabel:SetPoint("LEFT", recentCheck, "RIGHT", 2, 1)
-    recentLabel:SetText("Show recent searches")
+    recentLabel:SetText(L["MAP_SHOW_RECENT"])
     recentCheck:SetScript("OnShow", function(self)
         self:SetChecked(EasyFind.db.mapTabShowRecent ~= false)
     end)
@@ -2296,7 +2297,7 @@ local function CreatePanel(qmf)
     expandCheck:SetHitRectInsets(0, -120, 0, 0)
     local expandLabel = expandCheck:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     expandLabel:SetPoint("LEFT", expandCheck, "RIGHT", 2, 1)
-    expandLabel:SetText("Auto expand headers")
+    expandLabel:SetText(L["MAP_AUTO_EXPAND"])
     expandCheck:SetScript("OnShow", function(self)
         self:SetChecked(EasyFind.db.mapTabAutoExpand ~= false)
     end)
@@ -2306,18 +2307,10 @@ local function CreatePanel(qmf)
     end)
     expandCheck:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOPRIGHT")
-        GameTooltip:SetText("Auto expand headers")
-        GameTooltip:AddLine(
-            "When a search matches a parent zone, list every child it "
-            .. "contains - even ones that don't match your query.",
-            1, 1, 1, true)
+        GameTooltip:SetText(L["MAP_AUTO_EXPAND"])
+        GameTooltip:AddLine(L["MAP_AUTO_EXPAND_TT"], 1, 1, 1, true)
         GameTooltip:AddLine(" ")
-        GameTooltip:AddLine(
-            "Example: searching |cffffd200east|r matches Eastern Kingdoms. "
-            .. "With this on, every zone inside Eastern Kingdoms is listed "
-            .. "under it. With it off, only zones whose names actually match "
-            .. "|cffffd200east|r show up (Eastern Plaguelands, etc.).",
-            0.85, 0.85, 0.85, true)
+        GameTooltip:AddLine(L["MAP_AUTO_EXPAND_EXAMPLE"], 0.85, 0.85, 0.85, true)
         GameTooltip:Show()
     end)
     expandCheck:SetScript("OnLeave", GameTooltip_Hide)

@@ -5,6 +5,7 @@ local Calculator = ns.Calculator
 local Results = ns.Results
 local Rows = ns.ResultRows
 local Shortcuts = ns.ResultShortcuts
+local L = ns.L
 
 local CreateFrame = CreateFrame
 
@@ -92,7 +93,7 @@ function Rows.CreateCalculatorWidgets(resultRow, index)
     resultRow.calcResultText = calcResultText
 
     local calcExpressionHint = calcCard:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    calcExpressionHint:SetText("Ctrl+C to copy")
+    calcExpressionHint:SetText(L["CALC_COPY_HINT"])
     calcExpressionHint:SetJustifyH("CENTER")
     calcExpressionHint:SetTextColor(0.72, 0.72, 0.72, 1.0)
     calcExpressionHint:SetPoint("TOP", calcExpressionText, "BOTTOM", 0, -1)
@@ -100,7 +101,7 @@ function Rows.CreateCalculatorWidgets(resultRow, index)
     resultRow.calcExpressionHint = calcExpressionHint
 
     local calcResultHint = calcCard:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    calcResultHint:SetText("Ctrl+C to copy")
+    calcResultHint:SetText(L["CALC_COPY_HINT"])
     calcResultHint:SetJustifyH("CENTER")
     calcResultHint:SetTextColor(0.72, 0.72, 0.72, 1.0)
     calcResultHint:SetPoint("TOP", calcResultText, "BOTTOM", 0, -1)

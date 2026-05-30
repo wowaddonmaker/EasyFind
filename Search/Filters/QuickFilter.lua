@@ -18,6 +18,7 @@ local _, ns = ...
 local Search = ns.Search
 local Filters = ns.Filters
 local Utils = ns.Utils
+local L = ns.L
 
 local sfind, slower = Utils.sfind, Utils.slower
 local tsort = Utils.tsort
@@ -283,8 +284,8 @@ function Filters:CreateQuickFilterPill(frame, editBox, iconHolder, filterBtn)
     pill:SetScript("OnEnter", function(self)
         Search:SetQuickFilterPillFill(self, 0.155, 0.155, 0.172, 1)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        GameTooltip:SetText("Quick Filter")
-        GameTooltip:AddLine("Click or press Backspace on an empty search to clear.", 1, 1, 1, true)
+        GameTooltip:SetText(L["QUICK_FILTER"])
+        GameTooltip:AddLine(L["QUICK_FILTER_TT"], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     pill:SetScript("OnLeave", function(self)

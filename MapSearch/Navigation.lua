@@ -2,6 +2,7 @@ local _, ns = ...
 
 local MapSearch = ns.MapSearch
 local Utils = ns.Utils
+local L = ns.L
 local MapUtils = ns.MapUtils
 local MapFrames = ns.MapSearchFrames
 local DebugPrint = Utils.DebugPrint
@@ -194,12 +195,12 @@ function MapSearch:CreateHighlightFrame()
             local inZone = playerMapID and viewingMapID and playerMapID == viewingMapID
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
             if inZone then
-                GameTooltip:AddLine("Left-click to place waypoint and track")
+                GameTooltip:AddLine(L["WP_PLACE"])
             else
-                GameTooltip:AddLine("Navigate not available", 0.6, 0.6, 0.6)
-                GameTooltip:AddLine("Only available when viewing your current zone", 0.5, 0.5, 0.5)
+                GameTooltip:AddLine(L["WP_NAV_UNAVAILABLE"], 0.6, 0.6, 0.6)
+                GameTooltip:AddLine(L["WP_NAV_ZONE_ONLY"], 0.5, 0.5, 0.5)
             end
-            GameTooltip:AddLine("Right-click to dismiss", 0.6, 0.6, 0.6)
+            GameTooltip:AddLine(L["WP_DISMISS"], 0.6, 0.6, 0.6)
             GameTooltip:Show()
         else
             MapSearch:ClearActivePinState()
@@ -679,8 +680,8 @@ function MapSearch:ShowMultipleWaypoints(instances)
                     extraPin:SetScript("OnEnter", function(self)
                         if self.isLocalSearch then
                             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                            GameTooltip:AddLine("Left-click to place waypoint and track")
-                            GameTooltip:AddLine("Right-click to dismiss", 0.6, 0.6, 0.6)
+                            GameTooltip:AddLine(L["WP_PLACE"])
+                            GameTooltip:AddLine(L["WP_DISMISS"], 0.6, 0.6, 0.6)
                             GameTooltip:Show()
                         else
                             MapSearch:ClearActivePinState()

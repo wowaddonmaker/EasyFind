@@ -40,7 +40,7 @@ local UI_FILTER_OPTIONS = {
       iconCoords = { 0.1997, 0.2437, 0.5933, 0.6266 } },
     { key = "bags",        label = _G["BAGSLOT"] or _G["BAGS"] or "Bags",        iconAtlas = "bag-main" },
     -- Bosses: EJ overview tab icon from texture 522972.
-    { key = "bosses",      label = "Bosses",      iconTex = 522972,
+    { key = "bosses",      label = _G["RAID_BOSSES"] or "Bosses",      iconTex = 522972,
       iconCoords = { 0.855, 0.949, 0.524, 0.566 } },
     { key = "macros",      label = _G["MACROS"] or "Macros",      iconTex = "Interface\\MacroFrame\\MacroFrame-Icon" },
     { key = "collections",  label = _G["COLLECTIONS"] or "Collections",  iconAtlas = "UI-HUD-MicroMenu-Collections-Up",

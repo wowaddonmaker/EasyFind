@@ -127,7 +127,7 @@ local function AddResetButton(editBox, onConfirm)
 
     local text = btn:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     text:SetPoint("CENTER")
-    text:SetText("Reset")
+    text:SetText(_G["RESET"] or "Reset")
     text:SetTextColor(1, 1, 1, 1)
 
     btn:SetScript("OnEnter", function(self)
@@ -400,7 +400,7 @@ local function CreateMockSearchBar(parent, liveBar, centerX, centerY)
     text:SetPoint("LEFT", iconHolder, "RIGHT", 0, 0)
     text:SetPoint("RIGHT", frame, "RIGHT", -10, 0)
     text:SetJustifyH("LEFT")
-    text:SetText("Search")
+    text:SetText(_G["SEARCH"] or "Search")
     text:SetTextColor(0.55, 0.55, 0.58, 1)
     frame.placeholder = text
 
@@ -564,12 +564,7 @@ local function BuildUnifiedWindowOverlay(parent, searchBar, preview, anchorAbove
         overlay:SetPoint("BOTTOMRIGHT", preview, "BOTTOMRIGHT", GLOW_OUTSET, -GLOW_OUTSET)
     end
 
-    local label = overlay:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    label:SetPoint("CENTER")
-    label:SetText("UI Search Window")
-    label:SetTextColor(Utils.RGB(GOLD_COLOR, 0.7))
-
-    local widthBox = CreateDimLabel(overlay, "LEFT", "RIGHT", 8, 0, "Width:")
+    local widthBox = CreateDimLabel(overlay, "LEFT", "RIGHT", 8, 0, L["RESCALE_WIDTH"])
     overlay.widthBox = widthBox
 
     local resizeEdge = anchorAbove and "TOP" or "BOTTOM"
@@ -589,7 +584,7 @@ local function BuildUnifiedWindowOverlay(parent, searchBar, preview, anchorAbove
     heightBox:SetFontObject(SMALL_HIGHLIGHT_FONT)
 
     local heightPfx = overlay:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    heightPfx:SetText("Height:")
+    heightPfx:SetText(L["RESCALE_HEIGHT"])
     heightPfx:SetTextColor(Utils.RGB(GOLD_COLOR, 0.7))
     if anchorAbove then
         heightPfx:SetPoint("BOTTOM", overlay, "TOP", 0, 4)

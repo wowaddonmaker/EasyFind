@@ -5,6 +5,7 @@ local SearchFocus = ns.SearchFocus
 local Results = ns.Results
 local Rows = ns.ResultRows
 local Utils = ns.Utils
+local L = ns.L
 
 local sformat = Utils.sformat
 local mfloor = Utils.mfloor
@@ -227,7 +228,7 @@ function Rows.CreateSettingWidgets(resultRow)
         hl:SetAllPoints()
         hl:SetColorTexture(0.4, 0.4, 0.5, 0.4)
         btn:SetNormalFontObject("GameFontHighlightSmall")
-        btn:SetText("Not Bound")
+        btn:SetText(_G["NOT_BOUND"] or "Not Bound")
         local txt = btn:GetFontString()
         if txt then txt:SetPoint("CENTER") end
         local border = CreateFrame("Frame", nil, btn, "BackdropTemplate")
@@ -297,7 +298,7 @@ function Rows.CreateSettingWidgets(resultRow)
         end
         Search:SetActiveKeybindButton(btn)
         btn._waitingForKey = true
-        btn:SetText("Press a key...")
+        btn:SetText(L["OPT_KB_PRESS_KEY"])
         btn:LockHighlight()
         if Search:GetSearchFrame() and Search:GetSearchFrame().editBox then
             Search:GetSearchFrame().editBox.blockFocus = true
@@ -352,9 +353,9 @@ function Rows.CreateSettingWidgets(resultRow)
     local function MakeKbHoverHandler(slotLabel)
         return function(self)
             GameTooltip:SetOwner(self, "ANCHOR_TOP")
-            GameTooltip:SetText("Bind " .. slotLabel .. " key", 1, 1, 1)
-            GameTooltip:AddLine("Click then press a key combination.", 0.85, 0.78, 0.55, true)
-            GameTooltip:AddLine("Right-click to clear.", 0.7, 0.7, 0.7, true)
+            GameTooltip:SetText(sformat(L["KB_BIND_SLOT"], slotLabel), 1, 1, 1)
+            GameTooltip:AddLine(L["KB_PRESS_COMBO"], 0.85, 0.78, 0.55, true)
+            GameTooltip:AddLine(L["KB_RIGHT_CLICK_CLEAR"], 0.7, 0.7, 0.7, true)
             GameTooltip:Show()
         end
     end
@@ -568,11 +569,11 @@ function Rows.CreateSettingWidgets(resultRow)
 
     local resetBtn = CreateFrame("Button", nil, applyExt, "UIPanelButtonTemplate")
     resetBtn:SetSize(58, 18)
-    resetBtn:SetText("Reset")
+    resetBtn:SetText(_G["RESET"] or "Reset")
     resetBtn:SetPoint("RIGHT", applyExt, "CENTER", -2, -2)
     local applyBtn = CreateFrame("Button", nil, applyExt, "UIPanelButtonTemplate")
     applyBtn:SetSize(58, 18)
-    applyBtn:SetText("Apply")
+    applyBtn:SetText(_G["APPLY"] or "Apply")
     applyBtn:SetPoint("LEFT", applyExt, "CENTER", 2, -2)
     local function bothVars(d)
         if not d then return nil, nil end

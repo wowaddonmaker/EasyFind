@@ -4,6 +4,7 @@ local Search = ns.Search
 local Calculator = ns.Calculator
 local Results = ns.Results
 local Utils = ns.Utils
+local L = ns.L
 
 local mmin = Utils.mmin
 
@@ -347,7 +348,7 @@ function Calculator:EnsureCalculatorFrame()
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("LEFT", glyph, "RIGHT", 8, 0)
-    title:SetText("Calculator")
+    title:SetText(L["UITREE_CALCULATOR"])
     title:SetTextColor(1, 1, 1, 1)
 
     local close = CreateFrame("Button", nil, frame)

@@ -549,7 +549,7 @@ local kbWaitingFor
 
 local function RefreshKbWidget(widget)
     local cur = GetBindingKey(widget.action) or EasyFind:GetAccountKeybind(widget.action)
-    widget.btn._label:SetText(cur or L["TUT_KB_NOT_BOUND"])
+    widget.btn._label:SetText(cur or _G["NOT_BOUND"] or "Not Bound")
 end
 
 local function StopKeybindCapture()

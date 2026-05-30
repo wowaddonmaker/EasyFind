@@ -2,6 +2,7 @@ local _, ns = ...
 
 local Search = ns.Search
 local Tooltips = ns.ResultTooltips
+local L = ns.L
 
 local CreateFrame = CreateFrame
 local BattlePetTooltip = BattlePetTooltip
@@ -106,7 +107,7 @@ function Tooltips:CreateUnearnedTooltip()
 
     local text = unearnedTooltip:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     text:SetPoint("CENTER", 0, 0)
-    text:SetText("Currency not yet earned")
+    text:SetText(L["CURRENCY_NOT_EARNED"])
     text:SetTextColor(1, 1, 1, 1)
     unearnedTooltip.text = text
 

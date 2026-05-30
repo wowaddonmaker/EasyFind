@@ -131,7 +131,7 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
 
     local header = dropdown:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     header:SetPoint("TOPLEFT", 12, -PADDING_TOP)
-    header:SetText("Show:")
+    header:SetText((_G["SHOW"] or "Show") .. ":")
     header:SetTextColor(Utils.RGB(GOLD_COLOR, 1))
 
     local checkRows = {}

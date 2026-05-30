@@ -94,12 +94,17 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
 
     -- Difficulty dropdown (single-select, matches EJ style)
     local DIFF_OPTIONS = {
-        { key = "lfr",    label = "Raid Finder" },
-        { key = "normal", label = "Normal" },
-        { key = "heroic", label = "Heroic" },
-        { key = "mythic", label = "Mythic" },
+        { key = "lfr",    label = _G["RAID_FINDER"] or "Raid Finder" },
+        { key = "normal", label = _G["PLAYER_DIFFICULTY1"] or "Normal" },
+        { key = "heroic", label = _G["PLAYER_DIFFICULTY2"] or "Heroic" },
+        { key = "mythic", label = _G["PLAYER_DIFFICULTY6"] or "Mythic" },
     }
-    local DIFF_LABELS = { lfr = "Raid Finder", normal = "Normal", heroic = "Heroic", mythic = "Mythic" }
+    local DIFF_LABELS = {
+        lfr = _G["RAID_FINDER"] or "Raid Finder",
+        normal = _G["PLAYER_DIFFICULTY1"] or "Normal",
+        heroic = _G["PLAYER_DIFFICULTY2"] or "Heroic",
+        mythic = _G["PLAYER_DIFFICULTY6"] or "Mythic",
+    }
 
     local diffBtn = CreateFrame("Button", nil, gearOptionsPopup)
     diffBtn:SetSize(GEAR_POPUP_WIDTH - GEAR_POPUP_PAD * 2, 27)
@@ -125,7 +130,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
 
     local function UpdateDiffLabel()
         local key = EasyFind.db.lootDifficulty or "normal"
-        diffText:SetText(DIFF_LABELS[key] or "Normal")
+        diffText:SetText(DIFF_LABELS[key] or _G["PLAYER_DIFFICULTY1"] or "Normal")
     end
 
     -- Difficulty popup menu
@@ -283,7 +288,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
                 lbl:SetText(colorStr .. (className or "Current Spec") .. "|r")
             end
         elseif lf == "all" then
-            lbl:SetText("All Classes")
+            lbl:SetText(_G["ALL_CLASSES"] or "All Classes")
         elseif lf.classID then
             local cls
             for _, c in ipairs(allClassSpecs) do
@@ -436,7 +441,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     classSelectBtn:SetFrameLevel(specPopup:GetFrameLevel() + 10)
     local csLabel = classSelectBtn:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     csLabel:SetPoint("LEFT", 8, 0)
-    csLabel:SetText("Class")
+    csLabel:SetText(_G["CLASS"] or "Class")
     local csArrow = classSelectBtn:CreateTexture(nil, "ARTWORK")
     csArrow:SetSize(16, 16)
     csArrow:SetPoint("RIGHT", -4, 0)
@@ -536,7 +541,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
                         if child:GetPoint() then
                             local _, rel = child:GetPoint()
                             if rel and rel:GetObjectType() == "Texture" then
-                                child:SetText("All Specializations")
+                                child:SetText(_G["ALL_SPECS"] or "All Specializations")
                             end
                         end
                     end

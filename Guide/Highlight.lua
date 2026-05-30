@@ -4,6 +4,7 @@ local Highlight = {}
 ns.Highlight = Highlight
 
 local Utils = ns.Utils
+local L = ns.L
 local ResultHandlers = ns.ResultHandlers
 local GetButtonText        = Utils.GetButtonText
 local SearchFrameTreeFuzzy = Utils.SearchFrameTreeFuzzy
@@ -346,7 +347,7 @@ function Highlight:CreateInstructionFrame()
     local dismissBtn = CreateFrame("Button", nil, instructionFrame, "UIPanelButtonTemplate")
     dismissBtn:SetSize(80, 22)
     dismissBtn:SetPoint("BOTTOM", 0, 8)
-    dismissBtn:SetText("Got it!")
+    dismissBtn:SetText(L["BTN_GOT_IT"])
     dismissBtn:SetScript("OnClick", function()
         Highlight:Cancel()
     end)

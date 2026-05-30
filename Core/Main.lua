@@ -1,6 +1,7 @@
 local ADDON_NAME, ns = ...
 
 local Utils   = ns.Utils
+local L       = ns.L
 local sformat = Utils.sformat
 local pairs   = Utils.pairs
 local xpcall  = Utils.xpcall
@@ -321,7 +322,7 @@ local function ShowFeedbackURL(url)
 
         local label = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         label:SetPoint("TOP", 0, -16)
-        label:SetText("Press Ctrl+C to copy, then paste in your browser:")
+        label:SetText(L["URL_COPY_HINT"])
 
         local editBox = CreateFrame("EditBox", nil, popup, "InputBoxTemplate")
         editBox:SetSize(400, 20)
@@ -425,19 +426,19 @@ local function OnInitialize()
                 ns.Search:ShowWhatsNew(ns.version)
             end
         elseif msg == "help" or msg == "h" or msg == "?" then
-            EasyFind:Print("Commands:")
-            EasyFind:Print("  /ef: open options panel")
-            EasyFind:Print("  /ef clear: dismiss highlights, pins, breadcrumbs")
-            EasyFind:Print("  /ef reset: reset all settings")
-            EasyFind:Print("  /ef bug: report a bug")
-            EasyFind:Print("  /ef feature: request a feature")
+            EasyFind:Print(L["CMD_HEADER"])
+            EasyFind:Print(L["CMD_OPTIONS"])
+            EasyFind:Print(L["CMD_CLEAR"])
+            EasyFind:Print(L["CMD_RESET"])
+            EasyFind:Print(L["CMD_BUG"])
+            EasyFind:Print(L["CMD_FEATURE"])
         elseif msg == "" then
             EasyFind:OpenOptions()
         end
     end
 
     if EasyFind.db.showLoginMessage == true then
-        EasyFind:Print("EasyFind loaded. Use /ef o to open options. (Disable this message in General settings.)")
+        EasyFind:Print(L["MSG_LOGIN"])
     end
 end
 
@@ -909,9 +910,9 @@ local function CreateMinimapButton()
     mmBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
         GameTooltip:SetText("EasyFind")
-        GameTooltip:AddLine("Left-click: Toggle search bar", 1, 1, 1)
-        GameTooltip:AddLine("Right-click: Open options", 1, 1, 1)
-        GameTooltip:AddLine("Drag to reposition", 0.7, 0.7, 0.7)
+        GameTooltip:AddLine(L["MINIMAP_TT_LEFT_CLICK"], 1, 1, 1)
+        GameTooltip:AddLine(L["MINIMAP_TT_RIGHT_CLICK"], 1, 1, 1)
+        GameTooltip:AddLine(L["MINIMAP_TT_DRAG"], 0.7, 0.7, 0.7)
         GameTooltip:Show()
     end)
     mmBtn:SetScript("OnLeave", GameTooltip_Hide)

@@ -5,6 +5,7 @@ local Rows = ns.ResultRows
 local Tooltips = ns.ResultTooltips
 local Handlers = ns.ResultHandlers
 local Utils = ns.Utils
+local L = ns.L
 
 local select = Utils.select
 local sformat = Utils.sformat
@@ -102,10 +103,9 @@ function Rows.InstallTooltips(resultRow)
             local k1, k2 = GetBindingKey(action)
             GameTooltip:AddLine(" ")
             GameTooltip:AddLine(sformat("Primary: %s", k1 or "Not Bound"), 0.7, 0.7, 0.7)
-            GameTooltip:AddLine(sformat("Alternate: %s", k2 or "Not Bound"), 0.7, 0.7, 0.7)
+            GameTooltip:AddLine(sformat(L["KB_ALTERNATE"], k2 or (_G["NOT_BOUND"] or "Not Bound")), 0.7, 0.7, 0.7)
             GameTooltip:AddLine(" ")
-            GameTooltip:AddLine("Click a button to capture, right-click to clear.",
-                0.5, 0.5, 0.5, true)
+            GameTooltip:AddLine(L["KB_CAPTURE_HINT"], 0.5, 0.5, 0.5, true)
             GameTooltip:Show()
             return
         end
@@ -157,7 +157,7 @@ function Rows.InstallTooltips(resultRow)
                     if not valStr then
                         valStr = (n == mfloor(n)) and tostring(mfloor(n)) or sformat("%.2f", n)
                     end
-                    GameTooltip:AddLine(sformat("Current: %s   (%s - %s)",
+                    GameTooltip:AddLine(sformat(L["SETTING_CURRENT_RANGE"],
                         valStr,
                         tostring(self.data.settingMin),
                         tostring(self.data.settingMax)), 0.7, 0.7, 0.7)
@@ -169,7 +169,7 @@ function Rows.InstallTooltips(resultRow)
 
         if self.isUnearnedCurrency then
             if GetUnearnedTooltip() then
-                local tooltipText = self.isPathNode and "This tab does not exist on this character yet" or "Currency not yet earned"
+                local tooltipText = self.isPathNode and L["TAB_NOT_ON_CHARACTER"] or L["CURRENCY_NOT_EARNED"]
                 GetUnearnedTooltip().text:SetText(tooltipText)
                 local textWidth = GetUnearnedTooltip().text:GetStringWidth()
                 local textHeight = GetUnearnedTooltip().text:GetStringHeight()
@@ -248,28 +248,28 @@ function Rows.InstallTooltips(resultRow)
             elseif self.icon.outfitID then
                 AnchorTooltipAtCursor(GameTooltip, self)
                 GameTooltip:SetText(self.data and self.data.name or "Outfit")
-                GameTooltip:AddLine("Instant", 1, 1, 1)
-                GameTooltip:AddLine("Transmogrify the appearance of your\nweapons and armor", 0, 1, 0)
+                GameTooltip:AddLine(_G["SPELL_CAST_TIME_INSTANT"] or "Instant", 1, 1, 1)
+                GameTooltip:AddLine(L["TMOG_DESC"], 0, 1, 0)
                 local activeID = Rows.lastEquippedOutfitID
                     or (C_TransmogOutfitInfo and C_TransmogOutfitInfo.GetActiveOutfitID
                         and C_TransmogOutfitInfo.GetActiveOutfitID())
                 if activeID and activeID == self.icon.outfitID then
                     GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine("Currently equipped", 0.3, 1, 0.3)
+                    GameTooltip:AddLine(_G["CURRENTLY_EQUIPPED"] or "Currently equipped", 0.3, 1, 0.3)
                 else
                     GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine("Click to equip", 1, 0.82, 0)
+                    GameTooltip:AddLine(L["TMOG_CLICK_EQUIP"], 1, 0.82, 0)
                 end
                 if C_TransmogOutfitInfo and C_TransmogOutfitInfo.IsLockedOutfit then
                     GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine("Lock Appearance:", 1, 1, 1)
-                    GameTooltip:AddLine("Prevent this appearance from being\nreplaced by a Situation", 1, 0.82, 0)
+                    GameTooltip:AddLine(L["TMOG_LOCK_LABEL"], 1, 1, 1)
+                    GameTooltip:AddLine(L["TMOG_LOCK_DESC"], 1, 0.82, 0)
                     if C_TransmogOutfitInfo.IsLockedOutfit(self.icon.outfitID) then
                         GameTooltip:AddLine(" ")
-                        GameTooltip:AddLine("Currently locked", 0.3, 1, 0.3)
+                        GameTooltip:AddLine(L["TMOG_LOCKED"], 0.3, 1, 0.3)
                     end
                     GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine("<Right Click icon on action bar\nor transmog window to toggle>", 0.5, 0.5, 0.5)
+                    GameTooltip:AddLine(L["TMOG_LOCK_TOGGLE_HINT"], 0.5, 0.5, 0.5)
                 end
                 GameTooltip:Show()
             elseif self.icon.lootItemID then
@@ -288,7 +288,7 @@ function Rows.InstallTooltips(resultRow)
             elseif self.icon.gearSetID then
                 AnchorTooltipAtCursor(GameTooltip, self)
                 GameTooltip:SetText(self.data and self.data.name or "Gear Set")
-                GameTooltip:AddLine("Click to equip", 1, 0.82, 0)
+                GameTooltip:AddLine(L["TMOG_CLICK_EQUIP"], 1, 0.82, 0)
                 GameTooltip:Show()
             -- Ability tooltip (must come after mount, since mount entries
             -- carry both mountID and spellID and use the mount tooltip).

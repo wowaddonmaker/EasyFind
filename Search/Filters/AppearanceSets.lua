@@ -82,7 +82,7 @@ function Filters:BuildAppearanceSetOptionsPopup(StylePopup, CreateRadioTexture,
                 end
             end
         elseif cf == "all" then
-            cbLabel:SetText("All Classes")
+            cbLabel:SetText(_G["ALL_CLASSES"] or "All Classes")
             return
         elseif type(cf) == "table" and cf.classID then
             for _, cls in ipairs(classes) do
@@ -92,7 +92,7 @@ function Filters:BuildAppearanceSetOptionsPopup(StylePopup, CreateRadioTexture,
                 end
             end
         end
-        cbLabel:SetText("All Classes")
+        cbLabel:SetText(_G["ALL_CLASSES"] or "All Classes")
     end
     UpdateClassLabel()
 
@@ -126,7 +126,7 @@ function Filters:BuildAppearanceSetOptionsPopup(StylePopup, CreateRadioTexture,
     allRadio:SetPoint("LEFT", 4, 0)
     local allLbl = allRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     allLbl:SetPoint("LEFT", allRadio, "RIGHT", 4, 0)
-    allLbl:SetText("All Classes")
+    allLbl:SetText(_G["ALL_CLASSES"] or "All Classes")
     local allHL = allRow:CreateTexture(nil, "HIGHLIGHT")
     allHL:SetAllPoints()
     allHL:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))

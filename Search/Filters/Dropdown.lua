@@ -4,6 +4,7 @@ local Search = ns.Search
 local Filters = ns.Filters
 local Icons = ns.ResultIcons
 local Utils = ns.Utils
+local L = ns.L
 
 local ipairs, pairs = Utils.ipairs, Utils.pairs
 local CreateFrame = CreateFrame
@@ -99,7 +100,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     uncheckRow:SetPoint("TOPLEFT", 8, -PADDING_TOP)
     local uncheckLabel = uncheckRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     uncheckLabel:SetPoint("LEFT", 8, 0)
-    uncheckLabel:SetText("Toggle All")
+    uncheckLabel:SetText(L["FILTER_TOGGLE_ALL"])
     local uncheckHL = uncheckRow:CreateTexture(nil, "HIGHLIGHT")
     uncheckHL:SetAllPoints()
     uncheckHL:SetColorTexture(1, 1, 1, 0.1)
@@ -493,7 +494,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 hideTipRow:GetCheckedTexture():SetPoint("LEFT", 4, 0)
                 local lbl = hideTipRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
                 lbl:SetPoint("LEFT", hideTipRow:GetNormalTexture(), "RIGHT", 4, 0)
-                lbl:SetText("Hide tooltips")
+                lbl:SetText(L["FILTER_HIDE_TOOLTIPS"])
                 local hl = hideTipRow:CreateTexture(nil, "HIGHLIGHT")
                 hl:SetAllPoints()
                 hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))

@@ -7,6 +7,7 @@ local Icons = ns.ResultIcons
 local Handlers = ns.ResultHandlers
 local Utils = ns.Utils
 local Calculator = ns.Calculator
+local L = ns.L
 local UIPins = ns.UIPins
 local GOLD_COLOR = ns.GOLD_COLOR
 
@@ -729,7 +730,7 @@ function Results:ApplyTransmogBrowseMode()
     -- Browse-mode message (left panel, where vendor buttons were)
     if not TransmogFrame._efBrowseMsg then
         local msg = TransmogFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        msg:SetText("Visit a transmogrification vendor for full functionality.")
+        msg:SetText(L["TMOG_VENDOR_REQUIRED"])
         msg:SetTextColor(Utils.RGB(GOLD_COLOR))
         msg:SetJustifyH("CENTER")
         TransmogFrame._efBrowseMsg = msg
@@ -750,7 +751,7 @@ function Results:ApplyTransmogBrowseMode()
     -- Situations message (top right, near the hidden tab)
     if not TransmogFrame._efSituationsMsg then
         local sitMsg = TransmogFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        sitMsg:SetText("See transmogrification vendor\nto adjust Situations settings.")
+        sitMsg:SetText(L["TMOG_VENDOR_SITUATIONS"])
         sitMsg:SetTextColor(Utils.RGB(GOLD_COLOR))
         sitMsg:SetJustifyH("RIGHT")
         TransmogFrame._efSituationsMsg = sitMsg

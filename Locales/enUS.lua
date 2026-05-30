@@ -112,7 +112,6 @@ L["OPT_TAB_SHORTCUTS"]                  = "Shortcuts"
 L["OPT_TAB_FEEDBACK"]                   = "Feedback"
 L["OPT_SETTINGS_TITLE"]                 = "Settings"
 L["OPT_KB_PRESS_KEY"]                   = "Press a key..."
-L["OPT_KB_NOT_BOUND"]                   = "Not Bound"
 L["OPT_ADDON_NAME"]                     = "EasyFind"
 L["OPT_ICON_SIZE"]                      = "Icon Size"
 L["OPT_FONT_SIZE"]                      = "Font Size"
@@ -210,7 +209,6 @@ L["TUT_SLIDE_USE_TOYS"]                 = "Use toys and other supported items di
 L["TUT_MAP_TAB_DESC"]                   = "Search the map you're viewing. \"This Zone\" shows matches for the current map, while \"Across the World\" groups broader results by continent and zone. Built for quickly moving between zones and previewing POIs on hover; the same results are available from the main search bar, just without the nested map layout."
 L["TUT_BTN_BACK"]                       = "Back"
 L["TUT_BTN_BACK_ARROW"]                 = "< Back"
-L["TUT_KB_NOT_BOUND"]                   = "Not bound"
 L["TUT_KB_PRESS_KEY"]                   = "Press a key..."
 
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - New Features"
@@ -258,3 +256,88 @@ L["PROMPT_RESET_SEARCH_BAR"]            = "Reset the search bar to its default p
 L["PROMPT_RELEASE_PET"]                 = "Are you sure you want to permanently release this pet? This cannot be undone."
 L["PROMPT_RENAME_PET"]                  = "New name for this pet:"
 L["HEADER_PINNED"]                      = "Pinned"
+
+-- =============================================================================
+-- Core/Main.lua  --  slash help, login message, minimap tooltip
+-- =============================================================================
+L["URL_COPY_HINT"]                      = "Press Ctrl+C to copy, then paste in your browser:"
+L["CMD_HEADER"]                         = "Commands:"
+L["CMD_OPTIONS"]                        = "  /ef: open options panel"
+L["CMD_CLEAR"]                          = "  /ef clear: dismiss highlights, pins, breadcrumbs"
+L["CMD_RESET"]                          = "  /ef reset: reset all settings"
+L["CMD_BUG"]                            = "  /ef bug: report a bug"
+L["CMD_FEATURE"]                        = "  /ef feature: request a feature"
+L["MSG_LOGIN"]                          = "EasyFind loaded. Use /ef o to open options. (Disable this message in General settings.)"
+L["MINIMAP_TT_LEFT_CLICK"]              = "Left-click: Toggle search bar"
+L["MINIMAP_TT_RIGHT_CLICK"]             = "Right-click: Open options"
+L["MINIMAP_TT_DRAG"]                    = "Drag to reposition"
+
+-- =============================================================================
+-- Search bar + filter dropdown
+-- =============================================================================
+L["SEARCH_PLACEHOLDER"]                 = "Type to search..."
+L["FILTER_RESULTS"]                     = "Filter Results"
+L["FILTER_RESULTS_TT"]                  = "Choose which result types to show."
+L["QUICK_FILTER"]                       = "Quick Filter"
+L["QUICK_FILTER_TT"]                    = "Click or press Backspace on an empty search to clear."
+L["FILTER_TOGGLE_ALL"]                  = "Toggle All"
+L["FILTER_HIDE_TOOLTIPS"]               = "Hide tooltips"
+
+-- =============================================================================
+-- Rescaler dimension labels
+-- =============================================================================
+L["RESCALE_WIDTH"]                      = "Width:"
+L["RESCALE_HEIGHT"]                     = "Height:"
+
+-- =============================================================================
+-- MapSearch/MapTab.lua  --  map search UI labels and tooltips
+-- =============================================================================
+L["MAP_SEARCH_PLACEHOLDER"]             = "Search for POIs, zones, instances..."
+L["MAP_AUTO_TRACK"]                     = "Auto-track"
+L["MAP_AUTO_TRACK_RARES"]               = "Auto-track Rares"
+L["MAP_AUTO_TRACK_RARES_TT"]            = "Keep active rares shown on the map continuously."
+L["MAP_FILTER_TT"]                      = "Toggle category filters."
+L["MAP_SEARCH_TITLE"]                   = "EasyFind Map Search"
+L["MAP_SEARCH_TT"]                      = "Search POIs, flight masters, zones, dungeons, raids, and more."
+L["MAP_SHOW_RECENT"]                    = "Show recent searches"
+L["MAP_AUTO_EXPAND"]                    = "Auto expand headers"
+L["MAP_AUTO_EXPAND_TT"]                 = "When a search matches a parent zone, list every child it contains - even ones that don't match your query."
+L["MAP_AUTO_EXPAND_EXAMPLE"]            = "Example: searching |cffffd200east|r matches Eastern Kingdoms. With this on, every zone inside Eastern Kingdoms is listed under it. With it off, only zones whose names actually match |cffffd200east|r show up (Eastern Plaguelands, etc.)."
+
+-- =============================================================================
+-- MapSearch/Navigation.lua  --  waypoint pin tooltips
+-- =============================================================================
+L["WP_PLACE"]                           = "Left-click to place waypoint and track"
+L["WP_NAV_UNAVAILABLE"]                 = "Navigate not available"
+L["WP_NAV_ZONE_ONLY"]                   = "Only available when viewing your current zone"
+L["WP_DISMISS"]                         = "Right-click to dismiss"
+
+-- =============================================================================
+-- Transmog outfit tooltips + vendor messages
+-- =============================================================================
+L["TMOG_DESC"]                          = "Transmogrify the appearance of your\nweapons and armor"
+L["TMOG_CLICK_EQUIP"]                   = "Click to equip"
+L["TMOG_LOCK_LABEL"]                    = "Lock Appearance:"
+L["TMOG_LOCK_DESC"]                     = "Prevent this appearance from being\nreplaced by a Situation"
+L["TMOG_LOCKED"]                        = "Currently locked"
+L["TMOG_LOCK_TOGGLE_HINT"]              = "<Right Click icon on action bar\nor transmog window to toggle>"
+L["TMOG_VENDOR_REQUIRED"]               = "Visit a transmogrification vendor for full functionality."
+L["TMOG_VENDOR_SITUATIONS"]             = "See transmogrification vendor\nto adjust Situations settings."
+
+-- =============================================================================
+-- Keybind capture tooltips (Results widgets)
+-- =============================================================================
+L["KB_CAPTURE_HINT"]                    = "Click a button to capture, right-click to clear."
+L["KB_PRESS_COMBO"]                     = "Click then press a key combination."
+L["KB_RIGHT_CLICK_CLEAR"]               = "Right-click to clear."
+L["KB_ALTERNATE"]                       = "Alternate: %s"
+L["KB_BIND_SLOT"]                       = "Bind %s key"
+L["SETTING_CURRENT_RANGE"]              = "Current: %s   (%s - %s)"
+L["TAB_NOT_ON_CHARACTER"]               = "This tab does not exist on this character yet"
+
+-- =============================================================================
+-- Misc singletons
+-- =============================================================================
+L["BTN_GOT_IT"]                         = "Got it!"
+L["CURRENCY_NOT_EARNED"]                = "Currency not yet earned"
+L["CALC_COPY_HINT"]                     = "Ctrl+C to copy"
