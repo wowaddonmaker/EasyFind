@@ -40,9 +40,10 @@ end
 
 local function RefreshSearchAfterHeavyLoad(anyChanged)
     if not anyChanged then return end
-    local currentText = Search:GetSearchFrame() and Search:GetSearchFrame().editBox and Search:GetSearchFrame().editBox:GetText()
-    if Search:GetSearchFrame() and Search:GetSearchFrame().editBox and Search:GetSearchFrame().editBox:HasFocus()
-       and currentText and currentText ~= "" then
+    local frame = Search:GetSearchFrame()
+    local editBox = frame and frame.editBox
+    local currentText = editBox and editBox:GetText()
+    if frame and frame:IsShown() and currentText and currentText ~= "" then
         Search:OnSearchTextChanged(currentText, true)
     end
 end
@@ -62,7 +63,7 @@ local function RefreshSearchAfterItemInfo()
     local frame = Search:GetSearchFrame()
     local editBox = frame and frame.editBox
     local currentText = editBox and editBox:GetText()
-    if editBox and editBox:HasFocus() and currentText and currentText ~= "" then
+    if frame and frame:IsShown() and currentText and currentText ~= "" then
         Search:OnSearchTextChanged(currentText, true)
     end
 end

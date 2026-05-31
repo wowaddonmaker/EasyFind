@@ -627,6 +627,15 @@ local function OnPlayerLogin()
         end
     end)
 
+    -- Warm loot at idle too (staggered behind bosses): it's the provider
+    -- gear/stat searches like "haste ring" hit, so the first one resolves
+    -- instantly instead of loading the provider + item stats mid-search.
+    SafeAfter(2.0, function()
+        if ns.Database and ns.Database.EnsureDynamicProviderLoaded then
+            ns.Database:EnsureDynamicProviderLoaded("loot", function() end)
+        end
+    end)
+
     -- Pre-warm Blizzard's achievement search index; LoadUI + first index build are slow.
     SafeAfter(0.5, function()
         if ns.Search and ns.Search.PrewarmAchievementSearch then
