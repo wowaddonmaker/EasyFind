@@ -283,7 +283,7 @@ function Search:CreateSearchFrame()
     -- doesn't crash, but the textures stay invisible.
     ns.SetSearchBorderShown(searchFrame, false)
     ns.SetRoundedRectBorderShown(containerFrame, true)
-    ns.SetRoundedRectBorderBgAlpha(containerFrame, ns.SEARCH_WINDOW_ALPHA)
+    ns.SetRoundedRectBorderBgAlpha(containerFrame, ns.GetSearchWindowAlpha())
 
     -- Static magnifying-glass icon (non-interactive, flush left)
     local contentSz = barH * ns.SEARCHBAR_FILL
@@ -2020,7 +2020,7 @@ end
 
 function Search:UpdateOpacity()
     if not searchFrame then return end
-    local alpha = ns.SEARCH_WINDOW_ALPHA
+    local alpha = ns.GetSearchWindowAlpha()
     if containerFrame then
         self:ApplySearchWindowFill(containerFrame)
         ns.SetRoundedRectBorderBgAlpha(containerFrame, alpha)
@@ -2029,7 +2029,7 @@ end
 
 function Search:UpdateSearchBarTheme()
     if not searchFrame then return end
-    local alpha = ns.SEARCH_WINDOW_ALPHA
+    local alpha = ns.GetSearchWindowAlpha()
     searchFrame:SetBackdrop(nil)
     -- Pill stays hidden; container provides the rounded silhouette.
     ns.SetSearchBorderShown(searchFrame, false)
@@ -2142,7 +2142,7 @@ function Search:UpdateFontSize()
 
     local theme = Results:GetActiveTheme()
     local WHITE8x8 = "Interface\\BUTTONS\\WHITE8x8"
-    local alpha = ns.SEARCH_WINDOW_ALPHA
+    local alpha = ns.GetSearchWindowAlpha()
     if theme.searchBarRounded then
         searchFrame:SetBackdrop(nil)
         if containerFrame then

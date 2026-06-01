@@ -671,6 +671,9 @@ local STAT_KEYWORD_MAP = {
     ITEM_MOD_STRENGTH_SHORT       = {"str", "strength"},
 }
 
+-- Bump when STAT_KEYWORD_MAP changes so the persisted lootStatCache rebuilds.
+ns.LOOT_STAT_CACHE_VER = 1
+
 local heavySearchWordLookup
 local function AddHeavySearchWord(word)
     if not word or word == "" then return end
@@ -943,20 +946,30 @@ Database._pendingStatEnrichment = pendingStatEnrichment
 
 function Database:EnrichLootStats(entry)
     if entry._statsEnriched then return end
+    local itemID = entry.itemID
+    -- Item stats are immutable, so a persisted result is always valid and skips
+    -- the async item-data fetch entirely (makes gear/stat search instant on
+    -- every login after the first, even with a cold client item cache).
+    local cache = EasyFind.db and EasyFind.db.lootStatCache
+    if itemID and cache and cache[itemID] then
+        entry.lootStatKw = cache[itemID]
+        entry._statsEnriched = true
+        return
+    end
     local link = Database:GetLootItemLink(entry)
     local GetItemStatsFn = GetItemStats or (C_Item and C_Item.GetItemStats)
     if not GetItemStatsFn then return end
     local stats = link and GetItemStatsFn(link)
-    if not stats and entry.itemID then
-        stats = GetItemStatsFn("item:" .. entry.itemID)
+    if not stats and itemID then
+        stats = GetItemStatsFn("item:" .. itemID)
     end
     if not stats then
         -- Server hasn't sent item info yet. Queue for retry on
         -- GET_ITEM_INFO_RECEIVED and nudge the client to fetch.
-        if entry.itemID then
-            pendingStatEnrichment[entry.itemID] = entry
+        if itemID then
+            pendingStatEnrichment[itemID] = entry
             if C_Item and C_Item.RequestLoadItemDataByID then
-                pcall(C_Item.RequestLoadItemDataByID, entry.itemID)
+                pcall(C_Item.RequestLoadItemDataByID, itemID)
             end
         end
         return
@@ -971,6 +984,9 @@ function Database:EnrichLootStats(entry)
     end
     entry.lootStatKw = statKw
     entry._statsEnriched = true
+    if itemID and cache then
+        cache[itemID] = statKw   -- persist for instant enrichment next login
+    end
 end
 
 -- Called from the GET_ITEM_INFO_RECEIVED event handler. Returns true

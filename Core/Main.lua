@@ -35,6 +35,7 @@ local DB_DEFAULTS = {
     uiResultsWidth = 350,
     uiSearchBarHeight = ns.SEARCHBAR_HEIGHT,
     fontSize = 0.9,
+    searchWindowOpacity = ns.SEARCH_WINDOW_ALPHA,
     uiSearchPosition = nil,
     localMapDirectOpen = true,
     globalMapDirectOpen = true,
@@ -53,6 +54,8 @@ local DB_DEFAULTS = {
     pinnedUIItems = {},
     pinnedUIItemsPerChar = {},
     pinnedMapItems = {},
+    lootStatCache = {},
+    lootStatCacheVer = 0,
     mapPinsCollapsed = false,
     showLoginMessage = false,
     showAliasMessages = true,
@@ -361,7 +364,10 @@ function EasyFind:OpenFeatureRequest() OpenFeatureRequest() end
 
 local function OnInitialize()
     if not EasyFindDB then
-        EasyFindDB = { firstInstall = true }
+        EasyFindDB = {
+            firstInstall = true,
+            accountKeybinds = { EASYFIND_TOGGLE_FOCUS = "CTRL-SPACE", EASYFIND_MAP_FOCUS = "CTRL-M" },
+        }
     end
     local savedVersion = EasyFindDB.dbVersion or 0
     for k, v in pairs(DB_DEFAULTS) do
@@ -627,9 +633,13 @@ local function OnPlayerLogin()
         end
     end)
 
-    -- Warm loot at idle too (staggered behind bosses): it's the provider
-    -- gear/stat searches like "haste ring" hit, so the first one resolves
-    -- instantly instead of loading the provider + item stats mid-search.
+    -- Drop the persisted loot-stat cache if the stat keyword map changed since
+    -- it was built, then warm loot once (single staggered pass, never a retry
+    -- loop). The cache makes gear/stat search instant on later logins.
+    if EasyFind.db.lootStatCacheVer ~= ns.LOOT_STAT_CACHE_VER then
+        EasyFind.db.lootStatCache = {}
+        EasyFind.db.lootStatCacheVer = ns.LOOT_STAT_CACHE_VER
+    end
     SafeAfter(2.0, function()
         if ns.Database and ns.Database.EnsureDynamicProviderLoaded then
             ns.Database:EnsureDynamicProviderLoaded("loot", function() end)

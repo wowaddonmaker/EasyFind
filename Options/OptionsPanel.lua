@@ -76,6 +76,7 @@ local UI_DEFAULTS = {
     uiResultsAbove = false,
     showResultShortcutHints = true,
     fontSize = 0.9,
+    searchWindowOpacity = ns.SEARCH_WINDOW_ALPHA,
     uiSearchScale = 1.0,
     uiSearchWidth = 1.54,
     uiSearchBarHeight = ns.SEARCHBAR_HEIGHT,
@@ -996,6 +997,47 @@ function Options:Initialize()
     end
     optionsFrame.SwitchToTab = SwitchToTab
 
+    local bindsTabIndex
+
+    local function FlashBindButton()
+        local target = optionsFrame.toggleFocusBtn
+        if not target then return end
+        local glow = target.efBindGlow
+        if not glow then
+            glow = CreateFrame("Frame", nil, target)
+            glow:SetPoint("TOPLEFT", target, "TOPLEFT", -3, 3)
+            glow:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", 3, -3)
+            glow:SetFrameLevel(target:GetFrameLevel() + 4)
+            local function MakeEdge()
+                local edge = glow:CreateTexture(nil, "OVERLAY")
+                edge:SetColorTexture(1, 0.82, 0, 1)
+                return edge
+            end
+            local topEdge = MakeEdge()
+            topEdge:SetPoint("TOPLEFT"); topEdge:SetPoint("TOPRIGHT"); topEdge:SetHeight(2)
+            local bottomEdge = MakeEdge()
+            bottomEdge:SetPoint("BOTTOMLEFT"); bottomEdge:SetPoint("BOTTOMRIGHT"); bottomEdge:SetHeight(2)
+            local leftEdge = MakeEdge()
+            leftEdge:SetPoint("TOPLEFT"); leftEdge:SetPoint("BOTTOMLEFT"); leftEdge:SetWidth(2)
+            local rightEdge = MakeEdge()
+            rightEdge:SetPoint("TOPRIGHT"); rightEdge:SetPoint("BOTTOMRIGHT"); rightEdge:SetWidth(2)
+            local pulse = glow:CreateAnimationGroup()
+            for i = 1, 3 do
+                local up = pulse:CreateAnimation("Alpha")
+                up:SetFromAlpha(0); up:SetToAlpha(1); up:SetDuration(0.22); up:SetOrder(i * 2 - 1)
+                local down = pulse:CreateAnimation("Alpha")
+                down:SetFromAlpha(1); down:SetToAlpha(0); down:SetDuration(0.22); down:SetOrder(i * 2)
+            end
+            pulse:SetScript("OnFinished", function() glow:Hide() end)
+            glow.pulse = pulse
+            target.efBindGlow = glow
+        end
+        glow.pulse:Stop()
+        glow:SetAlpha(0)
+        glow:Show()
+        glow.pulse:Play()
+    end
+
     local function CreateTab(tabName)
         local index = #tabFrames + 1
 
@@ -1034,6 +1076,7 @@ function Options:Initialize()
         local content = CreateFrame("Frame", nil, contentBorder)
         content:SetAllPoints(contentBorder)
         content:Hide()
+        content.tabIndex = index
         tinsert(tabFrames, content)
 
         return content
@@ -1093,33 +1136,171 @@ function Options:Initialize()
 
     local homeTab = CreateTab(L["OPT_TAB_HOME"])
     local homeIcon = homeTab:CreateTexture(nil, "ARTWORK")
-    homeIcon:SetSize(48, 48)
-    homeIcon:SetPoint("TOPLEFT", homeTab, "TOPLEFT", 12, -4)
+    homeIcon:SetSize(80, 80)
+    homeIcon:SetPoint("TOPLEFT", homeTab, "TOPLEFT", 12, -8)
     homeIcon:SetTexture("Interface\\AddOns\\EasyFind\\textures\\Spyglass")
 
-    local homeTitle = homeTab:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    homeTitle:SetPoint("LEFT", homeIcon, "RIGHT", 12, 6)
+    local homeTitle = homeTab:CreateFontString(nil, "OVERLAY", "GameFontNormalHuge")
+    local titlePath, _, titleFlags = homeTitle:GetFont()
+    if titlePath then homeTitle:SetFont(titlePath, 28, titleFlags) end
+    homeTitle:SetPoint("LEFT", homeIcon, "RIGHT", 14, 0)
     homeTitle:SetText(L["OPT_ADDON_NAME"])
 
     local homeVersion = homeTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    homeVersion:SetPoint("LEFT", homeTitle, "RIGHT", 6, 0)
+    homeVersion:SetPoint("BOTTOMLEFT", homeTitle, "BOTTOMRIGHT", 6, 2)
     local tocVersion = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("EasyFind", "Version")
     homeVersion:SetText("|cFF888888v" .. (tocVersion or "") .. "|r")
 
-    local homeDesc = homeTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    homeDesc:SetPoint("TOPLEFT", homeIcon, "BOTTOMLEFT", 0, -14)
-    homeDesc:SetPoint("RIGHT", homeTab, "RIGHT", -12, 0)
-    homeDesc:SetJustifyH("LEFT")
-    homeDesc:SetSpacing(3)
-    homeDesc:SetText(
-        "|cFFFFD100Quick start:|r  Type in the search bar to find UI panels, map locations, "
-        .. "and more. Click a result to navigate there.\n\n"
-        .. "Use the |cFFFFD100filter button|r on the search bar to add mounts, toys, pets, and "
-        .. "map results to your searches. The world map's |cFFFFD100EasyFind|r tab handles "
-        .. "zones, dungeons, and points of interest directly on the map.\n\n"
-        .. "For a full walkthrough, see the CurseForge page:"
-    )
+    local LINK_COLOR = { 0.44, 0.84, 1.0 }
+    local LINK_HOVER = { 0.72, 0.94, 1.0 }
+    local FLOW_FONT = "GameFontHighlightSmall"
+    local FLOW_W = FRAME_W - 24
 
+    local function HexRGB(hex)
+        if not hex or #hex < 6 then return 1, 1, 1 end
+        return tonumber(hex:sub(1, 2), 16) / 255, tonumber(hex:sub(3, 4), 16) / 255, tonumber(hex:sub(5, 6), 16) / 255
+    end
+
+    local function ParseFlowSegments(str)
+        local segs, i, n = {}, 1, #str
+        while i <= n do
+            local s, e, body = str:find("{(.-)}", i)
+            if not s then
+                segs[#segs + 1] = { kind = "text", text = str:sub(i) }
+                break
+            end
+            if s > i then
+                segs[#segs + 1] = { kind = "text", text = str:sub(i, s - 1) }
+            end
+            local tag, arg = body:match("^(%a+):?(.*)$")
+            if tag == "L" then
+                local cs, ce = str:find("{/L}", e + 1, true)
+                segs[#segs + 1] = { kind = "link", text = str:sub(e + 1, (cs or e + 1) - 1), id = arg }
+                i = (ce or e) + 1
+            elseif tag == "C" then
+                local cs, ce = str:find("{/C}", e + 1, true)
+                local r, g, b = HexRGB(arg)
+                segs[#segs + 1] = { kind = "text", text = str:sub(e + 1, (cs or e + 1) - 1), color = { r, g, b } }
+                i = (ce or e) + 1
+            else
+                segs[#segs + 1] = { kind = "text", text = str:sub(s, e) }
+                i = e + 1
+            end
+        end
+        return segs
+    end
+
+    local function BuildFlowText(anchorTo, relPoint, offX, offY, str)
+        local container = CreateFrame("Frame", nil, homeTab)
+        container:SetPoint("TOPLEFT", anchorTo, relPoint, offX, offY)
+        container:SetWidth(FLOW_W)
+
+        local measure = container:CreateFontString(nil, "OVERLAY", FLOW_FONT)
+        measure:Hide()
+        local _, fontH = measure:GetFont()
+        fontH = fontH or 12
+        local function widthOf(text)
+            measure:SetText(text)
+            return measure:GetStringWidth()
+        end
+        local spaceW = widthOf(" ")
+        if spaceW <= 0 then spaceW = 3 end
+
+        local lineH = mfloor(fontH + 5)
+
+        local atoms = {}
+        local pendingSpace = false
+        local function addText(text, color)
+            if text:sub(1, 1) == " " then pendingSpace = true end
+            for word in text:gmatch("%S+") do
+                atoms[#atoms + 1] = { kind = "word", text = word, w = widthOf(word), spaceBefore = pendingSpace, color = color }
+                pendingSpace = true
+            end
+            pendingSpace = (text:sub(-1) == " ")
+        end
+        for _, seg in ipairs(ParseFlowSegments(str)) do
+            if seg.kind == "text" then
+                addText(seg.text, seg.color)
+            else
+                atoms[#atoms + 1] = { kind = "link", text = seg.text, id = seg.id,
+                    w = widthOf(seg.text), spaceBefore = pendingSpace }
+                pendingSpace = false
+            end
+        end
+
+        local x, lineTop = 0, 0
+        for _, atom in ipairs(atoms) do
+            local gap = (atom.spaceBefore and x > 0) and spaceW or 0
+            if x > 0 and (x + gap + atom.w) > FLOW_W then
+                lineTop = lineTop - lineH
+                x, gap = 0, 0
+            end
+            local cx = x + gap
+            local cy = lineTop - lineH / 2
+            if atom.kind == "word" then
+                local fs = container:CreateFontString(nil, "OVERLAY", FLOW_FONT)
+                fs:SetPoint("LEFT", container, "TOPLEFT", cx, cy)
+                fs:SetText(atom.text)
+                if atom.color then fs:SetTextColor(atom.color[1], atom.color[2], atom.color[3]) end
+            elseif atom.kind == "link" then
+                local slot = CreateFrame("Frame", nil, container)
+                slot:SetSize(atom.w, lineH)
+                slot:SetPoint("LEFT", container, "TOPLEFT", cx, cy)
+                local chip = CreateFrame("Button", nil, slot)
+                chip:SetSize(atom.w, fontH + 4)
+                chip:SetPoint("CENTER", slot, "CENTER", 0, 0)
+                local glow = chip:CreateTexture(nil, "BACKGROUND")
+                glow:SetPoint("CENTER", chip, "CENTER", 0, 0)
+                glow:SetSize(atom.w + 20, fontH + 16)
+                glow:SetAtlas("collections-newglow")
+                glow:SetVertexColor(0.3, 0.85, 1.0, 0.7)
+                glow:SetBlendMode("ADD")
+                glow:Hide()
+                local glowPulse = glow:CreateAnimationGroup()
+                glowPulse:SetLooping("BOUNCE")
+                local flash = glowPulse:CreateAnimation("Alpha")
+                flash:SetFromAlpha(1.0)
+                flash:SetToAlpha(0.5)
+                flash:SetDuration(0.9)
+                local fs = chip:CreateFontString(nil, "OVERLAY", FLOW_FONT)
+                fs:SetAllPoints(chip)
+                fs:SetJustifyH("CENTER")
+                fs:SetText(atom.text)
+                fs:SetTextColor(LINK_COLOR[1], LINK_COLOR[2], LINK_COLOR[3])
+                chip:SetScript("OnEnter", function()
+                    glow:Show()
+                    glowPulse:Play()
+                    fs:SetTextColor(LINK_HOVER[1], LINK_HOVER[2], LINK_HOVER[3])
+                end)
+                chip:SetScript("OnLeave", function()
+                    glowPulse:Stop()
+                    glow:Hide()
+                    fs:SetTextColor(LINK_COLOR[1], LINK_COLOR[2], LINK_COLOR[3])
+                end)
+                if atom.id == "setbind" then
+                    chip:SetScript("OnClick", function()
+                        if bindsTabIndex then SwitchToTab(bindsTabIndex) end
+                        FlashBindButton()
+                    end)
+                elseif atom.id == "maptab" then
+                    chip:SetScript("OnClick", function()
+                        if ns.MapTab and ns.MapTab.Focus then ns.MapTab:Focus() end
+                    end)
+                elseif atom.id == "tutorial" then
+                    chip:SetScript("OnClick", function()
+                        optionsFrame:Hide()
+                        if ns.Wizard and ns.Wizard.Show then ns.Wizard:Show(ns.Wizard.FEATURES_PAGE) end
+                    end)
+                end
+            end
+            x = cx + atom.w
+        end
+
+        container:SetHeight(-lineTop + lineH)
+        return container
+    end
+
+    local homeQuick = BuildFlowText(homeIcon, "BOTTOMLEFT", 0, -20, L["OPT_HOME_QUICKSTART"])
     local thankYou = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     thankYou:SetPoint("BOTTOMRIGHT", optionsFrame, "BOTTOMRIGHT", -16, 6)
     thankYou:SetText(L["OPT_HOME_WELCOME"])
@@ -1141,9 +1322,10 @@ function Options:Initialize()
         return box
     end
 
-    CreateURLBox(homeTab, "https://www.curseforge.com/wow/addons/easyfind", homeDesc, -6)
+    CreateURLBox(homeTab, "https://www.curseforge.com/wow/addons/easyfind", homeQuick, -6)
 
     local sec3 = CreateTab(L["OPT_TAB_GENERAL_BINDS"])
+    bindsTabIndex = sec3.tabIndex
 
     local loginMessageCheckbox = CreateCheckbox(sec3, "LoginMessage", L["OPT_SHOW_LOGIN_MESSAGE"],
         L["OPT_LOGIN_MESSAGE_TT"])
@@ -1459,8 +1641,27 @@ function Options:Initialize()
     uiFontPresetRow:SetPoint("TOPLEFT", resultsDirectionRow, "BOTTOMLEFT", 0, -8)
     optionsFrame.uiFontPresetRow = uiFontPresetRow
 
+    local opacityChoices = {
+        { label = "75%",  value = 0.75 },
+        { label = "85%",  value = 0.85 },
+        { label = "95%",  value = 0.95 },
+        { label = "100%", value = 1.00 },
+    }
+    local searchOpacityRow = CreatePresetRow(sec1, L["OPT_SEARCH_OPACITY"], opacityChoices,
+        function() return EasyFind.db.searchWindowOpacity or ns.SEARCH_WINDOW_ALPHA end,
+        function(value)
+            EasyFind.db.searchWindowOpacity = value
+            if optionsFrame.searchOpacityRow then optionsFrame.searchOpacityRow:SetValue(value) end
+            RunSoon(function()
+                if ns.Search and ns.Search.UpdateOpacity then ns.Search:UpdateOpacity() end
+            end)
+        end,
+        L["OPT_SEARCH_OPACITY_TT"])
+    searchOpacityRow:SetPoint("TOPLEFT", uiFontPresetRow, "BOTTOMLEFT", 0, -8)
+    optionsFrame.searchOpacityRow = searchOpacityRow
+
     lockPositionCheckbox:ClearAllPoints()
-    lockPositionCheckbox:SetPoint("TOPLEFT", uiFontPresetRow, "BOTTOMLEFT", 0, -8)
+    lockPositionCheckbox:SetPoint("TOPLEFT", searchOpacityRow, "BOTTOMLEFT", 0, -8)
     resultShortcutHintsCheckbox:ClearAllPoints()
     resultShortcutHintsCheckbox:SetPoint("TOPLEFT", lockPositionCheckbox, "BOTTOMLEFT", 0, -2)
 

@@ -703,6 +703,13 @@ end
 ns.GOLD_COLOR = {1.0, 0.82, 0.0}
 ns.YELLOW_HIGHLIGHT = {1, 1, 0}
 ns.SEARCH_WINDOW_ALPHA = 0.95
+function ns.GetSearchWindowAlpha()
+    local db = EasyFind and EasyFind.db
+    if db and type(db.searchWindowOpacity) == "number" then
+        return db.searchWindowOpacity
+    end
+    return ns.SEARCH_WINDOW_ALPHA
+end
 ns.TOOLTIP_BORDER = "Interface\\Tooltips\\UI-Tooltip-Border"
 
 ns.NON_EQUIP_LOCS = {

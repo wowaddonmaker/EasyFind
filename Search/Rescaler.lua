@@ -437,7 +437,7 @@ local function CreateMockWindowFrame(parent, searchBar, preview, anchorAbove)
     ns.CreateRoundedRectDivider(frame)
     ns.SetRoundedRectBarHeight(frame, searchBar:GetHeight())
     ns.SetRoundedRectBorderFillColor(frame, Utils.RGB(ns.SEARCH_WINDOW_FILL_COLOR, 1))
-    ns.SetRoundedRectBorderBgAlpha(frame, ns.SEARCH_WINDOW_ALPHA)
+    ns.SetRoundedRectBorderBgAlpha(frame, ns.GetSearchWindowAlpha())
 
     frame.UpdateLayout = function(self)
         local dividerOffset = anchorAbove and preview:GetHeight() or searchBar:GetHeight()

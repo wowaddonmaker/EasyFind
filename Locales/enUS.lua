@@ -126,6 +126,8 @@ L["OPT_RESIZE_UI_TT"]                   = "Visually resize the unified UI search
 L["OPT_LOCK_POSITION_TT"]               = "When enabled, the search bar can't be dragged. Useful if you've placed it exactly where you want and don't want to bump it by accident.\n\nReset Positions and the /reset command still work."
 L["OPT_RESULTS_DIRECTION_TT"]           = "Choose whether UI search results open below or above the search bar."
 L["OPT_FONT_SIZE_TT"]                   = "Adjusts UI search text size without resizing the search window."
+L["OPT_SEARCH_OPACITY"]                 = "Opacity"
+L["OPT_SEARCH_OPACITY_TT"]              = "Opacity of the search bar and results panel. 100% is fully opaque."
 L["OPT_ALT_HINTS_TT"]                   = "When enabled, each visible UI search result shows a small Alt+1 through Alt+8 reminder.\n\nWhen disabled, the reminders are hidden but the Alt+number shortcuts still activate the same rows."
 L["OPT_ENABLE_MAP_TT"]                  = "Uncheck to disable map search, pins, map overlay features, and the EasyFind tab on the world map.\n\nRequires a UI reload to take effect."
 L["OPT_SHOW_RECENT_TT"]                 = "Show your recent search queries in the Map Search tab when the search box is empty."
@@ -138,6 +140,21 @@ L["OPT_AUTO_TRACK_PINS_TT"]             = "Placing a map pin (Ctrl+Click) automa
 L["OPT_AUTO_PIN_CLEAR_TT"]              = "Your map pin is automatically cleared when Blizzard reports arrival. Disable if you prefer to clear pins manually."
 
 -- Multi-line text blocks
+L["OPT_HOME_QUICKSTART"]                =
+    "{C:FFD100}Quick start:{/C}  Use the {L:setbind}toggle keybind{/L} you set in the tutorial "
+    .. "(recommended) or click the minimap icon to open the search bar. For more details on the full "
+    .. "functionality of EasyFind, refresh your memory with the {L:tutorial}tutorial{/L}, or see "
+    .. "the CurseForge page:"
+L["OPT_HOME_FILTER"]                    =
+    "Use the |cFFFFD100filter button|r on the search bar to customize what you'd like to see."
+L["OPT_HOME_MAPSEARCH"]                 =
+    "{C:FFD100}Map search:{/C}  There is an additional map specific search bar which you can find "
+    .. "as a {L:maptab}new tab{/L} on the right of your map/quest log. While you can search all the "
+    .. "same things from the main search bar, this lets you navigate more quickly between related "
+    .. "zones, and also lets you preview locations of points of interest on your current map view "
+    .. "when hovering over the entry in the results window."
+L["OPT_HOME_CURSEFORGE"]                = "For a full walkthrough, see the CurseForge page:"
+L["OPT_HOME_LINK_HERE"]                 = "here"
 L["OPT_SHORTCUTS_TEXT"]                 =
     "|cFFFFD100Search box:|r\n"
     .. "|cFF00FF00Down|r enter results  |cFF00FF00Enter|r activate  |cFF00FF00Esc|r unfocus\n"
@@ -150,7 +167,7 @@ L["OPT_SHORTCUTS_TEXT"]                 =
     .. "|cFFFFD100Quick filters:|r\n"
     .. "Type |cFF00FF00@|r for category filters. Examples: |cFF00FF00@m|r mounts, |cFF00FF00@s|r statistics, |cFF00FF00@g|r gear. |cFF00FF00Tab/Space|r selects a category.\n\n"
     .. "|cFFFFD100Calculator:|r\n"
-    .. "Type math into search for an inline result, or press |cFF00FF00Alt+C|r from the focused search bar to open the calculator.\n\n"
+    .. "Type math into the search bar for an inline result, or open the Calculator result to use the full calculator.\n\n"
     .. "|cFFFFD100Other:|r\n"
     .. "|cFF00FF00Shift+Drag|r reposition  |cFF00FF00Right-click|r pin/unpin\n\n"
     .. "|cFFFFD100Slash commands:|r\n"
@@ -187,7 +204,8 @@ L["TUT_FEATURE_MAP_DESC"]               = "Dedicated map browsing for banks, fli
 L["TUT_FEATURE_ACTIONS"]                = "Item/Ability Use"
 L["TUT_FEATURE_ACTIONS_DESC"]           = "Cast, use, equip, summon, swap, or open supported results directly from the list."
 L["TUT_FEATURE_CALCULATOR"]             = "Calculator"
-L["TUT_FEATURE_CALCULATOR_DESC"]        = "Type expressions, copy the result, or open the full calculator with Alt+C."
+L["TUT_FEATURE_CALCULATOR_DESC"]        = "Type expressions, copy the result, or open the full calculator from the Calculator result."
+L["TUT_CALC_COPY_DESC"]                 = "Hover over either the expression or the result and hit Ctrl+C to copy it for easy pasting anywhere with Ctrl+V."
 L["TUT_KEYBIND_HEADER"]                 = "Pick your hotkeys (applies to every character)"
 L["TUT_KEYBIND_SEARCH_BAR"]             = "Search Bar"
 L["TUT_KEYBIND_MAP_TAB"]                = "Map Search Tab"
