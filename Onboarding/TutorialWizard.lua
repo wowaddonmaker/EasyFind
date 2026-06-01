@@ -2,6 +2,7 @@ local _, ns = ...
 
 local Wizard = {}
 ns.Wizard = Wizard
+Wizard.FEATURES_PAGE = 2
 
 local Utils = ns.Utils
 local L = ns.L
@@ -52,6 +53,11 @@ local SEARCH_TUTORIAL_SLIDES = {
         texCoord = TutorialTexCoord(972, 436, 1024, 512),
         w = 486, h = 218,
         text = L["TUT_SLIDE_PINNING"],
+    },
+    {
+        live = "searchbar",
+        w = 420, h = 38,
+        text = L["OPT_HOME_FILTER"],
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-03-hires",
@@ -110,8 +116,28 @@ local USE_TUTORIAL_SLIDES = {
         text = L["TUT_SLIDE_USE_TOYS"],
     },
 }
-local CALCULATOR_TUTORIAL_IMAGE = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-calculator-visual-hires"
-local CALCULATOR_TUTORIAL_TEXCOORD = TutorialTexCoord(1944, 896, 2048, 1024)
+local CALCULATOR_TUTORIAL_SLIDES = {
+    {
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-calculator-visual-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
+        text = L["TUT_FEATURE_CALCULATOR_DESC"],
+    },
+    {
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-calculator-copy-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
+        text = L["TUT_CALC_COPY_DESC"],
+        -- HD Gauntlet cursor (same FileDataID/texCoord as the "HD Gauntlet"
+        -- indicator style) sitting just right of "Ctrl+C to copy".
+        overlay = {
+            tex = 6116532,
+            texCoord = { 0.0, 0.24, 0.0, 0.42 },
+            size = 30,
+            ox = 372, oy = 100,
+        },
+    },
+}
 
 local function ApplyInter(fs, weight, sizeOverride, flags)
     if ns.RegisterAddonFont then
@@ -359,6 +385,71 @@ local function FeatureTile(parent, atlas, file, coords, title, desc, onClick)
     return holder
 end
 
+local FILTER_CIRCLE_TEX = "Interface\\AddOns\\EasyFind\\textures\\FilterButtonCircle"
+
+local function BuildFilterCircle(parent, d)
+    local circle = CreateFrame("Frame", nil, parent)
+    circle:SetSize(d, d)
+    if circle.CreateMaskTexture then
+        local ringInset = d * 0.167
+        local innerInset = ringInset + Utils.mmax(1, d * 0.045)
+        local ringMask = circle:CreateMaskTexture(nil, "BACKGROUND")
+        ringMask:SetTexture(FILTER_CIRCLE_TEX, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        ringMask:SetPoint("TOPLEFT", circle, "TOPLEFT", ringInset, -ringInset)
+        ringMask:SetPoint("BOTTOMRIGHT", circle, "BOTTOMRIGHT", -ringInset, ringInset)
+        local circleMask = circle:CreateMaskTexture(nil, "ARTWORK")
+        circleMask:SetTexture(FILTER_CIRCLE_TEX, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        circleMask:SetPoint("TOPLEFT", circle, "TOPLEFT", innerInset, -innerInset)
+        circleMask:SetPoint("BOTTOMRIGHT", circle, "BOTTOMRIGHT", -innerInset, innerInset)
+        local ringDisc = circle:CreateTexture(nil, "BACKGROUND", nil, 1)
+        ringDisc:SetColorTexture(1.0, 0.82, 0.0, 1)
+        ringDisc:SetPoint("TOPLEFT", circle, "TOPLEFT", ringInset, -ringInset)
+        ringDisc:SetPoint("BOTTOMRIGHT", circle, "BOTTOMRIGHT", -ringInset, ringInset)
+        ringDisc:AddMaskTexture(ringMask)
+        local ringInner = circle:CreateTexture(nil, "BACKGROUND", nil, 2)
+        ringInner:SetColorTexture(Utils.RGB(ns.SEARCH_WINDOW_FILL_COLOR, 1))
+        ringInner:SetPoint("TOPLEFT", circle, "TOPLEFT", innerInset, -innerInset)
+        ringInner:SetPoint("BOTTOMRIGHT", circle, "BOTTOMRIGHT", -innerInset, innerInset)
+        ringInner:AddMaskTexture(circleMask)
+    end
+    local arrow = circle:CreateTexture(nil, "OVERLAY")
+    arrow:SetTexture(423808)
+    arrow:SetTexCoord(0.453, 0.203, 0.453, 0.016, 0.641, 0.203, 0.641, 0.016)
+    arrow:SetDesaturated(true)
+    arrow:SetBlendMode("ADD")
+    arrow:SetVertexColor(1, 1, 1)
+    arrow:SetSize(d * 0.36, d * 0.36)
+    arrow:SetPoint("CENTER")
+    return circle
+end
+
+local function BuildSearchBarReplica(parent, w, h)
+    local bar = CreateFrame("Frame", nil, parent)
+    bar:SetSize(w, h)
+    ns.CreateRoundedRectBorder(bar)
+    ns.SetRoundedRectBarHeight(bar, h)
+    ns.SetRoundedRectBorderFillColor(bar, Utils.RGB(ns.SEARCH_WINDOW_FILL_COLOR, 1))
+    ns.SetRoundedRectBorderBgAlpha(bar, ns.SEARCH_WINDOW_ALPHA)
+
+    local iconSz = h * ns.SEARCHBAR_FILL * ns.SEARCHBAR_ICON_SCALE
+    local icon = bar:CreateTexture(nil, "OVERLAY")
+    icon:SetSize(iconSz, iconSz)
+    icon:SetPoint("CENTER", bar, "LEFT", h / 2, 0)
+    icon:SetAtlas("common-search-magnifyingglass")
+
+    local placeholder = bar:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    placeholder:SetPoint("LEFT", bar, "LEFT", h, 0)
+    placeholder:SetPoint("RIGHT", bar, "RIGHT", -h, 0)
+    placeholder:SetJustifyH("LEFT")
+    placeholder:SetWordWrap(false)
+    placeholder:SetText(L["SEARCH_PLACEHOLDER"])
+    placeholder:SetTextColor(0.5, 0.5, 0.5)
+
+    local filter = BuildFilterCircle(bar, h)
+    filter:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
+    return bar
+end
+
 local function BuildPage2(parent)
     local p = MakePage(parent)
 
@@ -373,15 +464,25 @@ local function BuildPage2(parent)
 
     local detailViews = {}
 
+    -- In a submenu the footer nav (Back / Continue / page dots) is hidden; the
+    -- only navigation is each detail view's own top-left back arrow.
+    local function SetFooterNavShown(shown)
+        backBtn:SetShown(shown and pageIdx > 1)
+        nextBtn:SetShown(shown)
+        for i = 1, #dots do dots[i]:SetShown(shown) end
+    end
+
     local function ShowGrid()
         grid:Show()
         for i = 1, #detailViews do detailViews[i]:Hide() end
+        SetFooterNavShown(true)
     end
 
     local function ShowDetail(d)
         grid:Hide()
         for i = 1, #detailViews do detailViews[i]:Hide() end
         d:Show()
+        SetFooterNavShown(false)
     end
 
     local function CreateDetailView(headerText, detailText, opts)
@@ -433,6 +534,19 @@ local function BuildPage2(parent)
         local image = d:CreateTexture(nil, "ARTWORK")
         image:SetPoint("TOP", h, "BOTTOM", 0, -10)
 
+        local overlayTex = d:CreateTexture(nil, "OVERLAY")
+        overlayTex:Hide()
+
+        local liveDemo
+        for _, s in ipairs(slides) do
+            if s.live == "searchbar" then
+                liveDemo = BuildSearchBarReplica(d, s.w, s.h)
+                liveDemo:SetPoint("TOP", h, "BOTTOM", 0, -48)
+                liveDemo:Hide()
+                break
+            end
+        end
+
         local slideText = BodyText(d, "")
         slideText:SetPoint("TOP", image, "BOTTOM", 0, -8)
         slideText:SetWidth(WIZ_W - 104)
@@ -463,9 +577,30 @@ local function BuildPage2(parent)
             idx = newIdx
 
             local slide = slides[idx]
-            SetTutorialImage(image, slide.image, slide.texCoord)
-            local w, hgt = FitSize(slide.w, slide.h, TUTORIAL_IMAGE_MAX_W, TUTORIAL_IMAGE_MAX_H)
-            image:SetSize(w, hgt)
+            overlayTex:Hide()
+            slideText:ClearAllPoints()
+            if slide.live and liveDemo then
+                image:Hide()
+                liveDemo:Show()
+                slideText:SetPoint("TOP", liveDemo, "BOTTOM", 0, -16)
+            else
+                if liveDemo then liveDemo:Hide() end
+                image:Show()
+                SetTutorialImage(image, slide.image, slide.texCoord)
+                local w, hgt = FitSize(slide.w, slide.h, TUTORIAL_IMAGE_MAX_W, TUTORIAL_IMAGE_MAX_H)
+                image:SetSize(w, hgt)
+                slideText:SetPoint("TOP", image, "BOTTOM", 0, -8)
+                local ov = slide.overlay
+                if ov then
+                    overlayTex:SetTexture(ov.tex)
+                    overlayTex:SetTexCoord(unpack(ov.texCoord or { 0, 1, 0, 1 }))
+                    overlayTex:SetSize(ov.size or 28, ov.size or 28)
+                    overlayTex:SetRotation(ov.rotation or 0)
+                    overlayTex:ClearAllPoints()
+                    overlayTex:SetPoint("TOPLEFT", image, "TOPLEFT", ov.ox or 0, -(ov.oy or 0))
+                    overlayTex:Show()
+                end
+            end
             slideText:SetText(slide.text or "")
             counter:SetText(idx .. " / " .. count)
         end
@@ -479,40 +614,12 @@ local function BuildPage2(parent)
         return d
     end
 
-    local function CreateCalculatorDetailView()
-        local d = CreateFrame("Frame", nil, p)
-        d:SetAllPoints(p)
-        d:Hide()
-
-        local back = MakeButton(d, L["TUT_BTN_BACK_ARROW"], "ghost", 52)
-        back:SetPoint("TOPLEFT", d, "TOPLEFT", 12, -10)
-        back:SetScript("OnClick", ShowGrid)
-
-        local h = HeaderText(d, L["TUT_FEATURE_CALCULATOR"], "GameFontNormalLarge")
-        h:SetPoint("TOP", d, "TOP", 0, -28)
-
-        local visual = d:CreateTexture(nil, "ARTWORK")
-        SetTutorialImage(visual, CALCULATOR_TUTORIAL_IMAGE, CALCULATOR_TUTORIAL_TEXCOORD)
-        visual:SetSize(486, 224)
-        visual:SetPoint("TOP", h, "BOTTOM", 0, -10)
-
-        local body = BodyText(d,
-            "Type math into search for instant results, or search calculator and press Alt+C to open the full calculator.")
-        body:SetPoint("TOP", visual, "BOTTOM", 0, -10)
-        body:SetWidth(WIZ_W - 104)
-        body:SetJustifyH("LEFT")
-        body:SetSpacing(2)
-
-        detailViews[#detailViews + 1] = d
-        return d
-    end
-
     local d1 = CreateCarouselDetailView(L["TUT_FEATURE_SEARCH"], SEARCH_TUTORIAL_SLIDES)
     local d2 = CreateDetailView(L["TUT_FEATURE_MAP"],
         L["TUT_MAP_TAB_DESC"],
         { image = MAP_SEARCH_TUTORIAL_IMAGE, texCoord = MAP_SEARCH_TUTORIAL_TEXCOORD, imageW = 486, imageH = 224, textW = WIZ_W - 92 })
     local d3 = CreateCarouselDetailView(L["TUT_FEATURE_ACTIONS"], USE_TUTORIAL_SLIDES)
-    local d4 = CreateCalculatorDetailView()
+    local d4 = CreateCarouselDetailView(L["TUT_FEATURE_CALCULATOR"], CALCULATOR_TUTORIAL_SLIDES)
 
     local t1 = FeatureTile(grid, nil, "Interface\\AddOns\\EasyFind\\textures\\Spyglass", nil,
         L["TUT_FEATURE_SEARCH"],
@@ -646,36 +753,11 @@ local function BuildPage3(parent)
     local mapKb = CreateKbWidget(p, MAP_ACTION,    L["TUT_KEYBIND_MAP_TAB"])
     kbWidgets = { uiKb, mapKb }
 
-    uiKb.label:SetPoint("RIGHT", uiKb.btn, "LEFT", -14, 0)
-    uiKb.btn:SetPoint("TOP", sub, "BOTTOM", 0, -38)
+    uiKb.btn:SetPoint("TOP", sub, "BOTTOM", 0, -34)
+    uiKb.label:SetPoint("BOTTOM", uiKb.btn, "TOP", 0, 6)
 
-    mapKb.label:SetPoint("RIGHT", mapKb.btn, "LEFT", -14, 0)
-    mapKb.btn:SetPoint("TOP", uiKb.btn, "BOTTOM", 0, -32)
-
-    -- recommended bindings, shown as a labeled column to the right of the buttons
-    local uiRec = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    uiRec:SetText("Alt + Space")
-    uiRec:SetPoint("LEFT", uiKb.btn, "RIGHT", 16, 0)
-    uiRec:SetTextColor(Utils.RGB(TEXT_PRIM, 1))
-    ApplyInter(uiRec, "semibold")
-
-    local mapRec = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-    mapRec:SetText("Alt + M")
-    mapRec:SetPoint("LEFT", mapKb.btn, "RIGHT", 16, 0)
-    mapRec:SetTextColor(Utils.RGB(TEXT_PRIM, 1))
-    ApplyInter(mapRec, "semibold")
-
-    local recHeader = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    recHeader:SetText(L["TUT_KEYBIND_RECOMMENDED"])
-    recHeader:SetPoint("BOTTOMLEFT", uiRec, "TOPLEFT", 0, 10)
-    recHeader:SetTextColor(Utils.RGB(TEXT_DIM, 1))
-    ApplyInter(recHeader, "regular")
-
-    local recHeader2 = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    recHeader2:SetText(L["TUT_KEYBIND_RECOMMENDED"])
-    recHeader2:SetPoint("BOTTOMLEFT", mapRec, "TOPLEFT", 0, 10)
-    recHeader2:SetTextColor(Utils.RGB(TEXT_DIM, 1))
-    ApplyInter(recHeader2, "regular")
+    mapKb.btn:SetPoint("TOP", uiKb.btn, "BOTTOM", 0, -44)
+    mapKb.label:SetPoint("BOTTOM", mapKb.btn, "TOP", 0, 6)
 
     local hint = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     hint:SetText(L["TUT_KEYBIND_CAPTURE_HINT"])
@@ -870,14 +952,16 @@ function Wizard:IsShown()
     return frame and frame:IsShown()
 end
 
-function Wizard:Show()
+function Wizard:Show(startPage)
     CreateFrameOnce()
     if ns.Search and ns.Search.Hide then ns.Search:Hide() end
-    pageIdx = 1
+    local page = startPage or 1
+    if page > #pages then page = #pages elseif page < 1 then page = 1 end
+    pageIdx = page
     frame:Show()
     SafeCallMethod(frame, "EnableKeyboard", true)
     SafeCallMethod(frame, "SetPropagateKeyboardInput", true)
-    ShowPage(1)
+    ShowPage(page)
 end
 
 function Wizard:Hide()
