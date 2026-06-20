@@ -2361,12 +2361,11 @@ local function GetBossInstanceMT(tier, isRaid, instID, instName)
 end
 
 local function AddBossEntry(tier, isRaid, instID, instName, encName, encID, getCreatureInfo)
-    local icon, creatureID
+    local icon
     if getCreatureInfo then
-        local ok, cid, _, _, _, iconImage = pcall(getCreatureInfo, 1, encID)
-        if ok then
-            if iconImage and iconImage ~= 0 then icon = iconImage end
-            if cid and cid ~= 0 then creatureID = cid end
+        local ok, _, _, _, _, iconImage = pcall(getCreatureInfo, 1, encID)
+        if ok and iconImage and iconImage ~= 0 then
+            icon = iconImage
         end
     end
 
@@ -2375,7 +2374,6 @@ local function AddBossEntry(tier, isRaid, instID, instName, encName, encID, getC
         nameLower = slower(encName),
         encounterID = encID,
         icon = icon,
-        bossCreatureID = creatureID,
     }, GetBossInstanceMT(tier, isRaid, instID, instName))
     uiSearchData[#uiSearchData + 1] = entry
 end

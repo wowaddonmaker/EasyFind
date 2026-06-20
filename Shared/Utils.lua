@@ -1248,10 +1248,12 @@ function ns.GetWowheadLink(data)
         -- (that number 404s). The item that teaches a set is named
         -- "Ensemble: <set>", so search that -- it lands on the set's gear.
         if data.name then query = L["WOWHEAD_SET_PREFIX"] .. " " .. data.name end
-    elseif data.bossCreatureID and data.category == "Boss" then
-        -- Wowhead has no journal-encounter page; link the boss NPC, whose id
-        -- was captured at build time when the journal context was valid.
-        kind, id = "npc", data.bossCreatureID
+    elseif data.encounterID and data.category == "Boss" then
+        -- EJ_GetCreatureInfo returns a journal-internal creature id that does
+        -- not match Wowhead's world NPC entries (e.g. LK's journal id 3927 is
+        -- an unrelated NPC on Wowhead), so search the boss name -- it lands on
+        -- the boss's page.
+        if data.name then query = data.name end
     elseif data.achievementID and data.category == "Achievement" then
         kind, id = "achievement", data.achievementID
     elseif data.currencyID then
