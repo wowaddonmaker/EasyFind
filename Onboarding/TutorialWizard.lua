@@ -16,8 +16,8 @@ local IsAltKeyDown, IsControlKeyDown, IsShiftKeyDown = IsAltKeyDown, IsControlKe
 
 local GOLD       = ns.GOLD_COLOR
 local WIZ_W, WIZ_H = 544, 408
-local TUTORIAL_IMAGE_MAX_W = 486
-local TUTORIAL_IMAGE_MAX_H = 218
+local TUTORIAL_IMAGE_MAX_W = 516
+local TUTORIAL_IMAGE_MAX_H = 240
 local TOGGLE_ACTION = "EASYFIND_TOGGLE_FOCUS"
 local MAP_ACTION    = "EASYFIND_MAP_FOCUS"
 
@@ -35,64 +35,92 @@ local DOT_FILLED = "Interface\\COMMON\\Indicator-Yellow"
 local MAP_SEARCH_TUTORIAL_IMAGE = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-map-search-hires"
 local MAP_SEARCH_TUTORIAL_TEXCOORD = TutorialTexCoord(1326, 612, 2048, 1024)
 local CALCULATOR_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\calculator-icon"
+-- HD Gauntlet cursor (same FileDataID and texCoord as the HD Gauntlet
+-- indicator style), reused for slide overlay hints. texCoord is read-only.
+local GAUNTLET_CURSOR_TEX = 6116532
+local GAUNTLET_CURSOR_TEXCOORD = { 0.0, 0.24, 0.0, 0.42 }
 local SEARCH_TUTORIAL_SLIDES = {
     {
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-01-hires",
-        texCoord = TutorialTexCoord(1302, 404, 2048, 512),
-        w = 651, h = 202,
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-gearstats-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
         text = L["TUT_SLIDE_SEARCH_INTRO"],
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-02-hires",
-        texCoord = TutorialTexCoord(1310, 534, 2048, 1024),
-        w = 655, h = 267,
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-pets-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
         text = L["TUT_SLIDE_ALT_NUMBERS"],
+        -- HD Gauntlet cursor resting on the result row to show it's hovered.
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 30,
+            ox = 300, oy = 140,
+        },
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-09-hires",
-        texCoord = TutorialTexCoord(972, 436, 1024, 512),
-        w = 486, h = 218,
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-rowmenu-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
         text = L["TUT_SLIDE_PINNING"],
+        -- HD Gauntlet cursor pointing at the highlighted "Pin" menu item.
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 32,
+            ox = 440, oy = 100,
+        },
     },
     {
-        live = "searchbar",
-        w = 420, h = 38,
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-filters-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
         text = L["OPT_HOME_FILTER"],
+        -- HD Gauntlet cursor on the filter button to show how to open the menu.
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 34,
+            ox = 367, oy = 16,
+        },
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-03-hires",
-        texCoord = TutorialTexCoord(1324, 1222, 2048, 2048),
-        w = 662, h = 611,
-        text = L["TUT_SLIDE_FILTER_MENU"],
-    },
-    {
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-05-hires",
-        texCoord = TutorialTexCoord(1314, 1186, 2048, 2048),
-        w = 657, h = 593,
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-quickfilters-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
         text = L["TUT_SLIDE_AT_PREFIX"],
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-04-hires",
-        texCoord = TutorialTexCoord(1344, 440, 2048, 512),
-        w = 672, h = 220,
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-bags-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
         text = L["TUT_SLIDE_QUICK_FILTERS"],
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-06-hires",
-        texCoord = TutorialTexCoord(1320, 534, 2048, 1024),
-        w = 660, h = 267,
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-currency-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
         text = L["TUT_SLIDE_QUICK_FILTERS"],
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-07-hires",
-        texCoord = TutorialTexCoord(1316, 552, 2048, 1024),
-        w = 658, h = 276,
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-macros-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
         text = L["TUT_SLIDE_MACROS"],
+        -- HD Gauntlet cursor resting on the hovered macro row.
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 30,
+            ox = 285, oy = 152,
+        },
+        seeMore = { text = L["TUT_MACROS_SEE_ACTIONABLES"], word = L["TUT_FEATURE_ACTIONS"] },
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-08-hires",
-        texCoord = TutorialTexCoord(1292, 530, 2048, 1024),
-        w = 646, h = 265,
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-settings-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
         text = L["TUT_SLIDE_INLINE_SETTINGS"],
     },
 }
@@ -128,11 +156,10 @@ local CALCULATOR_TUTORIAL_SLIDES = {
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
         text = L["TUT_CALC_COPY_DESC"],
-        -- HD Gauntlet cursor (same FileDataID/texCoord as the "HD Gauntlet"
-        -- indicator style) sitting just right of "Ctrl+C to copy".
+        -- Cursor sitting just right of "Ctrl+C to copy".
         overlay = {
-            tex = 6116532,
-            texCoord = { 0.0, 0.24, 0.0, 0.42 },
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
             size = 30,
             ox = 372, oy = 100,
         },
@@ -485,6 +512,13 @@ local function BuildPage2(parent)
         SetFooterNavShown(false)
     end
 
+    -- The macros search slide links to the Actionables deck; forward-declared
+    -- because that deck is created further down.
+    local actionsDeck
+    local function GoToActionsDeck()
+        if actionsDeck then ShowDetail(actionsDeck) end
+    end
+
     local function CreateDetailView(headerText, detailText, opts)
         opts = opts or {}
         local d = CreateFrame("Frame", nil, p)
@@ -553,9 +587,68 @@ local function BuildPage2(parent)
         slideText:SetJustifyH("LEFT")
         slideText:SetSpacing(2)
 
+        -- Optional "See {link} for more examples" line under the caption. The
+        -- link is a blue glowing chip (matching the options-home links) that
+        -- jumps to the Actionables deck on click.
+        local SM_LINK, SM_HOVER = ns.LINK_COLOR, ns.LINK_HOVER
+        local seeMore = CreateFrame("Frame", nil, d)
+        seeMore:SetSize(WIZ_W - 104, 16)
+        seeMore:Hide()
+        local smPre = seeMore:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        smPre:SetTextColor(Utils.RGB(TEXT_DIM, 1))
+        ApplyInter(smPre, "regular", 10)
+        local smPost = seeMore:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        smPost:SetTextColor(Utils.RGB(TEXT_DIM, 1))
+        ApplyInter(smPost, "regular", 10)
+        local smChip = CreateFrame("Button", nil, seeMore)
+        smChip:SetHeight(16)
+        local smGlow = smChip:CreateTexture(nil, "BACKGROUND")
+        smGlow:SetAtlas("collections-newglow")
+        smGlow:SetVertexColor(unpack(ns.LINK_GLOW_COLOR))
+        smGlow:SetBlendMode("ADD")
+        smGlow:SetPoint("CENTER", smChip, "CENTER", 0, 0)
+        smGlow:Hide()
+        local smPulse = ns.CreateBouncePulse(smGlow, 1.0, 0.5, 0.9)
+        local smLink = smChip:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        smLink:SetAllPoints(smChip)
+        smLink:SetJustifyH("CENTER")
+        smLink:SetTextColor(SM_LINK[1], SM_LINK[2], SM_LINK[3])
+        ApplyInter(smLink, "semibold", 10)
+        smChip:SetScript("OnEnter", function()
+            smGlow:Show()
+            smPulse:Play()
+            smLink:SetTextColor(SM_HOVER[1], SM_HOVER[2], SM_HOVER[3])
+        end)
+        smChip:SetScript("OnLeave", function()
+            smPulse:Stop()
+            smGlow:Hide()
+            smLink:SetTextColor(SM_LINK[1], SM_LINK[2], SM_LINK[3])
+        end)
+        smChip:SetScript("OnClick", GoToActionsDeck)
+        local function LayoutSeeMore(template, word)
+            local pre, post = template:match("^(.-)%%s(.*)$")
+            if not pre then pre, post = template, "" end
+            smPre:SetText(pre)
+            smLink:SetText(word)
+            smPost:SetText(post)
+            local chipW = smLink:GetStringWidth() + 8
+            smChip:SetWidth(chipW)
+            smGlow:SetSize(chipW + 16, 22)
+            local total = smPre:GetStringWidth() + chipW + smPost:GetStringWidth()
+            smPre:ClearAllPoints()
+            smPre:SetPoint("LEFT", seeMore, "LEFT", Utils.mfloor((seeMore:GetWidth() - total) / 2), 0)
+            smChip:ClearAllPoints()
+            smChip:SetPoint("LEFT", smPre, "RIGHT", 0, 0)
+            smPost:ClearAllPoints()
+            smPost:SetPoint("LEFT", smChip, "RIGHT", 0, 0)
+        end
+
         local controls = CreateFrame("Frame", nil, d)
         controls:SetSize(148, 18)
-        controls:SetPoint("BOTTOM", d, "BOTTOM", 0, 6)
+        -- Park the slide nav inside the footer box (its Back/Continue are hidden
+        -- in a carousel), freeing the body's bottom strip for a taller image.
+        controls:SetPoint("CENTER", frame, "BOTTOM", 0, 20)
+        controls:SetFrameLevel(frame:GetFrameLevel() + 50)
 
         local prev = MakeButton(controls, "<", "ghost", 26)
         prev:SetPoint("LEFT", controls, "LEFT", 0, 0)
@@ -602,6 +695,14 @@ local function BuildPage2(parent)
                 end
             end
             slideText:SetText(slide.text or "")
+            if slide.seeMore then
+                LayoutSeeMore(slide.seeMore.text, slide.seeMore.word)
+                seeMore:ClearAllPoints()
+                seeMore:SetPoint("TOP", slideText, "BOTTOM", 0, -6)
+                seeMore:Show()
+            else
+                seeMore:Hide()
+            end
             counter:SetText(idx .. " / " .. count)
         end
 
@@ -619,6 +720,7 @@ local function BuildPage2(parent)
         L["TUT_MAP_TAB_DESC"],
         { image = MAP_SEARCH_TUTORIAL_IMAGE, texCoord = MAP_SEARCH_TUTORIAL_TEXCOORD, imageW = 486, imageH = 224, textW = WIZ_W - 92 })
     local d3 = CreateCarouselDetailView(L["TUT_FEATURE_ACTIONS"], USE_TUTORIAL_SLIDES)
+    actionsDeck = d3
     local d4 = CreateCarouselDetailView(L["TUT_FEATURE_CALCULATOR"], CALCULATOR_TUTORIAL_SLIDES)
 
     local t1 = FeatureTile(grid, nil, "Interface\\AddOns\\EasyFind\\textures\\Spyglass", nil,
@@ -863,26 +965,8 @@ local function CreateFrameOnce()
     ApplyGloss(f)
     f:HookScript("OnSizeChanged", ApplyGloss)
 
-    -- Two rotated 1px lines so the X stays sharp at any Search scale.
-    local closeBtn = CreateFrame("Button", nil, f)
-    closeBtn:SetSize(18, 18)
+    local closeBtn = ns.CreateCloseX(f)
     closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -10)
-    local function MakeStroke()
-        local t = closeBtn:CreateTexture(nil, "OVERLAY")
-        t:SetTexture("Interface\\Buttons\\WHITE8x8")
-        t:SetSize(16, 1.5)
-        t:SetPoint("CENTER")
-        return t
-    end
-    local stroke1 = MakeStroke(); stroke1:SetRotation(math.pi / 4)
-    local stroke2 = MakeStroke(); stroke2:SetRotation(-math.pi / 4)
-    local function setX(r, g, b)
-        stroke1:SetVertexColor(r, g, b, 1)
-        stroke2:SetVertexColor(r, g, b, 1)
-    end
-    setX(Utils.RGB(TEXT_DIM))
-    closeBtn:SetScript("OnEnter", function() setX(1, 1, 1) end)
-    closeBtn:SetScript("OnLeave", function() setX(Utils.RGB(TEXT_DIM)) end)
     closeBtn:SetScript("OnClick", function() FinishWizard(false) end)
 
     local pageHost = CreateFrame("Frame", nil, f)
