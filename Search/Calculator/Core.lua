@@ -1,6 +1,5 @@
 local _, ns = ...
 
-local Search = ns.Search
 local Calculator = ns.Calculator
 local Utils = ns.Utils
 local L = ns.L
@@ -9,10 +8,6 @@ local pairs = Utils.pairs
 local sfind, slower = Utils.sfind, Utils.slower
 local tconcat = Utils.tconcat
 local sformat = Utils.sformat
-
-local function GetSearchFrame()
-    return Search:GetSearchFrame()
-end
 
 -- Localized display name; nameLower/keywords stay English so the
 -- launcher still matches "calc"/"math" typed in any locale.
@@ -39,35 +34,6 @@ Calculator._calculator = {
         sqrt = true, tan = true, tand = true, tanh = true,
     },
 }
-
-Calculator.searchBarCommands = {
-    {
-        command = "reset",
-        display = "/reset",
-        desc = "Reset search bar position and size",
-        aliases = { "reset", "resetpos", "resetposition" },
-    },
-    {
-        command = "resize",
-        display = "/resize",
-        desc = "Resize the search window",
-        aliases = { "resize", "rescale" },
-    },
-    {
-        command = "options",
-        display = "/options",
-        desc = "Open EasyFind options",
-        aliases = { "options", "o", "config", "settings" },
-    },
-    {
-        command = "tutorial",
-        display = "/tutorial",
-        desc = "Open the EasyFind tutorial",
-        aliases = { "tutorial", "wizard", "welcome" },
-    },
-}
-Calculator.searchBarCommandEntries = {}
-Calculator.searchBarCommandData = {}
 
 function Calculator._calculator.IsFinite(value)
     return type(value) == "number" and value == value
@@ -596,108 +562,4 @@ function Calculator:GetCalculatorLauncherMatch(raw)
         return launcher
     end
     return nil
-end
-
-function Calculator:RunSearchBarCommand(command)
-    command = slower(strtrim(tostring(command or "")):gsub("^/", ""))
-    if command == "" then return false end
-
-    local canonical
-    for i = 1, #self.searchBarCommands do
-        local def = self.searchBarCommands[i]
-        for ai = 1, #def.aliases do
-            if command == def.aliases[ai] then
-                canonical = def.command
-                break
-            end
-        end
-        if canonical then break end
-    end
-    if not canonical then return false end
-
-    local sf = GetSearchFrame()
-    local editBox = sf and sf.editBox
-    if editBox then
-        if editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
-        editBox:SetText("")
-        editBox:SetCursorPosition(0)
-        if editBox.placeholder then editBox.placeholder:Show() end
-    end
-    self:HideResults()
-
-    if canonical == "reset" then
-        StaticPopup_Show("EASYFIND_RESET_SEARCH_BAR")
-    elseif canonical == "resize" then
-        if ns.Rescaler and ns.Rescaler.Enter then
-            ns.Rescaler:Enter("Search")
-        end
-    elseif canonical == "options" then
-        EasyFind:OpenOptions()
-    elseif canonical == "tutorial" then
-        if ns.Wizard and ns.Wizard.Show then
-            EasyFind.db.tutorialDone = false
-            ns.Wizard:Show()
-        end
-    end
-    return true
-end
-
-function Calculator:GetSearchBarCommandSuggestionEntries(text)
-    text = strtrim(text or "")
-    local token = text:match("^/([%w]*)$")
-    if token == nil then return nil end
-    token = slower(token)
-
-    local entries = self.searchBarCommandEntries
-    local dataPool = self.searchBarCommandData
-    local n = 0
-    for i = 1, #self.searchBarCommands do
-        local def = self.searchBarCommands[i]
-        local matches = token == ""
-        if not matches then
-            local displayToken = slower((def.display or ""):gsub("^/", ""))
-            matches = sfind(displayToken, token, 1, true) == 1
-            if not matches then
-                for ai = 1, #def.aliases do
-                    if sfind(def.aliases[ai], token, 1, true) == 1 then
-                        matches = true
-                        break
-                    end
-                end
-            end
-        end
-        if matches then
-            n = n + 1
-            local data = dataPool[n]
-            if not data then
-                data = {}
-                dataPool[n] = data
-            end
-            wipe(data)
-            data.name = def.display
-            data.nameLower = slower(def.display)
-            data.category = "Command"
-            data.path = { "Search Bar" }
-            data.noPin = true
-            data.searchCommand = def.command
-            data.searchCommandDesc = def.desc
-
-            local entry = entries[n]
-            if not entry then
-                entry = {}
-                entries[n] = entry
-            end
-            entry.name = data.name
-            entry.depth = 0
-            entry.isPathNode = false
-            entry.isMatch = true
-            entry.isFlat = true
-            entry.flatCatKey = nil
-            entry.isPinned = false
-            entry.data = data
-        end
-    end
-    for i = n + 1, #entries do entries[i] = nil end
-    for i = n + 1, #dataPool do dataPool[i] = nil end
-    return n > 0 and entries or nil
 end

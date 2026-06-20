@@ -1,6 +1,8 @@
 local _, ns = ...
 
 local Text = ns.ResultText
+local L = ns.L
+local sformat = ns.Utils.sformat
 
 local KEY_ABBREV = {
     SHIFT = "S", CTRL = "C", ALT = "A", META = "M",
@@ -14,7 +16,7 @@ local KEY_ABBREV = {
     BUTTON3 = "MB3", BUTTON4 = "MB4", BUTTON5 = "MB5",
 }
 function Text:AbbrevBinding(binding)
-    if not binding or binding == "" then return "Not Bound" end
+    if not binding or binding == "" then return _G["NOT_BOUND"] or "Not Bound" end
     local out = {}
     for part in binding:gmatch("[^%-]+") do
         local up = part:upper()
@@ -86,20 +88,20 @@ end
 
 function Text:GetFlatSubtext(data)
     if not data then return "" end
-    if data.calculatorResult then return "Expression" end
+    if data.calculatorResult then return L["SUBTEXT_EXPRESSION"] end
     if data.calculatorLauncher then return "" end
     if data.searchCommandDesc then return data.searchCommandDesc end
     if data.quickFilterAliasText then return data.quickFilterAliasText end
-    if data.quickFilterDef then return data.quickFilterDef.label or "Quick Filter" end
+    if data.quickFilterDef then return data.quickFilterDef.label or L["QUICK_FILTER"] end
     if data.path and #data.path > 0 then
         return data.path[#data.path]
     end
     if data.mapSearchResult then
         local cat = data.category
         local typeLabel
-        if cat == "dungeon" then typeLabel = "Dungeon"
-        elseif cat == "raid" then typeLabel = "Raid"
-        elseif cat == "delve" then typeLabel = "Delve"
+        if cat == "dungeon" then typeLabel = _G["LFG_TYPE_DUNGEON"] or "Dungeon"
+        elseif cat == "raid" then typeLabel = _G["RAID"] or "Raid"
+        elseif cat == "delve" then typeLabel = _G["DELVE_LABEL"] or "Delve"
         end
         -- Use only the immediate parent zone, not the full continent path.
         -- pathPrefix can be "Continent > Region > Zone"; take the last segment.
@@ -115,19 +117,20 @@ function Text:GetFlatSubtext(data)
         elseif typeLabel then
             return typeLabel
         end
-        return zone or "Map"
+        return zone or _G["WORLD_MAP"] or "Map"
     end
-    if data.mountID then return "Mount" end
-    if data.toyItemID then return "Toy" end
-    if data.petID then return "Pet" end
-    if data.outfitID then return "Outfit" end
-    if data.heirloomItemID then return "Heirloom" end
-    if data.transmogSetID then return "Appearance Set" end
+    if data.mountID then return _G["MOUNT"] or "Mount" end
+    if data.toyItemID then return _G["TOY"] or "Toy" end
+    if data.petID then return _G["PET"] or "Pet" end
+    if data.outfitID then return _G["TRANSMOG_OUTFIT_NAME_DEFAULT"] or "Outfit" end
+    if data.heirloomItemID then return _G["ITEM_QUALITY7_DESC"] or "Heirloom" end
+    if data.transmogSetID then return L["SUBTEXT_APPEARANCE_SET"] end
+    if data.appearanceItemID then return L["SUBTEXT_APPEARANCE_ITEM"] end
     if data.itemID and data.category == "Loot" then
-        return data.lootInstanceName or "Loot"
+        return data.lootInstanceName or _G["LOOT"] or "Loot"
     end
     if data.category == "Ability" and data.treeName and data.treeName ~= "" then
-        return data.treeName .. " Ability"
+        return sformat(L["SUBTEXT_TREE_ABILITY"], data.treeName)
     end
     return data.category or ""
 end

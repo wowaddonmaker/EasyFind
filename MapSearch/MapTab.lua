@@ -31,7 +31,6 @@ local TAB_ICON_GOLD      = {1.00, 0.82, 0.00}
 local TAB_ICON_DIM       = {0.55, 0.45, 0.10}
 local TAB_STACK_GAP      = -3
 
-local FormatPathPrefix = MapUtils.FormatPathPrefix
 local GetTopAncestor = MapUtils.GetTopAncestor
 local GetZoneUnderAncestor = MapUtils.GetZoneUnderAncestor
 local GetAncestorNames = MapUtils.GetAncestorNames
@@ -887,7 +886,7 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
             row.text:SetTextColor(1, 1, 1)
         end
         do
-            local pathText = FormatPathPrefix(data.pathPrefix) or ""
+            local pathText = data.pathPrefix or ""
             if groupName and pathText ~= "" then
                 local prefix = groupName .. " > "
                 if pathText:sub(1, #prefix) == prefix then
@@ -1081,7 +1080,7 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
     end
 
     if recentList and #recentList > 0 then
-        placeSectionLabel("Recent Searches")
+        placeSectionLabel(L["MAP_SECTION_RECENT_SEARCHES"])
         for _, query in ipairs(recentList) do
             local row = AcquireRow(scrollChild)
             if row then
@@ -1110,7 +1109,7 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
         end
     end
     if pinned and #pinned > 0 then
-        placeSectionLabel("Pinned")
+        placeSectionLabel(L["HEADER_PINNED"])
         for _, d in ipairs(pinned) do
             local renderAsParent = d.isZone and d.zoneMapID
             local children = renderAsParent and GetWorldChildren(d.zoneMapID) or nil
@@ -1144,12 +1143,12 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
     if localEntries and #localEntries > 0 then
         local currentMapID = WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID()
         local currentMapInfo = currentMapID and GetMapInfo and GetMapInfo(currentMapID)
-        local sectionLabel = currentMapInfo and ("This Zone (" .. currentMapInfo.name .. ")") or "This Zone"
+        local sectionLabel = currentMapInfo and L["MAP_SECTION_THIS_ZONE_NAMED"]:format(currentMapInfo.name) or L["MAP_SECTION_THIS_ZONE"]
         placeSectionLabel(sectionLabel)
         renderEntries(localEntries, "local")
     end
     if globalEntries and #globalEntries > 0 then
-        placeSectionLabel("Across the World")
+        placeSectionLabel(L["MAP_SECTION_ACROSS_WORLD"])
         renderEntries(globalEntries, "global")
     end
     scrollChild:SetHeight(mmax(1, y + 4))
@@ -1514,7 +1513,7 @@ function MapTab:RunSearch(text)
 
     if (not pinned or #pinned == 0)
        and (not localFiltered or #localFiltered == 0) and #globalFiltered == 0 then
-        panel.emptyMsg:SetText("|cff999999No matches.|r")
+        panel.emptyMsg:SetText("|cff999999" .. L["MAP_NO_MATCHES"] .. "|r")
         panel.emptyMsg:Show()
     end
     restoreScroll()
@@ -1977,12 +1976,12 @@ function MapTab:PushRecentSearch(text)
 end
 
 local FILTER_OPTIONS = {
-    { key = "zones",      label = "Zones" },
-    { key = "instances",  label = "Instances" },
-    { key = "flightpath", label = "Flight Paths" },
-    { key = "travel",     label = "Travel" },
-    { key = "services",   label = "Services" },
-    { key = "rares",      label = "Rares" },
+    { key = "zones",      label = _G["ZONES"] or "Zones" },
+    { key = "instances",  label = L["MAP_FILTER_INSTANCES"] },
+    { key = "flightpath", label = L["MAP_FILTER_FLIGHT_PATHS"] },
+    { key = "travel",     label = L["MAP_FILTER_TRAVEL"] },
+    { key = "services",   label = L["MAP_FILTER_SERVICES"] },
+    { key = "rares",      label = L["MAP_FILTER_RARES"] },
 }
 
 -- Sub-row that only shows while the parent Rares filter is checked.
@@ -2272,7 +2271,7 @@ local function CreatePanel(qmf)
     emptyMsg:SetPoint("TOP", scrollFrame, "TOP", 0, -24)
     emptyMsg:SetWidth(260)
     emptyMsg:SetJustifyH("CENTER")
-    emptyMsg:SetText("|cff999999Start typing to search for POIs, zones, dungeons, and raids.|r")
+    emptyMsg:SetText("|cff999999" .. L["MAP_EMPTY_HINT"] .. "|r")
     p.emptyMsg = emptyMsg
 
     local recentCheck = CreateFrame("CheckButton", "EasyFindMapTabRecentCheck", p, "UICheckButtonTemplate")

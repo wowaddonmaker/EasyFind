@@ -34,7 +34,7 @@ local DB_DEFAULTS = {
     uiResultsScale = 1.0,
     uiResultsWidth = 350,
     uiSearchBarHeight = ns.SEARCHBAR_HEIGHT,
-    fontSize = 0.9,
+    fontSize = ns.DEFAULT_FONT_SIZE,
     searchWindowOpacity = ns.SEARCH_WINDOW_ALPHA,
     uiSearchPosition = nil,
     localMapDirectOpen = true,
@@ -106,6 +106,8 @@ local DB_DEFAULTS = {
         outfits        = true,
         heirlooms      = true,
         loot           = true,
+        appearances    = true,
+        appearanceItems = true,
         appearanceSets = true,
         bags           = true,
         macros         = true,
@@ -130,9 +132,16 @@ local DB_DEFAULTS = {
     mountTypeAquatic = true,
     mountTypeRideAlong = true,
     mountSourceFilters = {},
+    heirloomFilterCollected = true,
+    heirloomFilterNotCollected = false,
+    heirloomSourceFilters = {},
     hideTooltips = {
         collections = false,
         loot        = false,
+        abilities   = false,
+        talents     = false,
+        macros      = false,
+        bags        = false,
     },
     currencyFilterMode = "all",
     reputationFilterMode = "all",
@@ -141,6 +150,15 @@ local DB_DEFAULTS = {
     hideGuildAchievements = true,
     showLegacyReputations = false,
     abilityHidePassives = false,
+    macroFilterGeneral = true,
+    macroFilterChar = true,
+    bossFilterDungeon = true,
+    bossFilterRaid = true,
+    bagHideJunk = false,
+    wowheadLocale = "auto",
+    shortkeyConflictPrompt = true,
+    commandShowNative = true,
+    commandShowCustom = true,
     appearanceSetClass = nil,
     appearanceSetCollected = true,
     appearanceSetNotCollected = true,
@@ -148,6 +166,8 @@ local DB_DEFAULTS = {
     appearanceSetPvP = true,
     uiMapSearchLocal = true,
     aliases = {},
+    shortkeys = {},
+    shortkeysPerChar = {},
     uiSearchHistory = {},
     uiSearchHistoryLimit = 500,
 }
@@ -167,8 +187,11 @@ local PRESERVED_KEYS = {
     tutorialDone = true,
     mapTabRecentSearches = true,
     aliases = true,
+    shortkeys = true,
+    shortkeysPerChar = true,
     uiSearchHistory = true,
     uiSearchHistoryLimit = true,
+    accountKeybinds = true,
 }
 
 local RETIRED_SETTINGS_KEYS = {
@@ -216,6 +239,38 @@ local function ApplyFreshSettingsFor2(db)
     end
 
     RequireRevampedTutorial(db)
+end
+
+-- User data and history kept when the player hits "Reset all settings"; every
+-- other DB_DEFAULTS key is restored. Keeps everything the 2.0 migration
+-- preserves, plus pins and the loot-stat cache. Inheriting PRESERVED_KEYS means
+-- a new user-data key added there is honored here automatically.
+local INTERACTIVE_RESET_PRESERVE = {
+    pinnedUIItems = true,
+    pinnedUIItemsPerChar = true,
+    pinnedMapItems = true,
+    lootStatCache = true,
+    lootStatCacheVer = true,
+}
+for key in pairs(PRESERVED_KEYS) do
+    INTERACTIVE_RESET_PRESERVE[key] = true
+end
+
+-- DB_DEFAULTS table-literal keys whose default is nil drop out of the table, so
+-- pairs() never visits them; clear them explicitly on reset.
+local NIL_DEFAULT_KEYS = { "uiSearchPosition", "lootSpecs", "appearanceSetClass", "heirloomFilter" }
+
+function EasyFind:ResetSettingsToDefaults()
+    local db = self.db
+    if not db then return end
+    for key, defaultValue in pairs(DB_DEFAULTS) do
+        if not INTERACTIVE_RESET_PRESERVE[key] then
+            db[key] = CloneDefaultValue(defaultValue)
+        end
+    end
+    for i = 1, #NIL_DEFAULT_KEYS do
+        db[NIL_DEFAULT_KEYS[i]] = nil
+    end
 end
 
 local DB_MIGRATIONS = {
@@ -307,45 +362,8 @@ local function UrlEncode(str)
     end):gsub(" ", "+")
 end
 
-local feedbackPopup
 local function ShowFeedbackURL(url)
-    if not feedbackPopup then
-        local popup = CreateFrame("Frame", "EasyFindFeedbackPopup", UIParent, "BackdropTemplate")
-        popup:SetSize(460, 100)
-        popup:SetPoint("CENTER", 0, 200)
-        popup:SetFrameStrata("FULLSCREEN_DIALOG")
-        popup:SetFrameLevel(100)
-        popup:SetBackdrop({
-            bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-            edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-            tile = true, tileSize = 32, edgeSize = 32,
-            insets = { left = 11, right = 12, top = 12, bottom = 11 },
-        })
-        popup:SetBackdropColor(0, 0, 0, 0.95)
-
-        local label = popup:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        label:SetPoint("TOP", 0, -16)
-        label:SetText(L["URL_COPY_HINT"])
-
-        local editBox = CreateFrame("EditBox", nil, popup, "InputBoxTemplate")
-        editBox:SetSize(400, 20)
-        editBox:SetPoint("TOP", label, "BOTTOM", 0, -8)
-        editBox:SetAutoFocus(false)
-        editBox:SetJustifyH("LEFT")
-        editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus(); popup:Hide() end)
-        popup.editBox = editBox
-
-        local close = CreateFrame("Button", nil, popup, "UIPanelCloseButton")
-        close:SetPoint("TOPRIGHT", -5, -5)
-
-        popup:EnableMouse(true)
-        feedbackPopup = popup
-    end
-    feedbackPopup:Show()
-    feedbackPopup.editBox:SetText(url)
-    feedbackPopup.editBox:SetCursorPosition(0)
-    feedbackPopup.editBox:SetFocus()
-    feedbackPopup.editBox:HighlightText()
+    ns.ShowCopyBox(url, L["URL_COPY_HINT"])
 end
 
 local function OpenBugReport()
@@ -362,12 +380,15 @@ end
 function EasyFind:OpenBugReport() OpenBugReport() end
 function EasyFind:OpenFeatureRequest() OpenFeatureRequest() end
 
+-- Account-wide binds a brand-new install starts with; seeded once at login.
+local SUGGESTED_KEYBINDS = {
+    EASYFIND_TOGGLE_FOCUS = "CTRL-SPACE",
+    EASYFIND_MAP_FOCUS = "CTRL-M",
+}
+
 local function OnInitialize()
     if not EasyFindDB then
-        EasyFindDB = {
-            firstInstall = true,
-            accountKeybinds = { EASYFIND_TOGGLE_FOCUS = "CTRL-SPACE", EASYFIND_MAP_FOCUS = "CTRL-M" },
-        }
+        EasyFindDB = { firstInstall = true }
     end
     local savedVersion = EasyFindDB.dbVersion or 0
     for k, v in pairs(DB_DEFAULTS) do
@@ -486,6 +507,66 @@ local function InstallTransmogClassFilterHook()
     end)
 end
 
+-- Heirloom results follow the Heirlooms Journal class/spec dropdown. When the
+-- player changes it, re-populate so our list matches what the journal shows.
+local function InstallHeirloomClassFilterHook()
+    if not C_Heirloom or not C_Heirloom.SetClassAndSpecFilters
+       or EasyFind._heirloomClassHooked then
+        return
+    end
+    EasyFind._heirloomClassHooked = true
+    hooksecurefunc(C_Heirloom, "SetClassAndSpecFilters", function(classID, specID)
+        if EasyFind._heirloomHookSuppress then return end
+        local db = EasyFind.db
+        if not db then return end
+        local _, _, playerClassID = UnitClass("player")
+        local si = GetSpecialization and GetSpecialization()
+        local playerSpecID = si and GetSpecializationInfo and GetSpecializationInfo(si)
+        local newVal
+        if not classID or classID == 0 then
+            newVal = "all"
+        elseif not specID or specID == 0 then
+            newVal = { classID = classID }
+        elseif classID == playerClassID and specID == playerSpecID then
+            newVal = nil
+        else
+            newVal = { classID = classID, specID = specID }
+        end
+        db.heirloomFilter = newVal
+        MarkDynamicCategoryDirty("heirlooms")
+    end)
+end
+
+-- Appearance item results follow the wardrobe Items-tab class dropdown. When the
+-- player changes it, re-populate so our list matches what the Items tab shows.
+local function InstallTransmogItemClassFilterHook()
+    if not C_TransmogCollection or not C_TransmogCollection.SetClassFilter
+       or EasyFind._tmogItemClassHooked then
+        return
+    end
+    EasyFind._tmogItemClassHooked = true
+    hooksecurefunc(C_TransmogCollection, "SetClassFilter", function(classID)
+        if EasyFind._appItemClassHookSuppress then return end
+        local db = EasyFind.db
+        if not db then return end
+        local _, _, playerClassID = UnitClass("player")
+        local newVal
+        if not classID or classID <= 0 then
+            newVal = "all"
+        elseif classID == playerClassID then
+            newVal = nil
+        else
+            newVal = { classID = classID }
+        end
+        local oldID = type(db.appearanceItemClass) == "table"
+            and db.appearanceItemClass.classID or db.appearanceItemClass
+        local newID = type(newVal) == "table" and newVal.classID or newVal
+        if oldID == newID then return end
+        db.appearanceItemClass = newVal
+        MarkDynamicCategoryDirty("appearanceItems")
+    end)
+end
+
 -- Lazy dynamic load pulled when the user opens the search bar. Safe to
 -- call repeatedly; loaded-and-clean providers are skipped.
 function EasyFind:EnsureDynamicLoaded()
@@ -599,7 +680,7 @@ local function OnPlayerLogin()
         if not mod then return end
         local ok, err = xpcall(mod.Initialize, ErrorHandler, mod)
         if not ok then
-            EasyFind:Print("|cffff4444" .. name .. " failed to initialize: " .. tostring(err) .. "|r")
+            EasyFind:Print("|cffff4444" .. (L["ERR_MODULE_INIT_FAILED"]):format(name, tostring(err)) .. "|r")
         end
     end
     if EasyFind.db.enableMapSearch ~= false then
@@ -613,10 +694,12 @@ local function OnPlayerLogin()
     if ns.Options and ns.Options.RegisterWithBlizzardOptions then
         local ok, err = xpcall(ns.Options.RegisterWithBlizzardOptions, ErrorHandler, ns.Options)
         if not ok then
-            EasyFind:Print("|cffff4444Options registration failed: " .. tostring(err) .. "|r")
+            EasyFind:Print("|cffff4444" .. (L["ERR_OPTIONS_REGISTER_FAILED"]):format(tostring(err)) .. "|r")
         end
     end
     InstallTransmogClassFilterHook()
+    InstallHeirloomClassFilterHook()
+    InstallTransmogItemClassFilterHook()
 
     if ns.Database then
         if ns.Database.WarmSearchHotPath then
@@ -683,7 +766,21 @@ local function OnPlayerLogin()
             if existing then EasyFindDB.accountKeybinds[action] = existing end
         end
     end
+
+    -- Seed the suggested defaults once, and only when nothing is bound (the loop
+    -- above already pulled in any pre-existing native binds). This never replaces
+    -- a key the player set, and the flag stops it re-adding one they cleared.
+    if not EasyFindDB.suggestedKeybindsSeeded then
+        EasyFindDB.suggestedKeybindsSeeded = true
+        if next(EasyFindDB.accountKeybinds) == nil then
+            for action, key in pairs(SUGGESTED_KEYBINDS) do
+                EasyFindDB.accountKeybinds[action] = key
+            end
+        end
+    end
+
     ApplyAccountKeybinds()
+    if ns.Shortkeys and ns.Shortkeys.ApplyAll then ns.Shortkeys:ApplyAll() end
 end
 
 local outfitRefreshTimer
@@ -701,6 +798,7 @@ eventFrame:RegisterEvent("EQUIPMENT_SETS_CHANGED")
 local bagRefreshTimer
 local spellRefreshTimer
 local gearSetRefreshTimer
+local appearanceItemRefreshTimer
 eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
     if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
         OnInitialize()
@@ -729,7 +827,24 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
             ns.Database:SyncTransmogSetFiltersFromUI()
             MarkDynamicCategoryDirty("transmogSets")
             InstallTransmogClassFilterHook()
+            InstallHeirloomClassFilterHook()
+            InstallTransmogItemClassFilterHook()
         end
+        -- Appearance data streams in over several events after login; a single
+        -- early populate can catch a partial list. Re-run (debounced) so the
+        -- Items list fills out once it settles, and refresh an open search.
+        if appearanceItemRefreshTimer then appearanceItemRefreshTimer:Cancel() end
+        appearanceItemRefreshTimer = C_Timer.NewTimer(0.5, function()
+            appearanceItemRefreshTimer = nil
+            if ns.Database and ns.Database.RefreshDynamicCategory then
+                ns.Database:RefreshDynamicCategory("appearanceItems")
+            end
+            local frame = ns.Search and ns.Search.GetSearchFrame and ns.Search:GetSearchFrame()
+            local editBox = frame and frame.editBox
+            if editBox and frame:IsShown() and ns.Search.OnSearchTextChanged then
+                ns.Search:OnSearchTextChanged(editBox:GetText() or "", true)
+            end
+        end)
     elseif event == "UPDATE_MACROS" then
         MarkDynamicCategoryDirty("macros")
     elseif event == "SPELLS_CHANGED" then

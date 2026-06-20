@@ -104,7 +104,11 @@ function MapSearch:GetAllWorldZones(startMapID, depth, parentPath)
     local parentName = parentInfo and parentInfo.name or ""
     local parentType = parentInfo and parentInfo.mapType
 
-    if parentName == "Cosmic" then
+    -- The Cosmic map's localized name differs per client; match the enum, not
+    -- the English string. Root segments are dropped from displayed breadcrumbs
+    -- by mapType (MapUtils.IsRootMap), so this sentinel only surfaces for a zone
+    -- parented directly to Cosmic.
+    if parentType == Enum.UIMapType.Cosmic then
         parentName = "World"
     end
 
@@ -340,8 +344,15 @@ local function EnsureZoneGroupFields(zone)
         wipe(parts)
         for i = 1, #path do parts[i] = tostring(path[i].mapID) end
         zone.parentPathKey = tconcat(parts, ">")
-        for i = 1, #path do parts[i] = path[i].name end
-        zone.parentPathDisplay = tconcat(parts, " > ")
+        wipe(parts)
+        local n = 0
+        for i = 1, #path do
+            if not MapUtils.IsRootMap(path[i].mapID) then
+                n = n + 1
+                parts[n] = path[i].name
+            end
+        end
+        zone.parentPathDisplay = tconcat(parts, " > ", 1, n)
         wipe(parts)
         zone.parentPathMapID = path[#path].mapID
     else

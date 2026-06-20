@@ -54,6 +54,7 @@ local modules = {
     EnsureModule("SearchProviders"),
     EnsureModule("Filters"),
     EnsureModule("Calculator"),
+    EnsureModule("SearchCommands"),
     EnsureModule("Results"),
     EnsureModule("ResultRows"),
     EnsureModule("ResultRender"),

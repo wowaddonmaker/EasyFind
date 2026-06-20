@@ -37,6 +37,8 @@ function Rows.InstallTooltips(resultRow)
         -- spell or item via the macro APIs and surface that tooltip. Falls
         -- back to displaying the macro body when neither resolves.
         if self.data and self.data.macroIndex and self.data.category == "Macro" then
+            local ht = EasyFind.db.hideTooltips
+            if ht and ht.macros then return end
             local idx = self.data.macroIndex
             local spellID
             if GetMacroSpell then
@@ -55,7 +57,7 @@ function Rows.InstallTooltips(resultRow)
             elseif itemName and GameTooltip.SetItemByID and select(2, GetItemInfo(itemName)) then
                 GameTooltip:SetHyperlink(select(2, GetItemInfo(itemName)))
             else
-                GameTooltip:SetText(self.data.name or "Macro", 1, 1, 1)
+                GameTooltip:SetText(self.data.name or (_G["MACRO"] or "Macro"), 1, 1, 1)
                 if self.data.macroBody and self.data.macroBody ~= "" then
                     GameTooltip:AddLine(self.data.macroBody, 0.7, 0.7, 0.7, true)
                 end
@@ -68,6 +70,11 @@ function Rows.InstallTooltips(resultRow)
         -- itself produces a tooltip even when the cursor is on the name.
         if self.data and self.data.spellID
            and (self.data.category == "Talent" or self.data.category == "Ability") then
+            local ht = EasyFind.db.hideTooltips
+            if ht and ((self.data.category == "Ability" and ht.abilities)
+                       or (self.data.category == "Talent" and ht.talents)) then
+                return
+            end
             AnchorTooltipAtCursor(GameTooltip, self)
             if GameTooltip.SetSpellByID then
                 GameTooltip:SetSpellByID(self.data.spellID)
@@ -102,7 +109,7 @@ function Rows.InstallTooltips(resultRow)
             GameTooltip:SetText(self.data.name or action, 1, 1, 1)
             local k1, k2 = GetBindingKey(action)
             GameTooltip:AddLine(" ")
-            GameTooltip:AddLine(sformat("Primary: %s", k1 or "Not Bound"), 0.7, 0.7, 0.7)
+            GameTooltip:AddLine(sformat(L["KB_PRIMARY"], k1 or (_G["NOT_BOUND"] or "Not Bound")), 0.7, 0.7, 0.7)
             GameTooltip:AddLine(sformat(L["KB_ALTERNATE"], k2 or (_G["NOT_BOUND"] or "Not Bound")), 0.7, 0.7, 0.7)
             GameTooltip:AddLine(" ")
             GameTooltip:AddLine(L["KB_CAPTURE_HINT"], 0.5, 0.5, 0.5, true)
@@ -196,7 +203,7 @@ function Rows.InstallTooltips(resultRow)
             local ht = EasyFind.db.hideTooltips
             local ic = self.icon
             if ht and ht.collections and (ic.mountID or ic.toyItemID or ic.petID
-                or ic.outfitID or ic.heirloomItemID or ic.transmogSetID) then
+                or ic.outfitID or ic.heirloomItemID or ic.transmogSetID or ic.appearanceItemID) then
                 return
             end
             if ht and ht.loot then
@@ -209,6 +216,8 @@ function Rows.InstallTooltips(resultRow)
                     end
                 end
             end
+            -- Bags "Hide tooltips" suppresses every bag item, gear or not.
+            if ht and ht.bags and self.data.category == "Bag" then return end
             -- Mount tooltip (show on icon hover)
             if self.icon.mountID and self.icon.spellID then
                 AnchorTooltipAtCursor(GameTooltip, self)
@@ -219,6 +228,7 @@ function Rows.InstallTooltips(resultRow)
                 AnchorTooltipAtCursor(GameTooltip, self)
                 GameTooltip:SetToyByItemID(toyItemID)
                 GameTooltip:Show()
+                if self.toyTooltipTicker then self.toyTooltipTicker:Cancel() end
                 self.toyTooltipTicker = C_Timer.NewTicker(1, function(ticker)
                     local ok = Utils.xpcall(function()
                         if GameTooltip:IsOwned(self) then
@@ -247,7 +257,7 @@ function Rows.InstallTooltips(resultRow)
                 end
             elseif self.icon.outfitID then
                 AnchorTooltipAtCursor(GameTooltip, self)
-                GameTooltip:SetText(self.data and self.data.name or "Outfit")
+                GameTooltip:SetText(self.data and self.data.name or _G["TRANSMOG_OUTFIT_NAME_DEFAULT"] or "Outfit")
                 GameTooltip:AddLine(_G["SPELL_CAST_TIME_INSTANT"] or "Instant", 1, 1, 1)
                 GameTooltip:AddLine(L["TMOG_DESC"], 0, 1, 0)
                 local activeID = Rows.lastEquippedOutfitID
@@ -285,11 +295,18 @@ function Rows.InstallTooltips(resultRow)
                 AnchorGearTooltip(GameTooltip, self)
                 GameTooltip:SetItemByID(self.icon.heirloomItemID)
                 GameTooltip:Show()
-            elseif self.icon.gearSetID then
-                AnchorTooltipAtCursor(GameTooltip, self)
-                GameTooltip:SetText(self.data and self.data.name or "Gear Set")
-                GameTooltip:AddLine(L["TMOG_CLICK_EQUIP"], 1, 0.82, 0)
+            elseif self.icon.appearanceItemID then
+                AnchorGearTooltip(GameTooltip, self)
+                local srcInfo = C_TransmogCollection and C_TransmogCollection.GetSourceInfo
+                    and C_TransmogCollection.GetSourceInfo(self.icon.appearanceItemID)
+                if srcInfo and srcInfo.itemID then
+                    GameTooltip:SetItemByID(srcInfo.itemID)
+                else
+                    GameTooltip:SetText(self.data and self.data.name or "")
+                end
                 GameTooltip:Show()
+            -- Gear sets intentionally show no tooltip: the row already says
+            -- "Click to equip" and a set has nothing else worth surfacing.
             -- Ability tooltip (must come after mount, since mount entries
             -- carry both mountID and spellID and use the mount tooltip).
             elseif self.icon.spellID then

@@ -4,6 +4,7 @@ local MapSearch = ns.MapSearch
 local Utils = ns.Utils
 local MapSearchData = ns.MapSearchData
 local Search = ns.MapSearchSearch
+local L = ns.L
 
 local pairs, ipairs, type, select = Utils.pairs, Utils.ipairs, Utils.type, Utils.select
 local tinsert = Utils.tinsert
@@ -150,6 +151,47 @@ function MapSearch:ScanAllFlightMasters()
     Search.cachedAllFlightMasters = allNodes
     MapSearch._cachedFlightMasters = allNodes
     return allNodes
+end
+
+-- POIs surfaced from ANY zone, not only when their own map is open. The legacy
+-- PvP gear vendors sit in the faction capitals (Stormwind / Orgrimmar), and only
+-- the player's own capital is reachable, so surface just that one. Off-map
+-- results navigate/breadcrumb to their real zone on select (ResultIsOnViewedMap).
+local LEGACY_PVP_VENDOR_NAME = "Legacy PvP Vendors"
+local CAPITAL_FACTION = { [84] = "Alliance", [85] = "Horde" }  -- Stormwind / Orgrimmar
+local alwaysFindableCache
+
+function MapSearch:GetAlwaysFindableLocations()
+    if alwaysFindableCache then return alwaysFindableCache end
+    local faction = UnitFactionGroup and UnitFactionGroup("player")
+    local results = {}
+    for mapID, locations in pairs(STATIC_LOCATIONS) do
+        for _, loc in ipairs(locations) do
+            if loc.name == LEGACY_PVP_VENDOR_NAME then
+                local locFaction = CAPITAL_FACTION[mapID]
+                if not locFaction or locFaction == faction then
+                    -- These show from any zone, so name the parent zone in the
+                    -- row subtext to tell the multiple vendors apart.
+                    local mapInfo = GetMapInfo(mapID)
+                    results[#results + 1] = PreparePOI({
+                        name = loc.name,
+                        category = loc.category,
+                        icon = loc.icon,
+                        isStatic = true,
+                        alwaysFindable = true,
+                        mapID = mapID,
+                        coordMapID = mapID,
+                        zoneName = mapInfo and mapInfo.name,
+                        x = loc.x,
+                        y = loc.y,
+                        keywords = loc.keywords,
+                    })
+                end
+            end
+        end
+    end
+    alwaysFindableCache = results
+    return results
 end
 
 function MapSearch:GetStaticLocations(mapID)
@@ -410,9 +452,9 @@ local PIN_SKIP_ATLAS = {
 -- it - some data providers expose pins as plain Frames with only an atlas to
 -- tell you what they are (e.g., trading post, quartermaster, chromie).
 local PIN_ATLAS_TYPES = {
-    ["ChromieTime-32x32"]         = { name = "Chromie",       category = "chromie" },
-    ["trading-post-minimap-icon"] = { name = "Trading Post",  category = "tradingpost" },
-    ["Quartermaster"]             = { name = "Quartermaster", category = "quartermaster" },
+    ["ChromieTime-32x32"]         = { name = L["MAP_POI_CHROMIE"],       category = "chromie" },
+    ["trading-post-minimap-icon"] = { name = L["MAP_POI_TRADING_POST"],  category = "tradingpost" },
+    ["Quartermaster"]             = { name = L["MAP_POI_QUARTERMASTER"], category = "quartermaster" },
 }
 
 -- Inspect a pin's textures and return the first known atlas identity, plus

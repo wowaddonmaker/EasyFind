@@ -1,0 +1,546 @@
+local _, ns = ...
+
+local Search = ns.Search
+local Filters = ns.Filters
+local Utils = ns.Utils
+local L = ns.L
+
+local ipairs = Utils.ipairs
+local pairs = Utils.pairs
+local tsort = Utils.tsort
+local CreateFrame = CreateFrame
+local UIParent = UIParent
+local unpack = unpack
+local wipe = wipe
+
+-- Transmog slot categories (Enum.TransmogCollectionType). Names come from the
+-- game where available, with an English fallback per slot.
+local SLOT_FALLBACK = {
+    [1] = _G["INVTYPE_HEAD"] or "Head",
+    [2] = _G["INVTYPE_SHOULDER"] or "Shoulder",
+    [3] = _G["INVTYPE_CLOAK"] or "Back",
+    [4] = _G["INVTYPE_CHEST"] or "Chest",
+    [5] = _G["INVTYPE_BODY"] or "Shirt",
+    [6] = _G["INVTYPE_TABARD"] or "Tabard",
+    [7] = _G["INVTYPE_WRIST"] or "Wrist",
+    [8] = _G["INVTYPE_HAND"] or "Hands",
+    [9] = _G["INVTYPE_WAIST"] or "Waist",
+    [10] = _G["INVTYPE_LEGS"] or "Legs",
+    [11] = _G["INVTYPE_FEET"] or "Feet",
+}
+
+local slotDefs
+local function GetSlotDefs()
+    if slotDefs then return slotDefs end
+    slotDefs = {}
+    local getInfo = C_TransmogCollection and C_TransmogCollection.GetCategoryInfo
+    local types = Enum.TransmogCollectionType
+    if not types then return slotDefs end
+    for _, catID in pairs(types) do
+        if type(catID) == "number" and catID > 0 then
+            local name
+            if getInfo then
+                local ok, n = pcall(getInfo, catID)
+                if ok and type(n) == "string" and n ~= "" then name = n end
+            end
+            name = name or SLOT_FALLBACK[catID]
+            if name then
+                slotDefs[#slotDefs + 1] = { slot = catID, label = name }
+            end
+        end
+    end
+    tsort(slotDefs, function(a, b) return a.slot < b.slot end)
+    return slotDefs
+end
+
+local function CurrentSlot()
+    local s = EasyFind.db.appearanceItemSlot
+    if s then return s end
+    return (Enum.TransmogCollectionType and Enum.TransmogCollectionType.Head) or 1
+end
+
+local function SlotLabel(slot)
+    for _, def in ipairs(GetSlotDefs()) do
+        if def.slot == slot then return def.label end
+    end
+    return SLOT_FALLBACK[slot] or tostring(slot)
+end
+
+-- Transmog source types shown in the wardrobe Filter > Sources flyout. Names
+-- come from the TRANSMOG_SOURCE_* globals; absent indices are skipped.
+local SOURCE_FALLBACK = {
+    [1] = "Boss Drop", [2] = "Quest", [3] = "Vendor", [4] = "World Drop",
+    [5] = "Achievement", [6] = "Profession", [7] = "Not Available",
+    [8] = "Trading Post",
+}
+local sourceDefs
+local function GetSourceDefs()
+    if sourceDefs then return sourceDefs end
+    sourceDefs = {}
+    for i = 1, 12 do
+        local name = _G["TRANSMOG_SOURCE_" .. i] or SOURCE_FALLBACK[i]
+        if name then sourceDefs[#sourceDefs + 1] = { source = i, label = name } end
+    end
+    return sourceDefs
+end
+
+local function MakeCheckRow(parent, width, rowH, checkSize, rowHL)
+    local row = CreateFrame("CheckButton", nil, parent)
+    row:SetSize(width, rowH)
+    row:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+    row:GetNormalTexture():SetSize(checkSize, checkSize)
+    row:GetNormalTexture():ClearAllPoints()
+    row:GetNormalTexture():SetPoint("LEFT", 4, 0)
+    row:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+    row:GetCheckedTexture():SetSize(checkSize, checkSize)
+    row:GetCheckedTexture():ClearAllPoints()
+    row:GetCheckedTexture():SetPoint("LEFT", 4, 0)
+    row.text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    row.text:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
+    local hl = row:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(unpack(rowHL))
+    return row
+end
+
+-- Our slot dropdown stores Enum.TransmogCollectionType ids; the wardrobe's slot
+-- buttons carry a transmogLocation with the equipment slotID (INVSLOT_*). These
+-- map between them. Armor only; weapon slots use a separate nav we don't sync.
+local CAT_TO_INV_SLOT = {
+    [1] = 1,   -- Head
+    [2] = 3,   -- Shoulder
+    [3] = 15,  -- Back
+    [4] = 5,   -- Chest
+    [5] = 4,   -- Shirt (Body)
+    [6] = 19,  -- Tabard
+    [7] = 9,   -- Wrist
+    [8] = 10,  -- Hands
+    [9] = 6,   -- Waist
+    [10] = 7,  -- Legs
+    [11] = 8,  -- Feet
+}
+local INV_SLOT_TO_CAT = {}
+for cat, inv in pairs(CAT_TO_INV_SLOT) do INV_SLOT_TO_CAT[inv] = cat end
+
+-- Reverse sync: clicking a wardrobe slot button mirrors onto our slot dropdown
+-- and re-runs the search. Guarded so our own forward click doesn't loop back.
+local function OnWardrobeSlotClicked(button)
+    if EasyFind._appItemSlotSuppress then return end
+    local loc = button.transmogLocation
+    if type(loc) ~= "table" then return end
+    local cat = INV_SLOT_TO_CAT[loc.slotID]
+    local db = EasyFind.db
+    if not cat or not db or db.appearanceItemSlot == cat then return end
+    db.appearanceItemSlot = cat
+    if Filters._updateAppItemSlotLabel then Filters._updateAppItemSlotLabel() end
+    if ns.Database and ns.Database.RefreshDynamicCategory then
+        ns.Database:RefreshDynamicCategory("appearanceItems")
+    end
+    local frame = Search.GetSearchFrame and Search:GetSearchFrame()
+    local editBox = frame and frame.editBox
+    if editBox and frame:IsShown() then
+        Search:OnSearchTextChanged(editBox:GetText() or "", true)
+    end
+end
+
+local function InstallSlotButtonHooks()
+    local wcf = _G["WardrobeCollectionFrame"]
+    local sf = wcf and wcf.ItemsCollectionFrame and wcf.ItemsCollectionFrame.SlotsFrame
+    if not sf then return end
+    for _, child in ipairs({ sf:GetChildren() }) do
+        if child.IsObjectType and child:IsObjectType("Button")
+           and type(child.transmogLocation) == "table" and not child._efSlotHooked then
+            child._efSlotHooked = true
+            child:HookScript("OnClick", OnWardrobeSlotClicked)
+        end
+    end
+end
+
+-- Install the reverse-sync hooks. Hooking the Items tab's OnShow (once) means the
+-- slot buttons get hooked every time it displays, so clicking a wardrobe slot
+-- updates our dropdown even if the player never touched our menu first.
+function Filters:EnsureWardrobeItemSlotHooks()
+    local wcf = _G["WardrobeCollectionFrame"]
+    local icf = wcf and wcf.ItemsCollectionFrame
+    if not icf then return end
+    if not icf._efSlotShowHooked then
+        icf._efSlotShowHooked = true
+        icf:HookScript("OnShow", InstallSlotButtonHooks)
+    end
+    InstallSlotButtonHooks()
+end
+
+-- Forward sync: mirror our slot-dropdown choice onto the wardrobe Items tab by
+-- clicking the matching slot button (so it does exactly what a player click
+-- does). Only acts when the Items tab is open.
+function Filters:SyncWardrobeItemSlot(catID)
+    if type(catID) ~= "number" then return end
+    local targetSlot = CAT_TO_INV_SLOT[catID]
+    if not targetSlot then return end
+    local wcf = _G["WardrobeCollectionFrame"]
+    local icf = wcf and wcf.ItemsCollectionFrame
+    local sf = icf and icf.SlotsFrame
+    if not sf then return end
+    Filters:EnsureWardrobeItemSlotHooks()
+    -- Match the proven /devslottest path exactly: no IsShown checks (these slot
+    -- buttons report IsShown()==false even while clickable).
+    for _, child in ipairs({ sf:GetChildren() }) do
+        if child.IsObjectType and child:IsObjectType("Button") then
+            local loc = child.transmogLocation
+            if type(loc) == "table" and loc.slotID == targetSlot
+               and (loc.modification == 0 or loc.modification == nil) then
+                EasyFind._appItemSlotSuppress = true
+                child:Click()
+                EasyFind._appItemSlotSuppress = false
+                return
+            end
+        end
+    end
+end
+
+-- Items options popup: class selector + slot selector + a Filter sub-popup
+-- (Collected / Not Collected / All Factions / All Races + a Sources flyout),
+-- mirroring the wardrobe Items tab. Returns the popup and a sync function.
+function Filters:BuildAppearanceItemOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox, dropdownGuardFrames, branchPopups)
+    local WIDTH = 168
+    local ROW_H = 22
+    local PAD = 6
+    local CLASS_BTN_H = 27
+    -- Popups belonging to this menu's branch. A flyout stays open while the
+    -- mouse is over any of them, but unrelated menus still auto-close.
+    branchPopups = branchPopups or {}
+
+    local function Apply()
+        if ns.Database and ns.Database.RefreshDynamicCategory then
+            ns.Database:RefreshDynamicCategory("appearanceItems")
+        end
+        if searchEditBox and searchEditBox:GetText() ~= "" then
+            Search:OnSearchTextChanged(searchEditBox:GetText())
+        end
+    end
+
+    local optionsPopup = CreateFrame("Frame", "EasyFindAppItemOptionsPopup", UIParent, "BackdropTemplate")
+    optionsPopup:SetFrameStrata("TOOLTIP")
+    StylePopup(optionsPopup)
+    optionsPopup:EnableMouse(true)
+    optionsPopup:Hide()
+
+    local classSel = Filters:BuildClassSpecSelector({
+        parent = optionsPopup,
+        x = PAD, y = -PAD,
+        width = WIDTH - PAD * 2,
+        hasSpec = false,
+        rowHighlight = ROW_HIGHLIGHT_COLOR,
+        stylePopup = StylePopup,
+        guardFrames = dropdownGuardFrames,
+        getScale = function() return EasyFind.db.uiSearchScale or 1.0 end,
+        getFilter = function() return EasyFind.db.appearanceItemClass end,
+        setFilter = function(v) EasyFind.db.appearanceItemClass = v end,
+        onChange = Apply,
+    })
+
+    -- Slot selector (shared dropdown button + popup list of slots).
+    local slotPopup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    slotPopup:SetFrameStrata("TOOLTIP")
+    slotPopup:SetFrameLevel(optionsPopup:GetFrameLevel() + 20)
+    StylePopup(slotPopup)
+    slotPopup:EnableMouse(true)
+    slotPopup:Hide()
+    local slotRows = {}
+    local setSlotLabel
+    local function UpdateSlotLabel() if setSlotLabel then setSlotLabel(SlotLabel(CurrentSlot())) end end
+    -- Let the reverse wardrobe-slot sync refresh this dropdown's label.
+    Filters._updateAppItemSlotLabel = UpdateSlotLabel
+    local function LayoutSlotPopup()
+        local defs = GetSlotDefs()
+        local py = -PAD
+        for i, def in ipairs(defs) do
+            local row = slotRows[i]
+            if not row then
+                row = CreateFrame("Button", nil, slotPopup)
+                row:SetSize(WIDTH - PAD * 2, ROW_H)
+                row.text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+                row.text:SetPoint("LEFT", 12, 0)
+                local hl = row:CreateTexture(nil, "HIGHLIGHT")
+                hl:SetAllPoints()
+                hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+                row:SetScript("OnClick", function(self)
+                    EasyFind.db.appearanceItemSlot = self._slot
+                    UpdateSlotLabel()
+                    slotPopup:Hide()
+                    Filters:SyncWardrobeItemSlot(self._slot)
+                    Apply()
+                end)
+                slotRows[i] = row
+            end
+            row._slot = def.slot
+            row.text:SetText(def.label)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", slotPopup, "TOPLEFT", PAD, py)
+            row:Show()
+            py = py - ROW_H
+        end
+        for i = #defs + 1, #slotRows do slotRows[i]:Hide() end
+        slotPopup:SetSize(WIDTH, -py + PAD)
+    end
+    setSlotLabel = select(2, Utils.CreateDropdownButton({
+        parent = optionsPopup, x = PAD, y = -(PAD + CLASS_BTN_H + 4),
+        width = WIDTH - PAD * 2, height = CLASS_BTN_H,
+        popup = slotPopup, layout = LayoutSlotPopup,
+        getScale = function() return EasyFind.db.uiSearchScale or 1.0 end,
+        guardFrames = dropdownGuardFrames,
+    }))
+
+    -- Sources flyout (Toggle All + one row per transmog source type).
+    local sourcePopup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    sourcePopup:SetFrameStrata("TOOLTIP")
+    sourcePopup:SetFrameLevel(optionsPopup:GetFrameLevel() + 40)
+    StylePopup(sourcePopup)
+    sourcePopup:EnableMouse(true)
+    sourcePopup:Hide()
+    if dropdownGuardFrames then dropdownGuardFrames[#dropdownGuardFrames + 1] = sourcePopup end
+    local function SourceFilters()
+        EasyFind.db.appearanceItemSourceFilters = EasyFind.db.appearanceItemSourceFilters or {}
+        return EasyFind.db.appearanceItemSourceFilters
+    end
+    local srcRows = {}
+    local toggleAllRow = CreateFrame("Button", nil, sourcePopup)
+    toggleAllRow:SetSize(WIDTH - PAD * 2, ROW_H)
+    local toggleAllLabel = toggleAllRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    toggleAllLabel:SetPoint("LEFT", 14, 0)
+    toggleAllLabel:SetText(L["FILTER_TOGGLE_ALL"])
+    local toggleAllHL = toggleAllRow:CreateTexture(nil, "HIGHLIGHT")
+    toggleAllHL:SetAllPoints()
+    toggleAllHL:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+    local function LayoutSourcePopup()
+        local defs = GetSourceDefs()
+        local filters = SourceFilters()
+        toggleAllRow:ClearAllPoints()
+        toggleAllRow:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -PAD)
+        local py = -(PAD + ROW_H)
+        for i, def in ipairs(defs) do
+            local row = srcRows[i]
+            if not row then
+                row = MakeCheckRow(sourcePopup, WIDTH - PAD * 2, ROW_H, CHECK_SIZE, ROW_HIGHLIGHT_COLOR)
+                row:SetScript("OnClick", function(self)
+                    SourceFilters()[self._source] = self:GetChecked() and nil or false
+                    Apply()
+                end)
+                srcRows[i] = row
+            end
+            row._source = def.source
+            row.text:SetText(def.label)
+            row:SetChecked(filters[def.source] ~= false)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, py)
+            row:Show()
+            py = py - ROW_H
+        end
+        for i = #defs + 1, #srcRows do srcRows[i]:Hide() end
+        sourcePopup:SetSize(WIDTH, -py + PAD)
+    end
+    toggleAllRow:SetScript("OnClick", function()
+        local filters = SourceFilters()
+        local anyOff = false
+        for _, def in ipairs(GetSourceDefs()) do if filters[def.source] == false then anyOff = true; break end end
+        if anyOff then wipe(filters) else
+            for _, def in ipairs(GetSourceDefs()) do filters[def.source] = false end
+        end
+        LayoutSourcePopup()
+        Apply()
+    end)
+
+    -- Filter sub-popup: Collected / Not Collected / All Factions / All Races +
+    -- a Sources row that opens the sources flyout.
+    local filterPopup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    filterPopup:SetFrameStrata("TOOLTIP")
+    filterPopup:SetFrameLevel(optionsPopup:GetFrameLevel() + 20)
+    StylePopup(filterPopup)
+    filterPopup:EnableMouse(true)
+    filterPopup:Hide()
+
+    local toggleDefs = {
+        { dbKey = "appearanceItemCollected",    label = _G["COLLECTED"] or "Collected",        default = true },
+        { dbKey = "appearanceItemNotCollected", label = _G["NOT_COLLECTED"] or "Not Collected", default = false },
+        { dbKey = "appearanceItemAllFactions",  label = _G["ALL_FACTIONS"] or "All Factions",   default = true },
+        { dbKey = "appearanceItemAllRaces",     label = _G["ALL_RACES"] or "All Races",         default = true },
+    }
+    local toggleRows = {}
+    for i, def in ipairs(toggleDefs) do
+        local row = MakeCheckRow(filterPopup, WIDTH - PAD * 2, ROW_H, CHECK_SIZE, ROW_HIGHLIGHT_COLOR)
+        row.text:SetText(def.label)
+        row:SetPoint("TOPLEFT", filterPopup, "TOPLEFT", PAD, -(PAD + (i - 1) * ROW_H))
+        row.dbKey = def.dbKey
+        row.default = def.default
+        row:SetScript("OnClick", function(self)
+            EasyFind.db[self.dbKey] = self:GetChecked() and true or false
+            Apply()
+        end)
+        toggleRows[i] = row
+    end
+
+    local sourcesRow = CreateFrame("Button", nil, filterPopup)
+    sourcesRow:SetSize(WIDTH - PAD * 2, ROW_H)
+    sourcesRow:SetPoint("TOPLEFT", filterPopup, "TOPLEFT", PAD, -(PAD + #toggleDefs * ROW_H))
+    local sourcesText = sourcesRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    sourcesText:SetPoint("LEFT", 12, 0)
+    sourcesText:SetText(_G["SOURCES"] or "Sources")
+    local sourcesChev = sourcesRow:CreateTexture(nil, "OVERLAY")
+    sourcesChev:SetAtlas("common-icon-forwardarrow")
+    sourcesChev:SetSize(CHECK_SIZE, CHECK_SIZE)
+    sourcesChev:SetPoint("RIGHT", -4, 0)
+    local sourcesHL = sourcesRow:CreateTexture(nil, "HIGHLIGHT")
+    sourcesHL:SetAllPoints()
+    sourcesHL:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+    filterPopup:SetSize(WIDTH, PAD * 2 + (#toggleDefs + 1) * ROW_H)
+
+    Utils.AttachHoverPopup(sourcesRow, sourcePopup, {
+        chainGuards = branchPopups,
+        onShow = function()
+            LayoutSourcePopup()
+            sourcePopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
+            Utils.OpenFlyoutBeside(sourcePopup, sourcesRow, 4)
+            sourcePopup:Show()
+        end,
+    })
+
+    local function SyncFilterToggles()
+        for _, row in ipairs(toggleRows) do
+            local v = EasyFind.db[row.dbKey]
+            if v == nil then v = row.default end
+            row:SetChecked(v and true or false)
+        end
+    end
+
+    local _, setFilterLabel = Utils.CreateDropdownButton({
+        parent = optionsPopup, x = PAD, y = -(PAD + (CLASS_BTN_H + 4) * 2),
+        width = WIDTH - PAD * 2, height = CLASS_BTN_H,
+        popup = filterPopup, layout = SyncFilterToggles,
+        getScale = function() return EasyFind.db.uiSearchScale or 1.0 end,
+        guardFrames = dropdownGuardFrames,
+        extraGuards = { sourcePopup },
+    })
+    setFilterLabel(_G["FILTER"] or "Filter")
+    filterPopup:HookScript("OnHide", function() sourcePopup:Hide() end)
+
+    optionsPopup:SetSize(WIDTH, PAD * 2 + (CLASS_BTN_H + 4) * 3 - 4)
+
+    optionsPopup:HookScript("OnHide", function()
+        slotPopup:Hide()
+        filterPopup:Hide()
+        sourcePopup:Hide()
+        if classSel.popup then classSel.popup:Hide() end
+    end)
+
+    branchPopups[#branchPopups + 1] = optionsPopup
+    branchPopups[#branchPopups + 1] = slotPopup
+    branchPopups[#branchPopups + 1] = filterPopup
+    branchPopups[#branchPopups + 1] = sourcePopup
+    if classSel.popup then branchPopups[#branchPopups + 1] = classSel.popup end
+
+    local function SyncFromDB()
+        classSel.Refresh()
+        UpdateSlotLabel()
+    end
+
+    UpdateSlotLabel()
+    return optionsPopup, SyncFromDB
+end
+
+-- The "Appearances" chooser: Items and Sets rows. Each is a checkbox that
+-- toggles whether that type appears in results (uiSearchFilters.appearanceItems
+-- / appearanceSets) and opens its own options flyout to the right on hover,
+-- mirroring how every other collection sub-row behaves.
+function Filters:BuildAppearanceOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
+    local WIDTH = 150
+    local ROW_H = 24
+    local PAD = 6
+    local branchPopups = {}
+
+    local chooser = CreateFrame("Frame", "EasyFindAppChooserPopup", UIParent, "BackdropTemplate")
+    chooser:SetFrameStrata("TOOLTIP")
+    StylePopup(chooser)
+    chooser:EnableMouse(true)
+    chooser:Hide()
+    branchPopups[#branchPopups + 1] = chooser
+
+    local itemsPopup, syncItems = Filters:BuildAppearanceItemOptionsPopup(
+        StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox, dropdownGuardFrames, branchPopups)
+    local setsPopup, syncSets = Filters:BuildAppearanceSetOptionsPopup(
+        StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox, dropdownGuardFrames, branchPopups)
+    itemsPopup:SetFrameLevel(chooser:GetFrameLevel() + 10)
+    setsPopup:SetFrameLevel(chooser:GetFrameLevel() + 10)
+    if dropdownGuardFrames then
+        dropdownGuardFrames[#dropdownGuardFrames + 1] = itemsPopup
+        dropdownGuardFrames[#dropdownGuardFrames + 1] = setsPopup
+    end
+
+    local rows = {
+        { label = _G["ITEMS"] or "Items", popup = itemsPopup, sync = syncItems, filterKey = "appearanceItems" },
+        { label = _G["TRANSMOG_TAB_SETS"] or "Sets", popup = setsPopup, sync = syncSets, filterKey = "appearanceSets" },
+    }
+    local siblingPopups = { itemsPopup, setsPopup }
+    local checkRows = {}
+    for i, def in ipairs(rows) do
+        local row = CreateFrame("CheckButton", nil, chooser)
+        row:SetSize(WIDTH - PAD * 2, ROW_H)
+        row:SetPoint("TOPLEFT", chooser, "TOPLEFT", PAD, -(PAD + (i - 1) * ROW_H))
+        row:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+        row:GetNormalTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
+        row:GetNormalTexture():ClearAllPoints()
+        row:GetNormalTexture():SetPoint("LEFT", 4, 0)
+        row:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+        row:GetCheckedTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
+        row:GetCheckedTexture():ClearAllPoints()
+        row:GetCheckedTexture():SetPoint("LEFT", 4, 0)
+        local txt = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        txt:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
+        txt:SetText(def.label)
+        local chev = row:CreateTexture(nil, "OVERLAY")
+        chev:SetAtlas("common-icon-forwardarrow")
+        chev:SetSize(CHECK_SIZE - 2, CHECK_SIZE - 2)
+        chev:SetPoint("RIGHT", -4, 0)
+        chev:SetVertexColor(0.85, 0.85, 0.85, 1)
+        local hl = row:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+
+        local filterKey = def.filterKey
+        row:SetChecked(EasyFind.db.uiSearchFilters[filterKey] ~= false)
+        row:SetScript("OnClick", function(self)
+            EasyFind.db.uiSearchFilters[filterKey] = self:GetChecked()
+            if searchEditBox and searchEditBox:GetText() ~= "" then
+                Search:OnSearchTextChanged(searchEditBox:GetText())
+            end
+        end)
+        checkRows[i] = { row = row, filterKey = filterKey }
+
+        local p, s = def.popup, def.sync
+        p._owningRow = row
+        Utils.AttachHoverPopup(row, p, {
+            chainGuards = branchPopups,
+            onShow = function()
+                for _, other in ipairs(siblingPopups) do
+                    if other ~= p then other:Hide() end
+                end
+                s()
+                p:SetScale(EasyFind.db.uiSearchScale or 1.0)
+                Utils.OpenFlyoutBeside(p, row, 4)
+                p:Show()
+            end,
+        })
+    end
+    chooser:SetSize(WIDTH, PAD * 2 + #rows * ROW_H)
+
+    chooser:HookScript("OnHide", function()
+        itemsPopup:Hide()
+        setsPopup:Hide()
+    end)
+
+    local function SyncChooser()
+        for _, cr in ipairs(checkRows) do
+            cr.row:SetChecked(EasyFind.db.uiSearchFilters[cr.filterKey] ~= false)
+        end
+    end
+    return chooser, SyncChooser, branchPopups
+end

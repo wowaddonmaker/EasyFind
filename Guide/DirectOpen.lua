@@ -67,8 +67,11 @@ end
 
 -- Direct open mode - programmatically navigates to the target as far as possible.
 -- Executes ALL steps that represent clickable navigation (tabs, categories, buttons).
--- Only falls back to highlighting when the final step is a non-navigable Search region
--- that the user needs to visually locate (e.g. PvP Talents tray, War Mode button).
+-- Falls back to highlighting when the final step is a non-navigable Search region the
+-- user needs to locate (e.g. PvP Talents tray, War Mode button), OR when a navigable
+-- target button is present but disabled (a feature locked at the current level, like
+-- the Rated PvP tab below max level). There's nothing to click, so it points the
+-- user at where navigation stopped instead of stalling silently.
 function Guide:DirectOpen(data)
     if not data or not data.steps or #data.steps == 0 then return end
 
@@ -134,6 +137,8 @@ function Guide:DirectOpen(data)
         if step.ejBoss then return true end
         if step.ejLootTab then return true end
         if step.wardrobeSetsTab then return true end
+        if step.wardrobeItemsTab then return true end
+        if step.appearanceSourceID then return true end
         if step.transmogSetID then return true end
         if step.transmogVariantDropdown then return true end
         if step.transmogVariantSetID then return true end
@@ -171,6 +176,21 @@ function Guide:DirectOpen(data)
     -- tabs and needs one frame for the ScrollBox to rebuild.
     local tabClickAttempts = {}
     local categoryClickAttempts = {}
+
+    -- Click a navigable target button. A present-but-disabled button (a feature
+    -- locked at the current level) has nothing to click, so hand that step to the
+    -- guide highlight, which points the user at where navigation stopped. Returns
+    -- true when it handed off, so the caller stops executing remaining steps.
+    local function clickOrHandoff(btn, stepIdx)
+        if btn and btn.IsEnabled and not btn:IsEnabled() and Highlight then
+            data.noCourseCorrect = true
+            Highlight:StartGuideAtStep(data, stepIdx)
+            return true
+        end
+        ClickButton(btn)
+        return false
+    end
+
     local function executeFrom(start)
         for i = start, executeCount do
             local step = steps[i]
@@ -292,11 +312,11 @@ function Guide:DirectOpen(data)
             end
 
             if step.sideTabIndex then
-                ClickButton(Highlight:GetSideTabButton(step.waitForFrame or "PVEFrame", step.sideTabIndex))
+                if clickOrHandoff(Highlight:GetSideTabButton(step.waitForFrame or "PVEFrame", step.sideTabIndex), i) then return end
             end
 
             if step.pvpSideTabIndex then
-                ClickButton(Highlight:GetPvPSideTabButton(step.waitForFrame or "PVEFrame", step.pvpSideTabIndex))
+                if clickOrHandoff(Highlight:GetPvPSideTabButton(step.waitForFrame or "PVEFrame", step.pvpSideTabIndex), i) then return end
             end
 
             if step.sidebarButtonFrame or step.sidebarIndex then
@@ -482,6 +502,41 @@ function Guide:DirectOpen(data)
                 end
             end
 
+            -- Wardrobe Items tab: click the Items tab within WardrobeCollectionFrame.
+            if step.wardrobeItemsTab then
+                local wcf = _G["WardrobeCollectionFrame"]
+                local itemsTab = Highlight:GetTabButton("WardrobeCollectionFrame", 1)
+                if itemsTab then
+                    ClickButton(itemsTab)
+                end
+                if wcf then
+                    local icf = wcf.ItemsCollectionFrame
+                    if not icf or not icf:IsShown() then
+                        if wcf.SetTab then
+                            pcall(wcf.SetTab, wcf, 1)
+                        elseif PanelTemplates_SetTab then
+                            pcall(PanelTemplates_SetTab, wcf, 1)
+                        end
+                    end
+                end
+            end
+
+            -- Appearance item: page to its slot + page. Deferred so the Items
+            -- tab's visuals list has populated before GoToSourceID runs.
+            if step.appearanceSourceID then
+                local icf = _G["WardrobeCollectionFrame"]
+                    and _G["WardrobeCollectionFrame"].ItemsCollectionFrame
+                if icf and icf.GoToSourceID and icf.GetTransmogLocation then
+                    local sourceID = step.appearanceSourceID
+                    Utils.SafeAfter(0.1, function()
+                        local ok, loc = pcall(icf.GetTransmogLocation, icf)
+                        if ok and loc then
+                            pcall(icf.GoToSourceID, icf, sourceID, loc)
+                        end
+                    end)
+                end
+            end
+
             -- Transmog set: scroll via SetScrollPercentage + select
             if step.transmogSetID and i == executeCount then
                 local scf = _G["WardrobeCollectionFrame"]
@@ -579,11 +634,11 @@ function Guide:DirectOpen(data)
             end
 
             if step.lfgCategoryID then
-                ClickButton(Highlight:FindLfgCategoryButton(step.lfgCategoryID, step.lfgFilters))
+                if clickOrHandoff(Highlight:FindLfgCategoryButton(step.lfgCategoryID, step.lfgFilters), i) then return end
             elseif step.searchButtonText then
                 local parentFrame = step.waitForFrame and _G[step.waitForFrame]
                 if parentFrame then
-                    ClickButton(SearchFrameTreeFuzzy(parentFrame, slower(step.searchButtonText)))
+                    if clickOrHandoff(SearchFrameTreeFuzzy(parentFrame, slower(step.searchButtonText)), i) then return end
                 end
             end
         end

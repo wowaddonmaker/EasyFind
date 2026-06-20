@@ -2,6 +2,7 @@ local _, ns = ...
 
 local MapSearch = ns.MapSearch
 local Utils = ns.Utils
+local MapUtils = ns.MapUtils
 local MapSearchData = ns.MapSearchData
 local Search = ns.MapSearchSearch
 
@@ -454,7 +455,9 @@ local function BuildPromotedInstanceCache(self)
         if zone.path and not pathForMap[zone.mapID] then
             wipe(parts)
             for _, p in ipairs(zone.path) do
-                parts[#parts + 1] = p.name
+                if not MapUtils.IsRootMap(p.mapID) then
+                    parts[#parts + 1] = p.name
+                end
             end
             parts[#parts + 1] = zone.name
             pathForMap[zone.mapID] = tconcat(parts, " > ")
@@ -576,6 +579,23 @@ local function AppendGlobalInstanceSearchSources(self, out, zoneNames)
     AppendPromotedInstanceResults(self, out, zoneNames)
 end
 
+-- Legacy PvP vendors live in the faction capitals but are findable from any
+-- zone, so they belong on the global ("Around the World") path, never forced
+-- into "This Zone". The viewed/anchor zone's own vendor is skipped because it
+-- already surfaces there as an ordinary static.
+local function AppendAlwaysFindableLocations(self, out, nameSet, excludeMapID)
+    for _, loc in ipairs(self:GetAlwaysFindableLocations()) do
+        if loc.mapID ~= excludeMapID then
+            local nameLower = GetNameLower(loc)
+            if not (nameSet and nameSet[nameLower]) then
+                ClearPerQueryResultState(loc)
+                out[#out + 1] = loc
+                if nameSet then nameSet[nameLower] = true end
+            end
+        end
+    end
+end
+
 function MapSearch:BuildGlobalSearchCaches()
     self:BuildWorldZoneCache()
     self:GetGlobalInstanceCache()
@@ -610,6 +630,7 @@ Search.AppendLocalSearchSources = AppendLocalSearchSources
 Search.BuildPromotedInstanceCache = BuildPromotedInstanceCache
 Search.AppendZoneSearchResults = AppendZoneSearchResults
 Search.AppendGlobalInstanceSearchSources = AppendGlobalInstanceSearchSources
+Search.AppendAlwaysFindableLocations = AppendAlwaysFindableLocations
 
 
 

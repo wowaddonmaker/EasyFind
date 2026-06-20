@@ -3,6 +3,7 @@ local _, ns = ...
 local Search = ns.Search
 local Filters = ns.Filters
 local Utils = ns.Utils
+local L = ns.L
 
 local ipairs = Utils.ipairs
 local select = Utils.select
@@ -11,88 +12,88 @@ local CreateFrame = CreateFrame
 local UIParent = UIParent
 local wipe = wipe
 
-local MOUNT_SOURCE_FALLBACK_LABELS = {
+local HEIRLOOM_SOURCE_FALLBACK_LABELS = {
     [1] = "Drop",
     [2] = "Quest",
     [3] = "Vendor",
-    [4] = "Profession",
-    [5] = "Achievement",
-    [6] = "World Event",
-    [7] = "Promotion",
-    [8] = "Trading Post",
-    [9] = "Discovery",
+    [4] = "World Event",
 }
 
-local function MountSourceLabel(sourceType)
-    return _G["MOUNT_JOURNAL_FILTER_SOURCE_" .. tostring(sourceType)]
-        or _G["MOUNT_JOURNAL_FILTER_" .. tostring(sourceType)]
+local function HeirloomSourceLabel(sourceType)
+    return _G["HEIRLOOM_SOURCE_" .. tostring(sourceType)]
         or _G["BATTLE_PET_SOURCE_" .. tostring(sourceType)]
-        or MOUNT_SOURCE_FALLBACK_LABELS[sourceType]
+        or HEIRLOOM_SOURCE_FALLBACK_LABELS[sourceType]
         or ("Source " .. tostring(sourceType))
 end
 
-local function SortMountSourceDefs(a, b)
+local function SortHeirloomSourceDefs(a, b)
     if a.sourceType ~= b.sourceType then return a.sourceType < b.sourceType end
     return a.label < b.label
 end
 
-local cachedMountSourceDefs
-local function CollectMountSourceDefs()
-    if cachedMountSourceDefs then return cachedMountSourceDefs end
-    local seen = {}
-    local defs = {}
-    if C_MountJournal and C_MountJournal.GetMountIDs and C_MountJournal.GetMountInfoByID then
-        local mountIDs = C_MountJournal.GetMountIDs()
-        if mountIDs then
-            for i = 1, #mountIDs do
-                local sourceType = select(6, C_MountJournal.GetMountInfoByID(mountIDs[i]))
+local cachedHeirloomSourceDefs
+local function CollectHeirloomSourceDefs()
+    if cachedHeirloomSourceDefs then return cachedHeirloomSourceDefs end
+    local seen, defs = {}, {}
+    if C_Heirloom and C_Heirloom.GetHeirloomItemIDs and C_Heirloom.GetHeirloomInfo then
+        local ids = C_Heirloom.GetHeirloomItemIDs()
+        if type(ids) == "table" then
+            for i = 1, #ids do
+                local sourceType = select(6, C_Heirloom.GetHeirloomInfo(ids[i]))
                 if sourceType and not seen[sourceType] then
                     seen[sourceType] = true
-                    defs[#defs + 1] = { sourceType = sourceType, label = MountSourceLabel(sourceType) }
+                    defs[#defs + 1] = { sourceType = sourceType, label = HeirloomSourceLabel(sourceType) }
                 end
             end
         end
     end
-    tsort(defs, SortMountSourceDefs)
-    cachedMountSourceDefs = defs
+    tsort(defs, SortHeirloomSourceDefs)
+    -- Don't cache an empty result: heirloom data may not be loaded on the first
+    -- open, and we want a later open to pick the real source list up.
+    if #defs > 0 then cachedHeirloomSourceDefs = defs end
     return defs
 end
 
-local mountSourceInvalidator
-local function EnsureMountSourceInvalidator()
-    if mountSourceInvalidator then return end
-    mountSourceInvalidator = CreateFrame("Frame")
-    mountSourceInvalidator:RegisterEvent("NEW_MOUNT_ADDED")
-    mountSourceInvalidator:SetScript("OnEvent", function()
-        cachedMountSourceDefs = nil
-    end)
-end
-
-function Filters:BuildMountOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox)
+function Filters:BuildHeirloomOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
     local OPTIONS_WIDTH = 160
     local SOURCE_WIDTH = 170
     local ROW_H = 22
     local PAD = 6
-    local HEADER_H = 20
 
     local function ApplyFilterSelection()
         if ns.Database and ns.Database.RefreshDynamicCategory then
-            ns.Database:RefreshDynamicCategory("mounts")
+            ns.Database:RefreshDynamicCategory("heirlooms")
         end
         if searchEditBox and searchEditBox:GetText() ~= "" then
             Search:OnSearchTextChanged(searchEditBox:GetText())
         end
     end
 
-    EnsureMountSourceInvalidator()
-
-    local optionsPopup = CreateFrame("Frame", "EasyFindMountOptionsPopup", UIParent, "BackdropTemplate")
+    local optionsPopup = CreateFrame("Frame", "EasyFindHeirloomOptionsPopup", UIParent, "BackdropTemplate")
     optionsPopup:SetFrameStrata("TOOLTIP")
     StylePopup(optionsPopup)
     optionsPopup:EnableMouse(true)
     optionsPopup:Hide()
 
-    local sourcePopup = CreateFrame("Frame", "EasyFindMountSourcePopup", UIParent, "BackdropTemplate")
+    -- Class/spec selector at the top, synced to the Heirlooms Journal class
+    -- dropdown (re-populate reads searchFiltered after pushing this choice).
+    local CLASS_BTN_H = 27
+    local CLASS_GAP = 4
+    local classSel = Filters:BuildClassSpecSelector({
+        parent = optionsPopup,
+        x = PAD, y = -PAD,
+        width = OPTIONS_WIDTH - PAD * 2,
+        hasSpec = true,
+        rowHighlight = ROW_HIGHLIGHT_COLOR,
+        stylePopup = StylePopup,
+        guardFrames = dropdownGuardFrames,
+        getScale = function() return EasyFind.db.uiSearchScale or 1.0 end,
+        getFilter = function() return EasyFind.db.heirloomFilter end,
+        setFilter = function(v) EasyFind.db.heirloomFilter = v end,
+        onChange = ApplyFilterSelection,
+    })
+
+    local sourcePopup = CreateFrame("Frame", "EasyFindHeirloomSourcePopup", UIParent, "BackdropTemplate")
     sourcePopup:SetFrameStrata("TOOLTIP")
     sourcePopup:SetFrameLevel(optionsPopup:GetFrameLevel() + 20)
     StylePopup(sourcePopup)
@@ -101,32 +102,24 @@ function Filters:BuildMountOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_S
 
     local sourceRows = {}
     local function EnsureSourceFilters()
-        EasyFind.db.mountSourceFilters = EasyFind.db.mountSourceFilters or {}
-        return EasyFind.db.mountSourceFilters
+        EasyFind.db.heirloomSourceFilters = EasyFind.db.heirloomSourceFilters or {}
+        return EasyFind.db.heirloomSourceFilters
     end
 
-    local function CreatePlainRow(parent, text)
-        local row = CreateFrame("Button", nil, parent)
-        row:SetSize(SOURCE_WIDTH - PAD * 2, ROW_H)
-        local label = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-        label:SetPoint("LEFT", 14, 0)
-        label:SetText(text)
-        local hl = row:CreateTexture(nil, "HIGHLIGHT")
-        hl:SetAllPoints()
-        hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
-        return row
-    end
-
-    local checkAllRow = CreatePlainRow(sourcePopup, _G["CHECK_ALL"] or "Check All")
-    local uncheckAllRow = CreatePlainRow(sourcePopup, _G["UNCHECK_ALL"] or "Uncheck All")
+    local toggleAllRow = CreateFrame("Button", nil, sourcePopup)
+    toggleAllRow:SetSize(SOURCE_WIDTH - PAD * 2, ROW_H)
+    local toggleAllLabel = toggleAllRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    toggleAllLabel:SetPoint("LEFT", 14, 0)
+    toggleAllLabel:SetText(L["FILTER_TOGGLE_ALL"])
+    local toggleAllHL = toggleAllRow:CreateTexture(nil, "HIGHLIGHT")
+    toggleAllHL:SetAllPoints()
+    toggleAllHL:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
 
     local function LayoutSourcePopup()
-        local defs = CollectMountSourceDefs()
+        local defs = CollectHeirloomSourceDefs()
         local filters = EnsureSourceFilters()
-        checkAllRow:ClearAllPoints()
-        checkAllRow:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -PAD)
-        uncheckAllRow:ClearAllPoints()
-        uncheckAllRow:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -(PAD + ROW_H))
+        toggleAllRow:ClearAllPoints()
+        toggleAllRow:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -PAD)
 
         for i = #sourceRows, #defs + 1, -1 do
             sourceRows[i]:Hide()
@@ -159,21 +152,24 @@ function Filters:BuildMountOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_S
             row.text:SetText(def.label)
             row:SetChecked(filters[def.sourceType] ~= false)
             row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -(PAD + (i + 1) * ROW_H))
+            row:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -(PAD + i * ROW_H))
             row:Show()
         end
-        sourcePopup:SetSize(SOURCE_WIDTH, PAD * 2 + (2 + #defs) * ROW_H)
+        sourcePopup:SetSize(SOURCE_WIDTH, PAD * 2 + (1 + #defs) * ROW_H)
     end
 
-    checkAllRow:SetScript("OnClick", function()
-        wipe(EnsureSourceFilters())
-        LayoutSourcePopup()
-        ApplyFilterSelection()
-    end)
-    uncheckAllRow:SetScript("OnClick", function()
+    -- Toggle All: everything on if any source is currently off, else all off.
+    toggleAllRow:SetScript("OnClick", function()
+        local defs = CollectHeirloomSourceDefs()
         local filters = EnsureSourceFilters()
-        for _, def in ipairs(CollectMountSourceDefs()) do
-            filters[def.sourceType] = false
+        local anyOff = false
+        for _, def in ipairs(defs) do
+            if filters[def.sourceType] == false then anyOff = true break end
+        end
+        if anyOff then
+            wipe(filters)
+        else
+            for _, def in ipairs(defs) do filters[def.sourceType] = false end
         end
         LayoutSourcePopup()
         ApplyFilterSelection()
@@ -206,29 +202,12 @@ function Filters:BuildMountOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_S
     end
 
     local rows = {}
-    local y = -PAD
+    local y = -PAD - CLASS_BTN_H - CLASS_GAP
     local filterDefs = {
-        { dbKey = "mountFilterCollected",    label = _G["COLLECTED"] or "Collected" },
-        { dbKey = "mountFilterNotCollected", label = _G["NOT_COLLECTED"] or "Not Collected" },
-        { dbKey = "mountFilterUnusable",     label = _G["UNUSABLE"] or "Unusable" },
+        { dbKey = "heirloomFilterCollected",    label = _G["COLLECTED"] or "Collected" },
+        { dbKey = "heirloomFilterNotCollected", label = _G["NOT_COLLECTED"] or "Not Collected" },
     }
     for _, def in ipairs(filterDefs) do
-        rows[#rows + 1] = CreateCheckRow(def, y)
-        y = y - ROW_H
-    end
-
-    local typeHeader = optionsPopup:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    typeHeader:SetPoint("TOPLEFT", optionsPopup, "TOPLEFT", PAD + 8, y - 2)
-    typeHeader:SetText(_G["TYPE"] or "Type")
-    y = y - HEADER_H
-
-    local typeDefs = {
-        { dbKey = "mountTypeGround",    label = _G["GROUND"] or "Ground" },
-        { dbKey = "mountTypeFlying",    label = _G["FLYING"] or "Flying" },
-        { dbKey = "mountTypeAquatic",   label = _G["AQUATIC"] or "Aquatic" },
-        { dbKey = "mountTypeRideAlong", label = _G["RIDE_ALONG"] or "Ride Along" },
-    }
-    for _, def in ipairs(typeDefs) do
         rows[#rows + 1] = CreateCheckRow(def, y)
         y = y - ROW_H
     end
@@ -247,7 +226,7 @@ function Filters:BuildMountOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_S
     sourceHL:SetAllPoints()
     sourceHL:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
 
-    optionsPopup:SetSize(OPTIONS_WIDTH, PAD * 2 + #filterDefs * ROW_H + HEADER_H + #typeDefs * ROW_H + ROW_H)
+    optionsPopup:SetSize(OPTIONS_WIDTH, PAD * 2 + CLASS_BTN_H + CLASS_GAP + #filterDefs * ROW_H + ROW_H)
 
     Utils.AttachHoverPopup(sourcesRow, sourcePopup, {
         onShow = function()
@@ -260,6 +239,7 @@ function Filters:BuildMountOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_S
     })
 
     local function SyncOptions()
+        if classSel then classSel.Refresh() end
         for _, row in ipairs(rows) do
             row:SetChecked(EasyFind.db[row.dbKey] ~= false)
         end

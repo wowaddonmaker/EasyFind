@@ -37,9 +37,12 @@ function Search:GetDefaultSearchBarPoint()
     return "CENTER", "CENTER", 0, parentH / 6
 end
 
+-- The search bar height tracks the font size (so the default font lands at the
+-- default bar height); it is not independently resizable.
+local DEFAULT_FONT_SIZE = ns.DEFAULT_FONT_SIZE
 function Search:GetSearchBarHeight()
-    local h = EasyFind and EasyFind.db and EasyFind.db.uiSearchBarHeight or ns.SEARCHBAR_HEIGHT
-    return mmax(24, mmin(56, h))
+    local fontSize = (EasyFind and EasyFind.db and EasyFind.db.fontSize) or DEFAULT_FONT_SIZE
+    return mmax(24, mmin(56, ns.SEARCHBAR_HEIGHT * fontSize / DEFAULT_FONT_SIZE))
 end
 
 local searchFrame
@@ -574,15 +577,10 @@ function Search:CreateSearchFrame()
         if self.StripAutocomplete then self:StripAutocomplete() end
         local typed = strtrim(self:GetText() or "")
 
-        -- /command parser. Anything starting with "/" is treated as a
-        -- bar command, not a search query. /reset restores the default
-        -- position and size, /resize opens the drag-to-resize overlay.
-        if typed:sub(1, 1) == "/" then
-            Calculator:RunSearchBarCommand(typed)
-            return
-        end
-
-        if typed ~= "" then
+        -- Slash commands (/resize, /reset, ...) are ordinary result rows, so
+        -- Enter focuses the first one and a second Enter runs it, exactly like
+        -- every other result. Commands aren't recorded in search history.
+        if typed ~= "" and typed:sub(1, 1) ~= "/" then
             SearchHistory:PushSearchHistory(typed)
         end
         SearchHistory:ResetSearchHistory()
@@ -2025,6 +2023,10 @@ function Search:UpdateOpacity()
         self:ApplySearchWindowFill(containerFrame)
         ns.SetRoundedRectBorderBgAlpha(containerFrame, alpha)
     end
+    local filterDropdown = _G["EasyFindUIFilterDropdown"]
+    if filterDropdown then
+        ns.ApplyMenuOpacity(filterDropdown)
+    end
 end
 
 function Search:UpdateSearchBarTheme()
@@ -2093,6 +2095,7 @@ function Search:ResetPositionAndSize()
         EasyFind.db.uiSearchScale = 1.0
         EasyFind.db.uiSearchWidth = 1.54
         EasyFind.db.uiSearchBarHeight = ns.SEARCHBAR_HEIGHT
+        EasyFind.db.fontSize = DEFAULT_FONT_SIZE
         EasyFind.db.uiResultsScale = 1.0
         EasyFind.db.uiResultsWidth = 350
         EasyFind.db.uiResultsHeight = 280

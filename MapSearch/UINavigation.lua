@@ -50,11 +50,10 @@ function MapSearch:HandleUISearchClick(data, forceGuide)
         end
     else
         -- Local POI: open the world map at the POI's zone and show the
-        -- visual pin on the canvas. We deliberately do NOT call
-        -- SetUserWaypoint / SetSuperTrackedUserWaypoint here: the user
-        -- has to click the on-canvas pin's tracking icon to actually
-        -- start tracking, matching the way clicking the small map pin
-        -- works elsewhere in the addon (and Blizzard's own UI).
+        -- visual pin on the canvas. In Fast mode also drop a real native
+        -- waypoint (super-tracked) via TrackActivePin, matching the Map tab's
+        -- SelectResult so a POI clicked from the search bar pins the same way.
+        -- In Guide mode the user still starts tracking from the on-canvas pin.
         local x, y = data.x, data.y
         if data.mapID and x and y and x >= 0 and x <= 1 and y >= 0 and y <= 1 then
             self:SetActivePinState({
@@ -71,6 +70,9 @@ function MapSearch:HandleUISearchClick(data, forceGuide)
                 WorldMapFrame:SetMapID(data.mapID)
             end
             self:ShowWaypointAt(x, y, data.icon, data.category)
+            if not forceGuide and EasyFind.db.localMapDirectOpen then
+                self:TrackActivePin()
+            end
         end
     end
 end

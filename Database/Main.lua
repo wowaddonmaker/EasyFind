@@ -584,7 +584,6 @@ local LOOT_PROTO = {
     steps       = {},
     lootEntry   = true, -- use loot-specific scoring (toggle-aware keyword matching)
 }
-local LOOT_MT = { __index = LOOT_PROTO }
 
 -- Per-encounter MT cache. Every loot drop from the same encounter
 -- shares `encounterID`, `instanceID`, `lootSourceName`, `lootInstanceName`,
@@ -617,6 +616,13 @@ local TRANSMOG_SET_PROTO = {
     steps    = {},
 }
 local TRANSMOG_SET_MT = { __index = TRANSMOG_SET_PROTO }
+
+local APPEARANCE_ITEM_PROTO = {
+    category = "Appearance",
+    path     = {},
+    steps    = {},
+}
+local APPEARANCE_ITEM_MT = { __index = APPEARANCE_ITEM_PROTO }
 
 local TITLE_PROTO = {
     keywords     = {"title"},
@@ -671,8 +677,9 @@ local STAT_KEYWORD_MAP = {
     ITEM_MOD_STRENGTH_SHORT       = {"str", "strength"},
 }
 
--- Bump when STAT_KEYWORD_MAP changes so the persisted lootStatCache rebuilds.
-ns.LOOT_STAT_CACHE_VER = 1
+-- Bump when STAT_KEYWORD_MAP or the enrichment logic changes so the persisted
+-- lootStatCache rebuilds (v2 clears entries cemented empty by incomplete reads).
+ns.LOOT_STAT_CACHE_VER = 2
 
 local heavySearchWordLookup
 local function AddHeavySearchWord(word)
@@ -848,6 +855,30 @@ function Database:SyncEJLootFilter()
     end
 end
 
+-- Push our heirloom class/spec choice into the Heirlooms Journal so its list
+-- (and ours, which reads searchFiltered) line up. Suppressed flag keeps the
+-- journal->db hook from echoing back during our own write.
+function Database:SyncHeirloomJournalFilter()
+    if not C_Heirloom or not C_Heirloom.SetClassAndSpecFilters then return end
+    local f = EasyFind.db and EasyFind.db.heirloomFilter
+    local classID, specID
+    if not f then
+        local _, _, cid = UnitClass("player")
+        local si = GetSpecialization and GetSpecialization()
+        local sid = si and GetSpecializationInfo and GetSpecializationInfo(si)
+        classID, specID = cid or 0, sid or 0
+    elseif f == "all" then
+        classID, specID = 0, 0
+    elseif f.specID then
+        classID, specID = f.classID, f.specID
+    else
+        classID, specID = f.classID, 0
+    end
+    EasyFind._heirloomHookSuppress = true
+    pcall(C_Heirloom.SetClassAndSpecFilters, classID, specID)
+    EasyFind._heirloomHookSuppress = false
+end
+
 local function RebuildLootSearchData()
     -- Filter in place to avoid O(n^2) tremove.
     local writeIdx = 0
@@ -957,15 +988,16 @@ function Database:EnrichLootStats(entry)
         return
     end
     local link = Database:GetLootItemLink(entry)
-    local GetItemStatsFn = GetItemStats or (C_Item and C_Item.GetItemStats)
+    local GetItemStatsFn = (C_Item and C_Item.GetItemStats) or GetItemStats
     if not GetItemStatsFn then return end
     local stats = link and GetItemStatsFn(link)
     if not stats and itemID then
         stats = GetItemStatsFn("item:" .. itemID)
     end
-    if not stats then
-        -- Server hasn't sent item info yet. Queue for retry on
-        -- GET_ITEM_INFO_RECEIVED and nudge the client to fetch.
+    if not stats or not next(stats) then
+        -- Item data not fully loaded (nil or empty stats table). Queue for
+        -- retry on GET_ITEM_INFO_RECEIVED and nudge the client to fetch, so we
+        -- never cache an incomplete read and cement gear out of stat search.
         if itemID then
             pendingStatEnrichment[itemID] = entry
             if C_Item and C_Item.RequestLoadItemDataByID then
@@ -1153,6 +1185,10 @@ function Database:PopulateDynamicHeirlooms()
 
     RemoveEntriesByCategory("Heirloom")
 
+    -- Align the journal's class/spec filter with our saved choice first, so the
+    -- searchFiltered flag below reflects it.
+    self:SyncHeirloomJournalFilter()
+
     local ids = C_Heirloom.GetHeirloomItemIDs()
     if type(ids) ~= "table" then return false end
 
@@ -1162,23 +1198,51 @@ function Database:PopulateDynamicHeirlooms()
 
     local getItemIcon = C_Item and C_Item.GetItemIconByID
     for _, itemID in ipairs(ids) do
-        local owned = (not hasHeirloom) or hasHeirloom(itemID)
-        if owned then
-            local name, _, _, icon = getInfo(itemID)
+        -- searchFiltered (7th return) reflects the journal's class/spec filter:
+        -- true means this heirloom isn't usable by the selected class/spec, so it
+        -- would be hidden in the journal and can't be navigated to. Skip it so
+        -- our results stay in sync with the Heirlooms Journal class dropdown.
+        local name, _, _, icon, _, source, searchFiltered = getInfo(itemID)
+        if not searchFiltered then
             if (not icon or icon == 0) and getItemIcon then
                 icon = getItemIcon(itemID)
             end
             if name and name ~= "" then
-                uiSearchData[#uiSearchData + 1] = setmetatable({
+                local entry = setmetatable({
                     name = name,
                     nameLower = slower(name),
                     icon = icon,
                     heirloomItemID = itemID,
+                    isCollected = ((not hasHeirloom) or hasHeirloom(itemID)) and true or false,
+                    heirloomSourceType = source,
                 }, HEIRLOOM_MT)
+                if self:HeirloomPassesSearchFilters(entry) then
+                    uiSearchData[#uiSearchData + 1] = entry
+                end
             end
         end
     end
     if self.ResetSearchCache then self:ResetSearchCache() end
+    return true
+end
+
+function Database:HeirloomPassesSearchFilters(data)
+    if not data or not data.heirloomItemID then return false end
+    local db = EasyFind and EasyFind.db
+    if not db then return true end
+
+    if data.isCollected then
+        if db.heirloomFilterCollected == false then return false end
+    elseif db.heirloomFilterNotCollected == false then
+        return false
+    end
+
+    local sourceFilters = db.heirloomSourceFilters
+    local sourceType = data.heirloomSourceType
+    if sourceType and type(sourceFilters) == "table" and sourceFilters[sourceType] == false then
+        return false
+    end
+
     return true
 end
 
@@ -1247,17 +1311,46 @@ function Database:PopulateDynamicOutfits()
     local outfits = C_TransmogOutfitInfo.GetOutfitsInfo()
     if not outfits then return false end
 
+    -- The player can give several outfits the same name; identical result
+    -- rows then look like equipping picks the "wrong" one even though the
+    -- click equips exactly the row's outfit. Suffix duplicates so each row
+    -- is distinguishable and verifiable.
+    local nameCounts = {}
+    for i = 1, #outfits do
+        local info = outfits[i]
+        if info and not info.isDisabled and info.name then
+            nameCounts[info.name] = (nameCounts[info.name] or 0) + 1
+        end
+    end
+    local nameSeen = {}
+
     for index, info in ipairs(outfits) do
         if not info.isDisabled then
+            local displayName = info.name
+            if displayName and (nameCounts[displayName] or 0) > 1 then
+                nameSeen[displayName] = (nameSeen[displayName] or 0) + 1
+                displayName = displayName .. " (" .. nameSeen[displayName] .. ")"
+            end
             local entry = setmetatable({
-                name = info.name,
+                name = displayName,
                 icon = info.icon,
                 outfitID = info.outfitID,
                 outfitIndex = index,
-                nameLower = slower(info.name),
+                nameLower = slower(displayName),
             }, OUTFIT_MT)
             uiSearchData[#uiSearchData + 1] = entry
         end
+    end
+    return true
+end
+
+function Database:PopulateDynamicCommands()
+    RemoveEntriesByCategory("Command")
+    local entries = ns.SearchCommands and ns.SearchCommands.BuildCommandSearchData
+        and ns.SearchCommands:BuildCommandSearchData()
+    if not entries then return false end
+    for i = 1, #entries do
+        uiSearchData[#uiSearchData + 1] = entries[i]
     end
     return true
 end
@@ -1415,6 +1508,170 @@ function Database:PopulateDynamicTransmogSets()
                     icon = icon,
                     keywords = kw,
                 }, TRANSMOG_SET_MT)
+            end
+        end
+    end
+    return true
+end
+
+-- Reads the wardrobe Items-tab class filter back into our db so the search
+-- list follows what the player set in the Appearances journal.
+function Database:SyncAppearanceItemFiltersFromUI()
+    local db = EasyFind and EasyFind.db
+    if not db then return end
+    local C = C_TransmogCollection
+    if not C or not C.GetClassFilter then return end
+    local ok, classID = pcall(C.GetClassFilter)
+    if not ok or not classID or classID <= 0 then return end
+    local _, _, playerClassID = UnitClass("player")
+    if classID == playerClassID then
+        db.appearanceItemClass = nil
+    else
+        db.appearanceItemClass = { classID = classID }
+    end
+end
+
+-- One transmog slot (default Head) is enumerated per populate. The whole-game
+-- list is far too large (~3600 head visuals alone), so the slot + class + source
+-- filters from the Appearances > Items menu scope it down to a searchable set.
+function Database:PopulateDynamicAppearanceItems()
+    local C = C_TransmogCollection
+    if not C or not C.GetCategoryAppearances then return false end
+
+    RemoveEntriesWithField("appearanceItemID")
+    if self.ResetSearchCache then self:ResetSearchCache() end
+
+    local db = EasyFind and EasyFind.db
+    if not db then return false end
+
+    local showCollected = db.appearanceItemCollected ~= false
+    local showNotCollected = db.appearanceItemNotCollected == true
+    if not showCollected and not showNotCollected then return true end
+
+    local classFilter = db.appearanceItemClass
+    local sourceFilters = db.appearanceItemSourceFilters
+
+    -- An all-off source filter (every type disabled) would hide the entire
+    -- collection -- never intended, usually an accidental Toggle All. Treat it
+    -- as no filter and clear the stale state so the menu reflects all-on again.
+    if type(sourceFilters) == "table" then
+        local anyEnabled = false
+        for st = 1, 12 do
+            if _G["TRANSMOG_SOURCE_" .. st] and sourceFilters[st] ~= false then
+                anyEnabled = true
+                break
+            end
+        end
+        if not anyEnabled then
+            db.appearanceItemSourceFilters = nil
+            sourceFilters = nil
+        end
+    end
+
+    -- Push our class choice into the journal filter so the list matches what the
+    -- Items tab shows. Guarded against the Core hooksecurefunc re-entering.
+    if C.SetClassFilter then
+        local _, _, playerClassID = UnitClass("player")
+        local targetClass = playerClassID
+        if classFilter == "all" then
+            targetClass = 0
+        elseif type(classFilter) == "table" and classFilter.classID then
+            targetClass = classFilter.classID
+        end
+        if targetClass then
+            EasyFind._appItemClassHookSuppress = true
+            pcall(C.SetClassFilter, targetClass)
+            EasyFind._appItemClassHookSuppress = false
+        end
+    end
+
+    -- One slot at a time (default Head) so the slot filter keeps results
+    -- focused. Stale/non-numeric saved values fall back to Head.
+    local slot = db.appearanceItemSlot
+    if type(slot) ~= "number" then
+        slot = (Enum.TransmogCollectionType and Enum.TransmogCollectionType.Head) or 1
+    end
+    local slotCats = { slot }
+
+    -- Appearance data is gated behind the on-demand Collections addon; until it
+    -- loads, GetCategoryAppearances returns nothing. Load it once so search works
+    -- even if the player never opened the Appearances journal this session. The
+    -- TRANSMOG_COLLECTION_UPDATED handler re-runs us once the data settles.
+    local probe = C.GetCategoryAppearances(slotCats[1])
+    if (not probe or #probe == 0) and C_AddOns and C_AddOns.LoadAddOn
+       and not C_AddOns.IsAddOnLoaded("Blizzard_Collections") then
+        pcall(C_AddOns.LoadAddOn, "Blizzard_Collections")
+        probe = C.GetCategoryAppearances(slotCats[1])
+    end
+    if not probe or #probe == 0 then return false end
+
+    -- Arm the reverse slot-sync hooks now that Collections is loaded.
+    if ns.Filters and ns.Filters.EnsureWardrobeItemSlotHooks then
+        ns.Filters:EnsureWardrobeItemSlotHooks()
+    end
+
+    local GetSources = C.GetAppearanceSources
+    local GetSourceInfo = C.GetSourceInfo
+    local GetSourceIcon = C.GetSourceIcon
+    local getCatInfo = C.GetCategoryInfo
+
+    for ci = 1, #slotCats do
+        local catID = slotCats[ci]
+        local appearances = C.GetCategoryAppearances(catID)
+        if appearances and #appearances > 0 then
+            local slotName
+            if getCatInfo then
+                local okN, n = pcall(getCatInfo, catID)
+                if okN and type(n) == "string" and n ~= "" then slotName = n end
+            end
+            local kw = { "appearance", "transmog", "tmog", "xmog" }
+            if slotName then kw[#kw + 1] = slower(slotName) end
+
+            for i = 1, #appearances do
+                local app = appearances[i]
+                -- Pre-skip appearances that can contribute no visible source
+                -- (e.g. collected-only and this whole appearance is uncollected).
+                local appOk = (app.isCollected and showCollected)
+                    or (not app.isCollected and showNotCollected)
+                if appOk and app.visualID and GetSources then
+                    local sources = GetSources(app.visualID)
+                    if sources then
+                        -- One entry per source item, not per appearance. Items
+                        -- that share a visual (e.g. "Cowl of Sina's Stalwarts"
+                        -- and another cowl) are each searchable by their own
+                        -- name, all navigating to the same appearance.
+                        for s = 1, #sources do
+                            local src = sources[s]
+                            local collectedOk = (src.isCollected and showCollected)
+                                or (not src.isCollected and showNotCollected)
+                            local st = src.sourceType
+                            local srcOk = not sourceFilters or not st or sourceFilters[st] ~= false
+                            if collectedOk and srcOk then
+                                local name
+                                if GetSourceInfo and src.sourceID then
+                                    local info = GetSourceInfo(src.sourceID)
+                                    if info and info.name and info.name ~= "" then name = info.name end
+                                end
+                                if not name and src.itemID and GetItemInfo then
+                                    name = GetItemInfo(src.itemID)
+                                end
+                                if name and name ~= "" then
+                                    local icon = GetSourceIcon and src.sourceID and GetSourceIcon(src.sourceID)
+                                    uiSearchData[#uiSearchData + 1] = setmetatable({
+                                        name = name,
+                                        nameLower = slower(name),
+                                        appearanceItemID = src.sourceID,
+                                        appearanceVisualID = app.visualID,
+                                        appearanceSlot = catID,
+                                        appearanceSlotName = slotName,
+                                        icon = icon,
+                                        keywords = kw,
+                                    }, APPEARANCE_ITEM_MT)
+                                end
+                            end
+                        end
+                    end
+                end
             end
         end
     end
@@ -2104,11 +2361,12 @@ local function GetBossInstanceMT(tier, isRaid, instID, instName)
 end
 
 local function AddBossEntry(tier, isRaid, instID, instName, encName, encID, getCreatureInfo)
-    local icon
+    local icon, creatureID
     if getCreatureInfo then
-        local ok, _, _, _, _, iconImage = pcall(getCreatureInfo, 1, encID)
-        if ok and iconImage and iconImage ~= 0 then
-            icon = iconImage
+        local ok, cid, _, _, _, iconImage = pcall(getCreatureInfo, 1, encID)
+        if ok then
+            if iconImage and iconImage ~= 0 then icon = iconImage end
+            if cid and cid ~= 0 then creatureID = cid end
         end
     end
 
@@ -2117,6 +2375,7 @@ local function AddBossEntry(tier, isRaid, instID, instName, encName, encID, getC
         nameLower = slower(encName),
         encounterID = encID,
         icon = icon,
+        bossCreatureID = creatureID,
     }, GetBossInstanceMT(tier, isRaid, instID, instName))
     uiSearchData[#uiSearchData + 1] = entry
 end
@@ -2417,6 +2676,7 @@ function Database:PopulateDynamicBags()
 
     local isRealEquipLoc = Utils.IsRealEquipLoc
     local getEquipLoc = Utils.GetItemEquipLoc
+    local getQuality = C_Item and C_Item.GetItemQualityByID
 
     RemoveEntriesByCategory("Bag")
     if self.ResetSearchCache then self:ResetSearchCache() end
@@ -2454,6 +2714,12 @@ function Database:PopulateDynamicBags()
     for _, itemID in ipairs(order) do
         local info = itemMap[itemID]
         local name = info.link and info.link:match("%[(.-)%]") or (GetItemInfo and GetItemInfo(itemID)) or ("Item " .. itemID)
+        local quality
+        if getQuality then
+            quality = getQuality(itemID)
+        elseif GetItemInfo then
+            quality = select(3, GetItemInfo(itemID))
+        end
         local equipLoc = getEquipLoc(itemID)
         local isEquippable = isRealEquipLoc(equipLoc)
         local first = info.locations[1]
@@ -2468,6 +2734,7 @@ function Database:PopulateDynamicBags()
             category = "Bag",
             icon = info.texture,
             itemID = itemID,
+            quality = quality,
             equipLoc = equipLoc,
             isEquippable = isEquippable,
             bagID = first.bag,

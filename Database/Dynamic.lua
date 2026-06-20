@@ -2,6 +2,7 @@ local _, ns = ...
 
 local Database = ns.Database
 local Utils = ns.Utils
+local L = ns.L
 
 if not Database then return end
 
@@ -30,8 +31,10 @@ local dynamicProviders = {
     { key = "talents",     category = "Talent",         fn = "PopulateDynamicTalents" },
     { key = "bags",        category = "Bag",            fn = "PopulateDynamicBags" },
     { key = "transmogSets", category = "Appearance Set", fn = "PopulateDynamicTransmogSets", pre = "SyncTransmogSetFiltersFromUI" },
+    { key = "appearanceItems", category = "Appearance", fn = "PopulateDynamicAppearanceItems", pre = "SyncAppearanceItemFiltersFromUI" },
     { key = "loot",        category = "Loot",           fn = "PopulateDynamicLoot", asyncFn = "PopulateDynamicLootAsync" },
     { key = "bosses",      category = "Boss",           fn = "PopulateDynamicBosses", asyncFn = "PopulateDynamicBossesAsync" },
+    { key = "commands",    category = "Command",        fn = "PopulateDynamicCommands" },
 }
 
 local dynamicProviderByKey = {}
@@ -53,7 +56,7 @@ local function FinishDynamicProvider(database, provider, ok, err, changed, onDon
         provider.loaded = false
         provider.dirty = false
         if EasyFind and EasyFind.Print then
-            EasyFind:Print("|cffff4444" .. provider.key .. " search data failed: " .. tostring(err) .. "|r")
+            EasyFind:Print("|cffff4444" .. (L["ERR_SEARCH_DATA_FAILED"]):format(provider.key, tostring(err)) .. "|r")
         end
         onDone(false)
         return
@@ -243,6 +246,8 @@ function Database:LoadDeferredSyncProvidersStaggered()
         self._dynamicBatchChanged = false
         if changed and self.ResetSearchCache then self:ResetSearchCache() end
         if self.WarmSearchHotPath then self:WarmSearchHotPath() end
+        -- Entries the shortkeys point at may have only just loaded; rebind now.
+        if ns.Shortkeys and ns.Shortkeys.ApplyAll then ns.Shortkeys:ApplyAll() end
     end
     step()
 end
@@ -272,8 +277,8 @@ function Database:LoadHeavyDynamicSearchDataSync()
                 else
                     provider.loaded = false
                     if EasyFind and EasyFind.Print then
-                        EasyFind:Print("|cffff4444" .. provider.key
-                            .. " sync load failed: " .. tostring(readyOrErr) .. "|r")
+                        EasyFind:Print("|cffff4444"
+                            .. (L["ERR_SYNC_LOAD_FAILED"]):format(provider.key, tostring(readyOrErr)) .. "|r")
                     end
                 end
             end
@@ -281,6 +286,7 @@ function Database:LoadHeavyDynamicSearchDataSync()
     end
     if self.ResetSearchCache then self:ResetSearchCache() end
     if self.WarmSearchHotPath then self:WarmSearchHotPath() end
+    if ns.Shortkeys and ns.Shortkeys.ApplyAll then ns.Shortkeys:ApplyAll() end
 end
 
 function Database:LoadHeavyDynamicSearchData(onDone)

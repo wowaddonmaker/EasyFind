@@ -1,6 +1,7 @@
 local _, ns = ...
 
 local Utils = ns.Utils
+local L = ns.L
 local MapUtils = {}
 ns.MapUtils = MapUtils
 
@@ -15,9 +16,6 @@ local GetMapInfo = C_Map and C_Map.GetMapInfo
 local GetMapChildrenInfo = C_Map and C_Map.GetMapChildrenInfo
 local GetMapInfoAtPosition = C_Map and C_Map.GetMapInfoAtPosition
 local GetMapRectOnMap = C_Map and C_Map.GetMapRectOnMap
-
-local PATH_STRIP_ROOTS = { "World", "Azeroth", "Cosmic" }
-local STRIPPED_ROOTS = { World = true, Azeroth = true, Cosmic = true }
 
 local PARENT_OVERRIDES = {
     [2346] = 2274,
@@ -212,17 +210,13 @@ function MapUtils.ExpandZoneAbbrev(token)
     return token and ZONE_ABBREVIATIONS[token] or nil
 end
 
-function MapUtils.FormatPathPrefix(pathStr)
-    if type(pathStr) ~= "string" or pathStr == "" then return pathStr end
-    for i = 1, #PATH_STRIP_ROOTS do
-        local root = PATH_STRIP_ROOTS[i] .. " > "
-        if pathStr:sub(1, #root) == root then
-            pathStr = pathStr:sub(#root + 1)
-        else
-            break
-        end
-    end
-    return STRIPPED_ROOTS[pathStr] and "" or pathStr
+-- A top-level root map (Cosmic, or a World-tier map like Azeroth) that should
+-- never show in a displayed breadcrumb. Matched by mapType, not by name, so the
+-- stripping works on every locale.
+function MapUtils.IsRootMap(mapID)
+    if not mapID then return false end
+    local info = GetMapInfo(mapID)
+    return (info and info.mapType and info.mapType <= Enum.UIMapType.World) or false
 end
 
 local topAncestorCache = {}
@@ -241,7 +235,7 @@ function MapUtils.GetTopAncestor(mapID)
         local parentID = MapUtils.GetParentMapID(current, info)
         local parentInfo = parentID and parentID ~= 0 and GetMapInfo(parentID) or nil
         local parentName = parentInfo and parentInfo.name
-        if not parentInfo or not parentName or STRIPPED_ROOTS[parentName] or parentID == 0 then
+        if not parentInfo or not parentName or parentInfo.mapType <= Enum.UIMapType.World or parentID == 0 then
             resultName = info.name
             resultID = current
             break
@@ -338,7 +332,8 @@ function MapUtils.BuildBreadcrumb(data, separator)
         local info = GetMapInfo(current)
         if not info then break end
         if info.name and slower(info.name) ~= leafName then
-            breadcrumbParts[#breadcrumbParts + 1] = info.name == "Cosmic" and "World" or info.name
+            local isCosmic = info.mapType == Enum.UIMapType.Cosmic
+            breadcrumbParts[#breadcrumbParts + 1] = isCosmic and L["MAP_COSMIC_WORLD"] or info.name
         end
         local parentID = MapUtils.GetParentMapID(current, info)
         if not parentID or parentID == 0 then break end

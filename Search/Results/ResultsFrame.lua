@@ -7,6 +7,7 @@ local Render = ns.ResultRender
 local Shortcuts = ns.ResultShortcuts
 local OptionsSurface = ns.OptionsSurface
 local Utils = ns.Utils
+local L = ns.L
 
 local ipairs = Utils.ipairs
 local CreateFrame = CreateFrame
@@ -111,7 +112,7 @@ function Results:CreateResultsFrame()
     quickFilterHelp:SetPoint("TOPRIGHT", resultsFrame, "TOPRIGHT", -12, -8)
     quickFilterHelp:SetJustifyH("LEFT")
     quickFilterHelp:SetTextColor(0.78, 0.78, 0.80, 1)
-    quickFilterHelp:SetText("|cffffd100Quick filters:|r @m, @s, @g. Tab/Space selects a category.")
+    quickFilterHelp:SetText(L["QUICK_FILTER_HELP"])
     quickFilterHelp:Hide()
     resultsFrame.quickFilterHelp = quickFilterHelp
 

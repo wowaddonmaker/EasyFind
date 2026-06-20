@@ -28,6 +28,7 @@ local EnrichZoneWithEntrance = Search.EnrichZoneWithEntrance
 local AppendLocalSearchSources = Search.AppendLocalSearchSources
 local AppendZoneSearchResults = Search.AppendZoneSearchResults
 local AppendGlobalInstanceSearchSources = Search.AppendGlobalInstanceSearchSources
+local AppendAlwaysFindableLocations = Search.AppendAlwaysFindableLocations
 local ReleaseGlobalMapCaches = Search.ReleaseGlobalMapCaches
 local CollectMapGarbage = Search.CollectMapGarbage
 
@@ -79,6 +80,7 @@ function MapSearch:BuildResults(text, isGlobal, skipPins)
     -- (with full breadcrumb paths) using a mapID-to-path lookup.
     if isGlobal then
         AppendGlobalInstanceSearchSources(self, allPOIs, zoneNames)
+        AppendAlwaysFindableLocations(self, allPOIs, zoneNames, WorldMapFrame and WorldMapFrame:GetMapID())
 
         if MapTabFlightPathsEnabled() then
             local allFMs = self:ScanAllFlightMasters()
@@ -449,6 +451,7 @@ function MapSearch:SearchForUI(query)
         -- Always build/use the instance cache so dungeons / raids / delves
         -- show up in UI search alongside zones and POIs.
         AppendGlobalInstanceSearchSources(self, pois, zoneNames)
+        AppendAlwaysFindableLocations(self, pois, existingNames, searchMapID)
     end
 
     if #pois == 0 then return nil end

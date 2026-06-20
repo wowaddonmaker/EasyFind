@@ -75,7 +75,7 @@ local UI_DEFAULTS = {
     lockPosition = false,
     uiResultsAbove = false,
     showResultShortcutHints = true,
-    fontSize = 0.9,
+    fontSize = ns.DEFAULT_FONT_SIZE,
     searchWindowOpacity = ns.SEARCH_WINDOW_ALPHA,
     uiSearchScale = 1.0,
     uiSearchWidth = 1.54,
@@ -119,25 +119,6 @@ local MAP_DEFAULTS = {
     localSearchFilters = DEFAULT_LOCAL_SEARCH_FILTERS,
     mapTabFilters = DEFAULT_MAP_TAB_FILTERS,
     alwaysShowRares = false,
-}
-
-local GENERAL_DEFAULTS = {
-    tutorialDone = false,
-    resultsTheme = "Modern",
-    font = "Default",
-    indicatorStyle = "EasyFind Arrow",
-    indicatorColor = "Yellow",
-    showLoginMessage = false,
-    showAliasMessages = true,
-    showMinimapButton = true,
-    minimapButtonAngle = 200,
-    visible = true,
-    enableMapSearch = true,
-    nativePinScale = 1.5,
-    pinnedUIItems = {},
-    pinnedUIItemsPerChar = {},
-    pinnedMapItems = {},
-    optionsPosition = NIL,
 }
 
 local UI_POSITION_DEFAULTS = {
@@ -227,7 +208,8 @@ end
 local function SyncOptionControls()
     if not optionsFrame then return end
 
-    if optionsFrame.uiFontPresetRow then optionsFrame.uiFontPresetRow:SetValue(EasyFind.db.fontSize or 0.9) end
+    if optionsFrame.uiFontPresetRow then optionsFrame.uiFontPresetRow:SetValue(EasyFind.db.fontSize or ns.DEFAULT_FONT_SIZE) end
+    if optionsFrame.searchOpacityRow then optionsFrame.searchOpacityRow:SetValue(EasyFind.db.searchWindowOpacity or ns.SEARCH_WINDOW_ALPHA) end
     if optionsFrame.mapIconPresetRow then optionsFrame.mapIconPresetRow:SetValue(EasyFind.db.iconScale or 0.8) end
     if optionsFrame.recentCountStepper then optionsFrame.recentCountStepper:SetValue(EasyFind.db.mapTabRecentCount or 3) end
 
@@ -650,7 +632,7 @@ local function CreateSegmentedPresetRow(parent, labelText, choices, getter, sett
     track:SetPoint("RIGHT", row, "RIGHT", -8, 0)
     ns.CreateRoundedRectBorder(track)
     ns.SetRoundedRectBarHeight(track, trackH)
-    ns.SetRoundedRectFill(track, 0.045, 0.047, 0.055, 0.96, true)
+    ns.SetRoundedRectFill(track, 0.095, 0.095, 0.108, 0.96, true)
     HideRoundedFrameBorder(track)
     row.track = track
 
@@ -717,7 +699,7 @@ local function CreateSegmentedPresetRow(parent, labelText, choices, getter, sett
             local c = enabled and NORMAL_TEXT or DISABLED_TEXT
             self.label:SetTextColor(Utils.RGB(c, 1))
         end
-        ns.SetRoundedRectFill(track, enabled and 0.045 or 0.035, enabled and 0.047 or 0.035, enabled and 0.055 or 0.040, 0.96, true)
+        ns.SetRoundedRectFill(track, enabled and 0.095 or 0.070, enabled and 0.095 or 0.070, enabled and 0.108 or 0.080, 0.96, true)
         for _, btn in ipairs(self.buttons) do
             if enabled then btn:Enable() else btn:Disable() end
         end
@@ -1151,8 +1133,8 @@ function Options:Initialize()
     local tocVersion = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("EasyFind", "Version")
     homeVersion:SetText("|cFF888888v" .. (tocVersion or "") .. "|r")
 
-    local LINK_COLOR = { 0.44, 0.84, 1.0 }
-    local LINK_HOVER = { 0.72, 0.94, 1.0 }
+    local LINK_COLOR = ns.LINK_COLOR
+    local LINK_HOVER = ns.LINK_HOVER
     local FLOW_FONT = "GameFontHighlightSmall"
     local FLOW_W = FRAME_W - 24
 
@@ -1253,15 +1235,10 @@ function Options:Initialize()
                 glow:SetPoint("CENTER", chip, "CENTER", 0, 0)
                 glow:SetSize(atom.w + 20, fontH + 16)
                 glow:SetAtlas("collections-newglow")
-                glow:SetVertexColor(0.3, 0.85, 1.0, 0.7)
+                glow:SetVertexColor(unpack(ns.LINK_GLOW_COLOR))
                 glow:SetBlendMode("ADD")
                 glow:Hide()
-                local glowPulse = glow:CreateAnimationGroup()
-                glowPulse:SetLooping("BOUNCE")
-                local flash = glowPulse:CreateAnimation("Alpha")
-                flash:SetFromAlpha(1.0)
-                flash:SetToAlpha(0.5)
-                flash:SetDuration(0.9)
+                local glowPulse = ns.CreateBouncePulse(glow, 1.0, 0.5, 0.9)
                 local fs = chip:CreateFontString(nil, "OVERLAY", FLOW_FONT)
                 fs:SetAllPoints(chip)
                 fs:SetJustifyH("CENTER")
@@ -1301,9 +1278,10 @@ function Options:Initialize()
     end
 
     local homeQuick = BuildFlowText(homeIcon, "BOTTOMLEFT", 0, -20, L["OPT_HOME_QUICKSTART"])
-    local thankYou = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-    thankYou:SetPoint("BOTTOMRIGHT", optionsFrame, "BOTTOMRIGHT", -16, 6)
+    local thankYou = homeTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    thankYou:SetPoint("BOTTOMRIGHT", homeTab, "BOTTOMRIGHT", -16, 4)
     thankYou:SetText(L["OPT_HOME_WELCOME"])
+    thankYou:SetTextColor(1, 1, 1, 1)
 
     local function CreateURLBox(parent, url, anchor, yOff)
         local box = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
@@ -1447,15 +1425,19 @@ function Options:Initialize()
     local fontRow, fontLabel = CreateSelectorRow(colorRow, L["OPT_FONT"])
 
     local fontChoices = ns.FONT_CHOICES
+    local function FontLabel(name)
+        if name == "Default" then return _G["DEFAULT"] or "Default" end
+        return name
+    end
     local fontBtnFrame, fontBtnText = CreateFlyoutSelector(
-        fontRow, "EasyFindFont", SELECTOR_BTN_W, fontLabel, EasyFind.db.font or "Default"
+        fontRow, "EasyFindFont", SELECTOR_BTN_W, fontLabel, FontLabel(EasyFind.db.font or "Default")
     )
     local fontFlyout = CreateFlyoutPanel(fontBtnFrame, "EasyFindFont", SELECTOR_BTN_W, #fontChoices)
     AddFlyoutOptions(fontFlyout, fontChoices, SELECTOR_BTN_W - 6, function(name)
         EasyFind.db.font = name
-        fontBtnText:SetText(name)
+        fontBtnText:SetText(FontLabel(name))
         if ns.RefreshAddonFont then ns.RefreshAddonFont() end
-    end)
+    end, FontLabel)
     optionsFrame.fontBtnText = fontBtnText
     optionsFrame.fontFlyout = fontFlyout
 
@@ -1569,7 +1551,7 @@ function Options:Initialize()
         },
         GetVisibilityModeValue,
         SetVisibilityMode,
-        "Auto-Hide opens EasyFind from your keybind and hides it when you press Escape or click away. Smart Show uses a hover zone near the search bar.",
+        L["OPT_VISIBILITY_TT"],
         330)
     visibilityModeRow:SetPoint("TOPLEFT", sec1, "TOPLEFT", 16, -8)
     optionsFrame.visibilityModeRow = visibilityModeRow
@@ -1630,7 +1612,7 @@ function Options:Initialize()
         { label = L["OPT_FONT_XL"],    value = 1.35 },
     }
     local uiFontPresetRow = CreatePresetRow(sec1, L["OPT_FONT_SIZE"], fontSizeChoices,
-        function() return EasyFind.db.fontSize or 0.9 end,
+        function() return EasyFind.db.fontSize or ns.DEFAULT_FONT_SIZE end,
         function(value)
             EasyFind.db.fontSize = value
             if ns.Search and ns.Search.UpdateFontSize then
@@ -1665,9 +1647,43 @@ function Options:Initialize()
     resultShortcutHintsCheckbox:ClearAllPoints()
     resultShortcutHintsCheckbox:SetPoint("TOPLEFT", lockPositionCheckbox, "BOTTOMLEFT", 0, -2)
 
+    -- Wowhead link language: which wowhead.com site the row right-click "Wowhead"
+    -- option points at. "Auto" follows the client locale.
+    local wowheadValues, wowheadLabelByValue = {}, {}
+    for _, entry in ipairs(ns.WOWHEAD_LOCALES) do
+        wowheadValues[#wowheadValues + 1] = entry.value
+        wowheadLabelByValue[entry.value] = entry.label
+    end
+    local function WowheadLocaleLabel(v)
+        if v == "auto" then return L["WOWHEAD_LOCALE_AUTO"] end
+        return wowheadLabelByValue[v] or v
+    end
+
+    local wowheadRow = CreateFrame("Frame", nil, sec1)
+    wowheadRow:SetSize(SELECTOR_ROW_W, 24)
+    wowheadRow:SetPoint("TOPLEFT", resultShortcutHintsCheckbox, "BOTTOMLEFT", 0, -10)
+    local wowheadRowLabel = wowheadRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    wowheadRowLabel:SetPoint("LEFT", wowheadRow, "LEFT", 8, 0)
+    wowheadRowLabel:SetPoint("RIGHT", wowheadRow, "RIGHT", -SELECTOR_BTN_W - 18, 0)
+    wowheadRowLabel:SetJustifyH("LEFT")
+    wowheadRowLabel:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
+    wowheadRowLabel:SetText(L["OPT_WOWHEAD_LOCALE"])
+
+    local wowheadBtnFrame, wowheadBtnText = CreateFlyoutSelector(
+        wowheadRow, "EasyFindWowhead", SELECTOR_BTN_W, wowheadRowLabel,
+        WowheadLocaleLabel(EasyFind.db.wowheadLocale or "auto")
+    )
+    local wowheadFlyout = CreateFlyoutPanel(wowheadBtnFrame, "EasyFindWowhead", SELECTOR_BTN_W, #wowheadValues)
+    AddFlyoutOptions(wowheadFlyout, wowheadValues, SELECTOR_BTN_W - 6, function(value)
+        EasyFind.db.wowheadLocale = value
+        wowheadBtnText:SetText(WowheadLocaleLabel(value))
+    end, WowheadLocaleLabel)
+    optionsFrame.wowheadBtnText = wowheadBtnText
+    optionsFrame.wowheadFlyout = wowheadFlyout
+
     local function RefreshUIPresetRows()
         if optionsFrame.uiFontPresetRow then
-            optionsFrame.uiFontPresetRow:SetValue(EasyFind.db.fontSize or 0.9)
+            optionsFrame.uiFontPresetRow:SetValue(EasyFind.db.fontSize or ns.DEFAULT_FONT_SIZE)
         end
     end
     optionsFrame.RefreshUIPresetRows = RefreshUIPresetRows
@@ -1964,16 +1980,221 @@ function Options:Initialize()
         end
     end)
 
+    -- Share row: scope selector + export / import of aliases and/or shortkeys.
+    local exportInclAlias, exportInclShortkey = true, true
+    local function CurrentScope()
+        if exportInclAlias and exportInclShortkey then return "both" end
+        if exportInclAlias then return "alias" end
+        if exportInclShortkey then return "shortkey" end
+        return nil
+    end
+    local CHECK_TEX = "Interface\\Buttons\\UI-CheckBox-Check"
+    local cogBtn
+    local ShowExportScopeMenu
+    ShowExportScopeMenu = function()
+        Utils.ShowCursorMenu("EasyFindExportScopeMenu", {
+            { text = L["SHORTKEY_SCOPE_ALIASES"], icon = exportInclAlias and CHECK_TEX or nil,
+              onClick = function() exportInclAlias = not exportInclAlias; ShowExportScopeMenu() end },
+            { text = L["SHORTKEY_SCOPE_SHORTKEYS"], icon = exportInclShortkey and CHECK_TEX or nil,
+              onClick = function() exportInclShortkey = not exportInclShortkey; ShowExportScopeMenu() end },
+        }, {
+            -- Stay open until clicked out (like the search bar filter menu), and
+            -- anchor under the cog so toggling a box doesn't move the menu.
+            stayOpen = true,
+            anchorFrame = cogBtn,
+            point = "TOPRIGHT", relativePoint = "BOTTOMRIGHT", offsetY = -2,
+        })
+    end
+
+    local sharePopup
+    local function BuildSharePopup()
+        local f = CreateFrame("Frame", "EasyFindSharePopup", UIParent, "BackdropTemplate")
+        f:SetSize(440, 200)
+        f:SetPoint("CENTER")
+        f:SetFrameStrata("FULLSCREEN_DIALOG")
+        f:SetToplevel(true)
+        f:EnableMouse(true)
+        f:SetMovable(true)
+        f:SetClampedToScreen(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        ns.StyleMenuPanel(f)
+
+        f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        f.title:SetPoint("TOP", 0, -12)
+
+        local boxFrame = CreateFrame("Frame", nil, f)
+        boxFrame:SetPoint("TOPLEFT", 14, -34)
+        boxFrame:SetPoint("TOPRIGHT", -14, -34)
+        boxFrame:SetHeight(112)
+        ns.CreateRoundedRectBorder(boxFrame)
+        ns.SetRoundedRectBarHeight(boxFrame, 8)
+        ns.SetRoundedRectBorderShown(boxFrame, false)
+        ns.SetRoundedRectFill(boxFrame, 0.02, 0.02, 0.03, 1)
+
+        local scroll = CreateFrame("ScrollFrame", "EasyFindShareScroll", boxFrame, "UIPanelScrollFrameTemplate")
+        scroll:SetPoint("TOPLEFT", 8, -8)
+        scroll:SetPoint("BOTTOMRIGHT", -26, 8)
+        local eb = CreateFrame("EditBox", nil, scroll)
+        eb:SetMultiLine(true)
+        eb:SetAutoFocus(false)
+        eb:SetFontObject("GameFontHighlightSmall")
+        eb:SetWidth(384)
+        eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
+        scroll:SetScrollChild(eb)
+        f.editBox = eb
+
+        local closeBtn = ns.CreateModernButton(f, _G["CLOSE"] or "Close", 80, 22)
+        closeBtn:SetPoint("BOTTOMRIGHT", -14, 12)
+        closeBtn:SetScript("OnClick", function() f:Hide() end)
+
+        f.importBtn = ns.CreateModernButton(f, L["SHORTKEY_IMPORT"], 90, 22)
+        f.importBtn:SetPoint("RIGHT", closeBtn, "LEFT", -8, 0)
+
+        f.hint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        f.hint:SetPoint("BOTTOMLEFT", 14, 16)
+
+        local x = ns.CreateCloseX(f, 14)
+        x:SetPoint("TOPRIGHT", -8, -8)
+        x:SetScript("OnClick", function() f:Hide() end)
+        f:Hide()
+        return f
+    end
+
+    local function ShowShareString(isExport, str)
+        if not sharePopup then sharePopup = BuildSharePopup() end
+        local f = sharePopup
+        if isExport then
+            f.title:SetText(L["SHORTKEY_EXPORT_TITLE"])
+            f.hint:SetText(L["SHORTKEY_EXPORT_HINT"])
+            f.editBox:SetText(str or "")
+            f.importBtn:Hide()
+            f:Show()
+            f.editBox:SetFocus()
+            f.editBox:HighlightText()
+        else
+            f.title:SetText(L["SHORTKEY_IMPORT_TITLE"])
+            f.hint:SetText(L["SHORTKEY_IMPORT_HINT"])
+            f.editBox:SetText("")
+            f.importBtn:Show()
+            f.importBtn:SetScript("OnClick", function()
+                local na, nk = nil, nil
+                if ns.Shortkeys then na, nk = ns.Shortkeys:ApplyImportString(f.editBox:GetText(), CurrentScope()) end
+                f:Hide()
+                if EasyFind and EasyFind.Print then
+                    if na == nil then
+                        EasyFind:Print(L["SHORTKEY_IMPORT_BAD"])
+                    else
+                        EasyFind:Print((L["SHORTKEY_IMPORTED"]):format((na or 0) + (nk or 0)))
+                    end
+                end
+                if RefreshAliasList then RefreshAliasList() end
+            end)
+            f:Show()
+            f.editBox:SetFocus()
+        end
+    end
+
+    local shareTools = CreateFrame("Frame", nil, aliasesTab)
+    shareTools:SetPoint("TOPLEFT", aliasTools, "BOTTOMLEFT", 0, -6)
+    shareTools:SetPoint("RIGHT", aliasesTab, "RIGHT", -8, 0)
+    shareTools:SetHeight(22)
+
+    -- Export / import blend with the table below them (same fill), with the
+    -- scope cogwheel tucked into the right edge of the (slightly wider) export
+    -- button. Import matches export's width.
+    local SHARE_BTN_W = 92
+    local TABLE_FILL = { 0.075, 0.075, 0.085, 0.92 }
+    local function UseTableFill(btn)
+        ns.SetRoundedRectBorderFillColor(btn, unpack(TABLE_FILL))
+        btn:HookScript("OnLeave", function(self)
+            if self:IsEnabled() then ns.SetRoundedRectBorderFillColor(self, unpack(TABLE_FILL)) end
+        end)
+        btn:HookScript("OnMouseUp", function(self)
+            if self:IsEnabled() and not self:IsMouseOver() then
+                ns.SetRoundedRectBorderFillColor(self, unpack(TABLE_FILL))
+            end
+        end)
+    end
+
+    local exportBtn = CreateModernButton(shareTools, L["SHORTKEY_EXPORT"], SHARE_BTN_W, 22)
+    exportBtn:SetPoint("LEFT", shareTools, "LEFT", 0, 0)
+    UseTableFill(exportBtn)
+    -- Shift the label left so it stays centered in the space left of the cog.
+    exportBtn._label:ClearAllPoints()
+    exportBtn._label:SetPoint("CENTER", exportBtn, "CENTER", -9, 0)
+    exportBtn:SetScript("OnClick", function()
+        local str = ns.Shortkeys and ns.Shortkeys:BuildExportString(CurrentScope()) or ""
+        ShowShareString(true, str)
+    end)
+
+    cogBtn = CreateFrame("Button", nil, exportBtn)
+    cogBtn:SetSize(18, 18)
+    cogBtn:SetPoint("RIGHT", exportBtn, "RIGHT", -4, 0)
+    local cogTex = cogBtn:CreateTexture(nil, "ARTWORK")
+    cogTex:SetPoint("CENTER")
+    cogTex:SetSize(15, 15)
+    cogTex:SetAtlas("QuestLog-icon-setting")
+    cogBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
+    cogBtn:SetScript("OnClick", ShowExportScopeMenu)
+
+    local importBtn = CreateModernButton(shareTools, L["SHORTKEY_IMPORT"], SHARE_BTN_W, 22)
+    importBtn:SetPoint("LEFT", exportBtn, "RIGHT", 8, 0)
+    UseTableFill(importBtn)
+    importBtn:SetScript("OnClick", function() ShowShareString(false) end)
+
+    -- Column geometry shared by the header and every row so they line up. Rows
+    -- sit at the scroll inset (6) + row inset (4) = 10 from the table's left and
+    -- are FRAME_W-42 wide; the header mirrors that.
+    local COL_GAP = 6
+    local REMOVE_RIGHT = 4
+    local REMOVE_W = 20
+    local SK_COL_W = 86
+    local ALIAS_COL_W = 120
+    local NAME_LEFT = 10
+    local HEADER_H = 14
+
+    local HEADER_TOP = 7
+    local DIVIDER_Y = HEADER_TOP + HEADER_H + 3
+    local SCROLL_TOP = DIVIDER_Y + 4
+
     local aliasList = CreateFrame("Frame", nil, aliasesTab)
-    aliasList:SetPoint("TOPLEFT", aliasTools, "BOTTOMLEFT", 0, -8)
+    aliasList:SetPoint("TOPLEFT", shareTools, "BOTTOMLEFT", 0, -8)
     aliasList:SetPoint("BOTTOMRIGHT", aliasesTab, "BOTTOMRIGHT", -8, 8)
     ns.CreateRoundedRectBorder(aliasList)
     ns.SetRoundedRectBarHeight(aliasList, 8)
     HideRoundedFrameBorder(aliasList)
     PaintRoundedFill(aliasList, 0.075, 0.075, 0.085, 0.92)
 
+    -- Column header inside the table, with a thin divider under it.
+    local aliasColHeader = CreateFrame("Frame", nil, aliasList)
+    aliasColHeader:SetSize(FRAME_W - 42, HEADER_H)
+    aliasColHeader:SetPoint("TOPLEFT", aliasList, "TOPLEFT", 10, -HEADER_TOP)
+    local function MakeColHeader(text, justify)
+        local fs = aliasColHeader:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+        fs:SetText(text)
+        fs:SetJustifyH(justify)
+        return fs
+    end
+    local hSk = MakeColHeader(L["OPT_COL_SHORTKEY"], "CENTER")
+    hSk:SetWidth(SK_COL_W)
+    hSk:SetPoint("RIGHT", aliasColHeader, "RIGHT", -(REMOVE_RIGHT + REMOVE_W + COL_GAP), 0)
+    local hAlias = MakeColHeader(L["OPT_COL_ALIAS"], "CENTER")
+    hAlias:SetWidth(ALIAS_COL_W)
+    hAlias:SetPoint("RIGHT", hSk, "LEFT", -COL_GAP, 0)
+    local hObject = MakeColHeader(L["OPT_COL_OBJECT"], "LEFT")
+    hObject:SetPoint("LEFT", aliasColHeader, "LEFT", NAME_LEFT, 0)
+    hObject:SetPoint("RIGHT", hAlias, "LEFT", -8, 0)
+
+    local headerDivider = aliasList:CreateTexture(nil, "ARTWORK")
+    headerDivider:SetColorTexture(1, 1, 1, 0.09)
+    headerDivider:SetHeight(1)
+    headerDivider:SetPoint("TOPLEFT", aliasList, "TOPLEFT", 8, -DIVIDER_Y)
+    headerDivider:SetPoint("TOPRIGHT", aliasList, "TOPRIGHT", -8, -DIVIDER_Y)
+
     local aliasScroll = CreateFrame("ScrollFrame", nil, aliasList)
-    aliasScroll:SetPoint("TOPLEFT", aliasList, "TOPLEFT", 6, -6)
+    aliasScroll:SetPoint("TOPLEFT", aliasList, "TOPLEFT", 6, -SCROLL_TOP)
     aliasScroll:SetPoint("BOTTOMRIGHT", aliasList, "BOTTOMRIGHT", -10, 6)
 
     local aliasContent = CreateFrame("Frame", nil, aliasScroll)
@@ -2001,6 +2222,26 @@ function Options:Initialize()
             aliasScrollBar:Hide()
         end
     end
+    -- Delayed tooltip showing the full text, but only when the cell is actually
+    -- truncated (has an ellipsis). ~0.5s hover delay, the usual tooltip feel.
+    local truncTipToken = 0
+    local function ShowTruncTip(anchor, fontString, fullText)
+        truncTipToken = truncTipToken + 1
+        if not (fontString and fontString.IsTruncated and fontString:IsTruncated()) then return end
+        if not fullText or fullText == "" then return end
+        local myToken = truncTipToken
+        Utils.SafeAfter(0.5, function()
+            if myToken ~= truncTipToken or not anchor:IsMouseOver() then return end
+            GameTooltip:SetOwner(anchor, "ANCHOR_RIGHT")
+            GameTooltip:SetText(fullText, 1, 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
+    end
+    local function HideTruncTip()
+        truncTipToken = truncTipToken + 1
+        GameTooltip:Hide()
+    end
+
     local function AcquireAliasRow(idx)
         local row = aliasRowPool[idx]
         if row then row:Show(); return row end
@@ -2014,12 +2255,46 @@ function Options:Initialize()
         ns.SetRoundedRectBarHeight(row.bg, 8)
         HideRoundedFrameBorder(row.bg)
         PaintRoundedFill(row.bg, 1, 1, 1, 0)
-        row.text = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        row.text:SetPoint("LEFT", row, "LEFT", 8, 0)
-        row.text:SetJustifyH("LEFT")
-        row.removeBtn = CreateModernButton(row, "x", 20, 18)
-        row.removeBtn:SetPoint("RIGHT", row, "RIGHT", -4, 0)
-        row.text:SetPoint("RIGHT", row.removeBtn, "LEFT", -8, 0)
+
+        row.removeBtn = CreateModernButton(row, "x", REMOVE_W, 18)
+        row.removeBtn:SetPoint("RIGHT", row, "RIGHT", -REMOVE_RIGHT, 0)
+
+        -- Columns: item name (fills left), then alias, then shortkey.
+        row.skBtn = CreateModernButton(row, "", SK_COL_W, 20)
+        row.skBtn:SetPoint("RIGHT", row.removeBtn, "LEFT", -COL_GAP, 0)
+        row.skBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+
+        row.aliasBtn = CreateModernButton(row, "", ALIAS_COL_W, 20)
+        row.aliasBtn:SetPoint("RIGHT", row.skBtn, "LEFT", -COL_GAP, 0)
+        -- Constrain the label so a long alias truncates with an ellipsis, which
+        -- IsTruncated() then reports to gate the hover tooltip.
+        row.aliasBtn._label:SetWidth(ALIAS_COL_W - 10)
+        row.aliasBtn._label:SetWordWrap(false)
+        row.aliasBtn:HookScript("OnEnter", function(self)
+            ShowTruncTip(self, self._label, self._fullText)
+        end)
+        row.aliasBtn:HookScript("OnLeave", HideTruncTip)
+
+        row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.nameText:SetPoint("LEFT", row, "LEFT", NAME_LEFT, 0)
+        row.nameText:SetPoint("RIGHT", row.aliasBtn, "LEFT", -8, 0)
+        row.nameText:SetJustifyH("LEFT")
+        row.nameText:SetWordWrap(false)
+
+        -- Hover region over the name for its own truncation tooltip.
+        row.nameHover = CreateFrame("Frame", nil, row)
+        row.nameHover:SetPoint("TOPLEFT", row, "TOPLEFT", NAME_LEFT, 0)
+        row.nameHover:SetPoint("BOTTOMRIGHT", row.aliasBtn, "BOTTOMLEFT", -8, 0)
+        row.nameHover:EnableMouse(true)
+        row.nameHover:SetScript("OnEnter", function(self)
+            PaintRoundedFill(row.bg, 1, 1, 1, 0.055)
+            ShowTruncTip(self, row.nameText, row.nameText._fullText)
+        end)
+        row.nameHover:SetScript("OnLeave", function()
+            PaintRoundedFill(row.bg, 1, 1, 1, 0)
+            HideTruncTip()
+        end)
+
         row:SetScript("OnEnter", function(self)
             PaintRoundedFill(self.bg, 1, 1, 1, 0.055)
         end)
@@ -2030,41 +2305,90 @@ function Options:Initialize()
         return row
     end
 
+    -- Merge aliases and shortkeys by their shared row key so each row shows
+    -- both, with either editable in place.
     RefreshAliasList = function()
         ReleaseAliasRows()
-        if not ns.Aliases then
-            clearAliasesBtn:Disable()
-            aliasEmpty:SetText(L["OPT_NO_SAVED_ALIASES"])
-            aliasEmpty:Show()
-            return
-        end
-        local query = aliasSearchBox and aliasSearchBox:GetText() or ""
-        query = query:lower()
-        local entries = {}
-        local total = 0
-        ns.Aliases:ForEach(function(text, info)
-            total = total + 1
-            local aliasText = info.text or text or ""
-            local targetName = info.name or ""
-            local haystack = (aliasText .. " " .. targetName):lower()
-            if query == "" or string.find(haystack, query, 1, true) then
-                entries[#entries + 1] = info
+        local query = (aliasSearchBox and aliasSearchBox:GetText() or ""):lower()
+
+        local byKey, order = {}, {}
+        local function ensure(rk, name)
+            local e = byKey[rk]
+            if not e then
+                e = { key = rk, name = name, aliases = {} }
+                byKey[rk] = e
+                order[#order + 1] = e
             end
-        end)
-        table.sort(entries, function(a, b) return (a.text or ""):lower() < (b.text or ""):lower() end)
+            if name and (not e.name or e.name == "") then e.name = name end
+            return e
+        end
+        if ns.Aliases then
+            ns.Aliases:ForEach(function(text, info)
+                if info.key then
+                    local e = ensure(info.key, info.name)
+                    e.aliases[#e.aliases + 1] = info.text or text
+                end
+            end)
+        end
+        if ns.Shortkeys then
+            ns.Shortkeys:ForEach(function(rk, info, isChar)
+                local e = ensure(rk, info.name)
+                e.shortkey = info.key
+                e.charSpecific = isChar
+            end)
+        end
+
+        local total = #order
+        local entries = {}
+        for i = 1, total do
+            local e = order[i]
+            e.aliasText = table.concat(e.aliases, ", ")
+            local haystack = (e.aliasText .. " " .. (e.name or "") .. " " .. (e.shortkey or "")):lower()
+            if query == "" or string.find(haystack, query, 1, true) then
+                entries[#entries + 1] = e
+            end
+        end
+        table.sort(entries, function(a, b) return (a.name or ""):lower() < (b.name or ""):lower() end)
+
         clearAliasesBtn:SetEnabled(total > 0)
         clearAliasesBtn:SetAlpha(total > 0 and 1 or 0.45)
-        aliasEmpty:SetText(total == 0 and "No saved aliases." or "No aliases match.")
+        aliasEmpty:SetText(total == 0 and L["OPT_NO_SAVED_ALIASES"] or L["OPT_NO_ALIASES_MATCH"])
         aliasEmpty:SetShown(#entries == 0)
+
         local rowH = 28
         local y = -4
-        for i, info in ipairs(entries) do
+        for i = 1, #entries do
+            local e = entries[i]
             local row = AcquireAliasRow(i)
             row:ClearAllPoints()
             row:SetPoint("TOPLEFT", aliasContent, "TOPLEFT", 4, y)
-            row.text:SetText(("|cFFFFD100%s|r  -> %s"):format(info.text or "?", info.name or "?"))
+            row.aliasBtn:SetText(e.aliasText ~= "" and ("|cFFFFD100" .. e.aliasText .. "|r") or L["SHORTKEY_CELL_ADD"])
+            row.skBtn:SetText(e.shortkey and ("|cFF8CD3FF" .. e.shortkey .. "|r") or L["SHORTKEY_CELL_ADD"])
+            row.nameText:SetText(e.name or "?")
+            row.aliasBtn._fullText = e.aliasText
+            row.nameText._fullText = e.name
+
+            row.aliasBtn:SetScript("OnClick", function()
+                StaticPopup_Show("EASYFIND_EDIT_ALIAS", e.name or "?", nil,
+                    { key = e.key, name = e.name, current = e.aliasText })
+            end)
+            row.skBtn:SetScript("OnClick", function(_, button)
+                if button == "RightButton" then
+                    if ns.Shortkeys then ns.Shortkeys:Remove(e.key) end
+                    RefreshAliasList()
+                    return
+                end
+                if not ns.Shortkeys then return end
+                local cs = e.charSpecific
+                if cs == nil then
+                    local d = ns.Aliases and ns.Aliases:FindEntryByKey(e.key)
+                    cs = (d and ns.Shortkeys:IsCharacterSpecific(d)) or false
+                end
+                ns.Shortkeys:PromptForKeyByKey(e.key, e.name, cs)
+            end)
             row.removeBtn:SetScript("OnClick", function()
-                if ns.Aliases then ns.Aliases:Remove(info.text) end
+                if ns.Aliases then ns.Aliases:RemoveByKey(e.key) end
+                if ns.Shortkeys then ns.Shortkeys:Remove(e.key) end
                 RefreshAliasList()
             end)
             y = y - rowH
@@ -2077,6 +2401,7 @@ function Options:Initialize()
     aliasContent:HookScript("OnSizeChanged", UpdateAliasScrollBar)
     aliasesTab:HookScript("OnShow", RefreshAliasList)
     optionsFrame.RefreshAliasList = RefreshAliasList
+    ns.RefreshShortkeyTable = RefreshAliasList
 
     StaticPopupDialogs["EASYFIND_CLEAR_ALIASES"] = {
         text = L["POPUP_CLEAR_ALIASES"],
@@ -2095,6 +2420,40 @@ function Options:Initialize()
     clearAliasesBtn:SetScript("OnClick", function()
         StaticPopup_Show("EASYFIND_CLEAR_ALIASES")
     end)
+
+    StaticPopupDialogs["EASYFIND_EDIT_ALIAS"] = {
+        text = L["PROMPT_ALIAS_FOR"],
+        button1 = _G["SAVE"] or "Save",
+        button2 = _G["CANCEL"] or "Cancel",
+        hasEditBox = true,
+        maxLetters = 64,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+        enterClicksFirstButton = true,
+        OnShow = function(self, data)
+            LiftPopupAboveOptions(self)
+            local eb = self.editBox or self.EditBox
+            if eb then
+                eb:SetText(data and data.current or "")
+                eb:HighlightText()
+                eb:SetFocus()
+            end
+        end,
+        OnAccept = function(self, data)
+            if not (data and data.key and ns.Aliases) then return end
+            local eb = self.editBox or self.EditBox
+            local txt = strtrim(eb and eb:GetText() or "")
+            ns.Aliases:RemoveByKey(data.key)
+            if txt ~= "" then ns.Aliases:AddByKey(txt, data.key, data.name) end
+            if RefreshAliasList then RefreshAliasList() end
+        end,
+        EditBoxOnEnterPressed = function(self)
+            local parent = self:GetParent()
+            if parent.button1 then parent.button1:Click() end
+        end,
+        EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
+    }
 
     StaticPopupDialogs["EASYFIND_RESET_ALL"] = {
         text = L["POPUP_RESET_ALL_SETTINGS"],
@@ -2121,7 +2480,7 @@ function Options:Initialize()
     }
 
     StaticPopupDialogs["EASYFIND_DISABLE_MAP_SEARCH"] = {
-        text = L["POPUP_DISABLE_MAP_SEARCH"] .. "\n\nThis will remove map search, pins, map overlay features, and the EasyFind tab on the world map. You can re-enable it later from options.",
+        text = L["POPUP_DISABLE_MAP_SEARCH"] .. "\n\n" .. L["POPUP_DISABLE_MAP_SEARCH_DETAIL"],
         button1 = _G["DISABLE"] or "Disable",
         button2 = _G["CANCEL"] or "Cancel",
         OnAccept = function()
@@ -2143,7 +2502,7 @@ function Options:Initialize()
     StaticPopupDialogs["EASYFIND_RELOAD_PROMPT"] = {
         text = L["POPUP_RELOAD_UI"],
         button1 = _G["RELOADUI"] or "Reload Now",
-        button2 = "Later",
+        button2 = L["POPUP_BTN_LATER"],
         OnAccept = function() ReloadUI() end,
         OnShow = LiftPopupAboveOptions,
         timeout = 0,
@@ -2277,9 +2636,7 @@ end
 
 function Options:DoResetAll()
     local needsReload = EasyFind.db.enableMapSearch == false
-    ApplyDefaults(UI_DEFAULTS)
-    ApplyDefaults(MAP_DEFAULTS)
-    ApplyDefaults(GENERAL_DEFAULTS)
+    EasyFind:ResetSettingsToDefaults()
     ResetOptionsPosition()
     ClearMapRuntime()
 
@@ -2332,7 +2689,7 @@ function Options:RegisterWithBlizzardOptions()
 
         optionsFrame:SetParent(self)
         optionsFrame:ClearAllPoints()
-        optionsFrame:SetPoint("TOPLEFT", self, "TOPLEFT", 0, 34)
+        optionsFrame:SetPoint("TOPLEFT", self, "TOPLEFT", 0, -10)
         optionsFrame:SetFrameStrata("HIGH")
         optionsFrame:SetMovable(false)
         optionsFrame:RegisterForDrag()

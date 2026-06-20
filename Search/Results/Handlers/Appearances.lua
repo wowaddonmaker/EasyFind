@@ -1,6 +1,7 @@
 local _, ns = ...
 
 local Handlers = ns.ResultHandlers
+local L = ns.L
 local C_TransmogSets = C_TransmogSets
 
 local function ResolveTransmogBaseSetID(setID)
@@ -18,7 +19,7 @@ function Handlers:DressUpAppearanceSet(setID)
     local allIDs = C_TransmogSets.GetAllSourceIDs
         and C_TransmogSets.GetAllSourceIDs(setID)
     if not allIDs or #allIDs == 0 then
-        EasyFind:Print("could not load sources for this appearance set.")
+        EasyFind:Print(L["ERR_APPEARANCE_SET_LOAD"])
         return
     end
 

@@ -43,7 +43,7 @@ end
 function tests.resolve_byTmogAlias()
     local def = Filters:ResolveQuickFilterToken("tmog")
     H.assertNotNil(def)
-    H.assertEq(def.key, "appearanceSets")
+    H.assertEq(def.key, "appearanceItems")
 end
 
 function tests.resolve_byAtPrefixedToken()

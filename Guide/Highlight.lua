@@ -421,15 +421,14 @@ function Highlight:StartGuide(guideData)
         RepairAchievementCategoryGuideSteps(guideData)
     end
 
-    -- Currency guides cancel on close instead of rewinding to step 1 --
-    -- player closing the window is "abandon", not "go back to the start".
-    if not guideData.noCourseCorrect then
-        for _, s in ipairs(guideData.steps) do
-            if s.currencyHeader or s.currencyID then
-                guideData.noCourseCorrect = true
-                break
-            end
-        end
+    -- Closing the window the guide is steering you through means "abandon",
+    -- not "rewind and make me reopen it". A waitForFrame step is only reached
+    -- after that window was open, so finding it closed always means the user
+    -- shut it. Cancel on close for every guide; a guide can opt back into
+    -- rewind course-correction with noCourseCorrect = false. Wrong-tab steering
+    -- (window still open) is unaffected since it doesn't gate on this flag.
+    if guideData.noCourseCorrect == nil then
+        guideData.noCourseCorrect = true
     end
 
     currentGuide = guideData
@@ -458,6 +457,10 @@ function Highlight:StartGuideAtStep(guideData, stepIndex)
 
     if stepIndex > #guideData.steps then
         stepIndex = #guideData.steps
+    end
+
+    if guideData.noCourseCorrect == nil then
+        guideData.noCourseCorrect = true
     end
 
     currentGuide = guideData
@@ -671,7 +674,7 @@ local function HandleGuidePortraitMenu(self)
     local portrait = PlayerFrame
     if portrait and portrait:IsShown() then
         self:HighlightFrame(portrait)
-        self:ShowContextTooltip(portrait, "Right-click", "LEFT", "RIGHT", 10, 0)
+        self:ShowContextTooltip(portrait, L["GUIDE_RIGHT_CLICK"], "LEFT", "RIGHT", 10, 0)
     end
     return true
 end
@@ -695,7 +698,7 @@ local function HandleGuideGameMenuText(self, step)
         end
     else
         self:HideHighlight()
-        self:ShowInstruction("'" .. step.gameMenuText .. "' is not in the Game Menu")
+        self:ShowInstruction((L["GUIDE_NOT_IN_GAME_MENU"]):format(step.gameMenuText))
         Utils.SafeAfter(2.5, function() self:Cancel() end)
     end
     return true
@@ -721,7 +724,7 @@ local function HandleGuidePortraitMenuOption(self, step)
         end
     else
         self:HideHighlight()
-        self:ShowInstruction("'" .. step.portraitMenuOption .. "' is not available here")
+        self:ShowInstruction((L["GUIDE_OPTION_NOT_AVAILABLE"]):format(step.portraitMenuOption))
         Utils.SafeAfter(2.5, function() self:Cancel() end)
     end
     return true
@@ -775,7 +778,7 @@ local function HandleWaitTabIndex(self, step, isLastStep)
             self:Cancel()
         end
     elseif isLastStep then
-        self:ShowInstruction(step.text or "Click the correct tab")
+        self:ShowInstruction(step.text or L["GUIDE_CLICK_CORRECT_TAB"])
     end
     return true
 end
@@ -789,7 +792,7 @@ local function HandleWaitPetJournal(self, step, isLastStep)
             self:Cancel()
         end
     elseif isLastStep then
-        self:ShowInstruction(step.text or "Find the pet in the Pet Journal")
+        self:ShowInstruction(step.text or L["GUIDE_FIND_PET_IN_JOURNAL"])
     end
     return true
 end
@@ -828,7 +831,7 @@ local function HandleWaitSideTab(self, step, isLastStep)
             self:Cancel()
         end
     elseif isLastStep then
-        self:ShowInstruction(step.text or "Click the correct option on the left")
+        self:ShowInstruction(step.text or L["GUIDE_CLICK_OPTION_LEFT"])
     elseif currentStepIndex > 1 then
         currentStepIndex = currentStepIndex - 1
         self:HideHighlight()
@@ -852,7 +855,7 @@ local function HandleWaitPvPSideTab(self, step, isLastStep)
             self:Cancel()
         end
     elseif isLastStep then
-        self:ShowInstruction(step.text or "Click the correct option on the left")
+        self:ShowInstruction(step.text or L["GUIDE_CLICK_OPTION_LEFT"])
     elseif currentStepIndex > 1 then
         currentStepIndex = currentStepIndex - 1
         self:HideHighlight()
@@ -893,7 +896,7 @@ local function HandleWaitStatisticsCategory(self, step, isLastStep)
     if categoryBtn then
         self:HighlightFrame(categoryBtn)
     else
-        self:ShowInstruction(step.text or "Click '" .. step.statisticsCategory .. "' in the category list")
+        self:ShowInstruction(step.text or (L["GUIDE_CLICK_CATEGORY_IN_LIST"]):format(step.statisticsCategory))
     end
     return true
 end
@@ -984,7 +987,7 @@ local function HandleWaitAchievementCategory(self, step, isLastStep)
     if categoryBtn then
         self:HighlightFrame(categoryBtn)
     else
-        self:ShowInstruction(step.text or "Click '" .. step.achievementCategory .. "' in the category list")
+        self:ShowInstruction(step.text or (L["GUIDE_CLICK_CATEGORY_IN_LIST"]):format(step.achievementCategory))
     end
     return true
 end
@@ -1008,9 +1011,9 @@ local function HandleWaitSidebar(self, step, isLastStep)
             self:Cancel()
         end
     elseif isLastStep then
-        local tabNames = {"Character Stats", "Titles", "Equipment Manager"}
-        local tabName = tabNames[step.sidebarIndex] or ("Sidebar Tab " .. (step.sidebarIndex or "?"))
-        self:ShowInstruction(step.text or "Click the '" .. tabName .. "' tab on the right side of the character panel")
+        local tabNames = {L["GUIDE_SIDEBAR_CHARACTER_STATS"], L["GUIDE_SIDEBAR_TITLES"], L["GUIDE_SIDEBAR_EQUIPMENT_MANAGER"]}
+        local tabName = tabNames[step.sidebarIndex] or (L["GUIDE_SIDEBAR_TAB"]):format(step.sidebarIndex or "?")
+        self:ShowInstruction(step.text or (L["GUIDE_CLICK_SIDEBAR_TAB"]):format(tabName))
     end
     return true
 end
@@ -1245,6 +1248,65 @@ local function HandleWaitWardrobeSetsTab(self)
     return true
 end
 
+local function HandleWaitWardrobeItemsTab(self)
+    local wcf = _G["WardrobeCollectionFrame"]
+    if wcf and wcf.ItemsCollectionFrame and wcf.ItemsCollectionFrame:IsShown() then
+        self:AdvanceStep()
+        return true
+    end
+    local itemsTab = self:GetTabButton("WardrobeCollectionFrame", 1)
+    if itemsTab then
+        self:HighlightFrame(itemsTab)
+    end
+    return true
+end
+
+-- The Items tab lays appearances out in a 3x6 grid of ModelRxCy tiles; find the
+-- one currently showing this visual so it can be highlighted.
+local function FindAppearanceTile(icf, visualID)
+    if not visualID then return nil end
+    local rows, cols = icf.NUM_ROWS or 3, icf.NUM_COLS or 6
+    for r = 1, rows do
+        for c = 1, cols do
+            local tile = icf["ModelR" .. r .. "C" .. c]
+            if tile and tile:IsShown() then
+                local vi = tile.visualInfo
+                if vi and vi.visualID == visualID then return tile end
+            end
+        end
+    end
+    return nil
+end
+
+local function HandleWaitAppearanceItem(self, step)
+    local wcf = _G["WardrobeCollectionFrame"]
+    local icf = wcf and wcf.ItemsCollectionFrame
+    if not icf then return true end
+    if ns.Filters and ns.Filters.EnsureWardrobeItemSlotHooks then
+        ns.Filters:EnsureWardrobeItemSlotHooks()
+    end
+
+    -- GoToSourceID flips to the appearance's category + page. Do it once.
+    if not step._navDone then
+        step._navDone = true
+        if icf.GoToSourceID and icf.GetTransmogLocation then
+            local ok, loc = pcall(icf.GetTransmogLocation, icf)
+            if ok and loc then
+                pcall(icf.GoToSourceID, icf, step.appearanceSourceID, loc)
+            end
+        end
+    end
+
+    local tile = FindAppearanceTile(icf, step.appearanceVisualID)
+    if tile then
+        self:HighlightFrame(tile)
+        if canHoverDismiss() and tile:IsMouseOver() then
+            self:Cancel()
+        end
+    end
+    return true
+end
+
 local function HandleWaitTransmogSet(self, step)
     local wcf = _G["WardrobeCollectionFrame"]
     local scf = wcf and wcf.SetsCollectionFrame
@@ -1331,7 +1393,7 @@ local function HandleWaitTalentNode(self, step)
             self:Cancel()
         end
     else
-        self:ShowInstruction(step.text or "Look for this talent in the talents tree")
+        self:ShowInstruction(step.text or L["GUIDE_LOOK_FOR_TALENT"])
     end
     return true
 end
@@ -1363,7 +1425,7 @@ local function HandleWaitRegion(self, step)
             self:Cancel()
         end
     else
-        self:ShowInstruction(step.text or "Look for this area in the current window")
+        self:ShowInstruction(step.text or L["GUIDE_LOOK_FOR_AREA"])
     end
     return true
 end
@@ -1376,7 +1438,7 @@ local function HandleWaitSearchButtonText(self, step, isLastStep)
             self:Cancel()
         end
     elseif isLastStep then
-        self:ShowInstruction(step.text or ("Look for '" .. step.searchButtonText .. "' in the current window"))
+        self:ShowInstruction(step.text or (L["GUIDE_LOOK_FOR_BUTTON"]):format(step.searchButtonText))
     end
     return true
 end
@@ -1389,7 +1451,7 @@ local function HandleWaitLfgCategoryID(self, step, isLastStep)
             self:Cancel()
         end
     elseif isLastStep then
-        self:ShowInstruction(step.text or "Pick the matching category in the Premade Groups list")
+        self:ShowInstruction(step.text or L["GUIDE_PICK_PREMADE_CATEGORY"])
     end
     return true
 end
@@ -1414,6 +1476,8 @@ local WAIT_STEP_HANDLERS = {
     { key = "ejLootTab", fn = HandleWaitEJLootTab },
     { key = "ejLootItem", fn = HandleWaitEJLootItem },
     { key = "wardrobeSetsTab", fn = HandleWaitWardrobeSetsTab },
+    { key = "wardrobeItemsTab", fn = HandleWaitWardrobeItemsTab },
+    { key = "appearanceSourceID", fn = HandleWaitAppearanceItem },
     { key = "transmogSetID", fn = HandleWaitTransmogSet },
     { key = "transmogVariantDropdown", fn = HandleWaitTransmogVariantDropdown },
     { key = "transmogVariantSetID", fn = HandleWaitTransmogVariantSet },
@@ -2905,7 +2969,7 @@ function Highlight:ShowScrollHint(direction)
     scrollHintFrame.indicatorDirection = direction
     if ns.UpdateIndicator then ns.UpdateIndicator(scrollHintFrame) end
     if scrollHintFrame.text then
-        scrollHintFrame.text:SetText(direction == "up" and "Scroll up" or "Scroll down")
+        scrollHintFrame.text:SetText(direction == "up" and L["GUIDE_SCROLL_UP"] or L["GUIDE_SCROLL_DOWN"])
     end
 
     scrollHintFrame:ClearAllPoints()

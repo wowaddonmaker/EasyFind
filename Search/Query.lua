@@ -168,7 +168,9 @@ function Search:OnSearchTextChanged(text, force)
         local petsOff   = collectionsOff or filters.pets == false
         local outfitsOff = collectionsOff or filters.outfits == false
         local heirloomsOff = collectionsOff or filters.heirlooms == false
-        local appsetsOff = collectionsOff or filters.appearanceSets == false
+        local appearancesOff = collectionsOff or filters.appearances == false
+        local appsetsOff = appearancesOff or filters.appearanceSets == false
+        local appitemsOff = appearancesOff or filters.appearanceItems == false
         local lootOff    = filters.loot == false
         local bagsOff    = filters.bags == false
         local macrosOff  = filters.macros == false
@@ -179,7 +181,7 @@ function Search:OnSearchTextChanged(text, force)
         local titlesOff = filters.titles == false
         local gearSetsOff = filters.gearSets == false
         if mountsOff or toysOff or petsOff or outfitsOff or lootOff
-           or appsetsOff or bagsOff or macrosOff or gameOptOff or addonOptOff
+           or appsetsOff or appitemsOff or bagsOff or macrosOff or gameOptOff or addonOptOff
            or abilitiesOff or bossesOff or heirloomsOff or titlesOff or gearSetsOff
            or statisticsOff then
             skipCategories = SCRATCH.skipCategories
@@ -191,6 +193,7 @@ function Search:OnSearchTextChanged(text, force)
             if heirloomsOff then skipCategories["Heirloom"] = true end
             if lootOff      then skipCategories["Loot"] = true end
             if appsetsOff   then skipCategories["Appearance Set"] = true end
+            if appitemsOff  then skipCategories["Appearance"] = true end
             if bagsOff      then skipCategories["Bag"] = true end
             if macrosOff    then skipCategories["Macro"] = true end
             if gameOptOff   then skipCategories["Game Settings"] = true end
@@ -266,6 +269,13 @@ function Search:OnSearchTextChanged(text, force)
     local hidePassives = EasyFind.db.abilityHidePassives
     local hideAchievementHeaders = EasyFind.db.hideAchievementHeaders
     local hideGuildAchievements = EasyFind.db.hideGuildAchievements
+    local macroGeneralOff = EasyFind.db.macroFilterGeneral == false
+    local macroCharOff = EasyFind.db.macroFilterChar == false
+    local bossDungeonOff = EasyFind.db.bossFilterDungeon == false
+    local bossRaidOff = EasyFind.db.bossFilterRaid == false
+    local hideJunk = EasyFind.db.bagHideJunk == true
+    local commandNativeOff = EasyFind.db.commandShowNative == false
+    local commandCustomOff = EasyFind.db.commandShowCustom == false
     if filters and (filters.abilities == false or filters.bosses == false
                     or filters.achievements == false or filters.statistics == false
                     or filters.currencies == false or filters.reputations == false
@@ -273,8 +283,10 @@ function Search:OnSearchTextChanged(text, force)
                     or filters.options == false
                     or filters.gameOptions == false or filters.addonOptions == false
                     or filters.titles == false or filters.gearSets == false
-                    or filters.talents == false
-                    or hidePassives or hideAchievementHeaders or hideGuildAchievements) then
+                    or filters.talents == false or filters.commands == false
+                    or hidePassives or hideAchievementHeaders or hideGuildAchievements
+                    or macroGeneralOff or macroCharOff or bossDungeonOff or bossRaidOff
+                    or hideJunk or commandNativeOff or commandCustomOff) then
         wipe(SCRATCH.filteredResults)
         local filtered = SCRATCH.filteredResults
         local fi = 0
@@ -293,7 +305,15 @@ function Search:OnSearchTextChanged(text, force)
                 local headerOff = hideAchievementHeaders and d
                     and d.category == "Achievement Category"
                 local guildAchievementOff = hideGuildAchievements and self:IsGuildAchievementData(d)
+                local macroTypeOff = d and d.category == "Macro"
+                    and ((d.macroIsChar and macroCharOff) or (not d.macroIsChar and macroGeneralOff))
+                local bossTypeOff = d and d.category == "Boss"
+                    and ((d.isRaidBoss and bossRaidOff) or (not d.isRaidBoss and bossDungeonOff))
+                local junkOff = hideJunk and d and d.category == "Bag" and d.quality == 0
+                local commandTypeOff = d and d.category == "Command"
+                    and ((d.isNativeCommand and commandNativeOff) or (not d.isNativeCommand and commandCustomOff))
                 if not passiveOff and not headerOff and not guildAchievementOff
+                   and not macroTypeOff and not bossTypeOff and not junkOff and not commandTypeOff
                    and (not bucket or (not bucketOff and not parentOff)) then
                     fi = fi + 1
                     filtered[fi] = r

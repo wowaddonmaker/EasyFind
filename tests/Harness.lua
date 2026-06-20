@@ -316,6 +316,9 @@ function Harness.newNs(env)
     -- Utils is special — built once with the env's clock so SafeAfter ties
     -- into the deterministic clock for tests.
     ns.Utils = buildUtilsStub(env and env._clock or Clock.new())
+    -- Localization table: mirror Shared/Localization.lua's ultimate fallback
+    -- (return the key itself) so modules that read L[...] at load time work.
+    ns.L = setmetatable({}, { __index = function(_, k) return k end })
     -- Shared constants that some modules reference.
     ns.GOLD_COLOR = { 1.0, 0.82, 0.0 }
     ns.TEXT_PRIMARY = { 1.00, 0.97, 0.86 }

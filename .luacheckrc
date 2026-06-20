@@ -22,6 +22,7 @@ globals = {
     "TransmogFrame",
     "SettingsPanel",
     "TokenFrame",
+    "QuickKeybindFrame",
 }
 
 -- WoW API globals (read-only)
@@ -35,6 +36,7 @@ read_globals = {
     "MenuUtil",
 
     -- Core API
+    "DEFAULT_CHAT_FRAME", "DoEmote", "GetScreenWidth", "GetScreenHeight",
     "CreateFrame", "CreateFont", "CreateVector2D", "CreateColor",
     "GetTime", "GetLocale", "GetCVar", "SetCVar", "GetCursorPosition", "GetRealmName",
     "GetAddOnMetadata", "GetAtlasInfo", "GetMinimapShape",

@@ -34,6 +34,7 @@ Database/Search.lua
 Database/Dynamic.lua
 Database/StaticLocations.lua
 Shared/Aliases.lua
+Shared/Shortkeys.lua
 Shared/UIPins.lua
 Search/Modules.lua
 Search/SearchBar.lua
@@ -42,6 +43,7 @@ Search/Openers.lua
 Options/SurfaceGuard.lua
 Search/Calculator/Core.lua
 Search/Calculator/Popup.lua
+Search/Commands.lua
 Search/Results/ResultState.lua
 Search/Results/Handlers/Utils.lua
 Search/Results/Handlers/Spellbook.lua
@@ -56,9 +58,12 @@ Search/Results/Handlers/Character.lua
 Search/Results/Handlers/Achievements.lua
 Search/Results/Handlers/Macros.lua
 Search/Filters/Config.lua
+Search/Filters/ClassSpecSelector.lua
 Search/Filters/QuickFilter.lua
 Search/Filters/MountOptions.lua
+Search/Filters/HeirloomOptions.lua
 Search/Filters/AppearanceSets.lua
+Search/Filters/AppearanceItemOptions.lua
 Search/Filters/GearOptions.lua
 Search/Filters/Dropdown.lua
 Search/Providers/Achievements.lua

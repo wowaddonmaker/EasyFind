@@ -3,6 +3,7 @@ local BlizzOptionsSearch = {}
 ns.BlizzOptionsSearch = BlizzOptionsSearch
 
 local Utils = ns.Utils
+local Loc = ns.L
 local SearchFocus = ns.SearchFocus
 local tinsert = Utils.tinsert
 local slower = Utils.slower
@@ -374,8 +375,8 @@ local CVAR_DROPDOWN_OPTIONS = {
     },
     PROXY_ANTIALIASING = {
         { value = "0", label = NONE_LABEL },
-        { value = "1", label = "Image-Based" },
-        { value = "2", label = "Multisample" },
+        { value = "1", label = Loc["OPT_AA_IMAGE_BASED"] },
+        { value = "2", label = Loc["OPT_AA_MULTISAMPLE"] },
         { value = "3", label = _G["ADVANCED_LABEL"] or "Advanced" },
     },
     PROXY_FXAA = {
@@ -393,10 +394,10 @@ local CVAR_DROPDOWN_OPTIONS = {
     textureFilteringMode = {
         { value = "0", label = _G["VIDEO_OPTIONS_BILINEAR"] or "Bilinear" },
         { value = "1", label = _G["VIDEO_OPTIONS_TRILINEAR"] or "Trilinear" },
-        { value = "2", label = "2x Anisotropic" },
-        { value = "3", label = "4x Anisotropic" },
-        { value = "4", label = "8x Anisotropic" },
-        { value = "5", label = "16x Anisotropic" },
+        { value = "2", label = "2x " .. Loc["OPT_ANISOTROPIC"] },
+        { value = "3", label = "4x " .. Loc["OPT_ANISOTROPIC"] },
+        { value = "4", label = "8x " .. Loc["OPT_ANISOTROPIC"] },
+        { value = "5", label = "16x " .. Loc["OPT_ANISOTROPIC"] },
     },
     shadowrt = {
         { value = "0", label = _G["VIDEO_OPTIONS_DISABLED"] or "Disabled" },
@@ -1343,7 +1344,7 @@ local function ScrollToSettingVariable(variable)
             -- grab the row reference — otherwise we end up holding a
             -- Base-tab frame that goes hidden the next frame and the
             -- highlight watchdog clears it immediately.
-            local tabSwapped = false
+            local tabSwapped
             if IsRaidQualityVariable(variable) then
                 tabSwapped = ClickTabBySuffix(outer, "RaidTab")
             else
@@ -1481,52 +1482,77 @@ local function ScrollToBindingAction(action, headerName)
     -- possible (clamps to the edges near the start/end of the list).
     local function ScrollSectionToChild(child)
         if not child or not child.GetTop then return end
-        local sf = scrollBox.FindFrame and scrollBox:FindFrame(section)
-        if not sf or not sf.GetTop then return end
-        local sTop, cTop = sf:GetTop(), child:GetTop()
-        if not sTop or not cTop then return end
-        local offset = sTop - cTop
-        if offset <= 0 then return end
-        if not (scrollBox.SetScrollPercentage and scrollBox.GetScrollPercentage
+        if not (scrollBox.GetTop and scrollBox.SetScrollPercentage and scrollBox.GetScrollPercentage
                 and scrollBox.GetDerivedScrollRange and scrollBox.GetHeight) then return end
+        local vpTop, cTop = scrollBox:GetTop(), child:GetTop()
+        if not vpTop or not cTop then return end
         local range = scrollBox:GetDerivedScrollRange()
         if not range or range <= 0 then return end
+        -- The child's offset down the scrollable content = current scroll plus
+        -- how far the child sits below the VIEWPORT top. Measuring from the
+        -- viewport (not the section frame) stays correct when the section is
+        -- clamped at the list's end and its header is scrolled above the
+        -- viewport (e.g. AddOns). The old section-relative math scrolled the
+        -- row right back out of view in that case.
         local curScroll = (scrollBox:GetScrollPercentage() or 0) * range
         local vH = scrollBox:GetHeight() or 0
         local cH = (child.GetHeight and child:GetHeight()) or 24
-        local desiredScroll = curScroll + offset + cH / 2 - vH / 2
+        local childOffset = curScroll + (vpTop - cTop)
+        local desiredScroll = childOffset - (vH - cH) / 2
         local newPercent = math.max(0, math.min(1, desiredScroll / range))
         scrollBox:SetScrollPercentage(newPercent)
     end
 
-    local function expandThenHighlight()
-        local sectionFrame = scrollBox.FindFrame and scrollBox:FindFrame(section)
-        if not sectionFrame then return end
-        if sectionData and not sectionData.expanded and sectionFrame.Button then
-            sectionFrame.Button:Click()
-        end
-        SafeAfter(0.15, function()
-            local sf = scrollBox.FindFrame and scrollBox:FindFrame(section)
-            if not sf or not bindingIdx then return end
-            local bindingFrame = FindBindingFrameInSection(sf, bindingIdx)
-            if not bindingFrame then return end
-            ScrollSectionToChild(bindingFrame)
-            -- After the nudge, the binding may have moved; defer the
-            -- highlight one more frame so the border lands on the row's
-            -- final on-screen position.
-            SafeAfter(0, function()
-                local refetch = FindBindingFrameInSection(sf, bindingIdx)
-                local target = refetch or bindingFrame
-                if target and target:IsShown()
-                   and ns.Highlight and ns.Highlight.HighlightFrame then
-                    ns.Highlight:HighlightFrame(target, nil, function(t)
-                        return t and t:IsVisible()
-                    end)
-                end
-            end)
-        end)
+    local function rowInView(row)
+        local vpTop, vpBottom = scrollBox:GetTop(), scrollBox:GetBottom()
+        local rTop, rBottom = row:GetTop(), row:GetBottom()
+        if not (vpTop and vpBottom and rTop and rBottom) then return true end
+        return rTop <= vpTop + 1 and rBottom >= vpBottom - 1
     end
-    SafeAfter(0.05, expandThenHighlight)
+
+    local function highlightRow(row)
+        if row and row.IsShown and row:IsShown()
+           and ns.Highlight and ns.Highlight.HighlightFrame then
+            ns.Highlight:HighlightFrame(row, nil, function(t)
+                return t and t:IsVisible()
+            end)
+        end
+    end
+
+    -- Jumping to a section near the end of the list (e.g. AddOns) scrolls a long
+    -- way; the section frame and its row controls take several frames to render,
+    -- and ScrollToElementData clamps the last section so the row can still sit
+    -- above the viewport. Poll until the section and row exist, then keep nudging
+    -- the scroll until the row is genuinely inside the viewport before
+    -- highlighting. One shot at the centering math isn't reliable through the
+    -- scroll's own animation.
+    local function highlightWhenReady(attemptsLeft)
+        local sf = scrollBox.FindFrame and scrollBox:FindFrame(section)
+        if not sf then
+            if attemptsLeft > 0 then
+                scrollBox:ScrollToElementData(section, alignBegin)
+                SafeAfter(0.1, function() highlightWhenReady(attemptsLeft - 1) end)
+            end
+            return
+        end
+        if sectionData and not sectionData.expanded and sf.Button then
+            sf.Button:Click()
+        end
+        local row = bindingIdx and FindBindingFrameInSection(sf, bindingIdx)
+        if not row then
+            if attemptsLeft > 0 then
+                SafeAfter(0.1, function() highlightWhenReady(attemptsLeft - 1) end)
+            end
+            return
+        end
+        if not rowInView(row) and attemptsLeft > 0 then
+            ScrollSectionToChild(row)
+            SafeAfter(0.05, function() highlightWhenReady(attemptsLeft - 1) end)
+            return
+        end
+        highlightRow(row)
+    end
+    SafeAfter(0.05, function() highlightWhenReady(16) end)
 
     return true
 end
@@ -1599,9 +1625,7 @@ local function CollectEntries()
         local apiName = GetSettingDisplayName(var, nil)
         local fallbackName = SETTING_NAME_FALLBACK[var]
         local name = apiName or fallbackName
-        if not name or name == "" then
-            -- Variable unregistered AND no fallback; skip.
-        else
+        if name and name ~= "" then
         local nameLower = slower(name)
         local catLower = slower(catName)
         local resolved = TYPE_MAP[typeCode] or "other"
@@ -1633,7 +1657,7 @@ local function CollectEntries()
                 },
             }, mt))
         end
-        end -- name-resolved branch
+        end
     end
 
     local list = GetSettingsCategoryList()
@@ -1683,9 +1707,41 @@ local function IsActionBarButtonBinding(action)
 end
 
 -- Localized name lives at _G["BINDING_NAME_"..action]; category at
--- _G["BINDING_HEADER_"..category].
+-- _G["BINDING_HEADER_"..category]. Some clients return the localization key
+-- directly (e.g. "BINDING_HEADER_INTERFACE"); others return the bare token
+-- ("INTERFACE", "ADDONS") and expect the BINDING_HEADER_ prefix. Try both, and
+-- for HEADER_ rows derive the token from the action when no category is given.
+local function ResolveBindingHeader(category, action)
+    if type(category) == "string" and category ~= "" then
+        local v = _G[category]
+        if type(v) == "string" and v ~= "" then return v end
+        v = _G["BINDING_HEADER_" .. category]
+        if type(v) == "string" and v ~= "" then return v end
+    end
+    if type(action) == "string" and action:find("^HEADER_") then
+        local v = _G["BINDING_HEADER_" .. action:sub(8)]
+        if type(v) == "string" and v ~= "" then return v end
+    end
+    return nil
+end
+
 local function CollectKeybindings()
     local entries = {}
+
+    -- Quick Keybind Mode: a plain click enters the overlay directly. Alt+click
+    -- opens Settings > Keybindings and highlights the button (it lives in a
+    -- virtualized ScrollBox, so it can't be clicked by frame name).
+    do
+        local qkbName = _G["QUICK_KEYBIND_MODE"] or "Quick Keybind Mode"
+        tinsert(entries, setmetatable({
+            name = qkbName,
+            nameLower = slower(qkbName),
+            keywords = { "quick keybind mode", "quick", "keybind", "binding", "hover bind" },
+            quickKeybindActivate = true,
+            steps = { { settingsCategory = "Keybindings" } },
+        }, GetSettingsCatMT("Game Settings", "Keybindings", nil, { "Game Settings", "Keybindings" })))
+    end
+
     if not GetNumBindings or not GetBinding then return entries end
     local n = GetNumBindings()
     if not n or n == 0 then return entries end
@@ -1694,37 +1750,28 @@ local function CollectKeybindings()
     for i = 1, n do
         local action, category = GetBinding(i)
         if action and (action == "HEADER_BLANK" or action:find("^HEADER_")) then
-            -- Some clients return the localization key directly as the
-            -- category (e.g., "BINDING_HEADER_INTERFACE"); others return
-            -- the bare token ("INTERFACE") and expect us to prepend
-            -- BINDING_HEADER_. Try both, and only fall through to the
-            -- raw token when neither resolves — without this fallback
-            -- chain the subtext for a row ends up showing the literal
-            -- "BINDING_HEADER_INTERFACE" string instead of the
-            -- localized display name.
-            local function resolveHeader(key)
-                if type(key) ~= "string" or key == "" then return nil end
-                local v = _G[key]
-                if type(v) == "string" and v ~= "" then return v end
-                return nil
-            end
-            local resolved = resolveHeader(category)
-                or resolveHeader("BINDING_HEADER_" .. (category or action:sub(8)))
+            local resolved = ResolveBindingHeader(category, action)
             if resolved then
                 currentHeader = resolved
             elseif type(category) == "string" and category ~= "" then
                 currentHeader = category
             end
         elseif action and action ~= "" and not IsActionBarButtonBinding(action) then
+            -- Prefer the binding's own category over the positional header.
+            -- Addon bindings (and others listed out of header order) trail an
+            -- unrelated header in the raw list, so positional tracking would
+            -- mis-file them (e.g. a "Yell" addon bind whose category is
+            -- ADDONS landing under the preceding Housing header).
+            local header = ResolveBindingHeader(category, action) or currentHeader
             local nameKey = "BINDING_NAME_" .. action
             local displayName = _G[nameKey]
             if type(displayName) ~= "string" or displayName == "" then
                 displayName = action
             end
             local nameLower = slower(displayName)
-            local kw = { "keybind", "binding", "key", nameLower, slower(currentHeader) }
+            local kw = { "keybind", "binding", "key", nameLower, slower(header) }
             local mt = GetSettingsCatMT("Game Settings", "Keybindings", nil,
-                { "Game Settings", "Keybindings", currentHeader })
+                { "Game Settings", "Keybindings", header })
             tinsert(entries, setmetatable({
                 name = displayName,
                 nameLower = nameLower,
@@ -1735,7 +1782,7 @@ local function CollectKeybindings()
                     {
                         settingsCategory = "Keybindings",
                         bindingAction = action,
-                        bindingHeader = currentHeader,
+                        bindingHeader = header,
                     },
                 },
             }, mt))

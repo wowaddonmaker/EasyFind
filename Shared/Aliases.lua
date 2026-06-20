@@ -43,6 +43,34 @@ local function MapAliasKey(data)
         mfloor(x * 10000 + 0.5), mfloor(y * 10000 + 0.5))
 end
 
+-- Inverse of MapAliasKey: rebuild a navigable map row straight from its key.
+-- Map results aren't in uiSearchData (they're generated live from the map APIs),
+-- so a saved reference resolves by reconstructing from the key it stored, no
+-- snapshot needed. Covers zones and POIs precisely; the key can't tell a dungeon
+-- entrance's own map from its parent zone, so entrances degrade to a map jump.
+local function ReconstructMapData(key)
+    if type(key) ~= "string" then return nil end
+    local body = key:match("^map:(.+)$")
+    if not body then return nil end
+    local category, mapID, rest = body:match("^([^:]*):(%d+):(.+)$")
+    if not category or not rest then return nil end
+    local name, xi, yi = rest:match("^(.-):(%d+):(%d+)$")
+    if not name then return nil end
+    mapID = tonumber(mapID)
+    local isZone = category == "zone"
+    return {
+        name = name,
+        nameLower = name,
+        category = category,
+        mapSearchResult = true,
+        mapID = mapID,
+        x = tonumber(xi) / 10000,
+        y = tonumber(yi) / 10000,
+        isZone = isZone or nil,
+        zoneMapID = isZone and mapID or nil,
+    }
+end
+
 ---Returns the canonical key for an entry, used to dedupe aliases and to
 ---look an entry up later. Returns nil if the entry has no identifying fields.
 ---@param data table?
@@ -74,12 +102,16 @@ function Aliases:GetEntryKey(data)
 end
 
 function Aliases:FindEntryByKey(key)
-    if not key or not ns.Database or not ns.Database.uiSearchData then return nil end
-    local data = ns.Database.uiSearchData
-    for i = 1, #data do
-        local entry = data[i]
-        if Aliases:GetEntryKey(entry) == key then return entry end
+    if not key then return nil end
+    local data = ns.Database and ns.Database.uiSearchData
+    if data then
+        for i = 1, #data do
+            local entry = data[i]
+            if Aliases:GetEntryKey(entry) == key then return entry end
+        end
     end
+    -- Aliases keep a snapshot (it preserves the proper-case name and icon for
+    -- display); honour it first so aliased map rows render exactly as captured.
     if EasyFind and EasyFind.db and EasyFind.db.aliases then
         for _, info in pairs(EasyFind.db.aliases) do
             if info.key == key and info.snapshot then
@@ -87,7 +119,41 @@ function Aliases:FindEntryByKey(key)
             end
         end
     end
-    return nil
+    -- Otherwise rebuild map rows from the key (shortkeys, imports, legacy).
+    return ReconstructMapData(key)
+end
+
+-- Map/zone/POI rows come from the live map search, not uiSearchData, so a saved
+-- reference (alias or shortkey) can't look them up later by key. Capture the
+-- fields needed to reproduce the row so resolution can fall back to this. Returns
+-- nil for rows that resolve normally from uiSearchData (collections, abilities,
+-- panels), which intentionally bind only where they currently exist.
+function Aliases:BuildSnapshot(data)
+    if not IsMapAliasTarget(data) then return nil end
+    local currentMapID = WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID()
+    return {
+        name = data.name,
+        nameLower = data.nameLower,
+        category = data.category,
+        icon = data.icon,
+        mapSearchResult = true,
+        mapID = data.mapID or data.coordMapID or data.entranceMapID or data.zoneMapID or currentMapID,
+        zoneName = data.zoneName,
+        pathPrefix = data.pathPrefix,
+        x = data.x, y = data.y,
+        keywords = data.keywords,
+        isZone = data.isZone,
+        zoneMapID = data.zoneMapID,
+        zoneParentMapID = data.zoneParentMapID,
+        parentMapID = data.parentMapID,
+        coordMapID = data.coordMapID,
+        entranceMapID = data.entranceMapID,
+        entranceX = data.entranceX,
+        entranceY = data.entranceY,
+        entranceIcon = data.entranceIcon,
+        entranceCategory = data.entranceCategory,
+        isDungeonEntrance = data.isDungeonEntrance,
+    }
 end
 
 ---Stores an alias pointing at the given entry. Returns true on success,
@@ -104,33 +170,7 @@ function Aliases:Add(aliasText, data)
     if type(EasyFind.db.aliases) ~= "table" then
         EasyFind.db.aliases = {}
     end
-    local snapshot
-    if IsMapAliasTarget(data) then
-        local currentMapID = WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID()
-        snapshot = {
-            name = data.name,
-            nameLower = data.nameLower,
-            category = data.category,
-            icon = data.icon,
-            mapSearchResult = true,
-            mapID = data.mapID or data.coordMapID or data.entranceMapID or data.zoneMapID or currentMapID,
-            zoneName = data.zoneName,
-            pathPrefix = data.pathPrefix,
-            x = data.x, y = data.y,
-            keywords = data.keywords,
-            isZone = data.isZone,
-            zoneMapID = data.zoneMapID,
-            zoneParentMapID = data.zoneParentMapID,
-            parentMapID = data.parentMapID,
-            coordMapID = data.coordMapID,
-            entranceMapID = data.entranceMapID,
-            entranceX = data.entranceX,
-            entranceY = data.entranceY,
-            entranceIcon = data.entranceIcon,
-            entranceCategory = data.entranceCategory,
-            isDungeonEntrance = data.isDungeonEntrance,
-        }
-    end
+    local snapshot = self:BuildSnapshot(data)
     EasyFind.db.aliases[normalize(aliasText)] = {
         text = aliasText,
         key  = key,
@@ -145,6 +185,25 @@ function Aliases:Remove(aliasText)
     EasyFind.db.aliases[normalize(strtrim(aliasText or ""))] = nil
 end
 
+-- Add/replace an alias by stable row key (used by the options table, where the
+-- live entry may not be present to call Add).
+function Aliases:AddByKey(aliasText, key, name)
+    if not (EasyFind and EasyFind.db and key) then return false end
+    aliasText = strtrim(aliasText or "")
+    if aliasText == "" then return false end
+    EasyFind.db.aliases = EasyFind.db.aliases or {}
+    EasyFind.db.aliases[normalize(aliasText)] = { text = aliasText, key = key, name = name or aliasText }
+    return true
+end
+
+-- Remove every alias pointing at a given row key.
+function Aliases:RemoveByKey(key)
+    if not (EasyFind and EasyFind.db and EasyFind.db.aliases and key) then return end
+    for storedKey, info in pairs(EasyFind.db.aliases) do
+        if info.key == key then EasyFind.db.aliases[storedKey] = nil end
+    end
+end
+
 function Aliases:ClearAll()
     if not EasyFind or not EasyFind.db then return end
     EasyFind.db.aliases = {}
@@ -155,6 +214,33 @@ function Aliases:ForEach(cb)
     for _, info in pairs(EasyFind.db.aliases) do
         cb(info.text, info)
     end
+end
+
+-- Flat list of {text, key, name} for import/export.
+function Aliases:ExportList()
+    local out = {}
+    if EasyFind and EasyFind.db and EasyFind.db.aliases then
+        for _, info in pairs(EasyFind.db.aliases) do
+            out[#out + 1] = { text = info.text, key = info.key, name = info.name }
+        end
+    end
+    return out
+end
+
+function Aliases:ImportList(list)
+    if type(list) ~= "table" or not (EasyFind and EasyFind.db) then return 0 end
+    EasyFind.db.aliases = EasyFind.db.aliases or {}
+    local n = 0
+    for i = 1, #list do
+        local r = list[i]
+        if r and r.text and strtrim(r.text) ~= "" and r.key then
+            EasyFind.db.aliases[normalize(r.text)] = {
+                text = r.text, key = r.key, name = r.name or r.text,
+            }
+            n = n + 1
+        end
+    end
+    return n
 end
 
 ---Returns aliases whose stored key contains the (already-lowered) query as

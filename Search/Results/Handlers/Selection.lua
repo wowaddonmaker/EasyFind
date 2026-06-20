@@ -38,7 +38,20 @@ function Handlers:SelectResult(data, forceGuide)
     end
 
     if data.searchCommand then
-        self:RunSearchBarCommand("/" .. data.searchCommand)
+        -- Dismiss the bar like any other selection before running the command,
+        -- so /resize etc. don't leave the (now empty) bar lingering on screen.
+        -- Capture first: FinishResultSelection clears the search and can recycle
+        -- this data table.
+        local cmd = data.searchCommand
+        self:FinishResultSelection()
+        self:RunSearchBarCommand("/" .. cmd)
+        return
+    end
+
+    if data.nativeRun then
+        local run = data.nativeRun
+        self:FinishResultSelection()
+        run()
         return
     end
 
@@ -72,6 +85,14 @@ function Handlers:SelectResult(data, forceGuide)
         return
     end
 
+    -- Quick Keybind Mode: a plain click enters the overlay directly. Alt+click
+    -- falls through to the settings-category step below, which opens Keybindings
+    -- and highlights the button instead.
+    if data.quickKeybindActivate and not Handlers:IsSourceModifierHeld()
+       and Openers:ActivateQuickKeybindMode() then
+        return
+    end
+
     -- Blizzard Settings panel: open the named category directly.
     -- Both fast and guide modes do the same thing here -- there's no
     -- multi-step guide to walk for an in-game settings category.
@@ -94,7 +115,7 @@ function Handlers:SelectResult(data, forceGuide)
     -- Loot: Ctrl+click opens dressing room, regular click navigates EJ
     if data.itemID and data.category == "Loot" then
         local lootLink = ns.Database and ns.Database:GetLootItemLink(data)
-        if IsControlKeyDown() and lootLink then
+        if Handlers:IsSourceCtrlHeld() and lootLink then
             if DressUpItemLink(lootLink) then
                 return
             end
@@ -132,7 +153,7 @@ function Handlers:SelectResult(data, forceGuide)
         data.transmogSetID = ns.Database:GetTransmogSetIDByName(data.name)
     end
     if data.transmogSetID then
-        if IsControlKeyDown() then
+        if Handlers:IsSourceCtrlHeld() then
             self:DressUpAppearanceSet(data.transmogSetID)
             return
         end
@@ -160,10 +181,33 @@ function Handlers:SelectResult(data, forceGuide)
         return
     end
 
+    -- Appearance item: open Collections > Appearances > Items, page to the
+    -- appearance's slot + page via GoToSourceID, and highlight its tile.
+    if data.appearanceItemID then
+        local guideData = {
+            name = data.name,
+            steps = {
+                { buttonFrame = "CollectionsMicroButton" },
+                { waitForFrame = "CollectionsJournal", tabIndex = 5 },
+                { waitForFrame = "WardrobeCollectionFrame", wardrobeItemsTab = true },
+                { waitForFrame = "WardrobeCollectionFrame",
+                  appearanceSourceID = data.appearanceItemID,
+                  appearanceVisualID = data.appearanceVisualID,
+                  appearanceSlot = data.appearanceSlot },
+            },
+        }
+        if useFast then
+            self:DirectOpen(guideData)
+        else
+            EasyFind:StartGuide(guideData)
+        end
+        return
+    end
+
     -- Mount: summon only when the mount is actually usable here. Alt+click
     -- opens Collections > Mounts; Ctrl+click uses Blizzard's mount preview.
     if data.mountID then
-        if IsControlKeyDown and IsControlKeyDown() then
+        if Handlers:IsSourceCtrlHeld() then
             if self:PreviewMountInDressUp(data) then return end
             self:OpenMountInJournal(data)
             return
@@ -181,6 +225,20 @@ function Handlers:SelectResult(data, forceGuide)
     -- Heirloom: create the item in the player's bags. Mirrors clicking
     -- a tile in the HeirloomsJournal: API hands you a fresh copy.
     if data.heirloomItemID then
+        -- Alt (or guide mode): open Collections > Heirlooms instead of adding
+        -- a copy to the bags.
+        if forceGuide or Handlers:IsSourceModifierHeld() then
+            local guideData = {
+                name = data.name,
+                buttonFrame = "CollectionsMicroButton",
+                steps = {
+                    { buttonFrame = "CollectionsMicroButton" },
+                    { waitForFrame = "CollectionsJournal", tabIndex = 4 },
+                },
+            }
+            if forceGuide then EasyFind:StartGuide(guideData) else self:DirectOpen(guideData) end
+            return
+        end
         if C_Heirloom and C_Heirloom.CreateHeirloom then
             C_Heirloom.CreateHeirloom(data.heirloomItemID)
         end
@@ -266,7 +324,7 @@ function Handlers:SelectResult(data, forceGuide)
     if data.itemID and data.category == "Bag" then
         if useFast then
             local actionKind = self:GetBagItemActionKind(data)
-            if IsControlKeyDown and IsControlKeyDown() and actionKind == "equip"
+            if Handlers:IsSourceCtrlHeld() and actionKind == "equip"
                and data.bagItemLink and DressUpItemLink then
                 if DressUpItemLink(data.bagItemLink) then return end
             end

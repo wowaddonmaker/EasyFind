@@ -1,4 +1,4 @@
--- EasyFind Static Locations (auto-generated 2026-04-09 03:37)
+-- EasyFind Static Locations (auto-generated 2026-06-17 16:14)
 local _, ns = ...
 ns.STATIC_LOCATIONS = {
     [18] = { -- Tirisfal Glades
@@ -356,6 +356,16 @@ ns.STATIC_LOCATIONS = {
         { name = "Archaeology Trainer", category = "prof_archaeology", x = 0.6266931295394897, y = 0.7034234404563904, keywords = {"profession", "trainer", "archaeology", "artifact", "dig"} },
         { name = "Guild Services", category = "guildservices", x = 0.5892795920372009, y = 0.4632092118263245, keywords = {"guild", "tabard", "registrar"} },
         { name = "Innkeeper", category = "innkeeper", x = 0.7443743944168091, y = 0.3264971375465393, keywords = {"inn", "innkeeper", "hearth", "rest", "tavern"} },
+        { name = "Auction House", category = "auctionhouse", x = 0.5731957917472122, y = 0.6238380019921286, keywords = {"auction", "ah"} },
+        { name = "Auction House", category = "auctionhouse", x = 0.5071464135304659, y = 0.2708836194529263, keywords = {"auction", "ah"} },
+        { name = "Fishing Trainer", category = "prof_fishing", x = 0.4582750201225281, y = 0.6254837512969971, keywords = {"profession", "trainer", "fishing"} },
+        { name = "Mailbox", category = "mailbox", x = 0.4876004159450531, y = 0.289349377155304, keywords = {"mail", "mailbox"} },
+        { name = "Mailbox", category = "mailbox", x = 0.5927804112434387, y = 0.6066201329231262, keywords = {"mail", "mailbox"} },
+        { name = "Mailbox", category = "mailbox", x = 0.2802973091602325, y = 0.4899273812770844, keywords = {"mail", "mailbox"} },
+        { name = "Mailbox", category = "mailbox", x = 0.5609787106513977, y = 0.8151568174362183, keywords = {"mail", "mailbox"} },
+    },
+    [379] = { -- Kun-Lai Summit
+        { name = "PvP Vendor", category = "pvpvendor", x = 0.3540276130727255, y = 0.8325251904369465, keywords = {"pvp", "honor", "conquest", "vendor", "Legacy PvP Vendors"} },
     },
     [1164] = { -- Dazar'alor
         { name = "Decor Specialist", category = "decor", x = 0.3680292523030898, y = 0.6273999392615361, keywords = {"decor", "decoration", "housing", "furniture"} },
@@ -498,6 +508,10 @@ ns.STATIC_LOCATIONS = {
         { name = "Mailbox", category = "mailbox", x = 0.5750499589877152, y = 0.6998717990457972, keywords = {"mail", "mailbox"} },
         { name = "Mailbox", category = "mailbox", x = 0.6702745588052893, y = 0.7012820215558285, keywords = {"mail", "mailbox"} },
         { name = "Arcantina Portal", category = "portal", x = 0.562795365381976, y = 0.7056124956620882, keywords = {"portal", "teleport", "mage"} },
+        { name = "Decor Specialist", category = "decor", x = 0.5087633152776383, y = 0.5635734242265631, keywords = {"decor", "decoration", "housing", "furniture"} },
+        { name = "Quartermaster", category = "quartermaster", x = 0.4519304450584264, y = 0.554956822112208, keywords = {"quartermaster", "vendor", "gear", "Artisan's Consortium Quartermaster"} },
+        { name = "Decor Specialist", category = "decor", x = 0.5244980242311906, y = 0.4760821695758795, keywords = {"decor", "decoration", "housing", "furniture"} },
+        { name = "Stable Master", category = "stablemaster", x = 0.2749871241407172, y = 0.7739078752518069, keywords = {"stable", "pet"} },
     },
     [2437] = { -- Zul'Aman
         { name = "Decor Specialist", category = "decor", x = 0.461404994483628, y = 0.6649003781285632, keywords = {"decor", "decoration", "housing", "furniture"} },

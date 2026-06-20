@@ -31,29 +31,30 @@ local GOLD_COLOR = ns.GOLD_COLOR
 local GetUIBucket = Filters.GetUIBucket
 
 Filters.quickFilterOptions = {
-    { key = "abilities",      canonical = "abilities",       label = "Abilities",       categories = { "Ability" }, aliases = { "ab", "ability", "abilities", "spell", "spells" } },
-    { key = "achievements",   canonical = "achievements",    label = "Achievements",    categories = { "Achievement", "Achievements", "Achievement Category", "Guild Achievements" }, aliases = { "a", "ach", "achievement", "achievements" } },
-    { key = "statistics",     canonical = "statistics",      label = "Statistics",      categories = { "Statistic", "Statistics" }, aliases = { "s", "stat", "stats", "statistic", "statistics" } },
-    { key = "bags",           canonical = "bags",            label = "Bags",            categories = { "Bag" }, aliases = { "b", "bag", "bags" } },
-    { key = "bosses",         canonical = "bosses",          label = "Bosses",          categories = { "Boss" }, aliases = { "bo", "boss", "bosses", "encounter", "encounters" } },
-    { key = "macros",         canonical = "macros",          label = "Macros",          categories = { "Macro" }, aliases = { "ma", "macro", "macros" } },
-    { key = "collections",    canonical = "collections",     label = "Collections",     categories = { "Mount", "Toy", "Pet", "Outfit", "Heirloom", "Appearance Set" }, aliases = { "co", "col", "collection", "collections" } },
-    { key = "appearanceSets", canonical = "appearance-sets", label = "Appearance Sets", categories = { "Appearance Set" }, aliases = { "as", "appearance", "appearances", "appearance-set", "appearance-sets", "appset", "appsets", "transmog", "tmog", "xmog" } },
-    { key = "heirlooms",      canonical = "heirlooms",       label = "Heirlooms",       categories = { "Heirloom" }, aliases = { "h", "heirloom", "heirlooms" } },
-    { key = "mounts",         canonical = "mounts",          label = "Mounts",          categories = { "Mount" }, aliases = { "m", "mount", "mounts" } },
-    { key = "outfits",        canonical = "outfits",         label = "Outfits",         categories = { "Outfit" }, aliases = { "of", "outfit", "outfits" } },
-    { key = "pets",           canonical = "pets",            label = "Pets",            categories = { "Pet" }, aliases = { "p", "pet", "pets" } },
-    { key = "toys",           canonical = "toys",            label = "Toys",            categories = { "Toy" }, aliases = { "to", "toy", "toys" } },
-    { key = "gearSets",       canonical = "gear-sets",       label = "Gear Sets",       categories = { "Gear Set" }, aliases = { "gs", "gearset", "gearsets", "gear-set", "gear-sets", "equipment-set", "equipment-sets" } },
-    { key = "currencies",     canonical = "currencies",      label = "Currencies",      categories = { "Currency" }, aliases = { "c", "cur", "currency", "currencies" } },
-    { key = "loot",           canonical = "gear",            label = "Gear",            categories = { "Loot" }, aliases = { "g", "gear", "loot", "item", "items" } },
-    { key = "map",            canonical = "map",             label = "Map Search",      aliases = { "map", "maps", "zone", "zones", "location", "locations" } },
-    { key = "options",        canonical = "options",         label = "Options",         categories = { "Game Settings", "AddOn Settings" }, aliases = { "op", "opt", "option", "options", "setting", "settings" } },
-    { key = "gameOptions",    canonical = "game-options",    label = "Game Options",    categories = { "Game Settings" }, aliases = { "go", "game", "game-option", "game-options", "game-setting", "game-settings" } },
-    { key = "addonOptions",   canonical = "addon-options",   label = "AddOn Options",   categories = { "AddOn Settings" }, aliases = { "ao", "addon", "addons", "addon-option", "addon-options", "addon-setting", "addon-settings" } },
-    { key = "reputations",    canonical = "reputations",     label = "Reputations",     categories = { "Reputation" }, aliases = { "r", "rep", "reps", "reputation", "reputations" } },
-    { key = "talents",        canonical = "talents",         label = "Talents",         categories = { "Talent" }, aliases = { "ta", "tal", "talent", "talents" } },
-    { key = "titles",         canonical = "titles",          label = "Titles",          categories = { "Title" }, aliases = { "ti", "title", "titles" } },
+    { key = "abilities",      canonical = "abilities",       label = _G["ABILITIES"] or "Abilities",       categories = { "Ability" }, aliases = { "ab", "ability", "abilities", "spell", "spells" } },
+    { key = "achievements",   canonical = "achievements",    label = _G["ACHIEVEMENTS"] or "Achievements",    categories = { "Achievement", "Achievements", "Achievement Category", "Guild Achievements" }, aliases = { "a", "ach", "achievement", "achievements" } },
+    { key = "statistics",     canonical = "statistics",      label = _G["STATISTICS"] or "Statistics",      categories = { "Statistic", "Statistics" }, aliases = { "s", "stat", "stats", "statistic", "statistics" } },
+    { key = "bags",           canonical = "bags",            label = _G["BAGS"] or "Bags",            categories = { "Bag" }, aliases = { "b", "bag", "bags" } },
+    { key = "bosses",         canonical = "bosses",          label = _G["RAID_BOSSES"] or "Bosses",          categories = { "Boss" }, aliases = { "bo", "boss", "bosses", "encounter", "encounters" } },
+    { key = "macros",         canonical = "macros",          label = _G["MACROS"] or "Macros",          categories = { "Macro" }, aliases = { "ma", "macro", "macros" } },
+    { key = "collections",    canonical = "collections",     label = _G["COLLECTIONS"] or "Collections",     categories = { "Mount", "Toy", "Pet", "Outfit", "Heirloom", "Appearance Set", "Appearance" }, aliases = { "co", "col", "collection", "collections" } },
+    { key = "appearanceItems", canonical = "appearance-items", label = _G["ITEMS"] or "Items", categories = { "Appearance" }, aliases = { "appearance", "appearances", "appearance-item", "appearance-items", "transmog", "tmog", "xmog" } },
+    { key = "appearanceSets", canonical = "appearance-sets", label = L["FILTER_APPEARANCE_SETS"], categories = { "Appearance Set" }, aliases = { "as", "appearance-set", "appearance-sets", "appset", "appsets" } },
+    { key = "heirlooms",      canonical = "heirlooms",       label = _G["HEIRLOOMS"] or "Heirlooms",       categories = { "Heirloom" }, aliases = { "h", "heirloom", "heirlooms" } },
+    { key = "mounts",         canonical = "mounts",          label = _G["MOUNTS"] or "Mounts",          categories = { "Mount" }, aliases = { "m", "mount", "mounts" } },
+    { key = "outfits",        canonical = "outfits",         label = L["FILTER_OUTFITS"],         categories = { "Outfit" }, aliases = { "of", "outfit", "outfits" } },
+    { key = "pets",           canonical = "pets",            label = _G["PETS"] or "Pets",            categories = { "Pet" }, aliases = { "p", "pet", "pets" } },
+    { key = "toys",           canonical = "toys",            label = _G["TOYS"] or "Toys",            categories = { "Toy" }, aliases = { "to", "toy", "toys" } },
+    { key = "gearSets",       canonical = "gear-sets",       label = _G["EQUIPMENT_MANAGER"] or "Gear Sets",       categories = { "Gear Set" }, aliases = { "gs", "gearset", "gearsets", "gear-set", "gear-sets", "equipment-set", "equipment-sets" } },
+    { key = "currencies",     canonical = "currencies",      label = _G["CURRENCY"] or "Currencies",      categories = { "Currency" }, aliases = { "c", "cur", "currency", "currencies" } },
+    { key = "loot",           canonical = "gear",            label = L["FILTER_GEAR"],            categories = { "Loot" }, aliases = { "g", "gear", "loot", "item", "items" } },
+    { key = "map",            canonical = "map",             label = L["FILTER_MAP_SEARCH"],      aliases = { "map", "maps", "zone", "zones", "location", "locations" } },
+    { key = "options",        canonical = "options",         label = _G["OPTIONS"] or "Options",         categories = { "Game Settings", "AddOn Settings" }, aliases = { "op", "opt", "option", "options", "setting", "settings" } },
+    { key = "gameOptions",    canonical = "game-options",    label = L["FILTER_GAME_OPTIONS"],    categories = { "Game Settings" }, aliases = { "go", "game", "game-option", "game-options", "game-setting", "game-settings" } },
+    { key = "addonOptions",   canonical = "addon-options",   label = L["FILTER_ADDON_OPTIONS"],   categories = { "AddOn Settings" }, aliases = { "ao", "addon", "addons", "addon-option", "addon-options", "addon-setting", "addon-settings" } },
+    { key = "reputations",    canonical = "reputations",     label = _G["REPUTATION"] or "Reputations",     categories = { "Reputation" }, aliases = { "r", "rep", "reps", "reputation", "reputations" } },
+    { key = "talents",        canonical = "talents",         label = _G["TALENTS"] or "Talents",         categories = { "Talent" }, aliases = { "ta", "tal", "talent", "talents" } },
+    { key = "titles",         canonical = "titles",          label = _G["TITLES"] or "Titles",          categories = { "Title" }, aliases = { "ti", "title", "titles" } },
 }
 
 Filters.quickFilterByAlias = {}
@@ -75,6 +76,7 @@ for i = 1, #Filters.quickFilterOptions do
         def.bucketLookup.pets = true
         def.bucketLookup.outfits = true
         def.bucketLookup.heirlooms = true
+        def.bucketLookup.appearanceItems = true
         def.bucketLookup.appearanceSets = true
     elseif def.key == "options" then
         def.bucketLookup.gameOptions = true
@@ -204,9 +206,9 @@ function Filters:GetQuickFilterDisplayToken(def)
 end
 
 function Filters:GetQuickFilterAliasText(def)
-    if not def then return "Quick Filter" end
+    if not def then return L["QUICK_FILTER"] end
     if def.aliasText then return def.aliasText end
-    def.aliasText = (def.label or "Quick Filter")
+    def.aliasText = (def.label or L["QUICK_FILTER"])
     return def.aliasText
 end
 
@@ -229,10 +231,11 @@ function Filters:QuickFilterAllowsData(data, quickFilter)
     if def.key == "pets" then return data.petID and true or false end
     if def.key == "outfits" then return data.outfitID and true or false end
     if def.key == "heirlooms" then return data.heirloomItemID and true or false end
+    if def.key == "appearanceItems" then return data.appearanceItemID and true or false end
     if def.key == "appearanceSets" then return data.transmogSetID and true or false end
     if def.key == "collections" then
         return (data.mountID or data.toyItemID or data.petID or data.outfitID
-            or data.heirloomItemID or data.transmogSetID) and true or false
+            or data.heirloomItemID or data.transmogSetID or data.appearanceItemID) and true or false
     end
     if def.key == "loot" then
         return (data.itemID and data.category == "Loot") and true or false

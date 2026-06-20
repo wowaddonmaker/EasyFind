@@ -14,7 +14,7 @@ local ACHIEVEMENT_PROTO = {
     keywordsLower = {},
     category      = "Achievement",
     buttonFrame   = "AchievementMicroButton",
-    path          = { "Achievements" },
+    path          = { _G["ACHIEVEMENTS"] or "Achievements" },
 }
 local ACHIEVEMENT_MT = { __index = ACHIEVEMENT_PROTO }
 local achievementEntryByID = {}

@@ -72,14 +72,29 @@ function Results:ToggleSettingCheckbox(data)
     if not data or not data.settingVariable then return end
     local var = data.settingVariable
     local curVal = Rows:ReadSettingVariable(var)
+    local newOn
     if type(curVal) == "boolean" then
         Rows:WriteSettingVariable(var, not curVal)
+        newOn = not curVal
     elseif curVal == "1" or curVal == "0" then
         Rows:WriteSettingVariable(var, curVal == "1" and "0" or "1")
+        newOn = curVal == "0"
     elseif curVal == "true" or curVal == "false" then
         Rows:WriteSettingVariable(var, curVal == "true" and "false" or "true")
+        newOn = curVal == "false"
     elseif curVal == 1 or curVal == 0 then
         Rows:WriteSettingVariable(var, curVal == 1 and 0 or 1)
+        newOn = curVal == 0
+    end
+    -- Render the value we just wrote right away: some settings' GetValue lags
+    -- a frame behind SetValue, which made the row look unchanged until a second
+    -- click. Expires so an external change to the same setting still surfaces.
+    if newOn ~= nil then
+        local token = { var = var, isOn = newOn }
+        self._settingOptimistic = token
+        ns.Utils.SafeAfter(0.6, function()
+            if self._settingOptimistic == token then self._settingOptimistic = nil end
+        end)
     end
     -- Refresh the row so the checkbox state updates without closing
     -- the search panel. RefreshResults lives on Search, not Results,
@@ -606,7 +621,17 @@ function Results:ActivateResultRow(resultRow, source)
         return self:ApplyQuickFilter(resultRow.data.quickFilterDef, "")
     end
     if resultRow.data.searchCommand then
-        return self:RunSearchBarCommand("/" .. resultRow.data.searchCommand)
+        -- Capture before dismissing: FinishResultSelection clears the search,
+        -- which rebuilds the rows and nils out resultRow.data.
+        local cmd = resultRow.data.searchCommand
+        self:FinishResultSelection()
+        return self:RunSearchBarCommand("/" .. cmd)
+    end
+    if resultRow.data.nativeRun then
+        local run = resultRow.data.nativeRun
+        self:FinishResultSelection()
+        run()
+        return true
     end
     if resultRow.data.calculatorLauncher then
         return self:OpenCalculator("")
@@ -649,14 +674,29 @@ function Results:UpdateOutfitLockOverlay(resultRow, isLocked)
     if not resultRow.icon then return end
     if not resultRow._lockOverlay then
         local overlay = resultRow:CreateTexture(nil, "OVERLAY")
-        overlay:SetAtlas("transmog-outfit-spellFrame-active")
+        overlay:SetTexture("Interface\\AddOns\\EasyFind\\textures\\lock-dashes")
+        overlay:SetVertexColor(Utils.RGB(GOLD_COLOR, 1))
         overlay:SetPoint("CENTER", resultRow.icon, "CENTER", 0, 0)
         resultRow._lockOverlay = overlay
-
+        -- Four dot-chains (one per edge) cycled by a FlipBook: they rest on
+        -- their edge then whip clockwise through each corner to the next.
+        local ag = overlay:CreateAnimationGroup()
+        ag:SetLooping("REPEAT")
+        local fb = ag:CreateAnimation("FlipBook")
+        fb:SetFlipBookRows(8)
+        fb:SetFlipBookColumns(4)
+        fb:SetFlipBookFrames(32)
+        fb:SetDuration(0.9)
+        resultRow._lockAnim = ag
     end
-    local size = (resultRow.icon:GetWidth() or 16) + 6
+    local size = (resultRow.icon:GetWidth() or 16) + 2
     resultRow._lockOverlay:SetSize(size, size)
     resultRow._lockOverlay:SetShown(isLocked)
+    if isLocked then
+        resultRow._lockAnim:Play()
+    else
+        resultRow._lockAnim:Stop()
+    end
 end
 
 function Results:ApplyTransmogBrowseMode()

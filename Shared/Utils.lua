@@ -710,6 +710,28 @@ function ns.GetSearchWindowAlpha()
     end
     return ns.SEARCH_WINDOW_ALPHA
 end
+-- The filter dropdown and row context menus reuse the results window's
+-- rounded-rect panel object so they match it exactly (fill + border) and track
+-- the opacity setting, going fully solid at 100%.
+function ns.StyleMenuPanel(frame)
+    if not frame.combinedBorder then
+        ns.CreateRoundedRectBorder(frame)
+        ns.SetRoundedRectBorderShown(frame, true)
+        ns.SetRoundedRectFill(frame, unpack(ns.SEARCH_WINDOW_FILL_COLOR))
+    end
+    ns.SetRoundedRectBarHeight(frame, ns.SEARCHBAR_HEIGHT)
+    ns.SetRoundedRectBorderBgAlpha(frame, ns.GetSearchWindowAlpha())
+end
+
+function ns.ApplyMenuOpacity(frame)
+    if not frame then return end
+    if frame.combinedBorder then
+        ns.SetRoundedRectBorderBgAlpha(frame, ns.GetSearchWindowAlpha())
+    elseif frame.SetBackdropColor then
+        local r, g, b = unpack(ns.SEARCH_WINDOW_FILL_COLOR)
+        frame:SetBackdropColor(r, g, b, ns.GetSearchWindowAlpha())
+    end
+end
 ns.TOOLTIP_BORDER = "Interface\\Tooltips\\UI-Tooltip-Border"
 
 ns.NON_EQUIP_LOCS = {
@@ -766,6 +788,7 @@ function Utils.GetItemEquipLoc(itemID)
     return equipLoc
 end
 ns.EYE_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\eye"
+ns.COMMANDS_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\commands-icon"
 ns.DARK_PANEL_BG = {0.1, 0.1, 0.1, 0.95}
 ns.SEARCH_WINDOW_FILL_COLOR = {0.052, 0.052, 0.060}
 ns.RESULT_ICON_SIZE = 18
@@ -776,9 +799,13 @@ ns.BTN_FILL_NORMAL = {0.095, 0.095, 0.108}
 ns.BTN_FILL_HOVER = {0.155, 0.155, 0.172}
 ns.BTN_FILL_PRESSED = {0.065, 0.065, 0.078}
 ns.BTN_FILL_DISABLED = {0.070, 0.070, 0.080}
+ns.LINK_COLOR = {0.44, 0.84, 1.0}
+ns.LINK_HOVER = {0.72, 0.94, 1.0}
+ns.LINK_GLOW_COLOR = {0.3, 0.85, 1.0, 0.7}
 ns.SEARCHBAR_HEIGHT = 30
 ns.SEARCHBAR_FILL = 0.55
 ns.SEARCHBAR_ICON_SCALE = 0.75
+ns.DEFAULT_FONT_SIZE = 0.9
 ns.CLEAR_BTN_SIZE = 12
 local EasyFindSearchFont = CreateFont("EasyFindSearchFont")
 local baseFont = Game15Font_Shadow or GameFontNormal
@@ -1046,6 +1073,243 @@ function ns.CreateModernButton(parent, text, width, height)
     return btn
 end
 
+-- Thin two-stroke "X" close button (dim by default, white on hover), matching
+-- the tutorial / what's-new windows. Two rotated 1px lines stay sharp at any
+-- UI scale. Caller sets the OnClick handler.
+function ns.CreateCloseX(parent, size)
+    size = size or 18
+    local btn = CreateFrame("Button", nil, parent)
+    btn:SetSize(size, size)
+    local function MakeStroke()
+        local t = btn:CreateTexture(nil, "OVERLAY")
+        t:SetTexture("Interface\\Buttons\\WHITE8x8")
+        t:SetSize(size - 2, 1.5)
+        t:SetPoint("CENTER")
+        return t
+    end
+    local stroke1 = MakeStroke(); stroke1:SetRotation(math.pi / 4)
+    local stroke2 = MakeStroke(); stroke2:SetRotation(-math.pi / 4)
+    local function setX(r, g, b)
+        stroke1:SetVertexColor(r, g, b, 1)
+        stroke2:SetVertexColor(r, g, b, 1)
+    end
+    setX(Utils.RGB(ns.TEXT_DIM))
+    btn:SetScript("OnEnter", function() setX(1, 1, 1) end)
+    btn:SetScript("OnLeave", function() setX(Utils.RGB(ns.TEXT_DIM)) end)
+    return btn
+end
+
+-- A small, addon-styled popup with a single read-only field whose text is
+-- pre-selected so the user can immediately Ctrl-C it. Shared by the Wowhead
+-- link option and the bug-report / feature-request feedback URLs. WoW addons
+-- cannot write the clipboard, so a copy field is the correct approach.
+local copyBox
+function ns.ShowCopyBox(text, labelText)
+    text = text or ""
+    if not copyBox then
+        local f = CreateFrame("Frame", "EasyFindCopyBox", UIParent, "BackdropTemplate")
+        f:SetSize(470, 104)
+        f:SetPoint("CENTER", 0, 180)
+        f:SetFrameStrata("FULLSCREEN_DIALOG")
+        f:SetToplevel(true)
+        f:EnableMouse(true)
+        f:SetMovable(true)
+        f:SetClampedToScreen(true)
+        f:RegisterForDrag("LeftButton")
+        f:SetScript("OnDragStart", f.StartMoving)
+        f:SetScript("OnDragStop", f.StopMovingOrSizing)
+        ns.StyleMenuPanel(f)
+
+        f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        f.title:SetPoint("TOPLEFT", 14, -14)
+        f.title:SetJustifyH("LEFT")
+        f.title:SetWordWrap(false)
+
+        local field = CreateFrame("Frame", nil, f)
+        field:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -10)
+        field:SetPoint("RIGHT", f, "RIGHT", -14, 0)
+        field:SetHeight(26)
+        local bg = field:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0, 0, 0, 0.45)
+
+        local editBox = CreateFrame("EditBox", nil, field)
+        editBox:SetPoint("LEFT", 8, 0)
+        editBox:SetPoint("RIGHT", -8, 0)
+        editBox:SetHeight(20)
+        editBox:SetFontObject("GameFontHighlight")
+        editBox:SetAutoFocus(false)
+        editBox:SetJustifyH("LEFT")
+        editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus(); f:Hide() end)
+        editBox:SetScript("OnEnterPressed", function(self) self:HighlightText() end)
+        editBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+        -- Read-only feel: revert and re-select if the user types over it.
+        editBox:SetScript("OnTextChanged", function(self, userInput)
+            if userInput and self:GetText() ~= f._text then
+                self:SetText(f._text or "")
+                self:HighlightText()
+            end
+        end)
+        f.editBox = editBox
+
+        -- Ctrl-C confirmation. Addons cannot read the clipboard, but while the
+        -- field is focused the editbox fires OnKeyDown for the copy chord, so a
+        -- detected Ctrl+C flashes "Copied" (title color) and fades it out.
+        local copiedHolder = CreateFrame("Frame", nil, f)
+        copiedHolder:SetPoint("TOP", field, "BOTTOM", 0, -6)
+        copiedHolder:SetSize(140, 16)
+        copiedHolder:Hide()
+        local copied = copiedHolder:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        copied:SetPoint("CENTER")
+        copied:SetText(L["COPIED"])
+        local copiedFade = copiedHolder:CreateAnimationGroup()
+        local fadeAnim = copiedFade:CreateAnimation("Alpha")
+        fadeAnim:SetFromAlpha(1)
+        fadeAnim:SetToAlpha(0)
+        fadeAnim:SetStartDelay(0.8)
+        fadeAnim:SetDuration(0.8)
+        copiedFade:SetScript("OnFinished", function() copiedHolder:Hide() end)
+        editBox:SetScript("OnKeyDown", function(_, key)
+            if key ~= "C" or not IsControlKeyDown() then return end
+            copiedFade:Stop()
+            copiedHolder:SetAlpha(1)
+            copiedHolder:Show()
+            copiedFade:Play()
+        end)
+
+        local close = ns.CreateCloseX(f, 14)
+        close:SetPoint("TOPRIGHT", -8, -8)
+        close:SetScript("OnClick", function() f:Hide() end)
+
+        f:Hide()
+        copyBox = f
+    end
+    copyBox._text = text
+    copyBox.title:SetText(labelText or "")
+    -- Width tracks the message (+ buffer for the close X). The link field spans
+    -- it and clips a longer URL; the full text is still selected for Ctrl-C.
+    copyBox:SetWidth(math.max(200, math.floor(copyBox.title:GetStringWidth() + 0.5) + 44))
+    copyBox:Show()
+    local eb = copyBox.editBox
+    eb:SetText(text)
+    eb:SetCursorPosition(0)
+    eb:SetFocus()
+    eb:HighlightText()
+    -- Re-assert next frame; SetFocus during layout can drop the selection.
+    Utils.SafeAfter(0, function()
+        if copyBox:IsShown() then
+            eb:SetFocus()
+            eb:HighlightText()
+        end
+    end)
+end
+
+local WOWHEAD_LOCALE_SUB = {
+    deDE = "de", esES = "es", esMX = "es", frFR = "fr", itIT = "it",
+    ptBR = "pt", ruRU = "ru", koKR = "ko", zhCN = "cn", zhTW = "cn",
+}
+
+-- Percent-encode a string for use in a Wowhead search query.
+local function WowheadSearchEncode(s)
+    return (s:gsub("[^%w]", function(c)
+        return string.format("%%%02X", string.byte(c))
+    end))
+end
+
+-- Build a wowhead.com URL for a search result from the id fields it carries.
+-- Returns nil for results with no meaningful Wowhead page (settings, macros,
+-- bags, gear sets, ...), so the menu option only appears where it's useful.
+function ns.GetWowheadLink(data)
+    if not data then return nil end
+    local kind, id, query
+
+    if data.appearanceItemID and C_TransmogCollection and C_TransmogCollection.GetSourceInfo then
+        local info = C_TransmogCollection.GetSourceInfo(data.appearanceItemID)
+        if info and info.itemID then kind, id = "item", info.itemID end
+    elseif data.heirloomItemID then
+        kind, id = "item", data.heirloomItemID
+    elseif data.toyItemID then
+        kind, id = "item", data.toyItemID
+    elseif data.mountID and C_MountJournal and C_MountJournal.GetMountInfoByID then
+        local spellID = select(2, C_MountJournal.GetMountInfoByID(data.mountID))
+        if spellID then kind, id = "spell", spellID end
+    elseif (data.speciesID or data.petID) and C_PetJournal then
+        local species = data.speciesID
+        if not species and type(data.petID) == "number" then species = data.petID end
+        local npcID
+        if species and C_PetJournal.GetPetInfoBySpeciesID then
+            npcID = select(4, C_PetJournal.GetPetInfoBySpeciesID(species))
+        elseif type(data.petID) == "string" and C_PetJournal.GetPetInfoByPetID then
+            npcID = select(11, C_PetJournal.GetPetInfoByPetID(data.petID))
+        end
+        if npcID then kind, id = "npc", npcID end
+    elseif data.transmogSetID then
+        -- Wowhead's transmog-set IDs are internal and do not match WoW's setID
+        -- (that number 404s). The item that teaches a set is named
+        -- "Ensemble: <set>", so search that -- it lands on the set's gear.
+        if data.name then query = L["WOWHEAD_SET_PREFIX"] .. " " .. data.name end
+    elseif data.bossCreatureID and data.category == "Boss" then
+        -- Wowhead has no journal-encounter page; link the boss NPC, whose id
+        -- was captured at build time when the journal context was valid.
+        kind, id = "npc", data.bossCreatureID
+    elseif data.achievementID and data.category == "Achievement" then
+        kind, id = "achievement", data.achievementID
+    elseif data.currencyID then
+        kind, id = "currency", data.currencyID
+    elseif data.factionID then
+        kind, id = "faction", data.factionID
+    elseif data.titleID then
+        kind, id = "title", data.titleID
+    elseif data.spellID and (data.category == "Ability" or data.category == "Talent") then
+        kind, id = "spell", data.spellID
+    elseif data.itemID and data.category == "Loot" then
+        kind, id = "item", data.itemID
+    end
+
+    if not query and (not kind or not id) then return nil end
+    -- Subdomain: an explicit player choice wins; "auto" (default) follows the
+    -- client locale. ns.WOWHEAD_LOCALES drives the options dropdown.
+    local pref = EasyFind and EasyFind.db and EasyFind.db.wowheadLocale
+    local sub
+    if pref and pref ~= "auto" then
+        sub = pref
+    else
+        sub = WOWHEAD_LOCALE_SUB[GetLocale and GetLocale()] or "www"
+    end
+    if query then
+        return "https://" .. sub .. ".wowhead.com/search?q=" .. WowheadSearchEncode(query)
+    end
+    return "https://" .. sub .. ".wowhead.com/" .. kind .. "=" .. id
+end
+
+-- Wowhead-supported subdomains for the options dropdown. "auto" follows the
+-- client locale; the rest force a specific site. Native labels are universal.
+-- Language entries use native endonyms (shown the same on every client); the
+-- "auto" entry's display label is localized via L["WOWHEAD_LOCALE_AUTO"].
+ns.WOWHEAD_LOCALES = {
+    { value = "auto", label = "Auto" },
+    { value = "www",  label = "English" },
+    { value = "de",   label = "Deutsch" },
+    { value = "es",   label = "Español" },
+    { value = "fr",   label = "Français" },
+    { value = "it",   label = "Italiano" },
+    { value = "pt",   label = "Português" },
+    { value = "ru",   label = "Русский" },
+    { value = "ko",   label = "한국어" },
+    { value = "cn",   label = "中文" },
+}
+
+-- Resolve a "parent.leaf" dotted db key into its container table (created on
+-- demand) and the leaf name; a plain key returns EasyFind.db and the key.
+function ns.ResolveDbKey(dbKey)
+    local parent, leaf = dbKey:match("^(.-)%.([^%.]+)$")
+    if parent then
+        EasyFind.db[parent] = EasyFind.db[parent] or {}
+        return EasyFind.db[parent], leaf
+    end
+    return EasyFind.db, dbKey
+end
+
 function ns.CreateBouncePulse(region, fromAlpha, toAlpha, duration, smoothing)
     local animGroup = region:CreateAnimationGroup()
     animGroup:SetLooping("BOUNCE")
@@ -1169,12 +1433,149 @@ function Utils.IsFrameVisiblyMouseOver(frame)
     return frame:IsMouseOver()
 end
 
+-- Position a cascading flyout to the right of its anchor, flipping to the left
+-- when it would run off the right screen edge (standard menu behaviour), and
+-- clamping so a deep/tall chain can't end up partly off-screen. Width and scale
+-- must already be set on the popup before this is called.
+-- Position a cascading flyout beside its anchor and keep it fully on-screen on
+-- all four edges. Prefers the right side, flips to the left when the right would
+-- overflow, then clamps horizontally and vertically. Works for deeply nested
+-- chains by positioning each flyout absolutely against the screen rather than
+-- letting a cascade run off the edge. Width/height/scale must be set first.
+function Utils.OpenFlyoutBeside(popup, anchorFrame, gap)
+    gap = gap or 4
+    popup:ClearAllPoints()
+    local ui = UIParent
+    local s = popup:GetEffectiveScale()
+    if not s or s == 0 then s = 1 end
+    local screenW = (ui:GetWidth() or 0) * (ui:GetEffectiveScale() or 1)
+    local screenH = (ui:GetHeight() or 0) * (ui:GetEffectiveScale() or 1)
+    local aScale = anchorFrame:GetEffectiveScale() or 1
+    local aLeft = (anchorFrame:GetLeft() or 0) * aScale
+    local aRight = (anchorFrame:GetRight() or 0) * aScale
+    local aTop = (anchorFrame:GetTop() or 0) * aScale
+    local pW = (popup:GetWidth() or 0) * s
+    local pH = (popup:GetHeight() or 0) * s
+    local gapPx = gap * s
+
+    -- Horizontal: right if it fits, else left if it fits, else the roomier side.
+    local x
+    if (screenW - aRight) >= (pW + gapPx) then
+        x = aRight + gapPx
+    elseif (aLeft - gapPx - pW) >= 0 then
+        x = aLeft - gapPx - pW
+    elseif (screenW - aRight) >= aLeft then
+        x = aRight + gapPx
+    else
+        x = aLeft - gapPx - pW
+    end
+    if x + pW > screenW then x = screenW - pW end
+    if x < 0 then x = 0 end
+
+    -- Vertical: top-align with the anchor, then keep both edges on-screen.
+    local top = aTop
+    if top - pH < 0 then top = pH end
+    if top > screenH then top = screenH end
+
+    popup:SetPoint("TOPLEFT", ui, "BOTTOMLEFT", x / s, top / s)
+    if popup.SetClampedToScreen then popup:SetClampedToScreen(true) end
+end
+
+-- Position a dropdown list directly below its button, kept fully on-screen:
+-- left-aligned with the button (clamped horizontally), dropping down, and
+-- flipping above the button if it would run off the bottom. Size/scale first.
+function Utils.OpenDropdownBelow(popup, button, gap)
+    gap = gap or 2
+    popup:ClearAllPoints()
+    local ui = UIParent
+    local s = popup:GetEffectiveScale()
+    if not s or s == 0 then s = 1 end
+    local screenW = (ui:GetWidth() or 0) * (ui:GetEffectiveScale() or 1)
+    local screenH = (ui:GetHeight() or 0) * (ui:GetEffectiveScale() or 1)
+    local bScale = button:GetEffectiveScale() or 1
+    local bLeft = (button:GetLeft() or 0) * bScale
+    local bTop = (button:GetTop() or 0) * bScale
+    local bBottom = (button:GetBottom() or 0) * bScale
+    local pW = (popup:GetWidth() or 0) * s
+    local pH = (popup:GetHeight() or 0) * s
+    local gapPx = gap * s
+
+    local x = bLeft
+    if x + pW > screenW then x = screenW - pW end
+    if x < 0 then x = 0 end
+
+    -- Drop below; flip above when it would overflow the bottom.
+    local top = bBottom - gapPx
+    if top - pH < 0 then top = bTop + gapPx + pH end
+    if top > screenH then top = screenH end
+    if top - pH < 0 then top = pH end
+
+    popup:SetPoint("TOPLEFT", ui, "BOTTOMLEFT", x / s, top / s)
+    if popup.SetClampedToScreen then popup:SetClampedToScreen(true) end
+end
+
+-- Shared "dropdown button" used by every filter selector: a styled button
+-- (background + right arrow + left-aligned label) that toggles a popup list
+-- below it (clamped on-screen) and dismisses on outside-click. Eliminates the
+-- per-selector duplication of this exact widget.
+--   opts: parent, x, y, width, height(27), popup, layout(fn before show),
+--         getScale(fn), guardFrames(list), extraGuards(frames kept open)
+-- returns button, SetLabelText(text)
+function Utils.CreateDropdownButton(opts)
+    local btn = CreateFrame("Button", nil, opts.parent)
+    btn:SetSize(opts.width, opts.height or 27)
+    if opts.x then btn:SetPoint("TOPLEFT", opts.parent, "TOPLEFT", opts.x, opts.y or 0) end
+    local bg = btn:CreateTexture(nil, "BACKGROUND")
+    Utils.StyleDropdownBg(bg)
+    local arrow = btn:CreateTexture(nil, "OVERLAY")
+    arrow:SetAtlas("common-dropdown-a-button-hover")
+    arrow:SetSize(22, 22)
+    arrow:SetPoint("RIGHT", -10, -1)
+    arrow:SetVertexColor(0.7, 0.7, 0.7)
+    local label = btn:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    label:SetPoint("LEFT", 14, 0)
+    label:SetPoint("RIGHT", arrow, "LEFT", -2, 0)
+    label:SetJustifyH("LEFT")
+    label:SetWordWrap(false)
+    btn:SetScript("OnEnter", function() arrow:SetVertexColor(1, 1, 1) end)
+    btn:SetScript("OnLeave", function() arrow:SetVertexColor(0.7, 0.7, 0.7) end)
+
+    local popup = opts.popup
+    if popup then
+        local getScale = opts.getScale or function() return 1.0 end
+        btn:SetScript("OnClick", function()
+            if popup:IsShown() then popup:Hide(); return end
+            if opts.layout then opts.layout() end
+            popup:SetScale(getScale())
+            Utils.OpenDropdownBelow(popup, btn, 2)
+            popup:Show()
+        end)
+        popup:HookScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
+        popup:HookScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
+        popup:HookScript("OnEvent", function(self, event)
+            if event ~= "GLOBAL_MOUSE_DOWN" then return end
+            if self:IsMouseOver() or btn:IsMouseOver() then return end
+            local guards = opts.extraGuards
+            if guards then
+                for i = 1, #guards do
+                    if Utils.IsFrameVisiblyMouseOver(guards[i]) then return end
+                end
+            end
+            self:Hide()
+        end)
+        if opts.guardFrames then opts.guardFrames[#opts.guardFrames + 1] = popup end
+    end
+
+    return btn, function(text) label:SetText(text) end
+end
+
 function Utils.AttachHoverPopup(owner, popup, opts)
     if not owner or not popup then return nil end
     opts = opts or {}
 
-    local delay = opts.delay or 0.15
+    local delay = opts.delay or 0.3
     local extraGuards = opts.extraGuards or {}
+    local chainGuards = opts.chainGuards
     local hideTimer
 
     local function CancelHide()
@@ -1196,6 +1597,18 @@ function Utils.AttachHoverPopup(owner, popup, opts)
         if popup.IsMouseOver and popup:IsMouseOver() then return true end
         for i = 1, #extraGuards do
             if GuardIsMouseOver(extraGuards[i]) then return true end
+        end
+        -- Keep the whole open menu chain alive: don't close while the mouse is
+        -- over any currently-shown popup in the same menu. This lets the user
+        -- move diagonally to a flyout that opened on the opposite side (crossing
+        -- the parent menu in between) without it auto-closing.
+        if chainGuards then
+            local frames = type(chainGuards) == "function" and chainGuards() or chainGuards
+            if frames then
+                for i = 1, #frames do
+                    if Utils.IsFrameVisiblyMouseOver(frames[i]) then return true end
+                end
+            end
         end
         return opts.keepOpen and opts.keepOpen(owner, popup) or false
     end
@@ -1798,6 +2211,7 @@ local function CursorMenuFocusKeyboard(self, index)
 end
 
 local function CursorMenuOnShow(self)
+    ns.ApplyMenuOpacity(self)
     self._showedAt = GetTime()
     self._outsideSince = nil
     self._hasEntered = false
@@ -1831,6 +2245,9 @@ local function CursorMenuOnHide(self)
 end
 
 local function CursorMenuOnUpdate(self)
+    -- stayOpen menus close only on click-outside (handled in OnEvent), never on
+    -- mouse-leave, matching the search bar's filter menu.
+    if self.stayOpen then return end
     if CursorMenuHasMouse(self) then
         self._outsideSince = nil
         self._hasEntered = true
@@ -1877,14 +2294,9 @@ local function CreateCursorMenu(globalName)
     local frameName = globalName .. "_" .. cursorMenuCounter
     local menu = CreateFrame("Frame", frameName, UIParent, "BackdropTemplate")
     menu:EnableMouse(true)
+    menu:SetClampedToScreen(true)
     menu.rows = {}
-    menu:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-        edgeFile = ns.TOOLTIP_BORDER,
-        tile = true, tileSize = 16, edgeSize = 12,
-        insets = { left = 2, right = 2, top = 2, bottom = 2 }
-    })
-    if ns.DARK_PANEL_BG then menu:SetBackdropColor(unpack(ns.DARK_PANEL_BG)) end
+    ns.StyleMenuPanel(menu)
 
     menu.SetKeyboardIndex = CursorMenuSetKeyboardIndex
     menu.MoveKeyboardIndex = CursorMenuMoveKeyboardIndex
@@ -1914,6 +2326,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
     menu:SetFrameLevel(opts.level or 10000)
     menu.outsideDelay = opts.outsideDelay or 0.3
     menu.clickGrace = opts.clickGrace or 0.05
+    menu.stayOpen = opts.stayOpen and true or false
     menu.keyboardMode = opts.keyboardMode and true or false
     menu.keyboardIndex = nil
     menu.onHide = opts.onHide
@@ -2055,9 +2468,18 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
     if onAddAlias then
         rows[#rows + 1] = { text = L["CTX_ADD_ALIAS"], onClick = onAddAlias }
     end
-    rows[#rows + 1] = { text = isPinned and L["CTX_UNPIN"] or L["CTX_PIN"], onClick = onPin }
+    if extra and extra.onAddShortkey then
+        rows[#rows + 1] = {
+            text = extra.hasShortkey and L["CTX_EDIT_SHORTKEY"] or L["CTX_ADD_SHORTKEY"],
+            onClick = extra.onAddShortkey,
+        }
+    end
+    rows[#rows + 1] = { text = isPinned and (_G["RECENT_ALLIES_MENU_BUTTON_LABEL_UNPIN"] or "Unpin") or (_G["RECENT_ALLIES_MENU_BUTTON_LABEL_PIN"] or "Pin"), onClick = onPin }
     if onGuide then
         rows[#rows + 1] = { text = L["CTX_GUIDE"], icon = ns.EYE_ICON_TEX, onClick = onGuide }
+    end
+    if extra and extra.onWowhead then
+        rows[#rows + 1] = { text = L["CTX_WOWHEAD"], onClick = extra.onWowhead }
     end
 
     local extras = {}
@@ -2074,7 +2496,7 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
         }
     end
     if extra and extra.onTransfer then
-        extras[#extras + 1] = { text = L["CTX_TRANSFER"], onClick = extra.onTransfer }
+        extras[#extras + 1] = { text = _G["TRANSFER"] or "Transfer", onClick = extra.onTransfer }
     end
     if extra and extra.onToggleWatchedFaction then
         extras[#extras + 1] = {
@@ -2083,20 +2505,20 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
         }
     end
     if extra and extra.onSummon then
-        extras[#extras + 1] = { text = L["CTX_SUMMON"], onClick = extra.onSummon }
+        extras[#extras + 1] = { text = _G["SUMMON"] or "Summon", onClick = extra.onSummon }
     end
     if extra and extra.onRename then
-        extras[#extras + 1] = { text = L["CTX_RENAME"], onClick = extra.onRename }
+        extras[#extras + 1] = { text = _G["PET_RENAME"] or "Rename", onClick = extra.onRename }
     end
     if extra and extra.onToggleFavorite then
         extras[#extras + 1] = {
-            text = extra.isFavorite and L["CTX_REMOVE_FAVORITE"] or L["CTX_SET_FAVORITE"],
+            text = extra.isFavorite and (_G["BATTLE_PET_UNFAVORITE"] or "Remove Favorite") or (_G["BATTLE_PET_FAVORITE"] or "Set Favorite"),
             onClick = extra.onToggleFavorite,
         }
     end
     if extra and extra.onCageOrRelease then
         extras[#extras + 1] = {
-            text = extra.isCageable and L["CTX_PUT_IN_CAGE"] or L["CTX_RELEASE"],
+            text = extra.isCageable and (_G["BATTLE_PET_PUT_IN_CAGE"] or "Put In Cage") or (_G["BATTLE_PET_RELEASE"] or "Release"),
             onClick = extra.onCageOrRelease,
         }
     end
@@ -2123,6 +2545,22 @@ function Utils.SetIconTexture(textureObj, icon, fallback)
     else
         textureObj:SetTexture(fallback or "Interface\\Icons\\INV_Misc_QuestionMark")
     end
+end
+
+-- Apply the Blizzard dropdown-button background to a texture. The atlas has a
+-- fixed vertical structure (top bevel + center + bottom bevel); stretching it
+-- to an arbitrary button height squashes the bevels and reads as "too short".
+-- Pin it to its native height and stretch only horizontally, matching the
+-- in-game dropdown buttons (e.g. the Encounter Journal loot filter).
+function Utils.StyleDropdownBg(bg)
+    if not bg then return end
+    bg:SetAtlas("common-dropdown-textholder")
+    local info = C_Texture and C_Texture.GetAtlasInfo and C_Texture.GetAtlasInfo("common-dropdown-textholder")
+    local height = (info and info.height) or 41
+    bg:ClearAllPoints()
+    bg:SetPoint("LEFT", 0, 0)
+    bg:SetPoint("RIGHT", 0, 0)
+    bg:SetHeight(height)
 end
 
 local INTER_REGULAR  = "Interface\\AddOns\\EasyFind\\Fonts\\Inter-Regular.ttf"

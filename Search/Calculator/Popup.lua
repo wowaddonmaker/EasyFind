@@ -240,7 +240,7 @@ function Calculator:UpdateCalculatorPopupCopyVisual(data)
             copied and 0.62 or GOLD_COLOR[3],
             1)
         if frame.hintText then
-            frame.hintText:SetText(copied and "Now Ctrl+V to paste" or "Ctrl+C to copy")
+            frame.hintText:SetText(copied and L["CALC_PASTE_HINT"] or L["CALC_COPY_HINT"])
             frame.hintText:SetTextColor(copied and 0.48 or 0.72, copied and 1.0 or 0.72, copied and 0.62 or 0.72, 1)
             frame.hintText:Show()
         end
@@ -516,7 +516,7 @@ function Calculator:EnsureCalculatorFrame()
         Calculator:StyleCalculatorButton(b, CALC_BUTTON_H)
         b.text = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         b.text:SetPoint("CENTER")
-        b.text:SetText(label)
+        b.text:SetText(label == "Back" and L["CALC_BACKSPACE"] or label)
         b.text:SetTextColor(0.95, 0.95, 0.95, 1)
         b:HookScript("OnClick", function()
             if label == "C" then
@@ -846,7 +846,7 @@ function Calculator:SetCalculatorCopyHighlight(row, part)
         row.calcResultHighlight:SetShown(resultActive)
     end
     if row.calcExpressionHint then
-        row.calcExpressionHint:SetText(expressionCopied and "Now Ctrl+V to paste" or "Ctrl+C to copy")
+        row.calcExpressionHint:SetText(expressionCopied and L["CALC_PASTE_HINT"] or L["CALC_COPY_HINT"])
         if expressionCopied then
             row.calcExpressionHint:SetTextColor(0.48, 1.0, 0.62, 1.0)
         else
@@ -855,7 +855,7 @@ function Calculator:SetCalculatorCopyHighlight(row, part)
         row.calcExpressionHint:SetShown(expressionActive)
     end
     if row.calcResultHint then
-        row.calcResultHint:SetText(resultCopied and "Now Ctrl+V to paste" or "Ctrl+C to copy")
+        row.calcResultHint:SetText(resultCopied and L["CALC_PASTE_HINT"] or L["CALC_COPY_HINT"])
         if resultCopied then
             row.calcResultHint:SetTextColor(0.48, 1.0, 0.62, 1.0)
         else

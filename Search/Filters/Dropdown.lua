@@ -10,7 +10,6 @@ local ipairs, pairs = Utils.ipairs, Utils.pairs
 local CreateFrame = CreateFrame
 local UIParent = UIParent
 local wipe = wipe
-local TOOLTIP_BORDER = ns.TOOLTIP_BORDER
 local UI_FILTER_OPTIONS = Filters.UI_FILTER_OPTIONS
 local ForEachFilterKey = Filters.ForEachFilterKey
 
@@ -58,31 +57,18 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         if searchEditBox and searchEditBox.ClearFocus then searchEditBox:ClearFocus() end
     end
 
-    dropdown:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
-        edgeFile = TOOLTIP_BORDER,
-        edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 },
-    })
+    ns.StyleMenuPanel(dropdown)
+    dropdown:HookScript("OnShow", function(self) ns.ApplyMenuOpacity(self) end)
 
     local ICON_SIZE = 14
 
     local RADIO_SIZE = 14
     local RADIO_OFF_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-off"
     local RADIO_ON_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-on"
-    local POPUP_BG_COLOR = { 0.05, 0.05, 0.05, 0.95 }
-    local POPUP_BORDER_COLOR = { 0.6, 0.6, 0.6, 1 }
-    local POPUP_BACKDROP = {
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border", edgeSize = 14,
-        insets = { left = 3, right = 3, top = 3, bottom = 3 },
-    }
     local ROW_HIGHLIGHT_COLOR = { 1, 1, 1, 0.1 }
 
     local function StylePopup(frame)
-        frame:SetBackdrop(POPUP_BACKDROP)
-        frame:SetBackdropColor(unpack(POPUP_BG_COLOR))
-        frame:SetBackdropBorderColor(unpack(POPUP_BORDER_COLOR))
+        ns.StyleMenuPanel(frame)
     end
 
     local function CreateRadioTexture(parent)
@@ -322,6 +308,8 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 if Utils.IsFrameVisiblyMouseOver(self._appearanceSetOptionsPopup) then return end
                 if Utils.IsFrameVisiblyMouseOver(self._mountOptionsPopup) then return end
                 if Utils.IsFrameVisiblyMouseOver(self._mountSourcePopup) then return end
+                if Utils.IsFrameVisiblyMouseOver(self._heirloomOptionsPopup) then return end
+                if Utils.IsFrameVisiblyMouseOver(self._heirloomSourcePopup) then return end
                 self:Hide()
             end)
 
@@ -395,25 +383,24 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 subRows[si] = subRow
                 subRows[sub.key] = subRow
 
-                -- Appearance Sets has its own nested options popup (class
-                -- selector + Collected/Not Collected/PvE/PvP filters)
-                -- that opens to the right of this sub-row on hover.
-                if sub.hasOptions and sub.key == "appearanceSets" then
-                    local optionsPopup, syncOptions = Search:BuildAppearanceSetOptionsPopup(
-                        StylePopup, CreateRadioTexture, ROW_HIGHLIGHT_COLOR, CHECK_SIZE,
-                        searchEditBox)
-                    Search._SyncAppearanceSetOptions = syncOptions
+                -- Appearances: Items / Sets chooser (each a checkbox toggle with
+                -- its own class / slot / filter options flyout) opens to the
+                -- right of this sub-row on hover.
+                if sub.hasOptions and sub.key == "appearances" then
+                    local optionsPopup, syncOptions, appBranchPopups = Search:BuildAppearanceOptionsPopup(
+                        StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
+                    Search._SyncAppearanceOptions = syncOptions
                     optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
                     optionsPopup._owningRow = subRow
                     popup._appearanceSetOptionsPopup = optionsPopup
                     dropdownGuardFrames[#dropdownGuardFrames + 1] = optionsPopup
 
                     Utils.AttachHoverPopup(subRow, optionsPopup, {
+                        chainGuards = appBranchPopups,
                         onShow = function()
                             syncOptions()
                             optionsPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
-                            optionsPopup:ClearAllPoints()
-                            optionsPopup:SetPoint("TOPLEFT", subRow, "TOPRIGHT", 4, 0)
+                            Utils.OpenFlyoutBeside(optionsPopup, subRow, 4)
                             optionsPopup:Show()
                         end,
                     })
@@ -438,8 +425,32 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                         onShow = function()
                             syncOptions()
                             optionsPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
-                            optionsPopup:ClearAllPoints()
-                            optionsPopup:SetPoint("TOPLEFT", subRow, "TOPRIGHT", 4, 0)
+                            Utils.OpenFlyoutBeside(optionsPopup, subRow, 4)
+                            optionsPopup:Show()
+                        end,
+                    })
+
+                    popup:HookScript("OnHide", function() optionsPopup:Hide() end)
+                    dropdown:HookScript("OnHide", function() optionsPopup:Hide() end)
+                end
+
+                if sub.hasOptions and sub.key == "heirlooms" then
+                    local optionsPopup, syncOptions, sourcePopup = Search:BuildHeirloomOptionsPopup(
+                        StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
+                    Search._SyncHeirloomOptions = syncOptions
+                    optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
+                    optionsPopup._owningRow = subRow
+                    popup._heirloomOptionsPopup = optionsPopup
+                    popup._heirloomSourcePopup = sourcePopup
+                    dropdownGuardFrames[#dropdownGuardFrames + 1] = optionsPopup
+                    dropdownGuardFrames[#dropdownGuardFrames + 1] = sourcePopup
+
+                    Utils.AttachHoverPopup(subRow, optionsPopup, {
+                        extraGuards = { sourcePopup },
+                        onShow = function()
+                            syncOptions()
+                            optionsPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
+                            Utils.OpenFlyoutBeside(optionsPopup, subRow, 4)
                             optionsPopup:Show()
                         end,
                     })
@@ -448,28 +459,20 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     dropdown:HookScript("OnHide", function() optionsPopup:Hide() end)
                 end
             end
-            -- Sibling sub-rows hide the appearance set options popup so it
-            -- doesn't linger when the cursor moves to a non-options row.
-            if popup._appearanceSetOptionsPopup then
-                local optionsPopup = popup._appearanceSetOptionsPopup
+            -- Sibling sub-rows hide an options popup so it doesn't linger when
+            -- the cursor moves to a non-options row.
+            local function HookSiblingHide(popupField, ownerRow)
+                local optionsPopup = popup[popupField]
+                if not optionsPopup then return end
                 for _, srOther in ipairs(subRows) do
-                    if srOther ~= subRows.appearanceSets then
-                        srOther:HookScript("OnEnter", function()
-                            optionsPopup:Hide()
-                        end)
+                    if srOther ~= ownerRow then
+                        srOther:HookScript("OnEnter", function() optionsPopup:Hide() end)
                     end
                 end
             end
-            if popup._mountOptionsPopup then
-                local optionsPopup = popup._mountOptionsPopup
-                for _, srOther in ipairs(subRows) do
-                    if srOther ~= subRows.mounts then
-                        srOther:HookScript("OnEnter", function()
-                            optionsPopup:Hide()
-                        end)
-                    end
-                end
-            end
+            HookSiblingHide("_appearanceSetOptionsPopup", subRows.appearances)
+            HookSiblingHide("_mountOptionsPopup", subRows.mounts)
+            HookSiblingHide("_heirloomOptionsPopup", subRows.heirlooms)
             row.flyoutSubRows = subRows
 
             -- "Hide tooltips" checkbox at the bottom of the collections
@@ -530,14 +533,15 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             -- with a small grace timer so brief gaps between them don't
             -- snap the menu shut.
             local function PositionPopup()
-                popup:ClearAllPoints()
-                popup:SetPoint("TOPLEFT", row, "TOPRIGHT", 4, 0)
+                Utils.OpenFlyoutBeside(popup, row, 4)
             end
             local hover = Utils.AttachHoverPopup(row, popup, {
                 extraGuards = {
                     function() return popup._appearanceSetOptionsPopup end,
                     function() return popup._mountOptionsPopup end,
                     function() return popup._mountSourcePopup end,
+                    function() return popup._heirloomOptionsPopup end,
+                    function() return popup._heirloomSourcePopup end,
                 },
                 onShow = function()
                     SetActiveFlyout(popup)
@@ -667,10 +671,13 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 cRow.tick = tick
                 cRow.dbKey = cbDef.dbKey
                 cRow.onChange = cbDef.onChange
+                cRow.resolveDbPath = function()
+                    return ns.ResolveDbKey(cbDef.dbKey)
+                end
                 cRow:SetScript("OnClick", function(self)
-                    local cur = EasyFind.db[self.dbKey]
-                    local next = not cur
-                    EasyFind.db[self.dbKey] = next
+                    local tbl, leaf = self.resolveDbPath()
+                    local next = not tbl[leaf]
+                    tbl[leaf] = next
                     self.tick:SetShown(next)
                     if self.onChange then self.onChange(next) end
                     if searchEditBox:GetText() ~= "" then
@@ -702,14 +709,14 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     end
                 end
                 for _, cRow in ipairs(checkboxRows) do
-                    cRow.tick:SetShown(EasyFind.db[cRow.dbKey] and true or false)
+                    local tbl, leaf = cRow.resolveDbPath()
+                    cRow.tick:SetShown(tbl[leaf] and true or false)
                 end
             end
             row.SyncFlyoutSubChecks = SyncRadio
 
             local function PositionPopup()
-                popup:ClearAllPoints()
-                popup:SetPoint("TOPLEFT", row, "TOPRIGHT", 4, 0)
+                Utils.OpenFlyoutBeside(popup, row, 4)
             end
             local hover = Utils.AttachHoverPopup(row, popup, {
                 onShow = function()
@@ -1024,9 +1031,16 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             dropdown:SetScale(barScale)
             local scale = anchorFrame:GetEffectiveScale() / (UIParent:GetEffectiveScale() * barScale)
             local right = anchorFrame:GetRight() * scale
-            local bottom = anchorFrame:GetBottom() * scale
             dropdown:ClearAllPoints()
-            dropdown:SetPoint("TOPRIGHT", UIParent, "BOTTOMLEFT", right, bottom)
+            if EasyFind.db.uiResultsAbove then
+                -- Results grow upward, so open the filter menu upward too: pin
+                -- its bottom edge to the bar's top instead of its top to the bottom.
+                local top = anchorFrame:GetTop() * scale
+                dropdown:SetPoint("BOTTOMRIGHT", UIParent, "BOTTOMLEFT", right, top)
+            else
+                local bottom = anchorFrame:GetBottom() * scale
+                dropdown:SetPoint("TOPRIGHT", UIParent, "BOTTOMLEFT", right, bottom)
+            end
             dropdown:Show()
             KeepSearchEditBoxUnfocused()
         end

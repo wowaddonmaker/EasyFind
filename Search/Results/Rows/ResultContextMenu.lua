@@ -98,6 +98,17 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
     end
 
     extra = extra or {}
+    local wowheadUrl = ns.GetWowheadLink and ns.GetWowheadLink(pinData)
+    if wowheadUrl then
+        extra.onWowhead = function()
+            ns.ShowCopyBox(wowheadUrl, ns.L["WOWHEAD_COPY_HINT"])
+        end
+    end
+    local skKey = ns.Shortkeys and ns.Shortkeys:GetEntryKey(pinData)
+    if skKey then
+        extra.hasShortkey = ns.Shortkeys:Get(skKey) ~= nil
+        extra.onAddShortkey = function() ns.Shortkeys:PromptForKey(pinData) end
+    end
     local function FocusKeyboardMenu(menu)
         if not keyboardMode or not menu or not menu:IsShown() then return end
         local navFrame = Search:GetNavFrame()

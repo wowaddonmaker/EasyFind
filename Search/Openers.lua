@@ -107,6 +107,20 @@ function Openers:SecureShowUIPanel(frame)
     return SecureShowUIPanel(frame)
 end
 
+-- Enter the in-game Quick Keybind overlay directly, the same as clicking the
+-- button in Settings > Keybindings. Returns false (so the caller can fall back
+-- to opening that settings category) when in combat or the frame isn't present.
+function Openers:ActivateQuickKeybindMode()
+    if InCombatLockdown() then return false end
+    local frame = _G["QuickKeybindFrame"]
+    if not frame then return false end
+    SecureShowUIPanel(frame)
+    if not frame:IsShown() then
+        pcall(frame.Show, frame)
+    end
+    return frame:IsShown() and true or false
+end
+
 function Openers:OpenButtonFrame(buttonFrame, nextStep)
     return OpenButtonFrame(buttonFrame, nextStep)
 end

@@ -253,7 +253,7 @@ function Render.RowContent(owner, resultRow, entry, state, isUnearnedCurrency)
         Render.SetClippedText(resultRow.text, entry.name)
         iconSet = true
 
-    elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.outfitID or data.heirloomItemID or data.gearSetID or data.transmogSetID or (data.spellID and data.category == "Ability") or (data.spellID and data.category == "Talent") or (data.encounterID and data.category == "Boss") or (data.macroIndex and data.category == "Macro") or (data.bagID and data.category == "Bag") or (data.achievementID and data.category == "Achievement")) then
+    elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.outfitID or data.heirloomItemID or data.gearSetID or data.transmogSetID or data.appearanceItemID or (data.spellID and data.category == "Ability") or (data.spellID and data.category == "Talent") or (data.encounterID and data.category == "Boss") or (data.macroIndex and data.category == "Macro") or (data.bagID and data.category == "Bag") or (data.achievementID and data.category == "Achievement")) then
         local iconFileID = data.icon
         local rightOffset = -5
 
@@ -274,6 +274,7 @@ function Render.RowContent(owner, resultRow, entry, state, isUnearnedCurrency)
             resultRow.icon.spellID = data.spellID
             resultRow.icon.outfitID = data.outfitID
             resultRow.icon.heirloomItemID = data.heirloomItemID
+            resultRow.icon.appearanceItemID = data.appearanceItemID
             resultRow.icon.gearSetID = data.gearSetID
             resultRow.icon.bagItemID = (data.category == "Bag") and data.itemID or nil
             resultRow.icon.achievementID = data.achievementID
@@ -311,7 +312,7 @@ function Render.RowContent(owner, resultRow, entry, state, isUnearnedCurrency)
         if data.outfitID and C_TransmogOutfitInfo and C_TransmogOutfitInfo.IsLockedOutfit then
             Search:UpdateOutfitLockOverlay(resultRow, C_TransmogOutfitInfo.IsLockedOutfit(data.outfitID))
         elseif resultRow._lockOverlay then
-            resultRow._lockOverlay:Hide()
+            Search:UpdateOutfitLockOverlay(resultRow, false)
         end
 
         -- Cooldown sweep overlay (toys, abilities, outfits)

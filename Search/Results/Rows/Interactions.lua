@@ -87,14 +87,10 @@ function Rows.InstallInteractions(resultRow, index)
         if row._lastAttrKey then
             Utils.SafeCallMethod(row, "SetAttribute", row._lastAttrKey, nil)
         end
-        if row._lastAttrAction ~= nil then
-            Utils.SafeCallMethod(row, "SetAttribute", "action", nil)
-        end
         Utils.SafeCallMethod(row, "SetAttribute", "type", nil)
         row._lastAttrType = nil
         row._lastAttrKey = nil
         row._lastAttrVal = nil
-        row._lastAttrAction = nil
     end
     local function SetSecureOutfit(row, outfitIndex)
         if row._lastAttrKey and row._lastAttrKey ~= "outfit-index" then
@@ -102,11 +98,10 @@ function Rows.InstallInteractions(resultRow, index)
         end
         Utils.SafeCallMethod(row, "SetAttribute", "type", "outfit")
         Utils.SafeCallMethod(row, "SetAttribute", "outfit-index", outfitIndex)
-        Utils.SafeCallMethod(row, "SetAttribute", "action", "change")
+        Utils.SafeCallMethod(row, "SetAttribute", "action", nil)
         row._lastAttrType = "outfit"
         row._lastAttrKey = "outfit-index"
         row._lastAttrVal = outfitIndex
-        row._lastAttrAction = "change"
     end
     local DRAG_PX = 5
     -- HookScript not SetScript: SecureActionButtonTemplate uses the

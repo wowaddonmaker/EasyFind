@@ -3,6 +3,7 @@ local _, ns = ...
 local Search = ns.Search
 local Filters = ns.Filters
 local Utils = ns.Utils
+local L = ns.L
 
 local ipairs = Utils.ipairs
 local CreateFrame = CreateFrame
@@ -20,7 +21,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     local ClearActiveFlyout = ctx.ClearActiveFlyout
     local dropdownGuardFrames = ctx.dropdownGuardFrames
     local searchEditBox = ctx.searchEditBox
-    local GEAR_POPUP_WIDTH = 200
+    local GEAR_POPUP_WIDTH = 184
     local GEAR_POPUP_PAD = 8
 
     local gearOptionsPopup = CreateFrame("Frame", "EasyFindGearOptionsPopup", UIParent, "BackdropTemplate")
@@ -32,8 +33,8 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     dropdownGuardFrames[#dropdownGuardFrames + 1] = gearOptionsPopup
 
     local lootSubDefs = {
-        { dbKey = "lootUpgradesOnly", label = "iLvl Upgrades Only" },
-        { dbKey = "hideTooltips.loot", label = "Hide tooltips" },
+        { dbKey = "lootUpgradesOnly", label = L["FILTER_ILVL_UPGRADES_ONLY"] },
+        { dbKey = "hideTooltips.loot", label = L["FILTER_HIDE_TOOLTIPS"] },
     }
     local lootSubRows = {}
     for si, sub in ipairs(lootSubDefs) do
@@ -51,7 +52,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         subRow:GetCheckedTexture():ClearAllPoints()
         subRow:GetCheckedTexture():SetPoint("LEFT", 4, 0)
 
-        local subLabel = subRow:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+        local subLabel = subRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
         subLabel:SetPoint("LEFT", subRow:GetNormalTexture(), "RIGHT", 4, 0)
         subLabel:SetText(sub.label)
 
@@ -62,17 +63,8 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         subRow.dbKey = sub.dbKey
         lootSubRows[si] = subRow
 
-        -- Resolve "a.b" dotted keys into a getter/setter so the
-        -- nested hideTooltips.loot toggle lives alongside the
-        -- flat lootUpgradesOnly checkbox without duplicating
-        -- this whole subRow setup.
         local function resolveDbPath()
-            local parent, leaf = sub.dbKey:match("^(.-)%.([^%.]+)$")
-            if parent then
-                EasyFind.db[parent] = EasyFind.db[parent] or {}
-                return EasyFind.db[parent], leaf
-            end
-            return EasyFind.db, sub.dbKey
+            return ns.ResolveDbKey(sub.dbKey)
         end
 
         subRow:SetScript("OnClick", function(self)
@@ -109,15 +101,14 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     local diffBtn = CreateFrame("Button", nil, gearOptionsPopup)
     diffBtn:SetSize(GEAR_POPUP_WIDTH - GEAR_POPUP_PAD * 2, 27)
     local diffBg = diffBtn:CreateTexture(nil, "BACKGROUND")
-    diffBg:SetAtlas("common-dropdown-textholder")
-    diffBg:SetAllPoints()
+    ns.Utils.StyleDropdownBg(diffBg)
     local diffArrow = diffBtn:CreateTexture(nil, "OVERLAY")
     diffArrow:SetAtlas("common-dropdown-a-button-hover")
-    diffArrow:SetSize(20, 20)
-    diffArrow:SetPoint("RIGHT", -2, -1)
+    diffArrow:SetSize(22, 22)
+    diffArrow:SetPoint("RIGHT", -10, -1)
     diffArrow:SetVertexColor(0.7, 0.7, 0.7)
     local diffText = diffBtn:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    diffText:SetPoint("LEFT", 8, 0)
+    diffText:SetPoint("LEFT", 14, 0)
     diffText:SetPoint("RIGHT", diffArrow, "LEFT", -2, 0)
     diffText:SetJustifyH("LEFT")
     diffText:SetWordWrap(false)
@@ -186,8 +177,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         else
             SyncDiffRadios()
             diffPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
-            diffPopup:ClearAllPoints()
-            diffPopup:SetPoint("TOPLEFT", diffBtn, "BOTTOMLEFT", 0, 2)
+            Utils.OpenDropdownBelow(diffPopup, diffBtn, 2)
             diffPopup:Show()
         end
     end)
@@ -285,7 +275,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
             if sname and className then
                 lbl:SetText(colorStr .. className .. " (" .. sname .. ")|r")
             else
-                lbl:SetText(colorStr .. (className or "Current Spec") .. "|r")
+                lbl:SetText(colorStr .. (className or L["FILTER_CURRENT_SPEC"]) .. "|r")
             end
         elseif lf == "all" then
             lbl:SetText(_G["ALL_CLASSES"] or "All Classes")
@@ -374,7 +364,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     end
 
     local classFlyoutRows = {}
-    local allClassRow = CreateRadioRow(classFlyout, "All Classes", "all", CLASSFLYOUT_WIDTH)
+    local allClassRow = CreateRadioRow(classFlyout, _G["ALL_CLASSES"] or "All Classes", "all", CLASSFLYOUT_WIDTH)
     allClassRow:SetScript("OnClick", function()
         EasyFind.db.lootFilter = "all"
         UpdateSpecLabel()
@@ -452,8 +442,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     local function OpenClassFlyout()
         LayoutClassFlyout()
         classFlyout:SetScale(EasyFind.db.uiSearchScale or 1.0)
-        classFlyout:ClearAllPoints()
-        classFlyout:SetPoint("TOPLEFT", classSelectBtn, "TOPRIGHT", 2, 6)
+        Utils.OpenFlyoutBeside(classFlyout, classSelectBtn, 2)
         classFlyout:Show()
     end
     classSelectBtn:SetScript("OnEnter", function() OpenClassFlyout() end)
@@ -580,15 +569,14 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     local specSelectRow = CreateFrame("Button", nil, gearOptionsPopup)
     specSelectRow:SetSize(GEAR_POPUP_WIDTH - GEAR_POPUP_PAD * 2, 27)
     local specBg = specSelectRow:CreateTexture(nil, "BACKGROUND")
-    specBg:SetAtlas("common-dropdown-textholder")
-    specBg:SetAllPoints()
+    ns.Utils.StyleDropdownBg(specBg)
     local specSelectArrow = specSelectRow:CreateTexture(nil, "OVERLAY")
     specSelectArrow:SetAtlas("common-dropdown-a-button-hover")
-    specSelectArrow:SetSize(20, 20)
-    specSelectArrow:SetPoint("RIGHT", -2, -1)
+    specSelectArrow:SetSize(22, 22)
+    specSelectArrow:SetPoint("RIGHT", -10, -1)
     specSelectArrow:SetVertexColor(0.7, 0.7, 0.7)
     local specSelectLabel = specSelectRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    specSelectLabel:SetPoint("LEFT", 8, 0)
+    specSelectLabel:SetPoint("LEFT", 14, 0)
     specSelectLabel:SetPoint("RIGHT", specSelectArrow, "LEFT", -2, 0)
     specSelectLabel:SetJustifyH("LEFT")
     specSelectLabel:SetWordWrap(false)
@@ -605,8 +593,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         else
             LayoutSpecPopup()
             specPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
-            specPopup:ClearAllPoints()
-            specPopup:SetPoint("TOPLEFT", specSelectRow, "BOTTOMLEFT", 0, 2)
+            Utils.OpenDropdownBelow(specPopup, specSelectRow, 2)
             specPopup:Show()
         end
     end)
@@ -707,8 +694,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
             SetActiveFlyout(gearOptionsPopup)
             if row.updateLootToggle then row.updateLootToggle() end
             gearOptionsPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
-            gearOptionsPopup:ClearAllPoints()
-            gearOptionsPopup:SetPoint("TOPLEFT", row, "TOPRIGHT", 4, 0)
+            Utils.OpenFlyoutBeside(gearOptionsPopup, row, 4)
             gearOptionsPopup:Show()
         end,
     })

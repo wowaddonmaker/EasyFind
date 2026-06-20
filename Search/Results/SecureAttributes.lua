@@ -12,7 +12,7 @@ local InCombatLockdown = InCombatLockdown
 function SecureAttributes.Apply(resultRow, data)
     if InCombatLockdown() then return end
 
-    local newType, newKey, newVal, newAction
+    local newType, newKey, newVal
     if data and data.toyItemID and not data.isToyboxOnly then
         -- Unusable toys (faction-restricted etc.) skip the secure
         -- use type so PostClick can route them to the ToyBox instead
@@ -21,9 +21,11 @@ function SecureAttributes.Apply(resultRow, data)
     elseif data and data.mountID and Icons:IsMountSummonable(data) then
         newType, newKey, newVal = "macro", "macrotext", "/cancelform [form]"
     elseif data and data.outfitID then
+        -- Newer path: secure "outfit" type keyed by the player-facing index.
+        -- No "action": the default click on the button wears the outfit.
         local outfitIndex = Handlers:GetOutfitSecureIndex(data)
         if outfitIndex then
-            newType, newKey, newVal, newAction = "outfit", "outfit-index", outfitIndex, "change"
+            newType, newKey, newVal = "outfit", "outfit-index", outfitIndex
         end
     elseif data and data.spellID and data.category ~= "Talent"
            and not Icons:IsSpellbookOnlyAbility(data) then
@@ -43,26 +45,18 @@ function SecureAttributes.Apply(resultRow, data)
 
     if resultRow._lastAttrType == newType
        and resultRow._lastAttrKey == newKey
-       and resultRow._lastAttrVal == newVal
-       and resultRow._lastAttrAction == newAction then
+       and resultRow._lastAttrVal == newVal then
         return
     end
 
     if resultRow._lastAttrKey then
         Utils.SafeCallMethod(resultRow, "SetAttribute", resultRow._lastAttrKey, nil)
     end
-    if resultRow._lastAttrAction ~= nil and resultRow._lastAttrAction ~= newAction then
-        Utils.SafeCallMethod(resultRow, "SetAttribute", "action", nil)
-    end
     Utils.SafeCallMethod(resultRow, "SetAttribute", "type", newType)
     if newKey then
         Utils.SafeCallMethod(resultRow, "SetAttribute", newKey, newVal)
     end
-    if newAction ~= nil then
-        Utils.SafeCallMethod(resultRow, "SetAttribute", "action", newAction)
-    end
     resultRow._lastAttrType = newType
     resultRow._lastAttrKey  = newKey
     resultRow._lastAttrVal  = newVal
-    resultRow._lastAttrAction = newAction
 end

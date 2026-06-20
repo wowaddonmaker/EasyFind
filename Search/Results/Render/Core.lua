@@ -22,6 +22,26 @@ local MAX_SEARCH_RESULT_ROWS = Render.MAX_SEARCH_RESULT_ROWS
 local MAX_DEPTH = Render.MAX_DEPTH
 local deferredRepRefreshPending = false
 
+-- A re-render (settings toggle, or an async heavy-load re-search that fires
+-- while the cursor is parked on a row) tears down the row the mouse is over,
+-- so its tooltip vanishes and only comes back when the cursor moves. Re-fire
+-- OnEnter for the hovered row, but only when its tooltip was actually lost, so
+-- ordinary renders don't rebuild a tooltip that's already up.
+function Render:RestoreHoveredRow()
+    local buttons = Search:GetResultButtons()
+    if not buttons then return end
+    for i = 1, #buttons do
+        local row = buttons[i]
+        if row and row:IsShown() and Utils.IsFrameVisiblyMouseOver(row) then
+            if not (GameTooltip:IsOwned(row) and GameTooltip:IsShown()) then
+                local onEnter = row:GetScript("OnEnter")
+                if onEnter then onEnter(row) end
+            end
+            return
+        end
+    end
+end
+
 function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
     if not hierarchical or #hierarchical == 0 then
         self:HideResults()
@@ -516,4 +536,5 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
     Search:SetSelectedIndex(0)
     Search:SetToggleFocused(false)
     self:UpdateSelectionHighlight(nil, Search._preserveSearchNavRepeat)
+    self:RestoreHoveredRow()
 end

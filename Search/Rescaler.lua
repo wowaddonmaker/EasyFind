@@ -5,6 +5,7 @@ ns.Rescaler = Rescaler
 
 local Utils = ns.Utils
 local L = ns.L
+local sformat = Utils.sformat
 local mmax, mmin, mfloor = Utils.mmax, Utils.mmin, Utils.mfloor
 local SafeCallMethod = Utils.SafeCallMethod
 
@@ -55,7 +56,9 @@ local function GetDefaultResultsHeight()
 end
 
 local function GetSearchBarHeight()
-    local h = EasyFind.db.uiSearchBarHeight or DEFAULT_BAR_HEIGHT
+    -- Bar height is font-driven and not resizable here; mirror the live value.
+    local h = (ns.Search and ns.Search.GetSearchBarHeight and ns.Search:GetSearchBarHeight())
+        or EasyFind.db.uiSearchBarHeight or DEFAULT_BAR_HEIGHT
     return mmax(MIN_BAR_HEIGHT, mmin(MAX_BAR_HEIGHT, h))
 end
 
@@ -116,6 +119,31 @@ local function SetUnifiedWindowHeight(totalH, barRatio, preview, heightBox, anch
     if mockWindowFrame and mockWindowFrame.UpdateLayout then mockWindowFrame:UpdateLayout() end
     if heightBox and not heightBox:HasFocus() then
         heightBox:SetText(mfloor(GetUnifiedWindowHeight() + 0.5))
+    end
+end
+
+-- Push the current DB heights onto the live mock so a drag previews instantly.
+local function RefreshMockLayout()
+    if mockSearchBar and mockSearchBar.SetMockBarHeight then
+        mockSearchBar:SetMockBarHeight(GetSearchBarHeight())
+    end
+    if previewResults then previewResults:SetPreviewHeight(GetResultsHeight()) end
+    if mockWindowFrame and mockWindowFrame.UpdateLayout then mockWindowFrame:UpdateLayout() end
+end
+
+-- Largest the results window can be given the current bar height and the room
+-- between the bar and the screen edge.
+local function GetMaxResultsHeight(anchorAbove)
+    return mmax(MIN_HEIGHT, GetScreenMaxWindowHeight(anchorAbove) - GetSearchBarHeight())
+end
+
+-- Resize ONLY the results window; the bar height is left untouched.
+local function ApplyResultsHeight(resultsH, heightBox, anchorAbove)
+    resultsH = mmax(MIN_HEIGHT, mmin(GetMaxResultsHeight(anchorAbove), mfloor(resultsH + 0.5)))
+    SetResultsHeight(resultsH)
+    RefreshMockLayout()
+    if heightBox and not heightBox:HasFocus() then
+        heightBox:SetText(mfloor(GetResultsHeight() + 0.5))
     end
 end
 
@@ -315,7 +343,7 @@ local function CreatePreviewResults(parent, targetFrame, width, heightPx, anchor
         row:SetHeight(rowH)
         row:SetJustifyH("LEFT")
         row:SetJustifyV("TOP")
-        row:SetText("|cff666666Sample result " .. i .. "|r")
+        row:SetText("|cff666666" .. sformat(L["RESCALE_SAMPLE_RESULT"], i) .. "|r")
         if fontScale ~= 1.0 then
             local path, baseSize, flags = GameFontDisable:GetFont()
             row:SetFont(path, baseSize * fontScale, flags)
@@ -493,14 +521,12 @@ local function SetupWidthDrag(handle, getWidth, setWidth, widthLabel, side)
     end)
 end
 
-local function SetupHeightDrag(handle, preview, heightBox, anchorAbove)
+local function SetupHeightDrag(handle, heightBox, anchorAbove)
     handle:SetScript("OnDragStart", function(self)
         self.dragging = true
         local _, cy = GetCursorPosition()
         self.startY = cy / UIParent:GetEffectiveScale()
-        self.startHeight = GetUnifiedWindowHeight()
-        self.barRatio = GetSearchBarHeight() / mmax(1, self.startHeight)
-        self.maxH = GetScreenMaxWindowHeight(anchorAbove)
+        self.startResultsH = GetResultsHeight()
     end)
     handle:SetScript("OnDragStop", function(self)
         self.dragging = false
@@ -511,12 +537,11 @@ local function SetupHeightDrag(handle, preview, heightBox, anchorAbove)
         cy = cy / UIParent:GetEffectiveScale()
         local dy = self.startY - cy
         if anchorAbove then dy = -dy end
-        local newH = mmax(MIN_BAR_HEIGHT + MIN_HEIGHT, mmin(self.maxH, mfloor(self.startHeight + dy + 0.5)))
-        SetUnifiedWindowHeight(newH, self.barRatio, preview, heightBox, anchorAbove)
+        ApplyResultsHeight(self.startResultsH + dy, heightBox, anchorAbove)
     end)
 end
 
-local function SetupCornerDrag(handle, getWidth, setWidth, widthBox, preview, heightBox, anchorAbove)
+local function SetupCornerDrag(handle, getWidth, setWidth, widthBox, heightBox, anchorAbove)
     handle:SetScript("OnDragStart", function(self)
         self.dragging = true
         local cx, cy = GetCursorPosition()
@@ -524,9 +549,7 @@ local function SetupCornerDrag(handle, getWidth, setWidth, widthBox, preview, he
         self.startX = cx / scale
         self.startY = cy / scale
         self.startWidth = getWidth()
-        self.startHeight = GetUnifiedWindowHeight()
-        self.barRatio = GetSearchBarHeight() / mmax(1, self.startHeight)
-        self.maxH = GetScreenMaxWindowHeight(anchorAbove)
+        self.startResultsH = GetResultsHeight()
     end)
     handle:SetScript("OnDragStop", function(self)
         self.dragging = false
@@ -545,8 +568,7 @@ local function SetupCornerDrag(handle, getWidth, setWidth, widthBox, preview, he
 
         local dy = self.startY - cy
         if anchorAbove then dy = -dy end
-        local newH = mmax(MIN_BAR_HEIGHT + MIN_HEIGHT, mmin(self.maxH, mfloor(self.startHeight + dy + 0.5)))
-        SetUnifiedWindowHeight(newH, self.barRatio, preview, heightBox, anchorAbove)
+        ApplyResultsHeight(self.startResultsH + dy, heightBox, anchorAbove)
     end)
 end
 
@@ -615,11 +637,11 @@ local function CreateDonePanel(parent)
     panel:SetFrameStrata("FULLSCREEN_DIALOG")
     panel:SetFrameLevel(209)
 
-    local backBtn = CreateModernButton(panel, "Back to Options", BACK_W, BTN_H)
+    local backBtn = CreateModernButton(panel, L["RESCALE_BACK_TO_OPTIONS"], BACK_W, BTN_H)
     backBtn:SetPoint("LEFT", panel, "LEFT", 0, 0)
     panel.backBtn = backBtn
 
-    local doneBtn = CreateModernButton(panel, "Done", DONE_W, BTN_H)
+    local doneBtn = CreateModernButton(panel, _G["DONE"] or "Done", DONE_W, BTN_H)
     doneBtn:SetPoint("LEFT", backBtn, "RIGHT", BTN_GAP, 0)
     panel.doneBtn = doneBtn
 
@@ -749,25 +771,22 @@ function Rescaler:Enter(mode)
         barOverlay.widthBox:SetText(mfloor(defW + 0.5))
     end)
 
-    barOverlay.heightBox:SetText(mfloor(GetUnifiedWindowHeight() + 0.5))
+    barOverlay.heightBox:SetText(mfloor(GetResultsHeight() + 0.5))
     barOverlay.heightBox:SetScript("OnEnterPressed", function(self)
         local val = tonumber(self:GetText())
         if val then
-            local ratio = GetSearchBarHeight() / mmax(1, GetUnifiedWindowHeight())
-            SetUnifiedWindowHeight(val, ratio, previewResults, self, resultsAbove)
-            self:SetText(mfloor(GetUnifiedWindowHeight() + 0.5))
+            ApplyResultsHeight(val, nil, resultsAbove)
+            self:SetText(mfloor(GetResultsHeight() + 0.5))
         end
         self:ClearFocus()
     end)
     barOverlay.heightBox:SetScript("OnEscapePressed", function(self)
-        self:SetText(mfloor(GetUnifiedWindowHeight() + 0.5))
+        self:SetText(mfloor(GetResultsHeight() + 0.5))
         self:ClearFocus()
     end)
     local heightReset = AddResetButton(barOverlay.heightBox, function()
-        local defTotal = DEFAULT_BAR_HEIGHT + GetDefaultResultsHeight()
-        local defRatio = DEFAULT_BAR_HEIGHT / defTotal
-        SetUnifiedWindowHeight(defTotal, defRatio, previewResults, barOverlay.heightBox, resultsAbove)
-        barOverlay.heightBox:SetText(mfloor(GetUnifiedWindowHeight() + 0.5))
+        ApplyResultsHeight(GetDefaultResultsHeight(), nil, resultsAbove)
+        barOverlay.heightBox:SetText(mfloor(GetResultsHeight() + 0.5))
     end)
     if barOverlay.anchorAbove then
         heightReset:ClearAllPoints()
@@ -781,8 +800,8 @@ function Rescaler:Enter(mode)
             heightReset:SetPoint("BOTTOM", barOverlay.heightBox, "TOP", 0, 2)
         end
     end
-    SetupCornerDrag(barOverlay.scaleHandle, getBarWidth, setBarWidthAndPreview, barOverlay.widthBox, previewResults, barOverlay.heightBox, resultsAbove)
-    SetupHeightDrag(barOverlay.heightHandle, previewResults, barOverlay.heightBox, resultsAbove)
+    SetupCornerDrag(barOverlay.scaleHandle, getBarWidth, setBarWidthAndPreview, barOverlay.widthBox, barOverlay.heightBox, resultsAbove)
+    SetupHeightDrag(barOverlay.heightHandle, barOverlay.heightBox, resultsAbove)
 
     donePanel = CreateDonePanel(bg)
     donePanel:SetPoint("TOP", barOverlay, "BOTTOM", 0, -50)
@@ -864,8 +883,10 @@ function Rescaler:Exit(reopenOptions)
     activeMode = nil
 
     if reopenOptions then
-        local optPanel = _G["EasyFindOptionsFrame"]
-        if optPanel then optPanel:Show() end
+        -- Use the public opener, not optPanel:Show(): when the resizer was
+        -- launched from /resize the options frame was never created, so a
+        -- direct Show() no-ops. OpenOptions builds it if needed.
+        if EasyFind.OpenOptions then EasyFind:OpenOptions() end
     end
 end
 

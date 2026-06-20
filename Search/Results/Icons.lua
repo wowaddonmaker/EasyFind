@@ -93,7 +93,7 @@ end
 local function IsRightSideIconData(d)
     if not d then return false end
     return d.mountID or d.toyItemID or d.petID
-        or d.outfitID or d.heirloomItemID or d.transmogSetID
+        or d.outfitID or d.heirloomItemID or d.transmogSetID or d.appearanceItemID
         or d.category == "Currency"
         or (d.itemID and d.category == "Loot")
         or (d.spellID and d.category == "Talent")
@@ -147,8 +147,8 @@ local FLAT_CATEGORY_ICONS = {
     appearanceSet = { tex = "Interface\\Icons\\INV_Helmet_03" },
     currency      = { tex = 136452 },  -- Same coin/AH glyph the map uses
     reputation    = { tex = 1121272, coords = { 0.3783, 0.4072, 0.9066, 0.9350 } },
-    statistic     = { tex = 1121272, coords = { 0.1997, 0.2437, 0.5933, 0.6266 } },
-    map           = { tex = 1121272, coords = { 0.3457, 0.3856, 0.2549, 0.2951 } },
+    statistic     = { tex = 1121272, coords = { 0.2030, 0.2397, 0.6641, 0.6921 } },
+    map           = { tex = 1121272, coords = { 0.4287, 0.4645, 0.2580, 0.2932 } },
     -- Ability / boss: matches the filter-menu icons (boss tab + overview tab
     -- glyphs from the Encounter Journal spritesheet). The row's per-entry
     -- icon (spell icon / boss portrait) is pushed to the RIGHT side.
@@ -161,6 +161,7 @@ local FLAT_CATEGORY_ICONS = {
     loot          = { tex = 522972, coords = { 0.730, 0.824, 0.618, 0.660 } },
     menuBar       = { tex = "Interface\\AddOns\\EasyFind\\Search\\Images\\menu-bar" },
     setting       = { atlas = "QuestLog-icon-setting" },
+    command       = { tex = ns.COMMANDS_ICON_TEX },
     -- Addon settings get a warm tint so they're distinguishable at a
     -- glance from the silvery-grey game-settings cogwheel.
     settingAddon  = { atlas = "QuestLog-icon-setting", color = { 1.0, 0.78, 0.35 } },
@@ -213,7 +214,7 @@ local REP_FACTION_ICONS = {
 function Icons:GetFlatCategoryIcon(data)
     if not data then return nil end
     if data.calculatorResult or data.calculatorLauncher then return FLAT_CATEGORY_ICONS.calculator end
-    if data.searchCommand then return FLAT_CATEGORY_ICONS.setting end
+    if data.searchCommand or data.nativeRun then return FLAT_CATEGORY_ICONS.command end
     if data.quickFilterDef then
         local key = data.quickFilterDef.key
         if key == "abilities" then return FLAT_CATEGORY_ICONS.ability end
@@ -244,6 +245,7 @@ function Icons:GetFlatCategoryIcon(data)
     if data.outfitID then return FLAT_CATEGORY_ICONS.outfit end
     if data.heirloomItemID then return FLAT_CATEGORY_ICONS.heirloom end
     if data.transmogSetID then return FLAT_CATEGORY_ICONS.appearanceSet end
+    if data.appearanceItemID then return FLAT_CATEGORY_ICONS.appearanceSet end
     if data.spellID and data.category == "Ability" then return FLAT_CATEGORY_ICONS.ability end
     if data.category == "Talent" then return FLAT_CATEGORY_ICONS.talent end
     if data.achievementID and data.category == "Achievement" then return FLAT_CATEGORY_ICONS.achievement end
@@ -289,6 +291,7 @@ local function ClearRowIconLeafIDs(icon)
     icon.spellID = nil
     icon.outfitID = nil
     icon.heirloomItemID = nil
+    icon.appearanceItemID = nil
     icon.gearSetID = nil
     icon.bagItemID = nil
     icon.achievementID = nil

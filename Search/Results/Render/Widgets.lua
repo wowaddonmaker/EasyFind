@@ -6,7 +6,7 @@ local Calculator = ns.Calculator
 local Icons = ns.ResultIcons
 
 local sformat = Utils.sformat
-local mmax, mfloor = Utils.mmax, Utils.mfloor
+local mfloor = Utils.mfloor
 local AbbrevBinding = Render.AbbrevBinding
 local SetClippedText = Render.SetClippedText
 
@@ -118,18 +118,31 @@ function Render.SettingsWidget(resultRow, data, entry)
             resultRow.text:SetPoint("RIGHT", resultRow.settingSliderGroup, "LEFT", -4, 0)
         elseif settingType == "checkbox" then
             local isOn = false
-            if Settings and Settings.GetSetting then
-                local sok, settObj = pcall(Settings.GetSetting, data.settingVariable)
-                if sok and settObj and settObj.GetValue then
-                    local vok, v = pcall(settObj.GetValue, settObj)
-                    if vok then
-                        isOn = (v == true or v == "1" or v == 1)
+            local optimistic = ns.Results and ns.Results._settingOptimistic
+            if optimistic and optimistic.var == data.settingVariable then
+                -- Just-toggled value, shown before GetValue catches up.
+                isOn = optimistic.isOn
+            else
+                -- Trust the Settings object's logical value when it resolves; only
+                -- read the raw CVar for variables with no registered setting. An
+                -- inverted setting (e.g. Sticky Targeting / deselectOnClick) reports
+                -- false when its raw CVar is "1", so OR-ing in the raw CVar would
+                -- wrongly keep the box checked.
+                local resolved = false
+                if Settings and Settings.GetSetting then
+                    local sok, settObj = pcall(Settings.GetSetting, data.settingVariable)
+                    if sok and settObj and settObj.GetValue then
+                        local vok, v = pcall(settObj.GetValue, settObj)
+                        if vok then
+                            isOn = (v == true or v == "1" or v == 1)
+                            resolved = true
+                        end
                     end
                 end
-            end
-            if not isOn and GetCVar then
-                local val = GetCVar(data.settingVariable)
-                isOn = (val == "1")
+                if not resolved and GetCVar then
+                    local val = GetCVar(data.settingVariable)
+                    isOn = (val == "1")
+                end
             end
             resultRow.settingState:Show()
             resultRow.settingCheck:SetShown(isOn)
