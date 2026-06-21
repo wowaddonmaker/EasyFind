@@ -4,6 +4,13 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [2.0.1] - 2026-06-21
+
+- Updated for WoW patch 12.0.7.
+- Fixed the Statistics, Map Search, and Options filter icons after Blizzard reorganized the shared icon sheet in 12.0.7.
+
+---
+
 ## [2.0.0] - 2026-05-13
 
 EasyFind 2.0 is a full rewrite of the search and map experience. Launch the in-game tutorial to see what's new.

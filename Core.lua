@@ -633,18 +633,14 @@ local function OnPlayerLogin()
         end
     end)
 
-    -- 2.0.0 routes returning users to the tutorial instead of What's New.
+    -- Minor updates show no What's New popup. New / pre-2.0.0 users still get the
+    -- tutorial via RequireRevampedTutorial (gated on revampedTutorialVersion, not
+    -- the addon version); anyone already on 2.0.0+ sees nothing on login.
     local currentVersion = ns.version
-    local lastSeen = EasyFind.db.lastSeenVersion
-    if currentVersion and currentVersion ~= lastSeen then
+    if currentVersion and currentVersion ~= EasyFind.db.lastSeenVersion then
         if currentVersion == REVAMPED_TUTORIAL_VERSION
            and EasyFind.db.revampedTutorialVersion ~= REVAMPED_TUTORIAL_VERSION then
             EasyFind.db.tutorialDone = false
-        elseif currentVersion ~= REVAMPED_TUTORIAL_VERSION
-               and (lastSeen ~= nil or EasyFind.db.setupComplete) then
-            SafeAfter(1.5, function()
-                if ns.UI then ns.UI:ShowWhatsNew(currentVersion) end
-            end)
         end
         EasyFind.db.lastSeenVersion = currentVersion
     end

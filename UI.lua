@@ -209,8 +209,8 @@ local FLAT_CATEGORY_ICONS = {
     appearanceSet = { tex = "Interface\\Icons\\INV_Helmet_03" },
     currency      = { tex = 136452 },  -- Same coin/AH glyph the map uses
     reputation    = { tex = 1121272, coords = { 0.3783, 0.4072, 0.9066, 0.9350 } },
-    statistic     = { tex = 1121272, coords = { 0.1997, 0.2437, 0.5933, 0.6266 } },
-    map           = { tex = 1121272, coords = { 0.3457, 0.3856, 0.2549, 0.2951 } },
+    statistic     = { tex = 1121272, coords = { 0.2030, 0.2397, 0.6641, 0.6921 } },
+    map           = { tex = 1121272, coords = { 0.4287, 0.4645, 0.2580, 0.2932 } },
     -- Ability / boss: matches the filter-menu icons (boss tab + overview tab
     -- glyphs from the Encounter Journal spritesheet). The row's per-entry
     -- icon (spell icon / boss portrait) is pushed to the RIGHT side.
@@ -4215,7 +4215,7 @@ local UI_FILTER_OPTIONS = {
       } },
     { key = "achievements", label = "Achievements", iconAtlas = "UI-HUD-MicroMenu-Achievements-Up" },
     { key = "statistics",  label = "Statistics",  iconTex = 1121272,
-      iconCoords = { 0.1997, 0.2437, 0.5933, 0.6266 } },
+      iconCoords = { 0.2030, 0.2397, 0.6641, 0.6921 } },
     { key = "bags",        label = "Bags",        iconAtlas = "bag-main" },
     -- Bosses: EJ overview tab icon from texture 522972.
     { key = "bosses",      label = "Bosses",      iconTex = 522972,
@@ -4250,7 +4250,7 @@ local UI_FILTER_OPTIONS = {
     { key = "loot",        label = "Gear",        iconTex = 522972,
       iconCoords = { 0.730, 0.824, 0.618, 0.660 }, hasFlyout = true },
     { key = "map",         label = "Map Search",  iconTex = 1121272,
-      iconCoords = { 0.3457, 0.3856, 0.2549, 0.2951 },
+      iconCoords = { 0.4287, 0.4645, 0.2580, 0.2932 },
       flyoutSubFilters = {
           { key = "zones",      label = "Zones",        dbTable = "mapTabFilters" },
           { key = "instances",  label = "Instances",    dbTable = "mapTabFilters" },
@@ -4260,7 +4260,7 @@ local UI_FILTER_OPTIONS = {
           { key = "rares",      label = "Rares",        dbTable = "mapTabFilters" },
       } },
     { key = "options",     label = "Options",     iconTex = 1121272,
-      iconCoords = { 0.4451, 0.4705, 0.8079, 0.8344 },
+      iconCoords = { 0.4454, 0.4720, 0.8749, 0.9010 },
       flyoutSubFilters = {
           { key = "gameOptions",  label = "Game Options",  iconAtlas = "QuestLog-icon-setting" },
           { key = "addonOptions", label = "AddOn Options", iconAtlas = "QuestLog-icon-setting", iconColor = { 1.0, 0.78, 0.35 } },
