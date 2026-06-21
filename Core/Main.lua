@@ -559,9 +559,12 @@ function EasyFind:EnsureDynamicLoaded()
     end
     if not self._dynamicLoadTriggered then
         self._dynamicLoadTriggered = true
-        if ns.Database.LoadHeavyDynamicSearchDataSync then
+        -- Loot scans the Encounter Journal for the current spec (~200ms+). Run it
+        -- async so it spreads across frames instead of freezing one; gear search
+        -- also lazy-loads it (MaybeLoadHeavySearchData) if the user searches first.
+        if ns.Database.EnsureDynamicProviderLoaded then
             SafeAfter(0.5, function()
-                ns.Database:LoadHeavyDynamicSearchDataSync()
+                ns.Database:EnsureDynamicProviderLoaded("loot", function() end)
             end)
         end
         -- Wardrobe / Heirlooms APIs sometimes aren't ready first pass.
@@ -697,18 +700,13 @@ local function OnPlayerLogin()
         end
     end)
 
-    -- Drop the persisted loot-stat cache if the stat keyword map changed since
-    -- it was built, then warm loot once (single staggered pass, never a retry
-    -- loop). The cache makes gear/stat search instant on later logins.
+    -- Drop the persisted loot-stat cache if the stat keyword map changed since it
+    -- was built. The cache makes gear/stat search instant on later logins. Loot
+    -- itself is warmed async by EnsureDynamicLoaded above (single staggered pass).
     if EasyFind.db.lootStatCacheVer ~= ns.LOOT_STAT_CACHE_VER then
         EasyFind.db.lootStatCache = {}
         EasyFind.db.lootStatCacheVer = ns.LOOT_STAT_CACHE_VER
     end
-    SafeAfter(2.0, function()
-        if ns.Database and ns.Database.EnsureDynamicProviderLoaded then
-            ns.Database:EnsureDynamicProviderLoaded("loot", function() end)
-        end
-    end)
 
     -- Pre-warm Blizzard's achievement search index; LoadUI + first index build are slow.
     SafeAfter(0.5, function()

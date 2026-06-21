@@ -252,42 +252,6 @@ function Database:LoadDeferredSyncProvidersStaggered()
     step()
 end
 
--- Sync heavy load at PLAYER_LOGIN absorbs cost during the load screen.
--- Only loot (current spec) runs here; boss scanning iterates ~1000+
--- encounters and runs via its async provider instead.
-local SYNC_HEAVY_KEYS = { loot = true }
-function Database:LoadHeavyDynamicSearchDataSync()
-    for i = 1, #dynamicProviders do
-        local provider = dynamicProviders[i]
-        if provider.asyncFn and SYNC_HEAVY_KEYS[provider.key]
-           and not (provider.loaded and not provider.dirty) then
-            local fn = provider.fn and self[provider.fn]
-            if fn then
-                local pre = provider.pre and self[provider.pre]
-                if pre then pre(self) end
-                -- Loot scans only the current spec at login; spec
-                -- toggles trigger a lazy scan for that spec.
-                local ok, readyOrErr = xpcall(fn, Utils.ErrorHandler, self)
-                if ok and readyOrErr ~= false then
-                    provider.loaded = true
-                    provider.dirty = false
-                elseif ok then
-                    provider.loaded = false
-                    provider.dirty = true
-                else
-                    provider.loaded = false
-                    if EasyFind and EasyFind.Print then
-                        EasyFind:Print("|cffff4444"
-                            .. (L["ERR_SYNC_LOAD_FAILED"]):format(provider.key, tostring(readyOrErr)) .. "|r")
-                    end
-                end
-            end
-        end
-    end
-    if self.ResetSearchCache then self:ResetSearchCache() end
-    if self.WarmSearchHotPath then self:WarmSearchHotPath() end
-    if ns.Shortkeys and ns.Shortkeys.ApplyAll then ns.Shortkeys:ApplyAll() end
-end
 
 function Database:LoadHeavyDynamicSearchData(onDone)
     if self._loadingHeavyDynamic then return false end
