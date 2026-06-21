@@ -188,10 +188,8 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
     end)
     diffPopup:SetScript("OnEvent", function(self, event)
-        if event == "GLOBAL_MOUSE_DOWN" then
-            if not self:IsMouseOver() and not diffBtn:IsMouseOver() then
-                self:Hide()
-            end
+        if event == "GLOBAL_MOUSE_DOWN" and not Filters.IsMouseInFilterChain() then
+            self:Hide()
         end
     end)
 
@@ -369,9 +367,8 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         EasyFind.db.lootFilter = "all"
         UpdateSpecLabel()
         classFlyout:Hide()
-        if not classFlyout._keyboardParent then specPopup:Hide() end
+        specPopup:Hide()
         ApplyFilterSelection()
-        if specPopup:IsShown() then LayoutSpecPopup() end
     end)
     classFlyoutRows[#classFlyoutRows + 1] = allClassRow
     for _, cls in ipairs(allClassSpecs) do
@@ -385,8 +382,11 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         clsRow:SetScript("OnClick", function()
             EasyFind.db.lootFilter = { classID = cls.classID }
             UpdateSpecLabel()
+            -- Mouse: keep the spec list open and re-layout for the new class.
+            -- Keyboard: close it so focus cleanly returns to the dropdown.
+            local viaKeyboard = classFlyout:IsKeyboardEnabled()
             classFlyout:Hide()
-            if not classFlyout._keyboardParent then specPopup:Hide() end
+            if viaKeyboard then specPopup:Hide() end
             ApplyFilterSelection()
             if specPopup:IsShown() then LayoutSpecPopup() end
         end)
@@ -617,12 +617,8 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         classFlyout:Hide()
     end)
     specPopup:SetScript("OnEvent", function(self, event)
-        if event == "GLOBAL_MOUSE_DOWN" then
-            if not self:IsMouseOver()
-                and not classFlyout:IsMouseOver()
-                and not specSelectRow:IsMouseOver() then
-                self:Hide()
-            end
+        if event == "GLOBAL_MOUSE_DOWN" and not Filters.IsMouseInFilterChain() then
+            self:Hide()
         end
     end)
 
@@ -714,11 +710,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     -- so clicks inside them don't dismiss the gear options.
     gearOptionsPopup:HookScript("OnEvent", function(self, event)
         if event ~= "GLOBAL_MOUSE_DOWN" then return end
-        if self:IsMouseOver() or row:IsMouseOver() then return end
-        if Utils.IsFrameVisiblyMouseOver(row.diffPopup) then return end
-        if Utils.IsFrameVisiblyMouseOver(_G["EasyFindSpecPopup"]) then return end
-        if Utils.IsFrameVisiblyMouseOver(classFlyout) then return end
-        self:Hide()
+        if not Filters.IsMouseInFilterChain() then self:Hide() end
     end)
     dropdown:HookScript("OnHide", function() gearOptionsPopup:Hide() end)
 

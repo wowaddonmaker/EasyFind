@@ -207,6 +207,28 @@ function Filters:IsGuildAchievementData(data)
     return data and data.isGuildAchievement == true
 end
 
+-- Single source of truth for "is the cursor inside the filter menu". Returns
+-- true when the mouse is over the main dropdown, its toggle button, or any
+-- registered guard popup. Every flyout/popup stashes itself in
+-- dropdown.guardFrames, so this one union covers the whole chain. Each popup's
+-- GLOBAL_MOUSE_DOWN handler consults this instead of hardcoding its own subset
+-- of related frames, so clicking a row inside one flyout (e.g. picking a class)
+-- can never look "outside" to a sibling or ancestor and close it.
+function Filters.IsMouseInFilterChain()
+    local searchFrame = Search.GetSearchFrame and Search:GetSearchFrame()
+    local dropdown = searchFrame and searchFrame.filterDropdown
+    if not dropdown then return false end
+    if Utils.IsFrameVisiblyMouseOver(dropdown) then return true end
+    if Utils.IsFrameVisiblyMouseOver(searchFrame.filterBtn) then return true end
+    local guards = dropdown.guardFrames
+    if guards then
+        for i = 1, #guards do
+            if Utils.IsFrameVisiblyMouseOver(guards[i]) then return true end
+        end
+    end
+    return false
+end
+
 Filters.UI_FILTER_OPTIONS = UI_FILTER_OPTIONS
 Filters.ForEachFilterKey = ForEachFilterKey
 Filters.GetUIBucket = GetUIBucket

@@ -1370,18 +1370,11 @@ function Database:SyncTransmogSetFiltersFromUI()
         if ok3 then db.appearanceSetPvE = v3 end
         if ok4 then db.appearanceSetPvP = v4 end
     end
-    local getClass = C_TransmogSets and C_TransmogSets.GetTransmogSetsClassFilter
-    if getClass then
-        local ok, classID = pcall(getClass)
-        if ok and classID then
-            local _, _, playerClassID = UnitClass("player")
-            if classID == playerClassID then
-                db.appearanceSetClass = nil
-            else
-                db.appearanceSetClass = { classID = classID }
-            end
-        end
-    end
+    -- Class is intentionally NOT read here. This runs on filter-menu open and as
+    -- the Sets populate `pre`, both BEFORE our own class push settles, so reading
+    -- the game's (stale, player-class) Sets filter would overwrite the user's
+    -- chosen class every time -- the Items/Sets flip-flop. Game->db for the class
+    -- comes from the SetTransmogSetsClassFilter forward hook instead.
 end
 
 function Database:PopulateDynamicTransmogSets()
@@ -1514,22 +1507,6 @@ function Database:PopulateDynamicTransmogSets()
     return true
 end
 
--- Reads the wardrobe Items-tab class filter back into our db so the search
--- list follows what the player set in the Appearances journal.
-function Database:SyncAppearanceItemFiltersFromUI()
-    local db = EasyFind and EasyFind.db
-    if not db then return end
-    local C = C_TransmogCollection
-    if not C or not C.GetClassFilter then return end
-    local ok, classID = pcall(C.GetClassFilter)
-    if not ok or not classID or classID <= 0 then return end
-    local _, _, playerClassID = UnitClass("player")
-    if classID == playerClassID then
-        db.appearanceItemClass = nil
-    else
-        db.appearanceItemClass = { classID = classID }
-    end
-end
 
 -- One transmog slot (default Head) is enumerated per populate. The whole-game
 -- list is far too large (~3600 head visuals alone), so the slot + class + source
@@ -1568,9 +1545,13 @@ function Database:PopulateDynamicAppearanceItems()
         end
     end
 
-    -- Push our class choice into the journal filter so the list matches what the
-    -- Items tab shows. Guarded against the Core hooksecurefunc re-entering.
-    if C.SetClassFilter then
+    -- Push our class choice into the journal filter so the list matches the Items
+    -- tab. Changing it refreshes the collection ASYNCHRONOUSLY: reading
+    -- GetCategoryAppearances right after returns a stale/empty list (the wardrobe
+    -- is mid-rebuild). So only set it when it actually differs, then DEFER -- the
+    -- change fires TRANSMOG_COLLECTION_UPDATED, whose handler re-runs us once the
+    -- per-class list has settled. Guarded against the Core hooksecurefunc re-entry.
+    if C.SetClassFilter and C.GetClassFilter then
         local _, _, playerClassID = UnitClass("player")
         local targetClass = playerClassID
         if classFilter == "all" then
@@ -1578,12 +1559,40 @@ function Database:PopulateDynamicAppearanceItems()
         elseif type(classFilter) == "table" and classFilter.classID then
             targetClass = classFilter.classID
         end
-        if targetClass then
+        local okCur, currentClass = pcall(C.GetClassFilter)
+        if targetClass and okCur and currentClass ~= targetClass then
             EasyFind._appItemClassHookSuppress = true
             pcall(C.SetClassFilter, targetClass)
             EasyFind._appItemClassHookSuppress = false
+            -- Reverse sync: the transmog wardrobe does NOT auto-refresh on
+            -- SetClassFilter (unlike the EJ on SetLootFilter), so push the change
+            -- into the open Appearances > Items panel ourselves. Mirrors the Sets
+            -- provider's wardrobe refresh (scf:UpdateUI + ClassDropdown:Update).
+            local wcf = _G["WardrobeCollectionFrame"]
+            if wcf then
+                if wcf.ClassDropdown and wcf.ClassDropdown.Update then
+                    pcall(wcf.ClassDropdown.Update, wcf.ClassDropdown)
+                end
+                local icf = wcf.ItemsCollectionFrame
+                if icf and icf.RefreshVisualsList and icf.IsShown and icf:IsShown() then
+                    pcall(icf.RefreshVisualsList, icf)
+                end
+            end
+            -- Data now refreshing; the event re-run builds the settled list.
+            -- Fallback in case TRANSMOG_COLLECTION_UPDATED doesn't arrive.
+            EasyFind._appItemClassDeferred = true
+            local database = self
+            if Utils and Utils.SafeAfter then
+                Utils.SafeAfter(0.7, function()
+                    if EasyFind._appItemClassDeferred and database.RefreshDynamicCategory then
+                        database:RefreshDynamicCategory("appearanceItems")
+                    end
+                end)
+            end
+            return true
         end
     end
+    EasyFind._appItemClassDeferred = nil
 
     -- One slot at a time (default Head) so the slot filter keeps results
     -- focused. Stale/non-numeric saved values fall back to Head.

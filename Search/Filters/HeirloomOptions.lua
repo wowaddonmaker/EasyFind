@@ -246,6 +246,9 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHEC
         LayoutSourcePopup()
     end
 
-    optionsPopup:HookScript("OnHide", function() sourcePopup:Hide() end)
+    optionsPopup:HookScript("OnHide", function()
+        sourcePopup:Hide()
+        if classSel.popup then classSel.popup:Hide() end
+    end)
     return optionsPopup, SyncOptions, sourcePopup
 end

@@ -101,14 +101,37 @@ function Aliases:GetEntryKey(data)
     return nil
 end
 
+-- key -> entry index over uiSearchData. FindEntryByKey is hit per shortkey on
+-- every populate and per alias on every keystroke; a linear scan there lagged the
+-- search bar. The index is built lazily, reused across calls, and dropped by
+-- InvalidateKeyIndex when search data changes (ResetSearchCache), with a length
+-- guard as a backstop, so lookups are O(1).
+local keyIndex
+local keyIndexLen
+
+function Aliases:InvalidateKeyIndex()
+    keyIndex = nil
+end
+
+local function EntryKeyIndex(data)
+    if keyIndex and keyIndexLen == #data then return keyIndex end
+    local idx = {}
+    for i = 1, #data do
+        local entry = data[i]
+        local k = Aliases:GetEntryKey(entry)
+        if k and idx[k] == nil then idx[k] = entry end
+    end
+    keyIndex = idx
+    keyIndexLen = #data
+    return idx
+end
+
 function Aliases:FindEntryByKey(key)
     if not key then return nil end
     local data = ns.Database and ns.Database.uiSearchData
     if data then
-        for i = 1, #data do
-            local entry = data[i]
-            if Aliases:GetEntryKey(entry) == key then return entry end
-        end
+        local hit = EntryKeyIndex(data)[key]
+        if hit then return hit end
     end
     -- Aliases keep a snapshot (it preserves the proper-case name and icon for
     -- display); honour it first so aliased map rows render exactly as captured.

@@ -225,21 +225,8 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR
     optionsPopup:EnableMouse(true)
     optionsPopup:Hide()
 
-    local classSel = Filters:BuildClassSpecSelector({
-        parent = optionsPopup,
-        x = PAD, y = -PAD,
-        width = WIDTH - PAD * 2,
-        hasSpec = false,
-        rowHighlight = ROW_HIGHLIGHT_COLOR,
-        stylePopup = StylePopup,
-        guardFrames = dropdownGuardFrames,
-        getScale = function() return EasyFind.db.uiSearchScale or 1.0 end,
-        getFilter = function() return EasyFind.db.appearanceItemClass end,
-        setFilter = function(v) EasyFind.db.appearanceItemClass = v end,
-        onChange = Apply,
-    })
-
-    -- Slot selector (shared dropdown button + popup list of slots).
+    -- Slot selector (shared dropdown button + popup list of slots). The class
+    -- filter lives in the parent Appearances chooser (shared with Sets).
     local slotPopup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
     slotPopup:SetFrameStrata("TOOLTIP")
     slotPopup:SetFrameLevel(optionsPopup:GetFrameLevel() + 20)
@@ -284,7 +271,7 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR
         slotPopup:SetSize(WIDTH, -py + PAD)
     end
     setSlotLabel = select(2, Utils.CreateDropdownButton({
-        parent = optionsPopup, x = PAD, y = -(PAD + CLASS_BTN_H + 4),
+        parent = optionsPopup, x = PAD, y = -PAD,
         width = WIDTH - PAD * 2, height = CLASS_BTN_H,
         popup = slotPopup, layout = LayoutSlotPopup,
         getScale = function() return EasyFind.db.uiSearchScale or 1.0 end,
@@ -413,7 +400,7 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR
     end
 
     local _, setFilterLabel = Utils.CreateDropdownButton({
-        parent = optionsPopup, x = PAD, y = -(PAD + (CLASS_BTN_H + 4) * 2),
+        parent = optionsPopup, x = PAD, y = -(PAD + CLASS_BTN_H + 4),
         width = WIDTH - PAD * 2, height = CLASS_BTN_H,
         popup = filterPopup, layout = SyncFilterToggles,
         getScale = function() return EasyFind.db.uiSearchScale or 1.0 end,
@@ -423,23 +410,20 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR
     setFilterLabel(_G["FILTER"] or "Filter")
     filterPopup:HookScript("OnHide", function() sourcePopup:Hide() end)
 
-    optionsPopup:SetSize(WIDTH, PAD * 2 + (CLASS_BTN_H + 4) * 3 - 4)
+    optionsPopup:SetSize(WIDTH, PAD * 2 + (CLASS_BTN_H + 4) * 2 - 4)
 
     optionsPopup:HookScript("OnHide", function()
         slotPopup:Hide()
         filterPopup:Hide()
         sourcePopup:Hide()
-        if classSel.popup then classSel.popup:Hide() end
     end)
 
     branchPopups[#branchPopups + 1] = optionsPopup
     branchPopups[#branchPopups + 1] = slotPopup
     branchPopups[#branchPopups + 1] = filterPopup
     branchPopups[#branchPopups + 1] = sourcePopup
-    if classSel.popup then branchPopups[#branchPopups + 1] = classSel.popup end
 
     local function SyncFromDB()
-        classSel.Refresh()
         UpdateSlotLabel()
     end
 
@@ -452,9 +436,11 @@ end
 -- / appearanceSets) and opens its own options flyout to the right on hover,
 -- mirroring how every other collection sub-row behaves.
 function Filters:BuildAppearanceOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
-    local WIDTH = 150
+    local WIDTH = 160
     local ROW_H = 24
     local PAD = 6
+    local CLASS_BTN_H = 27
+    local CLASS_GAP = 4
     local branchPopups = {}
 
     local chooser = CreateFrame("Frame", "EasyFindAppChooserPopup", UIParent, "BackdropTemplate")
@@ -475,6 +461,36 @@ function Filters:BuildAppearanceOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CH
         dropdownGuardFrames[#dropdownGuardFrames + 1] = setsPopup
     end
 
+    -- One class filter shared by Items and Sets (Blizzard drives both wardrobe
+    -- tabs from a single ClassDropdown). Writes both per-tab keys so each
+    -- provider filters by the same class; refreshes both result categories.
+    local function ApplyAppearanceClass()
+        if ns.Database and ns.Database.RefreshDynamicCategory then
+            ns.Database:RefreshDynamicCategory("appearanceItems")
+            ns.Database:RefreshDynamicCategory("transmogSets")
+        end
+        if searchEditBox and searchEditBox:GetText() ~= "" then
+            Search:OnSearchTextChanged(searchEditBox:GetText())
+        end
+    end
+    local classSel = Filters:BuildClassSpecSelector({
+        parent = chooser,
+        x = PAD, y = -PAD,
+        width = WIDTH - PAD * 2,
+        hasSpec = false,
+        rowHighlight = ROW_HIGHLIGHT_COLOR,
+        stylePopup = StylePopup,
+        guardFrames = dropdownGuardFrames,
+        getScale = function() return EasyFind.db.uiSearchScale or 1.0 end,
+        getFilter = function() return EasyFind.db.appearanceSetClass end,
+        setFilter = function(v)
+            EasyFind.db.appearanceSetClass = v
+            EasyFind.db.appearanceItemClass = v
+        end,
+        onChange = ApplyAppearanceClass,
+    })
+    if classSel.popup then branchPopups[#branchPopups + 1] = classSel.popup end
+
     local rows = {
         { label = _G["ITEMS"] or "Items", popup = itemsPopup, sync = syncItems, filterKey = "appearanceItems" },
         { label = _G["TRANSMOG_TAB_SETS"] or "Sets", popup = setsPopup, sync = syncSets, filterKey = "appearanceSets" },
@@ -484,7 +500,8 @@ function Filters:BuildAppearanceOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CH
     for i, def in ipairs(rows) do
         local row = CreateFrame("CheckButton", nil, chooser)
         row:SetSize(WIDTH - PAD * 2, ROW_H)
-        row:SetPoint("TOPLEFT", chooser, "TOPLEFT", PAD, -(PAD + (i - 1) * ROW_H))
+        row:SetPoint("TOPLEFT", chooser, "TOPLEFT", PAD,
+            -(PAD + CLASS_BTN_H + CLASS_GAP + (i - 1) * ROW_H))
         row:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
         row:GetNormalTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
         row:GetNormalTexture():ClearAllPoints()
@@ -530,14 +547,16 @@ function Filters:BuildAppearanceOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CH
             end,
         })
     end
-    chooser:SetSize(WIDTH, PAD * 2 + #rows * ROW_H)
+    chooser:SetSize(WIDTH, PAD * 2 + CLASS_BTN_H + CLASS_GAP + #rows * ROW_H)
 
     chooser:HookScript("OnHide", function()
         itemsPopup:Hide()
         setsPopup:Hide()
+        if classSel.popup then classSel.popup:Hide() end
     end)
 
     local function SyncChooser()
+        classSel.Refresh()
         for _, cr in ipairs(checkRows) do
             cr.row:SetChecked(EasyFind.db.uiSearchFilters[cr.filterKey] ~= false)
         end

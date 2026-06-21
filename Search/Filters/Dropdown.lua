@@ -304,13 +304,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             end)
             popup:HookScript("OnEvent", function(self, event)
                 if event ~= "GLOBAL_MOUSE_DOWN" then return end
-                if self:IsMouseOver() or row:IsMouseOver() then return end
-                if Utils.IsFrameVisiblyMouseOver(self._appearanceSetOptionsPopup) then return end
-                if Utils.IsFrameVisiblyMouseOver(self._mountOptionsPopup) then return end
-                if Utils.IsFrameVisiblyMouseOver(self._mountSourcePopup) then return end
-                if Utils.IsFrameVisiblyMouseOver(self._heirloomOptionsPopup) then return end
-                if Utils.IsFrameVisiblyMouseOver(self._heirloomSourcePopup) then return end
-                self:Hide()
+                if not Filters.IsMouseInFilterChain() then self:Hide() end
             end)
 
             local subRows = {}
@@ -594,8 +588,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             end)
             popup:HookScript("OnEvent", function(self, event)
                 if event ~= "GLOBAL_MOUSE_DOWN" then return end
-                if self:IsMouseOver() or row:IsMouseOver() then return end
-                self:Hide()
+                if not Filters.IsMouseInFilterChain() then self:Hide() end
             end)
 
             local radioRows = {}
@@ -1011,16 +1004,18 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     -- check, right-clicking outside dismisses the search bar (whose handler
     -- listens for GLOBAL_MOUSE_DOWN regardless of button) but leaves the
     -- filter dropdown stuck open.
+    -- One-frame grace: an in-menu selection hides its sub-popup synchronously, so
+    -- without this the poll would see the guard gone + cursor over empty space and
+    -- close the whole menu. Requiring "outside" for two consecutive polls keeps the
+    -- menu open through that frame while a genuine outside click still closes it.
     Utils.SafeOnUpdate(dropdown, function(self)
-        if self:IsShown()
+        if not self:IsShown() then self._mouseWasInside = nil; return end
+        local inside = Filters.IsMouseInFilterChain()
+        if not inside and not self._mouseWasInside
            and (IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton")) then
-            if not self:IsMouseOver() and not toggleBtn:IsMouseOver() then
-                for _, guard in ipairs(dropdownGuardFrames) do
-                    if Utils.IsFrameVisiblyMouseOver(guard) then return end
-                end
-                self:Hide()
-            end
+            self:Hide()
         end
+        self._mouseWasInside = inside
     end)
 
     toggleBtn:SetScript("OnClick", function()

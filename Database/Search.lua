@@ -728,6 +728,7 @@ local function GetMultiTokenPrefixCandidates(queryWords)
 end
 
 function Database:ResetSearchCache()
+    if ns.Aliases and ns.Aliases.InvalidateKeyIndex then ns.Aliases:InvalidateKeyIndex() end
     if self._dynamicBatchLoading then
         self._dynamicBatchChanged = true
         return

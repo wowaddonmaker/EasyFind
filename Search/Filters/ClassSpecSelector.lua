@@ -381,7 +381,7 @@ function Filters:BuildClassSpecSelector(opts)
     specPopup:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
     specPopup:SetScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
     specPopup:SetScript("OnEvent", function(self, event)
-        if event == "GLOBAL_MOUSE_DOWN" and not self:IsMouseOver() and not btn:IsMouseOver() then
+        if event == "GLOBAL_MOUSE_DOWN" and not Filters.IsMouseInFilterChain() then
             self:Hide()
         end
     end)

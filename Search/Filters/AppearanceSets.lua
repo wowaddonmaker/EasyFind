@@ -8,13 +8,12 @@ local ipairs = Utils.ipairs
 local CreateFrame = CreateFrame
 local UIParent = UIParent
 
--- Builds the Appearance Sets options popup: a class selector (shared with the
--- gear/heirloom filters) plus Collected / Not Collected / PvE / PvP checkboxes.
--- Returns the popup frame and a sync function that re-reads EasyFind.db state.
+-- Builds the Appearance Sets options popup: Collected / Not Collected / PvE /
+-- PvP checkboxes. The class filter is shared with Items and lives in the parent
+-- Appearances chooser. Returns the popup and a sync function re-reading db state.
 function Filters:BuildAppearanceSetOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox, dropdownGuardFrames, branchPopups)
     local OPTIONS_WIDTH = 160
     local CB_ROW_H = 22
-    local CLASS_BTN_H = 27
     local PAD = 6
 
     local function ApplyFilterSelection()
@@ -32,23 +31,8 @@ function Filters:BuildAppearanceSetOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR,
     optionsPopup:EnableMouse(true)
     optionsPopup:Hide()
 
-    local classSel = Filters:BuildClassSpecSelector({
-        parent = optionsPopup,
-        x = PAD, y = -PAD,
-        width = OPTIONS_WIDTH - PAD * 2,
-        hasSpec = false,
-        rowHighlight = ROW_HIGHLIGHT_COLOR,
-        stylePopup = StylePopup,
-        guardFrames = dropdownGuardFrames,
-        getScale = function() return EasyFind.db.uiSearchScale or 1.0 end,
-        getFilter = function() return EasyFind.db.appearanceSetClass end,
-        setFilter = function(v) EasyFind.db.appearanceSetClass = v end,
-        onChange = ApplyFilterSelection,
-    })
-
     if branchPopups then
         branchPopups[#branchPopups + 1] = optionsPopup
-        if classSel.popup then branchPopups[#branchPopups + 1] = classSel.popup end
     end
 
     local filterDefs = {
@@ -59,7 +43,7 @@ function Filters:BuildAppearanceSetOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR,
     }
 
     local cbRows = {}
-    local cy = -(PAD + CLASS_BTN_H + 6)
+    local cy = -PAD
     for si, def in ipairs(filterDefs) do
         local cbRow = CreateFrame("CheckButton", nil, optionsPopup)
         cbRow:SetSize(OPTIONS_WIDTH - PAD * 2, CB_ROW_H)
@@ -106,25 +90,19 @@ function Filters:BuildAppearanceSetOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR,
     end
     optionsPopup:SetSize(OPTIONS_WIDTH, -cy + PAD)
 
-    -- Outside-click: close when the user clicks off this popup and the class
-    -- selector's own popup.
+    -- Outside-click: close when the cursor clicks fully outside the filter menu.
     optionsPopup:HookScript("OnShow", function(self)
         self:RegisterEvent("GLOBAL_MOUSE_DOWN")
     end)
     optionsPopup:HookScript("OnHide", function(self)
         self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
-        if classSel.popup then classSel.popup:Hide() end
     end)
     optionsPopup:HookScript("OnEvent", function(self, event)
         if event ~= "GLOBAL_MOUSE_DOWN" then return end
-        if self:IsMouseOver() then return end
-        if self._owningRow and self._owningRow:IsMouseOver() then return end
-        if classSel.popup and Utils.IsFrameVisiblyMouseOver(classSel.popup) then return end
-        self:Hide()
+        if not Filters.IsMouseInFilterChain() then self:Hide() end
     end)
 
     local function SyncFromDB()
-        classSel.Refresh()
         for _, sr in ipairs(cbRows) do
             if sr.dbKey then
                 sr:SetChecked(EasyFind.db[sr.dbKey] ~= false)
