@@ -2409,6 +2409,7 @@ function Options:Initialize()
         button2 = CANCEL or "Cancel",
         OnAccept = function()
             if ns.Aliases then ns.Aliases:ClearAll() end
+            if ns.Shortkeys then ns.Shortkeys:ClearAll() end
             RefreshAliasList()
         end,
         OnShow = LiftPopupAboveOptions,

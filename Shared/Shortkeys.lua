@@ -20,6 +20,7 @@ local SetOverrideBindingClick = SetOverrideBindingClick
 local ClearOverrideBindings = ClearOverrideBindings
 local GetBindingAction = GetBindingAction
 local pairs = pairs
+local wipe = wipe
 
 local function CharKey()
     local name = UnitName and UnitName("player")
@@ -101,6 +102,18 @@ function Shortkeys:Remove(rowKey)
     if perChar and perChar[rowKey] then perChar[rowKey] = nil; removed = true end
     if removed then self:ApplyAll() end
     return removed
+end
+
+-- Clears every shortkey (account-wide + current character) and drops their
+-- override bindings via ApplyAll. Mirrors Aliases:ClearAll for the combined
+-- management table's "Clear all".
+function Shortkeys:ClearAll()
+    if not (EasyFind and EasyFind.db) then return end
+    local acct = AccountStore()
+    if acct then wipe(acct) end
+    local pc = CharStore()
+    if pc then wipe(pc) end
+    self:ApplyAll()
 end
 
 -- Bind bindKey (e.g. "CTRL-1") to a row identified by its stable key. Reassigns
