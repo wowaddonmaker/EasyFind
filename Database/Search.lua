@@ -685,9 +685,26 @@ function Database:BuildSearchPrefixIndex()
     prefixIndexReady = true
 end
 
+-- Coalesce prefix-index rebuilds. ResetSearchCache runs once per provider
+-- populate; at login a dozen+ populates would otherwise each rebuild the whole
+-- index over the still-growing dataset -- pure waste, since each rebuild is
+-- discarded by the next. Instead invalidate now and rebuild once after the burst
+-- settles: still at login, search stays instant (index stays pre-built), the
+-- throwaway rebuilds gone. The generation stamp coalesces -- only the newest
+-- schedule actually builds.
+local prefixRebuildGen = 0
+local function SchedulePrefixIndexRebuild()
+    prefixRebuildGen = prefixRebuildGen + 1
+    local gen = prefixRebuildGen
+    Utils.SafeAfter(0.25, function()
+        if gen ~= prefixRebuildGen then return end
+        if not prefixIndexReady then Database:BuildSearchPrefixIndex() end
+    end)
+end
+
 function Database:WarmSearchHotPath()
     if not prefixIndexReady then
-        self:BuildSearchPrefixIndex()
+        SchedulePrefixIndexRebuild()
     end
 end
 
@@ -738,7 +755,7 @@ function Database:ResetSearchCache()
     wipe(prevCandidates)
     local hadPrefixIndex = prefixIndexReady
     ClearPrefixBuckets()
-    if hadPrefixIndex then self:BuildSearchPrefixIndex() end
+    if hadPrefixIndex then SchedulePrefixIndexRebuild() end
 end
 
 local resultsBuf = {}
