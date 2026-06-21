@@ -838,6 +838,8 @@ end
 function Database:SyncEJLootFilter()
     local setFilter = EJ("SetLootFilter")
     if not setFilter then return end
+    -- Suppress so our own push doesn't re-trigger the loot forward hook.
+    EasyFind._lootFilterHookSuppress = true
     local lf = EasyFind.db.lootFilter
     if not lf then
         local _, _, cid = UnitClass("player")
@@ -853,6 +855,7 @@ function Database:SyncEJLootFilter()
     elseif lf.classID then
         setFilter(lf.classID, 0)
     end
+    EasyFind._lootFilterHookSuppress = false
 end
 
 -- Push our heirloom class/spec choice into the Heirlooms Journal so its list
@@ -1917,7 +1920,9 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
                         EJ_SetSlotFilter(Enum.ItemSlotFilterType.NoFilter)
                     end
                     if EJ_SetLootFilter then
+                        EasyFind._lootFilterHookSuppress = true
                         EJ_SetLootFilter(sp.classID, sp.specID)
+                        EasyFind._lootFilterHookSuppress = false
                     end
 
                     local li = 1
@@ -1939,6 +1944,9 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
         lootSpecsScanned[sp.classID .. "-" .. sp.specID] = true
     end
     RebuildLootSearchData()
+    -- Restore the EJ loot filter to the user's choice; the scan swept it across
+    -- specs, so the journal would otherwise show the last-scanned spec.
+    Database:SyncEJLootFilter()
     Utils.SafeAfter(0, function()
         collectgarbage("step", 200)
     end)
@@ -2030,6 +2038,7 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
                 lootSpecsScanned[sp.classID .. "-" .. sp.specID] = true
             end
             RebuildLootSearchData()
+            Database:SyncEJLootFilter()
             collectgarbage("step", 200)
         end
         done(changed, err)
@@ -2093,7 +2102,11 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
                     EJ_SelectEncounter(state.encID)
                     if EJ_SetDifficulty then EJ_SetDifficulty(diff.id) end
                     if EJ_SetSlotFilter then EJ_SetSlotFilter(Enum.ItemSlotFilterType.NoFilter) end
-                    if EJ_SetLootFilter then EJ_SetLootFilter(sp.classID, sp.specID) end
+                    if EJ_SetLootFilter then
+                        EasyFind._lootFilterHookSuppress = true
+                        EJ_SetLootFilter(sp.classID, sp.specID)
+                        EasyFind._lootFilterHookSuppress = false
+                    end
                     state.lootIdx = 1
                     state.prepared = true
                 end

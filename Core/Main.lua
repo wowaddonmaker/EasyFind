@@ -480,91 +480,74 @@ local function MarkDynamicCategoryDirty(key)
     end
 end
 
-local function InstallTransmogClassFilterHook()
-    if not C_TransmogSets or not C_TransmogSets.SetTransmogSetsClassFilter
-       or EasyFind._tmogClassHooked then
-        return
+-- One forward hook per class/spec filter: when the player changes a Blizzard
+-- panel's class/spec dropdown, mirror it into our db so our list follows. These
+-- were near-identical hand-rolled hooks, so they share one installer driven by a
+-- descriptor. hasSpec selects the class-only vs class+spec mapping; suppress is
+-- the flag our own db->game push raises so the hook ignores our writes.
+local function ClassFilterFromGame(hasSpec, classID, specID)
+    if not classID or classID <= 0 then return "all" end
+    local _, _, playerClassID = UnitClass("player")
+    if not hasSpec then
+        if classID == playerClassID then return nil end
+        return { classID = classID }
     end
-    EasyFind._tmogClassHooked = true
-    hooksecurefunc(C_TransmogSets, "SetTransmogSetsClassFilter", function(classID)
-        if EasyFind._tmogClassHookSuppress then return end
-        if not classID then return end
-        local db = EasyFind.db
-        if not db then return end
-        local _, _, playerClassID = UnitClass("player")
-        local newVal
-        if classID == playerClassID then
-            newVal = nil
-        else
-            newVal = { classID = classID }
-        end
-        local oldID = type(db.appearanceSetClass) == "table"
-            and db.appearanceSetClass.classID or db.appearanceSetClass
-        local newID = type(newVal) == "table" and newVal.classID or newVal
-        if oldID == newID then return end
-        db.appearanceSetClass = newVal
-        MarkDynamicCategoryDirty("transmogSets")
-    end)
+    if not specID or specID == 0 then return { classID = classID } end
+    local si = GetSpecialization and GetSpecialization()
+    local playerSpecID = si and GetSpecializationInfo and GetSpecializationInfo(si)
+    if classID == playerClassID and specID == playerSpecID then return nil end
+    return { classID = classID, specID = specID }
 end
 
--- Heirloom results follow the Heirlooms Journal class/spec dropdown. When the
--- player changes it, re-populate so our list matches what the journal shows.
-local function InstallHeirloomClassFilterHook()
-    if not C_Heirloom or not C_Heirloom.SetClassAndSpecFilters
-       or EasyFind._heirloomClassHooked then
-        return
-    end
-    EasyFind._heirloomClassHooked = true
-    hooksecurefunc(C_Heirloom, "SetClassAndSpecFilters", function(classID, specID)
-        if EasyFind._heirloomHookSuppress then return end
-        local db = EasyFind.db
-        if not db then return end
-        local _, _, playerClassID = UnitClass("player")
-        local si = GetSpecialization and GetSpecialization()
-        local playerSpecID = si and GetSpecializationInfo and GetSpecializationInfo(si)
-        local newVal
-        if not classID or classID == 0 then
-            newVal = "all"
-        elseif not specID or specID == 0 then
-            newVal = { classID = classID }
-        elseif classID == playerClassID and specID == playerSpecID then
-            newVal = nil
-        else
-            newVal = { classID = classID, specID = specID }
-        end
-        db.heirloomFilter = newVal
-        MarkDynamicCategoryDirty("heirlooms")
-    end)
+local function SameClassFilter(a, b)
+    local aID = type(a) == "table" and a.classID or a
+    local bID = type(b) == "table" and b.classID or b
+    if aID ~= bID then return false end
+    local aSpec = type(a) == "table" and a.specID or nil
+    local bSpec = type(b) == "table" and b.specID or nil
+    return aSpec == bSpec
 end
 
--- Appearance item results follow the wardrobe Items-tab class dropdown. When the
--- player changes it, re-populate so our list matches what the Items tab shows.
-local function InstallTransmogItemClassFilterHook()
-    if not C_TransmogCollection or not C_TransmogCollection.SetClassFilter
-       or EasyFind._tmogItemClassHooked then
-        return
-    end
-    EasyFind._tmogItemClassHooked = true
-    hooksecurefunc(C_TransmogCollection, "SetClassFilter", function(classID)
-        if EasyFind._appItemClassHookSuppress then return end
+local CLASS_FILTER_HOOKS = {
+    { dbKey = "appearanceSetClass",  provider = "transmogSets",
+      tbl = C_TransmogSets,       method = "SetTransmogSetsClassFilter",
+      suppress = "_tmogClassHookSuppress",    installed = "_tmogClassHooked" },
+    { dbKey = "appearanceItemClass", provider = "appearanceItems",
+      tbl = C_TransmogCollection,  method = "SetClassFilter",
+      suppress = "_appItemClassHookSuppress", installed = "_tmogItemClassHooked" },
+    { dbKey = "heirloomFilter",      provider = "heirlooms", hasSpec = true,
+      tbl = C_Heirloom,            method = "SetClassAndSpecFilters",
+      suppress = "_heirloomHookSuppress",     installed = "_heirloomClassHooked" },
+    { dbKey = "lootFilter",          provider = "loot", hasSpec = true,
+      tbl = C_EncounterJournal,    method = "SetLootFilter", globalFn = "EJ_SetLootFilter",
+      suppress = "_lootFilterHookSuppress",   installed = "_lootClassHooked" },
+}
+
+local function InstallClassFilterHook(desc)
+    if EasyFind[desc.installed] then return end
+    local function onChange(classID, specID)
+        if EasyFind[desc.suppress] then return end
         local db = EasyFind.db
         if not db then return end
-        local _, _, playerClassID = UnitClass("player")
-        local newVal
-        if not classID or classID <= 0 then
-            newVal = "all"
-        elseif classID == playerClassID then
-            newVal = nil
-        else
-            newVal = { classID = classID }
-        end
-        local oldID = type(db.appearanceItemClass) == "table"
-            and db.appearanceItemClass.classID or db.appearanceItemClass
-        local newID = type(newVal) == "table" and newVal.classID or newVal
-        if oldID == newID then return end
-        db.appearanceItemClass = newVal
-        MarkDynamicCategoryDirty("appearanceItems")
-    end)
+        local newVal = ClassFilterFromGame(desc.hasSpec, classID, specID)
+        if SameClassFilter(db[desc.dbKey], newVal) then return end
+        db[desc.dbKey] = newVal
+        MarkDynamicCategoryDirty(desc.provider)
+    end
+    local tbl = desc.tbl
+    if tbl and tbl[desc.method] then
+        EasyFind[desc.installed] = true
+        hooksecurefunc(tbl, desc.method, onChange)
+    elseif desc.globalFn and _G[desc.globalFn] then
+        EasyFind[desc.installed] = true
+        hooksecurefunc(desc.globalFn, onChange)
+    end
+end
+
+local function InstallClassFilterHooks()
+    for i = 1, #CLASS_FILTER_HOOKS do
+        InstallClassFilterHook(CLASS_FILTER_HOOKS[i])
+    end
 end
 
 -- Lazy dynamic load pulled when the user opens the search bar. Safe to
@@ -697,9 +680,7 @@ local function OnPlayerLogin()
             EasyFind:Print("|cffff4444" .. (L["ERR_OPTIONS_REGISTER_FAILED"]):format(tostring(err)) .. "|r")
         end
     end
-    InstallTransmogClassFilterHook()
-    InstallHeirloomClassFilterHook()
-    InstallTransmogItemClassFilterHook()
+    InstallClassFilterHooks()
 
     if ns.Database then
         if ns.Database.WarmSearchHotPath then
@@ -826,9 +807,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         if ns.Database and ns.Database.SyncTransmogSetFiltersFromUI then
             ns.Database:SyncTransmogSetFiltersFromUI()
             MarkDynamicCategoryDirty("transmogSets")
-            InstallTransmogClassFilterHook()
-            InstallHeirloomClassFilterHook()
-            InstallTransmogItemClassFilterHook()
+            InstallClassFilterHooks()
         end
         -- Appearance data streams in over several events after login; a single
         -- early populate can catch a partial list. Re-run (debounced) so the
