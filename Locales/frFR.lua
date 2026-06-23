@@ -195,6 +195,7 @@ L["TUT_BTN_CONTINUE"]                   = "Continuer"
 L["TUT_SLIDE_SEARCH_INTRO"]             = "Recherchez parmi équipement, butin, panneaux, réglages, collections, monnaies, hauts faits, lieux de carte et plus."
 L["TUT_SLIDE_ALT_NUMBERS"]              = "Les résultats affichent icônes, catégories et Alt+Chiffre. Appuyez sur le Alt+Chiffre correspondant pour activer cette ligne instantanément."
 L["TUT_SLIDE_PINNING"]                  = "Épinglez les résultats importants pour qu'ils restent disponibles avant même de taper."
+L["TUT_SLIDE_SHORTKEYS"]                = "'Add Shortkey' assigns a single keypress that opens this result instantly, no typing required. Manage existing shortkeys in the Options panel."
 L["TUT_SLIDE_FILTER_MENU"]              = "Utilisez le menu de filtres pour choisir quels groupes de résultats apparaissent dans votre recherche générale."
 L["TUT_SLIDE_AT_PREFIX"]                = "Tapez @ pour voir les filtres rapides disponibles, puis Tab ou Espace pour en sélectionner un."
 L["TUT_SLIDE_QUICK_FILTERS"]            = "Les filtres rapides permettent de chercher dans une seule catégorie sans ouvrir le menu de filtres."
@@ -211,6 +212,8 @@ L["TUT_KB_PRESS_KEY"]                   = "Appuyez sur une touche…"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - Nouveautés"
 L["WHATSNEW_FULL_CHANGELOG"]            = "Journal des modifications complet sur CurseForge et GitHub"
 L["WHATSNEW_GOT_IT"]                    = "Compris"
+L["WHATSNEW_CHAT_HELLO"]                = "Welcome to EasyFind v%s! See update summary %s."
+L["WHATSNEW_CHAT_HERE"]                 = "here"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffRecherche de butin|r\n" ..
     "        Cherchez le butin de donjon et de raid par nom, emplacement, stats ou source\n" ..

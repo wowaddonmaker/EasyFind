@@ -64,13 +64,12 @@ local SEARCH_TUTORIAL_SLIDES = {
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
         text = L["TUT_SLIDE_PINNING"],
-        -- HD Gauntlet cursor pointing at the highlighted "Pin" menu item.
-        overlay = {
-            tex = GAUNTLET_CURSOR_TEX,
-            texCoord = GAUNTLET_CURSOR_TEXCOORD,
-            size = 32,
-            ox = 440, oy = 100,
-        },
+    },
+    {
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-shortkey-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
+        text = L["TUT_SLIDE_SHORTKEYS"],
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-filters-hires",

@@ -197,6 +197,7 @@ L["TUT_BTN_CONTINUE"]                   = "Weiter"
 L["TUT_SLIDE_SEARCH_INTRO"]             = "Durchsuche Ausrüstung, Beute, Fenster, Einstellungen, Sammlungen, Währungen, Erfolge, Kartenorte und mehr."
 L["TUT_SLIDE_ALT_NUMBERS"]              = "Ergebnisse zeigen Symbole, Kategorien und Alt+Zahl. Drücke die passende Alt+Zahl, um diese Zeile sofort zu aktivieren."
 L["TUT_SLIDE_PINNING"]                  = "Hefte wichtige Ergebnisse an, damit sie schon vor dem Tippen verfügbar sind."
+L["TUT_SLIDE_SHORTKEYS"]                = "'Add Shortkey' assigns a single keypress that opens this result instantly, no typing required. Manage existing shortkeys in the Options panel."
 L["TUT_SLIDE_FILTER_MENU"]              = "Nutze das Filtermenü, um zu wählen, welche Ergebnisgruppen in deiner allgemeinen Suche erscheinen."
 L["TUT_SLIDE_AT_PREFIX"]                = "Tippe @, um verfügbare Schnellfilter zu sehen, dann Tab oder Leertaste zum Auswählen."
 L["TUT_SLIDE_QUICK_FILTERS"]            = "Mit Schnellfiltern suchst du innerhalb einer Kategorie, ohne das Filtermenü zu öffnen."
@@ -213,6 +214,8 @@ L["TUT_KB_PRESS_KEY"]                   = "Taste drücken …"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r – Neue Funktionen"
 L["WHATSNEW_FULL_CHANGELOG"]            = "Vollständige Änderungsliste auf CurseForge und GitHub"
 L["WHATSNEW_GOT_IT"]                    = "Verstanden"
+L["WHATSNEW_CHAT_HELLO"]                = "Welcome to EasyFind v%s! See update summary %s."
+L["WHATSNEW_CHAT_HERE"]                 = "here"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffBeutesuche|r\n" ..
     "        Durchsuche Dungeon- und Schlachtzugsbeute nach Name, Slot, Werten oder Quelle\n" ..

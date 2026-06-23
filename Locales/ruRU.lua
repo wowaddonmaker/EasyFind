@@ -195,6 +195,7 @@ L["TUT_BTN_CONTINUE"]                   = "Далее"
 L["TUT_SLIDE_SEARCH_INTRO"]             = "Ищите среди экипировки, добычи, панелей, настроек, коллекций, валют, достижений, мест на карте и многого другого."
 L["TUT_SLIDE_ALT_NUMBERS"]              = "Результаты показывают значки, категории и Alt+цифра. Нажмите соответствующее Alt+цифра, чтобы мгновенно активировать строку."
 L["TUT_SLIDE_PINNING"]                  = "Закрепляйте важные результаты, чтобы они были доступны еще до ввода."
+L["TUT_SLIDE_SHORTKEYS"]                = "'Add Shortkey' assigns a single keypress that opens this result instantly, no typing required. Manage existing shortkeys in the Options panel."
 L["TUT_SLIDE_FILTER_MENU"]              = "Используйте меню фильтров, чтобы выбрать, какие группы результатов появляются в общем поиске."
 L["TUT_SLIDE_AT_PREFIX"]                = "Введите @, чтобы увидеть доступные быстрые фильтры, затем Tab или Пробел для выбора."
 L["TUT_SLIDE_QUICK_FILTERS"]            = "Быстрые фильтры позволяют искать внутри одной категории без открытия меню фильтров."
@@ -211,6 +212,8 @@ L["TUT_KB_PRESS_KEY"]                   = "Нажмите клавишу…"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r — Новые возможности"
 L["WHATSNEW_FULL_CHANGELOG"]            = "Полный список изменений на CurseForge и GitHub"
 L["WHATSNEW_GOT_IT"]                    = "Понятно"
+L["WHATSNEW_CHAT_HELLO"]                = "Welcome to EasyFind v%s! See update summary %s."
+L["WHATSNEW_CHAT_HERE"]                 = "here"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffПоиск добычи|r\n" ..
     "        Ищите добычу подземелий и рейдов по названию, слоту, характеристикам или источнику\n" ..

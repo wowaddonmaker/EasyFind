@@ -195,6 +195,7 @@ L["TUT_BTN_CONTINUE"]                   = "继续"
 L["TUT_SLIDE_SEARCH_INTRO"]             = "在装备、战利品、面板、设置、收藏、货币、成就、地图地点等之中搜索。"
 L["TUT_SLIDE_ALT_NUMBERS"]              = "结果会显示图标、分类和 Alt+数字。按下对应的 Alt+数字 即可立即激活该行。"
 L["TUT_SLIDE_PINNING"]                  = "固定重要结果，让它们在你输入之前就可用。"
+L["TUT_SLIDE_SHORTKEYS"]                = "'Add Shortkey' assigns a single keypress that opens this result instantly, no typing required. Manage existing shortkeys in the Options panel."
 L["TUT_SLIDE_FILTER_MENU"]              = "使用筛选菜单选择哪些结果组出现在你的常规搜索中。"
 L["TUT_SLIDE_AT_PREFIX"]                = "输入 @ 查看可用的快捷筛选，然后用 Tab 或空格选择其一。"
 L["TUT_SLIDE_QUICK_FILTERS"]            = "快捷筛选让你无需打开筛选菜单即可在单个分类内搜索。"
@@ -211,6 +212,8 @@ L["TUT_KB_PRESS_KEY"]                   = "请按一个键……"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - 新功能"
 L["WHATSNEW_FULL_CHANGELOG"]            = "完整更新日志见 CurseForge 和 GitHub"
 L["WHATSNEW_GOT_IT"]                    = "知道了"
+L["WHATSNEW_CHAT_HELLO"]                = "Welcome to EasyFind v%s! See update summary %s."
+L["WHATSNEW_CHAT_HERE"]                 = "here"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffff战利品搜索|r\n" ..
     "        按名称、部位、属性或来源搜索地下城和团队副本战利品\n" ..

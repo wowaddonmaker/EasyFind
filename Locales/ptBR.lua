@@ -195,6 +195,7 @@ L["TUT_BTN_CONTINUE"]                   = "Continuar"
 L["TUT_SLIDE_SEARCH_INTRO"]             = "Busque entre equipamento, saque, painéis, ajustes, coleções, moedas, conquistas, locais do mapa e mais."
 L["TUT_SLIDE_ALT_NUMBERS"]              = "Os resultados exibem ícones, categorias e Alt+Número. Pressione o Alt+Número correspondente para ativar aquela linha instantaneamente."
 L["TUT_SLIDE_PINNING"]                  = "Fixe resultados importantes para que fiquem disponíveis antes de digitar."
+L["TUT_SLIDE_SHORTKEYS"]                = "'Add Shortkey' assigns a single keypress that opens this result instantly, no typing required. Manage existing shortkeys in the Options panel."
 L["TUT_SLIDE_FILTER_MENU"]              = "Use o menu de filtros para escolher quais grupos de resultados aparecem na sua busca geral."
 L["TUT_SLIDE_AT_PREFIX"]                = "Digite @ para ver os filtros rápidos disponíveis, depois Tab ou Espaço para selecionar um."
 L["TUT_SLIDE_QUICK_FILTERS"]            = "Os filtros rápidos permitem buscar dentro de uma categoria sem abrir o menu de filtros."
@@ -211,6 +212,8 @@ L["TUT_KB_PRESS_KEY"]                   = "Pressione uma tecla…"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - Novidades"
 L["WHATSNEW_FULL_CHANGELOG"]            = "Registro de mudanças completo no CurseForge e GitHub"
 L["WHATSNEW_GOT_IT"]                    = "Entendi"
+L["WHATSNEW_CHAT_HELLO"]                = "Welcome to EasyFind v%s! See update summary %s."
+L["WHATSNEW_CHAT_HERE"]                 = "here"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffBusca de saque|r\n" ..
     "        Busque saque de masmorra e raide por nome, espaço, atributos ou origem\n" ..

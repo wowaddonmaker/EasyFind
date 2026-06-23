@@ -386,6 +386,35 @@ local SUGGESTED_KEYBINDS = {
     EASYFIND_MAP_FOCUS = "CTRL-M",
 }
 
+-- Chat-hello hyperlink. Clicking the link in the welcome message opens the
+-- restyled What's New popup. SetItemRef receives any |H...|h chat link, so
+-- our custom prefix is detected before falling through to Blizzard's handler.
+local WHATSNEW_LINK_PREFIX = "easyfind:whatsnew:"
+local whatsNewHookInstalled = false
+
+local function InstallWhatsNewHyperlinkHook()
+    if whatsNewHookInstalled then return end
+    whatsNewHookInstalled = true
+    local origSetItemRef = SetItemRef
+    SetItemRef = function(link, text, button, chatFrame)
+        if link and link:sub(1, #WHATSNEW_LINK_PREFIX) == WHATSNEW_LINK_PREFIX then
+            local version = link:sub(#WHATSNEW_LINK_PREFIX + 1)
+            if ns.Onboarding and ns.Onboarding.ShowWhatsNew then
+                xpcall(ns.Onboarding.ShowWhatsNew, ErrorHandler, ns.Onboarding, version)
+            end
+            return
+        end
+        return origSetItemRef(link, text, button, chatFrame)
+    end
+end
+
+local function ShowWhatsNewChatMessage(version)
+    local v = version or "?"
+    local link = sformat("|cff70d4ff|H%s%s|h%s|h|r",
+        WHATSNEW_LINK_PREFIX, v, L["WHATSNEW_CHAT_HERE"])
+    EasyFind:Print(sformat(L["WHATSNEW_CHAT_HELLO"], v, link))
+end
+
 local function OnInitialize()
     if not EasyFindDB then
         EasyFindDB = { firstInstall = true }
@@ -449,8 +478,8 @@ local function OnInitialize()
             if ns.version == "2.0.0" and ns.Wizard and ns.Wizard.Show then
                 EasyFind.db.tutorialDone = false
                 ns.Wizard:Show()
-            elseif ns.Search then
-                ns.Search:ShowWhatsNew(ns.version)
+            elseif ns.Onboarding and ns.Onboarding.ShowWhatsNew then
+                ns.Onboarding:ShowWhatsNew(ns.version)
             end
         elseif msg == "help" or msg == "h" or msg == "?" then
             EasyFind:Print(L["CMD_HEADER"])
@@ -463,6 +492,8 @@ local function OnInitialize()
             EasyFind:OpenOptions()
         end
     end
+
+    InstallWhatsNewHyperlinkHook()
 
     if EasyFind.db.showLoginMessage == true then
         EasyFind:Print(L["MSG_LOGIN"])
@@ -728,12 +759,13 @@ local function OnPlayerLogin()
         if currentVersion == REVAMPED_TUTORIAL_VERSION
            and EasyFind.db.revampedTutorialVersion ~= REVAMPED_TUTORIAL_VERSION then
             EasyFind.db.tutorialDone = false
+        elseif EasyFind.db.tutorialDone
+           and EasyFind.db.revampedTutorialVersion == REVAMPED_TUTORIAL_VERSION
+           and lastSeen ~= nil then
+            SafeAfter(2.0, function()
+                ShowWhatsNewChatMessage(currentVersion)
+            end)
         end
-        -- elseif currentVersion ~= REVAMPED_TUTORIAL_VERSION
-        --        and (lastSeen ~= nil or EasyFind.db.setupComplete) then
-        --     SafeAfter(1.5, function()
-        --         if ns.Search then ns.Search:ShowWhatsNew(currentVersion) end
-        --     end)
         EasyFind.db.lastSeenVersion = currentVersion
     end
 

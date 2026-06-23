@@ -195,6 +195,7 @@ L["TUT_BTN_CONTINUE"]                   = "Continua"
 L["TUT_SLIDE_SEARCH_INTRO"]             = "Cerca tra equipaggiamento, bottino, pannelli, impostazioni, collezioni, valute, imprese, luoghi della mappa e altro."
 L["TUT_SLIDE_ALT_NUMBERS"]              = "I risultati mostrano icone, categorie e Alt+Numero. Premi l'Alt+Numero corrispondente per attivare subito quella riga."
 L["TUT_SLIDE_PINNING"]                  = "Fissa i risultati importanti così restano disponibili prima ancora di digitare."
+L["TUT_SLIDE_SHORTKEYS"]                = "'Add Shortkey' assigns a single keypress that opens this result instantly, no typing required. Manage existing shortkeys in the Options panel."
 L["TUT_SLIDE_FILTER_MENU"]              = "Usa il menu dei filtri per scegliere quali gruppi di risultati appaiono nella ricerca generale."
 L["TUT_SLIDE_AT_PREFIX"]                = "Digita @ per vedere i filtri rapidi disponibili, poi Tab o Spazio per selezionarne uno."
 L["TUT_SLIDE_QUICK_FILTERS"]            = "I filtri rapidi ti permettono di cercare in una sola categoria senza aprire il menu dei filtri."
@@ -211,6 +212,8 @@ L["TUT_KB_PRESS_KEY"]                   = "Premi un tasto…"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - Novità"
 L["WHATSNEW_FULL_CHANGELOG"]            = "Registro modifiche completo su CurseForge e GitHub"
 L["WHATSNEW_GOT_IT"]                    = "Capito"
+L["WHATSNEW_CHAT_HELLO"]                = "Welcome to EasyFind v%s! See update summary %s."
+L["WHATSNEW_CHAT_HERE"]                 = "here"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffRicerca bottino|r\n" ..
     "        Cerca il bottino di spedizioni e incursioni per nome, slot, statistiche o fonte\n" ..

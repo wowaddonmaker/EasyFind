@@ -195,6 +195,7 @@ L["TUT_BTN_CONTINUE"]                   = "계속"
 L["TUT_SLIDE_SEARCH_INTRO"]             = "장비, 전리품, 패널, 설정, 수집품, 화폐, 업적, 지도 장소 등을 검색하세요."
 L["TUT_SLIDE_ALT_NUMBERS"]              = "결과에는 아이콘, 분류, Alt+숫자가 표시됩니다. 해당 Alt+숫자를 누르면 그 줄이 즉시 실행됩니다."
 L["TUT_SLIDE_PINNING"]                  = "중요한 결과를 고정해 두면 입력하기 전에도 바로 이용할 수 있습니다."
+L["TUT_SLIDE_SHORTKEYS"]                = "'Add Shortkey' assigns a single keypress that opens this result instantly, no typing required. Manage existing shortkeys in the Options panel."
 L["TUT_SLIDE_FILTER_MENU"]              = "필터 메뉴로 일반 검색에 어떤 결과 그룹이 나올지 선택하세요."
 L["TUT_SLIDE_AT_PREFIX"]                = "@를 입력하면 사용 가능한 빠른 필터가 보이고, Tab이나 Space로 선택합니다."
 L["TUT_SLIDE_QUICK_FILTERS"]            = "빠른 필터를 사용하면 필터 메뉴를 열지 않고 한 분류 안에서 검색할 수 있습니다."
@@ -211,6 +212,8 @@ L["TUT_KB_PRESS_KEY"]                   = "키를 누르세요…"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - 새로운 기능"
 L["WHATSNEW_FULL_CHANGELOG"]            = "전체 변경 내역은 CurseForge와 GitHub에서"
 L["WHATSNEW_GOT_IT"]                    = "확인"
+L["WHATSNEW_CHAT_HELLO"]                = "Welcome to EasyFind v%s! See update summary %s."
+L["WHATSNEW_CHAT_HERE"]                 = "here"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffff전리품 검색|r\n" ..
     "        던전과 공격대 전리품을 이름, 부위, 능력치, 출처로 검색\n" ..

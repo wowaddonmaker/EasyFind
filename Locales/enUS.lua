@@ -222,6 +222,7 @@ L["TUT_BTN_CONTINUE"]                   = "Continue"
 L["TUT_SLIDE_SEARCH_INTRO"]             = "Search gear, panels, settings, collections, currencies, achievements, zones, and more. Note the Alt + num on the right of each row which indicates a shortcut to activate the row. You can hide the reminder in the search options."
 L["TUT_SLIDE_ALT_NUMBERS"]              = "When you hover over a result, the subtext will change to indicate what actions you can perform. Here, it shows three actions: summon pet with click; open pet journal to the pet with alt+click; drag pet icon to your bars with shift+drag."
 L["TUT_SLIDE_PINNING"]                  = "Right click rows for options. This shows the pin action, making the result show without typing. 'Add Alias' lets you add custom search keys, and 'Guide' highlights step by step path to result instead of auto-opening."
+L["TUT_SLIDE_SHORTKEYS"]                = "'Add Shortkey' assigns a single keypress that opens this result instantly, no typing required. Manage existing shortkeys in the Options panel."
 L["TUT_SLIDE_FILTER_MENU"]              = "Click the filter button to open the menu of categories you can toggle on/off for your searches."
 L["TUT_SLIDE_AT_PREFIX"]                = "Can also type @ to use quick filters which allows one-off filtering to hone in on a specific category without modifying your filter settings."
 L["TUT_SLIDE_QUICK_FILTERS"]            = "Here's an example showing the '@bags' quick filter to only allow items from my bags to appear in the results."
@@ -239,6 +240,8 @@ L["TUT_KB_PRESS_KEY"]                   = "Press a key..."
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - New Features"
 L["WHATSNEW_FULL_CHANGELOG"]            = "Full changelog on CurseForge and GitHub"
 L["WHATSNEW_GOT_IT"]                    = "Got it"
+L["WHATSNEW_CHAT_HELLO"]                = "Welcome to EasyFind v%s! See update summary %s."
+L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffLoot Search|r\n" ..
