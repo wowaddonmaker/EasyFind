@@ -114,7 +114,6 @@ local SEARCH_TUTORIAL_SLIDES = {
             size = 30,
             ox = 285, oy = 152,
         },
-        seeMore = { text = L["TUT_MACROS_SEE_ACTIONABLES"], word = L["TUT_FEATURE_ACTIONS"] },
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-settings-hires",
@@ -126,8 +125,8 @@ local SEARCH_TUTORIAL_SLIDES = {
 local USE_TUTORIAL_SLIDES = {
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-01-hires",
-        texCoord = TutorialTexCoord(1316, 304, 2048, 512),
-        w = 658, h = 152,
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
         text = L["TUT_SLIDE_USE_GEAR"],
     },
     {
@@ -586,61 +585,19 @@ local function BuildPage2(parent)
         slideText:SetJustifyH("LEFT")
         slideText:SetSpacing(2)
 
-        -- Optional "See {link} for more examples" line under the caption. The
-        -- link is a blue glowing chip (matching the options-home links) that
-        -- jumps to the Actionables deck on click.
-        local SM_LINK, SM_HOVER = ns.LINK_COLOR, ns.LINK_HOVER
-        local seeMore = CreateFrame("Frame", nil, d)
-        seeMore:SetSize(WIZ_W - 104, 16)
-        seeMore:Hide()
-        local smPre = seeMore:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        smPre:SetTextColor(Utils.RGB(TEXT_DIM, 1))
-        ApplyInter(smPre, "regular", 10)
-        local smPost = seeMore:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        smPost:SetTextColor(Utils.RGB(TEXT_DIM, 1))
-        ApplyInter(smPost, "regular", 10)
-        local smChip = CreateFrame("Button", nil, seeMore)
-        smChip:SetHeight(16)
-        local smGlow = smChip:CreateTexture(nil, "BACKGROUND")
-        smGlow:SetAtlas("collections-newglow")
-        smGlow:SetVertexColor(unpack(ns.LINK_GLOW_COLOR))
-        smGlow:SetBlendMode("ADD")
-        smGlow:SetPoint("CENTER", smChip, "CENTER", 0, 0)
-        smGlow:Hide()
-        local smPulse = ns.CreateBouncePulse(smGlow, 1.0, 0.5, 0.9)
-        local smLink = smChip:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        smLink:SetAllPoints(smChip)
-        smLink:SetJustifyH("CENTER")
-        smLink:SetTextColor(SM_LINK[1], SM_LINK[2], SM_LINK[3])
-        ApplyInter(smLink, "semibold", 10)
-        smChip:SetScript("OnEnter", function()
-            smGlow:Show()
-            smPulse:Play()
-            smLink:SetTextColor(SM_HOVER[1], SM_HOVER[2], SM_HOVER[3])
+        -- Inline blue hyperlinks in the slide body. Use |Heasyfind:<topic>:<id>|h[text]|h
+        -- in the slide string; OnHyperlinkClick dispatches per topic.
+        d:SetHyperlinksEnabled(true)
+        d:SetScript("OnHyperlinkClick", function(_, link)
+            if link == "easyfind:wizard:actions" then
+                GoToActionsDeck()
+            elseif link == "easyfind:options:aliases" then
+                FinishWizard(false)
+                if ns.Options and ns.Options.OpenAtAliases then
+                    ns.Options:OpenAtAliases()
+                end
+            end
         end)
-        smChip:SetScript("OnLeave", function()
-            smPulse:Stop()
-            smGlow:Hide()
-            smLink:SetTextColor(SM_LINK[1], SM_LINK[2], SM_LINK[3])
-        end)
-        smChip:SetScript("OnClick", GoToActionsDeck)
-        local function LayoutSeeMore(template, word)
-            local pre, post = template:match("^(.-)%%s(.*)$")
-            if not pre then pre, post = template, "" end
-            smPre:SetText(pre)
-            smLink:SetText(word)
-            smPost:SetText(post)
-            local chipW = smLink:GetStringWidth() + 8
-            smChip:SetWidth(chipW)
-            smGlow:SetSize(chipW + 16, 22)
-            local total = smPre:GetStringWidth() + chipW + smPost:GetStringWidth()
-            smPre:ClearAllPoints()
-            smPre:SetPoint("LEFT", seeMore, "LEFT", Utils.mfloor((seeMore:GetWidth() - total) / 2), 0)
-            smChip:ClearAllPoints()
-            smChip:SetPoint("LEFT", smPre, "RIGHT", 0, 0)
-            smPost:ClearAllPoints()
-            smPost:SetPoint("LEFT", smChip, "RIGHT", 0, 0)
-        end
 
         local controls = CreateFrame("Frame", nil, d)
         controls:SetSize(148, 18)
@@ -694,14 +651,6 @@ local function BuildPage2(parent)
                 end
             end
             slideText:SetText(slide.text or "")
-            if slide.seeMore then
-                LayoutSeeMore(slide.seeMore.text, slide.seeMore.word)
-                seeMore:ClearAllPoints()
-                seeMore:SetPoint("TOP", slideText, "BOTTOM", 0, -6)
-                seeMore:Show()
-            else
-                seeMore:Hide()
-            end
             counter:SetText(idx .. " / " .. count)
         end
 

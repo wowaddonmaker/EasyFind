@@ -1920,6 +1920,7 @@ function Options:Initialize()
     shortcutText:SetText(L["OPT_SHORTCUTS_TEXT"])
 
     local aliasesTab = CreateTab(L["OPT_TAB_ALIASES"])
+    Options._aliasesTabIndex = aliasesTab.tabIndex
 
     local aliasTitle = aliasesTab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     aliasTitle:SetPoint("TOPLEFT", aliasesTab, "TOPLEFT", 8, -8)
@@ -2728,6 +2729,13 @@ function Options:RegisterWithBlizzardOptions()
                 if sf then sf:Show() end
             end
         end)
+    end
+end
+
+function Options:OpenAtAliases()
+    self:Show()
+    if optionsFrame and optionsFrame.SwitchToTab and self._aliasesTabIndex then
+        optionsFrame.SwitchToTab(self._aliasesTabIndex)
     end
 end
 
