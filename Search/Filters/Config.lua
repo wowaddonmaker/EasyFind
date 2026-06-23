@@ -179,6 +179,7 @@ local UI_BUCKET_BY_CATEGORY = {
     ["Bag"]                = "bags",
     ["Macro"]              = "macros",
     ["Talent"]             = "talents",
+    ["Talents"]            = "talents",
     ["Title"]              = "titles",
     ["Gear Set"]           = "gearSets",
     ["Game Settings"]      = "gameOptions",

@@ -180,10 +180,11 @@ function Search:OnSearchTextChanged(text, force)
         local bossesOff = filters.bosses == false
         local titlesOff = filters.titles == false
         local gearSetsOff = filters.gearSets == false
+        local talentsOff = filters.talents == false
         if mountsOff or toysOff or petsOff or outfitsOff or lootOff
            or appsetsOff or appitemsOff or bagsOff or macrosOff or gameOptOff or addonOptOff
            or abilitiesOff or bossesOff or heirloomsOff or titlesOff or gearSetsOff
-           or statisticsOff then
+           or statisticsOff or talentsOff then
             skipCategories = SCRATCH.skipCategories
             wipe(skipCategories)
             if mountsOff    then skipCategories["Mount"] = true end
@@ -205,6 +206,10 @@ function Search:OnSearchTextChanged(text, force)
             if statisticsOff then
                 skipCategories["Statistic"] = true
                 skipCategories["Statistics"] = true
+            end
+            if talentsOff then
+                skipCategories["Talent"] = true
+                skipCategories["Talents"] = true
             end
         end
     end
