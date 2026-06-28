@@ -118,6 +118,7 @@ L["OPT_RESIZE_UI_TT"]                   = "통합 UI 검색창의 크기를 시�
 L["OPT_LOCK_POSITION_TT"]               = "활성화하면 검색창을 드래그할 수 없습니다. 원하는 위치에 정확히 두었을 때 유용합니다.\n\n‘위치 초기화’와 /reset 명령은 여전히 작동합니다."
 L["OPT_RESULTS_DIRECTION_TT"]           = "UI 검색 결과가 검색창 아래에 열릴지 위에 열릴지 선택합니다."
 L["OPT_FONT_SIZE_TT"]                   = "검색창 크기를 바꾸지 않고 UI 검색 글자 크기를 조절합니다."
+L["OPT_SEARCH_SCALE"]                   = "배율"
 L["OPT_SEARCH_OPACITY"]                 = "불투명도"
 L["OPT_SEARCH_OPACITY_TT"]              = "검색창과 결과 패널의 불투명도입니다. 100%는 완전히 불투명합니다."
 L["OPT_ALT_HINTS_TT"]                   = "보이는 각 UI 검색 결과에 Alt+1부터 Alt+8까지 작은 안내가 표시됩니다.\n\n끄면 안내는 숨겨지지만 Alt+숫자 단축키는 여전히 같은 줄을 활성화합니다."

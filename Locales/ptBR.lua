@@ -118,6 +118,7 @@ L["OPT_RESIZE_UI_TT"]                   = "Redimensiona visualmente a janela de 
 L["OPT_LOCK_POSITION_TT"]               = "Quando ativado, a barra de busca não pode ser arrastada. Útil se você a posicionou exatamente onde quer.\n\n«Redefinir posições» e o comando /reset continuam funcionando."
 L["OPT_RESULTS_DIRECTION_TT"]           = "Escolha se os resultados de busca abrem abaixo ou acima da barra de busca."
 L["OPT_FONT_SIZE_TT"]                   = "Ajusta o tamanho do texto de busca sem redimensionar a janela."
+L["OPT_SEARCH_SCALE"]                   = "Escala"
 L["OPT_SEARCH_OPACITY"]                 = "Opacidade"
 L["OPT_SEARCH_OPACITY_TT"]              = "Opacidade da barra de pesquisa e do painel de resultados. 100% é totalmente opaco."
 L["OPT_ALT_HINTS_TT"]                   = "Cada resultado de busca visível exibe um pequeno lembrete de Alt+1 a Alt+8.\n\nQuando desativados, os lembretes ficam ocultos, mas os atalhos Alt+Número ainda ativam as mesmas linhas."

@@ -118,6 +118,7 @@ L["OPT_RESIZE_UI_TT"]                   = "Ridimensiona visivamente la finestra 
 L["OPT_LOCK_POSITION_TT"]               = "Se attivo, la barra di ricerca non può essere trascinata. Utile se l'hai posizionata esattamente dove la vuoi.\n\n«Reimposta posizioni» e il comando /reset funzionano comunque."
 L["OPT_RESULTS_DIRECTION_TT"]           = "Scegli se i risultati di ricerca si aprono sotto o sopra la barra di ricerca."
 L["OPT_FONT_SIZE_TT"]                   = "Regola la dimensione del testo di ricerca senza ridimensionare la finestra."
+L["OPT_SEARCH_SCALE"]                   = "Scala"
 L["OPT_SEARCH_OPACITY"]                 = "Opacità"
 L["OPT_SEARCH_OPACITY_TT"]              = "Opacità della barra di ricerca e del pannello dei risultati. 100% è completamente opaco."
 L["OPT_ALT_HINTS_TT"]                   = "Ogni risultato di ricerca visibile mostra un piccolo promemoria da Alt+1 a Alt+8.\n\nSe disattivati, i promemoria sono nascosti ma le scorciatoie Alt+Numero attivano comunque le stesse righe."

@@ -728,9 +728,9 @@ function Search:CreateSearchFrame()
     local filterArrow = filterBtn:CreateTexture(nil, "OVERLAY")
     filterArrow:SetSize(11, 11)
     filterArrow:SetPoint("CENTER")
-    filterArrow:SetTexture(423808)
-    filterArrow:SetTexCoord(0.453, 0.203, 0.453, 0.016, 0.641, 0.203, 0.641, 0.016)
-    filterArrow:SetDesaturated(true)
+    -- Custom flat triangle (textures/filter-arrow.tga) rather than a cropped
+    -- Blizzard texture, so it stays crisp at higher search scales.
+    filterArrow:SetTexture("Interface\\AddOns\\EasyFind\\textures\\filter-arrow")
     filterArrow:SetBlendMode("ADD")
     filterArrow:SetVertexColor(1, 1, 1)
     filterBtn.arrow = filterArrow
@@ -749,18 +749,28 @@ function Search:CreateSearchFrame()
     -- (dark hover bg, blue ADD highlight) and just clips the shape.
     if theme.searchBarRounded and filterBtn.CreateMaskTexture then
         local CIRCLE_TEX = "Interface\\AddOns\\EasyFind\\textures\\FilterButtonCircle"
-        -- Inner circle (clips hover bg + highlight): keep the same radius
-        -- as the gold ring's inner edge so the ring sits flush around it.
+        -- Inner circle radius (matches the gold ring's inner edge). Used to
+        -- mask the ring's black inner disc so the ring sits flush around it.
         local innerInset = 6
         local circleMask = filterBtn:CreateMaskTexture(nil, "ARTWORK")
         circleMask:SetTexture(CIRCLE_TEX, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
         circleMask:SetPoint("TOPLEFT",     filterBtn, "TOPLEFT",      innerInset, -innerInset)
         circleMask:SetPoint("BOTTOMRIGHT", filterBtn, "BOTTOMRIGHT", -innerInset,  innerInset)
-        filterBtnBg:AddMaskTexture(circleMask)
+        -- Round blue hover glow. Blizzard's hover bg (796424) and highlight
+        -- (130757) are FILE textures that ignore AddMaskTexture here (square). So
+        -- drive btnBg with our own glow texture: a radial blue->navy gradient that
+        -- fades to transparent corners (round on its own, no mask) with a deep-blue
+        -- shadow rim instead of a hard fade to black. Colors are baked in, so a
+        -- plain white tint, normal-alpha blended (~90% opaque), sized to the inner
+        -- circle inside the ring.
+        filterBtnBg:SetTexture("Interface\\AddOns\\EasyFind\\textures\\filter-glow")
+        filterBtnBg:SetVertexColor(1, 1, 1)
+        filterBtnBg:SetBlendMode("BLEND")
+        filterBtnBg:ClearAllPoints()
+        filterBtnBg:SetPoint("TOPLEFT",     filterBtn, "TOPLEFT",      innerInset, -innerInset)
+        filterBtnBg:SetPoint("BOTTOMRIGHT", filterBtn, "BOTTOMRIGHT", -innerInset,  innerInset)
         local hl = filterBtn:GetHighlightTexture()
-        if hl and hl.AddMaskTexture then
-            hl:AddMaskTexture(circleMask)
-        end
+        if hl then hl:SetTexture(nil) end
 
         -- Gold perimeter ring: outer gold disc + black inner disc layered
         -- on top so only a thin annulus of gold shows around the inner
@@ -1942,9 +1952,16 @@ function Search:ToggleFocus()
 end
 
 function Search:UpdateScale()
+    local scale = EasyFind.db.uiSearchScale or 1.0
     if searchFrame then
-        local scale = EasyFind.db.uiSearchScale or 1.0
         searchFrame:SetScale(scale)
+    end
+    -- containerFrame holds the rounded-rect border + fill and is a SIBLING of
+    -- searchFrame (not a child, so its textures draw behind the bar content),
+    -- so it must be scaled too -- otherwise its corners keep their unscaled
+    -- radius while it stretches to match the scaled bar.
+    if containerFrame then
+        containerFrame:SetScale(scale)
     end
     self:UpdateResultsScale()
 end

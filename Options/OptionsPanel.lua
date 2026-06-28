@@ -1350,6 +1350,41 @@ function Options:Initialize()
         return row, label
     end
 
+    -- Flyout-dropdown version of a preset row: same {label,value} choices and
+    -- getter/setter as CreatePresetRow, but a single dropdown (like the indicator
+    -- selector) instead of a button row. globalPrefix names the flyout frames and
+    -- must be unique. Returns the row, which carries :SetValue for refresh.
+    local function CreateFlyoutPresetRow(parent, labelText, choices, getter, setter, globalPrefix)
+        local row = CreateFrame("Frame", nil, parent)
+        row:SetSize(SELECTOR_ROW_W, 24)
+        local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("LEFT", row, "LEFT", 8, 0)
+        label:SetPoint("RIGHT", row, "RIGHT", -SELECTOR_BTN_W - 18, 0)
+        label:SetJustifyH("LEFT")
+        label:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
+        label:SetText(labelText)
+
+        local function LabelFor(value)
+            for _, c in ipairs(choices) do
+                if c.value == value then return c.label end
+            end
+            return tostring(value)
+        end
+
+        local btnFrame, btnText = CreateFlyoutSelector(row, globalPrefix, SELECTOR_BTN_W, label, LabelFor(getter()))
+        local values = {}
+        for i = 1, #choices do values[i] = choices[i].value end
+        local flyout = CreateFlyoutPanel(btnFrame, globalPrefix, SELECTOR_BTN_W, #values)
+        AddFlyoutOptions(flyout, values, SELECTOR_BTN_W - 6, function(value)
+            setter(value)
+            btnText:SetText(LabelFor(value))
+        end, LabelFor)
+
+        row.flyout = flyout
+        row.SetValue = function(self, value) btnText:SetText(LabelFor(value)) end
+        return row
+    end
+
     local indicatorRow, indicatorLabel = CreateSelectorRow(minimapBtnCheckbox, L["OPT_INDICATOR_STYLE"])
 
     local indicatorChoices = {"EasyFind Arrow", "Classic Quest Arrow", "Minimap Player Arrow", "Low-res Gauntlet", "HD Gauntlet"}
@@ -1511,20 +1546,6 @@ function Options:Initialize()
 
     local sec1 = CreateTab(L["OPT_TAB_SEARCH"])
 
-    local resizeUIBtn = CreateModernButton(sec1)
-    resizeUIBtn:SetSize(RESET_BTN_W, 20)
-    resizeUIBtn:SetPoint("BOTTOMLEFT", sec1, "BOTTOMLEFT", 16, 32)
-    resizeUIBtn:SetText(L["OPT_RESIZE_UI_SEARCH"])
-    resizeUIBtn:SetScript("OnClick", function()
-        if ns.Rescaler then ns.Rescaler:Enter("ui") end
-    end)
-    resizeUIBtn:HookScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(L["OPT_RESIZE_UI_TT"])
-        GameTooltip:Show()
-    end)
-    resizeUIBtn:HookScript("OnLeave", GameTooltip_Hide)
-
     local visibilityModeRow
     local function ApplyVisibilityMode(value)
         local smart = value == VISIBILITY_SMART
@@ -1613,17 +1634,35 @@ function Options:Initialize()
         { label = L["OPT_FONT_LARGE"], value = 1.15 },
         { label = L["OPT_FONT_XL"],    value = 1.35 },
     }
-    local uiFontPresetRow = CreatePresetRow(sec1, L["OPT_FONT_SIZE"], fontSizeChoices,
+    local uiFontPresetRow = CreateFlyoutPresetRow(sec1, L["OPT_FONT_SIZE"], fontSizeChoices,
         function() return EasyFind.db.fontSize or ns.DEFAULT_FONT_SIZE end,
         function(value)
             EasyFind.db.fontSize = value
             if ns.Search and ns.Search.UpdateFontSize then
                 ns.Search:UpdateFontSize()
             end
-        end,
-        L["OPT_FONT_SIZE_TT"])
+        end, "EasyFindFontSize")
     uiFontPresetRow:SetPoint("TOPLEFT", resultsDirectionRow, "BOTTOMLEFT", 0, -8)
     optionsFrame.uiFontPresetRow = uiFontPresetRow
+
+    -- Uniform zoom for the whole search UI (bar, results, popups). An easy
+    -- alternative to the manual rescaler that can't drift element proportions.
+    local scaleChoices = {
+        { label = "50%",  value = 0.5  }, { label = "75%",  value = 0.75 },
+        { label = "100%", value = 1.0  }, { label = "125%", value = 1.25 },
+        { label = "150%", value = 1.5  },
+    }
+    local scaleRow = CreateFlyoutPresetRow(sec1, L["OPT_SEARCH_SCALE"], scaleChoices,
+        function() return EasyFind.db.uiSearchScale or 1.0 end,
+        function(value)
+            EasyFind.db.uiSearchScale = value
+            -- resultsFrame is a CHILD of searchFrame, so it already inherits the
+            -- bar scale. Keep its own scale at 1.0 so it is not scaled twice.
+            EasyFind.db.uiResultsScale = 1.0
+            if ns.Search and ns.Search.UpdateScale then ns.Search:UpdateScale() end
+        end, "EasyFindSearchScale")
+    scaleRow:SetPoint("TOPLEFT", uiFontPresetRow, "BOTTOMLEFT", 0, -8)
+    optionsFrame.searchScaleRow = scaleRow
 
     local opacityChoices = {
         { label = "75%",  value = 0.75 },
@@ -1631,17 +1670,15 @@ function Options:Initialize()
         { label = "95%",  value = 0.95 },
         { label = "100%", value = 1.00 },
     }
-    local searchOpacityRow = CreatePresetRow(sec1, L["OPT_SEARCH_OPACITY"], opacityChoices,
+    local searchOpacityRow = CreateFlyoutPresetRow(sec1, L["OPT_SEARCH_OPACITY"], opacityChoices,
         function() return EasyFind.db.searchWindowOpacity or ns.SEARCH_WINDOW_ALPHA end,
         function(value)
             EasyFind.db.searchWindowOpacity = value
-            if optionsFrame.searchOpacityRow then optionsFrame.searchOpacityRow:SetValue(value) end
             RunSoon(function()
                 if ns.Search and ns.Search.UpdateOpacity then ns.Search:UpdateOpacity() end
             end)
-        end,
-        L["OPT_SEARCH_OPACITY_TT"])
-    searchOpacityRow:SetPoint("TOPLEFT", uiFontPresetRow, "BOTTOMLEFT", 0, -8)
+        end, "EasyFindOpacity")
+    searchOpacityRow:SetPoint("TOPLEFT", scaleRow, "BOTTOMLEFT", 0, -8)
     optionsFrame.searchOpacityRow = searchOpacityRow
 
     lockPositionCheckbox:ClearAllPoints()

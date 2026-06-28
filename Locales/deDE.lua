@@ -120,6 +120,7 @@ L["OPT_RESIZE_UI_TT"]                   = "Passt das vereinheitlichte UI-Suchfen
 L["OPT_LOCK_POSITION_TT"]               = "Wenn aktiviert, lässt sich die Suchleiste nicht mehr ziehen. Nützlich, wenn sie genau dort sitzt, wo du sie haben willst.\n\n„Positionen zurücksetzen“ und der Befehl /reset funktionieren weiterhin."
 L["OPT_RESULTS_DIRECTION_TT"]           = "Lege fest, ob UI-Suchergebnisse unter oder über der Suchleiste erscheinen."
 L["OPT_FONT_SIZE_TT"]                   = "Passt die Textgröße der UI-Suche an, ohne das Suchfenster zu vergrößern."
+L["OPT_SEARCH_SCALE"]                   = "Skalierung"
 L["OPT_SEARCH_OPACITY"]                 = "Deckkraft"
 L["OPT_SEARCH_OPACITY_TT"]              = "Deckkraft der Suchleiste und des Ergebnisfensters. 100% ist vollständig deckend."
 L["OPT_ALT_HINTS_TT"]                   = "Jedes sichtbare UI-Suchergebnis zeigt einen kleinen Hinweis von Alt+1 bis Alt+8.\n\nWenn deaktiviert, sind die Hinweise ausgeblendet, aber die Alt+Zahl-Kürzel aktivieren weiterhin dieselben Zeilen."

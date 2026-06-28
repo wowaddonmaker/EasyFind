@@ -118,6 +118,7 @@ L["OPT_RESIZE_UI_TT"]                   = "以視覺方式調整統一介面搜�
 L["OPT_LOCK_POSITION_TT"]               = "啟用後，搜尋列將無法拖曳。若你已將它放在理想位置，此項很有用。\n\n「重設位置」與 /reset 指令仍然有效。"
 L["OPT_RESULTS_DIRECTION_TT"]           = "選擇介面搜尋結果在搜尋列下方還是上方開啟。"
 L["OPT_FONT_SIZE_TT"]                   = "在不改變搜尋視窗大小的情況下調整介面搜尋文字大小。"
+L["OPT_SEARCH_SCALE"]                   = "縮放"
 L["OPT_SEARCH_OPACITY"]                 = "不透明度"
 L["OPT_SEARCH_OPACITY_TT"]              = "搜尋列與結果面板的不透明程度。100% 為完全不透明。"
 L["OPT_ALT_HINTS_TT"]                   = "每個可見的介面搜尋結果都會顯示 Alt+1 到 Alt+8 的小提示。\n\n停用後提示會隱藏，但 Alt+數字 快捷鍵仍會啟動相同的列。"

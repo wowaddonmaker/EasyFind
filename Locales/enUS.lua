@@ -131,6 +131,7 @@ L["OPT_RESIZE_UI_TT"]                   = "Visually resize the unified UI search
 L["OPT_LOCK_POSITION_TT"]               = "When enabled, the search bar can't be dragged. Useful if you've placed it exactly where you want and don't want to bump it by accident.\n\nReset Positions and the /reset command still work."
 L["OPT_RESULTS_DIRECTION_TT"]           = "Choose whether UI search results open below or above the search bar."
 L["OPT_FONT_SIZE_TT"]                   = "Adjusts UI search text size without resizing the search window."
+L["OPT_SEARCH_SCALE"]                   = "Scale"
 L["OPT_SEARCH_OPACITY"]                 = "Opacity"
 L["OPT_SEARCH_OPACITY_TT"]              = "Opacity of the search bar and results panel. 100% is fully opaque."
 L["OPT_ALT_HINTS_TT"]                   = "When enabled, each visible UI search result shows a small Alt+1 through Alt+8 reminder.\n\nWhen disabled, the reminders are hidden but the Alt+number shortcuts still activate the same rows."

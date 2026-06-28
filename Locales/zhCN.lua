@@ -118,6 +118,7 @@ L["OPT_RESIZE_UI_TT"]                   = "可视化调整统一界面搜索窗�
 L["OPT_LOCK_POSITION_TT"]               = "启用后，搜索栏将无法拖动。如果你已将其放在理想位置，此项很有用。\n\n“重置位置”和 /reset 命令仍然有效。"
 L["OPT_RESULTS_DIRECTION_TT"]           = "选择界面搜索结果是在搜索栏下方还是上方打开。"
 L["OPT_FONT_SIZE_TT"]                   = "在不改变搜索窗口大小的情况下调整界面搜索文字大小。"
+L["OPT_SEARCH_SCALE"]                   = "缩放"
 L["OPT_SEARCH_OPACITY"]                 = "不透明度"
 L["OPT_SEARCH_OPACITY_TT"]              = "搜索栏和结果面板的不透明度。100% 为完全不透明。"
 L["OPT_ALT_HINTS_TT"]                   = "每个可见的界面搜索结果都会显示一个 Alt+1 到 Alt+8 的小提示。\n\n禁用后提示会隐藏，但 Alt+数字 快捷键仍会激活相同的行。"

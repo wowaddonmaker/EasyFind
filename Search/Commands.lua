@@ -22,12 +22,6 @@ Commands.searchBarCommands = {
         aliases = { "reset", "resetpos", "resetposition" },
     },
     {
-        command = "resize",
-        display = "/resize",
-        desc = L["CMD_DESC_RESIZE"],
-        aliases = { "resize", "rescale" },
-    },
-    {
         command = "options",
         display = "/options",
         desc = L["CMD_DESC_OPTIONS"],
@@ -77,10 +71,6 @@ function Commands:RunSearchBarCommand(command)
 
     if canonical == "reset" then
         StaticPopup_Show("EASYFIND_RESET_SEARCH_BAR")
-    elseif canonical == "resize" then
-        if ns.Rescaler and ns.Rescaler.Enter then
-            ns.Rescaler:Enter("ui")
-        end
     elseif canonical == "options" then
         EasyFind:OpenOptions()
     elseif canonical == "tutorial" then

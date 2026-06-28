@@ -26,7 +26,7 @@ local TOOLTIP_CURSOR_OFFSET_Y = 16
 local function PlaceTooltipBottomRightAtCursor(tooltip)
     tooltip:ClearAllPoints()
     local cx, cy = GetCursorPosition()
-    local scale = UIParent:GetEffectiveScale() or 1
+    local scale = tooltip:GetEffectiveScale() or 1
     if scale == 0 then scale = 1 end
     tooltip:SetPoint(
         "BOTTOMRIGHT", UIParent, "BOTTOMLEFT",
@@ -35,8 +35,31 @@ local function PlaceTooltipBottomRightAtCursor(tooltip)
     )
 end
 
+-- Row tooltips (GameTooltip + the unearned message) are UIParent-level, so they
+-- don't inherit the search-bar scale. Match it, remembering the base scale and
+-- restoring it on hide (GameTooltip is shared, so its scale must be put back).
+local function ApplySearchTooltipScale(tooltip)
+    if not tooltip._efScaleHooked then
+        tooltip._efScaleHooked = true
+        tooltip:HookScript("OnHide", function(self)
+            if self._efBaseScale then
+                self:SetScale(self._efBaseScale)
+                self._efBaseScale = nil
+            end
+        end)
+    end
+    local s = (EasyFind.db and EasyFind.db.uiSearchScale) or 1.0
+    if s == 1.0 then return end
+    if not tooltip._efBaseScale then
+        tooltip._efBaseScale = tooltip:GetScale() or 1.0
+    end
+    tooltip:SetScale(tooltip._efBaseScale * s)
+end
+Tooltips.ApplySearchTooltipScale = ApplySearchTooltipScale
+
 function Tooltips:AnchorTooltipAtCursor(tooltip, ownerFrame)
     tooltip:SetOwner(ownerFrame, "ANCHOR_NONE")
+    ApplySearchTooltipScale(tooltip)
     PlaceTooltipBottomRightAtCursor(tooltip)
     tooltip._easyFindCursorFollow = ownerFrame
     if not tooltip._easyFindCursorHooked then
@@ -59,6 +82,7 @@ end
 -- room) so the cursor and our own Search both stay clear.
 function Tooltips:AnchorGearTooltip(tooltip, ownerFrame)
     tooltip:SetOwner(ownerFrame, "ANCHOR_NONE")
+    ApplySearchTooltipScale(tooltip)
     tooltip:ClearAllPoints()
 
     local panel = (Search:GetResultsFrame() and Search:GetResultsFrame():IsShown()) and Search:GetResultsFrame()

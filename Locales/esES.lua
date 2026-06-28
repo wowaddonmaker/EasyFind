@@ -118,6 +118,7 @@ L["OPT_RESIZE_UI_TT"]                   = "Redimensiona visualmente la ventana d
 L["OPT_LOCK_POSITION_TT"]               = "Si está activado, la barra de búsqueda no se puede arrastrar. Útil si la has colocado justo donde la quieres.\n\n«Restablecer posiciones» y el comando /reset siguen funcionando."
 L["OPT_RESULTS_DIRECTION_TT"]           = "Elige si los resultados de búsqueda se abren debajo o encima de la barra de búsqueda."
 L["OPT_FONT_SIZE_TT"]                   = "Ajusta el tamaño del texto de búsqueda sin redimensionar la ventana."
+L["OPT_SEARCH_SCALE"]                   = "Escala"
 L["OPT_SEARCH_OPACITY"]                 = "Opacidad"
 L["OPT_SEARCH_OPACITY_TT"]              = "Opacidad de la barra de búsqueda y el panel de resultados. 100% es totalmente opaco."
 L["OPT_ALT_HINTS_TT"]                   = "Cada resultado de búsqueda visible muestra un pequeño recordatorio de Alt+1 a Alt+8.\n\nSi se desactiva, los recordatorios se ocultan pero los atajos Alt+Número siguen activando las mismas filas."
