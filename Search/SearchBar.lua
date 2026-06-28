@@ -20,7 +20,7 @@ local sfind, slower         = Utils.sfind, Utils.slower
 local mmin, mmax = Utils.mmin, Utils.mmax
 
 local GOLD_COLOR = ns.GOLD_COLOR
-local SEARCH_ICON_ATLAS = "common-search-magnifyingglass"
+local SEARCH_ICON_TEXTURE = "Interface\\AddOns\\EasyFind\\textures\\search-icon"
 
 local CreateFrame        = CreateFrame
 local C_Timer            = C_Timer
@@ -302,7 +302,7 @@ function Search:CreateSearchFrame()
     local searchIcon = iconHolder:CreateTexture(nil, "OVERLAY")
     searchIcon:SetSize(iconSz, iconSz)
     searchIcon:SetPoint("CENTER")
-    searchIcon:SetAtlas(SEARCH_ICON_ATLAS)
+    searchIcon:SetTexture(SEARCH_ICON_TEXTURE)
     iconHolder.icon = searchIcon
     searchFrame.searchIcon = searchIcon
     searchFrame.modeBtn = iconHolder
