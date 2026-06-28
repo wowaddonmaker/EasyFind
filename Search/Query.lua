@@ -134,7 +134,10 @@ function Search:OnSearchTextChanged(text, force)
         return
     end
 
-    local commandEntries = (not quickFilter) and self:GetSearchBarCommandSuggestionEntries(text)
+    local activeFilters = EasyFind.db.uiSearchFilters
+    local commandsOff = activeFilters and activeFilters.commands == false
+    local commandEntries = (not quickFilter) and (not commandsOff)
+        and self:GetSearchBarCommandSuggestionEntries(text)
     if commandEntries then
         self:ShowHierarchicalResults(commandEntries)
         return
@@ -181,10 +184,11 @@ function Search:OnSearchTextChanged(text, force)
         local titlesOff = filters.titles == false
         local gearSetsOff = filters.gearSets == false
         local talentsOff = filters.talents == false
+        local commandsOffPre = filters.commands == false
         if mountsOff or toysOff or petsOff or outfitsOff or lootOff
            or appsetsOff or appitemsOff or bagsOff or macrosOff or gameOptOff or addonOptOff
            or abilitiesOff or bossesOff or heirloomsOff or titlesOff or gearSetsOff
-           or statisticsOff or talentsOff then
+           or statisticsOff or talentsOff or commandsOffPre then
             skipCategories = SCRATCH.skipCategories
             wipe(skipCategories)
             if mountsOff    then skipCategories["Mount"] = true end
@@ -210,6 +214,9 @@ function Search:OnSearchTextChanged(text, force)
             if talentsOff then
                 skipCategories["Talent"] = true
                 skipCategories["Talents"] = true
+            end
+            if commandsOffPre then
+                skipCategories["Command"] = true
             end
         end
     end

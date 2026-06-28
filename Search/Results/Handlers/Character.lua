@@ -279,7 +279,7 @@ function Handlers:ToggleCurrencyBackpack(currencyID)
         end
         if count >= cap then
             local msg = (_G["TOKEN_BACKPACK_FULL_MESSAGE"])
-                or string.format("You may only watch %d currencies at a time", cap)
+                or string.format(ns.L["MSG_CURRENCY_WATCH_LIMIT"], cap)
             local errFrame = _G["UIErrorsFrame"]
             if errFrame and errFrame.AddMessage then
                 errFrame:AddMessage(msg, 1.0, 0.1, 0.1, 1.0)

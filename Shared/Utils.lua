@@ -1022,16 +1022,85 @@ function ns.CreateModernButton(parent, text, width, height)
     label:SetTextColor(1, 1, 1, 1)
     btn._label = label
 
+    -- Inset reserved for the text inside the button. Leaves a small margin
+    -- around the rounded corners without eating the entire available width
+    -- on narrow buttons (preset rows, +/- spinners, etc).
+    local TEXT_INSET = 4
+
+    local function fitLabelEllipsis(self)
+        local label = self._label
+        if not label then return end
+        local full = self._fullText or ""
+        if full == "" then
+            label:SetText("")
+            self._isTruncated = false
+            return
+        end
+        local avail = (self:GetWidth() or 0) - TEXT_INSET * 2
+        if avail <= 0 then
+            label:SetText(full)
+            self._isTruncated = false
+            return
+        end
+        label:SetText(full)
+        if label:GetStringWidth() <= avail then
+            self._isTruncated = false
+            return
+        end
+        -- Binary search for the longest prefix that fits with an ellipsis.
+        local ELLIPSIS = "..."
+        local lo, hi = 1, #full
+        while lo < hi do
+            local mid = math.floor((lo + hi + 1) / 2)
+            label:SetText(full:sub(1, mid) .. ELLIPSIS)
+            if label:GetStringWidth() <= avail then
+                lo = mid
+            else
+                hi = mid - 1
+            end
+        end
+        label:SetText(full:sub(1, lo) .. ELLIPSIS)
+        self._isTruncated = true
+    end
+    btn._fitLabel = fitLabelEllipsis
+
     btn.SetText = function(self, value)
-        if self._label then self._label:SetText(value or "") end
+        self._fullText = value or ""
+        fitLabelEllipsis(self)
     end
     btn.GetText = function(self)
-        return self._label and self._label:GetText() or ""
+        return self._fullText or (self._label and self._label:GetText()) or ""
     end
     btn.SetSize = function(self, w, h)
         rawSetSize(self, w, h)
         ns.SetRoundedRectBarHeight(self, mmin(h or self:GetHeight() or 22, 10))
+        fitLabelEllipsis(self)
     end
+
+    -- Tooltip-on-truncate. If the button's text was clipped to ellipsis,
+    -- hovering for 0.5s pops the full label. Skipped silently when another
+    -- handler has already claimed GameTooltip for this button (e.g. a real
+    -- explanatory tooltip) so this never fights an intentional one.
+    btn:HookScript("OnEnter", function(self)
+        if not self._isTruncated then return end
+        if self._ellipsisTimer then self._ellipsisTimer:Cancel(); self._ellipsisTimer = nil end
+        self._ellipsisTimer = C_Timer.NewTimer(0.5, function()
+            self._ellipsisTimer = nil
+            if not self:IsMouseOver() then return end
+            if GameTooltip:GetOwner() == self and GameTooltip:IsShown() then return end
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(self._fullText or "", 1, 1, 1)
+            GameTooltip:Show()
+            self._showedEllipsisTooltip = true
+        end)
+    end)
+    btn:HookScript("OnLeave", function(self)
+        if self._ellipsisTimer then self._ellipsisTimer:Cancel(); self._ellipsisTimer = nil end
+        if self._showedEllipsisTooltip then
+            self._showedEllipsisTooltip = nil
+            GameTooltip:Hide()
+        end
+    end)
 
     local rawSetNormalFont = btn.SetNormalFontObject
     btn.SetNormalFontObject = function(self, fontObject)
@@ -1310,6 +1379,292 @@ function ns.ResolveDbKey(dbKey)
         return EasyFind.db[parent], leaf
     end
     return EasyFind.db, dbKey
+end
+
+-- Markup parser shared by OptionsPanel home and TutorialWizard slide body.
+-- Recognises {L:id}text{/L} for click-link chips and {C:rrggbb}text{/C} for
+-- colored spans. Everything outside markers is plain text.
+local function HexRGB(hex)
+    if not hex or #hex < 6 then return 1, 1, 1 end
+    return tonumber(hex:sub(1, 2), 16) / 255,
+           tonumber(hex:sub(3, 4), 16) / 255,
+           tonumber(hex:sub(5, 6), 16) / 255
+end
+
+function ns.ParseFlowSegments(str)
+    -- Pre-pass: convert WoW's native color codes (|cAARRGGBB...|r) into our
+    -- {C:RRGGBB}...{/C} markup so the parser handles both formats. Older
+    -- locale translations still use |c|r and are common enough that
+    -- supporting both forms saves a translator pass per language.
+    str = str:gsub("|c%x%x(%x%x%x%x%x%x)(.-)|r", "{C:%1}%2{/C}")
+
+    local segs, i, n = {}, 1, #str
+    while i <= n do
+        local s, e, body = str:find("{(.-)}", i)
+        if not s then
+            segs[#segs + 1] = { kind = "text", text = str:sub(i) }
+            break
+        end
+        if s > i then
+            segs[#segs + 1] = { kind = "text", text = str:sub(i, s - 1) }
+        end
+        local tag, arg = body:match("^(%a+):?(.*)$")
+        if tag == "L" then
+            local cs, ce = str:find("{/L}", e + 1, true)
+            segs[#segs + 1] = { kind = "link", text = str:sub(e + 1, (cs or e + 1) - 1), id = arg }
+            i = (ce or e) + 1
+        elseif tag == "C" then
+            local cs, ce = str:find("{/C}", e + 1, true)
+            local r, g, b = HexRGB(arg)
+            segs[#segs + 1] = { kind = "text", text = str:sub(e + 1, (cs or e + 1) - 1), color = { r, g, b } }
+            i = (ce or e) + 1
+        else
+            segs[#segs + 1] = { kind = "text", text = str:sub(s, e) }
+            i = e + 1
+        end
+    end
+    return segs
+end
+
+-- Lay out a marked-up string into a width-bound flow of word atoms + link
+-- chips. The container's height is computed from the final line count.
+-- opts = { width, font, linkDispatch = {[id] = onClickFn}, textColor }
+function ns.BuildFlowText(parent, str, opts)
+    opts = opts or {}
+    local width = opts.width or 400
+    local font = opts.font or "GameFontHighlightSmall"
+    local linkDispatch = opts.linkDispatch or {}
+
+    local interWeight = opts.interWeight
+    local interSize = opts.interSize
+    local interFlags = opts.interFlags
+    local function styleFS(fs)
+        if interWeight and ns.RegisterAddonFont then
+            ns.RegisterAddonFont(fs, interWeight, interSize, interFlags)
+        end
+    end
+
+    local container = CreateFrame("Frame", nil, parent)
+    container:SetWidth(width)
+
+    local measure = container:CreateFontString(nil, "OVERLAY", font)
+    styleFS(measure)
+    measure:Hide()
+    local _, fontH = measure:GetFont()
+    fontH = fontH or 12
+    local function widthOf(text)
+        measure:SetText(text)
+        return measure:GetStringWidth()
+    end
+    local spaceW = widthOf(" ")
+    if spaceW <= 0 then spaceW = 3 end
+
+    local lineH = math.floor(fontH + 5)
+
+    local atoms = {}
+    local pendingSpace = false
+    local function addText(text, color)
+        if text:sub(1, 1) == " " then pendingSpace = true end
+        for word in text:gmatch("%S+") do
+            atoms[#atoms + 1] = { kind = "word", text = word, w = widthOf(word), spaceBefore = pendingSpace, color = color }
+            pendingSpace = true
+        end
+        pendingSpace = (text:sub(-1) == " ")
+    end
+    for _, seg in ipairs(ns.ParseFlowSegments(str)) do
+        if seg.kind == "text" then
+            addText(seg.text, seg.color)
+        else
+            atoms[#atoms + 1] = { kind = "link", text = seg.text, id = seg.id,
+                w = widthOf(seg.text), spaceBefore = pendingSpace }
+            pendingSpace = false
+        end
+    end
+
+    local defaultColor = opts.textColor or ns.TEXT_BODY
+
+    local x, lineTop = 0, 0
+    for _, atom in ipairs(atoms) do
+        local gap = (atom.spaceBefore and x > 0) and spaceW or 0
+        if x > 0 and (x + gap + atom.w) > width then
+            lineTop = lineTop - lineH
+            x, gap = 0, 0
+        end
+        local cx = x + gap
+        local cy = lineTop - lineH / 2
+        if atom.kind == "word" then
+            local fs = container:CreateFontString(nil, "OVERLAY", font)
+            styleFS(fs)
+            fs:SetPoint("LEFT", container, "TOPLEFT", cx, cy)
+            fs:SetText(atom.text)
+            if atom.color then
+                fs:SetTextColor(atom.color[1], atom.color[2], atom.color[3])
+            elseif defaultColor then
+                fs:SetTextColor(defaultColor[1], defaultColor[2], defaultColor[3])
+            end
+        elseif atom.kind == "link" then
+            local slot = CreateFrame("Frame", nil, container)
+            slot:SetSize(atom.w, lineH)
+            slot:SetPoint("LEFT", container, "TOPLEFT", cx, cy)
+            local chip = CreateFrame("Button", nil, slot)
+            chip:SetSize(atom.w, fontH + 4)
+            chip:SetPoint("CENTER", slot, "CENTER", 0, 0)
+            local glow = chip:CreateTexture(nil, "BACKGROUND")
+            glow:SetPoint("CENTER", chip, "CENTER", 0, 0)
+            glow:SetSize(atom.w + 20, fontH + 16)
+            glow:SetAtlas("collections-newglow")
+            if ns.LINK_GLOW_COLOR then
+                glow:SetVertexColor(ns.LINK_GLOW_COLOR[1], ns.LINK_GLOW_COLOR[2],
+                                    ns.LINK_GLOW_COLOR[3], ns.LINK_GLOW_COLOR[4] or 1)
+            end
+            glow:SetBlendMode("ADD")
+            glow:Hide()
+            local glowPulse = ns.CreateBouncePulse(glow, 1.0, 0.5, 0.9)
+            local fs = chip:CreateFontString(nil, "OVERLAY", font)
+            styleFS(fs)
+            fs:SetAllPoints(chip)
+            fs:SetJustifyH("CENTER")
+            fs:SetText(atom.text)
+            local LC = ns.LINK_COLOR or { 0.44, 0.84, 1.0 }
+            local LH = ns.LINK_HOVER or { 1, 1, 1 }
+            fs:SetTextColor(LC[1], LC[2], LC[3])
+            chip:SetScript("OnEnter", function()
+                glow:Show()
+                glowPulse:Play()
+                fs:SetTextColor(LH[1], LH[2], LH[3])
+            end)
+            chip:SetScript("OnLeave", function()
+                glowPulse:Stop()
+                glow:Hide()
+                fs:SetTextColor(LC[1], LC[2], LC[3])
+            end)
+            local onClick = linkDispatch[atom.id]
+            if onClick then chip:SetScript("OnClick", onClick) end
+        end
+        x = cx + atom.w
+    end
+
+    container:SetHeight(-lineTop + lineH)
+    return container
+end
+
+-- Single source of truth for "label that auto-fits with ellipsis + tooltip".
+--
+--   ns.MakeEllipsisLabel(fs, text, opts?)
+--   ns.MakeEllipsisLabel:setText(fs, newText)   via fs:SetEllipsisText(...)
+--
+-- Configures a FontString so it:
+--   1. Stays on one line (SetWordWrap/SetNonSpaceWrap/SetMaxLines).
+--   2. Auto-truncates with "..." when its text exceeds the available width.
+--   3. Re-fits whenever the parent frame is resized.
+--   4. Shows a delayed (0.5s) tooltip with the FULL text on hover, only
+--      when the label was actually truncated.
+--
+-- Width is derived from the FontString's anchors (GetLeft/GetRight) so no
+-- caller needs to hand-code a maxWidth — set L/R anchors and forget. Pass
+-- opts.maxWidth to override explicitly when anchors aren't bounded.
+--
+-- opts (all optional):
+--   maxWidth       number   Override the anchor-derived width.
+--   tooltip        bool     Set false to skip the hover tooltip. Default true.
+--   tooltipAnchor  string   GameTooltip anchor (default "ANCHOR_TOP").
+--   hoverParent    Frame    Parent for the mouse-host overlay (default fs's parent).
+--
+-- After setup:
+--   fs:SetEllipsisText(t)   set the full text and re-fit.
+--   fs._fullText            the original (un-truncated) text.
+--   fs._isTruncated         true when the label is currently clipped.
+function ns.MakeEllipsisLabel(fs, text, opts)
+    if not fs then return fs end
+    opts = opts or {}
+    fs:SetWordWrap(false)
+    fs:SetNonSpaceWrap(false)
+    fs:SetMaxLines(1)
+    fs._fullText = text or ""
+
+    local function measureMax()
+        if opts.maxWidth then return opts.maxWidth end
+        local left, right = fs:GetLeft(), fs:GetRight()
+        if left and right and right > left then return right - left end
+        return fs:GetWidth() or 0
+    end
+    local function widthOf()
+        return (fs.GetUnboundedStringWidth and fs:GetUnboundedStringWidth())
+            or (fs.GetStringWidth and fs:GetStringWidth())
+            or 0
+    end
+
+    local fit
+    fit = function()
+        local full = fs._fullText or ""
+        if full == "" then fs:SetText(""); fs._isTruncated = false; return end
+        local maxW = measureMax()
+        if maxW <= 0 then
+            -- Layout hasn't computed L/R yet (FontString just created, parent
+            -- not shown). Show full text now and try again on the next frame.
+            fs:SetText(full)
+            fs._isTruncated = false
+            C_Timer.After(0, fit)
+            return
+        end
+        fs:SetText(full)
+        if widthOf() <= maxW then fs._isTruncated = false; return end
+        local ELLIPSIS = "..."
+        local lo, hi = 1, #full
+        while lo < hi do
+            local mid = math.floor((lo + hi + 1) / 2)
+            fs:SetText(full:sub(1, mid) .. ELLIPSIS)
+            if widthOf() <= maxW then lo = mid else hi = mid - 1 end
+        end
+        fs:SetText(full:sub(1, lo) .. ELLIPSIS)
+        fs._isTruncated = true
+    end
+    fit()
+    fs._fit = fit
+    fs.SetEllipsisText = function(self, newText)
+        self._fullText = newText or ""
+        fit()
+    end
+
+    -- Re-fit when the parent's size changes (covers first-layout-after-show
+    -- and any later panel resize). FontStrings don't fire OnSizeChanged
+    -- themselves, so the parent is where we listen.
+    local parent = opts.hoverParent or fs:GetParent()
+    if parent and not fs._sizeHook then
+        parent:HookScript("OnSizeChanged", fit)
+        fs._sizeHook = true
+    end
+
+    if opts.tooltip ~= false and parent and not fs._hoverHost then
+        local host = CreateFrame("Frame", nil, parent)
+        host:SetAllPoints(fs)
+        host:EnableMouse(true)
+        fs._hoverHost = host
+        local anchor = opts.tooltipAnchor or "ANCHOR_TOP"
+        host:SetScript("OnEnter", function(self)
+            if not fs._isTruncated then return end
+            if self._timer then self._timer:Cancel() end
+            self._timer = C_Timer.NewTimer(0.5, function()
+                self._timer = nil
+                if not self:IsMouseOver() then return end
+                GameTooltip:SetOwner(self, anchor)
+                GameTooltip:SetText(fs._fullText or "", 1, 1, 1)
+                GameTooltip:Show()
+                self._shown = true
+            end)
+        end)
+        host:SetScript("OnLeave", function(self)
+            if self._timer then self._timer:Cancel(); self._timer = nil end
+            if self._shown then GameTooltip:Hide(); self._shown = nil end
+        end)
+    end
+    return fs
+end
+
+-- Back-compat shim: existing callers used the explicit-maxWidth signature.
+-- Routes to the unified helper so there's a single implementation to fix.
+function ns.AttachEllipsisToFontString(fs, fullText, maxWidth)
+    return ns.MakeEllipsisLabel(fs, fullText, { maxWidth = maxWidth })
 end
 
 function ns.CreateBouncePulse(region, fromAlpha, toAlpha, duration, smoothing)

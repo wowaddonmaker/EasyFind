@@ -375,7 +375,6 @@ local function CreateCheckbox(parent, name, label, tooltipText, compact, width)
     local text = checkbox:CreateFontString(nil, "OVERLAY", compact and "GameFontHighlightSmall" or "GameFontNormalSmall")
     text:SetPoint("LEFT", checkbox, "LEFT", compact and 6 or 8, 0)
     text:SetJustifyH("LEFT")
-    text:SetText(label or "")
     checkbox.Text = text
 
     local track = CreateFrame("Frame", nil, checkbox)
@@ -388,6 +387,7 @@ local function CreateCheckbox(parent, name, label, tooltipText, compact, width)
     checkbox.track = track
 
     text:SetPoint("RIGHT", track, "LEFT", -8, 0)
+    ns.MakeEllipsisLabel(text, label or "")
 
     local knob = CreateFrame("Frame", nil, track)
     knob:SetSize(knobSize, knobSize)
@@ -623,7 +623,7 @@ local function CreateSegmentedPresetRow(parent, labelText, choices, getter, sett
     label:SetPoint("RIGHT", row, "RIGHT", -214, 0)
     label:SetJustifyH("LEFT")
     label:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
-    label:SetText(labelText)
+    ns.MakeEllipsisLabel(label, labelText)
     row.label = label
 
     local trackW, trackH = 198, 24
@@ -655,8 +655,10 @@ local function CreateSegmentedPresetRow(parent, labelText, choices, getter, sett
         btn:SetPoint("LEFT", track, "LEFT", 2 + (i - 1) * halfW, 0)
         btn.choice = choice
         local text = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        text:SetPoint("CENTER")
-        text:SetText(choice.label)
+        text:SetPoint("LEFT", btn, "LEFT", 4, 0)
+        text:SetPoint("RIGHT", btn, "RIGHT", -4, 0)
+        text:SetJustifyH("CENTER")
+        ns.MakeEllipsisLabel(text, choice.label)
         btn._label = text
         btn:SetScript("OnClick", function(self)
             if not row.enabled then return end
@@ -725,7 +727,7 @@ local function CreatePresetRow(parent, labelText, choices, getter, setter, toolt
     label:SetPoint("RIGHT", row, "RIGHT", -controlW - 18, 0)
     label:SetJustifyH("LEFT")
     label:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
-    label:SetText(labelText)
+    ns.MakeEllipsisLabel(label, labelText)
     row.label = label
 
     row.buttons = {}

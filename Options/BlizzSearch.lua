@@ -895,11 +895,10 @@ end
 -- and the taint propagates into ShowUIPanel / UIParentPanelManager.
 if StaticPopupDialogs and not StaticPopupDialogs["EASYFIND_UNAPPLIED_SETTINGS"] then
     StaticPopupDialogs["EASYFIND_UNAPPLIED_SETTINGS"] = {
-        text = SETTINGS_CONFIRM_DISCARD or
-            "You have settings that have not been applied.\nAre you sure you wish to exit?",
-        button1 = SETTINGS_UNAPPLIED_EXIT or "Exit",
-        button2 = SETTINGS_UNAPPLIED_APPLY_AND_EXIT or "Apply and Exit",
-        button3 = SETTINGS_UNAPPLIED_CANCEL or "Cancel",
+        text = SETTINGS_CONFIRM_DISCARD or ns.L["POPUP_UNAPPLIED_SETTINGS"],
+        button1 = SETTINGS_UNAPPLIED_EXIT or ns.L["POPUP_UNAPPLIED_EXIT"],
+        button2 = SETTINGS_UNAPPLIED_APPLY_AND_EXIT or ns.L["POPUP_UNAPPLIED_APPLY"],
+        button3 = SETTINGS_UNAPPLIED_CANCEL or ns.L["POPUP_UNAPPLIED_CANCEL"],
         OnButton1 = function()
             if BlizzOptionsSearch.RevertPendingChanges then
                 BlizzOptionsSearch:RevertPendingChanges()

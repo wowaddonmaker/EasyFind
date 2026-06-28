@@ -3523,7 +3523,7 @@ function Database:BuildUIDatabase()
                 {
                     name = _G["SPELLBOOK"] or "Spellbook",
                     keywords = {"spellbook", "spells", "abilities", "skills", "spell book"},
-                    category = "Talents",
+                    category = "Menu Bar",
                     steps = {{ waitForFrame = "PlayerSpellsFrame", tabIndex = 3 }},
                 },
             },

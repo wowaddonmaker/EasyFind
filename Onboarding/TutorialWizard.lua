@@ -72,6 +72,12 @@ local SEARCH_TUTORIAL_SLIDES = {
         text = L["TUT_SLIDE_SHORTKEYS"],
     },
     {
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-wowhead-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
+        text = L["TUT_SLIDE_WOWHEAD"],
+    },
+    {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-filters-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
@@ -100,7 +106,7 @@ local SEARCH_TUTORIAL_SLIDES = {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-currency-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
-        text = L["TUT_SLIDE_QUICK_FILTERS"],
+        text = L["TUT_SLIDE_CURRENCY_REP"],
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-macros-hires",
@@ -130,16 +136,34 @@ local USE_TUTORIAL_SLIDES = {
         text = L["TUT_SLIDE_USE_GEAR"],
     },
     {
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-mounts-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
+        text = L["TUT_SLIDE_USE_MOUNTS"],
+    },
+    {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-02-hires",
-        texCoord = TutorialTexCoord(1316, 552, 2048, 1024),
-        w = 658, h = 276,
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
         text = L["TUT_SLIDE_USE_MACROS"],
     },
     {
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-abilities-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
+        text = L["TUT_SLIDE_USE_ABILITIES"],
+    },
+    {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-03-hires",
-        texCoord = TutorialTexCoord(1314, 890, 2048, 1024),
-        w = 657, h = 445,
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
         text = L["TUT_SLIDE_USE_TOYS"],
+    },
+    {
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-commands-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
+        text = L["TUT_SLIDE_USE_COMMANDS"],
     },
 }
 local CALCULATOR_TUTORIAL_SLIDES = {
@@ -291,13 +315,22 @@ local function MakePage(parent)
     return p
 end
 
-local function HeaderText(parent, text, font)
+local function HeaderText(parent, text, font, maxWidth)
     local fs = parent:CreateFontString(nil, "OVERLAY", font or "GameFontNormalHuge")
     ApplyInter(fs, "semibold")
     fs:SetText(text)
     fs:SetTextColor(Utils.RGB(TEXT_PRIM, 1))
+    if maxWidth and maxWidth > 0 then
+        ns.AttachEllipsisToFontString(fs, text, maxWidth)
+    end
     return fs
 end
+
+-- Inner width available for headers inside the wizard panel. The wizard frame
+-- is WIZ_W wide; subtract margins for the back arrow on the left and the
+-- close-X on the right so a long localised title gets ellipsised instead of
+-- overflowing under the chrome.
+local HEADER_MAX_W = WIZ_W - 140
 
 local function BodyText(parent, text)
     local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -337,7 +370,7 @@ local function BuildPage1(parent)
     logo:SetPoint("TOP", p, "TOP", 0, -40)
 
     local version = ns.version or (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("EasyFind", "Version")) or "2.0.0"
-    local title = HeaderText(p, L["TUT_WELCOME_TITLE"]:format(version))
+    local title = HeaderText(p, L["TUT_WELCOME_TITLE"]:format(version), nil, HEADER_MAX_W)
     title:SetPoint("TOP", logo, "BOTTOM", 0, -22)
     do
         local path, sz, fl = title:GetFont()
@@ -379,10 +412,16 @@ local function FeatureTile(parent, atlas, file, coords, title, desc, onClick)
     end
 
     local fs = tile:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    fs:SetText(title)
     fs:SetTextColor(Utils.RGB(GOLD, 1))
     fs:SetPoint("TOPLEFT", icon, "TOPRIGHT", 12, -2)
+    fs:SetPoint("RIGHT", tile, "RIGHT", -12, 0)
+    fs:SetJustifyH("LEFT")
     ApplyInter(fs, "semibold")
+    -- Let the helper auto-derive width from L+R anchors on each fit; passing
+    -- fs:GetWidth() here would freeze maxWidth to the FontString's natural
+    -- string width (anchors aren't resolved yet at creation), which then
+    -- triggers spurious truncation on the hover SetScale.
+    ns.MakeEllipsisLabel(fs, title)
 
     local body = tile:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     body:SetText(desc)
@@ -481,7 +520,7 @@ local function BuildPage2(parent)
     local grid = CreateFrame("Frame", nil, p)
     grid:SetAllPoints(p)
 
-    local title = HeaderText(grid, L["TUT_FEATURES_TITLE"], "GameFontNormalLarge")
+    local title = HeaderText(grid, L["TUT_FEATURES_TITLE"], "GameFontNormalLarge", HEADER_MAX_W)
     title:SetPoint("TOP", grid, "TOP", 0, -28)
 
     local sub = BodyText(grid, L["TUT_FEATURES_SUBTITLE"])
@@ -527,7 +566,7 @@ local function BuildPage2(parent)
         back:SetPoint("TOPLEFT", d, "TOPLEFT", 12, -10)
         back:SetScript("OnClick", ShowGrid)
 
-        local h = HeaderText(d, headerText, "GameFontNormalLarge")
+        local h = HeaderText(d, headerText, "GameFontNormalLarge", HEADER_MAX_W)
         h:SetPoint("TOP", d, "TOP", 0, -28)
 
         if opts.image then
@@ -560,7 +599,7 @@ local function BuildPage2(parent)
         back:SetPoint("TOPLEFT", d, "TOPLEFT", 12, -10)
         back:SetScript("OnClick", ShowGrid)
 
-        local h = HeaderText(d, headerText, "GameFontNormalLarge")
+        local h = HeaderText(d, headerText, "GameFontNormalLarge", HEADER_MAX_W)
         h:SetPoint("TOP", d, "TOP", 0, -28)
 
         local image = d:CreateTexture(nil, "ARTWORK")
@@ -579,25 +618,22 @@ local function BuildPage2(parent)
             end
         end
 
-        local slideText = BodyText(d, "")
-        slideText:SetPoint("TOP", image, "BOTTOM", 0, -8)
-        slideText:SetWidth(WIZ_W - 104)
-        slideText:SetJustifyH("LEFT")
-        slideText:SetSpacing(2)
-
-        -- Inline blue hyperlinks in the slide body. Use |Heasyfind:<topic>:<id>|h[text]|h
-        -- in the slide string; OnHyperlinkClick dispatches per topic.
-        d:SetHyperlinksEnabled(true)
-        d:SetScript("OnHyperlinkClick", function(_, link)
-            if link == "easyfind:wizard:actions" then
-                GoToActionsDeck()
-            elseif link == "easyfind:options:aliases" then
+        -- Inline link chips inside the slide body. Use {L:id}text{/L} in the L
+        -- string; ns.BuildFlowText word-wraps and turns link atoms into chips
+        -- with glow + pulse on hover, matching the options-home tutorial chip.
+        local SLIDE_FLOW_WIDTH = WIZ_W - 104
+        local linkDispatch = {
+            ["options:aliases"] = function()
                 FinishWizard(false)
                 if ns.Options and ns.Options.OpenAtAliases then
                     ns.Options:OpenAtAliases()
                 end
-            end
-        end)
+            end,
+            ["wizard:actions"] = function()
+                GoToActionsDeck()
+            end,
+        }
+        local slideFlow
 
         local controls = CreateFrame("Frame", nil, d)
         controls:SetSize(148, 18)
@@ -627,18 +663,31 @@ local function BuildPage2(parent)
 
             local slide = slides[idx]
             overlayTex:Hide()
-            slideText:ClearAllPoints()
+            if slideFlow then
+                slideFlow:Hide()
+                slideFlow:SetParent(nil)
+                slideFlow = nil
+            end
+            slideFlow = ns.BuildFlowText(d, slide.text or "", {
+                width = SLIDE_FLOW_WIDTH,
+                font = "GameFontHighlightSmall",
+                linkDispatch = linkDispatch,
+                textColor = TEXT_BODY,
+                interWeight = "regular",
+                interSize = 11,
+            })
+            slideFlow:ClearAllPoints()
             if slide.live and liveDemo then
                 image:Hide()
                 liveDemo:Show()
-                slideText:SetPoint("TOP", liveDemo, "BOTTOM", 0, -16)
+                slideFlow:SetPoint("TOP", liveDemo, "BOTTOM", 0, -16)
             else
                 if liveDemo then liveDemo:Hide() end
                 image:Show()
                 SetTutorialImage(image, slide.image, slide.texCoord)
                 local w, hgt = FitSize(slide.w, slide.h, TUTORIAL_IMAGE_MAX_W, TUTORIAL_IMAGE_MAX_H)
                 image:SetSize(w, hgt)
-                slideText:SetPoint("TOP", image, "BOTTOM", 0, -8)
+                slideFlow:SetPoint("TOP", image, "BOTTOM", 0, -8)
                 local ov = slide.overlay
                 if ov then
                     overlayTex:SetTexture(ov.tex)
@@ -650,7 +699,6 @@ local function BuildPage2(parent)
                     overlayTex:Show()
                 end
             end
-            slideText:SetText(slide.text or "")
             counter:SetText(idx .. " / " .. count)
         end
 
@@ -792,7 +840,7 @@ end
 local function BuildPage3(parent)
     local p = MakePage(parent)
 
-    local title = HeaderText(p, L["TUT_KEYBIND_HEADER"], "GameFontNormalLarge")
+    local title = HeaderText(p, L["TUT_KEYBIND_HEADER"], "GameFontNormalLarge", HEADER_MAX_W)
     title:SetPoint("TOP", p, "TOP", 0, -36)
 
     local sub = BodyText(p, "")

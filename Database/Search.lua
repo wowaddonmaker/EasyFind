@@ -822,6 +822,11 @@ function Database:SearchUI(query, skipCategories)
         end
     end
 
+    -- Distinct 1-2 char code per skippable category. The incremental search
+    -- reuses prevCandidates only when skipKey == prevSkipKey, so every
+    -- category that Query.lua may put in skipCategories must change the key
+    -- when toggled, otherwise re-enabling a filter mid-query leaves the
+    -- previously-filtered items missing from the candidate set.
     local skipKey = skipCategories and (
         (skipCategories["Mount"] and "M" or "") ..
         (skipCategories["Toy"] and "T" or "") ..
@@ -829,7 +834,19 @@ function Database:SearchUI(query, skipCategories)
         (skipCategories["Outfit"] and "O" or "") ..
         (skipCategories["Heirloom"] and "H" or "") ..
         (skipCategories["Loot"] and "L" or "") ..
-        (skipCategories["Statistic"] and "S" or "")
+        (skipCategories["Statistic"] and "S" or "") ..
+        (skipCategories["Bag"] and "Ba" or "") ..
+        (skipCategories["Macro"] and "Mc" or "") ..
+        (skipCategories["Game Settings"] and "Gs" or "") ..
+        (skipCategories["AddOn Settings"] and "Ao" or "") ..
+        (skipCategories["Ability"] and "Ab" or "") ..
+        (skipCategories["Boss"] and "Bo" or "") ..
+        (skipCategories["Title"] and "Ti" or "") ..
+        (skipCategories["Gear Set"] and "Gr" or "") ..
+        (skipCategories["Appearance"] and "Ap" or "") ..
+        (skipCategories["Appearance Set"] and "Aps" or "") ..
+        (skipCategories["Talent"] and "Tn" or "") ..
+        (skipCategories["Command"] and "Cm" or "")
     ) or ""
 
     -- prevCandidates can miss entries the now-more-permissive pass matches:
