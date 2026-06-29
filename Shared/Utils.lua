@@ -795,10 +795,10 @@ ns.RESULT_ICON_SIZE = 18
 ns.TEXT_PRIMARY = {1.00, 0.97, 0.86}
 ns.TEXT_BODY = {0.78, 0.78, 0.80}
 ns.TEXT_DIM = {0.55, 0.55, 0.58}
-ns.BTN_FILL_NORMAL = {0.095, 0.095, 0.108}
-ns.BTN_FILL_HOVER = {0.155, 0.155, 0.172}
-ns.BTN_FILL_PRESSED = {0.065, 0.065, 0.078}
-ns.BTN_FILL_DISABLED = {0.070, 0.070, 0.080}
+ns.BTN_FILL_NORMAL = {0.155, 0.155, 0.172}
+ns.BTN_FILL_HOVER = {0.215, 0.215, 0.235}
+ns.BTN_FILL_PRESSED = {0.115, 0.115, 0.130}
+ns.BTN_FILL_DISABLED = {0.075, 0.075, 0.085}
 ns.LINK_COLOR = {0.44, 0.84, 1.0}
 ns.LINK_HOVER = {0.72, 0.94, 1.0}
 ns.LINK_GLOW_COLOR = {0.3, 0.85, 1.0, 0.7}
@@ -1582,8 +1582,77 @@ function ns.MakeEllipsisLabel(fs, text, opts)
     fs:SetMaxLines(1)
     fs._fullText = text or ""
 
+    local ANCHOR_X = {
+        LEFT = 0, TOPLEFT = 0, BOTTOMLEFT = 0,
+        CENTER = 0.5, TOP = 0.5, BOTTOM = 0.5,
+        RIGHT = 1, TOPRIGHT = 1, BOTTOMRIGHT = 1,
+    }
+    local function utf8CharCount(s)
+        local count, i, n = 0, 1, #s
+        while i <= n do
+            count = count + 1
+            local b = s:byte(i) or 0
+            if b < 0x80 then i = i + 1
+            elseif b < 0xE0 then i = i + 2
+            elseif b < 0xF0 then i = i + 3
+            elseif b < 0xF8 then i = i + 4
+            else i = i + 1 end
+        end
+        return count
+    end
+    local function utf8SubChars(s, chars)
+        if chars <= 0 then return "" end
+        local count, i, n = 0, 1, #s
+        while i <= n do
+            count = count + 1
+            local b = s:byte(i) or 0
+            local step
+            if b < 0x80 then step = 1
+            elseif b < 0xE0 then step = 2
+            elseif b < 0xF0 then step = 3
+            elseif b < 0xF8 then step = 4
+            else step = 1 end
+            local nextI = i + step
+            if count == chars then return s:sub(1, mmin(nextI - 1, n)) end
+            i = nextI
+        end
+        return s
+    end
+    local function pointUses(point, side)
+        return point == side or (point and point:find(side, 1, true) ~= nil)
+    end
+    local function pointX(relativeTo, relativePoint, x)
+        local w = relativeTo and relativeTo.GetWidth and relativeTo:GetWidth()
+        local anchor = ANCHOR_X[relativePoint or ""]
+        if not w or w <= 0 or not anchor then return nil end
+        return w * anchor + (x or 0)
+    end
+    local function measureFromPoints()
+        if not fs.GetNumPoints or not fs.GetPoint then return nil end
+        local leftX, rightX, relFrame
+        for i = 1, fs:GetNumPoints() do
+            local point, relativeTo, relativePoint, x = fs:GetPoint(i)
+            relativeTo = relativeTo or fs:GetParent()
+            if relativeTo then
+                if relFrame and relFrame ~= relativeTo then return nil end
+                relFrame = relativeTo
+            end
+            local xPos = pointX(relativeTo, relativePoint or point, x)
+            if xPos then
+                if pointUses(point, "LEFT") then
+                    leftX = xPos
+                elseif pointUses(point, "RIGHT") then
+                    rightX = xPos
+                end
+            end
+        end
+        if leftX and rightX and rightX > leftX then return rightX - leftX end
+        return nil
+    end
     local function measureMax()
         if opts.maxWidth then return opts.maxWidth end
+        local pointW = measureFromPoints()
+        if pointW and pointW > 0 then return pointW end
         local left, right = fs:GetLeft(), fs:GetRight()
         if left and right and right > left then return right - left end
         return fs:GetWidth() or 0
@@ -1594,29 +1663,39 @@ function ns.MakeEllipsisLabel(fs, text, opts)
             or 0
     end
 
-    local fit
-    fit = function()
+    local fit, scheduleFit
+    scheduleFit = function()
+        if fs._ellipsisFitPending then return end
+        if not (C_Timer and C_Timer.After) then return end
+        fs._ellipsisFitPending = true
+        C_Timer.After(0, function()
+            fs._ellipsisFitPending = nil
+            if fit then fit(true) end
+        end)
+    end
+    fit = function(fromDeferred)
         local full = fs._fullText or ""
         if full == "" then fs:SetText(""); fs._isTruncated = false; return end
         local maxW = measureMax()
         if maxW <= 0 then
             -- Layout hasn't computed L/R yet (FontString just created, parent
-            -- not shown). Show full text now and try again on the next frame.
+            -- not shown). Show full text now and try once after layout settles;
+            -- OnShow/OnSizeChanged hooks below handle later hidden-tab reveals.
             fs:SetText(full)
             fs._isTruncated = false
-            C_Timer.After(0, fit)
+            if not fromDeferred then scheduleFit() end
             return
         end
         fs:SetText(full)
         if widthOf() <= maxW then fs._isTruncated = false; return end
         local ELLIPSIS = "..."
-        local lo, hi = 1, #full
+        local lo, hi = 0, utf8CharCount(full)
         while lo < hi do
             local mid = math.floor((lo + hi + 1) / 2)
-            fs:SetText(full:sub(1, mid) .. ELLIPSIS)
+            fs:SetText(utf8SubChars(full, mid) .. ELLIPSIS)
             if widthOf() <= maxW then lo = mid else hi = mid - 1 end
         end
-        fs:SetText(full:sub(1, lo) .. ELLIPSIS)
+        fs:SetText(utf8SubChars(full, lo) .. ELLIPSIS)
         fs._isTruncated = true
     end
     fit()
@@ -1632,6 +1711,7 @@ function ns.MakeEllipsisLabel(fs, text, opts)
     local parent = opts.hoverParent or fs:GetParent()
     if parent and not fs._sizeHook then
         parent:HookScript("OnSizeChanged", fit)
+        parent:HookScript("OnShow", fit)
         fs._sizeHook = true
     end
 

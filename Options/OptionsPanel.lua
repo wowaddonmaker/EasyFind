@@ -250,17 +250,29 @@ local function HideRoundedBorder(frame)
 end
 local HideRoundedFrameBorder = HideRoundedBorder
 
+local function PaintControlFill(frame, color, alpha)
+    PaintRoundedFill(frame, color[1], color[2], color[3], alpha or 1, true)
+end
+
 local function StyleSelectorButton(btnFrame, height)
     btnFrame:SetBackdrop(nil)
     ns.CreateRoundedRectBorder(btnFrame)
     ns.SetRoundedRectBarHeight(btnFrame, mmin(height or 22, 10))
     HideRoundedFrameBorder(btnFrame)
-    PaintRoundedFill(btnFrame, 0.095, 0.095, 0.108, 1)
+    PaintControlFill(btnFrame, ns.BTN_FILL_NORMAL, 1)
     btnFrame:HookScript("OnEnter", function(self)
-        if self:IsEnabled() then PaintRoundedFill(self, 0.155, 0.155, 0.172, 1) end
+        if self:IsEnabled() then PaintControlFill(self, ns.BTN_FILL_HOVER, 1) end
     end)
     btnFrame:HookScript("OnLeave", function(self)
-        if self:IsEnabled() then PaintRoundedFill(self, 0.095, 0.095, 0.108, 1) end
+        if self:IsEnabled() then PaintControlFill(self, ns.BTN_FILL_NORMAL, 1) end
+    end)
+    btnFrame:HookScript("OnMouseDown", function(self)
+        if self:IsEnabled() then PaintControlFill(self, ns.BTN_FILL_PRESSED, 1) end
+    end)
+    btnFrame:HookScript("OnMouseUp", function(self)
+        if self:IsEnabled() then
+            PaintControlFill(self, self:IsMouseOver() and ns.BTN_FILL_HOVER or ns.BTN_FILL_NORMAL, 1)
+        end
     end)
 end
 
@@ -599,16 +611,16 @@ end
 
 local function PaintPresetButton(btn, active, hover, enabled)
     if not enabled then
-        SetModernButtonFill(btn, 0.070, 0.070, 0.080)
+        SetModernButtonFill(btn, unpack(ns.BTN_FILL_DISABLED))
         if btn._label then btn._label:SetTextColor(Utils.RGB(TEXT_DIM, 1)) end
     elseif active then
         SetModernButtonFill(btn, 0.17, 0.48, 0.72)
         if btn._label then btn._label:SetTextColor(1, 1, 1, 1) end
     elseif hover then
-        SetModernButtonFill(btn, 0.155, 0.155, 0.172)
+        SetModernButtonFill(btn, unpack(ns.BTN_FILL_HOVER))
         if btn._label then btn._label:SetTextColor(1, 1, 1, 1) end
     else
-        SetModernButtonFill(btn, 0.095, 0.095, 0.108)
+        SetModernButtonFill(btn, unpack(ns.BTN_FILL_NORMAL))
         if btn._label then btn._label:SetTextColor(Utils.RGB(TEXT_BODY, 1)) end
     end
 end
@@ -632,7 +644,7 @@ local function CreateSegmentedPresetRow(parent, labelText, choices, getter, sett
     track:SetPoint("RIGHT", row, "RIGHT", -8, 0)
     ns.CreateRoundedRectBorder(track)
     ns.SetRoundedRectBarHeight(track, trackH)
-    ns.SetRoundedRectFill(track, 0.095, 0.095, 0.108, 0.96, true)
+    PaintControlFill(track, ns.BTN_FILL_NORMAL, 0.96)
     HideRoundedFrameBorder(track)
     row.track = track
 
@@ -701,7 +713,7 @@ local function CreateSegmentedPresetRow(parent, labelText, choices, getter, sett
             local c = enabled and NORMAL_TEXT or DISABLED_TEXT
             self.label:SetTextColor(Utils.RGB(c, 1))
         end
-        ns.SetRoundedRectFill(track, enabled and 0.095 or 0.070, enabled and 0.095 or 0.070, enabled and 0.108 or 0.080, 0.96, true)
+        PaintControlFill(track, enabled and ns.BTN_FILL_NORMAL or ns.BTN_FILL_DISABLED, 0.96)
         for _, btn in ipairs(self.buttons) do
             if enabled then btn:Enable() else btn:Disable() end
         end
@@ -1987,7 +1999,7 @@ function Options:Initialize()
     ns.CreateRoundedRectBorder(aliasSearchShell)
     ns.SetRoundedRectBarHeight(aliasSearchShell, 10)
     HideRoundedFrameBorder(aliasSearchShell)
-    PaintRoundedFill(aliasSearchShell, 0.075, 0.075, 0.085, 1)
+    PaintControlFill(aliasSearchShell, ns.BTN_FILL_PRESSED, 1)
 
     local aliasSearchIcon = aliasSearchShell:CreateTexture(nil, "OVERLAY")
     aliasSearchIcon:SetSize(13, 13)
@@ -2141,26 +2153,26 @@ function Options:Initialize()
     shareTools:SetPoint("RIGHT", aliasesTab, "RIGHT", -8, 0)
     shareTools:SetHeight(22)
 
-    -- Export / import blend with the table below them (same fill), with the
-    -- scope cogwheel tucked into the right edge of the (slightly wider) export
-    -- button. Import matches export's width.
+    -- Export / import use the same visible resting fill as other option buttons,
+    -- with the scope cogwheel tucked into the right edge of the export button.
+    -- Import matches export's width.
     local SHARE_BTN_W = 92
-    local TABLE_FILL = { 0.075, 0.075, 0.085, 0.92 }
-    local function UseTableFill(btn)
-        ns.SetRoundedRectBorderFillColor(btn, unpack(TABLE_FILL))
+    local SHARE_BTN_FILL = { ns.BTN_FILL_NORMAL[1], ns.BTN_FILL_NORMAL[2], ns.BTN_FILL_NORMAL[3], 0.92 }
+    local function UseShareButtonFill(btn)
+        ns.SetRoundedRectBorderFillColor(btn, unpack(SHARE_BTN_FILL))
         btn:HookScript("OnLeave", function(self)
-            if self:IsEnabled() then ns.SetRoundedRectBorderFillColor(self, unpack(TABLE_FILL)) end
+            if self:IsEnabled() then ns.SetRoundedRectBorderFillColor(self, unpack(SHARE_BTN_FILL)) end
         end)
         btn:HookScript("OnMouseUp", function(self)
             if self:IsEnabled() and not self:IsMouseOver() then
-                ns.SetRoundedRectBorderFillColor(self, unpack(TABLE_FILL))
+                ns.SetRoundedRectBorderFillColor(self, unpack(SHARE_BTN_FILL))
             end
         end)
     end
 
     local exportBtn = CreateModernButton(shareTools, L["SHORTKEY_EXPORT"], SHARE_BTN_W, 22)
     exportBtn:SetPoint("LEFT", shareTools, "LEFT", 0, 0)
-    UseTableFill(exportBtn)
+    UseShareButtonFill(exportBtn)
     -- Shift the label left so it stays centered in the space left of the cog.
     exportBtn._label:ClearAllPoints()
     exportBtn._label:SetPoint("CENTER", exportBtn, "CENTER", -9, 0)
@@ -2181,7 +2193,7 @@ function Options:Initialize()
 
     local importBtn = CreateModernButton(shareTools, L["SHORTKEY_IMPORT"], SHARE_BTN_W, 22)
     importBtn:SetPoint("LEFT", exportBtn, "RIGHT", 8, 0)
-    UseTableFill(importBtn)
+    UseShareButtonFill(importBtn)
     importBtn:SetScript("OnClick", function() ShowShareString(false) end)
 
     -- Column geometry shared by the header and every row so they line up. Rows
