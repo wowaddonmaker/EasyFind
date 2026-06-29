@@ -3,6 +3,7 @@
 local H = require("Harness")
 local env = H.newEnv()
 local ns = H.newNs(env)
+H.loadModule("Shared/SearchText.lua", env, ns)
 local Aliases = H.loadModule("Shared/Aliases.lua", env, ns)
 
 assert(Aliases, "Aliases module returned nil")

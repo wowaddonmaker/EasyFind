@@ -14,6 +14,8 @@ local SafeAfter = Utils.SafeAfter
 
 local GLOBAL_SEARCH_CATEGORIES = MapSearchData.GLOBAL_SEARCH_CATEGORIES
 local STATIC_LOCATIONS = ns.STATIC_LOCATIONS or MapSearchData.STATIC_LOCATIONS or {}
+local GLOBAL_INSTANCE_CACHE_JOB = "map:global-instances"
+local GLOBAL_INSTANCE_CACHE_BUDGET_MS = 2
 
 local CreateFrame = CreateFrame
 local hooksecurefunc = hooksecurefunc
@@ -222,10 +224,19 @@ local localScanCache = nil
 -- Promoted zone-style POIs with breadcrumb paths, so BuildResults doesn't
 -- allocate ~300 tables per keystroke.
 local promotedInstancePOIs = nil
+local globalInstanceCacheBuilding = false
+local globalInstanceCacheWaiters
+local globalInstanceCacheJobScheduler
+local globalInstanceCacheBuildToken = 0
+local BuildPromotedInstanceCache
 
 local function ReleaseGlobalMapCaches()
+    globalInstanceCacheBuildToken = globalInstanceCacheBuildToken + 1
     globalInstanceCache = nil
+    globalInstanceCacheBuilding = false
+    globalInstanceCacheWaiters = nil
     promotedInstancePOIs = nil
+    Search.uiGlobalInstanceRefreshPending = nil
     Search.cachedAllFlightMasters = nil
     MapSearch._cachedFlightMasters = nil
     if ns.MapSearch.ResetSearchPoisCache then ns.MapSearch.ResetSearchPoisCache() end
@@ -245,8 +256,7 @@ do
     invalidator:RegisterEvent("CHALLENGE_MODE_MAPS_UPDATE")
     invalidator:SetScript("OnEvent", function()
         if ns.MapSearch.ResetWorldZoneCache then ns.MapSearch:ResetWorldZoneCache() end
-        globalInstanceCache = nil
-        promotedInstancePOIs = nil
+        ReleaseGlobalMapCaches()
         localScanCache = nil
         wipe(staticLocationCache)
         -- Reset helpers are below this block, so go through the namespace.
@@ -436,15 +446,163 @@ CollectGlobalInstanceMap = function(self, out, seen, nameSeen, parentMapID)
     end
 end
 
-function MapSearch:GetGlobalInstanceCache()
+local function NotifyGlobalInstanceCacheWaiters(ready)
+    local waiters = globalInstanceCacheWaiters
+    globalInstanceCacheWaiters = nil
+    if not waiters then return end
+    for i = 1, #waiters do
+        pcall(waiters[i], ready)
+    end
+end
+
+local function BuildGlobalInstanceCacheSync(self)
     if globalInstanceCache then return globalInstanceCache end
 
+    globalInstanceCacheBuildToken = globalInstanceCacheBuildToken + 1
+    globalInstanceCacheBuilding = false
     globalInstanceCache = {}
     CollectGlobalInstanceMap(self, globalInstanceCache, {}, {}, 946)
+    NotifyGlobalInstanceCacheWaiters(true)
     return globalInstanceCache
 end
 
-local function BuildPromotedInstanceCache(self)
+local function FinishGlobalInstanceCacheBuild(self, token, cache, done)
+    if token ~= globalInstanceCacheBuildToken then
+        globalInstanceCacheBuilding = false
+        done(false, "cancelled")
+        return
+    end
+
+    globalInstanceCache = cache or {}
+    globalInstanceCacheBuilding = false
+    if BuildPromotedInstanceCache then
+        BuildPromotedInstanceCache(self)
+    end
+    NotifyGlobalInstanceCacheWaiters(true)
+    done()
+end
+
+local function RunGlobalInstanceCacheBuild(self, done)
+    if globalInstanceCache then
+        NotifyGlobalInstanceCacheWaiters(true)
+        done()
+        return
+    end
+    if globalInstanceCacheBuilding then
+        done(false, "already running")
+        return
+    end
+
+    if not SafeAfter then
+        BuildGlobalInstanceCacheSync(self)
+        done()
+        return
+    end
+
+    globalInstanceCacheBuilding = true
+    globalInstanceCacheBuildToken = globalInstanceCacheBuildToken + 1
+    local token = globalInstanceCacheBuildToken
+    local cache, seen, nameSeen = {}, {}, {}
+    local rootChildren = GetMapChildrenInfo(946, nil, false)
+    local stack = rootChildren and {{ children = rootChildren, index = 1 }} or {}
+
+    local function step()
+        if token ~= globalInstanceCacheBuildToken then
+            globalInstanceCacheBuilding = false
+            done(false, "cancelled")
+            return
+        end
+
+        local startMs = debugprofilestop and debugprofilestop() or 0
+        local processed = 0
+        while #stack > 0 do
+            local frame = stack[#stack]
+            local child = frame.children and frame.children[frame.index]
+            if not child then
+                stack[#stack] = nil
+            else
+                frame.index = frame.index + 1
+                AppendGlobalDungeonEntrances(self, cache, seen, nameSeen, child.mapID)
+                AppendGlobalDelves(cache, seen, nameSeen, child.mapID)
+                AppendGlobalStaticLocations(cache, seen, nameSeen, child.mapID)
+
+                local children = GetMapChildrenInfo(child.mapID, nil, false)
+                if children and #children > 0 then
+                    stack[#stack + 1] = { children = children, index = 1 }
+                end
+
+                processed = processed + 1
+                if debugprofilestop then
+                    if (debugprofilestop() - startMs) >= GLOBAL_INSTANCE_CACHE_BUDGET_MS then
+                        SafeAfter(0, step)
+                        return
+                    end
+                elseif processed >= 20 then
+                    SafeAfter(0, step)
+                    return
+                end
+            end
+        end
+
+        FinishGlobalInstanceCacheBuild(self, token, cache, done)
+    end
+
+    SafeAfter(0, step)
+end
+
+local function EnsureGlobalInstanceCacheJob(self)
+    local sched = ns.Scheduler
+    if not sched then return nil end
+    if globalInstanceCacheJobScheduler == sched then return sched end
+
+    globalInstanceCacheJobScheduler = sched
+    sched:Register(GLOBAL_INSTANCE_CACHE_JOB, {
+        cancelGroup = "map-global-instances",
+        run = function(_, done)
+            RunGlobalInstanceCacheBuild(self, done)
+        end,
+    })
+    return sched
+end
+
+function MapSearch:HasGlobalInstanceCache()
+    return globalInstanceCache ~= nil
+end
+
+function MapSearch:RequestGlobalInstanceCache(onDone)
+    if globalInstanceCache then
+        if onDone then pcall(onDone, true) end
+        return false
+    end
+
+    if onDone then
+        globalInstanceCacheWaiters = globalInstanceCacheWaiters or {}
+        globalInstanceCacheWaiters[#globalInstanceCacheWaiters + 1] = onDone
+    end
+
+    local sched = EnsureGlobalInstanceCacheJob(self)
+    if not sched then
+        RunGlobalInstanceCacheBuild(self, function() end)
+        return true
+    end
+
+    local status = sched:Status(GLOBAL_INSTANCE_CACHE_JOB)
+    if status == "complete" then
+        sched:Reset(GLOBAL_INSTANCE_CACHE_JOB)
+        status = sched:Status(GLOBAL_INSTANCE_CACHE_JOB)
+    end
+    if status ~= "queued" and status ~= "running" then
+        sched:Enqueue(GLOBAL_INSTANCE_CACHE_JOB)
+    end
+    return true
+end
+
+function MapSearch:GetGlobalInstanceCache()
+    if globalInstanceCache then return globalInstanceCache end
+    return BuildGlobalInstanceCacheSync(self)
+end
+
+BuildPromotedInstanceCache = function(self)
     if promotedInstancePOIs then return promotedInstancePOIs end
 
     local zones = self:BuildWorldZoneCache()
@@ -598,8 +756,7 @@ end
 
 function MapSearch:BuildGlobalSearchCaches()
     self:BuildWorldZoneCache()
-    self:GetGlobalInstanceCache()
-    BuildPromotedInstanceCache(self)
+    self:RequestGlobalInstanceCache()
     local mapID = GetBestMapForUnit("player") or (WorldMapFrame and WorldMapFrame:GetMapID())
     if mapID and WorldMapFrame then
         GetLocalScans(self, mapID)
@@ -609,6 +766,7 @@ end
 
 function MapSearch:WarmUISearchCaches()
     self:BuildWorldZoneCache()
+    self:RequestGlobalInstanceCache()
     local mapID = GetBestMapForUnit("player") or (WorldMapFrame and WorldMapFrame:GetMapID())
     if mapID and WorldMapFrame then
         GetLocalScans(self, mapID)
@@ -631,6 +789,3 @@ Search.BuildPromotedInstanceCache = BuildPromotedInstanceCache
 Search.AppendZoneSearchResults = AppendZoneSearchResults
 Search.AppendGlobalInstanceSearchSources = AppendGlobalInstanceSearchSources
 Search.AppendAlwaysFindableLocations = AppendAlwaysFindableLocations
-
-
-

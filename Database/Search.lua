@@ -775,6 +775,8 @@ local function EnsurePrefixIndexRebuildScheduled(delay)
 end
 
 function Database:WarmSearchHotPath()
+    if self.HydrateCachedStatistics then self:HydrateCachedStatistics() end
+    if self.HydrateCachedBosses then self:HydrateCachedBosses() end
     if not prefixIndexReady or prefixIndexDirty then
         EnsurePrefixIndexRebuildScheduled(prefixIndexReady and nil or 0)
     end

@@ -9,6 +9,7 @@ local ns = H.newNs(env)
 ns.Database.uiSearchData = {}
 ns.Database.IsLootStatSearchWord = function() return false end
 
+H.loadModule("Shared/SearchText.lua", env, ns)
 local Database = H.loadModule("Database/Search.lua", env, ns)
 H.assertNotNil(Database, "Database/Search.lua must return Database table")
 H.assertEq(Database, ns.Database)
@@ -139,6 +140,24 @@ end
 
 function tests.scoreName_emptyText()
     H.assertEq(Database:ScoreName("", "anything", 8), 0)
+end
+
+function tests.warmSearchHotPath_hydratesCachedAsyncProviders()
+    local statsHydrated = 0
+    local bossesHydrated = 0
+    Database.HydrateCachedStatistics = function()
+        statsHydrated = statsHydrated + 1
+        return true
+    end
+    Database.HydrateCachedBosses = function()
+        bossesHydrated = bossesHydrated + 1
+        return true
+    end
+
+    Database:WarmSearchHotPath()
+
+    H.assertEq(statsHydrated, 1, "statistics cache should hydrate during warmup")
+    H.assertEq(bossesHydrated, 1, "boss cache should hydrate during warmup")
 end
 
 local pass, fail, failures = H.runSuite("Database/Search", tests)

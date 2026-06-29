@@ -104,6 +104,11 @@ function MapSearch:Initialize()
     self:CreateHighlightFrame()
     self:CreateZoneHighlightFrame()
     self:HookWorldMap()
+    if Utils.SafeAfter then
+        Utils.SafeAfter(0.8, function()
+            if MapSearch.WarmUISearchCaches then MapSearch:WarmUISearchCaches() end
+        end)
+    end
 end
 
 function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, anchorFrame, onChanged)

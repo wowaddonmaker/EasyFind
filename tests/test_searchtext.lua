@@ -29,7 +29,7 @@ end
 
 function tests.tokenize_splitsOnPunctuation()
     H.assertDeepEq(SearchText.Tokenize("crusader's-strike, etc"),
-        { "crusader", "s", "strike", "etc" })
+        { "crusader's", "strike", "etc" })
 end
 
 function tests.tokenize_dropsLeadingTrailingSeparators()

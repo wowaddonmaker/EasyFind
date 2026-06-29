@@ -193,8 +193,8 @@ local function isWordCP(cp)
 end
 
 ---Splits the input into word tokens. Word characters include ASCII
----alphanumerics, Latin-1 Supplement letters, and any non-ASCII codepoint
----outside known punctuation blocks (so CJK ideographs tokenize as words).
+---alphanumerics, apostrophes, Latin-1 Supplement letters, and any non-ASCII
+---codepoint outside known punctuation blocks (so CJK ideographs tokenize as words).
 ---@param s string|nil
 ---@return string[]
 function SearchText.Tokenize(s)

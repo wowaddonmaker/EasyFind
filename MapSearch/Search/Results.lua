@@ -49,6 +49,32 @@ local reuseUISearchFiltered = Search.reuseUISearchFiltered
 local reuseUISearchResults = Search.reuseUISearchResults
 local reuseUISearchResultData = Search.reuseUISearchResultData
 local UI_MAP_RESULT_CAP = Search.UI_MAP_RESULT_CAP
+
+local function RefreshUISearchAfterGlobalInstances()
+    local search = ns.Search
+    local frame = search and search.GetSearchFrame and search:GetSearchFrame()
+    local editBox = frame and frame.editBox
+    local text = editBox and editBox:GetText()
+    if frame and frame:IsShown() and text and text ~= ""
+       and search and search.OnSearchTextChanged then
+        search:OnSearchTextChanged(text, true)
+    end
+end
+
+local function RequestUISearchGlobalInstances(self)
+    if not self.RequestGlobalInstanceCache then return end
+    if Search.uiGlobalInstanceRefreshPending then
+        self:RequestGlobalInstanceCache()
+        return
+    end
+
+    Search.uiGlobalInstanceRefreshPending = true
+    self:RequestGlobalInstanceCache(function(ready)
+        Search.uiGlobalInstanceRefreshPending = nil
+        if ready then RefreshUISearchAfterGlobalInstances() end
+    end)
+end
+
 -- Pure result computation: takes a query and a global-mode flag, returns the
 -- ranked + filtered + pin-merged result list. No rendering. Safe to call
 -- from MapTab or any other renderer that wants both local and global sets.
@@ -448,9 +474,13 @@ function MapSearch:SearchForUI(query)
 
         AppendZoneSearchResults(pois, zoneNames, groupedZones, existingNames)
 
-        -- Always build/use the instance cache so dungeons / raids / delves
-        -- show up in UI search alongside zones and POIs.
-        AppendGlobalInstanceSearchSources(self, pois, zoneNames)
+        -- Dungeons / raids / delves use a global map walk. The cache is
+        -- built in background slices; first search should never do that walk.
+        if self.HasGlobalInstanceCache and self:HasGlobalInstanceCache() then
+            AppendGlobalInstanceSearchSources(self, pois, zoneNames)
+        else
+            RequestUISearchGlobalInstances(self)
+        end
         AppendAlwaysFindableLocations(self, pois, existingNames, searchMapID)
     end
 
