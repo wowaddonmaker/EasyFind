@@ -15,6 +15,7 @@ local tsort = Utils.tsort
 local sfind, ssub = Utils.sfind, Utils.ssub
 local sgsub = string.gsub
 local sbyte = string.byte
+local tconcat = table.concat
 
 -- All search-side casing flows through SearchText.Normalize so non-ASCII
 -- (German umlauts, French accents, etc.) lowercase correctly. WoW's
@@ -31,6 +32,16 @@ local uiSearchData = Database.uiSearchData
 local function IsLootStatSearchWord(word)
     return Database:IsLootStatSearchWord(word)
 end
+
+local BOSS_QUERY_WORDS = {
+    boss = true, bosses = true, dungeon = true, dungeons = true,
+    encounter = true, encounters = true, raid = true, raids = true,
+}
+
+local STAT_QUERY_WORDS = {
+    stat = true, stats = true, statistic = true, statistics = true,
+}
+
 -- Unbounded string-keyed word cache. The previous FIFO-256 design
 -- thrashed for scoring: a single keystroke scoring 5000+ entries
 -- triggered ~25,000 GetWords calls, evicting and re-allocating most
@@ -623,94 +634,159 @@ local prevSkipKey = ""
 local prevCandidates = {}
 
 local prefixIndex = {}
-local prefixIndexSeen = {}
 local prefixIndexReady = false
+local prefixIndexDirty = true
 local prefixCandidateBuf = {}
 local prefixCandidateSeen = {}
+local prefixRebuildGen = 0
+local prefixRebuildScheduled = false
+local prefixBuild
+local PREFIX_REBUILD_DELAY = 0.10
+local PREFIX_REBUILD_BUDGET_MS = 1.5
 
-local function AddPrefixIndexEntry(entry, prefix)
-    if prefixIndexSeen[prefix] == entry then return end
-    prefixIndexSeen[prefix] = entry
-    local bucket = prefixIndex[prefix]
+local function AddPrefixIndexEntryTo(index, seen, entry, prefix)
+    if seen[prefix] == entry then return end
+    seen[prefix] = entry
+    local bucket = index[prefix]
     if not bucket then
         bucket = {}
-        prefixIndex[prefix] = bucket
+        index[prefix] = bucket
     end
     bucket[#bucket + 1] = entry
 end
 
-local function IndexPrefixText(entry, text)
+local function IndexPrefixTextTo(index, seen, entry, text)
     if not text then return end
-    -- Tokenize like GetWords (split on hyphens/punctuation, not just spaces) so
-    -- a sub-word such as "aliasing" in "anti-aliasing" is independently indexed.
-    -- ASCII path uses gmatch; non-ASCII routes through SearchText.Tokenize so
-    -- non-Latin scripts and accented characters index correctly.
-    if isAscii(text) then
-        for word in text:gmatch("[%w']+") do
-            local len = #word
-            if len >= 1 then AddPrefixIndexEntry(entry, ssub(word, 1, 1)) end
-            if len >= 2 then AddPrefixIndexEntry(entry, ssub(word, 1, 2)) end
-        end
-    else
-        local words = stokenize(text)
-        for i = 1, #words do
-            local word = words[i]
-            local len = #word
-            if len >= 1 then AddPrefixIndexEntry(entry, ssub(word, 1, 1)) end
-            if len >= 2 then AddPrefixIndexEntry(entry, ssub(word, 1, 2)) end
-        end
+    -- Share tokenization with scoring so prefix warmup fills the same cache
+    -- search uses later instead of doing a separate ASCII/token walk.
+    local words = GetWords(text)
+    for i = 1, #words do
+        local word = words[i]
+        local len = #word
+        if len >= 1 then AddPrefixIndexEntryTo(index, seen, entry, ssub(word, 1, 1)) end
+        if len >= 2 then AddPrefixIndexEntryTo(index, seen, entry, ssub(word, 1, 2)) end
     end
 end
 
-local function IndexPrefixList(entry, list)
+local function IndexPrefixListTo(index, seen, entry, list)
     if not list then return end
     for i = 1, #list do
         local text = list[i]
-        if type(text) == "string" then IndexPrefixText(entry, text) end
+        if type(text) == "string" then IndexPrefixTextTo(index, seen, entry, text) end
     end
+end
+
+local function IndexPrefixEntryTo(index, seen, entry)
+    IndexPrefixTextTo(index, seen, entry, entry.nameLower)
+    IndexPrefixListTo(index, seen, entry, entry.keywordsLower or entry.keywords)
+    IndexPrefixListTo(index, seen, entry, entry.lootSlotKw)
+    IndexPrefixListTo(index, seen, entry, entry.lootStatKw)
+    IndexPrefixListTo(index, seen, entry, entry.lootSourceKw)
 end
 
 function Database:BuildSearchPrefixIndex()
-    wipe(prefixIndex)
-    wipe(prefixIndexSeen)
+    prefixRebuildGen = prefixRebuildGen + 1
+    prefixBuild = nil
+    prefixRebuildScheduled = false
+    local index = {}
+    local seen = {}
     for i = 1, #uiSearchData do
-        local entry = uiSearchData[i]
-        IndexPrefixText(entry, entry.nameLower)
-        IndexPrefixList(entry, entry.keywordsLower or entry.keywords)
-        IndexPrefixList(entry, entry.lootSlotKw)
-        IndexPrefixList(entry, entry.lootStatKw)
-        IndexPrefixList(entry, entry.lootSourceKw)
+        IndexPrefixEntryTo(index, seen, uiSearchData[i])
     end
-    wipe(prefixIndexSeen)
+    wipe(seen)
+    prefixIndex = index
     prefixIndexReady = true
+    prefixIndexDirty = false
 end
 
--- Coalesce prefix-index rebuilds. ResetSearchCache runs once per provider
--- populate; at login a dozen+ populates would otherwise each rebuild the whole
--- index over the still-growing dataset -- pure waste, since each rebuild is
--- discarded by the next. Instead invalidate now and rebuild once after the burst
--- settles: still at login, search stays instant (index stays pre-built), the
--- throwaway rebuilds gone. The generation stamp coalesces -- only the newest
--- schedule actually builds.
-local prefixRebuildGen = 0
-local function SchedulePrefixIndexRebuild()
+local function RefreshOpenSearchAfterPrefixRebuild()
+    local search = ns.Search
+    local frame = search and search.GetSearchFrame and search:GetSearchFrame()
+    local editBox = frame and frame.editBox
+    local text = editBox and editBox:GetText()
+    if frame and frame:IsShown() and text and text ~= "" and search.OnSearchTextChanged then
+        search:OnSearchTextChanged(text, true)
+    end
+end
+
+local StepPrefixIndexRebuild
+
+local function FinishPrefixIndexRebuild(build)
+    if not build or build.gen ~= prefixRebuildGen then return end
+    wipe(build.seen)
+    prefixIndex = build.index
+    prefixBuild = nil
+    prefixRebuildScheduled = false
+    prefixIndexReady = true
+    prefixIndexDirty = false
+    prevQuery = ""
+    prevSkipKey = ""
+    wipe(prevCandidates)
+    RefreshOpenSearchAfterPrefixRebuild()
+end
+
+StepPrefixIndexRebuild = function(build)
+    if not build or build.gen ~= prefixRebuildGen then
+        if prefixBuild == build then prefixBuild = nil end
+        return
+    end
+
+    local startMs = debugprofilestop and debugprofilestop() or nil
+    while build.cursor <= #uiSearchData do
+        IndexPrefixEntryTo(build.index, build.seen, uiSearchData[build.cursor])
+        build.cursor = build.cursor + 1
+        if startMs and (debugprofilestop() - startMs) >= PREFIX_REBUILD_BUDGET_MS then
+            Utils.SafeAfter(0, function()
+                StepPrefixIndexRebuild(build)
+            end)
+            return
+        end
+    end
+
+    FinishPrefixIndexRebuild(build)
+end
+
+-- Coalesce prefix-index rebuilds. Provider refreshes can invalidate the
+-- search data repeatedly while the user is typing. Keep the last completed
+-- index active and build the replacement in small timer slices so a delayed
+-- rebuild cannot land as one large Backspace hitch.
+local function SchedulePrefixIndexRebuild(delay)
     prefixRebuildGen = prefixRebuildGen + 1
+    prefixIndexDirty = true
+    prefixRebuildScheduled = true
     local gen = prefixRebuildGen
-    Utils.SafeAfter(0.25, function()
+    Utils.SafeAfter(delay or PREFIX_REBUILD_DELAY, function()
         if gen ~= prefixRebuildGen then return end
-        if not prefixIndexReady then Database:BuildSearchPrefixIndex() end
+        prefixRebuildScheduled = false
+        local build = {
+            gen = gen,
+            cursor = 1,
+            index = {},
+            seen = {},
+        }
+        prefixBuild = build
+        StepPrefixIndexRebuild(build)
     end)
 end
 
+local function EnsurePrefixIndexRebuildScheduled(delay)
+    if prefixBuild or prefixRebuildScheduled then return end
+    SchedulePrefixIndexRebuild(delay)
+end
+
 function Database:WarmSearchHotPath()
-    if not prefixIndexReady then
-        SchedulePrefixIndexRebuild()
+    if not prefixIndexReady or prefixIndexDirty then
+        EnsurePrefixIndexRebuildScheduled(prefixIndexReady and nil or 0)
     end
 end
 
 local function ClearPrefixBuckets()
+    prefixRebuildGen = prefixRebuildGen + 1
+    prefixBuild = nil
+    prefixRebuildScheduled = false
     wipe(prefixIndex)
     prefixIndexReady = false
+    prefixIndexDirty = false
 end
 
 local function GetPrefixBucket(prefix)
@@ -753,19 +829,19 @@ function Database:ResetSearchCache()
     prevQuery = ""
     prevSkipKey = ""
     wipe(prevCandidates)
-    local hadPrefixIndex = prefixIndexReady
-    ClearPrefixBuckets()
-    if hadPrefixIndex then SchedulePrefixIndexRebuild() end
+    SchedulePrefixIndexRebuild(prefixIndexReady and nil or 0)
 end
 
 local resultsBuf = {}
 local resultsQueryWords = {}
+local statisticScopedQueryWords = {}
 local resultEntryPool = {}
 
 function Database:TrimSearchMemory()
     self:UnloadDynamicSearchData()
     wipe(resultsBuf)
     wipe(resultsQueryWords)
+    wipe(statisticScopedQueryWords)
     wipe(resultEntryPool)
     wipe(wordCache)
     ClearPrefixBuckets()
@@ -777,12 +853,6 @@ function Database:SearchUI(query, skipCategories)
         wipe(prevCandidates)
         wipe(resultsBuf)
         return resultsBuf
-    end
-
-    -- Without a ready prefix index, every search linearly scans the full
-    -- 1500+ entry uiSearchData each keystroke. Build once on demand.
-    if not prefixIndexReady then
-        self:BuildSearchPrefixIndex()
     end
 
     query = Database:NormalizeSearchQuery(slower(query))
@@ -807,18 +877,38 @@ function Database:SearchUI(query, skipCategories)
     -- broad keywords) are gated behind "ach"/"stat" or a strong name match.
     local bossQueryWord = false
     local achQueryWord = false
+    local statQueryWord = false
     local lootStatQueryWord = false
     for qi = 1, #queryWords do
         local qw = queryWords[qi]
-        if qw == "boss" or qw == "bosses" then
+        if BOSS_QUERY_WORDS[qw] then
             bossQueryWord = true
+        end
+        local isStatQueryWord = STAT_QUERY_WORDS[qw]
+        if isStatQueryWord then
+            statQueryWord = true
         end
         if IsLootStatSearchWord(qw) then
             lootStatQueryWord = true
         end
-        if ssub(qw, 1, 3) == "ach" or qw == "stat" or qw == "stats"
-           or qw == "statistic" or qw == "statistics" then
+        if ssub(qw, 1, 3) == "ach" or isStatQueryWord then
             achQueryWord = true
+        end
+    end
+
+    local statisticScopedQuery
+    local statisticScopedQueryLen = 0
+    if statQueryWord and #queryWords >= 2 then
+        wipe(statisticScopedQueryWords)
+        for qi = 1, #queryWords do
+            local qw = queryWords[qi]
+            if not STAT_QUERY_WORDS[qw] then
+                statisticScopedQueryWords[#statisticScopedQueryWords + 1] = qw
+            end
+        end
+        if #statisticScopedQueryWords > 0 then
+            statisticScopedQuery = tconcat(statisticScopedQueryWords, " ")
+            statisticScopedQueryLen = #statisticScopedQuery
         end
     end
 
@@ -862,11 +952,10 @@ function Database:SearchUI(query, skipCategories)
         for prevWord in prevQuery:gmatch("%S+") do
             prevWordCount = prevWordCount + 1
             if IsLootStatSearchWord(prevWord) then prevLootStat = true end
-            if prevWord == "boss" or prevWord == "bosses" then
+            if BOSS_QUERY_WORDS[prevWord] then
                 prevBossWord = true
             end
-            if ssub(prevWord, 1, 3) == "ach" or prevWord == "stat" or prevWord == "stats"
-               or prevWord == "statistic" or prevWord == "statistics" then
+            if ssub(prevWord, 1, 3) == "ach" or STAT_QUERY_WORDS[prevWord] then
                 prevAchWord = true
             end
         end
@@ -877,6 +966,7 @@ function Database:SearchUI(query, skipCategories)
         or (bossQueryWord and not prevBossWord)
         or (achQueryWord and not prevAchWord)
         or (lootStatQueryWord and addedNewWord)
+        or (statQueryWord and addedNewWord)
 
     local searchSet
     local prevLen = #prevQuery
@@ -885,7 +975,10 @@ function Database:SearchUI(query, skipCategories)
         and not gatingShifted then
         searchSet = prevCandidates
     else
-        if #queryWords >= 2 then
+        if not prefixIndexReady then
+            EnsurePrefixIndexRebuildScheduled(0)
+            searchSet = uiSearchData
+        elseif #queryWords >= 2 then
             searchSet = GetMultiTokenPrefixCandidates(queryWords)
         else
             local key2 = ssub(query, 1, 2)
@@ -1003,14 +1096,23 @@ function Database:SearchUI(query, skipCategories)
                         score = 0
                     end
                 else
+                    local entryQuery = query
+                    local entryQueryLen = queryLen
+                    local entryQueryWords = queryWords
+                    if cat == "Statistic" and statisticScopedQuery then
+                        entryQuery = statisticScopedQuery
+                        entryQueryLen = statisticScopedQueryLen
+                        entryQueryWords = statisticScopedQueryWords
+                    end
                     -- MAX, not SUM. Many entries duplicate their name into
                     -- keywordsLower; a sum double-counts the same fuzzy hit.
                     score = mmax(
-                        Database:ScoreName(nameLower, query, queryLen, queryWords),
-                        Database:ScoreKeywords(data.keywordsLower or data.keywords, query, queryLen, queryWords)
+                        Database:ScoreName(nameLower, entryQuery, entryQueryLen, entryQueryWords),
+                        Database:ScoreKeywords(data.keywordsLower or data.keywords,
+                            entryQuery, entryQueryLen, entryQueryWords)
                     )
-                    if #queryWords >= 2 then
-                        score = mmax(score, Database:ScoreEntryFields(data, queryWords))
+                    if #entryQueryWords >= 2 then
+                        score = mmax(score, Database:ScoreEntryFields(data, entryQueryWords))
                     end
                 end
             end
@@ -1060,4 +1162,3 @@ function Database:SearchUI(query, skipCategories)
 end
 
 return Database
-

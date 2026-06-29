@@ -66,6 +66,47 @@ function Database:_RemoveEntriesByCategory(category)
     RemoveEntriesByCategory(category)
 end
 
+local partialSearchRefreshPending = false
+local lastPartialSearchRefreshMs = 0
+
+local function RefreshOpenSearch()
+    local search = ns.Search
+    local frame = search and search.GetSearchFrame and search:GetSearchFrame()
+    local editBox = frame and frame.editBox
+    local text = editBox and editBox:GetText()
+    if frame and frame:IsShown() and text and text ~= "" and search.OnSearchTextChanged then
+        search:OnSearchTextChanged(text, true)
+    end
+end
+
+function Database:SchedulePartialSearchRefresh(minIntervalMs)
+    if partialSearchRefreshPending then return end
+
+    local now = debugprofilestop and debugprofilestop() or 0
+    minIntervalMs = minIntervalMs or 150
+    local delay = 0
+    if now > 0 and lastPartialSearchRefreshMs > 0 then
+        local elapsed = now - lastPartialSearchRefreshMs
+        if elapsed < minIntervalMs then
+            delay = (minIntervalMs - elapsed) / 1000
+        end
+    end
+
+    partialSearchRefreshPending = true
+    local function run()
+        partialSearchRefreshPending = false
+        lastPartialSearchRefreshMs = debugprofilestop and debugprofilestop() or 0
+        if Database.ResetSearchCache then Database:ResetSearchCache() end
+        RefreshOpenSearch()
+    end
+
+    if Utils.SafeAfter then
+        Utils.SafeAfter(delay, run)
+    else
+        run()
+    end
+end
+
 function Database:Initialize()
     self:BuildUIDatabase()
 end
@@ -680,6 +721,9 @@ local STAT_KEYWORD_MAP = {
 -- Bump when STAT_KEYWORD_MAP or the enrichment logic changes so the persisted
 -- lootStatCache rebuilds (v2 clears entries cemented empty by incomplete reads).
 ns.LOOT_STAT_CACHE_VER = 2
+ns.LOOT_ITEM_CACHE_VER = 1
+ns.BOSS_CACHE_VER = 1
+ns.STATISTIC_CACHE_VER = 1
 
 local heavySearchWordLookup
 local function AddHeavySearchWord(word)
@@ -778,6 +822,98 @@ local lootScanGeneration = 0
 local bossScanGeneration = 0
 local lootItemCache = {}
 local lootSpecsScanned = {}
+local lootItemCacheHydrated = false
+local bossCacheHydrated = false
+local statisticCacheHydrated = false
+
+local function CopyArray(src)
+    local out = {}
+    if type(src) ~= "table" then return out end
+    for i = 1, #src do out[i] = src[i] end
+    return out
+end
+
+local function HydratePersistedLootCache()
+    if lootItemCacheHydrated then return end
+    lootItemCacheHydrated = true
+    local db = EasyFind and EasyFind.db
+    local saved = db and db.lootItemCache
+    if type(saved) ~= "table" or db.lootItemCacheVer ~= ns.LOOT_ITEM_CACHE_VER then return end
+
+    local items = saved.items or saved
+    for rawID, raw in pairs(items) do
+        if type(raw) == "table" then
+            local itemID = raw.itemID or tonumber(rawID)
+            local name = raw.name
+            if itemID and name and name ~= "" and raw.encounterID and raw.instanceID then
+                local entry = {
+                    name = name,
+                    nameLower = raw.nameLower or slower(name),
+                    icon = raw.icon,
+                    itemID = itemID,
+                    keywords = EMPTY_KEYWORDS,
+                    lootSlotKw = CopyArray(raw.lootSlotKw),
+                    lootSourceKw = CopyArray(raw.lootSourceKw),
+                    lootStatKw = CopyArray(raw.lootStatKw),
+                    lootItemLinks = type(raw.lootItemLinks) == "table" and Utils.DeepCopy(raw.lootItemLinks) or {},
+                    lootSlotName = raw.lootSlotName,
+                    _cachedSpecs = CopyArray(raw._cachedSpecs),
+                    _cachedDiffs = CopyArray(raw._cachedDiffs),
+                    _statsEnriched = raw._statsEnriched == true,
+                }
+                lootItemCache[itemID] = setmetatable(entry, GetLootEncounterMT(
+                    raw.encounterID,
+                    raw.instanceID,
+                    raw.lootSourceName,
+                    raw.lootInstanceName,
+                    raw.lootSourceType == "Raid"
+                ))
+            end
+        end
+    end
+
+    if type(saved.specsScanned) == "table" then
+        for key, value in pairs(saved.specsScanned) do
+            if value then lootSpecsScanned[key] = true end
+        end
+    end
+end
+
+local function PersistLootCache()
+    local db = EasyFind and EasyFind.db
+    if not db then return end
+
+    local saved = {
+        version = ns.LOOT_ITEM_CACHE_VER,
+        specsScanned = {},
+        items = {},
+    }
+    for key in pairs(lootSpecsScanned) do
+        saved.specsScanned[key] = true
+    end
+    for itemID, entry in pairs(lootItemCache) do
+        saved.items[itemID] = {
+            itemID = itemID,
+            name = entry.name,
+            icon = entry.icon,
+            lootSlotKw = CopyArray(entry.lootSlotKw),
+            lootSourceKw = CopyArray(entry.lootSourceKw),
+            lootStatKw = CopyArray(entry.lootStatKw),
+            lootItemLinks = type(entry.lootItemLinks) == "table" and Utils.DeepCopy(entry.lootItemLinks) or nil,
+            lootSlotName = entry.lootSlotName,
+            _cachedSpecs = CopyArray(entry._cachedSpecs),
+            _cachedDiffs = CopyArray(entry._cachedDiffs),
+            _statsEnriched = entry._statsEnriched == true,
+            encounterID = entry.encounterID,
+            instanceID = entry.instanceID,
+            lootSourceName = entry.lootSourceName,
+            lootInstanceName = entry.lootInstanceName,
+            lootSourceType = entry.lootSourceType,
+        }
+    end
+    db.lootItemCache = saved
+    db.lootItemCacheVer = ns.LOOT_ITEM_CACHE_VER
+end
 
 local LOOT_DIFF_IDS = {
     lfr     = { raid = 17 },
@@ -1690,6 +1826,190 @@ function Database:PopulateDynamicAppearanceItems()
     return true
 end
 
+function Database:PopulateDynamicAppearanceItemsAsync(done)
+    done = done or function() end
+    if not Utils.SafeAfter then
+        local ready = self:PopulateDynamicAppearanceItems()
+        done(ready ~= false, ready == false and "cancelled" or nil)
+        return
+    end
+
+    local C = C_TransmogCollection
+    if not C or not C.GetCategoryAppearances then done(false, "cancelled"); return end
+
+    RemoveEntriesWithField("appearanceItemID")
+    if self.ResetSearchCache then self:ResetSearchCache() end
+
+    local db = EasyFind and EasyFind.db
+    if not db then done(false, "cancelled"); return end
+
+    local showCollected = db.appearanceItemCollected ~= false
+    local showNotCollected = db.appearanceItemNotCollected == true
+    if not showCollected and not showNotCollected then done(true); return end
+
+    local classFilter = db.appearanceItemClass
+    local sourceFilters = db.appearanceItemSourceFilters
+
+    if type(sourceFilters) == "table" then
+        local anyEnabled = false
+        for st = 1, 12 do
+            if _G["TRANSMOG_SOURCE_" .. st] and sourceFilters[st] ~= false then
+                anyEnabled = true
+                break
+            end
+        end
+        if not anyEnabled then
+            db.appearanceItemSourceFilters = nil
+            sourceFilters = nil
+        end
+    end
+
+    if C.SetClassFilter and C.GetClassFilter then
+        local _, _, playerClassID = UnitClass("player")
+        local targetClass = playerClassID
+        if classFilter == "all" then
+            targetClass = 0
+        elseif type(classFilter) == "table" and classFilter.classID then
+            targetClass = classFilter.classID
+        end
+        local okCur, currentClass = pcall(C.GetClassFilter)
+        if targetClass and okCur and currentClass ~= targetClass then
+            EasyFind._appItemClassHookSuppress = true
+            pcall(C.SetClassFilter, targetClass)
+            EasyFind._appItemClassHookSuppress = false
+            local wcf = _G["WardrobeCollectionFrame"]
+            if wcf then
+                if wcf.ClassDropdown and wcf.ClassDropdown.Update then
+                    pcall(wcf.ClassDropdown.Update, wcf.ClassDropdown)
+                end
+                local icf = wcf.ItemsCollectionFrame
+                if icf and icf.RefreshVisualsList and icf.IsShown and icf:IsShown() then
+                    pcall(icf.RefreshVisualsList, icf)
+                end
+            end
+            EasyFind._appItemClassDeferred = true
+            local database = self
+            Utils.SafeAfter(0.7, function()
+                if EasyFind._appItemClassDeferred and database.RefreshDynamicCategory then
+                    database:RefreshDynamicCategory("appearanceItems")
+                end
+            end)
+            done(true)
+            return
+        end
+    end
+    EasyFind._appItemClassDeferred = nil
+
+    local slot = db.appearanceItemSlot
+    if type(slot) ~= "number" then
+        slot = (Enum.TransmogCollectionType and Enum.TransmogCollectionType.Head) or 1
+    end
+
+    local probe = C.GetCategoryAppearances(slot)
+    if (not probe or #probe == 0) and C_AddOns and C_AddOns.LoadAddOn
+       and not C_AddOns.IsAddOnLoaded("Blizzard_Collections") then
+        pcall(C_AddOns.LoadAddOn, "Blizzard_Collections")
+        probe = C.GetCategoryAppearances(slot)
+    end
+    if not probe or #probe == 0 then done(false, "cancelled"); return end
+
+    if ns.Filters and ns.Filters.EnsureWardrobeItemSlotHooks then
+        ns.Filters:EnsureWardrobeItemSlotHooks()
+    end
+
+    local GetSources = C.GetAppearanceSources
+    local GetSourceInfo = C.GetSourceInfo
+    local GetSourceIcon = C.GetSourceIcon
+    local getCatInfo = C.GetCategoryInfo
+    if not GetSources then done(false, "cancelled"); return end
+
+    local appearances = C.GetCategoryAppearances(slot)
+    if not appearances or #appearances == 0 then done(false, "cancelled"); return end
+
+    local slotName
+    if getCatInfo then
+        local okN, n = pcall(getCatInfo, slot)
+        if okN and type(n) == "string" and n ~= "" then slotName = n end
+    end
+    local kw = { "appearance", "transmog", "tmog", "xmog" }
+    if slotName then kw[#kw + 1] = slower(slotName) end
+
+    local appIndex = 1
+    local sources
+    local sourceIndex = 1
+    local app
+    local budgetMs = 3
+
+    local function scheduleStep(step)
+        Utils.SafeAfter(0, function()
+            local ok, err = xpcall(step, Utils.ErrorHandler)
+            if not ok then done(false, err) end
+        end)
+    end
+
+    local function step()
+        local start = debugprofilestop and debugprofilestop() or 0
+        while appIndex <= #appearances do
+            if not sources then
+                app = appearances[appIndex]
+                local appOk = app and ((app.isCollected and showCollected)
+                    or (not app.isCollected and showNotCollected))
+                sources = appOk and app.visualID and GetSources(app.visualID) or false
+                sourceIndex = 1
+            end
+
+            if sources and sources ~= false then
+                while sourceIndex <= #sources do
+                    local src = sources[sourceIndex]
+                    sourceIndex = sourceIndex + 1
+                    local collectedOk = src and ((src.isCollected and showCollected)
+                        or (not src.isCollected and showNotCollected))
+                    local st = src and src.sourceType
+                    local srcOk = not sourceFilters or not st or sourceFilters[st] ~= false
+                    if collectedOk and srcOk then
+                        local name
+                        if GetSourceInfo and src.sourceID then
+                            local info = GetSourceInfo(src.sourceID)
+                            if info and info.name and info.name ~= "" then name = info.name end
+                        end
+                        if not name and src.itemID and GetItemInfo then
+                            name = GetItemInfo(src.itemID)
+                        end
+                        if name and name ~= "" then
+                            local icon = GetSourceIcon and src.sourceID and GetSourceIcon(src.sourceID)
+                            uiSearchData[#uiSearchData + 1] = setmetatable({
+                                name = name,
+                                nameLower = slower(name),
+                                appearanceItemID = src.sourceID,
+                                appearanceVisualID = app.visualID,
+                                appearanceSlot = slot,
+                                appearanceSlotName = slotName,
+                                icon = icon,
+                                keywords = kw,
+                            }, APPEARANCE_ITEM_MT)
+                        end
+                    end
+                    if debugprofilestop and (debugprofilestop() - start) >= budgetMs then
+                        scheduleStep(step)
+                        return
+                    end
+                end
+            end
+
+            appIndex = appIndex + 1
+            sources = nil
+            app = nil
+            if debugprofilestop and (debugprofilestop() - start) >= budgetMs then
+                scheduleStep(step)
+                return
+            end
+        end
+        done(true)
+    end
+
+    scheduleStep(step)
+end
+
 local function BuildLootSpecPairs(scanAllSpecs)
     local specPairs = {}
     if scanAllSpecs then
@@ -1766,12 +2086,14 @@ local function CacheLootInfo(database, lootInfo, inst, encName, encID, diff, sp,
     if not itemID then return end
     local cached = lootItemCache[itemID]
     if cached then
+        local changed = false
         local foundSp = false
         for _, sk in ipairs(cached._cachedSpecs) do
             if sk == spKey then foundSp = true; break end
         end
         if not foundSp then
             cached._cachedSpecs[#cached._cachedSpecs + 1] = spKey
+            changed = true
         end
 
         local foundDf = false
@@ -1783,8 +2105,9 @@ local function CacheLootInfo(database, lootInfo, inst, encName, encID, diff, sp,
             if lootInfo.link and cached.lootItemLinks then
                 cached.lootItemLinks[diff.key] = lootInfo.link
             end
+            changed = true
         end
-        return
+        return changed
     end
 
     local itemName = lootInfo.name
@@ -1825,6 +2148,7 @@ local function CacheLootInfo(database, lootInfo, inst, encName, encID, diff, sp,
         database:EnrichLootStats(entry)
     end
     lootItemCache[itemID] = entry
+    return true
 end
 
 function Database:CancelDynamicScans(includeBosses)
@@ -1837,6 +2161,7 @@ end
 -- scanAllSpecs=true pre-caches every class/spec combo (loading screen path).
 function Database:PopulateDynamicLoot(scanAllSpecs)
     if InCombatLockdown() then return false end
+    HydratePersistedLootCache()
 
     local specPairs = BuildLootSpecPairs(scanAllSpecs)
     if #specPairs == 0 then return false end
@@ -1943,6 +2268,7 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
     for _, sp in ipairs(needScan) do
         lootSpecsScanned[sp.classID .. "-" .. sp.specID] = true
     end
+    PersistLootCache()
     RebuildLootSearchData()
     -- Restore the EJ loot filter to the user's choice; the scan swept it across
     -- specs, so the journal would otherwise show the last-scanned spec.
@@ -1954,6 +2280,7 @@ end
 
 function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
     if InCombatLockdown() then done(false, "cancelled"); return end
+    HydratePersistedLootCache()
     if not Utils.SafeAfter then
         local ready = self:PopulateDynamicLoot(scanAllSpecs)
         done(ready ~= false, ready == false and "cancelled" or nil)
@@ -2029,6 +2356,7 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
     }
     local GetItemInfoInstantFn = GetItemInfoInstant
     local budgetMs = 4
+    local partialLootChanged = false
 
     local function finish(changed, err)
         if savedTier and EJ_SelectTier then EJ_SelectTier(savedTier) end
@@ -2037,6 +2365,7 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
             for _, sp in ipairs(needScan) do
                 lootSpecsScanned[sp.classID .. "-" .. sp.specID] = true
             end
+            PersistLootCache()
             RebuildLootSearchData()
             Database:SyncEJLootFilter()
             collectgarbage("step", 200)
@@ -2120,13 +2449,22 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
                         state.prepared = false
                         break
                     end
-                    CacheLootInfo(self, lootInfo, inst, state.encName, state.encID, diff, sp, spKey, GetItemInfoInstantFn)
+                    if CacheLootInfo(self, lootInfo, inst, state.encName, state.encID, diff, sp, spKey, GetItemInfoInstantFn) then
+                        partialLootChanged = true
+                    end
                     state.lootIdx = state.lootIdx + 1
                     processed = processed + 1
                 end
             end
 
             if debugprofilestop and (debugprofilestop() - start) >= budgetMs then
+                if partialLootChanged then
+                    partialLootChanged = false
+                    RebuildLootSearchData()
+                    if self.SchedulePartialSearchRefresh then
+                        self:SchedulePartialSearchRefresh(150)
+                    end
+                end
                 Utils.SafeAfter(0, function()
                     local ok, err = xpcall(step, Utils.ErrorHandler)
                     if not ok then finish(false, err) end
@@ -2382,6 +2720,15 @@ local function GetBossInstanceMT(tier, isRaid, instID, instName)
     return mt
 end
 
+local function BuildBossEntry(tier, isRaid, instID, instName, encName, encID, icon)
+    return setmetatable({
+        name = encName,
+        nameLower = slower(encName),
+        encounterID = encID,
+        icon = icon,
+    }, GetBossInstanceMT(tier, isRaid, instID, instName))
+end
+
 local function AddBossEntry(tier, isRaid, instID, instName, encName, encID, getCreatureInfo)
     local icon
     if getCreatureInfo then
@@ -2391,16 +2738,84 @@ local function AddBossEntry(tier, isRaid, instID, instName, encName, encID, getC
         end
     end
 
-    local entry = setmetatable({
+    local entry = BuildBossEntry(tier, isRaid, instID, instName, encName, encID, icon)
+    uiSearchData[#uiSearchData + 1] = entry
+    return entry
+end
+
+local function AddBossCacheRow(cacheRows, tier, isRaid, instID, instName, encName, encID, icon)
+    if not cacheRows then return end
+    cacheRows[#cacheRows + 1] = {
+        tier = tier,
+        isRaid = isRaid and true or false,
+        instanceID = instID,
+        instanceName = instName,
         name = encName,
-        nameLower = slower(encName),
         encounterID = encID,
         icon = icon,
-    }, GetBossInstanceMT(tier, isRaid, instID, instName))
-    uiSearchData[#uiSearchData + 1] = entry
+    }
+end
+
+local function PersistBossCache(cacheRows)
+    local db = EasyFind and EasyFind.db
+    if not db or not cacheRows then return end
+    db.bossCache = {
+        version = ns.BOSS_CACHE_VER,
+        entries = cacheRows,
+    }
+    db.bossCacheVer = ns.BOSS_CACHE_VER
+end
+
+local function HydratePersistedBossCache()
+    if bossCacheHydrated then return false end
+    bossCacheHydrated = true
+
+    local db = EasyFind and EasyFind.db
+    local saved = db and db.bossCache
+    if type(saved) ~= "table" or db.bossCacheVer ~= ns.BOSS_CACHE_VER then
+        return false
+    end
+    local entries = saved.entries
+    if type(entries) ~= "table" or #entries == 0 then return false end
+
+    RemoveEntriesByCategory("Boss")
+    ClearBossInstanceCache()
+
+    local inserted = 0
+    for i = 1, #entries do
+        local raw = entries[i]
+        if type(raw) == "table"
+           and raw.name and raw.name ~= ""
+           and raw.encounterID and raw.instanceID and raw.instanceName then
+            uiSearchData[#uiSearchData + 1] = BuildBossEntry(
+                raw.tier or 1,
+                raw.isRaid == true,
+                raw.instanceID,
+                raw.instanceName,
+                raw.name,
+                raw.encounterID,
+                raw.icon
+            )
+            inserted = inserted + 1
+        end
+    end
+    if inserted == 0 then return false end
+
+    if Database.ResetSearchCache then Database:ResetSearchCache() end
+    return true
+end
+
+function Database:HydrateCachedBosses()
+    local changed = HydratePersistedBossCache()
+    if changed and self.MarkDynamicProviderLoaded then
+        self:MarkDynamicProviderLoaded("bosses")
+    end
+    return changed
 end
 
 function Database:PopulateDynamicBosses()
+    if HydratePersistedBossCache() then return true end
+
     RemoveEntriesByCategory("Boss")
     ClearBossInstanceCache()
     if self.ResetSearchCache then self:ResetSearchCache() end
@@ -2430,6 +2845,7 @@ function Database:PopulateDynamicBosses()
 
     local savedTier = getCurrentTier and getCurrentTier()
     local numTiers = (getNumTiers and getNumTiers()) or 10
+    local cacheRows = {}
 
     for tier = 1, numTiers do
         selectTier(tier)
@@ -2445,7 +2861,8 @@ function Database:PopulateDynamicBosses()
                     local encName, _, encID = getEncounterByIdx(encIdx)
                     if not encName then break end
 
-                    AddBossEntry(tier, isRaid, instID, instName, encName, encID, getCreatureInfo)
+                    local entry = AddBossEntry(tier, isRaid, instID, instName, encName, encID, getCreatureInfo)
+                    AddBossCacheRow(cacheRows, tier, isRaid, instID, instName, encName, encID, entry and entry.icon)
                     encIdx = encIdx + 1
                 end
 
@@ -2456,11 +2873,17 @@ function Database:PopulateDynamicBosses()
 
     if savedTier and selectTier then selectTier(savedTier) end
     if ejFrame and savedOnEvent then ejFrame:SetScript("OnEvent", savedOnEvent) end
+    PersistBossCache(cacheRows)
+    return true
 end
 
 function Database:PopulateDynamicBossesAsync(done)
     if not Utils.SafeAfter then
         self:PopulateDynamicBosses()
+        done(true)
+        return
+    end
+    if HydratePersistedBossCache() then
         done(true)
         return
     end
@@ -2499,10 +2922,13 @@ function Database:PopulateDynamicBossesAsync(done)
     local state = { tier = 1, raidIdx = 1, instIdx = 1, encIdx = 1, instID = nil, instName = nil }
     local raidModes = { false, true }
     local budgetMs = 4
+    local cacheRows = {}
+    local emittedSinceRefresh = false
 
     local function finish(changed, err)
         if savedTier and selectTier then selectTier(savedTier) end
         if ejFrame and savedOnEvent then ejFrame:SetScript("OnEvent", savedOnEvent) end
+        if changed then PersistBossCache(cacheRows) end
         done(changed, err)
     end
 
@@ -2546,13 +2972,19 @@ function Database:PopulateDynamicBossesAsync(done)
                         state.encIdx = 1
                         break
                     end
-                    AddBossEntry(state.tier, isRaid, state.instID, state.instName, encName, encID, getCreatureInfo)
+                    local entry = AddBossEntry(state.tier, isRaid, state.instID, state.instName, encName, encID, getCreatureInfo)
+                    AddBossCacheRow(cacheRows, state.tier, isRaid, state.instID, state.instName, encName, encID, entry and entry.icon)
+                    emittedSinceRefresh = true
                     state.encIdx = state.encIdx + 1
                     processed = processed + 1
                 end
             end
 
             if debugprofilestop and (debugprofilestop() - start) >= budgetMs then
+                if emittedSinceRefresh and self.SchedulePartialSearchRefresh then
+                    emittedSinceRefresh = false
+                    self:SchedulePartialSearchRefresh(150)
+                end
                 Utils.SafeAfter(0, function()
                     local ok, err = xpcall(step, Utils.ErrorHandler)
                     if not ok then finish(false, err) end
@@ -2779,6 +3211,9 @@ function Database:_ResetDynamicProviderCaches()
     wipe(lootSpecsScanned)
     wipe(lootEncounterMTCache)
     wipe(pendingStatEnrichment)
+    lootItemCacheHydrated = false
+    bossCacheHydrated = false
+    statisticCacheHydrated = false
 end
 
 function Database:_ResetHeavyProviderCaches()
@@ -2787,6 +3222,9 @@ function Database:_ResetHeavyProviderCaches()
     wipe(lootSpecsScanned)
     wipe(lootEncounterMTCache)
     wipe(pendingStatEnrichment)
+    lootItemCacheHydrated = false
+    bossCacheHydrated = false
+    statisticCacheHydrated = false
 end
 
 -- Aliases the API category names don't carry. Words from the name itself
@@ -3025,12 +3463,162 @@ end
 
 -- Bumping during a scan causes the in-flight time-sliced loop to bail.
 local statsScanGeneration = 0
+local STAT_KEYWORDS_EMPTY = {}
+local statisticMTCache = {}
+
+local function CopyStatisticChain(src)
+    local out = {}
+    if type(src) ~= "table" then return out end
+    for i = 1, #src do
+        local cat = src[i]
+        if type(cat) == "table" then
+            out[i] = { id = cat.id, name = cat.name }
+        end
+    end
+    return out
+end
+
+local function StatisticChainKey(chain)
+    local key = ""
+    if type(chain) ~= "table" then return key end
+    for i = 1, #chain do
+        local cat = chain[i]
+        key = key .. "\30" .. tostring(cat and cat.id or "") .. "\31" .. tostring(cat and cat.name or "")
+    end
+    return key
+end
+
+local function GetStatisticMT(path, categoryChain)
+    local key = StatisticChainKey(categoryChain)
+    local cached = statisticMTCache[key]
+    if cached then return cached end
+
+    local stepsPrefix = {
+        { buttonFrame = "AchievementMicroButton" },
+        { waitForFrame = "AchievementFrame", tabIndex = 3 },
+    }
+    for i = 1, #categoryChain do
+        local cat = categoryChain[i]
+        stepsPrefix[#stepsPrefix + 1] = {
+            waitForFrame = "AchievementFrame",
+            statisticsCategory = cat.name,
+            statisticsCategoryID = cat.id,
+        }
+    end
+
+    local proto = {
+        category      = "Statistic",
+        buttonFrame   = "AchievementMicroButton",
+        keywords      = STAT_KEYWORDS_EMPTY,
+        keywordsLower = STAT_KEYWORDS_EMPTY,
+        path          = path,
+    }
+    local prefixLen = #stepsPrefix
+    local mt = {
+        __index = function(t, k)
+            if k == "steps" then
+                local steps = {}
+                for s = 1, prefixLen do steps[s] = stepsPrefix[s] end
+                steps[prefixLen + 1] = {
+                    waitForFrame = "AchievementFrame",
+                    statisticID = t.statisticID,
+                    statisticName = t.name,
+                }
+                rawset(t, "steps", steps)
+                return steps
+            end
+            return proto[k]
+        end,
+        __index_proto = proto,
+    }
+    statisticMTCache[key] = mt
+    return mt
+end
+
+local function BuildStatisticEntry(name, id, path, categoryChain)
+    categoryChain = categoryChain or {}
+    path = path or { "Achievements", "Statistics" }
+    return setmetatable({
+        name = name,
+        nameLower = slower(name),
+        statisticID = id,
+        statisticCategoryChain = categoryChain,
+    }, GetStatisticMT(path, categoryChain))
+end
+
+local function AddStatisticCacheRow(cacheRows, id, name, path, categoryChain)
+    if not cacheRows then return end
+    cacheRows[#cacheRows + 1] = {
+        id = id,
+        name = name,
+        path = CopyArray(path),
+        categoryChain = CopyStatisticChain(categoryChain),
+    }
+end
+
+local function PersistStatisticsCache(cacheRows, categories)
+    local db = EasyFind and EasyFind.db
+    if not db or not cacheRows then return end
+    db.statisticCache = {
+        version = ns.STATISTIC_CACHE_VER,
+        categoryIDs = CopyArray(categories),
+        entries = cacheRows,
+    }
+    db.statisticCacheVer = ns.STATISTIC_CACHE_VER
+end
+
+local function HydratePersistedStatisticsCache()
+    if statisticCacheHydrated then return false end
+    statisticCacheHydrated = true
+
+    local db = EasyFind and EasyFind.db
+    local saved = db and db.statisticCache
+    if type(saved) ~= "table" or db.statisticCacheVer ~= ns.STATISTIC_CACHE_VER then
+        return false
+    end
+    local entries = saved.entries
+    if type(entries) ~= "table" or #entries == 0 then return false end
+
+    RemoveEntriesByCategory("Statistic")
+    wipe(Database.statisticIDs)
+    Database.statisticsComplete = true
+    RefreshStatisticsCategoryIDs(saved.categoryIDs)
+
+    local inserted = 0
+    for i = 1, #entries do
+        local raw = entries[i]
+        if type(raw) == "table" and raw.id and raw.name and raw.name ~= "" then
+            local path = CopyArray(raw.path)
+            local chain = CopyStatisticChain(raw.categoryChain)
+            uiSearchData[#uiSearchData + 1] = BuildStatisticEntry(raw.name, raw.id, path, chain)
+            MarkID(Database.statisticIDs, raw.id)
+            inserted = inserted + 1
+        end
+    end
+    if inserted == 0 then return false end
+
+    Database.statisticsVersion = Database.statisticsVersion + 1
+    if Database.ResetSearchCache then Database:ResetSearchCache() end
+    return true
+end
+
+function Database:HydrateCachedStatistics()
+    local changed = HydratePersistedStatisticsCache()
+    if changed and self.MarkDynamicProviderLoaded then
+        self:MarkDynamicProviderLoaded("statistics")
+    end
+    return changed
+end
 
 function Database:PopulateDynamicStatisticsAsync(done)
     if not GetStatisticsCategoryList or not GetCategoryInfo
        or not Utils.SafeAfter then
         local ok = self:PopulateDynamicStatistics()
         done(ok)
+        return
+    end
+    if HydratePersistedStatisticsCache() then
+        done(true)
         return
     end
 
@@ -3063,59 +3651,18 @@ function Database:PopulateDynamicStatisticsAsync(done)
         end
     end
 
-    -- Per-category setup built once per category and shared via __index proto
-    -- so each row only stores its unique fields (name, statisticID, steps).
-    local STAT_KEYWORDS_EMPTY = {}
     local queue = {}
 
     local function enqueueCategory(cat, parentChain)
-        local stepsPrefix = {
-            { buttonFrame = "AchievementMicroButton" },
-            { waitForFrame = "AchievementFrame", tabIndex = 3 },
-        }
         local path = { "Achievements", "Statistics" }
+        local categoryChain = {}
         for i = 1, #parentChain do
             local parent = parentChain[i]
-            local pn = parent.name
-            stepsPrefix[#stepsPrefix + 1] = {
-                waitForFrame = "AchievementFrame",
-                statisticsCategory = pn,
-                statisticsCategoryID = parent.id,
-            }
-            path[#path + 1] = pn
+            categoryChain[#categoryChain + 1] = { id = parent.id, name = parent.name }
+            path[#path + 1] = parent.name
         end
-        stepsPrefix[#stepsPrefix + 1] = {
-            waitForFrame = "AchievementFrame",
-            statisticsCategory = cat.name,
-            statisticsCategoryID = cat.id,
-        }
+        categoryChain[#categoryChain + 1] = { id = cat.id, name = cat.name }
         path[#path + 1] = cat.name
-
-        local proto = {
-            category      = "Statistic",
-            buttonFrame   = "AchievementMicroButton",
-            keywords      = STAT_KEYWORDS_EMPTY,
-            keywordsLower = STAT_KEYWORDS_EMPTY,
-            path          = path,
-        }
-        local prefixLen = #stepsPrefix
-        local protoMT = {
-            __index = function(t, k)
-                if k == "steps" then
-                    local steps = {}
-                    for s = 1, prefixLen do steps[s] = stepsPrefix[s] end
-                    steps[prefixLen + 1] = {
-                        waitForFrame = "AchievementFrame",
-                        statisticID = t.statisticID,
-                        statisticName = t.name,
-                    }
-                    rawset(t, "steps", steps)
-                    return steps
-                end
-                return proto[k]
-            end,
-            __index_proto = proto,
-        }
 
         if GetCategoryNumAchievements then
             local total = GetCategoryNumAchievements(cat.id) or 0
@@ -3125,7 +3672,8 @@ function Database:PopulateDynamicStatisticsAsync(done)
             for i = 1, total do
                 queue[#queue + 1] = {
                     catID = cat.id, rowIndex = i,
-                    protoMT = protoMT,
+                    path = path,
+                    categoryChain = categoryChain,
                 }
             end
         end
@@ -3141,6 +3689,7 @@ function Database:PopulateDynamicStatisticsAsync(done)
 
     -- Keywords skipped; the unique stat name is enough for the scorer.
     local seenStatisticIDs = {}
+    local cacheRows = {}
     local function processRow(item)
         if not GetAchievementInfo then return end
         local id, title = GetAchievementInfo(item.catID, item.rowIndex)
@@ -3151,17 +3700,16 @@ function Database:PopulateDynamicStatisticsAsync(done)
         end
         MarkID(seenStatisticIDs, id)
         MarkID(Database.statisticIDs, id)
-        local entry = setmetatable({
-            name = title,
-            nameLower = slower(title),
-            statisticID = id,
-        }, item.protoMT)
+        local entry = BuildStatisticEntry(title, id, item.path, item.categoryChain)
         uiSearchData[#uiSearchData + 1] = entry
+        AddStatisticCacheRow(cacheRows, id, title, item.path, item.categoryChain)
+        return true
     end
 
     -- Wider budget for the post-login scan: 2ms left stats unsearchable for seconds.
     local BUDGET_MS = 6
     local cursor = 1
+    local emittedSinceRefresh = 0
     local function step()
         if myGen ~= statsScanGeneration then
             done(false, "cancelled")
@@ -3169,9 +3717,15 @@ function Database:PopulateDynamicStatisticsAsync(done)
         end
         local startMs = debugprofilestop and debugprofilestop() or 0
         while cursor <= #queue do
-            processRow(queue[cursor])
+            if processRow(queue[cursor]) then
+                emittedSinceRefresh = emittedSinceRefresh + 1
+            end
             cursor = cursor + 1
             if debugprofilestop and (debugprofilestop() - startMs) > BUDGET_MS then
+                if emittedSinceRefresh > 0 and Database.SchedulePartialSearchRefresh then
+                    emittedSinceRefresh = 0
+                    Database:SchedulePartialSearchRefresh(150)
+                end
                 Utils.SafeAfter(0, step)
                 return
             end
@@ -3180,6 +3734,7 @@ function Database:PopulateDynamicStatisticsAsync(done)
         -- as a backup to the live category-tree filter.
         Database.statisticsComplete = true
         Database.statisticsVersion = Database.statisticsVersion + 1
+        PersistStatisticsCache(cacheRows, categories)
         if Database.RefreshDynamicCategory then
             Database:RefreshDynamicCategory("achievements")
         end
@@ -3190,6 +3745,8 @@ end
 
 function Database:PopulateDynamicStatistics()
     if not GetStatisticsCategoryList or not GetCategoryInfo then return false end
+    if HydratePersistedStatisticsCache() then return true end
+
     RemoveEntriesByCategory("Statistic")
     wipe(Database.statisticIDs)
     Database.statisticsComplete = false
@@ -3222,27 +3779,17 @@ function Database:PopulateDynamicStatistics()
 
     -- Sync fallback path when timers are unavailable.
     local seenStatisticIDs = {}
+    local cacheRows = {}
     local function emit(cat, parentChain)
-        local baseSteps = {
-            { buttonFrame = "AchievementMicroButton" },
-            { waitForFrame = "AchievementFrame", tabIndex = 3 },
-        }
         local pathBase = { "Achievements", "Statistics" }
+        local categoryChain = {}
         for i = 1, #parentChain do
             local parent = parentChain[i]
             local pn = parent.name
-            baseSteps[#baseSteps + 1] = {
-                waitForFrame = "AchievementFrame",
-                statisticsCategory = pn,
-                statisticsCategoryID = parent.id,
-            }
+            categoryChain[#categoryChain + 1] = { id = parent.id, name = pn }
             pathBase[#pathBase + 1] = pn
         end
-        baseSteps[#baseSteps + 1] = {
-            waitForFrame = "AchievementFrame",
-            statisticsCategory = cat.name,
-            statisticsCategoryID = cat.id,
-        }
+        categoryChain[#categoryChain + 1] = { id = cat.id, name = cat.name }
         pathBase[#pathBase + 1] = cat.name
 
         if GetCategoryNumAchievements and GetAchievementInfo then
@@ -3258,28 +3805,11 @@ function Database:PopulateDynamicStatistics()
                     else
                         MarkID(seenStatisticIDs, id)
                         MarkID(Database.statisticIDs, id)
-                        local steps = {}
-                        for s = 1, #baseSteps do steps[s] = baseSteps[s] end
-                        -- Leaf step must be ONLY statisticID + statisticName.
-                        -- Including statisticsCategory here lets that handler
-                        -- match first (it runs before statisticID) and cancel
-                        -- the guide since the category is already selected.
-                        steps[#steps + 1] = {
-                            waitForFrame = "AchievementFrame",
-                            statisticID = id,
-                            statisticName = title,
-                        }
                         local path = {}
                         for p = 1, #pathBase do path[p] = pathBase[p] end
-                        local entry = buildCategoryEntry({
-                            displayName  = title,
-                            categoryName = title,
-                            category     = "Statistic",
-                            path         = path,
-                            steps        = steps,
-                        })
-                        entry.statisticID = id
+                        local entry = BuildStatisticEntry(title, id, path, categoryChain)
                         uiSearchData[#uiSearchData + 1] = entry
+                        AddStatisticCacheRow(cacheRows, id, title, path, categoryChain)
                     end
                 end
             end
@@ -3296,6 +3826,7 @@ function Database:PopulateDynamicStatistics()
     for i = 1, #roots do emit(roots[i], {}) end
     Database.statisticsComplete = true
     Database.statisticsVersion = Database.statisticsVersion + 1
+    PersistStatisticsCache(cacheRows, categories)
     return true
 end
 

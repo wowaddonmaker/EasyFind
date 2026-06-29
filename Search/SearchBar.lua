@@ -165,6 +165,12 @@ function Search:Initialize()
     self:UpdateScale()
     self:UpdateWidth()
     self:UpdateFontSize()
+    if ns.Database and ns.Database.WarmSearchHotPath then
+        ns.Database:WarmSearchHotPath()
+    end
+    if ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.EnsureFastGameOptions then
+        ns.BlizzOptionsSearch:EnsureFastGameOptions()
+    end
 
     -- Block auto-focus on creation - WoW may focus visible EditBoxes after creation.
     -- Block for two frames (enough for WoW's auto-focus to fire and get rejected).
@@ -358,7 +364,6 @@ function Search:CreateSearchFrame()
             self:ClearFocus()
             return
         end
-        if EasyFind.EnsureDynamicLoaded then EasyFind:EnsureDynamicLoaded() end
         if selectedIndex > 0 then
             selectedIndex = 0
             toggleFocused = false
@@ -2194,5 +2199,3 @@ function Search:UpdateFontSize()
         self:ShowHierarchicalResults(Results._cachedHierarchical, true)
     end
 end
-
-

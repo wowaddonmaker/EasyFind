@@ -18,27 +18,14 @@ local collapsedNodes = Results._collapsedNodes
 local flatEntries = Results._flatEntries
 local flatCombined = Results._flatCombined
 local SCRATCH = Results._SCRATCH
-local heavySearchLoading = false
+local SearchEngine = ns.SearchEngine
 
 local function FlatNameLess(ra, rb)
     local sa, sb = ra.score or 0, rb.score or 0
     if sa ~= sb then return sa > sb end
     return (ra.data.name or "") < (rb.data.name or "")
 end
-local function QueryLooksBossRelated(text)
-    if not text then return false end
-    for word in slower(text):gmatch("%S+") do
-        word = word:gsub("^%p+", ""):gsub("%p+$", "")
-        if word == "boss" or word == "bosses"
-           or word == "dungeon" or word == "dungeons"
-           or word == "raid" or word == "raids" then
-            return true
-        end
-    end
-    return false
-end
-
-local function RefreshSearchAfterHeavyLoad(anyChanged)
+local function RefreshSearchAfterProviderLoad(anyChanged)
     if not anyChanged then return end
     local frame = Search:GetSearchFrame()
     local editBox = frame and frame.editBox
@@ -77,27 +64,6 @@ itemInfoFrame:SetScript("OnEvent", function(_, _, itemID, success)
     end
 end)
 
-local function MaybeLoadHeavySearchData(text, needsHeavy, filters)
-    if not ns.Database then return end
-    if QueryLooksBossRelated(text) and ns.Database.EnsureDynamicProviderLoaded then
-        ns.Database:EnsureDynamicProviderLoaded("bosses", RefreshSearchAfterHeavyLoad)
-    end
-    if filters and filters.statistics ~= false and ns.Database.EnsureDynamicProviderLoaded then
-        ns.Database:EnsureDynamicProviderLoaded("statistics", RefreshSearchAfterHeavyLoad)
-    end
-    if heavySearchLoading or not ns.Database.LoadHeavyDynamicSearchData then return end
-    if not needsHeavy then return end
-    heavySearchLoading = true
-    local started = ns.Database:LoadHeavyDynamicSearchData(function(anyChanged)
-        heavySearchLoading = false
-        -- Only re-run search when a provider actually loaded fresh data.
-        -- Without this gate, every keystroke after providers are loaded
-        -- result re-rendering and SearchUI's per-iteration scratch.
-        RefreshSearchAfterHeavyLoad(anyChanged)
-    end)
-    if not started then heavySearchLoading = false end
-end
-
 function Search:OnSearchTextChanged(text, force)
     -- Suppress re-renders while SelectResult is clearing text/focus
     if Search:IsSelectingResult() then return end
@@ -135,6 +101,13 @@ function Search:OnSearchTextChanged(text, force)
     end
 
     local activeFilters = EasyFind.db.uiSearchFilters
+    local providerFilters = quickFilter and nil or activeFilters
+    local providerContext = SearchEngine and SearchEngine:BuildContext(text, quickFilter, providerFilters)
+    local explicitStatistics = providerContext and SearchEngine
+        and SearchEngine.LooksLikeStatistics and SearchEngine:LooksLikeStatistics(providerContext)
+    local explicitBosses = providerContext and SearchEngine
+        and SearchEngine.LooksLikeBosses and SearchEngine:LooksLikeBosses(providerContext)
+
     local commandsOff = activeFilters and activeFilters.commands == false
     local commandEntries = (not quickFilter) and (not commandsOff)
         and self:GetSearchBarCommandSuggestionEntries(text)
@@ -147,23 +120,14 @@ function Search:OnSearchTextChanged(text, force)
     local calculatorData = (not quickFilter) and self:EvaluateCalculatorExpression(text) or nil
     local calculatorLauncher = (not quickFilter and not calculatorData)
         and self:GetCalculatorLauncherMatch(text) or nil
-    local needsHeavy = not calculatorData and not calculatorLauncher and (
-        (ns.Database and ns.Database.QueryNeedsHeavySearchData
-            and ns.Database:QueryNeedsHeavySearchData(text))
-        or self:QuickFilterNeedsHeavyData(quickFilter)
-    )
-    if not force and not needsHeavy and ns.Database and ns.Database.CancelDynamicWarmup then
-        ns.Database:CancelDynamicWarmup()
-    end
     -- Build skip set from filters so SearchUI avoids scoring/copying filtered categories.
     -- Collection items (mounts/toys/pets/outfits/appearance sets) are
     -- skipped when their own filter is off OR the parent Collections
     -- toggle is off. Loot is independent.
     local filters = quickFilter and nil or EasyFind.db.uiSearchFilters
-    MaybeLoadHeavySearchData(text, needsHeavy, filters)
     local collectionsOff = filters and filters.collections == false
     local optionsOff = filters and filters.options == false
-    local statisticsOff = filters and filters.statistics == false
+    local statisticsOff = filters and filters.statistics == false and not explicitStatistics
     local skipCategories
     if filters then
         local mountsOff = collectionsOff or filters.mounts == false
@@ -180,7 +144,7 @@ function Search:OnSearchTextChanged(text, force)
         local gameOptOff  = optionsOff or filters.gameOptions == false
         local addonOptOff = optionsOff or filters.addonOptions == false
         local abilitiesOff = filters.abilities == false
-        local bossesOff = filters.bosses == false
+        local bossesOff = filters.bosses == false and not explicitBosses
         local titlesOff = filters.titles == false
         local gearSetsOff = filters.gearSets == false
         local talentsOff = filters.talents == false
@@ -226,6 +190,9 @@ function Search:OnSearchTextChanged(text, force)
         wipe(results)
     else
         results = ns.Database:SearchUI(text, skipCategories)
+    end
+    if providerContext and not calculatorData and not calculatorLauncher then
+        SearchEngine:RequestProviders(providerContext, RefreshSearchAfterProviderLoad, #results)
     end
 
     -- Inject user-defined alias hits at the front. Aliases bypass
@@ -288,8 +255,10 @@ function Search:OnSearchTextChanged(text, force)
     local hideJunk = EasyFind.db.bagHideJunk == true
     local commandNativeOff = EasyFind.db.commandShowNative == false
     local commandCustomOff = EasyFind.db.commandShowCustom == false
-    if filters and (filters.abilities == false or filters.bosses == false
-                    or filters.achievements == false or filters.statistics == false
+    local bossesFilterOff = filters and filters.bosses == false and not explicitBosses
+    local statisticsFilterOff = filters and filters.statistics == false and not explicitStatistics
+    if filters and (filters.abilities == false or bossesFilterOff
+                    or filters.achievements == false or statisticsFilterOff
                     or filters.currencies == false or filters.reputations == false
                     or filters.bags == false or filters.macros == false
                     or filters.options == false
@@ -311,6 +280,10 @@ function Search:OnSearchTextChanged(text, force)
                 local d = r.data
                 local bucket = Filters:GetUIBucket(d)
                 local bucketOff = bucket and filters[bucket] == false
+                if (explicitStatistics and bucket == "statistics")
+                   or (explicitBosses and bucket == "bosses") then
+                    bucketOff = false
+                end
                 local parentOff = optionsOff
                     and (bucket == "gameOptions" or bucket == "addonOptions")
                 local passiveOff = hidePassives and d and d.category == "Ability" and d.isPassive

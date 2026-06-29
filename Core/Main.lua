@@ -56,6 +56,12 @@ local DB_DEFAULTS = {
     pinnedMapItems = {},
     lootStatCache = {},
     lootStatCacheVer = 0,
+    lootItemCache = {},
+    lootItemCacheVer = 0,
+    bossCache = {},
+    bossCacheVer = 0,
+    statisticCache = {},
+    statisticCacheVer = 0,
     mapPinsCollapsed = false,
     showLoginMessage = false,
     showAliasMessages = true,
@@ -251,6 +257,12 @@ local INTERACTIVE_RESET_PRESERVE = {
     pinnedMapItems = true,
     lootStatCache = true,
     lootStatCacheVer = true,
+    lootItemCache = true,
+    lootItemCacheVer = true,
+    bossCache = true,
+    bossCacheVer = true,
+    statisticCache = true,
+    statisticCacheVer = true,
 }
 for key in pairs(PRESERVED_KEYS) do
     INTERACTIVE_RESET_PRESERVE[key] = true
@@ -456,7 +468,6 @@ local function OnInitialize()
         if msg == "o" or msg == "options" or msg == "config" or msg == "settings" then
             EasyFind:OpenOptions()
         elseif msg == "toggle" or msg == "t" then
-            EasyFind:EnsureDynamicLoaded()
             if ns.Search then ns.Search:Toggle() end
         elseif msg == "c" or msg == "clear" then
             EasyFind:ClearAll()
@@ -581,30 +592,10 @@ local function InstallClassFilterHooks()
     end
 end
 
--- Lazy dynamic load pulled when the user opens the search bar. Safe to
--- call repeatedly; loaded-and-clean providers are skipped.
+-- Deprecated compatibility hook retained for external callers.
 function EasyFind:EnsureDynamicLoaded()
-    if not ns.Database then return end
-    if ns.Database.LoadDeferredSyncProvidersStaggered then
-        ns.Database:LoadDeferredSyncProvidersStaggered()
-    end
-    if not self._dynamicLoadTriggered then
-        self._dynamicLoadTriggered = true
-        -- Loot scans the Encounter Journal for the current spec (~200ms+). Run it
-        -- async so it spreads across frames instead of freezing one; gear search
-        -- also lazy-loads it (MaybeLoadHeavySearchData) if the user searches first.
-        if ns.Database.EnsureDynamicProviderLoaded then
-            SafeAfter(0.5, function()
-                ns.Database:EnsureDynamicProviderLoaded("loot", function() end)
-            end)
-        end
-        -- Wardrobe / Heirlooms APIs sometimes aren't ready first pass.
-        SafeAfter(3.0, function()
-            if ns.Database.LoadDeferredSyncProvidersStaggered then
-                ns.Database:LoadDeferredSyncProvidersStaggered()
-            end
-        end)
-    end
+    -- Legacy public hook. Dynamic data is now requested by SearchEngine from
+    -- the active query instead of speculatively loading every provider.
 end
 
 -- EasyFind's keybinds are fully addon-managed: the chosen key is stored
@@ -679,20 +670,6 @@ local function OnPlayerLogin()
         ns.Scheduler:StartPump(CreateFrame("Frame"))
     end
 
-    if ns.Database and ns.Database.EnsureDynamicProviderLoaded then
-        ns.Database:EnsureDynamicProviderLoaded("statistics", function(changed)
-            if changed and ns.Database.MarkDynamicProviderLoaded then
-                ns.Database:MarkDynamicProviderLoaded("statistics")
-            end
-        end)
-    elseif ns.Database and ns.Database.PopulateDynamicStatisticsAsync then
-        ns.Database:PopulateDynamicStatisticsAsync(function(changed)
-            if changed and ns.Database.MarkDynamicProviderLoaded then
-                ns.Database:MarkDynamicProviderLoaded("statistics")
-            end
-        end)
-    end
-
     local function SafeInit(mod, name)
         if not mod then return end
         local ok, err = xpcall(mod.Initialize, ErrorHandler, mod)
@@ -705,9 +682,6 @@ local function OnPlayerLogin()
     end
     SafeInit(ns.Search,        "UI")
     SafeInit(ns.Highlight, "Highlight")
-    if EasyFind.db.enableMapSearch ~= false and ns.MapSearch and ns.MapSearch.WarmUISearchCaches then
-        ns.MapSearch:WarmUISearchCaches()
-    end
     if ns.Options and ns.Options.RegisterWithBlizzardOptions then
         local ok, err = xpcall(ns.Options.RegisterWithBlizzardOptions, ErrorHandler, ns.Options)
         if not ok then
@@ -716,35 +690,27 @@ local function OnPlayerLogin()
     end
     InstallClassFilterHooks()
 
-    if ns.Database then
-        if ns.Database.WarmSearchHotPath then
-            xpcall(ns.Database.WarmSearchHotPath, ErrorHandler, ns.Database)
-        end
-        EasyFind:EnsureDynamicLoaded()
-    end
-
-    -- Load bosses directly (not behind the heavy chain) so single
-    -- encounter names match on the first search.
-    SafeAfter(1.0, function()
-        if ns.Database and ns.Database.EnsureDynamicProviderLoaded then
-            ns.Database:EnsureDynamicProviderLoaded("bosses", function() end)
-        end
-    end)
+    -- Keep PLAYER_LOGIN light. Search data is loaded by query intent.
 
     -- Drop the persisted loot-stat cache if the stat keyword map changed since it
     -- was built. The cache makes gear/stat search instant on later logins. Loot
-    -- itself is warmed async by EnsureDynamicLoaded above (single staggered pass).
+    -- itself hydrates from its SavedVariables cache or scans lazily on gear intent.
     if EasyFind.db.lootStatCacheVer ~= ns.LOOT_STAT_CACHE_VER then
         EasyFind.db.lootStatCache = {}
         EasyFind.db.lootStatCacheVer = ns.LOOT_STAT_CACHE_VER
     end
-
-    -- Pre-warm Blizzard's achievement search index; LoadUI + first index build are slow.
-    SafeAfter(0.5, function()
-        if ns.Search and ns.Search.PrewarmAchievementSearch then
-            xpcall(ns.Search.PrewarmAchievementSearch, ErrorHandler, ns.Search)
-        end
-    end)
+    if EasyFind.db.lootItemCacheVer ~= ns.LOOT_ITEM_CACHE_VER then
+        EasyFind.db.lootItemCache = {}
+        EasyFind.db.lootItemCacheVer = ns.LOOT_ITEM_CACHE_VER
+    end
+    if EasyFind.db.bossCacheVer ~= ns.BOSS_CACHE_VER then
+        EasyFind.db.bossCache = {}
+        EasyFind.db.bossCacheVer = ns.BOSS_CACHE_VER
+    end
+    if EasyFind.db.statisticCacheVer ~= ns.STATISTIC_CACHE_VER then
+        EasyFind.db.statisticCache = {}
+        EasyFind.db.statisticCacheVer = ns.STATISTIC_CACHE_VER
+    end
 
     -- Delay so Minimap is ready.
     SafeAfter(0.6, function()
@@ -884,17 +850,14 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
 end)
 
 function EasyFind:ToggleSearchUI()
-    self:EnsureDynamicLoaded()
     if ns.Search then ns.Search:Toggle() end
 end
 
 function EasyFind:FocusSearchUI()
-    self:EnsureDynamicLoaded()
     if ns.Search then ns.Search:Focus() end
 end
 
 function EasyFind:ToggleFocusSearchUI()
-    self:EnsureDynamicLoaded()
     if EasyFind.db.enableMapSearch ~= false and WorldMapFrame and WorldMapFrame:IsShown() and ns.MapTab then
         ns.MapTab:Focus()
     elseif ns.Search then
@@ -904,7 +867,6 @@ end
 
 function EasyFind:FocusMapSearch()
     if EasyFind.db.enableMapSearch == false then return end
-    self:EnsureDynamicLoaded()
     if ns.MapTab then ns.MapTab:Focus() end
 end
 

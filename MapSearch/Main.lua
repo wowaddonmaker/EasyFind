@@ -104,7 +104,6 @@ function MapSearch:Initialize()
     self:CreateHighlightFrame()
     self:CreateZoneHighlightFrame()
     self:HookWorldMap()
-    self:BuildWorldZoneCache()
 end
 
 function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, anchorFrame, onChanged)

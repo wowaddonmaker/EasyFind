@@ -9,8 +9,14 @@ local tinsert = Utils.tinsert
 local slower = Utils.slower
 local SafeAfter = Utils.SafeAfter
 local pcall = pcall
+local coroutine = coroutine
 local setmetatable = setmetatable
 local tconcat = table.concat
+
+local liveSettingsYield
+local function MaybeYieldLiveSettings()
+    if liveSettingsYield then liveSettingsYield() end
+end
 
 local SecureCall = Utils.SecureCall
 
@@ -56,8 +62,54 @@ local function HasSettingsCategoryAccess()
         or (Settings and Settings.GetCategoryList) ~= nil
 end
 
--- { CVar/variable, category name, type code, [min, max, step] }
--- type: c=checkbox, d=dropdown, s=slider
+-- Graphics settings that Blizzard renders as SliderWithSteppers inside the
+-- BaseQualityControls container, with the slider's live min/max/step.
+-- The init.data.settings TABLE KEYS use the CVar name (graphicsViewDistance)
+-- but the Setting object's GetVariable() returns the PROXY_* name. We key
+-- on what GetVariable() actually returns. Values verified via /devqs on
+-- Midnight 12.0.
+-- Blizzard's internal range is 0-9 but the in-game slider displays 1-10
+-- (their formatter adds 1). Mirror that with `plusOne` so our inline
+-- slider label matches what the player sees in the Settings panel.
+local function PlusOneFormatter(v) return tostring((tonumber(v) or 0) + 1) end
+local QUALITY_SLIDER_OVERRIDES = {
+    PROXY_GRAPHICS_QUALITY        = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
+    PROXY_RAID_GRAPHICS_QUALITY   = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
+    PROXY_VIEW_DISTANCE           = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
+    PROXY_RAID_VIEW_DISTANCE      = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
+    PROXY_ENVIRONMENT_DETAIL      = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
+    PROXY_RAID_ENVIRONMENT_DETAIL = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
+    PROXY_GROUND_CLUTTER          = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
+    PROXY_RAID_GROUND_CLUTTER     = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
+}
+local BASE_QUALITY_SETTINGS = {
+    PROXY_SHADOW_QUALITY          = true,
+    PROXY_RAID_SHADOW_QUALITY     = true,
+    PROXY_LIQUID_DETAIL           = true,
+    PROXY_RAID_LIQUID_DETAIL      = true,
+    PROXY_PARTICLE_DENSITY        = true,
+    PROXY_RAID_PARTICLE_DENSITY   = true,
+    PROXY_SSAO                    = true,
+    PROXY_RAID_SSAO               = true,
+    PROXY_DEPTH_EFFECTS           = true,
+    PROXY_RAID_DEPTH_EFFECTS      = true,
+    PROXY_COMPUTE_EFFECTS         = true,
+    PROXY_RAID_COMPUTE_EFFECTS    = true,
+    PROXY_OUTLINE_MODE            = true,
+    PROXY_RAID_OUTLINE_MODE       = true,
+    PROXY_TEXTURE_RESOLUTION      = true,
+    PROXY_RAID_TEXTURE_RESOLUTION = true,
+    PROXY_SPELL_DENSITY           = true,
+    PROXY_RAID_SPELL_DENSITY      = true,
+    PROXY_PROJECTED_TEXTURES      = true,
+    PROXY_RAID_PROJECTED_TEXTURES = true,
+}
+for variable in pairs(QUALITY_SLIDER_OVERRIDES) do
+    BASE_QUALITY_SETTINGS[variable] = true
+end
+
+-- { CVar/variable, category name, type code, [min, max, step, name suffix] }
+-- type: c=checkbox, d=dropdown, s=slider, o=open panel / read-only value
 -- Display names come from Blizzard's Settings API at scan time (see
 -- GetSettingDisplayName below). Variables Blizzard doesn't register
 -- need an English entry in SETTING_NAME_FALLBACK; rows that resolve
@@ -200,6 +252,34 @@ local SETTINGS_DATA = {
     {"PROXY_DISPLAY_MODE","Graphics","d"},
     {"PROXY_RESOLUTION","Graphics","d"},
     {"PROXY_RESOLUTION_RENDER_SCALE","Graphics","s",0.333,2,0.05},
+    {"PROXY_GRAPHICS_QUALITY","Graphics","s",0,9,1},
+    {"PROXY_RAID_GRAPHICS_QUALITY","Graphics","s",0,9,1," (Raid)"},
+    {"PROXY_VIEW_DISTANCE","Graphics","s",0,9,1},
+    {"PROXY_RAID_VIEW_DISTANCE","Graphics","s",0,9,1," (Raid)"},
+    {"PROXY_ENVIRONMENT_DETAIL","Graphics","s",0,9,1},
+    {"PROXY_RAID_ENVIRONMENT_DETAIL","Graphics","s",0,9,1," (Raid)"},
+    {"PROXY_GROUND_CLUTTER","Graphics","s",0,9,1},
+    {"PROXY_RAID_GROUND_CLUTTER","Graphics","s",0,9,1," (Raid)"},
+    {"PROXY_SHADOW_QUALITY","Graphics","o"},
+    {"PROXY_RAID_SHADOW_QUALITY","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_LIQUID_DETAIL","Graphics","o"},
+    {"PROXY_RAID_LIQUID_DETAIL","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_PARTICLE_DENSITY","Graphics","o"},
+    {"PROXY_RAID_PARTICLE_DENSITY","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_SSAO","Graphics","o"},
+    {"PROXY_RAID_SSAO","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_DEPTH_EFFECTS","Graphics","o"},
+    {"PROXY_RAID_DEPTH_EFFECTS","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_COMPUTE_EFFECTS","Graphics","o"},
+    {"PROXY_RAID_COMPUTE_EFFECTS","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_OUTLINE_MODE","Graphics","o"},
+    {"PROXY_RAID_OUTLINE_MODE","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_TEXTURE_RESOLUTION","Graphics","o"},
+    {"PROXY_RAID_TEXTURE_RESOLUTION","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_SPELL_DENSITY","Graphics","o"},
+    {"PROXY_RAID_SPELL_DENSITY","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_PROJECTED_TEXTURES","Graphics","o"},
+    {"PROXY_RAID_PROJECTED_TEXTURES","Graphics","o",nil,nil,nil," (Raid)"},
     {"PROXY_VERTICAL_SYNC","Graphics","d"},
     {"LowLatencyMode","Graphics","d"},
     {"PROXY_ANTIALIASING","Graphics","d"},
@@ -1560,6 +1640,10 @@ BlizzOptionsSearch.ScrollToBindingAction = ScrollToBindingAction
 -- Extra search keywords for settings whose common name differs from the label.
 local SETTING_EXTRA_KEYWORDS = {
     PROXY_VERTICAL_SYNC = { "vsync" },
+    PROXY_SSAO = { "ambient occlusion" },
+    PROXY_RAID_SSAO = { "ambient occlusion", "raid ambient occlusion" },
+    PROXY_PROJECTED_TEXTURES = { "projected texture" },
+    PROXY_RAID_PROJECTED_TEXTURES = { "projected texture", "raid projected texture" },
 }
 
 -- English fallback names for the few variables Blizzard hasn't
@@ -1575,6 +1659,34 @@ local SETTING_EXTRA_KEYWORDS = {
 local SETTING_NAME_FALLBACK = {
     nameplateMotion             = _G["UNIT_NAMEPLATES_TYPES"] or "Nameplate Motion Type",
     floatingCombatTextFloatMode = _G["COMBAT_TEXT_FLOAT_MODE_LABEL"] or "Combat Text Float Mode",
+    PROXY_GRAPHICS_QUALITY      = "Graphics Quality",
+    PROXY_RAID_GRAPHICS_QUALITY = "Graphics Quality",
+    PROXY_VIEW_DISTANCE         = "View Distance",
+    PROXY_RAID_VIEW_DISTANCE    = "View Distance",
+    PROXY_ENVIRONMENT_DETAIL    = "Environment Detail",
+    PROXY_RAID_ENVIRONMENT_DETAIL = "Environment Detail",
+    PROXY_GROUND_CLUTTER        = "Ground Clutter",
+    PROXY_RAID_GROUND_CLUTTER   = "Ground Clutter",
+    PROXY_SHADOW_QUALITY        = "Shadow Quality",
+    PROXY_RAID_SHADOW_QUALITY   = "Shadow Quality",
+    PROXY_LIQUID_DETAIL         = "Liquid Detail",
+    PROXY_RAID_LIQUID_DETAIL    = "Liquid Detail",
+    PROXY_PARTICLE_DENSITY      = "Particle Density",
+    PROXY_RAID_PARTICLE_DENSITY = "Particle Density",
+    PROXY_SSAO                  = "SSAO",
+    PROXY_RAID_SSAO             = "SSAO",
+    PROXY_DEPTH_EFFECTS         = "Depth Effects",
+    PROXY_RAID_DEPTH_EFFECTS    = "Depth Effects",
+    PROXY_COMPUTE_EFFECTS       = "Compute Effects",
+    PROXY_RAID_COMPUTE_EFFECTS  = "Compute Effects",
+    PROXY_OUTLINE_MODE          = "Outline Mode",
+    PROXY_RAID_OUTLINE_MODE     = "Outline Mode",
+    PROXY_TEXTURE_RESOLUTION    = "Texture Resolution",
+    PROXY_RAID_TEXTURE_RESOLUTION = "Texture Resolution",
+    PROXY_SPELL_DENSITY         = "Spell Density",
+    PROXY_RAID_SPELL_DENSITY    = "Spell Density",
+    PROXY_PROJECTED_TEXTURES    = "Projected Textures",
+    PROXY_RAID_PROJECTED_TEXTURES = "Projected Textures",
 }
 
 -- Resolve a setting's display name through Blizzard's Settings API. Each
@@ -1597,45 +1709,82 @@ local function GetSettingDisplayName(variable, fallback)
     return fallback
 end
 
-local function CollectEntries()
-    local entries = {}
+local function TitleCaseWords(text)
+    return (text:gsub("(%S)(%S*)", function(first, rest)
+        return first:upper() .. rest:lower()
+    end))
+end
 
-    ResolveCategoryIDs()
+local function HumanizeSettingVariable(variable)
+    if not variable or variable == "" then return nil end
+    local name = variable
+    local raid = name:find("^PROXY_RAID_") ~= nil
+    name = name:gsub("^PROXY_RAID_", "")
+    name = name:gsub("^PROXY_", "")
+    name = name:gsub("_", " ")
+    name = name:gsub("([a-z])([A-Z])", "%1 %2")
+    name = name:gsub("([A-Z])([A-Z][a-z])", "%1 %2")
+    name = name:gsub("(%a)(%d)", "%1 %2")
+    name = name:gsub("(%d)(%a)", "%1 %2")
+    name = name:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
+    if name == "" then return nil end
+    name = TitleCaseWords(name)
+    if raid then name = name .. " (Raid)" end
+    return name
+end
+
+local function CollectCuratedGameEntries(resolveCategoryIDs, useApiNames)
+    local entries = {}
+    if resolveCategoryIDs then ResolveCategoryIDs() end
 
     -- If any curated variable resolves, treat the registry as ready
     -- and skip unresolved variables (phantom CVars removed from this
     -- client). If nothing resolved, emit all curated entries; the
     -- 3.0s late re-pass will prune.
     local registryReady = false
-    for var in pairs(categoryIDByVariable) do
-        if var then registryReady = true break end
+    if resolveCategoryIDs then
+        for var in pairs(categoryIDByVariable) do
+            if var then registryReady = true break end
+        end
     end
 
     for si = 1, #SETTINGS_DATA do
         local row = SETTINGS_DATA[si]
         local var, catName, typeCode = row[1], row[2], row[3]
         local sMin, sMax, sStep = row[4], row[5], row[6]
+        local nameSuffix = row[7]
         -- Settings API is the source of truth for display names. The
         -- SETTING_NAME_FALLBACK table only covers the handful of CVar
         -- dropdowns Blizzard hasn't registered as Setting objects; for
         -- those, the English label shows on every locale (Blizzard
         -- doesn't expose a localized one). Variables resolved by the API
         -- pick up the localized name automatically.
-        local apiName = GetSettingDisplayName(var, nil)
+        local apiName = useApiNames ~= false and GetSettingDisplayName(var, nil) or nil
         local fallbackName = SETTING_NAME_FALLBACK[var]
-        local name = apiName or fallbackName
+        local name = apiName or fallbackName or (useApiNames == false and HumanizeSettingVariable(var))
         if name and name ~= "" then
+        if nameSuffix and nameSuffix ~= "" and name:sub(-#nameSuffix) ~= nameSuffix then
+            name = name .. nameSuffix
+        end
         local nameLower = slower(name)
         local catLower = slower(catName)
         local resolved = TYPE_MAP[typeCode] or "other"
+        local sliderInfo = resolved == "slider" and QUALITY_SLIDER_OVERRIDES[var] or nil
+        local settingFormatter
+        if sliderInfo then
+            sMin = sliderInfo.min or sMin
+            sMax = sliderInfo.max or sMax
+            sStep = sliderInfo.step or sStep
+            settingFormatter = sliderInfo.formatter
+        end
         local kw = { "setting", "option", "config", catLower, nameLower }
         local extraKw = SETTING_EXTRA_KEYWORDS[var]
         if extraKw then
             for ei = 1, #extraKw do kw[#kw + 1] = extraKw[ei] end
         end
-        local resolvedCatID = GetCategoryIDForVariable(var)
-        if not (registryReady and not resolvedCatID) then
-            local catID = resolvedCatID or GetCategoryID(catName)
+        local resolvedCatID = resolveCategoryIDs and GetCategoryIDForVariable(var) or nil
+        if not (registryReady and not resolvedCatID and not BASE_QUALITY_SETTINGS[var]) then
+            local catID = resolvedCatID or (resolveCategoryIDs and GetCategoryID(catName)) or nil
             local mt = GetSettingsCatMT("Game Settings", catName, catID,
                 { "Game Settings", catName })
             tinsert(entries, setmetatable({
@@ -1647,6 +1796,7 @@ local function CollectEntries()
                 settingMin = sMin,
                 settingMax = sMax,
                 settingStep = sStep,
+                settingFormatter = settingFormatter,
                 steps = {
                     {
                         settingsCategory = catName,
@@ -1657,6 +1807,21 @@ local function CollectEntries()
             }, mt))
         end
         end
+        MaybeYieldLiveSettings()
+    end
+
+    return entries
+end
+
+local function AppendEntries(dst, src)
+    for i = 1, #src do dst[#dst + 1] = src[i] end
+end
+
+local function CollectEntries(includeCurated)
+    local entries = {}
+
+    if includeCurated ~= false then
+        AppendEntries(entries, CollectCuratedGameEntries(true))
     end
 
     local list = GetSettingsCategoryList()
@@ -1682,12 +1847,14 @@ local function CollectEntries()
 
     for _, cat in ipairs(list) do
         addCategoryEntry(cat)
+        MaybeYieldLiveSettings()
         if cat.GetSubcategories then
             local sok, subs = pcall(cat.GetSubcategories, cat)
             if sok and type(subs) == "table" then
                 local parentName = cat.GetName and cat:GetName()
                 for _, sub in ipairs(subs) do
                     addCategoryEntry(sub, parentName)
+                    MaybeYieldLiveSettings()
                 end
             end
         end
@@ -1747,6 +1914,7 @@ local function CollectKeybindings()
 
     local currentHeader = "Other"
     for i = 1, n do
+        MaybeYieldLiveSettings()
         local action, category = GetBinding(i)
         if action and (action == "HEADER_BLANK" or action:find("^HEADER_")) then
             local resolved = ResolveBindingHeader(category, action)
@@ -1791,27 +1959,6 @@ local function CollectKeybindings()
 end
 BlizzOptionsSearch.CollectKeybindings = CollectKeybindings
 
--- Graphics settings that Blizzard renders as SliderWithSteppers inside the
--- BaseQualityControls container, with the slider's live min/max/step.
--- The init.data.settings TABLE KEYS use the CVar name (graphicsViewDistance)
--- but the Setting object's GetVariable() returns the PROXY_* name. We key
--- on what GetVariable() actually returns. Values verified via /devqs on
--- Midnight 12.0.
--- Blizzard's internal range is 0-9 but the in-game slider displays 1-10
--- (their formatter adds 1). Mirror that with `plusOne` so our inline
--- slider label matches what the player sees in the Settings panel.
-local function PlusOneFormatter(v) return tostring((tonumber(v) or 0) + 1) end
-local QUALITY_SLIDER_OVERRIDES = {
-    PROXY_GRAPHICS_QUALITY        = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
-    PROXY_RAID_GRAPHICS_QUALITY   = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
-    PROXY_VIEW_DISTANCE           = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
-    PROXY_RAID_VIEW_DISTANCE      = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
-    PROXY_ENVIRONMENT_DETAIL      = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
-    PROXY_RAID_ENVIRONMENT_DETAIL = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
-    PROXY_GROUND_CLUTTER          = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
-    PROXY_RAID_GROUND_CLUTTER     = { min = 0, max = 9, step = 1, formatter = PlusOneFormatter },
-}
-
 local function WalkCategorySettings(cat, catName, catID, pathPrefix, entryCategory)
     entryCategory = entryCategory or "AddOn Settings"
     local catMT = GetSettingsCatMT(entryCategory, catName, catID, pathPrefix)
@@ -1853,6 +2000,7 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix, entryCatego
     end
 
     for _, init in ipairs(inits) do
+      MaybeYieldLiveSettings()
       local info = inspectInit(init)
       if info.combined then
         local d = init.data
@@ -1949,10 +2097,16 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix, entryCatego
             }, catMT))
         end
         if d.settings then
-            for _, setting in pairs(d.settings) do emitContainerSlider(setting, false) end
+            for _, setting in pairs(d.settings) do
+                emitContainerSlider(setting, false)
+                MaybeYieldLiveSettings()
+            end
         end
         if d.raidSettings then
-            for _, setting in pairs(d.raidSettings) do emitContainerSlider(setting, true) end
+            for _, setting in pairs(d.raidSettings) do
+                emitContainerSlider(setting, true)
+                MaybeYieldLiveSettings()
+            end
         end
       else
         local setting = info.setting
@@ -2092,11 +2246,15 @@ local function CollectAddonCategories()
             gotTyped = true
             for _, cat in ipairs(list) do
                 emit(cat, nil)
+                MaybeYieldLiveSettings()
                 if cat.GetSubcategories then
                     local sok, subs = pcall(cat.GetSubcategories, cat)
                     if sok and type(subs) == "table" then
                         local parentName = cat.GetName and cat:GetName()
-                        for _, sub in ipairs(subs) do emit(sub, parentName) end
+                        for _, sub in ipairs(subs) do
+                            emit(sub, parentName)
+                            MaybeYieldLiveSettings()
+                        end
                     end
                 end
             end
@@ -2108,12 +2266,14 @@ local function CollectAddonCategories()
         if ok and type(all) == "table" then
             for _, cat in ipairs(all) do
                 emit(cat, nil)
+                MaybeYieldLiveSettings()
                 if cat.GetSubcategories then
                     local sok, subs = pcall(cat.GetSubcategories, cat)
                     if sok and type(subs) == "table" then
                         local parentName = cat.GetName and cat:GetName()
                         for _, sub in ipairs(subs) do
                             emit(sub, parentName)
+                            MaybeYieldLiveSettings()
                         end
                     end
                 end
@@ -2221,6 +2381,7 @@ local function CollectGameSettings()
                 emittedNameKeys[nameKey(catName, apiName)] = true
             end
         end
+        MaybeYieldLiveSettings()
     end
     local function emit(cat, parentName)
         if not cat or not cat.GetName then return end
@@ -2245,11 +2406,15 @@ local function CollectGameSettings()
     if type(list) == "table" then
         for _, cat in ipairs(list) do
             emit(cat, nil)
+            MaybeYieldLiveSettings()
             if cat.GetSubcategories then
                 local sok, subs = pcall(cat.GetSubcategories, cat)
                 if sok and type(subs) == "table" then
                     local parentName = cat.GetName and cat:GetName()
-                    for _, sub in ipairs(subs) do emit(sub, parentName) end
+                    for _, sub in ipairs(subs) do
+                        emit(sub, parentName)
+                        MaybeYieldLiveSettings()
+                    end
                 end
             end
         end
@@ -2259,6 +2424,7 @@ local function CollectGameSettings()
     -- straight from SettingsPanel.settings as navigation entries.
     if SettingsPanel and SettingsPanel.settings then
         for setting, cat in pairs(SettingsPanel.settings) do
+            MaybeYieldLiveSettings()
             if cat and not IsAddonCategory(cat) and setting.GetVariable then
                 local vok, variable = pcall(setting.GetVariable, setting)
                 if vok and variable and not emittedVars[variable] then
@@ -2332,39 +2498,125 @@ local function CollectGameSettings()
 end
 BlizzOptionsSearch.CollectGameSettings = CollectGameSettings
 
-function BlizzOptionsSearch:Populate()
-    if not ns.Database or not ns.Database.uiSearchData then return end
-    local data = ns.Database.uiSearchData
+local OPTIONS_POPULATE_BUDGET_MS = 1.5
+local function RunBudgetedOptionsWork(worker, done)
+    if not (SafeAfter and coroutine and coroutine.create and coroutine.resume
+            and coroutine.status and coroutine.yield and debugprofilestop) then
+        local ok, resultOrErr = xpcall(worker, Utils.ErrorHandler)
+        if ok then
+            done(resultOrErr)
+        else
+            done(nil, resultOrErr)
+        end
+        return
+    end
 
-    local entries = CollectEntries()
-    local kb = CollectKeybindings()
-    local addonEntries = CollectAddonCategories()
-    local gameEntries = CollectGameSettings()
+    local co = coroutine.create(worker)
+    local finished = false
 
+    local function scheduleStep()
+        SafeAfter(0, function()
+            if finished then return end
+            local ok, err = xpcall(function()
+                local startMs = debugprofilestop()
+                liveSettingsYield = function()
+                    if (debugprofilestop() - startMs) >= OPTIONS_POPULATE_BUDGET_MS then
+                        coroutine.yield()
+                    end
+                end
+                local resumeOk, resultOrErr = coroutine.resume(co)
+                liveSettingsYield = nil
+                if not resumeOk then
+                    finished = true
+                    done(nil, resultOrErr)
+                    return
+                end
+                if coroutine.status(co) == "dead" then
+                    finished = true
+                    done(resultOrErr)
+                    return
+                end
+                scheduleStep()
+            end, Utils.ErrorHandler)
+            liveSettingsYield = nil
+            if not ok then
+                finished = true
+                done(nil, err)
+            end
+        end)
+    end
+
+    scheduleStep()
+end
+
+local function CollectGameSettingsAsync(done)
+    RunBudgetedOptionsWork(CollectGameSettings, done)
+end
+BlizzOptionsSearch.CollectGameSettingsAsync = CollectGameSettingsAsync
+
+local registered = false
+local fastGameRegistered = false
+local coreGameRegistered = false
+local liveRegistered = false
+local populatePending = false
+local livePopulatePending = false
+local populateWaiters = {}
+local livePopulateWaiters = {}
+
+local function DedupeKey(e)
+    return (e.name or "") .. "\31" .. (e.settingsCategory or "")
+end
+
+local function NotifyWaiters(waiters, changed)
+    for i = 1, #waiters do
+        waiters[i](changed)
+        waiters[i] = nil
+    end
+end
+
+local function AddWaiter(waiters, fn)
+    if fn then waiters[#waiters + 1] = fn end
+end
+
+local function PushOptionEntries(data, entries, kb, addonEntries, gameEntries)
     -- Post-pass dedupe: any Game Settings entry that collides with an
     -- AddOn Settings entry by (name + settingsCategory) is dropped.
-    -- This is the simplest place to catch duplicates regardless of
-    -- which pipeline (CollectEntries' addCategoryEntry, CollectGame
-    -- Settings' main/orphan loops) emitted them, since IsAddonCategory
-    -- can be inconsistent for addons that don't register via
-    -- Settings.CategorySet.AddOns. Addons win because their entries
-    -- have correct subtext ("<addon> Settings") and category.
     local addonKeys = {}
-    local function dedupeKey(e)
-        return (e.name or "") .. "\31" .. (e.settingsCategory or "")
+    local existingVars = {}
+    for i = 1, #data do
+        local e = data[i]
+        if e and e.settingVariable then
+            existingVars[e.settingVariable] = i
+        end
+        if e and e.category == "AddOn Settings" then
+            addonKeys[DedupeKey(e)] = true
+        end
     end
     for i = 1, #addonEntries do
         local e = addonEntries[i]
         if e.category == "AddOn Settings" then
-            addonKeys[dedupeKey(e)] = true
+            addonKeys[DedupeKey(e)] = true
         end
+    end
+    local changed = false
+    local function pushOne(e)
+        if e.category == "Game Settings" and addonKeys[DedupeKey(e)] then return end
+        local variable = e.settingVariable
+        if variable then
+            local existingIndex = existingVars[variable]
+            if existingIndex then
+                data[existingIndex] = e
+                changed = true
+                return
+            end
+            existingVars[variable] = #data + 1
+        end
+        tinsert(data, e)
+        changed = true
     end
     local function pushFiltered(src)
         for i = 1, #src do
-            local e = src[i]
-            if not (e.category == "Game Settings" and addonKeys[dedupeKey(e)]) then
-                tinsert(data, e)
-            end
+            pushOne(src[i])
         end
     end
 
@@ -2372,10 +2624,72 @@ function BlizzOptionsSearch:Populate()
     -- addons -> dynamic game.
     pushFiltered(entries)
     pushFiltered(kb)
-    for i = 1, #addonEntries do tinsert(data, addonEntries[i]) end
-    pushFiltered(gameEntries)
+    for i = 1, #addonEntries do
+        tinsert(data, addonEntries[i])
+        changed = true
+    end
+    if gameEntries then pushFiltered(gameEntries) end
+    return changed
+end
 
-    if ns.Database.ResetSearchCache then ns.Database:ResetSearchCache() end
+local function PushLiveGameEntries(data, gameEntries)
+    local addonKeys = {}
+    local seenVars = {}
+    local seenNames = {}
+    for i = 1, #data do
+        local e = data[i]
+        if e.category == "AddOn Settings" then
+            addonKeys[DedupeKey(e)] = true
+        elseif e.category == "Game Settings" then
+            if e.settingVariable then seenVars[e.settingVariable] = true end
+            seenNames[DedupeKey(e)] = true
+        end
+    end
+
+    local changed = false
+    for i = 1, #gameEntries do
+        local e = gameEntries[i]
+        local duplicate = (e.settingVariable and seenVars[e.settingVariable])
+            or seenNames[DedupeKey(e)]
+            or addonKeys[DedupeKey(e)]
+        if not duplicate then
+            tinsert(data, e)
+            if e.settingVariable then seenVars[e.settingVariable] = true end
+            seenNames[DedupeKey(e)] = true
+            changed = true
+        end
+    end
+    return changed
+end
+
+function BlizzOptionsSearch:Populate(includeLiveGameSettings)
+    if not ns.Database or not ns.Database.uiSearchData then return end
+    local data = ns.Database.uiSearchData
+
+    local entries = CollectEntries(not coreGameRegistered)
+    local kb = CollectKeybindings()
+    local addonEntries = CollectAddonCategories()
+    local gameEntries = includeLiveGameSettings and CollectGameSettings() or nil
+
+    local changed = PushOptionEntries(data, entries, kb, addonEntries, gameEntries)
+
+    if changed and ns.Database.ResetSearchCache then ns.Database:ResetSearchCache() end
+end
+
+function BlizzOptionsSearch:PopulateLight()
+    self:Populate(false)
+end
+
+function BlizzOptionsSearch:EnsureFastGameOptions()
+    if fastGameRegistered then return false end
+    if registered then return false end
+    if not (ns.Database and ns.Database.uiSearchData) then return false end
+    local ok, entries = xpcall(CollectCuratedGameEntries, Utils.ErrorHandler, false, false)
+    if not ok or type(entries) ~= "table" or #entries == 0 then return false end
+    fastGameRegistered = true
+    local changed = PushOptionEntries(ns.Database.uiSearchData, entries, {}, {}, nil)
+    if changed and ns.Database.ResetSearchCache then ns.Database:ResetSearchCache() end
+    return changed
 end
 
 function BlizzOptionsSearch:HandleStep(step)
@@ -2438,33 +2752,153 @@ function BlizzOptionsSearch:HandleStep(step)
     return catID ~= nil
 end
 
-local registered = false
-local function Register()
-    if registered then return end
-    registered = true
-    BlizzOptionsSearch:Populate()
+local lateRefreshScheduled = false
+local function RefreshLateAddonCategories()
+    if not (ns.Database and ns.Database.uiSearchData) then return end
+    -- Re-collect to pick up addons that register categories late.
+    local seen = {}
+    for _, e in ipairs(ns.Database.uiSearchData or {}) do
+        if e.settingsCategory and not e.settingVariable then
+            seen[e.settingsCategory] = true
+        end
+    end
+    ResolveCategoryIDs()
+    local fresh = CollectEntries(false)
+    for _, e in ipairs(fresh) do
+        -- Skip per-variable entries already injected in pass 1.
+        if not e.settingVariable and not seen[e.settingsCategory] then
+            tinsert(ns.Database.uiSearchData, e)
+        end
+    end
+    if ns.Database.ResetSearchCache then ns.Database:ResetSearchCache() end
 end
 
-local f = CreateFrame("Frame")
-f:RegisterEvent("PLAYER_LOGIN")
-f:SetScript("OnEvent", function()
-    SafeAfter(0.5, Register)
-    SafeAfter(3.0, function()
-        -- Re-collect to pick up addons that register categories late.
-        local seen = {}
-        for _, e in ipairs(ns.Database.uiSearchData or {}) do
-            if e.settingsCategory and not e.settingVariable then
-                seen[e.settingsCategory] = true
-            end
+local function ScheduleLateRefresh()
+    if lateRefreshScheduled then return end
+    lateRefreshScheduled = true
+    SafeAfter(3.0, RefreshLateAddonCategories)
+end
+
+local function Register()
+    if registered then return end
+    if not (ns.Database and ns.Database.uiSearchData) then return end
+    BlizzOptionsSearch:PopulateLight()
+    registered = true
+    ScheduleLateRefresh()
+end
+
+function BlizzOptionsSearch:EnsureCoreGameOptions()
+    if coreGameRegistered or registered then return false end
+    if not (ns.Database and ns.Database.uiSearchData) then return false end
+    local changed = self:EnsureFastGameOptions()
+    coreGameRegistered = true
+    return changed
+end
+
+function BlizzOptionsSearch:EnsurePopulated()
+    Register()
+end
+
+function BlizzOptionsSearch:EnsurePopulatedAsync(onDone)
+    if registered then
+        if onDone then onDone(false) end
+        return false
+    end
+    AddWaiter(populateWaiters, onDone)
+    if populatePending then return true end
+    populatePending = true
+
+    local function finish(ok)
+        populatePending = false
+        if ok then
+            registered = true
+            ScheduleLateRefresh()
         end
-        ResolveCategoryIDs()
-        local fresh = CollectEntries()
-        for _, e in ipairs(fresh) do
-            -- Skip per-variable entries already injected in pass 1.
-            if not e.settingVariable and not seen[e.settingsCategory] then
-                tinsert(ns.Database.uiSearchData, e)
-            end
+        NotifyWaiters(populateWaiters, ok and registered)
+    end
+
+    local function run()
+        if not (ns.Database and ns.Database.uiSearchData) then
+            finish(false)
+            return
         end
-        if ns.Database.ResetSearchCache then ns.Database:ResetSearchCache() end
-    end)
-end)
+        RunBudgetedOptionsWork(function()
+            BlizzOptionsSearch:PopulateLight()
+            return true
+        end, finish)
+    end
+
+    if SafeAfter then
+        SafeAfter(0, run)
+    else
+        run()
+    end
+    return true
+end
+
+function BlizzOptionsSearch:EnsureLivePopulatedAsync(onDone)
+    if liveRegistered then
+        if onDone then onDone(false) end
+        return false
+    end
+    AddWaiter(livePopulateWaiters, onDone)
+    if livePopulatePending then return true end
+    livePopulatePending = true
+
+    local function finish(ok, changed)
+        livePopulatePending = false
+        NotifyWaiters(livePopulateWaiters, ok and changed)
+    end
+
+    local function startLivePopulate()
+        local ok = xpcall(function()
+            if not registered then Register() end
+        end, Utils.ErrorHandler)
+        if not ok then
+            finish(false, false)
+            return
+        end
+        if not (ns.Database and ns.Database.uiSearchData) then
+            finish(false, false)
+            return
+        end
+
+        CollectGameSettingsAsync(function(gameEntries)
+            if not gameEntries then
+                finish(false, false)
+                return
+            end
+            local okPush, changed = xpcall(function()
+                return PushLiveGameEntries(ns.Database.uiSearchData, gameEntries)
+            end, Utils.ErrorHandler)
+            if not okPush then
+                finish(false, false)
+                return
+            end
+            liveRegistered = true
+            if changed and ns.Database.ResetSearchCache then ns.Database:ResetSearchCache() end
+            finish(true, changed)
+        end)
+    end
+
+    local function run()
+        if populatePending and not registered then
+            AddWaiter(populateWaiters, function()
+                if registered then
+                    startLivePopulate()
+                else
+                    finish(false, false)
+                end
+            end)
+            return
+        end
+        startLivePopulate()
+    end
+
+    if SafeAfter then
+        SafeAfter(0.2, run)
+    else
+        run()
+    end
+    return true
+end

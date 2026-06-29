@@ -315,8 +315,8 @@ function Results:HideResults()
     self:ReleaseCalculatorCopyBox()
     -- Don't kill an active nav-repeat ticker from inside HideResults.
     -- _preserveSearchNavRepeat covers the synchronous NavigateSearchHistory
-    -- window. The IsAltNavRepeatKey check covers the async case: the heavy-
-    -- search-data loader can fire RefreshSearchAfterHeavyLoad seconds after
+    -- window. The IsAltNavRepeatKey check covers the async case: a query
+    -- provider can refresh results seconds after
     -- the synchronous window cleared _preserveSearchNavRepeat, and without
     -- this extra guard the resulting HideResults would kill the cascade
     -- mid-history. Both checks together keep the ticker alive whenever any

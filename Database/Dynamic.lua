@@ -31,7 +31,7 @@ local dynamicProviders = {
     { key = "talents",     category = "Talent",         fn = "PopulateDynamicTalents" },
     { key = "bags",        category = "Bag",            fn = "PopulateDynamicBags" },
     { key = "transmogSets", category = "Appearance Set", fn = "PopulateDynamicTransmogSets", pre = "SyncTransmogSetFiltersFromUI" },
-    { key = "appearanceItems", category = "Appearance", fn = "PopulateDynamicAppearanceItems", pre = "SyncAppearanceItemFiltersFromUI" },
+    { key = "appearanceItems", category = "Appearance", fn = "PopulateDynamicAppearanceItems", asyncFn = "PopulateDynamicAppearanceItemsAsync", pre = "SyncAppearanceItemFiltersFromUI" },
     { key = "loot",        category = "Loot",           fn = "PopulateDynamicLoot", asyncFn = "PopulateDynamicLootAsync" },
     { key = "bosses",      category = "Boss",           fn = "PopulateDynamicBosses", asyncFn = "PopulateDynamicBossesAsync" },
     { key = "commands",    category = "Command",        fn = "PopulateDynamicCommands" },
@@ -151,7 +151,7 @@ local function ensureJobsRegistered(database)
     return sched
 end
 
-local function RunDynamicProvider(database, provider, onDone)
+local function RunDynamicProvider(database, provider, onDone, runNow)
     if provider.loaded and not provider.dirty then onDone(false); return end
 
     -- Append to waiters before enqueueing so a synchronous run that fires
@@ -173,7 +173,9 @@ local function RunDynamicProvider(database, provider, onDone)
         sched:Reset(jobId)
     end
     sched:Enqueue(jobId)
-    sched:Step(0)
+    if runNow ~= false then
+        sched:Step(0)
+    end
 end
 
 function Database:CancelDynamicWarmup()
@@ -208,14 +210,34 @@ function Database:EnsureDynamicProviderLoaded(key, onDone)
     return true
 end
 
-function Database:RefreshDynamicCategory(key)
+function Database:RequestDynamicProviderLoaded(key, onDone)
+    local provider = dynamicProviderByKey[key]
+    if not provider then return false end
+    RunDynamicProvider(self, provider, onDone or function() end, false)
+    return true
+end
+
+local function RefreshActiveSearch()
+    local search = ns.Search
+    local frame = search and search.GetSearchFrame and search:GetSearchFrame()
+    local editBox = frame and frame.editBox
+    if editBox and frame:IsShown() and search.OnSearchTextChanged then
+        search:OnSearchTextChanged(editBox:GetText() or "", true)
+    end
+end
+
+function Database:RefreshDynamicCategory(key, onDone)
     local provider = dynamicProviderByKey[key]
     if not provider then return false end
     provider.dirty = true
     local changed = false
+    local returned = false
     RunDynamicProvider(self, provider, function(providerChanged)
         changed = providerChanged
+        if onDone then onDone(providerChanged) end
+        if returned and providerChanged then RefreshActiveSearch() end
     end)
+    returned = true
     return changed
 end
 

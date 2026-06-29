@@ -18,6 +18,7 @@ local _, ns = ...
 local SearchText = {}
 
 local sbyte, schar = string.byte, string.char
+local sfind = string.find
 local sslower = string.lower
 
 -- UTF-8 decoder. Reads a codepoint starting at byte index `i` in `s`,
@@ -141,11 +142,7 @@ end
 function SearchText.Normalize(s)
     if not s or s == "" then return "" end
     -- ASCII fast path
-    local pureAscii = true
-    for i = 1, #s do
-        if sbyte(s, i) >= 0x80 then pureAscii = false; break end
-    end
-    if pureAscii then return sslower(s) end
+    if not sfind(s, "[\128-\255]") then return sslower(s) end
     -- Walk codepoints, lowercase each.
     local out = {}
     local i = 1
@@ -264,10 +261,7 @@ end
 ---@return boolean
 function SearchText.IsAscii(s)
     if not s then return true end
-    for i = 1, #s do
-        if s:byte(i) > 127 then return false end
-    end
-    return true
+    return sfind(s, "[\128-\255]") == nil
 end
 
 ---@class MatchRange
