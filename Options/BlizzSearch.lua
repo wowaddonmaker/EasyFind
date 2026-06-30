@@ -557,6 +557,22 @@ local function GetTooltipForVariable(variable, displayName)
 end
 BlizzOptionsSearch.GetTooltipForVariable = GetTooltipForVariable
 
+local function AddKeyword(kw, text)
+    if type(text) == "string" and text ~= "" then
+        kw[#kw + 1] = slower(text)
+    end
+end
+
+local function AddOptionLabelKeywords(kw, options)
+    if type(options) ~= "table" then return end
+    for i = 1, #options do
+        local opt = options[i]
+        if type(opt) == "table" then
+            AddKeyword(kw, opt.label or opt.text or opt.name)
+        end
+    end
+end
+
 -- Returns { value, label } array or nil. Cached per variable; false
 -- sentinel means "looked, none available".
 local optionsByVariable = {}
@@ -636,6 +652,57 @@ local function GetInitializerOptions(init, setting)
     return found
 end
 
+local function SettingMatchesVariable(setting, variable)
+    if not setting or not setting.GetVariable then return false end
+    if variable == nil then return true end
+    local ok, v = pcall(setting.GetVariable, setting)
+    return ok and v == variable
+end
+
+local function FindSettingInValue(value, variable, depth, seen)
+    if type(value) ~= "table" or depth > 4 then return nil end
+    if SettingMatchesVariable(value, variable) then return value end
+    seen = seen or {}
+    if seen[value] then return nil end
+    seen[value] = true
+
+    local preferred = { "setting", "cbSetting", "sliderSetting" }
+    for i = 1, #preferred do
+        local child = value[preferred[i]]
+        local hit = FindSettingInValue(child, variable, depth + 1, seen)
+        if hit then return hit end
+    end
+    for _, child in pairs(value) do
+        if type(child) == "table" then
+            local hit = FindSettingInValue(child, variable, depth + 1, seen)
+            if hit then return hit end
+        end
+    end
+    return nil
+end
+
+local function GetInitializerSetting(init, variable)
+    local setting
+    if init and init.GetSetting then
+        local sok, s = pcall(init.GetSetting, init)
+        if sok then setting = s end
+    end
+    local d = init and init.data
+    if setting and SettingMatchesVariable(setting, variable) then return setting end
+    if d and d.setting and SettingMatchesVariable(d.setting, variable) then
+        return d.setting
+    end
+    if init and init.GetData then
+        local dok, dd = pcall(init.GetData, init)
+        if dok and dd and SettingMatchesVariable(dd.setting, variable) then
+            return dd.setting
+        end
+        local hit = dok and FindSettingInValue(dd, variable, 0, nil)
+        if hit then return hit end
+    end
+    return FindSettingInValue(d, variable, 0, nil)
+end
+
 local function GetOptionsForVariable(variable)
     if not variable then return nil end
     local cached = optionsByVariable[variable]
@@ -660,12 +727,7 @@ local function GetOptionsForVariable(variable)
             local iok, inits = pcall(layout.GetInitializers, layout)
             if iok and inits then
                 for _, init in ipairs(inits) do
-                    local setting
-                    if init.GetSetting then
-                        local sok, s = pcall(init.GetSetting, init)
-                        if sok then setting = s end
-                    end
-                    if not setting and init.data then setting = init.data.setting end
+                    local setting = GetInitializerSetting(init, variable)
                     if setting and setting.GetVariable then
                         local vok, v = pcall(setting.GetVariable, setting)
                         if vok and v == variable then
@@ -724,12 +786,7 @@ local function GetFormatterForVariable(variable)
             local iok, inits = pcall(layout.GetInitializers, layout)
             if iok and inits then
                 for _, init in ipairs(inits) do
-                    local setting
-                    if init.GetSetting then
-                        local sok, s = pcall(init.GetSetting, init)
-                        if sok then setting = s end
-                    end
-                    if not setting and init.data then setting = init.data.setting end
+                    local setting = GetInitializerSetting(init, variable)
                     if setting and setting.GetVariable then
                         local vok, v = pcall(setting.GetVariable, setting)
                         if vok and v == variable then
@@ -1639,6 +1696,17 @@ BlizzOptionsSearch.ScrollToBindingAction = ScrollToBindingAction
 
 -- Extra search keywords for settings whose common name differs from the label.
 local SETTING_EXTRA_KEYWORDS = {
+    nameplateShowEnemies = {
+        "enemy nameplate", "enemy nameplates", "enemy unit nameplate",
+        "enemy unit nameplates", "hostile nameplate", "hostile nameplates",
+    },
+    nameplateShowFriends = {
+        "friendly nameplate", "friendly nameplates", "friendly unit nameplate",
+        "friendly unit nameplates",
+    },
+    nameplateShowAll = {
+        "all nameplates", "always show nameplates",
+    },
     PROXY_VERTICAL_SYNC = { "vsync" },
     PROXY_SSAO = { "ambient occlusion" },
     PROXY_RAID_SSAO = { "ambient occlusion", "raid ambient occlusion" },
@@ -1659,6 +1727,11 @@ local SETTING_EXTRA_KEYWORDS = {
 local SETTING_NAME_FALLBACK = {
     nameplateMotion             = _G["UNIT_NAMEPLATES_TYPES"] or "Nameplate Motion Type",
     floatingCombatTextFloatMode = _G["COMBAT_TEXT_FLOAT_MODE_LABEL"] or "Combat Text Float Mode",
+    nameplateShowAll           = "Always Show Nameplates",
+    nameplateShowEnemies       = "Enemy Unit Nameplate",
+    nameplateShowFriends       = "Friendly Unit Nameplate",
+    nameplateMaxDistance       = "Nameplate Maximum Distance",
+    nameplateShowCastBars      = "Nameplate Cast Bars",
     PROXY_GRAPHICS_QUALITY      = "Graphics Quality",
     PROXY_RAID_GRAPHICS_QUALITY = "Graphics Quality",
     PROXY_VIEW_DISTANCE         = "View Distance",
@@ -1729,31 +1802,7 @@ local function GetSettingDisplayName(variable, fallback)
     return fallback
 end
 
-local function TitleCaseWords(text)
-    return (text:gsub("(%S)(%S*)", function(first, rest)
-        return first:upper() .. rest:lower()
-    end))
-end
-
-local function HumanizeSettingVariable(variable)
-    if not variable or variable == "" then return nil end
-    local name = variable
-    local raid = name:find("^PROXY_RAID_") ~= nil
-    name = name:gsub("^PROXY_RAID_", "")
-    name = name:gsub("^PROXY_", "")
-    name = name:gsub("_", " ")
-    name = name:gsub("([a-z])([A-Z])", "%1 %2")
-    name = name:gsub("([A-Z])([A-Z][a-z])", "%1 %2")
-    name = name:gsub("(%a)(%d)", "%1 %2")
-    name = name:gsub("(%d)(%a)", "%1 %2")
-    name = name:gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
-    if name == "" then return nil end
-    name = TitleCaseWords(name)
-    if raid then name = name .. " (Raid)" end
-    return name
-end
-
-local function CollectCuratedGameEntries(resolveCategoryIDs, useApiNames, allowHumanizedNames)
+local function CollectCuratedGameEntries(resolveCategoryIDs, useApiNames)
     local entries = {}
     if resolveCategoryIDs then ResolveCategoryIDs() end
 
@@ -1782,11 +1831,7 @@ local function CollectCuratedGameEntries(resolveCategoryIDs, useApiNames, allowH
         local apiName = useApiNames ~= false and GetSettingDisplayName(var, nil) or nil
         local fallbackName = SETTING_NAME_FALLBACK[var]
         local fallbackSupported = fallbackName and (apiName or IsCuratedFallbackSupported(var))
-        local humanizedName
-        if allowHumanizedNames and not apiName and not fallbackName and IsLiveCVar(var) then
-            humanizedName = HumanizeSettingVariable(var)
-        end
-        local name = apiName or (fallbackSupported and fallbackName) or humanizedName
+        local name = apiName or (fallbackSupported and fallbackName)
         if name and name ~= "" then
         if nameSuffix and nameSuffix ~= "" and name:sub(-#nameSuffix) ~= nameSuffix then
             name = name .. nameSuffix
@@ -1802,11 +1847,13 @@ local function CollectCuratedGameEntries(resolveCategoryIDs, useApiNames, allowH
             sStep = sliderInfo.step or sStep
             settingFormatter = sliderInfo.formatter
         end
+        local settingOptions = resolved == "dropdown" and CVAR_DROPDOWN_OPTIONS[var] or nil
         local kw = { "setting", "option", "config", catLower, nameLower }
         local extraKw = SETTING_EXTRA_KEYWORDS[var]
         if extraKw then
             for ei = 1, #extraKw do kw[#kw + 1] = extraKw[ei] end
         end
+        AddOptionLabelKeywords(kw, settingOptions)
         local resolvedCatID = resolveCategoryIDs and GetCategoryIDForVariable(var) or nil
         if not (registryReady and not resolvedCatID and not BASE_QUALITY_SETTINGS[var]) then
             local catID = resolvedCatID or (resolveCategoryIDs and GetCategoryID(catName)) or nil
@@ -1822,6 +1869,7 @@ local function CollectCuratedGameEntries(resolveCategoryIDs, useApiNames, allowH
                 settingMax = sMax,
                 settingStep = sStep,
                 settingFormatter = settingFormatter,
+                settingOptions = settingOptions,
                 steps = {
                     {
                         settingsCategory = catName,
@@ -1859,7 +1907,7 @@ local function CollectEntries(includeCurated)
         if not catName or catName == "" then return end
         local catNameLower = slower(catName)
         local kw = { "settings", "options", catNameLower }
-        if parentName then kw[#kw + 1] = slower(parentName) end
+        AddKeyword(kw, parentName)
         local pathArr = parentName and { "Game Settings", parentName } or nil
         local mt = GetSettingsCatMT("Game Settings", catName, catID, pathArr)
         tinsert(entries, setmetatable({
@@ -2192,6 +2240,7 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix, entryCatego
                     "addon", "setting", "option",
                     nameLower, slower(catName or ""),
                 }
+                AddOptionLabelKeywords(kw, settingOptions)
                 tinsert(out, setmetatable({
                     name = settingName,
                     nameLower = nameLower,
@@ -2250,7 +2299,7 @@ local function CollectAddonCategories()
         local pathPrefix = parentName and { rootName, catName } or { rootName }
 
         local kw = { "addon", "settings", "options", catNameLower }
-        if parentName then kw[#kw + 1] = slower(parentName) end
+        AddKeyword(kw, parentName)
         local mt = GetSettingsCatMT("AddOn Settings", catName, catID,
             parentName and { rootName } or nil)
         tinsert(entries, setmetatable({
@@ -2361,27 +2410,18 @@ local function BuildQualityOptions(spec)
     return out
 end
 
-local function BuildCuratedVariableSet()
-    -- SETTINGS_DATA row layout is {variable, category, type, ...} so the
-    -- variable name is at index 1. Reading index 2 (the old slot when
-    -- the rows started with an English display name) silently filled
-    -- this set with category strings and broke the cross-pipeline dedupe
-    -- — CollectGameSettings then re-emitted every variable already in
-    -- the curated list, producing duplicate Auto Loot etc.
-    local set = {}
-    for i = 1, #SETTINGS_DATA do
-        local v = SETTINGS_DATA[i] and SETTINGS_DATA[i][1]
-        if v then set[v] = true end
-    end
-    return set
-end
-
 local function CollectGameSettings()
     local entries = {}
     if not Settings then return entries end
-    local curated = BuildCuratedVariableSet()
     local emittedVars = {}
-    for v in pairs(curated) do emittedVars[v] = true end
+    if ns.Database and ns.Database.uiSearchData then
+        for i = 1, #ns.Database.uiSearchData do
+            local e = ns.Database.uiSearchData[i]
+            if e and e.settingVariable then
+                emittedVars[e.settingVariable] = true
+            end
+        end
+    end
     local seenCatIDs = {}
     -- Track (category, displayName) so a proxy variable iterated later in
     -- the orphan loop doesn't double-emit a row that the container dive
@@ -2493,6 +2533,10 @@ local function CollectGameSettings()
                                 if tok and vt == "boolean" then resolvedType = "checkbox" end
                             end
                         end
+                        if resolvedType == "dropdown" and not settingOptions then
+                            settingOptions = GetOptionsForVariable(variable)
+                        end
+                        AddOptionLabelKeywords(kw, settingOptions)
                         local mt = GetSettingsCatMT("Game Settings", catName, catID,
                             { "Game Settings", catName })
                         tinsert(entries, setmetatable({
@@ -2709,7 +2753,7 @@ function BlizzOptionsSearch:EnsureFastGameOptions()
     if fastGameRegistered then return false end
     if registered then return false end
     if not (ns.Database and ns.Database.uiSearchData) then return false end
-    local ok, entries = xpcall(CollectCuratedGameEntries, Utils.ErrorHandler, false, true, true)
+    local ok, entries = xpcall(CollectCuratedGameEntries, Utils.ErrorHandler, false, true)
     if not ok or type(entries) ~= "table" or #entries == 0 then return false end
     fastGameRegistered = true
     local changed = PushOptionEntries(ns.Database.uiSearchData, entries, {}, {}, nil)
@@ -2921,7 +2965,7 @@ function BlizzOptionsSearch:EnsureLivePopulatedAsync(onDone)
     end
 
     if SafeAfter then
-        SafeAfter(0.2, run)
+        SafeAfter(0, run)
     else
         run()
     end

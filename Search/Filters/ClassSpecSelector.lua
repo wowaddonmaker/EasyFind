@@ -7,7 +7,6 @@ local CreateFrame = CreateFrame
 local UIParent = UIParent
 local ipairs = Utils.ipairs
 local sformat = string.format
-local unpack = unpack
 local UnitClass = UnitClass
 local GetNumClasses = GetNumClasses
 local GetClassInfo = GetClassInfo
@@ -51,7 +50,7 @@ local function PlayerSpecID()
     if si and GetSpecializationInfo then return (GetSpecializationInfo(si)) end
 end
 
-local function CreateRadioRow(parent, width, rowHighlight)
+local function CreateRadioRow(parent, width)
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(width - 16, FLYOUT_ROW_H)
     local tex = btn:CreateTexture(nil, "ARTWORK")
@@ -60,9 +59,7 @@ local function CreateRadioRow(parent, width, rowHighlight)
     tex:SetPoint("LEFT", 4, 0)
     local lbl = btn:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     lbl:SetPoint("LEFT", tex, "RIGHT", 4, 0)
-    local hl = btn:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetAllPoints()
-    hl:SetColorTexture(unpack(rowHighlight))
+    Utils.InstallMenuRowHighlight(btn)
     btn._label = lbl
     btn._setChecked = function(on) tex:SetTexture(on and RADIO_ON_TEX or RADIO_OFF_TEX) end
     return btn
@@ -74,7 +71,6 @@ end
 --   x, y         TOPLEFT offset of the button within parent
 --   width        button width
 --   hasSpec      true = class+spec (gear, heirloom); false = class only
---   rowHighlight {r,g,b,a} row highlight color
 --   stylePopup   fn(frame) to style popup backdrops
 --   guardFrames  array to register popups for outside-click protection
 --   getFilter    fn() -> nil | "all" | {classID} | {classID, specID}
@@ -86,7 +82,6 @@ function Filters:BuildClassSpecSelector(opts)
     local parent = opts.parent
     local width = opts.width
     local hasSpec = opts.hasSpec and true or false
-    local rowHL = opts.rowHighlight or { 1, 1, 1, 0.1 }
     local guards = opts.guardFrames
     local getScale = opts.getScale or function() return 1.0 end
     local POPUP_WIDTH = width
@@ -204,12 +199,12 @@ function Filters:BuildClassSpecSelector(opts)
     if not hasSpec then
         -- Flat class list: "All Classes" + one row per class.
         local rows = {}
-        local allRow = CreateRadioRow(specPopup, POPUP_WIDTH, rowHL)
+        local allRow = CreateRadioRow(specPopup, POPUP_WIDTH)
         allRow._label:SetText(_G["ALL_CLASSES"] or "All Classes")
         allRow:SetScript("OnClick", function() Choose("all") end)
         rows[#rows + 1] = allRow
         for _, cls in ipairs(GetAllClassSpecs()) do
-            local r = CreateRadioRow(specPopup, POPUP_WIDTH, rowHL)
+            local r = CreateRadioRow(specPopup, POPUP_WIDTH)
             r._label:SetText(ColorStr(cls.classFile) .. cls.className .. "|r")
             r._classID = cls.classID
             r:SetScript("OnClick", function() Choose({ classID = cls.classID }) end)
@@ -225,6 +220,7 @@ function Filters:BuildClassSpecSelector(opts)
                 py = py - FLYOUT_ROW_H
             end
             specPopup:SetSize(POPUP_WIDTH, -py + 6)
+            Utils.RefreshMenuRowHighlights(specPopup, rows)
         end
     else
         -- Gear-style: "Class >" row opens a class flyout; spec rows below.
@@ -252,7 +248,7 @@ function Filters:BuildClassSpecSelector(opts)
 
         local LayoutClassFlyout
         local flyoutRows = {}
-        local allRow = CreateRadioRow(classFlyout, FLYOUT_WIDTH, rowHL)
+        local allRow = CreateRadioRow(classFlyout, FLYOUT_WIDTH)
         allRow._label:SetText(_G["ALL_CLASSES"] or "All Classes")
         allRow._val = "all"
         allRow:SetScript("OnClick", function()
@@ -261,7 +257,7 @@ function Filters:BuildClassSpecSelector(opts)
         end)
         flyoutRows[#flyoutRows + 1] = allRow
         for _, cls in ipairs(GetAllClassSpecs()) do
-            local r = CreateRadioRow(classFlyout, FLYOUT_WIDTH, rowHL)
+            local r = CreateRadioRow(classFlyout, FLYOUT_WIDTH)
             r._label:SetText(ColorStr(cls.classFile) .. cls.className .. "|r")
             r._val = { classID = cls.classID }
             r:SetScript("OnClick", function()
@@ -281,6 +277,7 @@ function Filters:BuildClassSpecSelector(opts)
                 fy = fy - FLYOUT_ROW_H
             end
             classFlyout:SetSize(FLYOUT_WIDTH, -fy + 6)
+            Utils.RefreshMenuRowHighlights(classFlyout, flyoutRows)
         end
 
         local classRow = CreateFrame("Button", nil, specPopup)
@@ -292,9 +289,7 @@ function Filters:BuildClassSpecSelector(opts)
         crArrow:SetSize(16, 16)
         crArrow:SetPoint("RIGHT", -4, 0)
         crArrow:SetTexture(FLYOUT_ARROW)
-        local crHL = classRow:CreateTexture(nil, "HIGHLIGHT")
-        crHL:SetAllPoints()
-        crHL:SetColorTexture(unpack(rowHL))
+        Utils.InstallMenuRowHighlight(classRow)
         local function OpenClassFlyout()
             LayoutClassFlyout()
             classFlyout:SetScale(getScale())
@@ -312,7 +307,7 @@ function Filters:BuildClassSpecSelector(opts)
         local MAX_SPECS = 5
         local specRows = {}
         for i = 1, MAX_SPECS do
-            local r = CreateRadioRow(specPopup, POPUP_WIDTH, rowHL)
+            local r = CreateRadioRow(specPopup, POPUP_WIDTH)
             r:SetScript("OnEnter", function() classFlyout:Hide() end)
             r:Hide()
             specRows[i] = r
@@ -329,6 +324,7 @@ function Filters:BuildClassSpecSelector(opts)
                 classHeader:Hide()
                 for _, r in ipairs(specRows) do r:Hide() end
                 specPopup:SetSize(POPUP_WIDTH, -py + 6)
+                Utils.RefreshMenuRowHighlights(specPopup)
                 return
             end
             chLabel:SetText(ColorStr(cls.classFile) .. cls.className .. "|r")
@@ -363,6 +359,7 @@ function Filters:BuildClassSpecSelector(opts)
             end
             for hi = ri, MAX_SPECS do specRows[hi]:Hide() end
             specPopup:SetSize(POPUP_WIDTH, -py + 6)
+            Utils.RefreshMenuRowHighlights(specPopup)
         end
 
         specPopup:HookScript("OnHide", function() classFlyout:Hide() end)

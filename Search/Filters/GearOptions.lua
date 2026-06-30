@@ -13,7 +13,6 @@ local UIParent = UIParent
 function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     local ROW_HEIGHT = ctx.rowHeight
     local CHECK_SIZE = ctx.checkSize
-    local ROW_HIGHLIGHT_COLOR = ctx.rowHighlightColor
     local StylePopup = ctx.StylePopup
     local CreateRadioTexture = ctx.CreateRadioTexture
     local AddPopupKeyboardNav = ctx.AddPopupKeyboardNav
@@ -23,6 +22,10 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     local searchEditBox = ctx.searchEditBox
     local GEAR_POPUP_WIDTH = 184
     local GEAR_POPUP_PAD = 8
+
+    local function InstallMenuRowHighlight(target)
+        Utils.InstallMenuRowHighlight(target)
+    end
 
     local gearOptionsPopup = CreateFrame("Frame", "EasyFindGearOptionsPopup", UIParent, "BackdropTemplate")
     gearOptionsPopup:SetFrameStrata("TOOLTIP")
@@ -56,9 +59,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         subLabel:SetPoint("LEFT", subRow:GetNormalTexture(), "RIGHT", 4, 0)
         subLabel:SetText(sub.label)
 
-        local subHL = subRow:CreateTexture(nil, "HIGHLIGHT")
-        subHL:SetAllPoints()
-        subHL:SetColorTexture(1, 1, 1, 0.1)
+        InstallMenuRowHighlight(subRow)
 
         subRow.dbKey = sub.dbKey
         lootSubRows[si] = subRow
@@ -143,9 +144,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         local dLabel = dRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
         dLabel:SetPoint("LEFT", radio, "RIGHT", 4, 0)
         dLabel:SetText(def.label)
-        local dHL = dRow:CreateTexture(nil, "HIGHLIGHT")
-        dHL:SetAllPoints()
-        dHL:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+        InstallMenuRowHighlight(dRow)
         dRow._diffKey = def.key
         dRow._setRadioChecked = setRadioChecked
         dRow:SetScript("OnClick", function()
@@ -353,9 +352,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         local lbl = btn:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
         lbl:SetPoint("LEFT", radio, "RIGHT", 4, 0)
         lbl:SetText(label)
-        local hl = btn:CreateTexture(nil, "HIGHLIGHT")
-        hl:SetAllPoints()
-        hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+        InstallMenuRowHighlight(btn)
         btn._setRadioChecked = setChecked
         btn._filterVal = filterVal
         return btn
@@ -420,6 +417,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
             fy = fy - FLYOUT_ROW_H
         end
         classFlyout:SetSize(CLASSFLYOUT_WIDTH, -fy + 6)
+        Utils.RefreshMenuRowHighlights(classFlyout, classFlyoutRows)
     end
 
     -------------------------------------------------------------------
@@ -436,9 +434,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     csArrow:SetSize(16, 16)
     csArrow:SetPoint("RIGHT", -4, 0)
     csArrow:SetTexture("Interface\\AddOns\\EasyFind\\Search\\Images\\flyout-arrow")
-    local csHL = classSelectBtn:CreateTexture(nil, "HIGHLIGHT")
-    csHL:SetAllPoints()
-    csHL:SetColorTexture(1, 1, 1, 0.1)
+    InstallMenuRowHighlight(classSelectBtn)
     local function OpenClassFlyout()
         LayoutClassFlyout()
         classFlyout:SetScale(EasyFind.db.uiSearchScale or 1.0)
@@ -564,6 +560,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         end
 
         specPopup:SetSize(POPUP_WIDTH, -py + 6)
+        Utils.RefreshMenuRowHighlights(specPopup)
     end
 
     local specSelectRow = CreateFrame("Button", nil, gearOptionsPopup)

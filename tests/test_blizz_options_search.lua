@@ -7,6 +7,21 @@ local function makeSetting(name, variableType)
     }
 end
 
+local function makeLiveSetting(name, variable, variableType)
+    return {
+        GetName = function() return name end,
+        GetVariable = function() return variable end,
+        GetVariableType = function() return variableType or "boolean" end,
+    }
+end
+
+local function makeCategory(name, id)
+    return {
+        GetName = function() return name end,
+        GetID = function() return id or 1 end,
+    }
+end
+
 local function loadOptionsSearch(opts)
     opts = opts or {}
     local env = H.newEnv()
@@ -19,7 +34,7 @@ local function loadOptionsSearch(opts)
             return opts.settings and opts.settings[variable] or nil
         end,
     }
-    env.SettingsPanel = nil
+    env.SettingsPanel = opts.settingsPanel
 
     local ns = H.newNs(env)
     ns.Database.uiSearchData = {}
@@ -38,6 +53,14 @@ local function findByVariable(data, variable)
         end
     end
     return nil
+end
+
+local function hasKeyword(entry, keyword)
+    if not entry or not entry.keywords then return false end
+    for i = 1, #entry.keywords do
+        if entry.keywords[i] == keyword then return true end
+    end
+    return false
 end
 
 local tests = {}
@@ -79,6 +102,97 @@ function tests.fastFallbackNamesAllowLiveCVars()
 
     H.assertNotNil(findByVariable(ns.Database.uiSearchData, "nameplateMotion"),
         "fallback CVar labels should emit when the CVar exists")
+end
+
+function tests.fastGameOptionsDoNotHumanizeRawLiveCVars()
+    local ns = loadOptionsSearch({
+        cvars = {
+            nameplateShowEnemyMinions = "1",
+            nameplateShowEnemyMinus = "1",
+        },
+    })
+
+    ns.BlizzOptionsSearch:EnsureFastGameOptions()
+
+    H.assertNil(findByVariable(ns.Database.uiSearchData, "nameplateShowEnemyMinions"),
+        "raw live CVars should not be humanized into fake Settings rows")
+    H.assertNil(findByVariable(ns.Database.uiSearchData, "nameplateShowEnemyMinus"),
+        "raw live CVars should not be humanized into fake Settings rows")
+end
+
+function tests.fastNameplateFallbackUsesVisibleSettingsLabel()
+    local ns = loadOptionsSearch({
+        cvars = {
+            nameplateShowEnemies = "1",
+        },
+    })
+
+    ns.BlizzOptionsSearch:EnsureFastGameOptions()
+
+    local entry = findByVariable(ns.Database.uiSearchData, "nameplateShowEnemies")
+    H.assertNotNil(entry, "enemy unit nameplate should be available in the fast pass")
+    H.assertEq(entry.name, "Enemy Unit Nameplate")
+    H.assertTrue(hasKeyword(entry, "enemy nameplate"),
+        "common reordered query should be an explicit keyword")
+end
+
+function tests.liveDropdownOptionLabelsBecomeSearchKeywords()
+    local cat = makeCategory("Interface", 1)
+    local setting = makeLiveSetting("Nameplate Aura Display", "testNameplateAuraDisplay", "number")
+    local init = {
+        data = {
+            setting = setting,
+            options = {
+                { value = 1, label = "Mob Buffs, Personal Debuffs, Shared CC" },
+            },
+        },
+    }
+    local ns = loadOptionsSearch({
+        settingsPanel = {
+            GetAllCategories = function() return { cat } end,
+            GetLayout = function(_, category)
+                if category ~= cat then return nil end
+                return {
+                    GetInitializers = function() return { init } end,
+                }
+            end,
+        },
+    })
+
+    local entries = ns.BlizzOptionsSearch.CollectGameSettings()
+    local entry = findByVariable(entries, "testNameplateAuraDisplay")
+
+    H.assertNotNil(entry, "live SettingsPanel dropdown rows should be collected")
+    H.assertTrue(hasKeyword(entry, "mob buffs, personal debuffs, shared cc"),
+        "dropdown option labels should be searchable on the owning setting row")
+end
+
+function tests.liveSettingsCanFillCuratedVariablesMissingFromFastPass()
+    local cat = makeCategory("Interface", 1)
+    local setting = makeLiveSetting("Enemy Player Names", "UnitNameEnemyPlayerName", "boolean")
+    local init = {
+        data = {
+            setting = setting,
+        },
+    }
+    local ns = loadOptionsSearch({
+        settingsPanel = {
+            GetAllCategories = function() return { cat } end,
+            GetLayout = function(_, category)
+                if category ~= cat then return nil end
+                return {
+                    GetInitializers = function() return { init } end,
+                }
+            end,
+        },
+    })
+
+    local entries = ns.BlizzOptionsSearch.CollectGameSettings()
+    local entry = findByVariable(entries, "UnitNameEnemyPlayerName")
+
+    H.assertNotNil(entry,
+        "live SettingsPanel rows should not be suppressed just because the variable is curated")
+    H.assertEq(entry.name, "Enemy Player Names")
 end
 
 local pass, fail, failures = H.runSuite("BlizzOptionsSearch", tests)

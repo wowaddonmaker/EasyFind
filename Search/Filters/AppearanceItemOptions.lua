@@ -10,7 +10,6 @@ local pairs = Utils.pairs
 local tsort = Utils.tsort
 local CreateFrame = CreateFrame
 local UIParent = UIParent
-local unpack = unpack
 local wipe = wipe
 
 -- Transmog slot categories (Enum.TransmogCollectionType). Names come from the
@@ -84,7 +83,7 @@ local function GetSourceDefs()
     return sourceDefs
 end
 
-local function MakeCheckRow(parent, width, rowH, checkSize, rowHL)
+local function MakeCheckRow(parent, width, rowH, checkSize)
     local row = CreateFrame("CheckButton", nil, parent)
     row:SetSize(width, rowH)
     row:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
@@ -97,9 +96,7 @@ local function MakeCheckRow(parent, width, rowH, checkSize, rowHL)
     row:GetCheckedTexture():SetPoint("LEFT", 4, 0)
     row.text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     row.text:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
-    local hl = row:CreateTexture(nil, "HIGHLIGHT")
-    hl:SetAllPoints()
-    hl:SetColorTexture(unpack(rowHL))
+    Utils.InstallMenuRowHighlight(row)
     return row
 end
 
@@ -201,7 +198,7 @@ end
 -- Items options popup: class selector + slot selector + a Filter sub-popup
 -- (Collected / Not Collected / All Factions / All Races + a Sources flyout),
 -- mirroring the wardrobe Items tab. Returns the popup and a sync function.
-function Filters:BuildAppearanceItemOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox, dropdownGuardFrames, branchPopups)
+function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames, branchPopups)
     local WIDTH = 168
     local ROW_H = 22
     local PAD = 6
@@ -248,9 +245,7 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR
                 row:SetSize(WIDTH - PAD * 2, ROW_H)
                 row.text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
                 row.text:SetPoint("LEFT", 12, 0)
-                local hl = row:CreateTexture(nil, "HIGHLIGHT")
-                hl:SetAllPoints()
-                hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+                Utils.InstallMenuRowHighlight(row)
                 row:SetScript("OnClick", function(self)
                     EasyFind.db.appearanceItemSlot = self._slot
                     UpdateSlotLabel()
@@ -296,9 +291,7 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR
     local toggleAllLabel = toggleAllRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     toggleAllLabel:SetPoint("LEFT", 14, 0)
     toggleAllLabel:SetText(L["FILTER_TOGGLE_ALL"])
-    local toggleAllHL = toggleAllRow:CreateTexture(nil, "HIGHLIGHT")
-    toggleAllHL:SetAllPoints()
-    toggleAllHL:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+    Utils.InstallMenuRowHighlight(toggleAllRow)
     local function LayoutSourcePopup()
         local defs = GetSourceDefs()
         local filters = SourceFilters()
@@ -308,7 +301,7 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR
         for i, def in ipairs(defs) do
             local row = srcRows[i]
             if not row then
-                row = MakeCheckRow(sourcePopup, WIDTH - PAD * 2, ROW_H, CHECK_SIZE, ROW_HIGHLIGHT_COLOR)
+                row = MakeCheckRow(sourcePopup, WIDTH - PAD * 2, ROW_H, CHECK_SIZE)
                 row:SetScript("OnClick", function(self)
                     SourceFilters()[self._source] = self:GetChecked() and nil or false
                     Apply()
@@ -325,6 +318,7 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR
         end
         for i = #defs + 1, #srcRows do srcRows[i]:Hide() end
         sourcePopup:SetSize(WIDTH, -py + PAD)
+        Utils.RefreshMenuRowHighlights(sourcePopup)
     end
     toggleAllRow:SetScript("OnClick", function()
         local filters = SourceFilters()
@@ -354,7 +348,7 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR
     }
     local toggleRows = {}
     for i, def in ipairs(toggleDefs) do
-        local row = MakeCheckRow(filterPopup, WIDTH - PAD * 2, ROW_H, CHECK_SIZE, ROW_HIGHLIGHT_COLOR)
+        local row = MakeCheckRow(filterPopup, WIDTH - PAD * 2, ROW_H, CHECK_SIZE)
         row.text:SetText(def.label)
         row:SetPoint("TOPLEFT", filterPopup, "TOPLEFT", PAD, -(PAD + (i - 1) * ROW_H))
         row.dbKey = def.dbKey
@@ -376,9 +370,7 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR
     sourcesChev:SetAtlas("common-icon-forwardarrow")
     sourcesChev:SetSize(CHECK_SIZE, CHECK_SIZE)
     sourcesChev:SetPoint("RIGHT", -4, 0)
-    local sourcesHL = sourcesRow:CreateTexture(nil, "HIGHLIGHT")
-    sourcesHL:SetAllPoints()
-    sourcesHL:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+    Utils.InstallMenuRowHighlight(sourcesRow)
     filterPopup:SetSize(WIDTH, PAD * 2 + (#toggleDefs + 1) * ROW_H)
 
     Utils.AttachHoverPopup(sourcesRow, sourcePopup, {
@@ -435,7 +427,7 @@ end
 -- toggles whether that type appears in results (uiSearchFilters.appearanceItems
 -- / appearanceSets) and opens its own options flyout to the right on hover,
 -- mirroring how every other collection sub-row behaves.
-function Filters:BuildAppearanceOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
+function Filters:BuildAppearanceOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
     local WIDTH = 160
     local ROW_H = 24
     local PAD = 6
@@ -451,9 +443,9 @@ function Filters:BuildAppearanceOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CH
     branchPopups[#branchPopups + 1] = chooser
 
     local itemsPopup, syncItems = Filters:BuildAppearanceItemOptionsPopup(
-        StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox, dropdownGuardFrames, branchPopups)
+        StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames, branchPopups)
     local setsPopup, syncSets = Filters:BuildAppearanceSetOptionsPopup(
-        StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox, dropdownGuardFrames, branchPopups)
+        StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames, branchPopups)
     itemsPopup:SetFrameLevel(chooser:GetFrameLevel() + 10)
     setsPopup:SetFrameLevel(chooser:GetFrameLevel() + 10)
     if dropdownGuardFrames then
@@ -478,7 +470,6 @@ function Filters:BuildAppearanceOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CH
         x = PAD, y = -PAD,
         width = WIDTH - PAD * 2,
         hasSpec = false,
-        rowHighlight = ROW_HIGHLIGHT_COLOR,
         stylePopup = StylePopup,
         guardFrames = dropdownGuardFrames,
         getScale = function() return EasyFind.db.uiSearchScale or 1.0 end,
@@ -518,9 +509,7 @@ function Filters:BuildAppearanceOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CH
         chev:SetSize(CHECK_SIZE - 2, CHECK_SIZE - 2)
         chev:SetPoint("RIGHT", -4, 0)
         chev:SetVertexColor(0.85, 0.85, 0.85, 1)
-        local hl = row:CreateTexture(nil, "HIGHLIGHT")
-        hl:SetAllPoints()
-        hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+        Utils.InstallMenuRowHighlight(row)
 
         local filterKey = def.filterKey
         row:SetChecked(EasyFind.db.uiSearchFilters[filterKey] ~= false)

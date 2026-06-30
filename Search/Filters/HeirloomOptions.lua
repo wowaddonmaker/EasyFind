@@ -54,11 +54,15 @@ local function CollectHeirloomSourceDefs()
     return defs
 end
 
-function Filters:BuildHeirloomOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
+function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
     local OPTIONS_WIDTH = 160
     local SOURCE_WIDTH = 170
     local ROW_H = 22
     local PAD = 6
+
+    local function InstallMenuRowHighlight(row)
+        Utils.InstallMenuRowHighlight(row)
+    end
 
     local function ApplyFilterSelection()
         if ns.Database and ns.Database.RefreshDynamicCategory then
@@ -84,7 +88,6 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHEC
         x = PAD, y = -PAD,
         width = OPTIONS_WIDTH - PAD * 2,
         hasSpec = true,
-        rowHighlight = ROW_HIGHLIGHT_COLOR,
         stylePopup = StylePopup,
         guardFrames = dropdownGuardFrames,
         getScale = function() return EasyFind.db.uiSearchScale or 1.0 end,
@@ -111,9 +114,7 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHEC
     local toggleAllLabel = toggleAllRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     toggleAllLabel:SetPoint("LEFT", 14, 0)
     toggleAllLabel:SetText(L["FILTER_TOGGLE_ALL"])
-    local toggleAllHL = toggleAllRow:CreateTexture(nil, "HIGHLIGHT")
-    toggleAllHL:SetAllPoints()
-    toggleAllHL:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+    InstallMenuRowHighlight(toggleAllRow)
 
     local function LayoutSourcePopup()
         local defs = CollectHeirloomSourceDefs()
@@ -139,9 +140,7 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHEC
                 row:GetCheckedTexture():SetPoint("LEFT", 4, 0)
                 row.text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
                 row.text:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
-                local hl = row:CreateTexture(nil, "HIGHLIGHT")
-                hl:SetAllPoints()
-                hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+                InstallMenuRowHighlight(row)
                 row:SetScript("OnClick", function(self)
                     EnsureSourceFilters()[self.sourceType] = self:GetChecked() and nil or false
                     ApplyFilterSelection()
@@ -156,6 +155,7 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHEC
             row:Show()
         end
         sourcePopup:SetSize(SOURCE_WIDTH, PAD * 2 + (1 + #defs) * ROW_H)
+        Utils.RefreshMenuRowHighlights(sourcePopup)
     end
 
     -- Toggle All: everything on if any source is currently off, else all off.
@@ -190,9 +190,7 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHEC
         local text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
         text:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
         text:SetText(def.label)
-        local hl = row:CreateTexture(nil, "HIGHLIGHT")
-        hl:SetAllPoints()
-        hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+        InstallMenuRowHighlight(row)
         row.dbKey = def.dbKey
         row:SetScript("OnClick", function(self)
             EasyFind.db[self.dbKey] = self:GetChecked() and true or false
@@ -222,9 +220,7 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHEC
     sourceChev:SetAtlas("common-icon-forwardarrow")
     sourceChev:SetSize(CHECK_SIZE, CHECK_SIZE)
     sourceChev:SetPoint("RIGHT", -4, 0)
-    local sourceHL = sourcesRow:CreateTexture(nil, "HIGHLIGHT")
-    sourceHL:SetAllPoints()
-    sourceHL:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+    InstallMenuRowHighlight(sourcesRow)
 
     optionsPopup:SetSize(OPTIONS_WIDTH, PAD * 2 + CLASS_BTN_H + CLASS_GAP + #filterDefs * ROW_H + ROW_H)
 

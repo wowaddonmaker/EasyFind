@@ -719,6 +719,14 @@ function ns.StyleMenuPanel(frame)
         ns.SetRoundedRectBorderShown(frame, true)
         ns.SetRoundedRectFill(frame, unpack(ns.SEARCH_WINDOW_FILL_COLOR))
     end
+    if not frame._efMenuHighlightRefreshHooked then
+        frame._efMenuHighlightRefreshHooked = true
+        frame:HookScript("OnShow", function(self)
+            if Utils.RefreshMenuRowHighlights then
+                Utils.RefreshMenuRowHighlights(self)
+            end
+        end)
+    end
     ns.SetRoundedRectBarHeight(frame, ns.SEARCHBAR_HEIGHT)
     ns.SetRoundedRectBorderBgAlpha(frame, ns.GetSearchWindowAlpha())
 end
@@ -1003,6 +1011,114 @@ end
 function ns.SetRoundedRectBorderEdgeShown(frame, shown)
     if not (frame and frame.combinedBorder and frame.combinedBorder.border) then return end
     for _, t in pairs(frame.combinedBorder.border) do t:SetShown(shown) end
+end
+
+local MENU_ROW_HIGHLIGHT_TEX = "Interface\\QuestFrame\\UI-QuestTitleHighlight"
+local MENU_ROW_EDGE_TOLERANCE = 16
+local MENU_ROW_MASK_TEX = {
+    middle = "Interface\\AddOns\\EasyFind\\textures\\MenuHighlightMaskFull",
+    top = "Interface\\AddOns\\EasyFind\\textures\\MenuHighlightMaskTop",
+    bottom = "Interface\\AddOns\\EasyFind\\textures\\MenuHighlightMaskBottom",
+    single = "Interface\\AddOns\\EasyFind\\textures\\MenuHighlightMaskSingle",
+}
+
+local function ApplyMenuHighlightMask(row, tex, role)
+    if not (row and tex and row.CreateMaskTexture and tex.AddMaskTexture) then return end
+    local maskKey = tex == row.keyboardOverlay and "_efMenuKeyboardHighlightMask" or "_efMenuHighlightMask"
+    local mask = row[maskKey]
+    if not mask then
+        mask = row:CreateMaskTexture()
+        row[maskKey] = mask
+        tex:AddMaskTexture(mask)
+    end
+    mask:ClearAllPoints()
+    mask:SetAllPoints(tex)
+    mask:SetTexture(MENU_ROW_MASK_TEX[role] or MENU_ROW_MASK_TEX.middle,
+        "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+end
+
+function Utils.SetMenuRowHighlightPosition(row, position)
+    if not (row and row._efMenuRowHighlightInstalled) then return end
+    row._efMenuHighlightPosition = position or "middle"
+    ApplyMenuHighlightMask(row, row:GetHighlightTexture(), row._efMenuHighlightPosition)
+    if row.keyboardOverlay then
+        ApplyMenuHighlightMask(row, row.keyboardOverlay, row._efMenuHighlightPosition)
+    end
+end
+
+function Utils.RefreshMenuRowHighlights(parent, orderedRows)
+    if not parent then return end
+    local rows = {}
+    if orderedRows then
+        for i = 1, #orderedRows do
+            local row = orderedRows[i]
+            if row and row._efMenuRowHighlightInstalled and row:IsShown() and not row.isSeparator then
+                rows[#rows + 1] = row
+            end
+        end
+    else
+        for _, row in ipairs({ parent:GetChildren() }) do
+            if row and row._efMenuRowHighlightInstalled and row:IsShown() and not row.isSeparator then
+                rows[#rows + 1] = row
+            end
+        end
+        tsort(rows, function(a, b)
+            local at, bt = a:GetTop() or 0, b:GetTop() or 0
+            if at ~= bt then return at > bt end
+            return (a:GetLeft() or 0) < (b:GetLeft() or 0)
+        end)
+    end
+
+    local parentTop, parentBottom = parent:GetTop(), parent:GetBottom()
+    for i = 1, #rows do
+        local row = rows[i]
+        local topEdge = i == 1
+        local bottomEdge = i == #rows
+        local rowTop, rowBottom = row:GetTop(), row:GetBottom()
+        if parentTop and rowTop then
+            topEdge = topEdge and ((parentTop - rowTop) <= MENU_ROW_EDGE_TOLERANCE)
+        end
+        if parentBottom and rowBottom then
+            bottomEdge = bottomEdge and ((rowBottom - parentBottom) <= MENU_ROW_EDGE_TOLERANCE)
+        end
+
+        local role = "middle"
+        if topEdge and bottomEdge then
+            role = "single"
+        elseif topEdge then
+            role = "top"
+        elseif bottomEdge then
+            role = "bottom"
+        end
+        Utils.SetMenuRowHighlightPosition(row, role)
+    end
+end
+
+function Utils.InstallMenuRowHighlight(row)
+    if not row then return nil end
+    if not row._efMenuRowHighlightInstalled then
+        row._efMenuRowHighlightInstalled = true
+        row:SetHighlightTexture(MENU_ROW_HIGHLIGHT_TEX, "ADD")
+        local hl = row:GetHighlightTexture()
+        if hl then
+            hl:ClearAllPoints()
+            hl:SetAllPoints(row)
+            hl:SetBlendMode("ADD")
+            ApplyMenuHighlightMask(row, hl, row._efMenuHighlightPosition or "middle")
+        end
+    end
+    row.SetMenuHighlightFocused = function(self, focused)
+        if focused then
+            if self.LockHighlight then self:LockHighlight() end
+        else
+            if self.UnlockHighlight then self:UnlockHighlight() end
+        end
+    end
+    row.ClearMenuHighlightState = function(self)
+        if self.UnlockHighlight then self:UnlockHighlight() end
+        if self.keyboardOverlay then self.keyboardOverlay:Hide() end
+    end
+    return row.SetMenuHighlightFocused
 end
 
 function ns.CreateModernButton(parent, text, width, height)
@@ -2739,6 +2855,9 @@ local function CreateCursorMenu(globalName)
     menu.MoveKeyboardIndex = CursorMenuMoveKeyboardIndex
     menu.ActivateKeyboardIndex = CursorMenuActivateKeyboardIndex
     menu.FocusKeyboard = CursorMenuFocusKeyboard
+    menu.RefreshMenuRowHighlights = function(self)
+        Utils.RefreshMenuRowHighlights(self, self.rows)
+    end
     menu:SetScript("OnShow", CursorMenuOnShow)
     menu:SetScript("OnHide", CursorMenuOnHide)
     menu:SetScript("OnUpdate", CursorMenuOnUpdate)
@@ -2759,6 +2878,8 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
 
     local menu = FindFreeMenu(globalName) or CreateCursorMenu(globalName)
 
+    local menuScale = opts.scale or 1
+    menu:SetScale(menuScale)
     menu:SetFrameStrata(opts.strata or "TOOLTIP")
     menu:SetFrameLevel(opts.level or 10000)
     menu.outsideDelay = opts.outsideDelay or 0.3
@@ -2781,7 +2902,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 row = CreateFrame("Button", nil, menu)
                 row:EnableMouse(true)
                 row:SetHeight(rowH)
-                row:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
+                Utils.InstallMenuRowHighlight(row)
                 row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 row.label:SetPoint("LEFT", row, "LEFT", 8, 0)
                 row.icon = row:CreateTexture(nil, "OVERLAY")
@@ -2805,6 +2926,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             local sepH = 7
             row:SetHeight(isSep and sepH or rowH)
             if isSep then
+                if row.ClearMenuHighlightState then row:ClearMenuHighlightState() end
                 row.isSeparator = true
                 row.onClick = nil
                 row.label:SetText("")
@@ -2882,12 +3004,13 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
         menu:SetPoint(opts.point or "TOPLEFT", opts.anchorFrame, opts.relativePoint or "TOPRIGHT",
             opts.offsetX or 4, opts.offsetY or 0)
     else
-        local scale = UIParent:GetEffectiveScale()
+        local scale = UIParent:GetEffectiveScale() * menuScale
         local x, y = GetCursorPosition()
         menu:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT",
             x / scale + (opts.offsetX or 0), y / scale + (opts.offsetY or 0))
     end
     menu:Show()
+    if menu.RefreshMenuRowHighlights then menu:RefreshMenuRowHighlights() end
     if menu.keyboardMode and menu.FocusKeyboard then
         menu:FocusKeyboard(1)
         local focusMenu = menu

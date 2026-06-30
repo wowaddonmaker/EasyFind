@@ -68,12 +68,16 @@ local function EnsureMountSourceInvalidator()
     end)
 end
 
-function Filters:BuildMountOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox)
+function Filters:BuildMountOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox)
     local OPTIONS_WIDTH = 160
     local SOURCE_WIDTH = 170
     local ROW_H = 22
     local PAD = 6
     local HEADER_H = 20
+
+    local function InstallMenuRowHighlight(row)
+        Utils.InstallMenuRowHighlight(row)
+    end
 
     local function ApplyFilterSelection()
         if ns.Database and ns.Database.RefreshDynamicCategory then
@@ -111,9 +115,7 @@ function Filters:BuildMountOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_S
         local label = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
         label:SetPoint("LEFT", 14, 0)
         label:SetText(text)
-        local hl = row:CreateTexture(nil, "HIGHLIGHT")
-        hl:SetAllPoints()
-        hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+        InstallMenuRowHighlight(row)
         return row
     end
 
@@ -146,9 +148,7 @@ function Filters:BuildMountOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_S
                 row:GetCheckedTexture():SetPoint("LEFT", 4, 0)
                 row.text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
                 row.text:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
-                local hl = row:CreateTexture(nil, "HIGHLIGHT")
-                hl:SetAllPoints()
-                hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+                InstallMenuRowHighlight(row)
                 row:SetScript("OnClick", function(self)
                     EnsureSourceFilters()[self.sourceType] = self:GetChecked() and nil or false
                     ApplyFilterSelection()
@@ -163,6 +163,7 @@ function Filters:BuildMountOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_S
             row:Show()
         end
         sourcePopup:SetSize(SOURCE_WIDTH, PAD * 2 + (2 + #defs) * ROW_H)
+        Utils.RefreshMenuRowHighlights(sourcePopup)
     end
 
     checkAllRow:SetScript("OnClick", function()
@@ -194,9 +195,7 @@ function Filters:BuildMountOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_S
         local text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
         text:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
         text:SetText(def.label)
-        local hl = row:CreateTexture(nil, "HIGHLIGHT")
-        hl:SetAllPoints()
-        hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+        InstallMenuRowHighlight(row)
         row.dbKey = def.dbKey
         row:SetScript("OnClick", function(self)
             EasyFind.db[self.dbKey] = self:GetChecked() and true or false
@@ -243,9 +242,7 @@ function Filters:BuildMountOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_S
     sourceChev:SetAtlas("common-icon-forwardarrow")
     sourceChev:SetSize(CHECK_SIZE, CHECK_SIZE)
     sourceChev:SetPoint("RIGHT", -4, 0)
-    local sourceHL = sourcesRow:CreateTexture(nil, "HIGHLIGHT")
-    sourceHL:SetAllPoints()
-    sourceHL:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+    InstallMenuRowHighlight(sourcesRow)
 
     optionsPopup:SetSize(OPTIONS_WIDTH, PAD * 2 + #filterDefs * ROW_H + HEADER_H + #typeDefs * ROW_H + ROW_H)
 

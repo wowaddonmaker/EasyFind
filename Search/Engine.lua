@@ -202,7 +202,7 @@ function Engine:RequestOptions(ctx, onChanged, resultCount)
         and wordCount >= 1
         and resultCount == 0
     if not explicit and not lowResultFallback then return false end
-    local needsMoreOptions = lowResultFallback or (explicit and (not resultCount or resultCount == 0))
+    local needsMoreOptions = lowResultFallback or explicit
     if not needsMoreOptions then return false end
 
     local addonOnlyQuickFilter = self:QuickFilterIncludes(ctx, "addonOptions")

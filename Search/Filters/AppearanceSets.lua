@@ -11,7 +11,7 @@ local UIParent = UIParent
 -- Builds the Appearance Sets options popup: Collected / Not Collected / PvE /
 -- PvP checkboxes. The class filter is shared with Items and lives in the parent
 -- Appearances chooser. Returns the popup and a sync function re-reading db state.
-function Filters:BuildAppearanceSetOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox, dropdownGuardFrames, branchPopups)
+function Filters:BuildAppearanceSetOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames, branchPopups)
     local OPTIONS_WIDTH = 160
     local CB_ROW_H = 22
     local PAD = 6
@@ -63,9 +63,7 @@ function Filters:BuildAppearanceSetOptionsPopup(StylePopup, ROW_HIGHLIGHT_COLOR,
         cbText:SetPoint("LEFT", cbRow:GetNormalTexture(), "RIGHT", 4, 0)
         cbText:SetText(def.label)
 
-        local cbHL = cbRow:CreateTexture(nil, "HIGHLIGHT")
-        cbHL:SetAllPoints()
-        cbHL:SetColorTexture(1, 1, 1, 0.1)
+        Utils.InstallMenuRowHighlight(cbRow)
 
         local val = EasyFind.db[def.dbKey]
         if val == nil then val = true end

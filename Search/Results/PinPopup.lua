@@ -17,6 +17,7 @@ function Results:ShowPinPopup(anchorFrame, isPinned, onPinAction, onGuide, onAdd
         level = 100,
         width = 96,
         rowHeight = 22,
+        scale = (EasyFind and EasyFind.db and EasyFind.db.uiSearchScale) or 1.0,
     }
     if extra and extra.keyboardMode then
         opts.keyboardMode = true

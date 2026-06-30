@@ -51,5 +51,36 @@ function tests.explicitAbilityWordRequestsAbilitiesRegardlessOfResultCount()
         "explicit ability query should request abilities even with existing results")
 end
 
+function tests.explicitOptionsQueryRequestsOptionsDespiteExistingResults()
+    withProviderCapture()
+    local populateRequests = 0
+    local liveRequests = 0
+    ns.BlizzOptionsSearch = {
+        EnsurePopulatedAsync = function(_, onDone)
+            populateRequests = populateRequests + 1
+            if onDone then onDone(true) end
+            return true
+        end,
+        EnsureLivePopulatedAsync = function(_, onDone)
+            liveRequests = liveRequests + 1
+            if onDone then onDone(true) end
+            return true
+        end,
+    }
+    local ctx = Engine:BuildContext("enemy nameplate", nil, {
+        options = true,
+        gameOptions = true,
+        addonOptions = true,
+    })
+
+    Engine:RequestProviders(ctx, function() end, 2)
+
+    H.assertEq(populateRequests, 1,
+        "explicit settings queries should request options even when partial results exist")
+    H.assertEq(liveRequests, 1,
+        "explicit game-settings queries should request live SettingsPanel rows")
+    ns.BlizzOptionsSearch = nil
+end
+
 local pass, fail, failures = H.runSuite("SearchEngine", tests)
 return { pass = pass, fail = fail, failures = failures }

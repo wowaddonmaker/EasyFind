@@ -142,6 +142,14 @@ function tests.scoreName_emptyText()
     H.assertEq(Database:ScoreName("", "anything", 8), 0)
 end
 
+function tests.scoreName_multiWordSettingNameCanSkipMiddleWord()
+    local words = { "enemy", "nameplate" }
+    local score = Database:ScoreName("enemy unit nameplate", "enemy nameplate", 15, words)
+    H.assertTrue(score >= 100,
+        "enemy nameplate should match Enemy Unit Nameplate without typing Unit; got "
+        .. tostring(score))
+end
+
 function tests.warmSearchHotPath_hydratesCachedAsyncProviders()
     local statsHydrated = 0
     local bossesHydrated = 0

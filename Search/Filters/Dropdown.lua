@@ -65,7 +65,10 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     local RADIO_SIZE = 14
     local RADIO_OFF_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-off"
     local RADIO_ON_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-on"
-    local ROW_HIGHLIGHT_COLOR = { 1, 1, 1, 0.1 }
+
+    local function InstallMenuRowHighlight(row)
+        Utils.InstallMenuRowHighlight(row)
+    end
 
     local function StylePopup(frame)
         ns.StyleMenuPanel(frame)
@@ -87,9 +90,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     local uncheckLabel = uncheckRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     uncheckLabel:SetPoint("LEFT", 8, 0)
     uncheckLabel:SetText(L["FILTER_TOGGLE_ALL"])
-    local uncheckHL = uncheckRow:CreateTexture(nil, "HIGHLIGHT")
-    uncheckHL:SetAllPoints()
-    uncheckHL:SetColorTexture(1, 1, 1, 0.1)
+    InstallMenuRowHighlight(uncheckRow)
 
     local checkRows = {}
     local checkRowsByIndex = {}
@@ -101,21 +102,22 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     -- keyboard to the dropdown. No parent tracking needed.
     local function AddPopupKeyboardNav(popup, getRows)
         local popupFocus = 0
-        local popupHL = popup:CreateTexture(nil, "BACKGROUND")
-        popupHL:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
-        popupHL:Hide()
+        local popupFocusRow
 
         local function SetPopupFocus(idx)
             local rows = getRows()
+            if popupFocusRow and popupFocusRow.SetMenuHighlightFocused then
+                popupFocusRow:SetMenuHighlightFocused(false)
+            end
             popupFocus = idx
             local target = rows[idx]
             if target then
-                popupHL:SetParent(target)
-                popupHL:ClearAllPoints()
-                popupHL:SetAllPoints(target)
-                popupHL:Show()
+                if target.SetMenuHighlightFocused then
+                    target:SetMenuHighlightFocused(true)
+                end
+                popupFocusRow = target
             else
-                popupHL:Hide()
+                popupFocusRow = nil
             end
         end
 
@@ -172,7 +174,10 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
         popup:HookScript("OnHide", function(self)
             popupFocus = 0
-            popupHL:Hide()
+            if popupFocusRow and popupFocusRow.SetMenuHighlightFocused then
+                popupFocusRow:SetMenuHighlightFocused(false)
+            end
+            popupFocusRow = nil
             Utils.SafeCallMethod(self, "EnableKeyboard", false)
             if dropdownKeyboardMode and dropdown:IsShown() then
                 Utils.SafeCallMethod(dropdown, "EnableKeyboard", true)
@@ -360,9 +365,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     subRow:HookScript("OnLeave", function() subChev:SetVertexColor(0.85, 0.85, 0.85, 1) end)
                 end
 
-                local subHL = subRow:CreateTexture(nil, "HIGHLIGHT")
-                subHL:SetAllPoints()
-                subHL:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+                InstallMenuRowHighlight(subRow)
 
                 subRow:SetScript("OnClick", function(self)
                     local target = sub.dbTable and EasyFind.db[sub.dbTable]
@@ -382,7 +385,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 -- right of this sub-row on hover.
                 if sub.hasOptions and sub.key == "appearances" then
                     local optionsPopup, syncOptions, appBranchPopups = Search:BuildAppearanceOptionsPopup(
-                        StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
+                        StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
                     Search._SyncAppearanceOptions = syncOptions
                     optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
                     optionsPopup._owningRow = subRow
@@ -405,7 +408,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
                 if sub.hasOptions and sub.key == "mounts" then
                     local optionsPopup, syncOptions, sourcePopup = Search:BuildMountOptionsPopup(
-                        StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox)
+                        StylePopup, CHECK_SIZE, searchEditBox)
                     Search._SyncMountOptions = syncOptions
                     optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
                     optionsPopup._owningRow = subRow
@@ -430,7 +433,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
                 if sub.hasOptions and sub.key == "heirlooms" then
                     local optionsPopup, syncOptions, sourcePopup = Search:BuildHeirloomOptionsPopup(
-                        StylePopup, ROW_HIGHLIGHT_COLOR, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
+                        StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
                     Search._SyncHeirloomOptions = syncOptions
                     optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
                     optionsPopup._owningRow = subRow
@@ -492,9 +495,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 local lbl = hideTipRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
                 lbl:SetPoint("LEFT", hideTipRow:GetNormalTexture(), "RIGHT", 4, 0)
                 lbl:SetText(L["FILTER_HIDE_TOOLTIPS"])
-                local hl = hideTipRow:CreateTexture(nil, "HIGHLIGHT")
-                hl:SetAllPoints()
-                hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+                InstallMenuRowHighlight(hideTipRow)
                 hideTipRow:SetScript("OnClick", function(self)
                     EasyFind.db.hideTooltips = EasyFind.db.hideTooltips or {}
                     EasyFind.db.hideTooltips.collections = self:GetChecked() and true or false
@@ -613,9 +614,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 lbl:SetPoint("LEFT", bullet, "RIGHT", 6, 0)
                 lbl:SetText(optionDef.label)
 
-                local hl = rRow:CreateTexture(nil, "HIGHLIGHT")
-                hl:SetAllPoints()
-                hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+                InstallMenuRowHighlight(rRow)
 
                 rRow.tick = tick
                 rRow.value = optionDef.value
@@ -657,9 +656,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 lbl:SetPoint("LEFT", box, "RIGHT", 6, 0)
                 lbl:SetText(cbDef.label)
 
-                local hl = cRow:CreateTexture(nil, "HIGHLIGHT")
-                hl:SetAllPoints()
-                hl:SetColorTexture(unpack(ROW_HIGHLIGHT_COLOR))
+                InstallMenuRowHighlight(cRow)
 
                 cRow.tick = tick
                 cRow.dbKey = cbDef.dbKey
@@ -732,7 +729,6 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             Search:AttachGearOptionsFlyout(row, dropdown, {
                 rowHeight = ROW_HEIGHT,
                 checkSize = CHECK_SIZE,
-                rowHighlightColor = ROW_HIGHLIGHT_COLOR,
                 StylePopup = StylePopup,
                 CreateRadioTexture = CreateRadioTexture,
                 AddPopupKeyboardNav = AddPopupKeyboardNav,
@@ -743,15 +739,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             })
         end
 
-        local highlight = row:CreateTexture(nil, "HIGHLIGHT")
-        highlight:SetAllPoints()
-        highlight:SetColorTexture(1, 1, 1, 0.1)
-
-        local kbHighlight = row:CreateTexture(nil, "BACKGROUND")
-        kbHighlight:SetAllPoints()
-        kbHighlight:SetColorTexture(1, 1, 1, 0.1)
-        kbHighlight:Hide()
-        row.kbHighlight = kbHighlight
+        InstallMenuRowHighlight(row)
 
         row:SetChecked(true)
 
@@ -774,32 +762,39 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     local SUB_INDENT = 24
     local dropdownNavRows = {}  -- ordered list of navigable rows (rebuilt on layout)
     local dropdownFocus = 0
-    local dropdownKbHighlight = dropdown:CreateTexture(nil, "BACKGROUND")
-    dropdownKbHighlight:SetColorTexture(1, 1, 1, 0.1)
-    dropdownKbHighlight:Hide()
+    local dropdownFocusRow
 
     local function SetDropdownFocus(idx)
+        if dropdownFocusRow and dropdownFocusRow.SetMenuHighlightFocused then
+            dropdownFocusRow:SetMenuHighlightFocused(false)
+        end
         dropdownFocus = idx
         local target = dropdownNavRows[idx]
         if target then
-            dropdownKbHighlight:SetParent(target)
-            dropdownKbHighlight:ClearAllPoints()
-            dropdownKbHighlight:SetAllPoints(target)
-            dropdownKbHighlight:Show()
+            if target.SetMenuHighlightFocused then
+                target:SetMenuHighlightFocused(true)
+            end
+            dropdownFocusRow = target
         else
-            dropdownKbHighlight:Hide()
+            dropdownFocusRow = nil
         end
     end
 
     local function ClearDropdownFocus()
         dropdownFocus = 0
-        dropdownKbHighlight:Hide()
+        if dropdownFocusRow and dropdownFocusRow.SetMenuHighlightFocused then
+            dropdownFocusRow:SetMenuHighlightFocused(false)
+        end
+        dropdownFocusRow = nil
     end
 
     function LayoutDropdown()
         local savedFocus = dropdownFocus
         wipe(dropdownNavRows)
-        dropdownKbHighlight:Hide()
+        if dropdownFocusRow and dropdownFocusRow.SetMenuHighlightFocused then
+            dropdownFocusRow:SetMenuHighlightFocused(false)
+        end
+        dropdownFocusRow = nil
         local filters = EasyFind.db.uiSearchFilters
         local y = -PADDING_TOP
         uncheckRow:ClearAllPoints()
@@ -821,6 +816,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             end
         end
         dropdown:SetSize(DROPDOWN_WIDTH, -y + PADDING_BOTTOM)
+        Utils.RefreshMenuRowHighlights(dropdown, dropdownNavRows)
         if savedFocus > 0 and dropdown:IsKeyboardEnabled() then
             if savedFocus > #dropdownNavRows then savedFocus = #dropdownNavRows end
             SetDropdownFocus(savedFocus)
