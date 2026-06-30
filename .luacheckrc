@@ -23,6 +23,7 @@ globals = {
     "SettingsPanel",
     "TokenFrame",
     "QuickKeybindFrame",
+    "SetItemRef",
 }
 
 -- WoW API globals (read-only)

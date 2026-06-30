@@ -775,6 +775,7 @@ local function EnsurePrefixIndexRebuildScheduled(delay)
 end
 
 function Database:WarmSearchHotPath()
+    if self.HydrateCachedLoot then self:HydrateCachedLoot() end
     if self.HydrateCachedStatistics then self:HydrateCachedStatistics() end
     if self.HydrateCachedBosses then self:HydrateCachedBosses() end
     if not prefixIndexReady or prefixIndexDirty then
@@ -977,7 +978,10 @@ function Database:SearchUI(query, skipCategories)
         and not gatingShifted then
         searchSet = prevCandidates
     else
-        if not prefixIndexReady then
+        -- Dirty means providers added/removed entries after the last completed
+        -- index. Scan the live data until the async rebuild catches up, or
+        -- freshly loaded categories can stay invisible for the current query.
+        if not prefixIndexReady or prefixIndexDirty then
             EnsurePrefixIndexRebuildScheduled(0)
             searchSet = uiSearchData
         elseif #queryWords >= 2 then

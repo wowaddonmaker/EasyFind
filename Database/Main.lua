@@ -823,6 +823,7 @@ local bossScanGeneration = 0
 local lootItemCache = {}
 local lootSpecsScanned = {}
 local lootItemCacheHydrated = false
+local lootSearchDataHydrated = false
 local bossCacheHydrated = false
 local statisticCacheHydrated = false
 
@@ -1075,6 +1076,7 @@ local function RebuildLootSearchData()
             end
         end
     end
+    lootSearchDataHydrated = true
 end
 
 local DIFF_PRIORITY = { "mythic", "heroic", "normal", "lfr" }
@@ -2079,6 +2081,22 @@ local function GetLootDiffPairs(isRaid)
         end
     end
     return diffPairs
+end
+
+function Database:HydrateCachedLoot()
+    if lootSearchDataHydrated then return false end
+    HydratePersistedLootCache()
+    if not next(lootItemCache) then return false end
+
+    local specPairs = BuildLootSpecPairs(false)
+    if #specPairs == 0 then return false end
+
+    local needScan = GetLootSpecsToScan(specPairs)
+    RebuildLootSearchData()
+    if #needScan == 0 and self.MarkDynamicProviderLoaded then
+        self:MarkDynamicProviderLoaded("loot")
+    end
+    return true
 end
 
 local function CacheLootInfo(database, lootInfo, inst, encName, encID, diff, sp, spKey, GetItemInfoInstantFn)
@@ -3212,6 +3230,7 @@ function Database:_ResetDynamicProviderCaches()
     wipe(lootEncounterMTCache)
     wipe(pendingStatEnrichment)
     lootItemCacheHydrated = false
+    lootSearchDataHydrated = false
     bossCacheHydrated = false
     statisticCacheHydrated = false
 end
@@ -3223,6 +3242,7 @@ function Database:_ResetHeavyProviderCaches()
     wipe(lootEncounterMTCache)
     wipe(pendingStatEnrichment)
     lootItemCacheHydrated = false
+    lootSearchDataHydrated = false
     bossCacheHydrated = false
     statisticCacheHydrated = false
 end

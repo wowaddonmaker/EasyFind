@@ -1689,6 +1689,28 @@ local SETTING_NAME_FALLBACK = {
     PROXY_RAID_PROJECTED_TEXTURES = "Projected Textures",
 }
 
+local function GetRegisteredSetting(variable)
+    if Settings and Settings.GetSetting then
+        local ok, setting = pcall(Settings.GetSetting, variable)
+        if ok and setting then return setting end
+    end
+    return nil
+end
+
+local function IsLiveCVar(variable)
+    if not (variable and GetCVar) then return false end
+    local ok, value = pcall(GetCVar, variable)
+    return ok and value ~= nil
+end
+
+local function IsCuratedFallbackSupported(variable)
+    -- These are SettingsPanel proxy rows backed by BaseQualityControls
+    -- containers, not raw CVars. They are validated by the explicit
+    -- supported-proxy catalog above rather than GetCVar.
+    if BASE_QUALITY_SETTINGS[variable] then return true end
+    return IsLiveCVar(variable)
+end
+
 -- Resolve a setting's display name through Blizzard's Settings API. Each
 -- registered variable has a Setting object with :GetName() returning the
 -- LOCALIZED display string. Falling back to the hardcoded English in
@@ -1697,13 +1719,11 @@ local SETTING_NAME_FALLBACK = {
 -- clients free translations for the ~130 game settings the user can
 -- search, without us maintaining locale tables for Blizzard's own labels.
 local function GetSettingDisplayName(variable, fallback)
-    if Settings and Settings.GetSetting then
-        local ok, setting = pcall(Settings.GetSetting, variable)
-        if ok and setting and setting.GetName then
-            local nameOk, name = pcall(setting.GetName, setting)
-            if nameOk and type(name) == "string" and name ~= "" then
-                return name
-            end
+    local setting = GetRegisteredSetting(variable)
+    if setting and setting.GetName then
+        local nameOk, name = pcall(setting.GetName, setting)
+        if nameOk and type(name) == "string" and name ~= "" then
+            return name
         end
     end
     return fallback
@@ -1733,7 +1753,7 @@ local function HumanizeSettingVariable(variable)
     return name
 end
 
-local function CollectCuratedGameEntries(resolveCategoryIDs, useApiNames)
+local function CollectCuratedGameEntries(resolveCategoryIDs, useApiNames, allowHumanizedNames)
     local entries = {}
     if resolveCategoryIDs then ResolveCategoryIDs() end
 
@@ -1761,7 +1781,12 @@ local function CollectCuratedGameEntries(resolveCategoryIDs, useApiNames)
         -- pick up the localized name automatically.
         local apiName = useApiNames ~= false and GetSettingDisplayName(var, nil) or nil
         local fallbackName = SETTING_NAME_FALLBACK[var]
-        local name = apiName or fallbackName or (useApiNames == false and HumanizeSettingVariable(var))
+        local fallbackSupported = fallbackName and (apiName or IsCuratedFallbackSupported(var))
+        local humanizedName
+        if allowHumanizedNames and not apiName and not fallbackName and IsLiveCVar(var) then
+            humanizedName = HumanizeSettingVariable(var)
+        end
+        local name = apiName or (fallbackSupported and fallbackName) or humanizedName
         if name and name ~= "" then
         if nameSuffix and nameSuffix ~= "" and name:sub(-#nameSuffix) ~= nameSuffix then
             name = name .. nameSuffix
@@ -2684,7 +2709,7 @@ function BlizzOptionsSearch:EnsureFastGameOptions()
     if fastGameRegistered then return false end
     if registered then return false end
     if not (ns.Database and ns.Database.uiSearchData) then return false end
-    local ok, entries = xpcall(CollectCuratedGameEntries, Utils.ErrorHandler, false, false)
+    local ok, entries = xpcall(CollectCuratedGameEntries, Utils.ErrorHandler, false, true, true)
     if not ok or type(entries) ~= "table" or #entries == 0 then return false end
     fastGameRegistered = true
     local changed = PushOptionEntries(ns.Database.uiSearchData, entries, {}, {}, nil)

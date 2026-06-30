@@ -54,6 +54,9 @@ local EXPLICIT_FILTER_OVERRIDE = {
 }
 
 local PROVIDERS = {
+    { key = "abilities", words = { "ability", "abilities", "spell", "spells" }, loadOnLowResults = true },
+    { key = "talents", words = { "talent", "talents", "spec", "specialization" }, loadOnLowResults = true },
+    { key = "macros", words = { "macro", "macros" }, loadOnLowResults = true },
     { key = "currencies", words = { "currency", "currencies", "cur" }, loadOnLowResults = true },
     { key = "reputations", words = { "rep", "reps", "reputation", "reputations", "faction" }, loadOnLowResults = true },
     { key = "achievements", words = { "ach", "achievement", "achievements" }, loadOnLowResults = true },
@@ -65,9 +68,6 @@ local PROVIDERS = {
     { key = "heirlooms", words = { "heirloom", "heirlooms" }, loadOnLowResults = true },
     { key = "titles", words = { "title", "titles" }, loadOnLowResults = true },
     { key = "gearSets", words = { "gearset", "gearsets", "equipment", "equipmentset" }, loadOnLowResults = true },
-    { key = "macros", words = { "macro", "macros" }, loadOnLowResults = true },
-    { key = "abilities", words = { "ability", "abilities", "spell", "spells" }, loadOnLowResults = true },
-    { key = "talents", words = { "talent", "talents", "spec", "specialization" }, loadOnLowResults = true },
     { key = "bags", words = { "bag", "bags", "inventory" }, loadOnLowResults = true },
     { key = "transmogSets", words = { "appearance", "appearances", "appset", "appsets", "set", "sets", "tmog", "transmog", "xmog" }, loadOnLowResults = true },
     { key = "appearanceItems", words = { "appearance", "appearances", "item", "items", "tmog", "transmog", "xmog" }, explicitOnly = true },
@@ -76,6 +76,7 @@ local PROVIDERS = {
 }
 
 local pendingDynamic = {}
+local LOW_RESULT_PROVIDER_THRESHOLD = 3
 
 local function makeLookup(words)
     local lookup = {}
@@ -223,7 +224,7 @@ end
 function Engine:ShouldLoadForLowResults(ctx, spec, resultCount)
     if not spec.loadOnLowResults then return false end
     if ctx.quickFilter then return false end
-    if not resultCount or resultCount > 0 then return false end
+    if not resultCount or resultCount > LOW_RESULT_PROVIDER_THRESHOLD then return false end
     if #(ctx.query or "") < 4 then return false end
     return true
 end
