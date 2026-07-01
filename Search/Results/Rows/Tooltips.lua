@@ -89,6 +89,8 @@ function Rows.InstallTooltips(resultRow)
         -- generic icon-tooltip block, which only checks mount / toy /
         -- pet / etc. fields and would otherwise miss currencies.
         if self.data and self.data.category == "Currency" and self.data.currencyID then
+            local ht = EasyFind.db.hideTooltips
+            if ht and ht.currencies then return end
             local cid = self.data.currencyID
             AnchorTooltipAtCursor(GameTooltip, self)
             if GameTooltip.SetCurrencyByID then

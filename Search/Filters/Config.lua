@@ -84,6 +84,9 @@ local UI_FILTER_OPTIONS = {
                                           or ((UnitName and UnitName("player") or "This Character") .. " Only") },
           },
           onChange = function(v) if Search.ApplyTokenFrameFilter then Search:ApplyTokenFrameFilter(v) end end,
+          checkboxes = {
+              { dbKey = "hideTooltips.currencies", label = L["FILTER_HIDE_TOOLTIPS"] },
+          },
       } },
     -- Gear: treasure-chest icon from the Encounter Journal loot tab
     -- spritesheet (texture 522972) for visual consistency with the

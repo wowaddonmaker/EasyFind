@@ -148,6 +148,7 @@ local DB_DEFAULTS = {
         talents     = false,
         macros      = false,
         bags        = false,
+        currencies  = false,
     },
     currencyFilterMode = "all",
     reputationFilterMode = "all",
