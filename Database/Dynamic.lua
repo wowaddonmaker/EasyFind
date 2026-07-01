@@ -14,9 +14,14 @@ local function getScheduler()
     return ns.Scheduler
 end
 
+-- eager = true providers are small enough to load up front (on search focus)
+-- so they are searchable by name without the user first typing a category
+-- keyword. Heavy providers (mounts/abilities/loot/appearances/...) stay lazy:
+-- loading them would bloat the full-scan set and slow every keystroke, so they
+-- load on query intent (a trigger word or quick filter) instead.
 local dynamicProviders = {
-    { key = "currencies",  category = "Currency",             fn = "PopulateDynamicCurrencies" },
-    { key = "reputations", category = "Reputation",           fn = "PopulateDynamicReputations" },
+    { key = "currencies",  category = "Currency",             fn = "PopulateDynamicCurrencies", eager = true },
+    { key = "reputations", category = "Reputation",           fn = "PopulateDynamicReputations", eager = true },
     { key = "achievements", category = "Achievement Category", fn = "PopulateDynamicAchievements" },
     { key = "statistics",  category = "Statistic",            fn = "PopulateDynamicStatistics", asyncFn = "PopulateDynamicStatisticsAsync" },
     { key = "mounts",      category = "Mount",          fn = "PopulateDynamicMounts" },
@@ -24,9 +29,9 @@ local dynamicProviders = {
     { key = "pets",        category = "Pet",            fn = "PopulateDynamicPets" },
     { key = "outfits",     category = "Outfit",         fn = "PopulateDynamicOutfits" },
     { key = "heirlooms",   category = "Heirloom",       fn = "PopulateDynamicHeirlooms" },
-    { key = "titles",      category = "Title",          fn = "PopulateDynamicTitles" },
-    { key = "gearSets",    category = "Gear Set",       fn = "PopulateDynamicGearSets" },
-    { key = "macros",      category = "Macro",          fn = "PopulateDynamicMacros" },
+    { key = "titles",      category = "Title",          fn = "PopulateDynamicTitles", eager = true },
+    { key = "gearSets",    category = "Gear Set",       fn = "PopulateDynamicGearSets", eager = true },
+    { key = "macros",      category = "Macro",          fn = "PopulateDynamicMacros", eager = true },
     { key = "abilities",   category = "Ability",        fn = "PopulateDynamicAbilities" },
     { key = "talents",     category = "Talent",         fn = "PopulateDynamicTalents" },
     { key = "bags",        category = "Bag",            fn = "PopulateDynamicBags" },
@@ -34,7 +39,7 @@ local dynamicProviders = {
     { key = "appearanceItems", category = "Appearance", fn = "PopulateDynamicAppearanceItems", asyncFn = "PopulateDynamicAppearanceItemsAsync", pre = "SyncAppearanceItemFiltersFromUI" },
     { key = "loot",        category = "Loot",           fn = "PopulateDynamicLoot", asyncFn = "PopulateDynamicLootAsync" },
     { key = "bosses",      category = "Boss",           fn = "PopulateDynamicBosses", asyncFn = "PopulateDynamicBossesAsync" },
-    { key = "commands",    category = "Command",        fn = "PopulateDynamicCommands" },
+    { key = "commands",    category = "Command",        fn = "PopulateDynamicCommands", eager = true },
 }
 
 local dynamicProviderByKey = {}
@@ -239,6 +244,33 @@ function Database:RefreshDynamicCategory(key, onDone)
     end)
     returned = true
     return changed
+end
+
+-- Load the small "eager" providers up front (called on search focus) so they
+-- are searchable by name without the user first typing a category keyword. One
+-- per frame to avoid a single-frame hitch; already-loaded providers are skipped
+-- so repeated focus is cheap. Each load fires ResetSearchCache -> the coalesced
+-- active-search refresh, so results fill in on their own.
+function Database:LoadEagerDynamicProviders()
+    if self._loadingEagerProviders then return end
+    self._loadingEagerProviders = true
+    local index = 1
+    local function step()
+        while index <= #dynamicProviders do
+            local provider = dynamicProviders[index]
+            index = index + 1
+            if provider.eager and not (provider.loaded and not provider.dirty) then
+                RunDynamicProvider(self, provider, function()
+                    Utils.SafeAfter(0, step)
+                end)
+                return
+            end
+        end
+        self._loadingEagerProviders = false
+    end
+    -- Deferred so the load lands after the login frame (which is kept light)
+    -- and after the first few frames of API data settling.
+    Utils.SafeAfter(0, step)
 end
 
 function Database:LoadCoreDynamicSearchData()

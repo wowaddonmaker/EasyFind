@@ -633,73 +633,24 @@ local prevQuery = ""
 local prevSkipKey = ""
 local prevCandidates = {}
 
-local prefixIndex = {}
-local prefixIndexReady = false
-local prefixIndexDirty = true
-local prefixCandidateBuf = {}
-local prefixCandidateSeen = {}
-local prefixRebuildGen = 0
-local prefixRebuildScheduled = false
-local prefixBuild
-local PREFIX_REBUILD_DELAY = 0.10
-local PREFIX_REBUILD_BUDGET_MS = 1.5
-
-local function AddPrefixIndexEntryTo(index, seen, entry, prefix)
-    if seen[prefix] == entry then return end
-    seen[prefix] = entry
-    local bucket = index[prefix]
-    if not bucket then
-        bucket = {}
-        index[prefix] = bucket
-    end
-    bucket[#bucket + 1] = entry
+function Database:WarmSearchHotPath()
+    if self.HydrateCachedLoot then self:HydrateCachedLoot() end
+    if self.HydrateCachedStatistics then self:HydrateCachedStatistics() end
+    if self.HydrateCachedBosses then self:HydrateCachedBosses() end
+    -- Load the small name-searched providers (currencies, reputations, etc.)
+    -- so they show up without the user typing a category keyword first.
+    if self.LoadEagerDynamicProviders then self:LoadEagerDynamicProviders() end
 end
 
-local function IndexPrefixTextTo(index, seen, entry, text)
-    if not text then return end
-    -- Share tokenization with scoring so prefix warmup fills the same cache
-    -- search uses later instead of doing a separate ASCII/token walk.
-    local words = GetWords(text)
-    for i = 1, #words do
-        local word = words[i]
-        local len = #word
-        if len >= 1 then AddPrefixIndexEntryTo(index, seen, entry, ssub(word, 1, 1)) end
-        if len >= 2 then AddPrefixIndexEntryTo(index, seen, entry, ssub(word, 1, 2)) end
-    end
-end
-
-local function IndexPrefixListTo(index, seen, entry, list)
-    if not list then return end
-    for i = 1, #list do
-        local text = list[i]
-        if type(text) == "string" then IndexPrefixTextTo(index, seen, entry, text) end
-    end
-end
-
-local function IndexPrefixEntryTo(index, seen, entry)
-    IndexPrefixTextTo(index, seen, entry, entry.nameLower)
-    IndexPrefixListTo(index, seen, entry, entry.keywordsLower or entry.keywords)
-    IndexPrefixListTo(index, seen, entry, entry.lootSlotKw)
-    IndexPrefixListTo(index, seen, entry, entry.lootStatKw)
-    IndexPrefixListTo(index, seen, entry, entry.lootSourceKw)
-end
-
-function Database:BuildSearchPrefixIndex()
-    prefixRebuildGen = prefixRebuildGen + 1
-    prefixBuild = nil
-    prefixRebuildScheduled = false
-    local index = {}
-    local seen = {}
-    for i = 1, #uiSearchData do
-        IndexPrefixEntryTo(index, seen, uiSearchData[i])
-    end
-    wipe(seen)
-    prefixIndex = index
-    prefixIndexReady = true
-    prefixIndexDirty = false
-end
-
-local function RefreshOpenSearchAfterPrefixRebuild()
+-- Search scans the full dataset for a fresh query, so there is no candidate
+-- index to rebuild. This stays the invalidation hook the rest of the codebase
+-- calls when search data changes: it clears the incremental-narrowing cache so
+-- the next keystroke re-scans from scratch, and re-runs the active search once
+-- (coalesced) so a provider that finished loading in the background appears
+-- without the user having to retype.
+local searchRefreshPending = false
+local function RunActiveSearchRefresh()
+    searchRefreshPending = false
     local search = ns.Search
     local frame = search and search.GetSearchFrame and search:GetSearchFrame()
     local editBox = frame and frame.editBox
@@ -707,120 +658,6 @@ local function RefreshOpenSearchAfterPrefixRebuild()
     if frame and frame:IsShown() and text and text ~= "" and search.OnSearchTextChanged then
         search:OnSearchTextChanged(text, true)
     end
-end
-
-local StepPrefixIndexRebuild
-
-local function FinishPrefixIndexRebuild(build)
-    if not build or build.gen ~= prefixRebuildGen then return end
-    wipe(build.seen)
-    prefixIndex = build.index
-    prefixBuild = nil
-    prefixRebuildScheduled = false
-    prefixIndexReady = true
-    prefixIndexDirty = false
-    prevQuery = ""
-    prevSkipKey = ""
-    wipe(prevCandidates)
-    RefreshOpenSearchAfterPrefixRebuild()
-end
-
-StepPrefixIndexRebuild = function(build)
-    if not build or build.gen ~= prefixRebuildGen then
-        if prefixBuild == build then prefixBuild = nil end
-        return
-    end
-
-    local startMs = debugprofilestop and debugprofilestop() or nil
-    while build.cursor <= #uiSearchData do
-        IndexPrefixEntryTo(build.index, build.seen, uiSearchData[build.cursor])
-        build.cursor = build.cursor + 1
-        if startMs and (debugprofilestop() - startMs) >= PREFIX_REBUILD_BUDGET_MS then
-            Utils.SafeAfter(0, function()
-                StepPrefixIndexRebuild(build)
-            end)
-            return
-        end
-    end
-
-    FinishPrefixIndexRebuild(build)
-end
-
--- Coalesce prefix-index rebuilds. Provider refreshes can invalidate the
--- search data repeatedly while the user is typing. Keep the last completed
--- index active and build the replacement in small timer slices so a delayed
--- rebuild cannot land as one large Backspace hitch.
-local function SchedulePrefixIndexRebuild(delay)
-    prefixRebuildGen = prefixRebuildGen + 1
-    prefixIndexDirty = true
-    prefixRebuildScheduled = true
-    local gen = prefixRebuildGen
-    Utils.SafeAfter(delay or PREFIX_REBUILD_DELAY, function()
-        if gen ~= prefixRebuildGen then return end
-        prefixRebuildScheduled = false
-        local build = {
-            gen = gen,
-            cursor = 1,
-            index = {},
-            seen = {},
-        }
-        prefixBuild = build
-        StepPrefixIndexRebuild(build)
-    end)
-end
-
-local function EnsurePrefixIndexRebuildScheduled(delay)
-    if prefixBuild or prefixRebuildScheduled then return end
-    SchedulePrefixIndexRebuild(delay)
-end
-
-function Database:WarmSearchHotPath()
-    if self.HydrateCachedLoot then self:HydrateCachedLoot() end
-    if self.HydrateCachedStatistics then self:HydrateCachedStatistics() end
-    if self.HydrateCachedBosses then self:HydrateCachedBosses() end
-    if not prefixIndexReady or prefixIndexDirty then
-        EnsurePrefixIndexRebuildScheduled(prefixIndexReady and nil or 0)
-    end
-end
-
-local function ClearPrefixBuckets()
-    prefixRebuildGen = prefixRebuildGen + 1
-    prefixBuild = nil
-    prefixRebuildScheduled = false
-    wipe(prefixIndex)
-    prefixIndexReady = false
-    prefixIndexDirty = false
-end
-
-local function GetPrefixBucket(prefix)
-    return prefixIndex[prefix] or false
-end
-
-local function AddPrefixCandidateBucket(bucket)
-    if not bucket then return end
-    for i = 1, #bucket do
-        local entry = bucket[i]
-        if not prefixCandidateSeen[entry] then
-            prefixCandidateSeen[entry] = true
-            prefixCandidateBuf[#prefixCandidateBuf + 1] = entry
-        end
-    end
-end
-
-local function GetMultiTokenPrefixCandidates(queryWords)
-    wipe(prefixCandidateBuf)
-    wipe(prefixCandidateSeen)
-    for i = 1, #queryWords do
-        local word = queryWords[i]
-        local len = #word
-        if len >= 2 then
-            AddPrefixCandidateBucket(GetPrefixBucket(ssub(word, 1, 2)))
-        elseif len == 1 then
-            AddPrefixCandidateBucket(GetPrefixBucket(word))
-        end
-    end
-    wipe(prefixCandidateSeen)
-    return #prefixCandidateBuf > 0 and prefixCandidateBuf or nil
 end
 
 function Database:ResetSearchCache()
@@ -832,7 +669,10 @@ function Database:ResetSearchCache()
     prevQuery = ""
     prevSkipKey = ""
     wipe(prevCandidates)
-    SchedulePrefixIndexRebuild(prefixIndexReady and nil or 0)
+    if not searchRefreshPending and Utils.SafeAfter then
+        searchRefreshPending = true
+        Utils.SafeAfter(0, RunActiveSearchRefresh)
+    end
 end
 
 local resultsBuf = {}
@@ -847,7 +687,9 @@ function Database:TrimSearchMemory()
     wipe(statisticScopedQueryWords)
     wipe(resultEntryPool)
     wipe(wordCache)
-    ClearPrefixBuckets()
+    prevQuery = ""
+    prevSkipKey = ""
+    wipe(prevCandidates)
 end
 
 function Database:SearchUI(query, skipCategories)
@@ -946,9 +788,9 @@ function Database:SearchUI(query, skipCategories)
     --   1. A gate flipped on ("icc bos" -> "icc boss"). Boss/ach entries
     --      were never scored before the flip.
     --   2. A word was appended to a stat-keyword query ("haste" ->
-    --      "haste ring"). Loot rings aren't in the "ha" prefix bucket
-    --      (lootStatKw is enriched lazily); the "ri" bucket pulls them in.
-    -- Either case bypasses extension and rebuilds via the prefix lookup.
+    --      "haste ring"): loot rings that only the appended word matches
+    --      weren't in the previous match set (lootStatKw is enriched lazily).
+    -- Either case bypasses extension and rebuilds via a full scan.
     local prevLootStat, prevBossWord, prevAchWord = false, false, false
     local prevWordCount = 0
     if prevQuery ~= "" then
@@ -971,35 +813,29 @@ function Database:SearchUI(query, skipCategories)
         or (lootStatQueryWord and addedNewWord)
         or (statQueryWord and addedNewWord)
 
-    local searchSet
+    -- Incremental narrowing (the speed path): when the query only grew, re-score
+    -- the previous match set instead of the whole dataset. A longer query can
+    -- only shrink prefix / substring / exact / word-boundary / keyword matches,
+    -- so narrowing stays complete for them. It is NOT safe across the lengths
+    -- where fuzzy-typo and abbreviation matching switch on or widen (3, 4, 8):
+    -- those can reveal matches that weren't in the previous set, so rebuild from
+    -- a full scan there. Every other case full-scans too. There is deliberately
+    -- no "ready index" mode that scans a narrower bucket -- that split (complete
+    -- full scan vs. incomplete bucket, flipped by a background timer) is exactly
+    -- what made the same query return different results at different moments.
     local prevLen = #prevQuery
+    local recallBoundaryCrossed =
+        (prevLen < 3 and queryLen >= 3)
+        or (prevLen < 4 and queryLen >= 4)
+        or (prevLen < 8 and queryLen >= 8)
+
+    local searchSet
     if prevLen > 0 and skipKey == prevSkipKey
         and queryLen > prevLen and ssub(query, 1, prevLen) == prevQuery
-        and not gatingShifted then
+        and not gatingShifted and not recallBoundaryCrossed then
         searchSet = prevCandidates
     else
-        -- Dirty means providers added/removed entries after the last completed
-        -- index. Scan the live data until the async rebuild catches up, or
-        -- freshly loaded categories can stay invisible for the current query.
-        if not prefixIndexReady or prefixIndexDirty then
-            EnsurePrefixIndexRebuildScheduled(0)
-            searchSet = uiSearchData
-        elseif #queryWords >= 2 then
-            searchSet = GetMultiTokenPrefixCandidates(queryWords)
-        else
-            local key2 = ssub(query, 1, 2)
-            searchSet = GetPrefixBucket(key2)
-            if not searchSet then
-                searchSet = GetPrefixBucket(ssub(query, 1, 1))
-            end
-        end
-        if not searchSet or #searchSet == 0 then
-            wipe(resultsBuf)
-            wipe(prevCandidates)
-            prevQuery = query
-            prevSkipKey = skipKey
-            return resultsBuf
-        end
+        searchSet = uiSearchData
     end
 
     wipe(resultsBuf)
