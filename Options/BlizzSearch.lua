@@ -510,6 +510,9 @@ local CVAR_DROPDOWN_OPTIONS = {
 
 local categoryIDByName = {}
 local categoryIDByVariable = {}
+-- category ID -> the localized display name (cat:GetName()), captured during
+-- the crawl so curated settings can show a translated breadcrumb category.
+local localizedNameByCategoryID = {}
 
 local settingTooltips = {}
 
@@ -1086,6 +1089,7 @@ local function CrawlCategory(cat)
     local catName = cat:GetName()
     if catName and catName ~= "" then
         categoryIDByName[slower(catName)] = catID
+        localizedNameByCategoryID[catID] = catName
     end
 
     if SettingsPanel and SettingsPanel.GetLayout then
@@ -1857,8 +1861,13 @@ local function CollectCuratedGameEntries(resolveCategoryIDs, useApiNames)
         local resolvedCatID = resolveCategoryIDs and GetCategoryIDForVariable(var) or nil
         if not (registryReady and not resolvedCatID and not BASE_QUALITY_SETTINGS[var]) then
             local catID = resolvedCatID or (resolveCategoryIDs and GetCategoryID(catName)) or nil
+            -- Breadcrumb shows the localized category name (resolved from the
+            -- category ID); catName stays English as the stable nav key. Add
+            -- the localized name as a keyword so it stays searchable too.
+            local displayCat = (catID and localizedNameByCategoryID[catID]) or catName
+            if displayCat ~= catName then kw[#kw + 1] = slower(displayCat) end
             local mt = GetSettingsCatMT("Game Settings", catName, catID,
-                { "Game Settings", catName })
+                { "Game Settings", displayCat })
             tinsert(entries, setmetatable({
                 name = name,
                 nameLower = nameLower,
