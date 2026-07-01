@@ -3349,7 +3349,7 @@ function Database:PopulateDynamicAchievements()
     local function emit(cat, parentChain, isGuildBranch)
         local prefix = isGuildBranch and "Guild: " or ""
         local pathRoot = isGuildBranch
-            and { _G["ACHIEVEMENTS"] or "Achievements", _G["GUILD_ACHIEVEMENTS"] or "Guild Achievements" }
+            and { _G["ACHIEVEMENTS"] or "Achievements", _G["GUILD_ACHIEVEMENTS_TITLE"] or "Guild Achievements" }
             or { _G["ACHIEVEMENTS"] or "Achievements", L["UITREE_PERSONAL_ACHIEVEMENTS"] }
 
         local steps = {
