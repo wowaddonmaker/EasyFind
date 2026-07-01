@@ -10,6 +10,8 @@ archive/
 *~
 
 # Dev workspace artifacts
+# Developer-only tooling, tests, notes, and drafts. Never shipped or pushed.
+dev/
 target/
 .claude/
 
