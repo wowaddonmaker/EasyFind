@@ -8,6 +8,8 @@ if not L then return end
 
 -- Database/Main.lua  --  uiTree composite names
 L["UITREE_SUFFIX_PREMADE"]              = " (Pré-formado)"
+L["UITREE_SUFFIX_CURRENCIES"]           = " Moedas"
+L["UITREE_PERSONAL_ACHIEVEMENTS"]       = "Conquistas pessoais"
 L["UITREE_SUFFIX_JOURNAL"]              = " (Compêndio)"
 L["UITREE_SUFFIX_BLITZ"]                = " (Blitz)"
 L["UITREE_SUFFIX_REWARDS"]              = " (Recompensas)"
@@ -388,6 +390,8 @@ L["QUICK_FILTER_HELP"]                  = "|cffffd100Filtros rápidos:|r @m, @s,
 L["RESCALE_SAMPLE_RESULT"]              = "Resultado de exemplo %d"
 L["RESCALE_BACK_TO_OPTIONS"]            = "Voltar às Opções"
 L["KB_PRIMARY"]                         = "Principal: %s"
+L["KB_SLOT_PRIMARY"]                    = "principal"
+L["KB_SLOT_ALTERNATE"]                  = "alternativa"
 L["ERR_APPEARANCE_SET_LOAD"]            = "não foi possível carregar as fontes deste conjunto de aparência."
 L["OPT_VISIBILITY_TT"]                  = "Ocultar auto. abre o EasyFind pela sua tecla de atalho e o oculta quando você pressiona Esc ou clica fora. A Exibição inteligente usa uma zona de detecção perto da barra de busca."
 L["POPUP_DISABLE_MAP_SEARCH_DETAIL"]    = "Isto removerá a busca no mapa, os marcadores, os recursos de sobreposição do mapa e a aba EasyFind no mapa-múndi. Você pode reativá-la depois nas opções."

@@ -1,9 +1,9 @@
 -- EasyFind Static Locations (auto-generated 2026-06-17 16:14)
 local _, ns = ...
 
--- POI names resolve through L["POI_<SLUG>"] at file-load time, so non-enUS
--- clients see their translated label. English is the fallback; if a key is
--- missing the original English literal still shows.
+-- POI names resolve through per-name L keys (POI_<slug>) at file-load time, so
+-- non-enUS clients see their translated label. English is the fallback; if a
+-- key is missing the original English literal still shows.
 local L = ns.L
 local function POIName(english)
     local key = "POI_" .. english:upper():gsub("&", "AND"):gsub("[^%w]+", "_"):gsub("^_+", ""):gsub("_+$", "")

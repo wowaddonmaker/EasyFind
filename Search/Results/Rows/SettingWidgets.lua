@@ -362,9 +362,9 @@ function Rows.CreateSettingWidgets(resultRow)
     local function KbLeaveHandler()
         GameTooltip:Hide()
     end
-    kb1:HookScript("OnEnter", MakeKbHoverHandler("primary"))
+    kb1:HookScript("OnEnter", MakeKbHoverHandler(L["KB_SLOT_PRIMARY"]))
     kb1:HookScript("OnLeave", KbLeaveHandler)
-    kb2:HookScript("OnEnter", MakeKbHoverHandler("alternate"))
+    kb2:HookScript("OnEnter", MakeKbHoverHandler(L["KB_SLOT_ALTERNATE"]))
     kb2:HookScript("OnLeave", KbLeaveHandler)
 
     -- Inline dropdown widget for settings whose options enumerate. Matches

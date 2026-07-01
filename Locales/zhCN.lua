@@ -8,6 +8,8 @@ if not L then return end
 
 -- Database/Main.lua  --  uiTree composite names
 L["UITREE_SUFFIX_PREMADE"]              = "（预设）"
+L["UITREE_SUFFIX_CURRENCIES"]           = "货币"
+L["UITREE_PERSONAL_ACHIEVEMENTS"]       = "个人成就"
 L["UITREE_SUFFIX_JOURNAL"]              = "（指南）"
 L["UITREE_SUFFIX_BLITZ"]                = "（闪电战）"
 L["UITREE_SUFFIX_REWARDS"]              = "（奖励）"
@@ -388,6 +390,8 @@ L["QUICK_FILTER_HELP"]                  = "|cffffd100快速筛选：|r @m、@s�
 L["RESCALE_SAMPLE_RESULT"]              = "示例结果 %d"
 L["RESCALE_BACK_TO_OPTIONS"]            = "返回选项"
 L["KB_PRIMARY"]                         = "主要：%s"
+L["KB_SLOT_PRIMARY"]                    = "主要"
+L["KB_SLOT_ALTERNATE"]                  = "备用"
 L["ERR_APPEARANCE_SET_LOAD"]            = "无法加载此外观套装的来源。"
 L["OPT_VISIBILITY_TT"]                  = "自动隐藏会通过你的快捷键打开 EasyFind，并在你按下 Esc 或点击别处时隐藏它。智能显示使用搜索栏附近的悬停区域。"
 L["POPUP_DISABLE_MAP_SEARCH_DETAIL"]    = "这将移除地图搜索、标记、地图覆盖功能以及世界地图上的 EasyFind 标签。你之后可以在选项中重新启用它。"

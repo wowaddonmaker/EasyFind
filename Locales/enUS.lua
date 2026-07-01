@@ -14,6 +14,8 @@ if not L then return end
 -- =============================================================================
 -- Shared disambiguator suffixes (reused across many uiTree leaves).
 L["UITREE_SUFFIX_PREMADE"]              = " (Premade)"
+L["UITREE_SUFFIX_CURRENCIES"]           = " Currencies"
+L["UITREE_PERSONAL_ACHIEVEMENTS"]       = "Personal Achievements"
 L["UITREE_SUFFIX_JOURNAL"]              = " (Journal)"
 L["UITREE_SUFFIX_BLITZ"]                = " (Blitz)"
 L["UITREE_SUFFIX_REWARDS"]              = " (Rewards)"
@@ -437,6 +439,8 @@ L["QUICK_FILTER_HELP"]                  = "|cffffd100Quick filters:|r @m, @s, @g
 L["RESCALE_SAMPLE_RESULT"]              = "Sample result %d"
 L["RESCALE_BACK_TO_OPTIONS"]            = "Back to Options"
 L["KB_PRIMARY"]                         = "Primary: %s"
+L["KB_SLOT_PRIMARY"]                    = "primary"
+L["KB_SLOT_ALTERNATE"]                  = "alternate"
 L["ERR_APPEARANCE_SET_LOAD"]            = "could not load sources for this appearance set."
 L["OPT_VISIBILITY_TT"]                  = "Auto-Hide opens EasyFind from your keybind and hides it when you press Escape or click away. Smart Show uses a hover zone near the search bar."
 L["POPUP_DISABLE_MAP_SEARCH_DETAIL"]    = "This will remove map search, pins, map overlay features, and the EasyFind tab on the world map. You can re-enable it later from options."

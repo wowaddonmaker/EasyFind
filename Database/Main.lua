@@ -186,9 +186,9 @@ function Database:PopulateDynamicCurrencies()
     end
 
     local function buildPath()
-        local path = {"Character Info", "Currency"}
+        local path = {_G["CHARACTER_BUTTON"] or "Character Info", _G["CURRENCY"] or "Currency"}
         for _, h in ipairs(headerStack) do
-            path[#path + 1] = h.name .. " Currencies"
+            path[#path + 1] = h.name .. L["UITREE_SUFFIX_CURRENCIES"]
         end
         return path
     end
@@ -213,7 +213,7 @@ function Database:PopulateDynamicCurrencies()
 
                     local headerNameLower = slower(info.name)
                     local entry = {
-                        name = info.name .. " Currencies",
+                        name = info.name .. L["UITREE_SUFFIX_CURRENCIES"],
                         keywords = {headerNameLower, headerNameLower .. " currencies", headerNameLower .. " currency"},
                         category = "Currency",
                         buttonFrame = "CharacterMicroButton",
@@ -328,7 +328,7 @@ function Database:PopulateDynamicCurrencies()
                             keywords = kw,
                             category = "Currency",
                             buttonFrame = "CharacterMicroButton",
-                            path = { "Character Info", "Currency" },
+                            path = { _G["CHARACTER_BUTTON"] or "Character Info", _G["CURRENCY"] or "Currency" },
                             steps = {
                                 { buttonFrame = "CharacterMicroButton" },
                                 { waitForFrame = "CharacterFrame", tabIndex = 3 },
@@ -413,7 +413,7 @@ function Database:PopulateDynamicReputations()
             steps[#steps + 1] = { waitForFrame = "CharacterFrame", factionHeader = currentFactionGroup }
         end
 
-        local path = { "Character Info", "Reputation" }
+        local path = { _G["CHARACTER_BUTTON"] or "Character Info", _G["REPUTATION"] or "Reputation" }
         if currentExpansion then path[#path + 1] = currentExpansion end
         if currentFactionGroup then path[#path + 1] = currentFactionGroup end
 
@@ -2531,10 +2531,10 @@ function Database:PopulateDynamicMacros()
             macroBody = body,
             macroIsChar = isCharSpecific,
             buttonFrame = "MainMenuMicroButton",
-            path = { "Macros", isCharSpecific and "Character" or "General" },
+            path = { _G["MACROS"] or "Macros", isCharSpecific and (_G["CHARACTER"] or "Character") or (_G["GENERAL"] or "General") },
             steps = {
                 { buttonFrame = "MainMenuMicroButton" },
-                { gameMenuText = "Macros" },
+                { gameMenuText = _G["MACROS"] or "Macros" },
                 { waitForFrame = "MacroFrame", tabIndex = tabIdx },
                 { waitForFrame = "MacroFrame", macroIndex = macroIdx },
             },
@@ -3054,7 +3054,7 @@ function Database:PopulateDynamicTalents()
             buttonFrame    = "PlayerSpellsMicroButton",
             keywords       = SHARED_TALENT_KW,
             keywordsLower  = SHARED_TALENT_KW,
-            path           = { "Talents" },
+            path           = { _G["TALENTS"] or "Talents" },
             talentConfigID = configID,
             talentTreeID   = treeID,
         }
@@ -3183,7 +3183,7 @@ function Database:PopulateDynamicBags()
 
     for _, itemID in ipairs(order) do
         local info = itemMap[itemID]
-        local name = info.link and info.link:match("%[(.-)%]") or (GetItemInfo and GetItemInfo(itemID)) or ("Item " .. itemID)
+        local name = info.link and info.link:match("%[(.-)%]") or (GetItemInfo and GetItemInfo(itemID)) or ((_G["ITEM"] or "Item") .. " " .. itemID)
         local quality
         if getQuality then
             quality = getQuality(itemID)
@@ -3349,8 +3349,8 @@ function Database:PopulateDynamicAchievements()
     local function emit(cat, parentChain, isGuildBranch)
         local prefix = isGuildBranch and "Guild: " or ""
         local pathRoot = isGuildBranch
-            and { "Achievements", "Guild Achievements" }
-            or { "Achievements", "Personal Achievements" }
+            and { _G["ACHIEVEMENTS"] or "Achievements", _G["GUILD_ACHIEVEMENTS"] or "Guild Achievements" }
+            or { _G["ACHIEVEMENTS"] or "Achievements", L["UITREE_PERSONAL_ACHIEVEMENTS"] }
 
         local steps = {
             { buttonFrame = "AchievementMicroButton" },
@@ -3557,7 +3557,7 @@ end
 
 local function BuildStatisticEntry(name, id, path, categoryChain)
     categoryChain = categoryChain or {}
-    path = path or { "Achievements", "Statistics" }
+    path = path or { _G["ACHIEVEMENTS"] or "Achievements", _G["STATISTICS"] or "Statistics" }
     return setmetatable({
         name = name,
         nameLower = slower(name),
@@ -3674,7 +3674,7 @@ function Database:PopulateDynamicStatisticsAsync(done)
     local queue = {}
 
     local function enqueueCategory(cat, parentChain)
-        local path = { "Achievements", "Statistics" }
+        local path = { _G["ACHIEVEMENTS"] or "Achievements", _G["STATISTICS"] or "Statistics" }
         local categoryChain = {}
         for i = 1, #parentChain do
             local parent = parentChain[i]
@@ -3801,7 +3801,7 @@ function Database:PopulateDynamicStatistics()
     local seenStatisticIDs = {}
     local cacheRows = {}
     local function emit(cat, parentChain)
-        local pathBase = { "Achievements", "Statistics" }
+        local pathBase = { _G["ACHIEVEMENTS"] or "Achievements", _G["STATISTICS"] or "Statistics" }
         local categoryChain = {}
         for i = 1, #parentChain do
             local parent = parentChain[i]
@@ -4280,12 +4280,12 @@ function Database:BuildUIDatabase()
             buttonFrame = "PlayerFrame",
             steps = {{ portraitMenu = true }},
             children = {
-                { name = _G["SET_FOCUS"] or "Set Focus", keywords = {"set focus", "focus target", "focus frame", "focus"}, steps = {{ portraitMenuOption = "Set Focus" }} },
-                { name = _G["SELF_HIGHLIGHT_OPTION"] or "Self Highlight", keywords = {"self highlight", "highlight self", "outline", "self outline"}, steps = {{ portraitMenuOption = "Self Highlight" }} },
-                { name = _G["RAID_TARGET_ICON"] or "Target Marker Icon", keywords = {"target marker", "raid marker", "skull", "cross", "star", "moon", "marker icon", "raid icon", "world marker"}, steps = {{ portraitMenuOption = "Target Marker Icon" }} },
-                { name = _G["SELECT_LOOT_SPECIALIZATION"] or "Loot Specialization", keywords = {"loot spec", "loot specialization", "loot preference"}, steps = {{ portraitMenuOption = "Loot Specialization" }} },
-                { name = _G["DUNGEON_DIFFICULTY"] or "Dungeon Difficulty", keywords = {"dungeon difficulty", "normal dungeon", "heroic dungeon", "mythic dungeon", "instance difficulty"}, steps = {{ portraitMenuOption = "Dungeon Difficulty" }} },
-                { name = _G["RAID_DIFFICULTY"] or "Raid Difficulty", keywords = {"raid difficulty", "normal raid", "heroic raid", "mythic raid", "raid size"}, steps = {{ portraitMenuOption = "Raid Difficulty" }} },
+                { name = _G["SET_FOCUS"] or "Set Focus", keywords = {"set focus", "focus target", "focus frame", "focus"}, steps = {{ portraitMenuOption = _G["SET_FOCUS"] or "Set Focus" }} },
+                { name = _G["SELF_HIGHLIGHT_OPTION"] or "Self Highlight", keywords = {"self highlight", "highlight self", "outline", "self outline"}, steps = {{ portraitMenuOption = _G["SELF_HIGHLIGHT_OPTION"] or "Self Highlight" }} },
+                { name = _G["RAID_TARGET_ICON"] or "Target Marker Icon", keywords = {"target marker", "raid marker", "skull", "cross", "star", "moon", "marker icon", "raid icon", "world marker"}, steps = {{ portraitMenuOption = _G["RAID_TARGET_ICON"] or "Target Marker Icon" }} },
+                { name = _G["SELECT_LOOT_SPECIALIZATION"] or "Loot Specialization", keywords = {"loot spec", "loot specialization", "loot preference"}, steps = {{ portraitMenuOption = _G["SELECT_LOOT_SPECIALIZATION"] or "Loot Specialization" }} },
+                { name = _G["DUNGEON_DIFFICULTY"] or "Dungeon Difficulty", keywords = {"dungeon difficulty", "normal dungeon", "heroic dungeon", "mythic dungeon", "instance difficulty"}, steps = {{ portraitMenuOption = _G["DUNGEON_DIFFICULTY"] or "Dungeon Difficulty" }} },
+                { name = _G["RAID_DIFFICULTY"] or "Raid Difficulty", keywords = {"raid difficulty", "normal raid", "heroic raid", "mythic raid", "raid size"}, steps = {{ portraitMenuOption = _G["RAID_DIFFICULTY"] or "Raid Difficulty" }} },
                 {
                     name = _G["RESET_INSTANCES"] or "Reset All Instances",
                     keywords = {"reset instances", "reset all instances", "instance reset", "dungeon reset"},
@@ -4295,11 +4295,11 @@ function Database:BuildUIDatabase()
                         if IsInGroup() and not UnitIsGroupLeader("player") then return false end
                         return true
                     end,
-                    steps = {{ portraitMenuOption = "Reset All Instances" }},
+                    steps = {{ portraitMenuOption = _G["RESET_INSTANCES"] or "Reset All Instances" }},
                 },
-                { name = _G["HUD_EDIT_MODE_MENU"] or _G["EDIT_MODE"] or "Edit Mode", keywords = {"edit mode", "ui layout", "customize ui", "move frames", "hud edit", "ui editor"}, steps = {{ portraitMenuOption = "Edit Mode" }} },
-                { name = _G["VOICE_CHAT"] or "Voice Chat", keywords = {"voice chat", "voice", "voip", "talk", "microphone", "mic"}, steps = {{ portraitMenuOption = "Voice Chat" }} },
-                { name = _G["PVP_FLAG"] or "PvP Flag", isPvP = true, keywords = {"pvp flag", "pvp toggle", "player vs player flag", "pvp enable", "war mode"}, steps = {{ portraitMenuOption = "PvP Flag" }} },
+                { name = _G["HUD_EDIT_MODE_MENU"] or _G["EDIT_MODE"] or "Edit Mode", keywords = {"edit mode", "ui layout", "customize ui", "move frames", "hud edit", "ui editor"}, steps = {{ portraitMenuOption = _G["HUD_EDIT_MODE_MENU"] or _G["EDIT_MODE"] or "Edit Mode" }} },
+                { name = _G["VOICE_CHAT"] or "Voice Chat", keywords = {"voice chat", "voice", "voip", "talk", "microphone", "mic"}, steps = {{ portraitMenuOption = _G["VOICE_CHAT"] or "Voice Chat" }} },
+                { name = _G["PVP_FLAG"] or "PvP Flag", isPvP = true, keywords = {"pvp flag", "pvp toggle", "player vs player flag", "pvp enable", "war mode"}, steps = {{ portraitMenuOption = _G["PVP_FLAG"] or "PvP Flag" }} },
             },
         },
 

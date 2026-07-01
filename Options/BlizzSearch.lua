@@ -253,33 +253,33 @@ local SETTINGS_DATA = {
     {"PROXY_RESOLUTION","Graphics","d"},
     {"PROXY_RESOLUTION_RENDER_SCALE","Graphics","s",0.333,2,0.05},
     {"PROXY_GRAPHICS_QUALITY","Graphics","s",0,9,1},
-    {"PROXY_RAID_GRAPHICS_QUALITY","Graphics","s",0,9,1," (Raid)"},
+    {"PROXY_RAID_GRAPHICS_QUALITY","Graphics","s",0,9,1," (" .. (_G["RAID"] or "Raid") .. ")"},
     {"PROXY_VIEW_DISTANCE","Graphics","s",0,9,1},
-    {"PROXY_RAID_VIEW_DISTANCE","Graphics","s",0,9,1," (Raid)"},
+    {"PROXY_RAID_VIEW_DISTANCE","Graphics","s",0,9,1," (" .. (_G["RAID"] or "Raid") .. ")"},
     {"PROXY_ENVIRONMENT_DETAIL","Graphics","s",0,9,1},
-    {"PROXY_RAID_ENVIRONMENT_DETAIL","Graphics","s",0,9,1," (Raid)"},
+    {"PROXY_RAID_ENVIRONMENT_DETAIL","Graphics","s",0,9,1," (" .. (_G["RAID"] or "Raid") .. ")"},
     {"PROXY_GROUND_CLUTTER","Graphics","s",0,9,1},
-    {"PROXY_RAID_GROUND_CLUTTER","Graphics","s",0,9,1," (Raid)"},
+    {"PROXY_RAID_GROUND_CLUTTER","Graphics","s",0,9,1," (" .. (_G["RAID"] or "Raid") .. ")"},
     {"PROXY_SHADOW_QUALITY","Graphics","o"},
-    {"PROXY_RAID_SHADOW_QUALITY","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_RAID_SHADOW_QUALITY","Graphics","o",nil,nil,nil," (" .. (_G["RAID"] or "Raid") .. ")"},
     {"PROXY_LIQUID_DETAIL","Graphics","o"},
-    {"PROXY_RAID_LIQUID_DETAIL","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_RAID_LIQUID_DETAIL","Graphics","o",nil,nil,nil," (" .. (_G["RAID"] or "Raid") .. ")"},
     {"PROXY_PARTICLE_DENSITY","Graphics","o"},
-    {"PROXY_RAID_PARTICLE_DENSITY","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_RAID_PARTICLE_DENSITY","Graphics","o",nil,nil,nil," (" .. (_G["RAID"] or "Raid") .. ")"},
     {"PROXY_SSAO","Graphics","o"},
-    {"PROXY_RAID_SSAO","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_RAID_SSAO","Graphics","o",nil,nil,nil," (" .. (_G["RAID"] or "Raid") .. ")"},
     {"PROXY_DEPTH_EFFECTS","Graphics","o"},
-    {"PROXY_RAID_DEPTH_EFFECTS","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_RAID_DEPTH_EFFECTS","Graphics","o",nil,nil,nil," (" .. (_G["RAID"] or "Raid") .. ")"},
     {"PROXY_COMPUTE_EFFECTS","Graphics","o"},
-    {"PROXY_RAID_COMPUTE_EFFECTS","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_RAID_COMPUTE_EFFECTS","Graphics","o",nil,nil,nil," (" .. (_G["RAID"] or "Raid") .. ")"},
     {"PROXY_OUTLINE_MODE","Graphics","o"},
-    {"PROXY_RAID_OUTLINE_MODE","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_RAID_OUTLINE_MODE","Graphics","o",nil,nil,nil," (" .. (_G["RAID"] or "Raid") .. ")"},
     {"PROXY_TEXTURE_RESOLUTION","Graphics","o"},
-    {"PROXY_RAID_TEXTURE_RESOLUTION","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_RAID_TEXTURE_RESOLUTION","Graphics","o",nil,nil,nil," (" .. (_G["RAID"] or "Raid") .. ")"},
     {"PROXY_SPELL_DENSITY","Graphics","o"},
-    {"PROXY_RAID_SPELL_DENSITY","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_RAID_SPELL_DENSITY","Graphics","o",nil,nil,nil," (" .. (_G["RAID"] or "Raid") .. ")"},
     {"PROXY_PROJECTED_TEXTURES","Graphics","o"},
-    {"PROXY_RAID_PROJECTED_TEXTURES","Graphics","o",nil,nil,nil," (Raid)"},
+    {"PROXY_RAID_PROJECTED_TEXTURES","Graphics","o",nil,nil,nil," (" .. (_G["RAID"] or "Raid") .. ")"},
     {"PROXY_VERTICAL_SYNC","Graphics","d"},
     {"LowLatencyMode","Graphics","d"},
     {"PROXY_ANTIALIASING","Graphics","d"},
@@ -2150,7 +2150,7 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix, entryCatego
             local nok, settingName = pcall(setting.GetName, setting)
             if not (nok and settingName and settingName ~= "") then return end
             local displayName = settingName
-            if isRaid then displayName = settingName .. " (Raid)" end
+            if isRaid then displayName = settingName .. " (" .. (_G["RAID"] or "Raid") .. ")" end
             local nameLower = slower(displayName)
             local kw = { "setting", "option", "config", nameLower, slower(catName or "") }
             tinsert(out, setmetatable({
@@ -2295,7 +2295,7 @@ local function CollectAddonCategories()
         local catName = cat:GetName()
         if not catName or catName == "" then return end
         local catNameLower = slower(catName)
-        local rootName = (parentName or catName) .. " Settings"
+        local rootName = (parentName or catName) .. " " .. (_G["SETTINGS"] or "Settings")
         local pathPrefix = parentName and { rootName, catName } or { rootName }
 
         local kw = { "addon", "settings", "options", catNameLower }
@@ -2500,7 +2500,7 @@ local function CollectGameSettings()
                         local displayName = settingName
                         local lowerVar = slower(variable)
                         if lowerVar:find("raid", 1, true) then
-                            displayName = settingName .. " (Raid)"
+                            displayName = settingName .. " (" .. (_G["RAID"] or "Raid") .. ")"
                         end
                         local catName = cat.GetName and cat:GetName() or "Game Settings"
                         -- Container dive emitted "View Distance" etc. as

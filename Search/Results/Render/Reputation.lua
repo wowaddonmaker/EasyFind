@@ -5,6 +5,7 @@ local Render = ns.ResultRender
 local Icons = ns.ResultIcons
 
 local mmax = Utils.mmax
+local sformat = Utils.sformat
 local REP_BAR_WIDTH = Render.REP_BAR_WIDTH
 
 function Render.GetReputationBarInfo(factionID)
@@ -13,7 +14,7 @@ function Render.GetReputationBarInfo(factionID)
     if C_MajorFactions and C_MajorFactions.GetMajorFactionData then
         local ok, md = pcall(C_MajorFactions.GetMajorFactionData, factionID)
         if ok and md and md.renownLevel then
-            standingText = "Renown " .. (md.renownLevel or 0)
+            standingText = sformat(_G["MAJOR_FACTION_BUTTON_RENOWN_LEVEL"] or "Renown %d", md.renownLevel or 0)
             local atMax = C_MajorFactions.HasMaximumRenown
                 and C_MajorFactions.HasMaximumRenown(factionID)
             if atMax then

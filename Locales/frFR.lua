@@ -8,6 +8,8 @@ if not L then return end
 
 -- Database/Main.lua  --  uiTree composite names
 L["UITREE_SUFFIX_PREMADE"]              = " (Prédéfini)"
+L["UITREE_SUFFIX_CURRENCIES"]           = " Monnaies"
+L["UITREE_PERSONAL_ACHIEVEMENTS"]       = "Hauts faits personnels"
 L["UITREE_SUFFIX_JOURNAL"]              = " (Journal)"
 L["UITREE_SUFFIX_BLITZ"]                = " (Blitz)"
 L["UITREE_SUFFIX_REWARDS"]              = " (Récompenses)"
@@ -388,6 +390,8 @@ L["QUICK_FILTER_HELP"]                  = "|cffffd100Filtres rapides :|r @m, @s,
 L["RESCALE_SAMPLE_RESULT"]              = "Résultat d'exemple %d"
 L["RESCALE_BACK_TO_OPTIONS"]            = "Retour aux options"
 L["KB_PRIMARY"]                         = "Principal : %s"
+L["KB_SLOT_PRIMARY"]                    = "principale"
+L["KB_SLOT_ALTERNATE"]                  = "alternative"
 L["ERR_APPEARANCE_SET_LOAD"]            = "impossible de charger les sources de cet ensemble d'apparence."
 L["OPT_VISIBILITY_TT"]                  = "Masquage auto ouvre EasyFind via votre raccourci et le masque lorsque vous appuyez sur Échap ou cliquez ailleurs. L'affichage intelligent utilise une zone de survol près de la barre de recherche."
 L["POPUP_DISABLE_MAP_SEARCH_DETAIL"]    = "Cela supprimera la recherche de carte, les marqueurs, la superposition de carte et l'onglet EasyFind sur la carte du monde. Vous pourrez le réactiver plus tard dans les options."

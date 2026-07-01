@@ -8,6 +8,8 @@ if not L then return end
 
 -- Database/Main.lua  --  uiTree composite names
 L["UITREE_SUFFIX_PREMADE"]              = " (사전 구성)"
+L["UITREE_SUFFIX_CURRENCIES"]           = " 화폐"
+L["UITREE_PERSONAL_ACHIEVEMENTS"]       = "개인 업적"
 L["UITREE_SUFFIX_JOURNAL"]              = " (지침서)"
 L["UITREE_SUFFIX_BLITZ"]                = " (쾌속전)"
 L["UITREE_SUFFIX_REWARDS"]              = " (보상)"
@@ -388,6 +390,8 @@ L["QUICK_FILTER_HELP"]                  = "|cffffd100빠른 필터:|r @m, @s, @g
 L["RESCALE_SAMPLE_RESULT"]              = "예시 결과 %d"
 L["RESCALE_BACK_TO_OPTIONS"]            = "옵션으로 돌아가기"
 L["KB_PRIMARY"]                         = "기본: %s"
+L["KB_SLOT_PRIMARY"]                    = "기본"
+L["KB_SLOT_ALTERNATE"]                  = "대체"
 L["ERR_APPEARANCE_SET_LOAD"]            = "이 외형 세트의 출처를 불러올 수 없습니다."
 L["OPT_VISIBILITY_TT"]                  = "자동 숨김은 키 지정으로 EasyFind를 열고, Esc를 누르거나 다른 곳을 클릭하면 숨깁니다. 스마트 표시는 검색창 근처의 마우스 감지 영역을 사용합니다."
 L["POPUP_DISABLE_MAP_SEARCH_DETAIL"]    = "지도 검색, 표식, 지도 오버레이 기능, 그리고 세계 지도의 EasyFind 탭이 제거됩니다. 나중에 옵션에서 다시 활성화할 수 있습니다."

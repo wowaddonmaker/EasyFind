@@ -8,6 +8,8 @@ if not L then return end
 
 -- Database/Main.lua  --  uiTree composite names
 L["UITREE_SUFFIX_PREMADE"]              = " (поиск группы)"
+L["UITREE_SUFFIX_CURRENCIES"]           = " Валюты"
+L["UITREE_PERSONAL_ACHIEVEMENTS"]       = "Личные достижения"
 L["UITREE_SUFFIX_JOURNAL"]              = " (журнал)"
 L["UITREE_SUFFIX_BLITZ"]                = " (Блиц)"
 L["UITREE_SUFFIX_REWARDS"]              = " (награды)"
@@ -388,6 +390,8 @@ L["QUICK_FILTER_HELP"]                  = "|cffffd100Быстрые фильтр
 L["RESCALE_SAMPLE_RESULT"]              = "Пример результата %d"
 L["RESCALE_BACK_TO_OPTIONS"]            = "Назад к настройкам"
 L["KB_PRIMARY"]                         = "Основная: %s"
+L["KB_SLOT_PRIMARY"]                    = "основная"
+L["KB_SLOT_ALTERNATE"]                  = "альтернативная"
 L["ERR_APPEARANCE_SET_LOAD"]            = "не удалось загрузить источники для этого набора обликов."
 L["OPT_VISIBILITY_TT"]                  = "Автоскрытие открывает EasyFind по вашей горячей клавише и скрывает его, когда вы нажимаете Esc или щелкаете в стороне. Умный показ использует зону наведения рядом со строкой поиска."
 L["POPUP_DISABLE_MAP_SEARCH_DETAIL"]    = "Это удалит поиск по карте, метки, функции наложения на карту и вкладку EasyFind на карте мира. Позже вы сможете снова включить это в настройках."

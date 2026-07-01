@@ -10,6 +10,8 @@ if not L then return end
 
 -- Database/Main.lua  --  uiTree composite names
 L["UITREE_SUFFIX_PREMADE"]              = " (Vorgefertigt)"
+L["UITREE_SUFFIX_CURRENCIES"]           = " Währungen"
+L["UITREE_PERSONAL_ACHIEVEMENTS"]       = "Persönliche Erfolge"
 L["UITREE_SUFFIX_JOURNAL"]              = " (Journal)"
 L["UITREE_SUFFIX_BLITZ"]                = " (Blitz)"
 L["UITREE_SUFFIX_REWARDS"]              = " (Belohnungen)"
@@ -390,6 +392,8 @@ L["QUICK_FILTER_HELP"]                  = "|cffffd100Schnellfilter:|r @m, @s, @g
 L["RESCALE_SAMPLE_RESULT"]              = "Beispielergebnis %d"
 L["RESCALE_BACK_TO_OPTIONS"]            = "Zurück zu den Optionen"
 L["KB_PRIMARY"]                         = "Primär: %s"
+L["KB_SLOT_PRIMARY"]                    = "Primär"
+L["KB_SLOT_ALTERNATE"]                  = "Alternativ"
 L["ERR_APPEARANCE_SET_LOAD"]            = "Quellen für dieses Erscheinungsbild-Set konnten nicht geladen werden."
 L["OPT_VISIBILITY_TT"]                  = "Auto-Ausblenden öffnet EasyFind über deine Tastenbelegung und blendet es aus, wenn du Escape drückst oder daneben klickst. Intelligente Anzeige nutzt eine Hover-Zone nahe der Suchleiste."
 L["POPUP_DISABLE_MAP_SEARCH_DETAIL"]    = "Dadurch werden Kartensuche, Markierungen, Kartenüberlagerungen und der EasyFind-Reiter auf der Weltkarte entfernt. Du kannst sie später in den Optionen wieder aktivieren."
