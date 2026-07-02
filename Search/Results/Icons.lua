@@ -170,7 +170,7 @@ local FLAT_CATEGORY_ICONS = {
     -- Resolved lazily from PaperDollSidebarTab3 so the icon always
     -- matches whatever sprite-sheet region Blizzard uses for the
     -- Equipment Manager sidebar tab. Filled in by ResolveGearSetIcon().
-    gearSet       = { atlas = "equipmentmanager-spec-border" },
+    gearSet       = { atlas = "equipmentmanager-spec-border", desaturated = true, _resolved = true },
 }
 
 local BOSS_PORTRAIT_TEXCOORD = { 0.22, 0.78, 0, 1 }

@@ -114,6 +114,7 @@ function Render.BaseRowText(resultRow, entry, state, isUnearnedCurrency)
             else
                 resultRow.flatCatIcon:SetVertexColor(1, 1, 1, 1)
             end
+            resultRow.flatCatIcon:SetDesaturated(catIconDef and catIconDef.desaturated or false)
             resultRow.flatCatIcon:SetSize(sz, sz)
             resultRow.flatCatIcon:ClearAllPoints()
             resultRow.flatCatIcon:SetPoint("LEFT", resultRow, "LEFT", indentPixels + 2, 0)
