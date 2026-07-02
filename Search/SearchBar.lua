@@ -462,6 +462,11 @@ function Search:CreateSearchFrame()
         if not onGuard and resultsFrame and resultsFrame:IsShown() then
             Results:HideResults()
         end
+        -- Hover Show: losing focus must arm the fade-out even when text
+        -- remains, or a typed-in bar can never hide again.
+        if EasyFind.db.smartShow and not onGuard then
+            searchFrame.smartShowFadeOut()
+        end
         if strtrim(self:GetText()) == "" then
             self:SetText("")  -- Clear any stray whitespace
             self.placeholder:Show()
@@ -842,9 +847,7 @@ function Search:CreateSearchFrame()
         if self.ringInner then self.ringInner:SetShown(shown) end
     end
 
-    -- Tooltip only after a deliberate hover (~0.7s, the usual desktop
-    -- initial-delay convention) so quick trips to the button stay quiet.
-    local FILTER_TOOLTIP_DELAY = 0.7
+    local FILTER_TOOLTIP_DELAY = ns.TOOLTIP_HOVER_DELAY
     filterBtn:SetScript("OnEnter", function(self)
         self.btnBg:Show()
         SetRingShown(self, true)
@@ -1565,8 +1568,7 @@ function Search:CreateSearchFrame()
 
     local function SmartShowFadeOut()
         if EasyFind.db.visible == false then return end
-        -- Don't hide if the editbox has focus or contains text
-        if searchFrame.editBox:HasFocus() or searchFrame.editBox:GetText() ~= "" then return end
+        if searchFrame.editBox:HasFocus() then return end
         if resultsFrame and resultsFrame:IsShown() then return end
         -- Don't hide while the player is actively resizing the bar
         if searchFrame.resizing then return end
@@ -1578,7 +1580,7 @@ function Search:CreateSearchFrame()
             -- from the tutorial or options panel mid-hover-out) in which
             -- case we must not fade the bar out.
             if not EasyFind.db.smartShow then return end
-            if searchFrame.editBox:HasFocus() or searchFrame.editBox:GetText() ~= "" then return end
+            if searchFrame.editBox:HasFocus() then return end
             if resultsFrame and resultsFrame:IsShown() then return end
             if searchFrame.resizing then return end
             if hoverZone:IsMouseOver() or searchFrame:IsMouseOver() then return end
@@ -2192,6 +2194,8 @@ StaticPopupDialogs["EASYFIND_RESET_SEARCH_BAR"] = {
 
 function Search:UpdateFontSize()
     if not searchFrame then return end
+
+    if ns.RegisterAddonFontsIn then ns.RegisterAddonFontsIn(searchFrame) end
 
     Search:ScaleFont(searchFrame.editBox, ns.SEARCHBAR_FONT)
     Search:ScaleFont(searchFrame.editBox.placeholder, ns.SEARCHBAR_FONT)

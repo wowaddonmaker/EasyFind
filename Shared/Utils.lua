@@ -703,6 +703,8 @@ end
 ns.GOLD_COLOR = {1.0, 0.82, 0.0}
 ns.YELLOW_HIGHLIGHT = {1, 1, 0}
 ns.SEARCH_WINDOW_ALPHA = 0.95
+-- Initial hover delay before supplementary tooltips appear.
+ns.TOOLTIP_HOVER_DELAY = 0.7
 function ns.GetSearchWindowAlpha()
     local db = EasyFind and EasyFind.db
     if db and type(db.searchWindowOpacity) == "number" then
@@ -803,10 +805,12 @@ ns.RESULT_ICON_SIZE = 18
 ns.TEXT_PRIMARY = {1.00, 0.97, 0.86}
 ns.TEXT_BODY = {0.78, 0.78, 0.80}
 ns.TEXT_DIM = {0.55, 0.55, 0.58}
-ns.BTN_FILL_NORMAL = {0.155, 0.155, 0.172}
-ns.BTN_FILL_HOVER = {0.215, 0.215, 0.235}
-ns.BTN_FILL_PRESSED = {0.115, 0.115, 0.130}
-ns.BTN_FILL_DISABLED = {0.075, 0.075, 0.085}
+-- Cool blue-gray fills so interactive buttons read as such against the
+-- neutral near-black panels (color as affordance, not brightness).
+ns.BTN_FILL_NORMAL = {0.160, 0.190, 0.250}
+ns.BTN_FILL_HOVER = {0.220, 0.270, 0.340}
+ns.BTN_FILL_PRESSED = {0.120, 0.140, 0.190}
+ns.BTN_FILL_DISABLED = {0.080, 0.090, 0.110}
 ns.LINK_COLOR = {0.44, 0.84, 1.0}
 ns.LINK_HOVER = {0.72, 0.94, 1.0}
 ns.LINK_GLOW_COLOR = {0.3, 0.85, 1.0, 0.7}
@@ -1757,6 +1761,11 @@ end
 --   fs:SetEllipsisText(t)   set the full text and re-fit.
 --   fs._fullText            the original (un-truncated) text.
 --   fs._isTruncated         true when the label is currently clipped.
+local function SetTruncated(fs, truncated)
+    fs._isTruncated = truncated
+    if fs._hoverHost then fs._hoverHost:EnableMouse(truncated) end
+end
+
 function ns.MakeEllipsisLabel(fs, text, opts)
     if not fs then return fs end
     opts = opts or {}
@@ -1858,19 +1867,19 @@ function ns.MakeEllipsisLabel(fs, text, opts)
     end
     fit = function(fromDeferred)
         local full = fs._fullText or ""
-        if full == "" then fs:SetText(""); fs._isTruncated = false; return end
+        if full == "" then fs:SetText(""); SetTruncated(fs, false); return end
         local maxW = measureMax()
         if maxW <= 0 then
             -- Layout hasn't computed L/R yet (FontString just created, parent
             -- not shown). Show full text now and try once after layout settles;
             -- OnShow/OnSizeChanged hooks below handle later hidden-tab reveals.
             fs:SetText(full)
-            fs._isTruncated = false
+            SetTruncated(fs, false)
             if not fromDeferred then scheduleFit() end
             return
         end
         fs:SetText(full)
-        if widthOf() <= maxW then fs._isTruncated = false; return end
+        if widthOf() <= maxW then SetTruncated(fs, false); return end
         local ELLIPSIS = "..."
         local lo, hi = 0, utf8CharCount(full)
         while lo < hi do
@@ -1879,7 +1888,7 @@ function ns.MakeEllipsisLabel(fs, text, opts)
             if widthOf() <= maxW then lo = mid else hi = mid - 1 end
         end
         fs:SetText(utf8SubChars(full, lo) .. ELLIPSIS)
-        fs._isTruncated = true
+        SetTruncated(fs, true)
     end
     fit()
     fs._fit = fit
@@ -1901,7 +1910,9 @@ function ns.MakeEllipsisLabel(fs, text, opts)
     if opts.tooltip ~= false and parent and not fs._hoverHost then
         local host = CreateFrame("Frame", nil, parent)
         host:SetAllPoints(fs)
-        host:EnableMouse(true)
+        -- Mouse-enabled only while the text is actually truncated: an
+        -- always-on host swallows clicks meant for the control under it.
+        host:EnableMouse(fs._isTruncated or false)
         fs._hoverHost = host
         local anchor = opts.tooltipAnchor or "ANCHOR_TOP"
         host:SetScript("OnEnter", function(self)
@@ -3222,7 +3233,32 @@ local INTER_REGULAR  = "Interface\\AddOns\\EasyFind\\Fonts\\Inter-Regular.ttf"
 local INTER_SEMIBOLD = "Interface\\AddOns\\EasyFind\\Fonts\\Inter-SemiBold.ttf"
 local INTER_BOLD     = "Interface\\AddOns\\EasyFind\\Fonts\\Inter-Bold.ttf"
 
-ns.FONT_CHOICES = { "Default", "Inter" }
+-- "Default" = the client's own UI font (varies by locale); the rest map to
+-- font files below. Arial Narrow ships inside the WoW client, so it costs
+-- nothing to offer.
+ns.FONT_CHOICES = { "Default", "Inter", "Lato", "Poppins", "Arial Narrow" }
+
+local ADDON_FONTS_DIR = "Interface\\AddOns\\EasyFind\\Fonts\\"
+local ADDON_FONT_FILES = {
+    ["Inter"] = {
+        regular  = INTER_REGULAR,
+        semibold = INTER_SEMIBOLD,
+        bold     = INTER_BOLD,
+    },
+    ["Lato"] = {
+        regular  = ADDON_FONTS_DIR .. "Lato-Regular.ttf",
+        semibold = ADDON_FONTS_DIR .. "Lato-Bold.ttf",
+        bold     = ADDON_FONTS_DIR .. "Lato-Bold.ttf",
+    },
+    ["Poppins"] = {
+        regular  = ADDON_FONTS_DIR .. "Poppins-Regular.ttf",
+        semibold = ADDON_FONTS_DIR .. "Poppins-SemiBold.ttf",
+        bold     = ADDON_FONTS_DIR .. "Poppins-Bold.ttf",
+    },
+    ["Arial Narrow"] = {
+        regular = "Fonts\\ARIALN.TTF",
+    },
+}
 
 local fontRegistry = {}
 ns._fontRegistry = fontRegistry
@@ -3237,27 +3273,59 @@ local function ApplyFontTo(fs)
     if not baseline then return end
     local size  = fs._addonFontSizeOverride or baseline.size or 12
     local flags = fs._addonFontFlags or baseline.flags or ""
-    local choice = GetFontChoice()
-    if choice == "Inter" then
+    local files = ADDON_FONT_FILES[GetFontChoice()]
+    if files then
         local w = fs._addonFontWeight
-        local path = INTER_REGULAR
-        if     w == "bold"     then path = INTER_BOLD
-        elseif w == "semibold" then path = INTER_SEMIBOLD end
-        fs:SetFont(path, size, flags)
+        fs:SetFont(files[w] or files.regular, size, flags)
     else
         fs:SetFont(baseline.path, baseline.size, baseline.flags or "")
     end
 end
 
--- Resolve the font path a piece of UI text should use: the Inter file for
--- the chosen weight when the addon font is set to Inter, else the caller's
--- own (Blizzard) path. Lets per-render font sizing (ScaleFont) honor the
--- font choice without joining the FontString registry.
+-- Resolve the font path a piece of UI text should use: the chosen font's
+-- file for the weight, else the caller's own (Blizzard) path. Lets
+-- per-render font sizing (ScaleFont) honor the font choice without joining
+-- the FontString registry.
 function ns.GetAddonFontPath(weight, fallback)
-    if GetFontChoice() ~= "Inter" then return fallback end
+    local files = ADDON_FONT_FILES[GetFontChoice()]
+    if not files then return fallback end
+    return files[weight] or files.regular
+end
+
+-- The file a named choice would use (regardless of the current choice),
+-- for previewing dropdown rows in their own font. nil for "Default".
+function ns.GetFontChoicePath(name)
+    local files = ADDON_FONT_FILES[name]
+    return files and files.regular or nil
+end
+
+
+-- Always returns the Inter file for a weight (for previews that must show
+-- Inter regardless of the current font choice).
+function ns.GetInterFontPath(weight)
     if weight == "bold" then return INTER_BOLD end
     if weight == "semibold" then return INTER_SEMIBOLD end
     return INTER_REGULAR
+end
+
+-- Recursively register every FontString under a frame with the addon font
+-- system, so the Inter choice applies to whole surfaces (options panel,
+-- search chrome, menus). Idempotent per FontString.
+function ns.RegisterAddonFontsIn(frame)
+    if not frame then return end
+    if frame.GetRegions then
+        for i = 1, select("#", frame:GetRegions()) do
+            local region = select(i, frame:GetRegions())
+            if region and region.GetObjectType and region:GetObjectType() == "FontString" then
+                ns.RegisterAddonFont(region)
+            end
+        end
+    end
+    if frame.GetChildren then
+        for i = 1, select("#", frame:GetChildren()) do
+            ns.RegisterAddonFontsIn((select(i, frame:GetChildren())))
+        end
+    end
 end
 
 function ns.RegisterAddonFont(fs, weight, sizeOverride, flags)

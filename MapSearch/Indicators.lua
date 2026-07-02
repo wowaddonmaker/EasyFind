@@ -53,6 +53,10 @@ local INDICATOR_COLORS = {
 
 ns.INDICATOR_COLORS = INDICATOR_COLORS
 
+function ns.GetIndicatorStyleInfo(name)
+    return INDICATOR_STYLES[name] or INDICATOR_STYLES["EasyFind Arrow"]
+end
+
 local function GetIndicatorColor()
     local colorName = EasyFind.db.indicatorColor or "Yellow"
     return INDICATOR_COLORS[colorName] or INDICATOR_COLORS["Yellow"]

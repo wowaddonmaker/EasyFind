@@ -946,6 +946,14 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
     LayoutDropdown()
 
+    dropdown:HookScript("OnShow", function(self)
+        if ns.RegisterAddonFontsIn then
+            ns.RegisterAddonFontsIn(self)
+            for i = 1, #dropdownGuardFrames do
+                ns.RegisterAddonFontsIn(dropdownGuardFrames[i])
+            end
+        end
+    end)
     dropdown:SetScript("OnShow", function(self)
         local filters = EasyFind.db.uiSearchFilters
         for key, row in pairs(checkRows) do

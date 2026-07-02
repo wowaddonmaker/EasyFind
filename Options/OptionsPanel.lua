@@ -334,7 +334,7 @@ local function CreateFlyoutPanel(btnFrame, globalPrefix, width, numChoices)
     return flyout
 end
 
-local function AddFlyoutOptions(flyout, choices, itemWidth, onSelect, labelFn)
+local function AddFlyoutOptions(flyout, choices, itemWidth, onSelect, labelFn, styleFn)
     for i, name in ipairs(choices) do
         local flyoutBtn = CreateFrame("Button", nil, flyout)
         flyoutBtn:SetSize(itemWidth, 18)
@@ -351,6 +351,7 @@ local function AddFlyoutOptions(flyout, choices, itemWidth, onSelect, labelFn)
         label:SetPoint("RIGHT", flyoutBtn, "RIGHT", -6, 0)
         label:SetJustifyH("LEFT")
         label:SetText(labelFn and labelFn(name) or name)
+        if styleFn then styleFn(flyoutBtn, name, label) end
         flyoutBtn:SetScript("OnEnter", function()
             PaintRoundedFill(rowBg, 1, 1, 1, 0.06)
         end)
@@ -383,10 +384,9 @@ local function CreateCheckbox(parent, name, label, tooltipText, compact, width)
     checkbox:SetHitRectInsets(rowW - toggleW - toggleRightOff - 8, 0, 0, 0)
 
     local rowBg = CreateFrame("Frame", nil, checkbox)
-    rowBg:SetAllPoints()
     rowBg:EnableMouse(false)
     ns.CreateRoundedRectBorder(rowBg)
-    ns.SetRoundedRectBarHeight(rowBg, 8)
+    ns.SetRoundedRectBarHeight(rowBg, toggleH + 10)
     HideRoundedFrameBorder(rowBg)
     PaintRoundedFill(rowBg, 1, 1, 1, 0)
     checkbox.rowBg = rowBg
@@ -405,6 +405,11 @@ local function CreateCheckbox(parent, name, label, tooltipText, compact, width)
     HideRoundedFrameBorder(track)
     checkbox.track = track
 
+    -- The hover fill hugs the toggle, matching the interactive hit area,
+    -- instead of lighting the whole row from a toggle hover.
+    rowBg:SetPoint("TOPLEFT", track, "TOPLEFT", -6, 5)
+    rowBg:SetPoint("BOTTOMRIGHT", track, "BOTTOMRIGHT", 6, -5)
+
     text:SetPoint("RIGHT", track, "LEFT", -8, 0)
     ns.MakeEllipsisLabel(text, label or "")
 
@@ -420,7 +425,7 @@ local function CreateCheckbox(parent, name, label, tooltipText, compact, width)
     local function UpdateVisual(self)
         local enabled = self:IsEnabled()
         local checked = self:GetChecked()
-        local rowAlpha = self:IsMouseOver() and enabled and 0.055 or 0
+        local rowAlpha = self._efHover and enabled and 0.055 or 0
         PaintRoundedFill(self.rowBg, 1, 1, 1, rowAlpha)
         if checked and enabled then
             PaintRoundedFill(track, 0.17, 0.48, 0.72, 1)
@@ -471,6 +476,7 @@ local function CreateCheckbox(parent, name, label, tooltipText, compact, width)
 
     checkbox:HookScript("OnClick", UpdateVisual)
     checkbox:HookScript("OnEnter", function(self)
+        self._efHover = true
         UpdateVisual(self)
         if tooltipText then
             GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
@@ -480,6 +486,7 @@ local function CreateCheckbox(parent, name, label, tooltipText, compact, width)
         end
     end)
     checkbox:HookScript("OnLeave", function(self)
+        self._efHover = nil
         UpdateVisual(self)
         if tooltipText then GameTooltip_Hide() end
     end)
@@ -497,8 +504,8 @@ local TEXT_PRIMARY = ns.TEXT_PRIMARY
 local TEXT_BODY = ns.TEXT_BODY
 local TEXT_DIM = ns.TEXT_DIM
 local SECTION_TITLE_TEXT = ns.GOLD_COLOR
-local NAV_SELECTED = { 0.15, 0.15, 0.17, 0.95 }
-local NAV_HOVER = { 0.11, 0.11, 0.13, 0.85 }
+local NAV_SELECTED = { 0.16, 0.19, 0.25, 0.95 }
+local NAV_HOVER = { 0.12, 0.14, 0.19, 0.85 }
 local NAV_CLEAR = { 0, 0, 0, 0 }
 
 local function TintRoundedFill(frame, r, g, b)
@@ -639,13 +646,15 @@ local function CreateSegmentedPresetRow(parent, labelText, choices, getter, sett
 
     local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     label:SetPoint("LEFT", row, "LEFT", 8, 0)
-    label:SetPoint("RIGHT", row, "RIGHT", -214, 0)
+    label:SetPoint("RIGHT", row, "RIGHT", -188, 0)
     label:SetJustifyH("LEFT")
     label:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
     ns.MakeEllipsisLabel(label, labelText)
     row.label = label
 
-    local trackW, trackH = 198, 24
+    -- Sized and right-anchored to line up exactly with the flyout selector
+    -- buttons (SELECTOR_BTN_W x 22 at RIGHT -8) used by the dropdown rows.
+    local trackW, trackH = 170, 22
     local track = CreateFrame("Frame", nil, row, "BackdropTemplate")
     track:SetSize(trackW, trackH)
     track:SetPoint("RIGHT", row, "RIGHT", -8, 0)
@@ -677,7 +686,7 @@ local function CreateSegmentedPresetRow(parent, labelText, choices, getter, sett
         text:SetPoint("LEFT", btn, "LEFT", 4, 0)
         text:SetPoint("RIGHT", btn, "RIGHT", -4, 0)
         text:SetJustifyH("CENTER")
-        ns.MakeEllipsisLabel(text, choice.label)
+        ns.MakeEllipsisLabel(text, choice.label, { tooltip = false })
         btn._label = text
         btn:SetScript("OnClick", function(self)
             if not row.enabled then return end
@@ -686,15 +695,22 @@ local function CreateSegmentedPresetRow(parent, labelText, choices, getter, sett
             RunSoon(function() setter(value) end)
         end)
         btn:SetScript("OnEnter", function(self)
-            if tooltipText then
+            local tipTitle = choice.tooltip and choice.label or labelText
+            local tipBody = choice.tooltip or tooltipText
+            if not tipBody then return end
+            local token = (self._tooltipToken or 0) + 1
+            self._tooltipToken = token
+            Utils.SafeAfter(ns.TOOLTIP_HOVER_DELAY, function()
+                if self._tooltipToken ~= token or not self:IsMouseOver() then return end
                 GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(labelText)
-                GameTooltip:AddLine(tooltipText, 1, 1, 1, true)
+                GameTooltip:SetText(tipTitle)
+                GameTooltip:AddLine(tipBody, 1, 1, 1, true)
                 GameTooltip:Show()
-            end
+            end)
         end)
-        btn:SetScript("OnLeave", function()
-            if tooltipText then GameTooltip_Hide() end
+        btn:SetScript("OnLeave", function(self)
+            self._tooltipToken = (self._tooltipToken or 0) + 1
+            GameTooltip_Hide()
         end)
         row.buttons[i] = btn
     end
@@ -906,269 +922,14 @@ local function SetControlsEnabled(controls, enabled)
     end
 end
 
-function Options:Initialize()
-    if isInitialized then return end
+-- Per-tab builders, split out of Options:Initialize: Lua caps any single
+-- function at 200 local variables and the one-piece builder crossed the
+-- limit. Each tab now owns its function (and local budget); the pieces
+-- they share ride the ctx table built in Initialize.
 
-    local WINDOW_W   = 544
-    local WINDOW_H   = 408
-    local SIDEBAR_W  = 132
-    local FRAME_W    = WINDOW_W - SIDEBAR_W - 46
-    local COL_LEFT   = 4
-
-    optionsFrame = CreateFrame("Frame", "EasyFindOptionsFrame", UIParent, "BackdropTemplate")
-    ns.optionsFrame = optionsFrame
-    optionsFrame:SetSize(WINDOW_W, WINDOW_H)
-    optionsFrame:SetScale(OPTIONS_PANEL_SCALE)
-    if EasyFind.db.optionsPosition then
-        local pos = EasyFind.db.optionsPosition
-        optionsFrame:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4])
-    else
-        optionsFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
-    end
-    optionsFrame:SetFrameStrata(OPTIONS_FRAME_STRATA)
-    optionsFrame:SetFrameLevel(OPTIONS_FRAME_LEVEL)
-    optionsFrame:SetMovable(true)
-    optionsFrame:EnableMouse(true)
-    optionsFrame:SetClampedToScreen(true)
-    optionsFrame:RegisterForDrag("LeftButton")
-    optionsFrame:SetScript("OnDragStart", optionsFrame.StartMoving)
-    optionsFrame:SetScript("OnDragStop", function(self)
-        self:StopMovingOrSizing()
-        local point, _, relPoint, x, y = self:GetPoint(1)
-        EasyFind.db.optionsPosition = {point, relPoint, x, y}
-    end)
-
-    optionsFrame:SetBackdrop(nil)
-
-    local bgTex = CreateFrame("Frame", nil, optionsFrame)
-    bgTex:SetAllPoints(optionsFrame)
-    bgTex:EnableMouse(false)
-    StyleWizardBackground(bgTex)
-    bgTex:SetAlpha(OPTIONS_PANEL_ALPHA)
-    optionsFrame.bgTex = bgTex
-
-    local sidebar = CreateFrame("Frame", nil, optionsFrame)
-    sidebar:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 10, -10)
-    sidebar:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", 10, 10)
-    sidebar:SetWidth(SIDEBAR_W)
-    optionsFrame.sidebar = sidebar
-    ns.CreateRoundedRectBorder(sidebar)
-    ns.SetRoundedRectBarHeight(sidebar, 14)
-    ns.SetRoundedRectBorderBgAlpha(sidebar, 0.72)
-    HideRoundedBorder(sidebar)
-    TintRoundedFill(sidebar, 0.022, 0.022, 0.028)
-
-    local divider = optionsFrame:CreateTexture(nil, "ARTWORK")
-    divider:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 8, -2)
-    divider:SetPoint("BOTTOMLEFT", sidebar, "BOTTOMRIGHT", 8, 2)
-    divider:SetWidth(1)
-    divider:SetColorTexture(1, 1, 1, 0.08)
-
-    local title = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    title:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 4, -6)
-    title:SetText(L["OPT_SETTINGS_TITLE"])
-    title:SetTextColor(Utils.RGB(TEXT_BODY, 1))
-    optionsFrame.titleText = title
-
-    local closeBtn = CreateModernCloseButton(optionsFrame)
-    optionsFrame.closeBtn = closeBtn
-
-    local contentBorder = CreateFrame("Frame", nil, optionsFrame)
-    contentBorder:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", SIDEBAR_W + 32, -46)
-    contentBorder:SetPoint("BOTTOMRIGHT", optionsFrame, "BOTTOMRIGHT", -14, 14)
-    optionsFrame.contentBorder = contentBorder
-
-    local tabFrames = {}
-    local tabButtons = {}
-
-    local function SetTabActive(btn, active)
-        btn.isActive = active
-        if active then
-            SetNavButtonBg(btn, NAV_SELECTED)
-            btn.label:SetTextColor(Utils.RGB(TEXT_PRIMARY, 1))
-        else
-            SetNavButtonBg(btn, NAV_CLEAR)
-            btn.label:SetTextColor(Utils.RGB(TEXT_BODY, 1))
-        end
-    end
-
-    local function SwitchToTab(index)
-        for i, tf in ipairs(tabFrames) do
-            tf:SetShown(i == index)
-            SetTabActive(tabButtons[i], i == index)
-        end
-    end
-    optionsFrame.SwitchToTab = SwitchToTab
-
-    local bindsTabIndex
-
-    local function FlashBindButton()
-        local target = optionsFrame.toggleFocusBtn
-        if not target then return end
-        local glow = target.efBindGlow
-        if not glow then
-            glow = CreateFrame("Frame", nil, target)
-            glow:SetPoint("TOPLEFT", target, "TOPLEFT", -3, 3)
-            glow:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", 3, -3)
-            glow:SetFrameLevel(target:GetFrameLevel() + 4)
-            local function MakeEdge()
-                local edge = glow:CreateTexture(nil, "OVERLAY")
-                edge:SetColorTexture(1, 0.82, 0, 1)
-                return edge
-            end
-            local topEdge = MakeEdge()
-            topEdge:SetPoint("TOPLEFT"); topEdge:SetPoint("TOPRIGHT"); topEdge:SetHeight(2)
-            local bottomEdge = MakeEdge()
-            bottomEdge:SetPoint("BOTTOMLEFT"); bottomEdge:SetPoint("BOTTOMRIGHT"); bottomEdge:SetHeight(2)
-            local leftEdge = MakeEdge()
-            leftEdge:SetPoint("TOPLEFT"); leftEdge:SetPoint("BOTTOMLEFT"); leftEdge:SetWidth(2)
-            local rightEdge = MakeEdge()
-            rightEdge:SetPoint("TOPRIGHT"); rightEdge:SetPoint("BOTTOMRIGHT"); rightEdge:SetWidth(2)
-            local pulse = glow:CreateAnimationGroup()
-            for i = 1, 3 do
-                local up = pulse:CreateAnimation("Alpha")
-                up:SetFromAlpha(0); up:SetToAlpha(1); up:SetDuration(0.22); up:SetOrder(i * 2 - 1)
-                local down = pulse:CreateAnimation("Alpha")
-                down:SetFromAlpha(1); down:SetToAlpha(0); down:SetDuration(0.22); down:SetOrder(i * 2)
-            end
-            pulse:SetScript("OnFinished", function() glow:Hide() end)
-            glow.pulse = pulse
-            target.efBindGlow = glow
-        end
-        glow.pulse:Stop()
-        glow:SetAlpha(0)
-        glow:Show()
-        glow.pulse:Play()
-    end
-
-    local function CreateTab(tabName)
-        local index = #tabFrames + 1
-
-        local btn = CreateFrame("Button", nil, sidebar)
-        btn:SetSize(SIDEBAR_W - 16, 28)
-        btn:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 8, -34 - (index - 1) * 32)
-        ns.CreateRoundedRectBorder(btn)
-        ns.SetRoundedRectBarHeight(btn, 10)
-        ns.SetRoundedRectBorderBgAlpha(btn, 0)
-        HideRoundedBorder(btn)
-        SetNavButtonBg(btn, NAV_CLEAR)
-
-        local label = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-        label:SetPoint("LEFT", btn, "LEFT", 10, 0)
-        label:SetPoint("RIGHT", btn, "RIGHT", -10, 0)
-        label:SetJustifyH("LEFT")
-        label:SetText(tabName)
-        label:SetTextColor(Utils.RGB(TEXT_BODY, 1))
-        btn.label = label
-
-        btn:SetScript("OnEnter", function(self)
-            if not self.isActive then
-                SetNavButtonBg(self, NAV_HOVER)
-                self.label:SetTextColor(Utils.RGB(TEXT_PRIMARY, 1))
-            end
-        end)
-        btn:SetScript("OnLeave", function(self)
-            if not self.isActive then
-                SetNavButtonBg(self, NAV_CLEAR)
-                self.label:SetTextColor(Utils.RGB(TEXT_BODY, 1))
-            end
-        end)
-        btn:SetScript("OnClick", function() SwitchToTab(index) end)
-        tinsert(tabButtons, btn)
-
-        local content = CreateFrame("Frame", nil, contentBorder)
-        content:SetAllPoints(contentBorder)
-        content:Hide()
-        content.tabIndex = index
-        tinsert(tabFrames, content)
-
-        return content
-    end
-
-    -- Standalone "Tutorial" entry pinned to the sidebar bottom. Not a tab:
-    -- it closes the panel and opens the tutorial wizard, same as the
-    -- {L:tutorial} link on the Home page, and wears the same link blue.
-    local tutorialBtn = CreateFrame("Button", nil, sidebar)
-    tutorialBtn:SetSize(SIDEBAR_W - 16, 28)
-    tutorialBtn:SetPoint("BOTTOMLEFT", sidebar, "BOTTOMLEFT", 8, 8)
-    ns.CreateRoundedRectBorder(tutorialBtn)
-    ns.SetRoundedRectBarHeight(tutorialBtn, 10)
-    ns.SetRoundedRectBorderBgAlpha(tutorialBtn, 0)
-    HideRoundedBorder(tutorialBtn)
-    SetNavButtonBg(tutorialBtn, NAV_CLEAR)
-    local TUTORIAL_LINK_COLOR = ns.LINK_COLOR or { 0.44, 0.84, 1.0 }
-    local TUTORIAL_LINK_HOVER = ns.LINK_HOVER or { 1, 1, 1 }
-    local tutorialLabel = tutorialBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    tutorialLabel:SetPoint("LEFT", tutorialBtn, "LEFT", 10, 0)
-    tutorialLabel:SetPoint("RIGHT", tutorialBtn, "RIGHT", -10, 0)
-    tutorialLabel:SetJustifyH("LEFT")
-    tutorialLabel:SetText(L["OPT_TAB_TUTORIAL"])
-    tutorialLabel:SetTextColor(TUTORIAL_LINK_COLOR[1], TUTORIAL_LINK_COLOR[2], TUTORIAL_LINK_COLOR[3], 1)
-    tutorialBtn:SetScript("OnEnter", function(self)
-        SetNavButtonBg(self, NAV_HOVER)
-        tutorialLabel:SetTextColor(TUTORIAL_LINK_HOVER[1], TUTORIAL_LINK_HOVER[2], TUTORIAL_LINK_HOVER[3], 1)
-    end)
-    tutorialBtn:SetScript("OnLeave", function(self)
-        SetNavButtonBg(self, NAV_CLEAR)
-        tutorialLabel:SetTextColor(TUTORIAL_LINK_COLOR[1], TUTORIAL_LINK_COLOR[2], TUTORIAL_LINK_COLOR[3], 1)
-    end)
-    tutorialBtn:SetScript("OnClick", function()
-        optionsFrame:Hide()
-        if ns.Wizard and ns.Wizard.Show then ns.Wizard:Show(ns.Wizard.FEATURES_PAGE) end
-    end)
-
-    local function GetCurrentKeybindText(action)
-        local key1, key2 = GetBindingKey(action)
-        if key1 then return key1 end
-        if key2 then return key2 end
-        return EasyFind:GetAccountKeybind(action) or (_G["NOT_BOUND"] or "Not Bound")
-    end
-
-    local function StopCapture(keybindBtn, action)
-        keybindBtn.waitingForKey = false
-        keybindBtn:SetText(GetCurrentKeybindText(action))
-        keybindBtn:UnlockHighlight()
-        Utils.SafeCallMethod(keybindBtn, "EnableKeyboard", false)
-        keybindBtn:SetScript("OnKeyDown", nil)
-    end
-
-    local function StartCapture(keybindBtn, action)
-        if keybindBtn.waitingForKey then
-            StopCapture(keybindBtn, action)
-        else
-            keybindBtn.waitingForKey = true
-            keybindBtn:SetText(L["OPT_KB_PRESS_KEY"])
-            keybindBtn:LockHighlight()
-            Utils.SafeCallMethod(keybindBtn, "EnableKeyboard", true)
-            keybindBtn:SetScript("OnKeyDown", function(self, key)
-                if Utils.IsModifierKey(key) then return end
-                if key == "ESCAPE" then
-                    StopCapture(self, action)
-                    return
-                end
-                -- Bare SPACE / ENTER / WASD silently overwriting jump,
-                -- accept, or movement on a stray capture-keypress has
-                -- bricked spacebar after /reload before. Only bind these
-                -- when modified.
-                local hasMod = IsAltKeyDown() or IsControlKeyDown() or IsShiftKeyDown()
-                if not hasMod and Utils.IsReservedBareKey(key) then return end
-                EasyFind:SetAccountKeybind(action, Utils.ModifierCombo(key))
-                StopCapture(self, action)
-            end)
-        end
-    end
-
-    local function MakeKeybindTooltip(keybindBtn, titleText, line1)
-        keybindBtn:HookScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(titleText)
-            GameTooltip:AddLine(line1, 1, 1, 1, true)
-            GameTooltip:AddLine(L["OPT_KB_CLEAR_HINT"], 0.7, 0.7, 0.7, true)
-            GameTooltip:Show()
-        end)
-        keybindBtn:HookScript("OnLeave", GameTooltip_Hide)
-    end
-
+local function BuildHomeTab(ctx)
+    local CreateTab, SwitchToTab, FRAME_W = ctx.CreateTab, ctx.SwitchToTab, ctx.FRAME_W
+    local FlashBindButton = ctx.FlashBindButton
     local homeTab = CreateTab(L["OPT_TAB_HOME"])
     local homeIcon = homeTab:CreateTexture(nil, "ARTWORK")
     homeIcon:SetSize(80, 80)
@@ -1309,7 +1070,7 @@ function Options:Initialize()
                 end)
                 if atom.id == "setbind" then
                     chip:SetScript("OnClick", function()
-                        if bindsTabIndex then SwitchToTab(bindsTabIndex) end
+                        if ctx.bindsTabIndex then SwitchToTab(ctx.bindsTabIndex) end
                         FlashBindButton()
                     end)
                 elseif atom.id == "maptab" then
@@ -1355,8 +1116,27 @@ function Options:Initialize()
 
     CreateURLBox(homeTab, "https://www.curseforge.com/wow/addons/easyfind", homeQuick, -6)
 
+end
+
+local function BuildGeneralBindsTab(ctx)
+    local CreateTab, GetCurrentKeybindText, MakeKeybindTooltip = ctx.CreateTab, ctx.GetCurrentKeybindText, ctx.MakeKeybindTooltip
+    local StartCapture, SELECTOR_ROW_W, SELECTOR_BTN_W = ctx.StartCapture, ctx.SELECTOR_ROW_W, ctx.SELECTOR_BTN_W
     local sec3 = CreateTab(L["OPT_TAB_GENERAL_BINDS"])
-    bindsTabIndex = sec3.tabIndex
+    ctx.bindsTabIndex = sec3.tabIndex
+
+    -- Selector rows parent to this tab, so the helper lives here.
+    local function CreateSelectorRow(anchor, labelText)
+        local row = CreateFrame("Frame", nil, sec3)
+        row:SetSize(SELECTOR_ROW_W, 24)
+        row:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -8)
+        local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("LEFT", row, "LEFT", 8, 0)
+        label:SetPoint("RIGHT", row, "RIGHT", -SELECTOR_BTN_W - 18, 0)
+        label:SetJustifyH("LEFT")
+        label:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
+        label:SetText(labelText)
+        return row, label
+    end
 
     local loginMessageCheckbox = CreateCheckbox(sec3, "LoginMessage", L["OPT_SHOW_LOGIN_MESSAGE"],
         L["OPT_LOGIN_MESSAGE_TT"])
@@ -1386,55 +1166,6 @@ function Options:Initialize()
     end)
     optionsFrame.minimapBtnCheckbox = minimapBtnCheckbox
 
-    local SELECTOR_ROW_W = FRAME_W - 16
-    local SELECTOR_BTN_W = 170
-    local function CreateSelectorRow(anchor, labelText)
-        local row = CreateFrame("Frame", nil, sec3)
-        row:SetSize(SELECTOR_ROW_W, 24)
-        row:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, -8)
-        local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        label:SetPoint("LEFT", row, "LEFT", 8, 0)
-        label:SetPoint("RIGHT", row, "RIGHT", -SELECTOR_BTN_W - 18, 0)
-        label:SetJustifyH("LEFT")
-        label:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
-        label:SetText(labelText)
-        return row, label
-    end
-
-    -- Flyout-dropdown version of a preset row: same {label,value} choices and
-    -- getter/setter as CreatePresetRow, but a single dropdown (like the indicator
-    -- selector) instead of a button row. globalPrefix names the flyout frames and
-    -- must be unique. Returns the row, which carries :SetValue for refresh.
-    local function CreateFlyoutPresetRow(parent, labelText, choices, getter, setter, globalPrefix)
-        local row = CreateFrame("Frame", nil, parent)
-        row:SetSize(SELECTOR_ROW_W, 24)
-        local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-        label:SetPoint("LEFT", row, "LEFT", 8, 0)
-        label:SetPoint("RIGHT", row, "RIGHT", -SELECTOR_BTN_W - 18, 0)
-        label:SetJustifyH("LEFT")
-        label:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
-        label:SetText(labelText)
-
-        local function LabelFor(value)
-            for _, c in ipairs(choices) do
-                if c.value == value then return c.label end
-            end
-            return tostring(value)
-        end
-
-        local btnFrame, btnText = CreateFlyoutSelector(row, globalPrefix, SELECTOR_BTN_W, label, LabelFor(getter()))
-        local values = {}
-        for i = 1, #choices do values[i] = choices[i].value end
-        local flyout = CreateFlyoutPanel(btnFrame, globalPrefix, SELECTOR_BTN_W, #values)
-        AddFlyoutOptions(flyout, values, SELECTOR_BTN_W - 6, function(value)
-            setter(value)
-            btnText:SetText(LabelFor(value))
-        end, LabelFor)
-
-        row.flyout = flyout
-        row.SetValue = function(self, value) btnText:SetText(LabelFor(value)) end
-        return row
-    end
 
     local indicatorRow, indicatorLabel = CreateSelectorRow(minimapBtnCheckbox, L["OPT_INDICATOR_STYLE"])
 
@@ -1443,14 +1174,35 @@ function Options:Initialize()
     local indicatorBtnFrame, indicatorBtnText = CreateFlyoutSelector(
         indicatorRow, "EasyFindIndicator", SELECTOR_BTN_W, indicatorLabel, StyleLabel(EasyFind.db.indicatorStyle or "EasyFind Arrow")
     )
+    local function ApplyIndicatorIcon(tex, name)
+        local info = ns.GetIndicatorStyleInfo and ns.GetIndicatorStyleInfo(name)
+        if not info then tex:Hide() return end
+        tex:SetTexture(info.texture)
+        if info.texCoord then
+            tex:SetTexCoord(unpack(info.texCoord))
+        else
+            tex:SetTexCoord(0, 1, 0, 1)
+        end
+        tex:Show()
+    end
+    local indicatorBtnIcon = indicatorBtnFrame:CreateTexture(nil, "OVERLAY")
+    indicatorBtnIcon:SetSize(14, 14)
+    indicatorBtnIcon:SetPoint("RIGHT", indicatorBtnFrame, "RIGHT", -18, 0)
+    ApplyIndicatorIcon(indicatorBtnIcon, EasyFind.db.indicatorStyle or "EasyFind Arrow")
     local indicatorFlyout = CreateFlyoutPanel(indicatorBtnFrame, "EasyFindIndicator", SELECTOR_BTN_W, #indicatorChoices)
     AddFlyoutOptions(indicatorFlyout, indicatorChoices, SELECTOR_BTN_W - 6, function(name)
         EasyFind.db.indicatorStyle = name
         indicatorBtnText:SetText(StyleLabel(name))
+        ApplyIndicatorIcon(indicatorBtnIcon, name)
         if ns.MapSearch then
             ns.MapSearch:RefreshIndicators()
         end
-    end, StyleLabel)
+    end, StyleLabel, function(_, name, label)
+        local icon = label:GetParent():CreateTexture(nil, "OVERLAY")
+        icon:SetSize(13, 13)
+        icon:SetPoint("RIGHT", label:GetParent(), "RIGHT", -4, 0)
+        ApplyIndicatorIcon(icon, name)
+    end)
     optionsFrame.indicatorBtnText = indicatorBtnText
     optionsFrame.indicatorFlyout = indicatorFlyout
 
@@ -1521,15 +1273,23 @@ function Options:Initialize()
         fontRow, "EasyFindFont", SELECTOR_BTN_W, fontLabel, FontLabel(EasyFind.db.font or "Default")
     )
     local fontFlyout = CreateFlyoutPanel(fontBtnFrame, "EasyFindFont", SELECTOR_BTN_W, #fontChoices)
+    local function StyleFontChoiceRow(_, name, label)
+        local path = ns.GetFontChoicePath and ns.GetFontChoicePath(name)
+        if path then
+            local _, size, flags = label:GetFont()
+            label:SetFont(path, size, flags)
+        end
+    end
     AddFlyoutOptions(fontFlyout, fontChoices, SELECTOR_BTN_W - 6, function(name)
         EasyFind.db.font = name
         fontBtnText:SetText(FontLabel(name))
+        if ns.RegisterAddonFontsIn then ns.RegisterAddonFontsIn(optionsFrame) end
         if ns.RefreshAddonFont then ns.RefreshAddonFont() end
         if ns.Search then
             if ns.Search.UpdateFontSize then ns.Search:UpdateFontSize() end
             if ns.Search.RefreshResults then ns.Search:RefreshResults() end
         end
-    end, FontLabel)
+    end, FontLabel, StyleFontChoiceRow)
     optionsFrame.fontBtnText = fontBtnText
     optionsFrame.fontFlyout = fontFlyout
 
@@ -1597,8 +1357,13 @@ function Options:Initialize()
     optionsFrame.mapFocusBtn    = keybindButtons["EASYFIND_MAP_FOCUS"]
     optionsFrame.clearBtn       = keybindButtons["EASYFIND_CLEAR"]
 
-    local RESET_BTN_W = 120
 
+    ctx.sec3 = sec3
+end
+
+local function BuildSearchTab(ctx)
+    local CreateTab, SELECTOR_ROW_W, SELECTOR_BTN_W = ctx.CreateTab, ctx.SELECTOR_ROW_W, ctx.SELECTOR_BTN_W
+    local CreateFlyoutPresetRow, RESET_BTN_W = ctx.CreateFlyoutPresetRow, ctx.RESET_BTN_W
     local sec1 = CreateTab(L["OPT_TAB_SEARCH"])
 
     local visibilityModeRow
@@ -1624,13 +1389,15 @@ function Options:Initialize()
 
     visibilityModeRow = CreatePresetRow(sec1, L["OPT_VISIBILITY"],
         {
-            { label = L["OPT_VISIBILITY_AUTOHIDE"], value = VISIBILITY_AUTO },
-            { label = L["OPT_VISIBILITY_SMARTSHOW"], value = VISIBILITY_SMART },
+            { label = L["OPT_VISIBILITY_AUTOHIDE"], value = VISIBILITY_AUTO,
+              tooltip = L["OPT_VISIBILITY_AUTOHIDE_TT"] },
+            { label = L["OPT_VISIBILITY_SMARTSHOW"], value = VISIBILITY_SMART,
+              tooltip = L["OPT_VISIBILITY_SMARTSHOW_TT"] },
         },
         GetVisibilityModeValue,
         SetVisibilityMode,
-        L["OPT_VISIBILITY_TT"],
-        330)
+        nil,
+        SELECTOR_ROW_W)
     visibilityModeRow:SetPoint("TOPLEFT", sec1, "TOPLEFT", 16, -8)
     optionsFrame.visibilityModeRow = visibilityModeRow
 
@@ -1650,8 +1417,10 @@ function Options:Initialize()
 
     local resultsDirectionRow = CreatePresetRow(sec1, L["OPT_RESULTS_DIRECTION"],
         {
-            { label = L["OPT_RESULTS_BELOW"], value = RESULTS_BELOW },
-            { label = L["OPT_RESULTS_ABOVE"], value = RESULTS_ABOVE },
+            { label = L["OPT_RESULTS_BELOW"], value = RESULTS_BELOW,
+              tooltip = L["OPT_RESULTS_BELOW_TT"] },
+            { label = L["OPT_RESULTS_ABOVE"], value = RESULTS_ABOVE,
+              tooltip = L["OPT_RESULTS_ABOVE_TT"] },
         },
         GetResultsDirectionValue,
         function(value)
@@ -1663,18 +1432,28 @@ function Options:Initialize()
                 if ns.Search and ns.Search.RefreshResults then ns.Search:RefreshResults() end
             end)
         end,
-        L["OPT_RESULTS_DIRECTION_TT"],
-        330)
+        nil,
+        SELECTOR_ROW_W)
     resultsDirectionRow:SetPoint("TOPLEFT", visibilityModeRow, "BOTTOMLEFT", 0, -2)
     optionsFrame.resultsDirectionRow = resultsDirectionRow
 
-    local resultShortcutHintsCheckbox = CreateCheckbox(sec1, "ResultShortcutHints", L["OPT_SHOW_ALT_HINTS"],
+    -- Append a live example of the hint badge (the alt-key glyph + a number)
+    -- so the label shows exactly what the rows display.
+    local altHintExample = " (|TInterface\\AddOns\\EasyFind\\textures\\alt-key:16:16|t1)"
+    local resultShortcutHintsCheckbox = CreateCheckbox(sec1, "ResultShortcutHints",
+        L["OPT_SHOW_ALT_HINTS"] .. altHintExample,
         L["OPT_ALT_HINTS_TT"])
     resultShortcutHintsCheckbox:SetPoint("TOPLEFT", resultsDirectionRow, "BOTTOMLEFT", 0, -2)
     resultShortcutHintsCheckbox:SetChecked(EasyFind.db.showResultShortcutHints ~= false)
     resultShortcutHintsCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.showResultShortcutHints = self:GetChecked()
         if self.RefreshVisual then self:RefreshVisual() end
+        RunSoon(function()
+            if ns.Search and ns.Search.RefreshResults then ns.Search:RefreshResults() end
+            if ns.ResultShortcuts and ns.ResultShortcuts.UpdateVisibleResultShortcuts then
+                ns.ResultShortcuts:UpdateVisibleResultShortcuts()
+            end
+        end)
         RunSoon(function()
             if ns.Search and ns.Search.RefreshResults then
                 ns.Search:RefreshResults()
@@ -1696,7 +1475,7 @@ function Options:Initialize()
             if ns.Search and ns.Search.UpdateFontSize then
                 ns.Search:UpdateFontSize()
             end
-        end, "EasyFindFontSize")
+        end, "EasyFindFontSize", ns.DEFAULT_FONT_SIZE)
     uiFontPresetRow:SetPoint("TOPLEFT", resultsDirectionRow, "BOTTOMLEFT", 0, -8)
     optionsFrame.uiFontPresetRow = uiFontPresetRow
 
@@ -1715,7 +1494,7 @@ function Options:Initialize()
             -- bar scale. Keep its own scale at 1.0 so it is not scaled twice.
             EasyFind.db.uiResultsScale = 1.0
             if ns.Search and ns.Search.UpdateScale then ns.Search:UpdateScale() end
-        end, "EasyFindSearchScale")
+        end, "EasyFindSearchScale", 1.0)
     scaleRow:SetPoint("TOPLEFT", uiFontPresetRow, "BOTTOMLEFT", 0, -8)
     optionsFrame.searchScaleRow = scaleRow
 
@@ -1735,7 +1514,7 @@ function Options:Initialize()
             RunSoon(function()
                 if ns.Search and ns.Search.RefreshResults then ns.Search:RefreshResults() end
             end)
-        end, "EasyFindResultRows")
+        end, "EasyFindResultRows", 6)
     resultRowsRow:SetPoint("TOPLEFT", scaleRow, "BOTTOMLEFT", 0, -8)
     optionsFrame.resultRowsRow = resultRowsRow
 
@@ -1752,14 +1531,11 @@ function Options:Initialize()
             RunSoon(function()
                 if ns.Search and ns.Search.UpdateOpacity then ns.Search:UpdateOpacity() end
             end)
-        end, "EasyFindOpacity")
+        end, "EasyFindOpacity", ns.SEARCH_WINDOW_ALPHA)
     searchOpacityRow:SetPoint("TOPLEFT", resultRowsRow, "BOTTOMLEFT", 0, -8)
     optionsFrame.searchOpacityRow = searchOpacityRow
 
-    lockPositionCheckbox:ClearAllPoints()
-    lockPositionCheckbox:SetPoint("TOPLEFT", searchOpacityRow, "BOTTOMLEFT", 0, -8)
-    resultShortcutHintsCheckbox:ClearAllPoints()
-    resultShortcutHintsCheckbox:SetPoint("TOPLEFT", lockPositionCheckbox, "BOTTOMLEFT", 0, -2)
+
 
     -- Wowhead link language: which wowhead.com site the row right-click "Wowhead"
     -- option points at. "Auto" follows the client locale.
@@ -1775,7 +1551,7 @@ function Options:Initialize()
 
     local wowheadRow = CreateFrame("Frame", nil, sec1)
     wowheadRow:SetSize(SELECTOR_ROW_W, 24)
-    wowheadRow:SetPoint("TOPLEFT", resultShortcutHintsCheckbox, "BOTTOMLEFT", 0, -10)
+    wowheadRow:SetPoint("TOPLEFT", searchOpacityRow, "BOTTOMLEFT", 0, -8)
     local wowheadRowLabel = wowheadRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     wowheadRowLabel:SetPoint("LEFT", wowheadRow, "LEFT", 8, 0)
     wowheadRowLabel:SetPoint("RIGHT", wowheadRow, "RIGHT", -SELECTOR_BTN_W - 18, 0)
@@ -1787,13 +1563,28 @@ function Options:Initialize()
         wowheadRow, "EasyFindWowhead", SELECTOR_BTN_W, wowheadRowLabel,
         WowheadLocaleLabel(EasyFind.db.wowheadLocale or "auto")
     )
+    local function WowheadFlyoutLabel(v)
+        if v == "auto" then
+            return WowheadLocaleLabel(v) .. " (" .. (_G["DEFAULT"] or "Default") .. ")"
+        end
+        return WowheadLocaleLabel(v)
+    end
     local wowheadFlyout = CreateFlyoutPanel(wowheadBtnFrame, "EasyFindWowhead", SELECTOR_BTN_W, #wowheadValues)
     AddFlyoutOptions(wowheadFlyout, wowheadValues, SELECTOR_BTN_W - 6, function(value)
         EasyFind.db.wowheadLocale = value
         wowheadBtnText:SetText(WowheadLocaleLabel(value))
-    end, WowheadLocaleLabel)
+    end, WowheadFlyoutLabel)
     optionsFrame.wowheadBtnText = wowheadBtnText
     optionsFrame.wowheadFlyout = wowheadFlyout
+
+    optionsFrame:HookScript("OnShow", function(self)
+        if ns.RegisterAddonFontsIn then ns.RegisterAddonFontsIn(self) end
+    end)
+
+    lockPositionCheckbox:ClearAllPoints()
+    lockPositionCheckbox:SetPoint("TOPLEFT", wowheadRow, "BOTTOMLEFT", 0, -8)
+    resultShortcutHintsCheckbox:ClearAllPoints()
+    resultShortcutHintsCheckbox:SetPoint("TOPLEFT", lockPositionCheckbox, "BOTTOMLEFT", 0, -2)
 
     local function RefreshUIPresetRows()
         if optionsFrame.uiFontPresetRow then
@@ -1818,6 +1609,11 @@ function Options:Initialize()
         StaticPopup_Show("EASYFIND_RESET_UI_POS")
     end)
 
+end
+
+local function BuildMapTab(ctx)
+    local CreateTab, FRAME_W, COL_LEFT = ctx.CreateTab, ctx.FRAME_W, ctx.COL_LEFT
+    local RESET_BTN_W = ctx.RESET_BTN_W
     local sec2 = CreateTab(L["OPT_TAB_MAP"])
 
     local mapEnableCheckbox = CreateCheckbox(sec2, "EnableMap", L["OPT_ENABLE_MAP_MODULE"],
@@ -2024,6 +1820,10 @@ function Options:Initialize()
     }
     UpdateMapToggleVisual()
 
+end
+
+local function BuildShortcutsTab(ctx)
+    local CreateTab, FRAME_W = ctx.CreateTab, ctx.FRAME_W
     local sec4 = CreateTab(L["OPT_TAB_SHORTCUTS"])
 
     local shortcutText = sec4:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -2033,6 +1833,11 @@ function Options:Initialize()
     shortcutText:SetSpacing(2)
     shortcutText:SetText(L["OPT_SHORTCUTS_TEXT"])
 
+end
+
+local function BuildAliasesTab(ctx)
+    local CreateTab, FRAME_W, RESET_BTN_W = ctx.CreateTab, ctx.FRAME_W, ctx.RESET_BTN_W
+    local sec3 = ctx.sec3
     local aliasesTab = CreateTab(L["OPT_TAB_ALIASES"])
     Options._aliasesTabIndex = aliasesTab.tabIndex
 
@@ -2601,7 +2406,7 @@ function Options:Initialize()
         button2 = _G["CANCEL"] or "Cancel",
         OnAccept = function()
             EasyFind.db.enableMapSearch = false
-            UpdateMapToggleVisual()
+            optionsFrame.UpdateMapToggleVisual()
             if ns.MapSearch then
                 pcall(ns.MapSearch.ClearAll, ns.MapSearch)
                 pcall(ns.MapSearch.ClearZoneHighlight, ns.MapSearch)
@@ -2695,6 +2500,10 @@ function Options:Initialize()
     end)
     resetPosBtn:HookScript("OnLeave", GameTooltip_Hide)
 
+end
+
+local function BuildFeedbackTab(ctx)
+    local CreateTab, RESET_BTN_W = ctx.CreateTab, ctx.RESET_BTN_W
     local feedbackTab = CreateTab(L["OPT_TAB_FEEDBACK"])
 
     local feedbackDesc = feedbackTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -2735,6 +2544,335 @@ function Options:Initialize()
         GameTooltip:Show()
     end)
     featureBtn:HookScript("OnLeave", GameTooltip_Hide)
+end
+
+function Options:Initialize()
+    if isInitialized then return end
+
+    local WINDOW_W   = 544
+    local WINDOW_H   = 408
+    local SIDEBAR_W  = 132
+    local FRAME_W    = WINDOW_W - SIDEBAR_W - 46
+    local COL_LEFT   = 4
+
+    optionsFrame = CreateFrame("Frame", "EasyFindOptionsFrame", UIParent, "BackdropTemplate")
+    ns.optionsFrame = optionsFrame
+    optionsFrame:SetSize(WINDOW_W, WINDOW_H)
+    optionsFrame:SetScale(OPTIONS_PANEL_SCALE)
+    if EasyFind.db.optionsPosition then
+        local pos = EasyFind.db.optionsPosition
+        optionsFrame:SetPoint(pos[1], UIParent, pos[2], pos[3], pos[4])
+    else
+        optionsFrame:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+    end
+    optionsFrame:SetFrameStrata(OPTIONS_FRAME_STRATA)
+    optionsFrame:SetFrameLevel(OPTIONS_FRAME_LEVEL)
+    optionsFrame:SetMovable(true)
+    optionsFrame:EnableMouse(true)
+    optionsFrame:SetClampedToScreen(true)
+    optionsFrame:RegisterForDrag("LeftButton")
+    optionsFrame:SetScript("OnDragStart", optionsFrame.StartMoving)
+    optionsFrame:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        local point, _, relPoint, x, y = self:GetPoint(1)
+        EasyFind.db.optionsPosition = {point, relPoint, x, y}
+    end)
+
+    optionsFrame:SetBackdrop(nil)
+
+    local bgTex = CreateFrame("Frame", nil, optionsFrame)
+    bgTex:SetAllPoints(optionsFrame)
+    bgTex:EnableMouse(false)
+    StyleWizardBackground(bgTex)
+    bgTex:SetAlpha(OPTIONS_PANEL_ALPHA)
+    optionsFrame.bgTex = bgTex
+
+    local sidebar = CreateFrame("Frame", nil, optionsFrame)
+    sidebar:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 10, -10)
+    sidebar:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", 10, 10)
+    sidebar:SetWidth(SIDEBAR_W)
+    optionsFrame.sidebar = sidebar
+    ns.CreateRoundedRectBorder(sidebar)
+    ns.SetRoundedRectBarHeight(sidebar, 14)
+    ns.SetRoundedRectBorderBgAlpha(sidebar, 0.72)
+    HideRoundedBorder(sidebar)
+    TintRoundedFill(sidebar, 0.022, 0.022, 0.028)
+
+    local divider = optionsFrame:CreateTexture(nil, "ARTWORK")
+    divider:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 8, -2)
+    divider:SetPoint("BOTTOMLEFT", sidebar, "BOTTOMRIGHT", 8, 2)
+    divider:SetWidth(1)
+    divider:SetColorTexture(1, 1, 1, 0.08)
+
+    local title = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    title:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 4, -6)
+    title:SetText(L["OPT_SETTINGS_TITLE"])
+    title:SetTextColor(Utils.RGB(TEXT_BODY, 1))
+    optionsFrame.titleText = title
+
+    local closeBtn = CreateModernCloseButton(optionsFrame)
+    optionsFrame.closeBtn = closeBtn
+
+    local contentBorder = CreateFrame("Frame", nil, optionsFrame)
+    contentBorder:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", SIDEBAR_W + 32, -46)
+    contentBorder:SetPoint("BOTTOMRIGHT", optionsFrame, "BOTTOMRIGHT", -14, 14)
+    optionsFrame.contentBorder = contentBorder
+
+    local tabFrames = {}
+    local tabButtons = {}
+
+    local function SetTabActive(btn, active)
+        btn.isActive = active
+        if active then
+            SetNavButtonBg(btn, NAV_SELECTED)
+            btn.label:SetTextColor(Utils.RGB(TEXT_PRIMARY, 1))
+        else
+            SetNavButtonBg(btn, NAV_CLEAR)
+            btn.label:SetTextColor(Utils.RGB(TEXT_BODY, 1))
+        end
+    end
+
+    local function SwitchToTab(index)
+        for i, tf in ipairs(tabFrames) do
+            tf:SetShown(i == index)
+            SetTabActive(tabButtons[i], i == index)
+        end
+    end
+    optionsFrame.SwitchToTab = SwitchToTab
+
+
+    local function FlashBindButton()
+        local target = optionsFrame.toggleFocusBtn
+        if not target then return end
+        local glow = target.efBindGlow
+        if not glow then
+            glow = CreateFrame("Frame", nil, target)
+            glow:SetPoint("TOPLEFT", target, "TOPLEFT", -3, 3)
+            glow:SetPoint("BOTTOMRIGHT", target, "BOTTOMRIGHT", 3, -3)
+            glow:SetFrameLevel(target:GetFrameLevel() + 4)
+            local function MakeEdge()
+                local edge = glow:CreateTexture(nil, "OVERLAY")
+                edge:SetColorTexture(1, 0.82, 0, 1)
+                return edge
+            end
+            local topEdge = MakeEdge()
+            topEdge:SetPoint("TOPLEFT"); topEdge:SetPoint("TOPRIGHT"); topEdge:SetHeight(2)
+            local bottomEdge = MakeEdge()
+            bottomEdge:SetPoint("BOTTOMLEFT"); bottomEdge:SetPoint("BOTTOMRIGHT"); bottomEdge:SetHeight(2)
+            local leftEdge = MakeEdge()
+            leftEdge:SetPoint("TOPLEFT"); leftEdge:SetPoint("BOTTOMLEFT"); leftEdge:SetWidth(2)
+            local rightEdge = MakeEdge()
+            rightEdge:SetPoint("TOPRIGHT"); rightEdge:SetPoint("BOTTOMRIGHT"); rightEdge:SetWidth(2)
+            local pulse = glow:CreateAnimationGroup()
+            for i = 1, 3 do
+                local up = pulse:CreateAnimation("Alpha")
+                up:SetFromAlpha(0); up:SetToAlpha(1); up:SetDuration(0.22); up:SetOrder(i * 2 - 1)
+                local down = pulse:CreateAnimation("Alpha")
+                down:SetFromAlpha(1); down:SetToAlpha(0); down:SetDuration(0.22); down:SetOrder(i * 2)
+            end
+            pulse:SetScript("OnFinished", function() glow:Hide() end)
+            glow.pulse = pulse
+            target.efBindGlow = glow
+        end
+        glow.pulse:Stop()
+        glow:SetAlpha(0)
+        glow:Show()
+        glow.pulse:Play()
+    end
+
+    local function CreateTab(tabName)
+        local index = #tabFrames + 1
+
+        local btn = CreateFrame("Button", nil, sidebar)
+        btn:SetSize(SIDEBAR_W - 16, 28)
+        btn:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 8, -34 - (index - 1) * 32)
+        ns.CreateRoundedRectBorder(btn)
+        ns.SetRoundedRectBarHeight(btn, 10)
+        ns.SetRoundedRectBorderBgAlpha(btn, 0)
+        HideRoundedBorder(btn)
+        SetNavButtonBg(btn, NAV_CLEAR)
+
+        local label = btn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetPoint("LEFT", btn, "LEFT", 10, 0)
+        label:SetPoint("RIGHT", btn, "RIGHT", -10, 0)
+        label:SetJustifyH("LEFT")
+        label:SetText(tabName)
+        label:SetTextColor(Utils.RGB(TEXT_BODY, 1))
+        btn.label = label
+
+        btn:SetScript("OnEnter", function(self)
+            if not self.isActive then
+                SetNavButtonBg(self, NAV_HOVER)
+                self.label:SetTextColor(Utils.RGB(TEXT_PRIMARY, 1))
+            end
+        end)
+        btn:SetScript("OnLeave", function(self)
+            if not self.isActive then
+                SetNavButtonBg(self, NAV_CLEAR)
+                self.label:SetTextColor(Utils.RGB(TEXT_BODY, 1))
+            end
+        end)
+        btn:SetScript("OnClick", function() SwitchToTab(index) end)
+        tinsert(tabButtons, btn)
+
+        local content = CreateFrame("Frame", nil, contentBorder)
+        content:SetAllPoints(contentBorder)
+        content:Hide()
+        content.tabIndex = index
+        tinsert(tabFrames, content)
+
+        return content
+    end
+
+    -- Standalone "Tutorial" entry pinned to the sidebar bottom. Not a tab:
+    -- it closes the panel and opens the tutorial wizard, same as the
+    -- {L:tutorial} link on the Home page, and wears the same link blue.
+    local tutorialBtn = CreateFrame("Button", nil, sidebar)
+    tutorialBtn:SetSize(SIDEBAR_W - 16, 28)
+    tutorialBtn:SetPoint("BOTTOMLEFT", sidebar, "BOTTOMLEFT", 8, 8)
+    ns.CreateRoundedRectBorder(tutorialBtn)
+    ns.SetRoundedRectBarHeight(tutorialBtn, 10)
+    ns.SetRoundedRectBorderBgAlpha(tutorialBtn, 0)
+    HideRoundedBorder(tutorialBtn)
+    SetNavButtonBg(tutorialBtn, NAV_CLEAR)
+    local TUTORIAL_LINK_COLOR = ns.LINK_COLOR or { 0.44, 0.84, 1.0 }
+    local TUTORIAL_LINK_HOVER = ns.LINK_HOVER or { 1, 1, 1 }
+    local tutorialLabel = tutorialBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    tutorialLabel:SetPoint("LEFT", tutorialBtn, "LEFT", 10, 0)
+    tutorialLabel:SetPoint("RIGHT", tutorialBtn, "RIGHT", -10, 0)
+    tutorialLabel:SetJustifyH("LEFT")
+    tutorialLabel:SetText(L["OPT_TAB_TUTORIAL"])
+    tutorialLabel:SetTextColor(TUTORIAL_LINK_COLOR[1], TUTORIAL_LINK_COLOR[2], TUTORIAL_LINK_COLOR[3], 1)
+    tutorialBtn:SetScript("OnEnter", function(self)
+        SetNavButtonBg(self, NAV_HOVER)
+        tutorialLabel:SetTextColor(TUTORIAL_LINK_HOVER[1], TUTORIAL_LINK_HOVER[2], TUTORIAL_LINK_HOVER[3], 1)
+    end)
+    tutorialBtn:SetScript("OnLeave", function(self)
+        SetNavButtonBg(self, NAV_CLEAR)
+        tutorialLabel:SetTextColor(TUTORIAL_LINK_COLOR[1], TUTORIAL_LINK_COLOR[2], TUTORIAL_LINK_COLOR[3], 1)
+    end)
+    tutorialBtn:SetScript("OnClick", function()
+        optionsFrame:Hide()
+        if ns.Wizard and ns.Wizard.Show then ns.Wizard:Show(ns.Wizard.FEATURES_PAGE) end
+    end)
+
+    local function GetCurrentKeybindText(action)
+        local key1, key2 = GetBindingKey(action)
+        if key1 then return key1 end
+        if key2 then return key2 end
+        return EasyFind:GetAccountKeybind(action) or (_G["NOT_BOUND"] or "Not Bound")
+    end
+
+    local function StopCapture(keybindBtn, action)
+        keybindBtn.waitingForKey = false
+        keybindBtn:SetText(GetCurrentKeybindText(action))
+        keybindBtn:UnlockHighlight()
+        Utils.SafeCallMethod(keybindBtn, "EnableKeyboard", false)
+        keybindBtn:SetScript("OnKeyDown", nil)
+    end
+
+    local function StartCapture(keybindBtn, action)
+        if keybindBtn.waitingForKey then
+            StopCapture(keybindBtn, action)
+        else
+            keybindBtn.waitingForKey = true
+            keybindBtn:SetText(L["OPT_KB_PRESS_KEY"])
+            keybindBtn:LockHighlight()
+            Utils.SafeCallMethod(keybindBtn, "EnableKeyboard", true)
+            keybindBtn:SetScript("OnKeyDown", function(self, key)
+                if Utils.IsModifierKey(key) then return end
+                if key == "ESCAPE" then
+                    StopCapture(self, action)
+                    return
+                end
+                -- Bare SPACE / ENTER / WASD silently overwriting jump,
+                -- accept, or movement on a stray capture-keypress has
+                -- bricked spacebar after /reload before. Only bind these
+                -- when modified.
+                local hasMod = IsAltKeyDown() or IsControlKeyDown() or IsShiftKeyDown()
+                if not hasMod and Utils.IsReservedBareKey(key) then return end
+                EasyFind:SetAccountKeybind(action, Utils.ModifierCombo(key))
+                StopCapture(self, action)
+            end)
+        end
+    end
+
+    local function MakeKeybindTooltip(keybindBtn, titleText, line1)
+        keybindBtn:HookScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:SetText(titleText)
+            GameTooltip:AddLine(line1, 1, 1, 1, true)
+            GameTooltip:AddLine(L["OPT_KB_CLEAR_HINT"], 0.7, 0.7, 0.7, true)
+            GameTooltip:Show()
+        end)
+        keybindBtn:HookScript("OnLeave", GameTooltip_Hide)
+    end
+
+    local SELECTOR_ROW_W = FRAME_W - 16
+    local SELECTOR_BTN_W = 170
+
+    -- Flyout-dropdown version of a preset row: same {label,value} choices and
+    -- getter/setter as CreatePresetRow, but a single dropdown (like the indicator
+    -- selector) instead of a button row. globalPrefix names the flyout frames and
+    -- must be unique. Returns the row, which carries :SetValue for refresh.
+    local function CreateFlyoutPresetRow(parent, labelText, choices, getter, setter, globalPrefix, defaultValue)
+        local row = CreateFrame("Frame", nil, parent)
+        row:SetSize(SELECTOR_ROW_W, 24)
+        local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+        label:SetPoint("LEFT", row, "LEFT", 8, 0)
+        label:SetPoint("RIGHT", row, "RIGHT", -SELECTOR_BTN_W - 18, 0)
+        label:SetJustifyH("LEFT")
+        label:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
+        label:SetText(labelText)
+
+        local function LabelFor(value)
+            for _, c in ipairs(choices) do
+                if c.value == value then return c.label end
+            end
+            return tostring(value)
+        end
+
+        -- The default choice is tagged "(Default)" inside the flyout only;
+        -- the button always shows the bare label, even when default is picked.
+        local function FlyoutLabelFor(value)
+            if defaultValue ~= nil and value == defaultValue then
+                return LabelFor(value) .. " (" .. (_G["DEFAULT"] or "Default") .. ")"
+            end
+            return LabelFor(value)
+        end
+        local btnFrame, btnText = CreateFlyoutSelector(row, globalPrefix, SELECTOR_BTN_W, label, LabelFor(getter()))
+        local values = {}
+        for i = 1, #choices do values[i] = choices[i].value end
+        local flyout = CreateFlyoutPanel(btnFrame, globalPrefix, SELECTOR_BTN_W, #values)
+        AddFlyoutOptions(flyout, values, SELECTOR_BTN_W - 6, function(value)
+            setter(value)
+            btnText:SetText(LabelFor(value))
+        end, FlyoutLabelFor)
+
+        row.flyout = flyout
+        row.SetValue = function(self, value) btnText:SetText(LabelFor(value)) end
+        return row
+    end
+    local RESET_BTN_W = 120
+
+
+    local ctx = {
+        CreateTab = CreateTab, SwitchToTab = SwitchToTab,
+        FRAME_W = FRAME_W, COL_LEFT = COL_LEFT,
+        FlashBindButton = FlashBindButton,
+        GetCurrentKeybindText = GetCurrentKeybindText,
+        MakeKeybindTooltip = MakeKeybindTooltip, StartCapture = StartCapture,
+        SELECTOR_ROW_W = SELECTOR_ROW_W, SELECTOR_BTN_W = SELECTOR_BTN_W,
+        CreateFlyoutPresetRow = CreateFlyoutPresetRow,
+        RESET_BTN_W = RESET_BTN_W,
+    }
+    BuildHomeTab(ctx)
+    BuildGeneralBindsTab(ctx)
+    BuildSearchTab(ctx)
+    BuildMapTab(ctx)
+    BuildShortcutsTab(ctx)
+    BuildAliasesTab(ctx)
+    BuildFeedbackTab(ctx)
 
     SwitchToTab(1)
 
