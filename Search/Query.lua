@@ -149,10 +149,17 @@ function Search:OnSearchTextChanged(text, force)
         local gearSetsOff = filters.gearSets == false
         local talentsOff = filters.talents == false
         local commandsOffPre = filters.commands == false
+        -- Currency and Reputation are eager-loaded providers, so their entries
+        -- are always present in uiSearchData; they must be skipped here (like
+        -- every other category) when their filter is off, not just gated at
+        -- provider-load time the way lazy providers are.
+        local currenciesOff = filters.currencies == false
+        local reputationsOff = filters.reputations == false
         if mountsOff or toysOff or petsOff or outfitsOff or lootOff
            or appsetsOff or appitemsOff or bagsOff or macrosOff or gameOptOff or addonOptOff
            or abilitiesOff or bossesOff or heirloomsOff or titlesOff or gearSetsOff
-           or statisticsOff or talentsOff or commandsOffPre then
+           or statisticsOff or talentsOff or commandsOffPre
+           or currenciesOff or reputationsOff then
             skipCategories = SCRATCH.skipCategories
             wipe(skipCategories)
             if mountsOff    then skipCategories["Mount"] = true end
@@ -182,6 +189,8 @@ function Search:OnSearchTextChanged(text, force)
             if commandsOffPre then
                 skipCategories["Command"] = true
             end
+            if currenciesOff  then skipCategories["Currency"] = true end
+            if reputationsOff then skipCategories["Reputation"] = true end
         end
     end
     local results
