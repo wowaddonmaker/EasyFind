@@ -155,6 +155,8 @@ end
 local actionHintRow
 
 function Handlers:ClearActionHint()
+    -- Pinned while its context menu is open (mirrors the row highlight).
+    if actionHintRow and actionHintRow._efContextMenuHeld then return end
     if actionHintRow and actionHintRow.pathSubtext then
         actionHintRow.pathSubtext:SetText(Text:GetFlatSubtext(actionHintRow.data))
         actionHintRow.pathSubtext:SetTextColor(0.55, 0.55, 0.55, 1.0)
@@ -166,6 +168,8 @@ end
 -- data. Restores any previously hinted row first so only one row carries
 -- a hint at a time.
 function Handlers:ApplyActionHint(row)
+    -- Don't move the hint off a row whose context menu is open.
+    if actionHintRow and actionHintRow._efContextMenuHeld and row ~= actionHintRow then return end
     if not row or not row.pathSubtext or not row.pathSubtext:IsShown() then return end
     local hint = Handlers:GetActionHint(row.data)
     if not hint then return end

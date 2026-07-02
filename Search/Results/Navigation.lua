@@ -553,7 +553,7 @@ function Results:UpdateSelectionHighlight(skipRefocus, keepRepeat)
         if resultRow.LockHighlight then
             if i == Search:GetSelectedIndex() and not isHeaderRow then
                 resultRow:LockHighlight()
-            else
+            elseif not resultRow._efContextMenuHeld then
                 resultRow:UnlockHighlight()
             end
         end

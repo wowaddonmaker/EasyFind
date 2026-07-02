@@ -22,8 +22,8 @@ function Results:ShowPinPopup(anchorFrame, isPinned, onPinAction, onGuide, onAdd
     if extra and extra.keyboardMode then
         opts.keyboardMode = true
         opts.anchorFrame = anchorFrame
-        opts.onHide = extra.onHide
     end
+    opts.onHide = extra and extra.onHide
     return Utils.ShowPinMenu("EasyFindPinPopup", isPinned, onPinAction, onGuide, onAddAlias, opts, extra)
 end
 

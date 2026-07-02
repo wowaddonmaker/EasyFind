@@ -121,9 +121,10 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
             if menu.SetKeyboardIndex then menu.SetKeyboardIndex(menu, 1) end
         end
     end
+    local kbOnHide
     if keyboardMode then
         extra.keyboardMode = true
-        extra.onHide = function()
+        kbOnHide = function()
             local navFrame = Search:GetNavFrame()
             if navFrame and Search:GetSelectedIndex() > 0
                and Search:GetSearchFrame() and Search:GetSearchFrame():IsShown() then
@@ -132,6 +133,16 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
         end
         local navFrame = Search:GetNavFrame()
         if navFrame then Utils.SafeCallMethod(navFrame, "EnableKeyboard", false) end
+    end
+
+    -- Keep the right-clicked row highlighted for as long as its menu is open,
+    -- so it stays clear which row the menu belongs to even as the cursor moves
+    -- onto the menu. Restored to the selection state when the menu hides.
+    extra.onHide = function()
+        row._efContextMenuHeld = nil
+        if row.UnlockHighlight then row:UnlockHighlight() end
+        Results:UpdateSelectionHighlight(true)
+        if kbOnHide then kbOnHide() end
     end
 
     local menu = Results:ShowPinPopup(row, isPinned, function()
@@ -154,6 +165,11 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
             Search:OnSearchTextChanged(text, true)
         end
     end, onGuide, onAddAlias, extra)
+    if menu then
+        row._efContextMenuHeld = true
+        if row.LockHighlight then row:LockHighlight() end
+        Handlers:ApplyActionHint(row)
+    end
     FocusKeyboardMenu(menu)
     Utils.SafeAfter(0, function()
         FocusKeyboardMenu(menu)

@@ -322,7 +322,7 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
             -- Selection visual is now carried by the row's built-in
             -- HighlightTexture (atlas set in CreateResultRow), shared
             -- with mouse hover; no separate selectionHighlight texture.
-            if resultRow.UnlockHighlight then resultRow:UnlockHighlight() end
+            if resultRow.UnlockHighlight and not resultRow._efContextMenuHeld then resultRow:UnlockHighlight() end
 
             -- Always hide section-label visuals up front. The section-
             -- header branch below re-shows them when applicable; rows
