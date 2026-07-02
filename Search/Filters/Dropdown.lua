@@ -13,6 +13,29 @@ local wipe = wipe
 local UI_FILTER_OPTIONS = Filters.UI_FILTER_OPTIONS
 local ForEachFilterKey = Filters.ForEachFilterKey
 
+-- Gray out and disable a flyout checkbox row when the filter above it is
+-- unchecked, mirroring the default UI (effectiveEnabled = parent and own).
+local function SetFlyoutRowEnabled(row, enabled)
+    if row._efRowEnabled == enabled then return end
+    row._efRowEnabled = enabled
+    row:SetEnabled(enabled)
+    local a = enabled and 1 or 0.35
+    local c = enabled and 1 or 0.4
+    if row._label then row._label:SetTextColor(c, c, c) end
+    local nt = row.GetNormalTexture and row:GetNormalTexture()
+    if nt then nt:SetDesaturated(not enabled); nt:SetAlpha(a) end
+    local ct = row.GetCheckedTexture and row:GetCheckedTexture()
+    if ct then ct:SetDesaturated(not enabled); ct:SetAlpha(a) end
+    if row._dimTex then
+        for i = 1, #row._dimTex do
+            row._dimTex[i]:SetDesaturated(not enabled)
+            row._dimTex[i]:SetAlpha(a)
+        end
+    end
+    if row._icon then row._icon:SetDesaturated(not enabled); row._icon:SetAlpha(a) end
+    if row._chev then row._chev:SetAlpha(a) end
+end
+
 function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     local ROW_HEIGHT = 20
     local DROPDOWN_WIDTH = 207
@@ -351,6 +374,8 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     subLabel:SetPoint("LEFT", subRow:GetNormalTexture(), "RIGHT", 4, 0)
                 end
                 subLabel:SetText(sub.label)
+                subRow._label = subLabel
+                subRow._icon = subIcon
 
                 if sub.hasOptions then
                     local subChev = subRow:CreateTexture(nil, "OVERLAY")
@@ -363,6 +388,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     subLabel:SetJustifyH("LEFT")
                     subRow:HookScript("OnEnter", function() subChev:SetVertexColor(1, 1, 1, 1) end)
                     subRow:HookScript("OnLeave", function() subChev:SetVertexColor(0.85, 0.85, 0.85, 1) end)
+                    subRow._chev = subChev
                 end
 
                 InstallMenuRowHighlight(subRow)
@@ -495,6 +521,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 local lbl = hideTipRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
                 lbl:SetPoint("LEFT", hideTipRow:GetNormalTexture(), "RIGHT", 4, 0)
                 lbl:SetText(L["FILTER_HIDE_TOOLTIPS"])
+                hideTipRow._label = lbl
                 InstallMenuRowHighlight(hideTipRow)
                 hideTipRow:SetScript("OnClick", function(self)
                     EasyFind.db.hideTooltips = EasyFind.db.hideTooltips or {}
@@ -508,17 +535,20 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
             -- Sync sub-row checked state from current DB values.
             local function SyncSubChecks()
+                local parentEnabled = EasyFind.db.uiSearchFilters[opt.key] ~= false
                 for _, sub in ipairs(opt.flyoutSubFilters) do
                     local sr = subRows[sub.key]
                     if sr then
                         local target = sub.dbTable and EasyFind.db[sub.dbTable]
                                        or EasyFind.db.uiSearchFilters
                         sr:SetChecked(target[sub.key] ~= false)
+                        SetFlyoutRowEnabled(sr, parentEnabled)
                     end
                 end
                 if hideTipRow then
                     local ht = EasyFind.db.hideTooltips
                     hideTipRow:SetChecked(ht and ht.collections == true)
+                    SetFlyoutRowEnabled(hideTipRow, parentEnabled)
                 end
             end
             row.SyncFlyoutSubChecks = SyncSubChecks
@@ -618,6 +648,8 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
                 rRow.tick = tick
                 rRow.value = optionDef.value
+                rRow._label = lbl
+                rRow._dimTex = { bullet, tick }
                 rRow:SetScript("OnClick", function(self)
                     EasyFind.db[radio.dbKey] = self.value
                     for _, otherRow in ipairs(radioRows) do
@@ -661,6 +693,8 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 cRow.tick = tick
                 cRow.dbKey = cbDef.dbKey
                 cRow.onChange = cbDef.onChange
+                cRow._label = lbl
+                cRow._dimTex = { box, tick }
                 cRow.resolveDbPath = function()
                     return ns.ResolveDbKey(cbDef.dbKey)
                 end
@@ -692,6 +726,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             end
 
             local function SyncRadio()
+                local parentEnabled = EasyFind.db.uiSearchFilters[opt.key] ~= false
                 if radio.dbKey then
                     local cur = EasyFind.db[radio.dbKey]
                     for _, rRow in ipairs(radioRows) do
@@ -702,6 +737,8 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     local tbl, leaf = cRow.resolveDbPath()
                     cRow.tick:SetShown(tbl[leaf] and true or false)
                 end
+                for _, rRow in ipairs(radioRows) do SetFlyoutRowEnabled(rRow, parentEnabled) end
+                for _, cRow in ipairs(checkboxRows) do SetFlyoutRowEnabled(cRow, parentEnabled) end
             end
             row.SyncFlyoutSubChecks = SyncRadio
 
@@ -746,6 +783,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         row:SetScript("OnClick", function(self)
             local filters = EasyFind.db.uiSearchFilters
             filters[opt.key] = self:GetChecked()
+            if self.SyncFlyoutSubChecks then self.SyncFlyoutSubChecks() end
             if self.updateLootToggle then self.updateLootToggle() end
             LayoutDropdown()
             if searchEditBox:GetText() ~= "" then
