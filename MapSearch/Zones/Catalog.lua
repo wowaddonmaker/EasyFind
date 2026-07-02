@@ -268,6 +268,19 @@ function MapSearch:SearchZones(query)
 
     else
         zones = self:GetDirectChildZones()
+        -- Also let the currently-viewed map match its own name, so searching
+        -- e.g. "Northrend" while viewing Northrend surfaces it (selecting it
+        -- navigates in to reveal its children) instead of returning nothing.
+        local viewedMapID = WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID()
+        local viewedInfo = viewedMapID and GetMapInfo(viewedMapID)
+        if viewedInfo and viewedInfo.name then
+            zones[#zones + 1] = {
+                mapID = viewedMapID,
+                name = viewedInfo.name,
+                mapType = viewedInfo.mapType,
+                parentMapID = viewedInfo.parentMapID,
+            }
+        end
         candidates = zones
     end
 
