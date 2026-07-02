@@ -30,7 +30,7 @@ L["ERR_DATABASE_INIT_FAILED"]           = "No se pudo inicializar la base de dat
 
 -- Options panel
 L["OPT_TAB_HOME"]                       = "Inicio"
-L["OPT_TAB_GENERAL_BINDS"]              = "General y Teclas"
+L["OPT_TAB_GENERAL_BINDS"]              = "General y teclas"
 L["OPT_TAB_SEARCH"]                     = "Búsqueda"
 L["OPT_TAB_MAP"]                        = "Mapa"
 L["OPT_TAB_ALIASES"]                    = "Alias y atajos"

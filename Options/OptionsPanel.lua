@@ -373,8 +373,14 @@ local function CreateCheckbox(parent, name, label, tooltipText, compact, width)
     local toggleH = compact and 14 or 16
     local knobSize = toggleH - 2
     local checkbox = CreateFrame("CheckButton", frameName, parent)
-    checkbox:SetSize(width or (compact and 220 or 330), rowH)
+    local rowW = width or (compact and 220 or 330)
+    checkbox:SetSize(rowW, rowH)
     checkbox:RegisterForClicks("LeftButtonUp")
+    -- Only the toggle itself is interactive. A row-wide hit area made the
+    -- hover tooltip fire from anywhere on the line and clicks land on what
+    -- reads as inert label space.
+    local toggleRightOff = compact and 4 or 8
+    checkbox:SetHitRectInsets(rowW - toggleW - toggleRightOff - 8, 0, 0, 0)
 
     local rowBg = CreateFrame("Frame", nil, checkbox)
     rowBg:SetAllPoints()
@@ -1519,6 +1525,10 @@ function Options:Initialize()
         EasyFind.db.font = name
         fontBtnText:SetText(FontLabel(name))
         if ns.RefreshAddonFont then ns.RefreshAddonFont() end
+        if ns.Search then
+            if ns.Search.UpdateFontSize then ns.Search:UpdateFontSize() end
+            if ns.Search.RefreshResults then ns.Search:RefreshResults() end
+        end
     end, FontLabel)
     optionsFrame.fontBtnText = fontBtnText
     optionsFrame.fontFlyout = fontFlyout

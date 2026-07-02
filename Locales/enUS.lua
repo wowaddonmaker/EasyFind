@@ -39,7 +39,7 @@ L["ERR_DATABASE_INIT_FAILED"]           = "EasyFind Database failed to initializ
 -- Options/OptionsPanel.lua  --  tabs, sections, labels, tooltips
 -- =============================================================================
 L["OPT_TAB_HOME"]                       = "Home"
-L["OPT_TAB_GENERAL_BINDS"]              = "General & Binds"
+L["OPT_TAB_GENERAL_BINDS"]              = "General & binds"
 L["OPT_TAB_SEARCH"]                     = "Search"
 L["OPT_TAB_MAP"]                        = "Map"
 L["OPT_TAB_ALIASES"]                    = "Aliases & shortkeys"

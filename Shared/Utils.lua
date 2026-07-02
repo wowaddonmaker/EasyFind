@@ -3249,6 +3249,17 @@ local function ApplyFontTo(fs)
     end
 end
 
+-- Resolve the font path a piece of UI text should use: the Inter file for
+-- the chosen weight when the addon font is set to Inter, else the caller's
+-- own (Blizzard) path. Lets per-render font sizing (ScaleFont) honor the
+-- font choice without joining the FontString registry.
+function ns.GetAddonFontPath(weight, fallback)
+    if GetFontChoice() ~= "Inter" then return fallback end
+    if weight == "bold" then return INTER_BOLD end
+    if weight == "semibold" then return INTER_SEMIBOLD end
+    return INTER_REGULAR
+end
+
 function ns.RegisterAddonFont(fs, weight, sizeOverride, flags)
     if not fs or not fs.GetFont or not fs.SetFont then return end
     if not fs._addonFontBaseline then

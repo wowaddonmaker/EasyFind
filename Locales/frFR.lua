@@ -30,7 +30,7 @@ L["ERR_DATABASE_INIT_FAILED"]           = "Échec de l'initialisation de la base
 
 -- Options panel
 L["OPT_TAB_HOME"]                       = "Accueil"
-L["OPT_TAB_GENERAL_BINDS"]              = "Général & Touches"
+L["OPT_TAB_GENERAL_BINDS"]              = "Général et touches"
 L["OPT_TAB_SEARCH"]                     = "Recherche"
 L["OPT_TAB_MAP"]                        = "Carte"
 L["OPT_TAB_ALIASES"]                    = "Alias et raccourcis"

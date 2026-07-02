@@ -72,6 +72,9 @@ local function ScaleFont(fontString, baseFontObject)
     local obj = _G[baseFontObject]
     if not obj then return end
     local path, baseSize, flags = obj:GetFont()
+    if ns.GetAddonFontPath then
+        path = ns.GetAddonFontPath(nil, path)
+    end
     fontString:SetFont(path, baseSize * (EasyFind.db.fontSize or 1.0), flags)
     fontString:SetJustifyH(fontString:GetJustifyH())
 end

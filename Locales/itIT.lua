@@ -30,7 +30,7 @@ L["ERR_DATABASE_INIT_FAILED"]           = "Inizializzazione del database di Easy
 
 -- Options panel
 L["OPT_TAB_HOME"]                       = "Home"
-L["OPT_TAB_GENERAL_BINDS"]              = "Generale e Tasti"
+L["OPT_TAB_GENERAL_BINDS"]              = "Generale e tasti"
 L["OPT_TAB_SEARCH"]                     = "Ricerca"
 L["OPT_TAB_MAP"]                        = "Mappa"
 L["OPT_TAB_ALIASES"]                    = "Alias e scorciatoie"
