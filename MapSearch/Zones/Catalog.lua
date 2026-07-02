@@ -365,6 +365,12 @@ local function EnsureZoneGroupFields(zone)
                 parts[n] = path[i].name
             end
         end
+        -- Continents have only root-type ancestors (Azeroth is a World
+        -- map): keep the nearest one so their subtext isn't empty.
+        if n == 0 and #path > 0 then
+            n = 1
+            parts[1] = path[#path].name
+        end
         zone.parentPathDisplay = tconcat(parts, " > ", 1, n)
         wipe(parts)
         zone.parentPathMapID = path[#path].mapID

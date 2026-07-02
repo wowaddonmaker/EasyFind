@@ -617,6 +617,11 @@ BuildPromotedInstanceCache = function(self)
                     parts[#parts + 1] = p.name
                 end
             end
+            -- Continents have only root-type ancestors (Azeroth is a World
+            -- map): keep the nearest one so their breadcrumb isn't empty.
+            if #parts == 0 and #zone.path > 0 then
+                parts[1] = zone.path[#zone.path].name
+            end
             parts[#parts + 1] = zone.name
             pathForMap[zone.mapID] = tconcat(parts, " > ")
         end
