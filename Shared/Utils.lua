@@ -1094,6 +1094,41 @@ function Utils.RefreshMenuRowHighlights(parent, orderedRows)
     end
 end
 
+-- Rows whose highlight is locked because their flyout is open. A hold lives
+-- for the popup's whole shown lifetime; `held` tracks whether the lock is
+-- currently applied. Hovering a SIBLING row releases the lock immediately
+-- (the highlight transfers while the flyout lingers through its hide grace),
+-- and re-entering the owner, its popup, or any row inside the popup restores
+-- it. The popup's OnHide remains the final release.
+local flyoutHighlightHolds = {}
+
+local function FindFlyoutHighlightHold(owner, popup)
+    for i = 1, #flyoutHighlightHolds do
+        local hold = flyoutHighlightHolds[i]
+        if hold.owner == owner and hold.popup == popup then return i, hold end
+    end
+    return nil
+end
+
+local function MenuRowEnterAdjustsHolds(row)
+    if #flyoutHighlightHolds == 0 then return end
+    local rowParent = row:GetParent()
+    for i = #flyoutHighlightHolds, 1, -1 do
+        local hold = flyoutHighlightHolds[i]
+        if not hold.popup:IsShown() then
+            tremove(flyoutHighlightHolds, i)
+        elseif hold.owner == row or rowParent == hold.popup then
+            if not hold.held then
+                hold.held = true
+                if hold.owner.LockHighlight then hold.owner:LockHighlight() end
+            end
+        elseif hold.held and hold.owner:GetParent() == rowParent then
+            hold.held = false
+            if hold.owner.UnlockHighlight then hold.owner:UnlockHighlight() end
+        end
+    end
+end
+
 function Utils.InstallMenuRowHighlight(row)
     if not row then return nil end
     if not row._efMenuRowHighlightInstalled then
@@ -1106,6 +1141,7 @@ function Utils.InstallMenuRowHighlight(row)
             hl:SetBlendMode("ADD")
             ApplyMenuHighlightMask(row, hl, row._efMenuHighlightPosition or "middle")
         end
+        row:HookScript("OnEnter", MenuRowEnterAdjustsHolds)
     end
     row.SetMenuHighlightFocused = function(self, focused)
         if focused then
@@ -2193,12 +2229,30 @@ function Utils.AttachHoverPopup(owner, popup, opts)
     popup:HookScript("OnEnter", CancelHide)
     popup:HookScript("OnLeave", ScheduleHide)
 
-    -- Keep the owning menu row highlighted for as long as its flyout is open,
-    -- so it stays clear which row opened the submenu even while the cursor has
-    -- moved onto the flyout itself.
+    -- Keep the owning menu row highlighted while its flyout is open, so it
+    -- stays clear which row opened the submenu even while the cursor is on
+    -- the flyout. Registered as a hold so hovering a sibling row transfers
+    -- the highlight immediately instead of waiting out the hide grace.
     if owner.LockHighlight then
-        popup:HookScript("OnShow", function() owner:LockHighlight() end)
-        popup:HookScript("OnHide", function() owner:UnlockHighlight() end)
+        local function HoldHighlight()
+            owner:LockHighlight()
+            local _, hold = FindFlyoutHighlightHold(owner, popup)
+            if hold then
+                hold.held = true
+            else
+                tinsert(flyoutHighlightHolds, { owner = owner, popup = popup, held = true })
+            end
+        end
+        popup:HookScript("OnShow", HoldHighlight)
+        popup:HookScript("OnEnter", HoldHighlight)
+        owner:HookScript("OnEnter", function()
+            if popup:IsShown() then HoldHighlight() end
+        end)
+        popup:HookScript("OnHide", function()
+            owner:UnlockHighlight()
+            local i = FindFlyoutHighlightHold(owner, popup)
+            if i then tremove(flyoutHighlightHolds, i) end
+        end)
     end
 
     return {
