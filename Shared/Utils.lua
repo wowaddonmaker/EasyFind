@@ -2193,6 +2193,14 @@ function Utils.AttachHoverPopup(owner, popup, opts)
     popup:HookScript("OnEnter", CancelHide)
     popup:HookScript("OnLeave", ScheduleHide)
 
+    -- Keep the owning menu row highlighted for as long as its flyout is open,
+    -- so it stays clear which row opened the submenu even while the cursor has
+    -- moved onto the flyout itself.
+    if owner.LockHighlight then
+        popup:HookScript("OnShow", function() owner:LockHighlight() end)
+        popup:HookScript("OnHide", function() owner:UnlockHighlight() end)
+    end
+
     return {
         CancelHide = CancelHide,
         HideNow = HideNow,
