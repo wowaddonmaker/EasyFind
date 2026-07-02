@@ -3,10 +3,12 @@ local _, ns = ...
 local Search = ns.Search
 local Filters = ns.Filters
 local Utils = ns.Utils
+local L = ns.L
 
 local ipairs = Utils.ipairs
 local select = Utils.select
 local tsort = Utils.tsort
+local SetFlyoutRowEnabled = Utils.SetFlyoutRowEnabled
 local CreateFrame = CreateFrame
 local UIParent = UIParent
 local wipe = wipe
@@ -46,7 +48,7 @@ local function CollectMountSourceDefs()
         if mountIDs then
             for i = 1, #mountIDs do
                 local sourceType = select(6, C_MountJournal.GetMountInfoByID(mountIDs[i]))
-                if sourceType and not seen[sourceType] then
+                if sourceType and sourceType > 0 and not seen[sourceType] then
                     seen[sourceType] = true
                     defs[#defs + 1] = { sourceType = sourceType, label = MountSourceLabel(sourceType) }
                 end
@@ -88,6 +90,11 @@ function Filters:BuildMountOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox)
         end
     end
 
+    local function ChainEnabled()
+        local uiFilters = EasyFind.db.uiSearchFilters
+        return uiFilters.collections ~= false and uiFilters.mounts ~= false
+    end
+
     EnsureMountSourceInvalidator()
 
     local optionsPopup = CreateFrame("Frame", "EasyFindMountOptionsPopup", UIParent, "BackdropTemplate")
@@ -115,20 +122,20 @@ function Filters:BuildMountOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox)
         local label = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
         label:SetPoint("LEFT", 14, 0)
         label:SetText(text)
+        row._label = label
         InstallMenuRowHighlight(row)
         return row
     end
 
-    local checkAllRow = CreatePlainRow(sourcePopup, _G["CHECK_ALL"] or "Check All")
-    local uncheckAllRow = CreatePlainRow(sourcePopup, _G["UNCHECK_ALL"] or "Uncheck All")
+    local toggleAllRow = CreatePlainRow(sourcePopup, L["FILTER_TOGGLE_ALL"])
 
     local function LayoutSourcePopup()
         local defs = CollectMountSourceDefs()
         local filters = EnsureSourceFilters()
-        checkAllRow:ClearAllPoints()
-        checkAllRow:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -PAD)
-        uncheckAllRow:ClearAllPoints()
-        uncheckAllRow:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -(PAD + ROW_H))
+        local chainEnabled = ChainEnabled()
+        toggleAllRow:ClearAllPoints()
+        toggleAllRow:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -PAD)
+        SetFlyoutRowEnabled(toggleAllRow, chainEnabled)
 
         for i = #sourceRows, #defs + 1, -1 do
             sourceRows[i]:Hide()
@@ -148,6 +155,7 @@ function Filters:BuildMountOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox)
                 row:GetCheckedTexture():SetPoint("LEFT", 4, 0)
                 row.text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
                 row.text:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
+                row._label = row.text
                 InstallMenuRowHighlight(row)
                 row:SetScript("OnClick", function(self)
                     EnsureSourceFilters()[self.sourceType] = self:GetChecked() and nil or false
@@ -158,23 +166,31 @@ function Filters:BuildMountOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox)
             row.sourceType = def.sourceType
             row.text:SetText(def.label)
             row:SetChecked(filters[def.sourceType] ~= false)
+            SetFlyoutRowEnabled(row, chainEnabled)
             row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -(PAD + (i + 1) * ROW_H))
+            row:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -(PAD + i * ROW_H))
             row:Show()
         end
-        sourcePopup:SetSize(SOURCE_WIDTH, PAD * 2 + (2 + #defs) * ROW_H)
+        sourcePopup:SetSize(SOURCE_WIDTH, PAD * 2 + (1 + #defs) * ROW_H)
         Utils.RefreshMenuRowHighlights(sourcePopup)
     end
 
-    checkAllRow:SetScript("OnClick", function()
-        wipe(EnsureSourceFilters())
-        LayoutSourcePopup()
-        ApplyFilterSelection()
-    end)
-    uncheckAllRow:SetScript("OnClick", function()
+    toggleAllRow:SetScript("OnClick", function()
         local filters = EnsureSourceFilters()
-        for _, def in ipairs(CollectMountSourceDefs()) do
-            filters[def.sourceType] = false
+        local defs = CollectMountSourceDefs()
+        local allUnchecked = true
+        for _, def in ipairs(defs) do
+            if filters[def.sourceType] ~= false then
+                allUnchecked = false
+                break
+            end
+        end
+        if allUnchecked then
+            wipe(filters)
+        else
+            for _, def in ipairs(defs) do
+                filters[def.sourceType] = false
+            end
         end
         LayoutSourcePopup()
         ApplyFilterSelection()
@@ -195,6 +211,7 @@ function Filters:BuildMountOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox)
         local text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
         text:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
         text:SetText(def.label)
+        row._label = text
         InstallMenuRowHighlight(row)
         row.dbKey = def.dbKey
         row:SetScript("OnClick", function(self)
@@ -242,6 +259,8 @@ function Filters:BuildMountOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox)
     sourceChev:SetAtlas("common-icon-forwardarrow")
     sourceChev:SetSize(CHECK_SIZE, CHECK_SIZE)
     sourceChev:SetPoint("RIGHT", -4, 0)
+    sourcesRow._label = sourcesText
+    sourcesRow._chev = sourceChev
     InstallMenuRowHighlight(sourcesRow)
 
     optionsPopup:SetSize(OPTIONS_WIDTH, PAD * 2 + #filterDefs * ROW_H + HEADER_H + #typeDefs * ROW_H + ROW_H)
@@ -257,9 +276,12 @@ function Filters:BuildMountOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox)
     })
 
     local function SyncOptions()
+        local chainEnabled = ChainEnabled()
         for _, row in ipairs(rows) do
             row:SetChecked(EasyFind.db[row.dbKey] ~= false)
+            SetFlyoutRowEnabled(row, chainEnabled)
         end
+        SetFlyoutRowEnabled(sourcesRow, chainEnabled)
         LayoutSourcePopup()
     end
 

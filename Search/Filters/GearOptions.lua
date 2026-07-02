@@ -6,6 +6,7 @@ local Utils = ns.Utils
 local L = ns.L
 
 local ipairs = Utils.ipairs
+local SetFlyoutRowEnabled = Utils.SetFlyoutRowEnabled
 local CreateFrame = CreateFrame
 local C_Timer = C_Timer
 local UIParent = UIParent
@@ -58,6 +59,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         local subLabel = subRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
         subLabel:SetPoint("LEFT", subRow:GetNormalTexture(), "RIGHT", 4, 0)
         subLabel:SetText(sub.label)
+        subRow._label = subLabel
 
         InstallMenuRowHighlight(subRow)
 
@@ -119,6 +121,8 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     diffBtn:SetScript("OnLeave", function()
         diffArrow:SetVertexColor(0.7, 0.7, 0.7)
     end)
+    diffBtn._label = diffText
+    diffBtn._chev = diffArrow
 
     local function UpdateDiffLabel()
         local key = EasyFind.db.lootDifficulty or "normal"
@@ -584,6 +588,8 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     specSelectRow:SetScript("OnLeave", function()
         specSelectArrow:SetVertexColor(0.7, 0.7, 0.7)
     end)
+    specSelectRow._label = specSelectLabel
+    specSelectRow._chev = specSelectArrow
     specSelectRow:SetScript("OnClick", function()
         if specPopup:IsShown() then
             specPopup:Hide()
@@ -712,13 +718,18 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     dropdown:HookScript("OnHide", function() gearOptionsPopup:Hide() end)
 
     row.updateLootToggle = function()
+        local chainEnabled = EasyFind.db.uiSearchFilters.loot ~= false
         for _, sr in ipairs(lootSubRows) do
             if sr.SetChecked and sr.resolveDbPath then
                 local tbl, leaf = sr.resolveDbPath()
                 sr:SetChecked(tbl[leaf] == true)
             end
+            SetFlyoutRowEnabled(sr, chainEnabled)
         end
+        SetFlyoutRowEnabled(diffBtn, chainEnabled)
+        SetFlyoutRowEnabled(specSelectRow, chainEnabled)
         UpdateSpecLabel()
         if row.UpdateDiffButtons then row.UpdateDiffButtons() end
     end
+    gearOptionsPopup._efSync = row.updateLootToggle
 end

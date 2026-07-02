@@ -8,6 +8,7 @@ local L = ns.L
 local ipairs = Utils.ipairs
 local select = Utils.select
 local tsort = Utils.tsort
+local SetFlyoutRowEnabled = Utils.SetFlyoutRowEnabled
 local CreateFrame = CreateFrame
 local UIParent = UIParent
 local wipe = wipe
@@ -40,7 +41,7 @@ local function CollectHeirloomSourceDefs()
         if type(ids) == "table" then
             for i = 1, #ids do
                 local sourceType = select(6, C_Heirloom.GetHeirloomInfo(ids[i]))
-                if sourceType and not seen[sourceType] then
+                if sourceType and sourceType > 0 and not seen[sourceType] then
                     seen[sourceType] = true
                     defs[#defs + 1] = { sourceType = sourceType, label = HeirloomSourceLabel(sourceType) }
                 end
@@ -71,6 +72,11 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox
         if searchEditBox and searchEditBox:GetText() ~= "" then
             Search:OnSearchTextChanged(searchEditBox:GetText())
         end
+    end
+
+    local function ChainEnabled()
+        local uiFilters = EasyFind.db.uiSearchFilters
+        return uiFilters.collections ~= false and uiFilters.heirlooms ~= false
     end
 
     local optionsPopup = CreateFrame("Frame", "EasyFindHeirloomOptionsPopup", UIParent, "BackdropTemplate")
@@ -114,13 +120,16 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox
     local toggleAllLabel = toggleAllRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     toggleAllLabel:SetPoint("LEFT", 14, 0)
     toggleAllLabel:SetText(L["FILTER_TOGGLE_ALL"])
+    toggleAllRow._label = toggleAllLabel
     InstallMenuRowHighlight(toggleAllRow)
 
     local function LayoutSourcePopup()
         local defs = CollectHeirloomSourceDefs()
         local filters = EnsureSourceFilters()
+        local chainEnabled = ChainEnabled()
         toggleAllRow:ClearAllPoints()
         toggleAllRow:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -PAD)
+        SetFlyoutRowEnabled(toggleAllRow, chainEnabled)
 
         for i = #sourceRows, #defs + 1, -1 do
             sourceRows[i]:Hide()
@@ -140,6 +149,7 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox
                 row:GetCheckedTexture():SetPoint("LEFT", 4, 0)
                 row.text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
                 row.text:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
+                row._label = row.text
                 InstallMenuRowHighlight(row)
                 row:SetScript("OnClick", function(self)
                     EnsureSourceFilters()[self.sourceType] = self:GetChecked() and nil or false
@@ -150,6 +160,7 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox
             row.sourceType = def.sourceType
             row.text:SetText(def.label)
             row:SetChecked(filters[def.sourceType] ~= false)
+            SetFlyoutRowEnabled(row, chainEnabled)
             row:ClearAllPoints()
             row:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -(PAD + i * ROW_H))
             row:Show()
@@ -190,6 +201,7 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox
         local text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
         text:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
         text:SetText(def.label)
+        row._label = text
         InstallMenuRowHighlight(row)
         row.dbKey = def.dbKey
         row:SetScript("OnClick", function(self)
@@ -220,6 +232,8 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox
     sourceChev:SetAtlas("common-icon-forwardarrow")
     sourceChev:SetSize(CHECK_SIZE, CHECK_SIZE)
     sourceChev:SetPoint("RIGHT", -4, 0)
+    sourcesRow._label = sourcesText
+    sourcesRow._chev = sourceChev
     InstallMenuRowHighlight(sourcesRow)
 
     optionsPopup:SetSize(OPTIONS_WIDTH, PAD * 2 + CLASS_BTN_H + CLASS_GAP + #filterDefs * ROW_H + ROW_H)
@@ -235,10 +249,16 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox
     })
 
     local function SyncOptions()
-        if classSel then classSel.Refresh() end
+        local chainEnabled = ChainEnabled()
+        if classSel then
+            classSel.Refresh()
+            SetFlyoutRowEnabled(classSel.button, chainEnabled)
+        end
         for _, row in ipairs(rows) do
             row:SetChecked(EasyFind.db[row.dbKey] ~= false)
+            SetFlyoutRowEnabled(row, chainEnabled)
         end
+        SetFlyoutRowEnabled(sourcesRow, chainEnabled)
         LayoutSourcePopup()
     end
 

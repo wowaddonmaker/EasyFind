@@ -1129,6 +1129,30 @@ local function MenuRowEnterAdjustsHolds(row)
     end
 end
 
+-- Gray out and disable a flyout/popup option row when the filter above it
+-- is unchecked, mirroring the default UI (effectiveEnabled = parent and own).
+-- Rows opt into extra dimming via _label/_icon/_chev/_dimTex fields.
+function Utils.SetFlyoutRowEnabled(row, enabled)
+    if row._efRowEnabled == enabled then return end
+    row._efRowEnabled = enabled
+    row:SetEnabled(enabled)
+    local a = enabled and 1 or 0.35
+    local c = enabled and 1 or 0.4
+    if row._label then row._label:SetTextColor(c, c, c) end
+    local nt = row.GetNormalTexture and row:GetNormalTexture()
+    if nt then nt:SetDesaturated(not enabled); nt:SetAlpha(a) end
+    local ct = row.GetCheckedTexture and row:GetCheckedTexture()
+    if ct then ct:SetDesaturated(not enabled); ct:SetAlpha(a) end
+    if row._dimTex then
+        for i = 1, #row._dimTex do
+            row._dimTex[i]:SetDesaturated(not enabled)
+            row._dimTex[i]:SetAlpha(a)
+        end
+    end
+    if row._icon then row._icon:SetDesaturated(not enabled); row._icon:SetAlpha(a) end
+    if row._chev then row._chev:SetAlpha(a) end
+end
+
 function Utils.InstallMenuRowHighlight(row)
     if not row then return nil end
     if not row._efMenuRowHighlightInstalled then
@@ -2128,6 +2152,8 @@ function Utils.CreateDropdownButton(opts)
     label:SetWordWrap(false)
     btn:SetScript("OnEnter", function() arrow:SetVertexColor(1, 1, 1) end)
     btn:SetScript("OnLeave", function() arrow:SetVertexColor(0.7, 0.7, 0.7) end)
+    btn._label = label
+    btn._chev = arrow
 
     local popup = opts.popup
     if popup then

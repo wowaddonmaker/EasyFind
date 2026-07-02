@@ -5,6 +5,7 @@ local Filters = ns.Filters
 local Utils = ns.Utils
 
 local ipairs = Utils.ipairs
+local SetFlyoutRowEnabled = Utils.SetFlyoutRowEnabled
 local CreateFrame = CreateFrame
 local UIParent = UIParent
 
@@ -62,6 +63,7 @@ function Filters:BuildAppearanceSetOptionsPopup(StylePopup, CHECK_SIZE, searchEd
         local cbText = cbRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
         cbText:SetPoint("LEFT", cbRow:GetNormalTexture(), "RIGHT", 4, 0)
         cbText:SetText(def.label)
+        cbRow._label = cbText
 
         Utils.InstallMenuRowHighlight(cbRow)
 
@@ -101,10 +103,14 @@ function Filters:BuildAppearanceSetOptionsPopup(StylePopup, CHECK_SIZE, searchEd
     end)
 
     local function SyncFromDB()
+        local uiFilters = EasyFind.db.uiSearchFilters
+        local chainEnabled = uiFilters.collections ~= false and uiFilters.appearances ~= false
+            and uiFilters.appearanceSets ~= false
         for _, sr in ipairs(cbRows) do
             if sr.dbKey then
                 sr:SetChecked(EasyFind.db[sr.dbKey] ~= false)
             end
+            SetFlyoutRowEnabled(sr, chainEnabled)
         end
     end
 

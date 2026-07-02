@@ -104,6 +104,8 @@ function Filters:BuildClassSpecSelector(opts)
     label:SetWordWrap(false)
     btn:SetScript("OnEnter", function() arrow:SetVertexColor(1, 1, 1) end)
     btn:SetScript("OnLeave", function() arrow:SetVertexColor(0.7, 0.7, 0.7) end)
+    btn._label = label
+    btn._chev = arrow
 
     local function UpdateLabel()
         local f = opts.getFilter()

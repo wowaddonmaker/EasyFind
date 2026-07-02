@@ -233,6 +233,21 @@ function Filters.IsMouseInFilterChain()
     return false
 end
 
+-- Re-run the checked/graying sync of every option popup currently visible.
+-- Popups sync themselves when they open; this covers a filter toggle being
+-- clicked while a deeper popup is already on screen, so its rows re-gray
+-- immediately instead of waiting for the next hover-open.
+function Filters.ResyncShownOptionPopups()
+    local searchFrame = Search.GetSearchFrame and Search:GetSearchFrame()
+    local dropdown = searchFrame and searchFrame.filterDropdown
+    local guards = dropdown and dropdown.guardFrames
+    if not guards then return end
+    for i = 1, #guards do
+        local guard = guards[i]
+        if guard._efSync and guard:IsShown() then guard._efSync() end
+    end
+end
+
 Filters.UI_FILTER_OPTIONS = UI_FILTER_OPTIONS
 Filters.ForEachFilterKey = ForEachFilterKey
 Filters.GetUIBucket = GetUIBucket

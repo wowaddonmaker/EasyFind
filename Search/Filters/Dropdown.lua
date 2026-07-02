@@ -13,28 +13,7 @@ local wipe = wipe
 local UI_FILTER_OPTIONS = Filters.UI_FILTER_OPTIONS
 local ForEachFilterKey = Filters.ForEachFilterKey
 
--- Gray out and disable a flyout checkbox row when the filter above it is
--- unchecked, mirroring the default UI (effectiveEnabled = parent and own).
-local function SetFlyoutRowEnabled(row, enabled)
-    if row._efRowEnabled == enabled then return end
-    row._efRowEnabled = enabled
-    row:SetEnabled(enabled)
-    local a = enabled and 1 or 0.35
-    local c = enabled and 1 or 0.4
-    if row._label then row._label:SetTextColor(c, c, c) end
-    local nt = row.GetNormalTexture and row:GetNormalTexture()
-    if nt then nt:SetDesaturated(not enabled); nt:SetAlpha(a) end
-    local ct = row.GetCheckedTexture and row:GetCheckedTexture()
-    if ct then ct:SetDesaturated(not enabled); ct:SetAlpha(a) end
-    if row._dimTex then
-        for i = 1, #row._dimTex do
-            row._dimTex[i]:SetDesaturated(not enabled)
-            row._dimTex[i]:SetAlpha(a)
-        end
-    end
-    if row._icon then row._icon:SetDesaturated(not enabled); row._icon:SetAlpha(a) end
-    if row._chev then row._chev:SetAlpha(a) end
-end
+local SetFlyoutRowEnabled = Utils.SetFlyoutRowEnabled
 
 function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     local ROW_HEIGHT = 20
@@ -336,11 +315,15 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             end)
 
             local subRows = {}
+            -- Collections and Map carry many sub-filters; give their flyouts
+            -- the same Toggle All row the main menu has (created below).
+            local toggleAllRow
+            local toggleAllOffset = (opt.key == "collections" or opt.key == "map") and 1 or 0
             for si, sub in ipairs(opt.flyoutSubFilters) do
                 local subRow = CreateFrame("CheckButton", nil, popup)
                 subRow:SetSize(SUB_POPUP_WIDTH - SUB_PAD * 2, SUB_ROW_H)
                 subRow:SetHitRectInsets(0, 0, 0, 0)
-                subRow:SetPoint("TOPLEFT", popup, "TOPLEFT", SUB_PAD, -(SUB_PAD + (si - 1) * SUB_ROW_H))
+                subRow:SetPoint("TOPLEFT", popup, "TOPLEFT", SUB_PAD, -(SUB_PAD + (si - 1 + toggleAllOffset) * SUB_ROW_H))
 
                 subRow:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
                 subRow:GetNormalTexture():SetSize(CHK, CHK)
@@ -397,6 +380,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     local target = sub.dbTable and EasyFind.db[sub.dbTable]
                                    or EasyFind.db.uiSearchFilters
                     target[sub.key] = self:GetChecked()
+                    Filters.ResyncShownOptionPopups()
                     if searchEditBox:GetText() ~= "" then
                         Search:OnSearchTextChanged(searchEditBox:GetText())
                     end
@@ -413,6 +397,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     local optionsPopup, syncOptions, appBranchPopups = Search:BuildAppearanceOptionsPopup(
                         StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
                     Search._SyncAppearanceOptions = syncOptions
+                    optionsPopup._efSync = syncOptions
                     optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
                     optionsPopup._owningRow = subRow
                     popup._appearanceSetOptionsPopup = optionsPopup
@@ -436,6 +421,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     local optionsPopup, syncOptions, sourcePopup = Search:BuildMountOptionsPopup(
                         StylePopup, CHECK_SIZE, searchEditBox)
                     Search._SyncMountOptions = syncOptions
+                    optionsPopup._efSync = syncOptions
                     optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
                     optionsPopup._owningRow = subRow
                     popup._mountOptionsPopup = optionsPopup
@@ -461,6 +447,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     local optionsPopup, syncOptions, sourcePopup = Search:BuildHeirloomOptionsPopup(
                         StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
                     Search._SyncHeirloomOptions = syncOptions
+                    optionsPopup._efSync = syncOptions
                     optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
                     optionsPopup._owningRow = subRow
                     popup._heirloomOptionsPopup = optionsPopup
@@ -509,7 +496,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 hideTipRow:SetSize(SUB_POPUP_WIDTH - SUB_PAD * 2, SUB_ROW_H)
                 hideTipRow:SetHitRectInsets(0, 0, 0, 0)
                 hideTipRow:SetPoint("TOPLEFT", popup, "TOPLEFT",
-                    SUB_PAD, -(SUB_PAD + #opt.flyoutSubFilters * SUB_ROW_H))
+                    SUB_PAD, -(SUB_PAD + (#opt.flyoutSubFilters + toggleAllOffset) * SUB_ROW_H))
                 hideTipRow:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
                 hideTipRow:GetNormalTexture():SetSize(CHK, CHK)
                 hideTipRow:GetNormalTexture():ClearAllPoints()
@@ -531,7 +518,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 extraRows = 1
             end
             popup:SetSize(SUB_POPUP_WIDTH,
-                SUB_PAD * 2 + (#opt.flyoutSubFilters + extraRows) * SUB_ROW_H)
+                SUB_PAD * 2 + (#opt.flyoutSubFilters + extraRows + toggleAllOffset) * SUB_ROW_H)
 
             -- Sync sub-row checked state from current DB values.
             local function SyncSubChecks()
@@ -550,8 +537,45 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     hideTipRow:SetChecked(ht and ht.collections == true)
                     SetFlyoutRowEnabled(hideTipRow, parentEnabled)
                 end
+                if toggleAllRow then
+                    SetFlyoutRowEnabled(toggleAllRow, parentEnabled)
+                end
             end
             row.SyncFlyoutSubChecks = SyncSubChecks
+            popup._efSync = SyncSubChecks
+
+            if toggleAllOffset == 1 then
+                toggleAllRow = CreateFrame("Button", nil, popup)
+                toggleAllRow:SetSize(SUB_POPUP_WIDTH - SUB_PAD * 2, SUB_ROW_H)
+                toggleAllRow:SetPoint("TOPLEFT", popup, "TOPLEFT", SUB_PAD, -SUB_PAD)
+                local toggleAllLabel = toggleAllRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+                toggleAllLabel:SetPoint("LEFT", 8, 0)
+                toggleAllLabel:SetText(L["FILTER_TOGGLE_ALL"])
+                toggleAllRow._label = toggleAllLabel
+                InstallMenuRowHighlight(toggleAllRow)
+                toggleAllRow:SetScript("OnClick", function()
+                    local allUnchecked = true
+                    for _, sub in ipairs(opt.flyoutSubFilters) do
+                        local target = sub.dbTable and EasyFind.db[sub.dbTable]
+                                       or EasyFind.db.uiSearchFilters
+                        if target[sub.key] ~= false then
+                            allUnchecked = false
+                            break
+                        end
+                    end
+                    for _, sub in ipairs(opt.flyoutSubFilters) do
+                        local target = sub.dbTable and EasyFind.db[sub.dbTable]
+                                       or EasyFind.db.uiSearchFilters
+                        target[sub.key] = allUnchecked
+                    end
+                    SyncSubChecks()
+                    Filters.ResyncShownOptionPopups()
+                    if searchEditBox:GetText() ~= "" then
+                        Search:OnSearchTextChanged(searchEditBox:GetText())
+                    end
+                    KeepSearchEditBoxUnfocused()
+                end)
+            end
 
             -- Show on hover of either the parent row or the arrow.
             -- Hide when the cursor leaves both the row and the popup,
@@ -741,6 +765,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 for _, cRow in ipairs(checkboxRows) do SetFlyoutRowEnabled(cRow, parentEnabled) end
             end
             row.SyncFlyoutSubChecks = SyncRadio
+            popup._efSync = SyncRadio
 
             local function PositionPopup()
                 Utils.OpenFlyoutBeside(popup, row, 4)
@@ -784,6 +809,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             local filters = EasyFind.db.uiSearchFilters
             filters[opt.key] = self:GetChecked()
             if self.SyncFlyoutSubChecks then self.SyncFlyoutSubChecks() end
+            Filters.ResyncShownOptionPopups()
             if self.updateLootToggle then self.updateLootToggle() end
             LayoutDropdown()
             if searchEditBox:GetText() ~= "" then
@@ -926,6 +952,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         end
         local lootRow = checkRows["loot"]
         if lootRow and lootRow.updateLootToggle then lootRow.updateLootToggle() end
+        Filters.ResyncShownOptionPopups()
         LayoutDropdown()
         if searchEditBox:GetText() ~= "" then
             Search:OnSearchTextChanged(searchEditBox:GetText())

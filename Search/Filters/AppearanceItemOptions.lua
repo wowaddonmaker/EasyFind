@@ -8,6 +8,7 @@ local L = ns.L
 local ipairs = Utils.ipairs
 local pairs = Utils.pairs
 local tsort = Utils.tsort
+local SetFlyoutRowEnabled = Utils.SetFlyoutRowEnabled
 local CreateFrame = CreateFrame
 local UIParent = UIParent
 local wipe = wipe
@@ -96,6 +97,7 @@ local function MakeCheckRow(parent, width, rowH, checkSize)
     row:GetCheckedTexture():SetPoint("LEFT", 4, 0)
     row.text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     row.text:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
+    row._label = row.text
     Utils.InstallMenuRowHighlight(row)
     return row
 end
@@ -216,6 +218,12 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, searchE
         end
     end
 
+    local function ChainEnabled()
+        local uiFilters = EasyFind.db.uiSearchFilters
+        return uiFilters.collections ~= false and uiFilters.appearances ~= false
+            and uiFilters.appearanceItems ~= false
+    end
+
     local optionsPopup = CreateFrame("Frame", "EasyFindAppItemOptionsPopup", UIParent, "BackdropTemplate")
     optionsPopup:SetFrameStrata("TOOLTIP")
     StylePopup(optionsPopup)
@@ -237,6 +245,7 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, searchE
     Filters._updateAppItemSlotLabel = UpdateSlotLabel
     local function LayoutSlotPopup()
         local defs = GetSlotDefs()
+        local chainEnabled = ChainEnabled()
         local py = -PAD
         for i, def in ipairs(defs) do
             local row = slotRows[i]
@@ -245,6 +254,7 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, searchE
                 row:SetSize(WIDTH - PAD * 2, ROW_H)
                 row.text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
                 row.text:SetPoint("LEFT", 12, 0)
+                row._label = row.text
                 Utils.InstallMenuRowHighlight(row)
                 row:SetScript("OnClick", function(self)
                     EasyFind.db.appearanceItemSlot = self._slot
@@ -257,6 +267,7 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, searchE
             end
             row._slot = def.slot
             row.text:SetText(def.label)
+            SetFlyoutRowEnabled(row, chainEnabled)
             row:ClearAllPoints()
             row:SetPoint("TOPLEFT", slotPopup, "TOPLEFT", PAD, py)
             row:Show()
@@ -265,13 +276,14 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, searchE
         for i = #defs + 1, #slotRows do slotRows[i]:Hide() end
         slotPopup:SetSize(WIDTH, -py + PAD)
     end
-    setSlotLabel = select(2, Utils.CreateDropdownButton({
+    local slotBtn
+    slotBtn, setSlotLabel = Utils.CreateDropdownButton({
         parent = optionsPopup, x = PAD, y = -PAD,
         width = WIDTH - PAD * 2, height = CLASS_BTN_H,
         popup = slotPopup, layout = LayoutSlotPopup,
         getScale = function() return EasyFind.db.uiSearchScale or 1.0 end,
         guardFrames = dropdownGuardFrames,
-    }))
+    })
 
     -- Sources flyout (Toggle All + one row per transmog source type).
     local sourcePopup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
@@ -291,12 +303,15 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, searchE
     local toggleAllLabel = toggleAllRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     toggleAllLabel:SetPoint("LEFT", 14, 0)
     toggleAllLabel:SetText(L["FILTER_TOGGLE_ALL"])
+    toggleAllRow._label = toggleAllLabel
     Utils.InstallMenuRowHighlight(toggleAllRow)
     local function LayoutSourcePopup()
         local defs = GetSourceDefs()
         local filters = SourceFilters()
+        local chainEnabled = ChainEnabled()
         toggleAllRow:ClearAllPoints()
         toggleAllRow:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -PAD)
+        SetFlyoutRowEnabled(toggleAllRow, chainEnabled)
         local py = -(PAD + ROW_H)
         for i, def in ipairs(defs) do
             local row = srcRows[i]
@@ -311,6 +326,7 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, searchE
             row._source = def.source
             row.text:SetText(def.label)
             row:SetChecked(filters[def.source] ~= false)
+            SetFlyoutRowEnabled(row, chainEnabled)
             row:ClearAllPoints()
             row:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, py)
             row:Show()
@@ -370,6 +386,8 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, searchE
     sourcesChev:SetAtlas("common-icon-forwardarrow")
     sourcesChev:SetSize(CHECK_SIZE, CHECK_SIZE)
     sourcesChev:SetPoint("RIGHT", -4, 0)
+    sourcesRow._label = sourcesText
+    sourcesRow._chev = sourcesChev
     Utils.InstallMenuRowHighlight(sourcesRow)
     filterPopup:SetSize(WIDTH, PAD * 2 + (#toggleDefs + 1) * ROW_H)
 
@@ -384,14 +402,17 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, searchE
     })
 
     local function SyncFilterToggles()
+        local chainEnabled = ChainEnabled()
         for _, row in ipairs(toggleRows) do
             local v = EasyFind.db[row.dbKey]
             if v == nil then v = row.default end
             row:SetChecked(v and true or false)
+            SetFlyoutRowEnabled(row, chainEnabled)
         end
+        SetFlyoutRowEnabled(sourcesRow, chainEnabled)
     end
 
-    local _, setFilterLabel = Utils.CreateDropdownButton({
+    local filterBtn, setFilterLabel = Utils.CreateDropdownButton({
         parent = optionsPopup, x = PAD, y = -(PAD + CLASS_BTN_H + 4),
         width = WIDTH - PAD * 2, height = CLASS_BTN_H,
         popup = filterPopup, layout = SyncFilterToggles,
@@ -417,6 +438,9 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, searchE
 
     local function SyncFromDB()
         UpdateSlotLabel()
+        local chainEnabled = ChainEnabled()
+        SetFlyoutRowEnabled(slotBtn, chainEnabled)
+        SetFlyoutRowEnabled(filterBtn, chainEnabled)
     end
 
     UpdateSlotLabel()
@@ -509,12 +533,15 @@ function Filters:BuildAppearanceOptionsPopup(StylePopup, CHECK_SIZE, searchEditB
         chev:SetSize(CHECK_SIZE - 2, CHECK_SIZE - 2)
         chev:SetPoint("RIGHT", -4, 0)
         chev:SetVertexColor(0.85, 0.85, 0.85, 1)
+        row._label = txt
+        row._chev = chev
         Utils.InstallMenuRowHighlight(row)
 
         local filterKey = def.filterKey
         row:SetChecked(EasyFind.db.uiSearchFilters[filterKey] ~= false)
         row:SetScript("OnClick", function(self)
             EasyFind.db.uiSearchFilters[filterKey] = self:GetChecked()
+            Filters.ResyncShownOptionPopups()
             if searchEditBox and searchEditBox:GetText() ~= "" then
                 Search:OnSearchTextChanged(searchEditBox:GetText())
             end
@@ -523,6 +550,7 @@ function Filters:BuildAppearanceOptionsPopup(StylePopup, CHECK_SIZE, searchEditB
 
         local p, s = def.popup, def.sync
         p._owningRow = row
+        p._efSync = s
         Utils.AttachHoverPopup(row, p, {
             chainGuards = branchPopups,
             onShow = function()
@@ -546,8 +574,12 @@ function Filters:BuildAppearanceOptionsPopup(StylePopup, CHECK_SIZE, searchEditB
 
     local function SyncChooser()
         classSel.Refresh()
+        local uiFilters = EasyFind.db.uiSearchFilters
+        local chainEnabled = uiFilters.collections ~= false and uiFilters.appearances ~= false
+        SetFlyoutRowEnabled(classSel.button, chainEnabled)
         for _, cr in ipairs(checkRows) do
-            cr.row:SetChecked(EasyFind.db.uiSearchFilters[cr.filterKey] ~= false)
+            cr.row:SetChecked(uiFilters[cr.filterKey] ~= false)
+            SetFlyoutRowEnabled(cr.row, chainEnabled)
         end
     end
     return chooser, SyncChooser, branchPopups
