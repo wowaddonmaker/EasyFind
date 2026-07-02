@@ -82,5 +82,29 @@ function tests.explicitOptionsQueryRequestsOptionsDespiteExistingResults()
     ns.BlizzOptionsSearch = nil
 end
 
+function tests.bareQuickFilterRequestsItsProvider()
+    local requested = withProviderCapture()
+    local ctx = Engine:BuildContext("", { key = "outfits" }, nil)
+
+    Engine:RequestProviders(ctx, function() end, 0)
+
+    H.assertEq(requested[1], "outfits",
+        "a bare quick filter (empty query) must load its category's provider")
+end
+
+function tests.quickFilterOverridesDisabledFilterMenu()
+    -- Regression: `quickFilter and nil or activeFilters` leaked the filter
+    -- menu into the engine and FilterAllows blocked the pill's provider.
+    -- Even if filters leak again, the pill must win.
+    local requested = withProviderCapture()
+    local ctx = Engine:BuildContext("", { key = "outfits" },
+        { outfits = false, collections = true })
+
+    Engine:RequestProviders(ctx, function() end, 0)
+
+    H.assertEq(requested[1], "outfits",
+        "an explicit quick filter must override the filter menu state")
+end
+
 local pass, fail, failures = H.runSuite("SearchEngine", tests)
 return { pass = pass, fail = fail, failures = failures }

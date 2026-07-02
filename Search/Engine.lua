@@ -241,9 +241,11 @@ function Engine:RequestProviders(ctx, onChanged, resultCount)
     for i = 1, #PROVIDERS do
         local spec = PROVIDERS[i]
         local key = spec.key
-        local explicit = self:QuickFilterIncludes(ctx, key)
-            or self:HasAnyWord(ctx, spec.lookup)
-        if self:FilterAllows(ctx, key, explicit) then
+        -- A quick-filter pill for this key overrides the filter menu
+        -- entirely, even if a caller passes ctx.filters by mistake.
+        local viaPill = self:QuickFilterIncludes(ctx, key)
+        local explicit = viaPill or self:HasAnyWord(ctx, spec.lookup)
+        if viaPill or self:FilterAllows(ctx, key, explicit) then
             local shouldRequest = explicit
                 or (spec.loadWhenEnabled and ctx.filters and ctx.filters[key] == true)
                 or self:ShouldLoadForLowResults(ctx, spec, resultCount)

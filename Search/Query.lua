@@ -132,8 +132,9 @@ function Search:OnSearchTextChanged(text, force)
     -- Build skip set from filters so SearchUI avoids scoring/copying filtered categories.
     -- Collection items (mounts/toys/pets/outfits/appearance sets) are
     -- skipped when their own filter is off OR the parent Collections
-    -- toggle is off. Loot is independent.
-    local filters = not quickFilter and EasyFind.db.uiSearchFilters or nil
+    -- toggle is off. Loot is independent. Same nil-under-quick-filter
+    -- value the engine got: a quick filter ignores the filter menu.
+    local filters = providerFilters
     local collectionsOff = filters and filters.collections == false
     local optionsOff = filters and filters.options == false
     local statisticsOff = filters and filters.statistics == false and not explicitStatistics
