@@ -1206,6 +1206,10 @@ local function FilterAndDedupe(results, seen, isLocal)
     local MapSearch = ns.MapSearch
     local getBucket = MapSearch and MapSearch.GetFilterBucket
     local filters = EasyFind.db.mapTabFilters or {}
+    -- The continent exclusion keeps OTHER continents out of "This Zone";
+    -- the viewed map itself must stay so searching its own name matches.
+    local viewedMapID = isLocal and WorldMapFrame and WorldMapFrame.GetMapID
+        and WorldMapFrame:GetMapID() or nil
     local out = {}
     if not results then return out end
     for i = 1, #results do
@@ -1213,6 +1217,7 @@ local function FilterAndDedupe(results, seen, isLocal)
         if r and not r.isPinHeader then
             local excludeLocal = isLocal and r.isZone and r.zoneMapType
                 and EXCLUDE_FROM_LOCAL_MAPTYPES[r.zoneMapType]
+                and r.zoneMapID ~= viewedMapID
             if not excludeLocal then
                 -- FMs are scanned both locally and globally with different
                 -- (x,y) per scan. Key by name so the local pass claims

@@ -84,11 +84,11 @@ function MapSearch:BuildResults(text, isGlobal, skipPins)
     local savedGlobalFlag = Search.isGlobalSearch
     Search.isGlobalSearch = isGlobal and true or false
 
-    -- Search for zones (works for both local and global mode)
-    local zoneMatches = {}
-    if self:IsOnContinentMap() or isGlobal then
-        zoneMatches = self:SearchZones(text)
-    end
+    -- Search for zones (works for both local and global mode). Local mode
+    -- self-scopes to the viewed map's children plus the viewed map itself,
+    -- so this runs from any view, not just continents: searching a zone's
+    -- own name while viewing it (or one of its subzones) must match.
+    local zoneMatches = self:SearchZones(text)
 
     wipe(reuseAllPOIs)
     wipe(reuseZoneNames)
