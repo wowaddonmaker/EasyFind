@@ -69,7 +69,12 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
         local fontScale = EasyFind.db.fontSize or 1.0
         local searchW = Search:GetSearchFrame() and Search:GetSearchFrame():GetWidth() or 0
         local customResultsW = EasyFind.db.uiResultsWidth or 0
-        local maxResultsH = EasyFind.db.uiResultsHeight or 280
+        local maxResultsH = EasyFind.db.uiResultsRows or EasyFind.db.uiResultsHeight or 280
+        -- The screen-fit clamp depends on where the dropdown sits, so a moved
+        -- bar must invalidate the signature.
+        local frameEdge = mfloor((EasyFind.db.uiResultsAbove
+            and (resultsFrame:GetBottom() or 0)
+            or (resultsFrame:GetTop() or 0)) + 0.5)
         local quickFilterHelp = self._quickFilterSuggestionsActive and 1 or 0
         local n = #hierarchical
         local last = self._lastRenderSig
@@ -82,6 +87,7 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
             and last.customResultsW == customResultsW
             and last.maxResultsH == maxResultsH
             and last.quickFilterHelp == quickFilterHelp
+            and last.frameEdge == frameEdge
             and resultsFrame:IsShown()
         if same then
             for hi = 1, n do
@@ -106,6 +112,7 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
         last.customResultsW = customResultsW
         last.maxResultsH = maxResultsH
         last.quickFilterHelp = quickFilterHelp
+        last.frameEdge = frameEdge
         for hi = 1, n do
             local e = hierarchical[hi]
             local stride = (hi - 1) * 3
@@ -231,7 +238,39 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
         count = mmin(count, pinSlots + MAX_SEARCH_RESULT_ROWS)
     end
 
-    local maxVisibleHeight = EasyFind.db.uiResultsHeight or 280
+    -- Viewport height from the user's row count when set (rows scale with
+    -- the theme row height and font size); pixel height is the legacy fallback.
+    local maxVisibleHeight
+    if EasyFind.db.uiResultsRows then
+        maxVisibleHeight = EasyFind.db.uiResultsRows * (rowH + flatExtraH)
+    else
+        maxVisibleHeight = EasyFind.db.uiResultsHeight or 280
+    end
+    -- Screen fit: if the configured height would push the dropdown off the
+    -- screen edge it grows toward, shrink to as many whole rows as fit.
+    -- GetTop/GetBottom are in the frame's own units, so no scale conversion
+    -- is needed below the bar; above-mode converts the screen top once.
+    do
+        local SCREEN_MARGIN = 16
+        local availableLocal
+        if EasyFind.db.uiResultsAbove then
+            local frameBottom = resultsFrame:GetBottom()
+            local effScale = resultsFrame:GetEffectiveScale()
+            if frameBottom and effScale and effScale > 0 then
+                local screenTopLocal = UIParent:GetHeight() * UIParent:GetEffectiveScale() / effScale
+                availableLocal = screenTopLocal - frameBottom - SCREEN_MARGIN
+            end
+        else
+            local frameTop = resultsFrame:GetTop()
+            if frameTop then availableLocal = frameTop - SCREEN_MARGIN end
+        end
+        if availableLocal and availableLocal > 0
+           and (maxVisibleHeight + padT + padB) > availableLocal then
+            local fitRows = mfloor((availableLocal - padT - padB) / (rowH + flatExtraH))
+            if fitRows < 1 then fitRows = 1 end
+            maxVisibleHeight = fitRows * (rowH + flatExtraH)
+        end
+    end
     local scrollInset = 0
 
     wipe(SCRATCH.isLastChild)

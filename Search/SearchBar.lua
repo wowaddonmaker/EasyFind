@@ -323,6 +323,34 @@ function Search:CreateSearchFrame()
     editBox:SetMaxLetters(50)
 
     -- Editbox click handling: plain left-click focuses the input
+    -- While the bar is dragged, re-render the open results on a short
+    -- throttle so the screen-fit row clamp tracks the position live. The
+    -- render cache keys on the frame edge, so unmoved ticks early-out.
+    local dragRefreshTicker
+    local function StartDragRefresh()
+        if dragRefreshTicker then return end
+        dragRefreshTicker = C_Timer.NewTicker(0.1, function()
+            local ok = pcall(function()
+                if Results._cachedHierarchical and resultsFrame and resultsFrame:IsShown() then
+                    Results:ShowHierarchicalResults(Results._cachedHierarchical, true)
+                end
+            end)
+            if not ok and dragRefreshTicker then
+                dragRefreshTicker:Cancel()
+                dragRefreshTicker = nil
+            end
+        end)
+    end
+    local function StopDragRefresh()
+        if dragRefreshTicker then
+            dragRefreshTicker:Cancel()
+            dragRefreshTicker = nil
+        end
+        if Results._cachedHierarchical and resultsFrame and resultsFrame:IsShown() then
+            Results:ShowHierarchicalResults(Results._cachedHierarchical, true)
+        end
+    end
+
     -- (native behavior). Shift+left-click drags the bar -- the
     -- editbox consumes presses so the parent's RegisterForDrag never
     -- fires over the input area; the drag has to live here.
@@ -338,12 +366,14 @@ function Search:CreateSearchFrame()
         self._dragMoving = true
         if self:HasFocus() then self:ClearFocus() end
         searchFrame:StartMoving()
+        StartDragRefresh()
     end)
     editBox:HookScript("OnMouseUp", function(self)
         if self._dragMoving and searchFrame:IsMovable() then
             searchFrame:StopMovingOrSizing()
             local point, _, relPoint, x, y = searchFrame:GetPoint()
             EasyFind.db.uiSearchPosition = {point, relPoint, x, y}
+            StopDragRefresh()
         end
         self._dragMoving = false
         self.blockFocus = nil
@@ -1488,11 +1518,13 @@ function Search:CreateSearchFrame()
     searchFrame:SetScript("OnDragStart", function(self)
         if EasyFind.db.lockPosition then return end
         self:StartMoving()
+        StartDragRefresh()
     end)
     searchFrame:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
         local point, _, relPoint, x, y = self:GetPoint()
         EasyFind.db.uiSearchPosition = {point, relPoint, x, y}
+        StopDragRefresh()
     end)
 
     self:UpdateScale()
@@ -2122,6 +2154,7 @@ function Search:ResetPositionAndSize()
         EasyFind.db.uiResultsScale = 1.0
         EasyFind.db.uiResultsWidth = 350
         EasyFind.db.uiResultsHeight = 280
+        EasyFind.db.uiResultsRows = 6
     end
     self:ResetPosition()
     self:UpdateScale()

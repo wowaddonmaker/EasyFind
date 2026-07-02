@@ -84,6 +84,7 @@ local UI_DEFAULTS = {
     uiResultsWidth = 350,
     uiSearchPosition = NIL,
     uiResultsHeight = 280,
+    uiResultsRows = 6,
     uiSearchFilters = DEFAULT_UI_FILTERS,
     lootSpecs = NIL,
     lootSearchSlots = true,
@@ -1078,6 +1079,38 @@ function Options:Initialize()
         return content
     end
 
+    -- Standalone "Tutorial" entry pinned to the sidebar bottom. Not a tab:
+    -- it closes the panel and opens the tutorial wizard, same as the
+    -- {L:tutorial} link on the Home page, and wears the same link blue.
+    local tutorialBtn = CreateFrame("Button", nil, sidebar)
+    tutorialBtn:SetSize(SIDEBAR_W - 16, 28)
+    tutorialBtn:SetPoint("BOTTOMLEFT", sidebar, "BOTTOMLEFT", 8, 8)
+    ns.CreateRoundedRectBorder(tutorialBtn)
+    ns.SetRoundedRectBarHeight(tutorialBtn, 10)
+    ns.SetRoundedRectBorderBgAlpha(tutorialBtn, 0)
+    HideRoundedBorder(tutorialBtn)
+    SetNavButtonBg(tutorialBtn, NAV_CLEAR)
+    local TUTORIAL_LINK_COLOR = ns.LINK_COLOR or { 0.44, 0.84, 1.0 }
+    local TUTORIAL_LINK_HOVER = ns.LINK_HOVER or { 1, 1, 1 }
+    local tutorialLabel = tutorialBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    tutorialLabel:SetPoint("LEFT", tutorialBtn, "LEFT", 10, 0)
+    tutorialLabel:SetPoint("RIGHT", tutorialBtn, "RIGHT", -10, 0)
+    tutorialLabel:SetJustifyH("LEFT")
+    tutorialLabel:SetText(L["OPT_TAB_TUTORIAL"])
+    tutorialLabel:SetTextColor(TUTORIAL_LINK_COLOR[1], TUTORIAL_LINK_COLOR[2], TUTORIAL_LINK_COLOR[3], 1)
+    tutorialBtn:SetScript("OnEnter", function(self)
+        SetNavButtonBg(self, NAV_HOVER)
+        tutorialLabel:SetTextColor(TUTORIAL_LINK_HOVER[1], TUTORIAL_LINK_HOVER[2], TUTORIAL_LINK_HOVER[3], 1)
+    end)
+    tutorialBtn:SetScript("OnLeave", function(self)
+        SetNavButtonBg(self, NAV_CLEAR)
+        tutorialLabel:SetTextColor(TUTORIAL_LINK_COLOR[1], TUTORIAL_LINK_COLOR[2], TUTORIAL_LINK_COLOR[3], 1)
+    end)
+    tutorialBtn:SetScript("OnClick", function()
+        optionsFrame:Hide()
+        if ns.Wizard and ns.Wizard.Show then ns.Wizard:Show(ns.Wizard.FEATURES_PAGE) end
+    end)
+
     local function GetCurrentKeybindText(action)
         local key1, key2 = GetBindingKey(action)
         if key1 then return key1 end
@@ -1676,6 +1709,26 @@ function Options:Initialize()
     scaleRow:SetPoint("TOPLEFT", uiFontPresetRow, "BOTTOMLEFT", 0, -8)
     optionsFrame.searchScaleRow = scaleRow
 
+    -- How many result rows the dropdown shows before scrolling. Replaces
+    -- the old pixel-height drag: the viewport height derives from row count
+    -- so it stays correct at any scale and font size.
+    local resultRowsChoices = {
+        { label = "1", value = 1 }, { label = "2", value = 2 },
+        { label = "3", value = 3 }, { label = "4", value = 4 },
+        { label = "5", value = 5 }, { label = "6", value = 6 },
+        { label = "7", value = 7 }, { label = "8", value = 8 },
+    }
+    local resultRowsRow = CreateFlyoutPresetRow(sec1, L["OPT_RESULT_ROWS"], resultRowsChoices,
+        function() return EasyFind.db.uiResultsRows or 6 end,
+        function(value)
+            EasyFind.db.uiResultsRows = value
+            RunSoon(function()
+                if ns.Search and ns.Search.RefreshResults then ns.Search:RefreshResults() end
+            end)
+        end, "EasyFindResultRows")
+    resultRowsRow:SetPoint("TOPLEFT", scaleRow, "BOTTOMLEFT", 0, -8)
+    optionsFrame.resultRowsRow = resultRowsRow
+
     local opacityChoices = {
         { label = "75%",  value = 0.75 },
         { label = "85%",  value = 0.85 },
@@ -1690,7 +1743,7 @@ function Options:Initialize()
                 if ns.Search and ns.Search.UpdateOpacity then ns.Search:UpdateOpacity() end
             end)
         end, "EasyFindOpacity")
-    searchOpacityRow:SetPoint("TOPLEFT", scaleRow, "BOTTOMLEFT", 0, -8)
+    searchOpacityRow:SetPoint("TOPLEFT", resultRowsRow, "BOTTOMLEFT", 0, -8)
     optionsFrame.searchOpacityRow = searchOpacityRow
 
     lockPositionCheckbox:ClearAllPoints()

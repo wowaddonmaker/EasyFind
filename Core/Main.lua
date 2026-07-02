@@ -49,6 +49,7 @@ local DB_DEFAULTS = {
     indicatorStyle = "EasyFind Arrow",
     indicatorColor = "Yellow",
     uiResultsHeight = 280,
+    uiResultsRows = 6,
     showTruncationMessage = true,
     hardResultsCap = false,
     pinnedUIItems = {},
