@@ -4,8 +4,6 @@ local Icons = ns.ResultIcons
 local Handlers = ns.ResultHandlers
 local Utils = ns.Utils
 
-local select = Utils.select
-
 local CALCULATOR_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\calculator-icon"
 
 local BUTTON_ICON_REGIONS = {"Icon", "icon", "NormalTexture", "normalTexture"}
@@ -167,39 +165,15 @@ local FLAT_CATEGORY_ICONS = {
     settingAddon  = { atlas = "QuestLog-icon-setting", color = { 1.0, 0.78, 0.35 } },
     title         = { tex = 514608, coords = { 0.016, 0.531, 0.324, 0.461 } },
     calculator    = { tex = CALCULATOR_ICON_TEX },
-    -- Resolved lazily from PaperDollSidebarTab3 so the icon always
-    -- matches whatever sprite-sheet region Blizzard uses for the
-    -- Equipment Manager sidebar tab. Filled in by ResolveGearSetIcon().
-    gearSet       = { atlas = "equipmentmanager-spec-border", desaturated = true, _resolved = true },
+    -- Equipment Manager sidebar tab icon (PaperDollSidebarTab3 ARTWORK
+    -- region of the PaperDollSidebarTabs sheet, same sheet as `title`).
+    gearSet       = { tex = 514608, coords = { 0.01562, 0.53125, 0.46875, 0.60547 } },
 }
 
 local BOSS_PORTRAIT_TEXCOORD = { 0.22, 0.78, 0, 1 }
 
 function Icons:IsBossResultData(data)
     return data and data.encounterID and data.category == "Boss"
-end
-
-local function ResolveGearSetIcon()
-    local entry = FLAT_CATEGORY_ICONS.gearSet
-    if entry and entry._resolved then return end
-    local tab = _G["PaperDollSidebarTab3"]
-    if not tab or not tab.GetRegions then return end
-    for ri = 1, select("#", tab:GetRegions()) do
-        local region = select(ri, tab:GetRegions())
-        if region and region:GetObjectType() == "Texture"
-           and region:GetDrawLayer() == "ARTWORK" then
-            local tex = region:GetTexture()
-            if tex and not (type(tex) == "string" and tex:find("^RT")) then
-                local ulX, ulY, _, _, _, _, lrX, lrY = region:GetTexCoord()
-                FLAT_CATEGORY_ICONS.gearSet = {
-                    tex = tex,
-                    coords = { ulX, lrX, ulY, lrY },
-                    _resolved = true,
-                }
-            end
-            return
-        end
-    end
 end
 
 -- Reputation icon by faction side. Either-faction (nil) uses the same
@@ -259,10 +233,7 @@ function Icons:GetFlatCategoryIcon(data)
     if data.category == "Currency" then return FLAT_CATEGORY_ICONS.currency end
     if data.statisticID or data.category == "Statistic" then return FLAT_CATEGORY_ICONS.statistic end
     if data.titleID then return FLAT_CATEGORY_ICONS.title end
-    if data.gearSetID then
-        ResolveGearSetIcon()
-        return FLAT_CATEGORY_ICONS.gearSet
-    end
+    if data.gearSetID then return FLAT_CATEGORY_ICONS.gearSet end
     if data.category == "Reputation" and data.factionID then
         return REP_FACTION_ICONS[data.factionSide or "either"]
     end

@@ -2,7 +2,6 @@ local _, ns = ...
 
 local Search = ns.Search
 local Filters = ns.Filters
-local Icons = ns.ResultIcons
 local Utils = ns.Utils
 local L = ns.L
 
@@ -217,22 +216,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             icon = row:CreateTexture(nil, "ARTWORK")
             icon:SetSize(ICON_SIZE, ICON_SIZE)
             icon:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
-            -- Gear sets pulls its icon from PaperDollSidebarTab3 so the
-            -- filter row matches whatever sprite Blizzard ships, instead
-            -- of the spec-border placeholder. Resolve once, then prefer
-            -- the cached tex/coords over the static iconAtlas fallback.
-            if opt.key == "gearSets" then
-                local resolved = Icons:GetFlatCategoryIcon({ gearSetID = true })
-                if resolved and resolved._resolved and resolved.tex then
-                    icon:SetTexture(resolved.tex)
-                    if resolved.coords then
-                        icon:SetTexCoord(resolved.coords[1], resolved.coords[2],
-                                         resolved.coords[3], resolved.coords[4])
-                    end
-                else
-                    icon:SetAtlas(opt.iconAtlas)
-                end
-            elseif opt.iconAtlas then
+            if opt.iconAtlas then
                 icon:SetAtlas(opt.iconAtlas)
             else
                 icon:SetTexture(opt.iconTex)

@@ -73,7 +73,8 @@ local UI_FILTER_OPTIONS = {
           { key = "pets",           label = _G["PETS"] or "Pets",            iconTex = 631719 },
           { key = "toys",           label = _G["TOYS"] or _G["TOY_BOX"] or "Toys",            iconTex = 454046 },
       } },
-    { key = "gearSets",    label = _G["EQUIPMENT_MANAGER"] or "Gear Sets",   iconAtlas = "equipmentmanager-spec-border" },
+    { key = "gearSets",    label = _G["EQUIPMENT_MANAGER"] or "Gear Sets",   iconTex = 514608,
+      iconCoords = { 0.01562, 0.53125, 0.46875, 0.60547 } },
     { key = "currencies",  label = _G["CURRENCY"] or "Currencies",  iconTex = 136452,
       flyoutRadio = {
           dbKey = "currencyFilterMode",
