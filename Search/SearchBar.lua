@@ -842,16 +842,26 @@ function Search:CreateSearchFrame()
         if self.ringInner then self.ringInner:SetShown(shown) end
     end
 
+    -- Tooltip only after a deliberate hover (~0.7s, the usual desktop
+    -- initial-delay convention) so quick trips to the button stay quiet.
+    local FILTER_TOOLTIP_DELAY = 0.7
     filterBtn:SetScript("OnEnter", function(self)
         self.btnBg:Show()
         SetRingShown(self, true)
-        GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
-        ns.ResultTooltips.ApplySearchTooltipScale(GameTooltip)
-        GameTooltip:SetText(L["FILTER_RESULTS"])
-        GameTooltip:AddLine(L["FILTER_RESULTS_TT"], 1, 1, 1, true)
-        GameTooltip:Show()
+        local token = (self._tooltipToken or 0) + 1
+        self._tooltipToken = token
+        Utils.SafeAfter(FILTER_TOOLTIP_DELAY, function()
+            if self._tooltipToken ~= token or not self:IsMouseOver() then return end
+            if searchFrame.filterDropdown and searchFrame.filterDropdown:IsShown() then return end
+            GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
+            ns.ResultTooltips.ApplySearchTooltipScale(GameTooltip)
+            GameTooltip:SetText(L["FILTER_RESULTS"])
+            GameTooltip:AddLine(L["FILTER_RESULTS_TT"], 1, 1, 1, true)
+            GameTooltip:Show()
+        end)
     end)
     filterBtn:SetScript("OnLeave", function(self)
+        self._tooltipToken = (self._tooltipToken or 0) + 1
         if not self.keyboardFocused then
             self.btnBg:Hide()
             SetRingShown(self, false)
