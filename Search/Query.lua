@@ -30,8 +30,11 @@ local function RefreshSearchAfterProviderLoad(anyChanged)
     local frame = Search:GetSearchFrame()
     local editBox = frame and frame.editBox
     local currentText = editBox and editBox:GetText()
-    if frame and frame:IsShown() and currentText and currentText ~= "" then
-        Search:OnSearchTextChanged(currentText, true)
+    -- A quick-filter browse ("@outfits") has empty text but still needs the
+    -- re-search once its provider finishes loading async.
+    if frame and frame:IsShown()
+       and ((currentText and currentText ~= "") or Search:GetQuickFilter()) then
+        Search:OnSearchTextChanged(currentText or "", true)
     end
 end
 
@@ -50,8 +53,11 @@ local function RefreshSearchAfterItemInfo()
     local frame = Search:GetSearchFrame()
     local editBox = frame and frame.editBox
     local currentText = editBox and editBox:GetText()
-    if frame and frame:IsShown() and currentText and currentText ~= "" then
-        Search:OnSearchTextChanged(currentText, true)
+    -- A quick-filter browse ("@outfits") has empty text but still needs the
+    -- re-search once its provider finishes loading async.
+    if frame and frame:IsShown()
+       and ((currentText and currentText ~= "") or Search:GetQuickFilter()) then
+        Search:OnSearchTextChanged(currentText or "", true)
     end
 end
 itemInfoFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
@@ -86,7 +92,7 @@ function Search:OnSearchTextChanged(text, force)
     if text then text = strtrim(text) end
     Tooltips:ClearResultTooltips()
     local quickFilter = self:GetQuickFilter()
-    if not text or text == "" then
+    if (not text or text == "") and not quickFilter then
         if ns.Database and ns.Database.CancelDynamicWarmup then
             ns.Database:CancelDynamicWarmup()
         end
@@ -101,7 +107,10 @@ function Search:OnSearchTextChanged(text, force)
     end
 
     local activeFilters = EasyFind.db.uiSearchFilters
-    local providerFilters = quickFilter and nil or activeFilters
+    -- NOT `quickFilter and nil or activeFilters`: `x and nil or y` always
+    -- yields y in Lua, which silently fed the filter menu into the engine
+    -- under a quick filter and blocked its provider from loading.
+    local providerFilters = not quickFilter and activeFilters or nil
     local providerContext = SearchEngine and SearchEngine:BuildContext(text, quickFilter, providerFilters)
     local explicitStatistics = providerContext and SearchEngine
         and SearchEngine.LooksLikeStatistics and SearchEngine:LooksLikeStatistics(providerContext)
@@ -124,7 +133,7 @@ function Search:OnSearchTextChanged(text, force)
     -- Collection items (mounts/toys/pets/outfits/appearance sets) are
     -- skipped when their own filter is off OR the parent Collections
     -- toggle is off. Loot is independent.
-    local filters = quickFilter and nil or EasyFind.db.uiSearchFilters
+    local filters = not quickFilter and EasyFind.db.uiSearchFilters or nil
     local collectionsOff = filters and filters.collections == false
     local optionsOff = filters and filters.options == false
     local statisticsOff = filters and filters.statistics == false and not explicitStatistics
@@ -197,6 +206,19 @@ function Search:OnSearchTextChanged(text, force)
     if calculatorData or calculatorLauncher then
         results = SCRATCH.calculatorResults
         wipe(results)
+    elseif quickFilter and (not text or text == "") then
+        -- Quick-filter browse: no query text, so surface the whole category
+        -- (e.g. "@outfits" lists every outfit). SearchUI returns nothing for an
+        -- empty query, so collect the category's entries directly here.
+        SCRATCH.browseResults = SCRATCH.browseResults or {}
+        results = SCRATCH.browseResults
+        wipe(results)
+        local data = ns.Database.uiSearchData
+        for i = 1, #data do
+            if self:QuickFilterAllowsData(data[i], quickFilter) then
+                results[#results + 1] = { data = data[i], score = 0 }
+            end
+        end
     else
         results = ns.Database:SearchUI(text, skipCategories)
     end

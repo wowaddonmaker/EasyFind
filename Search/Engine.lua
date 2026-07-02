@@ -230,7 +230,11 @@ function Engine:ShouldLoadForLowResults(ctx, spec, resultCount)
 end
 
 function Engine:RequestProviders(ctx, onChanged, resultCount)
-    if not ctx or #(ctx.query or "") < 2 then return false end
+    if not ctx then return false end
+    -- A quick filter (e.g. "@outfits") is an explicit request for a whole
+    -- category, so load its provider even with no extra query text -- the
+    -- point of "@" is to see that category regardless of the filter menu.
+    if #(ctx.query or "") < 2 and not ctx.quickFilter then return false end
 
     local requested = self:RequestOptions(ctx, onChanged, resultCount)
 
