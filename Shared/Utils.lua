@@ -1714,8 +1714,15 @@ function ns.BuildFlowText(parent, str, opts)
                 glow:Hide()
                 fs:SetTextColor(LC[1], LC[2], LC[3])
             end)
-            local onClick = linkDispatch[atom.id]
-            if onClick then chip:SetScript("OnClick", onClick) end
+            local action = linkDispatch[atom.id]
+            if type(action) == "table" then
+                -- Hover span: styled like a link but not clickable; fires
+                -- enter/leave callbacks (e.g. spotlight a spot on an image).
+                if action.onEnter then chip:HookScript("OnEnter", action.onEnter) end
+                if action.onLeave then chip:HookScript("OnLeave", action.onLeave) end
+            elseif action then
+                chip:SetScript("OnClick", action)
+            end
         end
         x = cx + atom.w
     end

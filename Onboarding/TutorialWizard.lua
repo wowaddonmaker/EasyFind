@@ -45,6 +45,10 @@ local SEARCH_TUTORIAL_SLIDES = {
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
         text = L["TUT_SLIDE_SEARCH_INTRO"],
+        -- Hovering the "Alt + num" span rings the badge on the first row.
+        hoverRings = {
+            ["hl:altnum"] = { x = 428, y = 104, w = 42, h = 22 },
+        },
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-pets-hires",
@@ -64,30 +68,51 @@ local SEARCH_TUTORIAL_SLIDES = {
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
         text = L["TUT_SLIDE_PINNING"],
+        -- HD Gauntlet cursor on the highlighted Pin menu row.
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 30,
+            ox = 272, oy = 112,
+        },
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-shortkey-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
         text = L["TUT_SLIDE_SHORTKEYS"],
+        -- HD Gauntlet cursor on the highlighted Add shortkey menu row.
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 30,
+            ox = 328, oy = 151,
+        },
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-wowhead-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
         text = L["TUT_SLIDE_WOWHEAD"],
+        -- HD Gauntlet cursor on the highlighted Wowhead menu row.
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 30,
+            ox = 368, oy = 188,
+        },
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-filters-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
-        text = L["OPT_HOME_FILTER"],
+        text = L["TUT_SLIDE_FILTER_MENU"],
         -- HD Gauntlet cursor on the filter button to show how to open the menu.
         overlay = {
             tex = GAUNTLET_CURSOR_TEX,
             texCoord = GAUNTLET_CURSOR_TEXCOORD,
             size = 34,
-            ox = 367, oy = 16,
+            ox = 369, oy = 12,
         },
     },
     {
@@ -107,6 +132,13 @@ local SEARCH_TUTORIAL_SLIDES = {
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
         text = L["TUT_SLIDE_CURRENCY_REP"],
+        -- HD Gauntlet cursor on the highlighted Show as XP bar menu row.
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 28,
+            ox = 286, oy = 219,
+        },
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-macros-hires",
@@ -118,7 +150,7 @@ local SEARCH_TUTORIAL_SLIDES = {
             tex = GAUNTLET_CURSOR_TEX,
             texCoord = GAUNTLET_CURSOR_TEXCOORD,
             size = 30,
-            ox = 285, oy = 152,
+            ox = 285, oy = 180,
         },
     },
     {
@@ -608,6 +640,12 @@ local function BuildPage2(parent)
         local overlayTex = d:CreateTexture(nil, "OVERLAY")
         overlayTex:Hide()
 
+        -- Gold ring shown over the slide image while a hover span in the
+        -- slide text is hovered (slide.hoverRings maps span id -> rect).
+        local hoverRingTex = d:CreateTexture(nil, "OVERLAY")
+        hoverRingTex:SetTexture("Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-ring")
+        hoverRingTex:Hide()
+
         local liveDemo
         for _, s in ipairs(slides) do
             if s.live == "searchbar" then
@@ -663,15 +701,32 @@ local function BuildPage2(parent)
 
             local slide = slides[idx]
             overlayTex:Hide()
+            hoverRingTex:Hide()
             if slideFlow then
                 slideFlow:Hide()
                 slideFlow:SetParent(nil)
                 slideFlow = nil
             end
+            local dispatch = linkDispatch
+            if slide.hoverRings then
+                dispatch = {}
+                for id, fn in pairs(linkDispatch) do dispatch[id] = fn end
+                for id, ring in pairs(slide.hoverRings) do
+                    dispatch[id] = {
+                        onEnter = function()
+                            hoverRingTex:ClearAllPoints()
+                            hoverRingTex:SetPoint("TOPLEFT", image, "TOPLEFT", ring.x, -ring.y)
+                            hoverRingTex:SetSize(ring.w, ring.h)
+                            hoverRingTex:Show()
+                        end,
+                        onLeave = function() hoverRingTex:Hide() end,
+                    }
+                end
+            end
             slideFlow = ns.BuildFlowText(d, slide.text or "", {
                 width = SLIDE_FLOW_WIDTH,
                 font = "GameFontHighlightSmall",
-                linkDispatch = linkDispatch,
+                linkDispatch = dispatch,
                 textColor = TEXT_BODY,
                 interWeight = "regular",
                 interSize = 11,
