@@ -273,10 +273,21 @@ function Highlight:CreateHighlightFrame()
         if watchAccum < 0.1 then return end
         watchAccum = 0
         local hoverFrame = self._hoverDismissFrame
-        if hoverFrame and canHoverDismiss()
-           and hoverFrame.IsMouseOver and hoverFrame:IsMouseOver() then
-            clearTerminalHighlight()
-            return
+        if hoverFrame and hoverFrame.IsMouseOver and hoverFrame:IsMouseOver() then
+            -- A disabled target is a dead end the guide can never click, so
+            -- it dismisses on hover even mid-breadcrumb: a guide stuck at the
+            -- furthest reachable step (a menu grayed out by level) would
+            -- otherwise leave an un-clearable highlight, since an
+            -- intermediate step never satisfies canHoverDismiss(). Enabled
+            -- breadcrumbs still persist; both respect the min-display grace.
+            local pastGrace = not highlightShownAt
+                or (GetTime() - highlightShownAt) >= HOVER_MIN_DISPLAY
+            local disabledDeadEnd = pastGrace
+                and hoverFrame.IsEnabled and not hoverFrame:IsEnabled()
+            if canHoverDismiss() or disabledDeadEnd then
+                clearTerminalHighlight()
+                return
+            end
         end
         local target = self._targetFrame
         local terminal = isTerminalHighlight()
@@ -773,10 +784,6 @@ local function HandleWaitTabIndex(self, step, isLastStep)
     local tabBtn = self:GetTabButton(step.waitForFrame, step.tabIndex)
     if tabBtn then
         self:HighlightFrame(tabBtn)
-        local isEnabled = not tabBtn.IsEnabled or tabBtn:IsEnabled()
-        if canHoverDismiss() and not isEnabled and tabBtn:IsMouseOver() then
-            self:Cancel()
-        end
     elseif isLastStep then
         self:ShowInstruction(step.text or L["GUIDE_CLICK_CORRECT_TAB"])
     end
@@ -826,10 +833,6 @@ local function HandleWaitSideTab(self, step, isLastStep)
     local sideBtn = self:GetSideTabButton(step.waitForFrame, step.sideTabIndex)
     if sideBtn and sideBtn:IsShown() then
         self:HighlightFrame(sideBtn)
-        local isEnabled = not sideBtn.IsEnabled or sideBtn:IsEnabled()
-        if canHoverDismiss() and not isEnabled and sideBtn:IsMouseOver() then
-            self:Cancel()
-        end
     elseif isLastStep then
         self:ShowInstruction(step.text or L["GUIDE_CLICK_OPTION_LEFT"])
     elseif currentStepIndex > 1 then
@@ -850,10 +853,6 @@ local function HandleWaitPvPSideTab(self, step, isLastStep)
     local pvpBtn = self:GetPvPSideTabButton(step.waitForFrame, step.pvpSideTabIndex)
     if pvpBtn and pvpBtn:IsShown() then
         self:HighlightFrame(pvpBtn)
-        local isEnabled = not pvpBtn.IsEnabled or pvpBtn:IsEnabled()
-        if canHoverDismiss() and not isEnabled and pvpBtn:IsMouseOver() then
-            self:Cancel()
-        end
     elseif isLastStep then
         self:ShowInstruction(step.text or L["GUIDE_CLICK_OPTION_LEFT"])
     elseif currentStepIndex > 1 then
