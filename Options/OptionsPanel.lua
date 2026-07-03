@@ -9,9 +9,6 @@ local mfloor, mmin, mmax = Utils.mfloor, Utils.mmin, Utils.mmax
 local tostring = Utils.tostring
 local tinsert = Utils.tinsert
 local IsMouseButtonDown = IsMouseButtonDown
-local IsAltKeyDown = IsAltKeyDown
-local IsControlKeyDown = IsControlKeyDown
-local IsShiftKeyDown = IsShiftKeyDown
 
 local SMALL_HIGHLIGHT_FONT = _G["GameFontHighlightSmall"] or _G["GameFontNormalSmall"] or _G["GameFontNormal"]
 
@@ -551,30 +548,6 @@ local function StyleWizardBackground(frame)
     frame:HookScript("OnSizeChanged", ApplyWizardPanelGloss)
 end
 
-local function CreateModernCloseButton(parent)
-    local closeBtn = CreateFrame("Button", nil, parent)
-    closeBtn:SetSize(18, 18)
-    closeBtn:SetPoint("TOPRIGHT", parent, "TOPRIGHT", -10, -10)
-    local function MakeStroke()
-        local tex = closeBtn:CreateTexture(nil, "OVERLAY")
-        tex:SetTexture("Interface\\Buttons\\WHITE8x8")
-        tex:SetSize(16, 1.5)
-        tex:SetPoint("CENTER")
-        return tex
-    end
-    local stroke1 = MakeStroke(); stroke1:SetRotation(math.pi / 4)
-    local stroke2 = MakeStroke(); stroke2:SetRotation(-math.pi / 4)
-    local function SetColor(r, g, b)
-        stroke1:SetVertexColor(r, g, b, 1)
-        stroke2:SetVertexColor(r, g, b, 1)
-    end
-    SetColor(Utils.RGB(TEXT_DIM))
-    closeBtn:SetScript("OnEnter", function() SetColor(1, 1, 1) end)
-    closeBtn:SetScript("OnLeave", function() SetColor(Utils.RGB(TEXT_DIM)) end)
-    closeBtn:SetScript("OnClick", function() parent:Hide() end)
-    return closeBtn
-end
-
 local SetModernButtonFill = ns.SetRoundedRectBorderFillColor
 local SetModernButtonAlpha = ns.SetRoundedRectBorderBgAlpha
 
@@ -947,151 +920,28 @@ local function BuildHomeTab(ctx)
     local tocVersion = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("EasyFind", "Version")
     homeVersion:SetText("|cFF888888v" .. (tocVersion or "") .. "|r")
 
-    local LINK_COLOR = ns.LINK_COLOR
-    local LINK_HOVER = ns.LINK_HOVER
     local FLOW_FONT = "GameFontHighlightSmall"
     local FLOW_W = FRAME_W - 24
 
-    local function HexRGB(hex)
-        if not hex or #hex < 6 then return 1, 1, 1 end
-        return tonumber(hex:sub(1, 2), 16) / 255, tonumber(hex:sub(3, 4), 16) / 255, tonumber(hex:sub(5, 6), 16) / 255
-    end
-
-    local function ParseFlowSegments(str)
-        local segs, i, n = {}, 1, #str
-        while i <= n do
-            local s, e, body = str:find("{(.-)}", i)
-            if not s then
-                segs[#segs + 1] = { kind = "text", text = str:sub(i) }
-                break
-            end
-            if s > i then
-                segs[#segs + 1] = { kind = "text", text = str:sub(i, s - 1) }
-            end
-            local tag, arg = body:match("^(%a+):?(.*)$")
-            if tag == "L" then
-                local cs, ce = str:find("{/L}", e + 1, true)
-                segs[#segs + 1] = { kind = "link", text = str:sub(e + 1, (cs or e + 1) - 1), id = arg }
-                i = (ce or e) + 1
-            elseif tag == "C" then
-                local cs, ce = str:find("{/C}", e + 1, true)
-                local r, g, b = HexRGB(arg)
-                segs[#segs + 1] = { kind = "text", text = str:sub(e + 1, (cs or e + 1) - 1), color = { r, g, b } }
-                i = (ce or e) + 1
-            else
-                segs[#segs + 1] = { kind = "text", text = str:sub(s, e) }
-                i = e + 1
-            end
-        end
-        return segs
-    end
-
-    local function BuildFlowText(anchorTo, relPoint, offX, offY, str)
-        local container = CreateFrame("Frame", nil, homeTab)
-        container:SetPoint("TOPLEFT", anchorTo, relPoint, offX, offY)
-        container:SetWidth(FLOW_W)
-
-        local measure = container:CreateFontString(nil, "OVERLAY", FLOW_FONT)
-        measure:Hide()
-        local _, fontH = measure:GetFont()
-        fontH = fontH or 12
-        local function widthOf(text)
-            measure:SetText(text)
-            return measure:GetStringWidth()
-        end
-        local spaceW = widthOf(" ")
-        if spaceW <= 0 then spaceW = 3 end
-
-        local lineH = mfloor(fontH + 5)
-
-        local atoms = {}
-        local pendingSpace = false
-        local function addText(text, color)
-            if text:sub(1, 1) == " " then pendingSpace = true end
-            for word in text:gmatch("%S+") do
-                atoms[#atoms + 1] = { kind = "word", text = word, w = widthOf(word), spaceBefore = pendingSpace, color = color }
-                pendingSpace = true
-            end
-            pendingSpace = (text:sub(-1) == " ")
-        end
-        for _, seg in ipairs(ParseFlowSegments(str)) do
-            if seg.kind == "text" then
-                addText(seg.text, seg.color)
-            else
-                atoms[#atoms + 1] = { kind = "link", text = seg.text, id = seg.id,
-                    w = widthOf(seg.text), spaceBefore = pendingSpace }
-                pendingSpace = false
-            end
-        end
-
-        local x, lineTop = 0, 0
-        for _, atom in ipairs(atoms) do
-            local gap = (atom.spaceBefore and x > 0) and spaceW or 0
-            if x > 0 and (x + gap + atom.w) > FLOW_W then
-                lineTop = lineTop - lineH
-                x, gap = 0, 0
-            end
-            local cx = x + gap
-            local cy = lineTop - lineH / 2
-            if atom.kind == "word" then
-                local fs = container:CreateFontString(nil, "OVERLAY", FLOW_FONT)
-                fs:SetPoint("LEFT", container, "TOPLEFT", cx, cy)
-                fs:SetText(atom.text)
-                if atom.color then fs:SetTextColor(atom.color[1], atom.color[2], atom.color[3]) end
-            elseif atom.kind == "link" then
-                local slot = CreateFrame("Frame", nil, container)
-                slot:SetSize(atom.w, lineH)
-                slot:SetPoint("LEFT", container, "TOPLEFT", cx, cy)
-                local chip = CreateFrame("Button", nil, slot)
-                chip:SetSize(atom.w, fontH + 4)
-                chip:SetPoint("CENTER", slot, "CENTER", 0, 0)
-                local glow = chip:CreateTexture(nil, "BACKGROUND")
-                glow:SetPoint("CENTER", chip, "CENTER", 0, 0)
-                glow:SetSize(atom.w + 20, fontH + 16)
-                glow:SetAtlas("collections-newglow")
-                glow:SetVertexColor(unpack(ns.LINK_GLOW_COLOR))
-                glow:SetBlendMode("ADD")
-                glow:Hide()
-                local glowPulse = ns.CreateBouncePulse(glow, 1.0, 0.5, 0.9)
-                local fs = chip:CreateFontString(nil, "OVERLAY", FLOW_FONT)
-                fs:SetAllPoints(chip)
-                fs:SetJustifyH("CENTER")
-                fs:SetText(atom.text)
-                fs:SetTextColor(LINK_COLOR[1], LINK_COLOR[2], LINK_COLOR[3])
-                chip:SetScript("OnEnter", function()
-                    glow:Show()
-                    glowPulse:Play()
-                    fs:SetTextColor(LINK_HOVER[1], LINK_HOVER[2], LINK_HOVER[3])
-                end)
-                chip:SetScript("OnLeave", function()
-                    glowPulse:Stop()
-                    glow:Hide()
-                    fs:SetTextColor(LINK_COLOR[1], LINK_COLOR[2], LINK_COLOR[3])
-                end)
-                if atom.id == "setbind" then
-                    chip:SetScript("OnClick", function()
-                        if ctx.bindsTabIndex then SwitchToTab(ctx.bindsTabIndex) end
-                        FlashBindButton()
-                    end)
-                elseif atom.id == "maptab" then
-                    chip:SetScript("OnClick", function()
-                        if ns.MapTab and ns.MapTab.Focus then ns.MapTab:Focus() end
-                    end)
-                elseif atom.id == "tutorial" then
-                    chip:SetScript("OnClick", function()
-                        optionsFrame:Hide()
-                        if ns.Wizard and ns.Wizard.Show then ns.Wizard:Show(ns.Wizard.FEATURES_PAGE) end
-                    end)
-                end
-            end
-            x = cx + atom.w
-        end
-
-        container:SetHeight(-lineTop + lineH)
-        return container
-    end
-
-    local homeQuick = BuildFlowText(homeIcon, "BOTTOMLEFT", 0, -20, L["OPT_HOME_QUICKSTART"])
+    local homeQuick = ns.BuildFlowText(homeTab, L["OPT_HOME_QUICKSTART"], {
+        width = FLOW_W,
+        font = FLOW_FONT,
+        textColor = { 1, 1, 1 },
+        linkDispatch = {
+            setbind = function()
+                if ctx.bindsTabIndex then SwitchToTab(ctx.bindsTabIndex) end
+                FlashBindButton()
+            end,
+            maptab = function()
+                if ns.MapTab and ns.MapTab.Focus then ns.MapTab:Focus() end
+            end,
+            tutorial = function()
+                optionsFrame:Hide()
+                if ns.Wizard and ns.Wizard.Show then ns.Wizard:Show(ns.Wizard.FEATURES_PAGE) end
+            end,
+        },
+    })
+    homeQuick:SetPoint("TOPLEFT", homeIcon, "BOTTOMLEFT", 0, -20)
     local thankYou = homeTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     thankYou:SetPoint("BOTTOMRIGHT", homeTab, "BOTTOMRIGHT", -16, 4)
     thankYou:SetText(L["OPT_HOME_WELCOME"])
@@ -2610,7 +2460,9 @@ function Options:Initialize()
     title:SetTextColor(Utils.RGB(TEXT_BODY, 1))
     optionsFrame.titleText = title
 
-    local closeBtn = CreateModernCloseButton(optionsFrame)
+    local closeBtn = ns.CreateCloseX(optionsFrame)
+    closeBtn:SetPoint("TOPRIGHT", -10, -10)
+    closeBtn:SetScript("OnClick", function() optionsFrame:Hide() end)
     optionsFrame.closeBtn = closeBtn
 
     local contentBorder = CreateFrame("Frame", nil, optionsFrame)
@@ -2780,18 +2632,13 @@ function Options:Initialize()
             keybindBtn:LockHighlight()
             Utils.SafeCallMethod(keybindBtn, "EnableKeyboard", true)
             keybindBtn:SetScript("OnKeyDown", function(self, key)
-                if Utils.IsModifierKey(key) then return end
-                if key == "ESCAPE" then
+                local combo = Utils.CaptureKeybindCombo(key)
+                if not combo then return end
+                if combo == "stop" then
                     StopCapture(self, action)
                     return
                 end
-                -- Bare SPACE / ENTER / WASD silently overwriting jump,
-                -- accept, or movement on a stray capture-keypress has
-                -- bricked spacebar after /reload before. Only bind these
-                -- when modified.
-                local hasMod = IsAltKeyDown() or IsControlKeyDown() or IsShiftKeyDown()
-                if not hasMod and Utils.IsReservedBareKey(key) then return end
-                EasyFind:SetAccountKeybind(action, Utils.ModifierCombo(key))
+                EasyFind:SetAccountKeybind(action, combo)
                 StopCapture(self, action)
             end)
         end

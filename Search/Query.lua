@@ -50,15 +50,7 @@ local itemInfoFrame = CreateFrame("Frame")
 local pendingItemRefresh = false
 local function RefreshSearchAfterItemInfo()
     pendingItemRefresh = false
-    local frame = Search:GetSearchFrame()
-    local editBox = frame and frame.editBox
-    local currentText = editBox and editBox:GetText()
-    -- A quick-filter browse ("@outfits") has empty text but still needs the
-    -- re-search once its provider finishes loading async.
-    if frame and frame:IsShown()
-       and ((currentText and currentText ~= "") or Search:GetQuickFilter()) then
-        Search:OnSearchTextChanged(currentText or "", true)
-    end
+    RefreshSearchAfterProviderLoad(true)
 end
 itemInfoFrame:RegisterEvent("GET_ITEM_INFO_RECEIVED")
 itemInfoFrame:SetScript("OnEvent", function(_, _, itemID, success)

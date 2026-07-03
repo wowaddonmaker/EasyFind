@@ -33,14 +33,8 @@ local function IsLootStatSearchWord(word)
     return Database:IsLootStatSearchWord(word)
 end
 
-local BOSS_QUERY_WORDS = {
-    boss = true, bosses = true, dungeon = true, dungeons = true,
-    encounter = true, encounters = true, raid = true, raids = true,
-}
-
-local STAT_QUERY_WORDS = {
-    stat = true, stats = true, statistic = true, statistics = true,
-}
+local BOSS_QUERY_WORDS = ns.BOSS_QUERY_WORDS
+local STAT_QUERY_WORDS = ns.STAT_QUERY_WORDS
 
 -- Unbounded string-keyed word cache. The previous FIFO-256 design
 -- thrashed for scoring: a single keystroke scoring 5000+ entries

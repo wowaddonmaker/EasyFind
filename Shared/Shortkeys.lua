@@ -364,11 +364,9 @@ local function StartCapture(popup)
     popup.bindBtn:SetText(L["OPT_KB_PRESS_KEY"])
     Utils.SafeCallMethod(popup, "EnableKeyboard", true)
     popup:SetScript("OnKeyDown", function(self, key)
-        if Utils.IsModifierKey(key) then return end
-        if key == "ESCAPE" then StopCapture(self); return end
-        local hasMod = IsAltKeyDown() or IsControlKeyDown() or IsShiftKeyDown()
-        if not hasMod and Utils.IsReservedBareKey(key) then return end
-        local combo = Utils.ModifierCombo(key)
+        local combo = Utils.CaptureKeybindCombo(key)
+        if not combo then return end
+        if combo == "stop" then StopCapture(self); return end
         local rowKey, name, cs = self.rowKey, self.skName, self.charSpecific
         StopCapture(self)
         self:Hide()

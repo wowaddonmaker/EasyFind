@@ -12,8 +12,6 @@ local mfloor = Utils.mfloor
 
 local CreateFrame = CreateFrame
 local GameTooltip = GameTooltip
-local IsControlKeyDown = IsControlKeyDown
-local IsShiftKeyDown = IsShiftKeyDown
 
 local function RefocusSearchEditBox()
     SearchFocus:RefocusSearchEditBox()
@@ -307,14 +305,12 @@ function Rows.CreateSettingWidgets(resultRow)
         end
         Utils.SafeCallMethod(btn, "EnableKeyboard", true)
         btn:SetScript("OnKeyDown", function(self, key)
-            if Utils.IsModifierKey(key) then return end
-            if key == "ESCAPE" then
+            local combo = Utils.CaptureKeybindCombo(key)
+            if not combo then return end
+            if combo == "stop" then
                 StopKeybindCapture(self)
                 return
             end
-            local hasMod = IsAltKeyDown() or IsControlKeyDown() or IsShiftKeyDown()
-            if not hasMod and Utils.IsReservedBareKey(key) then return end
-            local combo = Utils.ModifierCombo(key)
             -- Only clear the slot we're editing so the other slot
             -- (primary vs alt) stays intact.
             local k1, k2 = GetBindingKey(action)

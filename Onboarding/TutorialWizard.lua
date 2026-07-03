@@ -12,7 +12,6 @@ local SafeAfter = Utils.SafeAfter
 local CreateFrame   = CreateFrame
 local UIParent      = UIParent
 local GetBindingKey = GetBindingKey
-local IsAltKeyDown, IsControlKeyDown, IsShiftKeyDown = IsAltKeyDown, IsControlKeyDown, IsShiftKeyDown
 
 local GOLD       = ns.GOLD_COLOR
 local WIZ_W, WIZ_H = 544, 408
@@ -877,14 +876,13 @@ local function CreateKbWidget(parent, action, label)
         self._label:SetText(L["TUT_KB_PRESS_KEY"])
         SafeCallMethod(self, "EnableKeyboard", true)
         self:SetScript("OnKeyDown", function(s, key)
-            if Utils.IsModifierKey(key) then return end
-            if key == "ESCAPE" then
+            local combo = Utils.CaptureKeybindCombo(key)
+            if not combo then return end
+            if combo == "stop" then
                 StopKeybindCapture()
                 return
             end
-            local hasMod = IsAltKeyDown() or IsControlKeyDown() or IsShiftKeyDown()
-            if not hasMod and Utils.IsReservedBareKey(key) then return end
-            EasyFind:SetAccountKeybind(action, Utils.ModifierCombo(key))
+            EasyFind:SetAccountKeybind(action, combo)
             StopKeybindCapture()
         end)
     end)

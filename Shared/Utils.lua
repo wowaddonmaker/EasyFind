@@ -47,11 +47,14 @@ Utils.tostring = tostring
 Utils.tonumber = tonumber
 Utils.ErrorHandler = ErrorHandler
 
+-- Combat vetoes are not queued: callers owning combat-sensitive state must
+-- arrange their own regen replay. Did-not-run paths return false plus a
+-- reason ("combat", "no-object", "no-method").
 function Utils.SafeCallMethod(obj, method, ...)
-    if InCombatLockdown() then return false end
-    if not obj then return false end
+    if InCombatLockdown() then return false, "combat" end
+    if not obj then return false, "no-object" end
     local fn = obj[method]
-    if not fn then return false end
+    if not fn then return false, "no-method" end
     local ok, result = xpcall(fn, ErrorHandler, obj, ...)
     if not ok then
         Utils.DebugPrint("SafeCallMethod failed: " .. tostring(result))
@@ -212,6 +215,22 @@ function Utils.ModifierCombo(key)
     if IsControlKeyDown and IsControlKeyDown() then combo = combo .. "CTRL-" end
     if IsShiftKeyDown and IsShiftKeyDown() then combo = combo .. "SHIFT-" end
     return combo .. (key or "")
+end
+
+-- Shared key validation for keybind-capture OnKeyDown handlers. Returns nil
+-- (ignore the keypress), "stop" (ESCAPE ends the capture), or the modifier
+-- combo string to bind.
+function Utils.CaptureKeybindCombo(key)
+    if Utils.IsModifierKey(key) then return nil end
+    if key == "ESCAPE" then return "stop" end
+    -- Bare SPACE / ENTER / WASD silently overwriting jump, accept, or
+    -- movement on a stray capture-keypress has bricked spacebar after
+    -- /reload before. Only bind these when modified.
+    local hasMod = (IsAltKeyDown and IsAltKeyDown())
+        or (IsControlKeyDown and IsControlKeyDown())
+        or (IsShiftKeyDown and IsShiftKeyDown())
+    if not hasMod and Utils.IsReservedBareKey(key) then return nil end
+    return Utils.ModifierCombo(key)
 end
 
 function Utils.GetVerticalNavIntent(key)
@@ -799,6 +818,9 @@ function Utils.GetItemEquipLoc(itemID)
 end
 ns.EYE_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\eye"
 ns.COMMANDS_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\commands-icon"
+ns.RADIO_OFF_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-off"
+ns.RADIO_ON_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-on"
+ns.FLYOUT_ARROW_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\flyout-arrow"
 ns.SEARCH_WINDOW_FILL_COLOR = {0.052, 0.052, 0.060}
 ns.TEXT_PRIMARY = {1.00, 0.97, 0.86}
 ns.TEXT_BODY = {0.78, 0.78, 0.80}
@@ -1181,6 +1203,17 @@ function Utils.InstallMenuRowHighlight(row)
         if self.keyboardOverlay then self.keyboardOverlay:Hide() end
     end
     return row.SetMenuHighlightFocused
+end
+
+function Utils.SetCheckboxTextures(check, size)
+    check:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
+    check:GetNormalTexture():SetSize(size, size)
+    check:GetNormalTexture():ClearAllPoints()
+    check:GetNormalTexture():SetPoint("LEFT", 4, 0)
+    check:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
+    check:GetCheckedTexture():SetSize(size, size)
+    check:GetCheckedTexture():ClearAllPoints()
+    check:GetCheckedTexture():SetPoint("LEFT", 4, 0)
 end
 
 function ns.CreateModernButton(parent, text, width, height)
@@ -2481,7 +2514,7 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
         bar:NudgeVisible()
     end)
 
-    bar:SetScript("OnUpdate", function(self)
+    Utils.SafeOnUpdate(bar, function(self)
         if self.isDragging then
             if not IsMouseButtonDown("LeftButton") then
                 self.isDragging = false
@@ -2653,7 +2686,8 @@ function Utils.ClickButton(btn, mouseButton)
     end
     local hasScript, onClick = pcall(btn.GetScript, btn, "OnClick")
     if hasScript and onClick then
-        local ok, err = xpcall(onClick, ErrorHandler, btn, mouseButton)
+        -- Fallback skips PreClick/PostClick and the secure click path.
+        local ok, err = xpcall(onClick, ErrorHandler, btn, mouseButton, false)
         if ok then return true end
         Utils.DebugPrint("Button OnClick failed: " .. tostring(err))
     end
@@ -2905,7 +2939,7 @@ local function CreateCursorMenu(globalName)
     end
     menu:SetScript("OnShow", CursorMenuOnShow)
     menu:SetScript("OnHide", CursorMenuOnHide)
-    menu:SetScript("OnUpdate", CursorMenuOnUpdate)
+    Utils.SafeOnUpdate(menu, CursorMenuOnUpdate)
     menu:SetScript("OnEvent", CursorMenuOnEvent)
     menu:SetScript("OnKeyDown", CursorMenuOnKeyDown)
 

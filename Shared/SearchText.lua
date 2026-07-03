@@ -267,5 +267,16 @@ function SearchText.FindContiguous(text, query)
     return { from = pos, to = pos + #normQuery - 1 }
 end
 
-if ns then ns.SearchText = SearchText end
+if ns then
+    ns.SearchText = SearchText
+    -- Query-intent word sets shared by Search/Engine.lua (provider loading)
+    -- and Database/Search.lua (scoring) so the two cannot drift apart.
+    ns.BOSS_QUERY_WORDS = {
+        boss = true, bosses = true, dungeon = true, dungeons = true,
+        encounter = true, encounters = true, raid = true, raids = true,
+    }
+    ns.STAT_QUERY_WORDS = {
+        stat = true, stats = true, statistic = true, statistics = true,
+    }
+end
 return SearchText

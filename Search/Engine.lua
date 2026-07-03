@@ -29,15 +29,8 @@ local OPTION_WORDS = {
     volume = true,
 }
 
-local STATISTICS_WORD_LIST = { "stat", "stats", "statistic", "statistics" }
-local STATISTICS_WORDS = {
-    stat = true, stats = true, statistic = true, statistics = true,
-}
-local BOSS_WORD_LIST = { "boss", "bosses", "dungeon", "dungeons", "encounter", "encounters", "raid", "raids" }
-local BOSS_WORDS = {
-    boss = true, bosses = true, dungeon = true, dungeons = true,
-    encounter = true, encounters = true, raid = true, raids = true,
-}
+local STATISTICS_WORDS = ns.STAT_QUERY_WORDS
+local BOSS_WORDS = ns.BOSS_QUERY_WORDS
 
 local COLLECTION_PARENT = {
     appearanceItems = true, appearanceSets = true, heirlooms = true,
@@ -60,7 +53,7 @@ local PROVIDERS = {
     { key = "currencies", words = { "currency", "currencies", "cur" }, loadOnLowResults = true },
     { key = "reputations", words = { "rep", "reps", "reputation", "reputations", "faction" }, loadOnLowResults = true },
     { key = "achievements", words = { "ach", "achievement", "achievements" }, loadOnLowResults = true },
-    { key = "statistics", words = STATISTICS_WORD_LIST, loadWhenEnabled = true },
+    { key = "statistics", lookup = STATISTICS_WORDS, loadWhenEnabled = true },
     { key = "mounts", words = { "mount", "mounts" }, loadOnLowResults = true },
     { key = "toys", words = { "toy", "toys" }, loadOnLowResults = true },
     { key = "pets", words = { "pet", "pets", "battlepet", "battlepets" }, loadOnLowResults = true },
@@ -72,7 +65,7 @@ local PROVIDERS = {
     { key = "transmogSets", words = { "appearance", "appearances", "appset", "appsets", "set", "sets", "tmog", "transmog", "xmog" }, loadOnLowResults = true },
     { key = "appearanceItems", words = { "appearance", "appearances", "item", "items", "tmog", "transmog", "xmog" }, explicitOnly = true },
     { key = "loot", words = { "gear", "item", "items", "loot" }, heavyQuery = true },
-    { key = "bosses", words = BOSS_WORD_LIST, loadWhenEnabled = true },
+    { key = "bosses", lookup = BOSS_WORDS, loadWhenEnabled = true },
 }
 
 local pendingDynamic = {}
@@ -87,7 +80,9 @@ local function makeLookup(words)
 end
 
 for i = 1, #PROVIDERS do
-    PROVIDERS[i].lookup = makeLookup(PROVIDERS[i].words)
+    if not PROVIDERS[i].lookup then
+        PROVIDERS[i].lookup = makeLookup(PROVIDERS[i].words)
+    end
 end
 
 local function cleanWord(word)

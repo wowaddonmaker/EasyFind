@@ -257,9 +257,9 @@ local function buildUtilsStub(clock)
     end
 
     Utils.SafeCallMethod = function(obj, method, ...)
-        if not obj then return false end
+        if not obj then return false, "no-object" end
         local fn = obj[method]
-        if not fn then return false end
+        if not fn then return false, "no-method" end
         local ok, result = pcall(fn, obj, ...)
         return ok, result
     end

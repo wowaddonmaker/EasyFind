@@ -50,15 +50,7 @@ function Filters:BuildAppearanceSetOptionsPopup(StylePopup, CHECK_SIZE, searchEd
         cbRow:SetSize(OPTIONS_WIDTH - PAD * 2, CB_ROW_H)
         cbRow:SetPoint("TOPLEFT", optionsPopup, "TOPLEFT", PAD, cy)
 
-        cbRow:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
-        cbRow:GetNormalTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
-        cbRow:GetNormalTexture():ClearAllPoints()
-        cbRow:GetNormalTexture():SetPoint("LEFT", 4, 0)
-
-        cbRow:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
-        cbRow:GetCheckedTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
-        cbRow:GetCheckedTexture():ClearAllPoints()
-        cbRow:GetCheckedTexture():SetPoint("LEFT", 4, 0)
+        Utils.SetCheckboxTextures(cbRow, CHECK_SIZE)
 
         local cbText = cbRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
         cbText:SetPoint("LEFT", cbRow:GetNormalTexture(), "RIGHT", 4, 0)

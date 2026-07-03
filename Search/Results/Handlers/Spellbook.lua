@@ -446,23 +446,6 @@ local function FindVisibleButtonForElement(paged, elem)
     return nil
 end
 
-local function HideHighlightOnHover(frame)
-    if not frame or frame._efHideHighlightOnHover or not frame.HookScript then return end
-    frame._efHideHighlightOnHover = true
-    frame:HookScript("OnEnter", function()
-        local highlight = ns.Highlight
-        if highlight and highlight.HideHighlight then
-            highlight:HideHighlight()
-        end
-    end)
-    if frame.IsMouseOver and frame:IsMouseOver() then
-        local highlight = ns.Highlight
-        if highlight and highlight.HideHighlight then
-            highlight:HideHighlight()
-        end
-    end
-end
-
 local function FindSpellbookButton(root, target, scroll, candidate)
     if not root then return nil end
     local nextCandidate = candidate
@@ -591,7 +574,7 @@ function Handlers:OpenAbilityInSpellbook(data)
                     highlight:HighlightSpellbookSpell(elementBtn, stillRepresentsTarget)
                 else
                     highlight:HighlightFrame(elementBtn, nil, stillRepresentsTarget)
-                    HideHighlightOnHover(elementBtn)
+                    Handlers.HideHighlightOnHover(elementBtn)
                 end
                 return
             end
@@ -603,7 +586,7 @@ function Handlers:OpenAbilityInSpellbook(data)
                 highlight:HighlightSpellbookSpell(btn, stillRepresentsTarget)
             else
                 highlight:HighlightFrame(btn, nil, stillRepresentsTarget)
-                HideHighlightOnHover(btn)
+                Handlers.HideHighlightOnHover(btn)
             end
             return
         end

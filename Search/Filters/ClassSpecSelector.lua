@@ -15,10 +15,10 @@ local GetSpecializationInfoForClassID = GetSpecializationInfoForClassID
 local GetSpecialization = GetSpecialization
 local GetSpecializationInfo = GetSpecializationInfo
 
-local RADIO_OFF_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-off"
-local RADIO_ON_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-on"
+local RADIO_OFF_TEX = ns.RADIO_OFF_TEX
+local RADIO_ON_TEX = ns.RADIO_ON_TEX
 local FLYOUT_ROW_H = 20
-local FLYOUT_ARROW = "Interface\\AddOns\\EasyFind\\Search\\Images\\flyout-arrow"
+local FLYOUT_ARROW = ns.FLYOUT_ARROW_TEX
 
 local allClassSpecs
 local function GetAllClassSpecs()

@@ -149,15 +149,7 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
         row:SetHitRectInsets(0, 0, 0, 0)
         row.optKey = opt.key
 
-        row:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
-        row:GetNormalTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
-        row:GetNormalTexture():ClearAllPoints()
-        row:GetNormalTexture():SetPoint("LEFT", 4, 0)
-
-        row:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
-        row:GetCheckedTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
-        row:GetCheckedTexture():ClearAllPoints()
-        row:GetCheckedTexture():SetPoint("LEFT", 4, 0)
+        Utils.SetCheckboxTextures(row, CHECK_SIZE)
 
         local label = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
         label:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)

@@ -57,7 +57,7 @@ local function GetInlineDropdownRow(popup, index)
     row:SetHeight(20)
     local radio = row:CreateTexture(nil, "ARTWORK")
     radio:SetSize(14, 14)
-    radio:SetTexture("Interface\\AddOns\\EasyFind\\Search\\Images\\radio-off")
+    radio:SetTexture(ns.RADIO_OFF_TEX)
     radio:SetPoint("LEFT", 6, 0)
     row.radio = radio
     local lbl = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
@@ -115,7 +115,7 @@ local function ShowInlineSettingDropdown(owner, opts, getCurrent, onSelect)
         row:SetPoint("RIGHT", popup, "RIGHT", -6, 0)
         row.lbl:SetText(opt.label or tostring(opt.value))
         local checked = cur == opt.value or tostring(cur) == tostring(opt.value)
-        row.radio:SetTexture(checked and "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-on" or "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-off")
+        row.radio:SetTexture(checked and ns.RADIO_ON_TEX or ns.RADIO_OFF_TEX)
         local optValue = opt.value
         row:SetScript("OnClick", function()
             if onSelect then onSelect(optValue) end

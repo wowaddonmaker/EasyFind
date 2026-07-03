@@ -64,8 +64,8 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     local ICON_SIZE = 14
 
     local RADIO_SIZE = 14
-    local RADIO_OFF_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-off"
-    local RADIO_ON_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-on"
+    local RADIO_OFF_TEX = ns.RADIO_OFF_TEX
+    local RADIO_ON_TEX = ns.RADIO_ON_TEX
 
     local function InstallMenuRowHighlight(row)
         Utils.InstallMenuRowHighlight(row)
@@ -198,15 +198,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         row.optKey = opt.key
         row.parentKey = opt.parentKey
 
-        row:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
-        row:GetNormalTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
-        row:GetNormalTexture():ClearAllPoints()
-        row:GetNormalTexture():SetPoint("LEFT", 4, 0)
-
-        row:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
-        row:GetCheckedTexture():SetSize(CHECK_SIZE, CHECK_SIZE)
-        row:GetCheckedTexture():ClearAllPoints()
-        row:GetCheckedTexture():SetPoint("LEFT", 4, 0)
+        Utils.SetCheckboxTextures(row, CHECK_SIZE)
 
         -- Category icon sits between the checkbox and label so the row
         -- reads left-to-right as [check][icon][name]. Supports atlas,
@@ -309,15 +301,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 subRow:SetHitRectInsets(0, 0, 0, 0)
                 subRow:SetPoint("TOPLEFT", popup, "TOPLEFT", SUB_PAD, -(SUB_PAD + (si - 1 + toggleAllOffset) * SUB_ROW_H))
 
-                subRow:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
-                subRow:GetNormalTexture():SetSize(CHK, CHK)
-                subRow:GetNormalTexture():ClearAllPoints()
-                subRow:GetNormalTexture():SetPoint("LEFT", 4, 0)
-
-                subRow:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
-                subRow:GetCheckedTexture():SetSize(CHK, CHK)
-                subRow:GetCheckedTexture():ClearAllPoints()
-                subRow:GetCheckedTexture():SetPoint("LEFT", 4, 0)
+                Utils.SetCheckboxTextures(subRow, CHK)
 
                 local subIcon
                 if sub.iconAtlas or sub.iconTex then
@@ -478,14 +462,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 hideTipRow:SetHitRectInsets(0, 0, 0, 0)
                 hideTipRow:SetPoint("TOPLEFT", popup, "TOPLEFT",
                     SUB_PAD, -(SUB_PAD + (#opt.flyoutSubFilters + toggleAllOffset) * SUB_ROW_H))
-                hideTipRow:SetNormalTexture("Interface\\Buttons\\UI-CheckBox-Up")
-                hideTipRow:GetNormalTexture():SetSize(CHK, CHK)
-                hideTipRow:GetNormalTexture():ClearAllPoints()
-                hideTipRow:GetNormalTexture():SetPoint("LEFT", 4, 0)
-                hideTipRow:SetCheckedTexture("Interface\\Buttons\\UI-CheckBox-Check")
-                hideTipRow:GetCheckedTexture():SetSize(CHK, CHK)
-                hideTipRow:GetCheckedTexture():ClearAllPoints()
-                hideTipRow:GetCheckedTexture():SetPoint("LEFT", 4, 0)
+                Utils.SetCheckboxTextures(hideTipRow, CHK)
                 local lbl = hideTipRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
                 lbl:SetPoint("LEFT", hideTipRow:GetNormalTexture(), "RIGHT", 4, 0)
                 lbl:SetText(L["FILTER_HIDE_TOOLTIPS"])
