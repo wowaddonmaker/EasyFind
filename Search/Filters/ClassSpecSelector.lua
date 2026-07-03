@@ -2,8 +2,10 @@ local _, ns = ...
 
 local Filters = ns.Filters
 local Utils = ns.Utils
+local L = ns.L
 
 local CreateFrame = CreateFrame
+local C_Timer = C_Timer
 local UIParent = UIParent
 local ipairs = Utils.ipairs
 local sformat = string.format
@@ -70,9 +72,14 @@ end
 --   parent       frame the dropdown button anchors into (TOPLEFT)
 --   x, y         TOPLEFT offset of the button within parent
 --   width        button width
+--   popupWidth   popup width (default: button width)
+--   flyoutWidth  class flyout width (default: button width - 20)
+--   popupName    optional global frame name for the popup
+--   flyoutName   optional global frame name for the class flyout
 --   hasSpec      true = class+spec (gear, heirloom); false = class only
 --   stylePopup   fn(frame) to style popup backdrops
 --   guardFrames  array to register popups for outside-click protection
+--   keyboardNav  fn(popup, getRows) installing arrow-key navigation
 --   getFilter    fn() -> nil | "all" | {classID} | {classID, specID}
 --   setFilter    fn(val)
 --   onChange     fn() called after a selection
@@ -84,8 +91,8 @@ function Filters:BuildClassSpecSelector(opts)
     local hasSpec = opts.hasSpec and true or false
     local guards = opts.guardFrames
     local getScale = opts.getScale or function() return 1.0 end
-    local POPUP_WIDTH = width
-    local FLYOUT_WIDTH = width - 20
+    local POPUP_WIDTH = opts.popupWidth or width
+    local FLYOUT_WIDTH = opts.flyoutWidth or (width - 20)
 
     local btn = CreateFrame("Button", nil, parent)
     btn:SetSize(width, 27)
@@ -131,7 +138,7 @@ function Filters:BuildClassSpecSelector(opts)
                     return
                 end
             end
-            label:SetText(color .. (className or "?") .. "|r")
+            label:SetText(color .. (className or L["FILTER_CURRENT_SPEC"]) .. "|r")
             return
         end
         local cls
@@ -181,7 +188,7 @@ function Filters:BuildClassSpecSelector(opts)
         return false
     end
 
-    local specPopup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    local specPopup = CreateFrame("Frame", opts.popupName, UIParent, "BackdropTemplate")
     specPopup:SetFrameStrata("TOOLTIP")
     specPopup:SetFrameLevel(parent:GetFrameLevel() + 20)
     opts.stylePopup(specPopup)
@@ -197,6 +204,8 @@ function Filters:BuildClassSpecSelector(opts)
     end
 
     local LayoutPopup
+    local GetPopupNavRows
+    local classFlyout, GetFlyoutNavRows
 
     if not hasSpec then
         -- Flat class list: "All Classes" + one row per class.
@@ -224,9 +233,10 @@ function Filters:BuildClassSpecSelector(opts)
             specPopup:SetSize(POPUP_WIDTH, -py + 6)
             Utils.RefreshMenuRowHighlights(specPopup, rows)
         end
+        GetPopupNavRows = function() return rows end
     else
         -- Gear-style: "Class >" row opens a class flyout; spec rows below.
-        local classFlyout = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+        classFlyout = CreateFrame("Frame", opts.flyoutName, UIParent, "BackdropTemplate")
         classFlyout:SetFrameStrata("TOOLTIP")
         classFlyout:SetFrameLevel(parent:GetFrameLevel() + 30)
         opts.stylePopup(classFlyout)
@@ -263,7 +273,12 @@ function Filters:BuildClassSpecSelector(opts)
             r._label:SetText(ColorStr(cls.classFile) .. cls.className .. "|r")
             r._val = { classID = cls.classID }
             r:SetScript("OnClick", function()
-                opts.setFilter({ classID = cls.classID }); UpdateLabel(); classFlyout:Hide()
+                opts.setFilter({ classID = cls.classID }); UpdateLabel()
+                -- Mouse: keep the spec list open and re-layout for the new class.
+                -- Keyboard: close it so focus cleanly returns to the dropdown.
+                local viaKeyboard = classFlyout:IsKeyboardEnabled()
+                classFlyout:Hide()
+                if viaKeyboard then specPopup:Hide() end
                 if opts.onChange then opts.onChange() end
                 if specPopup:IsShown() then LayoutPopup() end
             end)
@@ -364,6 +379,37 @@ function Filters:BuildClassSpecSelector(opts)
             Utils.RefreshMenuRowHighlights(specPopup)
         end
 
+        GetFlyoutNavRows = function() return flyoutRows end
+        GetPopupNavRows = function()
+            local navRows = { classRow }
+            for _, r in ipairs(specRows) do
+                if r:IsShown() then navRows[#navRows + 1] = r end
+            end
+            return navRows
+        end
+
+        -- Auto-hide the class flyout 0.2s after the cursor leaves it (unless
+        -- it returns to the flyout or the "Class" row). Keyboard mode keeps
+        -- it open until an explicit close.
+        Utils.SafeOnUpdate(classFlyout, function(self)
+            if self:IsKeyboardEnabled() then return end
+            if not self:IsMouseOver() and not specPopup:IsMouseOver() then
+                if not self._leaveTimer then
+                    self._leaveTimer = C_Timer.NewTimer(0.2, function()
+                        self._leaveTimer = nil
+                        if not self:IsMouseOver() and not classRow:IsMouseOver() then
+                            self:Hide()
+                        end
+                    end)
+                end
+            else
+                if self._leaveTimer then
+                    self._leaveTimer:Cancel()
+                    self._leaveTimer = nil
+                end
+            end
+        end)
+
         specPopup:HookScript("OnHide", function() classFlyout:Hide() end)
     end
 
@@ -379,6 +425,11 @@ function Filters:BuildClassSpecSelector(opts)
     end)
     Filters.AttachOutsideClickClose(specPopup)
 
+    if opts.keyboardNav then
+        opts.keyboardNav(specPopup, GetPopupNavRows)
+        if classFlyout then opts.keyboardNav(classFlyout, GetFlyoutNavRows) end
+    end
+
     UpdateLabel()
-    return { button = btn, Refresh = UpdateLabel, popup = specPopup }
+    return { button = btn, Refresh = UpdateLabel, popup = specPopup, flyout = classFlyout }
 end
