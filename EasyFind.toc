@@ -23,6 +23,7 @@ Locales/zhCN.lua
 Locales/zhTW.lua
 Shared/Utils.lua
 Shared/SearchText.lua
+Shared/CategoryMap.lua
 Shared/Scheduler.lua
 Shared/MapUtils.lua
 MapSearch/Categories.lua

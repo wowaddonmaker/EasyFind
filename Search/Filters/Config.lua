@@ -169,27 +169,9 @@ end
 -- Module-level helpers for bucketing Search search results into optional
 -- filter categories. Entries with no bucket are base Search search results
 -- and are always searchable.
-local UI_BUCKET_BY_CATEGORY = {
-    ["Ability"]            = "abilities",
-    ["Boss"]               = "bosses",
-    ["Achievement"]          = "achievements",
-    ["Achievements"]         = "achievements",
-    ["Achievement Category"] = "achievements",
-    ["Guild Achievements"]   = "achievements",
-    ["Statistics"]           = "statistics",
-    ["Statistic"]            = "statistics",
-    ["Currency"]           = "currencies",
-    ["Reputation"]         = "reputations",
-    ["Bag"]                = "bags",
-    ["Macro"]              = "macros",
-    ["Talent"]             = "talents",
-    ["Talents"]            = "talents",
-    ["Title"]              = "titles",
-    ["Gear Set"]           = "gearSets",
-    ["Game Settings"]      = "gameOptions",
-    ["AddOn Settings"]     = "addonOptions",
-    ["Command"]            = "commands",
-}
+-- Derived from the shared category map (see Shared/CategoryMap.lua) so the
+-- bucket lookup can never drift from the query skip set or the providers.
+local UI_BUCKET_BY_CATEGORY = ns.CategoryMap.BucketByCategory
 
 local function GetUIBucket(d)
     -- Returns one of the bucket keys for filtered non-collection /

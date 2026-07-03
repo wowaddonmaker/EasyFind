@@ -9,6 +9,8 @@ local function setupDatabase()
     -- Scheduler must be loaded before Dynamic.lua so Dynamic's
     -- ensureJobsRegistered can find ns.Scheduler.
     H.loadModule("Shared/Scheduler.lua", env, ns)
+    -- Dynamic derives provider categories from the shared category map.
+    H.loadModule("Shared/CategoryMap.lua", env, ns)
     ns.Database.uiSearchData = {}
     ns.Database.IsLootStatSearchWord = function() return false end
     ns.Database.ResetSearchCache = function() end

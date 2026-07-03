@@ -133,72 +133,15 @@ function Search:OnSearchTextChanged(text, force)
     -- toggle is off. Loot is independent. Same nil-under-quick-filter
     -- value the engine got: a quick filter ignores the filter menu.
     local filters = providerFilters
-    local collectionsOff = filters and filters.collections == false
     local optionsOff = filters and filters.options == false
     local statisticsOff = filters and filters.statistics == false and not explicitStatistics
     local skipCategories
     if filters then
-        local mountsOff = collectionsOff or filters.mounts == false
-        local toysOff   = collectionsOff or filters.toys == false
-        local petsOff   = collectionsOff or filters.pets == false
-        local outfitsOff = collectionsOff or filters.outfits == false
-        local heirloomsOff = collectionsOff or filters.heirlooms == false
-        local appearancesOff = collectionsOff or filters.appearances == false
-        local appsetsOff = appearancesOff or filters.appearanceSets == false
-        local appitemsOff = appearancesOff or filters.appearanceItems == false
-        local lootOff    = filters.loot == false
-        local bagsOff    = filters.bags == false
-        local macrosOff  = filters.macros == false
-        local gameOptOff  = optionsOff or filters.gameOptions == false
-        local addonOptOff = optionsOff or filters.addonOptions == false
-        local abilitiesOff = filters.abilities == false
-        local bossesOff = filters.bosses == false and not explicitBosses
-        local titlesOff = filters.titles == false
-        local gearSetsOff = filters.gearSets == false
-        local talentsOff = filters.talents == false
-        local commandsOffPre = filters.commands == false
-        -- Currency and Reputation are eager-loaded providers, so their entries
-        -- are always present in uiSearchData; they must be skipped here (like
-        -- every other category) when their filter is off, not just gated at
-        -- provider-load time the way lazy providers are.
-        local currenciesOff = filters.currencies == false
-        local reputationsOff = filters.reputations == false
-        if mountsOff or toysOff or petsOff or outfitsOff or lootOff
-           or appsetsOff or appitemsOff or bagsOff or macrosOff or gameOptOff or addonOptOff
-           or abilitiesOff or bossesOff or heirloomsOff or titlesOff or gearSetsOff
-           or statisticsOff or talentsOff or commandsOffPre
-           or currenciesOff or reputationsOff then
+        -- Category skip set derives from the shared map so the filter menu,
+        -- the providers, and this cascade cannot drift apart.
+        if ns.CategoryMap.BuildSkipCategories(filters, SCRATCH.skipCategories,
+                explicitStatistics, explicitBosses) then
             skipCategories = SCRATCH.skipCategories
-            wipe(skipCategories)
-            if mountsOff    then skipCategories["Mount"] = true end
-            if toysOff      then skipCategories["Toy"] = true end
-            if petsOff      then skipCategories["Pet"] = true end
-            if outfitsOff   then skipCategories["Outfit"] = true end
-            if heirloomsOff then skipCategories["Heirloom"] = true end
-            if lootOff      then skipCategories["Loot"] = true end
-            if appsetsOff   then skipCategories["Appearance Set"] = true end
-            if appitemsOff  then skipCategories["Appearance"] = true end
-            if bagsOff      then skipCategories["Bag"] = true end
-            if macrosOff    then skipCategories["Macro"] = true end
-            if gameOptOff   then skipCategories["Game Settings"] = true end
-            if addonOptOff  then skipCategories["AddOn Settings"] = true end
-            if abilitiesOff then skipCategories["Ability"] = true end
-            if bossesOff    then skipCategories["Boss"] = true end
-            if titlesOff    then skipCategories["Title"] = true end
-            if gearSetsOff  then skipCategories["Gear Set"] = true end
-            if statisticsOff then
-                skipCategories["Statistic"] = true
-                skipCategories["Statistics"] = true
-            end
-            if talentsOff then
-                skipCategories["Talent"] = true
-                skipCategories["Talents"] = true
-            end
-            if commandsOffPre then
-                skipCategories["Command"] = true
-            end
-            if currenciesOff  then skipCategories["Currency"] = true end
-            if reputationsOff then skipCategories["Reputation"] = true end
         end
     end
     local results

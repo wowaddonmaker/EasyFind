@@ -19,27 +19,31 @@ end
 -- keyword. Heavy providers (mounts/abilities/loot/appearances/...) stay lazy:
 -- loading them would bloat the full-scan set and slow every keystroke, so they
 -- load on query intent (a trigger word or quick filter) instead.
+-- Categories come from the shared map (Shared/CategoryMap.lua) keyed by
+-- provider key, so a renamed category cannot silently detach a provider
+-- from the filter menu or the query skip set.
+local providerCategory = ns.CategoryMap.ProviderCategory
 local dynamicProviders = {
-    { key = "currencies",  category = "Currency",             fn = "PopulateDynamicCurrencies", eager = true },
-    { key = "reputations", category = "Reputation",           fn = "PopulateDynamicReputations", eager = true },
-    { key = "achievements", category = "Achievement Category", fn = "PopulateDynamicAchievements" },
-    { key = "statistics",  category = "Statistic",            fn = "PopulateDynamicStatistics", asyncFn = "PopulateDynamicStatisticsAsync" },
-    { key = "mounts",      category = "Mount",          fn = "PopulateDynamicMounts" },
-    { key = "toys",        category = "Toy",            fn = "PopulateDynamicToys" },
-    { key = "pets",        category = "Pet",            fn = "PopulateDynamicPets" },
-    { key = "outfits",     category = "Outfit",         fn = "PopulateDynamicOutfits" },
-    { key = "heirlooms",   category = "Heirloom",       fn = "PopulateDynamicHeirlooms" },
-    { key = "titles",      category = "Title",          fn = "PopulateDynamicTitles", eager = true },
-    { key = "gearSets",    category = "Gear Set",       fn = "PopulateDynamicGearSets", eager = true },
-    { key = "macros",      category = "Macro",          fn = "PopulateDynamicMacros", eager = true },
-    { key = "abilities",   category = "Ability",        fn = "PopulateDynamicAbilities" },
-    { key = "talents",     category = "Talent",         fn = "PopulateDynamicTalents" },
-    { key = "bags",        category = "Bag",            fn = "PopulateDynamicBags" },
-    { key = "transmogSets", category = "Appearance Set", fn = "PopulateDynamicTransmogSets", pre = "SyncTransmogSetFiltersFromUI" },
-    { key = "appearanceItems", category = "Appearance", fn = "PopulateDynamicAppearanceItems", asyncFn = "PopulateDynamicAppearanceItemsAsync", pre = "SyncAppearanceItemFiltersFromUI" },
-    { key = "loot",        category = "Loot",           fn = "PopulateDynamicLoot", asyncFn = "PopulateDynamicLootAsync" },
-    { key = "bosses",      category = "Boss",           fn = "PopulateDynamicBosses", asyncFn = "PopulateDynamicBossesAsync" },
-    { key = "commands",    category = "Command",        fn = "PopulateDynamicCommands", eager = true },
+    { key = "currencies", category = providerCategory["currencies"],             fn = "PopulateDynamicCurrencies", eager = true },
+    { key = "reputations", category = providerCategory["reputations"],           fn = "PopulateDynamicReputations", eager = true },
+    { key = "achievements", category = providerCategory["achievements"], fn = "PopulateDynamicAchievements" },
+    { key = "statistics", category = providerCategory["statistics"],            fn = "PopulateDynamicStatistics", asyncFn = "PopulateDynamicStatisticsAsync" },
+    { key = "mounts", category = providerCategory["mounts"],          fn = "PopulateDynamicMounts" },
+    { key = "toys", category = providerCategory["toys"],            fn = "PopulateDynamicToys" },
+    { key = "pets", category = providerCategory["pets"],            fn = "PopulateDynamicPets" },
+    { key = "outfits", category = providerCategory["outfits"],         fn = "PopulateDynamicOutfits" },
+    { key = "heirlooms", category = providerCategory["heirlooms"],       fn = "PopulateDynamicHeirlooms" },
+    { key = "titles", category = providerCategory["titles"],          fn = "PopulateDynamicTitles", eager = true },
+    { key = "gearSets", category = providerCategory["gearSets"],       fn = "PopulateDynamicGearSets", eager = true },
+    { key = "macros", category = providerCategory["macros"],          fn = "PopulateDynamicMacros", eager = true },
+    { key = "abilities", category = providerCategory["abilities"],        fn = "PopulateDynamicAbilities" },
+    { key = "talents", category = providerCategory["talents"],         fn = "PopulateDynamicTalents" },
+    { key = "bags", category = providerCategory["bags"],            fn = "PopulateDynamicBags" },
+    { key = "transmogSets", category = providerCategory["transmogSets"], fn = "PopulateDynamicTransmogSets", pre = "SyncTransmogSetFiltersFromUI" },
+    { key = "appearanceItems", category = providerCategory["appearanceItems"], fn = "PopulateDynamicAppearanceItems", asyncFn = "PopulateDynamicAppearanceItemsAsync", pre = "SyncAppearanceItemFiltersFromUI" },
+    { key = "loot", category = providerCategory["loot"],           fn = "PopulateDynamicLoot", asyncFn = "PopulateDynamicLootAsync" },
+    { key = "bosses", category = providerCategory["bosses"],           fn = "PopulateDynamicBosses", asyncFn = "PopulateDynamicBossesAsync" },
+    { key = "commands", category = providerCategory["commands"],        fn = "PopulateDynamicCommands", eager = true },
 }
 
 local dynamicProviderByKey = {}
