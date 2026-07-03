@@ -45,28 +45,33 @@ local function EnsureModule(name)
     return module
 end
 
-local Search = EnsureModule("Search")
-local modules = {
-    Search,
-    EnsureModule("SearchFocus"),
-    EnsureModule("SearchHistory"),
-    EnsureModule("SearchOpeners"),
-    EnsureModule("SearchProviders"),
-    EnsureModule("Filters"),
-    EnsureModule("Calculator"),
-    EnsureModule("SearchCommands"),
-    EnsureModule("Results"),
-    EnsureModule("ResultRows"),
-    EnsureModule("ResultRender"),
-    EnsureModule("ResultHandlers"),
-    EnsureModule("ResultIcons"),
-    EnsureModule("ResultText"),
-    EnsureModule("ResultTooltips"),
-    EnsureModule("ResultShortcuts"),
-    EnsureModule("OptionsSurface"),
-    EnsureModule("Onboarding"),
-    EnsureModule("Guide"),
+local MODULE_NAMES = {
+    "Search",
+    "SearchFocus",
+    "SearchHistory",
+    "SearchOpeners",
+    "SearchProviders",
+    "Filters",
+    "Calculator",
+    "SearchCommands",
+    "Results",
+    "ResultRows",
+    "ResultRender",
+    "ResultHandlers",
+    "ResultIcons",
+    "ResultText",
+    "ResultTooltips",
+    "ResultShortcuts",
+    "OptionsSurface",
+    "Onboarding",
+    "Guide",
 }
+
+local modules = {}
+for i = 1, #MODULE_NAMES do
+    modules[i] = EnsureModule(MODULE_NAMES[i])
+end
+local Search = modules[1]
 
 local function FindModuleValue(_, key)
     for i = 1, #modules do
@@ -85,3 +90,35 @@ end
 if not getmetatable(Search) then
     setmetatable(Search, { __index = FindModuleValue })
 end
+
+-- FindModuleValue resolves a key defined on two modules by array order,
+-- silently shadowing the other definition. Surface duplicates in dev mode,
+-- deferred to PLAYER_LOGIN so every Search file has loaded and defined its
+-- methods. Render/Shared.lua's dot-style delegation wrappers intentionally
+-- duplicate their ResultIcons / ResultText owners and are allowlisted.
+local INTENTIONAL_DUPLICATE_KEYS = {
+    IsBossResultData = true,
+    AbbrevBinding = true,
+    SetClippedText = true,
+}
+
+local duplicateKeyChecker = CreateFrame("Frame")
+duplicateKeyChecker:RegisterEvent("PLAYER_LOGIN")
+duplicateKeyChecker:SetScript("OnEvent", function(self)
+    self:UnregisterEvent("PLAYER_LOGIN")
+    if not (EasyFind and EasyFind.db and EasyFind.db.devMode) then return end
+    if not (ns.Utils and ns.Utils.DebugPrint) then return end
+    local firstOwner = {}
+    for i = 1, #modules do
+        for key in pairs(modules[i]) do
+            if not INTENTIONAL_DUPLICATE_KEYS[key] then
+                if firstOwner[key] then
+                    ns.Utils.DebugPrint("Duplicate Search module key '" .. tostring(key)
+                        .. "' on " .. firstOwner[key] .. " and " .. MODULE_NAMES[i])
+                else
+                    firstOwner[key] = MODULE_NAMES[i]
+                end
+            end
+        end
+    end
+end)

@@ -1,6 +1,5 @@
 local _, ns = ...
 
-local Search = ns.Search
 local Filters = ns.Filters
 local Utils = ns.Utils
 
@@ -12,19 +11,10 @@ local UIParent = UIParent
 -- Builds the Appearance Sets options popup: Collected / Not Collected / PvE /
 -- PvP checkboxes. The class filter is shared with Items and lives in the parent
 -- Appearances chooser. Returns the popup and a sync function re-reading db state.
-function Filters:BuildAppearanceSetOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames, branchPopups)
+function Filters:BuildAppearanceSetOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuardFrames, branchPopups)
     local OPTIONS_WIDTH = 160
     local CB_ROW_H = 22
     local PAD = 6
-
-    local function ApplyFilterSelection()
-        if ns.Database and ns.Database.RefreshDynamicCategory then
-            ns.Database:RefreshDynamicCategory("transmogSets")
-        end
-        if searchEditBox and searchEditBox:GetText() ~= "" then
-            Search:OnSearchTextChanged(searchEditBox:GetText())
-        end
-    end
 
     local optionsPopup = CreateFrame("Frame", "EasyFindAsOptionsPopup", UIParent, "BackdropTemplate")
     optionsPopup:SetFrameStrata("TOOLTIP")
@@ -66,7 +56,7 @@ function Filters:BuildAppearanceSetOptionsPopup(StylePopup, CHECK_SIZE, searchEd
 
         cbRow:SetScript("OnClick", function(self)
             EasyFind.db[def.dbKey] = self:GetChecked()
-            ApplyFilterSelection()
+            Filters:ApplyFilterSelection("transmogSets")
         end)
 
         cbRows[si] = cbRow
@@ -83,16 +73,7 @@ function Filters:BuildAppearanceSetOptionsPopup(StylePopup, CHECK_SIZE, searchEd
     optionsPopup:SetSize(OPTIONS_WIDTH, -cy + PAD)
 
     -- Outside-click: close when the cursor clicks fully outside the filter menu.
-    optionsPopup:HookScript("OnShow", function(self)
-        self:RegisterEvent("GLOBAL_MOUSE_DOWN")
-    end)
-    optionsPopup:HookScript("OnHide", function(self)
-        self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
-    end)
-    optionsPopup:HookScript("OnEvent", function(self, event)
-        if event ~= "GLOBAL_MOUSE_DOWN" then return end
-        if not Filters.IsMouseInFilterChain() then self:Hide() end
-    end)
+    Filters.AttachOutsideClickClose(optionsPopup)
 
     local function SyncFromDB()
         local uiFilters = EasyFind.db.uiSearchFilters

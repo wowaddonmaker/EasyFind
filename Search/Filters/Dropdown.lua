@@ -6,6 +6,7 @@ local Utils = ns.Utils
 local L = ns.L
 
 local ipairs, pairs = Utils.ipairs, Utils.pairs
+local select = Utils.select
 local CreateFrame = CreateFrame
 local UIParent = UIParent
 local wipe = wipe
@@ -14,7 +15,29 @@ local ForEachFilterKey = Filters.ForEachFilterKey
 
 local SetFlyoutRowEnabled = Utils.SetFlyoutRowEnabled
 
+-- Search bar editbox, captured when CreateUIFilterDropdown runs. Filter
+-- clicks re-run the active search through it so open results track the
+-- new selection.
+local activeSearchEditBox
+
+function Filters:RerunActiveSearch()
+    if activeSearchEditBox and activeSearchEditBox:GetText() ~= "" then
+        Search:OnSearchTextChanged(activeSearchEditBox:GetText())
+    end
+end
+
+-- Refresh one or more dynamic categories, then re-run the active search.
+function Filters:ApplyFilterSelection(...)
+    if ns.Database and ns.Database.RefreshDynamicCategory then
+        for i = 1, select("#", ...) do
+            ns.Database:RefreshDynamicCategory((select(i, ...)))
+        end
+    end
+    self:RerunActiveSearch()
+end
+
 function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
+    activeSearchEditBox = searchEditBox
     local ROW_HEIGHT = 20
     local DROPDOWN_WIDTH = 207
     local PADDING_TOP = 8
@@ -278,17 +301,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             -- Outside-click: close on click outside the popup. Nested
             -- options popups (e.g. appearance set options) act as
             -- guards so clicking inside them keeps this popup open.
-            popup:HookScript("OnShow", function(self)
-                self:RegisterEvent("GLOBAL_MOUSE_DOWN")
-            end)
-            popup:HookScript("OnHide", function(self)
-                self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
-                ClearActiveFlyout(self)
-            end)
-            popup:HookScript("OnEvent", function(self, event)
-                if event ~= "GLOBAL_MOUSE_DOWN" then return end
-                if not Filters.IsMouseInFilterChain() then self:Hide() end
-            end)
+            Filters.AttachOutsideClickClose(popup, { onHide = ClearActiveFlyout })
 
             local subRows = {}
             -- Collections and Map carry many sub-filters; give their flyouts
@@ -349,9 +362,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                                    or EasyFind.db.uiSearchFilters
                     target[sub.key] = self:GetChecked()
                     Filters.ResyncShownOptionPopups()
-                    if searchEditBox:GetText() ~= "" then
-                        Search:OnSearchTextChanged(searchEditBox:GetText())
-                    end
+                    Filters:RerunActiveSearch()
                     KeepSearchEditBoxUnfocused()
                 end)
 
@@ -363,7 +374,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 -- right of this sub-row on hover.
                 if sub.hasOptions and sub.key == "appearances" then
                     local optionsPopup, syncOptions, appBranchPopups = Search:BuildAppearanceOptionsPopup(
-                        StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
+                        StylePopup, CHECK_SIZE, dropdownGuardFrames)
                     optionsPopup._efSync = syncOptions
                     optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
                     optionsPopup._owningRow = subRow
@@ -386,7 +397,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
                 if sub.hasOptions and sub.key == "mounts" then
                     local optionsPopup, syncOptions, sourcePopup = Search:BuildMountOptionsPopup(
-                        StylePopup, CHECK_SIZE, searchEditBox)
+                        StylePopup, CHECK_SIZE)
                     optionsPopup._efSync = syncOptions
                     optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
                     optionsPopup._owningRow = subRow
@@ -411,7 +422,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
                 if sub.hasOptions and sub.key == "heirlooms" then
                     local optionsPopup, syncOptions, sourcePopup = Search:BuildHeirloomOptionsPopup(
-                        StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
+                        StylePopup, CHECK_SIZE, dropdownGuardFrames)
                     optionsPopup._efSync = syncOptions
                     optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
                     optionsPopup._owningRow = subRow
@@ -528,9 +539,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     end
                     SyncSubChecks()
                     Filters.ResyncShownOptionPopups()
-                    if searchEditBox:GetText() ~= "" then
-                        Search:OnSearchTextChanged(searchEditBox:GetText())
-                    end
+                    Filters:RerunActiveSearch()
                     KeepSearchEditBoxUnfocused()
                 end)
             end
@@ -592,17 +601,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             dropdown.flyoutPopups = dropdown.flyoutPopups or {}
             dropdown.flyoutPopups[#dropdown.flyoutPopups + 1] = popup
 
-            popup:HookScript("OnShow", function(self)
-                self:RegisterEvent("GLOBAL_MOUSE_DOWN")
-            end)
-            popup:HookScript("OnHide", function(self)
-                self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
-                ClearActiveFlyout(self)
-            end)
-            popup:HookScript("OnEvent", function(self, event)
-                if event ~= "GLOBAL_MOUSE_DOWN" then return end
-                if not Filters.IsMouseInFilterChain() then self:Hide() end
-            end)
+            Filters.AttachOutsideClickClose(popup, { onHide = ClearActiveFlyout })
 
             local radioRows = {}
             for ri, optionDef in ipairs(options) do
@@ -638,9 +637,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                         otherRow.tick:SetShown(otherRow.value == self.value)
                     end
                     if radio.onChange then radio.onChange(self.value) end
-                    if searchEditBox:GetText() ~= "" then
-                        Search:OnSearchTextChanged(searchEditBox:GetText())
-                    end
+                    Filters:RerunActiveSearch()
                     KeepSearchEditBoxUnfocused()
                 end)
 
@@ -686,9 +683,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     tbl[leaf] = next
                     self.tick:SetShown(next)
                     if self.onChange then self.onChange(next) end
-                    if searchEditBox:GetText() ~= "" then
-                        Search:OnSearchTextChanged(searchEditBox:GetText())
-                    end
+                    Filters:RerunActiveSearch()
                     KeepSearchEditBoxUnfocused()
                 end)
                 checkboxRows[ci] = cRow
@@ -755,7 +750,6 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 SetActiveFlyout = SetActiveFlyout,
                 ClearActiveFlyout = ClearActiveFlyout,
                 dropdownGuardFrames = dropdownGuardFrames,
-                searchEditBox = searchEditBox,
             })
         end
 
@@ -770,9 +764,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             Filters.ResyncShownOptionPopups()
             if self.updateLootToggle then self.updateLootToggle() end
             LayoutDropdown()
-            if searchEditBox:GetText() ~= "" then
-                Search:OnSearchTextChanged(searchEditBox:GetText())
-            end
+            Filters:RerunActiveSearch()
             KeepSearchEditBoxUnfocused()
         end)
 
@@ -912,9 +904,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         if lootRow and lootRow.updateLootToggle then lootRow.updateLootToggle() end
         Filters.ResyncShownOptionPopups()
         LayoutDropdown()
-        if searchEditBox:GetText() ~= "" then
-            Search:OnSearchTextChanged(searchEditBox:GetText())
-        end
+        Filters:RerunActiveSearch()
         KeepSearchEditBoxUnfocused()
     end)
 
@@ -964,9 +954,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 or beforePvP ~= db.appearanceSetPvP
             if changed and ns.Database.RefreshDynamicCategory then
                 ns.Database:RefreshDynamicCategory("transmogSets")
-                if searchEditBox and searchEditBox:GetText() ~= "" then
-                    Search:OnSearchTextChanged(searchEditBox:GetText())
-                end
+                Filters:RerunActiveSearch()
             end
 
         end
@@ -987,7 +975,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         Utils.SafeCallMethod(self, "EnableKeyboard", false)
         local escapedViaKeyboard = self._escapedViaKeyboard
         self._escapedViaKeyboard = nil
-        if escapedViaKeyboard and not Search._escClosingMenus then
+        if escapedViaKeyboard and not Search:IsEscClosingMenus() then
             dropdownKeyboardMode = false
             Utils.SafeCallMethod(Search:GetNavFrame(), "EnableKeyboard", true)
         else
@@ -1014,7 +1002,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             -- typing. ClearFocus + same-frame SetFocus can lose to internal
             -- editbox state, hence the flag instead of relying on order.
             if Search:GetSearchFrame().editBox and not Search:GetSearchFrame().editBox:IsMouseOver()
-               and not Search._escClosingMenus then
+               and not Search:IsEscClosingMenus() then
                 Search:GetSearchFrame().editBox:ClearFocus()
             end
         end

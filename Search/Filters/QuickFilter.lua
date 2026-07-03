@@ -163,6 +163,10 @@ function Filters:GetQuickFilter()
     return Filters._quickFilter
 end
 
+function Filters:IsQuickFilterSuggestionsActive()
+    return Filters._quickFilterSuggestionsActive and true or false
+end
+
 function Filters:GetQuickFilterCompletionToken(def, typed)
     if not def then return nil end
     typed = slower(typed or "")

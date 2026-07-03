@@ -7,6 +7,7 @@ local Icons = ns.ResultIcons
 local Handlers = ns.ResultHandlers
 local Utils = ns.Utils
 local Calculator = ns.Calculator
+local History = ns.SearchHistory
 local L = ns.L
 local UIPins = ns.UIPins
 local GOLD_COLOR = ns.GOLD_COLOR
@@ -27,51 +28,6 @@ end
 
 local function CollapsedNodes()
     return Results._collapsedNodes
-end
-
--- Toggle a boolean setting in place (clicked from a result row).
--- Tries the Settings API first (handles non-CVar settings like action
--- bar visibility), falls back to GetCVar/SetCVar.
-
-function Results:ToggleSettingCheckbox(data)
-    if not data or not data.settingVariable then return end
-    local var = data.settingVariable
-    local curVal = Rows:ReadSettingVariable(var)
-    local newOn
-    if type(curVal) == "boolean" then
-        Rows:WriteSettingVariable(var, not curVal)
-        newOn = not curVal
-    elseif curVal == "1" or curVal == "0" then
-        Rows:WriteSettingVariable(var, curVal == "1" and "0" or "1")
-        newOn = curVal == "0"
-    elseif curVal == "true" or curVal == "false" then
-        Rows:WriteSettingVariable(var, curVal == "true" and "false" or "true")
-        newOn = curVal == "false"
-    elseif curVal == 1 or curVal == 0 then
-        Rows:WriteSettingVariable(var, curVal == 1 and 0 or 1)
-        newOn = curVal == 0
-    end
-    -- Render the value we just wrote right away: some settings' GetValue lags
-    -- a frame behind SetValue, which made the row look unchanged until a second
-    -- click. Expires so an external change to the same setting still surfaces.
-    if newOn ~= nil then
-        local token = { var = var, isOn = newOn }
-        self._settingOptimistic = token
-        ns.Utils.SafeAfter(0.6, function()
-            if self._settingOptimistic == token then self._settingOptimistic = nil end
-        end)
-    end
-    -- Refresh the row so the checkbox state updates without closing
-    -- the search panel. RefreshResults lives on Search, not Results,
-    -- so calling self:RefreshResults() here would silently no-op and
-    -- the on-screen checkbox would stay stale until the result list
-    -- rebuilt from scratch.
-    Search:RefreshResults()
-    if Search:GetSearchFrame() and Search:GetSearchFrame().editBox
-       and not (Search:GetNavFrame() and Search:GetNavFrame():IsKeyboardEnabled()) then
-        Search:GetSearchFrame().editBox.blockFocus = nil
-        Search:GetSearchFrame().editBox:SetFocus()
-    end
 end
 
 -- Advance a dropdown setting to its next value inline. Returns true if
@@ -279,10 +235,10 @@ function Results:HideResults()
     self:ClearCalculatorCopyHighlight()
     self:ReleaseCalculatorCopyBox()
     -- Don't kill an active nav-repeat ticker from inside HideResults.
-    -- _preserveSearchNavRepeat covers the synchronous NavigateSearchHistory
-    -- window. The IsAltNavRepeatKey check covers the async case: a query
-    -- provider can refresh results seconds after
-    -- the synchronous window cleared _preserveSearchNavRepeat, and without
+    -- History:IsPreservingNavRepeat covers the synchronous
+    -- NavigateSearchHistory window. The IsAltNavRepeatKey check covers the
+    -- async case: a query provider can refresh results seconds after
+    -- the synchronous window cleared the preserve flag, and without
     -- this extra guard the resulting HideResults would kill the cascade
     -- mid-history. Both checks together keep the ticker alive whenever any
     -- alt-nav (Alt+J/K) or arrow-nav (UP/DOWN) key is currently held.
@@ -290,7 +246,7 @@ function Results:HideResults()
     local navRepeatActive = searchFrame.IsAltNavRepeatKey
         and searchFrame.IsAltNavRepeatKey()
     if searchFrame.StopKeyRepeat
-       and not Search._preserveSearchNavRepeat
+       and not History:IsPreservingNavRepeat()
        and not navRepeatActive then
         searchFrame.StopKeyRepeat()
     end
@@ -340,7 +296,7 @@ function Results:HideResults()
     end
     Search:SetSelectedIndex(0)
     Search:SetToggleFocused(false)
-    self:UpdateSelectionHighlight(true, Search._preserveSearchNavRepeat)
+    self:UpdateSelectionHighlight(true, History:IsPreservingNavRepeat())
 
     if ns.Database and ns.Database.CancelDynamicWarmup then
         ns.Database:CancelDynamicWarmup()

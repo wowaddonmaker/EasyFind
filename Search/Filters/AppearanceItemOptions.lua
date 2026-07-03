@@ -193,7 +193,7 @@ end
 -- Items options popup: class selector + slot selector + a Filter sub-popup
 -- (Collected / Not Collected / All Factions / All Races + a Sources flyout),
 -- mirroring the wardrobe Items tab. Returns the popup and a sync function.
-function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames, branchPopups)
+function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuardFrames, branchPopups)
     local WIDTH = 168
     local ROW_H = 22
     local PAD = 6
@@ -201,15 +201,6 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, searchE
     -- Popups belonging to this menu's branch. A flyout stays open while the
     -- mouse is over any of them, but unrelated menus still auto-close.
     branchPopups = branchPopups or {}
-
-    local function Apply()
-        if ns.Database and ns.Database.RefreshDynamicCategory then
-            ns.Database:RefreshDynamicCategory("appearanceItems")
-        end
-        if searchEditBox and searchEditBox:GetText() ~= "" then
-            Search:OnSearchTextChanged(searchEditBox:GetText())
-        end
-    end
 
     local function ChainEnabled()
         local uiFilters = EasyFind.db.uiSearchFilters
@@ -254,7 +245,7 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, searchE
                     UpdateSlotLabel()
                     slotPopup:Hide()
                     Filters:SyncWardrobeItemSlot(self._slot)
-                    Apply()
+                    Filters:ApplyFilterSelection("appearanceItems")
                 end)
                 slotRows[i] = row
             end
@@ -317,7 +308,7 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, searchE
                     else
                         filters[self._source] = false
                     end
-                    Apply()
+                    Filters:ApplyFilterSelection("appearanceItems")
                 end)
                 srcRows[i] = row
             end
@@ -342,7 +333,7 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, searchE
             for _, def in ipairs(GetSourceDefs()) do filters[def.source] = false end
         end
         LayoutSourcePopup()
-        Apply()
+        Filters:ApplyFilterSelection("appearanceItems")
     end)
 
     -- Filter sub-popup: Collected / Not Collected / All Factions / All Races +
@@ -369,7 +360,7 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, searchE
         row.default = def.default
         row:SetScript("OnClick", function(self)
             EasyFind.db[self.dbKey] = self:GetChecked() and true or false
-            Apply()
+            Filters:ApplyFilterSelection("appearanceItems")
         end)
         toggleRows[i] = row
     end
@@ -449,7 +440,7 @@ end
 -- toggles whether that type appears in results (uiSearchFilters.appearanceItems
 -- / appearanceSets) and opens its own options flyout to the right on hover,
 -- mirroring how every other collection sub-row behaves.
-function Filters:BuildAppearanceOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
+function Filters:BuildAppearanceOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuardFrames)
     local WIDTH = 160
     local ROW_H = 24
     local PAD = 6
@@ -465,9 +456,9 @@ function Filters:BuildAppearanceOptionsPopup(StylePopup, CHECK_SIZE, searchEditB
     branchPopups[#branchPopups + 1] = chooser
 
     local itemsPopup, syncItems = Filters:BuildAppearanceItemOptionsPopup(
-        StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames, branchPopups)
+        StylePopup, CHECK_SIZE, dropdownGuardFrames, branchPopups)
     local setsPopup, syncSets = Filters:BuildAppearanceSetOptionsPopup(
-        StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames, branchPopups)
+        StylePopup, CHECK_SIZE, dropdownGuardFrames, branchPopups)
     itemsPopup:SetFrameLevel(chooser:GetFrameLevel() + 10)
     setsPopup:SetFrameLevel(chooser:GetFrameLevel() + 10)
     if dropdownGuardFrames then
@@ -478,15 +469,6 @@ function Filters:BuildAppearanceOptionsPopup(StylePopup, CHECK_SIZE, searchEditB
     -- One class filter shared by Items and Sets (Blizzard drives both wardrobe
     -- tabs from a single ClassDropdown). Writes both per-tab keys so each
     -- provider filters by the same class; refreshes both result categories.
-    local function ApplyAppearanceClass()
-        if ns.Database and ns.Database.RefreshDynamicCategory then
-            ns.Database:RefreshDynamicCategory("appearanceItems")
-            ns.Database:RefreshDynamicCategory("transmogSets")
-        end
-        if searchEditBox and searchEditBox:GetText() ~= "" then
-            Search:OnSearchTextChanged(searchEditBox:GetText())
-        end
-    end
     local classSel = Filters:BuildClassSpecSelector({
         parent = chooser,
         x = PAD, y = -PAD,
@@ -500,7 +482,7 @@ function Filters:BuildAppearanceOptionsPopup(StylePopup, CHECK_SIZE, searchEditB
             EasyFind.db.appearanceSetClass = v
             EasyFind.db.appearanceItemClass = v
         end,
-        onChange = ApplyAppearanceClass,
+        onChange = function() Filters:ApplyFilterSelection("appearanceItems", "transmogSets") end,
     })
     if classSel.popup then branchPopups[#branchPopups + 1] = classSel.popup end
 
@@ -533,9 +515,7 @@ function Filters:BuildAppearanceOptionsPopup(StylePopup, CHECK_SIZE, searchEditB
         row:SetScript("OnClick", function(self)
             EasyFind.db.uiSearchFilters[filterKey] = self:GetChecked()
             Filters.ResyncShownOptionPopups()
-            if searchEditBox and searchEditBox:GetText() ~= "" then
-                Search:OnSearchTextChanged(searchEditBox:GetText())
-            end
+            Filters:RerunActiveSearch()
         end)
         checkRows[i] = { row = row, filterKey = filterKey }
 

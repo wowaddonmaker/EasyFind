@@ -4,6 +4,7 @@ local Search = ns.Search
 local Results = ns.Results
 local Utils = ns.Utils
 local Render = ns.ResultRender
+local History = ns.SearchHistory
 local Icons = ns.ResultIcons
 local SecureAttributes = ns.ResultSecureAttributes
 local Shortcuts = ns.ResultShortcuts
@@ -75,7 +76,7 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
         local frameEdge = mfloor((EasyFind.db.uiResultsAbove
             and (resultsFrame:GetBottom() or 0)
             or (resultsFrame:GetTop() or 0)) + 0.5)
-        local quickFilterHelp = self._quickFilterSuggestionsActive and 1 or 0
+        local quickFilterHelp = self:IsQuickFilterSuggestionsActive() and 1 or 0
         local n = #hierarchical
         local last = self._lastRenderSig
         local same = last and last.n == n
@@ -141,7 +142,7 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
     if padB < theme.resultsPadBot then padB = theme.resultsPadBot end
     local quickFilterHelpH = 0
     if resultsFrame.quickFilterHelp then
-        if self._quickFilterSuggestionsActive then
+        if self:IsQuickFilterSuggestionsActive() then
             quickFilterHelpH = 22
             resultsFrame.quickFilterHelp:SetShown(true)
         else
@@ -233,7 +234,7 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
     end
 
     local count = mmin(visibleN, MAX_BUTTON_POOL)
-    local bypassSearchRowCap = self._quickFilterSuggestionsActive
+    local bypassSearchRowCap = self:IsQuickFilterSuggestionsActive()
     if not bypassSearchRowCap and pinSlots < visibleN then
         count = mmin(count, pinSlots + MAX_SEARCH_RESULT_ROWS)
     end
@@ -574,6 +575,6 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
 
     Search:SetSelectedIndex(0)
     Search:SetToggleFocused(false)
-    self:UpdateSelectionHighlight(nil, Search._preserveSearchNavRepeat)
+    self:UpdateSelectionHighlight(nil, History:IsPreservingNavRepeat())
     self:RestoreHoveredRow()
 end

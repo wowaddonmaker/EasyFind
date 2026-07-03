@@ -27,6 +27,23 @@ function Results:EnsureResultButton(index)
     return row
 end
 
+-- Re-render the cached result list into the open results panel. Returns true
+-- when a render happened (panel shown with cached results), false otherwise.
+-- bypassRenderCache defeats the render-skip signature so layout-only changes
+-- (checkbox toggles, slider writes) repaint instead of being skipped.
+function Results:RefreshShownResults(bypassRenderCache)
+    local frame = Search:GetResultsFrame()
+    if not (Results._cachedHierarchical and frame and frame:IsShown()) then return false end
+    if bypassRenderCache then
+        -- false, not nil: removing the key would let the shared module
+        -- __index resolve the read against another module's still-matching
+        -- signature and skip the repaint anyway.
+        self._lastRenderSig = false
+    end
+    self:ShowHierarchicalResults(Results._cachedHierarchical, true)
+    return true
+end
+
 function Results:CreateResultsFrame()
     resultsFrame = CreateFrame("Frame", "EasyFindResultsFrame", Search:GetSearchFrame(), "BackdropTemplate")
     Search:SetResultsFrame(resultsFrame)

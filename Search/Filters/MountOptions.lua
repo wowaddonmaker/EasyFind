@@ -1,6 +1,5 @@
 local _, ns = ...
 
-local Search = ns.Search
 local Filters = ns.Filters
 local Utils = ns.Utils
 local L = ns.L
@@ -70,7 +69,7 @@ local function EnsureMountSourceInvalidator()
     end)
 end
 
-function Filters:BuildMountOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox)
+function Filters:BuildMountOptionsPopup(StylePopup, CHECK_SIZE)
     local OPTIONS_WIDTH = 160
     local SOURCE_WIDTH = 170
     local ROW_H = 22
@@ -79,15 +78,6 @@ function Filters:BuildMountOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox)
 
     local function InstallMenuRowHighlight(row)
         Utils.InstallMenuRowHighlight(row)
-    end
-
-    local function ApplyFilterSelection()
-        if ns.Database and ns.Database.RefreshDynamicCategory then
-            ns.Database:RefreshDynamicCategory("mounts")
-        end
-        if searchEditBox and searchEditBox:GetText() ~= "" then
-            Search:OnSearchTextChanged(searchEditBox:GetText())
-        end
     end
 
     local function ChainEnabled()
@@ -157,7 +147,7 @@ function Filters:BuildMountOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox)
                     else
                         filters[self.sourceType] = false
                     end
-                    ApplyFilterSelection()
+                    Filters:ApplyFilterSelection("mounts")
                 end)
                 sourceRows[i] = row
             end
@@ -191,7 +181,7 @@ function Filters:BuildMountOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox)
             end
         end
         LayoutSourcePopup()
-        ApplyFilterSelection()
+        Filters:ApplyFilterSelection("mounts")
     end)
 
     local function CreateCheckRow(def, y)
@@ -207,7 +197,7 @@ function Filters:BuildMountOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox)
         row.dbKey = def.dbKey
         row:SetScript("OnClick", function(self)
             EasyFind.db[self.dbKey] = self:GetChecked() and true or false
-            ApplyFilterSelection()
+            Filters:ApplyFilterSelection("mounts")
         end)
         return row
     end

@@ -234,6 +234,27 @@ function Filters.IsMouseInFilterChain()
     return false
 end
 
+-- Shared outside-click closer for filter popups: register GLOBAL_MOUSE_DOWN
+-- on show, unregister on hide, hide when a click lands outside the filter
+-- chain. Installed via HookScript, never SetScript: several of these popups
+-- already carry OnShow/OnHide hooks (e.g. from Utils.AttachHoverPopup) that
+-- SetScript would silently wipe. opts.onHide runs extra cleanup (hiding
+-- nested flyouts, clearing the active-flyout tracker) after the unregister.
+function Filters.AttachOutsideClickClose(popup, opts)
+    local onHide = opts and opts.onHide
+    popup:HookScript("OnShow", function(self)
+        self:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    end)
+    popup:HookScript("OnHide", function(self)
+        self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+        if onHide then onHide(self) end
+    end)
+    popup:HookScript("OnEvent", function(self, event)
+        if event ~= "GLOBAL_MOUSE_DOWN" then return end
+        if not Filters.IsMouseInFilterChain() then self:Hide() end
+    end)
+end
+
 -- Re-run the checked/graying sync of every option popup currently visible.
 -- Popups sync themselves when they open; this covers a filter toggle being
 -- clicked while a deeper popup is already on screen, so its rows re-gray

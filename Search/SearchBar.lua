@@ -325,9 +325,7 @@ function Search:CreateSearchFrame()
         if dragRefreshTicker then return end
         dragRefreshTicker = C_Timer.NewTicker(0.1, function()
             local ok = pcall(function()
-                if Results._cachedHierarchical and resultsFrame and resultsFrame:IsShown() then
-                    Results:ShowHierarchicalResults(Results._cachedHierarchical, true)
-                end
+                Results:RefreshShownResults()
             end)
             if not ok and dragRefreshTicker then
                 dragRefreshTicker:Cancel()
@@ -340,9 +338,7 @@ function Search:CreateSearchFrame()
             dragRefreshTicker:Cancel()
             dragRefreshTicker = nil
         end
-        if Results._cachedHierarchical and resultsFrame and resultsFrame:IsShown() then
-            Results:ShowHierarchicalResults(Results._cachedHierarchical, true)
-        end
+        Results:RefreshShownResults()
     end
 
     -- (native behavior). Shift+left-click drags the bar -- the
@@ -472,17 +468,12 @@ function Search:CreateSearchFrame()
                 if searchFrame.editBox:HasFocus() then return end
                 if navFrame and navFrame:IsKeyboardEnabled() then return end
                 if strtrim(searchFrame.editBox:GetText()) ~= "" then return end
-                if Results._keepPinnedResultsOpenUntil then
-                    local keepUntil = Results._keepPinnedResultsOpenUntil
-                    Results._keepPinnedResultsOpenUntil = nil
-                    local now = GetTime and GetTime() or 0
-                    if now <= keepUntil and Results:HasPinnedItems() then
-                        Results:ShowPinnedItems()
-                        if searchFrame.editBox.blockFocus then
-                            searchFrame.editBox.blockFocus = nil
-                        end
-                        return
+                if Results:ConsumeKeepPinnedResultsOpen() and Results:HasPinnedItems() then
+                    Results:ShowPinnedItems()
+                    if searchFrame.editBox.blockFocus then
+                        searchFrame.editBox.blockFocus = nil
                     end
+                    return
                 end
                 -- Don't hide if spec/class flyouts are open
                 local sf = _G["EasyFindSpecFlyout"]
@@ -702,7 +693,7 @@ function Search:CreateSearchFrame()
             return nil
         end,
         backspaceAutocompleteTarget = function(_, typed)
-            if not Filters._quickFilterSuggestionsActive or not typed then return nil end
+            if not Filters:IsQuickFilterSuggestionsActive() or not typed then return nil end
             if not typed:match("^%s*@[%w_%-:]*$") then return nil end
             local text = typed:sub(1, -2)
             return text, #text
@@ -1361,7 +1352,7 @@ function Search:CreateSearchFrame()
         elseif key == "END" then
             Results:JumpToEnd()
         elseif key == "TAB" then
-            if Filters._quickFilterSuggestionsActive and Filters:AcceptQuickFilterSuggestion() then
+            if Filters:IsQuickFilterSuggestionsActive() and Filters:AcceptQuickFilterSuggestion() then
                 return
             end
             if not shift and selectedIndex > 0 and not toggleFocused then
@@ -1711,7 +1702,7 @@ function Search:Show(andFocus)
     if not searchFrame then return end
     if inCombat then return end
     local wasShown = searchFrame:IsShown()
-    if not wasShown and Filters._quickFilter then
+    if not wasShown and Filters:GetQuickFilter() then
         self:ClearQuickFilter(false)
         if searchFrame.editBox then
             if searchFrame.editBox.ResetPendingSearch then searchFrame.editBox:ResetPendingSearch() end
@@ -1827,7 +1818,7 @@ function Search:HandleEscape()
     -- exact pre-ESC state (text, scroll, pending change). The helper
     -- also lifts the popup above our results panel strata.
     if self:ShowUnappliedSettingsPopup() then return end
-    if (editBox and editBox:GetText() ~= "") or Filters._quickFilter then
+    if (editBox and editBox:GetText() ~= "") or Filters:GetQuickFilter() then
         if editBox and editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
         if editBox then
             editBox:SetText("")
@@ -1843,6 +1834,12 @@ function Search:HandleEscape()
         return
     end
     self:Hide()
+end
+
+-- True while HandleEscape is driving the filter-dropdown close cascade,
+-- so its OnHide handlers skip the keyboard handoff / ClearFocus paths.
+function Search:IsEscClosingMenus()
+    return self._escClosingMenus
 end
 
 function Search:ExpandFactionHeader(headerName)
@@ -1924,30 +1921,26 @@ function Search:UpdateResultsWidth()
 end
 
 function Search:RefreshResults()
-    if Results._cachedHierarchical and resultsFrame and resultsFrame:IsShown() then
-        local savedIndex = selectedIndex
-        local savedToggle = toggleFocused
-        -- Bypass ShowHierarchicalResults' render-skip cache. Setting
-        -- toggles, slider writes, and dropdown cycles keep the same
-        -- entry.data reference, so the row-by-row layout pass would be
-        -- skipped and the on-screen checkbox/value/slider would stay
-        -- stale until the result list rebuilt from scratch.
-        self._lastRenderSig = nil
-        self:ShowHierarchicalResults(Results._cachedHierarchical, true)
-        if savedIndex > 0 then
-            selectedIndex = savedIndex
-            toggleFocused = savedToggle
-            self:UpdateSelectionHighlight()
-        end
-        -- Re-apply the hover action hint. Re-render rewrote pathSubtext
-        -- back to GetFlatSubtext, so the row the cursor is still over
-        -- would otherwise revert to the unhovered subtext after a click.
-        for i = 1, #resultButtons do
-            local row = resultButtons[i]
-            if Utils.IsFrameVisiblyMouseOver(row) then
-                Handlers:ApplyActionHint(row)
-                break
-            end
+    local savedIndex = selectedIndex
+    local savedToggle = toggleFocused
+    -- Bypass the render-skip cache: setting toggles, slider writes, and
+    -- dropdown cycles keep the same entry.data reference, so the row-by-row
+    -- layout pass would be skipped and the on-screen checkbox/value/slider
+    -- would stay stale until the result list rebuilt from scratch.
+    if not Results:RefreshShownResults(true) then return end
+    if savedIndex > 0 then
+        selectedIndex = savedIndex
+        toggleFocused = savedToggle
+        self:UpdateSelectionHighlight()
+    end
+    -- Re-apply the hover action hint. Re-render rewrote pathSubtext
+    -- back to GetFlatSubtext, so the row the cursor is still over
+    -- would otherwise revert to the unhovered subtext after a click.
+    for i = 1, #resultButtons do
+        local row = resultButtons[i]
+        if Utils.IsFrameVisiblyMouseOver(row) then
+            Handlers:ApplyActionHint(row)
+            break
         end
     end
 end
@@ -2112,7 +2105,5 @@ function Search:UpdateFontSize()
     end
 
     -- Re-layout visible results with new row heights
-    if Results._cachedHierarchical and resultsFrame and resultsFrame:IsShown() then
-        self:ShowHierarchicalResults(Results._cachedHierarchical, true)
-    end
+    Results:RefreshShownResults()
 end

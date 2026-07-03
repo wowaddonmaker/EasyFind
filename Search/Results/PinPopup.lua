@@ -27,6 +27,15 @@ function Results:ShowPinPopup(anchorFrame, isPinned, onPinAction, onGuide, onAdd
     return Utils.ShowPinMenu("EasyFindPinPopup", isPinned, onPinAction, onGuide, onAddAlias, opts, extra)
 end
 
+-- Consume the grace deadline set by KeepPinnedResultsOpenBriefly: clear it
+-- and report whether it was still live.
+function Results:ConsumeKeepPinnedResultsOpen()
+    local keepUntil = Results._keepPinnedResultsOpenUntil
+    if not keepUntil then return false end
+    Results._keepPinnedResultsOpenUntil = nil
+    return (GetTime and GetTime() or 0) <= keepUntil
+end
+
 function Results:KeepPinnedResultsOpenBriefly()
     if not Results:HasPinnedItems() then return false end
     Results._keepPinnedResultsOpenUntil = (GetTime and GetTime() or 0) + 0.35

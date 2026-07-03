@@ -646,11 +646,8 @@ local searchRefreshPending = false
 local function RunActiveSearchRefresh()
     searchRefreshPending = false
     local search = ns.Search
-    local frame = search and search.GetSearchFrame and search:GetSearchFrame()
-    local editBox = frame and frame.editBox
-    local text = editBox and editBox:GetText()
-    if frame and frame:IsShown() and text and text ~= "" and search.OnSearchTextChanged then
-        search:OnSearchTextChanged(text, true)
+    if search and search.RefreshActiveSearch then
+        search:RefreshActiveSearch()
     end
 end
 

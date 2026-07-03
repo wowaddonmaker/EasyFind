@@ -25,17 +25,23 @@ local function FlatNameLess(ra, rb)
     if sa ~= sb then return sa > sb end
     return (ra.data.name or "") < (rb.data.name or "")
 end
-local function RefreshSearchAfterProviderLoad(anyChanged)
-    if not anyChanged then return end
+-- Re-run the active search after async data changes (provider loads,
+-- item-info arrivals, Database cache resets). A quick-filter browse
+-- ("@outfits") has empty text but still needs the re-search once its
+-- data finishes loading in the background.
+function Search:RefreshActiveSearch()
     local frame = Search:GetSearchFrame()
     local editBox = frame and frame.editBox
     local currentText = editBox and editBox:GetText()
-    -- A quick-filter browse ("@outfits") has empty text but still needs the
-    -- re-search once its provider finishes loading async.
     if frame and frame:IsShown()
        and ((currentText and currentText ~= "") or Search:GetQuickFilter()) then
         Search:OnSearchTextChanged(currentText or "", true)
     end
+end
+
+local function RefreshSearchAfterProviderLoad(anyChanged)
+    if not anyChanged then return end
+    Search:RefreshActiveSearch()
 end
 
 -- GET_ITEM_INFO_RECEIVED arrives async after the client requests item

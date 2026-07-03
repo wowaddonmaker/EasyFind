@@ -50,17 +50,6 @@ local reuseUISearchResults = Search.reuseUISearchResults
 local reuseUISearchResultData = Search.reuseUISearchResultData
 local UI_MAP_RESULT_CAP = Search.UI_MAP_RESULT_CAP
 
-local function RefreshUISearchAfterGlobalInstances()
-    local search = ns.Search
-    local frame = search and search.GetSearchFrame and search:GetSearchFrame()
-    local editBox = frame and frame.editBox
-    local text = editBox and editBox:GetText()
-    if frame and frame:IsShown() and text and text ~= ""
-       and search and search.OnSearchTextChanged then
-        search:OnSearchTextChanged(text, true)
-    end
-end
-
 local function RequestUISearchGlobalInstances(self)
     if not self.RequestGlobalInstanceCache then return end
     if Search.uiGlobalInstanceRefreshPending then
@@ -71,7 +60,9 @@ local function RequestUISearchGlobalInstances(self)
     Search.uiGlobalInstanceRefreshPending = true
     self:RequestGlobalInstanceCache(function(ready)
         Search.uiGlobalInstanceRefreshPending = nil
-        if ready then RefreshUISearchAfterGlobalInstances() end
+        if ready and ns.Search and ns.Search.RefreshActiveSearch then
+            ns.Search:RefreshActiveSearch()
+        end
     end)
 end
 

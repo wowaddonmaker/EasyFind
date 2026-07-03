@@ -1,6 +1,5 @@
 local _, ns = ...
 
-local Search = ns.Search
 local Filters = ns.Filters
 local Utils = ns.Utils
 local L = ns.L
@@ -55,7 +54,7 @@ local function CollectHeirloomSourceDefs()
     return defs
 end
 
-function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
+function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuardFrames)
     local OPTIONS_WIDTH = 160
     local SOURCE_WIDTH = 170
     local ROW_H = 22
@@ -63,15 +62,6 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox
 
     local function InstallMenuRowHighlight(row)
         Utils.InstallMenuRowHighlight(row)
-    end
-
-    local function ApplyFilterSelection()
-        if ns.Database and ns.Database.RefreshDynamicCategory then
-            ns.Database:RefreshDynamicCategory("heirlooms")
-        end
-        if searchEditBox and searchEditBox:GetText() ~= "" then
-            Search:OnSearchTextChanged(searchEditBox:GetText())
-        end
     end
 
     local function ChainEnabled()
@@ -99,7 +89,7 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox
         getScale = function() return EasyFind.db.uiSearchScale or 1.0 end,
         getFilter = function() return EasyFind.db.heirloomFilter end,
         setFilter = function(v) EasyFind.db.heirloomFilter = v end,
-        onChange = ApplyFilterSelection,
+        onChange = function() Filters:ApplyFilterSelection("heirlooms") end,
     })
 
     local sourcePopup = CreateFrame("Frame", "EasyFindHeirloomSourcePopup", UIParent, "BackdropTemplate")
@@ -151,7 +141,7 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox
                     else
                         filters[self.sourceType] = false
                     end
-                    ApplyFilterSelection()
+                    Filters:ApplyFilterSelection("heirlooms")
                 end)
                 sourceRows[i] = row
             end
@@ -181,7 +171,7 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox
             for _, def in ipairs(defs) do filters[def.sourceType] = false end
         end
         LayoutSourcePopup()
-        ApplyFilterSelection()
+        Filters:ApplyFilterSelection("heirlooms")
     end)
 
     local function CreateCheckRow(def, y)
@@ -197,7 +187,7 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox
         row.dbKey = def.dbKey
         row:SetScript("OnClick", function(self)
             EasyFind.db[self.dbKey] = self:GetChecked() and true or false
-            ApplyFilterSelection()
+            Filters:ApplyFilterSelection("heirlooms")
         end)
         return row
     end

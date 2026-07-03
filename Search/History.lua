@@ -10,6 +10,14 @@ local tinsert, tremove = Utils.tinsert, Utils.tremove
 -- indexes walk toward older saved queries.
 local historyIndex = 0
 local historyDraft = ""
+-- True only during the synchronous OnSearchTextChanged call inside
+-- NavigateSearchHistory, so render/navigation code can keep an active
+-- nav-repeat ticker alive through the history-recall re-render.
+local preservingNavRepeat = false
+
+function History:IsPreservingNavRepeat()
+    return preservingNavRepeat
+end
 
 function History:ResetSearchHistory()
     historyIndex = 0
@@ -73,10 +81,9 @@ function History:NavigateSearchHistory(direction)
     -- feed back into the search query). History nav still wants a fresh
     -- result render for the recalled query, so kick it manually.
     local searchFrame = Search:GetSearchFrame()
-    local preserveRepeat = searchFrame and searchFrame.IsAltNavRepeatKey
-        and searchFrame.IsAltNavRepeatKey()
-    Search._preserveSearchNavRepeat = preserveRepeat or nil
+    preservingNavRepeat = (searchFrame and searchFrame.IsAltNavRepeatKey
+        and searchFrame.IsAltNavRepeatKey()) or false
     Search:OnSearchTextChanged(editBox:GetText() or "", true)
-    Search._preserveSearchNavRepeat = nil
+    preservingNavRepeat = false
     return true
 end

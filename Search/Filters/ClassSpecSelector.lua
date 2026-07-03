@@ -377,13 +377,7 @@ function Filters:BuildClassSpecSelector(opts)
         Utils.OpenDropdownBelow(specPopup, btn, 2)
         specPopup:Show()
     end)
-    specPopup:SetScript("OnShow", function(self) self:RegisterEvent("GLOBAL_MOUSE_DOWN") end)
-    specPopup:SetScript("OnHide", function(self) self:UnregisterEvent("GLOBAL_MOUSE_DOWN") end)
-    specPopup:SetScript("OnEvent", function(self, event)
-        if event == "GLOBAL_MOUSE_DOWN" and not Filters.IsMouseInFilterChain() then
-            self:Hide()
-        end
-    end)
+    Filters.AttachOutsideClickClose(specPopup)
 
     UpdateLabel()
     return { button = btn, Refresh = UpdateLabel, popup = specPopup }

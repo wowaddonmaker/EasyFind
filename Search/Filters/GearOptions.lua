@@ -1,6 +1,5 @@
 local _, ns = ...
 
-local Search = ns.Search
 local Filters = ns.Filters
 local Utils = ns.Utils
 local L = ns.L
@@ -20,7 +19,6 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     local SetActiveFlyout = ctx.SetActiveFlyout
     local ClearActiveFlyout = ctx.ClearActiveFlyout
     local dropdownGuardFrames = ctx.dropdownGuardFrames
-    local searchEditBox = ctx.searchEditBox
     local GEAR_POPUP_WIDTH = 184
     local GEAR_POPUP_PAD = 8
 
@@ -65,9 +63,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         subRow:SetScript("OnClick", function(self)
             local tbl, leaf = resolveDbPath()
             tbl[leaf] = self:GetChecked() and true or false
-            if searchEditBox:GetText() ~= "" then
-                Search:OnSearchTextChanged(searchEditBox:GetText())
-            end
+            Filters:RerunActiveSearch()
         end)
         subRow.resolveDbPath = resolveDbPath
     end
@@ -147,12 +143,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
             EasyFind.db.lootDifficulty = def.key
             UpdateDiffLabel()
             diffPopup:Hide()
-            if ns.Database and ns.Database.RefreshDynamicCategory then
-                ns.Database:RefreshDynamicCategory("loot")
-            end
-            if searchEditBox:GetText() ~= "" then
-                Search:OnSearchTextChanged(searchEditBox:GetText())
-            end
+            Filters:ApplyFilterSelection("loot")
         end)
         diffPopupRows[#diffPopupRows + 1] = dRow
         py = py - 20
@@ -176,17 +167,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
             diffPopup:Show()
         end
     end)
-    diffPopup:SetScript("OnShow", function(self)
-        self:RegisterEvent("GLOBAL_MOUSE_DOWN")
-    end)
-    diffPopup:SetScript("OnHide", function(self)
-        self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
-    end)
-    diffPopup:SetScript("OnEvent", function(self, event)
-        if event == "GLOBAL_MOUSE_DOWN" and not Filters.IsMouseInFilterChain() then
-            self:Hide()
-        end
-    end)
+    Filters.AttachOutsideClickClose(diffPopup)
 
     AddPopupKeyboardNav(diffPopup, function() return diffPopupRows end)
     dropdownGuardFrames[#dropdownGuardFrames + 1] = diffPopup
@@ -240,6 +221,8 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         return allClassSpecs[1]
     end
 
+    -- Not Filters:ApplyFilterSelection("loot"): SyncEJLootFilter must run
+    -- between the category refresh and the re-search.
     local function ApplyFilterSelection()
         if ns.Database then
             if ns.Database.RefreshDynamicCategory then
@@ -247,9 +230,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
             end
             ns.Database:SyncEJLootFilter()
         end
-        if searchEditBox:GetText() ~= "" then
-            Search:OnSearchTextChanged(searchEditBox:GetText())
-        end
+        Filters:RerunActiveSearch()
     end
 
     -- Update the spec selector label from lootFilter
@@ -604,18 +585,9 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         return rows
     end
 
-    specPopup:SetScript("OnShow", function(self)
-        self:RegisterEvent("GLOBAL_MOUSE_DOWN")
-    end)
-    specPopup:SetScript("OnHide", function(self)
-        self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
-        classFlyout:Hide()
-    end)
-    specPopup:SetScript("OnEvent", function(self, event)
-        if event == "GLOBAL_MOUSE_DOWN" and not Filters.IsMouseInFilterChain() then
-            self:Hide()
-        end
-    end)
+    Filters.AttachOutsideClickClose(specPopup, {
+        onHide = function() classFlyout:Hide() end,
+    })
 
     Utils.SafeOnUpdate(classFlyout, function(self)
         if self:IsKeyboardEnabled() then return end
@@ -644,7 +616,6 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         specPopup:Hide()
     end)
 
-    -- Keyboard nav MUST be added AFTER SetScript calls above
     AddPopupKeyboardNav(specPopup, GetSpecPopupNavRows)
     AddPopupKeyboardNav(classFlyout, function() return classFlyoutRows end)
 
@@ -690,23 +661,17 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         end,
     })
     row.ShowGearOptionsPopup = gearHover.Show
-    gearOptionsPopup:HookScript("OnShow", function(self)
-        self:RegisterEvent("GLOBAL_MOUSE_DOWN")
-    end)
-    gearOptionsPopup:HookScript("OnHide", function(self)
-        self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
-        if row.diffPopup then row.diffPopup:Hide() end
-        local sp = _G["EasyFindSpecPopup"]
-        if sp then sp:Hide() end
-        classFlyout:Hide()
-        ClearActiveFlyout(self)
-    end)
     -- Outside-click: nested diff/spec/class popups act as guards
     -- so clicks inside them don't dismiss the gear options.
-    gearOptionsPopup:HookScript("OnEvent", function(self, event)
-        if event ~= "GLOBAL_MOUSE_DOWN" then return end
-        if not Filters.IsMouseInFilterChain() then self:Hide() end
-    end)
+    Filters.AttachOutsideClickClose(gearOptionsPopup, {
+        onHide = function(self)
+            if row.diffPopup then row.diffPopup:Hide() end
+            local sp = _G["EasyFindSpecPopup"]
+            if sp then sp:Hide() end
+            classFlyout:Hide()
+            ClearActiveFlyout(self)
+        end,
+    })
     dropdown:HookScript("OnHide", function() gearOptionsPopup:Hide() end)
 
     row.updateLootToggle = function()

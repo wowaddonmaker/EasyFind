@@ -69,16 +69,6 @@ end
 local partialSearchRefreshPending = false
 local lastPartialSearchRefreshMs = 0
 
-local function RefreshOpenSearch()
-    local search = ns.Search
-    local frame = search and search.GetSearchFrame and search:GetSearchFrame()
-    local editBox = frame and frame.editBox
-    local text = editBox and editBox:GetText()
-    if frame and frame:IsShown() and text and text ~= "" and search.OnSearchTextChanged then
-        search:OnSearchTextChanged(text, true)
-    end
-end
-
 function Database:SchedulePartialSearchRefresh(minIntervalMs)
     if partialSearchRefreshPending then return end
 
@@ -97,7 +87,9 @@ function Database:SchedulePartialSearchRefresh(minIntervalMs)
         partialSearchRefreshPending = false
         lastPartialSearchRefreshMs = debugprofilestop and debugprofilestop() or 0
         if Database.ResetSearchCache then Database:ResetSearchCache() end
-        RefreshOpenSearch()
+        if ns.Search and ns.Search.RefreshActiveSearch then
+            ns.Search:RefreshActiveSearch()
+        end
     end
 
     if Utils.SafeAfter then
