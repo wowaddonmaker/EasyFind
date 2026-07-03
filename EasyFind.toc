@@ -61,6 +61,7 @@ Search/Results/Handlers/Macros.lua
 Search/Filters/Config.lua
 Search/Filters/ClassSpecSelector.lua
 Search/Filters/QuickFilter.lua
+Search/Filters/SourceFlyout.lua
 Search/Filters/MountOptions.lua
 Search/Filters/HeirloomOptions.lua
 Search/Filters/AppearanceSets.lua

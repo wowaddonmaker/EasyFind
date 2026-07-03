@@ -2,7 +2,6 @@ local _, ns = ...
 
 local Filters = ns.Filters
 local Utils = ns.Utils
-local L = ns.L
 
 local ipairs = Utils.ipairs
 local select = Utils.select
@@ -10,7 +9,6 @@ local tsort = Utils.tsort
 local SetFlyoutRowEnabled = Utils.SetFlyoutRowEnabled
 local CreateFrame = CreateFrame
 local UIParent = UIParent
-local wipe = wipe
 
 local HEIRLOOM_SOURCE_FALLBACK_LABELS = {
     [1] = "Drop",
@@ -92,87 +90,10 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuard
         onChange = function() Filters:ApplyFilterSelection("heirlooms") end,
     })
 
-    local sourcePopup = CreateFrame("Frame", "EasyFindHeirloomSourcePopup", UIParent, "BackdropTemplate")
-    sourcePopup:SetFrameStrata("TOOLTIP")
-    sourcePopup:SetFrameLevel(optionsPopup:GetFrameLevel() + 20)
-    StylePopup(sourcePopup)
-    sourcePopup:EnableMouse(true)
-    sourcePopup:Hide()
-
-    local sourceRows = {}
     local function EnsureSourceFilters()
         EasyFind.db.heirloomSourceFilters = EasyFind.db.heirloomSourceFilters or {}
         return EasyFind.db.heirloomSourceFilters
     end
-
-    local toggleAllRow = CreateFrame("Button", nil, sourcePopup)
-    toggleAllRow:SetSize(SOURCE_WIDTH - PAD * 2, ROW_H)
-    local toggleAllLabel = toggleAllRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    toggleAllLabel:SetPoint("LEFT", 14, 0)
-    toggleAllLabel:SetText(L["FILTER_TOGGLE_ALL"])
-    toggleAllRow._label = toggleAllLabel
-    InstallMenuRowHighlight(toggleAllRow)
-
-    local function LayoutSourcePopup()
-        local defs = CollectHeirloomSourceDefs()
-        local filters = EnsureSourceFilters()
-        local chainEnabled = ChainEnabled()
-        toggleAllRow:ClearAllPoints()
-        toggleAllRow:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -PAD)
-        SetFlyoutRowEnabled(toggleAllRow, chainEnabled)
-
-        for i = #sourceRows, #defs + 1, -1 do
-            sourceRows[i]:Hide()
-        end
-        for i, def in ipairs(defs) do
-            local row = sourceRows[i]
-            if not row then
-                row = CreateFrame("CheckButton", nil, sourcePopup)
-                row:SetSize(SOURCE_WIDTH - PAD * 2, ROW_H)
-                Utils.SetCheckboxTextures(row, CHECK_SIZE)
-                row.text = row:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-                row.text:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
-                row._label = row.text
-                InstallMenuRowHighlight(row)
-                row:SetScript("OnClick", function(self)
-                    local filters = EnsureSourceFilters()
-                    if self:GetChecked() then
-                        filters[self.sourceType] = nil
-                    else
-                        filters[self.sourceType] = false
-                    end
-                    Filters:ApplyFilterSelection("heirlooms")
-                end)
-                sourceRows[i] = row
-            end
-            row.sourceType = def.sourceType
-            row.text:SetText(def.label)
-            row:SetChecked(filters[def.sourceType] ~= false)
-            SetFlyoutRowEnabled(row, chainEnabled)
-            row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -(PAD + i * ROW_H))
-            row:Show()
-        end
-        sourcePopup:SetSize(SOURCE_WIDTH, PAD * 2 + (1 + #defs) * ROW_H)
-        Utils.RefreshMenuRowHighlights(sourcePopup)
-    end
-
-    -- Toggle All: everything on if any source is currently off, else all off.
-    toggleAllRow:SetScript("OnClick", function()
-        local defs = CollectHeirloomSourceDefs()
-        local filters = EnsureSourceFilters()
-        local anyOff = false
-        for _, def in ipairs(defs) do
-            if filters[def.sourceType] == false then anyOff = true break end
-        end
-        if anyOff then
-            wipe(filters)
-        else
-            for _, def in ipairs(defs) do filters[def.sourceType] = false end
-        end
-        LayoutSourcePopup()
-        Filters:ApplyFilterSelection("heirlooms")
-    end)
 
     local function CreateCheckRow(def, y)
         local row = CreateFrame("CheckButton", nil, optionsPopup)
@@ -219,14 +140,20 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuard
 
     optionsPopup:SetSize(OPTIONS_WIDTH, PAD * 2 + CLASS_BTN_H + CLASS_GAP + #filterDefs * ROW_H + ROW_H)
 
-    Utils.AttachHoverPopup(sourcesRow, sourcePopup, {
-        onShow = function()
-            LayoutSourcePopup()
-            sourcePopup:SetScale(optionsPopup:GetScale())
-            sourcePopup:SetFrameLevel(optionsPopup:GetFrameLevel() + 10)
-            Utils.OpenFlyoutBeside(sourcePopup, sourcesRow, 4)
-            sourcePopup:Show()
-        end,
+    local sourceFlyout, LayoutSourceFlyout = Filters:BuildSourceFlyout({
+        name = "EasyFindHeirloomSourcePopup",
+        stylePopup = StylePopup,
+        checkSize = CHECK_SIZE,
+        width = SOURCE_WIDTH,
+        frameLevel = optionsPopup:GetFrameLevel() + 20,
+        getShowLevel = function() return optionsPopup:GetFrameLevel() + 10 end,
+        getScale = function() return optionsPopup:GetScale() end,
+        sourcesRow = sourcesRow,
+        collectDefs = CollectHeirloomSourceDefs,
+        defField = "sourceType",
+        getFilters = EnsureSourceFilters,
+        chainEnabled = ChainEnabled,
+        applyKey = "heirlooms",
     })
 
     local function SyncOptions()
@@ -240,12 +167,12 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuard
             SetFlyoutRowEnabled(row, chainEnabled)
         end
         SetFlyoutRowEnabled(sourcesRow, chainEnabled)
-        LayoutSourcePopup()
+        LayoutSourceFlyout()
     end
 
     optionsPopup:HookScript("OnHide", function()
-        sourcePopup:Hide()
+        sourceFlyout:Hide()
         if classSel.popup then classSel.popup:Hide() end
     end)
-    return optionsPopup, SyncOptions, sourcePopup
+    return optionsPopup, SyncOptions, sourceFlyout
 end

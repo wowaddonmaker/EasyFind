@@ -3,7 +3,6 @@ local _, ns = ...
 local Search = ns.Search
 local Filters = ns.Filters
 local Utils = ns.Utils
-local L = ns.L
 
 local ipairs = Utils.ipairs
 local pairs = Utils.pairs
@@ -11,7 +10,6 @@ local tsort = Utils.tsort
 local SetFlyoutRowEnabled = Utils.SetFlyoutRowEnabled
 local CreateFrame = CreateFrame
 local UIParent = UIParent
-local wipe = wipe
 
 -- Transmog slot categories (Enum.TransmogCollectionType). Names come from the
 -- game where available, with an English fallback per slot.
@@ -269,73 +267,6 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, dropdow
         guardFrames = dropdownGuardFrames,
     })
 
-    -- Sources flyout (Toggle All + one row per transmog source type).
-    local sourcePopup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
-    sourcePopup:SetFrameStrata("TOOLTIP")
-    sourcePopup:SetFrameLevel(optionsPopup:GetFrameLevel() + 40)
-    StylePopup(sourcePopup)
-    sourcePopup:EnableMouse(true)
-    sourcePopup:Hide()
-    if dropdownGuardFrames then dropdownGuardFrames[#dropdownGuardFrames + 1] = sourcePopup end
-    local function SourceFilters()
-        EasyFind.db.appearanceItemSourceFilters = EasyFind.db.appearanceItemSourceFilters or {}
-        return EasyFind.db.appearanceItemSourceFilters
-    end
-    local srcRows = {}
-    local toggleAllRow = CreateFrame("Button", nil, sourcePopup)
-    toggleAllRow:SetSize(WIDTH - PAD * 2, ROW_H)
-    local toggleAllLabel = toggleAllRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    toggleAllLabel:SetPoint("LEFT", 14, 0)
-    toggleAllLabel:SetText(L["FILTER_TOGGLE_ALL"])
-    toggleAllRow._label = toggleAllLabel
-    Utils.InstallMenuRowHighlight(toggleAllRow)
-    local function LayoutSourcePopup()
-        local defs = GetSourceDefs()
-        local filters = SourceFilters()
-        local chainEnabled = ChainEnabled()
-        toggleAllRow:ClearAllPoints()
-        toggleAllRow:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, -PAD)
-        SetFlyoutRowEnabled(toggleAllRow, chainEnabled)
-        local py = -(PAD + ROW_H)
-        for i, def in ipairs(defs) do
-            local row = srcRows[i]
-            if not row then
-                row = MakeCheckRow(sourcePopup, WIDTH - PAD * 2, ROW_H, CHECK_SIZE)
-                row:SetScript("OnClick", function(self)
-                    local filters = SourceFilters()
-                    if self:GetChecked() then
-                        filters[self._source] = nil
-                    else
-                        filters[self._source] = false
-                    end
-                    Filters:ApplyFilterSelection("appearanceItems")
-                end)
-                srcRows[i] = row
-            end
-            row._source = def.source
-            row.text:SetText(def.label)
-            row:SetChecked(filters[def.source] ~= false)
-            SetFlyoutRowEnabled(row, chainEnabled)
-            row:ClearAllPoints()
-            row:SetPoint("TOPLEFT", sourcePopup, "TOPLEFT", PAD, py)
-            row:Show()
-            py = py - ROW_H
-        end
-        for i = #defs + 1, #srcRows do srcRows[i]:Hide() end
-        sourcePopup:SetSize(WIDTH, -py + PAD)
-        Utils.RefreshMenuRowHighlights(sourcePopup)
-    end
-    toggleAllRow:SetScript("OnClick", function()
-        local filters = SourceFilters()
-        local anyOff = false
-        for _, def in ipairs(GetSourceDefs()) do if filters[def.source] == false then anyOff = true; break end end
-        if anyOff then wipe(filters) else
-            for _, def in ipairs(GetSourceDefs()) do filters[def.source] = false end
-        end
-        LayoutSourcePopup()
-        Filters:ApplyFilterSelection("appearanceItems")
-    end)
-
     -- Filter sub-popup: Collected / Not Collected / All Factions / All Races +
     -- a Sources row that opens the sources flyout.
     local filterPopup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
@@ -380,14 +311,26 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, dropdow
     Utils.InstallMenuRowHighlight(sourcesRow)
     filterPopup:SetSize(WIDTH, PAD * 2 + (#toggleDefs + 1) * ROW_H)
 
-    Utils.AttachHoverPopup(sourcesRow, sourcePopup, {
+    local function SourceFilters()
+        EasyFind.db.appearanceItemSourceFilters = EasyFind.db.appearanceItemSourceFilters or {}
+        return EasyFind.db.appearanceItemSourceFilters
+    end
+
+    -- Sources flyout (Toggle All + one row per transmog source type).
+    local sourceFlyout = Filters:BuildSourceFlyout({
+        stylePopup = StylePopup,
+        checkSize = CHECK_SIZE,
+        width = WIDTH,
+        frameLevel = optionsPopup:GetFrameLevel() + 40,
+        getScale = function() return EasyFind.db.uiSearchScale or 1.0 end,
+        guardFrames = dropdownGuardFrames,
         chainGuards = branchPopups,
-        onShow = function()
-            LayoutSourcePopup()
-            sourcePopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
-            Utils.OpenFlyoutBeside(sourcePopup, sourcesRow, 4)
-            sourcePopup:Show()
-        end,
+        sourcesRow = sourcesRow,
+        collectDefs = GetSourceDefs,
+        defField = "source",
+        getFilters = SourceFilters,
+        chainEnabled = ChainEnabled,
+        applyKey = "appearanceItems",
     })
 
     local function SyncFilterToggles()
@@ -407,23 +350,23 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, dropdow
         popup = filterPopup, layout = SyncFilterToggles,
         getScale = function() return EasyFind.db.uiSearchScale or 1.0 end,
         guardFrames = dropdownGuardFrames,
-        extraGuards = { sourcePopup },
+        extraGuards = { sourceFlyout },
     })
     setFilterLabel(_G["FILTER"] or "Filter")
-    filterPopup:HookScript("OnHide", function() sourcePopup:Hide() end)
+    filterPopup:HookScript("OnHide", function() sourceFlyout:Hide() end)
 
     optionsPopup:SetSize(WIDTH, PAD * 2 + (CLASS_BTN_H + 4) * 2 - 4)
 
     optionsPopup:HookScript("OnHide", function()
         slotPopup:Hide()
         filterPopup:Hide()
-        sourcePopup:Hide()
+        sourceFlyout:Hide()
     end)
 
     branchPopups[#branchPopups + 1] = optionsPopup
     branchPopups[#branchPopups + 1] = slotPopup
     branchPopups[#branchPopups + 1] = filterPopup
-    branchPopups[#branchPopups + 1] = sourcePopup
+    branchPopups[#branchPopups + 1] = sourceFlyout
 
     local function SyncFromDB()
         UpdateSlotLabel()
