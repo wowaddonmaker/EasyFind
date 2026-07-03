@@ -13,10 +13,8 @@ local Shortcuts = ns.ResultShortcuts
 local L = ns.L
 
 local Utils = ns.Utils
-local ClickButton           = Utils.ClickButton
-local SecureCall            = Utils.SecureCall
-local select, ipairs = Utils.select, Utils.ipairs
-local sfind, slower         = Utils.sfind, Utils.slower
+local ipairs = Utils.ipairs
+local slower = Utils.slower
 local mmin, mmax = Utils.mmin, Utils.mmax
 
 local GOLD_COLOR = ns.GOLD_COLOR
@@ -109,10 +107,6 @@ end
 
 function Search:IsSelectingResult()
     return selectingResult
-end
-
-function Search:IsInCombat()
-    return inCombat
 end
 
 function Search:GetPetFavoriteOverrides()
@@ -617,7 +611,7 @@ function Search:CreateSearchFrame()
         if self.StripAutocomplete then self:StripAutocomplete() end
         local typed = strtrim(self:GetText() or "")
 
-        -- Slash commands (/resize, /reset, ...) are ordinary result rows, so
+        -- Slash commands (/reset, /options, ...) are ordinary result rows, so
         -- Enter focuses the first one and a second Enter runs it, exactly like
         -- every other result. Commands aren't recorded in search history.
         if typed ~= "" and typed:sub(1, 1) ~= "/" then
@@ -1851,30 +1845,6 @@ function Search:HandleEscape()
     self:Hide()
 end
 
-function Search:ExpandCurrencyHeader(headerName)
-    -- Click the header button - this is what the game actually responds to.
-    -- C_CurrencyInfo.ExpandCurrencyList exists but does not reliably trigger
-    -- TokenFrame to rebuild its list in Midnight.
-    local headerBtn = ns.Highlight and ns.Highlight:GetCurrencyHeaderButton(headerName)
-    if headerBtn then
-        return ClickButton(headerBtn)
-    end
-    -- Fallback: try the API directly
-    if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return false end
-    local headerNameLower = slower(headerName)
-    local size = C_CurrencyInfo.GetCurrencyListSize()
-    for i = 1, size do
-        local info = C_CurrencyInfo.GetCurrencyListInfo(i)
-        if info and info.isHeader and info.name and slower(info.name) == headerNameLower then
-            if not info.isHeaderExpanded then
-                SecureCall(C_CurrencyInfo.ExpandCurrencyList, i, true)
-            end
-            return true
-        end
-    end
-    return false
-end
-
 function Search:ExpandFactionHeader(headerName)
     local headerNameLower = slower(headerName)
     local i, data = Utils.FindFactionByPredicate(function(d)
@@ -1885,93 +1855,6 @@ function Search:ExpandFactionHeader(headerName)
         C_Reputation.ExpandFactionHeader(i)
     end
     return true
-end
-
-function Search:OpenPortraitMenu()
-    if not PlayerFrame then return end
-
-    -- Method 1: Modern WoW - PlayerFrame has a dropdown system via PlayerFrameDropDown
-    local dropDown = _G["PlayerFrameDropDown"]
-    if dropDown then
-        if ToggleDropDownMenu then
-            ToggleDropDownMenu(1, nil, dropDown, "cursor", 0, 0)
-            return
-        end
-    end
-
-    -- Method 2: Try Click() which goes through the WoW frame pipeline
-    if PlayerFrame.Click then
-        pcall(PlayerFrame.Click, PlayerFrame, "RightButton")
-        return
-    end
-
-    -- Method 3: Try UnitPopup API
-    if UnitPopup_ShowMenu then
-        UnitPopup_ShowMenu(PlayerFrame, "SELF", "player")
-        return
-    end
-
-    -- Method 4: Modern Menu system
-    if PlayerFrame.unit and Menu and Menu.ModifyMenu then
-        -- Try to invoke the right-click behavior via secure handler
-        if PlayerFrame.ToggleMenu then
-            PlayerFrame:ToggleMenu()
-        end
-    end
-end
-
-function Search:ClickPortraitMenuOption(optionName)
-    local optionNameLower = slower(optionName)
-
-    -- Search through open dropdown frames for the matching button
-    -- Modern WoW uses the Menu system
-    local function searchFrame(frame, depth)
-        if not frame or depth > 5 then return false end
-
-        for i = 1, select("#", frame:GetChildren()) do
-            local child = select(i, frame:GetChildren())
-            if child and child:IsShown() then
-                local text = nil
-                if child.GetText then text = child:GetText() end
-                if not text then
-                    for j = 1, select("#", child:GetRegions()) do
-                        local region = select(j, child:GetRegions())
-                        if region and region.GetText then
-                            local t = region:GetText()
-                            if t then text = t; break end
-                        end
-                    end
-                end
-
-                if text and sfind(slower(text), optionNameLower) then
-                    if ClickButton(child) then return true end
-                end
-
-                if searchFrame(child, depth + 1) then return true end
-            end
-        end
-        return false
-    end
-
-    for i = 1, 5 do
-        local dropdown = _G["DropDownList" .. i]
-        if dropdown and dropdown:IsShown() then
-            if searchFrame(dropdown, 0) then return true end
-        end
-    end
-
-    -- Also check UIParent children for modern menu frames
-    for i = 1, select("#", UIParent:GetChildren()) do
-        local child = select(i, UIParent:GetChildren())
-        if child and child:IsShown() then
-            local strata = child:GetFrameStrata()
-            if strata == "FULLSCREEN_DIALOG" or strata == "DIALOG" then
-                if searchFrame(child, 0) then return true end
-            end
-        end
-    end
-
-    return false
 end
 
 function Search:Toggle()
@@ -2093,20 +1976,6 @@ function Search:UpdateOpacity()
     local filterDropdown = _G["EasyFindUIFilterDropdown"]
     if filterDropdown then
         ns.ApplyMenuOpacity(filterDropdown)
-    end
-end
-
-function Search:UpdateSearchBarTheme()
-    if not searchFrame then return end
-    local alpha = ns.GetSearchWindowAlpha()
-    searchFrame:SetBackdrop(nil)
-    -- Pill stays hidden; container provides the rounded silhouette.
-    ns.SetSearchBorderShown(searchFrame, false)
-    if containerFrame then
-        ns.SetRoundedRectBorderShown(containerFrame, true)
-        ns.SetRoundedRectBarHeight(containerFrame, self:GetSearchBarHeight())
-        self:ApplySearchWindowFill(containerFrame)
-        ns.SetRoundedRectBorderBgAlpha(containerFrame, alpha)
     end
 end
 

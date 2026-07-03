@@ -799,9 +799,7 @@ function Utils.GetItemEquipLoc(itemID)
 end
 ns.EYE_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\eye"
 ns.COMMANDS_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\commands-icon"
-ns.DARK_PANEL_BG = {0.1, 0.1, 0.1, 0.95}
 ns.SEARCH_WINDOW_FILL_COLOR = {0.052, 0.052, 0.060}
-ns.RESULT_ICON_SIZE = 18
 ns.TEXT_PRIMARY = {1.00, 0.97, 0.86}
 ns.TEXT_BODY = {0.78, 0.78, 0.80}
 ns.TEXT_DIM = {0.55, 0.55, 0.58}
@@ -1992,14 +1990,6 @@ function ns.SetSearchBorderShown(frame, shown)
     sb.borderRight:SetShown(shown)
 end
 
-function ns.SetSearchBorderBgAlpha(frame, alpha)
-    if not frame.searchBorder then return end
-    local sb = frame.searchBorder
-    sb.fillLeft:SetAlpha(alpha)
-    sb.fillMid:SetAlpha(alpha)
-    sb.fillRight:SetAlpha(alpha)
-end
-
 local EasyFindLeafFont = CreateFont("EasyFindLeafFont")
 EasyFindLeafFont:CopyFontObject(baseFont)
 EasyFindLeafFont:SetFont((baseFont:GetFont()), 10, select(3, baseFont:GetFont()))
@@ -2341,51 +2331,6 @@ function Utils.GetAllFrameText(frame)
     return nil
 end
 
-function Utils.IsButtonSelected(btn)
-    if not btn then return false end
-
-    if btn.isSelected then return true end
-    if btn.selected  then return true end
-
-    if btn.collapsed == false then return true end
-    if btn.isExpanded            then return true end
-    if btn.expanded              then return true end
-
-    if btn.highlight       and btn.highlight:IsShown()       then return true end
-    if btn.selectedTexture and btn.selectedTexture:IsShown() then return true end
-    if btn.SelectedTexture and btn.SelectedTexture:IsShown() then return true end
-
-    if btn.Selection  and btn.Selection:IsShown()  then return true end
-    if btn.selection  and btn.selection:IsShown()  then return true end
-    if btn.Background and btn.Background:IsShown() then return true end
-
-    if btn.element and btn.element.collapsed == false then return true end
-
-    return false
-end
-
-function Utils.SearchFrameTree(frame, targetTextLower, maxDepth)
-    maxDepth = maxDepth or 6
-    local function search(f, depth)
-        if not f or depth > maxDepth then return nil end
-        if f:IsShown() then
-            local text = Utils.GetButtonText(f)
-            if text and slower(text) == targetTextLower then
-                if f.Click or (f.IsMouseEnabled and f:IsMouseEnabled()) then
-                    return f
-                end
-            end
-        end
-        for i = 1, select("#", f:GetChildren()) do
-            local child = select(i, f:GetChildren())
-            local result = search(child, depth + 1)
-            if result then return result end
-        end
-        return nil
-    end
-    return search(frame, 0)
-end
-
 function Utils.SearchFrameTreeFuzzy(frame, searchTextLower, maxDepth)
     maxDepth = maxDepth or 6
     local function search(f, depth)
@@ -2409,12 +2354,6 @@ function Utils.SearchFrameTreeFuzzy(frame, searchTextLower, maxDepth)
         return nil
     end
     return search(frame, 0)
-end
-
-function Utils.IsFrameShown(frame)
-    if not frame then return false end
-    local ok, shown = pcall(frame.IsShown, frame)
-    return ok and shown
 end
 
 function Utils.GetFrameByPath(path)
@@ -3261,7 +3200,6 @@ local ADDON_FONT_FILES = {
 }
 
 local fontRegistry = {}
-ns._fontRegistry = fontRegistry
 
 local function GetFontChoice()
     return (EasyFind and EasyFind.db and EasyFind.db.font) or "Default"
@@ -3297,15 +3235,6 @@ end
 function ns.GetFontChoicePath(name)
     local files = ADDON_FONT_FILES[name]
     return files and files.regular or nil
-end
-
-
--- Always returns the Inter file for a weight (for previews that must show
--- Inter regardless of the current font choice).
-function ns.GetInterFontPath(weight)
-    if weight == "bold" then return INTER_BOLD end
-    if weight == "semibold" then return INTER_SEMIBOLD end
-    return INTER_REGULAR
 end
 
 -- Recursively register every FontString under a frame with the addon font

@@ -25,43 +25,8 @@ local function ResultsFrame()
     return Search:GetResultsFrame()
 end
 
-local function FlatEntries()
-    return Results._flatEntries
-end
-
 local function CollapsedNodes()
     return Results._collapsedNodes
-end
-function Results:ShowResults(results)
-    if not results or #results == 0 then
-        self:HideResults()
-        return
-    end
-
-    local n = 0
-    for ri = 1, #results do
-        local r = results[ri]
-        local d = r and (r.data or r)
-        if d then
-            n = n + 1
-            local e = FlatEntries()[n]
-            if not e then
-                e = {}
-                FlatEntries()[n] = e
-            end
-            e.name = d.name
-            e.depth = 0
-            e.isPathNode = false
-            e.isMatch = true
-            e.isFlat = true
-            e.flatCatKey = nil
-            e.data = d
-        end
-    end
-    for i = n + 1, #FlatEntries() do
-        FlatEntries()[i] = nil
-    end
-    self:ShowHierarchicalResults(FlatEntries())
 end
 
 -- Toggle a boolean setting in place (clicked from a result row).

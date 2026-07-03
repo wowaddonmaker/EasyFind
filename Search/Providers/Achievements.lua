@@ -23,7 +23,6 @@ local achSearchStatsVersion
 local achSearchPending = nil
 local achSearchCurrentQuery = nil
 local achSearchListener
-local achSearchPrewarmed = false
 local ACH_MAX_RESULTS = 8
 local ACHIEVEMENT_CATEGORY_FLAG_GUILD = 0x00000001
 
@@ -214,21 +213,4 @@ function Providers:RequestAchievementSearch(query)
     achSearchPending = { query = query, mode = mode, key = cacheKey }
     pcall(setSearch, query)
     return nil
-end
-
-function Providers:PrewarmAchievementSearch()
-    if achSearchPrewarmed then return end
-    achSearchPrewarmed = true
-    local loadUI = _G["AchievementFrame_LoadUI"]
-    if loadUI then pcall(loadUI) end
-    EnsureAchievementSearchListener()
-    local setSearch = _G["SetAchievementSearchString"]
-    if not setSearch then return end
-    -- Trigger the one-time index build off the player's typing path.
-    -- A nonsensical query that won't match anything keeps the search
-    -- box visually empty if the user opens AchievementFrame later.
-    pcall(setSearch, "\1")
-    if Utils and Utils.SafeAfter then
-        Utils.SafeAfter(0.5, function() pcall(setSearch, "") end)
-    end
 end

@@ -3,7 +3,6 @@ local _, ns = ...
 local Handlers = ns.ResultHandlers
 local Openers = ns.SearchOpeners
 local Utils = ns.Utils
-local UIPins = ns.UIPins
 
 local GetButtonText = Utils.GetButtonText
 local SearchFrameTreeFuzzy = Utils.SearchFrameTreeFuzzy
@@ -149,8 +148,4 @@ function Handlers:OpenOutfitInTransmog(data)
     end
 
     step(1)
-end
-
-function Handlers:SyncOutfitPins()
-    UIPins.SyncOutfits()
 end

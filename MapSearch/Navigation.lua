@@ -943,16 +943,6 @@ function MapSearch:ShowWaypointAt(x, y, icon, category, arrowOnly)
     self:RefreshAllClearButtons()
 end
 
--- Returns true if EasyFind currently has any active map navigation.
-function MapSearch:HasActiveNavigation()
-    if efPlacedWaypoint then return true end
-    if activePinState then return true end
-    if self.pendingWaypoint then return true end
-    if self.pendingZoneHighlight then return true end
-    if waypointPin and waypointPin:IsShown() then return true end
-    return false
-end
-
 function MapSearch:RefreshAllClearButtons()
     local frames = {
         _G["EasyFindSearchFrame"],

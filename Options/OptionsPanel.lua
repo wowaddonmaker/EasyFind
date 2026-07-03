@@ -1479,8 +1479,8 @@ local function BuildSearchTab(ctx)
     uiFontPresetRow:SetPoint("TOPLEFT", resultsDirectionRow, "BOTTOMLEFT", 0, -8)
     optionsFrame.uiFontPresetRow = uiFontPresetRow
 
-    -- Uniform zoom for the whole search UI (bar, results, popups). An easy
-    -- alternative to the manual rescaler that can't drift element proportions.
+    -- Uniform zoom for the whole search UI (bar, results, popups) that
+    -- can't drift element proportions.
     local scaleChoices = {
         { label = "50%",  value = 0.5  }, { label = "75%",  value = 0.75 },
         { label = "100%", value = 1.0  }, { label = "125%", value = 1.25 },

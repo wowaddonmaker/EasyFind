@@ -267,14 +267,6 @@ function Scheduler:StartPump(frame)
     end)
 end
 
----Stops the OnUpdate pump and detaches its handler.
-function Scheduler:StopPump()
-    local frame = self._pumpFrame
-    if not frame then return end
-    self._pumpFrame = nil
-    frame:SetScript("OnUpdate", nil)
-end
-
 -- Default singleton used by addon code; tests instantiate their own.
 local default = Scheduler.new()
 

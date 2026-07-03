@@ -65,29 +65,6 @@ function MapSearch:GetDirectChildZones(mapID)
     return zones
 end
 
-function MapSearch:GetMapHierarchy(mapID)
-    local hierarchy = {}
-    local currentID = mapID
-    local maxDepth = 10
-
-    while currentID and maxDepth > 0 do
-        local mapInfo = GetMapInfo(currentID)
-        if mapInfo then
-            tinsert(hierarchy, 1, {
-                mapID = currentID,
-                name = mapInfo.name,
-                mapType = mapInfo.mapType
-            })
-            currentID = mapInfo.parentMapID
-        else
-            break
-        end
-        maxDepth = maxDepth - 1
-    end
-
-    return hierarchy
-end
-
 function MapSearch:GetAllWorldZones(startMapID, depth, parentPath)
     depth = depth or 0
     parentPath = parentPath or {}

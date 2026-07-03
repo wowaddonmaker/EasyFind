@@ -50,8 +50,6 @@ local DB_DEFAULTS = {
     indicatorColor = "Yellow",
     uiResultsHeight = 280,
     uiResultsRows = 6,
-    showTruncationMessage = true,
-    hardResultsCap = false,
     pinnedUIItems = {},
     pinnedUIItemsPerChar = {},
     pinnedMapItems = {},
@@ -233,6 +231,8 @@ local RETIRED_SETTINGS_KEYS = {
     suggestedKeybindsApplied = true,
     optionsPosition = true,
     lootFilter = true,
+    showTruncationMessage = true,
+    hardResultsCap = true,
 }
 
 local function ApplyFreshSettingsFor2(db)

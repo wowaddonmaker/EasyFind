@@ -828,7 +828,6 @@ BlizzOptionsSearch.GetFormatterForVariable = GetFormatterForVariable
 -- Apply-flagged settings (graphics, resolution, etc.) stage into
 -- setting.pendingValue. Mirror Blizzard's bottom-bar batch UX.
 local pendingApplySettings = {}
-local pendingChangeCallbacks = {}
 
 local function PendingCount()
     -- Prune entries whose pendingValue cleared from under us when the
@@ -842,18 +841,6 @@ local function PendingCount()
         end
     end
     return n
-end
-
-local function FirePendingChanged()
-    local n = PendingCount()
-    for i = 1, #pendingChangeCallbacks do
-        pcall(pendingChangeCallbacks[i], n)
-    end
-end
-
-function BlizzOptionsSearch:RegisterPendingChangedCallback(fn)
-    if type(fn) ~= "function" then return end
-    pendingChangeCallbacks[#pendingChangeCallbacks + 1] = fn
 end
 
 function BlizzOptionsSearch:GetPendingApplyCount()
@@ -871,10 +858,8 @@ function BlizzOptionsSearch:NotePendingApply(variable)
     end
     if hasApply and settObj.pendingValue ~= nil then
         pendingApplySettings[settObj] = settObj
-        FirePendingChanged()
     elseif pendingApplySettings[settObj] then
         pendingApplySettings[settObj] = nil
-        FirePendingChanged()
     end
 end
 
@@ -918,7 +903,6 @@ function BlizzOptionsSearch:ApplyPendingChanges()
     end
     for i = 1, #vars do self:ApplyVariable(vars[i]) end
     wipe(pendingApplySettings)
-    FirePendingChanged()
 end
 
 function BlizzOptionsSearch:RevertPendingChanges()
@@ -927,7 +911,6 @@ function BlizzOptionsSearch:RevertPendingChanges()
         if setting.Revert then pcall(setting.Revert, setting) end
     end
     wipe(pendingApplySettings)
-    FirePendingChanged()
 end
 
 function BlizzOptionsSearch:HasPendingChange(variable)
@@ -1017,7 +1000,6 @@ function BlizzOptionsSearch:ApplyVariable(variable)
                 if depObj then pendingApplySettings[depObj] = nil end
             end
         end
-        FirePendingChanged()
         return
     end
 
@@ -1026,7 +1008,6 @@ function BlizzOptionsSearch:ApplyVariable(variable)
     end
     CommitStagedDependents(variable)
     pendingApplySettings[settObj] = nil
-    FirePendingChanged()
 end
 
 -- Mirror Blizzard's GAME_SETTINGS_CONFIRM_DISCARD popup.
@@ -1080,7 +1061,6 @@ function BlizzOptionsSearch:RevertVariable(variable)
             end
         end
     end
-    FirePendingChanged()
 end
 
 local function CrawlCategory(cat)

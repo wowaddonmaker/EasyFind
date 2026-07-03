@@ -135,7 +135,3 @@ function Onboarding:ShowWhatsNew(version)
     frame:SetHeight(total)
     frame:Show()
 end
-
-function Onboarding:HideWhatsNew()
-    if frame then frame:Hide() end
-end

@@ -3,8 +3,7 @@ local _, ns = ...
 -- Text normalization, tokenization, and matching used by search/highlight.
 -- Handles UTF-8 byte streams for non-English clients: Latin-1 Supplement
 -- and Latin Extended-A casing (German, French, Spanish, Portuguese, etc.),
--- plus accent folding so "frostbolt" matches "Frostbolt" and "elune"
--- matches "Élune".
+-- so "frostbolt" matches "Frostbolt".
 --
 -- WoW runs Lua 5.1 with no native utf8 library, so this module walks the
 -- byte stream by hand. Hot paths cache results on the source entry.
@@ -106,34 +105,6 @@ local function lowerCP(cp)
     return cp
 end
 
--- Codepoint -> "folded" codepoint for accent-insensitive comparison.
--- Strips combining diacritics by mapping common Latin-1 accented letters
--- to their base. ASCII passes through unchanged.
-local LATIN_FOLD = {
-    [0xC0]=0x41,[0xC1]=0x41,[0xC2]=0x41,[0xC3]=0x41,[0xC4]=0x41,[0xC5]=0x41, -- À..Å
-    [0xC7]=0x43,                                                              -- Ç
-    [0xC8]=0x45,[0xC9]=0x45,[0xCA]=0x45,[0xCB]=0x45,                          -- È..Ë
-    [0xCC]=0x49,[0xCD]=0x49,[0xCE]=0x49,[0xCF]=0x49,                          -- Ì..Ï
-    [0xD1]=0x4E,                                                              -- Ñ
-    [0xD2]=0x4F,[0xD3]=0x4F,[0xD4]=0x4F,[0xD5]=0x4F,[0xD6]=0x4F,[0xD8]=0x4F,  -- Ò..Ö, Ø
-    [0xD9]=0x55,[0xDA]=0x55,[0xDB]=0x55,[0xDC]=0x55,                          -- Ù..Ü
-    [0xDD]=0x59,                                                              -- Ý
-    [0xE0]=0x61,[0xE1]=0x61,[0xE2]=0x61,[0xE3]=0x61,[0xE4]=0x61,[0xE5]=0x61,  -- à..å
-    [0xE7]=0x63,                                                              -- ç
-    [0xE8]=0x65,[0xE9]=0x65,[0xEA]=0x65,[0xEB]=0x65,                          -- è..ë
-    [0xEC]=0x69,[0xED]=0x69,[0xEE]=0x69,[0xEF]=0x69,                          -- ì..ï
-    [0xF1]=0x6E,                                                              -- ñ
-    [0xF2]=0x6F,[0xF3]=0x6F,[0xF4]=0x6F,[0xF5]=0x6F,[0xF6]=0x6F,[0xF8]=0x6F,  -- ò..ö, ø
-    [0xF9]=0x75,[0xFA]=0x75,[0xFB]=0x75,[0xFC]=0x75,                          -- ù..ü
-    [0xFD]=0x79,[0xFF]=0x79,                                                  -- ý, ÿ
-}
-
-local function foldCP(cp)
-    local f = LATIN_FOLD[cp]
-    if f then return f end
-    return cp
-end
-
 ---Lowercases the input. UTF-8 aware for Latin-1 Supplement and Latin
 ---Extended-A; CJK/Cyrillic/other scripts pass through unchanged because
 ---their casing rules aren't useful for search-style matching.
@@ -150,23 +121,6 @@ function SearchText.Normalize(s)
     while i <= n do
         local cp, ni = utf8At(s, i)
         out[#out + 1] = utf8Encode(lowerCP(cp))
-        i = ni
-    end
-    return table.concat(out)
-end
-
----Lowercase + fold accents. Use for matching where "élune" should equal
----"elune". Do NOT use for display strings.
----@param s string|nil
----@return string
-function SearchText.NormalizeFolded(s)
-    if not s or s == "" then return "" end
-    local out = {}
-    local i = 1
-    local n = #s
-    while i <= n do
-        local cp, ni = utf8At(s, i)
-        out[#out + 1] = utf8Encode(foldCP(lowerCP(cp)))
         i = ni
     end
     return table.concat(out)
@@ -225,35 +179,6 @@ end
 ---@return string[]
 function SearchText.NormalizeAndTokenize(s)
     return SearchText.Tokenize(SearchText.Normalize(s))
-end
-
--- ASCII-fast-path retained for callers that know their input is ASCII
--- (frame names, internal keys); skips the UTF-8 walk overhead.
-local function isAlphaNum(b)
-    return (b >= 48 and b <= 57)
-        or (b >= 65 and b <= 90)
-        or (b >= 97 and b <= 122)
-end
-
-function SearchText.TokenizeAscii(s)
-    local tokens = {}
-    if not s or s == "" then return tokens end
-    local n = #s
-    local i = 1
-    while i <= n do
-        local b = s:byte(i)
-        if isAlphaNum(b) then
-            local j = i + 1
-            while j <= n and isAlphaNum(s:byte(j)) do
-                j = j + 1
-            end
-            tokens[#tokens + 1] = s:sub(i, j - 1)
-            i = j
-        else
-            i = i + 1
-        end
-    end
-    return tokens
 end
 
 ---Returns true if `s` contains only ASCII bytes (<= 127).

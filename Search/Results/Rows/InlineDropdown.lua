@@ -1,6 +1,5 @@
 local _, ns = ...
 
-local Search = ns.Search
 local Rows = ns.ResultRows
 
 
@@ -136,10 +135,4 @@ function Rows.ToggleInlineSettingDropdown(owner, opts, getCurrent, onSelect)
         return
     end
     ShowInlineSettingDropdown(owner, opts, getCurrent, onSelect)
-end
-
-function Search.HideInlineSettingDropdown()
-    if inlineDropdownPopup and inlineDropdownPopup:IsShown() then
-        inlineDropdownPopup:Hide()
-    end
 end

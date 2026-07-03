@@ -273,10 +273,6 @@ function Database:LoadEagerDynamicProviders()
     Utils.SafeAfter(0, step)
 end
 
-function Database:LoadCoreDynamicSearchData()
-    return false
-end
-
 function Database:LoadDeferredSyncProvidersStaggered()
     -- Suppress per-provider ResetSearchCache; rebuild the prefix index
     -- once at the end of the staggered chain.

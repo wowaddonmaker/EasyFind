@@ -39,7 +39,7 @@ function Handlers:SelectResult(data, forceGuide)
 
     if data.searchCommand then
         -- Dismiss the bar like any other selection before running the command,
-        -- so /resize etc. don't leave the (now empty) bar lingering on screen.
+        -- so /reset etc. don't leave the (now empty) bar lingering on screen.
         -- Capture first: FinishResultSelection clears the search and can recycle
         -- this data table.
         local cmd = data.searchCommand

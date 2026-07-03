@@ -2092,31 +2092,6 @@ function Highlight:ScrollToCategoryButton(categoryName, categoryID)
     return self:FindVisibleCategoryButton(categoryName, categoryID)
 end
 
-function Highlight:IsStatisticsCategorySelected(categoryName, categoryID)
-    if not AchievementFrame or not AchievementFrame:IsShown() then
-        return false
-    end
-    if PanelTemplates_GetSelectedTab and PanelTemplates_GetSelectedTab(AchievementFrame) ~= 3 then
-        return false
-    end
-
-    if self:IsCategorySelectedByData(categoryName, categoryID) then
-        return true
-    end
-
-    if currentGuide and currentStepIndex then
-        local nextStep = currentGuide.steps[currentStepIndex + 1]
-        if nextStep and nextStep.statisticsCategory then
-            local nextBtn = self:FindVisibleCategoryButton(nextStep.statisticsCategory, nextStep.statisticsCategoryID)
-            if nextBtn then
-                return true
-            end
-        end
-    end
-
-    return false
-end
-
 function Highlight:GetStatisticsCategoryButton(categoryName, categoryID)
     if not AchievementFrame or not AchievementFrame:IsShown() then
         return nil
@@ -2129,28 +2104,6 @@ function Highlight:GetStatisticsCategoryButton(categoryName, categoryID)
     if visibleBtn then return visibleBtn end
 
     return self:ScrollToCategoryButton(categoryName, categoryID)
-end
-
-function Highlight:IsAchievementCategorySelected(categoryName, categoryID)
-    if not AchievementFrame or not AchievementFrame:IsShown() then
-        return false
-    end
-
-    if self:IsCategorySelectedByData(categoryName, categoryID) then
-        return true
-    end
-
-    if currentGuide and currentStepIndex then
-        local nextStep = currentGuide.steps[currentStepIndex + 1]
-        if nextStep and nextStep.achievementCategory then
-            local nextBtn = self:FindVisibleCategoryButton(nextStep.achievementCategory, nextStep.achievementCategoryID)
-            if nextBtn then
-                return true
-            end
-        end
-    end
-
-    return false
 end
 
 function Highlight:GetAchievementCategoryButton(categoryName, categoryID, noScroll)
@@ -2728,38 +2681,6 @@ function Highlight:IsPortraitMenuOpen()
     return false
 end
 
-function Highlight:GetPortraitMenuFrame()
-    for i = 1, 5 do
-        local dropdown = _G["DropDownList" .. i]
-        if dropdown and dropdown:IsShown() then
-            return dropdown
-        end
-    end
-
-    if Menu and Menu.GetManager then
-        local ok, manager = pcall(Menu.GetManager)
-        if ok and manager then
-            local openOk, openMenu = pcall(manager.GetOpenMenu, manager)
-            if openOk and openMenu then
-                return openMenu
-            end
-        end
-    end
-
-    local menuNames = {"UnitPopupWindow"}
-    for _, name in ipairs(menuNames) do
-        local frame = _G[name]
-        if frame then
-            local ok, shown = pcall(frame.IsShown, frame)
-            if ok and shown then
-                return frame
-            end
-        end
-    end
-
-    return nil
-end
-
 -- Modern GameMenuFrame buttons have dynamic hex names that change each
 -- session; iterate visible children and match GetText().
 function Highlight:FindGameMenuButton(label)
@@ -2857,80 +2778,6 @@ function Highlight:FindPortraitMenuOption(optionName)
     end
 
     return nil
-end
-
--- Returns true (expanded), false (collapsed), nil (parent collapsed).
-function Highlight:IsCurrencyHeaderExpanded(headerName)
-    if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return nil end
-
-    local headerNameLower = slower(headerName)
-    local size = C_CurrencyInfo.GetCurrencyListSize()
-
-    for i = 1, size do
-        local info = C_CurrencyInfo.GetCurrencyListInfo(i)
-        if info and info.isHeader and info.name and slower(info.name) == headerNameLower then
-            return info.isHeaderExpanded
-        end
-    end
-    return nil
-end
-
-function Highlight:GetCurrencyHeaderButton(headerName)
-    if not TokenFrame or not TokenFrame:IsShown() then return nil end
-
-    local headerNameLower = slower(headerName)
-
-    local targetIndex = nil
-    if C_CurrencyInfo and C_CurrencyInfo.GetCurrencyListSize then
-        local size = C_CurrencyInfo.GetCurrencyListSize()
-        for i = 1, size do
-            local info = C_CurrencyInfo.GetCurrencyListInfo(i)
-            if info and info.isHeader and info.name and slower(info.name) == headerNameLower then
-                targetIndex = i
-                break
-            end
-        end
-    end
-    if not targetIndex then return nil end
-
-    if TokenFrame.ScrollBox then
-        ScrollBoxScrollTo(TokenFrame.ScrollBox, function(data)
-            return data and data.currencyIndex == targetIndex
-        end)
-        return ScrollBoxFindButton(TokenFrame.ScrollBox, function(btn)
-            local elementData = btn.elementData or (btn.GetElementData and btn:GetElementData())
-            if elementData and elementData.currencyIndex == targetIndex then return true end
-            local text = GetButtonText(btn)
-            return text and slower(text) == headerNameLower
-        end)
-    end
-
-    return nil
-end
-
-function Highlight:ScrollToCurrencyRow(currencyID)
-    if not TokenFrame or not TokenFrame:IsShown() then return end
-    if not TokenFrame.ScrollBox then return end
-    if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return end
-
-    local size = C_CurrencyInfo.GetCurrencyListSize()
-    local targetIndex = nil
-    for i = 1, size do
-        local info = C_CurrencyInfo.GetCurrencyListInfo(i)
-        if info and not info.isHeader and info.currencyID == currencyID then
-            targetIndex = i
-            break
-        end
-    end
-    if not targetIndex then return end
-
-    local fraction = (targetIndex - 1) / mmax(1, size - 1)
-    ScrollBoxScrollTo(TokenFrame.ScrollBox, function(data)
-        if not data then return false end
-        if data.currencyID == currencyID then return true end
-        if data.currencyIndex == targetIndex then return true end
-        return false
-    end, fraction)
 end
 
 -- Tutorial-style "scroll up" / "scroll down" arrow anchored to the top or

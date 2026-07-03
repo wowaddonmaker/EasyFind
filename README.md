@@ -41,7 +41,7 @@ Search from the world map with nested results built for location-first browsing:
 - **Aliases**: Add your own search terms for any supported result. Aliases are shared between normal search and map search where applicable.
 - **Guide mode and direct open**: Learn where things live with step-by-step highlights, or open supported destinations directly.
 - **Quick filters**: Type `@` to search within a category such as pets, mounts, bags, macros, abilities, achievements, statistics, bosses, gear, currencies, reputations, talents, titles, collections, or map results.
-- **Slash-command results**: Type `/` in the search bar to see supported EasyFind commands such as `/reset` and `/resize`.
+- **Slash-command results**: Type `/` in the search bar to see supported EasyFind commands such as `/reset` and `/options`.
 - **Calculator**: Type math directly into search, including arithmetic, trig functions, and factorials, or open the full calculator with `Alt+C`.
 - **Keyboard control**: Use arrows, Enter, Tab, Alt+number row shortcuts, or Alt+H/J/K/L navigation.
 - **Context menus**: Right-click results for row-specific actions such as Guide, Pin, Add Alias, favorite toggles, tracking, edit actions, and collection tools.

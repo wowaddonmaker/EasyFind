@@ -937,41 +937,6 @@ function Database:SetEJDifficulty(diffID)
     if setDiff then setDiff(diffID) end
 end
 
--- EJ_SetDifficulty requires an instance of the matching type to be selected
--- first, so this saves and restores the current selection.
-function Database:SyncEJDifficulty()
-    local selectInst = EJ("SelectInstance")
-    local getInst = EJ("GetInstanceByIndex")
-    local setDiff = EJ("SetDifficulty")
-    local getInstInfo = EJ("GetInstanceInfo")
-    if not selectInst or not getInst or not setDiff then return end
-
-    -- journalInstanceID is the 12th return of EJ_GetInstanceInfo.
-    local savedInstID = getInstInfo and select(12, getInstInfo())
-
-    local dungeonDiffID = self:GetEJDifficultyID("Dungeon")
-    if dungeonDiffID then
-        local dInstID = getInst(1, false)
-        if dInstID then
-            selectInst(dInstID)
-            setDiff(dungeonDiffID)
-        end
-    end
-
-    local raidDiffID = self:GetEJDifficultyID("Raid")
-    if raidDiffID then
-        local rInstID = getInst(1, true)
-        if rInstID then
-            selectInst(rInstID)
-            setDiff(raidDiffID)
-        end
-    end
-
-    if savedInstID and savedInstID > 0 then
-        selectInst(savedInstID)
-    end
-end
-
 function Database:SyncEJLootFilter()
     local setFilter = EJ("SetLootFilter")
     if not setFilter then return end

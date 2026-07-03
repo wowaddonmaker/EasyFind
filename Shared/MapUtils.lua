@@ -1,16 +1,13 @@
 local _, ns = ...
 
 local Utils = ns.Utils
-local L = ns.L
 local MapUtils = {}
 ns.MapUtils = MapUtils
 
 local pairs = Utils.pairs
 local ipairs = Utils.ipairs
-local tconcat = Utils.tconcat
 local slower = Utils.slower
 local pcall = Utils.pcall
-local wipe = wipe
 local C_Map = C_Map
 local GetMapInfo = C_Map and C_Map.GetMapInfo
 local GetMapChildrenInfo = C_Map and C_Map.GetMapChildrenInfo
@@ -317,39 +314,4 @@ function MapUtils.GetMapPath(mapID)
     end
     mapPathCache[mapID] = path
     return path
-end
-
-local breadcrumbParts = {}
-function MapUtils.BuildBreadcrumb(data, separator)
-    if not data then return nil end
-    local mapID = data.mapID or data.zoneMapID or data.entranceMapID or data.parentMapID
-    if not mapID or not GetMapInfo then return data.name end
-
-    wipe(breadcrumbParts)
-    local current = mapID
-    local leafName = data.name and slower(data.name) or ""
-    for _ = 1, 20 do
-        local info = GetMapInfo(current)
-        if not info then break end
-        if info.name and slower(info.name) ~= leafName then
-            local isCosmic = info.mapType == Enum.UIMapType.Cosmic
-            breadcrumbParts[#breadcrumbParts + 1] = isCosmic and L["MAP_COSMIC_WORLD"] or info.name
-        end
-        local parentID = MapUtils.GetParentMapID(current, info)
-        if not parentID or parentID == 0 then break end
-        current = parentID
-    end
-    local n = #breadcrumbParts
-    if n == 0 then
-        wipe(breadcrumbParts)
-        return data.name
-    end
-    for i = 1, n / 2 do
-        local j = n - i + 1
-        breadcrumbParts[i], breadcrumbParts[j] = breadcrumbParts[j], breadcrumbParts[i]
-    end
-    breadcrumbParts[n + 1] = data.name
-    local result = tconcat(breadcrumbParts, separator or "  >  ")
-    wipe(breadcrumbParts)
-    return result
 end
