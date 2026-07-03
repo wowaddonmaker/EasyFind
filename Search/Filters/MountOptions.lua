@@ -158,7 +158,12 @@ function Filters:BuildMountOptionsPopup(StylePopup, CHECK_SIZE, searchEditBox)
                 row._label = row.text
                 InstallMenuRowHighlight(row)
                 row:SetScript("OnClick", function(self)
-                    EnsureSourceFilters()[self.sourceType] = self:GetChecked() and nil or false
+                    local filters = EnsureSourceFilters()
+                    if self:GetChecked() then
+                        filters[self.sourceType] = nil
+                    else
+                        filters[self.sourceType] = false
+                    end
                     ApplyFilterSelection()
                 end)
                 sourceRows[i] = row

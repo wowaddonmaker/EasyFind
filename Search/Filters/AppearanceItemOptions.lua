@@ -318,7 +318,12 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, searchE
             if not row then
                 row = MakeCheckRow(sourcePopup, WIDTH - PAD * 2, ROW_H, CHECK_SIZE)
                 row:SetScript("OnClick", function(self)
-                    SourceFilters()[self._source] = self:GetChecked() and nil or false
+                    local filters = SourceFilters()
+                    if self:GetChecked() then
+                        filters[self._source] = nil
+                    else
+                        filters[self._source] = false
+                    end
                     Apply()
                 end)
                 srcRows[i] = row

@@ -380,7 +380,6 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 if sub.hasOptions and sub.key == "appearances" then
                     local optionsPopup, syncOptions, appBranchPopups = Search:BuildAppearanceOptionsPopup(
                         StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
-                    Search._SyncAppearanceOptions = syncOptions
                     optionsPopup._efSync = syncOptions
                     optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
                     optionsPopup._owningRow = subRow
@@ -404,7 +403,6 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 if sub.hasOptions and sub.key == "mounts" then
                     local optionsPopup, syncOptions, sourcePopup = Search:BuildMountOptionsPopup(
                         StylePopup, CHECK_SIZE, searchEditBox)
-                    Search._SyncMountOptions = syncOptions
                     optionsPopup._efSync = syncOptions
                     optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
                     optionsPopup._owningRow = subRow
@@ -430,7 +428,6 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 if sub.hasOptions and sub.key == "heirlooms" then
                     local optionsPopup, syncOptions, sourcePopup = Search:BuildHeirloomOptionsPopup(
                         StylePopup, CHECK_SIZE, searchEditBox, dropdownGuardFrames)
-                    Search._SyncHeirloomOptions = syncOptions
                     optionsPopup._efSync = syncOptions
                     optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
                     optionsPopup._owningRow = subRow
@@ -995,12 +992,6 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 end
             end
 
-            if Search._SyncAppearanceSetOptions then
-                Search._SyncAppearanceSetOptions()
-            end
-        end
-        if Search._SyncMountOptions then
-            Search._SyncMountOptions()
         end
         local filterBtn = Search:GetSearchFrame().filterBtn
         dropdownKeyboardMode = filterBtn and filterBtn.keyboardFocused or false
