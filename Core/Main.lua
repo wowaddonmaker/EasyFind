@@ -67,8 +67,8 @@ local DB_DEFAULTS = {
     showAliasMessages = true,
     blinkingPins = false,
     mapPinHighlight = true,
-    autoPinClear = true,
-    autoTrackPins = true,
+    autoPinClear = false,
+    autoTrackPins = false,
     uiResultsAbove = false,
     showResultShortcutHints = true,
     showMinimapButton = true,
@@ -178,6 +178,9 @@ local DB_DEFAULTS = {
     uiSearchHistory = {},
     uiSearchHistoryLimit = 500,
 }
+-- Exposed so option resets restore from the same table first-run uses;
+-- keeping a second copy in OptionsPanel let the two drift apart.
+ns.DB_DEFAULTS = DB_DEFAULTS
 
 local function RequireRevampedTutorial(db)
     if db.revampedTutorialVersion ~= REVAMPED_TUTORIAL_VERSION then

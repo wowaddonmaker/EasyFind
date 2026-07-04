@@ -39,9 +39,22 @@ function Search:RefreshActiveSearch()
     end
 end
 
+local searchRefreshQueued = false
+-- Repaint only. Providers that changed the dataset already invalidated
+-- through Database:ResetSearchCache, whose coalesced deferred re-run is
+-- the single ordered repaint path. Routing THIS callback through the
+-- reset nuked the incremental-narrowing caches on every async arrival --
+-- item-info responses stream in bursts for seconds after a loot query,
+-- so each burst forced full rescans and repaints: visible keystroke lag
+-- and result lists swapping after they were already shown.
 local function RefreshSearchAfterProviderLoad(anyChanged)
     if not anyChanged then return end
-    Search:RefreshActiveSearch()
+    if searchRefreshQueued then return end
+    searchRefreshQueued = true
+    Utils.SafeAfter(0, function()
+        searchRefreshQueued = false
+        Search:RefreshActiveSearch()
+    end)
 end
 
 -- GET_ITEM_INFO_RECEIVED arrives async after the client requests item

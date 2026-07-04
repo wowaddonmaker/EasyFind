@@ -849,6 +849,15 @@ function Database:WarmSearchHotPath()
     -- Load the small name-searched providers (currencies, reputations, etc.)
     -- so they show up without the user typing a category keyword first.
     if self.LoadEagerDynamicProviders then self:LoadEagerDynamicProviders() end
+    -- Start the Blizzard-settings passes now, while nobody is waiting: the
+    -- live layout walk takes seconds at the idle frame budget, which is
+    -- invisible here but was a multi-second stall when the first settings
+    -- query had to trigger it cold.
+    local options = ns.BlizzOptionsSearch
+    if options then
+        if options.EnsurePopulatedAsync then options:EnsurePopulatedAsync(nil) end
+        if options.EnsureLivePopulatedAsync then options:EnsureLivePopulatedAsync(nil) end
+    end
 end
 
 -- Search scans the full dataset for a fresh query, so there is no candidate
@@ -868,14 +877,20 @@ end
 
 function Database:ResetSearchCache()
     if ns.Aliases and ns.Aliases.InvalidateKeyIndex then ns.Aliases:InvalidateKeyIndex() end
-    if self._dynamicBatchLoading then
-        self._dynamicBatchChanged = true
-        return
-    end
+    -- Invalidate immediately, even mid-batch: the data just changed, so the
+    -- narrowing state and cached candidate sets are stale NOW. A search that
+    -- runs during the batch window must full-scan current data, or it narrows
+    -- inside a candidate set from before the providers pushed their entries
+    -- (typing during login made real entries unfindable until a fresh query).
     prevQuery = ""
     prevSkipKey = ""
     wipe(prevCandidates)
     ClearResultCache()
+    -- Only the active-search re-run coalesces to the end of the batch.
+    if self._dynamicBatchLoading then
+        self._dynamicBatchChanged = true
+        return
+    end
     if not searchRefreshPending and Utils.SafeAfter then
         searchRefreshPending = true
         Utils.SafeAfter(0, RunActiveSearchRefresh)

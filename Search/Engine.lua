@@ -210,7 +210,12 @@ function Engine:RequestOptions(ctx, onChanged, resultCount)
         options:EnsurePopulated()
         requested = true
     end
-    if gameAllowed and explicit and not addonOnlyQuickFilter and options.EnsureLivePopulatedAsync then
+    -- The live layout walk is the only source for settings that carry no
+    -- option-trigger word in their name ("Click to Move"): a zero-result
+    -- query must request it too, or those settings stay unfindable until
+    -- some option-word query happens to run first.
+    if gameAllowed and (explicit or lowResultFallback) and not addonOnlyQuickFilter
+       and options.EnsureLivePopulatedAsync then
         requested = options:EnsureLivePopulatedAsync(onChanged) or requested
     end
     return requested

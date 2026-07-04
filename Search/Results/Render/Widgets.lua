@@ -109,6 +109,15 @@ function Render.SettingsWidget(resultRow, data, entry)
             end
             resultRow.settingSliderValue:SetText(displayVal)
 
+            -- The checkbox gates the slider, matching Blizzard's composite
+            -- control: unchecked means grayed out and unmovable.
+            slider:EnableMouse(isOn)
+            if resultRow.settingStepBack then
+                resultRow.settingStepBack:SetEnabled(isOn)
+                resultRow.settingStepFwd:SetEnabled(isOn)
+            end
+            resultRow.settingSliderGroup:SetAlpha(isOn and 1 or 0.45)
+
             -- Slider group sits to the LEFT of the checkbox
             -- so both fit on the right side of the row.
             resultRow.settingSliderGroup:ClearAllPoints()
@@ -177,6 +186,13 @@ function Render.SettingsWidget(resultRow, data, entry)
             slider:SetValueStep(stepVal)
             slider:SetValue(numVal)
             slider._updating = false
+            -- Pooled rows: clear any gating a checkboxSlider render left.
+            slider:EnableMouse(true)
+            if resultRow.settingStepBack then
+                resultRow.settingStepBack:SetEnabled(true)
+                resultRow.settingStepFwd:SetEnabled(true)
+            end
+            resultRow.settingSliderGroup:SetAlpha(1)
             resultRow.settingSliderGroup:ClearAllPoints()
             resultRow.settingSliderGroup:SetPoint("RIGHT", resultRow, "RIGHT", -6, 0)
             resultRow.settingSliderGroup:Show()
@@ -231,7 +247,10 @@ function Render.SettingsWidget(resultRow, data, entry)
                     end
                 end
             end
-            if (not val or val == "") and GetCVar then
+            -- Only fall back when GetValue produced nothing at all: an empty
+            -- string is a real value (Graphics Card "" = Auto Detect) and
+            -- re-reading a PROXY_* variable via GetCVar nils it out.
+            if rawVal == nil and GetCVar then
                 rawVal = GetCVar(data.settingVariable)
                 val = rawVal
             end

@@ -757,9 +757,10 @@ local function GetOptionsForVariable(variable)
 end
 BlizzOptionsSearch.GetOptionsForVariable = GetOptionsForVariable
 
--- Slider display formatter from the live registry so curated entries
--- render the same value Blizzard's panel does (e.g., raw 180 -> "5.5").
-local formatterByVariable = {}
+-- Slider range and display formatter from the live registry so curated
+-- entries render the same slider Blizzard's panel does (e.g., Gamma
+-- 0.3-2.8, raw Mouse Look Speed 180 -> "5.5").
+local sliderOptionsByVariable = {}
 local function PickFormatter(formatters)
     if type(formatters) ~= "table" then return nil end
     -- MinimalSliderWithSteppersMixin.Label enum: Top (2) mirrors the
@@ -772,9 +773,9 @@ local function PickFormatter(formatters)
     end
     return nil
 end
-local function GetFormatterForVariable(variable)
+local function GetSliderOptionsForVariable(variable)
     if not variable then return nil end
-    local cached = formatterByVariable[variable]
+    local cached = sliderOptionsByVariable[variable]
     if cached ~= nil then
         return cached ~= false and cached or nil
     end
@@ -794,14 +795,29 @@ local function GetFormatterForVariable(variable)
                         local vok, v = pcall(setting.GetVariable, setting)
                         if vok and v == variable then
                             local d = init.data
-                            local opts = (type(d) == "table") and d.options or nil
+                            local opts = (type(d) == "table") and (d.options or d.sliderOptions) or nil
                             if type(opts) == "function" then
                                 local ook, o = pcall(opts, setting)
                                 if not ook then ook, o = pcall(opts) end
                                 if ook then opts = o end
                             end
                             if type(opts) == "table" then
-                                found = PickFormatter(opts.formatters)
+                                local fmt = PickFormatter(opts.formatters)
+                                local minV, maxV = opts.minValue, opts.maxValue
+                                local step
+                                if minV ~= nil and maxV ~= nil then
+                                    -- opts.steps = number of steps, not per-tick delta.
+                                    if opts.stepSize then
+                                        step = opts.stepSize
+                                    elseif opts.steps and opts.steps > 0 and maxV > minV then
+                                        step = (maxV - minV) / opts.steps
+                                    else
+                                        step = 1
+                                    end
+                                end
+                                if fmt or (minV ~= nil and maxV ~= nil) then
+                                    found = { min = minV, max = maxV, step = step, formatter = fmt }
+                                end
                             end
                             return
                         end
@@ -820,8 +836,14 @@ local function GetFormatterForVariable(variable)
     if type(list) == "table" then
         for _, cat in ipairs(list) do scan(cat) end
     end
-    formatterByVariable[variable] = found or false
+    sliderOptionsByVariable[variable] = found or false
     return found
+end
+BlizzOptionsSearch.GetSliderOptionsForVariable = GetSliderOptionsForVariable
+
+local function GetFormatterForVariable(variable)
+    local info = GetSliderOptionsForVariable(variable)
+    return info and info.formatter or nil
 end
 BlizzOptionsSearch.GetFormatterForVariable = GetFormatterForVariable
 
@@ -831,13 +853,19 @@ local pendingApplySettings = {}
 
 local function PendingCount()
     -- Prune entries whose pendingValue cleared from under us when the
-    -- user Applied / Cancelled in Blizzard's panel directly.
+    -- user Applied / Cancelled in Blizzard's panel directly. A staged
+    -- value identical to the live one is not a change (Blizzard stages
+    -- Apply-flagged settings even when nothing was touched).
     local n = 0
     for setting in pairs(pendingApplySettings) do
-        if setting.pendingValue ~= nil then
-            n = n + 1
-        else
+        local pending = setting.pendingValue
+        if pending == nil then
             pendingApplySettings[setting] = nil
+        else
+            local vok, current = pcall(setting.GetValue, setting)
+            if not (vok and current == pending) then
+                n = n + 1
+            end
         end
     end
     return n
@@ -917,7 +945,13 @@ function BlizzOptionsSearch:HasPendingChange(variable)
     if not variable or not Settings or not Settings.GetSetting then return false end
     local sok, settObj = pcall(Settings.GetSetting, variable)
     if not sok or not settObj then return false end
-    return settObj.pendingValue ~= nil
+    local pending = settObj.pendingValue
+    if pending == nil then return false end
+    -- Blizzard stages Apply-flagged settings even when untouched; a staged
+    -- value equal to the live one must not grow the Apply/Reset row.
+    local vok, current = pcall(settObj.GetValue, settObj)
+    if vok and current == pending then return false end
+    return true
 end
 
 -- PROXY_ANTIALIASING's SetValue zeros the OTHER mode's CVar and
@@ -1831,6 +1865,18 @@ local function CollectCuratedGameEntries(resolveCategoryIDs, useApiNames)
             sStep = sliderInfo.step or sStep
             settingFormatter = sliderInfo.formatter
         end
+        if resolved == "slider" and not (sMin and sMax) then
+            -- Curated "s" rows may omit the range; pull it from the live
+            -- initializer (Gamma, Contrast, Brightness, Camera FOV, ...).
+            -- Without a range the row renders as plain text, not a slider.
+            local live = GetSliderOptionsForVariable(var)
+            if live and live.min and live.max then
+                sMin = live.min
+                sMax = live.max
+                sStep = live.step or sStep
+                settingFormatter = settingFormatter or live.formatter
+            end
+        end
         local settingOptions = resolved == "dropdown" and CVAR_DROPDOWN_OPTIONS[var] or nil
         local kw = { "setting", "option", "config", catLower, nameLower }
         local extraKw = SETTING_EXTRA_KEYWORDS[var]
@@ -2557,6 +2603,10 @@ end
 BlizzOptionsSearch.CollectGameSettings = CollectGameSettings
 
 local OPTIONS_POPULATE_BUDGET_MS = 1.5
+-- A query is actively waiting on this data: spend real frame time so its
+-- results land within a couple hundred milliseconds, not seconds.
+local OPTIONS_POPULATE_URGENT_BUDGET_MS = 8
+local optionsPopulateUrgent = false
 local function RunBudgetedOptionsWork(worker, done)
     if not (SafeAfter and coroutine and coroutine.create and coroutine.resume
             and coroutine.status and coroutine.yield and debugprofilestop) then
@@ -2577,8 +2627,10 @@ local function RunBudgetedOptionsWork(worker, done)
             if finished then return end
             local ok, err = xpcall(function()
                 local startMs = debugprofilestop()
+                local budgetMs = optionsPopulateUrgent
+                    and OPTIONS_POPULATE_URGENT_BUDGET_MS or OPTIONS_POPULATE_BUDGET_MS
                 liveSettingsYield = function()
-                    if (debugprofilestop() - startMs) >= OPTIONS_POPULATE_BUDGET_MS then
+                    if (debugprofilestop() - startMs) >= budgetMs then
                         coroutine.yield()
                     end
                 end
@@ -2863,11 +2915,13 @@ function BlizzOptionsSearch:EnsurePopulatedAsync(onDone)
         return false
     end
     AddWaiter(populateWaiters, onDone)
+    if onDone then optionsPopulateUrgent = true end
     if populatePending then return true end
     populatePending = true
 
     local function finish(ok)
         populatePending = false
+        if not livePopulatePending then optionsPopulateUrgent = false end
         if ok then
             registered = true
             ScheduleLateRefresh()
@@ -2900,11 +2954,13 @@ function BlizzOptionsSearch:EnsureLivePopulatedAsync(onDone)
         return false
     end
     AddWaiter(livePopulateWaiters, onDone)
+    if onDone then optionsPopulateUrgent = true end
     if livePopulatePending then return true end
     livePopulatePending = true
 
     local function finish(ok, changed)
         livePopulatePending = false
+        if not populatePending then optionsPopulateUrgent = false end
         NotifyWaiters(livePopulateWaiters, ok and changed)
     end
 

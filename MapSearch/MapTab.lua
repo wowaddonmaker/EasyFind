@@ -310,13 +310,22 @@ local function PromptAlias(data)
     end
 end
 
-local function ShowPopup(isPinned, onPin, onGuide, onAddAlias)
+local function ShowPopup(isPinned, onPin, onGuide, onAddAlias, data)
+    local extra
+    local wowheadUrl = data and ns.GetWowheadLink and ns.GetWowheadLink(data)
+    if wowheadUrl then
+        extra = {
+            onWowhead = function()
+                ns.ShowCopyBox(wowheadUrl, L["WOWHEAD_COPY_HINT"])
+            end,
+        }
+    end
     Utils.ShowPinMenu("EasyFindPinPopup", isPinned, onPin, onGuide, onAddAlias, {
         strata = "TOOLTIP",
         level = 100,
         width = 96,
         rowHeight = 22,
-    })
+    }, extra)
 end
 
 local function CreateResultRow(parent)
@@ -452,7 +461,7 @@ local function RowOnClick(row, button)
         ShowPopup(isPinned, function()
             if isPinned then MapSearch:UnpinMapItem(data) else MapSearch:PinMapItem(data) end
             RefreshCurrentSearch()
-        end, function() TriggerResultSelect(data, false) end, function() PromptAlias(data) end)
+        end, function() TriggerResultSelect(data, false) end, function() PromptAlias(data) end, data)
         return
     end
 
@@ -947,7 +956,7 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
                 navigateData.collapsed = nil
             end
             RefreshCurrentSearch()
-        end, function() TriggerResultSelect(navigateData, false) end, function() PromptAlias(navigateData) end)
+        end, function() TriggerResultSelect(navigateData, false) end, function() PromptAlias(navigateData) end, navigateData)
     end
 
     local function renderEntries(entries, sectionKey)
@@ -1126,7 +1135,7 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
                     ShowPopup(true, function()
                         MapSearch:UnpinMapItem(pinRef)
                         RefreshCurrentSearch()
-                    end, function() TriggerResultSelect(pinRef, false) end, function() PromptAlias(pinRef) end)
+                    end, function() TriggerResultSelect(pinRef, false) end, function() PromptAlias(pinRef) end, pinRef)
                 end
                 placeGroupHeader(pinRef.name, "pinned:" .. pinRef.zoneMapID,
                     nil, collapsed, pinRef, true, onToggle, onRightClick)
@@ -2023,13 +2032,9 @@ local function AttachAutoTrackRow(dropdown)
             ns.optionsFrame.rareTrackCheckbox:SetChecked(EasyFind.db.alwaysShowRares)
         end
     end)
-    subRow:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText(L["MAP_AUTO_TRACK_RARES"])
-        GameTooltip:AddLine(L["MAP_AUTO_TRACK_RARES_TT"], 1, 1, 1, true)
-        GameTooltip:Show()
+    Utils.AttachDelayedTooltip(subRow, "ANCHOR_RIGHT", function()
+        return L["MAP_AUTO_TRACK_RARES"], L["MAP_AUTO_TRACK_RARES_TT"]
     end)
-    subRow:SetScript("OnLeave", GameTooltip_Hide)
 
     dropdown.autoTrackRow = subRow
     local baseHeight = dropdown:GetHeight()
