@@ -27,12 +27,15 @@ local slower = SearchText.Normalize
 local stokenize = SearchText.Tokenize
 local isAscii = SearchText.IsAscii
 local mmin, mmax, mabs, mfloor = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mfloor
-local pairs = Utils.pairs
 local wipe = wipe
 local uiSearchData = Database.uiSearchData
 
 local function IsLootStatSearchWord(word)
     return Database:IsLootStatSearchWord(word)
+end
+
+local function IsLootSlotSearchWord(word)
+    return Database:IsLootSlotSearchWord(word)
 end
 
 local BOSS_QUERY_WORDS = ns.BOSS_QUERY_WORDS
@@ -191,12 +194,18 @@ function Database:ScoreInitials(text, query)
     return 0
 end
 
+-- The fuzzy/abbreviation widening envelope. Everything that gates on length
+-- -- the scorers' edit budgets, the search gate's allowance, and the
+-- incremental-recall boundaries -- must agree on these, or the gate silently
+-- prunes results the scorers would match and narrowing misses them.
+local FUZZY_EDIT1_LEN, FUZZY_EDIT2_LEN, ABBREV_MIN_LEN = 4, 8, 3
+
 function Database:ScoreFuzzy(text, query, queryLen)
     -- Length-scaled typo budget (1 edit per ~4 chars). Without this,
     -- "skull" fuzzy-matches "spell" and similar unrelated 40%-diff words.
     local maxEdits
-    if queryLen >= 8 then maxEdits = 2
-    elseif queryLen >= 4 then maxEdits = 1
+    if queryLen >= FUZZY_EDIT2_LEN then maxEdits = 2
+    elseif queryLen >= FUZZY_EDIT1_LEN then maxEdits = 1
     else return 0
     end
 
@@ -283,18 +292,13 @@ function Database:DamerauLevenshtein(s1, s2, len1, len2)
     return prev[len2]
 end
 
--- Fast pre-filter: every distinct char in query must appear somewhere in text.
-local reuseCouldMatchSet = {}
--- Character-presence prefilter. Rebuilding each entry's character set every
--- keystroke (the pairs()+byte loop below) was ~90% of the full-scan scoring
--- cost. Names never change between keystrokes, so cache each name's letters as
--- a 26-bit mask (a-z) and reduce CouldMatch to one bitwise AND. The query mask
--- is cached for the current query (constant across a scan's ~6500 calls). Falls
--- back to the exact per-char scan for queries with non a-z bytes (digits,
--- accents, punctuation), which the mask cannot represent.
+-- Character-presence prefilter: every non-space query byte must appear in the
+-- text. Each name's a-z letters are cached as a 26-bit mask (one AND per
+-- entry); query bytes outside a-z (digits, punctuation, non-Latin locales)
+-- cannot live in the mask and are verified with one sfind per distinct byte.
 local nameMaskCache = {}
-Database._nameMaskCache = nameMaskCache
-local lastCMQuery, lastCMMask, lastCMUsable
+local lastCMQuery, lastCMMask
+local lastCMExtra, lastCMExtraN = {}, 0
 
 local function ComputeCharMask(s)
     local m = 0
@@ -306,46 +310,37 @@ local function ComputeCharMask(s)
 end
 
 local function ComputeQueryMask(query)
-    local m, usable = 0, true
+    lastCMExtraN = 0
+    local m = 0
     for i = 1, #query do
         local b = sbyte(query, i)
         if b >= 97 and b <= 122 then
             m = bor(m, lshift(1, b - 97))
         elseif b ~= 32 then
-            usable = false
+            local c = ssub(query, i, i)
+            local dup = false
+            for e = 1, lastCMExtraN do
+                if lastCMExtra[e] == c then dup = true; break end
+            end
+            if not dup then
+                lastCMExtraN = lastCMExtraN + 1
+                lastCMExtra[lastCMExtraN] = c
+            end
         end
     end
-    return m, usable
-end
-
-function Database:ClearNameMaskCache()
-    for k in pairs(nameMaskCache) do nameMaskCache[k] = nil end
-    lastCMQuery = nil
+    return m
 end
 
 function Database:CouldMatch(text, query)
     if query ~= lastCMQuery then
         lastCMQuery = query
-        lastCMMask, lastCMUsable = ComputeQueryMask(query)
+        lastCMMask = ComputeQueryMask(query)
     end
-    if lastCMUsable then
-        local tm = nameMaskCache[text]
-        if not tm then tm = ComputeCharMask(text); nameMaskCache[text] = tm end
-        return band(lastCMMask, tm) == lastCMMask
-    end
-    local tlen, qlen = #text, #query
-    if qlen == 0 then return true end
-    if tlen == 0 then return false end
-    local seen = reuseCouldMatchSet
-    for k in pairs(seen) do seen[k] = nil end
-    for i = 1, tlen do
-        seen[sbyte(text, i)] = true
-    end
-    for i = 1, qlen do
-        local qb = sbyte(query, i)
-        if qb ~= 32 and not seen[qb] then
-            return false
-        end
+    local tm = nameMaskCache[text]
+    if not tm then tm = ComputeCharMask(text); nameMaskCache[text] = tm end
+    if band(lastCMMask, tm) ~= lastCMMask then return false end
+    for i = 1, lastCMExtraN do
+        if not sfind(text, lastCMExtra[i], 1, true) then return false end
     end
     return true
 end
@@ -368,7 +363,6 @@ local GATE = {
     masks = {}, allows = {}, firstBits = {}, count = 0,
     sawNil = false, gatedN = 0, skipStatistic = false, fillPending = false,
 }
-Database._searchGate = GATE
 
 local function AccumulateGateMasks(s, cm, im)
     local prevAlpha = false
@@ -451,9 +445,10 @@ local function GateSkipsEntry(data)
         return false
     end
     if not gm then return false end
-    if GATE.skipStatistic and data.category == "Statistic" then return false end
-    local masks, allows, firstBits = GATE.masks, GATE.allows, GATE.firstBits
-    for w = 1, GATE.count do
+    local masks, allows, firstBits, count, skipStat =
+        GATE.masks, GATE.allows, GATE.firstBits, GATE.count, GATE.skipStatistic
+    if skipStat and data.category == "Statistic" then return false end
+    for w = 1, count do
         local missing = band(masks[w], bnot(gm))
         if missing ~= 0 then
             local skip = true
@@ -505,13 +500,13 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
         if initScore > score then score = initScore end
     end
 
-    if score < 100 and queryLen >= 4 then
+    if score < 100 and queryLen >= FUZZY_EDIT1_LEN then
         local fuzzyScore = Database:ScoreFuzzy(nameLower, query, queryLen)
         if fuzzyScore > score then score = fuzzyScore end
     end
 
     -- Vowel-stripped abbreviations: "qtr" -> quartermaster, "windrnr" -> windrunner.
-    if score < 50 and queryLen >= 3 and not sfind(query, " ", 1, true) then
+    if score < 50 and queryLen >= ABBREV_MIN_LEN and not sfind(query, " ", 1, true) then
         local nameWords = GetWords(nameLower)
         for wi = 1, #nameWords do
             local word = nameWords[wi]
@@ -555,9 +550,9 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
                             ws = 90
                         elseif sfind(nw, qw, 1, true) then
                             ws = 50
-                        elseif qwLen >= 4 and sbyte(nw, 1) == sbyte(qw, 1) then
+                        elseif qwLen >= FUZZY_EDIT1_LEN and sbyte(nw, 1) == sbyte(qw, 1) then
                             local nwLen = #nw
-                            local maxEdits = qwLen >= 8 and 2 or 1
+                            local maxEdits = qwLen >= FUZZY_EDIT2_LEN and 2 or 1
                             if nwLen >= qwLen - maxEdits and nwLen <= qwLen + maxEdits then
                                 local dist = Database:DamerauLevenshtein(qw, nw, qwLen, nwLen)
                                 if dist == 1 then
@@ -638,7 +633,7 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
                     kwScore = mmax(kwScore, initScore - penalty)
                 end
             end
-            if kwScore < 40 and queryLen >= 4 then
+            if kwScore < 40 and queryLen >= FUZZY_EDIT1_LEN then
                 local kf = Database:ScoreFuzzy(kw, query, queryLen)
                 if kf > 0 then kwScore = mmax(kwScore, kf) end
             end
@@ -692,7 +687,7 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
                         kwScore = mmax(kwScore, initScore - penalty)
                     end
                 end
-                if kwScore < 40 and queryWordLen >= 4 then
+                if kwScore < 40 and queryWordLen >= FUZZY_EDIT1_LEN then
                     local kf = Database:ScoreFuzzy(kw, queryWord, queryWordLen)
                     if kf > 0 then kwScore = mmax(kwScore, kf) end
                 end
@@ -726,9 +721,9 @@ local function ScoreSingleFieldWord(fieldWord, queryWord, queryWordLen)
             return 55
         end
     end
-    if queryWordLen >= 4 and sbyte(fieldWord, 1) == sbyte(queryWord, 1) then
+    if queryWordLen >= FUZZY_EDIT1_LEN and sbyte(fieldWord, 1) == sbyte(queryWord, 1) then
         local fieldLen = #fieldWord
-        local maxEdits = queryWordLen >= 8 and 2 or 1
+        local maxEdits = queryWordLen >= FUZZY_EDIT2_LEN and 2 or 1
         if fieldLen >= queryWordLen - maxEdits and fieldLen <= queryWordLen + maxEdits then
             local dist = Database:DamerauLevenshtein(fieldWord, queryWord, fieldLen, queryWordLen)
             if dist <= maxEdits then return mmax(45, 85 - dist * 20) end
@@ -803,6 +798,11 @@ end
 local prevQuery = ""
 local prevSkipKey = ""
 local prevCandidates = {}
+-- Flags of prevQuery, written where prevQuery is (gatingShifted compares the
+-- current query's flags against these). lootStatActive records what that
+-- search actually did, dev switch included. Only read when prevQuery ~= "",
+-- so the prevQuery-reset sites need not clear them.
+local prevFlags = { lootStatActive = false, boss = false, ach = false, words = 0 }
 -- Scratch for building skipKey from CategoryMap.SkipKeyOrder without a
 -- per-search table allocation. Reused each search; tconcat reads buf[1..n].
 local skipKeyBuf = {}
@@ -819,8 +819,8 @@ local resultCacheLRU = {}
 Database._resultCache = resultCache
 
 local function ClearResultCache()
-    for k in pairs(resultCache) do resultCache[k] = nil end
-    for i = #resultCacheLRU, 1, -1 do resultCacheLRU[i] = nil end
+    wipe(resultCache)
+    wipe(resultCacheLRU)
 end
 
 local function StoreResultCache(key, candidates, n)
@@ -833,7 +833,6 @@ local function StoreResultCache(key, candidates, n)
         local evict = tremove(resultCacheLRU, 1)
         slot = resultCache[evict]
         resultCache[evict] = nil
-        if not slot then slot = {} end
     else
         slot = {}
     end
@@ -896,6 +895,7 @@ function Database:TrimSearchMemory()
     wipe(statisticScopedQueryWords)
     wipe(resultEntryPool)
     wipe(wordCache)
+    wipe(nameMaskCache)
     prevQuery = ""
     prevSkipKey = ""
     wipe(prevCandidates)
@@ -934,6 +934,7 @@ function Database:SearchUI(query, skipCategories)
     local achQueryWord = false
     local statQueryWord = false
     local lootStatQueryWord = false
+    local lootGearContext = false
     for qi = 1, #queryWords do
         local qw = queryWords[qi]
         if BOSS_QUERY_WORDS[qw] then
@@ -946,10 +947,20 @@ function Database:SearchUI(query, skipCategories)
         if IsLootStatSearchWord(qw) then
             lootStatQueryWord = true
         end
+        if IsLootSlotSearchWord(qw) then
+            lootGearContext = true
+        end
         if ssub(qw, 1, 3) == "ach" or isStatQueryWord then
             achQueryWord = true
         end
     end
+
+    -- Stat shorthands ("int", "haste") only act on gear queries: without a
+    -- slot word ("ring", "shield", ...) they stop matching lootStatKw, so
+    -- "arc int" cannot pull in every intellect item whose name starts "arc".
+    -- _disableLootStatContext restores legacy behavior for the bench A/B.
+    local lootStatActive = lootStatQueryWord
+        and (lootGearContext or Database._disableLootStatContext == true)
 
     local statisticScopedQuery
     local statisticScopedQueryLen = 0
@@ -976,16 +987,12 @@ function Database:SearchUI(query, skipCategories)
             local qw = queryWords[qi]
             local qwLen = #qw
             if qwLen >= 2 then
-                local m = 0
-                for ci = 1, qwLen do
-                    local b = sbyte(qw, ci)
-                    if b >= 97 and b <= 122 then m = bor(m, lshift(1, b - 97)) end
-                end
+                local m = ComputeCharMask(qw)
                 if m ~= 0 then
                     local gc = GATE.count + 1
                     GATE.count = gc
                     GATE.masks[gc] = m
-                    local allow = qwLen >= 8 and 2 or qwLen >= 4 and 1 or 0
+                    local allow = qwLen >= FUZZY_EDIT2_LEN and 2 or qwLen >= FUZZY_EDIT1_LEN and 1 or 0
                     if allow == 0 and sbyte(qw, qwLen) == 115 then allow = 1 end
                     GATE.allows[gc] = allow
                     local fb = sbyte(qw, 1)
@@ -1015,7 +1022,9 @@ function Database:SearchUI(query, skipCategories)
         if n > 0 then skipKey = tconcat(skipKeyBuf, ",", 1, n) end
     end
 
-    local cacheKey = query .. "" .. skipKey
+    -- "\1" separates query from skipKey so ("x", skip "Mount") can never
+    -- collide with ("xMount", no skips).
+    local cacheKey = query .. "\1" .. skipKey
 
     -- prevCandidates can miss entries the now-more-permissive pass matches:
     --   1. A gate flipped on ("icc bos" -> "icc boss"). Boss/ach entries
@@ -1024,26 +1033,16 @@ function Database:SearchUI(query, skipCategories)
     --      "haste ring"): loot rings that only the appended word matches
     --      weren't in the previous match set (lootStatKw is enriched lazily).
     -- Either case bypasses extension and rebuilds via a full scan.
-    local prevLootStat, prevBossWord, prevAchWord = false, false, false
-    local prevWordCount = 0
-    if prevQuery ~= "" then
-        for prevWord in prevQuery:gmatch("%S+") do
-            prevWordCount = prevWordCount + 1
-            if IsLootStatSearchWord(prevWord) then prevLootStat = true end
-            if BOSS_QUERY_WORDS[prevWord] then
-                prevBossWord = true
-            end
-            if ssub(prevWord, 1, 3) == "ach" or STAT_QUERY_WORDS[prevWord] then
-                prevAchWord = true
-            end
-        end
-    end
-    local addedNewWord = #queryWords > prevWordCount
+    local hasPrev = prevQuery ~= ""
+    local prevLootStatActive = hasPrev and prevFlags.lootStatActive
+    local prevBossWord = hasPrev and prevFlags.boss
+    local prevAchWord = hasPrev and prevFlags.ach
+    local addedNewWord = #queryWords > (hasPrev and prevFlags.words or 0)
     local gatingShifted =
-        (lootStatQueryWord and not prevLootStat)
+        (lootStatActive and not prevLootStatActive)
         or (bossQueryWord and not prevBossWord)
         or (achQueryWord and not prevAchWord)
-        or (lootStatQueryWord and addedNewWord)
+        or (lootStatActive and addedNewWord)
         or (statQueryWord and addedNewWord)
 
     -- Incremental narrowing (the speed path): when the query only grew, re-score
@@ -1058,9 +1057,9 @@ function Database:SearchUI(query, skipCategories)
     -- what made the same query return different results at different moments.
     local prevLen = #prevQuery
     local recallBoundaryCrossed =
-        (prevLen < 3 and queryLen >= 3)
-        or (prevLen < 4 and queryLen >= 4)
-        or (prevLen < 8 and queryLen >= 8)
+        (prevLen < ABBREV_MIN_LEN and queryLen >= ABBREV_MIN_LEN)
+        or (prevLen < FUZZY_EDIT1_LEN and queryLen >= FUZZY_EDIT1_LEN)
+        or (prevLen < FUZZY_EDIT2_LEN and queryLen >= FUZZY_EDIT2_LEN)
 
     local searchSet
     local cachedSet = resultCache[cacheKey]
@@ -1082,7 +1081,7 @@ function Database:SearchUI(query, skipCategories)
     local efStats = Database._efSearchStats
     if efStats then
         if cachedSet then
-            efStats.cache = (efStats.cache or 0) + 1
+            efStats.cache = efStats.cache + 1
             efStats.lastPath = "cache"
         elseif searchSet == prevCandidates then
             efStats.narrow = efStats.narrow + 1
@@ -1109,16 +1108,17 @@ function Database:SearchUI(query, skipCategories)
     local resultsN = 0
     local candidateIdx = 0
 
+    local gateActive = GATE.count > 0
     local searchCount = #searchSet
     for i = 1, searchCount do
         local data = searchSet[i]
         if not (skipCategories and skipCategories[data.category])
            and not (data.available and not data.available())
-           and (GATE.count == 0 or not GateSkipsEntry(data)) then
+           and (not gateActive or not GateSkipsEntry(data)) then
             local nameLower = data.nameLower
             local score
             if data.lootEntry then
-                if lootStatQueryWord and not data._statsEnriched then
+                if lootStatActive and not data._statsEnriched then
                     Database:EnrichLootStats(data)
                 end
                 -- Each query word scores against name + slot + stats + source
@@ -1143,6 +1143,8 @@ function Database:SearchUI(query, skipCategories)
                         end
                     end
 
+                    -- Prefix acceptance here must stay in sync with the
+                    -- gear-context prefix rule in IsLootSlotSearchWord (Main.lua).
                     if data.lootSlotKw then
                         for ki = 1, #data.lootSlotKw do
                             local kw = data.lootSlotKw[ki]
@@ -1154,7 +1156,7 @@ function Database:SearchUI(query, skipCategories)
                         end
                     end
 
-                    if data.lootStatKw then
+                    if lootStatActive and data.lootStatKw then
                         for ki = 1, #data.lootStatKw do
                             local kw = data.lootStatKw[ki]
                             if kw == qw then
@@ -1247,6 +1249,10 @@ function Database:SearchUI(query, skipCategories)
     end
     prevQuery = query
     prevSkipKey = skipKey
+    prevFlags.lootStatActive = lootStatActive
+    prevFlags.boss = bossQueryWord
+    prevFlags.ach = achQueryWord
+    prevFlags.words = #queryWords
     StoreResultCache(cacheKey, prevCandidates, candidateIdx)
     if GATE.sawNil and not GATE.fillPending then ScheduleGateMaskFill() end
     if efStats then efStats.lastResults = resultsN; efStats.gated = GATE.gatedN end

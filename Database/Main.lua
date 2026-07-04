@@ -713,6 +713,176 @@ local STAT_KEYWORD_MAP = {
 -- Bump when STAT_KEYWORD_MAP or the enrichment logic changes so the persisted
 -- lootStatCache rebuilds (v2 clears entries cemented empty by incomplete reads).
 ns.LOOT_STAT_CACHE_VER = 2
+
+-- Shared tokenizer for the lazy search-word vocabularies below: splits a
+-- phrase into words, dedupes into the lookup, optionally collecting a list.
+local function AddLookupWords(lookup, phrase, list)
+    for part in phrase:gmatch("%S+") do
+        if not lookup[part] then
+            lookup[part] = true
+            if list then list[#list + 1] = part end
+        end
+    end
+end
+
+local slotSearchWordLookup, slotSearchWordList
+local function IsLootSlotSearchWord(word)
+    if not slotSearchWordLookup then
+        slotSearchWordLookup = {}
+        slotSearchWordList = {}
+        for _, words in pairs(SLOT_KEYWORDS) do
+            for i = 1, #words do
+                AddLookupWords(slotSearchWordLookup, words[i], slotSearchWordList)
+            end
+        end
+    end
+    if slotSearchWordLookup[word] then return true end
+    -- The loot scorer accepts a query word that is a PREFIX of a slot keyword
+    -- ("boot" scores against "boots"), so gear-context detection must too, or
+    -- "haste boot" is vetoed while "haste boots" matches. 1-char words stay
+    -- out to avoid mid-type context flicker.
+    if #word < 2 then return false end
+    for i = 1, #slotSearchWordList do
+        if sfind(slotSearchWordList[i], word, 1, true) == 1 then return true end
+    end
+    return false
+end
+
+function Database:IsLootSlotSearchWord(word)
+    return IsLootSlotSearchWord(word)
+end
+
+local lockGen = 0
+local function BumpLockGen()
+    lockGen = lockGen + 1
+end
+
+local GetAvailableLFGCategories = C_LFGList and C_LFGList.GetAvailableCategories
+local lfgAvailableCategories
+
+function Database:InvalidateLFGAvailability()
+    lfgAvailableCategories = nil
+    BumpLockGen()
+end
+
+-- Level-gated LFG categories (rated arenas on a low-level character) are
+-- absent from C_LFGList.GetAvailableCategories(), so guides into them
+-- dead-end. Fail open while the list is empty (early login) so nothing is
+-- wrongly locked before the API is ready.
+local function IsLFGCategoryLocked(categoryID)
+    if not GetAvailableLFGCategories then return false end
+    if not lfgAvailableCategories then
+        local categories = GetAvailableLFGCategories()
+        if not categories or #categories == 0 then return false end
+        lfgAvailableCategories = {}
+        for i = 1, #categories do lfgAvailableCategories[categories[i]] = true end
+    end
+    return not lfgAvailableCategories[categoryID]
+end
+
+function Database:IsLFGCategoryLocked(categoryID)
+    return IsLFGCategoryLocked(categoryID)
+end
+
+-- Lockedness is fully generic: the guide's own step probe reports targets it
+-- can observe right now (existing-but-disabled buttons, categories absent
+-- from a populated list), and a per-character learned set remembers step
+-- signatures whose execution dead-ended, so entries behind a UI the client
+-- has not loaded this session still gray after one failed attempt. Learned
+-- locks clear on level-up, the main unlock vector. No per-feature rules.
+local STEP_TARGET_KEYS = {
+    "lfgCategoryID", "pvpSideTabIndex", "sideTabIndex", "tabIndex",
+    "searchButtonText", "sidebarButtonFrame", "currencyID", "factionID",
+    "achievementID", "statisticID",
+}
+
+-- Steps are static, shared table objects (FlattenTree reuses parent step
+-- arrays across entries), so signatures and lock verdicts memoize on the step
+-- itself. lockGen bumps whenever lock state can actually change; between
+-- bumps a probe costs one field compare per step instead of a finder walk
+-- per visible row per keystroke (the bench log caught that as a 40% warm
+-- regression).
+local function StepSignature(step)
+    local sig = step._efSig
+    if sig == nil then
+        sig = false
+        for i = 1, #STEP_TARGET_KEYS do
+            local key = STEP_TARGET_KEYS[i]
+            local value = step[key]
+            if value ~= nil then
+                sig = key .. ":" .. tostring(value)
+                break
+            end
+        end
+        step._efSig = sig
+    end
+    if sig then return sig end
+    return nil
+end
+
+local function CharKey()
+    return (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?")
+end
+
+local function LearnedLocks()
+    local db = EasyFind and EasyFind.db
+    if not db then return nil end
+    db.learnedStepLocks = db.learnedStepLocks or {}
+    local key = CharKey()
+    db.learnedStepLocks[key] = db.learnedStepLocks[key] or {}
+    return db.learnedStepLocks[key]
+end
+
+function Database:LearnStepLock(step)
+    local sig = StepSignature(step)
+    if not sig then return end
+    local locks = LearnedLocks()
+    if locks then locks[sig] = true end
+    BumpLockGen()
+end
+
+function Database:OnPlayerLevelUp()
+    lfgAvailableCategories = nil
+    local db = EasyFind and EasyFind.db
+    if db and db.learnedStepLocks then
+        db.learnedStepLocks[CharKey()] = nil
+    end
+    BumpLockGen()
+end
+
+function Database:IsStepLocked(step)
+    if step._efLockGen == lockGen then
+        return step._efLockState
+    end
+    step._efLockGen = lockGen
+    local locked = false
+    local highlight = ns.Highlight
+    if highlight and highlight.GetStepLockState
+       and highlight:GetStepLockState(step) == "locked" then
+        locked = true
+    else
+        local sig = StepSignature(step)
+        if sig then
+            local locks = LearnedLocks()
+            locked = (locks and locks[sig]) == true
+        end
+    end
+    step._efLockState = locked
+    return locked
+end
+
+---Reason a result cannot be navigated on this character, or nil when it can.
+---Resolved at render time for visible rows only, so cost is O(visible rows).
+function Database:GetEntryLockedReason(entry)
+    local steps = entry.steps
+    if not steps then return nil end
+    for i = 1, #steps do
+        if self:IsStepLocked(steps[i]) then
+            return L["TOOLTIP_RESULT_LOCKED"]
+        end
+    end
+    return nil
+end
 ns.LOOT_ITEM_CACHE_VER = 1
 ns.BOSS_CACHE_VER = 1
 ns.STATISTIC_CACHE_VER = 1
@@ -760,14 +930,10 @@ local function IsLootStatSearchWord(word)
         for statKey, words in pairs(STAT_KEYWORD_MAP) do
             local label = _G[statKey]
             if label then
-                for part in slower(label):gmatch("%S+") do
-                    statSearchWordLookup[part] = true
-                end
+                AddLookupWords(statSearchWordLookup, slower(label))
             end
             for i = 1, #words do
-                for part in words[i]:gmatch("%S+") do
-                    statSearchWordLookup[part] = true
-                end
+                AddLookupWords(statSearchWordLookup, words[i])
             end
         end
     end
