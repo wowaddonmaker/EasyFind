@@ -75,8 +75,15 @@ local function ScaleFont(fontString, baseFontObject)
     if ns.GetAddonFontPath then
         path = ns.GetAddonFontPath(nil, path)
     end
-    fontString:SetFont(path, baseSize * (EasyFind.db.fontSize or 1.0), flags)
-    fontString:SetJustifyH(fontString:GetJustifyH())
+    local size = baseSize * (EasyFind.db.fontSize or 1.0)
+    -- SetFont re-rasterizes and runs ~13x per row per render (per keystroke).
+    -- Font and size are stable between keystrokes, so skip the call when the
+    -- fontstring already carries the exact font: with a custom TTF selected,
+    -- the redundant per-render SetFont storm is a real typing hitch.
+    local curPath, curSize, curFlags = fontString:GetFont()
+    if curPath ~= path or curSize ~= size or (curFlags or "") ~= (flags or "") then
+        fontString:SetFont(path, size, flags)
+    end
 end
 
 function Results:ScaleFont(fontString, baseFontObject)
@@ -85,6 +92,16 @@ end
 
 function Results:SetScaledFont(fontString, baseFontObject)
     if not fontString then return end
+    -- Runs per row per render (per keystroke). SetFontObject resets the font,
+    -- so ScaleFont's own skip can't fire here and a custom TTF gets re-set
+    -- every render, which is a real typing hitch. The applied font only
+    -- depends on the base object, the font choice, and the scale, all stable
+    -- between keystrokes, so skip the pair when that signature is unchanged.
+    local db = EasyFind.db
+    local sig = baseFontObject .. "\0" .. (db and db.font or "Default")
+        .. "\0" .. tostring(db and db.fontSize or 1.0)
+    if fontString._efScaledFontSig == sig then return end
+    fontString._efScaledFontSig = sig
     fontString:SetFontObject(baseFontObject)
     ScaleFont(fontString, baseFontObject)
 end

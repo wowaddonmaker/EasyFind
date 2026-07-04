@@ -1484,6 +1484,140 @@ function ns.ShowCopyBox(text, labelText)
     end)
 end
 
+-- Themed replacement for Blizzard StaticPopup confirm/input dialogs, styled
+-- like the rest of EasyFind (StyleMenuPanel + CreateModernButton). One pooled
+-- frame. opts: { title, text, acceptText, cancelText, hasEditBox,
+-- editBoxDefault, maxLetters, noCancel, onAccept(value), onCancel }.
+local themedDialog
+local function StyleDialogButton(btn)
+    btn:HookScript("OnEnter", function(self)
+        ns.SetRoundedRectBorderFillColor(self, unpack(ns.BTN_FILL_HOVER))
+    end)
+    btn:HookScript("OnLeave", function(self)
+        ns.SetRoundedRectBorderFillColor(self, unpack(ns.BTN_FILL_NORMAL))
+    end)
+end
+
+function ns.ShowThemedDialog(opts)
+    opts = opts or {}
+    local f = themedDialog
+    if not f then
+        f = CreateFrame("Frame", "EasyFindThemedDialog", UIParent, "BackdropTemplate")
+        f:SetFrameStrata("FULLSCREEN_DIALOG")
+        f:SetToplevel(true)
+        f:SetFrameLevel(800)
+        f:EnableMouse(true)
+        f:SetClampedToScreen(true)
+        f:SetPoint("CENTER", 0, 120)
+        ns.StyleMenuPanel(f)
+
+        f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        f.title:SetPoint("TOPLEFT", 16, -14)
+        f.title:SetPoint("TOPRIGHT", -16, -14)
+        f.title:SetJustifyH("CENTER")
+        f.title:SetTextColor(unpack(ns.GOLD_COLOR))
+
+        f.message = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        f.message:SetJustifyH("CENTER")
+        f.message:SetSpacing(2)
+        f.message:SetTextColor(unpack(ns.TEXT_PRIMARY))
+
+        local field = CreateFrame("Frame", nil, f)
+        field:SetHeight(26)
+        local bg = field:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(0, 0, 0, 0.45)
+        local eb = CreateFrame("EditBox", nil, field)
+        eb:SetPoint("LEFT", 8, 0)
+        eb:SetPoint("RIGHT", -8, 0)
+        eb:SetHeight(20)
+        eb:SetFontObject("GameFontHighlight")
+        eb:SetAutoFocus(false)
+        eb:SetJustifyH("LEFT")
+        f.field = field
+        f.editBox = eb
+
+        f.accept = ns.CreateModernButton(f, "", 120, 22)
+        f.cancel = ns.CreateModernButton(f, "", 120, 22)
+        StyleDialogButton(f.accept)
+        StyleDialogButton(f.cancel)
+
+        local function accept()
+            local val = f._hasEditBox and f.editBox:GetText() or nil
+            f:Hide()
+            if f._onAccept then f._onAccept(val) end
+        end
+        local function cancel()
+            f:Hide()
+            if f._onCancel then f._onCancel() end
+        end
+        f.accept:SetScript("OnClick", accept)
+        f.cancel:SetScript("OnClick", cancel)
+        eb:SetScript("OnEnterPressed", accept)
+        eb:SetScript("OnEscapePressed", cancel)
+        -- ESC closes without protected calls via UISpecialFrames; onCancel is
+        -- a no-op for the confirm dialogs, so a bare hide is the right result.
+        tinsert(UISpecialFrames, "EasyFindThemedDialog")
+
+        themedDialog = f
+    end
+
+    f._onAccept = opts.onAccept
+    f._onCancel = opts.onCancel
+    f._hasEditBox = opts.hasEditBox and true or false
+
+    local hasTitle = opts.title and opts.title ~= ""
+    f.title:SetShown(hasTitle)
+    f.title:SetText(opts.title or "")
+    f.message:SetText(opts.text or "")
+
+    local width = opts.width or 380
+    f:SetWidth(width)
+    f.message:SetWidth(width - 32)
+
+    local used = 14
+    if hasTitle then used = used + f.title:GetStringHeight() + 10 end
+    f.message:ClearAllPoints()
+    f.message:SetPoint("TOPLEFT", 16, -used)
+    f.message:SetPoint("TOPRIGHT", -16, -used)
+    used = used + f.message:GetStringHeight() + 14
+
+    if f._hasEditBox then
+        f.field:ClearAllPoints()
+        f.field:SetPoint("TOPLEFT", 16, -used)
+        f.field:SetPoint("TOPRIGHT", -16, -used)
+        f.field:Show()
+        f.editBox:SetMaxLetters(opts.maxLetters or 128)
+        f.editBox:SetText(opts.editBoxDefault or "")
+        used = used + 26 + 14
+    else
+        f.field:Hide()
+    end
+
+    f.accept._label:SetText(opts.acceptText or _G["OKAY"] or _G["ACCEPT"] or "OK")
+    f.cancel._label:SetText(opts.cancelText or _G["CANCEL"] or "Cancel")
+    f.accept:ClearAllPoints()
+    f.cancel:ClearAllPoints()
+    if opts.noCancel then
+        f.cancel:Hide()
+        f.accept:SetPoint("TOP", f, "TOP", 0, -used)
+    else
+        -- Accept on the left, Cancel on the right (standard button order).
+        f.cancel:Show()
+        f.accept:SetPoint("TOPRIGHT", f, "TOP", -6, -used)
+        f.cancel:SetPoint("TOPLEFT", f, "TOP", 6, -used)
+    end
+    used = used + 22 + 14
+    f:SetHeight(used)
+
+    f:Show()
+    if f._hasEditBox then
+        f.editBox:SetFocus()
+        f.editBox:HighlightText()
+    end
+    return f
+end
+
 local WOWHEAD_LOCALE_SUB = {
     deDE = "de", esES = "es", esMX = "es", frFR = "fr", itIT = "it",
     ptBR = "pt", ruRU = "ru", koKR = "ko", zhCN = "cn", zhTW = "cn",
@@ -3293,6 +3427,10 @@ end
 
 function ns.RegisterAddonFont(fs, weight, sizeOverride, flags)
     if not fs or not fs.GetFont or not fs.SetFont then return end
+    -- Font-preview rows each render in their OWN font on purpose; they must
+    -- never be driven by the current global choice, or selecting a font would
+    -- overwrite (and blank) the other choices' preview text.
+    if fs._efFontPreview then return end
     if not fs._addonFontBaseline then
         local p, sz, fl = fs:GetFont()
         fs._addonFontBaseline = { path = p, size = sz, flags = fl }

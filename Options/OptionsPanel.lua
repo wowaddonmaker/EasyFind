@@ -12,6 +12,12 @@ local IsMouseButtonDown = IsMouseButtonDown
 
 local SMALL_HIGHLIGHT_FONT = _G["GameFontHighlightSmall"] or _G["GameFontNormalSmall"] or _G["GameFontNormal"]
 
+-- Themed confirm dialog for the reset buttons (replaces the Blizzard
+-- StaticPopup style). Reset is the accept verb; Cancel is implicit.
+local function ShowResetConfirm(text, onAccept)
+    ns.ShowThemedDialog({ text = text, acceptText = _G["RESET"] or "Reset", onAccept = onAccept })
+end
+
 -- Indicator style and color are stored in the DB as stable English keys
 -- (locale-independent). These map a stored key to its localized display
 -- label so the picker shows translated text without changing the value.
@@ -1124,6 +1130,10 @@ local function BuildGeneralBindsTab(ctx)
     )
     local fontFlyout = CreateFlyoutPanel(fontBtnFrame, "EasyFindFont", SELECTOR_BTN_W, #fontChoices)
     local function StyleFontChoiceRow(_, name, label)
+        -- Each row previews its own font and stays immune to the global
+        -- font choice (see ns.RegisterAddonFont), so the whole list keeps
+        -- rendering after a selection instead of blanking.
+        label._efFontPreview = true
         local path = ns.GetFontChoicePath and ns.GetFontChoicePath(name)
         if path then
             local _, size, flags = label:GetFont()
@@ -1448,7 +1458,7 @@ local function BuildSearchTab(ctx)
     resetUIBtn:SetPoint("BOTTOMLEFT", sec1, "BOTTOMLEFT", 16, 8)
     resetUIBtn:SetText(L["OPT_RESET_SETTINGS"])
     resetUIBtn:SetScript("OnClick", function()
-        StaticPopup_Show("EASYFIND_RESET_UI")
+        ShowResetConfirm(L["POPUP_RESET_UI_SEARCH_SETTINGS"], function() Options:DoResetUI() end)
     end)
 
     local resetUIPosBtn = CreateModernButton(sec1)
@@ -1456,7 +1466,7 @@ local function BuildSearchTab(ctx)
     resetUIPosBtn:SetPoint("LEFT", resetUIBtn, "RIGHT", 8, 0)
     resetUIPosBtn:SetText(L["OPT_RESET_POSITIONS"])
     resetUIPosBtn:SetScript("OnClick", function()
-        StaticPopup_Show("EASYFIND_RESET_UI_POS")
+        ShowResetConfirm(L["POPUP_RESET_UI_SEARCH_POSITIONS"], function() Options:DoResetUIPositions() end)
     end)
 
 end
@@ -1662,7 +1672,7 @@ local function BuildMapTab(ctx)
     resetMapBtn:SetPoint("TOPRIGHT", sec2, "TOPRIGHT", -8, -8)
     resetMapBtn:SetText(L["OPT_RESET_SETTINGS"])
     resetMapBtn:SetScript("OnClick", function()
-        StaticPopup_Show("EASYFIND_RESET_MAP")
+        ShowResetConfirm(L["POPUP_RESET_MAP_SEARCH_SETTINGS"], function() Options:DoResetMap() end)
     end)
 
     mapControls = {
@@ -2139,8 +2149,20 @@ local function BuildAliasesTab(ctx)
             row.nameText._fullText = e.name
 
             row.aliasBtn:SetScript("OnClick", function()
-                StaticPopup_Show("EASYFIND_EDIT_ALIAS", e.name or "?", nil,
-                    { key = e.key, name = e.name, current = e.aliasText })
+                ns.ShowThemedDialog({
+                    text = (L["PROMPT_ALIAS_FOR"]):format(e.name or "?"),
+                    hasEditBox = true,
+                    editBoxDefault = e.aliasText,
+                    maxLetters = 64,
+                    acceptText = _G["SAVE"] or "Save",
+                    onAccept = function(txt)
+                        txt = strtrim(txt or "")
+                        if not (e.key and ns.Aliases) then return end
+                        ns.Aliases:RemoveByKey(e.key)
+                        if txt ~= "" then ns.Aliases:AddByKey(txt, e.key, e.name) end
+                        if RefreshAliasList then RefreshAliasList() end
+                    end,
+                })
             end)
             row.skBtn:SetScript("OnClick", function(_, button)
                 if button == "RightButton" then
@@ -2173,82 +2195,17 @@ local function BuildAliasesTab(ctx)
     optionsFrame.RefreshAliasList = RefreshAliasList
     ns.RefreshShortkeyTable = RefreshAliasList
 
-    StaticPopupDialogs["EASYFIND_CLEAR_ALIASES"] = {
-        text = L["POPUP_CLEAR_ALIASES"],
-        button1 = _G["CLEAR"] or "Clear",
-        button2 = CANCEL or "Cancel",
-        OnAccept = function()
-            if ns.Aliases then ns.Aliases:ClearAll() end
-            if ns.Shortkeys then ns.Shortkeys:ClearAll() end
-            RefreshAliasList()
-        end,
-        OnShow = LiftPopupAboveOptions,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
     clearAliasesBtn:SetScript("OnClick", function()
-        StaticPopup_Show("EASYFIND_CLEAR_ALIASES")
+        ns.ShowThemedDialog({
+            text = L["POPUP_CLEAR_ALIASES"],
+            acceptText = _G["CLEAR"] or "Clear",
+            onAccept = function()
+                if ns.Aliases then ns.Aliases:ClearAll() end
+                if ns.Shortkeys then ns.Shortkeys:ClearAll() end
+                RefreshAliasList()
+            end,
+        })
     end)
-
-    StaticPopupDialogs["EASYFIND_EDIT_ALIAS"] = {
-        text = L["PROMPT_ALIAS_FOR"],
-        button1 = _G["SAVE"] or "Save",
-        button2 = _G["CANCEL"] or "Cancel",
-        hasEditBox = true,
-        maxLetters = 64,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        enterClicksFirstButton = true,
-        OnShow = function(self, data)
-            LiftPopupAboveOptions(self)
-            local eb = self.editBox or self.EditBox
-            if eb then
-                eb:SetText(data and data.current or "")
-                eb:HighlightText()
-                eb:SetFocus()
-            end
-        end,
-        OnAccept = function(self, data)
-            if not (data and data.key and ns.Aliases) then return end
-            local eb = self.editBox or self.EditBox
-            local txt = strtrim(eb and eb:GetText() or "")
-            ns.Aliases:RemoveByKey(data.key)
-            if txt ~= "" then ns.Aliases:AddByKey(txt, data.key, data.name) end
-            if RefreshAliasList then RefreshAliasList() end
-        end,
-        EditBoxOnEnterPressed = function(self)
-            local parent = self:GetParent()
-            if parent.button1 then parent.button1:Click() end
-        end,
-        EditBoxOnEscapePressed = function(self) self:GetParent():Hide() end,
-    }
-
-    StaticPopupDialogs["EASYFIND_RESET_ALL"] = {
-        text = L["POPUP_RESET_ALL_SETTINGS"],
-        button1 = _G["RESET"] or "Reset",
-        button2 = _G["CANCEL"] or "Cancel",
-        OnAccept = function() Options:DoResetAll() end,
-        OnShow = LiftPopupAboveOptions,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
-
-    StaticPopupDialogs["EASYFIND_RESET_POSITIONS"] = {
-        text = L["POPUP_RESET_ALL_POSITIONS"],
-        button1 = _G["RESET"] or "Reset",
-        button2 = _G["CANCEL"] or "Cancel",
-        OnAccept = function() Options:DoResetPositions() end,
-        OnShow = LiftPopupAboveOptions,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
 
     StaticPopupDialogs["EASYFIND_DISABLE_MAP_SEARCH"] = {
         text = L["POPUP_DISABLE_MAP_SEARCH"] .. "\n\n" .. L["POPUP_DISABLE_MAP_SEARCH_DETAIL"],
@@ -2282,48 +2239,12 @@ local function BuildAliasesTab(ctx)
         preferredIndex = 3,
     }
 
-    StaticPopupDialogs["EASYFIND_RESET_UI"] = {
-        text = L["POPUP_RESET_UI_SEARCH_SETTINGS"],
-        button1 = _G["RESET"] or "Reset",
-        button2 = _G["CANCEL"] or "Cancel",
-        OnAccept = function() Options:DoResetUI() end,
-        OnShow = LiftPopupAboveOptions,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
-
-    StaticPopupDialogs["EASYFIND_RESET_MAP"] = {
-        text = L["POPUP_RESET_MAP_SEARCH_SETTINGS"],
-        button1 = _G["RESET"] or "Reset",
-        button2 = _G["CANCEL"] or "Cancel",
-        OnAccept = function() Options:DoResetMap() end,
-        OnShow = LiftPopupAboveOptions,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
-
-    StaticPopupDialogs["EASYFIND_RESET_UI_POS"] = {
-        text = L["POPUP_RESET_UI_SEARCH_POSITIONS"],
-        button1 = _G["RESET"] or "Reset",
-        button2 = _G["CANCEL"] or "Cancel",
-        OnAccept = function() Options:DoResetUIPositions() end,
-        OnShow = LiftPopupAboveOptions,
-        timeout = 0,
-        whileDead = true,
-        hideOnEscape = true,
-        preferredIndex = 3,
-    }
-
     local resetAllBtn = CreateModernButton(sec3)
     resetAllBtn:SetSize(RESET_BTN_W, 20)
     resetAllBtn:SetPoint("BOTTOMLEFT", sec3, "BOTTOMLEFT", 16, 8)
     resetAllBtn:SetText(L["OPT_RESET_ALL_SETTINGS"])
     resetAllBtn:SetScript("OnClick", function()
-        StaticPopup_Show("EASYFIND_RESET_ALL")
+        ShowResetConfirm(L["POPUP_RESET_ALL_SETTINGS"], function() Options:DoResetAll() end)
     end)
     resetAllBtn:HookScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -2339,7 +2260,7 @@ local function BuildAliasesTab(ctx)
     resetPosBtn:SetPoint("LEFT", resetAllBtn, "RIGHT", 8, 0)
     resetPosBtn:SetText(L["OPT_RESET_ALL_POSITIONS"])
     resetPosBtn:SetScript("OnClick", function()
-        StaticPopup_Show("EASYFIND_RESET_POSITIONS")
+        ShowResetConfirm(L["POPUP_RESET_ALL_POSITIONS"], function() Options:DoResetPositions() end)
     end)
     resetPosBtn:HookScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")

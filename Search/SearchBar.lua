@@ -324,6 +324,15 @@ function Search:CreateSearchFrame()
     local function StartDragRefresh()
         if dragRefreshTicker then return end
         dragRefreshTicker = C_Timer.NewTicker(0.1, function()
+            -- Self-terminate if the drag ended without a clean stop (e.g. the
+            -- mouse was released off the editbox, so its OnMouseUp never
+            -- fired). Without this the ticker leaks into a permanent per-0.1s
+            -- re-render that lags the whole UI, including typing.
+            if not IsMouseButtonDown("LeftButton") then
+                if dragRefreshTicker then dragRefreshTicker:Cancel(); dragRefreshTicker = nil end
+                Results:RefreshShownResults()
+                return
+            end
             local ok = pcall(function()
                 Results:RefreshShownResults()
             end)
@@ -2000,10 +2009,15 @@ function Search:UpdateSmartShow()
         UIFrameFadeRemoveFrame(searchFrame)
         searchFrame.setSmartShowVisible(true)
         searchFrame:SetAlpha(1.0)
-        if EasyFind.db.autoHide then
-            return
-        end
-        if EasyFind.db.visible ~= false and not inCombat then
+        if inCombat then return end
+        -- Reconcile the shown state from scratch. Coming from Hover Show the
+        -- frame is already Shown (at alpha 0), so a plain Show() would not
+        -- re-fire OnShow, and Auto-Hide registers its GLOBAL_MOUSE_DOWN
+        -- click-away dismissal only in OnShow. Without the Hide first, a
+        -- reset that flips Hover Show to Auto-Hide leaves the bar fully
+        -- visible and undismissable. Hiding first makes OnShow fire cleanly.
+        searchFrame:Hide()
+        if EasyFind.db.visible ~= false then
             searchFrame:Show()
         end
     end

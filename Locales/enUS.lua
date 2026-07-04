@@ -112,9 +112,9 @@ L["POPUP_RESET_ALL_SETTINGS"]           = "Reset all EasyFind settings to defaul
 L["POPUP_RESET_ALL_POSITIONS"]          = "Reset all EasyFind positions to defaults?"
 L["POPUP_DISABLE_MAP_SEARCH"]           = "Disable Map Search?"
 L["POPUP_RELOAD_UI"]                    = "Reload UI to apply changes?"
-L["POPUP_RESET_UI_SEARCH_SETTINGS"]     = "Reset UI Search settings to defaults?"
+L["POPUP_RESET_UI_SEARCH_SETTINGS"]     = "Reset main search bar settings to defaults?"
 L["POPUP_RESET_MAP_SEARCH_SETTINGS"]    = "Reset Map Search settings to defaults?"
-L["POPUP_RESET_UI_SEARCH_POSITIONS"]    = "Reset UI Search positions to defaults?"
+L["POPUP_RESET_UI_SEARCH_POSITIONS"]    = "Reset main search bar position to default?"
 
 -- Tab titles missing earlier
 L["OPT_TAB_SHORTCUTS"]                  = "Shortcuts"

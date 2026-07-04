@@ -476,7 +476,11 @@ local function OnInitialize()
         elseif msg == "r" or msg == "reset" then
             if ns.Options then
                 ns.Options:Initialize()
-                StaticPopup_Show("EASYFIND_RESET_ALL")
+                ns.ShowThemedDialog({
+                    text = L["POPUP_RESET_ALL_SETTINGS"],
+                    acceptText = _G["RESET"] or "Reset",
+                    onAccept = function() ns.Options:DoResetAll() end,
+                })
             end
         elseif msg == "bug" then
             OpenBugReport()
