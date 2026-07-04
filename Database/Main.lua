@@ -4376,6 +4376,16 @@ function Database:BuildUIDatabase()
             category = "Menu Bar",
             buttonFrame = "MainMenuMicroButton",
             slashCommand = "/click MainMenuMicroButton",
+            children = {
+                {
+                    name = _G["GAMEMENU_OPTIONS"] or _G["OPTIONS"] or "Options",
+                    keywords = {"options", "game options", "settings", "game settings", "system"},
+                    steps = {
+                        { buttonFrame = "MainMenuMicroButton" },
+                        { gameMenuText = _G["GAMEMENU_OPTIONS"] or _G["OPTIONS"] or "Options" },
+                    },
+                },
+            },
         },
         {
             name = _G["HELP_BUTTON"] or _G["HELP_LABEL"] or "Help",

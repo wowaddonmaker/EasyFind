@@ -13,6 +13,7 @@ local ScrollBoxFindButton  = Utils.ScrollBoxFindButton
 local select, ipairs       = Utils.select, Utils.ipairs
 local sfind, slower        = Utils.sfind, Utils.slower
 local mmax, mpi            = Utils.mmax, Utils.mpi
+local mmin, mceil          = Utils.mmin, Utils.mceil
 local pcall = Utils.pcall
 local xpcall = Utils.xpcall
 local ErrorHandler = Utils.ErrorHandler
@@ -283,6 +284,7 @@ function Highlight:CreateHighlightFrame()
             local pastGrace = not highlightShownAt
                 or (GetTime() - highlightShownAt) >= HOVER_MIN_DISPLAY
             local disabledDeadEnd = pastGrace
+                and self._targetWasDisabled
                 and hoverFrame.IsEnabled and not hoverFrame:IsEnabled()
             if canHoverDismiss() or disabledDeadEnd then
                 clearTerminalHighlight()
@@ -518,12 +520,24 @@ local function FindRequiredTabIndex()
     return step and step.tabIndex
 end
 
+-- Regressing off the guided path (switching away from a required tab or
+-- category after passing it) means abandon, not re-steer: the user chose
+-- to leave. Guides that opt back into course correction with
+-- noCourseCorrect = false rewind and steer again instead.
+local function AbandonOrRewindTo(self, index)
+    if currentGuide and currentGuide.noCourseCorrect then
+        self:Cancel()
+        return true
+    end
+    currentStepIndex = index
+    self:HideHighlight()
+    return true
+end
+
 local function RewindToPreviousStep(self, predicate)
     local index = FindPreviousStepIndex(predicate)
     if index then
-        currentStepIndex = index
-        self:HideHighlight()
-        return true
+        return AbandonOrRewindTo(self, index)
     end
     return false
 end
@@ -532,9 +546,7 @@ local function RewindToTabStep(self, tabIndex, searchFromStart)
     if searchFromStart then
         for i, step in ipairs(currentGuide.steps) do
             if step.tabIndex == tabIndex then
-                currentStepIndex = i
-                self:HideHighlight()
-                return true
+                return AbandonOrRewindTo(self, i)
             end
         end
         return false
@@ -578,43 +590,33 @@ local function ValidateDestinationPrereqs(self)
         if prev.tabIndex and prev.waitForFrame then
             local currentTab = self:GetCurrentTabIndex(prev.waitForFrame)
             if currentTab and currentTab ~= prev.tabIndex then
-                currentStepIndex = i
-                self:HideHighlight()
-                return true
+                return AbandonOrRewindTo(self, i)
             end
         end
 
         if prev.pvpSideTabIndex and prev.waitForFrame then
             if not self:IsPvPSideTabSelected(prev.waitForFrame, prev.pvpSideTabIndex) then
-                currentStepIndex = i
-                self:HideHighlight()
-                return true
+                return AbandonOrRewindTo(self, i)
             end
         end
 
         if prev.sideTabIndex and prev.waitForFrame then
             if not self:IsSideTabSelected(prev.waitForFrame, prev.sideTabIndex) then
-                currentStepIndex = i
-                self:HideHighlight()
-                return true
+                return AbandonOrRewindTo(self, i)
             end
         end
 
         if prev.sidebarIndex then
             if not self:IsSidebarTabSelected(prev.sidebarIndex) then
-                currentStepIndex = i
-                self:HideHighlight()
-                return true
+                return AbandonOrRewindTo(self, i)
             end
         end
 
         if prev.ejTier then
             local liveTier = EJ_GetCurrentTier and EJ_GetCurrentTier()
             if liveTier and liveTier ~= prev.ejTier then
-                currentStepIndex = i
                 prev._tierApplied = nil
-                self:HideHighlight()
-                return true
+                return AbandonOrRewindTo(self, i)
             end
         end
 
@@ -628,9 +630,7 @@ local function ValidateDestinationPrereqs(self)
                 if getEnc then currentEnc = getEnc() end
             end
             if currentEnc and currentEnc ~= prev.ejEncounterID then
-                currentStepIndex = i
-                self:HideHighlight()
-                return true
+                return AbandonOrRewindTo(self, i)
             end
         end
 
@@ -638,9 +638,7 @@ local function ValidateDestinationPrereqs(self)
             local infoFrame = _G["EncounterJournalEncounterFrameInfo"]
             local lootContainer = infoFrame and infoFrame.LootContainer
             if lootContainer and not lootContainer:IsShown() then
-                currentStepIndex = i
-                self:HideHighlight()
-                return true
+                return AbandonOrRewindTo(self, i)
             end
         end
     end
@@ -660,6 +658,11 @@ local function HandleGuideButtonFrame(self, step)
         if nextStep and nextStep.waitForFrame then
             local waitFrame = self:GetFrameByPath(nextStep.waitForFrame)
             if waitFrame and waitFrame:IsShown() then
+                self:AdvanceStep()
+                return true
+            end
+        elseif nextStep and nextStep.gameMenuText then
+            if GameMenuFrame and GameMenuFrame:IsShown() then
                 self:AdvanceStep()
                 return true
             end
@@ -691,6 +694,16 @@ local function HandleGuidePortraitMenu(self)
 end
 
 local function HandleGuideGameMenuText(self, step)
+    -- Clicking the target closes the menu as the destination opens; check
+    -- the destination first so that click reads as progress, not abandon.
+    local nextStep = currentGuide.steps[currentStepIndex + 1]
+    if nextStep and nextStep.waitForFrame then
+        local waitFrame = self:GetFrameByPath(nextStep.waitForFrame)
+        if waitFrame and waitFrame:IsShown() then
+            self:AdvanceStep()
+            return true
+        end
+    end
     if not GameMenuFrame or not GameMenuFrame:IsShown() then
         if currentGuide and currentGuide.noCourseCorrect then
             self:Cancel()
@@ -1501,6 +1514,115 @@ local function HandleWaitLfgCategoryID(self, step, isLastStep)
     return true
 end
 
+-- Macro buttons live in MacroFrame.MacroSelector's ScrollBox. Element data
+-- is the selection index WITHIN the open tab, so per-character macros
+-- (absolute index MAX_ACCOUNT_MACROS + n) map back to n. The data shape has
+-- shifted across builds (plain index vs. wrapper table), so match both.
+local function MacroSelectionIndexFor(macroIndex)
+    local maxAccount = MAX_ACCOUNT_MACROS or 120
+    if macroIndex > maxAccount then
+        return macroIndex - maxAccount
+    end
+    return macroIndex
+end
+
+local function MacroElementMatches(elementData, wanted)
+    local idx = elementData
+    if type(idx) == "table" then
+        idx = idx.index or idx.selectionIndex or idx.macroIndex
+    end
+    return idx == wanted
+end
+
+local function FindMacroSelectorButton(macroIndex)
+    local selector = MacroFrame and MacroFrame.MacroSelector
+    local scrollBox = selector and selector.ScrollBox
+    if not scrollBox then return nil end
+    local wanted = MacroSelectionIndexFor(macroIndex)
+
+    -- Same scroll pattern as the achievement categories: locate the data
+    -- provider's element object, then scroll to that object. The
+    -- predicate/index scroll APIs are not available on every view.
+    local align = ScrollBoxConstants and ScrollBoxConstants.AlignCenter
+    local dataProvider = scrollBox.GetDataProvider and scrollBox:GetDataProvider()
+    local target, total
+    if dataProvider then
+        if dataProvider.GetSize then
+            local ok, size = pcall(dataProvider.GetSize, dataProvider)
+            if ok then total = size end
+        end
+        local finder = dataProvider.FindElementDataByPredicate or dataProvider.FindByPredicate
+        if finder then
+            local ok, found = pcall(finder, dataProvider, function(data)
+                return MacroElementMatches(data, wanted)
+            end)
+            if ok then target = found end
+        elseif dataProvider.Enumerate then
+            pcall(function()
+                for _, elementData in dataProvider:Enumerate() do
+                    if MacroElementMatches(elementData, wanted) then
+                        target = elementData
+                        break
+                    end
+                end
+            end)
+        end
+    end
+    local scrolled = false
+    if target and scrollBox.ScrollToElementData then
+        scrolled = pcall(scrollBox.ScrollToElementData, scrollBox, target, align)
+    end
+    if not scrolled and total and total > 0 and scrollBox.SetScrollPercentage then
+        -- Percentage fallback from grid geometry: works on any ScrollBox
+        -- view even when the element-data scroll APIs are missing.
+        local view = scrollBox.GetView and scrollBox:GetView()
+        local stride = 1
+        if view and view.GetStride then
+            local ok, s = pcall(view.GetStride, view)
+            if ok and type(s) == "number" and s > 0 then stride = s end
+        end
+        local totalRows = mceil(total / stride)
+        local wantedRow = mceil(mmin(wanted, total) / stride)
+        local pct = totalRows > 1 and (wantedRow - 1) / (totalRows - 1) or 0
+        pcall(scrollBox.SetScrollPercentage, scrollBox, mmax(0, mmin(1, pct)))
+    end
+
+    if scrollBox.FindFrameByPredicate then
+        local found = scrollBox:FindFrameByPredicate(function(btn, elementData)
+            local data = elementData
+                or (btn and btn.GetElementData and btn:GetElementData())
+            return data ~= nil and MacroElementMatches(data, wanted)
+        end)
+        if found then return found end
+    end
+    if scrollBox.EnumerateFrames then
+        for _, btn in scrollBox:EnumerateFrames() do
+            if btn and btn:IsShown() and btn.GetElementData
+               and MacroElementMatches(btn:GetElementData(), wanted) then
+                return btn
+            end
+        end
+    end
+    return nil
+end
+
+local function HandleWaitMacroIndex(self, step)
+    -- No selected-state fast-out: the macro window opens with a macro
+    -- already selected, so a pre-selected target would complete the
+    -- guide before the user ever saw the highlight. Terminal behavior
+    -- is hover-dismiss, same as the other content steps.
+    local ok, btn = pcall(FindMacroSelectorButton, step.macroIndex)
+    if ok and btn then
+        self:HighlightFrame(btn)
+        if canHoverDismiss() and btn:IsMouseOver() then
+            self:Cancel()
+        end
+    else
+        self:HideHighlight()
+    end
+    return true
+end
+
 local WAIT_STEP_HANDLERS = {
     { key = "tabIndex", fn = HandleWaitTabIndex },
     { condition = function(step) return step.petID or step.speciesID end, fn = HandleWaitPetJournal },
@@ -1516,6 +1638,7 @@ local WAIT_STEP_HANDLERS = {
     { key = "factionHeader", fn = HandleWaitFactionHeader },
     { key = "factionID", fn = HandleWaitFactionID },
     { condition = function() return true end, fn = HandleWaitDestinationPrereqs, continueOnFalse = true },
+    { key = "macroIndex", fn = HandleWaitMacroIndex },
     { key = "ejInstance", fn = HandleWaitEJInstance },
     { key = "ejBoss", fn = HandleWaitEJBoss },
     { key = "ejLootTab", fn = HandleWaitEJLootTab },
@@ -1572,7 +1695,17 @@ local function HandleWaitForFrameStep(self, step, isLastStep)
     return true
 end
 
+-- Read-only guide state for the EasyFindDev probes: current step index,
+-- step count, the live step table, and the last ticker heartbeat.
+function Highlight:GetGuideDebugState()
+    if not currentGuide then return nil end
+    return currentStepIndex, currentGuide.steps and #currentGuide.steps or 0,
+        currentGuide.steps and currentGuide.steps[currentStepIndex] or nil,
+        self._lastGuideTick
+end
+
 function Highlight:UpdateGuide()
+    self._lastGuideTick = GetTime()
     if not currentGuide or not currentStepIndex then
         self:Cancel()
         return
@@ -1686,6 +1819,14 @@ function Highlight:IsTabSelected(frameName, tabIndex)
 
     if frameName == "AchievementFrame" then
         local frame = AchievementFrame
+        if frame and PanelTemplates_GetSelectedTab then
+            return PanelTemplates_GetSelectedTab(frame) == tabIndex
+        end
+        return false
+    end
+
+    if frameName == "MacroFrame" then
+        local frame = _G["MacroFrame"]
         if frame and PanelTemplates_GetSelectedTab then
             return PanelTemplates_GetSelectedTab(frame) == tabIndex
         end
@@ -2330,6 +2471,10 @@ function Highlight:GetTabButton(frameName, tabIndex)
         return _G["AchievementFrameTab" .. tabIndex]
     end
 
+    if frameName == "MacroFrame" then
+        return _G["MacroFrameTab" .. tabIndex]
+    end
+
     if frameName == "WardrobeCollectionFrame" then
         local tabBtn = _G["WardrobeCollectionFrameTab" .. tabIndex]
         if tabBtn then return tabBtn end
@@ -2488,6 +2633,21 @@ function Highlight:HighlightFrame(frame, instructionText, validator, noHoverDism
         return
     end
 
+    -- Each new target gets its own hover-dismiss grace. The highlight frame
+    -- stays shown across step transitions, so measuring from frame-shown time
+    -- alone left the terminal step graceless: a target that appears under the
+    -- resting cursor (macro grid right below the tab just clicked) cancelled
+    -- the guide on its first tick, before the highlight was ever perceived.
+    if highlightFrame._targetFrame ~= frame then
+        highlightShownAt = GetTime()
+        -- Snapshot for the dead-end dismissal: only a target that was
+        -- ALREADY disabled when first highlighted is a dead end. Blizzard
+        -- disables the SELECTED tab, so a guided tab flips to disabled
+        -- under the cursor at the moment of a successful click; treating
+        -- that as a dead end cancelled the guide right as it succeeded.
+        highlightFrame._targetWasDisabled =
+            (frame.IsEnabled and not frame:IsEnabled()) and true or false
+    end
     highlightFrame._targetFrame = frame
     highlightFrame._targetValidator = validator
     highlightFrame._hoverDismissFrame = (not noHoverDismiss) and frame or nil
@@ -3337,6 +3497,14 @@ function Highlight:GetFactionRowButton(factionID)
 end
 
 function Highlight:Cancel()
+    -- Breadcrumb for the EasyFindDev probes: which call site ended the
+    -- last active guide, and when. Costs one debugstack per real cancel.
+    if currentGuide then
+        self._lastCancelAt = GetTime()
+        self._lastCancelStep = currentStepIndex
+        self._lastCancelStack = debugstack and debugstack(2, 5, 0) or "?"
+    end
+
     self:HideHighlight()
     self:HideContextTooltip()
 
