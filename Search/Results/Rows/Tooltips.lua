@@ -176,9 +176,10 @@ function Rows.InstallTooltips(resultRow)
             return
         end
 
-        if self.isUnearnedCurrency then
+        if self.isUnearnedCurrency or self.lockedReason then
             if GetUnearnedTooltip() then
-                local tooltipText = self.isPathNode and L["TAB_NOT_ON_CHARACTER"] or L["CURRENCY_NOT_EARNED"]
+                local tooltipText = self.lockedReason
+                    or (self.isPathNode and L["TAB_NOT_ON_CHARACTER"] or L["CURRENCY_NOT_EARNED"])
                 GetUnearnedTooltip().text:SetText(tooltipText)
                 local textWidth = GetUnearnedTooltip().text:GetStringWidth()
                 local textHeight = GetUnearnedTooltip().text:GetStringHeight()

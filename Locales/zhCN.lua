@@ -340,6 +340,8 @@ L["TAB_NOT_ON_CHARACTER"]               = "该标签在此角色上尚不存在"
 -- Misc singletons
 L["BTN_GOT_IT"]                         = "知道了！"
 L["CURRENCY_NOT_EARNED"]                = "尚未获得该货币"
+L["TOOLTIP_RESULT_LOCKED"]              = "达到更高等级后解锁"
+L["MSG_GUIDE_TARGET_LOCKED"]            = "该角色尚未解锁此栏目。"
 L["CALC_COPY_HINT"]                     = "Ctrl+C 复制"
 
 -- =============================================================================

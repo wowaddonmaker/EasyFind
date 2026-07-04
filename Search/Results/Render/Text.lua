@@ -61,7 +61,12 @@ function Render.IsUnearnedCurrencyEntry(entry, state)
     return false
 end
 
-function Render.BaseRowText(resultRow, entry, state, isUnearnedCurrency)
+-- Inert (unearned/locked) rows dim the whole stack: name below the normal
+-- subtext gray, subtext darker still, icons desaturated in Render.Core.
+local INERT_TEXT = 0.45
+local INERT_SUBTEXT = 0.35
+
+function Render.BaseRowText(resultRow, entry, state, isInertRow)
     if entry.isPinHeader or entry.isSectionHeader
        or (state.theme.showHeaderTab and entry.isPathNode) then
         if resultRow.pathSubtext then resultRow.pathSubtext:Hide() end
@@ -129,8 +134,8 @@ function Render.BaseRowText(resultRow, entry, state, isUnearnedCurrency)
         resultRow.text:SetPoint("BOTTOMLEFT", leftAnchor, "RIGHT", 6, state.stackHalfGap)
         resultRow.text:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
         Results:SetScaledFont(resultRow.text, theme.pathFont)
-        if isUnearnedCurrency then
-            resultRow.text:SetTextColor(0.5, 0.5, 0.5, 1.0)
+        if isInertRow then
+            resultRow.text:SetTextColor(INERT_TEXT, INERT_TEXT, INERT_TEXT, 1.0)
         else
             resultRow.text:SetTextColor(1.0, 1.0, 1.0, 1.0)
         end
@@ -141,7 +146,11 @@ function Render.BaseRowText(resultRow, entry, state, isUnearnedCurrency)
         resultRow.pathSubtext:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
         resultRow.pathSubtext:SetText(Text:GetFlatSubtext(data))
         Results:SetScaledFont(resultRow.pathSubtext, theme.leafFont)
-        resultRow.pathSubtext:SetTextColor(0.55, 0.55, 0.55, 1.0)
+        if isInertRow then
+            resultRow.pathSubtext:SetTextColor(INERT_SUBTEXT, INERT_SUBTEXT, INERT_SUBTEXT, 1.0)
+        else
+            resultRow.pathSubtext:SetTextColor(0.55, 0.55, 0.55, 1.0)
+        end
         resultRow.pathSubtext:Show()
         return
     end
@@ -161,9 +170,9 @@ function Render.BaseRowText(resultRow, entry, state, isUnearnedCurrency)
         else
             resultRow.text:SetTextColor(unpack(theme.pathColor))
         end
-    elseif isUnearnedCurrency then
+    elseif isInertRow then
         Results:SetScaledFont(resultRow.text, theme.leafFont)
-        resultRow.text:SetTextColor(0.5, 0.5, 0.5, 1.0)
+        resultRow.text:SetTextColor(INERT_TEXT, INERT_TEXT, INERT_TEXT, 1.0)
     elseif entry.isMatch then
         Results:SetScaledFont(resultRow.text, theme.leafFont)
         resultRow.text:SetTextColor(Utils.RGB(GOLD_COLOR, 1.0))

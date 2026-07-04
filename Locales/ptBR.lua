@@ -340,6 +340,8 @@ L["TAB_NOT_ON_CHARACTER"]               = "Esta aba ainda não existe neste pers
 -- Misc singletons
 L["BTN_GOT_IT"]                         = "Entendi!"
 L["CURRENCY_NOT_EARNED"]                = "Moeda ainda não obtida"
+L["TOOLTIP_RESULT_LOCKED"]              = "Desbloqueia em um nível mais alto"
+L["MSG_GUIDE_TARGET_LOCKED"]            = "Essa seção ainda não está disponível para este personagem."
 L["CALC_COPY_HINT"]                     = "Ctrl+C para copiar"
 
 -- =============================================================================

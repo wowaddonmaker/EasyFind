@@ -238,8 +238,8 @@ function Rows.InstallInteractions(resultRow, index)
             return
         end
 
-        -- Don't allow clicking unearned currencies
-        if self.isUnearnedCurrency then
+        -- Unearned currencies and level-locked results are inert
+        if self.isUnearnedCurrency or self.lockedReason then
             return
         end
 

@@ -88,7 +88,7 @@ read_globals = {
     -- C_* namespaces
     "C_AddOns", "C_AchievementInfo", "C_AreaPoiInfo", "C_ClassTalents",
     "C_CurrencyInfo", "C_EquipmentSet", "C_Item",
-    "C_EncounterJournal", "C_GossipInfo", "C_Heirloom", "C_MajorFactions", "C_Map",
+    "C_EncounterJournal", "C_GossipInfo", "C_Heirloom", "C_LFGList", "C_MajorFactions", "C_Map",
     "C_Minimap", "C_MountJournal", "C_Navigation", "C_PetJournal",
     "C_Reputation", "C_SuperTrack", "C_TaxiMap", "C_Texture", "C_Timer",
     "C_ToyBox", "C_Traits", "C_TransmogCollection", "C_TransmogOutfitInfo",

@@ -9,6 +9,7 @@ local Icons = ns.ResultIcons
 local SecureAttributes = ns.ResultSecureAttributes
 local Shortcuts = ns.ResultShortcuts
 local Tooltips = ns.ResultTooltips
+local Database = ns.Database
 
 local mmin, mfloor = Utils.mmin, Utils.mfloor
 local wipe = wipe
@@ -424,11 +425,31 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
             local isUnearnedCurrency = Render.IsUnearnedCurrencyEntry(entry, renderState)
             resultRow.isUnearnedCurrency = isUnearnedCurrency
             resultRow.isPathNode = entry.isPathNode  -- Store for tooltip text
+            local lockedReason
+            if not isUnearnedCurrency and data then
+                lockedReason = Database:GetEntryLockedReason(data)
+            end
+            resultRow.lockedReason = lockedReason
+            local isInertRow = isUnearnedCurrency or lockedReason ~= nil
 
-            Render.BaseRowText(resultRow, entry, renderState, isUnearnedCurrency)
+            Render.BaseRowText(resultRow, entry, renderState, isInertRow)
 
-            local repSideBySide = Render.RowContent(self, resultRow, entry, renderState, isUnearnedCurrency)
+            local repSideBySide = Render.RowContent(self, resultRow, entry, renderState, isInertRow)
             if repSideBySide then hasSideBySideRepBar = true end
+
+            if resultRow._efDesat ~= isInertRow then
+                resultRow._efDesat = isInertRow
+                resultRow.icon:SetDesaturated(isInertRow)
+                if resultRow.flatCatIcon then
+                    resultRow.flatCatIcon:SetDesaturated(isInertRow)
+                end
+            end
+            if isInertRow then
+                resultRow.icon:SetVertexColor(0.55, 0.55, 0.55, 1.0)
+                if resultRow.flatCatIcon then
+                    resultRow.flatCatIcon:SetVertexColor(0.55, 0.55, 0.55, 1.0)
+                end
+            end
 
             Render.ApplyFlatResultSizing(resultRow, entry, renderState)
 
@@ -464,7 +485,7 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
             end
             resultRow._efContentBottom = rowContentTop + actualH
             if showShortcutHints and resultRow.data and not resultRow.isPinHeader
-               and not resultRow.isSectionHeader and not resultRow.isUnearnedCurrency then
+               and not resultRow.isSectionHeader then
                 ApplyResultShortcutGutter(resultRow)
             end
             yOffset = yOffset + actualH

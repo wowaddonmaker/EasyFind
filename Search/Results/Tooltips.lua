@@ -132,7 +132,8 @@ function Tooltips:CreateUnearnedTooltip()
     local text = unearnedTooltip:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     text:SetPoint("CENTER", 0, 0)
     text:SetText(L["CURRENCY_NOT_EARNED"])
-    text:SetTextColor(1, 1, 1, 1)
+    local gold = ns.GOLD_COLOR
+    text:SetTextColor(gold[1], gold[2], gold[3], 1)
     unearnedTooltip.text = text
 
     local textWidth = text:GetStringWidth()

@@ -340,6 +340,8 @@ L["TAB_NOT_ON_CHARACTER"]               = "Questa scheda non esiste ancora su qu
 -- Misc singletons
 L["BTN_GOT_IT"]                         = "Capito!"
 L["CURRENCY_NOT_EARNED"]                = "Valuta non ancora ottenuta"
+L["TOOLTIP_RESULT_LOCKED"]              = "Si sblocca a un livello superiore"
+L["MSG_GUIDE_TARGET_LOCKED"]            = "Questa sezione non è ancora disponibile per questo personaggio."
 L["CALC_COPY_HINT"]                     = "Ctrl+C per copiare"
 
 -- =============================================================================

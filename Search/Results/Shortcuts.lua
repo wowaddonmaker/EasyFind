@@ -185,7 +185,7 @@ Shortcuts.ApplyResultShortcutGutter = ApplyResultShortcutGutter
 local function IsShortcutEligibleRow(row)
     return row and row:IsShown() and row.data
         and not row.isPinHeader and not row.isSectionHeader
-        and not row.isUnearnedCurrency
+        and not row.isUnearnedCurrency and not row.lockedReason
         and not row.data.calculatorResult
 end
 local function ClearResultShortcutBindings()

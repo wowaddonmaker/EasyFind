@@ -25,6 +25,7 @@ ns.REVAMPED_TUTORIAL_VERSION = REVAMPED_TUTORIAL_VERSION
 
 local DB_DEFAULTS = {
     dbVersion = DB_VERSION,
+    learnedStepLocks = {},
     visible = true,
     enableMapSearch = true,
     iconScale = 0.8,
@@ -476,11 +477,7 @@ local function OnInitialize()
         elseif msg == "r" or msg == "reset" then
             if ns.Options then
                 ns.Options:Initialize()
-                ns.ShowThemedDialog({
-                    text = L["POPUP_RESET_ALL_SETTINGS"],
-                    acceptText = _G["RESET"] or "Reset",
-                    onAccept = function() ns.Options:DoResetAll() end,
-                })
+                ns.Options:ConfirmResetAll()
             end
         elseif msg == "bug" then
             OpenBugReport()
@@ -771,6 +768,7 @@ local outfitRefreshTimer
 eventFrame:RegisterEvent("ADDON_LOADED")
 eventFrame:RegisterEvent("PLAYER_LOGIN")
 eventFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+eventFrame:RegisterEvent("PLAYER_LEVEL_UP")
 eventFrame:RegisterEvent("PLAYER_LOGOUT")
 eventFrame:RegisterEvent("TRANSMOG_OUTFITS_CHANGED")
 eventFrame:RegisterEvent("TRANSMOG_COLLECTION_UPDATED")
@@ -791,6 +789,9 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         self.loginHandled = true
         self:UnregisterEvent("PLAYER_LOGIN")
     elseif event == "PLAYER_ENTERING_WORLD" then
+        if ns.Database and ns.Database.InvalidateLFGAvailability then
+            ns.Database:InvalidateLFGAvailability()
+        end
         -- PLAYER_LOGIN does not fire on /reload; arg2 = isReloadingUI.
         if arg2 and not self.loginHandled then
             OnPlayerLogin()
@@ -846,6 +847,10 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
             gearSetRefreshTimer = nil
             MarkDynamicCategoryDirty("gearSets")
         end)
+    elseif event == "PLAYER_LEVEL_UP" then
+        if ns.Database and ns.Database.OnPlayerLevelUp then
+            ns.Database:OnPlayerLevelUp()
+        end
     elseif event == "PLAYER_LOGOUT" then
         if EasyFindDB then
             for _, field in ipairs(RUNTIME_FIELDS) do

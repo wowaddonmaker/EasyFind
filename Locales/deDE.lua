@@ -342,6 +342,8 @@ L["TAB_NOT_ON_CHARACTER"]               = "Dieser Tab existiert auf diesem Chara
 -- Misc singletons
 L["BTN_GOT_IT"]                         = "Verstanden!"
 L["CURRENCY_NOT_EARNED"]                = "Währung noch nicht verdient"
+L["TOOLTIP_RESULT_LOCKED"]              = "Wird auf einer höheren Stufe freigeschaltet"
+L["MSG_GUIDE_TARGET_LOCKED"]            = "Dieser Bereich ist für diesen Charakter noch nicht verfügbar."
 L["CALC_COPY_HINT"]                     = "Strg+C zum Kopieren"
 
 -- =============================================================================

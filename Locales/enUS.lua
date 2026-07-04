@@ -381,6 +381,8 @@ L["TAB_NOT_ON_CHARACTER"]               = "This tab does not exist on this chara
 -- =============================================================================
 L["BTN_GOT_IT"]                         = "Got it!"
 L["CURRENCY_NOT_EARNED"]                = "Currency not yet earned"
+L["TOOLTIP_RESULT_LOCKED"]              = "Unlocks at a higher level"
+L["MSG_GUIDE_TARGET_LOCKED"]            = "That section isn't available to this character yet."
 L["CALC_COPY_HINT"]                     = "Ctrl+C to copy"
 
 -- =============================================================================

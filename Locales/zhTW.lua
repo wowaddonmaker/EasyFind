@@ -340,6 +340,8 @@ L["TAB_NOT_ON_CHARACTER"]               = "此頁籤在這個角色上尚不存�
 -- Misc singletons
 L["BTN_GOT_IT"]                         = "知道了！"
 L["CURRENCY_NOT_EARNED"]                = "尚未取得該貨幣"
+L["TOOLTIP_RESULT_LOCKED"]              = "達到更高等級後解鎖"
+L["MSG_GUIDE_TARGET_LOCKED"]            = "該角色尚未解鎖此欄目。"
 L["CALC_COPY_HINT"]                     = "Ctrl+C 複製"
 
 -- =============================================================================

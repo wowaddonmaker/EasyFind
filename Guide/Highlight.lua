@@ -1442,6 +1442,52 @@ local function HandleWaitSearchButtonText(self, step, isLastStep)
     return true
 end
 
+-- Generic reachability probe: resolves a step's target with the exact
+-- finder the guide executes with. "locked" only when the target is observable
+-- right now and provably unusable (button exists but is disabled, or the LFG
+-- category is absent from the availability list Blizzard builds the category
+-- buttons from). Unloaded UI is unknown, never locked (fail open).
+local pvpUILoadTried = false
+
+-- Blizzard's tab templates DISABLE the selected tab (you cannot click the
+-- tab you are on), so disabled alone does not mean locked: a selected target
+-- is trivially executable and must never lock.
+local function ButtonLockState(btn)
+    if btn and btn.IsEnabled and not btn:IsEnabled() then return "locked" end
+    return nil
+end
+
+function Highlight:GetStepLockState(step)
+    if step.lfgCategoryID then
+        local db = ns.Database
+        if db and db.IsLFGCategoryLocked and db:IsLFGCategoryLocked(step.lfgCategoryID) then
+            return "locked"
+        end
+        return nil
+    end
+    if step.pvpSideTabIndex then
+        if self:IsPvPSideTabSelected(step.waitForFrame, step.pvpSideTabIndex) then return nil end
+        -- The category buttons live in Blizzard's on-demand PvP UI; load it
+        -- once so lock state is observable before the tab is ever opened.
+        -- Confirmed cheap and accurate via /efd lockprobe load.
+        if not _G.PVPQueueFrame and not pvpUILoadTried then
+            pvpUILoadTried = true
+            local loader = C_AddOns and C_AddOns.LoadAddOn or LoadAddOn
+            if loader then pcall(loader, "Blizzard_PVPUI") end
+        end
+        return ButtonLockState(self:GetPvPSideTabButton(step.waitForFrame, step.pvpSideTabIndex))
+    end
+    if step.sideTabIndex then
+        if self:IsSideTabSelected(step.waitForFrame, step.sideTabIndex) then return nil end
+        return ButtonLockState(self:GetSideTabButton(step.waitForFrame, step.sideTabIndex))
+    end
+    if step.tabIndex then
+        if self:IsTabSelected(step.waitForFrame, step.tabIndex) then return nil end
+        return ButtonLockState(self:GetTabButton(step.waitForFrame, step.tabIndex))
+    end
+    return nil
+end
+
 local function HandleWaitLfgCategoryID(self, step, isLastStep)
     local btn = self:FindLfgCategoryButton(step.lfgCategoryID, step.lfgFilters)
     if btn then
@@ -1504,6 +1550,15 @@ local function HandleWaitForFrameStep(self, step, isLastStep)
         return true
     end
 
+    local db = ns.Database
+    if db and db.IsStepLocked and db:IsStepLocked(step) then
+        if db.LearnStepLock then db:LearnStepLock(step) end
+        self:Cancel()
+        if EasyFind and EasyFind.Print then
+            EasyFind:Print(L["MSG_GUIDE_TARGET_LOCKED"])
+        end
+        return true
+    end
     for i = 1, #WAIT_STEP_HANDLERS do
         local handler = WAIT_STEP_HANDLERS[i]
         local matches = (handler.key and step[handler.key]) or (handler.condition and handler.condition(step))

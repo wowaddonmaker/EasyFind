@@ -16,7 +16,7 @@ local IsMenuBarSpecificIconData = Icons.IsMenuBarSpecificIconData
 local SetButtonFrameIcon = Icons.SetButtonFrameIcon
 local BOSS_PORTRAIT_TEXCOORD = Render.BOSS_PORTRAIT_TEXCOORD
 
-function Render.RowContent(owner, resultRow, entry, state, isUnearnedCurrency)
+function Render.RowContent(owner, resultRow, entry, state, isInertRow)
     local data = entry.data
     local depth = entry.depth or 0
     local theme = state.theme
@@ -90,7 +90,7 @@ function Render.RowContent(owner, resultRow, entry, state, isUnearnedCurrency)
 
         if quantity then
             resultRow.amountText:SetText(tostring(quantity))
-            if isUnearnedCurrency then
+            if isInertRow then
                 resultRow.amountText:SetTextColor(0.5, 0.5, 0.5, 1.0)
             else
                 resultRow.amountText:SetTextColor(0.9, 0.82, 0.65, 1.0)

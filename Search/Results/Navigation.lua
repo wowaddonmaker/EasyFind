@@ -533,7 +533,8 @@ end
 
 function Results:ActivateResultRow(resultRow, source)
     if not resultRow or not resultRow:IsShown() then return false end
-    if resultRow.isUnearnedCurrency or resultRow.isPinHeader or resultRow.isSectionHeader then
+    if resultRow.isUnearnedCurrency or resultRow.lockedReason
+       or resultRow.isPinHeader or resultRow.isSectionHeader then
         return true
     end
     if not resultRow.data then return false end
