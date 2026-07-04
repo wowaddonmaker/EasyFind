@@ -15,7 +15,9 @@ local tsort = Utils.tsort
 local sfind, ssub = Utils.sfind, Utils.ssub
 local sgsub = string.gsub
 local sbyte = string.byte
+local band, bor, bnot, lshift = bit.band, bit.bor, bit.bnot, bit.lshift
 local tconcat = table.concat
+local tremove = table.remove
 
 -- All search-side casing flows through SearchText.Normalize so non-ASCII
 -- (German umlauts, French accents, etc.) lowercase correctly. WoW's
@@ -283,22 +285,197 @@ end
 
 -- Fast pre-filter: every distinct char in query must appear somewhere in text.
 local reuseCouldMatchSet = {}
+-- Character-presence prefilter. Rebuilding each entry's character set every
+-- keystroke (the pairs()+byte loop below) was ~90% of the full-scan scoring
+-- cost. Names never change between keystrokes, so cache each name's letters as
+-- a 26-bit mask (a-z) and reduce CouldMatch to one bitwise AND. The query mask
+-- is cached for the current query (constant across a scan's ~6500 calls). Falls
+-- back to the exact per-char scan for queries with non a-z bytes (digits,
+-- accents, punctuation), which the mask cannot represent.
+local nameMaskCache = {}
+Database._nameMaskCache = nameMaskCache
+local lastCMQuery, lastCMMask, lastCMUsable
+
+local function ComputeCharMask(s)
+    local m = 0
+    for i = 1, #s do
+        local b = sbyte(s, i)
+        if b >= 97 and b <= 122 then m = bor(m, lshift(1, b - 97)) end
+    end
+    return m
+end
+
+local function ComputeQueryMask(query)
+    local m, usable = 0, true
+    for i = 1, #query do
+        local b = sbyte(query, i)
+        if b >= 97 and b <= 122 then
+            m = bor(m, lshift(1, b - 97))
+        elseif b ~= 32 then
+            usable = false
+        end
+    end
+    return m, usable
+end
+
+function Database:ClearNameMaskCache()
+    for k in pairs(nameMaskCache) do nameMaskCache[k] = nil end
+    lastCMQuery = nil
+end
+
 function Database:CouldMatch(text, query)
+    if query ~= lastCMQuery then
+        lastCMQuery = query
+        lastCMMask, lastCMUsable = ComputeQueryMask(query)
+    end
+    if lastCMUsable then
+        local tm = nameMaskCache[text]
+        if not tm then tm = ComputeCharMask(text); nameMaskCache[text] = tm end
+        return band(lastCMMask, tm) == lastCMMask
+    end
     local tlen, qlen = #text, #query
     if qlen == 0 then return true end
     if tlen == 0 then return false end
     local seen = reuseCouldMatchSet
     for k in pairs(seen) do seen[k] = nil end
     for i = 1, tlen do
-        seen[text:byte(i)] = true
+        seen[sbyte(text, i)] = true
     end
     for i = 1, qlen do
-        local qb = query:byte(i)
+        local qb = sbyte(query, i)
         if qb ~= 32 and not seen[qb] then
             return false
         end
     end
     return true
+end
+
+-- Per-query-word scoring gate. Multi-word full scans ran three engines
+-- (ScoreName, ScoreKeywords, ScoreEntryFields) on every entry and dominated
+-- keystroke cost. Every path that reaches the result threshold requires each
+-- query word of >= 2 chars to match the name or a keyword, and each match
+-- needs the word's a-z chars present in that text, except: fuzzy paths may
+-- introduce up to maxEdits new chars (1 at len >= 4, 2 at len >= 8), the
+-- plural rule one trailing 's' -- and both also require a name/keyword word
+-- starting with the query word's first byte (checked at every
+-- DamerauLevenshtein call site and the plural line in ScoreSingleFieldWord).
+-- An entry missing more than that budget for any word, or the budgeted word's
+-- initial, cannot score, so all engines are skipped. 1-char words are never
+-- required (ScoreKeywords skips them by design). Loot entries keep their own
+-- branch and are never gated. The /efd bench GATE section asserts gated ==
+-- ungated results; keep it green when touching any scorer above.
+local GATE = {
+    masks = {}, allows = {}, firstBits = {}, count = 0,
+    sawNil = false, gatedN = 0, skipStatistic = false, fillPending = false,
+}
+Database._searchGate = GATE
+
+local function AccumulateGateMasks(s, cm, im)
+    local prevAlpha = false
+    for i = 1, #s do
+        local b = sbyte(s, i)
+        if b >= 97 and b <= 122 then
+            local bitv = lshift(1, b - 97)
+            cm = bor(cm, bitv)
+            if not prevAlpha then im = bor(im, bitv) end
+            prevAlpha = true
+        else
+            prevAlpha = false
+        end
+    end
+    return cm, im
+end
+
+local function FillEntryGateMask(e)
+    if e.lootEntry then
+        e._efGateMask = false
+        return
+    end
+    local cm, im = 0, 0
+    if e.nameLower then cm, im = AccumulateGateMasks(e.nameLower, cm, im) end
+    local kws = e.keywordsLower or e.keywords
+    if kws then
+        for k = 1, #kws do
+            local kw = kws[k]
+            if type(kw) == "string" then cm, im = AccumulateGateMasks(kw, cm, im) end
+        end
+    end
+    e._efGateMask = cm
+    e._efGateInit = im
+end
+
+local GATE_FILL_STEP = 400
+local FillGateMasksStep
+local function ScheduleGateMaskFill()
+    if GATE.fillPending then return end
+    GATE.fillPending = true
+    GATE.fillIdx = 1
+    Utils.SafeAfter(0, FillGateMasksStep)
+end
+
+FillGateMasksStep = function()
+    local data = Database.uiSearchData
+    local i = GATE.fillIdx or 1
+    local n = #data
+    local filled = 0
+    while i <= n and filled < GATE_FILL_STEP do
+        local e = data[i]
+        if e._efGateMask == nil then
+            FillEntryGateMask(e)
+            filled = filled + 1
+        end
+        i = i + 1
+    end
+    if i <= n then
+        GATE.fillIdx = i
+        Utils.SafeAfter(0, FillGateMasksStep)
+    else
+        GATE.fillPending = false
+        GATE.fillIdx = nil
+    end
+end
+
+function Database:PrimeSearchGate()
+    local data = self.uiSearchData
+    for i = 1, #data do
+        if data[i]._efGateMask == nil then FillEntryGateMask(data[i]) end
+    end
+    GATE.fillPending = false
+    GATE.fillIdx = nil
+end
+
+local function GateSkipsEntry(data)
+    local gm = data._efGateMask
+    if gm == nil then
+        GATE.sawNil = true
+        return false
+    end
+    if not gm then return false end
+    if GATE.skipStatistic and data.category == "Statistic" then return false end
+    local masks, allows, firstBits = GATE.masks, GATE.allows, GATE.firstBits
+    for w = 1, GATE.count do
+        local missing = band(masks[w], bnot(gm))
+        if missing ~= 0 then
+            local skip = true
+            local budget = allows[w]
+            if budget > 0 then
+                local fb = firstBits[w]
+                if fb == 0 or band(data._efGateInit or 0, fb) ~= 0 then
+                    local c = 0
+                    repeat
+                        c = c + 1
+                        missing = band(missing, missing - 1)
+                    until missing == 0 or c > budget
+                    skip = missing ~= 0
+                end
+            end
+            if skip then
+                GATE.gatedN = GATE.gatedN + 1
+                return true
+            end
+        end
+    end
+    return false
 end
 
 -- exact -> starts-with -> word-boundary -> substring -> initials -> fuzzy.
@@ -626,6 +803,45 @@ end
 local prevQuery = ""
 local prevSkipKey = ""
 local prevCandidates = {}
+-- Scratch for building skipKey from CategoryMap.SkipKeyOrder without a
+-- per-search table allocation. Reused each search; tconcat reads buf[1..n].
+local skipKeyBuf = {}
+
+-- Query result cache. Incremental narrowing only speeds a GROWING query, so a
+-- backspace (or retype) of an earlier query otherwise re-scans the whole
+-- dataset (~5800 entries). This caches each scored query's candidate set (the
+-- entries that matched, at most a few hundred) keyed by query+skipKey, so
+-- returning to a previously-scored query re-scores that small set instead of
+-- the full data. Bounded LRU; cleared whenever the search data changes.
+local RESULT_CACHE_MAX = 16
+local resultCache = {}
+local resultCacheLRU = {}
+Database._resultCache = resultCache
+
+local function ClearResultCache()
+    for k in pairs(resultCache) do resultCache[k] = nil end
+    for i = #resultCacheLRU, 1, -1 do resultCacheLRU[i] = nil end
+end
+
+local function StoreResultCache(key, candidates, n)
+    local slot = resultCache[key]
+    if slot then
+        for i = 1, #resultCacheLRU do
+            if resultCacheLRU[i] == key then tremove(resultCacheLRU, i); break end
+        end
+    elseif #resultCacheLRU >= RESULT_CACHE_MAX then
+        local evict = tremove(resultCacheLRU, 1)
+        slot = resultCache[evict]
+        resultCache[evict] = nil
+        if not slot then slot = {} end
+    else
+        slot = {}
+    end
+    resultCache[key] = slot
+    resultCacheLRU[#resultCacheLRU + 1] = key
+    for i = 1, n do slot[i] = candidates[i] end
+    for i = n + 1, #slot do slot[i] = nil end
+end
 
 function Database:WarmSearchHotPath()
     if self.HydrateCachedLoot then self:HydrateCachedLoot() end
@@ -660,6 +876,7 @@ function Database:ResetSearchCache()
     prevQuery = ""
     prevSkipKey = ""
     wipe(prevCandidates)
+    ClearResultCache()
     if not searchRefreshPending and Utils.SafeAfter then
         searchRefreshPending = true
         Utils.SafeAfter(0, RunActiveSearchRefresh)
@@ -670,6 +887,7 @@ local resultsBuf = {}
 local resultsQueryWords = {}
 local statisticScopedQueryWords = {}
 local resultEntryPool = {}
+Database._resultEntryPool = resultEntryPool
 
 function Database:TrimSearchMemory()
     self:UnloadDynamicSearchData()
@@ -681,6 +899,7 @@ function Database:TrimSearchMemory()
     prevQuery = ""
     prevSkipKey = ""
     wipe(prevCandidates)
+    ClearResultCache()
 end
 
 function Database:SearchUI(query, skipCategories)
@@ -748,32 +967,55 @@ function Database:SearchUI(query, skipCategories)
         end
     end
 
+    GATE.count = 0
+    GATE.sawNil = false
+    GATE.gatedN = 0
+    GATE.skipStatistic = statisticScopedQuery ~= nil
+    if not Database._disableSearchGate then
+        for qi = 1, #queryWords do
+            local qw = queryWords[qi]
+            local qwLen = #qw
+            if qwLen >= 2 then
+                local m = 0
+                for ci = 1, qwLen do
+                    local b = sbyte(qw, ci)
+                    if b >= 97 and b <= 122 then m = bor(m, lshift(1, b - 97)) end
+                end
+                if m ~= 0 then
+                    local gc = GATE.count + 1
+                    GATE.count = gc
+                    GATE.masks[gc] = m
+                    local allow = qwLen >= 8 and 2 or qwLen >= 4 and 1 or 0
+                    if allow == 0 and sbyte(qw, qwLen) == 115 then allow = 1 end
+                    GATE.allows[gc] = allow
+                    local fb = sbyte(qw, 1)
+                    GATE.firstBits[gc] = fb >= 97 and fb <= 122 and lshift(1, fb - 97) or 0
+                end
+            end
+        end
+    end
+
     -- Distinct 1-2 char code per skippable category. The incremental search
     -- reuses prevCandidates only when skipKey == prevSkipKey, so every
     -- category that Query.lua may put in skipCategories must change the key
     -- when toggled, otherwise re-enabling a filter mid-query leaves the
     -- previously-filtered items missing from the candidate set.
-    local skipKey = skipCategories and (
-        (skipCategories["Mount"] and "M" or "") ..
-        (skipCategories["Toy"] and "T" or "") ..
-        (skipCategories["Pet"] and "P" or "") ..
-        (skipCategories["Outfit"] and "O" or "") ..
-        (skipCategories["Heirloom"] and "H" or "") ..
-        (skipCategories["Loot"] and "L" or "") ..
-        (skipCategories["Statistic"] and "S" or "") ..
-        (skipCategories["Bag"] and "Ba" or "") ..
-        (skipCategories["Macro"] and "Mc" or "") ..
-        (skipCategories["Game Settings"] and "Gs" or "") ..
-        (skipCategories["AddOn Settings"] and "Ao" or "") ..
-        (skipCategories["Ability"] and "Ab" or "") ..
-        (skipCategories["Boss"] and "Bo" or "") ..
-        (skipCategories["Title"] and "Ti" or "") ..
-        (skipCategories["Gear Set"] and "Gr" or "") ..
-        (skipCategories["Appearance"] and "Ap" or "") ..
-        (skipCategories["Appearance Set"] and "Aps" or "") ..
-        (skipCategories["Talent"] and "Tn" or "") ..
-        (skipCategories["Command"] and "Cm" or "")
-    ) or ""
+    -- Derive the key from the canonical category list (CategoryMap.SkipKeyOrder)
+    -- so it covers EVERY category BuildSkipCategories can emit. A hand-maintained
+    -- subset drifted (Currency etc. missing), leaving the key unchanged when
+    -- those filters toggled and serving a stale filtered-out cache entry.
+    local skipKey = ""
+    if skipCategories then
+        local order = ns.CategoryMap.SkipKeyOrder
+        local n = 0
+        for i = 1, #order do
+            local cat = order[i]
+            if skipCategories[cat] then n = n + 1; skipKeyBuf[n] = cat end
+        end
+        if n > 0 then skipKey = tconcat(skipKeyBuf, ",", 1, n) end
+    end
+
+    local cacheKey = query .. "" .. skipKey
 
     -- prevCandidates can miss entries the now-more-permissive pass matches:
     --   1. A gate flipped on ("icc bos" -> "icc boss"). Boss/ach entries
@@ -821,12 +1063,45 @@ function Database:SearchUI(query, skipCategories)
         or (prevLen < 8 and queryLen >= 8)
 
     local searchSet
-    if prevLen > 0 and skipKey == prevSkipKey
+    local cachedSet = resultCache[cacheKey]
+    if cachedSet then
+        -- Exact prior query (backspace / retype): re-score its cached
+        -- candidate set instead of the full dataset.
+        searchSet = cachedSet
+    elseif prevLen > 0 and skipKey == prevSkipKey
         and queryLen > prevLen and ssub(query, 1, prevLen) == prevQuery
         and not gatingShifted and not recallBoundaryCrossed then
         searchSet = prevCandidates
     else
         searchSet = uiSearchData
+    end
+
+    -- Dev-only narrowing stats: nil unless /efd kprof armed it, so zero cost
+    -- in normal play. Reports whether incremental narrowing engaged and how
+    -- big the scored set is.
+    local efStats = Database._efSearchStats
+    if efStats then
+        if cachedSet then
+            efStats.cache = (efStats.cache or 0) + 1
+            efStats.lastPath = "cache"
+        elseif searchSet == prevCandidates then
+            efStats.narrow = efStats.narrow + 1
+            efStats.lastPath = "narrow"
+        else
+            efStats.full = efStats.full + 1
+            efStats.lastPath = "full"
+            local why
+            if prevLen == 0 then why = "noPrev"
+            elseif skipKey ~= prevSkipKey then why = "skipKey"
+            elseif queryLen <= prevLen then why = "shrank"
+            elseif ssub(query, 1, prevLen) ~= prevQuery then why = "notPrefix"
+            elseif gatingShifted then why = "gating"
+            elseif recallBoundaryCrossed then why = "boundary"
+            else why = "?" end
+            efStats.whys[why] = (efStats.whys[why] or 0) + 1
+        end
+        efStats.setSize = #searchSet
+        efStats.dataSize = #uiSearchData
     end
 
     wipe(resultsBuf)
@@ -838,7 +1113,8 @@ function Database:SearchUI(query, skipCategories)
     for i = 1, searchCount do
         local data = searchSet[i]
         if not (skipCategories and skipCategories[data.category])
-           and not (data.available and not data.available()) then
+           and not (data.available and not data.available())
+           and (GATE.count == 0 or not GateSkipsEntry(data)) then
             local nameLower = data.nameLower
             local score
             if data.lootEntry then
@@ -971,6 +1247,9 @@ function Database:SearchUI(query, skipCategories)
     end
     prevQuery = query
     prevSkipKey = skipKey
+    StoreResultCache(cacheKey, prevCandidates, candidateIdx)
+    if GATE.sawNil and not GATE.fillPending then ScheduleGateMaskFill() end
+    if efStats then efStats.lastResults = resultsN; efStats.gated = GATE.gatedN end
 
     tsort(results, scoreDescending)
     local SEARCH_RESULT_CAP = 250

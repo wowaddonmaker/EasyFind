@@ -57,16 +57,32 @@ local ProviderCategory = {}
 -- entries the filter menu's bucket post-filter covers (collection and loot
 -- entries are handled by their dedicated filters and return nil).
 local BucketByCategory = {}
+-- Ordered, deduplicated list of every category BuildSkipCategories can emit.
+-- Search.lua derives its result-cache/narrowing key from this so the key
+-- changes whenever ANY filter toggles. A hand-maintained subset silently
+-- drifted (Currency, Reputation, Achievement Category, Statistics, Talents were
+-- missing), so toggling those filters left the key unchanged and served a
+-- stale, filtered-out result set that never restored when re-enabled.
+local SkipKeyOrder = {}
+local skipSeen = {}
 
 for i = 1, #ENTRIES do
     local e = ENTRIES[i]
     ProviderCategory[e.providerKey or e.key] = e.categories[1]
+    for j = 1, #e.categories do
+        local cat = e.categories[j]
+        if not skipSeen[cat] then
+            skipSeen[cat] = true
+            SkipKeyOrder[#SkipKeyOrder + 1] = cat
+        end
+    end
     if e.key ~= "loot" and (e.parent == nil or e.parent == "options") then
         for j = 1, #e.categories do
             BucketByCategory[e.categories[j]] = e.key
         end
     end
 end
+CategoryMap.SkipKeyOrder = SkipKeyOrder
 -- Options entries have no dynamic provider.
 ProviderCategory.gameOptions = nil
 ProviderCategory.addonOptions = nil
