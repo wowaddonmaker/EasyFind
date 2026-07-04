@@ -2207,6 +2207,9 @@ local function BuildAliasesTab(ctx)
         })
     end)
 
+    -- These two stay Blizzard StaticPopups for now: they chain (disable ->
+    -- reload prompt) and use a custom decline label, pending a themed-dialog
+    -- migration decision.
     StaticPopupDialogs["EASYFIND_DISABLE_MAP_SEARCH"] = {
         text = L["POPUP_DISABLE_MAP_SEARCH"] .. "\n\n" .. L["POPUP_DISABLE_MAP_SEARCH_DETAIL"],
         button1 = _G["DISABLE"] or "Disable",
@@ -2244,7 +2247,7 @@ local function BuildAliasesTab(ctx)
     resetAllBtn:SetPoint("BOTTOMLEFT", sec3, "BOTTOMLEFT", 16, 8)
     resetAllBtn:SetText(L["OPT_RESET_ALL_SETTINGS"])
     resetAllBtn:SetScript("OnClick", function()
-        ShowResetConfirm(L["POPUP_RESET_ALL_SETTINGS"], function() Options:DoResetAll() end)
+        Options:ConfirmResetAll()
     end)
     resetAllBtn:HookScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_TOP")
@@ -2654,6 +2657,10 @@ function Options:DoResetPositions()
     EasyFind.db.uiSearchPosition = nil
     if ns.Search and ns.Search.ResetPosition then ns.Search:ResetPosition() end
     ResetOptionsPosition()
+end
+
+function Options:ConfirmResetAll()
+    ShowResetConfirm(L["POPUP_RESET_ALL_SETTINGS"], function() Options:DoResetAll() end)
 end
 
 function Options:DoResetAll()

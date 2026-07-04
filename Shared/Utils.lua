@@ -1486,17 +1486,9 @@ end
 
 -- Themed replacement for Blizzard StaticPopup confirm/input dialogs, styled
 -- like the rest of EasyFind (StyleMenuPanel + CreateModernButton). One pooled
--- frame. opts: { title, text, acceptText, cancelText, hasEditBox,
--- editBoxDefault, maxLetters, noCancel, onAccept(value), onCancel }.
+-- frame. opts: { text, acceptText, cancelText, hasEditBox, editBoxDefault,
+-- maxLetters, onAccept(value) }.
 local themedDialog
-local function StyleDialogButton(btn)
-    btn:HookScript("OnEnter", function(self)
-        ns.SetRoundedRectBorderFillColor(self, unpack(ns.BTN_FILL_HOVER))
-    end)
-    btn:HookScript("OnLeave", function(self)
-        ns.SetRoundedRectBorderFillColor(self, unpack(ns.BTN_FILL_NORMAL))
-    end)
-end
 
 function ns.ShowThemedDialog(opts)
     opts = opts or {}
@@ -1510,12 +1502,6 @@ function ns.ShowThemedDialog(opts)
         f:SetClampedToScreen(true)
         f:SetPoint("CENTER", 0, 120)
         ns.StyleMenuPanel(f)
-
-        f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        f.title:SetPoint("TOPLEFT", 16, -14)
-        f.title:SetPoint("TOPRIGHT", -16, -14)
-        f.title:SetJustifyH("CENTER")
-        f.title:SetTextColor(unpack(ns.GOLD_COLOR))
 
         f.message = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         f.message:SetJustifyH("CENTER")
@@ -1539,8 +1525,6 @@ function ns.ShowThemedDialog(opts)
 
         f.accept = ns.CreateModernButton(f, "", 120, 22)
         f.cancel = ns.CreateModernButton(f, "", 120, 22)
-        StyleDialogButton(f.accept)
-        StyleDialogButton(f.cancel)
 
         local function accept()
             local val = f._hasEditBox and f.editBox:GetText() or nil
@@ -1549,34 +1533,28 @@ function ns.ShowThemedDialog(opts)
         end
         local function cancel()
             f:Hide()
-            if f._onCancel then f._onCancel() end
         end
         f.accept:SetScript("OnClick", accept)
         f.cancel:SetScript("OnClick", cancel)
         eb:SetScript("OnEnterPressed", accept)
         eb:SetScript("OnEscapePressed", cancel)
-        -- ESC closes without protected calls via UISpecialFrames; onCancel is
-        -- a no-op for the confirm dialogs, so a bare hide is the right result.
+        -- ESC closes without protected calls via UISpecialFrames; cancel is a
+        -- bare hide, so this is the complete cancel path.
         tinsert(UISpecialFrames, "EasyFindThemedDialog")
 
         themedDialog = f
     end
 
     f._onAccept = opts.onAccept
-    f._onCancel = opts.onCancel
     f._hasEditBox = opts.hasEditBox and true or false
 
-    local hasTitle = opts.title and opts.title ~= ""
-    f.title:SetShown(hasTitle)
-    f.title:SetText(opts.title or "")
     f.message:SetText(opts.text or "")
 
-    local width = opts.width or 380
+    local width = 380
     f:SetWidth(width)
     f.message:SetWidth(width - 32)
 
     local used = 14
-    if hasTitle then used = used + f.title:GetStringHeight() + 10 end
     f.message:ClearAllPoints()
     f.message:SetPoint("TOPLEFT", 16, -used)
     f.message:SetPoint("TOPRIGHT", -16, -used)
@@ -1594,19 +1572,13 @@ function ns.ShowThemedDialog(opts)
         f.field:Hide()
     end
 
-    f.accept._label:SetText(opts.acceptText or _G["OKAY"] or _G["ACCEPT"] or "OK")
-    f.cancel._label:SetText(opts.cancelText or _G["CANCEL"] or "Cancel")
+    f.accept:SetText(opts.acceptText or _G["OKAY"] or _G["ACCEPT"] or "OK")
+    f.cancel:SetText(opts.cancelText or _G["CANCEL"] or "Cancel")
     f.accept:ClearAllPoints()
     f.cancel:ClearAllPoints()
-    if opts.noCancel then
-        f.cancel:Hide()
-        f.accept:SetPoint("TOP", f, "TOP", 0, -used)
-    else
-        -- Accept on the left, Cancel on the right (standard button order).
-        f.cancel:Show()
-        f.accept:SetPoint("TOPRIGHT", f, "TOP", -6, -used)
-        f.cancel:SetPoint("TOPLEFT", f, "TOP", 6, -used)
-    end
+    -- Accept on the left, Cancel on the right (standard button order).
+    f.accept:SetPoint("TOPRIGHT", f, "TOP", -6, -used)
+    f.cancel:SetPoint("TOPLEFT", f, "TOP", 6, -used)
     used = used + 22 + 14
     f:SetHeight(used)
 

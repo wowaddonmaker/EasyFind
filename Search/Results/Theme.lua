@@ -96,12 +96,18 @@ function Results:SetScaledFont(fontString, baseFontObject)
     -- so ScaleFont's own skip can't fire here and a custom TTF gets re-set
     -- every render, which is a real typing hitch. The applied font only
     -- depends on the base object, the font choice, and the scale, all stable
-    -- between keystrokes, so skip the pair when that signature is unchanged.
+    -- between keystrokes, so skip the pair when those are unchanged (field
+    -- compares: a concatenated signature would allocate per row per render).
     local db = EasyFind.db
-    local sig = baseFontObject .. "\0" .. (db and db.font or "Default")
-        .. "\0" .. tostring(db and db.fontSize or 1.0)
-    if fontString._efScaledFontSig == sig then return end
-    fontString._efScaledFontSig = sig
+    local font = db and db.font or "Default"
+    local fontSize = db and db.fontSize or 1.0
+    if fontString._efSFBase == baseFontObject and fontString._efSFFont == font
+       and fontString._efSFSize == fontSize then
+        return
+    end
+    fontString._efSFBase = baseFontObject
+    fontString._efSFFont = font
+    fontString._efSFSize = fontSize
     fontString:SetFontObject(baseFontObject)
     ScaleFont(fontString, baseFontObject)
 end

@@ -70,7 +70,11 @@ function Commands:RunSearchBarCommand(command)
     self:HideResults()
 
     if canonical == "reset" then
-        StaticPopup_Show("EASYFIND_RESET_SEARCH_BAR")
+        ns.ShowThemedDialog({
+            text = L["PROMPT_RESET_SEARCH_BAR"],
+            acceptText = _G["RESET"] or "Reset",
+            onAccept = function() Search:ResetPositionAndSize() end,
+        })
     elseif canonical == "options" then
         EasyFind:OpenOptions()
     elseif canonical == "tutorial" then

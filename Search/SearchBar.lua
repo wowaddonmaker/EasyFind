@@ -321,6 +321,13 @@ function Search:CreateSearchFrame()
     -- throttle so the screen-fit row clamp tracks the position live. The
     -- render cache keys on the frame edge, so unmoved ticks early-out.
     local dragRefreshTicker
+    local function StopDragRefresh()
+        if dragRefreshTicker then
+            dragRefreshTicker:Cancel()
+            dragRefreshTicker = nil
+        end
+        Results:RefreshShownResults()
+    end
     local function StartDragRefresh()
         if dragRefreshTicker then return end
         dragRefreshTicker = C_Timer.NewTicker(0.1, function()
@@ -329,8 +336,7 @@ function Search:CreateSearchFrame()
             -- fired). Without this the ticker leaks into a permanent per-0.1s
             -- re-render that lags the whole UI, including typing.
             if not IsMouseButtonDown("LeftButton") then
-                if dragRefreshTicker then dragRefreshTicker:Cancel(); dragRefreshTicker = nil end
-                Results:RefreshShownResults()
+                StopDragRefresh()
                 return
             end
             local ok = pcall(function()
@@ -341,13 +347,6 @@ function Search:CreateSearchFrame()
                 dragRefreshTicker = nil
             end
         end)
-    end
-    local function StopDragRefresh()
-        if dragRefreshTicker then
-            dragRefreshTicker:Cancel()
-            dragRefreshTicker = nil
-        end
-        Results:RefreshShownResults()
     end
 
     -- (native behavior). Shift+left-click drags the bar -- the
@@ -2050,23 +2049,6 @@ function Search:ResetPositionAndSize()
     self:UpdateSearchBarHeight()
     self:RefreshResults()
 end
-
-StaticPopupDialogs["EASYFIND_RESET_SEARCH_BAR"] = {
-    text = L["PROMPT_RESET_SEARCH_BAR"],
-    button1 = _G["RESET"] or "Reset",
-    button2 = CANCEL or "Cancel",
-    OnShow = function(self)
-        self:SetFrameStrata("TOOLTIP")
-        self:SetFrameLevel(1000)
-    end,
-    OnAccept = function()
-        Search:ResetPositionAndSize()
-    end,
-    timeout = 0,
-    whileDead = true,
-    hideOnEscape = true,
-    preferredIndex = 3,
-}
 
 function Search:UpdateFontSize()
     if not searchFrame then return end
