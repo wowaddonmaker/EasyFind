@@ -945,74 +945,7 @@ local function CreateFrameOnce()
     f:SetScript("OnDragStop", f.StopMovingOrSizing)
     frame = f
 
-    ns.CreateRoundedRectBorder(f)
-    ns.SetRoundedRectBarHeight(f, 16)
-    ns.SetRoundedRectBorderBgAlpha(f, PANEL_BG_ALPHA)
-    -- Border ring hidden: its corner cells band against the gradient fill.
-    ns.SetRoundedRectBorderEdgeShown(f, false)
-    ns.SetRoundedRectBorderFillColor(f, 0.04, 0.04, 0.05, 1)
-
-    -- Single vertical gradient mapped across the 9-slice; each cell's
-    -- gradient stops are sampled from its vertical position in the frame.
-    local function ApplyGloss(self)
-        local fill = self.combinedBorder and self.combinedBorder.fill
-        if not fill then return end
-        local H = self:GetHeight()
-        if not H or H <= 0 then return end
-        local corner = (self.cbBarHeight or 32) / 2
-
-        -- Pack the brightness ramp into the bottom 10% so 8-bit banding
-        -- collapses into a couple-pixel transition; smoothstep so the
-        -- slope varies and bands cannot space evenly.
-        local DARK_FRAC = 0.90
-        local function smoothstep(t)
-            if t <= 0 then return 0 end
-            if t >= 1 then return 1 end
-            return t * t * (3 - 2 * t)
-        end
-        local function lerp(a, b, t) return a + (b - a) * t end
-        local function colorAtY(y)
-            local t = y / H
-            if t < DARK_FRAC then t = 0
-            else t = smoothstep((t - DARK_FRAC) / (1 - DARK_FRAC)) end
-            return lerp(0.022, 0.20, t),
-                   lerp(0.022, 0.20, t),
-                   lerp(0.030, 0.22, t)
-        end
-
-        -- Relaxed pixel snapping lets the GPU sub-pixel-blend vertex
-        -- colors instead of snapping color stops to the nearest pixel row.
-        for _, cell in pairs(fill) do
-            if cell.SetSnapToPixelGrid then cell:SetSnapToPixelGrid(false) end
-            if cell.SetTexelSnappingBias then cell:SetTexelSnappingBias(0) end
-        end
-
-        local function ramp(cell, yTop, yBot)
-            if not cell then return end
-            local r1, g1, b1 = colorAtY(yTop)
-            local r2, g2, b2 = colorAtY(yBot)
-            -- VERTICAL: first color is bottom, second is top.
-            cell:SetGradient("VERTICAL",
-                CreateColor(r2, g2, b2, 1),
-                CreateColor(r1, g1, b1, 1))
-        end
-
-        local yTopRowTop, yTopRowBot = 0,         corner
-        local yMidRowTop, yMidRowBot = corner,    H - corner
-        local yBotRowTop, yBotRowBot = H - corner, H
-
-        ramp(fill.tl, yTopRowTop, yTopRowBot)
-        ramp(fill.tm, yTopRowTop, yTopRowBot)
-        ramp(fill.tr, yTopRowTop, yTopRowBot)
-        ramp(fill.ml, yMidRowTop, yMidRowBot)
-        ramp(fill.mm, yMidRowTop, yMidRowBot)
-        ramp(fill.mr, yMidRowTop, yMidRowBot)
-        ramp(fill.bl, yBotRowTop, yBotRowBot)
-        ramp(fill.bm, yBotRowTop, yBotRowBot)
-        ramp(fill.br, yBotRowTop, yBotRowBot)
-    end
-    ApplyGloss(f)
-    f:HookScript("OnSizeChanged", ApplyGloss)
+    ns.StyleWizardPanel(f, PANEL_BG_ALPHA)
 
     local closeBtn = ns.CreateCloseX(f)
     closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -10)

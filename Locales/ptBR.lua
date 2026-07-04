@@ -115,6 +115,13 @@ L["OPT_ADDON_NAME"]                     = "EasyFind"
 L["OPT_ICON_SIZE"]                      = "Tamanho do ícone"
 L["OPT_FONT_SIZE"]                      = "Tamanho da fonte"
 L["OPT_WOWHEAD_LOCALE"]                 = "Idioma do Wowhead"
+L["OPT_WOWHEAD_LOCALE_TT"]              = "Idioma dos links do Wowhead copiados. Auto segue o idioma do seu cliente do jogo."
+L["OPT_FONT_SIZE_TT"]                   = "Tamanho do texto na barra de busca e na lista de resultados."
+L["OPT_SEARCH_SCALE_TT"]                = "Escala toda a janela de busca (barra, resultados, janelas) independentemente da escala da interface do jogo."
+L["OPT_RESULT_ROWS_TT"]                 = "Quantas linhas de resultados ficam visíveis antes de a lista rolar."
+L["OPT_SEARCH_OPACITY_TT"]              = "Opacidade do fundo apenas da barra de busca e da janela de resultados; texto e ícones continuam opacos."
+L["OPT_EXPORT_BTN_TT"]                  = "Copie um código compartilhável com seus apelidos e atalhos. A engrenagem escolhe o que incluir."
+L["OPT_IMPORT_BTN_TT"]                  = "Cole um código compartilhado para adicionar seus apelidos e atalhos nesta conta."
 L["WOWHEAD_LOCALE_AUTO"]                = "Automático"
 L["OPT_CLEAR_ALL_BTN"]                  = "Limpar tudo"
 L["OPT_LOGIN_MESSAGE_TT"]               = "Exibe uma breve mensagem «EasyFind carregado!» no chat ao entrar.\n\nDesative para manter o chat mais limpo."
@@ -213,25 +220,23 @@ L["TUT_BTN_BACK"]                       = "Voltar"
 L["TUT_BTN_BACK_ARROW"]                 = "< Voltar"
 L["TUT_KB_PRESS_KEY"]                   = "Pressione uma tecla…"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - Novidades"
-L["WHATSNEW_FULL_CHANGELOG"]            = "Registro de mudanças completo no CurseForge e GitHub"
+L["WHATSNEW_CHANGELOG_BTN"]             = "Ver todas as mudanças"
+L["WHATSNEW_COPY_HINT"]                 = "Pressione Ctrl+C para copiar o link do registro de mudanças completo:"
 L["WHATSNEW_GOT_IT"]                    = "Entendi"
-L["MSG_CURRENCY_WATCH_LIMIT"]                    = "You may only watch %d currencies at a time"
-L["POPUP_UNAPPLIED_SETTINGS"]                    = "You have settings that have not been applied.\nAre you sure you wish to exit?"
-L["POPUP_UNAPPLIED_EXIT"]                    = "Exit"
-L["POPUP_UNAPPLIED_APPLY"]                    = "Apply and Exit"
-L["POPUP_UNAPPLIED_CANCEL"]                    = "Cancel"
-L["WHATSNEW_CHAT_HELLO"]                = "Welcome to EasyFind v%s! See update summary %s."
-L["WHATSNEW_CHAT_HERE"]                 = "here"
+L["MSG_CURRENCY_WATCH_LIMIT"]           = "Você só pode acompanhar %d moedas por vez"
+L["POPUP_UNAPPLIED_SETTINGS"]           = "Há configurações que não foram aplicadas.\nTem certeza de que deseja sair?"
+L["POPUP_UNAPPLIED_EXIT"]               = "Sair"
+L["POPUP_UNAPPLIED_APPLY"]              = "Aplicar e sair"
+L["POPUP_UNAPPLIED_CANCEL"]             = "Cancelar"
+L["WHATSNEW_CHAT_HELLO"]                = "Bem-vindo ao EasyFind v%s! Veja o resumo da atualização %s."
+L["WHATSNEW_CHAT_HERE"]                 = "aqui"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffBusca de saque|r\n" ..
-    "        Busque saque de masmorra e raide por nome, espaço, atributos ou origem\n" ..
-    "        Filtre por classe, especialização e dificuldade\n" ..
-    "        Clique para ir direto ao item no Compêndio de Aventuras\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffVisuais de transmog|r\n" ..
-    "        Visuais salvos aparecem nos resultados, clique para equipar\n" ..
-    "        Explore a janela de transmogrificação sem vendedor (busque «tmog»)\n" ..
-    "\n|cff999999Ative Saque e Visuais no menu de filtros (botão de seta\n" ..
-    "dentro da barra de busca) para ver esses resultados.|r"
+    "|cffFFD100\226\128\162|r |cffffffffAtalhos|r\n" ..
+    "        Clique com o direito em um resultado para definir seu próprio atalho\n" ..
+    "        Atalhos abrem um resultado com um único toque\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffLinks do Wowhead|r\n" ..
+    "        Clique direito em itens, feitiços, montarias, conquistas\n" ..
+    "        e mais para copiar o link do Wowhead"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Adicionar apelido"

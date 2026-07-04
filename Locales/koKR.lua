@@ -115,6 +115,13 @@ L["OPT_ADDON_NAME"]                     = "EasyFind"
 L["OPT_ICON_SIZE"]                      = "아이콘 크기"
 L["OPT_FONT_SIZE"]                      = "글꼴 크기"
 L["OPT_WOWHEAD_LOCALE"]                 = "Wowhead 언어"
+L["OPT_WOWHEAD_LOCALE_TT"]              = "복사되는 Wowhead 링크의 언어입니다. 자동은 게임 클라이언트 언어를 따릅니다."
+L["OPT_FONT_SIZE_TT"]                   = "검색창과 결과 목록의 글자 크기입니다."
+L["OPT_SEARCH_SCALE_TT"]                = "게임 UI 배율과 별개로 검색 창 전체(검색창, 결과, 팝업)의 크기를 조절합니다."
+L["OPT_RESULT_ROWS_TT"]                 = "목록이 스크롤되기 전에 표시되는 결과 줄 수입니다."
+L["OPT_SEARCH_OPACITY_TT"]              = "검색창과 결과 창 배경에만 적용되는 투명도입니다. 글자와 아이콘은 그대로 유지됩니다."
+L["OPT_EXPORT_BTN_TT"]                  = "별칭과 단축키를 공유 코드로 복사합니다. 톱니바퀴로 포함할 항목을 선택하세요."
+L["OPT_IMPORT_BTN_TT"]                  = "공유 코드를 붙여넣어 별칭과 단축키를 이 계정에 추가합니다."
 L["WOWHEAD_LOCALE_AUTO"]                = "자동"
 L["OPT_CLEAR_ALL_BTN"]                  = "모두 지우기"
 L["OPT_LOGIN_MESSAGE_TT"]               = "접속 시 대화창에 짧은 ‘EasyFind 로드됨!’ 메시지를 표시합니다.\n\n대화창을 깔끔하게 유지하려면 끄세요."
@@ -213,25 +220,23 @@ L["TUT_BTN_BACK"]                       = "뒤로"
 L["TUT_BTN_BACK_ARROW"]                 = "< 뒤로"
 L["TUT_KB_PRESS_KEY"]                   = "키를 누르세요…"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - 새로운 기능"
-L["WHATSNEW_FULL_CHANGELOG"]            = "전체 변경 내역은 CurseForge와 GitHub에서"
+L["WHATSNEW_CHANGELOG_BTN"]             = "전체 변경 사항 보기"
+L["WHATSNEW_COPY_HINT"]                 = "Ctrl+C를 눌러 전체 변경 사항 링크를 복사하세요:"
 L["WHATSNEW_GOT_IT"]                    = "확인"
-L["MSG_CURRENCY_WATCH_LIMIT"]                    = "You may only watch %d currencies at a time"
-L["POPUP_UNAPPLIED_SETTINGS"]                    = "You have settings that have not been applied.\nAre you sure you wish to exit?"
-L["POPUP_UNAPPLIED_EXIT"]                    = "Exit"
-L["POPUP_UNAPPLIED_APPLY"]                    = "Apply and Exit"
-L["POPUP_UNAPPLIED_CANCEL"]                    = "Cancel"
-L["WHATSNEW_CHAT_HELLO"]                = "Welcome to EasyFind v%s! See update summary %s."
-L["WHATSNEW_CHAT_HERE"]                 = "here"
+L["MSG_CURRENCY_WATCH_LIMIT"]           = "한 번에 %d개의 화폐만 추적할 수 있습니다"
+L["POPUP_UNAPPLIED_SETTINGS"]           = "적용되지 않은 설정이 있습니다.\n정말 나가시겠습니까?"
+L["POPUP_UNAPPLIED_EXIT"]               = "나가기"
+L["POPUP_UNAPPLIED_APPLY"]              = "적용 후 나가기"
+L["POPUP_UNAPPLIED_CANCEL"]             = "취소"
+L["WHATSNEW_CHAT_HELLO"]                = "EasyFind v%s에 오신 것을 환영합니다! 업데이트 요약은 %s에서 확인하세요."
+L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff전리품 검색|r\n" ..
-    "        던전과 공격대 전리품을 이름, 부위, 능력치, 출처로 검색\n" ..
-    "        직업, 전문화, 난이도로 필터링\n" ..
-    "        클릭하면 모험 지침서의 해당 아이템으로 바로 이동\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff형상변환 복장|r\n" ..
-    "        저장된 복장이 검색 결과에 나타나며, 클릭해 착용\n" ..
-    "        상인 없이 형상변환 창을 둘러보기 (‘tmog’ 검색)\n" ..
-    "\n|cff999999이 결과를 보려면 필터 메뉴(검색창 안의 화살표 버튼)에서\n" ..
-    "전리품과 복장을 활성화하세요.|r"
+    "|cffFFD100\226\128\162|r |cffffffff단축키|r\n" ..
+    "        검색 결과를 우클릭해 나만의 단축키를 지정하세요\n" ..
+    "        단축키는 키 한 번으로 결과를 바로 엽니다\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffWowhead 링크|r\n" ..
+    "        아이템, 주문, 탈것, 업적 등을 우클릭해\n" ..
+    "        Wowhead 링크를 복사하세요"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"

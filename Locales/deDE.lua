@@ -117,6 +117,13 @@ L["OPT_ADDON_NAME"]                     = "EasyFind"
 L["OPT_ICON_SIZE"]                      = "Symbolgröße"
 L["OPT_FONT_SIZE"]                      = "Schriftgröße"
 L["OPT_WOWHEAD_LOCALE"]                 = "Wowhead-Sprache"
+L["OPT_WOWHEAD_LOCALE_TT"]              = "Sprache kopierter Wowhead-Links. Auto folgt der Sprache deines Spielclients."
+L["OPT_FONT_SIZE_TT"]                   = "Textgröße in Suchleiste und Ergebnisliste."
+L["OPT_SEARCH_SCALE_TT"]                = "Skaliert das gesamte Suchfenster (Leiste, Ergebnisse, Popups) unabhängig von der UI-Skalierung des Spiels."
+L["OPT_RESULT_ROWS_TT"]                 = "Wie viele Ergebniszeilen sichtbar sind, bevor die Liste scrollt."
+L["OPT_SEARCH_OPACITY_TT"]              = "Hintergrund-Transparenz nur für Suchleiste und Ergebnisfenster; Text und Symbole bleiben voll deckend."
+L["OPT_EXPORT_BTN_TT"]                  = "Kopiere einen teilbaren Code deiner Aliase und Kurztasten. Das Zahnrad bestimmt, was enthalten ist."
+L["OPT_IMPORT_BTN_TT"]                  = "Füge einen geteilten Code ein, um dessen Aliase und Kurztasten auf diesem Account hinzuzufügen."
 L["WOWHEAD_LOCALE_AUTO"]                = "Automatisch"
 L["OPT_CLEAR_ALL_BTN"]                  = "Alles löschen"
 L["OPT_LOGIN_MESSAGE_TT"]               = "Zeigt beim Anmelden eine kurze „EasyFind geladen!“-Nachricht im Chat.\n\nDeaktivieren, um den Chat sauberer zu halten."
@@ -215,25 +222,23 @@ L["TUT_BTN_BACK"]                       = "Zurück"
 L["TUT_BTN_BACK_ARROW"]                 = "< Zurück"
 L["TUT_KB_PRESS_KEY"]                   = "Taste drücken …"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r – Neue Funktionen"
-L["WHATSNEW_FULL_CHANGELOG"]            = "Vollständige Änderungsliste auf CurseForge und GitHub"
+L["WHATSNEW_CHANGELOG_BTN"]             = "Alle Änderungen ansehen"
+L["WHATSNEW_COPY_HINT"]                 = "Drücke Ctrl+C, um den Link zum vollständigen Änderungsprotokoll zu kopieren:"
 L["WHATSNEW_GOT_IT"]                    = "Verstanden"
-L["MSG_CURRENCY_WATCH_LIMIT"]                    = "You may only watch %d currencies at a time"
-L["POPUP_UNAPPLIED_SETTINGS"]                    = "You have settings that have not been applied.\nAre you sure you wish to exit?"
-L["POPUP_UNAPPLIED_EXIT"]                    = "Exit"
-L["POPUP_UNAPPLIED_APPLY"]                    = "Apply and Exit"
-L["POPUP_UNAPPLIED_CANCEL"]                    = "Cancel"
-L["WHATSNEW_CHAT_HELLO"]                = "Welcome to EasyFind v%s! See update summary %s."
-L["WHATSNEW_CHAT_HERE"]                 = "here"
+L["MSG_CURRENCY_WATCH_LIMIT"]           = "Du kannst nur %d Währungen gleichzeitig beobachten"
+L["POPUP_UNAPPLIED_SETTINGS"]           = "Es gibt Einstellungen, die noch nicht übernommen wurden.\nWirklich beenden?"
+L["POPUP_UNAPPLIED_EXIT"]               = "Beenden"
+L["POPUP_UNAPPLIED_APPLY"]              = "Übernehmen und beenden"
+L["POPUP_UNAPPLIED_CANCEL"]             = "Abbrechen"
+L["WHATSNEW_CHAT_HELLO"]                = "Willkommen bei EasyFind v%s! Die Neuerungen findest du %s."
+L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffBeutesuche|r\n" ..
-    "        Durchsuche Dungeon- und Schlachtzugsbeute nach Name, Slot, Werten oder Quelle\n" ..
-    "        Filtere nach Klasse, Spezialisierung und Schwierigkeit\n" ..
-    "        Klicke, um direkt zum Gegenstand im Abenteuerführer zu springen\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffTransmog-Outfits|r\n" ..
-    "        Gespeicherte Outfits erscheinen in den Suchergebnissen, Klick zum Anlegen\n" ..
-    "        Durchstöbere das Transmogfenster ohne Händler (suche „tmog“)\n" ..
-    "\n|cff999999Aktiviere Beute und Outfits im Filtermenü (Pfeil-Schaltfläche\n" ..
-    "in der Suchleiste), um diese Ergebnisse zu sehen.|r"
+    "|cffFFD100\226\128\162|r |cffffffffKurztasten|r\n" ..
+    "        Rechtsklick auf ein Ergebnis, um eine eigene Kurztaste zu belegen\n" ..
+    "        Kurztasten öffnen ein Ergebnis mit einem Tastendruck\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffWowhead-Links|r\n" ..
+    "        Rechtsklick auf Gegenstände, Zauber, Reittiere, Erfolge\n" ..
+    "        und mehr für einen kopierbaren Wowhead-Link"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"

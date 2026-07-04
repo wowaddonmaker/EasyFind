@@ -9,6 +9,7 @@ local SetFlyoutRowEnabled = Utils.SetFlyoutRowEnabled
 local CreateFrame = CreateFrame
 local UIParent = UIParent
 local wipe = wipe
+local mmax, mceil = math.max, math.ceil
 
 local ROW_H = 22
 local PAD = 6
@@ -90,7 +91,14 @@ function Filters:BuildSourceFlyout(opts)
             row:SetPoint("TOPLEFT", flyout, "TOPLEFT", PAD, -(PAD + i * ROW_H))
             row:Show()
         end
-        flyout:SetSize(opts.width, PAD * 2 + (1 + #defs) * ROW_H)
+        local contentW = mmax(14 + (toggleAllLabel:GetStringWidth() or 0),
+            opts.checkSize + 4 + Utils.MaxRowLabelWidth(sourceRows, #defs))
+        local flyoutW = mmax(ns.FLYOUT_MIN_WIDTH, mceil(contentW) + PAD * 2 + 8)
+        toggleAllRow:SetWidth(flyoutW - PAD * 2)
+        for i = 1, #defs do
+            sourceRows[i]:SetWidth(flyoutW - PAD * 2)
+        end
+        flyout:SetSize(flyoutW, PAD * 2 + (1 + #defs) * ROW_H)
         Utils.RefreshMenuRowHighlights(flyout)
     end
 

@@ -115,6 +115,13 @@ L["OPT_ADDON_NAME"]                     = "EasyFind"
 L["OPT_ICON_SIZE"]                      = "Размер значков"
 L["OPT_FONT_SIZE"]                      = "Размер шрифта"
 L["OPT_WOWHEAD_LOCALE"]                 = "Язык Wowhead"
+L["OPT_WOWHEAD_LOCALE_TT"]              = "Язык копируемых ссылок Wowhead. Авто следует языку игрового клиента."
+L["OPT_FONT_SIZE_TT"]                   = "Размер текста в строке поиска и списке результатов."
+L["OPT_SEARCH_SCALE_TT"]                = "Масштабирует всё окно поиска (строку, результаты, всплывающие окна) независимо от масштаба интерфейса игры."
+L["OPT_RESULT_ROWS_TT"]                 = "Сколько строк результатов видно до появления прокрутки."
+L["OPT_SEARCH_OPACITY_TT"]              = "Прозрачность фона только строки поиска и окна результатов; текст и значки остаются непрозрачными."
+L["OPT_EXPORT_BTN_TT"]                  = "Скопируйте код для обмена псевдонимами и быстрыми клавишами. Шестерёнка выбирает, что включить."
+L["OPT_IMPORT_BTN_TT"]                  = "Вставьте полученный код, чтобы добавить его псевдонимы и быстрые клавиши на этом аккаунте."
 L["WOWHEAD_LOCALE_AUTO"]                = "Авто"
 L["OPT_CLEAR_ALL_BTN"]                  = "Очистить все"
 L["OPT_LOGIN_MESSAGE_TT"]               = "Показывает короткое сообщение «EasyFind загружен!» в чате при входе.\n\nОтключите, чтобы чат был чище."
@@ -213,25 +220,23 @@ L["TUT_BTN_BACK"]                       = "Назад"
 L["TUT_BTN_BACK_ARROW"]                 = "< Назад"
 L["TUT_KB_PRESS_KEY"]                   = "Нажмите клавишу…"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r — Новые возможности"
-L["WHATSNEW_FULL_CHANGELOG"]            = "Полный список изменений на CurseForge и GitHub"
+L["WHATSNEW_CHANGELOG_BTN"]             = "Полный список изменений"
+L["WHATSNEW_COPY_HINT"]                 = "Нажмите Ctrl+C, чтобы скопировать ссылку на полный список изменений:"
 L["WHATSNEW_GOT_IT"]                    = "Понятно"
-L["MSG_CURRENCY_WATCH_LIMIT"]                    = "You may only watch %d currencies at a time"
-L["POPUP_UNAPPLIED_SETTINGS"]                    = "You have settings that have not been applied.\nAre you sure you wish to exit?"
-L["POPUP_UNAPPLIED_EXIT"]                    = "Exit"
-L["POPUP_UNAPPLIED_APPLY"]                    = "Apply and Exit"
-L["POPUP_UNAPPLIED_CANCEL"]                    = "Cancel"
-L["WHATSNEW_CHAT_HELLO"]                = "Welcome to EasyFind v%s! See update summary %s."
-L["WHATSNEW_CHAT_HERE"]                 = "here"
+L["MSG_CURRENCY_WATCH_LIMIT"]           = "Можно отслеживать не более %d валют одновременно"
+L["POPUP_UNAPPLIED_SETTINGS"]           = "Есть непримененные настройки.\nВы уверены, что хотите выйти?"
+L["POPUP_UNAPPLIED_EXIT"]               = "Выйти"
+L["POPUP_UNAPPLIED_APPLY"]              = "Применить и выйти"
+L["POPUP_UNAPPLIED_CANCEL"]             = "Отмена"
+L["WHATSNEW_CHAT_HELLO"]                = "Добро пожаловать в EasyFind v%s! Обзор обновления доступен %s."
+L["WHATSNEW_CHAT_HERE"]                 = "здесь"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffПоиск добычи|r\n" ..
-    "        Ищите добычу подземелий и рейдов по названию, слоту, характеристикам или источнику\n" ..
-    "        Фильтруйте по классу, специализации и сложности\n" ..
-    "        Щелкните, чтобы перейти прямо к предмету в Путеводителе по приключениям\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffКомплекты трансмогрификации|r\n" ..
-    "        Сохраненные комплекты появляются в результатах, щелкните, чтобы надеть\n" ..
-    "        Просматривайте окно трансмогрификации без торговца (ищите «tmog»)\n" ..
-    "\n|cff999999Включите «Добыча» и «Комплекты» в меню фильтров (кнопка-стрелка\n" ..
-    "в строке поиска), чтобы увидеть эти результаты.|r"
+    "|cffFFD100\226\128\162|r |cffffffffБыстрые клавиши|r\n" ..
+    "        Щёлкните результат ПКМ и задайте свою быструю клавишу\n" ..
+    "        Быстрая клавиша открывает результат одним нажатием\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffСсылки Wowhead|r\n" ..
+    "        ПКМ по предметам, заклинаниям, маунтам, достижениям и др.\n" ..
+    "        для копирования ссылки Wowhead"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Добавить псевдоним"

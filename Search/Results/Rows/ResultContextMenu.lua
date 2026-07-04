@@ -98,6 +98,7 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
     end
 
     extra = extra or {}
+    extra.disabled = (row.isUnearnedCurrency or row.lockedReason) and true or nil
     local wowheadUrl = ns.GetWowheadLink and ns.GetWowheadLink(pinData)
     if wowheadUrl then
         extra.onWowhead = function()

@@ -115,6 +115,13 @@ L["OPT_ADDON_NAME"]                     = "EasyFind"
 L["OPT_ICON_SIZE"]                      = "Dimensione icone"
 L["OPT_FONT_SIZE"]                      = "Dimensione carattere"
 L["OPT_WOWHEAD_LOCALE"]                 = "Lingua di Wowhead"
+L["OPT_WOWHEAD_LOCALE_TT"]              = "Lingua dei link Wowhead copiati. Auto segue la lingua del client di gioco."
+L["OPT_FONT_SIZE_TT"]                   = "Dimensione del testo nella barra di ricerca e nella lista dei risultati."
+L["OPT_SEARCH_SCALE_TT"]                = "Scala l'intera finestra di ricerca (barra, risultati, finestre) indipendentemente dalla scala dell'interfaccia di gioco."
+L["OPT_RESULT_ROWS_TT"]                 = "Quante righe di risultati sono visibili prima che la lista scorra."
+L["OPT_SEARCH_OPACITY_TT"]              = "Opacità dello sfondo solo di barra di ricerca e finestra dei risultati; testo e icone restano opachi."
+L["OPT_EXPORT_BTN_TT"]                  = "Copia un codice condivisibile con i tuoi alias e le scorciatoie. L'ingranaggio sceglie cosa includere."
+L["OPT_IMPORT_BTN_TT"]                  = "Incolla un codice condiviso per aggiungere i suoi alias e le scorciatoie su questo account."
 L["WOWHEAD_LOCALE_AUTO"]                = "Automatico"
 L["OPT_CLEAR_ALL_BTN"]                  = "Cancella tutto"
 L["OPT_LOGIN_MESSAGE_TT"]               = "Mostra un breve messaggio «EasyFind caricato!» in chat all'accesso.\n\nDisattiva per mantenere la chat più pulita."
@@ -213,25 +220,23 @@ L["TUT_BTN_BACK"]                       = "Indietro"
 L["TUT_BTN_BACK_ARROW"]                 = "< Indietro"
 L["TUT_KB_PRESS_KEY"]                   = "Premi un tasto…"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - Novità"
-L["WHATSNEW_FULL_CHANGELOG"]            = "Registro modifiche completo su CurseForge e GitHub"
+L["WHATSNEW_CHANGELOG_BTN"]             = "Vedi tutte le modifiche"
+L["WHATSNEW_COPY_HINT"]                 = "Premi Ctrl+C per copiare il link del registro modifiche completo:"
 L["WHATSNEW_GOT_IT"]                    = "Capito"
-L["MSG_CURRENCY_WATCH_LIMIT"]                    = "You may only watch %d currencies at a time"
-L["POPUP_UNAPPLIED_SETTINGS"]                    = "You have settings that have not been applied.\nAre you sure you wish to exit?"
-L["POPUP_UNAPPLIED_EXIT"]                    = "Exit"
-L["POPUP_UNAPPLIED_APPLY"]                    = "Apply and Exit"
-L["POPUP_UNAPPLIED_CANCEL"]                    = "Cancel"
-L["WHATSNEW_CHAT_HELLO"]                = "Welcome to EasyFind v%s! See update summary %s."
-L["WHATSNEW_CHAT_HERE"]                 = "here"
+L["MSG_CURRENCY_WATCH_LIMIT"]           = "Puoi tenere d'occhio solo %d valute alla volta"
+L["POPUP_UNAPPLIED_SETTINGS"]           = "Ci sono impostazioni non ancora applicate.\nVuoi davvero uscire?"
+L["POPUP_UNAPPLIED_EXIT"]               = "Esci"
+L["POPUP_UNAPPLIED_APPLY"]              = "Applica ed esci"
+L["POPUP_UNAPPLIED_CANCEL"]             = "Annulla"
+L["WHATSNEW_CHAT_HELLO"]                = "Benvenuto in EasyFind v%s! Guarda il riepilogo delle novità %s."
+L["WHATSNEW_CHAT_HERE"]                 = "qui"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffRicerca bottino|r\n" ..
-    "        Cerca il bottino di spedizioni e incursioni per nome, slot, statistiche o fonte\n" ..
-    "        Filtra per classe, specializzazione e difficoltà\n" ..
-    "        Clicca per andare direttamente all'oggetto nel Compendio delle Avventure\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffCostumi trasmogrificazione|r\n" ..
-    "        I costumi salvati appaiono nei risultati, clicca per equipaggiare\n" ..
-    "        Sfoglia la finestra di trasmogrificazione senza venditore (cerca «tmog»)\n" ..
-    "\n|cff999999Attiva Bottino e Costumi nel menu dei filtri (pulsante freccia\n" ..
-    "nella barra di ricerca) per vedere questi risultati.|r"
+    "|cffFFD100\226\128\162|r |cffffffffScorciatoie|r\n" ..
+    "        Clic destro su un risultato per assegnare una tua scorciatoia\n" ..
+    "        Le scorciatoie aprono un risultato con una sola pressione\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffLink Wowhead|r\n" ..
+    "        Clic destro su oggetti, incantesimi, cavalcature, imprese e altro\n" ..
+    "        per copiare il link Wowhead"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Aggiungi alias"

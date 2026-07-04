@@ -65,13 +65,6 @@ local DEFAULT_UI_FILTERS = {
     bosses = true, gearSets = true, talents = true, titles = true,
     map = true,
 }
-local DEFAULT_GLOBAL_SEARCH_FILTERS = { zones = true, dungeons = true, raids = true, delves = true }
-local DEFAULT_LOCAL_SEARCH_FILTERS = { instances = true, travel = true, services = true, rares = true }
-local DEFAULT_MAP_TAB_FILTERS = {
-    zones = true, instances = true, flightpath = false, travel = true,
-    services = true, rares = true,
-}
-
 local UI_DEFAULTS = {
     smartShow = false,
     autoHide = true,
@@ -113,16 +106,13 @@ local UI_DEFAULTS = {
     uiMapSearchLocal = true,
 }
 
-local MAP_DEFAULTS = {
-    iconScale = 0.8,
-    mapPinHighlight = true,
-    blinkingPins = false,
-    autoPinClear = true,
-    autoTrackPins = true,
-    globalSearchFilters = DEFAULT_GLOBAL_SEARCH_FILTERS,
-    localSearchFilters = DEFAULT_LOCAL_SEARCH_FILTERS,
-    mapTabFilters = DEFAULT_MAP_TAB_FILTERS,
-    alwaysShowRares = false,
+-- Restored from ns.DB_DEFAULTS so the reset can never drift from the
+-- first-run defaults (a duplicated copy here once re-enabled auto-track).
+local MAP_RESET_KEYS = {
+    "iconScale", "mapPinHighlight", "blinkingPins", "autoPinClear",
+    "autoTrackPins", "globalSearchFilters", "localSearchFilters",
+    "mapTabFilters", "alwaysShowRares", "mapTabShowRecent",
+    "mapTabAutoExpand", "mapTabRecentCount",
 }
 
 local UI_POSITION_DEFAULTS = {
@@ -140,6 +130,18 @@ local function ApplyDefaults(defaults)
         if value == NIL then
             EasyFind.db[key] = nil
         elseif type(value) == "table" then
+            EasyFind.db[key] = CloneTable(value)
+        else
+            EasyFind.db[key] = value
+        end
+    end
+end
+
+local function ApplyDefaultKeys(keys)
+    for i = 1, #keys do
+        local key = keys[i]
+        local value = ns.DB_DEFAULTS[key]
+        if type(value) == "table" then
             EasyFind.db[key] = CloneTable(value)
         else
             EasyFind.db[key] = value
@@ -481,18 +483,16 @@ local function CreateCheckbox(parent, name, label, tooltipText, compact, width)
     checkbox:HookScript("OnEnter", function(self)
         self._efHover = true
         UpdateVisual(self)
-        if tooltipText then
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(label)
-            GameTooltip:AddLine(tooltipText, 1, 1, 1, true)
-            GameTooltip:Show()
-        end
     end)
     checkbox:HookScript("OnLeave", function(self)
         self._efHover = nil
         UpdateVisual(self)
-        if tooltipText then GameTooltip_Hide() end
     end)
+    if tooltipText then
+        Utils.AttachDelayedTooltip(checkbox, "ANCHOR_RIGHT", function()
+            return label, tooltipText
+        end)
+    end
     checkbox:HookScript("OnEnable", UpdateVisual)
     checkbox:HookScript("OnDisable", UpdateVisual)
 
@@ -515,43 +515,10 @@ local function TintRoundedFill(frame, r, g, b)
     ns.SetRoundedRectFill(frame, r, g, b, 1, true)
 end
 
-local function ApplyWizardPanelGloss(frame)
-    local fill = frame.combinedBorder and frame.combinedBorder.fill
-    if not fill then return end
-    local H = frame:GetHeight()
-    if not H or H <= 0 then return end
-    local corner = (frame.cbBarHeight or 32) / 2
-    local darkFrac = 0.90
-    local function smoothstep(t)
-        if t <= 0 then return 0 end
-        if t >= 1 then return 1 end
-        return t * t * (3 - 2 * t)
-    end
-    local function lerp(a, b, t) return a + (b - a) * t end
-    local function colorAtY(y)
-        local t = y / H
-        if t < darkFrac then t = 0 else t = smoothstep((t - darkFrac) / (1 - darkFrac)) end
-        return lerp(0.022, 0.20, t), lerp(0.022, 0.20, t), lerp(0.030, 0.22, t)
-    end
-    local function ramp(cell, yTop, yBot)
-        if not cell then return end
-        local r1, g1, b1 = colorAtY(yTop)
-        local r2, g2, b2 = colorAtY(yBot)
-        cell:SetGradient("VERTICAL", CreateColor(r2, g2, b2, 1), CreateColor(r1, g1, b1, 1))
-    end
-    ramp(fill.tl, 0, corner); ramp(fill.tm, 0, corner); ramp(fill.tr, 0, corner)
-    ramp(fill.ml, corner, H - corner); ramp(fill.mm, corner, H - corner); ramp(fill.mr, corner, H - corner)
-    ramp(fill.bl, H - corner, H); ramp(fill.bm, H - corner, H); ramp(fill.br, H - corner, H)
-end
-
 local function StyleWizardBackground(frame)
-    ns.CreateRoundedRectBorder(frame)
-    ns.SetRoundedRectBarHeight(frame, 16)
-    ns.SetRoundedRectBorderBgAlpha(frame, OPTIONS_PANEL_ALPHA)
-    HideRoundedBorder(frame)
-    TintRoundedFill(frame, 0.04, 0.04, 0.05)
-    ApplyWizardPanelGloss(frame)
-    frame:HookScript("OnSizeChanged", ApplyWizardPanelGloss)
+    -- Panel translucency comes from the caller's frame-level SetAlpha
+    -- (OPTIONS_PANEL_ALPHA); the fill cells stay opaque.
+    ns.StyleWizardPanel(frame, 1)
 end
 
 local SetModernButtonFill = ns.SetRoundedRectBorderFillColor
@@ -673,23 +640,10 @@ local function CreateSegmentedPresetRow(parent, labelText, choices, getter, sett
             row:SetValue(value)
             RunSoon(function() setter(value) end)
         end)
-        btn:SetScript("OnEnter", function(self)
-            local tipTitle = choice.tooltip and choice.label or labelText
-            local tipBody = choice.tooltip or tooltipText
-            if not tipBody then return end
-            local token = (self._tooltipToken or 0) + 1
-            self._tooltipToken = token
-            Utils.SafeAfter(ns.TOOLTIP_HOVER_DELAY, function()
-                if self._tooltipToken ~= token or not self:IsMouseOver() then return end
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(tipTitle)
-                GameTooltip:AddLine(tipBody, 1, 1, 1, true)
-                GameTooltip:Show()
-            end)
-        end)
-        btn:SetScript("OnLeave", function(self)
-            self._tooltipToken = (self._tooltipToken or 0) + 1
-            GameTooltip_Hide()
+        Utils.AttachDelayedTooltip(btn, "ANCHOR_RIGHT", function(self)
+            local tipBody = self.choice.tooltip or tooltipText
+            if not tipBody then return nil end
+            return self.choice.tooltip and self.choice.label or labelText, tipBody
         end)
         row.buttons[i] = btn
     end
@@ -762,17 +716,15 @@ local function CreatePresetRow(parent, labelText, choices, getter, setter, toolt
         end)
         btn:SetScript("OnEnter", function(self)
             PaintPresetButton(self, row.activeValue == self.choice.value, true, row.enabled)
-            if tooltipText then
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(labelText)
-                GameTooltip:AddLine(tooltipText, 1, 1, 1, true)
-                GameTooltip:Show()
-            end
         end)
         btn:SetScript("OnLeave", function(self)
             PaintPresetButton(self, row.activeValue == self.choice.value, false, row.enabled)
-            if tooltipText then GameTooltip_Hide() end
         end)
+        if tooltipText then
+            Utils.AttachDelayedTooltip(btn, "ANCHOR_RIGHT", function()
+                return labelText, tooltipText
+            end)
+        end
         row.buttons[i] = btn
     end
 
@@ -834,13 +786,9 @@ local function CreateStepperRow(parent, labelText, minVal, maxVal, getter, sette
 
     if tooltipText then
         row:EnableMouse(true)
-        row:SetScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(labelText)
-            GameTooltip:AddLine(tooltipText, 1, 1, 1, true)
-            GameTooltip:Show()
+        Utils.AttachDelayedTooltip(row, "ANCHOR_RIGHT", function()
+            return labelText, tooltipText
         end)
-        row:SetScript("OnLeave", GameTooltip_Hide)
     end
 
     row.SetValue = function(_, value)
@@ -1335,7 +1283,7 @@ local function BuildSearchTab(ctx)
             if ns.Search and ns.Search.UpdateFontSize then
                 ns.Search:UpdateFontSize()
             end
-        end, "EasyFindFontSize", ns.DEFAULT_FONT_SIZE)
+        end, "EasyFindFontSize", ns.DEFAULT_FONT_SIZE, L["OPT_FONT_SIZE_TT"])
     uiFontPresetRow:SetPoint("TOPLEFT", resultsDirectionRow, "BOTTOMLEFT", 0, -8)
     optionsFrame.uiFontPresetRow = uiFontPresetRow
 
@@ -1354,7 +1302,7 @@ local function BuildSearchTab(ctx)
             -- bar scale. Keep its own scale at 1.0 so it is not scaled twice.
             EasyFind.db.uiResultsScale = 1.0
             if ns.Search and ns.Search.UpdateScale then ns.Search:UpdateScale() end
-        end, "EasyFindSearchScale", 1.0)
+        end, "EasyFindSearchScale", 1.0, L["OPT_SEARCH_SCALE_TT"])
     scaleRow:SetPoint("TOPLEFT", uiFontPresetRow, "BOTTOMLEFT", 0, -8)
     optionsFrame.searchScaleRow = scaleRow
 
@@ -1374,7 +1322,7 @@ local function BuildSearchTab(ctx)
             RunSoon(function()
                 if ns.Search and ns.Search.RefreshResults then ns.Search:RefreshResults() end
             end)
-        end, "EasyFindResultRows", 6)
+        end, "EasyFindResultRows", 6, L["OPT_RESULT_ROWS_TT"])
     resultRowsRow:SetPoint("TOPLEFT", scaleRow, "BOTTOMLEFT", 0, -8)
     optionsFrame.resultRowsRow = resultRowsRow
 
@@ -1391,7 +1339,7 @@ local function BuildSearchTab(ctx)
             RunSoon(function()
                 if ns.Search and ns.Search.UpdateOpacity then ns.Search:UpdateOpacity() end
             end)
-        end, "EasyFindOpacity", ns.SEARCH_WINDOW_ALPHA)
+        end, "EasyFindOpacity", ns.SEARCH_WINDOW_ALPHA, L["OPT_SEARCH_OPACITY_TT"])
     searchOpacityRow:SetPoint("TOPLEFT", resultRowsRow, "BOTTOMLEFT", 0, -8)
     optionsFrame.searchOpacityRow = searchOpacityRow
 
@@ -1436,6 +1384,13 @@ local function BuildSearchTab(ctx)
     end, WowheadFlyoutLabel)
     optionsFrame.wowheadBtnText = wowheadBtnText
     optionsFrame.wowheadFlyout = wowheadFlyout
+    wowheadRow:EnableMouse(true)
+    Utils.AttachDelayedTooltip(wowheadRow, "ANCHOR_RIGHT", function()
+        return L["OPT_WOWHEAD_LOCALE"], L["OPT_WOWHEAD_LOCALE_TT"]
+    end)
+    Utils.AttachDelayedTooltip(wowheadBtnFrame, "ANCHOR_RIGHT", function()
+        return L["OPT_WOWHEAD_LOCALE"], L["OPT_WOWHEAD_LOCALE_TT"]
+    end)
 
     optionsFrame:HookScript("OnShow", function(self)
         if ns.RegisterAddonFontsIn then ns.RegisterAddonFontsIn(self) end
@@ -1770,9 +1725,10 @@ local function BuildAliasesTab(ctx)
     end
     local CHECK_TEX = "Interface\\Buttons\\UI-CheckBox-Check"
     local cogBtn
+    local exportMenu
     local ShowExportScopeMenu
     ShowExportScopeMenu = function()
-        Utils.ShowCursorMenu("EasyFindExportScopeMenu", {
+        exportMenu = Utils.ShowCursorMenu("EasyFindExportScopeMenu", {
             { text = L["SHORTKEY_SCOPE_ALIASES"], icon = exportInclAlias and CHECK_TEX or nil,
               onClick = function() exportInclAlias = not exportInclAlias; ShowExportScopeMenu() end },
             { text = L["SHORTKEY_SCOPE_SHORTKEYS"], icon = exportInclShortkey and CHECK_TEX or nil,
@@ -1782,6 +1738,7 @@ local function BuildAliasesTab(ctx)
             -- anchor under the cog so toggling a box doesn't move the menu.
             stayOpen = true,
             anchorFrame = cogBtn,
+            toggleOwner = cogBtn,
             point = "TOPRIGHT", relativePoint = "BOTTOMRIGHT", offsetY = -2,
         })
     end
@@ -1813,9 +1770,11 @@ local function BuildAliasesTab(ctx)
         ns.SetRoundedRectBorderShown(boxFrame, false)
         ns.SetRoundedRectFill(boxFrame, 0.02, 0.02, 0.03, 1)
 
-        local scroll = CreateFrame("ScrollFrame", "EasyFindShareScroll", boxFrame, "UIPanelScrollFrameTemplate")
+        -- Plain ScrollFrame + the minimal overlay scrollbar the results
+        -- window uses; the Blizzard template's arrow-button bar reads dated.
+        local scroll = CreateFrame("ScrollFrame", "EasyFindShareScroll", boxFrame)
         scroll:SetPoint("TOPLEFT", 8, -8)
-        scroll:SetPoint("BOTTOMRIGHT", -26, 8)
+        scroll:SetPoint("BOTTOMRIGHT", -14, 8)
         local eb = CreateFrame("EditBox", nil, scroll)
         eb:SetMultiLine(true)
         eb:SetAutoFocus(false)
@@ -1824,6 +1783,7 @@ local function BuildAliasesTab(ctx)
         eb:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
         scroll:SetScrollChild(eb)
         f.editBox = eb
+        Utils.CreateMinimalScrollBar(scroll, boxFrame)
 
         local closeBtn = ns.CreateModernButton(f, _G["CLOSE"] or "Close", 80, 22)
         closeBtn:SetPoint("BOTTOMRIGHT", -14, 12)
@@ -1917,12 +1877,25 @@ local function BuildAliasesTab(ctx)
     cogTex:SetSize(15, 15)
     cogTex:SetAtlas("QuestLog-icon-setting")
     cogBtn:SetHighlightTexture("Interface\\Buttons\\UI-Common-MouseHilight", "ADD")
-    cogBtn:SetScript("OnClick", ShowExportScopeMenu)
+    cogBtn:SetScript("OnClick", function()
+        if exportMenu and exportMenu:IsShown() then
+            exportMenu:Hide()
+        else
+            ShowExportScopeMenu()
+        end
+    end)
 
     local importBtn = CreateModernButton(shareTools, L["SHORTKEY_IMPORT"], SHARE_BTN_W, 22)
     importBtn:SetPoint("LEFT", exportBtn, "RIGHT", 8, 0)
     UseShareButtonFill(importBtn)
     importBtn:SetScript("OnClick", function() ShowShareString(false) end)
+
+    Utils.AttachDelayedTooltip(exportBtn, "ANCHOR_TOP", function()
+        return L["SHORTKEY_EXPORT"], L["OPT_EXPORT_BTN_TT"]
+    end)
+    Utils.AttachDelayedTooltip(importBtn, "ANCHOR_TOP", function()
+        return L["SHORTKEY_IMPORT"], L["OPT_IMPORT_BTN_TT"]
+    end)
 
     -- Column geometry shared by the header and every row so they line up. Rows
     -- sit at the scroll inset (6) + row inset (4) = 10 from the table's left and
@@ -2249,14 +2222,9 @@ local function BuildAliasesTab(ctx)
     resetAllBtn:SetScript("OnClick", function()
         Options:ConfirmResetAll()
     end)
-    resetAllBtn:HookScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine(L["OPT_RESET_ALL_SETTINGS"])
-        GameTooltip:AddLine(L["OPT_RESET_ALL_TT_DESC"], 1, 1, 1, true)
-        GameTooltip:AddLine(L["OPT_RESET_ALL_TT_CMD"], 0.7, 0.7, 0.7)
-        GameTooltip:Show()
+    Utils.AttachDelayedTooltip(resetAllBtn, "ANCHOR_TOP", function()
+        return L["OPT_RESET_ALL_SETTINGS"], L["OPT_RESET_ALL_TT_DESC"], L["OPT_RESET_ALL_TT_CMD"]
     end)
-    resetAllBtn:HookScript("OnLeave", GameTooltip_Hide)
 
     local resetPosBtn = CreateModernButton(sec3)
     resetPosBtn:SetSize(RESET_BTN_W, 20)
@@ -2265,14 +2233,9 @@ local function BuildAliasesTab(ctx)
     resetPosBtn:SetScript("OnClick", function()
         ShowResetConfirm(L["POPUP_RESET_ALL_POSITIONS"], function() Options:DoResetPositions() end)
     end)
-    resetPosBtn:HookScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine(L["OPT_RESET_ALL_POSITIONS"])
-        GameTooltip:AddLine(L["OPT_RESET_POS_TT_DESC"], 1, 1, 1, true)
-        GameTooltip:AddLine(L["OPT_RESET_POS_TT_CMD"], 0.7, 0.7, 0.7)
-        GameTooltip:Show()
+    Utils.AttachDelayedTooltip(resetPosBtn, "ANCHOR_TOP", function()
+        return L["OPT_RESET_ALL_POSITIONS"], L["OPT_RESET_POS_TT_DESC"], L["OPT_RESET_POS_TT_CMD"]
     end)
-    resetPosBtn:HookScript("OnLeave", GameTooltip_Hide)
 
 end
 
@@ -2294,14 +2257,9 @@ local function BuildFeedbackTab(ctx)
     bugBtn:SetScript("OnClick", function()
         EasyFind:OpenBugReport()
     end)
-    bugBtn:HookScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine(L["OPT_REPORT_BUG"])
-        GameTooltip:AddLine(L["OPT_REPORT_BUG_TT_DESC"], 1, 1, 1, true)
-        GameTooltip:AddLine(L["OPT_REPORT_BUG_TT_CMD"], 0.7, 0.7, 0.7)
-        GameTooltip:Show()
+    Utils.AttachDelayedTooltip(bugBtn, "ANCHOR_TOP", function()
+        return L["OPT_REPORT_BUG"], L["OPT_REPORT_BUG_TT_DESC"], L["OPT_REPORT_BUG_TT_CMD"]
     end)
-    bugBtn:HookScript("OnLeave", GameTooltip_Hide)
 
     local featureBtn = CreateModernButton(feedbackTab)
     featureBtn:SetSize(RESET_BTN_W, 20)
@@ -2310,14 +2268,9 @@ local function BuildFeedbackTab(ctx)
     featureBtn:SetScript("OnClick", function()
         EasyFind:OpenFeatureRequest()
     end)
-    featureBtn:HookScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_TOP")
-        GameTooltip:AddLine(L["OPT_REQUEST_FEATURE"])
-        GameTooltip:AddLine(L["OPT_REQUEST_FEATURE_TT_DESC"], 1, 1, 1, true)
-        GameTooltip:AddLine(L["OPT_REQUEST_FEATURE_TT_CMD"], 0.7, 0.7, 0.7)
-        GameTooltip:Show()
+    Utils.AttachDelayedTooltip(featureBtn, "ANCHOR_TOP", function()
+        return L["OPT_REQUEST_FEATURE"], L["OPT_REQUEST_FEATURE_TT_DESC"], L["OPT_REQUEST_FEATURE_TT_CMD"]
     end)
-    featureBtn:HookScript("OnLeave", GameTooltip_Hide)
 end
 
 function Options:Initialize()
@@ -2569,14 +2522,9 @@ function Options:Initialize()
     end
 
     local function MakeKeybindTooltip(keybindBtn, titleText, line1)
-        keybindBtn:HookScript("OnEnter", function(self)
-            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-            GameTooltip:SetText(titleText)
-            GameTooltip:AddLine(line1, 1, 1, 1, true)
-            GameTooltip:AddLine(L["OPT_KB_CLEAR_HINT"], 0.7, 0.7, 0.7, true)
-            GameTooltip:Show()
+        Utils.AttachDelayedTooltip(keybindBtn, "ANCHOR_RIGHT", function()
+            return titleText, line1, L["OPT_KB_CLEAR_HINT"]
         end)
-        keybindBtn:HookScript("OnLeave", GameTooltip_Hide)
     end
 
     local SELECTOR_ROW_W = FRAME_W - 16
@@ -2586,7 +2534,7 @@ function Options:Initialize()
     -- getter/setter as CreatePresetRow, but a single dropdown (like the indicator
     -- selector) instead of a button row. globalPrefix names the flyout frames and
     -- must be unique. Returns the row, which carries :SetValue for refresh.
-    local function CreateFlyoutPresetRow(parent, labelText, choices, getter, setter, globalPrefix, defaultValue)
+    local function CreateFlyoutPresetRow(parent, labelText, choices, getter, setter, globalPrefix, defaultValue, tooltipText)
         local row = CreateFrame("Frame", nil, parent)
         row:SetSize(SELECTOR_ROW_W, 24)
         local label = row:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
@@ -2619,6 +2567,16 @@ function Options:Initialize()
             setter(value)
             btnText:SetText(LabelFor(value))
         end, FlyoutLabelFor)
+
+        if tooltipText then
+            row:EnableMouse(true)
+            Utils.AttachDelayedTooltip(row, "ANCHOR_RIGHT", function()
+                return labelText, tooltipText
+            end)
+            Utils.AttachDelayedTooltip(btnFrame, "ANCHOR_RIGHT", function()
+                return labelText, tooltipText
+            end)
+        end
 
         row.flyout = flyout
         row.SetValue = function(self, value) btnText:SetText(LabelFor(value)) end
@@ -2687,7 +2645,7 @@ function Options:DoResetUI()
 end
 
 function Options:DoResetMap()
-    ApplyDefaults(MAP_DEFAULTS)
+    ApplyDefaultKeys(MAP_RESET_KEYS)
     SyncOptionControls()
     RefreshMapRuntime()
 end

@@ -126,6 +126,13 @@ L["OPT_ADDON_NAME"]                     = "EasyFind"
 L["OPT_ICON_SIZE"]                      = "Icon Size"
 L["OPT_FONT_SIZE"]                      = "Font Size"
 L["OPT_WOWHEAD_LOCALE"]                 = "Wowhead Language"
+L["OPT_WOWHEAD_LOCALE_TT"]              = "Language of copied Wowhead links. Auto follows your game client's language."
+L["OPT_FONT_SIZE_TT"]                   = "Text size inside the search bar and results list."
+L["OPT_SEARCH_SCALE_TT"]                = "Scales the whole search window (bar, results, popups) independently of the game's UI scale."
+L["OPT_RESULT_ROWS_TT"]                 = "How many result rows are visible before the list scrolls."
+L["OPT_SEARCH_OPACITY_TT"]              = "Background opacity of the search bar and results window only; text and icons stay fully opaque."
+L["OPT_EXPORT_BTN_TT"]                  = "Copy a shareable code of your aliases and shortkeys. The cog picks what is included."
+L["OPT_IMPORT_BTN_TT"]                  = "Paste a shared code to add its aliases and shortkeys on this account."
 L["WOWHEAD_LOCALE_AUTO"]                = "Auto"
 L["OPT_CLEAR_ALL_BTN"]                  = "Clear All"
 
@@ -235,7 +242,8 @@ L["TUT_BTN_BACK_ARROW"]                 = "< Back"
 L["TUT_KB_PRESS_KEY"]                   = "Press a key..."
 
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - New Features"
-L["WHATSNEW_FULL_CHANGELOG"]            = "Full changelog on CurseForge and GitHub"
+L["WHATSNEW_CHANGELOG_BTN"]             = "See full changelog"
+L["WHATSNEW_COPY_HINT"]                 = "Press Ctrl+C to copy the full changelog link:"
 L["WHATSNEW_GOT_IT"]                    = "Got it"
 L["MSG_CURRENCY_WATCH_LIMIT"]           = "You may only watch %d currencies at a time"
 L["POPUP_UNAPPLIED_SETTINGS"]           = "You have settings that have not been applied.\nAre you sure you wish to exit?"
@@ -246,15 +254,12 @@ L["WHATSNEW_CHAT_HELLO"]                = "Welcome to EasyFind v%s! See update s
 L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffLoot Search|r\n" ..
-    "        Search dungeon and raid loot by name, slot, stats, or source\n" ..
-    "        Filter by class, spec, and difficulty\n" ..
-    "        Click to navigate directly to the item in the Encounter Journal\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffTransmog Outfits|r\n" ..
-    "        Saved outfits appear in search results, click to equip\n" ..
-    "        Browse the transmog window without a vendor (search \"tmog\")\n" ..
-    "\n|cff999999Enable Loot and Outfits in the filter dropdown (arrow button\n" ..
-    "inside the search bar) to see these results.|r"
+    "|cffFFD100\226\128\162|r |cffffffffShortkeys|r\n" ..
+    "        Right-click any result to bind your own shortkey\n" ..
+    "        Shortkeys open a result with a single keypress\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffWowhead Links|r\n" ..
+    "        Right-click items, spells, mounts, achievements and more\n" ..
+    "        for a copy-ready Wowhead link"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels

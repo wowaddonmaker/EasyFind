@@ -115,6 +115,13 @@ L["OPT_ADDON_NAME"]                     = "EasyFind"
 L["OPT_ICON_SIZE"]                      = "Taille des icônes"
 L["OPT_FONT_SIZE"]                      = "Taille de police"
 L["OPT_WOWHEAD_LOCALE"]                 = "Langue de Wowhead"
+L["OPT_WOWHEAD_LOCALE_TT"]              = "Langue des liens Wowhead copiés. Auto suit la langue de votre client de jeu."
+L["OPT_FONT_SIZE_TT"]                   = "Taille du texte dans la barre de recherche et la liste des résultats."
+L["OPT_SEARCH_SCALE_TT"]                = "Met à l'échelle toute la fenêtre de recherche (barre, résultats, fenêtres) indépendamment de l'échelle de l'interface du jeu."
+L["OPT_RESULT_ROWS_TT"]                 = "Nombre de lignes de résultats visibles avant que la liste défile."
+L["OPT_SEARCH_OPACITY_TT"]              = "Opacité du fond de la barre de recherche et de la fenêtre de résultats uniquement ; le texte et les icônes restent opaques."
+L["OPT_EXPORT_BTN_TT"]                  = "Copiez un code à partager contenant vos alias et raccourcis. La roue choisit ce qui est inclus."
+L["OPT_IMPORT_BTN_TT"]                  = "Collez un code partagé pour ajouter ses alias et raccourcis sur ce compte."
 L["WOWHEAD_LOCALE_AUTO"]                = "Automatique"
 L["OPT_CLEAR_ALL_BTN"]                  = "Tout effacer"
 L["OPT_LOGIN_MESSAGE_TT"]               = "Affiche un bref message « EasyFind chargé ! » dans le canal de discussion à la connexion.\n\nDésactivez pour garder la discussion plus propre."
@@ -213,25 +220,23 @@ L["TUT_BTN_BACK"]                       = "Retour"
 L["TUT_BTN_BACK_ARROW"]                 = "< Retour"
 L["TUT_KB_PRESS_KEY"]                   = "Appuyez sur une touche…"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - Nouveautés"
-L["WHATSNEW_FULL_CHANGELOG"]            = "Journal des modifications complet sur CurseForge et GitHub"
+L["WHATSNEW_CHANGELOG_BTN"]             = "Voir tous les changements"
+L["WHATSNEW_COPY_HINT"]                 = "Appuyez sur Ctrl+C pour copier le lien du journal des modifications complet :"
 L["WHATSNEW_GOT_IT"]                    = "Compris"
-L["MSG_CURRENCY_WATCH_LIMIT"]                    = "You may only watch %d currencies at a time"
-L["POPUP_UNAPPLIED_SETTINGS"]                    = "You have settings that have not been applied.\nAre you sure you wish to exit?"
-L["POPUP_UNAPPLIED_EXIT"]                    = "Exit"
-L["POPUP_UNAPPLIED_APPLY"]                    = "Apply and Exit"
-L["POPUP_UNAPPLIED_CANCEL"]                    = "Cancel"
-L["WHATSNEW_CHAT_HELLO"]                = "Welcome to EasyFind v%s! See update summary %s."
-L["WHATSNEW_CHAT_HERE"]                 = "here"
+L["MSG_CURRENCY_WATCH_LIMIT"]           = "Vous ne pouvez suivre que %d monnaies à la fois"
+L["POPUP_UNAPPLIED_SETTINGS"]           = "Certains réglages n'ont pas été appliqués.\nVoulez-vous vraiment quitter ?"
+L["POPUP_UNAPPLIED_EXIT"]               = "Quitter"
+L["POPUP_UNAPPLIED_APPLY"]              = "Appliquer et quitter"
+L["POPUP_UNAPPLIED_CANCEL"]             = "Annuler"
+L["WHATSNEW_CHAT_HELLO"]                = "Bienvenue dans EasyFind v%s ! Consultez le résumé des nouveautés %s."
+L["WHATSNEW_CHAT_HERE"]                 = "ici"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffRecherche de butin|r\n" ..
-    "        Cherchez le butin de donjon et de raid par nom, emplacement, stats ou source\n" ..
-    "        Filtrez par classe, spécialisation et difficulté\n" ..
-    "        Cliquez pour aller directement à l'objet dans le Guide d'aventure\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffTenues de transmogrification|r\n" ..
-    "        Les tenues enregistrées apparaissent dans les résultats, cliquez pour équiper\n" ..
-    "        Parcourez la fenêtre de transmogrification sans marchand (cherchez « tmog »)\n" ..
-    "\n|cff999999Activez Butin et Tenues dans le menu de filtres (bouton flèche\n" ..
-    "dans la barre de recherche) pour voir ces résultats.|r"
+    "|cffFFD100\226\128\162|r |cffffffffRaccourcis|r\n" ..
+    "        Clic droit sur un résultat pour définir votre propre raccourci\n" ..
+    "        Les raccourcis ouvrent un résultat d'une seule touche\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffLiens Wowhead|r\n" ..
+    "        Clic droit sur objets, sorts, montures, hauts faits et plus\n" ..
+    "        pour un lien Wowhead prêt à copier"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Ajouter un alias"

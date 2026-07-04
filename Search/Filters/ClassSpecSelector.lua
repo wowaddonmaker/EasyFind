@@ -9,6 +9,7 @@ local C_Timer = C_Timer
 local UIParent = UIParent
 local ipairs = Utils.ipairs
 local sformat = string.format
+local mmax, mceil = math.max, math.ceil
 local UnitClass = UnitClass
 local GetNumClasses = GetNumClasses
 local GetClassInfo = GetClassInfo
@@ -52,9 +53,14 @@ local function PlayerSpecID()
     if si and GetSpecializationInfo then return (GetSpecializationInfo(si)) end
 end
 
+-- Radio label inset inside its row: 4 left margin + 14 radio + 4 gap.
+local RADIO_TEXT_INSET = 22
+-- Rows sit 8 px from each popup edge.
+local POPUP_MARGIN = 8
+
 local function CreateRadioRow(parent, width)
     local btn = CreateFrame("Button", nil, parent)
-    btn:SetSize(width - 16, FLYOUT_ROW_H)
+    btn:SetSize(width - POPUP_MARGIN * 2, FLYOUT_ROW_H)
     local tex = btn:CreateTexture(nil, "ARTWORK")
     tex:SetSize(14, 14)
     tex:SetTexture(RADIO_OFF_TEX)
@@ -65,6 +71,14 @@ local function CreateRadioRow(parent, width)
     btn._label = lbl
     btn._setChecked = function(on) tex:SetTexture(on and RADIO_ON_TEX or RADIO_OFF_TEX) end
     return btn
+end
+
+-- Popup width fitting the widest radio-row label (plus any wider custom row
+-- content the caller measured itself), clamped to the shared minimum.
+local function FitPopupWidth(rows, count, extraContentW)
+    local contentW = RADIO_TEXT_INSET + Utils.MaxRowLabelWidth(rows, count)
+    if extraContentW and extraContentW > contentW then contentW = extraContentW end
+    return mmax(ns.FLYOUT_MIN_WIDTH, mceil(contentW) + POPUP_MARGIN * 2)
 end
 
 -- A class (+spec) dropdown matching the gear filter's selector, reusable across
@@ -230,7 +244,9 @@ function Filters:BuildClassSpecSelector(opts)
                 r._setChecked(r._classID and IsMatch({ classID = r._classID }) or (not r._classID and IsMatch("all")))
                 py = py - FLYOUT_ROW_H
             end
-            specPopup:SetSize(POPUP_WIDTH, -py + 6)
+            local w = FitPopupWidth(rows)
+            for _, r in ipairs(rows) do r:SetWidth(w - POPUP_MARGIN * 2) end
+            specPopup:SetSize(w, -py + 6)
             Utils.RefreshMenuRowHighlights(specPopup, rows)
         end
         GetPopupNavRows = function() return rows end
@@ -293,7 +309,9 @@ function Filters:BuildClassSpecSelector(opts)
                 r._setChecked(IsClassMatch(r._val))
                 fy = fy - FLYOUT_ROW_H
             end
-            classFlyout:SetSize(FLYOUT_WIDTH, -fy + 6)
+            local w = FitPopupWidth(flyoutRows)
+            for _, r in ipairs(flyoutRows) do r:SetWidth(w - POPUP_MARGIN * 2) end
+            classFlyout:SetSize(w, -fy + 6)
             Utils.RefreshMenuRowHighlights(classFlyout, flyoutRows)
         end
 
@@ -340,7 +358,9 @@ function Filters:BuildClassSpecSelector(opts)
             if not cls then
                 classHeader:Hide()
                 for _, r in ipairs(specRows) do r:Hide() end
-                specPopup:SetSize(POPUP_WIDTH, -py + 6)
+                local w = FitPopupWidth(specRows, 0, 8 + (crLabel:GetStringWidth() or 0) + 24)
+                classRow:SetWidth(w - POPUP_MARGIN * 2)
+                specPopup:SetSize(w, -py + 6)
                 Utils.RefreshMenuRowHighlights(specPopup)
                 return
             end
@@ -375,7 +395,14 @@ function Filters:BuildClassSpecSelector(opts)
                 ri = ri + 1
             end
             for hi = ri, MAX_SPECS do specRows[hi]:Hide() end
-            specPopup:SetSize(POPUP_WIDTH, -py + 6)
+            -- "Class >" reserves its flyout arrow; the header is a plain label.
+            local extraW = mmax(8 + (crLabel:GetStringWidth() or 0) + 24,
+                8 + (chLabel:GetStringWidth() or 0))
+            local w = FitPopupWidth(specRows, ri - 1, extraW)
+            classRow:SetWidth(w - POPUP_MARGIN * 2)
+            classHeader:SetWidth(w - POPUP_MARGIN * 2)
+            for si = 1, ri - 1 do specRows[si]:SetWidth(w - POPUP_MARGIN * 2) end
+            specPopup:SetSize(w, -py + 6)
             Utils.RefreshMenuRowHighlights(specPopup)
         end
 

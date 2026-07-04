@@ -11,6 +11,7 @@ local mmin, mmax, mabs, mpi, mceil, mfloor = math.min, math.max, math.abs, math.
 local pcall, xpcall, tostring, tonumber = pcall, xpcall, tostring, tonumber
 local debugstack = debugstack
 local CreateFrame = CreateFrame
+local CreateColor = CreateColor
 
 local function ErrorHandler(err)
     return tostring(err) .. "\n" .. debugstack(2)
@@ -721,9 +722,36 @@ end
 
 ns.GOLD_COLOR = {1.0, 0.82, 0.0}
 ns.YELLOW_HIGHLIGHT = {1, 1, 0}
+-- Filter flyouts and selector popups size to their widest row, never
+-- narrower than this.
+ns.FLYOUT_MIN_WIDTH = 110
 ns.SEARCH_WINDOW_ALPHA = 0.95
 -- Initial hover delay before supplementary tooltips appear.
-ns.TOOLTIP_HOVER_DELAY = 0.7
+ns.TOOLTIP_HOVER_DELAY = 0.4
+
+-- Standard delayed hover tooltip. resolve(frame) returns title, body and an
+-- optional dim third line; returning nothing shows nothing. Hooks (never
+-- sets) OnEnter/OnLeave so it composes with a control's own hover visuals.
+function Utils.AttachDelayedTooltip(frame, anchor, resolve)
+    frame:HookScript("OnEnter", function(self)
+        local token = (self._efTipToken or 0) + 1
+        self._efTipToken = token
+        Utils.SafeAfter(ns.TOOLTIP_HOVER_DELAY, function()
+            if self._efTipToken ~= token or not self:IsMouseOver() then return end
+            local title, body, dimLine = resolve(self)
+            if not title and not body then return end
+            GameTooltip:SetOwner(self, anchor or "ANCHOR_RIGHT")
+            if title then GameTooltip:SetText(title) end
+            if body then GameTooltip:AddLine(body, 1, 1, 1, true) end
+            if dimLine then GameTooltip:AddLine(dimLine, 0.7, 0.7, 0.7, true) end
+            GameTooltip:Show()
+        end)
+    end)
+    frame:HookScript("OnLeave", function(self)
+        self._efTipToken = (self._efTipToken or 0) + 1
+        GameTooltip_Hide()
+    end)
+end
 function ns.GetSearchWindowAlpha()
     local db = EasyFind and EasyFind.db
     if db and type(db.searchWindowOpacity) == "number" then
@@ -1037,6 +1065,76 @@ function ns.SetRoundedRectBorderEdgeShown(frame, shown)
     for _, t in pairs(frame.combinedBorder.border) do t:SetShown(shown) end
 end
 
+-- Wizard-style panel gloss shared by the tutorial wizard, options panel, and
+-- What's New popup. A single vertical gradient is mapped across the 9-slice
+-- fill; each cell's gradient stops are sampled from its vertical position in
+-- the frame. The brightness ramp is packed into the bottom 10% so 8-bit
+-- banding collapses into a couple-pixel transition, with smoothstep so the
+-- slope varies and bands cannot space evenly.
+local GLOSS_DARK_FRAC = 0.90
+
+local function GlossSmoothstep(t)
+    if t <= 0 then return 0 end
+    if t >= 1 then return 1 end
+    return t * t * (3 - 2 * t)
+end
+
+local function GlossLerp(a, b, t) return a + (b - a) * t end
+
+local function GlossColorAt(y, height)
+    local t = y / height
+    if t < GLOSS_DARK_FRAC then
+        t = 0
+    else
+        t = GlossSmoothstep((t - GLOSS_DARK_FRAC) / (1 - GLOSS_DARK_FRAC))
+    end
+    return GlossLerp(0.022, 0.20, t), GlossLerp(0.022, 0.20, t), GlossLerp(0.030, 0.22, t)
+end
+
+local function GlossRamp(cell, yTop, yBot, height)
+    if not cell then return end
+    local r1, g1, b1 = GlossColorAt(yTop, height)
+    local r2, g2, b2 = GlossColorAt(yBot, height)
+    -- VERTICAL: first color is bottom, second is top.
+    cell:SetGradient("VERTICAL", CreateColor(r2, g2, b2, 1), CreateColor(r1, g1, b1, 1))
+end
+
+function ns.ApplyWizardPanelGloss(frame)
+    local fill = frame.combinedBorder and frame.combinedBorder.fill
+    if not fill then return end
+    local height = frame:GetHeight()
+    if not height or height <= 0 then return end
+    local corner = (frame.cbBarHeight or 32) / 2
+    GlossRamp(fill.tl, 0, corner, height)
+    GlossRamp(fill.tm, 0, corner, height)
+    GlossRamp(fill.tr, 0, corner, height)
+    GlossRamp(fill.ml, corner, height - corner, height)
+    GlossRamp(fill.mm, corner, height - corner, height)
+    GlossRamp(fill.mr, corner, height - corner, height)
+    GlossRamp(fill.bl, height - corner, height, height)
+    GlossRamp(fill.bm, height - corner, height, height)
+    GlossRamp(fill.br, height - corner, height, height)
+end
+
+-- One-call background for wizard-style panels: near-black rounded fill with
+-- relaxed pixel snapping, gloss gradient, border ring hidden (its corner
+-- cells band against the gradient fill). The alpha lands on the fill cells;
+-- callers that dim the whole frame instead pass 1.
+function ns.StyleWizardPanel(frame, alpha)
+    if not frame.combinedBorder then
+        ns.CreateRoundedRectBorder(frame)
+    end
+    ns.SetRoundedRectBarHeight(frame, 16)
+    ns.SetRoundedRectBorderEdgeShown(frame, false)
+    ns.SetRoundedRectFill(frame, 0.04, 0.04, 0.05, 1, true)
+    ns.SetRoundedRectBorderBgAlpha(frame, alpha or 1)
+    ns.ApplyWizardPanelGloss(frame)
+    if not frame._efWizardGlossHooked then
+        frame._efWizardGlossHooked = true
+        frame:HookScript("OnSizeChanged", ns.ApplyWizardPanelGloss)
+    end
+end
+
 local MENU_ROW_HIGHLIGHT_TEX = "Interface\\QuestFrame\\UI-QuestTitleHighlight"
 local MENU_ROW_EDGE_TOLERANCE = 16
 local MENU_ROW_MASK_TEX = {
@@ -1068,6 +1166,22 @@ function Utils.SetMenuRowHighlightPosition(row, position)
     if row.keyboardOverlay then
         ApplyMenuHighlightMask(row, row.keyboardOverlay, row._efMenuHighlightPosition)
     end
+end
+
+-- Widest label across popup rows (rows carry ._label or .text). Callers add
+-- their own row insets and margins, then clamp to ns.FLYOUT_MIN_WIDTH so
+-- flyouts hug their contents.
+function Utils.MaxRowLabelWidth(rows, count)
+    local maxW = 0
+    for i = 1, count or #rows do
+        local row = rows[i]
+        local label = row and (row._label or row.text)
+        if label and label.GetStringWidth then
+            local w = label:GetStringWidth() or 0
+            if w > maxW then maxW = w end
+        end
+    end
+    return maxW
 end
 
 function Utils.RefreshMenuRowHighlights(parent, orderedRows)
@@ -1652,6 +1766,12 @@ function ns.GetWowheadLink(data)
         kind, id = "spell", data.spellID
     elseif data.itemID and data.category == "Loot" then
         kind, id = "item", data.itemID
+    elseif data.isZone or data.isDungeonEntrance then
+        -- Wowhead's zone pages key on AreaTable ids, which have no client
+        -- mapping from uiMapID, so search the localized name -- it lands on
+        -- the zone or instance page. Generic POIs (flight masters, banks)
+        -- carry neither flag and stay linkless.
+        if data.name then query = data.name end
     end
 
     if not query and (not kind or not id) then return nil end
@@ -2882,7 +3002,7 @@ local function CursorMenuHasMouse(self)
 end
 
 local function CursorMenuIsSelectableRow(row)
-    return row and row:IsShown() and not row.isSeparator
+    return row and row:IsShown() and not row.isSeparator and not row.disabled
 end
 
 local function CursorMenuPaintKeyboardSelection(self)
@@ -3005,6 +3125,10 @@ end
 local function CursorMenuOnEvent(self, event)
     if event ~= "GLOBAL_MOUSE_DOWN" and event ~= "GLOBAL_MOUSE_UP" then return end
     if self._showedAt and (GetTime() - self._showedAt) < (self.clickGrace or 0.05) then return end
+    -- Clicks on the owning toggle button are its OnClick's to handle:
+    -- hiding here on mouse-down would make the mouse-up click instantly
+    -- reopen the menu it just closed.
+    if self.toggleOwner and Utils.IsFrameVisiblyMouseOver(self.toggleOwner) then return end
     if not CursorMenuHasMouse(self) then self:Hide() end
 end
 
@@ -3073,6 +3197,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
     menu.keyboardMode = opts.keyboardMode and true or false
     menu.keyboardIndex = nil
     menu.onHide = opts.onHide
+    menu.toggleOwner = opts.toggleOwner
 
     local rowH = opts.rowHeight or 22
     local width = opts.width or 96
@@ -3113,6 +3238,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             if isSep then
                 if row.ClearMenuHighlightState then row:ClearMenuHighlightState() end
                 row.isSeparator = true
+                row.disabled = nil
                 row.onClick = nil
                 row.label:SetText("")
                 row.icon:Hide()
@@ -3124,24 +3250,37 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 row:SetScript("OnClick", nil)
             else
                 row.isSeparator = nil
+                row.disabled = def.disabled and true or nil
                 row.label:SetText(def.text or "")
+                row.label:SetTextColor(Utils.RGB(row.disabled and ns.TEXT_DIM or ns.GOLD_COLOR, 1))
                 if def.icon then
                     row.icon:SetTexture(def.icon)
+                    row.icon:SetDesaturated(row.disabled and true or false)
+                    row.icon:SetAlpha(row.disabled and 0.5 or 1)
                     row.icon:Show()
                 else
                     row.icon:Hide()
                 end
                 row.sep:Hide()
-                row:EnableMouse(true)
-                local hl = row:GetHighlightTexture()
-                if hl then hl:SetAlpha(1) end
-                local onClick = def.onClick
-                row.onClick = onClick
-                row:SetScript("OnMouseDown", function(_, button)
-                    if button ~= "LeftButton" then return end
-                    menu:Hide()
-                    if onClick then onClick() end
-                end)
+                if row.disabled then
+                    if row.ClearMenuHighlightState then row:ClearMenuHighlightState() end
+                    row:EnableMouse(false)
+                    local hl = row:GetHighlightTexture()
+                    if hl then hl:SetAlpha(0) end
+                    row.onClick = nil
+                    row:SetScript("OnMouseDown", nil)
+                else
+                    row:EnableMouse(true)
+                    local hl = row:GetHighlightTexture()
+                    if hl then hl:SetAlpha(1) end
+                    local onClick = def.onClick
+                    row.onClick = onClick
+                    row:SetScript("OnMouseDown", function(_, button)
+                        if button ~= "LeftButton" then return end
+                        menu:Hide()
+                        if onClick then onClick() end
+                    end)
+                end
                 row:SetScript("OnClick", nil)
             end
             row:ClearAllPoints()
@@ -3161,6 +3300,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
         if row then
             row:Hide()
             row.isSeparator = nil
+            row.disabled = nil
             row.onClick = nil
             if row.keyboardOverlay then row.keyboardOverlay:Hide() end
             row:SetScript("OnClick", nil)
@@ -3270,6 +3410,12 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
     if #extras > 0 then
         rows[#rows + 1] = { isSeparator = true }
         for i = 1, #extras do rows[#rows + 1] = extras[i] end
+    end
+
+    if extra and extra.disabled then
+        for i = 1, #rows do
+            if not rows[i].isSeparator then rows[i].disabled = true end
+        end
     end
 
     return Utils.ShowCursorMenu(globalName, rows, opts)

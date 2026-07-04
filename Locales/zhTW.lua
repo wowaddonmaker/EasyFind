@@ -115,6 +115,13 @@ L["OPT_ADDON_NAME"]                     = "EasyFind"
 L["OPT_ICON_SIZE"]                      = "圖示大小"
 L["OPT_FONT_SIZE"]                      = "字型大小"
 L["OPT_WOWHEAD_LOCALE"]                 = "Wowhead 語言"
+L["OPT_WOWHEAD_LOCALE_TT"]              = "複製的Wowhead連結所用語言。自動跟隨遊戲客戶端語言。"
+L["OPT_FONT_SIZE_TT"]                   = "搜尋列和結果清單的文字大小。"
+L["OPT_SEARCH_SCALE_TT"]                = "獨立於遊戲介面縮放，調整整個搜尋視窗（搜尋列、結果、彈窗）的大小。"
+L["OPT_RESULT_ROWS_TT"]                 = "清單開始捲動前顯示的結果行數。"
+L["OPT_SEARCH_OPACITY_TT"]              = "僅影響搜尋列和結果視窗的背景透明度；文字和圖示保持不透明。"
+L["OPT_EXPORT_BTN_TT"]                  = "複製一段可分享的代碼，包含你的別名和快捷鍵。齒輪可選擇包含的內容。"
+L["OPT_IMPORT_BTN_TT"]                  = "貼上分享代碼，將其中的別名和快捷鍵新增到本帳號。"
 L["WOWHEAD_LOCALE_AUTO"]                = "自動"
 L["OPT_CLEAR_ALL_BTN"]                  = "全部清除"
 L["OPT_LOGIN_MESSAGE_TT"]               = "登入時在聊天中顯示簡短的「EasyFind 已載入！」訊息。\n\n停用可讓聊天更乾淨。"
@@ -213,25 +220,23 @@ L["TUT_BTN_BACK"]                       = "返回"
 L["TUT_BTN_BACK_ARROW"]                 = "< 返回"
 L["TUT_KB_PRESS_KEY"]                   = "請按一個按鍵……"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - 新功能"
-L["WHATSNEW_FULL_CHANGELOG"]            = "完整更新紀錄請見 CurseForge 與 GitHub"
+L["WHATSNEW_CHANGELOG_BTN"]             = "查看完整更新日誌"
+L["WHATSNEW_COPY_HINT"]                 = "按Ctrl+C複製完整更新日誌連結："
 L["WHATSNEW_GOT_IT"]                    = "知道了"
-L["MSG_CURRENCY_WATCH_LIMIT"]                    = "You may only watch %d currencies at a time"
-L["POPUP_UNAPPLIED_SETTINGS"]                    = "You have settings that have not been applied.\nAre you sure you wish to exit?"
-L["POPUP_UNAPPLIED_EXIT"]                    = "Exit"
-L["POPUP_UNAPPLIED_APPLY"]                    = "Apply and Exit"
-L["POPUP_UNAPPLIED_CANCEL"]                    = "Cancel"
-L["WHATSNEW_CHAT_HELLO"]                = "Welcome to EasyFind v%s! See update summary %s."
-L["WHATSNEW_CHAT_HERE"]                 = "here"
+L["MSG_CURRENCY_WATCH_LIMIT"]           = "一次最多只能追蹤%d種貨幣"
+L["POPUP_UNAPPLIED_SETTINGS"]           = "有尚未套用的設定。\n確定要離開嗎？"
+L["POPUP_UNAPPLIED_EXIT"]               = "離開"
+L["POPUP_UNAPPLIED_APPLY"]              = "套用並離開"
+L["POPUP_UNAPPLIED_CANCEL"]             = "取消"
+L["WHATSNEW_CHAT_HELLO"]                = "歡迎使用EasyFind v%s！點擊%s查看更新摘要。"
+L["WHATSNEW_CHAT_HERE"]                 = "這裡"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff戰利品搜尋|r\n" ..
-    "        依名稱、部位、屬性或來源搜尋地城與團隊副本戰利品\n" ..
-    "        依職業、專精與難度篩選\n" ..
-    "        點擊即可直接跳至冒險指南中的該物品\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff幻化套裝|r\n" ..
-    "        已儲存的套裝會出現在搜尋結果中，點擊即可裝備\n" ..
-    "        無需商人即可瀏覽幻化視窗（搜尋「tmog」）\n" ..
-    "\n|cff999999在篩選選單（搜尋列內的箭頭按鈕）中啟用戰利品與套裝\n" ..
-    "即可看到這些結果。|r"
+    "|cffFFD100\226\128\162|r |cffffffff快捷鍵|r\n" ..
+    "        右鍵搜尋結果，設定你自己的快捷鍵\n" ..
+    "        快捷鍵一鍵直達對應結果\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffWowhead連結|r\n" ..
+    "        右鍵物品、法術、坐騎、成就等，\n" ..
+    "        即可複製Wowhead連結"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "新增別名"
