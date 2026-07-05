@@ -181,7 +181,7 @@ local function RefreshUIRuntime(resetPosition)
     if ns.Search.UpdateWidth then ns.Search:UpdateWidth() end
     if ns.Search.UpdateOpacity then ns.Search:UpdateOpacity() end
     if ns.Search.UpdateSearchBarHeight then ns.Search:UpdateSearchBarHeight() end
-    if ns.Search.UpdateSmartShow then ns.Search:UpdateSmartShow() end
+    if ns.Search.UpdateSmartShow then ns.Search:UpdateSmartShow(false) end
     if ns.Search.UpdateFontSize then ns.Search:UpdateFontSize() end
     if ns.Search.RefreshResults then ns.Search:RefreshResults() end
 end
@@ -235,7 +235,7 @@ local function SyncOptionControls()
     if optionsFrame.autoPinClearCheckbox then optionsFrame.autoPinClearCheckbox:SetChecked(EasyFind.db.autoPinClear ~= false) end
     if optionsFrame.UpdateMapToggleVisual then optionsFrame.UpdateMapToggleVisual() end
 
-    if optionsFrame.indicatorBtnText then optionsFrame.indicatorBtnText:SetText(StyleLabel(EasyFind.db.indicatorStyle or "EasyFind Arrow")) end
+    if optionsFrame.SetIndicatorSelection then optionsFrame.SetIndicatorSelection(EasyFind.db.indicatorStyle or "EasyFind Arrow") end
     if optionsFrame.fontBtnText then optionsFrame.fontBtnText:SetText(EasyFind.db.font or (_G["DEFAULT"] or "Default")) end
 
     local clr = EasyFind.db.indicatorColor or "Yellow"
@@ -244,9 +244,11 @@ local function SyncOptionControls()
         optionsFrame.colorBtnText:SetText(ColorLabel(clr))
         optionsFrame.colorBtnText:SetTextColor(Utils.RGB(rgb))
     end
-    if optionsFrame.toggleFocusBtn then optionsFrame.toggleFocusBtn:SetText(GetBindingKey("EASYFIND_TOGGLE_FOCUS") or EasyFind:GetAccountKeybind("EASYFIND_TOGGLE_FOCUS") or (_G["NOT_BOUND"] or "Not Bound")) end
-    if optionsFrame.mapFocusBtn then optionsFrame.mapFocusBtn:SetText(GetBindingKey("EASYFIND_MAP_FOCUS") or EasyFind:GetAccountKeybind("EASYFIND_MAP_FOCUS") or (_G["NOT_BOUND"] or "Not Bound")) end
-    if optionsFrame.clearBtn then optionsFrame.clearBtn:SetText(GetBindingKey("EASYFIND_CLEAR") or EasyFind:GetAccountKeybind("EASYFIND_CLEAR") or (_G["NOT_BOUND"] or "Not Bound")) end
+    -- Account keybind store only: a stale native binding saved by an old
+    -- version must never shadow what the player actually set here.
+    if optionsFrame.toggleFocusBtn then optionsFrame.toggleFocusBtn:SetText(EasyFind:GetAccountKeybind("EASYFIND_TOGGLE_FOCUS") or (_G["NOT_BOUND"] or "Not Bound")) end
+    if optionsFrame.mapFocusBtn then optionsFrame.mapFocusBtn:SetText(EasyFind:GetAccountKeybind("EASYFIND_MAP_FOCUS") or (_G["NOT_BOUND"] or "Not Bound")) end
+    if optionsFrame.clearBtn then optionsFrame.clearBtn:SetText(EasyFind:GetAccountKeybind("EASYFIND_CLEAR") or (_G["NOT_BOUND"] or "Not Bound")) end
 end
 
 local PaintRoundedFill = ns.SetRoundedRectFill
@@ -981,13 +983,21 @@ local function BuildGeneralBindsTab(ctx)
     end
     local indicatorBtnIcon = indicatorBtnFrame:CreateTexture(nil, "OVERLAY")
     indicatorBtnIcon:SetSize(14, 14)
-    indicatorBtnIcon:SetPoint("RIGHT", indicatorBtnFrame, "RIGHT", -18, 0)
-    ApplyIndicatorIcon(indicatorBtnIcon, EasyFind.db.indicatorStyle or "EasyFind Arrow")
+    -- The selector text is a centered fontstring spanning the bar, so the
+    -- icon anchors off the text's center plus half its rendered width to
+    -- sit just after the style name rather than at the bar's right edge.
+    local function SetIndicatorSelection(name)
+        indicatorBtnText:SetText(StyleLabel(name))
+        ApplyIndicatorIcon(indicatorBtnIcon, name)
+        indicatorBtnIcon:ClearAllPoints()
+        indicatorBtnIcon:SetPoint("LEFT", indicatorBtnText, "CENTER",
+            (indicatorBtnText:GetStringWidth() / 2) + 5, 0)
+    end
+    SetIndicatorSelection(EasyFind.db.indicatorStyle or "EasyFind Arrow")
     local indicatorFlyout = CreateFlyoutPanel(indicatorBtnFrame, "EasyFindIndicator", SELECTOR_BTN_W, #indicatorChoices)
     AddFlyoutOptions(indicatorFlyout, indicatorChoices, SELECTOR_BTN_W - 6, function(name)
         EasyFind.db.indicatorStyle = name
-        indicatorBtnText:SetText(StyleLabel(name))
-        ApplyIndicatorIcon(indicatorBtnIcon, name)
+        SetIndicatorSelection(name)
         if ns.MapSearch then
             ns.MapSearch:RefreshIndicators()
         end
@@ -998,6 +1008,7 @@ local function BuildGeneralBindsTab(ctx)
         ApplyIndicatorIcon(icon, name)
     end)
     optionsFrame.indicatorBtnText = indicatorBtnText
+    optionsFrame.SetIndicatorSelection = SetIndicatorSelection
     optionsFrame.indicatorFlyout = indicatorFlyout
 
     local colorRow, colorLabel = CreateSelectorRow(indicatorRow, L["OPT_INDICATOR_COLOR"])
@@ -2294,6 +2305,10 @@ function Options:Initialize()
         local point, _, relPoint, x, y = self:GetPoint(1)
         EasyFind.db.optionsPosition = {point, relPoint, x, y}
     end)
+    -- Escape closes the standalone window like every Blizzard panel.
+    -- While embedded in the Settings canvas, CloseSpecialWindows hides
+    -- both this frame and the Settings panel in the same pass.
+    tinsert(UISpecialFrames, "EasyFindOptionsFrame")
 
     optionsFrame:SetBackdrop(nil)
 
@@ -2476,9 +2491,8 @@ function Options:Initialize()
     end)
 
     local function GetCurrentKeybindText(action)
-        local key1, key2 = GetBindingKey(action)
-        if key1 then return key1 end
-        if key2 then return key2 end
+        -- Account store only; see SyncOptionControls for why native
+        -- bindings are ignored for EasyFind's own actions.
         return EasyFind:GetAccountKeybind(action) or (_G["NOT_BOUND"] or "Not Bound")
     end
 
@@ -2611,9 +2625,16 @@ function Options:ConfirmResetAll()
     ShowResetConfirm(L["POPUP_RESET_ALL_SETTINGS"], function() Options:DoResetAll() end)
 end
 
+function Options:ConfirmResetPositions()
+    ShowResetConfirm(L["POPUP_RESET_ALL_POSITIONS"], function() Options:DoResetPositions() end)
+end
+
 function Options:DoResetAll()
     local needsReload = EasyFind.db.enableMapSearch == false
     EasyFind:ResetSettingsToDefaults()
+    if EasyFind.ResetAccountKeybindsToDefaults then
+        EasyFind:ResetAccountKeybindsToDefaults()
+    end
     ResetOptionsPosition()
     ClearMapRuntime()
 

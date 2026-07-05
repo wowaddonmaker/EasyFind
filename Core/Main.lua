@@ -481,6 +481,11 @@ local function OnInitialize()
                 ns.Options:Initialize()
                 ns.Options:ConfirmResetAll()
             end
+        elseif msg == "reset positions" then
+            if ns.Options then
+                ns.Options:Initialize()
+                ns.Options:ConfirmResetPositions()
+            end
         elseif msg == "bug" then
             OpenBugReport()
         elseif msg == "feature" then
@@ -662,6 +667,17 @@ EasyFind.GetAccountKeybind = function(_, action)
     return EasyFindDB and EasyFindDB.accountKeybinds and EasyFindDB.accountKeybinds[action]
 end
 
+-- Reset All restores the suggested account binds and re-applies the
+-- override clicks immediately, so the keys work without a rebind.
+function EasyFind:ResetAccountKeybindsToDefaults()
+    if not EasyFindDB then return end
+    local store = {}
+    for action, key in pairs(SUGGESTED_KEYBINDS) do store[action] = key end
+    EasyFindDB.accountKeybinds = store
+    EasyFindDB.suggestedKeybindsSeeded = true
+    ApplyAccountKeybinds()
+end
+
 local function OnPlayerLogin()
     -- Start the async scheduler's OnUpdate pump with a 2ms per-frame budget.
     -- Dynamic provider coalescing and any future debounced/dep-aware jobs
@@ -737,17 +753,41 @@ local function OnPlayerLogin()
     end
 
     EasyFindDB.accountKeybinds = EasyFindDB.accountKeybinds or {}
-    for i = 1, #EASYFIND_BINDINGS do
-        local action = EASYFIND_BINDINGS[i]
-        if not EasyFindDB.accountKeybinds[action] then
-            local existing = GetBindingKey(action)
-            if existing then EasyFindDB.accountKeybinds[action] = existing end
+    -- One-time import of binds made through the retired native Bindings.xml:
+    -- a player upgrading keeps the key they had bound, in the account-wide
+    -- store, instead of being pushed onto the suggested defaults. Flagged so
+    -- a bind the player later clears can't resurrect from the stale native
+    -- cache on a future login.
+    if not EasyFindDB.nativeKeybindsImported then
+        EasyFindDB.nativeKeybindsImported = true
+        for i = 1, #EASYFIND_BINDINGS do
+            local action = EASYFIND_BINDINGS[i]
+            if not EasyFindDB.accountKeybinds[action] then
+                local existing = GetBindingKey(action)
+                if existing then EasyFindDB.accountKeybinds[action] = existing end
+            end
         end
     end
 
-    -- Seed the suggested defaults once, and only when nothing is bound (the loop
-    -- above already pulled in any pre-existing native binds). This never replaces
-    -- a key the player set, and the flag stops it re-adding one they cleared.
+    -- Retire leftover native bindings for our actions. The actions no longer
+    -- exist, so those saved keys can only shadow GetBindingKey reads and
+    -- confuse the display. Idempotent (no-op once clean), combat-deferred.
+    if not InCombatLockdown() then
+        local removedAny = false
+        for i = 1, #EASYFIND_BINDINGS do
+            local key1, key2 = GetBindingKey(EASYFIND_BINDINGS[i])
+            if key1 then SetBinding(key1); removedAny = true end
+            if key2 then SetBinding(key2); removedAny = true end
+        end
+        if removedAny and SaveBindings and GetCurrentBindingSet then
+            pcall(SaveBindings, GetCurrentBindingSet())
+        end
+    end
+
+    -- Seed the suggested defaults once, and only when nothing is bound (the
+    -- import above already pulled in any pre-existing native binds). This
+    -- never replaces a key the player set, and the flag stops it re-adding
+    -- one they cleared.
     if not EasyFindDB.suggestedKeybindsSeeded then
         EasyFindDB.suggestedKeybindsSeeded = true
         if next(EasyFindDB.accountKeybinds) == nil then

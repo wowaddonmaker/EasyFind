@@ -1984,15 +1984,20 @@ function Search:UpdateSearchBarHeight()
     self:UpdateFontSize()
 end
 
-function Search:UpdateSmartShow()
+-- forceShow=false is the programmatic-refresh mode (settings reset):
+-- visibility settings are re-applied without pulling a closed bar onto
+-- the screen. Every other caller keeps the interactive default, where
+-- flipping the visibility mode previews the bar.
+function Search:UpdateSmartShow(forceShow)
     if not searchFrame then return end
+    if forceShow == nil then forceShow = true end
     local enabled = EasyFind.db.smartShow
     if enabled then
         -- Smart Show owns the bar; it stays enabled and starts shown, then
         -- tucks away on its own if the mouse isn't near it.
         EasyFind.db.visible = true
         searchFrame.hoverZone:Show()
-        if not inCombat then
+        if not inCombat and (forceShow or searchFrame:IsShown()) then
             searchFrame:Show()
             searchFrame.smartShowFadeIn()
             Utils.SafeAfter(1.5, function()
@@ -2015,8 +2020,9 @@ function Search:UpdateSmartShow()
         -- click-away dismissal only in OnShow. Without the Hide first, a
         -- reset that flips Hover Show to Auto-Hide leaves the bar fully
         -- visible and undismissable. Hiding first makes OnShow fire cleanly.
+        local wasShown = searchFrame:IsShown()
         searchFrame:Hide()
-        if EasyFind.db.visible ~= false then
+        if EasyFind.db.visible ~= false and (forceShow or wasShown) then
             searchFrame:Show()
         end
     end
