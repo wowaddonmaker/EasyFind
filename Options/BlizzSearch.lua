@@ -2044,7 +2044,11 @@ local function CollectKeybindings()
                 displayName = action
             end
             local nameLower = slower(displayName)
-            local kw = { "keybind", "binding", "key", nameLower, slower(header) }
+            -- No bare "key" keyword: it EXACT-matched the 3-char query "key"
+            -- on every one of ~250 bindings and flooded results. "keybind" /
+            -- "binding" (intentional queries) and the action's own name/header
+            -- still match; the Keybindings panel is found by its name.
+            local kw = { "keybind", "binding", nameLower, slower(header) }
             local mt = GetSettingsCatMT("Game Settings", "Keybindings", nil,
                 { "Game Settings", "Keybindings", header })
             tinsert(entries, setmetatable({

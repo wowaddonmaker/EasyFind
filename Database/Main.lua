@@ -594,8 +594,8 @@ local PET_PROTO = {
 local PET_MT = { __index = PET_PROTO }
 
 local OUTFIT_PROTO = {
-    keywords     = {"outfit", "appearance", "keymog"},
-    keywordsLower = {"outfit", "appearance", "keymog"},
+    keywords     = {"outfit", "appearance"},
+    keywordsLower = {"outfit", "appearance"},
     category     = "Outfit",
     path         = {},
     steps        = {},
@@ -4342,7 +4342,7 @@ function Database:BuildUIDatabase()
 
         {
             name = _G["TRANSMOGRIFICATION"] or "Transmogrification",
-            keywords = {"transmogrification", "transmog", "tmog", "xmog", "mog", "wardrobe", "appearance", "keymog"},
+            keywords = {"transmogrification", "transmog", "tmog", "xmog", "mog", "wardrobe", "appearance"},
             category = "Transmogrification",
             icon = { file = 6119963, coords = { 0.0183, 0.2629, 0.0131, 0.5152 } },
             steps = {{ loadTransmog = true }},
