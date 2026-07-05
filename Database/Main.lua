@@ -4372,7 +4372,9 @@ function Database:BuildUIDatabase()
         -- /run ShowUIPanel(GameMenuFrame) here forbid-errors on ClearTarget.
         {
             name = _G["MAINMENU_BUTTON"] or _G["GAMEMENU_BUTTON"] or "Game Menu",
-            keywords = {"menu", "settings", "options", "escape", "esc", "logout", "quit", "exit", "interface"},
+            -- "options"/"settings" belong to the guided Options child below;
+            -- carrying them here made the direct-open menu row outrank it.
+            keywords = {"menu", "escape", "esc", "logout", "quit", "exit", "interface"},
             category = "Menu Bar",
             buttonFrame = "MainMenuMicroButton",
             slashCommand = "/click MainMenuMicroButton",

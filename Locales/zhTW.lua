@@ -35,7 +35,6 @@ L["OPT_TAB_SEARCH"]                     = "搜尋"
 L["OPT_TAB_MAP"]                        = "地圖"
 L["OPT_TAB_ALIASES"]                    = "別名與快捷鍵"
 L["OPT_HOME_WELCOME"]                   = "感謝你使用 EasyFind！"
-L["OPT_SHOW_LOGIN_MESSAGE"]             = "顯示登入訊息"
 L["OPT_SHOW_MINIMAP_BUTTON"]            = "顯示小地圖圖示"
 L["OPT_SHOW_ALIAS_MESSAGES"]            = "顯示別名訊息"
 L["OPT_INDICATOR_STYLE"]                = "指示器樣式"
@@ -124,7 +123,6 @@ L["OPT_EXPORT_BTN_TT"]                  = "複製一段可分享的代碼，包�
 L["OPT_IMPORT_BTN_TT"]                  = "貼上分享代碼，將其中的別名和快捷鍵新增到本帳號。"
 L["WOWHEAD_LOCALE_AUTO"]                = "自動"
 L["OPT_CLEAR_ALL_BTN"]                  = "全部清除"
-L["OPT_LOGIN_MESSAGE_TT"]               = "登入時在聊天中顯示簡短的「EasyFind 已載入！」訊息。\n\n停用可讓聊天更乾淨。"
 L["OPT_MINIMAP_BTN_TT"]                 = "在小地圖邊緣加入一個小型搜尋按鈕。\n\n左鍵點擊切換搜尋列。\n右鍵點擊開啟選項。\n拖曳可在小地圖周圍重新定位。"
 L["OPT_ALIAS_MSG_TT"]                   = "啟用後，新增別名時會在聊天中顯示一則指向「別名」頁籤的簡短提示。"
 L["OPT_LOCK_POSITION_TT"]               = "啟用後，搜尋列將無法拖曳。若你已將它放在理想位置，此項很有用。\n\n「重設位置」與 /reset 指令仍然有效。"
@@ -220,8 +218,6 @@ L["TUT_BTN_BACK"]                       = "返回"
 L["TUT_BTN_BACK_ARROW"]                 = "< 返回"
 L["TUT_KB_PRESS_KEY"]                   = "請按一個按鍵……"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - 新功能"
-L["WHATSNEW_CHANGELOG_BTN"]             = "查看完整更新日誌"
-L["WHATSNEW_COPY_HINT"]                 = "按Ctrl+C複製完整更新日誌連結："
 L["WHATSNEW_GOT_IT"]                    = "知道了"
 L["MSG_CURRENCY_WATCH_LIMIT"]           = "一次最多只能追蹤%d種貨幣"
 L["POPUP_UNAPPLIED_SETTINGS"]           = "有尚未套用的設定。\n確定要離開嗎？"
@@ -232,11 +228,11 @@ L["WHATSNEW_CHAT_HELLO"]                = "歡迎使用EasyFind v%s！點擊%s�
 L["WHATSNEW_CHAT_HERE"]                 = "這裡"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffff快捷鍵|r\n" ..
-    "        右鍵搜尋結果，設定你自己的快捷鍵\n" ..
-    "        快捷鍵一鍵直達對應結果\n" ..
+    "    |cff999999-|r 右鍵搜尋結果，設定你自己的快捷鍵\n" ..
+    "    |cff999999-|r 快捷鍵一鍵直達對應結果\n" ..
     "|cffFFD100\226\128\162|r |cffffffffWowhead連結|r\n" ..
-    "        右鍵物品、法術、坐騎、成就等，\n" ..
-    "        即可複製Wowhead連結"
+    "    |cff999999-|r 右鍵物品、法術、坐騎、成就等，\n" ..
+    "      即可複製Wowhead連結"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "新增別名"
@@ -287,7 +283,6 @@ L["CMD_CLEAR"]                          = "  /ef clear：清除突顯、標記�
 L["CMD_RESET"]                          = "  /ef reset：重設所有設定"
 L["CMD_BUG"]                            = "  /ef bug：回報錯誤"
 L["CMD_FEATURE"]                        = "  /ef feature：建議功能"
-L["MSG_LOGIN"]                          = "EasyFind 已載入。使用 /ef o 開啟選項。（可在一般設定中停用此訊息。）"
 L["MINIMAP_TT_LEFT_CLICK"]              = "左鍵點擊：切換搜尋列"
 L["MINIMAP_TT_RIGHT_CLICK"]             = "右鍵點擊：開啟選項"
 L["MINIMAP_TT_DRAG"]                    = "拖曳以重新定位"

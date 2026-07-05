@@ -35,7 +35,6 @@ L["OPT_TAB_SEARCH"]                     = "Ricerca"
 L["OPT_TAB_MAP"]                        = "Mappa"
 L["OPT_TAB_ALIASES"]                    = "Alias e scorciatoie"
 L["OPT_HOME_WELCOME"]                   = "Grazie per aver provato EasyFind!"
-L["OPT_SHOW_LOGIN_MESSAGE"]             = "Mostra messaggio di accesso"
 L["OPT_SHOW_MINIMAP_BUTTON"]            = "Mostra icona minimappa"
 L["OPT_SHOW_ALIAS_MESSAGES"]            = "Mostra messaggi degli alias"
 L["OPT_INDICATOR_STYLE"]                = "Stile indicatore"
@@ -124,7 +123,6 @@ L["OPT_EXPORT_BTN_TT"]                  = "Copia un codice condivisibile con i t
 L["OPT_IMPORT_BTN_TT"]                  = "Incolla un codice condiviso per aggiungere i suoi alias e le scorciatoie su questo account."
 L["WOWHEAD_LOCALE_AUTO"]                = "Automatico"
 L["OPT_CLEAR_ALL_BTN"]                  = "Cancella tutto"
-L["OPT_LOGIN_MESSAGE_TT"]               = "Mostra un breve messaggio «EasyFind caricato!» in chat all'accesso.\n\nDisattiva per mantenere la chat più pulita."
 L["OPT_MINIMAP_BTN_TT"]                 = "Aggiunge un piccolo pulsante di ricerca al bordo della minimappa.\n\nClic sinistro per attivare la barra di ricerca.\nClic destro per aprire le opzioni.\nTrascina per riposizionarlo intorno alla minimappa."
 L["OPT_ALIAS_MSG_TT"]                   = "Se attivo, aggiungere un alias mostra una breve nota in chat che rimanda alla scheda Alias."
 L["OPT_LOCK_POSITION_TT"]               = "Se attivo, la barra di ricerca non può essere trascinata. Utile se l'hai posizionata esattamente dove la vuoi.\n\n«Reimposta posizioni» e il comando /reset funzionano comunque."
@@ -220,8 +218,6 @@ L["TUT_BTN_BACK"]                       = "Indietro"
 L["TUT_BTN_BACK_ARROW"]                 = "< Indietro"
 L["TUT_KB_PRESS_KEY"]                   = "Premi un tasto…"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - Novità"
-L["WHATSNEW_CHANGELOG_BTN"]             = "Vedi tutte le modifiche"
-L["WHATSNEW_COPY_HINT"]                 = "Premi Ctrl+C per copiare il link del registro modifiche completo:"
 L["WHATSNEW_GOT_IT"]                    = "Capito"
 L["MSG_CURRENCY_WATCH_LIMIT"]           = "Puoi tenere d'occhio solo %d valute alla volta"
 L["POPUP_UNAPPLIED_SETTINGS"]           = "Ci sono impostazioni non ancora applicate.\nVuoi davvero uscire?"
@@ -232,11 +228,12 @@ L["WHATSNEW_CHAT_HELLO"]                = "Benvenuto in EasyFind v%s! Guarda il 
 L["WHATSNEW_CHAT_HERE"]                 = "qui"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffScorciatoie|r\n" ..
-    "        Clic destro su un risultato per assegnare una tua scorciatoia\n" ..
-    "        Le scorciatoie aprono un risultato con una sola pressione\n" ..
+    "    |cff999999-|r Clic destro su un risultato per assegnare una\n" ..
+    "      tua scorciatoia\n" ..
+    "    |cff999999-|r Le scorciatoie aprono un risultato con una sola pressione\n" ..
     "|cffFFD100\226\128\162|r |cffffffffLink Wowhead|r\n" ..
-    "        Clic destro su oggetti, incantesimi, cavalcature, imprese e altro\n" ..
-    "        per copiare il link Wowhead"
+    "    |cff999999-|r Clic destro su oggetti, incantesimi, cavalcature,\n" ..
+    "      imprese e altro per copiare il link Wowhead"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Aggiungi alias"
@@ -287,7 +284,6 @@ L["CMD_CLEAR"]                          = "  /ef clear: rimuovi evidenziazioni, 
 L["CMD_RESET"]                          = "  /ef reset: reimposta tutte le impostazioni"
 L["CMD_BUG"]                            = "  /ef bug: segnala un bug"
 L["CMD_FEATURE"]                        = "  /ef feature: proponi una funzione"
-L["MSG_LOGIN"]                          = "EasyFind caricato. Usa /ef o per aprire le opzioni. (Disattiva questo messaggio nelle impostazioni Generali.)"
 L["MINIMAP_TT_LEFT_CLICK"]              = "Clic sinistro: attiva/disattiva barra di ricerca"
 L["MINIMAP_TT_RIGHT_CLICK"]             = "Clic destro: apri le opzioni"
 L["MINIMAP_TT_DRAG"]                    = "Trascina per riposizionare"

@@ -63,7 +63,6 @@ local DB_DEFAULTS = {
     statisticCache = {},
     statisticCacheVer = 0,
     mapPinsCollapsed = false,
-    showLoginMessage = false,
     showAliasMessages = true,
     blinkingPins = false,
     mapPinHighlight = true,
@@ -511,10 +510,6 @@ local function OnInitialize()
     end
 
     InstallWhatsNewHyperlinkHook()
-
-    if EasyFind.db.showLoginMessage == true then
-        EasyFind:Print(L["MSG_LOGIN"])
-    end
 end
 
 local SafeAfter = Utils.SafeAfter

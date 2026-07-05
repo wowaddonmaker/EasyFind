@@ -35,7 +35,6 @@ L["OPT_TAB_SEARCH"]                     = "Búsqueda"
 L["OPT_TAB_MAP"]                        = "Mapa"
 L["OPT_TAB_ALIASES"]                    = "Alias y atajos"
 L["OPT_HOME_WELCOME"]                   = "¡Gracias por probar EasyFind!"
-L["OPT_SHOW_LOGIN_MESSAGE"]             = "Mostrar mensaje de inicio de sesión"
 L["OPT_SHOW_MINIMAP_BUTTON"]            = "Mostrar icono del minimapa"
 L["OPT_SHOW_ALIAS_MESSAGES"]            = "Mostrar mensajes de alias"
 L["OPT_INDICATOR_STYLE"]                = "Estilo de indicador"
@@ -124,7 +123,6 @@ L["OPT_EXPORT_BTN_TT"]                  = "Copia un código para compartir tus a
 L["OPT_IMPORT_BTN_TT"]                  = "Pega un código compartido para añadir sus alias y atajos en esta cuenta."
 L["WOWHEAD_LOCALE_AUTO"]                = "Automático"
 L["OPT_CLEAR_ALL_BTN"]                  = "Borrar todo"
-L["OPT_LOGIN_MESSAGE_TT"]               = "Muestra un breve mensaje «¡EasyFind cargado!» en el chat al iniciar sesión.\n\nDesactívalo para mantener el chat más limpio."
 L["OPT_MINIMAP_BTN_TT"]                 = "Añade un pequeño botón de búsqueda al borde del minimapa.\n\nClic izquierdo para alternar la barra de búsqueda.\nClic derecho para abrir las opciones.\nArrastra para reposicionarlo alrededor del minimapa."
 L["OPT_ALIAS_MSG_TT"]                   = "Si está activado, añadir un alias muestra una breve nota en el chat que apunta a la pestaña de Alias."
 L["OPT_LOCK_POSITION_TT"]               = "Si está activado, la barra de búsqueda no se puede arrastrar. Útil si la has colocado justo donde la quieres.\n\n«Restablecer posiciones» y el comando /reset siguen funcionando."
@@ -220,8 +218,6 @@ L["TUT_BTN_BACK"]                       = "Atrás"
 L["TUT_BTN_BACK_ARROW"]                 = "< Atrás"
 L["TUT_KB_PRESS_KEY"]                   = "Pulsa una tecla…"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - Novedades"
-L["WHATSNEW_CHANGELOG_BTN"]             = "Ver todos los cambios"
-L["WHATSNEW_COPY_HINT"]                 = "Pulsa Ctrl+C para copiar el enlace del registro de cambios completo:"
 L["WHATSNEW_GOT_IT"]                    = "Entendido"
 L["MSG_CURRENCY_WATCH_LIMIT"]           = "Solo puedes seguir %d monedas a la vez"
 L["POPUP_UNAPPLIED_SETTINGS"]           = "Tienes ajustes sin aplicar.\n¿Seguro que quieres salir?"
@@ -232,11 +228,12 @@ L["WHATSNEW_CHAT_HELLO"]                = "¡Bienvenido a EasyFind v%s! Mira el 
 L["WHATSNEW_CHAT_HERE"]                 = "aquí"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffAtajos|r\n" ..
-    "        Haz clic derecho en un resultado para asignar tu propio atajo\n" ..
-    "        Los atajos abren un resultado con una sola pulsación\n" ..
+    "    |cff999999-|r Haz clic derecho en un resultado para asignar\n" ..
+    "      tu propio atajo\n" ..
+    "    |cff999999-|r Los atajos abren un resultado con una sola pulsación\n" ..
     "|cffFFD100\226\128\162|r |cffffffffEnlaces de Wowhead|r\n" ..
-    "        Clic derecho en objetos, hechizos, monturas, logros y más\n" ..
-    "        para copiar su enlace de Wowhead"
+    "    |cff999999-|r Clic derecho en objetos, hechizos, monturas,\n" ..
+    "      logros y más para copiar su enlace de Wowhead"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Añadir alias"
@@ -287,7 +284,6 @@ L["CMD_CLEAR"]                          = "  /ef clear: descartar resaltados, ma
 L["CMD_RESET"]                          = "  /ef reset: restablecer todos los ajustes"
 L["CMD_BUG"]                            = "  /ef bug: informar de un error"
 L["CMD_FEATURE"]                        = "  /ef feature: sugerir una función"
-L["MSG_LOGIN"]                          = "EasyFind cargado. Usa /ef o para abrir las opciones. (Desactiva este mensaje en los ajustes Generales.)"
 L["MINIMAP_TT_LEFT_CLICK"]              = "Clic izquierdo: alternar barra de búsqueda"
 L["MINIMAP_TT_RIGHT_CLICK"]             = "Clic derecho: abrir opciones"
 L["MINIMAP_TT_DRAG"]                    = "Arrastra para reposicionar"

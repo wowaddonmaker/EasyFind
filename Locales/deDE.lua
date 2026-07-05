@@ -37,7 +37,6 @@ L["OPT_TAB_SEARCH"]                     = "Suche"
 L["OPT_TAB_MAP"]                        = "Karte"
 L["OPT_TAB_ALIASES"]                    = "Aliase & Kurztasten"
 L["OPT_HOME_WELCOME"]                   = "Danke, dass du EasyFind ausprobierst!"
-L["OPT_SHOW_LOGIN_MESSAGE"]             = "Anmeldenachricht anzeigen"
 L["OPT_SHOW_MINIMAP_BUTTON"]            = "Minimap-Symbol anzeigen"
 L["OPT_SHOW_ALIAS_MESSAGES"]            = "Alias-Nachrichten anzeigen"
 L["OPT_INDICATOR_STYLE"]                = "Indikatorstil"
@@ -126,7 +125,6 @@ L["OPT_EXPORT_BTN_TT"]                  = "Kopiere einen teilbaren Code deiner A
 L["OPT_IMPORT_BTN_TT"]                  = "Füge einen geteilten Code ein, um dessen Aliase und Kurztasten auf diesem Account hinzuzufügen."
 L["WOWHEAD_LOCALE_AUTO"]                = "Automatisch"
 L["OPT_CLEAR_ALL_BTN"]                  = "Alles löschen"
-L["OPT_LOGIN_MESSAGE_TT"]               = "Zeigt beim Anmelden eine kurze „EasyFind geladen!“-Nachricht im Chat.\n\nDeaktivieren, um den Chat sauberer zu halten."
 L["OPT_MINIMAP_BTN_TT"]                 = "Fügt am Rand der Minimap eine kleine Such-Schaltfläche hinzu.\n\nLinksklick schaltet die Suchleiste um.\nRechtsklick öffnet die Optionen.\nZiehen verschiebt sie um die Minimap."
 L["OPT_ALIAS_MSG_TT"]                   = "Beim Hinzufügen eines Alias wird eine kurze Chatnotiz mit Verweis auf den Alias-Tab angezeigt."
 L["OPT_LOCK_POSITION_TT"]               = "Wenn aktiviert, lässt sich die Suchleiste nicht mehr ziehen. Nützlich, wenn sie genau dort sitzt, wo du sie haben willst.\n\n„Positionen zurücksetzen“ und der Befehl /reset funktionieren weiterhin."
@@ -222,8 +220,6 @@ L["TUT_BTN_BACK"]                       = "Zurück"
 L["TUT_BTN_BACK_ARROW"]                 = "< Zurück"
 L["TUT_KB_PRESS_KEY"]                   = "Taste drücken …"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r – Neue Funktionen"
-L["WHATSNEW_CHANGELOG_BTN"]             = "Alle Änderungen ansehen"
-L["WHATSNEW_COPY_HINT"]                 = "Drücke Ctrl+C, um den Link zum vollständigen Änderungsprotokoll zu kopieren:"
 L["WHATSNEW_GOT_IT"]                    = "Verstanden"
 L["MSG_CURRENCY_WATCH_LIMIT"]           = "Du kannst nur %d Währungen gleichzeitig beobachten"
 L["POPUP_UNAPPLIED_SETTINGS"]           = "Es gibt Einstellungen, die noch nicht übernommen wurden.\nWirklich beenden?"
@@ -234,11 +230,12 @@ L["WHATSNEW_CHAT_HELLO"]                = "Willkommen bei EasyFind v%s! Die Neue
 L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffKurztasten|r\n" ..
-    "        Rechtsklick auf ein Ergebnis, um eine eigene Kurztaste zu belegen\n" ..
-    "        Kurztasten öffnen ein Ergebnis mit einem Tastendruck\n" ..
+    "    |cff999999-|r Rechtsklick auf ein Ergebnis, um eine eigene\n" ..
+    "      Kurztaste zu belegen\n" ..
+    "    |cff999999-|r Kurztasten öffnen ein Ergebnis mit einem Tastendruck\n" ..
     "|cffFFD100\226\128\162|r |cffffffffWowhead-Links|r\n" ..
-    "        Rechtsklick auf Gegenstände, Zauber, Reittiere, Erfolge\n" ..
-    "        und mehr für einen kopierbaren Wowhead-Link"
+    "    |cff999999-|r Rechtsklick auf Gegenstände, Zauber, Reittiere,\n" ..
+    "      Erfolge und mehr für einen kopierbaren Wowhead-Link"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"
@@ -289,7 +286,6 @@ L["CMD_CLEAR"]                          = "  /ef clear: Hervorhebungen, Markieru
 L["CMD_RESET"]                          = "  /ef reset: alle Einstellungen zurücksetzen"
 L["CMD_BUG"]                            = "  /ef bug: einen Fehler melden"
 L["CMD_FEATURE"]                        = "  /ef feature: eine Funktion vorschlagen"
-L["MSG_LOGIN"]                          = "EasyFind geladen. Nutze /ef o, um die Optionen zu öffnen. (Diese Nachricht in den Allgemein-Einstellungen deaktivieren.)"
 L["MINIMAP_TT_LEFT_CLICK"]              = "Linksklick: Suchleiste umschalten"
 L["MINIMAP_TT_RIGHT_CLICK"]             = "Rechtsklick: Optionen öffnen"
 L["MINIMAP_TT_DRAG"]                    = "Ziehen zum Verschieben"

@@ -6,19 +6,17 @@ local Utils = ns.Utils
 
 local CreateFrame = CreateFrame
 local UIParent = UIParent
-local mmax, mceil = math.max, math.ceil
+local mmax, mmin, mceil = math.max, math.min, math.ceil
 
 local GOLD     = ns.GOLD_COLOR
 local TEXT_BODY = ns.TEXT_BODY
 local TEXT_DIM  = ns.TEXT_DIM
 local PANEL_BG_ALPHA = 0.97
 
--- CurseForge only shows changelogs per-file (Files tab -> version ->
--- Changelog), so link the rendered CHANGELOG.md instead: every release,
--- one page, no app.
-local CHANGELOG_URL = "https://github.com/wowaddonmaker/EasyFind/blob/main/CHANGELOG.md"
-
-local WN_W = 470
+-- Width follows the widest content line between these bounds; no
+-- hardcoded panel width that drifts from what the body actually holds.
+local WN_MIN_W = 340
+local WN_MAX_W = 470
 local WN_PAD_X = 22
 local WN_PAD_TOP = 22
 local WN_PAD_BOTTOM = 18
@@ -36,7 +34,7 @@ function Onboarding:ShowWhatsNew(version)
 
     if not frame then
         local f = CreateFrame("Frame", "EasyFindWhatsNew", UIParent)
-        f:SetSize(WN_W, 280)
+        f:SetSize(WN_MAX_W, 280)
         f:SetPoint("CENTER")
         f:SetFrameStrata("FULLSCREEN_DIALOG")
         f:SetFrameLevel(220)
@@ -75,31 +73,23 @@ function Onboarding:ShowWhatsNew(version)
         body:SetText(L["WHATSNEW_BODY"])
         f._body = body
 
-        -- Changelog left, dismiss right (the themed-dialog button order).
-        -- Anchored to the body fontstring so they follow the relayout below.
-        local changelogBtn = ns.CreateModernButton(f, L["WHATSNEW_CHANGELOG_BTN"], WN_BTN_MIN_W, WN_BTN_H)
-        changelogBtn:SetPoint("TOPRIGHT", body, "BOTTOM", -(WN_BTN_GAP / 2), -WN_BTN_GAP)
-        changelogBtn:SetScript("OnClick", function()
-            ns.ShowCopyBox(CHANGELOG_URL, L["WHATSNEW_COPY_HINT"])
-        end)
-        f._changelogBtn = changelogBtn
-
+        -- Anchored to the body fontstring so it follows the relayout below.
         local okBtn = ns.CreateModernButton(f, L["WHATSNEW_GOT_IT"], WN_BTN_MIN_W, WN_BTN_H)
-        okBtn:SetPoint("TOPLEFT", body, "BOTTOM", WN_BTN_GAP / 2, -WN_BTN_GAP)
+        okBtn:SetPoint("TOP", body, "BOTTOM", 0, -WN_BTN_GAP)
         okBtn:SetScript("OnClick", function() f:Hide() end)
         f._okBtn = okBtn
 
-        local btnW = mmax(WN_BTN_MIN_W,
-            mceil(changelogBtn._label:GetStringWidth()) + WN_BTN_TEXT_PAD,
-            mceil(okBtn._label:GetStringWidth()) + WN_BTN_TEXT_PAD)
-        changelogBtn:SetSize(btnW, WN_BTN_H)
-        okBtn:SetSize(btnW, WN_BTN_H)
+        okBtn:SetSize(mmax(WN_BTN_MIN_W,
+            mceil(okBtn._label:GetStringWidth()) + WN_BTN_TEXT_PAD), WN_BTN_H)
     end
 
     local versionLabel = version or ns.version or "?"
     frame._verText:SetText("v" .. versionLabel)
 
     frame._body:SetText(L["WHATSNEW_BODY"])
+
+    local contentW = Utils.MaxContentWidth({ frame._title, frame._verText, frame._body })
+    frame:SetWidth(mmax(WN_MIN_W, mmin(WN_MAX_W, mceil(contentW) + WN_PAD_X * 2)))
 
     local titleH = frame._title:GetStringHeight()
     local verH = frame._verText:GetStringHeight()

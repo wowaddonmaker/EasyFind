@@ -35,7 +35,6 @@ L["OPT_TAB_SEARCH"]                     = "검색"
 L["OPT_TAB_MAP"]                        = "지도"
 L["OPT_TAB_ALIASES"]                    = "별칭 및 단축키"
 L["OPT_HOME_WELCOME"]                   = "EasyFind을 사용해 주셔서 감사합니다!"
-L["OPT_SHOW_LOGIN_MESSAGE"]             = "접속 메시지 표시"
 L["OPT_SHOW_MINIMAP_BUTTON"]            = "미니맵 아이콘 표시"
 L["OPT_SHOW_ALIAS_MESSAGES"]            = "별칭 메시지 표시"
 L["OPT_INDICATOR_STYLE"]                = "표시기 스타일"
@@ -124,7 +123,6 @@ L["OPT_EXPORT_BTN_TT"]                  = "별칭과 단축키를 공유 코드�
 L["OPT_IMPORT_BTN_TT"]                  = "공유 코드를 붙여넣어 별칭과 단축키를 이 계정에 추가합니다."
 L["WOWHEAD_LOCALE_AUTO"]                = "자동"
 L["OPT_CLEAR_ALL_BTN"]                  = "모두 지우기"
-L["OPT_LOGIN_MESSAGE_TT"]               = "접속 시 대화창에 짧은 ‘EasyFind 로드됨!’ 메시지를 표시합니다.\n\n대화창을 깔끔하게 유지하려면 끄세요."
 L["OPT_MINIMAP_BTN_TT"]                 = "미니맵 가장자리에 작은 검색 버튼을 추가합니다.\n\n왼쪽 클릭: 검색창 전환.\n오른쪽 클릭: 설정 열기.\n드래그하여 미니맵 주위로 위치를 옮길 수 있습니다."
 L["OPT_ALIAS_MSG_TT"]                   = "활성화하면 별칭을 추가할 때 별칭 탭을 가리키는 짧은 메시지가 대화창에 표시됩니다."
 L["OPT_LOCK_POSITION_TT"]               = "활성화하면 검색창을 드래그할 수 없습니다. 원하는 위치에 정확히 두었을 때 유용합니다.\n\n‘위치 초기화’와 /reset 명령은 여전히 작동합니다."
@@ -220,8 +218,6 @@ L["TUT_BTN_BACK"]                       = "뒤로"
 L["TUT_BTN_BACK_ARROW"]                 = "< 뒤로"
 L["TUT_KB_PRESS_KEY"]                   = "키를 누르세요…"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - 새로운 기능"
-L["WHATSNEW_CHANGELOG_BTN"]             = "전체 변경 사항 보기"
-L["WHATSNEW_COPY_HINT"]                 = "Ctrl+C를 눌러 전체 변경 사항 링크를 복사하세요:"
 L["WHATSNEW_GOT_IT"]                    = "확인"
 L["MSG_CURRENCY_WATCH_LIMIT"]           = "한 번에 %d개의 화폐만 추적할 수 있습니다"
 L["POPUP_UNAPPLIED_SETTINGS"]           = "적용되지 않은 설정이 있습니다.\n정말 나가시겠습니까?"
@@ -232,11 +228,11 @@ L["WHATSNEW_CHAT_HELLO"]                = "EasyFind v%s에 오신 것을 환영�
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffff단축키|r\n" ..
-    "        검색 결과를 우클릭해 나만의 단축키를 지정하세요\n" ..
-    "        단축키는 키 한 번으로 결과를 바로 엽니다\n" ..
+    "    |cff999999-|r 검색 결과를 우클릭해 나만의 단축키를 지정하세요\n" ..
+    "    |cff999999-|r 단축키는 키 한 번으로 결과를 바로 엽니다\n" ..
     "|cffFFD100\226\128\162|r |cffffffffWowhead 링크|r\n" ..
-    "        아이템, 주문, 탈것, 업적 등을 우클릭해\n" ..
-    "        Wowhead 링크를 복사하세요"
+    "    |cff999999-|r 아이템, 주문, 탈것, 업적 등을 우클릭해\n" ..
+    "      Wowhead 링크를 복사하세요"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"
@@ -287,7 +283,6 @@ L["CMD_CLEAR"]                          = "  /ef clear: 강조, 표식, 경로 �
 L["CMD_RESET"]                          = "  /ef reset: 모든 설정 초기화"
 L["CMD_BUG"]                            = "  /ef bug: 버그 신고"
 L["CMD_FEATURE"]                        = "  /ef feature: 기능 제안"
-L["MSG_LOGIN"]                          = "EasyFind 로드됨. /ef o로 설정을 여세요. (이 메시지는 일반 설정에서 끌 수 있습니다.)"
 L["MINIMAP_TT_LEFT_CLICK"]              = "왼쪽 클릭: 검색창 전환"
 L["MINIMAP_TT_RIGHT_CLICK"]             = "오른쪽 클릭: 설정 열기"
 L["MINIMAP_TT_DRAG"]                    = "드래그하여 위치 이동"

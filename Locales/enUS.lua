@@ -44,7 +44,6 @@ L["OPT_TAB_SEARCH"]                     = "Search"
 L["OPT_TAB_MAP"]                        = "Map"
 L["OPT_TAB_ALIASES"]                    = "Aliases & shortkeys"
 L["OPT_HOME_WELCOME"]                   = "Thanks for trying EasyFind!"
-L["OPT_SHOW_LOGIN_MESSAGE"]             = "Show Login Message"
 L["OPT_SHOW_MINIMAP_BUTTON"]            = "Show Minimap Button"
 L["OPT_SHOW_ALIAS_MESSAGES"]            = "Show Alias Messages"
 L["OPT_INDICATOR_STYLE"]                = "Indicator Style"
@@ -137,7 +136,6 @@ L["WOWHEAD_LOCALE_AUTO"]                = "Auto"
 L["OPT_CLEAR_ALL_BTN"]                  = "Clear All"
 
 -- Checkbox tooltips and helper text
-L["OPT_LOGIN_MESSAGE_TT"]               = "When enabled, shows a short \"EasyFind loaded!\" message in chat when you log in.\n\nDisable to keep chat cleaner."
 L["OPT_MINIMAP_BTN_TT"]                 = "When enabled, adds a small search icon button to the minimap edge.\n\nLeft-click the button to toggle the search bar.\nRight-click to open options.\nDrag to reposition it around the minimap."
 L["OPT_ALIAS_MSG_TT"]                   = "When enabled, adding an alias prints a short chat note pointing back to the Aliases tab."
 L["OPT_LOCK_POSITION_TT"]               = "When enabled, the search bar can't be dragged. Useful if you've placed it exactly where you want and don't want to bump it by accident.\n\nReset Positions and the /reset command still work."
@@ -242,8 +240,6 @@ L["TUT_BTN_BACK_ARROW"]                 = "< Back"
 L["TUT_KB_PRESS_KEY"]                   = "Press a key..."
 
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - New Features"
-L["WHATSNEW_CHANGELOG_BTN"]             = "See full changelog"
-L["WHATSNEW_COPY_HINT"]                 = "Press Ctrl+C to copy the full changelog link:"
 L["WHATSNEW_GOT_IT"]                    = "Got it"
 L["MSG_CURRENCY_WATCH_LIMIT"]           = "You may only watch %d currencies at a time"
 L["POPUP_UNAPPLIED_SETTINGS"]           = "You have settings that have not been applied.\nAre you sure you wish to exit?"
@@ -255,11 +251,11 @@ L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffShortkeys|r\n" ..
-    "        Right-click any result to bind your own shortkey\n" ..
-    "        Shortkeys open a result with a single keypress\n" ..
+    "    |cff999999-|r Right-click any result to bind your own shortkey\n" ..
+    "    |cff999999-|r Shortkeys open a result with a single keypress\n" ..
     "|cffFFD100\226\128\162|r |cffffffffWowhead Links|r\n" ..
-    "        Right-click items, spells, mounts, achievements and more\n" ..
-    "        for a copy-ready Wowhead link"
+    "    |cff999999-|r Right-click items, spells, mounts, achievements\n" ..
+    "      and more for a copy-ready Wowhead link"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels
@@ -316,7 +312,6 @@ L["CMD_CLEAR"]                          = "  /ef clear: dismiss highlights, pins
 L["CMD_RESET"]                          = "  /ef reset: reset all settings"
 L["CMD_BUG"]                            = "  /ef bug: report a bug"
 L["CMD_FEATURE"]                        = "  /ef feature: request a feature"
-L["MSG_LOGIN"]                          = "EasyFind loaded. Use /ef o to open options. (Disable this message in General settings.)"
 L["MINIMAP_TT_LEFT_CLICK"]              = "Left-click: Toggle search bar"
 L["MINIMAP_TT_RIGHT_CLICK"]             = "Right-click: Open options"
 L["MINIMAP_TT_DRAG"]                    = "Drag to reposition"

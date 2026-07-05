@@ -221,7 +221,6 @@ local function SyncOptionControls()
 
     if optionsFrame.visibilityModeRow then optionsFrame.visibilityModeRow:SetValue(GetVisibilityModeValue()) end
     if optionsFrame.lockPositionCheckbox then optionsFrame.lockPositionCheckbox:SetChecked(EasyFind.db.lockPosition or false) end
-    if optionsFrame.loginMessageCheckbox then optionsFrame.loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage == true) end
     if optionsFrame.aliasMessageCheckbox then optionsFrame.aliasMessageCheckbox:SetChecked(EasyFind.db.showAliasMessages ~= false) end
     if optionsFrame.resultsDirectionRow then optionsFrame.resultsDirectionRow:SetValue(GetResultsDirectionValue()) end
     if optionsFrame.resultShortcutHintsCheckbox then optionsFrame.resultShortcutHintsCheckbox:SetChecked(EasyFind.db.showResultShortcutHints ~= false) end
@@ -942,20 +941,11 @@ local function BuildGeneralBindsTab(ctx)
         return row, label
     end
 
-    local loginMessageCheckbox = CreateCheckbox(sec3, "LoginMessage", L["OPT_SHOW_LOGIN_MESSAGE"],
-        L["OPT_LOGIN_MESSAGE_TT"])
-    loginMessageCheckbox:SetPoint("TOPLEFT", sec3, "TOPLEFT", 8, -8)
-    loginMessageCheckbox:SetChecked(EasyFind.db.showLoginMessage == true)
-    loginMessageCheckbox:SetScript("OnClick", function(self)
-        EasyFind.db.showLoginMessage = self:GetChecked()
-    end)
-    optionsFrame.loginMessageCheckbox = loginMessageCheckbox
-
     local minimapBtnCheckbox = CreateCheckbox(sec3, "MinimapBtn", L["OPT_SHOW_MINIMAP_BUTTON"],
         L["OPT_MINIMAP_BTN_TT"])
     local aliasMessageCheckbox = CreateCheckbox(sec3, "AliasMessages", L["OPT_SHOW_ALIAS_MESSAGES"],
         L["OPT_ALIAS_MSG_TT"])
-    aliasMessageCheckbox:SetPoint("TOPLEFT", loginMessageCheckbox, "BOTTOMLEFT", 0, -2)
+    aliasMessageCheckbox:SetPoint("TOPLEFT", sec3, "TOPLEFT", 8, -8)
     aliasMessageCheckbox:SetChecked(EasyFind.db.showAliasMessages ~= false)
     aliasMessageCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.showAliasMessages = self:GetChecked()

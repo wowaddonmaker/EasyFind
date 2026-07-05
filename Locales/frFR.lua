@@ -35,7 +35,6 @@ L["OPT_TAB_SEARCH"]                     = "Recherche"
 L["OPT_TAB_MAP"]                        = "Carte"
 L["OPT_TAB_ALIASES"]                    = "Alias et raccourcis"
 L["OPT_HOME_WELCOME"]                   = "Merci d'essayer EasyFind !"
-L["OPT_SHOW_LOGIN_MESSAGE"]             = "Afficher le message de connexion"
 L["OPT_SHOW_MINIMAP_BUTTON"]            = "Afficher l'icône de la minicarte"
 L["OPT_SHOW_ALIAS_MESSAGES"]            = "Afficher les messages d'alias"
 L["OPT_INDICATOR_STYLE"]                = "Style d'indicateur"
@@ -124,7 +123,6 @@ L["OPT_EXPORT_BTN_TT"]                  = "Copiez un code à partager contenant 
 L["OPT_IMPORT_BTN_TT"]                  = "Collez un code partagé pour ajouter ses alias et raccourcis sur ce compte."
 L["WOWHEAD_LOCALE_AUTO"]                = "Automatique"
 L["OPT_CLEAR_ALL_BTN"]                  = "Tout effacer"
-L["OPT_LOGIN_MESSAGE_TT"]               = "Affiche un bref message « EasyFind chargé ! » dans le canal de discussion à la connexion.\n\nDésactivez pour garder la discussion plus propre."
 L["OPT_MINIMAP_BTN_TT"]                 = "Ajoute un petit bouton de recherche au bord de la minicarte.\n\nClic gauche pour afficher la barre de recherche.\nClic droit pour ouvrir les options.\nGlissez pour le repositionner autour de la minicarte."
 L["OPT_ALIAS_MSG_TT"]                   = "Lorsqu'il est activé, ajouter un alias affiche une courte note renvoyant vers l'onglet Alias."
 L["OPT_LOCK_POSITION_TT"]               = "Lorsqu'il est activé, la barre de recherche ne peut plus être déplacée. Utile si vous l'avez placée exactement où vous le souhaitez.\n\n« Réinitialiser les positions » et la commande /reset fonctionnent toujours."
@@ -220,8 +218,6 @@ L["TUT_BTN_BACK"]                       = "Retour"
 L["TUT_BTN_BACK_ARROW"]                 = "< Retour"
 L["TUT_KB_PRESS_KEY"]                   = "Appuyez sur une touche…"
 L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - Nouveautés"
-L["WHATSNEW_CHANGELOG_BTN"]             = "Voir tous les changements"
-L["WHATSNEW_COPY_HINT"]                 = "Appuyez sur Ctrl+C pour copier le lien du journal des modifications complet :"
 L["WHATSNEW_GOT_IT"]                    = "Compris"
 L["MSG_CURRENCY_WATCH_LIMIT"]           = "Vous ne pouvez suivre que %d monnaies à la fois"
 L["POPUP_UNAPPLIED_SETTINGS"]           = "Certains réglages n'ont pas été appliqués.\nVoulez-vous vraiment quitter ?"
@@ -232,11 +228,12 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bienvenue dans EasyFind v%s ! Consult
 L["WHATSNEW_CHAT_HERE"]                 = "ici"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffRaccourcis|r\n" ..
-    "        Clic droit sur un résultat pour définir votre propre raccourci\n" ..
-    "        Les raccourcis ouvrent un résultat d'une seule touche\n" ..
+    "    |cff999999-|r Clic droit sur un résultat pour définir votre\n" ..
+    "      propre raccourci\n" ..
+    "    |cff999999-|r Les raccourcis ouvrent un résultat d'une seule touche\n" ..
     "|cffFFD100\226\128\162|r |cffffffffLiens Wowhead|r\n" ..
-    "        Clic droit sur objets, sorts, montures, hauts faits et plus\n" ..
-    "        pour un lien Wowhead prêt à copier"
+    "    |cff999999-|r Clic droit sur objets, sorts, montures, hauts faits\n" ..
+    "      et plus pour un lien Wowhead prêt à copier"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Ajouter un alias"
@@ -287,7 +284,6 @@ L["CMD_CLEAR"]                          = "  /ef clear : retirer surbrillances, 
 L["CMD_RESET"]                          = "  /ef reset : réinitialiser tous les réglages"
 L["CMD_BUG"]                            = "  /ef bug : signaler un bug"
 L["CMD_FEATURE"]                        = "  /ef feature : proposer une fonction"
-L["MSG_LOGIN"]                          = "EasyFind chargé. Utilisez /ef o pour ouvrir les options. (Désactivez ce message dans les réglages Général.)"
 L["MINIMAP_TT_LEFT_CLICK"]              = "Clic gauche : afficher la barre de recherche"
 L["MINIMAP_TT_RIGHT_CLICK"]             = "Clic droit : ouvrir les options"
 L["MINIMAP_TT_DRAG"]                    = "Glisser pour repositionner"
