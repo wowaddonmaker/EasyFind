@@ -180,7 +180,12 @@ function Database:ScoreInitials(text, query)
                 break
             end
         end
-        if matchLen > 0 then
+        -- A single leading char is not an abbreviation segment here:
+        -- 1-char crumbs let ordinary words assemble out of unrelated
+        -- names ("rate" -> RA(shok) T(he) E(lder), score 119). True
+        -- initials runs ("tot" -> Throne of Thunder) are Strategy 1's
+        -- job, so this walk only accepts 2+ char prefixes per word.
+        if matchLen >= 2 then
             qi = qi + matchLen
             wordsMatched = wordsMatched + 1
         elseif wordsMatched > 0 and not INITIALS_STOPWORDS[w] then
