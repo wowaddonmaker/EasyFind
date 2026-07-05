@@ -159,7 +159,15 @@ function Search:Initialize()
     self:UpdateScale()
     self:UpdateWidth()
     self:UpdateFontSize()
-    if ns.Database and ns.Database.WarmSearchHotPath then
+    -- Load every sync dynamic provider (bags, pets, mounts, toys,
+    -- achievements, ...) staggered one per frame; the chain ends by
+    -- calling WarmSearchHotPath itself. Warming only the eager subset
+    -- left the rest to populate on demand, so a query like a bag item
+    -- painted its achievement match instantly and the bag and pet rows
+    -- a second later.
+    if ns.Database and ns.Database.LoadDeferredSyncProvidersStaggered then
+        ns.Database:LoadDeferredSyncProvidersStaggered()
+    elseif ns.Database and ns.Database.WarmSearchHotPath then
         ns.Database:WarmSearchHotPath()
     end
     if ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.EnsureFastGameOptions then
