@@ -486,9 +486,6 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 row.hideTooltipsRow = hideTipRow
                 extraRows = 1
             end
-            popup:SetSize(SUB_POPUP_WIDTH,
-                SUB_PAD * 2 + (#opt.flyoutSubFilters + extraRows + toggleAllOffset) * SUB_ROW_H)
-
             -- Sync sub-row checked state from current DB values.
             local function SyncSubChecks()
                 local parentEnabled = EasyFind.db.uiSearchFilters[opt.key] ~= false
@@ -543,6 +540,25 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     KeepSearchEditBoxUnfocused()
                 end)
             end
+
+            -- Width hugs the widest row: checkbox + optional icon + label
+            -- (+ chevron reserve on option rows). All labels are static at
+            -- build time, so this runs once.
+            local contentW = 0
+            for si = 1, #opt.flyoutSubFilters do
+                local w = Utils.FlyoutRowContentWidth(subRows[si], CHK + 4, SUB_ICON, SUB_ICON - 2)
+                if w > contentW then contentW = w end
+            end
+            local hideTipW = Utils.FlyoutRowContentWidth(hideTipRow, CHK + 4)
+            if hideTipW > contentW then contentW = hideTipW end
+            local toggleAllW = Utils.FlyoutRowContentWidth(toggleAllRow, 8)
+            if toggleAllW > contentW then contentW = toggleAllW end
+            local popupW = Utils.FlyoutWidthFor(contentW, SUB_PAD)
+            for si = 1, #opt.flyoutSubFilters do subRows[si]:SetWidth(popupW - SUB_PAD * 2) end
+            if hideTipRow then hideTipRow:SetWidth(popupW - SUB_PAD * 2) end
+            if toggleAllRow then toggleAllRow:SetWidth(popupW - SUB_PAD * 2) end
+            popup:SetSize(popupW,
+                SUB_PAD * 2 + (#opt.flyoutSubFilters + extraRows + toggleAllOffset) * SUB_ROW_H)
 
             -- Show on hover of either the parent row or the arrow.
             -- Hide when the cursor leaves both the row and the popup,
@@ -689,7 +705,22 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 checkboxRows[ci] = cRow
             end
 
-            popup:SetSize(SUB_POPUP_WIDTH,
+            -- Width hugs the widest row: bullet/box inset + label. 24 =
+            -- radio inset (4) + bullet (14) + label gap (6); the checkbox
+            -- variant (5 + 12 + 6) sits within the same reserve.
+            local contentW = 0
+            for ri = 1, #radioRows do
+                local w = Utils.FlyoutRowContentWidth(radioRows[ri], 24)
+                if w > contentW then contentW = w end
+            end
+            for ci = 1, #checkboxRows do
+                local w = Utils.FlyoutRowContentWidth(checkboxRows[ci], 24)
+                if w > contentW then contentW = w end
+            end
+            local popupW = Utils.FlyoutWidthFor(contentW, SUB_PAD)
+            for ri = 1, #radioRows do radioRows[ri]:SetWidth(popupW - SUB_PAD * 2) end
+            for ci = 1, #checkboxRows do checkboxRows[ci]:SetWidth(popupW - SUB_PAD * 2) end
+            popup:SetSize(popupW,
                 SUB_PAD * 2 + #options * SUB_ROW_H + SEPARATOR_H + #checkboxes * SUB_ROW_H)
 
             if hasSeparator then

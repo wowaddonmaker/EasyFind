@@ -256,7 +256,14 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, dropdow
             py = py - ROW_H
         end
         for i = #defs + 1, #slotRows do slotRows[i]:Hide() end
-        slotPopup:SetSize(WIDTH, -py + PAD)
+        local contentW = 0
+        for i = 1, #defs do
+            local w = Utils.FlyoutRowContentWidth(slotRows[i], 12)
+            if w > contentW then contentW = w end
+        end
+        local popupW = Utils.FlyoutWidthFor(contentW, PAD)
+        for i = 1, #defs do slotRows[i]:SetWidth(popupW - PAD * 2) end
+        slotPopup:SetSize(popupW, -py + PAD)
     end
     local slotBtn
     slotBtn, setSlotLabel = Utils.CreateDropdownButton({
@@ -309,7 +316,17 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, dropdow
     sourcesRow._label = sourcesText
     sourcesRow._chev = sourcesChev
     Utils.InstallMenuRowHighlight(sourcesRow)
-    filterPopup:SetSize(WIDTH, PAD * 2 + (#toggleDefs + 1) * ROW_H)
+    local filterContentW = 0
+    for i = 1, #toggleRows do
+        local w = Utils.FlyoutRowContentWidth(toggleRows[i], CHECK_SIZE + 4)
+        if w > filterContentW then filterContentW = w end
+    end
+    local filterSrcW = Utils.FlyoutRowContentWidth(sourcesRow, 12, nil, CHECK_SIZE)
+    if filterSrcW > filterContentW then filterContentW = filterSrcW end
+    local filterPopupW = Utils.FlyoutWidthFor(filterContentW, PAD)
+    for i = 1, #toggleRows do toggleRows[i]:SetWidth(filterPopupW - PAD * 2) end
+    sourcesRow:SetWidth(filterPopupW - PAD * 2)
+    filterPopup:SetSize(filterPopupW, PAD * 2 + (#toggleDefs + 1) * ROW_H)
 
     local function SourceFilters()
         EasyFind.db.appearanceItemSourceFilters = EasyFind.db.appearanceItemSourceFilters or {}
@@ -478,7 +495,15 @@ function Filters:BuildAppearanceOptionsPopup(StylePopup, CHECK_SIZE, dropdownGua
             end,
         })
     end
-    chooser:SetSize(WIDTH, PAD * 2 + CLASS_BTN_H + CLASS_GAP + #rows * ROW_H)
+    local chooserContentW = 0
+    for i = 1, #checkRows do
+        local w = Utils.FlyoutRowContentWidth(checkRows[i].row, CHECK_SIZE + 4, nil, CHECK_SIZE - 2)
+        if w > chooserContentW then chooserContentW = w end
+    end
+    local chooserW = Utils.FlyoutWidthFor(chooserContentW, PAD)
+    for i = 1, #checkRows do checkRows[i].row:SetWidth(chooserW - PAD * 2) end
+    if classSel.button then classSel.button:SetWidth(chooserW - PAD * 2) end
+    chooser:SetSize(chooserW, PAD * 2 + CLASS_BTN_H + CLASS_GAP + #rows * ROW_H)
 
     chooser:HookScript("OnHide", function()
         itemsPopup:Hide()

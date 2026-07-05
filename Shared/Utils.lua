@@ -1168,6 +1168,51 @@ function Utils.SetMenuRowHighlightPosition(row, position)
     end
 end
 
+-- Widest natural width across regions: FontStrings measure unwrapped, other
+-- regions by their frame width. The panel-shaped companion to
+-- MaxRowLabelWidth below; both exist so popups size to their content
+-- instead of hardcoding widths that drift from what they hold.
+function Utils.MaxContentWidth(regions)
+    local maxW = 0
+    for i = 1, #regions do
+        local region = regions[i]
+        if region then
+            local w
+            if region.GetUnboundedStringWidth then
+                w = region:GetUnboundedStringWidth()
+            elseif region.GetStringWidth then
+                w = region:GetStringWidth()
+            elseif region.GetWidth then
+                w = region:GetWidth()
+            end
+            if w and w > maxW then maxW = w end
+        end
+    end
+    return maxW
+end
+
+-- Natural width of one flyout row: leading inset (checkbox + gap, or a
+-- plain text inset) + optional ._icon texture + label + optional ._chev
+-- reserve. Labels measure unwrapped so anchor-clipped rows don't feed
+-- their own clipped width back in.
+function Utils.FlyoutRowContentWidth(row, leading, iconSize, chevSize)
+    local label = row and row._label
+    if not label then return 0 end
+    local getter = label.GetUnboundedStringWidth or label.GetStringWidth
+    local w = leading + getter(label)
+    if row._icon and iconSize then w = w + iconSize + 4 end
+    if row._chev and chevSize then w = w + 4 + chevSize + 4 end
+    return w
+end
+
+-- Popup width for a flyout whose widest content line is contentW: side
+-- padding both sides plus a small right margin so text never touches the
+-- border, floored at FLYOUT_MIN_WIDTH. Every flyout builder sizes through
+-- this so widths track content instead of hardcoded constants.
+function Utils.FlyoutWidthFor(contentW, pad)
+    return mmax(ns.FLYOUT_MIN_WIDTH, mceil(contentW) + pad * 2 + 8)
+end
+
 -- Widest label across popup rows (rows carry ._label or .text). Callers add
 -- their own row insets and margins, then clamp to ns.FLYOUT_MIN_WIDTH so
 -- flyouts hug their contents.

@@ -138,7 +138,18 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuard
     sourcesRow._chev = sourceChev
     InstallMenuRowHighlight(sourcesRow)
 
-    optionsPopup:SetSize(OPTIONS_WIDTH, PAD * 2 + CLASS_BTN_H + CLASS_GAP + #filterDefs * ROW_H + ROW_H)
+    local contentW = 0
+    for i = 1, #rows do
+        local w = Utils.FlyoutRowContentWidth(rows[i], CHECK_SIZE + 4)
+        if w > contentW then contentW = w end
+    end
+    local srcW = Utils.FlyoutRowContentWidth(sourcesRow, 14, nil, CHECK_SIZE)
+    if srcW > contentW then contentW = srcW end
+    local popupW = Utils.FlyoutWidthFor(contentW, PAD)
+    for i = 1, #rows do rows[i]:SetWidth(popupW - PAD * 2) end
+    sourcesRow:SetWidth(popupW - PAD * 2)
+    if classSel and classSel.button then classSel.button:SetWidth(popupW - PAD * 2) end
+    optionsPopup:SetSize(popupW, PAD * 2 + CLASS_BTN_H + CLASS_GAP + #filterDefs * ROW_H + ROW_H)
 
     local sourceFlyout, LayoutSourceFlyout = Filters:BuildSourceFlyout({
         name = "EasyFindHeirloomSourcePopup",

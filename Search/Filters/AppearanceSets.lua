@@ -70,7 +70,14 @@ function Filters:BuildAppearanceSetOptionsPopup(StylePopup, CHECK_SIZE, dropdown
             cy = cy - 6
         end
     end
-    optionsPopup:SetSize(OPTIONS_WIDTH, -cy + PAD)
+    local contentW = 0
+    for si = 1, #cbRows do
+        local w = Utils.FlyoutRowContentWidth(cbRows[si], CHECK_SIZE + 4)
+        if w > contentW then contentW = w end
+    end
+    local popupW = Utils.FlyoutWidthFor(contentW, PAD)
+    for si = 1, #cbRows do cbRows[si]:SetWidth(popupW - PAD * 2) end
+    optionsPopup:SetSize(popupW, -cy + PAD)
 
     -- Outside-click: close when the cursor clicks fully outside the filter menu.
     Filters.AttachOutsideClickClose(optionsPopup)

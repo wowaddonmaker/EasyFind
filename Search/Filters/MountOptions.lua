@@ -156,7 +156,19 @@ function Filters:BuildMountOptionsPopup(StylePopup, CHECK_SIZE)
     sourcesRow._chev = sourceChev
     InstallMenuRowHighlight(sourcesRow)
 
-    optionsPopup:SetSize(OPTIONS_WIDTH, PAD * 2 + #filterDefs * ROW_H + HEADER_H + #typeDefs * ROW_H + ROW_H)
+    local contentW = 0
+    for i = 1, #rows do
+        local w = Utils.FlyoutRowContentWidth(rows[i], CHECK_SIZE + 4)
+        if w > contentW then contentW = w end
+    end
+    local headerW = 8 + typeHeader:GetStringWidth()
+    if headerW > contentW then contentW = headerW end
+    local srcW = Utils.FlyoutRowContentWidth(sourcesRow, 14, nil, CHECK_SIZE)
+    if srcW > contentW then contentW = srcW end
+    local popupW = Utils.FlyoutWidthFor(contentW, PAD)
+    for i = 1, #rows do rows[i]:SetWidth(popupW - PAD * 2) end
+    sourcesRow:SetWidth(popupW - PAD * 2)
+    optionsPopup:SetSize(popupW, PAD * 2 + #filterDefs * ROW_H + HEADER_H + #typeDefs * ROW_H + ROW_H)
 
     local sourceFlyout, LayoutSourceFlyout = Filters:BuildSourceFlyout({
         name = "EasyFindMountSourcePopup",

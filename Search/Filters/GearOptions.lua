@@ -125,6 +125,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     diffPopup:Hide()
 
     local diffPopupRows = {}
+    local diffRowLead
     local py = -6
     for _, def in ipairs(DIFF_OPTIONS) do
         local dRow = CreateFrame("Button", nil, diffPopup)
@@ -132,9 +133,11 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         dRow:SetPoint("TOPLEFT", 8, py)
         local radio, setRadioChecked = CreateRadioTexture(dRow)
         radio:SetPoint("LEFT", 0, 0)
+        diffRowLead = diffRowLead or (radio:GetWidth() + 4)
         local dLabel = dRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
         dLabel:SetPoint("LEFT", radio, "RIGHT", 4, 0)
         dLabel:SetText(def.label)
+        dRow._label = dLabel
         InstallMenuRowHighlight(dRow)
         dRow._diffKey = def.key
         dRow._setRadioChecked = setRadioChecked
@@ -147,7 +150,14 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         diffPopupRows[#diffPopupRows + 1] = dRow
         py = py - 20
     end
-    diffPopup:SetSize(146, -py + 6)
+    local diffContentW = 0
+    for i = 1, #diffPopupRows do
+        local w = Utils.FlyoutRowContentWidth(diffPopupRows[i], diffRowLead or 18)
+        if w > diffContentW then diffContentW = w end
+    end
+    local diffPopupW = Utils.FlyoutWidthFor(diffContentW, 8)
+    for i = 1, #diffPopupRows do diffPopupRows[i]:SetWidth(diffPopupW - 16) end
+    diffPopup:SetSize(diffPopupW, -py + 6)
 
     local function SyncDiffRadios()
         local key = EasyFind.db.lootDifficulty or "normal"
@@ -235,7 +245,20 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         sr:SetPoint("TOPLEFT", gearOptionsPopup, "TOPLEFT", GEAR_POPUP_PAD, gy)
         gy = gy - ROW_HEIGHT
     end
-    gearOptionsPopup:SetSize(GEAR_POPUP_WIDTH, -gy + GEAR_POPUP_PAD)
+    local contentW = 0
+    for i = 1, #lootSubRows do
+        local w = Utils.FlyoutRowContentWidth(lootSubRows[i], CHECK_SIZE + 4)
+        if w > contentW then contentW = w end
+    end
+    -- The difficulty button must fit its widest possible selection:
+    -- left text inset + widest difficulty name + gap + arrow + inset.
+    local diffBtnW = 14 + Utils.MaxRowLabelWidth(diffPopupRows) + 2 + 22 + 10
+    if diffBtnW > contentW then contentW = diffBtnW end
+    local popupW = Utils.FlyoutWidthFor(contentW, GEAR_POPUP_PAD)
+    for i = 1, #lootSubRows do lootSubRows[i]:SetWidth(popupW - GEAR_POPUP_PAD * 2) end
+    diffBtn:SetWidth(popupW - GEAR_POPUP_PAD * 2)
+    specSelectRow:SetWidth(popupW - GEAR_POPUP_PAD * 2)
+    gearOptionsPopup:SetSize(popupW, -gy + GEAR_POPUP_PAD)
 
     -- Hover-to-show wiring on the Gear filter row, mirroring the
     -- Collections sub-flyout pattern (with grace timer).
