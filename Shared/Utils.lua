@@ -846,6 +846,11 @@ function Utils.GetItemEquipLoc(itemID)
 end
 ns.EYE_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\eye"
 ns.LINK_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\link"
+ns.SEARCH_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\search-icon"
+-- The glyph fills only the inner ~27/32 of search-icon; crop the transparent
+-- padding so it fills the icon bounds where sized directly (the search bar
+-- compensates with its own icon scale instead).
+ns.SEARCH_ICON_COORDS = { 0.094, 0.938, 0.094, 0.938 }
 ns.COMMANDS_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\commands-icon"
 ns.RADIO_OFF_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-off"
 ns.RADIO_ON_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-on"
@@ -1214,6 +1219,11 @@ function Utils.FlyoutWidthFor(contentW, pad)
     return mmax(ns.FLYOUT_MIN_WIDTH, mceil(contentW) + pad * 2 + 8)
 end
 
+-- The class/spec selector BUTTON is 130 wide everywhere it appears
+-- (gear, heirlooms, the appearances chooser); host panels content-fit
+-- around it, treating it as fixed-width content.
+ns.CLASS_SELECTOR_BTN_W = 130
+
 -- Widest label across popup rows (rows carry ._label or .text). Callers add
 -- their own row insets and margins, then clamp to ns.FLYOUT_MIN_WIDTH so
 -- flyouts hug their contents.
@@ -1558,6 +1568,12 @@ function Utils.SetEditBoxReadOnlyText(editBox, text)
                 self:HighlightText()
             end
         end)
+        -- A read-only box always copies its full text, so the selection
+        -- must always SHOW that: clicking inside would normally drop the
+        -- highlight to place a cursor; restore it immediately.
+        editBox:HookScript("OnMouseUp", function(self)
+            if self._efReadOnlyText then self:HighlightText() end
+        end)
     end
     editBox._efReadOnlyText = text
     if text then editBox:SetText(text) end
@@ -1581,10 +1597,11 @@ function ns.ShowCopyBox(text, labelText)
 
         f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         f.title:SetPoint("TOPLEFT", 14, -14)
-        f.title:SetJustifyH("LEFT")
-        -- Wrap stays on for explicit newlines (the hint puts the item
-        -- name on its own line); the width fit below always sizes the
-        -- frame to the widest line, so no automatic wrapping occurs.
+        -- Centered so the item name on its own line sits under the
+        -- middle of the hint. Wrap stays on for the explicit newline;
+        -- the width fit below always sizes the frame to the widest
+        -- line, so no automatic wrapping occurs.
+        f.title:SetJustifyH("CENTER")
         f.title:SetWordWrap(true)
         f.title:SetSpacing(2)
 
@@ -1636,6 +1653,10 @@ function ns.ShowCopyBox(text, labelText)
         local close = ns.CreateCloseX(f, 14)
         close:SetPoint("TOPRIGHT", -8, -8)
         close:SetScript("OnClick", function() f:Hide() end)
+
+        -- ESC closes the box even when the editbox lost focus: Blizzard's
+        -- own pipeline hides UISpecialFrames entries, no keyboard capture.
+        tinsert(UISpecialFrames, "EasyFindCopyBox")
 
         f:Hide()
         copyBox = f
@@ -1728,6 +1749,10 @@ function ns.ShowThemedDialog(opts)
     f._hasEditBox = opts.hasEditBox and true or false
 
     f.message:SetText(opts.text or "")
+    -- Title-style prompts (alias/shortkey/Wowhead family) go gold;
+    -- plain confirmations keep the primary text color.
+    local msgColor = opts.messageColor or ns.TEXT_PRIMARY
+    f.message:SetTextColor(msgColor[1], msgColor[2], msgColor[3], 1)
 
     local width = 380
     f:SetWidth(width)

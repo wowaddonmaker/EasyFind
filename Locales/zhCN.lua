@@ -211,11 +211,15 @@ L["TUT_SLIDE_MACROS"]                   = "支持的结果可直接从搜索中�
 L["TUT_SLIDE_INLINE_SETTINGS"]          = "搜索设置并就地调整对应控件，无需离开结果。"
 L["TUT_SLIDE_USE_GEAR"]                 = "直接从搜索中装备装备方案。"
 L["TUT_SLIDE_USE_MOUNTS"]               = "Summon a mount with one click, or use modifiers to open its journal entry, preview it on your character, or drag it to an action bar."
+L["TUT_SLIDE_USE_OUTFITS"]              = "点击套装即可穿上。Alt 点击可在幻化窗口中查看，按住 Shift 可将其拖到动作条上。图标呈绿色表示该套装当前已装备。"
 L["TUT_SLIDE_USE_MACROS"]               = "Run macros from results, or Alt-click to edit them."
 L["TUT_SLIDE_USE_ABILITIES"]            = "Cast abilities straight from the search results; Alt opens the spellbook entry, Shift drags to your action bars. The search bar is disabled in combat, so this is for out-of-combat use."
 L["TUT_SLIDE_USE_TOYS"]                 = "直接从列表中使用玩具和其他支持的物品。"
+L["TUT_SLIDE_USE_TITLES"]               = "直接从搜索结果应用任何已获得的头衔，无需在角色面板的头衔列表中翻找。"
 L["TUT_SLIDE_USE_COMMANDS"]             = "Slash commands and emotes are searchable too. Pair them with a {L:options:aliases}shortkey{/L} to bind '/reload' or any emote to a single keypress without spending an action bar slot."
-L["TUT_MAP_TAB_DESC"]                   = "在你正在查看的地图上搜索。“本区域”显示当前地图的匹配结果，而“全世界”将更广泛的结果按大陆和区域分组。专为在区域间快速切换、悬停预览兴趣点而设计；相同结果也可从主搜索栏获取，只是没有嵌套的地图布局。"
+L["TUT_MAP_INTRO_DESC"]                 = "地图搜索标签是内嵌在世界地图中的第二个搜索，可从地图任务日志右侧的标签栏（放大镜图标）打开。它提供主搜索栏没有的与地图相关的功能，例如在大陆的各区域之间跳转地图，以及悬停预览事物的位置。接下来的幻灯片会展示它的实际效果。"
+L["TUT_MAP_TAB_DESC"]                   = "搜索诺森德这样的大陆，它的所有区域会一次性列出。点击某个区域可让地图直接跳转过去，或只需悬停即可预览该区域的位置，这样你无需逐个打开就能快速浏览众多区域。相同的区域也可从主搜索栏搜索。"
+L["TUT_MAP_HOVER_DESC"]                 = "搜索结果不只用于区域。将鼠标悬停或点击任意兴趣点条目，例如训练师、飞行管理员或这些训练假人，其图标就会直接在地图上亮起，让你一眼看清它的位置。"
 L["TUT_BTN_BACK"]                       = "返回"
 L["TUT_BTN_BACK_ARROW"]                 = "< 返回"
 L["TUT_KB_PRESS_KEY"]                   = "请按一个键……"
@@ -234,7 +238,9 @@ L["WHATSNEW_BODY"]                      =
     "    |cff999999-|r 快捷键一键直达对应结果\n" ..
     "|cffFFD100\226\128\162|r |cffffffffWowhead链接|r\n" ..
     "    |cff999999-|r 右键物品、法术、坐骑、成就等，\n" ..
-    "      即可复制Wowhead链接"
+    "      即可复制Wowhead链接\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff命令搜索|r\n" ..
+    "    |cff999999-|r 在搜索栏中查找并执行斜杠命令"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "添加别名"
@@ -276,7 +282,7 @@ L["HEADER_PINNED"]                      = "已固定"
 
 -- Core: slash help, login, minimap tooltip
 L["URL_COPY_HINT"]                      = "按 Ctrl+C 复制，然后粘贴到浏览器中："
-L["WOWHEAD_COPY_HINT"]                  = "按 Ctrl+C 复制 Wowhead 链接\n“%s”"
+L["WOWHEAD_COPY_HINT"]                  = "按 Ctrl+C 复制 Wowhead 链接\n“%s”："
 L["COPIED"]                             = "已复制"
 L["WOWHEAD_SET_PREFIX"]                 = "套装："
 L["CMD_HEADER"]                         = "命令："

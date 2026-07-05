@@ -432,7 +432,7 @@ function Filters:BuildAppearanceOptionsPopup(StylePopup, CHECK_SIZE, dropdownGua
     local classSel = Filters:BuildClassSpecSelector({
         parent = chooser,
         x = PAD, y = -PAD,
-        width = WIDTH - PAD * 2,
+        width = ns.CLASS_SELECTOR_BTN_W,
         hasSpec = false,
         stylePopup = StylePopup,
         guardFrames = dropdownGuardFrames,
@@ -500,9 +500,10 @@ function Filters:BuildAppearanceOptionsPopup(StylePopup, CHECK_SIZE, dropdownGua
         local w = Utils.FlyoutRowContentWidth(checkRows[i].row, CHECK_SIZE + 4, nil, CHECK_SIZE - 2)
         if w > chooserContentW then chooserContentW = w end
     end
+    -- The class selector button is fixed-width content.
+    if ns.CLASS_SELECTOR_BTN_W > chooserContentW then chooserContentW = ns.CLASS_SELECTOR_BTN_W end
     local chooserW = Utils.FlyoutWidthFor(chooserContentW, PAD)
     for i = 1, #checkRows do checkRows[i].row:SetWidth(chooserW - PAD * 2) end
-    if classSel.button then classSel.button:SetWidth(chooserW - PAD * 2) end
     chooser:SetSize(chooserW, PAD * 2 + CLASS_BTN_H + CLASS_GAP + #rows * ROW_H)
 
     chooser:HookScript("OnHide", function()

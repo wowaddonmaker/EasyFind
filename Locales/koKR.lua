@@ -211,11 +211,15 @@ L["TUT_SLIDE_MACROS"]                   = "지원되는 결과는 매크로와 �
 L["TUT_SLIDE_INLINE_SETTINGS"]          = "설정을 검색하고 결과를 떠나지 않고 해당 컨트롤을 바로 조절하세요."
 L["TUT_SLIDE_USE_GEAR"]                 = "검색에서 장비 세트를 바로 착용하세요."
 L["TUT_SLIDE_USE_MOUNTS"]               = "Summon a mount with one click, or use modifiers to open its journal entry, preview it on your character, or drag it to an action bar."
+L["TUT_SLIDE_USE_OUTFITS"]              = "의상을 클릭하면 바로 착용합니다. Alt 클릭은 형상변환 창에서 보여주고, Shift를 누른 채 끌면 행동 단축바에 올릴 수 있습니다. 아이콘이 초록색이면 현재 착용 중인 의상입니다."
 L["TUT_SLIDE_USE_MACROS"]               = "Run macros from results, or Alt-click to edit them."
 L["TUT_SLIDE_USE_ABILITIES"]            = "Cast abilities straight from the search results; Alt opens the spellbook entry, Shift drags to your action bars. The search bar is disabled in combat, so this is for out-of-combat use."
 L["TUT_SLIDE_USE_TOYS"]                 = "장난감과 기타 지원되는 아이템을 목록에서 바로 사용하세요."
+L["TUT_SLIDE_USE_TITLES"]               = "획득한 칭호를 결과에서 바로 적용하세요. 캐릭터 창의 칭호 목록을 뒤질 필요가 없습니다."
 L["TUT_SLIDE_USE_COMMANDS"]             = "Slash commands and emotes are searchable too. Pair them with a {L:options:aliases}shortkey{/L} to bind '/reload' or any emote to a single keypress without spending an action bar slot."
-L["TUT_MAP_TAB_DESC"]                   = "보고 있는 지도에서 검색합니다. ‘현재 지역’은 현재 지도의 결과를 보여 주고, ‘전 세계’는 더 넓은 결과를 대륙과 지역별로 묶습니다. 지역 사이를 빠르게 이동하고 마우스를 올려 관심 지점을 미리 보도록 만들어졌습니다. 같은 결과는 메인 검색창에서도 볼 수 있으며, 다만 중첩된 지도 구성은 없습니다."
+L["TUT_MAP_INTRO_DESC"]                 = "지도 검색 탭은 세계 지도에 내장된 두 번째 검색으로, 지도 퀘스트 목록 오른쪽의 탭 줄(돋보기 아이콘)에서 열 수 있습니다. 대륙의 지역 사이로 지도를 이동하거나 마우스를 올려 위치를 미리 보는 등, 메인 검색창에는 없는 지도 전용 기능을 제공합니다. 다음 슬라이드에서 실제로 확인할 수 있습니다."
+L["TUT_MAP_TAB_DESC"]                   = "노스렌드 같은 대륙을 검색하면 그 안의 모든 지역이 한 번에 나열됩니다. 지역을 클릭하면 지도가 바로 그곳으로 이동하고, 마우스만 올리면 지역 위치를 미리 볼 수 있어 하나씩 열지 않고도 여러 곳을 빠르게 훑을 수 있습니다. 같은 지역은 메인 검색창에서도 찾을 수 있습니다."
+L["TUT_MAP_HOVER_DESC"]                 = "결과는 지역에만 쓰이는 게 아닙니다. 교관, 비행 관리인, 또는 이 훈련용 인형 같은 관심 지점 항목에 마우스를 올리거나 클릭하면 해당 아이콘이 지도에 바로 표시되어 정확한 위치를 확인할 수 있습니다."
 L["TUT_BTN_BACK"]                       = "뒤로"
 L["TUT_BTN_BACK_ARROW"]                 = "< 뒤로"
 L["TUT_KB_PRESS_KEY"]                   = "키를 누르세요…"
@@ -234,7 +238,9 @@ L["WHATSNEW_BODY"]                      =
     "    |cff999999-|r 단축키는 키 한 번으로 결과를 바로 엽니다\n" ..
     "|cffFFD100\226\128\162|r |cffffffffWowhead 링크|r\n" ..
     "    |cff999999-|r 아이템, 주문, 탈것, 업적 등을 우클릭해\n" ..
-    "      Wowhead 링크를 복사하세요"
+    "      Wowhead 링크를 복사하세요\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff명령어 검색|r\n" ..
+    "    |cff999999-|r 검색창에서 빗금 명령어를 찾아 바로 실행하세요"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"
@@ -276,7 +282,7 @@ L["HEADER_PINNED"]                      = "고정됨"
 
 -- Core: slash help, login, minimap tooltip
 L["URL_COPY_HINT"]                      = "Ctrl+C로 복사한 뒤 브라우저에 붙여넣으세요:"
-L["WOWHEAD_COPY_HINT"]                  = "Ctrl+C를 눌러 Wowhead 링크를 복사하세요\n'%s'"
+L["WOWHEAD_COPY_HINT"]                  = "Ctrl+C를 눌러 Wowhead 링크를 복사하세요\n'%s':"
 L["COPIED"]                             = "복사됨"
 L["WOWHEAD_SET_PREFIX"]                 = "앙상블:"
 L["CMD_HEADER"]                         = "명령어:"

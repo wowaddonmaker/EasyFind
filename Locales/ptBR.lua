@@ -211,11 +211,15 @@ L["TUT_SLIDE_MACROS"]                   = "Resultados compatíveis podem ser exe
 L["TUT_SLIDE_INLINE_SETTINGS"]          = "Busque ajustes e altere os controles correspondentes em linha sem sair dos resultados."
 L["TUT_SLIDE_USE_GEAR"]                 = "Equipe conjuntos de equipamento direto da busca."
 L["TUT_SLIDE_USE_MOUNTS"]               = "Summon a mount with one click, or use modifiers to open its journal entry, preview it on your character, or drag it to an action bar."
+L["TUT_SLIDE_USE_OUTFITS"]              = "Clique em um traje para vesti-lo. Alt+clique o exibe na janela de transmogrificação e, segurando Shift, você pode arrastá-lo para as barras de ação. Um ícone esverdeado indica o traje equipado no momento."
 L["TUT_SLIDE_USE_MACROS"]               = "Run macros from results, or Alt-click to edit them."
 L["TUT_SLIDE_USE_ABILITIES"]            = "Cast abilities straight from the search results; Alt opens the spellbook entry, Shift drags to your action bars. The search bar is disabled in combat, so this is for out-of-combat use."
 L["TUT_SLIDE_USE_TOYS"]                 = "Use brinquedos e outros itens compatíveis direto da lista."
+L["TUT_SLIDE_USE_TITLES"]               = "Aplique qualquer título conquistado direto dos resultados, sem percorrer a lista de títulos no painel de personagem."
 L["TUT_SLIDE_USE_COMMANDS"]             = "Slash commands and emotes are searchable too. Pair them with a {L:options:aliases}shortkey{/L} to bind '/reload' or any emote to a single keypress without spending an action bar slot."
-L["TUT_MAP_TAB_DESC"]                   = "Busque no mapa que você está vendo. «Esta zona» mostra correspondências do mapa atual, enquanto «Pelo mundo» agrupa resultados mais amplos por continente e zona. Feito para se mover rápido entre zonas e pré-visualizar pontos de interesse ao passar o mouse; os mesmos resultados estão disponíveis na barra de busca principal, só que sem o layout de mapa aninhado."
+L["TUT_MAP_INTRO_DESC"]                 = "A aba de busca do mapa é uma segunda busca integrada ao mapa do mundo, aberta pela tira de abas no lado direito do registro de missões do mapa (a lupa). Ela adiciona recursos ligados ao mapa que a barra principal não tem, como levar o mapa entre as zonas de um continente e pré-visualizar onde as coisas ficam ao passar o cursor. Os próximos slides a mostram em ação."
+L["TUT_MAP_TAB_DESC"]                   = "Busque um continente como Nortúndria e todas as suas zonas aparecem de uma vez. Clique em uma para levar o mapa direto até lá, ou apenas passe o cursor para ver onde a zona fica, assim você percorre várias rápido sem abrir cada uma. As mesmas zonas também podem ser buscadas na barra principal."
+L["TUT_MAP_HOVER_DESC"]                 = "Os resultados não são só para zonas. Passe o cursor ou clique em qualquer ponto de interesse, um treinador, mestre de voo ou estes bonecos de treino, e o ícone se acende no seu mapa para você ver exatamente onde encontrá-lo."
 L["TUT_BTN_BACK"]                       = "Voltar"
 L["TUT_BTN_BACK_ARROW"]                 = "< Voltar"
 L["TUT_KB_PRESS_KEY"]                   = "Pressione uma tecla…"
@@ -235,7 +239,9 @@ L["WHATSNEW_BODY"]                      =
     "    |cff999999-|r Atalhos abrem um resultado com um único toque\n" ..
     "|cffFFD100\226\128\162|r |cffffffffLinks do Wowhead|r\n" ..
     "    |cff999999-|r Clique direito em itens, feitiços, montarias,\n" ..
-    "      conquistas e mais para copiar o link do Wowhead"
+    "      conquistas e mais para copiar o link do Wowhead\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffBusca de comandos|r\n" ..
+    "    |cff999999-|r Encontre e execute comandos (/) pela barra de busca"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Adicionar apelido"
@@ -277,7 +283,7 @@ L["HEADER_PINNED"]                      = "Fixados"
 
 -- Core: slash help, login, minimap tooltip
 L["URL_COPY_HINT"]                      = "Pressione Ctrl+C para copiar, depois cole no seu navegador:"
-L["WOWHEAD_COPY_HINT"]                  = "Pressione Ctrl+C para copiar o link do Wowhead de\n«%s»"
+L["WOWHEAD_COPY_HINT"]                  = "Pressione Ctrl+C para copiar o link do Wowhead de\n«%s»:"
 L["COPIED"]                             = "Copiado"
 L["WOWHEAD_SET_PREFIX"]                 = "Conjunto:"
 L["CMD_HEADER"]                         = "Comandos:"

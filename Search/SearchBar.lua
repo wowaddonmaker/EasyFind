@@ -19,7 +19,7 @@ local mmin, mmax = Utils.mmin, Utils.mmax
 local tinsert = Utils.tinsert
 
 local GOLD_COLOR = ns.GOLD_COLOR
-local SEARCH_ICON_TEXTURE = "Interface\\AddOns\\EasyFind\\textures\\search-icon"
+local SEARCH_ICON_TEXTURE = ns.SEARCH_ICON_TEX
 
 local CreateFrame        = CreateFrame
 local C_Timer            = C_Timer
@@ -1527,6 +1527,16 @@ function Search:CreateSearchFrame()
         -- OnEscapePressed; this OnHide is a side-effect of something else
         -- (autoHide hide, etc) and shouldn't drive ESC behavior.
         if searchFrame.editBox and searchFrame.editBox:HasFocus() then return end
+        -- CloseSpecialWindows hides every visible entry in one press and
+        -- this catcher registers first. When a copy/share box is up, that
+        -- ESC belongs to it: re-arm and let the box close alone; the next
+        -- ESC reaches the staged close.
+        local copyBox = _G["EasyFindCopyBox"]
+        local sharePopup = _G["EasyFindSharePopup"]
+        if (copyBox and copyBox:IsShown()) or (sharePopup and sharePopup:IsShown()) then
+            self:Show()
+            return
+        end
         Search:HandleEscape(true)
         if searchFrame:IsShown() then self:Show() end
     end)

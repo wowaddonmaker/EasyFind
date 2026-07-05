@@ -179,6 +179,9 @@ function Rows.InstallTooltips(resultRow)
                 local unearned = GetUnearnedTooltip()
                 unearned.text:SetText(tooltipText)
                 unearned:SetSize(unearned.text:GetStringWidth() + 20, unearned.text:GetStringHeight() + 16)
+                -- UIParent-level frame, so match the search scale like the
+                -- GameTooltip path in AnchorRowTooltip does.
+                Tooltips.ApplySearchTooltipScale(unearned)
                 if not Tooltips:PlaceAtPanelEdge(unearned, self) then
                     local scale = UIParent:GetEffectiveScale()
                     local x, y = GetCursorPosition()

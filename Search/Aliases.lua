@@ -11,6 +11,7 @@ function Handlers:PromptForAlias(data)
     local label = data.name or L["ALIAS_THIS_ENTRY"]
     ns.ShowThemedDialog({
         text = (L["PROMPT_ALIAS_FOR"]):format(label),
+        messageColor = ns.GOLD_COLOR,
         hasEditBox = true,
         maxLetters = 64,
         onAccept = function(txt)

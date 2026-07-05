@@ -256,14 +256,26 @@ function MapUtils.GetZoneUnderAncestor(mapID, ancestorMapID)
         if cached == false then return nil end
         return cached.name, cached.mapID
     end
+    -- Bucket the POI under its actual Zone, not the continent's direct child.
+    -- Some maps nest a Continent inside another Continent (e.g. Quel'Thalas
+    -- inside Eastern Kingdoms), so the direct child can itself be a continent,
+    -- which would mislabel a Silvermoon City POI as "Quel'Thalas". Prefer the
+    -- deepest Zone-type map at or above the item; fall back to the direct child
+    -- only when no zone sits between the item and the ancestor.
     local current = mapID
+    local zoneName, zoneID
     for _ = 1, 20 do
         local info = GetMapInfo and GetMapInfo(current)
         if not info then break end
+        if not zoneName and info.mapType == Enum.UIMapType.Zone then
+            zoneName, zoneID = info.name, current
+        end
         local parentID = MapUtils.GetParentMapID(current, info)
         if parentID == ancestorMapID then
-            zoneUnderAncestorCache[cacheKey] = { name = info.name, mapID = current }
-            return info.name, current
+            local name = zoneName or info.name
+            local id = zoneID or current
+            zoneUnderAncestorCache[cacheKey] = { name = name, mapID = id }
+            return name, id
         end
         if not parentID or parentID == 0 then break end
         current = parentID

@@ -1102,7 +1102,7 @@ local function RenderRows(scrollChild, pinned, localEntries, globalEntries, rece
                     isRecentSearch = true,
                     query = query,
                     name = query,
-                    icon = "atlas:common-search-magnifyingglass",
+                    icon = { file = ns.SEARCH_ICON_TEX, coords = ns.SEARCH_ICON_COORDS },
                 }
                 SetRowIcon(row, row.data)
                 row.icon:Show()
@@ -1425,21 +1425,35 @@ function MapTab:RunSearch(text)
         end
     end
 
-    localEntries = GroupBySharedParent(localFiltered)
-    -- A continent-type zone match (e.g. EK while viewing EK) gets
-    -- dropped from local by EXCLUDE_FROM_LOCAL_MAPTYPES, leaving its
-    -- group with synthesized navigateData so auto-expand never fires.
-    -- Promote the synthesized header back to the real result.
-    for i = 1, #localRaw do
-        local r = localRaw[i]
-        if r and r.isZone and r.zoneMapID then
-            for j = 1, #localEntries do
-                local e = localEntries[j]
-                if e.type == "group" and e.ancestorMapID == r.zoneMapID
-                   and e.navigateData and e.navigateData.synthesized then
-                    e.navigateData = r
+    -- When viewing a single zone, every "This Zone" result is in that zone and
+    -- the section header already names it, so a continent > zone tree just
+    -- restates the header. Group only when the viewed map is broad (continent/
+    -- world), where results genuinely span multiple zones.
+    local viewedMapID = WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID()
+    local viewedInfo = viewedMapID and GetMapInfo and GetMapInfo(viewedMapID)
+    if viewedInfo and EXCLUDE_FROM_LOCAL_MAPTYPES[viewedInfo.mapType] then
+        localEntries = GroupBySharedParent(localFiltered)
+        -- A continent-type zone match (e.g. EK while viewing EK) gets
+        -- dropped from local by EXCLUDE_FROM_LOCAL_MAPTYPES, leaving its
+        -- group with synthesized navigateData so auto-expand never fires.
+        -- Promote the synthesized header back to the real result.
+        for i = 1, #localRaw do
+            local r = localRaw[i]
+            if r and r.isZone and r.zoneMapID then
+                for j = 1, #localEntries do
+                    local e = localEntries[j]
+                    if e.type == "group" and e.ancestorMapID == r.zoneMapID
+                       and e.navigateData and e.navigateData.synthesized then
+                        e.navigateData = r
+                    end
                 end
             end
+        end
+    else
+        -- Single zone (or smaller): list the POIs flat, no redundant headers.
+        localEntries = {}
+        for i = 1, #localFiltered do
+            localEntries[#localEntries + 1] = { type = "flat", data = localFiltered[i] }
         end
     end
 
@@ -1492,7 +1506,6 @@ function MapTab:RunSearch(text)
 
     -- 'This zone' already covers the viewed continent, so drop any
     -- global group whose continent matches it.
-    local viewedMapID = WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID()
     if viewedMapID then
         for i = #globalEntries, 1, -1 do
             local e = globalEntries[i]
@@ -2102,7 +2115,8 @@ local function CreateTabFrame(qmf)
     bg:SetPoint("CENTER", tab, "CENTER", 0, 0)
 
     local icon = tab:CreateTexture(nil, "ARTWORK")
-    icon:SetAtlas("common-search-magnifyingglass", false)
+    icon:SetTexture(ns.SEARCH_ICON_TEX)
+    icon:SetTexCoord(unpack(ns.SEARCH_ICON_COORDS))
     icon:SetSize(TAB_ICON_SIZE, TAB_ICON_SIZE)
     icon:SetPoint("CENTER", tab, "CENTER", 0, 0)
     icon:SetVertexColor(Utils.RGB(TAB_ICON_DIM))

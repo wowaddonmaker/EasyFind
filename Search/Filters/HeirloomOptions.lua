@@ -80,7 +80,7 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuard
     local classSel = Filters:BuildClassSpecSelector({
         parent = optionsPopup,
         x = PAD, y = -PAD,
-        width = OPTIONS_WIDTH - PAD * 2,
+        width = ns.CLASS_SELECTOR_BTN_W,
         hasSpec = true,
         stylePopup = StylePopup,
         guardFrames = dropdownGuardFrames,
@@ -145,10 +145,11 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuard
     end
     local srcW = Utils.FlyoutRowContentWidth(sourcesRow, 14, nil, CHECK_SIZE)
     if srcW > contentW then contentW = srcW end
+    -- The class selector button is fixed-width content.
+    if ns.CLASS_SELECTOR_BTN_W > contentW then contentW = ns.CLASS_SELECTOR_BTN_W end
     local popupW = Utils.FlyoutWidthFor(contentW, PAD)
     for i = 1, #rows do rows[i]:SetWidth(popupW - PAD * 2) end
     sourcesRow:SetWidth(popupW - PAD * 2)
-    if classSel and classSel.button then classSel.button:SetWidth(popupW - PAD * 2) end
     optionsPopup:SetSize(popupW, PAD * 2 + CLASS_BTN_H + CLASS_GAP + #filterDefs * ROW_H + ROW_H)
 
     local sourceFlyout, LayoutSourceFlyout = Filters:BuildSourceFlyout({

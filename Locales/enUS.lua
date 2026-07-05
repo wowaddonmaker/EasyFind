@@ -206,11 +206,11 @@ L["TUT_FEATURES_SUBTITLE"]              = "Type once. Find anything."
 L["TUT_FEATURE_SEARCH"]                 = "Search"
 L["TUT_FEATURE_SEARCH_DESC"]            = "Search any panel, tab, setting, mount, toy, currency, achievement, and more."
 L["TUT_FEATURE_MAP"]                    = "Map Search Tab"
-L["TUT_FEATURE_MAP_DESC"]               = "Dedicated map browsing for banks, flight masters, dungeons, raids, and zones. Also reachable from Standard Search."
+L["TUT_FEATURE_MAP_DESC"]               = "Dedicated map browsing with bonus fuctionality, especially in major cities."
 L["TUT_FEATURE_ACTIONS"]                = "Actionables"
 L["TUT_FEATURE_ACTIONS_DESC"]           = "Cast, use, equip, summon, swap, or open supported results directly from the list."
 L["TUT_FEATURE_CALCULATOR"]             = "Calculator"
-L["TUT_FEATURE_CALCULATOR_DESC"]        = "Type expressions, copy the result, or open the full calculator from the Calculator result."
+L["TUT_FEATURE_CALCULATOR_DESC"]        = "Quick calculations directly from the search bar. Never tab out for a calculation again."
 L["TUT_CALC_COPY_DESC"]                 = "Hover over either the expression or the result and hit Ctrl+C to copy it for easy pasting anywhere with Ctrl+V."
 L["TUT_KEYBIND_HEADER"]                 = "Pick your hotkeys (applies to every character)"
 L["TUT_KEYBIND_SEARCH_BAR"]             = "Search Bar"
@@ -232,11 +232,15 @@ L["TUT_SLIDE_MACROS"]                   = "Supported results can run directly fr
 L["TUT_SLIDE_INLINE_SETTINGS"]          = "Game and addon settings can also be modified inline without leaving the results."
 L["TUT_SLIDE_USE_GEAR"]                 = "Equip gear sets directly from search."
 L["TUT_SLIDE_USE_MOUNTS"]               = "Summon a mount with one click, or use modifiers to open its journal entry, preview it on your character, or drag it to an action bar."
+L["TUT_SLIDE_USE_OUTFITS"]              = "Click an outfit to wear it. Alt-click views it in the transmog window, and holding Shift lets you drag it to your action bars. A green-tinted icon means that outfit is currently equipped."
 L["TUT_SLIDE_USE_MACROS"]               = "Run macros from results, or Alt-click to edit them."
 L["TUT_SLIDE_USE_ABILITIES"]            = "Cast abilities straight from the search results; Alt opens the spellbook entry, Shift drags to your action bars. The search bar is disabled in combat, so this is for out-of-combat use."
 L["TUT_SLIDE_USE_TOYS"]                 = "Use toys and other supported items directly from the list."
+L["TUT_SLIDE_USE_TITLES"]               = "Apply any earned title straight from the results, no scrolling the character panel's title list to find it."
 L["TUT_SLIDE_USE_COMMANDS"]             = "Slash commands and emotes are searchable too. Pair them with a {L:options:aliases}shortkey{/L} to bind '/reload' or any emote to a single keypress without spending an action bar slot."
-L["TUT_MAP_TAB_DESC"]                   = "The map search tab allows for a more focused zone searching experience. Say you want to quickly flip through all Northrend zones. Instead of searching them one by one in the main search bar, or fumbling through the default map interface clicking back and forth, you can search Northrend once quickly swap between each zone with a single click."
+L["TUT_MAP_INTRO_DESC"]                 = "The map search tab is a second search built into the world map, opened from the tab strip on the right side of the map's quest log (the magnifying glass). It adds map-aware features the main search bar can't, like previewing where things sit on hover. The next slides show it in action."
+L["TUT_MAP_TAB_DESC"]                   = "Search a continent like Northrend and all its zones list at once. Click one to jump the map straight there, or just hover to preview where the zone sits, so you can identify subzones quickly without opening them individually. The same zones are searchable from the main bar too, just without the hover-preview functionality."
+L["TUT_MAP_HOVER_DESC"]                 = "Results aren't only for zones. Hover or click any point-of-interest entry, a trainer, flight master, or these training dummies, and its icon lights up right on your map so you can see exactly where to find it."
 L["TUT_BTN_BACK"]                       = "Back"
 L["TUT_BTN_BACK_ARROW"]                 = "< Back"
 L["TUT_KB_PRESS_KEY"]                   = "Press a key..."
@@ -257,7 +261,9 @@ L["WHATSNEW_BODY"]                      =
     "    |cff999999-|r Shortkeys open a result with a single keypress\n" ..
     "|cffFFD100\226\128\162|r |cffffffffWowhead Links|r\n" ..
     "    |cff999999-|r Right-click items, spells, mounts, achievements\n" ..
-    "      and more for a copy-ready Wowhead link"
+    "      and more for a copy-ready Wowhead link\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCommand Search|r\n" ..
+    "    |cff999999-|r Find and run slash commands from the search bar"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels
@@ -305,7 +311,7 @@ L["HEADER_PINNED"]                      = "Pinned"
 -- Core/Main.lua  --  slash help, login message, minimap tooltip
 -- =============================================================================
 L["URL_COPY_HINT"]                      = "Press Ctrl+C to copy, then paste in your browser:"
-L["WOWHEAD_COPY_HINT"]                  = "Press Ctrl+C to copy the Wowhead link for\n\"%s\""
+L["WOWHEAD_COPY_HINT"]                  = "Press Ctrl+C to copy the Wowhead link for\n\"%s\":"
 L["COPIED"]                             = "Copied"
 L["WOWHEAD_SET_PREFIX"]                 = "Ensemble:"
 L["CMD_HEADER"]                         = "Commands:"

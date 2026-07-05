@@ -31,8 +31,6 @@ local function TutorialTexCoord(contentW, contentH, canvasW, canvasH)
 end
 
 local DOT_FILLED = "Interface\\COMMON\\Indicator-Yellow"
-local MAP_SEARCH_TUTORIAL_IMAGE = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-map-search-hires"
-local MAP_SEARCH_TUTORIAL_TEXCOORD = TutorialTexCoord(1326, 612, 2048, 1024)
 local CALCULATOR_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\calculator-icon"
 -- HD Gauntlet cursor (same FileDataID and texCoord as the HD Gauntlet
 -- indicator style), reused for slide overlay hints. texCoord is read-only.
@@ -165,30 +163,85 @@ local USE_TUTORIAL_SLIDES = {
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
         text = L["TUT_SLIDE_USE_GEAR"],
+        -- Cursor just right of the "Click: Equip Gear Set" hint.
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 30,
+            ox = 200, oy = 142,
+        },
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-mounts-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
         text = L["TUT_SLIDE_USE_MOUNTS"],
+        -- Cursor just right of the modifier hint's "Drag".
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 30,
+            ox = 375, oy = 92,
+        },
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-02-hires",
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-outfits-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
+        text = L["TUT_SLIDE_USE_OUTFITS"],
+        -- Cursor just right of the modifier hint's "Drag".
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 30,
+            ox = 371, oy = 90,
+        },
+    },
+    {
+        -- Shares the search carousel's macros image (slide 10 there).
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-macros-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
         text = L["TUT_SLIDE_USE_MACROS"],
+        -- Cursor just right of the modifier hint's "drag".
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 30,
+            ox = 370, oy = 178,
+        },
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-abilities-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
         text = L["TUT_SLIDE_USE_ABILITIES"],
+        -- Cursor just right of the modifier hint's "Drag".
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 30,
+            ox = 308, oy = 138,
+        },
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-03-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
         text = L["TUT_SLIDE_USE_TOYS"],
+    },
+    {
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-titles-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
+        text = L["TUT_SLIDE_USE_TITLES"],
+        -- Cursor just right of the "Click: Apply Title" hint.
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 30,
+            ox = 182, oy = 141,
+        },
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-commands-hires",
@@ -214,7 +267,48 @@ local CALCULATOR_TUTORIAL_SLIDES = {
             tex = GAUNTLET_CURSOR_TEX,
             texCoord = GAUNTLET_CURSOR_TEXCOORD,
             size = 30,
-            ox = 372, oy = 100,
+            ox = 382, oy = 100,
+        },
+    },
+}
+local MAP_SEARCH_TUTORIAL_SLIDES = {
+    {
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-map-intro-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
+        text = L["TUT_MAP_INTRO_DESC"],
+        -- Cursor on the map's search tab in the right-side tab strip.
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 30,
+            ox = 430, oy = 206,
+        },
+    },
+    {
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-map-zones-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
+        text = L["TUT_MAP_TAB_DESC"],
+        -- Cursor on the Crystalsong Forest row, just left of the arrow tail.
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 30,
+            ox = 188, oy = 88,
+        },
+    },
+    {
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-map-hover-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
+        text = L["TUT_MAP_HOVER_DESC"],
+        -- Cursor on the panel's Training Dummies row, just right of the word.
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 30,
+            ox = 158, oy = 146,
         },
     },
 }
@@ -476,8 +570,41 @@ local function FeatureTile(parent, atlas, file, coords, title, desc, onClick)
         tile:SetScript("OnClick", onClick)
     end
 
+    tile.icon = icon
     holder.tile = tile
     return holder
+end
+
+-- The Map feature tile mirrors the world-map side tab players actually click:
+-- the QuestLog-tab-side silhouette with the gold search glyph centered on it
+-- (see MapSearch/MapTab.lua CreateTabFrame). Rendered at the atlas's native
+-- proportions, scaled into the tile's icon slot; the glyph keeps the live tab's
+-- ~20/55 glyph-to-tab height ratio and its active gold tint.
+local MAP_TAB_TILE_H = 44
+local function BuildMapSideTabReplica(tile, anchor)
+    local silo = tile:CreateTexture(nil, "BACKGROUND")
+    silo:SetAtlas("QuestLog-tab-side", true)
+    local nw, nh = silo:GetSize()
+    local scale = (nh and nh > 0) and (MAP_TAB_TILE_H / nh) or 1
+    silo:SetSize((nw or 34) * scale, (nh or MAP_TAB_TILE_H) * scale)
+    silo:SetPoint("CENTER", anchor, "CENTER", 0, 0)
+
+    local mag = tile:CreateTexture(nil, "ARTWORK")
+    mag:SetTexture(ns.SEARCH_ICON_TEX)
+    mag:SetTexCoord(unpack(ns.SEARCH_ICON_COORDS))
+    local magSize = MAP_TAB_TILE_H * 20 / 55
+    mag:SetSize(magSize, magSize)
+    mag:SetPoint("CENTER", silo, "CENTER", 0, 0)
+    mag:SetVertexColor(Utils.RGB(GOLD))
+
+    -- Show the tab as selected, mirroring CreateTabFrame's setGlow(tab, true):
+    -- the same select-glow atlas, scaled with the silhouette so the halo sits
+    -- around the tab exactly as it does live.
+    local glow = tile:CreateTexture(nil, "OVERLAY")
+    glow:SetAtlas("QuestLog-Tab-side-Glow-Select", true)
+    local gw, gh = glow:GetSize()
+    glow:SetSize((gw or 44) * scale, (gh or 55) * scale)
+    glow:SetPoint("CENTER", silo, "CENTER", 0, 0)
 end
 
 local FILTER_CIRCLE_TEX = "Interface\\AddOns\\EasyFind\\textures\\FilterButtonCircle"
@@ -585,40 +712,6 @@ local function BuildPage2(parent)
     local actionsDeck
     local function GoToActionsDeck()
         if actionsDeck then ShowDetail(actionsDeck) end
-    end
-
-    local function CreateDetailView(headerText, detailText, opts)
-        opts = opts or {}
-        local d = CreateFrame("Frame", nil, p)
-        d:SetAllPoints(p)
-        d:Hide()
-
-        local back = MakeButton(d, L["TUT_BTN_BACK_ARROW"], "ghost", 64)
-        back:SetPoint("TOPLEFT", d, "TOPLEFT", 12, -10)
-        back:SetScript("OnClick", ShowGrid)
-
-        local h = HeaderText(d, headerText, "GameFontNormalLarge", HEADER_MAX_W)
-        h:SetPoint("TOP", d, "TOP", 0, -28)
-
-        if opts.image then
-            local image = d:CreateTexture(nil, "ARTWORK")
-            SetTutorialImage(image, opts.image, opts.texCoord)
-            image:SetSize(opts.imageW or 410, opts.imageH or 233)
-            image:SetPoint("TOP", h, "BOTTOM", 0, -12)
-
-            local body = BodyText(d, detailText or "")
-            body:SetPoint("TOP", image, "BOTTOM", 0, -10)
-            body:SetWidth(opts.textW or (WIZ_W - 96))
-            body:SetJustifyH("LEFT")
-            body:SetSpacing(2)
-        else
-            local body = BodyText(d, detailText or "")
-            body:SetPoint("TOP", h, "BOTTOM", 0, -16)
-            body:SetWidth(WIZ_W - 120)
-        end
-
-        detailViews[#detailViews + 1] = d
-        return d
     end
 
     local function CreateCarouselDetailView(headerText, slides)
@@ -766,9 +859,7 @@ local function BuildPage2(parent)
     end
 
     local d1 = CreateCarouselDetailView(L["TUT_FEATURE_SEARCH"], SEARCH_TUTORIAL_SLIDES)
-    local d2 = CreateDetailView(L["TUT_FEATURE_MAP"],
-        L["TUT_MAP_TAB_DESC"],
-        { image = MAP_SEARCH_TUTORIAL_IMAGE, texCoord = MAP_SEARCH_TUTORIAL_TEXCOORD, imageW = 486, imageH = 224, textW = WIZ_W - 92 })
+    local d2 = CreateCarouselDetailView(L["TUT_FEATURE_MAP"], MAP_SEARCH_TUTORIAL_SLIDES)
     local d3 = CreateCarouselDetailView(L["TUT_FEATURE_ACTIONS"], USE_TUTORIAL_SLIDES)
     actionsDeck = d3
     local d4 = CreateCarouselDetailView(L["TUT_FEATURE_CALCULATOR"], CALCULATOR_TUTORIAL_SLIDES)
@@ -779,10 +870,11 @@ local function BuildPage2(parent)
         function() ShowDetail(d1) end)
     t1:SetPoint("TOPLEFT", grid, "TOPLEFT", 38, -96)
 
-    local t2 = FeatureTile(grid, "Waypoint-MapPin-Untracked", nil, nil,
+    local t2 = FeatureTile(grid, nil, nil, nil,
         L["TUT_FEATURE_MAP"],
         L["TUT_FEATURE_MAP_DESC"],
         function() ShowDetail(d2) end)
+    BuildMapSideTabReplica(t2.tile, t2.tile.icon)
     t2:SetPoint("TOPRIGHT", grid, "TOPRIGHT", -38, -96)
 
     -- Anchor each lower tile to the grid so a hover scale doesn't move its sibling.

@@ -264,6 +264,9 @@ local function SyncOptionControls()
 end
 
 local PaintRoundedFill = ns.SetRoundedRectFill
+-- One fill for the panel's table/section backdrops (alias+shortkey table,
+-- keybinding and map setting groups) so they read as a single surface.
+local SECTION_TABLE_FILL = {0.075, 0.075, 0.085, 0.92}
 local function HideRoundedBorder(frame)
     ns.SetRoundedRectBorderEdgeShown(frame, false)
 end
@@ -315,8 +318,13 @@ local function CreateFlyoutSelector(parent, globalPrefix, width, anchor, initial
     return btnFrame, btnText
 end
 
+-- Every selector flyout registers here; opening one closes the rest so
+-- two can never overlap on screen.
+local optionsFlyouts = {}
+
 local function CreateFlyoutPanel(btnFrame, globalPrefix, width, numChoices)
     local flyout = CreateFrame("Frame", globalPrefix .. "Flyout", btnFrame, "BackdropTemplate")
+    optionsFlyouts[#optionsFlyouts + 1] = flyout
     flyout:SetSize(width, numChoices * 20 + 6)
     flyout:SetPoint("TOPRIGHT", btnFrame, "BOTTOMRIGHT", 0, -2)
     flyout:SetFrameStrata("FULLSCREEN_DIALOG")
@@ -330,6 +338,11 @@ local function CreateFlyoutPanel(btnFrame, globalPrefix, width, numChoices)
 
     btnFrame:SetScript("OnClick", function()
         local opening = not flyout:IsShown()
+        if opening then
+            for i = 1, #optionsFlyouts do
+                if optionsFlyouts[i] ~= flyout then optionsFlyouts[i]:Hide() end
+            end
+        end
         flyout:SetShown(opening)
         if btnFrame.arrow then btnFrame.arrow:SetText(opening and "^" or "v") end
     end)
@@ -574,7 +587,7 @@ local function CreateSettingsGroup(parent, width, height)
     ns.CreateRoundedRectBorder(group)
     ns.SetRoundedRectBarHeight(group, 8)
     HideRoundedBorder(group)
-    PaintRoundedFill(group, 0.060, 0.060, 0.070, 0.94)
+    PaintRoundedFill(group, unpack(SECTION_TABLE_FILL))
     group.controls = {}
     group.AddControl = function(self, control)
         if control then tinsert(self.controls, control) end
@@ -1908,6 +1921,9 @@ local function BuildAliasesTab(ctx)
         local x = ns.CreateCloseX(f, 14)
         x:SetPoint("TOPRIGHT", -8, -8)
         x:SetScript("OnClick", function() f:Hide() end)
+        -- ESC closes the popup even when the code box lost focus, via
+        -- Blizzard's UISpecialFrames pipeline (no keyboard capture).
+        tinsert(UISpecialFrames, "EasyFindSharePopup")
         f:Hide()
         return f
     end
@@ -2029,7 +2045,7 @@ local function BuildAliasesTab(ctx)
     ns.CreateRoundedRectBorder(aliasList)
     ns.SetRoundedRectBarHeight(aliasList, 8)
     HideRoundedFrameBorder(aliasList)
-    PaintRoundedFill(aliasList, 0.075, 0.075, 0.085, 0.92)
+    PaintRoundedFill(aliasList, unpack(SECTION_TABLE_FILL))
 
     -- Column header inside the table, with a thin divider under it.
     local aliasColHeader = CreateFrame("Frame", nil, aliasList)

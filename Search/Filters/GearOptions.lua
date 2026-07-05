@@ -203,7 +203,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     -- and the filter dropdown's keyboard handling resolve them by name.
     local classSel = Filters:BuildClassSpecSelector({
         parent = gearOptionsPopup,
-        width = GEAR_POPUP_WIDTH - GEAR_POPUP_PAD * 2,
+        width = ns.CLASS_SELECTOR_BTN_W,
         popupWidth = 180,
         flyoutWidth = 160,
         popupName = "EasyFindSpecPopup",
@@ -257,7 +257,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     local popupW = Utils.FlyoutWidthFor(contentW, GEAR_POPUP_PAD)
     for i = 1, #lootSubRows do lootSubRows[i]:SetWidth(popupW - GEAR_POPUP_PAD * 2) end
     diffBtn:SetWidth(popupW - GEAR_POPUP_PAD * 2)
-    specSelectRow:SetWidth(popupW - GEAR_POPUP_PAD * 2)
+    specSelectRow:SetWidth(ns.CLASS_SELECTOR_BTN_W)
     gearOptionsPopup:SetSize(popupW, -gy + GEAR_POPUP_PAD)
 
     -- Hover-to-show wiring on the Gear filter row, mirroring the
