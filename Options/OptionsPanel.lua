@@ -1619,7 +1619,7 @@ local function BuildMapTab(ctx)
     mapIconsLabel:SetText(L["OPT_EF_MAP_ICONS_SECTION"])
     mapIconsLabel:SetTextColor(Utils.RGB(SECTION_TITLE_TEXT, 1))
 
-    local mapIconSettings = CreateSettingsGroup(sec2, GROUP_W, ROW_H * 3 + 8)
+    local mapIconSettings = CreateSettingsGroup(sec2, GROUP_W, ROW_H * 6 + 8)
     mapIconSettings:SetPoint("TOPLEFT", mapIconsLabel, "BOTTOMLEFT", 0, -3)
     optionsFrame.mapIconSettings = mapIconSettings
 
@@ -1668,25 +1668,17 @@ local function BuildMapTab(ctx)
             end
         end,
         L["OPT_ICON_SIZE_TT"], GROUP_W)
-    mapIconPresetRow:SetPoint("TOPLEFT", blinkingPinsCheckbox, "BOTTOMLEFT", 0, 0)
     optionsFrame.mapIconPresetRow = mapIconPresetRow
 
     mapIconSettings:AddControl(mapPinHighlightCheckbox)
     mapIconSettings:AddControl(blinkingPinsCheckbox)
-    mapIconSettings:AddControl(mapIconPresetRow)
 
-    local mapPinsLabel = sec2:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    mapPinsLabel:SetPoint("TOPLEFT", mapIconSettings, "BOTTOMLEFT", 0, -6)
-    mapPinsLabel:SetText(L["OPT_MAP_PINS_SECTION"])
-    mapPinsLabel:SetTextColor(Utils.RGB(SECTION_TITLE_TEXT, 1))
-
-    local mapPinSettings = CreateSettingsGroup(sec2, GROUP_W, ROW_H * 3 + 8)
-    mapPinSettings:SetPoint("TOPLEFT", mapPinsLabel, "BOTTOMLEFT", 0, -3)
-    optionsFrame.mapPinSettings = mapPinSettings
-
-    local rareTrackCheckbox = CreateCheckbox(mapPinSettings, "RareTrack", L["OPT_AUTO_TRACK_RARES"],
+    -- Rare tracking and pin auto-track/clear act only on EasyFind's own pins,
+    -- so they live with the addon's other map-icon settings instead of a
+    -- section that reads like it governs the game's default map pins.
+    local rareTrackCheckbox = CreateCheckbox(mapIconSettings, "RareTrack", L["OPT_AUTO_TRACK_RARES"],
         L["OPT_AUTO_TRACK_RARES_TT"], false, GROUP_W)
-    rareTrackCheckbox:SetPoint("TOPLEFT", mapPinSettings, "TOPLEFT", 0, -4)
+    rareTrackCheckbox:SetPoint("TOPLEFT", blinkingPinsCheckbox, "BOTTOMLEFT", 0, 0)
     rareTrackCheckbox:SetChecked(EasyFind.db.alwaysShowRares or false)
     rareTrackCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.alwaysShowRares = self:GetChecked()
@@ -1702,7 +1694,7 @@ local function BuildMapTab(ctx)
     end)
     optionsFrame.rareTrackCheckbox = rareTrackCheckbox
 
-    local autoTrackPinsCheckbox = CreateCheckbox(mapPinSettings, "AutoTrackPins", L["OPT_AUTO_TRACK_MAP_PINS"],
+    local autoTrackPinsCheckbox = CreateCheckbox(mapIconSettings, "AutoTrackPins", L["OPT_AUTO_TRACK_MAP_PINS"],
         L["OPT_AUTO_TRACK_PINS_TT"], false, GROUP_W)
     autoTrackPinsCheckbox:SetPoint("TOPLEFT", rareTrackCheckbox, "BOTTOMLEFT", 0, 0)
     autoTrackPinsCheckbox:SetChecked(EasyFind.db.autoTrackPins ~= false)
@@ -1711,7 +1703,7 @@ local function BuildMapTab(ctx)
     end)
     optionsFrame.autoTrackPinsCheckbox = autoTrackPinsCheckbox
 
-    local autoPinClearCheckbox = CreateCheckbox(mapPinSettings, "AutoPinClear", L["OPT_AUTO_CLEAR_MAP_PINS"],
+    local autoPinClearCheckbox = CreateCheckbox(mapIconSettings, "AutoPinClear", L["OPT_AUTO_CLEAR_MAP_PINS"],
         L["OPT_AUTO_PIN_CLEAR_TT"], false, GROUP_W)
     autoPinClearCheckbox:SetPoint("TOPLEFT", autoTrackPinsCheckbox, "BOTTOMLEFT", 0, 0)
     autoPinClearCheckbox:SetChecked(EasyFind.db.autoPinClear ~= false)
@@ -1720,9 +1712,14 @@ local function BuildMapTab(ctx)
     end)
     optionsFrame.autoPinClearCheckbox = autoPinClearCheckbox
 
-    mapPinSettings:AddControl(rareTrackCheckbox)
-    mapPinSettings:AddControl(autoTrackPinsCheckbox)
-    mapPinSettings:AddControl(autoPinClearCheckbox)
+    mapIconSettings:AddControl(rareTrackCheckbox)
+    mapIconSettings:AddControl(autoTrackPinsCheckbox)
+    mapIconSettings:AddControl(autoPinClearCheckbox)
+
+    -- Icon Size (a preset-button row) sits at the very bottom so it doesn't
+    -- interrupt the run of toggle checkboxes above it.
+    mapIconPresetRow:SetPoint("TOPLEFT", autoPinClearCheckbox, "BOTTOMLEFT", 0, 0)
+    mapIconSettings:AddControl(mapIconPresetRow)
 
     local resetMapBtn = CreateModernButton(sec2)
     resetMapBtn:SetSize(RESET_BTN_W, 20)
@@ -1733,7 +1730,7 @@ local function BuildMapTab(ctx)
     end)
 
     mapControls = {
-        resetMapBtn, mapTabSettings, mapIconSettings, mapPinSettings
+        resetMapBtn, mapTabSettings, mapIconSettings
     }
     UpdateMapToggleVisual()
 
