@@ -7,7 +7,6 @@ local ipairs = Utils.ipairs
 local mmax = Utils.mmax
 local pcall = Utils.pcall
 local GetPlayerMapPosition = C_Map.GetPlayerMapPosition
-local SetUserWaypoint = C_Map.SetUserWaypoint
 
 -- Tracks the canvas pin currently scaled up by HighlightPin so ClearHighlight
 -- can restore the original scale. Module-scoped because the pin reference
@@ -61,9 +60,8 @@ function MapSearch:TrackActivePin()
     if not mapID or not x or not y then return end
     if x < 0 or x > 1 or y < 0 or y > 1 then return end
 
-    SetUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, x, y))
+    self:PlaceUserWaypoint(UiMapPoint.CreateFromCoordinates(mapID, x, y))
     C_SuperTrack.SetSuperTrackedUserWaypoint(true)
-    self:SetEasyFindWaypointPlaced(true)
 end
 
 function MapSearch:UpdateBlinkingPins()

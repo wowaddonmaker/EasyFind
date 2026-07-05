@@ -40,6 +40,45 @@ local pinHoverClearsOverride = nil
 local activePinState = nil
 local efTrackedVignetteGUID = nil
 local efPlacedWaypoint = false
+-- True only for the brief window while EasyFind itself is calling
+-- SetUserWaypoint. USER_WAYPOINT_UPDATED fires synchronously inside that call,
+-- so the handler reads this to tell an EasyFind placement from the player
+-- dropping (or replacing with) their own default waypoint.
+local efSettingWaypoint = false
+
+-- Place the native user waypoint on EasyFind's behalf and mark it as ours.
+-- The flags are set BEFORE SetUserWaypoint because it fires the update event
+-- synchronously and the handler reads them during that call.
+local function EFPlaceWaypoint(point)
+    efSettingWaypoint = true
+    efPlacedWaypoint = true
+    SetUserWaypoint(point)
+    efSettingWaypoint = false
+end
+
+-- Exposed so other modules (Pins) place EasyFind-owned waypoints through the
+-- same ownership guard instead of calling SetUserWaypoint directly, which would
+-- momentarily read as a player placement.
+function MapSearch:PlaceUserWaypoint(point)
+    EFPlaceWaypoint(point)
+end
+
+-- Drop a native user waypoint at a map point and, when auto-track is on,
+-- super-track it immediately so the minimap arrow engages. Shared by the POI
+-- click path and the dungeon/raid/delve entrance paths so both track the same
+-- way. Native waypoints are world-space, so a cross-map entrance can be tracked
+-- from the current view without waiting for the map to change. Entrances
+-- previously drew only an overlay pin and placed no waypoint, so their results
+-- could not be tracked at all.
+local function PlaceTrackedWaypoint(mapID, x, y)
+    if not (mapID and x and y) then return end
+    if x < 0 or x > 1 or y < 0 or y > 1 then return end
+    EFPlaceWaypoint(UiMapPoint.CreateFromCoordinates(mapID, x, y))
+    if EasyFind.db.autoTrackPins ~= false then
+        C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+    end
+    MapSearch:RefreshAllClearButtons()
+end
 
 function MapSearch:HasActivePinState()
     return activePinState ~= nil
@@ -64,12 +103,10 @@ loadingScreenFrame:RegisterEvent("SUPER_TRACKING_CHANGED")
 loadingScreenFrame:RegisterEvent("NAVIGATION_DESTINATION_REACHED")
 loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isReloadingUI)
     if event == "NAVIGATION_DESTINATION_REACHED" then
-        if EasyFind.db.autoPinClear == false then return end
-        if efPlacedWaypoint then
+        -- Only clear EasyFind's own arrival waypoint. The player's default
+        -- waypoints are never cleared, even when auto-clear is on.
+        if EasyFind.db.autoPinClear ~= false and efPlacedWaypoint then
             MapSearch:ClearAll()
-        elseif HasUserWaypoint() then
-            C_SuperTrack.SetSuperTrackedUserWaypoint(false)
-            ClearUserWaypoint()
         end
         return
     end
@@ -79,7 +116,21 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
         if efTrackedVignetteGUID and currentVig ~= efTrackedVignetteGUID then
             efTrackedVignetteGUID = nil
         end
-        if EasyFind.db.enableMapSearch ~= false and EasyFind.db.autoTrackPins ~= false
+
+        -- Ownership first: EasyFind owns the user waypoint only when it placed
+        -- it (guarded by efSettingWaypoint). A waypoint that appears or changes
+        -- without that guard is the player's own default waypoint, so disown
+        -- it. This runs before auto-track so a player waypoint is never
+        -- super-tracked or (later) auto-cleared as if EasyFind had placed it.
+        if not HasUserWaypoint() then
+            efPlacedWaypoint = false
+        elseif event == "USER_WAYPOINT_UPDATED" and not efSettingWaypoint then
+            efPlacedWaypoint = false
+        end
+
+        -- Keep EasyFind's own waypoint super-tracked (never the player's).
+        if efPlacedWaypoint and EasyFind.db.enableMapSearch ~= false
+           and EasyFind.db.autoTrackPins ~= false
            and HasUserWaypoint() and not C_SuperTrack.IsSuperTrackingUserWaypoint() then
             if event == "USER_WAYPOINT_UPDATED" then
                 C_SuperTrack.SetSuperTrackedUserWaypoint(true)
@@ -92,9 +143,6 @@ loadingScreenFrame:SetScript("OnEvent", function(_, event, isInitialLogin, isRel
                 C_SuperTrack.SetSuperTrackedUserWaypoint(true)
                 return
             end
-        end
-        if not HasUserWaypoint() then
-            efPlacedWaypoint = false
         end
         return
     end
@@ -217,9 +265,8 @@ function MapSearch:CreateHighlightFrame()
             local playerMapID = GetBestMapForUnit("player")
             local viewingMapID = WorldMapFrame:GetMapID()
             if viewingMapID and playerMapID == viewingMapID then
-                SetUserWaypoint(UiMapPoint.CreateFromCoordinates(viewingMapID, x, y))
+                EFPlaceWaypoint(UiMapPoint.CreateFromCoordinates(viewingMapID, x, y))
                 C_SuperTrack.SetSuperTrackedUserWaypoint(true)
-                efPlacedWaypoint = true
                 MapSearch:RefreshAllClearButtons()
             end
         end
@@ -449,17 +496,20 @@ function MapSearch:NavigateToEntrance(name, x, y, icon, category, targetMapID, d
     end
     if currentMapID == targetMapID then
         showAt(x, y)
+        if directMode then PlaceTrackedWaypoint(targetMapID, x, y) end
         return
     end
     local ex, ey = self:FindEntranceOnMap(name, currentMapID)
     if ex then
         showAt(ex, ey)
+        if directMode then PlaceTrackedWaypoint(currentMapID, ex, ey) end
         return
     end
     if IsOrphanZone(targetMapID) or directMode then
         self:ClearZoneHighlight()
         self.pendingWaypoint = {x = x, y = y, icon = icon, category = category, mapID = targetMapID, name = name}
         WorldMapFrame:SetMapID(targetMapID)
+        if directMode then PlaceTrackedWaypoint(targetMapID, x, y) end
     else
         self.pendingWaypoint = {x = x, y = y, icon = icon, category = category, mapID = targetMapID, name = name}
         self:HighlightZoneOnMap(targetMapID, name)
@@ -474,7 +524,6 @@ function MapSearch:SelectResult(data, directOverride)
     self._previewing = nil
     self._savedPinState = nil
     self._suppressTextChanged = true
-    pinHoverClearsOverride = true
     if data then
         DebugPrint("[EasyFind] SelectResult: name=", data.name,
             "isZone=", data.isZone, "zoneMapID=", data.zoneMapID,
@@ -500,6 +549,10 @@ function MapSearch:SelectResult(data, directOverride)
         else
             directMode = EasyFind.db.localMapDirectOpen or false
         end
+
+        -- A direct (Fast-mode) pin stays put until the player right-clicks it.
+        -- Only guide-mode terminal pins teach hover-to-clear, like global pins.
+        pinHoverClearsOverride = not directMode
 
         -- Dungeon/raid/delve entrance: even when the data also carries
         -- isZone+zoneMapID (promoted instance entries from the global
@@ -603,12 +656,12 @@ function MapSearch:SelectResult(data, directOverride)
                 autoX, autoY = data.x, data.y
                 autoMapID = data.mapID or viewedMap
             end
-            if autoX and autoY and autoMapID
-               and autoX >= 0 and autoX <= 1 and autoY >= 0 and autoY <= 1 then
-                SetUserWaypoint(UiMapPoint.CreateFromCoordinates(autoMapID, autoX, autoY))
-                C_SuperTrack.SetSuperTrackedUserWaypoint(true)
-                efPlacedWaypoint = true
-                MapSearch:RefreshAllClearButtons()
+            if autoX and autoY and autoMapID then
+                -- Clicking a result is intent enough: drop the pin and, when
+                -- auto-track is on, super-track it immediately (same helper the
+                -- entrance paths use). With the option off the pin still lands
+                -- and the player left-clicks it to track manually.
+                PlaceTrackedWaypoint(autoMapID, autoX, autoY)
             end
         end
     end
@@ -696,9 +749,8 @@ function MapSearch:ShowMultipleWaypoints(instances)
                             MapSearch:ShowWaypointAt(x, y, nil, cat)
                             local viewingMapID = WorldMapFrame:GetMapID()
                             if viewingMapID then
-                                SetUserWaypoint(UiMapPoint.CreateFromCoordinates(viewingMapID, x, y))
+                                EFPlaceWaypoint(UiMapPoint.CreateFromCoordinates(viewingMapID, x, y))
                                 C_SuperTrack.SetSuperTrackedUserWaypoint(true)
-                                efPlacedWaypoint = true
                             end
                         end
                         if button == "RightButton" then
