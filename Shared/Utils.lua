@@ -845,6 +845,7 @@ function Utils.GetItemEquipLoc(itemID)
     return equipLoc
 end
 ns.EYE_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\eye"
+ns.LINK_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\link"
 ns.COMMANDS_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\commands-icon"
 ns.RADIO_OFF_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-off"
 ns.RADIO_ON_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-on"
@@ -1581,7 +1582,11 @@ function ns.ShowCopyBox(text, labelText)
         f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
         f.title:SetPoint("TOPLEFT", 14, -14)
         f.title:SetJustifyH("LEFT")
-        f.title:SetWordWrap(false)
+        -- Wrap stays on for explicit newlines (the hint puts the item
+        -- name on its own line); the width fit below always sizes the
+        -- frame to the widest line, so no automatic wrapping occurs.
+        f.title:SetWordWrap(true)
+        f.title:SetSpacing(2)
 
         local field = CreateFrame("Frame", nil, f)
         field:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -10)
@@ -1637,9 +1642,12 @@ function ns.ShowCopyBox(text, labelText)
     end
     copyBox._text = text
     copyBox.title:SetText(labelText or "")
-    -- Width tracks the message (+ buffer for the close X). The link field spans
-    -- it and clips a longer URL; the full text is still selected for Ctrl-C.
+    -- Width tracks the widest message line (+ buffer for the close X); the
+    -- link field spans it and clips a longer URL (full text still selected
+    -- for Ctrl-C). Height follows the title, which is two lines when the
+    -- hint carries the item name on its own line.
     copyBox:SetWidth(math.max(200, math.floor(copyBox.title:GetStringWidth() + 0.5) + 44))
+    copyBox:SetHeight(88 + math.floor(copyBox.title:GetStringHeight() + 0.5))
     copyBox:Show()
     local eb = copyBox.editBox
     Utils.SetEditBoxReadOnlyText(eb, text)
@@ -1775,7 +1783,7 @@ end
 
 -- Build a wowhead.com URL for a search result from the id fields it carries.
 -- Returns nil for results with no meaningful Wowhead page (settings, macros,
--- bags, gear sets, ...), so the menu option only appears where it's useful.
+-- gear sets, ...), so the menu option only appears where it's useful.
 function ns.GetWowheadLink(data)
     if not data then return nil end
     local kind, id, query
@@ -1821,7 +1829,8 @@ function ns.GetWowheadLink(data)
         kind, id = "title", data.titleID
     elseif data.spellID and (data.category == "Ability" or data.category == "Talent") then
         kind, id = "spell", data.spellID
-    elseif data.itemID and data.category == "Loot" then
+    elseif data.itemID then
+        -- Loot, bag items, and anything else carrying a real item id.
         kind, id = "item", data.itemID
     elseif data.isZone or data.isDungeonEntrance then
         -- Wowhead's zone pages key on AreaTable ids, which have no client
@@ -3256,7 +3265,9 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
     menu:SetScale(menuScale)
     menu:SetFrameStrata(opts.strata or "TOOLTIP")
     menu:SetFrameLevel(opts.level or 10000)
-    menu.outsideDelay = opts.outsideDelay or 0.3
+    -- Grazing the menu edge shouldn't dismiss it; shares the tooltip
+    -- hover delay so all hover timing feels like one system.
+    menu.outsideDelay = opts.outsideDelay or ns.TOOLTIP_HOVER_DELAY
     menu.clickGrace = opts.clickGrace or 0.05
     menu.stayOpen = opts.stayOpen and true or false
     menu.keyboardMode = opts.keyboardMode and true or false
@@ -3307,6 +3318,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 row.onClick = nil
                 row.label:SetText("")
                 row.icon:Hide()
+                if row.iconOverlay then row.iconOverlay:Hide() end
                 row.sep:Show()
                 row:EnableMouse(false)
                 local hl = row:GetHighlightTexture()
@@ -3319,12 +3331,42 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 row.label:SetText(def.text or "")
                 row.label:SetTextColor(Utils.RGB(row.disabled and ns.TEXT_DIM or ns.GOLD_COLOR, 1))
                 if def.icon then
-                    row.icon:SetTexture(def.icon)
+                    -- SetIconTexture handles plain paths, atlas: strings,
+                    -- and {file, coords} tables (cropped square icons).
+                    Utils.SetIconTexture(row.icon, def.icon)
                     row.icon:SetDesaturated(row.disabled and true or false)
                     row.icon:SetAlpha(row.disabled and 0.5 or 1)
                     row.icon:Show()
                 else
                     row.icon:Hide()
+                end
+                -- The pin rows show the same composite glyph the pinned
+                -- result rows wear (Utils.CreatePinGlyph), in the icon slot.
+                if def.pinGlyph then
+                    if not row.pinGlyph then
+                        row.pinGlyph = Utils.CreatePinGlyph(row, 12)
+                        row.pinGlyph:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+                    end
+                    row.pinGlyph:SetAlpha(row.disabled and 0.5 or 1)
+                    row.pinGlyph:Show()
+                elseif row.pinGlyph then
+                    row.pinGlyph:Hide()
+                end
+                if def.iconOverlay then
+                    if not row.iconOverlay then
+                        -- Corner badge, not a full cover: the base glyph
+                        -- must stay identifiable underneath.
+                        row.iconOverlay = row:CreateTexture(nil, "OVERLAY", nil, 3)
+                        row.iconOverlay:SetSize(9, 9)
+                    end
+                    row.iconOverlay:ClearAllPoints()
+                    row.iconOverlay:SetPoint("BOTTOMRIGHT",
+                        def.pinGlyph and row.pinGlyph or row.icon, "BOTTOMRIGHT", 3, -3)
+                    row.iconOverlay:SetTexture(def.iconOverlay)
+                    row.iconOverlay:SetAlpha(row.disabled and 0.5 or 1)
+                    row.iconOverlay:Show()
+                elseif row.iconOverlay then
+                    row.iconOverlay:Hide()
                 end
                 row.sep:Hide()
                 if row.disabled then
@@ -3413,6 +3455,10 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
     return menu
 end
 
+local function MenuRowLess(a, b)
+    return slower(a.text or "") < slower(b.text or "")
+end
+
 function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opts, extra)
     local rows = {}
     if onAddAlias then
@@ -3424,12 +3470,22 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
             onClick = extra.onAddShortkey,
         }
     end
-    rows[#rows + 1] = { text = isPinned and (_G["RECENT_ALLIES_MENU_BUTTON_LABEL_UNPIN"] or "Unpin") or (_G["RECENT_ALLIES_MENU_BUTTON_LABEL_PIN"] or "Pin"), onClick = onPin }
+    -- The exact glyph the pinned result rows wear (Utils.CreatePinGlyph),
+    -- so the menu action and the row marker read as one concept; Unpin
+    -- adds the red X corner badge.
+    rows[#rows + 1] = {
+        text = isPinned and (_G["RECENT_ALLIES_MENU_BUTTON_LABEL_UNPIN"] or "Unpin") or (_G["RECENT_ALLIES_MENU_BUTTON_LABEL_PIN"] or "Pin"),
+        pinGlyph = true,
+        iconOverlay = isPinned and "Interface\\RaidFrame\\ReadyCheck-NotReady" or nil,
+        onClick = onPin,
+    }
     if onGuide then
         rows[#rows + 1] = { text = L["CTX_GUIDE"], icon = ns.EYE_ICON_TEX, onClick = onGuide }
     end
     if extra and extra.onWowhead then
-        rows[#rows + 1] = { text = L["CTX_WOWHEAD"], onClick = extra.onWowhead }
+        -- Our own chain-link glyph (textures/link.tga), the same custom
+        -- treatment as Guide's eye and Pin's diamond.
+        rows[#rows + 1] = { text = L["CTX_WOWHEAD"], icon = ns.LINK_ICON_TEX, onClick = extra.onWowhead }
     end
 
     local extras = {}
@@ -3475,6 +3531,10 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
     if extra and extra.onDestroyItem then
         extras[#extras + 1] = { text = L["CTX_DESTROY_ITEM"], onClick = extra.onDestroyItem }
     end
+    -- Alphabetical within each section (per-locale, since labels are
+    -- localized); the separator keeps standard and extra actions apart.
+    tsort(rows, MenuRowLess)
+    tsort(extras, MenuRowLess)
     if #extras > 0 then
         rows[#rows + 1] = { isSeparator = true }
         for i = 1, #extras do rows[#rows + 1] = extras[i] end
@@ -3487,6 +3547,29 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
     end
 
     return Utils.ShowCursorMenu(globalName, rows, opts)
+end
+
+-- The pin marker: bronze diamond with an additive gold core, composited
+-- from a high-res (64px) diamond source so it stays crisp at any scale.
+-- ONE construction, used by the pinned result rows and the context menu
+-- pin row, so the glyph reads identically everywhere.
+function Utils.CreatePinGlyph(parent, size)
+    local DIAMOND_TEX = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_3"
+    local glyph = CreateFrame("Frame", nil, parent)
+    glyph:SetSize(size, size)
+    local outer = glyph:CreateTexture(nil, "OVERLAY", nil, 1)
+    outer:SetTexture(DIAMOND_TEX)
+    outer:SetDesaturated(true)
+    outer:SetVertexColor(0.78, 0.50, 0.22)  -- bronze
+    outer:SetAllPoints(glyph)
+    local core = glyph:CreateTexture(nil, "OVERLAY", nil, 2)
+    core:SetTexture(DIAMOND_TEX)
+    core:SetDesaturated(true)
+    core:SetVertexColor(ns.GOLD_COLOR[1], ns.GOLD_COLOR[2], ns.GOLD_COLOR[3], 0.9)
+    core:SetBlendMode("ADD")
+    core:SetPoint("CENTER")
+    core:SetSize(size * 0.5, size * 0.5)
+    return glyph
 end
 
 function Utils.SetIconTexture(textureObj, icon, fallback)

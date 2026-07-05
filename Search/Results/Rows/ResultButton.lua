@@ -96,29 +96,10 @@ function Rows:CreateResultButton(index)
     iconCooldown:Hide()
     resultRow.iconCooldown = iconCooldown
 
-    -- Pin badge: our own bronze diamond with a gold core, composited from a
-    -- high-res (64px) diamond source so it stays crisp at any UI scale.
+    -- Pin badge: the shared bronze-diamond glyph (Utils.CreatePinGlyph).
     -- Blizzard's Waypoint chat gem is a tiny inline texture that blurs at 150%.
-    local PIN_SIZE = 11
-    local DIAMOND_TEX = "Interface\\TargetingFrame\\UI-RaidTargetingIcon_3"
-    local pinIcon = CreateFrame("Frame", nil, resultRow)
-    pinIcon:SetSize(PIN_SIZE, PIN_SIZE)
+    local pinIcon = Utils.CreatePinGlyph(resultRow, 11)
     pinIcon:SetPoint("BOTTOMLEFT", icon, "BOTTOMRIGHT", -4, -1)
-
-    local pinOuter = pinIcon:CreateTexture(nil, "OVERLAY", nil, 1)
-    pinOuter:SetTexture(DIAMOND_TEX)
-    pinOuter:SetDesaturated(true)
-    pinOuter:SetVertexColor(0.78, 0.50, 0.22)  -- bronze
-    pinOuter:SetAllPoints(pinIcon)
-
-    local pinCore = pinIcon:CreateTexture(nil, "OVERLAY", nil, 2)
-    pinCore:SetTexture(DIAMOND_TEX)
-    pinCore:SetDesaturated(true)
-    pinCore:SetVertexColor(GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3], 0.9)
-    pinCore:SetBlendMode("ADD")
-    pinCore:SetPoint("CENTER")
-    pinCore:SetSize(PIN_SIZE * 0.5, PIN_SIZE * 0.5)
-
     pinIcon:Hide()
     resultRow.pinIcon = pinIcon
 

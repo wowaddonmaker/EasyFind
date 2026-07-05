@@ -16,6 +16,7 @@ local Utils = ns.Utils
 local ipairs = Utils.ipairs
 local slower = Utils.slower
 local mmin, mmax = Utils.mmin, Utils.mmax
+local tinsert = Utils.tinsert
 
 local GOLD_COLOR = ns.GOLD_COLOR
 local SEARCH_ICON_TEXTURE = "Interface\\AddOns\\EasyFind\\textures\\search-icon"
@@ -428,6 +429,13 @@ function Search:CreateSearchFrame()
         -- the editbox does not steal the drag. Do not run the normal
         -- click-outside cleanup path from that synthetic focus loss.
         if self._dragMoving then
+            self:HighlightText(0, 0)
+            return
+        end
+        -- Intentional unfocus while a row context menu opens: keys belong
+        -- to the menu, and the results (pinned view included) must stay
+        -- exactly as they are. Set around ClearFocus in ShowResultContextMenu.
+        if self._menuUnfocus then
             self:HighlightText(0, 0)
             return
         end
@@ -1506,20 +1514,23 @@ function Search:CreateSearchFrame()
     escCatcher = CreateFrame("Frame", "EasyFindEscCatcher", UIParent)
     escCatcher:SetSize(1, 1)
     escCatcher:Hide()
-    -- UISpecialFrames registration removed: any insecure mutation of
-    -- a frame in that table can taint Blizzard's ESC pipeline, and we
-    -- mutate this frame heavily. Our editbox's OnEscapePressed and the
-    -- searchFrame's keyboard handler at the navFrame level handle ESC
-    -- on their own, so giving up the UISpecialFrames fallback is safe.
+    -- Dedicated UISpecialFrames entry: unfocused ESC routes through
+    -- Blizzard's own pipeline (CloseSpecialWindows hides this frame and
+    -- OnHide runs the staged close below). The frame carries no state
+    -- and is only ever Shown/Hidden, so it cannot taint that pipeline,
+    -- and no frame-level keyboard capture is involved: with the editbox
+    -- unfocused, EasyFind holds zero keys outside keyboard-nav mode.
+    tinsert(UISpecialFrames, "EasyFindEscCatcher")
     escCatcher:SetScript("OnHide", function(self)
         if not searchFrame or not searchFrame:IsShown() then return end
         -- editBox having focus means WoW's ESC pipeline already routed to
         -- OnEscapePressed; this OnHide is a side-effect of something else
         -- (autoHide hide, etc) and shouldn't drive ESC behavior.
         if searchFrame.editBox and searchFrame.editBox:HasFocus() then return end
-        Search:HandleEscape()
+        Search:HandleEscape(true)
         if searchFrame:IsShown() then self:Show() end
     end)
+
 
     -- Tab confirms autocomplete suggestion only. Toolbar nav (clear /
     -- filter buttons) is handled by Left/Right and Alt+H/Alt+L
@@ -1617,21 +1628,24 @@ function Search:CreateSearchFrame()
 
     self:CreateUIFilterDropdown(filterBtn, searchFrame, editBox)
 
-    searchFrame:HookScript("OnShow", function(self)
-        if EasyFind.db.autoHide then
-            self:RegisterEvent("GLOBAL_MOUSE_DOWN")
-        end
+    -- Click-away dismissal listens permanently, not per-OnShow: any show
+    -- path that finds the frame technically already Shown (smart show
+    -- keeps it shown at alpha 0) skips OnShow entirely, and a bar shown
+    -- that way could never be dismissed. The handler's guards below make
+    -- the always-on registration free when hidden or not in auto-hide.
+    searchFrame:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    searchFrame:HookScript("OnShow", function()
         -- Arm the UISpecialFrames catcher: gives ESC a target even when
         -- the editbox lacks focus (clicking the filter button, hovering a
         -- flyout). escCatcher's OnHide consolidates the close behavior.
         if escCatcher then escCatcher:Show() end
     end)
-    searchFrame:HookScript("OnHide", function(self)
-        self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+    searchFrame:HookScript("OnHide", function()
         Search:HideQuickFilterSuggestions()
     end)
     searchFrame:HookScript("OnEvent", function(self, event)
         if event ~= "GLOBAL_MOUSE_DOWN" then return end
+        if not self:IsShown() then return end
         if not EasyFind.db.autoHide then return end
         -- Minimap button click is in flight: skip autoHide so the button's
         -- own OnClick toggle is the only state change. Set in OnMouseDown
@@ -1781,7 +1795,11 @@ end
 --   Filter dropdown / flyouts open: close them all + refocus editbox.
 --   Editbox has text:               clear text + refocus.
 --   Otherwise:                      hide the search bar.
-function Search:HandleEscape()
+-- fromUnfocused: ESC arrived via the UISpecialFrames catcher, i.e. the
+-- player was NOT typing. That path closes popups or the window and must
+-- never clear text or grant editbox focus; the staged clear-and-refocus
+-- behavior below belongs to the focused flow only.
+function Search:HandleEscape(fromUnfocused)
     if not searchFrame or not searchFrame:IsShown() then return end
     local editBox = searchFrame.editBox
     -- ESC always aborts any active nav-repeat cascade. We do this
@@ -1826,7 +1844,7 @@ function Search:HandleEscape()
     local closedAny = self:CloseFilterDropdownIfOpen()
     self._escClosingMenus = nil
     if closedAny then
-        Refocus()
+        if not fromUnfocused then Refocus() end
         return
     end
     -- Pending Apply-flagged settings: the popup must preempt the
@@ -1834,6 +1852,10 @@ function Search:HandleEscape()
     -- exact pre-ESC state (text, scroll, pending change). The helper
     -- also lifts the popup above our results panel strata.
     if self:ShowUnappliedSettingsPopup() then return end
+    if fromUnfocused then
+        self:Hide()
+        return
+    end
     if (editBox and editBox:GetText() ~= "") or Filters:GetQuickFilter() then
         if editBox and editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
         if editBox then

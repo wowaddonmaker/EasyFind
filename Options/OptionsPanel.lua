@@ -83,6 +83,14 @@ local UI_DEFAULTS = {
     uiResultsRows = 6,
     wowheadLocale = "auto",
     uiSearchFilters = DEFAULT_UI_FILTERS,
+    uiMapFilters = {
+        zones = true,
+        instances = true,
+        flightpath = false,
+        travel = true,
+        services = true,
+        rares = true,
+    },
     lootSpecs = NIL,
     lootSearchSlots = true,
     lootSearchStats = true,
@@ -239,7 +247,7 @@ local function SyncOptionControls()
     if optionsFrame.autoPinClearCheckbox then optionsFrame.autoPinClearCheckbox:SetChecked(EasyFind.db.autoPinClear ~= false) end
     if optionsFrame.UpdateMapToggleVisual then optionsFrame.UpdateMapToggleVisual() end
 
-    if optionsFrame.SetIndicatorSelection then optionsFrame.SetIndicatorSelection(EasyFind.db.indicatorStyle or "EasyFind Arrow") end
+    if optionsFrame.RetintIndicatorPreviews then optionsFrame.RetintIndicatorPreviews() end
     if optionsFrame.fontBtnText then optionsFrame.fontBtnText:SetText(EasyFind.db.font or (_G["DEFAULT"] or "Default")) end
 
     local clr = EasyFind.db.indicatorColor or "Yellow"
@@ -344,7 +352,14 @@ local function CreateFlyoutPanel(btnFrame, globalPrefix, width, numChoices)
     return flyout
 end
 
+-- Every choice flyout tags its default option. Physical key tokens
+-- aside, the tag itself is Blizzard-localized for free.
+local function DefaultTag(label)
+    return label .. " (" .. (_G["DEFAULT"] or "Default") .. ")"
+end
+
 local function AddFlyoutOptions(flyout, choices, itemWidth, onSelect, labelFn, styleFn)
+    local rows = {}
     for i, name in ipairs(choices) do
         local flyoutBtn = CreateFrame("Button", nil, flyout)
         flyoutBtn:SetSize(itemWidth, 18)
@@ -361,6 +376,7 @@ local function AddFlyoutOptions(flyout, choices, itemWidth, onSelect, labelFn, s
         label:SetPoint("RIGHT", flyoutBtn, "RIGHT", -6, 0)
         label:SetJustifyH("LEFT")
         label:SetText(labelFn and labelFn(name) or name)
+        flyoutBtn._label = label
         if styleFn then styleFn(flyoutBtn, name, label) end
         flyoutBtn:SetScript("OnEnter", function()
             PaintRoundedFill(rowBg, 1, 1, 1, 0.06)
@@ -372,6 +388,22 @@ local function AddFlyoutOptions(flyout, choices, itemWidth, onSelect, labelFn, s
             onSelect(name)
             flyout:Hide()
         end)
+        rows[i] = flyoutBtn
+    end
+    -- Width rule: rows fit their widest label (plus any right-side icon a
+    -- styleFn added via _rightIconW); itemWidth is the minimum. Anchored
+    -- labels clip silently, so measure unwrapped.
+    local contentW = 0
+    for i = 1, #rows do
+        local label = rows[i]._label
+        local getter = label.GetUnboundedStringWidth or label.GetStringWidth
+        local w = 6 + getter(label) + 6 + (rows[i]._rightIconW or 0)
+        if w > contentW then contentW = w end
+    end
+    local rowW = mmax(itemWidth, mfloor(contentW + 0.5))
+    if rowW > itemWidth then
+        for i = 1, #rows do rows[i]:SetWidth(rowW) end
+        flyout:SetWidth(rowW + 6)
     end
 end
 
@@ -974,6 +1006,8 @@ local function BuildGeneralBindsTab(ctx)
     local indicatorBtnFrame, indicatorBtnText = CreateFlyoutSelector(
         indicatorRow, "EasyFindIndicator", SELECTOR_BTN_W, indicatorLabel, StyleLabel(EasyFind.db.indicatorStyle or "EasyFind Arrow")
     )
+    -- Previews render exactly like the live indicator: style texture
+    -- tinted with the currently selected indicator color.
     local function ApplyIndicatorIcon(tex, name)
         local info = ns.GetIndicatorStyleInfo and ns.GetIndicatorStyleInfo(name)
         if not info then tex:Hide() return end
@@ -983,8 +1017,12 @@ local function BuildGeneralBindsTab(ctx)
         else
             tex:SetTexCoord(0, 1, 0, 1)
         end
+        local rgb = ns.INDICATOR_COLORS[EasyFind.db.indicatorColor or "Yellow"]
+            or ns.INDICATOR_COLORS.Yellow
+        tex:SetVertexColor(Utils.RGB(rgb))
         tex:Show()
     end
+    local indicatorRowIcons = {}
     local indicatorBtnIcon = indicatorBtnFrame:CreateTexture(nil, "OVERLAY")
     indicatorBtnIcon:SetSize(14, 14)
     -- The selector text is a centered fontstring spanning the bar, so the
@@ -998,6 +1036,12 @@ local function BuildGeneralBindsTab(ctx)
             (indicatorBtnText:GetStringWidth() / 2) + 5, 0)
     end
     SetIndicatorSelection(EasyFind.db.indicatorStyle or "EasyFind Arrow")
+    local defaultIndicatorStyle = (ns.DB_DEFAULTS and ns.DB_DEFAULTS.indicatorStyle) or "EasyFind Arrow"
+    local function IndicatorStyleFlyoutLabel(name)
+        local label = StyleLabel(name)
+        if name == defaultIndicatorStyle then label = DefaultTag(label) end
+        return label
+    end
     local indicatorFlyout = CreateFlyoutPanel(indicatorBtnFrame, "EasyFindIndicator", SELECTOR_BTN_W, #indicatorChoices)
     AddFlyoutOptions(indicatorFlyout, indicatorChoices, SELECTOR_BTN_W - 6, function(name)
         EasyFind.db.indicatorStyle = name
@@ -1005,14 +1049,23 @@ local function BuildGeneralBindsTab(ctx)
         if ns.MapSearch then
             ns.MapSearch:RefreshIndicators()
         end
-    end, StyleLabel, function(_, name, label)
+    end, IndicatorStyleFlyoutLabel, function(flyoutBtn, name, label)
         local icon = label:GetParent():CreateTexture(nil, "OVERLAY")
         icon:SetSize(13, 13)
         icon:SetPoint("RIGHT", label:GetParent(), "RIGHT", -4, 0)
         ApplyIndicatorIcon(icon, name)
+        indicatorRowIcons[#indicatorRowIcons + 1] = { icon = icon, style = name }
+        flyoutBtn._rightIconW = 13 + 4
     end)
+    local function RetintIndicatorPreviews()
+        SetIndicatorSelection(EasyFind.db.indicatorStyle or "EasyFind Arrow")
+        for i = 1, #indicatorRowIcons do
+            ApplyIndicatorIcon(indicatorRowIcons[i].icon, indicatorRowIcons[i].style)
+        end
+    end
     optionsFrame.indicatorBtnText = indicatorBtnText
     optionsFrame.SetIndicatorSelection = SetIndicatorSelection
+    optionsFrame.RetintIndicatorPreviews = RetintIndicatorPreviews
     optionsFrame.indicatorFlyout = indicatorFlyout
 
     local colorRow, colorLabel = CreateSelectorRow(indicatorRow, L["OPT_INDICATOR_COLOR"])
@@ -1029,6 +1082,8 @@ local function BuildGeneralBindsTab(ctx)
 
     local colorFlyout = CreateFlyoutPanel(colorBtnFrame, "EasyFindColor", SELECTOR_BTN_W, #colorChoices)
 
+    local defaultIndicatorColor = (ns.DB_DEFAULTS and ns.DB_DEFAULTS.indicatorColor) or "Yellow"
+    local colorRowBtns = {}
     for i, name in ipairs(colorChoices) do
         local rgb = colorRGB[name]
         local colorBtn = CreateFrame("Button", nil, colorFlyout)
@@ -1046,8 +1101,10 @@ local function BuildGeneralBindsTab(ctx)
         label:SetPoint("LEFT", colorBtn, "LEFT", 6, 0)
         label:SetPoint("RIGHT", colorBtn, "RIGHT", -6, 0)
         label:SetJustifyH("CENTER")
-        label:SetText(ColorLabel(name))
+        label:SetText(name == defaultIndicatorColor and DefaultTag(ColorLabel(name)) or ColorLabel(name))
         label:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
+        colorBtn._label = label
+        colorRowBtns[i] = colorBtn
 
         colorBtn:SetScript("OnEnter", function(self)
             PaintRoundedFill(rowBg, 1, 1, 1, 0.06)
@@ -1065,11 +1122,35 @@ local function BuildGeneralBindsTab(ctx)
             if ns.MapSearch then
                 ns.MapSearch:RefreshIndicators()
             end
+            if optionsFrame.RetintIndicatorPreviews then optionsFrame.RetintIndicatorPreviews() end
         end)
+    end
+    local colorContentW = 0
+    for i = 1, #colorRowBtns do
+        local label = colorRowBtns[i]._label
+        local getter = label.GetUnboundedStringWidth or label.GetStringWidth
+        local w = 6 + getter(label) + 6
+        if w > colorContentW then colorContentW = w end
+    end
+    local colorRowW = mmax(SELECTOR_BTN_W - 6, mfloor(colorContentW + 0.5))
+    if colorRowW > SELECTOR_BTN_W - 6 then
+        for i = 1, #colorRowBtns do colorRowBtns[i]:SetWidth(colorRowW) end
+        colorFlyout:SetWidth(colorRowW + 6)
     end
 
     optionsFrame.colorBtnText = colorBtnText
     optionsFrame.colorFlyout = colorFlyout
+
+    -- The indicator only appears during guides and on map pins, so
+    -- explain what it even is; many players never enter guide mode.
+    indicatorRow:EnableMouse(true)
+    Utils.AttachDelayedTooltip(indicatorRow, "ANCHOR_RIGHT", function()
+        return L["OPT_INDICATOR_STYLE"], L["OPT_INDICATOR_STYLE_TT"]
+    end)
+    colorRow:EnableMouse(true)
+    Utils.AttachDelayedTooltip(colorRow, "ANCHOR_RIGHT", function()
+        return L["OPT_INDICATOR_COLOR"], L["OPT_INDICATOR_COLOR_TT"]
+    end)
 
     local fontRow, fontLabel = CreateSelectorRow(colorRow, L["OPT_FONT"])
 
@@ -1378,7 +1459,7 @@ local function BuildSearchTab(ctx)
     )
     local function WowheadFlyoutLabel(v)
         if v == "auto" then
-            return WowheadLocaleLabel(v) .. " (" .. (_G["DEFAULT"] or "Default") .. ")"
+            return DefaultTag(WowheadLocaleLabel(v))
         end
         return WowheadLocaleLabel(v)
     end
@@ -1835,8 +1916,8 @@ local function BuildAliasesTab(ctx)
         if not sharePopup then sharePopup = BuildSharePopup() end
         local f = sharePopup
         if isExport then
-            f.title:SetText(L["SHORTKEY_EXPORT_TITLE"])
-            f.hint:SetText(L["SHORTKEY_EXPORT_HINT"])
+            f.title:SetText(L["SHORTKEY_EXPORT_TITLE"] .. " (Ctrl+C)")
+            f.hint:SetText("")
             Utils.SetEditBoxReadOnlyText(f.editBox, str or "")
             f.importBtn:Hide()
             f:Show()

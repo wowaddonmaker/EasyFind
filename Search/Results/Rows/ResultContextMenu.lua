@@ -107,7 +107,7 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
     local wowheadUrl = ns.GetWowheadLink and ns.GetWowheadLink(pinData)
     if wowheadUrl then
         extra.onWowhead = function()
-            ns.ShowCopyBox(wowheadUrl, ns.L["WOWHEAD_COPY_HINT"])
+            ns.ShowCopyBox(wowheadUrl, ns.L["WOWHEAD_COPY_HINT"]:format(pinData.name or ""))
         end
     end
     local skKey = ns.Shortkeys and ns.Shortkeys:GetEntryKey(pinData)
@@ -174,9 +174,15 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
     if menu then
         -- Typing belongs to the menu now (keyboard rows, ESC to close);
         -- drop the editbox focus so keystrokes don't land in the query.
+        -- The flag stops OnEditFocusLost's click-away cleanup from
+        -- hiding the results (the empty-text pinned view especially).
         local searchFrame = Search:GetSearchFrame()
         local editBox = searchFrame and searchFrame.editBox
-        if editBox then editBox:ClearFocus() end
+        if editBox then
+            editBox._menuUnfocus = true
+            editBox:ClearFocus()
+            editBox._menuUnfocus = nil
+        end
         row._efContextMenuHeld = true
         if row.LockHighlight then row:LockHighlight() end
         Handlers:ApplyActionHint(row)
