@@ -172,6 +172,11 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
         end
     end, onGuide, onAddAlias, extra)
     if menu then
+        -- Typing belongs to the menu now (keyboard rows, ESC to close);
+        -- drop the editbox focus so keystrokes don't land in the query.
+        local searchFrame = Search:GetSearchFrame()
+        local editBox = searchFrame and searchFrame.editBox
+        if editBox then editBox:ClearFocus() end
         row._efContextMenuHeld = true
         if row.LockHighlight then row:LockHighlight() end
         Handlers:ApplyActionHint(row)
