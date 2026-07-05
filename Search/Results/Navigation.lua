@@ -36,7 +36,9 @@ end
 -- direction: +1 next (default), -1 prev. Wraps around at either end.
 function Results:CycleSettingDropdown(data, direction)
     if not data or not data.settingVariable then return false end
-    local var = data.settingVariable
+    -- Checkbox+dropdown composites toggle via settingVariable (the cb)
+    -- while the dropdown half reads and writes its own variable.
+    local var = data.dropdownVariable or data.settingVariable
     local opts = data.settingOptions
     if not opts and ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.GetOptionsForVariable then
         opts = ns.BlizzOptionsSearch.GetOptionsForVariable(var)
@@ -72,7 +74,7 @@ end
 
 function Results:SetSettingDropdownValue(data, value)
     if not data or not data.settingVariable then return false end
-    if not Rows:WriteSettingVariable(data.settingVariable, value) then return false end
+    if not Rows:WriteSettingVariable(data.dropdownVariable or data.settingVariable, value) then return false end
     Search:RefreshResults()
     if Search:GetSearchFrame() and Search:GetSearchFrame().editBox
        and not (Search:GetNavFrame() and Search:GetNavFrame():IsKeyboardEnabled()) then

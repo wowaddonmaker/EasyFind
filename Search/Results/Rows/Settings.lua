@@ -138,10 +138,11 @@ end
 local function ActivateSettingResult(data, openMenuHeld)
     if not data or not data.settingVariable then return false end
     local stype = data.settingType
-    if (stype == "checkbox" or stype == "checkboxSlider") and not openMenuHeld then
+    if (stype == "checkbox" or stype == "checkboxSlider" or stype == "checkboxDropdown")
+       and not openMenuHeld then
         -- Plain click toggles inline. Alt+click falls through to open
-        -- the in-game Settings panel for the same variable. For
-        -- checkboxSlider, the cb variable lives at data.settingVariable
+        -- the in-game Settings panel for the same variable. For the
+        -- composite types, the cb variable lives at data.settingVariable
         -- so the existing toggle path Just Works.
         Results:ToggleSettingCheckbox(data)
         return true

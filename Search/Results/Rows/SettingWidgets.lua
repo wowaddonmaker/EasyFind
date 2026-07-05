@@ -516,13 +516,13 @@ function Rows.CreateSettingWidgets(resultRow)
     ddCenter:SetScript("OnClick", function(self)
         local rowData = resultRow.data
         if not rowData or not rowData.settingVariable then return end
+        local var = rowData.dropdownVariable or rowData.settingVariable
         local opts = rowData.settingOptions
         if not opts and ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.GetOptionsForVariable then
-            opts = ns.BlizzOptionsSearch.GetOptionsForVariable(rowData.settingVariable)
+            opts = ns.BlizzOptionsSearch.GetOptionsForVariable(var)
             if opts then rowData.settingOptions = opts end
         end
         if not opts or #opts == 0 then return end
-        local var = rowData.settingVariable
         Rows.ToggleInlineSettingDropdown(self, opts,
             function() return Rows:ReadSettingVariable(var) end,
             function(value) Results:SetSettingDropdownValue(rowData, value) end)

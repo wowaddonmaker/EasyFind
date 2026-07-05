@@ -2091,6 +2091,9 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix, entryCatego
         if type(d) == "table" and d.cbSetting and d.sliderSetting then
             return { combined = true, init = init }
         end
+        if type(d) == "table" and d.cbSetting and d.dropdownSetting then
+            return { combinedDropdown = true, init = init }
+        end
         if type(d) == "table" and (d.settings or d.raidSettings) then
             return { container = true, init = init }
         end
@@ -2160,6 +2163,35 @@ local function WalkCategorySettings(cat, catName, catID, pathPrefix, entryCatego
                 settingMax = sMax,
                 settingStep = sStep,
                 settingFormatter = sFmt,
+                steps = {
+                    { settingsCategory = catName, settingCategoryID = catID,
+                      settingVariable = cvar },
+                },
+            }, catMT))
+        end
+      elseif info.combinedDropdown then
+        -- Checkbox+dropdown composite (e.g. Click to Move): the checkbox
+        -- toggles the feature, the dropdown picks its mode. Same data
+        -- family as cbSetting/sliderSetting above.
+        local d = init.data
+        local cb, dd = d.cbSetting, d.dropdownSetting
+        local cvok, cvar = pcall(cb.GetVariable, cb)
+        local dvok, dvar = pcall(dd.GetVariable, dd)
+        local label = d.cbLabel or d.name
+        if cvok and dvok and cvar and dvar and label and label ~= "" then
+            local settingOptions = GetInitializerOptions(init, dd)
+            local nameLower = slower(label)
+            local kw = { "setting", "option", "config", nameLower, slower(catName or "") }
+            AddOptionLabelKeywords(kw, settingOptions)
+            tinsert(out, setmetatable({
+                name = label,
+                nameLower = nameLower,
+                keywords = kw,
+                settingVariable = cvar,
+                cbVariable = cvar,
+                dropdownVariable = dvar,
+                settingType = "checkboxDropdown",
+                settingOptions = settingOptions,
                 steps = {
                     { settingsCategory = catName, settingCategoryID = catID,
                       settingVariable = cvar },
@@ -2498,6 +2530,10 @@ local function CollectGameSettings()
                and not emittedNameKeys[nameKey(catName, e.name)] then
                 tinsert(entries, e)
                 emittedVars[e.settingVariable] = true
+                -- Composite rows own their secondary variable too, or the
+                -- registry fallback would emit it again as a lone row.
+                if e.sliderVariable then emittedVars[e.sliderVariable] = true end
+                if e.dropdownVariable then emittedVars[e.dropdownVariable] = true end
                 emittedNameKeys[nameKey(catName, e.name)] = true
             end
         end

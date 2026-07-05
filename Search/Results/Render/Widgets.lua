@@ -125,6 +125,66 @@ function Render.SettingsWidget(resultRow, data, entry)
             resultRow.settingSliderGroup:Show()
 
             resultRow.text:SetPoint("RIGHT", resultRow.settingSliderGroup, "LEFT", -4, 0)
+        elseif settingType == "checkboxDropdown" and data.cbVariable and data.dropdownVariable then
+            -- Combined widget: checkbox state + mode dropdown in one row
+            -- (mirrors Blizzard's checkbox+dropdown control, e.g. Click
+            -- to Move with its "Only when moving" style mode picker).
+            local isOn = false
+            if Settings and Settings.GetSetting then
+                local sok, cbObj = pcall(Settings.GetSetting, data.cbVariable)
+                if sok and cbObj and cbObj.GetValue then
+                    local vok, v = pcall(cbObj.GetValue, cbObj)
+                    if vok then isOn = (v == true or v == "1" or v == 1) end
+                end
+            end
+            local optimistic = ns.Results and ns.Results._settingOptimistic
+            if optimistic and optimistic.var == data.cbVariable then
+                isOn = optimistic.isOn
+            end
+            resultRow.settingState:Show()
+            resultRow.settingCheck:SetShown(isOn)
+            resultRow.amountText:Hide()
+            if resultRow.settingSlider then resultRow.settingSliderGroup:Hide() end
+
+            local rawVal
+            if Settings and Settings.GetSetting then
+                local sok, ddObj = pcall(Settings.GetSetting, data.dropdownVariable)
+                if sok and ddObj and ddObj.GetValue then
+                    local vok, v = pcall(ddObj.GetValue, ddObj)
+                    if vok then rawVal = v end
+                end
+            end
+            if rawVal == nil and ns.ResultRows and ns.ResultRows.ReadSettingVariable then
+                rawVal = ns.ResultRows:ReadSettingVariable(data.dropdownVariable)
+            end
+            local val = rawVal ~= nil and tostring(rawVal) or ""
+            local optList = type(data.settingOptions) == "table" and data.settingOptions or nil
+            if optList and rawVal ~= nil then
+                for oi = 1, #optList do
+                    local o = optList[oi]
+                    if o.value == rawVal or tostring(o.value) == tostring(rawVal) then
+                        val = o.label or val
+                        break
+                    end
+                end
+            end
+            if resultRow.SetSettingDropdownText then
+                resultRow:SetSettingDropdownText(val)
+            end
+            -- The checkbox gates the dropdown, matching Blizzard's control.
+            local ddGroup = resultRow.settingDropdownGroup
+            ddGroup:SetAlpha(isOn and 1 or 0.45)
+            if resultRow.settingDropdownPrev then
+                resultRow.settingDropdownPrev:SetEnabled(isOn)
+                resultRow.settingDropdownNext:SetEnabled(isOn)
+            end
+            if resultRow.settingDropdownLabel then
+                resultRow.settingDropdownLabel:SetEnabled(isOn)
+            end
+            ddGroup:ClearAllPoints()
+            ddGroup:SetPoint("RIGHT", resultRow.settingState, "LEFT", -6, 0)
+            ddGroup:Show()
+            resultRow.text:SetPoint("RIGHT", ddGroup, "LEFT", -4, 0)
         elseif settingType == "checkbox" then
             local isOn = false
             local optimistic = ns.Results and ns.Results._settingOptimistic
@@ -281,6 +341,18 @@ function Render.SettingsWidget(resultRow, data, entry)
                 else
                     resultRow.settingDropdownLabel:SetText(val or "")
                 end
+                -- Pooled rows: clear gating and anchoring a
+                -- checkboxDropdown render left behind.
+                resultRow.settingDropdownGroup:SetAlpha(1)
+                if resultRow.settingDropdownPrev then
+                    resultRow.settingDropdownPrev:SetEnabled(true)
+                    resultRow.settingDropdownNext:SetEnabled(true)
+                end
+                if resultRow.settingDropdownLabel then
+                    resultRow.settingDropdownLabel:SetEnabled(true)
+                end
+                resultRow.settingDropdownGroup:ClearAllPoints()
+                resultRow.settingDropdownGroup:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
                 resultRow.settingDropdownGroup:Show()
                 resultRow.amountText:Hide()
                 resultRow.text:SetPoint("RIGHT", resultRow.settingDropdownGroup, "LEFT", -4, 0)
