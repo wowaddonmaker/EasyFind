@@ -99,6 +99,11 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
 
     extra = extra or {}
     extra.disabled = (row.isUnearnedCurrency or row.lockedReason) and true or nil
+    if pinData.category == "Bag" and pinData.bagID ~= nil and pinData.bagSlot then
+        extra.onDestroyItem = function()
+            Handlers:DestroyBagItem(pinData)
+        end
+    end
     local wowheadUrl = ns.GetWowheadLink and ns.GetWowheadLink(pinData)
     if wowheadUrl then
         extra.onWowhead = function()

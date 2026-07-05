@@ -109,6 +109,7 @@ read_globals = {
     "EJ_SetDifficulty", "EJ_SetLootFilter", "EJ_SetSlotFilter",
     "EJ_GetNumLoot", "EJ_GetLootInfoByIndex",
     "HasAction", "PlaceAction", "PickupAction", "ClearCursor", "GetActionCooldown",
+    "CursorHasItem", "DeleteCursorItem",
     "PickupSpell", "PickupItem", "PickupMacro", "C_Spell",
     "GetCursorInfo", "GetMouseFoci", "GetMouseFocus",
     "SetCursor", "ResetCursor",

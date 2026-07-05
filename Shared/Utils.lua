@@ -3452,6 +3452,9 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
             onClick = extra.onCageOrRelease,
         }
     end
+    if extra and extra.onDestroyItem then
+        extras[#extras + 1] = { text = L["CTX_DESTROY_ITEM"], onClick = extra.onDestroyItem }
+    end
     if #extras > 0 then
         rows[#rows + 1] = { isSeparator = true }
         for i = 1, #extras do rows[#rows + 1] = extras[i] end

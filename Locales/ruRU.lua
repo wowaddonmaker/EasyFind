@@ -258,6 +258,7 @@ L["SHORTKEY_IMPORTED"]                  = "Импортировано запис
 L["SHORTKEY_IMPORT_BAD"]                = "Не удалось прочитать этот код."
 L["CTX_GUIDE"]                          = "Указатель"
 L["CTX_WOWHEAD"]                        = "Wowhead"
+L["CTX_DESTROY_ITEM"]                   = "Уничтожить"
 L["CTX_TRACK"]                          = "Отслеживать"
 L["CTX_UNTRACK"]                        = "Не отслеживать"
 L["CTX_SHOW_ON_BACKPACK"]               = "Показать на рюкзаке"

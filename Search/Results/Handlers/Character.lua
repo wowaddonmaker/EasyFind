@@ -370,6 +370,41 @@ function Handlers:RouteCurrencyTransfer(pinData)
     Utils.SafeAfter(0.2, function() watchForPopup(50) end)
 end
 
--- Open the AchievementFrame to a specific achievement. Tries Blizzard's
--- modern OpenAchievementFrameToAchievement first; falls back to the
--- legacy AchievementFrame_SelectAchievement; finally just shows the
+-- Destroy an item from the bags (context menu on Bag results). The slot
+-- recorded at search time is re-verified by itemID (bags shift), then the
+-- item is picked up and routed through Blizzard's own delete confirmation:
+-- DELETE_GOOD_ITEM (type DELETE) for Uncommon and better, DELETE_ITEM
+-- otherwise, so quality protection and wording match the default UI.
+local DESTROY_TYPED_CONFIRM_QUALITY = 2
+function Handlers:DestroyBagItem(data)
+    if not (data and data.bagID ~= nil and data.bagSlot) then return end
+    if not (C_Container and C_Container.GetContainerItemInfo
+            and C_Container.PickupContainerItem and C_Container.GetContainerNumSlots) then return end
+    local bag, slot = data.bagID, data.bagSlot
+    local info = C_Container.GetContainerItemInfo(bag, slot)
+    if data.itemID and (not info or info.itemID ~= data.itemID) then
+        bag, slot, info = nil, nil, nil
+        for scanBag = 0, 5 do
+            for scanSlot = 1, C_Container.GetContainerNumSlots(scanBag) or 0 do
+                local scanInfo = C_Container.GetContainerItemInfo(scanBag, scanSlot)
+                if scanInfo and scanInfo.itemID == data.itemID then
+                    bag, slot, info = scanBag, scanSlot, scanInfo
+                    break
+                end
+            end
+            if bag then break end
+        end
+    end
+    if not (bag and slot and info) then return end
+    if CursorHasItem() then ClearCursor() end
+    C_Container.PickupContainerItem(bag, slot)
+    if not CursorHasItem() then return end
+    local itemName = data.name
+        or (info.hyperlink and info.hyperlink:match("%[(.-)%]")) or ""
+    local quality = info.quality or data.quality
+    if quality and quality >= DESTROY_TYPED_CONFIRM_QUALITY then
+        StaticPopup_Show("DELETE_GOOD_ITEM", itemName)
+    else
+        StaticPopup_Show("DELETE_ITEM", itemName)
+    end
+end
