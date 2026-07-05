@@ -81,6 +81,7 @@ local UI_DEFAULTS = {
     uiSearchPosition = NIL,
     uiResultsHeight = 280,
     uiResultsRows = 6,
+    wowheadLocale = "auto",
     uiSearchFilters = DEFAULT_UI_FILTERS,
     lootSpecs = NIL,
     lootSearchSlots = true,
@@ -215,6 +216,9 @@ local function SyncOptionControls()
     if not optionsFrame then return end
 
     if optionsFrame.uiFontPresetRow then optionsFrame.uiFontPresetRow:SetValue(EasyFind.db.fontSize or ns.DEFAULT_FONT_SIZE) end
+    if optionsFrame.searchScaleRow then optionsFrame.searchScaleRow:SetValue(EasyFind.db.uiSearchScale or 1.0) end
+    if optionsFrame.resultRowsRow then optionsFrame.resultRowsRow:SetValue(EasyFind.db.uiResultsRows or 6) end
+    if optionsFrame.SetWowheadSelection then optionsFrame.SetWowheadSelection(EasyFind.db.wowheadLocale or "auto") end
     if optionsFrame.searchOpacityRow then optionsFrame.searchOpacityRow:SetValue(EasyFind.db.searchWindowOpacity or ns.SEARCH_WINDOW_ALPHA) end
     if optionsFrame.mapIconPresetRow then optionsFrame.mapIconPresetRow:SetValue(EasyFind.db.iconScale or 0.8) end
     if optionsFrame.recentCountStepper then optionsFrame.recentCountStepper:SetValue(EasyFind.db.mapTabRecentCount or 3) end
@@ -1384,6 +1388,9 @@ local function BuildSearchTab(ctx)
         wowheadBtnText:SetText(WowheadLocaleLabel(value))
     end, WowheadFlyoutLabel)
     optionsFrame.wowheadBtnText = wowheadBtnText
+    optionsFrame.SetWowheadSelection = function(value)
+        wowheadBtnText:SetText(WowheadLocaleLabel(value))
+    end
     optionsFrame.wowheadFlyout = wowheadFlyout
     wowheadRow:EnableMouse(true)
     Utils.AttachDelayedTooltip(wowheadRow, "ANCHOR_RIGHT", function()
