@@ -8,7 +8,6 @@ local CreateFrame = CreateFrame
 local BattlePetTooltip = BattlePetTooltip
 local GameTooltip = GameTooltip
 local UIParent = UIParent
-local TOOLTIP_BORDER = ns.TOOLTIP_BORDER
 
 local unearnedTooltip
 
@@ -58,8 +57,15 @@ function Tooltips:PlaceAtPanelEdge(frame, fallbackOwner)
     local screenW = UIParent:GetWidth() or 0
 
     if left and right and top and screenW > 0 then
-        local roomRight = screenW - right
-        local roomLeft = left
+        -- panel:GetLeft()/GetRight() are in the panel's effective-scale space;
+        -- the search UI scales its frames (uiSearchScale/uiResultsScale), so
+        -- convert those edges to UIParent space before comparing to screenW.
+        -- Without this the room estimate is wrong at any non-1.0 scale and the
+        -- tooltip flips sides at the wrong window position (overlapping it).
+        local uiScale = UIParent:GetEffectiveScale() or 1
+        local ratio = uiScale > 0 and (panel:GetEffectiveScale() / uiScale) or 1
+        local roomRight = screenW - right * ratio
+        local roomLeft = left * ratio
         if roomRight >= roomLeft then
             frame:SetPoint("TOPLEFT", panel, "TOPRIGHT", EDGE_GAP, 0)
             frame._efEdgeSide = "right"
@@ -76,14 +82,18 @@ end
 local function EdgeRoomFor(tooltip)
     local panel = tooltip._efEdgePanel
     if not panel then return end
+    -- Convert the panel edge to UIParent space (see PlaceAtPanelEdge) so the
+    -- room matches FitEdgeTooltip's UIParent-space width math at any UI scale.
+    local uiScale = UIParent:GetEffectiveScale() or 1
+    local ratio = uiScale > 0 and (panel:GetEffectiveScale() / uiScale) or 1
     if tooltip._efEdgeSide == "right" then
         local right = panel:GetRight()
         if not right then return end
-        return (UIParent:GetWidth() or 0) - right - EDGE_GAP
+        return (UIParent:GetWidth() or 0) - right * ratio - EDGE_GAP
     end
     local left = panel:GetLeft()
     if not left then return end
-    return left - EDGE_GAP
+    return left * ratio - EDGE_GAP
 end
 
 -- The comparison manager anchors "Currently Equipped" toward screen
@@ -229,19 +239,13 @@ function Tooltips:GetUnearnedTooltip()
 end
 
 function Tooltips:CreateUnearnedTooltip()
-    unearnedTooltip = CreateFrame("Frame", "EasyFindUnearnedTooltip", UIParent, "BackdropTemplate")
+    unearnedTooltip = CreateFrame("Frame", "EasyFindUnearnedTooltip", UIParent)
     unearnedTooltip:SetFrameStrata("TOOLTIP")
     unearnedTooltip:SetFrameLevel(9999)
     unearnedTooltip:SetClampedToScreen(true)
 
-    unearnedTooltip:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = TOOLTIP_BORDER,
-        tile = true, tileSize = 16, edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 },
-    })
-    unearnedTooltip:SetBackdropColor(0, 0, 0, 0.95)
-    unearnedTooltip:SetBackdropBorderColor(0.6, 0.6, 0.6, 1)
+    -- Same themed container the right-click context menu uses (DRY).
+    ns.StyleMenuPanel(unearnedTooltip)
 
     local text = unearnedTooltip:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     text:SetPoint("CENTER", 0, 0)
