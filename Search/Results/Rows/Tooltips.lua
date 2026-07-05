@@ -16,12 +16,8 @@ local GameTooltip = GameTooltip
 local UIParent = UIParent
 local GetCursorPosition = GetCursorPosition
 
-local function AnchorTooltipAtCursor(tooltip, ownerFrame)
-    return Tooltips:AnchorTooltipAtCursor(tooltip, ownerFrame)
-end
-
-local function AnchorGearTooltip(tooltip, ownerFrame)
-    return Tooltips:AnchorGearTooltip(tooltip, ownerFrame)
+local function AnchorRowTooltip(tooltip, ownerFrame)
+    return Tooltips:AnchorRowTooltip(tooltip, ownerFrame)
 end
 
 local function GetUnearnedTooltip()
@@ -49,7 +45,7 @@ function Rows.InstallTooltips(resultRow)
             if not spellID and GetMacroItem then
                 itemName, itemLink = GetMacroItem(idx)
             end
-            AnchorTooltipAtCursor(GameTooltip, self)
+            AnchorRowTooltip(GameTooltip, self)
             if spellID and GameTooltip.SetSpellByID then
                 GameTooltip:SetSpellByID(spellID)
             elseif itemLink and GameTooltip.SetHyperlink then
@@ -75,7 +71,7 @@ function Rows.InstallTooltips(resultRow)
                        or (self.data.category == "Talent" and ht.talents)) then
                 return
             end
-            AnchorTooltipAtCursor(GameTooltip, self)
+            AnchorRowTooltip(GameTooltip, self)
             if GameTooltip.SetSpellByID then
                 GameTooltip:SetSpellByID(self.data.spellID)
             else
@@ -92,7 +88,7 @@ function Rows.InstallTooltips(resultRow)
             local ht = EasyFind.db.hideTooltips
             if ht and ht.currencies then return end
             local cid = self.data.currencyID
-            AnchorTooltipAtCursor(GameTooltip, self)
+            AnchorRowTooltip(GameTooltip, self)
             if GameTooltip.SetCurrencyByID then
                 GameTooltip:SetCurrencyByID(cid)
             elseif C_CurrencyInfo and C_CurrencyInfo.GetCurrencyLink then
@@ -107,7 +103,7 @@ function Rows.InstallTooltips(resultRow)
         -- Keybinding row: show the action name plus current bindings.
         if self.data and self.data.settingType == "keybind" and self.data.bindingAction then
             local action = self.data.bindingAction
-            AnchorTooltipAtCursor(GameTooltip, self)
+            AnchorRowTooltip(GameTooltip, self)
             GameTooltip:SetText(self.data.name or action, 1, 1, 1)
             local k1, k2 = GetBindingKey(action)
             GameTooltip:AddLine(" ")
@@ -127,7 +123,7 @@ function Rows.InstallTooltips(resultRow)
             if ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.GetTooltipForVariable then
                 tipText = ns.BlizzOptionsSearch.GetTooltipForVariable(var, self.data.name)
             end
-            AnchorTooltipAtCursor(GameTooltip, self)
+            AnchorRowTooltip(GameTooltip, self)
             GameTooltip:SetText(self.data.name or var, 1, 1, 1)
             if tipText then
                 GameTooltip:AddLine(tipText, 1, 0.82, 0, true)
@@ -180,15 +176,16 @@ function Rows.InstallTooltips(resultRow)
             if GetUnearnedTooltip() then
                 local tooltipText = self.lockedReason
                     or (self.isPathNode and L["TAB_NOT_ON_CHARACTER"] or L["CURRENCY_NOT_EARNED"])
-                GetUnearnedTooltip().text:SetText(tooltipText)
-                local textWidth = GetUnearnedTooltip().text:GetStringWidth()
-                local textHeight = GetUnearnedTooltip().text:GetStringHeight()
-                GetUnearnedTooltip():SetSize(textWidth + 20, textHeight + 16)
-                local scale = UIParent:GetEffectiveScale()
-                local x, y = GetCursorPosition()
-                GetUnearnedTooltip():ClearAllPoints()
-                GetUnearnedTooltip():SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale + 10, y / scale + 10)
-                GetUnearnedTooltip():Show()
+                local unearned = GetUnearnedTooltip()
+                unearned.text:SetText(tooltipText)
+                unearned:SetSize(unearned.text:GetStringWidth() + 20, unearned.text:GetStringHeight() + 16)
+                if not Tooltips:PlaceAtPanelEdge(unearned, self) then
+                    local scale = UIParent:GetEffectiveScale()
+                    local x, y = GetCursorPosition()
+                    unearned:ClearAllPoints()
+                    unearned:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale + 10, y / scale + 10)
+                end
+                unearned:Show()
             end
         elseif self.data and self.data.mapSearchResult then
             -- Map result: preview pin on world map if it happens to be open
@@ -223,12 +220,12 @@ function Rows.InstallTooltips(resultRow)
             if ht and ht.bags and self.data.category == "Bag" then return end
             -- Mount tooltip (show on icon hover)
             if self.icon.mountID and self.icon.spellID then
-                AnchorTooltipAtCursor(GameTooltip, self)
+                AnchorRowTooltip(GameTooltip, self)
                 GameTooltip:SetMountBySpellID(self.icon.spellID)
                 GameTooltip:Show()
             elseif self.icon.toyItemID then
                 local toyItemID = self.icon.toyItemID
-                AnchorTooltipAtCursor(GameTooltip, self)
+                AnchorRowTooltip(GameTooltip, self)
                 GameTooltip:SetToyByItemID(toyItemID)
                 GameTooltip:Show()
                 if self.toyTooltipTicker then self.toyTooltipTicker:Cancel() end
@@ -251,15 +248,15 @@ function Rows.InstallTooltips(resultRow)
                 local link = C_PetJournal and C_PetJournal.GetBattlePetLink
                     and C_PetJournal.GetBattlePetLink(self.icon.petID)
                 if link and BattlePetToolTip_ShowLink then
-                    AnchorTooltipAtCursor(GameTooltip, self)
+                    AnchorRowTooltip(GameTooltip, self)
                     BattlePetToolTip_ShowLink(link)
                 elseif link then
-                    AnchorTooltipAtCursor(GameTooltip, self)
+                    AnchorRowTooltip(GameTooltip, self)
                     GameTooltip:SetHyperlink(link)
                     GameTooltip:Show()
                 end
             elseif self.icon.outfitID then
-                AnchorTooltipAtCursor(GameTooltip, self)
+                AnchorRowTooltip(GameTooltip, self)
                 GameTooltip:SetText(self.data and self.data.name or _G["TRANSMOG_OUTFIT_NAME_DEFAULT"] or "Outfit")
                 GameTooltip:AddLine(_G["SPELL_CAST_TIME_INSTANT"] or "Instant", 1, 1, 1)
                 GameTooltip:AddLine(L["TMOG_DESC"], 0, 1, 0)
@@ -286,7 +283,7 @@ function Rows.InstallTooltips(resultRow)
                 end
                 GameTooltip:Show()
             elseif self.icon.lootItemID then
-                AnchorGearTooltip(GameTooltip, self)
+                AnchorRowTooltip(GameTooltip, self)
                 local itemLink = self.data and ns.Database and ns.Database:GetLootItemLink(self.data)
                 if itemLink then
                     GameTooltip:SetHyperlink(itemLink)
@@ -295,11 +292,11 @@ function Rows.InstallTooltips(resultRow)
                 end
                 GameTooltip:Show()
             elseif self.icon.heirloomItemID then
-                AnchorGearTooltip(GameTooltip, self)
+                AnchorRowTooltip(GameTooltip, self)
                 GameTooltip:SetItemByID(self.icon.heirloomItemID)
                 GameTooltip:Show()
             elseif self.icon.appearanceItemID then
-                AnchorGearTooltip(GameTooltip, self)
+                AnchorRowTooltip(GameTooltip, self)
                 local srcInfo = C_TransmogCollection and C_TransmogCollection.GetSourceInfo
                     and C_TransmogCollection.GetSourceInfo(self.icon.appearanceItemID)
                 if srcInfo and srcInfo.itemID then
@@ -313,7 +310,7 @@ function Rows.InstallTooltips(resultRow)
             -- Ability tooltip (must come after mount, since mount entries
             -- carry both mountID and spellID and use the mount tooltip).
             elseif self.icon.spellID then
-                AnchorTooltipAtCursor(GameTooltip, self)
+                AnchorRowTooltip(GameTooltip, self)
                 if GameTooltip.SetSpellByID then
                     GameTooltip:SetSpellByID(self.icon.spellID)
                 else
@@ -329,9 +326,9 @@ function Rows.InstallTooltips(resultRow)
                 local isGear = slot and slot ~= "" and slot ~= "INVTYPE_NON_EQUIP"
                               and slot ~= "INVTYPE_AMMO" and slot ~= "INVTYPE_QUIVER"
                 if isGear then
-                    AnchorGearTooltip(GameTooltip, self)
+                    AnchorRowTooltip(GameTooltip, self)
                 else
-                    AnchorTooltipAtCursor(GameTooltip, self)
+                    AnchorRowTooltip(GameTooltip, self)
                 end
                 local link = self.data and self.data.bagItemLink
                 if link then

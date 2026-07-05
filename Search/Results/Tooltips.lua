@@ -8,32 +8,9 @@ local CreateFrame = CreateFrame
 local BattlePetTooltip = BattlePetTooltip
 local GameTooltip = GameTooltip
 local UIParent = UIParent
-local GetCursorPosition = GetCursorPosition
 local TOOLTIP_BORDER = ns.TOOLTIP_BORDER
 
 local unearnedTooltip
-
--- Default tooltip placement for non-gear results. The default Search sets
--- the tooltip's bottom-right corner just up-and-left of the cursor
--- (with a small diagonal buffer so the tooltip doesn't sit literally
--- under the cursor arrow). ANCHOR_CURSOR puts it bottom-center at the
--- cursor instead, so we anchor manually. We also hook OnUpdate to
--- track cursor motion while the tooltip is owned by the row, mirroring
--- how default ANCHOR_CURSOR follows the mouse.
-local TOOLTIP_CURSOR_OFFSET_X = -8
-local TOOLTIP_CURSOR_OFFSET_Y = 16
-
-local function PlaceTooltipBottomRightAtCursor(tooltip)
-    tooltip:ClearAllPoints()
-    local cx, cy = GetCursorPosition()
-    local scale = tooltip:GetEffectiveScale() or 1
-    if scale == 0 then scale = 1 end
-    tooltip:SetPoint(
-        "BOTTOMRIGHT", UIParent, "BOTTOMLEFT",
-        (cx / scale) + TOOLTIP_CURSOR_OFFSET_X,
-        (cy / scale) + TOOLTIP_CURSOR_OFFSET_Y
-    )
-end
 
 -- Row tooltips (GameTooltip + the unearned message) are UIParent-level, so they
 -- don't inherit the search-bar scale. Match it, remembering the base scale and
@@ -57,37 +34,23 @@ local function ApplySearchTooltipScale(tooltip)
 end
 Tooltips.ApplySearchTooltipScale = ApplySearchTooltipScale
 
-function Tooltips:AnchorTooltipAtCursor(tooltip, ownerFrame)
-    tooltip:SetOwner(ownerFrame, "ANCHOR_NONE")
-    ApplySearchTooltipScale(tooltip)
-    PlaceTooltipBottomRightAtCursor(tooltip)
-    tooltip._easyFindCursorFollow = ownerFrame
-    if not tooltip._easyFindCursorHooked then
-        tooltip._easyFindCursorHooked = true
-        tooltip:HookScript("OnUpdate", function(self)
-            if self._easyFindCursorFollow and self:IsOwned(self._easyFindCursorFollow) then
-                PlaceTooltipBottomRightAtCursor(self)
-            end
-        end)
-        tooltip:HookScript("OnHide", function(self)
-            self._easyFindCursorFollow = nil
-        end)
-    end
-end
+-- Row tooltips anchor to the search/results panel's outside edge
+-- (whichever side has more screen room), never at the cursor: a
+-- cursor-anchored tooltip covers the very results being scanned, and
+-- gear tooltips with their item-compare frame doubled in width are
+-- worst of all.
+local EDGE_GAP = 8
+local EDGE_FIT_MIN_SCALE = 0.55
 
--- Special placement for GEAR tooltips: items render with an attached
--- item-compare frame doubled in width, so cursor-anchored tooltips
--- end up covering the result row that spawned them. Anchor to the
--- search/results panel's outside edge (whichever side has more screen
--- room) so the cursor and our own Search both stay clear.
-function Tooltips:AnchorGearTooltip(tooltip, ownerFrame)
-    tooltip:SetOwner(ownerFrame, "ANCHOR_NONE")
-    ApplySearchTooltipScale(tooltip)
-    tooltip:ClearAllPoints()
+-- Place any frame against the panel's outside edge (whichever side has
+-- more screen room). Returns false when the panel isn't measurable.
+function Tooltips:PlaceAtPanelEdge(frame, fallbackOwner)
+    frame:ClearAllPoints()
+    frame._efEdgePanel = nil
 
     local panel = (Search:GetResultsFrame() and Search:GetResultsFrame():IsShown()) and Search:GetResultsFrame()
                   or (Search:GetSearchFrame() and Search:GetSearchFrame():IsShown()) and Search:GetSearchFrame()
-                  or ownerFrame
+                  or fallbackOwner
 
     local left = panel and panel:GetLeft()
     local right = panel and panel:GetRight()
@@ -97,17 +60,168 @@ function Tooltips:AnchorGearTooltip(tooltip, ownerFrame)
     if left and right and top and screenW > 0 then
         local roomRight = screenW - right
         local roomLeft = left
-        local gap = 8
         if roomRight >= roomLeft then
-            tooltip:SetPoint("TOPLEFT", panel, "TOPRIGHT", gap, 0)
+            frame:SetPoint("TOPLEFT", panel, "TOPRIGHT", EDGE_GAP, 0)
+            frame._efEdgeSide = "right"
         else
-            tooltip:SetPoint("TOPRIGHT", panel, "TOPLEFT", -gap, 0)
+            frame:SetPoint("TOPRIGHT", panel, "TOPLEFT", -EDGE_GAP, 0)
+            frame._efEdgeSide = "left"
         end
+        frame._efEdgePanel = panel
+        return true
+    end
+    return false
+end
+
+local function EdgeRoomFor(tooltip)
+    local panel = tooltip._efEdgePanel
+    if not panel then return end
+    if tooltip._efEdgeSide == "right" then
+        local right = panel:GetRight()
+        if not right then return end
+        return (UIParent:GetWidth() or 0) - right - EDGE_GAP
+    end
+    local left = panel:GetLeft()
+    if not left then return end
+    return left - EDGE_GAP
+end
+
+-- The comparison manager anchors "Currently Equipped" toward screen
+-- center, which from our edge placement means directly onto the
+-- results. Re-anchor the compare frames on the outward side of the
+-- main tooltip and match its (possibly fit-shrunk) scale; restore
+-- their scale when they hide since they're shared frames.
+local function AnchorOneCompareOutward(compare, anchorTo, side, scale)
+    if not (compare and compare:IsShown()) then return anchorTo end
+    if compare._efBaseScale == nil then
+        compare._efBaseScale = compare:GetScale() or 1.0
+    end
+    compare:SetScale(scale)
+    compare:ClearAllPoints()
+    if side == "right" then
+        compare:SetPoint("TOPLEFT", anchorTo, "TOPRIGHT", 4, 0)
+    else
+        compare:SetPoint("TOPRIGHT", anchorTo, "TOPLEFT", -4, 0)
+    end
+    return compare
+end
+
+local function AnchorComparesOutward(tooltip)
+    local side = tooltip._efEdgePanel and tooltip._efEdgeSide
+    if not side then return end
+    local scale = tooltip:GetScale() or 1.0
+    local anchorTo = AnchorOneCompareOutward(_G["ShoppingTooltip1"], tooltip, side, scale)
+    AnchorOneCompareOutward(_G["ShoppingTooltip2"], anchorTo, side, scale)
+end
+
+-- Wide tooltips (gear with attached compare frames especially) exceed
+-- the side room; the screen clamp would push them back over the
+-- results. Shrink instead: scale down just enough that the tooltip
+-- plus any shown compare tooltips fit in the room, floored so text
+-- stays readable. Only ever shrinks within one showing, so growing
+-- content converges instead of oscillating; compare frames re-match
+-- the main tooltip's scale after every shrink.
+local function FitEdgeTooltip(tooltip)
+    local base = tooltip._efEdgeBaseScale
+    local room = base and EdgeRoomFor(tooltip)
+    if not room or room <= 0 then return end
+    local uiScale = UIParent:GetEffectiveScale()
+    if not uiScale or uiScale == 0 then return end
+    local total = (tooltip:GetWidth() or 0) * (tooltip:GetEffectiveScale() or 1)
+    local compare1, compare2 = _G["ShoppingTooltip1"], _G["ShoppingTooltip2"]
+    if compare1 and compare1:IsShown() then
+        total = total + (compare1:GetWidth() or 0) * (compare1:GetEffectiveScale() or 1)
+    end
+    if compare2 and compare2:IsShown() then
+        total = total + (compare2:GetWidth() or 0) * (compare2:GetEffectiveScale() or 1)
+    end
+    total = total / uiScale
+    if total <= 0 then return end
+    local fit = room / total
+    if fit >= 1 then return end
+    local target = base * fit
+    if target < base * EDGE_FIT_MIN_SCALE then target = base * EDGE_FIT_MIN_SCALE end
+    local current = tooltip:GetScale() or base
+    if target < current - 0.01 then
+        tooltip:SetScale(target)
+        AnchorComparesOutward(tooltip)
+    end
+end
+
+-- Blizzard's comparison manager re-anchors the shopping tooltips on its
+-- own schedule (late item data, refreshes, row-to-row hovers where the
+-- compare frame never hides), and whichever SetPoint runs last wins.
+-- Re-assert the outward layout after ANY of their re-anchors: hook the
+-- manager when present plus the frames' own SetPoint, with a reentry
+-- guard so our own anchoring doesn't recurse.
+local comparesReanchoring = false
+local function ReassertCompareAnchors()
+    if comparesReanchoring then return end
+    local tooltip = GameTooltip
+    if not (tooltip and tooltip._efEdgePanel and tooltip._efEdgeBaseScale) then return end
+    comparesReanchoring = true
+    AnchorComparesOutward(tooltip)
+    FitEdgeTooltip(tooltip)
+    comparesReanchoring = false
+end
+
+local compareGuardsInstalled = false
+local function InstallCompareGuards()
+    if compareGuardsInstalled then return end
+    compareGuardsInstalled = true
+    local manager = _G["TooltipComparisonManager"]
+    if manager and type(manager.AnchorShoppingTooltips) == "function" then
+        hooksecurefunc(manager, "AnchorShoppingTooltips", ReassertCompareAnchors)
+    end
+    local compare1, compare2 = _G["ShoppingTooltip1"], _G["ShoppingTooltip2"]
+    if compare1 then hooksecurefunc(compare1, "SetPoint", ReassertCompareAnchors) end
+    if compare2 then hooksecurefunc(compare2, "SetPoint", ReassertCompareAnchors) end
+end
+
+local function HookCompareTooltip(compare, tooltip)
+    if not compare or compare._efEdgeHooked then return end
+    compare._efEdgeHooked = true
+    compare:HookScript("OnShow", function()
+        if tooltip._efEdgeBaseScale then
+            ReassertCompareAnchors()
+        end
+    end)
+    compare:HookScript("OnHide", function(self)
+        if self._efBaseScale then
+            self:SetScale(self._efBaseScale)
+            self._efBaseScale = nil
+        end
+    end)
+end
+
+function Tooltips:AnchorRowTooltip(tooltip, ownerFrame)
+    tooltip:SetOwner(ownerFrame, "ANCHOR_NONE")
+    ApplySearchTooltipScale(tooltip)
+    if not self:PlaceAtPanelEdge(tooltip, ownerFrame) then
+        -- Fallback when the panel isn't measurable.
+        tooltip:SetOwner(ownerFrame, "ANCHOR_RIGHT")
         return
     end
-
-    -- Fallback when the panel isn't measurable.
-    tooltip:SetOwner(ownerFrame, "ANCHOR_RIGHT")
+    -- The scale restore on hide is owned by ApplySearchTooltipScale's
+    -- hook; seed its base so a fit-shrunk scale never leaks onto the
+    -- shared GameTooltip.
+    if not tooltip._efBaseScale then
+        tooltip._efBaseScale = tooltip:GetScale() or 1.0
+    end
+    tooltip._efEdgeBaseScale = tooltip:GetScale()
+    if not tooltip._efEdgeFitHooked then
+        tooltip._efEdgeFitHooked = true
+        tooltip:HookScript("OnSizeChanged", FitEdgeTooltip)
+        tooltip:HookScript("OnShow", FitEdgeTooltip)
+        tooltip:HookScript("OnHide", function(self)
+            self._efEdgePanel = nil
+            self._efEdgeBaseScale = nil
+        end)
+        HookCompareTooltip(_G["ShoppingTooltip1"], tooltip)
+        HookCompareTooltip(_G["ShoppingTooltip2"], tooltip)
+        InstallCompareGuards()
+    end
+    FitEdgeTooltip(tooltip)
 end
 
 function Tooltips:GetUnearnedTooltip()
