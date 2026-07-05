@@ -35,7 +35,7 @@ local GetNameNorm = Search.GetNameNorm
 local PreparePOI = Search.PreparePOI
 local BuildEntranceLookup = Search.BuildEntranceLookup
 local EnrichZoneWithEntrance = Search.EnrichZoneWithEntrance
-local MapTabFlightPathsEnabled = Search.MapTabFlightPathsEnabled
+local FlightPathsEnabledAnywhere = Search.FlightPathsEnabledAnywhere
 local reuseInstanceNameNorm = Search.reuseInstanceNameNorm
 
 Search.staticLocationCache = Search.staticLocationCache or {}
@@ -295,7 +295,7 @@ end
 -- run hundreds of ms in busy zones.
 local function GetLocalScans(self, mapID)
     mapID = mapID or (WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID()) or 0
-    local includeFlightMasters = MapTabFlightPathsEnabled()
+    local includeFlightMasters = FlightPathsEnabledAnywhere()
     local cache = localScanCache
     if cache and cache.mapID == mapID and cache.includeFlightMasters == includeFlightMasters then
         return cache.dynamicPOIs, cache.dungeonEntrances,

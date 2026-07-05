@@ -19,7 +19,7 @@ ns.eventFrame = eventFrame
 EasyFind.db = {}
 
 -- Increment when DB schema changes; migrations [N] run when savedVersion < N.
-local DB_VERSION = 17
+local DB_VERSION = 18
 local REVAMPED_TUTORIAL_VERSION = "2.0.0"
 ns.REVAMPED_TUTORIAL_VERSION = REVAMPED_TUTORIAL_VERSION
 
@@ -85,6 +85,16 @@ local DB_DEFAULTS = {
         rares = true,
     },
     mapTabFilters = {
+        zones = true,
+        instances = true,
+        flightpath = false,
+        travel = true,
+        services = true,
+        rares = true,
+    },
+    -- The search bar's map buckets, independent of the map tab's so the
+    -- bar can stay lean while the tab shows everything.
+    uiMapFilters = {
         zones = true,
         instances = true,
         flightpath = false,
@@ -364,6 +374,16 @@ local DB_MIGRATIONS = {
     end,
     [17] = function(db)
         ApplyFreshSettingsFor2(db)
+    end,
+    [18] = function(db)
+        -- Split the search bar's map filters from the map tab's: seed the
+        -- bar's store from the previously shared table so nothing changes
+        -- until the player diverges them.
+        if type(db.mapTabFilters) == "table" then
+            local barFilters = {}
+            for k, v in pairs(db.mapTabFilters) do barFilters[k] = v end
+            db.uiMapFilters = barFilters
+        end
     end,
 }
 

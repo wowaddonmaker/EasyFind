@@ -185,11 +185,27 @@ local function BuildWorldZonePrefixIndex(zones)
         local zone = zones[i]
         zone.nameLower = zone.nameLower or slower(zone.name)
         IndexWorldZoneText(zone, zone.nameLower)
-        byName[zone.nameLower] = byName[zone.nameLower] or zone
+        local sameName = byName[zone.nameLower]
+        if not sameName then
+            sameName = {}
+            byName[zone.nameLower] = sameName
+        end
+        sameName[#sameName + 1] = zone
     end
+    -- Register abbreviations under the SAME 1/2-char buckets the query
+    -- lookup probes (a full-string key like "smc" was unreachable: the
+    -- lookup only ever checks the query's first one or two characters).
+    -- Every zone sharing the target name gets the alias, not just the
+    -- first enumerated one (two Silvermoon Cities exist).
     for abbrev, target in pairs(ZONE_ABBREVIATIONS) do
-        local zone = byName[target]
-        if zone then AddWorldZonePrefix(zone, abbrev) end
+        local targets = byName[target]
+        if targets then
+            for ti = 1, #targets do
+                local zone = targets[ti]
+                AddWorldZonePrefix(zone, ssub(abbrev, 1, 1))
+                if #abbrev >= 2 then AddWorldZonePrefix(zone, ssub(abbrev, 1, 2)) end
+            end
+        end
     end
     wipe(worldZonePrefixSeen)
     worldZonePrefixReady = true

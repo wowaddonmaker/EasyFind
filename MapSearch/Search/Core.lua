@@ -24,9 +24,17 @@ local function GetMapPinKey(data)
     return MapSearch:GetMapPinKey(data)
 end
 
-local function MapTabFlightPathsEnabled()
-    local filters = EasyFind and EasyFind.db and EasyFind.db.mapTabFilters
-    return filters and filters.flightpath ~= false
+-- Collection-time gate: include flight paths when EITHER surface wants
+-- them; each surface then applies its own bucket filter downstream
+-- (FilterAndDedupe for the map tab, the uiMapFilters gate for the bar).
+local function FlightPathsEnabledAnywhere()
+    local db = EasyFind and EasyFind.db
+    if not db then return true end
+    local tabFilters = db.mapTabFilters
+    local barFilters = db.uiMapFilters
+    return (tabFilters and tabFilters.flightpath ~= false)
+        or (barFilters and barFilters.flightpath ~= false)
+        or (not tabFilters and not barFilters)
 end
 local scratchTables = {}
 local function NewScratchTable()
@@ -201,7 +209,7 @@ end
 Search.GetCategoryIcon = GetCategoryIcon
 Search.GetFilterBucket = GetFilterBucket
 Search.GetMapPinKey = GetMapPinKey
-Search.MapTabFlightPathsEnabled = MapTabFlightPathsEnabled
+Search.FlightPathsEnabledAnywhere = FlightPathsEnabledAnywhere
 Search.NewScratchTable = NewScratchTable
 Search.WipeScratchTables = WipeScratchTables
 Search.NormalizeName = normalizeName

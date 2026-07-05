@@ -316,7 +316,7 @@ local function ShowPopup(isPinned, onPin, onGuide, onAddAlias, data)
     if wowheadUrl then
         extra = {
             onWowhead = function()
-                ns.ShowCopyBox(wowheadUrl, L["WOWHEAD_COPY_HINT"])
+                ns.ShowCopyBox(wowheadUrl, L["WOWHEAD_COPY_HINT"]:format(data.name or ""))
             end,
         }
     end
@@ -1804,7 +1804,21 @@ local function CreateSearchBox(parent)
     editBox:SetAutoFocus(false)
     editBox:SetMaxLetters(60)
     if editBox.Instructions then
-        editBox.Instructions:SetText(L["MAP_SEARCH_PLACEHOLDER"])
+        -- Some locales render the descriptive placeholder wider than the
+        -- box; fall back to Blizzard's plain "Search" when it can't fit.
+        -- Re-checked on resize since the box is re-anchored after layout.
+        local function FitPlaceholder()
+            local instructions = editBox.Instructions
+            instructions:SetText(L["MAP_SEARCH_PLACEHOLDER"])
+            local avail = instructions:GetWidth() or 0
+            local getter = instructions.GetUnboundedStringWidth or instructions.GetStringWidth
+            if avail > 0 and getter(instructions) > avail then
+                instructions:SetText(_G["SEARCH"] or "Search")
+            end
+        end
+        FitPlaceholder()
+        editBox:HookScript("OnSizeChanged", FitPlaceholder)
+        Utils.SafeAfter(0, FitPlaceholder)
     end
 
     -- WoW silently focuses visible EditBoxes after creation despite

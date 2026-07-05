@@ -19,7 +19,7 @@ local GetBestMapForUnit = C_Map.GetBestMapForUnit
 local GetCategoryIcon = Search.GetCategoryIcon
 local GetFilterBucket = Search.GetFilterBucket
 local GetMapPinKey = Search.GetMapPinKey
-local MapTabFlightPathsEnabled = Search.MapTabFlightPathsEnabled
+local FlightPathsEnabledAnywhere = Search.FlightPathsEnabledAnywhere
 local WipeScratchTables = Search.WipeScratchTables
 local GetNameLower = Search.GetNameLower
 local PreparePOI = Search.PreparePOI
@@ -99,7 +99,7 @@ function MapSearch:BuildResults(text, isGlobal, skipPins)
         AppendGlobalInstanceSearchSources(self, allPOIs, zoneNames)
         AppendAlwaysFindableLocations(self, allPOIs, zoneNames, WorldMapFrame and WorldMapFrame:GetMapID())
 
-        if MapTabFlightPathsEnabled() then
+        if FlightPathsEnabledAnywhere() then
             local allFMs = self:ScanAllFlightMasters()
             for i = 1, #allFMs do
                 local fm = allFMs[i]
@@ -481,13 +481,13 @@ function MapSearch:SearchForUI(query)
     local scored = self:SearchPOIs(pois, query, true)
     if not scored or #scored == 0 then return nil end
 
-    -- Apply the MapTab cog filters so the UI search bar surfaces the
-    -- same buckets the user picked there. Mirrors FilterAndDedupe in
-    -- MapSearch/MapTab.lua: any POI whose bucket is explicitly disabled
+    -- Apply the search bar's OWN map buckets (uiMapFilters), independent
+    -- of the map tab's cog filters, so the bar can stay lean while the
+    -- tab shows everything. Any POI whose bucket is explicitly disabled
     -- (filters[bucket] == false) drops out. Buckets without a saved
     -- value default to enabled, same convention DB_DEFAULTS uses.
     do
-        local mtFilters = EasyFind.db.mapTabFilters
+        local mtFilters = EasyFind.db.uiMapFilters
         if mtFilters then
             wipe(reuseUISearchFiltered)
             local filtered = reuseUISearchFiltered

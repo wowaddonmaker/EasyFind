@@ -126,6 +126,25 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
     dropdown:EnableMouse(true)
     dropdown:SetClampedToScreen(true)
 
+    -- ESC dismisses the open menu like any popup. A focused edit box
+    -- still gets keys first, so typing is unaffected; every other key
+    -- propagates through to the game.
+    dropdown:HookScript("OnShow", function(self)
+        Utils.SafeCallMethod(self, "EnableKeyboard", true)
+        Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
+    end)
+    dropdown:HookScript("OnHide", function(self)
+        Utils.SafeCallMethod(self, "EnableKeyboard", false)
+    end)
+    dropdown:SetScript("OnKeyDown", function(self, key)
+        if key == "ESCAPE" then
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            self:Hide()
+        else
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
+        end
+    end)
+
     dropdown:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background-Dark",
         edgeFile = TOOLTIP_BORDER,
