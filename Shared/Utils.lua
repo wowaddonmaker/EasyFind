@@ -1543,6 +1543,25 @@ end
 -- link option and the bug-report / feature-request feedback URLs. WoW addons
 -- cannot write the clipboard, so a copy field is the correct approach.
 local copyBox
+-- Read-only feel for copy-to-share editboxes (Wowhead links, export
+-- codes): user keystrokes revert to the canonical text and reselect it,
+-- so the Ctrl-C content can't be mangled by an accidental keypress.
+-- Pass nil to make the box editable again (import flows reuse the box).
+function Utils.SetEditBoxReadOnlyText(editBox, text)
+    if not editBox._efReadOnlyHooked then
+        editBox._efReadOnlyHooked = true
+        editBox:HookScript("OnTextChanged", function(self, userInput)
+            local canonical = self._efReadOnlyText
+            if userInput and canonical and self:GetText() ~= canonical then
+                self:SetText(canonical)
+                self:HighlightText()
+            end
+        end)
+    end
+    editBox._efReadOnlyText = text
+    if text then editBox:SetText(text) end
+end
+
 function ns.ShowCopyBox(text, labelText)
     text = text or ""
     if not copyBox then
@@ -1582,13 +1601,6 @@ function ns.ShowCopyBox(text, labelText)
         editBox:SetScript("OnEscapePressed", function(self) self:ClearFocus(); f:Hide() end)
         editBox:SetScript("OnEnterPressed", function(self) self:HighlightText() end)
         editBox:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
-        -- Read-only feel: revert and re-select if the user types over it.
-        editBox:SetScript("OnTextChanged", function(self, userInput)
-            if userInput and self:GetText() ~= f._text then
-                self:SetText(f._text or "")
-                self:HighlightText()
-            end
-        end)
         f.editBox = editBox
 
         -- Ctrl-C confirmation. Addons cannot read the clipboard, but while the
@@ -1630,7 +1642,7 @@ function ns.ShowCopyBox(text, labelText)
     copyBox:SetWidth(math.max(200, math.floor(copyBox.title:GetStringWidth() + 0.5) + 44))
     copyBox:Show()
     local eb = copyBox.editBox
-    eb:SetText(text)
+    Utils.SetEditBoxReadOnlyText(eb, text)
     eb:SetCursorPosition(0)
     eb:SetFocus()
     eb:HighlightText()
@@ -3188,9 +3200,17 @@ local function CursorMenuOnKeyDown(self, key)
     elseif navKey == "UP" or (IsAltKeyDown and IsAltKeyDown() and navKey == "K") then
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
         CursorMenuMoveKeyboardIndex(self, -1)
-    elseif navKey == "ENTER" or navKey == "SPACE" then
-        Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
-        CursorMenuActivateKeyboardIndex(self)
+    elseif navKey == "ENTER" then
+        -- SPACE is never an activation key in EasyFind; it always
+        -- propagates (jumping must work with a menu open). ENTER
+        -- activates the keyboard-selected row and otherwise propagates
+        -- (mouse-opened menus have no selection).
+        if CursorMenuIsSelectableRow(self.rows and self.rows[self.keyboardIndex or 0]) then
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            CursorMenuActivateKeyboardIndex(self)
+        else
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
+        end
     else
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
     end
