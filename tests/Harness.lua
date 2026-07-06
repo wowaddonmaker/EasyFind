@@ -10,6 +10,10 @@
 
 local Harness = {}
 
+-- Lua 5.1 has global unpack, 5.4 has table.unpack; rawget keeps the 5.1
+-- linter from flagging the 5.4 field.
+local tunpack = rawget(table, "unpack") or unpack
+
 -- ============================================================================
 -- Path resolution
 -- ============================================================================
@@ -107,6 +111,8 @@ local function newFrame()
         IsVisible = function() return shown end,
         EnableMouse = function(_, v) mouseEnabled = v end,
         EnableKeyboard = function(_, v) keyboardEnabled = v end,
+        IsMouseEnabled = function() return mouseEnabled end,
+        IsKeyboardEnabled = function() return keyboardEnabled end,
         SetPropagateKeyboardInput = function() end,
         SetFrameLevel = function() end, GetFrameLevel = function() return 1 end,
         SetWidth = function() end, SetHeight = function() return 20 end,
@@ -141,7 +147,7 @@ local function setupWoWGlobals(env, clock)
         for part in (s or ""):gmatch("([^" .. sep .. "]+)") do
             out[#out + 1] = part
         end
-        return table.unpack(out)
+        return tunpack(out)
     end
 
     env.InCombatLockdown = function() return false end
@@ -211,14 +217,13 @@ local function setupWoWGlobals(env, clock)
     }
 
     -- Lua 5.4 doesn't have global `unpack` (it's table.unpack); WoW has both.
-    env.unpack = table.unpack
+    env.unpack = tunpack
 end
 
 -- ============================================================================
 -- Environment + namespace constructors
 -- ============================================================================
 function Harness.newEnv(opts)
-    opts = opts or {}
     local env = setmetatable({}, { __index = _G })
     local clock = Clock.new()
     setupWoWGlobals(env, clock)
@@ -233,7 +238,7 @@ end
 local function buildUtilsStub(clock)
     local Utils = {}
     Utils.pairs = pairs Utils.ipairs = ipairs Utils.type = type
-    Utils.select = select Utils.unpack = table.unpack Utils.next = next
+    Utils.select = select Utils.unpack = tunpack Utils.next = next
 
     Utils.tinsert = table.insert Utils.tsort = table.sort
     Utils.tconcat = table.concat Utils.tremove = table.remove
@@ -266,8 +271,7 @@ local function buildUtilsStub(clock)
 
     Utils.SafeAfter = function(delay, fn)
         clock:after(delay, function()
-            local ok = pcall(fn)
-            if not ok then end
+            pcall(fn)
         end)
     end
 

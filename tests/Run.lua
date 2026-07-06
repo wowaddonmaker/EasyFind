@@ -65,4 +65,11 @@ end
 
 print("")
 print(string.format("== Results: %d passed, %d failed ==", totalPass, totalFail))
-if totalFail > 0 then os.exit(1) end
+if totalFail > 0 then
+    for i = 1, #allFailures do
+        local failure = allFailures[i]
+        print("  FAIL " .. tostring(failure.name or failure.file)
+            .. (failure.err and (": " .. tostring(failure.err)) or ""))
+    end
+    os.exit(1)
+end
