@@ -311,6 +311,33 @@ local MAP_SEARCH_TUTORIAL_SLIDES = {
             ox = 158, oy = 146,
         },
     },
+    {
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-map-rares-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
+        text = L["TUT_MAP_RARES_DESC"],
+        -- Cursor on the highlighted Ash'an rare result; the arrow ties it to
+        -- its spot on the map.
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 30,
+            ox = 240, oy = 145,
+        },
+    },
+    {
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-map-autotrack-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
+        text = L["TUT_MAP_AUTOTRACK_DESC"],
+        -- Cursor on the Rares filter toggle in the cog menu.
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 30,
+            ox = 195, oy = 176,
+        },
+    },
 }
 
 local function ApplyInter(fs, weight, sizeOverride, flags)
