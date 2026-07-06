@@ -2020,8 +2020,8 @@ local FILTER_OPTIONS = {
     { key = "zones",      label = _G["ZONES"] or "Zones" },
     { key = "instances",  label = L["MAP_FILTER_INSTANCES"] },
     { key = "flightpath", label = L["MAP_FILTER_FLIGHT_PATHS"] },
-    { key = "travel",     label = L["MAP_FILTER_TRAVEL"] },
-    { key = "services",   label = L["MAP_FILTER_SERVICES"] },
+    { key = "travel",     label = L["MAP_FILTER_TRAVEL"],   tooltip = L["MAP_FILTER_TRAVEL_TT"] },
+    { key = "services",   label = L["MAP_FILTER_SERVICES"], tooltip = L["MAP_FILTER_SERVICES_TT"] },
     { key = "rares",      label = L["MAP_FILTER_RARES"] },
 }
 

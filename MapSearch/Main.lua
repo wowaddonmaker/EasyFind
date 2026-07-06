@@ -111,6 +111,17 @@ function MapSearch:Initialize()
     end
 end
 
+local function FilterRowOnEnter(self)
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:SetText(self.tooltipTitle, 1, 0.82, 0)
+    GameTooltip:AddLine(self.tooltipBody, 1, 1, 1, true)
+    GameTooltip:Show()
+end
+
+local function FilterRowOnLeave()
+    GameTooltip:Hide()
+end
+
 function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, anchorFrame, onChanged)
     local ROW_HEIGHT = 20
     local DROPDOWN_WIDTH = 207
@@ -191,6 +202,13 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
             filters[opt.key] = self:GetChecked()
             if onChanged then onChanged(opt.key, self:GetChecked()) end
         end)
+
+        if opt.tooltip then
+            row.tooltipTitle = opt.label
+            row.tooltipBody = opt.tooltip
+            row:SetScript("OnEnter", FilterRowOnEnter)
+            row:SetScript("OnLeave", FilterRowOnLeave)
+        end
 
         checkRows[opt.key] = row
         checkRowsByIndex[i] = row
