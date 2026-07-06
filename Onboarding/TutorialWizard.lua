@@ -109,7 +109,7 @@ local SEARCH_TUTORIAL_SLIDES = {
             tex = GAUNTLET_CURSOR_TEX,
             texCoord = GAUNTLET_CURSOR_TEXCOORD,
             size = 30,
-            ox = 280, oy = 100,
+            ox = 280, oy = 108,
         },
     },
     {
