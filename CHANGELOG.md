@@ -4,6 +4,22 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [2.1.0] - 2026-07-06
+
+### Added
+- **Send link**: Right-click any result to share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, a whisper by name, or your clipboard); works for items, spells, mounts, pets, achievements, currencies, and bosses
+- **Map pin links**: Map results can send a clickable map pin so others can see the exact spot; statistics share as ready-made "name: value" text
+- **Housing search**: Your decor collection is searchable, with a Housing filter (Collection, Dyeable Only, Collection Bonus, Placeable); clicking a result opens the catalog with that item searched
+- **Filter subcategories**: Instances split into Raids/Dungeons/Delves, Travel gathers Flight Paths/Boats/Portals, and Services breaks out Banks, Auction House, Innkeepers, Mailboxes, Trainers, Vendors, and more, on both the map tab and the search bar filter menu
+- **Menu keyboard navigation**: Tab from the search box reaches the filter menu, Tab or Right descends into filter flyouts and right-click submenus, Left backs out
+- **New tutorial slides**: Send link introduction, plus an updated filter menu slide
+
+### Fixed
+- Unchecking the Rares map filter now stops rare auto-tracking, and re-enabling auto-track refreshes the open map immediately
+- Clicking options inside the row right-click menu's submenus no longer closes the menu without acting
+
+---
+
 ## [2.0.1] - 2026-05-19
 
 ### Fixed

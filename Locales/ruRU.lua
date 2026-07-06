@@ -145,7 +145,7 @@ L["OPT_HOME_QUICKSTART"]                = "|cFFFFD100Быстрый старт:|
 L["OPT_SHORTCUTS_TEXT"]                 =
     "|cFFFFD100Поле поиска:|r\n"
     .. "|cFF00FF00Вниз|r перейти к результатам  |cFF00FF00Ввод|r активировать  |cFF00FF00Esc|r снять фокус\n"
-    .. "|cFF00FF00Tab / Shift+Tab|r переключает кнопки поиска/очистки/фильтра\n\n"
+    .. "|cFF00FF00Tab / Shift+Tab|r переключает кнопки поиска/фильтра\n\n"
     .. "|cFFFFD100Список результатов:|r\n"
     .. "|cFF00FF00Вверх/Вниз|r или |cFF00FF00Alt+K/J|r  Перемещение по результатам\n"
     .. "|cFF00FF00Tab/Shift+Tab|r или |cFF00FF00Alt+L/H|r  Переключение фокуса на кнопки навигации\n"
@@ -203,6 +203,7 @@ L["TUT_SLIDE_ALT_NUMBERS"]              = "Результаты показыва
 L["TUT_SLIDE_PINNING"]                  = "Закрепляйте важные результаты, чтобы они были доступны еще до ввода."
 L["TUT_SLIDE_SHORTKEYS"]                = "'Add shortkey' assigns a single keypress that opens this result instantly, without typing or even opening the search bar. The bind is account-wide and supersedes any existing or future binds on the same key until you remove it from {L:options:aliases}Aliases & shortkeys{/L} in the Options panel."
 L["TUT_SLIDE_WOWHEAD"]                  = "'Wowhead' pops a copy-paste box with the row's Wowhead URL so you can paste it into your browser. Available on most result types (items, spells, achievements, currencies, mounts, and more)."
+L["TUT_SLIDE_SEND_LINK"]                = "'Send link' shares a clickable link in chat: Say, Party, Guild, a whisper by name, or straight to your clipboard. Works with items, spells, mounts, achievements, and even map locations."
 L["TUT_SLIDE_FILTER_MENU"]              = "Используйте меню фильтров, чтобы выбрать, какие группы результатов появляются в общем поиске."
 L["TUT_SLIDE_AT_PREFIX"]                = "Введите @, чтобы увидеть доступные быстрые фильтры, затем Tab или Пробел для выбора."
 L["TUT_SLIDE_QUICK_FILTERS"]            = "Быстрые фильтры позволяют искать внутри одной категории без открытия меню фильтров."
@@ -235,14 +236,13 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "Отмена"
 L["WHATSNEW_CHAT_HELLO"]                = "Добро пожаловать в EasyFind v%s! Обзор обновления доступен %s."
 L["WHATSNEW_CHAT_HERE"]                 = "здесь"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffБыстрые клавиши|r\n" ..
-    "    |cff999999-|r Щёлкните результат ПКМ и задайте свою быструю клавишу\n" ..
-    "    |cff999999-|r Быстрая клавиша открывает результат одним нажатием\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffСсылки Wowhead|r\n" ..
-    "    |cff999999-|r ПКМ по предметам, заклинаниям, маунтам,\n" ..
-    "      достижениям и др. для копирования ссылки Wowhead\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffПоиск команд|r\n" ..
-    "    |cff999999-|r Находите и запускайте команды (/) прямо из поиска"
+    "|cffFFD100\226\128\162|r |cffffffffОтправка ссылок|r\n" ..
+    "    |cff999999-|r ПКМ по результату, чтобы отправить в чат ссылку на предмет,\n" ..
+    "      заклинание, маунта, достижение и даже место на карте\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffЖильё|r\n" ..
+    "    |cff999999-|r Ищите свою коллекцию декора; результат открывает каталог\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffОбщие клавиши аккаунта|r\n" ..
+    "    |cff999999-|r Клавиши EasyFind теперь действуют на всех персонажах"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Добавить псевдоним"

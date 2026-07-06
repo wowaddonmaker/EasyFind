@@ -100,6 +100,19 @@ local SEARCH_TUTORIAL_SLIDES = {
         },
     },
     {
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-sendlink-hires",
+        texCoord = TutorialTexCoord(908, 420, 1024, 512),
+        w = 454, h = 210,
+        text = L["TUT_SLIDE_SEND_LINK"],
+        -- HD Gauntlet cursor on the highlighted Send link menu row.
+        overlay = {
+            tex = GAUNTLET_CURSOR_TEX,
+            texCoord = GAUNTLET_CURSOR_TEXCOORD,
+            size = 30,
+            ox = 280, oy = 100,
+        },
+    },
+    {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-filters-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
@@ -109,7 +122,7 @@ local SEARCH_TUTORIAL_SLIDES = {
             tex = GAUNTLET_CURSOR_TEX,
             texCoord = GAUNTLET_CURSOR_TEXCOORD,
             size = 34,
-            ox = 369, oy = 12,
+            ox = 362, oy = 12,
         },
     },
     {

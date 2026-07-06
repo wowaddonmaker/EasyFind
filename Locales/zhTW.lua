@@ -145,7 +145,7 @@ L["OPT_HOME_QUICKSTART"]                = "|cFFFFD100快速開始：|r  使用�
 L["OPT_SHORTCUTS_TEXT"]                 =
     "|cFFFFD100搜尋框：|r\n"
     .. "|cFF00FF00向下|r 進入結果  |cFF00FF00Enter|r 啟動  |cFF00FF00Esc|r 取消焦點\n"
-    .. "|cFF00FF00Tab / Shift+Tab|r 在搜尋/清除/篩選按鈕間切換\n\n"
+    .. "|cFF00FF00Tab / Shift+Tab|r 在搜尋/篩選按鈕間切換\n\n"
     .. "|cFFFFD100結果清單：|r\n"
     .. "|cFF00FF00上/下|r 或 |cFF00FF00Alt+K/J|r  瀏覽結果\n"
     .. "|cFF00FF00Tab/Shift+Tab|r 或 |cFF00FF00Alt+L/H|r  將焦點切換至導覽按鈕\n"
@@ -203,6 +203,7 @@ L["TUT_SLIDE_ALT_NUMBERS"]              = "結果會顯示圖示、分類與 Alt
 L["TUT_SLIDE_PINNING"]                  = "釘選重要結果，讓它們在你輸入之前就可使用。"
 L["TUT_SLIDE_SHORTKEYS"]                = "'Add shortkey' assigns a single keypress that opens this result instantly, without typing or even opening the search bar. The bind is account-wide and supersedes any existing or future binds on the same key until you remove it from {L:options:aliases}Aliases & shortkeys{/L} in the Options panel."
 L["TUT_SLIDE_WOWHEAD"]                  = "'Wowhead' pops a copy-paste box with the row's Wowhead URL so you can paste it into your browser. Available on most result types (items, spells, achievements, currencies, mounts, and more)."
+L["TUT_SLIDE_SEND_LINK"]                = "'Send link' shares a clickable link in chat: Say, Party, Guild, a whisper by name, or straight to your clipboard. Works with items, spells, mounts, achievements, and even map locations."
 L["TUT_SLIDE_FILTER_MENU"]              = "使用篩選選單選擇哪些結果群組會出現在你的一般搜尋中。"
 L["TUT_SLIDE_AT_PREFIX"]                = "輸入 @ 查看可用的快速篩選，然後用 Tab 或空白鍵選擇其一。"
 L["TUT_SLIDE_QUICK_FILTERS"]            = "快速篩選讓你無需開啟篩選選單即可在單一分類內搜尋。"
@@ -235,14 +236,13 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "取消"
 L["WHATSNEW_CHAT_HELLO"]                = "歡迎使用EasyFind v%s！點擊%s查看更新摘要。"
 L["WHATSNEW_CHAT_HERE"]                 = "這裡"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff快捷鍵|r\n" ..
-    "    |cff999999-|r 右鍵搜尋結果，設定你自己的快捷鍵\n" ..
-    "    |cff999999-|r 快捷鍵一鍵直達對應結果\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffWowhead連結|r\n" ..
-    "    |cff999999-|r 右鍵物品、法術、坐騎、成就等，\n" ..
-    "      即可複製Wowhead連結\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff命令搜尋|r\n" ..
-    "    |cff999999-|r 在搜尋列中尋找並執行斜線命令"
+    "|cffFFD100\226\128\162|r |cffffffff傳送連結|r\n" ..
+    "    |cff999999-|r 右鍵搜尋結果，將物品、法術、坐騎、成就\n" ..
+    "      甚至地圖位置連結到聊天視窗\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff家園|r\n" ..
+    "    |cff999999-|r 可搜尋你的裝飾收藏，點擊結果開啟家園型錄\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff帳號通用按鍵|r\n" ..
+    "    |cff999999-|r EasyFind按鍵設定現在對所有角色生效"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "新增別名"

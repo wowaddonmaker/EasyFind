@@ -145,7 +145,7 @@ L["OPT_HOME_QUICKSTART"]                = "|cFFFFD100Inicio rápido:|r  Usa el a
 L["OPT_SHORTCUTS_TEXT"]                 =
     "|cFFFFD100Cuadro de búsqueda:|r\n"
     .. "|cFF00FF00Abajo|r entrar en resultados  |cFF00FF00Intro|r activar  |cFF00FF00Esc|r quitar foco\n"
-    .. "|cFF00FF00Tab / Mayús+Tab|r alterna botones buscar/borrar/filtro\n\n"
+    .. "|cFF00FF00Tab / Mayús+Tab|r alterna botones buscar/filtro\n\n"
     .. "|cFFFFD100Lista de resultados:|r\n"
     .. "|cFF00FF00Arriba/Abajo|r o |cFF00FF00Alt+K/J|r  Moverse por los resultados\n"
     .. "|cFF00FF00Tab/Mayús+Tab|r o |cFF00FF00Alt+L/H|r  Ciclar foco a botones de navegación\n"
@@ -203,6 +203,7 @@ L["TUT_SLIDE_ALT_NUMBERS"]              = "Los resultados muestran iconos, categ
 L["TUT_SLIDE_PINNING"]                  = "Fija los resultados importantes para que estén disponibles antes de escribir."
 L["TUT_SLIDE_SHORTKEYS"]                = "'Add shortkey' assigns a single keypress that opens this result instantly, without typing or even opening the search bar. The bind is account-wide and supersedes any existing or future binds on the same key until you remove it from {L:options:aliases}Aliases & shortkeys{/L} in the Options panel."
 L["TUT_SLIDE_WOWHEAD"]                  = "'Wowhead' pops a copy-paste box with the row's Wowhead URL so you can paste it into your browser. Available on most result types (items, spells, achievements, currencies, mounts, and more)."
+L["TUT_SLIDE_SEND_LINK"]                = "'Send link' shares a clickable link in chat: Say, Party, Guild, a whisper by name, or straight to your clipboard. Works with items, spells, mounts, achievements, and even map locations."
 L["TUT_SLIDE_FILTER_MENU"]              = "Usa el menú de filtros para elegir qué grupos de resultados aparecen en tu búsqueda general."
 L["TUT_SLIDE_AT_PREFIX"]                = "Escribe @ para ver los filtros rápidos disponibles, luego Tab o Espacio para seleccionar uno."
 L["TUT_SLIDE_QUICK_FILTERS"]            = "Los filtros rápidos te permiten buscar dentro de una categoría sin abrir el menú de filtros."
@@ -235,15 +236,13 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "Cancelar"
 L["WHATSNEW_CHAT_HELLO"]                = "¡Bienvenido a EasyFind v%s! Consulta el resumen de novedades %s."
 L["WHATSNEW_CHAT_HERE"]                 = "aquí"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffAtajos|r\n" ..
-    "    |cff999999-|r Haz clic derecho en un resultado para asignar\n" ..
-    "      tu propio atajo\n" ..
-    "    |cff999999-|r Los atajos abren un resultado con una sola pulsación\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffEnlaces de Wowhead|r\n" ..
-    "    |cff999999-|r Clic derecho en objetos, hechizos, monturas,\n" ..
-    "      logros y más para copiar su enlace de Wowhead\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffBúsqueda de comandos|r\n" ..
-    "    |cff999999-|r Busca y ejecuta comandos (/) desde la barra de búsqueda"
+    "|cffFFD100\226\128\162|r |cffffffffEnviar enlaces|r\n" ..
+    "    |cff999999-|r Clic derecho en un resultado para enlazar objetos,\n" ..
+    "      hechizos, monturas, logros y hasta lugares del mapa en el chat\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffHousing|r\n" ..
+    "    |cff999999-|r Busca tu colección de decoración; los resultados abren el catálogo\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffTeclas para toda la cuenta|r\n" ..
+    "    |cff999999-|r Las teclas de EasyFind ahora se aplican en todos tus personajes"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Añadir alias"
