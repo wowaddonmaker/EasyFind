@@ -110,6 +110,10 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
             ns.ShowCopyBox(wowheadUrl, ns.L["WOWHEAD_COPY_HINT"]:format(pinData.name or ""))
         end
     end
+    local chatLink = ns.GetResultLink and ns.GetResultLink(pinData)
+    if chatLink then
+        extra.sendLink = { link = chatLink, name = pinData.name }
+    end
     local skKey = ns.Shortkeys and ns.Shortkeys:GetEntryKey(pinData)
     if skKey then
         extra.hasShortkey = ns.Shortkeys:Get(skKey) ~= nil

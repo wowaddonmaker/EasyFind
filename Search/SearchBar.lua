@@ -1692,6 +1692,10 @@ function Search:CreateSearchFrame()
         if self:IsMouseOver() then return end
         if Utils.IsFrameVisiblyMouseOver(resultsFrame) then return end
         if OptionsSurface:IsOptionsSurfaceMouseOver() then return end
+        -- Any active cursor menu and its flyout cascade (right-click menu, the
+        -- Send-link channel submenu) count as inside. Those submenus are
+        -- separate pooled frames on UIParent, not children of the pin popup.
+        if Utils.IsCursorMenuMouseOver() then return end
         if activeKeybindBtn then return end
         local dropdown = self.filterDropdown
         if Utils.IsFrameVisiblyMouseOver(dropdown) then return end

@@ -86,6 +86,10 @@ function Results:CreateResultsFrame()
         if self:IsMouseOver() then return end
         if Search:GetSearchFrame() and Search:GetSearchFrame():IsMouseOver() then return end
         if OptionsSurface:IsOptionsSurfaceMouseOver() then return end
+        -- Any active cursor menu and its flyout cascade (pin/right-click menu,
+        -- the Send-link channel submenu) count as inside: those submenus are
+        -- separate pooled frames, not children of the pin popup below.
+        if Utils.IsCursorMenuMouseOver() then return end
         local guards = {
             _G["EasyFindUIFilterDropdown"],
             _G["EasyFindPinPopup"],

@@ -48,9 +48,11 @@ read_globals = {
     "InterfaceOptions_AddCategory", "InCombatLockdown",
     "IsShiftKeyDown", "IsMouseButtonDown", "IsAltKeyDown", "IsControlKeyDown",
     "IsInGroup", "IsInInstance", "IsIndoors", "UnitIsGroupLeader",
+    "IsInRaid", "IsInGuild", "UnitExists", "UnitIsPlayer", "SendChatMessage",
     "UnitFactionGroup", "UnitPosition",
     "StaticPopup_Show", "GameTooltip_Hide", "PlaySound", "ReloadUI",
     "GetSpellInfo", "GetItemInfo", "UseToyByItemID",
+    "GetSpellLink", "GetAchievementLink",
     "GetMacroSpell", "GetMacroItem",
     "PanelTemplates_GetSelectedTab",
 
@@ -136,8 +138,9 @@ read_globals = {
     -- Constants, Enums, Mixins
     "Enum", "Settings", "BackdropTemplateMixin",
     "SOUNDKIT", "UIDROPDOWNMENU_OPEN_MENU", "UISpecialFrames",
-    "FACTION_BAR_COLORS",
+    "FACTION_BAR_COLORS", "ITEM_QUALITY_COLORS",
     "LE_PET_JOURNAL_FILTER_COLLECTED", "LE_PET_JOURNAL_FILTER_NOT_COLLECTED",
+    "LE_PARTY_CATEGORY_INSTANCE",
 
     -- Font objects
     "Game15Font_Shadow", "GameFontNormal", "GameFontNormalSmall",

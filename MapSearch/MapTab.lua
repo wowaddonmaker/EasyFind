@@ -320,6 +320,14 @@ local function ShowPopup(isPinned, onPin, onGuide, onAddAlias, data)
             end,
         }
     end
+    -- Map results have a location but usually no game-object chat link, so the
+    -- Send-link menu carries a world map pin the recipient can click to open the
+    -- map at this spot.
+    local mapPinLink = data and ns.GetMapPinLink and ns.GetMapPinLink(data)
+    if mapPinLink then
+        extra = extra or {}
+        extra.sendLink = { link = mapPinLink, name = data.name }
+    end
     Utils.ShowPinMenu("EasyFindPinPopup", isPinned, onPin, onGuide, onAddAlias, {
         strata = "TOOLTIP",
         level = 100,
@@ -2053,7 +2061,10 @@ local function AttachAutoTrackRow(dropdown)
         EasyFind.db.alwaysShowRares = self:GetChecked() and true or false
         local MapSearch = ns.MapSearch
         if MapSearch and MapSearch.UpdateRareTracking then
-            MapSearch:UpdateRareTracking()
+            -- Defer one frame: a synchronous rescan+render during the click
+            -- doesn't repaint the canvas (it only recovered on map reopen).
+            -- Matches the Options panel's RunSoon(UpdateRareTracking).
+            SafeAfter(0, function() MapSearch:UpdateRareTracking() end)
         end
         if ns.optionsFrame and ns.optionsFrame.rareTrackCheckbox then
             ns.optionsFrame.rareTrackCheckbox:SetChecked(EasyFind.db.alwaysShowRares)
@@ -2066,12 +2077,21 @@ local function AttachAutoTrackRow(dropdown)
     dropdown.autoTrackRow = subRow
     local baseHeight = dropdown:GetHeight()
 
+    -- The sub-row stays visible when Rares is off; it just grays out and stops
+    -- taking clicks (the same dimming the flyout uses for unavailable options),
+    -- so auto-track is always discoverable rather than vanishing.
     function dropdown:UpdateAutoTrackRow()
-        local filters = EasyFind.db.mapTabFilters or {}
-        local raresOn = filters.rares ~= false
-        subRow:SetShown(raresOn)
-        self:SetHeight(baseHeight + (raresOn and AUTO_TRACK_ROW_H or 0))
+        local raresOn = (EasyFind.db.mapTabFilters or {}).rares ~= false
         subRow:SetChecked(EasyFind.db.alwaysShowRares and true or false)
+        subRow:EnableMouse(raresOn)
+        label:SetFontObject(raresOn and "GameFontHighlightSmall" or "GameFontDisableSmall")
+        local dim = not raresOn
+        local normalTex = subRow:GetNormalTexture()
+        local checkedTex = subRow:GetCheckedTexture()
+        if normalTex then normalTex:SetDesaturated(dim); normalTex:SetAlpha(dim and 0.5 or 1) end
+        if checkedTex then checkedTex:SetDesaturated(dim); checkedTex:SetAlpha(dim and 0.5 or 1) end
+        hl:SetAlpha(raresOn and 1 or 0)
+        self:SetHeight(baseHeight + AUTO_TRACK_ROW_H)
     end
 
     dropdown:HookScript("OnShow", function(self) self:UpdateAutoTrackRow() end)
@@ -2201,8 +2221,13 @@ local function CreatePanel(qmf)
                     ns.MapSearch:ReleaseIdleSearchMemory()
                 end
                 RefreshCurrentSearch()
-                if key == "rares" and dropdown.UpdateAutoTrackRow then
-                    dropdown:UpdateAutoTrackRow()
+                if key == "rares" then
+                    if dropdown.UpdateAutoTrackRow then dropdown:UpdateAutoTrackRow() end
+                    -- Rares is the parent of auto-track: toggling it must start
+                    -- or stop tracking too (deferred, like the sub-row click).
+                    if ns.MapSearch and ns.MapSearch.UpdateRareTracking then
+                        SafeAfter(0, function() ns.MapSearch:UpdateRareTracking() end)
+                    end
                 end
                 local uiMod = ns.Search
                 local uiSb = uiMod and uiMod.searchFrame and uiMod.searchFrame.editBox

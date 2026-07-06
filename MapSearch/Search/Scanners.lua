@@ -291,7 +291,11 @@ function MapSearch:ScanVignettes(mapID)
 end
 
 function MapSearch:UpdateRareTracking()
-    if not EasyFind.db.alwaysShowRares then
+    local filters = EasyFind.db.mapTabFilters or {}
+    -- Auto-track is a sub-toggle of the Rares filter: when the parent filter is
+    -- off, tracking stops regardless of the sub-toggle's saved state (which is
+    -- kept so re-enabling Rares restores it).
+    if not EasyFind.db.alwaysShowRares or filters.rares == false then
         -- Turning tracking off must drop the auto-shown rare pins AND the pin
         -- state they populated. ClearHighlight alone only hides the visuals,
         -- leaving activePinState holding every rare; a later hover then

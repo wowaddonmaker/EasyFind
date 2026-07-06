@@ -1881,6 +1881,118 @@ function ns.GetWowheadLink(data)
     return "https://" .. sub .. ".wowhead.com/" .. kind .. "=" .. id
 end
 
+local function ResultItemLink(itemID)
+    if not itemID then return nil end
+    local link = select(2, C_Item.GetItemInfo(itemID))
+    if link then return link end
+    -- Not in the client cache yet; ask for it so a re-open resolves.
+    if C_Item.RequestLoadItemDataByID then C_Item.RequestLoadItemDataByID(itemID) end
+    return nil
+end
+
+local function ResultSpellLink(spellID)
+    if not spellID then return nil end
+    if C_Spell and C_Spell.GetSpellLink then return C_Spell.GetSpellLink(spellID) end
+    if GetSpellLink then return GetSpellLink(spellID) end
+    return nil
+end
+
+-- Battle pet chat link. Prefers an owned pet's real stats (petID GUID); falls
+-- back to a species reference (null pet GUID) for search results that aren't
+-- collected. Quality index = rarity - 1 (0 poor .. 3 rare), matching the item
+-- quality colors WoW tints battlepet links with.
+local function ResultBattlePetLink(data)
+    if not C_PetJournal then return nil end
+    local speciesID = data.speciesID
+    local petID = type(data.petID) == "string" and data.petID or nil
+    local level, quality, maxHealth, power, speed, name = 1, 0, 0, 0, 0, nil
+    if petID and C_PetJournal.GetPetInfoByPetID then
+        local sID, _, lvl, _, _, _, _, petName = C_PetJournal.GetPetInfoByPetID(petID)
+        speciesID = speciesID or sID
+        level, name = lvl or 1, petName
+        if C_PetJournal.GetPetStats then
+            local _, mh, pw, sp, rarity = C_PetJournal.GetPetStats(petID)
+            maxHealth, power, speed = mh or 0, pw or 0, sp or 0
+            quality = (rarity or 1) - 1
+        end
+    end
+    if not speciesID then return nil end
+    if not name and C_PetJournal.GetPetInfoBySpeciesID then
+        name = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
+    end
+    if not name then return nil end
+    local qc = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
+    local hex = (qc and qc.hex) or "|cffffffff"
+    return format("%s|Hbattlepet:%d:%d:%d:%d:%d:%d:0000000000000000|h[%s]|h|r",
+        hex, speciesID, level, quality, maxHealth, power, speed, name)
+end
+
+-- Build a chat hyperlink (|H...|h) for a search result, or nil for results
+-- with no linkable game object (settings, zones, POIs, titles, reputations,
+-- gear sets, bosses). Mirrors the type dispatch of ns.GetWowheadLink; only the
+-- kinds WoW exposes as chat links produce a string, so the Send-link menu
+-- option appears only where there is something real to send.
+function ns.GetResultLink(data)
+    if not data then return nil end
+    if data.appearanceItemID and C_TransmogCollection and C_TransmogCollection.GetSourceInfo then
+        local info = C_TransmogCollection.GetSourceInfo(data.appearanceItemID)
+        return info and ResultItemLink(info.itemID) or nil
+    elseif data.heirloomItemID then
+        return ResultItemLink(data.heirloomItemID)
+    elseif data.toyItemID then
+        return ResultItemLink(data.toyItemID)
+    elseif data.mountID and C_MountJournal and C_MountJournal.GetMountInfoByID then
+        return ResultSpellLink(select(2, C_MountJournal.GetMountInfoByID(data.mountID)))
+    elseif data.speciesID or type(data.petID) == "string" then
+        return ResultBattlePetLink(data)
+    elseif data.achievementID and data.category == "Achievement" and GetAchievementLink then
+        return GetAchievementLink(data.achievementID)
+    elseif data.statisticID and data.category == "Statistic" and GetStatistic then
+        -- Statistics have no chat hyperlink, so synthesize shareable plain text
+        -- "Name: Value" from the already-localized stat value. Not clickable,
+        -- but WoW otherwise gives players no way to link a statistic at all.
+        local value = GetStatistic(data.statisticID)
+        if value and value ~= "" and value ~= "--" then
+            return format("%s: %s", data.name or "", value)
+        end
+        return nil
+    elseif data.currencyID and C_CurrencyInfo and C_CurrencyInfo.GetCurrencyLink then
+        return C_CurrencyInfo.GetCurrencyLink(data.currencyID, 0)
+    elseif data.encounterID and data.category == "Boss" then
+        -- Adventure Guide (journal) link: type 1 = encounter. Difficulty is
+        -- cosmetic for sharing; recipients land on the encounter regardless.
+        return format("|cff66bbff|Hjournal:1:%d:%d|h[%s]|h|r",
+            data.encounterID, data.difficultyID or 14, data.name or "")
+    elseif data.spellID and (data.category == "Ability" or data.category == "Talent") then
+        return ResultSpellLink(data.spellID)
+    elseif data.itemID then
+        return ResultItemLink(data.itemID)
+    end
+    return nil
+end
+
+-- Map pin chat icon: the atlas WoW shows in shared waypoint links.
+local MAP_PIN_CHAT_ICON = "|A:Waypoint-MapPin-ChatIcon:13:13:0:0|a"
+
+-- Chat-linkable world map pin at a result's location. WoW encodes worldmap
+-- hyperlink coords as the normalized position times 10000, and the recipient
+-- clicks the link to open the map there. Built by hand from the result's own
+-- coordinates so no real user waypoint is placed on the sender's map. Coords are
+-- paired with the map they belong to (POI vs dungeon-entrance fields).
+function ns.GetMapPinLink(data)
+    if not data then return nil end
+    local mapID, x, y
+    if data.x and data.y and (data.mapID or data.coordMapID) then
+        mapID, x, y = data.mapID or data.coordMapID, data.x, data.y
+    elseif data.entranceX and data.entranceY and data.entranceMapID then
+        mapID, x, y = data.entranceMapID, data.entranceX, data.entranceY
+    end
+    if not mapID or not x or not y then return nil end
+    local label = data.name or _G["MAP_PIN_HYPERLINK"] or "Map Pin Location"
+    return format("|cffffff00|Hworldmap:%d:%d:%d|h[%s %s]|h|r",
+        mapID, mfloor(x * 10000 + 0.5), mfloor(y * 10000 + 0.5), MAP_PIN_CHAT_ICON, label)
+end
+
 -- Wowhead-supported subdomains for the options dropdown. "auto" follows the
 -- client locale; the rest force a specific site. Native labels are universal.
 -- Language entries use native endonyms (shown the same on every client); the
@@ -3080,6 +3192,29 @@ function Utils.HideCursorMenus(globalName)
     return closedAny
 end
 
+-- Ground truth for "is the cursor on this menu": the focus stack that actually
+-- receives clicks, walked up so a row (a descendant) counts as the menu. More
+-- reliable than IsMouseOver rectangle math for a just-shown flyout.
+local function MouseFocusOwnedBy(target)
+    local foci = GetMouseFoci and GetMouseFoci()
+    if foci then
+        for i = 1, #foci do
+            local f = foci[i]
+            while f do
+                if f == target then return true end
+                f = f.GetParent and f:GetParent()
+            end
+        end
+    elseif GetMouseFocus then
+        local f = GetMouseFocus()
+        while f do
+            if f == target then return true end
+            f = f.GetParent and f:GetParent()
+        end
+    end
+    return false
+end
+
 local function CursorMenuHasMouse(self)
     if self:IsMouseOver() then return true end
     if self.rows then
@@ -3089,7 +3224,72 @@ local function CursorMenuHasMouse(self)
             end
         end
     end
+    if MouseFocusOwnedBy(self) then return true end
     return false
+end
+
+-- True if the cursor is over any active cursor menu or its open flyout chain.
+-- The results window's outside-click closer consults this: a context-menu
+-- submenu is a separate pooled frame (parented to UIParent, not a child of the
+-- pin popup), so a click on it must not be misread as a click outside the panel.
+function Utils.IsCursorMenuMouseOver()
+    for _, pool in pairs(cursorMenuPool) do
+        for i = 1, #pool do
+            local menu = pool[i]
+            if menu and menu:IsShown() and CursorMenuHasMouse(menu) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+local SUBMENU_GLOBAL = "EasyFindCursorSubmenu"
+
+-- True if the mouse is over any menu in this cascade: the root plus every open
+-- descendant flyout. Walked from the root so a parent never closes while its
+-- submenu is hovered, and a submenu never closes while its owning row (up in the
+-- parent) is hovered. Both directions resolve to the same chain.
+local function CursorMenuChainHasMouse(menu)
+    local root = menu
+    while root._parentMenu do root = root._parentMenu end
+    local node = root
+    while node do
+        if node:IsShown() and CursorMenuHasMouse(node) then return true end
+        node = node._openSubmenu
+    end
+    return false
+end
+
+local function CursorMenuCloseSubmenu(menu)
+    local child = menu._openSubmenu
+    menu._openSubmenu = nil
+    menu._openSubmenuRow = nil
+    if child then child:Hide() end
+end
+
+-- Reaching a row (by hover or keyboard): a row carrying its own submenu opens it
+-- beside itself; reaching any other row closes whatever submenu was open. This
+-- is the same hover-cascade every other flyout in the addon uses, via
+-- OpenFlyoutBeside for placement.
+local function CursorMenuRowEntered(menu, row)
+    if menu._openSubmenuRow and menu._openSubmenuRow ~= row then
+        CursorMenuCloseSubmenu(menu)
+    end
+    if not row._submenuRows or row.disabled then return end
+    if menu._openSubmenu and menu._openSubmenu:IsShown() and menu._openSubmenuRow == row then return end
+    local child = Utils.ShowCursorMenu(SUBMENU_GLOBAL, row._submenuRows, {
+        scale = menu:GetScale(),
+        strata = menu:GetFrameStrata(),
+        level = menu:GetFrameLevel() + 20,
+        anchorBeside = row,
+        parentMenu = menu,
+    })
+    menu._openSubmenu = child
+    menu._openSubmenuRow = row
+    -- Sit above any sibling at this strata so the flyout's rows, not an
+    -- overlapping frame, receive the click.
+    if child and child.Raise then child:Raise() end
 end
 
 local function CursorMenuIsSelectableRow(row)
@@ -3145,9 +3345,23 @@ end
 local function CursorMenuActivateKeyboardIndex(self)
     local row = self.rows and self.rows[self.keyboardIndex or 0]
     if not CursorMenuIsSelectableRow(row) then return false end
+    if row._submenuRows then
+        CursorMenuRowEntered(self, row)
+        if self._openSubmenu and self._openSubmenu.FocusKeyboard then
+            self._openSubmenu:FocusKeyboard(1)
+        end
+        return true
+    end
     local onClick = row.onClick
-    self:Hide()
-    if onClick then onClick() end
+    local root = self
+    while root._parentMenu do root = root._parentMenu end
+    if self._parentMenu then
+        if onClick then onClick() end
+        root:Hide()
+    else
+        root:Hide()
+        if onClick then onClick() end
+    end
     return true
 end
 
@@ -3166,8 +3380,14 @@ local function CursorMenuOnShow(self)
     self._hasEntered = false
     Utils.SafeCallMethod(self, "EnableKeyboard", true)
     Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
-    self:RegisterEvent("GLOBAL_MOUSE_DOWN")
-    self:RegisterEvent("GLOBAL_MOUSE_UP")
+    -- Only the root of a cascade watches for click-outside. If a submenu also
+    -- registered GLOBAL_MOUSE_DOWN, the two menus raced to close on the same
+    -- mouse-down and hid the clicked submenu row before its handler could run,
+    -- so the action never fired. One owner, like the single-menu case.
+    if not self._parentMenu then
+        self:RegisterEvent("GLOBAL_MOUSE_DOWN")
+        self:RegisterEvent("GLOBAL_MOUSE_UP")
+    end
     if self.keyboardMode then
         CursorMenuFocusKeyboard(self, self.keyboardIndex or 1)
     else
@@ -3188,6 +3408,19 @@ local function CursorMenuOnHide(self)
             if row then row:Hide() end
         end
     end
+    if self._openSubmenu then
+        local child = self._openSubmenu
+        self._openSubmenu = nil
+        self._openSubmenuRow = nil
+        child:Hide()
+    end
+    if self._parentMenu then
+        if self._parentMenu._openSubmenu == self then
+            self._parentMenu._openSubmenu = nil
+            self._parentMenu._openSubmenuRow = nil
+        end
+        self._parentMenu = nil
+    end
     local onHide = self.onHide
     self.onHide = nil
     if onHide then onHide(self) end
@@ -3197,7 +3430,10 @@ local function CursorMenuOnUpdate(self)
     -- stayOpen menus close only on click-outside (handled in OnEvent), never on
     -- mouse-leave, matching the search bar's filter menu.
     if self.stayOpen then return end
-    if CursorMenuHasMouse(self) then
+    -- Submenus never close themselves; the root drives the whole cascade, so
+    -- there is exactly one owner of the hover/click-outside decision.
+    if self._parentMenu then return end
+    if CursorMenuChainHasMouse(self) then
         self._outsideSince = nil
         self._hasEntered = true
         return
@@ -3220,7 +3456,7 @@ local function CursorMenuOnEvent(self, event)
     -- hiding here on mouse-down would make the mouse-up click instantly
     -- reopen the menu it just closed.
     if self.toggleOwner and Utils.IsFrameVisiblyMouseOver(self.toggleOwner) then return end
-    if not CursorMenuHasMouse(self) then self:Hide() end
+    if not CursorMenuChainHasMouse(self) then self:Hide() end
 end
 
 local function CursorMenuOnKeyDown(self, key)
@@ -3299,6 +3535,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
     menu.keyboardIndex = nil
     menu.onHide = opts.onHide
     menu.toggleOwner = opts.toggleOwner
+    menu._parentMenu = opts.parentMenu
 
     local rowH = opts.rowHeight or 22
     local width = opts.width or 96
@@ -3314,6 +3551,9 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 row:EnableMouse(true)
                 row:SetHeight(rowH)
                 Utils.InstallMenuRowHighlight(row)
+                -- Hovering a row opens its submenu beside it (or closes a
+                -- sibling's); the current row's spec lives in row._submenuRows.
+                row:HookScript("OnEnter", function(self) CursorMenuRowEntered(menu, self) end)
                 row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
                 row.label:SetPoint("LEFT", row, "LEFT", 8, 0)
                 row.icon = row:CreateTexture(nil, "OVERLAY")
@@ -3341,6 +3581,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 row.isSeparator = true
                 row.disabled = nil
                 row.onClick = nil
+                row._submenuRows = nil
                 row.label:SetText("")
                 row.icon:Hide()
                 if row.iconOverlay then row.iconOverlay:Hide() end
@@ -3394,6 +3635,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                     row.iconOverlay:Hide()
                 end
                 row.sep:Hide()
+                row._submenuRows = def.submenu
                 if row.disabled then
                     if row.ClearMenuHighlightState then row:ClearMenuHighlightState() end
                     row:EnableMouse(false)
@@ -3401,6 +3643,17 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                     if hl then hl:SetAlpha(0) end
                     row.onClick = nil
                     row:SetScript("OnMouseDown", nil)
+                elseif def.submenu then
+                    -- A submenu row opens its flyout (it also opens on hover);
+                    -- it never closes the menu or fires a leaf action.
+                    row:EnableMouse(true)
+                    local hl = row:GetHighlightTexture()
+                    if hl then hl:SetAlpha(1) end
+                    row.onClick = nil
+                    row:SetScript("OnMouseDown", function(self, button)
+                        if button ~= "LeftButton" then return end
+                        CursorMenuRowEntered(menu, self)
+                    end)
                 else
                     row:EnableMouse(true)
                     local hl = row:GetHighlightTexture()
@@ -3409,8 +3662,21 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                     row.onClick = onClick
                     row:SetScript("OnMouseDown", function(_, button)
                         if button ~= "LeftButton" then return end
-                        menu:Hide()
-                        if onClick then onClick() end
+                        local root = menu
+                        while root._parentMenu do root = root._parentMenu end
+                        -- In a submenu, fire the action BEFORE tearing down: the
+                        -- root's hide-cascade hides this row's own menu, and
+                        -- hiding the frame whose handler is mid-run swallowed the
+                        -- click so the action never ran. Top-level menus keep the
+                        -- long-standing hide-then-act order (no cascade hides the
+                        -- running row there).
+                        if menu._parentMenu then
+                            if onClick then onClick() end
+                            root:Hide()
+                        else
+                            root:Hide()
+                            if onClick then onClick() end
+                        end
                     end)
                 end
                 row:SetScript("OnClick", nil)
@@ -3434,6 +3700,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             row.isSeparator = nil
             row.disabled = nil
             row.onClick = nil
+            row._submenuRows = nil
             if row.keyboardOverlay then row.keyboardOverlay:Hide() end
             row:SetScript("OnClick", nil)
             row:SetScript("OnMouseDown", nil)
@@ -3457,7 +3724,11 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
     end
     menu:SetSize(needed, totalH + 8)
     menu:ClearAllPoints()
-    if opts.anchorFrame then
+    if opts.anchorBeside then
+        -- Cascade flyout: sit beside the owning row, flipping/clamping on-screen,
+        -- exactly like the filter sub-flyouts.
+        Utils.OpenFlyoutBeside(menu, opts.anchorBeside, 4)
+    elseif opts.anchorFrame then
         menu:SetPoint(opts.point or "TOPLEFT", opts.anchorFrame, opts.relativePoint or "TOPRIGHT",
             opts.offsetX or 4, opts.offsetY or 0)
     else
@@ -3511,6 +3782,18 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
         -- Our own chain-link glyph (textures/link.tga), the same custom
         -- treatment as Guide's eye and Pin's diamond.
         rows[#rows + 1] = { text = L["CTX_WOWHEAD"], icon = ns.LINK_ICON_TEX, onClick = extra.onWowhead }
+    end
+    if extra and extra.sendLink then
+        -- Hover-cascade flyout of chat channels, opened beside the row like
+        -- every other flyout; the arrow glyph marks it as a submenu.
+        local sendRows = ns.BuildSendLinkRows(extra.sendLink.link, extra.sendLink.name)
+        if sendRows then
+            rows[#rows + 1] = {
+                text = L["CTX_SEND_LINK"],
+                icon = ns.FLYOUT_ARROW_TEX,
+                submenu = sendRows,
+            }
+        end
     end
 
     local extras = {}
@@ -3572,6 +3855,78 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
     end
 
     return Utils.ShowCursorMenu(globalName, rows, opts)
+end
+
+-- Chat channels the "Send link" flyout offers, in display order. `enabled`
+-- gates a channel to when it can actually be used (in a party/instance group,
+-- raid, or guild); ungated channels are always available. The label is the
+-- localized Blizzard global for the channel name.
+local SEND_LINK_CHANNELS = {
+    { chan = "SAY" },
+    { chan = "YELL" },
+    { chan = "PARTY",         enabled = function() return IsInGroup() end },
+    { chan = "INSTANCE_CHAT", enabled = function() return IsInGroup(LE_PARTY_CATEGORY_INSTANCE or 2) end },
+    { chan = "RAID",          enabled = function() return IsInRaid() end },
+    { chan = "GUILD",         enabled = function() return IsInGuild() end },
+}
+
+-- Whisper target for the current unit target, realm-qualified when cross-realm;
+-- nil unless a player is targeted.
+local function SendLinkTargetName()
+    if not UnitExists("target") or not UnitIsPlayer("target") then return nil end
+    local name, realm = UnitName("target")
+    if not name then return nil end
+    if realm and realm ~= "" then return name .. "-" .. realm end
+    return name
+end
+
+-- Build the "Send link" flyout rows for a result's chat link: public/group
+-- channels, a whisper to the current target, a whisper by typed name, and a
+-- copy box. WoW has no silent set-clipboard API, so the copy box is the
+-- standard Ctrl+C path. Returned as a submenu spec for the context menu.
+function ns.BuildSendLinkRows(link, name)
+    if not link then return nil end
+    local rows = {}
+    for i = 1, #SEND_LINK_CHANNELS do
+        local c = SEND_LINK_CHANNELS[i]
+        local on = (not c.enabled) or c.enabled()
+        local chan = c.chan
+        rows[#rows + 1] = {
+            text = _G[chan] or chan,
+            disabled = (not on) or nil,
+            onClick = on and function() SendChatMessage(link, chan) end or nil,
+        }
+    end
+    local targetName = SendLinkTargetName()
+    rows[#rows + 1] = {
+        text = _G["TARGET"] or "Target",
+        disabled = (not targetName) or nil,
+        onClick = targetName and function() SendChatMessage(link, "WHISPER", nil, targetName) end or nil,
+    }
+    rows[#rows + 1] = {
+        text = L["CTX_SEND_LINK_NAME"],
+        onClick = function()
+            ns.ShowThemedDialog({
+                text = L["CTX_SEND_LINK_NAME_PROMPT"],
+                messageColor = ns.GOLD_COLOR,
+                hasEditBox = true,
+                maxLetters = 48,
+                acceptText = _G["SEND_LABEL"] or _G["OKAY"],
+                onAccept = function(val)
+                    val = val and strtrim(val) or ""
+                    if val ~= "" then SendChatMessage(link, "WHISPER", nil, val) end
+                end,
+            })
+        end,
+    }
+    rows[#rows + 1] = { isSeparator = true }
+    rows[#rows + 1] = {
+        text = L["CTX_SEND_LINK_CLIPBOARD"],
+        onClick = function()
+            ns.ShowCopyBox(link, L["CTX_SEND_LINK_CLIPBOARD_HINT"]:format(name or ""))
+        end,
+    }
+    return rows
 end
 
 -- The pin marker: bronze diamond with an additive gold core, composited
