@@ -44,14 +44,14 @@ Search from the world map with nested results built for location-first browsing:
 - **Slash-command results**: Type `/` in the search bar to see supported EasyFind commands such as `/reset` and `/options`.
 - **Calculator**: Type math directly into search, including arithmetic, trig functions, and factorials, or open the full calculator with `Alt+C`.
 - **Keyboard control**: Use arrows, Enter, Tab, Alt+number row shortcuts, or Alt+H/J/K/L navigation.
-- **Send link**: Right-click a result to share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, a whisper, or your clipboard), including map pin links for locations.
+- **Send link**: Right-click a result to share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, a whisper, or your clipboard).
 - **Context menus**: Right-click results for row-specific actions such as Guide, Pin, Add Alias, favorite toggles, tracking, edit actions, and collection tools.
 
 ### Options
 
 Configure:
 
-- Search behavior, auto-hide behavior, result placement, visible row count, font size, and Alt+number hints.
+- Search behavior, auto-hide behavior, result placement, visible row count, fonts and font size, and Alt+number hints.
 - Map Search behavior, map pins, icon sizing, tracking, recent searches, and result categories.
 - Aliases, keybindings, indicator style/color, search window sizing, and reset tools.
 

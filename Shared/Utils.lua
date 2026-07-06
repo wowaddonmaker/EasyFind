@@ -4061,10 +4061,12 @@ local function ApplyFontTo(fs)
     local files = ADDON_FONT_FILES[GetFontChoice()]
     if files then
         local w = fs._addonFontWeight
-        fs:SetFont(files[w] or files.regular, size, flags)
-    else
-        fs:SetFont(baseline.path, baseline.size, baseline.flags or "")
+        if fs:SetFont(files[w] or files.regular, size, flags) then return end
+        -- Font file not loadable (e.g. added after the client launched, which
+        -- only scans addon files at startup): keep the baseline font rather
+        -- than leaving the text blank.
     end
+    fs:SetFont(baseline.path, baseline.size, baseline.flags or "")
 end
 
 -- Resolve the font path a piece of UI text should use: the chosen font's

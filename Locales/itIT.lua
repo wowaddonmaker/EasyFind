@@ -203,7 +203,7 @@ L["TUT_SLIDE_ALT_NUMBERS"]              = "I risultati mostrano icone, categorie
 L["TUT_SLIDE_PINNING"]                  = "Fissa i risultati importanti così restano disponibili prima ancora di digitare."
 L["TUT_SLIDE_SHORTKEYS"]                = "'Add shortkey' assigns a single keypress that opens this result instantly, without typing or even opening the search bar. The bind is account-wide and supersedes any existing or future binds on the same key until you remove it from {L:options:aliases}Aliases & shortkeys{/L} in the Options panel."
 L["TUT_SLIDE_WOWHEAD"]                  = "'Wowhead' pops a copy-paste box with the row's Wowhead URL so you can paste it into your browser. Available on most result types (items, spells, achievements, currencies, mounts, and more)."
-L["TUT_SLIDE_SEND_LINK"]                = "'Send link' shares a clickable link in chat: Say, Party, Guild, a whisper by name, or straight to your clipboard. Works with items, spells, mounts, achievements, and even map locations."
+L["TUT_SLIDE_SEND_LINK"]                = "'Send link' shares a clickable link in chat: Say, Party, Guild, a whisper by name, or straight to your clipboard. Works with items, spells, mounts, achievements, and more."
 L["TUT_SLIDE_FILTER_MENU"]              = "Usa il menu dei filtri per scegliere quali gruppi di risultati appaiono nella ricerca generale."
 L["TUT_SLIDE_AT_PREFIX"]                = "Digita @ per vedere i filtri rapidi disponibili, poi Tab o Spazio per selezionarne uno."
 L["TUT_SLIDE_QUICK_FILTERS"]            = "I filtri rapidi ti permettono di cercare in una sola categoria senza aprire il menu dei filtri."
@@ -238,11 +238,22 @@ L["WHATSNEW_CHAT_HERE"]                 = "qui"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffInvio link|r\n" ..
     "    |cff999999-|r Clic destro su un risultato per collegare oggetti,\n" ..
-    "      incantesimi, cavalcature, imprese e persino luoghi della mappa in chat\n" ..
+    "      incantesimi, cavalcature, imprese e altro in chat\n" ..
     "|cffFFD100\226\128\162|r |cffffffffHousing|r\n" ..
-    "    |cff999999-|r Cerca la tua collezione di arredi; i risultati aprono il catalogo\n" ..
+    "    |cff999999-|r Cerca gli arredi; i risultati aprono il catalogo\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffScorciatoie|r\n" ..
+    "    |cff999999-|r Clic destro su un risultato per assegnare una\n" ..
+    "      tua scorciatoia\n" ..
+    "    |cff999999-|r Le scorciatoie aprono un risultato con una sola pressione\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffLink Wowhead|r\n" ..
+    "    |cff999999-|r Clic destro su oggetti, incantesimi, cavalcature,\n" ..
+    "      imprese e altro per copiare il link Wowhead\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffRicerca comandi|r\n" ..
+    "    |cff999999-|r Trova ed esegui i comandi (/) dalla barra di ricerca\n" ..
     "|cffFFD100\226\128\162|r |cffffffffTasti per tutto l'account|r\n" ..
-    "    |cff999999-|r Le assegnazioni dei tasti di EasyFind valgono ora su ogni personaggio"
+    "    |cff999999-|r Le assegnazioni dei tasti di EasyFind valgono ora su ogni personaggio\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffNuovi caratteri|r\n" ..
+    "    |cff999999-|r Inter, Lato e Poppins disponibili nelle opzioni"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Aggiungi alias"

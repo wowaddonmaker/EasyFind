@@ -203,7 +203,7 @@ L["TUT_SLIDE_ALT_NUMBERS"]              = "Los resultados muestran iconos, categ
 L["TUT_SLIDE_PINNING"]                  = "Fija los resultados importantes para que estén disponibles antes de escribir."
 L["TUT_SLIDE_SHORTKEYS"]                = "«Añadir atajo» asigna una sola tecla que abre este resultado al instante, sin escribir ni siquiera abrir la barra de búsqueda. El atajo es para toda la cuenta y reemplaza cualquier otra tecla asignada en el pasado o el futuro hasta que lo elimines desde {L:options:aliases}Alias y atajos{/L} en el panel de opciones."
 L["TUT_SLIDE_WOWHEAD"]                  = "«Wowhead» muestra un cuadro con la URL de Wowhead del resultado para que la copies y la pegues en tu navegador. Disponible en la mayoría de tipos de resultados (objetos, hechizos, logros, monedas, monturas y más)."
-L["TUT_SLIDE_SEND_LINK"]                = "«Enviar enlace» comparte un enlace clicable en el chat: Decir, Grupo, Hermandad, un susurro por nombre o directo al portapapeles. Funciona con objetos, hechizos, monturas, logros e incluso ubicaciones del mapa."
+L["TUT_SLIDE_SEND_LINK"]                = "«Enviar enlace» comparte un enlace clicable en el chat: Decir, Grupo, Hermandad, un susurro por nombre o directo al portapapeles. Funciona con objetos, hechizos, monturas, logros y más."
 L["TUT_SLIDE_FILTER_MENU"]              = "Usa el menú de filtros para elegir qué grupos de resultados aparecen en tu búsqueda general."
 L["TUT_SLIDE_AT_PREFIX"]                = "Escribe @ para ver los filtros rápidos disponibles, luego Tab o Espacio para seleccionar uno."
 L["TUT_SLIDE_QUICK_FILTERS"]            = "Los filtros rápidos te permiten buscar dentro de una categoría sin abrir el menú de filtros."
@@ -238,11 +238,22 @@ L["WHATSNEW_CHAT_HERE"]                 = "aquí"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffEnviar enlaces|r\n" ..
     "    |cff999999-|r Clic derecho en un resultado para enlazar objetos,\n" ..
-    "      hechizos, monturas, logros y hasta lugares del mapa en el chat\n" ..
+    "      hechizos, monturas, logros y más en el chat\n" ..
     "|cffFFD100\226\128\162|r |cffffffffHousing|r\n" ..
-    "    |cff999999-|r Busca tu colección de decoración; los resultados abren el catálogo\n" ..
+    "    |cff999999-|r Busca decoración; los resultados abren el catálogo\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffAtajos|r\n" ..
+    "    |cff999999-|r Haz clic derecho en un resultado para asignar\n" ..
+    "      tu propio atajo\n" ..
+    "    |cff999999-|r Los atajos abren un resultado con una sola pulsación\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffEnlaces de Wowhead|r\n" ..
+    "    |cff999999-|r Clic derecho en objetos, hechizos, monturas,\n" ..
+    "      logros y más para copiar su enlace de Wowhead\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffBúsqueda de comandos|r\n" ..
+    "    |cff999999-|r Busca y ejecuta comandos (/) desde la barra de búsqueda\n" ..
     "|cffFFD100\226\128\162|r |cffffffffTeclas para toda la cuenta|r\n" ..
-    "    |cff999999-|r Las teclas de EasyFind ahora se aplican en todos tus personajes"
+    "    |cff999999-|r Las teclas de EasyFind ahora se aplican en todos tus personajes\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffNuevas fuentes|r\n" ..
+    "    |cff999999-|r Inter, Lato y Poppins disponibles en las opciones"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Añadir alias"

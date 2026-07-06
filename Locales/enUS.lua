@@ -224,7 +224,7 @@ L["TUT_SLIDE_ALT_NUMBERS"]              = "When you hover over a result, the sub
 L["TUT_SLIDE_PINNING"]                  = "Right click rows for options. This shows the pin action, making the result show without typing. 'Add alias' lets you add custom search keys, and 'Guide' highlights the step by step path to the result instead of auto-opening."
 L["TUT_SLIDE_SHORTKEYS"]                = "'Add shortkey' assigns a single keypress that opens this result instantly, without typing or even opening the search bar. The bind is account-wide and supersedes any existing or future binds on the same key until you remove it from {L:options:aliases}Aliases & shortkeys{/L} in the Options panel."
 L["TUT_SLIDE_WOWHEAD"]                  = "'Wowhead' opens a copy-paste box with the row's Wowhead URL so you can paste it into your browser. Available on many result types such as items, spells, achievements, currencies, mounts, and more."
-L["TUT_SLIDE_SEND_LINK"]                = "'Send link' shares a clickable link in chat: Say, Party, Guild, a whisper by name, or straight to your clipboard. Works with items, spells, mounts, achievements, and even map locations."
+L["TUT_SLIDE_SEND_LINK"]                = "'Send link' shares a clickable link in chat: Say, Party, Guild, a whisper by name, or straight to your clipboard. Works with items, spells, mounts, achievements, and more."
 L["TUT_SLIDE_FILTER_MENU"]              = "Click the filter button to open the menu of categories you can toggle on/off for your searches."
 L["TUT_SLIDE_AT_PREFIX"]                = "You can also type @ to use quick filters which allows one-off filtering to hone in on a specific category without modifying your general filter settings."
 L["TUT_SLIDE_QUICK_FILTERS"]            = "Here's an example showing the '@bags' quick filter to only allow items from my bags to appear in the results."
@@ -261,11 +261,21 @@ L["WHATSNEW_CHAT_HERE"]                 = "here"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffSend Links|r\n" ..
     "    |cff999999-|r Right-click a result to link items, spells, mounts,\n" ..
-    "      achievements, and even map locations in chat\n" ..
+    "      achievements, and more in chat\n" ..
     "|cffFFD100\226\128\162|r |cffffffffHousing|r\n" ..
-    "    |cff999999-|r Search your decor collection; results open the catalog\n" ..
+    "    |cff999999-|r Search decor; results open the catalog\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffShortkeys|r\n" ..
+    "    |cff999999-|r Right-click any result to bind your own shortkey\n" ..
+    "    |cff999999-|r Shortkeys open a result with a single keypress\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffWowhead Links|r\n" ..
+    "    |cff999999-|r Right-click items, spells, mounts, achievements\n" ..
+    "      and more for a copy-ready Wowhead link\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCommand Search|r\n" ..
+    "    |cff999999-|r Find and run slash commands from the search bar\n" ..
     "|cffFFD100\226\128\162|r |cffffffffAccount-wide Binds|r\n" ..
-    "    |cff999999-|r EasyFind keybinds now apply on every character"
+    "    |cff999999-|r EasyFind keybinds now apply on every character\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffNew Fonts|r\n" ..
+    "    |cff999999-|r Inter, Lato, and Poppins available in the options"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels

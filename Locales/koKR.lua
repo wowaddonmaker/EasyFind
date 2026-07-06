@@ -203,7 +203,7 @@ L["TUT_SLIDE_ALT_NUMBERS"]              = "결과에는 아이콘, 분류, Alt+�
 L["TUT_SLIDE_PINNING"]                  = "중요한 결과를 고정해 두면 입력하기 전에도 바로 이용할 수 있습니다."
 L["TUT_SLIDE_SHORTKEYS"]                = "'Add shortkey' assigns a single keypress that opens this result instantly, without typing or even opening the search bar. The bind is account-wide and supersedes any existing or future binds on the same key until you remove it from {L:options:aliases}Aliases & shortkeys{/L} in the Options panel."
 L["TUT_SLIDE_WOWHEAD"]                  = "'Wowhead' pops a copy-paste box with the row's Wowhead URL so you can paste it into your browser. Available on most result types (items, spells, achievements, currencies, mounts, and more)."
-L["TUT_SLIDE_SEND_LINK"]                = "'Send link' shares a clickable link in chat: Say, Party, Guild, a whisper by name, or straight to your clipboard. Works with items, spells, mounts, achievements, and even map locations."
+L["TUT_SLIDE_SEND_LINK"]                = "'Send link' shares a clickable link in chat: Say, Party, Guild, a whisper by name, or straight to your clipboard. Works with items, spells, mounts, achievements, and more."
 L["TUT_SLIDE_FILTER_MENU"]              = "필터 메뉴로 일반 검색에 어떤 결과 그룹이 나올지 선택하세요."
 L["TUT_SLIDE_AT_PREFIX"]                = "@를 입력하면 사용 가능한 빠른 필터가 보이고, Tab이나 Space로 선택합니다."
 L["TUT_SLIDE_QUICK_FILTERS"]            = "빠른 필터를 사용하면 필터 메뉴를 열지 않고 한 분류 안에서 검색할 수 있습니다."
@@ -237,12 +237,22 @@ L["WHATSNEW_CHAT_HELLO"]                = "EasyFind v%s에 오신 것을 환영�
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffff링크 보내기|r\n" ..
-    "    |cff999999-|r 검색 결과를 우클릭해 아이템, 주문, 탈것, 업적은 물론\n" ..
-    "      지도 위치까지 대화창에 링크하세요\n" ..
+    "    |cff999999-|r 검색 결과를 우클릭해 아이템, 주문, 탈것,\n" ..
+    "      업적 등을 대화창에 링크하세요\n" ..
     "|cffFFD100\226\128\162|r |cffffffff하우징|r\n" ..
-    "    |cff999999-|r 장식 소장품을 검색하세요. 결과를 누르면 카탈로그가 열립니다\n" ..
+    "    |cff999999-|r 장식을 검색하세요. 결과를 누르면 카탈로그가 열립니다\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff단축키|r\n" ..
+    "    |cff999999-|r 검색 결과를 우클릭해 나만의 단축키를 지정하세요\n" ..
+    "    |cff999999-|r 단축키는 키 한 번으로 결과를 바로 엽니다\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffWowhead 링크|r\n" ..
+    "    |cff999999-|r 아이템, 주문, 탈것, 업적 등을 우클릭해\n" ..
+    "      Wowhead 링크를 복사하세요\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff명령어 검색|r\n" ..
+    "    |cff999999-|r 검색창에서 빗금 명령어를 찾아 바로 실행하세요\n" ..
     "|cffFFD100\226\128\162|r |cffffffff계정 공용 단축키|r\n" ..
-    "    |cff999999-|r EasyFind 키 설정이 이제 모든 캐릭터에 적용됩니다"
+    "    |cff999999-|r EasyFind 키 설정이 이제 모든 캐릭터에 적용됩니다\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff새 글꼴|r\n" ..
+    "    |cff999999-|r 옵션에서 Inter, Lato, Poppins를 사용할 수 있습니다"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"

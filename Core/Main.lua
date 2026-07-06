@@ -499,7 +499,11 @@ end
 
 local function ShowWhatsNewChatMessage(version)
     local v = version or "?"
-    local link = sformat("|cff70d4ff|H%s%s|h%s|h|r",
+    -- Same blue as the options-page link chips; brackets are the chat-native
+    -- clickable affordance (a glow texture cannot render inside a chat line).
+    local LC = ns.LINK_COLOR or { 0.44, 0.84, 1.0 }
+    local link = sformat("|cff%02x%02x%02x|H%s%s|h[%s]|h|r",
+        LC[1] * 255, LC[2] * 255, LC[3] * 255,
         WHATSNEW_LINK_PREFIX, v, L["WHATSNEW_CHAT_HERE"])
     EasyFind:Print(sformat(L["WHATSNEW_CHAT_HELLO"], v, link))
 end

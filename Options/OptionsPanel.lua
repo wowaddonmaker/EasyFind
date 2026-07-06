@@ -1202,8 +1202,12 @@ local function BuildGeneralBindsTab(ctx)
         label._efFontPreview = true
         local path = ns.GetFontChoicePath and ns.GetFontChoicePath(name)
         if path then
-            local _, size, flags = label:GetFont()
-            label:SetFont(path, size, flags)
+            local prevPath, size, flags = label:GetFont()
+            if not label:SetFont(path, size, flags) then
+                -- Unloadable font (needs a client restart to be scanned):
+                -- show the name in the previous font instead of a blank row.
+                label:SetFont(prevPath, size, flags)
+            end
         end
     end
     AddFlyoutOptions(fontFlyout, fontChoices, SELECTOR_BTN_W - 6, function(name)

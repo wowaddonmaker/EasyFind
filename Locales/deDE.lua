@@ -205,7 +205,7 @@ L["TUT_SLIDE_ALT_NUMBERS"]              = "Ergebnisse zeigen Symbole, Kategorien
 L["TUT_SLIDE_PINNING"]                  = "Hefte wichtige Ergebnisse an, damit sie schon vor dem Tippen verfügbar sind."
 L["TUT_SLIDE_SHORTKEYS"]                = "'Add shortkey' assigns a single keypress that opens this result instantly, without typing or even opening the search bar. The bind is account-wide and supersedes any existing or future binds on the same key until you remove it from {L:options:aliases}Aliases & shortkeys{/L} in the Options panel."
 L["TUT_SLIDE_WOWHEAD"]                  = "'Wowhead' pops a copy-paste box with the row's Wowhead URL so you can paste it into your browser. Available on most result types (items, spells, achievements, currencies, mounts, and more)."
-L["TUT_SLIDE_SEND_LINK"]                = "'Send link' shares a clickable link in chat: Say, Party, Guild, a whisper by name, or straight to your clipboard. Works with items, spells, mounts, achievements, and even map locations."
+L["TUT_SLIDE_SEND_LINK"]                = "'Send link' shares a clickable link in chat: Say, Party, Guild, a whisper by name, or straight to your clipboard. Works with items, spells, mounts, achievements, and more."
 L["TUT_SLIDE_FILTER_MENU"]              = "Nutze das Filtermenü, um zu wählen, welche Ergebnisgruppen in deiner allgemeinen Suche erscheinen."
 L["TUT_SLIDE_AT_PREFIX"]                = "Tippe @, um verfügbare Schnellfilter zu sehen, dann Tab oder Leertaste zum Auswählen."
 L["TUT_SLIDE_QUICK_FILTERS"]            = "Mit Schnellfiltern suchst du innerhalb einer Kategorie, ohne das Filtermenü zu öffnen."
@@ -240,11 +240,22 @@ L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffLinks senden|r\n" ..
     "    |cff999999-|r Rechtsklick auf ein Ergebnis, um Gegenstände, Zauber,\n" ..
-    "      Reittiere, Erfolge und sogar Kartenorte im Chat zu verlinken\n" ..
+    "      Reittiere, Erfolge und mehr im Chat zu verlinken\n" ..
     "|cffFFD100\226\128\162|r |cffffffffHousing|r\n" ..
-    "    |cff999999-|r Durchsuche deine Dekor-Sammlung; Ergebnisse öffnen den Katalog\n" ..
+    "    |cff999999-|r Durchsuche Dekor; Ergebnisse öffnen den Katalog\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffKurztasten|r\n" ..
+    "    |cff999999-|r Rechtsklick auf ein Ergebnis, um eine eigene\n" ..
+    "      Kurztaste zu belegen\n" ..
+    "    |cff999999-|r Kurztasten öffnen ein Ergebnis mit einem Tastendruck\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffWowhead-Links|r\n" ..
+    "    |cff999999-|r Rechtsklick auf Gegenstände, Zauber, Reittiere,\n" ..
+    "      Erfolge und mehr für einen kopierbaren Wowhead-Link\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffBefehlssuche|r\n" ..
+    "    |cff999999-|r Finde und nutze Slash-Befehle direkt über die Suchleiste\n" ..
     "|cffFFD100\226\128\162|r |cffffffffAccountweite Tasten|r\n" ..
-    "    |cff999999-|r EasyFind-Tastenbelegungen gelten jetzt auf jedem Charakter"
+    "    |cff999999-|r EasyFind-Tastenbelegungen gelten jetzt auf jedem Charakter\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffNeue Schriftarten|r\n" ..
+    "    |cff999999-|r Inter, Lato und Poppins in den Optionen verfügbar"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"

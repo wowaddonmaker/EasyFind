@@ -7,12 +7,14 @@ All notable changes to EasyFind will be documented in this file.
 ## [2.1.0] - 2026-07-06
 
 ### Added
-- **Send link**: Right-click any result to share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, a whisper by name, or your clipboard); works for items, spells, mounts, pets, achievements, currencies, and bosses
-- **Map pin links**: Map results can send a clickable map pin so others can see the exact spot; statistics share as ready-made "name: value" text
-- **Housing search**: Your decor collection is searchable, with a Housing filter (Collection, Dyeable Only, Collection Bonus, Placeable); clicking a result opens the catalog with that item searched
+- **Send link**: Right-click any result to share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, a whisper by name, or your clipboard); works for items, spells, mounts, pets, achievements, currencies, and bosses, and statistics share as ready-made "name: value" text
+- **Housing search**: Search housing decor, with a Housing filter (Collection, Dyeable Only, Collection Bonus, Placeable); clicking a result opens the catalog with that item searched
 - **Filter subcategories**: Instances split into Raids/Dungeons/Delves, Travel gathers Flight Paths/Boats/Portals, and Services breaks out Banks, Auction House, Innkeepers, Mailboxes, Trainers, Vendors, and more, on both the map tab and the search bar filter menu
 - **Menu keyboard navigation**: Tab from the search box reaches the filter menu, Tab or Right descends into filter flyouts and right-click submenus, Left backs out
+- **Shortkeys**: Right-click any result to bind a key that opens it instantly, without typing or opening the search bar; managed from Aliases & shortkeys in the options
+- **Wowhead links**: Right-click items, spells, mounts, achievements, currencies, and more for a copy-ready Wowhead URL
 - **Account-wide keybinds**: EasyFind's keybinds now apply on every character (including with character-specific key bindings) and are set from EasyFind's options instead of Blizzard's keybinding panel
+- **New fonts**: Inter, Lato, and Poppins available in the options
 - **New tutorial slides**: Send link introduction, plus an updated filter menu slide
 
 ### Changed
