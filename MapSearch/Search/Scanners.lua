@@ -292,6 +292,14 @@ end
 
 function MapSearch:UpdateRareTracking()
     if not EasyFind.db.alwaysShowRares then
+        -- Turning tracking off must drop the auto-shown rare pins AND the pin
+        -- state they populated. ClearHighlight alone only hides the visuals,
+        -- leaving activePinState holding every rare; a later hover then
+        -- snapshots that stale set and restores all of them to the map.
+        local existing = self:GetActivePinState()
+        if existing and existing.isRareTracking then
+            self:ClearActivePinState()
+        end
         self:ClearHighlight()
         return
     end
@@ -342,6 +350,10 @@ function MapSearch:UpdateRareTracking()
 
     if #individuals > 0 then
         self:ShowMultipleWaypoints(individuals)
+        -- Tag the pin state as auto-tracking so a later disable (or a user
+        -- click that replaces it) can tell rare pins from a committed result.
+        local st = self:GetActivePinState()
+        if st then st.isRareTracking = true end
     else
         self:ClearHighlight()
     end

@@ -244,6 +244,9 @@ function MapSearch:EndHoverPreview()
         elseif saved.x and saved.y then
             self:ShowWaypointAt(saved.x, saved.y, saved.icon, saved.category)
         end
+        -- Restore the exact pre-hover state table so flags it carried
+        -- (e.g. isRareTracking) survive the redraw.
+        self:SetActivePinState(saved)
     end
 end
 
@@ -281,5 +284,6 @@ function MapSearch:ClearUIPreview()
         else
             self:ShowWaypointAt(saved.x, saved.y, saved.icon, saved.category)
         end
+        self:SetActivePinState(saved)
     end
 end
