@@ -14,7 +14,7 @@ Search across:
 
 - UI panels, tabs, options, addon settings, and Blizzard settings.
 - Achievements, statistics, titles, reputations, currencies, talents, abilities, and spellbook entries.
-- Mounts, pets, toys, transmogs, outfits, heirlooms, gear sets, macros, bosses, loot, and bag items.
+- Mounts, pets, toys, transmogs, outfits, heirlooms, gear sets, macros, bosses, loot, bag items, and housing decor.
 - Zones, dungeons, raids, delves, services, travel points, rares, and other map destinations.
 
 Supported results can do more than just open a panel:
@@ -44,6 +44,7 @@ Search from the world map with nested results built for location-first browsing:
 - **Slash-command results**: Type `/` in the search bar to see supported EasyFind commands such as `/reset` and `/options`.
 - **Calculator**: Type math directly into search, including arithmetic, trig functions, and factorials, or open the full calculator with `Alt+C`.
 - **Keyboard control**: Use arrows, Enter, Tab, Alt+number row shortcuts, or Alt+H/J/K/L navigation.
+- **Send link**: Right-click a result to share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, a whisper, or your clipboard), including map pin links for locations.
 - **Context menus**: Right-click results for row-specific actions such as Guide, Pin, Add Alias, favorite toggles, tracking, edit actions, and collection tools.
 
 ### Options
