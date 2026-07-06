@@ -14,7 +14,6 @@ local wipe = wipe
 local GetBestMapForUnit = C_Map.GetBestMapForUnit
 
 local GetCategoryIcon = Search.GetCategoryIcon
-local GetFilterBucket = Search.GetFilterBucket
 local GetMapPinKey = Search.GetMapPinKey
 local FlightPathsEnabledAnywhere = Search.FlightPathsEnabledAnywhere
 local WipeScratchTables = Search.WipeScratchTables
@@ -164,7 +163,7 @@ function MapSearch:BuildResults(text, isGlobal, skipPins)
         wipe(reuseFilteredResults)
         local filteredResults = reuseFilteredResults
         for _, r in ipairs(results) do
-            if filters[GetFilterBucket(r)] ~= false then
+            if ns.MapSearch.PassesFilter(r, filters) then
                 tinsert(filteredResults, r)
             end
         end
@@ -479,8 +478,7 @@ function MapSearch:SearchForUI(query)
             wipe(reuseUISearchFiltered)
             local filtered = reuseUISearchFiltered
             for _, r in ipairs(scored) do
-                local bucket = GetFilterBucket(r)
-                if mtFilters[bucket] ~= false then
+                if ns.MapSearch.PassesFilter(r, mtFilters) then
                     filtered[#filtered + 1] = r
                 end
             end

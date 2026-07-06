@@ -124,7 +124,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     -- Reusable keyboard nav for popup menus (diff popup, spec popup, class flyout).
     -- Uses a single dropdownKeyboardMode flag: when true, any popup hiding returns
     -- keyboard to the dropdown. No parent tracking needed.
-    local function AddPopupKeyboardNav(popup, getRows)
+    local function AddPopupKeyboardNav(popup, getRows, returnTo)
         local popupFocus = 0
         local popupFocusRow
 
@@ -168,6 +168,18 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             elseif key == "ENTER" then
                 local target = rows[popupFocus]
                 if target and target.Click then target:Click() end
+            elseif key == "TAB" or key == "RIGHT" then
+                -- Descend into the focused row's own flyout when it has one;
+                -- Tab on a plain row backs out to the parent menu (RIGHT
+                -- stays put, mirroring standard menu arrows).
+                local target = rows[popupFocus]
+                if target and target.ShowFlyoutPopup then
+                    target.ShowFlyoutPopup()
+                elseif key == "TAB" then
+                    self:Hide()
+                end
+            elseif key == "LEFT" then
+                self:Hide()
             elseif key == "ESCAPE" then
                 -- Route through HandleEscape: closes the parent dropdown
                 -- and any sibling popups together, refocuses editbox.
@@ -185,6 +197,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         popup:HookScript("OnShow", function(self)
             if dropdownKeyboardMode then
                 Utils.SafeCallMethod(dropdown, "EnableKeyboard", false)
+                if returnTo then Utils.SafeCallMethod(returnTo, "EnableKeyboard", false) end
                 local sp = _G["EasyFindSpecPopup"]
                 if sp then Utils.SafeCallMethod(sp, "EnableKeyboard", false) end
                 local cf = _G["EasyFindSpecFlyout"]
@@ -203,8 +216,11 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             end
             popupFocusRow = nil
             Utils.SafeCallMethod(self, "EnableKeyboard", false)
-            if dropdownKeyboardMode and dropdown:IsShown() then
-                Utils.SafeCallMethod(dropdown, "EnableKeyboard", true)
+            if dropdownKeyboardMode then
+                local ret = returnTo or dropdown
+                if ret:IsShown() then
+                    Utils.SafeCallMethod(ret, "EnableKeyboard", true)
+                end
             end
         end)
     end
@@ -304,6 +320,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             Filters.AttachOutsideClickClose(popup, { onHide = ClearActiveFlyout })
 
             local subRows = {}
+            local nestedFlyouts = {}
             -- Collections and Map carry many sub-filters; give their flyouts
             -- the same Toggle All row the main menu has (created below).
             local toggleAllRow
@@ -341,7 +358,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 subRow._label = subLabel
                 subRow._icon = subIcon
 
-                if sub.hasOptions then
+                if sub.hasOptions or sub.subFilters then
                     local subChev = subRow:CreateTexture(nil, "OVERLAY")
                     subChev:SetAtlas("common-icon-forwardarrow")
                     subChev:SetSize(SUB_ICON - 2, SUB_ICON - 2)
@@ -444,6 +461,85 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     popup:HookScript("OnHide", function() optionsPopup:Hide() end)
                     dropdown:HookScript("OnHide", function() optionsPopup:Hide() end)
                 end
+
+                -- Generic nested flyout: a sub-filter carrying its own child
+                -- checkboxes (Instances -> Raids/Dungeons/Delves, Travel ->
+                -- Flight Paths/Boats/Portals) opens them beside the sub-row.
+                -- Children gray out while their sub-filter is unchecked.
+                if sub.subFilters then
+                    local nested = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+                    nested:SetFrameStrata("TOOLTIP")
+                    StylePopup(nested)
+                    nested:EnableMouse(true)
+                    nested:Hide()
+                    nested:SetFrameLevel(popup:GetFrameLevel() + 10)
+                    nested._owningRow = subRow
+                    dropdownGuardFrames[#dropdownGuardFrames + 1] = nested
+                    dropdown.flyoutPopups[#dropdown.flyoutPopups + 1] = nested
+                    Filters.AttachOutsideClickClose(nested)
+
+                    local childRows = {}
+                    for ci, child in ipairs(sub.subFilters) do
+                        local childRow = CreateFrame("CheckButton", nil, nested)
+                        childRow:SetSize(SUB_POPUP_WIDTH - SUB_PAD * 2, SUB_ROW_H)
+                        childRow:SetHitRectInsets(0, 0, 0, 0)
+                        childRow:SetPoint("TOPLEFT", nested, "TOPLEFT", SUB_PAD, -(SUB_PAD + (ci - 1) * SUB_ROW_H))
+                        Utils.SetCheckboxTextures(childRow, CHK)
+                        local childLabel = childRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+                        childLabel:SetPoint("LEFT", childRow:GetNormalTexture(), "RIGHT", 4, 0)
+                        childLabel:SetText(child.label)
+                        childRow._label = childLabel
+                        InstallMenuRowHighlight(childRow)
+                        childRow:SetScript("OnClick", function(self)
+                            local target = child.dbTable and EasyFind.db[child.dbTable]
+                                           or EasyFind.db.uiSearchFilters
+                            target[child.key] = self:GetChecked()
+                            Filters.ResyncShownOptionPopups()
+                            Filters:RerunActiveSearch()
+                            KeepSearchEditBoxUnfocused()
+                        end)
+                        childRows[ci] = childRow
+                        childRows[child.key] = childRow
+                    end
+
+                    local function SyncChildChecks()
+                        local subTarget = sub.dbTable and EasyFind.db[sub.dbTable]
+                                       or EasyFind.db.uiSearchFilters
+                        local subOn = subTarget[sub.key] ~= false
+                        for _, child in ipairs(sub.subFilters) do
+                            local cr = childRows[child.key]
+                            local childTarget = child.dbTable and EasyFind.db[child.dbTable]
+                                           or EasyFind.db.uiSearchFilters
+                            cr:SetChecked(childTarget[child.key] ~= false)
+                            SetFlyoutRowEnabled(cr, subOn)
+                        end
+                    end
+                    nested._efSync = SyncChildChecks
+
+                    local childContentW = 0
+                    for ci = 1, #sub.subFilters do
+                        local w = Utils.FlyoutRowContentWidth(childRows[ci], CHK + 4)
+                        if w > childContentW then childContentW = w end
+                    end
+                    local nestedW = Utils.FlyoutWidthFor(childContentW, SUB_PAD)
+                    for ci = 1, #sub.subFilters do childRows[ci]:SetWidth(nestedW - SUB_PAD * 2) end
+                    nested:SetSize(nestedW, SUB_PAD * 2 + #sub.subFilters * SUB_ROW_H)
+
+                    local nestedHover = Utils.AttachHoverPopup(subRow, nested, {
+                        onShow = function()
+                            SyncChildChecks()
+                            nested:SetScale(EasyFind.db.uiSearchScale or 1.0)
+                            Utils.OpenFlyoutBeside(nested, subRow, 4)
+                            nested:Show()
+                        end,
+                    })
+                    subRow.ShowFlyoutPopup = nestedHover.Show
+                    AddPopupKeyboardNav(nested, function() return childRows end, popup)
+
+                    popup["_nestedFlyout_" .. sub.key] = nested
+                    nestedFlyouts[#nestedFlyouts + 1] = nested
+                    popup:HookScript("OnHide", function() nested:Hide() end)
+                end
             end
             -- Sibling sub-rows hide an options popup so it doesn't linger when
             -- the cursor moves to a non-options row.
@@ -459,6 +555,11 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             HookSiblingHide("_appearanceSetOptionsPopup", subRows.appearances)
             HookSiblingHide("_mountOptionsPopup", subRows.mounts)
             HookSiblingHide("_heirloomOptionsPopup", subRows.heirlooms)
+            for _, sub in ipairs(opt.flyoutSubFilters) do
+                if sub.subFilters then
+                    HookSiblingHide("_nestedFlyout_" .. sub.key, subRows[sub.key])
+                end
+            end
             row.flyoutSubRows = subRows
 
             -- "Hide tooltips" checkbox at the bottom of the collections
@@ -560,6 +661,14 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             popup:SetSize(popupW,
                 SUB_PAD * 2 + (#opt.flyoutSubFilters + extraRows + toggleAllOffset) * SUB_ROW_H)
 
+            AddPopupKeyboardNav(popup, function()
+                local navRows = {}
+                if toggleAllRow then navRows[#navRows + 1] = toggleAllRow end
+                for si = 1, #opt.flyoutSubFilters do navRows[#navRows + 1] = subRows[si] end
+                if hideTipRow then navRows[#navRows + 1] = hideTipRow end
+                return navRows
+            end)
+
             -- Show on hover of either the parent row or the arrow.
             -- Hide when the cursor leaves both the row and the popup,
             -- with a small grace timer so brief gaps between them don't
@@ -567,14 +676,19 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             local function PositionPopup()
                 Utils.OpenFlyoutBeside(popup, row, 4)
             end
+            local hoverGuards = {
+                function() return popup._appearanceSetOptionsPopup end,
+                function() return popup._mountOptionsPopup end,
+                function() return popup._mountSourcePopup end,
+                function() return popup._heirloomOptionsPopup end,
+                function() return popup._heirloomSourcePopup end,
+            }
+            for ni = 1, #nestedFlyouts do
+                local nested = nestedFlyouts[ni]
+                hoverGuards[#hoverGuards + 1] = function() return nested end
+            end
             local hover = Utils.AttachHoverPopup(row, popup, {
-                extraGuards = {
-                    function() return popup._appearanceSetOptionsPopup end,
-                    function() return popup._mountOptionsPopup end,
-                    function() return popup._mountSourcePopup end,
-                    function() return popup._heirloomOptionsPopup end,
-                    function() return popup._heirloomSourcePopup end,
-                },
+                extraGuards = hoverGuards,
                 onShow = function()
                     SetActiveFlyout(popup)
                     SyncSubChecks()
@@ -751,6 +865,13 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             row.SyncFlyoutSubChecks = SyncRadio
             popup._efSync = SyncRadio
 
+            AddPopupKeyboardNav(popup, function()
+                local navRows = {}
+                for ri = 1, #radioRows do navRows[#navRows + 1] = radioRows[ri] end
+                for ci = 1, #checkboxRows do navRows[#navRows + 1] = checkboxRows[ci] end
+                return navRows
+            end)
+
             local function PositionPopup()
                 Utils.OpenFlyoutBeside(popup, row, 4)
             end
@@ -894,6 +1015,11 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             local target = dropdownNavRows[dropdownFocus]
             if target and target.Click then
                 target:Click()
+            end
+        elseif key == "TAB" or key == "RIGHT" then
+            local target = dropdownNavRows[dropdownFocus]
+            if target and target.ShowFlyoutPopup then
+                target.ShowFlyoutPopup()
             end
         elseif key == "ESCAPE" then
             self._escapedViaKeyboard = true

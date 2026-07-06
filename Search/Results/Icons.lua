@@ -168,6 +168,7 @@ local FLAT_CATEGORY_ICONS = {
     -- Equipment Manager sidebar tab icon (PaperDollSidebarTab3 ARTWORK
     -- region of the PaperDollSidebarTabs sheet, same sheet as `title`).
     gearSet       = { tex = 514608, coords = { 0.01562, 0.53125, 0.46875, 0.60547 } },
+    housing       = { atlas = "UI-HUD-MicroMenu-Housing-Up" },
 }
 
 local BOSS_PORTRAIT_TEXCOORD = { 0.22, 0.78, 0, 1 }
@@ -207,6 +208,7 @@ function Icons:GetFlatCategoryIcon(data)
         if key == "gearSets" then return FLAT_CATEGORY_ICONS.gearSet end
         if key == "currencies" then return FLAT_CATEGORY_ICONS.currency end
         if key == "loot" then return FLAT_CATEGORY_ICONS.loot end
+        if key == "housing" then return FLAT_CATEGORY_ICONS.housing end
         if key == "map" then return FLAT_CATEGORY_ICONS.map end
         if key == "reputations" then return FLAT_CATEGORY_ICONS.reputation end
         if key == "talents" then return FLAT_CATEGORY_ICONS.talent end
@@ -231,6 +233,7 @@ function Icons:GetFlatCategoryIcon(data)
     if data.category == "AddOn Settings" then return FLAT_CATEGORY_ICONS.settingAddon end
     if data.category == "Menu Bar" and data.buttonFrame then return FLAT_CATEGORY_ICONS.menuBar end
     if data.category == "Currency" then return FLAT_CATEGORY_ICONS.currency end
+    if data.category == "Housing" then return FLAT_CATEGORY_ICONS.housing end
     if data.statisticID or data.category == "Statistic" then return FLAT_CATEGORY_ICONS.statistic end
     if data.titleID then return FLAT_CATEGORY_ICONS.title end
     if data.gearSetID then return FLAT_CATEGORY_ICONS.gearSet end

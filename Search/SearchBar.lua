@@ -1066,6 +1066,21 @@ function Search:CreateSearchFrame()
                 return
             end
         end
+        -- Tab with no autocomplete pending: hand focus to the toolbar ring
+        -- (filter button). With a suggestion visible, OnTabPressed accepts
+        -- it instead. Quick-filter suggestion Tab is consumed earlier by
+        -- HandleQuickFilterKeyDown.
+        if key == "TAB" then
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            if not (self.HasAutocomplete and self:HasAutocomplete()) then
+                self._menuUnfocus = true
+                self:ClearFocus()
+                self._menuUnfocus = nil
+                Utils.SafeCallMethod(navFrame, "EnableKeyboard", true)
+                if searchFrame.SetToolbarFocus then searchFrame.SetToolbarFocus(1) end
+            end
+            return
+        end
         -- ENTER with autocomplete highlight visible: WoW's default
         -- editbox processing treats the first Enter as "deselect"
         -- and silently swallows it without firing OnEnterPressed.
@@ -1208,6 +1223,7 @@ function Search:CreateSearchFrame()
         toolbarHighlight:Hide()
     end
     searchFrame.ClearToolbarFocus = ClearToolbarFocus
+    searchFrame.SetToolbarFocus = SetToolbarFocus
 
     -- Keyboard capture frame for navigating results without editbox focus
     navFrame = CreateFrame("Frame", nil, searchFrame)

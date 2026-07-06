@@ -43,6 +43,7 @@ local ENTRIES = {
     { key = "appearanceItems", parent = "appearances",
                                categories = { "Appearance" } },
     { key = "loot",            categories = { "Loot" } },
+    { key = "housing",         categories = { "Housing" } },
 }
 
 -- Intermediate filter keys that are themselves children of another filter.

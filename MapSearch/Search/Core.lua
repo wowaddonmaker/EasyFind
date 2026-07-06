@@ -32,8 +32,8 @@ local function FlightPathsEnabledAnywhere()
     if not db then return true end
     local tabFilters = db.mapTabFilters
     local barFilters = db.uiMapFilters
-    return (tabFilters and tabFilters.flightpath ~= false)
-        or (barFilters and barFilters.flightpath ~= false)
+    return (tabFilters and tabFilters.flights ~= false)
+        or (barFilters and barFilters.flights ~= false)
         or (not tabFilters and not barFilters)
 end
 local scratchTables = {}

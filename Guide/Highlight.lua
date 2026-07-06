@@ -1260,6 +1260,35 @@ local function HandleWaitWardrobeSetsTab(self)
     return true
 end
 
+local function HandleWaitHousingCatalogTab(self, step)
+    local dash = _G["HousingDashboardFrame"]
+    local content = dash and dash.CatalogContent
+    if content and content:IsShown() then
+        if step.housingCatalogSearch then
+            local searchBox = content.Filters and content.Filters.SearchBox
+            if searchBox and searchBox.SetText then
+                pcall(searchBox.SetText, searchBox, step.housingCatalogSearch)
+            end
+        end
+        self:AdvanceStep()
+        return true
+    end
+    -- The side tab is a plain Frame; programmatic clicks don't switch it, so
+    -- try the tab system directly, falling back to highlighting for the user.
+    if dash and dash.SetTab then
+        for tabID = 1, 5 do
+            pcall(dash.SetTab, dash, tabID)
+            content = dash.CatalogContent
+            if content and content:IsShown() then return true end
+        end
+    end
+    local tab = dash and dash.CatalogTabButton
+    if tab then
+        self:HighlightFrame(tab)
+    end
+    return true
+end
+
 local function HandleWaitWardrobeItemsTab(self)
     local wcf = _G["WardrobeCollectionFrame"]
     if wcf and wcf.ItemsCollectionFrame and wcf.ItemsCollectionFrame:IsShown() then
@@ -1645,6 +1674,7 @@ local WAIT_STEP_HANDLERS = {
     { key = "ejLootItem", fn = HandleWaitEJLootItem },
     { key = "wardrobeSetsTab", fn = HandleWaitWardrobeSetsTab },
     { key = "wardrobeItemsTab", fn = HandleWaitWardrobeItemsTab },
+    { key = "housingCatalogTab", fn = HandleWaitHousingCatalogTab },
     { key = "appearanceSourceID", fn = HandleWaitAppearanceItem },
     { key = "transmogSetID", fn = HandleWaitTransmogSet },
     { key = "transmogVariantDropdown", fn = HandleWaitTransmogVariantDropdown },

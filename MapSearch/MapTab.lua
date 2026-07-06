@@ -1220,8 +1220,6 @@ end
 -- isLocal=true also excludes continent-level zone results so "This Zone"
 -- doesn't list entire continents.
 local function FilterAndDedupe(results, seen, isLocal)
-    local MapSearch = ns.MapSearch
-    local getBucket = MapSearch and MapSearch.GetFilterBucket
     local filters = EasyFind.db.mapTabFilters or {}
     -- The continent exclusion keeps OTHER continents out of "This Zone";
     -- the viewed map itself must stay so searching its own name matches.
@@ -1242,8 +1240,7 @@ local function FilterAndDedupe(results, seen, isLocal)
                 local key = ResultDedupeKey(r)
                 if not seen[key] then
                     seen[key] = true
-                    local bucket = getBucket and getBucket(r) or "other"
-                    if filters[bucket] ~= false then
+                    if ns.MapSearch.PassesFilter(r, filters) then
                         out[#out + 1] = r
                     end
                 end
@@ -2027,9 +2024,22 @@ end
 local FILTER_OPTIONS = {
     { key = "zones",      label = _G["ZONES"] or "Zones" },
     { key = "instances",  label = L["MAP_FILTER_INSTANCES"] },
-    { key = "flightpath", label = L["MAP_FILTER_FLIGHT_PATHS"] },
+    { key = "raid",       label = _G["RAIDS"] or "Raids",                   parentKey = "instances" },
+    { key = "dungeon",    label = _G["DUNGEONS"] or "Dungeons",             parentKey = "instances" },
+    { key = "delve",      label = _G["DELVES_LABEL"] or "Delves",           parentKey = "instances" },
     { key = "travel",     label = L["MAP_FILTER_TRAVEL"],   tooltip = L["MAP_FILTER_TRAVEL_TT"] },
+    { key = "flights",    label = _G["FLIGHT_PATHS_TAB"] or "Flight Paths", parentKey = "travel" },
+    { key = "boats",      label = L["MAP_FILTER_BOATS"],                    parentKey = "travel" },
+    { key = "portals",    label = L["MAP_FILTER_PORTALS"],                  parentKey = "travel" },
     { key = "services",   label = L["MAP_FILTER_SERVICES"], tooltip = L["MAP_FILTER_SERVICES_TT"] },
+    { key = "banks",      label = L["MAP_FILTER_BANKS"],           parentKey = "services" },
+    { key = "auction",    label = L["MAP_FILTER_AUCTION"],         parentKey = "services" },
+    { key = "inns",       label = L["MAP_FILTER_INNS"],            parentKey = "services" },
+    { key = "mail",       label = L["MAP_FILTER_MAIL"],            parentKey = "services" },
+    { key = "trainers",   label = L["MAP_FILTER_TRAINERS"],        parentKey = "services" },
+    { key = "vendors",    label = L["MAP_FILTER_VENDORS"],         parentKey = "services" },
+    { key = "appearance", label = L["MAP_FILTER_APPEARANCE"],      parentKey = "services" },
+    { key = "otherservices", label = L["MAP_FILTER_OTHER_SERVICES"], parentKey = "services" },
     { key = "rares",      label = L["MAP_FILTER_RARES"] },
 }
 
@@ -2217,7 +2227,7 @@ local function CreatePanel(qmf)
             "EasyFindMapTabFilterDropdown", FILTER_OPTIONS,
             "mapTabFilters", cog, outer,
             function(key)
-                if key == "flightpath" and ns.MapSearch and ns.MapSearch.ReleaseIdleSearchMemory then
+                if key == "flights" and ns.MapSearch and ns.MapSearch.ReleaseIdleSearchMemory then
                     ns.MapSearch:ReleaseIdleSearchMemory()
                 end
                 RefreshCurrentSearch()

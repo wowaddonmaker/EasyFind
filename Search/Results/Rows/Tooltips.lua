@@ -29,6 +29,25 @@ function Rows.InstallTooltips(resultRow)
     resultRow:SetScript("OnEnter", function(self)
         -- Hover-based action hint (mirrors keyboard selection hint).
         Handlers:ApplyActionHint(self)
+        -- Housing decor: quality-colored name, owned/placed/stored counts
+        -- (Blizzard's own format string), and the acquisition source.
+        if self.data and self.data.housingEntryID and self.data.category == "Housing" then
+            AnchorRowTooltip(GameTooltip, self)
+            local quality = self.data.housingQuality
+            local qc = quality and ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
+            GameTooltip:SetText(self.data.name or "", qc and qc.r or 1, qc and qc.g or 1, qc and qc.b or 1)
+            local ownedFormat = _G["HOUSING_DECOR_OWNED_COUNT_FORMAT"]
+            local stored = self.data.housingNumStored or 0
+            local placed = self.data.housingNumPlaced or 0
+            if ownedFormat then
+                GameTooltip:AddLine(sformat(ownedFormat, stored + placed, placed, stored), 1, 1, 1, true)
+            end
+            if self.data.housingSourceText and self.data.housingSourceText ~= "" then
+                GameTooltip:AddLine(self.data.housingSourceText, 0.7, 0.7, 0.7, true)
+            end
+            GameTooltip:Show()
+            return
+        end
         -- Macro rows: resolve the #showtooltip / first cast/use line to a
         -- spell or item via the macro APIs and surface that tooltip. Falls
         -- back to displaying the macro body when neither resolves.

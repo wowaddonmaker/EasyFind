@@ -152,6 +152,63 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
         Render.SetClippedText(resultRow.text, entry.name)
         iconSet = true
 
+    -- Housing decor leaves: housing glyph on the LEFT like every other flat
+    -- category, the decor's own render on the RIGHT, with the owned count
+    -- beside it when more than one copy is owned.
+    elseif data and data.housingEntryID and data.category == "Housing" and not entry.isPathNode then
+        local owned = (data.housingNumStored or 0) + (data.housingNumPlaced or 0)
+        if owned > 1 then
+            resultRow.amountText:SetText(owned)
+            resultRow.amountText:SetTextColor(0.9, 0.82, 0.65, 1.0)
+            resultRow.amountText:Show()
+        else
+            resultRow.amountText:SetText("")
+            resultRow.amountText:Hide()
+        end
+
+        if data.icon then
+            resultRow.icon:SetTexture(nil)
+            resultRow.icon:SetTexCoord(0, 1, 0, 1)
+            resultRow.icon:SetTexture(data.icon)
+            resultRow.icon:SetSize(rowIconSize, rowIconSize)
+            resultRow.icon:ClearAllPoints()
+            resultRow.icon:SetPoint("RIGHT", resultRow, "RIGHT", -5, 0)
+            resultRow.icon:Show()
+            resultRow.amountText:ClearAllPoints()
+            resultRow.amountText:SetPoint("RIGHT", resultRow.icon, "LEFT", -3, 0)
+        else
+            Icons:SetRowIcon(resultRow, "hidden", nil, rowIconSize)
+            resultRow.amountText:ClearAllPoints()
+            resultRow.amountText:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
+        end
+
+        local indentPixels = depth * indPx
+        local leftAnchor
+        local catIconDef = Icons:GetFlatCategoryIcon(data)
+        if catIconDef and resultRow.flatCatIcon then
+            local sz = entry.isFlat and (entryRowH - 16) or rowIconSize
+            if catIconDef.atlas then
+                resultRow.flatCatIcon:SetAtlas(catIconDef.atlas)
+            else
+                resultRow.flatCatIcon:SetTexture(catIconDef.tex)
+            end
+            resultRow.flatCatIcon:SetVertexColor(1, 1, 1, 1)
+            resultRow.flatCatIcon:SetSize(sz, sz)
+            resultRow.flatCatIcon:ClearAllPoints()
+            resultRow.flatCatIcon:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
+            resultRow.flatCatIcon:Show()
+            leftAnchor = resultRow.flatCatIcon
+        end
+        resultRow.text:ClearAllPoints()
+        if leftAnchor then
+            resultRow.text:SetPoint("LEFT", leftAnchor, "RIGHT", 4, 0)
+        else
+            resultRow.text:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
+        end
+        resultRow.text:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
+        Render.SetClippedText(resultRow.text, entry.name)
+        iconSet = true
+
     -- Statistic rows: show the live stat value inline via amountText.
     -- GetStatistic returns a string ("394", "23%", "1d 4h 12m") or
     -- "--" for stats with no recorded value yet.

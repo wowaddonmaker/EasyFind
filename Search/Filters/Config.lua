@@ -7,6 +7,14 @@ local L = ns.L
 
 local ipairs = Utils.ipairs
 
+-- Housing filter changes must repopulate the provider (the searcher's
+-- filters are baked in at populate time), not just rerun the query.
+local function RefreshHousingProvider()
+    if ns.Database and ns.Database.RefreshDynamicCategory then
+        ns.Database:RefreshDynamicCategory("housing")
+    end
+end
+
 local ACHIEVEMENT_FILTER_LABELS = {
     all = _G["ALL"] or "All",
     earned = _G["ACHIEVEMENT_FILTER_EARNED"] or _G["EARNED"] or "Earned",
@@ -100,11 +108,51 @@ local UI_FILTER_OPTIONS = {
       iconCoords = { 0.4287, 0.4645, 0.2580, 0.2932 },
       flyoutSubFilters = {
           { key = "zones",      label = _G["ZONES"] or "Zones",        dbTable = "uiMapFilters" },
-          { key = "instances",  label = L["FILTER_INSTANCES"],    dbTable = "uiMapFilters" },
-          { key = "flightpath", label = _G["FLIGHT_PATHS_TAB"] or "Flight Paths", dbTable = "uiMapFilters" },
-          { key = "travel",     label = L["FILTER_TRAVEL"],       dbTable = "uiMapFilters" },
-          { key = "services",   label = L["FILTER_SERVICES"],     dbTable = "uiMapFilters" },
+          { key = "instances",  label = L["FILTER_INSTANCES"],    dbTable = "uiMapFilters",
+            subFilters = {
+                { key = "raid",    label = _G["RAIDS"] or "Raids",         dbTable = "uiMapFilters" },
+                { key = "dungeon", label = _G["DUNGEONS"] or "Dungeons",   dbTable = "uiMapFilters" },
+                { key = "delve",   label = _G["DELVES_LABEL"] or "Delves", dbTable = "uiMapFilters" },
+            } },
+          { key = "travel",     label = L["FILTER_TRAVEL"],       dbTable = "uiMapFilters",
+            subFilters = {
+                { key = "flights", label = _G["FLIGHT_PATHS_TAB"] or "Flight Paths", dbTable = "uiMapFilters" },
+                { key = "boats",   label = L["MAP_FILTER_BOATS"],   dbTable = "uiMapFilters" },
+                { key = "portals", label = L["MAP_FILTER_PORTALS"], dbTable = "uiMapFilters" },
+            } },
+          { key = "services",   label = L["FILTER_SERVICES"],     dbTable = "uiMapFilters",
+            subFilters = {
+                { key = "banks",      label = L["MAP_FILTER_BANKS"],      dbTable = "uiMapFilters" },
+                { key = "auction",    label = L["MAP_FILTER_AUCTION"],    dbTable = "uiMapFilters" },
+                { key = "inns",       label = L["MAP_FILTER_INNS"],       dbTable = "uiMapFilters" },
+                { key = "mail",       label = L["MAP_FILTER_MAIL"],       dbTable = "uiMapFilters" },
+                { key = "trainers",   label = L["MAP_FILTER_TRAINERS"],   dbTable = "uiMapFilters" },
+                { key = "vendors",    label = L["MAP_FILTER_VENDORS"],    dbTable = "uiMapFilters" },
+                { key = "appearance", label = L["MAP_FILTER_APPEARANCE"], dbTable = "uiMapFilters" },
+                { key = "otherservices", label = L["MAP_FILTER_OTHER_SERVICES"], dbTable = "uiMapFilters" },
+            } },
           { key = "rares",      label = L["FILTER_RARES"],        dbTable = "uiMapFilters" },
+      } },
+    { key = "housing",     label = _G["HOUSING_SETTINGS_LABEL"] or _G["BINDING_HEADER_HOUSING_SYSTEM"] or "Housing",
+      iconAtlas = "UI-HUD-MicroMenu-Housing-Up",
+      flyoutRadio = {
+          dbKey = "housingCollection",
+          options = {
+              { value = "all",         label = _G["ALL"] or "All" },
+              { value = "collected",   label = _G["HOUSING_CATALOG_FILTERS_COLLECTED"] or "Collected" },
+              { value = "uncollected", label = _G["HOUSING_CATALOG_FILTERS_UNCOLLECTED"] or "Uncollected" },
+          },
+          onChange = function() RefreshHousingProvider() end,
+          checkboxes = {
+              { dbKey = "housingDyeableOnly", label = _G["HOUSING_CATALOG_FILTERS_DYEABLE"] or "Dyeable Only",
+                onChange = RefreshHousingProvider },
+              { dbKey = "housingCollectionBonusOnly", label = _G["HOUSING_CATALOG_FILTERS_FIRST_ACQUISITION"] or "Collection Bonus",
+                onChange = RefreshHousingProvider },
+              { dbKey = "housingIndoors", label = _G["HOUSING_CATALOG_FILTERS_INDOORS"] or "Indoors",
+                onChange = RefreshHousingProvider },
+              { dbKey = "housingOutdoors", label = _G["HOUSING_CATALOG_FILTERS_OUTDOORS"] or "Outdoors",
+                onChange = RefreshHousingProvider },
+          },
       } },
     { key = "options",     label = _G["OPTIONS"] or "Options",     iconTex = 1121272,
       iconCoords = { 0.4454, 0.4720, 0.8749, 0.9010 },
@@ -161,6 +209,11 @@ local function ForEachFilterKey(callback)
         if opt.flyoutSubFilters then
             for _, sub in ipairs(opt.flyoutSubFilters) do
                 callback(sub.key, sub)
+                if sub.subFilters then
+                    for _, child in ipairs(sub.subFilters) do
+                        callback(child.key, child)
+                    end
+                end
             end
         end
     end

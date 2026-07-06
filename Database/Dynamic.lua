@@ -30,6 +30,7 @@ local dynamicProviders = {
     { key = "statistics", category = providerCategory["statistics"],            fn = "PopulateDynamicStatistics", asyncFn = "PopulateDynamicStatisticsAsync" },
     { key = "mounts", category = providerCategory["mounts"],          fn = "PopulateDynamicMounts" },
     { key = "toys", category = providerCategory["toys"],            fn = "PopulateDynamicToys" },
+    { key = "housing", category = providerCategory["housing"],      asyncFn = "PopulateDynamicHousingAsync" },
     { key = "pets", category = providerCategory["pets"],            fn = "PopulateDynamicPets" },
     { key = "outfits", category = providerCategory["outfits"],         fn = "PopulateDynamicOutfits" },
     { key = "heirlooms", category = providerCategory["heirlooms"],       fn = "PopulateDynamicHeirlooms" },

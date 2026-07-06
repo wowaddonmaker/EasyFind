@@ -532,6 +532,15 @@ local MOUNT_PROTO = {
 }
 local MOUNT_MT = { __index = MOUNT_PROTO }
 
+local HOUSING_PROTO = {
+    keywords      = {"housing", "decor", "decoration", "furniture"},
+    keywordsLower = {"housing", "decor", "decoration", "furniture"},
+    category      = "Housing",
+    path          = {},
+    steps         = {},
+}
+local HOUSING_MT = { __index = HOUSING_PROTO }
+
 local MOUNT_TYPE_GROUND_ONLY = 230
 local MOUNT_TYPE_AMPHIBIOUS = 231
 local MOUNT_TYPE_AQUATIC = 254
@@ -1335,6 +1344,113 @@ function Database:PopulateDynamicMounts()
         end
     end
     return true
+end
+
+-- Housing decor catalog: one entry per owned catalog entry, enumerated via
+-- the async catalog searcher (results arrive through a callback after
+-- RunSearch). The searcher and its callback are created once and reused;
+-- a repopulate while a search is in flight cancels the older request.
+local housingSearcher
+local housingSearchDone
+
+function Database:FinishHousingResults(done)
+    RemoveEntriesByCategory("Housing")
+    local searcher = housingSearcher
+    if not (C_HousingCatalog and searcher) then
+        done(false)
+        return
+    end
+    local okIDs, entryIDs = pcall(searcher.GetCatalogSearchResults, searcher)
+    if not okIDs or type(entryIDs) ~= "table" then
+        done(false, "cancelled")
+        return
+    end
+    local GetCatalogEntryInfo = C_HousingCatalog.GetCatalogEntryInfo
+    local added = 0
+    for i = 1, #entryIDs do
+        local okInfo, info = pcall(GetCatalogEntryInfo, entryIDs[i])
+        if okInfo and info and info.name and info.name ~= "" then
+            added = added + 1
+            uiSearchData[#uiSearchData + 1] = setmetatable({
+                name = info.name,
+                nameLower = slower(info.name),
+                icon = info.iconTexture,
+                housingEntryID = entryIDs[i],
+                housingRecordID = info.recordID,
+                housingNumStored = info.totalNumStored,
+                housingNumPlaced = info.totalNumPlaced,
+                housingQuality = info.quality,
+                housingSourceText = info.sourceText,
+            }, HOUSING_MT)
+        end
+    end
+    -- Zero entries usually means the catalog wasn't streamed in yet (login
+    -- warm path). Report "cancelled" so the provider stays dirty and retries
+    -- on the next query instead of caching an empty category all session.
+    if added == 0 then
+        done(false, "cancelled")
+        return
+    end
+    done(true)
+end
+
+function Database:PopulateDynamicHousingAsync(done)
+    if not (C_HousingCatalog and C_HousingCatalog.CreateCatalogSearcher) then
+        done(false)
+        return
+    end
+    if housingSearchDone then
+        local cancelled = housingSearchDone
+        housingSearchDone = nil
+        cancelled(false, "cancelled")
+    end
+    if not housingSearcher then
+        local okCreate, searcher = pcall(C_HousingCatalog.CreateCatalogSearcher)
+        if not okCreate or not searcher then
+            done(false)
+            return
+        end
+        housingSearcher = searcher
+        pcall(function()
+            if searcher.SetAutoUpdateOnParamChanges then
+                searcher:SetAutoUpdateOnParamChanges(false)
+            end
+            searcher:SetResultsUpdatedCallback(function()
+                local finish = housingSearchDone
+                housingSearchDone = nil
+                if finish then
+                    Database:FinishHousingResults(finish)
+                end
+            end)
+        end)
+    end
+    housingSearchDone = done
+    local okRun = pcall(function()
+        local searcher = housingSearcher
+        local db = EasyFind.db
+        local mode = db and db.housingCollection or "collected"
+        searcher:SetSearchText("")
+        if searcher.SetCollected then searcher:SetCollected(mode ~= "uncollected") end
+        if searcher.SetUncollected then searcher:SetUncollected(mode ~= "collected") end
+        if searcher.SetCustomizableOnly then
+            searcher:SetCustomizableOnly((db and db.housingDyeableOnly == true) or false)
+        end
+        if searcher.SetFirstAcquisitionBonusOnly then
+            searcher:SetFirstAcquisitionBonusOnly((db and db.housingCollectionBonusOnly == true) or false)
+        end
+        if searcher.SetAllowedIndoors then
+            searcher:SetAllowedIndoors(not db or db.housingIndoors ~= false)
+        end
+        if searcher.SetAllowedOutdoors then
+            searcher:SetAllowedOutdoors(not db or db.housingOutdoors ~= false)
+        end
+        if searcher.SetBaseVariantOnly then searcher:SetBaseVariantOnly(true) end
+        searcher:RunSearch()
+    end)
+    if not okRun then
+        housingSearchDone = nil
+        done(false, "cancelled")
+    end
 end
 
 function Database:PopulateDynamicToys()

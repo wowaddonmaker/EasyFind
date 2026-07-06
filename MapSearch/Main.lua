@@ -87,7 +87,6 @@ local function GetFilterBucket(data)
     if cat == "dungeon" or cat == "raid" or cat == "delve" then return "instances" end
     if data.isZone then return "zones" end
     if not cat then return "other" end
-    if cat == "flightmaster" then return "flightpath" end
     if cat == "rare" then return "rares" end
     local parent = CATEGORIES[cat] and CATEGORIES[cat].parent
     if parent == "instance" then return "instances" end
@@ -99,6 +98,54 @@ local function GetFilterBucket(data)
     return "other"
 end
 ns.MapSearch.GetFilterBucket = GetFilterBucket
+
+-- Fine-grained sub-buckets within a parent bucket. A result must pass BOTH its
+-- parent bucket and its sub-bucket. Categories with no entry have no sub-filter.
+-- flightmaster now buckets to "travel" (flights sub), folding the old separate
+-- "flightpath" bucket into travel alongside boats and portals.
+local SUBBUCKET = {
+    raid = "raid", dungeon = "dungeon", delve = "delve",
+    flightmaster = "flights", boat = "boats", zeppelin = "boats",
+    portal = "portals", tram = "portals",
+    bank = "banks", guildbank = "banks",
+    auctionhouse = "auction",
+    innkeeper = "inns",
+    mailbox = "mail",
+    trainer = "trainers",
+    vendor = "vendors", pvpvendor = "vendors", quartermaster = "vendors",
+    repairvendor = "vendors", upgradevendor = "vendors",
+    tradingpost = "vendors", decor = "vendors",
+    transmogrifier = "appearance", barber = "appearance",
+}
+ns.MapSearch.SUBBUCKET = SUBBUCKET
+
+-- bucket is optional (computed when absent). Trainer subcategories match by
+-- prefix; any other category bucketing to services lands in the catch-all.
+local function GetSubBucket(data, bucket)
+    local cat = data and data.category
+    if not cat then return nil end
+    local sub = SUBBUCKET[cat]
+    if sub then return sub end
+    if not bucket then bucket = GetFilterBucket(data) end
+    if bucket == "services" then
+        if sfind(cat, "^classtrainer_") or sfind(cat, "^prof_") then return "trainers" end
+        return "otherservices"
+    end
+    return nil
+end
+ns.MapSearch.GetSubBucket = GetSubBucket
+
+-- Single owner for "does this result pass the given filter table": parent
+-- bucket must be enabled AND, if the category has a sub-bucket, that sub too.
+local function PassesFilter(data, filters)
+    if not filters then return true end
+    local bucket = GetFilterBucket(data)
+    if filters[bucket] == false then return false end
+    local sub = GetSubBucket(data, bucket)
+    if sub and filters[sub] == false then return false end
+    return true
+end
+ns.MapSearch.PassesFilter = PassesFilter
 
 function MapSearch:Initialize()
     self:CreateHighlightFrame()
@@ -175,9 +222,10 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
     for i, opt in ipairs(options) do
         local row = CreateFrame("CheckButton", nil, dropdown)
         row:SetSize(DROPDOWN_WIDTH - 16, ROW_HEIGHT)
-        row:SetPoint("TOPLEFT", 8, yStart - (i - 1) * ROW_HEIGHT)
+        row:SetPoint("TOPLEFT", opt.parentKey and 26 or 8, yStart - (i - 1) * ROW_HEIGHT)
         row:SetHitRectInsets(0, 0, 0, 0)
         row.optKey = opt.key
+        row.parentKey = opt.parentKey
 
         Utils.SetCheckboxTextures(row, CHECK_SIZE)
 
@@ -200,6 +248,7 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
         row:SetScript("OnClick", function(self)
             local filters = EasyFind.db[dbKey]
             filters[opt.key] = self:GetChecked()
+            if dropdown.UpdateSubRowStates then dropdown:UpdateSubRowStates() end
             if onChanged then onChanged(opt.key, self:GetChecked()) end
         end)
 
@@ -231,6 +280,20 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
         end
     end
 
+    -- Indented sub-filter rows (raid/dungeon/delve, flights/boats/portals)
+    -- gray out and stop taking clicks when their parent bucket is unchecked.
+    function dropdown:UpdateSubRowStates()
+        local filters = EasyFind.db[dbKey]
+        for ri = 1, #checkRowsByIndex do
+            local subRow = checkRowsByIndex[ri]
+            if subRow.parentKey then
+                local enabled = filters[subRow.parentKey] ~= false
+                subRow:EnableMouse(enabled)
+                subRow:SetAlpha(enabled and 1 or 0.4)
+            end
+        end
+    end
+
     local totalHeight = PADDING_TOP + HEADER_HEIGHT + #options * ROW_HEIGHT + PADDING_BOTTOM
     dropdown:SetSize(DROPDOWN_WIDTH, totalHeight)
 
@@ -239,6 +302,7 @@ function MapSearch:CreateFilterDropdown(globalName, options, dbKey, toggleBtn, a
         for key, row in pairs(checkRows) do
             row:SetChecked(filters[key] ~= false)
         end
+        self:UpdateSubRowStates()
         self:SetSelectedRow(self.keyboardOpen and 1 or 0)
         self.keyboardOpen = nil
     end)

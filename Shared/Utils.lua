@@ -3481,6 +3481,36 @@ local function CursorMenuOnKeyDown(self, key)
         else
             Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
         end
+    elseif navKey == "TAB" then
+        -- Tab descends into the focused row's submenu (Send link etc.);
+        -- on rows without one it steps the selection like DOWN (Shift+Tab
+        -- steps back), so the whole menu is walkable from the keyboard.
+        Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+        local row = self.rows and self.rows[self.keyboardIndex or 0]
+        if CursorMenuIsSelectableRow(row) and row._submenuRows then
+            CursorMenuActivateKeyboardIndex(self)
+        else
+            CursorMenuMoveKeyboardIndex(self, (IsShiftKeyDown and IsShiftKeyDown()) and -1 or 1)
+        end
+    elseif navKey == "RIGHT" then
+        -- RIGHT descends like Tab but only on submenu rows; anywhere else
+        -- it propagates so movement keys keep working with a menu open.
+        local row = self.rows and self.rows[self.keyboardIndex or 0]
+        if CursorMenuIsSelectableRow(row) and row._submenuRows then
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            CursorMenuActivateKeyboardIndex(self)
+        else
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
+        end
+    elseif navKey == "LEFT" then
+        -- LEFT backs out of a submenu to its parent; the root menu lets
+        -- the key through.
+        if self._parentMenu then
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+            self:Hide()
+        else
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
+        end
     else
         Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
     end

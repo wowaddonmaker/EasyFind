@@ -138,6 +138,7 @@ function Guide:DirectOpen(data)
         if step.ejLootTab then return true end
         if step.wardrobeSetsTab then return true end
         if step.wardrobeItemsTab then return true end
+        if step.housingCatalogTab then return true end
         if step.appearanceSourceID then return true end
         if step.transmogSetID then return true end
         if step.transmogVariantDropdown then return true end
@@ -474,6 +475,29 @@ function Guide:DirectOpen(data)
                             Utils.SafeAfter(0.3, checkHover)
                         end
                     end)
+                end
+            end
+
+            -- Housing catalog tab: the side tab is a plain Frame whose mouse
+            -- scripts don't switch panels programmatically, so drive the
+            -- dashboard's tab system directly and verify CatalogContent shows.
+            if step.housingCatalogTab then
+                local dash = _G["HousingDashboardFrame"]
+                if dash then
+                    local content = dash.CatalogContent
+                    if not (content and content:IsShown()) and dash.SetTab then
+                        for tabID = 1, 5 do
+                            pcall(dash.SetTab, dash, tabID)
+                            content = dash.CatalogContent
+                            if content and content:IsShown() then break end
+                        end
+                    end
+                    if step.housingCatalogSearch and content and content:IsShown() then
+                        local searchBox = content.Filters and content.Filters.SearchBox
+                        if searchBox and searchBox.SetText then
+                            pcall(searchBox.SetText, searchBox, step.housingCatalogSearch)
+                        end
+                    end
                 end
             end
 

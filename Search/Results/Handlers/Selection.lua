@@ -112,6 +112,24 @@ function Handlers:SelectResult(data, forceGuide)
         return
     end
 
+    -- Housing decor: open the dashboard's catalog tab filtered to the item.
+    if data.housingEntryID then
+        local guideData = {
+            name = data.name,
+            steps = {
+                { buttonFrame = "HousingMicroButton" },
+                { waitForFrame = "HousingDashboardFrame", housingCatalogTab = true,
+                  housingCatalogSearch = data.name },
+            },
+        }
+        if useFast then
+            self:DirectOpen(guideData)
+        else
+            EasyFind:StartGuide(guideData)
+        end
+        return
+    end
+
     -- Loot: Ctrl+click opens dressing room, regular click navigates EJ
     if data.itemID and data.category == "Loot" then
         local lootLink = ns.Database and ns.Database:GetLootItemLink(data)

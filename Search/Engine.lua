@@ -56,6 +56,11 @@ local PROVIDERS = {
     { key = "statistics", lookup = STATISTICS_WORDS, loadWhenEnabled = true },
     { key = "mounts", words = { "mount", "mounts" }, loadOnLowResults = true },
     { key = "toys", words = { "toy", "toys" }, loadOnLowResults = true },
+    -- loadWhenEnabled: decor is searched by arbitrary item names ("cozy
+    -- chair"), which trip neither trigger words nor the low-result fallback
+    -- when other categories match. While the Housing filter is on, any query
+    -- loads the provider once; after that IsDynamicProviderLoaded short-circuits.
+    { key = "housing", words = { "housing", "house", "decor", "decoration", "decorations", "furniture" }, loadOnLowResults = true, loadWhenEnabled = true },
     { key = "pets", words = { "pet", "pets", "battlepet", "battlepets" }, loadOnLowResults = true },
     { key = "outfits", words = { "outfit", "outfits" }, loadOnLowResults = true },
     { key = "heirlooms", words = { "heirloom", "heirlooms" }, loadOnLowResults = true },

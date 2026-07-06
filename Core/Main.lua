@@ -19,7 +19,7 @@ ns.eventFrame = eventFrame
 EasyFind.db = {}
 
 -- Increment when DB schema changes; migrations [N] run when savedVersion < N.
-local DB_VERSION = 18
+local DB_VERSION = 19
 local REVAMPED_TUTORIAL_VERSION = "2.0.0"
 ns.REVAMPED_TUTORIAL_VERSION = REVAMPED_TUTORIAL_VERSION
 
@@ -87,9 +87,22 @@ local DB_DEFAULTS = {
     mapTabFilters = {
         zones = true,
         instances = true,
-        flightpath = false,
+        raid = true,
+        dungeon = true,
+        delve = true,
         travel = true,
+        flights = false,
+        boats = true,
+        portals = true,
         services = true,
+        banks = true,
+        auction = true,
+        inns = true,
+        mail = true,
+        trainers = true,
+        vendors = true,
+        appearance = true,
+        otherservices = true,
         rares = true,
     },
     -- The search bar's map buckets, independent of the map tab's so the
@@ -97,9 +110,22 @@ local DB_DEFAULTS = {
     uiMapFilters = {
         zones = true,
         instances = true,
-        flightpath = false,
+        raid = true,
+        dungeon = true,
+        delve = true,
         travel = true,
+        flights = false,
+        boats = true,
+        portals = true,
         services = true,
+        banks = true,
+        auction = true,
+        inns = true,
+        mail = true,
+        trainers = true,
+        vendors = true,
+        appearance = true,
+        otherservices = true,
         rares = true,
     },
     mapTabRecentSearches = {},
@@ -107,6 +133,11 @@ local DB_DEFAULTS = {
     mapTabRecentCount = 3,
     mapTabAutoExpand = true,
     alwaysShowRares = false,
+    housingCollection = "collected",
+    housingDyeableOnly = false,
+    housingCollectionBonusOnly = false,
+    housingIndoors = true,
+    housingOutdoors = true,
     uiSearchFilters = {
         achievements   = true,
         statistics     = false,
@@ -121,6 +152,7 @@ local DB_DEFAULTS = {
         outfits        = true,
         heirlooms      = true,
         loot           = true,
+        housing        = true,
         appearances    = true,
         appearanceItems = true,
         appearanceSets = true,
@@ -384,6 +416,26 @@ local DB_MIGRATIONS = {
             for k, v in pairs(db.mapTabFilters) do barFilters[k] = v end
             db.uiMapFilters = barFilters
         end
+    end,
+    [19] = function(db)
+        -- Fold the standalone "flightpath" bucket into travel as "flights" and
+        -- seed the new instance/travel sub-filters so existing saves keep
+        -- everything visible except flight paths (which stayed off by default).
+        local seeded = {
+            "raid", "dungeon", "delve", "boats", "portals",
+            "banks", "auction", "inns", "mail", "trainers",
+            "vendors", "appearance", "otherservices",
+        }
+        local function foldFilters(t)
+            if type(t) ~= "table" then return end
+            if t.flights == nil then t.flights = t.flightpath == true end
+            t.flightpath = nil
+            for i = 1, #seeded do
+                if t[seeded[i]] == nil then t[seeded[i]] = true end
+            end
+        end
+        foldFilters(db.mapTabFilters)
+        foldFilters(db.uiMapFilters)
     end,
 }
 
@@ -834,6 +886,9 @@ eventFrame:RegisterEvent("UPDATE_MACROS")
 eventFrame:RegisterEvent("SPELLS_CHANGED")
 eventFrame:RegisterEvent("BAG_UPDATE_DELAYED")
 eventFrame:RegisterEvent("EQUIPMENT_SETS_CHANGED")
+if C_HousingCatalog then
+    eventFrame:RegisterEvent("HOUSING_STORAGE_UPDATED")
+end
 local bagRefreshTimer
 local spellRefreshTimer
 local gearSetRefreshTimer
@@ -887,6 +942,8 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         end)
     elseif event == "UPDATE_MACROS" then
         MarkDynamicCategoryDirty("macros")
+    elseif event == "HOUSING_STORAGE_UPDATED" then
+        MarkDynamicCategoryDirty("housing")
     elseif event == "SPELLS_CHANGED" then
         if spellRefreshTimer then spellRefreshTimer:Cancel() end
         spellRefreshTimer = C_Timer.NewTimer(1.0, function()
