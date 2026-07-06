@@ -2,7 +2,6 @@ local _, ns = ...
 
 local MapSearch = ns.MapSearch
 local Utils = ns.Utils
-local MapSearchData = ns.MapSearchData
 local Search = ns.MapSearchSearch
 local L = ns.L
 
@@ -11,8 +10,6 @@ local tinsert, tsort, tremove = Utils.tinsert, Utils.tsort, Utils.tremove
 local slower = Utils.slower
 local mmin, mmax = Utils.mmin, Utils.mmax
 local wipe = wipe
-
-local CATEGORIES = MapSearchData.CATEGORIES
 
 local GetBestMapForUnit = C_Map.GetBestMapForUnit
 
@@ -160,24 +157,14 @@ function MapSearch:BuildResults(text, isGlobal, skipPins)
         end
         results = filteredResults
     else
-        -- Apply local search filters (instances / travel / services / rares / treasures)
+        -- Drop any POI whose filter bucket is disabled. Bucketing (including
+        -- flightmaster -> flightpath, kept separate from travel) lives in
+        -- GetFilterBucket so every filter surface agrees on one mapping.
         local filters = EasyFind.db.localSearchFilters
         wipe(reuseFilteredResults)
         local filteredResults = reuseFilteredResults
         for _, r in ipairs(results) do
-            local dominated = false
-            local cat = r.category
-            local parentCat = cat and CATEGORIES[cat] and CATEGORIES[cat].parent
-            if (cat == "dungeon" or cat == "raid" or cat == "delve" or parentCat == "instance") and filters.instances == false then
-                dominated = true
-            elseif (cat == "flightmaster" or cat == "zeppelin" or cat == "boat" or cat == "portal" or cat == "tram" or parentCat == "travel") and filters.travel == false then
-                dominated = true
-            elseif (parentCat == "service" or cat == "service") and filters.services == false then
-                dominated = true
-            elseif cat == "rare" and filters.rares == false then
-                dominated = true
-            end
-            if not dominated then
+            if filters[GetFilterBucket(r)] ~= false then
                 tinsert(filteredResults, r)
             end
         end
