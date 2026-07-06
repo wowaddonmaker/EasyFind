@@ -12,22 +12,8 @@ All notable changes to EasyFind will be documented in this file.
 - **Housing search**: Your decor collection is searchable, with a Housing filter (Collection, Dyeable Only, Collection Bonus, Placeable); clicking a result opens the catalog with that item searched
 - **Filter subcategories**: Instances split into Raids/Dungeons/Delves, Travel gathers Flight Paths/Boats/Portals, and Services breaks out Banks, Auction House, Innkeepers, Mailboxes, Trainers, Vendors, and more, on both the map tab and the search bar filter menu
 - **Menu keyboard navigation**: Tab from the search box reaches the filter menu, Tab or Right descends into filter flyouts and right-click submenus, Left backs out
+- **Account-wide keybinds**: EasyFind's keybinds now apply on every character (including with character-specific key bindings) and are set from EasyFind's options instead of Blizzard's keybinding panel
 - **New tutorial slides**: Send link introduction, plus an updated filter menu slide
-
-### Fixed
-- Unchecking the Rares map filter now stops rare auto-tracking, and re-enabling auto-track refreshes the open map immediately
-- Clicking options inside the row right-click menu's submenus no longer closes the menu without acting
-
----
-
-## [2.0.1] - 2026-05-19
-
-### Fixed
-- Search now matches words that follow a hyphen, so "alias" finds "Anti-Aliasing" and "fov" finds "Field of View"
-- The "Transfer" option in a currency's right-click menu highlights the currency, then the Transfer button on its popup
-- EasyFind's keybinds now apply on every character (including with character-specific key bindings) and are set from EasyFind's options instead of Blizzard's keybinding panel
-- Options on/off toggles flip the moment you click them, instead of waiting for the next mouse-over
-- Several Smart Show fixes: the search bar no longer gets stuck hidden or stuck visible after selecting a result, and a toggled-off bar no longer intercepts clicks in its old spot
 
 ### Changed
 - "vsync" now finds the Vertical Sync graphics setting
@@ -35,6 +21,24 @@ All notable changes to EasyFind will be documented in this file.
 - Removed the redundant "Achievements Tab" entry from search results
 - Improved the reveal behavior for collection search results
 - The hotkey step of the tutorial now shows the recommended keybinds
+
+### Fixed
+- Search now matches words that follow a hyphen, so "alias" finds "Anti-Aliasing" and "fov" finds "Field of View"
+- The "Transfer" option in a currency's right-click menu highlights the currency, then the Transfer button on its popup
+- Options on/off toggles flip the moment you click them, instead of waiting for the next mouse-over
+- Several Smart Show fixes: the search bar no longer gets stuck hidden or stuck visible after selecting a result, and a toggled-off bar no longer intercepts clicks in its old spot
+- Unchecking the Rares map filter now stops rare auto-tracking, and re-enabling auto-track refreshes the open map immediately
+- Clicking options inside the row right-click menu's submenus no longer closes the menu without acting
+
+---
+
+## [2.0.1] - 2026-06-21
+
+### Changed
+- Updated for WoW patch 12.0.7
+
+### Fixed
+- The Statistics, Map Search, and Options filter icons display correctly after Blizzard reorganized the shared icon sheet in 12.0.7
 
 ---
 
