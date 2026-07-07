@@ -4,10 +4,10 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
-## [2.1.0] - 2026-07-06
+## [2.1.0] - 2026-07-07
 
 ### Added
-- **Send link**: Right-click any result to share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, a whisper by name, or your clipboard); works for items, spells, mounts, pets, achievements, currencies, and bosses, and statistics share as ready-made "name: value" text
+- **Send link**: Right-click any result to share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, a whisper by name, or a link box you can shift-click into any chat message); works for items, spells, mounts, pets, housing decor, achievements, currencies, and bosses, and statistics share as ready-made "name: value" text
 - **Housing search**: Search housing decor, with a Housing filter (Collection, Dyeable Only, Collection Bonus, Placeable); clicking a result opens the catalog with that item searched
 - **Filter subcategories**: Instances split into Raids/Dungeons/Delves, Travel gathers Flight Paths/Boats/Portals, and Services breaks out Banks, Auction House, Innkeepers, Mailboxes, Trainers, Vendors, and more, on both the map tab and the search bar filter menu
 - **Menu keyboard navigation**: Tab from the search box reaches the filter menu, Tab or Right descends into filter flyouts and right-click submenus, Left backs out
@@ -23,9 +23,15 @@ All notable changes to EasyFind will be documented in this file.
 - Removed the redundant "Achievements Tab" entry from search results
 - Improved the reveal behavior for collection search results
 - The hotkey step of the tutorial now shows the recommended keybinds
+- Typing in the search bar stays smooth even with large collections and the housing catalog loaded
+- During combat the search bar closes and shortkeys are disabled; everything comes back when combat ends
 
 ### Fixed
 - Search now matches words that follow a hyphen, so "alias" finds "Anti-Aliasing" and "fov" finds "Field of View"
+- Search results no longer vanish moments after they appear while an inline suggestion is showing
+- Pinning a command now floats it to the pinned section immediately instead of appearing to do nothing
+- Pinned macros now run when clicked, and always run the macro's current text even after edits
+- Opening a raid or dungeon from search no longer triggers a blocked-action error when the Adventure Guide switches tabs
 - The "Transfer" option in a currency's right-click menu highlights the currency, then the Transfer button on its popup
 - Options on/off toggles flip the moment you click them, instead of waiting for the next mouse-over
 - Several Smart Show fixes: the search bar no longer gets stuck hidden or stuck visible after selecting a result, and a toggled-off bar no longer intercepts clicks in its old spot
