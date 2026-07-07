@@ -255,7 +255,9 @@ function Results:HideResults()
     if Search:GetSearchFrame().ClearToolbarFocus then Search:GetSearchFrame().ClearToolbarFocus() end
     Search:ClearResultShortcutBindings()
     if not ResultsFrame() then return end
-    ResultsFrame():Hide()
+    -- SafeCallMethod: the results frame ancestors secure row buttons, so
+    -- Hide is a protected operation in combat and must degrade quietly.
+    Utils.SafeCallMethod(ResultsFrame(), "Hide")
     -- Collapse the combined container back to bar-only height: the
     -- two top anchors stay pinned to the bar, the bottom snaps back
     -- to the bar's BOTTOM. Without this the rounded-rect would still

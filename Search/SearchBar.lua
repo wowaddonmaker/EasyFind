@@ -1806,7 +1806,9 @@ function Search:Hide()
     -- Close any open filter dropdown / flyouts so they don't linger
     -- on screen after the bar is toggled off via keybind.
     self:CloseFilterDropdownIfOpen()
-    searchFrame:Hide()
+    -- SafeCallMethod: the frame ancestors secure result rows, so Hide is a
+    -- protected operation in combat and must degrade quietly.
+    Utils.SafeCallMethod(searchFrame, "Hide")
     if escCatcher then escCatcher:Hide() end
     searchFrame.setSmartShowVisible(false)
     self:HideResults()

@@ -2844,6 +2844,11 @@ end
 
 function BlizzOptionsSearch:HandleStep(step)
     if not step then return false end
+    -- OpenSettingsPanel is protected in combat; silently decline unless
+    -- the panel is already open (in-panel category navigation is fine).
+    if InCombatLockdown() and not (SettingsPanel and SettingsPanel:IsShown()) then
+        return false
+    end
 
     -- Prefer the cached id; live lookup is fallback for old saves.
     local catID = step.settingCategoryID

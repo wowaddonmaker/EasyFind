@@ -74,6 +74,7 @@ end
 -- user at where navigation stopped instead of stalling silently.
 function Guide:DirectOpen(data)
     if not data or not data.steps or #data.steps == 0 then return end
+    if Utils.GuideBlockedInCombat and Utils.GuideBlockedInCombat(data) then return end
 
     local steps = data.steps
     local totalSteps = #steps
@@ -243,10 +244,17 @@ function Guide:DirectOpen(data)
                         EncounterJournal_LoadUI()
                         if EJ_SelectTier then EJ_SelectTier(nextStep.ejTier) end
                         local tabIdx = nextStep.ejTabIsRaid and 5 or 4
+                        -- No programmatic tab click: EJ_ContentTab_OnClick
+                        -- reaches a protected SetTab, which is FORBIDDEN
+                        -- from addon execution even through
+                        -- securecallfunction (break-test measured, both
+                        -- ways). OnShow applies selectedTab cleanly, so
+                        -- the warm case cycles Hide -> Show to refire it.
                         EncounterJournal.selectedTab = tabIdx
+                        if EncounterJournal:IsShown() and HideUIPanel then
+                            HideUIPanel(EncounterJournal)
+                        end
                         Openers:SecureShowUIPanel(EncounterJournal)
-                        local tabBtn = Highlight:GetTabButton("EncounterJournal", tabIdx)
-                        if tabBtn then ClickButton(tabBtn) end
                         local resume = i + 2
                         Utils.SafeAfter(0, function() executeFrom(resume) end)
                         return

@@ -30,6 +30,11 @@ end
 
 function Handlers:SelectResult(data, forceGuide)
     if not data then return end
+    -- The search UI is dormant in combat, so no user path reaches this;
+    -- programmatic callers get a silent no-op. Even finishing a selection
+    -- touches protected frames (hiding the results frame that ancestors
+    -- secure rows), so nothing here is combat-safe.
+    if InCombatLockdown() then return end
     local useFast = not forceGuide
 
     if data.quickFilterDef then

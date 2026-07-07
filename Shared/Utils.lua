@@ -3178,8 +3178,33 @@ function Utils.ScrollBoxFindButton(scrollBox, matchFn)
     return nil
 end
 
+-- True when a guide cannot start in combat: its first clickable step
+-- targets a PROTECTED frame. Capability check via IsProtected, never a
+-- category list; guides whose targets are unprotected run in combat like
+-- anything else. Deliberately SILENT: blocked-in-combat actions do
+-- nothing, no chat notice.
+function Utils.GuideBlockedInCombat(guideData)
+    if not InCombatLockdown() then return false end
+    local steps = guideData and guideData.steps
+    local first = steps and steps[1]
+    local target = first and first.buttonFrame
+    if not target then return false end
+    local frame = (Utils.GetFrameByPath and Utils.GetFrameByPath(target)) or _G[target]
+    if frame and frame.IsProtected and frame:IsProtected() then
+        return true
+    end
+    return false
+end
+
 function Utils.ClickButton(btn, mouseButton)
     if not btn then return false end
+    -- Combat capability check, not category guesses: clicking a PROTECTED
+    -- button from insecure code in combat is an ADDON_ACTION_BLOCKED error,
+    -- so refuse only those; everything unprotected proceeds normally.
+    if InCombatLockdown() and btn.IsProtected and btn:IsProtected() then
+        Utils.DebugPrint("ClickButton refused: protected button in combat")
+        return false
+    end
     mouseButton = mouseButton or "LeftButton"
     if btn.Click then
         local ok, err = xpcall(btn.Click, ErrorHandler, btn, mouseButton)

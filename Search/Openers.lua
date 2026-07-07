@@ -14,8 +14,16 @@ local CHARACTER_TAB_SUBFRAME = {
 
 local SecureCall = Utils.SecureCall
 
+local InCombatLockdown = InCombatLockdown
+
 local function SecureShowUIPanel(frame)
     if not frame or not ShowUIPanel then return false end
+    -- Protected panels cannot be shown by insecure code in combat; refuse
+    -- only those (capability check, not a category list) so the hard
+    -- ADDON_ACTION_BLOCKED path can't fire. Unprotected panels open fine.
+    if InCombatLockdown() and frame.IsProtected and frame:IsProtected() then
+        return false
+    end
     return SecureCall(ShowUIPanel, frame)
 end
 
@@ -42,6 +50,14 @@ local function OpenPlayerSpellsFrame(tabIndex)
     local frame = _G["PlayerSpellsFrame"]
     if frame and frame:IsShown() then
         return true
+    end
+
+    -- The Blizzard opener path below reaches TrySetTab -> SetShown, which is
+    -- protected on this frame in combat even through securecallfunction
+    -- (measured ADDON_ACTION_BLOCKED). Refuse by capability, not category.
+    if InCombatLockdown() and (not frame
+        or (frame.IsProtected and frame:IsProtected())) then
+        return false
     end
 
     -- Opening PlayerSpellsFrame through the microbutton taints Blizzard's

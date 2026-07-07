@@ -11,6 +11,7 @@ local SafeAfter = Utils.SafeAfter
 
 local CreateFrame   = CreateFrame
 local UIParent      = UIParent
+local InCombatLockdown = InCombatLockdown
 local GetBindingKey = GetBindingKey
 
 local GOLD       = ns.GOLD_COLOR
@@ -1151,6 +1152,8 @@ function Wizard:IsShown()
 end
 
 function Wizard:Show(startPage)
+    -- Keyboard capture setup is protected in combat; silently decline.
+    if InCombatLockdown() then return end
     CreateFrameOnce()
     if ns.Search and ns.Search.Hide then ns.Search:Hide() end
     local page = startPage or 1

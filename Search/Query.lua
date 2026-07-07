@@ -9,6 +9,7 @@ local UIPins = ns.UIPins
 local SearchText = ns.SearchText
 
 local ipairs, pairs = Utils.ipairs, Utils.pairs
+local InCombatLockdown = InCombatLockdown
 local slower = SearchText.Normalize
 local tinsert, tsort = Utils.tinsert, Utils.tsort
 local wipe = wipe
@@ -96,6 +97,11 @@ function Search:GetTypedQuery()
 end
 
 function Search:OnSearchTextChanged(text, force)
+    -- The search UI is dormant in combat (the bar hides at combat start
+    -- and cannot reopen), and rendering results would resize/show frames
+    -- that ancestor secure row buttons -- protected operations. Any stray
+    -- programmatic call in combat is a silent no-op.
+    if InCombatLockdown() then return end
     -- Central guard for the whole caller class: if the incoming text is
     -- the autocomplete-COMPLETED editbox text while a suggestion is live,
     -- search what the user actually typed instead. Callers that pass

@@ -144,6 +144,12 @@ local function ResolveData(rowKey)
 end
 
 local function OnShortkeyButtonClick(self)
+    -- Shortkey navigation is silently inert in combat: the paths it drives
+    -- (panel opens, guides, hiding the search frame) are protected, and a
+    -- chat notice per press was spam. The capture popup and the tutorial
+    -- carry the "shortkeys do not work in combat" note instead. Secure cast
+    -- rows are unaffected; their action fires from the secure attributes.
+    if InCombatLockdown() then return end
     -- Secure rows already fired their action from the secure attributes; this
     -- insecure handler only drives navigation rows (open panel / guide / pin),
     -- resolved live so they never go stale.
@@ -172,14 +178,24 @@ local function EnsureOwner()
     owner:SetSize(1, 1)
     owner:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, 0)
     owner:SetScript("OnEvent", function(self, event)
-        if event == "PLAYER_REGEN_ENABLED" then
-            self:UnregisterEvent("PLAYER_REGEN_ENABLED")
+        if event == "PLAYER_REGEN_DISABLED" then
+            -- Fires before combat lockdown engages, so clearing is legal:
+            -- strip every shortkey override for the whole fight. Combat
+            -- keypresses fall through to the player's own binds, and
+            -- nothing of ours can run or taint. Shortkeys are documented
+            -- as not working in combat; this makes that literal.
+            ClearOverrideBindings(self)
+            return
         end
         Shortkeys:ApplyAll()
     end)
     -- Refresh secure attributes when the things they encode can change. The
     -- only ones that drift are reordered outfits (player-facing index) and
-    -- edited macro bodies; ApplyAll defers to PLAYER_REGEN_ENABLED if in combat.
+    -- edited macro bodies; ApplyAll defers to PLAYER_REGEN_ENABLED if in
+    -- combat. REGEN events stay registered permanently: DISABLED strips the
+    -- binds for combat, ENABLED reapplies them after.
+    owner:RegisterEvent("PLAYER_REGEN_DISABLED")
+    owner:RegisterEvent("PLAYER_REGEN_ENABLED")
     owner:RegisterEvent("PLAYER_SPECIALIZATION_CHANGED")
     owner:RegisterEvent("PLAYER_ENTERING_WORLD")
     owner:RegisterEvent("TRANSMOG_OUTFITS_CHANGED")
@@ -271,7 +287,8 @@ local function CommitShortkey(rowKey, name, charSpecific, combo)
     end
     local sf = ns.Search and ns.Search:GetSearchFrame()
     local eb = sf and sf.editBox
-    if eb and eb:GetText() ~= "" then ns.Search:OnSearchTextChanged(eb:GetText()) end
+    local typedQuery = ns.Search.GetTypedQuery and ns.Search:GetTypedQuery() or (eb and eb:GetText()) or ""
+    if typedQuery ~= "" then ns.Search:OnSearchTextChanged(typedQuery) end
     if ns.RefreshShortkeyTable then ns.RefreshShortkeyTable() end
 end
 
@@ -424,6 +441,12 @@ local function BuildCapturePopup()
     f.hint = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     f.hint:SetPoint("TOP", bindBtn, "BOTTOM", 0, -8)
     f.hint:SetText(L["OPT_KB_CLEAR_HINT"])
+
+    -- Gold like the title (GameFontNormalSmall is natively that color),
+    -- dropped slightly below the gray hint without growing the window.
+    f.combatNote = f:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    f.combatNote:SetPoint("TOP", f.hint, "BOTTOM", 0, -6)
+    f.combatNote:SetText(L["SHORTKEY_COMBAT_NOTE"])
 
     local close = ns.CreateCloseX(f, 14)
     close:SetPoint("TOPRIGHT", -8, -8)

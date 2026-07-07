@@ -484,17 +484,19 @@ local whatsNewHookInstalled = false
 local function InstallWhatsNewHyperlinkHook()
     if whatsNewHookInstalled then return end
     whatsNewHookInstalled = true
-    local origSetItemRef = SetItemRef
-    SetItemRef = function(link, text, button, chatFrame)
+    -- hooksecurefunc, never a global replacement: secure code reads the
+    -- SetItemRef global, so replacing it taints every secure reader (the
+    -- taint log traced chat -> macro -> UseAction -> action bar blocks back
+    -- to exactly this). Blizzard's own handler no-ops on unknown link
+    -- types, so observing after it is sufficient for our custom prefix.
+    hooksecurefunc("SetItemRef", function(link, text, button, chatFrame)
         if link and link:sub(1, #WHATSNEW_LINK_PREFIX) == WHATSNEW_LINK_PREFIX then
             local version = link:sub(#WHATSNEW_LINK_PREFIX + 1)
             if ns.Onboarding and ns.Onboarding.ShowWhatsNew then
                 xpcall(ns.Onboarding.ShowWhatsNew, ErrorHandler, ns.Onboarding, version)
             end
-            return
         end
-        return origSetItemRef(link, text, button, chatFrame)
-    end
+    end)
 end
 
 local function ShowWhatsNewChatMessage(version)
@@ -941,7 +943,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
             local frame = ns.Search and ns.Search.GetSearchFrame and ns.Search:GetSearchFrame()
             local editBox = frame and frame.editBox
             if editBox and frame:IsShown() and ns.Search.OnSearchTextChanged then
-                ns.Search:OnSearchTextChanged(editBox:GetText() or "", true)
+                ns.Search:OnSearchTextChanged(ns.Search:GetTypedQuery(), true)
             end
         end)
     elseif event == "UPDATE_MACROS" then
@@ -1016,6 +1018,9 @@ function EasyFind:ClearAll()
 end
 
 function EasyFind:StartGuide(guideData)
+    if ns.Utils.GuideBlockedInCombat and ns.Utils.GuideBlockedInCombat(guideData) then
+        return
+    end
     if ns.Highlight then
         ns.Highlight:StartGuide(guideData)
     end
