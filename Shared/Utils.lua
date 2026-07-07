@@ -1578,8 +1578,7 @@ function Utils.SetEditBoxReadOnlyText(editBox, text)
     if text then editBox:SetText(text) end
 end
 
-function ns.ShowCopyBox(text, labelText)
-    text = text or ""
+local function EnsureCopyBox()
     if not copyBox then
         local f = CreateFrame("Frame", "EasyFindCopyBox", UIParent, "BackdropTemplate")
         f:SetSize(470, 104)
@@ -1649,6 +1648,31 @@ function ns.ShowCopyBox(text, labelText)
             copiedFade:Play()
         end)
 
+        -- Rendered-link mode: shows the real hyperlink (colored, hoverable)
+        -- instead of a Ctrl-C field; clicking it inserts the link into the
+        -- active chat editbox, like shift-clicking an item in a bag.
+        local linkHolder = CreateFrame("Frame", nil, f)
+        linkHolder:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -10)
+        linkHolder:SetPoint("RIGHT", f, "RIGHT", -14, 0)
+        linkHolder:SetHeight(26)
+        linkHolder:SetHyperlinksEnabled(true)
+        local linkFS = linkHolder:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        linkFS:SetPoint("CENTER")
+        linkHolder:SetScript("OnHyperlinkClick", function()
+            if f._link then ChatEdit_InsertLink(f._link) end
+        end)
+        linkHolder:SetScript("OnHyperlinkEnter", function(self, linkData)
+            GameTooltip:SetOwner(self, "ANCHOR_TOP")
+            if not pcall(GameTooltip.SetHyperlink, GameTooltip, linkData) then
+                GameTooltip:Hide()
+            end
+        end)
+        linkHolder:SetScript("OnHyperlinkLeave", function() GameTooltip:Hide() end)
+        linkHolder:Hide()
+        f.linkHolder = linkHolder
+        f.linkFS = linkFS
+        f.field = field
+
         local close = ns.CreateCloseX(f, 14)
         close:SetPoint("TOPRIGHT", -8, -8)
         close:SetScript("OnClick", function() f:Hide() end)
@@ -1660,7 +1684,16 @@ function ns.ShowCopyBox(text, labelText)
         f:Hide()
         copyBox = f
     end
+    return copyBox
+end
+
+function ns.ShowCopyBox(text, labelText)
+    text = text or ""
+    EnsureCopyBox()
     copyBox._text = text
+    copyBox._link = nil
+    copyBox.linkHolder:Hide()
+    copyBox.field:Show()
     copyBox.title:SetText(labelText or "")
     -- Width tracks the widest message line (+ buffer for the close X); the
     -- link field spans it and clips a longer URL (full text still selected
@@ -1681,6 +1714,26 @@ function ns.ShowCopyBox(text, labelText)
             eb:HighlightText()
         end
     end)
+end
+
+-- Rendered-link variant of the copy box: no Ctrl-C field, the popup shows
+-- the real hyperlink (colored, tooltip on hover) and clicking it inserts
+-- the link into the active chat editbox.
+function ns.ShowChatLinkBox(link, labelText)
+    if not link or link == "" then return end
+    EnsureCopyBox()
+    copyBox._text = nil
+    copyBox._link = link
+    copyBox.field:Hide()
+    copyBox.linkHolder:Show()
+    copyBox.linkFS:SetText(link)
+    copyBox.title:SetText(labelText or "")
+    local w = math.max(
+        math.floor(copyBox.title:GetStringWidth() + 0.5),
+        math.floor(copyBox.linkFS:GetStringWidth() + 0.5))
+    copyBox:SetWidth(math.max(200, w + 44))
+    copyBox:SetHeight(88 + math.floor(copyBox.title:GetStringHeight() + 0.5))
+    copyBox:Show()
 end
 
 -- Themed replacement for Blizzard StaticPopup confirm/input dialogs, styled
@@ -1977,6 +2030,19 @@ function ns.GetResultLink(data)
         return ResultItemLink(data.itemID)
     end
     return nil
+end
+
+-- Game-native shift-click linking: with a chat editbox active and Shift
+-- held, clicking a result inserts its real hyperlink into the editbox,
+-- exactly like shift-clicking an item anywhere else in the game. One owner
+-- for every linkable result kind (rides ns.GetResultLink); callers skip
+-- their own click action when this returns true.
+function ns.TryInsertResultChatLink(data)
+    if not data or not (IsShiftKeyDown and IsShiftKeyDown()) then return false end
+    if not (ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow()) then return false end
+    local link = ns.GetResultLink(data)
+    if not link or link == "" then return false end
+    return (ChatEdit_InsertLink and ChatEdit_InsertLink(link)) and true or false
 end
 
 -- Map pin chat icon: the atlas WoW shows in shared waypoint links.
@@ -3961,7 +4027,15 @@ function ns.BuildSendLinkRows(link, name)
     rows[#rows + 1] = {
         text = L["CTX_SEND_LINK_CLIPBOARD"],
         onClick = function()
-            ns.ShowCopyBox(link, L["CTX_SEND_LINK_CLIPBOARD_HINT"]:format(name or ""))
+            if link:find("|H", 1, true) then
+                -- Real hyperlink: the OS clipboard can't carry it (the
+                -- client strips |H escapes from pasted chat by design), so
+                -- show the rendered link to shift-click into a chat message.
+                ns.ShowChatLinkBox(link, L["CTX_SEND_LINK_SHIFTCLICK_HINT"]:format(name or ""))
+            else
+                -- Plain-text payloads (statistics) keep the Ctrl-C box.
+                ns.ShowCopyBox(link, L["CTX_SEND_LINK_CLIPBOARD_HINT"]:format(name or ""))
+            end
         end,
     }
     return rows

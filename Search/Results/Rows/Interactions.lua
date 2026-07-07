@@ -157,6 +157,17 @@ function Rows.InstallInteractions(resultRow, index)
 
         local d = self.data
 
+        -- Shift+click with a chat editbox active inserts the row's real
+        -- hyperlink, like shift-clicking an item anywhere in the game.
+        -- Takes priority over pickup (matching native behavior), kills
+        -- the secure action, and cancels any pending drag detection.
+        if d and ns.TryInsertResultChatLink and ns.TryInsertResultChatLink(d) then
+            ClearSecureClick(self)
+            self._dragOriginX, self._dragOriginY = nil, nil
+            self._chatLinkInserted = true
+            return
+        end
+
         -- Shift held: kill the cast for this click. The pickup (if any)
         -- happens via the OnMouseDown / OnUpdate drag detection above:
         -- this branch only ensures the secure handler is a no-op so
@@ -203,6 +214,12 @@ function Rows.InstallInteractions(resultRow, index)
         self._outfitSecureClicked = d.outfitID
     end)
     resultRow:SetScript("PostClick", function(self, mouseButton, down)
+        -- Shift+click chat insert: the link went into the editbox; keep
+        -- the results open and don't navigate.
+        if self._chatLinkInserted then
+            self._chatLinkInserted = nil
+            return
+        end
         -- Shift+click pickup: cursor is holding the action for the
         -- user to drop on a bar. Don't navigate away or close.
         if self._pickedUp then

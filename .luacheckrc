@@ -49,6 +49,7 @@ read_globals = {
     "IsShiftKeyDown", "IsMouseButtonDown", "IsAltKeyDown", "IsControlKeyDown",
     "IsInGroup", "IsInInstance", "IsIndoors", "UnitIsGroupLeader",
     "IsInRaid", "IsInGuild", "UnitExists", "UnitIsPlayer", "SendChatMessage",
+    "ChatEdit_GetActiveWindow", "ChatEdit_InsertLink",
     "UnitFactionGroup", "UnitPosition",
     "StaticPopup_Show", "GameTooltip_Hide", "PlaySound", "ReloadUI",
     "GetSpellInfo", "GetItemInfo", "UseToyByItemID",
