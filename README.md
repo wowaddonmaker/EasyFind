@@ -38,13 +38,15 @@ Search from the world map with nested results built for location-first browsing:
 ### Search Tools
 
 - **Pins**: Right-click a result to keep it visible before typing.
+- **Shortkeys**: Right-click any result to bind a key that opens or uses it instantly, without opening the search bar or taking up action bar slots.
 - **Aliases**: Add your own search terms for any supported result. Aliases are shared between normal search and map search where applicable.
 - **Guide mode and direct open**: Learn where things live with step-by-step highlights, or open supported destinations directly.
 - **Quick filters**: Type `@` to search within a category such as pets, mounts, bags, macros, abilities, achievements, statistics, bosses, gear, currencies, reputations, talents, titles, collections, or map results.
 - **Slash-command results**: Type `/` in the search bar to see supported EasyFind commands such as `/reset` and `/options`.
 - **Calculator**: Type math directly into search, including arithmetic, trig functions, and factorials, or open the full calculator with `Alt+C`.
 - **Keyboard control**: Use arrows, Enter, Tab, Alt+number row shortcuts, or Alt+H/J/K/L navigation.
-- **Send link**: Right-click a result to share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, a whisper, or your clipboard).
+- **Send link**: Right-click a result to share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, a whisper, or a link box you can shift-click into any chat message).
+- **Wowhead links**: Right-click most results for a copy-ready Wowhead URL.
 - **Context menus**: Right-click results for row-specific actions such as Guide, Pin, Add Alias, favorite toggles, tracking, edit actions, and collection tools.
 
 ### Options
@@ -84,6 +86,10 @@ Available binds include:
 - Search Bar
 - Map Search Tab
 - Clear All
+
+## Languages
+
+Fully translated into English, German, French, Italian, Spanish (EU and Latin America), Korean, Portuguese, Russian, and Chinese (Simplified and Traditional). The addon follows your game client's language automatically; anything missing a translation falls back to English. Translation fixes are welcome through GitHub issues.
 
 ## Feedback
 
