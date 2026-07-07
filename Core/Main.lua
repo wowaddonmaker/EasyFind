@@ -510,6 +510,21 @@ local function ShowWhatsNewChatMessage(version)
     EasyFind:Print(sformat(L["WHATSNEW_CHAT_HELLO"], v, link))
 end
 
+-- Compare two dotted version strings numerically: -1 / 0 / 1 for a<b, a==b, a>b.
+-- Missing or non-numeric segments count as 0, so "2.0" == "2.0.0" and a
+-- malformed value sorts oldest. String comparison can't be used: "2.0.10"
+-- must rank above "2.0.2".
+local function CompareVersion(a, b)
+    local ai = tostring(a or ""):gmatch("%d+")
+    local bi = tostring(b or ""):gmatch("%d+")
+    while true do
+        local av, bv = ai(), bi()
+        if av == nil and bv == nil then return 0 end
+        av, bv = tonumber(av) or 0, tonumber(bv) or 0
+        if av ~= bv then return av < bv and -1 or 1 end
+    end
+end
+
 local function OnInitialize()
     if not EasyFindDB then
         EasyFindDB = { firstInstall = true }
@@ -817,15 +832,26 @@ local function OnPlayerLogin()
     local currentVersion = ns.version
     local lastSeen = EasyFind.db.lastSeenVersion
     if currentVersion and currentVersion ~= lastSeen then
-        if currentVersion == REVAMPED_TUTORIAL_VERSION
-           and EasyFind.db.revampedTutorialVersion ~= REVAMPED_TUTORIAL_VERSION then
-            EasyFind.db.tutorialDone = false
-        elseif EasyFind.db.tutorialDone
-           and EasyFind.db.revampedTutorialVersion == REVAMPED_TUTORIAL_VERSION
-           and lastSeen ~= nil then
-            SafeAfter(2.0, function()
-                ShowWhatsNewChatMessage(currentVersion)
-            end)
+        -- A brand-new install actually reaches here with lastSeen = "2.0.0"
+        -- (the RequireRevampedTutorial migration sets it) and tutorialDone =
+        -- false, not lastSeen = nil. So the real guard that keeps the What's New
+        -- chat off new/onboarding users is the tutorialDone check below, not
+        -- this nil test -- the nil test only skips the rare no-lastSeen case.
+        if lastSeen ~= nil then
+            if CompareVersion(lastSeen, REVAMPED_TUTORIAL_VERSION) < 0 then
+                -- Upgrading from before the tutorial revamp: send them through
+                -- the new-player tutorial rather than a What's New notice.
+                EasyFind.db.tutorialDone = false
+            elseif EasyFind.db.tutorialDone then
+                -- Existing user already past the tutorial, upgrading to a newer
+                -- release: point them at What's New with a clickable chat link.
+                -- The tutorialDone guard is what keeps the tutorial and the
+                -- What's New notice mutually exclusive: anyone who still has the
+                -- tutorial pending gets the tutorial only, never the chat line.
+                SafeAfter(2.0, function()
+                    ShowWhatsNewChatMessage(currentVersion)
+                end)
+            end
         end
         EasyFind.db.lastSeenVersion = currentVersion
     end
