@@ -101,27 +101,31 @@ end
 -- results. Re-anchor the compare frames on the outward side of the
 -- main tooltip and match its (possibly fit-shrunk) scale; restore
 -- their scale when they hide since they're shared frames.
-local function AnchorOneCompareOutward(compare, anchorTo, side, scale)
-    if not (compare and compare:IsShown()) then return anchorTo end
+local function AnchorOneCompareOutward(compare, tooltip, side, scale, xOffset)
+    if not (compare and compare:IsShown()) then return xOffset end
     if compare._efBaseScale == nil then
         compare._efBaseScale = compare:GetScale() or 1.0
     end
     compare:SetScale(scale)
     compare:ClearAllPoints()
+    -- Both compares anchor to the MAIN tooltip, never to each other:
+    -- Blizzard's comparison manager anchors ShoppingTooltip1 relative to
+    -- ShoppingTooltip2 in some layouts, so a persistent 2->1 dependency
+    -- from us turns their SetPoint into an anchor-cycle error.
     if side == "right" then
-        compare:SetPoint("TOPLEFT", anchorTo, "TOPRIGHT", 4, 0)
+        compare:SetPoint("TOPLEFT", tooltip, "TOPRIGHT", 4 + xOffset, 0)
     else
-        compare:SetPoint("TOPRIGHT", anchorTo, "TOPLEFT", -4, 0)
+        compare:SetPoint("TOPRIGHT", tooltip, "TOPLEFT", -(4 + xOffset), 0)
     end
-    return compare
+    return xOffset + (compare:GetWidth() or 0) + 4
 end
 
 local function AnchorComparesOutward(tooltip)
     local side = tooltip._efEdgePanel and tooltip._efEdgeSide
     if not side then return end
     local scale = tooltip:GetScale() or 1.0
-    local anchorTo = AnchorOneCompareOutward(_G["ShoppingTooltip1"], tooltip, side, scale)
-    AnchorOneCompareOutward(_G["ShoppingTooltip2"], anchorTo, side, scale)
+    local xOffset = AnchorOneCompareOutward(_G["ShoppingTooltip1"], tooltip, side, scale, 0)
+    AnchorOneCompareOutward(_G["ShoppingTooltip2"], tooltip, side, scale, xOffset)
 end
 
 -- Wide tooltips (gear with attached compare frames especially) exceed

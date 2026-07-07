@@ -1962,6 +1962,14 @@ local function ResultBattlePetLink(data)
     if not C_PetJournal then return nil end
     local speciesID = data.speciesID
     local petID = type(data.petID) == "string" and data.petID or nil
+    -- Owned pet: the client builds the canonical link itself; a hand-built
+    -- one risks drifting from the current format and being rejected.
+    if petID and C_PetJournal.GetBattlePetLink then
+        local ok, apiLink = pcall(C_PetJournal.GetBattlePetLink, petID)
+        if ok and type(apiLink) == "string" and apiLink:find("|H", 1, true) then
+            return apiLink
+        end
+    end
     local level, quality, maxHealth, power, speed, name = 1, 0, 0, 0, 0, nil
     if petID and C_PetJournal.GetPetInfoByPetID then
         local sID, _, lvl, _, _, _, _, petName = C_PetJournal.GetPetInfoByPetID(petID)
@@ -1978,8 +1986,16 @@ local function ResultBattlePetLink(data)
         name = C_PetJournal.GetPetInfoBySpeciesID(speciesID)
     end
     if not name then return nil end
+    -- Quality color markup: .hex carried the full "|cff..." historically;
+    -- newer builds expose only the color object. A missing prefix makes
+    -- the whole link parse as plain text, so verify and rebuild.
     local qc = ITEM_QUALITY_COLORS and ITEM_QUALITY_COLORS[quality]
-    local hex = (qc and qc.hex) or "|cffffffff"
+    local hex = qc and qc.hex
+    if (not hex or hex:sub(1, 2) ~= "|c") and qc and qc.color
+        and qc.color.GenerateHexColorMarkup then
+        hex = qc.color:GenerateHexColorMarkup()
+    end
+    if not hex or hex:sub(1, 2) ~= "|c" then hex = "|cffffffff" end
     return format("%s|Hbattlepet:%d:%d:%d:%d:%d:%d:0000000000000000|h[%s]|h|r",
         hex, speciesID, level, quality, maxHealth, power, speed, name)
 end
