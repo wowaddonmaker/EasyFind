@@ -121,7 +121,7 @@ read_globals = {
     "GetSpellBookItemInfo", "GetSpellBookItemName", "GetSpellBookItemTexture",
     "GetFlyoutInfo", "GetFlyoutSlotInfo",
     "GetContainerNumSlots", "GetContainerItemInfo", "PickupContainerItem",
-    "NUM_BAG_SLOTS", "GetNumMacros", "GetMacroInfo", "MAX_ACCOUNT_MACROS",
+    "NUM_BAG_SLOTS", "GetNumMacros", "GetMacroInfo", "GetMacroIndexByName", "MAX_ACCOUNT_MACROS",
     "ShowMacroFrame", "MacroFrame", "MacroFrame_SelectMacro", "MacroFrame_Update",
     "MacroFrame_OnTabChanged", "PanelTemplates_SetTab", "C_AddOns", "LoadAddOn",
     "CreateMacro",

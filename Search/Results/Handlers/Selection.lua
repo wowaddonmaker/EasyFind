@@ -60,6 +60,19 @@ function Handlers:SelectResult(data, forceGuide)
         return
     end
 
+    -- Pinned native command: storage keeps only strings, so the run
+    -- callback is re-resolved by name. Secure ones carry slashCommand and
+    -- already ran via the row's macrotext attribute instead.
+    if data.category == "Command" and not data.slashCommand
+        and ns.SearchCommands and ns.SearchCommands.ResolveNativeRun then
+        local run = ns.SearchCommands:ResolveNativeRun(data.name)
+        if run then
+            self:FinishResultSelection()
+            run()
+            return
+        end
+    end
+
     if data.calculatorLauncher then
         self:OpenCalculator("")
         return

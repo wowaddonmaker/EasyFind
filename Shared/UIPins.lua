@@ -22,6 +22,9 @@ local SIMPLE_FIELDS = {
     "mapSearchResult", "isZone", "mapID", "zoneName", "pathPrefix",
     "zoneMapType", "zoneParentMapID",
     "achievementID",
+    -- Commands: strings only; nativeRun (a function) cannot persist and is
+    -- re-resolved by name on selection.
+    "searchCommand", "searchCommandDesc", "slashCommand", "isNativeCommand",
 }
 
 local TABLE_FIELDS = {

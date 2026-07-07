@@ -96,6 +96,39 @@ function Search:GetTypedQuery()
     return eb:GetText() or ""
 end
 
+-- Stable partition: pinned matches float to the top, non-pinned follow.
+-- Each group keeps its score-sorted order. ONE implementation for every
+-- rendered list (main results and the "/" command palette) so pin
+-- behavior cannot drift between them.
+local function FloatPinnedFirst(list, n)
+    if n <= 1 then return end
+    local pinnedBuf = SCRATCH.pinnedFlat or {}
+    SCRATCH.pinnedFlat = pinnedBuf
+    local otherBuf = SCRATCH.otherFlat or {}
+    SCRATCH.otherFlat = otherBuf
+    wipe(pinnedBuf)
+    wipe(otherBuf)
+    for i = 1, n do
+        local e = list[i]
+        if e.isPinned then
+            pinnedBuf[#pinnedBuf + 1] = e
+        else
+            otherBuf[#otherBuf + 1] = e
+        end
+    end
+    if #pinnedBuf > 0 and #pinnedBuf < n then
+        local out = 0
+        for i = 1, #pinnedBuf do
+            out = out + 1
+            list[out] = pinnedBuf[i]
+        end
+        for i = 1, #otherBuf do
+            out = out + 1
+            list[out] = otherBuf[i]
+        end
+    end
+end
+
 function Search:OnSearchTextChanged(text, force)
     -- The search UI is dormant in combat (the bar hides at combat start
     -- and cannot reopen), and rendering results would resize/show frames
@@ -166,6 +199,7 @@ function Search:OnSearchTextChanged(text, force)
     local commandEntries = (not quickFilter) and (not commandsOff)
         and self:GetSearchBarCommandSuggestionEntries(text)
     if commandEntries then
+        FloatPinnedFirst(commandEntries, #commandEntries)
         self:ShowHierarchicalResults(commandEntries)
         return
     end
@@ -432,36 +466,7 @@ function Search:OnSearchTextChanged(text, force)
         flatEntries[i] = nil
     end
 
-    -- Stable partition: pinned matches float to the top, non-pinned
-    -- follow. Each group keeps its score-sorted order. Pinned items
-    -- the user has stuck stay at the head of every relevant search.
-    if n > 1 then
-        local pinnedBuf = SCRATCH.pinnedFlat or {}
-        SCRATCH.pinnedFlat = pinnedBuf
-        local otherBuf = SCRATCH.otherFlat or {}
-        SCRATCH.otherFlat = otherBuf
-        wipe(pinnedBuf)
-        wipe(otherBuf)
-        for i = 1, n do
-            local e = flatEntries[i]
-            if e.isPinned then
-                pinnedBuf[#pinnedBuf + 1] = e
-            else
-                otherBuf[#otherBuf + 1] = e
-            end
-        end
-        if #pinnedBuf > 0 and #pinnedBuf < n then
-            local out = 0
-            for i = 1, #pinnedBuf do
-                out = out + 1
-                flatEntries[out] = pinnedBuf[i]
-            end
-            for i = 1, #otherBuf do
-                out = out + 1
-                flatEntries[out] = otherBuf[i]
-            end
-        end
-    end
+    FloatPinnedFirst(flatEntries, n)
 
     self:ShowHierarchicalResults(flatEntries)
 end

@@ -8,6 +8,8 @@ local Handlers = ns.ResultHandlers
 local Utils = ns.Utils
 
 local InCombatLockdown = InCombatLockdown
+local GetMacroInfo = GetMacroInfo
+local GetMacroIndexByName = GetMacroIndexByName
 
 function SecureAttributes.Apply(resultRow, data)
     if InCombatLockdown() then return end
@@ -36,9 +38,21 @@ function SecureAttributes.Apply(resultRow, data)
     elseif data and data.itemID and data.category == "Bag"
            and Handlers:GetBagItemActionKind(data) ~= "show" then
         newType, newKey, newVal = "item", "item", data.name
-    elseif data and data.macroIndex and data.category == "Macro"
-           and data.macroBody and data.macroBody ~= "" then
-        newType, newKey, newVal = "macro", "macrotext", data.macroBody
+    elseif data and data.macroIndex and data.category == "Macro" then
+        local body = data.macroBody
+        if (not body or body == "") and GetMacroInfo then
+            -- Pinned macros persist only name and index (bodies would go
+            -- stale in storage); re-resolve by name first since indexes
+            -- shift when macros are added or deleted.
+            local idx = GetMacroIndexByName and data.name
+                and GetMacroIndexByName(data.name) or 0
+            if not idx or idx == 0 then idx = data.macroIndex end
+            local _, _, liveBody = GetMacroInfo(idx)
+            body = liveBody
+        end
+        if body and body ~= "" then
+            newType, newKey, newVal = "macro", "macrotext", body
+        end
     elseif data and data.slashCommand then
         newType, newKey, newVal = "macro", "macrotext", data.slashCommand
     end

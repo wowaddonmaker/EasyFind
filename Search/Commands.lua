@@ -9,6 +9,7 @@ local pairs = Utils.pairs
 local sfind, slower = Utils.sfind, Utils.slower
 local wipe = wipe
 local tsort = table.sort
+local IsUIItemPinned = ns.UIPins.IsPinned
 
 local function GetSearchFrame()
     return Search:GetSearchFrame()
@@ -184,6 +185,18 @@ local function CollectNativeCommandDefs()
     return defs
 end
 
+-- Pinned native commands persist only strings (a run callback cannot live
+-- in SavedVariables); selection re-resolves the callback by display name.
+function Commands:ResolveNativeRun(display)
+    if type(display) ~= "string" then return nil end
+    local defs = CollectNativeCommandDefs()
+    local wanted = slower(display)
+    for i = 1, #defs do
+        if defs[i].display == wanted then return defs[i].run end
+    end
+    return nil
+end
+
 local function StampCommandEntry(entries, n, data)
     local entry = entries[n]
     if not entry then
@@ -196,7 +209,7 @@ local function StampCommandEntry(entries, n, data)
     entry.isMatch = true
     entry.isFlat = true
     entry.flatCatKey = nil
-    entry.isPinned = false
+    entry.isPinned = IsUIItemPinned(data) and true or false
     entry.data = data
 end
 
@@ -235,7 +248,6 @@ function Commands:GetSearchBarCommandSuggestionEntries(text)
             data.nameLower = def.displayLower
             data.category = "Command"
             data.path = SEARCH_BAR_PATH
-            data.noPin = true
             data.icon = COMMANDS_ICON
             data.searchCommand = def.command
             data.searchCommandDesc = def.desc
@@ -255,7 +267,6 @@ function Commands:GetSearchBarCommandSuggestionEntries(text)
                 data.nameLower = def.display
                 data.category = "Command"
                 data.path = SLASH_COMMANDS_PATH
-                data.noPin = true
                 data.icon = COMMANDS_ICON
                 -- Secure system commands (/logout, /quit, ...) run via the
                 -- macrotext path; the rest via the insecure nativeRun callback.
@@ -287,7 +298,6 @@ function Commands:BuildCommandSearchData()
             category = "Command",
             path = EASYFIND_PATH,
             keywords = def.aliases,
-            noPin = true,
             icon = COMMANDS_ICON,
             searchCommand = def.command,
             searchCommandDesc = def.desc,
@@ -303,7 +313,6 @@ function Commands:BuildCommandSearchData()
             category = "Command",
             path = SLASH_COMMANDS_PATH,
             keywords = { def.lower },
-            noPin = true,
             icon = COMMANDS_ICON,
             nativeRun = def.run,
             slashCommand = def.slashCommand,
