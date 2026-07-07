@@ -1260,27 +1260,79 @@ local function HandleWaitWardrobeSetsTab(self)
     return true
 end
 
+-- Catalog grid element data (measured via /efd housing grid):
+-- { entryVariantID = { recordID, variantIdentifier, entryType },
+--   templateKey = "CATALOG_ENTRY_DECOR", displayContextGetter = fn }
+-- Match on entryVariantID.recordID against the result's housingRecordID.
+local function HousingEntryMatches(elementData, recordID)
+    if not recordID or type(elementData) ~= "table" then return false end
+    local entryVariantID = elementData.entryVariantID
+    return type(entryVariantID) == "table" and entryVariantID.recordID == recordID
+end
+
+-- Scroll the catalog grid to the entry and return its tile once rendered.
+-- The grid populates asynchronously after a search, so callers retry.
+-- Shared with DirectOpen so both open modes land on the same element.
+function Highlight:ScrollToHousingCatalogEntry(recordID)
+    local dash = _G["HousingDashboardFrame"]
+    local content = dash and dash.CatalogContent
+    if not (content and content:IsShown()) then return nil end
+    local scrollBox = (content.OptionsContainer and content.OptionsContainer.ScrollBox)
+        or content.ScrollBox
+    if not scrollBox then
+        local kids = { content:GetChildren() }
+        for i = 1, #kids do
+            if kids[i].ScrollBox then
+                scrollBox = kids[i].ScrollBox
+                break
+            end
+        end
+    end
+    if not scrollBox then return nil end
+    ScrollBoxScrollTo(scrollBox, function(elementData)
+        return HousingEntryMatches(elementData, recordID)
+    end)
+    return ScrollBoxFindButton(scrollBox, function(btn)
+        local elementData = btn.GetElementData and btn:GetElementData()
+        return elementData ~= nil and HousingEntryMatches(elementData, recordID)
+    end)
+end
+
 local function HandleWaitHousingCatalogTab(self, step)
     local dash = _G["HousingDashboardFrame"]
     local content = dash and dash.CatalogContent
     if content and content:IsShown() then
-        if step.housingCatalogSearch then
+        if step.housingCatalogSearch and not step._efCatalogSearchSet then
+            step._efCatalogSearchSet = true
             local searchBox = content.Filters and content.Filters.SearchBox
             if searchBox and searchBox.SetText then
                 pcall(searchBox.SetText, searchBox, step.housingCatalogSearch)
             end
         end
-        self:AdvanceStep()
+        local tile = self:ScrollToHousingCatalogEntry(step.housingCatalogRecordID)
+        if tile then
+            self:HighlightFrame(tile)
+            if canHoverDismiss() and tile:IsMouseOver() then
+                self:Cancel()
+            end
+            return true
+        end
+        -- Search results land asynchronously; keep hunting for a couple of
+        -- seconds, then settle for the filtered catalog (old behavior).
+        step._efCatalogTileTries = (step._efCatalogTileTries or 0) + 1
+        if step._efCatalogTileTries > 20 then
+            self:AdvanceStep()
+        end
         return true
     end
-    -- The side tab is a plain Frame; programmatic clicks don't switch it, so
-    -- try the tab system directly, falling back to highlighting for the user.
-    if dash and dash.SetTab then
-        for tabID = 1, 5 do
-            pcall(dash.SetTab, dash, tabID)
-            content = dash.CatalogContent
-            if content and content:IsShown() then return true end
-        end
+    -- The dashboard is a named-tab owner: SetTab takes the tab object
+    -- (dash.catalogTab), not an index, and the side tab button's own mouse
+    -- scripts are cursor-guarded so simulating them does nothing. Switch
+    -- once, then let the ticker re-check; highlight as the manual fallback.
+    if dash and not step._efSetHousingTab and dash.SetTab and dash.catalogTab then
+        step._efSetHousingTab = true
+        pcall(dash.SetTab, dash, dash.catalogTab)
+        return true
     end
     local tab = dash and dash.CatalogTabButton
     if tab then

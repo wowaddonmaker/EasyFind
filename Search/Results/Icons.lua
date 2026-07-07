@@ -302,8 +302,12 @@ function Icons:SetRowIcon(btn, kind, value, iconSize)
 end
 
 function Icons:IsSecureActionResult(data)
+    -- Talents carry spellID but never cast (SecureAttributes.Apply skips
+    -- them); classifying them secure here would give shortkeys/Enter a
+    -- button with no action instead of the talent-tab navigation a click does.
     return data and (data.outfitID or data.toyItemID
-        or (data.spellID and not Icons:IsSpellbookOnlyAbility(data))
+        or (data.spellID and data.category ~= "Talent"
+            and not Icons:IsSpellbookOnlyAbility(data))
         or (data.mountID and Icons:IsMountSummonable(data))
         or data.macroIndex or data.slashCommand
         or (data.itemID and data.category == "Bag"

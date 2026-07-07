@@ -62,7 +62,6 @@ function Utils.SafeCallMethod(obj, method, ...)
     end
     return ok, result
 end
-
 function Utils.FindFactionByPredicate(predicate)
     if not C_Reputation or not C_Reputation.GetNumFactions or not C_Reputation.GetFactionDataByIndex then
         return nil
@@ -1854,6 +1853,11 @@ function ns.GetWowheadLink(data)
         kind, id = "title", data.titleID
     elseif data.spellID and (data.category == "Ability" or data.category == "Talent") then
         kind, id = "spell", data.spellID
+    elseif data.housingRecordID or data.housingEntryID then
+        -- No verified mapping from the client's decor record ids to
+        -- Wowhead's decor page ids, so search the name -- it lands on the
+        -- decor entry.
+        if data.name then query = data.name end
     elseif data.itemID then
         -- Loot, bag items, and anything else carrying a real item id.
         kind, id = "item", data.itemID
@@ -1965,6 +1969,10 @@ function ns.GetResultLink(data)
             data.encounterID, data.difficultyID or 14, data.name or "")
     elseif data.spellID and (data.category == "Ability" or data.category == "Talent") then
         return ResultSpellLink(data.spellID)
+    elseif data.housingRecordID and C_HousingDecor and C_HousingDecor.GetDecorHyperlink then
+        local ok, link = pcall(C_HousingDecor.GetDecorHyperlink, data.housingRecordID)
+        if ok and link and link ~= "" then return link end
+        return nil
     elseif data.itemID then
         return ResultItemLink(data.itemID)
     end

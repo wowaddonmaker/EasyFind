@@ -119,7 +119,8 @@ function Handlers:SelectResult(data, forceGuide)
             steps = {
                 { buttonFrame = "HousingMicroButton" },
                 { waitForFrame = "HousingDashboardFrame", housingCatalogTab = true,
-                  housingCatalogSearch = data.name },
+                  housingCatalogSearch = data.name,
+                  housingCatalogRecordID = data.housingRecordID },
             },
         }
         if useFast then

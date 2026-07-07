@@ -478,25 +478,59 @@ function Guide:DirectOpen(data)
                 end
             end
 
-            -- Housing catalog tab: the side tab is a plain Frame whose mouse
-            -- scripts don't switch panels programmatically, so drive the
-            -- dashboard's tab system directly and verify CatalogContent shows.
+            -- Housing catalog tab: the dashboard is a named-tab owner whose
+            -- SetTab takes the tab object (dash.catalogTab), not an index.
+            -- Switch, then fill the catalog search box once CatalogContent
+            -- is up (the switch can land a frame later).
             if step.housingCatalogTab then
                 local dash = _G["HousingDashboardFrame"]
                 if dash then
-                    local content = dash.CatalogContent
-                    if not (content and content:IsShown()) and dash.SetTab then
-                        for tabID = 1, 5 do
-                            pcall(dash.SetTab, dash, tabID)
-                            content = dash.CatalogContent
-                            if content and content:IsShown() then break end
+                    local function fillCatalogSearch()
+                        local content = dash.CatalogContent
+                        if not (content and content:IsShown()) then return false end
+                        if step.housingCatalogSearch then
+                            local searchBox = content.Filters and content.Filters.SearchBox
+                            if searchBox and searchBox.SetText then
+                                pcall(searchBox.SetText, searchBox, step.housingCatalogSearch)
+                            end
+                        end
+                        return true
+                    end
+                    -- Once the search is in, scroll the grid to the entry and
+                    -- highlight its tile; results land asynchronously, so
+                    -- retry a few times before settling for the filtered view.
+                    local Highlight = ns.Highlight
+                    local tries = 0
+                    local function tryHighlightEntry()
+                        if not Highlight or not Highlight.ScrollToHousingCatalogEntry then return end
+                        local tile = Highlight:ScrollToHousingCatalogEntry(step.housingCatalogRecordID)
+                        if tile then
+                            Highlight:HighlightFrame(tile)
+                            local checkHover
+                            checkHover = function()
+                                if tile:IsMouseOver() then
+                                    Highlight:HideHighlight()
+                                else
+                                    Utils.SafeAfter(0.1, checkHover)
+                                end
+                            end
+                            Utils.SafeAfter(0.3, checkHover)
+                            return
+                        end
+                        tries = tries + 1
+                        if tries < 10 then
+                            Utils.SafeAfter(0.25, tryHighlightEntry)
                         end
                     end
-                    if step.housingCatalogSearch and content and content:IsShown() then
-                        local searchBox = content.Filters and content.Filters.SearchBox
-                        if searchBox and searchBox.SetText then
-                            pcall(searchBox.SetText, searchBox, step.housingCatalogSearch)
+                    if fillCatalogSearch() then
+                        tryHighlightEntry()
+                    else
+                        if dash.SetTab and dash.catalogTab then
+                            pcall(dash.SetTab, dash, dash.catalogTab)
                         end
+                        Utils.SafeAfter(0.15, function()
+                            if fillCatalogSearch() then tryHighlightEntry() end
+                        end)
                     end
                 end
             end
