@@ -35,30 +35,47 @@ local knownCurrencyIDs = {}
 local EMPTY_KEYWORDS = {}
 
 local function RemoveEntriesByCategory(category)
+    local before = #uiSearchData
     local writeIdx = 0
-    for i = 1, #uiSearchData do
+    for i = 1, before do
         local entry = uiSearchData[i]
         if entry.category ~= category then
             writeIdx = writeIdx + 1
             uiSearchData[writeIdx] = entry
         end
     end
-    for i = #uiSearchData, writeIdx + 1, -1 do
+    for i = before, writeIdx + 1, -1 do
         uiSearchData[i] = nil
+    end
+    -- Populate bookkeeping, consumed by the dynamic-provider completion:
+    -- a populate that removed nothing (first load) only APPENDS, and the
+    -- search cache can extend its candidate set instead of a full reset.
+    -- Every populate calls this before adding, so setting the fields here
+    -- covers sync and async providers alike.
+    Database._populateRemoved = writeIdx < before
+    Database._populateAppendFrom = writeIdx + 1
+    -- Removals compact uiSearchData, invalidating the q-gram index's
+    -- stored positions; appends are picked up incrementally.
+    if writeIdx < before and ns.SearchIndex then
+        ns.SearchIndex:MarkDirty()
     end
 end
 
 local function RemoveEntriesWithField(field)
+    local before = #uiSearchData
     local writeIdx = 0
-    for i = 1, #uiSearchData do
+    for i = 1, before do
         local entry = uiSearchData[i]
         if not entry[field] then
             writeIdx = writeIdx + 1
             uiSearchData[writeIdx] = entry
         end
     end
-    for i = #uiSearchData, writeIdx + 1, -1 do
+    for i = before, writeIdx + 1, -1 do
         uiSearchData[i] = nil
+    end
+    if writeIdx < before and ns.SearchIndex then
+        ns.SearchIndex:MarkDirty()
     end
 end
 
@@ -1313,10 +1330,12 @@ end
 function Database:PopulateDynamicMounts()
     if not C_MountJournal or not C_MountJournal.GetMountIDs then return false end
 
-    RemoveEntriesByCategory("Mount")
-
+    -- Guards precede the wipe: bailing after RemoveEntriesByCategory leaves
+    -- the dataset without the category and no cache invalidation behind it.
     local mountIDs = C_MountJournal.GetMountIDs()
     if not mountIDs then return false end
+
+    RemoveEntriesByCategory("Mount")
 
     for _, mountID in ipairs(mountIDs) do
         local name, spellID, icon, _, isUsable, sourceType, _,
@@ -1354,7 +1373,6 @@ local housingSearcher
 local housingSearchDone
 
 function Database:FinishHousingResults(done)
-    RemoveEntriesByCategory("Housing")
     local searcher = housingSearcher
     if not (C_HousingCatalog and searcher) then
         done(false)
@@ -1365,13 +1383,16 @@ function Database:FinishHousingResults(done)
         done(false, "cancelled")
         return
     end
+    -- Build the replacement set fully before touching uiSearchData. A
+    -- repopulate can land mid-search (HOUSING_STORAGE_UPDATED marks the
+    -- provider dirty liberally), and wiping before the searcher proves it
+    -- has data made live results vanish until the next retry.
     local GetCatalogEntryInfo = C_HousingCatalog.GetCatalogEntryInfo
-    local added = 0
+    local fresh = {}
     for i = 1, #entryIDs do
         local okInfo, info = pcall(GetCatalogEntryInfo, entryIDs[i])
         if okInfo and info and info.name and info.name ~= "" then
-            added = added + 1
-            uiSearchData[#uiSearchData + 1] = setmetatable({
+            fresh[#fresh + 1] = setmetatable({
                 name = info.name,
                 nameLower = slower(info.name),
                 icon = info.iconTexture,
@@ -1385,11 +1406,16 @@ function Database:FinishHousingResults(done)
         end
     end
     -- Zero entries usually means the catalog wasn't streamed in yet (login
-    -- warm path). Report "cancelled" so the provider stays dirty and retries
-    -- on the next query instead of caching an empty category all session.
-    if added == 0 then
+    -- warm path). Keep the existing entries and report "cancelled" so the
+    -- provider stays dirty and retries on the next query instead of caching
+    -- an empty category all session.
+    if #fresh == 0 then
         done(false, "cancelled")
         return
+    end
+    RemoveEntriesByCategory("Housing")
+    for i = 1, #fresh do
+        uiSearchData[#uiSearchData + 1] = fresh[i]
     end
     done(true)
 end
@@ -1456,12 +1482,12 @@ end
 function Database:PopulateDynamicToys()
     if not C_ToyBox then return false end
 
-    RemoveEntriesByCategory("Toy")
-
     local GetToyInfo = C_ToyBox.GetToyInfo
     local GetNumFilteredToys = C_ToyBox.GetNumFilteredToys
     local GetToyFromIndex = C_ToyBox.GetToyFromIndex
     if not GetToyInfo or not GetNumFilteredToys or not GetToyFromIndex then return false end
+
+    RemoveEntriesByCategory("Toy")
 
     local hasFilterAPI = C_ToyBox.GetCollectedShown and C_ToyBox.SetCollectedShown
     local savedCollected = hasFilterAPI and C_ToyBox.GetCollectedShown()
@@ -1634,10 +1660,10 @@ function Database:PopulateDynamicTitles()
     local isKnown = IsTitleKnown
     if not getNum or not getName or not isKnown then return false end
 
-    RemoveEntriesByCategory("Title")
-
     local total = getNum()
     if not total or total <= 0 then return false end
+
+    RemoveEntriesByCategory("Title")
 
     for titleID = 1, total do
         if isKnown(titleID) then
@@ -1661,10 +1687,10 @@ end
 function Database:PopulateDynamicGearSets()
     if not C_EquipmentSet or not C_EquipmentSet.GetEquipmentSetIDs then return false end
 
-    RemoveEntriesByCategory("Gear Set")
-
     local ids = C_EquipmentSet.GetEquipmentSetIDs()
     if type(ids) ~= "table" then return false end
+
+    RemoveEntriesByCategory("Gear Set")
 
     local getInfo = C_EquipmentSet.GetEquipmentSetInfo
     if not getInfo then return false end

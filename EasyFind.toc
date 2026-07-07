@@ -31,6 +31,7 @@ MapSearch/Indicators.lua
 MapSearch/Frames.lua
 Core/Main.lua
 Database/Main.lua
+Database/SearchIndex.lua
 Database/Search.lua
 Database/Dynamic.lua
 Database/StaticLocations.lua

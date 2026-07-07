@@ -15,14 +15,10 @@ local ForEachFilterKey = Filters.ForEachFilterKey
 
 local SetFlyoutRowEnabled = Utils.SetFlyoutRowEnabled
 
--- Search bar editbox, captured when CreateUIFilterDropdown runs. Filter
--- clicks re-run the active search through it so open results track the
--- new selection.
-local activeSearchEditBox
-
 function Filters:RerunActiveSearch()
-    if activeSearchEditBox and activeSearchEditBox:GetText() ~= "" then
-        Search:OnSearchTextChanged(activeSearchEditBox:GetText())
+    local typed = Search.GetTypedQuery and Search:GetTypedQuery() or ""
+    if typed ~= "" then
+        Search:OnSearchTextChanged(typed)
     end
 end
 
@@ -37,7 +33,6 @@ function Filters:ApplyFilterSelection(...)
 end
 
 function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
-    activeSearchEditBox = searchEditBox
     local ROW_HEIGHT = 20
     local DROPDOWN_WIDTH = 207
     local PADDING_TOP = 8

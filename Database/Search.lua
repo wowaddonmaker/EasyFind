@@ -28,6 +28,7 @@ local stokenize = SearchText.Tokenize
 local isAscii = SearchText.IsAscii
 local mmin, mmax, mabs, mfloor = Utils.mmin, Utils.mmax, Utils.mabs, Utils.mfloor
 local wipe = wipe
+local rawget = rawget
 local uiSearchData = Database.uiSearchData
 
 local function IsLootStatSearchWord(word)
@@ -350,6 +351,38 @@ function Database:CouldMatch(text, query)
     return true
 end
 
+-- Fuzzy-aware per-keyword pre-reject for ScoreKeywords. A keyword can only
+-- reach the scoring ladder's thresholds when at most maxEdits of the query
+-- word's a-z chars are absent from it (ScoreFuzzy introduces up to 1 new
+-- char at len >= FUZZY_EDIT1_LEN, 2 at >= FUZZY_EDIT2_LEN; every other path
+-- needs all chars present). Masks come from the same per-string cache the
+-- name gate uses, so the check is one AND plus a popcount of the misses.
+local function KeywordCouldMatch(kw, queryWord, queryWordLen)
+    if queryWord ~= lastCMQuery then
+        lastCMQuery = queryWord
+        lastCMMask = ComputeQueryMask(queryWord)
+    end
+    local tm = nameMaskCache[kw]
+    if not tm then tm = ComputeCharMask(kw); nameMaskCache[kw] = tm end
+    local present = band(lastCMMask, tm)
+    if present == lastCMMask then return true end
+    local missing = lastCMMask - present
+    local allowed = 0
+    if queryWordLen >= FUZZY_EDIT2_LEN then
+        allowed = 2
+    elseif queryWordLen >= FUZZY_EDIT1_LEN then
+        allowed = 1
+    end
+    if allowed == 0 then return false end
+    local n = 0
+    while missing ~= 0 do
+        missing = band(missing, missing - 1)
+        n = n + 1
+        if n > allowed then return false end
+    end
+    return true
+end
+
 -- Per-query-word scoring gate. Multi-word full scans ran three engines
 -- (ScoreName, ScoreKeywords, ScoreEntryFields) on every entry and dominated
 -- keystroke cost. Every path that reaches the result threshold requires each
@@ -622,6 +655,7 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
         local best = 0
         for ki = 1, numKeywords do
             local kw = keywordsLower[ki]
+            if Database._disableSearchGate or KeywordCouldMatch(kw, query, queryLen) then
             local kwScore = 0
             if kw == query then
                 -- Short abbreviations (2-3 chars) get boosted above initials.
@@ -661,6 +695,7 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
                 end
             end
             if kwScore > best then best = kwScore end
+            end
         end
         return best
     end
@@ -677,6 +712,7 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
         if queryWordLen >= 2 then
             for ki = 1, numKeywords do
                 local kw = keywordsLower[ki]
+                if Database._disableSearchGate or KeywordCouldMatch(kw, queryWord, queryWordLen) then
                 local kwScore = 0
                 if kw == queryWord then
                     kwScore = 80
@@ -699,6 +735,7 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
 
                 if kwScore > bestScore then
                     bestScore = kwScore
+                end
                 end
             end
             if bestScore == 0 then
@@ -880,6 +917,36 @@ local function RunActiveSearchRefresh()
     end
 end
 
+-- A provider appended entries [fromIndex .. #uiSearchData] without removing
+-- any (first load of a category -- the common case while typing). Instead
+-- of nuking the narrowing state, which forces the next keystroke into a
+-- full scan exactly when providers stream in, ADMIT the appended entries
+-- into the candidate set. Candidates are a superset by contract (the scan
+-- re-scores and writes back only true matches), so admitting everything
+-- appended keeps narrowing complete for the live query at O(appended)
+-- cost, and one keystroke later the set is tight again. Cached result
+-- lists are incomplete now, so those still clear.
+function Database:NoteAppendedEntries(fromIndex)
+    if ns.Aliases and ns.Aliases.InvalidateKeyIndex then ns.Aliases:InvalidateKeyIndex() end
+    ClearResultCache()
+    if prevQuery ~= "" and fromIndex then
+        local n = #uiSearchData
+        local count = #prevCandidates
+        for i = fromIndex, n do
+            count = count + 1
+            prevCandidates[count] = uiSearchData[i]
+        end
+    end
+    if self._dynamicBatchLoading then
+        self._dynamicBatchChanged = true
+        return
+    end
+    if not searchRefreshPending and Utils.SafeAfter then
+        searchRefreshPending = true
+        Utils.SafeAfter(0, RunActiveSearchRefresh)
+    end
+end
+
 function Database:ResetSearchCache()
     if ns.Aliases and ns.Aliases.InvalidateKeyIndex then ns.Aliases:InvalidateKeyIndex() end
     -- Invalidate immediately, even mid-batch: the data just changed, so the
@@ -903,6 +970,11 @@ function Database:ResetSearchCache()
 end
 
 local resultsBuf = {}
+-- Per-query memo keyed by keyword TABLE identity. Prototype-injected
+-- categories (housing: 1768 entries) share one keywords table via __index,
+-- so scoring it once per query replaces 1768 identical scorings. Entries
+-- with unique tables just pay one hash lookup. Wiped per query.
+local sharedKwScores = {}
 local resultsQueryWords = {}
 local statisticScopedQueryWords = {}
 local resultEntryPool = {}
@@ -911,6 +983,7 @@ Database._resultEntryPool = resultEntryPool
 function Database:TrimSearchMemory()
     self:UnloadDynamicSearchData()
     wipe(resultsBuf)
+    wipe(sharedKwScores)
     wipe(resultsQueryWords)
     wipe(statisticScopedQueryWords)
     wipe(resultEntryPool)
@@ -941,6 +1014,7 @@ function Database:SearchUI(query, skipCategories)
         if queryLen == 0 then prevQuery = ""; wipe(prevCandidates); wipe(resultsBuf); return resultsBuf end
     end
 
+    wipe(sharedKwScores)
     wipe(resultsQueryWords)
     local queryWords = resultsQueryWords
     for w in query:gmatch("%S+") do
@@ -1088,11 +1162,27 @@ function Database:SearchUI(query, skipCategories)
         -- candidate set instead of the full dataset.
         searchSet = cachedSet
     elseif prevLen > 0 and skipKey == prevSkipKey
-        and queryLen > prevLen and ssub(query, 1, prevLen) == prevQuery
+        and queryLen >= prevLen and ssub(query, 1, prevLen) == prevQuery
         and not gatingShifted and not recallBoundaryCrossed then
+        -- ">=": for equal lengths the prefix test means query == prevQuery,
+        -- i.e. the post-append same-query refresh; the candidate set was
+        -- kept complete by NoteAppendedEntries, so re-scoring it beats the
+        -- full scan the cleared result cache would otherwise force.
         searchSet = prevCandidates
     else
         searchSet = uiSearchData
+        -- Fresh scans generate candidates from the q-gram index instead of
+        -- scoring the whole dataset; the scorers verify only candidates and
+        -- results stay identical (statistic-scoped queries rewrite the
+        -- query per entry and must bypass; _disableSearchGate bypasses so
+        -- the bench A/B proves identity against the true full scan).
+        if not statisticScopedQuery and not Database._disableSearchGate
+           and ns.SearchIndex then
+            local cand = ns.SearchIndex:Candidates(queryWords)
+            if cand then
+                searchSet = cand
+            end
+        end
     end
 
     -- Dev-only narrowing stats: nil unless /efd kprof armed it, so zero cost
@@ -1106,6 +1196,9 @@ function Database:SearchUI(query, skipCategories)
         elseif searchSet == prevCandidates then
             efStats.narrow = efStats.narrow + 1
             efStats.lastPath = "narrow"
+        elseif searchSet ~= uiSearchData then
+            efStats.indexed = (efStats.indexed or 0) + 1
+            efStats.lastPath = "indexed"
         else
             efStats.full = efStats.full + 1
             efStats.lastPath = "full"
@@ -1237,10 +1330,30 @@ function Database:SearchUI(query, skipCategories)
                     end
                     -- MAX, not SUM. Many entries duplicate their name into
                     -- keywordsLower; a sum double-counts the same fuzzy hit.
+                    local kws = data.keywordsLower or data.keywords
+                    local kwScore = 0
+                    if kws then
+                        -- Keyword tables inherited from an __index prototype
+                        -- (rawget nil: housing's 1768 entries share ONE table)
+                        -- score once per query via the memo. Entries owning
+                        -- their table score directly -- no memo overhead.
+                        if entryQuery == query
+                            and rawget(data, "keywordsLower") == nil
+                            and rawget(data, "keywords") == nil then
+                            kwScore = sharedKwScores[kws]
+                            if kwScore == nil then
+                                kwScore = Database:ScoreKeywords(kws,
+                                    entryQuery, entryQueryLen, entryQueryWords)
+                                sharedKwScores[kws] = kwScore
+                            end
+                        else
+                            kwScore = Database:ScoreKeywords(kws,
+                                entryQuery, entryQueryLen, entryQueryWords)
+                        end
+                    end
                     score = mmax(
                         Database:ScoreName(nameLower, entryQuery, entryQueryLen, entryQueryWords),
-                        Database:ScoreKeywords(data.keywordsLower or data.keywords,
-                            entryQuery, entryQueryLen, entryQueryWords)
+                        kwScore
                     )
                     if #entryQueryWords >= 2 then
                         score = mmax(score, Database:ScoreEntryFields(data, entryQueryWords))

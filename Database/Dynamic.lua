@@ -4,6 +4,30 @@ local Database = ns.Database
 local Utils = ns.Utils
 local L = ns.L
 
+-- Wall-clock cap for run-now provider steps when a live query waits.
+-- Larger than the pump's idle budget (results are being watched for), but
+-- bounded PER FRAME: one keystroke can request ~10 providers, each calling
+-- RunDynamicProvider, so a per-call budget still stacked 10 jobs into one
+-- 300-500ms frame (bench-measured). GetTime() is constant within a frame,
+-- which makes it the frame stamp for the shared spend accumulator.
+local URGENT_STEP_BUDGET = 0.008
+local GetTime = GetTime
+local dps = rawget(_G, "debugprofilestop")
+local urgentFrameStamp, urgentSpentThisFrame = -1, 0
+
+local function UrgentBudgetLeft()
+    local now = GetTime and GetTime() or 0
+    if now ~= urgentFrameStamp then
+        urgentFrameStamp = now
+        urgentSpentThisFrame = 0
+    end
+    return URGENT_STEP_BUDGET - urgentSpentThisFrame
+end
+
+local function AddUrgentSpend(seconds)
+    urgentSpentThisFrame = urgentSpentThisFrame + (seconds or 0)
+end
+
 if not Database then return end
 
 -- Scheduler is loaded earlier in the .toc. ns.Scheduler is the singleton
@@ -74,11 +98,20 @@ local function FinishDynamicProvider(database, provider, ok, err, changed, onDon
 
     provider.loaded = true
     provider.dirty = false
-    if changed ~= false and database.ResetSearchCache then
-        if database._dynamicBatchLoading then
-            database._dynamicBatchChanged = true
-        else
-            database:ResetSearchCache()
+    -- Consume the populate bookkeeping regardless of outcome so a stale
+    -- record can never leak into the next provider's completion.
+    local appendOnly = database._populateRemoved == false
+    local appendFrom = database._populateAppendFrom
+    database._populateRemoved, database._populateAppendFrom = nil, nil
+    if changed ~= false then
+        if appendOnly and appendFrom and database.NoteAppendedEntries then
+            database:NoteAppendedEntries(appendFrom)
+        elseif database.ResetSearchCache then
+            if database._dynamicBatchLoading then
+                database._dynamicBatchChanged = true
+            else
+                database:ResetSearchCache()
+            end
         end
     end
     onDone(changed ~= false)
@@ -184,7 +217,16 @@ local function RunDynamicProvider(database, provider, onDone, runNow)
     end
     sched:Enqueue(jobId)
     if runNow ~= false then
-        sched:Step(0)
+        -- Urgent but BOUNDED per frame: a query is waiting, so spend more
+        -- than the pump's idle budget, but across ALL RunDynamicProvider
+        -- calls this frame combined. Whatever doesn't fit runs through the
+        -- OnUpdate pump over the following frames.
+        local left = UrgentBudgetLeft()
+        if left > 0 then
+            local t0 = dps and dps() or 0
+            sched:Step(0, left)
+            if dps then AddUrgentSpend((dps() - t0) / 1000) end
+        end
     end
 end
 
@@ -227,12 +269,13 @@ function Database:RequestDynamicProviderLoaded(key, onDone)
     return true
 end
 
+-- Delegation, not a copy: Search:RefreshActiveSearch is the one owner of
+-- "re-run the active query". A local re-implementation of it here is how
+-- the autocomplete desync survived a fix aimed at the wrong twin.
 local function RefreshActiveSearch()
     local search = ns.Search
-    local frame = search and search.GetSearchFrame and search:GetSearchFrame()
-    local editBox = frame and frame.editBox
-    if editBox and frame:IsShown() and search.OnSearchTextChanged then
-        search:OnSearchTextChanged(editBox:GetText() or "", true)
+    if search and search.RefreshActiveSearch then
+        search:RefreshActiveSearch()
     end
 end
 

@@ -464,8 +464,7 @@ function Filters:ClearQuickFilter(refresh)
     self:HideQuickFilterSuggestions()
     self:UpdateQuickFilterPill()
     if refresh then
-        local editBox = Search:GetSearchFrame() and Search:GetSearchFrame().editBox
-        self:OnSearchTextChanged(editBox and editBox:GetText() or "", true)
+        self:OnSearchTextChanged(Search:GetTypedQuery(), true)
     end
     return true
 end

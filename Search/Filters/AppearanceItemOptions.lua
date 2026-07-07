@@ -129,7 +129,7 @@ local function OnWardrobeSlotClicked(button)
     local frame = Search.GetSearchFrame and Search:GetSearchFrame()
     local editBox = frame and frame.editBox
     if editBox and frame:IsShown() then
-        Search:OnSearchTextChanged(editBox:GetText() or "", true)
+        Search:OnSearchTextChanged(Search:GetTypedQuery(), true)
     end
 end
 

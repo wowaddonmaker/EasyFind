@@ -31,11 +31,10 @@ end
 -- data finishes loading in the background.
 function Search:RefreshActiveSearch()
     local frame = Search:GetSearchFrame()
-    local editBox = frame and frame.editBox
-    local currentText = editBox and editBox:GetText()
-    if frame and frame:IsShown()
-       and ((currentText and currentText ~= "") or Search:GetQuickFilter()) then
-        Search:OnSearchTextChanged(currentText or "", true)
+    if not (frame and frame:IsShown()) then return end
+    local typed = Search:GetTypedQuery()
+    if typed ~= "" or Search:GetQuickFilter() then
+        Search:OnSearchTextChanged(typed, true)
     end
 end
 
@@ -81,7 +80,36 @@ itemInfoFrame:SetScript("OnEvent", function(_, _, itemID, success)
     end
 end)
 
+-- The user-typed query, excluding any inline-autocomplete suffix. Every
+-- programmatic re-search must use this instead of editBox:GetText(): with
+-- a suggestion showing, GetText() returns the completed candidate ("amani
+-- battle bear" for typed "amani"), and re-searching the completed text
+-- silently narrows the live results to the suggestion.
+function Search:GetTypedQuery()
+    local sf = self:GetSearchFrame()
+    local eb = sf and sf.editBox
+    if not eb then return "" end
+    if eb.HasAutocomplete and eb.HasAutocomplete() and eb.GetTypedText then
+        return eb.GetTypedText() or ""
+    end
+    return eb:GetText() or ""
+end
+
 function Search:OnSearchTextChanged(text, force)
+    -- Central guard for the whole caller class: if the incoming text is
+    -- the autocomplete-COMPLETED editbox text while a suggestion is live,
+    -- search what the user actually typed instead. Callers that pass
+    -- editBox:GetText() during a suggestion would otherwise narrow the
+    -- results to the suggestion. Accepted suggestions are unaffected
+    -- (accepting updates the typed text, so HasAutocomplete is false).
+    if text and text ~= "" then
+        local guardFrame = Search:GetSearchFrame()
+        local guardBox = guardFrame and guardFrame.editBox
+        if guardBox and guardBox.HasAutocomplete and guardBox.HasAutocomplete()
+           and guardBox.GetTypedText and text == (guardBox:GetText() or "") then
+            text = guardBox.GetTypedText() or text
+        end
+    end
     -- Suppress re-renders while SelectResult is clearing text/focus
     if Search:IsSelectingResult() then return end
     -- A pending OnTextChanged timer can fire after focus has shifted

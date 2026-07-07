@@ -83,7 +83,7 @@ function History:NavigateSearchHistory(direction)
     local searchFrame = Search:GetSearchFrame()
     preservingNavRepeat = (searchFrame and searchFrame.IsAltNavRepeatKey
         and searchFrame.IsAltNavRepeatKey()) or false
-    Search:OnSearchTextChanged(editBox:GetText() or "", true)
+    Search:OnSearchTextChanged(Search:GetTypedQuery(), true)
     preservingNavRepeat = false
     return true
 end
