@@ -15,7 +15,7 @@ All notable changes to EasyFind will be documented in this file.
 - **Wowhead links**: Right-click items, spells, mounts, achievements, currencies, and more for a copy-ready Wowhead URL
 - **Account-wide keybinds**: EasyFind's keybinds now apply on every character (including with character-specific key bindings) and are set from EasyFind's options instead of Blizzard's keybinding panel
 - **New fonts**: Inter, Lato, and Poppins available in the options
-- **New tutorial slides**: Send link introduction, plus an updated filter menu slide
+- **Updated tutorial**: New and reworked slides so the tutorial covers everything above
 
 ### Changed
 - "vsync" now finds the Vertical Sync graphics setting
