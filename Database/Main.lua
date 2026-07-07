@@ -1433,7 +1433,11 @@ function Database:PopulateDynamicHousingAsync(done)
     if not housingSearcher then
         local okCreate, searcher = pcall(C_HousingCatalog.CreateCatalogSearcher)
         if not okCreate or not searcher then
-            done(false)
+            -- "cancelled", not a plain false: a plain completion marks the
+            -- provider loaded-and-empty for the whole session, and searcher
+            -- creation can fail early in a fresh session before the housing
+            -- subsystem is up. Cancelled keeps it retryable per search.
+            done(false, "cancelled")
             return
         end
         housingSearcher = searcher
@@ -1476,6 +1480,21 @@ function Database:PopulateDynamicHousingAsync(done)
     if not okRun then
         housingSearchDone = nil
         done(false, "cancelled")
+        return
+    end
+    -- Watchdog: on a fresh session the catalog can stay silent (the
+    -- results callback never fires until the server sends data), which
+    -- would leave this provider's scheduler job "running" forever and
+    -- housing absent all session. Time out as cancelled so the next
+    -- search retries; a late callback is a no-op because the pending
+    -- completion is cleared here first.
+    if Utils.SafeAfter then
+        Utils.SafeAfter(4, function()
+            if housingSearchDone == done then
+                housingSearchDone = nil
+                done(false, "cancelled")
+            end
+        end)
     end
 end
 
