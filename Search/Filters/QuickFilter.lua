@@ -37,6 +37,8 @@ Filters.quickFilterOptions = {
     { key = "bags",           canonical = "bags",            label = _G["BAGS"] or "Bags",            categories = { "Bag" }, aliases = { "b", "bag", "bags" } },
     { key = "bosses",         canonical = "bosses",          label = _G["RAID_BOSSES"] or "Bosses",          categories = { "Boss" }, aliases = { "bo", "boss", "bosses", "encounter", "encounters" } },
     { key = "macros",         canonical = "macros",          label = _G["MACROS"] or "Macros",          categories = { "Macro" }, aliases = { "ma", "macro", "macros" } },
+    { key = "commands",       canonical = "commands",        label = L["FILTER_COMMANDS"],        categories = { "Command" }, aliases = { "cmd", "cmds", "command", "commands", "slash" } },
+    { key = "housing",        canonical = "housing",         label = _G["HOUSING_SETTINGS_LABEL"] or _G["BINDING_HEADER_HOUSING_SYSTEM"] or "Housing", categories = { "Housing" }, aliases = { "ho", "house", "housing", "decor" } },
     { key = "collections",    canonical = "collections",     label = _G["COLLECTIONS"] or "Collections",     categories = { "Mount", "Toy", "Pet", "Outfit", "Heirloom", "Appearance Set", "Appearance" }, aliases = { "co", "col", "collection", "collections" } },
     { key = "appearanceItems", canonical = "appearance-items", label = _G["ITEMS"] or "Items", categories = { "Appearance" }, aliases = { "appearance", "appearances", "appearance-item", "appearance-items", "transmog", "tmog", "xmog" } },
     { key = "appearanceSets", canonical = "appearance-sets", label = L["FILTER_APPEARANCE_SETS"], categories = { "Appearance Set" }, aliases = { "as", "appearance-set", "appearance-sets", "appset", "appsets" } },
