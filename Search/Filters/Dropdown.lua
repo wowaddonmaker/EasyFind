@@ -900,6 +900,22 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             })
         end
 
+        -- Housing: side popup matching Blizzard's catalog Filter menu (Sort By,
+        -- Dyeable/Bonus, Collection, Placeable, and the tag groups), built
+        -- dynamically from C_HousingCatalog and synced with the catalog window.
+        if opt.key == "housing" then
+            Search:AttachHousingOptionsFlyout(row, dropdown, {
+                rowHeight = ROW_HEIGHT,
+                checkSize = CHECK_SIZE,
+                StylePopup = StylePopup,
+                CreateRadioTexture = CreateRadioTexture,
+                AddPopupKeyboardNav = AddPopupKeyboardNav,
+                SetActiveFlyout = SetActiveFlyout,
+                ClearActiveFlyout = ClearActiveFlyout,
+                dropdownGuardFrames = dropdownGuardFrames,
+            })
+        end
+
         InstallMenuRowHighlight(row)
 
         row:SetChecked(true)

@@ -69,6 +69,7 @@ Search/Filters/HeirloomOptions.lua
 Search/Filters/AppearanceSets.lua
 Search/Filters/AppearanceItemOptions.lua
 Search/Filters/GearOptions.lua
+Search/Filters/HousingOptions.lua
 Search/Filters/Dropdown.lua
 Search/Providers/Achievements.lua
 Search/Aliases.lua

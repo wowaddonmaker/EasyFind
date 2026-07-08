@@ -7,14 +7,6 @@ local L = ns.L
 
 local ipairs = Utils.ipairs
 
--- Housing filter changes must repopulate the provider (the searcher's
--- filters are baked in at populate time), not just rerun the query.
-local function RefreshHousingProvider()
-    if ns.Database and ns.Database.RefreshDynamicCategory then
-        ns.Database:RefreshDynamicCategory("housing")
-    end
-end
-
 local ACHIEVEMENT_FILTER_LABELS = {
     all = _G["ALL"] or "All",
     earned = _G["ACHIEVEMENT_FILTER_EARNED"] or _G["EARNED"] or "Earned",
@@ -134,26 +126,7 @@ local UI_FILTER_OPTIONS = {
           { key = "rares",      label = L["FILTER_RARES"],        dbTable = "uiMapFilters" },
       } },
     { key = "housing",     label = _G["HOUSING_SETTINGS_LABEL"] or _G["BINDING_HEADER_HOUSING_SYSTEM"] or "Housing",
-      iconAtlas = "UI-HUD-MicroMenu-Housing-Up",
-      flyoutRadio = {
-          dbKey = "housingCollection",
-          options = {
-              { value = "all",         label = _G["ALL"] or "All" },
-              { value = "collected",   label = _G["HOUSING_CATALOG_FILTERS_COLLECTED"] or "Collected" },
-              { value = "uncollected", label = _G["HOUSING_CATALOG_FILTERS_UNCOLLECTED"] or "Uncollected" },
-          },
-          onChange = function() RefreshHousingProvider() end,
-          checkboxes = {
-              { dbKey = "housingDyeableOnly", label = _G["HOUSING_CATALOG_FILTERS_DYEABLE"] or "Dyeable Only",
-                onChange = RefreshHousingProvider },
-              { dbKey = "housingCollectionBonusOnly", label = _G["HOUSING_CATALOG_FILTERS_FIRST_ACQUISITION"] or "Collection Bonus",
-                onChange = RefreshHousingProvider },
-              { dbKey = "housingIndoors", label = _G["HOUSING_CATALOG_FILTERS_INDOORS"] or "Indoors",
-                onChange = RefreshHousingProvider },
-              { dbKey = "housingOutdoors", label = _G["HOUSING_CATALOG_FILTERS_OUTDOORS"] or "Outdoors",
-                onChange = RefreshHousingProvider },
-          },
-      } },
+      iconAtlas = "UI-HUD-MicroMenu-Housing-Up", hasFlyout = true },
     { key = "options",     label = _G["OPTIONS"] or "Options",     iconTex = 1121272,
       iconCoords = { 0.4454, 0.4720, 0.8749, 0.9010 },
       flyoutSubFilters = {
