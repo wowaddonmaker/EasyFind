@@ -194,8 +194,30 @@ local function ensureJobsRegistered(database)
     return sched
 end
 
-local function RunDynamicProvider(database, provider, onDone, runNow)
+-- The ONE gate for whether a category's data may load: is its filter unchecked
+-- in the filter menu? Checked inside RunDynamicProvider, the single chokepoint
+-- every provider load flows through -- so the login loaders, event-driven
+-- refreshes, and the pre-warm are all covered in one place, not scattered. The
+-- Engine's explicit query path passes bypassGate=true, because it has already
+-- honored the filter, quick-filters, and explicit intent itself before asking.
+local function IsProviderLoadDisabled(provider)
+    local db = EasyFind and EasyFind.db
+    local filters = db and db.uiSearchFilters
+    if not filters then return false end
+    local map = ns.CategoryMap
+    if not (map and map.IsProviderFilterOff) then return false end
+    return map.IsProviderFilterOff(filters, provider.key)
+end
+
+local function RunDynamicProvider(database, provider, onDone, runNow, bypassGate)
     if provider.loaded and not provider.dirty then onDone(false); return end
+    if not bypassGate and IsProviderLoadDisabled(provider) then
+        -- Unchecked category on an automatic load (login warm / event refresh):
+        -- skip it -- no populate, so no entries and no index weight. Left
+        -- unloaded, so an explicit request or a re-check still loads it later.
+        onDone(false)
+        return
+    end
 
     -- Append to waiters before enqueueing so a synchronous run that fires
     -- waiters inside its done() picks up this caller.
@@ -265,7 +287,9 @@ end
 function Database:RequestDynamicProviderLoaded(key, onDone)
     local provider = dynamicProviderByKey[key]
     if not provider then return false end
-    RunDynamicProvider(self, provider, onDone or function() end, false)
+    -- Explicit query request from the Engine, which already honored the filter /
+    -- quick-filters / explicit intent -- so bypass the load-gate.
+    RunDynamicProvider(self, provider, onDone or function() end, false, true)
     return true
 end
 

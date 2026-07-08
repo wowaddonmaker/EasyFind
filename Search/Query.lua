@@ -54,6 +54,12 @@ local function RefreshSearchAfterProviderLoad(anyChanged)
     Utils.SafeAfter(0, function()
         searchRefreshQueued = false
         Search:RefreshActiveSearch()
+        -- A provider finishing may have added the row a shortkey points at;
+        -- rebind any shortkeys skipped because their provider had not loaded
+        -- yet. No-op once every shortkey resolves.
+        if ns.Shortkeys and ns.Shortkeys.ReapplyIfPending then
+            ns.Shortkeys:ReapplyIfPending()
+        end
     end)
 end
 

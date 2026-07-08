@@ -150,22 +150,21 @@ function tests.scoreName_multiWordSettingNameCanSkipMiddleWord()
         .. tostring(score))
 end
 
-function tests.warmSearchHotPath_hydratesCachedAsyncProviders()
-    local statsHydrated = 0
-    local bossesHydrated = 0
-    Database.HydrateCachedStatistics = function()
-        statsHydrated = statsHydrated + 1
-        return true
-    end
-    Database.HydrateCachedBosses = function()
-        bossesHydrated = bossesHydrated + 1
+function tests.warmSearchHotPath_warmsCachedAsyncProvidersThroughGate()
+    -- The pre-warm now routes loot/statistics/bosses through the same load
+    -- chokepoint (EnsureDynamicProviderLoaded -> RunDynamicProvider) that the
+    -- filter gate lives on, instead of calling HydrateCached* directly.
+    local warmed = {}
+    Database.EnsureDynamicProviderLoaded = function(_, key)
+        warmed[key] = (warmed[key] or 0) + 1
         return true
     end
 
     Database:WarmSearchHotPath()
 
-    H.assertEq(statsHydrated, 1, "statistics cache should hydrate during warmup")
-    H.assertEq(bossesHydrated, 1, "boss cache should hydrate during warmup")
+    H.assertEq(warmed["loot"], 1, "loot cache should warm during warmup")
+    H.assertEq(warmed["statistics"], 1, "statistics cache should warm during warmup")
+    H.assertEq(warmed["bosses"], 1, "boss cache should warm during warmup")
 end
 
 local pass, fail, failures = H.runSuite("Database/Search", tests)

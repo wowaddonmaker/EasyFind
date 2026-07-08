@@ -885,20 +885,38 @@ local function StoreResultCache(key, candidates, n)
 end
 
 function Database:WarmSearchHotPath()
-    if self.HydrateCachedLoot then self:HydrateCachedLoot() end
-    if self.HydrateCachedStatistics then self:HydrateCachedStatistics() end
-    if self.HydrateCachedBosses then self:HydrateCachedBosses() end
+    -- Pre-warm the cached async providers (loot/statistics/bosses) THROUGH the
+    -- one chokepoint every other load uses, so a disabled category is skipped
+    -- here by the single gate instead of a special case. Their async populate
+    -- hits the SavedVariables cache, so a warm one is near-instant.
+    if self.EnsureDynamicProviderLoaded then
+        self:EnsureDynamicProviderLoaded("loot")
+        self:EnsureDynamicProviderLoaded("statistics")
+        self:EnsureDynamicProviderLoaded("bosses")
+    end
     -- Load the small name-searched providers (currencies, reputations, etc.)
     -- so they show up without the user typing a category keyword first.
     if self.LoadEagerDynamicProviders then self:LoadEagerDynamicProviders() end
-    -- Start the Blizzard-settings passes now, while nobody is waiting: the
-    -- live layout walk takes seconds at the idle frame budget, which is
-    -- invisible here but was a multi-second stall when the first settings
-    -- query had to trigger it cold.
+    -- Start the Blizzard-settings passes now, while nobody is waiting: the live
+    -- layout walk takes seconds at the idle frame budget, invisible here but a
+    -- multi-second stall if the first settings query triggers it cold. Settings
+    -- are a separate subsystem (not a dynamic provider), so honor their own
+    -- filter keys directly here: skip the walk when both settings buckets are off.
+    local filters = EasyFind and EasyFind.db and EasyFind.db.uiSearchFilters
+    local map = ns.CategoryMap
+    local settingsOff = filters and map and map.IsProviderFilterOff
+        and map.IsProviderFilterOff(filters, "gameOptions")
+        and map.IsProviderFilterOff(filters, "addonOptions")
     local options = ns.BlizzOptionsSearch
-    if options then
-        if options.EnsurePopulatedAsync then options:EnsurePopulatedAsync(nil) end
-        if options.EnsureLivePopulatedAsync then options:EnsureLivePopulatedAsync(nil) end
+    if options and not settingsOff then
+        -- Settings' completion never routed through RefreshSearchAfterProviderLoad
+        -- -- a shortkey pointing at a setting row stayed unbound until the user
+        -- searched settings. Rebind pending shortkeys when the walk finishes.
+        local rebindShortkeys = function()
+            if ns.Shortkeys and ns.Shortkeys.ReapplyIfPending then ns.Shortkeys:ReapplyIfPending() end
+        end
+        if options.EnsurePopulatedAsync then options:EnsurePopulatedAsync(rebindShortkeys) end
+        if options.EnsureLivePopulatedAsync then options:EnsureLivePopulatedAsync(rebindShortkeys) end
     end
 end
 

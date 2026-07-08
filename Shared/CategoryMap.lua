@@ -101,6 +101,25 @@ local function EntryOff(filters, e)
     return false
 end
 
+-- provider key -> its ENTRIES row, so the load-gate can resolve a provider to
+-- its filter (honoring the same parent cascade EntryOff walks).
+local ProviderEntry = {}
+for i = 1, #ENTRIES do
+    ProviderEntry[ENTRIES[i].providerKey or ENTRIES[i].key] = ENTRIES[i]
+end
+
+-- True when the provider's filter (or an ancestor filter) is unchecked in the
+-- filter menu (EasyFind.db.uiSearchFilters). Database/Dynamic.lua's load-gate
+-- reads this so an unchecked category never loads or indexes -- the SAME menu
+-- state that hides its results live also skips its load on reload, instead of
+-- the display filter only hiding results the provider already built and indexed.
+function CategoryMap.IsProviderFilterOff(filters, providerKey)
+    if not filters then return false end
+    local e = ProviderEntry[providerKey]
+    if not e then return false end
+    return EntryOff(filters, e)
+end
+
 -- Fills `out` with the category names whose filters (or ancestors) are
 -- unchecked; returns true when anything was skipped. Explicit query intent
 -- (statistics/bosses trigger words) suppresses the matching entry's skip.

@@ -143,6 +143,45 @@ local function ResolveData(rowKey)
     return ns.Aliases and ns.Aliases:FindEntryByKey(rowKey) or nil
 end
 
+-- Map a shortkey rowKey prefix (Aliases:GetEntryKey format) to the dynamic
+-- provider that owns it, so an unresolved shortkey can force-load JUST that
+-- category's provider at login instead of waiting for the user to search it.
+local KEY_PREFIX_PROVIDER = {
+    ["mount:"]         = "mounts",
+    ["toy:"]           = "toys",
+    ["pet:"]           = "pets",
+    ["outfit:"]        = "outfits",
+    ["appearanceSet:"] = "transmogSets",
+    ["macro:"]         = "macros",
+    ["reputation:"]    = "reputations",
+    ["currency:"]      = "currencies",
+    ["loot:"]          = "loot",
+    ["ui:"]            = "appearanceItems",
+}
+
+local function RequestProviderForRowKey(rowKey)
+    if not (rowKey and ns.Database and ns.Database.RequestDynamicProviderLoaded) then return end
+    for prefix, provider in pairs(KEY_PREFIX_PROVIDER) do
+        if rowKey:sub(1, #prefix) == prefix then
+            -- Respect the load-gate: a shortkey must NOT force-load a category the
+            -- user disabled in the filter menu -- that would defeat disabling it.
+            -- (This matters most for the ambiguous "ui:" prefix, shared by
+            -- settings/spells/appearances, which otherwise drags the whole
+            -- appearanceItems provider in for an unrelated shortkey.) The shortkey
+            -- resolves again when the category is re-enabled.
+            local db = EasyFind and EasyFind.db
+            local filters = db and db.uiSearchFilters
+            local map = ns.CategoryMap
+            if filters and map and map.IsProviderFilterOff
+               and map.IsProviderFilterOff(filters, provider) then
+                return
+            end
+            pcall(ns.Database.RequestDynamicProviderLoaded, ns.Database, provider, function() end)
+            return
+        end
+    end
+end
+
 local function OnShortkeyButtonClick(self)
     -- Shortkey navigation is silently inert in combat: the paths it drives
     -- (panel opens, guides, hiding the search frame) are protected, and a
@@ -167,7 +206,15 @@ local function OnShortkeyButtonClick(self)
         -- (e.g. open-the-journal instead of the default hover-dismiss highlight).
         local shortcuts = ns.ResultShortcuts
         if shortcuts then shortcuts._resultShortcutActivation = true end
-        ns.ResultHandlers:SelectResult(data)
+        -- A setting-toggle row's primary (left-click) action is the inline
+        -- toggle. Every other activation path -- row PostClick and keyboard
+        -- Enter -- runs ActivateSettingResult first; the shortkey must too, or
+        -- it falls through to SelectResult and merely opens the Settings panel
+        -- (the Alt fallthrough) instead of flipping the setting.
+        if not (ns.ResultRows and ns.ResultRows.ActivateSettingResult
+                and ns.ResultRows:ActivateSettingResult(data)) then
+            ns.ResultHandlers:SelectResult(data)
+        end
         if shortcuts then shortcuts._resultShortcutActivation = nil end
     end
 end
@@ -235,6 +282,7 @@ function Shortkeys:ApplyAll()
         list[#list + 1] = { rowKey = rowKey, key = info.key }
     end)
 
+    local hadUnresolved = false
     for i = 1, #list do
         local rowKey = list[i].rowKey
         local bindKey = list[i].key
@@ -255,8 +303,24 @@ function Shortkeys:ApplyAll()
             if btnName then
                 SetOverrideBindingClick(owner, true, bindKey, btnName, "LeftButton")
             end
+        elseif bindKey and bindKey ~= "" then
+            -- Target row not in the search data yet: its lazy provider has not
+            -- loaded. Force-load JUST that category's provider (not the whole
+            -- dataset) so the shortkey binds without the user searching it first;
+            -- ReapplyIfPending (Search/Query.lua) rebinds when it streams in.
+            -- Without this the game keybind wins -- our override was never made.
+            hadUnresolved = true
+            RequestProviderForRowKey(rowKey)
         end
     end
+    self._hasUnresolved = hadUnresolved
+end
+
+-- Re-run ApplyAll only while some shortkey's provider has not loaded yet, so a
+-- provider finishing (async) binds the shortkeys that were skipped, without
+-- churning every binding on each provider load once everything resolves.
+function Shortkeys:ReapplyIfPending()
+    if self._hasUnresolved then self:ApplyAll() end
 end
 
 -- Capture popup: shown from the row's "Add shortkey" menu option.
