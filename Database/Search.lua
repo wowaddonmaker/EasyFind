@@ -1045,7 +1045,7 @@ function Database:SearchUI(query, skipCategories)
     local bossQueryWord = false
     local achQueryWord = false
     local statQueryWord = false
-    local lootStatQueryWord = false
+    local lootStatWordCount = 0
     local lootGearContext = false
     for qi = 1, #queryWords do
         local qw = queryWords[qi]
@@ -1057,7 +1057,7 @@ function Database:SearchUI(query, skipCategories)
             statQueryWord = true
         end
         if IsLootStatSearchWord(qw) then
-            lootStatQueryWord = true
+            lootStatWordCount = lootStatWordCount + 1
         end
         if IsLootSlotSearchWord(qw) then
             lootGearContext = true
@@ -1070,9 +1070,12 @@ function Database:SearchUI(query, skipCategories)
     -- Stat shorthands ("int", "haste") only act on gear queries: without a
     -- slot word ("ring", "shield", ...) they stop matching lootStatKw, so
     -- "arc int" cannot pull in every intellect item whose name starts "arc".
+    -- Two stat words together ("haste vers") can only mean gear, so they open
+    -- the gate without a slot word; a slot word then narrows via conjunction.
     -- _disableLootStatContext restores legacy behavior for the bench A/B.
-    local lootStatActive = lootStatQueryWord
-        and (lootGearContext or Database._disableLootStatContext == true)
+    local lootStatActive = lootStatWordCount > 0
+        and (lootGearContext or lootStatWordCount >= 2
+            or Database._disableLootStatContext == true)
 
     local statisticScopedQuery
     local statisticScopedQueryLen = 0
@@ -1280,7 +1283,13 @@ function Database:SearchUI(query, skipCategories)
                         for ki = 1, #data.lootSlotKw do
                             local kw = data.lootSlotKw[ki]
                             if kw == qw then
-                                bestWord = mmax(bestWord, qwLen <= 3 and 140 or 80)
+                                -- Exact slot/stat keyword match is a strong signal
+                                -- (the user typed the exact slot/stat). It must
+                                -- outrank fuzzy noise (~85), or a plain "legs"
+                                -- query buries real legs loot under 1-edit matches
+                                -- on unrelated entries. Length is irrelevant to an
+                                -- exact match, so drop the old 4+char penalty (80).
+                                bestWord = mmax(bestWord, 140)
                             elseif sfind(kw, qw, 1, true) == 1 then
                                 bestWord = mmax(bestWord, 70)
                             end
@@ -1291,7 +1300,13 @@ function Database:SearchUI(query, skipCategories)
                         for ki = 1, #data.lootStatKw do
                             local kw = data.lootStatKw[ki]
                             if kw == qw then
-                                bestWord = mmax(bestWord, qwLen <= 3 and 140 or 80)
+                                -- Exact slot/stat keyword match is a strong signal
+                                -- (the user typed the exact slot/stat). It must
+                                -- outrank fuzzy noise (~85), or a plain "legs"
+                                -- query buries real legs loot under 1-edit matches
+                                -- on unrelated entries. Length is irrelevant to an
+                                -- exact match, so drop the old 4+char penalty (80).
+                                bestWord = mmax(bestWord, 140)
                             elseif sfind(kw, qw, 1, true) == 1 then
                                 bestWord = mmax(bestWord, 70)
                             end

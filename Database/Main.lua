@@ -909,7 +909,9 @@ function Database:GetEntryLockedReason(entry)
     end
     return nil
 end
-ns.LOOT_ITEM_CACHE_VER = 1
+-- v2: slot keywords rebuilt with the journal filterType fallback; older caches
+-- carry entries with missing/stale lootSlotKw and must re-scan.
+ns.LOOT_ITEM_CACHE_VER = 2
 ns.BOSS_CACHE_VER = 1
 ns.STATISTIC_CACHE_VER = 1
 
@@ -995,6 +997,29 @@ local SLOT_DISPLAY = {
     INVTYPE_HOLDABLE = "Off Hand",
 }
 
+-- The journal's own slot classification (EncounterJournalItemInfo.filterType)
+-- mapped to the INVTYPE keys SLOT_KEYWORDS/SLOT_DISPLAY use. Fallback for loot
+-- whose GetItemInfoInstant equipLoc is empty (tier tokens and other non-equip
+-- items the journal still files under a slot) so they stay findable by slot word.
+local FILTER_TO_INVTYPE = {}
+do
+    local slotFilter = Enum and Enum.ItemSlotFilterType
+    if slotFilter then
+        local byName = {
+            Head = "INVTYPE_HEAD", Neck = "INVTYPE_NECK", Shoulder = "INVTYPE_SHOULDER",
+            Cloak = "INVTYPE_CLOAK", Chest = "INVTYPE_CHEST", Wrist = "INVTYPE_WRIST",
+            Hand = "INVTYPE_HAND", Waist = "INVTYPE_WAIST", Legs = "INVTYPE_LEGS",
+            Feet = "INVTYPE_FEET", MainHand = "INVTYPE_WEAPONMAINHAND",
+            OffHand = "INVTYPE_WEAPONOFFHAND", Finger = "INVTYPE_FINGER",
+            Trinket = "INVTYPE_TRINKET",
+        }
+        for enumName, invType in pairs(byName) do
+            local enumValue = slotFilter[enumName]
+            if enumValue then FILTER_TO_INVTYPE[enumValue] = invType end
+        end
+    end
+end
+
 -- C_EncounterJournal functions may not exist until EncounterJournal_LoadUI(),
 -- so resolve at call time. Prefer the C_ namespace over stale EJ_* globals.
 local function EJ(name)
@@ -1005,6 +1030,7 @@ local lootEntries = {}
 local lootScanGeneration = 0
 local bossScanGeneration = 0
 local lootItemCache = {}
+Database._lootItemCache = lootItemCache
 local lootSpecsScanned = {}
 local lootItemCacheHydrated = false
 local lootSearchDataHydrated = false
@@ -1420,6 +1446,108 @@ function Database:FinishHousingResults(done)
     done(true)
 end
 
+-- Blizzard's live catalog searcher exists only while the housing catalog UI is
+-- loaded (Blizzard_HousingDashboard). It carries the player's current catalog
+-- filter state; EasyFind mirrors it so housing search matches the catalog window.
+local function BlizzardCatalogSearcher()
+    local dash = _G["HousingDashboardFrame"]
+    local content = dash and dash.CatalogContent
+    local s = content and content.catalogSearcher
+    if type(s) ~= "userdata" then return nil end
+    local ok, hasGetter = pcall(function() return s.GetSortType ~= nil end)
+    if ok and hasGetter then return s end
+    return nil
+end
+
+-- Iterate every (groupID, tagID) across the catalog's filter tag groups,
+-- calling fn(groupID, tagID). Shared by the read/apply filter paths.
+local function ForEachHousingFilterTag(fn)
+    if not (C_HousingCatalog and C_HousingCatalog.GetAllFilterTagGroups) then return end
+    local ok, groups = pcall(C_HousingCatalog.GetAllFilterTagGroups)
+    if not ok or type(groups) ~= "table" then return end
+    for gi = 1, #groups do
+        local grp = groups[gi]
+        local gid = grp and grp.groupID
+        local tags = grp and grp.tags
+        if gid and tags then
+            for ti = 1, #tags do
+                local tid = tags[ti] and tags[ti].tagID
+                if tid then fn(gid, tid) end
+            end
+        end
+    end
+end
+
+-- Copy the live catalog filter state (Blizzard UI -> EasyFind DB). Returns false
+-- and leaves EasyFind's stored filters untouched when the catalog UI isn't loaded.
+-- Mirrors the transmog SyncTransmogSetFiltersFromUI read pattern (run on menu
+-- open + before each populate; no polling). Category is deliberately not synced:
+-- it is the catalog's left-sidebar navigation, not part of the Filter menu.
+function Database:SyncHousingFiltersFromBlizzard()
+    local s = BlizzardCatalogSearcher()
+    local db = EasyFind.db
+    if not (s and db) then return false end
+    local function readState(method)
+        local ok, v = pcall(s[method], s)
+        if ok then return v end
+    end
+    local collected = readState("IsCollectedActive")
+    local uncollected = readState("IsUncollectedActive")
+    db.housingCollection = (collected and uncollected and "all")
+        or (uncollected and "uncollected") or "collected"
+    db.housingDyeableOnly = readState("IsCustomizableOnlyActive") and true or false
+    db.housingCollectionBonusOnly = readState("IsFirstAcquisitionBonusOnlyActive") and true or false
+    db.housingIndoors = readState("IsAllowedIndoorsActive") ~= false
+    db.housingOutdoors = readState("IsAllowedOutdoorsActive") ~= false
+    db.housingSortType = readState("GetSortType") or 0
+    local tags = {}
+    db.housingTags = tags
+    ForEachHousingFilterTag(function(gid, tid)
+        local okS, active = pcall(s.GetFilterTagStatus, s, gid, tid)
+        if okS and active then
+            tags[gid] = tags[gid] or {}
+            tags[gid][tid] = true
+        end
+    end)
+    return true
+end
+
+-- Apply EasyFind's stored housing filter state to a searcher (Blizzard's shared
+-- one or our own). Does not RunSearch. Category is left untouched (navigation).
+local function ApplyHousingFilters(searcher, db)
+    if not (searcher and db) then return end
+    local mode = db.housingCollection or "collected"
+    if searcher.SetCollected then searcher:SetCollected(mode ~= "uncollected") end
+    if searcher.SetUncollected then searcher:SetUncollected(mode ~= "collected") end
+    if searcher.SetCustomizableOnly then searcher:SetCustomizableOnly(db.housingDyeableOnly == true) end
+    if searcher.SetFirstAcquisitionBonusOnly then
+        searcher:SetFirstAcquisitionBonusOnly(db.housingCollectionBonusOnly == true)
+    end
+    if searcher.SetAllowedIndoors then searcher:SetAllowedIndoors(db.housingIndoors ~= false) end
+    if searcher.SetAllowedOutdoors then searcher:SetAllowedOutdoors(db.housingOutdoors ~= false) end
+    if searcher.SetSortType then searcher:SetSortType(db.housingSortType or 0) end
+    if searcher.SetFilterTagStatus then
+        local tags = db.housingTags
+        ForEachHousingFilterTag(function(gid, tid)
+            local active = tags and tags[gid] and tags[gid][tid] and true or false
+            pcall(searcher.SetFilterTagStatus, searcher, gid, tid, active)
+        end)
+    end
+end
+
+-- EasyFind -> Blizzard: push EasyFind's stored filter state onto the live catalog
+-- searcher and re-run it, so the catalog window reflects EasyFind's filters.
+function Database:WriteHousingFiltersToBlizzard()
+    local s = BlizzardCatalogSearcher()
+    local db = EasyFind.db
+    if not (s and db) then return false end
+    pcall(function()
+        ApplyHousingFilters(s, db)
+        if s.RunSearch then s:RunSearch() end
+    end)
+    return true
+end
+
 function Database:PopulateDynamicHousingAsync(done)
     if not (C_HousingCatalog and C_HousingCatalog.CreateCatalogSearcher) then
         done(false)
@@ -1455,25 +1583,13 @@ function Database:PopulateDynamicHousingAsync(done)
         end)
     end
     housingSearchDone = done
+    -- Mirror the live catalog filter state (Blizzard UI -> EasyFind DB) so our
+    -- housing results match what the player has filtered in the catalog window.
+    self:SyncHousingFiltersFromBlizzard()
     local okRun = pcall(function()
         local searcher = housingSearcher
-        local db = EasyFind.db
-        local mode = db and db.housingCollection or "collected"
         searcher:SetSearchText("")
-        if searcher.SetCollected then searcher:SetCollected(mode ~= "uncollected") end
-        if searcher.SetUncollected then searcher:SetUncollected(mode ~= "collected") end
-        if searcher.SetCustomizableOnly then
-            searcher:SetCustomizableOnly((db and db.housingDyeableOnly == true) or false)
-        end
-        if searcher.SetFirstAcquisitionBonusOnly then
-            searcher:SetFirstAcquisitionBonusOnly((db and db.housingCollectionBonusOnly == true) or false)
-        end
-        if searcher.SetAllowedIndoors then
-            searcher:SetAllowedIndoors(not db or db.housingIndoors ~= false)
-        end
-        if searcher.SetAllowedOutdoors then
-            searcher:SetAllowedOutdoors(not db or db.housingOutdoors ~= false)
-        end
+        ApplyHousingFilters(searcher, EasyFind.db)
         if searcher.SetBaseVariantOnly then searcher:SetBaseVariantOnly(true) end
         searcher:RunSearch()
     end)
@@ -2415,6 +2531,9 @@ local function CacheLootInfo(database, lootInfo, inst, encName, encID, diff, sp,
     local itemName = lootInfo.name
     if not itemName or itemName == "" then return end
     local _, _, _, equipLoc, instIcon = GetItemInfoInstantFn(itemID)
+    if not (equipLoc and SLOT_KEYWORDS[equipLoc]) and lootInfo.filterType then
+        equipLoc = FILTER_TO_INVTYPE[lootInfo.filterType] or equipLoc
+    end
     local slotKws = {}
     local slotKwVals = equipLoc and SLOT_KEYWORDS[equipLoc]
     if slotKwVals then
