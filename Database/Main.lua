@@ -1484,8 +1484,13 @@ end
 -- open + before each populate; no polling). Category is deliberately not synced:
 -- it is the catalog's left-sidebar navigation, not part of the Filter menu.
 function Database:SyncHousingFiltersFromBlizzard()
-    local s = BlizzardCatalogSearcher()
     local db = EasyFind.db
+    if db and db.housingFiltersPendingPush then
+        -- An unpushed menu change is the newest intent; push it instead of
+        -- reading Blizzard's stale state back over it.
+        return self:WriteHousingFiltersToBlizzard()
+    end
+    local s = BlizzardCatalogSearcher()
     if not (s and db) then return false end
     local function readState(method)
         local ok, v = pcall(s[method], s)
@@ -1502,11 +1507,15 @@ function Database:SyncHousingFiltersFromBlizzard()
     db.housingSortType = readState("GetSortType") or 0
     local tags = {}
     db.housingTags = tags
+    -- Record every group explicitly: a present-but-empty group table means
+    -- "all tags off" (real user state), while a missing group means "no
+    -- stored preference" and the write path leaves the searcher's default.
     ForEachHousingFilterTag(function(gid, tid)
+        local grpState = tags[gid]
+        if not grpState then grpState = {}; tags[gid] = grpState end
         local okS, active = pcall(s.GetFilterTagStatus, s, gid, tid)
         if okS and active then
-            tags[gid] = tags[gid] or {}
-            tags[gid][tid] = true
+            grpState[tid] = true
         end
     end)
     return true
@@ -1529,22 +1538,65 @@ local function ApplyHousingFilters(searcher, db)
     if searcher.SetFilterTagStatus then
         local tags = db.housingTags
         ForEachHousingFilterTag(function(gid, tid)
-            local active = tags and tags[gid] and tags[gid][tid] and true or false
-            pcall(searcher.SetFilterTagStatus, searcher, gid, tid, active)
+            -- Missing group = no stored preference; leave the searcher's
+            -- default (all tags on) instead of forcing the group off.
+            local grpState = tags and tags[gid]
+            if grpState then
+                pcall(searcher.SetFilterTagStatus, searcher, gid, tid, grpState[tid] == true)
+            end
         end)
     end
+end
+
+-- While a menu change could not be pushed (no catalog UI loaded), watch for a
+-- searcher appearing and push then. Armed only while a push is pending, so it
+-- costs nothing in normal play.
+local housingPushArmed = false
+local function ArmHousingPendingPush()
+    if housingPushArmed then return end
+    housingPushArmed = true
+    local function tick()
+        local db = EasyFind and EasyFind.db
+        if not (db and db.housingFiltersPendingPush) then
+            housingPushArmed = false
+            return
+        end
+        if BlizzardCatalogSearcher() then
+            housingPushArmed = false
+            Database:WriteHousingFiltersToBlizzard()
+            return
+        end
+        Utils.SafeAfter(1, tick)
+    end
+    Utils.SafeAfter(1, tick)
+end
+
+-- Cross-session arming: a pending push saved last session must survive the
+-- user opening the catalog before ever touching EasyFind this session.
+function Database:ArmHousingPendingPushIfNeeded()
+    local db = EasyFind and EasyFind.db
+    if db and db.housingFiltersPendingPush then ArmHousingPendingPush() end
 end
 
 -- EasyFind -> Blizzard: push EasyFind's stored filter state onto the live catalog
 -- searcher and re-run it, so the catalog window reflects EasyFind's filters.
 function Database:WriteHousingFiltersToBlizzard()
-    local s = BlizzardCatalogSearcher()
     local db = EasyFind.db
-    if not (s and db) then return false end
+    if not db then return false end
+    local s = BlizzardCatalogSearcher()
+    if not s then
+        -- No live catalog UI: a silently dropped push plus the next read-back
+        -- erases the user's change (lost update -- menu changes made with the
+        -- catalog closed REVERTED). Persist the intent; push when one exists.
+        db.housingFiltersPendingPush = true
+        ArmHousingPendingPush()
+        return false
+    end
     pcall(function()
         ApplyHousingFilters(s, db)
         if s.RunSearch then s:RunSearch() end
     end)
+    db.housingFiltersPendingPush = false
     return true
 end
 

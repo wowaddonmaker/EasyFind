@@ -140,6 +140,8 @@ local DB_DEFAULTS = {
     housingOutdoors = true,
     housingSortType = 0,
     housingTags = {},
+    housingTagGroupsCache = {},
+    housingFiltersPendingPush = false,
     uiSearchFilters = {
         achievements   = true,
         statistics     = false,
@@ -801,6 +803,9 @@ local function OnPlayerLogin()
         end
     end
     InstallClassFilterHooks()
+    if ns.Database and ns.Database.ArmHousingPendingPushIfNeeded then
+        pcall(ns.Database.ArmHousingPendingPushIfNeeded, ns.Database)
+    end
 
     -- Keep PLAYER_LOGIN light. Search data is loaded by query intent.
 

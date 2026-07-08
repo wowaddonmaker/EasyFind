@@ -11,24 +11,50 @@ local C_HousingCatalog = C_HousingCatalog
 local CHEVRON_ATLAS = "common-icon-forwardarrow"
 
 -- Sort By options. Values from Enum.HousingCatalogSortType (DateAdded, then
--- Alphabetical); labels prefer a Blizzard global, English only as fallback.
+-- Alphabetical); labels from crawl-verified globals (the chest sort strings
+-- carry the same "Date Added"/"Alphabetical" text the catalog menu shows).
 local function SortOptions()
     local e = _G.Enum and _G.Enum.HousingCatalogSortType
     return {
         { value = (e and e.DateAdded) or 0,
-          label = _G["HOUSING_CATALOG_SORT_DATE_ADDED"] or "Date Added" },
+          label = _G["HOUSING_CHEST_SORT_TYPE_DATE_ADDED"] or "Date Added" },
         { value = (e and e.Alphabetical) or 1,
-          label = _G["HOUSING_CATALOG_SORT_ALPHABETICAL"] or _G["NAME"] or "Alphabetical" },
+          label = _G["HOUSING_CHEST_SORT_TYPE_ALPHABETICAL"] or "Alphabetical" },
     }
 end
 
 -- The catalog's live filter tag groups: { {groupID, groupName, tags={{tagID,tagName}}} }.
--- Empty until the catalog subsystem streams in; callers must tolerate that.
+-- Housing is the only filter whose menu STRUCTURE (not just values) comes from
+-- streamed data, so the last-seen structure persists in the DB: later sessions
+-- build the complete menu instantly, live data refreshes the cache whenever it
+-- is present, and only the first-ever session waits for the stream.
 local function FilterTagGroups()
-    if not (C_HousingCatalog and C_HousingCatalog.GetAllFilterTagGroups) then return {} end
-    local ok, groups = pcall(C_HousingCatalog.GetAllFilterTagGroups)
-    if ok and type(groups) == "table" then return groups end
-    return {}
+    local db = EasyFind and EasyFind.db
+    if C_HousingCatalog and C_HousingCatalog.GetAllFilterTagGroups then
+        local ok, groups = pcall(C_HousingCatalog.GetAllFilterTagGroups)
+        if ok and type(groups) == "table" and #groups > 0 then
+            if db then
+                local cached = {}
+                for gi = 1, #groups do
+                    local grp = groups[gi]
+                    if grp.groupID then
+                        local tags = {}
+                        local grpTags = grp.tags or {}
+                        for ti = 1, #grpTags do
+                            local tag = grpTags[ti]
+                            if tag.tagID then
+                                tags[#tags + 1] = { tagID = tag.tagID, tagName = tag.tagName }
+                            end
+                        end
+                        cached[#cached + 1] = { groupID = grp.groupID, groupName = grp.groupName, tags = tags }
+                    end
+                end
+                db.housingTagGroupsCache = cached
+            end
+            return groups
+        end
+    end
+    return (db and db.housingTagGroupsCache) or {}
 end
 
 local function ApplyHousingChange()
@@ -186,10 +212,32 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
 
     -- Checkbox submenu whose rows come from defsFn() at show-time (Placeable is
     -- static; the tag groups are dynamic). isChecked/setChecked operate per def.
-    local function CheckSubmenu(title, defsFn)
+    -- actionsFn (optional) returns plain action rows rendered above the
+    -- checkboxes -- the tag groups use it for Blizzard's Check All/Uncheck All.
+    local function CheckSubmenu(title, defsFn, actionsFn)
         local opener = OpenerRow(title)
         local popup = NewSubPopup()
         local pool = {}
+        local actionPool = {}
+        local function GetActionRow(i)
+            local r = actionPool[i]
+            if not r then
+                r = CreateFrame("Button", nil, popup)
+                r:SetSize(150, ROW_H)
+                r:SetHitRectInsets(0, 0, 0, 0)
+                local fs = r:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+                fs:SetPoint("LEFT", 6, 0)
+                r._label = fs
+                Utils.InstallMenuRowHighlight(r)
+                r:SetScript("OnClick", function(self)
+                    if self._action then self._action.run() end
+                    ApplyHousingChange()
+                    if popup._efSync then popup._efSync() end
+                end)
+                actionPool[i] = r
+            end
+            return r
+        end
         local function GetRow(i)
             local r = pool[i]
             if not r then
@@ -210,8 +258,22 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
             return r
         end
         local function layout()
+            local actions = actionsFn and actionsFn() or nil
             local defs = defsFn() or {}
             local y, contentW = -PAD, 0
+            local nActions = actions and #actions or 0
+            for i = 1, nActions do
+                local r = GetActionRow(i)
+                r._action = actions[i]
+                r._label:SetText(actions[i].label)
+                r:ClearAllPoints()
+                r:SetPoint("TOPLEFT", PAD, y)
+                r:Show()
+                y = y - ROW_H
+                local w = Utils.FlyoutRowContentWidth(r, 8)
+                if w > contentW then contentW = w end
+            end
+            for i = nActions + 1, #actionPool do actionPool[i]:Hide() end
             for i = 1, #defs do
                 local def = defs[i]
                 local r = GetRow(i)
@@ -227,12 +289,14 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
             end
             for i = #defs + 1, #pool do pool[i]:Hide() end
             local w = Utils.FlyoutWidthFor(contentW, PAD)
+            for i = 1, nActions do actionPool[i]:SetWidth(w - PAD * 2) end
             for i = 1, #defs do pool[i]:SetWidth(w - PAD * 2) end
-            popup:SetSize(w, (#defs > 0) and (-y + PAD) or (ROW_H + PAD * 2))
+            popup:SetSize(w, (#defs + nActions > 0) and (-y + PAD) or (ROW_H + PAD * 2))
         end
         WireSubmenu(opener, popup, layout)
         AddPopupKeyboardNav(popup, function()
             local rows = {}
+            for i = 1, #actionPool do if actionPool[i]:IsShown() then rows[#rows + 1] = actionPool[i] end end
             for i = 1, #pool do if pool[i]:IsShown() then rows[#rows + 1] = pool[i] end end
             return rows
         end, root)
@@ -241,7 +305,7 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
 
     -- ---- Build the fixed controls (Blizzard's order) ----
     local sortOpener = RadioSubmenu(
-        _G["HOUSING_CATALOG_SORT_BY"] or "Sort By", SortOptions(),
+        _G["HOUSING_CATALOG_SORT_LABEL"] or "Sort By", SortOptions(),
         function() return EasyFind.db.housingSortType or 0 end,
         function(v) EasyFind.db.housingSortType = v end)
 
@@ -251,9 +315,9 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
         _G["HOUSING_CATALOG_FILTERS_FIRST_ACQUISITION"] or "Collection Bonus")
 
     local collectionOpener = RadioSubmenu(
-        _G["HOUSING_CATALOG_FILTERS_COLLECTION"] or _G["COLLECTIONS"] or "Collection",
+        _G["HOUSING_CATALOG_FILTERS_COLLECTION_LABEL"] or "Collection",
         {
-            { value = "all",         label = _G["ALL"] or "All" },
+            { value = "all",         label = _G["HOUSING_CATALOG_FILTERS_COLLECTION_BOTH"] or _G["ALL"] or "All" },
             { value = "collected",   label = _G["HOUSING_CATALOG_FILTERS_COLLECTED"] or "Collected" },
             { value = "uncollected", label = _G["HOUSING_CATALOG_FILTERS_UNCOLLECTED"] or "Uncollected" },
         },
@@ -261,7 +325,7 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
         function(v) EasyFind.db.housingCollection = v end)
 
     local placeableOpener = CheckSubmenu(
-        _G["HOUSING_CATALOG_FILTERS_PLACEABLE"] or "Placeable",
+        _G["HOUSING_CATALOG_FILTERS_LOCATION_LABEL"] or "Placeable",
         function()
             return {
                 { label = _G["HOUSING_CATALOG_FILTERS_INDOORS"] or "Indoors",
@@ -276,6 +340,25 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
     -- ---- Tag-group submenus (Theme/Expansion/Style/Culture/Size), pooled so the
     -- set adapts to whatever GetAllFilterTagGroups returns once the catalog loads.
     local tagOpenerPool = {}
+    -- Set every tag in a group on, or clear the group entirely (Blizzard's
+    -- Check All / Uncheck All rows; the write path pushes per-tag state).
+    local function SetAllGroupTags(gid, active)
+        local t = EasyFind.db.housingTags
+        if not t then t = {}; EasyFind.db.housingTags = t end
+        -- Present-but-empty group table = "all tags off"; a MISSING group would
+        -- read as "no preference" and the write path would leave the searcher's
+        -- default (all on), silently undoing Uncheck All.
+        local grpTags = {}
+        t[gid] = grpTags
+        if active then
+            for _, grp in ipairs(FilterTagGroups()) do
+                if grp.groupID == gid and grp.tags then
+                    for _, tag in ipairs(grp.tags) do grpTags[tag.tagID] = true end
+                    break
+                end
+            end
+        end
+    end
     local function GetTagOpener(i, groupID, groupName)
         local o = tagOpenerPool[i]
         if not o then
@@ -305,6 +388,15 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
                     end
                 end
                 return defs
+            end, function()
+                local gid = o._groupID
+                if not gid then return nil end
+                return {
+                    { label = _G["CHECK_ALL"] or "Check All",
+                      run = function() SetAllGroupTags(gid, true) end },
+                    { label = _G["UNCHECK_ALL"] or "Uncheck All",
+                      run = function() SetAllGroupTags(gid, false) end },
+                }
             end)
             tagOpenerPool[i] = o
         end
@@ -315,6 +407,18 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
 
     -- ---- Root layout + sync ----
     local fixedOpeners = { sortOpener, dyeableRow, bonusRow, collectionOpener, placeableOpener }
+
+    -- Blizzard's menu splits Sort By, the fixed filters, and the tag groups
+    -- with thin separator lines; mirror both.
+    local SEP_H = 8
+    local function NewSeparator()
+        local sep = root:CreateTexture(nil, "ARTWORK")
+        sep:SetColorTexture(1, 1, 1, 0.12)
+        sep:SetHeight(1)
+        return sep
+    end
+    local sortSep = NewSeparator()
+    local tagSep = NewSeparator()
 
     local function LayoutRoot()
         local groups = FilterTagGroups()
@@ -329,11 +433,25 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
             local w = Utils.FlyoutRowContentWidth(r, CHECK + 4, nil, CHECK - 2)
             if w > contentW then contentW = w end
         end
+        local function placeSep(sep)
+            sep:ClearAllPoints()
+            sep:SetPoint("LEFT", root, "LEFT", PAD, 0)
+            sep:SetPoint("RIGHT", root, "RIGHT", -PAD, 0)
+            sep:SetPoint("TOP", root, "TOP", 0, y - SEP_H * 0.5)
+            sep:Show()
+            y = y - SEP_H
+        end
         place(sortOpener)
+        placeSep(sortSep)
         place(dyeableRow)
         place(bonusRow)
         place(collectionOpener)
         place(placeableOpener)
+        if #groups > 0 then
+            placeSep(tagSep)
+        else
+            tagSep:Hide()
+        end
         for gi = 1, #groups do
             local grp = groups[gi]
             if grp.groupID then place(GetTagOpener(gi, grp.groupID, grp.groupName or ("Group " .. gi))) end
@@ -364,6 +482,35 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
                 ns.Database:SyncHousingFiltersFromBlizzard()
             end
             SyncAll()
+            -- Tag groups (Theme/Expansion/Style/...) stay empty until the
+            -- catalog primes this session. Kick the housing provider (only
+            -- while the housing filter is on, preserving the load gate), then
+            -- poll briefly while the menu is open: the groups stream in on
+            -- their own schedule (no dedicated event, and the provider can
+            -- finish before they arrive), so provider-done is the wrong
+            -- signal to rebuild on -- the first open showed a groupless menu.
+            if #FilterTagGroups() == 0 and EasyFind.db.uiSearchFilters.housing ~= false
+               and ns.Database and ns.Database.RequestDynamicProviderLoaded then
+                ns.Database:RequestDynamicProviderLoaded("housing", nil)
+                if not root._efGroupPoll then
+                    root._efGroupPoll = true
+                    local tries = 0
+                    local function waitForGroups()
+                        if not root:IsShown() or #FilterTagGroups() > 0 then
+                            root._efGroupPoll = nil
+                            if root:IsShown() then SyncAll() end
+                            return
+                        end
+                        tries = tries + 1
+                        if tries < 20 then
+                            Utils.SafeAfter(0.3, waitForGroups)
+                        else
+                            root._efGroupPoll = nil
+                        end
+                    end
+                    Utils.SafeAfter(0.3, waitForGroups)
+                end
+            end
             root:SetScale(EasyFind.db.uiSearchScale or 1.0)
             Utils.OpenFlyoutBeside(root, row, 4)
             root:Show()
