@@ -94,7 +94,7 @@ local UI_FILTER_OPTIONS = {
     -- in-game loot Search. hasFlyout flags the row to draw the chevron --
     -- the actual flyout (difficulty, spec, iLvl) is built inline below
     -- via gearOptionsPopup, not via flyoutSubFilters.
-    { key = "loot",        label = L["FILTER_GEAR"],        iconTex = 522972,
+    { key = "loot",        label = _G["LOOT"] or "Loot",        iconTex = 522972,
       iconCoords = { 0.730, 0.824, 0.618, 0.660 }, hasFlyout = true },
     { key = "map",         label = L["FILTER_MAP_SEARCH"],  iconTex = 1121272,
       iconCoords = { 0.4287, 0.4645, 0.2580, 0.2932 },
