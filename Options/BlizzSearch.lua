@@ -852,20 +852,16 @@ BlizzOptionsSearch.GetFormatterForVariable = GetFormatterForVariable
 local pendingApplySettings = {}
 
 local function PendingCount()
-    -- Prune entries whose pendingValue cleared from under us when the
-    -- user Applied / Cancelled in Blizzard's panel directly. A staged
-    -- value identical to the live one is not a change (Blizzard stages
-    -- Apply-flagged settings even when nothing was touched).
+    -- Count settings the user staged through EasyFind that are still pending;
+    -- prune any whose pendingValue cleared (Applied/Cancelled in Blizzard's panel).
+    -- Do NOT compare GetValue()==pendingValue: for Apply-flagged settings GetValue()
+    -- returns the STAGED value, so that test always matched and zeroed the count.
     local n = 0
     for setting in pairs(pendingApplySettings) do
-        local pending = setting.pendingValue
-        if pending == nil then
+        if setting.pendingValue == nil then
             pendingApplySettings[setting] = nil
         else
-            local vok, current = pcall(setting.GetValue, setting)
-            if not (vok and current == pending) then
-                n = n + 1
-            end
+            n = n + 1
         end
     end
     return n
@@ -889,32 +885,6 @@ function BlizzOptionsSearch:NotePendingApply(variable)
     elseif pendingApplySettings[settObj] then
         pendingApplySettings[settObj] = nil
     end
-end
-
--- Blizzard reuses StaticPopup1..4 slots; walk them to find one matching name.
-local function FindStaticPopupSlot(popupName)
-    for i = 1, 4 do
-        local p = _G["StaticPopup" .. i]
-        if p and p:IsShown() and p.which == popupName then return p end
-    end
-    return nil
-end
-
-local function LiftPopupAndRefresh(popup)
-    if not popup or popup._easyFindStrataLifted then return end
-    popup._easyFindStrataLifted = true
-    popup._easyFindOriginalStrata = popup:GetFrameStrata()
-    popup:SetFrameStrata("TOOLTIP")
-    popup:HookScript("OnHide", function(self)
-        if self._easyFindStrataLifted then
-            if self._easyFindOriginalStrata then
-                self:SetFrameStrata(self._easyFindOriginalStrata)
-            end
-            self._easyFindStrataLifted = nil
-            self._easyFindOriginalStrata = nil
-        end
-        if ns.Search and ns.Search.RefreshResults then ns.Search:RefreshResults() end
-    end)
 end
 
 function BlizzOptionsSearch:ApplyPendingChanges()
@@ -945,13 +915,11 @@ function BlizzOptionsSearch:HasPendingChange(variable)
     if not variable or not Settings or not Settings.GetSetting then return false end
     local sok, settObj = pcall(Settings.GetSetting, variable)
     if not sok or not settObj then return false end
-    local pending = settObj.pendingValue
-    if pending == nil then return false end
-    -- Blizzard stages Apply-flagged settings even when untouched; a staged
-    -- value equal to the live one must not grow the Apply/Reset row.
-    local vok, current = pcall(settObj.GetValue, settObj)
-    if vok and current == pending then return false end
-    return true
+    -- pendingValue is non-nil exactly while an Apply-flagged setting is staged.
+    -- Do NOT also test GetValue()==pendingValue: GetValue() returns the staged
+    -- value for these settings, so that test was always true and hid the row --
+    -- the regression that stopped the inline Apply/Reset buttons from appearing.
+    return settObj.pendingValue ~= nil
 end
 
 -- PROXY_ANTIALIASING's SetValue zeros the OTHER mode's CVar and
@@ -992,14 +960,6 @@ local function CommitStagedDependents(parentVar)
     end
 end
 
-local function HasFlag(settObj, flag)
-    if not settObj.HasCommitFlag or not Settings or not Settings.CommitFlag or not flag then
-        return false
-    end
-    local ok, has = pcall(settObj.HasCommitFlag, settObj, flag)
-    return ok and has
-end
-
 function BlizzOptionsSearch:ApplyVariable(variable)
     if not variable or not Settings or not Settings.GetSetting then return end
     local sok, settObj = pcall(Settings.GetSetting, variable)
@@ -1008,35 +968,10 @@ function BlizzOptionsSearch:ApplyVariable(variable)
     local depsFn = PROXY_DEPENDENT_DEFAULTS[variable]
     if depsFn then pcall(depsFn, pending) end
 
-    -- Revertable settings (monitor, resolution, display mode) need
-    -- Blizzard's CommitSettings pipeline so GAME_SETTINGS_TIMED_CONFIRMATION
-    -- fires; without it the user has no escape if the change breaks the
-    -- screen. SetValue(immediate=true) skips that popup.
-    local revertable = HasFlag(settObj, Settings.CommitFlag.Revertable)
-    if revertable and SettingsPanel and SettingsPanel.CommitSettings
-       and SettingsPanel.modified then
-        SettingsPanel.modified[settObj] = settObj
-        local deps = PROXY_DEPENDENTS[variable]
-        if deps then
-            for i = 1, #deps do
-                local _, depObj = pcall(Settings.GetSetting, deps[i])
-                if depObj and depObj.pendingValue ~= nil then
-                    SettingsPanel.modified[depObj] = depObj
-                end
-            end
-        end
-        pcall(SettingsPanel.CommitSettings, SettingsPanel, false)
-        LiftPopupAndRefresh(FindStaticPopupSlot("GAME_SETTINGS_TIMED_CONFIRMATION"))
-        pendingApplySettings[settObj] = nil
-        if deps then
-            for i = 1, #deps do
-                local _, depObj = pcall(Settings.GetSetting, deps[i])
-                if depObj then pendingApplySettings[depObj] = nil end
-            end
-        end
-        return
-    end
-
+    -- Never write SettingsPanel.modified or call SettingsPanel:CommitSettings from
+    -- here: driving Blizzard's shared commit pipeline from addon (insecure) code
+    -- taints it, silently no-ops the write, and poisons Blizzard's own Apply button
+    -- until /reload. Apply through the setting object directly instead.
     if settObj.SetValue then
         pcall(settObj.SetValue, settObj, pending, true)
     end
