@@ -25,6 +25,12 @@ local SIMPLE_FIELDS = {
     -- Commands: strings only; nativeRun (a function) cannot persist and is
     -- re-resolved by name on selection.
     "searchCommand", "searchCommandDesc", "slashCommand", "isNativeCommand",
+    -- Settings rows: the primary click action (inline checkbox toggle via
+    -- ActivateSettingResult) is driven by these; without them a restored row
+    -- can only fall through to opening the Settings panel. settingOptions is
+    -- deliberately absent -- it re-resolves via GetOptionsForVariable.
+    "settingVariable", "settingType", "cbVariable", "sliderVariable",
+    "dropdownVariable", "settingMin", "settingMax", "quickKeybindActivate",
 }
 
 local TABLE_FIELDS = {
@@ -62,6 +68,9 @@ local function CleanForStorage(data)
     end
     return clean
 end
+-- Shortkeys stores the same snapshot with each bind so a shortkey's action
+-- survives without its provider loaded (see Shared/Shortkeys.lua).
+UIPins.CleanForStorage = CleanForStorage
 
 function UIPins.IsCollection(data)
     return data and (data.mountID or data.toyItemID or data.petID or data.outfitID

@@ -116,12 +116,31 @@ function Shortkeys:ClearAll()
     self:ApplyAll()
 end
 
+-- A shortkey stores its target's action snapshot (the same field set pins
+-- persist) so binds work every session without loading the owning provider.
+-- Live rows still win at bind/click time, keeping drifting fields (macroIndex)
+-- fresh whenever the provider happens to be loaded.
+--
+-- SNAPSHOT_VER stamps each capture. Bump it whenever the persisted field set
+-- grows: a stamped-older snapshot still binds (the key is never dead) but
+-- ApplyAll pulls its owner in once so the entry re-captures with the current
+-- fields. Without this, a snapshot missing a newer action field (e.g. a
+-- settings row without settingVariable) would misbehave forever.
+local SNAPSHOT_VER = 2
+local function SnapshotData(data)
+    local clean = ns.UIPins and ns.UIPins.CleanForStorage
+    if data and clean then return clean(data) end
+    return nil
+end
+
 -- Bind bindKey (e.g. "CTRL-1") to a row identified by its stable key. Reassigns
 -- the key off any other row first, then routes the row to the right store. Used
--- directly by the options table, where live row data may not be present.
-function Shortkeys:SetByKey(rowKey, name, charSpecific, bindKey)
+-- directly by the options table, where live row data may not be present; an
+-- existing snapshot survives a rebind that has none.
+function Shortkeys:SetByKey(rowKey, name, charSpecific, bindKey, data)
     if not (EasyFind and EasyFind.db and rowKey) then return false end
     if not bindKey or bindKey == "" then return false end
+    local prev = self:Get(rowKey)
     self:RemoveBind(bindKey)
     local acct = AccountStore()
     if acct then acct[rowKey] = nil end
@@ -129,7 +148,12 @@ function Shortkeys:SetByKey(rowKey, name, charSpecific, bindKey)
     if pc then pc[rowKey] = nil end
     local store = charSpecific and CharStore() or AccountStore()
     if not store then return false end
-    store[rowKey] = { key = bindKey, name = name, charSpecific = charSpecific or nil }
+    local snap = SnapshotData(data)
+    store[rowKey] = {
+        key = bindKey, name = name, charSpecific = charSpecific or nil,
+        data = snap or (prev and prev.data) or nil,
+        dataVer = snap and SNAPSHOT_VER or (prev and prev.dataVer) or nil,
+    }
     self:ApplyAll()
     return true
 end
@@ -144,8 +168,7 @@ local function ResolveData(rowKey)
 end
 
 -- Map a shortkey rowKey prefix (Aliases:GetEntryKey format) to the dynamic
--- provider that owns it, so an unresolved shortkey can force-load JUST that
--- category's provider at login instead of waiting for the user to search it.
+-- provider that owns it, for the one-time legacy heal below.
 local KEY_PREFIX_PROVIDER = {
     ["mount:"]         = "mounts",
     ["toy:"]           = "toys",
@@ -156,27 +179,36 @@ local KEY_PREFIX_PROVIDER = {
     ["reputation:"]    = "reputations",
     ["currency:"]      = "currencies",
     ["loot:"]          = "loot",
-    ["ui:"]            = "appearanceItems",
 }
 
+local function RebindAfterPopulate()
+    if Shortkeys.ReapplyIfPending then Shortkeys:ReapplyIfPending() end
+end
+
+-- One-time legacy heal: shortkeys saved before they carried an action snapshot
+-- can only bind off a live row, so force-load the owning provider(s) even when
+-- the category is filtered off. The next ApplyAll snapshots the resolved row,
+-- after which the shortkey binds from its snapshot and this path never runs
+-- again for it -- the load gate stays honest from then on.
 local function RequestProviderForRowKey(rowKey)
     if not (rowKey and ns.Database and ns.Database.RequestDynamicProviderLoaded) then return end
+    if rowKey:sub(1, 3) == "ui:" then
+        -- Ambiguous legacy prefix: the settings walk, abilities, appearance
+        -- items, and static tree rows all mint it. Kick every possible owner.
+        pcall(ns.Database.RequestDynamicProviderLoaded, ns.Database, "abilities", nil)
+        pcall(ns.Database.RequestDynamicProviderLoaded, ns.Database, "appearanceItems", nil)
+        local options = ns.BlizzOptionsSearch
+        if options and options.EnsurePopulatedAsync then
+            options:EnsurePopulatedAsync(RebindAfterPopulate)
+        end
+        if options and options.EnsureLivePopulatedAsync then
+            options:EnsureLivePopulatedAsync(RebindAfterPopulate)
+        end
+        return
+    end
     for prefix, provider in pairs(KEY_PREFIX_PROVIDER) do
         if rowKey:sub(1, #prefix) == prefix then
-            -- Respect the load-gate: a shortkey must NOT force-load a category the
-            -- user disabled in the filter menu -- that would defeat disabling it.
-            -- (This matters most for the ambiguous "ui:" prefix, shared by
-            -- settings/spells/appearances, which otherwise drags the whole
-            -- appearanceItems provider in for an unrelated shortkey.) The shortkey
-            -- resolves again when the category is re-enabled.
-            local db = EasyFind and EasyFind.db
-            local filters = db and db.uiSearchFilters
-            local map = ns.CategoryMap
-            if filters and map and map.IsProviderFilterOff
-               and map.IsProviderFilterOff(filters, provider) then
-                return
-            end
-            pcall(ns.Database.RequestDynamicProviderLoaded, ns.Database, provider, function() end)
+            pcall(ns.Database.RequestDynamicProviderLoaded, ns.Database, provider, nil)
             return
         end
     end
@@ -194,6 +226,10 @@ local function OnShortkeyButtonClick(self)
     -- resolved live so they never go stale.
     local rowKey = self._rowKey
     local data = rowKey and ResolveData(rowKey)
+    if not data and rowKey then
+        local info = Shortkeys:Get(rowKey)
+        data = info and info.data
+    end
     if not data then return end
     if ns.ResultIcons and ns.ResultIcons:IsSecureActionResult(data) then return end
     -- Call directly (not deferred): this runs in the key press's hardware-event
@@ -279,14 +315,32 @@ function Shortkeys:ApplyAll()
 
     local list = {}
     self:ForEach(function(rowKey, info)
-        list[#list + 1] = { rowKey = rowKey, key = info.key }
+        list[#list + 1] = { rowKey = rowKey, key = info.key, info = info }
     end)
 
     local hadUnresolved = false
     for i = 1, #list do
         local rowKey = list[i].rowKey
         local bindKey = list[i].key
+        local info = list[i].info
         local data = ResolveData(rowKey)
+        if data then
+            -- Live row resolved: (re)capture the snapshot so future sessions
+            -- bind without loading this provider, and snapshots saved before
+            -- the field list grew (or with drifted fields) self-heal.
+            info.data = SnapshotData(data)
+            info.dataVer = info.data and SNAPSHOT_VER or nil
+        else
+            -- Provider not loaded: bind straight from the stored snapshot. A
+            -- snapshot stamped by an older field set still binds, but pull its
+            -- owner in and flag a re-pass (ReapplyIfPending only rebinds when
+            -- something is pending) so the entry re-captures current fields.
+            data = info.data
+            if data and info.dataVer ~= SNAPSHOT_VER then
+                hadUnresolved = true
+                RequestProviderForRowKey(rowKey)
+            end
+        end
         if data and bindKey and bindKey ~= "" then
             local b = GetButton(i)
             b._rowKey = rowKey
@@ -304,11 +358,10 @@ function Shortkeys:ApplyAll()
                 SetOverrideBindingClick(owner, true, bindKey, btnName, "LeftButton")
             end
         elseif bindKey and bindKey ~= "" then
-            -- Target row not in the search data yet: its lazy provider has not
-            -- loaded. Force-load JUST that category's provider (not the whole
-            -- dataset) so the shortkey binds without the user searching it first;
-            -- ReapplyIfPending (Search/Query.lua) rebinds when it streams in.
-            -- Without this the game keybind wins -- our override was never made.
+            -- No live row and no snapshot: a legacy entry saved before
+            -- shortkeys carried their action. Force-load its provider once so
+            -- it resolves; ReapplyIfPending (Search/Query.lua) rebinds when it
+            -- streams in and the resolve pass above snapshots it for good.
             hadUnresolved = true
             RequestProviderForRowKey(rowKey)
         end
@@ -344,8 +397,8 @@ local function DetectBindConflict(rowKey, combo)
     return nil
 end
 
-local function CommitShortkey(rowKey, name, charSpecific, combo)
-    if not Shortkeys:SetByKey(rowKey, name, charSpecific, combo) then return end
+local function CommitShortkey(rowKey, name, charSpecific, combo, data)
+    if not Shortkeys:SetByKey(rowKey, name, charSpecific, combo, data) then return end
     if EasyFind and EasyFind.Print then
         EasyFind:Print((L["SHORTKEY_SAVED"]):format(combo, name or "?"))
     end
@@ -448,7 +501,7 @@ local function StartCapture(popup)
         local combo = Utils.CaptureKeybindCombo(key)
         if not combo then return end
         if combo == "stop" then StopCapture(self); return end
-        local rowKey, name, cs = self.rowKey, self.skName, self.charSpecific
+        local rowKey, name, cs, skData = self.rowKey, self.skName, self.charSpecific, self.skData
         StopCapture(self)
         self:Hide()
         if not rowKey then return end
@@ -457,9 +510,9 @@ local function StartCapture(popup)
             local msg = (kind == "shortkey"
                 and L["SHORTKEY_CONFLICT_SHORTKEY"]
                 or L["SHORTKEY_CONFLICT_BIND"]):format(label)
-            ShowConflictPopup(msg, function() CommitShortkey(rowKey, name, cs, combo) end)
+            ShowConflictPopup(msg, function() CommitShortkey(rowKey, name, cs, combo, skData) end)
         else
-            CommitShortkey(rowKey, name, cs, combo)
+            CommitShortkey(rowKey, name, cs, combo, skData)
         end
     end)
 end
@@ -521,17 +574,19 @@ local function BuildCapturePopup()
         self.rowKey = nil
         self.skName = nil
         self.charSpecific = nil
+        self.skData = nil
     end)
     f:Hide()
     return f
 end
 
-function Shortkeys:PromptForKeyByKey(rowKey, name, charSpecific)
+function Shortkeys:PromptForKeyByKey(rowKey, name, charSpecific, data)
     if not rowKey then return end
     if not capturePopup then capturePopup = BuildCapturePopup() end
     capturePopup.rowKey = rowKey
     capturePopup.skName = name
     capturePopup.charSpecific = charSpecific
+    capturePopup.skData = data
     capturePopup.title:SetText((L["SHORTKEY_FOR"]):format(name or "?"))
     local existing = self:Get(rowKey)
     capturePopup.bindBtn:SetText((existing and existing.key) or L["SHORTKEY_CLICK_TO_BIND"])
@@ -542,7 +597,7 @@ function Shortkeys:PromptForKey(data)
     if not data then return end
     local rowKey = self:GetEntryKey(data)
     if not rowKey then return end
-    self:PromptForKeyByKey(rowKey, data.name, self:IsCharacterSpecific(data))
+    self:PromptForKeyByKey(rowKey, data.name, self:IsCharacterSpecific(data), data)
 end
 
 -- Import / export. Aliases and/or shortkeys serialize to a length-prefixed
