@@ -482,6 +482,11 @@ local SUGGESTED_KEYBINDS = {
 -- Chat-hello hyperlink. Clicking the link in the welcome message opens the
 -- restyled What's New popup. SetItemRef receives any |H...|h chat link, so
 -- our custom prefix is detected before falling through to Blizzard's handler.
+-- The version whose features the What's New popup currently describes. Bump
+-- ONLY when the popup content is rewritten; patch releases that keep the same
+-- content must not re-announce it to users who already saw it.
+local WHATSNEW_CONTENT_VERSION = "2.1.0"
+
 local WHATSNEW_LINK_PREFIX = "easyfind:whatsnew:"
 local whatsNewHookInstalled = false
 
@@ -849,12 +854,16 @@ local function OnPlayerLogin()
                 -- Upgrading from before the tutorial revamp: send them through
                 -- the new-player tutorial rather than a What's New notice.
                 EasyFind.db.tutorialDone = false
-            elseif EasyFind.db.tutorialDone then
-                -- Existing user already past the tutorial, upgrading to a newer
-                -- release: point them at What's New with a clickable chat link.
-                -- The tutorialDone guard is what keeps the tutorial and the
-                -- What's New notice mutually exclusive: anyone who still has the
-                -- tutorial pending gets the tutorial only, never the chat line.
+            elseif EasyFind.db.tutorialDone
+                and CompareVersion(lastSeen, WHATSNEW_CONTENT_VERSION) < 0 then
+                -- Existing user already past the tutorial, upgrading across the
+                -- release the What's New content describes: point them at it
+                -- with a clickable chat link. Users who already saw this
+                -- content (upgrading from the content version or later, e.g. a
+                -- patch release) get no repeat announcement. The tutorialDone
+                -- guard keeps the tutorial and the What's New notice mutually
+                -- exclusive: anyone who still has the tutorial pending gets the
+                -- tutorial only, never the chat line.
                 SafeAfter(2.0, function()
                     ShowWhatsNewChatMessage(currentVersion)
                 end)
