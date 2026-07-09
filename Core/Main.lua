@@ -869,11 +869,8 @@ local function OnPlayerLogin()
         end
     end
     InstallClassFilterHooks()
-    if ns.Database and ns.Database.ArmHousingPendingPushIfNeeded then
-        pcall(ns.Database.ArmHousingPendingPushIfNeeded, ns.Database)
-    end
-    if ns.Filters and ns.Filters.ArmProfessionPendingPushIfNeeded then
-        pcall(ns.Filters.ArmProfessionPendingPushIfNeeded, ns.Filters)
+    if ns.ControlSync and ns.ControlSync.ArmAllAtLogin then
+        pcall(ns.ControlSync.ArmAllAtLogin)
     end
 
     -- Keep PLAYER_LOGIN light. Search data is loaded by query intent.

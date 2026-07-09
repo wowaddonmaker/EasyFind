@@ -1774,41 +1774,7 @@ end
 -- open + before each populate; no polling). Category is deliberately not synced:
 -- it is the catalog's left-sidebar navigation, not part of the Filter menu.
 function Database:SyncHousingFiltersFromBlizzard()
-    local db = EasyFind.db
-    if db and db.housingFiltersPendingPush then
-        -- An unpushed menu change is the newest intent; push it instead of
-        -- reading Blizzard's stale state back over it.
-        return self:WriteHousingFiltersToBlizzard()
-    end
-    local s = BlizzardCatalogSearcher()
-    if not (s and db) then return false end
-    local function readState(method)
-        local ok, v = pcall(s[method], s)
-        if ok then return v end
-    end
-    local collected = readState("IsCollectedActive")
-    local uncollected = readState("IsUncollectedActive")
-    db.housingCollection = (collected and uncollected and "all")
-        or (uncollected and "uncollected") or "collected"
-    db.housingDyeableOnly = readState("IsCustomizableOnlyActive") and true or false
-    db.housingCollectionBonusOnly = readState("IsFirstAcquisitionBonusOnlyActive") and true or false
-    db.housingIndoors = readState("IsAllowedIndoorsActive") ~= false
-    db.housingOutdoors = readState("IsAllowedOutdoorsActive") ~= false
-    db.housingSortType = readState("GetSortType") or 0
-    local tags = {}
-    db.housingTags = tags
-    -- Record every group explicitly: a present-but-empty group table means
-    -- "all tags off" (real user state), while a missing group means "no
-    -- stored preference" and the write path leaves the searcher's default.
-    ForEachHousingFilterTag(function(gid, tid)
-        local grpState = tags[gid]
-        if not grpState then grpState = {}; tags[gid] = grpState end
-        local okS, active = pcall(s.GetFilterTagStatus, s, gid, tid)
-        if okS and active then
-            grpState[tid] = true
-        end
-    end)
-    return true
+    return ns.ControlSync.Sync("housing")
 end
 
 -- Apply EasyFind's stored housing filter state to a searcher (Blizzard's shared
@@ -1838,56 +1804,60 @@ local function ApplyHousingFilters(searcher, db)
     end
 end
 
--- While a menu change could not be pushed (no catalog UI loaded), watch for a
--- searcher appearing and push then. Armed only while a push is pending, so it
--- costs nothing in normal play.
-local housingPushArmed = false
-local function ArmHousingPendingPush()
-    if housingPushArmed then return end
-    housingPushArmed = true
-    local function tick()
-        local db = EasyFind and EasyFind.db
-        if not (db and db.housingFiltersPendingPush) then
-            housingPushArmed = false
-            return
+ns.ControlSync.Register{
+    key = "housing",
+    pendingKey = "housingFiltersPendingPush",
+    state = function() return EasyFind.db end,
+    available = function() return BlizzardCatalogSearcher() ~= nil end,
+    push = function(db)
+        local s = BlizzardCatalogSearcher()
+        if not s then return end
+        pcall(function()
+            ApplyHousingFilters(s, db)
+            if s.RunSearch then s:RunSearch() end
+        end)
+    end,
+    pull = function(db)
+        local s = BlizzardCatalogSearcher()
+        if not (s and db) then return end
+        local function readState(method)
+            local ok, v = pcall(s[method], s)
+            if ok then return v end
         end
-        if BlizzardCatalogSearcher() then
-            housingPushArmed = false
-            Database:WriteHousingFiltersToBlizzard()
-            return
-        end
-        Utils.SafeAfter(1, tick)
-    end
-    Utils.SafeAfter(1, tick)
-end
+        local collected = readState("IsCollectedActive")
+        local uncollected = readState("IsUncollectedActive")
+        db.housingCollection = (collected and uncollected and "all")
+            or (uncollected and "uncollected") or "collected"
+        db.housingDyeableOnly = readState("IsCustomizableOnlyActive") and true or false
+        db.housingCollectionBonusOnly = readState("IsFirstAcquisitionBonusOnlyActive") and true or false
+        db.housingIndoors = readState("IsAllowedIndoorsActive") ~= false
+        db.housingOutdoors = readState("IsAllowedOutdoorsActive") ~= false
+        db.housingSortType = readState("GetSortType") or 0
+        local tags = {}
+        db.housingTags = tags
+        -- Record every group explicitly: a present-but-empty group table means
+        -- "all tags off" (real user state), while a missing group means "no
+        -- stored preference" and the write path leaves the searcher's default.
+        ForEachHousingFilterTag(function(gid, tid)
+            local grpState = tags[gid]
+            if not grpState then grpState = {}; tags[gid] = grpState end
+            local okS, active = pcall(s.GetFilterTagStatus, s, gid, tid)
+            if okS and active then
+                grpState[tid] = true
+            end
+        end)
+        return true
+    end,
+}
 
--- Cross-session arming: a pending push saved last session must survive the
--- user opening the catalog before ever touching EasyFind this session.
 function Database:ArmHousingPendingPushIfNeeded()
-    local db = EasyFind and EasyFind.db
-    if db and db.housingFiltersPendingPush then ArmHousingPendingPush() end
+    ns.ControlSync.ArmAtLoginIfNeeded("housing")
 end
 
--- EasyFind -> Blizzard: push EasyFind's stored filter state onto the live catalog
--- searcher and re-run it, so the catalog window reflects EasyFind's filters.
+-- EasyFind -> Blizzard: push EasyFind's stored filter state onto the live
+-- catalog searcher (engine handles pending/watcher when it is absent).
 function Database:WriteHousingFiltersToBlizzard()
-    local db = EasyFind.db
-    if not db then return false end
-    local s = BlizzardCatalogSearcher()
-    if not s then
-        -- No live catalog UI: a silently dropped push plus the next read-back
-        -- erases the user's change (lost update -- menu changes made with the
-        -- catalog closed REVERTED). Persist the intent; push when one exists.
-        db.housingFiltersPendingPush = true
-        ArmHousingPendingPush()
-        return false
-    end
-    pcall(function()
-        ApplyHousingFilters(s, db)
-        if s.RunSearch then s:RunSearch() end
-    end)
-    db.housingFiltersPendingPush = false
-    return true
+    return ns.ControlSync.Push("housing")
 end
 
 function Database:PopulateDynamicHousingAsync(done)
@@ -3428,6 +3398,17 @@ function Database:PopulateDynamicProfessions()
             if profName and profName ~= "" and skillLine
                and not (profFilters and profFilters[skillLine] == false) then
                 local nameLower = slower(profName)
+                -- Professions are castable spells (drag-to-bar proves it);
+                -- resolving the spell by its known localized name makes the
+                -- row a SECURE CAST button -- Blizzard's own cast->open path,
+                -- immune to the half-initialized-window class entirely.
+                local profSpellID
+                if C_Spell and C_Spell.GetSpellInfo then
+                    local okSpell, spellInfo = pcall(C_Spell.GetSpellInfo, profName)
+                    if okSpell and type(spellInfo) == "table" then
+                        profSpellID = spellInfo.spellID
+                    end
+                end
                 uiSearchData[#uiSearchData + 1] = {
                     name = profName,
                     nameLower = nameLower,
@@ -3435,6 +3416,8 @@ function Database:PopulateDynamicProfessions()
                     category = "Profession",
                     keywords = { nameLower, "profession" },
                     professionSkillLine = skillLine,
+                    spellID = profSpellID,
+                    spellName = profSpellID and profName or nil,
                     professionOpenID = ns.PROFESSION_RECIPES
                         and ns.PROFESSION_RECIPES[skillLine]
                         and ns.PROFESSION_RECIPES[skillLine].childSkillLine,

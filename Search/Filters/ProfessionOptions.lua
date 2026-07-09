@@ -31,19 +31,26 @@ end
 -- state (one setter each, no skillLine argument), so ours is one shared table:
 -- learned/unlearned/skillUp/materials plus the source-type mask. Expansion
 -- page selection is per profession (expansion[skillLine] = child professionID).
+-- Bump to wipe stored state when its schema changes or when a defect could
+-- have poisoned it (v2: measurement-run masks/slot-falses were re-delivered
+-- forever and blanked the window). Reconcile-at-login re-adopts Blizzard's
+-- state, so a wipe is always safe.
+local STATE_VER = 2
 local function RecipeFilterState()
     local db = EasyFind.db
     local state = db.professionRecipeFilters
-    if not state or state.learned == nil then
+    if not state or state.ver ~= STATE_VER then
         state = {
+            ver = STATE_VER,
             learned = true, unlearned = true,
             skillUp = false, materials = false,
+            firstCraftOnly = false,
             sourceMask = 65535,
             expansion = {},
+            slotFilters = {},
         }
         db.professionRecipeFilters = state
     end
-    if not state.expansion then state.expansion = {} end
     return state
 end
 
@@ -58,96 +65,59 @@ end
 local function ProfessionWindowLive()
     local pf = _G["ProfessionsFrame"]
     local live = pf and pf:IsShown() and pf.professionInfo
-    return type(live) == "table" and live.professionID ~= nil and live.professionID ~= 0
-end
-
--- Push our state onto the live window. The setters are load-on-demand: a
--- write with no window loaded is silently dropped, so it persists as a
--- pending push that outranks read-back and lands the moment the API exists
--- (the housing lost-update pattern; see easyfind-filter-menus skill).
-local profPushArmed = false
-local PushRecipeFilters
-local ScanAndClickMenuRow, ClickWindowMenuRow
-
-local function ArmProfessionPendingPush()
-    if profPushArmed then return end
-    profPushArmed = true
-    local function tick()
-        local db = EasyFind and EasyFind.db
-        if not (db and db.professionFiltersPendingPush) then
-            profPushArmed = false
-            return
-        end
-        if ProfessionWindowLive() then
-            profPushArmed = false
-            PushRecipeFilters(RecipeFilterState())
-            return
-        end
-        Utils.SafeAfter(1, tick)
-    end
-    Utils.SafeAfter(1, tick)
-end
-
-PushRecipeFilters = function(state)
-    local db = EasyFind.db
-    if not SettersExist() then
-        db.professionFiltersPendingPush = true
-        ArmProfessionPendingPush()
+    if not (type(live) == "table" and live.professionID ~= nil and live.professionID ~= 0) then
         return false
     end
+    -- FULLY initialized, not merely shown: professionInfo appears before the
+    -- recipe list builds its data provider, and delivering stored intent in
+    -- that gap (the expansion menu-click re-enters window init) tore the
+    -- half-built list down -- provider permanently nil, blank window,
+    -- StoreCollapses on close. The provider IS the init-complete signal.
+    local list = pf.CraftingPage and pf.CraftingPage.RecipeList
+    local scrollBox = list and list.ScrollBox
+    if not (scrollBox and scrollBox.GetDataProvider) then return false end
+    local ok, provider = pcall(scrollBox.GetDataProvider, scrollBox)
+    return ok and provider ~= nil
+end
+
+-- Sync bodies (the ControlSync engine owns pending/watcher/gates/login).
+local ScanAndClickMenuRow, ClickWindowMenuRow
+
+-- SetInventorySlotFilter's first argument resolves at call time from
+-- GetFilterableInventorySlots(): id array when present, else the position.
+local function ApplySlotFilter(position, enabled)
+    local ts = C_TradeSkillUI
+    if not (ts and ts.SetInventorySlotFilter) then return end
+    local arg = position
+    if ts.GetFilterableInventorySlots then
+        local ok, ids = pcall(ts.GetFilterableInventorySlots)
+        if ok and type(ids) == "table" and type(ids[position]) == "number" then
+            arg = ids[position]
+        end
+    end
+    pcall(ts.SetInventorySlotFilter, arg, enabled)
+end
+
+local function PushBody(state)
     local ts = C_TradeSkillUI
     pcall(ts.SetShowLearned, state.learned ~= false)
     if ts.SetShowUnlearned then pcall(ts.SetShowUnlearned, state.unlearned ~= false) end
     if ts.SetOnlyShowSkillUpRecipes then pcall(ts.SetOnlyShowSkillUpRecipes, state.skillUp == true) end
     if ts.SetOnlyShowMakeableRecipes then pcall(ts.SetOnlyShowMakeableRecipes, state.materials == true) end
     if ts.SetSourceTypeFilter then pcall(ts.SetSourceTypeFilter, state.sourceMask or 65535) end
-    if not ProfessionWindowLive() and next(state.expansion or {}) then
-        -- State writes persisted, but an expansion page choice can only land
-        -- on a live window; stay pending so the watcher applies it on open.
-        db.professionFiltersPendingPush = true
-        ArmProfessionPendingPush()
-        return true
+    if ts.SetOnlyShowFirstCraftRecipes then
+        pcall(ts.SetOnlyShowFirstCraftRecipes, state.firstCraftOnly == true)
     end
-    db.professionFiltersPendingPush = false
-    -- Expansion page choice made while no window existed: apply it now via
-    -- the window's own menu row (delayed so the freshly opened frame has its
-    -- professionInfo and menu built).
-    Utils.SafeAfter(0.3, function()
-        local pf = _G["ProfessionsFrame"]
-        local live = pf and pf:IsShown() and pf.professionInfo
-        if type(live) ~= "table" or not live.parentProfessionID then return end
-        local wanted = state.expansion and state.expansion[live.parentProfessionID]
-        if not wanted or wanted == live.professionID then return end
-        local profData = ns.PROFESSION_RECIPES and ns.PROFESSION_RECIPES[live.parentProfessionID]
-        local children = profData and profData.children
-        if not children then return end
-        for i = 1, #children do
-            if children[i].professionID == wanted then
-                local page = pf.CraftingPage
-                local expBtn = page and page.RankBar and page.RankBar.ExpansionDropdownButton
-                if expBtn then ClickWindowMenuRow(expBtn, children[i].name) end
-                return
-            end
-        end
-    end)
-    return true
 end
 
-local function PullRecipeFilters(state)
-    local db = EasyFind.db
-    if db.professionFiltersPendingPush then
-        -- An unpushed menu change is the newest intent; push it instead of
-        -- reading Blizzard's stale state back over it.
-        PushRecipeFilters(state)
-        return
-    end
-    if not (C_TradeSkillUI and C_TradeSkillUI.GetShowLearned) then return end
+local function PullBody(state)
     local ts = C_TradeSkillUI
     local getters = {
         { fn = ts.GetShowLearned, key = "learned" },
         { fn = ts.GetShowUnlearned, key = "unlearned" },
         { fn = ts.GetOnlyShowSkillUpRecipes, key = "skillUp" },
         { fn = ts.GetOnlyShowMakeableRecipes, key = "materials" },
+        { fn = ts.GetOnlyShowFirstCraftRecipes, key = "firstCraftOnly" },
     }
     for i = 1, #getters do
         local getter = getters[i]
@@ -162,31 +132,61 @@ local function PullRecipeFilters(state)
     end
 end
 
--- Cross-session arming: a pending push saved last session must land even if
--- the user opens a profession window before ever touching EasyFind.
-function Filters:ArmProfessionPendingPushIfNeeded()
-    local db = EasyFind and EasyFind.db
-    if not db then return end
-    if db.professionFiltersPendingPush then
-        ArmProfessionPendingPush()
-        return
-    end
-    -- Login reconciliation: our saved state and Blizzard's retained filter
-    -- state are separate persistent stores and can diverge across sessions.
-    -- With no unlanded intent of ours, Blizzard's is what the window will
-    -- show, so adopt it once and both start identical.
-    Utils.SafeAfter(1, function()
-        if EasyFind.db and not EasyFind.db.professionFiltersPendingPush then
-            PullRecipeFilters(RecipeFilterState())
+-- Live-only intent: expansion page (menu-row click) and per-slot filters.
+local function LiveApplyBody(state)
+    local pf = _G["ProfessionsFrame"]
+    local live = pf and pf:IsShown() and pf.professionInfo
+    if type(live) ~= "table" or not live.parentProfessionID then return end
+    local slotState = state.slotFilters and state.slotFilters[live.parentProfessionID]
+    if slotState then
+        for position, enabled in pairs(slotState) do
+            ApplySlotFilter(position, enabled ~= false)
         end
-    end)
+    end
+    local wanted = state.expansion and state.expansion[live.parentProfessionID]
+    if not wanted or wanted == live.professionID then return end
+    local profData = ns.PROFESSION_RECIPES and ns.PROFESSION_RECIPES[live.parentProfessionID]
+    local children = profData and profData.children
+    if not children then return end
+    for i = 1, #children do
+        if children[i].professionID == wanted then
+            local page = pf.CraftingPage
+            local expBtn = page and page.RankBar and page.RankBar.ExpansionDropdownButton
+            if expBtn then ClickWindowMenuRow(expBtn, children[i].name) end
+            return
+        end
+    end
 end
 
--- Click a row inside a window dropdown's own menu by its text: OpenMenu,
--- find the hex-strata menu row (plain insecure Button), Click() -- Blizzard's
--- handler end to end. The API switchers are dead (OpenTradeSkill returns
--- false; the info getters return empty structs), so the real menu row is the
--- verified write path for the expansion page.
+ns.ControlSync.Register{
+    key = "professions",
+    pendingKey = "professionFiltersPendingPush",
+    reconcile = true,
+    state = RecipeFilterState,
+    available = SettersExist,
+    live = ProfessionWindowLive,
+    push = PushBody,
+    pull = PullBody,
+    liveApply = LiveApplyBody,
+    isDirty = function(state) return state.expansionDirty == true or state.slotsDirty == true end,
+    clearDirty = function(state)
+        state.expansionDirty = nil
+        state.slotsDirty = nil
+    end,
+}
+
+local function PushRecipeFilters(state) -- luacheck: no unused args
+    return ns.ControlSync.Push("professions")
+end
+
+local function PullRecipeFilters(state) -- luacheck: no unused args
+    return ns.ControlSync.Sync("professions")
+end
+
+function Filters:ArmProfessionPendingPushIfNeeded()
+    ns.ControlSync.ArmAtLoginIfNeeded("professions")
+end
+
 ScanAndClickMenuRow = function(wantText)
     local clicked = false
     local frame = EnumerateFrames()
@@ -245,10 +245,18 @@ end
 
 local attachCtx
 local childPopups = {}
-local function HideOtherSubmenus(except)
+local function HideAllSubmenus()
+    for i = 1, #childPopups do childPopups[i]:Hide() end
+end
+-- Sibling-scoped: hide only popups sharing the SAME parent level. A
+-- level-blind hide killed the hovered submenu's own parent (cascading the
+-- whole chain shut the moment Sources/Slots was hovered).
+local function HideSiblingSubmenus(popupFrame)
     for i = 1, #childPopups do
         local child = childPopups[i]
-        if child ~= except and child._efParentPopup ~= except then child:Hide() end
+        if child ~= popupFrame and child._efParentPopup == popupFrame._efParentPopup then
+            child:Hide()
+        end
     end
 end
 local function AttachRecipeFilterFlyout(row)
@@ -272,6 +280,7 @@ local function AttachRecipeFilterFlyout(row)
         { key = "learned" },
         { key = "unlearned" },
         { key = "skillUp" },
+        { key = "firstCraftOnly", craftingOnly = true },
         { key = "materials" },
     }
     local checkRows = {}
@@ -325,29 +334,44 @@ local function AttachRecipeFilterFlyout(row)
     soChev:SetSize(CHECK - 2, CHECK - 2)
     soChev:SetPoint("RIGHT", -4, 0)
     soChev:SetVertexColor(0.85, 0.85, 0.85, 1)
+    soLabel:SetPoint("RIGHT", soChev, "LEFT", -4, 0)
+    soLabel:SetJustifyH("LEFT")
+    soLabel:SetWordWrap(false)
     Utils.InstallMenuRowHighlight(sourcesOpener)
 
     -- Source types (the Sources submenu): checkboxes over the
     -- GetSourceTypeFilter bitmask (65535 = all on, crawl-verified baseline).
     -- Bit order pending the one-toggle verification; labels use the standard
     -- source GlobalStrings with English fallbacks.
-    -- Bits measured live: single toggles gave Drop=1, Quest=2; Blizzard's
-    -- Uncheck All left mask 64500 (65535-1035), so the visible rows are
-    -- bits 1, 2, 8, 1024 in menu order -- bit 4 (and the other gaps) belong
-    -- to hidden source types this menu does not show, and must never be
-    -- touched by our Check All/Uncheck All.
-    local SOURCE_ROWS = {
-        { bit = 1,    label = function() return _G["BATTLE_PET_SOURCE_1"] or "Drop" end },
-        { bit = 2,    label = function() return _G["BATTLE_PET_SOURCE_2"] or "Quest" end },
-        { bit = 8,    label = function() return _G["BATTLE_PET_SOURCE_4"] or "Profession" end },
-        { bit = 1024, label = function() return _G["DISCOVERY"] or "Discovery" end },
-    }
-    local VISIBLE_SOURCE_MASK = 0
-    for i = 1, #SOURCE_ROWS do
-        VISIBLE_SOURCE_MASK = VISIBLE_SOURCE_MASK + SOURCE_ROWS[i].bit
-    end
+    -- Source rows derive from the profession's captured recipe sourceTypes
+    -- (bit = 2^type; measured: Drop=2^0, Quest=2^1, Profession=2^3,
+    -- Discovery=2^10, and Blizzard's Uncheck All confirmed the visible-bit
+    -- set). Labels come from the global measured map; hidden types (bits a
+    -- profession's menu does not show) are never touched.
+    local lshift = bit.lshift
     local band = bit.band
     local bor = bit.bor
+    local function SourceRowsFor(skillLine)
+        local profData = ns.PROFESSION_RECIPES and ns.PROFESSION_RECIPES[skillLine]
+        local types = profData and profData.sources
+        local rows = {}
+        if types then
+            for i = 1, #types do
+                local sourceType = types[i]
+                local labelFn = ns.PROFESSION_SOURCE_LABELS and ns.PROFESSION_SOURCE_LABELS[sourceType]
+                rows[#rows + 1] = {
+                    bit = lshift(1, sourceType),
+                    label = labelFn and labelFn() or ("Source " .. sourceType),
+                }
+            end
+        end
+        return rows
+    end
+    local function VisibleSourceMask(rows)
+        local mask = 0
+        for i = 1, #rows do mask = mask + rows[i].bit end
+        return mask
+    end
     local function GetSourceMask()
         local state = RecipeFilterState()
         if SettersExist() and not EasyFind.db.professionFiltersPendingPush then
@@ -408,13 +432,15 @@ local function AttachRecipeFilterFlyout(row)
 
     local function LayoutSources()
         local y, contentW = -PAD, 0
+        local rowsDef = SourceRowsFor(row._skillLine)
+        local visibleMask = VisibleSourceMask(rowsDef)
         local actions = {
             { label = _G["CHECK_ALL"] or "Check All",
-              run = function() SetSourceMask(bor(GetSourceMask(), VISIBLE_SOURCE_MASK)) end },
+              run = function() SetSourceMask(bor(GetSourceMask(), visibleMask)) end },
             { label = _G["UNCHECK_ALL"] or "Uncheck All",
               run = function()
                   local mask = GetSourceMask()
-                  SetSourceMask(mask - band(mask, VISIBLE_SOURCE_MASK))
+                  SetSourceMask(mask - band(mask, visibleMask))
               end },
         }
         for i = 1, #actions do
@@ -423,9 +449,9 @@ local function AttachRecipeFilterFlyout(row)
             r:SetScript("OnClick", function()
                 actions[i].run()
                 local mask = GetSourceMask()
-                for ci = 1, #SOURCE_ROWS do
+                for ci = 1, #rowsDef do
                     if sourceChecks[ci] then
-                        sourceChecks[ci]:SetChecked(band(mask, SOURCE_ROWS[ci].bit) ~= 0)
+                        sourceChecks[ci]:SetChecked(band(mask, rowsDef[ci].bit) ~= 0)
                     end
                 end
             end)
@@ -437,11 +463,11 @@ local function AttachRecipeFilterFlyout(row)
             if w > contentW then contentW = w end
         end
         local mask = GetSourceMask()
-        for i = 1, #SOURCE_ROWS do
-            local def = SOURCE_ROWS[i]
+        for i = 1, #rowsDef do
+            local def = rowsDef[i]
             local r = GetSourceCheck(i)
             r._bit = def.bit
-            r._label:SetText(def.label())
+            r._label:SetText(def.label)
             r:SetChecked(band(mask, def.bit) ~= 0)
             r:ClearAllPoints()
             r:SetPoint("TOPLEFT", PAD, y)
@@ -450,14 +476,16 @@ local function AttachRecipeFilterFlyout(row)
             local w = Utils.FlyoutRowContentWidth(r, CHECK + 4)
             if w > contentW then contentW = w end
         end
+        for i = #rowsDef + 1, #sourceChecks do sourceChecks[i]:Hide() end
         local w = Utils.FlyoutWidthFor(contentW, PAD)
         for i = 1, #sourceActions do sourceActions[i]:SetWidth(w - PAD * 2) end
-        for i = 1, #SOURCE_ROWS do sourceChecks[i]:SetWidth(w - PAD * 2) end
+        for i = 1, #rowsDef do sourceChecks[i]:SetWidth(w - PAD * 2) end
         sourcesPopup:SetSize(w, -y + PAD)
     end
 
     local sourcesHover = Utils.AttachHoverPopup(sourcesOpener, sourcesPopup, {
         onShow = function()
+            HideSiblingSubmenus(sourcesPopup)
             LayoutSources()
             sourcesPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
             Utils.OpenFlyoutBeside(sourcesPopup, sourcesOpener, 4)
@@ -465,6 +493,162 @@ local function AttachRecipeFilterFlyout(row)
         end,
     })
     sourcesOpener.ShowFlyoutPopup = sourcesHover.Show
+
+    -- Slots: crafting professions' equipment-slot filter submenu (per-slot
+    -- SetInventorySlotFilter; rows from the captured per-profession list).
+    local slotsPopup = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    slotsPopup:SetFrameStrata("TOOLTIP")
+    slotsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
+    ctx.StylePopup(slotsPopup)
+    slotsPopup:EnableMouse(true)
+    slotsPopup:Hide()
+    ctx.dropdownGuardFrames[#ctx.dropdownGuardFrames + 1] = slotsPopup
+    childPopups[#childPopups + 1] = slotsPopup
+    Filters.AttachOutsideClickClose(slotsPopup)
+    slotsPopup._efParentPopup = popup
+    popup:HookScript("OnHide", function() slotsPopup:Hide() end)
+
+    local slotsOpener = CreateFrame("Button", nil, popup)
+    slotsOpener:SetSize(150, ROW_H)
+    slotsOpener:SetHitRectInsets(0, 0, 0, 0)
+    local slLabel = slotsOpener:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    slLabel:SetPoint("LEFT", 6, 0)
+    slotsOpener._label = slLabel
+    local slChev = slotsOpener:CreateTexture(nil, "OVERLAY")
+    slChev:SetAtlas("common-icon-forwardarrow")
+    slChev:SetSize(CHECK - 2, CHECK - 2)
+    slChev:SetPoint("RIGHT", -4, 0)
+    slChev:SetVertexColor(0.85, 0.85, 0.85, 1)
+    slLabel:SetPoint("RIGHT", slChev, "LEFT", -4, 0)
+    slLabel:SetJustifyH("LEFT")
+    slLabel:SetWordWrap(false)
+    Utils.InstallMenuRowHighlight(slotsOpener)
+
+    local slotChecks = {}
+    local slotActions = {}
+    local function SlotState()
+        local state = RecipeFilterState()
+        local bySkill = state.slotFilters[row._skillLine]
+        if not bySkill then bySkill = {}; state.slotFilters[row._skillLine] = bySkill end
+        return bySkill
+    end
+    local function ApplySlot(position, enabled)
+        if ProfessionWindowLive() then
+            ApplySlotFilter(position, enabled)
+        else
+            -- Closed window: stored + marked undelivered; the engine's
+            -- watcher applies it on open.
+            RecipeFilterState().slotsDirty = true
+            ns.ControlSync.MarkPending("professions")
+        end
+    end
+    local function GetSlotAction(i)
+        local r = slotActions[i]
+        if not r then
+            r = CreateFrame("Button", nil, slotsPopup)
+            r:SetSize(150, ROW_H)
+            r:SetHitRectInsets(0, 0, 0, 0)
+            local fs = r:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+            fs:SetPoint("LEFT", 6, 0)
+            r._label = fs
+            Utils.InstallMenuRowHighlight(r)
+            slotActions[i] = r
+        end
+        return r
+    end
+    local function GetSlotCheck(i)
+        local r = slotChecks[i]
+        if not r then
+            r = CreateFrame("CheckButton", nil, slotsPopup)
+            r:SetSize(150, ROW_H)
+            r:SetHitRectInsets(0, 0, 0, 0)
+            Utils.SetCheckboxTextures(r, CHECK)
+            local fs = r:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+            fs:SetPoint("LEFT", r:GetNormalTexture(), "RIGHT", 4, 0)
+            r._label = fs
+            Utils.InstallMenuRowHighlight(r)
+            r:SetScript("OnClick", function(self)
+                local on = self:GetChecked() and true or false
+                -- Store only real unchecks; checked = default = no entry, so
+                -- stale entries can never accumulate and re-deliver.
+                SlotState()[self._slotIndex] = (not on) and false or nil
+                ApplySlot(self._slotIndex, on)
+            end)
+            slotChecks[i] = r
+        end
+        return r
+    end
+    local function LayoutSlots()
+        local profData = ns.PROFESSION_RECIPES and ns.PROFESSION_RECIPES[row._skillLine]
+        local slots = profData and profData.slots or {}
+        local slotState = SlotState()
+        -- No per-slot state getter exists (measured); the aggregate is the
+        -- only read-back: when Blizzard reports nothing filtered, reset ours
+        -- to all-checked so an all-clear done in their menu reflects here.
+        local ts = C_TradeSkillUI
+        if ts and ts.AreAnyInventorySlotsFiltered then
+            local ok, anyFiltered = pcall(ts.AreAnyInventorySlotsFiltered)
+            if ok and anyFiltered == false then
+                for k in pairs(slotState) do slotState[k] = nil end
+            end
+        end
+        local y, contentW = -PAD, 0
+        local actions = {
+            { label = _G["CHECK_ALL"] or "Check All", value = true },
+            { label = _G["UNCHECK_ALL"] or "Uncheck All", value = false },
+        }
+        for i = 1, #actions do
+            local r = GetSlotAction(i)
+            r._label:SetText(actions[i].label)
+            local val = actions[i].value
+            r:SetScript("OnClick", function()
+                for si = 1, #slots do
+                    slotState[si] = (not val) and false or nil
+                    ApplySlot(si, val)
+                    if slotChecks[si] then slotChecks[si]:SetChecked(val) end
+                end
+            end)
+            r:ClearAllPoints()
+            r:SetPoint("TOPLEFT", PAD, y)
+            r:Show()
+            y = y - ROW_H
+            local w = Utils.FlyoutRowContentWidth(r, 8)
+            if w > contentW then contentW = w end
+        end
+        for i = 1, #slots do
+            local r = GetSlotCheck(i)
+            r._slotIndex = i
+            r._label:SetText(slots[i])
+            r:SetChecked(slotState[i] ~= false)
+            r:ClearAllPoints()
+            r:SetPoint("TOPLEFT", PAD, y)
+            r:Show()
+            y = y - ROW_H
+            local w = Utils.FlyoutRowContentWidth(r, CHECK + 4)
+            if w > contentW then contentW = w end
+        end
+        for i = #slots + 1, #slotChecks do slotChecks[i]:Hide() end
+        local w = Utils.FlyoutWidthFor(contentW, PAD)
+        for i = 1, #slotActions do slotActions[i]:SetWidth(w - PAD * 2) end
+        for i = 1, #slots do slotChecks[i]:SetWidth(w - PAD * 2) end
+        slotsPopup:SetSize(w, -y + PAD)
+    end
+    local slotsHover = Utils.AttachHoverPopup(slotsOpener, slotsPopup, {
+        onShow = function()
+            HideSiblingSubmenus(slotsPopup)
+            LayoutSlots()
+            slotsPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
+            Utils.OpenFlyoutBeside(slotsPopup, slotsOpener, 4)
+            slotsPopup:Show()
+        end,
+    })
+    slotsOpener.ShowFlyoutPopup = slotsHover.Show
+    ctx.AddPopupKeyboardNav(slotsPopup, function()
+        local rows = {}
+        for i = 1, #slotActions do if slotActions[i]:IsShown() then rows[#rows + 1] = slotActions[i] end end
+        for i = 1, #slotChecks do if slotChecks[i]:IsShown() then rows[#rows + 1] = slotChecks[i] end end
+        return rows
+    end, popup)
     ctx.AddPopupKeyboardNav(sourcesPopup, function()
         local rows = {}
         for i = 1, #sourceActions do if sourceActions[i]:IsShown() then rows[#rows + 1] = sourceActions[i] end end
@@ -495,8 +679,8 @@ local function AttachRecipeFilterFlyout(row)
                 if pf and pf:IsShown() and expBtn then
                     ClickWindowMenuRow(expBtn, self._label:GetText())
                 else
-                    EasyFind.db.professionFiltersPendingPush = true
-                    ArmProfessionPendingPush()
+                    state.expansionDirty = true
+                    ns.ControlSync.MarkPending("professions")
                 end
                 for ri = 1, #radioRows do
                     radioRows[ri]._setChecked(radioRows[ri]._professionID == self._professionID)
@@ -514,21 +698,34 @@ local function AttachRecipeFilterFlyout(row)
         checkRows[1]._label:SetText(_G["PROFESSIONS_FILTER_LEARNED"] or "Show Learned")
         checkRows[2]._label:SetText(_G["PROFESSIONS_FILTER_UNLEARNED"] or "Show Unlearned")
         checkRows[3]._label:SetText(_G["PROFESSIONS_FILTER_HAS_SKILL_UP"] or "Has skill up")
-        checkRows[4]._label:SetText(_G["PROFESSIONS_FILTER_HAS_MATERIALS"] or "Have Materials")
+        checkRows[4]._label:SetText(_G["PROFESSIONS_FILTER_FIRST_CRAFT"] or "First Craft Bonus")
+        checkRows[5]._label:SetText(_G["PROFESSIONS_FILTER_HAS_MATERIALS"] or "Have Materials")
+        local profData = ns.PROFESSION_RECIPES and ns.PROFESSION_RECIPES[row._skillLine]
         local state = RecipeFilterState()
         PullRecipeFilters(state)
         checkRows[1]:SetChecked(state.learned ~= false)
         checkRows[2]:SetChecked(state.unlearned ~= false)
         checkRows[3]:SetChecked(state.skillUp == true)
-        checkRows[4]:SetChecked(state.materials == true)
+        checkRows[4]:SetChecked(state.firstCraftOnly == true)
+        checkRows[5]:SetChecked(state.materials == true)
+        local showFirstCraft = profData and profData.firstCraft == true
         local contentW = 0
+        local y = -PAD
         for i = 1, #checkRows do
-            local w = Utils.FlyoutRowContentWidth(checkRows[i], CHECK + 4)
-            if w > contentW then contentW = w end
+            local cr = checkRows[i]
+            if i == 4 and not showFirstCraft then
+                cr:Hide()
+            else
+                cr:ClearAllPoints()
+                cr:SetPoint("TOPLEFT", PAD, y)
+                cr:Show()
+                y = y - ROW_H
+                local w = Utils.FlyoutRowContentWidth(cr, CHECK + 4)
+                if w > contentW then contentW = w end
+            end
         end
-        local profData = ns.PROFESSION_RECIPES and ns.PROFESSION_RECIPES[row._skillLine]
         local hasChildren = profData and profData.children and #profData.children > 0
-        local y = -PAD - ROW_H * #checkRows
+        local hasSlots = profData and profData.slots and #profData.slots > 0
         if hasChildren then
             sep:ClearAllPoints()
             sep:SetPoint("LEFT", popup, "LEFT", PAD, 0)
@@ -543,6 +740,17 @@ local function AttachRecipeFilterFlyout(row)
             y = y - ROW_H
             local w2 = Utils.FlyoutRowContentWidth(sourcesOpener, 8, nil, CHECK - 2)
             if w2 > contentW then contentW = w2 end
+            if hasSlots then
+                slLabel:SetText(_G["PROFESSIONS_FILTER_SLOTS"] or "Slots")
+                slotsOpener:ClearAllPoints()
+                slotsOpener:SetPoint("TOPLEFT", PAD, y)
+                slotsOpener:Show()
+                y = y - ROW_H
+                local w3 = Utils.FlyoutRowContentWidth(slotsOpener, 8, nil, CHECK - 2)
+                if w3 > contentW then contentW = w3 end
+            else
+                slotsOpener:Hide()
+            end
             -- Expansion pages: inline radios below Sources (Blizzard's layout).
             local children = profData.children
             local state2 = RecipeFilterState()
@@ -574,10 +782,12 @@ local function AttachRecipeFilterFlyout(row)
         else
             sep:Hide()
             sourcesOpener:Hide()
+            slotsOpener:Hide()
             for i = 1, #radioRows do radioRows[i]:Hide() end
         end
         local w = Utils.FlyoutWidthFor(contentW, PAD)
         for i = 1, #checkRows do checkRows[i]:SetWidth(w - PAD * 2) end
+        if hasSlots then slotsOpener:SetWidth(w - PAD * 2) end
         if hasChildren then
             sourcesOpener:SetWidth(w - PAD * 2)
             for i = 1, #radioRows do
@@ -588,9 +798,9 @@ local function AttachRecipeFilterFlyout(row)
     end
 
     local hover = Utils.AttachHoverPopup(row, popup, {
-        extraGuards = { sourcesPopup },
+        extraGuards = { sourcesPopup, slotsPopup },
         onShow = function()
-            HideOtherSubmenus(popup)
+            HideSiblingSubmenus(popup)
             Layout()
             popup:SetScale(EasyFind.db.uiSearchScale or 1.0)
             Utils.OpenFlyoutBeside(popup, row, 4)
@@ -598,11 +808,12 @@ local function AttachRecipeFilterFlyout(row)
         end,
     })
     row.ShowFlyoutPopup = hover.Show
-    row:HookScript("OnEnter", function(self) HideOtherSubmenus(self._submenuPopup) end)
+    row:HookScript("OnEnter", function(self) HideSiblingSubmenus(self._submenuPopup) end)
     ctx.AddPopupKeyboardNav(popup, function()
         local rows = {}
         for i = 1, #checkRows do rows[#rows + 1] = checkRows[i] end
         if sourcesOpener:IsShown() then rows[#rows + 1] = sourcesOpener end
+        if slotsOpener:IsShown() then rows[#rows + 1] = slotsOpener end
         for i = 1, #radioRows do if radioRows[i]:IsShown() then rows[#rows + 1] = radioRows[i] end end
         return rows
     end, row:GetParent())
@@ -645,6 +856,10 @@ function Filters:AttachProfessionOptionsFlyout(row, dropdown, ctx)
             chev:SetPoint("RIGHT", -4, 0)
             chev:SetVertexColor(0.85, 0.85, 0.85, 1)
             r._chev = chev
+            -- Cap the label at the chevron so long names never touch it.
+            fs:SetPoint("RIGHT", chev, "LEFT", -4, 0)
+            fs:SetJustifyH("LEFT")
+            fs:SetWordWrap(false)
             Utils.InstallMenuRowHighlight(r)
             r:SetScript("OnClick", function(self)
                 local t = EasyFind.db.professionFilters
@@ -704,10 +919,10 @@ function Filters:AttachProfessionOptionsFlyout(row, dropdown, ctx)
         for i = 1, #pool do if pool[i]:IsShown() then rows[#rows + 1] = pool[i] end end
         return rows
     end)
-    root:HookScript("OnHide", function() HideOtherSubmenus(nil) end)
+    root:HookScript("OnHide", function() HideAllSubmenus() end)
     Filters.AttachOutsideClickClose(root, {
         onHide = function(self)
-            HideOtherSubmenus(nil)
+            HideAllSubmenus()
             ctx.ClearActiveFlyout(self)
         end,
     })
