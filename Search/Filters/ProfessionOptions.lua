@@ -892,7 +892,7 @@ function Filters:AttachProfessionOptionsFlyout(row, dropdown, ctx)
             r:SetPoint("TOPLEFT", PAD, y)
             r:Show()
             y = y - ROW_H
-            local w = Utils.FlyoutRowContentWidth(r, CHECK * 2 + 8)
+            local w = Utils.FlyoutRowContentWidth(r, CHECK + 4, CHECK, CHECK - 2)
             if w > contentW then contentW = w end
         end
         for i = #profs + 1, #pool do pool[i]:Hide() end
