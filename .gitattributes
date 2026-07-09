@@ -1,0 +1,7 @@
+# Development-only files excluded from the release zip (git archive).
+tests export-ignore
+.github export-ignore
+.gitattributes export-ignore
+.gitignore export-ignore
+.luacheckrc export-ignore
+.luarc.json export-ignore
