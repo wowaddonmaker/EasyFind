@@ -4,6 +4,26 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [2.1.1] - 2026-07-09
+
+### Added
+- **Housing filter menu**: the Housing filter now carries the catalog's full Filter menu (sort and tag options), kept in sync with the catalog window in both directions
+- **@housing and @commands quick filters**
+
+### Changed
+- Download size reduced from 22 MB to under 5 MB and installed size from 82 MB to 14 MB: tutorial images now ship in the game's native compressed texture format, and unused image files were removed. No visual difference.
+- The "Gear" filter is now called "Loot", matching the loot results it covers
+- Consolidated tutorial slides: gear sets, outfits, and titles share one slide, as do macros with abilities and toys with slash commands, and the inline-settings slide moved to the Actionables walkthrough
+- Search data for filtered-off categories is no longer loaded and indexed at all until the category is re-enabled
+
+### Fixed
+- Inline setting Apply buttons work again for game settings that require confirmation
+- Shortkeys now bind immediately at login from saved data instead of waiting for search data to load
+- Pressing a shortkey now always triggers the same action as left-clicking its row
+- Loot results match their gear-slot keywords correctly again, and stat searches can combine two stats
+
+---
+
 ## [2.1.0] - 2026-07-07
 
 ### Added
