@@ -133,6 +133,13 @@ local UI_FILTER_OPTIONS = {
           { key = "gameOptions",  label = L["FILTER_GAME_OPTIONS"],  iconAtlas = "QuestLog-icon-setting" },
           { key = "addonOptions", label = L["FILTER_ADDON_OPTIONS"], iconAtlas = "QuestLog-icon-setting", iconColor = { 1.0, 0.78, 0.35 } },
       } },
+    { key = "professions", label = _G["TRADE_SKILLS"] or "Professions",
+      iconAtlas = "UI-HUD-MicroMenu-Professions-Up", hasFlyout = true,
+      available = function()
+          if not GetProfessions then return false end
+          local prof1, prof2, archaeology, fishing, cooking = GetProfessions()
+          return (prof1 or prof2 or archaeology or fishing or cooking) ~= nil
+      end },
     { key = "reputations", label = _G["REPUTATION"] or "Reputations", iconTex = 1121272,
       iconCoords = { 0.3783, 0.4072, 0.9066, 0.9350 },
       flyoutRadio = {

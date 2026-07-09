@@ -975,6 +975,20 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             })
         end
 
+        -- Professions: per-profession checkboxes for this character's known
+        -- professions; unchecking removes that profession at the provider.
+        if opt.key == "professions" then
+            Filters:AttachProfessionOptionsFlyout(row, dropdown, {
+                rowHeight = ROW_HEIGHT,
+                checkSize = CHECK_SIZE,
+                StylePopup = StylePopup,
+                AddPopupKeyboardNav = AddPopupKeyboardNav,
+                SetActiveFlyout = SetActiveFlyout,
+                ClearActiveFlyout = ClearActiveFlyout,
+                dropdownGuardFrames = dropdownGuardFrames,
+            })
+        end
+
         -- Housing: side popup matching Blizzard's catalog Filter menu (Sort By,
         -- Dyeable/Bonus, Collection, Placeable, and the tag groups), built
         -- dynamically from C_HousingCatalog and synced with the catalog window.
@@ -1056,7 +1070,10 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         for i, opt in ipairs(UI_FILTER_OPTIONS) do
             local row = checkRowsByIndex[i]
             local parentVisible = (not opt.parentKey) or (filters[opt.parentKey] ~= false)
-            if not parentVisible then
+            -- available(): category rows whose content cannot exist for this
+            -- character (a professions row with zero professions) hide rather
+            -- than advertise results that can never appear.
+            if not parentVisible or (opt.available and not opt.available()) then
                 row:Hide()
             else
                 local rowIndent = opt.parentKey and SUB_INDENT or 0

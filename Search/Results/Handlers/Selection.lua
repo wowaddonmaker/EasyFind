@@ -91,6 +91,42 @@ function Handlers:SelectResult(data, forceGuide)
 
 
 
+    -- Profession row: ONE canonical opener, like every other panel.
+    -- OpenRecipe loads/opens the window AND selects the recipe in one call;
+    -- driving OpenProfessionUIToSkillLine first double-initialized the list
+    -- (StoreCollapses indexed a nil dataProvider on close). The child-page
+    -- open stands alone for profession rows; the book is the last fallback.
+    if data.professionSkillLine then
+        local recipeID = data.professionRecipeID
+        local openRecipe = C_TradeSkillUI and C_TradeSkillUI.OpenRecipe
+        if recipeID and openRecipe then
+            pcall(openRecipe, recipeID)
+            return
+        end
+        local openProf = _G["OpenProfessionUIToSkillLine"]
+        if openProf and data.professionOpenID then
+            pcall(openProf, data.professionOpenID)
+            if recipeID then
+                -- Cold session: OpenRecipe materializes once the window's
+                -- addon loads; select the recipe as soon as it exists.
+                local tries = 0
+                local function selectRecipe()
+                    local fn = C_TradeSkillUI and C_TradeSkillUI.OpenRecipe
+                    if fn then
+                        pcall(fn, recipeID)
+                        return
+                    end
+                    tries = tries + 1
+                    if tries < 20 then Utils.SafeAfter(0.2, selectRecipe) end
+                end
+                Utils.SafeAfter(0.2, selectRecipe)
+            end
+        elseif _G["ToggleProfessionsBook"] then
+            pcall(_G["ToggleProfessionsBook"])
+        end
+        return
+    end
+
     -- Transmogrification panel: load and show TransmogFrame
     if data.steps and data.steps[1] and data.steps[1].loadTransmog then
         if not TransmogFrame then

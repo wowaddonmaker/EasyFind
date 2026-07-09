@@ -321,7 +321,7 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
         Render.SetClippedText(resultRow.text, entry.name)
         iconSet = true
 
-    elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.outfitID or data.heirloomItemID or data.gearSetID or data.transmogSetID or data.appearanceItemID or (data.spellID and data.category == "Ability") or (data.spellID and data.category == "Talent") or (data.encounterID and data.category == "Boss") or (data.macroIndex and data.category == "Macro") or (data.bagID and data.category == "Bag") or (data.achievementID and data.category == "Achievement")) then
+    elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.outfitID or data.heirloomItemID or data.gearSetID or data.transmogSetID or data.appearanceItemID or (data.spellID and data.category == "Ability") or (data.spellID and data.category == "Talent") or (data.encounterID and data.category == "Boss") or (data.macroIndex and data.category == "Macro") or (data.bagID and data.category == "Bag") or (data.achievementID and data.category == "Achievement") or data.professionSkillLine) then
         local iconFileID = data.icon
         local rightOffset = -5
 
@@ -339,7 +339,7 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
             resultRow.icon.mountID = data.mountID
             resultRow.icon.toyItemID = data.toyItemID
             resultRow.icon.petID = data.petID
-            resultRow.icon.spellID = data.spellID
+            resultRow.icon.spellID = data.spellID or data.professionRecipeID
             resultRow.icon.outfitID = data.outfitID
             resultRow.icon.heirloomItemID = data.heirloomItemID
             resultRow.icon.appearanceItemID = data.appearanceItemID

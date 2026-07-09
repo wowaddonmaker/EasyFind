@@ -169,6 +169,7 @@ local FLAT_CATEGORY_ICONS = {
     -- region of the PaperDollSidebarTabs sheet, same sheet as `title`).
     gearSet       = { tex = 514608, coords = { 0.01562, 0.53125, 0.46875, 0.60547 } },
     housing       = { atlas = "UI-HUD-MicroMenu-Housing-Up" },
+    profession    = { atlas = "UI-HUD-MicroMenu-Professions-Up" },
 }
 
 local BOSS_PORTRAIT_TEXCOORD = { 0.22, 0.78, 0, 1 }
@@ -234,6 +235,7 @@ function Icons:GetFlatCategoryIcon(data)
     if data.category == "Menu Bar" and data.buttonFrame then return FLAT_CATEGORY_ICONS.menuBar end
     if data.category == "Currency" then return FLAT_CATEGORY_ICONS.currency end
     if data.category == "Housing" then return FLAT_CATEGORY_ICONS.housing end
+    if data.professionSkillLine then return FLAT_CATEGORY_ICONS.profession end
     if data.statisticID or data.category == "Statistic" then return FLAT_CATEGORY_ICONS.statistic end
     if data.titleID then return FLAT_CATEGORY_ICONS.title end
     if data.gearSetID then return FLAT_CATEGORY_ICONS.gearSet end

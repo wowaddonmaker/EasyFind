@@ -115,6 +115,18 @@ function Rows.InstallTooltips(resultRow)
             GameTooltip:Show()
             return
         end
+        -- Profession recipe row: recipeIDs are spellIDs, so the recipe's
+        -- own spell tooltip is the specific surface (crafted output, reagents).
+        if self.data and self.data.professionRecipeID then
+            AnchorRowTooltip(GameTooltip, self)
+            if GameTooltip.SetSpellByID then
+                GameTooltip:SetSpellByID(self.data.professionRecipeID)
+            else
+                GameTooltip:SetHyperlink("spell:" .. self.data.professionRecipeID)
+            end
+            GameTooltip:Show()
+            return
+        end
         -- Currency row: show the currency tooltip (icon + description +
         -- amount). Routed early so it doesn't fall through to the
         -- generic icon-tooltip block, which only checks mount / toy /

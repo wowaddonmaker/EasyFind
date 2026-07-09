@@ -31,6 +31,7 @@ local ENTRIES = {
     { key = "titles",          categories = { "Title" } },
     { key = "gearSets",        categories = { "Gear Set" } },
     { key = "commands",        categories = { "Command" } },
+    { key = "professions",     categories = { "Profession" } },
     { key = "gameOptions",     parent = "options", categories = { "Game Settings" } },
     { key = "addonOptions",    parent = "options", categories = { "AddOn Settings" } },
     { key = "mounts",          parent = "collections", categories = { "Mount" } },

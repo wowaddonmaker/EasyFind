@@ -3407,6 +3407,81 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
     end)
 end
 
+-- One entry per profession this character knows (GetProfessions covers the two
+-- primaries plus archaeology, fishing, cooking). Selecting a row opens that
+-- profession's window; the 12.0 crawl verified OpenProfessionUIToSkillLine and
+-- GetProfessionInfo's skillLine return live.
+function Database:PopulateDynamicProfessions()
+    if not (GetProfessions and GetProfessionInfo) then return false end
+
+    RemoveEntriesByCategory("Profession")
+    if self.ResetSearchCache then self:ResetSearchCache() end
+
+    local prof1, prof2, archaeology, fishing, cooking = GetProfessions()
+    local profIndexes = { prof1, prof2, archaeology, fishing, cooking }
+    local profFilters = EasyFind.db.professionFilters
+    local added = false
+    for i = 1, 5 do
+        local profIndex = profIndexes[i]
+        if profIndex then
+            local profName, profIcon, _, _, _, _, skillLine = GetProfessionInfo(profIndex)
+            if profName and profName ~= "" and skillLine
+               and not (profFilters and profFilters[skillLine] == false) then
+                local nameLower = slower(profName)
+                uiSearchData[#uiSearchData + 1] = {
+                    name = profName,
+                    nameLower = nameLower,
+                    icon = profIcon,
+                    category = "Profession",
+                    keywords = { nameLower, "profession" },
+                    professionSkillLine = skillLine,
+                    professionOpenID = ns.PROFESSION_RECIPES
+                        and ns.PROFESSION_RECIPES[skillLine]
+                        and ns.PROFESSION_RECIPES[skillLine].childSkillLine,
+                }
+                added = true
+                -- Crawl-captured recipes for this profession: searchable by
+                -- localized name (recipeIDs are spellIDs), opening the
+                -- professions book like the parent entry.
+                local profData = ns.PROFESSION_RECIPES and ns.PROFESSION_RECIPES[skillLine]
+                local recipes = profData and profData.recipes
+                if recipes then
+                    local getSpell = C_Spell and C_Spell.GetSpellInfo
+                    for ri = 1, #recipes do
+                        local recipe = recipes[ri]
+                        -- Name localizes via the spell; the icon prefers the
+                        -- crawl-captured recipe-list icon (crafted output /
+                        -- gathered herb art), NOT the generic crafting-spell
+                        -- cast icon the spell API returns.
+                        local rName = recipe.name
+                        local rIcon = recipe.icon or profIcon
+                        if getSpell then
+                            local ok, spellInfo = pcall(getSpell, recipe.recipeID)
+                            if ok and type(spellInfo) == "table" and spellInfo.name then
+                                rName = spellInfo.name
+                                if not recipe.icon then
+                                    rIcon = spellInfo.iconID or rIcon
+                                end
+                            end
+                        end
+                        uiSearchData[#uiSearchData + 1] = {
+                            name = rName,
+                            nameLower = slower(rName),
+                            icon = rIcon,
+                            category = "Profession",
+                            keywords = { slower(rName), nameLower },
+                            professionSkillLine = skillLine,
+                            professionOpenID = profData.childSkillLine,
+                            professionRecipeID = recipe.recipeID,
+                        }
+                    end
+                end
+            end
+        end
+    end
+    return added
+end
+
 function Database:PopulateDynamicMacros()
     if not GetNumMacros or not GetMacroInfo then return false end
 
