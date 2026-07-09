@@ -1578,6 +1578,84 @@ function Utils.SetEditBoxReadOnlyText(editBox, text)
     if text then editBox:SetText(text) end
 end
 
+-- ESC-close WITHOUT UISpecialFrames. Inserting an addon frame's name into
+-- UISpecialFrames poisons Blizzard's CloseWindows for the whole session:
+-- the secure walker reads the addon-created global by name and its
+-- execution turns tainted from that point (taint.log: "Execution tainted
+-- by EasyFind while reading global EasyFindEscCatcher"), which then
+-- spreads through panel and action-bar bookkeeping and detonates in
+-- combat as ADDON_ACTION_BLOCKED and secret-value errors. Instead, while
+-- any registered EasyFind frame is shown, hold a transient ESCAPE
+-- override bind onto a hidden dispatch button that closes the top-most
+-- (most recently shown) one. LIFO matches how stacked popups should eat
+-- ESC. A focused EditBox still consumes ESC first (focus outranks
+-- bindings), so focused-ESC behavior is untouched. Override bindings can
+-- only change out of combat: PLAYER_REGEN_DISABLED's grace window drops
+-- the bind for the fight and REGEN_ENABLED re-arms it.
+local escStack = {}
+local escOwner, escDispatch
+local InCombatLockdown = InCombatLockdown
+local SetOverrideBindingClick = SetOverrideBindingClick
+local ClearOverrideBindings = ClearOverrideBindings
+
+local function EscArm()
+    if not escOwner or InCombatLockdown() then return end
+    ClearOverrideBindings(escOwner)
+    if #escStack > 0 then
+        SetOverrideBindingClick(escOwner, true, "ESCAPE", "EasyFindEscDispatch")
+    end
+end
+
+local function EscRemove(frame)
+    for i = #escStack, 1, -1 do
+        if escStack[i].frame == frame then tremove(escStack, i) end
+    end
+end
+
+local function EnsureEscDispatch()
+    if escOwner then return end
+    escOwner = CreateFrame("Frame", nil, UIParent)
+    -- Kept shown (1px offscreen corner) like the shortkey pool: the
+    -- binding must always have a clickable target.
+    escDispatch = CreateFrame("Button", "EasyFindEscDispatch", UIParent)
+    escDispatch:SetSize(1, 1)
+    escDispatch:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, 0)
+    escDispatch:SetScript("OnClick", function()
+        local top = escStack[#escStack]
+        if top then top.close() end
+    end)
+    escOwner:RegisterEvent("PLAYER_REGEN_DISABLED")
+    escOwner:RegisterEvent("PLAYER_REGEN_ENABLED")
+    escOwner:SetScript("OnEvent", function(_, event)
+        if event == "PLAYER_REGEN_DISABLED" then
+            ClearOverrideBindings(escOwner)
+        else
+            EscArm()
+        end
+    end)
+end
+
+-- Register frame so ESC closes it (via close()) while it is shown.
+-- close defaults to hiding the frame.
+function Utils.AttachEscClose(frame, close)
+    EnsureEscDispatch()
+    close = close or function() frame:Hide() end
+    frame:HookScript("OnShow", function()
+        EscRemove(frame)
+        escStack[#escStack + 1] = { frame = frame, close = close }
+        EscArm()
+    end)
+    frame:HookScript("OnHide", function()
+        EscRemove(frame)
+        EscArm()
+    end)
+    if frame:IsShown() then
+        escStack[#escStack + 1] = { frame = frame, close = close }
+        EscArm()
+    end
+end
+ns.AttachEscClose = function(frame, close) return Utils.AttachEscClose(frame, close) end
+
 local function EnsureCopyBox()
     if not copyBox then
         local f = CreateFrame("Frame", "EasyFindCopyBox", UIParent, "BackdropTemplate")
@@ -1677,9 +1755,9 @@ local function EnsureCopyBox()
         close:SetPoint("TOPRIGHT", -8, -8)
         close:SetScript("OnClick", function() f:Hide() end)
 
-        -- ESC closes the box even when the editbox lost focus: Blizzard's
-        -- own pipeline hides UISpecialFrames entries, no keyboard capture.
-        tinsert(UISpecialFrames, "EasyFindCopyBox")
+        -- ESC closes the box even when the editbox lost focus, via the
+        -- taint-free override-bind path (never UISpecialFrames).
+        Utils.AttachEscClose(f)
 
         f:Hide()
         copyBox = f
@@ -1790,9 +1868,10 @@ function ns.ShowThemedDialog(opts)
         f.cancel:SetScript("OnClick", cancel)
         eb:SetScript("OnEnterPressed", accept)
         eb:SetScript("OnEscapePressed", cancel)
-        -- ESC closes without protected calls via UISpecialFrames; cancel is a
-        -- bare hide, so this is the complete cancel path.
-        tinsert(UISpecialFrames, "EasyFindThemedDialog")
+        -- ESC closes via the taint-free override-bind path (never
+        -- UISpecialFrames); cancel is a bare hide, so this is the
+        -- complete cancel path.
+        Utils.AttachEscClose(f, cancel)
 
         themedDialog = f
     end

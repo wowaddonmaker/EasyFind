@@ -1941,9 +1941,9 @@ local function BuildAliasesTab(ctx)
         local x = ns.CreateCloseX(f, 14)
         x:SetPoint("TOPRIGHT", -8, -8)
         x:SetScript("OnClick", function() f:Hide() end)
-        -- ESC closes the popup even when the code box lost focus, via
-        -- Blizzard's UISpecialFrames pipeline (no keyboard capture).
-        tinsert(UISpecialFrames, "EasyFindSharePopup")
+        -- ESC closes the popup even when the code box lost focus, via the
+        -- taint-free override-bind path (never UISpecialFrames).
+        ns.AttachEscClose(f)
         f:Hide()
         return f
     end
@@ -2451,10 +2451,9 @@ function Options:Initialize()
         local point, _, relPoint, x, y = self:GetPoint(1)
         EasyFind.db.optionsPosition = {point, relPoint, x, y}
     end)
-    -- Escape closes the standalone window like every Blizzard panel.
-    -- While embedded in the Settings canvas, CloseSpecialWindows hides
-    -- both this frame and the Settings panel in the same pass.
-    tinsert(UISpecialFrames, "EasyFindOptionsFrame")
+    -- Escape closes the standalone window like every Blizzard panel, via
+    -- the taint-free override-bind path (never UISpecialFrames).
+    ns.AttachEscClose(optionsFrame)
 
     optionsFrame:SetBackdrop(nil)
 

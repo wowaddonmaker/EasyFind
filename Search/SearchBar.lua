@@ -16,7 +16,6 @@ local Utils = ns.Utils
 local ipairs = Utils.ipairs
 local slower = Utils.slower
 local mmin, mmax = Utils.mmin, Utils.mmax
-local tinsert = Utils.tinsert
 
 local GOLD_COLOR = ns.GOLD_COLOR
 local SEARCH_ICON_TEXTURE = ns.SEARCH_ICON_TEX
@@ -49,7 +48,6 @@ local resultsFrame
 local selectedIndex = 0   -- 0 = none selected, 1..N = highlighted row
 local toggleFocused = false -- true = Tab moved focus to expand/collapse toggle
 local navFrame             -- Keyboard capture frame for results navigation
-local escCatcher           -- UISpecialFrames fallback for second-ESC-to-close
 local activeKeybindBtn
 -- Combined-frame backdrop: rounded-rect 9-slice that wraps the bar
 -- alone (collapsed to a pill when results are hidden) or the bar
@@ -1416,7 +1414,7 @@ function Search:CreateSearchFrame()
             -- toggleFocused are locals to this closure, so we can't move
             -- this into HandleEscape without exposing them). Then route
             -- through HandleEscape so the same close-menus / clear-text /
-            -- hide-bar decision tree runs as the editBox and escCatcher
+            -- hide-bar decision tree runs as the editBox and unfocused-ESC
             -- paths. Single ESC closes the bar when no menus are open.
             if toolbarFocus > 0 then
                 ClearToolbarFocus()
@@ -1520,41 +1518,17 @@ function Search:CreateSearchFrame()
         StopRepeatAndMaybeRefocus(key)
     end)
 
-    -- UISpecialFrames fallback: shown whenever the search bar is visible so
-    -- WoW always has a target for ESC, even after the editbox loses focus
-    -- (clicking the filter button, hovering a sub-flyout, etc). WoW Hides
-    -- the catcher on ESC; OnHide runs the unified HandleEscape and re-Shows
-    -- the catcher if the bar is still open so the next ESC also fires.
-    -- Parented to UIParent (not searchFrame) so the OnHide signal isn't
-    -- entangled with parent-cascade hides during reload / autoHide flows.
-    escCatcher = CreateFrame("Frame", "EasyFindEscCatcher", UIParent)
-    escCatcher:SetSize(1, 1)
-    escCatcher:Hide()
-    -- Dedicated UISpecialFrames entry: unfocused ESC routes through
-    -- Blizzard's own pipeline (CloseSpecialWindows hides this frame and
-    -- OnHide runs the staged close below). The frame carries no state
-    -- and is only ever Shown/Hidden, so it cannot taint that pipeline,
-    -- and no frame-level keyboard capture is involved: with the editbox
-    -- unfocused, EasyFind holds zero keys outside keyboard-nav mode.
-    tinsert(UISpecialFrames, "EasyFindEscCatcher")
-    escCatcher:SetScript("OnHide", function(self)
-        if not searchFrame or not searchFrame:IsShown() then return end
-        -- editBox having focus means WoW's ESC pipeline already routed to
-        -- OnEscapePressed; this OnHide is a side-effect of something else
-        -- (autoHide hide, etc) and shouldn't drive ESC behavior.
-        if searchFrame.editBox and searchFrame.editBox:HasFocus() then return end
-        -- CloseSpecialWindows hides every visible entry in one press and
-        -- this catcher registers first. When a copy/share box is up, that
-        -- ESC belongs to it: re-arm and let the box close alone; the next
-        -- ESC reaches the staged close.
-        local copyBox = _G["EasyFindCopyBox"]
-        local sharePopup = _G["EasyFindSharePopup"]
-        if (copyBox and copyBox:IsShown()) or (sharePopup and sharePopup:IsShown()) then
-            self:Show()
-            return
-        end
+    -- Unfocused-ESC path: while the bar is shown, a transient ESCAPE
+    -- override (Utils.AttachEscClose) routes ESC into the same unified
+    -- HandleEscape the focused path uses. Never UISpecialFrames: Blizzard's
+    -- CloseWindows reads each registered name out of _G, and reading an
+    -- addon-created global taints its execution for the session (combat
+    -- ADDON_ACTION_BLOCKED / secret-value storms; see taint.log). A focused
+    -- editbox still consumes ESC ahead of any binding, so the focused flow
+    -- is untouched; copy/share popups shown on top register later and take
+    -- ESC first (LIFO), matching the old catcher's deferral to them.
+    Utils.AttachEscClose(searchFrame, function()
         Search:HandleEscape(true)
-        if searchFrame:IsShown() then self:Show() end
     end)
 
 
@@ -1660,12 +1634,6 @@ function Search:CreateSearchFrame()
     -- that way could never be dismissed. The handler's guards below make
     -- the always-on registration free when hidden or not in auto-hide.
     searchFrame:RegisterEvent("GLOBAL_MOUSE_DOWN")
-    searchFrame:HookScript("OnShow", function()
-        -- Arm the UISpecialFrames catcher: gives ESC a target even when
-        -- the editbox lacks focus (clicking the filter button, hovering a
-        -- flyout). escCatcher's OnHide consolidates the close behavior.
-        if escCatcher then escCatcher:Show() end
-    end)
     searchFrame:HookScript("OnHide", function()
         Search:HideQuickFilterSuggestions()
     end)
@@ -1774,10 +1742,6 @@ function Search:Show(andFocus)
     if not (EasyFind.db.smartShow and not EasyFind.db.autoHide) then
         searchFrame:SetAlpha(1.0)
     end
-    -- Belt-and-suspenders: OnShow hook also calls this, but if searchFrame
-    -- was already shown the hook didn't fire and escCatcher would be left
-    -- hidden, leaving ESC without a target when the editbox is unfocused.
-    if escCatcher then escCatcher:Show() end
     EasyFind.db.visible = true
     if EasyFind.db.smartShow and not EasyFind.db.autoHide then
         searchFrame.hoverZone:Show()
@@ -1809,7 +1773,6 @@ function Search:Hide()
     -- SafeCallMethod: the frame ancestors secure result rows, so Hide is a
     -- protected operation in combat and must degrade quietly.
     Utils.SafeCallMethod(searchFrame, "Hide")
-    if escCatcher then escCatcher:Hide() end
     searchFrame.setSmartShowVisible(false)
     self:HideResults()
     searchFrame.editBox:ClearFocus()
@@ -1822,15 +1785,15 @@ end
 
 -- Unified ESC handler: collapses every menu state we care about into one
 -- decision tree. Called from editBox:OnEscapePressed (focused path) and
--- escCatcher:OnHide (unfocused path) so ESC behaves the same regardless of
--- which frame currently holds keyboard input.
+-- the AttachEscClose override bind (unfocused path) so ESC behaves the
+-- same regardless of which frame currently holds keyboard input.
 --   Filter dropdown / flyouts open: close them all + refocus editbox.
 --   Editbox has text:               clear text + refocus.
 --   Otherwise:                      hide the search bar.
--- fromUnfocused: ESC arrived via the UISpecialFrames catcher, i.e. the
--- player was NOT typing. That path closes popups or the window and must
--- never clear text or grant editbox focus; the staged clear-and-refocus
--- behavior below belongs to the focused flow only.
+-- fromUnfocused: ESC arrived via the override bind, i.e. the player was
+-- NOT typing. That path closes popups or the window and must never clear
+-- text or grant editbox focus; the staged clear-and-refocus behavior
+-- below belongs to the focused flow only.
 function Search:HandleEscape(fromUnfocused)
     if not searchFrame or not searchFrame:IsShown() then return end
     local editBox = searchFrame.editBox
