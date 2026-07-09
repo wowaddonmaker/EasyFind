@@ -133,12 +133,6 @@ local SEARCH_TUTORIAL_SLIDES = {
         text = L["TUT_SLIDE_AT_PREFIX"],
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-bags-hires",
-        texCoord = TutorialTexCoord(908, 420, 1024, 512),
-        w = 454, h = 210,
-        text = L["TUT_SLIDE_QUICK_FILTERS"],
-    },
-    {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-currency-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
@@ -164,26 +158,13 @@ local SEARCH_TUTORIAL_SLIDES = {
             ox = 285, oy = 180,
         },
     },
-    {
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-settings-hires",
-        texCoord = TutorialTexCoord(908, 420, 1024, 512),
-        w = 454, h = 210,
-        text = L["TUT_SLIDE_INLINE_SETTINGS"],
-    },
 }
 local USE_TUTORIAL_SLIDES = {
     {
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-01-hires",
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-gear-outfit-title-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
-        text = L["TUT_SLIDE_USE_GEAR"],
-        -- Cursor just right of the "Click: Equip Gear Set" hint.
-        overlay = {
-            tex = GAUNTLET_CURSOR_TEX,
-            texCoord = GAUNTLET_CURSOR_TEXCOORD,
-            size = 30,
-            ox = 200, oy = 142,
-        },
+        text = L["TUT_SLIDE_USE_GEAR_OUTFIT_TITLE"],
     },
     {
         image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-mounts-hires",
@@ -199,69 +180,22 @@ local USE_TUTORIAL_SLIDES = {
         },
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-outfits-hires",
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-macros-abilities-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
-        text = L["TUT_SLIDE_USE_OUTFITS"],
-        -- Cursor just right of the modifier hint's "Drag".
-        overlay = {
-            tex = GAUNTLET_CURSOR_TEX,
-            texCoord = GAUNTLET_CURSOR_TEXCOORD,
-            size = 30,
-            ox = 371, oy = 90,
-        },
+        text = L["TUT_SLIDE_USE_MACROS_ABILITIES"],
     },
     {
-        -- Shares the search carousel's macros image (slide 10 there).
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-macros-hires",
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-toys-commands-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
-        text = L["TUT_SLIDE_USE_MACROS"],
-        -- Cursor just right of the modifier hint's "drag".
-        overlay = {
-            tex = GAUNTLET_CURSOR_TEX,
-            texCoord = GAUNTLET_CURSOR_TEXCOORD,
-            size = 30,
-            ox = 370, oy = 178,
-        },
+        text = L["TUT_SLIDE_USE_TOYS_COMMANDS"],
     },
     {
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-abilities-hires",
+        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-search-settings-hires",
         texCoord = TutorialTexCoord(908, 420, 1024, 512),
         w = 454, h = 210,
-        text = L["TUT_SLIDE_USE_ABILITIES"],
-        -- Cursor just right of the modifier hint's "Drag".
-        overlay = {
-            tex = GAUNTLET_CURSOR_TEX,
-            texCoord = GAUNTLET_CURSOR_TEXCOORD,
-            size = 30,
-            ox = 308, oy = 138,
-        },
-    },
-    {
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-03-hires",
-        texCoord = TutorialTexCoord(908, 420, 1024, 512),
-        w = 454, h = 210,
-        text = L["TUT_SLIDE_USE_TOYS"],
-    },
-    {
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-titles-hires",
-        texCoord = TutorialTexCoord(908, 420, 1024, 512),
-        w = 454, h = 210,
-        text = L["TUT_SLIDE_USE_TITLES"],
-        -- Cursor just right of the "Click: Apply Title" hint.
-        overlay = {
-            tex = GAUNTLET_CURSOR_TEX,
-            texCoord = GAUNTLET_CURSOR_TEXCOORD,
-            size = 30,
-            ox = 182, oy = 141,
-        },
-    },
-    {
-        image = "Interface\\AddOns\\EasyFind\\Onboarding\\Images\\tutorial-use-commands-hires",
-        texCoord = TutorialTexCoord(908, 420, 1024, 512),
-        w = 454, h = 210,
-        text = L["TUT_SLIDE_USE_COMMANDS"],
+        text = L["TUT_SLIDE_INLINE_SETTINGS"],
     },
 }
 local CALCULATOR_TUTORIAL_SLIDES = {
