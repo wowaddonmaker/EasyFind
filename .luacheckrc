@@ -116,7 +116,7 @@ read_globals = {
     "UnitClass", "UnitGUID", "GetLootSpecialization", "DressUpItemLink", "DressUpTransmogSet",
     "GetNumClasses", "GetClassInfo", "GetNumSpecializationsForClassID",
     "GetSpecializationInfoForClassID", "RAID_CLASS_COLORS",
-    "GetProfessions", "GetProfessionInfo", "C_TradeSkillUI",
+    "GetProfessions", "GetProfessionInfo", "C_TradeSkillUI", "EnumerateFrames",
     "EJ_GetCurrentTier", "EJ_SelectTier", "EJ_GetInstanceByIndex",
     "EJ_SelectInstance", "EJ_GetEncounterInfoByIndex", "EJ_SelectEncounter",
     "EJ_SetDifficulty", "EJ_SetLootFilter", "EJ_SetSlotFilter",

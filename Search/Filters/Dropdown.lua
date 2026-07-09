@@ -982,6 +982,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 rowHeight = ROW_HEIGHT,
                 checkSize = CHECK_SIZE,
                 StylePopup = StylePopup,
+                CreateRadioTexture = CreateRadioTexture,
                 AddPopupKeyboardNav = AddPopupKeyboardNav,
                 SetActiveFlyout = SetActiveFlyout,
                 ClearActiveFlyout = ClearActiveFlyout,

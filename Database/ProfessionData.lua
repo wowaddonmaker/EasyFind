@@ -8,6 +8,17 @@ local _, ns = ...
 ns.PROFESSION_RECIPES = {
     [182] = { -- Herbalism
         childSkillLine = 2912, -- Midnight Herbalism page (the openable UI ID)
+        -- Expansion pages (the Sources/expansion radio): child professionIDs.
+        -- Names are enUS capture fallbacks; live window names win when loaded.
+        children = {
+            { professionID = 2912, name = "Midnight" },
+            { professionID = 2877, name = "Khaz Algar" },
+            { professionID = 2760, name = "Shadowlands" },
+            { professionID = 2549, name = "Kul Tiran" },
+            { professionID = 2551, name = "Draenor" },
+            { professionID = 2553, name = "Cataclysm" },
+            { professionID = 2556, name = "Classic" },
+        },
         recipes = {
             { recipeID = 1223099, name = "Tranquility Bloom", categoryID = 2190, icon = 7290677 },
             { recipeID = 1223146, name = "Lush Argentleaf", categoryID = 2193, icon = 6658327 },

@@ -157,6 +157,8 @@ local DB_DEFAULTS = {
     housingTagGroupsCache = {},
     housingFiltersPendingPush = false,
     professionFilters = {},
+    professionRecipeFilters = {},
+    professionFiltersPendingPush = false,
     uiSearchFilters = {
         achievements   = true,
         statistics     = false,
@@ -869,6 +871,9 @@ local function OnPlayerLogin()
     InstallClassFilterHooks()
     if ns.Database and ns.Database.ArmHousingPendingPushIfNeeded then
         pcall(ns.Database.ArmHousingPendingPushIfNeeded, ns.Database)
+    end
+    if ns.Filters and ns.Filters.ArmProfessionPendingPushIfNeeded then
+        pcall(ns.Filters.ArmProfessionPendingPushIfNeeded, ns.Filters)
     end
 
     -- Keep PLAYER_LOGIN light. Search data is loaded by query intent.
