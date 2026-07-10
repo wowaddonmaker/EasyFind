@@ -46,9 +46,29 @@ local function IsPlayerSpellsTabSelected(tabIndex)
     return false
 end
 
+-- Switching the PlayerSpells tab from addon execution writes the action
+-- bars' drag-grid flag tainted (measured: /efd taint steer flips
+-- MultiBarBottomLeft.showAllButtons the moment the tab is clicked), so NO
+-- code path may ClickButton these tabs. Row clicks steer securely on
+-- their release edge (Shared/SecureOpeners.lua); when that steer did not
+-- land (non-row flows, first-open gaps), highlight the tab so the user's
+-- own hardware click does the switch. Returns true when the requested tab
+-- is already active (or no specific tab was requested).
+local function EnsurePlayerSpellsTab(tabIndex)
+    if not tabIndex or IsPlayerSpellsTabSelected(tabIndex) then return true end
+    local tab = ns.SecureOpeners
+        and ns.SecureOpeners.GetTabButtonFor("playerSpells", tabIndex)
+    local highlight = ns.Highlight
+    if tab and highlight and highlight.HighlightFrame then
+        highlight:HighlightFrame(tab)
+    end
+    return false
+end
+
 local function OpenPlayerSpellsFrame(tabIndex)
     local frame = _G["PlayerSpellsFrame"]
     if frame and frame:IsShown() then
+        EnsurePlayerSpellsTab(tabIndex)
         return true
     end
 
@@ -141,8 +161,8 @@ function Openers:OpenButtonFrame(buttonFrame, nextStep)
     return OpenButtonFrame(buttonFrame, nextStep)
 end
 
-function Openers:IsPlayerSpellsTabSelected(tabIndex)
-    return IsPlayerSpellsTabSelected(tabIndex)
+function Openers:EnsurePlayerSpellsTab(tabIndex)
+    return EnsurePlayerSpellsTab(tabIndex)
 end
 
 function Openers:OpenPlayerSpellsFrame(tabIndex)

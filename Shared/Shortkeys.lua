@@ -126,7 +126,10 @@ end
 -- ApplyAll pulls its owner in once so the entry re-captures with the current
 -- fields. Without this, a snapshot missing a newer action field (e.g. a
 -- settings row without settingVariable) would misbehave forever.
-local SNAPSHOT_VER = 2
+-- v3: isSpellbookOnly joined the stored fields (it drives the secure
+-- panel-open classification; without it a spellbook-only ability snapshot
+-- looks castable and binds a cast that silently no-ops).
+local SNAPSHOT_VER = 3
 local function SnapshotData(data)
     local clean = ns.UIPins and ns.UIPins.CleanForStorage
     if data and clean then return clean(data) end
@@ -214,7 +217,31 @@ local function RequestProviderForRowKey(rowKey)
     end
 end
 
-local function OnShortkeyButtonClick(self)
+local function ShortkeyButtonData(self)
+    local rowKey = self._rowKey
+    local data = rowKey and ResolveData(rowKey)
+    if not data and rowKey then
+        local info = Shortkeys:Get(rowKey)
+        data = info and info.data
+    end
+    return data
+end
+
+-- Panel-open macros are armed only while the panel is hidden; re-sync the
+-- secure attributes at press time so a stale render (panel toggled by
+-- keybind since ApplyAll last ran) cannot leave the wrong action armed.
+-- Unconditional like the row PreClick: Apply also disarms when the data
+-- has no secure action.
+local function OnShortkeyButtonPreClick(self, _, down)
+    if not down then return end
+    if InCombatLockdown() then return end
+    local data = ShortkeyButtonData(self)
+    if data and ns.ResultSecureAttributes then
+        ns.ResultSecureAttributes.ApplyAtClick(self, data)
+    end
+end
+
+local function OnShortkeyButtonClick(self, _, down)
     -- Shortkey navigation is silently inert in combat: the paths it drives
     -- (panel opens, guides, hiding the search frame) are protected, and a
     -- chat notice per press was spam. The capture popup and the tutorial
@@ -223,15 +250,22 @@ local function OnShortkeyButtonClick(self)
     if InCombatLockdown() then return end
     -- Secure rows already fired their action from the secure attributes; this
     -- insecure handler only drives navigation rows (open panel / guide / pin),
-    -- resolved live so they never go stale.
-    local rowKey = self._rowKey
-    local data = rowKey and ResolveData(rowKey)
-    if not data and rowKey then
-        local info = Shortkeys:Get(rowKey)
-        data = info and info.data
-    end
+    -- resolved live so they never go stale. Panel-opener rows are the
+    -- exception: their navigation runs on the RELEASE dispatch, after the
+    -- secure open (press) and tab steer (release) both fired, so the
+    -- follow-up finds the panel open on the right tab and stays
+    -- carrier-free. Everything else acts on the press, as before.
+    local data = ShortkeyButtonData(self)
     if not data then return end
-    if ns.ResultIcons and ns.ResultIcons:IsSecureActionResult(data) then return end
+    local opensPanel = ns.ResultSecureAttributes
+        and ns.ResultSecureAttributes.ActsOnRelease(self, data)
+    if opensPanel then
+        if down then return end
+    elseif not down then
+        return
+    end
+    if not opensPanel and ns.ResultIcons
+       and ns.ResultIcons:IsSecureActionResult(data) then return end
     -- Call directly (not deferred): this runs in the key press's hardware-event
     -- context, which ShowUIPanel needs to open protected panels.
     if ns.ResultHandlers and ns.ResultHandlers.SelectResult then
@@ -294,11 +328,13 @@ local function GetButton(i)
     -- action when triggered by a keybind. Keep it 1px in the corner.
     b:SetSize(1, 1)
     b:SetPoint("BOTTOMLEFT", owner, "BOTTOMLEFT", 0, 0)
-    -- Match EasyFind's result rows exactly: register "LeftButtonDown" and drive
-    -- our navigation handler from PostClick. SecureActionButtonTemplate
+    -- Match EasyFind's result rows exactly: register both left edges (press
+    -- fires the secure action, release fires the panel-opener tab steer) and
+    -- drive our navigation handler from PostClick. SecureActionButtonTemplate
     -- dispatches the protected action through its own OnClick, so we must NOT
     -- replace OnClick; doing so was why the secure action never fired.
-    b:RegisterForClicks("LeftButtonDown")
+    b:RegisterForClicks("LeftButtonDown", "LeftButtonUp")
+    b:SetScript("PreClick", OnShortkeyButtonPreClick)
     b:SetScript("PostClick", OnShortkeyButtonClick)
     pool[i] = b
     return b
@@ -348,10 +384,11 @@ function Shortkeys:ApplyAll()
                 if ns.ResultSecureAttributes and ns.ResultSecureAttributes.Apply then
                     ns.ResultSecureAttributes.Apply(b, data)
                 end
-            else
-                -- Navigation row: no secure action, OnClick handles it. Wipe any
-                -- secure type left from a previous binding of this pool button.
-                Utils.SafeCallMethod(b, "SetAttribute", "type", nil)
+            elseif ns.ResultSecureAttributes then
+                -- Navigation row: no secure action, OnClick handles it. Clear
+                -- (not a bare type=nil) so the previous binding's attribute
+                -- and dedup cache can't disarm a later rebind of this button.
+                ns.ResultSecureAttributes.Clear(b)
             end
             local btnName = b:GetName()
             if btnName then

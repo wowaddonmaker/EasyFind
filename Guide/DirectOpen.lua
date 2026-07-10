@@ -288,12 +288,11 @@ function Guide:DirectOpen(data)
                     return
                 elseif step.waitForFrame == "CharacterFrame" then
                     Openers:OpenCharacterFrame(step.tabIndex)
-                elseif step.waitForFrame == "PlayerSpellsFrame"
-                       and not Openers:IsPlayerSpellsTabSelected(step.tabIndex) then
-                    local tabBtn = Highlight:GetTabButton(step.waitForFrame, step.tabIndex)
-                    if tabBtn then ClickButton(tabBtn) end
-                elseif step.waitForFrame ~= "EncounterJournal"
-                       and step.waitForFrame ~= "PlayerSpellsFrame" then
+                elseif step.waitForFrame == "PlayerSpellsFrame" then
+                    -- Secure release steer normally landed already;
+                    -- otherwise highlights the tab (see EnsurePlayerSpellsTab).
+                    Openers:EnsurePlayerSpellsTab(step.tabIndex)
+                elseif step.waitForFrame ~= "EncounterJournal" then
                     ClickButton(Highlight:GetTabButton(step.waitForFrame, step.tabIndex))
                 end
 

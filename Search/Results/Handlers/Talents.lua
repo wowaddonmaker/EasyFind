@@ -4,12 +4,10 @@ local Handlers = ns.ResultHandlers
 local Openers = ns.SearchOpeners
 local Utils = ns.Utils
 
-local ClickButton = Utils.ClickButton
 local select, ipairs = Utils.select, Utils.ipairs
 
 function Handlers:OpenTalentInTalentsTab(data)
-    local highlight = ns.Highlight
-    local TALENTS_TAB = 2
+    local TALENTS_TAB = ns.SecureOpeners and ns.SecureOpeners.TAB_TALENTS or 2
 
     local function ensureFrameOnTab(attempt)
         local frame = _G["PlayerSpellsFrame"]
@@ -20,13 +18,11 @@ function Handlers:OpenTalentInTalentsTab(data)
             end
             return
         end
-        if highlight and highlight.IsTabSelected
-           and not highlight:IsTabSelected("PlayerSpellsFrame", TALENTS_TAB) then
-            local tab = highlight.GetTabButton
-                and highlight:GetTabButton("PlayerSpellsFrame", TALENTS_TAB)
-            if tab then ClickButton(tab) end
+        if not Openers:EnsurePlayerSpellsTab(TALENTS_TAB) then
+            -- Wrong tab: highlighted for a hardware click (see
+            -- EnsurePlayerSpellsTab); retry until the user lands on it.
             if attempt < 30 then
-                Utils.SafeAfter(0, function() ensureFrameOnTab(attempt + 1) end)
+                Utils.SafeAfter(0.05, function() ensureFrameOnTab(attempt + 1) end)
             end
             return
         end

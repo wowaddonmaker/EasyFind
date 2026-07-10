@@ -308,6 +308,14 @@ function Shortcuts:ActivateVisibleResultShortcut(shortcutIndex)
                     return "binding"
                 end
                 if not InCombatLockdown() then
+                    -- A synthetic Click() sends an up-edge the secure
+                    -- dispatch drops (useOnKeyDown pins the down edge), so
+                    -- this fallback only reaches PostClick navigation. For
+                    -- panel-opener rows that navigation IS the tainted
+                    -- legacy open; refuse rather than replant the taint.
+                    if ns.SecureOpeners and ns.SecureOpeners.OpenKeyForData(row.data) then
+                        return "binding"
+                    end
                     MarkResultShortcutActivation(row)
                     if ClickButton(row) then
                         return "handled"

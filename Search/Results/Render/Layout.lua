@@ -172,7 +172,10 @@ function Render.HideUnusedResultRow(resultRow)
     resultRow._efContentTop = nil
     resultRow._efContentBottom = nil
     if not InCombatLockdown() then
-        Utils.SafeCallMethod(resultRow, "SetAttribute", "type", nil)
+        -- Clear first: it invalidates SecureAttributes' dedup cache along
+        -- with the tracked attribute, or the next Apply with an identical
+        -- action early-returns and leaves the reused row disarmed.
+        ns.ResultSecureAttributes.Clear(resultRow)
         Utils.SafeCallMethod(resultRow, "SetAttribute", "toy", nil)
         Utils.SafeCallMethod(resultRow, "SetAttribute", "action", nil)
         Utils.SafeCallMethod(resultRow, "SetAttribute", "spell", nil)

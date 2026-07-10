@@ -22,6 +22,7 @@ Locales/ruRU.lua
 Locales/zhCN.lua
 Locales/zhTW.lua
 Shared/Utils.lua
+Shared/SecureOpeners.lua
 Shared/SearchText.lua
 Shared/CategoryMap.lua
 Shared/Scheduler.lua

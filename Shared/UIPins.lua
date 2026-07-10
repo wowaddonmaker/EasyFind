@@ -12,7 +12,7 @@ local charKey
 local SIMPLE_FIELDS = {
     "name", "nameLower", "category", "buttonFrame", "icon",
     "specificIcon", "specificIconFrame",
-    "mountID", "spellID", "toyItemID", "petID", "speciesID", "outfitID", "heirloomItemID",
+    "mountID", "spellID", "isSpellbookOnly", "toyItemID", "petID", "speciesID", "outfitID", "heirloomItemID",
     "macroIndex", "macroIsChar", "bagID", "bagSlot", "bagItemLink",
     "itemID", "encounterID", "instanceID", "lootSlotName", "lootSourceName", "lootInstanceName", "lootSourceType",
     "transmogSetID",

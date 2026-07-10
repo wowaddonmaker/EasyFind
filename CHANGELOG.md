@@ -17,7 +17,9 @@ All notable changes to EasyFind will be documented in this file.
 - Search data for filtered-off categories is no longer loaded and indexed at all until the category is re-enabled
 
 ### Fixed
-- Inline setting Apply buttons work again for game settings that require confirmation
+- Opening the spellbook or talents from a search result no longer causes "EasyFind has been blocked" action-bar errors and spellbook cooldown errors during combat; both the open and the tab switch now run through the game's own protected input path
+- Pressing Escape to close a window no longer risks the same combat errors (EasyFind windows now close via a temporary key binding instead of the game's window list)
+- Result clicks now fire their action regardless of the game's cast-on-key-down combat setting (previously, turning that setting off silently broke mount, spell, and macro results)
 - Shortkeys now bind immediately at login from saved data instead of waiting for search data to load
 - Pressing a shortkey now always triggers the same action as left-clicking its row
 - Loot results match their gear-slot keywords correctly again, and stat searches can combine two stats

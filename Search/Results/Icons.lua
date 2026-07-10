@@ -249,7 +249,7 @@ function Icons:GetRepFactionIcon(factionSide)
 end
 
 function Icons:IsSpellbookOnlyAbility(data)
-    return data and data.category == "Ability" and data.spellID and data.isSpellbookOnly
+    return Utils.IsSpellbookOnlyAbility(data)
 end
 
 function Icons:IsMountSummonable(data)
@@ -302,16 +302,18 @@ function Icons:SetRowIcon(btn, kind, value, iconSize)
 end
 
 function Icons:IsSecureActionResult(data)
-    -- Talents carry spellID but never cast (SecureAttributes.Apply skips
-    -- them); classifying them secure here would give shortkeys/Enter a
-    -- button with no action instead of the talent-tab navigation a click does.
-    return data and (data.outfitID or data.toyItemID
+    if not data then return nil end
+    -- Cheap field checks first; the opener classification (keyboard
+    -- activation must drive the secure button instead of the tainted open,
+    -- see Shared/SecureOpeners.lua) only runs for rows the chain rejects.
+    return (data.outfitID or data.toyItemID
         or (data.spellID and data.category ~= "Talent"
             and not Icons:IsSpellbookOnlyAbility(data))
         or (data.mountID and Icons:IsMountSummonable(data))
         or data.macroIndex or data.slashCommand
         or (data.itemID and data.category == "Bag"
             and Handlers:GetBagItemActionKind(data) ~= "show"))
+        or (ns.SecureOpeners and ns.SecureOpeners.OpenKeyForData(data)) or false
 end
 
 function Icons:GetBossPortraitTexCoord()

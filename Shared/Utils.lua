@@ -3273,6 +3273,15 @@ function Utils.ScrollBoxFindButton(scrollBox, matchFn)
     return nil
 end
 
+-- Pure data predicate for abilities that live only in the spellbook
+-- (passives, unlearned ranks): they never cast, their activation opens
+-- the spellbook. Owned here so Shared-layer classification (SecureOpeners)
+-- does not reach into Search-layer modules; Icons:IsSpellbookOnlyAbility
+-- delegates to this.
+function Utils.IsSpellbookOnlyAbility(data)
+    return data and data.category == "Ability" and data.spellID and data.isSpellbookOnly
+end
+
 -- True when a guide cannot start in combat: its first clickable step
 -- targets a PROTECTED frame. Capability check via IsProtected, never a
 -- category list; guides whose targets are unprotected run in combat like

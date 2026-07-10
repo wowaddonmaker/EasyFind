@@ -23,7 +23,11 @@ function Rows.InstallInteractions(resultRow, index)
     -- version where Down works perfectly). RegisterForDrag would
     -- defer the Down click and break that, so we route drag-to-bar
     -- through Shift+click instead (handled in PreClick below).
-    resultRow:RegisterForClicks("LeftButtonDown", "RightButtonUp")
+    -- LeftButtonUp is registered too: panel-opener rows fire their
+    -- secure tab steer on the release edge (typerelease, see
+    -- Shared/SecureOpeners.lua); PreClick/PostClick gate on the edge so
+    -- every other behavior still runs exactly once, on the press.
+    resultRow:RegisterForClicks("LeftButtonDown", "LeftButtonUp", "RightButtonUp")
 
     -- Shift+drag on a row picks the action up onto the cursor (for
     -- placing on action bars, banks, etc.) instead of casting. We
@@ -83,15 +87,6 @@ function Rows.InstallInteractions(resultRow, index)
             PickupItem(d.itemID)
         end
     end
-    local function ClearSecureClick(row)
-        if row._lastAttrKey then
-            Utils.SafeCallMethod(row, "SetAttribute", row._lastAttrKey, nil)
-        end
-        Utils.SafeCallMethod(row, "SetAttribute", "type", nil)
-        row._lastAttrType = nil
-        row._lastAttrKey = nil
-        row._lastAttrVal = nil
-    end
     local function SetSecureOutfit(row, outfitIndex)
         if row._lastAttrKey and row._lastAttrKey ~= "outfit-index" then
             Utils.SafeCallMethod(row, "SetAttribute", row._lastAttrKey, nil)
@@ -124,6 +119,9 @@ function Rows.InstallInteractions(resultRow, index)
         if self.data then PickupRowAction(self.data) end
     end)
     resultRow:HookScript("OnMouseUp", function(self)
+        if not InCombatLockdown() and ns.ResultSecureAttributes then
+            ns.ResultSecureAttributes.ArmSteerLate(self)
+        end
         self._dragOriginX, self._dragOriginY = nil, nil
         -- If we picked up this cycle and the user released over an
         -- action bar slot, place it (emulates native drag-drop, which
@@ -150,19 +148,26 @@ function Rows.InstallInteractions(resultRow, index)
             end
         end
     end)
-    resultRow:SetScript("PreClick", function(self, mouseButton)
+    resultRow:SetScript("PreClick", function(self, mouseButton, down)
         if mouseButton ~= "LeftButton" then return end
+        -- The release dispatch exists only for the secure tab steer;
+        -- attributes were armed at press time.
+        if not down then return end
         self._outfitSecureClicked = nil
         if InCombatLockdown() then return end
 
         local d = self.data
+
+        -- Click-time re-sync: render-time armed state can be stale (panel
+        -- toggled since); PreClick attribute writes apply to this click.
+        ns.ResultSecureAttributes.ApplyAtClick(self, d)
 
         -- Shift+click with a chat editbox active inserts the row's real
         -- hyperlink, like shift-clicking an item anywhere in the game.
         -- Takes priority over pickup (matching native behavior), kills
         -- the secure action, and cancels any pending drag detection.
         if d and ns.TryInsertResultChatLink and ns.TryInsertResultChatLink(d) then
-            ClearSecureClick(self)
+            ns.ResultSecureAttributes.Clear(self)
             self._dragOriginX, self._dragOriginY = nil, nil
             self._chatLinkInserted = true
             return
@@ -176,7 +181,7 @@ function Rows.InstallInteractions(resultRow, index)
         -- prevents PostClick from closing the window before OnUpdate
         -- has had a chance to detect movement and pick up the action.
         if d and IsShiftKeyDown() and CanPickupRowAction(d) then
-            ClearSecureClick(self)
+            ns.ResultSecureAttributes.Clear(self)
             self._pickedUp = true
             return
         end
@@ -187,33 +192,60 @@ function Rows.InstallInteractions(resultRow, index)
         local ctrlHeld = IsControlKeyDown and IsControlKeyDown()
         local bagItemKind = (d and d.itemID and d.category == "Bag")
             and Handlers:GetBagItemActionKind(d)
+
+        -- Alt+click on an ability row means "show it in the spellbook":
+        -- castable rows swap their cast for the secure open macro this
+        -- click (PostClick's reveal then finds the panel securely open);
+        -- spellbook-only rows already carry the open macro as their
+        -- primary action and keep it. IsSourceModifierHeld is false during
+        -- shortcut/shortkey activations, so ALT-chord bindings never land
+        -- here and the plain cast fires for them.
+        if sourceModifierHeld and d and d.spellID and d.category == "Ability" then
+            if not Icons:IsSpellbookOnlyAbility(d) then
+                ns.ResultSecureAttributes.SwapToPanelOpen(self)
+            end
+            return
+        end
+
         local suppressSecureClick = d and (
             (sourceModifierHeld and (d.macroIndex or d.mountID or d.toyItemID
-                or d.outfitID or (d.spellID and d.category == "Ability")
-                or (d.itemID and d.category == "Bag")))
+                or d.outfitID or (d.itemID and d.category == "Bag")))
             or (d.mountID and (ctrlHeld or not Icons:IsMountSummonable(d)))
             or (ctrlHeld and bagItemKind == "equip")
         )
         if suppressSecureClick then
-            ClearSecureClick(self)
+            ns.ResultSecureAttributes.Clear(self)
             return
         end
 
         if not (d and d.outfitID) then return end
         if Rows:IsOutfitCooldownActive() then
-            ClearSecureClick(self)
+            ns.ResultSecureAttributes.Clear(self)
             return
         end
 
         local outfitIndex = Handlers:GetOutfitSecureIndex(d)
         if not outfitIndex then
-            ClearSecureClick(self)
+            ns.ResultSecureAttributes.Clear(self)
             return
         end
         SetSecureOutfit(self, outfitIndex)
         self._outfitSecureClicked = d.outfitID
     end)
     resultRow:SetScript("PostClick", function(self, mouseButton, down)
+        -- Panel-opener clicks act on the RELEASE dispatch, after the
+        -- secure tab steer has run, so the navigation follow-up finds the
+        -- right tab already selected and never falls back to the tainted
+        -- ClickButton(tab). Everything else acts on the press dispatch,
+        -- exactly as before both left edges were registered.
+        if mouseButton == "LeftButton" then
+            if ns.ResultSecureAttributes.ActsOnRelease(self, self.data) then
+                if down then return end
+            elseif not down then
+                return
+            end
+        end
+
         -- Shift+click chat insert: the link went into the editbox; keep
         -- the results open and don't navigate.
         if self._chatLinkInserted then

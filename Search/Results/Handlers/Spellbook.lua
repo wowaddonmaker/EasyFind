@@ -497,20 +497,16 @@ function Handlers:OpenAbilityInSpellbook(data)
     local pagesAdvanced = 0
     local MAX_PAGES = 20
 
+    local spellbookTab = ns.SecureOpeners and ns.SecureOpeners.TAB_SPELLBOOK or 3
     local function openFrame()
         local frame = _G["PlayerSpellsFrame"]
         if frame and frame:IsShown() then
-            if highlight and highlight.IsTabSelected
-               and not highlight:IsTabSelected("PlayerSpellsFrame", 3) then
-                local tab = highlight.GetTabButton
-                    and highlight:GetTabButton("PlayerSpellsFrame", 3)
-                ClickButton(tab)
-                return true
-            end
-            return false
+            -- Wrong tab: highlighted for a hardware click (see
+            -- EnsurePlayerSpellsTab); retry until the user lands on it.
+            return not Openers:EnsurePlayerSpellsTab(spellbookTab)
         end
 
-        Openers:OpenPlayerSpellsFrame(3)
+        Openers:OpenPlayerSpellsFrame(spellbookTab)
         return true
     end
 
