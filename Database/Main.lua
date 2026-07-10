@@ -15,6 +15,8 @@ local sfind, ssub = Utils.sfind, Utils.ssub
 local slower = SearchText.Normalize
 local select, type, tostring = select, type, tostring
 local wipe = wipe
+local CreateFrame = CreateFrame
+local GetTime = GetTime
 local C_CurrencyInfo = C_CurrencyInfo
 local C_Reputation = C_Reputation
 local C_MountJournal = C_MountJournal
@@ -148,6 +150,12 @@ end
 
 function Database:PopulateDynamicCurrencies()
     if not C_CurrencyInfo or not C_CurrencyInfo.GetCurrencyListSize then return false end
+    if C_CurrencyInfo.GetCurrencyListSize() == 0 then
+        -- Currency list not streamed yet (CURRENCY_DISPLAY_UPDATE pending):
+        -- not-ready, and checked BEFORE the category wipe so a transient
+        -- zero read cannot empty previously good entries mid-session.
+        return false
+    end
 
     RemoveEntriesByCategory("Currency")
     wipe(knownCurrencyIDs)
@@ -362,6 +370,13 @@ end
 
 function Database:PopulateDynamicReputations()
     if not C_Reputation or not C_Reputation.GetNumFactions then return false end
+    local liveFactions = C_Reputation.GetNumFactions()
+    if not liveFactions or liveFactions == 0 then
+        -- Faction list not streamed yet (UPDATE_FACTION pending): not-ready,
+        -- and checked BEFORE the category wipe so a transient zero read
+        -- cannot empty previously good entries mid-session.
+        return false
+    end
 
     RemoveEntriesByCategory("Reputation")
 
@@ -911,7 +926,13 @@ function Database:GetEntryLockedReason(entry)
 end
 -- v2: slot keywords rebuilt with the journal filterType fallback; older caches
 -- carry entries with missing/stale lootSlotKw and must re-scan.
-ns.LOOT_ITEM_CACHE_VER = 2
+-- v3: amnesty for caches poisoned by cold-journal scans. The journal fills
+-- from the server asynchronously; scans used to mark specs as fully scanned
+-- even when encounters returned no data yet, permanently sticking an empty
+-- or partial cache. Discarding forces one clean re-scan under the fixed
+-- scan (which now waits for EJ_LOOT_DATA_RECIEVED and refuses to mark
+-- specs complete on unresolved reads).
+ns.LOOT_ITEM_CACHE_VER = 3
 ns.BOSS_CACHE_VER = 1
 ns.STATISTIC_CACHE_VER = 1
 
@@ -1032,6 +1053,11 @@ local bossScanGeneration = 0
 local lootItemCache = {}
 Database._lootItemCache = lootItemCache
 local lootSpecsScanned = {}
+-- Journal loot data arrives from the server per encounter; the permanent
+-- listener flags the active scan so its state machine re-reads a cell it
+-- was holding on instead of misreading "not loaded yet" as "no loot".
+local lootEventFrame
+local activeLootScan
 local lootItemCacheHydrated = false
 local lootSearchDataHydrated = false
 local bossCacheHydrated = false
@@ -1194,6 +1220,18 @@ function Database:SyncHeirloomJournalFilter()
     EasyFind._heirloomHookSuppress = false
 end
 
+-- All spec IDs for a class; shared by the scan planner (BuildLootSpecPairs)
+-- and the rebuild filter (RebuildLootSearchData) so their class-wide
+-- expansions can never drift apart.
+local function ClassSpecIDs(classID)
+    local specs = {}
+    for specIdx = 1, GetNumSpecializationsForClassID(classID) do
+        local specID = GetSpecializationInfoForClassID(classID, specIdx)
+        if specID then specs[#specs + 1] = specID end
+    end
+    return specs
+end
+
 local function RebuildLootSearchData()
     -- Filter in place to avoid O(n^2) tremove.
     local writeIdx = 0
@@ -1219,15 +1257,19 @@ local function RebuildLootSearchData()
         local sid = si and GetSpecializationInfo and GetSpecializationInfo(si)
         if cid and sid then
             wantSpec[cid .. "-" .. sid] = true
+        elseif cid then
+            -- Unspecced character: class-wide.
+            for _, specID in ipairs(ClassSpecIDs(cid)) do
+                wantSpec[cid .. "-" .. specID] = true
+            end
         end
     elseif lootFilter == "all" then
         wantAll = true
     elseif lootFilter.specID then
         wantSpec[lootFilter.classID .. "-" .. lootFilter.specID] = true
     elseif lootFilter.classID then
-        for specIdx = 1, GetNumSpecializationsForClassID(lootFilter.classID) do
-            local specID = GetSpecializationInfoForClassID(lootFilter.classID, specIdx)
-            if specID then wantSpec[lootFilter.classID .. "-" .. specID] = true end
+        for _, specID in ipairs(ClassSpecIDs(lootFilter.classID)) do
+            wantSpec[lootFilter.classID .. "-" .. specID] = true
         end
     end
 
@@ -1674,8 +1716,6 @@ function Database:PopulateDynamicToys()
     local GetToyFromIndex = C_ToyBox.GetToyFromIndex
     if not GetToyInfo or not GetNumFilteredToys or not GetToyFromIndex then return false end
 
-    RemoveEntriesByCategory("Toy")
-
     local hasFilterAPI = C_ToyBox.GetCollectedShown and C_ToyBox.SetCollectedShown
     local savedCollected = hasFilterAPI and C_ToyBox.GetCollectedShown()
     local savedUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
@@ -1688,7 +1728,25 @@ function Database:PopulateDynamicToys()
     if C_ToyBox.SetFilterString then C_ToyBox.SetFilterString("") end
     if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
 
+    local function restoreFilters()
+        if hasFilterAPI then C_ToyBox.SetCollectedShown(savedCollected) end
+        if C_ToyBox.SetUncollectedShown then C_ToyBox.SetUncollectedShown(savedUncollected) end
+        if C_ToyBox.SetFilterString then C_ToyBox.SetFilterString(savedString) end
+        if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+    end
+
     local numToys = GetNumFilteredToys()
+    if not numToys or numToys == 0 then
+        -- Zero filtered toys at login means the toy box has not streamed
+        -- yet (TOYS_UPDATED pending), not an empty collection: not-ready,
+        -- and BEFORE the category wipe so a transient zero read cannot
+        -- empty previously good entries mid-session.
+        restoreFilters()
+        return false
+    end
+
+    RemoveEntriesByCategory("Toy")
+
     for i = 1, numToys do
         local itemID = GetToyFromIndex(i)
         if itemID and itemID > 0 then
@@ -1715,17 +1773,12 @@ function Database:PopulateDynamicToys()
         end
     end
 
-    if hasFilterAPI then C_ToyBox.SetCollectedShown(savedCollected) end
-    if C_ToyBox.SetUncollectedShown then C_ToyBox.SetUncollectedShown(savedUncollected) end
-    if C_ToyBox.SetFilterString then C_ToyBox.SetFilterString(savedString) end
-    if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
+    restoreFilters()
     return true
 end
 
 function Database:PopulateDynamicPets()
     if not C_PetJournal or not C_PetJournal.GetNumPets then return false end
-
-    RemoveEntriesByCategory("Pet")
 
     local savedCollected = C_PetJournal.IsFilterChecked and C_PetJournal.IsFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED)
     local savedNotCollected = C_PetJournal.IsFilterChecked and C_PetJournal.IsFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED)
@@ -1739,15 +1792,24 @@ function Database:PopulateDynamicPets()
     if C_PetJournal.SetAllPetTypesChecked then C_PetJournal.SetAllPetTypesChecked(true) end
     if C_PetJournal.SetSearchFilter then C_PetJournal.SetSearchFilter("") end
 
-    local numPets = C_PetJournal.GetNumPets()
-    if not numPets then
+    local function restoreFilters()
         if C_PetJournal.SetFilterChecked then
             if savedCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, savedCollected) end
             if savedNotCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, savedNotCollected) end
         end
         if C_PetJournal.SetSearchFilter then C_PetJournal.SetSearchFilter(savedString) end
+    end
+
+    local numPets = C_PetJournal.GetNumPets()
+    if not numPets or numPets == 0 then
+        -- Zero pets before PET_JOURNAL_LIST_UPDATE means the journal has
+        -- not streamed yet: not-ready, and BEFORE the category wipe so a
+        -- transient zero read cannot empty previously good entries.
+        restoreFilters()
         return false
     end
+
+    RemoveEntriesByCategory("Pet")
 
     local seen = {}
     for i = 1, numPets do
@@ -1765,18 +1827,12 @@ function Database:PopulateDynamicPets()
         end
     end
 
-    if C_PetJournal.SetFilterChecked then
-        if savedCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, savedCollected) end
-        if savedNotCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, savedNotCollected) end
-    end
-    if C_PetJournal.SetSearchFilter then C_PetJournal.SetSearchFilter(savedString) end
+    restoreFilters()
     return true
 end
 
 function Database:PopulateDynamicHeirlooms()
     if not C_Heirloom or not C_Heirloom.GetHeirloomItemIDs then return false end
-
-    RemoveEntriesByCategory("Heirloom")
 
     -- Align the journal's class/spec filter with our saved choice first, so the
     -- searchFiltered flag below reflects it.
@@ -1788,6 +1844,18 @@ function Database:PopulateDynamicHeirlooms()
     local hasHeirloom = C_Heirloom.PlayerHasHeirloom
     local getInfo = C_Heirloom.GetHeirloomInfo
     if not getInfo then return false end
+
+    -- Readiness = streamed item names, NOT post-filter survivors: a user
+    -- filter that legitimately hides every heirloom must still count as
+    -- loaded, or the provider re-runs forever. Checked BEFORE the wipe so
+    -- a not-ready read cannot empty previously good entries.
+    local streamed = 0
+    for _, itemID in ipairs(ids) do
+        if getInfo(itemID) then streamed = streamed + 1 end
+    end
+    if streamed == 0 then return false end
+
+    RemoveEntriesByCategory("Heirloom")
 
     local getItemIcon = C_Item and C_Item.GetItemIconByID
     for _, itemID in ipairs(ids) do
@@ -1815,7 +1883,6 @@ function Database:PopulateDynamicHeirlooms()
             end
         end
     end
-    if self.ResetSearchCache then self:ResetSearchCache() end
     return true
 end
 
@@ -1850,6 +1917,17 @@ function Database:PopulateDynamicTitles()
     local total = getNum()
     if not total or total <= 0 then return false end
 
+    -- GetNumTitles is static client data, but IsTitleKnown reads the
+    -- server-sent known list (KNOWN_TITLES_UPDATE): zero known titles at
+    -- login means it has not arrived, not that the character has none.
+    -- Checked BEFORE the wipe so a not-ready read cannot empty previously
+    -- good entries mid-session.
+    local known = 0
+    for titleID = 1, total do
+        if isKnown(titleID) then known = known + 1 end
+    end
+    if known == 0 then return false end
+
     RemoveEntriesByCategory("Title")
 
     for titleID = 1, total do
@@ -1866,7 +1944,6 @@ function Database:PopulateDynamicTitles()
             end
         end
     end
-    if self.ResetSearchCache then self:ResetSearchCache() end
     return true
 end
 
@@ -2464,20 +2541,25 @@ function Database:PopulateDynamicAppearanceItemsAsync(done)
     scheduleStep(step)
 end
 
+local function AppendClassSpecPairs(specPairs, classID)
+    for _, specID in ipairs(ClassSpecIDs(classID)) do
+        specPairs[#specPairs + 1] = { classID = classID, specID = specID }
+    end
+end
+
+local function AppendAllClassSpecPairs(specPairs)
+    for classIdx = 1, GetNumClasses() do
+        local _, _, classID = GetClassInfo(classIdx)
+        if classID then
+            AppendClassSpecPairs(specPairs, classID)
+        end
+    end
+end
+
 local function BuildLootSpecPairs(scanAllSpecs)
     local specPairs = {}
     if scanAllSpecs then
-        for classIdx = 1, GetNumClasses() do
-            local _, _, classID = GetClassInfo(classIdx)
-            if classID then
-                for specIdx = 1, GetNumSpecializationsForClassID(classID) do
-                    local specID = GetSpecializationInfoForClassID(classID, specIdx)
-                    if specID then
-                        specPairs[#specPairs + 1] = { classID = classID, specID = specID }
-                    end
-                end
-            end
-        end
+        AppendAllClassSpecPairs(specPairs)
     else
         local lootFilter = EasyFind.db.lootFilter
         if not lootFilter then
@@ -2486,28 +2568,17 @@ local function BuildLootSpecPairs(scanAllSpecs)
             local sid = si and GetSpecializationInfo and GetSpecializationInfo(si)
             if cid and sid then
                 specPairs[1] = { classID = cid, specID = sid }
+            elseif cid then
+                -- Unspecced character (below level 10): class-wide, so low
+                -- alts still get loot results instead of an empty scan plan.
+                AppendClassSpecPairs(specPairs, cid)
             end
         elseif lootFilter == "all" then
-            for classIdx = 1, GetNumClasses() do
-                local _, _, classID = GetClassInfo(classIdx)
-                if classID then
-                    for specIdx = 1, GetNumSpecializationsForClassID(classID) do
-                        local specID = GetSpecializationInfoForClassID(classID, specIdx)
-                        if specID then
-                            specPairs[#specPairs + 1] = { classID = classID, specID = specID }
-                        end
-                    end
-                end
-            end
+            AppendAllClassSpecPairs(specPairs)
         elseif lootFilter.specID then
             specPairs[1] = { classID = lootFilter.classID, specID = lootFilter.specID }
         elseif lootFilter.classID then
-            for specIdx = 1, GetNumSpecializationsForClassID(lootFilter.classID) do
-                local specID = GetSpecializationInfoForClassID(lootFilter.classID, specIdx)
-                if specID then
-                    specPairs[#specPairs + 1] = { classID = lootFilter.classID, specID = specID }
-                end
-            end
+            AppendClassSpecPairs(specPairs, lootFilter.classID)
         end
     end
     return specPairs
@@ -2661,6 +2732,7 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
     local EJ_SetLootFilter      = EJ("SetLootFilter")
     local EJ_SetSlotFilter      = EJ("SetSlotFilter")
     local EJ_GetLootInfoByIndex = EJ("GetLootInfoByIndex")
+    local EJ_GetNumLoot         = EJ("GetNumLoot")
 
     if not EJ_GetCurrentTier or not EJ_GetInstanceByIndex or not EJ_GetLootInfoByIndex then
         Utils.DebugPrint("Loot scan aborted: EJ APIs not available")
@@ -2723,12 +2795,15 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
                         EasyFind._lootFilterHookSuppress = false
                     end
 
-                    local li = 1
-                    while true do
+                    -- Count-driven like Blizzard's own reader: the count call
+                    -- also issues the server request for this encounter's
+                    -- loot, so even a cold pass primes a later attempt.
+                    local numLoot = EJ_GetNumLoot and EJ_GetNumLoot() or 0
+                    for li = 1, numLoot do
                         local lootInfo = EJ_GetLootInfoByIndex(li)
-                        if not lootInfo or not lootInfo.name then break end
-                        CacheLootInfo(Database, lootInfo, inst, encName, encID, diff, sp, spKey, GetItemInfoInstant)
-                        li = li + 1
+                        if lootInfo and lootInfo.name then
+                            CacheLootInfo(Database, lootInfo, inst, encName, encID, diff, sp, spKey, GetItemInfoInstant)
+                        end
                     end
                 end
             end
@@ -2738,9 +2813,10 @@ function Database:PopulateDynamicLoot(scanAllSpecs)
 
     if savedTier and EJ_SelectTier then EJ_SelectTier(savedTier) end
     if ejFrame and savedOnEvent then ejFrame:SetScript("OnEvent", savedOnEvent) end
-    for _, sp in ipairs(needScan) do
-        lootSpecsScanned[sp.classID .. "-" .. sp.specID] = true
-    end
+    -- This synchronous fallback cannot wait for EJ_LOOT_DATA_RECIEVED, so it
+    -- cannot tell a cold journal from genuinely empty loot. It keeps what it
+    -- caches but never marks specs as scanned; the async path (the one that
+    -- always runs in practice) certifies them once its reads resolve.
     PersistLootCache()
     RebuildLootSearchData()
     -- Restore the EJ loot filter to the user's choice; the scan swept it across
@@ -2787,8 +2863,15 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
     local EJ_SetLootFilter      = EJ("SetLootFilter")
     local EJ_SetSlotFilter      = EJ("SetSlotFilter")
     local EJ_GetLootInfoByIndex = EJ("GetLootInfoByIndex")
+    -- EJ_GetNumLoot is what makes the client REQUEST the selected
+    -- encounter's loot list from the server; reading items blind never
+    -- triggers the fetch, which is how scans stayed cold forever.
+    -- EJ_IsLootListOutOfDate disambiguates "empty" from "still loading".
+    local EJ_GetNumLoot         = EJ("GetNumLoot")
+    local EJ_IsLootListOutOfDate = EJ("IsLootListOutOfDate")
 
-    if not EJ_GetCurrentTier or not EJ_GetInstanceByIndex or not EJ_GetLootInfoByIndex then
+    if not EJ_GetCurrentTier or not EJ_GetInstanceByIndex or not EJ_GetLootInfoByIndex
+       or not EJ_GetNumLoot then
         done(false, "cancelled")
         return
     end
@@ -2826,17 +2909,52 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
         encName = nil,
         encID = nil,
         prepared = false,
+        waiting = false,
+        waitDeadline = nil,
+        lootDataDirty = false,
     }
     local GetItemInfoInstantFn = GetItemInfoInstant
     local budgetMs = 4
     local partialLootChanged = false
+    -- Cumulative, unlike partialLootChanged which resets on every budget
+    -- flush: did this sweep cache anything at all?
+    local sweepCachedAny = false
+    -- True when any cell gave up waiting for journal data or had pending
+    -- item slots: the sweep's results are kept (partial data is real data)
+    -- but the specs are NOT marked scanned, so a later session retries
+    -- instead of permanently trusting a cold-journal snapshot.
+    local scanIncomplete = false
+
+    if not lootEventFrame then
+        lootEventFrame = CreateFrame("Frame")
+        lootEventFrame:RegisterEvent("EJ_LOOT_DATA_RECIEVED")
+        lootEventFrame:SetScript("OnEvent", function()
+            if activeLootScan then activeLootScan.lootDataDirty = true end
+        end)
+    end
+    activeLootScan = state
 
     local function finish(changed, err)
+        if activeLootScan == state then activeLootScan = nil end
         if savedTier and EJ_SelectTier then EJ_SelectTier(savedTier) end
         if ejFrame and savedOnEvent then ejFrame:SetScript("OnEvent", savedOnEvent) end
+        if changed and scanIncomplete and not sweepCachedAny
+           and not next(lootItemCache) then
+            -- Entirely cold sweep AND no usable cache at all: report a
+            -- transient failure so the provider is not marked loaded for
+            -- the session pinned to an empty category; a later search
+            -- retries the scan. When a hydrated cache exists, fall through
+            -- instead: its data must be rebuilt into search even if this
+            -- sweep added nothing new.
+            Database:SyncEJLootFilter()
+            done(false, "cancelled")
+            return
+        end
         if changed then
-            for _, sp in ipairs(needScan) do
-                lootSpecsScanned[sp.classID .. "-" .. sp.specID] = true
+            if not scanIncomplete then
+                for _, sp in ipairs(needScan) do
+                    lootSpecsScanned[sp.classID .. "-" .. sp.specID] = true
+                end
             end
             PersistLootCache()
             RebuildLootSearchData()
@@ -2895,6 +3013,33 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
                 state.specIdx = 1
                 state.lootIdx = 1
                 state.prepared = false
+            elseif state.waiting then
+                -- Holding on a cell whose loot list the client reported as
+                -- out of date: the EJ_GetNumLoot call in prepare requested
+                -- it from the server, now wait for the arrival event.
+                if state.lootDataDirty then
+                    -- Data landed: re-assert the selection and re-evaluate
+                    -- this same cell.
+                    state.lootDataDirty = false
+                    state.waiting = false
+                    state.prepared = false
+                elseif GetTime() > state.waitDeadline then
+                    -- Nothing arrived in time: skip the cell, keep whatever
+                    -- the sweep does collect, but refuse to certify the
+                    -- specs as scanned.
+                    scanIncomplete = true
+                    state.waiting = false
+                    state.waitDeadline = nil
+                    state.specIdx = state.specIdx + 1
+                    state.lootIdx = 1
+                    state.prepared = false
+                else
+                    Utils.SafeAfter(0.1, function()
+                        local ok, err = xpcall(step, Utils.ErrorHandler)
+                        if not ok then finish(false, err) end
+                    end)
+                    return
+                end
             else
                 local diff = state.diffPairs[state.diffIdx]
                 local sp = needScan[state.specIdx]
@@ -2910,23 +3055,52 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
                         EasyFind._lootFilterHookSuppress = false
                     end
                     state.lootIdx = 1
+                    -- The count call doubles as the server request for this
+                    -- encounter's loot list (this is how Blizzard's own UI
+                    -- reads it; item probes alone never trigger the fetch).
+                    state.cellNum = EJ_GetNumLoot()
+                    state.cellStale = EJ_IsLootListOutOfDate and EJ_IsLootListOutOfDate() or false
+                    state.cellPending = false
                     state.prepared = true
                 end
 
-                local processed = 0
-                while processed < 8 do
-                    local lootInfo = EJ_GetLootInfoByIndex(state.lootIdx)
-                    if not lootInfo or not lootInfo.name then
-                        state.specIdx = state.specIdx + 1
-                        state.lootIdx = 1
-                        state.prepared = false
-                        break
+                if state.cellStale then
+                    -- List not authoritative yet: hold for the event. The
+                    -- deadline is set once per cell and survives retries.
+                    state.waiting = true
+                    if not state.waitDeadline then
+                        state.waitDeadline = GetTime() + 1.5
                     end
-                    if CacheLootInfo(self, lootInfo, inst, state.encName, state.encID, diff, sp, spKey, GetItemInfoInstantFn) then
-                        partialLootChanged = true
+                else
+                    local processed = 0
+                    while processed < 8 do
+                        if state.lootIdx > (state.cellNum or 0) then
+                            -- Cell complete. A fresh list with count 0 is
+                            -- PROVABLY empty (spec/difficulty with no
+                            -- loot), so it neither waits nor taints the
+                            -- certification.
+                            if state.cellPending then scanIncomplete = true end
+                            state.waitDeadline = nil
+                            state.specIdx = state.specIdx + 1
+                            state.lootIdx = 1
+                            state.prepared = false
+                            break
+                        end
+                        local lootInfo = EJ_GetLootInfoByIndex(state.lootIdx)
+                        if lootInfo and lootInfo.name and lootInfo.itemID then
+                            if CacheLootInfo(self, lootInfo, inst, state.encName, state.encID, diff, sp, spKey, GetItemInfoInstantFn) then
+                                partialLootChanged = true
+                                sweepCachedAny = true
+                            end
+                        else
+                            -- Slot exists per the count but its item data
+                            -- is still pending: keep going, remember the
+                            -- gap so the specs are not certified.
+                            state.cellPending = true
+                        end
+                        state.lootIdx = state.lootIdx + 1
+                        processed = processed + 1
                     end
-                    state.lootIdx = state.lootIdx + 1
-                    processed = processed + 1
                 end
             end
 
@@ -2935,7 +3109,12 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
                     partialLootChanged = false
                     RebuildLootSearchData()
                     if self.SchedulePartialSearchRefresh then
-                        self:SchedulePartialSearchRefresh(150)
+                        -- 750ms, not snappier: each refresh is a full cold
+                        -- re-score plus render (the cache is reset), and a
+                        -- first-time scan flushes for minutes; at 150ms the
+                        -- refresh stream alone drags the frame rate down
+                        -- while a loot search is open.
+                        self:SchedulePartialSearchRefresh(750)
                     end
                 end
                 Utils.SafeAfter(0, function()

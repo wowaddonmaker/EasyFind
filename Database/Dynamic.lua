@@ -79,10 +79,27 @@ for i = 1, #dynamicProviders do
     dynamicProviderByKey[provider.key] = provider
 end
 
+-- Consume the populate bookkeeping on EVERY completion path so a stale
+-- record can never leak into the next provider's completion (a leaked
+-- append-only record misroutes it into NoteAppendedEntries: duplicate rows
+-- and invisible new entries in a held-open query). Returns the removed
+-- flag (true = entries removed, false = append-only, nil = no populate
+-- ran) and the append start index.
+local function ConsumePopulateBookkeeping(database)
+    local removed = database._populateRemoved
+    local appendFrom = database._populateAppendFrom
+    database._populateRemoved, database._populateAppendFrom = nil, nil
+    return removed, appendFrom
+end
+
 local function FinishDynamicProvider(database, provider, ok, err, changed, onDone)
     if err == "cancelled" then
         provider.loaded = false
         provider.dirty = true
+        local removed = ConsumePopulateBookkeeping(database)
+        if removed ~= nil and database.ResetSearchCache then
+            database:ResetSearchCache()
+        end
         onDone(false)
         return
     end
@@ -92,17 +109,21 @@ local function FinishDynamicProvider(database, provider, ok, err, changed, onDon
         if EasyFind and EasyFind.Print then
             EasyFind:Print("|cffff4444" .. (L["ERR_SEARCH_DATA_FAILED"]):format(provider.key, tostring(err)) .. "|r")
         end
+        -- The failed populate may still have wiped or grown its category
+        -- before erroring; consume the bookkeeping and reset so the live
+        -- search state cannot reference a half-applied dataset.
+        local removed = ConsumePopulateBookkeeping(database)
+        if removed ~= nil and database.ResetSearchCache then
+            database:ResetSearchCache()
+        end
         onDone(false)
         return
     end
 
     provider.loaded = true
     provider.dirty = false
-    -- Consume the populate bookkeeping regardless of outcome so a stale
-    -- record can never leak into the next provider's completion.
-    local appendOnly = database._populateRemoved == false
-    local appendFrom = database._populateAppendFrom
-    database._populateRemoved, database._populateAppendFrom = nil, nil
+    local removed, appendFrom = ConsumePopulateBookkeeping(database)
+    local appendOnly = removed == false
     if changed ~= false then
         if appendOnly and appendFrom and database.NoteAppendedEntries then
             database:NoteAppendedEntries(appendFrom)
@@ -142,6 +163,10 @@ local function runProviderJob(database, provider, schedDone)
         schedDone()
     end
 
+    -- Stamped so the dirty-mark handlers can tell a populate's own event
+    -- echo from a real external change (see WasProviderRecentlyRun).
+    provider.lastRunAt = GetTime()
+
     local pre = provider.pre and database[provider.pre]
     if pre then pre(database) end
 
@@ -167,10 +192,20 @@ local function runProviderJob(database, provider, schedDone)
     if ok and readyOrErr == false then
         provider.loaded = false
         provider.dirty = true
+        -- Backoff: a not-ready provider must not repopulate on every
+        -- keystroke (a legitimately empty collection is indistinguishable
+        -- from un-streamed data and would otherwise retry all session).
+        -- Its dirty event clears this the moment real data arrives.
+        provider.notReadyAt = GetTime()
+        local removed = ConsumePopulateBookkeeping(database)
+        if removed ~= nil and database.ResetSearchCache then
+            database:ResetSearchCache()
+        end
         NotifyProviderWaiters(provider, false)
         schedDone()
         return
     end
+    provider.notReadyAt = nil
     FinishDynamicProvider(database, provider, ok, readyOrErr, true, finishWaiters)
 end
 
@@ -211,6 +246,12 @@ end
 
 local function RunDynamicProvider(database, provider, onDone, runNow, bypassGate)
     if provider.loaded and not provider.dirty then onDone(false); return end
+    if provider.notReadyAt and (GetTime() - provider.notReadyAt) < 3.0 then
+        -- Recently reported not-ready: don't repopulate per keystroke.
+        -- The category's dirty event clears the stamp when data arrives.
+        onDone(false)
+        return
+    end
     if not bypassGate and IsProviderLoadDisabled(provider) then
         -- Unchecked category on an automatic load (login warm / event refresh):
         -- skip it -- no populate, so no entries and no index weight. Left
@@ -269,12 +310,26 @@ function Database:MarkDynamicCategoryDirty(key)
     local provider = dynamicProviderByKey[key]
     if not provider then return end
     provider.dirty = true
+    provider.notReadyAt = nil
     if provider.loaded and self.ResetSearchCache then self:ResetSearchCache() end
 end
 
 function Database:IsDynamicProviderLoaded(key)
     local provider = dynamicProviderByKey[key]
     return provider and provider.loaded and not provider.dirty or false
+end
+
+-- True while a populate for this key ran within the last windowSec. The
+-- event-driven dirty-markers use this to ignore the events our own
+-- populates echo (journal filter pushes, header expands): without it, any
+-- low-result query cycles populate -> event -> dirty -> refresh ->
+-- populate forever and pins the frame rate. Known cost: a GENUINE stream
+-- completion landing inside the window after a partial populate is also
+-- swallowed and only heals on that category's next event.
+function Database:WasProviderRecentlyRun(key, windowSec)
+    local provider = dynamicProviderByKey[key]
+    if not (provider and provider.lastRunAt) then return false end
+    return (GetTime() - provider.lastRunAt) < (windowSec or 2.0)
 end
 
 function Database:EnsureDynamicProviderLoaded(key, onDone)

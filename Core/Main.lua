@@ -937,11 +937,53 @@ eventFrame:RegisterEvent("EQUIPMENT_SETS_CHANGED")
 if C_HousingCatalog then
     eventFrame:RegisterEvent("HOUSING_STORAGE_UPDATED")
 end
+-- Collection and character data that streams in after login: a populate
+-- that ran before the stream landed injects nothing (and now reports
+-- not-ready instead of success), and these events re-dirty the category
+-- so the next search retries against real data.
+local DIRTY_EVENT_CATEGORY = {
+    TOYS_UPDATED = "toys",
+    PET_JOURNAL_LIST_UPDATE = "pets",
+    KNOWN_TITLES_UPDATE = "titles",
+    HEIRLOOMS_UPDATED = "heirlooms",
+    CURRENCY_DISPLAY_UPDATE = "currencies",
+    UPDATE_FACTION = "reputations",
+}
+for dirtyEvent in pairs(DIRTY_EVENT_CATEGORY) do
+    -- pcall: event names vary across client builds, and this runs at file
+    -- load where an error would abort the whole module. A missing event
+    -- only costs that category its in-session heal; the populate-side
+    -- not-ready guard still retries on the next search.
+    pcall(eventFrame.RegisterEvent, eventFrame, dirtyEvent)
+end
 local bagRefreshTimer
 local spellRefreshTimer
 local gearSetRefreshTimer
 local appearanceItemRefreshTimer
+
+-- Debounced MarkDynamicCategoryDirty, one timer per category: streaming
+-- events (toy box, pet journal, faction pushes) arrive in bursts and only
+-- the settled state matters.
+local dirtyTimers = {}
+local function MarkDirtyDebounced(category)
+    if dirtyTimers[category] then dirtyTimers[category]:Cancel() end
+    dirtyTimers[category] = C_Timer.NewTimer(1.0, function()
+        dirtyTimers[category] = nil
+        -- Self-echo guard, checked at fire time (rationale and trade-off
+        -- documented at Database:WasProviderRecentlyRun).
+        if ns.Database and ns.Database.WasProviderRecentlyRun
+           and ns.Database:WasProviderRecentlyRun(category, 2.5) then
+            return
+        end
+        MarkDynamicCategoryDirty(category)
+    end)
+end
 eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
+    local dirtyCategory = DIRTY_EVENT_CATEGORY[event]
+    if dirtyCategory then
+        MarkDirtyDebounced(dirtyCategory)
+        return
+    end
     if event == "ADDON_LOADED" and arg1 == ADDON_NAME then
         OnInitialize()
         self:UnregisterEvent("ADDON_LOADED")
@@ -963,8 +1005,8 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         outfitRefreshTimer = C_Timer.NewTimer(0.5, function()
             outfitRefreshTimer = nil
             MarkDynamicCategoryDirty("outfits")
-            if ns.SearchPins and ns.SearchPins.SyncOutfits then
-                ns.SearchPins.SyncOutfits()
+            if ns.UIPins and ns.UIPins.SyncOutfits then
+                ns.UIPins.SyncOutfits()
             end
         end)
     elseif event == "TRANSMOG_COLLECTION_UPDATED" then

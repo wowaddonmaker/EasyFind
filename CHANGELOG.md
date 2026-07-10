@@ -23,6 +23,10 @@ All notable changes to EasyFind will be documented in this file.
 - Shortkeys now bind immediately at login from saved data instead of waiting for search data to load
 - Pressing a shortkey now always triggers the same action as left-clicking its row
 - Loot results match their gear-slot keywords correctly again, and stat searches can combine two stats
+- Dungeon and raid loot no longer permanently vanishes from search when the game's journal data hadn't finished arriving during a background scan; already-affected installs heal automatically on next login
+- Characters without a specialization (below level 10) now get loot results for their whole class instead of none
+- Toys, pets, titles, heirlooms, currencies, and reputations no longer stay empty in search for a whole session when the game hadn't finished loading their data at login; each now retries once its data arrives
+- Pinned outfits update again when outfits are changed or reordered (an internal rename had disconnected that sync)
 
 ---
 

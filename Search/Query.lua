@@ -69,8 +69,11 @@ end
 -- retries enrichment and refreshes the active search so newly-matchable
 -- loot surfaces without the user having to retype.
 --
--- Throttled with SafeAfter(0.15) so a burst of arrivals coalesces into
--- one search refresh instead of N.
+-- Throttled with SafeAfter(0.75) so a burst of arrivals coalesces into
+-- one search refresh instead of N. Not snappier: each refresh is a full
+-- cold re-score plus render, and a fresh loot cache enriches hundreds of
+-- items in a stream; a short coalesce window turns that into a sustained
+-- frame-rate collapse while a loot search is open.
 local itemInfoFrame = CreateFrame("Frame")
 local pendingItemRefresh = false
 local function RefreshSearchAfterItemInfo()
@@ -83,7 +86,7 @@ itemInfoFrame:SetScript("OnEvent", function(_, _, itemID, success)
     local enriched = ns.Database:ResolvePendingStatEnrichment(itemID, success)
     if enriched and not pendingItemRefresh then
         pendingItemRefresh = true
-        Utils.SafeAfter(0.15, RefreshSearchAfterItemInfo)
+        Utils.SafeAfter(0.75, RefreshSearchAfterItemInfo)
     end
 end)
 
