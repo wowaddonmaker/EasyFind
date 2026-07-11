@@ -2835,6 +2835,31 @@ end
 
 -- Matches the spellbook-item-unassigned-glow visual via our own texture
 -- (not the real glow, which signals "spell not on an action bar").
+-- The glow lives on OUR OWN overlay frame anchored to the button, never
+-- as a region created on the Blizzard button: planting an addon-created
+-- texture (or any field) on a SpellBookItemButton taints it, and the
+-- bound-to-learn/action-bar machinery on unlearned buttons then detonates
+-- protected PetActionBar updates when combat drops.
+local spellbookGlow
+local function AcquireSpellbookGlow()
+    if spellbookGlow then return spellbookGlow end
+    local overlay = CreateFrame("Frame", nil, UIParent)
+    -- DIALOG: above the spellbook panel (matching the button's own strata
+    -- loses the render-order fight against the panel's higher-level
+    -- siblings), below tooltips so hovering still reads normally.
+    overlay:SetFrameStrata("DIALOG")
+    overlay:EnableMouse(false)
+    overlay:Hide()
+    local tex = overlay:CreateTexture(nil, "OVERLAY", nil, 1)
+    tex:SetAtlas("spellbook-item-unassigned-glow")
+    tex:SetAllPoints(overlay)
+    tex:SetBlendMode("ADD")
+    overlay.tex = tex
+    overlay.pulse = ns.CreateBouncePulse(tex, 0.85, 1.6, 0.7)
+    spellbookGlow = overlay
+    return overlay
+end
+
 function Highlight:HighlightSpellbookSpell(row, validator)
     if not row or not row:IsShown() then
         self:HideHighlight()
@@ -2846,26 +2871,20 @@ function Highlight:HighlightSpellbookSpell(row, validator)
     -- itself also contains label and artwork we don't want lit up.
     local iconBtn = (row.Button and row.Button.IsShown and row.Button:IsShown() and row.Button) or row
 
-    local glow = iconBtn._efSearchGlow
-    if not glow then
-        local w, h = iconBtn:GetSize()
-        if not w or w < 1 then w = 40 end
-        if not h or h < 1 then h = 39 end
-        glow = iconBtn:CreateTexture(nil, "OVERLAY", nil, 1)
-        glow:SetAtlas("spellbook-item-unassigned-glow")
-        glow:SetPoint("CENTER", iconBtn, "CENTER", 0, 0)
-        glow:SetSize(w * 1.4, h * 1.4)
-        glow:SetBlendMode("ADD")
-        glow._efPulse = ns.CreateBouncePulse(glow, 0.85, 1.6, 0.7)
-        iconBtn._efSearchGlow = glow
-    end
-    glow:SetAlpha(1.6)
+    local glow = AcquireSpellbookGlow()
+    local w, h = iconBtn:GetSize()
+    if not w or w < 1 then w = 40 end
+    if not h or h < 1 then h = 39 end
+    glow:ClearAllPoints()
+    glow:SetPoint("CENTER", iconBtn, "CENTER", 0, 0)
+    glow:SetSize(w * 1.4, h * 1.4)
+    glow.tex:SetAlpha(1.6)
     glow:Show()
-    if glow._efPulse and not glow._efPulse:IsPlaying() then
-        glow._efPulse:Play()
+    if glow.pulse and not glow.pulse:IsPlaying() then
+        glow.pulse:Play()
     end
 
-    highlightFrame._spellbookGlowBtn = iconBtn
+    highlightFrame._spellbookGlowFrame = glow
     highlightFrame._targetFrame = row
     highlightFrame._targetValidator = validator
     highlightFrame._hoverDismissFrame = row
@@ -2888,14 +2907,13 @@ function Highlight:HideHighlight()
            and highlightFrame._talentSearchBtn.SearchIcon then
             highlightFrame._talentSearchBtn.SearchIcon:Hide()
         end
-        if highlightFrame._spellbookGlowBtn
-           and highlightFrame._spellbookGlowBtn._efSearchGlow then
-            local g = highlightFrame._spellbookGlowBtn._efSearchGlow
-            if g._efPulse then g._efPulse:Stop() end
+        if highlightFrame._spellbookGlowFrame then
+            local g = highlightFrame._spellbookGlowFrame
+            if g.pulse then g.pulse:Stop() end
             g:Hide()
         end
         highlightFrame._talentSearchBtn = nil
-        highlightFrame._spellbookGlowBtn = nil
+        highlightFrame._spellbookGlowFrame = nil
         highlightFrame._targetFrame = nil
         highlightFrame._targetValidator = nil
         highlightFrame._hoverDismissFrame = nil

@@ -5,9 +5,11 @@ local Openers = ns.SearchOpeners
 local Utils = ns.Utils
 
 local GetButtonText = Utils.GetButtonText
-local ClickButton = Utils.ClickButton
 local select, ipairs = Utils.select, Utils.ipairs
 local slower = Utils.slower
+local mceil = math.ceil
+local mabs = math.abs
+local InCombatLockdown = InCombatLockdown
 
 local function ExtractSlot(value)
     return value.slotIndex
@@ -266,6 +268,17 @@ local function FindSpellbookCategoryTab(frame, data)
             if isGeneralTab(candidates[i]) then return candidates[i] end
         end
     else
+        -- The entry's own skill line first: off-spec/unlearned spells live
+        -- under their spec's tab, and picking the class tab for them sent
+        -- the reveal paging through a category that cannot contain them.
+        if targetLower then
+            for i = 1, #candidates do
+                local name = GetTabSkillLineName(candidates[i])
+                if name and slower(name) == targetLower then
+                    return candidates[i]
+                end
+            end
+        end
         local classLower = UnitClass and slower(UnitClass("player") or "") or ""
         for i = 1, #candidates do
             local name = GetTabSkillLineName(candidates[i])
@@ -279,6 +292,21 @@ local function FindSpellbookCategoryTab(frame, data)
     end
 
     return nil
+end
+
+local function IsCategoryTabSelected(frame, tab)
+    local book = frame and frame.SpellBookFrame
+    local sys = book and book.CategoryTabSystem
+    local sel = sys and sys.selectedTabID
+    if sel and tab.GetTabID then
+        local ok, id = pcall(tab.GetTabID, tab)
+        if ok and id then return id == sel end
+    end
+    if tab.IsSelected then
+        local ok, isSel = pcall(tab.IsSelected, tab)
+        if ok then return isSel and true or false end
+    end
+    return false
 end
 
 local function GetSpellbookPagedFrame(frame)
@@ -299,18 +327,6 @@ local function CanClickButton(btn)
         if ok then return enabled end
     end
     return btn.Click ~= nil
-end
-
-local function ClickSpellbookPage(frame, key)
-    local btn = SpellbookPageButton(frame, key)
-    if not CanClickButton(btn) then return false end
-    return ClickButton(btn)
-end
-
-local function RewindSpellbookToFirstPage(frame)
-    for _ = 1, 12 do
-        if not ClickSpellbookPage(frame, "PrevPageButton") then break end
-    end
 end
 
 local function GetSpellbookDataProvider(paged)
@@ -421,15 +437,109 @@ local function FindSpellElementInSection(paged, data)
     return fallback
 end
 
-local function ScrollSpellbookToElement(paged, elem)
-    if not elem then return false end
-    local _, host = GetSpellbookDataProvider(paged)
-    if host and host.ScrollToElementData then
-        local alignCenter = ScrollBoxConstants and ScrollBoxConstants.AlignCenter
-        pcall(host.ScrollToElementData, host, elem, alignCenter)
-        return true
+-- The spell's CURRENT spellbook slot, resolved live (never the stored
+-- spellBookIndex, which goes stale after login as spells/filters change).
+function Handlers.ResolveLiveSpellBookSlot(data)
+    local spellID = data and (data.spellBookSpellID or data.spellID)
+    if not spellID then return nil end
+    local SBOOK = C_SpellBook
+    if not SBOOK then return nil end
+    if SBOOK.FindSpellBookSlotForSpell then
+        local ok, slot, bank = pcall(SBOOK.FindSpellBookSlotForSpell, spellID)
+        if ok and type(slot) == "number" then return slot, bank end
     end
-    return false
+    if not SBOOK.GetNumSpellBookSkillLines then return nil end
+    local bankEnum = (Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player) or 0
+    local numLines = SBOOK.GetNumSpellBookSkillLines() or 0
+    for li = 1, numLines do
+        local info = SBOOK.GetSpellBookSkillLineInfo(li)
+        if info and info.itemIndexOffset and info.numSpellBookItems then
+            for si = info.itemIndexOffset + 1, info.itemIndexOffset + info.numSpellBookItems do
+                local item = SBOOK.GetSpellBookItemInfo(si, bankEnum)
+                if item and item.spellID == spellID then
+                    return si, bankEnum
+                end
+            end
+        end
+    end
+    return nil
+end
+
+-- The next SECURE navigation step toward the target spell in the OPEN
+-- spellbook: a plan of Blizzard buttons for the ROW's own click edges
+-- (down edge always; release edge too for two-page jumps), or nil plus a
+-- reason. The row dispatches them as type="click" actions riding the
+-- user's hardware click -- the same measured-clean mechanism as the tab
+-- steer. Macrotext "/click" cannot do this: it is banned from clicking
+-- secure-action buttons (the 11.0.2 chain ban), and driving the spellbook
+-- from insecure code instead plants the highlight-mark globals (the
+-- pet-bar ADDON_ACTION_BLOCKED storm). Wrong category: click its tab.
+-- Right category, wrong page: click the page button, twice per row click
+-- when the jump is 2+ pages. All state is pure reads: the element comes
+-- from the same finder the reveal uses, and its page from IDENTITY in the
+-- paged frame's viewDataList (Blizzard_PagedContent's ProcessElement
+-- mutates the provider's element tables in place, so viewDataList holds
+-- the same objects), falling back to the record matcher; page =
+-- ceil(viewIndex / viewsPerPage). The page count for a NOT-YET-SELECTED
+-- category cannot be read, so a cross-category journey takes one click
+-- for the category and more for its pages.
+function Handlers.GetSpellbookNavPlan(data)
+    if not (data and data.spellID) then return nil, "no spell data" end
+    if InCombatLockdown() then return nil, "in combat" end
+    local frame = _G["PlayerSpellsFrame"]
+    local root = frame and frame:IsShown() and frame.SpellBookFrame
+    if not root or not root:IsShown() then return nil, "spellbook not shown" end
+
+    local categoryTab = FindSpellbookCategoryTab(frame, data)
+    if categoryTab and not IsCategoryTabSelected(frame, categoryTab) then
+        return { button = categoryTab, alsoRelease = false, step = "category" }
+    end
+
+    local paged = GetSpellbookPagedFrame(frame)
+    local controls = paged and paged.PagingControls
+    local viewDataList = paged and paged.viewDataList
+    if not (controls and controls.GetCurrentPage and viewDataList) then
+        return nil, "no paging state"
+    end
+
+    -- The spellbook's elementData carries ONLY slot identity (slotIndex +
+    -- spellBank + specID -- no spellID, no name; verified by live frame
+    -- inspect). The stored spellBookIndex goes stale after DB build, so
+    -- the slot must be resolved LIVE at plan time and matched exactly.
+    local liveSlot, liveBank = Handlers.ResolveLiveSpellBookSlot(data)
+    if not liveSlot then return nil, "no live spellbook slot for spell" end
+    local viewsPerPage = paged.viewsPerPage or 1
+    local targetPage
+    for viewIndex = 1, #viewDataList do
+        local viewData = viewDataList[viewIndex]
+        for i = 1, #viewData do
+            local elementData = viewData[i]
+            if not elementData.isSpacer and not elementData.isHeader
+               and elementData.slotIndex == liveSlot
+               and (liveBank == nil or elementData.spellBank == nil
+                    or elementData.spellBank == liveBank) then
+                targetPage = mceil(viewIndex / viewsPerPage)
+                break
+            end
+        end
+        if targetPage then break end
+    end
+    if not targetPage then return nil, "slot " .. liveSlot .. " not in view data" end
+
+    local ok, currentPage = pcall(controls.GetCurrentPage, controls)
+    if not ok or type(currentPage) ~= "number" then return nil, "no current page" end
+    local delta = targetPage - currentPage
+    if delta == 0 then return nil, "already on page " .. targetPage end
+
+    local pageBtn = SpellbookPageButton(frame,
+        delta > 0 and "NextPageButton" or "PrevPageButton")
+    if not pageBtn then return nil, "no page button" end
+    return {
+        button = pageBtn, step = "page", delta = delta,
+        -- Two-plus-page jump: press on BOTH click edges (down + release),
+        -- two pages per click (/efd navtest strategy [5], measured clean).
+        doublePress = mabs(delta) >= 2,
+    }
 end
 
 local function FindVisibleButtonForElement(paged, elem)
@@ -444,6 +554,23 @@ local function FindVisibleButtonForElement(paged, elem)
         end
     end
     return nil
+end
+
+-- Read-only ground truth for "did navigation actually arrive": is the
+-- spell's button visible on the CURRENT page, matched by the same code
+-- that targets the reveal glow.
+function Handlers.IsSpellVisibleInSpellbook(data)
+    local frame = _G["PlayerSpellsFrame"]
+    local root = frame and frame:IsShown() and frame.SpellBookFrame
+    if not root or not root:IsShown() then return false end
+    local paged = GetSpellbookPagedFrame(frame) or root
+    if not paged.EnumerateFrames then return false end
+    for _, f in paged:EnumerateFrames() do
+        if f and f:IsShown() and SpellFrameMatches(f, data) then
+            return true
+        end
+    end
+    return false
 end
 
 local function FindSpellbookButton(root, target, scroll, candidate)
@@ -490,35 +617,63 @@ end
 
 function Handlers:OpenAbilityInSpellbook(data)
     local highlight = ns.Highlight
-    local categoryClicked = false
-    local rewound = false
-    local triedElementScroll = false
     local targetElement
-    local pagesAdvanced = 0
-    local MAX_PAGES = 20
+    local revealJumped = false
 
     local spellbookTab = ns.SecureOpeners and ns.SecureOpeners.TAB_SPELLBOOK or 3
-    local function openFrame()
+    local wasShown = false
+    -- What stands between us and a visible spellbook: "closed" (the user
+    -- closed the panel while we waited; give up), "opening" (open issued,
+    -- frame not shown yet), "tab" (shown on the wrong tab; the highlighted
+    -- tab waits for the user's hardware click), or nil (ready).
+    local function openState()
         local frame = _G["PlayerSpellsFrame"]
         if frame and frame:IsShown() then
-            -- Wrong tab: highlighted for a hardware click (see
-            -- EnsurePlayerSpellsTab); retry until the user lands on it.
-            return not Openers:EnsurePlayerSpellsTab(spellbookTab)
+            wasShown = true
+            if Openers:EnsurePlayerSpellsTab(spellbookTab) then return nil end
+            return "tab"
         end
-
+        if wasShown then return "closed" end
         Openers:OpenPlayerSpellsFrame(spellbookTab)
-        return true
+        return "opening"
+    end
+
+    -- NO programmatic clicks, scrolls, or render calls inside the spellbook,
+    -- ever. Driving Blizzard's spellbook render from insecure execution
+    -- writes item state under EasyFind taint; the next spellbook HOVER then
+    -- rewrites the global highlight-mark tables (PET_ACTION_HIGHLIGHT_MARKS
+    -- / ON_BAR_HIGHLIGHT_MARKS) tainted, and EVERY pet-bar update in combat
+    -- detonates for the rest of the session (the PetActionBar:SetShownBase
+    -- ADDON_ACTION_BLOCKED storm; same signature documented against seven
+    -- other addons, WoWUIBugs #447/#814). Navigation the reveal cannot do
+    -- with reads alone is delegated to the user's own hardware clicks via
+    -- the highlight, the same pattern as the top-level tab steer.
+    -- Human-paced waits (highlighted tab / category / page button) must not
+    -- consume the machine-paced find budget (attempt): sharing it killed
+    -- the reveal 1.8s in.
+    local HUMAN_WAIT_TICKS = 150
+    local humanWaits = 0
+    local function waitForHardwareClick(reveal, attempt)
+        humanWaits = humanWaits + 1
+        if humanWaits < HUMAN_WAIT_TICKS then
+            Utils.SafeAfter(0.2, function() reveal(attempt) end)
+        end
     end
 
     local function reveal(attempt)
-        local needsRetry = openFrame()
-        local frame = _G["PlayerSpellsFrame"]
-        if needsRetry then
+        local state = openState()
+        if state == "closed" then return end
+        if state == "opening" then
             if attempt < 36 then
                 Utils.SafeAfter(0.05, function() reveal(attempt + 1) end)
             end
             return
         end
+        if state == "tab" then
+            waitForHardwareClick(reveal, attempt)
+            return
+        end
+        local frame = _G["PlayerSpellsFrame"]
         local root = frame and frame.SpellBookFrame
         if not root or not root:IsShown() then
             if attempt < 36 then
@@ -527,32 +682,22 @@ function Handlers:OpenAbilityInSpellbook(data)
             return
         end
 
-        if not categoryClicked then
-            local tab = FindSpellbookCategoryTab(frame, data)
-            if tab then
-                categoryClicked = true
-                rewound = false
-                triedElementScroll = false
-                targetElement = nil
-                pagesAdvanced = 0
-                ClickButton(tab)
-                if attempt < 36 then
-                    Utils.SafeAfter(0, function() reveal(attempt + 1) end)
-                end
-                return
+        -- Wrong category: highlight its tab for the user's click (reads
+        -- only). The loop re-ticks until the tab is actually selected.
+        local categoryTab = FindSpellbookCategoryTab(frame, data)
+        if categoryTab and not IsCategoryTabSelected(frame, categoryTab) then
+            if highlight and highlight.HighlightFrame then
+                highlight:HighlightFrame(categoryTab)
             end
+            waitForHardwareClick(reveal, attempt)
+            return
         end
 
         local paged = GetSpellbookPagedFrame(frame) or root
 
-        if not triedElementScroll then
-            triedElementScroll = true
-            targetElement = FindSpellElementInSection(paged, data)
-            if targetElement and ScrollSpellbookToElement(paged, targetElement) then
-                Utils.SafeAfter(0, function() reveal(attempt + 1) end)
-                return
-            end
-        end
+        -- Fresh read-only probe every tick: the provider content changes
+        -- under the user's category/page clicks.
+        targetElement = FindSpellElementInSection(paged, data)
 
         -- Validator passed to HighlightFrame's watcher. ScrollBox button
         -- pools repurpose the same physical button for different spells
@@ -587,22 +732,42 @@ function Handlers:OpenAbilityInSpellbook(data)
             return
         end
 
-        if not rewound then
-            RewindSpellbookToFirstPage(frame)
-            rewound = true
-            pagesAdvanced = 0
-            Utils.SafeAfter(0, function() reveal(attempt + 1) end)
-            return
+        -- On another page: jump straight to it via Blizzard's own element
+        -- navigation, keyed on the LIVE slot. Twice measured clean by the
+        -- navtest control strategy (0 new tainted button fields, mark
+        -- globals secure); the always-on EasyFindDev plant catcher names
+        -- the source within half a second if this ever plants.
+        if not revealJumped and paged.GoToElementByPredicate
+           and Handlers.ResolveLiveSpellBookSlot then
+            local liveSlot = Handlers.ResolveLiveSpellBookSlot(data)
+            if liveSlot then
+                revealJumped = true
+                pcall(paged.GoToElementByPredicate, paged, function(elementData)
+                    return elementData.slotIndex == liveSlot
+                end)
+                Utils.SafeAfter(0, function() reveal(attempt + 1) end)
+                return
+            end
         end
 
-        if pagesAdvanced < MAX_PAGES
-           and ClickSpellbookPage(frame, "NextPageButton") then
-            pagesAdvanced = pagesAdvanced + 1
-            Utils.SafeAfter(0, function() reveal(attempt + 1) end)
-            return
+        -- Fallback: highlight the page button for the user's click and
+        -- re-scan when the page changes. targetElement proves the spell is
+        -- displayable in this category, so paging can reach it; without
+        -- it, keep re-probing briefly (the provider may still be filling).
+        if targetElement then
+            local nextBtn = SpellbookPageButton(frame, "NextPageButton")
+            local pageBtn = CanClickButton(nextBtn) and nextBtn
+                or SpellbookPageButton(frame, "PrevPageButton")
+            if pageBtn and CanClickButton(pageBtn) then
+                if highlight and highlight.HighlightFrame then
+                    highlight:HighlightFrame(pageBtn)
+                end
+                waitForHardwareClick(reveal, attempt)
+                return
+            end
         end
         if attempt < 36 then
-            Utils.SafeAfter(0.05, function() reveal(attempt + 1) end)
+            Utils.SafeAfter(0.1, function() reveal(attempt + 1) end)
         end
     end
 
@@ -613,10 +778,11 @@ function Handlers:ApplySpellBookHidePassives(hide)
     hide = hide and true or false
     if GetCVarBool and GetCVarBool("spellBookHidePassives") == hide then return end
     if SetCVar then pcall(SetCVar, "spellBookHidePassives", hide and "1" or "0") end
-    local frame = PlayerSpellsFrame and PlayerSpellsFrame.SpellBookFrame
-    if frame and frame:IsShown() and frame.UpdateDisplayedSpells then
-        pcall(frame.UpdateDisplayedSpells, frame, true, false)
-    end
+    -- No forced UpdateDisplayedSpells: rendering the spellbook from
+    -- insecure execution writes item state under our taint, and the next
+    -- spellbook hover then plants the highlight-mark globals (the pet-bar
+    -- ADDON_ACTION_BLOCKED storm). The cvar applies on the spellbook's own
+    -- next natural refresh.
 end
 
 -- Bidirectional sync from Blizzard back to our DB. Hook the same

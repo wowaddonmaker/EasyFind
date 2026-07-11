@@ -70,6 +70,7 @@ function SecureAttributes.Apply(resultRow, data)
     local openKey = data and SecureOpeners and SecureOpeners.OpenKeyForData(data)
 
     local newType, newKey, newVal
+    local navPlan
     if data and data.toyItemID and not data.isToyboxOnly then
         -- Unusable toys (faction-restricted etc.) skip the secure
         -- use type so PostClick can route them to the ToyBox instead
@@ -116,6 +117,15 @@ function SecureAttributes.Apply(resultRow, data)
         local openMacro = SecureOpeners.GetOpenMacro(openKey)
         if openMacro then
             newType, newKey, newVal = "macro", "macrotext", openMacro
+        elseif Handlers.GetSpellbookNavPlan then
+            -- Panel already shown: the release-edge steer (the ONE dispatch
+            -- proven to click Blizzard buttons from a row click -- it is
+            -- how tabs switch) carries the next navigation button toward
+            -- the spell instead: category tab, or page button, one step
+            -- per click, in secure dispatch that cannot plant
+            -- highlight-mark taint. Macrotext cannot do this ("/click" is
+            -- banned from clicking secure-action buttons).
+            navPlan = Handlers.GetSpellbookNavPlan(data)
         end
     end
 
@@ -125,7 +135,36 @@ function SecureAttributes.Apply(resultRow, data)
     -- alt+click "show in spellbook" route swaps the plain attributes at
     -- click time instead (Interactions.lua PreClick).
 
-    SetSteer(resultRow, openKey and SecureOpeners.GetSteerTabButton(openKey, data) or nil)
+    if navPlan then
+        -- Winner of the /efd navtest scoreboard: pure secure presses on the
+        -- row's own edges, written EXACTLY like the harness button. Down
+        -- edge presses the nav button; a 2+ page jump presses again on the
+        -- release edge. Zero insecure spellbook interaction. Attributes are
+        -- written directly (not via SetSteer) so the shared *clickbutton1
+        -- can never be cleared out from under the click action.
+        DisarmAction(resultRow)
+        Utils.SafeCallMethod(resultRow, "SetAttribute", "type", "click")
+        Utils.SafeCallMethod(resultRow, "SetAttribute", "pressAndHoldAction",
+            navPlan.doublePress and true or nil)
+        Utils.SafeCallMethod(resultRow, "SetAttribute", "*typerelease1",
+            navPlan.doublePress and "click" or nil)
+        Utils.SafeCallMethod(resultRow, "SetAttribute", "*clickbutton1", navPlan.button)
+        resultRow._efSteerTab = navPlan.button
+        resultRow._lastAttrType = "click"
+        resultRow._lastAttrKey = "*clickbutton1"
+        resultRow._lastAttrVal = navPlan.button
+        return
+    end
+    do
+        local steerTab = openKey and SecureOpeners.GetSteerTabButton(openKey, data) or nil
+        -- Already-selected tab: never steer onto it, or the release-edge
+        -- re-click resets the spellbook page right after the down edge
+        -- flipped it.
+        if steerTab and SecureOpeners.IsTabButtonSelected(openKey, steerTab) then
+            steerTab = nil
+        end
+        SetSteer(resultRow, steerTab)
+    end
 
     if resultRow._lastAttrType == newType
        and resultRow._lastAttrKey == newKey
@@ -181,7 +220,11 @@ function SecureAttributes.SwapToPanelOpen(resultRow)
     DisarmAction(resultRow)
     if not SecureOpeners then return end
     SecureOpeners.EnsureLoaded(SPELLBOOK_PANEL)
-    SetSteer(resultRow, SecureOpeners.GetDefaultTabButton(SPELLBOOK_PANEL))
+    local defaultTab = SecureOpeners.GetDefaultTabButton(SPELLBOOK_PANEL)
+    if defaultTab and SecureOpeners.IsTabButtonSelected(SPELLBOOK_PANEL, defaultTab) then
+        defaultTab = nil
+    end
+    SetSteer(resultRow, defaultTab)
     local openMacro = SecureOpeners.GetOpenMacro(SPELLBOOK_PANEL)
     if openMacro then
         Utils.SafeCallMethod(resultRow, "SetAttribute", "type", "macro")
@@ -189,9 +232,27 @@ function SecureAttributes.SwapToPanelOpen(resultRow)
         resultRow._lastAttrType = "macro"
         resultRow._lastAttrKey = "macrotext"
         resultRow._lastAttrVal = openMacro
+    elseif Handlers.GetSpellbookNavPlan then
+        -- Panel already shown: same navtest-winner arming as Apply --
+        -- down-edge press, plus a release-edge press on 2+ page jumps.
+        local navPlan = Handlers.GetSpellbookNavPlan(resultRow.data)
+        if navPlan then
+            Utils.SafeCallMethod(resultRow, "SetAttribute", "type", "click")
+            Utils.SafeCallMethod(resultRow, "SetAttribute", "pressAndHoldAction",
+                navPlan.doublePress and true or nil)
+            Utils.SafeCallMethod(resultRow, "SetAttribute", "*typerelease1",
+                navPlan.doublePress and "click" or nil)
+            Utils.SafeCallMethod(resultRow, "SetAttribute", "*clickbutton1", navPlan.button)
+            resultRow._efSteerTab = navPlan.button
+            resultRow._lastAttrType = "click"
+            resultRow._lastAttrKey = "*clickbutton1"
+            resultRow._lastAttrVal = navPlan.button
+            resultRow._efSwappedToOpen = SPELLBOOK_PANEL
+            return
+        end
     end
-    -- openMacro is nil while the panel is already shown: nothing to open,
-    -- the release edge steers.
+    -- With the panel already shown and the spell on the current page there
+    -- is nothing to open or flip; the release edge steers.
     resultRow._efSwappedToOpen = SPELLBOOK_PANEL
 end
 
@@ -206,8 +267,32 @@ function SecureAttributes.ArmSteerLate(resultRow)
     local openKey = SecureOpeners.OpenKeyForData(data)
     if openKey then
         steerTab = SecureOpeners.GetSteerTabButton(openKey, data)
+        -- The panel opened DURING the press, so the page math exists by
+        -- mouse-up. When its tab is already the right one, the release
+        -- edge is free: aim it at the page button instead (with the
+        -- sandwich pre-set, the one press lands exactly on the target
+        -- page), making a cold open land on the spell in a single click.
+        if (not steerTab or SecureOpeners.IsTabButtonSelected(openKey, steerTab))
+           and Handlers.GetSpellbookNavPlan then
+            local plan = Handlers.GetSpellbookNavPlan(data)
+            if plan then
+                steerTab = plan.button
+            elseif steerTab
+                and SecureOpeners.IsTabButtonSelected(openKey, steerTab) then
+                steerTab = nil
+            end
+        end
     elseif resultRow._efSwappedToOpen then
         steerTab = SecureOpeners.GetDefaultTabButton(resultRow._efSwappedToOpen)
+        if steerTab and SecureOpeners.IsTabButtonSelected(resultRow._efSwappedToOpen, steerTab)
+           and Handlers.GetSpellbookNavPlan then
+            local plan = Handlers.GetSpellbookNavPlan(data)
+            if plan then
+                steerTab = plan.button
+            else
+                steerTab = nil
+            end
+        end
     end
     if steerTab then
         SetSteer(resultRow, steerTab)

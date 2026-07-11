@@ -126,6 +126,11 @@ function SecureOpeners.EnsureLoaded(key)
 end
 
 local function SteerTabIndexFor(spec, data)
+    -- An explicit tab step wins; otherwise fall through to the category/
+    -- spellID defaults. Ability entries carry steps = {{spellID}} with no
+    -- tab step, and their spell reveal needs the spellbook tab -- an early
+    -- "steps but no tab step -> no steer" return here left them opening on
+    -- whatever tab the panel last showed.
     local steps = data.steps
     if steps then
         for i = 1, #steps do
@@ -134,8 +139,6 @@ local function SteerTabIndexFor(spec, data)
                 return step.tabIndex
             end
         end
-        -- Steps without a tab step: any tab is acceptable, no steer.
-        return nil
     end
     if data.category == "Talent" then return SecureOpeners.TAB_TALENTS end
     if data.spellID then return spec.defaultTab end
@@ -172,4 +175,23 @@ end
 function SecureOpeners.GetDefaultTabButton(key)
     local spec = PANELS[key]
     return spec and SecureOpeners.GetTabButtonFor(key, spec.defaultTab) or nil
+end
+
+-- True when the panel is shown with this tab button's tab already selected.
+-- Steering onto an already-selected tab is not harmless: the release-edge
+-- re-click lands AFTER a down-edge nav macro and Blizzard's tab-set can
+-- reset the spellbook back to page 1, undoing the flip.
+function SecureOpeners.IsTabButtonSelected(key, tabButton)
+    local spec = PANELS[key]
+    local panel = spec and _G[spec.panel]
+    if not (panel and panel.GetTab and tabButton and panel:IsShown()) then
+        return false
+    end
+    local ok, selectedID = pcall(panel.GetTab, panel)
+    if not ok or not selectedID then return false end
+    if tabButton.GetTabID then
+        local ok2, tabID = pcall(tabButton.GetTabID, tabButton)
+        if ok2 and tabID then return tabID == selectedID end
+    end
+    return false
 end
