@@ -38,10 +38,11 @@ Search from the world map with nested results built for location-first browsing:
 ### Search Tools
 
 - **Right-click menu**: Every result has a context menu.
-  - On nearly every result:
+  - On every result:
     - **Pin**: Keep it visible before typing.
     - **Shortkey**: Bind a key that opens or uses the result instantly, without opening the search bar or taking up action bar slots.
     - **Add Alias**: Add your own search terms. Aliases are shared between normal search and map search where applicable.
+  - On most results:
     - **Guide**: Walk to the result with step-by-step highlights.
     - **Send link**: Share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, a whisper, or a link box you can shift-click into any chat message).
     - **Wowhead link**: Copy-ready Wowhead URL.
