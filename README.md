@@ -55,7 +55,7 @@ Search from the world map with nested results built for location-first browsing:
     - **Bag items**: destroy.
 - **Guide mode and direct open**: Learn where things live with step-by-step highlights, or open supported destinations directly.
 - **Quick filters**: Type `@` to search within a category such as pets, mounts, bags, macros, abilities, achievements, statistics, bosses, gear, currencies, reputations, talents, titles, collections, or map results.
-- **Slash-command results**: Type `/` in the search bar to see supported EasyFind commands such as `/reset` and `/options`.
+- **Slash-command results**: Type `/` in the search bar to search slash commands: EasyFind commands such as `/reset` and `/options`, WoW commands such as `/reload`, and emotes such as `/hug`.
 - **Calculator**: Type math directly into search, including arithmetic, trig functions, and factorials, or open the full calculator with `Alt+C`.
 - **Keyboard control**: Use arrows, Enter, Tab, Alt+number row shortcuts, or Alt+H/J/K/L navigation.
 
