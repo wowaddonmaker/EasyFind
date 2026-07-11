@@ -4,7 +4,7 @@ EasyFind is WoW's Raycast, Spotlight, or Alfred: a fast command bar that lets yo
 
 ## How to Use
 
-Set a Search Bar keybind during the tutorial, or later in EasyFind options. Press that keybind to show and focus the search bar, type what you want, then select a result. Press the keybind again or click anywhere outside EasyFind to close it.
+Press `Ctrl+Space` (the default Search Bar keybind, changeable during the tutorial or in EasyFind options) to show and focus the search bar, type what you want, then select a result. Press the keybind again or click anywhere outside EasyFind to close it.
 
 ## Features
 
@@ -37,17 +37,26 @@ Search from the world map with nested results built for location-first browsing:
 
 ### Search Tools
 
-- **Pins**: Right-click a result to keep it visible before typing.
-- **Shortkeys**: Right-click any result to bind a key that opens or uses it instantly, without opening the search bar or taking up action bar slots.
-- **Aliases**: Add your own search terms for any supported result. Aliases are shared between normal search and map search where applicable.
+- **Right-click menu**: Every result has a context menu.
+  - On nearly every result:
+    - **Pin**: Keep it visible before typing.
+    - **Shortkey**: Bind a key that opens or uses the result instantly, without opening the search bar or taking up action bar slots.
+    - **Add Alias**: Add your own search terms. Aliases are shared between normal search and map search where applicable.
+    - **Guide**: Walk to the result with step-by-step highlights.
+    - **Send link**: Share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, a whisper, or a link box you can shift-click into any chat message).
+    - **Wowhead link**: Copy-ready Wowhead URL.
+  - Row-specific extras, for example:
+    - **Achievements**: objective tracking.
+    - **Currencies**: backpack pinning and currency transfer.
+    - **Reputations**: watched-faction toggle.
+    - **Pets**: summon, rename, favorite, cage or release.
+    - **Transmog sets**: favorite toggle.
+    - **Bag items**: destroy.
 - **Guide mode and direct open**: Learn where things live with step-by-step highlights, or open supported destinations directly.
 - **Quick filters**: Type `@` to search within a category such as pets, mounts, bags, macros, abilities, achievements, statistics, bosses, gear, currencies, reputations, talents, titles, collections, or map results.
 - **Slash-command results**: Type `/` in the search bar to see supported EasyFind commands such as `/reset` and `/options`.
 - **Calculator**: Type math directly into search, including arithmetic, trig functions, and factorials, or open the full calculator with `Alt+C`.
 - **Keyboard control**: Use arrows, Enter, Tab, Alt+number row shortcuts, or Alt+H/J/K/L navigation.
-- **Send link**: Right-click a result to share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, a whisper, or a link box you can shift-click into any chat message).
-- **Wowhead links**: Right-click most results for a copy-ready Wowhead URL.
-- **Context menus**: Right-click results for row-specific actions such as Guide, Pin, Add Alias, favorite toggles, tracking, edit actions, and collection tools.
 
 ### Options
 
@@ -79,9 +88,9 @@ Search-bar commands are also available by typing `/` directly in the EasyFind se
 
 ## Keybinds
 
-No keybinds are forced by default. Configure them in EasyFind options or WoW keybindings.
+Two binds ship enabled by default, account-wide: `Ctrl+Space` (Search Bar) and `Ctrl+M` (Map Search Tab). If one of these keys is already bound to something else, EasyFind's bind takes precedence while it is set; your existing bind is not cleared and works again as soon as you rebind or remove EasyFind's.
 
-Available binds include:
+Change or remove them in EasyFind options. Available binds:
 
 - Search Bar
 - Map Search Tab
