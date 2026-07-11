@@ -368,8 +368,9 @@ end
 
 function Results:SelectFirstResult()
     -- Only select if results are visible and there's actual data
+    local shownResults = ResultsFrame()
     local first = Search:GetResultButtons()[1]
-    if ResultsFrame():IsShown() and first and first:IsShown() and first.data then
+    if shownResults and shownResults:IsShown() and first and first:IsShown() and first.data then
         if Rows:ActivateSettingResult(first.data) then return end
         self:SelectResult(first.data)
     end

@@ -77,6 +77,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     end
 
     ns.StyleMenuPanel(dropdown)
+    ns.SetRoundedRectRingShown(dropdown, EasyFind.db.windowBorder ~= false)
     dropdown:HookScript("OnShow", function(self) ns.ApplyMenuOpacity(self) end)
 
     local ICON_SIZE = 14
@@ -91,6 +92,9 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
     local function StylePopup(frame)
         ns.StyleMenuPanel(frame)
+        -- Filter-menu surfaces follow the window border setting; dialogs
+        -- and other StyleMenuPanel users keep their ring regardless.
+        ns.SetRoundedRectRingShown(frame, EasyFind.db.windowBorder ~= false)
     end
 
     local function CreateRadioTexture(parent)
@@ -1145,7 +1149,11 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         self._escapedViaKeyboard = nil
         if escapedViaKeyboard and not Search:IsEscClosingMenus() then
             dropdownKeyboardMode = false
-            Utils.SafeCallMethod(Search:GetNavFrame(), "EnableKeyboard", true)
+            -- Hand keys back to the nav frame only when it has a live nav
+            -- context; a blind enable here is the stray that left the nav
+            -- frame eating a fresh session's first keys.
+            Utils.SafeCallMethod(Search:GetNavFrame(), "EnableKeyboard",
+                Search:GetSelectedIndex() > 0)
         else
             dropdownKeyboardMode = false
             if Search:GetSearchFrame().ClearToolbarFocus then Search:GetSearchFrame().ClearToolbarFocus() end

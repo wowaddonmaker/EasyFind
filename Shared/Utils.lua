@@ -1027,6 +1027,13 @@ function ns.SetRoundedRectBorderShown(frame, shown)
     for _, t in pairs(frame.combinedBorder.border) do t:SetShown(shown) end
 end
 
+-- Border RING only. SetRoundedRectBorderShown toggles fill AND ring, which
+-- is panel on/off -- using it for "borderless" removed the background too.
+function ns.SetRoundedRectRingShown(frame, shown)
+    if not (frame.combinedBorder and frame.combinedBorder.border) then return end
+    for _, t in pairs(frame.combinedBorder.border) do t:SetShown(shown) end
+end
+
 function ns.SetRoundedRectBorderBgAlpha(frame, alpha)
     if not frame.combinedBorder then return end
     for _, t in pairs(frame.combinedBorder.fill) do t:SetAlpha(alpha) end
@@ -1037,6 +1044,29 @@ function ns.SetRoundedRectBorderFillColor(frame, r, g, b, a)
     for _, t in pairs(frame.combinedBorder.fill) do
         t:SetVertexColor(r, g, b, a or 1)
     end
+end
+
+-- Search bar visibility mode, ONE owner for the autoHide/smartShow pair.
+-- Exactly one of the pair is true for the two legacy modes; both false is
+-- Always Show (the legacy pre-mode encoding, so no migration is needed
+-- and old consumers already fall through to a plain persistent Show).
+-- Consumers must never write the pair directly.
+ns.VISIBILITY_AUTO   = 0
+ns.VISIBILITY_SMART  = 1
+ns.VISIBILITY_ALWAYS = 2
+
+function ns.GetVisibilityMode()
+    local db = EasyFind and EasyFind.db
+    if not db or db.autoHide then return ns.VISIBILITY_AUTO end
+    if db.smartShow then return ns.VISIBILITY_SMART end
+    return ns.VISIBILITY_ALWAYS
+end
+
+function ns.SetVisibilityMode(mode)
+    local db = EasyFind and EasyFind.db
+    if not db then return end
+    db.autoHide  = mode == ns.VISIBILITY_AUTO
+    db.smartShow = mode == ns.VISIBILITY_SMART
 end
 
 local function DisablePixelSnap(t)
@@ -1605,7 +1635,26 @@ local ClearOverrideBindings = ClearOverrideBindings
 
 local function EscArm()
     if not escOwner or InCombatLockdown() then return end
-    local wantArmed = #escStack > 0
+    -- An entry only wants ESC while its shouldEat predicate (if any)
+    -- passes. Always Show registers the search bar with a predicate that
+    -- is false when nothing is dismissable, so the override is not bound
+    -- at all and a bare ESC reaches the game (zero keyboard capture
+    -- outside explicit UI state).
+    local wantArmed = false
+    for i = #escStack, 1, -1 do
+        local entry = escStack[i]
+        -- pcall fail-open: a broken predicate must never leave ESC bound
+        -- (captured input is worse than a missed close).
+        local wants = true
+        if entry.shouldEat then
+            local ok, eat = pcall(entry.shouldEat)
+            wants = ok and eat and true or false
+        end
+        if wants then
+            wantArmed = true
+            break
+        end
+    end
     if wantArmed == escArmed then return end
     if wantArmed then
         -- escOwner only ever holds this one binding, so the rebind
@@ -1615,6 +1664,35 @@ local function EscArm()
         ClearOverrideBindings(escOwner)
     end
     escArmed = wantArmed
+end
+
+-- Re-evaluate the ESC override after a shouldEat input changes while the
+-- owning frame stays shown (menus or results opening and closing).
+function Utils.RefreshEscArm()
+    EscArm()
+end
+
+-- EasyFindDev probe surface (/efd esc): who owns ESCAPE right now.
+-- Read-only; returns the armed flag plus one record per stack entry.
+function ns.GetEscOverrideState()
+    local entries = {}
+    for i = 1, #escStack do
+        local e = escStack[i]
+        local wants, err = true, nil
+        if e.shouldEat then
+            local ok, eat = pcall(e.shouldEat)
+            wants = ok and eat and true or false
+            if not ok then err = tostring(eat) end
+        end
+        entries[i] = {
+            name = (e.frame and e.frame.GetName and e.frame:GetName())
+                or tostring(e.frame),
+            shown = e.frame and e.frame:IsShown() or false,
+            wants = wants,
+            err = err,
+        }
+    end
+    return escArmed, entries
 end
 
 local function EscRemove(frame)
@@ -1632,8 +1710,21 @@ local function EnsureEscDispatch()
     escDispatch:SetSize(1, 1)
     escDispatch:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 0, 0)
     escDispatch:SetScript("OnClick", function()
-        local top = escStack[#escStack]
-        if top then top.close() end
+        -- Top-most entry that currently wants ESC; entries whose
+        -- predicate is false (or errors, pcall fail-open) never block a
+        -- lower one.
+        for i = #escStack, 1, -1 do
+            local entry = escStack[i]
+            local wants = true
+            if entry.shouldEat then
+                local ok, eat = pcall(entry.shouldEat)
+                wants = ok and eat and true or false
+            end
+            if wants then
+                entry.close()
+                return
+            end
+        end
     end)
     escOwner:RegisterEvent("PLAYER_REGEN_DISABLED")
     escOwner:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -1650,13 +1741,16 @@ local function EnsureEscDispatch()
 end
 
 -- Register frame so ESC closes it (via close()) while it is shown.
--- close defaults to hiding the frame.
-function Utils.AttachEscClose(frame, close)
+-- close defaults to hiding the frame. shouldEat (optional) is consulted
+-- at arm time and at dispatch: false means this entry neither binds nor
+-- consumes ESC right now. Callers whose predicate inputs change while
+-- the frame stays shown must call Utils.RefreshEscArm() on those changes.
+function Utils.AttachEscClose(frame, close, shouldEat)
     EnsureEscDispatch()
     close = close or function() frame:Hide() end
     frame:HookScript("OnShow", function()
         EscRemove(frame)
-        escStack[#escStack + 1] = { frame = frame, close = close }
+        escStack[#escStack + 1] = { frame = frame, close = close, shouldEat = shouldEat }
         EscArm()
     end)
     frame:HookScript("OnHide", function()
@@ -1664,11 +1758,11 @@ function Utils.AttachEscClose(frame, close)
         EscArm()
     end)
     if frame:IsShown() then
-        escStack[#escStack + 1] = { frame = frame, close = close }
+        escStack[#escStack + 1] = { frame = frame, close = close, shouldEat = shouldEat }
         EscArm()
     end
 end
-ns.AttachEscClose = function(frame, close) return Utils.AttachEscClose(frame, close) end
+ns.AttachEscClose = function(frame, close, shouldEat) return Utils.AttachEscClose(frame, close, shouldEat) end
 
 local function EnsureCopyBox()
     if not copyBox then

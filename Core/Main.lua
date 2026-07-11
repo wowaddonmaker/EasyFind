@@ -42,6 +42,14 @@ local DB_DEFAULTS = {
     globalMapDirectOpen = true,
     autoHide = true,
     smartShow = false,
+    -- Always Show only: false keeps the bar visible through combat
+    -- (results and focus still clear at the combat boundary).
+    combatHide = true,
+    -- Always Show only: dim the kept-shown bar in combat / while moving.
+    combatDim = false,
+    moveDim = false,
+    -- Border ring on the search window and its filter menus.
+    windowBorder = true,
     lockPosition = false,
     tutorialDone = false,
     accountKeybinds = {},

@@ -50,8 +50,9 @@ local optionsFrame
 local isInitialized = false
 local blizzardRegistered = false
 
-local VISIBILITY_AUTO = 0
-local VISIBILITY_SMART = 1
+local VISIBILITY_AUTO   = ns.VISIBILITY_AUTO
+local VISIBILITY_SMART  = ns.VISIBILITY_SMART
+local VISIBILITY_ALWAYS = ns.VISIBILITY_ALWAYS
 local RESULTS_BELOW = 0
 local RESULTS_ABOVE = 1
 
@@ -69,6 +70,10 @@ local DEFAULT_UI_FILTERS = {
 local UI_DEFAULTS = {
     smartShow = false,
     autoHide = true,
+    combatHide = true,
+    combatDim = false,
+    moveDim = false,
+    windowBorder = true,
     lockPosition = false,
     uiResultsAbove = false,
     showResultShortcutHints = true,
@@ -225,11 +230,7 @@ local function RefreshMapRuntime()
 end
 
 local function GetVisibilityModeValue()
-    return EasyFind and EasyFind.db
-        and EasyFind.db.smartShow
-        and EasyFind.db.autoHide == false
-        and VISIBILITY_SMART
-        or VISIBILITY_AUTO
+    return ns.GetVisibilityMode()
 end
 
 local function GetResultsDirectionValue()
@@ -255,6 +256,7 @@ local function SyncOptionControls()
     if optionsFrame.aliasMessageCheckbox then optionsFrame.aliasMessageCheckbox:SetChecked(EasyFind.db.showAliasMessages ~= false) end
     if optionsFrame.resultsDirectionRow then optionsFrame.resultsDirectionRow:SetValue(GetResultsDirectionValue()) end
     if optionsFrame.resultShortcutHintsCheckbox then optionsFrame.resultShortcutHintsCheckbox:SetChecked(EasyFind.db.showResultShortcutHints ~= false) end
+    if optionsFrame.windowBorderCheckbox then optionsFrame.windowBorderCheckbox:SetChecked(EasyFind.db.windowBorder ~= false) end
     if optionsFrame.minimapBtnCheckbox then optionsFrame.minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton ~= false) end
     if optionsFrame.rareTrackCheckbox then optionsFrame.rareTrackCheckbox:SetChecked(EasyFind.db.alwaysShowRares or false) end
 
@@ -1298,18 +1300,23 @@ local function BuildSearchTab(ctx)
 
     local visibilityModeRow
     local function ApplyVisibilityMode(value)
-        local smart = value == VISIBILITY_SMART
-        EasyFind.db.smartShow = smart
-        EasyFind.db.autoHide = not smart
+        ns.SetVisibilityMode(value)
         if visibilityModeRow then visibilityModeRow:SetValue(value) end
         RunSoon(function()
-            if EasyFind.db.smartShow then
-                if ns.Search and ns.Search.Show then ns.Search:Show(false) end
-                if ns.Search and ns.Search.UpdateSmartShow then ns.Search:UpdateSmartShow() end
+            if not ns.Search then return end
+            if value == VISIBILITY_SMART then
+                if ns.Search.Show then ns.Search:Show(false) end
+                if ns.Search.UpdateSmartShow then ns.Search:UpdateSmartShow() end
+            elseif value == VISIBILITY_ALWAYS then
+                if ns.Search.UpdateSmartShow then ns.Search:UpdateSmartShow() end
+                if ns.Search.Show then ns.Search:Show(false) end
             else
-                if ns.Search and ns.Search.UpdateSmartShow then ns.Search:UpdateSmartShow() end
-                if ns.Search and ns.Search.Hide then ns.Search:Hide() end
+                if ns.Search.UpdateSmartShow then ns.Search:UpdateSmartShow() end
+                if ns.Search.Hide then ns.Search:Hide() end
             end
+            -- Mode changes alter the ESC-override predicate while the bar
+            -- stays shown; re-evaluate the arming.
+            if Utils.RefreshEscArm then Utils.RefreshEscArm() end
         end)
     end
 
@@ -1317,23 +1324,156 @@ local function BuildSearchTab(ctx)
         ApplyVisibilityMode(value)
     end
 
-    visibilityModeRow = CreatePresetRow(sec1, L["OPT_VISIBILITY"],
-        {
-            { label = L["OPT_VISIBILITY_AUTOHIDE"], value = VISIBILITY_AUTO,
-              tooltip = L["OPT_VISIBILITY_AUTOHIDE_TT"] },
-            { label = L["OPT_VISIBILITY_SMARTSHOW"], value = VISIBILITY_SMART,
-              tooltip = L["OPT_VISIBILITY_SMARTSHOW_TT"] },
-        },
-        GetVisibilityModeValue,
-        SetVisibilityMode,
-        nil,
-        SELECTOR_ROW_W)
+    local visibilityTooltip =
+        L["OPT_VISIBILITY_AUTOHIDE"] .. " - " .. L["OPT_VISIBILITY_AUTOHIDE_TT"]
+        .. "\n\n" .. L["OPT_VISIBILITY_SMARTSHOW"] .. " - " .. L["OPT_VISIBILITY_SMARTSHOW_TT"]
+        .. "\n\n" .. L["OPT_VISIBILITY_ALWAYS"] .. " - " .. L["OPT_VISIBILITY_ALWAYS_TT"]
+
+    -- Hand-built preset row: same skeleton as CreateFlyoutPresetRow, plus
+    -- the two combat radios living ON the Always Show flyout row (dim
+    -- unless Always Show is active; picking either force-selects it).
+    local VIS_CHOICES = { VISIBILITY_AUTO, VISIBILITY_SMART, VISIBILITY_ALWAYS }
+    local function VisLabelFor(value)
+        if value == VISIBILITY_SMART then return L["OPT_VISIBILITY_SMARTSHOW"] end
+        if value == VISIBILITY_ALWAYS then return L["OPT_VISIBILITY_ALWAYS"] end
+        return L["OPT_VISIBILITY_AUTOHIDE"]
+    end
+
+    visibilityModeRow = CreateFrame("Frame", nil, sec1)
+    visibilityModeRow:SetSize(SELECTOR_ROW_W, 24)
+    local visLabel = visibilityModeRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    visLabel:SetPoint("LEFT", visibilityModeRow, "LEFT", 8, 0)
+    visLabel:SetPoint("RIGHT", visibilityModeRow, "RIGHT", -SELECTOR_BTN_W - 18, 0)
+    visLabel:SetJustifyH("LEFT")
+    visLabel:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
+    visLabel:SetText(L["OPT_VISIBILITY"])
+
+    local visBtnFrame, visBtnText = CreateFlyoutSelector(visibilityModeRow,
+        "EasyFindVisibilityMode", SELECTOR_BTN_W, visLabel,
+        VisLabelFor(GetVisibilityModeValue()))
+    local visFlyout = CreateFlyoutPanel(visBtnFrame, "EasyFindVisibilityMode",
+        SELECTOR_BTN_W, #VIS_CHOICES)
+
+    -- The three sub-lines under Always Show. Enabled rules: all three
+    -- need Always Show active; "Dim in combat" additionally needs "Hide
+    -- in combat" unchecked (dimming a hidden bar is meaningless).
+    local combatChecks = {}
+    local function RefreshCombatChecks()
+        local isAlways = ns.GetVisibilityMode() == VISIBILITY_ALWAYS
+        for i = 1, #combatChecks do
+            local line = combatChecks[i]
+            local enabled = isAlways and (not line.needsCombatShown
+                or EasyFind.db.combatHide == false)
+            line.check:SetShown(line.getter())
+            local dim = enabled and 1 or 0.4
+            line.box:SetAlpha(dim)
+            line.check:SetAlpha(dim)
+            line.lbl:SetAlpha(dim)
+            line.enabled = enabled
+        end
+    end
+
+    local function PickVisibility(value)
+        SetVisibilityMode(value)
+        visBtnText:SetText(VisLabelFor(value))
+        RefreshCombatChecks()
+    end
+
+    local COMBAT_SUB_H = 16
+    AddFlyoutOptions(visFlyout, VIS_CHOICES, SELECTOR_BTN_W - 6,
+        PickVisibility,
+        function(value)
+            if value == VISIBILITY_AUTO then return DefaultTag(VisLabelFor(value)) end
+            return VisLabelFor(value)
+        end,
+        function(flyoutBtn, value, label)
+            if value ~= VISIBILITY_ALWAYS then return end
+            -- One TALLER row: Always Show on the top line, three indented
+            -- checkbox lines under it (visually part of the row). No
+            -- auto-close on clicks; toggling any line force-selects
+            -- Always Show; all dim unless it is the active mode, and
+            -- "Dim in combat" additionally needs "Hide in combat" off.
+            flyoutBtn:SetHeight(18 + COMBAT_SUB_H * 3)
+            label:ClearAllPoints()
+            label:SetPoint("TOPLEFT", flyoutBtn, "TOPLEFT", 6, -3)
+            label:SetPoint("RIGHT", flyoutBtn, "RIGHT", -6, 0)
+            local function AddCheckLine(lineText, lineTT, yOffset, opts)
+                local lineBtn = CreateFrame("Button", nil, flyoutBtn)
+                lineBtn:SetHeight(COMBAT_SUB_H)
+                lineBtn:SetPoint("TOPLEFT", flyoutBtn, "TOPLEFT", 14, yOffset)
+                local box = lineBtn:CreateTexture(nil, "ARTWORK")
+                box:SetSize(12, 12)
+                box:SetPoint("LEFT", lineBtn, "LEFT", 0, 0)
+                box:SetTexture("Interface\\Buttons\\UI-CheckBox-Up")
+                box:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                local check = lineBtn:CreateTexture(nil, "OVERLAY")
+                check:SetSize(12, 12)
+                check:SetPoint("CENTER", box, "CENTER", 0, 0)
+                check:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+                check:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+                local lbl = lineBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+                lbl:SetPoint("LEFT", box, "RIGHT", 3, 0)
+                lbl:SetText(lineText)
+                lineBtn:SetWidth(12 + 3 + lbl:GetStringWidth() + 4)
+                Utils.AttachDelayedTooltip(lineBtn, "ANCHOR_RIGHT", function()
+                    return lineText, lineTT
+                end)
+                local line = {
+                    box = box, check = check, lbl = lbl,
+                    getter = opts.getter, needsCombatShown = opts.needsCombatShown,
+                }
+                lineBtn:SetScript("OnClick", function()
+                    if line.needsCombatShown and EasyFind.db.combatHide ~= false
+                        and ns.GetVisibilityMode() == VISIBILITY_ALWAYS then
+                        return
+                    end
+                    opts.setter(not opts.getter())
+                    PickVisibility(VISIBILITY_ALWAYS)
+                end)
+                combatChecks[#combatChecks + 1] = line
+            end
+            AddCheckLine(L["OPT_COMBAT_HIDE_SHORT"], L["OPT_COMBAT_HIDE_TT"], -18, {
+                getter = function() return EasyFind.db.combatHide ~= false end,
+                setter = function(v) EasyFind.db.combatHide = v and true or false end,
+            })
+            AddCheckLine(L["OPT_COMBAT_DIM"], L["OPT_COMBAT_DIM_TT"],
+                -18 - COMBAT_SUB_H, {
+                getter = function() return EasyFind.db.combatDim == true end,
+                setter = function(v) EasyFind.db.combatDim = v and true or false end,
+                needsCombatShown = true,
+            })
+            AddCheckLine(L["OPT_MOVE_DIM"], L["OPT_MOVE_DIM_TT"],
+                -18 - COMBAT_SUB_H * 2, {
+                getter = function() return EasyFind.db.moveDim == true end,
+                setter = function(v)
+                    EasyFind.db.moveDim = v and true or false
+                    if ns.Search and ns.Search.UpdateMoveDim then
+                        ns.Search:UpdateMoveDim()
+                    end
+                end,
+            })
+            RefreshCombatChecks()
+        end)
+    -- The taller Always Show row needs the panel to grow past the
+    -- uniform numChoices * 20 sizing.
+    visFlyout:SetHeight(#VIS_CHOICES * 20 + 6 + COMBAT_SUB_H * 3)
+
+    visibilityModeRow:EnableMouse(true)
+    Utils.AttachDelayedTooltip(visibilityModeRow, "ANCHOR_RIGHT", function()
+        return L["OPT_VISIBILITY"], visibilityTooltip
+    end)
+    Utils.AttachDelayedTooltip(visBtnFrame, "ANCHOR_RIGHT", function()
+        return L["OPT_VISIBILITY"], visibilityTooltip
+    end)
+    visibilityModeRow.SetValue = function(_, value)
+        visBtnText:SetText(VisLabelFor(value))
+        RefreshCombatChecks()
+    end
     visibilityModeRow:SetPoint("TOPLEFT", sec1, "TOPLEFT", 16, -8)
     optionsFrame.visibilityModeRow = visibilityModeRow
 
     local initialVisibility = GetVisibilityModeValue()
-    EasyFind.db.smartShow = initialVisibility == VISIBILITY_SMART
-    EasyFind.db.autoHide = initialVisibility ~= VISIBILITY_SMART
+    ns.SetVisibilityMode(initialVisibility)
     visibilityModeRow:SetValue(initialVisibility)
 
     local lockPositionCheckbox = CreateCheckbox(sec1, "LockPosition", L["OPT_LOCK_POSITION"],
@@ -1391,6 +1531,21 @@ local function BuildSearchTab(ctx)
         end)
     end)
     optionsFrame.resultShortcutHintsCheckbox = resultShortcutHintsCheckbox
+
+    local windowBorderCheckbox = CreateCheckbox(sec1, "WindowBorder", L["OPT_WINDOW_BORDER"],
+        L["OPT_WINDOW_BORDER_TT"])
+    windowBorderCheckbox:SetPoint("TOPLEFT", resultShortcutHintsCheckbox, "BOTTOMLEFT", 0, -2)
+    windowBorderCheckbox:SetChecked(EasyFind.db.windowBorder ~= false)
+    windowBorderCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.windowBorder = self:GetChecked() and true or false
+        if self.RefreshVisual then self:RefreshVisual() end
+        RunSoon(function()
+            if ns.Search and ns.Search.UpdateWindowBorders then
+                ns.Search:UpdateWindowBorders()
+            end
+        end)
+    end)
+    optionsFrame.windowBorderCheckbox = windowBorderCheckbox
 
     local fontSizeChoices = {
         { label = L["OPT_FONT_SMALL"], value = 0.80 },
@@ -2452,8 +2607,19 @@ function Options:Initialize()
         EasyFind.db.optionsPosition = {point, relPoint, x, y}
     end)
     -- Escape closes the standalone window like every Blizzard panel, via
-    -- the taint-free override-bind path (never UISpecialFrames).
-    ns.AttachEscClose(optionsFrame)
+    -- the taint-free override-bind path (never UISpecialFrames). LIFO
+    -- within the panel: an open selector flyout consumes the first ESC;
+    -- the panel itself only closes on a press with no flyout open.
+    ns.AttachEscClose(optionsFrame, function()
+        local closedAny = false
+        for i = 1, #optionsFlyouts do
+            if optionsFlyouts[i]:IsShown() then
+                optionsFlyouts[i]:Hide()
+                closedAny = true
+            end
+        end
+        if not closedAny then optionsFrame:Hide() end
+    end)
 
     optionsFrame:SetBackdrop(nil)
 

@@ -131,6 +131,11 @@ function Search:Initialize()
     self:CreateUnearnedTooltip()
     self:CreateSearchFrame()
     self:CreateResultsFrame()
+    -- ESC-override predicate inputs: results visibility changes re-arm.
+    if resultsFrame then
+        resultsFrame:HookScript("OnShow", Utils.RefreshEscArm)
+        resultsFrame:HookScript("OnHide", Utils.RefreshEscArm)
+    end
     self:RegisterCombatEvents()
     self:HookBlizzardFilterChanges()
 
@@ -151,7 +156,8 @@ function Search:Initialize()
     end
 
     inCombat = InCombatLockdown()
-    if inCombat then
+    if inCombat and not (ns.GetVisibilityMode() == ns.VISIBILITY_ALWAYS
+            and EasyFind.db.combatHide == false) then
         searchFrame:Hide()
     end
 
@@ -175,13 +181,46 @@ function Search:Initialize()
 
     -- Block auto-focus on creation - WoW may focus visible EditBoxes after creation.
     -- Block for two frames (enough for WoW's auto-focus to fire and get rejected).
+    -- Always Show never expires the block: the bar is visible at reload and
+    -- WoW's auto-focus can land after any fixed frame window on heavy loads.
+    -- A silently focused box then eats the first unfocused-looking ESC (the
+    -- original perma-show era bug). Every legitimate focus path clears
+    -- blockFocus itself before SetFocus, so keeping the block costs nothing.
     searchFrame.editBox.blockFocus = true
     searchFrame.editBox:ClearFocus()
     Utils.SafeAfter(0, function()
         Utils.SafeAfter(0, function()
-            if searchFrame and searchFrame.editBox then
+            if searchFrame and searchFrame.editBox
+                and ns.GetVisibilityMode() ~= ns.VISIBILITY_ALWAYS then
                 searchFrame.editBox.blockFocus = nil
                 searchFrame.editBox:ClearFocus()
+            end
+        end)
+    end)
+    -- Loading-screen focus is sticky: ClearFocus during the load screen
+    -- can silently no-op, so an auto-focus that lands mid-load survives
+    -- with blockFocus still up and the focused box then eats the first
+    -- ESC and ENTER of the session. Settle pass: after entering world,
+    -- keep clearing any focus that arrived while blockFocus was up until
+    -- it sticks (2s window, self-cancelling).
+    local settleFrame = CreateFrame("Frame")
+    settleFrame:RegisterEvent("PLAYER_ENTERING_WORLD")
+    settleFrame:SetScript("OnEvent", function(self)
+        local settleElapsed = 0
+        Utils.SafeOnUpdate(self, function(_, elapsed)
+            settleElapsed = settleElapsed + (elapsed or 0)
+            local editBox = searchFrame and searchFrame.editBox
+            if editBox and editBox.blockFocus and editBox:HasFocus() then
+                editBox:ClearFocus()
+            end
+            -- Same settle treatment for the C-level capture flag: while
+            -- unfocused it must read propagate=true no matter what load
+            -- ordering left behind.
+            if editBox and not editBox:HasFocus() then
+                Utils.SafeCallMethod(editBox, "SetPropagateKeyboardInput", true)
+            end
+            if settleElapsed > 2 then
+                self:SetScript("OnUpdate", nil)
             end
         end)
     end)
@@ -202,18 +241,89 @@ function Search:WarmSearchHotPath()
     end
 end
 
+-- Kept-visible-in-combat state: the bar is a protected frame in combat
+-- (secure result rows are its descendants, see Search:Hide), so the
+-- mid-fight "toggle" is an alpha flip, never Show/Hide, and the mouse
+-- shield makes the visible bar fully inert (only the toggle works).
+local combatToggledOff = false
+local isMovingNow = false
+local BAR_DIM_ALPHA = 0.6
+
+-- ONE owner for the Always Show bar's alpha: combat toggle beats combat
+-- dim beats move dim beats full. Only applies in Always Show; the other
+-- modes keep their own fade machinery.
+local function ApplyAlwaysBarAlpha()
+    if not searchFrame or not searchFrame:IsShown() then return end
+    if ns.GetVisibilityMode() ~= ns.VISIBILITY_ALWAYS then return end
+    local alpha = 1
+    if inCombat then
+        if combatToggledOff then
+            alpha = 0
+        elseif EasyFind.db.combatDim and EasyFind.db.combatHide == false then
+            alpha = BAR_DIM_ALPHA
+        end
+    elseif EasyFind.db.moveDim and isMovingNow
+        and not (searchFrame.editBox and searchFrame.editBox:HasFocus()) then
+        alpha = BAR_DIM_ALPHA
+    end
+    searchFrame:SetAlpha(alpha)
+end
+
+function Search:UpdateMoveDim()
+    ApplyAlwaysBarAlpha()
+end
+
+local function EnsureCombatShield()
+    if searchFrame.combatShield then return searchFrame.combatShield end
+    local shield = CreateFrame("Frame", nil, searchFrame)
+    shield:SetAllPoints(searchFrame)
+    shield:SetFrameLevel(searchFrame:GetFrameLevel() + 40)
+    shield:EnableMouse(true)
+    shield:Hide()
+    searchFrame.combatShield = shield
+    return shield
+end
+
 function Search:RegisterCombatEvents()
     ns.eventFrame:RegisterEvent("PLAYER_REGEN_DISABLED")
     ns.eventFrame:RegisterEvent("PLAYER_REGEN_ENABLED")
+    ns.eventFrame:RegisterEvent("PLAYER_STARTED_MOVING")
+    ns.eventFrame:RegisterEvent("PLAYER_STOPPED_MOVING")
+    -- Move-dim undims while typing; focus changes re-resolve the alpha.
+    searchFrame.editBox:HookScript("OnEditFocusGained", ApplyAlwaysBarAlpha)
+    searchFrame.editBox:HookScript("OnEditFocusLost", ApplyAlwaysBarAlpha)
     ns.eventFrame:HookScript("OnEvent", function(self, event)
         if event == "PLAYER_REGEN_DISABLED" then
             inCombat = true
-            searchFrame:Hide()
-            searchFrame.hoverZone:Hide()
+            combatToggledOff = false
+            -- Always Show with combatHide off keeps the BAR up through
+            -- combat. Results and focus still clear unconditionally: the
+            -- result rows are secure buttons whose combat-boundary
+            -- teardown (secure hide owners, binding clears) assumes it.
+            if not (ns.GetVisibilityMode() == ns.VISIBILITY_ALWAYS
+                    and EasyFind.db.combatHide == false) then
+                searchFrame:Hide()
+                searchFrame.hoverZone:Hide()
+            else
+                Search:CloseFilterDropdownIfOpen()
+                EnsureCombatShield():Show()
+                ApplyAlwaysBarAlpha()
+            end
             Results:HideResults()
             searchFrame.editBox:ClearFocus()
+        elseif event == "PLAYER_STARTED_MOVING" then
+            isMovingNow = true
+            ApplyAlwaysBarAlpha()
+            return
+        elseif event == "PLAYER_STOPPED_MOVING" then
+            isMovingNow = false
+            ApplyAlwaysBarAlpha()
+            return
         elseif event == "PLAYER_REGEN_ENABLED" then
             inCombat = false
+            combatToggledOff = false
+            if searchFrame.combatShield then searchFrame.combatShield:Hide() end
+            ApplyAlwaysBarAlpha()
             -- autoHide stays hidden after combat; reopens via bind.
             if not EasyFind.db.autoHide then
                 if EasyFind.db.visible ~= false then
@@ -272,6 +382,7 @@ function Search:CreateSearchFrame()
     ns.CreateRoundedRectBorder(containerFrame)
     ns.CreateRoundedRectDivider(containerFrame)
     ns.SetRoundedRectBarHeight(containerFrame, searchFrame:GetHeight())
+    ns.SetRoundedRectRingShown(containerFrame, EasyFind.db.windowBorder ~= false)
     self:ApplySearchWindowFill(containerFrame)
 
     -- Sibling-of-searchFrame so the container's textures sit BEHIND
@@ -322,6 +433,19 @@ function Search:CreateSearchFrame()
     editBox:SetFontObject(ns.SEARCHBAR_FONT)
     editBox:SetAutoFocus(false)
     editBox:SetMaxLetters(50)
+    -- The propagate flag is enforced from OUTSIDE the key handler at every
+    -- unfocus boundary: an UNFOCUSED editbox consumes keys at the C level
+    -- from its frame flags alone (visible + keyboard-enabled +
+    -- propagate=false, and this bar is FULLSCREEN_DIALOG, topmost in
+    -- dispatch), WITHOUT running OnKeyDown -- so an in-handler guard can
+    -- never fire. Measured in the escprobe capture: propagate=false at
+    -- pristine login ate ENTER and ESC until the first ESC knocked the
+    -- state loose. Focused typing still sets per-key propagation inside
+    -- OnKeyDown, which does run for a FOCUSED box.
+    Utils.SafeCallMethod(editBox, "SetPropagateKeyboardInput", true)
+    editBox:HookScript("OnEditFocusLost", function(self)
+        Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
+    end)
 
     -- Editbox click handling: plain left-click focuses the input
     -- While the bar is dragged, re-render the open results on a short
@@ -1013,6 +1137,17 @@ function Search:CreateSearchFrame()
     -- editbox, otherwise it just types as a character and the user
     -- can't dismiss with the same key they used to open.
     editBox:SetScript("OnKeyDown", function(self, key)
+        -- UNFOCUSED: never consume. A visible EditBox with an OnKeyDown
+        -- script joins WoW's keyboard-capture chain even without focus,
+        -- and any path that leaves propagate=false here eats EVERY key
+        -- (ENTER never opens chat, ESC dies) until one keypress happens
+        -- to reset it -- the Always Show first-keys-after-reload bug,
+        -- proven by the escprobe capture (focus=none, no overrides,
+        -- EasyFindSearchBox visible+keyboard-enabled+propagate=false).
+        if not self:HasFocus() then
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
+            return
+        end
         local navKey = key and key:upper() or key
         -- Alt+letter: set propagate=false up front; late suppression can leak
         -- the char into the editbox before OnChar sees the new state.
@@ -1445,6 +1580,20 @@ function Search:CreateSearchFrame()
     end
 
     navFrame:SetScript("OnKeyDown", function(self, key)
+        -- SELF-HEALING INVARIANT: nav keyboard with no nav context is a
+        -- stray enable left by an init/teardown race (measured: the
+        -- escprobe login capture showed keyboard=true selectedIndex=0,
+        -- and this frame -- visible + keyboard-enabled + propagate=false
+        -- -- ate the session's first ENTER and ESC; the ESC branch below
+        -- disabling keyboard is exactly why one ESC "fixed" it). With no
+        -- selection, no toolbar focus, and no results shown, disarm and
+        -- propagate this very key so nothing is ever eaten.
+        if selectedIndex == 0 and toolbarFocus == 0
+            and not (resultsFrame and resultsFrame:IsShown()) then
+            Utils.SafeCallMethod(self, "EnableKeyboard", false)
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
+            return
+        end
         if Search:HandleCalculatorOpenShortcut(searchFrame and searchFrame.editBox, key) then
             Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
             return
@@ -1529,7 +1678,17 @@ function Search:CreateSearchFrame()
     -- ESC first (LIFO), matching the old catcher's deferral to them.
     Utils.AttachEscClose(searchFrame, function()
         Search:HandleEscape(true)
+    end, function()
+        -- Always Show eats ESC only while EasyFind state is dismissable
+        -- (open menus, visible results, text, quick filter). A bare
+        -- persistent bar must let ESC reach the game.
+        if ns.GetVisibilityMode() ~= ns.VISIBILITY_ALWAYS then return true end
+        return Search:HasDismissableEscState()
     end)
+    if searchFrame.filterDropdown then
+        searchFrame.filterDropdown:HookScript("OnShow", Utils.RefreshEscArm)
+        searchFrame.filterDropdown:HookScript("OnHide", Utils.RefreshEscArm)
+    end
 
 
     -- Tab confirms autocomplete suggestion only. Toolbar nav (clear /
@@ -1848,6 +2007,23 @@ function Search:HandleEscape(fromUnfocused)
     -- also lifts the popup above our results panel strata.
     if self:ShowUnappliedSettingsPopup() then return end
     if fromUnfocused then
+        if ns.GetVisibilityMode() == ns.VISIBILITY_ALWAYS then
+            -- Fully persistent: only reachable while dismissable state
+            -- exists (the arming predicate). Clear it; the bar stays, and
+            -- only the toggle paths (keybind, /ef toggle, minimap icon)
+            -- ever hide it.
+            if editBox and (editBox:GetText() ~= "" or Filters:GetQuickFilter()) then
+                if editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
+                editBox:SetText("")
+                if editBox.placeholder then editBox.placeholder:Show() end
+                self:ClearQuickFilter(false)
+                self:HideQuickFilterSuggestions()
+                self:OnSearchTextChanged("", true)
+            else
+                Results:HideResults()
+            end
+            return
+        end
         self:Hide()
         return
     end
@@ -1866,6 +2042,11 @@ function Search:HandleEscape(fromUnfocused)
         self:OnSearchTextChanged("", true)
         return
     end
+    if ns.GetVisibilityMode() == ns.VISIBILITY_ALWAYS then
+        -- Focused ESC on an empty box drops focus but keeps the bar.
+        if editBox then editBox:ClearFocus() end
+        return
+    end
     self:Hide()
 end
 
@@ -1873,6 +2054,33 @@ end
 -- so its OnHide handlers skip the keyboard handoff / ClearFocus paths.
 function Search:IsEscClosingMenus()
     return self._escClosingMenus
+end
+
+-- EasyFindDev probe surface (/efd esc): key-capture state in one read.
+function Search:GetKeyNavDebug()
+    return {
+        navKeyboard = navFrame and navFrame:IsKeyboardEnabled() or false,
+        selectedIndex = selectedIndex,
+        editBoxFocus = searchFrame and searchFrame.editBox
+            and searchFrame.editBox:HasFocus() or false,
+        blockFocus = (searchFrame and searchFrame.editBox
+            and searchFrame.editBox.blockFocus) and true or false,
+    }
+end
+
+-- True while EasyFind has state ESC can dismiss. This is the ESC-override
+-- arming predicate for Always Show; Utils.RefreshEscArm re-evaluates it
+-- when menus or results open and close.
+function Search:HasDismissableEscState()
+    if searchFrame and searchFrame.filterDropdown
+        and searchFrame.filterDropdown:IsShown() then
+        return true
+    end
+    if resultsFrame and resultsFrame:IsShown() then return true end
+    local editBox = searchFrame and searchFrame.editBox
+    if editBox and editBox:GetText() ~= "" then return true end
+    if Filters.GetQuickFilter and Filters:GetQuickFilter() then return true end
+    return false
 end
 
 function Search:ExpandFactionHeader(headerName)
@@ -1889,6 +2097,18 @@ end
 
 function Search:Toggle()
     if not searchFrame then return end
+    if inCombat then
+        -- Show/Hide are protected here (secure rows are descendants).
+        -- The kept-shown Always bar toggles VISUALLY via alpha; the
+        -- shield stays for the fight, so its rect remains inert. Other
+        -- modes stay blocked in combat, as before.
+        if searchFrame:IsShown() and searchFrame.combatShield
+            and searchFrame.combatShield:IsShown() then
+            combatToggledOff = not combatToggledOff
+            ApplyAlwaysBarAlpha()
+        end
+        return
+    end
     local tuckedBySmartShow = EasyFind.db.autoHide and (searchFrame:GetAlpha() or 1) <= 0.01
     if searchFrame:IsShown() and EasyFind.db.visible ~= false and not tuckedBySmartShow then
         self:Hide()
@@ -2013,6 +2233,23 @@ end
 -- visibility settings are re-applied without pulling a closed bar onto
 -- the screen. Every other caller keeps the interactive default, where
 -- flipping the visibility mode previews the bar.
+-- Live re-apply of the window border setting: the bar's container plus
+-- every filter-menu surface (the dropdown and all registered guard
+-- popups; frames without a rounded-rect border no-op).
+function Search:UpdateWindowBorders()
+    local shown = EasyFind.db.windowBorder ~= false
+    if containerFrame then ns.SetRoundedRectRingShown(containerFrame, shown) end
+    local dropdown = searchFrame and searchFrame.filterDropdown
+    if dropdown then
+        ns.SetRoundedRectRingShown(dropdown, shown)
+        if dropdown.guardFrames then
+            for i = 1, #dropdown.guardFrames do
+                ns.SetRoundedRectRingShown(dropdown.guardFrames[i], shown)
+            end
+        end
+    end
+end
+
 function Search:UpdateSmartShow(forceShow)
     if not searchFrame then return end
     if forceShow == nil then forceShow = true end
