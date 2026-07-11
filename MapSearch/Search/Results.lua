@@ -250,7 +250,9 @@ local function POIResultLess(a, b)
     if a.score == b.score then
         if a.isZone and not b.isZone then return true end
         if b.isZone and not a.isZone then return false end
-        return (a.name or "") < (b.name or "")
+        local an, bn = a.name or "", b.name or ""
+        if #an ~= #bn then return #an < #bn end
+        return an < bn
     end
     return a.score > b.score
 end

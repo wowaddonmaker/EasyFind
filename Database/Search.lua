@@ -91,7 +91,15 @@ local dlPrev2, dlPrev, dlCurr = {}, {}, {}
 
 local scoreNameUsedWords = {}
 
-local function scoreDescending(a, b) return a.score > b.score end
+-- Ties break to the shorter name (standard field-length normalization: for
+-- equal match quality, "Eastern Kingdoms" beats "Eastern Kingdoms Map"),
+-- then alphabetically so equal-length ties stay stable across re-sorts.
+local function scoreDescending(a, b)
+    if a.score ~= b.score then return a.score > b.score end
+    local an, bn = a.data.nameLower or "", b.data.nameLower or ""
+    if #an ~= #bn then return #an < #bn end
+    return an < bn
+end
 
 -- Suppresses fuzzy/initials matches between word pairs that are close in
 -- edit distance but semantically opposite.
@@ -105,16 +113,51 @@ local FUZZY_BLOCKLIST = {
     ["abilities"] = { ["agility"] = true },
 }
 
--- Initials Strategy 2 may step over these for free ("lfg" = Looking For
--- Group, "tot" = Throne of Thunder). Hitting a non-stopword content word
--- without matching breaks the chain so accidental letter alignment doesn't
--- score (e.g. "sound" wrongly hitting "Shurrai, Atrocity of the Undersea").
-local INITIALS_STOPWORDS = {
+-- English function words. Two uses: Initials Strategy 2 may step over them
+-- for free ("lfg" = Looking For Group, "tot" = Throne of Thunder) while a
+-- non-stopword content word that doesn't match breaks the chain; and a bare
+-- stopword QUERY only matches where it extends into a longer word ("the" ->
+-- Theramore) -- the standalone word appears in hundreds of names ("The X",
+-- "Y of the Z") and carries no signal.
+local STOPWORDS = {
     ["of"] = true, ["the"] = true, ["a"] = true, ["an"] = true,
     ["and"] = true, ["or"] = true, ["in"] = true, ["on"] = true,
     ["at"] = true, ["by"] = true, ["for"] = true, ["to"] = true,
     ["with"] = true, ["from"] = true,
 }
+
+-- A query that exactly equals an entry's whole name is its own top tier.
+-- Every other path caps at 200 EXCEPT the loot scorer, which SUMS per-word
+-- scores (up to ~140 each), so a multi-word loot entry containing the query
+-- words ("Scouting Map: The Eastern Kingdoms Campaign") could outrank the
+-- perfect match ("Eastern Kingdoms") on any 200-scale value.
+local EXACT_MATCH_SCORE = 1000
+-- A name that starts with everything typed so far is the second tier: the
+-- user is mid-word in THAT name ("eastern king" -> "Eastern Kingdoms"), so
+-- word-sum paths (ScoreEntryFields reaches 210 on two words, loot sums
+-- higher) must not demote it between keystrokes.
+local NAME_PREFIX_SCORE = 500
+
+-- Strongest way a bare stopword query extends into a LONGER word of `text`:
+-- 3 = prefix of the first word ("the" -> "Theramore Isle"), 2 = prefix of a
+-- later word, 1 = inside a word ("the" -> "Aetheril"), 0 = only standalone
+-- occurrences (no signal). Callers map tiers onto their own score scale.
+local function StopwordExtension(text, query, queryLen)
+    local words = GetWords(text)
+    local best = 0
+    for wi = 1, #words do
+        local w = words[wi]
+        if #w > queryLen then
+            if sfind(w, query, 1, true) == 1 then
+                if wi == 1 then return 3 end
+                if best < 2 then best = 2 end
+            elseif best < 1 and sfind(w, query, 1, true) then
+                best = 1
+            end
+        end
+    end
+    return best
+end
 
 ---True if `query` appears in `text` at the start or after a word
 ---separator (space, hyphen, paren, colon, slash, period).
@@ -189,7 +232,7 @@ function Database:ScoreInitials(text, query)
         if matchLen >= 2 then
             qi = qi + matchLen
             wordsMatched = wordsMatched + 1
-        elseif wordsMatched > 0 and not INITIALS_STOPWORDS[w] then
+        elseif wordsMatched > 0 and not STOPWORDS[w] then
             break
         end
     end
@@ -521,12 +564,20 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
 
     if not Database:CouldMatch(nameLower, query) then return 0 end
 
+    if STOPWORDS[query] then
+        if nameLower == query then return EXACT_MATCH_SCORE end
+        local ext = StopwordExtension(nameLower, query, queryLen)
+        if ext == 3 then return NAME_PREFIX_SCORE end
+        if ext == 2 then return 120 end
+        return ext == 1 and 30 or 0
+    end
+
     local score = 0
 
     if nameLower == query then
-        score = 200
+        score = EXACT_MATCH_SCORE
     elseif sfind(nameLower, query, 1, true) == 1 then
-        score = 150
+        score = NAME_PREFIX_SCORE
     elseif Database:FindAtWordBoundary(nameLower, query) then
         score = 120
     elseif sfind(nameLower, query, 1, true) then
@@ -652,6 +703,19 @@ function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
     -- items with a better name match.
     local numKeywords = #keywordsLower
     if #queryWords == 1 then
+        if STOPWORDS[query] then
+            local best = 0
+            for ki = 1, numKeywords do
+                local kw = keywordsLower[ki]
+                if kw ~= query
+                   and (Database._disableSearchGate or KeywordCouldMatch(kw, query, queryLen)) then
+                    local ext = StopwordExtension(kw, query, queryLen)
+                    local kwScore = (ext == 3 and 70) or (ext == 2 and 55) or 0
+                    if kwScore > best then best = kwScore end
+                end
+            end
+            return best
+        end
         local best = 0
         for ki = 1, numKeywords do
             local kw = keywordsLower[ki]
@@ -844,7 +908,8 @@ local prevCandidates = {}
 -- current query's flags against these). lootStatActive records what that
 -- search actually did, dev switch included. Only read when prevQuery ~= "",
 -- so the prevQuery-reset sites need not clear them.
-local prevFlags = { lootStatActive = false, boss = false, ach = false, words = 0 }
+local prevFlags = { lootStatActive = false, boss = false, ach = false, words = 0,
+    stopword = false }
 -- Scratch for building skipKey from CategoryMap.SkipKeyOrder without a
 -- per-search table allocation. Reused each search; tconcat reads buf[1..n].
 local skipKeyBuf = {}
@@ -1013,6 +1078,32 @@ function Database:TrimSearchMemory()
     ClearResultCache()
 end
 
+-- Dev-only per-category minimum query length (perf A/B via /efd bench gate):
+-- entries of a gated category are skipped while the query is shorter than
+-- their threshold, and crossing a threshold forces a full scan so the newly
+-- eligible category is admitted past the incremental narrowing. Nil in
+-- normal play; the per-entry cost is then a single upvalue nil-check.
+local categoryMinLen, categoryGateLens
+function Database:SetCategoryMinLen(map)
+    categoryMinLen = map
+    -- Public mirror for the Engine's load-side gate (deferring the
+    -- provider REQUEST, so a gated category's cold build also waits for
+    -- the threshold, not just its scoring).
+    self.categoryMinLenActive = map
+    categoryGateLens = nil
+    if map then
+        local seen = {}
+        categoryGateLens = {}
+        for _, len in pairs(map) do
+            if not seen[len] then
+                seen[len] = true
+                categoryGateLens[#categoryGateLens + 1] = len
+            end
+        end
+    end
+    self:ResetSearchCache()
+end
+
 function Database:SearchUI(query, skipCategories)
     if not query or query == "" or #query < 2 then
         prevQuery = ""
@@ -1175,6 +1266,21 @@ function Database:SearchUI(query, skipCategories)
         (prevLen < ABBREV_MIN_LEN and queryLen >= ABBREV_MIN_LEN)
         or (prevLen < FUZZY_EDIT1_LEN and queryLen >= FUZZY_EDIT1_LEN)
         or (prevLen < FUZZY_EDIT2_LEN and queryLen >= FUZZY_EDIT2_LEN)
+    if categoryGateLens and not recallBoundaryCrossed then
+        for i = 1, #categoryGateLens do
+            local gateLen = categoryGateLens[i]
+            if prevLen < gateLen and queryLen >= gateLen then
+                recallBoundaryCrossed = true
+                break
+            end
+        end
+    end
+    -- A bare-stopword query scored only word-extension matches ("the" ->
+    -- Theramore), so its candidate set lacks the standalone-word names a
+    -- longer query legitimately matches again ("the b" -> The Barrens).
+    if hasPrev and prevFlags.stopword then
+        recallBoundaryCrossed = true
+    end
 
     local searchSet
     local cachedSet = resultCache[cacheKey]
@@ -1248,6 +1354,7 @@ function Database:SearchUI(query, skipCategories)
         local data = searchSet[i]
         if not (skipCategories and skipCategories[data.category])
            and not (data.available and not data.available())
+           and (not categoryMinLen or queryLen >= (categoryMinLen[data.category] or 0))
            and (not gateActive or not GateSkipsEntry(data)) then
             local nameLower = data.nameLower
             local score
@@ -1257,11 +1364,15 @@ function Database:SearchUI(query, skipCategories)
                 end
                 -- Each query word scores against name + slot + stats + source
                 -- kws; best match wins; an unmatched word eliminates the item.
+                -- Stopword query words are SKIPPED (no credit, no elimination):
+                -- "maw of the greatworm" must not die on "of"/"the", and a bare
+                -- "the" must not sum a word-match on every "The X" loot name.
                 local totalScore = 0
 
                 local nameWords = GetWords(nameLower)
                 for qi = 1, #queryWords do
                     local qw = queryWords[qi]
+                    if not STOPWORDS[qw] then
                     local qwLen = #qw
                     local bestWord = 0
 
@@ -1332,6 +1443,7 @@ function Database:SearchUI(query, skipCategories)
                         break
                     end
                     totalScore = totalScore + bestWord
+                    end
                 end
 
                 score = totalScore
@@ -1344,9 +1456,12 @@ function Database:SearchUI(query, skipCategories)
                     -- Strong name matches only (skip kw score) so short kw
                     -- aliases don't drag every achievement category in.
                     if nameLower == query then
-                        score = 200
+                        score = EXACT_MATCH_SCORE
+                    elseif STOPWORDS[query] then
+                        local ext = StopwordExtension(nameLower, query, queryLen)
+                        score = (ext == 3 and NAME_PREFIX_SCORE) or (ext == 2 and 120) or 0
                     elseif sfind(nameLower, query, 1, true) == 1 then
-                        score = 150
+                        score = NAME_PREFIX_SCORE
                     elseif Database:FindAtWordBoundary(nameLower, query) then
                         score = 120
                     else
@@ -1419,6 +1534,8 @@ function Database:SearchUI(query, skipCategories)
     prevFlags.boss = bossQueryWord
     prevFlags.ach = achQueryWord
     prevFlags.words = #queryWords
+    -- queryWords, not query: "the " carries a trailing space the scorers trim.
+    prevFlags.stopword = (#queryWords == 1 and STOPWORDS[queryWords[1]]) or false
     StoreResultCache(cacheKey, prevCandidates, candidateIdx)
     if GATE.sawNil and not GATE.fillPending then ScheduleGateMaskFill() end
     if efStats then efStats.lastResults = resultsN; efStats.gated = GATE.gatedN end

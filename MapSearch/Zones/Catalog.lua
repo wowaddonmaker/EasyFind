@@ -18,6 +18,7 @@ local ZONE_ABBREVIATIONS = MapUtils.ZONE_ABBREVIATIONS
 
 local function ZoneMatchLess(a, b)
     if a.score ~= b.score then return a.score > b.score end
+    if #a.name ~= #b.name then return #a.name < #b.name end
     return a.name < b.name
 end
 

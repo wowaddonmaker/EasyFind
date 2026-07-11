@@ -241,7 +241,20 @@ function Engine:RequestProviders(ctx, onChanged, resultCount)
     -- point of "@" is to see that category regardless of the filter menu.
     if #(ctx.query or "") < 2 and not ctx.quickFilter then return false end
 
-    local requested = self:RequestOptions(ctx, onChanged, resultCount)
+    -- Dev gate (perf A/B, Database:SetCategoryMinLen): defer LOADING a
+    -- gated category's provider while the query is under its threshold, so
+    -- the cold build waits for the same boundary that admits its entries.
+    -- Quick-filter pills bypass: "@statistics" is explicit intent.
+    local gateMap = Database and Database.categoryMinLenActive
+    local gateCategories = gateMap and ns.CategoryMap and ns.CategoryMap.ProviderCategory
+    local gateQueryLen = gateMap and #(ctx.query or "") or 0
+
+    local requested = false
+    local optionsGate = gateMap
+        and (gateMap["Game Settings"] or gateMap["AddOn Settings"])
+    if not (optionsGate and not ctx.quickFilter and gateQueryLen < optionsGate) then
+        requested = self:RequestOptions(ctx, onChanged, resultCount)
+    end
 
     for i = 1, #PROVIDERS do
         local spec = PROVIDERS[i]
@@ -256,6 +269,12 @@ function Engine:RequestProviders(ctx, onChanged, resultCount)
                 or self:ShouldLoadForLowResults(ctx, spec, resultCount)
             if spec.heavyQuery and Database and Database.QueryNeedsHeavySearchData then
                 shouldRequest = shouldRequest or Database:QueryNeedsHeavySearchData(ctx.text)
+            end
+            if shouldRequest and gateCategories and not viaPill then
+                local minLen = gateMap[gateCategories[key]]
+                if minLen and gateQueryLen < minLen then
+                    shouldRequest = false
+                end
             end
             if shouldRequest then
                 requested = self:RequestDynamicProvider(key, onChanged) or requested

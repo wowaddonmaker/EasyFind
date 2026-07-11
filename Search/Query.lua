@@ -24,7 +24,9 @@ local SearchEngine = ns.SearchEngine
 local function FlatNameLess(ra, rb)
     local sa, sb = ra.score or 0, rb.score or 0
     if sa ~= sb then return sa > sb end
-    return (ra.data.name or "") < (rb.data.name or "")
+    local na, nb = ra.data.name or "", rb.data.name or ""
+    if #na ~= #nb then return #na < #nb end
+    return na < nb
 end
 -- Re-run the active search after async data changes (provider loads,
 -- item-info arrivals, Database cache resets). A quick-filter browse
