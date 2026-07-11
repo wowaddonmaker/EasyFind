@@ -33,8 +33,10 @@ function Shortcuts:ShouldShowResultShortcutHints()
     return ShouldShowResultShortcutHints()
 end
 
+local shortcutBindOwner
 local function RefreshShortcutFrames()
     resultShortcutFrame = Shortcuts._resultShortcutFrame
+    shortcutBindOwner = Shortcuts._shortcutBindOwner
     resultsFrame = Search:GetResultsFrame()
 end
 
@@ -188,18 +190,36 @@ local function IsShortcutEligibleRow(row)
         and not row.isUnearnedCurrency and not row.lockedReason
         and not row.data.calculatorResult
 end
+-- Signature of the currently armed ALT-1..9 bindings ("1=name;2=name;...",
+-- "" = none). Every write is dedup'd against it: redundant clear+rebind
+-- cycles near the combat boundary put Blizzard's key re-attach pass on
+-- EasyFind's execution and detonate protected bar updates (measured
+-- autopsy: PetActionBar:SetShownBase blocked 0.3s after a no-op
+-- ClearOverrideBindings from this file).
+local armedShortcutSig = ""
+local desiredShortcuts = {}
+
 local function ClearResultShortcutBindings()
     RefreshShortcutFrames()
-    if resultShortcutFrame and not InCombatLockdown() then
-        ClearOverrideBindings(resultShortcutFrame)
+    if armedShortcutSig == "" then return end
+    -- A hidden owner already cleared itself: its secure _onhide snippet is
+    -- the last binding write in every hide sequence, and it must stay the
+    -- last (a trailing insecure clear would re-taint the binding state).
+    if shortcutBindOwner and shortcutBindOwner:IsShown() and not InCombatLockdown() then
+        ClearOverrideBindings(shortcutBindOwner)
     end
+    armedShortcutSig = ""
 end
 
 function Shortcuts:ClearResultShortcutBindings()
     return ClearResultShortcutBindings()
 end
+
+-- The secure _onhide snippet cleared the owner's bindings; sync bookkeeping.
+function Shortcuts:NoteShortcutBindingsCleared()
+    armedShortcutSig = ""
+end
 function Shortcuts:UpdateVisibleResultShortcuts()
-    ClearResultShortcutBindings()
     RefreshShortcutFrames()
     local showShortcutHints = ShouldShowResultShortcutHints()
 
@@ -216,6 +236,7 @@ function Shortcuts:UpdateVisibleResultShortcuts()
 
     if not (resultsFrame and resultsFrame:IsShown()
             and resultsFrame.scrollFrame and resultShortcutFrame) then
+        ClearResultShortcutBindings()
         return
     end
 
@@ -224,6 +245,8 @@ function Shortcuts:UpdateVisibleResultShortcuts()
     if viewH <= 0 then viewH = resultsFrame:GetHeight() or 0 end
     local scrollBottom = scrollTop + viewH
     local assigned = 0
+    wipe(desiredShortcuts)
+    local desiredSig = ""
 
     for i = 1, MAX_BUTTON_POOL do
         local row = Search:GetResultButtons()[i]
@@ -255,13 +278,25 @@ function Shortcuts:UpdateVisibleResultShortcuts()
                             end
                         end
                         if targetName then
-                            SetOverrideBindingClick(resultShortcutFrame, true, "ALT-" .. assigned, targetName, "LeftButton")
-                            SetOverrideBindingClick(resultShortcutFrame, true, "ALT-NUMPAD" .. assigned, targetName, "LeftButton")
+                            desiredShortcuts[assigned] = targetName
+                            desiredSig = desiredSig .. assigned .. "=" .. targetName .. ";"
                         end
                     end
                 end
             end
         end
+    end
+
+    if not InCombatLockdown() and shortcutBindOwner and shortcutBindOwner:IsShown()
+       and desiredSig ~= armedShortcutSig then
+        if armedShortcutSig ~= "" then
+            ClearOverrideBindings(shortcutBindOwner)
+        end
+        for idx, targetName in pairs(desiredShortcuts) do
+            SetOverrideBindingClick(shortcutBindOwner, true, "ALT-" .. idx, targetName, "LeftButton")
+            SetOverrideBindingClick(shortcutBindOwner, true, "ALT-NUMPAD" .. idx, targetName, "LeftButton")
+        end
+        armedShortcutSig = desiredSig
     end
 end
 

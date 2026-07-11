@@ -1594,16 +1594,27 @@ end
 -- the bind for the fight and REGEN_ENABLED re-arms it.
 local escStack = {}
 local escOwner, escDispatch
+-- Whether the ESCAPE override is currently bound. Binding writes are
+-- dedup'd against it: redundant writes near the combat boundary put
+-- Blizzard's key re-attach pass on EasyFind's execution and detonate
+-- protected bar updates (PetActionBar:SetShownBase autopsy).
+local escArmed = false
 local InCombatLockdown = InCombatLockdown
 local SetOverrideBindingClick = SetOverrideBindingClick
 local ClearOverrideBindings = ClearOverrideBindings
 
 local function EscArm()
     if not escOwner or InCombatLockdown() then return end
-    ClearOverrideBindings(escOwner)
-    if #escStack > 0 then
+    local wantArmed = #escStack > 0
+    if wantArmed == escArmed then return end
+    if wantArmed then
+        -- escOwner only ever holds this one binding, so the rebind
+        -- overwrites in place; no clear-first needed.
         SetOverrideBindingClick(escOwner, true, "ESCAPE", "EasyFindEscDispatch")
+    else
+        ClearOverrideBindings(escOwner)
     end
+    escArmed = wantArmed
 end
 
 local function EscRemove(frame)
@@ -1628,7 +1639,10 @@ local function EnsureEscDispatch()
     escOwner:RegisterEvent("PLAYER_REGEN_ENABLED")
     escOwner:SetScript("OnEvent", function(_, event)
         if event == "PLAYER_REGEN_DISABLED" then
-            ClearOverrideBindings(escOwner)
+            if escArmed then
+                ClearOverrideBindings(escOwner)
+                escArmed = false
+            end
         else
             EscArm()
         end

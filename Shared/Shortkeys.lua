@@ -164,6 +164,11 @@ end
 -- Execution engine: hidden owner frame + secure button pool + override binds.
 local owner
 local pool = {}
+-- Whether any shortkey override is currently bound. Binding writes are
+-- dedup'd against it: redundant writes near the combat boundary put
+-- Blizzard's key re-attach pass on EasyFind's execution and detonate
+-- protected bar updates (PetActionBar:SetShownBase autopsy).
+local shortkeysArmed = false
 local POOL_PREFIX = "EasyFindShortkeyButton"
 
 local function ResolveData(rowKey)
@@ -301,7 +306,10 @@ local function EnsureOwner()
             -- keypresses fall through to the player's own binds, and
             -- nothing of ours can run or taint. Shortkeys are documented
             -- as not working in combat; this makes that literal.
-            ClearOverrideBindings(self)
+            if shortkeysArmed then
+                ClearOverrideBindings(self)
+                shortkeysArmed = false
+            end
             return
         end
         Shortkeys:ApplyAll()
@@ -347,7 +355,10 @@ function Shortkeys:ApplyAll()
         owner:RegisterEvent("PLAYER_REGEN_ENABLED")
         return
     end
-    ClearOverrideBindings(owner)
+    if shortkeysArmed then
+        ClearOverrideBindings(owner)
+        shortkeysArmed = false
+    end
 
     local list = {}
     self:ForEach(function(rowKey, info)
@@ -393,6 +404,7 @@ function Shortkeys:ApplyAll()
             local btnName = b:GetName()
             if btnName then
                 SetOverrideBindingClick(owner, true, bindKey, btnName, "LeftButton")
+                shortkeysArmed = true
             end
         elseif bindKey and bindKey ~= "" then
             -- No live row and no snapshot: a legacy entry saved before

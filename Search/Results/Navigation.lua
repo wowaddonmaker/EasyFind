@@ -21,6 +21,13 @@ local MAX_BUTTON_POOL = 100
 local GetAllPins = UIPins.GetAll
 local pinnedOnlyEntries = {}
 local idleTrimSerial = 0
+-- Name of the row button ENTER is currently override-bound to (nil = no
+-- binding). Binding writes are dedup'd against it: redundant writes near
+-- the combat boundary put Blizzard's key re-attach pass on EasyFind's
+-- execution and detonate protected bar updates (measured autopsy:
+-- PetActionBar:SetShownBase blocked 0.3s after a no-op
+-- ClearOverrideBindings from this file).
+local navEnterBound
 
 local function ResultsFrame()
     return Search:GetResultsFrame()
@@ -519,20 +526,30 @@ function Results:UpdateSelectionHighlight(skipRefocus, keepRepeat)
         end
     end
 
-    -- Secure rows need Enter bound to the row button so protected actions fire.
-    if not InCombatLockdown() then
+    -- Secure rows need Enter bound to the row button so protected actions
+    -- fire. The binding lives on the secure show/hide owner (see
+    -- ResultsFrame.lua): its _onhide snippet clears it in secure execution,
+    -- so this insecure path only ever writes while the dropdown is shown.
+    local bindOwner = Results._navBindOwner
+    if bindOwner and bindOwner:IsShown() and not InCombatLockdown() then
         local selRow = Search:GetSelectedIndex() > 0 and Search:GetResultButtons()[Search:GetSelectedIndex()]
         local rd = selRow and selRow.data
         local secureRow = rd and Icons:IsSecureActionResult(rd)
-        if secureRow then
-            local btnName = selRow:GetName()
+        local btnName = secureRow and selRow:GetName() or nil
+        if btnName ~= navEnterBound then
             if btnName then
-                SetOverrideBindingClick(Search:GetNavFrame(), true, "ENTER", btnName, "LeftButton")
+                SetOverrideBindingClick(bindOwner, true, "ENTER", btnName, "LeftButton")
+            else
+                ClearOverrideBindings(bindOwner)
             end
-        else
-            ClearOverrideBindings(Search:GetNavFrame())
+            navEnterBound = btnName
         end
     end
+end
+
+-- The secure _onhide snippet cleared the owner's bindings; sync bookkeeping.
+function Results:NoteNavBindingCleared()
+    navEnterBound = nil
 end
 
 function Results:ActivateResultRow(resultRow, source)

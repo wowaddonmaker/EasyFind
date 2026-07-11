@@ -147,6 +147,27 @@ function Results:CreateResultsFrame()
         Shortcuts:UpdateVisibleResultShortcuts()
     end)
 
+    -- Override-binding owners are SECURE show/hide handlers parented to the
+    -- results frame: the _onhide snippet clears their bindings in secure
+    -- execution no matter what hid the dropdown (user close, the combat-
+    -- entry hide), so the binding system's LAST write at any hide boundary
+    -- is never EasyFind-tainted. Insecure clears at combat entry left the
+    -- binding state tainted and detonated protected pet-bar updates
+    -- (PetActionBar:SetShownBase autopsy, 2026-07-10).
+    local shortcutBindOwner = CreateFrame("Frame", nil, resultsFrame, "SecureHandlerShowHideTemplate")
+    shortcutBindOwner:SetAttribute("_onhide", "self:ClearBindings()")
+    shortcutBindOwner:HookScript("OnHide", function()
+        Shortcuts:NoteShortcutBindingsCleared()
+    end)
+    Shortcuts._shortcutBindOwner = shortcutBindOwner
+
+    local navBindOwner = CreateFrame("Frame", nil, resultsFrame, "SecureHandlerShowHideTemplate")
+    navBindOwner:SetAttribute("_onhide", "self:ClearBindings()")
+    navBindOwner:HookScript("OnHide", function()
+        if Results.NoteNavBindingCleared then Results:NoteNavBindingCleared() end
+    end)
+    Results._navBindOwner = navBindOwner
+
     resultShortcutFrame = CreateFrame("Frame", nil, Search:GetSearchFrame())
     Shortcuts._resultShortcutFrame = resultShortcutFrame
     resultShortcutFrame.shortcutButtons = {}
