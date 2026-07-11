@@ -59,6 +59,12 @@ L["OPT_KEYBINDS_HEADER"]                = "Atajos de teclado (se aplica a todos 
 L["OPT_KEYBIND_TOGGLE_SEARCH"]          = "Alternar barra de búsqueda"
 L["OPT_KEYBIND_OPEN_MAP_TAB"]           = "Abrir búsqueda de mapa"
 L["OPT_KEYBIND_CLEAR_ALL"]              = "Borrar todo"
+L["OPT_KEYBIND_FOCUS_BAR"]              = "Enfocar barra de búsqueda"
+L["OPT_KB_FOCUS_TT_DESC"]               = "Coloca el cursor en el cuadro de búsqueda sin alternar la barra. Requiere el modo de visibilidad 'Mostrar siempre'."
+L["TUT_SHOWMETHOD_HEADER"]              = "¿Cómo debe aparecer la barra de búsqueda?"
+L["TUT_SHOWMETHOD_BODY"]                = "Elige cuándo es visible la barra de búsqueda de EasyFind."
+L["TUT_SHOWMETHOD_NOTE"]                = "Tu elección se guarda en las opciones y puedes cambiarla en cualquier momento."
+L["TUT_RECOMMENDED"]                    = "Recomendado"
 L["OPT_VISIBILITY"]                     = "Visibilidad"
 L["OPT_VISIBILITY_AUTOHIDE"]            = "Ocultar auto."
 L["OPT_VISIBILITY_SMARTSHOW"]           = "Al pasar el cursor"
@@ -86,7 +92,7 @@ L["OPT_FONT_MED"]                       = "Media"
 L["OPT_FONT_LARGE"]                     = "Grande"
 L["OPT_FONT_XL"]                        = "XL"
 L["OPT_RESET_SETTINGS"]                 = "Restablecer ajustes"
-L["OPT_RESET_POSITIONS"]                = "Restablecer posiciones"
+L["OPT_RESET_POSITIONS"]                = "Restablecer tamaño y posiciones"
 L["OPT_ENABLE_MAP_MODULE"]              = "Activar módulo de búsqueda de mapa"
 L["OPT_MAP_TAB_SECTION"]                = "Pestaña de mapa"
 L["OPT_SHOW_RECENT_SEARCHES"]           = "Mostrar búsquedas recientes"
@@ -106,7 +112,7 @@ L["OPT_COL_SHORTKEY"]                   = "Atajo"
 L["OPT_SEARCH_ALIASES_PLACEHOLDER"]     = "Buscar alias"
 L["OPT_NO_SAVED_ALIASES"]               = "No hay alias guardados."
 L["OPT_RESET_ALL_SETTINGS"]             = "Restablecer todos los ajustes"
-L["OPT_RESET_ALL_POSITIONS"]            = "Restablecer todas las posiciones"
+L["OPT_RESET_ALL_POSITIONS"]            = "Restablecer todos los tamaños y posiciones"
 L["OPT_REPORT_BUG"]                     = "Informar de error"
 L["OPT_REQUEST_FEATURE"]                = "Sugerir función"
 L["POPUP_CLEAR_ALIASES"]                = "¿Borrar todos los alias guardados?"
@@ -138,7 +144,13 @@ L["OPT_CLEAR_ALL_BTN"]                  = "Borrar todo"
 L["OPT_MINIMAP_BTN_TT"]                 = "Añade un pequeño botón de búsqueda al borde del minimapa.\n\nClic izquierdo para alternar la barra de búsqueda.\nClic derecho para abrir las opciones.\nArrastra para reposicionarlo alrededor del minimapa."
 L["OPT_ALIAS_MSG_TT"]                   = "Si está activado, añadir un alias muestra una breve nota en el chat que apunta a la pestaña de Alias."
 L["OPT_LOCK_POSITION_TT"]               = "Si está activado, la barra de búsqueda no se puede arrastrar. Útil si la has colocado justo donde la quieres.\n\n«Restablecer posiciones» y el comando /reset siguen funcionando."
-L["OPT_SEARCH_SCALE"]                   = "Escala"
+L["OPT_SEARCH_SCALE"]                   = "Tamaño"
+L["RESCALE_WIDTH"]                      = "Ancho:"
+L["RESCALE_SAMPLE_RESULT"]              = "Resultado de muestra %d"
+L["RESCALE_BACK_TO_OPTIONS"]            = "Volver a las opciones"
+L["PROMPT_RESET_FIELD"]                 = "¿Restablecer este campo a su valor por defecto?"
+L["OPT_RESIZE_UI_SEARCH"]               = "Redimensionado manual"
+L["OPT_RESIZE_UI_TT"]                   = "Redimensiona visualmente la ventana de búsqueda unificada.\nArrastra los bordes laterales para el ancho y el borde superior/inferior para la altura de los resultados."
 L["OPT_RESULT_ROWS"]                    = "Filas de resultados"
 L["OPT_SEARCH_OPACITY"]                 = "Opacidad"
 L["OPT_ALT_HINTS_TT"]                   = "Cada resultado de búsqueda visible muestra un pequeño recordatorio de Alt+1 a Alt+8.\n\nSi se desactiva, los recordatorios se ocultan pero los atajos Alt+Número siguen activando las mismas filas."
@@ -166,9 +178,9 @@ L["OPT_SHORTCUTS_TEXT"]                 =
     .. "|cFFFFD100Calculadora:|r\n"
     .. "Escribe operaciones en la búsqueda para un resultado al instante, o abre el resultado Calculadora para usar la calculadora completa.\n\n"
     .. "|cFFFFD100Otros:|r\n"
-    .. "|cFF00FF00Mayús+Arrastrar|r reposicionar  |cFF00FF00Clic derecho|r fijar/desfijar\n\n"
+    .. "|cFF00FF00Mayús+Arrastrar|r reposicionar  |cFF00FF00Clic derecho|r abre el menú contextual (fijar, guía, enlace y más)\n\n"
     .. "|cFFFFD100Comandos:|r\n"
-    .. "|cFF00FF00/ef|r abrir opciones  |cFF00FF00/ef c|r borrar resaltados y marcadores\n"
+    .. "|cFF00FF00/ef|r abrir opciones  |cFF00FF00/ef toggle|r mostrar/ocultar barra  |cFF00FF00/ef c|r borrar resaltados y marcadores\n"
 L["OPT_FEEDBACK_DESC"]                  =
     "¿Has encontrado un error o tienes una idea para una función? Pulsar cualquiera de "
     .. "los botones de abajo te dará un enlace para enviar tus comentarios.\n\n"
@@ -238,27 +250,25 @@ L["POPUP_UNAPPLIED_SETTINGS"]           = "Tienes ajustes sin aplicar.\n¿Seguro
 L["POPUP_UNAPPLIED_EXIT"]               = "Salir"
 L["POPUP_UNAPPLIED_APPLY"]              = "Aplicar y salir"
 L["POPUP_UNAPPLIED_CANCEL"]             = "Cancelar"
-L["WHATSNEW_CHAT_HELLO"]                = "¡Bienvenido a EasyFind v%s! Mira el resumen de novedades %s."
+L["WHATSNEW_CHAT_HELLO"]                = "¡Bienvenido a |cFF00FF00EasyFind v%s|r! Mira el resumen de novedades %s."
 L["WHATSNEW_CHAT_HERE"]                 = "aquí"
+L["WHATSNEW_CHANGELOG_LINK"]            = "Ver el registro de cambios completo"
+L["WHATSNEW_CHAT_TRIALS"]               = "Si te gusta EasyFind, considera votar por nosotros en el %s hasta el 13 de julio."
+L["WHATSNEW_CHAT_TRIALS_LINK"]          = "concurso Addon Trials de CurseForge"
+L["WHATSNEW_TRIALS_VOTE"]               = "Votar por EasyFind:"
+L["OPT_TRIALS_TEXT"]                    = "Si estás disfrutando de EasyFind, considera darnos una buena posición en los Addon Trials de CurseForge. La votación termina el 13 de julio."
+L["OPT_TRIALS_BTN"]                     = "Votar por EasyFind"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffEnviar enlaces|r\n" ..
-    "    |cff999999-|r Clic derecho en un resultado para enlazar objetos,\n" ..
-    "      hechizos, monturas, logros y más en el chat\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffHousing|r\n" ..
-    "    |cff999999-|r Busca decoración; los resultados abren el catálogo\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffAtajos|r\n" ..
-    "    |cff999999-|r Haz clic derecho en un resultado para asignar\n" ..
-    "      tu propio atajo\n" ..
-    "    |cff999999-|r Los atajos abren un resultado con una sola pulsación\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffEnlaces de Wowhead|r\n" ..
-    "    |cff999999-|r Clic derecho en objetos, hechizos, monturas,\n" ..
-    "      logros y más para copiar su enlace de Wowhead\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffBúsqueda de comandos|r\n" ..
-    "    |cff999999-|r Busca y ejecuta comandos (/) desde la barra de búsqueda\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffTeclas para toda la cuenta|r\n" ..
-    "    |cff999999-|r Las teclas de EasyFind ahora se aplican en todos tus personajes\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffNuevas fuentes|r\n" ..
-    "    |cff999999-|r Inter, Lato y Poppins disponibles en las opciones"
+    "|cffFFD100\226\128\162|r |cffffffffMostrar siempre|r\n" ..
+    "    |cff999999-|r Nuevo modo de visibilidad que mantiene la barra abierta,\n" ..
+    "      con atenuado en combate y al moverse\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffAspecto sin bordes|r\n" ..
+    "    |cff999999-|r Nueva opción que oculta el borde de la barra y sus menús\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffRedimensionado manual|r\n" ..
+    "    |cff999999-|r En el menú Tamaño; la escala se aplica encima\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffMonedas por expansión en grupo|r\n" ..
+    "    |cff999999-|r Busca una expansión más \"monedas\" para verlas\n" ..
+    "      todas en los resultados"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Añadir alias"

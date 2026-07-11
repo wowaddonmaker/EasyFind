@@ -59,6 +59,12 @@ L["OPT_KEYBINDS_HEADER"]                = "단축키 설정 (모든 캐릭터에
 L["OPT_KEYBIND_TOGGLE_SEARCH"]          = "검색창 전환"
 L["OPT_KEYBIND_OPEN_MAP_TAB"]           = "지도 검색 열기"
 L["OPT_KEYBIND_CLEAR_ALL"]              = "모두 지우기"
+L["OPT_KEYBIND_FOCUS_BAR"]              = "검색창 포커스"
+L["OPT_KB_FOCUS_TT_DESC"]               = "검색창을 전환하지 않고 검색 상자에 커서를 놓습니다. '항상 표시' 표시 방식이 필요합니다."
+L["TUT_SHOWMETHOD_HEADER"]              = "검색창을 어떻게 표시할까요?"
+L["TUT_SHOWMETHOD_BODY"]                = "EasyFind 검색창이 언제 표시될지 선택하세요."
+L["TUT_SHOWMETHOD_NOTE"]                = "선택은 설정에 저장되며 언제든지 변경할 수 있습니다."
+L["TUT_RECOMMENDED"]                    = "권장"
 L["OPT_VISIBILITY"]                     = "표시 방식"
 L["OPT_VISIBILITY_AUTOHIDE"]            = "자동 숨김"
 L["OPT_VISIBILITY_SMARTSHOW"]           = "호버 표시"
@@ -86,7 +92,7 @@ L["OPT_FONT_MED"]                       = "보통"
 L["OPT_FONT_LARGE"]                     = "크게"
 L["OPT_FONT_XL"]                        = "특대"
 L["OPT_RESET_SETTINGS"]                 = "설정 초기화"
-L["OPT_RESET_POSITIONS"]                = "위치 초기화"
+L["OPT_RESET_POSITIONS"]                = "크기 및 위치 초기화"
 L["OPT_ENABLE_MAP_MODULE"]              = "지도 검색 모듈 활성화"
 L["OPT_MAP_TAB_SECTION"]                = "지도 탭"
 L["OPT_SHOW_RECENT_SEARCHES"]           = "최근 검색 표시"
@@ -106,7 +112,7 @@ L["OPT_COL_SHORTKEY"]                   = "단축키"
 L["OPT_SEARCH_ALIASES_PLACEHOLDER"]     = "별칭 검색"
 L["OPT_NO_SAVED_ALIASES"]               = "저장된 별칭이 없습니다."
 L["OPT_RESET_ALL_SETTINGS"]             = "모든 설정 초기화"
-L["OPT_RESET_ALL_POSITIONS"]            = "모든 위치 초기화"
+L["OPT_RESET_ALL_POSITIONS"]            = "모든 크기 및 위치 초기화"
 L["OPT_REPORT_BUG"]                     = "버그 신고"
 L["OPT_REQUEST_FEATURE"]                = "기능 제안"
 L["POPUP_CLEAR_ALIASES"]                = "저장된 별칭을 모두 지우시겠습니까?"
@@ -138,7 +144,13 @@ L["OPT_CLEAR_ALL_BTN"]                  = "모두 지우기"
 L["OPT_MINIMAP_BTN_TT"]                 = "미니맵 가장자리에 작은 검색 버튼을 추가합니다.\n\n왼쪽 클릭: 검색창 전환.\n오른쪽 클릭: 설정 열기.\n드래그하여 미니맵 주위로 위치를 옮길 수 있습니다."
 L["OPT_ALIAS_MSG_TT"]                   = "활성화하면 별칭을 추가할 때 별칭 탭을 가리키는 짧은 메시지가 대화창에 표시됩니다."
 L["OPT_LOCK_POSITION_TT"]               = "활성화하면 검색창을 드래그할 수 없습니다. 원하는 위치에 정확히 두었을 때 유용합니다.\n\n‘위치 초기화’와 /reset 명령은 여전히 작동합니다."
-L["OPT_SEARCH_SCALE"]                   = "배율"
+L["OPT_SEARCH_SCALE"]                   = "크기"
+L["RESCALE_WIDTH"]                      = "너비:"
+L["RESCALE_SAMPLE_RESULT"]              = "예시 결과 %d"
+L["RESCALE_BACK_TO_OPTIONS"]            = "옵션으로 돌아가기"
+L["PROMPT_RESET_FIELD"]                 = "이 항목을 기본값으로 초기화하시겠습니까?"
+L["OPT_RESIZE_UI_SEARCH"]               = "수동 크기 조절"
+L["OPT_RESIZE_UI_TT"]                   = "통합 UI 검색창의 크기를 시각적으로 조절합니다.\n좌우 가장자리를 드래그하면 너비가, 위/아래 가장자리를 드래그하면 결과 높이가 조절됩니다."
 L["OPT_RESULT_ROWS"]                    = "결과 행 수"
 L["OPT_SEARCH_OPACITY"]                 = "불투명도"
 L["OPT_ALT_HINTS_TT"]                   = "보이는 각 UI 검색 결과에 Alt+1부터 Alt+8까지 작은 안내가 표시됩니다.\n\n끄면 안내는 숨겨지지만 Alt+숫자 단축키는 여전히 같은 줄을 활성화합니다."
@@ -166,9 +178,9 @@ L["OPT_SHORTCUTS_TEXT"]                 =
     .. "|cFFFFD100계산기:|r\n"
     .. "검색창에 수식을 입력하면 즉시 결과가 나오고, 결과 목록의 계산기 항목을 열면 전체 계산기를 사용할 수 있습니다.\n\n"
     .. "|cFFFFD100기타:|r\n"
-    .. "|cFF00FF00Shift+드래그|r 위치 이동  |cFF00FF00오른쪽 클릭|r 고정/해제\n\n"
+    .. "|cFF00FF00Shift+드래그|r 위치 이동  |cFF00FF00오른쪽 클릭|r 컨텍스트 메뉴 열기(고정, 안내, 링크 등)\n\n"
     .. "|cFFFFD100슬래시 명령어:|r\n"
-    .. "|cFF00FF00/ef|r 설정 열기  |cFF00FF00/ef c|r 강조와 표식 지우기\n"
+    .. "|cFF00FF00/ef|r 설정 열기  |cFF00FF00/ef toggle|r 검색창 표시/숨김  |cFF00FF00/ef c|r 강조와 표식 지우기\n"
 L["OPT_FEEDBACK_DESC"]                  =
     "버그를 발견했거나 새로운 기능 아이디어가 있으신가요? 아래 버튼 중 하나를 "
     .. "클릭하면 피드백을 제출할 수 있는 링크가 나옵니다.\n\n"
@@ -238,26 +250,25 @@ L["POPUP_UNAPPLIED_SETTINGS"]           = "적용되지 않은 설정이 있습�
 L["POPUP_UNAPPLIED_EXIT"]               = "나가기"
 L["POPUP_UNAPPLIED_APPLY"]              = "적용 후 나가기"
 L["POPUP_UNAPPLIED_CANCEL"]             = "취소"
-L["WHATSNEW_CHAT_HELLO"]                = "EasyFind v%s에 오신 것을 환영합니다! 업데이트 요약은 %s에서 확인하세요."
+L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 것을 환영합니다! 업데이트 요약은 %s에서 확인하세요."
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
+L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
+L["WHATSNEW_TRIALS_VOTE"]               = "EasyFind에 투표:"
+L["OPT_TRIALS_TEXT"]                    = "EasyFind가 마음에 드신다면 CurseForge Addon Trials에서 높은 순위로 평가해 주세요. 투표는 7월 13일까지입니다."
+L["OPT_TRIALS_BTN"]                     = "EasyFind에 투표"
+L["WHATSNEW_CHAT_TRIALS"]               = "EasyFind가 마음에 드신다면 7월 13일까지 %s에서 투표를 부탁드립니다!"
+L["WHATSNEW_CHAT_TRIALS_LINK"]          = "CurseForge Addon Trials 대회"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff링크 보내기|r\n" ..
-    "    |cff999999-|r 검색 결과를 우클릭해 아이템, 주문, 탈것,\n" ..
-    "      업적 등을 대화창에 링크하세요\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff하우징|r\n" ..
-    "    |cff999999-|r 장식을 검색하세요. 결과를 누르면 카탈로그가 열립니다\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff단축키|r\n" ..
-    "    |cff999999-|r 검색 결과를 우클릭해 나만의 단축키를 지정하세요\n" ..
-    "    |cff999999-|r 단축키는 키 한 번으로 결과를 바로 엽니다\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffWowhead 링크|r\n" ..
-    "    |cff999999-|r 아이템, 주문, 탈것, 업적 등을 우클릭해\n" ..
-    "      Wowhead 링크를 복사하세요\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff명령어 검색|r\n" ..
-    "    |cff999999-|r 검색창에서 빗금 명령어를 찾아 바로 실행하세요\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff계정 공용 단축키|r\n" ..
-    "    |cff999999-|r EasyFind 키 설정이 이제 모든 캐릭터에 적용됩니다\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff새 글꼴|r\n" ..
-    "    |cff999999-|r 옵션에서 Inter, Lato, Poppins를 사용할 수 있습니다"
+    "|cffFFD100\226\128\162|r |cffffffff항상 표시|r\n" ..
+    "    |cff999999-|r 검색창을 계속 열어 두는 새 표시 방식,\n" ..
+    "      전투/이동 중 흐리게 옵션 포함\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff테두리 없는 모습|r\n" ..
+    "    |cff999999-|r 검색창과 메뉴의 테두리를 숨기는 새 옵션\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff수동 크기 조절|r\n" ..
+    "    |cff999999-|r 크기 메뉴에서 사용, 배율은 그 위에 적용됩니다\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff확장팩 화폐 묶음 검색|r\n" ..
+    "    |cff999999-|r 확장팩 이름과 \"화폐\"를 함께 검색하면\n" ..
+    "      바로 모두 나열됩니다"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"

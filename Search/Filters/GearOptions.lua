@@ -1,3 +1,7 @@
+-- Loot options flyout (all internals say loot). The file keeps its original
+-- name on purpose: renaming a shipped addon file breaks clients that update
+-- mid-session, whose launch-time manifest still loads the old name and
+-- cannot see a new one.
 local _, ns = ...
 
 local Filters = ns.Filters
@@ -9,7 +13,7 @@ local SetFlyoutRowEnabled = Utils.SetFlyoutRowEnabled
 local CreateFrame = CreateFrame
 local UIParent = UIParent
 
-function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
+function Filters:AttachLootOptionsFlyout(row, dropdown, ctx)
     local ROW_HEIGHT = ctx.rowHeight
     local CHECK_SIZE = ctx.checkSize
     local StylePopup = ctx.StylePopup
@@ -18,20 +22,20 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     local SetActiveFlyout = ctx.SetActiveFlyout
     local ClearActiveFlyout = ctx.ClearActiveFlyout
     local dropdownGuardFrames = ctx.dropdownGuardFrames
-    local GEAR_POPUP_WIDTH = 184
-    local GEAR_POPUP_PAD = 8
+    local LOOT_POPUP_WIDTH = 184
+    local LOOT_POPUP_PAD = 8
 
     local function InstallMenuRowHighlight(target)
         Utils.InstallMenuRowHighlight(target)
     end
 
-    local gearOptionsPopup = CreateFrame("Frame", "EasyFindGearOptionsPopup", UIParent, "BackdropTemplate")
-    gearOptionsPopup:SetFrameStrata("TOOLTIP")
-    StylePopup(gearOptionsPopup)
-    gearOptionsPopup:EnableMouse(true)
-    gearOptionsPopup:Hide()
-    row.gearOptionsPopup = gearOptionsPopup
-    dropdownGuardFrames[#dropdownGuardFrames + 1] = gearOptionsPopup
+    local lootOptionsPopup = CreateFrame("Frame", "EasyFindLootOptionsPopup", UIParent, "BackdropTemplate")
+    lootOptionsPopup:SetFrameStrata("TOOLTIP")
+    StylePopup(lootOptionsPopup)
+    lootOptionsPopup:EnableMouse(true)
+    lootOptionsPopup:Hide()
+    row.lootOptionsPopup = lootOptionsPopup
+    dropdownGuardFrames[#dropdownGuardFrames + 1] = lootOptionsPopup
 
     local lootSubDefs = {
         { dbKey = "lootUpgradesOnly", label = L["FILTER_ILVL_UPGRADES_ONLY"] },
@@ -39,8 +43,8 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     }
     local lootSubRows = {}
     for si, sub in ipairs(lootSubDefs) do
-        local subRow = CreateFrame("CheckButton", nil, gearOptionsPopup)
-        subRow:SetSize(GEAR_POPUP_WIDTH - GEAR_POPUP_PAD * 2, ROW_HEIGHT)
+        local subRow = CreateFrame("CheckButton", nil, lootOptionsPopup)
+        subRow:SetSize(LOOT_POPUP_WIDTH - LOOT_POPUP_PAD * 2, ROW_HEIGHT)
         subRow:SetHitRectInsets(0, 0, 0, 0)
 
         Utils.SetCheckboxTextures(subRow, CHECK_SIZE)
@@ -69,7 +73,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
 
     -- Separator line between iLvl Upgrades checkbox and the
     -- difficulty/spec selectors.
-    local lootSep = gearOptionsPopup:CreateTexture(nil, "ARTWORK")
+    local lootSep = lootOptionsPopup:CreateTexture(nil, "ARTWORK")
     lootSep:SetHeight(1)
     lootSep:SetColorTexture(0.5, 0.5, 0.5, 0.4)
     row.lootSep = lootSep
@@ -88,8 +92,8 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         mythic = _G["PLAYER_DIFFICULTY6"] or "Mythic",
     }
 
-    local diffBtn = CreateFrame("Button", nil, gearOptionsPopup)
-    diffBtn:SetSize(GEAR_POPUP_WIDTH - GEAR_POPUP_PAD * 2, 27)
+    local diffBtn = CreateFrame("Button", nil, lootOptionsPopup)
+    diffBtn:SetSize(LOOT_POPUP_WIDTH - LOOT_POPUP_PAD * 2, 27)
     local diffBg = diffBtn:CreateTexture(nil, "BACKGROUND")
     ns.Utils.StyleDropdownBg(diffBg)
     local diffArrow = diffBtn:CreateTexture(nil, "OVERLAY")
@@ -119,7 +123,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     -- Difficulty popup menu
     local diffPopup = CreateFrame("Frame", "EasyFindDiffPopup", UIParent, "BackdropTemplate")
     diffPopup:SetFrameStrata("TOOLTIP")
-    diffPopup:SetFrameLevel(gearOptionsPopup:GetFrameLevel() + 20)
+    diffPopup:SetFrameLevel(lootOptionsPopup:GetFrameLevel() + 20)
     StylePopup(diffPopup)
     diffPopup:EnableMouse(true)
     diffPopup:Hide()
@@ -202,7 +206,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     -- Global popup names: results navigation, the search bar's autoHide,
     -- and the filter dropdown's keyboard handling resolve them by name.
     local classSel = Filters:BuildClassSpecSelector({
-        parent = gearOptionsPopup,
+        parent = lootOptionsPopup,
         width = ns.CLASS_SELECTOR_BTN_W,
         popupWidth = 180,
         flyoutWidth = 160,
@@ -228,21 +232,21 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         classSel.popup:Hide()
     end)
 
-    local gy = -GEAR_POPUP_PAD
+    local gy = -LOOT_POPUP_PAD
     diffBtn:ClearAllPoints()
-    diffBtn:SetPoint("TOPLEFT", gearOptionsPopup, "TOPLEFT", GEAR_POPUP_PAD, gy)
+    diffBtn:SetPoint("TOPLEFT", lootOptionsPopup, "TOPLEFT", LOOT_POPUP_PAD, gy)
     gy = gy - 27 - 4
     specSelectRow:ClearAllPoints()
-    specSelectRow:SetPoint("TOPLEFT", gearOptionsPopup, "TOPLEFT", GEAR_POPUP_PAD, gy)
+    specSelectRow:SetPoint("TOPLEFT", lootOptionsPopup, "TOPLEFT", LOOT_POPUP_PAD, gy)
     gy = gy - 27 - 6
     lootSep:ClearAllPoints()
-    lootSep:SetPoint("LEFT", gearOptionsPopup, "LEFT", GEAR_POPUP_PAD, 0)
-    lootSep:SetPoint("RIGHT", gearOptionsPopup, "RIGHT", -GEAR_POPUP_PAD, 0)
+    lootSep:SetPoint("LEFT", lootOptionsPopup, "LEFT", LOOT_POPUP_PAD, 0)
+    lootSep:SetPoint("RIGHT", lootOptionsPopup, "RIGHT", -LOOT_POPUP_PAD, 0)
     lootSep:SetPoint("TOP", 0, gy)
     gy = gy - 6
     for _, sr in ipairs(lootSubRows) do
         sr:ClearAllPoints()
-        sr:SetPoint("TOPLEFT", gearOptionsPopup, "TOPLEFT", GEAR_POPUP_PAD, gy)
+        sr:SetPoint("TOPLEFT", lootOptionsPopup, "TOPLEFT", LOOT_POPUP_PAD, gy)
         gy = gy - ROW_HEIGHT
     end
     local contentW = 0
@@ -254,32 +258,32 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
     -- left text inset + widest difficulty name + gap + arrow + inset.
     local diffBtnW = 14 + Utils.MaxRowLabelWidth(diffPopupRows) + 2 + 22 + 10
     if diffBtnW > contentW then contentW = diffBtnW end
-    local popupW = Utils.FlyoutWidthFor(contentW, GEAR_POPUP_PAD)
-    for i = 1, #lootSubRows do lootSubRows[i]:SetWidth(popupW - GEAR_POPUP_PAD * 2) end
-    diffBtn:SetWidth(popupW - GEAR_POPUP_PAD * 2)
+    local popupW = Utils.FlyoutWidthFor(contentW, LOOT_POPUP_PAD)
+    for i = 1, #lootSubRows do lootSubRows[i]:SetWidth(popupW - LOOT_POPUP_PAD * 2) end
+    diffBtn:SetWidth(popupW - LOOT_POPUP_PAD * 2)
     specSelectRow:SetWidth(ns.CLASS_SELECTOR_BTN_W)
-    gearOptionsPopup:SetSize(popupW, -gy + GEAR_POPUP_PAD)
+    lootOptionsPopup:SetSize(popupW, -gy + LOOT_POPUP_PAD)
 
-    -- Hover-to-show wiring on the Gear filter row, mirroring the
+    -- Hover-to-show wiring on the Loot filter row, mirroring the
     -- Collections sub-flyout pattern (with grace timer).
-    local gearHover = Utils.AttachHoverPopup(row, gearOptionsPopup, {
+    local lootHover = Utils.AttachHoverPopup(row, lootOptionsPopup, {
         extraGuards = {
             diffPopup,
             classSel.popup,
             classSel.flyout,
         },
         onShow = function()
-            SetActiveFlyout(gearOptionsPopup)
+            SetActiveFlyout(lootOptionsPopup)
             if row.updateLootToggle then row.updateLootToggle() end
-            gearOptionsPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
-            Utils.OpenFlyoutBeside(gearOptionsPopup, row, 4)
-            gearOptionsPopup:Show()
+            lootOptionsPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
+            Utils.OpenFlyoutBeside(lootOptionsPopup, row, 4)
+            lootOptionsPopup:Show()
         end,
     })
-    row.ShowGearOptionsPopup = gearHover.Show
+    row.ShowLootOptionsPopup = lootHover.Show
     -- Outside-click: nested diff/spec/class popups act as guards
-    -- so clicks inside them don't dismiss the gear options.
-    Filters.AttachOutsideClickClose(gearOptionsPopup, {
+    -- so clicks inside them don't dismiss the loot options.
+    Filters.AttachOutsideClickClose(lootOptionsPopup, {
         onHide = function(self)
             diffPopup:Hide()
             classSel.popup:Hide()
@@ -287,7 +291,7 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
             ClearActiveFlyout(self)
         end,
     })
-    dropdown:HookScript("OnHide", function() gearOptionsPopup:Hide() end)
+    dropdown:HookScript("OnHide", function() lootOptionsPopup:Hide() end)
 
     row.updateLootToggle = function()
         local chainEnabled = EasyFind.db.uiSearchFilters.loot ~= false
@@ -303,5 +307,5 @@ function Filters:AttachGearOptionsFlyout(row, dropdown, ctx)
         classSel.Refresh()
         if row.UpdateDiffButtons then row.UpdateDiffButtons() end
     end
-    gearOptionsPopup._efSync = row.updateLootToggle
+    lootOptionsPopup._efSync = row.updateLootToggle
 end

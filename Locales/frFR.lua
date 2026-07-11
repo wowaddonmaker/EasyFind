@@ -59,6 +59,12 @@ L["OPT_KEYBINDS_HEADER"]                = "Raccourcis clavier (s'applique à cha
 L["OPT_KEYBIND_TOGGLE_SEARCH"]          = "Afficher la barre de recherche"
 L["OPT_KEYBIND_OPEN_MAP_TAB"]           = "Ouvrir la recherche de carte"
 L["OPT_KEYBIND_CLEAR_ALL"]              = "Tout effacer"
+L["OPT_KEYBIND_FOCUS_BAR"]              = "Focus sur la barre de recherche"
+L["OPT_KB_FOCUS_TT_DESC"]               = "Place le curseur dans le champ de recherche sans afficher/masquer la barre. Nécessite le mode de visibilité « Toujours afficher »."
+L["TUT_SHOWMETHOD_HEADER"]              = "Comment la barre de recherche doit-elle apparaître ?"
+L["TUT_SHOWMETHOD_BODY"]                = "Choisissez quand la barre de recherche d'EasyFind est visible."
+L["TUT_SHOWMETHOD_NOTE"]                = "Votre choix est enregistré dans les options et modifiable à tout moment."
+L["TUT_RECOMMENDED"]                    = "Recommandé"
 L["OPT_VISIBILITY"]                     = "Visibilité"
 L["OPT_VISIBILITY_AUTOHIDE"]            = "Masquage auto"
 L["OPT_VISIBILITY_SMARTSHOW"]           = "Au survol"
@@ -86,7 +92,7 @@ L["OPT_FONT_MED"]                       = "Moyenne"
 L["OPT_FONT_LARGE"]                     = "Grande"
 L["OPT_FONT_XL"]                        = "TG"
 L["OPT_RESET_SETTINGS"]                 = "Réinitialiser les réglages"
-L["OPT_RESET_POSITIONS"]                = "Réinitialiser les positions"
+L["OPT_RESET_POSITIONS"]                = "Réinitialiser taille et positions"
 L["OPT_ENABLE_MAP_MODULE"]              = "Activer le module de recherche de carte"
 L["OPT_MAP_TAB_SECTION"]                = "Onglet carte"
 L["OPT_SHOW_RECENT_SEARCHES"]           = "Afficher les recherches récentes"
@@ -106,7 +112,7 @@ L["OPT_COL_SHORTKEY"]                   = "Raccourci"
 L["OPT_SEARCH_ALIASES_PLACEHOLDER"]     = "Rechercher des alias"
 L["OPT_NO_SAVED_ALIASES"]               = "Aucun alias enregistré."
 L["OPT_RESET_ALL_SETTINGS"]             = "Réinitialiser tous les réglages"
-L["OPT_RESET_ALL_POSITIONS"]            = "Réinitialiser toutes les positions"
+L["OPT_RESET_ALL_POSITIONS"]            = "Réinitialiser toutes les tailles et positions"
 L["OPT_REPORT_BUG"]                     = "Signaler un bug"
 L["OPT_REQUEST_FEATURE"]                = "Proposer une fonction"
 L["POPUP_CLEAR_ALIASES"]                = "Effacer tous les alias enregistrés ?"
@@ -138,7 +144,13 @@ L["OPT_CLEAR_ALL_BTN"]                  = "Tout effacer"
 L["OPT_MINIMAP_BTN_TT"]                 = "Ajoute un petit bouton de recherche au bord de la minicarte.\n\nClic gauche pour afficher la barre de recherche.\nClic droit pour ouvrir les options.\nGlissez pour le repositionner autour de la minicarte."
 L["OPT_ALIAS_MSG_TT"]                   = "Lorsqu'il est activé, ajouter un alias affiche une courte note renvoyant vers l'onglet Alias."
 L["OPT_LOCK_POSITION_TT"]               = "Lorsqu'il est activé, la barre de recherche ne peut plus être déplacée. Utile si vous l'avez placée exactement où vous le souhaitez.\n\n« Réinitialiser les positions » et la commande /reset fonctionnent toujours."
-L["OPT_SEARCH_SCALE"]                   = "Échelle"
+L["OPT_SEARCH_SCALE"]                   = "Taille"
+L["RESCALE_WIDTH"]                      = "Largeur :"
+L["RESCALE_SAMPLE_RESULT"]              = "Résultat d'exemple %d"
+L["RESCALE_BACK_TO_OPTIONS"]            = "Retour aux options"
+L["PROMPT_RESET_FIELD"]                 = "Réinitialiser ce champ à sa valeur par défaut ?"
+L["OPT_RESIZE_UI_SEARCH"]               = "Redimensionnement manuel"
+L["OPT_RESIZE_UI_TT"]                   = "Redimensionne visuellement la fenêtre de recherche unifiée.\nGlissez les bords latéraux pour la largeur et le bord haut/bas pour la hauteur des résultats."
 L["OPT_RESULT_ROWS"]                    = "Lignes de résultats"
 L["OPT_SEARCH_OPACITY"]                 = "Opacité"
 L["OPT_ALT_HINTS_TT"]                   = "Chaque résultat de recherche visible affiche un petit rappel de Alt+1 à Alt+8.\n\nLorsqu'ils sont désactivés, les rappels sont masqués mais les raccourcis Alt+Chiffre activent toujours les mêmes lignes."
@@ -166,9 +178,9 @@ L["OPT_SHORTCUTS_TEXT"]                 =
     .. "|cFFFFD100Calculatrice :|r\n"
     .. "Tapez un calcul dans la recherche pour un résultat instantané, ou ouvrez le résultat Calculatrice pour la calculatrice complète.\n\n"
     .. "|cFFFFD100Autres :|r\n"
-    .. "|cFF00FF00Maj+Glisser|r repositionner  |cFF00FF00Clic droit|r épingler/désépingler\n\n"
+    .. "|cFF00FF00Maj+Glisser|r repositionner  |cFF00FF00Clic droit|r ouvre le menu contextuel (épingler, guide, lien...)\n\n"
     .. "|cFFFFD100Commandes :|r\n"
-    .. "|cFF00FF00/ef|r ouvrir les options  |cFF00FF00/ef c|r effacer surbrillances et marqueurs\n"
+    .. "|cFF00FF00/ef|r ouvrir les options  |cFF00FF00/ef toggle|r afficher/masquer la barre  |cFF00FF00/ef c|r effacer surbrillances et marqueurs\n"
 L["OPT_FEEDBACK_DESC"]                  =
     "Vous avez trouvé un bug ou avez une idée de fonction ? Cliquer sur l'un des "
     .. "boutons ci-dessous vous donnera un lien pour envoyer vos retours.\n\n"
@@ -238,27 +250,25 @@ L["POPUP_UNAPPLIED_SETTINGS"]           = "Certains réglages n'ont pas été ap
 L["POPUP_UNAPPLIED_EXIT"]               = "Quitter"
 L["POPUP_UNAPPLIED_APPLY"]              = "Appliquer et quitter"
 L["POPUP_UNAPPLIED_CANCEL"]             = "Annuler"
-L["WHATSNEW_CHAT_HELLO"]                = "Bienvenue dans EasyFind v%s ! Consultez le résumé des nouveautés %s."
+L["WHATSNEW_CHAT_HELLO"]                = "Bienvenue dans |cFF00FF00EasyFind v%s|r ! Consultez le résumé des nouveautés %s."
 L["WHATSNEW_CHAT_HERE"]                 = "ici"
+L["WHATSNEW_CHANGELOG_LINK"]            = "Voir le journal des modifications complet"
+L["WHATSNEW_CHAT_TRIALS"]               = "Si vous appréciez EasyFind, pensez à voter pour nous dans le %s jusqu'au 13 juillet !"
+L["WHATSNEW_CHAT_TRIALS_LINK"]          = "concours Addon Trials de CurseForge"
+L["WHATSNEW_TRIALS_VOTE"]               = "Voter pour EasyFind :"
+L["OPT_TRIALS_TEXT"]                    = "Si vous appréciez EasyFind, pensez à bien nous classer dans les Addon Trials de CurseForge. Le vote se termine le 13 juillet."
+L["OPT_TRIALS_BTN"]                     = "Voter pour EasyFind"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffEnvoi de liens|r\n" ..
-    "    |cff999999-|r Clic droit sur un résultat pour lier objets, sorts,\n" ..
-    "      montures, hauts faits et plus dans le chat\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffHousing|r\n" ..
-    "    |cff999999-|r Cherchez des décors ; les résultats ouvrent le catalogue\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffRaccourcis|r\n" ..
-    "    |cff999999-|r Clic droit sur un résultat pour définir votre\n" ..
-    "      propre raccourci\n" ..
-    "    |cff999999-|r Les raccourcis ouvrent un résultat d'une seule touche\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffLiens Wowhead|r\n" ..
-    "    |cff999999-|r Clic droit sur objets, sorts, montures, hauts faits\n" ..
-    "      et plus pour un lien Wowhead prêt à copier\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffRecherche de commandes|r\n" ..
-    "    |cff999999-|r Trouvez et lancez les commandes (/) depuis la recherche\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffTouches pour tout le compte|r\n" ..
-    "    |cff999999-|r Les touches EasyFind s'appliquent désormais à tous vos personnages\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffNouvelles polices|r\n" ..
-    "    |cff999999-|r Inter, Lato et Poppins disponibles dans les options"
+    "|cffFFD100\226\128\162|r |cffffffffToujours afficher|r\n" ..
+    "    |cff999999-|r Nouveau mode qui garde la barre ouverte en permanence,\n" ..
+    "      avec estompage en combat et en mouvement\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffStyle sans bordure|r\n" ..
+    "    |cff999999-|r Nouvelle option qui masque la bordure de la barre et de ses menus\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffRedimensionnement manuel|r\n" ..
+    "    |cff999999-|r Dans le menu Taille ; l'échelle s'applique par-dessus\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffMonnaies par extension groupées|r\n" ..
+    "    |cff999999-|r Cherchez une extension plus \"monnaies\" pour toutes\n" ..
+    "      les lister directement"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Ajouter un alias"

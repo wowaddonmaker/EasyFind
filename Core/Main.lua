@@ -19,7 +19,7 @@ ns.eventFrame = eventFrame
 EasyFind.db = {}
 
 -- Increment when DB schema changes; migrations [N] run when savedVersion < N.
-local DB_VERSION = 19
+local DB_VERSION = 21
 local REVAMPED_TUTORIAL_VERSION = "2.0.0"
 ns.REVAMPED_TUTORIAL_VERSION = REVAMPED_TUTORIAL_VERSION
 
@@ -57,7 +57,6 @@ local DB_DEFAULTS = {
     font = "Default",
     indicatorStyle = "EasyFind Arrow",
     indicatorColor = "Yellow",
-    uiResultsHeight = 280,
     uiResultsRows = 6,
     pinnedUIItems = {},
     pinnedUIItemsPerChar = {},
@@ -449,6 +448,18 @@ local DB_MIGRATIONS = {
         foldFilters(db.mapTabFilters)
         foldFilters(db.uiMapFilters)
     end,
+    [20] = function(db)
+        -- Manual-resize floor rose from 150px to 250px (multiplier 1.0 over
+        -- the 250 base); lift narrower saves onto the new floor.
+        local w = db.uiSearchWidth
+        if type(w) == "number" and w < 1.0 then
+            db.uiSearchWidth = 1.0
+        end
+    end,
+    [21] = function(db)
+        -- Results viewport is row-count owned; the pixel height is retired.
+        db.uiResultsHeight = nil
+    end,
 }
 
 local RUNTIME_FIELDS = {
@@ -456,6 +467,8 @@ local RUNTIME_FIELDS = {
 }
 
 local GITHUB_ISSUES_URL = "https://github.com/wowaddonmaker/EasyFind/issues/new"
+-- Consumed by the What's New footer's "See full changelog" link.
+ns.GITHUB_CHANGELOG_URL = "https://github.com/wowaddonmaker/EasyFind/blob/main/CHANGELOG.md"
 
 local function UrlEncode(str)
     return str:gsub("([^%w%-%.%_%~ ])", function(c)
@@ -493,9 +506,15 @@ local SUGGESTED_KEYBINDS = {
 -- The version whose features the What's New popup currently describes. Bump
 -- ONLY when the popup content is rewritten; patch releases that keep the same
 -- content must not re-announce it to users who already saw it.
-local WHATSNEW_CONTENT_VERSION = "2.1.0"
+local WHATSNEW_CONTENT_VERSION = "2.1.1"
 
 local WHATSNEW_LINK_PREFIX = "easyfind:whatsnew:"
+-- TEMPORARY (remove after the CurseForge Addon Trials vote ends).
+-- The URL is on ns because the options Feedback tab's vote button
+-- opens the same copy box.
+local TRIALS_LINK = "easyfind:trials"
+ns.TRIALS_VOTE_URL = "https://overwolfdevs.typeform.com/to/oFmIImnr"
+-- END TEMPORARY
 local whatsNewHookInstalled = false
 
 local function InstallWhatsNewHyperlinkHook()
@@ -512,19 +531,34 @@ local function InstallWhatsNewHyperlinkHook()
             if ns.Onboarding and ns.Onboarding.ShowWhatsNew then
                 xpcall(ns.Onboarding.ShowWhatsNew, ErrorHandler, ns.Onboarding, version)
             end
+        elseif link == TRIALS_LINK then
+            -- TEMPORARY: Addon Trials vote link opens the copy box.
+            if ns.ShowCopyBox then
+                xpcall(ns.ShowCopyBox, ErrorHandler, ns.TRIALS_VOTE_URL, L["WHATSNEW_TRIALS_VOTE"])
+            end
         end
     end)
 end
 
+-- Same blue as the options-page link chips; brackets are the chat-native
+-- clickable affordance (a glow texture cannot render inside a chat line).
+local function BlueChatLink(target, label)
+    local LC = ns.LINK_COLOR or { 0.44, 0.84, 1.0 }
+    return sformat("|cff%02x%02x%02x|H%s|h[%s]|h|r",
+        LC[1] * 255, LC[2] * 255, LC[3] * 255, target, label)
+end
+
 local function ShowWhatsNewChatMessage(version)
     local v = version or "?"
-    -- Same blue as the options-page link chips; brackets are the chat-native
-    -- clickable affordance (a glow texture cannot render inside a chat line).
-    local LC = ns.LINK_COLOR or { 0.44, 0.84, 1.0 }
-    local link = sformat("|cff%02x%02x%02x|H%s%s|h[%s]|h|r",
-        LC[1] * 255, LC[2] * 255, LC[3] * 255,
-        WHATSNEW_LINK_PREFIX, v, L["WHATSNEW_CHAT_HERE"])
-    EasyFind:Print(sformat(L["WHATSNEW_CHAT_HELLO"], v, link))
+    local link = BlueChatLink(WHATSNEW_LINK_PREFIX .. v, L["WHATSNEW_CHAT_HERE"])
+    local msg = sformat(L["WHATSNEW_CHAT_HELLO"], v, link)
+    -- TEMPORARY (remove after the CurseForge Addon Trials vote ends)
+    local trialsLink = BlueChatLink(TRIALS_LINK, L["WHATSNEW_CHAT_TRIALS_LINK"])
+    msg = msg .. " " .. sformat(L["WHATSNEW_CHAT_TRIALS"], trialsLink)
+    -- END TEMPORARY
+    -- Plain print: the hello already carries the green brand, so the
+    -- usual "EasyFind:" Print prefix would say the name twice.
+    print(msg)
 end
 
 -- Compare two dotted version strings numerically: -1 / 0 / 1 for a<b, a==b, a>b.
@@ -718,7 +752,7 @@ end
 -- account-wide in EasyFindDB and applied as an override-click each login.
 -- They are not WoW named bindings, so they never appear in Blizzard's
 -- keybinding panel and work the same on every character.
-local EASYFIND_BINDINGS = { "EASYFIND_TOGGLE_FOCUS", "EASYFIND_MAP_FOCUS", "EASYFIND_CLEAR" }
+local EASYFIND_BINDINGS = { "EASYFIND_TOGGLE_FOCUS", "EASYFIND_FOCUS_BAR", "EASYFIND_MAP_FOCUS", "EASYFIND_CLEAR" }
 local EASYFIND_BINDING_LOOKUP = {}
 for i = 1, #EASYFIND_BINDINGS do EASYFIND_BINDING_LOOKUP[EASYFIND_BINDINGS[i]] = true end
 
@@ -726,6 +760,7 @@ local bindingOverrideOwner = CreateFrame("Frame")
 
 local KEYBIND_BUTTON = {
     EASYFIND_TOGGLE_FOCUS = "EasyFindKeybindToggleButton",
+    EASYFIND_FOCUS_BAR    = "EasyFindKeybindFocusButton",
     EASYFIND_MAP_FOCUS    = "EasyFindKeybindMapButton",
     EASYFIND_CLEAR        = "EasyFindKeybindClearButton",
 }
@@ -733,6 +768,13 @@ do
     local toggleBtn = CreateFrame("Button", "EasyFindKeybindToggleButton", UIParent)
     toggleBtn:Hide()
     toggleBtn:SetScript("OnClick", function() EasyFind:ToggleFocusSearchUI() end)
+    -- Focus-only (no toggle): meaningful with Always Show, where the bar
+    -- is already up and the bind just puts the cursor in the editbox.
+    local focusBtn = CreateFrame("Button", "EasyFindKeybindFocusButton", UIParent)
+    focusBtn:Hide()
+    focusBtn:SetScript("OnClick", function()
+        if ns.Search and ns.Search.Focus then ns.Search:Focus() end
+    end)
     local mapBtn = CreateFrame("Button", "EasyFindKeybindMapButton", UIParent)
     mapBtn:Hide()
     mapBtn:SetScript("OnClick", function() EasyFind:FocusMapSearch() end)

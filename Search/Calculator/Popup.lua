@@ -330,7 +330,7 @@ function Calculator:EnsureCalculatorFrame()
     Calculator._calculator.popupFrame = frame
     frame:SetSize(CALC_W, 304)
     frame:SetPoint("CENTER")
-    frame:SetFrameStrata("FULLSCREEN_DIALOG")
+    frame:SetFrameStrata("DIALOG")
     frame:SetFrameLevel(900)
     frame:SetClampedToScreen(true)
     frame:EnableMouse(true)

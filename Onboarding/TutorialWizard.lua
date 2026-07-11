@@ -957,6 +957,145 @@ local function CreateKbWidget(parent, action, label)
     return w
 end
 
+-- Show-method picker: radio per visibility mode, with the three combat
+-- checkbox lines indented under Always Show (same semantics as the
+-- options flyout: toggling any sub-line force-selects Always Show, and
+-- "Dim in combat" needs "Hide in combat" off). Writes straight to the db
+-- through the shared owners; the bar stays hidden until the wizard ends,
+-- so no live Show/Hide side effects run here.
+local function BuildPageShowMethod(parent)
+    local p = MakePage(parent)
+
+    local title = HeaderText(p, L["TUT_SHOWMETHOD_HEADER"], "GameFontNormalLarge", HEADER_MAX_W)
+    title:SetPoint("TOP", p, "TOP", 0, -36)
+
+    local sub = BodyText(p, L["TUT_SHOWMETHOD_BODY"])
+    sub:SetPoint("TOP", title, "BOTTOM", 0, -10)
+    sub:SetWidth(WIZ_W - 100)
+
+    local column = CreateFrame("Frame", nil, p)
+    column:SetSize(WIZ_W - 170, 216)
+    column:SetPoint("TOP", sub, "BOTTOM", 0, -14)
+
+    local modeRows = {}
+    local subChecks = {}
+
+    local function RefreshAll()
+        local mode = ns.GetVisibilityMode()
+        for i = 1, #modeRows do
+            local row = modeRows[i]
+            row.radio:SetTexture(mode == row.mode and ns.RADIO_ON_TEX or ns.RADIO_OFF_TEX)
+        end
+        local isAlways = mode == ns.VISIBILITY_ALWAYS
+        for i = 1, #subChecks do
+            local line = subChecks[i]
+            local enabled = isAlways and (not line.needsCombatShown
+                or EasyFind.db.combatHide == false)
+            line.check:SetShown(line.getter())
+            local dim = enabled and 1 or 0.4
+            line.box:SetAlpha(dim)
+            line.check:SetAlpha(dim)
+            line.lbl:SetAlpha(dim)
+            line.enabled = enabled
+        end
+    end
+
+    local function AddModeRow(mode, labelText, descText, yOffset, rowH)
+        local row = CreateFrame("Button", nil, column)
+        row:SetSize(column:GetWidth(), rowH)
+        row:SetPoint("TOPLEFT", column, "TOPLEFT", 0, yOffset)
+        local radio = row:CreateTexture(nil, "ARTWORK")
+        radio:SetSize(14, 14)
+        radio:SetPoint("TOPLEFT", row, "TOPLEFT", 0, -2)
+        radio:SetTexture(ns.RADIO_OFF_TEX)
+        local lbl = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        lbl:SetPoint("LEFT", radio, "RIGHT", 6, 0)
+        lbl:SetText(labelText)
+        local desc = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        desc:SetPoint("TOPLEFT", radio, "TOPRIGHT", 6, -18)
+        desc:SetWidth(column:GetWidth() - 24)
+        desc:SetJustifyH("LEFT")
+        desc:SetText(descText)
+        desc:SetTextColor(Utils.RGB(TEXT_DIM, 1))
+        row:SetScript("OnClick", function()
+            ns.SetVisibilityMode(mode)
+            RefreshAll()
+        end)
+        modeRows[#modeRows + 1] = { mode = mode, radio = radio }
+        return row
+    end
+
+    local function AddSubCheck(labelText, yOffset, opts)
+        local line = CreateFrame("Button", nil, column)
+        line:SetSize(column:GetWidth() - 22, 17)
+        line:SetPoint("TOPLEFT", column, "TOPLEFT", 22, yOffset)
+        local box = line:CreateTexture(nil, "ARTWORK")
+        box:SetSize(12, 12)
+        box:SetPoint("LEFT", line, "LEFT", 0, 0)
+        box:SetTexture("Interface\\Buttons\\UI-CheckBox-Up")
+        box:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        local check = line:CreateTexture(nil, "OVERLAY")
+        check:SetSize(12, 12)
+        check:SetPoint("CENTER", box, "CENTER", 0, 0)
+        check:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+        check:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        local lbl = line:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        lbl:SetPoint("LEFT", box, "RIGHT", 4, 0)
+        lbl:SetText(labelText)
+        local entry = {
+            box = box, check = check, lbl = lbl,
+            getter = opts.getter, needsCombatShown = opts.needsCombatShown,
+        }
+        line:SetScript("OnClick", function()
+            if entry.needsCombatShown and EasyFind.db.combatHide ~= false
+                and ns.GetVisibilityMode() == ns.VISIBILITY_ALWAYS then
+                return
+            end
+            opts.setter(not opts.getter())
+            ns.SetVisibilityMode(ns.VISIBILITY_ALWAYS)
+            RefreshAll()
+        end)
+        subChecks[#subChecks + 1] = entry
+        return line
+    end
+
+    AddModeRow(ns.VISIBILITY_AUTO,
+        L["OPT_VISIBILITY_AUTOHIDE"] .. " (" .. L["TUT_RECOMMENDED"] .. ")",
+        L["OPT_VISIBILITY_AUTOHIDE_TT"], 0, 44)
+    AddModeRow(ns.VISIBILITY_SMART,
+        L["OPT_VISIBILITY_SMARTSHOW"],
+        L["OPT_VISIBILITY_SMARTSHOW_TT"], -48, 44)
+    AddModeRow(ns.VISIBILITY_ALWAYS,
+        L["OPT_VISIBILITY_ALWAYS"],
+        L["OPT_VISIBILITY_ALWAYS_TT"], -96, 44)
+    AddSubCheck(L["OPT_COMBAT_HIDE_SHORT"], -152, {
+        getter = function() return EasyFind.db.combatHide ~= false end,
+        setter = function(v) EasyFind.db.combatHide = v and true or false end,
+    })
+    AddSubCheck(L["OPT_COMBAT_DIM"], -170, {
+        getter = function() return EasyFind.db.combatDim == true end,
+        setter = function(v) EasyFind.db.combatDim = v and true or false end,
+        needsCombatShown = true,
+    })
+    AddSubCheck(L["OPT_MOVE_DIM"], -188, {
+        getter = function() return EasyFind.db.moveDim == true end,
+        setter = function(v)
+            EasyFind.db.moveDim = v and true or false
+            if ns.Search and ns.Search.UpdateMoveDim then
+                ns.Search:UpdateMoveDim()
+            end
+        end,
+    })
+
+    local note = BodyText(p, L["TUT_SHOWMETHOD_NOTE"])
+    note:SetPoint("TOP", column, "BOTTOM", 0, -4)
+    note:SetWidth(WIZ_W - 100)
+
+    p.OnEnter = RefreshAll
+
+    return p
+end
+
 local function BuildPage3(parent)
     local p = MakePage(parent)
 
@@ -971,10 +1110,11 @@ local function BuildPage3(parent)
     local mapKb = CreateKbWidget(p, MAP_ACTION,    L["TUT_KEYBIND_MAP_TAB"])
     kbWidgets = { uiKb, mapKb }
 
-    uiKb.btn:SetPoint("TOP", sub, "BOTTOM", 0, -34)
+    local KB_GROUP_GAP = 44
+    uiKb.btn:SetPoint("BOTTOM", p, "CENTER", 0, KB_GROUP_GAP / 2)
     uiKb.label:SetPoint("BOTTOM", uiKb.btn, "TOP", 0, 6)
 
-    mapKb.btn:SetPoint("TOP", uiKb.btn, "BOTTOM", 0, -44)
+    mapKb.btn:SetPoint("TOP", uiKb.btn, "BOTTOM", 0, -KB_GROUP_GAP)
     mapKb.label:SetPoint("BOTTOM", mapKb.btn, "TOP", 0, 6)
 
     local hint = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -1025,6 +1165,7 @@ local function CreateFrameOnce()
     pages = {
         BuildPage1(pageHost),
         BuildPage2(pageHost),
+        BuildPageShowMethod(pageHost),
         BuildPage3(pageHost),
     }
 

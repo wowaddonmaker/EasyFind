@@ -85,7 +85,6 @@ local UI_DEFAULTS = {
     uiResultsScale = 1.0,
     uiResultsWidth = 350,
     uiSearchPosition = NIL,
-    uiResultsHeight = 280,
     uiResultsRows = 6,
     wowheadLocale = "auto",
     uiSearchFilters = DEFAULT_UI_FILTERS,
@@ -152,8 +151,10 @@ local UI_POSITION_DEFAULTS = {
     uiSearchPosition = NIL,
     uiSearchScale = 1.0,
     uiSearchWidth = 1.54,
+    uiSearchBarHeight = ns.SEARCHBAR_HEIGHT,
     uiResultsScale = 1.0,
     uiResultsWidth = 350,
+    uiResultsRows = 6,
 }
 
 local CloneTable = ns.Utils.DeepCopy
@@ -257,6 +258,7 @@ local function SyncOptionControls()
     if optionsFrame.resultsDirectionRow then optionsFrame.resultsDirectionRow:SetValue(GetResultsDirectionValue()) end
     if optionsFrame.resultShortcutHintsCheckbox then optionsFrame.resultShortcutHintsCheckbox:SetChecked(EasyFind.db.showResultShortcutHints ~= false) end
     if optionsFrame.windowBorderCheckbox then optionsFrame.windowBorderCheckbox:SetChecked(EasyFind.db.windowBorder ~= false) end
+    if optionsFrame.UpdateFocusBindEnabled then optionsFrame.UpdateFocusBindEnabled() end
     if optionsFrame.minimapBtnCheckbox then optionsFrame.minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton ~= false) end
     if optionsFrame.rareTrackCheckbox then optionsFrame.rareTrackCheckbox:SetChecked(EasyFind.db.alwaysShowRares or false) end
 
@@ -280,6 +282,7 @@ local function SyncOptionControls()
     -- Account keybind store only: a stale native binding saved by an old
     -- version must never shadow what the player actually set here.
     if optionsFrame.toggleFocusBtn then optionsFrame.toggleFocusBtn:SetText(EasyFind:GetAccountKeybind("EASYFIND_TOGGLE_FOCUS") or (_G["NOT_BOUND"] or "Not Bound")) end
+    if optionsFrame.focusBarBtn then optionsFrame.focusBarBtn:SetText(EasyFind:GetAccountKeybind("EASYFIND_FOCUS_BAR") or (_G["NOT_BOUND"] or "Not Bound")) end
     if optionsFrame.mapFocusBtn then optionsFrame.mapFocusBtn:SetText(EasyFind:GetAccountKeybind("EASYFIND_MAP_FOCUS") or (_G["NOT_BOUND"] or "Not Bound")) end
     if optionsFrame.clearBtn then optionsFrame.clearBtn:SetText(EasyFind:GetAccountKeybind("EASYFIND_CLEAR") or (_G["NOT_BOUND"] or "Not Bound")) end
 end
@@ -989,7 +992,26 @@ local function BuildHomeTab(ctx)
         return box
     end
 
-    CreateURLBox(homeTab, "https://www.curseforge.com/wow/addons/easyfind", homeQuick, -6)
+    local cfBox = CreateURLBox(homeTab, "https://www.curseforge.com/wow/addons/easyfind", homeQuick, -6)
+
+    -- TEMPORARY (remove after the CurseForge Addon Trials vote ends):
+    -- ranking ask plus a vote button on the home page.
+    local trialsText = homeTab:CreateFontString(nil, "OVERLAY", FLOW_FONT)
+    trialsText:SetPoint("TOPLEFT", cfBox, "BOTTOMLEFT", 0, -26)
+    trialsText:SetWidth(FLOW_W)
+    trialsText:SetJustifyH("LEFT")
+    trialsText:SetSpacing(3)
+    trialsText:SetText(L["OPT_TRIALS_TEXT"])
+    trialsText:SetTextColor(Utils.RGB(ns.GOLD_COLOR, 1))
+
+    local trialsBtn = CreateModernButton(homeTab)
+    trialsBtn:SetSize(ctx.RESET_BTN_W, 20)
+    trialsBtn:SetPoint("TOPLEFT", trialsText, "BOTTOMLEFT", 0, -10)
+    trialsBtn:SetText(L["OPT_TRIALS_BTN"])
+    trialsBtn:SetScript("OnClick", function()
+        ns.ShowCopyBox(ns.TRIALS_VOTE_URL, L["WHATSNEW_TRIALS_VOTE"])
+    end)
+    -- END TEMPORARY
 
 end
 
@@ -1232,12 +1254,15 @@ local function BuildGeneralBindsTab(ctx)
 
     local keybindDefs = {
         { label = L["OPT_KEYBIND_TOGGLE_SEARCH"], action = "EASYFIND_TOGGLE_FOCUS" },
+        { label = L["OPT_KEYBIND_FOCUS_BAR"],     action = "EASYFIND_FOCUS_BAR",
+          needsAlwaysShow = true },
         { label = L["OPT_KEYBIND_OPEN_MAP_TAB"],  action = "EASYFIND_MAP_FOCUS" },
         { label = L["OPT_KEYBIND_CLEAR_ALL"],     action = "EASYFIND_CLEAR" },
     }
 
     local keybindTooltips = {
         EASYFIND_TOGGLE_FOCUS = { L["OPT_KEYBIND_TOGGLE_SEARCH"], L["OPT_KB_TOGGLE_TT_DESC"] },
+        EASYFIND_FOCUS_BAR    = { L["OPT_KEYBIND_FOCUS_BAR"],     L["OPT_KB_FOCUS_TT_DESC"] },
         EASYFIND_MAP_FOCUS    = { L["OPT_KEYBIND_OPEN_MAP_TAB"],  L["OPT_KB_MAP_TT_DESC"] },
         EASYFIND_CLEAR        = { L["OPT_KEYBIND_CLEAR_ALL"],     L["OPT_KB_CLEAR_TT_DESC"] },
     }
@@ -1283,11 +1308,32 @@ local function BuildGeneralBindsTab(ctx)
             MakeKeybindTooltip(keybindBtn, tip[1], tip[2])
         end
 
+        if def.needsAlwaysShow then
+            keybindBtn._efRowLabel = rowLabel
+            -- Tooltip must explain the Always Show requirement even while
+            -- the button is disabled.
+            keybindBtn:SetMotionScriptsWhileDisabled(true)
+        end
         keybindButtons[def.action] = keybindBtn
     end
     optionsFrame.toggleFocusBtn = keybindButtons["EASYFIND_TOGGLE_FOCUS"]
+    optionsFrame.focusBarBtn    = keybindButtons["EASYFIND_FOCUS_BAR"]
     optionsFrame.mapFocusBtn    = keybindButtons["EASYFIND_MAP_FOCUS"]
     optionsFrame.clearBtn       = keybindButtons["EASYFIND_CLEAR"]
+
+    -- Focus-only bind is meaningful only while the bar is persistently
+    -- shown; gray it out in the other visibility modes.
+    optionsFrame.UpdateFocusBindEnabled = function()
+        local focusBtn = keybindButtons["EASYFIND_FOCUS_BAR"]
+        if not focusBtn then return end
+        local enabled = ns.GetVisibilityMode() == ns.VISIBILITY_ALWAYS
+        focusBtn:SetEnabled(enabled)
+        focusBtn:SetAlpha(enabled and 1 or 0.4)
+        if focusBtn._efRowLabel then
+            focusBtn._efRowLabel:SetAlpha(enabled and 1 or 0.4)
+        end
+    end
+    optionsFrame.UpdateFocusBindEnabled()
 
 
     ctx.sec3 = sec3
@@ -1317,6 +1363,9 @@ local function BuildSearchTab(ctx)
             -- Mode changes alter the ESC-override predicate while the bar
             -- stays shown; re-evaluate the arming.
             if Utils.RefreshEscArm then Utils.RefreshEscArm() end
+            if optionsFrame.UpdateFocusBindEnabled then
+                optionsFrame.UpdateFocusBindEnabled()
+            end
         end)
     end
 
@@ -1469,7 +1518,6 @@ local function BuildSearchTab(ctx)
         visBtnText:SetText(VisLabelFor(value))
         RefreshCombatChecks()
     end
-    visibilityModeRow:SetPoint("TOPLEFT", sec1, "TOPLEFT", 16, -8)
     optionsFrame.visibilityModeRow = visibilityModeRow
 
     local initialVisibility = GetVisibilityModeValue()
@@ -1504,7 +1552,10 @@ local function BuildSearchTab(ctx)
         end,
         nil,
         SELECTOR_ROW_W)
-    resultsDirectionRow:SetPoint("TOPLEFT", visibilityModeRow, "BOTTOMLEFT", 0, -2)
+    -- The direction row's segmented format is unique in this column; it
+    -- leads so the dropdown rows below run uninterrupted.
+    resultsDirectionRow:SetPoint("TOPLEFT", sec1, "TOPLEFT", 16, -8)
+    visibilityModeRow:SetPoint("TOPLEFT", resultsDirectionRow, "BOTTOMLEFT", 0, -2)
     optionsFrame.resultsDirectionRow = resultsDirectionRow
 
     -- Append a live example of the hint badge (the alt-key glyph + a number)
@@ -1561,7 +1612,7 @@ local function BuildSearchTab(ctx)
                 ns.Search:UpdateFontSize()
             end
         end, "EasyFindFontSize", ns.DEFAULT_FONT_SIZE, L["OPT_FONT_SIZE_TT"])
-    uiFontPresetRow:SetPoint("TOPLEFT", resultsDirectionRow, "BOTTOMLEFT", 0, -8)
+    uiFontPresetRow:SetPoint("TOPLEFT", visibilityModeRow, "BOTTOMLEFT", 0, -8)
     optionsFrame.uiFontPresetRow = uiFontPresetRow
 
     -- Uniform zoom for the whole search UI (bar, results, popups) that
@@ -1583,15 +1634,47 @@ local function BuildSearchTab(ctx)
     scaleRow:SetPoint("TOPLEFT", uiFontPresetRow, "BOTTOMLEFT", 0, -8)
     optionsFrame.searchScaleRow = scaleRow
 
+    -- "Resize Search Window" action row at the bottom of the Size flyout:
+    -- opens the drag-resize overlay (Search/Rescaler.lua). The dragged
+    -- size is the layout base; the scale presets above multiply on top.
+    do
+        local flyout = scaleRow.flyout
+        local resizeRow = CreateFrame("Button", nil, flyout)
+        resizeRow:SetSize(SELECTOR_BTN_W - 6, 18)
+        resizeRow:SetPoint("TOPLEFT", flyout, "TOPLEFT", 3, -3 - #scaleChoices * 20)
+        local resizeBg = CreateFrame("Frame", nil, resizeRow)
+        resizeBg:SetAllPoints()
+        resizeBg:EnableMouse(false)
+        ns.CreateRoundedRectBorder(resizeBg)
+        ns.SetRoundedRectBarHeight(resizeBg, 9)
+        HideRoundedFrameBorder(resizeBg)
+        PaintRoundedFill(resizeBg, 1, 1, 1, 0)
+        local resizeLabel = resizeRow:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        resizeLabel:SetPoint("LEFT", resizeRow, "LEFT", 6, 0)
+        resizeLabel:SetText(L["OPT_RESIZE_UI_SEARCH"])
+        local widthGetter = resizeLabel.GetUnboundedStringWidth or resizeLabel.GetStringWidth
+        local neededW = 6 + widthGetter(resizeLabel) + 12
+        if neededW > flyout:GetWidth() then flyout:SetWidth(neededW) end
+        resizeRow:SetWidth(flyout:GetWidth() - 6)
+        resizeRow:SetScript("OnEnter", function() PaintRoundedFill(resizeBg, 1, 1, 1, 0.06) end)
+        resizeRow:SetScript("OnLeave", function() PaintRoundedFill(resizeBg, 1, 1, 1, 0) end)
+        Utils.AttachDelayedTooltip(resizeRow, "ANCHOR_RIGHT", function()
+            return L["OPT_RESIZE_UI_SEARCH"], L["OPT_RESIZE_UI_TT"]
+        end)
+        resizeRow:SetScript("OnClick", function()
+            flyout:Hide()
+            if ns.Rescaler then ns.Rescaler:Enter("ui") end
+        end)
+        flyout:SetHeight(#scaleChoices * 20 + 6 + 20)
+    end
+
     -- How many result rows the dropdown shows before scrolling. Replaces
     -- the old pixel-height drag: the viewport height derives from row count
     -- so it stays correct at any scale and font size.
-    local resultRowsChoices = {
-        { label = "1", value = 1 }, { label = "2", value = 2 },
-        { label = "3", value = 3 }, { label = "4", value = 4 },
-        { label = "5", value = 5 }, { label = "6", value = 6 },
-        { label = "7", value = 7 }, { label = "8", value = 8 },
-    }
+    local resultRowsChoices = {}
+    for i = ns.RESULT_ROWS_MIN, ns.RESULT_ROWS_MAX do
+        resultRowsChoices[#resultRowsChoices + 1] = { label = tostring(i), value = i }
+    end
     local resultRowsRow = CreateFlyoutPresetRow(sec1, L["OPT_RESULT_ROWS"], resultRowsChoices,
         function() return EasyFind.db.uiResultsRows or 6 end,
         function(value)
@@ -1690,7 +1773,10 @@ local function BuildSearchTab(ctx)
 
     local resetUIBtn = CreateModernButton(sec1)
     resetUIBtn:SetSize(RESET_BTN_W, 20)
-    resetUIBtn:SetPoint("BOTTOMLEFT", sec1, "BOTTOMLEFT", 16, 8)
+    resetUIBtn:SetPoint("LEFT", sec1, "LEFT", 16, 0)
+    -- Bottom rides the panel inset the sidebar uses (10), so the reset
+    -- row's bottom lines up with the sidebar's bottom edge.
+    resetUIBtn:SetPoint("BOTTOM", optionsFrame, "BOTTOM", 0, 10)
     resetUIBtn:SetText(L["OPT_RESET_SETTINGS"])
     resetUIBtn:SetScript("OnClick", function()
         ShowResetConfirm(L["POPUP_RESET_UI_SEARCH_SETTINGS"], function() Options:DoResetUI() end)
@@ -2519,7 +2605,10 @@ local function BuildAliasesTab(ctx)
 
     local resetAllBtn = CreateModernButton(sec3)
     resetAllBtn:SetSize(RESET_BTN_W, 20)
-    resetAllBtn:SetPoint("BOTTOMLEFT", sec3, "BOTTOMLEFT", 16, 8)
+    resetAllBtn:SetPoint("LEFT", sec3, "LEFT", 16, 0)
+    -- Bottom rides the panel inset the sidebar uses (10), so the reset
+    -- row's bottom lines up with the sidebar's bottom edge.
+    resetAllBtn:SetPoint("BOTTOM", optionsFrame, "BOTTOM", 0, 10)
     resetAllBtn:SetText(L["OPT_RESET_ALL_SETTINGS"])
     resetAllBtn:SetScript("OnClick", function()
         Options:ConfirmResetAll()
@@ -2927,9 +3016,11 @@ function Options:Initialize()
 end
 
 function Options:DoResetPositions()
-    EasyFind.db.uiSearchPosition = nil
+    ApplyDefaults(UI_POSITION_DEFAULTS)
     if ns.Search and ns.Search.ResetPosition then ns.Search:ResetPosition() end
     ResetOptionsPosition()
+    SyncOptionControls()
+    RefreshUIRuntime(true)
 end
 
 function Options:ConfirmResetAll()

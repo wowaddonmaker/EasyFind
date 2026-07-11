@@ -11,7 +11,6 @@ local CreateFrame = CreateFrame
 local UIParent = UIParent
 local wipe = wipe
 local UI_FILTER_OPTIONS = Filters.UI_FILTER_OPTIONS
-local ForEachFilterKey = Filters.ForEachFilterKey
 
 local SetFlyoutRowEnabled = Utils.SetFlyoutRowEnabled
 
@@ -40,7 +39,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     local CHECK_SIZE = 16
 
     -- Single source of truth for which side-flyout (sub-filters / radio /
-    -- gear options) is currently visible. Any popup that opens hides
+    -- loot options) is currently visible. Any popup that opens hides
     -- whatever was active so sweeping between rows can never leave a
     -- previous flyout lingering, even rows whose popup wasn't tracked
     -- in dropdown.flyoutPopups.
@@ -56,7 +55,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     end
 
     local dropdown = CreateFrame("Frame", "EasyFindUIFilterDropdown", UIParent, "BackdropTemplate")
-    dropdown:SetFrameStrata("FULLSCREEN_DIALOG")
+    dropdown:SetFrameStrata("DIALOG")
     dropdown:SetFrameLevel(9999)
     -- Bump everything in the filter menu uniformly: 1.5x larger fonts,
     -- icons, paddings, and row heights without rewriting the hardcoded
@@ -477,12 +476,24 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     dropdown.flyoutPopups[#dropdown.flyoutPopups + 1] = nested
                     Filters.AttachOutsideClickClose(nested)
 
+                    -- Same-level Toggle All at the top (Services and the
+                    -- other nested menus): flips ONLY these child keys,
+                    -- never anything above or below this level.
+                    local nestedToggleAll = CreateFrame("Button", nil, nested)
+                    nestedToggleAll:SetSize(SUB_POPUP_WIDTH - SUB_PAD * 2, SUB_ROW_H)
+                    nestedToggleAll:SetPoint("TOPLEFT", nested, "TOPLEFT", SUB_PAD, -SUB_PAD)
+                    local nestedToggleLabel = nestedToggleAll:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+                    nestedToggleLabel:SetPoint("LEFT", nestedToggleAll, "LEFT", 8, 0)
+                    nestedToggleLabel:SetText(L["FILTER_TOGGLE_ALL"])
+                    nestedToggleAll._label = nestedToggleLabel
+                    InstallMenuRowHighlight(nestedToggleAll)
+
                     local childRows = {}
                     for ci, child in ipairs(sub.subFilters) do
                         local childRow = CreateFrame("CheckButton", nil, nested)
                         childRow:SetSize(SUB_POPUP_WIDTH - SUB_PAD * 2, SUB_ROW_H)
                         childRow:SetHitRectInsets(0, 0, 0, 0)
-                        childRow:SetPoint("TOPLEFT", nested, "TOPLEFT", SUB_PAD, -(SUB_PAD + (ci - 1) * SUB_ROW_H))
+                        childRow:SetPoint("TOPLEFT", nested, "TOPLEFT", SUB_PAD, -(SUB_PAD + SUB_ROW_H + (ci - 1) * SUB_ROW_H))
                         Utils.SetCheckboxTextures(childRow, CHK)
                         local childLabel = childRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
                         childLabel:SetPoint("LEFT", childRow:GetNormalTexture(), "RIGHT", 4, 0)
@@ -505,6 +516,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                         local subTarget = sub.dbTable and EasyFind.db[sub.dbTable]
                                        or EasyFind.db.uiSearchFilters
                         local subOn = subTarget[sub.key] ~= false
+                        SetFlyoutRowEnabled(nestedToggleAll, subOn)
                         for _, child in ipairs(sub.subFilters) do
                             local cr = childRows[child.key]
                             local childTarget = child.dbTable and EasyFind.db[child.dbTable]
@@ -515,14 +527,36 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     end
                     nested._efSync = SyncChildChecks
 
-                    local childContentW = 0
+                    nestedToggleAll:SetScript("OnClick", function()
+                        local allUnchecked = true
+                        for _, child in ipairs(sub.subFilters) do
+                            local target = child.dbTable and EasyFind.db[child.dbTable]
+                                           or EasyFind.db.uiSearchFilters
+                            if target[child.key] ~= false then
+                                allUnchecked = false
+                                break
+                            end
+                        end
+                        for _, child in ipairs(sub.subFilters) do
+                            local target = child.dbTable and EasyFind.db[child.dbTable]
+                                           or EasyFind.db.uiSearchFilters
+                            target[child.key] = allUnchecked
+                        end
+                        SyncChildChecks()
+                        Filters.ResyncShownOptionPopups()
+                        Filters:RerunActiveSearch()
+                        KeepSearchEditBoxUnfocused()
+                    end)
+
+                    local childContentW = Utils.FlyoutRowContentWidth(nestedToggleAll, 8)
                     for ci = 1, #sub.subFilters do
                         local w = Utils.FlyoutRowContentWidth(childRows[ci], CHK + 4)
                         if w > childContentW then childContentW = w end
                     end
                     local nestedW = Utils.FlyoutWidthFor(childContentW, SUB_PAD)
+                    nestedToggleAll:SetWidth(nestedW - SUB_PAD * 2)
                     for ci = 1, #sub.subFilters do childRows[ci]:SetWidth(nestedW - SUB_PAD * 2) end
-                    nested:SetSize(nestedW, SUB_PAD * 2 + #sub.subFilters * SUB_ROW_H)
+                    nested:SetSize(nestedW, SUB_PAD * 2 + (#sub.subFilters + 1) * SUB_ROW_H)
 
                     local nestedHover = Utils.AttachHoverPopup(subRow, nested, {
                         onShow = function()
@@ -889,10 +923,10 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         end
 
 
-        -- Loot/Gear: side popup with difficulty + spec selector + iLvl
-        -- upgrades checkbox. Opens to the right of the Gear filter row.
+        -- Loot: side popup with difficulty + spec selector + iLvl
+        -- upgrades checkbox. Opens to the right of the Loot filter row.
         if opt.key == "loot" then
-            Search:AttachGearOptionsFlyout(row, dropdown, {
+            Search:AttachLootOptionsFlyout(row, dropdown, {
                 rowHeight = ROW_HEIGHT,
                 checkSize = CHECK_SIZE,
                 StylePopup = StylePopup,
@@ -1054,17 +1088,24 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
     -- Uncheck All: toggles all checkboxes off, or all back on if already all unchecked
     uncheckRow:SetScript("OnClick", function()
+        -- Toggle All is LEVEL-SCOPED: only the top-level rows flip here.
+        -- Flyout sub-filters keep their own states (each flyout carries
+        -- its own same-level Toggle All); the container key alone gates
+        -- its children at query time.
         local filters = EasyFind.db.uiSearchFilters
         local allUnchecked = true
-        ForEachFilterKey(function(key, opt)
+        for _, opt in ipairs(UI_FILTER_OPTIONS) do
             local target = opt.dbTable and EasyFind.db[opt.dbTable] or filters
-            if target[key] ~= false then allUnchecked = false end
-        end)
+            if target[opt.key] ~= false then
+                allUnchecked = false
+                break
+            end
+        end
         local newState = allUnchecked
-        ForEachFilterKey(function(key, opt)
+        for _, opt in ipairs(UI_FILTER_OPTIONS) do
             local target = opt.dbTable and EasyFind.db[opt.dbTable] or filters
-            target[key] = newState
-        end)
+            target[opt.key] = newState
+        end
         for _, opt in ipairs(UI_FILTER_OPTIONS) do
             local row = checkRows[opt.key]
             if row then

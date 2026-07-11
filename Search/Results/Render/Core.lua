@@ -24,6 +24,19 @@ local MAX_SEARCH_RESULT_ROWS = Render.MAX_SEARCH_RESULT_ROWS
 local MAX_DEPTH = Render.MAX_DEPTH
 local deferredRepRefreshPending = false
 
+-- Single owner of the per-row viewport math: one visible row is the themed
+-- row height plus the flat-mode extra, both font-scaled. Returns the unit
+-- plus its two parts; the Rescaler snaps its height drag to unit multiples.
+function Results:GetRowUnitHeight()
+    local theme = Results:GetActiveTheme()
+    local fontScale = EasyFind.db.fontSize or 1.0
+    local rowH = mfloor(theme.rowHeight * fontScale + 0.5)
+    if rowH < theme.rowHeight then rowH = theme.rowHeight end
+    local flatExtraH = mfloor(16 * fontScale + 0.5)
+    if flatExtraH < 16 then flatExtraH = 16 end
+    return rowH + flatExtraH, rowH, flatExtraH
+end
+
 -- A re-render (settings toggle, or an async heavy-load re-search that fires
 -- while the cursor is parked on a row) tears down the row the mouse is over,
 -- so its tooltip vanishes and only comes back when the cursor moves. Re-fire
@@ -71,7 +84,7 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
         local fontScale = EasyFind.db.fontSize or 1.0
         local searchW = Search:GetSearchFrame() and Search:GetSearchFrame():GetWidth() or 0
         local customResultsW = EasyFind.db.uiResultsWidth or 0
-        local maxResultsH = EasyFind.db.uiResultsRows or EasyFind.db.uiResultsHeight or 280
+        local maxResultsH = EasyFind.db.uiResultsRows or 6
         -- The screen-fit clamp depends on where the dropdown sits, so a moved
         -- bar must invalidate the signature.
         local frameEdge = mfloor((EasyFind.db.uiResultsAbove
@@ -129,10 +142,7 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
 
     local theme = Results:GetActiveTheme()
     local fontScale = EasyFind.db.fontSize or 1.0
-    local rowH  = mfloor(theme.rowHeight * fontScale + 0.5)
-    if rowH < theme.rowHeight then rowH = theme.rowHeight end
-    local flatExtraH = mfloor(16 * fontScale + 0.5)
-    if flatExtraH < 16 then flatExtraH = 16 end
+    local _, rowH, flatExtraH = Results:GetRowUnitHeight()
     local stackGap = mfloor(2 * fontScale + 0.5)
     if stackGap < 2 then stackGap = 2 end
     local stackHalfGap = stackGap * 0.5
@@ -240,14 +250,9 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
         count = mmin(count, pinSlots + MAX_SEARCH_RESULT_ROWS)
     end
 
-    -- Viewport height from the user's row count when set (rows scale with
-    -- the theme row height and font size); pixel height is the legacy fallback.
-    local maxVisibleHeight
-    if EasyFind.db.uiResultsRows then
-        maxVisibleHeight = EasyFind.db.uiResultsRows * (rowH + flatExtraH)
-    else
-        maxVisibleHeight = EasyFind.db.uiResultsHeight or 280
-    end
+    -- Viewport height from the user's row count (rows scale with the theme
+    -- row height and font size).
+    local maxVisibleHeight = (EasyFind.db.uiResultsRows or 6) * (rowH + flatExtraH)
     -- Screen fit: if the configured height would push the dropdown off the
     -- screen edge it grows toward, shrink to as many whole rows as fit.
     -- GetTop/GetBottom are in the frame's own units, so no scale conversion

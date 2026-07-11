@@ -73,9 +73,24 @@ function Onboarding:ShowWhatsNew(version)
         body:SetText(L["WHATSNEW_BODY"])
         f._body = body
 
-        -- Anchored to the body fontstring so it follows the relayout below.
+        -- Permanent footer: clickable "See full changelog" opens the copy
+        -- box with the GitHub changelog URL (addons cannot open browsers).
+        local changelogLink = CreateFrame("Button", nil, f)
+        local changelogText = changelogLink:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        changelogText:SetPoint("CENTER")
+        changelogText:SetText(L["WHATSNEW_CHANGELOG_LINK"])
+        changelogText:SetTextColor(Utils.RGB(GOLD, 1))
+        changelogLink:SetSize(changelogText:GetStringWidth() + 8, 16)
+        changelogLink:SetPoint("TOP", body, "BOTTOM", 0, -10)
+        changelogLink:SetScript("OnEnter", function() changelogText:SetTextColor(1, 1, 1) end)
+        changelogLink:SetScript("OnLeave", function() changelogText:SetTextColor(Utils.RGB(GOLD, 1)) end)
+        changelogLink:SetScript("OnClick", function()
+            ns.ShowCopyBox(ns.GITHUB_CHANGELOG_URL, L["WHATSNEW_CHANGELOG_LINK"])
+        end)
+        f._changelogLink = changelogLink
+
         local okBtn = ns.CreateModernButton(f, L["WHATSNEW_GOT_IT"], WN_BTN_MIN_W, WN_BTN_H)
-        okBtn:SetPoint("TOP", body, "BOTTOM", 0, -WN_BTN_GAP)
+        okBtn:SetPoint("TOP", changelogLink, "BOTTOM", 0, -WN_BTN_GAP)
         okBtn:SetScript("OnClick", function() f:Hide() end)
         f._okBtn = okBtn
 
@@ -99,7 +114,9 @@ function Onboarding:ShowWhatsNew(version)
     frame._body:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -WN_PAD_X, -bodyTopOffset)
 
     local bodyH = frame._body:GetStringHeight()
-    local total = bodyTopOffset + bodyH + WN_BTN_GAP + WN_BTN_H + WN_PAD_BOTTOM
+    -- 10 = body->changelog gap, 16 = link height.
+    local total = bodyTopOffset + bodyH + 10 + 16
+        + WN_BTN_GAP + WN_BTN_H + WN_PAD_BOTTOM
     frame:SetHeight(total)
     frame:Show()
 end

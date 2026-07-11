@@ -26,6 +26,7 @@ local UIParent           = UIParent
 local GameTooltip        = GameTooltip
 local GameTooltip_Hide   = GameTooltip_Hide
 local IsShiftKeyDown     = IsShiftKeyDown
+local IsMouseButtonDown  = IsMouseButtonDown
 local IsAltKeyDown       = IsAltKeyDown
 local IsControlKeyDown   = IsControlKeyDown
 local InCombatLockdown   = InCombatLockdown
@@ -235,6 +236,22 @@ function Search:Initialize()
 
 end
 
+-- Two-state strata: LOW while idle (HUD behind every window), DIALOG while
+-- results are open (menu above action bars and windows). Driven by the
+-- results frame's OnShow/OnHide hooks; combat never flips it because
+-- results visibility changes in combat are alpha-based, not Show/Hide.
+function Search:UpdateStackStrata()
+    local strata = (resultsFrame and resultsFrame:IsShown()) and "DIALOG" or "LOW"
+    if searchFrame then
+        searchFrame:SetFrameStrata(strata)
+        if searchFrame.toolbarHighlight then
+            searchFrame.toolbarHighlight:SetFrameStrata(strata)
+        end
+    end
+    if containerFrame then containerFrame:SetFrameStrata(strata) end
+    if resultsFrame then resultsFrame:SetFrameStrata(strata) end
+end
+
 function Search:WarmSearchHotPath()
     for i = 1, MAX_BUTTON_POOL do
         Results:EnsureResultButton(i):Hide()
@@ -350,7 +367,13 @@ function Search:CreateSearchFrame()
     -- DIALOG-strata menus (Game Menu, Options panel, etc.) so opening
     -- the bar from inside any in-game menu still puts our results on
     -- top instead of getting buried.
-    searchFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+    -- Idle bar is HUD, not a window: LOW, so every game window (map,
+    -- character panel, bags = MEDIUM and up) covers it. While results are
+    -- open the whole stack rises to DIALOG like a Blizzard dropdown menu
+    -- (above action bars and windows, below tooltips); see
+    -- Search:UpdateStackStrata. Menus that open from the bar (filter
+    -- dropdown, calculator, inline dropdown) are DIALOG statically.
+    searchFrame:SetFrameStrata("LOW")
     searchFrame:SetMovable(true)
     searchFrame:EnableMouse(true)
     searchFrame:SetClampedToScreen(true)
@@ -374,7 +397,7 @@ function Search:CreateSearchFrame()
     -- searchFrame so it follows movement / resizing.
     containerFrame = CreateFrame("Frame", "EasyFindContainerFrame", UIParent)
     Search.containerFrame = containerFrame
-    containerFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+    containerFrame:SetFrameStrata("LOW")
     containerFrame:SetFrameLevel(math.max(0, searchFrame:GetFrameLevel() - 1))
     containerFrame:SetPoint("TOPLEFT",  searchFrame, "TOPLEFT",  0, 0)
     containerFrame:SetPoint("TOPRIGHT", searchFrame, "TOPRIGHT", 0, 0)
@@ -520,8 +543,19 @@ function Search:CreateSearchFrame()
 
     editBox:SetScript("OnEditFocusGained", function(self)
         if self.blockFocus then
-            self:ClearFocus()
-            return
+            -- A real click on the box is a legitimate focus request: the
+            -- block only rejects WoW's load-time auto-focus, which never
+            -- arrives with the cursor pressed on the box. Without this,
+            -- the never-expiring Always Show block eats the session's
+            -- first click (parent OnMouseDown can't clear it — the
+            -- editbox consumes presses over the input area).
+            if self:IsMouseOver() and IsMouseButtonDown("LeftButton")
+                and not self._dragMoving and not searchFrame.setupMode then
+                self.blockFocus = nil
+            else
+                self:ClearFocus()
+                return
+            end
         end
         if selectedIndex > 0 then
             selectedIndex = 0
@@ -583,7 +617,7 @@ function Search:CreateSearchFrame()
                 _G["EasyFindPinPopup"],
                 _G["EasyFindAsOptionsPopup"],
                 _G["EasyFindAsClassPopup"],
-                _G["EasyFindGearOptionsPopup"],
+                _G["EasyFindLootOptionsPopup"],
                 _G["EasyFindDiffPopup"],
                 _G["EasyFindSpecPopup"],
                 _G["EasyFindSpecFlyout"],
@@ -1296,9 +1330,10 @@ function Search:CreateSearchFrame()
     local toolbarFocus = 0
 
     local toolbarHighlight = CreateFrame("Frame", nil, UIParent)
-    toolbarHighlight:SetFrameStrata("MEDIUM")
+    toolbarHighlight:SetFrameStrata("LOW")
     toolbarHighlight:SetFrameLevel(searchFrame:GetFrameLevel() + 100)
     toolbarHighlight:Hide()
+    searchFrame.toolbarHighlight = toolbarHighlight
     local tbHL = toolbarHighlight:CreateTexture(nil, "OVERLAY")
     tbHL:SetAllPoints()
     tbHL:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
@@ -1716,7 +1751,7 @@ function Search:CreateSearchFrame()
 
     -- Smart Show: invisible hover zone that triggers show/hide
     local hoverZone = CreateFrame("Frame", "EasyFindHoverZone", UIParent)
-    hoverZone:SetFrameStrata("MEDIUM")
+    hoverZone:SetFrameStrata("LOW")
     hoverZone:SetFrameLevel(searchFrame:GetFrameLevel() - 1)
     hoverZone:EnableMouse(true)
     hoverZone:SetSize(340, 76)  -- larger than the search bar to catch the mouse nearby
@@ -2308,7 +2343,6 @@ function Search:ResetPositionAndSize()
         EasyFind.db.fontSize = DEFAULT_FONT_SIZE
         EasyFind.db.uiResultsScale = 1.0
         EasyFind.db.uiResultsWidth = 350
-        EasyFind.db.uiResultsHeight = 280
         EasyFind.db.uiResultsRows = 6
     end
     self:ResetPosition()

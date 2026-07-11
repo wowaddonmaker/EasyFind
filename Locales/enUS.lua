@@ -68,6 +68,12 @@ L["OPT_KEYBINDS_HEADER"]                = "Keybindings (applies to every charact
 L["OPT_KEYBIND_TOGGLE_SEARCH"]          = "Toggle Search Bar"
 L["OPT_KEYBIND_OPEN_MAP_TAB"]           = "Open Map Search Tab"
 L["OPT_KEYBIND_CLEAR_ALL"]              = "Clear All"
+L["OPT_KEYBIND_FOCUS_BAR"]              = "Focus Search Bar"
+L["OPT_KB_FOCUS_TT_DESC"]               = "Puts the cursor in the search box without toggling the bar. Requires the Always Show visibility mode."
+L["TUT_SHOWMETHOD_HEADER"]              = "How should the search bar appear?"
+L["TUT_SHOWMETHOD_BODY"]                = "Choose when EasyFind's search bar is visible."
+L["TUT_SHOWMETHOD_NOTE"]                = "Your pick is saved to Options, where you can change it anytime."
+L["TUT_RECOMMENDED"]                    = "Recommended"
 L["OPT_VISIBILITY"]                     = "Visibility"
 L["OPT_VISIBILITY_AUTOHIDE"]            = "Auto-Hide"
 L["OPT_VISIBILITY_SMARTSHOW"]           = "Hover Show"
@@ -95,7 +101,7 @@ L["OPT_FONT_MED"]                       = "Med"
 L["OPT_FONT_LARGE"]                     = "Large"
 L["OPT_FONT_XL"]                        = "XL"
 L["OPT_RESET_SETTINGS"]                 = "Reset Settings"
-L["OPT_RESET_POSITIONS"]                = "Reset Positions"
+L["OPT_RESET_POSITIONS"]                = "Reset Size & Positions"
 L["OPT_ENABLE_MAP_MODULE"]              = "Enable Map Search Module"
 L["OPT_MAP_TAB_SECTION"]                = "Map Tab"
 L["OPT_SHOW_RECENT_SEARCHES"]           = "Show Recent Searches"
@@ -115,7 +121,7 @@ L["OPT_COL_SHORTKEY"]                   = "Shortkey"
 L["OPT_SEARCH_ALIASES_PLACEHOLDER"]     = "Search aliases"
 L["OPT_NO_SAVED_ALIASES"]               = "No saved aliases."
 L["OPT_RESET_ALL_SETTINGS"]             = "Reset All Settings"
-L["OPT_RESET_ALL_POSITIONS"]            = "Reset All Positions"
+L["OPT_RESET_ALL_POSITIONS"]            = "Reset All Sizes & Positions"
 L["OPT_REPORT_BUG"]                     = "Report Bug"
 L["OPT_REQUEST_FEATURE"]                = "Request Feature"
 L["POPUP_CLEAR_ALIASES"]                = "Clear all saved aliases?"
@@ -151,7 +157,13 @@ L["OPT_CLEAR_ALL_BTN"]                  = "Clear All"
 L["OPT_MINIMAP_BTN_TT"]                 = "When enabled, adds a small search icon button to the minimap edge.\n\nLeft-click the button to toggle the search bar.\nRight-click to open options.\nDrag to reposition it around the minimap."
 L["OPT_ALIAS_MSG_TT"]                   = "When enabled, adding an alias prints a short chat note pointing back to the Aliases tab."
 L["OPT_LOCK_POSITION_TT"]               = "When enabled, the search bar can't be dragged. Useful if you've placed it exactly where you want and don't want to bump it by accident.\n\nReset Positions and the /reset command still work."
-L["OPT_SEARCH_SCALE"]                   = "Scale"
+L["OPT_SEARCH_SCALE"]                   = "Size"
+L["RESCALE_WIDTH"]                      = "Width:"
+L["RESCALE_SAMPLE_RESULT"]              = "Sample result %d"
+L["RESCALE_BACK_TO_OPTIONS"]            = "Back to Options"
+L["PROMPT_RESET_FIELD"]                 = "Reset this field to its default value?"
+L["OPT_RESIZE_UI_SEARCH"]               = "Manual Resize"
+L["OPT_RESIZE_UI_TT"]                   = "Visually resize the unified UI search window.\nDrag side edges for width and the top/bottom edge for results height."
 L["OPT_RESULT_ROWS"]                    = "Result rows"
 L["OPT_SEARCH_OPACITY"]                 = "Opacity"
 L["OPT_ALT_HINTS_TT"]                   = "When enabled, each visible UI search result shows a small Alt+1 through Alt+8 reminder.\n\nWhen disabled, the reminders are hidden but the Alt+number shortcuts still activate the same rows."
@@ -185,9 +197,9 @@ L["OPT_SHORTCUTS_TEXT"]                 =
     .. "|cFFFFD100Calculator:|r\n"
     .. "Type math into the search bar for an inline result, or open the Calculator result to use the full calculator.\n\n"
     .. "|cFFFFD100Other:|r\n"
-    .. "|cFF00FF00Shift+Drag|r reposition  |cFF00FF00Right-click|r pin/unpin\n\n"
+    .. "|cFF00FF00Shift+Drag|r reposition  |cFF00FF00Right-click|r open context menu (pin, guide, link, more)\n\n"
     .. "|cFFFFD100Slash commands:|r\n"
-    .. "|cFF00FF00/ef|r open options  |cFF00FF00/ef c|r clear highlights and pins\n"
+    .. "|cFF00FF00/ef|r open options  |cFF00FF00/ef toggle|r show/hide bar  |cFF00FF00/ef c|r clear highlights and pins\n"
 L["OPT_FEEDBACK_DESC"]                  =
     "Found a bug or have an idea for a new feature? Clicking either button "
     .. "below will give you a link to submit your feedback.\n\n"
@@ -260,27 +272,26 @@ L["POPUP_UNAPPLIED_SETTINGS"]           = "You have settings that have not been 
 L["POPUP_UNAPPLIED_EXIT"]               = "Exit"
 L["POPUP_UNAPPLIED_APPLY"]              = "Apply and Exit"
 L["POPUP_UNAPPLIED_CANCEL"]             = "Cancel"
-L["WHATSNEW_CHAT_HELLO"]                = "Welcome to EasyFind v%s! See update summary %s."
+L["WHATSNEW_CHAT_HELLO"]                = "Welcome to |cFF00FF00EasyFind v%s|r! See update summary %s."
 L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
+L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
+L["WHATSNEW_CHAT_TRIALS"]               = "If you enjoy EasyFind, please consider voting for us in the %s through July 13!"
+L["WHATSNEW_CHAT_TRIALS_LINK"]          = "CurseForge Addon Trials Competition"
+L["WHATSNEW_TRIALS_VOTE"]               = "Vote for EasyFind:"
+L["OPT_TRIALS_TEXT"]                    = "If you're enjoying EasyFind, please consider ranking us highly in the CurseForge Addon Trials. Voting is open through July 13."
+L["OPT_TRIALS_BTN"]                     = "Vote for EasyFind"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffSend Links|r\n" ..
-    "    |cff999999-|r Right-click a result to link items, spells, mounts,\n" ..
-    "      achievements, and more in chat\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffHousing|r\n" ..
-    "    |cff999999-|r Search decor; results open the catalog\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffShortkeys|r\n" ..
-    "    |cff999999-|r Right-click any result to bind your own shortkey\n" ..
-    "    |cff999999-|r Shortkeys open a result with a single keypress\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffWowhead Links|r\n" ..
-    "    |cff999999-|r Right-click items, spells, mounts, achievements\n" ..
-    "      and more for a copy-ready Wowhead link\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffCommand Search|r\n" ..
-    "    |cff999999-|r Find and run slash commands from the search bar\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffAccount-wide Binds|r\n" ..
-    "    |cff999999-|r EasyFind keybinds now apply on every character\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffNew Fonts|r\n" ..
-    "    |cff999999-|r Inter, Lato, and Poppins available in the options"
+    "|cffFFD100\226\128\162|r |cffffffffAlways Show|r\n" ..
+    "    |cff999999-|r New visibility mode keeps the bar up permanently,\n" ..
+    "      with combat and movement dim options\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffBorderless Look|r\n" ..
+    "    |cff999999-|r New option hides the border on the bar and its menus\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffManual Resize|r\n" ..
+    "    |cff999999-|r In the Size menu; scale stacks on top\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffExpansion Currencies Searchable in Group|r\n" ..
+    "    |cff999999-|r Try \"midnight currencies\" to list all currencies\n" ..
+    "      from Midnight inline"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels

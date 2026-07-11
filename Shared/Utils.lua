@@ -868,6 +868,8 @@ ns.LINK_COLOR = {0.44, 0.84, 1.0}
 ns.LINK_HOVER = {0.72, 0.94, 1.0}
 ns.LINK_GLOW_COLOR = {0.3, 0.85, 1.0, 0.7}
 ns.SEARCHBAR_HEIGHT = 30
+ns.RESULT_ROWS_MIN = 1
+ns.RESULT_ROWS_MAX = 8
 ns.SEARCHBAR_FILL = 0.55
 ns.SEARCHBAR_ICON_SCALE = 0.9
 ns.DEFAULT_FONT_SIZE = 0.9
@@ -1780,7 +1782,7 @@ local function EnsureCopyBox()
         ns.StyleMenuPanel(f)
 
         f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-        f.title:SetPoint("TOPLEFT", 14, -14)
+        f.title:SetPoint("TOP", f, "TOP", 0, -14)
         -- Centered so the item name on its own line sits under the
         -- middle of the hint. Wrap stays on for the explicit newline;
         -- the width fit below always sizes the frame to the widest
@@ -1789,8 +1791,14 @@ local function EnsureCopyBox()
         f.title:SetWordWrap(true)
         f.title:SetSpacing(2)
 
+        -- Hidden twin of the editbox font, used to size the frame to the
+        -- copied text (an editbox cannot report its rendered width).
+        f.measure = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        f.measure:Hide()
+
         local field = CreateFrame("Frame", nil, f)
-        field:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -10)
+        field:SetPoint("TOP", f.title, "BOTTOM", 0, -10)
+        field:SetPoint("LEFT", f, "LEFT", 14, 0)
         field:SetPoint("RIGHT", f, "RIGHT", -14, 0)
         field:SetHeight(26)
         local bg = field:CreateTexture(nil, "BACKGROUND")
@@ -1838,7 +1846,8 @@ local function EnsureCopyBox()
         -- instead of a Ctrl-C field; clicking it inserts the link into the
         -- active chat editbox, like shift-clicking an item in a bag.
         local linkHolder = CreateFrame("Frame", nil, f)
-        linkHolder:SetPoint("TOPLEFT", f.title, "BOTTOMLEFT", 0, -10)
+        linkHolder:SetPoint("TOP", f.title, "BOTTOM", 0, -10)
+        linkHolder:SetPoint("LEFT", f, "LEFT", 14, 0)
         linkHolder:SetPoint("RIGHT", f, "RIGHT", -14, 0)
         linkHolder:SetHeight(26)
         linkHolder:SetHyperlinksEnabled(true)
@@ -1881,11 +1890,15 @@ function ns.ShowCopyBox(text, labelText)
     copyBox.linkHolder:Hide()
     copyBox.field:Show()
     copyBox.title:SetText(labelText or "")
-    -- Width tracks the widest message line (+ buffer for the close X); the
-    -- link field spans it and clips a longer URL (full text still selected
-    -- for Ctrl-C). Height follows the title, which is two lines when the
-    -- hint carries the item name on its own line.
-    copyBox:SetWidth(math.max(200, math.floor(copyBox.title:GetStringWidth() + 0.5) + 44))
+    -- Width tracks the widest of the title and the copied text (+ field
+    -- padding), so short links show whole; very long text still clips at
+    -- the cap (full text stays selected for Ctrl-C). Height follows the
+    -- title, which is two lines when the hint carries the item name.
+    copyBox.measure:SetText(text)
+    local textW = math.floor(copyBox.measure:GetStringWidth() + 0.5)
+    copyBox:SetWidth(math.max(200,
+        math.floor(copyBox.title:GetStringWidth() + 0.5) + 44,
+        math.min(textW + 52, 460)))
     copyBox:SetHeight(88 + math.floor(copyBox.title:GetStringHeight() + 0.5))
     copyBox:Show()
     local eb = copyBox.editBox

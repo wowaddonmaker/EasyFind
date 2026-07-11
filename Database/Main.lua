@@ -262,6 +262,17 @@ function Database:PopulateDynamicCurrencies()
                     end
                 end
                 words[#words + 1] = slower(immediateHeaderName) .. " " .. currNameLower
+                -- Expansion+currency compound queries ("midnight currencies",
+                -- "mid curr"): the header word matches the compound keyword
+                -- above; these tokens satisfy the currency word, so every
+                -- currency of that expansion lists under the header's own
+                -- nav entry (which outranks via the name tier).
+                words[#words + 1] = "currency"
+                words[#words + 1] = "currencies"
+                local currencyGlobal = _G["CURRENCY"]
+                if currencyGlobal and slower(currencyGlobal) ~= "currency" then
+                    words[#words + 1] = slower(currencyGlobal)
+                end
 
                 local isAccountTransferable = Database:IsCurrencyAccountTransferable(info.currencyID)
                 local entry = {

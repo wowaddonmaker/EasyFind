@@ -59,6 +59,12 @@ L["OPT_KEYBINDS_HEADER"]                = "快捷键（对所有角色生效）"
 L["OPT_KEYBIND_TOGGLE_SEARCH"]          = "切换搜索栏"
 L["OPT_KEYBIND_OPEN_MAP_TAB"]           = "打开地图搜索"
 L["OPT_KEYBIND_CLEAR_ALL"]              = "全部清除"
+L["OPT_KEYBIND_FOCUS_BAR"]              = "聚焦搜索栏"
+L["OPT_KB_FOCUS_TT_DESC"]               = "将光标置于搜索框中而不切换搜索栏。需要“始终显示”可见性模式。"
+L["TUT_SHOWMETHOD_HEADER"]              = "搜索栏应如何显示？"
+L["TUT_SHOWMETHOD_BODY"]                = "选择 EasyFind 搜索栏何时可见。"
+L["TUT_SHOWMETHOD_NOTE"]                = "你的选择会保存到选项中，随时可以更改。"
+L["TUT_RECOMMENDED"]                    = "推荐"
 L["OPT_VISIBILITY"]                     = "可见性"
 L["OPT_VISIBILITY_AUTOHIDE"]            = "自动隐藏"
 L["OPT_VISIBILITY_SMARTSHOW"]           = "悬停显示"
@@ -86,7 +92,7 @@ L["OPT_FONT_MED"]                       = "中"
 L["OPT_FONT_LARGE"]                     = "大"
 L["OPT_FONT_XL"]                        = "特大"
 L["OPT_RESET_SETTINGS"]                 = "重置设置"
-L["OPT_RESET_POSITIONS"]                = "重置位置"
+L["OPT_RESET_POSITIONS"]                = "重置大小和位置"
 L["OPT_ENABLE_MAP_MODULE"]              = "启用地图搜索模块"
 L["OPT_MAP_TAB_SECTION"]                = "地图标签"
 L["OPT_SHOW_RECENT_SEARCHES"]           = "显示最近搜索"
@@ -106,7 +112,7 @@ L["OPT_COL_SHORTKEY"]                   = "快捷键"
 L["OPT_SEARCH_ALIASES_PLACEHOLDER"]     = "搜索别名"
 L["OPT_NO_SAVED_ALIASES"]               = "没有已保存的别名。"
 L["OPT_RESET_ALL_SETTINGS"]             = "重置全部设置"
-L["OPT_RESET_ALL_POSITIONS"]            = "重置全部位置"
+L["OPT_RESET_ALL_POSITIONS"]            = "重置所有大小和位置"
 L["OPT_REPORT_BUG"]                     = "报告错误"
 L["OPT_REQUEST_FEATURE"]                = "建议功能"
 L["POPUP_CLEAR_ALIASES"]                = "清除所有已保存的别名？"
@@ -138,7 +144,13 @@ L["OPT_CLEAR_ALL_BTN"]                  = "全部清除"
 L["OPT_MINIMAP_BTN_TT"]                 = "在小地图边缘添加一个小型搜索按钮。\n\n左键单击切换搜索栏。\n右键单击打开选项。\n拖动可在小地图周围重新定位。"
 L["OPT_ALIAS_MSG_TT"]                   = "启用后，添加别名时会在聊天中显示一条指向“别名”标签的简短提示。"
 L["OPT_LOCK_POSITION_TT"]               = "启用后，搜索栏将无法拖动。如果你已将其放在理想位置，此项很有用。\n\n“重置位置”和 /reset 命令仍然有效。"
-L["OPT_SEARCH_SCALE"]                   = "缩放"
+L["OPT_SEARCH_SCALE"]                   = "大小"
+L["RESCALE_WIDTH"]                      = "宽度："
+L["RESCALE_SAMPLE_RESULT"]              = "示例结果 %d"
+L["RESCALE_BACK_TO_OPTIONS"]            = "返回选项"
+L["PROMPT_RESET_FIELD"]                 = "将此项重置为默认值？"
+L["OPT_RESIZE_UI_SEARCH"]               = "手动调整大小"
+L["OPT_RESIZE_UI_TT"]                   = "可视化调整统一界面搜索窗口的大小。\n拖动两侧边缘调整宽度，拖动上/下边缘调整结果高度。"
 L["OPT_RESULT_ROWS"]                    = "结果行数"
 L["OPT_SEARCH_OPACITY"]                 = "不透明度"
 L["OPT_ALT_HINTS_TT"]                   = "每个可见的界面搜索结果都会显示一个 Alt+1 到 Alt+8 的小提示。\n\n禁用后提示会隐藏，但 Alt+数字 快捷键仍会激活相同的行。"
@@ -166,9 +178,9 @@ L["OPT_SHORTCUTS_TEXT"]                 =
     .. "|cFFFFD100计算器：|r\n"
     .. "在搜索中输入算式可即时得到结果，或打开结果中的计算器条目以使用完整计算器。\n\n"
     .. "|cFFFFD100其他：|r\n"
-    .. "|cFF00FF00Shift+拖动|r 重新定位  |cFF00FF00右键单击|r 固定/取消固定\n\n"
+    .. "|cFF00FF00Shift+拖动|r 重新定位  |cFF00FF00右键单击|r 打开右键菜单（固定、指引、链接等）\n\n"
     .. "|cFFFFD100斜杠命令：|r\n"
-    .. "|cFF00FF00/ef|r 打开选项  |cFF00FF00/ef c|r 清除高亮和标记\n"
+    .. "|cFF00FF00/ef|r 打开选项  |cFF00FF00/ef toggle|r 显示/隐藏搜索栏  |cFF00FF00/ef c|r 清除高亮和标记\n"
 L["OPT_FEEDBACK_DESC"]                  =
     "发现错误或有新功能的想法？点击下面任一按钮，"
     .. "都会为你提供一个提交反馈的链接。\n\n"
@@ -238,26 +250,24 @@ L["POPUP_UNAPPLIED_SETTINGS"]           = "有尚未应用的设置。\n确定�
 L["POPUP_UNAPPLIED_EXIT"]               = "退出"
 L["POPUP_UNAPPLIED_APPLY"]              = "应用并退出"
 L["POPUP_UNAPPLIED_CANCEL"]             = "取消"
-L["WHATSNEW_CHAT_HELLO"]                = "欢迎使用EasyFind v%s！点击%s查看更新摘要。"
+L["WHATSNEW_CHAT_HELLO"]                = "欢迎使用|cFF00FF00EasyFind v%s|r！点击%s查看更新摘要。"
 L["WHATSNEW_CHAT_HERE"]                 = "这里"
+L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日志"
+L["WHATSNEW_TRIALS_VOTE"]               = "为 EasyFind 投票："
+L["OPT_TRIALS_TEXT"]                    = "如果你喜欢 EasyFind，欢迎在 CurseForge Addon Trials 中给我们打出高排名，投票截止7月13日。"
+L["OPT_TRIALS_BTN"]                     = "为 EasyFind 投票"
+L["WHATSNEW_CHAT_TRIALS"]               = "如果你喜欢 EasyFind，欢迎在%s中为我们投票，投票截止7月13日！"
+L["WHATSNEW_CHAT_TRIALS_LINK"]          = "CurseForge Addon Trials 大赛"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff发送链接|r\n" ..
-    "    |cff999999-|r 右键搜索结果，将物品、法术、坐骑、\n" ..
-    "      成就等链接到聊天框\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff家园|r\n" ..
-    "    |cff999999-|r 可搜索装饰，点击结果打开家园图鉴\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff快捷键|r\n" ..
-    "    |cff999999-|r 右键搜索结果，设置你自己的快捷键\n" ..
-    "    |cff999999-|r 快捷键一键直达对应结果\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffWowhead链接|r\n" ..
-    "    |cff999999-|r 右键物品、法术、坐骑、成就等，\n" ..
-    "      即可复制Wowhead链接\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff命令搜索|r\n" ..
-    "    |cff999999-|r 在搜索栏中查找并执行斜杠命令\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff账号通用按键|r\n" ..
-    "    |cff999999-|r EasyFind按键设置现在对所有角色生效\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff新字体|r\n" ..
-    "    |cff999999-|r 可在选项中使用 Inter、Lato 和 Poppins"
+    "|cffFFD100\226\128\162|r |cffffffff始终显示|r\n" ..
+    "    |cff999999-|r 新的可见性模式让搜索栏常驻，\n" ..
+    "      含战斗/移动变暗选项\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff无边框外观|r\n" ..
+    "    |cff999999-|r 新选项可隐藏搜索栏及其菜单的边框\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff手动调整大小|r\n" ..
+    "    |cff999999-|r 位于大小菜单中；缩放在其之上生效\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff资料片货币成组搜索|r\n" ..
+    "    |cff999999-|r 搜索资料片名加\"货币\"即可直接列出全部"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "添加别名"

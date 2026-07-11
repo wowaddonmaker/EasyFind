@@ -61,6 +61,12 @@ L["OPT_KEYBINDS_HEADER"]                = "Tastenbelegungen (gilt für jeden Cha
 L["OPT_KEYBIND_TOGGLE_SEARCH"]          = "Suchleiste umschalten"
 L["OPT_KEYBIND_OPEN_MAP_TAB"]           = "Kartensuche öffnen"
 L["OPT_KEYBIND_CLEAR_ALL"]              = "Alles löschen"
+L["OPT_KEYBIND_FOCUS_BAR"]              = "Suchleiste fokussieren"
+L["OPT_KB_FOCUS_TT_DESC"]               = "Setzt den Cursor in das Suchfeld, ohne die Leiste umzuschalten. Erfordert den Sichtbarkeitsmodus 'Immer anzeigen'."
+L["TUT_SHOWMETHOD_HEADER"]              = "Wie soll die Suchleiste erscheinen?"
+L["TUT_SHOWMETHOD_BODY"]                = "Lege fest, wann die Suchleiste von EasyFind sichtbar ist."
+L["TUT_SHOWMETHOD_NOTE"]                = "Deine Wahl wird in den Optionen gespeichert und lässt sich dort jederzeit ändern."
+L["TUT_RECOMMENDED"]                    = "Empfohlen"
 L["OPT_VISIBILITY"]                     = "Sichtbarkeit"
 L["OPT_VISIBILITY_AUTOHIDE"]            = "Auto-Ausblenden"
 L["OPT_VISIBILITY_SMARTSHOW"]           = "Hover-Anzeige"
@@ -88,7 +94,7 @@ L["OPT_FONT_MED"]                       = "Mittel"
 L["OPT_FONT_LARGE"]                     = "Groß"
 L["OPT_FONT_XL"]                        = "XL"
 L["OPT_RESET_SETTINGS"]                 = "Einstellungen zurücksetzen"
-L["OPT_RESET_POSITIONS"]                = "Positionen zurücksetzen"
+L["OPT_RESET_POSITIONS"]                = "Größe & Positionen zurücksetzen"
 L["OPT_ENABLE_MAP_MODULE"]              = "Kartensuche-Modul aktivieren"
 L["OPT_MAP_TAB_SECTION"]                = "Kartentab"
 L["OPT_SHOW_RECENT_SEARCHES"]           = "Letzte Suchen anzeigen"
@@ -108,7 +114,7 @@ L["OPT_COL_SHORTKEY"]                   = "Kurztaste"
 L["OPT_SEARCH_ALIASES_PLACEHOLDER"]     = "Aliase durchsuchen"
 L["OPT_NO_SAVED_ALIASES"]               = "Keine gespeicherten Aliase."
 L["OPT_RESET_ALL_SETTINGS"]             = "Alle Einstellungen zurücksetzen"
-L["OPT_RESET_ALL_POSITIONS"]            = "Alle Positionen zurücksetzen"
+L["OPT_RESET_ALL_POSITIONS"]            = "Alle Größen & Positionen zurücksetzen"
 L["OPT_REPORT_BUG"]                     = "Fehler melden"
 L["OPT_REQUEST_FEATURE"]                = "Funktion vorschlagen"
 L["POPUP_CLEAR_ALIASES"]                = "Alle gespeicherten Aliase löschen?"
@@ -140,7 +146,13 @@ L["OPT_CLEAR_ALL_BTN"]                  = "Alles löschen"
 L["OPT_MINIMAP_BTN_TT"]                 = "Fügt am Rand der Minimap eine kleine Such-Schaltfläche hinzu.\n\nLinksklick schaltet die Suchleiste um.\nRechtsklick öffnet die Optionen.\nZiehen verschiebt sie um die Minimap."
 L["OPT_ALIAS_MSG_TT"]                   = "Beim Hinzufügen eines Alias wird eine kurze Chatnotiz mit Verweis auf den Alias-Tab angezeigt."
 L["OPT_LOCK_POSITION_TT"]               = "Wenn aktiviert, lässt sich die Suchleiste nicht mehr ziehen. Nützlich, wenn sie genau dort sitzt, wo du sie haben willst.\n\n„Positionen zurücksetzen“ und der Befehl /reset funktionieren weiterhin."
-L["OPT_SEARCH_SCALE"]                   = "Skalierung"
+L["OPT_SEARCH_SCALE"]                   = "Größe"
+L["RESCALE_WIDTH"]                      = "Breite:"
+L["RESCALE_SAMPLE_RESULT"]              = "Beispielergebnis %d"
+L["RESCALE_BACK_TO_OPTIONS"]            = "Zurück zu den Optionen"
+L["PROMPT_RESET_FIELD"]                 = "Dieses Feld auf den Standardwert zurücksetzen?"
+L["OPT_RESIZE_UI_SEARCH"]               = "Manuelles Anpassen"
+L["OPT_RESIZE_UI_TT"]                   = "Passt das vereinheitlichte UI-Suchfenster an.\nZiehe die Seitenränder für die Breite und den oberen/unteren Rand für die Ergebnishöhe."
 L["OPT_RESULT_ROWS"]                    = "Ergebniszeilen"
 L["OPT_SEARCH_OPACITY"]                 = "Deckkraft"
 L["OPT_ALT_HINTS_TT"]                   = "Jedes sichtbare UI-Suchergebnis zeigt einen kleinen Hinweis von Alt+1 bis Alt+8.\n\nWenn deaktiviert, sind die Hinweise ausgeblendet, aber die Alt+Zahl-Kürzel aktivieren weiterhin dieselben Zeilen."
@@ -168,9 +180,9 @@ L["OPT_SHORTCUTS_TEXT"]                 =
     .. "|cFFFFD100Rechner:|r\n"
     .. "Tippe Rechenausdrücke in die Suche für ein Inline-Ergebnis oder öffne das Rechner-Ergebnis für den vollständigen Rechner.\n\n"
     .. "|cFFFFD100Sonstiges:|r\n"
-    .. "|cFF00FF00Umschalt+Ziehen|r verschieben  |cFF00FF00Rechtsklick|r anheften/lösen\n\n"
+    .. "|cFF00FF00Umschalt+Ziehen|r verschieben  |cFF00FF00Rechtsklick|r Kontextmenü öffnen (Anheften, Guide, Link u.a.)\n\n"
     .. "|cFFFFD100Slash-Befehle:|r\n"
-    .. "|cFF00FF00/ef|r Optionen öffnen  |cFF00FF00/ef c|r Hervorhebungen und Markierungen löschen\n"
+    .. "|cFF00FF00/ef|r Optionen öffnen  |cFF00FF00/ef toggle|r Leiste ein-/ausblenden  |cFF00FF00/ef c|r Hervorhebungen und Markierungen löschen\n"
 L["OPT_FEEDBACK_DESC"]                  =
     "Einen Fehler gefunden oder eine Idee für eine neue Funktion? Ein Klick auf "
     .. "eine der Schaltflächen unten gibt dir einen Link zum Einreichen deines Feedbacks.\n\n"
@@ -240,27 +252,25 @@ L["POPUP_UNAPPLIED_SETTINGS"]           = "Es gibt Einstellungen, die noch nicht
 L["POPUP_UNAPPLIED_EXIT"]               = "Beenden"
 L["POPUP_UNAPPLIED_APPLY"]              = "Übernehmen und beenden"
 L["POPUP_UNAPPLIED_CANCEL"]             = "Abbrechen"
-L["WHATSNEW_CHAT_HELLO"]                = "Willkommen bei EasyFind v%s! Die Neuerungen findest du %s."
+L["WHATSNEW_CHAT_HELLO"]                = "Willkommen bei |cFF00FF00EasyFind v%s|r! Die Neuerungen findest du %s."
 L["WHATSNEW_CHAT_HERE"]                 = "hier"
+L["WHATSNEW_CHANGELOG_LINK"]            = "Vollständiges Änderungsprotokoll"
+L["WHATSNEW_CHAT_TRIALS"]               = "Wenn dir EasyFind gefällt, stimme doch bis zum 13. Juli im %s für uns ab!"
+L["WHATSNEW_CHAT_TRIALS_LINK"]          = "CurseForge Addon Trials-Wettbewerb"
+L["WHATSNEW_TRIALS_VOTE"]               = "Für EasyFind stimmen:"
+L["OPT_TRIALS_TEXT"]                    = "Wenn dir EasyFind gefällt, gib uns doch eine gute Platzierung bei den CurseForge Addon Trials. Die Abstimmung läuft bis zum 13. Juli."
+L["OPT_TRIALS_BTN"]                     = "Für EasyFind stimmen"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffLinks senden|r\n" ..
-    "    |cff999999-|r Rechtsklick auf ein Ergebnis, um Gegenstände, Zauber,\n" ..
-    "      Reittiere, Erfolge und mehr im Chat zu verlinken\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffHousing|r\n" ..
-    "    |cff999999-|r Durchsuche Dekor; Ergebnisse öffnen den Katalog\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffKurztasten|r\n" ..
-    "    |cff999999-|r Rechtsklick auf ein Ergebnis, um eine eigene\n" ..
-    "      Kurztaste zu belegen\n" ..
-    "    |cff999999-|r Kurztasten öffnen ein Ergebnis mit einem Tastendruck\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffWowhead-Links|r\n" ..
-    "    |cff999999-|r Rechtsklick auf Gegenstände, Zauber, Reittiere,\n" ..
-    "      Erfolge und mehr für einen kopierbaren Wowhead-Link\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffBefehlssuche|r\n" ..
-    "    |cff999999-|r Finde und nutze Slash-Befehle direkt über die Suchleiste\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffAccountweite Tasten|r\n" ..
-    "    |cff999999-|r EasyFind-Tastenbelegungen gelten jetzt auf jedem Charakter\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffNeue Schriftarten|r\n" ..
-    "    |cff999999-|r Inter, Lato und Poppins in den Optionen verfügbar"
+    "|cffFFD100\226\128\162|r |cffffffffImmer anzeigen|r\n" ..
+    "    |cff999999-|r Neuer Sichtbarkeitsmodus hält die Leiste dauerhaft offen,\n" ..
+    "      mit Abdunkeln im Kampf und beim Bewegen\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffRahmenlose Optik|r\n" ..
+    "    |cff999999-|r Neue Option blendet den Rahmen von Leiste und Menüs aus\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffManuelles Anpassen|r\n" ..
+    "    |cff999999-|r Im Größe-Menü; Skalierung wirkt zusätzlich\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffErweiterungswährungen gruppiert suchbar|r\n" ..
+    "    |cff999999-|r Suche eine Erweiterung plus \"Währungen\", um alle\n" ..
+    "      direkt aufzulisten"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"

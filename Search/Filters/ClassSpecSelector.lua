@@ -81,16 +81,16 @@ local function FitPopupWidth(rows, count, extraContentW, minWidth)
     return mmax(minWidth or ns.FLYOUT_MIN_WIDTH, mceil(contentW) + POPUP_MARGIN * 2)
 end
 
--- A class (+spec) dropdown matching the gear filter's selector, reusable across
--- the gear / heirloom / appearance flyouts. opts:
+-- A class (+spec) dropdown matching the loot filter's selector, reusable across
+-- the loot / heirloom / appearance flyouts. opts:
 --   parent       frame the dropdown button anchors into (TOPLEFT)
 --   x, y         TOPLEFT offset of the button within parent
 --   width        button width
---   popupWidth   popup width (default: 180, the gear flyout's)
---   flyoutWidth  class flyout width (default: 160, the gear flyout's)
+--   popupWidth   popup width (default: 180, the loot flyout's)
+--   flyoutWidth  class flyout width (default: 160, the loot flyout's)
 --   popupName    optional global frame name for the popup
 --   flyoutName   optional global frame name for the class flyout
---   hasSpec      true = class+spec (gear, heirloom); false = class only
+--   hasSpec      true = class+spec (loot, heirloom); false = class only
 --   stylePopup   fn(frame) to style popup backdrops
 --   guardFrames  array to register popups for outside-click protection
 --   keyboardNav  fn(popup, getRows) installing arrow-key navigation
@@ -251,7 +251,7 @@ function Filters:BuildClassSpecSelector(opts)
         end
         GetPopupNavRows = function() return rows end
     else
-        -- Gear-style: "Class >" row opens a class flyout; spec rows below.
+        -- Loot-style: "Class >" row opens a class flyout; spec rows below.
         classFlyout = CreateFrame("Frame", opts.flyoutName, UIParent, "BackdropTemplate")
         classFlyout:SetFrameStrata("TOOLTIP")
         classFlyout:SetFrameLevel(parent:GetFrameLevel() + 30)

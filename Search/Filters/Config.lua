@@ -89,11 +89,11 @@ local UI_FILTER_OPTIONS = {
               { dbKey = "hideTooltips.currencies", label = L["FILTER_HIDE_TOOLTIPS"] },
           },
       } },
-    -- Gear: treasure-chest icon from the Encounter Journal loot tab
+    -- Loot: treasure-chest icon from the Encounter Journal loot tab
     -- spritesheet (texture 522972) for visual consistency with the
     -- in-game loot Search. hasFlyout flags the row to draw the chevron --
     -- the actual flyout (difficulty, spec, iLvl) is built inline below
-    -- via gearOptionsPopup, not via flyoutSubFilters.
+    -- via lootOptionsPopup, not via flyoutSubFilters.
     { key = "loot",        label = _G["LOOT"] or "Loot",        iconTex = 522972,
       iconCoords = { 0.730, 0.824, 0.618, 0.660 }, hasFlyout = true },
     { key = "map",         label = L["FILTER_MAP_SEARCH"],  iconTex = 1121272,

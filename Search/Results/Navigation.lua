@@ -118,7 +118,7 @@ end
 local FILTER_POPUP_NAMES = {
     "EasyFindAsClassPopup",
     "EasyFindAsOptionsPopup",
-    "EasyFindGearOptionsPopup",
+    "EasyFindLootOptionsPopup",
     "EasyFindMountOptionsPopup",
     "EasyFindMountSourcePopup",
     "EasyFindDiffPopup",

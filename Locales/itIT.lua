@@ -59,6 +59,12 @@ L["OPT_KEYBINDS_HEADER"]                = "Scorciatoie (valide per ogni personag
 L["OPT_KEYBIND_TOGGLE_SEARCH"]          = "Attiva/disattiva barra di ricerca"
 L["OPT_KEYBIND_OPEN_MAP_TAB"]           = "Apri ricerca mappa"
 L["OPT_KEYBIND_CLEAR_ALL"]              = "Cancella tutto"
+L["OPT_KEYBIND_FOCUS_BAR"]              = "Focalizza barra di ricerca"
+L["OPT_KB_FOCUS_TT_DESC"]               = "Posiziona il cursore nella casella di ricerca senza attivare/disattivare la barra. Richiede la modalità di visibilità 'Mostra sempre'."
+L["TUT_SHOWMETHOD_HEADER"]              = "Come deve apparire la barra di ricerca?"
+L["TUT_SHOWMETHOD_BODY"]                = "Scegli quando la barra di ricerca di EasyFind è visibile."
+L["TUT_SHOWMETHOD_NOTE"]                = "La scelta viene salvata nelle opzioni e può essere cambiata in qualsiasi momento."
+L["TUT_RECOMMENDED"]                    = "Consigliato"
 L["OPT_VISIBILITY"]                     = "Visibilità"
 L["OPT_VISIBILITY_AUTOHIDE"]            = "Nascondi auto."
 L["OPT_VISIBILITY_SMARTSHOW"]           = "Al passaggio"
@@ -86,7 +92,7 @@ L["OPT_FONT_MED"]                       = "Medio"
 L["OPT_FONT_LARGE"]                     = "Grande"
 L["OPT_FONT_XL"]                        = "XL"
 L["OPT_RESET_SETTINGS"]                 = "Reimposta impostazioni"
-L["OPT_RESET_POSITIONS"]                = "Reimposta posizioni"
+L["OPT_RESET_POSITIONS"]                = "Reimposta dimensione e posizioni"
 L["OPT_ENABLE_MAP_MODULE"]              = "Attiva modulo ricerca mappa"
 L["OPT_MAP_TAB_SECTION"]                = "Scheda mappa"
 L["OPT_SHOW_RECENT_SEARCHES"]           = "Mostra ricerche recenti"
@@ -106,7 +112,7 @@ L["OPT_COL_SHORTKEY"]                   = "Scorciatoia"
 L["OPT_SEARCH_ALIASES_PLACEHOLDER"]     = "Cerca alias"
 L["OPT_NO_SAVED_ALIASES"]               = "Nessun alias salvato."
 L["OPT_RESET_ALL_SETTINGS"]             = "Reimposta tutte le impostazioni"
-L["OPT_RESET_ALL_POSITIONS"]            = "Reimposta tutte le posizioni"
+L["OPT_RESET_ALL_POSITIONS"]            = "Reimposta tutte le dimensioni e posizioni"
 L["OPT_REPORT_BUG"]                     = "Segnala bug"
 L["OPT_REQUEST_FEATURE"]                = "Proponi funzione"
 L["POPUP_CLEAR_ALIASES"]                = "Cancellare tutti gli alias salvati?"
@@ -138,7 +144,13 @@ L["OPT_CLEAR_ALL_BTN"]                  = "Cancella tutto"
 L["OPT_MINIMAP_BTN_TT"]                 = "Aggiunge un piccolo pulsante di ricerca al bordo della minimappa.\n\nClic sinistro per attivare la barra di ricerca.\nClic destro per aprire le opzioni.\nTrascina per riposizionarlo intorno alla minimappa."
 L["OPT_ALIAS_MSG_TT"]                   = "Se attivo, aggiungere un alias mostra una breve nota in chat che rimanda alla scheda Alias."
 L["OPT_LOCK_POSITION_TT"]               = "Se attivo, la barra di ricerca non può essere trascinata. Utile se l'hai posizionata esattamente dove la vuoi.\n\n«Reimposta posizioni» e il comando /reset funzionano comunque."
-L["OPT_SEARCH_SCALE"]                   = "Scala"
+L["OPT_SEARCH_SCALE"]                   = "Dimensione"
+L["RESCALE_WIDTH"]                      = "Larghezza:"
+L["RESCALE_SAMPLE_RESULT"]              = "Risultato di esempio %d"
+L["RESCALE_BACK_TO_OPTIONS"]            = "Torna alle opzioni"
+L["PROMPT_RESET_FIELD"]                 = "Reimpostare questo campo al valore predefinito?"
+L["OPT_RESIZE_UI_SEARCH"]               = "Ridimensionamento manuale"
+L["OPT_RESIZE_UI_TT"]                   = "Ridimensiona visivamente la finestra di ricerca unificata.\nTrascina i bordi laterali per la larghezza e il bordo superiore/inferiore per l'altezza dei risultati."
 L["OPT_RESULT_ROWS"]                    = "Righe dei risultati"
 L["OPT_SEARCH_OPACITY"]                 = "Opacità"
 L["OPT_ALT_HINTS_TT"]                   = "Ogni risultato di ricerca visibile mostra un piccolo promemoria da Alt+1 a Alt+8.\n\nSe disattivati, i promemoria sono nascosti ma le scorciatoie Alt+Numero attivano comunque le stesse righe."
@@ -166,9 +178,9 @@ L["OPT_SHORTCUTS_TEXT"]                 =
     .. "|cFFFFD100Calcolatrice:|r\n"
     .. "Digita un calcolo nella ricerca per un risultato immediato, oppure apri il risultato Calcolatrice per la calcolatrice completa.\n\n"
     .. "|cFFFFD100Altro:|r\n"
-    .. "|cFF00FF00Maiusc+Trascina|r riposiziona  |cFF00FF00Clic destro|r fissa/rimuovi\n\n"
+    .. "|cFF00FF00Maiusc+Trascina|r riposiziona  |cFF00FF00Clic destro|r apre il menu contestuale (fissa, guida, link e altro)\n\n"
     .. "|cFFFFD100Comandi:|r\n"
-    .. "|cFF00FF00/ef|r apri le opzioni  |cFF00FF00/ef c|r cancella evidenziazioni e segnaposti\n"
+    .. "|cFF00FF00/ef|r apri le opzioni  |cFF00FF00/ef toggle|r mostra/nascondi barra  |cFF00FF00/ef c|r cancella evidenziazioni e segnaposti\n"
 L["OPT_FEEDBACK_DESC"]                  =
     "Hai trovato un bug o hai un'idea per una nuova funzione? Cliccando uno dei "
     .. "pulsanti qui sotto otterrai un link per inviare il tuo feedback.\n\n"
@@ -238,27 +250,25 @@ L["POPUP_UNAPPLIED_SETTINGS"]           = "Ci sono impostazioni non ancora appli
 L["POPUP_UNAPPLIED_EXIT"]               = "Esci"
 L["POPUP_UNAPPLIED_APPLY"]              = "Applica ed esci"
 L["POPUP_UNAPPLIED_CANCEL"]             = "Annulla"
-L["WHATSNEW_CHAT_HELLO"]                = "Benvenuto in EasyFind v%s! Guarda il riepilogo delle novità %s."
+L["WHATSNEW_CHAT_HELLO"]                = "Benvenuto in |cFF00FF00EasyFind v%s|r! Guarda il riepilogo delle novità %s."
 L["WHATSNEW_CHAT_HERE"]                 = "qui"
+L["WHATSNEW_CHANGELOG_LINK"]            = "Vedi il changelog completo"
+L["WHATSNEW_TRIALS_VOTE"]               = "Vota EasyFind:"
+L["OPT_TRIALS_TEXT"]                    = "Se ti sta piacendo EasyFind, considera di darci una buona posizione negli Addon Trials di CurseForge. Le votazioni terminano il 13 luglio."
+L["OPT_TRIALS_BTN"]                     = "Vota EasyFind"
+L["WHATSNEW_CHAT_TRIALS"]               = "Se ti piace EasyFind, considera di votarci nel %s entro il 13 luglio!"
+L["WHATSNEW_CHAT_TRIALS_LINK"]          = "concorso Addon Trials di CurseForge"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffInvio link|r\n" ..
-    "    |cff999999-|r Clic destro su un risultato per collegare oggetti,\n" ..
-    "      incantesimi, cavalcature, imprese e altro in chat\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffHousing|r\n" ..
-    "    |cff999999-|r Cerca gli arredi; i risultati aprono il catalogo\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffScorciatoie|r\n" ..
-    "    |cff999999-|r Clic destro su un risultato per assegnare una\n" ..
-    "      tua scorciatoia\n" ..
-    "    |cff999999-|r Le scorciatoie aprono un risultato con una sola pressione\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffLink Wowhead|r\n" ..
-    "    |cff999999-|r Clic destro su oggetti, incantesimi, cavalcature,\n" ..
-    "      imprese e altro per copiare il link Wowhead\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffRicerca comandi|r\n" ..
-    "    |cff999999-|r Trova ed esegui i comandi (/) dalla barra di ricerca\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffTasti per tutto l'account|r\n" ..
-    "    |cff999999-|r Le assegnazioni dei tasti di EasyFind valgono ora su ogni personaggio\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffNuovi caratteri|r\n" ..
-    "    |cff999999-|r Inter, Lato e Poppins disponibili nelle opzioni"
+    "|cffFFD100\226\128\162|r |cffffffffMostra sempre|r\n" ..
+    "    |cff999999-|r Nuova modalità che tiene la barra sempre aperta,\n" ..
+    "      con attenuazione in combattimento e in movimento\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffAspetto senza bordi|r\n" ..
+    "    |cff999999-|r Nuova opzione che nasconde il bordo di barra e menu\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffRidimensionamento manuale|r\n" ..
+    "    |cff999999-|r Nel menu Dimensione; la scala si applica sopra\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffValute per espansione in gruppo|r\n" ..
+    "    |cff999999-|r Cerca un'espansione più \"valute\" per elencarle\n" ..
+    "      tutte subito"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Aggiungi alias"

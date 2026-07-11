@@ -122,5 +122,6 @@ MapSearch/Search/Scanners.lua
 MapSearch/Search/Results.lua
 MapSearch/Zones/Catalog.lua
 MapSearch/MapTab.lua
+Search/Rescaler.lua
 Options/BlizzSearch.lua
 Options/OptionsPanel.lua

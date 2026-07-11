@@ -49,8 +49,10 @@ function Results:CreateResultsFrame()
     Search:SetResultsFrame(resultsFrame)
     resultsFrame:SetWidth(380)  -- Wide to accommodate tree indentation
     resultsFrame:SetPoint("TOP", Search:GetSearchFrame(), "BOTTOM", 0, 2)
-    resultsFrame:SetFrameStrata("FULLSCREEN_DIALOG")
+    resultsFrame:SetFrameStrata("LOW")
     resultsFrame:SetFrameLevel(Search:GetSearchFrame():GetFrameLevel() + 1)
+    resultsFrame:HookScript("OnShow", function() Search:UpdateStackStrata() end)
+    resultsFrame:HookScript("OnHide", function() Search:UpdateStackStrata() end)
 
     resultsFrame:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -95,7 +97,7 @@ function Results:CreateResultsFrame()
             _G["EasyFindPinPopup"],
             _G["EasyFindAsOptionsPopup"],
             _G["EasyFindAsClassPopup"],
-            _G["EasyFindGearOptionsPopup"],
+            _G["EasyFindLootOptionsPopup"],
             _G["EasyFindDiffPopup"],
             _G["EasyFindSpecPopup"],
             _G["EasyFindSpecFlyout"],

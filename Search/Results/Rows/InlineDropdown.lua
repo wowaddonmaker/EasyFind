@@ -17,10 +17,10 @@ local inlineDropdownRows = {}
 local function GetInlineDropdownPopup()
     if inlineDropdownPopup then return inlineDropdownPopup end
     local p = CreateFrame("Frame", "EasyFindInlineDropdownPopup", UIParent, "BackdropTemplate")
-    -- Match the bar's FULLSCREEN_DIALOG so the popup renders ABOVE the
-    -- bar instead of behind it. Other popups (filter dropdown sub-menus,
+    -- DIALOG matches the results stack's active strata so the popup
+    -- renders ABOVE the rows. Other popups (filter dropdown sub-menus,
     -- spec/class flyouts) already use TOOLTIP which sits above this.
-    p:SetFrameStrata("FULLSCREEN_DIALOG")
+    p:SetFrameStrata("DIALOG")
     p:SetFrameLevel(200)
     p:Hide()
     p:EnableMouse(true)
