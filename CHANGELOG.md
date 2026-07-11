@@ -4,19 +4,29 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
-## [2.1.1] - 2026-07-09
+## [2.1.1] - 2026-07-11
 
 ### Added
+- **Always Show**: a third visibility mode that keeps the search bar permanently on screen, with combat options (hide in combat, or dim it instead) and an optional dim while moving; the tutorial gained a slide for picking how the bar appears
+- **Focus Search Bar keybind**: focuses the always-shown bar directly (enabled while Always Show is active)
+- **Hide window border**: new option for a borderless search bar and menus
+- **Manual resize**: back under the Size menu; dragging the height snaps to whole result rows and stays in sync with the Result Rows setting, and the scale presets stack on top
+- **Expansion currency groups**: search an expansion plus "currencies" (like "midnight currencies") to list every currency from that expansion inline
 - **Housing filter menu**: the Housing filter now carries the catalog's full Filter menu (sort and tag options), kept in sync with the catalog window in both directions
 - **@housing and @commands quick filters**
 
 ### Changed
+- The search bar now sits behind game windows like other HUD elements; open results and menus rise above the action bars while in use
+- Toggle All in the filter menus now only affects its own level, and the Services submenu gained its own Toggle All
+- The reset buttons now also reset window sizes and are named "Reset Size & Positions" and "Reset All Sizes & Positions"
+- Better result ranking for short and common-word queries
 - Download size reduced from 22 MB to under 5 MB and installed size from 82 MB to 14 MB: tutorial images now ship in the game's native compressed texture format, and unused image files were removed. No visual difference.
 - The "Gear" filter is now called "Loot", matching the loot results it covers
 - Consolidated tutorial slides: gear sets, outfits, and titles share one slide, as do macros with abilities and toys with slash commands, and the inline-settings slide moved to the Actionables walkthrough
 - Search data for filtered-off categories is no longer loaded and indexed at all until the category is re-enabled
 
 ### Fixed
+- Ability results now open the spellbook to the exact page in one click, including abilities not yet learned
 - Opening the spellbook or talents from a search result no longer causes "EasyFind has been blocked" action-bar errors and spellbook cooldown errors during combat; both the open and the tab switch now run through the game's own protected input path
 - Pressing Escape to close a window no longer risks the same combat errors (EasyFind windows now close via a temporary key binding instead of the game's window list)
 - Result clicks now fire their action regardless of the game's cast-on-key-down combat setting (previously, turning that setting off silently broke mount, spell, and macro results)
@@ -352,7 +362,7 @@ EasyFind 2.0 is a full rewrite of the search and map experience. Launch the in-g
   - **Classic**: A more basic, barebones look reminiscent of addons in the Classic WoW days
 - **New Slash Commands**:
   - `/ef hide` — Hide the search bar
-  - `/ef show` — Show the search bar  
+  - `/ef show` — Show the search bar
   - `/ef clear` — Dismiss active highlights and guides
 
 ### Changed

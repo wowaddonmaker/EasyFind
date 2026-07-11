@@ -53,7 +53,7 @@ Search from the world map with nested results built for location-first browsing:
 
 Configure:
 
-- Search behavior, auto-hide behavior, result placement, visible row count, fonts and font size, and Alt+number hints.
+- Search behavior, visibility mode (auto-hide, hover show, or always show with combat options), result placement, visible row count, window border, fonts and font size, and Alt+number hints.
 - Map Search behavior, map pins, icon sizing, tracking, recent searches, and result categories.
 - Aliases, keybindings, indicator style/color, search window sizing, and reset tools.
 
