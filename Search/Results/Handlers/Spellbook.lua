@@ -466,23 +466,20 @@ function Handlers.ResolveLiveSpellBookSlot(data)
 end
 
 -- The next SECURE navigation step toward the target spell in the OPEN
--- spellbook: a plan of Blizzard buttons for the ROW's own click edges
--- (down edge always; release edge too for two-page jumps), or nil plus a
--- reason. The row dispatches them as type="click" actions riding the
--- user's hardware click -- the same measured-clean mechanism as the tab
--- steer. Macrotext "/click" cannot do this: it is banned from clicking
--- secure-action buttons (the 11.0.2 chain ban), and driving the spellbook
--- from insecure code instead plants the highlight-mark globals (the
--- pet-bar ADDON_ACTION_BLOCKED storm). Wrong category: click its tab.
--- Right category, wrong page: click the page button, twice per row click
--- when the jump is 2+ pages. All state is pure reads: the element comes
--- from the same finder the reveal uses, and its page from IDENTITY in the
--- paged frame's viewDataList (Blizzard_PagedContent's ProcessElement
--- mutates the provider's element tables in place, so viewDataList holds
--- the same objects), falling back to the record matcher; page =
--- ceil(viewIndex / viewsPerPage). The page count for a NOT-YET-SELECTED
--- category cannot be read, so a cross-category journey takes one click
--- for the category and more for its pages.
+-- spellbook: a plan of Blizzard buttons for the row's secure macro chain
+-- ("/click <proxy>" per page) or release steer, or nil plus a reason.
+-- GROUND TRUTH BEFORE BOOKKEEPING: the plan first looks for the spell's
+-- LIVE slot in the DISPLAYED view data; found means the right category is
+-- up no matter what the tab selection claims. On a first-ever open the
+-- CategoryTabSystem's selectedTabID lags the display, and the old
+-- category-first gate bounced the plan to a needless tab click, wasting
+-- the one free release edge (cold opens sat on page 1 until the second
+-- try). Slot genuinely not displayed: click the category tab; its page
+-- count cannot be read until it is selected. All state is pure reads: the
+-- page comes from slot IDENTITY in the paged frame's viewDataList
+-- (Blizzard_PagedContent's ProcessElement mutates the provider's element
+-- tables in place, so viewDataList holds the same objects); page =
+-- ceil(viewIndex / viewsPerPage).
 function Handlers.GetSpellbookNavPlan(data)
     if not (data and data.spellID) then return nil, "no spell data" end
     if InCombatLockdown() then return nil, "in combat" end
@@ -490,56 +487,67 @@ function Handlers.GetSpellbookNavPlan(data)
     local root = frame and frame:IsShown() and frame.SpellBookFrame
     if not root or not root:IsShown() then return nil, "spellbook not shown" end
 
+    local paged = GetSpellbookPagedFrame(frame)
+    local controls = paged and paged.PagingControls
+    local viewDataList = paged and paged.viewDataList
+    local pageReason = "no paging state"
+    if controls and controls.GetCurrentPage and viewDataList then
+        -- The spellbook's elementData carries ONLY slot identity (slotIndex
+        -- + spellBank + specID -- no spellID, no name; verified by live
+        -- frame inspect). The stored spellBookIndex goes stale after DB
+        -- build, so the slot must be resolved LIVE and matched exactly.
+        local liveSlot, liveBank = Handlers.ResolveLiveSpellBookSlot(data)
+        if not liveSlot then
+            pageReason = "no live spellbook slot for spell"
+        else
+            local viewsPerPage = paged.viewsPerPage or 1
+            local targetPage
+            for viewIndex = 1, #viewDataList do
+                local viewData = viewDataList[viewIndex]
+                for i = 1, #viewData do
+                    local elementData = viewData[i]
+                    if not elementData.isSpacer and not elementData.isHeader
+                       and elementData.slotIndex == liveSlot
+                       and (liveBank == nil or elementData.spellBank == nil
+                            or elementData.spellBank == liveBank) then
+                        targetPage = mceil(viewIndex / viewsPerPage)
+                        break
+                    end
+                end
+                if targetPage then break end
+            end
+            if not targetPage then
+                pageReason = "slot " .. liveSlot .. " not in view data"
+            else
+                local ok, currentPage = pcall(controls.GetCurrentPage, controls)
+                if not ok or type(currentPage) ~= "number" then
+                    return nil, "no current page"
+                end
+                local delta = targetPage - currentPage
+                if delta == 0 then return nil, "already on page " .. targetPage end
+                local pageBtn = SpellbookPageButton(frame,
+                    delta > 0 and "NextPageButton" or "PrevPageButton")
+                if not pageBtn then return nil, "no page button" end
+                return {
+                    button = pageBtn, step = "page", delta = delta,
+                    -- One secure "/click <proxy>" macro line per page: the
+                    -- whole journey rides a single hardware click (navtest
+                    -- [8]/[9]). NO insecure page manipulation exists in any
+                    -- path: even one insecure render taints the paged pool,
+                    -- and every page drawn afterwards trips
+                    -- ADDON_ACTION_FORBIDDEN when the user clicks a spell
+                    -- to cast (user-verified). Secure dispatch only.
+                    presses = mabs(delta),
+                }
+            end
+        end
+    end
+
     local categoryTab = FindSpellbookCategoryTab(frame, data)
     if categoryTab and not IsCategoryTabSelected(frame, categoryTab) then
         return { button = categoryTab, alsoRelease = false, step = "category" }
     end
-
-    local paged = GetSpellbookPagedFrame(frame)
-    local controls = paged and paged.PagingControls
-    local viewDataList = paged and paged.viewDataList
-    if not (controls and controls.GetCurrentPage and viewDataList) then
-        return nil, "no paging state"
-    end
-
-    -- The spellbook's elementData carries ONLY slot identity (slotIndex +
-    -- spellBank + specID -- no spellID, no name; verified by live frame
-    -- inspect). The stored spellBookIndex goes stale after DB build, so
-    -- the slot must be resolved LIVE at plan time and matched exactly.
-    local liveSlot, liveBank = Handlers.ResolveLiveSpellBookSlot(data)
-    if not liveSlot then return nil, "no live spellbook slot for spell" end
-    local viewsPerPage = paged.viewsPerPage or 1
-    local targetPage
-    for viewIndex = 1, #viewDataList do
-        local viewData = viewDataList[viewIndex]
-        for i = 1, #viewData do
-            local elementData = viewData[i]
-            if not elementData.isSpacer and not elementData.isHeader
-               and elementData.slotIndex == liveSlot
-               and (liveBank == nil or elementData.spellBank == nil
-                    or elementData.spellBank == liveBank) then
-                targetPage = mceil(viewIndex / viewsPerPage)
-                break
-            end
-        end
-        if targetPage then break end
-    end
-    if not targetPage then return nil, "slot " .. liveSlot .. " not in view data" end
-
-    local ok, currentPage = pcall(controls.GetCurrentPage, controls)
-    if not ok or type(currentPage) ~= "number" then return nil, "no current page" end
-    local delta = targetPage - currentPage
-    if delta == 0 then return nil, "already on page " .. targetPage end
-
-    local pageBtn = SpellbookPageButton(frame,
-        delta > 0 and "NextPageButton" or "PrevPageButton")
-    if not pageBtn then return nil, "no page button" end
-    return {
-        button = pageBtn, step = "page", delta = delta,
-        -- Two-plus-page jump: press on BOTH click edges (down + release),
-        -- two pages per click (/efd navtest strategy [5], measured clean).
-        doublePress = mabs(delta) >= 2,
-    }
+    return nil, pageReason
 end
 
 local function FindVisibleButtonForElement(paged, elem)
@@ -618,7 +626,6 @@ end
 function Handlers:OpenAbilityInSpellbook(data)
     local highlight = ns.Highlight
     local targetElement
-    local revealJumped = false
 
     local spellbookTab = ns.SecureOpeners and ns.SecureOpeners.TAB_SPELLBOOK or 3
     local wasShown = false
@@ -730,24 +737,6 @@ function Handlers:OpenAbilityInSpellbook(data)
                 Handlers.HideHighlightOnHover(btn)
             end
             return
-        end
-
-        -- On another page: jump straight to it via Blizzard's own element
-        -- navigation, keyed on the LIVE slot. Twice measured clean by the
-        -- navtest control strategy (0 new tainted button fields, mark
-        -- globals secure); the always-on EasyFindDev plant catcher names
-        -- the source within half a second if this ever plants.
-        if not revealJumped and paged.GoToElementByPredicate
-           and Handlers.ResolveLiveSpellBookSlot then
-            local liveSlot = Handlers.ResolveLiveSpellBookSlot(data)
-            if liveSlot then
-                revealJumped = true
-                pcall(paged.GoToElementByPredicate, paged, function(elementData)
-                    return elementData.slotIndex == liveSlot
-                end)
-                Utils.SafeAfter(0, function() reveal(attempt + 1) end)
-                return
-            end
         end
 
         -- Fallback: highlight the page button for the user's click and

@@ -57,6 +57,10 @@ ns.SecureOpeners = SecureOpeners
 
 local Utils = ns.Utils
 local pairs = Utils.pairs
+local CreateFrame = CreateFrame
+local UIParent = UIParent
+local InCombatLockdown = InCombatLockdown
+local strrep = string.rep
 
 -- PlayerSpellsFrame tab indexes, exported so steer targets and the
 -- handlers that verify them can never drift apart.
@@ -175,6 +179,38 @@ end
 function SecureOpeners.GetDefaultTabButton(key)
     local spec = PANELS[key]
     return spec and SecureOpeners.GetTabButtonFor(key, spec.defaultTab) or nil
+end
+
+-- A macro is the one secure action that can fire several clicks from a
+-- single hardware click, and macrotext can "/click" any PLAIN button by
+-- name. The spellbook page buttons are unnamed, so each gets a named
+-- click-type proxy: a SecureActionButton whose "click" action delegates to
+-- the page button via frame ref. "/click <proxy>" sends a single up-edge,
+-- so the proxy pins useOnKeyDown=false to act on it. The 11.0.2 chain ban
+-- only bars /click onto buttons whose own action is a MACRO; a click-type
+-- proxy is legal, and the whole chain runs inside secure dispatch
+-- (navtest [8]: full multi-page journey in one click, zero new tainted
+-- provider fields, spell casts stay silent afterwards). Proxies are
+-- per-target and created once; the frame-keyed cache can only ever hold
+-- one entry per page button.
+local clickProxies, clickProxyCount = {}, 0
+function SecureOpeners.GetClickChainMacro(targetButton, presses)
+    if not (targetButton and presses and presses > 0) then return nil end
+    local proxy = clickProxies[targetButton]
+    if not proxy then
+        if InCombatLockdown() then return nil end
+        clickProxyCount = clickProxyCount + 1
+        proxy = CreateFrame("Button", "EasyFindClickProxy" .. clickProxyCount,
+            UIParent, "SecureActionButtonTemplate")
+        proxy:SetSize(1, 1)
+        proxy:SetPoint("BOTTOMRIGHT", UIParent, "TOPLEFT", -32, 32)
+        proxy:EnableMouse(false)
+        Utils.SafeCallMethod(proxy, "SetAttribute", "useOnKeyDown", false)
+        Utils.SafeCallMethod(proxy, "SetAttribute", "type", "click")
+        Utils.SafeCallMethod(proxy, "SetAttribute", "clickbutton", targetButton)
+        clickProxies[targetButton] = proxy
+    end
+    return strrep("/click " .. proxy:GetName() .. "\n", presses)
 end
 
 -- True when the panel is shown with this tab button's tab already selected.
