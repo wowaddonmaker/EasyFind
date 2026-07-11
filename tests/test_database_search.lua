@@ -126,8 +126,12 @@ function tests.isSubsequence_rejectsSparse()
 end
 
 function tests.scoreName_exactMatchScoresHighest()
-    local s = Database:ScoreName("mounts", "mounts", 6)
-    H.assertEq(s, 200)
+    -- Assert the tier ordering, not the tuned constant: exact beats prefix.
+    local exact = Database:ScoreName("mounts", "mounts", 6)
+    local prefix = Database:ScoreName("mountains", "mount", 5)
+    H.assertTrue(exact > prefix,
+        "exact match should outscore a prefix match; got "
+        .. tostring(exact) .. " vs " .. tostring(prefix))
 end
 
 function tests.scoreName_prefixScoresAbovePartial()
