@@ -1,6 +1,10 @@
 # EasyFind
 
-EasyFind is WoW's Raycast, Spotlight, or Alfred: a fast command bar that lets you search anything in World of Warcraft.
+EasyFind is WoW's Raycast/Spotlight/Alfred: a fast command palette that lets you search most things in World of Warcraft.
+
+[![Donate](https://img.shields.io/badge/Donate-1a1a1e?style=for-the-badge&logo=buymeacoffee&logoColor=white)](https://buymeacoffee.com/easyfind)
+[![Community](https://img.shields.io/badge/Community-1a1a1e?style=for-the-badge&logo=discord&logoColor=5865F2)](https://discord.gg/3pdfmD493B)
+
 
 ## How to Use
 
