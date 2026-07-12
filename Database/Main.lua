@@ -944,7 +944,7 @@ end
 -- scan (which now waits for EJ_LOOT_DATA_RECIEVED and refuses to mark
 -- specs complete on unresolved reads).
 ns.LOOT_ITEM_CACHE_VER = 3
-ns.BOSS_CACHE_VER = 1
+ns.BOSS_CACHE_VER = 2
 ns.STATISTIC_CACHE_VER = 1
 
 local heavySearchWordLookup
@@ -3586,6 +3586,11 @@ function Database:PopulateDynamicBossesAsync(done)
     local raidModes = { false, true }
     local budgetMs = 4
     local cacheRows = {}
+    -- Instances repeat across EJ tiers (original expansion plus current
+    -- roster tiers), which would emit the same encounter once per tier
+    -- and double every row downstream (search results, pin matching).
+    -- First tier wins.
+    local seenEncounters = {}
     local emittedSinceRefresh = false
 
     local function finish(changed, err)
@@ -3635,9 +3640,12 @@ function Database:PopulateDynamicBossesAsync(done)
                         state.encIdx = 1
                         break
                     end
-                    local entry = AddBossEntry(state.tier, isRaid, state.instID, state.instName, encName, encID, getCreatureInfo)
-                    AddBossCacheRow(cacheRows, state.tier, isRaid, state.instID, state.instName, encName, encID, entry and entry.icon)
-                    emittedSinceRefresh = true
+                    if not (encID and seenEncounters[encID]) then
+                        if encID then seenEncounters[encID] = true end
+                        local entry = AddBossEntry(state.tier, isRaid, state.instID, state.instName, encName, encID, getCreatureInfo)
+                        AddBossCacheRow(cacheRows, state.tier, isRaid, state.instID, state.instName, encName, encID, entry and entry.icon)
+                        emittedSinceRefresh = true
+                    end
                     state.encIdx = state.encIdx + 1
                     processed = processed + 1
                 end
