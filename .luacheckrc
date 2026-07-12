@@ -43,6 +43,7 @@ read_globals = {
     "GetAddOnMetadata", "GetAtlasInfo", "GetMinimapShape",
     "GetBindingKey", "GetBindingAction", "GetCurrentBindingSet", "SaveBindings", "SetBinding",
     "GetNumBindings", "GetBinding",
+    "GetBuildInfo",
     "GetCategoryInfo", "GetPlayerFacing",
     "SetPortraitTexture", "ShowUIPanel", "HideUIPanel", "ToggleWorldMap", "ToggleDropDownMenu",
     "InterfaceOptions_AddCategory", "InCombatLockdown",

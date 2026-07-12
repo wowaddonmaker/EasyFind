@@ -5,6 +5,7 @@ local Providers = ns.SearchProviders
 local Utils = ns.Utils
 
 local slower = Utils.slower
+local sfind = Utils.sfind
 local CreateFrame = CreateFrame
 local wipe = wipe
 local band = bit.band
@@ -135,6 +136,175 @@ local function GetOrCreateAchievementEntry(id, name, icon, knownGuildAchievement
     return entry
 end
 
+-- Fallback for a broken client search registry. Achievements and
+-- statistics share one C-side search index; opening the Statistics view
+-- and then /reloading leaves that index returning zero filtered results
+-- for the rest of the client session (client bug, heals only on full
+-- client restart; SetAchievementSearchString("") does not revive it).
+-- Direct category enumeration keeps working in that state, so when
+-- Blizzard's search returns nothing while achievements provably exist,
+-- we build our own name index once (staggered) and serve from it.
+local fallbackIndex
+local fallbackBuilding = false
+
+-- The index persists in SavedVariables keyed to the client build:
+-- healthy sessions enumerate fast and pay the build once per patch;
+-- broken sessions (where enumeration itself runs ~1ms per call) hydrate
+-- from disk instantly instead of trickling for many seconds.
+local ACH_INDEX_VER = 1
+
+local function ClientBuildKey()
+    local version, build = GetBuildInfo()
+    return tostring(version) .. "-" .. tostring(build)
+end
+
+local function PersistFallbackIndex(rows)
+    local db = EasyFind and EasyFind.db
+    if not db then return end
+    local stored = {}
+    for i = 1, #rows do
+        local row = rows[i]
+        stored[i] = {
+            id = row.id, name = row.name, icon = row.icon,
+            isGuild = row.isGuild, completed = row.completed,
+        }
+    end
+    db.achievementIndex = { version = ACH_INDEX_VER, build = ClientBuildKey(), rows = stored }
+end
+
+local function TryHydrateFallbackIndex()
+    if fallbackIndex then return true end
+    local db = EasyFind and EasyFind.db
+    local saved = db and db.achievementIndex
+    if type(saved) ~= "table" or saved.version ~= ACH_INDEX_VER
+       or saved.build ~= ClientBuildKey() or type(saved.rows) ~= "table"
+       or #saved.rows == 0 then
+        return false
+    end
+    local rows = {}
+    for i = 1, #saved.rows do
+        local raw = saved.rows[i]
+        if type(raw) == "table" and raw.id and raw.name then
+            rows[#rows + 1] = {
+                id = raw.id, name = raw.name, nameLower = slower(raw.name),
+                icon = raw.icon, isGuild = raw.isGuild, completed = raw.completed,
+            }
+        end
+    end
+    if #rows == 0 then return false end
+    fallbackIndex = rows
+    return true
+end
+
+local function ClientHasAchievements()
+    local getList = _G["GetCategoryList"]
+    local getNum = _G["GetCategoryNumAchievements"]
+    if not getList or not getNum then return false end
+    local cats = getList()
+    if not cats then return false end
+    for i = 1, #cats do
+        local total = getNum(cats[i])
+        if total and total > 0 then return true end
+    end
+    return false
+end
+
+local function RefreshOpenQuery(expectedQuery)
+    local eb = Search:GetSearchFrame() and Search:GetSearchFrame().editBox
+    if not eb then return end
+    -- Compare against the typed prefix (cursor-position cut), not the
+    -- full editbox text: the autocomplete suffix is selected past the
+    -- cursor and would make the full text mismatch.
+    local full = eb:GetText() or ""
+    local cursor = eb:GetCursorPosition() or #full
+    local typedPrefix = strtrim(full:sub(1, cursor))
+    if not expectedQuery or typedPrefix == expectedQuery then
+        Search:OnSearchTextChanged(typedPrefix, true)
+    end
+end
+
+local function BuildFallbackIndex()
+    if fallbackIndex or fallbackBuilding then return end
+    local getList = _G["GetCategoryList"]
+    local getNum = _G["GetCategoryNumAchievements"]
+    local getInfo = _G["GetAchievementInfo"]
+    if not getList or not getNum or not getInfo then return end
+    local cats = getList()
+    if not cats then return end
+    fallbackBuilding = true
+    local database = ns.Database
+    local rows = {}
+    local catIdx, achIdx = 1, 1
+    -- Hard time budget per frame, not a row count: in the broken client
+    -- state the enumeration calls themselves can be pathologically slow,
+    -- and a fixed batch size would turn "cheap batch" into a sub-2fps
+    -- lockup. Same pattern as the boss scanner.
+    local budgetMs = 4
+    local function step()
+        local start = debugprofilestop and debugprofilestop() or 0
+        local processed = 0
+        while catIdx <= #cats do
+            local catID = cats[catIdx]
+            local total = getNum(catID) or 0
+            while achIdx <= total do
+                local ok, id, name, _, completed, _, _, _, _, _, icon, _, isGuild =
+                    pcall(getInfo, catID, achIdx)
+                if ok and id and name and name ~= ""
+                   and not (database and database.IsStatisticAchievement
+                            and database:IsStatisticAchievement(id)) then
+                    rows[#rows + 1] = {
+                        id = id, name = name, nameLower = slower(name),
+                        icon = icon, isGuild = isGuild, completed = completed,
+                    }
+                end
+                achIdx = achIdx + 1
+                processed = processed + 1
+                if (debugprofilestop and (debugprofilestop() - start) >= budgetMs)
+                   or (not debugprofilestop and processed >= 50) then
+                    Utils.SafeAfter(0, step)
+                    return
+                end
+            end
+            catIdx = catIdx + 1
+            achIdx = 1
+        end
+        fallbackIndex = rows
+        fallbackBuilding = false
+        PersistFallbackIndex(rows)
+        RefreshOpenQuery(nil)
+    end
+    Utils.SafeAfter(0, step)
+end
+
+local function CollectFallbackResults(query, mode)
+    local results = {}
+    local queryLower = slower(query or "")
+    if queryLower == "" then return results end
+    for i = 1, #fallbackIndex do
+        local row = fallbackIndex[i]
+        if sfind(row.nameLower, queryLower, 1, true)
+           and AchievementPassesFilter(row.completed, mode) then
+            results[#results + 1] = GetOrCreateAchievementEntry(row.id, row.name, row.icon, row.isGuild)
+            if #results >= ACH_MAX_RESULTS then break end
+        end
+    end
+    return results
+end
+
+-- Empty Blizzard results are only trusted once the fallback can vouch
+-- for them: a stuck index returns zero for every query, so the first
+-- empty answer hydrates or builds our own index instead of writing the
+-- cache, and later empties are re-checked against it.
+local function ResolveEmptySearchResults(query, mode)
+    if fallbackIndex or TryHydrateFallbackIndex() then
+        return CollectFallbackResults(query, mode)
+    end
+    if not fallbackBuilding and ClientHasAchievements() then
+        BuildFallbackIndex()
+    end
+    return nil
+end
+
 local function CollectAchievementSearchResults(query, mode)
     SyncAchievementSearchStatsVersion()
     mode = mode or GetAchievementFilterMode()
@@ -166,9 +336,20 @@ local function EnsureAchievementSearchListener()
     achSearchListener = CreateFrame("Frame")
     achSearchListener:RegisterEvent("ACHIEVEMENT_SEARCH_UPDATED")
     achSearchListener:RegisterEvent("ACHIEVEMENT_EARNED")
-    achSearchListener:SetScript("OnEvent", function(_, event)
+    achSearchListener:SetScript("OnEvent", function(_, event, earnedID)
         if event == "ACHIEVEMENT_EARNED" then
             wipe(achSearchCache)
+            -- Update in place: dropping the index would force a full
+            -- rebuild, which trickles for many seconds when the client's
+            -- enumeration path is in its broken state.
+            if fallbackIndex and earnedID then
+                for i = 1, #fallbackIndex do
+                    if fallbackIndex[i].id == earnedID then
+                        fallbackIndex[i].completed = true
+                        break
+                    end
+                end
+            end
             return
         end
         local pending = achSearchPending
@@ -176,18 +357,18 @@ local function EnsureAchievementSearchListener()
         achSearchPending = nil
         achSearchCurrentQuery = pending.query
         local results = CollectAchievementSearchResults(pending.query, pending.mode)
-        if results then achSearchCache[pending.key] = results end
-        local eb = Search:GetSearchFrame() and Search:GetSearchFrame().editBox
-        if eb then
-            -- Compare against the typed prefix (cursor-position cut),
-            -- not the full editbox text. The autocomplete suffix is
-            -- selected past the cursor and would make full text != pending.
-            local full = eb:GetText() or ""
-            local cursor = eb:GetCursorPosition() or #full
-            local typedPrefix = strtrim(full:sub(1, cursor))
-            if typedPrefix == pending.query then
-                Search:OnSearchTextChanged(typedPrefix, true)
-            end
+        if results and #results == 0 then
+            results = ResolveEmptySearchResults(pending.query, pending.mode)
+        end
+        -- Only refresh when there is something new to render. A nil here
+        -- means the empty answer was distrusted and the fallback index is
+        -- still building; refreshing anyway would re-run the search, which
+        -- re-arms SetAchievementSearchString, which fires this event again:
+        -- a full search pass per frame until the build lands. The build's
+        -- completion callback does the one refresh that matters.
+        if results then
+            achSearchCache[pending.key] = results
+            RefreshOpenQuery(pending.query)
         end
     end)
 end
@@ -196,12 +377,23 @@ function Providers:RequestAchievementSearch(query)
     if not query or #query < 2 then return nil end
     SyncAchievementSearchStatsVersion()
 
+    -- Arm the fallback proactively: hydrate the persisted index, or in a
+    -- session with no valid cache start the background build now, while
+    -- enumeration is (usually) healthy and cheap. Users then carry a
+    -- ready index into any future broken session.
+    if not fallbackIndex and not fallbackBuilding and not TryHydrateFallbackIndex() then
+        BuildFallbackIndex()
+    end
+
     local mode = GetAchievementFilterMode()
     local cacheKey = AchievementSearchCacheKey(query, mode)
     local cached = achSearchCache[cacheKey]
     if cached then return cached end
     if achSearchCurrentQuery == query then
         local results = CollectAchievementSearchResults(query, mode)
+        if results and #results == 0 then
+            results = ResolveEmptySearchResults(query, mode)
+        end
         if results then
             achSearchCache[cacheKey] = results
             return results
