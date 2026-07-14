@@ -1894,20 +1894,31 @@ local function CreateSearchBox(parent)
         if currentQuery ~= restoredText then MapTab:RunSearch(restoredText or "") end
     end)
 
-    Utils.AttachAutocomplete(editBox, {
-        findCandidate = FindPrefixCandidate,
-        onTypedChanged = function(self, typed, _, grew)
+    local locale = GetLocale and GetLocale()
+    local imeSafeAutocomplete = locale ~= "zhCN" and locale ~= "zhTW"
+    if imeSafeAutocomplete then
+        Utils.AttachAutocomplete(editBox, {
+            findCandidate = FindPrefixCandidate,
+            onTypedChanged = function(self, typed, _, grew)
+                lastTypeTime = GetTime()
+                UpdateClear(self)
+                SchedulePendingSearch(self, typed, grew)
+            end,
+            onAccepted = function(text, source)
+                if text and text ~= "" then MapTab:RunSearch(text) end
+                if source ~= "right" and source ~= "alt-l" and source ~= "click" then
+                    MapTab:PushRecentSearch(text)
+                end
+            end,
+        })
+    else
+        editBox:HookScript("OnTextChanged", function(self)
+            local typed = self:GetText() or ""
             lastTypeTime = GetTime()
             UpdateClear(self)
-            SchedulePendingSearch(self, typed, grew)
-        end,
-        onAccepted = function(text, source)
-            if text and text ~= "" then MapTab:RunSearch(text) end
-            if source ~= "right" and source ~= "alt-l" and source ~= "click" then
-                MapTab:PushRecentSearch(text)
-            end
-        end,
-    })
+            SchedulePendingSearch(self, typed, false)
+        end)
+    end
     editBox:HookScript("OnEditFocusGained", UpdateClear)
     editBox:HookScript("OnEditFocusLost", function(self)
         UpdateClear(self)
