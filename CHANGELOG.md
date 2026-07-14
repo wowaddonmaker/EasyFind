@@ -4,6 +4,27 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [2.1.2] - 2026-07-14
+
+### Added
+- **Themes**: choose how EasyFind looks from a set of themes, picked during setup and changeable at any time from the options menu
+- **Blacklist**: right-click any result and choose Blacklist to keep it out of every search; manage and restore blacklisted results from the new Blacklist tab in the options menu
+- **Icon visibility**: choose whether results show all icons, general icons only, or specific icons only
+- **Rooms filter**: hide rooms from housing results, since rooms can't be opened from the housing dashboard
+- **Shortkey import**: importing shortkeys that clash with existing ones now lets you replace or skip each one (or apply your choice to all), and warns you when an imported shortkey binds a system command
+
+### Changed
+- **Search window opacity**: can now be lowered all the way to 50%
+
+### Fixed
+- **Window border**: borders no longer reactivate when they aren't enabled
+- **Mount and toy guides**: searching for a mount or toy now walks you to it in the Mount Journal or Toy Box
+- **Chat frame toggle**: no longer shows an Alt-click settings hint for a menu it doesn't have
+- **Achievements**: no longer disappear from search when the game's achievement search stops responding mid-session
+- **Adventure Guide bosses**: no longer listed more than once when the same boss appears in several tiers
+
+---
+
 ## [2.1.1] - 2026-07-11
 
 ### Added

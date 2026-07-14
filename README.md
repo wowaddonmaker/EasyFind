@@ -46,6 +46,7 @@ Search from the world map with nested results built for location-first browsing:
     - **Pin**: Keep it visible before typing.
     - **Shortkey**: Bind a key that opens or uses the result instantly, without opening the search bar or taking up action bar slots.
     - **Add Alias**: Add your own search terms. Aliases are shared between normal search and map search where applicable.
+    - **Blacklist**: Keep a result out of every search. Restore it any time from the Blacklist tab in the options menu.
   - On most results:
     - **Guide**: Walk to the result with step-by-step highlights.
     - **Send link**: Share a clickable link in chat (Say, Yell, Party, Instance, Raid, Guild, a whisper, or a link box you can shift-click into any chat message).
@@ -67,6 +68,7 @@ Search from the world map with nested results built for location-first browsing:
 
 Configure:
 
+- Themes, window opacity, icon visibility (all, general only, or specific only), and the blacklist.
 - Search behavior, visibility mode (auto-hide, hover show, or always show with combat options), result placement, visible row count, window border, fonts and font size, and Alt+number hints.
 - Map Search behavior, map pins, icon sizing, tracking, recent searches, and result categories.
 - Aliases, keybindings, indicator style/color, search window sizing, and reset tools.
