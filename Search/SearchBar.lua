@@ -854,57 +854,61 @@ function Search:CreateSearchFrame()
         return s
     end
 
-    Utils.AttachAutocomplete(editBox, {
-        findCandidate = function(typed)
-            if not typed or typed == "" then return nil end
-            local lower = typed:lower()
-            for i = 1, MAX_BUTTON_POOL do
-                local row = resultButtons[i]
-                if not row or not row:IsShown() then break end
-                local quickDef = row.data and row.data.quickFilterDef
-                local quickToken = quickDef and Filters:GetQuickFilterCompletionToken(quickDef, typed)
-                if quickToken then
-                    return quickToken
-                end
-                local rawName = row.data and row.data.name
-                local nm = StripMarkup(rawName)
-                if nm and #nm >= #typed then
-                    local prefix = nm:sub(1, #typed):lower()
-                    if prefix == lower and nm:lower() ~= lower then
-                        return nm
+    local locale = GetLocale and GetLocale()
+    local imeSafeAutocomplete = locale ~= "zhCN" and locale ~= "zhTW"
+    if imeSafeAutocomplete then
+        Utils.AttachAutocomplete(editBox, {
+            findCandidate = function(typed)
+                if not typed or typed == "" then return nil end
+                local lower = typed:lower()
+                for i = 1, MAX_BUTTON_POOL do
+                    local row = resultButtons[i]
+                    if not row or not row:IsShown() then break end
+                    local quickDef = row.data and row.data.quickFilterDef
+                    local quickToken = quickDef and Filters:GetQuickFilterCompletionToken(quickDef, typed)
+                    if quickToken then
+                        return quickToken
+                    end
+                    local rawName = row.data and row.data.name
+                    local nm = StripMarkup(rawName)
+                    if nm and #nm >= #typed then
+                        local prefix = nm:sub(1, #typed):lower()
+                        if prefix == lower and nm:lower() ~= lower then
+                            return nm
+                        end
                     end
                 end
-            end
-            return nil
-        end,
-        backspaceAutocompleteTarget = function(_, typed)
-            if not Filters:IsQuickFilterSuggestionsActive() or not typed then return nil end
-            if not typed:match("^%s*@[%w_%-:]*$") then return nil end
-            local text = typed:sub(1, -2)
-            return text, #text
-        end,
-        onBackspaceAutocompleteRestored = function(box, text)
-            if box and box.placeholder then
-                box.placeholder:SetShown((box:GetText() or "") == "")
-            end
-            if box and box.ResetPendingSearch then
-                box:ResetPendingSearch()
-            end
-            if box and Filters:UpdateQuickFilterSuggestions(box) then
-                return
-            end
-            Search:OnSearchTextChanged(text or "", true)
-        end,
-        onAccepted = function(text)
-            if text and text ~= "" then
-                local box = searchFrame and searchFrame.editBox
-                if box and text:match("^%s*@[%w_%-:]+$") and Filters:UpdateQuickFilterSuggestions(box) then
+                return nil
+            end,
+            backspaceAutocompleteTarget = function(_, typed)
+                if not Filters:IsQuickFilterSuggestionsActive() or not typed then return nil end
+                if not typed:match("^%s*@[%w_%-:]*$") then return nil end
+                local text = typed:sub(1, -2)
+                return text, #text
+            end,
+            onBackspaceAutocompleteRestored = function(box, text)
+                if box and box.placeholder then
+                    box.placeholder:SetShown((box:GetText() or "") == "")
+                end
+                if box and box.ResetPendingSearch then
+                    box:ResetPendingSearch()
+                end
+                if box and Filters:UpdateQuickFilterSuggestions(box) then
                     return
                 end
-                Search:OnSearchTextChanged(text, true)
-            end
-        end,
-    })
+                Search:OnSearchTextChanged(text or "", true)
+            end,
+            onAccepted = function(text)
+                if text and text ~= "" then
+                    local box = searchFrame and searchFrame.editBox
+                    if box and text:match("^%s*@[%w_%-:]+$") and Filters:UpdateQuickFilterSuggestions(box) then
+                        return
+                    end
+                    Search:OnSearchTextChanged(text, true)
+                end
+            end,
+        })
+    end
 
     -- Shift+click link insertion: when the search bar has focus, shift-clicking
     -- an item in bags / an achievement in the achievement frame / a spell in
