@@ -8,8 +8,6 @@ local CreateFrame = CreateFrame
 local UIParent = UIParent
 local C_HousingCatalog = C_HousingCatalog
 
-local CHEVRON_ATLAS = "common-icon-forwardarrow"
-
 -- Sort By options. Values from Enum.HousingCatalogSortType (DateAdded, then
 -- Alphabetical); labels from crawl-verified globals (the chest sort strings
 -- carry the same "Date Added"/"Alphabetical" text the catalog menu shows).
@@ -106,7 +104,7 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
     end
 
     -- A top-level checkbox row on the root popup, bound to a db boolean key.
-    local function CheckboxRow(dbKey, label)
+    local function CheckboxRow(dbKey, label, applyFn)
         local r = CreateFrame("CheckButton", nil, root)
         r:SetSize(100, ROW_H)
         r:SetHitRectInsets(0, 0, 0, 0)
@@ -120,7 +118,7 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
         r._dbKey = dbKey
         r:SetScript("OnClick", function(self)
             EasyFind.db[dbKey] = self:GetChecked() and true or false
-            ApplyHousingChange()
+            (applyFn or ApplyHousingChange)()
         end)
         r.Sync = function() r:SetChecked(EasyFind.db[dbKey] == true) end
         return r
@@ -135,10 +133,9 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
         fs:SetPoint("LEFT", 6, 0)
         r._label = fs
         local chev = r:CreateTexture(nil, "OVERLAY")
-        chev:SetAtlas(CHEVRON_ATLAS)
+        Utils.SetChevronTexture(chev)
         chev:SetSize(CHECK - 2, CHECK - 2)
         chev:SetPoint("RIGHT", -4, 0)
-        chev:SetVertexColor(0.85, 0.85, 0.85, 1)
         r._chev = chev
         fs:SetText(label)
         Utils.InstallMenuRowHighlight(r)
@@ -337,6 +334,17 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
             }
         end)
 
+    -- Room shells (Enum.HousingCatalogEntryType.Room) are owned but can't be
+    -- opened from the decor catalog, so they're hidden by default. This toggle
+    -- filters EasyFind-side (not a Blizzard catalog filter): it resets the search
+    -- cache and re-renders rather than re-running the server catalog search.
+    local roomsRow = CheckboxRow("housingShowRooms",
+        _G["HOUSING_ITEM_TOAST_TYPE_ROOM"] or "Rooms",
+        function()
+            if ns.Database and ns.Database.ResetSearchCache then ns.Database:ResetSearchCache() end
+            if ns.Search and ns.Search.RefreshResults then ns.Search:RefreshResults() end
+        end)
+
     -- ---- Tag-group submenus (Theme/Expansion/Style/Culture/Size), pooled so the
     -- set adapts to whatever GetAllFilterTagGroups returns once the catalog loads.
     local tagOpenerPool = {}
@@ -406,7 +414,7 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
     end
 
     -- ---- Root layout + sync ----
-    local fixedOpeners = { sortOpener, dyeableRow, bonusRow, collectionOpener, placeableOpener }
+    local fixedOpeners = { sortOpener, dyeableRow, bonusRow, collectionOpener, placeableOpener, roomsRow }
 
     -- Blizzard's menu splits Sort By, the fixed filters, and the tag groups
     -- with thin separator lines; mirror both.
@@ -415,10 +423,13 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
         local sep = root:CreateTexture(nil, "ARTWORK")
         sep:SetColorTexture(1, 1, 1, 0.12)
         sep:SetHeight(1)
+        root._efThemeSeps = root._efThemeSeps or {}
+        root._efThemeSeps[#root._efThemeSeps + 1] = sep
         return sep
     end
     local sortSep = NewSeparator()
     local tagSep = NewSeparator()
+    ns.RetintMenuSeparators(root)
 
     local function LayoutRoot()
         local groups = FilterTagGroups()
@@ -447,6 +458,7 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
         place(bonusRow)
         place(collectionOpener)
         place(placeableOpener)
+        place(roomsRow)
         if #groups > 0 then
             placeSep(tagSep)
         else
@@ -467,6 +479,7 @@ function Filters:AttachHousingOptionsFlyout(row, dropdown, ctx)
         local chainEnabled = EasyFind.db.uiSearchFilters.housing ~= false
         dyeableRow.Sync()
         bonusRow.Sync()
+        roomsRow.Sync()
         for _, r in ipairs(fixedOpeners) do Utils.SetFlyoutRowEnabled(r, chainEnabled) end
         for i = 1, #tagOpenerPool do Utils.SetFlyoutRowEnabled(tagOpenerPool[i], chainEnabled) end
     end

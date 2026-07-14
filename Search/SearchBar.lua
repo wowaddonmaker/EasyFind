@@ -405,7 +405,6 @@ function Search:CreateSearchFrame()
     ns.CreateRoundedRectBorder(containerFrame)
     ns.CreateRoundedRectDivider(containerFrame)
     ns.SetRoundedRectBarHeight(containerFrame, searchFrame:GetHeight())
-    ns.SetRoundedRectRingShown(containerFrame, EasyFind.db.windowBorder ~= false)
     self:ApplySearchWindowFill(containerFrame)
 
     -- Sibling-of-searchFrame so the container's textures sit BEHIND
@@ -426,7 +425,13 @@ function Search:CreateSearchFrame()
     -- above) so anything that pokes searchFrame.searchBorder
     -- doesn't crash, but the textures stay invisible.
     ns.SetSearchBorderShown(searchFrame, false)
+    -- Fill on, then ring per the user's border setting. BorderShown shows
+    -- fill AND ring, so the ring re-apply MUST come after it: this pair
+    -- being ordered the other way around (ring first, panel-on later)
+    -- silently re-showed the border for borderless users on every reload
+    -- until any options resync ran.
     ns.SetRoundedRectBorderShown(containerFrame, true)
+    ns.SetRoundedRectRingShown(containerFrame, EasyFind.db.windowBorder ~= false)
     ns.SetRoundedRectBorderBgAlpha(containerFrame, ns.GetSearchWindowAlpha())
 
     -- Static magnifying-glass icon (non-interactive, flush left)
@@ -935,7 +940,7 @@ function Search:CreateSearchFrame()
     filterArrow:SetPoint("CENTER")
     -- Custom flat triangle (textures/filter-arrow.tga) rather than a cropped
     -- Blizzard texture, so it stays crisp at higher search scales.
-    filterArrow:SetTexture("Interface\\AddOns\\EasyFind\\textures\\filter-arrow")
+    filterArrow:SetTexture(ns.FILTER_ARROW_TEX)
     filterArrow:SetBlendMode("ADD")
     filterArrow:SetVertexColor(1, 1, 1)
     filterBtn.arrow = filterArrow
@@ -1339,6 +1344,7 @@ function Search:CreateSearchFrame()
     tbHL:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
     tbHL:SetBlendMode("ADD")
     tbHL:SetVertexColor(Utils.RGB(GOLD_COLOR, 0.5))
+    toolbarHighlight.tex = tbHL
 
     local TOOLBAR_CONTROLS = { filterBtn }
     local function GetToolbarControls()
@@ -2376,6 +2382,73 @@ function Search:UpdateFontSize()
     local theme = Results:GetActiveTheme()
     local WHITE8x8 = "Interface\\BUTTONS\\WHITE8x8"
     local alpha = ns.GetSearchWindowAlpha()
+    -- Input text follows the theme's primary text color; the EditBox
+    -- default is white, which vanishes on the light palettes. Shadow off
+    -- on light fills (dark shadow under dark text reads as smearing).
+    if searchFrame.editBox then
+        searchFrame.editBox:SetTextColor(unpack(theme.leafColor))
+        searchFrame.editBox:SetShadowColor(0, 0, 0, theme.lightTheme and 0 or 1)
+        -- Placeholder ("Type to search...") sits between the fill and the
+        -- main text color per theme, never a fixed neutral gray.
+        if searchFrame.editBox.placeholder and theme.textFaint then
+            searchFrame.editBox.placeholder:SetTextColor(theme.textFaint[1], theme.textFaint[2], theme.textFaint[3], 1)
+        end
+    end
+    -- Chrome glyphs (spyglass, filter arrow) flip polarity with the theme;
+    -- content icons (ability art, category icons) are never tinted. The
+    -- arrow's ADD blend washes out on light fills, so it blends normally
+    -- there.
+    local glyph = theme.chromeGlyph
+    if glyph then
+        if searchFrame.searchIcon then
+            searchFrame.searchIcon:SetVertexColor(glyph[1], glyph[2], glyph[3], 1)
+        end
+        local filterBtn = searchFrame.filterBtn
+        if filterBtn and filterBtn.arrow then
+            filterBtn.arrow:SetVertexColor(glyph[1], glyph[2], glyph[3], 1)
+            filterBtn.arrow:SetBlendMode(theme.lightTheme and "BLEND" or "ADD")
+        end
+        -- Toolbar focus ring (the circle around the filter button): gold
+        -- ADD glow on dark themes; light themes tint it with their main
+        -- text color and blend normally (ADD cannot darken a light fill).
+        local tbTex = searchFrame.toolbarHighlight and searchFrame.toolbarHighlight.tex
+        if tbTex then
+            if theme.lightTheme then
+                tbTex:SetBlendMode("BLEND")
+                tbTex:SetVertexColor(theme.leafColor[1], theme.leafColor[2], theme.leafColor[3], 0.35)
+            else
+                tbTex:SetBlendMode("ADD")
+                tbTex:SetVertexColor(Utils.RGB(GOLD_COLOR, 0.5))
+            end
+        end
+        -- Filter-button hover chrome: the perimeter ring follows the
+        -- palette accent (classic gold on Black), the inner disc the live
+        -- window fill, and the hover glow swaps its baked blue art for a
+        -- lightened fill disc on light themes (vertex tint can only
+        -- darken, never lighten, the baked blue).
+        if filterBtn and filterBtn.ringDisc then
+            -- Dark themes keep the classic gold ring as shipped; the
+            -- palette accent only replaces it on light themes (Black's
+            -- accent is a muted amber tuned for indents, not chrome).
+            local pal = ns.ACTIVE_UI_PALETTE
+            local accent = (pal and pal.light and pal.accent) or GOLD_COLOR
+            filterBtn.ringDisc:SetColorTexture(accent[1], accent[2], accent[3], 1)
+            local windowFill = ns.SEARCH_WINDOW_FILL_COLOR
+            filterBtn.ringInner:SetColorTexture(windowFill[1], windowFill[2], windowFill[3], 1)
+            if filterBtn.btnBg then
+                if theme.lightTheme then
+                    filterBtn.btnBg:SetTexture("Interface\\AddOns\\EasyFind\\textures\\FilterButtonCircle")
+                    filterBtn.btnBg:SetVertexColor(
+                        mmin(1, windowFill[1] * 1.12),
+                        mmin(1, windowFill[2] * 1.12),
+                        mmin(1, windowFill[3] * 1.12), 0.95)
+                else
+                    filterBtn.btnBg:SetTexture("Interface\\AddOns\\EasyFind\\textures\\filter-glow")
+                    filterBtn.btnBg:SetVertexColor(1, 1, 1, 1)
+                end
+            end
+        end
+    end
     if theme.searchBarRounded then
         searchFrame:SetBackdrop(nil)
         if containerFrame then

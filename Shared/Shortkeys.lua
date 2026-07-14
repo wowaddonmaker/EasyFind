@@ -121,14 +121,21 @@ end
 -- Live rows still win at bind/click time, keeping drifting fields (macroIndex)
 -- fresh whenever the provider happens to be loaded.
 --
--- SNAPSHOT_VER stamps each capture. Bump it whenever the persisted field set
--- grows: a stamped-older snapshot still binds (the key is never dead) but
--- ApplyAll pulls its owner in once so the entry re-captures with the current
--- fields. Without this, a snapshot missing a newer action field (e.g. a
--- settings row without settingVariable) would misbehave forever.
--- v3: isSpellbookOnly joined the stored fields (it drives the secure
--- panel-open classification; without it a spellbook-only ability snapshot
--- looks castable and binds a cast that silently no-ops).
+-- SNAPSHOT_VER stamps each capture. Bumping it is almost never needed and is NOT
+-- free, so avoid it: ApplyAll already re-captures a shortkey's snapshot whenever
+-- its live row resolves (the "Live row resolved" branch below), regardless of
+-- version. A snapshot therefore picks up newly-persisted fields for free the next
+-- time its provider loads -- which every auto-loading category does each reload
+-- (eager titles/gearSets, deferred mounts/toys/talents, async appearances). A
+-- bump only helps a category whose provider never auto-loads, and it costs a real
+-- reload hit: it marks every existing shortkey stale, so _hasUnresolved stays set
+-- and ApplyAll re-passes (each rebuilding the key index) run through the whole
+-- provider-load window. That is the lever that spiked reload CPU before -- do not
+-- bump to roll out a new persisted field; let re-capture-on-resolve heal it.
+-- v3: isSpellbookOnly (secure panel-open classification). The later field
+-- additions (title/gearSet/talent/appearance IDs, mount summonability, toybox
+-- flag, map coords, bindingAction/customToggle) were added WITHOUT a bump for
+-- exactly this reason.
 local SNAPSHOT_VER = 3
 local function SnapshotData(data)
     local clean = ns.UIPins and ns.UIPins.CleanForStorage
@@ -379,13 +386,15 @@ function Shortkeys:ApplyAll()
             info.dataVer = info.data and SNAPSHOT_VER or nil
         else
             -- Provider not loaded: bind straight from the stored snapshot. A
-            -- snapshot stamped by an older field set still binds, but pull its
-            -- owner in and flag a re-pass (ReapplyIfPending only rebinds when
-            -- something is pending) so the entry re-captures current fields.
+            -- snapshot stamped by an older field set still binds; flag a re-pass
+            -- (ReapplyIfPending only rebinds when something is pending) so it
+            -- re-captures current fields once its provider loads on its own --
+            -- the login eager/deferred batch, or the user searching that
+            -- category. Deliberately does NOT force-load here: pulling every
+            -- stale shortkey's provider in at reload was a CPU avalanche.
             data = info.data
             if data and info.dataVer ~= SNAPSHOT_VER then
                 hadUnresolved = true
-                RequestProviderForRowKey(rowKey)
             end
         end
         if data and bindKey and bindKey ~= "" then
@@ -455,7 +464,7 @@ local function CommitShortkey(rowKey, name, charSpecific, combo, data)
     local eb = sf and sf.editBox
     local typedQuery = ns.Search.GetTypedQuery and ns.Search:GetTypedQuery() or (eb and eb:GetText()) or ""
     if typedQuery ~= "" then ns.Search:OnSearchTextChanged(typedQuery) end
-    if ns.RefreshShortkeyTable then ns.RefreshShortkeyTable() end
+    if ns.RefreshBindTables then ns.RefreshBindTables() end
 end
 
 -- "Continue anyway?" confirmation with a "Don't ask me again" checkbox that
@@ -597,7 +606,7 @@ local function BuildCapturePopup()
         if button == "RightButton" then
             if f.rowKey then Shortkeys:Remove(f.rowKey) end
             StopCapture(f)
-            if ns.RefreshShortkeyTable then ns.RefreshShortkeyTable() end
+            if ns.RefreshBindTables then ns.RefreshBindTables() end
             return
         end
         if f.capturing then StopCapture(f) else StartCapture(f) end
@@ -707,13 +716,26 @@ function Shortkeys:ExportList()
     return out
 end
 
-function Shortkeys:ImportList(list)
+-- True if binding this row would displace something the user already has: the
+-- row already carries a shortkey, or the combo is taken by another row.
+function Shortkeys:ImportWouldOverride(rowKey, combo)
+    if self:Get(rowKey) then return true end
+    local taken = false
+    self:ForEach(function(k, info)
+        if not taken and k ~= rowKey and info.key == combo then taken = true end
+    end)
+    return taken
+end
+
+function Shortkeys:ImportList(list, skipExisting)
     if type(list) ~= "table" then return 0 end
     local n = 0
     for i = 1, #list do
         local r = list[i]
         if r and r.k and r.b and r.b ~= "" then
-            if self:SetByKey(r.k, r.n, r.c, r.b) then n = n + 1 end
+            if not (skipExisting and self:ImportWouldOverride(r.k, r.b)) then
+                if self:SetByKey(r.k, r.n, r.c, r.b) then n = n + 1 end
+            end
         end
     end
     return n
@@ -748,6 +770,20 @@ function Shortkeys:BuildExportString(which)
         parts[#parts + 1] = encS(r.c and "1" or "0")
     end
 
+    -- Third section, appended after the original two so old strings decode
+    -- with zero blacklist entries and old clients ignore the trailing data.
+    local blList = {}
+    if which == "blacklist" and ns.Blacklist and ns.Blacklist.ExportList then
+        blList = ns.Blacklist:ExportList()
+    end
+    parts[#parts + 1] = encS(#blList)
+    for i = 1, #blList do
+        local r = blList[i]
+        parts[#parts + 1] = encS(r.key)
+        parts[#parts + 1] = encS(r.name)
+        parts[#parts + 1] = encS(r.category or "")
+    end
+
     return "EF1!" .. base64enc(table.concat(parts))
 end
 
@@ -758,47 +794,187 @@ function Shortkeys:DecodeString(str)
     local ok, blob = pcall(base64dec, b64)
     if not ok or type(blob) ~= "string" or blob:sub(1, 5) ~= "EFSK1" then return nil end
 
+    -- The counts are attacker-controlled; a huge one would spin the loop even
+    -- after decS runs out of blob. Cap it, and bail each loop the moment a
+    -- field comes back nil (blob exhausted) so a malformed code can't freeze.
+    local MAX_IMPORT_ROWS = 5000
     local pos = 6
     local _, aliasCountStr, skCountStr
     _, pos = decS(blob, pos) -- which marker (unused on import; caller picks)
     aliasCountStr, pos = decS(blob, pos)
     local aliasCount = tonumber(aliasCountStr) or 0
+    if aliasCount > MAX_IMPORT_ROWS then aliasCount = MAX_IMPORT_ROWS end
     local aliases = {}
     for _ = 1, aliasCount do
         local text, key, name
         text, pos = decS(blob, pos)
+        if not text then break end
         key, pos = decS(blob, pos)
         name, pos = decS(blob, pos)
-        if text and key then aliases[#aliases + 1] = { text = text, key = key, name = name } end
+        if key then aliases[#aliases + 1] = { text = text, key = key, name = name } end
     end
 
     skCountStr, pos = decS(blob, pos)
     local skCount = tonumber(skCountStr) or 0
+    if skCount > MAX_IMPORT_ROWS then skCount = MAX_IMPORT_ROWS end
     local shortkeys = {}
     for _ = 1, skCount do
         local k, b, n, c
         k, pos = decS(blob, pos)
+        if not k then break end
         b, pos = decS(blob, pos)
         n, pos = decS(blob, pos)
         c, pos = decS(blob, pos)
-        if k and b then shortkeys[#shortkeys + 1] = { k = k, b = b, n = n, c = (c == "1") } end
+        if b then shortkeys[#shortkeys + 1] = { k = k, b = b, n = n, c = (c == "1") } end
     end
 
-    return { aliases = aliases, shortkeys = shortkeys }
+    local blCountStr
+    blCountStr, pos = decS(blob, pos)
+    local blCount = tonumber(blCountStr) or 0
+    if blCount > MAX_IMPORT_ROWS then blCount = MAX_IMPORT_ROWS end
+    local blacklist = {}
+    for _ = 1, blCount do
+        local key, name, category
+        key, pos = decS(blob, pos)
+        if not key then break end
+        name, pos = decS(blob, pos)
+        category, pos = decS(blob, pos)
+        blacklist[#blacklist + 1] = {
+            key = key, name = name,
+            category = category ~= "" and category or nil,
+        }
+    end
+
+    return { aliases = aliases, shortkeys = shortkeys, blacklist = blacklist }
 end
 
--- Returns aliasCount, shortkeyCount applied, or nil on a bad string.
-function Shortkeys:ApplyImportString(str, which)
+-- Returns the system-command slash a shortkey targets (e.g. "/logout"), or nil.
+-- Command shortkeys store the literal slash as their display name (see
+-- Search/Commands.lua), so match the name against the shared command set.
+local function SystemCommandLabel(name)
+    if type(name) ~= "string" then return nil end
+    local cmds = ns.SYSTEM_COMMANDS
+    if type(cmds) ~= "table" then return nil end
+    local lower = strtrim(name):lower()
+    for i = 1, #cmds do
+        if lower == cmds[i] then return cmds[i] end
+    end
+    return nil
+end
+
+-- Human-readable identity for a conflicting import row, shown in the per-item
+-- replace/skip prompt. Values are the user's own data, never translated.
+local function AliasRowLabel(r)
+    return '"' .. (r.text or "?") .. '"  (' .. (r.name or "?") .. ")"
+end
+
+local function ShortkeyRowLabel(r)
+    return (r.b or "?") .. "  (" .. (r.n or "?") .. ")"
+end
+
+-- Inspect a decoded import against current data without applying it. Returns an
+-- ordered list of conflicts (rows that would replace an existing entry, each
+-- carrying its section and a display label), the new rows grouped by section
+-- (imported unconditionally), and the distinct system commands any imported
+-- shortkey binds (session-disrupting warning). No side effects.
+function Shortkeys:AnalyzeImport(decoded, which)
     which = which or "both"
-    local decoded = self:DecodeString(str)
-    if not decoded then return nil end
-    local na, nk = 0, 0
+    local conflicts = {}
+    local newRows = { aliases = {}, shortkeys = {}, blacklist = {} }
+    local disruptive, seenCmd = {}, {}
+    if type(decoded) ~= "table" then
+        return { conflicts = conflicts, newRows = newRows, disruptive = disruptive }
+    end
+
+    if (which == "alias" or which == "both") and decoded.aliases then
+        for i = 1, #decoded.aliases do
+            local r = decoded.aliases[i]
+            if r and r.text and strtrim(r.text) ~= "" and r.key then
+                if ns.Aliases and ns.Aliases:HasAlias(r.text) then
+                    conflicts[#conflicts + 1] = { section = "aliases", row = r, label = AliasRowLabel(r) }
+                else
+                    newRows.aliases[#newRows.aliases + 1] = r
+                end
+            end
+        end
+    end
+
+    if (which == "shortkey" or which == "both") and decoded.shortkeys then
+        for i = 1, #decoded.shortkeys do
+            local r = decoded.shortkeys[i]
+            if r and r.k and r.b and r.b ~= "" then
+                if self:ImportWouldOverride(r.k, r.b) then
+                    conflicts[#conflicts + 1] = { section = "shortkeys", row = r, label = ShortkeyRowLabel(r) }
+                else
+                    newRows.shortkeys[#newRows.shortkeys + 1] = r
+                end
+                local cmd = SystemCommandLabel(r.n)
+                if cmd and not seenCmd[cmd] then
+                    seenCmd[cmd] = true
+                    disruptive[#disruptive + 1] = cmd
+                end
+            end
+        end
+    end
+
+    if which == "blacklist" and decoded.blacklist then
+        for i = 1, #decoded.blacklist do
+            local r = decoded.blacklist[i]
+            if r and r.key then
+                if ns.Blacklist and ns.Blacklist:Has(r.key) then
+                    conflicts[#conflicts + 1] = { section = "blacklist", row = r, label = r.name or "?" }
+                else
+                    newRows.blacklist[#newRows.blacklist + 1] = r
+                end
+            end
+        end
+    end
+
+    return { conflicts = conflicts, newRows = newRows, disruptive = disruptive }
+end
+
+-- Apply an already-decoded import. skipExisting=true keeps existing rows and
+-- adds only new ones (the "Skip" choice); default overwrites (the "Replace"
+-- choice). Returns aliasCount, shortkeyCount, blacklistCount applied.
+function Shortkeys:ApplyDecoded(decoded, which, skipExisting)
+    if type(decoded) ~= "table" then return nil end
+    which = which or "both"
+    local na, nk, nb = 0, 0, 0
     if (which == "alias" or which == "both") and ns.Aliases and ns.Aliases.ImportList then
-        na = ns.Aliases:ImportList(decoded.aliases)
+        na = ns.Aliases:ImportList(decoded.aliases, skipExisting)
     end
     if which == "shortkey" or which == "both" then
-        nk = self:ImportList(decoded.shortkeys)
+        nk = self:ImportList(decoded.shortkeys, skipExisting)
     end
-    if ns.RefreshShortkeyTable then ns.RefreshShortkeyTable() end
-    return na, nk
+    if which == "blacklist" and ns.Blacklist and ns.Blacklist.ImportList then
+        nb = ns.Blacklist:ImportList(decoded.blacklist, skipExisting)
+    end
+    if ns.RefreshBindTables then ns.RefreshBindTables() end
+    return na, nk, nb
+end
+
+-- Write a resolved import. applySet.{aliases,shortkeys,blacklist} hold the rows
+-- to write (the new rows plus the conflicts the user chose to replace); skipped
+-- conflicts were never added, so this overwrites unconditionally. Returns
+-- aliasCount, shortkeyCount, blacklistCount applied.
+function Shortkeys:ApplyResolvedImport(applySet)
+    if type(applySet) ~= "table" then return 0, 0, 0 end
+    local na, nb = 0, 0
+    if ns.Aliases and ns.Aliases.ImportList then
+        na = ns.Aliases:ImportList(applySet.aliases, false)
+    end
+    local nk = self:ImportList(applySet.shortkeys, false)
+    if ns.Blacklist and ns.Blacklist.ImportList then
+        nb = ns.Blacklist:ImportList(applySet.blacklist, false)
+    end
+    if ns.RefreshBindTables then ns.RefreshBindTables() end
+    return na, nk, nb
+end
+
+-- Returns aliasCount, shortkeyCount, blacklistCount applied, or nil on a
+-- bad string.
+function Shortkeys:ApplyImportString(str, which, skipExisting)
+    local decoded = self:DecodeString(str)
+    if not decoded then return nil end
+    return self:ApplyDecoded(decoded, which, skipExisting)
 end

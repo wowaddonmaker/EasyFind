@@ -27,6 +27,7 @@ function Handlers:PromptForAlias(data)
                 local searchEditBox = searchFrame and searchFrame.editBox
                 local current = searchEditBox and searchEditBox:GetText() or ""
                 if current ~= "" then Search:OnSearchTextChanged(current) end
+                if ns.RefreshBindTables then ns.RefreshBindTables() end
             end
         end,
     })

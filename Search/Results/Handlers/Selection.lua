@@ -111,10 +111,28 @@ function Handlers:SelectResult(data, forceGuide)
         return
     end
 
-    -- Blizzard Settings panel: open the named category directly.
-    -- Both fast and guide modes do the same thing here -- there's no
-    -- multi-step guide to walk for an in-game settings category.
+    -- Blizzard Settings panel. Fast mode opens the named category
+    -- directly; Guide walks the real path (Game Menu -> Options via the
+    -- user's own clicks), then hands the open panel to the settings
+    -- machinery for category/control navigation.
     if data.steps and data.steps[1] and data.steps[1].settingsCategory then
+        if forceGuide then
+            local settingsStep = data.steps[1]
+            EasyFind:StartGuide({
+                name = data.name,
+                steps = {
+                    { buttonFrame = "MainMenuMicroButton" },
+                    { gameMenuText = _G["GAMEMENU_OPTIONS"] or _G["OPTIONS"] or "Options" },
+                    {
+                        waitForFrame = "SettingsPanel",
+                        settingsCategory = settingsStep.settingsCategory,
+                        settingCategoryID = settingsStep.settingCategoryID,
+                        settingVariable = settingsStep.settingVariable,
+                    },
+                },
+            })
+            return
+        end
         if ns.BlizzOptionsSearch then
             ns.BlizzOptionsSearch:HandleStep(data.steps[1])
         end
@@ -131,7 +149,9 @@ function Handlers:SelectResult(data, forceGuide)
     end
 
     -- Housing decor: open the dashboard's catalog tab filtered to the item.
-    if data.housingEntryID then
+    -- Gate on recordID (a plain number the snapshot persists), not the entryID
+    -- table, so a shortkey routes here even when the provider isn't loaded.
+    if data.housingRecordID then
         local guideData = {
             name = data.name,
             steps = {
@@ -249,7 +269,11 @@ function Handlers:SelectResult(data, forceGuide)
             self:OpenMountInJournal(data)
             return
         end
-        if forceGuide or Handlers:IsSourceModifierHeld() or not Icons:IsMountSummonable(data) then
+        if forceGuide then
+            EasyFind:StartGuide(self:BuildMountJournalGuideData(data))
+            return
+        end
+        if Handlers:IsSourceModifierHeld() or not Icons:IsMountSummonable(data) then
             self:OpenMountInJournal(data)
             return
         end
@@ -302,8 +326,9 @@ function Handlers:SelectResult(data, forceGuide)
     -- Toy: default click uses via the SecureActionButton type=toy
     -- attribute. Alt+click and unusable toys route to the ToyBox.
     if data.toyItemID then
-        if data.isToyboxOnly or forceGuide
-           or Handlers:IsSourceModifierHeld() then
+        if forceGuide then
+            EasyFind:StartGuide(self:BuildToyBoxGuideData(data))
+        elseif data.isToyboxOnly or Handlers:IsSourceModifierHeld() then
             self:OpenToyInToyBox(data)
         end
         return
@@ -313,13 +338,23 @@ function Handlers:SelectResult(data, forceGuide)
     -- here (before the generic spellID branch) because talents share the
     -- spellID field with abilities but should never cast.
     if data.category == "Talent" and data.talentNodeID then
-        self:OpenTalentInTalentsTab(data)
+        -- Talent entries already carry the full step chain (micro button
+        -- -> Talents tab -> node); Guide walks it, fast mode drives the
+        -- panel directly.
+        if forceGuide and data.steps then
+            EasyFind:StartGuide(data)
+        else
+            self:OpenTalentInTalentsTab(data)
+        end
         return
     end
 
     if data.spellID then
         if forceGuide or Handlers:IsSourceModifierHeld() or Icons:IsSpellbookOnlyAbility(data) then
-            self:OpenAbilityInSpellbook(data)
+            -- Guide never opens the panel itself: the micro button is
+            -- highlighted for the user's own click, then the reveal
+            -- steers inside the open spellbook.
+            self:OpenAbilityInSpellbook(data, forceGuide)
         end
         return
     end

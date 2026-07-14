@@ -11,6 +11,11 @@ local wipe = wipe
 local tsort = table.sort
 local IsUIItemPinned = ns.UIPins.IsPinned
 
+-- Chat-parser commands (not in SlashCmdList) that EasyFind can bind. Exposed
+-- so the shortkey importer can warn when an imported bind targets one of these
+-- session-disrupting commands (reload / logout / quit family).
+ns.SYSTEM_COMMANDS = { "/reload", "/logout", "/camp", "/quit", "/exit" }
+
 local function GetSearchFrame()
     return Search:GetSearchFrame()
 end
@@ -139,7 +144,7 @@ local function CollectNativeCommandDefs()
     -- macro instead of tripping ADDON_ACTION_FORBIDDEN from an insecure
     -- Logout()/Quit() call. /reload is unprotected but goes the same route for
     -- consistency (macrotext "/reload" reloads exactly like typing it).
-    local SYSTEM_COMMANDS = { "/reload", "/logout", "/camp", "/quit", "/exit" }
+    local SYSTEM_COMMANDS = ns.SYSTEM_COMMANDS
     for i = 1, #SYSTEM_COMMANDS do
         local slash = SYSTEM_COMMANDS[i]
         if not seen[slower(slash)] then

@@ -220,6 +220,25 @@ function Handlers:RevealMountInJournal(data)
     return nil
 end
 
+-- Step-by-step guide to the mount (Guide option): micro button and tab
+-- via the user's own clicks, then the reveal highlights the row. Mirrors
+-- BuildPetJournalGuideData.
+function Handlers:BuildMountJournalGuideData(data)
+    return {
+        name = data.name,
+        steps = {
+            { buttonFrame = "CollectionsMicroButton" },
+            { waitForFrame = "CollectionsJournal", tabIndex = 1 },
+            {
+                waitForFrame = "CollectionsJournal",
+                mountID = data.mountID,
+                spellID = data.spellID,
+                name = data.name,
+            },
+        },
+    }
+end
+
 function Handlers:OpenMountInJournal(data)
     if not (data and data.mountID) then return end
     local highlight = ns.Highlight

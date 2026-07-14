@@ -216,6 +216,24 @@ function Handlers:RevealToyInToyBox(data)
     return nil
 end
 
+-- Step-by-step guide to the toy (Guide option): micro button and tab via
+-- the user's own clicks, then the reveal highlights the tile. Mirrors
+-- BuildPetJournalGuideData.
+function Handlers:BuildToyBoxGuideData(data)
+    return {
+        name = data.name,
+        steps = {
+            { buttonFrame = "CollectionsMicroButton" },
+            { waitForFrame = "CollectionsJournal", tabIndex = 3 },
+            {
+                waitForFrame = "CollectionsJournal",
+                toyItemID = data.toyItemID,
+                name = data.name,
+            },
+        },
+    }
+end
+
 function Handlers:OpenToyInToyBox(data)
     if not data or not data.toyItemID then return end
     local highlight = ns.Highlight

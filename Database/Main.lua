@@ -575,6 +575,27 @@ local MOUNT_PROTO = {
 }
 local MOUNT_MT = { __index = MOUNT_PROTO }
 
+-- mountTypeID is static per mount and read only by the type filter. Memoized so
+-- a repopulate never re-walks the extra API per mount; only ever fetched when a
+-- mount-type filter is actually active (see PopulateDynamicMounts).
+local mountTypeCache = {}
+local mountCacheHydrated = false
+
+-- Lazy mount-type resolver shared by the walk and the cache hydrate. The extra
+-- API is only needed when a mount-type filter is active; the result is static
+-- per mount, so it is memoized and never re-fetched.
+local function ResolveMountTypeID(mountID, typeFilterActive)
+    if not typeFilterActive then return nil end
+    local GetExtra = C_MountJournal and C_MountJournal.GetMountInfoExtraByID
+    if not GetExtra then return nil end
+    local cached = mountTypeCache[mountID]
+    if cached == nil then
+        cached = select(5, GetExtra(mountID)) or false
+        mountTypeCache[mountID] = cached
+    end
+    return cached or nil
+end
+
 local HOUSING_PROTO = {
     keywords      = {"housing", "decor", "decoration", "furniture"},
     keywordsLower = {"housing", "decor", "decoration", "furniture"},
@@ -583,6 +604,10 @@ local HOUSING_PROTO = {
     steps         = {},
 }
 local HOUSING_MT = { __index = HOUSING_PROTO }
+-- Catalog "room shell" entries (Enum.HousingCatalogEntryType.Room) are owned but
+-- not placeable from the decor catalog, so a result for one has nothing to open
+-- to. Flagged per entry so the housing flyout's Room toggle can hide them.
+local HOUSING_ROOM_TYPE = (Enum and Enum.HousingCatalogEntryType and Enum.HousingCatalogEntryType.Room) or 2
 
 local MOUNT_TYPE_GROUND_ONLY = 230
 local MOUNT_TYPE_AMPHIBIOUS = 231
@@ -943,9 +968,11 @@ end
 -- or partial cache. Discarding forces one clean re-scan under the fixed
 -- scan (which now waits for EJ_LOOT_DATA_RECIEVED and refuses to mark
 -- specs complete on unresolved reads).
-ns.LOOT_ITEM_CACHE_VER = 3
-ns.BOSS_CACHE_VER = 2
-ns.STATISTIC_CACHE_VER = 1
+ns.LOOT_ITEM_CACHE_VER = 4 -- 4: rows packed into one string instead of per-row tables
+ns.BOSS_CACHE_VER = 3 -- 3: rows packed into one string instead of per-row tables
+ns.STATISTIC_CACHE_VER = 3 -- 3: path/chain once per category; rows packed into one string
+ns.MOUNT_CACHE_VER = 2 -- 2: rows packed into one string instead of per-row tables
+ns.HOUSING_CACHE_VER = 3 -- 3: isRoom for the Room filter; rows packed into one string
 
 local heavySearchWordLookup
 local function AddHeavySearchWord(word)
@@ -1081,42 +1108,51 @@ local function CopyArray(src)
     return out
 end
 
+-- itemID is carried as a field so the map collapses to a packed array.
+local LOOT_ROW_SPEC = {
+    { "itemID" }, { "name" }, { "icon" },
+    { "lootSlotKw", "list" }, { "lootSourceKw", "list" }, { "lootStatKw", "list" },
+    { "lootItemLinks", "map" }, { "lootSlotName" },
+    { "_cachedSpecs", "list" }, { "_cachedDiffs", "list" }, { "_statsEnriched" },
+    { "encounterID" }, { "instanceID" },
+    { "lootSourceName" }, { "lootInstanceName" }, { "lootSourceType" },
+}
+
 local function HydratePersistedLootCache()
     if lootItemCacheHydrated then return end
     lootItemCacheHydrated = true
     local db = EasyFind and EasyFind.db
     local saved = db and db.lootItemCache
     if type(saved) ~= "table" or db.lootItemCacheVer ~= ns.LOOT_ITEM_CACHE_VER then return end
+    if type(saved.packed) ~= "string" or saved.packed == "" then return end
 
-    local items = saved.items or saved
-    for rawID, raw in pairs(items) do
-        if type(raw) == "table" then
-            local itemID = raw.itemID or tonumber(rawID)
-            local name = raw.name
-            if itemID and name and name ~= "" and raw.encounterID and raw.instanceID then
-                local entry = {
-                    name = name,
-                    nameLower = raw.nameLower or slower(name),
-                    icon = raw.icon,
-                    itemID = itemID,
-                    keywords = EMPTY_KEYWORDS,
-                    lootSlotKw = CopyArray(raw.lootSlotKw),
-                    lootSourceKw = CopyArray(raw.lootSourceKw),
-                    lootStatKw = CopyArray(raw.lootStatKw),
-                    lootItemLinks = type(raw.lootItemLinks) == "table" and Utils.DeepCopy(raw.lootItemLinks) or {},
-                    lootSlotName = raw.lootSlotName,
-                    _cachedSpecs = CopyArray(raw._cachedSpecs),
-                    _cachedDiffs = CopyArray(raw._cachedDiffs),
-                    _statsEnriched = raw._statsEnriched == true,
-                }
-                lootItemCache[itemID] = setmetatable(entry, GetLootEncounterMT(
-                    raw.encounterID,
-                    raw.instanceID,
-                    raw.lootSourceName,
-                    raw.lootInstanceName,
-                    raw.lootSourceType == "Raid"
-                ))
-            end
+    local items = Utils.UnpackRows(saved.packed, LOOT_ROW_SPEC)
+    for i = 1, #items do
+        local raw = items[i]
+        local itemID, name = raw.itemID, raw.name
+        if itemID and name and name ~= "" and raw.encounterID and raw.instanceID then
+            local entry = {
+                name = name,
+                nameLower = slower(name),
+                icon = raw.icon,
+                itemID = itemID,
+                keywords = EMPTY_KEYWORDS,
+                lootSlotKw = raw.lootSlotKw,
+                lootSourceKw = raw.lootSourceKw,
+                lootStatKw = raw.lootStatKw,
+                lootItemLinks = raw.lootItemLinks or {},
+                lootSlotName = raw.lootSlotName,
+                _cachedSpecs = raw._cachedSpecs,
+                _cachedDiffs = raw._cachedDiffs,
+                _statsEnriched = raw._statsEnriched == true,
+            }
+            lootItemCache[itemID] = setmetatable(entry, GetLootEncounterMT(
+                raw.encounterID,
+                raw.instanceID,
+                raw.lootSourceName,
+                raw.lootInstanceName,
+                raw.lootSourceType == "Raid"
+            ))
         end
     end
 
@@ -1131,26 +1167,26 @@ local function PersistLootCache()
     local db = EasyFind and EasyFind.db
     if not db then return end
 
-    local saved = {
-        version = ns.LOOT_ITEM_CACHE_VER,
-        specsScanned = {},
-        items = {},
-    }
+    local specsScanned = {}
     for key in pairs(lootSpecsScanned) do
-        saved.specsScanned[key] = true
+        specsScanned[key] = true
     end
+    -- Rows reference the live entry's own fields directly; PackRows only reads
+    -- them, so no defensive copy is needed on the way out.
+    local rows, n = {}, 0
     for itemID, entry in pairs(lootItemCache) do
-        saved.items[itemID] = {
+        n = n + 1
+        rows[n] = {
             itemID = itemID,
             name = entry.name,
             icon = entry.icon,
-            lootSlotKw = CopyArray(entry.lootSlotKw),
-            lootSourceKw = CopyArray(entry.lootSourceKw),
-            lootStatKw = CopyArray(entry.lootStatKw),
-            lootItemLinks = type(entry.lootItemLinks) == "table" and Utils.DeepCopy(entry.lootItemLinks) or nil,
+            lootSlotKw = entry.lootSlotKw,
+            lootSourceKw = entry.lootSourceKw,
+            lootStatKw = entry.lootStatKw,
+            lootItemLinks = entry.lootItemLinks,
             lootSlotName = entry.lootSlotName,
-            _cachedSpecs = CopyArray(entry._cachedSpecs),
-            _cachedDiffs = CopyArray(entry._cachedDiffs),
+            _cachedSpecs = entry._cachedSpecs,
+            _cachedDiffs = entry._cachedDiffs,
             _statsEnriched = entry._statsEnriched == true,
             encounterID = entry.encounterID,
             instanceID = entry.instanceID,
@@ -1159,7 +1195,11 @@ local function PersistLootCache()
             lootSourceType = entry.lootSourceType,
         }
     end
-    db.lootItemCache = saved
+    db.lootItemCache = {
+        version = ns.LOOT_ITEM_CACHE_VER,
+        specsScanned = specsScanned,
+        packed = Utils.PackRows(rows, LOOT_ROW_SPEC),
+    }
     db.lootItemCacheVer = ns.LOOT_ITEM_CACHE_VER
 end
 
@@ -1406,8 +1446,97 @@ function Database:ResolvePendingStatEnrichment(itemID, success)
     return entry._statsEnriched == true
 end
 
+local function MountTypeFilterActive(db)
+    return db ~= nil and (db.mountTypeGround == false or db.mountTypeFlying == false
+        or db.mountTypeAquatic == false or db.mountTypeRideAlong == false)
+end
+
+-- Builds a live search entry (own copy + metatable) from a raw cache row. The
+-- row itself stays pure data so it can round-trip through SavedVariables; the
+-- volatile filter inputs (nameLower, mountTypeID) live only on the copy.
+local function BuildMountEntry(row, typeFilterActive)
+    return setmetatable({
+        name             = row.name,
+        nameLower        = slower(row.name),
+        icon             = row.icon,
+        mountID          = row.mountID,
+        spellID          = row.spellID,
+        isCollected      = row.isCollected,
+        isUsable         = row.isUsable,
+        shouldHideOnChar = row.shouldHideOnChar,
+        mountSourceType  = row.mountSourceType,
+        mountTypeID      = ResolveMountTypeID(row.mountID, typeFilterActive),
+    }, MOUNT_MT)
+end
+
+-- Persisted mount cache. A walk calls GetMountInfoByID for every mount in the
+-- journal (the bulk of this provider's reload cost). Those results are stable
+-- between logins for a character until a mount is learned, so store the raw
+-- rows and rebuild from them on reload instead of re-walking. Filters run at
+-- hydrate (Lua only, no API), so a filter change re-hydrates without touching
+-- the journal. Character-keyed: isUsable/shouldHideOnChar are class-specific,
+-- so the cache holds one character and re-walks on a GUID mismatch;
+-- NEW_MOUNT_ADDED clears it (Core/Main.lua) so a learned mount forces a walk.
+local MOUNT_ROW_SPEC = {
+    { "name" }, { "icon" }, { "mountID" }, { "spellID" },
+    { "isCollected" }, { "isUsable" }, { "shouldHideOnChar" }, { "mountSourceType" },
+}
+
+local function PersistMountCache(rows, guid)
+    local db = EasyFind and EasyFind.db
+    if not db or not rows then return end
+    db.mountCache = {
+        version = ns.MOUNT_CACHE_VER,
+        guid = guid,
+        packed = Utils.PackRows(rows, MOUNT_ROW_SPEC),
+    }
+    db.mountCacheVer = ns.MOUNT_CACHE_VER
+end
+
+function Database:InvalidateMountCache()
+    local db = EasyFind and EasyFind.db
+    if not db then return end
+    db.mountCache = nil
+    db.mountCacheVer = nil
+end
+
+local function HydratePersistedMountCache()
+    if mountCacheHydrated then return false end
+    mountCacheHydrated = true
+
+    local db = EasyFind and EasyFind.db
+    local saved = db and db.mountCache
+    if type(saved) ~= "table" or db.mountCacheVer ~= ns.MOUNT_CACHE_VER then
+        return false
+    end
+    if saved.guid ~= (UnitGUID and UnitGUID("player")) then return false end
+    if type(saved.packed) ~= "string" or saved.packed == "" then return false end
+    local entries = Utils.UnpackRows(saved.packed, MOUNT_ROW_SPEC)
+    if #entries == 0 then return false end
+
+    RemoveEntriesByCategory("Mount")
+
+    local typeFilterActive = MountTypeFilterActive(db)
+    local inserted = 0
+    for i = 1, #entries do
+        local row = entries[i]
+        if type(row) == "table" and row.name and row.mountID then
+            local entry = BuildMountEntry(row, typeFilterActive)
+            if Database:MountPassesSearchFilters(entry) then
+                uiSearchData[#uiSearchData + 1] = entry
+                inserted = inserted + 1
+            end
+        end
+    end
+    if inserted == 0 then return false end
+    if Database.ResetSearchCache then Database:ResetSearchCache() end
+    return true
+end
+
 function Database:PopulateDynamicMounts()
     if not C_MountJournal or not C_MountJournal.GetMountIDs then return false end
+    -- Reload restore: rebuild from the persisted rows and skip the journal walk.
+    if HydratePersistedMountCache() then return true end
 
     -- Guards precede the wipe: bailing after RemoveEntriesByCategory leaves
     -- the dataset without the category and no cache invalidation behind it.
@@ -1416,32 +1545,72 @@ function Database:PopulateDynamicMounts()
 
     RemoveEntriesByCategory("Mount")
 
+    -- Store every named mount unfiltered so a later filter change re-hydrates
+    -- from rows without walking; mountTypeID stays off the row (lazy, resolved
+    -- per entry only when a type filter is active).
+    local db = EasyFind and EasyFind.db
+    local typeFilterActive = MountTypeFilterActive(db)
+    local GetMountInfoByID = C_MountJournal.GetMountInfoByID
+
+    local rows = {}
     for _, mountID in ipairs(mountIDs) do
         local name, spellID, icon, _, isUsable, sourceType, _,
-              _, _, shouldHideOnChar, isCollected = C_MountJournal.GetMountInfoByID(mountID)
+              _, _, shouldHideOnChar, isCollected = GetMountInfoByID(mountID)
         if name then
-            local mountTypeID
-            if C_MountJournal.GetMountInfoExtraByID then
-                mountTypeID = select(5, C_MountJournal.GetMountInfoExtraByID(mountID))
-            end
-            local entry = {
-                name = name,
-                icon = icon,
-                mountID = mountID,
-                spellID = spellID,
-                isCollected = isCollected and true or false,
-                isUsable = isUsable and true or false,
+            local row = {
+                name             = name,
+                icon             = icon,
+                mountID          = mountID,
+                spellID          = spellID,
+                isCollected      = isCollected and true or false,
+                isUsable         = isUsable and true or false,
                 shouldHideOnChar = shouldHideOnChar and true or false,
-                mountSourceType = sourceType,
-                mountTypeID = mountTypeID,
-                nameLower = slower(name),
+                mountSourceType  = sourceType,
             }
+            rows[#rows + 1] = row
+            local entry = BuildMountEntry(row, typeFilterActive)
             if self:MountPassesSearchFilters(entry) then
-                uiSearchData[#uiSearchData + 1] = setmetatable(entry, MOUNT_MT)
+                uiSearchData[#uiSearchData + 1] = entry
             end
         end
     end
+    PersistMountCache(rows, UnitGUID and UnitGUID("player"))
     return true
+end
+
+-- Dev probe (bench CACHE section): time a fresh walk against the cache hydrate
+-- in the same session, with an entry-count identity check. Self-contained --
+-- clears the populate bookkeeping the direct calls set so it cannot leak into
+-- a later real load, and leaves the Mount category in its hydrated state.
+function Database:_MeasureMountCache()
+    local dps = debugprofilestop
+    if not (dps and C_MountJournal and C_MountJournal.GetMountIDs) then return end
+    local function countMounts()
+        local n = 0
+        for i = 1, #uiSearchData do
+            if uiSearchData[i].category == "Mount" then n = n + 1 end
+        end
+        return n
+    end
+
+    self:InvalidateMountCache()
+    mountCacheHydrated = false
+    local t0 = dps()
+    self:PopulateDynamicMounts()
+    local walkMs = dps() - t0
+    local walkN = countMounts()
+
+    mountCacheHydrated = false
+    t0 = dps()
+    local hydrated = self:PopulateDynamicMounts()
+    local hydrateMs = dps() - t0
+    local hydrateN = countMounts()
+
+    self._populateRemoved, self._populateAppendFrom = nil, nil
+    mountCacheHydrated = true
+    if self.ResetSearchCache then self:ResetSearchCache() end
+    return { walkMs = walkMs, hydrateMs = hydrateMs,
+             walkN = walkN, hydrateN = hydrateN, hydrated = hydrated }
 end
 
 -- Housing decor catalog: one entry per owned catalog entry, enumerated via
@@ -1450,6 +1619,72 @@ end
 -- a repopulate while a search is in flight cancels the older request.
 local housingSearcher
 local housingSearchDone
+local housingCacheHydrated = false
+
+-- Persisted housing cache. Housing is the one collection whose list comes from
+-- a server-side catalog search (RunSearch), so after a reload it is blank until
+-- the server streams the catalog (up to the 4s watchdog in the populate). Store
+-- the last result set and rebuild it instantly on reload; the search still runs
+-- to revalidate, and its fresh results swap in atomically when they arrive.
+-- Keyed per character (placed counts are per-character) and always revalidated,
+-- so a stale hydrate self-corrects within one search.
+local function BuildHousingEntry(row)
+    return setmetatable({
+        name              = row.name,
+        nameLower         = slower(row.name),
+        icon              = row.icon,
+        housingEntryID    = row.housingEntryID,
+        housingRecordID   = row.housingRecordID,
+        housingNumStored  = row.housingNumStored,
+        housingNumPlaced  = row.housingNumPlaced,
+        housingQuality    = row.housingQuality,
+        housingSourceText = row.housingSourceText,
+        isRoom            = row.isRoom,
+    }, HOUSING_MT)
+end
+
+local HOUSING_ROW_SPEC = {
+    { "name" }, { "icon" }, { "housingEntryID" },
+    { "housingRecordID" }, { "housingNumStored" }, { "housingNumPlaced" },
+    { "housingQuality" }, { "housingSourceText" }, { "isRoom" },
+}
+
+local function PersistHousingCache(entries, guid)
+    local db = EasyFind and EasyFind.db
+    if not db or not entries then return end
+    db.housingCache = {
+        version = ns.HOUSING_CACHE_VER,
+        guid = guid,
+        packed = Utils.PackRows(entries, HOUSING_ROW_SPEC),
+    }
+    db.housingCacheVer = ns.HOUSING_CACHE_VER
+end
+
+local function HydratePersistedHousingCache()
+    if housingCacheHydrated then return false end
+    housingCacheHydrated = true
+    local db = EasyFind and EasyFind.db
+    local saved = db and db.housingCache
+    if type(saved) ~= "table" or db.housingCacheVer ~= ns.HOUSING_CACHE_VER then
+        return false
+    end
+    if saved.guid ~= (UnitGUID and UnitGUID("player")) then return false end
+    if type(saved.packed) ~= "string" or saved.packed == "" then return false end
+    local entries = Utils.UnpackRows(saved.packed, HOUSING_ROW_SPEC)
+    if #entries == 0 then return false end
+    RemoveEntriesByCategory("Housing")
+    local inserted = 0
+    for i = 1, #entries do
+        local row = entries[i]
+        if type(row) == "table" and row.name and row.housingEntryID then
+            uiSearchData[#uiSearchData + 1] = BuildHousingEntry(row)
+            inserted = inserted + 1
+        end
+    end
+    if inserted == 0 then return false end
+    if Database.ResetSearchCache then Database:ResetSearchCache() end
+    return true
+end
 
 function Database:FinishHousingResults(done)
     local searcher = housingSearcher
@@ -1481,6 +1716,7 @@ function Database:FinishHousingResults(done)
                 housingNumPlaced = info.totalNumPlaced,
                 housingQuality = info.quality,
                 housingSourceText = info.sourceText,
+                isRoom = info.entryType == HOUSING_ROOM_TYPE or nil,
             }, HOUSING_MT)
         end
     end
@@ -1496,6 +1732,7 @@ function Database:FinishHousingResults(done)
     for i = 1, #fresh do
         uiSearchData[#uiSearchData + 1] = fresh[i]
     end
+    PersistHousingCache(fresh, UnitGUID and UnitGUID("player"))
     done(true)
 end
 
@@ -1658,6 +1895,33 @@ function Database:PopulateDynamicHousingAsync(done)
         done(false)
         return
     end
+
+    -- Instant display: rebuild the last catalog from the persisted cache so
+    -- housing is not blank while the server search round-trips. When a cache is
+    -- shown the provider is reported loaded now, and the search below becomes a
+    -- background revalidation whose fresh results swap in and refresh the open
+    -- query. With no cache, `completion` is just `done` and the flow below is
+    -- byte-for-byte the pre-cache behavior.
+    local hydrated = HydratePersistedHousingCache()
+    if hydrated then
+        done(true)
+    end
+
+    local completion = function(changed, err)
+        if not hydrated then
+            done(changed, err)
+            return
+        end
+        -- The detached FinishHousingResults called RemoveEntriesByCategory;
+        -- clear its populate bookkeeping so it cannot leak into the next
+        -- provider's completion, then refresh the open search if the set
+        -- actually changed.
+        Database._populateRemoved, Database._populateAppendFrom = nil, nil
+        if changed and ns.Search and ns.Search.RefreshActiveSearch then
+            ns.Search:RefreshActiveSearch()
+        end
+    end
+
     if housingSearchDone then
         local cancelled = housingSearchDone
         housingSearchDone = nil
@@ -1670,7 +1934,7 @@ function Database:PopulateDynamicHousingAsync(done)
             -- provider loaded-and-empty for the whole session, and searcher
             -- creation can fail early in a fresh session before the housing
             -- subsystem is up. Cancelled keeps it retryable per search.
-            done(false, "cancelled")
+            completion(false, "cancelled")
             return
         end
         housingSearcher = searcher
@@ -1687,7 +1951,7 @@ function Database:PopulateDynamicHousingAsync(done)
             end)
         end)
     end
-    housingSearchDone = done
+    housingSearchDone = completion
     -- Mirror the live catalog filter state (Blizzard UI -> EasyFind DB) so our
     -- housing results match what the player has filtered in the catalog window.
     self:SyncHousingFiltersFromBlizzard()
@@ -1700,7 +1964,7 @@ function Database:PopulateDynamicHousingAsync(done)
     end)
     if not okRun then
         housingSearchDone = nil
-        done(false, "cancelled")
+        completion(false, "cancelled")
         return
     end
     -- Watchdog: on a fresh session the catalog can stay silent (the
@@ -1711,9 +1975,9 @@ function Database:PopulateDynamicHousingAsync(done)
     -- completion is cleared here first.
     if Utils.SafeAfter then
         Utils.SafeAfter(4, function()
-            if housingSearchDone == done then
+            if housingSearchDone == completion then
                 housingSearchDone = nil
-                done(false, "cancelled")
+                completion(false, "cancelled")
             end
         end)
     end
@@ -3406,6 +3670,11 @@ local function AddBossEntry(tier, isRaid, instID, instName, encName, encID, getC
     return entry
 end
 
+local BOSS_ROW_SPEC = {
+    { "tier" }, { "isRaid" }, { "instanceID" },
+    { "instanceName" }, { "name" }, { "encounterID" }, { "icon" },
+}
+
 local function AddBossCacheRow(cacheRows, tier, isRaid, instID, instName, encName, encID, icon)
     if not cacheRows then return end
     cacheRows[#cacheRows + 1] = {
@@ -3424,7 +3693,7 @@ local function PersistBossCache(cacheRows)
     if not db or not cacheRows then return end
     db.bossCache = {
         version = ns.BOSS_CACHE_VER,
-        entries = cacheRows,
+        packed = Utils.PackRows(cacheRows, BOSS_ROW_SPEC),
     }
     db.bossCacheVer = ns.BOSS_CACHE_VER
 end
@@ -3438,8 +3707,9 @@ local function HydratePersistedBossCache()
     if type(saved) ~= "table" or db.bossCacheVer ~= ns.BOSS_CACHE_VER then
         return false
     end
-    local entries = saved.entries
-    if type(entries) ~= "table" or #entries == 0 then return false end
+    if type(saved.packed) ~= "string" or saved.packed == "" then return false end
+    local entries = Utils.UnpackRows(saved.packed, BOSS_ROW_SPEC)
+    if #entries == 0 then return false end
 
     RemoveEntriesByCategory("Boss")
     ClearBossInstanceCache()
@@ -4137,6 +4407,8 @@ end
 -- Bumping during a scan causes the in-flight time-sliced loop to bail.
 local statsScanGeneration = 0
 local STAT_KEYWORDS_EMPTY = {}
+local STAT_CHAIN_EMPTY = {}
+local STAT_DEFAULT_PATH = { _G["ACHIEVEMENTS"] or "Achievements", _G["STATISTICS"] or "Statistics" }
 local statisticMTCache = {}
 
 local function CopyStatisticChain(src)
@@ -4208,34 +4480,51 @@ local function GetStatisticMT(path, categoryChain)
     return mt
 end
 
+-- path and categoryChain are read only to resolve the shared MT (which already
+-- caches them per chain), so callers pass their category's single table rather
+-- than a per-row copy, and the entry stores neither.
 local function BuildStatisticEntry(name, id, path, categoryChain)
-    categoryChain = categoryChain or {}
-    path = path or { _G["ACHIEVEMENTS"] or "Achievements", _G["STATISTICS"] or "Statistics" }
     return setmetatable({
         name = name,
         nameLower = slower(name),
         statisticID = id,
-        statisticCategoryChain = categoryChain,
-    }, GetStatisticMT(path, categoryChain))
+    }, GetStatisticMT(path or STAT_DEFAULT_PATH, categoryChain or STAT_CHAIN_EMPTY))
 end
 
-local function AddStatisticCacheRow(cacheRows, id, name, path, categoryChain)
-    if not cacheRows then return end
-    cacheRows[#cacheRows + 1] = {
-        id = id,
-        name = name,
-        path = CopyArray(path),
-        categoryChain = CopyStatisticChain(categoryChain),
-    }
+-- Every statistic in a category shares one path and one categoryChain, so the
+-- cache stores each exactly once and rows reference it by index. Storing them
+-- per row cost ~1 KB per statistic (a path array, a chain array, and a table
+-- per category in the chain) for data that is identical across the category.
+local function NewStatisticCache()
+    return { rows = {}, chains = {}, byChain = {} }
 end
 
-local function PersistStatisticsCache(cacheRows, categories)
+local function AddStatisticCacheRow(cache, id, name, path, categoryChain)
+    if not cache then return end
+    local chainIndex = cache.byChain[categoryChain]
+    if not chainIndex then
+        cache.chains[#cache.chains + 1] = {
+            path = CopyArray(path),
+            chain = CopyStatisticChain(categoryChain),
+        }
+        chainIndex = #cache.chains
+        cache.byChain[categoryChain] = chainIndex
+    end
+    cache.rows[#cache.rows + 1] = { id = id, name = name, chain = chainIndex }
+end
+
+-- Rows pack; the ~30 shared chain definitions stay as tables (they carry the
+-- path/chain arrays every row in a category points at).
+local STAT_ROW_SPEC = { { "id" }, { "name" }, { "chain" } }
+
+local function PersistStatisticsCache(cache, categories)
     local db = EasyFind and EasyFind.db
-    if not db or not cacheRows then return end
+    if not db or not cache then return end
     db.statisticCache = {
         version = ns.STATISTIC_CACHE_VER,
         categoryIDs = CopyArray(categories),
-        entries = cacheRows,
+        chains = cache.chains,
+        packed = Utils.PackRows(cache.rows, STAT_ROW_SPEC),
     }
     db.statisticCacheVer = ns.STATISTIC_CACHE_VER
 end
@@ -4249,23 +4538,31 @@ local function HydratePersistedStatisticsCache()
     if type(saved) ~= "table" or db.statisticCacheVer ~= ns.STATISTIC_CACHE_VER then
         return false
     end
-    local entries = saved.entries
-    if type(entries) ~= "table" or #entries == 0 then return false end
+    local chains = saved.chains
+    if type(saved.packed) ~= "string" or saved.packed == "" then return false end
+    if type(chains) ~= "table" or #chains == 0 then return false end
+    local entries = Utils.UnpackRows(saved.packed, STAT_ROW_SPEC)
+    if #entries == 0 then return false end
 
     RemoveEntriesByCategory("Statistic")
     wipe(Database.statisticIDs)
     Database.statisticsComplete = true
     RefreshStatisticsCategoryIDs(saved.categoryIDs)
 
+    -- The saved chain tables are handed straight to BuildStatisticEntry: they
+    -- are read-only there (the MT caches one proto per chain) and every row in
+    -- a category shares them, so no copy is made per row.
     local inserted = 0
     for i = 1, #entries do
         local raw = entries[i]
         if type(raw) == "table" and raw.id and raw.name and raw.name ~= "" then
-            local path = CopyArray(raw.path)
-            local chain = CopyStatisticChain(raw.categoryChain)
-            uiSearchData[#uiSearchData + 1] = BuildStatisticEntry(raw.name, raw.id, path, chain)
-            MarkID(Database.statisticIDs, raw.id)
-            inserted = inserted + 1
+            local chainDef = chains[raw.chain]
+            if chainDef then
+                uiSearchData[#uiSearchData + 1] =
+                    BuildStatisticEntry(raw.name, raw.id, chainDef.path, chainDef.chain)
+                MarkID(Database.statisticIDs, raw.id)
+                inserted = inserted + 1
+            end
         end
     end
     if inserted == 0 then return false end
@@ -4362,7 +4659,7 @@ function Database:PopulateDynamicStatisticsAsync(done)
 
     -- Keywords skipped; the unique stat name is enough for the scorer.
     local seenStatisticIDs = {}
-    local cacheRows = {}
+    local cache = NewStatisticCache()
     local function processRow(item)
         if not GetAchievementInfo then return end
         local id, title = GetAchievementInfo(item.catID, item.rowIndex)
@@ -4375,7 +4672,7 @@ function Database:PopulateDynamicStatisticsAsync(done)
         MarkID(Database.statisticIDs, id)
         local entry = BuildStatisticEntry(title, id, item.path, item.categoryChain)
         uiSearchData[#uiSearchData + 1] = entry
-        AddStatisticCacheRow(cacheRows, id, title, item.path, item.categoryChain)
+        AddStatisticCacheRow(cache, id, title, item.path, item.categoryChain)
         return true
     end
 
@@ -4407,7 +4704,7 @@ function Database:PopulateDynamicStatisticsAsync(done)
         -- as a backup to the live category-tree filter.
         Database.statisticsComplete = true
         Database.statisticsVersion = Database.statisticsVersion + 1
-        PersistStatisticsCache(cacheRows, categories)
+        PersistStatisticsCache(cache, categories)
         if Database.RefreshDynamicCategory then
             Database:RefreshDynamicCategory("achievements")
         end
@@ -4452,7 +4749,7 @@ function Database:PopulateDynamicStatistics()
 
     -- Sync fallback path when timers are unavailable.
     local seenStatisticIDs = {}
-    local cacheRows = {}
+    local cache = NewStatisticCache()
     local function emit(cat, parentChain)
         local pathBase = { _G["ACHIEVEMENTS"] or "Achievements", _G["STATISTICS"] or "Statistics" }
         local categoryChain = {}
@@ -4478,11 +4775,9 @@ function Database:PopulateDynamicStatistics()
                     else
                         MarkID(seenStatisticIDs, id)
                         MarkID(Database.statisticIDs, id)
-                        local path = {}
-                        for p = 1, #pathBase do path[p] = pathBase[p] end
-                        local entry = BuildStatisticEntry(title, id, path, categoryChain)
+                        local entry = BuildStatisticEntry(title, id, pathBase, categoryChain)
                         uiSearchData[#uiSearchData + 1] = entry
-                        AddStatisticCacheRow(cacheRows, id, title, path, categoryChain)
+                        AddStatisticCacheRow(cache, id, title, pathBase, categoryChain)
                     end
                 end
             end
@@ -4499,7 +4794,7 @@ function Database:PopulateDynamicStatistics()
     for i = 1, #roots do emit(roots[i], {}) end
     Database.statisticsComplete = true
     Database.statisticsVersion = Database.statisticsVersion + 1
-    PersistStatisticsCache(cacheRows, categories)
+    PersistStatisticsCache(cache, categories)
     return true
 end
 
@@ -4974,34 +5269,6 @@ function Database:BuildUIDatabase()
             category = "Inventory",
             iconAtlas = "bag-main",
             steps = {{ buttonFrame = "MainMenuBarBackpackButton" }},
-        },
-        {
-            name = _G["FRIENDS_LIST"] or _G["FRIENDS"] or "Friends List",
-            keywords = {"friends", "social", "bnet", "battlenet", "contacts", "whisper", "online"},
-            category = "Social",
-            icon = 132175,
-            steps = {{ buttonFrame = "QuickJoinToastButton" }},
-        },
-        {
-            name = L["UITREE_TOGGLE_WORLD_MAP"],
-            keywords = {"map", "world map", "navigation", "toggle"},
-            category = "Navigation",
-            icon = 134269,
-            slashCommand = "/run ToggleWorldMap()",
-        },
-        {
-            name = _G["BINDING_NAME_TOGGLEBATTLEFIELDMINIMAP"] or "Toggle Zone Map",
-            keywords = {"zone map", "battlefield map", "floating map", "area map", "navigation", "toggle"},
-            category = "Navigation",
-            icon = 134269,
-            slashCommand = "/run C_AddOns.LoadAddOn('Blizzard_BattlefieldMap'); if BattlefieldMapFrame then BattlefieldMapFrame:SetShown(not BattlefieldMapFrame:IsShown()) end",
-        },
-        {
-            name = _G["BINDING_NAME_TOGGLEMINIMAP"] or "Toggle Minimap",
-            keywords = {"minimap", "mini map", "tracking", "navigation", "toggle"},
-            category = "Navigation",
-            icon = 134269,
-            slashCommand = "/run MinimapCluster:SetShown(not MinimapCluster:IsShown())",
         },
         {
             name = L["UITREE_CALENDAR"],

@@ -260,6 +260,17 @@ function Shortcuts:UpdateVisibleResultShortcuts()
                     row._efShortcutIndex = assigned
                     if showShortcutHints and row.shortcutNumberText then
                         row.shortcutNumberText:SetText(tostring(assigned))
+                        -- Muted-glyph tint follows the theme (0.58 gray is
+                        -- invisible on the light palettes). At most nine
+                        -- rows per pass, so no tint cache needed.
+                        local muted = ns.Results and ns.Results.GetActiveTheme
+                            and ns.Results:GetActiveTheme().mutedGlyph
+                        if muted then
+                            row.shortcutNumberText:SetTextColor(muted[1], muted[2], muted[3], muted[4] or 0.85)
+                            if row.shortcutAltIcon then
+                                row.shortcutAltIcon:SetVertexColor(muted[1], muted[2], muted[3], muted[4] or 0.85)
+                            end
+                        end
                     end
                     if row.shortcutGroup then
                         row.shortcutGroup:SetShown(showShortcutHints)

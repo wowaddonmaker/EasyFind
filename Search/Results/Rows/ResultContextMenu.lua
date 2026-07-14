@@ -119,6 +119,22 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
         extra.hasShortkey = ns.Shortkeys:Get(skKey) ~= nil
         extra.onAddShortkey = function() ns.Shortkeys:PromptForKey(pinData) end
     end
+    -- Blacklist shares the alias key gate: any keyable row can be hidden
+    -- from all future results. The Blacklist options tab is the undo path.
+    if canAlias and ns.Blacklist then
+        extra.onBlacklist = function()
+            if not ns.Blacklist:Add(pinData) then return end
+            if ns.RefreshBindTables then ns.RefreshBindTables() end
+            local editBox = Search:GetSearchFrame() and Search:GetSearchFrame().editBox
+            local text = editBox and editBox:GetText() or ""
+            if text == "" then
+                Results:KeepPinnedResultsOpenBriefly()
+                Results:ShowPinnedItems()
+            else
+                Search:OnSearchTextChanged(text, true)
+            end
+        end
+    end
     local function FocusKeyboardMenu(menu)
         if not keyboardMode or not menu or not menu:IsShown() then return end
         local navFrame = Search:GetNavFrame()
@@ -150,7 +166,7 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
     -- onto the menu. Restored to the selection state when the menu hides.
     extra.onHide = function()
         row._efContextMenuHeld = nil
-        if row.UnlockHighlight then row:UnlockHighlight() end
+        Results:SetRowHighlightLocked(row, false)
         Results:UpdateSelectionHighlight(true)
         if kbOnHide then kbOnHide() end
     end
@@ -188,7 +204,7 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
             editBox._menuUnfocus = nil
         end
         row._efContextMenuHeld = true
-        if row.LockHighlight then row:LockHighlight() end
+        Results:SetRowHighlightLocked(row, true)
         Handlers:ApplyActionHint(row)
     end
     FocusKeyboardMenu(menu)

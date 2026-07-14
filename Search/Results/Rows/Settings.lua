@@ -94,6 +94,17 @@ function Rows:WriteSettingVariable(variable, value)
     return WriteSettingVariable(variable, value)
 end
 
+-- Refresh rows in place (checkbox states re-read) and hand focus back
+-- to the editbox, without closing the search panel.
+local function RefreshResultsKeepFocus()
+    Search:RefreshResults()
+    if Search:GetSearchFrame() and Search:GetSearchFrame().editBox
+       and not (Search:GetNavFrame() and Search:GetNavFrame():IsKeyboardEnabled()) then
+        Search:GetSearchFrame().editBox.blockFocus = nil
+        Search:GetSearchFrame().editBox:SetFocus()
+    end
+end
+
 -- Toggle a boolean setting in place (clicked from a result row).
 -- Tries the Settings API first (handles non-CVar settings like action
 -- bar visibility), falls back to GetCVar/SetCVar.
@@ -125,18 +136,24 @@ function Results:ToggleSettingCheckbox(data)
             if self._settingOptimistic == token then self._settingOptimistic = nil end
         end)
     end
-    -- Refresh the row so the checkbox state updates without closing
-    -- the search panel.
-    Search:RefreshResults()
-    if Search:GetSearchFrame() and Search:GetSearchFrame().editBox
-       and not (Search:GetNavFrame() and Search:GetNavFrame():IsKeyboardEnabled()) then
-        Search:GetSearchFrame().editBox.blockFocus = nil
-        Search:GetSearchFrame().editBox:SetFocus()
-    end
+    RefreshResultsKeepFocus()
 end
 
 local function ActivateSettingResult(data, openMenuHeld)
-    if not data or not data.settingVariable then return false end
+    if not data then return false end
+    -- Merged keybind toggle: a plain click performs the action itself; Alt+click
+    -- falls through to the Settings > Keybindings deep link. A customToggle has
+    -- no Keybindings row behind it (EasyFind-owned action, e.g. hide chat), so
+    -- left-click is its only action -- perform it on Alt too rather than
+    -- deep-linking to a panel that can't show it.
+    if data.settingType == "keybind" and data.bindingAction
+       and (not openMenuHeld or data.customToggle)
+       and ns.BlizzOptionsSearch
+       and ns.BlizzOptionsSearch:PerformBinding(data.bindingAction) then
+        RefreshResultsKeepFocus()
+        return true
+    end
+    if not data.settingVariable then return false end
     local stype = data.settingType
     if (stype == "checkbox" or stype == "checkboxSlider" or stype == "checkboxDropdown")
        and not openMenuHeld then

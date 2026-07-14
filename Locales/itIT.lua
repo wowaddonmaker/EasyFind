@@ -22,8 +22,8 @@ L["UITREE_SOLO_BATTLEGROUNDS"]          = "Campi di Battaglia in Solitaria"
 L["UITREE_RANDOM_BATTLEGROUNDS"]        = "Campi di Battaglia Casuali"
 L["UITREE_GREAT_VAULT"]                 = "Grande Forziere"
 L["UITREE_PORTRAIT_MENU"]               = "Menu Ritratto"
-L["UITREE_TOGGLE_WORLD_MAP"]            = "Mostra Mappa del Mondo"
 L["UITREE_CALENDAR"]                    = "Calendario"
+L["KEYBIND_TOGGLE_FMT"]                 = "Attiva/disattiva %s"
 L["UITREE_DISMISS_PET"]                 = "Congeda Famiglio"
 L["UITREE_CALCULATOR"]                  = "Calcolatrice"
 L["ERR_DATABASE_INIT_FAILED"]           = "Inizializzazione del database di EasyFind non riuscita: "
@@ -213,6 +213,8 @@ L["TUT_FEATURE_ACTIONS_DESC"]           = "Lancia, usa, equipaggia, evoca, cambi
 L["TUT_FEATURE_CALCULATOR"]             = "Calcolatrice"
 L["TUT_FEATURE_CALCULATOR_DESC"]        = "Digita espressioni, copia il risultato o apri la calcolatrice completa dal risultato Calcolatrice."
 L["TUT_CALC_COPY_DESC"]                 = "Passa il mouse sull'espressione o sul risultato e premi Ctrl+C per copiarlo e incollarlo facilmente ovunque con Ctrl+V."
+L["TUT_THEME_HEADER"]                   = "Quale tema di EasyFind preferisci?"
+L["TUT_THEME_RESIZE_NOTE"]              = "Puoi cambiare la tua selezione in qualsiasi momento dalle opzioni. Lì è disponibile anche il ridimensionamento."
 L["TUT_KEYBIND_HEADER"]                 = "Scegli le tue scorciatoie (valide per ogni personaggio)"
 L["TUT_KEYBIND_SEARCH_BAR"]             = "Barra di ricerca"
 L["TUT_KEYBIND_MAP_TAB"]                = "Scheda Ricerca Mappa"
@@ -253,25 +255,31 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "Annulla"
 L["WHATSNEW_CHAT_HELLO"]                = "Benvenuto in |cFF00FF00EasyFind v%s|r! Guarda il riepilogo delle novità %s."
 L["WHATSNEW_CHAT_HERE"]                 = "qui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vedi il changelog completo"
-L["WHATSNEW_TRIALS_VOTE"]               = "Vota EasyFind:"
-L["OPT_TRIALS_TEXT"]                    = "Se ti sta piacendo EasyFind, considera di darci una buona posizione negli Addon Trials di CurseForge. Le votazioni terminano il 13 luglio."
-L["OPT_TRIALS_BTN"]                     = "Vota EasyFind"
-L["WHATSNEW_CHAT_TRIALS"]               = "Se ti piace EasyFind, considera di votarci nel %s entro il 13 luglio!"
-L["WHATSNEW_CHAT_TRIALS_LINK"]          = "concorso Addon Trials di CurseForge"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffMostra sempre|r\n" ..
-    "    |cff999999-|r Nuova modalità che tiene la barra sempre aperta,\n" ..
-    "      con attenuazione in combattimento e in movimento\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffAspetto senza bordi|r\n" ..
-    "    |cff999999-|r Nuova opzione che nasconde il bordo di barra e menu\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffRidimensionamento manuale|r\n" ..
-    "    |cff999999-|r Nel menu Dimensione; la scala si applica sopra\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffValute per espansione in gruppo|r\n" ..
-    "    |cff999999-|r Cerca un'espansione più \"valute\" per elencarle\n" ..
-    "      tutte subito"
+    "|cffFFD100\226\128\162|r |cffffffffTemi|r\n" ..
+    "    |cff999999-|r Scegli l'aspetto di EasyFind; modificabile in qualsiasi\n" ..
+    "      momento dal menu delle opzioni\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffLista nera|r\n" ..
+    "    |cff999999-|r Fai clic destro su un risultato e scegli Lista nera perché\n" ..
+    "      non compaia in nessuna ricerca\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffVisibilità delle icone|r\n" ..
+    "    |cff999999-|r Mostra tutte le icone, solo quelle generali o solo quelle specifiche"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Aggiungi alias"
+L["CTX_BLACKLIST"]                      = "Lista nera"
+L["OPT_TAB_BLACKLIST"]                  = "Lista nera"
+L["OPT_SAVED_BLACKLIST"]                = "Risultati in lista nera"
+L["OPT_BLACKLIST_EMPTY_HINT"]           = "I risultati in lista nera non compaiono in nessuna ricerca. Clic destro su un risultato e scegli Lista nera; rimuovilo qui per ripristinarlo."
+L["OPT_SEARCH_BLACKLIST_PLACEHOLDER"]   = "Cerca nella lista nera..."
+L["OPT_NO_BLACKLISTED"]                 = "Nessun risultato in lista nera."
+L["OPT_NO_BLACKLIST_MATCH"]             = "Nessuna corrispondenza."
+L["OPT_CLEAR_BLACKLIST_CONFIRM"]        = "Rimuovere TUTTI i risultati dalla lista nera? Tutto tornerà a comparire nelle ricerche."
+L["OPT_UI_THEME"]                       = "Tema"
+L["OPT_ICON_VISIBILITY"]                = "Visibilità delle icone"
+L["OPT_ICONS_ALL"]                      = "Mostra tutte le icone"
+L["OPT_ICONS_GENERAL"]                  = "Mostra icone generali"
+L["OPT_ICONS_SPECIFIC"]                 = "Mostra icone specifiche"
 L["CTX_ADD_SHORTKEY"]                   = "Aggiungi scorciatoia"
 L["CTX_EDIT_SHORTKEY"]                  = "Modifica scorciatoia"
 L["SHORTKEY_FOR"]                       = "Scorciatoia: %s"
@@ -292,6 +300,11 @@ L["SHORTKEY_IMPORT_TITLE"]              = "Incolla un codice da importare"
 L["SHORTKEY_IMPORT_HINT"]               = "Incolla un codice (Ctrl+V), poi Importa."
 L["SHORTKEY_IMPORTED"]                  = "%d voci importate"
 L["SHORTKEY_IMPORT_BAD"]                = "Impossibile leggere quel codice."
+L["IMPORT_CONFLICT_ITEM"]               = "Questo elemento esiste già nella tua lista."
+L["IMPORT_APPLY_TO_ALL"]                = "Applica a tutti gli elementi correnti"
+L["IMPORT_REPLACE"]                     = "Sostituisci"
+L["IMPORT_SKIP"]                        = "Salta"
+L["IMPORT_SYSCMD_WARN"]                 = "Attenzione: %d scorciatoia/e assegnano un comando di sistema (%s). Si attivano appena premi il tasto."
 L["CTX_GUIDE"]                          = "Guida"
 L["CTX_WOWHEAD"]                        = "Wowhead"
 L["CTX_SEND_LINK"]                      = "Invia link"
@@ -458,6 +471,8 @@ L["GUIDE_NOT_IN_GAME_MENU"]             = "«%s» non è nel menu di gioco"
 L["GUIDE_OPTION_NOT_AVAILABLE"]         = "«%s» non è disponibile qui"
 L["GUIDE_CLICK_CORRECT_TAB"]            = "Clicca sulla scheda corretta"
 L["GUIDE_FIND_PET_IN_JOURNAL"]          = "Trova la mascotte nel Diario delle mascotte"
+L["GUIDE_FIND_MOUNT_IN_JOURNAL"]        = "Trova la cavalcatura nel Diario delle cavalcature"
+L["GUIDE_FIND_TOY_IN_TOYBOX"]           = "Trova il giocattolo nella Scatola dei giocattoli"
 L["GUIDE_CLICK_OPTION_LEFT"]            = "Clicca sull'opzione corretta a sinistra"
 L["GUIDE_CLICK_CATEGORY_IN_LIST"]       = "Clicca «%s» nell'elenco delle categorie"
 L["GUIDE_SIDEBAR_CHARACTER_STATS"]      = "Statistiche personaggio"

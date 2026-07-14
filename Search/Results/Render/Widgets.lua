@@ -16,7 +16,23 @@ function Render.SettingsWidget(resultRow, data, entry)
     -- slider widget with value label. Dropdown/other: current
     -- value as muted text (click opens panel to edit).
     local isKeybindEntry = data and data.settingType == "keybind" and data.bindingAction
-    if isKeybindEntry and not entry.isPathNode then
+    local blizzSearch = ns.BlizzOptionsSearch
+    if isKeybindEntry and not entry.isPathNode
+       and blizzSearch and blizzSearch:IsPerformableBinding(data.bindingAction) then
+        -- Merged toggle row: clicking performs the binding, so no inline
+        -- capture buttons. Current keys stay visible in the row tooltip;
+        -- binds change via Alt+click (Settings > Keybindings deep link).
+        resultRow.settingKeybindGroup:Hide()
+        local isOn = blizzSearch:GetToggleBindingState(data.bindingAction)
+        resultRow.settingState:SetShown(isOn ~= nil)
+        resultRow.settingCheck:SetShown(isOn == true)
+        resultRow.amountText:Hide()
+        if resultRow.settingSlider then resultRow.settingSliderGroup:Hide() end
+        if resultRow.settingDropdownGroup then resultRow.settingDropdownGroup:Hide() end
+        if isOn ~= nil then
+            resultRow.text:SetPoint("RIGHT", resultRow.settingState, "LEFT", -4, 0)
+        end
+    elseif isKeybindEntry and not entry.isPathNode then
         -- Keybinding row: two inline buttons showing current
         -- primary/alternate keys. Refresh function lets the
         -- buttons re-read GetBindingKey after a capture/clear.
@@ -158,6 +174,11 @@ function Render.SettingsWidget(resultRow, data, entry)
                 rawVal = ns.ResultRows:ReadSettingVariable(data.dropdownVariable)
             end
             local val = rawVal ~= nil and tostring(rawVal) or ""
+            if not data.settingOptions
+               and ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.GetOptionsForVariable then
+                local opts = ns.BlizzOptionsSearch.GetOptionsForVariable(data.dropdownVariable or data.settingVariable)
+                if opts then data.settingOptions = opts end
+            end
             local optList = type(data.settingOptions) == "table" and data.settingOptions or nil
             if optList and rawVal ~= nil then
                 for oi = 1, #optList do
@@ -394,6 +415,10 @@ function Render.CalculatorRow(self, resultRow, data, state)
         resultRow.calcCard:SetPoint("TOPLEFT", resultRow, "TOPLEFT", 4, -3)
         resultRow.calcCard:SetPoint("BOTTOMRIGHT", resultRow, "BOTTOMRIGHT", -4, 3)
         resultRow.calcCard:Show()
+        if resultRow._efCalcGen ~= ns.uiThemeGeneration then
+            resultRow._efCalcGen = ns.uiThemeGeneration
+            ns.ResultRows.ApplyCalcCardTheme(resultRow)
+        end
 
         resultRow.calcDivider:ClearAllPoints()
         resultRow.calcDivider:SetPoint("TOP", resultRow.calcCard, "TOP", 0, -1)

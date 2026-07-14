@@ -65,6 +65,13 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
     local resultsFrame = Search:GetResultsFrame()
     if not resultsFrame then return end
 
+    -- Rows hidden or repurposed by a re-render never fire OnLeave (a
+    -- frame hidden under the cursor doesn't), which strands the unearned
+    -- tooltip on screen; every render starts it hidden and the next
+    -- hover re-shows it.
+    local unearned = Tooltips:GetUnearnedTooltip()
+    if unearned then unearned:Hide() end
+
     Results._cachedHierarchical = hierarchical
 
     -- Render-skip: if the input list is identical (same length, same
@@ -368,7 +375,9 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
             -- Selection visual is now carried by the row's built-in
             -- HighlightTexture (atlas set in CreateResultRow), shared
             -- with mouse hover; no separate selectionHighlight texture.
-            if resultRow.UnlockHighlight and not resultRow._efContextMenuHeld then resultRow:UnlockHighlight() end
+            if resultRow.UnlockHighlight and not resultRow._efContextMenuHeld then
+                Results:SetRowHighlightLocked(resultRow, false)
+            end
 
             -- Always hide section-label visuals up front. The section-
             -- header branch below re-shows them when applicable; rows
@@ -437,7 +446,7 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
             resultRow.lockedReason = lockedReason
             local isInertRow = isUnearnedCurrency or lockedReason ~= nil
 
-            Render.BaseRowText(resultRow, entry, renderState, isInertRow)
+            Render.BaseRowText(resultRow, entry, renderState)
 
             local repSideBySide = Render.RowContent(self, resultRow, entry, renderState, isInertRow)
             if repSideBySide then hasSideBySideRepBar = true end
@@ -457,6 +466,7 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
             end
 
             Render.ApplyFlatResultSizing(resultRow, entry, renderState)
+            Render.ApplyIconVisibility(resultRow, entry)
 
             -- Flat-mode positioning fixup: category-specific blocks above
             -- (currency, mount/toy/pet, loot, map, repBar) re-anchor text using

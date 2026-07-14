@@ -254,9 +254,24 @@ function Tooltips:CreateUnearnedTooltip()
     local text = unearnedTooltip:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     text:SetPoint("CENTER", 0, 0)
     text:SetText(L["CURRENCY_NOT_EARNED"])
-    local gold = ns.GOLD_COLOR
-    text:SetTextColor(gold[1], gold[2], gold[3], 1)
+    -- The restyle below owns this color (gold on dark, accent on light).
+    text._efOwnColor = true
     unearnedTooltip.text = text
+    -- Gold on the themed panel is unreadable on light fills; re-derived
+    -- on every show (the panel refills then too).
+    unearnedTooltip._efOnThemeRestyle = function(self)
+        local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+        if theme and theme.lightTheme then
+            local c = theme.pathColorHover or theme.leafColor
+            self.text:SetTextColor(c[1], c[2], c[3], 1)
+            self.text:SetShadowColor(0, 0, 0, 0)
+        else
+            local gold = ns.GOLD_COLOR
+            self.text:SetTextColor(gold[1], gold[2], gold[3], 1)
+        end
+    end
+    unearnedTooltip:HookScript("OnShow", unearnedTooltip._efOnThemeRestyle)
+    unearnedTooltip._efOnThemeRestyle(unearnedTooltip)
 
     local textWidth = text:GetStringWidth()
     local textHeight = text:GetStringHeight()

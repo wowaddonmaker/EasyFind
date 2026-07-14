@@ -310,7 +310,7 @@ function Filters:BuildAppearanceItemOptionsPopup(StylePopup, CHECK_SIZE, dropdow
     sourcesText:SetPoint("LEFT", 12, 0)
     sourcesText:SetText(_G["SOURCES"] or "Sources")
     local sourcesChev = sourcesRow:CreateTexture(nil, "OVERLAY")
-    sourcesChev:SetAtlas("common-icon-forwardarrow")
+    Utils.SetChevronTexture(sourcesChev)
     sourcesChev:SetSize(CHECK_SIZE, CHECK_SIZE)
     sourcesChev:SetPoint("RIGHT", -4, 0)
     sourcesRow._label = sourcesText
@@ -462,10 +462,9 @@ function Filters:BuildAppearanceOptionsPopup(StylePopup, CHECK_SIZE, dropdownGua
         txt:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
         txt:SetText(def.label)
         local chev = row:CreateTexture(nil, "OVERLAY")
-        chev:SetAtlas("common-icon-forwardarrow")
+        Utils.SetChevronTexture(chev)
         chev:SetSize(CHECK_SIZE - 2, CHECK_SIZE - 2)
         chev:SetPoint("RIGHT", -4, 0)
-        chev:SetVertexColor(0.85, 0.85, 0.85, 1)
         row._label = txt
         row._chev = chev
         Utils.InstallMenuRowHighlight(row)

@@ -21,7 +21,6 @@ local GetSpecializationInfo = GetSpecializationInfo
 local RADIO_OFF_TEX = ns.RADIO_OFF_TEX
 local RADIO_ON_TEX = ns.RADIO_ON_TEX
 local FLYOUT_ROW_H = 20
-local FLYOUT_ARROW = ns.FLYOUT_ARROW_TEX
 
 local allClassSpecs
 local function GetAllClassSpecs()
@@ -66,6 +65,7 @@ local function CreateRadioRow(parent, width)
     tex:SetTexture(RADIO_OFF_TEX)
     tex:SetPoint("LEFT", 4, 0)
     local lbl = btn:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    lbl:SetShadowColor(0, 0, 0, 0)
     lbl:SetPoint("LEFT", tex, "RIGHT", 4, 0)
     Utils.InstallMenuRowHighlight(btn)
     btn._label = lbl
@@ -119,6 +119,7 @@ function Filters:BuildClassSpecSelector(opts)
     arrow:SetPoint("RIGHT", -10, -1)
     arrow:SetVertexColor(0.7, 0.7, 0.7)
     local label = btn:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    label:SetShadowColor(0, 0, 0, 0)
     label:SetPoint("LEFT", 14, 0)
     label:SetPoint("RIGHT", arrow, "LEFT", -2, 0)
     label:SetJustifyH("LEFT")
@@ -318,12 +319,13 @@ function Filters:BuildClassSpecSelector(opts)
         local classRow = CreateFrame("Button", nil, specPopup)
         classRow:SetSize(POPUP_WIDTH - 16, FLYOUT_ROW_H)
         local crLabel = classRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        crLabel:SetShadowColor(0, 0, 0, 0)
         crLabel:SetPoint("LEFT", 8, 0)
         crLabel:SetText(_G["CLASS"] or "Class")
         local crArrow = classRow:CreateTexture(nil, "ARTWORK")
         crArrow:SetSize(16, 16)
         crArrow:SetPoint("RIGHT", -4, 0)
-        crArrow:SetTexture(FLYOUT_ARROW)
+        Utils.SetChevronTexture(crArrow)
         Utils.InstallMenuRowHighlight(classRow)
         local function OpenClassFlyout()
             LayoutClassFlyout()
@@ -337,6 +339,7 @@ function Filters:BuildClassSpecSelector(opts)
         local classHeader = CreateFrame("Frame", nil, specPopup)
         classHeader:SetSize(POPUP_WIDTH - 16, FLYOUT_ROW_H)
         local chLabel = classHeader:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        chLabel:SetShadowColor(0, 0, 0, 0)
         chLabel:SetPoint("LEFT", 8, 0)
 
         local MAX_SPECS = 5

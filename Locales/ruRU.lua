@@ -22,8 +22,8 @@ L["UITREE_SOLO_BATTLEGROUNDS"]          = "Одиночные поля боя"
 L["UITREE_RANDOM_BATTLEGROUNDS"]        = "Случайные поля боя"
 L["UITREE_GREAT_VAULT"]                 = "Большое хранилище"
 L["UITREE_PORTRAIT_MENU"]               = "Меню портрета"
-L["UITREE_TOGGLE_WORLD_MAP"]            = "Открыть карту мира"
 L["UITREE_CALENDAR"]                    = "Календарь"
+L["KEYBIND_TOGGLE_FMT"]                 = "Вкл./выкл. %s"
 L["UITREE_DISMISS_PET"]                 = "Отозвать питомца"
 L["UITREE_CALCULATOR"]                  = "Калькулятор"
 L["ERR_DATABASE_INIT_FAILED"]           = "Не удалось инициализировать базу данных EasyFind: "
@@ -213,6 +213,8 @@ L["TUT_FEATURE_ACTIONS_DESC"]           = "Применяйте, использ�
 L["TUT_FEATURE_CALCULATOR"]             = "Калькулятор"
 L["TUT_FEATURE_CALCULATOR_DESC"]        = "Вводите выражения, копируйте результат или открывайте полный калькулятор из результата «Калькулятор»."
 L["TUT_CALC_COPY_DESC"]                 = "Наведите курсор на выражение или результат и нажмите Ctrl+C, чтобы скопировать и легко вставить в любом месте с помощью Ctrl+V."
+L["TUT_THEME_HEADER"]                   = "Какая тема EasyFind вам нравится?"
+L["TUT_THEME_RESIZE_NOTE"]              = "Выбор можно изменить в любой момент в настройках. Там же можно изменить размер."
 L["TUT_KEYBIND_HEADER"]                 = "Выберите горячие клавиши (для всех персонажей)"
 L["TUT_KEYBIND_SEARCH_BAR"]             = "Строка поиска"
 L["TUT_KEYBIND_MAP_TAB"]                = "Вкладка поиска по карте"
@@ -253,25 +255,31 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "Отмена"
 L["WHATSNEW_CHAT_HELLO"]                = "Добро пожаловать в |cFF00FF00EasyFind v%s|r! Обзор обновления доступен %s."
 L["WHATSNEW_CHAT_HERE"]                 = "здесь"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Полный список изменений"
-L["WHATSNEW_TRIALS_VOTE"]               = "Голосовать за EasyFind:"
-L["OPT_TRIALS_TEXT"]                    = "Если вам нравится EasyFind, поддержите нас высоким местом в CurseForge Addon Trials. Голосование идёт по 13 июля включительно."
-L["OPT_TRIALS_BTN"]                     = "Голосовать за EasyFind"
-L["WHATSNEW_CHAT_TRIALS"]               = "Если вам нравится EasyFind, проголосуйте за нас в %s по 13 июля включительно!"
-L["WHATSNEW_CHAT_TRIALS_LINK"]          = "конкурсе CurseForge Addon Trials"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffПоказывать всегда|r\n" ..
-    "    |cff999999-|r Новый режим держит строку открытой постоянно,\n" ..
-    "      с затемнением в бою и при движении\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffВид без рамки|r\n" ..
-    "    |cff999999-|r Новая настройка скрывает рамку строки и её меню\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffРучной размер|r\n" ..
-    "    |cff999999-|r В меню «Размер»; масштаб применяется сверху\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffВалюты дополнений группой|r\n" ..
-    "    |cff999999-|r Ищите дополнение плюс «валюта», чтобы сразу\n" ..
-    "      увидеть весь список"
+    "|cffFFD100\226\128\162|r |cffffffffТемы|r\n" ..
+    "    |cff999999-|r Выберите внешний вид EasyFind; изменить можно в любой\n" ..
+    "      момент в меню настроек\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffЧёрный список|r\n" ..
+    "    |cff999999-|r Щёлкните правой кнопкой по результату и выберите «Чёрный\n" ..
+    "      список», чтобы он не появлялся ни в одном поиске\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffОтображение значков|r\n" ..
+    "    |cff999999-|r Показывать все значки, только общие или только особые"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Добавить псевдоним"
+L["CTX_BLACKLIST"]                      = "Чёрный список"
+L["OPT_TAB_BLACKLIST"]                  = "Чёрный список"
+L["OPT_SAVED_BLACKLIST"]                = "Результаты в чёрном списке"
+L["OPT_BLACKLIST_EMPTY_HINT"]           = "Результаты из чёрного списка не появляются ни в одном поиске. Щёлкните результат правой кнопкой и выберите «Чёрный список»; удалите его здесь, чтобы вернуть."
+L["OPT_SEARCH_BLACKLIST_PLACEHOLDER"]   = "Поиск в чёрном списке..."
+L["OPT_NO_BLACKLISTED"]                 = "В чёрном списке нет результатов."
+L["OPT_NO_BLACKLIST_MATCH"]             = "Совпадений нет."
+L["OPT_CLEAR_BLACKLIST_CONFIRM"]        = "Удалить ВСЕ записи из чёрного списка? Всё снова появится в поиске."
+L["OPT_UI_THEME"]                       = "Тема"
+L["OPT_ICON_VISIBILITY"]                = "Отображение значков"
+L["OPT_ICONS_ALL"]                      = "Показывать все значки"
+L["OPT_ICONS_GENERAL"]                  = "Показывать общие значки"
+L["OPT_ICONS_SPECIFIC"]                 = "Показывать особые значки"
 L["CTX_ADD_SHORTKEY"]                   = "Добавить быструю клавишу"
 L["CTX_EDIT_SHORTKEY"]                  = "Изменить быструю клавишу"
 L["SHORTKEY_FOR"]                       = "Быстрая клавиша: %s"
@@ -292,6 +300,11 @@ L["SHORTKEY_IMPORT_TITLE"]              = "Вставьте код для имп
 L["SHORTKEY_IMPORT_HINT"]               = "Вставьте код (Ctrl+V), затем нажмите Импорт."
 L["SHORTKEY_IMPORTED"]                  = "Импортировано записей: %d"
 L["SHORTKEY_IMPORT_BAD"]                = "Не удалось прочитать этот код."
+L["IMPORT_CONFLICT_ITEM"]               = "Этот элемент уже есть в вашем списке."
+L["IMPORT_APPLY_TO_ALL"]                = "Применить ко всем текущим элементам"
+L["IMPORT_REPLACE"]                     = "Заменить"
+L["IMPORT_SKIP"]                        = "Пропустить"
+L["IMPORT_SYSCMD_WARN"]                 = "Внимание: %d быстрых клавиш назначены на системную команду (%s). Они срабатывают сразу при нажатии."
 L["CTX_GUIDE"]                          = "Указатель"
 L["CTX_WOWHEAD"]                        = "Wowhead"
 L["CTX_SEND_LINK"]                      = "Отправить ссылку"
@@ -458,6 +471,8 @@ L["GUIDE_NOT_IN_GAME_MENU"]             = "«%s» нет в игровом ме�
 L["GUIDE_OPTION_NOT_AVAILABLE"]         = "«%s» здесь недоступно"
 L["GUIDE_CLICK_CORRECT_TAB"]            = "Нажмите нужную вкладку"
 L["GUIDE_FIND_PET_IN_JOURNAL"]          = "Найдите спутника в журнале спутников"
+L["GUIDE_FIND_MOUNT_IN_JOURNAL"]        = "Найдите транспорт в журнале транспорта"
+L["GUIDE_FIND_TOY_IN_TOYBOX"]           = "Найдите игрушку в сундуке игрушек"
 L["GUIDE_CLICK_OPTION_LEFT"]            = "Нажмите нужный пункт слева"
 L["GUIDE_CLICK_CATEGORY_IN_LIST"]       = "Нажмите «%s» в списке категорий"
 L["GUIDE_SIDEBAR_CHARACTER_STATS"]      = "Характеристики персонажа"

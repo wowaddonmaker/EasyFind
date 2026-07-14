@@ -1934,6 +1934,350 @@ local function ResolveBindingHeader(category, action)
     return nil
 end
 
+-- Keybind rows for these actions merge with the action itself: a plain
+-- click runs the action's direct function, Alt+click opens Settings >
+-- Keybindings at the bind (the entry's steps). Actions listed in
+-- TOGGLE_BINDING_STATE also render a live checkbox from their getter.
+-- Each action carries its own unprotected equivalent because
+-- RunBinding() is a protected function (ADDON_ACTION_FORBIDDEN from
+-- addon code). Panel toggles (spellbook, talents, collections, ...) are
+-- deliberately absent: EasyFind opens those panels through secure click
+-- paths, and an insecure open poisons their frames.
+-- Every run returns true only when it actually performed the action; a
+-- nil'd global (API renamed in a patch) makes PerformBinding return
+-- false and the click falls through to the open-settings behavior.
+-- Bodies mirror the client's Bindings_Standard.xml handlers verbatim,
+-- so a merged row does exactly what pressing the bound key would.
+local function BoolCVarGetter(cvar)
+    return function() return GetCVar and GetCVar(cvar) == "1" end
+end
+
+local function SettingToggler(variable)
+    return function()
+        if Settings and Settings.GetValue and Settings.SetValue then
+            Settings.SetValue(variable, not Settings.GetValue(variable))
+            return true
+        end
+    end
+end
+
+local TOGGLE_BINDING_STATE = {
+    TOGGLEMINIMAP = {
+        get = function() return MinimapCluster and MinimapCluster:IsShown() end,
+        run = function()
+            if ToggleMinimap then
+                ToggleMinimap()
+                return true
+            end
+        end,
+    },
+    TOGGLEMUSIC = {
+        get = BoolCVarGetter("Sound_EnableMusic"),
+        run = function()
+            if Sound_ToggleMusic then
+                Sound_ToggleMusic()
+                return true
+            end
+        end,
+    },
+    TOGGLESOUND = {
+        get = BoolCVarGetter("Sound_EnableAllSound"),
+        run = function()
+            if Sound_ToggleSound then
+                Sound_ToggleSound()
+                return true
+            end
+        end,
+    },
+    TOGGLEACTIONBARLOCK = {
+        get = BoolCVarGetter("lockActionBars"),
+        run = SettingToggler("lockActionBars"),
+    },
+    TOGGLEAUTOSELFCAST = {
+        get = BoolCVarGetter("autoSelfCast"),
+        run = SettingToggler("autoSelfCast"),
+    },
+    TOGGLE_VOICE_SELF_MUTE = {
+        get = function() return C_VoiceChat and C_VoiceChat.IsMuted and C_VoiceChat.IsMuted() end,
+        run = function()
+            if VoiceChat_ToggleMutedFromUserAction then
+                VoiceChat_ToggleMutedFromUserAction()
+                return true
+            end
+            if C_VoiceChat and C_VoiceChat.ToggleMuted then
+                C_VoiceChat.ToggleMuted()
+                return true
+            end
+        end,
+    },
+    TOGGLE_VOICE_SELF_DEAFEN = {
+        get = function() return C_VoiceChat and C_VoiceChat.IsDeafened and C_VoiceChat.IsDeafened() end,
+        run = function()
+            if VoiceChat_ToggleDeafenedFromUserAction then
+                VoiceChat_ToggleDeafenedFromUserAction()
+                return true
+            end
+            if C_VoiceChat and C_VoiceChat.ToggleDeafened then
+                C_VoiceChat.ToggleDeafened()
+                return true
+            end
+        end,
+    },
+    -- EasyFind-owned synthetic action: no Blizzard binding exists for
+    -- hiding the chat windows, so the row is injected manually in
+    -- CollectKeybindings instead of coming from the GetBinding scan.
+    EASYFIND_TOGGLECHATFRAME = {
+        get = function()
+            local chatFrame = _G["ChatFrame1"]
+            return chatFrame and chatFrame:IsShown()
+        end,
+        run = function()
+            if EasyFind and EasyFind.ToggleChatFrames then
+                EasyFind:ToggleChatFrames()
+                return true
+            end
+        end,
+    },
+    TOGGLEWORLDMAP = {
+        get = function() return WorldMapFrame and WorldMapFrame:IsShown() end,
+        run = function()
+            if ToggleWorldMap then
+                ToggleWorldMap()
+                return true
+            end
+        end,
+    },
+    TOGGLEBATTLEFIELDMINIMAP = {
+        get = function() return BattlefieldMapFrame and BattlefieldMapFrame:IsShown() end,
+        run = function()
+            if ToggleBattlefieldMap then
+                ToggleBattlefieldMap()
+                return true
+            end
+        end,
+    },
+}
+
+local function BagToggler(bagSlot)
+    return function()
+        if ToggleBag then
+            ToggleBag(bagSlot)
+            return true
+        end
+    end
+end
+
+local function CharPaneToggler(paneName)
+    return function()
+        if ToggleCharacter then
+            ToggleCharacter(paneName)
+            return true
+        end
+    end
+end
+
+local function CollectionsToggler(tabConstName, fallbackTab)
+    return function()
+        if ToggleCollectionsJournal then
+            ToggleCollectionsJournal(_G[tabConstName] or fallbackTab)
+            return true
+        end
+    end
+end
+
+-- Resolved at load: a nil constant leaves the action out of the map
+-- entirely, so its row keeps inline bind buttons instead of rendering
+-- as a toggle whose click would fall through. Tab indexes come from
+-- the FRIEND_TAB_* globals only; a hardcoded number that drifted would
+-- open the wrong pane while still reporting success.
+local function FriendsToggler(tabConstName)
+    local friendsTab = _G[tabConstName]
+    if not friendsTab then return nil end
+    return function()
+        if ToggleFriendsFrame then
+            ToggleFriendsFrame(friendsTab)
+            return true
+        end
+    end
+end
+
+local PERFORM_ONLY_BINDINGS = {
+    TOGGLEBACKPACK = function()
+        if ToggleBackpack then
+            ToggleBackpack()
+            return true
+        end
+    end,
+    TOGGLEBAG1 = BagToggler(1),
+    TOGGLEBAG2 = BagToggler(2),
+    TOGGLEBAG3 = BagToggler(3),
+    TOGGLEBAG4 = BagToggler(4),
+    TOGGLEREAGENTBAG1 = BagToggler(Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag or 5),
+    OPENALLBAGS = function()
+        if ToggleAllBags then
+            ToggleAllBags()
+            return true
+        end
+    end,
+    TOGGLEFPS = function()
+        local framerateFrame = _G["FramerateFrame"]
+        if framerateFrame and framerateFrame.Toggle then
+            framerateFrame:Toggle()
+            return true
+        end
+    end,
+    TOGGLESHEATH = function()
+        if ToggleSheath then
+            ToggleSheath()
+            return true
+        end
+    end,
+    TOGGLECHARACTER0 = CharPaneToggler("PaperDollFrame"),
+    TOGGLECHARACTER2 = CharPaneToggler("ReputationFrame"),
+    TOGGLECURRENCY = function()
+        local charFrame = _G["CharacterFrame"]
+        if charFrame and charFrame.ToggleTokenFrame then
+            charFrame:ToggleTokenFrame()
+            return true
+        end
+    end,
+    TOGGLECHARACTER4 = function()
+        if TogglePVPUI then
+            TogglePVPUI()
+            return true
+        end
+    end,
+    TOGGLEACHIEVEMENT = function()
+        if ToggleAchievementFrame then
+            ToggleAchievementFrame()
+            return true
+        end
+    end,
+    TOGGLESTATISTICS = function()
+        if ToggleAchievementFrame then
+            ToggleAchievementFrame(1)
+            return true
+        end
+    end,
+    TOGGLEQUESTLOG = function()
+        if ToggleQuestLog then
+            ToggleQuestLog()
+            return true
+        end
+    end,
+    TOGGLESOCIAL = function()
+        if ToggleFriendsFrame then
+            ToggleFriendsFrame()
+            return true
+        end
+    end,
+    TOGGLEFRIENDSTAB = FriendsToggler("FRIEND_TAB_FRIENDS"),
+    TOGGLEWHOTAB = FriendsToggler("FRIEND_TAB_WHO"),
+    TOGGLECHATTAB = function()
+        if ToggleChannelFrame then
+            ToggleChannelFrame()
+            return true
+        end
+    end,
+    TOGGLEQUICKJOINTAB = function()
+        if ToggleQuickJoinPanel then
+            ToggleQuickJoinPanel()
+            return true
+        end
+    end,
+    TOGGLERAIDTAB = function()
+        if ToggleRaidFrame then
+            ToggleRaidFrame()
+            return true
+        end
+    end,
+    TOGGLEGUILDTAB = function()
+        if ToggleGuildFrame then
+            ToggleGuildFrame()
+            return true
+        end
+    end,
+    TOGGLEGROUPFINDER = function()
+        if PVEFrame_ToggleFrame then
+            PVEFrame_ToggleFrame()
+            return true
+        end
+    end,
+    TOGGLEDUNGEONSANDRAIDS = function()
+        if PVEFrame_ToggleFrame then
+            PVEFrame_ToggleFrame("GroupFinderFrame")
+            return true
+        end
+    end,
+    TOGGLECOLLECTIONS = function()
+        if ToggleCollectionsJournal then
+            ToggleCollectionsJournal()
+            return true
+        end
+    end,
+    TOGGLECOLLECTIONSMOUNTJOURNAL = CollectionsToggler("COLLECTIONS_JOURNAL_TAB_INDEX_MOUNTS", 1),
+    TOGGLECOLLECTIONSPETJOURNAL = CollectionsToggler("COLLECTIONS_JOURNAL_TAB_INDEX_PETS", 2),
+    TOGGLECOLLECTIONSTOYBOX = CollectionsToggler("COLLECTIONS_JOURNAL_TAB_INDEX_TOYS", 3),
+    TOGGLECOLLECTIONSHEIRLOOM = CollectionsToggler("COLLECTIONS_JOURNAL_TAB_INDEX_HEIRLOOMS", 4),
+    TOGGLECOLLECTIONSWARDROBE = CollectionsToggler("COLLECTIONS_JOURNAL_TAB_INDEX_APPEARANCES", 5),
+    TOGGLEENCOUNTERJOURNAL = function()
+        if ToggleEncounterJournal then
+            ToggleEncounterJournal()
+            return true
+        end
+    end,
+    TOGGLEGARRISONLANDINGPAGE = function()
+        local landingBtn = _G["ExpansionLandingPageMinimapButton"]
+        if landingBtn and landingBtn.IsShown and landingBtn:IsShown() and landingBtn.ToggleLandingPage then
+            landingBtn:ToggleLandingPage()
+            return true
+        end
+    end,
+    TOGGLEHOUSINGDASHBOARD = function()
+        if HousingFramesUtil and HousingFramesUtil.ToggleHousingDashboard then
+            HousingFramesUtil.ToggleHousingDashboard()
+            return true
+        end
+    end,
+}
+
+-- Discovery keywords the removed hand-curated action entries carried;
+-- the merged keybind rows inherit them so the same queries keep hitting.
+local TOGGLE_BINDING_KEYWORDS = {
+    TOGGLEMINIMAP = { "minimap", "mini map", "tracking", "navigation" },
+    TOGGLEWORLDMAP = { "map", "world map", "navigation" },
+    TOGGLEBATTLEFIELDMINIMAP = { "zone map", "battlefield map", "floating map", "area map", "navigation" },
+    TOGGLEMUSIC = { "music", "audio" },
+    TOGGLESOUND = { "sound", "audio", "mute" },
+    TOGGLESOCIAL = { "friends", "friends list", "social", "bnet", "battlenet", "contacts", "whisper", "online" },
+}
+
+-- Live checkbox state for a merged toggle row: true/false, or nil when
+-- the action has no readable state (perform-only rows, unknown actions).
+-- Looked up by action at render/activate time instead of stored on the
+-- entry so pinned-row snapshots never carry function fields.
+function BlizzOptionsSearch:GetToggleBindingState(action)
+    local entry = action and TOGGLE_BINDING_STATE[action]
+    if not entry then return nil end
+    local ok, isOn = pcall(entry.get)
+    if not ok then return nil end
+    return isOn and true or false
+end
+
+function BlizzOptionsSearch:IsPerformableBinding(action)
+    if not action then return false end
+    return TOGGLE_BINDING_STATE[action] ~= nil or PERFORM_ONLY_BINDINGS[action] ~= nil
+end
+
+function BlizzOptionsSearch:PerformBinding(action)
+    if not action then return false end
+    local entry = TOGGLE_BINDING_STATE[action]
+    local run = entry and entry.run or PERFORM_ONLY_BINDINGS[action]
+    if not run then return false end
+    local ok, ran = xpcall(run, Utils.ErrorHandler)
+    return ok and ran == true
+end
+
 local function CollectKeybindings()
     local entries = {}
 
@@ -1941,13 +2285,30 @@ local function CollectKeybindings()
     -- opens Settings > Keybindings and highlights the button (it lives in a
     -- virtualized ScrollBox, so it can't be clicked by frame name).
     do
-        local qkbName = _G["QUICK_KEYBIND_MODE"] or "Quick Keybind Mode"
+        local qkbName = Loc["KEYBIND_TOGGLE_FMT"]:format(_G["QUICK_KEYBIND_MODE"] or "Quick Keybind Mode")
         tinsert(entries, setmetatable({
             name = qkbName,
             nameLower = slower(qkbName),
             keywords = { "quick keybind mode", "quick", "keybind", "binding", "hover bind" },
             quickKeybindActivate = true,
             steps = { { settingsCategory = "Keybindings" } },
+        }, GetSettingsCatMT("Game Settings", "Keybindings", nil, { "Game Settings", "Keybindings" })))
+    end
+
+    -- Toggle Chat Frame: EasyFind-owned toggle with no Blizzard binding behind
+    -- it (WoW cannot hide the chat windows natively). Activated via its
+    -- synthetic action in TOGGLE_BINDING_STATE. customToggle marks it left-click
+    -- only: with no Keybindings row to deep-link to, Alt performs the toggle
+    -- instead of opening a panel that has no entry for it.
+    do
+        local chatToggleName = Loc["KEYBIND_TOGGLE_FMT"]:format(_G["HUD_EDIT_MODE_CHAT_FRAME_LABEL"] or "Chat Frame")
+        tinsert(entries, setmetatable({
+            name = chatToggleName,
+            nameLower = slower(chatToggleName),
+            keywords = { "chat", "chat frame", "chat window", "hide chat", "show chat", "toggle" },
+            settingType = "keybind",
+            bindingAction = "EASYFIND_TOGGLECHATFRAME",
+            customToggle = true,
         }, GetSettingsCatMT("Game Settings", "Keybindings", nil, { "Game Settings", "Keybindings" })))
     end
 
@@ -1984,6 +2345,12 @@ local function CollectKeybindings()
             -- "binding" (intentional queries) and the action's own name/header
             -- still match; the Keybindings panel is found by its name.
             local kw = { "keybind", "binding", nameLower, slower(header) }
+            local extraKw = TOGGLE_BINDING_KEYWORDS[action]
+            if extraKw then
+                for j = 1, #extraKw do
+                    tinsert(kw, extraKw[j])
+                end
+            end
             local mt = GetSettingsCatMT("Game Settings", "Keybindings", nil,
                 { "Game Settings", "Keybindings", header })
             tinsert(entries, setmetatable({
@@ -2747,9 +3114,249 @@ local function PushLiveGameEntries(data, gameEntries)
     return changed
 end
 
+-- ===================================================================
+-- Persisted light-populate cache
+-- ===================================================================
+-- The light-populate output (curated game settings, the settings category
+-- tree, every keybinding, every addon options category) is stable per
+-- {game build, locale, enabled-addon set}. Rebuilding it walks the whole
+-- SettingsPanel tree on every /reload -- a single-frame CPU spike. Persist the
+-- built index to SavedVariables and restore it when the signature matches, so
+-- the walk only runs when its inputs actually change.
+--
+-- Setting VALUES are never cached; they are read live at render/click. Only the
+-- searchable index (names, keywords, nav steps, widget shape) is stored.
+-- settingFormatter (a function) and settingOptions (a walk-derived table) are
+-- excluded from the blob and re-resolved lazily at render time by the existing
+-- GetFormatterForVariable / GetOptionsForVariable fallbacks. The one exception
+-- is the QUALITY_SLIDER_OVERRIDES formatter (e.g. the graphics 0-9 -> 1-10
+-- display), which the lazy path can't reproduce, so it is re-attached on
+-- restore from the same module constant the collector used.
+-- Bump when the serialized entry shape changes so stale caches rebuild.
+-- v2: round-trips customToggle (the chat-toggle left-click-only flag).
+local OPTIONS_CACHE_SCHEMA = 3
+
+-- Cheap deterministic hash of the enabled-addon set. Addon options categories
+-- exist only for enabled addons, so the cache must invalidate when that set
+-- changes. Runs once per reload.
+local function AddonSetFingerprint()
+    local C = C_AddOns
+    if not (C and C.GetNumAddOns and C.GetAddOnInfo) then return "na" end
+    local okNum, count = pcall(C.GetNumAddOns)
+    if not okNum or type(count) ~= "number" then return "na" end
+    local getState = C.GetAddOnEnableState
+    local hash = 5381
+    local enabledCount = 0
+    for i = 1, count do
+        local enabled = true
+        if getState then
+            local ok, state = pcall(getState, i)
+            if not (ok and type(state) == "number") then
+                ok, state = pcall(getState, nil, i)
+            end
+            if ok and type(state) == "number" then enabled = state ~= 0 end
+        end
+        if enabled then
+            local okInfo, addonName = pcall(C.GetAddOnInfo, i)
+            if okInfo and type(addonName) == "string" then
+                enabledCount = enabledCount + 1
+                for ci = 1, #addonName do
+                    hash = (hash * 33 + addonName:byte(ci)) % 2147483648
+                end
+            end
+        end
+    end
+    return enabledCount .. ":" .. hash
+end
+
+local function BuildOptionsCacheSignature()
+    local _, build = GetBuildInfo()
+    return tconcat({
+        OPTIONS_CACHE_SCHEMA,
+        tostring(build or "?"),
+        (GetLocale and GetLocale()) or "?",
+        AddonSetFingerprint(),
+    }, "\30")
+end
+BlizzOptionsSearch.BuildOptionsCacheSignature = BuildOptionsCacheSignature
+
+-- The packed codec captures exactly these step fields, so no copy helper is
+-- needed: decoded rows are already fresh tables, decoupled from the cache blob.
+local STEP_FIELDS = { "settingsCategory", "settingCategoryID", "settingVariable",
+    "bindingAction", "bindingHeader" }
+
+-- Field order for the packed cache. Fields are read straight off the entry, so
+-- category/path/settingsCategory/settingCategoryID come through the __index
+-- proto exactly as a direct access would (pairs() would miss them).
+-- settingFormatter and settingOptions are intentionally dropped (function /
+-- walk-derived table) and are re-attached on deserialize.
+local OPTIONS_ROW_SPEC = {
+    { "name" }, { "nameLower" },
+    { "keywords", "list" },
+    { "steps", "records", STEP_FIELDS },
+    { "settingVariable" }, { "cbVariable" }, { "sliderVariable" }, { "dropdownVariable" },
+    { "settingType" }, { "settingMin" }, { "settingMax" }, { "settingStep" },
+    { "bindingAction" }, { "customToggle" }, { "quickKeybindActivate" },
+    { "category" }, { "path", "list" }, { "settingsCategory" }, { "settingCategoryID" },
+}
+
+local function SerializeList(src)
+    return Utils.PackRows(src, OPTIONS_ROW_SPEC)
+end
+
+-- Rebuild a live entry from a plain record. GetSettingsCatMT dedupes protos by
+-- (category, catName, path), so same-category entries share one proto exactly
+-- as a fresh build does. Copies decouple the live entry from the SavedVariables
+-- blob so runtime reads never mutate the persisted cache.
+local function DeserializeEntry(rec)
+    local mt = GetSettingsCatMT(rec.category or "Game Settings", rec.settingsCategory,
+        rec.settingCategoryID, rec.path)
+    local entry = setmetatable({
+        name = rec.name,
+        nameLower = rec.nameLower,
+        keywords = rec.keywords or {},
+        steps = rec.steps,
+        settingVariable = rec.settingVariable,
+        cbVariable = rec.cbVariable,
+        sliderVariable = rec.sliderVariable,
+        dropdownVariable = rec.dropdownVariable,
+        settingType = rec.settingType,
+        settingMin = rec.settingMin,
+        settingMax = rec.settingMax,
+        settingStep = rec.settingStep,
+        bindingAction = rec.bindingAction,
+        customToggle = rec.customToggle,
+        quickKeybindActivate = rec.quickKeybindActivate,
+    }, mt)
+    local var = rec.settingVariable
+    if var then
+        local override = QUALITY_SLIDER_OVERRIDES[var]
+        if override and override.formatter then
+            entry.settingFormatter = override.formatter
+        end
+        local opts = CVAR_DROPDOWN_OPTIONS[var]
+        if opts then entry.settingOptions = opts end
+    end
+    return entry
+end
+
+local function DeserializeList(blob)
+    local rows = Utils.UnpackRows(blob, OPTIONS_ROW_SPEC)
+    local out = {}
+    for i = 1, #rows do out[i] = DeserializeEntry(rows[i]) end
+    return out
+end
+
+-- Real code path used by the restore below (and by EasyFindDev's identity
+-- check). Returns rehydrated { entries, kb, addon } without pushing anything.
+function BlizzOptionsSearch.DeserializeOptionsCache(cache)
+    if type(cache) ~= "table" then return nil end
+    if type(cache.entries) ~= "string" or type(cache.kb) ~= "string"
+       or type(cache.addon) ~= "string" then
+        return nil
+    end
+    return {
+        entries = DeserializeList(cache.entries),
+        kb = DeserializeList(cache.kb),
+        addon = DeserializeList(cache.addon),
+    }
+end
+
+local function SaveOptionsCache(entries, kb, addonEntries)
+    local db = EasyFind and EasyFind.db
+    if not db then return end
+    local ok, blob = xpcall(function()
+        return {
+            sig = BuildOptionsCacheSignature(),
+            entries = SerializeList(entries),
+            kb = SerializeList(kb),
+            addon = SerializeList(addonEntries),
+        }
+    end, Utils.ErrorHandler)
+    if ok and type(blob) == "table" then
+        db.optionsSearchCache = blob
+    end
+end
+
+-- Cheap insurance against a hotfix relocalizing a setting name without a build
+-- bump: sample a spread of curated game rows and confirm the stored name still
+-- matches the live Settings API. Any drift discards the cache. Raid-suffixed
+-- and unregistered variables are skipped (their stored name isn't a bare API
+-- name). Bounded to a handful of GetSettingDisplayName calls.
+local function SpotCheckRestored(entries)
+    if type(entries) ~= "table" then return false end
+    local candidates = {}
+    for i = 1, #entries do
+        local entry = entries[i]
+        local var = entry.settingVariable
+        if var and entry.category == "Game Settings"
+           and entry.settingsCategory ~= "Keybindings"
+           and not var:find("^PROXY_RAID_") then
+            candidates[#candidates + 1] = entry
+        end
+    end
+    local n = #candidates
+    if n == 0 then return true end
+    local sampleIdx
+    if n <= 6 then
+        sampleIdx = {}
+        for i = 1, n do sampleIdx[i] = i end
+    else
+        sampleIdx = { 1, 2, 3, (n - (n % 2)) / 2, n - 1, n }
+    end
+    for si = 1, #sampleIdx do
+        local entry = candidates[sampleIdx[si]]
+        if entry then
+            local fresh = GetSettingDisplayName(entry.settingVariable, nil)
+            -- Curated rows may append a static suffix (SETTINGS_DATA row[7]) to
+            -- the API name, so the stored name starts with the live name rather
+            -- than equalling it. A real relocalization replaces the API name
+            -- outright and breaks the prefix; a suffix does not. Compare on the
+            -- prefix so suffixed rows don't invalidate a still-valid cache.
+            if fresh ~= nil and fresh ~= "" and entry.name
+               and entry.name:sub(1, #fresh) ~= fresh then
+                return false
+            end
+        end
+    end
+    return true
+end
+
+-- Restore the light index from SavedVariables when the signature matches and a
+-- spot-check passes. Returns true if the walk can be skipped. Any error degrades
+-- to a clean rebuild (return false) rather than propagating.
+local function RestoreOptionsFromCache(data)
+    local db = EasyFind and EasyFind.db
+    if not db then return false end
+    local cache = db.optionsSearchCache
+    if type(cache) ~= "table" or cache.sig == nil then return false end
+    if cache.sig ~= BuildOptionsCacheSignature() then return false end
+
+    local ok, restored = xpcall(function()
+        return BlizzOptionsSearch.DeserializeOptionsCache(cache)
+    end, Utils.ErrorHandler)
+    if not ok or type(restored) ~= "table" then return false end
+
+    if not SpotCheckRestored(restored.entries) then return false end
+
+    local pushOk, changed = xpcall(function()
+        return PushOptionEntries(data, restored.entries, restored.kb, restored.addon, nil)
+    end, Utils.ErrorHandler)
+    if not pushOk then return false end
+    if changed and ns.Database.ResetSearchCache then ns.Database:ResetSearchCache() end
+    return true
+end
+
 function BlizzOptionsSearch:Populate(includeLiveGameSettings)
     if not ns.Database or not ns.Database.uiSearchData then return end
     local data = ns.Database.uiSearchData
+
+    -- Light path is the reload hot path: restore the persisted index and skip
+    -- the settings-tree walk when the cache signature still matches. Live game
+    -- settings always take the full walk.
+    if not includeLiveGameSettings and RestoreOptionsFromCache(data) then
+        return
+    end
 
     local entries = CollectEntries(not coreGameRegistered)
     local kb = CollectKeybindings()
@@ -2759,6 +3366,11 @@ function BlizzOptionsSearch:Populate(includeLiveGameSettings)
     local changed = PushOptionEntries(data, entries, kb, addonEntries, gameEntries)
 
     if changed and ns.Database.ResetSearchCache then ns.Database:ResetSearchCache() end
+
+    -- Persist the freshly-built light index so the next reload restores it.
+    if not includeLiveGameSettings then
+        SaveOptionsCache(entries, kb, addonEntries)
+    end
 end
 
 function BlizzOptionsSearch:PopulateLight()

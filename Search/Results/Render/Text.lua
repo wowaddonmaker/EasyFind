@@ -63,10 +63,7 @@ end
 
 -- Inert (unearned/locked) rows dim the whole stack: name below the normal
 -- subtext gray, subtext darker still, icons desaturated in Render.Core.
-local INERT_TEXT = 0.45
-local INERT_SUBTEXT = 0.35
-
-function Render.BaseRowText(resultRow, entry, state, isInertRow)
+function Render.BaseRowText(resultRow, entry, state)
     if entry.isPinHeader or entry.isSectionHeader
        or (state.theme.showHeaderTab and entry.isPathNode) then
         if resultRow.pathSubtext then resultRow.pathSubtext:Hide() end
@@ -134,11 +131,10 @@ function Render.BaseRowText(resultRow, entry, state, isInertRow)
         resultRow.text:SetPoint("BOTTOMLEFT", leftAnchor, "RIGHT", 6, state.stackHalfGap)
         resultRow.text:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
         Results:SetScaledFont(resultRow.text, theme.pathFont)
-        if isInertRow then
-            resultRow.text:SetTextColor(INERT_TEXT, INERT_TEXT, INERT_TEXT, 1.0)
-        else
-            resultRow.text:SetTextColor(1.0, 1.0, 1.0, 1.0)
-        end
+        -- Same slot as the plain-list branch below. Locked/unearned rows
+        -- keep their darkened icon as the unusable cue; the name text
+        -- always wears the theme color.
+        resultRow.text:SetTextColor(unpack(theme.leafColor))
         SetClippedText(resultRow.text, entry.name)
 
         resultRow.pathSubtext:ClearAllPoints()
@@ -146,11 +142,7 @@ function Render.BaseRowText(resultRow, entry, state, isInertRow)
         resultRow.pathSubtext:SetPoint("RIGHT", resultRow.amountText, "LEFT", -4, 0)
         resultRow.pathSubtext:SetText(Text:GetFlatSubtext(data))
         Results:SetScaledFont(resultRow.pathSubtext, theme.leafFont)
-        if isInertRow then
-            resultRow.pathSubtext:SetTextColor(INERT_SUBTEXT, INERT_SUBTEXT, INERT_SUBTEXT, 1.0)
-        else
-            resultRow.pathSubtext:SetTextColor(0.55, 0.55, 0.55, 1.0)
-        end
+        resultRow.pathSubtext:SetTextColor(unpack(theme.pathColor))
         resultRow.pathSubtext:Show()
         return
     end
@@ -170,9 +162,6 @@ function Render.BaseRowText(resultRow, entry, state, isInertRow)
         else
             resultRow.text:SetTextColor(unpack(theme.pathColor))
         end
-    elseif isInertRow then
-        Results:SetScaledFont(resultRow.text, theme.leafFont)
-        resultRow.text:SetTextColor(INERT_TEXT, INERT_TEXT, INERT_TEXT, 1.0)
     elseif entry.isMatch then
         Results:SetScaledFont(resultRow.text, theme.leafFont)
         resultRow.text:SetTextColor(Utils.RGB(GOLD_COLOR, 1.0))

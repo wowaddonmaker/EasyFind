@@ -288,6 +288,27 @@ function Search:OnSearchTextChanged(text, force)
         end
     end
 
+    -- Blacklist gate: the ONE suppression point for main-search results.
+    -- Runs after alias injection on purpose (blacklist beats an alias
+    -- pointing at the same row) and copies into scratch like the other
+    -- passes; `results` may be the engine's cached candidate set and must
+    -- not be mutated. Free when the blacklist is empty.
+    if ns.Blacklist and ns.Blacklist:HasAny() then
+        SCRATCH.blacklistResults = SCRATCH.blacklistResults or {}
+        wipe(SCRATCH.blacklistResults)
+        local filtered = SCRATCH.blacklistResults
+        local fi = 0
+        for ri = 1, #results do
+            local r = results[ri]
+            if r and not ns.Blacklist:Contains(r.data) then
+                fi = fi + 1
+                filtered[fi] = r
+            end
+        end
+        for i = fi + 1, #filtered do filtered[i] = nil end
+        results = filtered
+    end
+
     if quickFilter then
         wipe(SCRATCH.quickFilterResults)
         local filtered = SCRATCH.quickFilterResults

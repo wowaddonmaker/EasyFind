@@ -150,17 +150,37 @@ function Render.MeasureResultRowHeight(resultRow, entry, state)
     return actualH
 end
 
+-- Icon visibility setting, ONE owner for which icon slots survive a
+-- render: "all" keeps everything, "general" hides the right-side
+-- specific art, "specific" hides the category glyph and left-positioned
+-- main icons. Flat mode only (tree rows anchor text to the icon rect),
+-- and it runs before ApplyFlatResultAnchoring, which reads IsShown and
+-- reflows the text into the freed space.
+function Render.ApplyIconVisibility(resultRow, entry)
+    if not entry.isFlat then return end
+    local mode = EasyFind and EasyFind.db and EasyFind.db.iconVisibility
+    if not mode or mode == "all" then return end
+    local data = entry.data
+    if mode == "general" then
+        if resultRow.icon and IsRightSideIconData(data) then
+            resultRow.icon:Hide()
+        end
+    elseif mode == "specific" then
+        if resultRow.flatCatIcon then resultRow.flatCatIcon:Hide() end
+        if resultRow.icon and not IsRightSideIconData(data) then
+            resultRow.icon:Hide()
+        end
+    end
+end
+
+-- Off-spec/unusable abilities keep ONLY the darkened icon as their cue;
+-- name and subtext stay on the theme text colors (a gray override here
+-- fought every non-default theme and made row text inconsistent).
 function Render.ApplyOffSpecResultStyle(resultRow, data)
     if not (data and data.isOffSpec) then return end
 
     if resultRow.icon then
         resultRow.icon:SetVertexColor(0.4, 0.4, 0.4, 1.0)
-    end
-    if resultRow.text then
-        resultRow.text:SetTextColor(0.5, 0.5, 0.5, 1.0)
-    end
-    if resultRow.pathSubtext then
-        resultRow.pathSubtext:SetTextColor(0.4, 0.4, 0.4, 1.0)
     end
 end
 

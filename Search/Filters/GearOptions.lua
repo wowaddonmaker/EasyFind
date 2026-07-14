@@ -50,6 +50,7 @@ function Filters:AttachLootOptionsFlyout(row, dropdown, ctx)
         Utils.SetCheckboxTextures(subRow, CHECK_SIZE)
 
         local subLabel = subRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        subLabel:SetShadowColor(0, 0, 0, 0)
         subLabel:SetPoint("LEFT", subRow:GetNormalTexture(), "RIGHT", 4, 0)
         subLabel:SetText(sub.label)
         subRow._label = subLabel
@@ -100,12 +101,17 @@ function Filters:AttachLootOptionsFlyout(row, dropdown, ctx)
     diffArrow:SetAtlas("common-dropdown-a-button-hover")
     diffArrow:SetSize(22, 22)
     diffArrow:SetPoint("RIGHT", -10, -1)
+    -- Dark textholder pill on every theme: light-on-dark scheme, no
+    -- theme tints (see Utils.CreateDropdownButton).
     diffArrow:SetVertexColor(0.7, 0.7, 0.7)
     local diffText = diffBtn:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    diffText:SetShadowColor(0, 0, 0, 0)
     diffText:SetPoint("LEFT", 14, 0)
     diffText:SetPoint("RIGHT", diffArrow, "LEFT", -2, 0)
     diffText:SetJustifyH("LEFT")
     diffText:SetWordWrap(false)
+    diffText._efOwnColor = true
+    diffText:SetTextColor(1, 1, 1)
     diffBtn:SetScript("OnEnter", function()
         diffArrow:SetVertexColor(1, 1, 1)
     end)
@@ -139,6 +145,7 @@ function Filters:AttachLootOptionsFlyout(row, dropdown, ctx)
         radio:SetPoint("LEFT", 0, 0)
         diffRowLead = diffRowLead or (radio:GetWidth() + 4)
         local dLabel = dRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+        dLabel:SetShadowColor(0, 0, 0, 0)
         dLabel:SetPoint("LEFT", radio, "RIGHT", 4, 0)
         dLabel:SetText(def.label)
         dRow._label = dLabel

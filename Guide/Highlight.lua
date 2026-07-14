@@ -295,8 +295,17 @@ function Highlight:CreateHighlightFrame()
         local terminal = isTerminalHighlight()
         if terminal and self._clearWhenTargetHidden and target
            and target.IsVisible and not target:IsVisible() then
-            clearTerminalHighlight()
-            return
+            -- Pooled rows churn under the cursor (the EJ boss list
+            -- re-lays out on hover-driven portrait updates), hiding the
+            -- old frame for a tick before the step handler re-finds the
+            -- new one. With a live guide ticker, deferring to it kills
+            -- the hide/re-show flicker; panel closes still cancel via
+            -- the ticker's own waitForFrame check. Ticker-less
+            -- highlights (DirectOpen reveals) keep clearing themselves.
+            if not stepTicker then
+                clearTerminalHighlight()
+                return
+            end
         end
         local validator = self._targetValidator
         if validator and not validator(target) then
@@ -817,6 +826,102 @@ local function HandleWaitPetJournal(self, step, isLastStep)
     return true
 end
 
+local function HandleWaitMountJournal(self, step, isLastStep)
+    local row = ResultHandlers and ResultHandlers.RevealMountInJournal
+        and ResultHandlers:RevealMountInJournal(step)
+    if row then
+        self:HighlightFrame(row)
+        if canHoverDismiss() and row:IsMouseOver() then
+            self:Cancel()
+        end
+    elseif isLastStep then
+        self:ShowInstruction(step.text or L["GUIDE_FIND_MOUNT_IN_JOURNAL"])
+    end
+    return true
+end
+
+local function HandleWaitToyBox(self, step, isLastStep)
+    local row = ResultHandlers and ResultHandlers.RevealToyInToyBox
+        and ResultHandlers:RevealToyInToyBox(step)
+    if row then
+        self:HighlightFrame(row)
+        if canHoverDismiss() and row:IsMouseOver() then
+            self:Cancel()
+        end
+    elseif isLastStep then
+        self:ShowInstruction(step.text or L["GUIDE_FIND_TOY_IN_TOYBOX"])
+    end
+    return true
+end
+
+-- Settings guides walk Game Menu -> Options via hardware clicks, then
+-- highlight the category row in the left list for the user's own click
+-- (so they learn where it lives). Only once the category is selected
+-- does the settings machinery take over to highlight the exact control.
+-- A collapsed/undiscoverable row falls back to programmatic navigation
+-- after a few seconds rather than stranding the guide.
+local SETTINGS_CAT_WAIT_TICKS = 40
+
+local function HandleWaitSettingsCategory(self, step)
+    local panel = _G["SettingsPanel"]
+    if not panel then return true end
+
+    local current = panel.GetCurrentCategory and panel:GetCurrentCategory()
+    local arrived = false
+    if current then
+        if step.settingCategoryID and current.GetID and current:GetID() == step.settingCategoryID then
+            arrived = true
+        elseif step.settingsCategory and current.GetName and current:GetName() == step.settingsCategory then
+            arrived = true
+        end
+    end
+    if arrived then
+        if ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.HandleStep then
+            ns.BlizzOptionsSearch:HandleStep(step)
+        end
+        self:Cancel()
+        return true
+    end
+
+    local targetName = step.settingsCategory and slower(step.settingsCategory)
+    local list = panel.CategoryList and panel.CategoryList.ScrollBox
+    if list and targetName then
+        local rowBtn = ScrollBoxFindButton(list, function(btn)
+            local text = GetButtonText(btn)
+            return text and slower(text) == targetName
+        end)
+        if rowBtn then
+            -- Click-through waypoint, not the final target: suppress
+            -- hover-dismiss so moving the cursor onto the row to click it
+            -- doesn't cancel the guide (this is the last step, so
+            -- hover-dismiss would otherwise be armed).
+            self:HighlightFrame(rowBtn, nil, nil, true)
+            return true
+        end
+        -- Off-screen row: scroll it into view (throttled against the
+        -- user's own scrolling).
+        local now = GetTime()
+        if not step._catScrollAt or (now - step._catScrollAt) > 1 then
+            step._catScrollAt = now
+            ScrollBoxScrollTo(list, function(elementData)
+                local rowData = elementData and (elementData.data or elementData)
+                local n = rowData and (rowData.name
+                    or (rowData.category and rowData.category.GetName and rowData.category:GetName()))
+                return type(n) == "string" and slower(n) == targetName
+            end)
+        end
+    end
+
+    step._catWaitTicks = (step._catWaitTicks or 0) + 1
+    if step._catWaitTicks > SETTINGS_CAT_WAIT_TICKS then
+        if ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.HandleStep then
+            ns.BlizzOptionsSearch:HandleStep(step)
+        end
+        self:Cancel()
+    end
+    return true
+end
+
 local function HandleWaitEncounterJournalTier(self, step)
     local tabIdx = step.ejTabIsRaid and 5 or 4
     if not step._tierApplied then
@@ -1179,6 +1284,21 @@ local function HandleWaitEJBoss(self, step)
         end)
         if bossBtn then
             self:HighlightFrame(bossBtn)
+        else
+            -- Off-screen boss: scroll it into view. Throttled so a user
+            -- scrolling by hand isn't yanked back every tick.
+            local now = GetTime()
+            if not step._bossScrollAt or (now - step._bossScrollAt) > 1 then
+                step._bossScrollAt = now
+                ScrollBoxScrollTo(scrollBox, function(elementData)
+                    if not elementData then return false end
+                    if step.ejEncounterID and elementData.encounterID == step.ejEncounterID then
+                        return true
+                    end
+                    local n = elementData.name or elementData.text
+                    return type(n) == "string" and slower(n) == targetName
+                end)
+            end
         end
     end
     return true
@@ -1707,6 +1827,9 @@ end
 local WAIT_STEP_HANDLERS = {
     { key = "tabIndex", fn = HandleWaitTabIndex },
     { condition = function(step) return step.petID or step.speciesID end, fn = HandleWaitPetJournal },
+    { key = "mountID", fn = HandleWaitMountJournal },
+    { key = "toyItemID", fn = HandleWaitToyBox },
+    { key = "settingsCategory", fn = HandleWaitSettingsCategory },
     { condition = function(step) return step.waitForFrame == "EncounterJournal" and step.ejTier end, fn = HandleWaitEncounterJournalTier },
     { key = "sideTabIndex", fn = HandleWaitSideTab },
     { key = "pvpSideTabIndex", fn = HandleWaitPvPSideTab },

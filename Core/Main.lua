@@ -55,6 +55,8 @@ local DB_DEFAULTS = {
     accountKeybinds = {},
     resultsTheme = "Modern",
     font = "Default",
+    uiTheme = "Black",
+    iconVisibility = "all",
     indicatorStyle = "EasyFind Arrow",
     indicatorColor = "Yellow",
     uiResultsRows = 6,
@@ -69,6 +71,10 @@ local DB_DEFAULTS = {
     bossCacheVer = 0,
     statisticCache = {},
     statisticCacheVer = 0,
+    -- Persisted Blizzard-options search index. Validity is gated by an internal
+    -- signature (schema + build + locale + enabled-addon set), so no companion
+    -- Ver field or reset block is needed -- a signature miss rebuilds it.
+    optionsSearchCache = {},
     mapPinsCollapsed = false,
     showAliasMessages = true,
     blinkingPins = false,
@@ -145,6 +151,7 @@ local DB_DEFAULTS = {
     housingCollectionBonusOnly = false,
     housingIndoors = true,
     housingOutdoors = true,
+    housingShowRooms = false,
     housingSortType = 0,
     housingTags = {},
     housingTagGroupsCache = {},
@@ -321,6 +328,7 @@ local INTERACTIVE_RESET_PRESERVE = {
     bossCacheVer = true,
     statisticCache = true,
     statisticCacheVer = true,
+    optionsSearchCache = true,
 }
 for key in pairs(PRESERVED_KEYS) do
     INTERACTIVE_RESET_PRESERVE[key] = true
@@ -506,15 +514,9 @@ local SUGGESTED_KEYBINDS = {
 -- The version whose features the What's New popup currently describes. Bump
 -- ONLY when the popup content is rewritten; patch releases that keep the same
 -- content must not re-announce it to users who already saw it.
-local WHATSNEW_CONTENT_VERSION = "2.1.1"
+local WHATSNEW_CONTENT_VERSION = "2.1.2"
 
 local WHATSNEW_LINK_PREFIX = "easyfind:whatsnew:"
--- TEMPORARY (remove after the CurseForge Addon Trials vote ends).
--- The URL is on ns because the options Feedback tab's vote button
--- opens the same copy box.
-local TRIALS_LINK = "easyfind:trials"
-ns.TRIALS_VOTE_URL = "https://overwolfdevs.typeform.com/to/oFmIImnr"
--- END TEMPORARY
 local whatsNewHookInstalled = false
 
 local function InstallWhatsNewHyperlinkHook()
@@ -530,11 +532,6 @@ local function InstallWhatsNewHyperlinkHook()
             local version = link:sub(#WHATSNEW_LINK_PREFIX + 1)
             if ns.Onboarding and ns.Onboarding.ShowWhatsNew then
                 xpcall(ns.Onboarding.ShowWhatsNew, ErrorHandler, ns.Onboarding, version)
-            end
-        elseif link == TRIALS_LINK then
-            -- TEMPORARY: Addon Trials vote link opens the copy box.
-            if ns.ShowCopyBox then
-                xpcall(ns.ShowCopyBox, ErrorHandler, ns.TRIALS_VOTE_URL, L["WHATSNEW_TRIALS_VOTE"])
             end
         end
     end)
@@ -552,10 +549,6 @@ local function ShowWhatsNewChatMessage(version)
     local v = version or "?"
     local link = BlueChatLink(WHATSNEW_LINK_PREFIX .. v, L["WHATSNEW_CHAT_HERE"])
     local msg = sformat(L["WHATSNEW_CHAT_HELLO"], v, link)
-    -- TEMPORARY (remove after the CurseForge Addon Trials vote ends)
-    local trialsLink = BlueChatLink(TRIALS_LINK, L["WHATSNEW_CHAT_TRIALS_LINK"])
-    msg = msg .. " " .. sformat(L["WHATSNEW_CHAT_TRIALS"], trialsLink)
-    -- END TEMPORARY
     -- Plain print: the hello already carries the green brand, so the
     -- usual "EasyFind:" Print prefix would say the name twice.
     print(msg)
@@ -839,6 +832,18 @@ local function OnPlayerLogin()
         ns.Scheduler:StartPump(CreateFrame("Frame"))
     end
 
+    -- Seed the live theme slots BEFORE the module Initialize loop below:
+    -- the search UI is created (and painted) inside it, and a seed after
+    -- creation with the repaint skipped leaves the whole bar wearing the
+    -- default palette until something else repaints (the reset-on-reload
+    -- bug). Creation-time paints read the selected palette directly.
+    if ns.ApplyUITheme then
+        ns.ApplyUITheme(EasyFind.db.uiTheme, true)
+    end
+    if ns.WarmAddonFonts and ns.Utils and ns.Utils.SafeAfter then
+        ns.Utils.SafeAfter(1, ns.WarmAddonFonts)
+    end
+
     local function SafeInit(mod, name)
         if not mod then return end
         local ok, err = xpcall(mod.Initialize, ErrorHandler, mod)
@@ -864,6 +869,7 @@ local function OnPlayerLogin()
 
     -- Keep PLAYER_LOGIN light. Search data is loaded by query intent.
 
+
     -- Drop the persisted loot-stat cache if the stat keyword map changed since it
     -- was built. The cache makes gear/stat search instant on later logins. Loot
     -- itself hydrates from its SavedVariables cache or scans lazily on gear intent.
@@ -882,6 +888,13 @@ local function OnPlayerLogin()
     if EasyFind.db.statisticCacheVer ~= ns.STATISTIC_CACHE_VER then
         EasyFind.db.statisticCache = {}
         EasyFind.db.statisticCacheVer = ns.STATISTIC_CACHE_VER
+    end
+    -- The achievement index used to persist as ~5000 tables (~2 MB live, parsed
+    -- by the client before we run). Drop the old shape on sight so it is not
+    -- held for a whole session waiting on a rebuild that may never be asked for.
+    local achievementIndex = EasyFind.db.achievementIndex
+    if type(achievementIndex) == "table" and type(achievementIndex.packed) ~= "string" then
+        EasyFind.db.achievementIndex = nil
     end
 
     -- Delay so Minimap is ready.
@@ -984,6 +997,10 @@ eventFrame:RegisterEvent("UPDATE_MACROS")
 eventFrame:RegisterEvent("SPELLS_CHANGED")
 eventFrame:RegisterEvent("BAG_UPDATE_DELAYED")
 eventFrame:RegisterEvent("EQUIPMENT_SETS_CHANGED")
+-- A learned mount must clear the persisted mount cache (not just mark the
+-- category dirty), or a mount collected then not searched before logout would
+-- hydrate stale on the next reload. pcall: event name may vary by build.
+pcall(eventFrame.RegisterEvent, eventFrame, "NEW_MOUNT_ADDED")
 if C_HousingCatalog then
     eventFrame:RegisterEvent("HOUSING_STORAGE_UPDATED")
 end
@@ -1102,6 +1119,11 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
             gearSetRefreshTimer = nil
             MarkDynamicCategoryDirty("gearSets")
         end)
+    elseif event == "NEW_MOUNT_ADDED" then
+        if ns.Database and ns.Database.InvalidateMountCache then
+            ns.Database:InvalidateMountCache()
+        end
+        MarkDirtyDebounced("mounts")
     elseif event == "PLAYER_LEVEL_UP" then
         if ns.Database and ns.Database.OnPlayerLevelUp then
             ns.Database:OnPlayerLevelUp()
@@ -1134,6 +1156,38 @@ end
 function EasyFind:FocusMapSearch()
     if EasyFind.db.enableMapSearch == false then return end
     if ns.MapTab then ns.MapTab:Focus() end
+end
+
+-- Hide/show the whole chat cluster (windows, tabs, dock, chat buttons).
+-- WoW ships no binding or setting for this, so the "Toggle Chat Frame"
+-- search entry provides it. Session-only: /reload restores everything.
+local hiddenChatFrames
+function EasyFind:ToggleChatFrames()
+    if hiddenChatFrames then
+        for i = 1, #hiddenChatFrames do
+            hiddenChatFrames[i]:Show()
+        end
+        hiddenChatFrames = nil
+        return
+    end
+    hiddenChatFrames = {}
+    local function stash(frame)
+        if frame and frame:IsShown() then
+            frame:Hide()
+            hiddenChatFrames[#hiddenChatFrames + 1] = frame
+        end
+    end
+    for i = 1, (_G.NUM_CHAT_WINDOWS or 10) do
+        stash(_G["ChatFrame" .. i])
+        stash(_G["ChatFrame" .. i .. "Tab"])
+        stash(_G["ChatFrame" .. i .. "ButtonFrame"])
+        stash(_G["ChatFrame" .. i .. "EditBox"])
+    end
+    stash(_G["GeneralDockManager"])
+    stash(_G["ChatFrameMenuButton"])
+    stash(_G["ChatFrameChannelButton"])
+    stash(_G["TextToSpeechButton"])
+    if #hiddenChatFrames == 0 then hiddenChatFrames = nil end
 end
 
 function EasyFind:OpenOptions()

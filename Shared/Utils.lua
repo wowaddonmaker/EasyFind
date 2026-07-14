@@ -90,6 +90,185 @@ function Utils.DeepCopy(value)
     return copy
 end
 
+-- Row caches persisted as tables are the single largest thing we hold at
+-- login: a 5-field record rounds up to 8 hash nodes (320 B) plus a 56 B
+-- header, so 5000 rows cost ~2 MB of live Lua tables that the client parses
+-- before our code runs -- even for a category the player disabled and will
+-- never search. The same rows as one delimited string cost ~35 B each and are
+-- decoded only if something actually asks for them.
+--
+-- Values are self-describing (a 1-byte type tag), so decode restores the exact
+-- original type. Declaring types per field would mean guessing whether e.g.
+-- settingCategoryID is a number or a string, and a wrong guess corrupts the
+-- cache silently.
+--
+-- Spec is an array of field descriptors, in order:
+--   { key }                    scalar (number, string, or boolean)
+--   { key, "list" }            array of scalars
+--   { key, "map" }             map of scalar key -> scalar value
+--   { key, "records", subSpec} array of records; subSpec is an array of keys
+-- A nil field round-trips as nil; an empty list/map round-trips as nil, so
+-- callers that need a table should keep their existing `or {}`.
+local SEP_ROW = "\31"
+local SEP_FIELD = "\30"
+local SEP_ITEM = "\29"
+local SEP_SUB = "\28"
+
+local PACK_ESCAPE = {
+    ["\\"] = "\\\\",
+    ["\28"] = "\\a", ["\29"] = "\\b", ["\30"] = "\\c", ["\31"] = "\\d",
+}
+local PACK_UNESCAPE = {
+    ["\\"] = "\\",
+    a = "\28", b = "\29", c = "\30", d = "\31",
+}
+
+local function EncodeScalar(value)
+    local valueType = type(value)
+    if value == nil then return "" end
+    if valueType == "number" then return "n" .. tostring(value) end
+    if valueType == "boolean" then return value and "b1" or "b0" end
+    return "s" .. tostring(value):gsub("[\\\28\29\30\31]", PACK_ESCAPE)
+end
+
+local function DecodeScalar(chunk)
+    if chunk == "" then return nil end
+    local tag = ssub(chunk, 1, 1)
+    local body = ssub(chunk, 2)
+    if tag == "n" then return tonumber(body) end
+    if tag == "b" then return body == "1" end
+    return (body:gsub("\\(.)", PACK_UNESCAPE))
+end
+
+-- Splits on sep, preserving empty fields (a bare "[^sep]*" gmatch emits
+-- spurious empty matches at the separators and shifts every later field).
+local function SplitPacked(str, sep)
+    local out, n = {}, 0
+    if str == "" then return out end
+    for chunk in (str .. sep):gmatch("([^" .. sep .. "]*)" .. sep) do
+        n = n + 1
+        out[n] = chunk
+    end
+    return out
+end
+
+local function EncodeField(value, kind, subSpec)
+    if kind == nil then return EncodeScalar(value) end
+    if type(value) ~= "table" then return "" end
+    local parts, n = {}, 0
+    if kind == "list" then
+        for i = 1, #value do parts[i] = EncodeScalar(value[i]) end
+        n = #value
+    elseif kind == "map" then
+        for key, item in pairs(value) do
+            n = n + 1
+            parts[n] = EncodeScalar(key) .. SEP_SUB .. EncodeScalar(item)
+        end
+    elseif kind == "records" then
+        for i = 1, #value do
+            local record, sub = value[i], {}
+            for f = 1, #subSpec do sub[f] = EncodeScalar(record[subSpec[f]]) end
+            parts[i] = tconcat(sub, SEP_SUB, 1, #subSpec)
+        end
+        n = #value
+    end
+    return tconcat(parts, SEP_ITEM, 1, n)
+end
+
+local function DecodeField(chunk, kind, subSpec)
+    if kind == nil then return DecodeScalar(chunk) end
+    if chunk == "" then return nil end
+    local items = SplitPacked(chunk, SEP_ITEM)
+    local out = {}
+    if kind == "list" then
+        for i = 1, #items do out[i] = DecodeScalar(items[i]) end
+    elseif kind == "map" then
+        for i = 1, #items do
+            local pair = SplitPacked(items[i], SEP_SUB)
+            local key = DecodeScalar(pair[1] or "")
+            if key ~= nil then out[key] = DecodeScalar(pair[2] or "") end
+        end
+    elseif kind == "records" then
+        for i = 1, #items do
+            local fields = SplitPacked(items[i], SEP_SUB)
+            local record = {}
+            for f = 1, #subSpec do record[subSpec[f]] = DecodeScalar(fields[f] or "") end
+            out[i] = record
+        end
+    end
+    return out
+end
+
+-- Emits every field into one flat buffer and concatenates once, rather than
+-- building a throwaway string per row: on a 5000-row cache that is 5000 fewer
+-- allocations, and this garbage lands on the shared heap every addon pays to
+-- collect.
+function Utils.PackRows(rows, spec)
+    if type(rows) ~= "table" or type(spec) ~= "table" then return "" end
+    local specLen = #spec
+    local parts, n = {}, 0
+    for i = 1, #rows do
+        local row = rows[i]
+        if type(row) == "table" then
+            if n > 0 then
+                n = n + 1
+                parts[n] = SEP_ROW
+            end
+            for f = 1, specLen do
+                if f > 1 then
+                    n = n + 1
+                    parts[n] = SEP_FIELD
+                end
+                local field = spec[f]
+                n = n + 1
+                parts[n] = EncodeField(row[field[1]], field[2], field[3])
+            end
+        end
+    end
+    return tconcat(parts, "", 1, n)
+end
+
+-- Walks the blob by offset, slicing only the field values. The obvious
+-- implementation (split into rows, split each row into fields) copies every row
+-- string and every field string and allocates a scratch array per row -- on the
+-- ~10k rows we hydrate at login that is megabytes of garbage for data we
+-- already have in hand.
+function Utils.UnpackRows(blob, spec)
+    local rows = {}
+    if type(blob) ~= "string" or blob == "" or type(spec) ~= "table" then return rows end
+    local specLen = #spec
+    local blobLen = #blob
+    local pos, rowCount = 1, 0
+
+    while pos <= blobLen + 1 do
+        local rowSep = sfind(blob, SEP_ROW, pos, true)
+        local rowEnd = (rowSep or (blobLen + 1)) - 1
+        local row = {}
+        local fieldPos = pos
+
+        for f = 1, specLen do
+            if fieldPos > rowEnd + 1 then break end
+            local fieldSep = sfind(blob, SEP_FIELD, fieldPos, true)
+            local fieldEnd
+            if fieldSep and fieldSep <= rowEnd then
+                fieldEnd = fieldSep - 1
+            else
+                fieldEnd = rowEnd
+                fieldSep = nil
+            end
+            local field = spec[f]
+            row[field[1]] = DecodeField(ssub(blob, fieldPos, fieldEnd), field[2], field[3])
+            fieldPos = fieldSep and (fieldSep + 1) or (rowEnd + 2)
+        end
+
+        rowCount = rowCount + 1
+        rows[rowCount] = row
+        if not rowSep then break end
+        pos = rowSep + 1
+    end
+    return rows
+end
+
 function Utils.SecureCall(fn, ...)
     if not fn then return false end
     if securecallfunction then
@@ -575,18 +754,38 @@ local function AutocompleteAccept(state, box, source, cursorPos)
     return true
 end
 
+-- A press whose release moved farther than this (UI units) is a
+-- drag-select, not a click, so the caret's final index must not drive the
+-- accept/strip decision below.
+local AUTOCOMPLETE_CLICK_SLOP = 4
+
 local function AutocompleteOnMouseDown(state, button)
     if button ~= "LeftButton" then return end
     state.mouseAcceptCandidate = AutocompleteHas(state) and state.currentCandidate or nil
     state.mouseAcceptTypedLen = state.mouseAcceptCandidate and #state.typedText or nil
+    if state.mouseAcceptCandidate then
+        state.mouseDownX, state.mouseDownY = GetCursorPosition()
+    end
 end
 
 local function AutocompleteOnMouseUp(state, box, button)
     if button ~= "LeftButton" or not state.mouseAcceptCandidate then return end
     local candidate = state.mouseAcceptCandidate
     local typedLen = state.mouseAcceptTypedLen or #state.typedText
+    local downX, downY = state.mouseDownX, state.mouseDownY
     state.mouseAcceptCandidate = nil
     state.mouseAcceptTypedLen = nil
+    state.mouseDownX, state.mouseDownY = nil, nil
+    -- Drag-select (the mouse moved between down and up): leave the user's
+    -- selection intact instead of stripping or accepting the suggestion.
+    if downX and downY then
+        local upX, upY = GetCursorPosition()
+        local scale = (box.GetEffectiveScale and box:GetEffectiveScale()) or 1
+        if scale <= 0 then scale = 1 end
+        if (mabs(upX - downX) + mabs(upY - downY)) / scale > AUTOCOMPLETE_CLICK_SLOP then
+            return
+        end
+    end
     if (box:GetText() or "") ~= candidate then return end
     local cursorPos = box:GetCursorPosition() or #candidate
     if cursorPos < typedLen then
@@ -765,13 +964,33 @@ function ns.StyleMenuPanel(frame)
     if not frame.combinedBorder then
         ns.CreateRoundedRectBorder(frame)
         ns.SetRoundedRectBorderShown(frame, true)
-        ns.SetRoundedRectFill(frame, unpack(ns.SEARCH_WINDOW_FILL_COLOR))
     end
+    -- Registry (weak keys) so a theme flip can restyle menus that are
+    -- OPEN at that moment; their OnShow refill never refires for them.
+    ns._menuPanels = ns._menuPanels or setmetatable({}, { __mode = "k" })
+    ns._menuPanels[frame] = true
+    -- Repainted on every style pass, not just creation, so menus follow
+    -- the live theme fill (including gradients) after a theme switch.
+    ns.ApplyThemeFill(frame)
     if not frame._efMenuHighlightRefreshHooked then
         frame._efMenuHighlightRefreshHooked = true
         frame:HookScript("OnShow", function(self)
+            -- Re-fill on every open: menus are created once and would
+            -- otherwise keep the fill of whatever theme was active at
+            -- creation time. Steps are pcall-isolated: one failure must
+            -- not strand the menu wearing the previous theme.
+            pcall(ns.ApplyThemeFill, self)
+            pcall(ns.SetRoundedRectBorderBgAlpha, self, ns.GetSearchWindowAlpha())
             if Utils.RefreshMenuRowHighlights then
-                Utils.RefreshMenuRowHighlights(self)
+                pcall(Utils.RefreshMenuRowHighlights, self)
+            end
+            pcall(ns.RetintMenuSeparators, self)
+            pcall(ns.RetintMenuText, self)
+            -- Per-panel extras (header tints and similar) ride the same
+            -- refill on open as they do on live theme flips, AFTER the
+            -- generic text pass so they can override it.
+            if self._efOnThemeRestyle then
+                pcall(self._efOnThemeRestyle, self)
             end
         end)
     end
@@ -779,9 +998,75 @@ function ns.StyleMenuPanel(frame)
     ns.SetRoundedRectBorderBgAlpha(frame, ns.GetSearchWindowAlpha())
 end
 
+-- ONE owner for menu text color: every FontString inside a menu surface
+-- wears the theme's main text color (shadow off), re-derived on every
+-- open and live flip by the shared refill. Exceptions opt out with
+-- fs._efOwnColor = true (gold context-menu labels, dialog prompts,
+-- button labels on dark pills); disabled rows keep their dim subtree.
+local function RetintMenuTextWalk(frame, leaf)
+    if frame._efRowEnabled == false then return end
+    if frame.GetRegions then
+        for i = 1, select("#", frame:GetRegions()) do
+            local region = select(i, frame:GetRegions())
+            if region and region.GetObjectType and region:GetObjectType() == "FontString"
+               and not region._efOwnColor then
+                region:SetShadowColor(0, 0, 0, 0)
+                region:SetTextColor(leaf[1], leaf[2], leaf[3], 1)
+            end
+        end
+    end
+    for i = 1, select("#", frame:GetChildren()) do
+        RetintMenuTextWalk((select(i, frame:GetChildren())), leaf)
+    end
+end
+
+function ns.RetintMenuText(frame)
+    local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+    local leaf = theme and theme.leafColor
+    if not leaf then return end
+    RetintMenuTextWalk(frame, leaf)
+end
+
+-- Thin separator lines inside menu panels follow the theme's separator
+-- color. Panels register their lines in frame._efThemeSeps; retinted on
+-- every refill (open and live theme flip).
+function ns.RetintMenuSeparators(frame)
+    local seps = frame._efThemeSeps
+    if not seps then return end
+    local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+    local sep = theme and theme.separatorColor
+    if not sep then return end
+    for i = 1, #seps do
+        seps[i]:SetColorTexture(sep[1], sep[2], sep[3], sep[4] or 0.35)
+    end
+end
+
+-- Re-derive every currently-shown menu surface from the live theme.
+-- Menus normally restyle in their OnShow refill; a menu that is open
+-- while the theme flips never gets that event and stays stale (the
+-- recurring "menu lags one theme behind" bug). ApplyUITheme calls this.
+function ns.RestyleShownMenuPanels()
+    if not ns._menuPanels then return end
+    for frame in pairs(ns._menuPanels) do
+        if frame:IsShown() then
+            pcall(ns.ApplyThemeFill, frame)
+            pcall(ns.SetRoundedRectBorderBgAlpha, frame, ns.GetSearchWindowAlpha())
+            if Utils.RefreshMenuRowHighlights then
+                pcall(Utils.RefreshMenuRowHighlights, frame)
+            end
+            pcall(ns.RetintMenuSeparators, frame)
+            pcall(ns.RetintMenuText, frame)
+            if frame._efOnThemeRestyle then
+                pcall(frame._efOnThemeRestyle, frame)
+            end
+        end
+    end
+end
+
 function ns.ApplyMenuOpacity(frame)
     if not frame then return end
     if frame.combinedBorder then
+        ns.ApplyThemeFill(frame)
         ns.SetRoundedRectBorderBgAlpha(frame, ns.GetSearchWindowAlpha())
     elseif frame.SetBackdropColor then
         local r, g, b = unpack(ns.SEARCH_WINDOW_FILL_COLOR)
@@ -853,7 +1138,11 @@ ns.SEARCH_ICON_COORDS = { 0.094, 0.938, 0.094, 0.938 }
 ns.COMMANDS_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\commands-icon"
 ns.RADIO_OFF_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-off"
 ns.RADIO_ON_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-on"
-ns.FLYOUT_ARROW_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\flyout-arrow"
+ns.FILTER_ARROW_TEX = "Interface\\AddOns\\EasyFind\\textures\\filter-arrow"
+-- Minimal scrollbar geometry, shared so surfaces that must clear the
+-- scrollbar lane (row hover wash) derive from the same numbers.
+ns.SCROLLBAR_THUMB_W = 3
+ns.SCROLLBAR_EDGE_INSET = 4
 ns.SEARCH_WINDOW_FILL_COLOR = {0.052, 0.052, 0.060}
 ns.TEXT_PRIMARY = {1.00, 0.97, 0.86}
 ns.TEXT_BODY = {0.78, 0.78, 0.80}
@@ -863,7 +1152,57 @@ ns.TEXT_DIM = {0.55, 0.55, 0.58}
 ns.BTN_FILL_NORMAL = {0.160, 0.190, 0.250}
 ns.BTN_FILL_HOVER = {0.220, 0.270, 0.340}
 ns.BTN_FILL_PRESSED = {0.120, 0.140, 0.190}
+ns.SECTION_TABLE_FILL = {0.075, 0.075, 0.085, 0.92}
 ns.BTN_FILL_DISABLED = {0.080, 0.090, 0.110}
+-- Live control-accent and sidebar-nav fills, mutated in place by
+-- ApplyUITheme like the BTN fills above (paint-time reads follow themes).
+ns.CONTROL_ACCENT = {0.17, 0.48, 0.72}
+ns.NAV_SELECTED_FILL = {0.16, 0.19, 0.25, 0.95}
+ns.NAV_HOVER_FILL = {0.12, 0.14, 0.19, 0.85}
+ns.PANEL_CARD_FILL = {0.05, 0.05, 0.06}
+ns.EDITBOX_INSET_FILL = {0.02, 0.02, 0.03}
+-- Hover wash color for rows and menu rows on every theme except Black
+-- (which keeps the classic additive gold glow): the window fill nudged
+-- toward the main text color, which darkens light fills and lightens
+-- dark ones. Returns nil when the glow should be used instead.
+function ns.RowWashColor()
+    local pal = ns.ACTIVE_UI_PALETTE
+    if not pal or (ns.UI_THEME_PALETTES and pal == ns.UI_THEME_PALETTES.Black) then return nil end
+    local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+    local leaf = theme and theme.leafColor
+    if not leaf then return nil end
+    local windowFill = ns.SEARCH_WINDOW_FILL_COLOR
+    local f = 0.24
+    return windowFill[1] + (leaf[1] - windowFill[1]) * f,
+        windowFill[2] + (leaf[2] - windowFill[2]) * f,
+        windowFill[3] + (leaf[3] - windowFill[3]) * f
+end
+
+-- Row washes sit a step below the window itself so the hover/selection
+-- highlight never reads as fully solid: even at 100% window opacity the
+-- wash paints at this fraction of it, then scales down with the setting.
+ns.ROW_WASH_ALPHA_SCALE = 0.80
+function ns.RowWashAlpha()
+    return ns.GetSearchWindowAlpha() * ns.ROW_WASH_ALPHA_SCALE
+end
+
+-- Identity map for paint-time tagging: painters that fill a control from
+-- one of the live tables record WHICH table, so the theme retint walker
+-- repaints from the same table instead of guessing by color (color
+-- snapshots break when a control is first seen under a non-default theme).
+ns.LIVE_FILL_NAMES = {
+    [ns.BTN_FILL_NORMAL] = "BTN_FILL_NORMAL",
+    [ns.BTN_FILL_HOVER] = "BTN_FILL_HOVER",
+    [ns.BTN_FILL_PRESSED] = "BTN_FILL_PRESSED",
+    [ns.BTN_FILL_DISABLED] = "BTN_FILL_DISABLED",
+    [ns.SECTION_TABLE_FILL] = "SECTION_TABLE_FILL",
+    [ns.CONTROL_ACCENT] = "CONTROL_ACCENT",
+    [ns.NAV_SELECTED_FILL] = "NAV_SELECTED_FILL",
+    [ns.NAV_HOVER_FILL] = "NAV_HOVER_FILL",
+    [ns.PANEL_CARD_FILL] = "PANEL_CARD_FILL",
+    [ns.EDITBOX_INSET_FILL] = "EDITBOX_INSET_FILL",
+    [ns.SEARCH_WINDOW_FILL_COLOR] = "SEARCH_WINDOW_FILL_COLOR",
+}
 ns.LINK_COLOR = {0.44, 0.84, 1.0}
 ns.LINK_HOVER = {0.72, 0.94, 1.0}
 ns.LINK_GLOW_COLOR = {0.3, 0.85, 1.0, 0.7}
@@ -1005,6 +1344,19 @@ local function ApplyContainerCornerSize(frame)
     local cornerSize = h / 2
     AnchorNineSlice(frame, frame.combinedBorder.fill,   cornerSize)
     AnchorNineSlice(frame, frame.combinedBorder.border, cornerSize)
+    if frame._efArtCells then
+        AnchorNineSlice(frame, frame._efArtCells, cornerSize)
+        if frame._efArtMasks then
+            local d = cornerSize * 2
+            for _, mask in pairs(frame._efArtMasks) do
+                mask:SetSize(d, d)
+            end
+        end
+        ns.UpdateThemeArtCrop(frame)
+    end
+    if ns.UpdateThemeFillGradient then
+        ns.UpdateThemeFillGradient(frame)
+    end
 end
 
 function ns.CreateRoundedRectBorder(frame)
@@ -1038,7 +1390,17 @@ end
 
 function ns.SetRoundedRectBorderBgAlpha(frame, alpha)
     if not frame.combinedBorder then return end
+    frame._efBgAlpha = alpha
     for _, t in pairs(frame.combinedBorder.fill) do t:SetAlpha(alpha) end
+    if frame._efArtCells then
+        for _, t in pairs(frame._efArtCells) do t:SetAlpha(alpha) end
+    end
+    -- Gradient fills carry their alpha inside the gradient colors
+    -- (texture-level SetAlpha does not reach SetGradient vertex colors),
+    -- so a gradient surface must re-derive its ramp with the new alpha.
+    if frame._efThemeFillTarget and ns.UpdateThemeFillGradient then
+        ns.UpdateThemeFillGradient(frame)
+    end
 end
 
 function ns.SetRoundedRectBorderFillColor(frame, r, g, b, a)
@@ -1089,6 +1451,344 @@ function ns.SetRoundedRectFill(frame, r, g, b, a, snapOff)
     end
 end
 
+-- Panel text retint for light themes: fontstrings sitting DIRECTLY on
+-- a wizard-glossed panel (titles, labels, hints) go dark; fontstrings
+-- inside rounded-fill controls (button pills, table cards) keep their
+-- authored light colors, since those fills stay dark on light themes.
+-- Originals are snapshotted on first touch and restored on dark themes.
+local function HasRoundedAncestor(region)
+    local parent = region:GetParent()
+    for _ = 1, 5 do
+        if not parent then return false end
+        if parent.combinedBorder then return true end
+        parent = parent:GetParent()
+    end
+    return false
+end
+
+local function RetintFontString(fs, theme, shadowOnly)
+    if not fs._efOrigTextColor then
+        local r, g, b, a = fs:GetTextColor()
+        fs._efOrigTextColor = { r, g, b, a }
+        local sr, sg, sb, sa = fs:GetShadowColor()
+        fs._efOrigShadow = { sr, sg, sb, sa }
+    end
+    -- Text inside rounded controls keeps its owned colors (the control
+    -- painters manage them), but the font-object drop shadow still smears
+    -- on light fills, so shadow treatment applies everywhere.
+    -- _efOwnColor text likewise has a dedicated painter (row RefreshVisual,
+    -- ApplyRowLabelColor): classification here would freeze whatever theme
+    -- was active when the color snapshot was taken.
+    if shadowOnly or fs._efOwnColor then
+        if theme.lightTheme then
+            fs:SetShadowColor(0, 0, 0, 0)
+        else
+            local sh = fs._efOrigShadow
+            fs:SetShadowColor(sh[1], sh[2], sh[3], sh[4])
+        end
+        return
+    end
+    local orig = fs._efOrigTextColor
+    -- Tagged link text follows the live link table on BOTH polarities;
+    -- its build-time color is whatever theme was active then, so neither
+    -- restore-to-original nor color classification can handle it.
+    if fs._efLinkText then
+        if theme.lightTheme then
+            fs:SetShadowColor(0, 0, 0, 0)
+        else
+            local sh = fs._efOrigShadow
+            fs:SetShadowColor(sh[1], sh[2], sh[3], sh[4])
+        end
+        local link = ns.LINK_COLOR
+        fs:SetTextColor(link[1], link[2], link[3], orig[4])
+        return
+    end
+    if not theme.lightTheme then
+        local sh = fs._efOrigShadow
+        fs:SetShadowColor(sh[1], sh[2], sh[3], sh[4])
+        fs:SetTextColor(orig[1], orig[2], orig[3], orig[4])
+        return
+    end
+    -- Dark shadows under dark text read as a smeared backdrop.
+    fs:SetShadowColor(0, 0, 0, 0)
+    local r, g, b = orig[1], orig[2], orig[3]
+    local lum = 0.3 * r + 0.5 * g + 0.2 * b
+    if r >= 0.85 and b <= 0.45 then
+        -- gold headings
+        local c = theme.pathColorHover
+        fs:SetTextColor(c[1], c[2], c[3], orig[4])
+    elseif lum >= 0.7 then
+        local c = theme.leafColor
+        fs:SetTextColor(c[1], c[2], c[3], orig[4])
+    elseif lum >= 0.35 then
+        local c = theme.textFaint
+        fs:SetTextColor(c[1], c[2], c[3], orig[4])
+    else
+        fs:SetTextColor(r, g, b, orig[4])
+    end
+end
+
+-- Control fills painted once at creation (button pills, table cards,
+-- search shells). The live ns.BTN_FILL_* / ns.SECTION_TABLE_FILL tables
+-- are mutated per theme, which keeps every hover closure in sync, but
+-- resting fills need this repaint. Frames whose snapshot matches one of
+-- the canonical control colors follow that table; everything else
+-- (gloss panels, custom fills) is left alone.
+local CONTROL_FILL_CANON = {
+    { canon = {0.160, 0.190, 0.250}, live = "BTN_FILL_NORMAL" },
+    { canon = {0.120, 0.140, 0.190}, live = "BTN_FILL_PRESSED" },
+    { canon = {0.075, 0.075, 0.085}, live = "SECTION_TABLE_FILL" },
+}
+
+local function RetintControlFill(frame)
+    -- State-driven fills (sidebar nav pills) opt out: their resting colors
+    -- collide with the canonical button fills, so classification would
+    -- stamp button colors onto whatever state they held at first walk.
+    if frame._efNoAutoRetint then return end
+    if not (frame.combinedBorder and frame.combinedBorder.fill and frame.combinedBorder.fill.mm) then return end
+    if frame._efControlFillKind == nil then
+        local r, g, b = frame.combinedBorder.fill.mm:GetVertexColor()
+        frame._efControlFillKind = false
+        for i = 1, #CONTROL_FILL_CANON do
+            local c = CONTROL_FILL_CANON[i].canon
+            if math.abs(r - c[1]) < 0.03 and math.abs(g - c[2]) < 0.03 and math.abs(b - c[3]) < 0.03 then
+                frame._efControlFillKind = CONTROL_FILL_CANON[i].live
+                break
+            end
+        end
+    end
+    local kind = frame._efControlFillKind
+    if not kind then return end
+    local live = ns[kind]
+    ns.SetRoundedRectFill(frame, live[1], live[2], live[3],
+        frame._efControlFillAlpha or live[4] or 1, true)
+end
+
+-- Every per-frame step is pcall-isolated: one frame throwing must never
+-- abort the sweep and leave everything after it in the walk order stale
+-- (which shows up as an arbitrary-looking subset of controls not
+-- retheming).
+local function RetintWalk(frame, theme)
+    pcall(RetintControlFill, frame)
+    -- Controls that own a state painter repaint themselves from the live
+    -- tables; classification heuristics can't know their current state.
+    if frame.RefreshVisual then
+        pcall(frame.RefreshVisual, frame)
+    end
+    if frame.GetRegions then
+        for i = 1, select("#", frame:GetRegions()) do
+            local region = select(i, frame:GetRegions())
+            if region and region.GetObjectType and region:GetObjectType() == "FontString" then
+                pcall(RetintFontString, region, theme, HasRoundedAncestor(region))
+            end
+        end
+    end
+    if frame.GetChildren then
+        for i = 1, select("#", frame:GetChildren()) do
+            RetintWalk((select(i, frame:GetChildren())), theme)
+        end
+    end
+end
+
+function ns.RetintPanelText(root)
+    if not root then return end
+    local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+    if not theme then return end
+    RetintWalk(root, theme)
+end
+
+-- Theme art overlay: the window is a VIEWPORT onto a big square image.
+-- Nine art cells share the fill nine-slice geometry, but their texcoords
+-- are computed from each cell's real pixel rect, so the image is cropped
+-- to the frame (1:1, never stretched): the bar alone shows the top slice
+-- and opening results reveals more of the same picture. Only the four
+-- corner cells carry a mask (one each, under the per-texture mask cap)
+-- to round the silhouette; edge and center cells are plain crops.
+local ART_TEXTURE_SIZE = 1024
+
+function ns.UpdateThemeArtCrop(frame)
+    local cells = frame._efArtCells
+    if not cells then return end
+    local w = frame:GetWidth() or 0
+    local fh = frame:GetHeight() or 0
+    local barH = frame.cbBarHeight or fh
+    if w <= 0 or fh <= 0 then return end
+    local c = barH / 2
+    local S = 1 / ART_TEXTURE_SIZE
+    local x1, x2 = c * S, (w - c) * S
+    local y1, y2 = c * S, (fh - c) * S
+    local xe, ye = w * S, fh * S
+    if xe > 1 then xe = 1 end
+    if ye > 1 then ye = 1 end
+    if x1 > xe then x1 = xe end
+    if x2 > xe then x2 = xe end
+    if y1 > ye then y1 = ye end
+    if y2 > ye then y2 = ye end
+    cells.tl:SetTexCoord(0, x1, 0, y1)
+    cells.tm:SetTexCoord(x1, x2, 0, y1)
+    cells.tr:SetTexCoord(x2, xe, 0, y1)
+    cells.ml:SetTexCoord(0, x1, y1, y2)
+    cells.mm:SetTexCoord(x1, x2, y1, y2)
+    cells.mr:SetTexCoord(x2, xe, y1, y2)
+    cells.bl:SetTexCoord(0, x1, y2, ye)
+    cells.bm:SetTexCoord(x1, x2, y2, ye)
+    cells.br:SetTexCoord(x2, xe, y2, ye)
+end
+
+-- Corner rounding for the art cells: masks cannot subset their texture
+-- via texcoords, so each corner cell gets a QUADRANT of a full circle
+-- mask (the proven FilterButtonCircle disc) sized 2x the corner cell and
+-- anchored so the right quarter covers the cell. The quarter radius then
+-- equals the corner size exactly, matching the fill's silhouette.
+local ART_MASK_ANCHORS = {
+    tl = "TOPLEFT", tr = "TOPRIGHT", bl = "BOTTOMLEFT", br = "BOTTOMRIGHT",
+}
+local ART_CORNER_MASK_TEX = "Interface\\AddOns\\EasyFind\\textures\\FilterButtonCircle"
+
+local function EnsureThemeArtOverlay(frame)
+    if frame._efArtCells then return frame._efArtCells end
+    local cells = {}
+    local masks = {}
+    for name in pairs(TC9) do
+        local cell = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
+        local anchor = ART_MASK_ANCHORS[name]
+        if anchor then
+            local mask = frame:CreateMaskTexture()
+            mask:SetTexture(ART_CORNER_MASK_TEX, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+            mask:SetPoint(anchor, cell, anchor)
+            cell:AddMaskTexture(mask)
+            masks[name] = mask
+        end
+        cells[name] = cell
+    end
+    frame._efArtCells = cells
+    frame._efArtMasks = masks
+    ApplyContainerCornerSize(frame)
+    return cells
+end
+
+-- Position-aware theme gradient: each nine-slice cell gets the segment
+-- of the bottom->top ramp matching its own y-range in the frame, so a
+-- bar-only pill (all corner rows) still shows a smooth ramp instead of
+-- two flat halves with a seam. Re-run on size changes (corner-size pass)
+-- because the ranges move. Applies to the art cells when a grain/art
+-- texture is showing (the ramp rides the texture as vertex gradient),
+-- else to the plain fill cells.
+local function ThemeRampColor(bottom, top, yFromTop, height)
+    local t = 1 - (yFromTop / height)
+    if t < 0 then t = 0 elseif t > 1 then t = 1 end
+    return bottom[1] + (top[1] - bottom[1]) * t,
+           bottom[2] + (top[2] - bottom[2]) * t,
+           bottom[3] + (top[3] - bottom[3]) * t
+end
+
+function ns.UpdateThemeFillGradient(frame)
+    if not (frame and frame.combinedBorder) then return end
+    -- Only frames that ApplyThemeFill manages (search window, menus) wear
+    -- the window gradient. This runs from ApplyContainerCornerSize, which
+    -- fires for EVERY rounded frame on any bar-height recalculation; on a
+    -- gradient palette an unguarded run whitewashes ordinary controls
+    -- (buttons, toggle tracks) with the window ramp: the long-standing
+    -- "wrong color until hovered" bug on gradient themes.
+    if not frame._efThemeFillTarget then return end
+    local palette = ns.ACTIVE_UI_PALETTE
+    local bottom = palette and palette.windowFillBottom
+    local top = palette and palette.windowFillTop
+    if not (bottom and top and CreateColor) then return end
+    local h = frame:GetHeight() or 0
+    if h <= 0 then return end
+    local corner = (frame.cbBarHeight or h) / 2
+    if corner > h / 2 then corner = h / 2 end
+    -- Art themes render as authored (white vertex): only palettes that
+    -- opt in via tintArt (the near-white grain textures) take the ramp
+    -- as a vertex tint. Tinting real art by default crushed it to the
+    -- fallback-gradient colors (looked like the theme got reverted).
+    local artShown = frame._efArtCells and frame._efArtCells.mm:IsShown()
+    local cells
+    if artShown then
+        if not (palette and palette.tintArt) then return end
+        cells = frame._efArtCells
+    else
+        cells = frame.combinedBorder.fill
+    end
+    local cellAlpha = frame._efBgAlpha or 1
+    local function rampCell(cell, y0, y1)
+        if not cell then return end
+        local r1, g1, b1 = ThemeRampColor(bottom, top, y0, h)
+        local r2, g2, b2 = ThemeRampColor(bottom, top, y1, h)
+        cell:SetVertexColor(1, 1, 1, 1)
+        cell:SetGradient("VERTICAL", CreateColor(r2, g2, b2, cellAlpha), CreateColor(r1, g1, b1, cellAlpha))
+    end
+    rampCell(cells.tl, 0, corner)
+    rampCell(cells.tm, 0, corner)
+    rampCell(cells.tr, 0, corner)
+    rampCell(cells.ml, corner, h - corner)
+    rampCell(cells.mm, corner, h - corner)
+    rampCell(cells.mr, corner, h - corner)
+    rampCell(cells.bl, h - corner, h)
+    rampCell(cells.bm, h - corner, h)
+    rampCell(cells.br, h - corner, h)
+end
+
+-- Theme-aware window fill shared by the search container, results panel,
+-- and every StyleMenuPanel surface. Flat themes paint the live window
+-- fill color; a palette with fillTexture shows the cropped art overlay;
+-- windowFillBottom/Top give a vertical two-stop gradient (also the
+-- pre-relaunch fallback while a new art file is not yet in the client's
+-- addon manifest).
+function ns.ApplyThemeFill(frame)
+    if not (frame and frame.combinedBorder and frame.combinedBorder.fill) then return end
+    -- Marks this frame as a window-fill surface: UpdateThemeFillGradient
+    -- refuses to ramp anything without this flag.
+    frame._efThemeFillTarget = true
+    local fill = frame.combinedBorder.fill
+    local palette = ns.ACTIVE_UI_PALETTE
+    local cWhite = CreateColor and CreateColor(1, 1, 1, 1)
+
+    local artPath = palette and palette.fillTexture
+    if artPath then
+        local cells = EnsureThemeArtOverlay(frame)
+        if cells.mm:SetTexture(artPath) then
+            for name, cell in pairs(cells) do
+                cell:SetTexture(artPath)
+                cell:SetVertexColor(1, 1, 1, 1)
+                cell:Show()
+            end
+            ns.UpdateThemeArtCrop(frame)
+            if palette.tintArt then
+                ns.UpdateThemeFillGradient(frame)
+            end
+            -- Base fill goes flat under the (opaque) art so nothing of a
+            -- previous theme shows through the corners' antialiased rim.
+            local flatBase = palette.windowFill or ns.SEARCH_WINDOW_FILL_COLOR
+            for _, cell in pairs(fill) do
+                if cWhite and cell.SetGradient then
+                    cell:SetGradient("VERTICAL", cWhite, cWhite)
+                end
+                cell:SetVertexColor(flatBase[1], flatBase[2], flatBase[3], 1)
+            end
+            return
+        end
+    end
+    if frame._efArtCells then
+        for _, cell in pairs(frame._efArtCells) do cell:Hide() end
+    end
+
+    local bottom = palette and palette.windowFillBottom
+    local top = palette and palette.windowFillTop
+    if bottom and top and CreateColor then
+        ns.UpdateThemeFillGradient(frame)
+        return
+    end
+    local flat = ns.SEARCH_WINDOW_FILL_COLOR
+    for _, cell in pairs(fill) do
+        if cWhite and cell.SetGradient then
+            cell:SetGradient("VERTICAL", cWhite, cWhite)
+        end
+        cell:SetVertexColor(flat[1], flat[2], flat[3], 1)
+    end
+end
+
 function ns.SetRoundedRectBorderColor(frame, r, g, b, a, snapOff)
     if not (frame and frame.combinedBorder and frame.combinedBorder.border) then return end
     for _, t in pairs(frame.combinedBorder.border) do
@@ -1125,7 +1825,23 @@ local function GlossColorAt(y, height)
     else
         t = GlossSmoothstep((t - GLOSS_DARK_FRAC) / (1 - GLOSS_DARK_FRAC))
     end
-    return GlossLerp(0.022, 0.20, t), GlossLerp(0.022, 0.20, t), GlossLerp(0.030, 0.22, t)
+    -- Ramp endpoints derive from the live theme fill so wizard-style
+    -- panels (options, tutorial, What's New) match the selected theme.
+    -- Factors are tuned so the Black default reproduces the original
+    -- fixed ramp (0.022 -> ~0.21). Light fills get a subtle inverse
+    -- gloss (slightly darker body, slightly brighter lip).
+    local base = ns.SEARCH_WINDOW_FILL_COLOR
+    local br, bg, bb = base[1], base[2], base[3]
+    local lum = 0.3 * br + 0.5 * bg + 0.2 * bb
+    local mmin = math.min
+    if lum > 0.5 then
+        return GlossLerp(br * 0.92, mmin(1, br * 1.06 + 0.02), t),
+               GlossLerp(bg * 0.92, mmin(1, bg * 1.06 + 0.02), t),
+               GlossLerp(bb * 0.92, mmin(1, bb * 1.06 + 0.02), t)
+    end
+    return GlossLerp(br * 0.45, mmin(1, br * 2.8 + 0.06), t),
+           GlossLerp(bg * 0.45, mmin(1, bg * 2.8 + 0.06), t),
+           GlossLerp(bb * 0.45, mmin(1, bb * 2.8 + 0.06), t)
 end
 
 local function GlossRamp(cell, yTop, yBot, height)
@@ -1161,14 +1877,21 @@ function ns.StyleWizardPanel(frame, alpha)
     if not frame.combinedBorder then
         ns.CreateRoundedRectBorder(frame)
     end
+    frame._efWizardAlpha = alpha or 1
     ns.SetRoundedRectBarHeight(frame, 16)
     ns.SetRoundedRectBorderEdgeShown(frame, false)
-    ns.SetRoundedRectFill(frame, 0.04, 0.04, 0.05, 1, true)
-    ns.SetRoundedRectBorderBgAlpha(frame, alpha or 1)
+    local base = ns.SEARCH_WINDOW_FILL_COLOR
+    ns.SetRoundedRectFill(frame, base[1] * 0.8, base[2] * 0.8, base[3] * 0.8, 1, true)
+    ns.SetRoundedRectBorderBgAlpha(frame, frame._efWizardAlpha)
     ns.ApplyWizardPanelGloss(frame)
     if not frame._efWizardGlossHooked then
         frame._efWizardGlossHooked = true
         frame:HookScript("OnSizeChanged", ns.ApplyWizardPanelGloss)
+        -- Re-style on every open so a theme switched while the panel was
+        -- closed lands on the next show.
+        frame:HookScript("OnShow", function(self)
+            ns.StyleWizardPanel(self, self._efWizardAlpha)
+        end)
     end
 end
 
@@ -1183,7 +1906,12 @@ local MENU_ROW_MASK_TEX = {
 
 local function ApplyMenuHighlightMask(row, tex, role)
     if not (row and tex and row.CreateMaskTexture and tex.AddMaskTexture) then return end
-    local maskKey = tex == row.keyboardOverlay and "_efMenuKeyboardHighlightMask" or "_efMenuHighlightMask"
+    local maskKey = "_efMenuHighlightMask"
+    if tex == row.keyboardOverlay then
+        maskKey = "_efMenuKeyboardHighlightMask"
+    elseif tex == row._efWashTex then
+        maskKey = "_efMenuWashMask"
+    end
     local mask = row[maskKey]
     if not mask then
         mask = row:CreateMaskTexture()
@@ -1203,6 +1931,45 @@ function Utils.SetMenuRowHighlightPosition(row, position)
     if row.keyboardOverlay then
         ApplyMenuHighlightMask(row, row.keyboardOverlay, row._efMenuHighlightPosition)
     end
+    if row._efWashTex then
+        ApplyMenuHighlightMask(row, row._efWashTex, row._efMenuHighlightPosition)
+    end
+end
+
+-- Hover/focus wash for menu rows on non-Black themes. This CANNOT be the
+-- Button highlight texture: a highlight texture auto-shows on hover only
+-- while it lives in the HIGHLIGHT layer, and that layer draws above the
+-- row text (fine for the additive glow, opaque paint hides the label).
+-- So the wash is a plain BACKGROUND texture whose visibility mirrors the
+-- highlight state through the hooks below.
+local function UpdateMenuRowWash(row)
+    local tex = row._efWashTex
+    local shown = row._efWashActive and (row._efWashHover or row._efWashFocused)
+    if tex then tex:SetShown(shown and true or false) end
+end
+
+local function EnsureMenuRowWash(row, washR, washG, washB)
+    local tex = row._efWashTex
+    if not tex then
+        tex = row:CreateTexture(nil, "BACKGROUND", nil, 1)
+        tex:SetAllPoints(row)
+        tex:Hide()
+        row._efWashTex = tex
+        ApplyMenuHighlightMask(row, tex, row._efMenuHighlightPosition or "middle")
+        row:HookScript("OnEnter", function(self)
+            self._efWashHover = true
+            UpdateMenuRowWash(self)
+        end)
+        row:HookScript("OnLeave", function(self)
+            self._efWashHover = nil
+            UpdateMenuRowWash(self)
+        end)
+    end
+    -- Fade the wash with the window-opacity setting, same as the menu
+    -- popup fill it sits on (ns.ApplyMenuOpacity), and keep it a step below
+    -- solid so it never overpowers the fill it washes over.
+    tex:SetColorTexture(washR, washG, washB, ns.RowWashAlpha())
+    return tex
 end
 
 -- Widest natural width across regions: FontStrings measure unwrapped, other
@@ -1317,6 +2084,39 @@ function Utils.RefreshMenuRowHighlights(parent, orderedRows)
         end
         Utils.SetMenuRowHighlightPosition(row, role)
     end
+
+    -- Hover tint follows the main-row behavior: the theme wash on every
+    -- theme except Black, which keeps the classic additive glow. In wash
+    -- mode the real highlight texture stays in its HIGHLIGHT layer but
+    -- goes transparent (it still drives hover/lock state); the visible
+    -- band is the per-row BACKGROUND wash texture, under the text.
+    local washR, washG, washB = ns.RowWashColor()
+    for i = 1, #rows do
+        local row = rows[i]
+        row._efWashActive = washR and true or nil
+        local hlTex = row:GetHighlightTexture()
+        if washR then
+            if hlTex then hlTex:SetAlpha(0) end
+            EnsureMenuRowWash(row, washR, washG, washB)
+        elseif hlTex then
+            hlTex:SetAlpha(1)
+            hlTex:SetBlendMode("ADD")
+            hlTex:SetVertexColor(1, 1, 1, 1)
+        end
+        local kb = row.keyboardOverlay
+        if kb then
+            if washR then
+                kb:SetDrawLayer("BACKGROUND", 2)
+                kb:SetBlendMode("BLEND")
+                kb:SetVertexColor(washR, washG, washB, 1)
+            else
+                kb:SetDrawLayer("OVERLAY", 0)
+                kb:SetBlendMode("ADD")
+                kb:SetVertexColor(1, 1, 1, 1)
+            end
+        end
+        UpdateMenuRowWash(row)
+    end
 end
 
 -- Rows whose highlight is locked because their flyout is open. A hold lives
@@ -1357,13 +2157,113 @@ end
 -- Gray out and disable a flyout/popup option row when the filter above it
 -- is unchecked, mirroring the default UI (effectiveEnabled = parent and own).
 -- Rows opt into extra dimming via _label/_icon/_chev/_dimTex fields.
+-- Theme preview color: gradient themes sample the midpoint of their two
+-- stops (the base windowFill is the darkest end and reads near-black);
+-- flat themes use their single fill. Shared by the tutorial swatches
+-- and the options theme dropdown.
+function ns.ThemeSwatchColor(palette)
+    local top, bottom = palette.windowFillTop, palette.windowFillBottom
+    if top and bottom then
+        return (top[1] + bottom[1]) / 2, (top[2] + bottom[2]) / 2, (top[3] + bottom[3]) / 2
+    end
+    return palette.windowFill[1], palette.windowFill[2], palette.windowFill[3]
+end
+
+-- Settings-group cards (the big rounded panels on the options tabs, the
+-- alias/blacklist tables). Dark themes carry the theme's window fill
+-- (gradient/art) at the section alpha, which is what gives the panels
+-- their color ramp; light themes keep the flat dark section fill so the
+-- fixed light text on them stays readable. Registered weakly so a theme
+-- flip restyles every card.
+local themeCards = setmetatable({}, { __mode = "k" })
+
+function ns.ApplyCardFill(frame)
+    if not (frame and frame.combinedBorder) then return end
+    themeCards[frame] = true
+    frame._efNoAutoRetint = true
+    local sectionAlpha = ns.SECTION_TABLE_FILL[4] or 0.92
+    local pal = ns.ACTIVE_UI_PALETTE
+    if pal and pal.light then
+        frame._efThemeFillTarget = nil
+        if frame._efArtCells then
+            for _, cell in pairs(frame._efArtCells) do cell:Hide() end
+        end
+        ns.SetRoundedRectFill(frame, ns.SECTION_TABLE_FILL[1], ns.SECTION_TABLE_FILL[2], ns.SECTION_TABLE_FILL[3], 1, true)
+    else
+        ns.ApplyThemeFill(frame)
+    end
+    ns.SetRoundedRectBorderBgAlpha(frame, sectionAlpha)
+end
+
+function ns.RestyleCardFills()
+    for frame in pairs(themeCards) do
+        ns.ApplyCardFill(frame)
+    end
+end
+
+-- Flyout/submenu chevrons. The Blizzard forward-arrow atlas is gold as
+-- authored, so theme tints multiply into mud (blue over gold reads
+-- green). Every chevron instead renders the flat white filter arrow
+-- rotated to point right; the vertex color is then the color on screen.
+-- Chevrons register weakly so a theme flip repaints all of them, shown
+-- or not. Two tint schemes on purpose: right-pointing chevrons stay
+-- gold on dark themes, dropdown-selector down arrows stay gray.
+local themeChevrons = setmetatable({}, { __mode = "k" })
+local CHEVRON_POINT_RIGHT = math.pi / 2
+
+function Utils.ChevronRestColor()
+    local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+    if theme and theme.lightTheme and theme.chromeGlyph then
+        return theme.chromeGlyph[1], theme.chromeGlyph[2], theme.chromeGlyph[3]
+    end
+    return ns.GOLD_COLOR[1] * 0.9, ns.GOLD_COLOR[2] * 0.9, ns.GOLD_COLOR[3] * 0.9
+end
+
+function Utils.ChevronHoverColor()
+    local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+    if theme and theme.lightTheme and theme.pathColorHover then
+        return theme.pathColorHover[1], theme.pathColorHover[2], theme.pathColorHover[3]
+    end
+    return ns.GOLD_COLOR[1], ns.GOLD_COLOR[2], ns.GOLD_COLOR[3]
+end
+
+function Utils.SetChevronTexture(tex)
+    tex:SetTexture(ns.FILTER_ARROW_TEX)
+    tex:SetRotation(CHEVRON_POINT_RIGHT)
+    tex:SetVertexColor(Utils.ChevronRestColor())
+    themeChevrons[tex] = true
+end
+
+function Utils.RetintChevrons()
+    for tex in pairs(themeChevrons) do
+        tex:SetVertexColor(Utils.ChevronRestColor())
+    end
+end
+
 function Utils.SetFlyoutRowEnabled(row, enabled)
     if row._efRowEnabled == enabled then return end
     row._efRowEnabled = enabled
     row:SetEnabled(enabled)
     local a = enabled and 1 or 0.35
-    local c = enabled and 1 or 0.4
-    if row._label then row._label:SetTextColor(c, c, c) end
+    if row._label then
+        row._label:SetShadowColor(0, 0, 0, 0)
+        if not enabled then
+            row._label:SetTextColor(0.4, 0.4, 0.4)
+        elseif row._label._efOwnColor then
+            -- Labels on the always-dark dropdown pills (Blizzard
+            -- textholder art) stay white on every theme; leaf text
+            -- would sit dark-on-dark there.
+            row._label:SetTextColor(1, 1, 1)
+        else
+            local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+            local leaf = theme and theme.leafColor
+            if leaf then
+                row._label:SetTextColor(leaf[1], leaf[2], leaf[3], 1)
+            else
+                row._label:SetTextColor(1, 1, 1)
+            end
+        end
+    end
     local nt = row.GetNormalTexture and row:GetNormalTexture()
     if nt then nt:SetDesaturated(not enabled); nt:SetAlpha(a) end
     local ct = row.GetCheckedTexture and row:GetCheckedTexture()
@@ -1393,17 +2293,72 @@ function Utils.InstallMenuRowHighlight(row)
         row:HookScript("OnEnter", MenuRowEnterAdjustsHolds)
     end
     row.SetMenuHighlightFocused = function(self, focused)
+        self._efWashFocused = focused and true or nil
         if focused then
             if self.LockHighlight then self:LockHighlight() end
         else
             if self.UnlockHighlight then self:UnlockHighlight() end
         end
+        UpdateMenuRowWash(self)
     end
     row.ClearMenuHighlightState = function(self)
+        self._efWashFocused = nil
+        self._efWashHover = nil
         if self.UnlockHighlight then self:UnlockHighlight() end
         if self.keyboardOverlay then self.keyboardOverlay:Hide() end
+        UpdateMenuRowWash(self)
     end
     return row.SetMenuHighlightFocused
+end
+
+-- Background-fill button style (keybind captures): rests on the window
+-- color with the theme's main text color, hovers with the row wash.
+-- RefreshVisual keeps both current across theme flips (the retint walker
+-- calls it; the fill is also tagged for the fill sweep).
+function ns.StyleBgFillButton(btn)
+    btn._efBgFill = true
+    btn._efLeafLabel = true
+    btn.RefreshVisual = function(self)
+        if self:IsEnabled() then
+            if self._efPaintState then self._efPaintState(self, ns.BTN_FILL_NORMAL) end
+            local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+            if self._label then
+                if theme and theme.leafColor then
+                    self._label:SetTextColor(theme.leafColor[1], theme.leafColor[2], theme.leafColor[3], 1)
+                else
+                    self._label:SetTextColor(1, 1, 1, 1)
+                end
+            end
+        end
+    end
+    btn:RefreshVisual()
+end
+
+-- Nav-pill styled buttons (alias/shortkey table cells): rest on the
+-- selected-tab fill (a window-fill pill on light themes, slate on dark)
+-- with the tab's inverted label, so they read as a selected tab instead of
+-- vanishing into the table card. RefreshVisual keeps fill and label current
+-- across theme flips (the retint walker calls it; the fill is also tagged
+-- for the fill sweep).
+function ns.StyleNavPillButton(btn)
+    btn._efNavFill = true
+    btn.RefreshVisual = function(self)
+        if not self:IsEnabled() then return end
+        if self._efPaintState then self._efPaintState(self, ns.BTN_FILL_NORMAL) end
+        if not self._label then return end
+        -- The window-fill pill wants the card color as its label (the same
+        -- inversion the selected tab uses); dark themes keep light text on
+        -- the slate pill.
+        local pal = ns.ACTIVE_UI_PALETTE
+        if pal and pal.light then
+            local card = ns.SECTION_TABLE_FILL
+            self._label:SetTextColor(card[1], card[2], card[3], 1)
+        else
+            local prim = ns.TEXT_PRIMARY
+            self._label:SetTextColor(prim[1], prim[2], prim[3], 1)
+        end
+    end
+    btn:RefreshVisual()
 end
 
 function Utils.SetCheckboxTextures(check, size)
@@ -1427,11 +2382,17 @@ function ns.CreateModernButton(parent, text, width, height)
     ns.SetRoundedRectBorderBgAlpha(btn, 1)
     ns.SetRoundedRectBorderEdgeShown(btn, false)
     ns.SetRoundedRectBorderFillColor(btn, unpack(ns.BTN_FILL_NORMAL))
+    btn._efControlFillKind = "BTN_FILL_NORMAL"
 
     local label = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     label:SetPoint("CENTER")
     label:SetText(text or "")
     label:SetTextColor(1, 1, 1, 1)
+    -- Flat button design: the font object's baked drop shadow reads as
+    -- smear on the pill fills. The label owns its color (light text on
+    -- the dark pill on every theme); the menu text pass must not touch it.
+    label:SetShadowColor(0, 0, 0, 0)
+    label._efOwnColor = true
     btn._label = label
 
     -- Inset reserved for the text inside the button. Leaves a small margin
@@ -1524,30 +2485,77 @@ function ns.CreateModernButton(parent, text, width, height)
         if rawSetHighlightFont then rawSetHighlightFont(self, fontObject) end
     end
 
+    local function PaintState(self, fillTable)
+        -- Window-fill styled buttons (stepper +/-) rest on the row-wash
+        -- tint (a step off the window color; the plain fill blended into
+        -- the panel on flat themes); hover/pressed keep the shared states.
+        if self._efWindowFill and fillTable == ns.BTN_FILL_NORMAL then
+            local washR, washG, washB = ns.RowWashColor()
+            if washR then
+                ns.SetRoundedRectBorderFillColor(self, washR, washG, washB, 1)
+                self._efControlFillKind = false
+                return
+            end
+        end
+        -- Background-fill buttons (keybind captures) rest on the window
+        -- color itself and hover with the wash.
+        if self._efBgFill then
+            if fillTable == ns.BTN_FILL_NORMAL then
+                fillTable = ns.SEARCH_WINDOW_FILL_COLOR
+            elseif fillTable == ns.BTN_FILL_HOVER then
+                local washR, washG, washB = ns.RowWashColor()
+                if washR then
+                    ns.SetRoundedRectBorderFillColor(self, washR, washG, washB, 1)
+                    self._efControlFillKind = false
+                    return
+                end
+            end
+        end
+        -- Nav-pill buttons (alias/shortkey cells) rest on the selected-tab
+        -- fill and hover a step lighter, so they read as a selected tab
+        -- instead of blending into the table card (on light themes the plain
+        -- button fill and the card fill are the same dark mix).
+        if self._efNavFill then
+            if fillTable == ns.BTN_FILL_NORMAL then
+                fillTable = ns.NAV_SELECTED_FILL
+            elseif fillTable == ns.BTN_FILL_HOVER then
+                fillTable = ns.NAV_HOVER_FILL
+            end
+        end
+        ns.SetRoundedRectBorderFillColor(self, unpack(fillTable))
+        self._efControlFillKind = ns.LIVE_FILL_NAMES[fillTable]
+    end
+    btn._efPaintState = PaintState
     btn:SetScript("OnEnter", function(self)
-        if self:IsEnabled() then ns.SetRoundedRectBorderFillColor(self, unpack(ns.BTN_FILL_HOVER)) end
+        if self:IsEnabled() then PaintState(self, ns.BTN_FILL_HOVER) end
     end)
     btn:SetScript("OnLeave", function(self)
-        if self:IsEnabled() then ns.SetRoundedRectBorderFillColor(self, unpack(ns.BTN_FILL_NORMAL)) end
+        if self:IsEnabled() then PaintState(self, ns.BTN_FILL_NORMAL) end
     end)
     btn:SetScript("OnMouseDown", function(self)
-        if self:IsEnabled() then ns.SetRoundedRectBorderFillColor(self, unpack(ns.BTN_FILL_PRESSED)) end
+        if self:IsEnabled() then PaintState(self, ns.BTN_FILL_PRESSED) end
     end)
     btn:SetScript("OnMouseUp", function(self)
         if not self:IsEnabled() then return end
-        if self:IsMouseOver() then
-            ns.SetRoundedRectBorderFillColor(self, unpack(ns.BTN_FILL_HOVER))
-        else
-            ns.SetRoundedRectBorderFillColor(self, unpack(ns.BTN_FILL_NORMAL))
-        end
+        PaintState(self, self:IsMouseOver() and ns.BTN_FILL_HOVER or ns.BTN_FILL_NORMAL)
     end)
     btn:SetScript("OnDisable", function(self)
-        ns.SetRoundedRectBorderFillColor(self, unpack(ns.BTN_FILL_DISABLED))
-        if self._label then self._label:SetTextColor(ns.TEXT_DIM[1], ns.TEXT_DIM[2], ns.TEXT_DIM[3], 1) end
+        PaintState(self, ns.BTN_FILL_DISABLED)
+        -- A touch lighter than TEXT_DIM: disabled labels on the dark
+        -- disabled pill were near-unreadable.
+        if self._label then self._label:SetTextColor(0.72, 0.72, 0.72, 1) end
     end)
     btn:SetScript("OnEnable", function(self)
-        ns.SetRoundedRectBorderFillColor(self, unpack(ns.BTN_FILL_NORMAL))
-        if self._label then self._label:SetTextColor(1, 1, 1, 1) end
+        PaintState(self, ns.BTN_FILL_NORMAL)
+        if self._label then
+            local theme = self._efLeafLabel and ns.Results and ns.Results.GetActiveTheme
+                and ns.Results:GetActiveTheme()
+            if theme and theme.leafColor then
+                self._label:SetTextColor(theme.leafColor[1], theme.leafColor[2], theme.leafColor[3], 1)
+            else
+                self._label:SetTextColor(1, 1, 1, 1)
+            end
+        end
     end)
 
     if text then btn:SetText(text) end
@@ -1557,6 +2565,18 @@ end
 -- Thin two-stroke "X" close button (dim by default, white on hover), matching
 -- the tutorial / what's-new windows. Two rotated 1px lines stay sharp at any
 -- UI scale. Caller sets the OnClick handler.
+local X_DEFAULT_HOVER = {1, 1, 1}
+-- Resolve a close-X stroke color: an explicit SetXColors value wins,
+-- otherwise the active theme's faint text at rest and readable text on
+-- hover, so the stroke always dims-to-brightens. leaf/pathColorHover both
+-- read near-white on the gradient dark themes (rest looked identical to
+-- hover) and a plain white hover vanished on the light ones; faint->leaf
+-- keeps a real contrast step on every theme. Neutral fallbacks pre-theme.
+local function ResolveXColor(explicit, field, fallback)
+    if explicit then return explicit end
+    local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+    return (theme and theme[field]) or fallback
+end
 function ns.CreateCloseX(parent, size)
     size = size or 18
     local btn = CreateFrame("Button", nil, parent)
@@ -1574,9 +2594,20 @@ function ns.CreateCloseX(parent, size)
         stroke1:SetVertexColor(r, g, b, 1)
         stroke2:SetVertexColor(r, g, b, 1)
     end
-    setX(Utils.RGB(ns.TEXT_DIM))
-    btn:SetScript("OnEnter", function() setX(1, 1, 1) end)
-    btn:SetScript("OnLeave", function() setX(Utils.RGB(ns.TEXT_DIM)) end)
+    -- _xRest/_xHover stay nil by default so the stroke follows the active
+    -- theme (faint at rest, readable on hover); SetXColors lets a panel pin
+    -- explicit colors. Read live at paint time, so a flip repaints on the
+    -- next hover, and a themed panel's own repaint can force it sooner.
+    local function paintRest() setX(Utils.RGB(ResolveXColor(btn._xRest, "textFaint", ns.TEXT_DIM))) end
+    local function paintHover() setX(Utils.RGB(ResolveXColor(btn._xHover, "leafColor", X_DEFAULT_HOVER))) end
+    paintRest()
+    btn:SetScript("OnEnter", paintHover)
+    btn:SetScript("OnLeave", paintRest)
+    btn.SetXColors = function(_, rest, hover)
+        btn._xRest = rest
+        btn._xHover = hover
+        if btn:IsMouseOver() then paintHover() else paintRest() end
+    end
     return btn
 end
 
@@ -1782,6 +2813,7 @@ local function EnsureCopyBox()
         ns.StyleMenuPanel(f)
 
         f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        f.title._efOwnColor = true
         f.title:SetPoint("TOP", f, "TOP", 0, -14)
         -- Centered so the item name on its own line sits under the
         -- middle of the hint. Wrap stays on for the explicit newline;
@@ -1825,6 +2857,7 @@ local function EnsureCopyBox()
         copiedHolder:SetSize(140, 16)
         copiedHolder:Hide()
         local copied = copiedHolder:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        copied._efOwnColor = true
         copied:SetPoint("CENTER")
         copied:SetText(L["COPIED"])
         local copiedFade = copiedHolder:CreateAnimationGroup()
@@ -1890,6 +2923,14 @@ function ns.ShowCopyBox(text, labelText)
     copyBox.linkHolder:Hide()
     copyBox.field:Show()
     copyBox.title:SetText(labelText or "")
+    -- Gold heading is unreadable on the light palettes; there the title
+    -- wears the theme's main text color instead.
+    local copyTheme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+    if copyTheme and copyTheme.lightTheme then
+        copyBox.title:SetTextColor(unpack(copyTheme.leafColor))
+    else
+        copyBox.title:SetTextColor(1.0, 0.82, 0)
+    end
     -- Width tracks the widest of the title and the copied text (+ field
     -- padding), so short links show whole; very long text still clips at
     -- the cap (full text stays selected for Ctrl-C). Height follows the
@@ -1927,6 +2968,14 @@ function ns.ShowChatLinkBox(link, labelText)
     copyBox.linkHolder:Show()
     copyBox.linkFS:SetText(link)
     copyBox.title:SetText(labelText or "")
+    -- Gold heading is unreadable on the light palettes; there the title
+    -- wears the theme's main text color instead.
+    local copyTheme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+    if copyTheme and copyTheme.lightTheme then
+        copyBox.title:SetTextColor(unpack(copyTheme.leafColor))
+    else
+        copyBox.title:SetTextColor(1.0, 0.82, 0)
+    end
     local w = math.max(
         math.floor(copyBox.title:GetStringWidth() + 0.5),
         math.floor(copyBox.linkFS:GetStringWidth() + 0.5))
@@ -1958,6 +3007,8 @@ function ns.ShowThemedDialog(opts)
         f.message:SetJustifyH("CENTER")
         f.message:SetSpacing(2)
         f.message:SetTextColor(unpack(ns.TEXT_PRIMARY))
+        -- ShowThemedDialog owns this color per prompt type.
+        f.message._efOwnColor = true
 
         local field = CreateFrame("Frame", nil, f)
         field:SetHeight(26)
@@ -1975,17 +3026,38 @@ function ns.ShowThemedDialog(opts)
         f.editBox = eb
 
         f.accept = ns.CreateModernButton(f, "", 120, 22)
+        f.third = ns.CreateModernButton(f, "", 120, 22)
         f.cancel = ns.CreateModernButton(f, "", 120, 22)
 
+        -- Optional "apply to all" checkbox for Windows-style batch confirms.
+        -- Its state is passed to onAccept/onThird so a single prompt can decide
+        -- the whole remaining set.
+        f.check = CreateFrame("CheckButton", nil, f, "UICheckButtonTemplate")
+        f.check:SetSize(22, 22)
+        Utils.SetCheckboxTextures(f.check, 22)
+        f.check.text = f.check:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        f.check.text:SetPoint("LEFT", f.check, "RIGHT", 2, 0)
+        f.check.text:SetTextColor(unpack(ns.TEXT_PRIMARY))
+
+        local function checkedState()
+            return f.check:IsShown() and f.check:GetChecked() and true or false
+        end
         local function accept()
             local val = f._hasEditBox and f.editBox:GetText() or nil
+            local all = checkedState()
             f:Hide()
-            if f._onAccept then f._onAccept(val) end
+            if f._onAccept then f._onAccept(val, all) end
+        end
+        local function third()
+            local all = checkedState()
+            f:Hide()
+            if f._onThird then f._onThird(all) end
         end
         local function cancel()
             f:Hide()
         end
         f.accept:SetScript("OnClick", accept)
+        f.third:SetScript("OnClick", third)
         f.cancel:SetScript("OnClick", cancel)
         eb:SetScript("OnEnterPressed", accept)
         eb:SetScript("OnEscapePressed", cancel)
@@ -1998,12 +3070,20 @@ function ns.ShowThemedDialog(opts)
     end
 
     f._onAccept = opts.onAccept
+    f._onThird = opts.onThird
     f._hasEditBox = opts.hasEditBox and true or false
 
     f.message:SetText(opts.text or "")
     -- Title-style prompts (alias/shortkey/Wowhead family) go gold;
-    -- plain confirmations keep the primary text color.
+    -- plain confirmations keep the primary text color. On light themes
+    -- gold is unreadable, so it wears the theme's hue-dark accent.
     local msgColor = opts.messageColor or ns.TEXT_PRIMARY
+    if msgColor == ns.GOLD_COLOR then
+        local dlgTheme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+        if dlgTheme and dlgTheme.lightTheme then
+            msgColor = dlgTheme.pathColorHover or dlgTheme.leafColor
+        end
+    end
     f.message:SetTextColor(msgColor[1], msgColor[2], msgColor[3], 1)
 
     local width = 380
@@ -2031,10 +3111,26 @@ function ns.ShowThemedDialog(opts)
     f.accept:SetText(opts.acceptText or _G["OKAY"] or _G["ACCEPT"] or "OK")
     f.cancel:SetText(opts.cancelText or _G["CANCEL"] or "Cancel")
     f.accept:ClearAllPoints()
+    f.third:ClearAllPoints()
     f.cancel:ClearAllPoints()
-    -- Accept on the left, Cancel on the right (standard button order).
-    f.accept:SetPoint("TOPRIGHT", f, "TOP", -6, -used)
-    f.cancel:SetPoint("TOPLEFT", f, "TOP", 6, -used)
+    if opts.thirdText then
+        -- Three across (e.g. Replace / Skip / Cancel), narrower to fit.
+        f.third:SetText(opts.thirdText)
+        f.third:Show()
+        f.accept:SetWidth(108)
+        f.third:SetWidth(108)
+        f.cancel:SetWidth(108)
+        f.accept:SetPoint("TOPLEFT", f, "TOPLEFT", 20, -used)
+        f.third:SetPoint("TOP", f, "TOP", 0, -used)
+        f.cancel:SetPoint("TOPRIGHT", f, "TOPRIGHT", -20, -used)
+    else
+        -- Accept on the left, Cancel on the right (standard button order).
+        f.third:Hide()
+        f.accept:SetWidth(120)
+        f.cancel:SetWidth(120)
+        f.accept:SetPoint("TOPRIGHT", f, "TOP", -6, -used)
+        f.cancel:SetPoint("TOPLEFT", f, "TOP", 6, -used)
+    end
     used = used + 22 + 14
     f:SetHeight(used)
 
@@ -2372,6 +3468,8 @@ function ns.BuildFlowText(parent, str, opts)
         if interWeight and ns.RegisterAddonFont then
             ns.RegisterAddonFont(fs, interWeight, interSize, interFlags)
         end
+        -- Flow text is flat body copy; never carry the font object's shadow.
+        fs:SetShadowColor(0, 0, 0, 0)
     end
 
     local container = CreateFrame("Frame", nil, parent)
@@ -2455,6 +3553,10 @@ function ns.BuildFlowText(parent, str, opts)
             fs:SetAllPoints(chip)
             fs:SetJustifyH("CENTER")
             fs:SetText(atom.text)
+            -- Marker for the retint walker: link text repaints from the
+            -- live link table on every theme flip (the resting color set
+            -- here is only the build-time value).
+            fs._efLinkText = true
             local LC = ns.LINK_COLOR or { 0.44, 0.84, 1.0 }
             local LH = ns.LINK_HOVER or { 1, 1, 1 }
             fs:SetTextColor(LC[1], LC[2], LC[3])
@@ -2904,12 +4006,17 @@ function Utils.CreateDropdownButton(opts)
     arrow:SetAtlas("common-dropdown-a-button-hover")
     arrow:SetSize(22, 22)
     arrow:SetPoint("RIGHT", -10, -1)
+    -- The textholder pill art stays dark on every theme, so the arrow
+    -- and label keep the light-on-dark scheme; theme tints here read
+    -- as dark-on-dark. _efOwnColor opts the label out of the menu text
+    -- walk and flips SetFlyoutRowEnabled's enabled color to white.
     arrow:SetVertexColor(0.7, 0.7, 0.7)
     local label = btn:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     label:SetPoint("LEFT", 14, 0)
     label:SetPoint("RIGHT", arrow, "LEFT", -2, 0)
     label:SetJustifyH("LEFT")
     label:SetWordWrap(false)
+    label._efOwnColor = true
     btn:SetScript("OnEnter", function() arrow:SetVertexColor(1, 1, 1) end)
     btn:SetScript("OnLeave", function() arrow:SetVertexColor(0.7, 0.7, 0.7) end)
     btn._label = label
@@ -3123,8 +4230,8 @@ function Utils.GetFrameByPath(path)
 end
 
 function Utils.CreateMinimalScrollBar(scrollFrame, parent)
-    local THUMB_W = 3
-    local EDGE_INSET = 4
+    local THUMB_W = ns.SCROLLBAR_THUMB_W
+    local EDGE_INSET = ns.SCROLLBAR_EDGE_INSET
     local VERT_PAD = 4
     local MIN_THUMB_H = 14
     local FADE_HOLD = 0.6
@@ -3909,12 +5016,20 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 -- sibling's); the current row's spec lives in row._submenuRows.
                 row:HookScript("OnEnter", function(self) CursorMenuRowEntered(menu, self) end)
                 row.label = row:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+                -- Populate owns this color (gold family per theme).
+                row.label._efOwnColor = true
                 row.label:SetPoint("LEFT", row, "LEFT", 8, 0)
                 row.icon = row:CreateTexture(nil, "OVERLAY")
                 row.icon:SetSize(14, 14)
                 row.icon:SetPoint("RIGHT", row, "RIGHT", -8, 0)
                 row.sep = row:CreateTexture(nil, "ARTWORK")
-                row.sep:SetColorTexture(1, 1, 1, 0.18)
+                local sepTheme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+                local sepColor = sepTheme and sepTheme.separatorColor
+                if sepColor then
+                    row.sep:SetColorTexture(sepColor[1], sepColor[2], sepColor[3], sepColor[4] or 0.35)
+                else
+                    row.sep:SetColorTexture(1, 1, 1, 0.18)
+                end
                 row.sep:SetHeight(1)
                 row.sep:SetPoint("LEFT", row, "LEFT", 6, 0)
                 row.sep:SetPoint("RIGHT", row, "RIGHT", -6, 0)
@@ -3948,12 +5063,43 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             else
                 row.isSeparator = nil
                 row.disabled = def.disabled and true or nil
+                -- Menus wear the same scaled leaf font as result rows
+                -- (honors the Font setting; plain GameFontNormal read as
+                -- a different typeface next to the results).
+                if ns.Results and ns.Results.SetScaledFont then
+                    ns.Results:SetScaledFont(row.label, ns.LEAF_FONT)
+                end
                 row.label:SetText(def.text or "")
-                row.label:SetTextColor(Utils.RGB(row.disabled and ns.TEXT_DIM or ns.GOLD_COLOR, 1))
+                -- Menu rows repopulate on every open, so the gold label
+                -- can resolve per theme here (hue-dark accent on light
+                -- fills); submenus share this same builder.
+                local menuTheme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+                local labelColor = row.disabled and ns.TEXT_DIM or ns.GOLD_COLOR
+                if not row.disabled and menuTheme and menuTheme.lightTheme then
+                    labelColor = menuTheme.pathColorHover or menuTheme.leafColor
+                end
+                row.label:SetTextColor(Utils.RGB(labelColor, 1))
+                -- Own the shadow here too: these _efOwnColor labels are
+                -- skipped by RetintMenuText, and pooled rows skip
+                -- SetScaledFont's shadow re-apply when font/size are
+                -- unchanged, so a row first built on a dark theme keeps its
+                -- shadow after a switch to light unless it's set per open.
+                row.label:SetShadowColor(0, 0, 0, (menuTheme and menuTheme.lightTheme) and 0 or 1)
                 if def.icon then
                     -- SetIconTexture handles plain paths, atlas: strings,
                     -- and {file, coords} tables (cropped square icons).
                     Utils.SetIconTexture(row.icon, def.icon)
+                    row.icon:SetRotation(def.iconRotation or 0)
+                    -- Monochrome chrome glyphs (Guide eye, Wowhead link)
+                    -- flip polarity with the theme; content icons never
+                    -- tint. Rows are pooled, so the reset matters.
+                    local glyph = def.chromeIcon and menuTheme and menuTheme.lightTheme
+                        and menuTheme.chromeGlyph
+                    if glyph then
+                        row.icon:SetVertexColor(glyph[1], glyph[2], glyph[3], 1)
+                    else
+                        row.icon:SetVertexColor(1, 1, 1, 1)
+                    end
                     row.icon:SetDesaturated(row.disabled and true or false)
                     row.icon:SetAlpha(row.disabled and 0.5 or 1)
                     row.icon:Show()
@@ -4130,24 +5276,32 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
         onClick = onPin,
     }
     if onGuide then
-        rows[#rows + 1] = { text = L["CTX_GUIDE"], icon = ns.EYE_ICON_TEX, onClick = onGuide }
+        rows[#rows + 1] = { text = L["CTX_GUIDE"], icon = ns.EYE_ICON_TEX, chromeIcon = true, onClick = onGuide }
     end
     if extra and extra.onWowhead then
         -- Our own chain-link glyph (textures/link.tga), the same custom
         -- treatment as Guide's eye and Pin's diamond.
-        rows[#rows + 1] = { text = L["CTX_WOWHEAD"], icon = ns.LINK_ICON_TEX, onClick = extra.onWowhead }
+        rows[#rows + 1] = { text = L["CTX_WOWHEAD"], icon = ns.LINK_ICON_TEX, chromeIcon = true, onClick = extra.onWowhead }
     end
     if extra and extra.sendLink then
         -- Hover-cascade flyout of chat channels, opened beside the row like
         -- every other flyout; the arrow glyph marks it as a submenu.
         local sendRows = ns.BuildSendLinkRows(extra.sendLink.link, extra.sendLink.name)
         if sendRows then
+            -- White-authored arrow (rotated to point right) so the chrome
+            -- tint works; the old flyout-arrow art is gold-baked and can
+            -- never follow themes.
             rows[#rows + 1] = {
                 text = L["CTX_SEND_LINK"],
-                icon = ns.FLYOUT_ARROW_TEX,
+                icon = ns.FILTER_ARROW_TEX,
+                iconRotation = math.pi / 2,
+                chromeIcon = true,
                 submenu = sendRows,
             }
         end
+    end
+    if extra and extra.onBlacklist then
+        rows[#rows + 1] = { text = L["CTX_BLACKLIST"], onClick = extra.onBlacklist }
     end
 
     local extras = {}
@@ -4399,6 +5553,33 @@ local function ApplyFontTo(fs)
         -- than leaving the text blank.
     end
     fs:SetFont(baseline.path, baseline.size, baseline.flags or "")
+end
+
+-- Pre-rasterize every bundled font once at login. A FontString whose
+-- font file has not been rasterized this session renders NOTHING until
+-- something re-sets its text; the multi-MB families are slow enough to
+-- rasterize that the font dropdown's self-previewing rows intermittently
+-- came up blank. The warm frame sits offscreen at alpha 0 (hidden
+-- FontStrings do not rasterize).
+local fontWarmFrame
+function ns.WarmAddonFonts()
+    if fontWarmFrame then return end
+    fontWarmFrame = CreateFrame("Frame", nil, UIParent)
+    fontWarmFrame:SetSize(1, 1)
+    fontWarmFrame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", -80, -80)
+    fontWarmFrame:SetAlpha(0)
+    local warmed = {}
+    for _, files in pairs(ADDON_FONT_FILES) do
+        for _, path in pairs(files) do
+            if not warmed[path] then
+                warmed[path] = true
+                local fs = fontWarmFrame:CreateFontString(nil, "ARTWORK")
+                fs:SetPoint("BOTTOMLEFT")
+                fs:SetFont(path, 12, "")
+                fs:SetText("Ag")
+            end
+        end
+    end
 end
 
 -- Resolve the font path a piece of UI text should use: the chosen font's

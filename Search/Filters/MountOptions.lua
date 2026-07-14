@@ -129,6 +129,19 @@ function Filters:BuildMountOptionsPopup(StylePopup, CHECK_SIZE)
     local typeHeader = optionsPopup:CreateFontString(nil, "ARTWORK", "GameFontNormal")
     typeHeader:SetPoint("TOPLEFT", optionsPopup, "TOPLEFT", PAD + 8, y - 2)
     typeHeader:SetText(_G["TYPE"] or "Type")
+    typeHeader:SetShadowColor(0, 0, 0, 0)
+    -- GameFontNormal's gold base only suits dark fills; the refill runs
+    -- this on every open and live theme flip.
+    optionsPopup._efOnThemeRestyle = function()
+        local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+        if theme and theme.lightTheme then
+            local c = theme.pathColorHover or theme.leafColor
+            typeHeader:SetTextColor(c[1], c[2], c[3], 1)
+        else
+            typeHeader:SetTextColor(ns.GOLD_COLOR[1], ns.GOLD_COLOR[2], ns.GOLD_COLOR[3], 1)
+        end
+    end
+    optionsPopup._efOnThemeRestyle()
     y = y - HEADER_H
 
     local typeDefs = {
@@ -149,7 +162,7 @@ function Filters:BuildMountOptionsPopup(StylePopup, CHECK_SIZE)
     sourcesText:SetPoint("LEFT", 14, 0)
     sourcesText:SetText(_G["SOURCES"] or "Sources")
     local sourceChev = sourcesRow:CreateTexture(nil, "OVERLAY")
-    sourceChev:SetAtlas("common-icon-forwardarrow")
+    Utils.SetChevronTexture(sourceChev)
     sourceChev:SetSize(CHECK_SIZE, CHECK_SIZE)
     sourceChev:SetPoint("RIGHT", -4, 0)
     sourcesRow._label = sourcesText

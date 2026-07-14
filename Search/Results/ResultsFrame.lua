@@ -51,8 +51,9 @@ function Results:CreateResultsFrame()
     resultsFrame:SetPoint("TOP", Search:GetSearchFrame(), "BOTTOM", 0, 2)
     resultsFrame:SetFrameStrata("LOW")
     resultsFrame:SetFrameLevel(Search:GetSearchFrame():GetFrameLevel() + 1)
-    resultsFrame:HookScript("OnShow", function() Search:UpdateStackStrata() end)
-    resultsFrame:HookScript("OnHide", function() Search:UpdateStackStrata() end)
+    -- NOTE: stack-strata updates live inside the SetScript("OnShow"/
+    -- "OnHide") handlers below; HookScripts added here would be wiped by
+    -- those SetScript calls (the silent hook-eater class).
 
     resultsFrame:SetBackdrop({
         bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
@@ -79,9 +80,15 @@ function Results:CreateResultsFrame()
     -- option popups). Hover-out doesn't close: that's too sensitive.
     resultsFrame:SetScript("OnShow", function(self)
         self:RegisterEvent("GLOBAL_MOUSE_DOWN")
+        Search:UpdateStackStrata()
     end)
     resultsFrame:SetScript("OnHide", function(self)
         self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+        Search:UpdateStackStrata()
+        -- Closing the list while an unearned row is hovered fires no
+        -- OnLeave on that row, stranding its tooltip.
+        local unearned = ns.ResultTooltips and ns.ResultTooltips:GetUnearnedTooltip()
+        if unearned then unearned:Hide() end
     end)
     resultsFrame:SetScript("OnEvent", function(self, event)
         if event ~= "GLOBAL_MOUSE_DOWN" then return end

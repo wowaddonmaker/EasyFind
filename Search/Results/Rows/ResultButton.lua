@@ -41,6 +41,9 @@ function Rows:CreateResultButton(index)
     resultRow:SetHighlightAtlas("QuestLog-quest-glow-yellow")
     local hlTex = resultRow:GetHighlightTexture()
     if hlTex then hlTex:SetBlendMode("ADD") end
+    -- The hover wash lives in InstallTooltips' OnEnter/OnLeave:
+    -- those are set via SetScript AFTER creation, which would wipe any
+    -- hooks added here.
 
     -- Thin horizontal separator line at the bottom of each row
     local separator = resultRow:CreateTexture(nil, "ARTWORK", nil, 0)

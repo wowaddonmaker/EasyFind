@@ -831,6 +831,22 @@ end
 
 function Calculator:SetCalculatorCopyHighlight(row, part)
     if not row then return end
+    -- Card text rides the results theme: gold/white/gray on dark fills,
+    -- hue-dark equivalents on light fills (gold and light gray are
+    -- unreadable there).
+    local theme = Results.GetActiveTheme and Results:GetActiveTheme()
+    local copiedR, copiedG, copiedB = 0.48, 1.0, 0.62
+    local hintR, hintG, hintB = 0.72, 0.72, 0.72
+    local activeR, activeG, activeB = GOLD_COLOR[1], GOLD_COLOR[2], GOLD_COLOR[3]
+    local baseR, baseG, baseB = 0.96, 0.96, 0.96
+    if theme and theme.lightTheme then
+        copiedR, copiedG, copiedB = 0.05, 0.45, 0.18
+        local faint = theme.textFaint or theme.pathColor
+        hintR, hintG, hintB = faint[1], faint[2], faint[3]
+        local accent = theme.pathColorHover or theme.leafColor
+        activeR, activeG, activeB = accent[1], accent[2], accent[3]
+        baseR, baseG, baseB = theme.leafColor[1], theme.leafColor[2], theme.leafColor[3]
+    end
     local expressionActive = part == "expression"
     local resultActive = part == "result"
     local expressionCopied = expressionActive
@@ -848,18 +864,18 @@ function Calculator:SetCalculatorCopyHighlight(row, part)
     if row.calcExpressionHint then
         row.calcExpressionHint:SetText(expressionCopied and L["CALC_PASTE_HINT"] or L["CALC_COPY_HINT"])
         if expressionCopied then
-            row.calcExpressionHint:SetTextColor(0.48, 1.0, 0.62, 1.0)
+            row.calcExpressionHint:SetTextColor(copiedR, copiedG, copiedB, 1.0)
         else
-            row.calcExpressionHint:SetTextColor(0.72, 0.72, 0.72, 1.0)
+            row.calcExpressionHint:SetTextColor(hintR, hintG, hintB, 1.0)
         end
         row.calcExpressionHint:SetShown(expressionActive)
     end
     if row.calcResultHint then
         row.calcResultHint:SetText(resultCopied and L["CALC_PASTE_HINT"] or L["CALC_COPY_HINT"])
         if resultCopied then
-            row.calcResultHint:SetTextColor(0.48, 1.0, 0.62, 1.0)
+            row.calcResultHint:SetTextColor(copiedR, copiedG, copiedB, 1.0)
         else
-            row.calcResultHint:SetTextColor(0.72, 0.72, 0.72, 1.0)
+            row.calcResultHint:SetTextColor(hintR, hintG, hintB, 1.0)
         end
         row.calcResultHint:SetShown(resultActive)
     end
@@ -868,9 +884,9 @@ function Calculator:SetCalculatorCopyHighlight(row, part)
         row.calcExpressionText:SetPoint("LEFT", row.calcCard, "LEFT", 12, expressionActive and 5 or 0)
         row.calcExpressionText:SetPoint("RIGHT", row.calcDivider, "LEFT", -22, expressionActive and 5 or 0)
         if expressionActive then
-            row.calcExpressionText:SetTextColor(Utils.RGB(GOLD_COLOR, 1.0))
+            row.calcExpressionText:SetTextColor(activeR, activeG, activeB, 1.0)
         else
-            row.calcExpressionText:SetTextColor(0.96, 0.96, 0.96, 1.0)
+            row.calcExpressionText:SetTextColor(baseR, baseG, baseB, 1.0)
         end
     end
     if row.calcResultText then
@@ -878,9 +894,9 @@ function Calculator:SetCalculatorCopyHighlight(row, part)
         row.calcResultText:SetPoint("LEFT", row.calcDivider, "RIGHT", 22, resultActive and 5 or 0)
         row.calcResultText:SetPoint("RIGHT", row.calcCard, "RIGHT", -12, resultActive and 5 or 0)
         if resultActive then
-            row.calcResultText:SetTextColor(Utils.RGB(GOLD_COLOR, 1.0))
+            row.calcResultText:SetTextColor(activeR, activeG, activeB, 1.0)
         else
-            row.calcResultText:SetTextColor(0.96, 0.96, 0.96, 1.0)
+            row.calcResultText:SetTextColor(baseR, baseG, baseB, 1.0)
         end
     end
 end
@@ -975,19 +991,19 @@ end
 
 function Calculator:PlayCalculatorCopyFlash(row, part)
     if not row then return end
-    local tex = part == "expression" and row.calcExpressionFlash or row.calcResultFlash
-    if not tex then return end
-    tex:SetAlpha(0.0)
-    tex:Show()
-    if tex.anim then
-        if tex.anim:IsPlaying() then tex.anim:Stop() end
-        tex.anim:Play()
+    local flash = part == "expression" and row.calcExpressionFlash or row.calcResultFlash
+    if not flash then return end
+    flash:SetAlpha(0.0)
+    flash:Show()
+    if flash.anim then
+        if flash.anim:IsPlaying() then flash.anim:Stop() end
+        flash.anim:Play()
     else
-        tex:SetAlpha(0.35)
+        flash:SetAlpha(0.35)
         Utils.SafeAfter(0.35, function()
-            if tex then
-                tex:SetAlpha(0.0)
-                tex:Hide()
+            if flash then
+                flash:SetAlpha(0.0)
+                flash:Hide()
             end
         end)
     end

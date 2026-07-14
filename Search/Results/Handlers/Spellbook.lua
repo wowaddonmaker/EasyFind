@@ -623,7 +623,7 @@ local function FindSpellbookButton(root, target, scroll, candidate)
     return nil
 end
 
-function Handlers:OpenAbilityInSpellbook(data)
+function Handlers:OpenAbilityInSpellbook(data, stepGuide)
     local highlight = ns.Highlight
     local targetElement
 
@@ -631,8 +631,10 @@ function Handlers:OpenAbilityInSpellbook(data)
     local wasShown = false
     -- What stands between us and a visible spellbook: "closed" (the user
     -- closed the panel while we waited; give up), "opening" (open issued,
-    -- frame not shown yet), "tab" (shown on the wrong tab; the highlighted
-    -- tab waits for the user's hardware click), or nil (ready).
+    -- frame not shown yet), "menu" (Guide mode: the micro button is
+    -- highlighted and we wait for the user's own click), "tab" (shown on
+    -- the wrong tab; the highlighted tab waits for the user's hardware
+    -- click), or nil (ready).
     local function openState()
         local frame = _G["PlayerSpellsFrame"]
         if frame and frame:IsShown() then
@@ -641,6 +643,15 @@ function Handlers:OpenAbilityInSpellbook(data)
             return "tab"
         end
         if wasShown then return "closed" end
+        if stepGuide then
+            -- Guide never opens the panel itself: highlight the micro
+            -- button and let the user's click open it.
+            local micro = _G["PlayerSpellsMicroButton"]
+            if micro and micro:IsShown() and highlight and highlight.HighlightFrame then
+                highlight:HighlightFrame(micro, nil, nil, true)
+            end
+            return "menu"
+        end
         Openers:OpenPlayerSpellsFrame(spellbookTab)
         return "opening"
     end
@@ -667,6 +678,12 @@ function Handlers:OpenAbilityInSpellbook(data)
         end
     end
 
+    -- Page steering sweeps forward to the last page, then flips to
+    -- backward once. Preferring Next unconditionally ping-pongs when the
+    -- target sits on an earlier page (last page disables Next, the user
+    -- pages back, Next re-enables and points them forward again).
+    local pageSweepDir = "next"
+
     local function reveal(attempt)
         local state = openState()
         if state == "closed" then return end
@@ -676,7 +693,7 @@ function Handlers:OpenAbilityInSpellbook(data)
             end
             return
         end
-        if state == "tab" then
+        if state == "menu" or state == "tab" then
             waitForHardwareClick(reveal, attempt)
             return
         end
@@ -694,7 +711,7 @@ function Handlers:OpenAbilityInSpellbook(data)
         local categoryTab = FindSpellbookCategoryTab(frame, data)
         if categoryTab and not IsCategoryTabSelected(frame, categoryTab) then
             if highlight and highlight.HighlightFrame then
-                highlight:HighlightFrame(categoryTab)
+                highlight:HighlightFrame(categoryTab, nil, nil, true)
             end
             waitForHardwareClick(reveal, attempt)
             return
@@ -739,21 +756,23 @@ function Handlers:OpenAbilityInSpellbook(data)
             return
         end
 
-        -- Fallback: highlight the page button for the user's click and
-        -- re-scan when the page changes. targetElement proves the spell is
-        -- displayable in this category, so paging can reach it; without
-        -- it, keep re-probing briefly (the provider may still be filling).
-        if targetElement then
-            local nextBtn = SpellbookPageButton(frame, "NextPageButton")
-            local pageBtn = CanClickButton(nextBtn) and nextBtn
-                or SpellbookPageButton(frame, "PrevPageButton")
-            if pageBtn and CanClickButton(pageBtn) then
-                if highlight and highlight.HighlightFrame then
-                    highlight:HighlightFrame(pageBtn)
-                end
-                waitForHardwareClick(reveal, attempt)
-                return
+        -- Fallback: highlight a page button for the user's click and
+        -- re-scan when the page changes. The paged frame's data provider
+        -- only sees the CURRENT page, so a miss here does not prove the
+        -- spell is absent -- with the category right, steer paging
+        -- whenever a page button is clickable.
+        local nextBtn = SpellbookPageButton(frame, "NextPageButton")
+        local prevBtn = SpellbookPageButton(frame, "PrevPageButton")
+        if pageSweepDir == "next" and not CanClickButton(nextBtn) then
+            pageSweepDir = "prev"
+        end
+        local pageBtn = pageSweepDir == "next" and nextBtn or prevBtn
+        if pageBtn and CanClickButton(pageBtn) then
+            if highlight and highlight.HighlightFrame then
+                highlight:HighlightFrame(pageBtn, nil, nil, true)
             end
+            waitForHardwareClick(reveal, attempt)
+            return
         end
         if attempt < 36 then
             Utils.SafeAfter(0.1, function() reveal(attempt + 1) end)

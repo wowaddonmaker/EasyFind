@@ -250,19 +250,145 @@ function Aliases:ExportList()
     return out
 end
 
-function Aliases:ImportList(list)
+-- True if an alias for this trigger text already exists.
+function Aliases:HasAlias(text)
+    if not (EasyFind and EasyFind.db and EasyFind.db.aliases) then return false end
+    if type(text) ~= "string" then return false end
+    return EasyFind.db.aliases[normalize(text)] ~= nil
+end
+
+function Aliases:ImportList(list, skipExisting)
     if type(list) ~= "table" or not (EasyFind and EasyFind.db) then return 0 end
     EasyFind.db.aliases = EasyFind.db.aliases or {}
     local n = 0
     for i = 1, #list do
         local r = list[i]
         if r and r.text and strtrim(r.text) ~= "" and r.key then
-            EasyFind.db.aliases[normalize(r.text)] = {
-                text = r.text, key = r.key, name = r.name or r.text,
-            }
-            n = n + 1
+            local normKey = normalize(r.text)
+            if not (skipExisting and EasyFind.db.aliases[normKey]) then
+                EasyFind.db.aliases[normKey] = {
+                    text = r.text, key = r.key, name = r.name or r.text,
+                }
+                n = n + 1
+            end
         end
     end
+    return n
+end
+
+-- Blacklist: rows the user never wants in any search results, keyed by
+-- the same stable row keys as aliases and shortkeys (one identity scheme,
+-- one owner: GetEntryKey). Stored as db.blacklist[key] = {name, category}
+-- so the options tab can list and restore entries without the live row.
+-- Suppression happens at ONE gate per surface via Blacklist:Contains.
+local Blacklist = {}
+ns.Blacklist = Blacklist
+
+-- Cached count so the per-keystroke HasAny gate is a number compare;
+-- invalidated on every mutation and lazily recounted.
+local blacklistCount
+
+function Blacklist:HasAny()
+    if blacklistCount == nil then
+        local store = EasyFind and EasyFind.db and EasyFind.db.blacklist
+        local n = 0
+        if type(store) == "table" then
+            for _ in pairs(store) do n = n + 1 end
+        end
+        blacklistCount = n
+    end
+    return blacklistCount > 0
+end
+
+-- Hot path (result emit, per row): the entry key is computed once per
+-- entry lifetime and cached on the entry (false = unkeyable), so steady
+-- state is one rawget and one table lookup, no allocations.
+function Blacklist:Contains(data)
+    if not data then return false end
+    local store = EasyFind and EasyFind.db and EasyFind.db.blacklist
+    if not store then return false end
+    local key = rawget(data, "_efBLKey")
+    if key == nil then
+        key = Aliases:GetEntryKey(data) or false
+        rawset(data, "_efBLKey", key)
+    end
+    return key ~= false and store[key] ~= nil
+end
+
+function Blacklist:Add(data)
+    if not (EasyFind and EasyFind.db) then return false end
+    local key = Aliases:GetEntryKey(data)
+    if not key then return false end
+    if type(EasyFind.db.blacklist) ~= "table" then
+        EasyFind.db.blacklist = {}
+    end
+    EasyFind.db.blacklist[key] = { name = data.name or key, category = data.category }
+    blacklistCount = nil
+    -- A pin is a standing search result; keeping it while blacklisted
+    -- would make the blacklist look broken. Shortkeys stay: they fire
+    -- without search and killing a bind silently is worse.
+    if ns.UIPins and ns.UIPins.IsPinned(data) then
+        ns.UIPins.Unpin(data)
+    end
+    return true
+end
+
+function Blacklist:RemoveByKey(key)
+    local store = EasyFind and EasyFind.db and EasyFind.db.blacklist
+    if not (store and key) then return end
+    store[key] = nil
+    blacklistCount = nil
+end
+
+function Blacklist:ClearAll()
+    if not (EasyFind and EasyFind.db) then return end
+    EasyFind.db.blacklist = {}
+    blacklistCount = nil
+end
+
+function Blacklist:ForEach(cb)
+    local store = EasyFind and EasyFind.db and EasyFind.db.blacklist
+    if not store then return end
+    for key, info in pairs(store) do
+        cb(key, info)
+    end
+end
+
+-- Flat list of {key, name, category} for import/export (same shape family
+-- as Aliases:ExportList).
+function Blacklist:ExportList()
+    local out = {}
+    local store = EasyFind and EasyFind.db and EasyFind.db.blacklist
+    if store then
+        for key, info in pairs(store) do
+            out[#out + 1] = { key = key, name = info.name, category = info.category }
+        end
+    end
+    return out
+end
+
+-- True if this row key is already blacklisted.
+function Blacklist:Has(key)
+    local store = EasyFind and EasyFind.db and EasyFind.db.blacklist
+    return type(store) == "table" and key ~= nil and store[key] ~= nil
+end
+
+function Blacklist:ImportList(list, skipExisting)
+    if type(list) ~= "table" or not (EasyFind and EasyFind.db) then return 0 end
+    if type(EasyFind.db.blacklist) ~= "table" then
+        EasyFind.db.blacklist = {}
+    end
+    local n = 0
+    for i = 1, #list do
+        local r = list[i]
+        if r and r.key then
+            if not (skipExisting and EasyFind.db.blacklist[r.key]) then
+                EasyFind.db.blacklist[r.key] = { name = r.name or r.key, category = r.category }
+                n = n + 1
+            end
+        end
+    end
+    blacklistCount = nil
     return n
 end
 

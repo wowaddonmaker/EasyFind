@@ -11,12 +11,38 @@ local CreateFrame = CreateFrame
 
 local RESULT_SHORTCUT = Shortcuts.RESULT_SHORTCUT
 
+local CALC_CARD_BAR_HEIGHT = 12
+
+local function CreateCalcWash(calcCard, r, g, b, a)
+    local wash = CreateFrame("Frame", nil, calcCard)
+    ns.CreateRoundedRectBorder(wash)
+    ns.SetRoundedRectBarHeight(wash, CALC_CARD_BAR_HEIGHT)
+    ns.SetRoundedRectRingShown(wash, false)
+    ns.SetRoundedRectBorderFillColor(wash, r, g, b, a)
+    wash:Hide()
+    return wash
+end
+
+local function CreateCalcFlash(calcCard)
+    local flash = CreateCalcWash(calcCard, 0.48, 1.0, 0.62, 0.35)
+    flash.anim = flash:CreateAnimationGroup()
+    local flashAlpha = flash.anim:CreateAnimation("Alpha")
+    flashAlpha:SetFromAlpha(0.42)
+    flashAlpha:SetToAlpha(0)
+    flashAlpha:SetDuration(0.42)
+    flashAlpha:SetSmoothing("OUT")
+    flash.anim:SetScript("OnFinished", function()
+        flash:Hide()
+    end)
+    return flash
+end
+
 function Rows.CreateCalculatorWidgets(resultRow, index)
     local calcCard = CreateFrame("Frame", nil, resultRow)
     ns.CreateRoundedRectBorder(calcCard)
-    ns.SetRoundedRectBarHeight(calcCard, 12)
+    ns.SetRoundedRectBarHeight(calcCard, CALC_CARD_BAR_HEIGHT)
     ns.SetRoundedRectBorderFillColor(calcCard, 0.095, 0.095, 0.108, 1)
-    ns.SetRoundedRectBorderColor(calcCard, 0.34, 0.34, 0.36, 0.92)
+    ns.SetRoundedRectRingShown(calcCard, false)
     calcCard:Hide()
     resultRow.calcCard = calcCard
 
@@ -37,43 +63,10 @@ function Rows.CreateCalculatorWidgets(resultRow, index)
     calcDividerBottom:Hide()
     resultRow.calcDividerBottom = calcDividerBottom
 
-    local calcExpressionHighlight = calcCard:CreateTexture(nil, "BORDER")
-    calcExpressionHighlight:SetColorTexture(1.0, 0.82, 0.22, 0.20)
-    calcExpressionHighlight:Hide()
-    resultRow.calcExpressionHighlight = calcExpressionHighlight
-
-    local calcResultHighlight = calcCard:CreateTexture(nil, "BORDER")
-    calcResultHighlight:SetColorTexture(1.0, 0.82, 0.22, 0.20)
-    calcResultHighlight:Hide()
-    resultRow.calcResultHighlight = calcResultHighlight
-
-    local calcExpressionFlash = calcCard:CreateTexture(nil, "OVERLAY")
-    calcExpressionFlash:SetColorTexture(0.48, 1.0, 0.62, 0.35)
-    calcExpressionFlash:Hide()
-    calcExpressionFlash.anim = calcExpressionFlash:CreateAnimationGroup()
-    local expressionFlashAlpha = calcExpressionFlash.anim:CreateAnimation("Alpha")
-    expressionFlashAlpha:SetFromAlpha(0.42)
-    expressionFlashAlpha:SetToAlpha(0)
-    expressionFlashAlpha:SetDuration(0.42)
-    expressionFlashAlpha:SetSmoothing("OUT")
-    calcExpressionFlash.anim:SetScript("OnFinished", function()
-        calcExpressionFlash:Hide()
-    end)
-    resultRow.calcExpressionFlash = calcExpressionFlash
-
-    local calcResultFlash = calcCard:CreateTexture(nil, "OVERLAY")
-    calcResultFlash:SetColorTexture(0.48, 1.0, 0.62, 0.35)
-    calcResultFlash:Hide()
-    calcResultFlash.anim = calcResultFlash:CreateAnimationGroup()
-    local resultFlashAlpha = calcResultFlash.anim:CreateAnimation("Alpha")
-    resultFlashAlpha:SetFromAlpha(0.42)
-    resultFlashAlpha:SetToAlpha(0)
-    resultFlashAlpha:SetDuration(0.42)
-    resultFlashAlpha:SetSmoothing("OUT")
-    calcResultFlash.anim:SetScript("OnFinished", function()
-        calcResultFlash:Hide()
-    end)
-    resultRow.calcResultFlash = calcResultFlash
+    resultRow.calcExpressionHighlight = CreateCalcWash(calcCard, 1.0, 0.82, 0.22, 0.20)
+    resultRow.calcResultHighlight = CreateCalcWash(calcCard, 1.0, 0.82, 0.22, 0.20)
+    resultRow.calcExpressionFlash = CreateCalcFlash(calcCard)
+    resultRow.calcResultFlash = CreateCalcFlash(calcCard)
 
     local calcExpressionText = calcCard:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
     calcExpressionText:SetJustifyH("CENTER")
@@ -161,5 +154,30 @@ function Rows.CreateCalculatorWidgets(resultRow, index)
     resultRow.shortcutNumberText = shortcutNumberText
     Shortcuts:LayoutResultShortcut(resultRow)
 
+end
+
+-- Retint the calculator card for the active theme: fill from the live
+-- section-fill table (mutated in place by ApplyUITheme), dark text on
+-- light fills. Called from the render path when ns.uiThemeGeneration
+-- changes, since rows are pooled and outlive theme switches.
+function Rows.ApplyCalcCardTheme(resultRow)
+    local fill = ns.SECTION_TABLE_FILL
+    ns.SetRoundedRectBorderFillColor(resultRow.calcCard, fill[1], fill[2], fill[3], 1)
+    local theme = Results.GetActiveTheme and Results:GetActiveTheme()
+    if theme and theme.lightTheme then
+        local leaf = theme.leafColor
+        local faint = theme.textFaint or theme.pathColor
+        resultRow.calcExpressionText:SetTextColor(leaf[1], leaf[2], leaf[3], 1)
+        resultRow.calcResultText:SetTextColor(leaf[1], leaf[2], leaf[3], 1)
+        resultRow.calcArrowText:SetTextColor(faint[1], faint[2], faint[3], 1)
+        resultRow.calcExpressionHint:SetTextColor(faint[1], faint[2], faint[3], 1)
+        resultRow.calcResultHint:SetTextColor(faint[1], faint[2], faint[3], 1)
+    else
+        resultRow.calcExpressionText:SetTextColor(0.96, 0.96, 0.96, 1)
+        resultRow.calcResultText:SetTextColor(0.96, 0.96, 0.96, 1)
+        resultRow.calcArrowText:SetTextColor(0.86, 0.86, 0.86, 1)
+        resultRow.calcExpressionHint:SetTextColor(0.72, 0.72, 0.72, 1)
+        resultRow.calcResultHint:SetTextColor(0.72, 0.72, 0.72, 1)
+    end
 end
 

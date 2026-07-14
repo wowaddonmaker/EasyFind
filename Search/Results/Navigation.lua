@@ -485,9 +485,9 @@ function Results:UpdateSelectionHighlight(skipRefocus, keepRepeat)
         local isHeaderRow = resultRow.headerTab and resultRow.headerTab:IsShown()
         if resultRow.LockHighlight then
             if i == Search:GetSelectedIndex() and not isHeaderRow then
-                resultRow:LockHighlight()
+                Results:SetRowHighlightLocked(resultRow, true)
             elseif not resultRow._efContextMenuHeld then
-                resultRow:UnlockHighlight()
+                Results:SetRowHighlightLocked(resultRow, false)
             end
         end
     end

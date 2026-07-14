@@ -29,8 +29,8 @@ L["UITREE_SOLO_BATTLEGROUNDS"]          = "Solo Battlegrounds"
 L["UITREE_RANDOM_BATTLEGROUNDS"]        = "Random Battlegrounds"
 L["UITREE_GREAT_VAULT"]                 = "Great Vault"
 L["UITREE_PORTRAIT_MENU"]               = "Portrait Menu"
-L["UITREE_TOGGLE_WORLD_MAP"]            = "Toggle World Map"
 L["UITREE_CALENDAR"]                    = "Calendar"
+L["KEYBIND_TOGGLE_FMT"]                 = "Toggle %s"
 L["UITREE_DISMISS_PET"]                 = "Dismiss Pet"
 L["UITREE_CALCULATOR"]                  = "Calculator"
 L["ERR_DATABASE_INIT_FAILED"]           = "EasyFind Database failed to initialize: "
@@ -234,6 +234,8 @@ L["TUT_FEATURE_ACTIONS_DESC"]           = "Cast, use, equip, summon, swap, or op
 L["TUT_FEATURE_CALCULATOR"]             = "Calculator"
 L["TUT_FEATURE_CALCULATOR_DESC"]        = "Quick calculations directly from the search bar. Never tab out for a calculation again."
 L["TUT_CALC_COPY_DESC"]                 = "Hover over either the expression or the result and hit Ctrl+C to copy it for easy pasting anywhere with Ctrl+V."
+L["TUT_THEME_HEADER"]                   = "Which EasyFind theme would you like?"
+L["TUT_THEME_RESIZE_NOTE"]              = "You can change your selection at any time from the options menu. Resizing is also available there."
 L["TUT_KEYBIND_HEADER"]                 = "Pick your hotkeys (applies to every character)"
 L["TUT_KEYBIND_SEARCH_BAR"]             = "Search Bar"
 L["TUT_KEYBIND_MAP_TAB"]                = "Map Search Tab"
@@ -276,27 +278,33 @@ L["WHATSNEW_CHAT_HELLO"]                = "Welcome to |cFF00FF00EasyFind v%s|r! 
 L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
-L["WHATSNEW_CHAT_TRIALS"]               = "If you enjoy EasyFind, please consider voting for us in the %s through July 13!"
-L["WHATSNEW_CHAT_TRIALS_LINK"]          = "CurseForge Addon Trials Competition"
-L["WHATSNEW_TRIALS_VOTE"]               = "Vote for EasyFind:"
-L["OPT_TRIALS_TEXT"]                    = "If you're enjoying EasyFind, please consider ranking us highly in the CurseForge Addon Trials. Voting is open through July 13."
-L["OPT_TRIALS_BTN"]                     = "Vote for EasyFind"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffAlways Show|r\n" ..
-    "    |cff999999-|r New visibility mode keeps the bar up permanently,\n" ..
-    "      with combat and movement dim options\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffBorderless Look|r\n" ..
-    "    |cff999999-|r New option hides the border on the bar and its menus\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffManual Resize|r\n" ..
-    "    |cff999999-|r In the Size menu; scale stacks on top\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffExpansion Currencies Searchable in Group|r\n" ..
-    "    |cff999999-|r Try \"midnight currencies\" to list all currencies\n" ..
-    "      from Midnight inline"
+    "|cffFFD100\226\128\162|r |cffffffffThemes|r\n" ..
+    "    |cff999999-|r Pick how EasyFind looks; change it any time in the\n" ..
+    "      options menu\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffBlacklist|r\n" ..
+    "    |cff999999-|r Right-click a result and choose Blacklist to keep it\n" ..
+    "      out of every search\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffIcon Visibility|r\n" ..
+    "    |cff999999-|r Show all icons, general icons only, or specific icons only"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels
 -- =============================================================================
 L["CTX_ADD_ALIAS"]                      = "Add alias"
+L["CTX_BLACKLIST"]                      = "Blacklist"
+L["OPT_TAB_BLACKLIST"]                  = "Blacklist"
+L["OPT_SAVED_BLACKLIST"]                = "Blacklisted results"
+L["OPT_BLACKLIST_EMPTY_HINT"]           = "Blacklisted results never appear in any search. Right-click a result and choose Blacklist to add it; remove it here to restore it."
+L["OPT_SEARCH_BLACKLIST_PLACEHOLDER"]   = "Search blacklist..."
+L["OPT_NO_BLACKLISTED"]                 = "No blacklisted results."
+L["OPT_NO_BLACKLIST_MATCH"]             = "No matches."
+L["OPT_CLEAR_BLACKLIST_CONFIRM"]        = "Remove ALL blacklisted results? Everything will appear in searches again."
+L["OPT_UI_THEME"]                       = "Theme"
+L["OPT_ICON_VISIBILITY"]                = "Icon visibility"
+L["OPT_ICONS_ALL"]                      = "Show all icons"
+L["OPT_ICONS_GENERAL"]                  = "Show general icons"
+L["OPT_ICONS_SPECIFIC"]                 = "Show specific icons"
 L["CTX_ADD_SHORTKEY"]                   = "Add shortkey"
 L["CTX_EDIT_SHORTKEY"]                  = "Edit shortkey"
 L["SHORTKEY_FOR"]                       = "Shortkey: %s"
@@ -317,6 +325,11 @@ L["SHORTKEY_IMPORT_TITLE"]              = "Paste a code to import"
 L["SHORTKEY_IMPORT_HINT"]               = "Paste a code (Ctrl+V), then Import."
 L["SHORTKEY_IMPORTED"]                  = "Imported %d entries"
 L["SHORTKEY_IMPORT_BAD"]                = "Could not read that code."
+L["IMPORT_CONFLICT_ITEM"]               = "This item already exists in your list."
+L["IMPORT_APPLY_TO_ALL"]                = "Do this for all current items"
+L["IMPORT_REPLACE"]                     = "Replace"
+L["IMPORT_SKIP"]                        = "Skip"
+L["IMPORT_SYSCMD_WARN"]                 = "Warning: %d shortkey(s) bind a system command (%s). They run the instant the key is pressed."
 L["CTX_GUIDE"]                          = "Guide"
 L["CTX_WOWHEAD"]                        = "Wowhead"
 L["CTX_SEND_LINK"]                      = "Send link"
@@ -499,6 +512,8 @@ L["GUIDE_NOT_IN_GAME_MENU"]             = "'%s' is not in the Game Menu"
 L["GUIDE_OPTION_NOT_AVAILABLE"]         = "'%s' is not available here"
 L["GUIDE_CLICK_CORRECT_TAB"]            = "Click the correct tab"
 L["GUIDE_FIND_PET_IN_JOURNAL"]          = "Find the pet in the Pet Journal"
+L["GUIDE_FIND_MOUNT_IN_JOURNAL"]        = "Find the mount in the Mount Journal"
+L["GUIDE_FIND_TOY_IN_TOYBOX"]           = "Find the toy in the Toy Box"
 L["GUIDE_CLICK_OPTION_LEFT"]            = "Click the correct option on the left"
 L["GUIDE_CLICK_CATEGORY_IN_LIST"]       = "Click '%s' in the category list"
 L["GUIDE_SIDEBAR_CHARACTER_STATS"]      = "Character Stats"

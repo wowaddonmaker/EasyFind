@@ -247,9 +247,11 @@ end
 -- -- the scorers' edit budgets, the search gate's allowance, and the
 -- incremental-recall boundaries -- must agree on these, or the gate silently
 -- prunes results the scorers would match and narrowing misses them.
-local FUZZY_EDIT1_LEN, FUZZY_EDIT2_LEN, ABBREV_MIN_LEN = 4, 8, 3
+local FUZZY_EDIT1_LEN, FUZZY_EDIT2_LEN, ABBREV_MIN_LEN = 5, 8, 3
 
 function Database:ScoreFuzzy(text, query, queryLen)
+    -- Dev seam (bench FUZZY A/B): no misspelling tolerance when set.
+    if Database._disableFuzzy then return 0 end
     -- Length-scaled typo budget (1 edit per ~4 chars). Without this,
     -- "skull" fuzzy-matches "spell" and similar unrelated 40%-diff words.
     local maxEdits
@@ -309,6 +311,7 @@ end
 
 -- Damerau-Levenshtein with transpositions, capped at 2.
 function Database:DamerauLevenshtein(s1, s2, len1, len2)
+    if Database._disableFuzzy then return 3 end
     if mabs(len1 - len2) > 2 then return 3 end
 
     local prev2, prev, curr = dlPrev2, dlPrev, dlCurr
@@ -394,6 +397,26 @@ function Database:CouldMatch(text, query)
     return true
 end
 
+-- Per-entry bitmask of the a-z letters that BEGIN a word in this string, built
+-- from the same GetWords() split the word scorers use. ScoreInitials,
+-- ScoreFuzzy, and the abbrev subsequence path can only score a word whose first
+-- letter equals the query's first letter, so one AND against this mask skips all
+-- three (and their GetWords + per-word loops) for entries where the query's
+-- initial starts no word here. Cached per string like nameMaskCache.
+local wordInitCache = {}
+local function WordInitMask(text)
+    local m = wordInitCache[text]
+    if m then return m end
+    m = 0
+    local words = GetWords(text)
+    for i = 1, #words do
+        local b = sbyte(words[i], 1)
+        if b and b >= 97 and b <= 122 then m = bor(m, lshift(1, b - 97)) end
+    end
+    wordInitCache[text] = m
+    return m
+end
+
 -- Fuzzy-aware per-keyword pre-reject for ScoreKeywords. A keyword can only
 -- reach the scoring ladder's thresholds when at most maxEdits of the query
 -- word's a-z chars are absent from it (ScoreFuzzy introduces up to 1 new
@@ -431,7 +454,7 @@ end
 -- keystroke cost. Every path that reaches the result threshold requires each
 -- query word of >= 2 chars to match the name or a keyword, and each match
 -- needs the word's a-z chars present in that text, except: fuzzy paths may
--- introduce up to maxEdits new chars (1 at len >= 4, 2 at len >= 8), the
+-- introduce up to maxEdits new chars (1 at len >= 5, 2 at len >= 8), the
 -- plural rule one trailing 's' -- and both also require a name/keyword word
 -- starting with the query word's first byte (checked at every
 -- DamerauLevenshtein call site and the plural line in ScoreSingleFieldWord).
@@ -584,18 +607,29 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
         score = 30
     end
 
-    if score < 130 then
+    -- ScoreInitials, ScoreFuzzy, and the abbrev subsequence path all require a
+    -- name word starting with the query's first letter. One AND against the
+    -- word-initial mask skips all three (and their GetWords + per-word loops)
+    -- when no word here begins with it -- the bulk of entries for a short
+    -- common-letter query. qInitBit == 0 (non a-z first byte) disables the gate.
+    local qInitBit = 0
+    local qFirst = sbyte(query, 1)
+    if qFirst >= 97 and qFirst <= 122 then qInitBit = lshift(1, qFirst - 97) end
+    local nameHasQueryInitial = qInitBit == 0
+        or band(WordInitMask(nameLower), qInitBit) ~= 0
+
+    if nameHasQueryInitial and score < 130 then
         local initScore = Database:ScoreInitials(nameLower, query)
         if initScore > score then score = initScore end
     end
 
-    if score < 100 and queryLen >= FUZZY_EDIT1_LEN then
+    if nameHasQueryInitial and score < 100 and queryLen >= FUZZY_EDIT1_LEN then
         local fuzzyScore = Database:ScoreFuzzy(nameLower, query, queryLen)
         if fuzzyScore > score then score = fuzzyScore end
     end
 
     -- Vowel-stripped abbreviations: "qtr" -> quartermaster, "windrnr" -> windrunner.
-    if score < 50 and queryLen >= ABBREV_MIN_LEN and not sfind(query, " ", 1, true) then
+    if nameHasQueryInitial and score < 50 and queryLen >= ABBREV_MIN_LEN and not sfind(query, " ", 1, true) then
         local nameWords = GetWords(nameLower)
         for wi = 1, #nameWords do
             local word = nameWords[wi]
@@ -1078,12 +1112,27 @@ function Database:TrimSearchMemory()
     ClearResultCache()
 end
 
--- Dev-only per-category minimum query length (perf A/B via /efd bench gate):
--- entries of a gated category are skipped while the query is shorter than
--- their threshold, and crossing a threshold forces a full scan so the newly
--- eligible category is admitted past the incremental narrowing. Nil in
--- normal play; the per-entry cost is then a single upvalue nil-check.
+-- Per-category minimum query length: entries of a gated category are skipped
+-- while the query is shorter than their threshold, and crossing a threshold
+-- forces a full scan so the newly eligible category is admitted past the
+-- incremental narrowing. A category absent from the map costs a single upvalue
+-- nil-check per entry. /efd bench gate A/Bs this map against nil.
 local categoryMinLen, categoryGateLens
+
+-- Shipped default (applied at the bottom of this file): the heavy providers
+-- that a 1-2 char query only floods with noise -- Statistics, Bosses,
+-- Achievements, and Blizzard/AddOn settings -- load and score only at 3+
+-- characters. Measured 2-6x per-keystroke win (bench GATE A/B, results
+-- identical once past 3 chars).
+local DEFAULT_CATEGORY_MINLEN = {
+    ["Statistic"] = 3,
+    ["Boss"] = 3,
+    ["Achievement"] = 3,
+    ["Achievement Category"] = 3,
+    ["Game Settings"] = 3,
+    ["AddOn Settings"] = 3,
+}
+Database.DEFAULT_CATEGORY_MINLEN = DEFAULT_CATEGORY_MINLEN
 function Database:SetCategoryMinLen(map)
     categoryMinLen = map
     -- Public mirror for the Engine's load-side gate (deferring the
@@ -1349,10 +1398,15 @@ function Database:SearchUI(query, skipCategories)
     local candidateIdx = 0
 
     local gateActive = GATE.count > 0
+    -- Room-shell housing entries can't be opened from the decor catalog; the
+    -- housing flyout's Room toggle (default off) hides them. Read once per
+    -- search, not per entry. Toggling it resets the search cache so this re-scans.
+    local hideRooms = not (EasyFind and EasyFind.db and EasyFind.db.housingShowRooms == true)
     local searchCount = #searchSet
     for i = 1, searchCount do
         local data = searchSet[i]
         if not (skipCategories and skipCategories[data.category])
+           and not (data.isRoom and hideRooms)
            and not (data.available and not data.available())
            and (not categoryMinLen or queryLen >= (categoryMinLen[data.category] or 0))
            and (not gateActive or not GateSkipsEntry(data)) then
@@ -1560,6 +1614,14 @@ function Database:SearchUI(query, skipCategories)
         end
     end
     return results
+end
+
+-- Apply the shipped category gate. SetCategoryMinLen and ResetSearchCache are
+-- both defined above, and the static search data was built in Main.lua's
+-- load-time Initialize (which loads before this file). Guarded so a failure
+-- here leaves search fully working with the gate off, never aborting load.
+if Database.SetCategoryMinLen then
+    pcall(Database.SetCategoryMinLen, Database, DEFAULT_CATEGORY_MINLEN)
 end
 
 return Database

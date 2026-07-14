@@ -1,6 +1,7 @@
 local _, ns = ...
 
 local Search = ns.Search
+local Results = ns.Results
 local Rows = ns.ResultRows
 local Tooltips = ns.ResultTooltips
 local Handlers = ns.ResultHandlers
@@ -25,8 +26,23 @@ local function GetUnearnedTooltip()
 end
 
 function Rows.InstallTooltips(resultRow)
-    -- Tooltip for unearned currencies, mounts, and toys
+    -- Tooltip for unearned currencies, mounts, and toys.
+    -- This SetScript is the row's canonical OnEnter owner (it replaces any
+    -- earlier hooks), so the light-theme hover wash rides here too.
     resultRow:SetScript("OnEnter", function(self)
+        -- Single-owner hover wash. WoW's built-in highlight (used before the
+        -- themed wash) can never leave two rows lit; the manual wash can when
+        -- a hovered row is hidden/recycled by a re-render and its OnLeave
+        -- never fires. Clearing the prior hovered row here restores that
+        -- one-row-at-a-time guarantee regardless of missed OnLeaves.
+        local prevHover = Results._hoverRow
+        if prevHover and prevHover ~= self then
+            prevHover._efHlHover = nil
+            Results:UpdateRowWash(prevHover)
+        end
+        Results._hoverRow = self
+        self._efHlHover = true
+        Results:UpdateRowWash(self)
         -- Hover-based action hint (mirrors keyboard selection hint).
         Handlers:ApplyActionHint(self)
         -- Housing decor: quality-colored name, owned/placed/stored counts
@@ -364,6 +380,9 @@ function Rows.InstallTooltips(resultRow)
     end)
 
     resultRow:SetScript("OnLeave", function(self)
+        self._efHlHover = nil
+        if Results._hoverRow == self then Results._hoverRow = nil end
+        Results:UpdateRowWash(self)
         if GetUnearnedTooltip() then
             GetUnearnedTooltip():Hide()
         end

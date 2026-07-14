@@ -22,8 +22,8 @@ L["UITREE_SOLO_BATTLEGROUNDS"]          = "솔로 전장"
 L["UITREE_RANDOM_BATTLEGROUNDS"]        = "무작위 전장"
 L["UITREE_GREAT_VAULT"]                 = "위대한 금고"
 L["UITREE_PORTRAIT_MENU"]               = "초상화 메뉴"
-L["UITREE_TOGGLE_WORLD_MAP"]            = "세계 지도 열기"
 L["UITREE_CALENDAR"]                    = "달력"
+L["KEYBIND_TOGGLE_FMT"]                 = "%s 전환"
 L["UITREE_DISMISS_PET"]                 = "소환수 돌려보내기"
 L["UITREE_CALCULATOR"]                  = "계산기"
 L["ERR_DATABASE_INIT_FAILED"]           = "EasyFind 데이터베이스 초기화에 실패했습니다: "
@@ -213,6 +213,8 @@ L["TUT_FEATURE_ACTIONS_DESC"]           = "지원되는 결과를 목록에서 �
 L["TUT_FEATURE_CALCULATOR"]             = "계산기"
 L["TUT_FEATURE_CALCULATOR_DESC"]        = "수식을 입력해 결과를 복사하거나, 계산기 결과 항목에서 전체 계산기를 엽니다."
 L["TUT_CALC_COPY_DESC"]                 = "수식이나 결과 위에 마우스를 올리고 Ctrl+C를 눌러 복사한 뒤 Ctrl+V로 어디에나 쉽게 붙여넣으세요."
+L["TUT_THEME_HEADER"]                   = "어떤 EasyFind 테마를 원하시나요?"
+L["TUT_THEME_RESIZE_NOTE"]              = "선택은 언제든지 설정에서 변경할 수 있습니다. 크기 조절도 그곳에서 할 수 있습니다."
 L["TUT_KEYBIND_HEADER"]                 = "단축키를 선택하세요 (모든 캐릭터에 적용)"
 L["TUT_KEYBIND_SEARCH_BAR"]             = "검색창"
 L["TUT_KEYBIND_MAP_TAB"]                = "지도 검색 탭"
@@ -253,25 +255,31 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "취소"
 L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 것을 환영합니다! 업데이트 요약은 %s에서 확인하세요."
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
-L["WHATSNEW_TRIALS_VOTE"]               = "EasyFind에 투표:"
-L["OPT_TRIALS_TEXT"]                    = "EasyFind가 마음에 드신다면 CurseForge Addon Trials에서 높은 순위로 평가해 주세요. 투표는 7월 13일까지입니다."
-L["OPT_TRIALS_BTN"]                     = "EasyFind에 투표"
-L["WHATSNEW_CHAT_TRIALS"]               = "EasyFind가 마음에 드신다면 7월 13일까지 %s에서 투표를 부탁드립니다!"
-L["WHATSNEW_CHAT_TRIALS_LINK"]          = "CurseForge Addon Trials 대회"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff항상 표시|r\n" ..
-    "    |cff999999-|r 검색창을 계속 열어 두는 새 표시 방식,\n" ..
-    "      전투/이동 중 흐리게 옵션 포함\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff테두리 없는 모습|r\n" ..
-    "    |cff999999-|r 검색창과 메뉴의 테두리를 숨기는 새 옵션\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff수동 크기 조절|r\n" ..
-    "    |cff999999-|r 크기 메뉴에서 사용, 배율은 그 위에 적용됩니다\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff확장팩 화폐 묶음 검색|r\n" ..
-    "    |cff999999-|r 확장팩 이름과 \"화폐\"를 함께 검색하면\n" ..
-    "      바로 모두 나열됩니다"
+    "|cffFFD100\226\128\162|r |cffffffff테마|r\n" ..
+    "    |cff999999-|r EasyFind의 모습을 선택하세요. 옵션 메뉴에서 언제든지\n" ..
+    "      변경할 수 있습니다\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff차단 목록|r\n" ..
+    "    |cff999999-|r 결과를 우클릭하고 차단 목록을 선택하면 모든 검색에서\n" ..
+    "      나타나지 않습니다\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff아이콘 표시|r\n" ..
+    "    |cff999999-|r 모든 아이콘, 일반 아이콘만, 또는 세부 아이콘만 표시"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"
+L["CTX_BLACKLIST"]                      = "차단 목록"
+L["OPT_TAB_BLACKLIST"]                  = "차단 목록"
+L["OPT_SAVED_BLACKLIST"]                = "차단된 결과"
+L["OPT_BLACKLIST_EMPTY_HINT"]           = "차단 목록의 결과는 어떤 검색에도 표시되지 않습니다. 결과를 우클릭하고 차단 목록을 선택하세요. 여기서 제거하면 복원됩니다."
+L["OPT_SEARCH_BLACKLIST_PLACEHOLDER"]   = "차단 목록 검색..."
+L["OPT_NO_BLACKLISTED"]                 = "차단된 결과가 없습니다."
+L["OPT_NO_BLACKLIST_MATCH"]             = "일치하는 항목이 없습니다."
+L["OPT_CLEAR_BLACKLIST_CONFIRM"]        = "차단 목록의 모든 결과를 제거할까요? 모두 다시 검색에 표시됩니다."
+L["OPT_UI_THEME"]                       = "테마"
+L["OPT_ICON_VISIBILITY"]                = "아이콘 표시"
+L["OPT_ICONS_ALL"]                      = "모든 아이콘 표시"
+L["OPT_ICONS_GENERAL"]                  = "일반 아이콘 표시"
+L["OPT_ICONS_SPECIFIC"]                 = "세부 아이콘 표시"
 L["CTX_ADD_SHORTKEY"]                   = "단축키 추가"
 L["CTX_EDIT_SHORTKEY"]                  = "단축키 편집"
 L["SHORTKEY_FOR"]                       = "단축키: %s"
@@ -292,6 +300,11 @@ L["SHORTKEY_IMPORT_TITLE"]              = "가져올 코드를 붙여넣으세�
 L["SHORTKEY_IMPORT_HINT"]               = "코드를 붙여넣고(Ctrl+V) 가져오기를 누르세요."
 L["SHORTKEY_IMPORTED"]                  = "%d개 항목을 가져왔습니다"
 L["SHORTKEY_IMPORT_BAD"]                = "코드를 읽을 수 없습니다."
+L["IMPORT_CONFLICT_ITEM"]               = "이 항목은 이미 목록에 있습니다."
+L["IMPORT_APPLY_TO_ALL"]                = "현재 모든 항목에 적용"
+L["IMPORT_REPLACE"]                     = "교체"
+L["IMPORT_SKIP"]                        = "건너뛰기"
+L["IMPORT_SYSCMD_WARN"]                 = "경고: 단축키 %d개가 시스템 명령(%s)에 연결됩니다. 키를 누르는 즉시 실행됩니다."
 L["CTX_GUIDE"]                          = "안내"
 L["CTX_WOWHEAD"]                        = "Wowhead"
 L["CTX_SEND_LINK"]                      = "링크 보내기"
@@ -458,6 +471,8 @@ L["GUIDE_NOT_IN_GAME_MENU"]             = "'%s'은(는) 게임 메뉴에 없습�
 L["GUIDE_OPTION_NOT_AVAILABLE"]         = "'%s'은(는) 여기서 사용할 수 없습니다"
 L["GUIDE_CLICK_CORRECT_TAB"]            = "올바른 탭을 클릭하세요"
 L["GUIDE_FIND_PET_IN_JOURNAL"]          = "애완동물 도감에서 해당 애완동물을 찾으세요"
+L["GUIDE_FIND_MOUNT_IN_JOURNAL"]        = "탈것 도감에서 해당 탈것을 찾으세요"
+L["GUIDE_FIND_TOY_IN_TOYBOX"]           = "장난감 상자에서 해당 장난감을 찾으세요"
 L["GUIDE_CLICK_OPTION_LEFT"]            = "왼쪽에서 올바른 항목을 클릭하세요"
 L["GUIDE_CLICK_CATEGORY_IN_LIST"]       = "분류 목록에서 '%s'을(를) 클릭하세요"
 L["GUIDE_SIDEBAR_CHARACTER_STATS"]      = "캐릭터 능력치"

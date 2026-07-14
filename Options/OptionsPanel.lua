@@ -248,7 +248,7 @@ local function SyncOptionControls()
     if optionsFrame.searchScaleRow then optionsFrame.searchScaleRow:SetValue(EasyFind.db.uiSearchScale or 1.0) end
     if optionsFrame.resultRowsRow then optionsFrame.resultRowsRow:SetValue(EasyFind.db.uiResultsRows or 6) end
     if optionsFrame.SetWowheadSelection then optionsFrame.SetWowheadSelection(EasyFind.db.wowheadLocale or "auto") end
-    if optionsFrame.searchOpacityRow then optionsFrame.searchOpacityRow:SetValue(EasyFind.db.searchWindowOpacity or ns.SEARCH_WINDOW_ALPHA) end
+    if optionsFrame.searchOpacityRow then optionsFrame.searchOpacityRow:SetValue(mfloor((EasyFind.db.searchWindowOpacity or ns.SEARCH_WINDOW_ALPHA) * 100 + 0.5)) end
     if optionsFrame.mapIconPresetRow then optionsFrame.mapIconPresetRow:SetValue(EasyFind.db.iconScale or 0.8) end
     if optionsFrame.recentCountStepper then optionsFrame.recentCountStepper:SetValue(EasyFind.db.mapTabRecentCount or 3) end
 
@@ -290,14 +290,40 @@ end
 local PaintRoundedFill = ns.SetRoundedRectFill
 -- One fill for the panel's table/section backdrops (alias+shortkey table,
 -- keybinding and map setting groups) so they read as a single surface.
-local SECTION_TABLE_FILL = {0.075, 0.075, 0.085, 0.92}
+local SECTION_TABLE_FILL = ns.SECTION_TABLE_FILL
 local function HideRoundedBorder(frame)
     ns.SetRoundedRectBorderEdgeShown(frame, false)
 end
 local HideRoundedFrameBorder = HideRoundedBorder
 
 local function PaintControlFill(frame, color, alpha)
+    -- Tag which live table filled this control so the theme retint walker
+    -- repaints from the same source (see ns.LIVE_FILL_NAMES).
+    local kind = ns.LIVE_FILL_NAMES[color]
+    if kind then
+        frame._efControlFillKind = kind
+        frame._efControlFillAlpha = alpha
+    end
     PaintRoundedFill(frame, color[1], color[2], color[3], alpha or 1, true)
+end
+
+-- Text sitting on a settings-group card keeps light colors on every theme
+-- (the cards stay dark); text directly on the panel goes theme-dark on
+-- light themes. Ancestry never changes, so the result is cached.
+local function InRoundedCard(frame)
+    if frame._efInCard == nil then
+        frame._efInCard = false
+        local parent = frame:GetParent()
+        for _ = 1, 5 do
+            if not parent then break end
+            if parent.combinedBorder then
+                frame._efInCard = true
+                break
+            end
+            parent = parent:GetParent()
+        end
+    end
+    return frame._efInCard
 end
 
 local function StyleSelectorButton(btnFrame, height)
@@ -376,6 +402,11 @@ local function CreateFlyoutPanel(btnFrame, globalPrefix, width, numChoices)
         self:SetScript("OnUpdate", function(self)
             if not self:IsMouseOver() and not btnFrame:IsMouseOver() then
                 if IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton") then
+                    -- Dismissal happens on mouse-DOWN, so the release half
+                    -- of this same click lands on whatever sits under the
+                    -- cursor. Stamp the time so click-sensitive controls
+                    -- (keybind capture) can swallow that stray release.
+                    ns._efFlyoutClosedAt = GetTime()
                     self:Hide()
                 end
             end
@@ -506,18 +537,31 @@ local function CreateCheckbox(parent, name, label, tooltipText, compact, width)
         local checked = self:GetChecked()
         local rowAlpha = self._efHover and enabled and 0.055 or 0
         PaintRoundedFill(self.rowBg, 1, 1, 1, rowAlpha)
+        -- Label color depends only on enabled, never on checked: a color
+        -- change on toggle reads as a font change. State lives in the track.
+        -- On a dark settings-group card the label stays light on every
+        -- theme; on the bare panel it goes theme-dark on light themes.
+        if enabled then
+            local pal = ns.ACTIVE_UI_PALETTE
+            local theme = not InRoundedCard(self) and pal and pal.light
+                and ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+            if theme and theme.leafColor then
+                text:SetTextColor(theme.leafColor[1], theme.leafColor[2], theme.leafColor[3], 1)
+            else
+                text:SetTextColor(0.92, 0.92, 0.92, 1)
+            end
+        else
+            text:SetTextColor(0.50, 0.50, 0.50, 1)
+        end
+        local accent = ns.CONTROL_ACCENT
         if checked and enabled then
-            PaintRoundedFill(track, 0.17, 0.48, 0.72, 1)
-            text:SetTextColor(1, 1, 1, 1)
+            PaintRoundedFill(track, accent[1], accent[2], accent[3], 1)
         elseif checked then
-            PaintRoundedFill(track, 0.13, 0.25, 0.34, 1)
-            text:SetTextColor(0.55, 0.55, 0.55, 1)
+            PaintRoundedFill(track, accent[1] * 0.45, accent[2] * 0.45, accent[3] * 0.45, 1)
         elseif enabled then
             PaintRoundedFill(track, 0.23, 0.23, 0.25, 1)
-            text:SetTextColor(0.88, 0.88, 0.88, 1)
         else
             PaintRoundedFill(track, 0.13, 0.13, 0.14, 1)
-            text:SetTextColor(0.50, 0.50, 0.50, 1)
         end
 
         knob:ClearAllPoints()
@@ -581,8 +625,8 @@ local TEXT_PRIMARY = ns.TEXT_PRIMARY
 local TEXT_BODY = ns.TEXT_BODY
 local TEXT_DIM = ns.TEXT_DIM
 local SECTION_TITLE_TEXT = ns.GOLD_COLOR
-local NAV_SELECTED = { 0.16, 0.19, 0.25, 0.95 }
-local NAV_HOVER = { 0.12, 0.14, 0.19, 0.85 }
+local NAV_SELECTED = ns.NAV_SELECTED_FILL
+local NAV_HOVER = ns.NAV_HOVER_FILL
 local NAV_CLEAR = { 0, 0, 0, 0 }
 
 local function TintRoundedFill(frame, r, g, b)
@@ -599,6 +643,15 @@ local SetModernButtonFill = ns.SetRoundedRectBorderFillColor
 local SetModernButtonAlpha = ns.SetRoundedRectBorderBgAlpha
 
 local function SetNavButtonBg(btn, color)
+    -- Clear means HIDDEN, not alpha-zero: with the textures hidden, no
+    -- stray repaint can ever leave a visible background on an inactive
+    -- nav button.
+    if color == NAV_CLEAR then
+        ns.SetRoundedRectBorderShown(btn, false)
+        return
+    end
+    ns.SetRoundedRectBorderShown(btn, true)
+    ns.SetRoundedRectRingShown(btn, false)
     SetModernButtonFill(btn, Utils.RGB(color, 1))
     SetModernButtonAlpha(btn, color[4] or 1)
 end
@@ -611,7 +664,7 @@ local function CreateSettingsGroup(parent, width, height)
     ns.CreateRoundedRectBorder(group)
     ns.SetRoundedRectBarHeight(group, 8)
     HideRoundedBorder(group)
-    PaintRoundedFill(group, unpack(SECTION_TABLE_FILL))
+    ns.ApplyCardFill(group)
     group.controls = {}
     group.AddControl = function(self, control)
         if control then tinsert(self.controls, control) end
@@ -645,17 +698,65 @@ end
 
 local function PaintPresetButton(btn, active, hover, enabled)
     if not enabled then
-        SetModernButtonFill(btn, unpack(ns.BTN_FILL_DISABLED))
+        PaintControlFill(btn, ns.BTN_FILL_DISABLED, 1)
         if btn._label then btn._label:SetTextColor(Utils.RGB(TEXT_DIM, 1)) end
     elseif active then
-        SetModernButtonFill(btn, 0.17, 0.48, 0.72)
-        if btn._label then btn._label:SetTextColor(1, 1, 1, 1) end
+        PaintControlFill(btn, ns.CONTROL_ACCENT, 1)
+        if btn._label then
+            local windowFill = ns.SEARCH_WINDOW_FILL_COLOR
+            btn._label:SetTextColor(windowFill[1], windowFill[2], windowFill[3], 1)
+        end
     elseif hover then
-        SetModernButtonFill(btn, unpack(ns.BTN_FILL_HOVER))
-        if btn._label then btn._label:SetTextColor(1, 1, 1, 1) end
+        PaintControlFill(btn, ns.BTN_FILL_HOVER, 1)
+        if btn._label then
+            -- The pills stay dark on light themes, where the theme text
+            -- tables go dark; keep the labels light there.
+            if ns.ACTIVE_UI_PALETTE and ns.ACTIVE_UI_PALETTE.light then
+                btn._label:SetTextColor(0.96, 0.96, 0.96, 1)
+            else
+                btn._label:SetTextColor(Utils.RGB(TEXT_PRIMARY, 1))
+            end
+        end
     else
-        SetModernButtonFill(btn, unpack(ns.BTN_FILL_NORMAL))
-        if btn._label then btn._label:SetTextColor(Utils.RGB(TEXT_BODY, 1)) end
+        -- Resting preset pills wear the window background with the
+        -- theme's main text color (Raycast-flat), on every theme.
+        PaintControlFill(btn, ns.SEARCH_WINDOW_FILL_COLOR, 1)
+        if btn._label then
+            local presetTheme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+            local presetLeaf = presetTheme and presetTheme.leafColor
+            if presetLeaf then
+                btn._label:SetTextColor(presetLeaf[1], presetLeaf[2], presetLeaf[3], 1)
+            else
+                btn._label:SetTextColor(Utils.RGB(TEXT_BODY, 1))
+            end
+        end
+    end
+end
+
+-- Row labels inside rounded settings-group cards are skipped by the text
+-- retint walker (rounded-ancestor rule), so rows expose RefreshVisual and
+-- the walker repaints them through it, same as checkboxes. Labels on a
+-- card stay white (the card is dark on every theme); labels on the bare
+-- panel go theme-dark on light themes.
+local function ApplyRowLabelColor(label, enabled, host)
+    -- This painter owns the label's color; the generic panel walk must
+    -- not classify it (a snapshot taken under a light theme reads as
+    -- "custom dark" and gets frozen at that theme's color forever).
+    label._efOwnColor = true
+    if not enabled then
+        label:SetTextColor(Utils.RGB(DISABLED_TEXT, 1))
+        return
+    end
+    if host and InRoundedCard(host) then
+        label:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
+        return
+    end
+    local pal = ns.ACTIVE_UI_PALETTE
+    local theme = pal and pal.light and ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+    if theme and theme.leafColor then
+        label:SetTextColor(theme.leafColor[1], theme.leafColor[2], theme.leafColor[3], 1)
+    else
+        label:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
     end
 end
 
@@ -668,9 +769,10 @@ local function CreateSegmentedPresetRow(parent, labelText, choices, getter, sett
     label:SetPoint("LEFT", row, "LEFT", 8, 0)
     label:SetPoint("RIGHT", row, "RIGHT", -188, 0)
     label:SetJustifyH("LEFT")
-    label:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
+    ApplyRowLabelColor(label, true, row)
     ns.MakeEllipsisLabel(label, labelText)
     row.label = label
+    row.RefreshVisual = function(self) ApplyRowLabelColor(label, self.enabled, self) end
 
     -- Sized and right-anchored to line up exactly with the flyout selector
     -- buttons (SELECTOR_BTN_W x 22 at RIGHT -8) used by the dropdown rows.
@@ -690,7 +792,7 @@ local function CreateSegmentedPresetRow(parent, labelText, choices, getter, sett
     ns.CreateRoundedRectBorder(node)
     ns.SetRoundedRectBarHeight(node, trackH - 4)
     HideRoundedFrameBorder(node)
-    ns.SetRoundedRectFill(node, 0.17, 0.48, 0.72, 1, true)
+    PaintControlFill(node, ns.SEARCH_WINDOW_FILL_COLOR, 1)
     row.node = node
 
     row.buttons = {}
@@ -707,6 +809,9 @@ local function CreateSegmentedPresetRow(parent, labelText, choices, getter, sett
         text:SetPoint("RIGHT", btn, "RIGHT", -4, 0)
         text:SetJustifyH("CENTER")
         ns.MakeEllipsisLabel(text, choice.label, { tooltip = false })
+        -- SetValue owns this label's color (theme leaf when selected); keep
+        -- the generic retint walker off it so it can't freeze a stale color.
+        text._efOwnColor = true
         btn._label = text
         btn:SetScript("OnClick", function(self)
             if not row.enabled then return end
@@ -729,20 +834,25 @@ local function CreateSegmentedPresetRow(parent, labelText, choices, getter, sett
         node:ClearAllPoints()
         node:SetWidth(halfW)
         node:SetPoint("LEFT", track, "LEFT", 2 + (activeIndex - 1) * halfW, 0)
-        for i, btn in ipairs(self.buttons) do
+        -- Selected segment wears the window background with the theme's
+        -- main text color; unselected labels stay white on the dark track.
+        PaintControlFill(node, ns.SEARCH_WINDOW_FILL_COLOR, 1)
+        local segTheme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+        local segLeaf = segTheme and segTheme.leafColor
+        for i = 1, #self.buttons do
             local active = activeIndex == i
-            local enabled = self.enabled
-            local c = enabled and (active and NORMAL_TEXT or TEXT_BODY) or DISABLED_TEXT
-            btn._label:SetTextColor(Utils.RGB(c, 1))
+            if self.enabled and active and segLeaf then
+                self.buttons[i]._label:SetTextColor(segLeaf[1], segLeaf[2], segLeaf[3], 1)
+            else
+                local c = self.enabled and NORMAL_TEXT or DISABLED_TEXT
+                self.buttons[i]._label:SetTextColor(Utils.RGB(c, 1))
+            end
         end
     end
     row.SetGroupEnabled = function(self, enabled)
         self.enabled = enabled
         self:SetAlpha(enabled and 1.0 or 0.35)
-        if self.label then
-            local c = enabled and NORMAL_TEXT or DISABLED_TEXT
-            self.label:SetTextColor(Utils.RGB(c, 1))
-        end
+        if self.label then ApplyRowLabelColor(self.label, enabled, self) end
         PaintControlFill(track, enabled and ns.BTN_FILL_NORMAL or ns.BTN_FILL_DISABLED, 0.96)
         for _, btn in ipairs(self.buttons) do
             if enabled then btn:Enable() else btn:Disable() end
@@ -768,9 +878,10 @@ local function CreatePresetRow(parent, labelText, choices, getter, setter, toolt
     local controlW = (#choices == 3) and 174 or 184
     label:SetPoint("RIGHT", row, "RIGHT", -controlW - 18, 0)
     label:SetJustifyH("LEFT")
-    label:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
+    ApplyRowLabelColor(label, true, row)
     ns.MakeEllipsisLabel(label, labelText)
     row.label = label
+    row.RefreshVisual = function(self) ApplyRowLabelColor(label, self.enabled, self) end
 
     row.buttons = {}
     local btnW = math.floor(controlW / #choices)
@@ -812,10 +923,7 @@ local function CreatePresetRow(parent, labelText, choices, getter, setter, toolt
     row.SetGroupEnabled = function(self, enabled)
         self.enabled = enabled
         self:SetAlpha(enabled and 1.0 or 0.35)
-        if self.label then
-            local c = enabled and NORMAL_TEXT or DISABLED_TEXT
-            self.label:SetTextColor(Utils.RGB(c, 1))
-        end
+        if self.label then ApplyRowLabelColor(self.label, enabled, self) end
         for _, btn in ipairs(self.buttons) do
             if enabled then btn:Enable() else btn:Disable() end
             PaintPresetButton(btn, self.activeValue == btn.choice.value, false, enabled)
@@ -835,17 +943,66 @@ local function CreateStepperRow(parent, labelText, minVal, maxVal, getter, sette
     label:SetPoint("LEFT", row, "LEFT", 8, 0)
     label:SetPoint("RIGHT", row, "RIGHT", -112, 0)
     label:SetJustifyH("LEFT")
-    label:SetTextColor(Utils.RGB(NORMAL_TEXT, 1))
+    ApplyRowLabelColor(label, true, row)
     label:SetText(labelText)
+    row.RefreshVisual = function(self)
+        ApplyRowLabelColor(label, self.enabled, self)
+        if self.RestyleStepButtons then self.RestyleStepButtons() end
+    end
+
+    local function StyleStepperButton(stepBtn)
+        stepBtn._efWindowFill = true
+        local washR, washG, washB = ns.RowWashColor()
+        if washR then
+            ns.SetRoundedRectFill(stepBtn, washR, washG, washB, 1, true)
+            stepBtn._efControlFillKind = false
+        else
+            PaintControlFill(stepBtn, ns.BTN_FILL_NORMAL, 1)
+        end
+        local stepTheme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+        local stepLeaf = stepTheme and stepTheme.leafColor
+        if stepBtn._label then
+            if stepLeaf and stepBtn:IsEnabled() then
+                stepBtn._label:SetTextColor(stepLeaf[1], stepLeaf[2], stepLeaf[3], 1)
+            elseif not stepBtn:IsEnabled() then
+                stepBtn._label:SetTextColor(0.65, 0.65, 0.65, 1)
+            end
+        end
+    end
 
     local plusBtn = CreateModernButton(row, "+", 24, 20)
     plusBtn:SetPoint("RIGHT", row, "RIGHT", -8, 0)
-    local valueText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    valueText:SetSize(32, 20)
-    valueText:SetPoint("RIGHT", plusBtn, "LEFT", -4, 0)
+    -- The value is an EditBox inside a rounded inset shell (the darker
+    -- section fill), so it reads as typeable: clicking it lets the user
+    -- type an exact value (committed on Enter or focus loss, clamped to
+    -- the row's bounds) instead of only stepping with the +/- buttons.
+    local valueShell = CreateFrame("Frame", nil, row)
+    valueShell:SetSize(38, 20)
+    valueShell:SetPoint("RIGHT", plusBtn, "LEFT", -4, 0)
+    ns.CreateRoundedRectBorder(valueShell)
+    ns.SetRoundedRectBarHeight(valueShell, 10)
+    HideRoundedFrameBorder(valueShell)
+    PaintControlFill(valueShell, ns.EDITBOX_INSET_FILL, 1)
+    local valueText = CreateFrame("EditBox", nil, valueShell)
+    valueText:SetPoint("TOPLEFT", valueShell, "TOPLEFT", 4, 0)
+    valueText:SetPoint("BOTTOMRIGHT", valueShell, "BOTTOMRIGHT", -4, 0)
+    valueText:SetFontObject("GameFontHighlightSmall")
     valueText:SetJustifyH("CENTER")
+    valueText:SetAutoFocus(false)
+    valueText:SetNumeric(true)
+    valueText:SetMaxLetters(4)
+    valueShell:EnableMouse(true)
+    valueShell:SetScript("OnMouseDown", function()
+        if row.enabled then valueText:SetFocus() end
+    end)
     local minusBtn = CreateModernButton(row, "-", 24, 20)
-    minusBtn:SetPoint("RIGHT", valueText, "LEFT", -4, 0)
+    minusBtn:SetPoint("RIGHT", valueShell, "LEFT", -4, 0)
+    StyleStepperButton(plusBtn)
+    StyleStepperButton(minusBtn)
+    row.RestyleStepButtons = function()
+        StyleStepperButton(plusBtn)
+        StyleStepperButton(minusBtn)
+    end
 
     local function SetValue(value)
         value = mmax(minVal, mmin(maxVal, mfloor((value or minVal) + 0.5)))
@@ -857,6 +1014,26 @@ local function CreateStepperRow(parent, labelText, minVal, maxVal, getter, sette
     end
     minusBtn:SetScript("OnClick", function() Step(-1) end)
     plusBtn:SetScript("OnClick", function() Step(1) end)
+
+    valueText:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
+    valueText:SetScript("OnEnterPressed", function(self) self:ClearFocus() end)
+    valueText:SetScript("OnEscapePressed", function(self)
+        self._efCancelled = true
+        self:ClearFocus()
+    end)
+    valueText:SetScript("OnEditFocusLost", function(self)
+        if self._efCancelled then
+            self._efCancelled = nil
+            self:SetText(tostring(getter() or minVal))
+            return
+        end
+        if row.enabled then
+            SetValue(self:GetNumber())
+        else
+            self:SetText(tostring(getter() or minVal))
+        end
+        self:HighlightText(0, 0)
+    end)
 
     if tooltipText then
         row:EnableMouse(true)
@@ -871,14 +1048,16 @@ local function CreateStepperRow(parent, labelText, minVal, maxVal, getter, sette
     row.SetGroupEnabled = function(self, enabled)
         self.enabled = enabled
         self:SetAlpha(enabled and 1.0 or 0.35)
-        local c = enabled and NORMAL_TEXT or DISABLED_TEXT
-        label:SetTextColor(Utils.RGB(c, 1))
+        ApplyRowLabelColor(label, enabled, self)
         if enabled then
             minusBtn:Enable()
             plusBtn:Enable()
+            valueText:Enable()
         else
             minusBtn:Disable()
             plusBtn:Disable()
+            valueText:ClearFocus()
+            valueText:Disable()
         end
     end
     row:SetValue(getter())
@@ -946,7 +1125,22 @@ local function BuildHomeTab(ctx)
     local homeVersion = homeTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     homeVersion:SetPoint("BOTTOMLEFT", homeTitle, "BOTTOMRIGHT", 6, 2)
     local tocVersion = C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("EasyFind", "Version")
-    homeVersion:SetText("|cFF888888v" .. (tocVersion or "") .. "|r")
+    homeVersion:SetText("v" .. (tocVersion or ""))
+    -- One step lighter than the title but still clearly theme-colored:
+    -- pathColor is the mid-dark tier on light themes (textFaint washed
+    -- out); dark themes keep the classic muted gray. Runs after the
+    -- walker on theme pick and show, so this setting wins.
+    local function UpdateHomeVersion()
+        local pal = ns.ACTIVE_UI_PALETTE
+        local theme = pal and pal.light and ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+        if theme and theme.pathColor then
+            homeVersion:SetTextColor(theme.pathColor[1], theme.pathColor[2], theme.pathColor[3], 1)
+        else
+            homeVersion:SetTextColor(0.53, 0.53, 0.53, 1)
+        end
+    end
+    UpdateHomeVersion()
+    optionsFrame.UpdateHomeVersion = UpdateHomeVersion
 
     local FLOW_FONT = "GameFontHighlightSmall"
     local FLOW_W = FRAME_W - 24
@@ -976,43 +1170,52 @@ local function BuildHomeTab(ctx)
     thankYou:SetTextColor(1, 1, 1, 1)
 
     local function CreateURLBox(parent, url, anchor, yOff)
-        local box = CreateFrame("EditBox", nil, parent, "InputBoxTemplate")
-        box:SetSize(FRAME_W - 60, 18)
-        box:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, yOff)
+        -- Rounded themed shell instead of Blizzard's InputBoxTemplate: the
+        -- template's dark sunken art fought light themes (dark box under
+        -- theme-dark text). Light themes get a lighter-than-panel inset,
+        -- dark themes the dark inset tier.
+        -- Same recipe as the alias/blacklist tables: the dark section fill
+        -- (theme-tinted via the tag sweep) with fixed light text, readable
+        -- on every theme.
+        local shell = CreateFrame("Frame", nil, parent)
+        shell:SetSize(FRAME_W - 60, 20)
+        shell:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, yOff)
+        ns.CreateRoundedRectBorder(shell)
+        ns.SetRoundedRectBarHeight(shell, 10)
+        HideRoundedFrameBorder(shell)
+        PaintControlFill(shell, SECTION_TABLE_FILL, SECTION_TABLE_FILL[4])
+        local box = CreateFrame("EditBox", nil, shell)
+        box:SetPoint("TOPLEFT", shell, "TOPLEFT", 8, 0)
+        box:SetPoint("BOTTOMRIGHT", shell, "BOTTOMRIGHT", -8, 0)
         box:SetAutoFocus(false)
         box:SetFontObject(SMALL_HIGHLIGHT_FONT)
+        box:SetTextColor(0.92, 0.92, 0.92, 1)
+        box:SetShadowColor(0, 0, 0, 0)
         box:SetText(url)
         box:SetCursorPosition(0)
         box:SetScript("OnEscapePressed", function(self) self:ClearFocus() end)
-        box:SetScript("OnEditFocusGained", function(self) self:HighlightText() end)
-        box:SetScript("OnTextChanged", function(self) self:SetText(url); self:SetCursorPosition(0) end)
-        box:SetScript("OnMouseUp", function(self)
-            if not self:IsMouseOver() then self:ClearFocus() end
+        -- EditBoxes never lose focus from clicks elsewhere on their own
+        -- (the old OnMouseUp only fired for clicks that STARTED on the
+        -- box), so the selection highlight lingered after clicking away.
+        -- Watch global mouse-downs while focused and release properly.
+        box:SetScript("OnEditFocusGained", function(self)
+            self:HighlightText()
+            self:RegisterEvent("GLOBAL_MOUSE_DOWN")
         end)
-        return box
+        box:SetScript("OnEditFocusLost", function(self)
+            self:HighlightText(0, 0)
+            self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+        end)
+        box:SetScript("OnEvent", function(self, event)
+            if event == "GLOBAL_MOUSE_DOWN" and not self:IsMouseOver() then
+                self:ClearFocus()
+            end
+        end)
+        box:SetScript("OnTextChanged", function(self) self:SetText(url); self:SetCursorPosition(0) end)
+        return shell
     end
 
-    local cfBox = CreateURLBox(homeTab, "https://www.curseforge.com/wow/addons/easyfind", homeQuick, -6)
-
-    -- TEMPORARY (remove after the CurseForge Addon Trials vote ends):
-    -- ranking ask plus a vote button on the home page.
-    local trialsText = homeTab:CreateFontString(nil, "OVERLAY", FLOW_FONT)
-    trialsText:SetPoint("TOPLEFT", cfBox, "BOTTOMLEFT", 0, -26)
-    trialsText:SetWidth(FLOW_W)
-    trialsText:SetJustifyH("LEFT")
-    trialsText:SetSpacing(3)
-    trialsText:SetText(L["OPT_TRIALS_TEXT"])
-    trialsText:SetTextColor(Utils.RGB(ns.GOLD_COLOR, 1))
-
-    local trialsBtn = CreateModernButton(homeTab)
-    trialsBtn:SetSize(ctx.RESET_BTN_W, 20)
-    trialsBtn:SetPoint("TOPLEFT", trialsText, "BOTTOMLEFT", 0, -10)
-    trialsBtn:SetText(L["OPT_TRIALS_BTN"])
-    trialsBtn:SetScript("OnClick", function()
-        ns.ShowCopyBox(ns.TRIALS_VOTE_URL, L["WHATSNEW_TRIALS_VOTE"])
-    end)
-    -- END TEMPORARY
-
+    CreateURLBox(homeTab, "https://www.curseforge.com/wow/addons/easyfind", homeQuick, -6)
 end
 
 local function BuildGeneralBindsTab(ctx)
@@ -1055,7 +1258,45 @@ local function BuildGeneralBindsTab(ctx)
     optionsFrame.minimapBtnCheckbox = minimapBtnCheckbox
 
 
-    local indicatorRow, indicatorLabel = CreateSelectorRow(minimapBtnCheckbox, L["OPT_INDICATOR_STYLE"])
+    local themeRow, themeLabel = CreateSelectorRow(minimapBtnCheckbox, L["OPT_UI_THEME"])
+    local themeChoices = ns.UI_THEME_ORDER or { "Midnight" }
+    local themeBtnFrame, themeBtnText = CreateFlyoutSelector(
+        themeRow, "EasyFindTheme", SELECTOR_BTN_W, themeLabel, EasyFind.db.uiTheme or "Black"
+    )
+    optionsFrame.themeBtnText = themeBtnText
+    local defaultTheme = (ns.DB_DEFAULTS and ns.DB_DEFAULTS.uiTheme) or "Black"
+    -- Theme names are product names (like the indicator style names) and
+    -- deliberately stay untranslated.
+    local function ThemeFlyoutLabel(name)
+        if name == defaultTheme then return DefaultTag(name) end
+        return name
+    end
+    local themeFlyout = CreateFlyoutPanel(themeBtnFrame, "EasyFindTheme", SELECTOR_BTN_W, #themeChoices)
+    AddFlyoutOptions(themeFlyout, themeChoices, SELECTOR_BTN_W - 6, function(name)
+        EasyFind.db.uiTheme = name
+        themeBtnText:SetText(name)
+        if ns.ApplyUITheme then ns.ApplyUITheme(name) end
+        optionsFrame:RepaintTheme()
+        -- A pick here also lands in the tutorial wizard if it's open.
+        if ns.RepaintWizardTheme then pcall(ns.RepaintWizardTheme) end
+    end, ThemeFlyoutLabel, function(flyoutBtn, name, label)
+        -- Circular color dot tinted at the theme's gradient midpoint
+        -- (a flat square of the darkest base fill read as black).
+        local swatch = label:GetParent():CreateTexture(nil, "OVERLAY")
+        swatch:SetSize(13, 13)
+        swatch:SetPoint("RIGHT", label:GetParent(), "RIGHT", -4, 0)
+        local palette = ns.UI_THEME_PALETTES and ns.UI_THEME_PALETTES[name]
+        if palette then
+            swatch:SetTexture("Interface\\AddOns\\EasyFind\\textures\\FilterButtonCircle")
+            swatch:SetVertexColor(ns.ThemeSwatchColor(palette))
+        else
+            swatch:Hide()
+        end
+        flyoutBtn._rightIconW = 13 + 4
+    end)
+    optionsFrame.themeBtnText = themeBtnText
+
+    local indicatorRow, indicatorLabel = CreateSelectorRow(themeRow, L["OPT_INDICATOR_STYLE"])
 
     local indicatorChoices = {"EasyFind Arrow", "Classic Quest Arrow", "Minimap Player Arrow", "Low-res Gauntlet", "HD Gauntlet"}
 
@@ -1290,10 +1531,18 @@ local function BuildGeneralBindsTab(ctx)
         local keybindBtn = CreateModernButton(rowFrame)
         keybindBtn:SetNormalFontObject("GameFontHighlightSmall")
         keybindBtn:SetHighlightFontObject("GameFontHighlightSmall")
+        ns.StyleBgFillButton(keybindBtn)
         keybindBtn:SetSize(KEYBIND_BTN_W, 20)
         keybindBtn:SetPoint("LEFT", rowLabel, "LEFT", KEYBIND_LABEL_W, 0)
         keybindBtn:SetText(GetCurrentKeybindText(def.action))
         keybindBtn:SetScript("OnClick", function(self, button)
+            -- Swallow the stray release from a flyout dismissed on the
+            -- mouse-down half of this same click; without this, closing
+            -- the theme flyout over a keybind button silently armed
+            -- rebind capture and the next keypress became a binding.
+            if ns._efFlyoutClosedAt and GetTime() - ns._efFlyoutClosedAt < 0.30 then
+                return
+            end
             if button == "RightButton" then
                 EasyFind:SetAccountKeybind(def.action, nil)
                 self:SetText((_G["NOT_BOUND"] or "Not Bound"))
@@ -1559,11 +1808,26 @@ local function BuildSearchTab(ctx)
     optionsFrame.resultsDirectionRow = resultsDirectionRow
 
     -- Append a live example of the hint badge (the alt-key glyph + a number)
-    -- so the label shows exactly what the rows display.
-    local altHintExample = " (|TInterface\\AddOns\\EasyFind\\textures\\alt-key:16:16|t1)"
+    -- so the label shows exactly what the rows display. Inline |T textures
+    -- take no vertex color from the fontstring, so the glyph tint rides the
+    -- escape's RGB args and the label rebuilds on theme change (dark chrome
+    -- glyph on light fills, white otherwise).
     local resultShortcutHintsCheckbox = CreateCheckbox(sec1, "ResultShortcutHints",
-        L["OPT_SHOW_ALT_HINTS"] .. altHintExample,
+        L["OPT_SHOW_ALT_HINTS"],
         L["OPT_ALT_HINTS_TT"])
+    local function UpdateAltHintExample()
+        local r, g, b = 255, 255, 255
+        local theme = ns.Results and ns.Results:GetActiveTheme()
+        if theme and theme.lightTheme and theme.chromeGlyph then
+            r = mfloor(theme.chromeGlyph[1] * 255 + 0.5)
+            g = mfloor(theme.chromeGlyph[2] * 255 + 0.5)
+            b = mfloor(theme.chromeGlyph[3] * 255 + 0.5)
+        end
+        local altHintExample = (" (|TInterface\\AddOns\\EasyFind\\textures\\alt-key:16:16:0:0:128:128:0:128:0:128:%d:%d:%d|t1)"):format(r, g, b)
+        ns.MakeEllipsisLabel(resultShortcutHintsCheckbox.Text, L["OPT_SHOW_ALT_HINTS"] .. altHintExample)
+    end
+    optionsFrame.UpdateAltHintExample = UpdateAltHintExample
+    UpdateAltHintExample()
     resultShortcutHintsCheckbox:SetPoint("TOPLEFT", resultsDirectionRow, "BOTTOMLEFT", 0, -2)
     resultShortcutHintsCheckbox:SetChecked(EasyFind.db.showResultShortcutHints ~= false)
     resultShortcutHintsCheckbox:SetScript("OnClick", function(self)
@@ -1598,6 +1862,21 @@ local function BuildSearchTab(ctx)
     end)
     optionsFrame.windowBorderCheckbox = windowBorderCheckbox
 
+    local iconVisChoices = {
+        { label = L["OPT_ICONS_ALL"],      value = "all" },
+        { label = L["OPT_ICONS_GENERAL"],  value = "general" },
+        { label = L["OPT_ICONS_SPECIFIC"], value = "specific" },
+    }
+    local iconVisRow = CreateFlyoutPresetRow(sec1, L["OPT_ICON_VISIBILITY"], iconVisChoices,
+        function() return EasyFind.db.iconVisibility or "all" end,
+        function(value)
+            EasyFind.db.iconVisibility = value
+            if ns.Search and ns.Search.RefreshResults then
+                ns.Search:RefreshResults()
+            end
+        end, "EasyFindIconVis", "all")
+    iconVisRow:SetPoint("TOPLEFT", visibilityModeRow, "BOTTOMLEFT", 0, -4)
+
     local fontSizeChoices = {
         { label = L["OPT_FONT_SMALL"], value = 0.80 },
         { label = L["OPT_FONT_MED"],   value = 0.90 },
@@ -1612,7 +1891,7 @@ local function BuildSearchTab(ctx)
                 ns.Search:UpdateFontSize()
             end
         end, "EasyFindFontSize", ns.DEFAULT_FONT_SIZE, L["OPT_FONT_SIZE_TT"])
-    uiFontPresetRow:SetPoint("TOPLEFT", visibilityModeRow, "BOTTOMLEFT", 0, -8)
+    uiFontPresetRow:SetPoint("TOPLEFT", iconVisRow, "BOTTOMLEFT", 0, -4)
     optionsFrame.uiFontPresetRow = uiFontPresetRow
 
     -- Uniform zoom for the whole search UI (bar, results, popups) that
@@ -1631,7 +1910,7 @@ local function BuildSearchTab(ctx)
             EasyFind.db.uiResultsScale = 1.0
             if ns.Search and ns.Search.UpdateScale then ns.Search:UpdateScale() end
         end, "EasyFindSearchScale", 1.0, L["OPT_SEARCH_SCALE_TT"])
-    scaleRow:SetPoint("TOPLEFT", uiFontPresetRow, "BOTTOMLEFT", 0, -8)
+    scaleRow:SetPoint("TOPLEFT", uiFontPresetRow, "BOTTOMLEFT", 0, -4)
     optionsFrame.searchScaleRow = scaleRow
 
     -- "Resize Search Window" action row at the bottom of the Size flyout:
@@ -1683,24 +1962,20 @@ local function BuildSearchTab(ctx)
                 if ns.Search and ns.Search.RefreshResults then ns.Search:RefreshResults() end
             end)
         end, "EasyFindResultRows", 6, L["OPT_RESULT_ROWS_TT"])
-    resultRowsRow:SetPoint("TOPLEFT", scaleRow, "BOTTOMLEFT", 0, -8)
+    resultRowsRow:SetPoint("TOPLEFT", scaleRow, "BOTTOMLEFT", 0, -4)
     optionsFrame.resultRowsRow = resultRowsRow
 
-    local opacityChoices = {
-        { label = "75%",  value = 0.75 },
-        { label = "85%",  value = 0.85 },
-        { label = "95%",  value = 0.95 },
-        { label = "100%", value = 1.00 },
-    }
-    local searchOpacityRow = CreateFlyoutPresetRow(sec1, L["OPT_SEARCH_OPACITY"], opacityChoices,
-        function() return EasyFind.db.searchWindowOpacity or ns.SEARCH_WINDOW_ALPHA end,
+    -- Percent stepper (50-100) instead of fixed presets; the db keeps
+    -- storing the 0-1 fraction so existing saved values stay valid.
+    local searchOpacityRow = CreateStepperRow(sec1, L["OPT_SEARCH_OPACITY"], 50, 100,
+        function() return mfloor((EasyFind.db.searchWindowOpacity or ns.SEARCH_WINDOW_ALPHA) * 100 + 0.5) end,
         function(value)
-            EasyFind.db.searchWindowOpacity = value
+            EasyFind.db.searchWindowOpacity = value / 100
             RunSoon(function()
                 if ns.Search and ns.Search.UpdateOpacity then ns.Search:UpdateOpacity() end
             end)
-        end, "EasyFindOpacity", ns.SEARCH_WINDOW_ALPHA, L["OPT_SEARCH_OPACITY_TT"])
-    searchOpacityRow:SetPoint("TOPLEFT", resultRowsRow, "BOTTOMLEFT", 0, -8)
+        end, L["OPT_SEARCH_OPACITY_TT"], SELECTOR_ROW_W)
+    searchOpacityRow:SetPoint("TOPLEFT", resultRowsRow, "BOTTOMLEFT", 0, -4)
     optionsFrame.searchOpacityRow = searchOpacityRow
 
 
@@ -1719,7 +1994,7 @@ local function BuildSearchTab(ctx)
 
     local wowheadRow = CreateFrame("Frame", nil, sec1)
     wowheadRow:SetSize(SELECTOR_ROW_W, 24)
-    wowheadRow:SetPoint("TOPLEFT", searchOpacityRow, "BOTTOMLEFT", 0, -8)
+    wowheadRow:SetPoint("TOPLEFT", searchOpacityRow, "BOTTOMLEFT", 0, -4)
     local wowheadRowLabel = wowheadRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     wowheadRowLabel:SetPoint("LEFT", wowheadRow, "LEFT", 8, 0)
     wowheadRowLabel:SetPoint("RIGHT", wowheadRow, "RIGHT", -SELECTOR_BTN_W - 18, 0)
@@ -1760,7 +2035,7 @@ local function BuildSearchTab(ctx)
     end)
 
     lockPositionCheckbox:ClearAllPoints()
-    lockPositionCheckbox:SetPoint("TOPLEFT", wowheadRow, "BOTTOMLEFT", 0, -8)
+    lockPositionCheckbox:SetPoint("TOPLEFT", wowheadRow, "BOTTOMLEFT", 0, -4)
     resultShortcutHintsCheckbox:ClearAllPoints()
     resultShortcutHintsCheckbox:SetPoint("TOPLEFT", lockPositionCheckbox, "BOTTOMLEFT", 0, -2)
 
@@ -1827,7 +2102,19 @@ local function BuildMapTab(ctx)
     mapSep:SetPoint("TOPLEFT", sec2, "TOPLEFT", 6, -40)
     mapSep:SetPoint("RIGHT", sec2, "RIGHT", -6, 0)
     mapSep:SetHeight(1)
-    mapSep:SetColorTexture(0.8, 0.65, 0.0, 0.6)
+    -- Gold reads fine on dark fills only; light themes use their own
+    -- separator tone.
+    local function RestyleMapSep()
+        local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+        local sep = theme and theme.lightTheme and theme.separatorColor
+        if sep then
+            mapSep:SetColorTexture(sep[1], sep[2], sep[3], 0.8)
+        else
+            mapSep:SetColorTexture(0.8, 0.65, 0.0, 0.6)
+        end
+    end
+    RestyleMapSep()
+    optionsFrame.RestyleMapSep = RestyleMapSep
 
     local GROUP_W = FRAME_W - 16
     local ROW_H = 28
@@ -2009,7 +2296,23 @@ local function BuildShortcutsTab(ctx)
     shortcutText:SetWidth(FRAME_W - 60)
     shortcutText:SetJustifyH("LEFT")
     shortcutText:SetSpacing(2)
-    shortcutText:SetText(L["OPT_SHORTCUTS_TEXT"])
+    -- The baked gold/green escapes are tuned for dark fills; on light
+    -- themes the headings take the theme's hue-dark accent and the key
+    -- names a dark green, swapped at render time so locales keep one
+    -- source string.
+    local function UpdateShortcutColors()
+        local body = L["OPT_SHORTCUTS_TEXT"]
+        local theme = ns.Results and ns.Results:GetActiveTheme()
+        if theme and theme.lightTheme then
+            local acc = theme.pathColorHover or theme.leafColor
+            local accHex = ("%02X%02X%02X"):format(
+                mfloor(acc[1] * 255 + 0.5), mfloor(acc[2] * 255 + 0.5), mfloor(acc[3] * 255 + 0.5))
+            body = body:gsub("|cFFFFD100", "|cFF" .. accHex):gsub("|cFF00FF00", "|cFF0E6B2D")
+        end
+        shortcutText:SetText(body)
+    end
+    optionsFrame.UpdateShortcutColors = UpdateShortcutColors
+    UpdateShortcutColors()
 
 end
 
@@ -2045,7 +2348,7 @@ local function BuildAliasesTab(ctx)
     ns.CreateRoundedRectBorder(aliasSearchShell)
     ns.SetRoundedRectBarHeight(aliasSearchShell, 10)
     HideRoundedFrameBorder(aliasSearchShell)
-    PaintControlFill(aliasSearchShell, ns.BTN_FILL_PRESSED, 1)
+    PaintControlFill(aliasSearchShell, ns.BTN_FILL_NORMAL, 1)
 
     local aliasSearchIcon = aliasSearchShell:CreateTexture(nil, "OVERLAY")
     aliasSearchIcon:SetSize(13, 13)
@@ -2064,7 +2367,7 @@ local function BuildAliasesTab(ctx)
     local aliasSearchPlaceholder = aliasSearchBox:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
     aliasSearchPlaceholder:SetPoint("LEFT", aliasSearchBox, "LEFT", 0, 0)
     aliasSearchPlaceholder:SetText(L["OPT_SEARCH_ALIASES_PLACEHOLDER"])
-    aliasSearchPlaceholder:SetTextColor(0.55, 0.55, 0.58, 1)
+    aliasSearchPlaceholder:SetTextColor(0.78, 0.78, 0.80, 1)
     aliasSearchBox.placeholder = aliasSearchPlaceholder
     aliasSearchBox:SetScript("OnTextChanged", function(self)
         aliasSearchPlaceholder:SetShown((self:GetText() or "") == "")
@@ -2122,6 +2425,7 @@ local function BuildAliasesTab(ctx)
         ns.StyleMenuPanel(f)
 
         f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        f.title._efOwnColor = true
         f.title:SetPoint("TOP", 0, -12)
 
         local boxFrame = CreateFrame("Frame", nil, f)
@@ -2156,6 +2460,7 @@ local function BuildAliasesTab(ctx)
         copiedHolder:SetSize(140, 16)
         copiedHolder:Hide()
         local copied = copiedHolder:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        copied._efOwnColor = true
         copied:SetPoint("CENTER")
         copied:SetText(L["COPIED"])
         local copiedFade = copiedHolder:CreateAnimationGroup()
@@ -2189,9 +2494,19 @@ local function BuildAliasesTab(ctx)
         return f
     end
 
-    local function ShowShareString(isExport, str)
+    -- Shared by the Aliases and Blacklist tabs (exposed on optionsFrame):
+    -- scope picks which sections import; onImported refreshes the caller's
+    -- table.
+    local function ShowShareString(isExport, str, scope, onImported)
         if not sharePopup then sharePopup = BuildSharePopup() end
         local f = sharePopup
+        -- GameFontNormal's default gold is unreadable on light theme fills.
+        local shareTheme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+        if shareTheme and shareTheme.lightTheme then
+            f.title:SetTextColor(unpack(shareTheme.leafColor))
+        else
+            f.title:SetTextColor(1.0, 0.82, 0)
+        end
         if isExport then
             f.title:SetText(L["SHORTKEY_EXPORT_TITLE"] .. " (Ctrl+C)")
             f.hint:SetText("")
@@ -2207,22 +2522,81 @@ local function BuildAliasesTab(ctx)
             f.editBox:SetText("")
             f.importBtn:Show()
             f.importBtn:SetScript("OnClick", function()
-                local na, nk = nil, nil
-                if ns.Shortkeys then na, nk = ns.Shortkeys:ApplyImportString(f.editBox:GetText(), CurrentScope()) end
+                local decoded = ns.Shortkeys and ns.Shortkeys:DecodeString(f.editBox:GetText())
                 f:Hide()
-                if EasyFind and EasyFind.Print then
-                    if na == nil then
-                        EasyFind:Print(L["SHORTKEY_IMPORT_BAD"])
-                    else
-                        EasyFind:Print((L["SHORTKEY_IMPORTED"]):format((na or 0) + (nk or 0)))
-                    end
+                if not decoded then
+                    if EasyFind and EasyFind.Print then EasyFind:Print(L["SHORTKEY_IMPORT_BAD"]) end
+                    return
                 end
-                if RefreshAliasList then RefreshAliasList() end
+                local analysis = ns.Shortkeys:AnalyzeImport(decoded, scope)
+                local conflicts = analysis.conflicts
+                -- New rows import unconditionally; conflicts the user chooses to
+                -- replace get appended to their section, skips are left out.
+                local applySet = analysis.newRows
+
+                local function finish()
+                    local na, nk, nb = ns.Shortkeys:ApplyResolvedImport(applySet)
+                    if EasyFind and EasyFind.Print then
+                        EasyFind:Print((L["SHORTKEY_IMPORTED"]):format((na or 0) + (nk or 0) + (nb or 0)))
+                    end
+                    if onImported then onImported() end
+                end
+
+                -- Windows-style one-at-a-time replace/skip. "Do this for all"
+                -- forces the same choice on every remaining conflict.
+                local function resolve(i, forced)
+                    while i <= #conflicts do
+                        local c = conflicts[i]
+                        if not forced then
+                            ns.ShowThemedDialog({
+                                text = c.label .. "\n\n" .. L["IMPORT_CONFLICT_ITEM"],
+                                messageColor = ns.GOLD_COLOR,
+                                checkboxText = L["IMPORT_APPLY_TO_ALL"],
+                                acceptText = L["IMPORT_REPLACE"],
+                                onAccept = function(_, all)
+                                    local list = applySet[c.section]
+                                    list[#list + 1] = c.row
+                                    resolve(i + 1, all and "replace" or nil)
+                                end,
+                                thirdText = L["IMPORT_SKIP"],
+                                onThird = function(all)
+                                    resolve(i + 1, all and "skip" or nil)
+                                end,
+                                cancelText = _G["CANCEL"] or "Cancel",
+                            })
+                            return
+                        end
+                        if forced == "replace" then
+                            local list = applySet[c.section]
+                            list[#list + 1] = c.row
+                        end
+                        i = i + 1
+                    end
+                    finish()
+                end
+
+                local function startConflicts()
+                    if #conflicts == 0 then finish() else resolve(1, nil) end
+                end
+
+                if #analysis.disruptive > 0 then
+                    ns.ShowThemedDialog({
+                        text = (L["IMPORT_SYSCMD_WARN"]):format(#analysis.disruptive,
+                            table.concat(analysis.disruptive, ", ")),
+                        messageColor = ns.GOLD_COLOR,
+                        acceptText = _G["CONTINUE"] or L["SHORTKEY_IMPORT"],
+                        onAccept = startConflicts,
+                        cancelText = _G["CANCEL"] or "Cancel",
+                    })
+                else
+                    startConflicts()
+                end
             end)
             f:Show()
             f.editBox:SetFocus()
         end
     end
+    optionsFrame.ShowShareString = ShowShareString
 
     local shareTools = CreateFrame("Frame", nil, aliasesTab)
     shareTools:SetPoint("TOPLEFT", aliasTools, "BOTTOMLEFT", 0, -6)
@@ -2233,15 +2607,14 @@ local function BuildAliasesTab(ctx)
     -- with the scope cogwheel tucked into the right edge of the export button.
     -- Import matches export's width.
     local SHARE_BTN_W = 92
-    local SHARE_BTN_FILL = { ns.BTN_FILL_NORMAL[1], ns.BTN_FILL_NORMAL[2], ns.BTN_FILL_NORMAL[3], 0.92 }
     local function UseShareButtonFill(btn)
-        ns.SetRoundedRectBorderFillColor(btn, unpack(SHARE_BTN_FILL))
+        PaintControlFill(btn, ns.BTN_FILL_NORMAL, 0.92)
         btn:HookScript("OnLeave", function(self)
-            if self:IsEnabled() then ns.SetRoundedRectBorderFillColor(self, unpack(SHARE_BTN_FILL)) end
+            if self:IsEnabled() then PaintControlFill(self, ns.BTN_FILL_NORMAL, 0.92) end
         end)
         btn:HookScript("OnMouseUp", function(self)
             if self:IsEnabled() and not self:IsMouseOver() then
-                ns.SetRoundedRectBorderFillColor(self, unpack(SHARE_BTN_FILL))
+                PaintControlFill(self, ns.BTN_FILL_NORMAL, 0.92)
             end
         end)
     end
@@ -2276,7 +2649,9 @@ local function BuildAliasesTab(ctx)
     local importBtn = CreateModernButton(shareTools, L["SHORTKEY_IMPORT"], SHARE_BTN_W, 22)
     importBtn:SetPoint("LEFT", exportBtn, "RIGHT", 8, 0)
     UseShareButtonFill(importBtn)
-    importBtn:SetScript("OnClick", function() ShowShareString(false) end)
+    importBtn:SetScript("OnClick", function()
+        ShowShareString(false, nil, CurrentScope(), RefreshAliasList)
+    end)
 
     Utils.AttachDelayedTooltip(exportBtn, "ANCHOR_TOP", function()
         return L["SHORTKEY_EXPORT"], L["OPT_EXPORT_BTN_TT"]
@@ -2306,7 +2681,7 @@ local function BuildAliasesTab(ctx)
     ns.CreateRoundedRectBorder(aliasList)
     ns.SetRoundedRectBarHeight(aliasList, 8)
     HideRoundedFrameBorder(aliasList)
-    PaintRoundedFill(aliasList, unpack(SECTION_TABLE_FILL))
+    ns.ApplyCardFill(aliasList)
 
     -- Column header inside the table, with a thin divider under it.
     local aliasColHeader = CreateFrame("Frame", nil, aliasList)
@@ -2316,6 +2691,7 @@ local function BuildAliasesTab(ctx)
         local fs = aliasColHeader:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
         fs:SetText(text)
         fs:SetJustifyH(justify)
+        fs:SetTextColor(0.92, 0.92, 0.92, 1)
         return fs
     end
     local hSk = MakeColHeader(L["OPT_COL_SHORTKEY"], "CENTER")
@@ -2346,6 +2722,7 @@ local function BuildAliasesTab(ctx)
     local aliasEmpty = aliasContent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     aliasEmpty:SetPoint("TOPLEFT", aliasContent, "TOPLEFT", 8, -8)
     aliasEmpty:SetText(L["OPT_NO_SAVED_ALIASES"])
+    aliasEmpty:SetTextColor(0.92, 0.92, 0.92, 1)
 
     local aliasRowPool = {}
     local function ReleaseAliasRows()
@@ -2404,9 +2781,11 @@ local function BuildAliasesTab(ctx)
         row.skBtn = CreateModernButton(row, "", SK_COL_W, 20)
         row.skBtn:SetPoint("RIGHT", row.removeBtn, "LEFT", -COL_GAP, 0)
         row.skBtn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
+        ns.StyleNavPillButton(row.skBtn)
 
         row.aliasBtn = CreateModernButton(row, "", ALIAS_COL_W, 20)
         row.aliasBtn:SetPoint("RIGHT", row.skBtn, "LEFT", -COL_GAP, 0)
+        ns.StyleNavPillButton(row.aliasBtn)
         -- Constrain the label so a long alias truncates with an ellipsis, which
         -- IsTruncated() then reports to gate the hover tooltip.
         row.aliasBtn._label:SetWidth(ALIAS_COL_W - 10)
@@ -2421,6 +2800,9 @@ local function BuildAliasesTab(ctx)
         row.nameText:SetPoint("RIGHT", row.aliasBtn, "LEFT", -8, 0)
         row.nameText:SetJustifyH("LEFT")
         row.nameText:SetWordWrap(false)
+        -- Rows spawn lazily after the theme walk, so the font-object
+        -- shadow must die at creation (flat table design, no polarity).
+        row.nameText:SetShadowColor(0, 0, 0, 0)
 
         -- Hover region over the name for its own truncation tooltip.
         row.nameHover = CreateFrame("Frame", nil, row)
@@ -2498,13 +2880,25 @@ local function BuildAliasesTab(ctx)
 
         local rowH = 28
         local y = -4
+        -- Light themes turn the cells into window-fill pills where the dark
+        -- value coding is unreadable, so show the value plain and let the
+        -- pill's dark leaf label (StyleNavPillButton) paint it; dark themes
+        -- keep the blue value coding on the slate pill.
+        local lightCells = ns.ACTIVE_UI_PALETTE and ns.ACTIVE_UI_PALETTE.light
+        local function CellText(value)
+            if not value or value == "" then return L["SHORTKEY_CELL_ADD"] end
+            if lightCells then return value end
+            return "|cFF8CD3FF" .. value .. "|r"
+        end
         for i = 1, #entries do
             local e = entries[i]
             local row = AcquireAliasRow(i)
             row:ClearAllPoints()
             row:SetPoint("TOPLEFT", aliasContent, "TOPLEFT", 4, y)
-            row.aliasBtn:SetText(e.aliasText ~= "" and ("|cFFFFD100" .. e.aliasText .. "|r") or L["SHORTKEY_CELL_ADD"])
-            row.skBtn:SetText(e.shortkey and ("|cFF8CD3FF" .. e.shortkey .. "|r") or L["SHORTKEY_CELL_ADD"])
+            row.aliasBtn:SetText(CellText(e.aliasText))
+            row.skBtn:SetText(CellText(e.shortkey))
+            row.aliasBtn:RefreshVisual()
+            row.skBtn:RefreshVisual()
             row.nameText:SetText(e.name or "?")
             row.aliasBtn._fullText = e.aliasText
             row.nameText._fullText = e.name
@@ -2554,7 +2948,14 @@ local function BuildAliasesTab(ctx)
     aliasContent:HookScript("OnSizeChanged", UpdateAliasScrollBar)
     aliasesTab:HookScript("OnShow", RefreshAliasList)
     optionsFrame.RefreshAliasList = RefreshAliasList
-    ns.RefreshShortkeyTable = RefreshAliasList
+    -- One notifier for every open management table (aliases & shortkeys, and
+    -- blacklist). Any alias / shortkey / blacklist mutation calls this so a
+    -- change made while the panel is open (e.g. "save as alias" from a result)
+    -- shows up live, instead of only shortkey changes refreshing.
+    ns.RefreshBindTables = function()
+        if optionsFrame.RefreshAliasList then optionsFrame.RefreshAliasList() end
+        if optionsFrame.RefreshBlacklistList then optionsFrame.RefreshBlacklistList() end
+    end
 
     clearAliasesBtn:SetScript("OnClick", function()
         ns.ShowThemedDialog({
@@ -2628,6 +3029,242 @@ local function BuildAliasesTab(ctx)
         return L["OPT_RESET_ALL_POSITIONS"], L["OPT_RESET_POS_TT_DESC"], L["OPT_RESET_POS_TT_CMD"]
     end)
 
+end
+
+local function BuildBlacklistTab(ctx)
+    local CreateTab, FRAME_W = ctx.CreateTab, ctx.FRAME_W
+    local blacklistTab = CreateTab(L["OPT_TAB_BLACKLIST"])
+    Options._blacklistTabIndex = blacklistTab.tabIndex
+
+    local blTitle = blacklistTab:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    blTitle:SetPoint("TOPLEFT", blacklistTab, "TOPLEFT", 8, -8)
+    blTitle:SetText(L["OPT_SAVED_BLACKLIST"])
+
+    local blHeader = blacklistTab:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    blHeader:SetPoint("TOPLEFT", blTitle, "BOTTOMLEFT", 0, -6)
+    blHeader:SetPoint("RIGHT", blacklistTab, "RIGHT", -10, 0)
+    blHeader:SetJustifyH("LEFT")
+    blHeader:SetText(L["OPT_BLACKLIST_EMPTY_HINT"])
+
+    local RefreshBlacklistList
+    local blTools = CreateFrame("Frame", nil, blacklistTab)
+    blTools:SetPoint("TOPLEFT", blHeader, "BOTTOMLEFT", 0, -8)
+    blTools:SetPoint("RIGHT", blacklistTab, "RIGHT", -8, 0)
+    blTools:SetHeight(24)
+
+    local clearBlacklistBtn = CreateModernButton(blTools, L["OPT_CLEAR_ALL_BTN"], 78, 22)
+    clearBlacklistBtn:SetPoint("RIGHT", blTools, "RIGHT", 0, 0)
+
+    local blSearchShell = CreateFrame("Frame", nil, blTools)
+    blSearchShell:SetPoint("LEFT", blTools, "LEFT", 0, 0)
+    blSearchShell:SetPoint("RIGHT", clearBlacklistBtn, "LEFT", -8, 0)
+    blSearchShell:SetHeight(22)
+    ns.CreateRoundedRectBorder(blSearchShell)
+    ns.SetRoundedRectBarHeight(blSearchShell, 10)
+    HideRoundedFrameBorder(blSearchShell)
+    PaintControlFill(blSearchShell, ns.BTN_FILL_NORMAL, 1)
+
+    local blSearchIcon = blSearchShell:CreateTexture(nil, "OVERLAY")
+    blSearchIcon:SetSize(13, 13)
+    blSearchIcon:SetPoint("LEFT", blSearchShell, "LEFT", 7, 0)
+    blSearchIcon:SetAtlas("common-search-magnifyingglass")
+    blSearchIcon:SetAlpha(0.65)
+
+    local blSearchBox = CreateFrame("EditBox", nil, blSearchShell)
+    blSearchBox:SetPoint("LEFT", blSearchIcon, "RIGHT", 6, 0)
+    blSearchBox:SetPoint("RIGHT", blSearchShell, "RIGHT", -8, 0)
+    blSearchBox:SetHeight(18)
+    blSearchBox:SetAutoFocus(false)
+    blSearchBox:SetFontObject(SMALL_HIGHLIGHT_FONT)
+    blSearchBox:SetMaxLetters(64)
+
+    local blSearchPlaceholder = blSearchBox:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
+    blSearchPlaceholder:SetPoint("LEFT", blSearchBox, "LEFT", 0, 0)
+    blSearchPlaceholder:SetText(L["OPT_SEARCH_BLACKLIST_PLACEHOLDER"])
+    blSearchPlaceholder:SetTextColor(0.78, 0.78, 0.80, 1)
+    blSearchBox:SetScript("OnTextChanged", function(self)
+        blSearchPlaceholder:SetShown((self:GetText() or "") == "")
+        if RefreshBlacklistList then RefreshBlacklistList() end
+    end)
+    blSearchBox:SetScript("OnEscapePressed", function(self)
+        if (self:GetText() or "") ~= "" then
+            self:SetText("")
+        else
+            self:ClearFocus()
+        end
+    end)
+
+    local blShare = CreateFrame("Frame", nil, blacklistTab)
+    blShare:SetPoint("TOPLEFT", blTools, "BOTTOMLEFT", 0, -6)
+    blShare:SetPoint("RIGHT", blacklistTab, "RIGHT", -8, 0)
+    blShare:SetHeight(22)
+
+    local blExportBtn = CreateModernButton(blShare, L["SHORTKEY_EXPORT"], 92, 22)
+    blExportBtn:SetPoint("LEFT", blShare, "LEFT", 0, 0)
+    blExportBtn:SetScript("OnClick", function()
+        local str = ns.Shortkeys and ns.Shortkeys:BuildExportString("blacklist") or ""
+        if optionsFrame.ShowShareString then optionsFrame.ShowShareString(true, str) end
+    end)
+
+    local blImportBtn = CreateModernButton(blShare, L["SHORTKEY_IMPORT"], 92, 22)
+    blImportBtn:SetPoint("LEFT", blExportBtn, "RIGHT", 8, 0)
+    blImportBtn:SetScript("OnClick", function()
+        if optionsFrame.ShowShareString then
+            optionsFrame.ShowShareString(false, nil, "blacklist", RefreshBlacklistList)
+        end
+    end)
+
+    local NAME_LEFT = 10
+    local REMOVE_W = 20
+    local REMOVE_RIGHT = 4
+    local HEADER_H = 14
+    local HEADER_TOP = 7
+    local DIVIDER_Y = HEADER_TOP + HEADER_H + 3
+    local SCROLL_TOP = DIVIDER_Y + 4
+
+    local blList = CreateFrame("Frame", nil, blacklistTab)
+    blList:SetPoint("TOPLEFT", blShare, "BOTTOMLEFT", 0, -8)
+    blList:SetPoint("BOTTOMRIGHT", blacklistTab, "BOTTOMRIGHT", -8, 8)
+    ns.CreateRoundedRectBorder(blList)
+    ns.SetRoundedRectBarHeight(blList, 8)
+    HideRoundedFrameBorder(blList)
+    ns.ApplyCardFill(blList)
+
+    local blColHeader = CreateFrame("Frame", nil, blList)
+    blColHeader:SetSize(FRAME_W - 42, HEADER_H)
+    blColHeader:SetPoint("TOPLEFT", blList, "TOPLEFT", 10, -HEADER_TOP)
+    local hObject = blColHeader:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    hObject:SetText(L["OPT_COL_OBJECT"])
+    hObject:SetJustifyH("LEFT")
+    hObject:SetTextColor(0.92, 0.92, 0.92, 1)
+    hObject:SetPoint("LEFT", blColHeader, "LEFT", NAME_LEFT, 0)
+    hObject:SetPoint("RIGHT", blColHeader, "RIGHT", -(REMOVE_RIGHT + REMOVE_W + 6), 0)
+
+    local blDivider = blList:CreateTexture(nil, "ARTWORK")
+    blDivider:SetColorTexture(1, 1, 1, 0.09)
+    blDivider:SetHeight(1)
+    blDivider:SetPoint("TOPLEFT", blList, "TOPLEFT", 8, -DIVIDER_Y)
+    blDivider:SetPoint("TOPRIGHT", blList, "TOPRIGHT", -8, -DIVIDER_Y)
+
+    local blScroll = CreateFrame("ScrollFrame", nil, blList)
+    blScroll:SetPoint("TOPLEFT", blList, "TOPLEFT", 6, -SCROLL_TOP)
+    blScroll:SetPoint("BOTTOMRIGHT", blList, "BOTTOMRIGHT", -10, 6)
+
+    local blContent = CreateFrame("Frame", nil, blScroll)
+    blContent:SetSize(FRAME_W - 42, 1)
+    blScroll:SetScrollChild(blContent)
+
+    local blScrollBar = Utils.CreateMinimalScrollBar and Utils.CreateMinimalScrollBar(blScroll, blList)
+    local blEmpty = blContent:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    blEmpty:SetPoint("TOPLEFT", blContent, "TOPLEFT", 8, -8)
+    blEmpty:SetText(L["OPT_NO_BLACKLISTED"])
+    blEmpty:SetTextColor(0.92, 0.92, 0.92, 1)
+
+    local blRowPool = {}
+    local function ReleaseBlacklistRows()
+        for i = 1, #blRowPool do blRowPool[i]:Hide() end
+    end
+    local function UpdateBlacklistScrollBar()
+        if not blScrollBar then return end
+        local contentH = blContent:GetHeight() or 0
+        local viewH = blScroll:GetHeight() or 0
+        if contentH > viewH + 1 then
+            blScrollBar:Show()
+            blScrollBar:UpdateThumb(contentH, viewH)
+        else
+            blScroll:SetVerticalScroll(0)
+            blScrollBar:Hide()
+        end
+    end
+
+    local function AcquireBlacklistRow(idx)
+        local row = blRowPool[idx]
+        if row then row:Show(); return row end
+        row = CreateFrame("Frame", nil, blContent)
+        row:SetSize(FRAME_W - 42, 26)
+        row:EnableMouse(true)
+        row.bg = CreateFrame("Frame", nil, row)
+        row.bg:SetAllPoints()
+        row.bg:EnableMouse(false)
+        ns.CreateRoundedRectBorder(row.bg)
+        ns.SetRoundedRectBarHeight(row.bg, 8)
+        HideRoundedFrameBorder(row.bg)
+        PaintRoundedFill(row.bg, 1, 1, 1, 0)
+
+        row.removeBtn = CreateModernButton(row, "x", REMOVE_W, 18)
+        row.removeBtn:SetPoint("RIGHT", row, "RIGHT", -REMOVE_RIGHT, 0)
+
+        row.nameText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        row.nameText:SetPoint("LEFT", row, "LEFT", NAME_LEFT, 0)
+        row.nameText:SetPoint("RIGHT", row.removeBtn, "LEFT", -8, 0)
+        row.nameText:SetJustifyH("LEFT")
+        row.nameText:SetWordWrap(false)
+        row.nameText:SetShadowColor(0, 0, 0, 0)
+
+        row:SetScript("OnEnter", function(self)
+            PaintRoundedFill(self.bg, 1, 1, 1, 0.055)
+        end)
+        row:SetScript("OnLeave", function(self)
+            PaintRoundedFill(self.bg, 1, 1, 1, 0)
+        end)
+        blRowPool[idx] = row
+        return row
+    end
+
+    RefreshBlacklistList = function()
+        ReleaseBlacklistRows()
+        local query = (blSearchBox and blSearchBox:GetText() or ""):lower()
+
+        local entries, total = {}, 0
+        if ns.Blacklist then
+            ns.Blacklist:ForEach(function(key, info)
+                total = total + 1
+                local name = info.name or key
+                if query == "" or string.find(name:lower(), query, 1, true) then
+                    entries[#entries + 1] = { key = key, name = name }
+                end
+            end)
+        end
+        table.sort(entries, function(a, b) return a.name:lower() < b.name:lower() end)
+
+        clearBlacklistBtn:SetEnabled(total > 0)
+        clearBlacklistBtn:SetAlpha(total > 0 and 1 or 0.45)
+        blEmpty:SetText(total == 0 and L["OPT_NO_BLACKLISTED"] or L["OPT_NO_BLACKLIST_MATCH"])
+        blEmpty:SetShown(#entries == 0)
+
+        local rowH = 28
+        local y = -4
+        for i = 1, #entries do
+            local e = entries[i]
+            local row = AcquireBlacklistRow(i)
+            row:ClearAllPoints()
+            row:SetPoint("TOPLEFT", blContent, "TOPLEFT", 4, y)
+            row.nameText:SetText(e.name)
+            row.removeBtn:SetScript("OnClick", function()
+                if ns.Blacklist then ns.Blacklist:RemoveByKey(e.key) end
+                RefreshBlacklistList()
+            end)
+            y = y - rowH
+        end
+        blContent:SetHeight(math.max(32, -y + 4))
+        UpdateBlacklistScrollBar()
+        Utils.SafeAfter(0, UpdateBlacklistScrollBar)
+    end
+    blScroll:SetScript("OnSizeChanged", UpdateBlacklistScrollBar)
+    blContent:HookScript("OnSizeChanged", UpdateBlacklistScrollBar)
+    blacklistTab:HookScript("OnShow", RefreshBlacklistList)
+    optionsFrame.RefreshBlacklistList = RefreshBlacklistList
+
+    clearBlacklistBtn:SetScript("OnClick", function()
+        ns.ShowThemedDialog({
+            text = L["OPT_CLEAR_BLACKLIST_CONFIRM"],
+            acceptText = _G["CLEAR"] or "Clear",
+            onAccept = function()
+                if ns.Blacklist then ns.Blacklist:ClearAll() end
+                RefreshBlacklistList()
+            end,
+        })
+    end)
 end
 
 local function BuildFeedbackTab(ctx)
@@ -2718,12 +3355,46 @@ function Options:Initialize()
     StyleWizardBackground(bgTex)
     bgTex:SetAlpha(OPTIONS_PANEL_ALPHA)
     optionsFrame.bgTex = bgTex
+    -- Light themes: panel-level text goes dark (see RetintPanelText).
+    -- Runs on every show so a theme switched while closed lands too.
+    -- One owner for the panel's theme visuals: the gloss fill, panel text,
+    -- tab pills, sidebar, and every per-section restyle. Called on show, on
+    -- an in-panel theme pick, and cross-panel when the tutorial changes the
+    -- theme while this panel is open.
+    function optionsFrame:RepaintTheme()
+        if self.bgTex then
+            ns.StyleWizardPanel(self.bgTex, 1)
+            local theme = ns.Results and ns.Results:GetActiveTheme()
+            self.bgTex:SetAlpha((theme and theme.lightTheme) and 1 or OPTIONS_PANEL_ALPHA)
+        end
+        if ns.RetintPanelText then ns.RetintPanelText(self) end
+        if self.RepaintTabs then pcall(self.RepaintTabs) end
+        if self.UpdateAltHintExample then pcall(self.UpdateAltHintExample) end
+        if self.RestyleSidebar then pcall(self.RestyleSidebar) end
+        if self.UpdateShortcutColors then pcall(self.UpdateShortcutColors) end
+        if self.RestyleTutorialLink then pcall(self.RestyleTutorialLink) end
+        if self.UpdateHomeVersion then pcall(self.UpdateHomeVersion) end
+        if self.RestyleMapSep then pcall(self.RestyleMapSep) end
+        if self.themeBtnText then self.themeBtnText:SetText(EasyFind.db.uiTheme or "Black") end
+        -- Segmented rows (results direction, icon size) recolor their
+        -- selected node from the new theme's leaf color via SetValue, which
+        -- the generic text walker above cannot do; run it last so it wins.
+        pcall(SyncOptionControls)
+    end
+    optionsFrame:HookScript("OnShow", function(self)
+        self:RepaintTheme()
+    end)
+    -- A theme picked in the tutorial (or anywhere) repaints this panel live.
+    function ns.RepaintOptionsPanelTheme()
+        if optionsFrame:IsShown() then optionsFrame:RepaintTheme() end
+    end
 
     local sidebar = CreateFrame("Frame", nil, optionsFrame)
     sidebar:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", 10, -10)
     sidebar:SetPoint("BOTTOMLEFT", optionsFrame, "BOTTOMLEFT", 10, 10)
     sidebar:SetWidth(SIDEBAR_W)
     optionsFrame.sidebar = sidebar
+    sidebar._efNoAutoRetint = true
     ns.CreateRoundedRectBorder(sidebar)
     ns.SetRoundedRectBarHeight(sidebar, 14)
     ns.SetRoundedRectBorderBgAlpha(sidebar, 0.72)
@@ -2736,11 +3407,65 @@ function Options:Initialize()
     divider:SetWidth(1)
     divider:SetColorTexture(1, 1, 1, 0.08)
 
+    -- The sidebar column backdrop is a fixed near-black wash tuned for dark
+    -- fills; light themes get a darker tint of their own window fill so the
+    -- nav column still reads as one surface.
+    local function RestyleSidebar()
+        -- The gloss overlay (bgTex) shares the sidebar's frame level; when
+        -- it renders opaque (light themes force alpha 1) it occludes the
+        -- column entirely, which is why the column only ever showed
+        -- through the translucent dark-theme gloss. Keep the sidebar
+        -- strictly above it; re-asserted here because StyleWizardPanel
+        -- re-runs on every theme pick.
+        local glossLevel = optionsFrame.bgTex and optionsFrame.bgTex:GetFrameLevel() or 0
+        if sidebar:GetFrameLevel() <= glossLevel then
+            sidebar:SetFrameLevel(glossLevel + 1)
+        end
+        local pal = ns.ACTIVE_UI_PALETTE
+        if pal and pal.light then
+            -- Light themes wear the settings-group card color (the
+            -- keybind-group scheme): a leaf-dark column that the
+            -- window-fill tab text and pills invert against.
+            local card = ns.SECTION_TABLE_FILL
+            sidebar._efThemeFillTarget = nil
+            if sidebar._efArtCells then
+                for _, cell in pairs(sidebar._efArtCells) do cell:Hide() end
+            end
+            ns.SetRoundedRectFill(sidebar, card[1], card[2], card[3], 1, true)
+            ns.SetRoundedRectBorderBgAlpha(sidebar, card[4] or 0.92)
+        else
+            -- Dark themes: the column carries the theme's own fill
+            -- (gradient/art) at its translucent alpha, so it keeps the
+            -- color ramp instead of reading as a flat black slab.
+            ns.ApplyThemeFill(sidebar)
+            ns.SetRoundedRectBorderBgAlpha(sidebar, 0.72)
+        end
+        divider:SetColorTexture(1, 1, 1, 0.08)
+        if optionsFrame.titleText then
+            if pal and pal.light then
+                optionsFrame.titleText:SetTextColor(1, 1, 1, 1)
+            else
+                optionsFrame.titleText:SetTextColor(Utils.RGB(TEXT_BODY, 1))
+            end
+        end
+        -- The close X follows the active theme on its own (faint stroke at
+        -- rest, readable on hover); re-assert the auto colors here so the
+        -- resting stroke repaints the instant the theme flips, not on the
+        -- next hover.
+        if optionsFrame.closeBtn and optionsFrame.closeBtn.SetXColors then
+            optionsFrame.closeBtn:SetXColors(nil, nil)
+        end
+    end
+    optionsFrame.RestyleSidebar = RestyleSidebar
+    RestyleSidebar()
+
     local title = optionsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     title:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 4, -6)
     title:SetText(L["OPT_SETTINGS_TITLE"])
     title:SetTextColor(Utils.RGB(TEXT_BODY, 1))
     optionsFrame.titleText = title
+    -- The first RestyleSidebar ran before the title existed.
+    RestyleSidebar()
 
     local closeBtn = ns.CreateCloseX(optionsFrame)
     closeBtn:SetPoint("TOPRIGHT", -10, -10)
@@ -2755,14 +3480,34 @@ function Options:Initialize()
     local tabFrames = {}
     local tabButtons = {}
 
+    -- Light themes run the keybind-group scheme on the nav column: the
+    -- column wears the card color, and unselected tab names read in
+    -- plain white on it (the tinted window fill was harder to read).
+    local function PaintTabLabel(label, hovered)
+        local pal = ns.ACTIVE_UI_PALETTE
+        if pal and pal.light then
+            label:SetTextColor(1, 1, 1, 1)
+        else
+            label:SetTextColor(Utils.RGB(hovered and TEXT_PRIMARY or TEXT_BODY, 1))
+        end
+    end
+
     local function SetTabActive(btn, active)
         btn.isActive = active
         if active then
             SetNavButtonBg(btn, NAV_SELECTED)
-            btn.label:SetTextColor(Utils.RGB(TEXT_PRIMARY, 1))
+            -- Light themes: window-fill pill on the card-colored column,
+            -- so the label inverts to the column color.
+            local pal = ns.ACTIVE_UI_PALETTE
+            if pal and pal.light then
+                local card = ns.SECTION_TABLE_FILL
+                btn.label:SetTextColor(card[1], card[2], card[3], 1)
+            else
+                btn.label:SetTextColor(Utils.RGB(TEXT_PRIMARY, 1))
+            end
         else
             SetNavButtonBg(btn, NAV_CLEAR)
-            btn.label:SetTextColor(Utils.RGB(TEXT_BODY, 1))
+            PaintTabLabel(btn.label, false)
         end
     end
 
@@ -2773,6 +3518,15 @@ function Options:Initialize()
         end
     end
     optionsFrame.SwitchToTab = SwitchToTab
+
+    -- Re-assert every tab's current state from the live nav tables; the
+    -- generic retint walker must not touch these (state-driven fills).
+    local function RepaintTabs()
+        for i = 1, #tabButtons do
+            SetTabActive(tabButtons[i], tabButtons[i].isActive and true or false)
+        end
+    end
+    optionsFrame.RepaintTabs = RepaintTabs
 
 
     local function FlashBindButton()
@@ -2820,6 +3574,7 @@ function Options:Initialize()
         local btn = CreateFrame("Button", nil, sidebar)
         btn:SetSize(SIDEBAR_W - 16, 28)
         btn:SetPoint("TOPLEFT", sidebar, "TOPLEFT", 8, -34 - (index - 1) * 32)
+        btn._efNoAutoRetint = true
         ns.CreateRoundedRectBorder(btn)
         ns.SetRoundedRectBarHeight(btn, 10)
         ns.SetRoundedRectBorderBgAlpha(btn, 0)
@@ -2831,19 +3586,19 @@ function Options:Initialize()
         label:SetPoint("RIGHT", btn, "RIGHT", -10, 0)
         label:SetJustifyH("LEFT")
         label:SetText(tabName)
-        label:SetTextColor(Utils.RGB(TEXT_BODY, 1))
+        PaintTabLabel(label, false)
         btn.label = label
 
         btn:SetScript("OnEnter", function(self)
             if not self.isActive then
                 SetNavButtonBg(self, NAV_HOVER)
-                self.label:SetTextColor(Utils.RGB(TEXT_PRIMARY, 1))
+                PaintTabLabel(self.label, true)
             end
         end)
         btn:SetScript("OnLeave", function(self)
             if not self.isActive then
                 SetNavButtonBg(self, NAV_CLEAR)
-                self.label:SetTextColor(Utils.RGB(TEXT_BODY, 1))
+                PaintTabLabel(self.label, false)
             end
         end)
         btn:SetScript("OnClick", function() SwitchToTab(index) end)
@@ -2864,26 +3619,34 @@ function Options:Initialize()
     local tutorialBtn = CreateFrame("Button", nil, sidebar)
     tutorialBtn:SetSize(SIDEBAR_W - 16, 28)
     tutorialBtn:SetPoint("BOTTOMLEFT", sidebar, "BOTTOMLEFT", 8, 8)
+    tutorialBtn._efNoAutoRetint = true
     ns.CreateRoundedRectBorder(tutorialBtn)
     ns.SetRoundedRectBarHeight(tutorialBtn, 10)
     ns.SetRoundedRectBorderBgAlpha(tutorialBtn, 0)
     HideRoundedBorder(tutorialBtn)
     SetNavButtonBg(tutorialBtn, NAV_CLEAR)
-    local TUTORIAL_LINK_COLOR = ns.LINK_COLOR or { 0.44, 0.84, 1.0 }
-    local TUTORIAL_LINK_HOVER = ns.LINK_HOVER or { 1, 1, 1 }
+    -- The sidebar column stays dark on every theme, so the link keeps the
+    -- classic cyan (the live link tables go dark blue on light themes for
+    -- text sitting on light panels, which would vanish here).
+    local TUT_LINK = { 0.44, 0.84, 1.0 }
+    local TUT_LINK_HOVER = { 0.72, 0.94, 1.0 }
     local tutorialLabel = tutorialBtn:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     tutorialLabel:SetPoint("LEFT", tutorialBtn, "LEFT", 10, 0)
     tutorialLabel:SetPoint("RIGHT", tutorialBtn, "RIGHT", -10, 0)
     tutorialLabel:SetJustifyH("LEFT")
     tutorialLabel:SetText(L["OPT_TAB_TUTORIAL"])
-    tutorialLabel:SetTextColor(TUTORIAL_LINK_COLOR[1], TUTORIAL_LINK_COLOR[2], TUTORIAL_LINK_COLOR[3], 1)
+    local function RestyleTutorialLink()
+        tutorialLabel:SetTextColor(TUT_LINK[1], TUT_LINK[2], TUT_LINK[3], 1)
+    end
+    RestyleTutorialLink()
+    optionsFrame.RestyleTutorialLink = RestyleTutorialLink
     tutorialBtn:SetScript("OnEnter", function(self)
         SetNavButtonBg(self, NAV_HOVER)
-        tutorialLabel:SetTextColor(TUTORIAL_LINK_HOVER[1], TUTORIAL_LINK_HOVER[2], TUTORIAL_LINK_HOVER[3], 1)
+        tutorialLabel:SetTextColor(TUT_LINK_HOVER[1], TUT_LINK_HOVER[2], TUT_LINK_HOVER[3], 1)
     end)
     tutorialBtn:SetScript("OnLeave", function(self)
         SetNavButtonBg(self, NAV_CLEAR)
-        tutorialLabel:SetTextColor(TUTORIAL_LINK_COLOR[1], TUTORIAL_LINK_COLOR[2], TUTORIAL_LINK_COLOR[3], 1)
+        RestyleTutorialLink()
     end)
     tutorialBtn:SetScript("OnClick", function()
         optionsFrame:Hide()
@@ -3005,6 +3768,7 @@ function Options:Initialize()
     BuildMapTab(ctx)
     BuildShortcutsTab(ctx)
     BuildAliasesTab(ctx)
+    BuildBlacklistTab(ctx)
     BuildFeedbackTab(ctx)
 
     SwitchToTab(1)
@@ -3083,7 +3847,10 @@ function Options:RegisterWithBlizzardOptions()
 
         optionsFrame.titleText:Hide()
         optionsFrame.closeBtn:Hide()
-        optionsFrame.bgTex:Hide()
+        -- Keep the themed gloss: hiding it left the panel naked on
+        -- Blizzard's dark canvas, which broke every light theme (dark
+        -- text on a dark background). The OnShow hook sets its alpha.
+        optionsFrame.bgTex:Show()
         optionsFrame:SetBackdrop(nil)
         optionsFrame:SetScale(1)
 

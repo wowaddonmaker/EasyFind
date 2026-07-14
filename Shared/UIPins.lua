@@ -13,15 +13,32 @@ local SIMPLE_FIELDS = {
     "name", "nameLower", "category", "buttonFrame", "icon",
     "specificIcon", "specificIconFrame",
     "mountID", "spellID", "isSpellbookOnly", "toyItemID", "petID", "speciesID", "outfitID", "heirloomItemID",
+    -- Cold mount summonability: without these the snapshot reads as
+    -- non-summonable and opens the journal instead of summoning. isToyboxOnly
+    -- keeps a restricted toy off the secure "use" path.
+    "isCollected", "isUsable", "shouldHideOnChar", "isToyboxOnly",
     "macroIndex", "macroIsChar", "bagID", "bagSlot", "bagItemLink",
     "itemID", "encounterID", "instanceID", "lootSlotName", "lootSourceName", "lootInstanceName", "lootSourceType",
     "transmogSetID",
+    -- Collection action IDs each SelectResult branch gates on; absent, a cold
+    -- title/gear-set/talent/appearance shortkey fell through to a panel open.
+    "titleID", "gearSetID", "talentNodeID",
+    "appearanceItemID", "appearanceVisualID", "appearanceSlot",
     "factionID", "hasRepBar", "canQueue", "isPvP", "isPvE",
     -- Required for the row renderer to recognize a map result and
     -- place icons in the correct slots.
     "mapSearchResult", "isZone", "mapID", "zoneName", "pathPrefix",
     "zoneMapType", "zoneParentMapID",
+    -- Coords + entrance fields so a PINNED map POI navigates on click and drops
+    -- its pin (shortkeys rebuild these from the row key instead).
+    "x", "y", "zoneMapID", "coordMapID", "parentMapID",
+    "entranceMapID", "entranceX", "entranceY", "entranceIcon",
+    "entranceCategory", "isDungeonEntrance",
     "achievementID",
+    -- Housing decor: recordID + name drive the catalog-navigation guide. Without
+    -- it a housing shortkey's snapshot can't route until the housing provider
+    -- loads (i.e. until the dashboard has been opened this session).
+    "housingRecordID",
     -- Commands: strings only; nativeRun (a function) cannot persist and is
     -- re-resolved by name on selection.
     "searchCommand", "searchCommandDesc", "slashCommand", "isNativeCommand",
@@ -31,6 +48,9 @@ local SIMPLE_FIELDS = {
     -- deliberately absent -- it re-resolves via GetOptionsForVariable.
     "settingVariable", "settingType", "cbVariable", "sliderVariable",
     "dropdownVariable", "settingMin", "settingMax", "quickKeybindActivate",
+    -- Keybind toggle rows: bindingAction performs the action cold; customToggle
+    -- marks the EasyFind-owned single-action rows (left-click only).
+    "bindingAction", "customToggle",
 }
 
 local TABLE_FIELDS = {

@@ -22,8 +22,8 @@ L["UITREE_SOLO_BATTLEGROUNDS"]          = "单人战场"
 L["UITREE_RANDOM_BATTLEGROUNDS"]        = "随机战场"
 L["UITREE_GREAT_VAULT"]                 = "巨大宝库"
 L["UITREE_PORTRAIT_MENU"]               = "头像菜单"
-L["UITREE_TOGGLE_WORLD_MAP"]            = "切换世界地图"
 L["UITREE_CALENDAR"]                    = "日历"
+L["KEYBIND_TOGGLE_FMT"]                 = "切换%s"
 L["UITREE_DISMISS_PET"]                 = "解散宠物"
 L["UITREE_CALCULATOR"]                  = "计算器"
 L["ERR_DATABASE_INIT_FAILED"]           = "EasyFind 数据库初始化失败："
@@ -213,6 +213,8 @@ L["TUT_FEATURE_ACTIONS_DESC"]           = "直接在列表中施放、使用、�
 L["TUT_FEATURE_CALCULATOR"]             = "计算器"
 L["TUT_FEATURE_CALCULATOR_DESC"]        = "输入算式、复制结果，或从计算器结果打开完整计算器。"
 L["TUT_CALC_COPY_DESC"]                 = "将鼠标悬停在算式或结果上，按 Ctrl+C 复制，即可用 Ctrl+V 轻松粘贴到任何地方。"
+L["TUT_THEME_HEADER"]                   = "你想要哪种 EasyFind 主题？"
+L["TUT_THEME_RESIZE_NOTE"]              = "你可以随时在选项中更改你的选择。也可以在那里调整大小。"
 L["TUT_KEYBIND_HEADER"]                 = "选择你的快捷键（对所有角色生效）"
 L["TUT_KEYBIND_SEARCH_BAR"]             = "搜索栏"
 L["TUT_KEYBIND_MAP_TAB"]                = "地图搜索标签"
@@ -253,24 +255,30 @@ L["POPUP_UNAPPLIED_CANCEL"]             = "取消"
 L["WHATSNEW_CHAT_HELLO"]                = "欢迎使用|cFF00FF00EasyFind v%s|r！点击%s查看更新摘要。"
 L["WHATSNEW_CHAT_HERE"]                 = "这里"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日志"
-L["WHATSNEW_TRIALS_VOTE"]               = "为 EasyFind 投票："
-L["OPT_TRIALS_TEXT"]                    = "如果你喜欢 EasyFind，欢迎在 CurseForge Addon Trials 中给我们打出高排名，投票截止7月13日。"
-L["OPT_TRIALS_BTN"]                     = "为 EasyFind 投票"
-L["WHATSNEW_CHAT_TRIALS"]               = "如果你喜欢 EasyFind，欢迎在%s中为我们投票，投票截止7月13日！"
-L["WHATSNEW_CHAT_TRIALS_LINK"]          = "CurseForge Addon Trials 大赛"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff始终显示|r\n" ..
-    "    |cff999999-|r 新的可见性模式让搜索栏常驻，\n" ..
-    "      含战斗/移动变暗选项\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff无边框外观|r\n" ..
-    "    |cff999999-|r 新选项可隐藏搜索栏及其菜单的边框\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff手动调整大小|r\n" ..
-    "    |cff999999-|r 位于大小菜单中；缩放在其之上生效\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff资料片货币成组搜索|r\n" ..
-    "    |cff999999-|r 搜索资料片名加\"货币\"即可直接列出全部"
+    "|cffFFD100\226\128\162|r |cffffffff主题|r\n" ..
+    "    |cff999999-|r 选择 EasyFind 的外观；随时可在选项菜单中更改\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff黑名单|r\n" ..
+    "    |cff999999-|r 右键点击结果并选择黑名单，即可让它不再出现在\n" ..
+    "      任何搜索中\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff图标显示|r\n" ..
+    "    |cff999999-|r 显示所有图标、仅通用图标或仅具体图标"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "添加别名"
+L["CTX_BLACKLIST"]                      = "黑名单"
+L["OPT_TAB_BLACKLIST"]                  = "黑名单"
+L["OPT_SAVED_BLACKLIST"]                = "已加入黑名单的结果"
+L["OPT_BLACKLIST_EMPTY_HINT"]           = "黑名单中的结果不会出现在任何搜索中。右键点击结果并选择黑名单即可添加；在此处移除即可恢复。"
+L["OPT_SEARCH_BLACKLIST_PLACEHOLDER"]   = "搜索黑名单..."
+L["OPT_NO_BLACKLISTED"]                 = "黑名单中没有结果。"
+L["OPT_NO_BLACKLIST_MATCH"]             = "没有匹配项。"
+L["OPT_CLEAR_BLACKLIST_CONFIRM"]        = "移除黑名单中的所有结果？它们将重新出现在搜索中。"
+L["OPT_UI_THEME"]                       = "主题"
+L["OPT_ICON_VISIBILITY"]                = "图标显示"
+L["OPT_ICONS_ALL"]                      = "显示所有图标"
+L["OPT_ICONS_GENERAL"]                  = "显示通用图标"
+L["OPT_ICONS_SPECIFIC"]                 = "显示具体图标"
 L["CTX_ADD_SHORTKEY"]                   = "添加快捷键"
 L["CTX_EDIT_SHORTKEY"]                  = "编辑快捷键"
 L["SHORTKEY_FOR"]                       = "快捷键：%s"
@@ -291,6 +299,11 @@ L["SHORTKEY_IMPORT_TITLE"]              = "粘贴要导入的代码"
 L["SHORTKEY_IMPORT_HINT"]               = "粘贴代码 (Ctrl+V) 后点击导入。"
 L["SHORTKEY_IMPORTED"]                  = "已导入 %d 个条目"
 L["SHORTKEY_IMPORT_BAD"]                = "无法读取该代码。"
+L["IMPORT_CONFLICT_ITEM"]               = "此项目已存在于你的列表中。"
+L["IMPORT_APPLY_TO_ALL"]                = "对所有当前项目执行此操作"
+L["IMPORT_REPLACE"]                     = "替换"
+L["IMPORT_SKIP"]                        = "跳过"
+L["IMPORT_SYSCMD_WARN"]                 = "警告：%d 个快捷键绑定了系统命令（%s）。按键后会立即执行。"
 L["CTX_GUIDE"]                          = "向导"
 L["CTX_WOWHEAD"]                        = "Wowhead"
 L["CTX_SEND_LINK"]                      = "发送链接"
@@ -457,6 +470,8 @@ L["GUIDE_NOT_IN_GAME_MENU"]             = "“%s”不在游戏菜单中"
 L["GUIDE_OPTION_NOT_AVAILABLE"]         = "“%s”在此处不可用"
 L["GUIDE_CLICK_CORRECT_TAB"]            = "点击正确的标签"
 L["GUIDE_FIND_PET_IN_JOURNAL"]          = "在宠物图鉴中找到该宠物"
+L["GUIDE_FIND_MOUNT_IN_JOURNAL"]        = "在坐骑图鉴中找到该坐骑"
+L["GUIDE_FIND_TOY_IN_TOYBOX"]           = "在玩具箱中找到该玩具"
 L["GUIDE_CLICK_OPTION_LEFT"]            = "点击左侧正确的选项"
 L["GUIDE_CLICK_CATEGORY_IN_LIST"]       = "在分类列表中点击“%s”"
 L["GUIDE_SIDEBAR_CHARACTER_STATS"]      = "角色属性"

@@ -134,6 +134,10 @@ function MapSearch:BuildResults(text, isGlobal, skipPins)
 
     local results = self:SearchPOIs(allPOIs, text)
 
+    -- Blacklist rides the existing filter copy-loops in both branches:
+    -- same single suppression predicate as main search (ns.Blacklist).
+    local blacklistActive = ns.Blacklist and ns.Blacklist:HasAny()
+
     -- Apply global search filters (zones / dungeons / raids / delves)
     if isGlobal then
         local filters = EasyFind.db.globalSearchFilters
@@ -141,7 +145,9 @@ function MapSearch:BuildResults(text, isGlobal, skipPins)
         local filteredResults = reuseFilteredResults
         for _, r in ipairs(results) do
             local dominated = false
-            if r.isZone and filters.zones == false then
+            if blacklistActive and ns.Blacklist:Contains(r) then
+                dominated = true
+            elseif r.isZone and filters.zones == false then
                 dominated = true
             elseif r.category == "dungeon" and filters.dungeons == false then
                 dominated = true
@@ -163,7 +169,8 @@ function MapSearch:BuildResults(text, isGlobal, skipPins)
         wipe(reuseFilteredResults)
         local filteredResults = reuseFilteredResults
         for _, r in ipairs(results) do
-            if ns.MapSearch.PassesFilter(r, filters) then
+            if ns.MapSearch.PassesFilter(r, filters)
+               and not (blacklistActive and ns.Blacklist:Contains(r)) then
                 tinsert(filteredResults, r)
             end
         end

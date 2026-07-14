@@ -31,7 +31,9 @@ local function TutorialTexCoord(contentW, contentH, canvasW, canvasH)
     return { 0, contentW / canvasW, 0, contentH / canvasH }
 end
 
-local DOT_FILLED = "Interface\\COMMON\\Indicator-Yellow"
+-- White disc (the filter-circle art): tintable to any theme color,
+-- unlike the gold Indicator-Yellow orb it replaced.
+local DOT_FILLED = "Interface\\AddOns\\EasyFind\\textures\\FilterButtonCircle"
 local CALCULATOR_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\calculator-icon"
 -- HD Gauntlet cursor (same FileDataID and texCoord as the HD Gauntlet
 -- indicator style), reused for slide overlay hints. texCoord is read-only.
@@ -292,6 +294,9 @@ local function ApplyInter(fs, weight, sizeOverride, flags)
     if ns.RegisterAddonFont then
         ns.RegisterAddonFont(fs, weight, sizeOverride, flags)
     end
+    -- Blizzard font objects carry a drop shadow and SetFont does not clear
+    -- it; wizard text is flat, so strip it for every string that gets here.
+    fs:SetShadowColor(0, 0, 0, 0)
 end
 
 local frame
@@ -299,6 +304,77 @@ local pages = {}
 local pageIdx = 1
 local dots = {}
 local backBtn, nextBtn
+local featureTiles = {}
+local RepaintFeatureTiles
+-- Repaint closures for widgets with inverted theming (leaf-colored pills
+-- with window-fill text): keybind capture buttons and the footer button.
+local invertedPills = {}
+
+local function RepaintInvertedPills()
+    for i = 1, #invertedPills do
+        invertedPills[i]()
+    end
+end
+
+-- Search bar replicas (page 1 and the theme slide) restyle from the live
+-- theme so the mock changes in real time with theme picks.
+local themeReplicas = {}
+
+local function RepaintReplicas()
+    for i = 1, #themeReplicas do
+        themeReplicas[i].RestyleTheme()
+    end
+end
+
+-- Assigned in CreateFrameOnce; repaints the footer band from the live
+-- section fill (the wizard skips the options panel's control-fill walk).
+local RepaintFooter
+
+-- Headers and body text keep their cream/gray tiers (live tables, so
+-- light themes read dark). Tagged _efOwnColor so the menu-text pass
+-- doesn't flatten them to leaf white on dark themes.
+local themedTexts = {}
+
+local function RegisterThemedText(fs, colorTable)
+    fs._efOwnColor = true
+    themedTexts[#themedTexts + 1] = { fs = fs, color = colorTable }
+end
+
+local function RepaintThemedTexts()
+    for i = 1, #themedTexts do
+        local entry = themedTexts[i]
+        entry.fs:SetTextColor(Utils.RGB(entry.color, 1))
+    end
+end
+
+-- Wizard pill fill: dark gradient themes derive from their upper stop
+-- (one shared slate reads identical on every dark theme); Black keeps
+-- the classic slate; light themes invert (leaf fill handled by callers).
+-- f: 1 hover, 0 rest, -1 pressed.
+local function PillFill(f)
+    local pal = ns.ACTIVE_UI_PALETTE
+    local top = pal and not pal.light and pal.windowFillTop
+    if top then
+        local s = f > 0 and 0.85 or f < 0 and 0.55 or 0.70
+        return top[1] * s, top[2] * s, top[3] * s
+    end
+    local fill = f > 0 and ns.BTN_FILL_HOVER or f < 0 and ns.BTN_FILL_PRESSED or ns.BTN_FILL_NORMAL
+    return fill[1], fill[2], fill[3]
+end
+
+-- The flat "tab-group" fill for the current theme, mirroring the options
+-- sidebar: dark gradient themes derive a theme-hued shade from their upper
+-- stop; light and Black themes use the section-table slate. Shared by the
+-- footer band and the feature tiles so they read as one surface.
+local function ThemeBandFill()
+    local pal = ns.ACTIVE_UI_PALETTE
+    local top = pal and not pal.light and pal.windowFillTop
+    if top then
+        return top[1] * 0.45, top[2] * 0.45, top[3] * 0.45
+    end
+    local card = ns.SECTION_TABLE_FILL
+    return card[1], card[2], card[3]
+end
 
 local function MakeButton(parent, text, variant, w)
     local b = CreateFrame("Button", nil, parent)
@@ -317,18 +393,35 @@ local function MakeButton(parent, text, variant, w)
         ns.SetRoundedRectBorderBgAlpha(b, 1)
         -- Border ring hidden: 256px texture aliases badly at ~5px corners.
         ns.SetRoundedRectBorderEdgeShown(b, false)
-        local function tintFill(rr, gg, bb)
-            ns.SetRoundedRectFill(b, rr, gg, bb, 1, true)
+        -- Light themes invert (leaf fill, window-fill label, same scheme
+        -- as the keybind capture pills); dark themes keep a slate pill
+        -- hued from their own palette. Live-read so theme flips land.
+        fs._efOwnColor = true
+        local function paintPill(hoverNudge)
+            local f = hoverNudge or 0
+            local pal = ns.ACTIVE_UI_PALETTE
+            if pal and pal.light then
+                local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+                local leaf = (theme and theme.leafColor) or TEXT_PRIM
+                ns.SetRoundedRectFill(b,
+                    leaf[1] + (1 - leaf[1]) * f,
+                    leaf[2] + (1 - leaf[2]) * f,
+                    leaf[3] + (1 - leaf[3]) * f, 1, true)
+                local windowFill = ns.SEARCH_WINDOW_FILL_COLOR
+                fs:SetTextColor(windowFill[1], windowFill[2], windowFill[3], 1)
+            else
+                local pr, pg, pb = PillFill(f)
+                ns.SetRoundedRectFill(b, pr, pg, pb, 1, true)
+                fs:SetTextColor(Utils.RGB(TEXT_PRIM, 1))
+            end
         end
-        tintFill(0.18, 0.18, 0.20)
-        fs:SetTextColor(1, 1, 1, 1)
-        b:SetScript("OnEnter",     function() tintFill(0.26, 0.26, 0.28) end)
-        b:SetScript("OnLeave",     function() tintFill(0.18, 0.18, 0.20) end)
-        b:SetScript("OnMouseDown", function() tintFill(0.12, 0.12, 0.14) end)
+        paintPill(0)
+        invertedPills[#invertedPills + 1] = function() paintPill(0) end
+        b:SetScript("OnEnter",     function() paintPill(0.15) end)
+        b:SetScript("OnLeave",     function() paintPill(0) end)
+        b:SetScript("OnMouseDown", function() paintPill(-0.10) end)
         b:SetScript("OnMouseUp",   function(self)
-            tintFill(self:IsMouseOver() and 0.26 or 0.18,
-                     self:IsMouseOver() and 0.26 or 0.18,
-                     self:IsMouseOver() and 0.28 or 0.20)
+            paintPill(self:IsMouseOver() and 0.15 or 0)
         end)
         return b
     end
@@ -340,14 +433,20 @@ local function MakeButton(parent, text, variant, w)
     local function setVisual(state)
         if variant == "ghost" then
             bg:SetColorTexture(0, 0, 0, 0)
-        else
-            if state == "pressed" then
-                bg:SetColorTexture(0.10, 0.10, 0.11, 1)
-            elseif state == "hover" then
-                bg:SetColorTexture(0.18, 0.18, 0.20, 1)
+            -- Match the slide-number counter: dim at rest, primary on hover.
+            if state == "hover" or state == "pressed" then
+                fs:SetTextColor(Utils.RGB(TEXT_PRIM, 1))
             else
-                bg:SetColorTexture(0.13, 0.13, 0.15, 1)
+                fs:SetTextColor(Utils.RGB(TEXT_DIM, 1))
             end
+            return
+        end
+        if state == "pressed" then
+            bg:SetColorTexture(0.10, 0.10, 0.11, 1)
+        elseif state == "hover" then
+            bg:SetColorTexture(0.18, 0.18, 0.20, 1)
+        else
+            bg:SetColorTexture(0.13, 0.13, 0.15, 1)
         end
         if state == "hover" or state == "pressed" then
             fs:SetTextColor(Utils.RGB(TEXT_PRIM, 1))
@@ -356,6 +455,10 @@ local function MakeButton(parent, text, variant, w)
         end
     end
     setVisual("normal")
+    if variant == "ghost" then
+        fs._efOwnColor = true
+        invertedPills[#invertedPills + 1] = function() setVisual("normal") end
+    end
     b:SetScript("OnEnter",     function() setVisual("hover") end)
     b:SetScript("OnLeave",     function() setVisual("normal") end)
     b:SetScript("OnMouseDown", function() setVisual("pressed") end)
@@ -365,22 +468,51 @@ local function MakeButton(parent, text, variant, w)
     return b
 end
 
-local function ShowPage(i)
-    if i < 1 or i > #pages then return end
-    pageIdx = i
-    for idx, p in ipairs(pages) do
-        p:SetShown(idx == i)
-    end
+-- Dots are a white disc, so vertex color IS the color on screen. The
+-- active dot wears the theme's swatch color on every theme except
+-- Black, which keeps the classic gold.
+local function PaintDots()
+    local pal = ns.ACTIVE_UI_PALETTE
+    local themed = pal and (pal.light or pal.windowFillTop)
     for idx, d in ipairs(dots) do
-        if idx == i then
-            d:SetVertexColor(Utils.RGB(GOLD, 1))
+        if idx == pageIdx then
+            if themed then
+                local r, g, b = ns.ThemeSwatchColor(pal)
+                if not pal.light then
+                    -- Midpoints are tuned as backgrounds; as an 11px dot
+                    -- on the dark footer they read dim, so lift toward
+                    -- white keeping the hue (same as the Back label).
+                    r = math.min(1, r * 1.5 + 0.10)
+                    g = math.min(1, g * 1.5 + 0.10)
+                    b = math.min(1, b * 1.5 + 0.10)
+                end
+                d:SetVertexColor(r, g, b)
+            else
+                -- Black: the warm title cream, not raw UI gold. The flat
+                -- white disc renders (1, 0.82, 0) far more saturated
+                -- than the old shaded orb art ever did.
+                d:SetVertexColor(Utils.RGB(TEXT_PRIM, 1))
+            end
             d:SetSize(11, 11)
         else
             d:SetVertexColor(0.32, 0.32, 0.36, 1)
             d:SetSize(9, 9)
         end
     end
+end
+
+local function ShowPage(i)
+    if i < 1 or i > #pages then return end
+    pageIdx = i
+    for idx, p in ipairs(pages) do
+        p:SetShown(idx == i)
+    end
+    PaintDots()
+    RepaintFeatureTiles()
     backBtn:SetShown(i > 1)
+    -- A dot click can leave a feature-detail submenu (which hides the
+    -- footer nav); landing on any page restores it.
+    nextBtn:Show()
     if i == #pages then
         nextBtn._label:SetText(L["TUT_BTN_OPEN_BAR"])
     elseif i == 1 then
@@ -420,6 +552,7 @@ local function HeaderText(parent, text, font, maxWidth)
     ApplyInter(fs, "semibold")
     fs:SetText(text)
     fs:SetTextColor(Utils.RGB(TEXT_PRIM, 1))
+    RegisterThemedText(fs, TEXT_PRIM)
     if maxWidth and maxWidth > 0 then
         ns.AttachEllipsisToFontString(fs, text, maxWidth)
     end
@@ -437,6 +570,7 @@ local function BodyText(parent, text)
     ApplyInter(fs, "regular")
     fs:SetText(text)
     fs:SetTextColor(Utils.RGB(TEXT_BODY, 1))
+    RegisterThemedText(fs, TEXT_BODY)
     fs:SetJustifyH("CENTER")
     fs:SetJustifyV("TOP")
     fs:SetSpacing(4)
@@ -481,6 +615,8 @@ local function BuildPage1(parent)
     sub:SetPoint("TOP", title, "BOTTOM", 0, -16)
     sub:SetWidth(WIZ_W - 120)
     sub:SetTextColor(Utils.RGB(TEXT_DIM, 1))
+    -- Keep the welcome subtitle on its dimmer tier through repaints.
+    themedTexts[#themedTexts].color = TEXT_DIM
 
     return p
 end
@@ -498,8 +634,11 @@ local function FeatureTile(parent, atlas, file, coords, title, desc, onClick)
     ns.CreateRoundedRectBorder(tile)
     ns.SetRoundedRectBarHeight(tile, 10)
     ns.SetRoundedRectBorderBgAlpha(tile, 0.95)
-    ns.SetRoundedRectFill(tile, 0.05, 0.05, 0.06, 1, true)
+    local br0, bg0, bb0 = ThemeBandFill()
+    ns.SetRoundedRectFill(tile, br0, bg0, bb0, 1, true)
     ns.SetRoundedRectBorderEdgeShown(tile, false)
+    -- RepaintFeatureTiles owns retheming (fill + title + body together).
+    tile._efNoAutoRetint = true
 
     local icon = tile:CreateTexture(nil, "ARTWORK")
     icon:SetSize(36, 36)
@@ -512,11 +651,11 @@ local function FeatureTile(parent, atlas, file, coords, title, desc, onClick)
     end
 
     local fs = tile:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    fs:SetTextColor(Utils.RGB(GOLD, 1))
     fs:SetPoint("TOPLEFT", icon, "TOPRIGHT", 12, -2)
     fs:SetPoint("RIGHT", tile, "RIGHT", -12, 0)
     fs:SetJustifyH("LEFT")
     ApplyInter(fs, "semibold")
+    fs._efOwnColor = true
     -- Let the helper auto-derive width from L+R anchors on each fit; passing
     -- fs:GetWidth() here would freeze maxWidth to the FontString's natural
     -- string width (anchors aren't resolved yet at creation), which then
@@ -532,14 +671,20 @@ local function FeatureTile(parent, atlas, file, coords, title, desc, onClick)
     body:SetPoint("TOPLEFT", fs, "BOTTOMLEFT", 0, -6)
     body:SetPoint("RIGHT", tile, "RIGHT", -12, 0)
     ApplyInter(body, "regular")
+    body._efOwnColor = true
 
     tile:SetScript("OnEnter", function(self)
         self:SetScale(1.04)
-        ns.SetRoundedRectBorderFillColor(self, 0.09, 0.09, 0.11, 1)
+        -- The band fill is dark on every theme, so hover brightens by
+        -- mixing toward white (clamped) instead of scaling the color.
+        local hr, hg, hb = ThemeBandFill()
+        ns.SetRoundedRectBorderFillColor(self,
+            hr + (1 - hr) * 0.12, hg + (1 - hg) * 0.12, hb + (1 - hb) * 0.12, 1)
     end)
     tile:SetScript("OnLeave", function(self)
         self:SetScale(1.00)
-        ns.SetRoundedRectBorderFillColor(self, 0.05, 0.05, 0.06, 1)
+        local lr, lg, lb = ThemeBandFill()
+        ns.SetRoundedRectBorderFillColor(self, lr, lg, lb, 1)
     end)
     if onClick then
         tile:SetScript("OnClick", onClick)
@@ -547,7 +692,30 @@ local function FeatureTile(parent, atlas, file, coords, title, desc, onClick)
 
     tile.icon = icon
     holder.tile = tile
+    featureTiles[#featureTiles + 1] = { tile = tile, title = fs, body = body }
     return holder
+end
+
+-- Feature tiles bake their colors at build time; re-derive fill and text
+-- from the live theme whenever the wizard shows (it is created once and
+-- outlives theme switches). Forward-declared: ShowPage calls it.
+function RepaintFeatureTiles()
+    local pal = ns.ACTIVE_UI_PALETTE
+    local light = pal and pal.light
+    local br, bg, bb = ThemeBandFill()
+    for i = 1, #featureTiles do
+        local entry = featureTiles[i]
+        ns.SetRoundedRectBorderFillColor(entry.tile, br, bg, bb, 1)
+        if light then
+            -- Dark band under a light theme: match the white tab font;
+            -- the title/body split reads from the font-size difference.
+            entry.title:SetTextColor(1, 1, 1, 1)
+            entry.body:SetTextColor(1, 1, 1, 1)
+        else
+            entry.title:SetTextColor(Utils.RGB(TEXT_PRIM, 1))
+            entry.body:SetTextColor(Utils.RGB(TEXT_BODY, 1))
+        end
+    end
 end
 
 -- The Map feature tile mirrors the world-map side tab players actually click:
@@ -582,68 +750,43 @@ local function BuildMapSideTabReplica(tile, anchor)
     glow:SetPoint("CENTER", silo, "CENTER", 0, 0)
 end
 
-local FILTER_CIRCLE_TEX = "Interface\\AddOns\\EasyFind\\textures\\FilterButtonCircle"
-
-local function BuildFilterCircle(parent, d)
-    local circle = CreateFrame("Frame", nil, parent)
-    circle:SetSize(d, d)
-    if circle.CreateMaskTexture then
-        local ringInset = d * 0.167
-        local innerInset = ringInset + Utils.mmax(1, d * 0.045)
-        local ringMask = circle:CreateMaskTexture(nil, "BACKGROUND")
-        ringMask:SetTexture(FILTER_CIRCLE_TEX, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        ringMask:SetPoint("TOPLEFT", circle, "TOPLEFT", ringInset, -ringInset)
-        ringMask:SetPoint("BOTTOMRIGHT", circle, "BOTTOMRIGHT", -ringInset, ringInset)
-        local circleMask = circle:CreateMaskTexture(nil, "ARTWORK")
-        circleMask:SetTexture(FILTER_CIRCLE_TEX, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        circleMask:SetPoint("TOPLEFT", circle, "TOPLEFT", innerInset, -innerInset)
-        circleMask:SetPoint("BOTTOMRIGHT", circle, "BOTTOMRIGHT", -innerInset, innerInset)
-        local ringDisc = circle:CreateTexture(nil, "BACKGROUND", nil, 1)
-        ringDisc:SetColorTexture(1.0, 0.82, 0.0, 1)
-        ringDisc:SetPoint("TOPLEFT", circle, "TOPLEFT", ringInset, -ringInset)
-        ringDisc:SetPoint("BOTTOMRIGHT", circle, "BOTTOMRIGHT", -ringInset, ringInset)
-        ringDisc:AddMaskTexture(ringMask)
-        local ringInner = circle:CreateTexture(nil, "BACKGROUND", nil, 2)
-        ringInner:SetColorTexture(Utils.RGB(ns.SEARCH_WINDOW_FILL_COLOR, 1))
-        ringInner:SetPoint("TOPLEFT", circle, "TOPLEFT", innerInset, -innerInset)
-        ringInner:SetPoint("BOTTOMRIGHT", circle, "BOTTOMRIGHT", -innerInset, innerInset)
-        ringInner:AddMaskTexture(circleMask)
-    end
-    local arrow = circle:CreateTexture(nil, "OVERLAY")
-    arrow:SetTexture(423808)
-    arrow:SetTexCoord(0.453, 0.203, 0.453, 0.016, 0.641, 0.203, 0.641, 0.016)
-    arrow:SetDesaturated(true)
-    arrow:SetBlendMode("ADD")
-    arrow:SetVertexColor(1, 1, 1)
-    arrow:SetSize(d * 0.36, d * 0.36)
-    arrow:SetPoint("CENTER")
-    return circle
-end
-
 local function BuildSearchBarReplica(parent, w, h)
     local bar = CreateFrame("Frame", nil, parent)
     bar:SetSize(w, h)
     ns.CreateRoundedRectBorder(bar)
     ns.SetRoundedRectBarHeight(bar, h)
-    ns.SetRoundedRectBorderFillColor(bar, Utils.RGB(ns.SEARCH_WINDOW_FILL_COLOR, 1))
-    ns.SetRoundedRectBorderBgAlpha(bar, ns.SEARCH_WINDOW_ALPHA)
 
+    -- Same art and sizing math as the real bar (SearchBar.lua), so the
+    -- mock stays truthful when the bar's chrome evolves.
     local iconSz = h * ns.SEARCHBAR_FILL * ns.SEARCHBAR_ICON_SCALE
     local icon = bar:CreateTexture(nil, "OVERLAY")
     icon:SetSize(iconSz, iconSz)
     icon:SetPoint("CENTER", bar, "LEFT", h / 2, 0)
-    icon:SetAtlas("common-search-magnifyingglass")
+    icon:SetTexture(ns.SEARCH_ICON_TEX)
 
-    local placeholder = bar:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    placeholder:SetPoint("LEFT", bar, "LEFT", h, 0)
-    placeholder:SetPoint("RIGHT", bar, "RIGHT", -h, 0)
-    placeholder:SetJustifyH("LEFT")
-    placeholder:SetWordWrap(false)
-    placeholder:SetText(L["SEARCH_PLACEHOLDER"])
-    placeholder:SetTextColor(0.5, 0.5, 0.5)
+    -- No placeholder text: a mock that says "Type to search" reads as a
+    -- working input. Just the spyglass and the filter arrow (no circle).
+    local arrow = bar:CreateTexture(nil, "OVERLAY")
+    arrow:SetSize(11, 11)
+    arrow:SetPoint("CENTER", bar, "RIGHT", -h / 2, 0)
+    arrow:SetTexture(ns.FILTER_ARROW_TEX)
 
-    local filter = BuildFilterCircle(bar, h)
-    filter:SetPoint("RIGHT", bar, "RIGHT", 0, 0)
+    -- Real theme fill (gradient/art included) so the mock IS the live
+    -- look; registered for repaint on theme picks and wizard shows.
+    bar.RestyleTheme = function()
+        ns.ApplyThemeFill(bar)
+        ns.SetRoundedRectBorderBgAlpha(bar, ns.GetSearchWindowAlpha())
+        ns.SetRoundedRectRingShown(bar, EasyFind.db and EasyFind.db.windowBorder ~= false)
+        local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+        local glyph = theme and theme.chromeGlyph
+        if glyph then
+            icon:SetVertexColor(glyph[1], glyph[2], glyph[3], 1)
+            arrow:SetBlendMode(theme.lightTheme and "BLEND" or "ADD")
+            arrow:SetVertexColor(glyph[1], glyph[2], glyph[3], 1)
+        end
+    end
+    bar.RestyleTheme()
+    themeReplicas[#themeReplicas + 1] = bar
     return bar
 end
 
@@ -910,21 +1053,30 @@ local function CreateKbWidget(parent, action, label)
     local fs = btn:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     fs:SetPoint("CENTER")
     ApplyInter(fs, "semibold")
+    -- Inverted pill: background is the theme's main text color, the
+    -- combo text is the window background color. Live-read per paint.
+    fs._efOwnColor = true
     btn._label = fs
 
-    local function tintFill(rr, gg, bb)
-        ns.SetRoundedRectBorderFillColor(btn, rr, gg, bb, 1)
-    end
-
     local function setHover(hover)
-        tintFill(hover and 0.24 or 0.18,
-                 hover and 0.24 or 0.18,
-                 hover and 0.26 or 0.20)
-        fs:SetTextColor(hover and 1 or TEXT_PRIM[1],
-                        hover and 1 or TEXT_PRIM[2],
-                        hover and 1 or TEXT_PRIM[3], 1)
+        local pal = ns.ACTIVE_UI_PALETTE
+        if pal and pal.light then
+            local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+            local leaf = (theme and theme.leafColor) or TEXT_PRIM
+            local f = hover and 0.15 or 0
+            ns.SetRoundedRectBorderFillColor(btn,
+                leaf[1] + (1 - leaf[1]) * f,
+                leaf[2] + (1 - leaf[2]) * f,
+                leaf[3] + (1 - leaf[3]) * f, 1)
+            local windowFill = ns.SEARCH_WINDOW_FILL_COLOR
+            fs:SetTextColor(windowFill[1], windowFill[2], windowFill[3], 1)
+        else
+            ns.SetRoundedRectBorderFillColor(btn, PillFill(hover and 1 or 0))
+            fs:SetTextColor(Utils.RGB(TEXT_PRIM, 1))
+        end
     end
     setHover(false)
+    invertedPills[#invertedPills + 1] = function() setHover(false) end
     btn:SetScript("OnEnter", function() setHover(true) end)
     btn:SetScript("OnLeave", function() setHover(false) end)
 
@@ -975,7 +1127,7 @@ local function BuildPageShowMethod(parent)
 
     local column = CreateFrame("Frame", nil, p)
     column:SetSize(WIZ_W - 170, 216)
-    column:SetPoint("TOP", sub, "BOTTOM", 0, -14)
+    column:SetPoint("TOP", sub, "BOTTOM", 0, -24)
 
     local modeRows = {}
     local subChecks = {}
@@ -1011,12 +1163,14 @@ local function BuildPageShowMethod(parent)
         local lbl = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
         lbl:SetPoint("LEFT", radio, "RIGHT", 6, 0)
         lbl:SetText(labelText)
+        ApplyInter(lbl, "regular")
         local desc = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         desc:SetPoint("TOPLEFT", radio, "TOPRIGHT", 6, -18)
         desc:SetWidth(column:GetWidth() - 24)
         desc:SetJustifyH("LEFT")
         desc:SetText(descText)
         desc:SetTextColor(Utils.RGB(TEXT_DIM, 1))
+        ApplyInter(desc, "regular")
         row:SetScript("OnClick", function()
             ns.SetVisibilityMode(mode)
             RefreshAll()
@@ -1042,6 +1196,7 @@ local function BuildPageShowMethod(parent)
         local lbl = line:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         lbl:SetPoint("LEFT", box, "RIGHT", 4, 0)
         lbl:SetText(labelText)
+        ApplyInter(lbl, "regular")
         local entry = {
             box = box, check = check, lbl = lbl,
             getter = opts.getter, needsCombatShown = opts.needsCombatShown,
@@ -1092,6 +1247,145 @@ local function BuildPageShowMethod(parent)
     note:SetWidth(WIZ_W - 100)
 
     p.OnEnter = RefreshAll
+
+    return p
+end
+
+local function BuildPageTheme(parent)
+    local p = MakePage(parent)
+
+    local title = HeaderText(p, L["TUT_THEME_HEADER"], "GameFontNormalLarge", HEADER_MAX_W)
+    title:SetPoint("TOP", p, "TOP", 0, -22)
+
+    local replica = BuildSearchBarReplica(p, 380, 36)
+    replica:SetPoint("TOP", title, "BOTTOM", 0, -24)
+
+    local COLS = 3
+    local SWATCH_W, SWATCH_H = 150, 30
+    local GAP_X, GAP_Y = 12, 9
+    local rowCount = math.ceil(#ns.UI_THEME_ORDER / COLS)
+    local grid = CreateFrame("Frame", nil, p)
+    grid:SetSize(COLS * SWATCH_W + (COLS - 1) * GAP_X, rowCount * SWATCH_H + (rowCount - 1) * GAP_Y)
+    grid:SetPoint("TOP", replica, "BOTTOM", 0, -26)
+
+    local swatches = {}
+    local function RefreshSelection()
+        local current = (EasyFind.db and EasyFind.db.uiTheme) or "Black"
+        for i = 1, #swatches do
+            local swatch = swatches[i]
+            swatch.selRing:SetShown(swatch._themeName == current)
+        end
+    end
+    -- Assigned after the swatch loop; the swatch onClick captures it as an
+    -- upvalue and the options panel calls it (via ns) to sync in real time.
+    local RepaintWizardTheme
+
+    for i, themeName in ipairs(ns.UI_THEME_ORDER) do
+        local pal = ns.UI_THEME_PALETTES[themeName]
+        local swatch = CreateFrame("Button", nil, grid)
+        swatch:SetSize(SWATCH_W, SWATCH_H)
+        local col = (i - 1) % COLS
+        local rowIdx = math.floor((i - 1) / COLS)
+        swatch:SetPoint("TOPLEFT", grid, "TOPLEFT", col * (SWATCH_W + GAP_X), -rowIdx * (SWATCH_H + GAP_Y))
+        swatch._themeName = themeName
+        swatch._efNoAutoRetint = true
+        -- Selection outline: a slightly larger accent-filled rounded
+        -- rect UNDER the swatch. The nine-slice border ring aliases
+        -- badly at this corner size; fills stay crisp.
+        local selRing = CreateFrame("Frame", nil, swatch)
+        selRing:SetPoint("TOPLEFT", swatch, "TOPLEFT", -2, 2)
+        selRing:SetPoint("BOTTOMRIGHT", swatch, "BOTTOMRIGHT", 2, -2)
+        selRing:SetFrameLevel(swatch:GetFrameLevel() > 0 and swatch:GetFrameLevel() - 1 or 0)
+        selRing._efNoAutoRetint = true
+        ns.CreateRoundedRectBorder(selRing)
+        ns.SetRoundedRectBarHeight(selRing, 16)
+        ns.SetRoundedRectRingShown(selRing, false)
+        local accentC = pal.accent or ns.GOLD_COLOR
+        ns.SetRoundedRectFill(selRing, accentC[1], accentC[2], accentC[3], 1, true)
+        ns.SetRoundedRectBorderBgAlpha(selRing, 1)
+        selRing:Hide()
+        swatch.selRing = selRing
+        ns.CreateRoundedRectBorder(swatch)
+        ns.SetRoundedRectBarHeight(swatch, 14)
+        ns.SetRoundedRectRingShown(swatch, false)
+        local sr, sg, sb = ns.ThemeSwatchColor(pal)
+        ns.SetRoundedRectFill(swatch, sr, sg, sb, 1, true)
+        ns.SetRoundedRectBorderBgAlpha(swatch, 1)
+        local label = swatch:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        ApplyInter(label, "semibold")
+        label:SetPoint("CENTER")
+        label:SetText(themeName)
+        label._efOwnColor = true
+        label:SetShadowColor(0, 0, 0, 0)
+        label:SetTextColor(pal.leafColor[1], pal.leafColor[2], pal.leafColor[3], 1)
+        swatch:SetScript("OnClick", function(self)
+            EasyFind.db.uiTheme = self._themeName
+            if ns.ApplyUITheme then ns.ApplyUITheme(self._themeName) end
+            RepaintWizardTheme()
+            -- A pick here also lands in the options panel if it's open.
+            if ns.RepaintOptionsPanelTheme then pcall(ns.RepaintOptionsPanelTheme) end
+        end)
+        swatches[#swatches + 1] = swatch
+    end
+
+    -- The wizard's full live-retheme bundle. Also the options->tutorial
+    -- sync entry point (ns.RepaintWizardTheme), guarded so it no-ops when
+    -- the wizard is closed.
+    RepaintWizardTheme = function()
+        if not (frame and frame:IsShown()) then return end
+        ns.StyleWizardPanel(frame, PANEL_BG_ALPHA)
+        if RepaintFooter then RepaintFooter() end
+        if ns.RetintMenuText then ns.RetintMenuText(frame) end
+        RepaintThemedTexts()
+        RepaintInvertedPills()
+        RepaintFeatureTiles()
+        PaintDots()
+        RepaintReplicas()
+        RefreshSelection()
+    end
+    ns.RepaintWizardTheme = RepaintWizardTheme
+
+    -- Border toggle, mirroring the options panel's Show Borders checkbox;
+    -- the replica ring above reflects it immediately.
+    local borderLine = CreateFrame("Button", nil, p)
+    borderLine:SetSize(220, 18)
+    borderLine:SetPoint("TOP", grid, "BOTTOM", 0, -14)
+    local borderBox = borderLine:CreateTexture(nil, "ARTWORK")
+    borderBox:SetSize(14, 14)
+    borderBox:SetPoint("LEFT", borderLine, "LEFT", 0, 0)
+    borderBox:SetTexture("Interface\\Buttons\\UI-CheckBox-Up")
+    borderBox:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    local borderCheck = borderLine:CreateTexture(nil, "OVERLAY")
+    borderCheck:SetSize(14, 14)
+    borderCheck:SetPoint("CENTER", borderBox, "CENTER", 0, 0)
+    borderCheck:SetTexture("Interface\\Buttons\\UI-CheckBox-Check")
+    borderCheck:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    local borderLbl = borderLine:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    ApplyInter(borderLbl, "regular")
+    borderLbl:SetPoint("LEFT", borderBox, "RIGHT", 5, 0)
+    borderLbl:SetText(L["OPT_WINDOW_BORDER"])
+    borderLine:SetWidth(19 + borderLbl:GetStringWidth() + 4)
+    local function SyncBorderCheck()
+        borderCheck:SetShown(EasyFind.db and EasyFind.db.windowBorder ~= false)
+    end
+    borderLine:SetScript("OnClick", function()
+        EasyFind.db.windowBorder = EasyFind.db.windowBorder == false
+        if ns.Search and ns.Search.UpdateWindowBorders then
+            ns.Search:UpdateWindowBorders()
+        end
+        RepaintReplicas()
+        SyncBorderCheck()
+    end)
+
+    local note = BodyText(p, L["TUT_THEME_RESIZE_NOTE"])
+    note:SetPoint("TOP", borderLine, "BOTTOM", 0, -20)
+    note:SetWidth(WIZ_W - 100)
+
+    p.OnEnter = function()
+        RefreshSelection()
+        SyncBorderCheck()
+    end
+    SyncBorderCheck()
 
     return p
 end
@@ -1153,6 +1447,17 @@ local function CreateFrameOnce()
     frame = f
 
     ns.StyleWizardPanel(f, PANEL_BG_ALPHA)
+    -- The wizard is created once and outlives theme switches; every show
+    -- re-derives text, tagged fills, tiles, and dots from the live theme.
+    f:HookScript("OnShow", function(self)
+        if RepaintFooter then RepaintFooter() end
+        if ns.RetintMenuText then ns.RetintMenuText(self) end
+        RepaintThemedTexts()
+        RepaintInvertedPills()
+        RepaintFeatureTiles()
+        PaintDots()
+        RepaintReplicas()
+    end)
 
     local closeBtn = ns.CreateCloseX(f)
     closeBtn:SetPoint("TOPRIGHT", f, "TOPRIGHT", -10, -10)
@@ -1166,6 +1471,7 @@ local function CreateFrameOnce()
         BuildPage1(pageHost),
         BuildPage2(pageHost),
         BuildPageShowMethod(pageHost),
+        BuildPageTheme(pageHost),
         BuildPage3(pageHost),
     }
 
@@ -1177,25 +1483,43 @@ local function CreateFrameOnce()
     ns.CreateRoundedRectBorder(footer)
     ns.SetRoundedRectBarHeight(footer, 12)
     ns.SetRoundedRectBorderBgAlpha(footer, 1)
-    ns.SetRoundedRectFill(footer, 0.075, 0.075, 0.085, 1, true)
+    ns.SetRoundedRectFill(footer, ns.SECTION_TABLE_FILL[1], ns.SECTION_TABLE_FILL[2], ns.SECTION_TABLE_FILL[3], 1, true)
     ns.SetRoundedRectBorderEdgeShown(footer, false)
+    footer._efControlFillKind = "SECTION_TABLE_FILL"
+    footer._efControlFillAlpha = 1
+    RepaintFooter = function()
+        local fr, fg, fb = ThemeBandFill()
+        ns.SetRoundedRectFill(footer, fr, fg, fb, 1, true)
+    end
+    RepaintFooter()
 
     local DOT_GAP = 11
     local DOT_SZ  = 7
     local DOT_ACTIVE = 9
+    local function OnDotClick(self)
+        ShowPage(self._page)
+    end
     for i = 1, #pages do
-        local d = footer:CreateTexture(nil, "OVERLAY")
+        -- Each dot is a button spanning its gap, so the whole strip is
+        -- clickable to jump straight to a slide.
+        local dotBtn = CreateFrame("Button", nil, footer)
+        dotBtn:SetSize(DOT_SZ + DOT_GAP, BANNER_H)
+        dotBtn:SetPoint("LEFT", footer, "LEFT",
+            12 + DOT_ACTIVE / 2 + (i - 1) * (DOT_SZ + DOT_GAP) - DOT_GAP / 2, 0)
+        dotBtn._page = i
+        dotBtn:SetScript("OnClick", OnDotClick)
+        local d = dotBtn:CreateTexture(nil, "OVERLAY")
         d:SetSize(DOT_SZ, DOT_SZ)
         d:SetTexture(DOT_FILLED)
-        d:SetPoint("LEFT", footer, "LEFT", 12 + DOT_ACTIVE / 2 + (i - 1) * (DOT_SZ + DOT_GAP), 0)
+        d:SetPoint("CENTER")
         dots[i] = d
     end
 
     nextBtn = MakeButton(footer, L["TUT_BTN_CONTINUE"], "rounded", 78)
     nextBtn:SetPoint("RIGHT", footer, "RIGHT", -8, 0)
 
-    backBtn = MakeButton(footer, L["TUT_BTN_BACK"], "ghost", 42)
-    backBtn:SetPoint("RIGHT", nextBtn, "LEFT", -5, 0)
+    backBtn = MakeButton(footer, L["TUT_BTN_BACK"], "rounded", 78)
+    backBtn:SetPoint("RIGHT", nextBtn, "LEFT", -6, 0)
     backBtn:SetScript("OnClick", function() ShowPage(pageIdx - 1) end)
 
     nextBtn:SetScript("OnClick", function()
@@ -1235,6 +1559,17 @@ function Wizard:Show(startPage)
     if page > #pages then page = #pages elseif page < 1 then page = 1 end
     pageIdx = page
     frame:Show()
+    -- The frame is born visible, so the OnShow hook does not fire on the
+    -- first open; retheme explicitly on every entry. The wizard frame is
+    -- itself a rounded panel, so the options walker's rounded-ancestor
+    -- rule skips ALL of its text; the menu text pass is the right owner
+    -- here (everything to theme main text), with the special surfaces
+    -- (tiles, dots, inverted pills) layered after it.
+    if RepaintFooter then RepaintFooter() end
+    if ns.RetintMenuText then ns.RetintMenuText(frame) end
+    RepaintThemedTexts()
+    RepaintInvertedPills()
+    RepaintReplicas()
     SafeCallMethod(frame, "EnableKeyboard", true)
     SafeCallMethod(frame, "SetPropagateKeyboardInput", true)
     ShowPage(page)

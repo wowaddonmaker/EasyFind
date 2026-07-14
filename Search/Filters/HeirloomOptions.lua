@@ -131,7 +131,7 @@ function Filters:BuildHeirloomOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuard
     sourcesText:SetPoint("LEFT", 14, 0)
     sourcesText:SetText(_G["SOURCES"] or "Sources")
     local sourceChev = sourcesRow:CreateTexture(nil, "OVERLAY")
-    sourceChev:SetAtlas("common-icon-forwardarrow")
+    Utils.SetChevronTexture(sourceChev)
     sourceChev:SetSize(CHECK_SIZE, CHECK_SIZE)
     sourceChev:SetPoint("RIGHT", -4, 0)
     sourcesRow._label = sourcesText

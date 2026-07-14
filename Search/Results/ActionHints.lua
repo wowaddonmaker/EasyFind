@@ -96,6 +96,7 @@ local HINTS = {
     pinOnMap         = Hint(V.click, V.pinOnMap),
     encounter        = Hint(V.click, V.encounter),
     toggle           = Hint(V.click, V.toggle, "Alt", V.settings),
+    toggleOnly       = Hint(V.click, V.toggle),
     settings         = Hint(V.click, V.settings),
 }
 
@@ -144,6 +145,11 @@ function Handlers:GetActionHint(data)
        and data.settingVariable then
         return HINTS.toggle
     end
+    if data.settingType == "keybind" and data.bindingAction
+       and ns.BlizzOptionsSearch
+       and ns.BlizzOptionsSearch:IsPerformableBinding(data.bindingAction) then
+        return data.customToggle and HINTS.toggleOnly or HINTS.toggle
+    end
     if data.settingVariable or data.bindingAction then
         return HINTS.settings
     end
@@ -159,7 +165,12 @@ function Handlers:ClearActionHint()
     if actionHintRow and actionHintRow._efContextMenuHeld then return end
     if actionHintRow and actionHintRow.pathSubtext then
         actionHintRow.pathSubtext:SetText(Text:GetFlatSubtext(actionHintRow.data))
-        actionHintRow.pathSubtext:SetTextColor(0.55, 0.55, 0.55, 1.0)
+        -- Restore the THEMED subtext color; a hardcoded gray here left
+        -- once-hinted rows desynced from every non-default theme.
+        local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+        if theme then
+            actionHintRow.pathSubtext:SetTextColor(unpack(theme.pathColor))
+        end
     end
     actionHintRow = nil
 end
@@ -176,7 +187,14 @@ function Handlers:ApplyActionHint(row)
     if actionHintRow == row then return end
     Handlers:ClearActionHint()
     row.pathSubtext:SetText(hint)
-    row.pathSubtext:SetTextColor(0.85, 0.78, 0.55, 1.0)
+    -- Warm gold on dark themes; light themes use their hover text color
+    -- (the gold is unreadable on light fills).
+    local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+    if theme and theme.lightTheme then
+        row.pathSubtext:SetTextColor(unpack(theme.pathColorHover))
+    else
+        row.pathSubtext:SetTextColor(0.85, 0.78, 0.55, 1.0)
+    end
     actionHintRow = row
 end
 

@@ -77,7 +77,39 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
     ns.StyleMenuPanel(dropdown)
     ns.SetRoundedRectRingShown(dropdown, EasyFind.db.windowBorder ~= false)
-    dropdown:HookScript("OnShow", function(self) ns.ApplyMenuOpacity(self) end)
+    -- Row labels follow the theme's main text color (they were fixed
+    -- white, which broke on light fills and ignored theme tinting).
+    -- Runs on every open AND from RestyleShownMenuPanels when the theme
+    -- flips while the menu is open.
+    local ChevRestColor = Utils.ChevronRestColor
+    local ChevHoverColor = Utils.ChevronHoverColor
+
+    local function RecolorFilterRowLabels(self)
+        local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+        local leaf = theme and theme.leafColor
+        if not leaf then return end
+        local children = { self:GetChildren() }
+        for i = 1, #children do
+            local child = children[i]
+            -- Covers filter rows (optKey) and the Toggle All row, which
+            -- opts in via its label field.
+            if child.label then
+                child.label:SetShadowColor(0, 0, 0, 0)
+                -- Disabled rows keep their dim gray (SetFlyoutRowEnabled
+                -- owns that state); painting theme text over them made
+                -- disabled and enabled read identically.
+                if child._efRowEnabled ~= false then
+                    child.label:SetTextColor(leaf[1], leaf[2], leaf[3], 1)
+                end
+            end
+            if child.flyoutChevron then
+                child.flyoutChevron:SetVertexColor(ChevRestColor())
+            end
+        end
+    end
+    -- NOTE: no OnShow HookScript here; the canonical SetScript("OnShow")
+    -- further down would wipe it. The refill runs inside that handler.
+    dropdown._efOnThemeRestyle = RecolorFilterRowLabels
 
     local ICON_SIZE = 14
 
@@ -112,6 +144,10 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     local uncheckLabel = uncheckRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
     uncheckLabel:SetPoint("LEFT", 8, 0)
     uncheckLabel:SetText(L["FILTER_TOGGLE_ALL"])
+    uncheckLabel:SetShadowColor(0, 0, 0, 0)
+    -- The recolor loop matches rows via optKey; this special row opts in
+    -- through label alone.
+    uncheckRow.label = uncheckLabel
     InstallMenuRowHighlight(uncheckRow)
 
     local checkRows = {}
@@ -272,16 +308,15 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         -- the auto-built sub-filter popup; hasFlyout opts in rows whose
         if opt.flyoutSubFilters or opt.flyoutRadio or opt.hasFlyout then
             local chev = row:CreateTexture(nil, "OVERLAY")
-            chev:SetAtlas("common-icon-forwardarrow")
+            Utils.SetChevronTexture(chev)
             chev:SetSize(ICON_SIZE - 2, ICON_SIZE - 2)
             chev:SetPoint("RIGHT", -4, 0)
-            chev:SetVertexColor(0.85, 0.85, 0.85, 1)
             row.flyoutChevron = chev
             label:SetPoint("RIGHT", chev, "LEFT", -4, 0)
             label:SetWordWrap(false)
             label:SetJustifyH("LEFT")
-            row:HookScript("OnEnter", function() chev:SetVertexColor(1, 1, 1, 1) end)
-            row:HookScript("OnLeave", function() chev:SetVertexColor(0.85, 0.85, 0.85, 1) end)
+            row:HookScript("OnEnter", function() chev:SetVertexColor(ChevHoverColor()) end)
+            row:HookScript("OnLeave", function() chev:SetVertexColor(ChevRestColor()) end)
         end
 
         -- Flyout sub-filters (e.g. Collections > Mounts/Toys/Pets/...).
@@ -358,15 +393,14 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
                 if sub.hasOptions or sub.subFilters then
                     local subChev = subRow:CreateTexture(nil, "OVERLAY")
-                    subChev:SetAtlas("common-icon-forwardarrow")
+                    Utils.SetChevronTexture(subChev)
                     subChev:SetSize(SUB_ICON - 2, SUB_ICON - 2)
                     subChev:SetPoint("RIGHT", -4, 0)
-                    subChev:SetVertexColor(0.85, 0.85, 0.85, 1)
                     subLabel:SetPoint("RIGHT", subChev, "LEFT", -4, 0)
                     subLabel:SetWordWrap(false)
                     subLabel:SetJustifyH("LEFT")
-                    subRow:HookScript("OnEnter", function() subChev:SetVertexColor(1, 1, 1, 1) end)
-                    subRow:HookScript("OnLeave", function() subChev:SetVertexColor(0.85, 0.85, 0.85, 1) end)
+                    subRow:HookScript("OnEnter", function() subChev:SetVertexColor(ChevHoverColor()) end)
+                    subRow:HookScript("OnLeave", function() subChev:SetVertexColor(ChevRestColor()) end)
                     subRow._chev = subChev
                 end
 
@@ -873,6 +907,9 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             if hasSeparator then
                 local sep = popup:CreateTexture(nil, "ARTWORK")
                 sep:SetColorTexture(1, 1, 1, 0.12)
+                popup._efThemeSeps = popup._efThemeSeps or {}
+                popup._efThemeSeps[#popup._efThemeSeps + 1] = sep
+                ns.RetintMenuSeparators(popup)
                 sep:SetHeight(1)
                 sep:SetPoint("LEFT", popup, "LEFT", SUB_PAD, 0)
                 sep:SetPoint("RIGHT", popup, "RIGHT", -SUB_PAD, 0)
@@ -1132,6 +1169,16 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         end
     end)
     dropdown:SetScript("OnShow", function(self)
+        -- Canonical OnShow owner: this SetScript WIPES the creation-time
+        -- HookScripts (StyleMenuPanel's refill and the label recolor),
+        -- which is why the MAIN dropdown alone stayed one theme behind
+        -- while its flyout popups rethemed. All refill work must live
+        -- HERE, pcall-isolated.
+        pcall(ns.ApplyMenuOpacity, self)
+        if Utils.RefreshMenuRowHighlights then
+            pcall(Utils.RefreshMenuRowHighlights, self)
+        end
+        pcall(RecolorFilterRowLabels, self)
         local filters = EasyFind.db.uiSearchFilters
         for key, row in pairs(checkRows) do
             row:SetChecked(filters[key] ~= false)

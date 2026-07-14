@@ -151,7 +151,15 @@ local fallbackBuilding = false
 -- healthy sessions enumerate fast and pay the build once per patch;
 -- broken sessions (where enumeration itself runs ~1ms per call) hydrate
 -- from disk instantly instead of trickling for many seconds.
-local ACH_INDEX_VER = 1
+-- 2: rows packed into one string instead of ~5000 five-field tables. As tables
+-- the index cost ~2 MB of live Lua the client parsed at login even for players
+-- who never search achievements; packed it is a single string that is only
+-- decoded if the fallback actually arms.
+local ACH_INDEX_VER = 2
+
+local ACH_ROW_SPEC = {
+    { "id" }, { "name" }, { "icon" }, { "isGuild" }, { "completed" },
+}
 
 local function ClientBuildKey()
     local version, build = GetBuildInfo()
@@ -161,15 +169,11 @@ end
 local function PersistFallbackIndex(rows)
     local db = EasyFind and EasyFind.db
     if not db then return end
-    local stored = {}
-    for i = 1, #rows do
-        local row = rows[i]
-        stored[i] = {
-            id = row.id, name = row.name, icon = row.icon,
-            isGuild = row.isGuild, completed = row.completed,
-        }
-    end
-    db.achievementIndex = { version = ACH_INDEX_VER, build = ClientBuildKey(), rows = stored }
+    db.achievementIndex = {
+        version = ACH_INDEX_VER,
+        build = ClientBuildKey(),
+        packed = Utils.PackRows(rows, ACH_ROW_SPEC),
+    }
 end
 
 local function TryHydrateFallbackIndex()
@@ -177,18 +181,17 @@ local function TryHydrateFallbackIndex()
     local db = EasyFind and EasyFind.db
     local saved = db and db.achievementIndex
     if type(saved) ~= "table" or saved.version ~= ACH_INDEX_VER
-       or saved.build ~= ClientBuildKey() or type(saved.rows) ~= "table"
-       or #saved.rows == 0 then
+       or saved.build ~= ClientBuildKey() or type(saved.packed) ~= "string"
+       or saved.packed == "" then
         return false
     end
+    local decoded = Utils.UnpackRows(saved.packed, ACH_ROW_SPEC)
     local rows = {}
-    for i = 1, #saved.rows do
-        local raw = saved.rows[i]
-        if type(raw) == "table" and raw.id and raw.name then
-            rows[#rows + 1] = {
-                id = raw.id, name = raw.name, nameLower = slower(raw.name),
-                icon = raw.icon, isGuild = raw.isGuild, completed = raw.completed,
-            }
+    for i = 1, #decoded do
+        local row = decoded[i]
+        if row.id and row.name then
+            row.nameLower = slower(row.name)
+            rows[#rows + 1] = row
         end
     end
     if #rows == 0 then return false end

@@ -10,6 +10,21 @@ local select, ipairs = Utils.select, Utils.ipairs
 local sfind = Utils.sfind
 local InCombatLockdown = InCombatLockdown
 local collapsedNodes = Results._collapsedNodes
+
+-- Inline amounts (statistic values, quantities, owned counts). The warm
+-- parchment tone is tuned for dark fills; light themes match the muted
+-- alt-hint tone so inline numbers sit at the same weight as the hints.
+local function PaintAmountText(amountText, inert)
+    local theme = Results.GetActiveTheme and Results:GetActiveTheme()
+    if theme and theme.lightTheme then
+        local c = inert and theme.textFaint or theme.mutedGlyph
+        amountText:SetTextColor(c[1], c[2], c[3], 1)
+    elseif inert then
+        amountText:SetTextColor(0.5, 0.5, 0.5, 1.0)
+    else
+        amountText:SetTextColor(0.9, 0.82, 0.65, 1.0)
+    end
+end
 local GetButtonIcon = Icons.GetButtonIcon
 local GetFrameArtworkIcon = Icons.GetFrameArtworkIcon
 local IsMenuBarSpecificIconData = Icons.IsMenuBarSpecificIconData
@@ -90,11 +105,7 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
 
         if quantity then
             resultRow.amountText:SetText(tostring(quantity))
-            if isInertRow then
-                resultRow.amountText:SetTextColor(0.5, 0.5, 0.5, 1.0)
-            else
-                resultRow.amountText:SetTextColor(0.9, 0.82, 0.65, 1.0)
-            end
+            PaintAmountText(resultRow.amountText, isInertRow)
             resultRow.amountText:Show()
         else
             resultRow.amountText:Hide()
@@ -159,7 +170,7 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
         local owned = (data.housingNumStored or 0) + (data.housingNumPlaced or 0)
         if owned > 1 then
             resultRow.amountText:SetText(owned)
-            resultRow.amountText:SetTextColor(0.9, 0.82, 0.65, 1.0)
+            PaintAmountText(resultRow.amountText, false)
             resultRow.amountText:Show()
         else
             resultRow.amountText:SetText("")
@@ -220,10 +231,10 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
         end
         if value and value ~= "" and value ~= "--" then
             resultRow.amountText:SetText(value)
-            resultRow.amountText:SetTextColor(0.9, 0.82, 0.65, 1.0)
+            PaintAmountText(resultRow.amountText, false)
         else
             resultRow.amountText:SetText("--")
-            resultRow.amountText:SetTextColor(0.5, 0.5, 0.5, 1.0)
+            PaintAmountText(resultRow.amountText, true)
         end
         resultRow.amountText:ClearAllPoints()
         resultRow.amountText:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
