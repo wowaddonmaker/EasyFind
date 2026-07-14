@@ -570,8 +570,26 @@ local function AutocompleteHas(state)
     return state.currentCandidate ~= nil and (state.editBox:GetText() or "") ~= state.typedText
 end
 
+local function AutocompleteIsAscii(text)
+    return not text or not sfind(text, "[\128-\255]")
+end
+
+local function AutocompleteDisableForNonAscii(state, box)
+    local current = box:GetText() or ""
+    local cursorPos = box:GetCursorPosition() or #current
+    local prevText = state.typedText
+    state.typedText = ssub(current, 1, cursorPos)
+    state.currentCandidate = nil
+    state.smoothExtendDone = false
+    state.restoreBackspaceText, state.restoreBackspaceCursor = nil, nil
+    state.restoreBackspaceNotify = false
+    state.backspaceStripActive = false
+    return prevText
+end
+
 local function AutocompleteNormalize(state, candidate)
     if not candidate or candidate == "" or state.typedText == "" then return nil end
+    if not AutocompleteIsAscii(state.typedText) or not AutocompleteIsAscii(candidate) then return nil end
     candidate = slower(candidate)
     local typedLen = #state.typedText
     if typedLen >= #candidate then return nil end
@@ -639,6 +657,10 @@ local function AutocompleteApply(state)
         AutocompleteStrip(state)
         return
     end
+    if not AutocompleteIsAscii(state.typedText) then
+        AutocompleteDisableForNonAscii(state, editBox)
+        return
+    end
     if state.smoothExtendDone then
         state.smoothExtendDone = false
         return
@@ -674,6 +696,13 @@ end
 local function AutocompleteOnTextChanged(state, box, userInput)
     if state.programmatic then return end
     local current = box:GetText() or ""
+    if not AutocompleteIsAscii(current) then
+        local prevText = AutocompleteDisableForNonAscii(state, box)
+        if state.onTypedChanged then
+            state.onTypedChanged(box, state.typedText, prevText, #state.typedText > #(prevText or ""))
+        end
+        return
+    end
     if state.restoreBackspaceText then
         local restoreText = state.restoreBackspaceText
         local restoreCursor = state.restoreBackspaceCursor or #restoreText
