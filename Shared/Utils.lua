@@ -566,6 +566,17 @@ function Utils.StartAltNavRepeat(repeater, key, editBox, step, onReleased)
     return true
 end
 
+-- IME composition support: while a system IME composes (Chinese pinyin and
+-- friends), the IME owns the editbox -- ANY programmatic write corrupts the
+-- composition (stray pinyin left behind, duplicated/interleaved text).
+-- While the composing flag is set every autocomplete write is held; after a
+-- short quiet gap following the last composition event, typed text resyncs
+-- from the box and candidates evaluate again. Committed CJK text completes
+-- like any other prefix (all offset math is byte-based and committed
+-- boundaries are character boundaries), so the feature stays on for every
+-- locale.
+local IME_QUIESCE_DELAY = 0.15
+
 local function AutocompleteHas(state)
     return state.currentCandidate ~= nil and (state.editBox:GetText() or "") ~= state.typedText
 end
@@ -582,6 +593,12 @@ local function AutocompleteNormalize(state, candidate)
 end
 
 local function AutocompleteStrip(state)
+    if state.imeComposing then
+        -- No writes while the IME owns the box; state-only reset.
+        state.currentCandidate = nil
+        state.smoothExtendDone = false
+        return false
+    end
     local editBox = state.editBox
     local hadAutocomplete = AutocompleteHas(state)
     if hadAutocomplete then
@@ -634,6 +651,7 @@ local function AutocompleteRender(state, candidate)
 end
 
 local function AutocompleteApply(state)
+    if state.imeComposing or state.candidatesDisabled then return end
     local editBox = state.editBox
     if state.programmatic or state.typedText == "" or not editBox:HasFocus() then
         AutocompleteStrip(state)
@@ -673,6 +691,24 @@ end
 
 local function AutocompleteOnTextChanged(state, box, userInput)
     if state.programmatic then return end
+    if state.imeComposing then
+        -- Track only: the box may hold transient composition text, and the
+        -- IME must not see it move underneath. The change still forwards
+        -- so search-on-type keeps running.
+        state.restoreBackspaceText, state.restoreBackspaceCursor = nil, nil
+        state.restoreBackspaceNotify = false
+        state.backspaceStripActive = false
+        state.currentCandidate = nil
+        state.smoothExtendDone = false
+        local liveText = box:GetText() or ""
+        local liveCursor = box:GetCursorPosition() or #liveText
+        local prevText = state.typedText
+        state.typedText = ssub(liveText, 1, liveCursor)
+        if state.typedText ~= prevText and state.onTypedChanged then
+            state.onTypedChanged(box, state.typedText, prevText, #state.typedText > #prevText)
+        end
+        return
+    end
     local current = box:GetText() or ""
     if state.restoreBackspaceText then
         local restoreText = state.restoreBackspaceText
@@ -887,6 +923,45 @@ function Utils.AttachAutocomplete(editBox, opts)
     editBox:HookScript("OnKeyDown", function(self, key)
         AutocompleteOnKeyDown(state, self, key)
     end)
+
+    -- Composition tracking: clients with the composition script hold
+    -- autocomplete during live IME composition and resume after a quiet
+    -- gap. Clients without it fall back to disabling inline candidates on
+    -- IME locales outright (zh composition text is plain-ASCII pinyin,
+    -- undetectable by content) -- protected either way, and the feature
+    -- stays on wherever the signal exists.
+    state.imeComposing = false
+    state.imeQuiesceToken = 0
+    local function ImeCompositionTouch()
+        state.imeComposing = true
+        state.imeQuiesceToken = state.imeQuiesceToken + 1
+        local token = state.imeQuiesceToken
+        Utils.SafeAfter(IME_QUIESCE_DELAY, function()
+            if state.imeQuiesceToken ~= token then return end
+            state.imeComposing = false
+            local liveText = editBox:GetText() or ""
+            local liveCursor = editBox:GetCursorPosition() or #liveText
+            state.typedText = ssub(liveText, 1, liveCursor)
+            state.currentCandidate = nil
+            if editBox:HasFocus() then
+                AutocompleteApply(state)
+            end
+        end)
+    end
+    local imeHookOk = pcall(editBox.HookScript, editBox, "OnCharComposition", ImeCompositionTouch)
+    if imeHookOk then
+        -- Commit delivers its characters through OnChar while the
+        -- composition winds down; extend the hold so no write lands
+        -- between them.
+        editBox:HookScript("OnChar", function()
+            if state.imeComposing then ImeCompositionTouch() end
+        end)
+    else
+        local locale = GetLocale and GetLocale()
+        if locale == "zhCN" or locale == "zhTW" then
+            state.candidatesDisabled = true
+        end
+    end
 
     editBox.UpdateAutocomplete = function()
         return AutocompleteApply(state)
