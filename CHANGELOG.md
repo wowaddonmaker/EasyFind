@@ -4,6 +4,13 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [2.1.3] - 2026-07-19
+
+### Fixed
+- **Chinese/IME input**: typing with an IME (Chinese pinyin and other composition-based input) no longer corrupts the search text. Inline autocomplete now pauses while a composition is open and resumes the moment it commits or cancels, so completion keeps working in every language — including completing committed Chinese text
+
+---
+
 ## [2.1.2] - 2026-07-14
 
 ### Added

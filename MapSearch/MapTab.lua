@@ -1895,6 +1895,7 @@ local function CreateSearchBox(parent)
     end)
 
     Utils.AttachAutocomplete(editBox, {
+        enabled = function() return EasyFind.db.mapTabAutocomplete ~= false end,
         findCandidate = FindPrefixCandidate,
         onTypedChanged = function(self, typed, _, grew)
             lastTypeTime = GetTime()

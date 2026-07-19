@@ -656,6 +656,7 @@ end
 
 local function AutocompleteApply(state)
     if state.imeComposing or state.candidatesDisabled then return end
+    if state.enabled and not state.enabled() then return end
     local editBox = state.editBox
     if state.programmatic or state.typedText == "" or not editBox:HasFocus() then
         AutocompleteStrip(state)
@@ -897,6 +898,10 @@ function Utils.AttachAutocomplete(editBox, opts)
     local state = {
         editBox = editBox,
         findCandidate = opts.findCandidate,
+        -- Optional live gate: candidates only render while it returns true
+        -- (per-surface user toggles); tracking and accept plumbing stay
+        -- armed so re-enabling needs no reattach.
+        enabled = opts.enabled,
         onTypedChanged = opts.onTypedChanged,
         onAccepted = opts.onAccepted,
         backspaceAutocompleteTarget = opts.backspaceAutocompleteTarget,

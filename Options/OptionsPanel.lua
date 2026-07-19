@@ -1862,6 +1862,21 @@ local function BuildSearchTab(ctx)
     end)
     optionsFrame.windowBorderCheckbox = windowBorderCheckbox
 
+    local searchAutocompleteCheckbox = CreateCheckbox(sec1, "SearchAutocomplete",
+        L["OPT_INLINE_AUTOCOMPLETE"], L["OPT_INLINE_AUTOCOMPLETE_TT"], true)
+    searchAutocompleteCheckbox:SetPoint("TOPLEFT", windowBorderCheckbox, "BOTTOMLEFT", 0, -2)
+    searchAutocompleteCheckbox:SetChecked(EasyFind.db.searchAutocomplete ~= false)
+    searchAutocompleteCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.searchAutocomplete = self:GetChecked() and true or false
+        if self.RefreshVisual then self:RefreshVisual() end
+        if not EasyFind.db.searchAutocomplete then
+            local frame = ns.Search and ns.Search.GetSearchFrame and ns.Search:GetSearchFrame()
+            local box = frame and frame.editBox
+            if box and box.StripAutocomplete then box:StripAutocomplete() end
+        end
+    end)
+    optionsFrame.searchAutocompleteCheckbox = searchAutocompleteCheckbox
+
     local iconVisChoices = {
         { label = L["OPT_ICONS_ALL"],      value = "all" },
         { label = L["OPT_ICONS_GENERAL"],  value = "general" },
@@ -2124,7 +2139,7 @@ local function BuildMapTab(ctx)
     mapTabLabel:SetText(L["OPT_MAP_TAB_SECTION"])
     mapTabLabel:SetTextColor(Utils.RGB(SECTION_TITLE_TEXT, 1))
 
-    local mapTabSettings = CreateSettingsGroup(sec2, GROUP_W, ROW_H * 2 + 8)
+    local mapTabSettings = CreateSettingsGroup(sec2, GROUP_W, ROW_H * 3 + 8)
     mapTabSettings:SetPoint("TOPLEFT", mapTabLabel, "BOTTOMLEFT", 0, -3)
     optionsFrame.mapTabSettings = mapTabSettings
 
@@ -2147,6 +2162,20 @@ local function BuildMapTab(ctx)
         L["OPT_RECENT_COUNT_TT"], GROUP_W)
     recentCountStepper:SetPoint("TOPLEFT", mapTabShowRecentCheckbox, "BOTTOMLEFT", 0, 0)
     optionsFrame.recentCountStepper = recentCountStepper
+
+    local mapAutocompleteCheckbox = CreateCheckbox(mapTabSettings, "MapTabAutocomplete",
+        L["OPT_INLINE_AUTOCOMPLETE"], L["OPT_INLINE_AUTOCOMPLETE_TT"], false, GROUP_W)
+    mapAutocompleteCheckbox:SetPoint("TOPLEFT", recentCountStepper, "BOTTOMLEFT", 0, 0)
+    mapAutocompleteCheckbox:SetChecked(EasyFind.db.mapTabAutocomplete ~= false)
+    mapAutocompleteCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.mapTabAutocomplete = self:GetChecked() and true or false
+        if self.RefreshVisual then self:RefreshVisual() end
+        if not EasyFind.db.mapTabAutocomplete then
+            local box = ns.MapTab and ns.MapTab.searchBox
+            if box and box.StripAutocomplete then box:StripAutocomplete() end
+        end
+    end)
+    optionsFrame.mapAutocompleteCheckbox = mapAutocompleteCheckbox
 
     local function UpdateRecentCountEnabled()
         recentCountStepper:SetGroupEnabled(EasyFind.db.enableMapSearch ~= false and EasyFind.db.mapTabShowRecent ~= false)

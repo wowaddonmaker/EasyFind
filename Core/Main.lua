@@ -236,6 +236,8 @@ local DB_DEFAULTS = {
     shortkeysPerChar = {},
     uiSearchHistory = {},
     uiSearchHistoryLimit = 500,
+    searchAutocomplete = true,
+    mapTabAutocomplete = true,
 }
 -- Exposed so option resets restore from the same table first-run uses;
 -- keeping a second copy in OptionsPanel let the two drift apart.

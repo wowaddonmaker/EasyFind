@@ -855,6 +855,7 @@ function Search:CreateSearchFrame()
     end
 
     Utils.AttachAutocomplete(editBox, {
+        enabled = function() return EasyFind.db.searchAutocomplete ~= false end,
         findCandidate = function(typed)
             if not typed or typed == "" then return nil end
             local lower = typed:lower()
