@@ -568,14 +568,18 @@ end
 
 -- IME composition support: while a system IME composes (Chinese pinyin and
 -- friends), the IME owns the editbox -- ANY programmatic write corrupts the
--- composition (stray pinyin left behind, duplicated/interleaved text).
--- While the composing flag is set every autocomplete write is held; after a
--- short quiet gap following the last composition event, typed text resyncs
--- from the box and candidates evaluate again. Committed CJK text completes
--- like any other prefix (all offset math is byte-based and committed
--- boundaries are character boundaries), so the feature stays on for every
--- locale.
-local IME_QUIESCE_DELAY = 0.15
+-- composition. SetText mid-composition leaves pinyin behind on commit, and
+-- even HighlightText(0, 0) is destructive: the IME marks its composition
+-- region WITH the selection, so clearing it makes the next update insert
+-- instead of replace (the accumulated-pinyin garbage). While the composing
+-- flag is set every autocomplete write is held. A composition does NOT end
+-- by going quiet -- the user can sit in the candidate window indefinitely --
+-- it ends only on commit (OnChar delivers the committed characters) or
+-- cancel (a composition event with empty text). One frame after either,
+-- typed text resyncs from the box and candidates evaluate again. Committed
+-- CJK completes like any other prefix (offset math is byte-based and
+-- committed boundaries are character boundaries), so the feature stays on
+-- for every locale.
 
 local function AutocompleteHas(state)
     return state.currentCandidate ~= nil and (state.editBox:GetText() or "") ~= state.typedText
@@ -924,20 +928,22 @@ function Utils.AttachAutocomplete(editBox, opts)
         AutocompleteOnKeyDown(state, self, key)
     end)
 
-    -- Composition tracking: clients with the composition script hold
-    -- autocomplete during live IME composition and resume after a quiet
-    -- gap. Clients without it fall back to disabling inline candidates on
-    -- IME locales outright (zh composition text is plain-ASCII pinyin,
-    -- undetectable by content) -- protected either way, and the feature
-    -- stays on wherever the signal exists.
+    -- Composition tracking: event-driven, never time-driven. Clients
+    -- without the composition script fall back to disabling inline
+    -- candidates on IME locales outright (zh composition text is
+    -- plain-ASCII pinyin, undetectable by content) -- protected either
+    -- way, and the feature stays on wherever the signal exists.
     state.imeComposing = false
-    state.imeQuiesceToken = 0
-    local function ImeCompositionTouch()
-        state.imeComposing = true
-        state.imeQuiesceToken = state.imeQuiesceToken + 1
-        local token = state.imeQuiesceToken
-        Utils.SafeAfter(IME_QUIESCE_DELAY, function()
-            if state.imeQuiesceToken ~= token then return end
+    state.imeEndToken = 0
+    local function ImeCompositionEnd()
+        state.imeEndToken = state.imeEndToken + 1
+        local token = state.imeEndToken
+        -- One frame late: a multi-character commit delivers each character
+        -- through OnChar in a burst, and the box must settle before the
+        -- resync; a new composition starting first cancels this via the
+        -- token bump in the composition hook.
+        Utils.SafeAfter(0, function()
+            if state.imeEndToken ~= token then return end
             state.imeComposing = false
             local liveText = editBox:GetText() or ""
             local liveCursor = editBox:GetCursorPosition() or #liveText
@@ -948,13 +954,19 @@ function Utils.AttachAutocomplete(editBox, opts)
             end
         end)
     end
-    local imeHookOk = pcall(editBox.HookScript, editBox, "OnCharComposition", ImeCompositionTouch)
+    local imeHookOk = pcall(editBox.HookScript, editBox, "OnCharComposition", function(_, compText)
+        if compText and compText ~= "" then
+            state.imeComposing = true
+            state.imeEndToken = state.imeEndToken + 1
+        else
+            -- Empty composition text = cancelled or resolved.
+            ImeCompositionEnd()
+        end
+    end)
     if imeHookOk then
-        -- Commit delivers its characters through OnChar while the
-        -- composition winds down; extend the hold so no write lands
-        -- between them.
         editBox:HookScript("OnChar", function()
-            if state.imeComposing then ImeCompositionTouch() end
+            -- Commit: the IME resolved the composition into real characters.
+            if state.imeComposing then ImeCompositionEnd() end
         end)
     else
         local locale = GetLocale and GetLocale()
