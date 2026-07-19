@@ -1592,6 +1592,10 @@ local function BuildSearchTab(ctx)
     local CreateTab, SELECTOR_ROW_W, SELECTOR_BTN_W = ctx.CreateTab, ctx.SELECTOR_ROW_W, ctx.SELECTOR_BTN_W
     local CreateFlyoutPresetRow, RESET_BTN_W = ctx.CreateFlyoutPresetRow, ctx.RESET_BTN_W
     local sec1 = CreateTab(L["OPT_TAB_SEARCH"])
+    -- The four toggle rows at the tab's bottom sit in a 2x2 grid (compact
+    -- half-width cells) -- stacked full rows no longer fit the panel.
+    local CHECK_COL_GAP = 8
+    local CHECK_COL_W = (SELECTOR_ROW_W - CHECK_COL_GAP) / 2
 
     local visibilityModeRow
     local function ApplyVisibilityMode(value)
@@ -1774,7 +1778,7 @@ local function BuildSearchTab(ctx)
     visibilityModeRow:SetValue(initialVisibility)
 
     local lockPositionCheckbox = CreateCheckbox(sec1, "LockPosition", L["OPT_LOCK_POSITION"],
-        L["OPT_LOCK_POSITION_TT"])
+        L["OPT_LOCK_POSITION_TT"], true, CHECK_COL_W)
     lockPositionCheckbox:SetPoint("TOPLEFT", visibilityModeRow, "BOTTOMLEFT", 0, -2)
     lockPositionCheckbox:SetChecked(EasyFind.db.lockPosition or false)
     lockPositionCheckbox:SetScript("OnClick", function(self)
@@ -1814,7 +1818,10 @@ local function BuildSearchTab(ctx)
     -- glyph on light fills, white otherwise).
     local resultShortcutHintsCheckbox = CreateCheckbox(sec1, "ResultShortcutHints",
         L["OPT_SHOW_ALT_HINTS"],
-        L["OPT_ALT_HINTS_TT"])
+        L["OPT_ALT_HINTS_TT"], true, CHECK_COL_W)
+    -- Half-width cell: the label must stop short of the toggle or the
+    -- inline hint-badge example runs underneath it.
+    resultShortcutHintsCheckbox.Text:SetPoint("RIGHT", resultShortcutHintsCheckbox, "RIGHT", -36, 0)
     local function UpdateAltHintExample()
         local r, g, b = 255, 255, 255
         local theme = ns.Results and ns.Results:GetActiveTheme()
@@ -1848,8 +1855,7 @@ local function BuildSearchTab(ctx)
     optionsFrame.resultShortcutHintsCheckbox = resultShortcutHintsCheckbox
 
     local windowBorderCheckbox = CreateCheckbox(sec1, "WindowBorder", L["OPT_WINDOW_BORDER"],
-        L["OPT_WINDOW_BORDER_TT"])
-    windowBorderCheckbox:SetPoint("TOPLEFT", resultShortcutHintsCheckbox, "BOTTOMLEFT", 0, -2)
+        L["OPT_WINDOW_BORDER_TT"], true, CHECK_COL_W)
     windowBorderCheckbox:SetChecked(EasyFind.db.windowBorder ~= false)
     windowBorderCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.windowBorder = self:GetChecked() and true or false
@@ -1863,8 +1869,7 @@ local function BuildSearchTab(ctx)
     optionsFrame.windowBorderCheckbox = windowBorderCheckbox
 
     local searchAutocompleteCheckbox = CreateCheckbox(sec1, "SearchAutocomplete",
-        L["OPT_INLINE_AUTOCOMPLETE"], L["OPT_INLINE_AUTOCOMPLETE_TT"], true)
-    searchAutocompleteCheckbox:SetPoint("TOPLEFT", windowBorderCheckbox, "BOTTOMLEFT", 0, -2)
+        L["OPT_INLINE_AUTOCOMPLETE"], L["OPT_INLINE_AUTOCOMPLETE_TT"], true, CHECK_COL_W)
     searchAutocompleteCheckbox:SetChecked(EasyFind.db.searchAutocomplete ~= false)
     searchAutocompleteCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.searchAutocomplete = self:GetChecked() and true or false
@@ -2050,9 +2055,13 @@ local function BuildSearchTab(ctx)
     end)
 
     lockPositionCheckbox:ClearAllPoints()
+    -- 2x2 toggle grid: lock + alt hints on row one, borders + inline
+    -- autocomplete on row two.
     lockPositionCheckbox:SetPoint("TOPLEFT", wowheadRow, "BOTTOMLEFT", 0, -4)
     resultShortcutHintsCheckbox:ClearAllPoints()
-    resultShortcutHintsCheckbox:SetPoint("TOPLEFT", lockPositionCheckbox, "BOTTOMLEFT", 0, -2)
+    resultShortcutHintsCheckbox:SetPoint("TOPLEFT", lockPositionCheckbox, "TOPRIGHT", CHECK_COL_GAP, 0)
+    windowBorderCheckbox:SetPoint("TOPLEFT", lockPositionCheckbox, "BOTTOMLEFT", 0, -2)
+    searchAutocompleteCheckbox:SetPoint("TOPLEFT", windowBorderCheckbox, "TOPRIGHT", CHECK_COL_GAP, 0)
 
     local function RefreshUIPresetRows()
         if optionsFrame.uiFontPresetRow then
