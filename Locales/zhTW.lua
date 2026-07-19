@@ -86,7 +86,7 @@ L["OPT_RESULTS_BELOW"]                  = "下方"
 L["OPT_RESULTS_ABOVE"]                  = "上方"
 L["OPT_RESULTS_BELOW_TT"]               = "結果在搜尋列下方展開。"
 L["OPT_RESULTS_ABOVE_TT"]               = "結果在搜尋列上方展開。"
-L["OPT_SHOW_ALT_HINTS"]                 = "顯示 Alt+數字 提示"
+L["OPT_SHOW_ALT_HINTS"]                 = "顯示 Alt+# 提示"
 L["OPT_FONT_SMALL"]                     = "小"
 L["OPT_FONT_MED"]                       = "中"
 L["OPT_FONT_LARGE"]                     = "大"
@@ -245,7 +245,7 @@ L["TUT_MAP_AUTOTRACK_DESC"]             = "想在不搜尋的情況下顯示你�
 L["TUT_BTN_BACK"]                       = "返回"
 L["TUT_BTN_BACK_ARROW"]                 = "< 返回"
 L["TUT_KB_PRESS_KEY"]                   = "請按一個按鍵……"
-L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - 新功能"
+L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - 更新內容"
 L["WHATSNEW_GOT_IT"]                    = "知道了"
 L["MSG_CURRENCY_WATCH_LIMIT"]           = "一次最多只能追蹤%d種貨幣"
 L["POPUP_UNAPPLIED_SETTINGS"]           = "有尚未套用的設定。\n確定要離開嗎？"
@@ -256,13 +256,11 @@ L["WHATSNEW_CHAT_HELLO"]                = "歡迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "這裡"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日誌"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff主題|r\n" ..
-    "    |cff999999-|r 選擇 EasyFind 的外觀；隨時可在選項選單中更改\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff黑名單|r\n" ..
-    "    |cff999999-|r 右鍵點擊結果並選擇黑名單，即可讓它不再出現在\n" ..
-    "      任何搜尋中\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff圖示顯示|r\n" ..
-    "    |cff999999-|r 顯示所有圖示、僅通用圖示或僅具體圖示"
+    "|cffFFD100\226\128\162|r |cffffffff修復輸入法輸入|r\n" ..
+    "    |cff999999-|r 使用中文、韓文等組合輸入法輸入時，搜尋文字\n" ..
+    "      應該不再出錯\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff補全開關|r\n" ..
+    "    |cff999999-|r 可在選項中分別關閉搜尋列和地圖頁的內嵌補全"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "新增別名"

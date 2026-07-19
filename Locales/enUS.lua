@@ -95,7 +95,7 @@ L["OPT_RESULTS_BELOW"]                  = "Below"
 L["OPT_RESULTS_ABOVE"]                  = "Above"
 L["OPT_RESULTS_BELOW_TT"]               = "Results open below the search bar."
 L["OPT_RESULTS_ABOVE_TT"]               = "Results open above the search bar."
-L["OPT_SHOW_ALT_HINTS"]                 = "Show Alt+Number Hints"
+L["OPT_SHOW_ALT_HINTS"]                 = "Show Alt+# hints"
 L["OPT_FONT_SMALL"]                     = "Small"
 L["OPT_FONT_MED"]                       = "Med"
 L["OPT_FONT_LARGE"]                     = "Large"
@@ -267,7 +267,7 @@ L["TUT_BTN_BACK"]                       = "Back"
 L["TUT_BTN_BACK_ARROW"]                 = "< Back"
 L["TUT_KB_PRESS_KEY"]                   = "Press a key..."
 
-L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - New Features"
+L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - What's New"
 L["WHATSNEW_GOT_IT"]                    = "Got it"
 L["MSG_CURRENCY_WATCH_LIMIT"]           = "You may only watch %d currencies at a time"
 L["POPUP_UNAPPLIED_SETTINGS"]           = "You have settings that have not been applied.\nAre you sure you wish to exit?"
@@ -279,14 +279,12 @@ L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffThemes|r\n" ..
-    "    |cff999999-|r Pick how EasyFind looks; change it any time in the\n" ..
-    "      options menu\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffBlacklist|r\n" ..
-    "    |cff999999-|r Right-click a result and choose Blacklist to keep it\n" ..
-    "      out of every search\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffIcon Visibility|r\n" ..
-    "    |cff999999-|r Show all icons, general icons only, or specific icons only"
+    "|cffFFD100\226\128\162|r |cffffffffIME input fixed|r\n" ..
+    "    |cff999999-|r Typing with Chinese, Korean, and other composition\n" ..
+    "      input methods should no longer corrupt the search text\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffAutocomplete toggles|r\n" ..
+    "    |cff999999-|r Turn inline autocomplete off for the search bar or\n" ..
+    "      the map tab in the options menu"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels

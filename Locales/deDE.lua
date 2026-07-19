@@ -88,7 +88,7 @@ L["OPT_RESULTS_BELOW"]                  = "Unten"
 L["OPT_RESULTS_ABOVE"]                  = "Oben"
 L["OPT_RESULTS_BELOW_TT"]               = "Ergebnisse öffnen sich unter der Suchleiste."
 L["OPT_RESULTS_ABOVE_TT"]               = "Ergebnisse öffnen sich über der Suchleiste."
-L["OPT_SHOW_ALT_HINTS"]                 = "Alt+Zahl-Hinweise anzeigen"
+L["OPT_SHOW_ALT_HINTS"]                 = "Alt+#-Hinweise anzeigen"
 L["OPT_FONT_SMALL"]                     = "Klein"
 L["OPT_FONT_MED"]                       = "Mittel"
 L["OPT_FONT_LARGE"]                     = "Groß"
@@ -247,7 +247,7 @@ L["TUT_MAP_AUTOTRACK_DESC"]             = "Möchtest du Seltene in deiner Zone a
 L["TUT_BTN_BACK"]                       = "Zurück"
 L["TUT_BTN_BACK_ARROW"]                 = "< Zurück"
 L["TUT_KB_PRESS_KEY"]                   = "Taste drücken …"
-L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r – Neue Funktionen"
+L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r – Neuigkeiten"
 L["WHATSNEW_GOT_IT"]                    = "Verstanden"
 L["MSG_CURRENCY_WATCH_LIMIT"]           = "Du kannst nur %d Währungen gleichzeitig beobachten"
 L["POPUP_UNAPPLIED_SETTINGS"]           = "Es gibt Einstellungen, die noch nicht übernommen wurden.\nWirklich beenden?"
@@ -258,14 +258,13 @@ L["WHATSNEW_CHAT_HELLO"]                = "Willkommen bei |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vollständiges Änderungsprotokoll"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffDesigns|r\n" ..
-    "    |cff999999-|r Wähle das Aussehen von EasyFind; jederzeit im\n" ..
-    "      Optionsmenü änderbar\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffBlacklist|r\n" ..
-    "    |cff999999-|r Rechtsklicke ein Ergebnis und wähle Blacklist, damit es\n" ..
-    "      in keiner Suche mehr erscheint\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffSymbol-Anzeige|r\n" ..
-    "    |cff999999-|r Alle, allgemeine oder nur spezifische Symbole anzeigen"
+    "|cffFFD100\226\128\162|r |cffffffffIME-Eingabe repariert|r\n" ..
+    "    |cff999999-|r Die Eingabe mit chinesischen, koreanischen und anderen\n" ..
+    "      Kompositions-Eingabemethoden sollte den Suchtext nicht mehr\n" ..
+    "      verfälschen\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffAutovervollständigung abschaltbar|r\n" ..
+    "    |cff999999-|r Die Inline-Autovervollständigung lässt sich für Suchleiste\n" ..
+    "      und Kartenreiter im Optionsmenü deaktivieren"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"

@@ -86,7 +86,7 @@ L["OPT_RESULTS_BELOW"]                  = "En dessous"
 L["OPT_RESULTS_ABOVE"]                  = "Au-dessus"
 L["OPT_RESULTS_BELOW_TT"]               = "Les résultats s'ouvrent sous la barre de recherche."
 L["OPT_RESULTS_ABOVE_TT"]               = "Les résultats s'ouvrent au-dessus de la barre de recherche."
-L["OPT_SHOW_ALT_HINTS"]                 = "Afficher les indices Alt+Chiffre"
+L["OPT_SHOW_ALT_HINTS"]                 = "Afficher les indices Alt+#"
 L["OPT_FONT_SMALL"]                     = "Petite"
 L["OPT_FONT_MED"]                       = "Moyenne"
 L["OPT_FONT_LARGE"]                     = "Grande"
@@ -256,14 +256,12 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bienvenue dans |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "ici"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Voir le journal des modifications complet"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffThèmes|r\n" ..
-    "    |cff999999-|r Choisissez l'apparence d'EasyFind ; modifiable à tout\n" ..
-    "      moment depuis le menu des options\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffListe noire|r\n" ..
-    "    |cff999999-|r Faites un clic droit sur un résultat et choisissez Liste noire\n" ..
-    "      pour qu'il n'apparaisse dans aucune recherche\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffAffichage des icônes|r\n" ..
-    "    |cff999999-|r Affichez toutes les icônes, seulement les générales ou seulement les spécifiques"
+    "|cffFFD100\226\128\162|r |cffffffffSaisie IME corrigée|r\n" ..
+    "    |cff999999-|r La saisie avec les méthodes à composition (chinois, coréen\n" ..
+    "      et autres) ne devrait plus corrompre le texte de recherche\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffAutocomplétion désactivable|r\n" ..
+    "    |cff999999-|r Désactivez l'autocomplétion en ligne pour la barre de\n" ..
+    "      recherche ou l'onglet carte dans les options"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Ajouter un alias"

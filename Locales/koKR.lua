@@ -86,7 +86,7 @@ L["OPT_RESULTS_BELOW"]                  = "아래"
 L["OPT_RESULTS_ABOVE"]                  = "위"
 L["OPT_RESULTS_BELOW_TT"]               = "결과가 검색창 아래에 열립니다."
 L["OPT_RESULTS_ABOVE_TT"]               = "결과가 검색창 위에 열립니다."
-L["OPT_SHOW_ALT_HINTS"]                 = "Alt+숫자 힌트 표시"
+L["OPT_SHOW_ALT_HINTS"]                 = "Alt+# 힌트 표시"
 L["OPT_FONT_SMALL"]                     = "작게"
 L["OPT_FONT_MED"]                       = "보통"
 L["OPT_FONT_LARGE"]                     = "크게"
@@ -245,7 +245,7 @@ L["TUT_MAP_AUTOTRACK_DESC"]             = "검색하지 않고도 지역의 희�
 L["TUT_BTN_BACK"]                       = "뒤로"
 L["TUT_BTN_BACK_ARROW"]                 = "< 뒤로"
 L["TUT_KB_PRESS_KEY"]                   = "키를 누르세요…"
-L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - 새로운 기능"
+L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - 새로운 소식"
 L["WHATSNEW_GOT_IT"]                    = "확인"
 L["MSG_CURRENCY_WATCH_LIMIT"]           = "한 번에 %d개의 화폐만 추적할 수 있습니다"
 L["POPUP_UNAPPLIED_SETTINGS"]           = "적용되지 않은 설정이 있습니다.\n정말 나가시겠습니까?"
@@ -256,14 +256,12 @@ L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 �
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff테마|r\n" ..
-    "    |cff999999-|r EasyFind의 모습을 선택하세요. 옵션 메뉴에서 언제든지\n" ..
-    "      변경할 수 있습니다\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff차단 목록|r\n" ..
-    "    |cff999999-|r 결과를 우클릭하고 차단 목록을 선택하면 모든 검색에서\n" ..
-    "      나타나지 않습니다\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff아이콘 표시|r\n" ..
-    "    |cff999999-|r 모든 아이콘, 일반 아이콘만, 또는 세부 아이콘만 표시"
+    "|cffFFD100\226\128\162|r |cffffffff입력기(IME) 수정|r\n" ..
+    "    |cff999999-|r 중국어, 한국어 등 조합형 입력기로 입력할 때 검색\n" ..
+    "      텍스트가 더는 깨지지 않을 것입니다\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff자동 완성 설정|r\n" ..
+    "    |cff999999-|r 옵션 메뉴에서 검색창과 지도 탭의 인라인 자동 완성을\n" ..
+    "      각각 끌 수 있습니다"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"
