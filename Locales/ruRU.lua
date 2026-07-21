@@ -256,9 +256,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "Добро пожаловать в |c
 L["WHATSNEW_CHAT_HERE"]                 = "здесь"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Полный список изменений"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffЗапуск через Data Broker|r\n" ..
-    "    |cff999999-|r Открывайте EasyFind с панели Data Broker,\n" ..
-    "      а не только значком на миникарте"
+    "|cffFFD100\226\128\162|r |cffffffffПоддержка Data Broker|r\n" ..
+    "    |cff999999-|r Если вы пользуетесь панелью Data Broker, EasyFind\n" ..
+    "      теперь можно открыть с неё, а не значком на миникарте\n" ..
+    "      (остальные способы работают, включая Автоскрытие)"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Добавить псевдоним"

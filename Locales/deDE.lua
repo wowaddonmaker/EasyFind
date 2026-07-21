@@ -258,9 +258,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "Willkommen bei |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vollständiges Änderungsprotokoll"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffData-Broker-Starter|r\n" ..
-    "    |cff999999-|r Starte EasyFind über eine Data-Broker-Leiste\n" ..
-    "      statt über das Minimap-Symbol"
+    "|cffFFD100\226\128\162|r |cffffffffData-Broker-Unterstützung|r\n" ..
+    "    |cff999999-|r Wer eine Data-Broker-Leiste nutzt, kann EasyFind\n" ..
+    "      jetzt darüber statt über das Minimap-Symbol öffnen\n" ..
+    "      (alle anderen Wege bleiben, auch Auto-Ausblenden)"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"

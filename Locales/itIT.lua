@@ -256,9 +256,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "Benvenuto in |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "qui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vedi il changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffAvvio da Data Broker|r\n" ..
-    "    |cff999999-|r Avvia EasyFind da una barra Data Broker\n" ..
-    "      invece che dall'icona della minimappa"
+    "|cffFFD100\226\128\162|r |cffffffffSupporto Data Broker|r\n" ..
+    "    |cff999999-|r Se usi una barra Data Broker, ora puoi avviare\n" ..
+    "      EasyFind da lì invece che dall'icona della minimappa\n" ..
+    "      (gli altri modi restano, incluso Nascondi auto.)"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Aggiungi alias"

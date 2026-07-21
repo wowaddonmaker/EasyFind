@@ -1861,18 +1861,29 @@ function Search:CreateSearchFrame()
         -- click. Catches the minimap button (and any other "click target
         -- that should NOT close the bar") even if our OnMouseDown flag
         -- races against this event handler.
+        -- Data broker launchers count the same way. Their buttons belong to
+        -- whichever display hosts them, so we cannot name them up front or
+        -- hook them early enough to win the flag race -- the launcher records
+        -- each button it is clicked through instead, and this check covers it
+        -- from then on. Without it the bar closes here on mouse-DOWN and the
+        -- launcher's mouse-UP handler reopens it, so it blinks instead of
+        -- toggling shut.
         local mmBtn = _G["EasyFindMinimapButton"]
-        if mmBtn then
-            if GetMouseFoci then
-                local foci = GetMouseFoci()
-                if foci then
-                    for i = 1, #foci do
-                        if foci[i] == mmBtn then return end
-                    end
+        local launchers = ns.brokerLauncherButtons
+        local function IsLauncherTarget(frame)
+            if not frame then return false end
+            if mmBtn and frame == mmBtn then return true end
+            return (launchers and launchers[frame]) and true or false
+        end
+        if GetMouseFoci then
+            local foci = GetMouseFoci()
+            if foci then
+                for i = 1, #foci do
+                    if IsLauncherTarget(foci[i]) then return end
                 end
-            elseif GetMouseFocus and GetMouseFocus() == mmBtn then
-                return
             end
+        elseif GetMouseFocus and IsLauncherTarget(GetMouseFocus()) then
+            return
         end
         if self:IsMouseOver() then return end
         if Utils.IsFrameVisiblyMouseOver(resultsFrame) then return end
