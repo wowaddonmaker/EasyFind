@@ -564,6 +564,11 @@ end
 -- close-X on the right so a long localised title gets ellipsised instead of
 -- overflowing under the chrome.
 local HEADER_MAX_W = WIZ_W - 140
+-- The welcome title is centred below the logo, clear of that chrome row, so it
+-- only needs page margins rather than the back-arrow and close-X reserve. It
+-- also renders 1.5x larger than every other header, and the tighter bound cut
+-- the version off ("Welcome to EasyFind v2.1..."), worse in longer locales.
+local WELCOME_MAX_W = WIZ_W - 48
 
 local function BodyText(parent, text)
     local fs = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -604,7 +609,7 @@ local function BuildPage1(parent)
     logo:SetPoint("TOP", p, "TOP", 0, -40)
 
     local version = ns.version or (C_AddOns and C_AddOns.GetAddOnMetadata and C_AddOns.GetAddOnMetadata("EasyFind", "Version")) or "2.0.0"
-    local title = HeaderText(p, L["TUT_WELCOME_TITLE"]:format(version), nil, HEADER_MAX_W)
+    local title = HeaderText(p, L["TUT_WELCOME_TITLE"]:format(version), nil, WELCOME_MAX_W)
     title:SetPoint("TOP", logo, "BOTTOM", 0, -22)
     do
         local path, sz, fl = title:GetFont()

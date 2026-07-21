@@ -256,9 +256,9 @@ L["WHATSNEW_CHAT_HELLO"]                = "欢迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "这里"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日志"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff数据面板启动器|r\n" ..
-    "    |cff999999-|r 可从数据面板插件栏启动 EasyFind，\n" ..
-    "      无需使用小地图图标"
+    "|cffFFD100\226\128\162|r |cffffffff新增数据面板支持|r\n" ..
+    "    |cff999999-|r 如果你使用数据面板插件栏，现在可以从那里启动\n" ..
+    "      EasyFind，而不必使用小地图图标"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "添加别名"

@@ -1229,6 +1229,12 @@ local LAUNCHER_ICON = "Interface\\AddOns\\EasyFind\\textures\\SpyglassMinimap"
 -- The brand name, never localized, shown wherever the addon names itself.
 local ADDON_LABEL = "EasyFind"
 
+-- Display-owned buttons our data broker launcher has been clicked through.
+-- The search bar's outside-click close consults this so clicking a launcher
+-- toggles the bar instead of closing and immediately reopening it. Weak keys:
+-- a display rebuilding its bar must not keep dead frames alive.
+ns.brokerLauncherButtons = setmetatable({}, { __mode = "k" })
+
 local minimapButton
 
 local minimapShapes = {
@@ -1392,7 +1398,11 @@ function ns.RegisterDataBroker()
         type = "launcher",
         label = ADDON_LABEL,
         icon = LAUNCHER_ICON,
-        OnClick = function(_, button)
+        OnClick = function(self, button)
+            -- Remember the display's button so the search bar's outside-click
+            -- close recognises it as one of ours (see brokerLauncherButtons in
+            -- SearchBar). Weak-keyed: a display may rebuild its buttons.
+            if self then ns.brokerLauncherButtons[self] = true end
             if button == "RightButton" then
                 EasyFind:OpenOptions()
             else
