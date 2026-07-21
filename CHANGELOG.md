@@ -4,6 +4,13 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [2.1.4] - 2026-07-20
+
+### Added
+- **Data broker launcher**: EasyFind now publishes a launcher for display bars that host data broker objects, so it can be opened from one instead of the minimap button. Left-click toggles the search bar, right-click opens the options. Nothing changes if no such display is installed.
+
+---
+
 ## [2.1.3] - 2026-07-19
 
 ### Fixed
