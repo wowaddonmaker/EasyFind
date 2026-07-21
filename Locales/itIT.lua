@@ -258,7 +258,8 @@ L["WHATSNEW_CHANGELOG_LINK"]            = "Vedi il changelog completo"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffSupporto Data Broker|r\n" ..
     "    |cff999999-|r Se usi una barra Data Broker, ora puoi avviare\n" ..
-    "      EasyFind da lì invece che dall'icona della minimappa"
+    "      EasyFind da lì invece che dall'icona della minimappa\n" ..
+    "      (gli altri modi restano, incluso Nascondi auto.)"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Aggiungi alias"

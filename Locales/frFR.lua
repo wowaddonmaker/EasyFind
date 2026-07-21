@@ -258,7 +258,8 @@ L["WHATSNEW_CHANGELOG_LINK"]            = "Voir le journal des modifications com
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffPrise en charge de Data Broker|r\n" ..
     "    |cff999999-|r Si vous utilisez une barre Data Broker, vous pouvez\n" ..
-    "      y lancer EasyFind au lieu de l'icône de la minicarte"
+    "      y lancer EasyFind au lieu de l'icône de la minicarte\n" ..
+    "      (les autres moyens restent, Masquage auto compris)"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Ajouter un alias"

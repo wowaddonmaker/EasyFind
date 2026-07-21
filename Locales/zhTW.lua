@@ -258,7 +258,8 @@ L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日誌"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffff新增資料面板支援|r\n" ..
     "    |cff999999-|r 如果你使用資料面板插件列，現在可以從那裡啟動\n" ..
-    "      EasyFind，不必使用小地圖圖示"
+    "      EasyFind，不必使用小地圖圖示\n" ..
+    "      （其他方式照常可用，包括自動隱藏）"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "新增別名"

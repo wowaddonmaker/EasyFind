@@ -258,7 +258,8 @@ L["WHATSNEW_CHANGELOG_LINK"]            = "Ver o changelog completo"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffSuporte a Data Broker|r\n" ..
     "    |cff999999-|r Se você usa uma barra de Data Broker, agora pode abrir\n" ..
-    "      o EasyFind por ela em vez do ícone do minimapa"
+    "      o EasyFind por ela em vez do ícone do minimapa\n" ..
+    "      (as outras formas continuam, incluindo Ocultar auto.)"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Adicionar apelido"

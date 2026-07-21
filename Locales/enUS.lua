@@ -281,7 +281,8 @@ L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffAdded data broker support|r\n" ..
     "    |cff999999-|r If you use a data broker display bar, EasyFind can\n" ..
-    "      now be launched from it instead of the minimap button"
+    "      now be launched from it instead of the minimap button\n" ..
+    "      (every other way still works, Auto-Hide included)"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels

@@ -258,7 +258,8 @@ L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffff데이터 브로커 지원 추가|r\n" ..
     "    |cff999999-|r 데이터 브로커 표시줄을 사용한다면 미니맵 아이콘\n" ..
-    "      대신 표시줄에서 EasyFind를 실행할 수 있습니다"
+    "      대신 표시줄에서 EasyFind를 실행할 수 있습니다\n" ..
+    "      (자동 숨김을 비롯한 기존 방식도 그대로 사용 가능)"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"

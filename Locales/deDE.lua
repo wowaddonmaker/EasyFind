@@ -260,7 +260,8 @@ L["WHATSNEW_CHANGELOG_LINK"]            = "Vollständiges Änderungsprotokoll"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffData-Broker-Unterstützung|r\n" ..
     "    |cff999999-|r Wer eine Data-Broker-Leiste nutzt, kann EasyFind\n" ..
-    "      jetzt darüber statt über das Minimap-Symbol öffnen"
+    "      jetzt darüber statt über das Minimap-Symbol öffnen\n" ..
+    "      (alle anderen Wege bleiben, auch Auto-Ausblenden)"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"
