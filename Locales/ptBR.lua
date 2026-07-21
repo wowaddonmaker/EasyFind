@@ -256,12 +256,9 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bem-vindo ao |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "aqui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver o changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffEntrada IME corrigida|r\n" ..
-    "    |cff999999-|r Digitar com métodos de entrada de composição (chinês,\n" ..
-    "      coreano e outros) não deve mais corromper o texto de busca\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffAutocompletar desativável|r\n" ..
-    "    |cff999999-|r Desative o autocompletar em linha para a barra de busca\n" ..
-    "      ou a aba do mapa nas opções"
+    "|cffFFD100\226\128\162|r |cffffffffLançador de Data Broker|r\n" ..
+    "    |cff999999-|r Abra o EasyFind por uma barra de Data Broker\n" ..
+    "      em vez do ícone do minimapa"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Adicionar apelido"

@@ -279,12 +279,9 @@ L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffIME input fixed|r\n" ..
-    "    |cff999999-|r Typing with Chinese, Korean, and other composition\n" ..
-    "      input methods should no longer corrupt the search text\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffAutocomplete toggles|r\n" ..
-    "    |cff999999-|r Turn inline autocomplete off for the search bar or\n" ..
-    "      the map tab in the options menu"
+    "|cffFFD100\226\128\162|r |cffffffffData broker launcher|r\n" ..
+    "    |cff999999-|r Launch EasyFind from a data broker display bar\n" ..
+    "      instead of the minimap button"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels

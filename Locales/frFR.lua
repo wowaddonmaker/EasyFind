@@ -256,12 +256,9 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bienvenue dans |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "ici"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Voir le journal des modifications complet"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffSaisie IME corrigée|r\n" ..
-    "    |cff999999-|r La saisie avec les méthodes à composition (chinois, coréen\n" ..
-    "      et autres) ne devrait plus corrompre le texte de recherche\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffAutocomplétion désactivable|r\n" ..
-    "    |cff999999-|r Désactivez l'autocomplétion en ligne pour la barre de\n" ..
-    "      recherche ou l'onglet carte dans les options"
+    "|cffFFD100\226\128\162|r |cffffffffLanceur Data Broker|r\n" ..
+    "    |cff999999-|r Lancez EasyFind depuis une barre Data Broker\n" ..
+    "      au lieu de l'icône de la minicarte"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Ajouter un alias"
