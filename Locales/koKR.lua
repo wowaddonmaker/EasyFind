@@ -256,12 +256,9 @@ L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 �
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff입력기(IME) 수정|r\n" ..
-    "    |cff999999-|r 중국어, 한국어 등 조합형 입력기로 입력할 때 검색\n" ..
-    "      텍스트가 더는 깨지지 않을 것입니다\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff자동 완성 설정|r\n" ..
-    "    |cff999999-|r 옵션 메뉴에서 검색창과 지도 탭의 인라인 자동 완성을\n" ..
-    "      각각 끌 수 있습니다"
+    "|cffFFD100\226\128\162|r |cffffffff데이터 브로커 실행기|r\n" ..
+    "    |cff999999-|r 미니맵 아이콘 대신 데이터 브로커 표시줄에서\n" ..
+    "      EasyFind를 실행할 수 있습니다"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"

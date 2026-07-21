@@ -516,7 +516,7 @@ local SUGGESTED_KEYBINDS = {
 -- The version whose features the What's New popup currently describes. Bump
 -- ONLY when the popup content is rewritten; patch releases that keep the same
 -- content must not re-announce it to users who already saw it.
-local WHATSNEW_CONTENT_VERSION = "2.1.3"
+local WHATSNEW_CONTENT_VERSION = "2.1.4"
 
 local WHATSNEW_LINK_PREFIX = "easyfind:whatsnew:"
 local whatsNewHookInstalled = false
@@ -904,6 +904,9 @@ local function OnPlayerLogin()
         if EasyFind.db.showMinimapButton then
             EasyFind:UpdateMinimapButton()
         end
+        -- Same delay as the minimap button: both are launcher surfaces, and
+        -- by now every addon (so every broker display) has loaded.
+        if ns.RegisterDataBroker then ns.RegisterDataBroker() end
     end)
 
     local currentVersion = ns.version
@@ -1220,6 +1223,12 @@ function EasyFind:Print(msg)
     print(sformat("|cFF00FF00EasyFind:|r %s", msg))
 end
 
+-- Shared by the minimap button and the data broker launcher, and mirrored by
+-- the TOC's IconTexture: one icon identifies the addon wherever it is hosted.
+local LAUNCHER_ICON = "Interface\\AddOns\\EasyFind\\textures\\SpyglassMinimap"
+-- The brand name, never localized, shown wherever the addon names itself.
+local ADDON_LABEL = "EasyFind"
+
 local minimapButton
 
 local minimapShapes = {
@@ -1288,7 +1297,7 @@ local function CreateMinimapButton()
 
     local icon = mmBtn:CreateTexture(nil, "ARTWORK")
     icon:SetSize(14, 14)
-    icon:SetTexture("Interface\\AddOns\\EasyFind\\textures\\SpyglassMinimap")
+    icon:SetTexture(LAUNCHER_ICON)
     icon:SetPoint("CENTER")
 
     mmBtn:SetHighlightTexture(136477)
@@ -1339,7 +1348,7 @@ local function CreateMinimapButton()
 
     mmBtn:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:SetText("EasyFind")
+        GameTooltip:SetText(ADDON_LABEL)
         GameTooltip:AddLine(L["MINIMAP_TT_LEFT_CLICK"], 1, 1, 1)
         GameTooltip:AddLine(L["MINIMAP_TT_RIGHT_CLICK"], 1, 1, 1)
         GameTooltip:AddLine(L["MINIMAP_TT_DRAG"], 0.7, 0.7, 0.7)
@@ -1362,6 +1371,41 @@ function EasyFind:UpdateMinimapButton()
     elseif minimapButton then
         minimapButton:Hide()
     end
+end
+
+-- Data broker launcher. Display bars that host broker objects can then launch
+-- the addon, so a minimalist UI does not need the minimap button.
+--
+-- Nothing is bundled: we only PUBLISH an object, and every display that shows
+-- one embeds the library itself, so asking for it is enough. The silent flag
+-- returns nil instead of erroring when no display is installed, in which case
+-- this does nothing at all. Registration happens at login rather than at load
+-- so a display that loads after us has already created the library; creating
+-- an object fires the library's own DataObjectCreated callback, which is how
+-- displays pick up late registrations. Clicks mirror the minimap button.
+function ns.RegisterDataBroker()
+    if not LibStub then return end
+    local ok, broker = pcall(LibStub, "LibDataBroker-1.1", true)
+    if not (ok and type(broker) == "table" and broker.NewDataObject) then return end
+    if broker.GetDataObjectByName and broker:GetDataObjectByName(ADDON_LABEL) then return end
+    pcall(broker.NewDataObject, broker, ADDON_LABEL, {
+        type = "launcher",
+        label = ADDON_LABEL,
+        icon = LAUNCHER_ICON,
+        OnClick = function(_, button)
+            if button == "RightButton" then
+                EasyFind:OpenOptions()
+            else
+                EasyFind:ToggleSearchUI()
+            end
+        end,
+        OnTooltipShow = function(tooltip)
+            if not (tooltip and tooltip.AddLine) then return end
+            tooltip:AddLine(ADDON_LABEL)
+            tooltip:AddLine(L["MINIMAP_TT_LEFT_CLICK"], 1, 1, 1)
+            tooltip:AddLine(L["MINIMAP_TT_RIGHT_CLICK"], 1, 1, 1)
+        end,
+    })
 end
 
 function EasyFind_OnAddonCompartmentClick(_, button)

@@ -256,11 +256,9 @@ L["WHATSNEW_CHAT_HELLO"]                = "欢迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "这里"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日志"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff修复输入法输入|r\n" ..
-    "    |cff999999-|r 使用中文、韩文等组合输入法输入时，搜索文本\n" ..
-    "      应该不再出错\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff补全开关|r\n" ..
-    "    |cff999999-|r 可在选项中分别关闭搜索栏和地图页的内联补全"
+    "|cffFFD100\226\128\162|r |cffffffff数据面板启动器|r\n" ..
+    "    |cff999999-|r 可从数据面板插件栏启动 EasyFind，\n" ..
+    "      无需使用小地图图标"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "添加别名"

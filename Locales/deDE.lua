@@ -258,13 +258,9 @@ L["WHATSNEW_CHAT_HELLO"]                = "Willkommen bei |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vollständiges Änderungsprotokoll"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffIME-Eingabe repariert|r\n" ..
-    "    |cff999999-|r Die Eingabe mit chinesischen, koreanischen und anderen\n" ..
-    "      Kompositions-Eingabemethoden sollte den Suchtext nicht mehr\n" ..
-    "      verfälschen\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffAutovervollständigung abschaltbar|r\n" ..
-    "    |cff999999-|r Die Inline-Autovervollständigung lässt sich für Suchleiste\n" ..
-    "      und Kartenreiter im Optionsmenü deaktivieren"
+    "|cffFFD100\226\128\162|r |cffffffffData-Broker-Starter|r\n" ..
+    "    |cff999999-|r Starte EasyFind über eine Data-Broker-Leiste\n" ..
+    "      statt über das Minimap-Symbol"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"
