@@ -3377,6 +3377,53 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
     end)
 end
 
+-- Shipped profession data (Database/ProfessionData.lua, generated from the
+-- game's DB2 files) stores recipe IDs grouped by expansion page. recipeIDs are
+-- spellIDs, so a recipe's name, icon, and learned-status resolve live. Search
+-- only materializes recipes on the pages the character OWNS, filtered by the
+-- Show Learned / Show Unlearned toggles -- so a Midnight-only crafter never
+-- sees recipes from expansions they don't have, and unlearned-but-trainable
+-- recipes DO show when Show Unlearned is on.
+local C_SpellBook = C_SpellBook
+local IsPlayerSpell = IsPlayerSpell
+local getRecipeInfo = C_TradeSkillUI and C_TradeSkillUI.GetRecipeInfo
+
+-- Measured (/efd prof learned) across crafting AND gathering:
+-- C_SpellBook.IsSpellKnown and IsPlayerSpell both scored 0 false pos / 0 false
+-- neg vs the window's own learned flag; bare IsSpellKnown and
+-- IsRecipeProfessionLearned did NOT. Fail OPEN (treat as learned) if neither
+-- exists.
+local function IsRecipeLearned(recipeID)
+    if C_SpellBook and C_SpellBook.IsSpellKnown then
+        local ok, known = pcall(C_SpellBook.IsSpellKnown, recipeID)
+        if ok then return known end
+    end
+    if IsPlayerSpell then
+        local ok, known = pcall(IsPlayerSpell, recipeID)
+        if ok then return known end
+    end
+    return true
+end
+
+-- Decode (and memoize) one expansion page's comma-joined recipe-ID string into
+-- a number array. Only ever called for OWNED pages, so decode cost is bounded
+-- to what the character actually has.
+local function PageRecipeIDs(profData, pageID)
+    local byPage = profData.recipesByPage
+    if not byPage then return nil end
+    profData._pageCache = profData._pageCache or {}
+    local cached = profData._pageCache[pageID]
+    if cached then return cached end
+    local packed = byPage[pageID]
+    if not packed then return nil end
+    local ids = {}
+    for id in packed:gmatch("%d+") do
+        ids[#ids + 1] = tonumber(id)
+    end
+    profData._pageCache[pageID] = ids
+    return ids
+end
+
 -- One entry per profession this character knows (GetProfessions covers the two
 -- primaries plus archaeology, fishing, cooking). Selecting a row opens that
 -- profession's window; the 12.0 crawl verified OpenProfessionUIToSkillLine and
@@ -3394,19 +3441,39 @@ function Database:PopulateDynamicProfessions()
     for i = 1, 5 do
         local profIndex = profIndexes[i]
         if profIndex then
-            local profName, profIcon, _, _, _, _, skillLine = GetProfessionInfo(profIndex)
+            local profName, profIcon, _, _, numAbilities, spellOffset, skillLine = GetProfessionInfo(profIndex)
             if profName and profName ~= "" and skillLine
                and not (profFilters and profFilters[skillLine] == false) then
                 local nameLower = slower(profName)
-                -- Professions are castable spells (drag-to-bar proves it);
-                -- resolving the spell by its known localized name makes the
-                -- row a SECURE CAST button -- Blizzard's own cast->open path,
-                -- immune to the half-initialized-window class entirely.
+                -- The row is a SECURE CAST button armed with the spell ID of
+                -- the profession's SPELLBOOK ITEM -- the same ID dragging
+                -- Blizzard's book button to a bar casts (its buttons index
+                -- slot spellOffset + button ID in the player bank). That
+                -- cast->open path is immune to the half-initialized-window
+                -- class entirely. Cast by ID ONLY, never by name: the
+                -- passive skill-line spell and the castable journal spell
+                -- SHARE a display name, so any name lookup (profession name
+                -- or spellbook item name) can resolve the passive dud, and a
+                -- secure spell attribute holding a string casts by name.
+                -- Slots are scanned because the first can be the passive;
+                -- numAbilities == 0 hides Blizzard's own buttons, and slots
+                -- past it belong to the NEXT profession.
                 local profSpellID
-                if C_Spell and C_Spell.GetSpellInfo then
-                    local okSpell, spellInfo = pcall(C_Spell.GetSpellInfo, profName)
-                    if okSpell and type(spellInfo) == "table" then
-                        profSpellID = spellInfo.spellID
+                if spellOffset and numAbilities and numAbilities > 0
+                   and C_SpellBook and C_SpellBook.GetSpellBookItemType
+                   and Enum and Enum.SpellBookSpellBank and Enum.SpellBookItemType then
+                    for slot = spellOffset + 1, spellOffset + numAbilities do
+                        local okType, itemType, actionID, slotSpellID =
+                            pcall(C_SpellBook.GetSpellBookItemType,
+                                slot, Enum.SpellBookSpellBank.Player)
+                        if okType and itemType == Enum.SpellBookItemType.Spell then
+                            local okPassive, passive = pcall(C_SpellBook.IsSpellBookItemPassive,
+                                slot, Enum.SpellBookSpellBank.Player)
+                            if okPassive and not passive then
+                                profSpellID = slotSpellID or actionID
+                                if profSpellID then break end
+                            end
+                        end
                     end
                 end
                 uiSearchData[#uiSearchData + 1] = {
@@ -3417,46 +3484,87 @@ function Database:PopulateDynamicProfessions()
                     keywords = { nameLower, "profession" },
                     professionSkillLine = skillLine,
                     spellID = profSpellID,
-                    spellName = profSpellID and profName or nil,
                     professionOpenID = ns.PROFESSION_RECIPES
                         and ns.PROFESSION_RECIPES[skillLine]
                         and ns.PROFESSION_RECIPES[skillLine].childSkillLine,
                 }
                 added = true
-                -- Crawl-captured recipes for this profession: searchable by
-                -- localized name (recipeIDs are spellIDs), opening the
-                -- professions book like the parent entry.
+                -- Recipes materialize ONLY for the character's OWNED expansion
+                -- pages (KnownExpansionPages), filtered by the Show Learned /
+                -- Show Unlearned toggles. So a Midnight-only crafter never sees
+                -- recipes from expansions they lack, and unlearned-but-trainable
+                -- recipes show when Show Unlearned is on. Name and icon resolve
+                -- live per shown recipe: GetRecipeInfo gives the localized name
+                -- AND the real recipe-list icon, C_Spell is the fallback.
                 local profData = ns.PROFESSION_RECIPES and ns.PROFESSION_RECIPES[skillLine]
-                local recipes = profData and profData.recipes
-                if recipes then
+                if profData and profData.recipesByPage then
                     local getSpell = C_Spell and C_Spell.GetSpellInfo
-                    for ri = 1, #recipes do
-                        local recipe = recipes[ri]
-                        -- Name localizes via the spell; the icon prefers the
-                        -- crawl-captured recipe-list icon (crafted output /
-                        -- gathered herb art), NOT the generic crafting-spell
-                        -- cast icon the spell API returns.
-                        local rName = recipe.name
-                        local rIcon = recipe.icon or profIcon
-                        if getSpell then
-                            local ok, spellInfo = pcall(getSpell, recipe.recipeID)
-                            if ok and type(spellInfo) == "table" and spellInfo.name then
-                                rName = spellInfo.name
-                                if not recipe.icon then
-                                    rIcon = spellInfo.iconID or rIcon
+                    local pfState = EasyFind.db.professionRecipeFilters
+                    local showLearned = not (pfState and pfState.learned == false)
+                    local showUnlearned = not (pfState and pfState.unlearned == false)
+                    -- Owned pages, or -- if the resolver is unavailable -- every
+                    -- page filtered to LEARNED only (a learned recipe proves the
+                    -- character has that expansion), so it degrades safely.
+                    local ownedPages = ns.KnownExpansionPages and ns.KnownExpansionPages(skillLine)
+                    local fallbackLearnedOnly = not (ownedPages and #ownedPages > 0)
+                    local pageIDsToScan = {}
+                    if fallbackLearnedOnly then
+                        for pageID in pairs(profData.recipesByPage) do
+                            pageIDsToScan[#pageIDsToScan + 1] = pageID
+                        end
+                    else
+                        for pi = 1, #ownedPages do
+                            pageIDsToScan[#pageIDsToScan + 1] = ownedPages[pi].professionID
+                        end
+                    end
+                    for pi = 1, #pageIDsToScan do
+                        local pageID = pageIDsToScan[pi]
+                        local pageIDs = PageRecipeIDs(profData, pageID)
+                        if pageIDs then
+                            for ri = 1, #pageIDs do
+                                local recipeID = pageIDs[ri]
+                                local show
+                                if fallbackLearnedOnly then
+                                    show = IsRecipeLearned(recipeID)
+                                elseif showLearned and showUnlearned then
+                                    show = true
+                                elseif showLearned or showUnlearned then
+                                    local learned = IsRecipeLearned(recipeID)
+                                    show = (learned and showLearned) or (not learned and showUnlearned)
+                                end
+                                if show then
+                                    local rName, rIcon
+                                    if getRecipeInfo then
+                                        local ok, info = pcall(getRecipeInfo, recipeID)
+                                        if ok and type(info) == "table" then
+                                            rName = info.name
+                                            rIcon = info.icon
+                                        end
+                                    end
+                                    if (not rName) and getSpell then
+                                        local ok, spellInfo = pcall(getSpell, recipeID)
+                                        if ok and type(spellInfo) == "table" then
+                                            rName = spellInfo.name
+                                            rIcon = rIcon or spellInfo.iconID
+                                        end
+                                    end
+                                    if rName and rName ~= "" then
+                                        local rNameLower = slower(rName)
+                                        uiSearchData[#uiSearchData + 1] = {
+                                            name = rName,
+                                            nameLower = rNameLower,
+                                            icon = rIcon or profIcon,
+                                            category = "Profession",
+                                            keywords = { rNameLower, nameLower },
+                                            professionSkillLine = skillLine,
+                                            professionName = profName,
+                                            professionOpenID = pageID,
+                                            professionRecipeID = recipeID,
+                                        }
+                                    end
                                 end
                             end
                         end
-                        uiSearchData[#uiSearchData + 1] = {
-                            name = rName,
-                            nameLower = slower(rName),
-                            icon = rIcon,
-                            category = "Profession",
-                            keywords = { slower(rName), nameLower },
-                            professionSkillLine = skillLine,
-                            professionOpenID = profData.childSkillLine,
-                            professionRecipeID = recipe.recipeID,
-                        }
                     end
                 end
             end

@@ -7,6 +7,9 @@ local CreateFrame = CreateFrame
 local UIParent = UIParent
 local GetProfessions = GetProfessions
 local GetProfessionInfo = GetProfessionInfo
+local C_TradeSkillUI = C_TradeSkillUI
+local tsort = table.sort
+local wipe = wipe
 
 -- Known professions as {skillLine, name, icon}, rebuilt per open so the
 -- flyout tracks learning/unlearning without a reload.
@@ -27,15 +30,63 @@ local function KnownProfessions()
     return out
 end
 
+-- The character's OWNED expansion pages for a profession, as
+-- {professionID, name}, newest first -- matching the game's own expansion
+-- dropdown. Must be resolved LIVE, never shipped: the set is character-
+-- specific (only expansions this char has skill in) and the name is
+-- FACTION-specific (the BfA page is "Zandalari" on Horde, "Kul Tiran" on
+-- Alliance). GetProfessionInfoBySkillLineID returns the faction-correct
+-- expansionName and this char's skillLevel; skillLevel > 0 means owned (the
+-- same signal ResolveChildSkillLine uses). Cached per profession, cleared on
+-- SKILL_LINES_CHANGED.
+local expansionCache = {}
+local function KnownExpansionPages(parentSkillLine)
+    if not parentSkillLine then return nil end
+    if expansionCache[parentSkillLine] then return expansionCache[parentSkillLine] end
+    local ts = C_TradeSkillUI
+    if not (ts and ts.GetAllProfessionTradeSkillLines and ts.GetProfessionInfoBySkillLineID) then
+        return nil
+    end
+    local okParent, parentInfo = pcall(ts.GetProfessionInfoBySkillLineID, parentSkillLine)
+    local profEnum = okParent and type(parentInfo) == "table" and parentInfo.profession
+    local okAll, allLines = pcall(ts.GetAllProfessionTradeSkillLines)
+    if not (profEnum and okAll and type(allLines) == "table") then return nil end
+    local out = {}
+    for i = 1, #allLines do
+        local line = allLines[i]
+        if line ~= parentSkillLine then
+            local okI, info = pcall(ts.GetProfessionInfoBySkillLineID, line)
+            if okI and type(info) == "table" and info.profession == profEnum
+               and (info.skillLevel or 0) > 0 then
+                out[#out + 1] = { professionID = line, name = info.expansionName or tostring(line) }
+            end
+        end
+    end
+    tsort(out, function(a, b) return a.professionID > b.professionID end)
+    expansionCache[parentSkillLine] = out
+    return out
+end
+
+local expansionCacheFrame = CreateFrame("Frame")
+expansionCacheFrame:RegisterEvent("SKILL_LINES_CHANGED")
+expansionCacheFrame:SetScript("OnEvent", function() wipe(expansionCache) end)
+
+-- Database:PopulateDynamicProfessions also needs the owned-page set (to
+-- materialize only owned-expansion recipes). Exposed here; consumed at
+-- runtime (post-load), so the load-order gap does not matter.
+ns.KnownExpansionPages = KnownExpansionPages
+
 -- Recipe-filter state. Blizzard's window filters are GLOBAL C_TradeSkillUI
 -- state (one setter each, no skillLine argument), so ours is one shared table:
 -- learned/unlearned/skillUp/materials plus the source-type mask. Expansion
 -- page selection is per profession (expansion[skillLine] = child professionID).
 -- Bump to wipe stored state when its schema changes or when a defect could
 -- have poisoned it (v2: measurement-run masks/slot-falses were re-delivered
--- forever and blanked the window). Reconcile-at-login re-adopts Blizzard's
+-- forever and blanked the window; v3: the all-expansions flyout stored
+-- expansion selections for pages the character doesn't own, e.g. Midnight on a
+-- char with only Zandalari/Classic). Reconcile-at-login re-adopts Blizzard's
 -- state, so a wipe is always safe.
-local STATE_VER = 2
+local STATE_VER = 3
 local function RecipeFilterState()
     local db = EasyFind.db
     local state = db.professionRecipeFilters
@@ -145,8 +196,7 @@ local function LiveApplyBody(state)
     end
     local wanted = state.expansion and state.expansion[live.parentProfessionID]
     if not wanted or wanted == live.professionID then return end
-    local profData = ns.PROFESSION_RECIPES and ns.PROFESSION_RECIPES[live.parentProfessionID]
-    local children = profData and profData.children
+    local children = KnownExpansionPages(live.parentProfessionID)
     if not children then return end
     for i = 1, #children do
         if children[i].professionID == wanted then
@@ -300,6 +350,14 @@ local function AttachRecipeFilterFlyout(row)
             local state = RecipeFilterState()
             state[self._key] = self:GetChecked() and true or false
             PushRecipeFilters(state)
+            -- Show Learned / Show Unlearned also decide which recipes appear in
+            -- EasyFind search, so rebuild the professions category on those two.
+            if self._key == "learned" or self._key == "unlearned" then
+                if ns.Database and ns.Database.RefreshDynamicCategory then
+                    ns.Database:RefreshDynamicCategory("professions")
+                end
+                Filters:ApplyFilterSelection("professions")
+            end
         end)
         checkRows[i] = cr
         y = y - ROW_H
@@ -724,7 +782,8 @@ local function AttachRecipeFilterFlyout(row)
                 if w > contentW then contentW = w end
             end
         end
-        local hasChildren = profData and profData.children and #profData.children > 0
+        local ownedPages = KnownExpansionPages(row._skillLine)
+        local hasChildren = ownedPages and #ownedPages > 0
         local hasSlots = profData and profData.slots and #profData.slots > 0
         if hasChildren then
             sep:ClearAllPoints()
@@ -752,7 +811,8 @@ local function AttachRecipeFilterFlyout(row)
                 slotsOpener:Hide()
             end
             -- Expansion pages: inline radios below Sources (Blizzard's layout).
-            local children = profData.children
+            -- Owned pages only, faction-correct names, resolved live.
+            local children = ownedPages
             local state2 = RecipeFilterState()
             local current = state2.expansion[row._skillLine]
             -- The no-arg GetChildProfessionInfo returns an empty struct even
@@ -764,7 +824,17 @@ local function AttachRecipeFilterFlyout(row)
                and live.parentProfessionID == row._skillLine then
                 current = live.professionID
             end
-            current = current or children[1].professionID
+            -- Reject a stored selection that isn't an OWNED page (e.g. poison
+            -- from the old all-expansions flyout, or an unlearned expansion):
+            -- default to the newest owned page instead of showing nothing.
+            local valid = false
+            for i = 1, #children do
+                if children[i].professionID == current then valid = true break end
+            end
+            if not valid then
+                current = children[1] and children[1].professionID
+                state2.expansion[row._skillLine] = nil
+            end
             for i = 1, #children do
                 local child = children[i]
                 local rr = GetRadioRow(i)

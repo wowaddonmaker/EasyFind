@@ -28,6 +28,180 @@ function Handlers:FinishResultSelection()
     end
 end
 
+-- OpenProfessionUIToSkillLine wants a profession's CHILD skill line -- the
+-- expansion page, e.g. 2912 for Midnight Herbalism -- never the parent (182).
+-- Given the child it opens a fully populated window; given the parent it shows
+-- the frame with no recipe dataProvider, so the list reads "no results with
+-- your current filters" and closing it throws from StoreCollapses.
+--
+-- Derived, never captured: GetAllProfessionTradeSkillLines lists every child
+-- line newest-expansion-first, and GetProfessionInfoBySkillLineID says which
+-- profession each belongs to, so the first match for this profession IS the
+-- current page. (Verified against the two hand-captured values this replaces:
+-- Herbalism 2912 and Enchanting 2874 both sit at the front of that list.)
+-- GetProfessionChildSkillLineID looks like the obvious call but returns 0
+-- until a profession window has been opened, so it cannot be used to open one.
+local function ResolveChildSkillLine(parentSkillLine)
+    local ts = C_TradeSkillUI
+    if not (parentSkillLine and ts and ts.GetAllProfessionTradeSkillLines
+            and ts.GetProfessionInfoBySkillLineID) then
+        return nil
+    end
+    local okParent, parentInfo = pcall(ts.GetProfessionInfoBySkillLineID, parentSkillLine)
+    if not (okParent and type(parentInfo) == "table" and parentInfo.profession) then
+        return nil
+    end
+    local okAll, allLines = pcall(ts.GetAllProfessionTradeSkillLines)
+    if not (okAll and type(allLines) == "table") then return nil end
+    -- That list is every expansion page in the GAME, not the ones this
+    -- character has. Opening a page they never leveled gives a window with no
+    -- recipes to provide -- which is the blank list, and why the two captured
+    -- IDs worked (they name pages that character actually has). So take the
+    -- newest page this character has SKILL in, and only fall back to the
+    -- newest page at all if none of them report skill.
+    local firstMatch
+    for i = 1, #allLines do
+        local lineID = allLines[i]
+        if lineID and lineID ~= parentSkillLine then
+            local okInfo, info = pcall(ts.GetProfessionInfoBySkillLineID, lineID)
+            if okInfo and type(info) == "table" and info.profession == parentInfo.profession then
+                firstMatch = firstMatch or lineID
+                if (info.skillLevel or 0) > 0 then return lineID end
+            end
+        end
+    end
+    return firstMatch
+end
+
+-- Opening a profession COLD is the whole difficulty. Blizzard_Professions
+-- loads on demand, and OpenProfessionUIToSkillLine triggers that load itself,
+-- so the frame can show before its recipe list has a data provider: an empty
+-- list reading "no results with your current filters", and StoreCollapses
+-- throwing on close. Warm, the same skill line opens correctly -- which is how
+-- we know the ID is right and the timing is not.
+--
+-- So load the addon first, then open, then verify the list actually got its
+-- provider and re-issue once if it did not. Same shape as the recipe path's
+-- cold-session retry.
+local function ProfessionListHasData()
+    local frame = _G["ProfessionsFrame"]
+    local list = frame and frame.CraftingPage and frame.CraftingPage.RecipeList
+    local scrollBox = list and list.ScrollBox
+    if not (scrollBox and scrollBox.GetDataProvider) then return nil end
+    local ok, provider = pcall(scrollBox.GetDataProvider, scrollBox)
+    if not ok then return nil end
+    return provider ~= nil
+end
+
+-- Load first so an open call is never also an addon load; the load half of
+-- a combined call is what races the aim (page or recipe selection) away.
+local function EnsureProfessionsLoaded()
+    if C_AddOns and C_AddOns.LoadAddOn and C_AddOns.IsAddOnLoaded
+       and not C_AddOns.IsAddOnLoaded("Blizzard_Professions") then
+        pcall(C_AddOns.LoadAddOn, "Blizzard_Professions")
+    end
+end
+
+local function OpenProfessionPage(openID)
+    local openProf = _G["OpenProfessionUIToSkillLine"]
+    if not openProf then return false end
+    EnsureProfessionsLoaded()
+    pcall(openProf, openID)
+    -- One re-issue if the list came up without data, guarded by an explicit
+    -- false (nil = we could not inspect it, so leave it alone). Recipe data
+    -- is a server round trip, so a next-frame check would always see the
+    -- provider still missing and re-issue into the first open's own init;
+    -- check only after the reply has had time to land, and never re-open a
+    -- window the user already closed.
+    Utils.SafeAfter(0.35, function()
+        local frame = _G["ProfessionsFrame"]
+        if frame and frame:IsShown() and ProfessionListHasData() == false then
+            pcall(openProf, openID)
+        end
+    end)
+    return true
+end
+
+-- The recipe the window is actually displaying, via Blizzard's own accessor
+-- (ProfessionsCrafting.lua reads the same path). nil = no window / no form /
+-- nothing shown.
+local function DisplayedRecipeID()
+    local profFrame = _G["ProfessionsFrame"]
+    local form = profFrame and profFrame.CraftingPage
+        and profFrame.CraftingPage.SchematicForm
+    if not (form and form.GetRecipeInfo) then return nil end
+    local ok, info = pcall(form.GetRecipeInfo, form)
+    return ok and type(info) == "table" and info.recipeID or nil
+end
+
+local function OpenPageOrBook(openID)
+    if openID and OpenProfessionPage(openID) then return end
+    if _G["ToggleProfessionsBook"] then
+        pcall(_G["ToggleProfessionsBook"])
+    end
+end
+
+-- THE profession opener: every profession row funnels through here, one
+-- verify-then-re-aim engine for every target kind. Verified fallbacks, never
+-- fire-and-forget: each aim is checked after the cold-open window (addon
+-- load + server recipe data) has had time to land, and re-aimed at most once.
+--
+-- Recipe rows: OpenRecipe opens the window AND selects the recipe -- but a
+-- COLD first open also loads Blizzard_Professions and lands on the
+-- character's default page, dropping a cross-page selection (a Classic
+-- recipe on a character whose window defaults to a newer page). Warm, the
+-- same call selects fine, so verify what the schematic form shows and
+-- re-issue once.
+--
+-- Parent rows with a secure cast: the cast on the click's own dispatch is
+-- the opener; if no profession window appeared (dud spell), fall back to the
+-- insecure page open. Cast-less parent rows page-open immediately.
+local function OpenProfessionTarget(data)
+    local recipeID = data.professionRecipeID
+    local openRecipe = C_TradeSkillUI and C_TradeSkillUI.OpenRecipe
+    if recipeID and openRecipe then
+        EnsureProfessionsLoaded()
+        pcall(openRecipe, recipeID)
+        -- Cold cross-page verify. No timer guessing: the wait target is
+        -- observable -- the re-aim is safe exactly when the list has its
+        -- data provider (init done, warm-equivalent), so poll fast and
+        -- re-aim the moment it exists instead of after a fixed delay.
+        -- One re-aim only; the remaining ticks just confirm.
+        local tries, reAimed = 0, false
+        local function verify()
+            local profFrame = _G["ProfessionsFrame"]
+            if profFrame and profFrame:IsShown() then
+                if DisplayedRecipeID() == recipeID then return end
+                if not reAimed and ProfessionListHasData() then
+                    reAimed = true
+                    pcall(openRecipe, recipeID)
+                end
+            end
+            tries = tries + 1
+            if tries < 15 then Utils.SafeAfter(0.1, verify) end
+        end
+        Utils.SafeAfter(0.1, verify)
+        return
+    end
+    -- The shipped childSkillLine is whatever page the CAPTURING character
+    -- had (Tailoring was captured on a Zandalari-capped alt), so the live
+    -- resolver -- THIS character's newest leveled page -- outranks it and
+    -- the captured value is only the no-API fallback.
+    local openID = ResolveChildSkillLine(data.professionSkillLine) or data.professionOpenID
+    if data.spellID then
+        Utils.SafeAfter(0.8, function()
+            local profFrame = _G["ProfessionsFrame"]
+            if profFrame and profFrame:IsShown() then return end
+            -- Archaeology's cast opens its own frame, not ProfessionsFrame.
+            local archFrame = _G["ArchaeologyFrame"]
+            if archFrame and archFrame:IsShown() then return end
+            OpenPageOrBook(openID)
+        end)
+        return
+    end
+    OpenPageOrBook(openID)
+end
+
 function Handlers:SelectResult(data, forceGuide)
     if not data then return end
     -- The search UI is dormant in combat, so no user path reaches this;
@@ -91,39 +265,14 @@ function Handlers:SelectResult(data, forceGuide)
 
 
 
-    -- Profession row: ONE canonical opener, like every other panel.
-    -- OpenRecipe loads/opens the window AND selects the recipe in one call;
-    -- driving OpenProfessionUIToSkillLine first double-initialized the list
-    -- (StoreCollapses indexed a nil dataProvider on close). The child-page
-    -- open stands alone for profession rows; the book is the last fallback.
+    -- Profession row: OpenProfessionTarget is the ONE owner of profession
+    -- opening -- recipe aim, secure-cast verify, page fallback, and the
+    -- cold-open re-aim engine all live there. Never open a profession
+    -- surface from anywhere else; driving OpenProfessionUIToSkillLine on top
+    -- of another opener double-initialized the list (StoreCollapses indexed
+    -- a nil dataProvider on close).
     if data.professionSkillLine then
-        local recipeID = data.professionRecipeID
-        local openRecipe = C_TradeSkillUI and C_TradeSkillUI.OpenRecipe
-        if recipeID and openRecipe then
-            pcall(openRecipe, recipeID)
-            return
-        end
-        local openProf = _G["OpenProfessionUIToSkillLine"]
-        if openProf and data.professionOpenID then
-            pcall(openProf, data.professionOpenID)
-            if recipeID then
-                -- Cold session: OpenRecipe materializes once the window's
-                -- addon loads; select the recipe as soon as it exists.
-                local tries = 0
-                local function selectRecipe()
-                    local fn = C_TradeSkillUI and C_TradeSkillUI.OpenRecipe
-                    if fn then
-                        pcall(fn, recipeID)
-                        return
-                    end
-                    tries = tries + 1
-                    if tries < 20 then Utils.SafeAfter(0.2, selectRecipe) end
-                end
-                Utils.SafeAfter(0.2, selectRecipe)
-            end
-        elseif _G["ToggleProfessionsBook"] then
-            pcall(_G["ToggleProfessionsBook"])
-        end
+        OpenProfessionTarget(data)
         return
     end
 

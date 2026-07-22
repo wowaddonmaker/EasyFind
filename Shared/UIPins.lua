@@ -51,6 +51,11 @@ local SIMPLE_FIELDS = {
     -- Keybind toggle rows: bindingAction performs the action cold; customToggle
     -- marks the EasyFind-owned single-action rows (left-click only).
     "bindingAction", "customToggle",
+    -- Profession rows: spellName arms the secure cast-to-open; the skill line
+    -- and IDs drive SelectResult's opener tiering for recipe and cast-less
+    -- rows. Absent, a restored profession row falls through every branch.
+    -- professionName is the row's subtext (the profession, e.g. "Inscription").
+    "spellName", "professionSkillLine", "professionName", "professionOpenID", "professionRecipeID",
 }
 
 local TABLE_FIELDS = {

@@ -132,5 +132,12 @@ function Text:GetFlatSubtext(data)
     if data.category == "Ability" and data.treeName and data.treeName ~= "" then
         return sformat(L["SUBTEXT_TREE_ABILITY"], data.treeName)
     end
+    -- Recipe rows show their PROFESSION name (e.g. "Inscription"), which
+    -- disambiguates same-named recipes across professions. Parent profession
+    -- rows have no professionRecipeID and keep the generic category, since
+    -- their main text is already the profession name.
+    if data.professionRecipeID then
+        return data.professionName or data.category or ""
+    end
     return data.category or ""
 end
