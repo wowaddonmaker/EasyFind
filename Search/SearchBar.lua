@@ -2406,6 +2406,16 @@ function Search:UpdateFontSize()
             searchFrame.editBox.placeholder:SetTextColor(theme.textFaint[1], theme.textFaint[2], theme.textFaint[3], 1)
         end
     end
+    -- The quick-filter pill (@filter chip) follows the theme's control fill
+    -- and the bar's scaled/custom font, so it rides this pass instead of
+    -- keeping the previous theme's colors after a live flip.
+    local quickFilterPill = searchFrame.quickFilterPill
+    if quickFilterPill then
+        ns.SetRoundedRectFill(quickFilterPill, ns.BTN_FILL_NORMAL[1], ns.BTN_FILL_NORMAL[2], ns.BTN_FILL_NORMAL[3], 1, true)
+        if quickFilterPill.text then
+            Search:ScaleFont(quickFilterPill.text, "GameFontHighlightSmall")
+        end
+    end
     -- Chrome glyphs (spyglass, filter arrow) flip polarity with the theme;
     -- content icons (ability art, category icons) are never tinted. The
     -- arrow's ADD blend washes out on light fills, so it blends normally

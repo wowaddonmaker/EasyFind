@@ -27,13 +27,14 @@ local wipe = wipe
 local CreateFrame = CreateFrame
 local GameTooltip = GameTooltip
 local GameTooltip_Hide = GameTooltip_Hide
-local GOLD_COLOR = ns.GOLD_COLOR
 local GetUIBucket = Filters.GetUIBucket
 
 Filters.quickFilterOptions = {
     { key = "abilities",      canonical = "abilities",       label = _G["ABILITIES"] or "Abilities",       categories = { "Ability" }, aliases = { "ab", "ability", "abilities", "spell", "spells" } },
     { key = "achievements",   canonical = "achievements",    label = _G["ACHIEVEMENTS"] or "Achievements",    categories = { "Achievement", "Achievements", "Achievement Category", "Guild Achievements" }, aliases = { "a", "ach", "achievement", "achievements" } },
     { key = "statistics",     canonical = "statistics",      label = _G["STATISTICS"] or "Statistics",      categories = { "Statistic", "Statistics" }, aliases = { "s", "stat", "stats", "statistic", "statistics" } },
+    { key = "items",          canonical = "items",           label = _G["ITEMS"] or "Items",          categories = { "Item", "Bag", "Bank" }, aliases = { "i", "item", "items" } },
+    { key = "catalog",        canonical = "cat",             label = L["FILTER_GENERAL_CATALOG"],      categories = { "Item" }, aliases = { "catalog" } },
     { key = "bags",           canonical = "bags",            label = _G["BAGS"] or "Bags",            categories = { "Bag" }, aliases = { "b", "bag", "bags" } },
     { key = "bosses",         canonical = "bosses",          label = _G["RAID_BOSSES"] or "Bosses",          categories = { "Boss" }, aliases = { "bo", "boss", "bosses", "encounter", "encounters" } },
     { key = "macros",         canonical = "macros",          label = _G["MACROS"] or "Macros",          categories = { "Macro" }, aliases = { "ma", "macro", "macros" } },
@@ -274,14 +275,14 @@ function Filters:CreateQuickFilterPill(frame, editBox, iconHolder, filterBtn)
     ns.SetRoundedRectBarHeight(pill, 10)
     ns.SetRoundedRectBorderBgAlpha(pill, 1)
     self:HideQuickFilterPillBorder(pill)
-    self:SetQuickFilterPillFill(pill, 0.095, 0.095, 0.108, 1)
+    self:SetQuickFilterPillFill(pill, ns.BTN_FILL_NORMAL[1], ns.BTN_FILL_NORMAL[2], ns.BTN_FILL_NORMAL[3], 1)
 
     local text = pill:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     text:SetPoint("LEFT", 8, 0)
     text:SetPoint("RIGHT", -8, 0)
     text:SetJustifyH("CENTER")
     text:SetWordWrap(false)
-    text:SetTextColor(Utils.RGB(GOLD_COLOR, 1))
+    text:SetTextColor(1, 1, 1, 1)
     pill.text = text
 
     pill:SetScript("OnClick", function()
@@ -292,14 +293,14 @@ function Filters:CreateQuickFilterPill(frame, editBox, iconHolder, filterBtn)
         end
     end)
     pill:SetScript("OnEnter", function(self)
-        Search:SetQuickFilterPillFill(self, 0.155, 0.155, 0.172, 1)
+        Search:SetQuickFilterPillFill(self, ns.BTN_FILL_HOVER[1], ns.BTN_FILL_HOVER[2], ns.BTN_FILL_HOVER[3], 1)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
         GameTooltip:SetText(L["QUICK_FILTER"])
         GameTooltip:AddLine(L["QUICK_FILTER_TT"], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     pill:SetScript("OnLeave", function(self)
-        Search:SetQuickFilterPillFill(self, 0.095, 0.095, 0.108, 1)
+        Search:SetQuickFilterPillFill(self, ns.BTN_FILL_NORMAL[1], ns.BTN_FILL_NORMAL[2], ns.BTN_FILL_NORMAL[3], 1)
         GameTooltip_Hide()
     end)
     pill:Hide()

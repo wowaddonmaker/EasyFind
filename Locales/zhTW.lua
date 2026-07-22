@@ -349,6 +349,7 @@ L["FILTER_TOGGLE_ALL"]                  = "全部切換"
 L["FILTER_HIDE_TOOLTIPS"]               = "隱藏提示"
 L["FILTER_EXCLUDE_JUNK"]                = "排除垃圾"
 L["FILTER_COMMANDS"]                    = "命令"
+L["FILTER_GENERAL_CATALOG"]             = "綜合目錄"
 L["FILTER_EXTRA"]                       = "額外"
 
 -- MapTab labels and tooltips

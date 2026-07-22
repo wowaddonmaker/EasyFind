@@ -349,6 +349,7 @@ L["FILTER_TOGGLE_ALL"]                  = "Переключить все"
 L["FILTER_HIDE_TOOLTIPS"]               = "Скрыть подсказки"
 L["FILTER_EXCLUDE_JUNK"]                = "Скрыть хлам"
 L["FILTER_COMMANDS"]                    = "Команды"
+L["FILTER_GENERAL_CATALOG"]             = "Общий каталог"
 L["FILTER_EXTRA"]                       = "Прочее"
 
 -- MapTab labels and tooltips

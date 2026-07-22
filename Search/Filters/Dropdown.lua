@@ -375,6 +375,10 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                         subIcon:SetAtlas(sub.iconAtlas)
                     else
                         subIcon:SetTexture(sub.iconTex)
+                        if sub.iconCoords then
+                            subIcon:SetTexCoord(sub.iconCoords[1], sub.iconCoords[2],
+                                                sub.iconCoords[3], sub.iconCoords[4])
+                        end
                     end
                     if sub.iconColor then
                         subIcon:SetVertexColor(unpack(sub.iconColor))

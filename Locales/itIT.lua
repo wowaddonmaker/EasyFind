@@ -349,6 +349,7 @@ L["FILTER_TOGGLE_ALL"]                  = "Attiva/disattiva tutto"
 L["FILTER_HIDE_TOOLTIPS"]               = "Nascondi descrizioni"
 L["FILTER_EXCLUDE_JUNK"]                = "Escludi cianfrusaglie"
 L["FILTER_COMMANDS"]                    = "Comandi"
+L["FILTER_GENERAL_CATALOG"]             = "Catalogo generale"
 L["FILTER_EXTRA"]                       = "Extra"
 
 -- MapTab labels and tooltips

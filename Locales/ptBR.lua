@@ -349,6 +349,7 @@ L["FILTER_TOGGLE_ALL"]                  = "Alternar tudo"
 L["FILTER_HIDE_TOOLTIPS"]               = "Ocultar dicas"
 L["FILTER_EXCLUDE_JUNK"]                = "Excluir lixo"
 L["FILTER_COMMANDS"]                    = "Comandos"
+L["FILTER_GENERAL_CATALOG"]             = "Catálogo geral"
 L["FILTER_EXTRA"]                       = "Extra"
 
 -- MapTab labels and tooltips

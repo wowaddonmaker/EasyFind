@@ -27,7 +27,11 @@ local ENTRIES = {
     { key = "statistics",      categories = { "Statistic", "Statistics" },
                                explicitFlag = "statistics" },
     { key = "bosses",          categories = { "Boss" }, explicitFlag = "bosses" },
-    { key = "bags",            categories = { "Bag" } },
+    -- items is the umbrella gate; its children carry the real categories.
+    { key = "items",           categories = {} },
+    { key = "catalog",         parent = "items", categories = { "Item" } },
+    { key = "bags",            parent = "items", categories = { "Bag" } },
+    { key = "bank",            parent = "items", categories = { "Bank" } },
     { key = "titles",          categories = { "Title" } },
     { key = "gearSets",        categories = { "Gear Set" } },
     { key = "commands",        categories = { "Command" } },

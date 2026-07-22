@@ -349,6 +349,7 @@ L["FILTER_TOGGLE_ALL"]                  = "전체 전환"
 L["FILTER_HIDE_TOOLTIPS"]               = "툴팁 숨기기"
 L["FILTER_EXCLUDE_JUNK"]                = "잡템 제외"
 L["FILTER_COMMANDS"]                    = "명령어"
+L["FILTER_GENERAL_CATALOG"]             = "전체 목록"
 L["FILTER_EXTRA"]                       = "추가"
 
 -- MapTab labels and tooltips

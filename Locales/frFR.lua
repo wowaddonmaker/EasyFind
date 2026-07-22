@@ -349,6 +349,7 @@ L["FILTER_TOGGLE_ALL"]                  = "Tout basculer"
 L["FILTER_HIDE_TOOLTIPS"]               = "Masquer les infobulles"
 L["FILTER_EXCLUDE_JUNK"]                = "Exclure la camelote"
 L["FILTER_COMMANDS"]                    = "Commandes"
+L["FILTER_GENERAL_CATALOG"]             = "Catalogue général"
 L["FILTER_EXTRA"]                       = "Extra"
 
 -- MapTab labels and tooltips

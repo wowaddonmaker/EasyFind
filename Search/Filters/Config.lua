@@ -40,12 +40,15 @@ local UI_FILTER_OPTIONS = {
       } },
     { key = "statistics",  label = _G["STATISTICS"] or "Statistics",  iconTex = 1121272,
       iconCoords = { 0.2030, 0.2397, 0.6641, 0.6921 } },
-    { key = "bags",        label = _G["BAGSLOT"] or _G["BAGS"] or "Bags",        iconAtlas = "bag-main",
-      flyoutRadio = {
-          checkboxes = {
-              { dbKey = "bagHideJunk", label = L["FILTER_EXCLUDE_JUNK"] },
-              { dbKey = "hideTooltips.bags", label = L["FILTER_HIDE_TOOLTIPS"] },
-          },
+    -- Items: the full game item catalog is the default ("everything else").
+    -- Bags and Bank are owned-item overlays nested under it -- turning Items
+    -- off hides all three; turning a child off drops just that overlay while
+    -- the catalog still shows.
+    { key = "items",       label = _G["ITEMS"] or "Items",        iconTex = 133633,
+      flyoutSubFilters = {
+          { key = "catalog", label = L["FILTER_GENERAL_CATALOG"], iconTex = 1121272, iconCoords = { 0.3783, 0.4072, 0.9066, 0.9350 } },
+          { key = "bags", label = _G["BAGSLOT"] or _G["BAGS"] or "Bags", iconAtlas = "bag-main" },
+          { key = "bank", label = _G["BANK"] or "Bank",                  iconTex = 133490 },
       } },
     -- Bosses: EJ overview tab icon from texture 522972.
     { key = "bosses",      label = _G["RAID_BOSSES"] or "Bosses",      iconTex = 522972,

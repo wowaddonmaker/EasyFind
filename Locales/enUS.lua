@@ -380,6 +380,7 @@ L["FILTER_TOGGLE_ALL"]                  = "Toggle All"
 L["FILTER_HIDE_TOOLTIPS"]               = "Hide tooltips"
 L["FILTER_EXCLUDE_JUNK"]                = "Exclude junk"
 L["FILTER_COMMANDS"]                    = "Commands"
+L["FILTER_GENERAL_CATALOG"]             = "General Catalog"
 L["FILTER_EXTRA"]                       = "Extra"
 
 -- =============================================================================
