@@ -64,6 +64,17 @@ function Rows.InstallTooltips(resultRow)
             GameTooltip:Show()
             return
         end
+        -- Catalog item rows: the item's own tooltip by ID.
+        if self.data and self.data.catalogItem then
+            local ht = EasyFind.db.hideTooltips
+            if ht and ht.items then return end
+            AnchorRowTooltip(GameTooltip, self)
+            if GameTooltip.SetItemByID then
+                GameTooltip:SetItemByID(self.data.itemID)
+            end
+            GameTooltip:Show()
+            return
+        end
         -- Macro rows: resolve the #showtooltip / first cast/use line to a
         -- spell or item via the macro APIs and surface that tooltip. Falls
         -- back to displaying the macro body when neither resolves.

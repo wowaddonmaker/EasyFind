@@ -72,6 +72,8 @@ Search/Filters/AppearanceSets.lua
 Search/Filters/AppearanceItemOptions.lua
 Search/Filters/GearOptions.lua
 Database/ProfessionData.lua
+Database/ItemData.lua
+Search/ItemSearch.lua
 Search/Filters/HousingOptions.lua
 Search/Filters/ProfessionOptions.lua
 Search/Filters/Dropdown.lua

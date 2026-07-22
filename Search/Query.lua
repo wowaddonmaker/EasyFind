@@ -428,6 +428,25 @@ function Search:OnSearchTextChanged(text, force)
     if mapResults then
         for ri = 1, #mapResults do combined[#combined + 1] = mapResults[ri] end
     end
+    -- Catalog items: the full game item DB (Search/ItemSearch.lua scans the
+    -- packed blob). Appended BEFORE the sort/cap so they compete for the
+    -- TOP_N slots by the same ScoreName relevance rather than flooding past
+    -- it. Gated on the General Catalog sub-filter (@cat, or its @items
+    -- umbrella parent); IsProviderFilterOff walks the items-parent cascade
+    -- so unchecking Items hides all three overlays. English-primary; display
+    -- name and icon resolve live at render.
+    if not calculatorData and not calculatorLauncher and text ~= "" and ns.ItemSearch
+       and ns.Database and ns.Database.ScoreName
+       and ((quickFilter and (quickFilter.key == "items" or quickFilter.key == "catalog"))
+            or (not quickFilter and (not filters
+                 or not ns.CategoryMap.IsProviderFilterOff(filters, "catalog")))) then
+        local itemHits = ns.ItemSearch:Search(text, function(nameLower, ql, qLen)
+            return ns.Database:ScoreName(nameLower, ql, qLen)
+        end)
+        if itemHits then
+            for ii = 1, #itemHits do combined[#combined + 1] = itemHits[ii] end
+        end
+    end
     if #combined > 1 then tsort(combined, FlatNameLess) end
 
     -- Hard cap on visible results. The scoring step already ranks by

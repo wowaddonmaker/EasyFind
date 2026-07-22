@@ -144,7 +144,10 @@ local FLAT_CATEGORY_ICONS = {
     heirloom      = { tex = 133877 },
     appearanceSet = { tex = "Interface\\Icons\\INV_Helmet_03" },
     currency      = { tex = 136452 },  -- Same coin/AH glyph the map uses
-    reputation    = { tex = 1121272, coords = { 0.3783, 0.4072, 0.9066, 0.9350 } },
+    -- Catalog items reuse the crest the reputation category used to carry.
+    item          = { tex = 1121272, coords = { 0.3783, 0.4072, 0.9066, 0.9350 } },
+    -- Reputation now gets its own banner/flag glyph.
+    reputation    = { tex = "Interface\\Icons\\INV_BannerPVP_02" },
     statistic     = { tex = 1121272, coords = { 0.2030, 0.2397, 0.6641, 0.6921 } },
     map           = { tex = 1121272, coords = { 0.4287, 0.4645, 0.2580, 0.2932 } },
     -- Ability / boss: matches the filter-menu icons (boss tab + overview tab
@@ -184,7 +187,7 @@ end
 local REP_FACTION_ICONS = {
     alliance = { tex = 1121272, coords = { 0.4740, 0.5055, 0.8371, 0.8706 } },
     horde    = { tex = 1121272, coords = { 0.4743, 0.5058, 0.8707, 0.9042 } },
-    either   = { tex = 1121272, coords = { 0.3783, 0.4072, 0.9066, 0.9350 } },
+    either   = { tex = "Interface\\Icons\\INV_BannerPVP_02" },
 }
 
 function Icons:GetFlatCategoryIcon(data)
@@ -208,6 +211,8 @@ function Icons:GetFlatCategoryIcon(data)
         if key == "toys" then return FLAT_CATEGORY_ICONS.toy end
         if key == "gearSets" then return FLAT_CATEGORY_ICONS.gearSet end
         if key == "currencies" then return FLAT_CATEGORY_ICONS.currency end
+        if key == "items" then return FLAT_CATEGORY_ICONS.item end
+        if key == "catalog" then return FLAT_CATEGORY_ICONS.item end
         if key == "loot" then return FLAT_CATEGORY_ICONS.loot end
         if key == "housing" then return FLAT_CATEGORY_ICONS.housing end
         if key == "map" then return FLAT_CATEGORY_ICONS.map end
@@ -229,6 +234,7 @@ function Icons:GetFlatCategoryIcon(data)
     if data.encounterID and data.category == "Boss" then return FLAT_CATEGORY_ICONS.boss end
     if data.macroIndex and data.category == "Macro" then return FLAT_CATEGORY_ICONS.macro end
     if data.bagID and data.category == "Bag" then return FLAT_CATEGORY_ICONS.bag end
+    if data.catalogItem then return FLAT_CATEGORY_ICONS.item end
     if data.itemID and data.category == "Loot" then return FLAT_CATEGORY_ICONS.loot end
     if data.category == "Game Settings" then return FLAT_CATEGORY_ICONS.setting end
     if data.category == "AddOn Settings" then return FLAT_CATEGORY_ICONS.settingAddon end

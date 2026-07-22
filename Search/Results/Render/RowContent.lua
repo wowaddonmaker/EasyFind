@@ -427,6 +427,81 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
         Render.SetClippedText(resultRow.text, entry.name)
         iconSet = true
 
+    -- Catalog items (the full game item DB). LEFT: the Item category glyph.
+    -- RIGHT: the item's own icon. Middle: quality-colored name. Icon and name
+    -- resolve live from the itemID (the shipped blob stores neither).
+    elseif not iconSet and data and data.catalogItem then
+        resultRow.amountText:Hide()
+        resultRow.iconCooldown:Hide()
+        local id = data.itemID
+
+        -- LEFT category icon (the shared Item glyph).
+        local indentPixels = depth * indPx
+        local leftAnchor
+        local catIconDef = Icons:GetFlatCategoryIcon(data)
+        if catIconDef and resultRow.flatCatIcon then
+            local sz = entry.isFlat and (entryRowH - 16) or rowIconSize
+            if catIconDef.atlas then
+                resultRow.flatCatIcon:SetAtlas(catIconDef.atlas)
+            else
+                resultRow.flatCatIcon:SetTexture(catIconDef.tex)
+                if catIconDef.coords then
+                    resultRow.flatCatIcon:SetTexCoord(catIconDef.coords[1], catIconDef.coords[2],
+                                                      catIconDef.coords[3], catIconDef.coords[4])
+                else
+                    resultRow.flatCatIcon:SetTexCoord(0, 1, 0, 1)
+                end
+            end
+            resultRow.flatCatIcon:SetVertexColor(1, 1, 1, 1)
+            resultRow.flatCatIcon:SetSize(sz, sz)
+            resultRow.flatCatIcon:ClearAllPoints()
+            resultRow.flatCatIcon:SetPoint("LEFT", resultRow, "LEFT", indentPixels, 0)
+            resultRow.flatCatIcon:Show()
+            leftAnchor = resultRow.flatCatIcon
+        end
+
+        -- RIGHT: the item's own icon.
+        local itemIcon = C_Item and C_Item.GetItemIconByID and C_Item.GetItemIconByID(id)
+        if itemIcon then
+            resultRow.icon:SetTexture(nil)
+            resultRow.icon:SetTexCoord(0, 1, 0, 1)
+            resultRow.icon:SetVertexColor(1, 1, 1, 1)
+            resultRow.icon:SetTexture(itemIcon)
+            resultRow.icon:SetSize(rowIconSize, rowIconSize)
+            resultRow.icon:ClearAllPoints()
+            resultRow.icon:SetPoint("RIGHT", resultRow, "RIGHT", -5, 0)
+            resultRow.icon:Show()
+            Icons.ClearRowIconLeafIDs(resultRow.icon)
+            resultRow.icon.catalogItemID = id
+        else
+            Icons:SetRowIcon(resultRow, "hidden", nil, rowIconSize)
+        end
+
+        -- Name -- NEVER blank. GetItemInfo/GetItemNameByID return nil OR an
+        -- empty string for an uncached item ("" is truthy in Lua), so guard
+        -- every source against "", and fall back to the shipped blob name and
+        -- finally a visible "Item #id" so a resolution failure is diagnosable,
+        -- not an empty row.
+        local displayName
+        if GetItemInfo then displayName = GetItemInfo(id) end
+        if (not displayName or displayName == "") and C_Item and C_Item.GetItemNameByID then
+            displayName = C_Item.GetItemNameByID(id)
+        end
+        if not displayName or displayName == "" then displayName = data.nameLower or entry.name end
+        if not displayName or displayName == "" then displayName = "Item #" .. tostring(id) end
+        local qc = data.quality and _G["ITEM_QUALITY_COLORS"] and _G["ITEM_QUALITY_COLORS"][data.quality]
+        if qc and qc.hex then displayName = qc.hex .. displayName .. "|r" end
+
+        resultRow.text:ClearAllPoints()
+        if leftAnchor then
+            resultRow.text:SetPoint("LEFT", leftAnchor, "RIGHT", 4, 0)
+        else
+            resultRow.text:SetPoint("LEFT", resultRow, "LEFT", indentPixels + 4, 0)
+        end
+        resultRow.text:SetPoint("RIGHT", resultRow.icon, "LEFT", -4, 0)
+        resultRow.text:SetText(displayName)
+        iconSet = true
+
     -- Loot items: icon on right with source name inline
     elseif not iconSet and data and data.itemID and data.category == "Loot" then
         local iconFileID = data.icon

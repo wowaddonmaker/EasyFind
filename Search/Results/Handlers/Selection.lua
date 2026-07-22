@@ -216,6 +216,22 @@ function Handlers:SelectResult(data, forceGuide)
         return
     end
 
+    -- Catalog item: link into an open chat box if there is one, else try it on
+    -- in the dressing room (equippable), else leave the tooltip as the answer.
+    -- Never navigates -- catalog rows are a lookup, and keep the results open.
+    if data.catalogItem then
+        local link = C_Item and C_Item.GetItemInfo and select(2, C_Item.GetItemInfo(data.itemID))
+        if link then
+            local chatBox = ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow()
+            if chatBox and chatBox:IsShown() then
+                chatBox:Insert(link)
+            elseif DressUpItemLink then
+                DressUpItemLink(link)
+            end
+        end
+        return
+    end
+
     if data.searchCommand then
         -- Dismiss the bar like any other selection before running the command,
         -- so /reset etc. don't leave the (now empty) bar lingering on screen.
