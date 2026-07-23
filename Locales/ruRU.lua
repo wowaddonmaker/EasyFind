@@ -304,6 +304,8 @@ L["IMPORT_SYSCMD_WARN"]                 = "Внимание: %d быстрых �
 L["CTX_GUIDE"]                          = "Указатель"
 L["CTX_WOWHEAD"]                        = "Wowhead"
 L["CTX_SEND_LINK"]                      = "Отправить ссылку"
+L["CTX_ADD_NOTE"]                       = "Добавить в заметку"
+L["CTX_NEW_NOTE"]                       = "Новая заметка"
 L["CTX_SEND_LINK_NAME"]                 = "По имени..."
 L["CTX_SEND_LINK_NAME_PROMPT"]          = "Какому игроку шепнуть ссылку?"
 L["CTX_SEND_LINK_CLIPBOARD"]            = "Буфер обмена"
@@ -393,6 +395,8 @@ L["TAB_NOT_ON_CHARACTER"]               = "Этой вкладки еще нет
 -- Misc singletons
 L["BTN_GOT_IT"]                         = "Понятно!"
 L["CURRENCY_NOT_EARNED"]                = "Валюта еще не получена"
+L["ACHIEVEMENT_SERIES"]                 = "Серия достижений"
+L["FILTER_QUALITY_FORMAT"]              = "Качество: %s"
 L["TOOLTIP_RESULT_LOCKED"]              = "Откроется на более высоком уровне"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "Этот раздел пока недоступен для этого персонажа."
 L["CALC_COPY_HINT"]                     = "Ctrl+C, чтобы скопировать"
@@ -504,6 +508,7 @@ L["HINT_OPEN_TRANSMOG"]                 = "Трансмогрификация"
 L["HINT_EQUIP_GEAR_SET"]                = "Экипировать"
 L["HINT_OPEN_MAP"]                      = "Открыть карту"
 L["HINT_PIN_ON_MAP"]                    = "Метка на карте"
+L["HINT_CLICK_DRAG"]                    = "Клик или перетаскивание"
 
 -- =============================================================================
 -- POI names (Database/StaticLocations.lua)

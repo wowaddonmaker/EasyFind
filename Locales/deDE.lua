@@ -306,6 +306,8 @@ L["IMPORT_SYSCMD_WARN"]                 = "Achtung: %d Tastenkürzel belegen ein
 L["CTX_GUIDE"]                          = "Anleitung"
 L["CTX_WOWHEAD"]                        = "Wowhead"
 L["CTX_SEND_LINK"]                      = "Link senden"
+L["CTX_ADD_NOTE"]                       = "Zu Notiz hinzufügen"
+L["CTX_NEW_NOTE"]                       = "Neue Notiz"
 L["CTX_SEND_LINK_NAME"]                 = "Nach Name..."
 L["CTX_SEND_LINK_NAME_PROMPT"]          = "Den Link welchem Spieler zuflüstern?"
 L["CTX_SEND_LINK_CLIPBOARD"]            = "Zwischenablage"
@@ -395,6 +397,8 @@ L["TAB_NOT_ON_CHARACTER"]               = "Dieser Tab existiert auf diesem Chara
 -- Misc singletons
 L["BTN_GOT_IT"]                         = "Verstanden!"
 L["CURRENCY_NOT_EARNED"]                = "Währung noch nicht verdient"
+L["ACHIEVEMENT_SERIES"]                 = "Erfolgsreihe"
+L["FILTER_QUALITY_FORMAT"]              = "Qualität: %s"
 L["TOOLTIP_RESULT_LOCKED"]              = "Wird auf einer höheren Stufe freigeschaltet"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "Dieser Bereich ist für diesen Charakter noch nicht verfügbar."
 L["CALC_COPY_HINT"]                     = "Strg+C zum Kopieren"
@@ -506,6 +510,7 @@ L["HINT_OPEN_TRANSMOG"]                 = "Transmogfenster öffnen"
 L["HINT_EQUIP_GEAR_SET"]                = "Ausrüstungsset anlegen"
 L["HINT_OPEN_MAP"]                      = "Karte öffnen"
 L["HINT_PIN_ON_MAP"]                    = "Auf Karte markieren"
+L["HINT_CLICK_DRAG"]                    = "Klicken oder ziehen"
 
 -- =============================================================================
 -- POI names (Database/StaticLocations.lua)

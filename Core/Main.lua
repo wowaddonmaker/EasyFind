@@ -219,6 +219,8 @@ local DB_DEFAULTS = {
     currencyFilterMode = "all",
     reputationFilterMode = "all",
     achievementFilterMode = "all",
+    catalogQualityTier = 0,        -- 0 = all crafting tiers, else keep only 1/2/3
+    catalogTypeFilters = {},       -- per-type-bucket enable; absent/true = shown
     hideAchievementHeaders = true,
     hideGuildAchievements = true,
     showLegacyReputations = false,

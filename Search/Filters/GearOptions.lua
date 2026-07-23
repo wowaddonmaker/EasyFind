@@ -17,7 +17,6 @@ function Filters:AttachLootOptionsFlyout(row, dropdown, ctx)
     local ROW_HEIGHT = ctx.rowHeight
     local CHECK_SIZE = ctx.checkSize
     local StylePopup = ctx.StylePopup
-    local CreateRadioTexture = ctx.CreateRadioTexture
     local AddPopupKeyboardNav = ctx.AddPopupKeyboardNav
     local SetActiveFlyout = ctx.SetActiveFlyout
     local ClearActiveFlyout = ctx.ClearActiveFlyout
@@ -79,124 +78,35 @@ function Filters:AttachLootOptionsFlyout(row, dropdown, ctx)
     lootSep:SetColorTexture(0.5, 0.5, 0.5, 0.4)
     row.lootSep = lootSep
 
-    -- Difficulty dropdown (single-select, matches EJ style)
+    -- Difficulty dropdown bar via the shared single-select template, so it is
+    -- pixel- and width-identical to the class/spec selector below it and to the
+    -- catalog quality bar.
     local DIFF_OPTIONS = {
-        { key = "lfr",    label = _G["RAID_FINDER"] or "Raid Finder" },
-        { key = "normal", label = _G["PLAYER_DIFFICULTY1"] or "Normal" },
-        { key = "heroic", label = _G["PLAYER_DIFFICULTY2"] or "Heroic" },
-        { key = "mythic", label = _G["PLAYER_DIFFICULTY6"] or "Mythic" },
-    }
-    local DIFF_LABELS = {
-        lfr = _G["RAID_FINDER"] or "Raid Finder",
-        normal = _G["PLAYER_DIFFICULTY1"] or "Normal",
-        heroic = _G["PLAYER_DIFFICULTY2"] or "Heroic",
-        mythic = _G["PLAYER_DIFFICULTY6"] or "Mythic",
+        { value = "lfr",    label = _G["RAID_FINDER"] or "Raid Finder" },
+        { value = "normal", label = _G["PLAYER_DIFFICULTY1"] or "Normal" },
+        { value = "heroic", label = _G["PLAYER_DIFFICULTY2"] or "Heroic" },
+        { value = "mythic", label = _G["PLAYER_DIFFICULTY6"] or "Mythic" },
     }
 
-    local diffBtn = CreateFrame("Button", nil, lootOptionsPopup)
-    diffBtn:SetSize(LOOT_POPUP_WIDTH - LOOT_POPUP_PAD * 2, 27)
-    local diffBg = diffBtn:CreateTexture(nil, "BACKGROUND")
-    ns.Utils.StyleDropdownBg(diffBg)
-    local diffArrow = diffBtn:CreateTexture(nil, "OVERLAY")
-    diffArrow:SetAtlas("common-dropdown-a-button-hover")
-    diffArrow:SetSize(22, 22)
-    diffArrow:SetPoint("RIGHT", -10, -1)
-    -- Dark textholder pill on every theme: light-on-dark scheme, no
-    -- theme tints (see Utils.CreateDropdownButton).
-    diffArrow:SetVertexColor(0.7, 0.7, 0.7)
-    local diffText = diffBtn:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-    diffText:SetShadowColor(0, 0, 0, 0)
-    diffText:SetPoint("LEFT", 14, 0)
-    diffText:SetPoint("RIGHT", diffArrow, "LEFT", -2, 0)
-    diffText:SetJustifyH("LEFT")
-    diffText:SetWordWrap(false)
-    diffText._efOwnColor = true
-    diffText:SetTextColor(1, 1, 1)
-    diffBtn:SetScript("OnEnter", function()
-        diffArrow:SetVertexColor(1, 1, 1)
-    end)
-    diffBtn:SetScript("OnLeave", function()
-        diffArrow:SetVertexColor(0.7, 0.7, 0.7)
-    end)
-    diffBtn._label = diffText
-    diffBtn._chev = diffArrow
-
-    local function UpdateDiffLabel()
-        local key = EasyFind.db.lootDifficulty or "normal"
-        diffText:SetText(DIFF_LABELS[key] or _G["PLAYER_DIFFICULTY1"] or "Normal")
-    end
-
-    -- Difficulty popup menu
-    local diffPopup = CreateFrame("Frame", "EasyFindDiffPopup", UIParent, "BackdropTemplate")
-    diffPopup:SetFrameStrata("TOOLTIP")
-    diffPopup:SetFrameLevel(lootOptionsPopup:GetFrameLevel() + 20)
-    StylePopup(diffPopup)
-    diffPopup:EnableMouse(true)
-    diffPopup:Hide()
-
-    local diffPopupRows = {}
-    local diffRowLead
-    local py = -6
-    for _, def in ipairs(DIFF_OPTIONS) do
-        local dRow = CreateFrame("Button", nil, diffPopup)
-        dRow:SetSize(130, 20)
-        dRow:SetPoint("TOPLEFT", 8, py)
-        local radio, setRadioChecked = CreateRadioTexture(dRow)
-        radio:SetPoint("LEFT", 0, 0)
-        diffRowLead = diffRowLead or (radio:GetWidth() + 4)
-        local dLabel = dRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-        dLabel:SetShadowColor(0, 0, 0, 0)
-        dLabel:SetPoint("LEFT", radio, "RIGHT", 4, 0)
-        dLabel:SetText(def.label)
-        dRow._label = dLabel
-        InstallMenuRowHighlight(dRow)
-        dRow._diffKey = def.key
-        dRow._setRadioChecked = setRadioChecked
-        dRow:SetScript("OnClick", function()
-            EasyFind.db.lootDifficulty = def.key
-            UpdateDiffLabel()
-            diffPopup:Hide()
-            Filters:ApplyFilterSelection("loot")
-        end)
-        diffPopupRows[#diffPopupRows + 1] = dRow
-        py = py - 20
-    end
-    local diffContentW = 0
-    for i = 1, #diffPopupRows do
-        local w = Utils.FlyoutRowContentWidth(diffPopupRows[i], diffRowLead or 18)
-        if w > diffContentW then diffContentW = w end
-    end
-    local diffPopupW = Utils.FlyoutWidthFor(diffContentW, 8)
-    for i = 1, #diffPopupRows do diffPopupRows[i]:SetWidth(diffPopupW - 16) end
-    diffPopup:SetSize(diffPopupW, -py + 6)
-
-    local function SyncDiffRadios()
-        local key = EasyFind.db.lootDifficulty or "normal"
-        for _, dr in ipairs(diffPopupRows) do
-            dr._setRadioChecked(dr._diffKey == key)
-        end
-    end
-
-    diffBtn:SetScript("OnClick", function()
-        if diffPopup:IsShown() then
-            diffPopup:Hide()
-        else
-            SyncDiffRadios()
-            diffPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
-            Utils.OpenDropdownBelow(diffPopup, diffBtn, 2)
-            diffPopup:Show()
-        end
-    end)
-    Filters.AttachOutsideClickClose(diffPopup)
-
-    AddPopupKeyboardNav(diffPopup, function() return diffPopupRows end)
-    dropdownGuardFrames[#dropdownGuardFrames + 1] = diffPopup
-
+    local diffSel = Filters:BuildSelectDropdown({
+        parent = lootOptionsPopup,
+        name = "EasyFindDiffPopup",
+        width = LOOT_POPUP_WIDTH - LOOT_POPUP_PAD * 2,
+        options = DIFF_OPTIONS,
+        getValue = function() return EasyFind.db.lootDifficulty or "normal" end,
+        setValue = function(v) EasyFind.db.lootDifficulty = v end,
+        formatLabel = function(_, optLabel) return optLabel or (_G["PLAYER_DIFFICULTY1"] or "Normal") end,
+        onChange = function() Filters:ApplyFilterSelection("loot") end,
+        stylePopup = StylePopup,
+        guardFrames = dropdownGuardFrames,
+        keyboardNav = AddPopupKeyboardNav,
+    })
+    local diffBtn = diffSel.button
+    local diffPopup = diffSel.popup
+    local diffPopupRows = diffSel.rows
     row.diffBtn = diffBtn
     row.diffPopup = diffPopup
-    row.UpdateDiffButtons = function()
-        UpdateDiffLabel()
-    end
+    row.UpdateDiffButtons = diffSel.Refresh
 
     -- Not Filters:ApplyFilterSelection("loot"): SyncEJLootFilter must run
     -- between the category refresh and the re-search.
@@ -265,10 +175,15 @@ function Filters:AttachLootOptionsFlyout(row, dropdown, ctx)
     -- left text inset + widest difficulty name + gap + arrow + inset.
     local diffBtnW = 14 + Utils.MaxRowLabelWidth(diffPopupRows) + 2 + 22 + 10
     if diffBtnW > contentW then contentW = diffBtnW end
+    -- The class/spec selector shares the bar width, so its designed width is a
+    -- floor. Both bars then get popupW - pad, so they render identically wide
+    -- (the old code pinned the selector to CLASS_SELECTOR_BTN_W and let the
+    -- difficulty button stretch, so the two never matched).
+    if ns.CLASS_SELECTOR_BTN_W > contentW then contentW = ns.CLASS_SELECTOR_BTN_W end
     local popupW = Utils.FlyoutWidthFor(contentW, LOOT_POPUP_PAD)
     for i = 1, #lootSubRows do lootSubRows[i]:SetWidth(popupW - LOOT_POPUP_PAD * 2) end
     diffBtn:SetWidth(popupW - LOOT_POPUP_PAD * 2)
-    specSelectRow:SetWidth(ns.CLASS_SELECTOR_BTN_W)
+    specSelectRow:SetWidth(popupW - LOOT_POPUP_PAD * 2)
     lootOptionsPopup:SetSize(popupW, -gy + LOOT_POPUP_PAD)
 
     -- Hover-to-show wiring on the Loot filter row, mirroring the

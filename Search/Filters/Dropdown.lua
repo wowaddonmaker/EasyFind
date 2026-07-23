@@ -279,7 +279,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         local icon
         if opt.iconAtlas or opt.iconTex then
             icon = row:CreateTexture(nil, "ARTWORK")
-            icon:SetSize(ICON_SIZE, ICON_SIZE)
+            ns.SizeIconAspect(icon, ICON_SIZE, opt.iconAspect)
             icon:SetPoint("LEFT", row:GetNormalTexture(), "RIGHT", 4, 0)
             if opt.iconAtlas then
                 icon:SetAtlas(opt.iconAtlas)
@@ -369,7 +369,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 local subIcon
                 if sub.iconAtlas or sub.iconTex then
                     subIcon = subRow:CreateTexture(nil, "ARTWORK")
-                    subIcon:SetSize(SUB_ICON, SUB_ICON)
+                    ns.SizeIconAspect(subIcon, SUB_ICON, sub.iconAspect)
                     subIcon:SetPoint("LEFT", subRow:GetNormalTexture(), "RIGHT", 4, 0)
                     if sub.iconAtlas then
                         subIcon:SetAtlas(sub.iconAtlas)
@@ -496,6 +496,34 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
                     popup:HookScript("OnHide", function() optionsPopup:Hide() end)
                     dropdown:HookScript("OnHide", function() optionsPopup:Hide() end)
+                end
+
+                -- General catalog: crafting-quality-tier radio + item-type
+                -- checkboxes, opening to the right of the catalog sub-row.
+                if sub.hasOptions and sub.key == "catalog" then
+                    local optionsPopup, syncOptions, qualityPopup = Search:BuildCatalogOptionsPopup(
+                        StylePopup, CHECK_SIZE, dropdownGuardFrames)
+                    optionsPopup._efSync = syncOptions
+                    optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
+                    optionsPopup._owningRow = subRow
+                    popup._catalogOptionsPopup = optionsPopup
+                    dropdownGuardFrames[#dropdownGuardFrames + 1] = optionsPopup
+
+                    Utils.AttachHoverPopup(subRow, optionsPopup, {
+                        extraGuards = { qualityPopup },
+                        onShow = function()
+                            syncOptions()
+                            optionsPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
+                            Utils.OpenFlyoutBeside(optionsPopup, subRow, 4)
+                            optionsPopup:Show()
+                        end,
+                    })
+
+                    popup:HookScript("OnHide", function() optionsPopup:Hide() end)
+                    dropdown:HookScript("OnHide", function()
+                        optionsPopup:Hide()
+                        qualityPopup:Hide()
+                    end)
                 end
 
                 -- Generic nested flyout: a sub-filter carrying its own child

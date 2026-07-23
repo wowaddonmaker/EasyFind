@@ -144,10 +144,13 @@ local FLAT_CATEGORY_ICONS = {
     heirloom      = { tex = 133877 },
     appearanceSet = { tex = "Interface\\Icons\\INV_Helmet_03" },
     currency      = { tex = 136452 },  -- Same coin/AH glyph the map uses
-    -- Catalog items reuse the crest the reputation category used to carry.
-    item          = { tex = 1121272, coords = { 0.3783, 0.4072, 0.9066, 0.9350 } },
-    -- Reputation now gets its own banner/flag glyph.
-    reputation    = { tex = "Interface\\Icons\\INV_BannerPVP_02" },
+    -- Catalog items: same icon as the Items filter category (defined once in
+    -- Utils so the filter icon and this row icon can never diverge). Tall coin
+    -- purse art, so it carries an aspect ratio to avoid being stretched square.
+    item          = { tex = ns.ITEMS_CATEGORY_ICON_TEX, coords = ns.ITEMS_CATEGORY_ICON_COORDS,
+                      aspect = ns.ITEMS_CATEGORY_ICON_ASPECT },
+    -- Reputation category shows the player's own faction crest.
+    reputation    = { tex = ns.REP_CATEGORY_ICON_TEX, coords = ns.PlayerRepCategoryIconCoords() },
     statistic     = { tex = 1121272, coords = { 0.2030, 0.2397, 0.6641, 0.6921 } },
     map           = { tex = 1121272, coords = { 0.4287, 0.4645, 0.2580, 0.2932 } },
     -- Ability / boss: matches the filter-menu icons (boss tab + overview tab
@@ -181,13 +184,14 @@ function Icons:IsBossResultData(data)
     return data and data.encounterID and data.category == "Boss"
 end
 
--- Reputation icon by faction side. Either-faction (nil) uses the same
--- crest as the filter button; Alliance/Horde get their faction-specific
--- crests. All cropped from the shared 1121272 sprite sheet.
+-- Reputation icon by faction side. Alliance/Horde get their faction crest;
+-- neutral (either) shows the player's own faction crest, matching the filter
+-- and flat category glyph. All from the one shared source in Utils.lua so the
+-- filter icon, the flat category glyph, and these rows can never diverge.
 local REP_FACTION_ICONS = {
-    alliance = { tex = 1121272, coords = { 0.4740, 0.5055, 0.8371, 0.8706 } },
-    horde    = { tex = 1121272, coords = { 0.4743, 0.5058, 0.8707, 0.9042 } },
-    either   = { tex = "Interface\\Icons\\INV_BannerPVP_02" },
+    alliance = { tex = ns.REP_CATEGORY_ICON_TEX, coords = ns.REP_CATEGORY_ICON_COORDS.Alliance },
+    horde    = { tex = ns.REP_CATEGORY_ICON_TEX, coords = ns.REP_CATEGORY_ICON_COORDS.Horde },
+    either   = { tex = ns.REP_CATEGORY_ICON_TEX, coords = ns.PlayerRepCategoryIconCoords() },
 }
 
 function Icons:GetFlatCategoryIcon(data)

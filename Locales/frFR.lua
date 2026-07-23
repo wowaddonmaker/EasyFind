@@ -304,6 +304,8 @@ L["IMPORT_SYSCMD_WARN"]                 = "Attention : %d raccourci(s) attribuen
 L["CTX_GUIDE"]                          = "Guide"
 L["CTX_WOWHEAD"]                        = "Wowhead"
 L["CTX_SEND_LINK"]                      = "Envoyer le lien"
+L["CTX_ADD_NOTE"]                       = "Ajouter à une note"
+L["CTX_NEW_NOTE"]                       = "Nouvelle note"
 L["CTX_SEND_LINK_NAME"]                 = "Par nom..."
 L["CTX_SEND_LINK_NAME_PROMPT"]          = "Chuchoter le lien à quel joueur ?"
 L["CTX_SEND_LINK_CLIPBOARD"]            = "Presse-papiers"
@@ -393,6 +395,8 @@ L["TAB_NOT_ON_CHARACTER"]               = "Cet onglet n'existe pas encore sur ce
 -- Misc singletons
 L["BTN_GOT_IT"]                         = "Compris !"
 L["CURRENCY_NOT_EARNED"]                = "Monnaie pas encore obtenue"
+L["ACHIEVEMENT_SERIES"]                 = "Série de hauts faits"
+L["FILTER_QUALITY_FORMAT"]              = "Qualité : %s"
 L["TOOLTIP_RESULT_LOCKED"]              = "Se débloque à un niveau supérieur"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "Cette section n'est pas encore disponible pour ce personnage."
 L["CALC_COPY_HINT"]                     = "Ctrl+C pour copier"
@@ -503,6 +507,7 @@ L["HINT_OPEN_TRANSMOG"]                 = "Ouvrir la transmogrification"
 L["HINT_EQUIP_GEAR_SET"]                = "Équiper l'ensemble"
 L["HINT_OPEN_MAP"]                      = "Ouvrir la carte"
 L["HINT_PIN_ON_MAP"]                    = "Marquer sur la carte"
+L["HINT_CLICK_DRAG"]                    = "Cliquer ou glisser"
 
 -- =============================================================================
 -- POI names (Database/StaticLocations.lua)

@@ -116,7 +116,7 @@ function Render.BaseRowText(resultRow, entry, state)
             else
                 resultRow.flatCatIcon:SetVertexColor(1, 1, 1, 1)
             end
-            resultRow.flatCatIcon:SetSize(sz, sz)
+            ns.SizeIconAspect(resultRow.flatCatIcon, sz, catIconDef and catIconDef.aspect)
             resultRow.flatCatIcon:ClearAllPoints()
             resultRow.flatCatIcon:SetPoint("LEFT", resultRow, "LEFT", indentPixels + 2, 0)
             resultRow.flatCatIcon:Show()

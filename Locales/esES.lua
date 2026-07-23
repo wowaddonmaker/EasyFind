@@ -304,6 +304,8 @@ L["IMPORT_SYSCMD_WARN"]                 = "Aviso: %d atajo(s) asignan un comando
 L["CTX_GUIDE"]                          = "Guía"
 L["CTX_WOWHEAD"]                        = "Wowhead"
 L["CTX_SEND_LINK"]                      = "Enviar enlace"
+L["CTX_ADD_NOTE"]                       = "Añadir a nota"
+L["CTX_NEW_NOTE"]                       = "Nueva nota"
 L["CTX_SEND_LINK_NAME"]                 = "Por nombre..."
 L["CTX_SEND_LINK_NAME_PROMPT"]          = "¿A qué jugador susurrar el enlace?"
 L["CTX_SEND_LINK_CLIPBOARD"]            = "Portapapeles"
@@ -393,6 +395,8 @@ L["TAB_NOT_ON_CHARACTER"]               = "Esta pestaña aún no existe en este 
 -- Misc singletons
 L["BTN_GOT_IT"]                         = "¡Entendido!"
 L["CURRENCY_NOT_EARNED"]                = "Moneda aún no obtenida"
+L["ACHIEVEMENT_SERIES"]                 = "Serie de logros"
+L["FILTER_QUALITY_FORMAT"]              = "Calidad: %s"
 L["TOOLTIP_RESULT_LOCKED"]              = "Se desbloquea a un nivel superior"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "Esa sección aún no está disponible para este personaje."
 L["CALC_COPY_HINT"]                     = "Ctrl+C para copiar"
@@ -504,6 +508,7 @@ L["HINT_OPEN_TRANSMOG"]                 = "Abrir transfiguración"
 L["HINT_EQUIP_GEAR_SET"]                = "Equipar equipamiento"
 L["HINT_OPEN_MAP"]                      = "Abrir mapa"
 L["HINT_PIN_ON_MAP"]                    = "Marcar en el mapa"
+L["HINT_CLICK_DRAG"]                    = "Clic o arrastrar"
 
 -- =============================================================================
 -- POI names (Database/StaticLocations.lua)

@@ -1231,6 +1231,64 @@ ns.COMMANDS_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\commands-icon"
 ns.RADIO_OFF_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-off"
 ns.RADIO_ON_TEX = "Interface\\AddOns\\EasyFind\\Search\\Images\\radio-on"
 ns.FILTER_ARROW_TEX = "Interface\\AddOns\\EasyFind\\textures\\filter-arrow"
+-- Reputation category icon: the player's own faction crest, cropped from the
+-- shared UI glyph sheet (1121272). Defined once so the reputation filter row
+-- and the flat category glyph stay in sync. Neutral (unchosen Pandaren) falls
+-- back to the Alliance crest.
+ns.REP_CATEGORY_ICON_TEX = 1121272
+ns.REP_CATEGORY_ICON_COORDS = {
+    Horde    = { 0.7771, 0.8096, 0.7048, 0.7362 },
+    Alliance = { 0.6761, 0.7047, 0.7747, 0.8014 },
+}
+function ns.PlayerRepCategoryIconCoords()
+    local faction = UnitFactionGroup and UnitFactionGroup("player")
+    return ns.REP_CATEGORY_ICON_COORDS[faction] or ns.REP_CATEGORY_ICON_COORDS.Alliance
+end
+
+-- Items category / General catalog icon, defined ONCE so the filter-menu icon
+-- (Items category + General catalog sub-row) and the catalog result-row general
+-- icon are always the same texture -- they can never drift apart.
+-- Cropped from a NON-square source texture, so the crop's true aspect must fold
+-- in the texel ratio (TEX_W/TEX_H), not just the normalized crop w/h -- WoW does
+-- not report a texture's pixel size, so the dimensions are recorded here from the
+-- file's BLP header (read via wago.tools). 6116514 is 512x256; the crop below is
+-- ~111x107 px, i.e. nearly square, so it fills the slot undistorted. If you swap
+-- the texture/coords, update TEX_W/TEX_H to that file's real dimensions.
+ns.ITEMS_CATEGORY_ICON_TEX = 6116514
+ns.ITEMS_CATEGORY_ICON_COORDS = { 0.0395, 0.2563, 0.0667, 0.4845 }
+do
+    local TEX_W, TEX_H = 512, 256
+    local c = ns.ITEMS_CATEGORY_ICON_COORDS
+    ns.ITEMS_CATEGORY_ICON_ASPECT = ((c[2] - c[1]) * TEX_W) / ((c[4] - c[3]) * TEX_H)
+end
+
+-- Size an icon texture to fit within `sz` while preserving `aspect` (width/height):
+-- a tall icon (aspect < 1) keeps full height and narrows; a wide one keeps full
+-- width and shortens. nil/0 aspect = square (the default for every other icon).
+-- Point/LEFT anchoring is preserved -- only width/height change.
+function ns.SizeIconAspect(tex, sz, aspect)
+    if aspect and aspect > 0 and aspect < 1 then
+        tex:SetSize(sz * aspect, sz)
+    elseif aspect and aspect > 1 then
+        tex:SetSize(sz, sz / aspect)
+    else
+        tex:SetSize(sz, sz)
+    end
+end
+
+-- Achievement completion-status labels, single-sourced for the tooltip status
+-- line and the achievement filter dropdown. WARNING: _G["ACHIEVEMENT_FILTER_EARNED"]
+-- is a NUMERIC filter-mode constant (value 3), not the word "Earned" -- using it
+-- as a label printed a raw "3". Only accept a candidate that is a non-empty
+-- string; fall through to the next candidate otherwise.
+local function StringGlobal(key, fallback)
+    local v = _G[key]
+    return (type(v) == "string" and v ~= "") and v or fallback
+end
+ns.ACH_LABEL_EARNED = StringGlobal("EARNED",
+    StringGlobal("ACHIEVEMENTFRAME_FILTER_COMPLETED", StringGlobal("COMPLETE", "Earned")))
+ns.ACH_LABEL_INCOMPLETE = StringGlobal("INCOMPLETE",
+    StringGlobal("ACHIEVEMENTFRAME_FILTER_INCOMPLETE", "Incomplete"))
 -- Minimal scrollbar geometry, shared so surfaces that must clear the
 -- scrollbar lane (row hover wash) derive from the same numbers.
 ns.SCROLLBAR_THUMB_W = 3

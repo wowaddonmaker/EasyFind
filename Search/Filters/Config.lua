@@ -9,8 +9,10 @@ local ipairs = Utils.ipairs
 
 local ACHIEVEMENT_FILTER_LABELS = {
     all = _G["ALL"] or "All",
-    earned = _G["ACHIEVEMENT_FILTER_EARNED"] or _G["EARNED"] or "Earned",
-    incomplete = _G["ACHIEVEMENT_FILTER_INCOMPLETE"] or _G["INCOMPLETE"] or "Incomplete",
+    -- *_FILTER_EARNED/_INCOMPLETE are numeric filter-mode constants, not labels;
+    -- ns.ACH_LABEL_* are the string-guarded display strings (see Utils).
+    earned = ns.ACH_LABEL_EARNED,
+    incomplete = ns.ACH_LABEL_INCOMPLETE,
 }
 
 local UI_FILTER_OPTIONS = {
@@ -44,11 +46,13 @@ local UI_FILTER_OPTIONS = {
     -- Bags and Bank are owned-item overlays nested under it -- turning Items
     -- off hides all three; turning a child off drops just that overlay while
     -- the catalog still shows.
-    { key = "items",       label = _G["ITEMS"] or "Items",        iconTex = 133633,
+    { key = "items",       label = _G["ITEMS"] or "Items",
+      iconTex = ns.ITEMS_CATEGORY_ICON_TEX, iconCoords = ns.ITEMS_CATEGORY_ICON_COORDS,
+      iconAspect = ns.ITEMS_CATEGORY_ICON_ASPECT,
       flyoutSubFilters = {
-          { key = "catalog", label = L["FILTER_GENERAL_CATALOG"], iconTex = 1121272, iconCoords = { 0.3783, 0.4072, 0.9066, 0.9350 } },
+          { key = "catalog", label = L["FILTER_GENERAL_CATALOG"], iconTex = ns.ITEMS_CATEGORY_ICON_TEX, iconCoords = ns.ITEMS_CATEGORY_ICON_COORDS, iconAspect = ns.ITEMS_CATEGORY_ICON_ASPECT, hasOptions = true },
           { key = "bags", label = _G["BAGSLOT"] or _G["BAGS"] or "Bags", iconAtlas = "bag-main" },
-          { key = "bank", label = _G["BANK"] or "Bank",                  iconTex = 133490 },
+          { key = "bank", label = _G["BANK"] or "Bank", iconTex = 1121272, iconCoords = { 0.3783, 0.4072, 0.9066, 0.9350 } },
       } },
     -- Bosses: EJ overview tab icon from texture 522972.
     { key = "bosses",      label = _G["RAID_BOSSES"] or "Bosses",      iconTex = 522972,
@@ -143,8 +147,8 @@ local UI_FILTER_OPTIONS = {
           local prof1, prof2, archaeology, fishing, cooking = GetProfessions()
           return (prof1 or prof2 or archaeology or fishing or cooking) ~= nil
       end },
-    { key = "reputations", label = _G["REPUTATION"] or "Reputations", iconTex = 1121272,
-      iconCoords = { 0.3783, 0.4072, 0.9066, 0.9350 },
+    { key = "reputations", label = _G["REPUTATION"] or "Reputations", iconTex = ns.REP_CATEGORY_ICON_TEX,
+      iconCoords = ns.PlayerRepCategoryIconCoords(),
       flyoutRadio = {
           dbKey = "reputationFilterMode",
           options = {

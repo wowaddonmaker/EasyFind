@@ -304,6 +304,8 @@ L["IMPORT_SYSCMD_WARN"]                 = "警告：%d 个快捷键绑定了系�
 L["CTX_GUIDE"]                          = "向导"
 L["CTX_WOWHEAD"]                        = "Wowhead"
 L["CTX_SEND_LINK"]                      = "发送链接"
+L["CTX_ADD_NOTE"]                       = "添加到笔记"
+L["CTX_NEW_NOTE"]                       = "新建笔记"
 L["CTX_SEND_LINK_NAME"]                 = "按名称..."
 L["CTX_SEND_LINK_NAME_PROMPT"]          = "私聊链接给哪位玩家？"
 L["CTX_SEND_LINK_CLIPBOARD"]            = "剪贴板"
@@ -393,6 +395,8 @@ L["TAB_NOT_ON_CHARACTER"]               = "该标签在此角色上尚不存在"
 -- Misc singletons
 L["BTN_GOT_IT"]                         = "知道了！"
 L["CURRENCY_NOT_EARNED"]                = "尚未获得该货币"
+L["ACHIEVEMENT_SERIES"]                 = "系列成就"
+L["FILTER_QUALITY_FORMAT"]              = "品质：%s"
 L["TOOLTIP_RESULT_LOCKED"]              = "达到更高等级后解锁"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "该角色尚未解锁此栏目。"
 L["CALC_COPY_HINT"]                     = "Ctrl+C 复制"
@@ -504,6 +508,7 @@ L["HINT_OPEN_TRANSMOG"]                 = "打开幻化窗口"
 L["HINT_EQUIP_GEAR_SET"]                = "装备套装"
 L["HINT_OPEN_MAP"]                      = "打开地图"
 L["HINT_PIN_ON_MAP"]                    = "在地图标记"
+L["HINT_CLICK_DRAG"]                    = "点击或拖动"
 
 -- =============================================================================
 -- POI names (Database/StaticLocations.lua)

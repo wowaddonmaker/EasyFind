@@ -66,8 +66,10 @@ Search/Filters/Config.lua
 Search/Filters/ClassSpecSelector.lua
 Search/Filters/QuickFilter.lua
 Search/Filters/SourceFlyout.lua
+Search/Filters/SelectDropdown.lua
 Search/Filters/MountOptions.lua
 Search/Filters/HeirloomOptions.lua
+Search/Filters/CatalogOptions.lua
 Search/Filters/AppearanceSets.lua
 Search/Filters/AppearanceItemOptions.lua
 Search/Filters/GearOptions.lua

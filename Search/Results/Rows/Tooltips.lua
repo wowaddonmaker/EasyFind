@@ -158,6 +158,98 @@ function Rows.InstallTooltips(resultRow)
             GameTooltip:Show()
             return
         end
+        -- Achievement row: build the tooltip by hand from the achievement APIs.
+        -- The achievement hyperlink (SetHyperlink) renders a permanent
+        -- "Retrieving data" line and no progress for unearned achievements, so
+        -- read the fields directly: status (earned/incomplete), description,
+        -- each criterion's completion + count (green done, grey X/Y when not),
+        -- the series chain, and the reward.
+        if self.data and self.data.achievementID then
+            local ht = EasyFind.db.hideTooltips
+            if ht and ht.achievements then return end
+            local achID = self.data.achievementID
+            local _, name, _, completed, _, _, _, description, _, _, rewardText =
+                GetAchievementInfo(achID)
+            if name then
+                AnchorRowTooltip(GameTooltip, self)
+                GameTooltip:SetText(name, 1, 0.82, 0)
+                -- Completion status (earned=green, else grey). Labels are
+                -- string-guarded in Utils (the *_FILTER_EARNED global is numeric).
+                if completed then
+                    GameTooltip:AddLine(ns.ACH_LABEL_EARNED, 0.25, 0.9, 0.25)
+                else
+                    GameTooltip:AddLine(ns.ACH_LABEL_INCOMPLETE, 0.6, 0.6, 0.6)
+                end
+                if description and description ~= "" then
+                    GameTooltip:AddLine(description, 1, 1, 1, true)
+                end
+                local numCriteria = GetAchievementNumCriteria and GetAchievementNumCriteria(achID) or 0
+                if numCriteria > 0 then
+                    GameTooltip:AddLine(" ")
+                    for i = 1, numCriteria do
+                        local critString, _, critDone, quantity, reqQuantity, _, _, _, quantityString =
+                            GetAchievementCriteriaInfo(achID, i)
+                        local label = (critString and critString ~= "") and critString or nil
+                        local progress
+                        if reqQuantity and reqQuantity > 1 then
+                            progress = (quantityString and quantityString ~= "") and quantityString
+                                or ((quantity or 0) .. "/" .. reqQuantity)
+                        end
+                        if not label then
+                            label = progress
+                        elseif progress then
+                            label = label .. "  (" .. progress .. ")"
+                        end
+                        if label and label ~= "" then
+                            if critDone then
+                                GameTooltip:AddLine(label, 0.25, 0.9, 0.25)
+                            else
+                                GameTooltip:AddLine(label, 0.6, 0.6, 0.6)
+                            end
+                        end
+                    end
+                end
+                -- Series chain: walk GetPreviousAchievement back to the start,
+                -- then list oldest-first (current last). Earned steps are green.
+                if GetPreviousAchievement then
+                    local ancestors = {}
+                    local pid = achID
+                    for _ = 1, 20 do
+                        local cid = GetPreviousAchievement(pid)
+                        if not cid then break end
+                        local _, cname, _, cdone = GetAchievementInfo(cid)
+                        ancestors[#ancestors + 1] = { name = cname, done = cdone }
+                        pid = cid
+                    end
+                    if #ancestors > 0 then
+                        GameTooltip:AddLine(" ")
+                        GameTooltip:AddLine(L["ACHIEVEMENT_SERIES"], 1, 0.82, 0)
+                        local step = 0
+                        for i = #ancestors, 1, -1 do
+                            step = step + 1
+                            local node = ancestors[i]
+                            if node.done then
+                                GameTooltip:AddLine(step .. ". " .. (node.name or ""), 0.25, 0.9, 0.25)
+                            else
+                                GameTooltip:AddLine(step .. ". " .. (node.name or ""), 1, 1, 1)
+                            end
+                        end
+                        step = step + 1
+                        if completed then
+                            GameTooltip:AddLine(step .. ". " .. name, 0.25, 0.9, 0.25)
+                        else
+                            GameTooltip:AddLine(step .. ". " .. name, 1, 1, 1)
+                        end
+                    end
+                end
+                if rewardText and rewardText ~= "" then
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine(rewardText, 1, 0.82, 0, true)
+                end
+                GameTooltip:Show()
+            end
+            return
+        end
         -- Keybinding row: show the action name plus current bindings.
         if self.data and self.data.settingType == "keybind" and self.data.bindingAction then
             local action = self.data.bindingAction

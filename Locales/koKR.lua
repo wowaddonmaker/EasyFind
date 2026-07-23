@@ -304,6 +304,8 @@ L["IMPORT_SYSCMD_WARN"]                 = "경고: 단축키 %d개가 시스템 
 L["CTX_GUIDE"]                          = "안내"
 L["CTX_WOWHEAD"]                        = "Wowhead"
 L["CTX_SEND_LINK"]                      = "링크 보내기"
+L["CTX_ADD_NOTE"]                       = "메모에 추가"
+L["CTX_NEW_NOTE"]                       = "새 메모"
 L["CTX_SEND_LINK_NAME"]                 = "이름으로..."
 L["CTX_SEND_LINK_NAME_PROMPT"]          = "어느 플레이어에게 링크를 귓속말할까요?"
 L["CTX_SEND_LINK_CLIPBOARD"]            = "클립보드"
@@ -393,6 +395,8 @@ L["TAB_NOT_ON_CHARACTER"]               = "이 탭은 아직 이 캐릭터에 �
 -- Misc singletons
 L["BTN_GOT_IT"]                         = "확인!"
 L["CURRENCY_NOT_EARNED"]                = "아직 얻지 못한 화폐"
+L["ACHIEVEMENT_SERIES"]                 = "업적 시리즈"
+L["FILTER_QUALITY_FORMAT"]              = "품질: %s"
 L["TOOLTIP_RESULT_LOCKED"]              = "더 높은 레벨에서 잠금 해제"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "이 캐릭터는 아직 해당 항목을 이용할 수 없습니다."
 L["CALC_COPY_HINT"]                     = "Ctrl+C로 복사"
@@ -504,6 +508,7 @@ L["HINT_OPEN_TRANSMOG"]                 = "형상변환 창 열기"
 L["HINT_EQUIP_GEAR_SET"]                = "장비 세트 착용"
 L["HINT_OPEN_MAP"]                      = "지도 열기"
 L["HINT_PIN_ON_MAP"]                    = "지도에 표식"
+L["HINT_CLICK_DRAG"]                    = "클릭 또는 드래그"
 
 -- =============================================================================
 -- POI names (Database/StaticLocations.lua)

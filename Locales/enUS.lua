@@ -329,6 +329,8 @@ L["IMPORT_SYSCMD_WARN"]                 = "Warning: %d shortkey(s) bind a system
 L["CTX_GUIDE"]                          = "Guide"
 L["CTX_WOWHEAD"]                        = "Wowhead"
 L["CTX_SEND_LINK"]                      = "Send link"
+L["CTX_ADD_NOTE"]                       = "Add to Note"
+L["CTX_NEW_NOTE"]                       = "New Note"
 L["CTX_SEND_LINK_NAME"]                 = "By name..."
 L["CTX_SEND_LINK_NAME_PROMPT"]          = "Whisper the link to which player?"
 L["CTX_SEND_LINK_CLIPBOARD"]            = "Clipboard"
@@ -434,6 +436,8 @@ L["TAB_NOT_ON_CHARACTER"]               = "This tab does not exist on this chara
 -- =============================================================================
 L["BTN_GOT_IT"]                         = "Got it!"
 L["CURRENCY_NOT_EARNED"]                = "Currency not yet earned"
+L["ACHIEVEMENT_SERIES"]                 = "Achievement series"
+L["FILTER_QUALITY_FORMAT"]              = "Quality: %s"
 L["TOOLTIP_RESULT_LOCKED"]              = "Unlocks at a higher level"
 L["MSG_GUIDE_TARGET_LOCKED"]            = "That section isn't available to this character yet."
 L["CALC_COPY_HINT"]                     = "Ctrl+C to copy"
@@ -547,6 +551,7 @@ L["HINT_OPEN_TRANSMOG"]                 = "Open Transmog Window"
 L["HINT_EQUIP_GEAR_SET"]                = "Equip Gear Set"
 L["HINT_OPEN_MAP"]                      = "Open Map"
 L["HINT_PIN_ON_MAP"]                    = "Pin on Map"
+L["HINT_CLICK_DRAG"]                    = "Click or drag"
 
 -- =============================================================================
 -- POI names (Database/StaticLocations.lua)

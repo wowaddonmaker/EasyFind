@@ -16,12 +16,54 @@ ns.ItemSearch = ItemSearch
 local Utils = ns.Utils
 local sfind, ssub = Utils.sfind, Utils.ssub
 local slower = Utils.slower or string.lower
+local pairs = Utils.pairs or pairs
 local tonumber = tonumber
 
 local MIN_QUERY = 3      -- below this the catalog matches too much to be useful
 local SCAN_CAP = 250     -- candidate ceiling per keystroke; sort/cap keeps the best
 
 local blob, blobLen
+
+-- Catalog type buckets -> the Item.ClassID values each covers. This is the
+-- curated set the filter flyout exposes; the long tail of tiny classes
+-- (keys, projectiles, tokens, pets, money, enhancements, profession) folds
+-- into "misc". Keep in sync with the flyout order in CatalogOptions.lua.
+local BUCKETS = {
+    armor      = { 4 },
+    weapon     = { 2 },
+    consumable = { 0 },
+    tradegoods = { 7, 5 },   -- Trade Goods + Reagent (crafting mats)
+    recipe     = { 9 },
+    gem        = { 3 },
+    quest      = { 12 },
+    housing    = { 20 },
+    glyph      = { 16 },
+    container  = { 1 },
+    misc       = { 15, 8, 13, 6, 10, 17, 18, 19 },
+}
+ns.CATALOG_TYPE_BUCKETS = BUCKETS
+
+-- Filter state, rebuilt from db on change (and lazily on first scan).
+-- classDisabled[classID]=true hides that class; qualityTier>0 keeps only tiered
+-- reagents of that tier (non-tiered items always pass). filtersActive gates the
+-- extra per-candidate field parse so the all-on default stays on the fast path.
+local classDisabled, qualityTier, filtersActive, filtersReady
+
+function ItemSearch:RefreshFilters()
+    local db = EasyFind and EasyFind.db
+    local typeFilters = db and db.catalogTypeFilters
+    classDisabled = {}
+    local anyDisabled = false
+    for key, classes in pairs(BUCKETS) do
+        if typeFilters and typeFilters[key] == false then
+            anyDisabled = true
+            for i = 1, #classes do classDisabled[classes[i]] = true end
+        end
+    end
+    qualityTier = (db and db.catalogQualityTier) or 0
+    filtersActive = anyDisabled or qualityTier > 0
+    filtersReady = true
+end
 
 local function EnsureBlob()
     if blob then return blob end
@@ -53,6 +95,7 @@ end
 function ItemSearch:Search(query, scoreName)
     if not query or #query < MIN_QUERY then return nil end
     if not EnsureBlob() then return nil end
+    if not filtersReady then self:RefreshFilters() end
     local ql = slower(query)
     local qLen = #ql
     local out, n = {}, 0
@@ -69,7 +112,24 @@ function ItemSearch:Search(query, scoreName)
             local t3 = t2 and sfind(blob, "\t", t2 + 1, true)
             local itemID = tonumber(ssub(blob, t1 + 1, (t2 or (rEnd + 1)) - 1))
             local quality = t2 and tonumber(ssub(blob, t2 + 1, (t3 or (rEnd + 1)) - 1))
-            local score = scoreName and scoreName(nameLower, ql, qLen)
+            -- Type + quality-tier filters (fields 6/7), parsed only when a filter
+            -- is active so the all-on default keeps the 3-field fast path.
+            local passes = true
+            if filtersActive and t3 then
+                local t4 = sfind(blob, "\t", t3 + 1, true)
+                local t5 = t4 and sfind(blob, "\t", t4 + 1, true)
+                if t5 then
+                    local t6 = sfind(blob, "\t", t5 + 1, true)
+                    local class = tonumber(ssub(blob, t5 + 1, (t6 or (rEnd + 1)) - 1))
+                    if class and classDisabled[class] then
+                        passes = false
+                    elseif qualityTier > 0 and t6 then
+                        local qt = tonumber(ssub(blob, t6 + 1, rEnd))
+                        if qt and qt > 0 and qt ~= qualityTier then passes = false end
+                    end
+                end
+            end
+            local score = passes and scoreName and scoreName(nameLower, ql, qLen)
             if itemID and score and score > 0 then
                 seen = seen or {}
                 if not seen[itemID] then
