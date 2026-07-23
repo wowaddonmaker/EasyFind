@@ -113,6 +113,8 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
     local chatLink = ns.GetResultLink and ns.GetResultLink(pinData)
     if chatLink then
         extra.sendLink = { link = chatLink, name = pinData.name }
+        local addNoteRows = ns.BuildAddNoteRows and ns.BuildAddNoteRows(chatLink, pinData.name)
+        if addNoteRows then extra.addNoteRows = addNoteRows end
     end
     local skKey = ns.Shortkeys and ns.Shortkeys:GetEntryKey(pinData)
     if skKey then

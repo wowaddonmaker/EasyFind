@@ -8,6 +8,7 @@ local L = ns.L
 
 local IsAltKeyDown = IsAltKeyDown
 local IsControlKeyDown = IsControlKeyDown
+local C_Item = C_Item
 local select = select
 
 function Handlers:IsSourceModifierHeld()
@@ -56,6 +57,8 @@ local V = {
     equipGearSet = L["HINT_EQUIP_GEAR_SET"],
     openMap      = L["HINT_OPEN_MAP"],
     pinOnMap     = L["HINT_PIN_ON_MAP"],
+    clickDrag    = L["HINT_CLICK_DRAG"],
+    sendLink     = L["CTX_SEND_LINK"],
 }
 
 -- Build "Lead: target | Alt: target | ...". The lead verb localizes; modifier
@@ -92,12 +95,23 @@ local HINTS = {
     bagOpen          = Hint(V.click, V.open, "Alt", V.bags, "Shift", V.drag),
     bagUse           = Hint(V.click, V.use, "Alt", V.bags, "Shift", V.drag),
     bagDefault       = Hint(V.click, V.bags, "Shift", V.drag),
+    catalogItem      = Hint(V.drag, V.sendLink),
+    catalogItemTry   = Hint(V.drag, V.sendLink, "Ctrl", V.dressroom),
     openMap          = Hint(V.click, V.openMap),
     pinOnMap         = Hint(V.click, V.pinOnMap),
     encounter        = Hint(V.click, V.encounter),
     toggle           = Hint(V.click, V.toggle, "Alt", V.settings),
     toggleOnly       = Hint(V.click, V.toggle),
     settings         = Hint(V.click, V.settings),
+}
+
+-- Equip slots the dressing room can't show, so a catalog item with one of
+-- these (or no equip slot at all) hides the Ctrl "try on" hint.
+local NON_DRESSABLE_SLOT = {
+    [""] = true,
+    ["INVTYPE_BAG"] = true,
+    ["INVTYPE_QUIVER"] = true,
+    ["INVTYPE_AMMO"] = true,
 }
 
 -- Hint shown only on the currently-selected row, replacing the normal
@@ -126,6 +140,14 @@ function Handlers:GetActionHint(data)
         return Icons:IsSpellbookOnlyAbility(data) and HINTS.spellbookOnly or HINTS.ability
     end
     if data.macroIndex then return HINTS.macro end
+    if data.catalogItem then
+        local equipLoc = C_Item and C_Item.GetItemInfoInstant
+            and select(4, C_Item.GetItemInfoInstant(data.itemID))
+        if equipLoc and not NON_DRESSABLE_SLOT[equipLoc] then
+            return HINTS.catalogItemTry
+        end
+        return HINTS.catalogItem
+    end
     if data.itemID and data.category == "Bag" then
         local actionKind = Handlers:GetBagItemActionKind(data)
         if actionKind == "equip" then return HINTS.bagEquip

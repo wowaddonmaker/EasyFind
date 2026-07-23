@@ -58,7 +58,9 @@ read_globals = {
     "IsShiftKeyDown", "IsMouseButtonDown", "IsAltKeyDown", "IsControlKeyDown",
     "IsInGroup", "IsInInstance", "IsIndoors", "UnitIsGroupLeader",
     "IsInRaid", "IsInGuild", "UnitExists", "UnitIsPlayer", "SendChatMessage",
-    "ChatEdit_GetActiveWindow", "ChatEdit_InsertLink",
+    "ChatEdit_GetActiveWindow", "ChatEdit_InsertLink", "ChatEdit_ChooseBoxForSend",
+    "ChatEdit_UpdateHeader", "ChatEdit_ActivateChat", "NUM_CHAT_WINDOWS",
+    "ChatFrame_OpenChat", "DEFAULT_CHAT_FRAME",
     "UnitFactionGroup", "UnitPosition",
     "StaticPopup_Show", "GameTooltip_Hide", "PlaySound", "ReloadUI",
     "GetSpellInfo", "GetItemInfo", "UseToyByItemID",
@@ -67,7 +69,7 @@ read_globals = {
     "PanelTemplates_GetSelectedTab",
 
     -- Frames and UI objects
-    "UIParent", "GameTooltip", "WorldMapFrame", "Minimap", "MinimapCluster",
+    "UIParent", "GameTooltip", "WorldMapFrame", "WorldFrame", "Minimap", "MinimapCluster",
     "CharacterFrame", "PaperDollFrame", "AchievementFrame",
     "CharacterStatsPane", "PaperDollTitlesPane", "PaperDollEquipmentManagerPane",
     "CurrencyFrame",

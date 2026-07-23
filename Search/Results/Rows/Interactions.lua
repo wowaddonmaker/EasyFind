@@ -13,11 +13,167 @@ local InCombatLockdown = InCombatLockdown
 local IsControlKeyDown = IsControlKeyDown
 local IsShiftKeyDown = IsShiftKeyDown
 
+-- Drag a linkable result onto a chat channel / whisper hyperlink to drop its
+-- link into that channel's editbox (inserted, never auto-sent -- the user
+-- reviews and presses Enter). The channel labels in the chat scroll ([Guild],
+-- [2. Trade], a player name) are real |Hchannel:...|h / |Hplayer:...|h
+-- hyperlinks, so we track which one the cursor is over and route the drop.
+local hoveredChatLink, hoveredChatText, hoveredChatFrame
+local chatTrackingInstalled = false
+local function EnsureChatHyperlinkTracking()
+    if chatTrackingInstalled then return end
+    chatTrackingInstalled = true
+    for i = 1, NUM_CHAT_WINDOWS or 10 do
+        local chatFrame = _G["ChatFrame" .. i]
+        if chatFrame and chatFrame.HookScript then
+            chatFrame:HookScript("OnHyperlinkEnter", function(self, link, text)
+                hoveredChatLink, hoveredChatText, hoveredChatFrame = link, text, self
+            end)
+            chatFrame:HookScript("OnHyperlinkLeave", function()
+                hoveredChatLink, hoveredChatText, hoveredChatFrame = nil, nil, nil
+            end)
+        end
+    end
+end
+
+-- Insert the result's link into the editbox the channel/whisper open just
+-- activated. targetBox is the box we expect it to be -- the hovered frame's own
+-- editbox for a channel (where chat-replacement addons like Prat keep their
+-- box, and where ChatEdit_GetActiveWindow / ChatEdit_InsertLink do NOT look),
+-- or the box we activated for a whisper -- with the active window then
+-- ChatEdit_InsertLink as fallbacks. The user reviews and presses Enter.
+local function InsertLinkIntoChatEditBox(targetBox, link)
+    if targetBox and targetBox.IsShown and targetBox:IsShown() then
+        targetBox:Insert(link)
+        return
+    end
+    local active = ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow()
+    if active and active:IsShown() then
+        active:Insert(link)
+        return
+    end
+    if ChatEdit_InsertLink then ChatEdit_InsertLink(link) end
+end
+
+-- Cursor over a chat channel / whisper hyperlink at drop time: open the editbox
+-- to that target with the result's link inserted. Channels REUSE the chat
+-- frame's own OnHyperlinkClick handler, so the editbox is set up exactly as a
+-- real click on that label would set it. Hand-building the channel state from
+-- the link number broke on numbered channels and on the stale channel links
+-- that chat-history addons (Prat etc.) restore after a reload -- yet clicking
+-- those same lines works, because the frame's handler (which those addons hook)
+-- resolves them. A player link is whispered directly, since a real click on a
+-- name opens a menu, not a whisper editbox. Returns true when it handled it.
+local function RouteLinkToHoveredChat(link)
+    if not (link and link ~= "" and hoveredChatLink and hoveredChatFrame) then return false end
+    local isChannel = hoveredChatLink:match("^channel:") ~= nil
+    local whisperTarget = hoveredChatLink:match("^player:([^:]+)")
+    if not (isChannel or whisperTarget) then return false end
+    local frame, chatLink, chatText = hoveredChatFrame, hoveredChatLink, hoveredChatText
+    return pcall(function()
+        local targetBox
+        if isChannel then
+            local onHyperlinkClick = frame:GetScript("OnHyperlinkClick")
+            if onHyperlinkClick then
+                onHyperlinkClick(frame, chatLink, chatText, "LeftButton")
+            end
+            targetBox = frame.editBox
+        else
+            local editBox = (ChatEdit_ChooseBoxForSend and ChatEdit_ChooseBoxForSend())
+                or (ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow())
+                or _G["ChatFrame1EditBox"]
+            if editBox then
+                Utils.SafeCallMethod(editBox, "SetAttribute", "chatType", "WHISPER")
+                Utils.SafeCallMethod(editBox, "SetAttribute", "tellTarget", whisperTarget)
+                if ChatEdit_UpdateHeader then ChatEdit_UpdateHeader(editBox) end
+                if ChatEdit_ActivateChat then ChatEdit_ActivateChat(editBox) end
+            end
+            targetBox = editBox
+        end
+        -- Opening the channel/whisper activates the editbox (and a chat
+        -- replacement can finish setting its box up) a frame late, so insert
+        -- on the next frame.
+        Utils.SafeAfter(0, function()
+            InsertLinkIntoChatEditBox(targetBox, link)
+        end)
+    end)
+end
+
+-- The link of a catalog item currently carried on the cursor (picked up by a
+-- drag). WoW's cursor model carries a picked-up item until the NEXT click, and
+-- that drop click lands on the world, not on our row -- so a row mouse-up can't
+-- see it. The global watcher below turns a drop on free space into a /say.
+-- A catalog item's link while it is carried on the cursor after a drag pickup,
+-- so a drop on empty world can route it to /say. WoW carries a picked-up item
+-- until the next click, and that drop click lands on the world, not on our row.
+local carriedCatalogLink
+
+-- Open the chat editbox to /say with the link, WITHOUT sending it (the user
+-- reviews and presses Enter). ChatFrame_OpenChat is the standard "start typing"
+-- entry point; ChatEdit_ActivateChat submits the box on some setups.
+local function DropLinkToSay(link)
+    if not link or link == "" then return false end
+    return pcall(function()
+        local chatFrame = DEFAULT_CHAT_FRAME or _G["ChatFrame1"]
+        if ChatFrame_OpenChat then ChatFrame_OpenChat("", chatFrame) end
+        local editBox = (chatFrame and chatFrame.editBox)
+            or (ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow())
+            or _G["ChatFrame1EditBox"]
+        if not editBox then return end
+        Utils.SafeCallMethod(editBox, "SetAttribute", "chatType", "SAY")
+        if ChatEdit_UpdateHeader then ChatEdit_UpdateHeader(editBox) end
+        editBox:Insert(link)
+    end)
+end
+
+-- Was the click over empty world (free space), not any interactive UI frame?
+local function ClickedFreeSpace()
+    if not GetMouseFoci then return true end
+    local foci = GetMouseFoci()
+    if not foci or #foci == 0 then return true end
+    for i = 1, #foci do
+        if foci[i] ~= WorldFrame then return false end
+    end
+    return true
+end
+
+-- Global watcher: a carried catalog item (real cursor pickup from a drag)
+-- dropped on a chat channel/whisper hyperlink routes the link there, dropped on
+-- empty world routes it to /say; CURSOR_CHANGED forgets the link once the
+-- cursor empties (dropped elsewhere or cancelled).
+local worldDropInstalled = false
+local function EnsureCatalogFreeSpaceDrop()
+    if worldDropInstalled then return end
+    worldDropInstalled = true
+    local watcher = CreateFrame("Frame")
+    watcher:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    watcher:RegisterEvent("CURSOR_CHANGED")
+    watcher:SetScript("OnEvent", function(_, event, button)
+        if event == "CURSOR_CHANGED" then
+            if not (GetCursorInfo and GetCursorInfo()) then carriedCatalogLink = nil end
+            return
+        end
+        if not carriedCatalogLink or button ~= "LeftButton" then return end
+        if InCombatLockdown() then return end
+        local link = carriedCatalogLink
+        if RouteLinkToHoveredChat(link) then
+            carriedCatalogLink = nil
+            ClearCursor()
+        elseif ClickedFreeSpace() then
+            carriedCatalogLink = nil
+            ClearCursor()
+            DropLinkToSay(link)
+        end
+    end)
+end
+
 local function CollapsedNodes()
     return Results._collapsedNodes
 end
 
 function Rows.InstallInteractions(resultRow, index)
+    EnsureChatHyperlinkTracking()
+    EnsureCatalogFreeSpaceDrop()
     -- LeftButtonDown for the secure cast: type=spell silently no-ops
     -- on LeftButtonUp for many spells (this was confirmed in the TBC
     -- version where Down works perfectly). RegisterForDrag would
@@ -86,6 +242,7 @@ function Rows.InstallInteractions(resultRow, index)
         elseif d.itemID and PickupItem then
             PickupItem(d.itemID)
         end
+        carriedCatalogLink = (d.catalogItem and ns.GetResultLink and ns.GetResultLink(d)) or nil
     end
     local function SetSecureOutfit(row, outfitIndex)
         if row._lastAttrKey and row._lastAttrKey ~= "outfit-index" then
@@ -104,8 +261,22 @@ function Rows.InstallInteractions(resultRow, index)
     -- the secure click. SetScript would replace them and break casts.
     resultRow:HookScript("OnMouseDown", function(self, button)
         if button ~= "LeftButton" then return end
+        self._pickedUp = nil
+        local d = self.data
+        -- Catalog: a plain (no Shift/Ctrl) left DRAG picks the item onto the
+        -- cursor to send its link (drop on a chat channel, or empty world ->
+        -- /say); a plain click does nothing. Shift is chat-link, Ctrl is
+        -- dressing room.
+        if d and d.catalogItem then
+            if IsShiftKeyDown() or (IsControlKeyDown and IsControlKeyDown()) then return end
+            local x, y = GetCursorPosition()
+            self._dragOriginX, self._dragOriginY = x, y
+            return
+        end
+        -- Other rows: Shift+drag picks the action up (movement in OnUpdate);
+        -- plain clicks fall through to the cast / navigation.
         if not IsShiftKeyDown() then return end
-        if not CanPickupRowAction(self.data) then return end
+        if not CanPickupRowAction(d) then return end
         local x, y = GetCursorPosition()
         self._dragOriginX, self._dragOriginY = x, y
     end)
@@ -123,28 +294,34 @@ function Rows.InstallInteractions(resultRow, index)
             ns.ResultSecureAttributes.ArmSteerLate(self)
         end
         self._dragOriginX, self._dragOriginY = nil, nil
-        -- If we picked up this cycle and the user released over an
-        -- action bar slot, place it (emulates native drag-drop, which
-        -- we can't get via RegisterForDrag because it'd defer the Down
-        -- click and break casts).
+        -- Only a completed drag (OnUpdate set _pickedUp) acts here; a plain
+        -- click does nothing -- a click can't carry an unowned item onto the
+        -- cursor (the engine drops it on the release).
         if not self._pickedUp then return end
         if InCombatLockdown() then return end
-        local cursorType = GetCursorInfo and GetCursorInfo()
-        if not cursorType then return end
-        local foci
-        if GetMouseFoci then
-            foci = GetMouseFoci()
-        elseif GetMouseFocus then
-            foci = { GetMouseFocus() }
+        -- Released over a chat channel/whisper hyperlink: route the link there.
+        if RouteLinkToHoveredChat(ns.GetResultLink and ns.GetResultLink(self.data)) then
+            ClearCursor()
+            return
         end
-        if not foci then return end
-        for i = 1, #foci do
-            local f = foci[i]
-            local slot = f and (f.action or (f.GetAttribute and f:GetAttribute("action")))
-            if slot then
-                if PlaceAction then PlaceAction(slot) end
-                ClearCursor()
-                break
+        local cursorType = GetCursorInfo and GetCursorInfo()
+        if cursorType then
+            local foci
+            if GetMouseFoci then
+                foci = GetMouseFoci()
+            elseif GetMouseFocus then
+                foci = { GetMouseFocus() }
+            end
+            if foci then
+                for i = 1, #foci do
+                    local f = foci[i]
+                    local slot = f and (f.action or (f.GetAttribute and f:GetAttribute("action")))
+                    if slot then
+                        if PlaceAction then PlaceAction(slot) end
+                        ClearCursor()
+                        return
+                    end
+                end
             end
         end
     end)
@@ -258,6 +435,9 @@ function Rows.InstallInteractions(resultRow, index)
             self._pickedUp = nil
             return
         end
+        -- Catalog plain click picks the item up in OnMouseUp (reliable raw
+        -- event); PostClick only needs to route Ctrl (dressing room) through
+        -- SelectResult below.
         -- Block result selection if outfit equip is on cooldown (keep results open).
         -- Toys are deliberately NOT checked here: GetItemCooldown returns the
         -- cast-time of a freshly-started channel as a "cooldown", which would

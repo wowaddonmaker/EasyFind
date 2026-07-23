@@ -5392,6 +5392,15 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
             }
         end
     end
+    if extra and extra.addNoteRows then
+        rows[#rows + 1] = {
+            text = L["CTX_ADD_NOTE"],
+            icon = ns.FILTER_ARROW_TEX,
+            iconRotation = math.pi / 2,
+            chromeIcon = true,
+            submenu = extra.addNoteRows,
+        }
+    end
     if extra and extra.onBlacklist then
         rows[#rows + 1] = { text = L["CTX_BLACKLIST"], onClick = extra.onBlacklist }
     end
@@ -5534,6 +5543,45 @@ function ns.BuildSendLinkRows(link, name)
             end
         end,
     }
+    return rows
+end
+
+-- Build the "Add to Note" flyout rows: a New Note action plus each existing
+-- note (most-recent first) the link appends to. Needs the optional EasyNotes
+-- plugin (loaded on demand); returns nil when it is absent so the menu row is
+-- hidden. Both actions open the editor to the note as confirmation.
+function ns.BuildAddNoteRows(link, name)
+    if not link then return nil end
+    local Notes = ns.Notes
+    if not (Notes and Notes.CreateNote) and C_AddOns and C_AddOns.LoadAddOn then
+        pcall(C_AddOns.LoadAddOn, "EasyFind_Notes")
+        Notes = ns.Notes
+    end
+    if not (Notes and Notes.CreateNote and Notes.ListNotes and Notes.AppendToNote) then
+        return nil
+    end
+    local rows = {}
+    rows[#rows + 1] = {
+        text = L["CTX_NEW_NOTE"],
+        onClick = function()
+            local id = Notes.CreateNote({ title = name, body = link })
+            if id and Notes.OpenNote then Notes.OpenNote(id) end
+        end,
+    }
+    local notes = Notes.ListNotes()
+    if notes and #notes > 0 then
+        rows[#rows + 1] = { isSeparator = true }
+        for i = 1, math.min(#notes, 20) do
+            local noteID = notes[i].id
+            rows[#rows + 1] = {
+                text = notes[i].title,
+                onClick = function()
+                    Notes.AppendToNote(noteID, link)
+                    if Notes.OpenNote then Notes.OpenNote(noteID) end
+                end,
+            }
+        end
+    end
     return rows
 end
 

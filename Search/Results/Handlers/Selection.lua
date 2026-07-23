@@ -8,6 +8,8 @@ local Utils = ns.Utils
 
 local ipairs = Utils.ipairs
 local InCombatLockdown = InCombatLockdown
+local IsControlKeyDown = IsControlKeyDown
+local C_Item = C_Item
 local C_MountJournal = C_MountJournal
 local C_PetJournal = C_PetJournal
 local C_TransmogSets = C_TransmogSets
@@ -216,18 +218,15 @@ function Handlers:SelectResult(data, forceGuide)
         return
     end
 
-    -- Catalog item: link into an open chat box if there is one, else try it on
-    -- in the dressing room (equippable), else leave the tooltip as the answer.
-    -- Never navigates -- catalog rows are a lookup, and keep the results open.
+    -- Catalog item. A mouse click or drag picks the item up onto the cursor to
+    -- send its link (see Rows/Interactions); this path handles Ctrl (try it on
+    -- in the dressing room) and keyboard Enter, which has no cursor pickup and
+    -- so is a no-op lookup. Shift (chat link) is handled upstream in PreClick.
+    -- Never navigates -- catalog rows are a lookup and keep the results open.
     if data.catalogItem then
-        local link = C_Item and C_Item.GetItemInfo and select(2, C_Item.GetItemInfo(data.itemID))
-        if link then
-            local chatBox = ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow()
-            if chatBox and chatBox:IsShown() then
-                chatBox:Insert(link)
-            elseif DressUpItemLink then
-                DressUpItemLink(link)
-            end
+        if IsControlKeyDown() then
+            local link = C_Item and C_Item.GetItemInfo and select(2, C_Item.GetItemInfo(data.itemID))
+            if link and DressUpItemLink then DressUpItemLink(link) end
         end
         return
     end
