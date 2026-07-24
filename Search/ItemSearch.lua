@@ -18,6 +18,9 @@ local sfind, ssub = Utils.sfind, Utils.ssub
 local slower = Utils.slower or string.lower
 local pairs = Utils.pairs or pairs
 local tonumber = tonumber
+local CreateFrame = CreateFrame
+local C_Item = C_Item
+local strtrim = strtrim
 
 local MIN_QUERY = 3      -- below this the catalog matches too much to be useful
 local SCAN_CAP = 250     -- candidate ceiling per keystroke; sort/cap keeps the best
@@ -63,6 +66,48 @@ function ItemSearch:RefreshFilters()
     qualityTier = (db and db.catalogQualityTier) or 0
     filtersActive = anyDisabled or qualityTier > 0
     filtersReady = true
+end
+
+-- A catalog row resolves its official name from C_Item at render; an item the
+-- client has not cached yet falls back to the lowercase blob name. RowContent
+-- reports those here: request the data and, once ITEM_DATA_LOAD_RESULT lands,
+-- re-render the open query so the proper name replaces the fallback. Debounced
+-- so a burst of loads triggers a single re-render.
+local pendingLoads, loadListener, refreshTimer
+
+local function ScheduleCatalogRefresh()
+    if refreshTimer then return end
+    refreshTimer = Utils.SafeAfter(0.15, function()
+        refreshTimer = nil
+        local Search = ns.Search
+        local sf = Search and Search.GetSearchFrame and Search:GetSearchFrame()
+        local eb = sf and sf.editBox
+        if not eb then return end
+        local full = eb:GetText() or ""
+        local cursor = eb:GetCursorPosition() or #full
+        local typed = strtrim(ssub(full, 1, cursor))
+        if typed ~= "" then Search:OnSearchTextChanged(typed, true) end
+    end)
+end
+
+function ItemSearch:NoteUncachedItem(itemID)
+    if not itemID then return end
+    pendingLoads = pendingLoads or {}
+    if pendingLoads[itemID] then return end
+    pendingLoads[itemID] = true
+    if not loadListener then
+        loadListener = CreateFrame("Frame")
+        loadListener:RegisterEvent("ITEM_DATA_LOAD_RESULT")
+        loadListener:SetScript("OnEvent", function(_, _, loadedID)
+            if pendingLoads and pendingLoads[loadedID] then
+                pendingLoads[loadedID] = nil
+                ScheduleCatalogRefresh()
+            end
+        end)
+    end
+    if C_Item and C_Item.RequestLoadItemDataByID then
+        C_Item.RequestLoadItemDataByID(itemID)
+    end
 end
 
 local function EnsureBlob()

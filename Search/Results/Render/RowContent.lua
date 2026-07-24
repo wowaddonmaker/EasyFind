@@ -487,7 +487,14 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
         if (not displayName or displayName == "") and C_Item and C_Item.GetItemNameByID then
             displayName = C_Item.GetItemNameByID(id)
         end
-        if not displayName or displayName == "" then displayName = data.nameLower or entry.name end
+        if not displayName or displayName == "" then
+            -- Uncached: request the data + re-render when it lands, so this
+            -- lowercase blob fallback is replaced by the official name.
+            if ns.ItemSearch and ns.ItemSearch.NoteUncachedItem then
+                ns.ItemSearch:NoteUncachedItem(id)
+            end
+            displayName = data.nameLower or entry.name
+        end
         if not displayName or displayName == "" then displayName = "Item #" .. tostring(id) end
         local qc = data.quality and _G["ITEM_QUALITY_COLORS"] and _G["ITEM_QUALITY_COLORS"][data.quality]
         if qc and qc.hex then displayName = qc.hex .. displayName .. "|r" end
