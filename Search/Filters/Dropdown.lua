@@ -507,6 +507,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
                     optionsPopup._owningRow = subRow
                     popup._catalogOptionsPopup = optionsPopup
+                    popup._catalogQualityPopup = qualityPopup
                     dropdownGuardFrames[#dropdownGuardFrames + 1] = optionsPopup
 
                     Utils.AttachHoverPopup(subRow, optionsPopup, {
@@ -781,6 +782,8 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 function() return popup._mountSourcePopup end,
                 function() return popup._heirloomOptionsPopup end,
                 function() return popup._heirloomSourcePopup end,
+                function() return popup._catalogOptionsPopup end,
+                function() return popup._catalogQualityPopup end,
             }
             for ni = 1, #nestedFlyouts do
                 local nested = nestedFlyouts[ni]

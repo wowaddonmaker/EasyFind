@@ -50,6 +50,7 @@ function Filters:BuildCatalogOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuardF
     local PAD = 6
     local HEADER_H = 20
     local BTN_H = 27
+    local SECTION_GAP = 6
 
     local function ChainEnabled()
         local uiFilters = EasyFind.db.uiSearchFilters
@@ -74,27 +75,31 @@ function Filters:BuildCatalogOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuardF
     optionsPopup:EnableMouse(true)
     optionsPopup:Hide()
 
-    -- Quality dropdown bar (shared single-select template): "Quality: All",
-    -- or "Quality: <star>" once a specific tier is chosen.
-    local QUALITY_FMT = L["FILTER_QUALITY_FORMAT"]
-    local qualityDrop = Filters:BuildSelectDropdown({
-        parent = optionsPopup,
-        name = "EasyFindCatalogQualityPopup",
-        width = 140,
-        options = {
-            { value = 0, label = _G["ALL"] or "All" },
-            { value = 1, label = QualityLabel(1) },
-            { value = 2, label = QualityLabel(2) },
-            { value = 3, label = QualityLabel(3) },
-        },
-        getValue = function() return EasyFind.db.catalogQualityTier or 0 end,
-        setValue = function(v) EasyFind.db.catalogQualityTier = v end,
-        formatLabel = function(_, optLabel) return sformat(QUALITY_FMT, optLabel or (_G["ALL"] or "All")) end,
-        onChange = ApplyCatalog,
-        stylePopup = StylePopup,
-        guardFrames = dropdownGuardFrames,
-    })
-    local qualityBtn = qualityDrop.button
+    local typeRows = {}  -- forward-declared; the Toggle-all handler needs it
+
+    -- Section headers are gold on dark themes; gold is unreadable on light
+    -- fills, so those recolor to the theme's own accent instead.
+    local headers = {}
+    local function AddHeader(text, y)
+        local h = optionsPopup:CreateFontString(nil, "ARTWORK", "GameFontNormal")
+        h:SetPoint("TOPLEFT", optionsPopup, "TOPLEFT", PAD + 8, y - 2)
+        h:SetText(text)
+        h:SetShadowColor(0, 0, 0, 0)
+        headers[#headers + 1] = h
+        return h
+    end
+    local function RestyleHeaders()
+        local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+        local c
+        if theme and theme.lightTheme then
+            c = theme.pathColorHover or theme.leafColor
+        else
+            c = ns.GOLD_COLOR
+        end
+        if not c then return end
+        for i = 1, #headers do headers[i]:SetTextColor(c[1], c[2], c[3], 1) end
+    end
+    optionsPopup._efOnThemeRestyle = RestyleHeaders
 
     local function CreateCheckRow(bucketKey, label, y)
         local row = CreateFrame("CheckButton", nil, optionsPopup)
@@ -114,63 +119,105 @@ function Filters:BuildCatalogOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuardF
         return row
     end
 
-    -- Layout: quality bar, then Type header + one checkbox per bucket.
+    -- Layout, top to bottom: Type header, Toggle all, the type checkboxes, then
+    -- the Item quality header + quality bar at the very bottom.
     local y = -PAD
-    qualityBtn:ClearAllPoints()
-    qualityBtn:SetPoint("TOPLEFT", optionsPopup, "TOPLEFT", PAD, y)
-    y = y - BTN_H - 4
 
-    local typeHeader = optionsPopup:CreateFontString(nil, "ARTWORK", "GameFontNormal")
-    typeHeader:SetPoint("TOPLEFT", optionsPopup, "TOPLEFT", PAD + 8, y - 2)
-    typeHeader:SetText(_G["TYPE"] or "Type")
-    typeHeader:SetShadowColor(0, 0, 0, 0)
-    -- GameFontNormal's gold base only suits dark fills; recolor for light themes
-    -- on every open and live theme flip (matches MountOptions).
-    optionsPopup._efOnThemeRestyle = function()
-        local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
-        if theme and theme.lightTheme then
-            local c = theme.pathColorHover or theme.leafColor
-            typeHeader:SetTextColor(c[1], c[2], c[3], 1)
-        else
-            typeHeader:SetTextColor(ns.GOLD_COLOR[1], ns.GOLD_COLOR[2], ns.GOLD_COLOR[3], 1)
+    -- Toggle all sits at the very top and has no checkbox column (there is no
+    -- single state to show); its label lines up with the section headers.
+    local toggleAllRow = CreateFrame("Button", nil, optionsPopup)
+    toggleAllRow:SetSize(100, ROW_H)
+    toggleAllRow:SetPoint("TOPLEFT", optionsPopup, "TOPLEFT", PAD, y)
+    local toggleAllLabel = toggleAllRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    toggleAllLabel:SetPoint("LEFT", 8, 0)
+    toggleAllLabel:SetText(L["FILTER_TOGGLE_ALL"])
+    toggleAllRow._label = toggleAllLabel
+    Utils.InstallMenuRowHighlight(toggleAllRow)
+    toggleAllRow:SetScript("OnClick", function()
+        local tf = EnsureTypeFilters()
+        local allOn = true
+        for _, b in ipairs(TYPE_BUCKETS) do
+            if tf[b.key] == false then allOn = false; break end
         end
-    end
-    optionsPopup._efOnThemeRestyle()
+        for _, b in ipairs(TYPE_BUCKETS) do tf[b.key] = not allOn end
+        for i = 1, #typeRows do typeRows[i]:SetChecked(tf[typeRows[i]._bucket] ~= false) end
+        ApplyCatalog()
+    end)
+    y = y - ROW_H
+
+    AddHeader(_G["TYPE"] or "Type", y)
     y = y - HEADER_H
 
-    local typeRows = {}
     for _, bucket in ipairs(TYPE_BUCKETS) do
         typeRows[#typeRows + 1] = CreateCheckRow(bucket.key, ClassName(bucket.class, bucket.fallback), y)
         y = y - ROW_H
     end
 
-    -- Width: fit the widest checkbox, the Type header, and the quality bar's
-    -- widest possible label (left inset + label + gap + arrow + inset).
+    y = y - SECTION_GAP
+    AddHeader(L["FILTER_ITEM_QUALITY"], y)
+    y = y - HEADER_H
+
+    -- Quality bar (shared single-select template): "Quality: All", or
+    -- "Quality: <star>" once a tier is chosen.
+    local QUALITY_FMT = L["FILTER_QUALITY_FORMAT"]
+    local qualityDrop = Filters:BuildSelectDropdown({
+        parent = optionsPopup,
+        name = "EasyFindCatalogQualityPopup",
+        width = 140,
+        options = {
+            { value = 0, label = _G["ALL"] or "All" },
+            { value = 1, label = QualityLabel(1) },
+            { value = 2, label = QualityLabel(2) },
+            { value = 3, label = QualityLabel(3) },
+        },
+        getValue = function() return EasyFind.db.catalogQualityTier or 0 end,
+        setValue = function(v) EasyFind.db.catalogQualityTier = v end,
+        formatLabel = function(_, optLabel) return sformat(QUALITY_FMT, optLabel or (_G["ALL"] or "All")) end,
+        onChange = ApplyCatalog,
+        stylePopup = StylePopup,
+        guardFrames = dropdownGuardFrames,
+    })
+    local qualityBtn = qualityDrop.button
+    qualityBtn:ClearAllPoints()
+    qualityBtn:SetPoint("TOPLEFT", optionsPopup, "TOPLEFT", PAD, y)
+    y = y - BTN_H
+
+    -- Width: fit the widest checkbox / toggle-all / header, plus the quality
+    -- bar's widest possible label (left inset + label + gap + arrow + inset).
     local contentW = 0
     for i = 1, #typeRows do
         local w = Utils.FlyoutRowContentWidth(typeRows[i], CHECK_SIZE + 4)
         if w > contentW then contentW = w end
     end
-    local headerW = 8 + typeHeader:GetStringWidth()
-    if headerW > contentW then contentW = headerW end
+    local tW = Utils.FlyoutRowContentWidth(toggleAllRow, 8)
+    if tW > contentW then contentW = tW end
+    for i = 1, #headers do
+        local hw = 8 + headers[i]:GetStringWidth()
+        if hw > contentW then contentW = hw end
+    end
     qualityDrop.setLabel(sformat(QUALITY_FMT, QualityLabel(3)))
     local qBtnW = 14 + qualityBtn._label:GetStringWidth() + 2 + 22 + 10
     if qBtnW > contentW then contentW = qBtnW end
     qualityDrop.Refresh()
 
     local popupW = Utils.FlyoutWidthFor(contentW, PAD)
-    qualityBtn:SetWidth(popupW - PAD * 2)
     for i = 1, #typeRows do typeRows[i]:SetWidth(popupW - PAD * 2) end
+    toggleAllRow:SetWidth(popupW - PAD * 2)
+    qualityBtn:SetWidth(popupW - PAD * 2)
     optionsPopup:SetSize(popupW, -y + PAD)
+
+    RestyleHeaders()
 
     local function SyncOptions()
         local chainEnabled = ChainEnabled()
+        RestyleHeaders()
         qualityDrop.Refresh()
         Utils.SetFlyoutRowEnabled(qualityBtn, chainEnabled)
+        Utils.SetFlyoutRowEnabled(toggleAllRow, chainEnabled)
         local tf = EasyFind.db.catalogTypeFilters or {}
-        for _, row in ipairs(typeRows) do
-            row:SetChecked(tf[row._bucket] ~= false)
-            Utils.SetFlyoutRowEnabled(row, chainEnabled)
+        for i = 1, #typeRows do
+            typeRows[i]:SetChecked(tf[typeRows[i]._bucket] ~= false)
+            Utils.SetFlyoutRowEnabled(typeRows[i], chainEnabled)
         end
     end
 
