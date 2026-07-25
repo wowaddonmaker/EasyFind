@@ -56,7 +56,11 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
     local dropdown = CreateFrame("Frame", "EasyFindUIFilterDropdown", UIParent, "BackdropTemplate")
     dropdown:SetFrameStrata("DIALOG")
-    dropdown:SetFrameLevel(9999)
+    -- Leave headroom below the engine's 10000 ceiling: rows sit at +2 and the
+    -- hover pill at +1, and the nested option popups stack another +10..+30 on
+    -- top. At 9999 every one of those clamped back onto 10000, so the pill
+    -- landed on the container's own level and z-fought the fill into invisible.
+    dropdown:SetFrameLevel(9000)
     -- Bump everything in the filter menu uniformly: 1.5x larger fonts,
     -- icons, paddings, and row heights without rewriting the hardcoded
     -- pixel sizes scattered through the row builders.
@@ -498,6 +502,60 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     dropdown:HookScript("OnHide", function() optionsPopup:Hide() end)
                 end
 
+                if sub.hasOptions and sub.key == "toys" then
+                    local optionsPopup, syncOptions, sourcePopup, expansionPopup =
+                        Search:BuildToyOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuardFrames)
+                    optionsPopup._efSync = syncOptions
+                    optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
+                    optionsPopup._owningRow = subRow
+                    popup._toyOptionsPopup = optionsPopup
+                    popup._toySourcePopup = sourcePopup
+                    popup._toyExpansionPopup = expansionPopup
+                    dropdownGuardFrames[#dropdownGuardFrames + 1] = optionsPopup
+                    dropdownGuardFrames[#dropdownGuardFrames + 1] = sourcePopup
+                    dropdownGuardFrames[#dropdownGuardFrames + 1] = expansionPopup
+
+                    Utils.AttachHoverPopup(subRow, optionsPopup, {
+                        extraGuards = { sourcePopup, expansionPopup },
+                        onShow = function()
+                            syncOptions()
+                            optionsPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
+                            Utils.OpenFlyoutBeside(optionsPopup, subRow, 4)
+                            optionsPopup:Show()
+                        end,
+                    })
+
+                    popup:HookScript("OnHide", function() optionsPopup:Hide() end)
+                    dropdown:HookScript("OnHide", function() optionsPopup:Hide() end)
+                end
+
+                if sub.hasOptions and sub.key == "pets" then
+                    local optionsPopup, syncOptions, sourcePopup, typePopup =
+                        Search:BuildPetOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuardFrames)
+                    optionsPopup._efSync = syncOptions
+                    optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
+                    optionsPopup._owningRow = subRow
+                    popup._petOptionsPopup = optionsPopup
+                    popup._petSourcePopup = sourcePopup
+                    popup._petTypePopup = typePopup
+                    dropdownGuardFrames[#dropdownGuardFrames + 1] = optionsPopup
+                    dropdownGuardFrames[#dropdownGuardFrames + 1] = sourcePopup
+                    dropdownGuardFrames[#dropdownGuardFrames + 1] = typePopup
+
+                    Utils.AttachHoverPopup(subRow, optionsPopup, {
+                        extraGuards = { sourcePopup, typePopup },
+                        onShow = function()
+                            syncOptions()
+                            optionsPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
+                            Utils.OpenFlyoutBeside(optionsPopup, subRow, 4)
+                            optionsPopup:Show()
+                        end,
+                    })
+
+                    popup:HookScript("OnHide", function() optionsPopup:Hide() end)
+                    dropdown:HookScript("OnHide", function() optionsPopup:Hide() end)
+                end
+
                 -- General catalog: crafting-quality-tier radio + item-type
                 -- checkboxes, opening to the right of the catalog sub-row.
                 if sub.hasOptions and sub.key == "catalog" then
@@ -655,6 +713,8 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             HookSiblingHide("_appearanceSetOptionsPopup", subRows.appearances)
             HookSiblingHide("_mountOptionsPopup", subRows.mounts)
             HookSiblingHide("_heirloomOptionsPopup", subRows.heirlooms)
+            HookSiblingHide("_toyOptionsPopup", subRows.toys)
+            HookSiblingHide("_petOptionsPopup", subRows.pets)
             for _, sub in ipairs(opt.flyoutSubFilters) do
                 if sub.subFilters then
                     HookSiblingHide("_nestedFlyout_" .. sub.key, subRows[sub.key])

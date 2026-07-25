@@ -3,12 +3,9 @@ local _, ns = ...
 local Handlers = ns.ResultHandlers
 local Utils = ns.Utils
 
-local GetButtonText = Utils.GetButtonText
-local SearchFrameTreeFuzzy = Utils.SearchFrameTreeFuzzy
 local ClickButton = Utils.ClickButton
 local select, pairs = Utils.select, Utils.pairs
 local slower = Utils.slower
-local mfloor = Utils.mfloor
 local C_ToyBox = C_ToyBox
 
 function Handlers:GetToyBoxFrame()
@@ -36,80 +33,73 @@ function Handlers:GetToyBoxScrollBox()
     return nil
 end
 
-function Handlers:GetToyDisplayFraction(itemID)
-    if not (itemID and C_ToyBox and C_ToyBox.GetNumFilteredToys and C_ToyBox.GetToyFromIndex) then
-        return nil
-    end
-    local total = C_ToyBox.GetNumFilteredToys()
-    for i = 1, total or 0 do
-        if C_ToyBox.GetToyFromIndex(i) == itemID then
-            return (total and total > 1) and ((i - 1) / (total - 1)) or 0
-        end
-    end
-    return nil
-end
-
-function Handlers:GetToyDisplayIndex(itemID)
-    if not (itemID and C_ToyBox and C_ToyBox.GetNumFilteredToys and C_ToyBox.GetToyFromIndex) then
-        return nil, nil
-    end
-    local total = C_ToyBox.GetNumFilteredToys()
-    for i = 1, total or 0 do
-        if C_ToyBox.GetToyFromIndex(i) == itemID then
-            return i, total
-        end
-    end
-    return nil, total
-end
-
-function Handlers:GetToyBoxButtonsPerPage(toyBox)
-    local iconsFrame = toyBox and (toyBox.iconsFrame or toyBox.IconsFrame)
-    local buttons = (iconsFrame and (iconsFrame.buttons or iconsFrame.Buttons))
-        or (toyBox and (toyBox.buttons or toyBox.Buttons))
-    if type(buttons) == "table" then
-        local count = 0
-        for _, button in pairs(buttons) do
-            if button then count = count + 1 end
-        end
-        if count > 0 then return count end
-    end
-    local perPage = _G["TOYS_PER_PAGE"]
-    if type(perPage) == "number" and perPage > 0 then return perPage end
-    return 18
-end
-
-function Handlers:SetToyBoxPageForItem(itemID)
-    local index = self:GetToyDisplayIndex(itemID)
-    if not index then return nil end
-
+-- The toy box's own search EditBox (a SearchBoxTemplate). Field names have
+-- moved between builds, so probe the same way as the frame/scroll box.
+function Handlers:GetToyBoxSearchBox()
     local toyBox = self:GetToyBoxFrame()
-    local perPage = self:GetToyBoxButtonsPerPage(toyBox)
-    if not perPage or perPage <= 0 then return nil end
+    return (toyBox and (toyBox.SearchBox or toyBox.searchBox))
+        or _G["ToyBoxSearchBox"]
+end
 
-    local page = mfloor((index - 1) / perPage) + 1
-    if toyBox then
-        toyBox.page = page
-        toyBox.currentPage = page
+-- Narrow the C-side filtered list to the one target toy so Blizzard renders
+-- it alone on page one -- no paging needed. This is the whole navigation:
+-- secure execution can only "click a frame", so reaching a distant page means
+-- N clicks on the next-page button, and the engine caps secure actions per
+-- hardware click at ~10. The toy box is 55 pages, so page-walking cannot
+-- reach it (measured with /efd toypage: a complete 53-line click chain
+-- advanced only 10 pages). Collapsing the list sidesteps paging entirely.
+--
+-- SetFilterString is a C-side call and taint-free (Blizzard's own
+-- TOYS_UPDATED handler re-renders securely, whoever set the filter), so it is
+-- applied FIRST and does the actual filtering + render. The name is then
+-- mirrored into the visible search box so the player can see why the list
+-- narrowed and clear it themselves to browse. Setting the C-side filter first
+-- means the box's own text-changed pass finds the filter already at that
+-- value, so it has nothing new to render -- the taint-safest way to show it.
+--
+-- Nothing here is auto-undone: the search text is visible and the player owns
+-- it (they clear it to browse). The collected/source/expansion filters are
+-- touched ONLY when the clicked toy would otherwise be hidden: after narrowing
+-- by name we check whether the target is in the filtered list, and only if it
+-- is not (the player's toy box filters exclude it -- e.g. an uncollected toy
+-- with "Not Collected" unchecked) do we widen every axis so the reveal can
+-- show it. A toy already visible under the player's filters leaves them
+-- exactly as they were.
+--
+-- Must run after the panel is shown: the toy box's open-init resets the
+-- filter to its (empty) search box, so a filter set before the cold open is
+-- clobbered.
+function Handlers.ApplyToyBoxFilter(toyName, toyItemID)
+    if not C_ToyBox then return end
+    if C_ToyBox.SetFilterString then pcall(C_ToyBox.SetFilterString, toyName or "") end
+    if C_ToyBox.ForceToyRefilter then pcall(C_ToyBox.ForceToyRefilter) end
+
+    if toyItemID and not Handlers:IsToyInFilteredList(toyItemID) then
+        if C_ToyBox.SetCollectedShown then pcall(C_ToyBox.SetCollectedShown, true) end
+        if C_ToyBox.SetUncollectedShown then pcall(C_ToyBox.SetUncollectedShown, true) end
+        if C_ToyBox.SetUnusableShown then pcall(C_ToyBox.SetUnusableShown, true) end
+        if C_ToyBox.SetAllSourceTypeFilters then pcall(C_ToyBox.SetAllSourceTypeFilters, true) end
+        if C_ToyBox.SetAllExpansionTypeFilters then pcall(C_ToyBox.SetAllExpansionTypeFilters, true) end
+        if C_ToyBox.ForceToyRefilter then pcall(C_ToyBox.ForceToyRefilter) end
     end
 
-    local paging = toyBox and (toyBox.PagingFrame or toyBox.pagingFrame)
-    if paging and paging.SetCurrentPage then
-        pcall(paging.SetCurrentPage, paging, page)
+    local searchBox = Handlers:GetToyBoxSearchBox()
+    if searchBox and searchBox.SetText then
+        pcall(searchBox.SetText, searchBox, toyName or "")
+        if searchBox.ClearFocus then pcall(searchBox.ClearFocus, searchBox) end
     end
+end
 
-    local updatePage = _G["ToyBox_UpdatePage"]
-    if updatePage then
-        pcall(updatePage, page)
-        if toyBox then pcall(updatePage, toyBox, page) end
+-- Is the toy in the toy box's CURRENT filtered list? Pure C-side reads.
+function Handlers:IsToyInFilteredList(itemID)
+    if not (itemID and C_ToyBox and C_ToyBox.GetNumFilteredToys and C_ToyBox.GetToyFromIndex) then
+        return false
     end
-
-    local updateButtons = _G["ToyBox_UpdateButtons"]
-    if updateButtons then
-        pcall(updateButtons)
-        if toyBox then pcall(updateButtons, toyBox) end
+    local total = C_ToyBox.GetNumFilteredToys() or 0
+    for i = 1, total do
+        if C_ToyBox.GetToyFromIndex(i) == itemID then return true end
     end
-
-    return page
+    return false
 end
 
 function Handlers:ToyElementMatches(edata, itemID, toyName)
@@ -139,8 +129,11 @@ function Handlers:ToyFrameMatches(frame, itemID, toyName)
         or frame.toyId == itemID or frame.id == itemID) then
         return true
     end
-    local text = GetButtonText(frame)
-    return toyName and text and slower(text) == toyName
+    -- No loose button-text match: the toy name now sits in the toy box's OWN
+    -- search box, whose text would match here and get highlighted instead of
+    -- the tile. Real toy tiles always carry the itemID above, so identity is
+    -- enough and text is never needed.
+    return false
 end
 
 function Handlers:FindToyButtonInFrame(frame, itemID, toyName, depth)
@@ -172,47 +165,27 @@ end
 function Handlers:RevealToyInToyBox(data)
     if not (data and data.toyItemID) then return nil end
 
-    if C_ToyBox then
-        if C_ToyBox.SetCollectedShown then pcall(C_ToyBox.SetCollectedShown, true) end
-        if C_ToyBox.SetUncollectedShown then pcall(C_ToyBox.SetUncollectedShown, false) end
-        if C_ToyBox.SetAllSourceTypeFilters then pcall(C_ToyBox.SetAllSourceTypeFilters, true) end
-        if C_ToyBox.SetAllExpansionTypeFilters then pcall(C_ToyBox.SetAllExpansionTypeFilters, true) end
-        if C_ToyBox.SetFilterString then pcall(C_ToyBox.SetFilterString, "") end
-        if C_ToyBox.ForceToyRefilter then pcall(C_ToyBox.ForceToyRefilter) end
-    end
-
     local toyBox = self:GetToyBoxFrame()
-    if toyBox then
-        self:SetEditBoxTextIfPresent(toyBox.SearchBox or toyBox.searchBox, "")
-    end
-
     local toyName = data.name and slower(data.name)
-    self:SetToyBoxPageForItem(data.toyItemID)
 
+    -- The list is narrowed to this toy, so match ONLY by itemID/name identity.
+    -- No fuzzy text fallback: with the target off-screen it would return some
+    -- other visible tile, which is exactly the "highlights the wrong toy" bug.
     if toyBox then
         local visibleButton = self:FindToyButtonInFrame(toyBox, data.toyItemID, toyName, 0)
         if visibleButton then return visibleButton end
     end
 
+    -- ScrollBox-style toybox variants: read-only button lookup. Never drive
+    -- the scroll from addon code (insecure render, same poison class).
     local scrollBox = self:GetToyBoxScrollBox()
     if scrollBox then
-        Utils.ScrollBoxScrollTo(scrollBox, function(edata)
-            return self:ToyElementMatches(edata, data.toyItemID, toyName)
-        end, self:GetToyDisplayFraction(data.toyItemID))
         local btn = Utils.ScrollBoxFindButton(scrollBox, function(frame)
             return self:ToyFrameMatches(frame, data.toyItemID, toyName)
         end)
         if btn then return btn end
     end
 
-    if toyBox then
-        local visibleButton = self:FindToyButtonInFrame(toyBox, data.toyItemID, toyName, 0)
-        if visibleButton then return visibleButton end
-    end
-
-    if toyBox and toyName then
-        return SearchFrameTreeFuzzy(toyBox, toyName)
-    end
     return nil
 end
 
@@ -238,6 +211,15 @@ function Handlers:OpenToyInToyBox(data)
     if not data or not data.toyItemID then return end
     local highlight = ns.Highlight
     local TOY_TAB = 3
+    local narrowed = false
+
+    -- Clears the glow the instant the tile stops being this toy: the player
+    -- editing or clearing the toy box search re-pools the button onto another
+    -- toy (or hides it), and the highlight watcher drops it on the mismatch.
+    local toyNameLower = data.name and slower(data.name)
+    local function stillRepresentsToy(frame)
+        return self:ToyFrameMatches(frame, data.toyItemID, toyNameLower)
+    end
 
     local function step(attempt)
         local journal = _G["CollectionsJournal"]
@@ -259,8 +241,17 @@ function Handlers:OpenToyInToyBox(data)
             end
             return
         end
+        -- Panel open on the toy tab. Narrow the filtered list to this toy
+        -- once it is visible, so Blizzard renders it alone on page one; done
+        -- here (not at click time) because the toy box's open-init would
+        -- otherwise reset the filter. Then re-scan each tick for the settled
+        -- tile and highlight it.
+        if not narrowed then
+            narrowed = true
+            self.ApplyToyBoxFilter(data.name, data.toyItemID)
+        end
         local row = self:RevealToyInToyBox(data)
-        if row and self:HighlightRevealedFrame(row) then return end
+        if row and self:HighlightRevealedFrame(row, stillRepresentsToy) then return end
         if attempt < 30 then
             Utils.SafeAfter(0.05, function() step(attempt + 1) end)
         end

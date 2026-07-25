@@ -270,6 +270,13 @@ function Icons:IsMountSummonable(data)
     return true
 end
 
+-- An uncollected pet cannot be summoned, so its click opens the Pet Journal
+-- instead (the uncollected-mount behaviour).
+function Icons:IsPetSummonable(data)
+    if not (data and (data.petID or data.speciesID)) then return false end
+    return data.isCollected ~= false
+end
+
 local function ClearRowIconLeafIDs(icon)
     icon.mountID = nil
     icon.toyItemID = nil

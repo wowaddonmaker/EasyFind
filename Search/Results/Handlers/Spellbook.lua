@@ -739,7 +739,6 @@ function Handlers:OpenAbilityInSpellbook(data, stepGuide)
                     highlight:HighlightSpellbookSpell(elementBtn, stillRepresentsTarget)
                 else
                     highlight:HighlightFrame(elementBtn, nil, stillRepresentsTarget)
-                    Handlers.HideHighlightOnHover(elementBtn)
                 end
                 return
             end
@@ -751,7 +750,6 @@ function Handlers:OpenAbilityInSpellbook(data, stepGuide)
                 highlight:HighlightSpellbookSpell(btn, stillRepresentsTarget)
             else
                 highlight:HighlightFrame(btn, nil, stillRepresentsTarget)
-                Handlers.HideHighlightOnHover(btn)
             end
             return
         end

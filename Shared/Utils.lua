@@ -2046,44 +2046,66 @@ function ns.StyleWizardPanel(frame, alpha)
 end
 
 local MENU_ROW_HIGHLIGHT_TEX = "Interface\\QuestFrame\\UI-QuestTitleHighlight"
-local MENU_ROW_EDGE_TOLERANCE = 16
-local MENU_ROW_MASK_TEX = {
-    middle = "Interface\\AddOns\\EasyFind\\textures\\MenuHighlightMaskFull",
-    top = "Interface\\AddOns\\EasyFind\\textures\\MenuHighlightMaskTop",
-    bottom = "Interface\\AddOns\\EasyFind\\textures\\MenuHighlightMaskBottom",
-    single = "Interface\\AddOns\\EasyFind\\textures\\MenuHighlightMaskSingle",
-}
 
-local function ApplyMenuHighlightMask(row, tex, role)
-    if not (row and tex and row.CreateMaskTexture and tex.AddMaskTexture) then return end
-    local maskKey = "_efMenuHighlightMask"
-    if tex == row.keyboardOverlay then
-        maskKey = "_efMenuKeyboardHighlightMask"
-    elseif tex == row._efWashTex then
-        maskKey = "_efMenuWashMask"
+-- ONE rounded hover pill for every row surface: search result rows and menu
+-- rows share this (menus used to cut positional corner masks; now every row
+-- wears the same rounded fill the result rows do). wants toggles it; layout
+-- (optional) anchors the pill at creation, defaulting to the row's own rect.
+-- washColor (optional {r, g, b, a}) overrides the theme's row wash. Callers
+-- whose selection carries its own meaning -- the task view's rows tint with
+-- the zone-preview accent so row and on-screen preview read as one -- pass it
+-- and stay visible on themes that have no wash color of their own.
+function Utils.UpdateRoundedRowWash(row, wants, layout, washColor)
+    local washR, washG, washB, washA
+    if washColor then
+        washR, washG, washB, washA = washColor[1], washColor[2], washColor[3], washColor[4]
+    else
+        washR, washG, washB = ns.RowWashColor()
+        washA = ns.RowWashAlpha()
     end
-    local mask = row[maskKey]
-    if not mask then
-        mask = row:CreateMaskTexture()
-        row[maskKey] = mask
-        tex:AddMaskTexture(mask)
+    if not (wants and washR) then
+        if row.hoverWash then row.hoverWash:Hide() end
+        return
     end
-    mask:ClearAllPoints()
-    mask:SetAllPoints(tex)
-    mask:SetTexture(MENU_ROW_MASK_TEX[role] or MENU_ROW_MASK_TEX.middle,
-        "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-end
-
-function Utils.SetMenuRowHighlightPosition(row, position)
-    if not (row and row._efMenuRowHighlightInstalled) then return end
-    row._efMenuHighlightPosition = position or "middle"
-    ApplyMenuHighlightMask(row, row:GetHighlightTexture(), row._efMenuHighlightPosition)
-    if row.keyboardOverlay then
-        ApplyMenuHighlightMask(row, row.keyboardOverlay, row._efMenuHighlightPosition)
+    local hl = row.hoverWash
+    if not hl then
+        -- The pill must sit BETWEEN its container's fill and the row's text:
+        -- strictly ABOVE the container's level and strictly BELOW the row's.
+        -- Rows within one level of their container leave no band for it (a
+        -- pill at the container's own level z-fights the fill and vanishes --
+        -- HARDFOUGHT_BATTLES: equal level = the parent wins), so lift such
+        -- rows to container+2 first; their regions ride along.
+        local container = row:GetParent()
+        if container and container.GetFrameLevel
+           and row:GetFrameLevel() <= container:GetFrameLevel() + 1 then
+            row:SetFrameLevel(container:GetFrameLevel() + 2)
+        end
+        hl = CreateFrame("Frame", nil, row)
+        if layout then
+            layout(hl, row)
+        else
+            hl:SetPoint("TOPLEFT", row, "TOPLEFT", 0, 0)
+            hl:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT", 0, 0)
+        end
+        hl:SetFrameLevel(row:GetFrameLevel() > 0 and row:GetFrameLevel() - 1 or 0)
+        ns.CreateRoundedRectBorder(hl)
+        -- Panel ON first (fill cells are born hidden), then ring off: the
+        -- documented ordering for fill-only rounded frames.
+        ns.SetRoundedRectBorderShown(hl, true)
+        ns.SetRoundedRectRingShown(hl, false)
+        row.hoverWash = hl
     end
-    if row._efWashTex then
-        ApplyMenuHighlightMask(row, row._efWashTex, row._efMenuHighlightPosition)
+    -- Corner curvature between the window's full curve and a subtle card
+    -- round, clamped to the row height so short rows don't overlap corners.
+    local rowH = row:GetHeight() or 0
+    local barH = 22
+    if rowH > 0 and rowH < barH then barH = rowH end
+    if hl._efBarH ~= barH then
+        hl._efBarH = barH
+        ns.SetRoundedRectBarHeight(hl, barH)
     end
+    ns.SetRoundedRectFill(hl, washR, washG, washB, washA, true)
+    hl:Show()
 end
 
 -- Hover/focus wash for menu rows on non-Black themes. This CANNOT be the
@@ -2093,19 +2115,19 @@ end
 -- So the wash is a plain BACKGROUND texture whose visibility mirrors the
 -- highlight state through the hooks below.
 local function UpdateMenuRowWash(row)
-    local tex = row._efWashTex
-    local shown = row._efWashActive and (row._efWashHover or row._efWashFocused)
-    if tex then tex:SetShown(shown and true or false) end
+    Utils.UpdateRoundedRowWash(row,
+        row._efWashActive and (row._efWashHover or row._efWashFocused))
 end
 
-local function EnsureMenuRowWash(row, washR, washG, washB)
-    local tex = row._efWashTex
-    if not tex then
-        tex = row:CreateTexture(nil, "BACKGROUND", nil, 1)
-        tex:SetAllPoints(row)
-        tex:Hide()
-        row._efWashTex = tex
-        ApplyMenuHighlightMask(row, tex, row._efMenuHighlightPosition or "middle")
+local function EnsureMenuRowWash(row)
+    -- Legacy flat wash band: superseded by the shared rounded pill.
+    if row._efWashTex then
+        row._efWashTex:Hide()
+        row._efWashTex = nil
+        row._efWashHooked = true   -- the old path installed the hover hooks
+    end
+    if not row._efWashHooked then
+        row._efWashHooked = true
         row:HookScript("OnEnter", function(self)
             self._efWashHover = true
             UpdateMenuRowWash(self)
@@ -2115,11 +2137,6 @@ local function EnsureMenuRowWash(row, washR, washG, washB)
             UpdateMenuRowWash(self)
         end)
     end
-    -- Fade the wash with the window-opacity setting, same as the menu
-    -- popup fill it sits on (ns.ApplyMenuOpacity), and keep it a step below
-    -- solid so it never overpowers the fill it washes over.
-    tex:SetColorTexture(washR, washG, washB, ns.RowWashAlpha())
-    return tex
 end
 
 -- Widest natural width across regions: FontStrings measure unwrapped, other
@@ -2204,42 +2221,15 @@ function Utils.RefreshMenuRowHighlights(parent, orderedRows)
                 rows[#rows + 1] = row
             end
         end
-        tsort(rows, function(a, b)
-            local at, bt = a:GetTop() or 0, b:GetTop() or 0
-            if at ~= bt then return at > bt end
-            return (a:GetLeft() or 0) < (b:GetLeft() or 0)
-        end)
-    end
-
-    local parentTop, parentBottom = parent:GetTop(), parent:GetBottom()
-    for i = 1, #rows do
-        local row = rows[i]
-        local topEdge = i == 1
-        local bottomEdge = i == #rows
-        local rowTop, rowBottom = row:GetTop(), row:GetBottom()
-        if parentTop and rowTop then
-            topEdge = topEdge and ((parentTop - rowTop) <= MENU_ROW_EDGE_TOLERANCE)
-        end
-        if parentBottom and rowBottom then
-            bottomEdge = bottomEdge and ((rowBottom - parentBottom) <= MENU_ROW_EDGE_TOLERANCE)
-        end
-
-        local role = "middle"
-        if topEdge and bottomEdge then
-            role = "single"
-        elseif topEdge then
-            role = "top"
-        elseif bottomEdge then
-            role = "bottom"
-        end
-        Utils.SetMenuRowHighlightPosition(row, role)
     end
 
     -- Hover tint follows the main-row behavior: the theme wash on every
     -- theme except Black, which keeps the classic additive glow. In wash
     -- mode the real highlight texture stays in its HIGHLIGHT layer but
     -- goes transparent (it still drives hover/lock state); the visible
-    -- band is the per-row BACKGROUND wash texture, under the text.
+    -- hover is the SAME rounded pill the search result rows wear
+    -- (Utils.UpdateRoundedRowWash) -- uniform on every row, no positional
+    -- corner masks.
     local washR, washG, washB = ns.RowWashColor()
     for i = 1, #rows do
         local row = rows[i]
@@ -2247,7 +2237,7 @@ function Utils.RefreshMenuRowHighlights(parent, orderedRows)
         local hlTex = row:GetHighlightTexture()
         if washR then
             if hlTex then hlTex:SetAlpha(0) end
-            EnsureMenuRowWash(row, washR, washG, washB)
+            EnsureMenuRowWash(row)
         elseif hlTex then
             hlTex:SetAlpha(1)
             hlTex:SetBlendMode("ADD")
@@ -2276,6 +2266,9 @@ end
 -- and re-entering the owner, its popup, or any row inside the popup restores
 -- it. The popup's OnHide remains the final release.
 local flyoutHighlightHolds = {}
+-- Dev-tool peek (EasyFindDev /efd pill): the holds are otherwise invisible
+-- to external diagnosis.
+Utils._flyoutHighlightHolds = flyoutHighlightHolds
 
 local function FindFlyoutHighlightHold(owner, popup)
     for i = 1, #flyoutHighlightHolds do
@@ -2283,6 +2276,20 @@ local function FindFlyoutHighlightHold(owner, popup)
         if hold.owner == owner and hold.popup == popup then return i, hold end
     end
     return nil
+end
+
+-- A hold's visual goes through the single-owner highlight API when the row
+-- has it: SetMenuHighlightFocused drives BOTH the Black-theme texture lock
+-- AND the wash-theme pill. Raw LockHighlight only locks the built-in texture,
+-- which wash themes run at alpha 0 -- the hold engaged and nothing showed.
+local function SetHoldVisual(owner, held)
+    if owner.SetMenuHighlightFocused then
+        owner:SetMenuHighlightFocused(held)
+    elseif held then
+        if owner.LockHighlight then owner:LockHighlight() end
+    elseif owner.UnlockHighlight then
+        owner:UnlockHighlight()
+    end
 end
 
 local function MenuRowEnterAdjustsHolds(row)
@@ -2295,11 +2302,11 @@ local function MenuRowEnterAdjustsHolds(row)
         elseif hold.owner == row or rowParent == hold.popup then
             if not hold.held then
                 hold.held = true
-                if hold.owner.LockHighlight then hold.owner:LockHighlight() end
+                SetHoldVisual(hold.owner, true)
             end
         elseif hold.held and hold.owner:GetParent() == rowParent then
             hold.held = false
-            if hold.owner.UnlockHighlight then hold.owner:UnlockHighlight() end
+            SetHoldVisual(hold.owner, false)
         end
     end
 end
@@ -2438,7 +2445,6 @@ function Utils.InstallMenuRowHighlight(row)
             hl:ClearAllPoints()
             hl:SetAllPoints(row)
             hl:SetBlendMode("ADD")
-            ApplyMenuHighlightMask(row, hl, row._efMenuHighlightPosition or "middle")
         end
         row:HookScript("OnEnter", MenuRowEnterAdjustsHolds)
     end
@@ -2849,6 +2855,19 @@ local function EscArm()
     escArmed = wantArmed
 end
 
+-- Release the ESCAPE override immediately. Used when a dispatch turns out to
+-- have nothing to close: holding a binding that does nothing swallows the key
+-- forever (measured with /efd esctrace: six presses in a row reported "our
+-- override owned the key" with zero state change, and ESC stayed ours even
+-- with a Blizzard panel open). A missed close is recoverable; a dead ESC is
+-- not, so we always hand the key back and let EscArm re-take it when real
+-- dismissable state reappears.
+local function EscDisarm()
+    if not escOwner or not escArmed or InCombatLockdown() then return end
+    ClearOverrideBindings(escOwner)
+    escArmed = false
+end
+
 -- Re-evaluate the ESC override after a shouldEat input changes while the
 -- owning frame stays shown (menus or results opening and closing).
 function Utils.RefreshEscArm()
@@ -2904,10 +2923,17 @@ local function EnsureEscDispatch()
                 wants = ok and eat and true or false
             end
             if wants then
-                entry.close()
+                -- close() reports whether it actually dismissed anything. A
+                -- predicate that keeps claiming ESC while its close is a
+                -- no-op would eat every press forever, so a false (or an
+                -- erroring) close hands the key straight back.
+                local ok, handled = pcall(entry.close)
+                if not ok or handled == false then EscDisarm() end
                 return
             end
         end
+        -- Nothing wanted it: we should not have held the binding at all.
+        EscDisarm()
     end)
     escOwner:RegisterEvent("PLAYER_REGEN_DISABLED")
     escOwner:RegisterEvent("PLAYER_REGEN_ENABLED")
@@ -4844,6 +4870,11 @@ end
 
 local function CursorMenuCloseSubmenu(menu)
     local child = menu._openSubmenu
+    -- Result-row pattern: the owning row was explicitly LOCKED when its child
+    -- opened; unlock it here, the one place submenus close from.
+    if menu._openSubmenuRow and menu._openSubmenuRow.SetMenuHighlightFocused then
+        menu._openSubmenuRow:SetMenuHighlightFocused(false)
+    end
     menu._openSubmenu = nil
     menu._openSubmenuRow = nil
     if child then child:Hide() end
@@ -4859,15 +4890,36 @@ local function CursorMenuRowEntered(menu, row)
     end
     if not row._submenuRows or row.disabled then return end
     if menu._openSubmenu and menu._openSubmenu:IsShown() and menu._openSubmenuRow == row then return end
-    local child = Utils.ShowCursorMenu(SUBMENU_GLOBAL, row._submenuRows, {
+    -- A function-typed submenu spec is a live rows provider: called on every
+    -- open AND stored so keepOpen toggles can reshow with fresh check marks.
+    local spec = row._submenuRows
+    local provider
+    if type(spec) == "function" then
+        provider = spec
+        spec = spec()
+    end
+    -- Pool per DEPTH: ShowCursorMenu opens by hiding other menus of the
+    -- same name, so one shared submenu name meant a third-level flyout hid
+    -- its own parent and got the parent's freed frame back as itself
+    -- (circular anchor). A depth suffix displaces only same-level siblings.
+    local depth = (menu._submenuDepth or 0) + 1
+    local child = Utils.ShowCursorMenu(SUBMENU_GLOBAL .. depth, spec, {
         scale = menu:GetScale(),
         strata = menu:GetFrameStrata(),
         level = menu:GetFrameLevel() + 20,
         anchorBeside = row,
         parentMenu = menu,
+        labelFontObject = menu._labelFontObject,
+        iconSide = menu._iconSide,
+        rowsProvider = provider,
     })
+    child._submenuDepth = depth
     menu._openSubmenu = child
     menu._openSubmenuRow = row
+    -- Result-row pattern: LOCK the owning row for the child's whole lifetime
+    -- (explicit lock at open, explicit unlock at close -- never derived
+    -- per-frame from mutable cascade links).
+    if row.SetMenuHighlightFocused then row:SetMenuHighlightFocused(true) end
     -- Sit above any sibling at this strata so the flyout's rows, not an
     -- overlapping frame, receive the click.
     if child and child.Raise then child:Raise() end
@@ -4997,6 +5049,10 @@ local function CursorMenuOnHide(self)
     end
     if self._parentMenu then
         if self._parentMenu._openSubmenu == self then
+            local ownerRow = self._parentMenu._openSubmenuRow
+            if ownerRow and ownerRow.SetMenuHighlightFocused then
+                ownerRow:SetMenuHighlightFocused(false)
+            end
             self._parentMenu._openSubmenu = nil
             self._parentMenu._openSubmenuRow = nil
         end
@@ -5007,13 +5063,50 @@ local function CursorMenuOnHide(self)
     if onHide then onHide(self) end
 end
 
+-- Row highlight state is DRIVEN, not event-hooked: every frame the root walks
+-- its cascade and lights each row that has the mouse OR owns the open submenu
+-- (the parent row stays engaged while its child is open). Driving from one
+-- place survives anything that stomps per-row script hooks and needs no
+-- enter/leave bookkeeping.
+local function CursorMenuDriveRowHighlights(menu)
+    local rows = menu.rows
+    if not rows then return end
+    for i = 1, #rows do
+        local row = rows[i]
+        if row and row:IsShown() and row._efMenuRowHighlightInstalled and not row.isSeparator then
+            -- The explicit lock (_efWashFocused, result-row pattern: set at
+            -- child open, cleared at child close) is authoritative; hover and
+            -- the cascade link are additional signals, never overrides.
+            local engaged = row._efWashFocused or row:IsMouseOver() or menu._openSubmenuRow == row
+            if row._efWashActive then
+                Utils.UpdateRoundedRowWash(row, engaged)
+            else
+                -- Black theme keeps the ADD glow: hover shows it natively, the
+                -- cascade-owner state needs an explicit lock.
+                local holds = row._efWashFocused or menu._openSubmenuRow == row
+                if holds and not row._efCascadeLocked then
+                    if row.LockHighlight then row:LockHighlight() end
+                elseif not holds and row._efCascadeLocked then
+                    if row.UnlockHighlight then row:UnlockHighlight() end
+                end
+                row._efCascadeLocked = holds or nil
+            end
+        end
+    end
+end
+
 local function CursorMenuOnUpdate(self)
+    -- Submenus never drive anything; the root owns the whole cascade, so
+    -- there is exactly one owner of the hover/close decisions.
+    if self._parentMenu then return end
+    local node = self
+    while node do
+        if node:IsShown() then CursorMenuDriveRowHighlights(node) end
+        node = node._openSubmenu
+    end
     -- stayOpen menus close only on click-outside (handled in OnEvent), never on
     -- mouse-leave, matching the search bar's filter menu.
     if self.stayOpen then return end
-    -- Submenus never close themselves; the root drives the whole cascade, so
-    -- there is exactly one owner of the hover/click-outside decision.
-    if self._parentMenu then return end
     if CursorMenuChainHasMouse(self) then
         self._outsideSince = nil
         self._hasEntered = true
@@ -5126,8 +5219,19 @@ local function CreateCursorMenu(globalName)
     return menu
 end
 
+-- Cursor-menu rows sit this far in from the menu on each side. The
+-- fit-to-content width measures labels in ROW space, so it has to add this
+-- back to reach menu space -- they must stay in step.
+local MENU_ROW_INSET = 4
+
 function Utils.ShowCursorMenu(globalName, rows, opts)
     opts = opts or {}
+
+    -- A keepOpen reshow replaces the pooled child frame: HideOtherMenus fires
+    -- the old child's OnHide, which wipes the parent's _openSubmenuRow -- and
+    -- with it the parent row's stays-lit-while-child-open state. Capture the
+    -- row link BEFORE the teardown so it can be restored onto the new frame.
+    local priorSubmenuRow = opts.parentMenu and opts.parentMenu._openSubmenuRow
 
     HideOtherMenus(globalName, nil)
 
@@ -5136,7 +5240,13 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
     local menuScale = opts.scale or 1
     menu:SetScale(menuScale)
     menu:SetFrameStrata(opts.strata or "TOOLTIP")
-    menu:SetFrameLevel(opts.level or 10000)
+    -- NEVER the 10000 ceiling: children spawn at parent+1 and the engine CLAMPS
+    -- levels to 10000, so a ceiling menu's rows collapse onto the menu's own
+    -- level -- and at equal level the parent wins hover focus, deadening every
+    -- row (hover-driven submenu rows worst of all). Keep headroom for rows (+1)
+    -- and cascade flyouts (+20).
+    local menuLevel = math.min(opts.level or 9000, 9900)
+    menu:SetFrameLevel(menuLevel)
     -- Grazing the menu edge shouldn't dismiss it; shares the tooltip
     -- hover delay so all hover timing feels like one system.
     menu.outsideDelay = opts.outsideDelay or ns.TOOLTIP_HOVER_DELAY
@@ -5147,11 +5257,44 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
     menu.onHide = opts.onHide
     menu.toggleOwner = opts.toggleOwner
     menu._parentMenu = opts.parentMenu
+    -- Menus wear their CONTEXT's font: search menus track the results leaf
+    -- font (default), other hosts (notes) pass their chrome font object so
+    -- menu text matches the text around it instead of the search setting.
+    menu._labelFontObject = opts.labelFontObject
+    -- Filter-style menus put their check marks on the LEFT like the main
+    -- filter dropdown; context menus keep glyphs on the right.
+    menu._iconSide = opts.iconSide or "right"
+    menu._rowsProvider = opts.rowsProvider
+    menu._lastName, menu._lastOpts = globalName, opts
+    -- A reshow (keepOpen refresh) can hand this cascade slot to a different
+    -- pooled frame; the parent's links must follow it or the chain-hover test
+    -- loses the child (auto-close) and the parent row loses its engaged state.
+    if opts.parentMenu then
+        opts.parentMenu._openSubmenu = menu
+        if priorSubmenuRow and not opts.parentMenu._openSubmenuRow then
+            opts.parentMenu._openSubmenuRow = priorSubmenuRow
+            -- The old child's OnHide unlocked this row; re-lock it -- its
+            -- child is still open, just on a replacement frame.
+            if priorSubmenuRow.SetMenuHighlightFocused then
+                priorSubmenuRow:SetMenuHighlightFocused(true)
+            end
+        end
+    end
 
     local rowH = opts.rowHeight or 22
     local width = opts.width or 96
     local shown = 0
     local lastRow
+    -- The left check column only exists when this menu actually HAS check
+    -- marks; menus of plain rows (e.g. submenu headers) keep the normal
+    -- text inset instead of an empty reserved column.
+    local leftIcons = false
+    if menu._iconSide == "left" then
+        for i = 1, #rows do
+            local d = rows[i]
+            if d and d.icon then leftIcons = true break end
+        end
+    end
     for i = 1, #rows do
         local def = rows[i]
         if def then
@@ -5194,6 +5337,17 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             end
             local isSep = def.isSeparator
             local sepH = 7
+            -- Pooled rows shed any stale cascade lock on repopulate; a fresh
+            -- open has no child yet (RowEntered re-locks when one opens).
+            if row._efWashFocused and row.SetMenuHighlightFocused then
+                row:SetMenuHighlightFocused(false)
+            end
+            -- Rows sit TWO above the menu body (re-asserted every open; pooled
+            -- rows keep stale levels otherwise): the hover pill lives at row-1
+            -- and needs its own level BETWEEN menu fill and row content --
+            -- at the menu's own level it z-fights the fill and vanishes
+            -- (HARDFOUGHT_BATTLES: equal level = the parent wins).
+            row:SetFrameLevel(menuLevel + 2)
             row:SetHeight(isSep and sepH or rowH)
             if isSep then
                 if row.ClearMenuHighlightState then row:ClearMenuHighlightState() end
@@ -5204,6 +5358,7 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 row.label:SetText("")
                 row.icon:Hide()
                 if row.iconOverlay then row.iconOverlay:Hide() end
+                if row.chevron then row.chevron:Hide() end
                 row.sep:Show()
                 row:EnableMouse(false)
                 local hl = row:GetHighlightTexture()
@@ -5215,18 +5370,39 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 row.disabled = def.disabled and true or nil
                 -- Menus wear the same scaled leaf font as result rows
                 -- (honors the Font setting; plain GameFontNormal read as
-                -- a different typeface next to the results).
-                if ns.Results and ns.Results.SetScaledFont then
-                    ns.Results:SetScaledFont(row.label, ns.LEAF_FONT)
+                -- a different typeface next to the results) -- unless the
+                -- host passed its own font object for context consistency.
+                if menu._labelFontObject then
+                    -- Apply the host font ABSOLUTELY (object + raw path/size):
+                    -- parent and submenu share one object, so their text can
+                    -- never differ in size from each other or the host UI.
+                    row.label:SetFontObject(menu._labelFontObject)
+                    local ff, fs, ffl = menu._labelFontObject:GetFont()
+                    if ff then row.label:SetFont(ff, fs, ffl or "") end
+                    row.label._efSFBase = nil
+                elseif ns.Results and ns.Results.SetScaledFont then
+                    -- Menus wear the same font as result-row TITLES (pathFont),
+                    -- not the smaller leaf style -- menu text must never read
+                    -- smaller than the rows it acts on.
+                    local pathTheme = ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+                    ns.Results:SetScaledFont(row.label,
+                        (pathTheme and pathTheme.pathFont) or ns.LEAF_FONT)
                 end
                 row.label:SetText(def.text or "")
                 -- Menu rows repopulate on every open, so the gold label
                 -- can resolve per theme here (hue-dark accent on light
                 -- fills); submenus share this same builder.
                 local menuTheme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
-                local labelColor = row.disabled and ns.TEXT_DIM or ns.GOLD_COLOR
-                if not row.disabled and menuTheme and menuTheme.lightTheme then
+                -- Menu labels match the theme's body/leaf text (the same family as
+                -- the row icons), not the old gold; light themes take the darker
+                -- path-hover so text stays legible on the light fill.
+                local labelColor
+                if row.disabled then
+                    labelColor = ns.TEXT_DIM
+                elseif menuTheme and menuTheme.lightTheme then
                     labelColor = menuTheme.pathColorHover or menuTheme.leafColor
+                else
+                    labelColor = (menuTheme and menuTheme.leafColor) or ns.GOLD_COLOR
                 end
                 row.label:SetTextColor(Utils.RGB(labelColor, 1))
                 -- Own the shadow here too: these _efOwnColor labels are
@@ -5235,6 +5411,44 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 -- unchanged, so a row first built on a dark theme keeps its
                 -- shadow after a switch to light unless it's set per open.
                 row.label:SetShadowColor(0, 0, 0, (menuTheme and menuTheme.lightTheme) and 0 or 1)
+                -- Anchoring follows the menu's icon side; pooled rows serve
+                -- menus of either style, so re-anchor per open. The label is
+                -- ALWAYS right-constrained: an unconstrained label renders
+                -- over the icon slot when the menu is narrow.
+                -- Submenu rows wear the shared flyout chevron on the right,
+                -- exactly like the filter dropdown's cascade rows -- one
+                -- arrow style across every menu surface.
+                if def.submenu and not row.chevron then
+                    row.chevron = row:CreateTexture(nil, "OVERLAY")
+                    row.chevron:SetSize(12, 12)
+                    row.chevron:SetPoint("RIGHT", row, "RIGHT", -8, 0)
+                end
+                if row.chevron then
+                    if def.submenu then
+                        Utils.SetChevronTexture(row.chevron)
+                        row.chevron:Show()
+                    else
+                        row.chevron:Hide()
+                    end
+                end
+                row.label:ClearAllPoints()
+                row.icon:ClearAllPoints()
+                local rightInset = def.submenu and -22 or -8
+                if leftIcons then
+                    row.icon:SetPoint("LEFT", row, "LEFT", 8, 0)
+                    row.label:SetPoint("LEFT", row, "LEFT", 28, 0)
+                    row.label:SetPoint("RIGHT", row, "RIGHT", rightInset, 0)
+                else
+                    -- The chevron owns the right edge on submenu rows; a
+                    -- right-side icon steps inward beside it.
+                    row.icon:SetPoint("RIGHT", row, "RIGHT", def.submenu and -26 or -8, 0)
+                    row.label:SetPoint("LEFT", row, "LEFT", 8, 0)
+                    local labelRight = rightInset
+                    if def.icon then labelRight = def.submenu and -44 or -26 end
+                    row.label:SetPoint("RIGHT", row, "RIGHT", labelRight, 0)
+                end
+                row.label:SetJustifyH("LEFT")
+                row.label:SetWordWrap(false)
                 if def.icon then
                     -- SetIconTexture handles plain paths, atlas: strings,
                     -- and {file, coords} tables (cropped square icons).
@@ -5309,9 +5523,21 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                     local hl = row:GetHighlightTexture()
                     if hl then hl:SetAlpha(1) end
                     local onClick = def.onClick
+                    local keepOpen = def.keepOpen
                     row.onClick = onClick
                     row:SetScript("OnMouseDown", function(_, button)
                         if button ~= "LeftButton" then return end
+                        -- Toggle rows (keepOpen) NEVER close the menu -- the
+                        -- user is mid-multi-select; instead the menu reshows
+                        -- with fresh rows so its check marks track the state.
+                        if keepOpen then
+                            if onClick then onClick() end
+                            local fresh = menu._rowsProvider and menu._rowsProvider()
+                            if fresh then
+                                Utils.ShowCursorMenu(menu._lastName, fresh, menu._lastOpts)
+                            end
+                            return
+                        end
                         local root = menu
                         while root._parentMenu do root = root._parentMenu end
                         -- In a submenu, fire the action BEFORE tearing down: the
@@ -5333,8 +5559,8 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             end
             row:ClearAllPoints()
             if shown == 1 then
-                row:SetPoint("TOPLEFT", menu, "TOPLEFT", 4, -4)
-                row:SetPoint("TOPRIGHT", menu, "TOPRIGHT", -4, -4)
+                row:SetPoint("TOPLEFT", menu, "TOPLEFT", MENU_ROW_INSET, -4)
+                row:SetPoint("TOPRIGHT", menu, "TOPRIGHT", -MENU_ROW_INSET, -4)
             else
                 row:SetPoint("TOPLEFT", lastRow, "BOTTOMLEFT", 0, 0)
                 row:SetPoint("TOPRIGHT", lastRow, "BOTTOMRIGHT", 0, 0)
@@ -5357,17 +5583,43 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
         end
     end
 
+    -- Fit-to-content width. Labels are measured through a hidden, never-
+    -- constrained FontString: a pooled row's own label is already right-
+    -- anchored into the menu's PREVIOUS width, so on clients where
+    -- GetUnboundedStringWidth is unavailable its width reads back clipped
+    -- and a long row stays ellipsized forever.
+    if not menu.measure then
+        menu.measure = menu:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        menu.measure:Hide()
+    end
     local needed = width
     local totalH = 0
     for i = 1, shown do
         local row = menu.rows[i]
         if row then
             totalH = totalH + (row:GetHeight() or rowH)
-            if row.label and row.label:IsShown() then
-                local getter = row.label.GetUnboundedStringWidth or row.label.GetStringWidth
-                local lblW = getter and getter(row.label) or 0
-                local hasIcon = row.icon and row.icon:IsShown()
-                local rowW = lblW + (hasIcon and 34 or 24)
+            if row.label and not row.isSeparator then
+                local lblW
+                if row.label.GetUnboundedStringWidth then
+                    lblW = row.label:GetUnboundedStringWidth() or 0
+                else
+                    local ff, fs, ffl = row.label:GetFont()
+                    if ff then menu.measure:SetFont(ff, fs, ffl or "") end
+                    menu.measure:SetText(row.label:GetText() or "")
+                    lblW = menu.measure:GetStringWidth() or 0
+                end
+                local leftPad = leftIcons and 28 or 8
+                local rightPad = 8
+                if row.chevron and row.chevron:IsShown() then
+                    rightPad = (row.icon:IsShown() and not leftIcons) and 44 or 22
+                elseif row.icon:IsShown() and not leftIcons then
+                    rightPad = 26
+                end
+                -- Rows are inset MENU_ROW_INSET on BOTH sides of the menu, so
+                -- a width measured in row space is that much short in menu
+                -- space. Without it the widest row -- the one that sets the
+                -- width -- always ellipsized by exactly the inset.
+                local rowW = leftPad + lblW + rightPad + MENU_ROW_INSET * 2
                 if rowW > needed then needed = rowW end
             end
         end
@@ -5388,6 +5640,9 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             x / scale + (opts.offsetX or 0), y / scale + (opts.offsetY or 0))
     end
     menu:Show()
+    -- Uniform per-row pills carry no geometry dependency, so this can run
+    -- synchronously again (the old positional corner masks needed resolved
+    -- rects and got a deferred pass; that whole system is gone).
     if menu.RefreshMenuRowHighlights then menu:RefreshMenuRowHighlights() end
     if menu.keyboardMode and menu.FocusKeyboard then
         menu:FocusKeyboard(1)
@@ -5438,14 +5693,10 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
         -- every other flyout; the arrow glyph marks it as a submenu.
         local sendRows = ns.BuildSendLinkRows(extra.sendLink.link, extra.sendLink.name)
         if sendRows then
-            -- White-authored arrow (rotated to point right) so the chrome
-            -- tint works; the old flyout-arrow art is gold-baked and can
-            -- never follow themes.
+            -- No bespoke arrow: rows with a submenu get the shared chevron
+            -- from the menu module; adding one here doubled the arrows.
             rows[#rows + 1] = {
                 text = L["CTX_SEND_LINK"],
-                icon = ns.FILTER_ARROW_TEX,
-                iconRotation = math.pi / 2,
-                chromeIcon = true,
                 submenu = sendRows,
             }
         end
@@ -5453,9 +5704,6 @@ function Utils.ShowPinMenu(globalName, isPinned, onPin, onGuide, onAddAlias, opt
     if extra and extra.addNoteRows then
         rows[#rows + 1] = {
             text = L["CTX_ADD_NOTE"],
-            icon = ns.FILTER_ARROW_TEX,
-            iconRotation = math.pi / 2,
-            chromeIcon = true,
             submenu = extra.addNoteRows,
         }
     end

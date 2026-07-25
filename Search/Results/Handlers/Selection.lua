@@ -19,6 +19,11 @@ function Handlers:FinishResultSelection()
     Search:GetSearchFrame().editBox:SetText("")
     Search:GetSearchFrame().editBox:ClearFocus()
     Search:GetSearchFrame().editBox.placeholder:Show()
+    -- A quick filter is part of the query, so clearing the query clears it too
+    -- (ESC already does this). Leaving the '@' pill behind silently narrows the
+    -- next search the user types. No refresh: the bar is being dismissed.
+    Search:ClearQuickFilter(false)
+    Search:HideQuickFilterSuggestions()
     Search:SetSelectingResult(false)
     if EasyFind.db.autoHide then
         self:Hide()
@@ -227,7 +232,10 @@ function Handlers:SelectResult(data, forceGuide)
         if IsControlKeyDown() then
             local link = C_Item and C_Item.GetItemInfo and select(2, C_Item.GetItemInfo(data.itemID))
             if link and DressUpItemLink then DressUpItemLink(link) end
+            self:FinishResultSelection()
         end
+        -- A plain click dismisses too, but from the row's OnMouseUp (after the
+        -- cursor pickup); hiding the row here, on the press, would cancel it.
         return
     end
 
@@ -563,7 +571,11 @@ function Handlers:SelectResult(data, forceGuide)
     -- in Collections > Pet Journal instead; Alt uses DirectOpen so it
     -- skips the step-by-step guide and only highlights the destination.
     if data.petID or data.speciesID then
-        if forceGuide or Handlers:IsSourceModifierHeld() then
+        -- An uncollected pet has nothing to summon, so a plain click reveals it
+        -- in the Pet Journal instead -- the same fall-through an uncollected
+        -- mount takes (its hint says "Click: Pet Journal" to match).
+        if forceGuide or Handlers:IsSourceModifierHeld()
+           or not Icons:IsPetSummonable(data) then
             local guideData = self:BuildPetJournalGuideData(data)
             if useFast then
                 self:DirectOpen(guideData)

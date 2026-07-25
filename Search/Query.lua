@@ -431,7 +431,7 @@ function Search:OnSearchTextChanged(text, force)
     -- Catalog items: the full game item DB (Search/ItemSearch.lua scans the
     -- packed blob). Appended BEFORE the sort/cap so they compete for the
     -- TOP_N slots by the same ScoreName relevance rather than flooding past
-    -- it. Gated on the General Catalog sub-filter (@cat, or its @items
+    -- it. Gated on the General Catalog sub-filter (@gen, or its @items
     -- umbrella parent); IsProviderFilterOff walks the items-parent cascade
     -- so unchecking Items hides all three overlays. English-primary; display
     -- name and icon resolve live at render.

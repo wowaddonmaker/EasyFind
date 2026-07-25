@@ -23,6 +23,7 @@ local L = ns.L
 local sfind, slower = Utils.sfind, Utils.slower
 local tsort = Utils.tsort
 local mmax = Utils.mmax
+local mceil = math.ceil
 local wipe = wipe
 local CreateFrame = CreateFrame
 local GameTooltip = GameTooltip
@@ -34,7 +35,7 @@ Filters.quickFilterOptions = {
     { key = "achievements",   canonical = "achievements",    label = _G["ACHIEVEMENTS"] or "Achievements",    categories = { "Achievement", "Achievements", "Achievement Category", "Guild Achievements" }, aliases = { "a", "ach", "achievement", "achievements" } },
     { key = "statistics",     canonical = "statistics",      label = _G["STATISTICS"] or "Statistics",      categories = { "Statistic", "Statistics" }, aliases = { "s", "stat", "stats", "statistic", "statistics" } },
     { key = "items",          canonical = "items",           label = _G["ITEMS"] or "Items",          categories = { "Item", "Bag", "Bank" }, aliases = { "i", "item", "items" } },
-    { key = "catalog",        canonical = "cat",             label = L["FILTER_GENERAL_CATALOG"],      categories = { "Item" }, aliases = { "catalog" } },
+    { key = "catalog",        canonical = "gen",             label = L["FILTER_GENERAL_CATALOG"],      categories = { "Item" }, aliases = { "cat", "catalog", "general" } },
     { key = "bags",           canonical = "bags",            label = _G["BAGS"] or "Bags",            categories = { "Bag" }, aliases = { "b", "bag", "bags" } },
     { key = "bosses",         canonical = "bosses",          label = _G["RAID_BOSSES"] or "Bosses",          categories = { "Boss" }, aliases = { "bo", "boss", "bosses", "encounter", "encounters" } },
     { key = "macros",         canonical = "macros",          label = _G["MACROS"] or "Macros",          categories = { "Macro" }, aliases = { "ma", "macro", "macros" } },
@@ -264,6 +265,38 @@ function Filters:HideQuickFilterPillBorder(frame)
     ns.SetRoundedRectBorderEdgeShown(frame, false)
 end
 
+-- Pill geometry. The X reserves NO width: it overlays the tail of the token on
+-- a higher sublevel, so the pill stays hugged to its text and hovering never
+-- resizes it.
+local PILL_PAD_LEFT  = 7
+local PILL_PAD_RIGHT = 5
+local QUICK_FILTER_CLEAR_TEX = "Interface\\AddOns\\EasyFind\\textures\\clear-button"
+
+-- Paint the pill the way the options stepper (+ / -) buttons paint themselves:
+-- the theme's row wash, falling back to the flat control fill on themes that
+-- have no wash. Hardcoding BTN_FILL_NORMAL made it a grey slab sitting on the
+-- themed bar. Label follows the theme's leaf color for the same reason.
+function Filters:PaintQuickFilterPill(pill, hovered)
+    if not pill then return end
+    local washR, washG, washB = ns.RowWashColor()
+    if washR then
+        local boost = hovered and 1.35 or 1
+        ns.SetRoundedRectFill(pill, washR * boost, washG * boost, washB * boost, 1, true)
+    else
+        local fill = hovered and ns.BTN_FILL_HOVER or ns.BTN_FILL_NORMAL
+        Search:SetQuickFilterPillFill(pill, fill[1], fill[2], fill[3], 1)
+    end
+    if pill.text then
+        local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+        local leaf = theme and theme.leafColor
+        if leaf then
+            pill.text:SetTextColor(leaf[1], leaf[2], leaf[3], 1)
+        else
+            pill.text:SetTextColor(1, 1, 1, 1)
+        end
+    end
+end
+
 function Filters:CreateQuickFilterPill(frame, editBox, iconHolder, filterBtn)
     if not frame or frame.quickFilterPill then return end
     local pill = CreateFrame("Button", "EasyFindQuickFilterPill", frame)
@@ -275,15 +308,31 @@ function Filters:CreateQuickFilterPill(frame, editBox, iconHolder, filterBtn)
     ns.SetRoundedRectBarHeight(pill, 10)
     ns.SetRoundedRectBorderBgAlpha(pill, 1)
     self:HideQuickFilterPillBorder(pill)
-    self:SetQuickFilterPillFill(pill, ns.BTN_FILL_NORMAL[1], ns.BTN_FILL_NORMAL[2], ns.BTN_FILL_NORMAL[3], 1)
 
     local text = pill:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    text:SetPoint("LEFT", 8, 0)
-    text:SetPoint("RIGHT", -8, 0)
-    text:SetJustifyH("CENTER")
+    text:SetPoint("LEFT", PILL_PAD_LEFT, 0)
+    text:SetPoint("RIGHT", -PILL_PAD_RIGHT, 0)
+    text:SetJustifyH("LEFT")
     text:SetWordWrap(false)
-    text:SetTextColor(1, 1, 1, 1)
     pill.text = text
+
+    -- Clear affordance: the whole pill has always cleared on click, but with no
+    -- visual cue for it. The X draws only on hover and OVERLAYS the end of the
+    -- token instead of reserving width for it. It lives in a child frame, NOT
+    -- on a higher sublevel of the pill: within one draw layer a FontString
+    -- always beats a texture no matter its sublevel, so an OVERLAY texture sat
+    -- behind the token text. A child frame's regions draw above every region
+    -- of its parent, unconditionally. Mouse stays disabled so the pill keeps
+    -- owning the click.
+    local xHolder = CreateFrame("Frame", nil, pill)
+    xHolder:SetAllPoints(pill)
+    xHolder:SetFrameLevel(pill:GetFrameLevel() + 1)
+    local clearX = xHolder:CreateTexture(nil, "OVERLAY")
+    clearX:SetSize(ns.CLEAR_BTN_SIZE, ns.CLEAR_BTN_SIZE)
+    clearX:SetPoint("RIGHT", xHolder, "RIGHT", -PILL_PAD_RIGHT, 0)
+    clearX:SetTexture(QUICK_FILTER_CLEAR_TEX)
+    clearX:Hide()
+    pill.clearX = clearX
 
     pill:SetScript("OnClick", function()
         Filters:ClearQuickFilter(true)
@@ -293,16 +342,19 @@ function Filters:CreateQuickFilterPill(frame, editBox, iconHolder, filterBtn)
         end
     end)
     pill:SetScript("OnEnter", function(self)
-        Search:SetQuickFilterPillFill(self, ns.BTN_FILL_HOVER[1], ns.BTN_FILL_HOVER[2], ns.BTN_FILL_HOVER[3], 1)
+        Filters:PaintQuickFilterPill(self, true)
+        if self.clearX then self.clearX:Show() end
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOM")
         GameTooltip:SetText(L["QUICK_FILTER"])
         GameTooltip:AddLine(L["QUICK_FILTER_TT"], 1, 1, 1, true)
         GameTooltip:Show()
     end)
     pill:SetScript("OnLeave", function(self)
-        Search:SetQuickFilterPillFill(self, ns.BTN_FILL_NORMAL[1], ns.BTN_FILL_NORMAL[2], ns.BTN_FILL_NORMAL[3], 1)
+        Filters:PaintQuickFilterPill(self, false)
+        if self.clearX then self.clearX:Hide() end
         GameTooltip_Hide()
     end)
+    Filters:PaintQuickFilterPill(pill, false)
     pill:Hide()
 
     frame.quickFilterPill = pill
@@ -323,8 +375,11 @@ function Filters:UpdateQuickFilterPill()
     editBox:ClearAllPoints()
     if active and pill then
         pill.text:SetText(active.token)
-        local w = (pill.text:GetStringWidth() or 0) + 18
-        pill:SetWidth(mmax(52, w))
+        -- Hug the token: left pad + text + right pad, nothing else. No X
+        -- reserve (it overlays) and no arbitrary minimum -- a flat 52 left
+        -- short tokens like "@gen" swimming in dead space on both sides.
+        local w = (pill.text:GetStringWidth() or 0) + PILL_PAD_LEFT + PILL_PAD_RIGHT
+        pill:SetWidth(mceil(w))
         pill:Show()
         editBox:SetPoint("LEFT", pill, "RIGHT", 5, 0)
     else

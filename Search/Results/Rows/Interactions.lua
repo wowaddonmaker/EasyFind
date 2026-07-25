@@ -64,12 +64,20 @@ end
 -- those same lines works, because the frame's handler (which those addons hook)
 -- resolves them. A player link is whispered directly, since a real click on a
 -- name opens a menu, not a whisper editbox. Returns true when it handled it.
-local function RouteLinkToHoveredChat(link)
-    if not (link and link ~= "" and hoveredChatLink and hoveredChatFrame) then return false end
-    local isChannel = hoveredChatLink:match("^channel:") ~= nil
-    local whisperTarget = hoveredChatLink:match("^player:([^:]+)")
+-- hoverLink/hoverText/hoverFrame default to the live hover tracking, but a
+-- caller that captured the hover at press time passes its own snapshot. They
+-- are parameters, never writes back into the tracking upvalues: overwriting
+-- those leaves a stale "cursor is over a chat link" forever, so every later
+-- drop routes to a channel the cursor left long ago.
+local function RouteLinkToHoveredChat(link, hoverLink, hoverText, hoverFrame)
+    hoverLink = hoverLink or hoveredChatLink
+    hoverText = hoverText or hoveredChatText
+    hoverFrame = hoverFrame or hoveredChatFrame
+    if not (link and link ~= "" and hoverLink and hoverFrame) then return false end
+    local isChannel = hoverLink:match("^channel:") ~= nil
+    local whisperTarget = hoverLink:match("^player:([^:]+)")
     if not (isChannel or whisperTarget) then return false end
-    local frame, chatLink, chatText = hoveredChatFrame, hoveredChatLink, hoveredChatText
+    local frame, chatLink, chatText = hoverFrame, hoverLink, hoverText
     return pcall(function()
         local targetBox
         if isChannel then
@@ -100,13 +108,29 @@ local function RouteLinkToHoveredChat(link)
 end
 
 -- The link of a catalog item currently carried on the cursor (picked up by a
--- drag). WoW's cursor model carries a picked-up item until the NEXT click, and
--- that drop click lands on the world, not on our row -- so a row mouse-up can't
--- see it. The global watcher below turns a drop on free space into a /say.
--- A catalog item's link while it is carried on the cursor after a drag pickup,
--- so a drop on empty world can route it to /say. WoW carries a picked-up item
--- until the next click, and that drop click lands on the world, not on our row.
+-- click or drag). WoW's cursor model carries a picked-up item until the NEXT
+-- click, and that drop click lands on the world, not on our row -- so a row
+-- mouse-up can't see it. The global watcher below turns a drop on a chat
+-- channel into a link and a drop on free space into a /say.
 local carriedCatalogLink
+
+-- ESC must be able to put the carried item down. EasyFind holds an ESCAPE
+-- override binding while the bar has dismissable state, so the engine's own
+-- "ESC clears the cursor" never runs -- the item would stay stuck on the
+-- cursor through every ESC press, and the next click anywhere would fire the
+-- drop (popping the chat editbox open). Search:HandleEscape consumes this
+-- first, so one ESC always puts the item down.
+function ns.HasCarriedCatalogItem()
+    return carriedCatalogLink ~= nil
+end
+
+function ns.ClearCarriedCatalogItem()
+    if not carriedCatalogLink then return false end
+    carriedCatalogLink = nil
+    if ClearCursor then ClearCursor() end
+    if Utils.RefreshEscArm then Utils.RefreshEscArm() end
+    return true
+end
 
 -- Open the chat editbox to /say with the link, WITHOUT sending it (the user
 -- reviews and presses Enter). ChatFrame_OpenChat is the standard "start typing"
@@ -122,7 +146,13 @@ local function DropLinkToSay(link)
         if not editBox then return end
         Utils.SafeCallMethod(editBox, "SetAttribute", "chatType", "SAY")
         if ChatEdit_UpdateHeader then ChatEdit_UpdateHeader(editBox) end
-        editBox:Insert(link)
+        -- Insert on the NEXT frame, exactly like the channel path: ChatFrame_
+        -- OpenChat finishes activating the editbox (and sets its text) a frame
+        -- late, so a synchronous Insert here is wiped -- /say opened with no
+        -- link in it.
+        Utils.SafeAfter(0, function()
+            InsertLinkIntoChatEditBox(editBox, link)
+        end)
     end)
 end
 
@@ -145,25 +175,67 @@ local worldDropInstalled = false
 local function EnsureCatalogFreeSpaceDrop()
     if worldDropInstalled then return end
     worldDropInstalled = true
+    -- The drop is decided on mouse-DOWN (that is when the cursor still holds
+    -- the item and the hovered chat link is still tracked) but PERFORMED on
+    -- mouse-UP. Doing the insert on the down edge put it one frame later --
+    -- still well before the button came up -- and then Blizzard's own
+    -- hyperlink click, which fires on the UP edge, re-opened the channel
+    -- editbox and wiped it: the link appeared and vanished as if backspaced.
+    local pendingDrop
     local watcher = CreateFrame("Frame")
     watcher:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    watcher:RegisterEvent("GLOBAL_MOUSE_UP")
     watcher:RegisterEvent("CURSOR_CHANGED")
     watcher:SetScript("OnEvent", function(_, event, button)
         if event == "CURSOR_CHANGED" then
-            if not (GetCursorInfo and GetCursorInfo()) then carriedCatalogLink = nil end
+            if not (GetCursorInfo and GetCursorInfo()) and carriedCatalogLink then
+                carriedCatalogLink = nil
+                if Utils.RefreshEscArm then Utils.RefreshEscArm() end
+            end
             return
         end
-        if not carriedCatalogLink or button ~= "LeftButton" then return end
-        if InCombatLockdown() then return end
-        local link = carriedCatalogLink
-        if RouteLinkToHoveredChat(link) then
-            carriedCatalogLink = nil
-            ClearCursor()
-        elseif ClickedFreeSpace() then
-            carriedCatalogLink = nil
-            ClearCursor()
-            DropLinkToSay(link)
+        if button ~= "LeftButton" or InCombatLockdown() then return end
+
+        if event == "GLOBAL_MOUSE_UP" then
+            local drop = pendingDrop
+            pendingDrop = nil
+            if not drop then return end
+            -- Pass the hover context captured at press time (the cursor may
+            -- have drifted off the label between the edges) as ARGUMENTS --
+            -- assigning it back into the tracking upvalues would strand a
+            -- stale "over a chat link" that hijacks every later drop.
+            local routed = RouteLinkToHoveredChat(drop.link, drop.hoveredLink,
+                drop.hoveredText, drop.hoveredFrame)
+            if not routed and drop.freeSpace then
+                DropLinkToSay(drop.link)
+            end
+            if Utils.RefreshEscArm then Utils.RefreshEscArm() end
+            return
         end
+
+        if not carriedCatalogLink then return end
+        -- The link is only live while the item is REALLY on the cursor. Without
+        -- this the armed link outlives the pickup (ESC or any other cursor
+        -- clear that does not fire CURSOR_CHANGED first), and the next stray
+        -- left-click anywhere pops the chat editbox open with the link in it --
+        -- which then eats the player's ESC and reads as "ESC is broken".
+        if not (GetCursorInfo and GetCursorInfo()) then
+            carriedCatalogLink = nil
+            return
+        end
+        local overChat = hoveredChatLink and hoveredChatFrame
+        local freeSpace = ClickedFreeSpace()
+        if not (overChat or freeSpace) then return end
+        pendingDrop = {
+            link = carriedCatalogLink,
+            hoveredLink = hoveredChatLink,
+            hoveredText = hoveredChatText,
+            hoveredFrame = hoveredChatFrame,
+            freeSpace = freeSpace,
+        }
+        carriedCatalogLink = nil
+        ClearCursor()
+        if Utils.RefreshEscArm then Utils.RefreshEscArm() end
     end)
 end
 
@@ -242,7 +314,16 @@ function Rows.InstallInteractions(resultRow, index)
         elseif d.itemID and PickupItem then
             PickupItem(d.itemID)
         end
-        carriedCatalogLink = (d.catalogItem and ns.GetResultLink and ns.GetResultLink(d)) or nil
+        -- Arm the carried link ONLY when the pickup actually landed on the
+        -- cursor: an armed link with an empty cursor is a phantom that fires
+        -- on some later unrelated click.
+        carriedCatalogLink = nil
+        if d.catalogItem and ns.GetResultLink and GetCursorInfo and GetCursorInfo() then
+            carriedCatalogLink = ns.GetResultLink(d)
+        end
+        -- Carrying an item is dismissable state: re-arm ESC so the very next
+        -- press puts it down instead of being swallowed by a stale predicate.
+        if Utils.RefreshEscArm then Utils.RefreshEscArm() end
     end
     local function SetSecureOutfit(row, outfitIndex)
         if row._lastAttrKey and row._lastAttrKey ~= "outfit-index" then
@@ -263,9 +344,10 @@ function Rows.InstallInteractions(resultRow, index)
         if button ~= "LeftButton" then return end
         self._pickedUp = nil
         local d = self.data
-        -- Catalog: a plain (no Shift/Ctrl) left DRAG picks the item onto the
-        -- cursor to send its link (drop on a chat channel, or empty world ->
-        -- /say); a plain click does nothing. Shift is chat-link, Ctrl is
+        -- Catalog: a plain (no Shift/Ctrl) left click or drag picks the item
+        -- onto the cursor to send its link (drop on a chat channel, or empty
+        -- world -> /say). This only arms the drag threshold; the pickup itself
+        -- happens on the release in OnMouseUp. Shift is chat-link, Ctrl is
         -- dressing room.
         if d and d.catalogItem then
             if IsShiftKeyDown() or (IsControlKeyDown and IsControlKeyDown()) then return end
@@ -289,14 +371,33 @@ function Rows.InstallInteractions(resultRow, index)
         self._pickedUp = true
         if self.data then PickupRowAction(self.data) end
     end)
-    resultRow:HookScript("OnMouseUp", function(self)
+    resultRow:HookScript("OnMouseUp", function(self, button)
         if not InCombatLockdown() and ns.ResultSecureAttributes then
             ns.ResultSecureAttributes.ArmSteerLate(self)
         end
         self._dragOriginX, self._dragOriginY = nil, nil
-        -- Only a completed drag (OnUpdate set _pickedUp) acts here; a plain
-        -- click does nothing -- a click can't carry an unowned item onto the
-        -- cursor (the engine drops it on the release).
+        -- Catalog rows: a plain LEFT click picks the item onto the cursor, same
+        -- as a drag, so the next click drops its link into a chat channel (or
+        -- onto empty world -> /say). The pickup happens on the RELEASE, never
+        -- the press: an item picked up on mouse-down is dropped again by the
+        -- engine when the button comes up, which is why this used to need a
+        -- drag. Right-click never comes here -- it belongs to the context menu.
+        local clicked = self.data
+        if button == "LeftButton" and clicked and clicked.catalogItem
+           and not self._pickedUp
+           and not InCombatLockdown()
+           and not IsShiftKeyDown()
+           and not (IsControlKeyDown and IsControlKeyDown()) then
+            PickupRowAction(clicked)
+            -- Dismiss like every other activated row. Done AFTER the pickup
+            -- (SelectResult runs on the press, this is the release) so hiding
+            -- the row cannot cancel the pickup, and it leaves no results panel
+            -- or stale query behind -- which is what kept the ESC override
+            -- armed with nothing left to close.
+            Handlers:FinishResultSelection()
+            return
+        end
+        -- Only a completed drag (OnUpdate set _pickedUp) acts past here.
         if not self._pickedUp then return end
         if InCombatLockdown() then return end
         -- Released over a chat channel/whisper hyperlink: route the link there.

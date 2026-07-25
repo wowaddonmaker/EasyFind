@@ -1961,38 +1961,73 @@ function Database:PopulateDynamicToys()
     local GetToyFromIndex = C_ToyBox.GetToyFromIndex
     if not GetToyInfo or not GetNumFilteredToys or not GetToyFromIndex then return false end
 
-    local hasFilterAPI = C_ToyBox.GetCollectedShown and C_ToyBox.SetCollectedShown
-    local savedCollected = hasFilterAPI and C_ToyBox.GetCollectedShown()
-    local savedUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
+    -- Filter OUR results by the toy filter menu WITHOUT changing the player's
+    -- toy box: GetToyInfo carries no per-toy source/expansion, so the only way
+    -- to filter toys is to drive the C-side filter and re-enumerate. Save the
+    -- window's current filters, set them to our db values, enumerate, then
+    -- restore -- so the toy box is left exactly as the player had it. The ONLY
+    -- place we deliberately change the toy box is the reveal
+    -- (Handlers.ApplyToyBoxFilter widens filters so a clicked result shows).
+    local db = EasyFind and EasyFind.db or {}
+    local maxExp = (GetNumExpansions and GetNumExpansions()) or 11
     local savedString = C_ToyBox.GetFilterString and C_ToyBox.GetFilterString() or ""
+    local savedCollected = C_ToyBox.GetCollectedShown and C_ToyBox.GetCollectedShown()
+    local savedUncollected = C_ToyBox.GetUncollectedShown and C_ToyBox.GetUncollectedShown()
+    local savedUnusable = C_ToyBox.GetUnusableShown and C_ToyBox.GetUnusableShown()
+    local savedSources, savedExps
+    if C_ToyBox.IsSourceTypeFilterChecked then
+        savedSources = {}
+        for i = 1, 12 do savedSources[i] = C_ToyBox.IsSourceTypeFilterChecked(i) end
+    end
+    if C_ToyBox.IsExpansionTypeFilterChecked then
+        savedExps = {}
+        for i = 0, maxExp do savedExps[i] = C_ToyBox.IsExpansionTypeFilterChecked(i) end
+    end
 
-    if hasFilterAPI then C_ToyBox.SetCollectedShown(true) end
-    if C_ToyBox.SetUncollectedShown then C_ToyBox.SetUncollectedShown(false) end
-    if C_ToyBox.SetAllSourceTypeFilters then C_ToyBox.SetAllSourceTypeFilters(true) end
-    if C_ToyBox.SetAllExpansionTypeFilters then C_ToyBox.SetAllExpansionTypeFilters(true) end
+    local dbSources, dbExps = db.toySourceFilters, db.toyExpansionFilters
+    if C_ToyBox.SetCollectedShown then C_ToyBox.SetCollectedShown(db.toyFilterCollected ~= false) end
+    if C_ToyBox.SetUncollectedShown then C_ToyBox.SetUncollectedShown(db.toyFilterNotCollected == true) end
+    if C_ToyBox.SetUnusableShown then C_ToyBox.SetUnusableShown(db.toyFilterUnusable ~= false) end
+    if C_ToyBox.SetSourceTypeFilter then
+        for i = 1, 12 do C_ToyBox.SetSourceTypeFilter(i, not (dbSources and dbSources[i] == false)) end
+    end
+    if C_ToyBox.SetExpansionTypeFilter then
+        for i = 0, maxExp do C_ToyBox.SetExpansionTypeFilter(i, not (dbExps and dbExps[i] == false)) end
+    end
     if C_ToyBox.SetFilterString then C_ToyBox.SetFilterString("") end
     if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
 
     local function restoreFilters()
-        if hasFilterAPI then C_ToyBox.SetCollectedShown(savedCollected) end
-        if C_ToyBox.SetUncollectedShown then C_ToyBox.SetUncollectedShown(savedUncollected) end
+        if savedCollected ~= nil and C_ToyBox.SetCollectedShown then C_ToyBox.SetCollectedShown(savedCollected) end
+        if savedUncollected ~= nil and C_ToyBox.SetUncollectedShown then C_ToyBox.SetUncollectedShown(savedUncollected) end
+        if savedUnusable ~= nil and C_ToyBox.SetUnusableShown then C_ToyBox.SetUnusableShown(savedUnusable) end
+        if savedSources and C_ToyBox.SetSourceTypeFilter then
+            for i = 1, 12 do C_ToyBox.SetSourceTypeFilter(i, savedSources[i]) end
+        end
+        if savedExps and C_ToyBox.SetExpansionTypeFilter then
+            for i = 0, maxExp do C_ToyBox.SetExpansionTypeFilter(i, savedExps[i]) end
+        end
         if C_ToyBox.SetFilterString then C_ToyBox.SetFilterString(savedString) end
         if C_ToyBox.ForceToyRefilter then C_ToyBox.ForceToyRefilter() end
     end
 
     local numToys = GetNumFilteredToys()
     if not numToys or numToys == 0 then
-        -- Zero filtered toys at login means the toy box has not streamed
-        -- yet (TOYS_UPDATED pending), not an empty collection: not-ready,
-        -- and BEFORE the category wipe so a transient zero read cannot
-        -- empty previously good entries mid-session.
-        restoreFilters()
-        return false
+        -- Zero filtered toys can mean the toy box has not streamed yet
+        -- (TOYS_UPDATED pending) OR the user filtered everything out. Only the
+        -- former is "not ready"; distinguish by the total toy count. Returning
+        -- not-ready BEFORE the category wipe keeps a transient login zero from
+        -- emptying previously good entries.
+        local total = C_ToyBox.GetNumToys and C_ToyBox.GetNumToys() or 0
+        if total == 0 then
+            restoreFilters()
+            return false
+        end
     end
 
     RemoveEntriesByCategory("Toy")
 
-    for i = 1, numToys do
+    for i = 1, numToys or 0 do
         local itemID = GetToyFromIndex(i)
         if itemID and itemID > 0 then
             local _, toyName, toyIcon = GetToyInfo(itemID)
@@ -2025,16 +2060,37 @@ end
 function Database:PopulateDynamicPets()
     if not C_PetJournal or not C_PetJournal.GetNumPets then return false end
 
+    -- Filter OUR results by the pet filter menu WITHOUT changing the player's
+    -- pet journal: save the journal's current filters, set them to our db
+    -- values, enumerate, then restore. Independent -- the journal is left
+    -- exactly as the player had it; the only deliberate change is at reveal.
+    local db = EasyFind and EasyFind.db or {}
+    local savedString = C_PetJournal.GetSearchFilter and C_PetJournal.GetSearchFilter() or ""
     local savedCollected = C_PetJournal.IsFilterChecked and C_PetJournal.IsFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED)
     local savedNotCollected = C_PetJournal.IsFilterChecked and C_PetJournal.IsFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED)
-    local savedString = C_PetJournal.GetSearchFilter and C_PetJournal.GetSearchFilter() or ""
-
-    if C_PetJournal.SetFilterChecked then
-        C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, true)
-        C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, false)
+    local numSources = C_PetJournal.GetNumPetSources and C_PetJournal.GetNumPetSources() or 12
+    local numTypes = C_PetJournal.GetNumPetTypes and C_PetJournal.GetNumPetTypes() or 10
+    local savedSources, savedTypes
+    if C_PetJournal.IsPetSourceChecked then
+        savedSources = {}
+        for i = 1, numSources do savedSources[i] = C_PetJournal.IsPetSourceChecked(i) end
     end
-    if C_PetJournal.SetAllPetSourcesChecked then C_PetJournal.SetAllPetSourcesChecked(true) end
-    if C_PetJournal.SetAllPetTypesChecked then C_PetJournal.SetAllPetTypesChecked(true) end
+    if C_PetJournal.IsPetTypeChecked then
+        savedTypes = {}
+        for i = 1, numTypes do savedTypes[i] = C_PetJournal.IsPetTypeChecked(i) end
+    end
+
+    local dbSources, dbTypes = db.petSourceFilters, db.petTypeFilters
+    if C_PetJournal.SetFilterChecked then
+        C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, db.petFilterCollected ~= false)
+        C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, db.petFilterNotCollected == true)
+    end
+    if C_PetJournal.SetPetSourceChecked then
+        for i = 1, numSources do C_PetJournal.SetPetSourceChecked(i, not (dbSources and dbSources[i] == false)) end
+    end
+    if C_PetJournal.SetPetTypeFilter then
+        for i = 1, numTypes do C_PetJournal.SetPetTypeFilter(i, not (dbTypes and dbTypes[i] == false)) end
+    end
     if C_PetJournal.SetSearchFilter then C_PetJournal.SetSearchFilter("") end
 
     local function restoreFilters()
@@ -2042,31 +2098,46 @@ function Database:PopulateDynamicPets()
             if savedCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_COLLECTED, savedCollected) end
             if savedNotCollected ~= nil then C_PetJournal.SetFilterChecked(LE_PET_JOURNAL_FILTER_NOT_COLLECTED, savedNotCollected) end
         end
+        if savedSources and C_PetJournal.SetPetSourceChecked then
+            for i = 1, numSources do C_PetJournal.SetPetSourceChecked(i, savedSources[i]) end
+        end
+        if savedTypes and C_PetJournal.SetPetTypeFilter then
+            for i = 1, numTypes do C_PetJournal.SetPetTypeFilter(i, savedTypes[i]) end
+        end
         if C_PetJournal.SetSearchFilter then C_PetJournal.SetSearchFilter(savedString) end
     end
 
-    local numPets = C_PetJournal.GetNumPets()
+    local numPets, numOwned = C_PetJournal.GetNumPets()
     if not numPets or numPets == 0 then
-        -- Zero pets before PET_JOURNAL_LIST_UPDATE means the journal has
-        -- not streamed yet: not-ready, and BEFORE the category wipe so a
-        -- transient zero read cannot empty previously good entries.
-        restoreFilters()
-        return false
+        -- Zero pets can mean the journal has not streamed yet
+        -- (PET_JOURNAL_LIST_UPDATE pending) OR the user filtered everything
+        -- out. Only the former is not-ready; distinguish by numOwned (the
+        -- collection is non-empty even when every filter hides it). Checked
+        -- BEFORE the category wipe so a transient zero cannot empty entries.
+        if not numOwned or numOwned == 0 then
+            restoreFilters()
+            return false
+        end
     end
 
     RemoveEntriesByCategory("Pet")
 
     local seen = {}
-    for i = 1, numPets do
+    for i = 1, numPets or 0 do
+        -- No `owned` gate: our Not-Collected filter (applied above) decides
+        -- whether unowned species appear, exactly like the pet journal itself.
+        -- `owned` rides along as isCollected so the click can summon a pet you
+        -- have and open the journal on one you do not (the mount pattern).
         local petID, speciesID, owned, _, _, _, _,
               speciesName, icon = C_PetJournal.GetPetInfoByIndex(i)
-        if speciesName and speciesName ~= "" and owned and not seen[speciesID] then
+        if speciesName and speciesName ~= "" and speciesID and not seen[speciesID] then
             seen[speciesID] = true
             uiSearchData[#uiSearchData + 1] = setmetatable({
                 name = speciesName,
                 icon = icon,
                 petID = petID,
                 speciesID = speciesID,
+                isCollected = owned and true or false,
                 nameLower = slower(speciesName),
             }, PET_MT)
         end
@@ -2075,6 +2146,7 @@ function Database:PopulateDynamicPets()
     restoreFilters()
     return true
 end
+
 
 function Database:PopulateDynamicHeirlooms()
     if not C_Heirloom or not C_Heirloom.GetHeirloomItemIDs then return false end

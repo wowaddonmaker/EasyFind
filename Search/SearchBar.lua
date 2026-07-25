@@ -2007,7 +2007,13 @@ end
 -- text or grant editbox focus; the staged clear-and-refocus behavior
 -- below belongs to the focused flow only.
 function Search:HandleEscape(fromUnfocused)
-    if not searchFrame or not searchFrame:IsShown() then return end
+    -- Put a carried catalog item down FIRST, and before the shown-check: our
+    -- ESCAPE override displaces the engine's own "ESC clears the cursor", so
+    -- without this the item rides the cursor through every ESC press and the
+    -- next click anywhere fires its drop (popping the chat editbox open) --
+    -- which is what read as "ESC is broken" after clicking a catalog row.
+    if ns.ClearCarriedCatalogItem and ns.ClearCarriedCatalogItem() then return true end
+    if not searchFrame or not searchFrame:IsShown() then return false end
     local editBox = searchFrame.editBox
     -- ESC always aborts any active nav-repeat cascade. We do this
     -- before the cleanup below, because the text-clear path calls
@@ -2052,13 +2058,13 @@ function Search:HandleEscape(fromUnfocused)
     self._escClosingMenus = nil
     if closedAny then
         if not fromUnfocused then Refocus() end
-        return
+        return true
     end
     -- Pending Apply-flagged settings: the popup must preempt the
     -- text-clear and panel-close branches so Cancel preserves the
     -- exact pre-ESC state (text, scroll, pending change). The helper
     -- also lifts the popup above our results panel strata.
-    if self:ShowUnappliedSettingsPopup() then return end
+    if self:ShowUnappliedSettingsPopup() then return true end
     if fromUnfocused then
         if ns.GetVisibilityMode() == ns.VISIBILITY_ALWAYS then
             -- Fully persistent: only reachable while dismissable state
@@ -2072,13 +2078,19 @@ function Search:HandleEscape(fromUnfocused)
                 self:ClearQuickFilter(false)
                 self:HideQuickFilterSuggestions()
                 self:OnSearchTextChanged("", true)
-            else
-                Results:HideResults()
+                return true
             end
-            return
+            -- Nothing but the results panel left to close. Report whether it
+            -- was actually up: claiming a dismissal that did not happen is
+            -- what let the ESC override swallow every press.
+            local hadResults = resultsFrame and resultsFrame:IsShown()
+            Results:HideResults()
+            return hadResults and true or false
         end
         self:Hide()
-        return
+        -- Hide is protected while secure rows are parented here, so it can
+        -- degrade to a no-op; only claim the key if the bar really went away.
+        return not searchFrame:IsShown()
     end
     if (editBox and editBox:GetText() ~= "") or Filters:GetQuickFilter() then
         if editBox and editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
@@ -2093,14 +2105,15 @@ function Search:HandleEscape(fromUnfocused)
         -- search path. Rebuild immediately so stale typed results are
         -- replaced by pinned rows, or hidden when there are no pins.
         self:OnSearchTextChanged("", true)
-        return
+        return true
     end
     if ns.GetVisibilityMode() == ns.VISIBILITY_ALWAYS then
         -- Focused ESC on an empty box drops focus but keeps the bar.
         if editBox then editBox:ClearFocus() end
-        return
+        return true
     end
     self:Hide()
+    return not searchFrame:IsShown()
 end
 
 -- True while HandleEscape is driving the filter-dropdown close cascade,
@@ -2125,6 +2138,8 @@ end
 -- arming predicate for Always Show; Utils.RefreshEscArm re-evaluates it
 -- when menus or results open and close.
 function Search:HasDismissableEscState()
+    -- A catalog item carried on the cursor is dismissable: ESC puts it down.
+    if ns.HasCarriedCatalogItem and ns.HasCarriedCatalogItem() then return true end
     if searchFrame and searchFrame.filterDropdown
         and searchFrame.filterDropdown:IsShown() then
         return true
@@ -2411,7 +2426,10 @@ function Search:UpdateFontSize()
     -- keeping the previous theme's colors after a live flip.
     local quickFilterPill = searchFrame.quickFilterPill
     if quickFilterPill then
-        ns.SetRoundedRectFill(quickFilterPill, ns.BTN_FILL_NORMAL[1], ns.BTN_FILL_NORMAL[2], ns.BTN_FILL_NORMAL[3], 1, true)
+        -- One painter owns the pill's fill and label color (the same theme wash
+        -- the options stepper buttons use); this pass only re-runs it so a live
+        -- theme flip lands, and rescales the font.
+        Filters:PaintQuickFilterPill(quickFilterPill, quickFilterPill:IsMouseOver())
         if quickFilterPill.text then
             Search:ScaleFont(quickFilterPill.text, "GameFontHighlightSmall")
         end

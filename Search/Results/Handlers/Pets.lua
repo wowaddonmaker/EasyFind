@@ -95,6 +95,13 @@ function Handlers:RevealPetInJournal(data)
     if not data or not C_PetJournal then return nil end
     local petName = data.petName or data.name
 
+    -- Widen collected AND uncollected so the target is selectable regardless of
+    -- its collected state: the pet must be enumerable for SetSelectedPet /
+    -- scroll to reach it, and a searched pet may well be one the player does
+    -- not own. (This is the reveal-time exception -- the pet filter menu itself
+    -- never touches the journal; only the reveal does, and only to show the
+    -- clicked pet.) Uncollected was previously forced OFF here, which hid an
+    -- uncollected pet the moment it was revealed.
     if C_PetJournal.SetFilterChecked then
         local collectedFilter = _G["LE_PET_JOURNAL_FILTER_COLLECTED"]
         local uncollectedFilter = _G["LE_PET_JOURNAL_FILTER_NOT_COLLECTED"]
@@ -102,7 +109,7 @@ function Handlers:RevealPetInJournal(data)
             pcall(C_PetJournal.SetFilterChecked, collectedFilter, true)
         end
         if uncollectedFilter ~= nil then
-            pcall(C_PetJournal.SetFilterChecked, uncollectedFilter, false)
+            pcall(C_PetJournal.SetFilterChecked, uncollectedFilter, true)
         end
     end
     if C_PetJournal.SetAllPetSourcesChecked then pcall(C_PetJournal.SetAllPetSourcesChecked, true) end

@@ -82,6 +82,7 @@ local HINTS = {
     mountSummon      = Hint(V.click, V.summon, "Alt", V.journal, "Ctrl", V.preview, "Shift", V.drag),
     mountStatic      = Hint(V.click, V.journal, "Ctrl", V.preview),
     pet              = Hint(V.click, V.summon, "Alt", V.journal, "Shift", V.drag),
+    petStatic        = Hint(V.click, V.journal),
     toyBoxOnly       = Hint(V.click, V.toybox),
     toy              = Hint(V.click, V.use, "Alt", V.toybox, "Shift", V.drag),
     heirloom         = Hint(V.click, V.addToBags, "Alt", V.heirloomsTab),
@@ -95,8 +96,8 @@ local HINTS = {
     bagOpen          = Hint(V.click, V.open, "Alt", V.bags, "Shift", V.drag),
     bagUse           = Hint(V.click, V.use, "Alt", V.bags, "Shift", V.drag),
     bagDefault       = Hint(V.click, V.bags, "Shift", V.drag),
-    catalogItem      = Hint(V.drag, V.sendLink),
-    catalogItemTry   = Hint(V.drag, V.sendLink, "Ctrl", V.dressroom),
+    catalogItem      = Hint(V.clickDrag, V.sendLink),
+    catalogItemTry   = Hint(V.clickDrag, V.sendLink, "Ctrl", V.dressroom),
     openMap          = Hint(V.click, V.openMap),
     pinOnMap         = Hint(V.click, V.pinOnMap),
     encounter        = Hint(V.click, V.encounter),
@@ -128,7 +129,9 @@ function Handlers:GetActionHint(data)
     if data.mountID then
         return Icons:IsMountSummonable(data) and HINTS.mountSummon or HINTS.mountStatic
     end
-    if data.petID or data.speciesID then return HINTS.pet end
+    if data.petID or data.speciesID then
+        return Icons:IsPetSummonable(data) and HINTS.pet or HINTS.petStatic
+    end
     if data.toyItemID then
         return data.isToyboxOnly and HINTS.toyBoxOnly or HINTS.toy
     end

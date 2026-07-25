@@ -73,6 +73,10 @@ function Commands:RunSearchBarCommand(command)
         editBox:SetCursorPosition(0)
         if editBox.placeholder then editBox.placeholder:Show() end
     end
+    -- The quick filter is part of the query: clearing one clears the other, or
+    -- the '@' pill silently narrows whatever the user types next.
+    Search:ClearQuickFilter(false)
+    Search:HideQuickFilterSuggestions()
     self:HideResults()
 
     if canonical == "reset" then
