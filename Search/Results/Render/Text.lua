@@ -76,6 +76,15 @@ function Render.BaseRowText(resultRow, entry, state)
     local depth = entry.depth or 0
     local indentPixels = depth * state.indPx
     resultRow.icon:ClearAllPoints()
+    -- amountText is the right bound the row title clips against, and several
+    -- RowContent branches re-anchor it to the icon's left edge. Rows are
+    -- POOLED, so a row previously used for a currency or loot entry kept that
+    -- anchor; reused for an entry that never re-anchors it (a title), the
+    -- title clipped against a bound sitting near the left icon and ellipsised
+    -- after a few characters. Reset to the row edge every render; RowContent
+    -- runs after this and re-anchors it where it genuinely belongs.
+    resultRow.amountText:ClearAllPoints()
+    resultRow.amountText:SetPoint("RIGHT", resultRow, "RIGHT", -8, 0)
 
     if entry.isFlat then
         local catIconDef = Icons:GetFlatCategoryIcon(data)

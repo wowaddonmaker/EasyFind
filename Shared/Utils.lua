@@ -1363,6 +1363,9 @@ ns.SEARCHBAR_FILL = 0.55
 ns.SEARCHBAR_ICON_SCALE = 0.9
 ns.DEFAULT_FONT_SIZE = 0.9
 ns.CLEAR_BTN_SIZE = 12
+-- Blizzard's standard round-crop mask, used wherever a square icon has to
+-- render as a circle (fade masks, the gear-set spec badge).
+ns.PORTRAIT_ALPHA_MASK = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local EasyFindSearchFont = CreateFont("EasyFindSearchFont")
 local baseFont = Game15Font_Shadow or GameFontNormal
 EasyFindSearchFont:CopyFontObject(baseFont)
@@ -3335,7 +3338,7 @@ end
 -- gear sets, ...), so the menu option only appears where it's useful.
 function ns.GetWowheadLink(data)
     if not data then return nil end
-    local kind, id, query
+    local kind, id, query, listing
 
     if data.appearanceItemID and C_TransmogCollection and C_TransmogCollection.GetSourceInfo then
         local info = C_TransmogCollection.GetSourceInfo(data.appearanceItemID)
@@ -3375,7 +3378,26 @@ function ns.GetWowheadLink(data)
     elseif data.factionID then
         kind, id = "faction", data.factionID
     elseif data.titleID then
-        kind, id = "title", data.titleID
+        -- WoW's titleID is an index into the client's own title list and bears
+        -- no relation to Wowhead's title ids, so linking it landed on an
+        -- unrelated page. Link the achievement that awards the title instead:
+        -- it is exact, and it is the page that actually explains how to earn
+        -- it. Titles from quests, PvP ranks and events have no achievement, so
+        -- those fall back to a name search rather than a wrong id.
+        -- Verified: Wowhead's title ids are a different space from the
+        -- client's (Wowhead title=47 is "Conqueror"; GetTitleName(47) is "the
+        -- Explorer"), and its title pages need that numeric id -- the slug
+        -- alone 404s. So there is no way to build the exact page from client
+        -- data. Prefer the achievement that awards it, which IS exact and
+        -- explains how to earn it; otherwise fall back to Wowhead's TITLES
+        -- listing filtered by name, which beats a site-wide search.
+        local achID = ns.Database and ns.Database.GetTitleSourceAchievement
+            and ns.Database:GetTitleSourceAchievement(data.titleID)
+        if achID then
+            kind, id = "achievement", achID
+        elseif data.name then
+            query, listing = data.name, "titles"
+        end
     elseif data.spellID and (data.category == "Ability" or data.category == "Talent") then
         kind, id = "spell", data.spellID
     elseif data.housingRecordID or data.housingEntryID then
@@ -3403,6 +3425,12 @@ function ns.GetWowheadLink(data)
         sub = pref
     else
         sub = WOWHEAD_LOCALE_SUB[GetLocale and GetLocale()] or "www"
+    end
+    if listing then
+        -- A type-filtered listing (titles): far closer than a site-wide search,
+        -- which buries the title among items and quests.
+        return "https://" .. sub .. ".wowhead.com/" .. listing
+            .. "/name:" .. WowheadSearchEncode(query)
     end
     if query then
         return "https://" .. sub .. ".wowhead.com/search?q=" .. WowheadSearchEncode(query)
@@ -4446,7 +4474,7 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
     thumbTop:SetPoint("TOP", thumb, "TOP", 0, 0)
 
     local topMask = thumb:CreateMaskTexture()
-    topMask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    topMask:SetTexture(ns.PORTRAIT_ALPHA_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
     topMask:SetSize(THUMB_W, THUMB_W)
     topMask:SetPoint("TOP", thumb, "TOP", 0, 0)
     thumbTop:AddMaskTexture(topMask)
@@ -4457,7 +4485,7 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
     thumbBot:SetPoint("BOTTOM", thumb, "BOTTOM", 0, 0)
 
     local botMask = thumb:CreateMaskTexture()
-    botMask:SetTexture("Interface\\CharacterFrame\\TempPortraitAlphaMask", "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+    botMask:SetTexture(ns.PORTRAIT_ALPHA_MASK, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
     botMask:SetSize(THUMB_W, THUMB_W)
     botMask:SetPoint("BOTTOM", thumb, "BOTTOM", 0, 0)
     thumbBot:AddMaskTexture(botMask)

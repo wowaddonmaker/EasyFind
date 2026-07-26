@@ -4,6 +4,28 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [2.2.0] - 2026-07-25
+
+### Added
+- **Professions search**: your recipes are now searchable by name. Results cast the recipe straight from the search bar, and a filter flyout mirrors the profession window's own recipe filters so both stay in step. Only expansions you own are listed
+- **Item catalog**: every item in the game is now searchable, not just the ones you own. Catalog results are ranked alongside everything else rather than burying it, and come with their own filters for crafting quality tier and item type. Find them under Items in the filter menu, or type `@gen`
+- **Toy and pet filters**: toys and pets now have full filter options like mounts do, matching what their own journals offer. Toys filter by collected state, source and expansion; pets by collected state, source and family. These narrow EasyFind's results only and leave your Toy Box and Pet Journal exactly as you had them
+- **Send item links to chat**: click or drag any item result to pick it up, then click a chat channel to link it there, or drop it on the world to put it in `/say`. Search results can also be added to a Note
+- **Unearned titles**: the Titles filter can now list titles you have *not* earned, so you can see what is left to chase. Hovering one shows the achievement that awards it, and clicking opens straight to that achievement. Off by default: switch Titles to Incomplete or All in the filter menu
+- **Equipment Manager filters**: gear set results can be narrowed to a single specialization, and a set assigned to a spec now shows that spec's icon on its row, matching the Equipment Manager itself
+- **Tooltips on hover**: achievement results show their full tooltip (progress, criteria, reward), and title results show the tooltip of the achievement that grants them
+
+### Changed
+- **Uncollected pets** open the Pet Journal when clicked, matching how uncollected mounts already behaved, instead of doing nothing
+
+### Fixed
+- **Wowhead links for titles** pointed at an unrelated page, because the game's internal title number is not the one Wowhead uses. Titles now link to the achievement that awards them, which is the page that actually explains how to get it
+- **Toys, mounts and outfits could stop working after a search**: revealing one in its journal left the game's own button unusable, so your next click on it was blocked and nothing happened. Revealing no longer touches those buttons
+- **Escape could stop responding**: in some states EasyFind held onto the Escape key while having nothing to close, so presses were swallowed and never reached the game. Escape now hands the key back the moment it has nothing to dismiss
+- **Menu hover highlights**: rows across the filter menus now share one rounded highlight that no longer disappears behind the menu it sits on
+
+---
+
 ## [2.1.4] - 2026-07-21
 
 ### Added

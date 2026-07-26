@@ -80,8 +80,30 @@ local UI_FILTER_OPTIONS = {
           { key = "pets",           label = _G["PETS"] or "Pets",            iconTex = 631719, hasOptions = true },
           { key = "toys",           label = _G["TOYS"] or _G["TOY_BOX"] or "Toys",            iconTex = 454046, hasOptions = true },
       } },
+    -- The Equipment Manager lets a set be assigned to one of the character's
+    -- specializations, so the flyout mirrors that: Any, or one row per spec.
+    -- Options build lazily (a function, not a literal) because spec info is
+    -- not readable when this file loads. Values are spec INDEXes, matching
+    -- what C_EquipmentSet.GetEquipmentSetAssignedSpec returns.
     { key = "gearSets",    label = _G["EQUIPMENT_MANAGER"] or "Gear Sets",   iconTex = 514608,
-      iconCoords = { 0.01562, 0.53125, 0.46875, 0.60547 } },
+      iconCoords = { 0.01562, 0.53125, 0.46875, 0.60547 },
+      flyoutRadio = {
+          dbKey = "gearSetSpecFilter",
+          options = function()
+              local opts = { { value = "all", label = _G["ALL_SPECS"] or "All Specializations" } }
+              local numSpecs = GetNumSpecializations and GetNumSpecializations() or 0
+              for i = 1, numSpecs do
+                  local _, specName = GetSpecializationInfo(i)
+                  if specName then
+                      opts[#opts + 1] = { value = i, label = specName }
+                  end
+              end
+              return opts
+          end,
+          -- Sets are filtered where they are built, so the provider has to
+          -- repopulate before the search re-runs.
+          onChange = function() Filters:ApplyFilterSelection("gearSets") end,
+      } },
     { key = "currencies",  label = _G["CURRENCY"] or "Currencies",  iconTex = 136452,
       flyoutRadio = {
           dbKey = "currencyFilterMode",
@@ -171,8 +193,21 @@ local UI_FILTER_OPTIONS = {
           },
       } },
     -- Title icon from PaperDollSidebarTab2 (Titles tab) spritesheet 514608.
+    -- Titles you have not earned are opt-in: they outnumber earned ones many
+    -- times over, so the default stays Earned and the other modes are a
+    -- deliberate "show me what I am missing". Same three-way shape, and the
+    -- same localized labels, as the achievements filter.
     { key = "titles",      label = _G["TITLES"] or _G["PAPERDOLL_SIDEBAR_TITLES"] or "Titles",      iconTex = 514608,
-      iconCoords = { 0.016, 0.531, 0.324, 0.461 } },
+      iconCoords = { 0.016, 0.531, 0.324, 0.461 },
+      flyoutRadio = {
+          dbKey = "titleFilterMode",
+          options = {
+              { value = "earned",     label = ACHIEVEMENT_FILTER_LABELS.earned },
+              { value = "incomplete", label = ACHIEVEMENT_FILTER_LABELS.incomplete },
+              { value = "all",        label = ACHIEVEMENT_FILTER_LABELS.all },
+          },
+          onChange = function() Filters:ApplyFilterSelection("titles") end,
+      } },
     { key = "commands",    label = L["FILTER_COMMANDS"], iconTex = ns.COMMANDS_ICON_TEX,
       flyoutRadio = {
           checkboxes = {

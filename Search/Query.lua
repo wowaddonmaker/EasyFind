@@ -219,6 +219,11 @@ function Search:OnSearchTextChanged(text, force)
     local calculatorData = (not quickFilter) and self:EvaluateCalculatorExpression(text) or nil
     local calculatorLauncher = (not quickFilter and not calculatorData)
         and self:GetCalculatorLauncherMatch(text) or nil
+    -- Inline answers ("gold", "ilvl", "durability"): a live value pinned
+    -- above the results, which keep flowing beneath it.
+    local answerEntry = (not quickFilter and not calculatorData) and ns.Answers
+        and ns.Answers.GetAnswerEntry
+        and ns.Answers:GetAnswerEntry(text) or nil
     -- Build skip set from filters so SearchUI avoids scoring/copying filtered categories.
     -- Collection items (mounts/toys/pets/outfits/appearance sets) are
     -- skipped when their own filter is off OR the parent Collections
@@ -423,6 +428,9 @@ function Search:OnSearchTextChanged(text, force)
         combined[#combined + 1] = { data = ns.Calculator._calculator.LAUNCHER, score = 1e308 }
     elseif calculatorLauncher then
         combined[#combined + 1] = { data = calculatorLauncher, score = math.huge }
+    end
+    if answerEntry then
+        combined[#combined + 1] = { data = answerEntry, score = math.huge }
     end
     for ri = 1, #results do combined[#combined + 1] = results[ri] end
     if mapResults then

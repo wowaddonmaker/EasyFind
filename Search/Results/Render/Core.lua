@@ -444,7 +444,12 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
                 lockedReason = Database:GetEntryLockedReason(data)
             end
             resultRow.lockedReason = lockedReason
+            -- An unearned title dims like any unavailable row, but is NOT
+            -- locked: its click still opens the achievement that awards it,
+            -- which is the whole point of listing it. lockedReason would have
+            -- suppressed that click, so the two are kept separate here.
             local isInertRow = isUnearnedCurrency or lockedReason ~= nil
+                or (data and data.titleUnearned) or false
 
             Render.BaseRowText(resultRow, entry, renderState)
 

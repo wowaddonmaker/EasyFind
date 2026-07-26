@@ -116,7 +116,35 @@ local CHAT_CMD_LABELS = {
     MACRO         = _G["MACRO"],
     BATTLEGROUND  = _G["BATTLEGROUND"],
     CHANNEL       = _G["CHANNEL"],
+    EASYFINDCLEARCHAT = L["CMD_DESC_CLEAR_CHAT"],
 }
+
+-- "/clear" wipes the selected chat window, "/clear all" every window. The
+-- client ships no clear command of its own; registered here so the native
+-- command scan surfaces it in the Commands category automatically.
+local function ClearChatWindow(chatWindow)
+    if not (chatWindow and chatWindow.Clear) then return end
+    chatWindow:Clear()
+    -- Clear() only drops the rendered lines; the combat log window refills
+    -- from the client's retained entry buffer on every tab switch, so the
+    -- buffer must be wiped too or the clear lasts only until re-shown.
+    if COMBATLOG and chatWindow == COMBATLOG and CombatLogClearEntries then
+        CombatLogClearEntries()
+    end
+end
+
+SLASH_EASYFINDCLEARCHAT1 = "/clear"
+SlashCmdList["EASYFINDCLEARCHAT"] = function(msg)
+    msg = slower(strtrim(msg or ""))
+    if msg == "all" or msg == slower(_G["ALL"] or "all") then
+        for i = 1, (NUM_CHAT_WINDOWS or 10) do
+            ClearChatWindow(_G["ChatFrame" .. i])
+        end
+        return
+    end
+    ClearChatWindow(SELECTED_CHAT_FRAME or DEFAULT_CHAT_FRAME)
+end
+
 local EMOTE_SUBLABEL = _G["EMOTE"] or "Emote"
 
 local COMMANDS_ICON = ns.COMMANDS_ICON_TEX

@@ -79,6 +79,10 @@ local HINTS = {
     quickKeybind     = Hint(V.click, V.enterMode, "Alt", V.settings),
     filterResults    = Hint(V.select, V.filterResults),
     applyTitle       = Hint(V.click, V.applyTitle),
+    -- Earned and granted by an achievement: Alt opens that achievement.
+    applyTitleSource = Hint(V.click, V.applyTitle, "Alt", _G["ACHIEVEMENTS"] or "Achievements"),
+    -- Unearned: the click cannot apply it, so it opens the source achievement.
+    titleSource      = Hint(V.click, _G["ACHIEVEMENTS"] or "Achievements"),
     mountSummon      = Hint(V.click, V.summon, "Alt", V.journal, "Ctrl", V.preview, "Shift", V.drag),
     mountStatic      = Hint(V.click, V.journal, "Ctrl", V.preview),
     pet              = Hint(V.click, V.summon, "Alt", V.journal, "Shift", V.drag),
@@ -125,7 +129,21 @@ function Handlers:GetActionHint(data)
     if data.calculatorResult then return HINTS.copyResult end
     if data.quickKeybindActivate then return HINTS.quickKeybind end
     if data.quickFilterDef then return HINTS.filterResults end
-    if data.titleID then return HINTS.applyTitle end
+    if data.titleID then
+        -- Four states, and the hint has to name the one that applies: earned
+        -- or not, times whether an achievement grants it. Alt+click on an
+        -- earned title opened its achievement all along but the hint never
+        -- said so, which read as the feature being missing.
+        local hasSource = ns.Database and ns.Database.GetTitleSourceAchievement
+            and ns.Database:GetTitleSourceAchievement(data.titleID)
+        if data.titleUnearned then
+            -- No source achievement: no hint at all rather than promising an
+            -- action. Claiming "Click: Titles" pointed at a pane that cannot
+            -- show a title you have not earned.
+            return hasSource and HINTS.titleSource or nil
+        end
+        return hasSource and HINTS.applyTitleSource or HINTS.applyTitle
+    end
     if data.mountID then
         return Icons:IsMountSummonable(data) and HINTS.mountSummon or HINTS.mountStatic
     end

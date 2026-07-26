@@ -164,10 +164,19 @@ function Rows.InstallTooltips(resultRow)
         -- read the fields directly: status (earned/incomplete), description,
         -- each criterion's completion + count (green done, grey X/Y when not),
         -- the series chain, and the reward.
-        if self.data and self.data.achievementID then
+        -- Titles borrow this: a title carries no tooltip of its own, but the
+        -- achievement that awards it explains exactly how it is earned, which
+        -- is the useful thing to show. Resolved lazily so only hovered titles
+        -- pay for it.
+        local achFromTitle
+        if self.data and not self.data.achievementID and self.data.titleID
+           and ns.Database and ns.Database.GetTitleSourceAchievement then
+            achFromTitle = ns.Database:GetTitleSourceAchievement(self.data.titleID)
+        end
+        if self.data and (self.data.achievementID or achFromTitle) then
             local ht = EasyFind.db.hideTooltips
             if ht and ht.achievements then return end
-            local achID = self.data.achievementID
+            local achID = self.data.achievementID or achFromTitle
             local _, name, _, completed, _, _, _, description, _, _, rewardText =
                 GetAchievementInfo(achID)
             if name then
@@ -355,7 +364,7 @@ function Rows.InstallTooltips(resultRow)
             -- "gear" either way.
             local ht = EasyFind.db.hideTooltips
             local ic = self.icon
-            if ht and ht.collections and (ic.mountID or ic.toyItemID or ic.petID
+            if ht and ht.collections and (ic.mountID or ic.toyItemID or ic.petID or ic.speciesID
                 or ic.outfitID or ic.heirloomItemID or ic.transmogSetID or ic.appearanceItemID) then
                 return
             end

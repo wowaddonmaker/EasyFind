@@ -2012,7 +2012,7 @@ function Search:HandleEscape(fromUnfocused)
     -- without this the item rides the cursor through every ESC press and the
     -- next click anywhere fires its drop (popping the chat editbox open) --
     -- which is what read as "ESC is broken" after clicking a catalog row.
-    if ns.ClearCarriedCatalogItem and ns.ClearCarriedCatalogItem() then return true end
+    if ns.ClearCarriedItemLink and ns.ClearCarriedItemLink() then return true end
     if not searchFrame or not searchFrame:IsShown() then return false end
     local editBox = searchFrame.editBox
     -- ESC always aborts any active nav-repeat cascade. We do this
@@ -2139,7 +2139,7 @@ end
 -- when menus or results open and close.
 function Search:HasDismissableEscState()
     -- A catalog item carried on the cursor is dismissable: ESC puts it down.
-    if ns.HasCarriedCatalogItem and ns.HasCarriedCatalogItem() then return true end
+    if ns.HasCarriedItemLink and ns.HasCarriedItemLink() then return true end
     if searchFrame and searchFrame.filterDropdown
         and searchFrame.filterDropdown:IsShown() then
         return true

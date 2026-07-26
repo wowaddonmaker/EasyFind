@@ -52,7 +52,12 @@ Filters.quickFilterOptions = {
     { key = "toys",           canonical = "toys",            label = _G["TOYS"] or "Toys",            categories = { "Toy" }, aliases = { "to", "toy", "toys" } },
     { key = "gearSets",       canonical = "gear-sets",       label = _G["EQUIPMENT_MANAGER"] or "Gear Sets",       categories = { "Gear Set" }, aliases = { "gs", "gearset", "gearsets", "gear-set", "gear-sets", "equipment-set", "equipment-sets" } },
     { key = "currencies",     canonical = "currencies",      label = _G["CURRENCY"] or "Currencies",      categories = { "Currency" }, aliases = { "c", "cur", "currency", "currencies" } },
-    { key = "loot",           canonical = "loot",            label = _G["LOOT"] or "Loot",            categories = { "Loot" }, aliases = { "g", "gear", "loot", "item", "items" } },
+    -- "l" for Loot. "g"/"gear" are kept only because this filter was called
+    -- Gear before it was renamed, so muscle memory still works. "item"/"items"
+    -- are NOT listed: they belong to the Items filter above, and because
+    -- aliases resolve last-writer-wins this entry was silently stealing them --
+    -- @items landed on Loot.
+    { key = "loot",           canonical = "loot",            label = _G["LOOT"] or "Loot",            categories = { "Loot" }, aliases = { "l", "g", "gear", "loot" } },
     { key = "map",            canonical = "map",             label = L["FILTER_MAP_SEARCH"],      aliases = { "map", "maps", "zone", "zones", "location", "locations" } },
     { key = "options",        canonical = "options",         label = _G["OPTIONS"] or "Options",         categories = { "Game Settings", "AddOn Settings" }, aliases = { "op", "opt", "option", "options", "setting", "settings" } },
     { key = "gameOptions",    canonical = "game-options",    label = L["FILTER_GAME_OPTIONS"],    categories = { "Game Settings" }, aliases = { "go", "game", "game-option", "game-options", "game-setting", "game-settings" } },

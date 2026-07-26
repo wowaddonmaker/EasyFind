@@ -280,6 +280,33 @@ function Handlers:SelectResult(data, forceGuide)
         return
     end
 
+    -- Titles are resolved BEFORE FinishResultSelection: that call clears the
+    -- search and can recycle this data table (see the searchCommand branch),
+    -- so titleID and the resolved achievement are captured while they are
+    -- still guaranteed to belong to the row that was clicked.
+    if data.titleID then
+        local titleID = data.titleID
+        local unearned = data.titleUnearned
+        local altHeld = Handlers:IsSourceModifierHeld()
+        local achID = ns.Database and ns.Database.GetTitleSourceAchievement
+            and ns.Database:GetTitleSourceAchievement(titleID)
+        self:FinishResultSelection()
+        -- Alt opens the achievement that awards it, the same way Alt opens the
+        -- owning UI everywhere else. An unearned title cannot be applied, so a
+        -- plain click takes that route too rather than doing nothing.
+        if achID and (altHeld or unearned) then
+            self:OpenAchievementByID(achID)
+        elseif not unearned and SetCurrentTitle then
+            SetCurrentTitle(titleID)
+        end
+        -- Unearned with no source achievement (PvP ranks, quest and event
+        -- titles have none): nothing to open. Deliberately NOT the Titles
+        -- pane -- a title you have not earned is not listed there, so sending
+        -- the player to it is a dead end. The row stays informational; the
+        -- right-click Wowhead link is the way to look it up.
+        return
+    end
+
     self:FinishResultSelection()
 
     -- the secure macrotext attribute set when the row was rendered. The
@@ -511,13 +538,6 @@ function Handlers:SelectResult(data, forceGuide)
         if C_Heirloom and C_Heirloom.CreateHeirloom then
             C_Heirloom.CreateHeirloom(data.heirloomItemID)
         end
-        return
-    end
-
-    -- Title: set as current. SetCurrentTitle is unprotected and updates
-    -- the player's nameplate immediately, no journal navigation needed.
-    if data.titleID then
-        if SetCurrentTitle then SetCurrentTitle(data.titleID) end
         return
     end
 

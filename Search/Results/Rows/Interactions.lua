@@ -76,16 +76,26 @@ local function RouteLinkToHoveredChat(link, hoverLink, hoverText, hoverFrame)
     if not (link and link ~= "" and hoverLink and hoverFrame) then return false end
     local isChannel = hoverLink:match("^channel:") ~= nil
     local whisperTarget = hoverLink:match("^player:([^:]+)")
-    if not (isChannel or whisperTarget) then return false end
+    -- Battle.net friends are BNplayer links, not player links. Blizzard's own
+    -- click already opens the BN whisper, so we do not rebuild that state --
+    -- we only need to land the link in whichever editbox it activates. Without
+    -- this the match failed outright and the whisper opened empty.
+    local isBNPlayer = hoverLink:match("^BNplayer:") ~= nil
+    if not (isChannel or whisperTarget or isBNPlayer) then return false end
     local frame, chatLink, chatText = hoverFrame, hoverLink, hoverText
     return pcall(function()
         local targetBox
-        if isChannel then
+        if isChannel or isBNPlayer then
+            -- Both reuse the frame's own click handler so the box is set up
+            -- exactly as a real click would set it (and chat-replacement
+            -- addons that hook it keep working). A channel's box lives on the
+            -- frame; a BN whisper activates its own, so that one is looked up
+            -- at insert time instead.
             local onHyperlinkClick = frame:GetScript("OnHyperlinkClick")
             if onHyperlinkClick then
                 onHyperlinkClick(frame, chatLink, chatText, "LeftButton")
             end
-            targetBox = frame.editBox
+            if isChannel then targetBox = frame.editBox end
         else
             local editBox = (ChatEdit_ChooseBoxForSend and ChatEdit_ChooseBoxForSend())
                 or (ChatEdit_GetActiveWindow and ChatEdit_GetActiveWindow())
@@ -107,12 +117,16 @@ local function RouteLinkToHoveredChat(link, hoverLink, hoverText, hoverFrame)
     end)
 end
 
--- The link of a catalog item currently carried on the cursor (picked up by a
--- click or drag). WoW's cursor model carries a picked-up item until the NEXT
--- click, and that drop click lands on the world, not on our row -- so a row
--- mouse-up can't see it. The global watcher below turns a drop on a chat
--- channel into a link and a drop on free space into a /say.
-local carriedCatalogLink
+-- The link of whatever result is currently carried on the cursor (picked up by
+-- a click or drag) -- a bag item, a catalog item, a mount, all the same. WoW's
+-- cursor model carries a pickup until the NEXT click, and that drop click
+-- lands wherever the player aimed, not on our row, so a row mouse-up cannot
+-- see it. The global watcher below routes the drop:
+--   a chat channel / whisper label -> link into that channel
+--   anywhere else on a chat window -> /say
+--   empty world                    -> cancel, exactly like Escape
+--   anything else (bag slot, bar)  -> left to the engine
+local carriedItemLink
 
 -- ESC must be able to put the carried item down. EasyFind holds an ESCAPE
 -- override binding while the bar has dismissable state, so the engine's own
@@ -120,13 +134,13 @@ local carriedCatalogLink
 -- cursor through every ESC press, and the next click anywhere would fire the
 -- drop (popping the chat editbox open). Search:HandleEscape consumes this
 -- first, so one ESC always puts the item down.
-function ns.HasCarriedCatalogItem()
-    return carriedCatalogLink ~= nil
+function ns.HasCarriedItemLink()
+    return carriedItemLink ~= nil
 end
 
-function ns.ClearCarriedCatalogItem()
-    if not carriedCatalogLink then return false end
-    carriedCatalogLink = nil
+function ns.ClearCarriedItemLink()
+    if not carriedItemLink then return false end
+    carriedItemLink = nil
     if ClearCursor then ClearCursor() end
     if Utils.RefreshEscArm then Utils.RefreshEscArm() end
     return true
@@ -167,12 +181,40 @@ local function ClickedFreeSpace()
     return true
 end
 
--- Global watcher: a carried catalog item (real cursor pickup from a drag)
--- dropped on a chat channel/whisper hyperlink routes the link there, dropped on
--- empty world routes it to /say; CURSOR_CHANGED forgets the link once the
--- cursor empties (dropped elsewhere or cancelled).
+-- Is the cursor inside frame's rectangle? Geometric, NOT GetMouseFoci: that
+-- only reports mouse-ENABLED frames, and a chat window's message area is
+-- click-through, so a drop onto chat reads as empty world and would cancel
+-- instead of going to /say.
+local function CursorInsideFrame(frame)
+    if not (frame and frame.IsVisible and frame:IsVisible() and frame.GetLeft) then
+        return false
+    end
+    local left, right = frame:GetLeft(), frame:GetRight()
+    local bottom, top = frame:GetBottom(), frame:GetTop()
+    if not (left and right and bottom and top) then return false end
+    local scale = frame:GetEffectiveScale()
+    local x, y = GetCursorPosition()
+    return x >= left * scale and x <= right * scale
+       and y >= bottom * scale and y <= top * scale
+end
+
+-- Was the drop over a chat window (its message area or its edit box) but NOT
+-- on a channel/whisper label? That is the "/say" target: the player aimed at
+-- chat without naming a channel.
+local function ClickedChatBox()
+    for i = 1, (NUM_CHAT_WINDOWS or 10) do
+        local chatFrame = _G["ChatFrame" .. i]
+        if CursorInsideFrame(chatFrame) then return true end
+        if chatFrame and CursorInsideFrame(chatFrame.editBox) then return true end
+    end
+    return false
+end
+
+-- Global watcher for a carried result: routes the drop by what is under the
+-- cursor (see the carriedItemLink comment above). CURSOR_CHANGED forgets the
+-- link once the cursor empties, whether we cleared it or the engine did.
 local worldDropInstalled = false
-local function EnsureCatalogFreeSpaceDrop()
+local function EnsureItemDropRouting()
     if worldDropInstalled then return end
     worldDropInstalled = true
     -- The drop is decided on mouse-DOWN (that is when the cursor still holds
@@ -188,8 +230,8 @@ local function EnsureCatalogFreeSpaceDrop()
     watcher:RegisterEvent("CURSOR_CHANGED")
     watcher:SetScript("OnEvent", function(_, event, button)
         if event == "CURSOR_CHANGED" then
-            if not (GetCursorInfo and GetCursorInfo()) and carriedCatalogLink then
-                carriedCatalogLink = nil
+            if not (GetCursorInfo and GetCursorInfo()) and carriedItemLink then
+                carriedItemLink = nil
                 if Utils.RefreshEscArm then Utils.RefreshEscArm() end
             end
             return
@@ -206,34 +248,51 @@ local function EnsureCatalogFreeSpaceDrop()
             -- stale "over a chat link" that hijacks every later drop.
             local routed = RouteLinkToHoveredChat(drop.link, drop.hoveredLink,
                 drop.hoveredText, drop.hoveredFrame)
-            if not routed and drop.freeSpace then
+            -- Aimed at chat but not at a named channel: /say. Free space is
+            -- NOT a /say target -- it cancels (handled on the down edge).
+            if not routed and drop.chatBox then
                 DropLinkToSay(drop.link)
             end
             if Utils.RefreshEscArm then Utils.RefreshEscArm() end
             return
         end
 
-        if not carriedCatalogLink then return end
+        if not carriedItemLink then return end
         -- The link is only live while the item is REALLY on the cursor. Without
         -- this the armed link outlives the pickup (ESC or any other cursor
         -- clear that does not fire CURSOR_CHANGED first), and the next stray
         -- left-click anywhere pops the chat editbox open with the link in it --
         -- which then eats the player's ESC and reads as "ESC is broken".
         if not (GetCursorInfo and GetCursorInfo()) then
-            carriedCatalogLink = nil
+            carriedItemLink = nil
             return
         end
         local overChat = hoveredChatLink and hoveredChatFrame
-        local freeSpace = ClickedFreeSpace()
-        if not (overChat or freeSpace) then return end
+        local chatBox = not overChat and ClickedChatBox()
+        -- Chat is tested FIRST: its message area is click-through, so it also
+        -- satisfies the free-space test, and checking free space first would
+        -- cancel every drop aimed at chat.
+        if not overChat and not chatBox and ClickedFreeSpace() then
+            -- Free space cancels, exactly like Escape. It deliberately does
+            -- NOT go to /say: for a real bag item that drop is the destroy-item
+            -- prompt, so putting it down is both the safe and the expected
+            -- outcome of "I changed my mind".
+            carriedItemLink = nil
+            ClearCursor()
+            if Utils.RefreshEscArm then Utils.RefreshEscArm() end
+            return
+        end
+        -- Anything else (a bag slot, an action bar, another addon's frame) is
+        -- left to the engine: the item is genuinely being dropped there.
+        if not (overChat or chatBox) then return end
         pendingDrop = {
-            link = carriedCatalogLink,
+            link = carriedItemLink,
             hoveredLink = hoveredChatLink,
             hoveredText = hoveredChatText,
             hoveredFrame = hoveredChatFrame,
-            freeSpace = freeSpace,
+            chatBox = chatBox,
         }
-        carriedCatalogLink = nil
+        carriedItemLink = nil
         ClearCursor()
         if Utils.RefreshEscArm then Utils.RefreshEscArm() end
     end)
@@ -245,7 +304,7 @@ end
 
 function Rows.InstallInteractions(resultRow, index)
     EnsureChatHyperlinkTracking()
-    EnsureCatalogFreeSpaceDrop()
+    EnsureItemDropRouting()
     -- LeftButtonDown for the secure cast: type=spell silently no-ops
     -- on LeftButtonUp for many spells (this was confirmed in the TBC
     -- version where Down works perfectly). RegisterForDrag would
@@ -317,9 +376,13 @@ function Rows.InstallInteractions(resultRow, index)
         -- Arm the carried link ONLY when the pickup actually landed on the
         -- cursor: an armed link with an empty cursor is a phantom that fires
         -- on some later unrelated click.
-        carriedCatalogLink = nil
-        if d.catalogItem and ns.GetResultLink and GetCursorInfo and GetCursorInfo() then
-            carriedCatalogLink = ns.GetResultLink(d)
+        --
+        -- Any row carrying a real item link qualifies, not just catalog rows:
+        -- a bag item dragged to chat should link exactly like a catalog item.
+        -- The two used to behave differently for no reason the player could see.
+        carriedItemLink = nil
+        if ns.GetResultLink and GetCursorInfo and GetCursorInfo() then
+            carriedItemLink = ns.GetResultLink(d)
         end
         -- Carrying an item is dismissable state: re-arm ESC so the very next
         -- press puts it down instead of being swallowed by a stale predicate.

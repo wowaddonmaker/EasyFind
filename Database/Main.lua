@@ -973,6 +973,16 @@ ns.BOSS_CACHE_VER = 3 -- 3: rows packed into one string instead of per-row table
 ns.STATISTIC_CACHE_VER = 3 -- 3: path/chain once per category; rows packed into one string
 ns.MOUNT_CACHE_VER = 2 -- 2: rows packed into one string instead of per-row tables
 ns.HOUSING_CACHE_VER = 3 -- 3: isRoom for the Room filter; rows packed into one string
+-- Title -> source achievement. Deliberately separate from the achievement
+-- index: that index is large and has needed careful rebuilds before, while
+-- this is one packed string of ~500 id pairs. Account-wide, since achievement
+-- rewards do not vary per character.
+-- 2: reward text is "Title: <name>", so v1's bare compare matched almost
+-- nothing and cached a near-empty map.
+-- 3: also parse multi-title ("Titles: A and B") and gendered ("A/B") rewards.
+-- 4: walk superseded achievements (GetPreviousAchievement) -- a series only
+-- lists its current tier, hiding earlier ones that granted a title.
+ns.TITLE_SOURCE_CACHE_VER = 4
 
 local heavySearchWordLookup
 local function AddHeavySearchWord(word)
@@ -2247,20 +2257,48 @@ function Database:PopulateDynamicTitles()
 
     RemoveEntriesByCategory("Title")
 
+    -- Which titles to inject. Unearned titles outnumber earned ones roughly
+    -- 7:1 (615 vs 88 on a mature character), so they are opt-in: the default
+    -- stays earned-only and every search behaves as it always did.
+    local mode = (EasyFind and EasyFind.db and EasyFind.db.titleFilterMode) or "earned"
+    local wantEarned = mode ~= "incomplete"
+    local wantUnearned = mode == "incomplete" or mode == "all"
+    local needSources = false
+
+    -- The map has to be ready before unearned titles can be filtered by it.
+    if wantUnearned then self:EnsureTitleSourceCache() end
+
     for titleID = 1, total do
-        if isKnown(titleID) then
+        local titleKnown = isKnown(titleID)
+        if (titleKnown and wantEarned) or (not titleKnown and wantUnearned) then
             local raw = getName(titleID)
-            if raw and raw ~= "" then
+            -- An unearned title is only worth listing if we can say how it is
+            -- earned. Without a source achievement the row has no tooltip, no
+            -- click, and no hint -- it just tells the player a title exists,
+            -- which is not what the Incomplete filter is for. PvP ranks, quest
+            -- and event titles have no achievement at all, so they never
+            -- appear. Earned titles are always listed: they are applyable.
+            local sourceAch = (not titleKnown)
+                and self:GetTitleSourceAchievement(titleID) or nil
+            if raw and raw ~= "" and (titleKnown or sourceAch) then
                 local display = raw:gsub("%%s", ""):gsub("^%s+", ""):gsub("%s+$", "")
                 if display == "" then display = raw end
-                uiSearchData[#uiSearchData + 1] = setmetatable({
+                local entry = setmetatable({
                     name = display,
                     titleID = titleID,
                     nameLower = slower(display),
                 }, TITLE_MT)
+                -- Unearned titles cannot be applied, so they render inert
+                -- (desaturated) and their click opens the source achievement.
+                if not titleKnown then entry.titleUnearned = true end
+                uiSearchData[#uiSearchData + 1] = entry
+                needSources = needSources or not titleKnown
             end
         end
     end
+    -- Warm the title -> achievement map only when unearned titles are actually
+    -- listed, so the earned-only default never pays for the walk.
+    if needSources then self:EnsureTitleSourceCache() end
     return true
 end
 
@@ -2276,15 +2314,41 @@ function Database:PopulateDynamicGearSets()
     local getInfo = C_EquipmentSet.GetEquipmentSetInfo
     if not getInfo then return false end
 
+    -- Spec assignment is a spec INDEX (1..GetNumSpecializations), or nil when
+    -- the set is not assigned to one. Verified with /efd gearsets:
+    -- GetEquipmentSetAssignedSpec(setID) is the per-set getter;
+    -- GetEquipmentSetForSpec is the reverse lookup and is not what we want.
+    local getAssignedSpec = C_EquipmentSet.GetEquipmentSetAssignedSpec
+    -- "all" (or unset) shows every set; a spec index shows only sets assigned
+    -- to it. An unassigned set belongs to no spec, so it is not shown under
+    -- one. Filtered here, at build time, like the mount filters.
+    local specFilter = EasyFind and EasyFind.db and EasyFind.db.gearSetSpecFilter
+    if specFilter == "all" then specFilter = nil end
     for _, setID in ipairs(ids) do
         local name, iconFileID = getInfo(setID)
         if name and name ~= "" then
-            uiSearchData[#uiSearchData + 1] = setmetatable({
-                name = name,
-                icon = iconFileID,
-                gearSetID = setID,
-                nameLower = slower(name),
-            }, GEAR_SET_MT)
+            local assignedSpec
+            if getAssignedSpec then
+                local ok, spec = pcall(getAssignedSpec, setID)
+                if ok then assignedSpec = spec end
+            end
+            if not specFilter or assignedSpec == specFilter then
+                -- The spec's own icon, badged onto the set icon exactly as the
+                -- Equipment Manager does it.
+                local specIcon
+                if assignedSpec and GetSpecializationInfo then
+                    local _, _, _, iconID = GetSpecializationInfo(assignedSpec)
+                    specIcon = iconID
+                end
+                uiSearchData[#uiSearchData + 1] = setmetatable({
+                    name = name,
+                    icon = iconFileID,
+                    gearSetID = setID,
+                    gearSetSpec = assignedSpec,
+                    gearSetSpecIcon = specIcon,
+                    nameLower = slower(name),
+                }, GEAR_SET_MT)
+            end
         end
     end
     if self.ResetSearchCache then self:ResetSearchCache() end
@@ -4465,6 +4529,229 @@ local function buildCategoryEntry(opts)
     entry.keywordsLower = {}
     for j = 1, #kw do entry.keywordsLower[j] = slower(kw[j]) end
     return entry
+end
+
+-- Title -> source achievement.
+--
+-- The client exposes no title source API (there is no C_Title), but an
+-- achievement that grants a title says so in its reward text. So the mapping
+-- is derived, never bundled: build a lookup of every title name, then walk the
+-- achievements once and record any whose reward text names one. Titles from
+-- quests, PvP ranks, professions and events have no achievement and simply get
+-- no source -- a blank is honest, a guess is not.
+--
+-- Persisted as one packed string keyed by its own version, so it never forces
+-- a rebuild of the (much larger) achievement index.
+local TITLE_SOURCE_ROW_SPEC = { { "titleID" }, { "achievementID" } }
+local titleSourceByID
+
+local function NormalizeTitleText(raw)
+    if not raw or raw == "" then return nil end
+    local t = raw:gsub("%%s", ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if t == "" then return nil end
+    return slower(t)
+end
+
+local function HydrateTitleSourceCache()
+    if titleSourceByID then return true end
+    local db = EasyFind and EasyFind.db
+    local cache = db and db.titleSourceCache
+    if not cache or cache.version ~= ns.TITLE_SOURCE_CACHE_VER or not cache.packed then
+        return false
+    end
+    local rows = Utils.UnpackRows(cache.packed, TITLE_SOURCE_ROW_SPEC)
+    titleSourceByID = {}
+    for i = 1, #rows do
+        local row = rows[i]
+        local tid, aid = tonumber(row.titleID), tonumber(row.achievementID)
+        if tid and aid then titleSourceByID[tid] = aid end
+    end
+    return true
+end
+
+-- Chunked build. The walk touches every achievement in the game (~5k), so it
+-- must never run on a hot path: hovering a title used to trigger it inline,
+-- and because a failed build left the table nil it re-ran on EVERY hover.
+-- Now it runs at most once per session, a slice per frame, and records that it
+-- ran even when it finds nothing.
+-- Module-level, NOT a closure per achievement: the walk visits ~6k
+-- achievements, and building a closure for each was pure garbage.
+local function Claim(found, rows, titleID, achID)
+    if titleID and not found[titleID] then
+        found[titleID] = achID
+        rows[#rows + 1] = { titleID = titleID, achievementID = achID }
+    end
+end
+
+-- Match an achievement's reward text against the title lookup and record any
+-- titles it grants. Reward text reads "Title: Arena Master", not the bare
+-- name, and the label is localized, so whatever precedes the first colon is
+-- stripped rather than hardcoding an English prefix.
+local function MatchRewardTitles(byName, found, rows, achID, rewardText)
+    if not achID then return end
+    local key = NormalizeTitleText(rewardText)
+    if not key then return end
+    if byName[key] then
+        Claim(found, rows, byName[key], achID)
+        return
+    end
+    local afterLabel = key:match("^[^:]*:%s*(.+)$")
+    if not afterLabel then return end
+    if byName[afterLabel] then
+        Claim(found, rows, byName[afterLabel], achID)
+        return
+    end
+    -- Two shapes a single compare cannot see, both observed in live data: one
+    -- achievement granting two titles ("Titles: Starcaller and The Astral
+    -- Walker") and gendered variants ("Title: The Crazy Cat Lady/Man"). Each
+    -- part is matched EXACTLY. Substring matching was measured and is
+    -- unusable -- it bound the PvP rank "Knight" to "Knight of Feathersworth"
+    -- and "Warlord" to "Lumberjack Warlord"; a wrong link is worse than none.
+    -- The length floor drops fragments like the "Man" half of "Lady/Man".
+    for segment in (afterLabel .. " and "):gmatch("(.-) and ") do
+        for part in segment:gmatch("[^/]+") do
+            part = part:gsub("^%s+", ""):gsub("%s+$", "")
+            if #part >= 4 then Claim(found, rows, byName[part], achID) end
+        end
+    end
+end
+
+local titleSourceBuilding, titleSourceAttempted = false, false
+-- Budget the walk by TIME, not by a count of achievements. A count assumes
+-- every call costs the same; it does not, and once the predecessor chain was
+-- added one "slice" could balloon by 12x and rip frames. A millisecond budget
+-- cannot, whatever the API does.
+local TITLE_SOURCE_MS_PER_SLICE = 1.5
+local TITLE_SOURCE_START_DELAY = 3
+
+local function StartTitleSourceBuild()
+    if titleSourceBuilding or titleSourceAttempted then return end
+    if not (GetNumTitles and GetTitleName and GetCategoryList
+            and GetCategoryNumAchievements and GetAchievementInfo) then
+        titleSourceAttempted = true
+        return
+    end
+
+    -- Title name -> titleID, so each achievement costs one hash lookup rather
+    -- than a scan over every title.
+    local byName, anyTitle = {}, false
+    local totalTitles = GetNumTitles() or 0
+    for titleID = 1, totalTitles do
+        local key = NormalizeTitleText(GetTitleName(titleID))
+        if key then byName[key] = titleID; anyTitle = true end
+    end
+    local categories = anyTitle and GetCategoryList() or nil
+    if not categories then
+        titleSourceAttempted = true
+        return
+    end
+
+    titleSourceBuilding = true
+    local found, rows, ci = {}, {}, 1
+
+    local function finish()
+        titleSourceBuilding = false
+        titleSourceAttempted = true
+        titleSourceByID = found
+        local db = EasyFind and EasyFind.db
+        if db and #rows > 0 then
+            db.titleSourceCache = {
+                version = ns.TITLE_SOURCE_CACHE_VER,
+                packed = Utils.PackRows(rows, TITLE_SOURCE_ROW_SPEC),
+            }
+        end
+        -- Unearned titles are filtered BY this map, so the list built before
+        -- it landed is wrong (empty on a cold cache). Rebuild it now that the
+        -- sources are known.
+        if db and db.titleFilterMode and db.titleFilterMode ~= "earned" then
+            Database:MarkDynamicCategoryDirty("titles")
+        end
+    end
+
+    -- Position is carried across categories, so a large one is split over
+    -- several frames rather than landing whole in one.
+    local ai = 1
+    -- Series share predecessors, so without this the same chain is re-walked
+    -- from every tier that references it.
+    local seenPrev = {}
+    local function slice()
+        debugprofilestart()
+        while ci <= #categories do
+            local catID = categories[ci]
+            -- includeAll: without it the count omits achievements (the other
+            -- two walks in this file already compensate for exactly this), and
+            -- the title-granting ones sit in categories that hide them.
+            local total = GetCategoryNumAchievements(catID, true) or 0
+            while ai <= total do
+                -- The category form returns the SAME tuple as the id form, so
+                -- reward text comes from this one call; looking the id up a
+                -- second time doubled the cost for nothing.
+                local achID, _, _, _, _, _, _, _, _, _, rewardText =
+                    GetAchievementInfo(catID, ai)
+                MatchRewardTitles(byName, found, rows, achID, rewardText)
+                -- A series only shows its CURRENT tier in the category list,
+                -- so an earlier tier that granted the title is never
+                -- enumerated -- clearing Heroic Lich King hides the normal
+                -- kill that awarded "the Kingslayer". Walk back through the
+                -- chain and read each predecessor's own reward text, which is
+                -- authoritative for that achievement. Bounded, and still exact
+                -- matching, so it can only add correct links.
+                local prev, guard = achID, 0
+                while prev and guard < 12 do
+                    guard = guard + 1
+                    prev = GetPreviousAchievement and GetPreviousAchievement(prev)
+                    if prev and not seenPrev[prev] then
+                        seenPrev[prev] = true
+                        MatchRewardTitles(byName, found, rows, prev,
+                            select(11, GetAchievementInfo(prev)))
+                    elseif prev then
+                        break  -- chain already walked from another tier
+                    end
+                end
+                ai = ai + 1
+                if debugprofilestop() >= TITLE_SOURCE_MS_PER_SLICE then
+                    if ai > total then ci = ci + 1; ai = 1 end
+                    Utils.SafeAfter(0, slice)
+                    return
+                end
+            end
+            if ai > total then
+                ci = ci + 1
+                ai = 1
+            end
+        end
+        if ci > #categories then
+            finish()
+        else
+            Utils.SafeAfter(0, slice)
+        end
+    end
+
+    -- The FIRST slice waits: the map is warmed from PopulateDynamicTitles,
+    -- which is an eager provider, so starting immediately put a ~6k-achievement
+    -- walk in the middle of login while everything else was still initialising.
+    -- Nothing needs the map until a title is hovered or clicked.
+    Utils.SafeAfter(TITLE_SOURCE_START_DELAY, slice)
+end
+
+-- Pure read: never builds. Kicks off the one-time background build if the
+-- mapping is not loaded yet, and returns nil until it lands.
+function Database:GetTitleSourceAchievement(titleID)
+    if not titleID then return nil end
+    if not titleSourceByID then
+        if not HydrateTitleSourceCache() then
+            StartTitleSourceBuild()
+            return nil
+        end
+    end
+    return titleSourceByID[titleID]
+end
+
+-- Called when titles populate with unearned rows shown, so the mapping is
+-- ready before the user hovers one.
+function Database:EnsureTitleSourceCache()
+    if titleSourceByID then return end
+    if not HydrateTitleSourceCache() then StartTitleSourceBuild() end
 end
 
 function Database:PopulateDynamicAchievements()

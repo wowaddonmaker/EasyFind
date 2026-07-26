@@ -226,8 +226,10 @@ local DB_DEFAULTS = {
         currencies  = false,
     },
     currencyFilterMode = "all",
+    gearSetSpecFilter = "all",
     reputationFilterMode = "all",
     achievementFilterMode = "all",
+    titleFilterMode = "earned",
     catalogQualityTier = 0,        -- 0 = all crafting tiers, else keep only 1/2/3
     catalogTypeFilters = {},       -- per-type-bucket enable; absent/true = shown
     hideAchievementHeaders = true,

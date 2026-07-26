@@ -321,7 +321,10 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
         Render.SetClippedText(resultRow.text, entry.name)
         iconSet = true
 
-    elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.outfitID or data.heirloomItemID or data.gearSetID or data.transmogSetID or data.appearanceItemID or (data.spellID and data.category == "Ability") or (data.spellID and data.category == "Talent") or (data.encounterID and data.category == "Boss") or (data.macroIndex and data.category == "Macro") or (data.bagID and data.category == "Bag") or (data.achievementID and data.category == "Achievement") or data.professionSkillLine) then
+    -- speciesID rides alongside petID here: an uncollected pet has no petID
+    -- (that GUID exists only once owned), and without it the row fell through
+    -- to the generic branch, putting the pet's own art in the category slot.
+    elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.speciesID or data.outfitID or data.heirloomItemID or data.gearSetID or data.transmogSetID or data.appearanceItemID or (data.spellID and data.category == "Ability") or (data.spellID and data.category == "Talent") or (data.encounterID and data.category == "Boss") or (data.macroIndex and data.category == "Macro") or (data.bagID and data.category == "Bag") or (data.achievementID and data.category == "Achievement") or data.professionSkillLine) then
         local iconFileID = data.icon
         local rightOffset = -5
 
@@ -339,6 +342,7 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
             resultRow.icon.mountID = data.mountID
             resultRow.icon.toyItemID = data.toyItemID
             resultRow.icon.petID = data.petID
+            resultRow.icon.speciesID = data.speciesID
             resultRow.icon.spellID = data.spellID or data.professionRecipeID
             resultRow.icon.outfitID = data.outfitID
             resultRow.icon.heirloomItemID = data.heirloomItemID
@@ -381,6 +385,11 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
             Search:UpdateOutfitLockOverlay(resultRow, C_TransmogOutfitInfo.IsLockedOutfit(data.outfitID))
         elseif resultRow._lockOverlay then
             Search:UpdateOutfitLockOverlay(resultRow, false)
+        end
+
+        -- Gear set assigned to a spec: badge its icon like the Equipment Manager
+        if data.gearSetSpecIcon or resultRow._specBadge then
+            Search:UpdateGearSetSpecBadge(resultRow, data.gearSetSpecIcon)
         end
 
         -- Cooldown sweep overlay (toys, abilities, outfits)
@@ -693,6 +702,20 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
             Icons:SetRowIcon(resultRow, kind, texture, rowIconSize)
             iconSet = true
         end
+    end
+
+    -- CharacterMicroButton draws the player's own portrait from a render
+    -- texture, so GetButtonIcon deliberately refuses it (capturing it yields
+    -- garbage). Rows under it that also have no sidebarIndex -- Currency,
+    -- Reputation -- therefore reached the question mark. Use the portrait
+    -- directly, the same fallback the sidebar-tab resolver above uses.
+    if not iconSet and data and data.buttonFrame == "CharacterMicroButton"
+       and SetPortraitTexture then
+        SetPortraitTexture(resultRow.icon, "player")
+        resultRow.icon:SetTexCoord(0, 1, 0, 1)
+        resultRow.icon:SetSize(rowIconSize, rowIconSize)
+        resultRow.icon:Show()
+        iconSet = true
     end
 
     if not iconSet then

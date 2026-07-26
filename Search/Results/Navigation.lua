@@ -13,6 +13,8 @@ local UIPins = ns.UIPins
 local GOLD_COLOR = ns.GOLD_COLOR
 
 local ipairs = Utils.ipairs
+local mmax, mfloor = math.max, math.floor
+local PORTRAIT_ALPHA_MASK = ns.PORTRAIT_ALPHA_MASK
 local wipe = wipe
 local StaticPopup_Visible = StaticPopup_Visible
 local StaticPopup_Show = StaticPopup_Show
@@ -641,6 +643,35 @@ function Results:UpdateOutfitLockOverlay(resultRow, isLocked)
     else
         resultRow._lockAnim:Stop()
     end
+end
+
+-- Spec badge on a gear set's icon: the Equipment Manager marks a set that is
+-- assigned to a specialization with that spec's icon in the corner, so our
+-- rows do the same. Lazily created and anchored to the row icon (the lock
+-- overlay pattern); hidden for sets with no assignment.
+function Results:UpdateGearSetSpecBadge(resultRow, specIcon)
+    if not resultRow.icon then return end
+    if not resultRow._specBadge then
+        -- Circular, bottom-right corner, same as the Equipment Manager. The
+        -- portrait alpha mask is Blizzard's standard round-crop. No disc or
+        -- ring behind it: the round crop alone reads cleanly, and the dark
+        -- backing just muddied the corner.
+        local badge = resultRow:CreateTexture(nil, "OVERLAY", nil, 7)
+        badge:SetPoint("BOTTOMRIGHT", resultRow.icon, "BOTTOMRIGHT", 3, -3)
+        resultRow._specBadge = badge
+
+        local badgeMask = resultRow:CreateMaskTexture()
+        badgeMask:SetTexture(PORTRAIT_ALPHA_MASK,
+            "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        badgeMask:SetAllPoints(badge)
+        badge:AddMaskTexture(badgeMask)
+    end
+    if specIcon then
+        local size = mmax(8, mfloor((resultRow.icon:GetWidth() or 16) + 0.5))
+        resultRow._specBadge:SetSize(size, size)
+        resultRow._specBadge:SetTexture(specIcon)
+    end
+    resultRow._specBadge:SetShown(specIcon and true or false)
 end
 
 function Results:ApplyTransmogBrowseMode()

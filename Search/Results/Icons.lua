@@ -90,7 +90,10 @@ end
 
 local function IsRightSideIconData(d)
     if not d then return false end
-    return d.mountID or d.toyItemID or d.petID
+    -- speciesID, not just petID: an UNCOLLECTED pet has no petID (that GUID
+    -- only exists once you own one), so keying on petID alone dropped it out
+    -- of the right-side icon layout and left its art in the category slot.
+    return d.mountID or d.toyItemID or d.petID or d.speciesID
         or d.outfitID or d.heirloomItemID or d.transmogSetID or d.appearanceItemID
         or d.category == "Currency"
         or (d.itemID and d.category == "Loot")
@@ -227,7 +230,7 @@ function Icons:GetFlatCategoryIcon(data)
     end
     if data.mountID then return FLAT_CATEGORY_ICONS.mount end
     if data.toyItemID then return FLAT_CATEGORY_ICONS.toy end
-    if data.petID then return FLAT_CATEGORY_ICONS.pet end
+    if data.petID or data.speciesID then return FLAT_CATEGORY_ICONS.pet end
     if data.outfitID then return FLAT_CATEGORY_ICONS.outfit end
     if data.heirloomItemID then return FLAT_CATEGORY_ICONS.heirloom end
     if data.transmogSetID then return FLAT_CATEGORY_ICONS.appearanceSet end
@@ -281,6 +284,7 @@ local function ClearRowIconLeafIDs(icon)
     icon.mountID = nil
     icon.toyItemID = nil
     icon.petID = nil
+    icon.speciesID = nil
     icon.spellID = nil
     icon.outfitID = nil
     icon.heirloomItemID = nil

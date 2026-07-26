@@ -878,7 +878,12 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             local SUB_POPUP_WIDTH = 200
             local SUB_ROW_H = 22
             local SUB_PAD = 6
-            local options = radio.options or {}
+            -- options may be a FUNCTION so it can be built here, at menu
+            -- construction, rather than when Config.lua loads: per-character
+            -- data (the gear-set spec list) is not available that early.
+            local options = radio.options
+            if type(options) == "function" then options = options() end
+            options = options or {}
             local checkboxes = radio.checkboxes or {}
             local hasSeparator = #options > 0 and #checkboxes > 0
             local SEPARATOR_H = hasSeparator and 8 or 0

@@ -2,7 +2,7 @@
 ## Title: EasyFind
 ## Notes: Search and locate UI elements and map locations with ease
 ## Author: justawower
-## Version: 2.1.4
+## Version: 2.2.0
 ## IconTexture: Interface\AddOns\EasyFind\textures\SpyglassMinimap
 ## Category: UI
 ## AddonCompartmentFunc: EasyFind_OnAddonCompartmentClick
@@ -84,6 +84,7 @@ Search/Filters/Dropdown.lua
 Search/Providers/Achievements.lua
 Search/Aliases.lua
 Search/History.lua
+Search/Answers.lua
 Search/Query.lua
 Search/Results/Theme.lua
 Search/Results/Shortcuts.lua
