@@ -324,7 +324,7 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
     -- speciesID rides alongside petID here: an uncollected pet has no petID
     -- (that GUID exists only once owned), and without it the row fell through
     -- to the generic branch, putting the pet's own art in the category slot.
-    elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.speciesID or data.outfitID or data.heirloomItemID or data.gearSetID or data.transmogSetID or data.appearanceItemID or (data.spellID and data.category == "Ability") or (data.spellID and data.category == "Talent") or (data.encounterID and data.category == "Boss") or (data.macroIndex and data.category == "Macro") or (data.bagID and data.category == "Bag") or (data.achievementID and data.category == "Achievement") or data.professionSkillLine) then
+    elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.speciesID or data.outfitID or data.heirloomItemID or data.gearSetID or data.transmogSetID or data.appearanceItemID or (data.spellID and data.category == "Ability") or (data.spellID and data.category == "Talent") or (data.encounterID and data.category == "Boss") or (data.macroIndex and data.category == "Macro") or (data.bagID and data.category == "Bag") or data.bankHolders or data.bagHolders or (data.achievementID and data.category == "Achievement") or data.professionSkillLine) then
         local iconFileID = data.icon
         local rightOffset = -5
 
@@ -348,7 +348,8 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
             resultRow.icon.heirloomItemID = data.heirloomItemID
             resultRow.icon.appearanceItemID = data.appearanceItemID
             resultRow.icon.gearSetID = data.gearSetID
-            resultRow.icon.bagItemID = (data.category == "Bag") and data.itemID or nil
+            resultRow.icon.bagItemID = (data.category == "Bag" or data.category == "Bank")
+                and data.itemID or nil
             resultRow.icon.achievementID = data.achievementID
             resultRow.icon.lootItemID = nil
             -- Red tint on mount icons when in combat (can't mount)

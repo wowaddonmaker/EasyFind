@@ -64,6 +64,37 @@ function Rows.InstallTooltips(resultRow)
             GameTooltip:Show()
             return
         end
+        -- Bank / other-character bag rows: the item's own tooltip, then where
+        -- it actually is. The location is the whole reason the row exists and
+        -- it is the one thing the item tooltip cannot say.
+        local storedHolders = self.data
+            and (self.data.bankHolders or self.data.bagHolders or self.data.otherHolders)
+        if storedHolders and #storedHolders > 0 then
+            local isBank = self.data.category == "Bank"
+            local ht = EasyFind.db.hideTooltips
+            if ht and ht[isBank and "bank" or "bags"] then return end
+            AnchorRowTooltip(GameTooltip, self)
+            if GameTooltip.SetItemByID then
+                GameTooltip:SetItemByID(self.data.itemID)
+            else
+                GameTooltip:SetText(self.data.name or "", 1, 1, 1)
+            end
+            GameTooltip:AddLine(" ")
+            GameTooltip:AddLine(self.data.bankWord or self.data.bagWord
+                or (isBank and (_G["BANK"] or "Bank"))
+                or (_G["BAGSLOT"] or _G["BAGS"] or "Bags"), 1, 0.82, 0)
+            for i = 1, #storedHolders do
+                local holder = storedHolders[i]
+                local where = holder.name or "?"
+                if holder.tabName and holder.tabName ~= "" then
+                    where = where .. " - " .. holder.tabName
+                end
+                GameTooltip:AddDoubleLine(where, holder.count or 1,
+                    1, 1, 1, 0.7, 0.7, 0.7)
+            end
+            GameTooltip:Show()
+            return
+        end
         -- Catalog item rows: the item's own tooltip by ID.
         if self.data and self.data.catalogItem then
             local ht = EasyFind.db.hideTooltips

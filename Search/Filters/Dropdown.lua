@@ -358,6 +358,19 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
 
             local subRows = {}
             local nestedFlyouts = {}
+            -- Every popup that opens from inside this flyout, collected as the
+            -- rows are built. The parent's hover-stay guards off THIS, not a
+            -- hand-maintained list of field names: that list silently fell
+            -- behind (toys, pets and the storage flyouts were all missing), and
+            -- a flyout the parent does not recognise closes the moment the
+            -- cursor leaves the sub-row to reach it.
+            local subBranchPopups = {}
+            local function RegisterSubBranchPopup(...)
+                for gi = 1, select("#", ...) do
+                    local guarded = select(gi, ...)
+                    if guarded then subBranchPopups[#subBranchPopups + 1] = guarded end
+                end
+            end
             -- Collections and Map carry many sub-filters; give their flyouts
             -- the same Toggle All row the main menu has (created below).
             local toggleAllRow
@@ -436,6 +449,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
                     optionsPopup._owningRow = subRow
                     popup._appearanceSetOptionsPopup = optionsPopup
+                    RegisterSubBranchPopup(optionsPopup)
                     dropdownGuardFrames[#dropdownGuardFrames + 1] = optionsPopup
 
                     Utils.AttachHoverPopup(subRow, optionsPopup, {
@@ -460,6 +474,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     optionsPopup._owningRow = subRow
                     popup._mountOptionsPopup = optionsPopup
                     popup._mountSourcePopup = sourcePopup
+                    RegisterSubBranchPopup(optionsPopup, sourcePopup)
                     dropdownGuardFrames[#dropdownGuardFrames + 1] = optionsPopup
                     dropdownGuardFrames[#dropdownGuardFrames + 1] = sourcePopup
 
@@ -485,6 +500,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     optionsPopup._owningRow = subRow
                     popup._heirloomOptionsPopup = optionsPopup
                     popup._heirloomSourcePopup = sourcePopup
+                    RegisterSubBranchPopup(optionsPopup, sourcePopup)
                     dropdownGuardFrames[#dropdownGuardFrames + 1] = optionsPopup
                     dropdownGuardFrames[#dropdownGuardFrames + 1] = sourcePopup
 
@@ -502,6 +518,39 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     dropdown:HookScript("OnHide", function() optionsPopup:Hide() end)
                 end
 
+                -- Bank and bags both pick which characters' stored items feed
+                -- the search, so they share one flyout builder.
+                if sub.hasOptions and (sub.key == "bank" or sub.key == "bags") then
+                    local build = sub.key == "bank"
+                        and Filters.BuildBankOptionsPopup
+                        or Filters.BuildBagOptionsPopup
+                    local optionsPopup, syncOptions, branchPopups =
+                        build(Filters, StylePopup, CHECK_SIZE, dropdownGuardFrames)
+                    optionsPopup._efSync = syncOptions
+                    optionsPopup:SetFrameLevel(popup:GetFrameLevel() + 10)
+                    optionsPopup._owningRow = subRow
+                    popup["_" .. sub.key .. "OptionsPopup"] = optionsPopup
+                    for bpi = 1, #branchPopups do
+                        RegisterSubBranchPopup(branchPopups[bpi])
+                    end
+
+                    Utils.AttachHoverPopup(subRow, optionsPopup, {
+                        chainGuards = branchPopups,
+                        onShow = function()
+                            syncOptions()
+                            optionsPopup:SetScale(EasyFind.db.uiSearchScale or 1.0)
+                            Utils.OpenFlyoutBeside(optionsPopup, subRow, 4)
+                            optionsPopup:Show()
+                        end,
+                    })
+
+                    local function HideBranch()
+                        for bi = 1, #branchPopups do branchPopups[bi]:Hide() end
+                    end
+                    popup:HookScript("OnHide", HideBranch)
+                    dropdown:HookScript("OnHide", HideBranch)
+                end
+
                 if sub.hasOptions and sub.key == "toys" then
                     local optionsPopup, syncOptions, sourcePopup, expansionPopup =
                         Search:BuildToyOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuardFrames)
@@ -511,6 +560,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     popup._toyOptionsPopup = optionsPopup
                     popup._toySourcePopup = sourcePopup
                     popup._toyExpansionPopup = expansionPopup
+                    RegisterSubBranchPopup(optionsPopup, sourcePopup, expansionPopup)
                     dropdownGuardFrames[#dropdownGuardFrames + 1] = optionsPopup
                     dropdownGuardFrames[#dropdownGuardFrames + 1] = sourcePopup
                     dropdownGuardFrames[#dropdownGuardFrames + 1] = expansionPopup
@@ -538,6 +588,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     popup._petOptionsPopup = optionsPopup
                     popup._petSourcePopup = sourcePopup
                     popup._petTypePopup = typePopup
+                    RegisterSubBranchPopup(optionsPopup, sourcePopup, typePopup)
                     dropdownGuardFrames[#dropdownGuardFrames + 1] = optionsPopup
                     dropdownGuardFrames[#dropdownGuardFrames + 1] = sourcePopup
                     dropdownGuardFrames[#dropdownGuardFrames + 1] = typePopup
@@ -566,6 +617,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     optionsPopup._owningRow = subRow
                     popup._catalogOptionsPopup = optionsPopup
                     popup._catalogQualityPopup = qualityPopup
+                    RegisterSubBranchPopup(optionsPopup, qualityPopup)
                     dropdownGuardFrames[#dropdownGuardFrames + 1] = optionsPopup
 
                     Utils.AttachHoverPopup(subRow, optionsPopup, {
@@ -715,6 +767,12 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             HookSiblingHide("_heirloomOptionsPopup", subRows.heirlooms)
             HookSiblingHide("_toyOptionsPopup", subRows.toys)
             HookSiblingHide("_petOptionsPopup", subRows.pets)
+            -- Items: catalog was the only options row here, so nothing forced
+            -- the siblings shut. Bank and bags made that visible as two open
+            -- flyouts at once.
+            HookSiblingHide("_catalogOptionsPopup", subRows.catalog)
+            HookSiblingHide("_bankOptionsPopup", subRows.bank)
+            HookSiblingHide("_bagsOptionsPopup", subRows.bags)
             for _, sub in ipairs(opt.flyoutSubFilters) do
                 if sub.subFilters then
                     HookSiblingHide("_nestedFlyout_" .. sub.key, subRows[sub.key])
@@ -836,18 +894,12 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             local function PositionPopup()
                 Utils.OpenFlyoutBeside(popup, row, 4)
             end
-            local hoverGuards = {
-                function() return popup._appearanceSetOptionsPopup end,
-                function() return popup._mountOptionsPopup end,
-                function() return popup._mountSourcePopup end,
-                function() return popup._heirloomOptionsPopup end,
-                function() return popup._heirloomSourcePopup end,
-                function() return popup._catalogOptionsPopup end,
-                function() return popup._catalogQualityPopup end,
-            }
+            local hoverGuards = {}
+            for gi = 1, #subBranchPopups do
+                hoverGuards[#hoverGuards + 1] = subBranchPopups[gi]
+            end
             for ni = 1, #nestedFlyouts do
-                local nested = nestedFlyouts[ni]
-                hoverGuards[#hoverGuards + 1] = function() return nested end
+                hoverGuards[#hoverGuards + 1] = nestedFlyouts[ni]
             end
             local hover = Utils.AttachHoverPopup(row, popup, {
                 extraGuards = hoverGuards,

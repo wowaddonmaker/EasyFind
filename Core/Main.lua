@@ -191,6 +191,13 @@ local DB_DEFAULTS = {
         titles         = true,
         map            = true,
     },
+    -- "all" | "current" | a specific "Name-Realm" key. Defaults to the logged-in
+    -- character: the account bank is shown regardless of scope, so this is only
+    -- about how much of your alts' storage bleeds into every search.
+    bankScope = "current",
+    -- Same three-way scope for bags. "current" is the live read the provider
+    -- has always done, so the default behaves exactly as before.
+    bagScope = "current",
     lootSpecs = nil,
     lootSearchSlots = true,
     lootSearchStats = true,
@@ -223,6 +230,7 @@ local DB_DEFAULTS = {
         talents     = false,
         macros      = false,
         bags        = false,
+        bank        = false,
         currencies  = false,
     },
     currencyFilterMode = "all",
@@ -1020,7 +1028,11 @@ eventFrame:RegisterEvent("TRANSMOG_OUTFITS_CHANGED")
 eventFrame:RegisterEvent("TRANSMOG_COLLECTION_UPDATED")
 eventFrame:RegisterEvent("UPDATE_MACROS")
 eventFrame:RegisterEvent("SPELLS_CHANGED")
+eventFrame:RegisterEvent("SKILL_LINES_CHANGED")
 eventFrame:RegisterEvent("BAG_UPDATE_DELAYED")
+eventFrame:RegisterEvent("BANKFRAME_OPENED")
+eventFrame:RegisterEvent("BANKFRAME_CLOSED")
+eventFrame:RegisterEvent("PLAYERBANKSLOTS_CHANGED")
 eventFrame:RegisterEvent("EQUIPMENT_SETS_CHANGED")
 -- A learned mount must clear the persisted mount cache (not just mark the
 -- category dirty), or a mount collected then not searched before logout would
@@ -1052,6 +1064,22 @@ local bagRefreshTimer
 local spellRefreshTimer
 local gearSetRefreshTimer
 local appearanceItemRefreshTimer
+
+-- The bank is the one dataset that cannot be read on demand: slots only
+-- report while a bank is open, so every open is the chance to record what
+-- this character is holding for later searches from anywhere.
+local bankOpen = false
+local bankScanTimer
+local function ScheduleBankScan()
+    if bankScanTimer then bankScanTimer:Cancel() end
+    bankScanTimer = C_Timer.NewTimer(0.4, function()
+        bankScanTimer = nil
+        if not (ns.Database and ns.Database.ScanBankContents) then return end
+        if ns.Database:ScanBankContents() then
+            MarkDynamicCategoryDirty("bank")
+        end
+    end)
+end
 
 -- Debounced MarkDynamicCategoryDirty, one timer per category: streaming
 -- events (toy box, pet journal, faction pushes) arrive in bursts and only
@@ -1126,6 +1154,14 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         MarkDynamicCategoryDirty("macros")
     elseif event == "HOUSING_STORAGE_UPDATED" then
         MarkDynamicCategoryDirty("housing")
+    elseif event == "SKILL_LINES_CHANGED" then
+        -- Professions is an eager provider, so it can populate moments after
+        -- login, before per-page skill levels and recipe known-state have
+        -- arrived. Nothing else marked it dirty, so a populate that ran too
+        -- early stuck for the entire session and the only cure was /reload.
+        -- This event is exactly "skill data changed", including the fills
+        -- that arrive during login.
+        MarkDirtyDebounced("professions")
     elseif event == "SPELLS_CHANGED" then
         if spellRefreshTimer then spellRefreshTimer:Cancel() end
         spellRefreshTimer = C_Timer.NewTimer(1.0, function()
@@ -1138,6 +1174,20 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
             bagRefreshTimer = nil
             MarkDynamicCategoryDirty("bags")
         end)
+        if bankOpen then ScheduleBankScan() end
+    elseif event == "BANKFRAME_OPENED" then
+        bankOpen = true
+        -- Containers report their slots a beat after the frame opens; scanning
+        -- immediately reads zero and the empty result is discarded.
+        ScheduleBankScan()
+    elseif event == "PLAYERBANKSLOTS_CHANGED" then
+        if bankOpen then ScheduleBankScan() end
+    elseif event == "BANKFRAME_CLOSED" then
+        bankOpen = false
+        if bankScanTimer then
+            bankScanTimer:Cancel()
+            bankScanTimer = nil
+        end
     elseif event == "EQUIPMENT_SETS_CHANGED" then
         if gearSetRefreshTimer then gearSetRefreshTimer:Cancel() end
         gearSetRefreshTimer = C_Timer.NewTimer(0.3, function()
@@ -1154,6 +1204,12 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
             ns.Database:OnPlayerLevelUp()
         end
     elseif event == "PLAYER_LOGOUT" then
+        -- Snapshot the bags so this character is searchable from an alt even
+        -- if the bag provider never ran this session (it only loads on a
+        -- bag-ish query). Logout is also the truest state to remember.
+        if ns.Database and ns.Database.PersistBagContents then
+            pcall(ns.Database.PersistBagContents, ns.Database)
+        end
         if EasyFindDB then
             for _, field in ipairs(RUNTIME_FIELDS) do
                 EasyFindDB[field] = nil

@@ -169,6 +169,11 @@ function Handlers:GetActionHint(data)
         end
         return HINTS.catalogItem
     end
+    -- Stored on another character (or in the bank): not reachable from here,
+    -- so the row is a lookup -- link it or drag it, like a catalog row.
+    if data.bankHolders or data.bagHolders then
+        return HINTS.catalogItem
+    end
     if data.itemID and data.category == "Bag" then
         local actionKind = Handlers:GetBagItemActionKind(data)
         if actionKind == "equip" then return HINTS.bagEquip

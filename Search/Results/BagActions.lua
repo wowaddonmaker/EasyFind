@@ -55,8 +55,20 @@ function Handlers:GetItemEquipLoc(itemID)
     return Utils.GetItemEquipLoc(itemID)
 end
 
+-- True when the row describes an item the logged-in character cannot touch:
+-- sitting in the bank, or in another character's bags. Every "what does
+-- clicking do" decision consults this one predicate, because each of them gets
+-- it wrong differently -- the bag-open path highlights a slot that is not
+-- there, and the secure path arms /use on an item this character does not have.
+function Handlers:IsRemoteStoredItem(data)
+    if not data then return false end
+    if data.bankHolders then return true end
+    return data.bagHolders ~= nil and data.bagID == nil
+end
+
 function Handlers:GetBagItemActionKind(data)
     if not data or not data.itemID or data.category ~= "Bag" then return nil end
+    if self:IsRemoteStoredItem(data) then return nil end
 
     -- Only treat items with a real gear slot as "equippable". Empty /
     -- NON_EQUIP / AMMO / QUIVER are not gear slots.

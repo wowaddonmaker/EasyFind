@@ -64,6 +64,7 @@ local dynamicProviders = {
     { key = "abilities", category = providerCategory["abilities"],        fn = "PopulateDynamicAbilities" },
     { key = "talents", category = providerCategory["talents"],         fn = "PopulateDynamicTalents" },
     { key = "bags", category = providerCategory["bags"],            fn = "PopulateDynamicBags" },
+    { key = "bank", category = providerCategory["bank"],            fn = "PopulateDynamicBank" },
     { key = "transmogSets", category = providerCategory["transmogSets"], fn = "PopulateDynamicTransmogSets", pre = "SyncTransmogSetFiltersFromUI" },
     { key = "appearanceItems", category = providerCategory["appearanceItems"], fn = "PopulateDynamicAppearanceItems", asyncFn = "PopulateDynamicAppearanceItemsAsync", pre = "SyncAppearanceItemFiltersFromUI" },
     { key = "loot", category = providerCategory["loot"],           fn = "PopulateDynamicLoot", asyncFn = "PopulateDynamicLootAsync" },

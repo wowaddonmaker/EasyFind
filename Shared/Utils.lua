@@ -1254,6 +1254,23 @@ end
 -- file's BLP header (read via wago.tools). 6116514 is 512x256; the crop below is
 -- ~111x107 px, i.e. nearly square, so it fills the slot undistorted. If you swap
 -- the texture/coords, update TEX_W/TEX_H to that file's real dimensions.
+-- Account bank holdings are attributed to the warband rather than to any
+-- character. Resolved once, lazily: these globals exist on a live client but
+-- not at file load in tests.
+local warbandBankLabel
+function ns.WarbandBankLabel()
+    if warbandBankLabel then return warbandBankLabel end
+    warbandBankLabel = _G["ACCOUNT_BANK_PANEL_TITLE"]
+        or _G["BANK_TYPE_ACCOUNT"]
+        or ns.L["BANK_WARBAND"]
+    return warbandBankLabel
+end
+
+-- Bank vault glyph, shared by the filter-menu row and the result-row category
+-- icon so the two can never drift apart.
+ns.BANK_CATEGORY_ICON_TEX = 1121272
+ns.BANK_CATEGORY_ICON_COORDS = { 0.3783, 0.4072, 0.9066, 0.9350 }
+
 ns.ITEMS_CATEGORY_ICON_TEX = 6116514
 ns.ITEMS_CATEGORY_ICON_COORDS = { 0.0395, 0.2563, 0.0667, 0.4845 }
 do

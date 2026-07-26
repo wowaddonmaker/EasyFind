@@ -129,6 +129,29 @@ function Text:GetFlatSubtext(data)
     if data.itemID and data.category == "Loot" then
         return data.lootInstanceName or _G["LOOT"] or "Loot"
     end
+    -- Naming the holders is the whole point of a stored-item result: the item
+    -- is not reachable from here, so what the row has to answer is who has it.
+    -- Only listed when it says something the player does not already know --
+    -- "Bags: <you>" on your own item is noise, so that case keeps the plain
+    -- category word.
+    local holders = data.bankHolders or data.bagHolders or data.otherHolders
+    local storageWord = data.bankWord or data.bagWord
+    if holders and #holders > 0 then
+        local parts = {}
+        for i = 1, #holders do
+            local holder = holders[i]
+            local who = holder.name or "?"
+            if (holder.count or 1) > 1 then
+                parts[i] = sformat("%s (%d)", who, holder.count)
+            else
+                parts[i] = who
+            end
+        end
+        local word = storageWord
+            or (data.category == "Bank" and (_G["BANK"] or "Bank"))
+            or (_G["BAGSLOT"] or _G["BAGS"] or "Bags")
+        return word .. ": " .. table.concat(parts, ", ")
+    end
     if data.category == "Ability" and data.treeName and data.treeName ~= "" then
         return sformat(L["SUBTEXT_TREE_ABILITY"], data.treeName)
     end

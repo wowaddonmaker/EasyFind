@@ -51,9 +51,34 @@ local function KnownExpansionPages(parentSkillLine)
     local profEnum = okParent and type(parentInfo) == "table" and parentInfo.profession
     local okAll, allLines = pcall(ts.GetAllProfessionTradeSkillLines)
     if not (profEnum and okAll and type(allLines) == "table") then return nil end
-    local out = {}
+
+    -- That API lists PRIMARY profession pages only -- Fishing and Cooking are
+    -- absent from it entirely, so iterating it alone resolves zero owned pages
+    -- for them and their recipes only ever appear via the learned-only
+    -- fallback (Show Unlearned silently does nothing). The shipped page IDs
+    -- fill the gap: they are faction-neutral, and each is still checked for
+    -- skillLevel > 0 below, so an unowned expansion is still excluded.
+    local pageUniverse, seen = {}, {}
     for i = 1, #allLines do
         local line = allLines[i]
+        if not seen[line] then
+            seen[line] = true
+            pageUniverse[#pageUniverse + 1] = line
+        end
+    end
+    local shipped = ns.PROFESSION_RECIPES and ns.PROFESSION_RECIPES[parentSkillLine]
+    if shipped and shipped.recipesByPage then
+        for pageID in pairs(shipped.recipesByPage) do
+            if not seen[pageID] then
+                seen[pageID] = true
+                pageUniverse[#pageUniverse + 1] = pageID
+            end
+        end
+    end
+
+    local out = {}
+    for i = 1, #pageUniverse do
+        local line = pageUniverse[i]
         if line ~= parentSkillLine then
             local okI, info = pcall(ts.GetProfessionInfoBySkillLineID, line)
             if okI and type(info) == "table" and info.profession == profEnum
@@ -63,7 +88,13 @@ local function KnownExpansionPages(parentSkillLine)
         end
     end
     tsort(out, function(a, b) return a.professionID > b.professionID end)
-    expansionCache[parentSkillLine] = out
+    -- An empty result is NOT cached. Called early in a session the per-page
+    -- skillLevel can still read 0, and an empty table is truthy, so caching it
+    -- pins "this character owns no expansion pages" for the whole session --
+    -- the profession's recipes then never materialize until a reload.
+    if #out > 0 then
+        expansionCache[parentSkillLine] = out
+    end
     return out
 end
 

@@ -625,6 +625,11 @@ function Handlers:SelectResult(data, forceGuide)
     -- Bag item: usable items (consumables, equippables) fire /use via the
     -- SecureActionButton on click: no bag Search needed. Non-usable items
     -- open the bag(s) containing them and highlight the slot.
+    -- Stored elsewhere (bank, or another character's bags): nothing here can be
+    -- opened or used, so the row is a lookup. The cursor pickup that makes it
+    -- linkable happens on the row's mouse-up, like a catalog row.
+    if Handlers:IsRemoteStoredItem(data) then return end
+
     if data.itemID and data.category == "Bag" then
         if useFast then
             local actionKind = self:GetBagItemActionKind(data)

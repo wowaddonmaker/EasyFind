@@ -71,6 +71,8 @@ Search/Filters/MountOptions.lua
 Search/Filters/HeirloomOptions.lua
 Search/Filters/ToyOptions.lua
 Search/Filters/PetOptions.lua
+Search/Filters/CharacterScope.lua
+Search/Filters/BankOptions.lua
 Search/Filters/CatalogOptions.lua
 Search/Filters/AppearanceSets.lua
 Search/Filters/AppearanceItemOptions.lua

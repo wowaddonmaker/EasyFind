@@ -51,8 +51,8 @@ local UI_FILTER_OPTIONS = {
       iconAspect = ns.ITEMS_CATEGORY_ICON_ASPECT,
       flyoutSubFilters = {
           { key = "catalog", label = L["FILTER_GENERAL_CATALOG"], iconTex = ns.ITEMS_CATEGORY_ICON_TEX, iconCoords = ns.ITEMS_CATEGORY_ICON_COORDS, iconAspect = ns.ITEMS_CATEGORY_ICON_ASPECT, hasOptions = true },
-          { key = "bags", label = _G["BAGSLOT"] or _G["BAGS"] or "Bags", iconAtlas = "bag-main" },
-          { key = "bank", label = _G["BANK"] or "Bank", iconTex = 1121272, iconCoords = { 0.3783, 0.4072, 0.9066, 0.9350 } },
+          { key = "bags", label = _G["BAGSLOT"] or _G["BAGS"] or "Bags", iconAtlas = "bag-main", hasOptions = true },
+          { key = "bank", label = _G["BANK"] or "Bank", iconTex = ns.BANK_CATEGORY_ICON_TEX, iconCoords = ns.BANK_CATEGORY_ICON_COORDS, hasOptions = true },
       } },
     -- Bosses: EJ overview tab icon from texture 522972.
     { key = "bosses",      label = _G["RAID_BOSSES"] or "Bosses",      iconTex = 522972,

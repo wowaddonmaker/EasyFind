@@ -113,6 +113,7 @@ function SecureAttributes.Apply(resultRow, data)
         -- highlights the node.
         newType, newKey, newVal = "spell", "spell", data.spellName or data.spellID
     elseif data and data.itemID and data.category == "Bag"
+           and not Handlers:IsRemoteStoredItem(data)
            and Handlers:GetBagItemActionKind(data) ~= "show" then
         newType, newKey, newVal = "item", "item", data.name
     elseif data and data.macroIndex and data.category == "Macro" then

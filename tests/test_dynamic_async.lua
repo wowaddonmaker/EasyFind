@@ -30,7 +30,7 @@ local function setupDatabase()
         "PopulateDynamicOutfits", "PopulateDynamicHeirlooms",
         "PopulateDynamicTitles", "PopulateDynamicGearSets",
         "PopulateDynamicMacros", "PopulateDynamicAbilities",
-        "PopulateDynamicTalents", "PopulateDynamicBags",
+        "PopulateDynamicTalents", "PopulateDynamicBags", "PopulateDynamicBank",
         "PopulateDynamicTransmogSets", "SyncTransmogSetFiltersFromUI",
         "PopulateDynamicLoot", "PopulateDynamicLootAsync",
         "PopulateDynamicBosses", "PopulateDynamicBossesAsync",

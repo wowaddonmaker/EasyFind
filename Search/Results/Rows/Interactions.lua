@@ -346,6 +346,13 @@ function Rows.InstallInteractions(resultRow, index)
         end
         return (d.bagID and d.bagSlot) or d.itemID
     end
+    -- Rows whose only action is "put the item on the cursor so it can be
+    -- linked": the catalog, plus anything stored where this character cannot
+    -- reach it. They share one click/drag behaviour so the player never has to
+    -- learn which kind of item row they are looking at.
+    local function IsLookupRow(d)
+        return d and (d.catalogItem or Handlers:IsRemoteStoredItem(d)) or false
+    end
     local function PickupRowAction(d)
         if not CanPickupRowAction(d) then return end
         if InCombatLockdown() then return end
@@ -412,7 +419,7 @@ function Rows.InstallInteractions(resultRow, index)
         -- world -> /say). This only arms the drag threshold; the pickup itself
         -- happens on the release in OnMouseUp. Shift is chat-link, Ctrl is
         -- dressing room.
-        if d and d.catalogItem then
+        if IsLookupRow(d) then
             if IsShiftKeyDown() or (IsControlKeyDown and IsControlKeyDown()) then return end
             local x, y = GetCursorPosition()
             self._dragOriginX, self._dragOriginY = x, y
@@ -446,7 +453,7 @@ function Rows.InstallInteractions(resultRow, index)
         -- engine when the button comes up, which is why this used to need a
         -- drag. Right-click never comes here -- it belongs to the context menu.
         local clicked = self.data
-        if button == "LeftButton" and clicked and clicked.catalogItem
+        if button == "LeftButton" and IsLookupRow(clicked)
            and not self._pickedUp
            and not InCombatLockdown()
            and not IsShiftKeyDown()
@@ -463,8 +470,16 @@ function Rows.InstallInteractions(resultRow, index)
         -- Only a completed drag (OnUpdate set _pickedUp) acts past here.
         if not self._pickedUp then return end
         if InCombatLockdown() then return end
+        -- Capture BEFORE dismissing: rows are pooled, so FinishResultSelection
+        -- can recycle this row's data out from under the routing below.
+        local draggedLink = ns.GetResultLink and ns.GetResultLink(self.data)
+        -- A finished drag activated the row exactly as a click does, so it
+        -- dismisses the same way. Without this the query, results and quick
+        -- filters stayed behind after a drag but not after a click.
+        -- Safe during a drag: this clears the search, never the cursor.
+        Handlers:FinishResultSelection()
         -- Released over a chat channel/whisper hyperlink: route the link there.
-        if RouteLinkToHoveredChat(ns.GetResultLink and ns.GetResultLink(self.data)) then
+        if RouteLinkToHoveredChat(draggedLink) then
             ClearCursor()
             return
         end

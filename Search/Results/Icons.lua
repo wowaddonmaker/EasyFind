@@ -165,6 +165,7 @@ local FLAT_CATEGORY_ICONS = {
     achievement   = { atlas = "UI-HUD-MicroMenu-Achievements-Up" },
     macro         = { tex = "Interface\\MacroFrame\\MacroFrame-Icon" },
     bag           = { atlas = "bag-main" },
+    bank          = { tex = ns.BANK_CATEGORY_ICON_TEX, coords = ns.BANK_CATEGORY_ICON_COORDS },
     loot          = { tex = 522972, coords = { 0.730, 0.824, 0.618, 0.660 } },
     menuBar       = { tex = "Interface\\AddOns\\EasyFind\\Search\\Images\\menu-bar" },
     setting       = { atlas = "QuestLog-icon-setting" },
@@ -207,6 +208,7 @@ function Icons:GetFlatCategoryIcon(data)
         if key == "achievements" then return FLAT_CATEGORY_ICONS.achievement end
         if key == "statistics" then return FLAT_CATEGORY_ICONS.statistic end
         if key == "bags" then return FLAT_CATEGORY_ICONS.bag end
+        if key == "bank" then return FLAT_CATEGORY_ICONS.bank end
         if key == "bosses" then return FLAT_CATEGORY_ICONS.boss end
         if key == "macros" then return FLAT_CATEGORY_ICONS.macro end
         if key == "collections" then return FLAT_CATEGORY_ICONS.mount end
@@ -240,7 +242,8 @@ function Icons:GetFlatCategoryIcon(data)
     if data.achievementID and data.category == "Achievement" then return FLAT_CATEGORY_ICONS.achievement end
     if data.encounterID and data.category == "Boss" then return FLAT_CATEGORY_ICONS.boss end
     if data.macroIndex and data.category == "Macro" then return FLAT_CATEGORY_ICONS.macro end
-    if data.bagID and data.category == "Bag" then return FLAT_CATEGORY_ICONS.bag end
+    if data.category == "Bag" and (data.bagID or data.bagHolders) then return FLAT_CATEGORY_ICONS.bag end
+    if data.bankHolders and data.category == "Bank" then return FLAT_CATEGORY_ICONS.bank end
     if data.catalogItem then return FLAT_CATEGORY_ICONS.item end
     if data.itemID and data.category == "Loot" then return FLAT_CATEGORY_ICONS.loot end
     if data.category == "Game Settings" then return FLAT_CATEGORY_ICONS.setting end

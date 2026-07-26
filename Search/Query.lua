@@ -351,7 +351,8 @@ function Search:OnSearchTextChanged(text, force)
     if filters and (filters.abilities == false or bossesFilterOff
                     or filters.achievements == false or statisticsFilterOff
                     or filters.currencies == false or filters.reputations == false
-                    or filters.bags == false or filters.macros == false
+                    or filters.bags == false or filters.bank == false
+                    or filters.macros == false
                     or filters.options == false
                     or filters.gameOptions == false or filters.addonOptions == false
                     or filters.titles == false or filters.gearSets == false
