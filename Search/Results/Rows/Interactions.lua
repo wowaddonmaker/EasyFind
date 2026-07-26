@@ -127,6 +127,14 @@ end
 --   empty world                    -> cancel, exactly like Escape
 --   anything else (bag slot, bar)  -> left to the engine
 local carriedItemLink
+-- True when a REAL item sits on the cursor behind the link. Lookup rows (the
+-- catalog, and anything stored on another character or in the bank) arm the
+-- link even when nothing lands on the cursor, because PickupItem cannot pick up
+-- an item this character does not own -- and the link text, not the cursor, is
+-- what gets inserted into chat. The cursor checks below are the phantom guard
+-- for genuinely-carried items; applying them to a link that never had a cursor
+-- item wipes it before the drop, which reads as an empty chat box.
+local carriedLinkCursorBacked = false
 
 -- ESC must be able to put the carried item down. EasyFind holds an ESCAPE
 -- override binding while the bar has dismissable state, so the engine's own
@@ -141,6 +149,7 @@ end
 function ns.ClearCarriedItemLink()
     if not carriedItemLink then return false end
     carriedItemLink = nil
+    carriedLinkCursorBacked = false
     if ClearCursor then ClearCursor() end
     if Utils.RefreshEscArm then Utils.RefreshEscArm() end
     return true
@@ -230,8 +239,10 @@ local function EnsureItemDropRouting()
     watcher:RegisterEvent("CURSOR_CHANGED")
     watcher:SetScript("OnEvent", function(_, event, button)
         if event == "CURSOR_CHANGED" then
-            if not (GetCursorInfo and GetCursorInfo()) and carriedItemLink then
+            if carriedLinkCursorBacked and carriedItemLink
+               and not (GetCursorInfo and GetCursorInfo()) then
                 carriedItemLink = nil
+                carriedLinkCursorBacked = false
                 if Utils.RefreshEscArm then Utils.RefreshEscArm() end
             end
             return
@@ -263,8 +274,9 @@ local function EnsureItemDropRouting()
         -- clear that does not fire CURSOR_CHANGED first), and the next stray
         -- left-click anywhere pops the chat editbox open with the link in it --
         -- which then eats the player's ESC and reads as "ESC is broken".
-        if not (GetCursorInfo and GetCursorInfo()) then
+        if carriedLinkCursorBacked and not (GetCursorInfo and GetCursorInfo()) then
             carriedItemLink = nil
+            carriedLinkCursorBacked = false
             return
         end
         local overChat = hoveredChatLink and hoveredChatFrame
@@ -278,6 +290,7 @@ local function EnsureItemDropRouting()
             -- prompt, so putting it down is both the safe and the expected
             -- outcome of "I changed my mind".
             carriedItemLink = nil
+            carriedLinkCursorBacked = false
             ClearCursor()
             if Utils.RefreshEscArm then Utils.RefreshEscArm() end
             return
@@ -293,6 +306,7 @@ local function EnsureItemDropRouting()
             chatBox = chatBox,
         }
         carriedItemLink = nil
+        carriedLinkCursorBacked = false
         ClearCursor()
         if Utils.RefreshEscArm then Utils.RefreshEscArm() end
     end)
@@ -380,16 +394,19 @@ function Rows.InstallInteractions(resultRow, index)
         elseif d.itemID and PickupItem then
             PickupItem(d.itemID)
         end
-        -- Arm the carried link ONLY when the pickup actually landed on the
-        -- cursor: an armed link with an empty cursor is a phantom that fires
-        -- on some later unrelated click.
-        --
         -- Any row carrying a real item link qualifies, not just catalog rows:
         -- a bag item dragged to chat should link exactly like a catalog item.
         -- The two used to behave differently for no reason the player could see.
         carriedItemLink = nil
-        if ns.GetResultLink and GetCursorInfo and GetCursorInfo() then
+        carriedLinkCursorBacked = false
+        local onCursor = GetCursorInfo and GetCursorInfo() ~= nil
+        -- A lookup row's whole purpose is the link, and an unowned item never
+        -- reaches the cursor, so those arm either way. Everything else keeps
+        -- the cursor requirement: an armed link with no pickup behind it is a
+        -- phantom that fires on some later unrelated click.
+        if ns.GetResultLink and (onCursor or IsLookupRow(d)) then
             carriedItemLink = ns.GetResultLink(d)
+            carriedLinkCursorBacked = onCursor and carriedItemLink ~= nil
         end
         -- Carrying an item is dismissable state: re-arm ESC so the very next
         -- press puts it down instead of being swallowed by a stale predicate.

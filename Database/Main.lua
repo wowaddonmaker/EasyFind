@@ -4464,8 +4464,10 @@ local function WalkPlayerBags()
 
     local itemMap = {}
     local order = {}
+    local slotsSeen = 0
     for bag = 0, MaxCarriedBagIndex() do
         local slots = getNumSlots(bag) or 0
+        slotsSeen = slotsSeen + slots
         for slot = 1, slots do
             local raw = getItemInfo(bag, slot)
             if raw then
@@ -4491,7 +4493,7 @@ local function WalkPlayerBags()
             end
         end
     end
-    return itemMap, order
+    return itemMap, order, slotsSeen
 end
 
 function Database:PopulateDynamicBags()
@@ -4642,7 +4644,14 @@ end
 -- refusing to store it would leave a stale list forever.
 function Database:PersistBagContents(itemMap, order)
     if not itemMap or not order then
-        itemMap, order = WalkPlayerBags()
+        local slotsSeen
+        itemMap, order, slotsSeen = WalkPlayerBags()
+        -- Zero SLOTS (not zero items) means the containers have not reported
+        -- yet, which happens on the login-time record. Writing that would
+        -- replace a good snapshot with an empty one and quietly lose the
+        -- character. Zero items across real slots IS persisted -- empty bags
+        -- are a state the player can actually be in.
+        if slotsSeen == 0 then return false end
     end
     local store = BagCacheStore()
     if not store or type(order) ~= "table" then return false end

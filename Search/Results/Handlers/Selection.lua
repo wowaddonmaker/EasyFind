@@ -239,6 +239,22 @@ function Handlers:SelectResult(data, forceGuide)
         return
     end
 
+    -- Stored on another character or in the bank: a lookup, exactly like a
+    -- catalog row, and it must return for the SAME reason -- the pickup runs in
+    -- the row's OnMouseUp, and the unconditional FinishResultSelection further
+    -- down hides the row on the PRESS, so the release never reaches it and the
+    -- item never lands on the cursor. This guard used to live next to the bag
+    -- handling near the end of the function, which is far too late to matter.
+    if Handlers:IsRemoteStoredItem(data) then
+        if IsControlKeyDown() then
+            local link = C_Item and C_Item.GetItemInfo
+                and select(2, C_Item.GetItemInfo(data.itemID))
+            if link and DressUpItemLink then DressUpItemLink(link) end
+            self:FinishResultSelection()
+        end
+        return
+    end
+
     if data.searchCommand then
         -- Dismiss the bar like any other selection before running the command,
         -- so /reset etc. don't leave the (now empty) bar lingering on screen.
@@ -625,11 +641,6 @@ function Handlers:SelectResult(data, forceGuide)
     -- Bag item: usable items (consumables, equippables) fire /use via the
     -- SecureActionButton on click: no bag Search needed. Non-usable items
     -- open the bag(s) containing them and highlight the slot.
-    -- Stored elsewhere (bank, or another character's bags): nothing here can be
-    -- opened or used, so the row is a lookup. The cursor pickup that makes it
-    -- linkable happens on the row's mouse-up, like a catalog row.
-    if Handlers:IsRemoteStoredItem(data) then return end
-
     if data.itemID and data.category == "Bag" then
         if useFast then
             local actionKind = self:GetBagItemActionKind(data)

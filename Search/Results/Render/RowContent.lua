@@ -328,6 +328,18 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
         local iconFileID = data.icon
         local rightOffset = -5
 
+        -- Bank / other-character rows render from our stored name and icon, so
+        -- the client may never have loaded the item itself. Warm it while the
+        -- row is on screen: the click-to-link pickup needs the item cached, and
+        -- an uncached PickupItem lands on the cursor long after the click.
+        -- Bounded to visible rows, and a no-op once cached.
+        if (data.bankHolders or data.bagHolders) and data.itemID
+           and C_Item and C_Item.RequestLoadItemDataByID
+           and C_Item.IsItemDataCachedByID
+           and not C_Item.IsItemDataCachedByID(data.itemID) then
+            C_Item.RequestLoadItemDataByID(data.itemID)
+        end
+
         if iconFileID then
             resultRow.icon:SetTexture(nil)
             resultRow.icon:SetTexCoord(0, 1, 0, 1)

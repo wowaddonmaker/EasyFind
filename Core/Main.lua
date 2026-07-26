@@ -1119,6 +1119,14 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         if arg2 and not self.loginHandled then
             OnPlayerLogin()
         end
+        -- Record this character's bags once on entry, so simply logging in is
+        -- enough to make it searchable from an alt. Deferred: container data
+        -- is not populated the instant this fires.
+        Utils.SafeAfter(5, function()
+            if ns.Database and ns.Database.PersistBagContents then
+                ns.Database:PersistBagContents()
+            end
+        end)
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
     elseif event == "TRANSMOG_OUTFITS_CHANGED" then
         if outfitRefreshTimer then outfitRefreshTimer:Cancel() end
@@ -1173,6 +1181,15 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         bagRefreshTimer = C_Timer.NewTimer(0.5, function()
             bagRefreshTimer = nil
             MarkDynamicCategoryDirty("bags")
+            -- Record here, not only at logout and when the bag provider
+            -- happens to run: cross-character search is worthless until a
+            -- character has been recorded at least once, and tying that to
+            -- "logged out cleanly since the feature shipped" means an alt you
+            -- have played all week is still invisible. Just playing a
+            -- character now files it.
+            if ns.Database and ns.Database.PersistBagContents then
+                ns.Database:PersistBagContents()
+            end
         end)
         if bankOpen then ScheduleBankScan() end
     elseif event == "BANKFRAME_OPENED" then
