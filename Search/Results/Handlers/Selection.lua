@@ -239,12 +239,23 @@ function Handlers:SelectResult(data, forceGuide)
         return
     end
 
+    -- ANY row whose action happens in the row's OnMouseUp must return ABOVE the
+    -- unconditional FinishResultSelection further down: that dismiss hides the
+    -- row on the PRESS, so the release never reaches it. Both guards below were
+    -- first written inside their own handling further down the function, where
+    -- they could never run -- correct code in an unreachable place.
+    --
+    -- Loot: a plain click links it, like a catalog or bag item. Alt (Encounter
+    -- Journal) and Ctrl (dressing room) fall through to the full loot handler
+    -- below, which still owns that navigation.
+    if data.itemID and data.category == "Loot"
+       and not Handlers:IsSourceModifierHeld()
+       and not Handlers:IsSourceCtrlHeld() then
+        return
+    end
+
     -- Stored on another character or in the bank: a lookup, exactly like a
-    -- catalog row, and it must return for the SAME reason -- the pickup runs in
-    -- the row's OnMouseUp, and the unconditional FinishResultSelection further
-    -- down hides the row on the PRESS, so the release never reaches it and the
-    -- item never lands on the cursor. This guard used to live next to the bag
-    -- handling near the end of the function, which is far too late to matter.
+    -- catalog row.
     if Handlers:IsRemoteStoredItem(data) then
         if IsControlKeyDown() then
             local link = C_Item and C_Item.GetItemInfo

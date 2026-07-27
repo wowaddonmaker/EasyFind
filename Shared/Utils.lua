@@ -3559,6 +3559,13 @@ function ns.GetResultLink(data)
         local ok, link = pcall(C_HousingDecor.GetDecorHyperlink, data.housingRecordID)
         if ok and link and link ~= "" then return link end
         return nil
+    elseif data.itemID and data.category == "Loot" then
+        -- The journal carries a link per difficulty; prefer the one matching
+        -- the selected difficulty over the generic item link, so the shared
+        -- link says the same item level the row does.
+        local lootLink = ns.Database and ns.Database.GetLootItemLink
+            and ns.Database:GetLootItemLink(data)
+        return lootLink or ResultItemLink(data.itemID)
     elseif data.itemID then
         return ResultItemLink(data.itemID)
     end

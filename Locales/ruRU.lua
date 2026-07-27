@@ -511,7 +511,7 @@ L["HINT_OPEN_TRANSMOG"]                 = "Трансмогрификация"
 L["HINT_EQUIP_GEAR_SET"]                = "Экипировать"
 L["HINT_OPEN_MAP"]                      = "Открыть карту"
 L["HINT_PIN_ON_MAP"]                    = "Метка на карте"
-L["HINT_CLICK_DRAG"]                    = "Клик или перетаскивание"
+L["HINT_CLICK_DRAG"]                    = "Клик/перетащить"
 
 -- =============================================================================
 -- POI names (Database/StaticLocations.lua)

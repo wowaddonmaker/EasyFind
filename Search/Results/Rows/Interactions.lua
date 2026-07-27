@@ -365,7 +365,10 @@ function Rows.InstallInteractions(resultRow, index)
     -- reach it. They share one click/drag behaviour so the player never has to
     -- learn which kind of item row they are looking at.
     local function IsLookupRow(d)
-        return d and (d.catalogItem or Handlers:IsRemoteStoredItem(d)) or false
+        if not d then return false end
+        if d.catalogItem then return true end
+        if d.itemID and d.category == "Loot" then return true end
+        return Handlers:IsRemoteStoredItem(d)
     end
     local function PickupRowAction(d)
         if not CanPickupRowAction(d) then return end
@@ -437,7 +440,15 @@ function Rows.InstallInteractions(resultRow, index)
         -- happens on the release in OnMouseUp. Shift is chat-link, Ctrl is
         -- dressing room.
         if IsLookupRow(d) then
-            if IsShiftKeyDown() or (IsControlKeyDown and IsControlKeyDown()) then return end
+            -- Every modifier means something else on these rows: Shift is the
+            -- chat insert, Ctrl the dressing room, Alt the owning UI (the
+            -- Encounter Journal for loot). Arming the pickup under any of them
+            -- puts the item on the cursor ON TOP of that action, and it then
+            -- surfaces later as an item stuck to the cursor out of nowhere.
+            if IsShiftKeyDown() or (IsControlKeyDown and IsControlKeyDown())
+               or Handlers:IsSourceModifierHeld() then
+                return
+            end
             local x, y = GetCursorPosition()
             self._dragOriginX, self._dragOriginY = x, y
             return
@@ -474,7 +485,8 @@ function Rows.InstallInteractions(resultRow, index)
            and not self._pickedUp
            and not InCombatLockdown()
            and not IsShiftKeyDown()
-           and not (IsControlKeyDown and IsControlKeyDown()) then
+           and not (IsControlKeyDown and IsControlKeyDown())
+           and not Handlers:IsSourceModifierHeld() then
             PickupRowAction(clicked)
             -- Dismiss like every other activated row. Done AFTER the pickup
             -- (SelectResult runs on the press, this is the release) so hiding

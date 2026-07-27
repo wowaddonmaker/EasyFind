@@ -510,7 +510,7 @@ L["HINT_OPEN_TRANSMOG"]                 = "Ouvrir la transmogrification"
 L["HINT_EQUIP_GEAR_SET"]                = "Équiper l'ensemble"
 L["HINT_OPEN_MAP"]                      = "Ouvrir la carte"
 L["HINT_PIN_ON_MAP"]                    = "Marquer sur la carte"
-L["HINT_CLICK_DRAG"]                    = "Cliquer ou glisser"
+L["HINT_CLICK_DRAG"]                    = "Clic/glisser"
 
 -- =============================================================================
 -- POI names (Database/StaticLocations.lua)

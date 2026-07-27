@@ -102,6 +102,10 @@ local HINTS = {
     bagDefault       = Hint(V.click, V.bags, "Shift", V.drag),
     catalogItem      = Hint(V.clickDrag, V.sendLink),
     catalogItemTry   = Hint(V.clickDrag, V.sendLink, "Ctrl", V.dressroom),
+    -- Loot follows the same shape as an item row on purpose: click or drag
+    -- links it, Alt opens the UI that owns it, Ctrl previews it.
+    loot             = Hint(V.clickDrag, V.sendLink, "Alt", V.encounter),
+    lootTry          = Hint(V.clickDrag, V.sendLink, "Alt", V.encounter, "Ctrl", V.dressroom),
     openMap          = Hint(V.click, V.openMap),
     pinOnMap         = Hint(V.click, V.pinOnMap),
     encounter        = Hint(V.click, V.encounter),
@@ -161,13 +165,14 @@ function Handlers:GetActionHint(data)
         return Icons:IsSpellbookOnlyAbility(data) and HINTS.spellbookOnly or HINTS.ability
     end
     if data.macroIndex then return HINTS.macro end
-    if data.catalogItem then
+    if data.catalogItem or (data.itemID and data.category == "Loot") then
         local equipLoc = C_Item and C_Item.GetItemInfoInstant
             and select(4, C_Item.GetItemInfoInstant(data.itemID))
-        if equipLoc and not NON_DRESSABLE_SLOT[equipLoc] then
-            return HINTS.catalogItemTry
+        local dressable = equipLoc and not NON_DRESSABLE_SLOT[equipLoc]
+        if data.category == "Loot" then
+            return dressable and HINTS.lootTry or HINTS.loot
         end
-        return HINTS.catalogItem
+        return dressable and HINTS.catalogItemTry or HINTS.catalogItem
     end
     -- Stored on another character (or in the bank): not reachable from here,
     -- so the row is a lookup -- link it or drag it, like a catalog row.

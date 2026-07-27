@@ -511,7 +511,7 @@ L["HINT_OPEN_TRANSMOG"]                 = "Abrir transfiguración"
 L["HINT_EQUIP_GEAR_SET"]                = "Equipar equipamiento"
 L["HINT_OPEN_MAP"]                      = "Abrir mapa"
 L["HINT_PIN_ON_MAP"]                    = "Marcar en el mapa"
-L["HINT_CLICK_DRAG"]                    = "Clic o arrastrar"
+L["HINT_CLICK_DRAG"]                    = "Clic/arrastrar"
 
 -- =============================================================================
 -- POI names (Database/StaticLocations.lua)

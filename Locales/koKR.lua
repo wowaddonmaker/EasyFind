@@ -511,7 +511,7 @@ L["HINT_OPEN_TRANSMOG"]                 = "형상변환 창 열기"
 L["HINT_EQUIP_GEAR_SET"]                = "장비 세트 착용"
 L["HINT_OPEN_MAP"]                      = "지도 열기"
 L["HINT_PIN_ON_MAP"]                    = "지도에 표식"
-L["HINT_CLICK_DRAG"]                    = "클릭 또는 드래그"
+L["HINT_CLICK_DRAG"]                    = "클릭/드래그"
 
 -- =============================================================================
 -- POI names (Database/StaticLocations.lua)

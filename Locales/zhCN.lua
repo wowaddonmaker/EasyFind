@@ -511,7 +511,7 @@ L["HINT_OPEN_TRANSMOG"]                 = "打开幻化窗口"
 L["HINT_EQUIP_GEAR_SET"]                = "装备套装"
 L["HINT_OPEN_MAP"]                      = "打开地图"
 L["HINT_PIN_ON_MAP"]                    = "在地图标记"
-L["HINT_CLICK_DRAG"]                    = "点击或拖动"
+L["HINT_CLICK_DRAG"]                    = "点击/拖动"
 
 -- =============================================================================
 -- POI names (Database/StaticLocations.lua)

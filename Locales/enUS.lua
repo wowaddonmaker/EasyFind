@@ -554,7 +554,7 @@ L["HINT_OPEN_TRANSMOG"]                 = "Open Transmog Window"
 L["HINT_EQUIP_GEAR_SET"]                = "Equip Gear Set"
 L["HINT_OPEN_MAP"]                      = "Open Map"
 L["HINT_PIN_ON_MAP"]                    = "Pin on Map"
-L["HINT_CLICK_DRAG"]                    = "Click or drag"
+L["HINT_CLICK_DRAG"]                    = "Click/drag"
 
 -- =============================================================================
 -- POI names (Database/StaticLocations.lua)
