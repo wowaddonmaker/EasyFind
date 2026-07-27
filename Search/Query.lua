@@ -344,6 +344,14 @@ function Search:OnSearchTextChanged(text, force)
     local bossDungeonOff = EasyFind.db.bossFilterDungeon == false
     local bossRaidOff = EasyFind.db.bossFilterRaid == false
     local hideJunk = EasyFind.db.bagHideJunk == true
+    -- Statistics carry a live value, so this is filtered HERE rather than at
+    -- populate: the populate path also writes the persisted statistic cache,
+    -- and filtering there would bake the choice into the cache and force a
+    -- re-scan on every change. Query-time also keeps it honest as values
+    -- change during play. "all" costs nothing -- the gate below stays off.
+    local statMode = EasyFind.db.statisticFilterMode
+    local statRecordedOnly = statMode == "recorded"
+    local statUnrecordedOnly = statMode == "unrecorded"
     local commandNativeOff = EasyFind.db.commandShowNative == false
     local commandCustomOff = EasyFind.db.commandShowCustom == false
     local bossesFilterOff = filters and filters.bosses == false and not explicitBosses
@@ -359,7 +367,8 @@ function Search:OnSearchTextChanged(text, force)
                     or filters.talents == false or filters.commands == false
                     or hidePassives or hideAchievementHeaders or hideGuildAchievements
                     or macroGeneralOff or macroCharOff or bossDungeonOff or bossRaidOff
-                    or hideJunk or commandNativeOff or commandCustomOff) then
+                    or hideJunk or commandNativeOff or commandCustomOff
+                    or statRecordedOnly or statUnrecordedOnly) then
         wipe(SCRATCH.filteredResults)
         local filtered = SCRATCH.filteredResults
         local fi = 0
@@ -387,10 +396,16 @@ function Search:OnSearchTextChanged(text, force)
                 local bossTypeOff = d and d.category == "Boss"
                     and ((d.isRaidBoss and bossRaidOff) or (not d.isRaidBoss and bossDungeonOff))
                 local junkOff = hideJunk and d and d.category == "Bag" and d.quality == 0
+                local statOff = false
+                if (statRecordedOnly or statUnrecordedOnly) and d and d.statisticID then
+                    local _, hasValue = ns.GetStatisticValue(d.statisticID)
+                    statOff = statRecordedOnly and not hasValue or statUnrecordedOnly and hasValue
+                end
                 local commandTypeOff = d and d.category == "Command"
                     and ((d.isNativeCommand and commandNativeOff) or (not d.isNativeCommand and commandCustomOff))
                 if not passiveOff and not headerOff and not guildAchievementOff
-                   and not macroTypeOff and not bossTypeOff and not junkOff and not commandTypeOff
+                   and not macroTypeOff and not bossTypeOff and not junkOff
+                   and not commandTypeOff and not statOff
                    and (not bucket or (not bucketOff and not parentOff)) then
                     fi = fi + 1
                     filtered[fi] = r

@@ -237,6 +237,9 @@ local DB_DEFAULTS = {
     gearSetSpecFilter = "all",
     reputationFilterMode = "all",
     achievementFilterMode = "all",
+    -- "all" | "recorded" | "unrecorded". All by default: statistics are a
+    -- reference list, so narrowing is opt-in.
+    statisticFilterMode = "all",
     titleFilterMode = "earned",
     catalogQualityTier = 0,        -- 0 = all crafting tiers, else keep only 1/2/3
     catalogTypeFilters = {},       -- per-type-bucket enable; absent/true = shown

@@ -1254,6 +1254,18 @@ end
 -- file's BLP header (read via wago.tools). 6116514 is 512x256; the crop below is
 -- ~111x107 px, i.e. nearly square, so it fills the slot undistorted. If you swap
 -- the texture/coords, update TEX_W/TEX_H to that file's real dimensions.
+-- A statistic's live value, plus whether anything is actually recorded.
+-- GetStatistic returns a display string ("394", "23%", "1d 4h 12m") or "--"
+-- when the character has no data for it. Shared so the row that dims a "--"
+-- and the filter that hides one agree on what "recorded" means -- if those
+-- drift, a row renders dimmed but survives a Recorded-only filter.
+function ns.GetStatisticValue(statisticID)
+    if not (statisticID and GetStatistic) then return nil, false end
+    local ok, value = pcall(GetStatistic, statisticID)
+    if not ok then return nil, false end
+    return value, (value ~= nil and value ~= "" and value ~= "--")
+end
+
 -- Account bank holdings are attributed to the warband rather than to any
 -- character. Resolved once, lazily: these globals exist on a live client but
 -- not at file load in tests.

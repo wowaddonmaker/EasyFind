@@ -224,12 +224,8 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
     -- GetStatistic returns a string ("394", "23%", "1d 4h 12m") or
     -- "--" for stats with no recorded value yet.
     elseif data and data.statisticID and not entry.isPathNode then
-        local value
-        if GetStatistic then
-            local ok, v = pcall(GetStatistic, data.statisticID)
-            if ok then value = v end
-        end
-        if value and value ~= "" and value ~= "--" then
+        local value, hasValue = ns.GetStatisticValue(data.statisticID)
+        if hasValue then
             resultRow.amountText:SetText(value)
             PaintAmountText(resultRow.amountText, false)
         else

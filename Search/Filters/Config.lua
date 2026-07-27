@@ -40,8 +40,24 @@ local UI_FILTER_OPTIONS = {
               { dbKey = "hideGuildAchievements", label = L["FILTER_HIDE_GUILD_ACHIEVEMENTS"] },
           },
       } },
+    -- Statistics show a live value, or "--" when the character has none. Most
+    -- are unrecorded on any given character, so a name search buries the few
+    -- with data under a wall of "--". Defaults to All: this is a reference list
+    -- people look things up in, and silently hiding rows from it is worse than
+    -- a long list.
     { key = "statistics",  label = _G["STATISTICS"] or "Statistics",  iconTex = 1121272,
-      iconCoords = { 0.2030, 0.2397, 0.6641, 0.6921 } },
+      iconCoords = { 0.2030, 0.2397, 0.6641, 0.6921 },
+      flyoutRadio = {
+          dbKey = "statisticFilterMode",
+          options = {
+              { value = "all",        label = _G["ALL"] or "All" },
+              { value = "recorded",   label = L["FILTER_STAT_RECORDED"] },
+              { value = "unrecorded", label = L["FILTER_STAT_UNRECORDED"] },
+          },
+          -- Filtered at query time (Search/Query.lua), so the results just
+          -- need re-running; no provider repopulate.
+          onChange = function() Filters:RerunActiveSearch() end,
+      } },
     -- Items: the full game item catalog is the default ("everything else").
     -- Bags and Bank are owned-item overlays nested under it -- turning Items
     -- off hides all three; turning a child off drops just that overlay while
