@@ -256,10 +256,19 @@ L["WHATSNEW_CHAT_HELLO"]                = "¡Bienvenido a |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "aquí"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver el registro de cambios completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffCompatibilidad con Data Broker|r\n" ..
-    "    |cff999999-|r Si usas una barra de Data Broker, ahora puedes abrir\n" ..
-    "      EasyFind desde ella en lugar del icono del minimapa\n" ..
-    "      (las demás formas siguen igual, incluido Ocultar auto.)"
+    "|cffFFD100\226\128\162|r |cffffffffBusca tus profesiones|r\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffBusca cualquier objeto del juego|r\n" ..
+    "    |cff999999-|r Desactivado por defecto. El catálogo es grande, así que se recomienda dejarlo desactivado y acceder con el filtro rápido '@gen'\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffEncuentra objetos de tus otros personajes|r\n" ..
+    "    |cff999999-|r Tu banco, el banco de tropa y cualquier personaje con el que hayas iniciado sesión\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffEnlaza objetos al chat con clic o arrastre|r\n" ..
+    "    |cff999999-|r Suéltalo en un canal, un susurro o la caja de chat\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffConsulta títulos que aún no has conseguido|r\n" ..
+    "    |cff999999-|r Muestra el logro que lo otorga; Alt+clic para abrirlo\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffBusca 'oro', 'durabilidad' o 'nivel de objeto'|r\n" ..
+    "    |cff999999-|r La respuesta aparece justo encima de los resultados. También piedra angular, puntuación, espacio y velocidad\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffNuevas opciones de filtro|r\n" ..
+    "    |cff999999-|r Equipos por especialización, títulos, estadísticas, juguetes y mascotas"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Añadir alias"
@@ -636,5 +645,5 @@ L["OPT_INLINE_AUTOCOMPLETE"] = "Autocompletado en línea"
 L["OPT_INLINE_AUTOCOMPLETE_TT"] = "Muestra la mejor coincidencia completada mientras escribes. Desactívalo si interfiere con tu método de entrada."
 L["ANSWER_KEYSTONE"]                    = "Piedra angular"
 L["ANSWER_BAG_SPACE"]                   = "Espacio de bolsas"
-L["ANSWER_GOLD_FMT"]                    = "%s — cuenta: %s"
+L["ANSWER_GOLD_FMT"]                    = "%s (cuenta: %s)"
 L["CMD_DESC_CLEAR_CHAT"]                = "Limpia la ventana de chat"

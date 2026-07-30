@@ -247,7 +247,7 @@ L["TUT_MAP_AUTOTRACK_DESC"]             = "Möchtest du Seltene in deiner Zone a
 L["TUT_BTN_BACK"]                       = "Zurück"
 L["TUT_BTN_BACK_ARROW"]                 = "< Zurück"
 L["TUT_KB_PRESS_KEY"]                   = "Taste drücken …"
-L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r – Neuigkeiten"
+L["WHATSNEW_TITLE"]                     = "|cffFFD100EasyFind|r - Neuigkeiten"
 L["WHATSNEW_GOT_IT"]                    = "Verstanden"
 L["MSG_CURRENCY_WATCH_LIMIT"]           = "Du kannst nur %d Währungen gleichzeitig beobachten"
 L["POPUP_UNAPPLIED_SETTINGS"]           = "Es gibt Einstellungen, die noch nicht übernommen wurden.\nWirklich beenden?"
@@ -258,10 +258,19 @@ L["WHATSNEW_CHAT_HELLO"]                = "Willkommen bei |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vollständiges Änderungsprotokoll"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffData-Broker-Unterstützung|r\n" ..
-    "    |cff999999-|r Wer eine Data-Broker-Leiste nutzt, kann EasyFind\n" ..
-    "      jetzt darüber statt über das Minimap-Symbol öffnen\n" ..
-    "      (alle anderen Wege bleiben, auch Auto-Ausblenden)"
+    "|cffFFD100\226\128\162|r |cffffffffBerufe durchsuchen|r\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffJeden Gegenstand im Spiel suchen|r\n" ..
+    "    |cff999999-|r Standardmäßig aus. Der Katalog ist groß, daher am besten aus lassen und über den Schnellfilter '@gen' nutzen\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffGegenstände anderer Charaktere finden|r\n" ..
+    "    |cff999999-|r Deine Bank, die Kriegsmeutebank und jeder Twink, auf dem du dich eingeloggt hast\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffGegenstände per Klick oder Ziehen verlinken|r\n" ..
+    "    |cff999999-|r Lass ihn auf einem Kanal, einem Flüstern oder dem Chatfeld los\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffNoch nicht erspielte Titel sehen|r\n" ..
+    "    |cff999999-|r Zeigt den Erfolg dazu, mit Alt+Klick öffnen\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffSuche nach 'Gold', 'Haltbarkeit' oder 'Gegenstandsstufe'|r\n" ..
+    "    |cff999999-|r Die Antwort erscheint direkt über den Ergebnissen. Auch Schlüsselstein, Wertung, Taschenplatz und Tempo\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffNeue Filteroptionen|r\n" ..
+    "    |cff999999-|r Ausrüstungssets nach Spezialisierung, Titel, Statistiken, Spielzeuge und Haustiere"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"
@@ -370,7 +379,7 @@ L["MAP_SEARCH_TITLE"]                   = "EasyFind-Kartensuche"
 L["MAP_SEARCH_TT"]                      = "Suche nach Orten, Flugmeistern, Zonen, Dungeons, Schlachtzügen und mehr."
 L["MAP_SHOW_RECENT"]                    = "Letzte Suchen anzeigen"
 L["MAP_AUTO_EXPAND"]                    = "Überschriften autom. ausklappen"
-L["MAP_AUTO_EXPAND_TT"]                 = "Wenn eine Suche eine übergeordnete Zone trifft, werden alle enthaltenen Unterzonen aufgelistet – auch solche, die nicht zur Anfrage passen."
+L["MAP_AUTO_EXPAND_TT"]                 = "Wenn eine Suche eine übergeordnete Zone trifft, werden alle enthaltenen Unterzonen aufgelistet, auch solche, die nicht zur Anfrage passen."
 L["MAP_AUTO_EXPAND_EXAMPLE"]            = "Beispiel: Die Suche nach |cffffd200ost|r trifft Östliche Königreiche. Mit dieser Option an wird jede Zone darin aufgelistet. Mit ihr aus erscheinen nur Zonen, deren Namen tatsächlich zu |cffffd200ost|r passen (Östliche Pestländer usw.)."
 
 -- Waypoint pin tooltips
@@ -395,7 +404,7 @@ L["KB_PRESS_COMBO"]                     = "Klicke und drücke dann eine Tastenko
 L["KB_RIGHT_CLICK_CLEAR"]              = "Rechtsklick zum Löschen."
 L["KB_ALTERNATE"]                       = "Alternativ: %s"
 L["KB_BIND_SLOT"]                       = "%s-Taste belegen"
-L["SETTING_CURRENT_RANGE"]              = "Aktuell: %s   (%s – %s)"
+L["SETTING_CURRENT_RANGE"]              = "Aktuell: %s   (%s - %s)"
 L["TAB_NOT_ON_CHARACTER"]               = "Dieser Tab existiert auf diesem Charakter noch nicht"
 
 -- Misc singletons
@@ -638,5 +647,5 @@ L["OPT_INLINE_AUTOCOMPLETE"] = "Inline-Autovervollständigung"
 L["OPT_INLINE_AUTOCOMPLETE_TT"] = "Zeigt beim Tippen die beste Vervollständigung direkt im Suchfeld an. Deaktivieren, falls sie mit eurer Eingabemethode kollidiert."
 L["ANSWER_KEYSTONE"]                    = "Schlüsselstein"
 L["ANSWER_BAG_SPACE"]                   = "Taschenplatz"
-L["ANSWER_GOLD_FMT"]                    = "%s — Account: %s"
+L["ANSWER_GOLD_FMT"]                    = "%s (Account: %s)"
 L["CMD_DESC_CLEAR_CHAT"]                = "Leert das Chatfenster"

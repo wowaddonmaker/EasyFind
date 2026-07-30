@@ -256,10 +256,19 @@ L["WHATSNEW_CHAT_HELLO"]                = "欢迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "这里"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日志"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff新增数据面板支持|r\n" ..
-    "    |cff999999-|r 如果你使用数据面板插件栏，现在可以从那里启动\n" ..
-    "      EasyFind，而不必使用小地图图标\n" ..
-    "      （其他方式照常可用，包括自动隐藏）"
+    "|cffFFD100\226\128\162|r |cffffffff搜索你的专业|r\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff搜索游戏中的所有物品|r\n" ..
+    "    |cff999999-|r 默认关闭。目录非常庞大，建议保持关闭，通过 '@gen' 快捷筛选访问\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff查找其他角色身上的物品|r\n" ..
+    "    |cff999999-|r 你的银行、战团银行，以及你登录过的任意角色的背包\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff点击或拖动即可将物品链接到聊天|r\n" ..
+    "    |cff999999-|r 拖到频道、密语或聊天输入框上即可\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff查看尚未获得的头衔|r\n" ..
+    "    |cff999999-|r 显示授予该头衔的成就，Alt+点击可打开\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff搜索 '金币'、'耐久度' 或 '装备等级'|r\n" ..
+    "    |cff999999-|r 答案会直接显示在结果上方。 还支持钥石、评分、背包空间和移动速度\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff新的筛选选项|r\n" ..
+    "    |cff999999-|r 按专精筛选装备配置，以及头衔、统计、玩具和宠物"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "添加别名"
@@ -636,5 +645,5 @@ L["OPT_INLINE_AUTOCOMPLETE"] = "输入内联补全"
 L["OPT_INLINE_AUTOCOMPLETE_TT"] = "输入时在搜索框内显示最佳补全。若与输入法冲突，可关闭。"
 L["ANSWER_KEYSTONE"]                    = "钥石"
 L["ANSWER_BAG_SPACE"]                   = "背包空间"
-L["ANSWER_GOLD_FMT"]                    = "%s — 账号：%s"
+L["ANSWER_GOLD_FMT"]                    = "%s（账号：%s）"
 L["CMD_DESC_CLEAR_CHAT"]                = "清空聊天窗口"

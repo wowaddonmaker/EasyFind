@@ -256,10 +256,19 @@ L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 �
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff데이터 브로커 지원 추가|r\n" ..
-    "    |cff999999-|r 데이터 브로커 표시줄을 사용한다면 미니맵 아이콘\n" ..
-    "      대신 표시줄에서 EasyFind를 실행할 수 있습니다\n" ..
-    "      (자동 숨김을 비롯한 기존 방식도 그대로 사용 가능)"
+    "|cffFFD100\226\128\162|r |cffffffff전문기술 검색|r\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff게임 내 모든 아이템 검색|r\n" ..
+    "    |cff999999-|r 기본적으로 꺼져 있습니다. 목록이 매우 크므로 꺼둔 채 '@gen' 빠른 필터로 접근하는 것을 권장합니다\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff다른 캐릭터의 아이템 찾기|r\n" ..
+    "    |cff999999-|r 은행, 전투부대 은행, 그리고 접속한 적이 있는 모든 캐릭터의 가방\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff클릭하거나 끌어서 대화에 아이템 연결|r\n" ..
+    "    |cff999999-|r 채널, 귓속말, 또는 대화 입력창에 놓으면 됩니다\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff아직 얻지 못한 칭호 보기|r\n" ..
+    "    |cff999999-|r 칭호를 주는 업적을 표시하며 Alt+클릭으로 열기\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff'소지금', '내구도', '아이템 레벨' 검색|r\n" ..
+    "    |cff999999-|r 결과 바로 위에 답이 표시됩니다. 쐐기돌, 레이팅, 가방 공간, 이동 속도도 지원\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff새로운 필터 옵션|r\n" ..
+    "    |cff999999-|r 전문화별 장비 세트, 칭호, 통계, 장난감, 애완동물"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"
@@ -636,5 +645,5 @@ L["OPT_INLINE_AUTOCOMPLETE"] = "인라인 자동 완성"
 L["OPT_INLINE_AUTOCOMPLETE_TT"] = "입력 중 가장 일치하는 완성을 검색창에 표시합니다. 입력기와 충돌하면 끄십시오."
 L["ANSWER_KEYSTONE"]                    = "쐐기돌"
 L["ANSWER_BAG_SPACE"]                   = "가방 공간"
-L["ANSWER_GOLD_FMT"]                    = "%s — 계정: %s"
+L["ANSWER_GOLD_FMT"]                    = "%s (계정: %s)"
 L["CMD_DESC_CLEAR_CHAT"]                = "대화창을 지웁니다"

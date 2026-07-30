@@ -256,10 +256,19 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bem-vindo ao |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "aqui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver o changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffSuporte a Data Broker|r\n" ..
-    "    |cff999999-|r Se você usa uma barra de Data Broker, agora pode abrir\n" ..
-    "      o EasyFind por ela em vez do ícone do minimapa\n" ..
-    "      (as outras formas continuam, incluindo Ocultar auto.)"
+    "|cffFFD100\226\128\162|r |cffffffffPesquise suas profissões|r\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffPesquise qualquer item do jogo|r\n" ..
+    "    |cff999999-|r Desligado por padrão. O catálogo é grande, então o uso recomendado é mantê-lo desligado e acessar pelo filtro rápido '@gen'\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffEncontre itens em seus outros personagens|r\n" ..
+    "    |cff999999-|r Seu banco, o banco do bando de guerra e qualquer personagem em que você tenha entrado\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffVincule itens no chat com clique ou arrasto|r\n" ..
+    "    |cff999999-|r Solte em um canal, um sussurro ou na caixa de chat\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffVeja títulos que você ainda não conquistou|r\n" ..
+    "    |cff999999-|r Mostra a conquista que o concede; Alt+clique para abrir\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffPesquise 'ouro', 'durabilidade' ou 'nível de item'|r\n" ..
+    "    |cff999999-|r A resposta aparece logo acima dos resultados. Também chave, classificação, espaço e velocidade\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffNovas opções de filtro|r\n" ..
+    "    |cff999999-|r Conjuntos por especialização, títulos, estatísticas, brinquedos e mascotes"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Adicionar apelido"
@@ -636,5 +645,5 @@ L["OPT_INLINE_AUTOCOMPLETE"] = "Autocompletar em linha"
 L["OPT_INLINE_AUTOCOMPLETE_TT"] = "Mostra a melhor conclusão enquanto você digita. Desative se interferir no seu método de entrada."
 L["ANSWER_KEYSTONE"]                    = "Pedra Angular"
 L["ANSWER_BAG_SPACE"]                   = "Espaço nas bolsas"
-L["ANSWER_GOLD_FMT"]                    = "%s — conta: %s"
+L["ANSWER_GOLD_FMT"]                    = "%s (conta: %s)"
 L["CMD_DESC_CLEAR_CHAT"]                = "Limpa a janela de bate-papo"

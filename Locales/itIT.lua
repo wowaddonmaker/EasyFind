@@ -256,10 +256,19 @@ L["WHATSNEW_CHAT_HELLO"]                = "Benvenuto in |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "qui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vedi il changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffSupporto Data Broker|r\n" ..
-    "    |cff999999-|r Se usi una barra Data Broker, ora puoi avviare\n" ..
-    "      EasyFind da lì invece che dall'icona della minimappa\n" ..
-    "      (gli altri modi restano, incluso Nascondi auto.)"
+    "|cffFFD100\226\128\162|r |cffffffffCerca le tue professioni|r\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCerca qualsiasi oggetto del gioco|r\n" ..
+    "    |cff999999-|r Disattivato di default. Il catalogo è enorme, quindi è consigliabile lasciarlo disattivato e accedervi con il filtro rapido '@gen'\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffTrova oggetti sugli altri personaggi|r\n" ..
+    "    |cff999999-|r La tua banca, la banca della Congrega e ogni personaggio con cui hai fatto accesso\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCollega un oggetto in chat con clic o trascinamento|r\n" ..
+    "    |cff999999-|r Rilascialo su un canale, un sussurro o la casella di chat\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffVedi i titoli che non hai ancora ottenuto|r\n" ..
+    "    |cff999999-|r Mostra l'impresa che lo assegna; Alt+clic per aprirla\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCerca 'oro', 'integrità' o 'livello oggetto'|r\n" ..
+    "    |cff999999-|r La risposta compare sopra ai risultati. Anche chiave, punteggio, spazio nelle borse e velocità\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffNuove opzioni di filtro|r\n" ..
+    "    |cff999999-|r Equipaggiamenti per specializzazione, titoli, statistiche, giocattoli e mascotte"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Aggiungi alias"
@@ -636,5 +645,5 @@ L["OPT_INLINE_AUTOCOMPLETE"] = "Completamento automatico in linea"
 L["OPT_INLINE_AUTOCOMPLETE_TT"] = "Mostra il miglior completamento durante la digitazione. Disattivalo se interferisce con il tuo metodo di input."
 L["ANSWER_KEYSTONE"]                    = "Chiave del Potere"
 L["ANSWER_BAG_SPACE"]                   = "Spazio nelle borse"
-L["ANSWER_GOLD_FMT"]                    = "%s — account: %s"
+L["ANSWER_GOLD_FMT"]                    = "%s (account: %s)"
 L["CMD_DESC_CLEAR_CHAT"]                = "Svuota la finestra della chat"

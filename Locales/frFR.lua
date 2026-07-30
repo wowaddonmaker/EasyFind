@@ -256,10 +256,19 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bienvenue dans |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "ici"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Voir le journal des modifications complet"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffPrise en charge de Data Broker|r\n" ..
-    "    |cff999999-|r Si vous utilisez une barre Data Broker, vous pouvez\n" ..
-    "      y lancer EasyFind au lieu de l'icône de la minicarte\n" ..
-    "      (les autres moyens restent, Masquage auto compris)"
+    "|cffFFD100\226\128\162|r |cffffffffCherchez vos métiers|r\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCherchez n'importe quel objet du jeu|r\n" ..
+    "    |cff999999-|r Désactivé par défaut. Le catalogue est vaste, il est donc conseillé de le laisser désactivé et d'y accéder via le filtre rapide '@gen'\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffTrouvez les objets de vos autres personnages|r\n" ..
+    "    |cff999999-|r Votre banque, la banque de bataillon et tout personnage sur lequel vous vous êtes connecté\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffLiez un objet au chat d'un clic ou d'un glisser|r\n" ..
+    "    |cff999999-|r Laissez-le sur un canal, un chuchotement ou la zone de chat\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffVoyez les titres que vous n'avez pas encore|r\n" ..
+    "    |cff999999-|r Affiche le haut fait qui l'octroie ; Alt+clic pour l'ouvrir\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCherchez 'or', 'solidité' ou 'niveau d'objet'|r\n" ..
+    "    |cff999999-|r La réponse apparaît juste au-dessus des résultats. Aussi clé, cote, place dans les sacs et vitesse\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffNouvelles options de filtre|r\n" ..
+    "    |cff999999-|r Équipements par spécialisation, titres, statistiques, jouets et mascottes"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Ajouter un alias"
@@ -635,5 +644,5 @@ L["OPT_INLINE_AUTOCOMPLETE"] = "Autocomplétion en ligne"
 L["OPT_INLINE_AUTOCOMPLETE_TT"] = "Affiche la meilleure complétion pendant la saisie. Désactivez-la si elle interfère avec votre méthode de saisie."
 L["ANSWER_KEYSTONE"]                    = "Clé mythique"
 L["ANSWER_BAG_SPACE"]                   = "Espace de sacs"
-L["ANSWER_GOLD_FMT"]                    = "%s — compte : %s"
+L["ANSWER_GOLD_FMT"]                    = "%s (compte : %s)"
 L["CMD_DESC_CLEAR_CHAT"]                = "Efface la fenêtre de discussion"
