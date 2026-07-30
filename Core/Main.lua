@@ -231,6 +231,7 @@ local DB_DEFAULTS = {
         macros      = false,
         bags        = false,
         bank        = false,
+        items       = false,
         currencies  = false,
     },
     currencyFilterMode = "all",
@@ -547,7 +548,7 @@ local SUGGESTED_KEYBINDS = {
 -- The version whose features the What's New popup currently describes. Bump
 -- ONLY when the popup content is rewritten; patch releases that keep the same
 -- content must not re-announce it to users who already saw it.
-local WHATSNEW_CONTENT_VERSION = "2.1.4"
+local WHATSNEW_CONTENT_VERSION = "2.2.0"
 
 local WHATSNEW_LINK_PREFIX = "easyfind:whatsnew:"
 local whatsNewHookInstalled = false
@@ -1031,7 +1032,6 @@ eventFrame:RegisterEvent("TRANSMOG_OUTFITS_CHANGED")
 eventFrame:RegisterEvent("TRANSMOG_COLLECTION_UPDATED")
 eventFrame:RegisterEvent("UPDATE_MACROS")
 eventFrame:RegisterEvent("SPELLS_CHANGED")
-eventFrame:RegisterEvent("SKILL_LINES_CHANGED")
 eventFrame:RegisterEvent("BAG_UPDATE_DELAYED")
 eventFrame:RegisterEvent("BANKFRAME_OPENED")
 eventFrame:RegisterEvent("BANKFRAME_CLOSED")
@@ -1055,6 +1055,9 @@ local DIRTY_EVENT_CATEGORY = {
     HEIRLOOMS_UPDATED = "heirlooms",
     CURRENCY_DISPLAY_UPDATE = "currencies",
     UPDATE_FACTION = "reputations",
+    -- Professions is eager, so it can populate before skill data has arrived
+    -- and nothing else marks it dirty; this is "skill data changed".
+    SKILL_LINES_CHANGED = "professions",
 }
 for dirtyEvent in pairs(DIRTY_EVENT_CATEGORY) do
     -- pcall: event names vary across client builds, and this runs at file
@@ -1063,6 +1066,21 @@ for dirtyEvent in pairs(DIRTY_EVENT_CATEGORY) do
     -- not-ready guard still retries on the next search.
     pcall(eventFrame.RegisterEvent, eventFrame, dirtyEvent)
 end
+-- Cross-character search needs a character on record even if this session
+-- never searches bags. The provider snapshots for free whenever it runs and
+-- logout always snapshots, so this is only the safety net -- and it walks
+-- every container and rebuilds a multi-KB packed string, so it is throttled
+-- rather than run on each of the bag events that burst while looting.
+local BAG_SNAPSHOT_MIN_INTERVAL = 60
+local lastBagSnapshot = 0
+local function MaybeSnapshotBags()
+    if not (ns.Database and ns.Database.PersistBagContents) then return end
+    local now = GetTime and GetTime() or 0
+    if now - lastBagSnapshot < BAG_SNAPSHOT_MIN_INTERVAL then return end
+    lastBagSnapshot = now
+    ns.Database:PersistBagContents()
+end
+
 local bagRefreshTimer
 local spellRefreshTimer
 local gearSetRefreshTimer
@@ -1122,14 +1140,6 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         if arg2 and not self.loginHandled then
             OnPlayerLogin()
         end
-        -- Record this character's bags once on entry, so simply logging in is
-        -- enough to make it searchable from an alt. Deferred: container data
-        -- is not populated the instant this fires.
-        Utils.SafeAfter(5, function()
-            if ns.Database and ns.Database.PersistBagContents then
-                ns.Database:PersistBagContents()
-            end
-        end)
         self:UnregisterEvent("PLAYER_ENTERING_WORLD")
     elseif event == "TRANSMOG_OUTFITS_CHANGED" then
         if outfitRefreshTimer then outfitRefreshTimer:Cancel() end
@@ -1165,14 +1175,6 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         MarkDynamicCategoryDirty("macros")
     elseif event == "HOUSING_STORAGE_UPDATED" then
         MarkDynamicCategoryDirty("housing")
-    elseif event == "SKILL_LINES_CHANGED" then
-        -- Professions is an eager provider, so it can populate moments after
-        -- login, before per-page skill levels and recipe known-state have
-        -- arrived. Nothing else marked it dirty, so a populate that ran too
-        -- early stuck for the entire session and the only cure was /reload.
-        -- This event is exactly "skill data changed", including the fills
-        -- that arrive during login.
-        MarkDirtyDebounced("professions")
     elseif event == "SPELLS_CHANGED" then
         if spellRefreshTimer then spellRefreshTimer:Cancel() end
         spellRefreshTimer = C_Timer.NewTimer(1.0, function()
@@ -1184,15 +1186,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         bagRefreshTimer = C_Timer.NewTimer(0.5, function()
             bagRefreshTimer = nil
             MarkDynamicCategoryDirty("bags")
-            -- Record here, not only at logout and when the bag provider
-            -- happens to run: cross-character search is worthless until a
-            -- character has been recorded at least once, and tying that to
-            -- "logged out cleanly since the feature shipped" means an alt you
-            -- have played all week is still invisible. Just playing a
-            -- character now files it.
-            if ns.Database and ns.Database.PersistBagContents then
-                ns.Database:PersistBagContents()
-            end
+            MaybeSnapshotBags()
         end)
         if bankOpen then ScheduleBankScan() end
     elseif event == "BANKFRAME_OPENED" then
@@ -1224,9 +1218,7 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
             ns.Database:OnPlayerLevelUp()
         end
     elseif event == "PLAYER_LOGOUT" then
-        -- Snapshot the bags so this character is searchable from an alt even
-        -- if the bag provider never ran this session (it only loads on a
-        -- bag-ish query). Logout is also the truest state to remember.
+        -- Truest state to remember, and the one snapshot that always runs.
         if ns.Database and ns.Database.PersistBagContents then
             pcall(ns.Database.PersistBagContents, ns.Database)
         end

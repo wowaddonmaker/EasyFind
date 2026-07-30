@@ -320,16 +320,18 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
     -- speciesID rides alongside petID here: an uncollected pet has no petID
     -- (that GUID exists only once owned), and without it the row fell through
     -- to the generic branch, putting the pet's own art in the category slot.
-    elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.speciesID or data.outfitID or data.heirloomItemID or data.gearSetID or data.transmogSetID or data.appearanceItemID or (data.spellID and data.category == "Ability") or (data.spellID and data.category == "Talent") or (data.encounterID and data.category == "Boss") or (data.macroIndex and data.category == "Macro") or (data.bagID and data.category == "Bag") or data.bankHolders or data.bagHolders or (data.achievementID and data.category == "Achievement") or data.professionSkillLine) then
+    elseif not iconSet and data and (data.mountID or data.toyItemID or data.petID or data.speciesID or data.outfitID or data.heirloomItemID or data.gearSetID or data.transmogSetID or data.appearanceItemID or (data.spellID and data.category == "Ability") or (data.spellID and data.category == "Talent") or (data.encounterID and data.category == "Boss") or (data.macroIndex and data.category == "Macro") or (data.bagID and data.category == "Bag") or data.storedHolders or (data.achievementID and data.category == "Achievement") or data.professionSkillLine) then
         local iconFileID = data.icon
         local rightOffset = -5
 
-        -- Bank / other-character rows render from our stored name and icon, so
-        -- the client may never have loaded the item itself. Warm it while the
-        -- row is on screen: the click-to-link pickup needs the item cached, and
-        -- an uncached PickupItem lands on the cursor long after the click.
-        -- Bounded to visible rows, and a no-op once cached.
-        if (data.bankHolders or data.bagHolders) and data.itemID
+        -- Stored rows render from a cached name/icon, so the client may never
+        -- have loaded the item itself; warm it so click-to-link can pick it up.
+        -- Deliberately NOT ItemSearch:NoteUncachedItem: that one re-runs the
+        -- whole search when the data lands, which is right for catalog rows
+        -- (their name and icon resolve live) but here means render -> request
+        -- -> arrival -> re-search -> render, a loop that lags the bar and
+        -- resets the scroll position. These rows already have their name.
+        if data.storedHolders and data.itemID
            and C_Item and C_Item.RequestLoadItemDataByID
            and C_Item.IsItemDataCachedByID
            and not C_Item.IsItemDataCachedByID(data.itemID) then
@@ -358,6 +360,7 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
             resultRow.icon.gearSetID = data.gearSetID
             resultRow.icon.bagItemID = (data.category == "Bag" or data.category == "Bank")
                 and data.itemID or nil
+            resultRow.icon.lootItemID = nil
             resultRow.icon.achievementID = data.achievementID
             resultRow.icon.lootItemID = nil
             -- Red tint on mount icons when in combat (can't mount)

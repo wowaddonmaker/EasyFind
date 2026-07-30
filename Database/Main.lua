@@ -693,6 +693,9 @@ local LOOT_PROTO = {
     path        = {},
     steps       = {},
     lootEntry   = true, -- use loot-specific scoring (toggle-aware keyword matching)
+    -- Click/drag links it; the action runs on the row's mouse-up. Every lookup
+    -- row must carry this or SelectResult dismisses it on the press instead.
+    lookupRow   = true,
 }
 
 -- Per-encounter MT cache. Every loot drop from the same encounter
@@ -709,6 +712,10 @@ local function GetLootEncounterMT(encID, instID, encName, instName, isRaid)
         path             = LOOT_PROTO.path,
         steps            = LOOT_PROTO.steps,
         lootEntry        = true,
+        -- This proto COPIES from LOOT_PROTO rather than inheriting it, so any
+        -- field added there must be repeated here or real loot rows never see
+        -- it. lookupRow drives click/drag-to-link.
+        lookupRow        = true,
         encounterID      = encID,
         instanceID       = instID,
         lootSourceName   = encName,
@@ -898,7 +905,7 @@ local function StepSignature(step)
 end
 
 local function CharKey()
-    return (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?")
+    return ns.CurrentCharacterKey()
 end
 
 local function LearnedLocks()
@@ -4378,7 +4385,12 @@ end
 -- A cached row keeps whatever icon the container reported, but a row written
 -- before the client had the item cached carries none. Resolving from the id
 -- costs nothing here and is the difference between a real icon and a blank.
-local function StoredItemIcon(itemID)
+-- Bank and bag storage share one subsystem. Bundled onto a single table
+-- rather than ~17 file-scope locals: a Lua chunk caps at 200 locals and this
+-- file was already close, so each loose helper here is a real cost.
+local Stored = {}
+
+function Stored.ItemIcon(itemID)
     if not itemID then return nil end
     if C_Item and C_Item.GetItemIconByID then
         return C_Item.GetItemIconByID(itemID)
@@ -4389,18 +4401,45 @@ end
 -- One layout for every stored-item cache (bank tabs, bag slots): "tab" is the
 -- container id in both cases. Shared deliberately -- a field added for one has
 -- to exist in the other or the two caches drift apart silently.
-local STORED_ITEM_ROW_SPEC = {
+Stored.STORED_ITEM_ROW_SPEC = {
     { "itemID" }, { "count" }, { "tab" }, { "slot" },
     { "name" }, { "icon" }, { "quality" },
 }
 
+Stored.BAG_STORED_KEYWORDS = { "bag", "item", "inventory" }
+Stored.BANK_STORED_KEYWORDS = { "bank", "storage", "vault" }
+-- Deliberately without "bank": @bank means a character's own bank, and the
+-- warband bank answers to its own name instead. The localized label's words
+-- are appended at first use so this matches on non-enUS clients too.
+Stored.WARBAND_STORED_KEYWORDS = { "warband", "storage", "vault" }
+local warbandKeywordsBuilt = false
+local function WarbandKeywords()
+    if not warbandKeywordsBuilt then
+        warbandKeywordsBuilt = true
+        local label = ns.WarbandBankLabel()
+        local words = label and SearchText.Tokenize(slower(label))
+        if words then
+            local kw = Stored.WARBAND_STORED_KEYWORDS
+            for i = 1, #words do
+                local w = words[i]
+                local dup = false
+                for k = 1, #kw do
+                    if kw[k] == w then dup = true break end
+                end
+                if not dup then kw[#kw + 1] = w end
+            end
+        end
+    end
+    return Stored.WARBAND_STORED_KEYWORDS
+end
+
 -- Merges one cached character's rows into an item-keyed accumulator shared by
 -- the bank and bag providers, so an item held by several characters becomes a
 -- single result that names all of them.
-local function AbsorbStoredRows(record, holderName, charKey, itemMap, order)
+function Stored.AbsorbStoredRows(record, holderName, charKey, itemMap, order)
     if type(record) ~= "table" or type(record.packed) ~= "string" then return end
     local tabs = type(record.tabs) == "table" and record.tabs
-    local rows = Utils.UnpackRows(record.packed, STORED_ITEM_ROW_SPEC)
+    local rows = Utils.UnpackRows(record.packed, Stored.STORED_ITEM_ROW_SPEC)
     for i = 1, #rows do
         local row = rows[i]
         local itemID = row.itemID
@@ -4425,9 +4464,63 @@ local function AbsorbStoredRows(record, holderName, charKey, itemMap, order)
     end
 end
 
+function Stored.StoredCacheStore(cacheField, verField, ver)
+    local db = EasyFind and EasyFind.db
+    if not db then return nil end
+    if type(db[cacheField]) ~= "table" or db[verField] ~= ver then
+        db[cacheField] = { chars = {} }
+        db[verField] = ver
+    end
+    db[cacheField].chars = db[cacheField].chars or {}
+    return db[cacheField]
+end
+
+function Stored.StoredCharRecord(packed, tabs)
+    return {
+        name = UnitName("player") or "?",
+        realm = GetRealmName() or "?",
+        class = select(2, UnitClass("player")),
+        scannedAt = time and time() or 0,
+        tabs = tabs,
+        packed = packed,
+    }
+end
+
+-- One search row for an item held in storage. storedHolders/storedCount carry
+-- who has it; storedRemote marks the ones this character cannot reach, which is
+-- the single fact every click/icon/tooltip consumer needs (see
+-- Handlers:IsRemoteStoredItem). Subtext is built here, once per populate,
+-- rather than per row per keystroke in the render loop.
+function Stored.EmitStoredRow(entry, category, keywords, remote)
+    local row = entry.row
+    local itemID = row.itemID
+    local name = row.name or (GetItemInfo and GetItemInfo(itemID))
+        or ((_G["ITEM"] or "Item") .. " " .. itemID)
+    local equipLoc = Utils.GetItemEquipLoc(itemID)
+    local nameLower = slower(name)
+    local kw = { nameLower }
+    for i = 1, #keywords do kw[#kw + 1] = keywords[i] end
+    return {
+        name = name,
+        nameLower = nameLower,
+        keywords = kw,
+        category = category,
+        icon = row.icon or Stored.ItemIcon(itemID),
+        itemID = itemID,
+        quality = row.quality,
+        equipLoc = equipLoc,
+        isEquippable = Utils.IsRealEquipLoc(equipLoc),
+        storedCount = entry.total,
+        storedHolders = entry.holders,
+        storedSubtext = ns.StoredHoldersText(entry.holders, category),
+        storedRemote = remote or nil,
+        lookupRow = true,
+    }
+end
+
 -- Which characters a storage scope admits. "current" and a specific key are
 -- both single-character; "all" admits every cached character.
-local function ScopeAdmits(scope, charKey, currentKey)
+function Stored.ScopeAdmits(scope, charKey, currentKey)
     if scope == "current" then return charKey == currentKey end
     if type(scope) == "string" and scope ~= "" and scope ~= "all" then
         return charKey == scope
@@ -4438,12 +4531,11 @@ end
 -- Forward declaration: the live provider below folds the other characters'
 -- cached rows in, but that helper needs the live walk's item map, so it is
 -- defined after the provider it serves.
-local AppendOtherCharacterBagRows
 
 -- NUM_BAG_SLOTS counts only the four general bags, so a walk bounded by it
--- silently skips the reagent bag -- which is exactly where crafting materials
--- live, making every profession reagent unsearchable.
-local function MaxCarriedBagIndex()
+-- skips the reagent bag entirely. Exported: any walk over "the bags I am
+-- carrying" must use this, or it silently misses a container.
+function ns.MaxCarriedBagIndex()
     local maxBag = NUM_BAG_SLOTS or 4
     if NUM_TOTAL_EQUIPPED_BAG_SLOTS and NUM_TOTAL_EQUIPPED_BAG_SLOTS > maxBag then
         maxBag = NUM_TOTAL_EQUIPPED_BAG_SLOTS
@@ -4456,7 +4548,7 @@ end
 -- Reads the carried bags into an item-keyed map. Shared by the search provider
 -- and the logout snapshot, so the cache is written even in a session where the
 -- player never searched their bags.
-local function WalkPlayerBags()
+function Stored.WalkPlayerBags()
     local CONT = C_Container
     local getNumSlots = (CONT and CONT.GetContainerNumSlots) or GetContainerNumSlots
     local getItemInfo = (CONT and CONT.GetContainerItemInfo)  or GetContainerItemInfo
@@ -4465,7 +4557,7 @@ local function WalkPlayerBags()
     local itemMap = {}
     local order = {}
     local slotsSeen = 0
-    for bag = 0, MaxCarriedBagIndex() do
+    for bag = 0, ns.MaxCarriedBagIndex() do
         local slots = getNumSlots(bag) or 0
         slotsSeen = slotsSeen + slots
         for slot = 1, slots do
@@ -4501,7 +4593,7 @@ function Database:PopulateDynamicBags()
     local getEquipLoc = Utils.GetItemEquipLoc
     local getQuality = C_Item and C_Item.GetItemQualityByID
 
-    local itemMap, order = WalkPlayerBags()
+    local itemMap, order = Stored.WalkPlayerBags()
     if not itemMap then return false end
 
     RemoveEntriesByCategory("Bag")
@@ -4556,7 +4648,7 @@ function Database:PopulateDynamicBags()
     -- This character's bags were just read live; record them so the OTHER
     -- characters can be searched from anywhere, then fold those in.
     self:PersistBagContents(itemMap, order)
-    AppendOtherCharacterBagRows(itemMap)
+    Stored.AppendOtherCharacterBagRows(itemMap)
     return true
 end
 
@@ -4564,7 +4656,7 @@ end
 -- the live rows above for items this character also has. Nothing here is
 -- clickable: an alt's bag slot cannot be opened, so these rows carry no steps
 -- and behave as a lookup (link, drag, tooltip) like catalog rows.
-AppendOtherCharacterBagRows = function(liveItemMap)
+function Stored.AppendOtherCharacterBagRows(liveItemMap)
     local db = EasyFind and EasyFind.db
     local store = db and type(db.bagCache) == "table" and db.bagCache
     if not store or db.bagCacheVer ~= ns.BAG_CACHE_VER then return end
@@ -4575,26 +4667,20 @@ AppendOtherCharacterBagRows = function(liveItemMap)
     if scope == "current" then return end
 
     local currentKey = CharKey()
-    local isRealEquipLoc = Utils.IsRealEquipLoc
-    local getEquipLoc = Utils.GetItemEquipLoc
-
     local itemMap, order = {}, {}
     for charKey, record in pairs(chars) do
-        if charKey ~= currentKey and ScopeAdmits(scope, charKey, currentKey) then
-            AbsorbStoredRows(record, record.name, charKey, itemMap, order)
+        if charKey ~= currentKey and Stored.ScopeAdmits(scope, charKey, currentKey) then
+            Stored.AbsorbStoredRows(record, record.name, charKey, itemMap, order)
         end
     end
 
-    local bagWord = _G["BAGSLOT"] or _G["BAGS"] or "Bags"
     for i = 1, #order do
         local entry = order[i]
-        local row = entry.row
-        local itemID = row.itemID
         -- Already on screen as a live row: hang the other holders off it
         -- instead of emitting a duplicate the player has to reconcile. The
         -- player's own stack leads the list, or the row would read as though
         -- only the alts had any.
-        local live = liveItemMap and liveItemMap[itemID]
+        local live = liveItemMap and liveItemMap[entry.row.itemID]
         if live and live.searchEntry then
             local holders = { {
                 charKey = currentKey,
@@ -4603,39 +4689,17 @@ AppendOtherCharacterBagRows = function(liveItemMap)
                 count = live.totalCount or 1,
             } }
             for h = 1, #entry.holders do holders[#holders + 1] = entry.holders[h] end
-            live.searchEntry.otherHolders = holders
+            live.searchEntry.storedHolders = holders
+            live.searchEntry.storedSubtext = ns.StoredHoldersText(holders, "Bag")
         elseif not live then
-            local name = row.name or (GetItemInfo and GetItemInfo(itemID))
-                or ((_G["ITEM"] or "Item") .. " " .. itemID)
-            local equipLoc = getEquipLoc(itemID)
-            local nameLower = slower(name)
-            uiSearchData[#uiSearchData + 1] = {
-                name = name,
-                nameLower = nameLower,
-                keywords = { "bag", "item", "inventory", nameLower },
-                category = "Bag",
-                icon = row.icon or StoredItemIcon(itemID),
-                itemID = itemID,
-                quality = row.quality,
-                equipLoc = equipLoc,
-                isEquippable = isRealEquipLoc(equipLoc),
-                bagCount = entry.total,
-                bagHolders = entry.holders,
-                bagWord = bagWord,
-            }
+            uiSearchData[#uiSearchData + 1] =
+                Stored.EmitStoredRow(entry, "Bag", Stored.BAG_STORED_KEYWORDS, true)
         end
     end
 end
 
-local function BagCacheStore()
-    local db = EasyFind and EasyFind.db
-    if not db then return nil end
-    if type(db.bagCache) ~= "table" or db.bagCacheVer ~= ns.BAG_CACHE_VER then
-        db.bagCache = { chars = {} }
-        db.bagCacheVer = ns.BAG_CACHE_VER
-    end
-    db.bagCache.chars = db.bagCache.chars or {}
-    return db.bagCache
+function Stored.BagCacheStore()
+    return Stored.StoredCacheStore("bagCache", "bagCacheVer", ns.BAG_CACHE_VER)
 end
 
 -- Records the carried bags for later cross-character searches. Takes the walk
@@ -4645,7 +4709,7 @@ end
 function Database:PersistBagContents(itemMap, order)
     if not itemMap or not order then
         local slotsSeen
-        itemMap, order, slotsSeen = WalkPlayerBags()
+        itemMap, order, slotsSeen = Stored.WalkPlayerBags()
         -- Zero SLOTS (not zero items) means the containers have not reported
         -- yet, which happens on the login-time record. Writing that would
         -- replace a good snapshot with an empty one and quietly lose the
@@ -4653,7 +4717,7 @@ function Database:PersistBagContents(itemMap, order)
         -- are a state the player can actually be in.
         if slotsSeen == 0 then return false end
     end
-    local store = BagCacheStore()
+    local store = Stored.BagCacheStore()
     if not store or type(order) ~= "table" then return false end
 
     local getQuality = C_Item and C_Item.GetItemQualityByID
@@ -4677,13 +4741,8 @@ function Database:PersistBagContents(itemMap, order)
         }
     end
 
-    store.chars[CharKey()] = {
-        name = UnitName("player") or "?",
-        realm = GetRealmName() or "?",
-        class = select(2, UnitClass("player")),
-        scannedAt = time and time() or 0,
-        packed = Utils.PackRows(rows, STORED_ITEM_ROW_SPEC),
-    }
+    store.chars[CharKey()] =
+        Stored.StoredCharRecord(Utils.PackRows(rows, Stored.STORED_ITEM_ROW_SPEC))
     return true
 end
 
@@ -4695,7 +4754,7 @@ end
 -- items; account tabs are shared by the whole warband, so storing those
 -- per character would report one warband stack as though every alt owned
 -- its own copy.
-local function CollectBankTabs(bankType, out)
+function Stored.CollectBankTabs(bankType, out)
     if not (C_Bank and C_Bank.FetchPurchasedBankTabData and bankType) then return out end
     local ok, tabs = pcall(C_Bank.FetchPurchasedBankTabData, bankType)
     if not ok or type(tabs) ~= "table" then return out end
@@ -4708,12 +4767,12 @@ local function CollectBankTabs(bankType, out)
     return out
 end
 
-local function GetCharacterBankTabs()
-    return CollectBankTabs(Enum and Enum.BankType and Enum.BankType.Character, {})
+function Stored.GetCharacterBankTabs()
+    return Stored.CollectBankTabs(Enum and Enum.BankType and Enum.BankType.Character, {})
 end
 
-local function GetAccountBankTabs()
-    return CollectBankTabs(Enum and Enum.BankType and Enum.BankType.Account, {})
+function Stored.GetAccountBankTabs()
+    return Stored.CollectBankTabs(Enum and Enum.BankType and Enum.BankType.Account, {})
 end
 
 
@@ -4721,7 +4780,7 @@ end
 -- tab-id -> tab-name map for subtext, and how many slots were seen at all:
 -- zero means the bank was not really open and the caller must discard the
 -- result rather than persist an empty bank over a good scan.
-local function WalkBankTabs(tabs)
+function Stored.WalkBankTabs(tabs)
     local getNumSlots = C_Container and C_Container.GetContainerNumSlots
     local getItemInfo = C_Container and C_Container.GetContainerItemInfo
     if not (getNumSlots and getItemInfo) then return nil, nil, 0 end
@@ -4762,15 +4821,8 @@ local function WalkBankTabs(tabs)
     return order, tabNames, slotsSeen
 end
 
-local function BankCacheStore()
-    local db = EasyFind and EasyFind.db
-    if not db then return nil end
-    if type(db.bankCache) ~= "table" or db.bankCacheVer ~= ns.BANK_CACHE_VER then
-        db.bankCache = { chars = {} }
-        db.bankCacheVer = ns.BANK_CACHE_VER
-    end
-    db.bankCache.chars = db.bankCache.chars or {}
-    return db.bankCache
+function Stored.BankCacheStore()
+    return Stored.StoredCacheStore("bankCache", "bankCacheVer", ns.BANK_CACHE_VER)
 end
 
 -- Records what is in the bank while one is open, which is the only time the
@@ -4778,30 +4830,24 @@ end
 -- separately so the warband bank is counted once for the account instead of
 -- once per alt that happened to visit a bank.
 function Database:ScanBankContents()
-    local store = BankCacheStore()
+    local store = Stored.BankCacheStore()
     if not store then return false end
 
     local scanned = false
 
-    local charRows, charTabs, charSlots = WalkBankTabs(GetCharacterBankTabs())
+    local charRows, charTabs, charSlots = Stored.WalkBankTabs(Stored.GetCharacterBankTabs())
     if charSlots > 0 then
-        store.chars[CharKey()] = {
-            name = UnitName("player") or "?",
-            realm = GetRealmName() or "?",
-            class = select(2, UnitClass("player")),
-            scannedAt = time and time() or 0,
-            tabs = charTabs,
-            packed = Utils.PackRows(charRows, STORED_ITEM_ROW_SPEC),
-        }
+        store.chars[CharKey()] =
+            Stored.StoredCharRecord(Utils.PackRows(charRows, Stored.STORED_ITEM_ROW_SPEC), charTabs)
         scanned = true
     end
 
-    local acctRows, acctTabs, acctSlots = WalkBankTabs(GetAccountBankTabs())
+    local acctRows, acctTabs, acctSlots = Stored.WalkBankTabs(Stored.GetAccountBankTabs())
     if acctSlots > 0 then
         store.account = {
             scannedAt = time and time() or 0,
             tabs = acctTabs,
-            packed = Utils.PackRows(acctRows, STORED_ITEM_ROW_SPEC),
+            packed = Utils.PackRows(acctRows, Stored.STORED_ITEM_ROW_SPEC),
         }
         scanned = true
     end
@@ -4815,6 +4861,7 @@ function Database:PopulateDynamicBank()
     local db = EasyFind and EasyFind.db
     local store = db and type(db.bankCache) == "table" and db.bankCache
     RemoveEntriesByCategory("Bank")
+    RemoveEntriesByCategory("Warband")
     if self.ResetSearchCache then self:ResetSearchCache() end
     if not store or db.bankCacheVer ~= ns.BANK_CACHE_VER then return true end
 
@@ -4823,43 +4870,28 @@ function Database:PopulateDynamicBank()
 
     local scope = db.bankScope
     local currentKey = CharKey()
-    local isRealEquipLoc = Utils.IsRealEquipLoc
-    local getEquipLoc = Utils.GetItemEquipLoc
-
+    -- Character banks and the warband bank are separate places, so they are
+    -- separate categories and separate quick filters (@bank vs @warband).
+    -- An item held in both yields a row for each, which is the honest answer
+    -- to "where is this".
     local itemMap, order = {}, {}
     for charKey, record in pairs(chars) do
-        if ScopeAdmits(scope, charKey, currentKey) then
-            AbsorbStoredRows(record, record.name, charKey, itemMap, order)
+        if Stored.ScopeAdmits(scope, charKey, currentKey) then
+            Stored.AbsorbStoredRows(record, record.name, charKey, itemMap, order)
         end
     end
-
-    -- The account bank belongs to no single character, so no character scope
-    -- excludes it: whoever is logged in can walk to a bank and take from it.
-    AbsorbStoredRows(store.account, ns.WarbandBankLabel(), nil, itemMap, order)
-
-    local bankWord = _G["BANK"] or "Bank"
     for i = 1, #order do
-        local entry = order[i]
-        local row = entry.row
-        local itemID = row.itemID
-        local name = row.name or (GetItemInfo and GetItemInfo(itemID))
-            or ((_G["ITEM"] or "Item") .. " " .. itemID)
-        local equipLoc = getEquipLoc(itemID)
-        local nameLower = slower(name)
-        uiSearchData[#uiSearchData + 1] = {
-            name = name,
-            nameLower = nameLower,
-            keywords = { "bank", "storage", "vault", nameLower },
-            category = "Bank",
-            icon = row.icon or StoredItemIcon(itemID),
-            itemID = itemID,
-            quality = row.quality,
-            equipLoc = equipLoc,
-            isEquippable = isRealEquipLoc(equipLoc),
-            bankCount = entry.total,
-            bankHolders = entry.holders,
-            bankWord = bankWord,
-        }
+        uiSearchData[#uiSearchData + 1] =
+            Stored.EmitStoredRow(order[i], "Bank", Stored.BANK_STORED_KEYWORDS, true)
+    end
+
+    -- The warband bank belongs to no single character, so no character scope
+    -- excludes it: whoever is logged in can walk to a bank and take from it.
+    local acctMap, acctOrder = {}, {}
+    Stored.AbsorbStoredRows(store.account, ns.WarbandBankLabel(), nil, acctMap, acctOrder)
+    for i = 1, #acctOrder do
+        uiSearchData[#uiSearchData + 1] =
+            Stored.EmitStoredRow(acctOrder[i], "Warband", WarbandKeywords(), true)
     end
     return true
 end
@@ -5797,6 +5829,11 @@ function Database:FlattenTree(tree, parentPath, parentSteps, parentButtonFrame, 
         local mt = GetFlattenMT(myCategory, myButtonFrame, parentPath, mySteps, myKeywords)
         local entry = setmetatable({ name = node.name }, mt)
         if node.icon then entry.icon = node.icon end
+        -- Copied explicitly like every other per-node field: a node's own
+        -- artwork is not inherited through the metatable, so anything missing
+        -- from this list is silently dropped and the row renders a question
+        -- mark instead (which is what happened to the Bags node's atlas).
+        if node.iconAtlas then entry.iconAtlas = node.iconAtlas end
         if node.available then entry.available = node.available end
         if node.canQueue then entry.canQueue = true end
         if node.slashCommand then entry.slashCommand = node.slashCommand end
@@ -6258,7 +6295,7 @@ function Database:BuildUIDatabase()
     end
 
     -- isPvP / isPvE are set during FlattenTree from explicit flags on the
-    -- uiTree nodes — see "Player vs. Player", "Dungeons & Raids", etc.
+    -- uiTree nodes; see "Player vs. Player", "Dungeons & Raids", etc.
     -- Entries with category="PvP" (individual PvP queue rows like Arena
     -- Skirmish) also count as PvP for filter purposes.
     for _, item in ipairs(uiSearchData) do

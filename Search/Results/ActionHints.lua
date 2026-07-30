@@ -174,9 +174,7 @@ function Handlers:GetActionHint(data)
         end
         return dressable and HINTS.catalogItemTry or HINTS.catalogItem
     end
-    -- Stored on another character (or in the bank): not reachable from here,
-    -- so the row is a lookup -- link it or drag it, like a catalog row.
-    if data.bankHolders or data.bagHolders then
+    if Handlers:IsRemoteStoredItem(data) then
         return HINTS.catalogItem
     end
     if data.itemID and data.category == "Bag" then

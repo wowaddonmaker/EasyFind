@@ -31,7 +31,7 @@ local ENTRIES = {
     { key = "items",           categories = {} },
     { key = "catalog",         parent = "items", categories = { "Item" } },
     { key = "bags",            parent = "items", categories = { "Bag" } },
-    { key = "bank",            parent = "items", categories = { "Bank" } },
+    { key = "bank",            parent = "items", categories = { "Bank", "Warband" } },
     { key = "titles",          categories = { "Title" } },
     { key = "gearSets",        categories = { "Gear Set" } },
     { key = "commands",        categories = { "Command" } },

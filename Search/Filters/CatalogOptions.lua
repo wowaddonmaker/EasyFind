@@ -182,6 +182,21 @@ function Filters:BuildCatalogOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuardF
     qualityBtn:SetPoint("TOPLEFT", optionsPopup, "TOPLEFT", PAD, y)
     y = y - BTN_H
 
+    local hideTipRow = CreateFrame("CheckButton", nil, optionsPopup)
+    hideTipRow:SetSize(100, ROW_H)
+    hideTipRow:SetPoint("TOPLEFT", optionsPopup, "TOPLEFT", PAD, y)
+    Utils.SetCheckboxTextures(hideTipRow, CHECK_SIZE)
+    local hideTipLabel = hideTipRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    hideTipLabel:SetPoint("LEFT", hideTipRow:GetNormalTexture(), "RIGHT", 4, 0)
+    hideTipLabel:SetText(ns.L["FILTER_HIDE_TOOLTIPS"])
+    hideTipRow._label = hideTipLabel
+    Utils.InstallMenuRowHighlight(hideTipRow)
+    hideTipRow:SetScript("OnClick", function(self)
+        EasyFind.db.hideTooltips = EasyFind.db.hideTooltips or {}
+        EasyFind.db.hideTooltips.items = self:GetChecked() and true or false
+    end)
+    y = y - ROW_H
+
     -- Width: fit the widest checkbox / toggle-all / header, plus the quality
     -- bar's widest possible label (left inset + label + gap + arrow + inset).
     local contentW = 0
@@ -191,6 +206,8 @@ function Filters:BuildCatalogOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuardF
     end
     local tW = Utils.FlyoutRowContentWidth(toggleAllRow, 8)
     if tW > contentW then contentW = tW end
+    local hW = Utils.FlyoutRowContentWidth(hideTipRow, CHECK_SIZE + 4)
+    if hW > contentW then contentW = hW end
     for i = 1, #headers do
         local hw = 8 + headers[i]:GetStringWidth()
         if hw > contentW then contentW = hw end
@@ -204,6 +221,7 @@ function Filters:BuildCatalogOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuardF
     for i = 1, #typeRows do typeRows[i]:SetWidth(popupW - PAD * 2) end
     toggleAllRow:SetWidth(popupW - PAD * 2)
     qualityBtn:SetWidth(popupW - PAD * 2)
+    hideTipRow:SetWidth(popupW - PAD * 2)
     optionsPopup:SetSize(popupW, -y + PAD)
 
     RestyleHeaders()
@@ -214,6 +232,9 @@ function Filters:BuildCatalogOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuardF
         qualityDrop.Refresh()
         Utils.SetFlyoutRowEnabled(qualityBtn, chainEnabled)
         Utils.SetFlyoutRowEnabled(toggleAllRow, chainEnabled)
+        local ht = EasyFind.db.hideTooltips
+        hideTipRow:SetChecked(ht and ht.items or false)
+        Utils.SetFlyoutRowEnabled(hideTipRow, chainEnabled)
         local tf = EasyFind.db.catalogTypeFilters or {}
         for i = 1, #typeRows do
             typeRows[i]:SetChecked(tf[typeRows[i]._bucket] ~= false)

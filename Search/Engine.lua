@@ -67,7 +67,7 @@ local PROVIDERS = {
     { key = "titles", words = { "title", "titles" }, loadOnLowResults = true },
     { key = "gearSets", words = { "gearset", "gearsets", "equipment", "equipmentset" }, loadOnLowResults = true },
     { key = "bags", words = { "bag", "bags", "inventory" }, loadOnLowResults = true },
-    { key = "bank", words = { "bank", "banked", "vault" }, loadWhenEnabled = true },
+    { key = "bank", words = { "bank", "banked", "vault", "warband" }, loadWhenEnabled = true },
     { key = "transmogSets", words = { "appearance", "appearances", "appset", "appsets", "set", "sets", "tmog", "transmog", "xmog" }, loadOnLowResults = true },
     { key = "appearanceItems", words = { "appearance", "appearances", "item", "items", "tmog", "transmog", "xmog" }, explicitOnly = true },
     { key = "loot", words = { "gear", "item", "items", "loot" }, heavyQuery = true },

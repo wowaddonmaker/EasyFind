@@ -364,12 +364,6 @@ function Rows.InstallInteractions(resultRow, index)
     -- linked": the catalog, plus anything stored where this character cannot
     -- reach it. They share one click/drag behaviour so the player never has to
     -- learn which kind of item row they are looking at.
-    local function IsLookupRow(d)
-        if not d then return false end
-        if d.catalogItem then return true end
-        if d.itemID and d.category == "Loot" then return true end
-        return Handlers:IsRemoteStoredItem(d)
-    end
     local function PickupRowAction(d)
         if not CanPickupRowAction(d) then return end
         if InCombatLockdown() then return end
@@ -407,7 +401,7 @@ function Rows.InstallInteractions(resultRow, index)
         -- reaches the cursor, so those arm either way. Everything else keeps
         -- the cursor requirement: an armed link with no pickup behind it is a
         -- phantom that fires on some later unrelated click.
-        if ns.GetResultLink and (onCursor or IsLookupRow(d)) then
+        if ns.GetResultLink and (onCursor or Handlers:IsLookupRow(d)) then
             carriedItemLink = ns.GetResultLink(d)
             carriedLinkCursorBacked = onCursor and carriedItemLink ~= nil
         end
@@ -439,12 +433,11 @@ function Rows.InstallInteractions(resultRow, index)
         -- world -> /say). This only arms the drag threshold; the pickup itself
         -- happens on the release in OnMouseUp. Shift is chat-link, Ctrl is
         -- dressing room.
-        if IsLookupRow(d) then
-            -- Every modifier means something else on these rows: Shift is the
-            -- chat insert, Ctrl the dressing room, Alt the owning UI (the
-            -- Encounter Journal for loot). Arming the pickup under any of them
-            -- puts the item on the cursor ON TOP of that action, and it then
-            -- surfaces later as an item stuck to the cursor out of nowhere.
+        if Handlers:IsLookupRow(d) then
+            -- Every modifier already means something on these rows (Shift chat
+            -- insert, Ctrl dressing room, Alt owning UI), so none may also arm
+            -- a pickup: the item would land on the cursor on top of that
+            -- action and surface later as if from nowhere.
             if IsShiftKeyDown() or (IsControlKeyDown and IsControlKeyDown())
                or Handlers:IsSourceModifierHeld() then
                 return
@@ -481,7 +474,7 @@ function Rows.InstallInteractions(resultRow, index)
         -- engine when the button comes up, which is why this used to need a
         -- drag. Right-click never comes here -- it belongs to the context menu.
         local clicked = self.data
-        if button == "LeftButton" and IsLookupRow(clicked)
+        if button == "LeftButton" and Handlers:IsLookupRow(clicked)
            and not self._pickedUp
            and not InCombatLockdown()
            and not IsShiftKeyDown()

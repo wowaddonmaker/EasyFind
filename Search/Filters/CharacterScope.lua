@@ -11,9 +11,7 @@ local UIParent = UIParent
 local ROW_H = 20
 local MAX_VISIBLE_ROWS = 10
 
-function ns.CurrentCharacterKey()
-    return (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?")
-end
+local function ByLabel(a, b) return a.label < b.label end
 
 local function ClassColorStr(class)
     local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
@@ -52,7 +50,7 @@ local function CollectDefs(getChars)
             }
         end
     end
-    tsort(others, function(a, b) return a.label < b.label end)
+    tsort(others, ByLabel)
     for i = 1, #others do defs[#defs + 1] = others[i] end
     return defs
 end

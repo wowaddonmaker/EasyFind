@@ -1254,11 +1254,30 @@ end
 -- file's BLP header (read via wago.tools). 6116514 is 512x256; the crop below is
 -- ~111x107 px, i.e. nearly square, so it fills the slot undistorted. If you swap
 -- the texture/coords, update TEX_W/TEX_H to that file's real dimensions.
--- A statistic's live value, plus whether anything is actually recorded.
--- GetStatistic returns a display string ("394", "23%", "1d 4h 12m") or "--"
--- when the character has no data for it. Shared so the row that dims a "--"
--- and the filter that hides one agree on what "recorded" means -- if those
--- drift, a row renders dimmed but survives a Recorded-only filter.
+ns.ITEMS_CATEGORY_ICON_TEX = 6116514
+ns.ITEMS_CATEGORY_ICON_COORDS = { 0.0395, 0.2563, 0.0667, 0.4845 }
+do
+    local TEX_W, TEX_H = 512, 256
+    local c = ns.ITEMS_CATEGORY_ICON_COORDS
+    ns.ITEMS_CATEGORY_ICON_ASPECT = ((c[2] - c[1]) * TEX_W) / ((c[4] - c[3]) * TEX_H)
+end
+
+-- Bank vault glyph, shared by the filter-menu row and the result-row category
+-- icon so the two cannot drift apart.
+ns.BANK_CATEGORY_ICON_TEX = 1121272
+ns.BANK_CATEGORY_ICON_COORDS = { 0.3783, 0.4072, 0.9066, 0.9350 }
+
+-- The key the per-character stored-item caches are filed under. ONE owner:
+-- the provider writes db.bagCache.chars[key] with it and the scope picker
+-- compares against it, so any divergence silently matches zero characters.
+-- Deliberately not memoized -- a call before the unit exists would pin a
+-- placeholder for the session.
+function ns.CurrentCharacterKey()
+    return (UnitName("player") or "?") .. "-" .. (GetRealmName() or "?")
+end
+
+-- A statistic's live value, plus whether anything is recorded. Shared so the
+-- row that dims a "--" and the filter that hides one cannot disagree.
 function ns.GetStatisticValue(statisticID)
     if not (statisticID and GetStatistic) then return nil, false end
     local ok, value = pcall(GetStatistic, statisticID)
@@ -1266,9 +1285,8 @@ function ns.GetStatisticValue(statisticID)
     return value, (value ~= nil and value ~= "" and value ~= "--")
 end
 
--- Account bank holdings are attributed to the warband rather than to any
--- character. Resolved once, lazily: these globals exist on a live client but
--- not at file load in tests.
+-- Account bank holdings belong to the warband, not to any character. Resolved
+-- lazily: these globals exist on a live client but not at file load in tests.
 local warbandBankLabel
 function ns.WarbandBankLabel()
     if warbandBankLabel then return warbandBankLabel end
@@ -1278,17 +1296,30 @@ function ns.WarbandBankLabel()
     return warbandBankLabel
 end
 
--- Bank vault glyph, shared by the filter-menu row and the result-row category
--- icon so the two can never drift apart.
-ns.BANK_CATEGORY_ICON_TEX = 1121272
-ns.BANK_CATEGORY_ICON_COORDS = { 0.3783, 0.4072, 0.9066, 0.9350 }
+-- The player-facing name of a storage location, from its category.
+function ns.StoredCategoryLabel(category)
+    if category == "Warband" then return ns.WarbandBankLabel() end
+    if category == "Bank" then return _G["BANK"] or "Bank" end
+    return _G["BAGSLOT"] or _G["BAGS"] or "Bags"
+end
 
-ns.ITEMS_CATEGORY_ICON_TEX = 6116514
-ns.ITEMS_CATEGORY_ICON_COORDS = { 0.0395, 0.2563, 0.0667, 0.4845 }
-do
-    local TEX_W, TEX_H = 512, 256
-    local c = ns.ITEMS_CATEGORY_ICON_COORDS
-    ns.ITEMS_CATEGORY_ICON_ASPECT = ((c[2] - c[1]) * TEX_W) / ((c[4] - c[3]) * TEX_H)
+-- "Bank: Alt (5), Otheralt" for a stored-item row. Built once per populate,
+-- never in the render loop: the result is a pure function of the holder list,
+-- which does not change between populates, and the loop runs for every visible
+-- row on every keystroke.
+function ns.StoredHoldersText(holders, category)
+    if not holders or #holders == 0 then return nil end
+    local parts = {}
+    for i = 1, #holders do
+        local holder = holders[i]
+        local who = holder.name or "?"
+        if (holder.count or 1) > 1 then
+            parts[i] = sformat("%s (%d)", who, holder.count)
+        else
+            parts[i] = who
+        end
+    end
+    return ns.StoredCategoryLabel(category) .. ": " .. tconcat(parts, ", ")
 end
 
 -- Size an icon texture to fit within `sz` while preserving `aspect` (width/height):
@@ -3840,7 +3871,7 @@ end
 --      when the label was actually truncated.
 --
 -- Width is derived from the FontString's anchors (GetLeft/GetRight) so no
--- caller needs to hand-code a maxWidth — set L/R anchors and forget. Pass
+-- caller needs to hand-code a maxWidth: set L/R anchors and forget. Pass
 -- opts.maxWidth to override explicitly when anchors aren't bounded.
 --
 -- opts (all optional):

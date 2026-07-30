@@ -34,10 +34,13 @@ Filters.quickFilterOptions = {
     { key = "abilities",      canonical = "abilities",       label = _G["ABILITIES"] or "Abilities",       categories = { "Ability" }, aliases = { "ab", "ability", "abilities", "spell", "spells" } },
     { key = "achievements",   canonical = "achievements",    label = _G["ACHIEVEMENTS"] or "Achievements",    categories = { "Achievement", "Achievements", "Achievement Category", "Guild Achievements" }, aliases = { "a", "ach", "achievement", "achievements" } },
     { key = "statistics",     canonical = "statistics",      label = _G["STATISTICS"] or "Statistics",      categories = { "Statistic", "Statistics" }, aliases = { "s", "stat", "stats", "statistic", "statistics" } },
-    { key = "items",          canonical = "items",           label = _G["ITEMS"] or "Items",          categories = { "Item", "Bag", "Bank" }, aliases = { "i", "item", "items" } },
+    { key = "items",          canonical = "items",           label = _G["ITEMS"] or "Items",          categories = { "Item", "Bag", "Bank", "Warband" }, aliases = { "i", "item", "items" } },
     { key = "catalog",        canonical = "gen",             label = L["FILTER_GENERAL_CATALOG"],      categories = { "Item" }, aliases = { "cat", "catalog", "general" } },
     { key = "bags",           canonical = "bags",            label = _G["BAGS"] or "Bags",            categories = { "Bag" }, aliases = { "b", "bag", "bags" } },
-    { key = "bank",           canonical = "bank",            label = _G["BANK"] or "Bank",            categories = { "Bank" }, aliases = { "bank", "banked", "vault" } },
+    { key = "bank",           canonical = "bank",            label = _G["BANK"] or "Bank",            categories = { "Bank" }, aliases = { "bank", "banked" } },
+    -- The warband bank is a separate place from a character's own bank, so it
+    -- gets its own token rather than being folded into @bank.
+    { key = "warband",        canonical = "warband",         label = ns.WarbandBankLabel and ns.WarbandBankLabel() or "Warband Bank", categories = { "Warband" }, aliases = { "wb", "warband", "warbank" } },
     { key = "bosses",         canonical = "bosses",          label = _G["RAID_BOSSES"] or "Bosses",          categories = { "Boss" }, aliases = { "bo", "boss", "bosses", "encounter", "encounters" } },
     { key = "macros",         canonical = "macros",          label = _G["MACROS"] or "Macros",          categories = { "Macro" }, aliases = { "ma", "macro", "macros" } },
     { key = "commands",       canonical = "commands",        label = L["FILTER_COMMANDS"],        categories = { "Command" }, aliases = { "cmd", "cmds", "command", "commands", "slash" } },

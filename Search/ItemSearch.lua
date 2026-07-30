@@ -73,7 +73,7 @@ end
 -- reports those here: request the data and, once ITEM_DATA_LOAD_RESULT lands,
 -- re-render the open query so the proper name replaces the fallback. Debounced
 -- so a burst of loads triggers a single re-render.
-local pendingLoads, loadListener, refreshTimer
+local pendingLoads, attemptedLoads, loadListener, refreshTimer
 
 local function ScheduleCatalogRefresh()
     if refreshTimer then return end
@@ -90,18 +90,39 @@ local function ScheduleCatalogRefresh()
     end)
 end
 
+-- Does this client know the item at all? GetItemInfoInstant answers from the
+-- client's own item DB with no server round trip and no caching requirement, so
+-- nil means the id is in our shipped blob but not in this build (removed item,
+-- or otherwise unavailable here). Those rows can never resolve a name, an icon,
+-- or a chat link, so they are dropped from results rather than shown as a
+-- lowercase name with a question mark and a Send-link hint that does nothing.
+function ItemSearch:IsResolvable(itemID)
+    if not itemID then return false end
+    if not (C_Item and C_Item.GetItemInfoInstant) then return true end
+    return C_Item.GetItemInfoInstant(itemID) ~= nil
+end
+
 function ItemSearch:NoteUncachedItem(itemID)
     if not itemID then return end
+    -- ONE request per item per session. The listener clears the pending flag on
+    -- any result, so without this an item whose name never resolves is
+    -- re-requested by every re-render, and every result schedules another
+    -- re-render: a ~0.15s loop that re-runs the whole search forever, pinning
+    -- the frame rate and snapping the results scroll back to the top.
+    attemptedLoads = attemptedLoads or {}
+    if attemptedLoads[itemID] then return end
+    attemptedLoads[itemID] = true
     pendingLoads = pendingLoads or {}
-    if pendingLoads[itemID] then return end
     pendingLoads[itemID] = true
     if not loadListener then
         loadListener = CreateFrame("Frame")
         loadListener:RegisterEvent("ITEM_DATA_LOAD_RESULT")
-        loadListener:SetScript("OnEvent", function(_, _, loadedID)
+        loadListener:SetScript("OnEvent", function(_, _, loadedID, success)
             if pendingLoads and pendingLoads[loadedID] then
                 pendingLoads[loadedID] = nil
-                ScheduleCatalogRefresh()
+                -- A failed load cannot change what renders; refreshing on it
+                -- is a re-render that shows the same fallback name again.
+                if success ~= false then ScheduleCatalogRefresh() end
             end
         end)
     end
@@ -185,6 +206,7 @@ function ItemSearch:Search(query, scoreName)
                         data = {
                             itemID = itemID,
                             catalogItem = true,
+                            lookupRow = true,
                             category = "Item",
                             name = nameLower,   -- display name resolves live at render
                             nameLower = nameLower,

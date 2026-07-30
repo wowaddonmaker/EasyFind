@@ -135,7 +135,7 @@ local function BagSpaceValue()
         return nil
     end
     local free, total = 0, 0
-    for bag = 0, 4 do
+    for bag = 0, ns.MaxCarriedBagIndex() do
         local slots = C_Container.GetContainerNumSlots(bag) or 0
         if slots > 0 then
             total = total + slots

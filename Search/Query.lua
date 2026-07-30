@@ -350,8 +350,7 @@ function Search:OnSearchTextChanged(text, force)
     -- re-scan on every change. Query-time also keeps it honest as values
     -- change during play. "all" costs nothing -- the gate below stays off.
     local statMode = EasyFind.db.statisticFilterMode
-    local statRecordedOnly = statMode == "recorded"
-    local statUnrecordedOnly = statMode == "unrecorded"
+    if statMode == "all" then statMode = nil end
     local commandNativeOff = EasyFind.db.commandShowNative == false
     local commandCustomOff = EasyFind.db.commandShowCustom == false
     local bossesFilterOff = filters and filters.bosses == false and not explicitBosses
@@ -368,7 +367,7 @@ function Search:OnSearchTextChanged(text, force)
                     or hidePassives or hideAchievementHeaders or hideGuildAchievements
                     or macroGeneralOff or macroCharOff or bossDungeonOff or bossRaidOff
                     or hideJunk or commandNativeOff or commandCustomOff
-                    or statRecordedOnly or statUnrecordedOnly) then
+                    or statMode) then
         wipe(SCRATCH.filteredResults)
         local filtered = SCRATCH.filteredResults
         local fi = 0
@@ -397,9 +396,9 @@ function Search:OnSearchTextChanged(text, force)
                     and ((d.isRaidBoss and bossRaidOff) or (not d.isRaidBoss and bossDungeonOff))
                 local junkOff = hideJunk and d and d.category == "Bag" and d.quality == 0
                 local statOff = false
-                if (statRecordedOnly or statUnrecordedOnly) and d and d.statisticID then
+                if statMode and d and d.statisticID then
                     local _, hasValue = ns.GetStatisticValue(d.statisticID)
-                    statOff = statRecordedOnly and not hasValue or statUnrecordedOnly and hasValue
+                    statOff = (statMode == "recorded") ~= hasValue
                 end
                 local commandTypeOff = d and d.category == "Command"
                     and ((d.isNativeCommand and commandNativeOff) or (not d.isNativeCommand and commandCustomOff))
@@ -478,10 +477,21 @@ function Search:OnSearchTextChanged(text, force)
     -- through. Pinned items aren't in this set (they only show on empty
     -- query), so the cap is a clean top-N over the actual search match
     -- list. 15 matches the original uiMaxResults default.
+    -- Fill the cap from the sorted list, skipping catalog rows this client
+    -- cannot resolve. Done HERE rather than in ItemSearch so the resolvable
+    -- check runs on roughly the number of rows actually shown, not on every
+    -- scored match -- a three-letter query can match thousands.
     local TOP_N = 15
-    if #combined > TOP_N then
-        for ri = #combined, TOP_N + 1, -1 do combined[ri] = nil end
+    local kept = 0
+    for ri = 1, #combined do
+        local d = combined[ri].data
+        if not (d and d.catalogItem and not ns.ItemSearch:IsResolvable(d.itemID)) then
+            kept = kept + 1
+            combined[kept] = combined[ri]
+            if kept >= TOP_N then break end
+        end
     end
+    for ri = #combined, kept + 1, -1 do combined[ri] = nil end
 
     -- Inline achievement results: drive Blizzard's indexed achievement
     -- search and surface its results directly in our dropdown. First

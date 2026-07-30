@@ -61,9 +61,16 @@ end
 -- it wrong differently -- the bag-open path highlights a slot that is not
 -- there, and the secure path arms /use on an item this character does not have.
 function Handlers:IsRemoteStoredItem(data)
-    if not data then return false end
-    if data.bankHolders then return true end
-    return data.bagHolders ~= nil and data.bagID == nil
+    return data ~= nil and data.storedRemote == true
+end
+
+-- Rows whose only action is "put the item on the cursor so it can be linked":
+-- the catalog, loot, and anything stored where this character cannot reach it.
+-- Stamped at populate (lookupRow), never inferred from category here -- an
+-- inferred list falls behind the moment a new row kind is added, and the
+-- symptom is a row that silently does nothing on click.
+function Handlers:IsLookupRow(data)
+    return data ~= nil and data.lookupRow == true
 end
 
 function Handlers:GetBagItemActionKind(data)

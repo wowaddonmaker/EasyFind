@@ -88,11 +88,13 @@ local function KnownExpansionPages(parentSkillLine)
         end
     end
     tsort(out, function(a, b) return a.professionID > b.professionID end)
-    -- An empty result is NOT cached. Called early in a session the per-page
-    -- skillLevel can still read 0, and an empty table is truthy, so caching it
-    -- pins "this character owns no expansion pages" for the whole session --
-    -- the profession's recipes then never materialize until a reload.
-    if #out > 0 then
+    -- Cache only once the APIs have actually answered. Early in a session
+    -- GetAllProfessionTradeSkillLines can come back empty, and an empty table
+    -- is truthy, so caching that pins "owns no expansion pages" for the whole
+    -- session and the recipes never appear until a reload. A genuine empty
+    -- result from a populated list IS cached -- otherwise every call redoes a
+    -- ~100-entry pcall scan.
+    if #out > 0 or #allLines > 0 then
         expansionCache[parentSkillLine] = out
     end
     return out
