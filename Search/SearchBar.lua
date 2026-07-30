@@ -552,7 +552,7 @@ function Search:CreateSearchFrame()
             -- block only rejects WoW's load-time auto-focus, which never
             -- arrives with the cursor pressed on the box. Without this,
             -- the never-expiring Always Show block eats the session's
-            -- first click (parent OnMouseDown can't clear it — the
+            -- first click (parent OnMouseDown can't clear it, the
             -- editbox consumes presses over the input area).
             if self:IsMouseOver() and IsMouseButtonDown("LeftButton")
                 and not self._dragMoving and not searchFrame.setupMode then

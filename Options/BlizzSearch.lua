@@ -1430,7 +1430,7 @@ local function ScrollToSettingVariable(variable)
             -- panel is left on the Base tab and the user doesn't see
             -- the actual setting they searched for. Defer the child
             -- lookup one frame so the tab swap has settled before we
-            -- grab the row reference — otherwise we end up holding a
+            -- grab the row reference, otherwise we end up holding a
             -- Base-tab frame that goes hidden the next frame and the
             -- highlight watchdog clears it immediately.
             local tabSwapped
@@ -2807,7 +2807,7 @@ local function CollectGameSettings()
     -- curated variable. Otherwise: when a curated entry gets skipped by
     -- the emittedVars check, its NAME never lands in emittedNameKeys, and
     -- a second variable that happens to share that localized display name
-    -- (e.g. cameraSmoothStyle vs cameraSmoothTrackingStyle — both resolve
+    -- (e.g. cameraSmoothStyle vs cameraSmoothTrackingStyle, both resolve
     -- to "Camera Following Style") slips through and duplicates the row.
     for i = 1, #SETTINGS_DATA do
         local row = SETTINGS_DATA[i]

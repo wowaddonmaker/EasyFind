@@ -110,12 +110,12 @@ function tests.condense_slidesScatteredStrikeMatch()
     -- 12345678901234567 (1-based)
     --
     -- Positions: s=4 (Cru[s]ader), t=11 (S[t]rike), r=12 ([r]), i=13 ([i]),
-    --            k=14 ([k]), e=15 ([e]). Wait — checking: "Crusader Strike"
+    --            k=14 ([k]), e=15 ([e]). Wait, checking: "Crusader Strike"
     --            indices 1-15. Letters: C(1) r(2) u(3) s(4) a(5) d(6) e(7)
     --            r(8) ' '(9) S(10) t(11) r(12) i(13) k(14) e(15).
     --
     -- The scattered match picks the FIRST occurrence of each letter:
-    --   s=4, t=11, r=2, i=13, k=14, e=7 — but a real matcher walks left
+    --   s=4, t=11, r=2, i=13, k=14, e=7, but a real matcher walks left
     --   to right so it'd be: s=4, t=11, r=12, i=13, k=14, e=15. The
     --   condenser then slides the leading s into position 10 (S in
     --   "Strike"), merging all six into one range from=10 to=15.

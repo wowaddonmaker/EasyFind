@@ -443,7 +443,7 @@ function Rows.CreateSettingWidgets(resultRow)
     -- silently chop with no marker, so we measure and append "..." when
     -- the value would overflow the chevron-padded button.
     -- Compute the maximum text width by measuring from the button's LEFT
-    -- and the chevron texture's LEFT — completely programmatic, so any
+    -- and the chevron texture's LEFT, completely programmatic, so any
     -- future relayout / locale change picks up the right truncation
     -- automatically. Returns nil when positions aren't yet computed; the
     -- caller defers truncation to OnSizeChanged in that case.

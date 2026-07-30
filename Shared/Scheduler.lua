@@ -128,7 +128,7 @@ local function removeFromQueue(queue, id)
 end
 
 ---Enqueues a job. Idempotent for pending/queued/running jobs (bumps
----debounce if any). No-op for `complete` jobs — use Reset/CancelGroup
+---debounce if any). No-op for `complete` jobs; use Reset/CancelGroup
 ---first if you need to re-run.
 ---@param id string
 ---@return boolean enqueued

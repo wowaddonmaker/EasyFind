@@ -121,7 +121,7 @@ function tests.isSubsequence_firstCharMustMatch()
 end
 
 function tests.isSubsequence_rejectsSparse()
-    -- "inn" in "instance" hits positions 1, 2, 6 — span 6 > queryLen*2-1 = 5.
+    -- "inn" in "instance" hits positions 1, 2, 6; span 6 > queryLen*2-1 = 5.
     H.assertFalse(Database:IsSubsequence("instance", "inn", 3))
 end
 

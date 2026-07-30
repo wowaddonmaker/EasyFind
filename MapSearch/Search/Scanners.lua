@@ -45,7 +45,7 @@ function MapSearch:ScanFlightMasters(mapID)
 
     -- UnitFactionGroup returns one of "Alliance" / "Horde" / "Neutral"
     -- as a stable, locale-independent string (Blizzard enum-like return,
-    -- not a localized display label) — safe to compare against literals.
+    -- not a localized display label), so it is safe to compare against literals.
     local playerFaction = UnitFactionGroup("player")
     local FPFaction = Enum.FlightPathFaction
 

@@ -84,7 +84,7 @@ end
 Harness.Clock = Clock
 
 -- ============================================================================
--- Frame stub (CreateFrame) — minimal surface
+-- Frame stub (CreateFrame): minimal surface
 -- ============================================================================
 local function newFrame()
     local handlers, attributes, points = {}, {}, {}
@@ -317,7 +317,7 @@ function Harness.newNs(env)
     for i = 1, #moduleNames do
         ns[moduleNames[i]] = {}
     end
-    -- Utils is special — built once with the env's clock so SafeAfter ties
+    -- Utils is special: built once with the env's clock so SafeAfter ties
     -- into the deterministic clock for tests.
     ns.Utils = buildUtilsStub(env and env._clock or Clock.new())
     -- Localization table: mirror Shared/Localization.lua's ultimate fallback

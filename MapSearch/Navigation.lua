@@ -560,7 +560,7 @@ function MapSearch:SelectResult(data, directOverride)
         -- always lands at the actual entrance with a highlight on the
         -- in-game pin. Without this, MapTab clicks on instances fall
         -- into the zone branch and (in guide mode, the default) only
-        -- draw a zone outline — no entrance highlight until the user
+        -- draw a zone outline, no entrance highlight until the user
         -- enters the zone. Mirrors what HandleUISearchClick does for
         -- the main search bar.
         if data.isDungeonEntrance and data.entranceMapID

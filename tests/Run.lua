@@ -7,7 +7,7 @@ package.path = TEST_DIR .. "/?.lua;" .. package.path
 
 local function listTestFiles()
     local files = {}
-    -- Use shell globbing — works on bash/git-bash; on PowerShell call via /c/...
+    -- Use shell globbing: works on bash/git-bash; on PowerShell call via /c/...
     local cmd = string.format([[ls "%s"/test_*.lua 2>/dev/null]], TEST_DIR:gsub("\\", "/"))
     local handle = io.popen(cmd)
     if handle then

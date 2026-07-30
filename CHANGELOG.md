@@ -424,9 +424,9 @@ EasyFind 2.0 is a full rewrite of the search and map experience. Launch the in-g
   - **Retail**: Uses retail Quest log style, as well as rounded edges for search bar
   - **Classic**: A more basic, barebones look reminiscent of addons in the Classic WoW days
 - **New Slash Commands**:
-  - `/ef hide` — Hide the search bar
-  - `/ef show` — Show the search bar
-  - `/ef clear` — Dismiss active highlights and guides
+  - `/ef hide` - Hide the search bar
+  - `/ef show` - Show the search bar
+  - `/ef clear` - Dismiss active highlights and guides
 
 ### Changed
 - **Search Bar Visual Improvements**:
