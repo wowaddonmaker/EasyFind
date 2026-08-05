@@ -27,6 +27,16 @@ local WN_BTN_MIN_W = 130
 local WN_BTN_H = 22
 local WN_BTN_TEXT_PAD = 24
 
+-- The body names an item to make the drag-to-link example concrete. Read
+-- the name from the API rather than writing it into each locale: this is
+-- the one string in the popup the client can translate for us. 6948 is the
+-- Hearthstone, which every character carries.
+local HEARTHSTONE_ITEM_ID = 6948
+local function BodyText()
+    local name = GetItemInfo and GetItemInfo(HEARTHSTONE_ITEM_ID)
+    return Utils.sformat(L["WHATSNEW_BODY"], name or "Hearthstone")
+end
+
 local frame
 
 function Onboarding:ShowWhatsNew(version)
@@ -70,7 +80,7 @@ function Onboarding:ShowWhatsNew(version)
         body:SetJustifyV("TOP")
         body:SetSpacing(4)
         body:SetTextColor(Utils.RGB(TEXT_BODY, 1))
-        body:SetText(L["WHATSNEW_BODY"])
+        body:SetText(BodyText())
         f._body = body
 
         -- Permanent footer: clickable "See full changelog" opens the copy
@@ -101,7 +111,7 @@ function Onboarding:ShowWhatsNew(version)
     local versionLabel = version or ns.version or "?"
     frame._verText:SetText("v" .. versionLabel)
 
-    frame._body:SetText(L["WHATSNEW_BODY"])
+    frame._body:SetText(BodyText())
 
     local contentW = Utils.MaxContentWidth({ frame._title, frame._verText, frame._body })
     frame:SetWidth(mmax(WN_MIN_W, mmin(WN_MAX_W, mceil(contentW) + WN_PAD_X * 2)))

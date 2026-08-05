@@ -279,15 +279,20 @@ L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffSearch your professions|r\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffSearch every item in the game|r\n" ..
-    "    |cff999999-|r Off by default. The catalog is large, so recommended use is keeping it off and reaching via '@gen' quick filter\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffFind items on your other characters|r\n" ..
-    "    |cff999999-|r Your bank, the warband bank, and any alt you have logged in on\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffSearch your professions (enable in filter menu)|r\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffSearch every item in the game (enable in filter menu)|r\n" ..
+    "    |cff999999-|r The catalog is large, so recommended use is keeping it off and reaching via '@gen' quick filter\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffSearch your bank from anywhere (enable in filter menu)|r\n" ..
+    "    |cff999999-|r Your bank and the warband bank, as they were when you last opened them\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffFind items on your other characters (enable in filter menu)|r\n" ..
+    "    |cff999999-|r Every alt you have logged in on, banks included\n" ..
     "|cffFFD100\226\128\162|r |cffffffffClick or drag any item into chat|r\n" ..
     "    |cff999999-|r Drop it on a channel, a whisper, or the chat box to share it\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffSee titles you have not earned yet|r\n" ..
+    "    |cff999999-|r Ex: search %s, then Shift+drag it into the chat box to link it\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffSee titles you have not earned yet (enable in filter menu)|r\n" ..
     "    |cff999999-|r Hover for the achievement that awards it, Alt+click to open\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffAchievement tooltips on hover|r\n" ..
+    "    |cff999999-|r Criteria, progress and rewards, without opening the achievement\n" ..
     "|cffFFD100\226\128\162|r |cffffffffSearch 'gold', 'durability' or 'item level'|r\n" ..
     "    |cff999999-|r The answer appears inline above your results. Also keystone, rating, bag space and speed\n" ..
     "|cffFFD100\226\128\162|r |cffffffffNew filter options|r\n" ..

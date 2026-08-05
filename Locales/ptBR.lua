@@ -256,15 +256,20 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bem-vindo ao |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "aqui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver o changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffPesquise suas profissões|r\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffPesquise qualquer item do jogo|r\n" ..
-    "    |cff999999-|r Desligado por padrão. O catálogo é grande, então o uso recomendado é mantê-lo desligado e acessar pelo filtro rápido '@gen'\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffEncontre itens em seus outros personagens|r\n" ..
-    "    |cff999999-|r Seu banco, o banco do bando de guerra e qualquer personagem em que você tenha entrado\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffPesquise suas profissões (ative no menu de filtros)|r\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffPesquise qualquer item do jogo (ative no menu de filtros)|r\n" ..
+    "    |cff999999-|r O catálogo é grande, então o uso recomendado é mantê-lo desligado e acessar pelo filtro rápido '@gen'\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffPesquise seu banco de qualquer lugar (ative no menu de filtros)|r\n" ..
+    "    |cff999999-|r Seu banco e o banco do bando de guerra, como estavam na última vez que você os abriu\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffEncontre itens em seus outros personagens (ative no menu de filtros)|r\n" ..
+    "    |cff999999-|r Qualquer personagem em que você tenha entrado, bancos incluídos\n" ..
     "|cffFFD100\226\128\162|r |cffffffffVincule itens no chat com clique ou arrasto|r\n" ..
     "    |cff999999-|r Solte em um canal, um sussurro ou na caixa de chat\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffVeja títulos que você ainda não conquistou|r\n" ..
+    "    |cff999999-|r Ex.: pesquise %s e arraste com Shift para a caixa de chat\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffVeja títulos que você ainda não conquistou (ative no menu de filtros)|r\n" ..
     "    |cff999999-|r Mostra a conquista que o concede; Alt+clique para abrir\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffDicas de conquistas ao passar o mouse|r\n" ..
+    "    |cff999999-|r Critérios, progresso e recompensas, sem abrir a conquista\n" ..
     "|cffFFD100\226\128\162|r |cffffffffPesquise 'ouro', 'durabilidade' ou 'nível de item'|r\n" ..
     "    |cff999999-|r A resposta aparece logo acima dos resultados. Também chave, classificação, espaço e velocidade\n" ..
     "|cffFFD100\226\128\162|r |cffffffffNovas opções de filtro|r\n" ..

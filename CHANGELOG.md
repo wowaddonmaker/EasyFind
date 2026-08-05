@@ -4,25 +4,37 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
-## [2.2.0] - 2026-07-25
+## [2.2.0] - 2026-08-04
 
 ### Added
-- **Professions search**: your recipes are now searchable by name. Results cast the recipe straight from the search bar, and a filter flyout mirrors the profession window's own recipe filters so both stay in step. Only expansions you own are listed
-- **Item catalog**: every item in the game is now searchable, not just the ones you own. Catalog results are ranked alongside everything else rather than burying it, and come with their own filters for crafting quality tier and item type. Find them under Items in the filter menu, or type `@gen`
-- **Toy and pet filters**: toys and pets now have full filter options like mounts do, matching what their own journals offer. Toys filter by collected state, source and expansion; pets by collected state, source and family. These narrow EasyFind's results only and leave your Toy Box and Pet Journal exactly as you had them
-- **Send item links to chat**: click or drag any item result to pick it up, then click a chat channel to link it there, or drop it on the world to put it in `/say`. Search results can also be added to a Note
-- **Unearned titles**: the Titles filter can now list titles you have *not* earned, so you can see what is left to chase. Hovering one shows the achievement that awards it, and clicking opens straight to that achievement. Off by default: switch Titles to Incomplete or All in the filter menu
-- **Equipment Manager filters**: gear set results can be narrowed to a single specialization, and a set assigned to a spec now shows that spec's icon on its row, matching the Equipment Manager itself
-- **Tooltips on hover**: achievement results show their full tooltip (progress, criteria, reward), and title results show the tooltip of the achievement that grants them
+- **Professions search**: your recipes are now searchable by name. Enable it under Professions in the filter menu
+- **Item catalog**: every item in the game is now searchable, not just the ones you own. Find it under Items in the filter menu, or type `@gen`
+- **Bank search**: your bank and the warband bank are searchable from anywhere. `@bank` is yours, `@warband` is the account's. Enable it under Items in the filter menu
+- **Items on your other characters**: search what your alts are carrying, bags and banks alike. Choose whose storage feeds your results in the filter menu
+- **Inline answers**: type `gold`, `item level`, `durability`, `keystone`, `bag space`, `rating` or `speed` and the answer appears above your results. Click it to copy, gold included, which pastes as `1g 2s 3c`
+- **Toy and pet filters**: toys filter by collected state, source and expansion; pets by collected state, source and family
+- **Send item links to chat**: click or drag any item result to pick it up, then click a chat channel to link it there. Search results can also be added to a Note
+- **Unearned titles**: the Titles filter can now list titles you have *not* earned. Hovering one shows the achievement that awards it, and clicking opens straight to it. Switch Titles to Incomplete or All in the filter menu
+- **Statistics filter**: narrow statistics to Recorded or Not Recorded
+- **Equipment Manager filters**: gear sets can be narrowed to a single specialization, and a set assigned to a spec shows that spec's icon on its row
+- **Tooltips on hover**: achievement results show their full tooltip with progress, criteria and reward, and title results show the tooltip of the achievement that grants them
+- **`/clear`** clears the chat window
 
 ### Changed
-- **Uncollected pets** open the Pet Journal when clicked, matching how uncollected mounts already behaved, instead of doing nothing
+- **Loot results behave like every other item row**: click or drag links the drop, Alt opens the Encounter Journal, Ctrl previews it in the dressing room
+- **Uncollected pets** open the Pet Journal when clicked, instead of doing nothing
+- **Smaller download**: four textures right-sized to what is actually drawn, 1.8 MB down to 213 KB
 
 ### Fixed
-- **Wowhead links for titles** pointed at an unrelated page, because the game's internal title number is not the one Wowhead uses. Titles now link to the achievement that awards them, which is the page that actually explains how to get it
-- **Toys, mounts and outfits could stop working after a search**: revealing one in its journal left the game's own button unusable, so your next click on it was blocked and nothing happened. Revealing no longer touches those buttons
-- **Escape could stop responding**: in some states EasyFind held onto the Escape key while having nothing to close, so presses were swallowed and never reached the game. Escape now hands the key back the moment it has nothing to dismiss
-- **Menu hover highlights**: rows across the filter menus now share one rounded highlight that no longer disappears behind the menu it sits on
+- **Wowhead links for titles** pointed at an unrelated page. Titles now link to the achievement that awards them
+- **Toys, mounts and outfits could stop working after a search**: revealing one in its journal left the game's own button unusable, so your next click on it did nothing
+- **Escape could stop responding**: EasyFind held onto the key while having nothing to close. It now hands the key back the moment it has nothing to dismiss
+- **The search bar could sink behind other windows while typing**
+- **Multi-word statistic and achievement searches**: "gold per day" now matches "Average gold earned per day"
+- **Reagent bag contents were unsearchable**
+- **Missing icons**: uncollected pets lost theirs, and currency and reputation rows fell back to a question mark
+- **Result names could be cut short** with room to spare
+- **Menu hover highlights**: filter menu rows no longer lose their highlight behind the menu, and the filter button keeps its hover look while its menu is open
 
 ---
 

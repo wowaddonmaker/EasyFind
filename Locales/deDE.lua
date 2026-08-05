@@ -258,15 +258,20 @@ L["WHATSNEW_CHAT_HELLO"]                = "Willkommen bei |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vollständiges Änderungsprotokoll"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffBerufe durchsuchen|r\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffJeden Gegenstand im Spiel suchen|r\n" ..
-    "    |cff999999-|r Standardmäßig aus. Der Katalog ist groß, daher am besten aus lassen und über den Schnellfilter '@gen' nutzen\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffGegenstände anderer Charaktere finden|r\n" ..
-    "    |cff999999-|r Deine Bank, die Kriegsmeutebank und jeder Twink, auf dem du dich eingeloggt hast\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffBerufe durchsuchen (im Filtermenü aktivieren)|r\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffJeden Gegenstand im Spiel suchen (im Filtermenü aktivieren)|r\n" ..
+    "    |cff999999-|r Der Katalog ist groß, daher am besten aus lassen und über den Schnellfilter '@gen' nutzen\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffDeine Bank von überall durchsuchen (im Filtermenü aktivieren)|r\n" ..
+    "    |cff999999-|r Deine Bank und die Kriegsmeutebank, im Zustand des letzten Öffnens\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffGegenstände anderer Charaktere finden (im Filtermenü aktivieren)|r\n" ..
+    "    |cff999999-|r Jeder Twink, auf dem du dich eingeloggt hast, samt Banken\n" ..
     "|cffFFD100\226\128\162|r |cffffffffGegenstände per Klick oder Ziehen verlinken|r\n" ..
     "    |cff999999-|r Lass ihn auf einem Kanal, einem Flüstern oder dem Chatfeld los\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffNoch nicht erspielte Titel sehen|r\n" ..
+    "    |cff999999-|r Bsp.: Suche %s und zieh ihn mit Umschalt+Ziehen ins Chatfeld\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffNoch nicht erspielte Titel sehen (im Filtermenü aktivieren)|r\n" ..
     "    |cff999999-|r Zeigt den Erfolg dazu, mit Alt+Klick öffnen\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffErfolgs-Tooltips beim Überfahren|r\n" ..
+    "    |cff999999-|r Kriterien, Fortschritt und Belohnungen, ohne den Erfolg zu öffnen\n" ..
     "|cffFFD100\226\128\162|r |cffffffffSuche nach 'Gold', 'Haltbarkeit' oder 'Gegenstandsstufe'|r\n" ..
     "    |cff999999-|r Die Antwort erscheint direkt über den Ergebnissen. Auch Schlüsselstein, Wertung, Taschenplatz und Tempo\n" ..
     "|cffFFD100\226\128\162|r |cffffffffNeue Filteroptionen|r\n" ..

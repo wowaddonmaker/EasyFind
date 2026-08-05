@@ -256,15 +256,20 @@ L["WHATSNEW_CHAT_HELLO"]                = "Benvenuto in |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "qui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vedi il changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffCerca le tue professioni|r\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffCerca qualsiasi oggetto del gioco|r\n" ..
-    "    |cff999999-|r Disattivato di default. Il catalogo è enorme, quindi è consigliabile lasciarlo disattivato e accedervi con il filtro rapido '@gen'\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffTrova oggetti sugli altri personaggi|r\n" ..
-    "    |cff999999-|r La tua banca, la banca della Congrega e ogni personaggio con cui hai fatto accesso\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCerca le tue professioni (attiva nel menu dei filtri)|r\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCerca qualsiasi oggetto del gioco (attiva nel menu dei filtri)|r\n" ..
+    "    |cff999999-|r Il catalogo è enorme, quindi è consigliabile lasciarlo disattivato e accedervi con il filtro rapido '@gen'\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCerca nella tua banca da ovunque (attiva nel menu dei filtri)|r\n" ..
+    "    |cff999999-|r La tua banca e la banca della Congrega, come erano all'ultima apertura\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffTrova oggetti sugli altri personaggi (attiva nel menu dei filtri)|r\n" ..
+    "    |cff999999-|r Ogni personaggio con cui hai fatto accesso, banche incluse\n" ..
     "|cffFFD100\226\128\162|r |cffffffffCollega un oggetto in chat con clic o trascinamento|r\n" ..
     "    |cff999999-|r Rilascialo su un canale, un sussurro o la casella di chat\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffVedi i titoli che non hai ancora ottenuto|r\n" ..
+    "    |cff999999-|r Es.: cerca %s e trascinalo con Maiusc nella casella di chat\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffVedi i titoli che non hai ancora ottenuto (attiva nel menu dei filtri)|r\n" ..
     "    |cff999999-|r Mostra l'impresa che lo assegna; Alt+clic per aprirla\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffDescrizioni delle imprese al passaggio del mouse|r\n" ..
+    "    |cff999999-|r Criteri, progressi e ricompense, senza aprire l'impresa\n" ..
     "|cffFFD100\226\128\162|r |cffffffffCerca 'oro', 'integrità' o 'livello oggetto'|r\n" ..
     "    |cff999999-|r La risposta compare sopra ai risultati. Anche chiave, punteggio, spazio nelle borse e velocità\n" ..
     "|cffFFD100\226\128\162|r |cffffffffNuove opzioni di filtro|r\n" ..
