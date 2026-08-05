@@ -237,11 +237,17 @@ function Search:Initialize()
 end
 
 -- Two-state strata: LOW while idle (HUD behind every window), DIALOG while
--- results are open (menu above action bars and windows). Driven by the
--- results frame's OnShow/OnHide hooks; combat never flips it because
--- results visibility changes in combat are alpha-based, not Show/Hide.
+-- ACTIVE -- results open OR the editbox holding keyboard focus. Focus counts:
+-- typing with no results yet (one letter, a query with no hits) must not
+-- drop the bar behind other windows mid-keystroke. Driven by the results
+-- frame's OnShow/OnHide hooks plus the editbox focus hooks; combat never
+-- flips it because results visibility changes in combat are alpha-based,
+-- not Show/Hide.
 function Search:UpdateStackStrata()
-    local strata = (resultsFrame and resultsFrame:IsShown()) and "DIALOG" or "LOW"
+    local editBox = searchFrame and searchFrame.editBox
+    local active = (resultsFrame and resultsFrame:IsShown())
+        or (editBox and editBox:HasFocus())
+    local strata = active and "DIALOG" or "LOW"
     if searchFrame then
         searchFrame:SetFrameStrata(strata)
         if searchFrame.toolbarHighlight then
@@ -309,6 +315,8 @@ function Search:RegisterCombatEvents()
     -- Move-dim undims while typing; focus changes re-resolve the alpha.
     searchFrame.editBox:HookScript("OnEditFocusGained", ApplyAlwaysBarAlpha)
     searchFrame.editBox:HookScript("OnEditFocusLost", ApplyAlwaysBarAlpha)
+    searchFrame.editBox:HookScript("OnEditFocusGained", function() Search:UpdateStackStrata() end)
+    searchFrame.editBox:HookScript("OnEditFocusLost", function() Search:UpdateStackStrata() end)
     ns.eventFrame:HookScript("OnEvent", function(self, event)
         if event == "PLAYER_REGEN_DISABLED" then
             inCombat = true
@@ -1036,12 +1044,26 @@ function Search:CreateSearchFrame()
     end)
     filterBtn:SetScript("OnLeave", function(self)
         self._tooltipToken = (self._tooltipToken or 0) + 1
-        if not self.keyboardFocused then
+        -- The button stays ENGAGED (hover look) the whole time its menu is
+        -- open, like a result row during its context menu.
+        local dd = searchFrame.filterDropdown
+        if not self.keyboardFocused and not (dd and dd:IsShown()) then
             self.btnBg:Hide()
             SetRingShown(self, false)
         end
         GameTooltip_Hide()
     end)
+    -- Engage/disengage from the dropdown's lifecycle (hooked where the
+    -- dropdown is created); disengage respects hover/keyboard focus.
+    filterBtn.SetMenuEngaged = function(self, engaged)
+        if engaged then
+            self.btnBg:Show()
+            SetRingShown(self, true)
+        elseif not self:IsMouseOver() and not self.keyboardFocused then
+            self.btnBg:Hide()
+            SetRingShown(self, false)
+        end
+    end
     searchFrame.filterBtn = filterBtn
 
     editBox:ClearAllPoints()

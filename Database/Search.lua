@@ -720,6 +720,43 @@ function Database:ScoreName(nameLower, query, queryLen, optQueryWords)
     return score
 end
 
+-- The multi-word form of a strong name match, for the gated categories
+-- (Statistic / Achievement Category without an "ach"/"stat" query word):
+-- EVERY query word must land on a distinct name word at exact or prefix
+-- strength ("gold per day" -> "Average gold earned per day"). Deliberately
+-- stricter than ScoreName's multi-word path -- no fuzzy/contains/subsequence
+-- word tiers -- so the gate keeps meaning strong matches only.
+local strongNameUsedWords = {}
+local function StrongMultiWordNameScore(nameLower, queryWords)
+    local nameWords = GetWords(nameLower)
+    local numQueryWords = #queryWords
+    if #nameWords < numQueryWords then return 0 end
+    wipe(strongNameUsedWords)
+    local total = 0
+    for qwi = 1, numQueryWords do
+        local qw = queryWords[qwi]
+        local best = 0
+        local bestIdx = 0
+        for ni = 1, #nameWords do
+            if not strongNameUsedWords[ni] then
+                local nw = nameWords[ni]
+                if nw == qw then
+                    best = 100
+                    bestIdx = ni
+                    break
+                elseif best < 90 and sfind(nw, qw, 1, true) == 1 then
+                    best = 90
+                    bestIdx = ni
+                end
+            end
+        end
+        if bestIdx == 0 then return 0 end
+        strongNameUsedWords[bestIdx] = true
+        total = total + best
+    end
+    return total / numQueryWords
+end
+
 function Database:ScoreKeywords(keywordsLower, query, queryLen, optQueryWords)
     if not keywordsLower then return 0 end
 
@@ -1518,6 +1555,8 @@ function Database:SearchUI(query, skipCategories)
                         score = NAME_PREFIX_SCORE
                     elseif Database:FindAtWordBoundary(nameLower, query) then
                         score = 120
+                    elseif #queryWords >= 2 then
+                        score = StrongMultiWordNameScore(nameLower, queryWords)
                     else
                         score = 0
                     end

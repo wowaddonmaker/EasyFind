@@ -1484,5 +1484,16 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         end
     end)
 
-    Search:GetSearchFrame().filterDropdown = dropdown
+    local searchFrame = Search:GetSearchFrame()
+    searchFrame.filterDropdown = dropdown
+    -- The filter button stays engaged (its own hover look) while this menu is
+    -- open, exactly like a result row during its context menu.
+    dropdown:HookScript("OnShow", function()
+        local btn = searchFrame.filterBtn
+        if btn and btn.SetMenuEngaged then btn:SetMenuEngaged(true) end
+    end)
+    dropdown:HookScript("OnHide", function()
+        local btn = searchFrame.filterBtn
+        if btn and btn.SetMenuEngaged then btn:SetMenuEngaged(false) end
+    end)
 end

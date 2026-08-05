@@ -8,6 +8,7 @@ local ns = H.newNs(env)
 -- IsLootStatSearchWord on it. Stub the dependency before loading.
 ns.Database.uiSearchData = {}
 ns.Database.IsLootStatSearchWord = function() return false end
+ns.Database.IsLootSlotSearchWord = function() return false end
 
 H.loadModule("Shared/SearchText.lua", env, ns)
 local Database = H.loadModule("Database/Search.lua", env, ns)
@@ -169,6 +170,90 @@ function tests.warmSearchHotPath_warmsCachedAsyncProvidersThroughGate()
     H.assertEq(warmed["loot"], 1, "loot cache should warm during warmup")
     H.assertEq(warmed["statistics"], 1, "statistics cache should warm during warmup")
     H.assertEq(warmed["bosses"], 1, "boss cache should warm during warmup")
+end
+
+-- SearchUI gating for Statistic / Achievement Category entries: without an
+-- "ach"/"stat" query word only strong name matches surface -- exact, prefix,
+-- whole-query word boundary, or every query word exact/prefix on a distinct
+-- name word. Keyword, fuzzy, and contains matches stay gated.
+local statEntry = {
+    name = "Average gold earned per day",
+    nameLower = "average gold earned per day",
+    category = "Statistic",
+    keywordsLower = { "economy" },
+}
+
+local function withEntries(entries, fn)
+    local data = Database.uiSearchData
+    for i = 1, #entries do data[i] = entries[i] end
+    Database:ResetSearchCache()
+    fn()
+    for i = #data, 1, -1 do data[i] = nil end
+    Database:ResetSearchCache()
+end
+
+local function findsEntry(results, entry)
+    for i = 1, #results do
+        if results[i].data == entry then return true end
+    end
+    return false
+end
+
+function tests.scoreName_multiWordAnyOrderMatchesStatName()
+    local score = Database:ScoreName("average gold earned per day",
+        "gold per day", #"gold per day", { "gold", "per", "day" })
+    H.assertTrue(score >= 90, "all-words name match should score >= 90, got " .. score)
+end
+
+function tests.searchUI_gatedStatMatchesMultiWordName()
+    withEntries({ statEntry }, function()
+        H.assertTrue(findsEntry(Database:SearchUI("gold per day"), statEntry),
+            "multi-word all-name match should pass the ach gate")
+    end)
+end
+
+function tests.searchUI_gatedStatMatchesWordBoundary()
+    withEntries({ statEntry }, function()
+        H.assertTrue(findsEntry(Database:SearchUI("gold"), statEntry),
+            "word-boundary match should pass the ach gate")
+    end)
+end
+
+function tests.searchUI_gatedStatSurvivesIncrementalTyping()
+    withEntries({ statEntry }, function()
+        H.assertTrue(findsEntry(Database:SearchUI("gold"), statEntry), "step: gold")
+        H.assertTrue(findsEntry(Database:SearchUI("gold p"), statEntry), "step: gold p")
+        H.assertTrue(findsEntry(Database:SearchUI("gold per"), statEntry), "step: gold per")
+        H.assertTrue(findsEntry(Database:SearchUI("gold per day"), statEntry), "step: gold per day")
+    end)
+end
+
+function tests.searchUI_gatedKeywordsStayGated()
+    withEntries({ statEntry }, function()
+        H.assertTrue(not findsEntry(Database:SearchUI("economy"), statEntry),
+            "keyword match must not pass the ach gate")
+    end)
+end
+
+function tests.searchUI_statWordStillUnlocksKeywords()
+    withEntries({ statEntry }, function()
+        H.assertTrue(findsEntry(Database:SearchUI("stat economy"), statEntry),
+            "a typed stat word should unlock keyword scoring")
+    end)
+end
+
+function tests.searchUI_gatedRejectsTypoWord()
+    withEntries({ statEntry }, function()
+        H.assertTrue(not findsEntry(Database:SearchUI("golf per day"), statEntry),
+            "a typo'd word must not pass the gate even among exact words")
+    end)
+end
+
+function tests.searchUI_gatedRejectsContainsOnlyWord()
+    withEntries({ statEntry }, function()
+        H.assertTrue(not findsEntry(Database:SearchUI("old per day"), statEntry),
+            "a mid-word substring must not pass the gate")
+    end)
 end
 
 local pass, fail, failures = H.runSuite("Database/Search", tests)
