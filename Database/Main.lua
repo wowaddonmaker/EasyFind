@@ -5113,7 +5113,7 @@ local function StartTitleSourceBuild()
         -- it landed is wrong (empty on a cold cache). Rebuild it now that the
         -- sources are known.
         if db and db.titleFilterMode and db.titleFilterMode ~= "earned" then
-            Database:MarkDynamicCategoryDirty("titles")
+            Database:RefreshDynamicCategory("titles")
         end
     end
 
