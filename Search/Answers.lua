@@ -65,7 +65,41 @@ local function CoinText(amount)
     return tostring(amount)
 end
 
-local function GoldValue()
+-- The row shows coin TEXTURES, which cannot survive a copy: paste the
+-- displayed string anywhere outside the game and the icons are gone,
+-- leaving bare numbers with nothing to say which is gold and which is
+-- silver. The copied form spells the denominations out with the client's
+-- own coin letters instead.
+local COIN_SYMBOLS = {
+    _G["GOLD_AMOUNT_SYMBOL"] or "g",
+    _G["SILVER_AMOUNT_SYMBOL"] or "s",
+    _G["COPPER_AMOUNT_SYMBOL"] or "c",
+}
+
+local function PlainCoinText(amount)
+    amount = amount or 0
+    local perSilver = COPPER_PER_SILVER or 100
+    local perGold = COPPER_PER_GOLD or 10000
+    local parts = {
+        mfloor(amount / perGold),
+        mfloor((amount % perGold) / perSilver),
+        amount % perSilver,
+    }
+    local text = ""
+    for i = 1, 3 do
+        -- Leading zero denominations are noise ("0g 0s 7c"), but once a
+        -- larger one is present the smaller ones must show even at zero or
+        -- "5g 0s 20c" would paste as the very different "5g 20c".
+        if parts[i] > 0 or text ~= "" then
+            if text ~= "" then text = text .. " " end
+            text = text .. parts[i] .. COIN_SYMBOLS[i]
+        end
+    end
+    if text == "" then text = 0 .. COIN_SYMBOLS[3] end
+    return text
+end
+
+local function GoldText(FormatCoin)
     local money = GetMoney and GetMoney()
     if not money then return nil end
     local total = money
@@ -78,8 +112,16 @@ local function GoldValue()
             end
         end
     end
-    if total == money then return CoinText(money) end
-    return sformat(L["ANSWER_GOLD_FMT"], CoinText(money), CoinText(total))
+    if total == money then return FormatCoin(money) end
+    return sformat(L["ANSWER_GOLD_FMT"], FormatCoin(money), FormatCoin(total))
+end
+
+local function GoldValue()
+    return GoldText(CoinText)
+end
+
+local function GoldCopyValue()
+    return GoldText(PlainCoinText)
 end
 
 local function ItemLevelValue()
@@ -158,7 +200,7 @@ end
 -- live value reader.
 local ANSWERS = {
     { keys = { "gold", "money", "cash" },
-      label = _G["MONEY"] or "Money", value = GoldValue },
+      label = _G["MONEY"] or "Money", value = GoldValue, copyValue = GoldCopyValue },
     { keys = { "ilvl", "item level", "itemlevel", "gearscore" },
       label = _G["STAT_AVERAGE_ITEM_LEVEL"] or "Item Level", value = ItemLevelValue },
     { keys = { "keystone", "my key", "mythic key" },
@@ -181,11 +223,13 @@ for i = 1, #ANSWERS do
     end
 end
 
-local lastAnswerValue
+-- What a copy should produce, which is not always what the row shows: an
+-- answer whose display carries textures supplies a plain-text form instead.
+local lastAnswerCopyValue
 
 local function CopyAnswer()
-    if lastAnswerValue and ns.ShowCopyBox then
-        ns.ShowCopyBox(lastAnswerValue)
+    if lastAnswerCopyValue and ns.ShowCopyBox then
+        ns.ShowCopyBox(lastAnswerCopyValue)
     end
 end
 
@@ -207,7 +251,7 @@ function Answers:GetAnswerEntry(text)
     if not def then return nil end
     local value = def.value()
     if not value then return nil end
-    lastAnswerValue = value
+    lastAnswerCopyValue = def.copyValue and def.copyValue() or value
     answerEntry.name = def.labelKey and L[def.labelKey] or def.label
     answerEntry.nameLower = query
     answerEntry.searchCommandDesc = value
