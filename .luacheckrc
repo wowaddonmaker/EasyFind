@@ -125,6 +125,7 @@ read_globals = {
     -- Inline answers (Search/Answers.lua): gold, item level, durability,
     -- keystone, rating.
     "GetMoney", "GetCoinTextureString", "GetAverageItemLevel",
+    "COPPER_PER_SILVER", "COPPER_PER_GOLD",
     "GetInventoryItemDurability", "C_MythicPlus", "C_ChallengeMode",
     "UnitFullName", "GetNormalizedRealmName",
     "GetProfessions", "GetProfessionInfo", "C_TradeSkillUI", "EnumerateFrames",
