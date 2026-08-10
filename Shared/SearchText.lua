@@ -71,7 +71,7 @@ end
 
 -- Codepoint -> lowercase codepoint. Covers ASCII, Latin-1 Supplement
 -- (À-Þ), and Latin Extended-A (Ā-ſ). Anything else returns its input.
--- Generated from Unicode Case_Folding (simple folds only).
+-- Simple case folds only.
 local function lowerCP(cp)
     if cp < 0x80 then
         if cp >= 0x41 and cp <= 0x5A then return cp + 32 end

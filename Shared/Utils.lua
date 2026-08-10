@@ -1237,8 +1237,8 @@ ns.FILTER_ARROW_TEX = "Interface\\AddOns\\EasyFind\\textures\\filter-arrow"
 -- back to the Alliance crest.
 ns.REP_CATEGORY_ICON_TEX = 1121272
 ns.REP_CATEGORY_ICON_COORDS = {
-    Horde    = { 0.7771, 0.8096, 0.7048, 0.7362 },
-    Alliance = { 0.6761, 0.7047, 0.7747, 0.8014 },
+    Horde    = { 0.8479, 0.8744, 0.7144, 0.7415 },
+    Alliance = { 0.7154, 0.7402, 0.8141, 0.8400 },
 }
 function ns.PlayerRepCategoryIconCoords()
     local faction = UnitFactionGroup and UnitFactionGroup("player")
@@ -1262,10 +1262,18 @@ do
     ns.ITEMS_CATEGORY_ICON_ASPECT = ((c[2] - c[1]) * TEX_W) / ((c[4] - c[3]) * TEX_H)
 end
 
--- Bank vault glyph, shared by the filter-menu row and the result-row category
--- icon so the two cannot drift apart.
-ns.BANK_CATEGORY_ICON_TEX = 1121272
-ns.BANK_CATEGORY_ICON_COORDS = { 0.3783, 0.4072, 0.9066, 0.9350 }
+-- Bank glyph (the Buy crosshair cursor file, used whole -- not a sheet crop),
+-- shared by the filter-menu row and the result-row category icon so the two
+-- cannot drift apart.
+ns.BANK_CATEGORY_ICON_TEX = 4675621
+ns.BANK_CATEGORY_ICON_COORDS = { 0, 1, 0, 1 }
+
+-- Map-search and Statistics category glyphs (12.1 moved both on the shared
+-- sheet), shared by the filter-menu rows and the result-row category icons.
+ns.MAP_CATEGORY_ICON_TEX = 1121272
+ns.MAP_CATEGORY_ICON_COORDS = { 0.7443, 0.7840, 0.2548, 0.2961 }
+ns.STAT_CATEGORY_ICON_TEX = 1121272
+ns.STAT_CATEGORY_ICON_COORDS = { 0.2680, 0.3043, 0.2666, 0.2943 }
 
 -- The key the per-character stored-item caches are filed under. ONE owner:
 -- the provider writes db.bagCache.chars[key] with it and the scope picker
@@ -2329,7 +2337,7 @@ end
 -- and re-entering the owner, its popup, or any row inside the popup restores
 -- it. The popup's OnHide remains the final release.
 local flyoutHighlightHolds = {}
--- Dev-tool peek (EasyFindDev /efd pill): the holds are otherwise invisible
+-- Dev-tool peek (/efd pill): the holds are otherwise invisible
 -- to external diagnosis.
 Utils._flyoutHighlightHolds = flyoutHighlightHolds
 
@@ -2937,7 +2945,7 @@ function Utils.RefreshEscArm()
     EscArm()
 end
 
--- EasyFindDev probe surface (/efd esc): who owns ESCAPE right now.
+-- Dev probe surface (/efd esc): who owns ESCAPE right now.
 -- Read-only; returns the armed flag plus one record per stack entry.
 function ns.GetEscOverrideState()
     local entries = {}

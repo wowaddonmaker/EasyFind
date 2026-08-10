@@ -1,4 +1,3 @@
--- EasyFind Static Locations (auto-generated 2026-06-17 16:14)
 local _, ns = ...
 
 -- POI names resolve through per-name L keys (POI_<slug>) at file-load time, so
@@ -530,5 +529,5 @@ ns.STATIC_LOCATIONS = {
     },
 }
 
--- Expose for cross-addon access (EasyFindDev reads this)
+-- Expose for cross-addon access (the dev tools read this)
 EasyFind.staticLocations = ns.STATIC_LOCATIONS

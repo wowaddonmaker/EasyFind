@@ -45,8 +45,8 @@ local UI_FILTER_OPTIONS = {
     -- with data under a wall of "--". Defaults to All: this is a reference list
     -- people look things up in, and silently hiding rows from it is worse than
     -- a long list.
-    { key = "statistics",  label = _G["STATISTICS"] or "Statistics",  iconTex = 1121272,
-      iconCoords = { 0.2030, 0.2397, 0.6641, 0.6921 },
+    { key = "statistics",  label = _G["STATISTICS"] or "Statistics",  iconTex = ns.STAT_CATEGORY_ICON_TEX,
+      iconCoords = ns.STAT_CATEGORY_ICON_COORDS,
       flyoutRadio = {
           dbKey = "statisticFilterMode",
           options = {
@@ -141,8 +141,8 @@ local UI_FILTER_OPTIONS = {
     -- via lootOptionsPopup, not via flyoutSubFilters.
     { key = "loot",        label = _G["LOOT"] or "Loot",        iconTex = 522972,
       iconCoords = { 0.730, 0.824, 0.618, 0.660 }, hasFlyout = true },
-    { key = "map",         label = L["FILTER_MAP_SEARCH"],  iconTex = 1121272,
-      iconCoords = { 0.4287, 0.4645, 0.2580, 0.2932 },
+    { key = "map",         label = L["FILTER_MAP_SEARCH"],  iconTex = ns.MAP_CATEGORY_ICON_TEX,
+      iconCoords = ns.MAP_CATEGORY_ICON_COORDS,
       flyoutSubFilters = {
           { key = "zones",      label = _G["ZONES"] or "Zones",        dbTable = "uiMapFilters" },
           { key = "instances",  label = L["FILTER_INSTANCES"],    dbTable = "uiMapFilters",
@@ -172,8 +172,8 @@ local UI_FILTER_OPTIONS = {
       } },
     { key = "housing",     label = _G["HOUSING_SETTINGS_LABEL"] or _G["BINDING_HEADER_HOUSING_SYSTEM"] or "Housing",
       iconAtlas = "UI-HUD-MicroMenu-Housing-Up", hasFlyout = true },
-    { key = "options",     label = _G["OPTIONS"] or "Options",     iconTex = 1121272,
-      iconCoords = { 0.4454, 0.4720, 0.8749, 0.9010 },
+    -- Interact crosshair cursor file, used whole (not a sheet crop).
+    { key = "options",     label = _G["OPTIONS"] or "Options",     iconTex = 4675635,
       flyoutSubFilters = {
           { key = "gameOptions",  label = L["FILTER_GAME_OPTIONS"],  iconAtlas = "QuestLog-icon-setting" },
           { key = "addonOptions", label = L["FILTER_ADDON_OPTIONS"], iconAtlas = "QuestLog-icon-setting", iconColor = { 1.0, 0.78, 0.35 } },

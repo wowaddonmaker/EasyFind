@@ -2144,7 +2144,7 @@ function Search:IsEscClosingMenus()
     return self._escClosingMenus
 end
 
--- EasyFindDev probe surface (/efd esc): key-capture state in one read.
+-- Dev probe surface (/efd esc): key-capture state in one read.
 function Search:GetKeyNavDebug()
     return {
         navKeyboard = navFrame and navFrame:IsKeyboardEnabled() or false,

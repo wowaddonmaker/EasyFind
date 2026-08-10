@@ -4,6 +4,13 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [2.2.1] - 2026-08-10
+
+### Fixed
+- **Updated for patch 12.1**: bumped the supported game version and repointed the icons the patch moved
+
+---
+
 ## [2.2.0] - 2026-08-04
 
 ### Added

@@ -1,7 +1,7 @@
 local _, ns = ...
 
 -- Catalog item search: scans the packed item blob (Database/ItemData.lua,
--- generated from DB2 -- ~175k items). The blob is ONE string, one record per
+-- ~175k items). The blob is ONE string, one record per
 -- line, tab-separated: namelower \t itemID \t quality \t expansion \t ilvl.
 -- Search finds the query in it at C speed and materializes only the handful of
 -- matches that place, so the whole catalog costs one resident string, never a

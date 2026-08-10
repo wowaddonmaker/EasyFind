@@ -154,8 +154,8 @@ local FLAT_CATEGORY_ICONS = {
                       aspect = ns.ITEMS_CATEGORY_ICON_ASPECT },
     -- Reputation category shows the player's own faction crest.
     reputation    = { tex = ns.REP_CATEGORY_ICON_TEX, coords = ns.PlayerRepCategoryIconCoords() },
-    statistic     = { tex = 1121272, coords = { 0.2030, 0.2397, 0.6641, 0.6921 } },
-    map           = { tex = 1121272, coords = { 0.4287, 0.4645, 0.2580, 0.2932 } },
+    statistic     = { tex = ns.STAT_CATEGORY_ICON_TEX, coords = ns.STAT_CATEGORY_ICON_COORDS },
+    map           = { tex = ns.MAP_CATEGORY_ICON_TEX, coords = ns.MAP_CATEGORY_ICON_COORDS },
     -- Ability / boss: matches the filter-menu icons (boss tab + overview tab
     -- glyphs from the Encounter Journal spritesheet). The row's per-entry
     -- icon (spell icon / boss portrait) is pushed to the RIGHT side.

@@ -1,8 +1,8 @@
-## Interface: 120007, 120001, 120000
+## Interface: 120100, 120007, 120001, 120000
 ## Title: EasyFind
 ## Notes: Search and locate UI elements and map locations with ease
 ## Author: justawower
-## Version: 2.2.0
+## Version: 2.2.1
 ## IconTexture: Interface\AddOns\EasyFind\textures\SpyglassMinimap
 ## Category: UI
 ## AddonCompartmentFunc: EasyFind_OnAddonCompartmentClick

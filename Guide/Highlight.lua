@@ -1900,7 +1900,7 @@ local function HandleWaitForFrameStep(self, step, isLastStep)
     return true
 end
 
--- Read-only guide state for the EasyFindDev probes: current step index,
+-- Read-only guide state for the dev probes: current step index,
 -- step count, the live step table, and the last ticker heartbeat.
 function Highlight:GetGuideDebugState()
     if not currentGuide then return nil end
@@ -3720,7 +3720,7 @@ function Highlight:GetFactionRowButton(factionID)
 end
 
 function Highlight:Cancel()
-    -- Breadcrumb for the EasyFindDev probes: which call site ended the
+    -- Breadcrumb for the dev probes: which call site ended the
     -- last active guide, and when. Costs one debugstack per real cancel.
     if currentGuide then
         self._lastCancelAt = GetTime()

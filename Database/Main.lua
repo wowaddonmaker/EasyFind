@@ -3532,8 +3532,8 @@ function Database:PopulateDynamicLootAsync(done, scanAllSpecs)
     end)
 end
 
--- Shipped profession data (Database/ProfessionData.lua, generated from the
--- game's DB2 files) stores recipe IDs grouped by expansion page. recipeIDs are
+-- Shipped profession data (Database/ProfessionData.lua) stores recipe IDs
+-- grouped by expansion page. recipeIDs are
 -- spellIDs, so a recipe's name, icon, and learned-status resolve live. Search
 -- only materializes recipes on the pages the character OWNS, filtered by the
 -- Show Learned / Show Unlearned toggles -- so a Midnight-only crafter never

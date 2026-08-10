@@ -3247,7 +3247,7 @@ local function DeserializeList(blob)
     return out
 end
 
--- Real code path used by the restore below (and by EasyFindDev's identity
+-- Real code path used by the restore below (and by the dev tools' identity
 -- check). Returns rehydrated { entries, kb, addon } without pushing anything.
 function BlizzOptionsSearch.DeserializeOptionsCache(cache)
     if type(cache) ~= "table" then return nil end
