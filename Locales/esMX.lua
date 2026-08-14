@@ -256,24 +256,8 @@ L["WHATSNEW_CHAT_HELLO"]                = "¡Bienvenido a |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "aquí"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver el registro de cambios completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffBusca tus profesiones (actívalo en el menú de filtros)|r\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffBusca cualquier objeto del juego (actívalo en el menú de filtros)|r\n" ..
-    "    |cff999999-|r El catálogo es grande, así que se recomienda dejarlo desactivado y acceder con el filtro rápido '@gen'\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffBusca en tu banco desde cualquier lugar (actívalo en el menú de filtros)|r\n" ..
-    "    |cff999999-|r Tu banco y el banco de tropa, tal como estaban la última vez que los abriste\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffEncuentra objetos de tus otros personajes (actívalo en el menú de filtros)|r\n" ..
-    "    |cff999999-|r Cualquier personaje con el que hayas iniciado sesión, bancos incluidos\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffEnlaza objetos al chat con clic o arrastre|r\n" ..
-    "    |cff999999-|r Suéltalo en un canal, un susurro o la caja de chat\n" ..
-    "    |cff999999-|r Ej.: busca %s y arrástralo con Mayús a la caja de chat\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffConsulta títulos que aún no has conseguido (actívalo en el menú de filtros)|r\n" ..
-    "    |cff999999-|r Muestra el logro que lo otorga; Alt+clic para abrirlo\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffDescripciones de logros al pasar el ratón|r\n" ..
-    "    |cff999999-|r Criterios, progreso y recompensas, sin abrir el logro\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffBusca 'oro', 'durabilidad' o 'nivel de objeto'|r\n" ..
-    "    |cff999999-|r La respuesta aparece justo encima de los resultados. También piedra angular, puntuación, espacio y velocidad\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffNuevas opciones de filtro|r\n" ..
-    "    |cff999999-|r Equipos por especialización, títulos, estadísticas, juguetes y mascotas"
+    "|cffFFD100\226\128\162|r |cffffffffEspecializaciones y configuraciones de talentos ahora en la búsqueda|r\n" ..
+    "    |cff999999-|r Haz clic en un resultado para cambiar"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Añadir alias"
@@ -365,6 +349,10 @@ L["QUICK_FILTER"]                       = "Filtro rápido"
 L["QUICK_FILTER_TT"]                    = "Haz clic o pulsa Retroceso en una búsqueda vacía para borrar."
 L["FILTER_TOGGLE_ALL"]                  = "Alternar todo"
 L["FILTER_HIDE_TOOLTIPS"]               = "Ocultar descripciones"
+L["TALENT_SPEC_SUBTEXT"]                = "Cambiar de especialización"
+L["TALENT_LOADOUT_SUBTEXT"]             = "Cargar configuración de talentos"
+L["TALENT_CURRENTLY_ACTIVE"]            = "Actualmente activo"
+L["FILTER_LOADOUTS"]                    = "Configuraciones"
 L["FILTER_STAT_RECORDED"]               = "Registradas"
 L["FILTER_STAT_UNRECORDED"]             = "Sin registrar"
 L["FILTER_EXCLUDE_JUNK"]                = "Excluir basura"

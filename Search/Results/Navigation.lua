@@ -579,6 +579,13 @@ function Results:ActivateResultRow(resultRow, source)
         run()
         return true
     end
+    if resultRow.data.specSetIndex or resultRow.data.loadoutConfigID then
+        local specIndex, loadoutID = resultRow.data.specSetIndex,
+            resultRow.data.loadoutConfigID
+        self:FinishResultSelection()
+        if ns.RunTalentSwap then ns.RunTalentSwap(specIndex, loadoutID) end
+        return true
+    end
     if resultRow.data.calculatorLauncher then
         return self:OpenCalculator("")
     end

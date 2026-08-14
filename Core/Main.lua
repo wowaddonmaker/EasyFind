@@ -241,6 +241,8 @@ local DB_DEFAULTS = {
     -- "all" | "recorded" | "unrecorded". All by default: statistics are a
     -- reference list, so narrowing is opt-in.
     statisticFilterMode = "all",
+    talentShowSpecs = true,
+    talentShowLoadouts = true,
     titleFilterMode = "earned",
     catalogQualityTier = 0,        -- 0 = all crafting tiers, else keep only 1/2/3
     catalogTypeFilters = {},       -- per-type-bucket enable; absent/true = shown
@@ -548,7 +550,7 @@ local SUGGESTED_KEYBINDS = {
 -- The version whose features the What's New popup currently describes. Bump
 -- ONLY when the popup content is rewritten; patch releases that keep the same
 -- content must not re-announce it to users who already saw it.
-local WHATSNEW_CONTENT_VERSION = "2.2.0"
+local WHATSNEW_CONTENT_VERSION = "2.3.0"
 
 local WHATSNEW_LINK_PREFIX = "easyfind:whatsnew:"
 local whatsNewHookInstalled = false
@@ -1041,6 +1043,13 @@ eventFrame:RegisterEvent("EQUIPMENT_SETS_CHANGED")
 -- category dirty), or a mount collected then not searched before logout would
 -- hydrate stale on the next reload. pcall: event name may vary by build.
 pcall(eventFrame.RegisterEvent, eventFrame, "NEW_MOUNT_ADDED")
+-- Loadout create/rename/delete and spec swaps re-dirty the talents provider
+-- so spec/loadout rows never go stale. pcall: trait events are retail-only.
+pcall(eventFrame.RegisterEvent, eventFrame, "TRAIT_CONFIG_CREATED")
+pcall(eventFrame.RegisterEvent, eventFrame, "TRAIT_CONFIG_DELETED")
+pcall(eventFrame.RegisterEvent, eventFrame, "TRAIT_CONFIG_UPDATED")
+pcall(eventFrame.RegisterEvent, eventFrame, "TRAIT_CONFIG_LIST_UPDATED")
+pcall(eventFrame.RegisterEvent, eventFrame, "ACTIVE_PLAYER_SPECIALIZATION_CHANGED")
 if C_HousingCatalog then
     eventFrame:RegisterEvent("HOUSING_STORAGE_UPDATED")
 end
@@ -1081,6 +1090,7 @@ local function MaybeSnapshotBags()
     ns.Database:PersistBagContents()
 end
 
+local talentRefreshTimer
 local bagRefreshTimer
 local spellRefreshTimer
 local gearSetRefreshTimer
@@ -1180,6 +1190,16 @@ eventFrame:SetScript("OnEvent", function(self, event, arg1, arg2)
         spellRefreshTimer = C_Timer.NewTimer(1.0, function()
             spellRefreshTimer = nil
             MarkDynamicCategoryDirty("abilities")
+        end)
+    elseif event == "TRAIT_CONFIG_CREATED" or event == "TRAIT_CONFIG_DELETED"
+        or event == "TRAIT_CONFIG_UPDATED" or event == "TRAIT_CONFIG_LIST_UPDATED"
+        or event == "ACTIVE_PLAYER_SPECIALIZATION_CHANGED" then
+        -- TRAIT_CONFIG_UPDATED fires in bursts while talents are edited or
+        -- committed; one debounced re-dirty covers the whole burst.
+        if talentRefreshTimer then talentRefreshTimer:Cancel() end
+        talentRefreshTimer = C_Timer.NewTimer(1.0, function()
+            talentRefreshTimer = nil
+            MarkDynamicCategoryDirty("talents")
         end)
     elseif event == "BAG_UPDATE_DELAYED" then
         if bagRefreshTimer then bagRefreshTimer:Cancel() end

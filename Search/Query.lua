@@ -351,6 +351,8 @@ function Search:OnSearchTextChanged(text, force)
     -- change during play. "all" costs nothing -- the gate below stays off.
     local statMode = EasyFind.db.statisticFilterMode
     if statMode == "all" then statMode = nil end
+    local specRowsOff = EasyFind.db.talentShowSpecs == false
+    local loadoutRowsOff = EasyFind.db.talentShowLoadouts == false
     local commandNativeOff = EasyFind.db.commandShowNative == false
     local commandCustomOff = EasyFind.db.commandShowCustom == false
     local bossesFilterOff = filters and filters.bosses == false and not explicitBosses
@@ -367,7 +369,7 @@ function Search:OnSearchTextChanged(text, force)
                     or hidePassives or hideAchievementHeaders or hideGuildAchievements
                     or macroGeneralOff or macroCharOff or bossDungeonOff or bossRaidOff
                     or hideJunk or commandNativeOff or commandCustomOff
-                    or statMode) then
+                    or statMode or specRowsOff or loadoutRowsOff) then
         wipe(SCRATCH.filteredResults)
         local filtered = SCRATCH.filteredResults
         local fi = 0
@@ -400,11 +402,13 @@ function Search:OnSearchTextChanged(text, force)
                     local _, hasValue = ns.GetStatisticValue(d.statisticID)
                     statOff = (statMode == "recorded") ~= hasValue
                 end
+                local talentSwapOff = d and ((d.specSetIndex and specRowsOff)
+                    or (d.loadoutConfigID and loadoutRowsOff))
                 local commandTypeOff = d and d.category == "Command"
                     and ((d.isNativeCommand and commandNativeOff) or (not d.isNativeCommand and commandCustomOff))
                 if not passiveOff and not headerOff and not guildAchievementOff
                    and not macroTypeOff and not bossTypeOff and not junkOff
-                   and not commandTypeOff and not statOff
+                   and not commandTypeOff and not statOff and not talentSwapOff
                    and (not bucket or (not bucketOff and not parentOff)) then
                     fi = fi + 1
                     filtered[fi] = r

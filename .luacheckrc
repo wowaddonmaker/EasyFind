@@ -117,6 +117,7 @@ read_globals = {
     "UnitPopup_ShowMenu", "BattlePetToolTip_ShowLink", "BattlePetTooltip",
     "GetUnitSpeed", "GetItemCooldown", "EJ_GetInstanceInfo", "UnitName",
     "GetItemInfoInstant", "GetItemStats", "GetSpecialization", "GetSpecializationInfo",
+    "C_SpecializationInfo", "SetSpecialization",
     "GetNumSpecializations",
     "GetNumTitles", "GetTitleName", "IsTitleKnown", "GetCurrentTitle", "SetCurrentTitle",
     "UnitClass", "UnitGUID", "GetLootSpecialization", "DressUpItemLink", "DressUpTransmogSet",

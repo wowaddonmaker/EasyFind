@@ -256,24 +256,8 @@ L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 �
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff전문기술 검색 (필터 메뉴에서 켜기)|r\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff게임 내 모든 아이템 검색 (필터 메뉴에서 켜기)|r\n" ..
-    "    |cff999999-|r 목록이 매우 크므로 꺼둔 채 '@gen' 빠른 필터로 접근하는 것을 권장합니다\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff어디서든 은행 검색 (필터 메뉴에서 켜기)|r\n" ..
-    "    |cff999999-|r 은행과 전투부대 은행, 마지막으로 열었을 때의 상태\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff다른 캐릭터의 아이템 찾기 (필터 메뉴에서 켜기)|r\n" ..
-    "    |cff999999-|r 접속한 적이 있는 모든 캐릭터, 은행 포함\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff클릭하거나 끌어서 대화에 아이템 연결|r\n" ..
-    "    |cff999999-|r 채널, 귓속말, 또는 대화 입력창에 놓으면 됩니다\n" ..
-    "    |cff999999-|r 예: %s 검색 후 Shift+드래그로 대화 입력창에 놓기\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff아직 얻지 못한 칭호 보기 (필터 메뉴에서 켜기)|r\n" ..
-    "    |cff999999-|r 칭호를 주는 업적을 표시하며 Alt+클릭으로 열기\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff마우스를 올리면 업적 툴팁 표시|r\n" ..
-    "    |cff999999-|r 달성 조건, 진행도, 보상을 업적 창을 열지 않고 확인\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff'소지금', '내구도', '아이템 레벨' 검색|r\n" ..
-    "    |cff999999-|r 결과 바로 위에 답이 표시됩니다. 쐐기돌, 레이팅, 가방 공간, 이동 속도도 지원\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff새로운 필터 옵션|r\n" ..
-    "    |cff999999-|r 전문화별 장비 세트, 칭호, 통계, 장난감, 애완동물"
+    "|cffFFD100\226\128\162|r |cffffffff전문화와 특성 구성 검색 지원|r\n" ..
+    "    |cff999999-|r 결과를 클릭하면 전환됩니다"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"
@@ -365,6 +349,10 @@ L["QUICK_FILTER"]                       = "빠른 필터"
 L["QUICK_FILTER_TT"]                    = "빈 검색에서 클릭하거나 백스페이스를 눌러 지웁니다."
 L["FILTER_TOGGLE_ALL"]                  = "전체 전환"
 L["FILTER_HIDE_TOOLTIPS"]               = "툴팁 숨기기"
+L["TALENT_SPEC_SUBTEXT"]                = "전문화 전환"
+L["TALENT_LOADOUT_SUBTEXT"]             = "특성 구성 불러오기"
+L["TALENT_CURRENTLY_ACTIVE"]            = "현재 사용 중"
+L["FILTER_LOADOUTS"]                    = "특성 구성"
 L["FILTER_STAT_RECORDED"]               = "기록됨"
 L["FILTER_STAT_UNRECORDED"]             = "기록 없음"
 L["FILTER_EXCLUDE_JUNK"]                = "잡템 제외"

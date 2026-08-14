@@ -24,6 +24,7 @@ Search across:
 Supported results can do more than just open a panel:
 
 - Mount up, summon pets, use toys, equip outfits, run macros, and cast or use abilities directly from search.
+- Switch specialization and load talent loadouts directly from search results.
 - Shift-click supported abilities from results to drag them to action bars.
 - Use consumables, equip gear, or Ctrl-click supported bag items to open and highlight the item in your bags.
 - Open boss and loot entries in the Encounter Journal.

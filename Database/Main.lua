@@ -4379,6 +4379,7 @@ function Database:PopulateDynamicTalents()
             end
         end
     end
+    self:InjectTalentSwapRows()
     return true
 end
 
@@ -4586,6 +4587,156 @@ function Stored.WalkPlayerBags()
         end
     end
     return itemMap, order, slotsSeen
+end
+
+-- Spec switching and saved talent loadouts as Talents-category rows: typing
+-- "holy" or "spec" swaps specialization, a loadout name loads it. Both row
+-- kinds carry stable IDs (specSetIndex / loadoutConfigID) so they dispatch
+-- field-based like window commands, staying pinnable and bindable. Names and
+-- icons come localized from the APIs.
+local TALENT_SPEC_KW = { "spec", "specialization", "swap", "switch", "talents" }
+local TALENT_LOADOUT_KW = { "loadout", "loadouts", "build", "talents", "swap", "switch" }
+
+function Database:InjectTalentSwapRows()
+    local specPath = { _G["TALENTS"] or "Talents" }
+    local getNumSpecs = (C_SpecializationInfo and C_SpecializationInfo.GetNumSpecializations)
+        or GetNumSpecializations
+    local getSpec = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization)
+        or GetSpecialization
+    local getSpecInfo = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo)
+        or GetSpecializationInfo
+    if not (getNumSpecs and getSpecInfo) then return end
+
+    local activeSpec = getSpec and getSpec()
+    -- Green matching the outfit rows' currently-equipped tint (0.3, 1, 0.3).
+    local activeLabel = "|cff4dff4d" .. L["TALENT_CURRENTLY_ACTIVE"] .. "|r"
+    for i = 1, getNumSpecs() or 0 do
+        local ok, specID, specName, _, specIcon = pcall(getSpecInfo, i)
+        if ok and specID and specName and specName ~= "" then
+            local isActive = (i == activeSpec) or nil
+            uiSearchData[#uiSearchData + 1] = {
+                name = specName,
+                nameLower = slower(specName),
+                icon = specIcon,
+                category = "Talent",
+                path = specPath,
+                keywords = TALENT_SPEC_KW,
+                keywordsLower = TALENT_SPEC_KW,
+                specSetIndex = i,
+                specIsActive = isActive,
+                searchCommandDesc = isActive and activeLabel
+                    or L["TALENT_SPEC_SUBTEXT"],
+            }
+        end
+    end
+
+    if not (C_ClassTalents and C_ClassTalents.GetConfigIDsBySpecID
+            and C_Traits and C_Traits.GetConfigInfo) then
+        return
+    end
+    -- ONLY the active spec's loadouts. Loading one auto-commits (measured:
+    -- LoadConfig starts the ~5s commit cast itself), so each row is a clean
+    -- one-click action. Another spec's loadout would need a spec swap plus a
+    -- gated second commit; the spec rows above cover that -- swap first, and
+    -- the new spec's loadouts appear (the spec-change event re-dirties this
+    -- provider).
+    if not activeSpec then return end
+    local okID, specID, specName, _, specIcon = pcall(getSpecInfo, activeSpec)
+    if not (okID and specID) then return end
+    local okCfg, configIDs = pcall(C_ClassTalents.GetConfigIDsBySpecID, specID)
+    if not (okCfg and type(configIDs) == "table") then return end
+    -- The loadout the talent UI considers selected, i.e. the one the player
+    -- is "in". Same record LoadTalentConfig maintains after every load.
+    local lastSelected
+    if C_ClassTalents.GetLastSelectedSavedConfigID then
+        local okSel, sel = pcall(C_ClassTalents.GetLastSelectedSavedConfigID, specID)
+        if okSel then lastSelected = sel end
+    end
+    for i = 1, #configIDs do
+        local loadoutID = configIDs[i]
+        local infoOk, info = pcall(C_Traits.GetConfigInfo, loadoutID)
+        if infoOk and type(info) == "table" and info.name and info.name ~= "" then
+            -- Keywords: the shared loadout words plus the spec's name, so
+            -- "frost loadout" finds it.
+            local kw = { slower(specName or "") }
+            for k = 1, #TALENT_LOADOUT_KW do kw[#kw + 1] = TALENT_LOADOUT_KW[k] end
+            local isActive = (loadoutID == lastSelected) or nil
+            uiSearchData[#uiSearchData + 1] = {
+                name = info.name,
+                nameLower = slower(info.name),
+                icon = specIcon,
+                category = "Talent",
+                path = specPath,
+                keywords = kw,
+                keywordsLower = kw,
+                loadoutConfigID = loadoutID,
+                loadoutIsActive = isActive,
+                searchCommandDesc = isActive and activeLabel
+                    or L["TALENT_LOADOUT_SUBTEXT"],
+            }
+        end
+    end
+end
+
+-- LoadConfig applies the BUILD but not which saved loadout the talent UI
+-- considers selected; with the frame closed nothing else updates it, so the
+-- frame later shows the wrong loadout ("Default Loadout") and treats the live
+-- tree as a staged diff (red Apply Changes after a reload). Blizzard's talent
+-- frame pairs every load with UpdateLastSelectedSavedConfigID(specID,
+-- configID); the call is VERIFIED via the getter and falls back to the
+-- single-argument form, so a signature drift surfaces as a wrong dropdown at
+-- worst, never silently.
+local function UpdateLastSelectedLoadout(configID)
+    local CT = C_ClassTalents
+    if not (CT and CT.UpdateLastSelectedSavedConfigID) then return end
+    local getSpec = (C_SpecializationInfo and C_SpecializationInfo.GetSpecialization)
+        or GetSpecialization
+    local getSpecInfo = (C_SpecializationInfo and C_SpecializationInfo.GetSpecializationInfo)
+        or GetSpecializationInfo
+    local specIndex = getSpec and getSpec()
+    local specID = specIndex and getSpecInfo and getSpecInfo(specIndex)
+    local function selectedNow()
+        if not (CT.GetLastSelectedSavedConfigID and specID) then return nil end
+        local ok, id = pcall(CT.GetLastSelectedSavedConfigID, specID)
+        if ok then return id end
+        return nil
+    end
+    if specID then
+        pcall(CT.UpdateLastSelectedSavedConfigID, specID, configID)
+        local sel = selectedNow()
+        if sel == configID or sel == nil then return end
+    end
+    pcall(CT.UpdateLastSelectedSavedConfigID, configID)
+end
+
+local function LoadTalentConfig(configID)
+    if not (C_ClassTalents and C_ClassTalents.LoadConfig) then return false end
+    local ok = (xpcall(C_ClassTalents.LoadConfig, Utils.ErrorHandler, configID, true))
+    if ok then UpdateLastSelectedLoadout(configID) end
+    return ok
+end
+
+-- Executes a spec/loadout row. Combat is a hard veto for both APIs; the
+-- localized combat error keeps the refusal visible instead of silent.
+-- Loadouts are always the active spec's (rows only inject for it), and
+-- LoadConfig auto-commits, so both actions are single calls.
+function ns.RunTalentSwap(specIndex, loadoutConfigID)
+    if InCombatLockdown() then
+        if EasyFind and EasyFind.Print then
+            EasyFind:Print(_G["ERR_NOT_IN_COMBAT"] or "")
+        end
+        return false
+    end
+    if specIndex then
+        local setSpec = (C_SpecializationInfo and C_SpecializationInfo.SetSpecialization)
+            or SetSpecialization
+        if setSpec then
+            return (xpcall(setSpec, Utils.ErrorHandler, specIndex))
+        end
+    elseif loadoutConfigID then
+        return LoadTalentConfig(loadoutConfigID)
+    end
+    return false
 end
 
 function Database:PopulateDynamicBags()

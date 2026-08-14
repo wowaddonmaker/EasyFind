@@ -284,6 +284,13 @@ function Handlers:SelectResult(data, forceGuide)
         end
     end
 
+    if data.specSetIndex or data.loadoutConfigID then
+        local specIndex, loadoutID = data.specSetIndex, data.loadoutConfigID
+        self:FinishResultSelection()
+        if ns.RunTalentSwap then ns.RunTalentSwap(specIndex, loadoutID) end
+        return
+    end
+
     if data.calculatorLauncher then
         self:OpenCalculator("")
         return

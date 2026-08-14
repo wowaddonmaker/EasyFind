@@ -205,6 +205,8 @@ local UI_FILTER_OPTIONS = {
     { key = "talents",     label = _G["TALENTS"] or "Talents",     iconAtlas = "UI-HUD-MicroMenu-SpecTalents-Up",
       flyoutRadio = {
           checkboxes = {
+              { dbKey = "talentShowSpecs", label = _G["SPECIALIZATION"] or "Specialization" },
+              { dbKey = "talentShowLoadouts", label = L["FILTER_LOADOUTS"] },
               { dbKey = "hideTooltips.talents", label = L["FILTER_HIDE_TOOLTIPS"] },
           },
       } },

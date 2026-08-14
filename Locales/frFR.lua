@@ -256,24 +256,8 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bienvenue dans |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "ici"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Voir le journal des modifications complet"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffCherchez vos métiers (à activer dans le menu des filtres)|r\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffCherchez n'importe quel objet du jeu (à activer dans le menu des filtres)|r\n" ..
-    "    |cff999999-|r Le catalogue est vaste, il est donc conseillé de le laisser désactivé et d'y accéder via le filtre rapide '@gen'\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffCherchez dans votre banque depuis n'importe où (à activer dans le menu des filtres)|r\n" ..
-    "    |cff999999-|r Votre banque et la banque de bataillon, telles qu'à leur dernière ouverture\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffTrouvez les objets de vos autres personnages (à activer dans le menu des filtres)|r\n" ..
-    "    |cff999999-|r Tout personnage sur lequel vous vous êtes connecté, banques comprises\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffLiez un objet au chat d'un clic ou d'un glisser|r\n" ..
-    "    |cff999999-|r Laissez-le sur un canal, un chuchotement ou la zone de chat\n" ..
-    "    |cff999999-|r Ex. : cherchez %s puis Maj+glissez-le dans la zone de chat\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffVoyez les titres que vous n'avez pas encore (à activer dans le menu des filtres)|r\n" ..
-    "    |cff999999-|r Affiche le haut fait qui l'octroie ; Alt+clic pour l'ouvrir\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffInfobulles de hauts faits au survol|r\n" ..
-    "    |cff999999-|r Critères, progression et récompenses, sans ouvrir le haut fait\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffCherchez 'or', 'solidité' ou 'niveau d'objet'|r\n" ..
-    "    |cff999999-|r La réponse apparaît juste au-dessus des résultats. Aussi clé, cote, place dans les sacs et vitesse\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffNouvelles options de filtre|r\n" ..
-    "    |cff999999-|r Équipements par spécialisation, titres, statistiques, jouets et mascottes"
+    "|cffFFD100\226\128\162|r |cffffffffSpécialisations et configurations de talents désormais dans la recherche|r\n" ..
+    "    |cff999999-|r Cliquez sur un résultat pour changer"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Ajouter un alias"
@@ -365,6 +349,10 @@ L["QUICK_FILTER"]                       = "Filtre rapide"
 L["QUICK_FILTER_TT"]                    = "Cliquez ou appuyez sur Retour arrière sur une recherche vide pour effacer."
 L["FILTER_TOGGLE_ALL"]                  = "Tout basculer"
 L["FILTER_HIDE_TOOLTIPS"]               = "Masquer les infobulles"
+L["TALENT_SPEC_SUBTEXT"]                = "Changer de spécialisation"
+L["TALENT_LOADOUT_SUBTEXT"]             = "Charger la configuration de talents"
+L["TALENT_CURRENTLY_ACTIVE"]            = "Actuellement actif"
+L["FILTER_LOADOUTS"]                    = "Configurations"
 L["FILTER_STAT_RECORDED"]               = "Enregistrées"
 L["FILTER_STAT_UNRECORDED"]             = "Non enregistrées"
 L["FILTER_EXCLUDE_JUNK"]                = "Exclure la camelote"

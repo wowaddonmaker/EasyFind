@@ -256,24 +256,8 @@ L["WHATSNEW_CHAT_HELLO"]                = "欢迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "这里"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日志"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff搜索你的专业 (在筛选菜单中开启)|r\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff搜索游戏中的所有物品 (在筛选菜单中开启)|r\n" ..
-    "    |cff999999-|r 目录非常庞大，建议保持关闭，通过 '@gen' 快捷筛选访问\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff随时随地搜索你的银行 (在筛选菜单中开启)|r\n" ..
-    "    |cff999999-|r 你的银行和战团银行，以你上次打开时的状态\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff查找其他角色身上的物品 (在筛选菜单中开启)|r\n" ..
-    "    |cff999999-|r 你登录过的任意角色，含银行\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff点击或拖动即可将物品链接到聊天|r\n" ..
-    "    |cff999999-|r 拖到频道、密语或聊天输入框上即可\n" ..
-    "    |cff999999-|r 例：搜索 %s，按住 Shift 拖到聊天输入框\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff查看尚未获得的头衔 (在筛选菜单中开启)|r\n" ..
-    "    |cff999999-|r 显示授予该头衔的成就，Alt+点击可打开\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff悬停查看成就提示|r\n" ..
-    "    |cff999999-|r 达成条件、进度和奖励，无需打开成就界面\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff搜索 '金币'、'耐久度' 或 '装备等级'|r\n" ..
-    "    |cff999999-|r 答案会直接显示在结果上方。 还支持钥石、评分、背包空间和移动速度\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff新的筛选选项|r\n" ..
-    "    |cff999999-|r 按专精筛选装备配置，以及头衔、统计、玩具和宠物"
+    "|cffFFD100\226\128\162|r |cffffffff专精和天赋配置现已可搜索|r\n" ..
+    "    |cff999999-|r 点击结果即可切换"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "添加别名"
@@ -365,6 +349,10 @@ L["QUICK_FILTER"]                       = "快捷筛选"
 L["QUICK_FILTER_TT"]                    = "在空搜索时单击或按退格键以清除。"
 L["FILTER_TOGGLE_ALL"]                  = "全部切换"
 L["FILTER_HIDE_TOOLTIPS"]               = "隐藏提示"
+L["TALENT_SPEC_SUBTEXT"]                = "切换专精"
+L["TALENT_LOADOUT_SUBTEXT"]             = "载入天赋配置"
+L["TALENT_CURRENTLY_ACTIVE"]            = "当前使用中"
+L["FILTER_LOADOUTS"]                    = "天赋配置"
 L["FILTER_STAT_RECORDED"]               = "已记录"
 L["FILTER_STAT_UNRECORDED"]             = "未记录"
 L["FILTER_EXCLUDE_JUNK"]                = "排除垃圾"

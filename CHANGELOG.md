@@ -4,6 +4,15 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [2.3.0] - 2026-08-14
+
+### Added
+- **Switch specialization from search**: your specs appear as Talents results; click one to swap
+- **Load talent loadouts from search**: your current spec's saved loadouts load with one click, no talent window needed. The loadout and spec you are on are marked in green
+- **Talents filter options**: new Specialization and Loadouts toggles in the Talents filter menu control whether these rows appear
+
+---
+
 ## [2.2.1] - 2026-08-10
 
 ### Fixed

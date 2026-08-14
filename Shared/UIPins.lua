@@ -51,6 +51,8 @@ local SIMPLE_FIELDS = {
     -- Keybind toggle rows: bindingAction performs the action cold; customToggle
     -- marks the EasyFind-owned single-action rows (left-click only).
     "bindingAction", "customToggle",
+    -- Spec/loadout swap rows: the index/configID RunTalentSwap replays.
+    "specSetIndex", "loadoutConfigID",
     -- Profession rows: spellName arms the secure cast-to-open; the skill line
     -- and IDs drive SelectResult's opener tiering for recipe and cast-less
     -- rows. Absent, a restored profession row falls through every branch.
