@@ -27,7 +27,7 @@ local function CollectPetSourceDefs()
 end
 
 -- Pet families (Humanoid..Mechanical) are 1-indexed; labels live in the
--- BATTLE_PET_NAME_<i> globals, verified by /efd colfilter.
+-- BATTLE_PET_NAME_<i> globals.
 local cachedPetTypeDefs
 local function CollectPetTypeDefs()
     if cachedPetTypeDefs then return cachedPetTypeDefs end

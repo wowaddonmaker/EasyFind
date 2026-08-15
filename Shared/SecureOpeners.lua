@@ -7,7 +7,7 @@ local _, ns = ...
 -- Blizzard button) runs Blizzard's entire open pipeline tainted, and what
 -- that pipeline writes stays tainted for the session. Measured carrier:
 -- opening the spellbook writes the action bars' drag-grid bookkeeping, so
--- MultiBarBottomLeft.showAllButtons ends up tainted (/efd taint), and in
+-- MultiBarBottomLeft.showAllButtons ends up tainted, and in
 -- combat every hover re-reads it and gets ADDON_ACTION_BLOCKED blamed on
 -- EasyFind, while spellbook opens storm secret-value errors.
 --
@@ -33,9 +33,9 @@ local _, ns = ...
 -- neither problem: Button:Click() ignores RegisterForClicks and fires its
 -- OnClick handler for any edge.
 --
--- Tab steering is the second, independent taint vector (measured with
--- /efd taint steer: the flag flips the moment EasyFind clicks the panel's
--- tab, even after a fully secure open). The tabs are unnamed, so no
+-- Tab steering is the second, independent taint vector (measured: the flag
+-- flips the moment EasyFind clicks the panel's tab, even after a fully
+-- secure open). The tabs are unnamed, so no
 -- macrotext can reach them, but the secure "click" action takes a raw
 -- frame reference (clickbutton attribute). One hardware click carries both
 -- actions through Blizzard's press-and-hold mechanism: with

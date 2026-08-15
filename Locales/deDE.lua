@@ -258,8 +258,12 @@ L["WHATSNEW_CHAT_HELLO"]                = "Willkommen bei |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vollständiges Änderungsprotokoll"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffSpezialisierungen und Talent-Sammlungen jetzt durchsuchbar|r\n" ..
-    "    |cff999999-|r Zum Wechseln im Ergebnis anklicken"
+    "|cffFFD100\226\128\162|r |cffffffffRechner jetzt optionale Abhängigkeit, über das AddOn-Menü|r\n" ..
+    "  |cffffffffkomplett deaktivierbar|r\n" ..
+    "    |cff999999-|r Jetzt über die neue App-Schaltfläche erreichbar (bald folgen mehr),\n" ..
+    "      Ergebnisse kommen weiterhin direkt in der Suchleiste, und die\n" ..
+    "      Suche nach 'Rechner' funktioniert wie zuvor\n" ..
+    "    |cff999999-|r Die App-Schaltfläche lässt sich in den Suche-Einstellungen ausblenden"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"
@@ -638,6 +642,10 @@ L["POI_ZEPPELIN"] = "Zeppelin"
 L["POI_ZULDAZAR_BFA_PORTAL"] = "Zuldazar (BfA) Portal"
 L["OPT_INLINE_AUTOCOMPLETE"] = "Inline-Autovervollständigung"
 L["OPT_INLINE_AUTOCOMPLETE_TT"] = "Zeigt beim Tippen die beste Vervollständigung direkt im Suchfeld an. Deaktivieren, falls sie mit eurer Eingabemethode kollidiert."
+L["OPT_SHOW_APPS_BUTTON"] = "App-Schaltfläche anzeigen"
+L["OPT_SHOW_APPS_BUTTON_TT"] = "Zeigt die App-Schaltfläche auf der Suchleiste. Ohne Haken bleibt sie verborgen, bis ihr mit der Maus über ihre Stelle auf der Leiste fahrt."
+L["OPT_SHOW_FILTER_BUTTON"] = "Filter-Schaltfläche anzeigen"
+L["OPT_SHOW_FILTER_BUTTON_TT"] = "Zeigt die Filter-Schaltfläche auf der Suchleiste. Ohne Haken bleibt sie verborgen, bis ihr mit der Maus über ihre Stelle auf der Leiste fahrt."
 L["ANSWER_KEYSTONE"]                    = "Schlüsselstein"
 L["ANSWER_BAG_SPACE"]                   = "Taschenplatz"
 L["ANSWER_GOLD_FMT"]                    = "%s (Account: %s)"

@@ -8,7 +8,7 @@ local CreateFrame = CreateFrame
 local UIParent = UIParent
 
 -- All three collection filters (mount/toy/pet) label their sources from the
--- same BATTLE_PET_SOURCE_N globals (1..12), verified by /efd colfilter.
+-- same BATTLE_PET_SOURCE_N globals (1..12).
 local function SourceLabel(sourceType)
     return _G["BATTLE_PET_SOURCE_" .. tostring(sourceType)]
         or ("Source " .. tostring(sourceType))

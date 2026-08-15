@@ -279,8 +279,12 @@ L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffSpecs and talent loadouts now searchable|r\n" ..
-    "    |cff999999-|r Click from results to swap"
+    "|cffFFD100\226\128\162|r |cffffffffCalculator now optional dependency, able to be disabled entirely|r\n" ..
+    "  |cffffffffthrough addons menu|r\n" ..
+    "    |cff999999-|r Can now also access calc via new app button on bar (more soon)\n" ..
+    "    |cff999999-|r Can still get results inline & search calc from search bar like before\n" ..
+    "    |cff999999-|r You can also hide the app button from the bar in the Search settings\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCan now hide the filter button from the bar in the Search settings"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels
@@ -679,6 +683,10 @@ L["POI_ZEPPELIN"] = "Zeppelin"
 L["POI_ZULDAZAR_BFA_PORTAL"] = "Zuldazar (BfA) Portal"
 L["OPT_INLINE_AUTOCOMPLETE"] = "Inline autocomplete"
 L["OPT_INLINE_AUTOCOMPLETE_TT"] = "Show the best matching completion inline as you type. Turn this off if completion ever interferes with your input method."
+L["OPT_SHOW_APPS_BUTTON"] = "Show app button"
+L["OPT_SHOW_APPS_BUTTON_TT"] = "Show the app button on the search bar. When unchecked, the button hides until you hover over its spot on the bar."
+L["OPT_SHOW_FILTER_BUTTON"] = "Show filter button"
+L["OPT_SHOW_FILTER_BUTTON_TT"] = "Show the filter button on the search bar. When unchecked, the button hides until you hover over its spot on the bar."
 L["ANSWER_KEYSTONE"]                    = "Keystone"
 L["ANSWER_BAG_SPACE"]                   = "Bag space"
 L["ANSWER_GOLD_FMT"]                    = "%s (account: %s)"

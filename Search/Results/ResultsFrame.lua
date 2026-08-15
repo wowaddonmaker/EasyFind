@@ -9,7 +9,6 @@ local OptionsSurface = ns.OptionsSurface
 local Utils = ns.Utils
 local L = ns.L
 
-local ipairs = Utils.ipairs
 local CreateFrame = CreateFrame
 local C_Timer = C_Timer
 
@@ -17,6 +16,25 @@ local GOLD_COLOR = ns.GOLD_COLOR
 local RESULT_SHORTCUT = Shortcuts.RESULT_SHORTCUT
 local resultsFrame
 local resultShortcutFrame
+
+-- Frames whose mouse-over must not count as an "outside" click for the
+-- results panel. Blizzard's StaticPopup slots are here so clicks on our
+-- unapplied-settings popup buttons (Apply / Exit / Cancel) don't trigger
+-- an extra RequestHideResults that closes the panel.
+local OUTSIDE_GUARD_NAMES = {
+    "EasyFindUIFilterDropdown",
+    "EasyFindUIAppsDropdown",
+    "EasyFindUIAppsButton",
+    "EasyFindPinPopup",
+    "EasyFindAsOptionsPopup",
+    "EasyFindAsClassPopup",
+    "EasyFindLootOptionsPopup",
+    "EasyFindDiffPopup",
+    "EasyFindSpecPopup",
+    "EasyFindSpecFlyout",
+    "EasyFindCalculatorFrame",
+    "StaticPopup1", "StaticPopup2", "StaticPopup3", "StaticPopup4",
+}
 
 function Results:EnsureResultButton(index)
     local row = Search:GetResultButtons()[index]
@@ -99,25 +117,12 @@ function Results:CreateResultsFrame()
         -- the Send-link channel submenu) count as inside: those submenus are
         -- separate pooled frames, not children of the pin popup below.
         if Utils.IsCursorMenuMouseOver() then return end
-        local guards = {
-            _G["EasyFindUIFilterDropdown"],
-            _G["EasyFindPinPopup"],
-            _G["EasyFindAsOptionsPopup"],
-            _G["EasyFindAsClassPopup"],
-            _G["EasyFindLootOptionsPopup"],
-            _G["EasyFindDiffPopup"],
-            _G["EasyFindSpecPopup"],
-            _G["EasyFindSpecFlyout"],
-            _G["EasyFindCalculatorFrame"],
-            -- Blizzard's StaticPopup slots: clicks on our unapplied-
-            -- settings popup buttons (Apply / Exit / Cancel) must not
-            -- register as "outside" or they'd trigger an extra
-            -- RequestHideResults that closes the panel.
-            _G["StaticPopup1"], _G["StaticPopup2"],
-            _G["StaticPopup3"], _G["StaticPopup4"],
-        }
-        for _, g in ipairs(guards) do
-            if Utils.IsFrameOrChildMouseOver(g) then return end
+        -- Resolved per check, by NAME: a frame that does not exist yet
+        -- (calculator popup before first open, with the companion, or
+        -- never without it) must not leave a nil hole that truncates
+        -- ipairs and silently drops the guards after it.
+        for i = 1, #OUTSIDE_GUARD_NAMES do
+            if Utils.IsFrameOrChildMouseOver(_G[OUTSIDE_GUARD_NAMES[i]]) then return end
         end
         Results:RequestHideResults()
     end)

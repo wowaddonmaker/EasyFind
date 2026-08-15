@@ -174,7 +174,9 @@ local FLAT_CATEGORY_ICONS = {
     -- glance from the silvery-grey game-settings cogwheel.
     settingAddon  = { atlas = "QuestLog-icon-setting", color = { 1.0, 0.78, 0.35 } },
     title         = { tex = 514608, coords = { 0.016, 0.531, 0.324, 0.461 } },
-    calculator    = { tex = CALCULATOR_ICON_TEX },
+    -- chromeTint: white line art tinted with the theme's chrome-glyph color
+    -- at render time, so this icon matches the apps menu and popup glyphs.
+    calculator    = { tex = CALCULATOR_ICON_TEX, chromeTint = true },
     -- Equipment Manager sidebar tab icon (PaperDollSidebarTab3 ARTWORK
     -- region of the PaperDollSidebarTabs sheet, same sheet as `title`).
     gearSet       = { tex = 514608, coords = { 0.01562, 0.53125, 0.46875, 0.60547 } },

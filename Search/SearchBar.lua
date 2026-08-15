@@ -575,6 +575,9 @@ function Search:CreateSearchFrame()
             toggleFocused = false
             Results:UpdateSelectionHighlight(true)
         end
+        -- Clicking back into the box must drop any toolbar keyboard focus, or the
+        -- focused button's locked highlight (apps grid) stays lit.
+        if searchFrame.ClearToolbarFocus then searchFrame.ClearToolbarFocus() end
         local text = self:GetText() or ""
         if text == "" then
             Results:ShowPinnedItems()
@@ -627,6 +630,9 @@ function Search:CreateSearchFrame()
         if not onGuard then
             local guards = {
                 _G["EasyFindUIFilterDropdown"],
+                _G["EasyFindUIFilterButton"],
+                _G["EasyFindUIAppsButton"],
+                _G["EasyFindUIAppsDropdown"],
                 _G["EasyFindPinPopup"],
                 _G["EasyFindAsOptionsPopup"],
                 _G["EasyFindAsClassPopup"],
@@ -1371,6 +1377,17 @@ function Search:CreateSearchFrame()
 
     local TOOLBAR_CONTROLS = { filterBtn }
     local function GetToolbarControls()
+        -- Apps button sits left of the filter button, so Tab visits it first.
+        -- Rebuilt in place (no allocation) since the apps button is created after
+        -- this closure and can be toggled off.
+        local apps = searchFrame.appsBtn
+        if apps and apps:IsShown() then
+            TOOLBAR_CONTROLS[1] = apps
+            TOOLBAR_CONTROLS[2] = filterBtn
+        else
+            TOOLBAR_CONTROLS[1] = filterBtn
+            TOOLBAR_CONTROLS[2] = nil
+        end
         return TOOLBAR_CONTROLS
     end
 
@@ -1383,17 +1400,24 @@ function Search:CreateSearchFrame()
             if prevTarget.ringDisc then prevTarget.ringDisc:Hide() end
             if prevTarget.ringInner then prevTarget.ringInner:Hide() end
             if prevTarget.UnlockHighlight then prevTarget:UnlockHighlight() end
+            if prevTarget.RefreshReveal then prevTarget.RefreshReveal() end
         end
         toolbarFocus = idx
         local controls = GetToolbarControls()
         local target = controls[idx]
         if target then
             target.keyboardFocused = true
+            if target.RefreshReveal then target.RefreshReveal() end
             if target.btnBg then
                 target.btnBg:Show()
                 if target.ringDisc then target.ringDisc:Show() end
                 if target.ringInner then target.ringInner:Show() end
                 if target.LockHighlight then target:LockHighlight() end
+                toolbarHighlight:Hide()
+            elseif target.LockHighlight and target:GetHighlightTexture() then
+                -- Buttons with their own hover highlight (apps grid) light that
+                -- up on focus, matching hover instead of a plain focus box.
+                target:LockHighlight()
                 toolbarHighlight:Hide()
             else
                 toolbarHighlight:SetParent(target)
@@ -1415,6 +1439,7 @@ function Search:CreateSearchFrame()
             if prevTarget.ringDisc then prevTarget.ringDisc:Hide() end
             if prevTarget.ringInner then prevTarget.ringInner:Hide() end
             if prevTarget.UnlockHighlight then prevTarget:UnlockHighlight() end
+            if prevTarget.RefreshReveal then prevTarget.RefreshReveal() end
         end
         toolbarFocus = 0
         toolbarHighlight:Hide()
@@ -1850,6 +1875,21 @@ function Search:CreateSearchFrame()
     end
 
     self:CreateUIFilterDropdown(filterBtn, searchFrame, editBox)
+    -- Built after the filter button exists: the apps button anchors to its
+    -- left edge, so it cannot be placed before there is one.
+    if ns.AppsMenu then ns.AppsMenu:Create(searchFrame, filterBtn) end
+
+    -- Hover-reveal for the configurable bar controls: an unchecked "Show
+    -- filter button" keeps the button clickable at alpha 0 until its spot
+    -- is hovered, focused, or its menu is open (same idea as hover-show).
+    local filterDropdown = _G["EasyFindUIFilterDropdown"]
+    Utils.InstallBarControlReveal(filterBtn,
+        function() return EasyFind.db.showFilterButton ~= false end,
+        function() return filterDropdown and filterDropdown:IsShown() end)
+    if filterDropdown then
+        filterDropdown:HookScript("OnShow", filterBtn.RefreshReveal)
+        filterDropdown:HookScript("OnHide", filterBtn.RefreshReveal)
+    end
 
     -- Click-away dismissal listens permanently, not per-OnShow: any show
     -- path that finds the frame technically already Shown (smart show
@@ -1929,6 +1969,11 @@ function Search:CreateSearchFrame()
         local extras = {
             _G["EasyFindPinPopup"],
             _G["EasyFindUIWizard"],
+            -- The apps button and its dropdown live on UIParent, not inside the
+            -- search frame, so a click on either read as "outside" and hid the
+            -- whole bar (a right-click on an app row closed everything).
+            _G["EasyFindUIAppsButton"],
+            _G["EasyFindUIAppsDropdown"],
         }
         for _, g in ipairs(extras) do
             if Utils.IsFrameOrChildMouseOver(g) then return end
@@ -2077,6 +2122,13 @@ function Search:HandleEscape(fromUnfocused)
     end
     self._escClosingMenus = true
     local closedAny = self:CloseFilterDropdownIfOpen()
+    -- The apps dropdown closes on ESC too, like the filter dropdown, instead of
+    -- leaving it open while ESC dismisses the bar.
+    local escSearchFrame = self:GetSearchFrame()
+    if escSearchFrame and escSearchFrame.appsDropdown and escSearchFrame.appsDropdown:IsShown() then
+        escSearchFrame.appsDropdown:Hide()
+        closedAny = true
+    end
     self._escClosingMenus = nil
     if closedAny then
         if not fromUnfocused then Refocus() end
@@ -2144,7 +2196,7 @@ function Search:IsEscClosingMenus()
     return self._escClosingMenus
 end
 
--- Dev probe surface (/efd esc): key-capture state in one read.
+-- Dev probe surface: key-capture state in one read.
 function Search:GetKeyNavDebug()
     return {
         navKeyboard = navFrame and navFrame:IsKeyboardEnabled() or false,
@@ -2319,6 +2371,18 @@ function Search:UpdateSearchBarHeight()
     self:UpdateFontSize()
 end
 
+-- Re-run the hover-reveal decision for both configurable bar controls,
+-- called when either "Show ... button" setting flips in options.
+function Search:RefreshBarControlReveal()
+    if not searchFrame then return end
+    if searchFrame.filterBtn and searchFrame.filterBtn.RefreshReveal then
+        searchFrame.filterBtn.RefreshReveal()
+    end
+    if searchFrame.appsBtn and searchFrame.appsBtn.RefreshReveal then
+        searchFrame.appsBtn.RefreshReveal()
+    end
+end
+
 -- forceShow=false is the programmatic-refresh mode (settings reset):
 -- visibility settings are re-applied without pulling a closed bar onto
 -- the screen. Every other caller keeps the interactive default, where
@@ -2427,6 +2491,11 @@ function Search:UpdateFontSize()
     if searchFrame.filterBtn then
         searchFrame.filterBtn:SetWidth(barH)
     end
+    -- The apps button is a square like the filter button; keep it square as the
+    -- bar height changes, or it drifts out of the right-hand cluster on rescale.
+    if searchFrame.appsBtn then
+        searchFrame.appsBtn:SetWidth(barH)
+    end
 
     local theme = Results:GetActiveTheme()
     local WHITE8x8 = "Interface\\BUTTONS\\WHITE8x8"
@@ -2469,6 +2538,11 @@ function Search:UpdateFontSize()
         if filterBtn and filterBtn.arrow then
             filterBtn.arrow:SetVertexColor(glyph[1], glyph[2], glyph[3], 1)
             filterBtn.arrow:SetBlendMode(theme.lightTheme and "BLEND" or "ADD")
+        end
+        -- Apps 3x3 dots track the same chrome-glyph color flip as the filter
+        -- arrow, so they stay readable on light themes.
+        if ns.AppsMenu and ns.AppsMenu.SetGlyphColor then
+            ns.AppsMenu:SetGlyphColor(glyph[1], glyph[2], glyph[3], 1)
         end
         -- Toolbar focus ring (the circle around the filter button): gold
         -- ADD glow on dark themes; light themes tint it with their main

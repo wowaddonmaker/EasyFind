@@ -1380,7 +1380,7 @@ local function HandleWaitWardrobeSetsTab(self)
     return true
 end
 
--- Catalog grid element data (measured via /efd housing grid):
+-- Catalog grid element data (measured):
 -- { entryVariantID = { recordID, variantIdentifier, entryType },
 --   templateKey = "CATALOG_ENTRY_DECOR", displayContextGetter = fn }
 -- Match on entryVariantID.recordID against the result's housingRecordID.
@@ -1683,7 +1683,7 @@ function Highlight:GetStepLockState(step)
         if self:IsPvPSideTabSelected(step.waitForFrame, step.pvpSideTabIndex) then return nil end
         -- The category buttons live in Blizzard's on-demand PvP UI; load it
         -- once so lock state is observable before the tab is ever opened.
-        -- Confirmed cheap and accurate via /efd lockprobe load.
+        -- Confirmed cheap and accurate.
         if not _G.PVPQueueFrame and not pvpUILoadTried then
             pvpUILoadTried = true
             local loader = C_AddOns and C_AddOns.LoadAddOn or LoadAddOn

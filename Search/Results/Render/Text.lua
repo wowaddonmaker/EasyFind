@@ -120,9 +120,15 @@ function Render.BaseRowText(resultRow, entry, state)
                     resultRow.flatCatIcon:SetTexCoord(0, 1, 0, 1)
                 end
             end
-            if catIconDef and catIconDef.color then
+            if catIconDef and catIconDef.chromeTint then
+                local gc = ns.ChromeGlyphColor()
+                resultRow.flatCatIcon:SetDesaturated(true)
+                resultRow.flatCatIcon:SetVertexColor(gc[1], gc[2], gc[3], 1)
+            elseif catIconDef and catIconDef.color then
+                resultRow.flatCatIcon:SetDesaturated(false)
                 resultRow.flatCatIcon:SetVertexColor(unpack(catIconDef.color))
             else
+                resultRow.flatCatIcon:SetDesaturated(false)
                 resultRow.flatCatIcon:SetVertexColor(1, 1, 1, 1)
             end
             ns.SizeIconAspect(resultRow.flatCatIcon, sz, catIconDef and catIconDef.aspect)

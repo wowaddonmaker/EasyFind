@@ -461,7 +461,7 @@ end
 -- An entry missing more than that budget for any word, or the budgeted word's
 -- initial, cannot score, so all engines are skipped. 1-char words are never
 -- required (ScoreKeywords skips them by design). Loot entries keep their own
--- branch and are never gated. The /efd bench GATE section asserts gated ==
+-- branch and are never gated. The dev bench GATE section asserts gated ==
 -- ungated results; keep it green when touching any scorer above.
 local GATE = {
     masks = {}, allows = {}, firstBits = {}, count = 0,
@@ -1153,7 +1153,7 @@ end
 -- while the query is shorter than their threshold, and crossing a threshold
 -- forces a full scan so the newly eligible category is admitted past the
 -- incremental narrowing. A category absent from the map costs a single upvalue
--- nil-check per entry. /efd bench gate A/Bs this map against nil.
+-- nil-check per entry.
 local categoryMinLen, categoryGateLens
 
 -- Shipped default (applied at the bottom of this file): the heavy providers
@@ -1398,7 +1398,7 @@ function Database:SearchUI(query, skipCategories)
         end
     end
 
-    -- Dev-only narrowing stats: nil unless /efd kprof armed it, so zero cost
+    -- Dev-only narrowing stats: nil unless the dev profiler armed it, so zero cost
     -- in normal play. Reports whether incremental narrowing engaged and how
     -- big the scored set is.
     local efStats = Database._efSearchStats

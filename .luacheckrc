@@ -155,9 +155,6 @@ read_globals = {
     -- Data types
     "UiMapPoint",
 
-    -- Cross-addon references
-    "EasyFindDevDB",
-
     -- Blizzard settings frames
     "InterfaceOptionsFrame",
 

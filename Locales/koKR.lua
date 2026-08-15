@@ -256,8 +256,11 @@ L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 �
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff전문화와 특성 구성 검색 지원|r\n" ..
-    "    |cff999999-|r 결과를 클릭하면 전환됩니다"
+    "|cffFFD100\226\128\162|r |cffffffff계산기는 이제 선택형 구성 요소이며 애드온 목록에서 완전히|r\n" ..
+    "  |cffffffff비활성화할 수 있습니다|r\n" ..
+    "    |cff999999-|r 이제 검색창의 새 앱 버튼으로도 열 수 있으며 (더 많은 앱 추가 예정),\n" ..
+    "      이전처럼 인라인 결과와 '계산기' 검색도 그대로 사용할 수 있습니다\n" ..
+    "    |cff999999-|r 검색 설정에서 앱 버튼을 숨길 수도 있습니다"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"
@@ -636,6 +639,10 @@ L["POI_ZEPPELIN"] = "Zeppelin"
 L["POI_ZULDAZAR_BFA_PORTAL"] = "Zuldazar (BfA) Portal"
 L["OPT_INLINE_AUTOCOMPLETE"] = "인라인 자동 완성"
 L["OPT_INLINE_AUTOCOMPLETE_TT"] = "입력 중 가장 일치하는 완성을 검색창에 표시합니다. 입력기와 충돌하면 끄십시오."
+L["OPT_SHOW_APPS_BUTTON"] = "앱 버튼 표시"
+L["OPT_SHOW_APPS_BUTTON_TT"] = "검색창에 앱 버튼을 표시합니다. 해제하면 검색창의 해당 위치에 마우스를 올릴 때까지 버튼이 숨겨집니다."
+L["OPT_SHOW_FILTER_BUTTON"] = "필터 버튼 표시"
+L["OPT_SHOW_FILTER_BUTTON_TT"] = "검색창에 필터 버튼을 표시합니다. 해제하면 검색창의 해당 위치에 마우스를 올릴 때까지 버튼이 숨겨집니다."
 L["ANSWER_KEYSTONE"]                    = "쐐기돌"
 L["ANSWER_BAG_SPACE"]                   = "가방 공간"
 L["ANSWER_GOLD_FMT"]                    = "%s (계정: %s)"

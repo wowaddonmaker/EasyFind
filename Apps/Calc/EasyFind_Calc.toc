@@ -1,0 +1,12 @@
+## Interface: 120100, 120007, 120001, 120000
+## Title: EasyFind [Calculator]
+## Notes: Inline and popup calculator companion for EasyFind
+## Author: justawower
+## Version: 2.4.0
+## IconTexture: Interface\AddOns\EasyFind\textures\SpyglassMinimap
+## Category: UI
+## RequiredDeps: EasyFind
+## DefaultState: enabled
+
+Core.lua
+Popup.lua

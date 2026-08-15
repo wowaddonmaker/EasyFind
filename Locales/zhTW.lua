@@ -256,8 +256,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "歡迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "這裡"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日誌"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff專精與天賦配置現已可搜尋|r\n" ..
-    "    |cff999999-|r 點擊結果即可切換"
+    "|cffFFD100\226\128\162|r |cffffffff計算機現在是可選組件，可在插件清單中完全停用|r\n" ..
+    "    |cff999999-|r 現在也可透過搜尋列上新的應用程式按鈕開啟 (更多應用即將推出)，\n" ..
+    "      內嵌結果和搜尋 '計算機' 的用法與之前相同\n" ..
+    "    |cff999999-|r 還可以在搜尋設定中隱藏應用程式按鈕"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "新增別名"
@@ -636,6 +638,10 @@ L["POI_ZEPPELIN"] = "Zeppelin"
 L["POI_ZULDAZAR_BFA_PORTAL"] = "Zuldazar (BfA) Portal"
 L["OPT_INLINE_AUTOCOMPLETE"] = "輸入內嵌補全"
 L["OPT_INLINE_AUTOCOMPLETE_TT"] = "輸入時在搜尋框內顯示最佳補全。若與輸入法衝突，可關閉。"
+L["OPT_SHOW_APPS_BUTTON"] = "顯示應用程式按鈕"
+L["OPT_SHOW_APPS_BUTTON_TT"] = "在搜尋列上顯示應用程式按鈕。取消勾選後，按鈕會隱藏，將滑鼠移到搜尋列上它的位置時才會顯示。"
+L["OPT_SHOW_FILTER_BUTTON"] = "顯示篩選按鈕"
+L["OPT_SHOW_FILTER_BUTTON_TT"] = "在搜尋列上顯示篩選按鈕。取消勾選後，按鈕會隱藏，將滑鼠移到搜尋列上它的位置時才會顯示。"
 L["ANSWER_KEYSTONE"]                    = "鑰石"
 L["ANSWER_BAG_SPACE"]                   = "背包空間"
 L["ANSWER_GOLD_FMT"]                    = "%s（帳號：%s）"

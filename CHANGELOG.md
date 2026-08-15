@@ -4,6 +4,22 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [2.4.0] - 2026-08-15
+
+### Added
+- **Apps button**: a new dot-grid button on the search bar opens the apps menu. Calculator is the first app, with more on the way
+- **Calculator can be disabled**: the calculator now ships as "EasyFind [Calculator]", its own entry in the AddOns list. Disable it there and every trace of it goes away; while enabled, inline math and searching "calculator" work exactly as before
+- **Search options**: new "Show app button" and "Show filter button" toggles. Unchecked, the button stays hidden until you hover over its spot on the bar
+
+### Changed
+- **Calculator follows your theme**: the calculator window's keypad, input box, and result box now match the active theme and restyle live when you switch. Its icon wears the same theme color everywhere it appears
+- **Search options layout**: the Wowhead language selector now sits with the other selector rows
+
+### Fixed
+- **Search results could close when clicking a popup**: clicks on confirmation dialogs and the calculator window no longer count as clicking outside the results
+
+---
+
 ## [2.3.0] - 2026-08-14
 
 ### Added

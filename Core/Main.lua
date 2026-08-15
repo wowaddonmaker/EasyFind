@@ -272,6 +272,8 @@ local DB_DEFAULTS = {
     uiSearchHistoryLimit = 500,
     searchAutocomplete = true,
     mapTabAutocomplete = true,
+    showAppsButton = true,
+    showFilterButton = true,
 }
 -- Exposed so option resets restore from the same table first-run uses;
 -- keeping a second copy in OptionsPanel let the two drift apart.
@@ -550,7 +552,7 @@ local SUGGESTED_KEYBINDS = {
 -- The version whose features the What's New popup currently describes. Bump
 -- ONLY when the popup content is rewritten; patch releases that keep the same
 -- content must not re-announce it to users who already saw it.
-local WHATSNEW_CONTENT_VERSION = "2.3.0"
+local WHATSNEW_CONTENT_VERSION = "2.4.0"
 
 local WHATSNEW_LINK_PREFIX = "easyfind:whatsnew:"
 local whatsNewHookInstalled = false

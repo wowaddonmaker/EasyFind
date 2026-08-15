@@ -1,4 +1,6 @@
-local _, ns = ...
+local EasyFind = EasyFind
+local ns = EasyFind and EasyFind._ns
+if not (ns and ns.Calculator) then return end
 
 local Calculator = ns.Calculator
 local Utils = ns.Utils

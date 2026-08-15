@@ -784,7 +784,7 @@ local function AttachRecipeFilterFlyout(row)
 
     local SEP_H = 8
     local function Layout()
-        -- Label keys pending the /efd locale pass; English fallbacks match the
+        -- Label keys pending a locale lookup pass; English fallbacks match the
         -- window's own captured menu rows.
         checkRows[1]._label:SetText(_G["PROFESSIONS_FILTER_LEARNED"] or "Show Learned")
         checkRows[2]._label:SetText(_G["PROFESSIONS_FILTER_UNLEARNED"] or "Show Unlearned")

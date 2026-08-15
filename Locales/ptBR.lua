@@ -256,8 +256,12 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bem-vindo ao |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "aqui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver o changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffEspecializações e configurações de talentos agora na busca|r\n" ..
-    "    |cff999999-|r Clique em um resultado para trocar"
+    "|cffFFD100\226\128\162|r |cffffffffA calculadora agora é uma dependência opcional e pode ser desativada|r\n" ..
+    "  |cffffffffpor completo no menu de addons|r\n" ..
+    "    |cff999999-|r Agora abre pelo novo botão de aplicativos (mais em breve),\n" ..
+    "      mas os resultados em linha e a busca por 'calculadora'\n" ..
+    "      na barra continuam como antes\n" ..
+    "    |cff999999-|r Também dá para ocultar o botão de aplicativos nas configurações de Busca"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Adicionar apelido"
@@ -636,6 +640,10 @@ L["POI_ZEPPELIN"] = "Zeppelin"
 L["POI_ZULDAZAR_BFA_PORTAL"] = "Zuldazar (BfA) Portal"
 L["OPT_INLINE_AUTOCOMPLETE"] = "Autocompletar em linha"
 L["OPT_INLINE_AUTOCOMPLETE_TT"] = "Mostra a melhor conclusão enquanto você digita. Desative se interferir no seu método de entrada."
+L["OPT_SHOW_APPS_BUTTON"] = "Mostrar botão de aplicativos"
+L["OPT_SHOW_APPS_BUTTON_TT"] = "Mostra o botão de aplicativos na barra de busca. Se desmarcado, o botão fica oculto até você passar o cursor sobre o lugar dele na barra."
+L["OPT_SHOW_FILTER_BUTTON"] = "Mostrar botão de filtros"
+L["OPT_SHOW_FILTER_BUTTON_TT"] = "Mostra o botão de filtros na barra de busca. Se desmarcado, o botão fica oculto até você passar o cursor sobre o lugar dele na barra."
 L["ANSWER_KEYSTONE"]                    = "Pedra Angular"
 L["ANSWER_BAG_SPACE"]                   = "Espaço nas bolsas"
 L["ANSWER_GOLD_FMT"]                    = "%s (conta: %s)"

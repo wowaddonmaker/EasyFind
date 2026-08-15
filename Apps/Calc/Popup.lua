@@ -1,4 +1,6 @@
-local _, ns = ...
+local EasyFind = EasyFind
+local ns = EasyFind and EasyFind._ns
+if not (ns and ns.Calculator) then return end
 
 local Search = ns.Search
 local Calculator = ns.Calculator
@@ -7,6 +9,7 @@ local Utils = ns.Utils
 local L = ns.L
 
 local mmin = Utils.mmin
+local pairs = Utils.pairs
 
 local GOLD_COLOR = ns.GOLD_COLOR
 local CreateFrame = CreateFrame
@@ -24,41 +27,42 @@ end
 local function GetResultButtons()
     return Search:GetResultButtons()
 end
-function Calculator:SetCalculatorRoundedFill(frame, r, g, b, a, br, bg, bb, ba)
-    ns.SetRoundedRectFill(frame, r, g, b, a, true)
-    ns.SetRoundedRectBorderColor(frame, br or 0.30, bg or 0.30, bb or 0.32, ba or 0.85, true)
+-- Rounded-fill/button chrome (SetCalculatorRoundedFill, StyleCalculatorButton,
+-- ThemeFillCalcControl, HideCalculatorRoundedBorder) is CORE-owned in
+-- EasyFind/Search/Modules.lua: the companion apps style their buttons with
+-- it even when this addon is disabled. Local alias for the popup's many
+-- fill sites.
+local function CalcThemeFill(frame, tbl, fallbackR, fallbackG, fallbackB)
+    Calculator:ThemeFillCalcControl(frame, tbl, fallbackR, fallbackG, fallbackB)
 end
 
-function Calculator:HideCalculatorRoundedBorder(frame)
-    ns.SetRoundedRectBorderEdgeShown(frame, false)
+-- The input shell and result card are wells that read as controls, so they
+-- wear the same live button fill as the keypad instead of their own slates.
+function Calculator:PaintCalculatorWell(frame)
+    local bf = ns.BTN_FILL_NORMAL or { 0.160, 0.190, 0.250 }
+    self:SetCalculatorRoundedFill(frame, bf[1], bf[2], bf[3], 1, 0.28, 0.28, 0.30, 0.75)
 end
 
-function Calculator:StyleCalculatorButton(btn, height)
-    if not btn then return end
-    if not btn.combinedBorder then
-        ns.CreateRoundedRectBorder(btn)
+-- Full repaint after a theme flip: the popup is not part of the options
+-- panel's retint walk, so its resting fills go stale without this. Buttons
+-- repaint to their resting fill (the next mouse event re-derives hover);
+-- the result card's fill is state-derived, so the state pass re-runs.
+function Calculator:RestyleCalculatorTheme()
+    local frame = Calculator._calculator and Calculator._calculator.popupFrame
+    if not frame then return end
+    if ns.ApplyThemeFill then ns.ApplyThemeFill(frame) end
+    for btn in pairs(Calculator._styledButtons) do
+        CalcThemeFill(btn, ns.BTN_FILL_NORMAL, 0.095, 0.095, 0.108)
     end
-    ns.SetRoundedRectBarHeight(btn, mmin(height or btn:GetHeight() or 22, 10))
-    ns.SetRoundedRectBorderBgAlpha(btn, 1)
-    self:HideCalculatorRoundedBorder(btn)
-    self:SetCalculatorRoundedFill(btn, 0.095, 0.095, 0.108, 1)
-    btn:SetScript("OnEnter", function(self)
-        if self:IsEnabled() then Calculator:SetCalculatorRoundedFill(self, 0.155, 0.155, 0.172, 1) end
-    end)
-    btn:SetScript("OnLeave", function(self)
-        if self:IsEnabled() then Calculator:SetCalculatorRoundedFill(self, 0.095, 0.095, 0.108, 1) end
-    end)
-    btn:SetScript("OnMouseDown", function(self)
-        if self:IsEnabled() then Calculator:SetCalculatorRoundedFill(self, 0.065, 0.065, 0.078, 1) end
-    end)
-    btn:SetScript("OnMouseUp", function(self)
-        if not self:IsEnabled() then return end
-        if self:IsMouseOver() then
-            Calculator:SetCalculatorRoundedFill(self, 0.155, 0.155, 0.172, 1)
-        else
-            Calculator:SetCalculatorRoundedFill(self, 0.095, 0.095, 0.108, 1)
+    if frame.inputShell then self:PaintCalculatorWell(frame.inputShell) end
+    if frame.calcGlyph then
+        CalcThemeFill(frame.calcGlyph, ns.BTN_FILL_NORMAL, 0.095, 0.095, 0.108)
+        if frame.calcGlyph.icon then
+            local gc = ns.ChromeGlyphColor()
+            frame.calcGlyph.icon:SetVertexColor(gc[1], gc[2], gc[3], 1)
         end
-    end)
+    end
+    self:RefreshCalculatorPopup()
 end
 
 function Calculator:CreateCalculatorGlyph(parent, size)
@@ -69,14 +73,18 @@ function Calculator:CreateCalculatorGlyph(parent, size)
     ns.SetRoundedRectBarHeight(glyph, mmin(size, 10))
     ns.SetRoundedRectBorderBgAlpha(glyph, 1)
     self:HideCalculatorRoundedBorder(glyph)
-    self:SetCalculatorRoundedFill(glyph, 0.095, 0.095, 0.108, 1)
+    CalcThemeFill(glyph, ns.BTN_FILL_NORMAL, 0.095, 0.095, 0.108)
 
     local icon = glyph:CreateTexture(nil, "ARTWORK")
     icon:SetPoint("TOPLEFT", glyph, "TOPLEFT", 3, -3)
     icon:SetPoint("BOTTOMRIGHT", glyph, "BOTTOMRIGHT", -3, 3)
     icon:SetTexture("Interface\\AddOns\\EasyFind\\textures\\calculator-icon")
     icon:SetTexCoord(0, 1, 0, 1)
-    icon:SetVertexColor(1, 1, 1, 1)
+    -- Same treatment as the apps menu rows: desaturate, then tint with the
+    -- theme's chrome-glyph color, so the two calculator icons match.
+    icon:SetDesaturated(true)
+    local gc = ns.ChromeGlyphColor()
+    icon:SetVertexColor(gc[1], gc[2], gc[3], 1)
     glyph.icon = icon
     return glyph
 end
@@ -114,13 +122,13 @@ function Calculator:RefreshCalculatorPopup()
         if frame.expressionText then frame.expressionText:Hide() end
         frame.resultText:SetTextColor(0.86, 0.86, 0.88, 1)
         if frame.hintText then frame.hintText:Hide() end
-        self:SetCalculatorRoundedFill(frame.resultCard, 0.13, 0.13, 0.145, 0.96, 0.28, 0.28, 0.30, 0.75)
+        self:PaintCalculatorWell(frame.resultCard)
     else
         frame.resultText:SetText(submitted and text ~= "" and "-" or "")
         if frame.expressionText then frame.expressionText:Hide() end
         frame.resultText:SetTextColor(0.58, 0.58, 0.60, 1)
         if frame.hintText then frame.hintText:Hide() end
-        self:SetCalculatorRoundedFill(frame.resultCard, 0.13, 0.13, 0.145, 0.96, 0.28, 0.28, 0.30, 0.75)
+        self:PaintCalculatorWell(frame.resultCard)
     end
     self:UpdateCalculatorPopupCopyVisual(data)
 end
@@ -341,10 +349,23 @@ function Calculator:EnsureCalculatorFrame()
     ns.CreateRoundedRectBorder(frame)
     ns.SetRoundedRectBarHeight(frame, 14)
     ns.SetRoundedRectBorderBgAlpha(frame, 0.98)
-    self:SetCalculatorRoundedFill(frame, 0.055, 0.055, 0.064, 0.98, 0.30, 0.30, 0.32, 0.95)
+    -- Full themed (galaxy) fill like the search window, not a flat colour, so the
+    -- calculator's Midnight background matches everything else.
+    if ns.ApplyThemeFill then
+        ns.ApplyThemeFill(frame)
+    else
+        local calcWF = ns.SEARCH_WINDOW_FILL_COLOR or { 0.055, 0.055, 0.064 }
+        self:SetCalculatorRoundedFill(frame, calcWF[1], calcWF[2], calcWF[3], 0.98, 0.30, 0.30, 0.32, 0.95)
+    end
+    if ns.RegisterThemeCallback then
+        ns.RegisterThemeCallback(function()
+            Calculator:RestyleCalculatorTheme()
+        end)
+    end
 
     local glyph = self:CreateCalculatorGlyph(frame, 22)
     glyph:SetPoint("TOPLEFT", frame, "TOPLEFT", CALC_PAD, -12)
+    frame.calcGlyph = glyph
 
     local title = frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     title:SetPoint("LEFT", glyph, "RIGHT", 8, 0)
@@ -379,7 +400,8 @@ function Calculator:EnsureCalculatorFrame()
     ns.CreateRoundedRectBorder(inputShell)
     ns.SetRoundedRectBarHeight(inputShell, 10)
     ns.SetRoundedRectBorderBgAlpha(inputShell, 1)
-    self:SetCalculatorRoundedFill(inputShell, 0.105, 0.105, 0.118, 1, 0.26, 0.26, 0.28, 0.90)
+    self:PaintCalculatorWell(inputShell)
+    frame.inputShell = inputShell
 
     local clearInput = CreateFrame("Button", nil, inputShell)
     frame.clearInputButton = clearInput
@@ -470,7 +492,7 @@ function Calculator:EnsureCalculatorFrame()
     ns.CreateRoundedRectBorder(resultCard)
     ns.SetRoundedRectBarHeight(resultCard, 10)
     ns.SetRoundedRectBorderBgAlpha(resultCard, 1)
-    self:SetCalculatorRoundedFill(resultCard, 0.13, 0.13, 0.145, 0.96, 0.28, 0.28, 0.30, 0.75)
+    self:PaintCalculatorWell(resultCard)
 
     local expressionText = resultCard:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     frame.expressionText = expressionText

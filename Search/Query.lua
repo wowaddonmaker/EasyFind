@@ -185,9 +185,15 @@ function Search:OnSearchTextChanged(text, force)
         if ns.Database and ns.Database.CancelDynamicWarmup then
             ns.Database:CancelDynamicWarmup()
         end
-        -- Normally only show pins when focused. Forced refreshes (ESC clear,
-        -- pin-menu actions) also rebuild pins so stale typed results disappear.
-        if force or (Search:GetSearchFrame() and Search:GetSearchFrame().editBox and Search:GetSearchFrame().editBox:HasFocus()) then
+        -- Pins stay visible whenever there ARE pins, not only while focused:
+        -- they show on bar-open before any typing, and clicking a bar control
+        -- (filter or apps button) drops editbox focus and re-runs this path --
+        -- which must not then hide the pins the user is looking at. A truly
+        -- outside click is handled by the results panel's own click closer.
+        local hasFocus = Search:GetSearchFrame() and Search:GetSearchFrame().editBox
+            and Search:GetSearchFrame().editBox:HasFocus()
+        local hasPins = Results.HasPinnedItems and Results:HasPinnedItems()
+        if force or hasFocus or hasPins then
             self:ShowPinnedItems()
         else
             self:HideResults()

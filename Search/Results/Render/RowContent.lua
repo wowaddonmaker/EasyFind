@@ -141,6 +141,7 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
             else
                 resultRow.flatCatIcon:SetTexture(catIconDef.tex)
             end
+            resultRow.flatCatIcon:SetDesaturated(false)
             resultRow.flatCatIcon:SetVertexColor(1, 1, 1, 1)
             ns.SizeIconAspect(resultRow.flatCatIcon, sz, catIconDef and catIconDef.aspect)
             resultRow.flatCatIcon:ClearAllPoints()
@@ -203,6 +204,7 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
             else
                 resultRow.flatCatIcon:SetTexture(catIconDef.tex)
             end
+            resultRow.flatCatIcon:SetDesaturated(false)
             resultRow.flatCatIcon:SetVertexColor(1, 1, 1, 1)
             ns.SizeIconAspect(resultRow.flatCatIcon, sz, catIconDef and catIconDef.aspect)
             resultRow.flatCatIcon:ClearAllPoints()
@@ -249,6 +251,7 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
             else
                 resultRow.flatCatIcon:SetTexCoord(0, 1, 0, 1)
             end
+            resultRow.flatCatIcon:SetDesaturated(false)
             resultRow.flatCatIcon:SetVertexColor(1, 1, 1, 1)
             ns.SizeIconAspect(resultRow.flatCatIcon, sz, catIconDef and catIconDef.aspect)
             resultRow.flatCatIcon:ClearAllPoints()
@@ -473,6 +476,7 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
                     resultRow.flatCatIcon:SetTexCoord(0, 1, 0, 1)
                 end
             end
+            resultRow.flatCatIcon:SetDesaturated(false)
             resultRow.flatCatIcon:SetVertexColor(1, 1, 1, 1)
             ns.SizeIconAspect(resultRow.flatCatIcon, sz, catIconDef and catIconDef.aspect)
             resultRow.flatCatIcon:ClearAllPoints()

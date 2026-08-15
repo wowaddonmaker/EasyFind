@@ -17,6 +17,36 @@ local function ErrorHandler(err)
     return tostring(err) .. "\n" .. debugstack(2)
 end
 
+-- Theme-change broadcast. A window registers once; every registered callback
+-- fires after the active palette changes, so an open window restyles live
+-- instead of only picking up the theme the next time it opens.
+local themeCallbacks = {}
+function ns.RegisterThemeCallback(fn)
+    if type(fn) == "function" then themeCallbacks[#themeCallbacks + 1] = fn end
+end
+function ns.FireThemeCallbacks()
+    for i = 1, #themeCallbacks do
+        pcall(themeCallbacks[i])
+    end
+end
+
+-- Bar controls the user configured hidden reveal on hover, like the search
+-- bar's own hover-show mode: the button keeps its footprint but sits at
+-- alpha 0 until the cursor crosses it, it holds keyboard focus, or its menu
+-- is open. One owner for the alpha decision; callers re-run btn.RefreshReveal
+-- when any input changes (setting toggled, menu opened or closed, focus moved).
+function Utils.InstallBarControlReveal(btn, isConfiguredShown, isEngaged)
+    local function Refresh()
+        local reveal = isConfiguredShown() or btn:IsMouseOver() or btn.keyboardFocused
+            or (isEngaged and isEngaged())
+        btn:SetAlpha(reveal and 1 or 0)
+    end
+    btn.RefreshReveal = Refresh
+    btn:HookScript("OnEnter", Refresh)
+    btn:HookScript("OnLeave", Refresh)
+    Refresh()
+end
+
 Utils.pairs   = pairs
 Utils.ipairs  = ipairs
 Utils.type    = type
@@ -1383,6 +1413,14 @@ ns.EDITBOX_INSET_FILL = {0.02, 0.02, 0.03}
 -- (which keeps the classic additive gold glow): the window fill nudged
 -- toward the main text color, which darkens light fills and lightens
 -- dark ones. Returns nil when the glow should be used instead.
+-- One color rule for chrome-tinted glyphs (the calculator icon in results
+-- rows, the apps menu, and the popup; the apps 3x3 dots follow the same
+-- source): the theme's chrome-glyph color, gold when the theme has none.
+function ns.ChromeGlyphColor()
+    local theme = ns.Results and ns.Results.GetActiveTheme and ns.Results:GetActiveTheme()
+    return (theme and theme.chromeGlyph) or ns.GOLD_COLOR or { 1.0, 0.82, 0.0 }
+end
+
 function ns.RowWashColor()
     local pal = ns.ACTIVE_UI_PALETTE
     if not pal or (ns.UI_THEME_PALETTES and pal == ns.UI_THEME_PALETTES.Black) then return nil end
@@ -2337,7 +2375,7 @@ end
 -- and re-entering the owner, its popup, or any row inside the popup restores
 -- it. The popup's OnHide remains the final release.
 local flyoutHighlightHolds = {}
--- Dev-tool peek (/efd pill): the holds are otherwise invisible
+-- Dev-tool peek: the holds are otherwise invisible
 -- to external diagnosis.
 Utils._flyoutHighlightHolds = flyoutHighlightHolds
 
@@ -2928,7 +2966,7 @@ end
 
 -- Release the ESCAPE override immediately. Used when a dispatch turns out to
 -- have nothing to close: holding a binding that does nothing swallows the key
--- forever (measured with /efd esctrace: six presses in a row reported "our
+-- forever (measured: six presses in a row reported "our
 -- override owned the key" with zero state change, and ESC stayed ours even
 -- with a Blizzard panel open). A missed close is recoverable; a dead ESC is
 -- not, so we always hand the key back and let EscArm re-take it when real
@@ -2945,7 +2983,7 @@ function Utils.RefreshEscArm()
     EscArm()
 end
 
--- Dev probe surface (/efd esc): who owns ESCAPE right now.
+-- Dev probe surface: who owns ESCAPE right now.
 -- Read-only; returns the armed flag plus one record per stack entry.
 function ns.GetEscOverrideState()
     local entries = {}

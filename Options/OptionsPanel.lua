@@ -74,6 +74,8 @@ local UI_DEFAULTS = {
     combatDim = false,
     moveDim = false,
     windowBorder = true,
+    showAppsButton = true,
+    showFilterButton = true,
     lockPosition = false,
     uiResultsAbove = false,
     showResultShortcutHints = true,
@@ -258,6 +260,9 @@ local function SyncOptionControls()
     if optionsFrame.resultsDirectionRow then optionsFrame.resultsDirectionRow:SetValue(GetResultsDirectionValue()) end
     if optionsFrame.resultShortcutHintsCheckbox then optionsFrame.resultShortcutHintsCheckbox:SetChecked(EasyFind.db.showResultShortcutHints ~= false) end
     if optionsFrame.windowBorderCheckbox then optionsFrame.windowBorderCheckbox:SetChecked(EasyFind.db.windowBorder ~= false) end
+    if optionsFrame.searchAutocompleteCheckbox then optionsFrame.searchAutocompleteCheckbox:SetChecked(EasyFind.db.searchAutocomplete ~= false) end
+    if optionsFrame.showAppsButtonCheckbox then optionsFrame.showAppsButtonCheckbox:SetChecked(EasyFind.db.showAppsButton ~= false) end
+    if optionsFrame.showFilterButtonCheckbox then optionsFrame.showFilterButtonCheckbox:SetChecked(EasyFind.db.showFilterButton ~= false) end
     if optionsFrame.UpdateFocusBindEnabled then optionsFrame.UpdateFocusBindEnabled() end
     if optionsFrame.minimapBtnCheckbox then optionsFrame.minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton ~= false) end
     if optionsFrame.rareTrackCheckbox then optionsFrame.rareTrackCheckbox:SetChecked(EasyFind.db.alwaysShowRares or false) end
@@ -1882,6 +1887,34 @@ local function BuildSearchTab(ctx)
     end)
     optionsFrame.searchAutocompleteCheckbox = searchAutocompleteCheckbox
 
+    local showAppsButtonCheckbox = CreateCheckbox(sec1, "ShowAppsButton",
+        L["OPT_SHOW_APPS_BUTTON"], L["OPT_SHOW_APPS_BUTTON_TT"], true, CHECK_COL_W)
+    showAppsButtonCheckbox:SetChecked(EasyFind.db.showAppsButton ~= false)
+    showAppsButtonCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.showAppsButton = self:GetChecked() and true or false
+        if self.RefreshVisual then self:RefreshVisual() end
+        RunSoon(function()
+            if ns.Search and ns.Search.RefreshBarControlReveal then
+                ns.Search:RefreshBarControlReveal()
+            end
+        end)
+    end)
+    optionsFrame.showAppsButtonCheckbox = showAppsButtonCheckbox
+
+    local showFilterButtonCheckbox = CreateCheckbox(sec1, "ShowFilterButton",
+        L["OPT_SHOW_FILTER_BUTTON"], L["OPT_SHOW_FILTER_BUTTON_TT"], true, CHECK_COL_W)
+    showFilterButtonCheckbox:SetChecked(EasyFind.db.showFilterButton ~= false)
+    showFilterButtonCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.showFilterButton = self:GetChecked() and true or false
+        if self.RefreshVisual then self:RefreshVisual() end
+        RunSoon(function()
+            if ns.Search and ns.Search.RefreshBarControlReveal then
+                ns.Search:RefreshBarControlReveal()
+            end
+        end)
+    end)
+    optionsFrame.showFilterButtonCheckbox = showFilterButtonCheckbox
+
     local iconVisChoices = {
         { label = L["OPT_ICONS_ALL"],      value = "all" },
         { label = L["OPT_ICONS_GENERAL"],  value = "general" },
@@ -2014,7 +2047,11 @@ local function BuildSearchTab(ctx)
 
     local wowheadRow = CreateFrame("Frame", nil, sec1)
     wowheadRow:SetSize(SELECTOR_ROW_W, 24)
-    wowheadRow:SetPoint("TOPLEFT", searchOpacityRow, "BOTTOMLEFT", 0, -4)
+    -- Between the result-rows selector and the opacity stepper, so all the
+    -- flyout-selector bars stay grouped and the stepper closes the list.
+    wowheadRow:SetPoint("TOPLEFT", resultRowsRow, "BOTTOMLEFT", 0, -4)
+    searchOpacityRow:ClearAllPoints()
+    searchOpacityRow:SetPoint("TOPLEFT", wowheadRow, "BOTTOMLEFT", 0, -4)
     local wowheadRowLabel = wowheadRow:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
     wowheadRowLabel:SetPoint("LEFT", wowheadRow, "LEFT", 8, 0)
     wowheadRowLabel:SetPoint("RIGHT", wowheadRow, "RIGHT", -SELECTOR_BTN_W - 18, 0)
@@ -2055,13 +2092,15 @@ local function BuildSearchTab(ctx)
     end)
 
     lockPositionCheckbox:ClearAllPoints()
-    -- 2x2 toggle grid: lock + alt hints on row one, borders + inline
-    -- autocomplete on row two.
-    lockPositionCheckbox:SetPoint("TOPLEFT", wowheadRow, "BOTTOMLEFT", 0, -4)
+    -- 3x2 toggle grid: lock + alt hints on row one, borders + inline
+    -- autocomplete on row two, app + filter button visibility on row three.
+    lockPositionCheckbox:SetPoint("TOPLEFT", searchOpacityRow, "BOTTOMLEFT", 0, -4)
     resultShortcutHintsCheckbox:ClearAllPoints()
     resultShortcutHintsCheckbox:SetPoint("TOPLEFT", lockPositionCheckbox, "TOPRIGHT", CHECK_COL_GAP, 0)
     windowBorderCheckbox:SetPoint("TOPLEFT", lockPositionCheckbox, "BOTTOMLEFT", 0, -2)
     searchAutocompleteCheckbox:SetPoint("TOPLEFT", windowBorderCheckbox, "TOPRIGHT", CHECK_COL_GAP, 0)
+    showAppsButtonCheckbox:SetPoint("TOPLEFT", windowBorderCheckbox, "BOTTOMLEFT", 0, -2)
+    showFilterButtonCheckbox:SetPoint("TOPLEFT", showAppsButtonCheckbox, "TOPRIGHT", CHECK_COL_GAP, 0)
 
     local function RefreshUIPresetRows()
         if optionsFrame.uiFontPresetRow then

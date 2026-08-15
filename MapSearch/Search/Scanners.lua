@@ -198,8 +198,7 @@ function MapSearch:GetStaticLocations(mapID)
     mapID = mapID or (WorldMapFrame and WorldMapFrame.GetMapID and WorldMapFrame:GetMapID())
     if not mapID then return emptyStaticLocations end
 
-    local includeDevPOIs = EasyFindDevDB and EasyFindDevDB.rawPOIs
-    local cached = not includeDevPOIs and staticLocationCache[mapID]
+    local cached = staticLocationCache[mapID]
     if cached then return cached end
 
     local results = {}
@@ -222,35 +221,7 @@ function MapSearch:GetStaticLocations(mapID)
         end
     end
 
-    -- Dev POIs (recorder) skipped when their name already exists in static.
-    if includeDevPOIs then
-        local staticNames = {}
-        if locations then
-            for _, loc in ipairs(locations) do
-                staticNames[slower(loc.name)] = true
-            end
-        end
-        for _, poi in ipairs(includeDevPOIs) do
-            if poi.mapID == mapID and not staticNames[slower(poi.label or "")] then
-                local entry = {
-                    name = poi.label,
-                    category = poi.category or "unknown",
-                    icon = nil,
-                    isStatic = true,
-                    mapID = mapID,
-                    coordMapID = mapID,
-                    x = poi.x,
-                    y = poi.y,
-                    keywords = {},
-                }
-                tinsert(results, PreparePOI(entry))
-            end
-        end
-    end
-
-    if not includeDevPOIs then
-        staticLocationCache[mapID] = results
-    end
+    staticLocationCache[mapID] = results
     return results
 end
 

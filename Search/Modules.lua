@@ -91,6 +91,100 @@ if not getmetatable(Search) then
     setmetatable(Search, { __index = FindModuleValue })
 end
 
+-- The calculator ships as the optional EasyFind_Calc companion, which
+-- populates ns.Calculator when enabled.
+--
+-- First: chrome that is CORE-OWNED even though it wears the calculator
+-- name -- the flat themed micro-button style is shared by the companion
+-- apps, so it must work with the calculator companion disabled. The
+-- companion calls these too.
+local Calculator = ns.Calculator
+local mmin = ns.Utils.mmin
+
+function Calculator:SetCalculatorRoundedFill(frame, r, g, b, a, br, bg, bb, ba)
+    ns.SetRoundedRectFill(frame, r, g, b, a, true)
+    ns.SetRoundedRectBorderColor(frame, br or 0.30, bg or 0.30, bb or 0.32, ba or 0.85, true)
+end
+
+function Calculator:HideCalculatorRoundedBorder(frame)
+    ns.SetRoundedRectBorderEdgeShown(frame, false)
+end
+
+-- Live theme fill: paints from the theme table when present, else the
+-- neutral slate fallback.
+function Calculator:ThemeFillCalcControl(frame, tbl, fallbackR, fallbackG, fallbackB)
+    if tbl then
+        self:SetCalculatorRoundedFill(frame, tbl[1], tbl[2], tbl[3], 1)
+    else
+        self:SetCalculatorRoundedFill(frame, fallbackR, fallbackG, fallbackB, 1)
+    end
+end
+
+-- Styled buttons register weakly so the companion's theme restyle can
+-- repaint resting fills after a palette flip.
+Calculator._styledButtons = setmetatable({}, { __mode = "k" })
+
+function Calculator:StyleCalculatorButton(btn, height)
+    if not btn then return end
+    if not btn.combinedBorder then
+        ns.CreateRoundedRectBorder(btn)
+    end
+    ns.SetRoundedRectBarHeight(btn, mmin(height or btn:GetHeight() or 22, 10))
+    ns.SetRoundedRectBorderBgAlpha(btn, 1)
+    self:HideCalculatorRoundedBorder(btn)
+    Calculator._styledButtons[btn] = true
+    self:ThemeFillCalcControl(btn, ns.BTN_FILL_NORMAL, 0.095, 0.095, 0.108)
+    btn:SetScript("OnEnter", function(self)
+        if self:IsEnabled() then
+            Calculator:ThemeFillCalcControl(self, ns.BTN_FILL_HOVER, 0.155, 0.155, 0.172)
+        end
+    end)
+    btn:SetScript("OnLeave", function(self)
+        if self:IsEnabled() then
+            Calculator:ThemeFillCalcControl(self, ns.BTN_FILL_NORMAL, 0.095, 0.095, 0.108)
+        end
+    end)
+    btn:SetScript("OnMouseDown", function(self)
+        if self:IsEnabled() then
+            Calculator:ThemeFillCalcControl(self, ns.BTN_FILL_PRESSED, 0.065, 0.065, 0.078)
+        end
+    end)
+    btn:SetScript("OnMouseUp", function(self)
+        if not self:IsEnabled() then return end
+        if self:IsMouseOver() then
+            Calculator:ThemeFillCalcControl(self, ns.BTN_FILL_HOVER, 0.155, 0.155, 0.172)
+        else
+            Calculator:ThemeFillCalcControl(self, ns.BTN_FILL_NORMAL, 0.095, 0.095, 0.108)
+        end
+    end)
+end
+
+-- Second: no-op fallbacks for EVERY companion-defined method that core
+-- code calls (derived mechanically -- grep the companion's method names
+-- against core call sites; a hand-picked subset is how ENTER-handler
+-- crashes happen). The companion's real definitions overwrite these as
+-- it loads.
+function Calculator:ArmCalculatorPartFromRow() end
+function Calculator:ArmCalculatorResultForData() end
+function Calculator:ArmCalculatorResultFromRow() end
+function Calculator:ArmCalculatorSelectionForKeyboard() end
+function Calculator:ClearCalculatorCopyHighlight() end
+function Calculator:ConfirmCalculatorCopied() end
+function Calculator:EvaluateCalculatorExpression() end
+function Calculator:GetCalculatorLauncherMatch() end
+function Calculator:HandleCalculatorCopyConfirmKey() end
+function Calculator:HandleCalculatorCopyKey() end
+function Calculator:HandleCalculatorOpenShortcut() end
+function Calculator:HandleCalculatorPasteIntoSearch() end
+function Calculator:HoverCalculatorTarget() end
+function Calculator:IsCalculatorCopyConfirmKey() end
+function Calculator:IsCalculatorCopyKey() end
+function Calculator:OpenCalculator() end
+function Calculator:RearmActiveCalculatorCopy() end
+function Calculator:ReleaseCalculatorCopyBox() end
+function Calculator:RestoreCalculatorTarget() end
+function Calculator:SetCalculatorCopyHighlight() end
+
 -- FindModuleValue resolves a key defined on two modules by array order,
 -- silently shadowing the other definition. Surface duplicates in dev mode,
 -- deferred to PLAYER_LOGIN so every Search file has loaded and defined its

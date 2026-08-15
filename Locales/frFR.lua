@@ -256,8 +256,12 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bienvenue dans |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "ici"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Voir le journal des modifications complet"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffSpécialisations et configurations de talents désormais dans la recherche|r\n" ..
-    "    |cff999999-|r Cliquez sur un résultat pour changer"
+    "|cffFFD100\226\128\162|r |cffffffffLa calculatrice est désormais une dépendance facultative, désactivable|r\n" ..
+    "  |cffffffffentièrement via le menu des addons|r\n" ..
+    "    |cff999999-|r Accessible maintenant via le nouveau bouton d'applications\n" ..
+    "      (d'autres arrivent), mais les résultats en ligne et la recherche\n" ..
+    "      de 'calculatrice' dans la barre fonctionnent comme avant\n" ..
+    "    |cff999999-|r Vous pouvez aussi masquer le bouton d'applications dans les réglages Recherche"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Ajouter un alias"
@@ -635,6 +639,10 @@ L["POI_ZEPPELIN"] = "Zeppelin"
 L["POI_ZULDAZAR_BFA_PORTAL"] = "Zuldazar (BfA) Portal"
 L["OPT_INLINE_AUTOCOMPLETE"] = "Autocomplétion en ligne"
 L["OPT_INLINE_AUTOCOMPLETE_TT"] = "Affiche la meilleure complétion pendant la saisie. Désactivez-la si elle interfère avec votre méthode de saisie."
+L["OPT_SHOW_APPS_BUTTON"] = "Afficher le bouton d'applications"
+L["OPT_SHOW_APPS_BUTTON_TT"] = "Affiche le bouton d'applications sur la barre de recherche. Décoché, le bouton reste masqué jusqu'à ce que vous survoliez son emplacement sur la barre."
+L["OPT_SHOW_FILTER_BUTTON"] = "Afficher le bouton de filtres"
+L["OPT_SHOW_FILTER_BUTTON_TT"] = "Affiche le bouton de filtres sur la barre de recherche. Décoché, le bouton reste masqué jusqu'à ce que vous survoliez son emplacement sur la barre."
 L["ANSWER_KEYSTONE"]                    = "Clé mythique"
 L["ANSWER_BAG_SPACE"]                   = "Espace de sacs"
 L["ANSWER_GOLD_FMT"]                    = "%s (compte : %s)"

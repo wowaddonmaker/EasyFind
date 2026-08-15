@@ -2334,7 +2334,7 @@ function Database:PopulateDynamicGearSets()
     if not getInfo then return false end
 
     -- Spec assignment is a spec INDEX (1..GetNumSpecializations), or nil when
-    -- the set is not assigned to one. Verified with /efd gearsets:
+    -- the set is not assigned to one. Verified:
     -- GetEquipmentSetAssignedSpec(setID) is the per-set getter;
     -- GetEquipmentSetForSpec is the reverse lookup and is not what we want.
     local getAssignedSpec = C_EquipmentSet.GetEquipmentSetAssignedSpec
@@ -3543,7 +3543,7 @@ local C_SpellBook = C_SpellBook
 local IsPlayerSpell = IsPlayerSpell
 local getRecipeInfo = C_TradeSkillUI and C_TradeSkillUI.GetRecipeInfo
 
--- Measured (/efd prof learned) across crafting AND gathering:
+-- Measured across crafting AND gathering:
 -- C_SpellBook.IsSpellKnown and IsPlayerSpell both scored 0 false pos / 0 false
 -- neg vs the window's own learned flag; bare IsSpellKnown and
 -- IsRecipeProfessionLearned did NOT. Fail OPEN (treat as learned) if neither

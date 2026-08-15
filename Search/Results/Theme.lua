@@ -337,6 +337,9 @@ function ns.ApplyUITheme(themeName, skipRepaint)
     -- Rows retint their hover glow lazily against this generation (the
     -- per-render cost is one field compare on pooled rows).
     ns.uiThemeGeneration = (ns.uiThemeGeneration or 0) + 1
+    -- Let registered windows (calculator popup) restyle to the new palette
+    -- while open.
+    if ns.FireThemeCallbacks then ns.FireThemeCallbacks() end
     if skipRepaint then return end
     if ns.Search then
         if ns.Search.UpdateFontSize then ns.Search:UpdateFontSize() end

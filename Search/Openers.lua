@@ -47,8 +47,8 @@ local function IsPlayerSpellsTabSelected(tabIndex)
 end
 
 -- Switching the PlayerSpells tab from addon execution writes the action
--- bars' drag-grid flag tainted (measured: /efd taint steer flips
--- MultiBarBottomLeft.showAllButtons the moment the tab is clicked), so NO
+-- bars' drag-grid flag tainted (measured: MultiBarBottomLeft.showAllButtons
+-- flips the moment the tab is clicked), so NO
 -- code path may ClickButton these tabs. Row clicks steer securely on
 -- their release edge (Shared/SecureOpeners.lua); when that steer did not
 -- land (non-row flows, first-open gaps), highlight the tab so the user's

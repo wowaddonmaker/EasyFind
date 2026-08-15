@@ -46,7 +46,7 @@ end
 -- secure execution can only "click a frame", so reaching a distant page means
 -- N clicks on the next-page button, and the engine caps secure actions per
 -- hardware click at ~10. The toy box is 55 pages, so page-walking cannot
--- reach it (measured with /efd toypage: a complete 53-line click chain
+-- reach it (measured: a complete 53-line click chain
 -- advanced only 10 pages). Collapsing the list sidesteps paging entirely.
 --
 -- SetFilterString is a C-side call and taint-free (Blizzard's own

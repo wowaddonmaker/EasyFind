@@ -256,8 +256,12 @@ L["WHATSNEW_CHAT_HELLO"]                = "Benvenuto in |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "qui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vedi il changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffSpecializzazioni e configurazioni dei talenti ora nella ricerca|r\n" ..
-    "    |cff999999-|r Clicca un risultato per cambiare"
+    "|cffFFD100\226\128\162|r |cffffffffLa calcolatrice ora è una dipendenza facoltativa e può essere|r\n" ..
+    "  |cffffffffdisattivata del tutto dal menu degli addon|r\n" ..
+    "    |cff999999-|r Ora si apre dal nuovo pulsante applicazioni (altre in arrivo),\n" ..
+    "      ma i risultati in linea e la ricerca di 'calcolatrice'\n" ..
+    "      nella barra funzionano come prima\n" ..
+    "    |cff999999-|r Puoi anche nascondere il pulsante applicazioni nelle impostazioni Ricerca"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Aggiungi alias"
@@ -636,6 +640,10 @@ L["POI_ZEPPELIN"] = "Zeppelin"
 L["POI_ZULDAZAR_BFA_PORTAL"] = "Zuldazar (BfA) Portal"
 L["OPT_INLINE_AUTOCOMPLETE"] = "Completamento automatico in linea"
 L["OPT_INLINE_AUTOCOMPLETE_TT"] = "Mostra il miglior completamento durante la digitazione. Disattivalo se interferisce con il tuo metodo di input."
+L["OPT_SHOW_APPS_BUTTON"] = "Mostra pulsante applicazioni"
+L["OPT_SHOW_APPS_BUTTON_TT"] = "Mostra il pulsante delle applicazioni sulla barra di ricerca. Se deselezionato, il pulsante resta nascosto finché non passi il cursore sul suo punto della barra."
+L["OPT_SHOW_FILTER_BUTTON"] = "Mostra pulsante filtri"
+L["OPT_SHOW_FILTER_BUTTON_TT"] = "Mostra il pulsante dei filtri sulla barra di ricerca. Se deselezionato, il pulsante resta nascosto finché non passi il cursore sul suo punto della barra."
 L["ANSWER_KEYSTONE"]                    = "Chiave del Potere"
 L["ANSWER_BAG_SPACE"]                   = "Spazio nelle borse"
 L["ANSWER_GOLD_FMT"]                    = "%s (account: %s)"

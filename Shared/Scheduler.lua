@@ -47,7 +47,7 @@ Scheduler.__index = Scheduler
 -- os.clock is absent in the WoW sandbox, so this used to always return 0: the
 -- per-frame Step budget never fired and one Step drained the ENTIRE ready
 -- queue, so a cold query requesting many providers ran all their populates on a
--- single frame (~1s stall; /efd bench measured one Step draining 18 populates).
+-- single frame (~1s stall; measured one Step draining 18 populates).
 -- debugprofilestop is WoW's high-resolution millisecond timer and advances
 -- within a frame; divide to seconds since budgetSeconds is in seconds. Fall back
 -- to os.clock (plain-Lua test harness) then to 0.
