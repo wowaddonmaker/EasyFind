@@ -6311,7 +6311,7 @@ function Database:BuildUIDatabase()
             steps = {{ buttonFrame = "EJMicroButton" }},
             children = {
                 { name = _G["JOURNEYS_LABEL"] or "Journeys", keywords = {"journeys", "journey", "adventure journeys"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 1 }}, children = {
-                    { name = L["UITREE_GREAT_VAULT"] .. L["UITREE_SUFFIX_REWARDS"], keywords = {"great vault", "vault", "weekly rewards", "weekly chest", "rewards"}, category = "Adventure Guide", icon = { file = 1121272, coords = { 0.2002, 0.2411, 0.6081, 0.6508 } }, steps = {{ buttonFrame = "EncounterJournalInstanceSelect.GreatVaultButton" }} },
+                    { name = L["UITREE_GREAT_VAULT"] .. L["UITREE_SUFFIX_REWARDS"], keywords = {"great vault", "vault", "weekly rewards", "weekly chest", "rewards"}, category = "Adventure Guide", icon = { file = 1121272, coords = { 0.2026, 0.2387, 0.9196, 0.9556 } }, steps = {{ buttonFrame = "EncounterJournalInstanceSelect.GreatVaultButton" }} },
                 }},
                 { name = _G["MONTHLY_ACTIVITIES_TAB"] or "Traveler's Log", keywords = {"traveler", "travelers log", "traveler log", "travel log"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 2 }} },
                 { name = _G["AJ_SUGGESTED_CONTENT_TAB"] or "Suggested Content", keywords = {"suggested", "suggested content", "recommendations"}, category = "Adventure Guide", steps = {{ waitForFrame = "EncounterJournal", tabIndex = 3 }} },
