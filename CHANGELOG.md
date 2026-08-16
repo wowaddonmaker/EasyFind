@@ -4,6 +4,16 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [2.4.1] - 2026-08-16
+
+### Fixed
+- **Aliases now force their result to the top**: an aliased entry stayed at its natural rank when it also matched the search on its own, and typing past the alias text dropped the boost entirely. An alias now pins its result first for the whole query
+- **Aliases match like result names do**: aliases now go through the same matching as every result name, prefixes, word starts, and typo tolerance included. The best alias match ranks first, and junk typed past an alias no longer keeps it pinned on top
+- **Alias boosts follow the 2-character minimum**: a single keystroke no longer surfaces every alias containing that letter. A deliberate single-character alias still fires when typed exactly
+- **Great Vault icon**: repointed to where patch 12.1 moved it on the sprite sheet
+
+---
+
 ## [2.4.0] - 2026-08-15
 
 ### Added
