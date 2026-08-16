@@ -87,6 +87,7 @@ function tests.getMatches_resolvesAgainstUiSearchData()
     env.EasyFind.db.aliases = {}
     -- Populate uiSearchData so FindEntryByKey resolves the alias.
     local mountEntry = { mountID = 555, name = "Faerie Dragon" }
+    Aliases:InvalidateKeyIndex()
     ns.Database.uiSearchData = { mountEntry, { mountID = 999, name = "Other" } }
     Aliases:Add("mt", mountEntry)
     local matches = Aliases:GetMatches("mt")
@@ -94,6 +95,53 @@ function tests.getMatches_resolvesAgainstUiSearchData()
     H.assertEq(#matches, 1)
     H.assertEq(matches[1].data, mountEntry)
     H.assertEq(matches[1].alias.text, "mt")
+    ns.Database.uiSearchData = nil
+end
+
+function tests.getMatches_queryExtendingPastAliasStillMatches()
+    -- GitHub #20: alias "gar", user keeps typing "garr...", "garrison".
+    -- The query no longer fits inside the alias text but starts with it,
+    -- so the boost must survive.
+    env.EasyFind.db.aliases = {}
+    local toyEntry = { toyItemID = 110560, name = "Garrison Hearthstone" }
+    Aliases:InvalidateKeyIndex()
+    ns.Database.uiSearchData = { toyEntry }
+    Aliases:Add("gar", toyEntry)
+    for _, q in ipairs({ "gar", "garr", "garrison", "garrison hearth" }) do
+        local matches = Aliases:GetMatches(q)
+        H.assertNotNil(matches, "expected match for query '" .. q .. "'")
+        H.assertEq(matches[1].data, toyEntry)
+    end
+    ns.Database.uiSearchData = nil
+end
+
+function tests.getMatches_oneCharQueryOnlyExactAlias()
+    -- The contains direction honours the search's 2-char minimum: one
+    -- keystroke must not surface every alias sharing that letter. A
+    -- deliberate 1-char alias still fires exactly.
+    env.EasyFind.db.aliases = {}
+    local toyEntry = { toyItemID = 110560, name = "Garrison Hearthstone" }
+    local mountEntry = { mountID = 71, name = "Gryphon" }
+    Aliases:InvalidateKeyIndex()
+    ns.Database.uiSearchData = { toyEntry, mountEntry }
+    Aliases:Add("gar", toyEntry)
+    Aliases:Add("g", mountEntry)
+    local matches = Aliases:GetMatches("g")
+    H.assertNotNil(matches, "exact 1-char alias must fire")
+    H.assertEq(#matches, 1)
+    H.assertEq(matches[1].data, mountEntry)
+    ns.Database.uiSearchData = nil
+end
+
+function tests.getMatches_aliasMidQueryDoesNotMatch()
+    -- The longer-query direction is prefix-only: an alias buried in the
+    -- middle of what the user typed is not "typing the alias".
+    env.EasyFind.db.aliases = {}
+    local toyEntry = { toyItemID = 110560, name = "Garrison Hearthstone" }
+    Aliases:InvalidateKeyIndex()
+    ns.Database.uiSearchData = { toyEntry }
+    Aliases:Add("gar", toyEntry)
+    H.assertNil(Aliases:GetMatches("the gar"), "mid-query alias must not match")
     ns.Database.uiSearchData = nil
 end
 

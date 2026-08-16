@@ -8,7 +8,7 @@ local Utils = ns.Utils
 local UIPins = ns.UIPins
 local SearchText = ns.SearchText
 
-local ipairs, pairs = Utils.ipairs, Utils.pairs
+local pairs = Utils.pairs
 local InCombatLockdown = InCombatLockdown
 local slower = SearchText.Normalize
 local tinsert, tsort = Utils.tinsert, Utils.tsort
@@ -274,28 +274,29 @@ function Search:OnSearchTextChanged(text, force)
     -- Inject user-defined alias hits at the front. Aliases bypass
     -- bucket filters so a saved shortcut is always reachable, even if
     -- the user has the underlying category turned off in the filter
-    -- menu. Dedupe against already-present results by data identity.
+    -- menu. A target that ALSO matched naturally is still injected (the
+    -- alias must promote it to the top, not leave it at its natural
+    -- rank; skipping here was GitHub #20) and its natural duplicate is
+    -- dropped when `combined` is built, keyed by data identity in
+    -- SCRATCH.aliasSeen, which must stay populated until then.
+    wipe(SCRATCH.aliasSeen)
     if ns.Aliases then
         local aliasMatches = ns.Aliases:GetMatches(text:lower())
         if aliasMatches then
-            wipe(SCRATCH.aliasSeen)
-            local seen = SCRATCH.aliasSeen
-            for _, r in ipairs(results) do seen[r.data] = true end
+            local promoted = SCRATCH.aliasSeen
             for i = #aliasMatches, 1, -1 do
                 local hit = aliasMatches[i]
-                if not seen[hit.data] then
-                    local data = hit.data
-                    if data and data.mapSearchResult then
-                        local wrapped = {}
-                        for k, v in pairs(data) do wrapped[k] = v end
-                        wrapped.query = (hit.alias and hit.alias.text) or text
-                        data = wrapped
-                    end
+                local data = hit.data
+                if data and data.mapSearchResult then
+                    local wrapped = {}
+                    for k, v in pairs(data) do wrapped[k] = v end
+                    wrapped.query = (hit.alias and hit.alias.text) or text
+                    tinsert(results, 1, { data = wrapped, score = math.huge, isAlias = true })
+                elseif data and not promoted[data] then
+                    promoted[data] = true
                     tinsert(results, 1, { data = data, score = math.huge, isAlias = true })
-                    seen[hit.data] = true
                 end
             end
-            wipe(seen)
         end
     end
 
@@ -457,7 +458,15 @@ function Search:OnSearchTextChanged(text, force)
     if answerEntry then
         combined[#combined + 1] = { data = answerEntry, score = math.huge }
     end
-    for ri = 1, #results do combined[#combined + 1] = results[ri] end
+    -- Skip the natural copy of any alias-promoted row (see the alias
+    -- injection above); the isAlias wrapper at the front is the one shown.
+    local promoted = SCRATCH.aliasSeen
+    for ri = 1, #results do
+        local r = results[ri]
+        if r.isAlias or not promoted[r.data] then
+            combined[#combined + 1] = r
+        end
+    end
     if mapResults then
         for ri = 1, #mapResults do combined[#combined + 1] = mapResults[ri] end
     end

@@ -392,8 +392,16 @@ function Blacklist:ImportList(list, skipExisting)
     return n
 end
 
----Returns aliases whose stored key contains the (already-lowered) query as
----a substring. Nil if there are no matches or no query.
+---Returns aliases matching the (already-lowered) query. A match is either
+---direction of typing toward the alias: the alias still contains the query
+---("gar" while typing toward alias "garrison"), or the query starts with the
+---full alias and keeps going ("garr...", "garrison hearth" with alias "gar").
+---Without the prefix direction, typing one character past the alias text
+---silently dropped the boost (GitHub #20). The contains direction honours
+---the search's 2-character minimum so one keystroke doesn't surface every
+---alias sharing that letter; a deliberate 1-character alias still fires via
+---the prefix direction (a 1-char query prefix-matches only its exact alias).
+---Nil if no matches or no query.
 ---@param queryLower string?
 ---@return { data: table, alias: AliasInfo }[]?
 function Aliases:GetMatches(queryLower)
@@ -401,7 +409,8 @@ function Aliases:GetMatches(queryLower)
     if not EasyFind or not EasyFind.db or not EasyFind.db.aliases then return nil end
     local out
     for storedKey, info in pairs(EasyFind.db.aliases) do
-        if sfind(storedKey, queryLower, 1, true) then
+        if (#queryLower >= 2 and sfind(storedKey, queryLower, 1, true))
+           or sfind(queryLower, storedKey, 1, true) == 1 then
             local entry = Aliases:FindEntryByKey(info.key)
             if entry then
                 out = out or {}
