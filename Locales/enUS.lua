@@ -279,12 +279,10 @@ L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffCalculator now optional dependency, able to be disabled entirely|r\n" ..
-    "  |cffffffffthrough addons menu|r\n" ..
-    "    |cff999999-|r Can now also access calc via new app button on bar (more soon)\n" ..
-    "    |cff999999-|r Can still get results inline & search calc from search bar like before\n" ..
-    "    |cff999999-|r You can also hide the app button from the bar in the Search settings\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffCan now hide the filter button from the bar in the Search settings"
+    "|cffFFD100\226\128\162|r |cffffffffAliases fixed|r\n" ..
+    "    |cff999999-|r Aliased results now always sit at the top of your results\n" ..
+    "    |cff999999-|r Aliases now match just like result names (prefixes, typos)\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffGreat Vault icon fixed|r"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels

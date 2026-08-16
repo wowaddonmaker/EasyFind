@@ -256,12 +256,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "¡Bienvenido a |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "aquí"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver el registro de cambios completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffLa calculadora ahora es una dependencia opcional y puede desactivarse|r\n" ..
-    "  |cffffffffpor completo desde el menú de addons|r\n" ..
-    "    |cff999999-|r Ahora se abre con el nuevo botón de aplicaciones (pronto habrá más),\n" ..
-    "      pero sigues teniendo resultados en línea o puedes buscar\n" ..
-    "      'calculadora' en la barra como antes\n" ..
-    "    |cff999999-|r También puedes ocultar el botón de aplicaciones en los ajustes de Búsqueda"
+    "|cffFFD100\226\128\162|r |cffffffffAlias corregidos|r\n" ..
+    "    |cff999999-|r Los resultados con alias aparecen siempre en lo más alto\n" ..
+    "    |cff999999-|r Los alias coinciden ahora como los nombres de resultados (prefijos y erratas)\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffIcono de la Cámara Magna corregido|r"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Añadir alias"

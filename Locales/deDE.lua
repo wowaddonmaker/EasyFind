@@ -258,12 +258,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "Willkommen bei |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vollständiges Änderungsprotokoll"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffRechner jetzt optionale Abhängigkeit, über das AddOn-Menü|r\n" ..
-    "  |cffffffffkomplett deaktivierbar|r\n" ..
-    "    |cff999999-|r Jetzt über die neue App-Schaltfläche erreichbar (bald folgen mehr),\n" ..
-    "      Ergebnisse kommen weiterhin direkt in der Suchleiste, und die\n" ..
-    "      Suche nach 'Rechner' funktioniert wie zuvor\n" ..
-    "    |cff999999-|r Die App-Schaltfläche lässt sich in den Suche-Einstellungen ausblenden"
+    "|cffFFD100\226\128\162|r |cffffffffAliase korrigiert|r\n" ..
+    "    |cff999999-|r Ergebnisse mit Alias erscheinen jetzt immer ganz oben\n" ..
+    "    |cff999999-|r Aliase treffen jetzt wie Ergebnisnamen (Präfixe und Tippfehler)\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffSymbol der Großen Schatzkammer korrigiert|r"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"

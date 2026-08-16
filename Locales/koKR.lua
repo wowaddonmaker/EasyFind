@@ -256,11 +256,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 �
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff계산기는 이제 선택형 구성 요소이며 애드온 목록에서 완전히|r\n" ..
-    "  |cffffffff비활성화할 수 있습니다|r\n" ..
-    "    |cff999999-|r 이제 검색창의 새 앱 버튼으로도 열 수 있으며 (더 많은 앱 추가 예정),\n" ..
-    "      이전처럼 인라인 결과와 '계산기' 검색도 그대로 사용할 수 있습니다\n" ..
-    "    |cff999999-|r 검색 설정에서 앱 버튼을 숨길 수도 있습니다"
+    "|cffFFD100\226\128\162|r |cffffffff별칭 수정|r\n" ..
+    "    |cff999999-|r 별칭이 지정된 결과가 이제 항상 목록 맨 위에 표시됩니다\n" ..
+    "    |cff999999-|r 별칭도 결과 이름과 같은 방식으로 검색됩니다 (접두사, 오타 포함)\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff위대한 금고 아이콘 수정|r"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"

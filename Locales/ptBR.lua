@@ -256,12 +256,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bem-vindo ao |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "aqui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver o changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffA calculadora agora é uma dependência opcional e pode ser desativada|r\n" ..
-    "  |cffffffffpor completo no menu de addons|r\n" ..
-    "    |cff999999-|r Agora abre pelo novo botão de aplicativos (mais em breve),\n" ..
-    "      mas os resultados em linha e a busca por 'calculadora'\n" ..
-    "      na barra continuam como antes\n" ..
-    "    |cff999999-|r Também dá para ocultar o botão de aplicativos nas configurações de Busca"
+    "|cffFFD100\226\128\162|r |cffffffffApelidos corrigidos|r\n" ..
+    "    |cff999999-|r Resultados com apelido agora aparecem sempre no topo da lista\n" ..
+    "    |cff999999-|r Apelidos agora correspondem como nomes de resultados (prefixos e erros de digitação)\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffÍcone do Grande Cofre corrigido|r"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Adicionar apelido"

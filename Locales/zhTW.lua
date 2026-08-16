@@ -256,10 +256,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "歡迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "這裡"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日誌"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff計算機現在是可選組件，可在插件清單中完全停用|r\n" ..
-    "    |cff999999-|r 現在也可透過搜尋列上新的應用程式按鈕開啟 (更多應用即將推出)，\n" ..
-    "      內嵌結果和搜尋 '計算機' 的用法與之前相同\n" ..
-    "    |cff999999-|r 還可以在搜尋設定中隱藏應用程式按鈕"
+    "|cffFFD100\226\128\162|r |cffffffff別名已修復|r\n" ..
+    "    |cff999999-|r 設定了別名的結果現在始終排在最前\n" ..
+    "    |cff999999-|r 別名現在與結果名稱一樣參與比對（前綴、拼字容錯）\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff巨大寶庫圖示已修復|r"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "新增別名"

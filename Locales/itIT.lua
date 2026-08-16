@@ -256,12 +256,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "Benvenuto in |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "qui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vedi il changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffLa calcolatrice ora è una dipendenza facoltativa e può essere|r\n" ..
-    "  |cffffffffdisattivata del tutto dal menu degli addon|r\n" ..
-    "    |cff999999-|r Ora si apre dal nuovo pulsante applicazioni (altre in arrivo),\n" ..
-    "      ma i risultati in linea e la ricerca di 'calcolatrice'\n" ..
-    "      nella barra funzionano come prima\n" ..
-    "    |cff999999-|r Puoi anche nascondere il pulsante applicazioni nelle impostazioni Ricerca"
+    "|cffFFD100\226\128\162|r |cffffffffAlias corretti|r\n" ..
+    "    |cff999999-|r I risultati con alias compaiono sempre in cima alla lista\n" ..
+    "    |cff999999-|r Gli alias ora corrispondono come i nomi dei risultati (prefissi ed errori di battitura)\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffIcona del Grande Forziere corretta|r"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Aggiungi alias"
