@@ -28,6 +28,12 @@ local function FlatNameLess(ra, rb)
     if #na ~= #nb then return #na < #nb end
     return na < nb
 end
+
+-- Alias boost band: far above any natural score so alias rows always sort
+-- on top. GetMatches returns matches best-first (ranked by the shared name
+-- scorer), so each match gets a score descending by its position and the
+-- sort preserves that order.
+local ALIAS_SCORE_BASE = 1e9
 -- Re-run the active search after async data changes (provider loads,
 -- item-info arrivals, Database cache resets). A quick-filter browse
 -- ("@outfits") has empty text but still needs the re-search once its
@@ -281,20 +287,21 @@ function Search:OnSearchTextChanged(text, force)
     -- SCRATCH.aliasSeen, which must stay populated until then.
     wipe(SCRATCH.aliasSeen)
     if ns.Aliases then
-        local aliasMatches = ns.Aliases:GetMatches(text:lower())
+        local aliasMatches = ns.Aliases:GetMatches(slower(text))
         if aliasMatches then
             local promoted = SCRATCH.aliasSeen
             for i = #aliasMatches, 1, -1 do
                 local hit = aliasMatches[i]
                 local data = hit.data
+                local aliasScore = ALIAS_SCORE_BASE - i
                 if data and data.mapSearchResult then
                     local wrapped = {}
                     for k, v in pairs(data) do wrapped[k] = v end
                     wrapped.query = (hit.alias and hit.alias.text) or text
-                    tinsert(results, 1, { data = wrapped, score = math.huge, isAlias = true })
+                    tinsert(results, 1, { data = wrapped, score = aliasScore, isAlias = true })
                 elseif data and not promoted[data] then
                     promoted[data] = true
-                    tinsert(results, 1, { data = data, score = math.huge, isAlias = true })
+                    tinsert(results, 1, { data = data, score = aliasScore, isAlias = true })
                 end
             end
         end

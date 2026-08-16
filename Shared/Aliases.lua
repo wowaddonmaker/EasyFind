@@ -12,10 +12,11 @@ if ns then ns.Aliases = Aliases end
 
 local Utils = ns.Utils
 local SearchText = ns.SearchText
-local sfind, strtrim = Utils.sfind, strtrim
+local strtrim = strtrim
 local sformat = string.format
 local mfloor = Utils.mfloor
 local tinsert = Utils.tinsert
+local tsort = Utils.tsort
 
 -- All alias keys go through SearchText.Normalize so non-English user input
 -- ("Münzen", "Élune", etc.) lowercases consistently. WoW's string.lower
@@ -392,32 +393,43 @@ function Blacklist:ImportList(list, skipExisting)
     return n
 end
 
----Returns aliases matching the (already-lowered) query. A match is either
----direction of typing toward the alias: the alias still contains the query
----("gar" while typing toward alias "garrison"), or the query starts with the
----full alias and keeps going ("garr...", "garrison hearth" with alias "gar").
----Without the prefix direction, typing one character past the alias text
----silently dropped the boost (GitHub #20). The contains direction honours
----the search's 2-character minimum so one keystroke doesn't surface every
----alias sharing that letter; a deliberate 1-character alias still fires via
----the prefix direction (a 1-char query prefix-matches only its exact alias).
+local function ScoreDesc(a, b) return a.score > b.score end
+
+---Returns aliases matching the (already-lowered) query, best match first.
+---An alias is scored against the query with the SAME name scorer the rest
+---of search uses (Database:ScoreName -- exact, prefix, word-boundary,
+---substring, initials, fuzzy typo tolerance with its length thresholds).
+---Being an alias decides how high the row is boosted, never whether it
+---matches, so aliases get the identical spell protection result names do:
+---typos hit at the scorer's tolerance (5+ char queries, name within the
+---edit window), gibberish past the alias scores zero and drops the boost,
+---and an exact alias outscores a prefix one (GitHub #20).
+---Non-exact matches honour the search's 2-character minimum; an exact
+---alias fires at any length so a 1-character alias keeps working.
 ---Nil if no matches or no query.
 ---@param queryLower string?
----@return { data: table, alias: AliasInfo }[]?
+---@return { data: table, alias: AliasInfo, score: number }[]?
 function Aliases:GetMatches(queryLower)
     if not queryLower or queryLower == "" then return nil end
     if not EasyFind or not EasyFind.db or not EasyFind.db.aliases then return nil end
+    local db = ns.Database
+    if not (db and db.ScoreName) then return nil end
+    local qLen = #queryLower
     local out
     for storedKey, info in pairs(EasyFind.db.aliases) do
-        if (#queryLower >= 2 and sfind(storedKey, queryLower, 1, true))
-           or sfind(queryLower, storedKey, 1, true) == 1 then
+        local score
+        if storedKey == queryLower or qLen >= 2 then
+            score = db:ScoreName(storedKey, queryLower, qLen)
+        end
+        if score and score > 0 then
             local entry = Aliases:FindEntryByKey(info.key)
             if entry then
                 out = out or {}
-                tinsert(out, { data = entry, alias = info })
+                tinsert(out, { data = entry, alias = info, score = score })
             end
         end
     end
+    if out and #out > 1 then tsort(out, ScoreDesc) end
     return out
 end
 
