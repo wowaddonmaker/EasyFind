@@ -32,11 +32,14 @@ end
 -- Alias boost band: far above any natural score so alias rows always sort
 -- on top. GetMatches returns matches best-first (ranked by the shared name
 -- scorer), so each match gets a score descending by its position and the
--- sort preserves that order.
+-- sort preserves that order. A learned pick (Learned:GetBoost) sits one
+-- band below: an explicit alias always beats a learned habit.
 local ALIAS_SCORE_BASE = 1e9
--- One band below aliases (and below the learned-pick band reserved at 1e8):
--- the default local-category boost is implicit, so anything the user set up
--- deliberately must outrank it.
+-- One band below aliases: a learned pick is a habit the addon inferred, so
+-- any alias the user set up deliberately must outrank it.
+local LEARNED_SCORE = 1e8
+-- One band below learned picks: the default local-category boost is fully
+-- implicit, so both deliberate aliases and learned habits outrank it.
 local LOCAL_CATEGORY_SCORE = 5e7
 
 -- Identity of a map row across the pooled copies the map search hands out:
@@ -370,6 +373,29 @@ function Search:OnSearchTextChanged(text, force)
                     for k, v in pairs(src) do wrapped[k] = v end
                     tinsert(results, 1, { data = wrapped, score = LOCAL_CATEGORY_SCORE - j, isAlias = true })
                 end
+            end
+        end
+    end
+
+    -- Learned pick: the result chosen the last time this exact query was
+    -- typed boosts to the top, one band below aliases. Rides the same
+    -- promotion/dedupe machinery, so an alias to the same row wins and the
+    -- natural duplicate drops at the combined build. A learned MAP row
+    -- registers in seenMapRows (2.4.2 machinery, newer than this feature's
+    -- base) so the pooled natural copy is deduped like any other boost.
+    if ns.Learned then
+        local learned = ns.Learned:GetBoost(slower(text))
+        if learned then
+            local promoted = SCRATCH.aliasSeen
+            if learned.mapSearchResult then
+                local wrapped = {}
+                for k, v in pairs(learned) do wrapped[k] = v end
+                wrapped.query = text
+                seenMapRows[MapRowKey(wrapped)] = true
+                tinsert(results, 1, { data = wrapped, score = LEARNED_SCORE, isAlias = true })
+            elseif not promoted[learned] then
+                promoted[learned] = true
+                tinsert(results, 1, { data = learned, score = LEARNED_SCORE, isAlias = true })
             end
         end
     end

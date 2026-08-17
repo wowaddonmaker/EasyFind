@@ -17,6 +17,7 @@ local sformat = string.format
 local mfloor = Utils.mfloor
 local tinsert = Utils.tinsert
 local tsort = Utils.tsort
+local time = time
 
 -- All alias keys go through SearchText.Normalize so non-English user input
 -- ("Münzen", "Élune", etc.) lowercases consistently. WoW's string.lower
@@ -410,6 +411,72 @@ function Blacklist:ImportList(list, skipExisting)
     end
     blacklistCount = nil
     return n
+end
+
+-- Learned picks: choosing a result after typing a query teaches the ranking,
+-- so that result surfaces on top the next time the same query is typed (below
+-- explicit aliases, which are deliberate and must win). Same identity scheme
+-- as aliases/shortkeys/blacklist: one stable key per row via GetEntryKey.
+-- Stored as db.queryLearn[query] = { key, n, at, snapshot? }. Last pick wins;
+-- n and at are kept for the LRU cap and future weighting. Map rows carry a
+-- snapshot like aliases do, so a learned map pick renders as captured.
+local Learned = {}
+ns.Learned = Learned
+
+local LEARN_CAP = 200
+
+local function TrimLearned(store)
+    local count = 0
+    for _ in pairs(store) do count = count + 1 end
+    while count > LEARN_CAP do
+        local oldestQuery, oldestAt
+        for query, rec in pairs(store) do
+            local at = rec.at or 0
+            if not oldestAt or at < oldestAt then
+                oldestAt = at
+                oldestQuery = query
+            end
+        end
+        store[oldestQuery] = nil
+        count = count - 1
+    end
+end
+
+function Learned:RecordPick(data, typedQuery)
+    if not (EasyFind and EasyFind.db) then return end
+    if EasyFind.db.learnFromPicks == false then return end
+    local query = normalize(strtrim(typedQuery or ""))
+    if query == "" then return end
+    local key = Aliases:GetEntryKey(data)
+    if not key then return end
+    if type(EasyFind.db.queryLearn) ~= "table" then
+        EasyFind.db.queryLearn = {}
+    end
+    local store = EasyFind.db.queryLearn
+    local rec = store[query]
+    if rec and rec.key == key then
+        rec.n = (rec.n or 0) + 1
+        rec.at = time()
+        return
+    end
+    store[query] = { key = key, n = 1, at = time(), snapshot = Aliases:BuildSnapshot(data) }
+    TrimLearned(store)
+end
+
+---Returns the entry learned for this (already-normalized) query, or nil.
+function Learned:GetBoost(queryLower)
+    if not (EasyFind and EasyFind.db) then return nil end
+    if EasyFind.db.learnFromPicks == false then return nil end
+    local store = EasyFind.db.queryLearn
+    local rec = type(store) == "table" and store[queryLower]
+    if not rec or not rec.key then return nil end
+    local entry = Aliases:FindEntryByKey(rec.key)
+    if not entry then entry = rec.snapshot end
+    return entry
+end
+
+function Learned:ClearAll()
+    if EasyFind and EasyFind.db then EasyFind.db.queryLearn = {} end
 end
 
 local function ScoreDesc(a, b) return a.score > b.score end

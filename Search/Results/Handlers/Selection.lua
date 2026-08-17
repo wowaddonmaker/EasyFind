@@ -218,6 +218,15 @@ function Handlers:SelectResult(data, forceGuide)
     if InCombatLockdown() then return end
     local useFast = not forceGuide
 
+    -- Learn the pick before any branch can clear the typed query. Filters
+    -- and lookup-style rows (catalog inspection, quick filters, command
+    -- suggestions) are browsing, not a destination, so they don't teach;
+    -- unkeyable rows (answers, calculator) no-op inside RecordPick.
+    if ns.Learned and not data.quickFilterDef and not data.catalogItem
+       and not data.searchCommand and not Handlers:IsLookupRow(data) then
+        ns.Learned:RecordPick(data, Search.GetTypedQuery and Search:GetTypedQuery() or "")
+    end
+
     if data.quickFilterDef then
         self:ApplyQuickFilter(data.quickFilterDef, "")
         return

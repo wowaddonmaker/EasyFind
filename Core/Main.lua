@@ -277,6 +277,8 @@ local DB_DEFAULTS = {
     -- Breadth of the category-word boost: "all" pins your zone's results
     -- above the world list; "local" shows only your zone's for that category.
     mapCategoryScope = "all",
+    learnFromPicks = true,
+    queryLearn = {},
 }
 -- Exposed so option resets restore from the same table first-run uses;
 -- keeping a second copy in OptionsPanel let the two drift apart.

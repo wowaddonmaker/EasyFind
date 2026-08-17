@@ -315,6 +315,70 @@ function tests.categoryAlias_rejectsEmpty()
     H.assertNil(next(env.EasyFind.db.aliases))
 end
 
+function tests.learned_recordAndBoost()
+    env.EasyFind.db.aliases = {}
+    env.EasyFind.db.queryLearn = {}
+    env.EasyFind.db.learnFromPicks = true
+    local toyEntry = { toyItemID = 110560, name = "Garrison Hearthstone" }
+    Aliases:InvalidateKeyIndex()
+    ns.Database.uiSearchData = { toyEntry }
+    ns.Learned:RecordPick(toyEntry, "gar")
+    local rec = env.EasyFind.db.queryLearn["gar"]
+    H.assertNotNil(rec, "pick was not recorded")
+    H.assertEq(rec.key, "toy:110560")
+    H.assertEq(ns.Learned:GetBoost("gar"), toyEntry)
+    H.assertNil(ns.Learned:GetBoost("garr"), "only the exact query is learned")
+    ns.Database.uiSearchData = nil
+end
+
+function tests.learned_lastPickWins()
+    env.EasyFind.db.queryLearn = {}
+    env.EasyFind.db.learnFromPicks = true
+    local toyEntry = { toyItemID = 110560, name = "Garrison Hearthstone" }
+    local mountEntry = { mountID = 71, name = "Grand Gryphon" }
+    Aliases:InvalidateKeyIndex()
+    ns.Database.uiSearchData = { toyEntry, mountEntry }
+    ns.Learned:RecordPick(toyEntry, "gar")
+    ns.Learned:RecordPick(mountEntry, "gar")
+    H.assertEq(ns.Learned:GetBoost("gar"), mountEntry, "last pick must win")
+    ns.Database.uiSearchData = nil
+end
+
+function tests.learned_disabledOptionStopsBoth()
+    env.EasyFind.db.queryLearn = {}
+    env.EasyFind.db.learnFromPicks = false
+    local toyEntry = { toyItemID = 110560, name = "Garrison Hearthstone" }
+    Aliases:InvalidateKeyIndex()
+    ns.Database.uiSearchData = { toyEntry }
+    ns.Learned:RecordPick(toyEntry, "gar")
+    H.assertNil(next(env.EasyFind.db.queryLearn), "must not record while disabled")
+    env.EasyFind.db.queryLearn = { gar = { key = "toy:110560", n = 1, at = 1 } }
+    H.assertNil(ns.Learned:GetBoost("gar"), "must not boost while disabled")
+    env.EasyFind.db.learnFromPicks = true
+    ns.Database.uiSearchData = nil
+end
+
+function tests.learned_capEvictsOldest()
+    env.EasyFind.db.queryLearn = {}
+    env.EasyFind.db.learnFromPicks = true
+    local toyEntry = { toyItemID = 110560, name = "Garrison Hearthstone" }
+    Aliases:InvalidateKeyIndex()
+    ns.Database.uiSearchData = { toyEntry }
+    local store = env.EasyFind.db.queryLearn
+    -- Pre-fill to the cap with picks older than "now" (the fake clock sits
+    -- at 0), q1 oldest, so the new pick evicts exactly q1.
+    for i = 1, 200 do
+        store["q" .. i] = { key = "toy:110560", n = 1, at = i - 300 }
+    end
+    ns.Learned:RecordPick(toyEntry, "newest")
+    local count = 0
+    for _ in pairs(store) do count = count + 1 end
+    H.assertEq(count, 200, "cap must hold at 200")
+    H.assertNil(store["q1"], "oldest entry must be evicted")
+    H.assertNotNil(store["newest"], "new pick must survive the trim")
+    ns.Database.uiSearchData = nil
+end
+
 function tests.getMatches_nilQueryReturnsNil()
     H.assertNil(Aliases:GetMatches(nil))
     H.assertNil(Aliases:GetMatches(""))

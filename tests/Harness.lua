@@ -156,6 +156,7 @@ local function setupWoWGlobals(env, clock)
     env.IsControlKeyDown = function() return false end
     env.IsAltKeyDown = function() return false end
     env.GetTime = function() return clock.now end
+    env.time = function() return math.floor(clock.now) end
 
     env.C_Timer = {
         After = function(delay, fn) clock:after(delay, fn) end,
