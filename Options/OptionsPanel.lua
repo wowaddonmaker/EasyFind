@@ -2974,6 +2974,9 @@ local function BuildAliasesTab(ctx)
             row:SetPoint("TOPLEFT", aliasContent, "TOPLEFT", 4, y)
             row.aliasBtn:SetText(CellText(e.aliasText))
             row.skBtn:SetText(CellText(e.shortkey))
+            -- A category alias expands to several nearby rows at search
+            -- time; there is no single row a shortkey could bind to.
+            row.skBtn:SetShown(not (e.key and Utils.sfind(e.key, "mapcat:", 1, true) == 1))
             row.aliasBtn:RefreshVisual()
             row.skBtn:RefreshVisual()
             row.nameText:SetText(e.name or "?")

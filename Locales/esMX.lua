@@ -256,10 +256,11 @@ L["WHATSNEW_CHAT_HELLO"]                = "¡Bienvenido a |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "aquí"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver el registro de cambios completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffAlias corregidos|r\n" ..
-    "    |cff999999-|r Los resultados con alias aparecen siempre en lo más alto\n" ..
-    "    |cff999999-|r Los alias coinciden ahora como los nombres de resultados (prefijos y erratas)\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffIcono de la Cámara Magna corregido|r"
+    "|cffFFD100\226\128\162|r |cffffffffLas palabras de categoría muestran primero lo cercano|r\n" ..
+    "    |cff999999-|r Escribir flight, fm, tp, delve, etc. pone los resultados más cercanos arriba\n" ..
+    "    |cff999999-|r Se puede desactivar en el menú de filtros, en búsqueda de mapa\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffLos alias ahora pueden cubrir toda una categoría|r\n" ..
+    "    |cff999999-|r Marca la nueva casilla al añadir un alias a un resultado del mapa"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Añadir alias"
@@ -430,6 +431,10 @@ L["FILTER_ILVL_UPGRADES_ONLY"]          = "Solo mejoras de nivel de objeto"
 L["FILTER_CURRENT_SPEC"]                = "Especialización actual"
 L["ALIAS_THIS_ENTRY"]                   = "esta entrada"
 L["ALIAS_ADDED_MSG"]                    = "Nuevo alias: %s -> %s. Consulta este y cualquier otro alias existente en la pestaña Alias del menú de opciones."
+L["ALIAS_WHOLE_CATEGORY_CHECK"] = "Alias para toda la categoría: %s"
+L["ALIAS_WHOLE_CATEGORY_GENERIC"] = "Alias para toda la categoría (resultados cercanos)"
+L["FILTER_MAP_NEARBY_FIRST"] = "Resultados cercanos primero con palabras de categoría"
+L["ALIAS_CATEGORY_LABEL"] = "%s (categoría)"
 L["CALC_PASTE_HINT"]                    = "Ahora Ctrl+V para pegar"
 L["CALC_BACKSPACE"]                     = "Atrás"
 L["CMD_DESC_RESET"]                     = "Restablecer la posición, fuentes y tamaño de la barra de búsqueda"

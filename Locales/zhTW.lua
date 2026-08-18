@@ -256,10 +256,11 @@ L["WHATSNEW_CHAT_HELLO"]                = "歡迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "這裡"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日誌"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff別名已修復|r\n" ..
-    "    |cff999999-|r 設定了別名的結果現在始終排在最前\n" ..
-    "    |cff999999-|r 別名現在與結果名稱一樣參與比對（前綴、拼字容錯）\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff巨大寶庫圖示已修復|r"
+    "|cffFFD100\226\128\162|r |cffffffff分類詞現在優先顯示附近結果|r\n" ..
+    "    |cff999999-|r 輸入 flight、fm、tp、delve 等會把最近的結果排在最前\n" ..
+    "    |cff999999-|r 可在篩選選單的地圖搜尋中關閉\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff別名現在可以涵蓋整個分類|r\n" ..
+    "    |cff999999-|r 為地圖結果新增別名時勾選新的選項即可"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "新增別名"
@@ -430,6 +431,10 @@ L["FILTER_ILVL_UPGRADES_ONLY"]          = "僅物品等級提升"
 L["FILTER_CURRENT_SPEC"]                = "目前專精"
 L["ALIAS_THIS_ENTRY"]                   = "此項目"
 L["ALIAS_ADDED_MSG"]                    = "新別名：%s -> %s。在選項選單的別名頁籤中可檢視此別名及其他現有別名。"
+L["ALIAS_WHOLE_CATEGORY_CHECK"] = "為整個分類設定別名：%s"
+L["ALIAS_WHOLE_CATEGORY_GENERIC"] = "為整個分類設定別名（附近結果）"
+L["FILTER_MAP_NEARBY_FIRST"] = "分類詞搜尋時優先顯示附近結果"
+L["ALIAS_CATEGORY_LABEL"] = "%s（分類）"
 L["CALC_PASTE_HINT"]                    = "現在按 Ctrl+V 貼上"
 L["CALC_BACKSPACE"]                     = "退格"
 L["CMD_DESC_RESET"]                     = "重設搜尋列的位置、字型和大小"

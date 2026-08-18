@@ -293,6 +293,28 @@ function tests.forEach_visitsEachAlias()
     H.assertEq(seen.bar, "toy:2")
 end
 
+function tests.categoryAlias_storesAndResolvesMarker()
+    -- GitHub #21: a category alias binds a trigger to a whole map category.
+    -- GetMatches resolves it to a marker (no single row exists to look up);
+    -- the query pipeline expands the marker into nearby category rows.
+    env.EasyFind.db.aliases = {}
+    H.assertTrue(Aliases:AddCategory("fm", "flightmaster", "Flight Master (category)"))
+    H.assertEq(env.EasyFind.db.aliases["fm"].key, "mapcat:flightmaster")
+    local matches = Aliases:GetMatches("fm")
+    H.assertNotNil(matches, "trigger must match")
+    H.assertEq(matches[1].data.mapCategoryAlias, "flightmaster")
+    H.assertEq(matches[1].data.name, "Flight Master (category)")
+    H.assertEq(matches[1].alias.text, "fm")
+    H.assertNil(Aliases:GetMatches("f"), "1-char non-exact query stays gated")
+end
+
+function tests.categoryAlias_rejectsEmpty()
+    env.EasyFind.db.aliases = {}
+    H.assertFalse(Aliases:AddCategory("  ", "flightmaster"), "empty trigger rejected")
+    H.assertFalse(Aliases:AddCategory("fm", nil), "missing category rejected")
+    H.assertNil(next(env.EasyFind.db.aliases))
+end
+
 function tests.getMatches_nilQueryReturnsNil()
     H.assertNil(Aliases:GetMatches(nil))
     H.assertNil(Aliases:GetMatches(""))

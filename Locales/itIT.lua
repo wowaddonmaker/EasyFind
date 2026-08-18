@@ -256,10 +256,11 @@ L["WHATSNEW_CHAT_HELLO"]                = "Benvenuto in |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "qui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vedi il changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffAlias corretti|r\n" ..
-    "    |cff999999-|r I risultati con alias compaiono sempre in cima alla lista\n" ..
-    "    |cff999999-|r Gli alias ora corrispondono come i nomi dei risultati (prefissi ed errori di battitura)\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffIcona del Grande Forziere corretta|r"
+    "|cffFFD100\226\128\162|r |cffffffffLe parole di categoria mostrano prima i risultati vicini|r\n" ..
+    "    |cff999999-|r Digitare flight, fm, tp, delve ecc. mette in cima i più vicini\n" ..
+    "    |cff999999-|r Disattivabile nel menu dei filtri, sotto la ricerca mappa\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffGli alias ora possono coprire un'intera categoria|r\n" ..
+    "    |cff999999-|r Spunta la nuova casella quando aggiungi un alias a un risultato della mappa"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Aggiungi alias"
@@ -430,6 +431,10 @@ L["FILTER_ILVL_UPGRADES_ONLY"]          = "Solo miglioramenti di liv. oggetto"
 L["FILTER_CURRENT_SPEC"]                = "Specializzazione attuale"
 L["ALIAS_THIS_ENTRY"]                   = "questa voce"
 L["ALIAS_ADDED_MSG"]                    = "Nuovo alias: %s -> %s. Trovi questo e ogni altro alias esistente nella scheda Alias del menu delle opzioni."
+L["ALIAS_WHOLE_CATEGORY_CHECK"] = "Alias per l'intera categoria: %s"
+L["ALIAS_WHOLE_CATEGORY_GENERIC"] = "Alias per l'intera categoria (risultati vicini)"
+L["FILTER_MAP_NEARBY_FIRST"] = "Risultati vicini prima con parole di categoria"
+L["ALIAS_CATEGORY_LABEL"] = "%s (categoria)"
 L["CALC_PASTE_HINT"]                    = "Ora Ctrl+V per incollare"
 L["CALC_BACKSPACE"]                     = "Indietro"
 L["CMD_DESC_RESET"]                     = "Reimposta posizione, caratteri e dimensione della barra di ricerca"

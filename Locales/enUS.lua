@@ -279,10 +279,11 @@ L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffAliases fixed|r\n" ..
-    "    |cff999999-|r Aliased results now always sit at the top of your results\n" ..
-    "    |cff999999-|r Aliases now match just like result names (prefixes, typos)\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffGreat Vault icon fixed|r"
+    "|cffFFD100\226\128\162|r |cffffffffCategory words now show nearby results first|r\n" ..
+    "    |cff999999-|r Typing flight, fm, tp, delve etc. puts the closest ones on top\n" ..
+    "    |cff999999-|r Toggle it in the filter menu under Map Search\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffAliases can now cover a whole category|r\n" ..
+    "    |cff999999-|r Tick the new checkbox when adding an alias to a map result"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels
@@ -471,6 +472,10 @@ L["FILTER_ILVL_UPGRADES_ONLY"]          = "iLvl Upgrades Only"
 L["FILTER_CURRENT_SPEC"]                = "Current Spec"
 L["ALIAS_THIS_ENTRY"]                   = "this entry"
 L["ALIAS_ADDED_MSG"]                    = "New alias: %s -> %s. View this and any other existing aliases in the Aliases tab of the options menu."
+L["ALIAS_WHOLE_CATEGORY_CHECK"] = "Alias the whole category: %s"
+L["ALIAS_WHOLE_CATEGORY_GENERIC"] = "Alias the whole category (nearest results)"
+L["FILTER_MAP_NEARBY_FIRST"] = "Nearby results first for category words"
+L["ALIAS_CATEGORY_LABEL"] = "%s (category)"
 L["CALC_PASTE_HINT"]                    = "Now Ctrl+V to paste"
 L["CALC_BACKSPACE"]                     = "Back"
 L["CMD_DESC_RESET"]                     = "Reset search bar position, fonts, and size"

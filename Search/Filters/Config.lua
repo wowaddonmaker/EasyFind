@@ -345,6 +345,37 @@ function Filters.ResyncShownOptionPopups()
     end
 end
 
+-- Localized label for a map POI category, resolved through the same
+-- bucket/sub-bucket chain the map filters use, against the labels the map
+-- flyout already translated. Lets the alias dialog say WHICH category a
+-- whole-category alias covers ("Flight Paths", "Portals"). Nil when the
+-- category resolves to no labeled filter row.
+local mapFilterLabels
+function Filters.MapCategoryFilterLabel(category)
+    if not category then return nil end
+    if not mapFilterLabels then
+        mapFilterLabels = {}
+        for _, opt in ipairs(UI_FILTER_OPTIONS) do
+            if opt.key == "map" and opt.flyoutSubFilters then
+                for _, sub in ipairs(opt.flyoutSubFilters) do
+                    mapFilterLabels[sub.key] = sub.label
+                    if sub.subFilters then
+                        for _, nested in ipairs(sub.subFilters) do
+                            mapFilterLabels[nested.key] = nested.label
+                        end
+                    end
+                end
+            end
+        end
+    end
+    local probe = { category = category }
+    local bucket = ns.MapSearch and ns.MapSearch.GetFilterBucket
+        and ns.MapSearch.GetFilterBucket(probe)
+    local sub = ns.MapSearch and ns.MapSearch.GetSubBucket
+        and ns.MapSearch.GetSubBucket(probe, bucket)
+    return (sub and mapFilterLabels[sub]) or (bucket and mapFilterLabels[bucket]) or nil
+end
+
 Filters.UI_FILTER_OPTIONS = UI_FILTER_OPTIONS
 Filters.ForEachFilterKey = ForEachFilterKey
 Filters.GetUIBucket = GetUIBucket

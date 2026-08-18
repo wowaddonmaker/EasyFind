@@ -256,10 +256,11 @@ L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 �
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff별칭 수정|r\n" ..
-    "    |cff999999-|r 별칭이 지정된 결과가 이제 항상 목록 맨 위에 표시됩니다\n" ..
-    "    |cff999999-|r 별칭도 결과 이름과 같은 방식으로 검색됩니다 (접두사, 오타 포함)\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff위대한 금고 아이콘 수정|r"
+    "|cffFFD100\226\128\162|r |cffffffff분류 단어 검색 시 가까운 결과가 먼저 표시됩니다|r\n" ..
+    "    |cff999999-|r flight, fm, tp, delve 등을 입력하면 가장 가까운 결과가 맨 위에 옵니다\n" ..
+    "    |cff999999-|r 필터 메뉴의 지도 검색에서 끌 수 있습니다\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff별칭이 이제 분류 전체를 포괄할 수 있습니다|r\n" ..
+    "    |cff999999-|r 지도 결과에 별칭을 추가할 때 새 체크박스를 선택하세요"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"
@@ -430,6 +431,10 @@ L["FILTER_ILVL_UPGRADES_ONLY"]          = "아이템 레벨 상승만"
 L["FILTER_CURRENT_SPEC"]                = "현재 전문화"
 L["ALIAS_THIS_ENTRY"]                   = "이 항목"
 L["ALIAS_ADDED_MSG"]                    = "새 별칭: %s -> %s. 옵션 메뉴의 별칭 탭에서 이 별칭과 기존 별칭을 확인할 수 있습니다."
+L["ALIAS_WHOLE_CATEGORY_CHECK"] = "분류 전체에 별칭: %s"
+L["ALIAS_WHOLE_CATEGORY_GENERIC"] = "분류 전체에 별칭 (가까운 결과)"
+L["FILTER_MAP_NEARBY_FIRST"] = "분류 단어 검색 시 가까운 결과 우선"
+L["ALIAS_CATEGORY_LABEL"] = "%s (분류)"
 L["CALC_PASTE_HINT"]                    = "이제 Ctrl+V로 붙여넣기"
 L["CALC_BACKSPACE"]                     = "뒤로"
 L["CMD_DESC_RESET"]                     = "검색창 위치, 글꼴, 크기 초기화"

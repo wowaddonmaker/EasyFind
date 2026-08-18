@@ -780,29 +780,36 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             end
             row.flyoutSubRows = subRows
 
-            -- "Hide tooltips" checkbox at the bottom of the collections
-            -- flyout. Toggles the per-group EasyFind.db.hideTooltips
-            -- setting that the OnEnter handlers consult before showing
-            -- mount / toy / pet / heirloom / appearance set tooltips.
+            -- Behavior checkbox at the bottom of a flyout, below the bucket
+            -- toggles. Collections: "Hide tooltips" (per-group
+            -- EasyFind.db.hideTooltips the OnEnter handlers consult). Map:
+            -- the local-category boost toggle (category words surface the
+            -- nearest results first; GitHub #21).
             local extraRows = 0
-            local hideTipRow
-            if opt.key == "collections" then
-                hideTipRow = CreateFrame("CheckButton", nil, popup)
-                hideTipRow:SetSize(SUB_POPUP_WIDTH - SUB_PAD * 2, SUB_ROW_H)
-                hideTipRow:SetHitRectInsets(0, 0, 0, 0)
-                hideTipRow:SetPoint("TOPLEFT", popup, "TOPLEFT",
+            local behaviorRow
+            if opt.key == "collections" or opt.key == "map" then
+                local isMapRow = opt.key == "map"
+                behaviorRow = CreateFrame("CheckButton", nil, popup)
+                behaviorRow:SetSize(SUB_POPUP_WIDTH - SUB_PAD * 2, SUB_ROW_H)
+                behaviorRow:SetHitRectInsets(0, 0, 0, 0)
+                behaviorRow:SetPoint("TOPLEFT", popup, "TOPLEFT",
                     SUB_PAD, -(SUB_PAD + (#opt.flyoutSubFilters + toggleAllOffset) * SUB_ROW_H))
-                Utils.SetCheckboxTextures(hideTipRow, CHK)
-                local lbl = hideTipRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-                lbl:SetPoint("LEFT", hideTipRow:GetNormalTexture(), "RIGHT", 4, 0)
-                lbl:SetText(L["FILTER_HIDE_TOOLTIPS"])
-                hideTipRow._label = lbl
-                InstallMenuRowHighlight(hideTipRow)
-                hideTipRow:SetScript("OnClick", function(self)
-                    EasyFind.db.hideTooltips = EasyFind.db.hideTooltips or {}
-                    EasyFind.db.hideTooltips.collections = self:GetChecked() and true or false
+                Utils.SetCheckboxTextures(behaviorRow, CHK)
+                local lbl = behaviorRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+                lbl:SetPoint("LEFT", behaviorRow:GetNormalTexture(), "RIGHT", 4, 0)
+                lbl:SetText(isMapRow and L["FILTER_MAP_NEARBY_FIRST"] or L["FILTER_HIDE_TOOLTIPS"])
+                behaviorRow._label = lbl
+                InstallMenuRowHighlight(behaviorRow)
+                behaviorRow:SetScript("OnClick", function(self)
+                    if isMapRow then
+                        EasyFind.db.mapLocalCategoryBoost = self:GetChecked() and true or false
+                        Filters:RerunActiveSearch()
+                    else
+                        EasyFind.db.hideTooltips = EasyFind.db.hideTooltips or {}
+                        EasyFind.db.hideTooltips.collections = self:GetChecked() and true or false
+                    end
                 end)
-                row.hideTooltipsRow = hideTipRow
+                row.hideTooltipsRow = not isMapRow and behaviorRow or nil
                 extraRows = 1
             end
             -- Sync sub-row checked state from current DB values.
@@ -817,10 +824,14 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                         SetFlyoutRowEnabled(sr, parentEnabled)
                     end
                 end
-                if hideTipRow then
-                    local ht = EasyFind.db.hideTooltips
-                    hideTipRow:SetChecked(ht and ht.collections == true)
-                    SetFlyoutRowEnabled(hideTipRow, parentEnabled)
+                if behaviorRow then
+                    if opt.key == "map" then
+                        behaviorRow:SetChecked(EasyFind.db.mapLocalCategoryBoost ~= false)
+                    else
+                        local ht = EasyFind.db.hideTooltips
+                        behaviorRow:SetChecked(ht and ht.collections == true)
+                    end
+                    SetFlyoutRowEnabled(behaviorRow, parentEnabled)
                 end
                 if toggleAllRow then
                     SetFlyoutRowEnabled(toggleAllRow, parentEnabled)
@@ -868,13 +879,13 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 local w = Utils.FlyoutRowContentWidth(subRows[si], CHK + 4, SUB_ICON, SUB_ICON - 2)
                 if w > contentW then contentW = w end
             end
-            local hideTipW = Utils.FlyoutRowContentWidth(hideTipRow, CHK + 4)
-            if hideTipW > contentW then contentW = hideTipW end
+            local behaviorW = Utils.FlyoutRowContentWidth(behaviorRow, CHK + 4)
+            if behaviorW > contentW then contentW = behaviorW end
             local toggleAllW = Utils.FlyoutRowContentWidth(toggleAllRow, 8)
             if toggleAllW > contentW then contentW = toggleAllW end
             local popupW = Utils.FlyoutWidthFor(contentW, SUB_PAD)
             for si = 1, #opt.flyoutSubFilters do subRows[si]:SetWidth(popupW - SUB_PAD * 2) end
-            if hideTipRow then hideTipRow:SetWidth(popupW - SUB_PAD * 2) end
+            if behaviorRow then behaviorRow:SetWidth(popupW - SUB_PAD * 2) end
             if toggleAllRow then toggleAllRow:SetWidth(popupW - SUB_PAD * 2) end
             popup:SetSize(popupW,
                 SUB_PAD * 2 + (#opt.flyoutSubFilters + extraRows + toggleAllOffset) * SUB_ROW_H)
@@ -883,7 +894,7 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 local navRows = {}
                 if toggleAllRow then navRows[#navRows + 1] = toggleAllRow end
                 for si = 1, #opt.flyoutSubFilters do navRows[#navRows + 1] = subRows[si] end
-                if hideTipRow then navRows[#navRows + 1] = hideTipRow end
+                if behaviorRow then navRows[#navRows + 1] = behaviorRow end
                 return navRows
             end)
 

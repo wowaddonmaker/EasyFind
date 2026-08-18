@@ -256,10 +256,11 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bienvenue dans |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "ici"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Voir le journal des modifications complet"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffAlias corrigés|r\n" ..
-    "    |cff999999-|r Les résultats avec alias apparaissent toujours en tête de liste\n" ..
-    "    |cff999999-|r Les alias correspondent désormais comme les noms de résultats (préfixes et fautes de frappe)\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffIcône du Grand coffre corrigée|r"
+    "|cffFFD100\226\128\162|r |cffffffffLes mots de catégorie montrent d'abord ce qui est proche|r\n" ..
+    "    |cff999999-|r Taper flight, fm, tp, delve, etc. place les résultats les plus proches en haut\n" ..
+    "    |cff999999-|r Désactivable dans le menu des filtres, sous la recherche de carte\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffLes alias peuvent maintenant couvrir toute une catégorie|r\n" ..
+    "    |cff999999-|r Cochez la nouvelle case en ajoutant un alias à un résultat de carte"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Ajouter un alias"
@@ -430,6 +431,10 @@ L["FILTER_ILVL_UPGRADES_ONLY"]          = "Améliorations de niveau d'objet uniq
 L["FILTER_CURRENT_SPEC"]                = "Spécialisation actuelle"
 L["ALIAS_THIS_ENTRY"]                   = "cette entrée"
 L["ALIAS_ADDED_MSG"]                    = "Nouvel alias : %s -> %s. Retrouvez celui-ci et tous les autres alias existants dans l'onglet Alias du menu d'options."
+L["ALIAS_WHOLE_CATEGORY_CHECK"] = "Alias pour toute la catégorie : %s"
+L["ALIAS_WHOLE_CATEGORY_GENERIC"] = "Alias pour toute la catégorie (résultats proches)"
+L["FILTER_MAP_NEARBY_FIRST"] = "Résultats proches en premier pour les mots de catégorie"
+L["ALIAS_CATEGORY_LABEL"] = "%s (catégorie)"
 L["CALC_PASTE_HINT"]                    = "Maintenant Ctrl+V pour coller"
 L["CALC_BACKSPACE"]                     = "Retour"
 L["CMD_DESC_RESET"]                     = "Réinitialiser la position, les polices et la taille de la barre de recherche"

@@ -256,10 +256,11 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bem-vindo ao |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "aqui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver o changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffApelidos corrigidos|r\n" ..
-    "    |cff999999-|r Resultados com apelido agora aparecem sempre no topo da lista\n" ..
-    "    |cff999999-|r Apelidos agora correspondem como nomes de resultados (prefixos e erros de digitação)\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffÍcone do Grande Cofre corrigido|r"
+    "|cffFFD100\226\128\162|r |cffffffffPalavras de categoria mostram primeiro o que está perto|r\n" ..
+    "    |cff999999-|r Digitar flight, fm, tp, delve etc. coloca os resultados mais próximos no topo\n" ..
+    "    |cff999999-|r Pode ser desativado no menu de filtros, em busca no mapa\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffApelidos agora podem cobrir uma categoria inteira|r\n" ..
+    "    |cff999999-|r Marque a nova caixa ao adicionar um apelido a um resultado do mapa"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Adicionar apelido"
@@ -430,6 +431,10 @@ L["FILTER_ILVL_UPGRADES_ONLY"]          = "Somente melhorias de nível de item"
 L["FILTER_CURRENT_SPEC"]                = "Especialização atual"
 L["ALIAS_THIS_ENTRY"]                   = "este item"
 L["ALIAS_ADDED_MSG"]                    = "Novo apelido: %s -> %s. Veja este e outros apelidos existentes na aba Apelidos do menu de opções."
+L["ALIAS_WHOLE_CATEGORY_CHECK"] = "Apelido para a categoria inteira: %s"
+L["ALIAS_WHOLE_CATEGORY_GENERIC"] = "Apelido para a categoria inteira (resultados próximos)"
+L["FILTER_MAP_NEARBY_FIRST"] = "Resultados próximos primeiro para palavras de categoria"
+L["ALIAS_CATEGORY_LABEL"] = "%s (categoria)"
 L["CALC_PASTE_HINT"]                    = "Agora Ctrl+V para colar"
 L["CALC_BACKSPACE"]                     = "Voltar"
 L["CMD_DESC_RESET"]                     = "Redefinir posição, fontes e tamanho da barra de pesquisa"

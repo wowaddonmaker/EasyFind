@@ -12,6 +12,7 @@ local SCRATCH = {
     isLastChild = {},
     catSepYPositions = {},
     aliasSeen = {},
+    mapBoostSeen = {},
     calculatorResults = {},
     filteredResults = {},
     quickFilterResults = {},

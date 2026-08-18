@@ -555,3 +555,38 @@ function MapSearch:SearchForUI(query)
 
     return results
 end
+
+-- The nearest rows of one map category (GitHub #21): runs the normal UI map
+-- search with the category's canonical keyword (so live scans, static data,
+-- and instance caches all participate with the usual local-first ordering)
+-- and keeps only rows of that category. Category ALIASES bypass the map
+-- bucket filters (an explicit alias must always reach its category, same
+-- rule row aliases follow); the default keyword boost passes respectFilters
+-- so the user's map buckets still apply. Returned rows are the pooled
+-- search tables; callers must copy before retaining them.
+function MapSearch:GetCategoryResultsForUI(category, maxN, respectFilters)
+    if not category then return nil end
+    local catDef = ns.MapSearchData and ns.MapSearchData.CATEGORIES
+        and ns.MapSearchData.CATEGORIES[category]
+    local canonical = catDef and catDef.keywords and catDef.keywords[1] or category
+    local rows
+    if respectFilters then
+        rows = self:SearchForUI(canonical)
+    else
+        local savedFilters = EasyFind.db.uiMapFilters
+        EasyFind.db.uiMapFilters = nil
+        rows = self:SearchForUI(canonical)
+        EasyFind.db.uiMapFilters = savedFilters
+    end
+    if not rows then return nil end
+    local out
+    for i = 1, #rows do
+        local d = rows[i].data
+        if d and d.category == category then
+            out = out or {}
+            out[#out + 1] = d
+            if #out >= (maxN or 3) then break end
+        end
+    end
+    return out
+end

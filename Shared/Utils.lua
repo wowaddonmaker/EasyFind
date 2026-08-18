@@ -3393,6 +3393,17 @@ function ns.ShowThemedDialog(opts)
         f.field:Hide()
     end
 
+    if opts.checkText then
+        f.check.text:SetText(opts.checkText)
+        f.check:SetChecked(opts.checkDefault and true or false)
+        f.check:ClearAllPoints()
+        f.check:SetPoint("TOPLEFT", 16, -used)
+        f.check:Show()
+        used = used + 22 + 10
+    else
+        f.check:Hide()
+    end
+
     f.accept:SetText(opts.acceptText or _G["OKAY"] or _G["ACCEPT"] or "OK")
     f.cancel:SetText(opts.cancelText or _G["CANCEL"] or "Cancel")
     f.accept:ClearAllPoints()

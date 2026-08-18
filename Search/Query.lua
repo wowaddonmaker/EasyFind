@@ -34,6 +34,17 @@ end
 -- scorer), so each match gets a score descending by its position and the
 -- sort preserves that order.
 local ALIAS_SCORE_BASE = 1e9
+-- One band below aliases (and below the learned-pick band reserved at 1e8):
+-- the default local-category boost is implicit, so anything the user set up
+-- deliberately must outrank it.
+local LOCAL_CATEGORY_SCORE = 5e7
+
+-- Identity of a map row across the pooled copies the map search hands out:
+-- boosted injections record theirs so the same POI is not shown again when
+-- the regular map results append below.
+local function MapRowKey(d)
+    return (d.nameLower or d.name or "") .. "\1" .. tostring(d.mapID or "")
+end
 -- Re-run the active search after async data changes (provider loads,
 -- item-info arrivals, Database cache resets). A quick-filter browse
 -- ("@outfits") has empty text but still needs the re-search once its
@@ -286,6 +297,8 @@ function Search:OnSearchTextChanged(text, force)
     -- dropped when `combined` is built, keyed by data identity in
     -- SCRATCH.aliasSeen, which must stay populated until then.
     wipe(SCRATCH.aliasSeen)
+    wipe(SCRATCH.mapBoostSeen)
+    local seenMapRows = SCRATCH.mapBoostSeen
     if ns.Aliases then
         local aliasMatches = ns.Aliases:GetMatches(slower(text))
         if aliasMatches then
@@ -293,15 +306,59 @@ function Search:OnSearchTextChanged(text, force)
             for i = #aliasMatches, 1, -1 do
                 local hit = aliasMatches[i]
                 local data = hit.data
-                local aliasScore = ALIAS_SCORE_BASE - i
-                if data and data.mapSearchResult then
+                -- Stride of 10 leaves room for a category alias to expand
+                -- into several rows that stay together, in order, inside
+                -- this alias's slot of the band.
+                local aliasScore = ALIAS_SCORE_BASE - i * 10
+                if data and data.mapCategoryAlias then
+                    -- Expand to the nearest rows of the category. The rows
+                    -- are pooled by the map search, so inject copies.
+                    local catRows = ns.MapSearch and ns.MapSearch.GetCategoryResultsForUI
+                        and ns.MapSearch:GetCategoryResultsForUI(data.mapCategoryAlias, 3)
+                    if catRows then
+                        for j = #catRows, 1, -1 do
+                            local wrapped = {}
+                            for k, v in pairs(catRows[j]) do wrapped[k] = v end
+                            wrapped.query = (hit.alias and hit.alias.text) or text
+                            seenMapRows[MapRowKey(wrapped)] = true
+                            tinsert(results, 1, { data = wrapped, score = aliasScore - j, isAlias = true })
+                        end
+                    end
+                elseif data and data.mapSearchResult then
                     local wrapped = {}
                     for k, v in pairs(data) do wrapped[k] = v end
                     wrapped.query = (hit.alias and hit.alias.text) or text
+                    seenMapRows[MapRowKey(wrapped)] = true
                     tinsert(results, 1, { data = wrapped, score = aliasScore, isAlias = true })
                 elseif data and not promoted[data] then
                     promoted[data] = true
                     tinsert(results, 1, { data = data, score = aliasScore, isAlias = true })
+                end
+            end
+        end
+    end
+
+    -- Default local-category boost (GitHub #21): a query that IS a category
+    -- keyword ("flight", "fm", "delve") surfaces the nearest results of that
+    -- category with no setup. Skipped under a quick filter, when the map
+    -- bucket is off, or when the flyout toggle disabled it; rows an alias
+    -- already injected are not repeated.
+    if EasyFind.db.mapLocalCategoryBoost ~= false and not quickFilter
+       and (not filters or filters.map ~= false)
+       and not calculatorData and not calculatorLauncher then
+        local boostCat = ns.MapSearchData and ns.MapSearchData.KEYWORD_TO_CATEGORY
+            and ns.MapSearchData.KEYWORD_TO_CATEGORY[slower(text)]
+        local catRows = boostCat and ns.MapSearch and ns.MapSearch.GetCategoryResultsForUI
+            and ns.MapSearch:GetCategoryResultsForUI(boostCat, 3, true)
+        if catRows then
+            for j = #catRows, 1, -1 do
+                local src = catRows[j]
+                local rowKey = MapRowKey(src)
+                if not seenMapRows[rowKey] then
+                    seenMapRows[rowKey] = true
+                    local wrapped = {}
+                    for k, v in pairs(src) do wrapped[k] = v end
+                    tinsert(results, 1, { data = wrapped, score = LOCAL_CATEGORY_SCORE - j, isAlias = true })
                 end
             end
         end
@@ -475,7 +532,15 @@ function Search:OnSearchTextChanged(text, force)
         end
     end
     if mapResults then
-        for ri = 1, #mapResults do combined[#combined + 1] = mapResults[ri] end
+        -- Skip POIs a boost already put on top (alias or local-category);
+        -- the same place twice in one list reads as a bug.
+        local boostedMapRows = SCRATCH.mapBoostSeen
+        for ri = 1, #mapResults do
+            local r = mapResults[ri]
+            if not (r.data and boostedMapRows[MapRowKey(r.data)]) then
+                combined[#combined + 1] = r
+            end
+        end
     end
     -- Catalog items: the full game item DB (Search/ItemSearch.lua scans the
     -- packed blob). Appended BEFORE the sort/cap so they compete for the

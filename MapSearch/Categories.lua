@@ -89,10 +89,10 @@ Data.CATEGORIES = {
     instance = { keywords = {"instance", "instances", "group content"} },
     service = { keywords = {"service", "services", "npc"} },
 
-    flightmaster = { keywords = {"flight", "fly", "flight master", "flight point", "fp", "taxi"}, parent = "travel" },
+    flightmaster = { keywords = {"flight", "fly", "flight master", "flight point", "fp", "fm", "taxi"}, parent = "travel" },
     zeppelin = { keywords = {"zeppelin", "zep", "airship", "blimp"}, parent = "travel" },
     boat = { keywords = {"boat", "ship", "ferry"}, parent = "travel" },
-    portal = { keywords = {"portal", "portals", "teleport", "mage"}, parent = "travel" },
+    portal = { keywords = {"portal", "portals", "teleport", "tp", "mage"}, parent = "travel" },
     tram = { keywords = {"tram", "deeprun"}, parent = "travel" },
 
     dungeon = { keywords = {"dungeon", "dungeons", "5 man", "5man", "mythic", "heroic"}, parent = "instance" },
@@ -131,6 +131,47 @@ Data.GLOBAL_SEARCH_CATEGORIES = {
     raid = true,
     delve = true,
 }
+
+-- Words that are category keywords for MATCHING but too ambiguous to
+-- trigger the local-category boost: someone typing "mage" wants the class,
+-- "hearthstone" their toy, "mythic" their keystone. Matching is unaffected.
+local BOOST_EXCLUDED_KEYWORDS = {
+    mage = true, pet = true, rest = true, buy = true, sell = true,
+    loot = true, chest = true, tier = true, upgrade = true, elite = true,
+    appearance = true, hearthstone = true, mythic = true, heroic = true,
+    cho = true, housing = true, furniture = true,
+}
+
+-- Reverse lookup for the local-category boost (GitHub #21): a query that IS
+-- one of these keywords surfaces the nearest results of its category first.
+-- Parent groups (travel/instance/service) are skipped: no POI carries a
+-- parent as its category, so they could never resolve to rows. Sorted
+-- iteration keeps duplicate-keyword resolution deterministic (first
+-- category alphabetically wins).
+Data.KEYWORD_TO_CATEGORY = {}
+do
+    local isParent = {}
+    for _, def in pairs(Data.CATEGORIES) do
+        if def.parent then isParent[def.parent] = true end
+    end
+    local orderedKeys = {}
+    for categoryKey in pairs(Data.CATEGORIES) do
+        orderedKeys[#orderedKeys + 1] = categoryKey
+    end
+    table.sort(orderedKeys)
+    for i = 1, #orderedKeys do
+        local categoryKey = orderedKeys[i]
+        local def = Data.CATEGORIES[categoryKey]
+        if not isParent[categoryKey] and def.keywords then
+            for ki = 1, #def.keywords do
+                local kw = def.keywords[ki]
+                if not BOOST_EXCLUDED_KEYWORDS[kw] and not Data.KEYWORD_TO_CATEGORY[kw] then
+                    Data.KEYWORD_TO_CATEGORY[kw] = categoryKey
+                end
+            end
+        end
+    end
+end
 
 Data.TEXT_CATEGORY_RULES = {
     { category = "zeppelin", name = {"zeppelin", "airship"}, scanDesc = {"zeppelin"} },

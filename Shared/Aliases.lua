@@ -209,6 +209,25 @@ function Aliases:Remove(aliasText)
     EasyFind.db.aliases[normalize(strtrim(aliasText or ""))] = nil
 end
 
+-- Category alias (GitHub #21): the trigger binds to a whole map category
+-- ("mapcat:flightmaster") instead of one row. When it matches, the query
+-- pipeline expands it to the nearest results of that category, so "fm" can
+-- surface the local flight masters on top no matter what else matches.
+function Aliases:AddCategory(aliasText, category, name)
+    if not (EasyFind and EasyFind.db) then return false end
+    aliasText = strtrim(aliasText or "")
+    if aliasText == "" or not category then return false end
+    if type(EasyFind.db.aliases) ~= "table" then
+        EasyFind.db.aliases = {}
+    end
+    EasyFind.db.aliases[normalize(aliasText)] = {
+        text = aliasText,
+        key  = "mapcat:" .. category,
+        name = name or category,
+    }
+    return true
+end
+
 -- Add/replace an alias by stable row key (used by the options table, where the
 -- live entry may not be present to call Add).
 function Aliases:AddByKey(aliasText, key, name)
@@ -422,7 +441,16 @@ function Aliases:GetMatches(queryLower)
             score = db:ScoreName(storedKey, queryLower, qLen)
         end
         if score and score > 0 then
-            local entry = Aliases:FindEntryByKey(info.key)
+            -- Category aliases resolve to a marker the query pipeline
+            -- expands into the nearest rows of that category at inject
+            -- time; there is no single row to look up here.
+            local mapCat = info.key and info.key:match("^mapcat:(.+)$")
+            local entry
+            if mapCat then
+                entry = { mapCategoryAlias = mapCat, name = info.name }
+            else
+                entry = Aliases:FindEntryByKey(info.key)
+            end
             if entry then
                 out = out or {}
                 tinsert(out, { data = entry, alias = info, score = score })

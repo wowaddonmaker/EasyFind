@@ -258,10 +258,11 @@ L["WHATSNEW_CHAT_HELLO"]                = "Willkommen bei |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vollständiges Änderungsprotokoll"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffAliase korrigiert|r\n" ..
-    "    |cff999999-|r Ergebnisse mit Alias erscheinen jetzt immer ganz oben\n" ..
-    "    |cff999999-|r Aliase treffen jetzt wie Ergebnisnamen (Präfixe und Tippfehler)\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffSymbol der Großen Schatzkammer korrigiert|r"
+    "|cffFFD100\226\128\162|r |cffffffffKategoriewörter zeigen jetzt nahe Ergebnisse zuerst|r\n" ..
+    "    |cff999999-|r flight, fm, tp, delve usw. setzen die nächstgelegenen Treffer nach oben\n" ..
+    "    |cff999999-|r Umschaltbar im Filtermenü unter Kartensuche\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffAliase können jetzt eine ganze Kategorie abdecken|r\n" ..
+    "    |cff999999-|r Setzt beim Anlegen eines Alias auf ein Kartenergebnis das neue Häkchen"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"
@@ -432,6 +433,10 @@ L["FILTER_ILVL_UPGRADES_ONLY"]          = "Nur GS-Verbesserungen"
 L["FILTER_CURRENT_SPEC"]                = "Aktuelle Spezialisierung"
 L["ALIAS_THIS_ENTRY"]                   = "dieser Eintrag"
 L["ALIAS_ADDED_MSG"]                    = "Neuer Alias: %s -> %s. Diesen und alle weiteren vorhandenen Aliase findest du im Reiter „Aliase“ des Optionsmenüs."
+L["ALIAS_WHOLE_CATEGORY_CHECK"] = "Alias für die ganze Kategorie: %s"
+L["ALIAS_WHOLE_CATEGORY_GENERIC"] = "Alias für die ganze Kategorie (nächstgelegene Ergebnisse)"
+L["FILTER_MAP_NEARBY_FIRST"] = "Nahe Ergebnisse zuerst bei Kategoriewörtern"
+L["ALIAS_CATEGORY_LABEL"] = "%s (Kategorie)"
 L["CALC_PASTE_HINT"]                    = "Jetzt Strg+V zum Einfügen"
 L["CALC_BACKSPACE"]                     = "Zurück"
 L["CMD_DESC_RESET"]                     = "Position, Schriftarten und Größe der Suchleiste zurücksetzen"
