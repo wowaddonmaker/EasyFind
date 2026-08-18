@@ -256,9 +256,9 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bem-vindo ao |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "aqui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver o changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffPalavras de categoria mostram primeiro o que está perto|r\n" ..
-    "    |cff999999-|r Digitar flight, fm, tp, delve etc. coloca os resultados mais próximos no topo\n" ..
-    "    |cff999999-|r Pode ser desativado no menu de filtros, em busca no mapa\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffPalavras de categoria mostram primeiro os resultados da sua zona|r\n" ..
+    "    |cff999999-|r Digitar flight, fm, tp, delve etc. coloca os da sua zona atual no topo\n" ..
+    "    |cff999999-|r A caixa 'Apenas esta zona' no menu de filtros, em busca no mapa, os restringe\n" ..
     "|cffFFD100\226\128\162|r |cffffffffApelidos agora podem cobrir uma categoria inteira|r\n" ..
     "    |cff999999-|r Marque a nova caixa ao adicionar um apelido a um resultado do mapa"
 
@@ -322,6 +322,7 @@ L["CTX_HIDE_XP_BAR"]                    = "Ocultar barra de XP"
 
 -- Prompts and confirmations
 L["PROMPT_ALIAS_FOR"]                   = "Apelido para %s:"
+L["PROMPT_ALIAS_FOR_CATEGORY"]          = "Apelido para a categoria %s:"
 L["PROMPT_RESET_SEARCH_BAR"]            = "Redefinir posição, fontes e tamanho da barra de pesquisa?"
 L["PROMPT_RELEASE_PET"]                 = "Tem certeza de que deseja soltar permanentemente este mascote? Isso não pode ser desfeito."
 L["PROMPT_RENAME_PET"]                  = "Novo nome para este mascote:"
@@ -433,7 +434,8 @@ L["ALIAS_THIS_ENTRY"]                   = "este item"
 L["ALIAS_ADDED_MSG"]                    = "Novo apelido: %s -> %s. Veja este e outros apelidos existentes na aba Apelidos do menu de opções."
 L["ALIAS_WHOLE_CATEGORY_CHECK"] = "Apelido para a categoria inteira: %s"
 L["ALIAS_WHOLE_CATEGORY_GENERIC"] = "Apelido para a categoria inteira (resultados próximos)"
-L["FILTER_MAP_NEARBY_FIRST"] = "Resultados próximos primeiro para palavras de categoria"
+L["FILTER_MAP_SCOPE_LOCAL"] = "Apenas esta zona"
+L["FILTER_MAP_SCOPE_LOCAL_TT"] = "Limita palavras de categoria como flight, fm ou delve aos resultados da sua zona atual. Desmarcado, todas as zonas aparecem, com esta primeiro."
 L["ALIAS_CATEGORY_LABEL"] = "%s (categoria)"
 L["CALC_PASTE_HINT"]                    = "Agora Ctrl+V para colar"
 L["CALC_BACKSPACE"]                     = "Voltar"

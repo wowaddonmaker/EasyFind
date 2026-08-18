@@ -256,9 +256,9 @@ L["WHATSNEW_CHAT_HELLO"]                = "歡迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "這裡"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日誌"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff分類詞現在優先顯示附近結果|r\n" ..
-    "    |cff999999-|r 輸入 flight、fm、tp、delve 等會把最近的結果排在最前\n" ..
-    "    |cff999999-|r 可在篩選選單的地圖搜尋中關閉\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff分類詞現在優先顯示當前地區的結果|r\n" ..
+    "    |cff999999-|r 輸入 flight、fm、tp、delve 等會把當前地區的結果排在最前\n" ..
+    "    |cff999999-|r 可在篩選選單的地圖搜尋中勾選「僅當前地區」縮小範圍\n" ..
     "|cffFFD100\226\128\162|r |cffffffff別名現在可以涵蓋整個分類|r\n" ..
     "    |cff999999-|r 為地圖結果新增別名時勾選新的選項即可"
 
@@ -322,6 +322,7 @@ L["CTX_HIDE_XP_BAR"]                    = "隱藏經驗條"
 
 -- Prompts and confirmations
 L["PROMPT_ALIAS_FOR"]                   = "%s 的別名："
+L["PROMPT_ALIAS_FOR_CATEGORY"]          = "%s 分類別名："
 L["PROMPT_RESET_SEARCH_BAR"]            = "重置搜尋列的位置、字型和大小？"
 L["PROMPT_RELEASE_PET"]                 = "確定要永久釋放這隻寵物嗎？此動作無法復原。"
 L["PROMPT_RENAME_PET"]                  = "為這隻寵物輸入新名字："
@@ -433,7 +434,8 @@ L["ALIAS_THIS_ENTRY"]                   = "此項目"
 L["ALIAS_ADDED_MSG"]                    = "新別名：%s -> %s。在選項選單的別名頁籤中可檢視此別名及其他現有別名。"
 L["ALIAS_WHOLE_CATEGORY_CHECK"] = "為整個分類設定別名：%s"
 L["ALIAS_WHOLE_CATEGORY_GENERIC"] = "為整個分類設定別名（附近結果）"
-L["FILTER_MAP_NEARBY_FIRST"] = "分類詞搜尋時優先顯示附近結果"
+L["FILTER_MAP_SCOPE_LOCAL"] = "僅當前地區"
+L["FILTER_MAP_SCOPE_LOCAL_TT"] = "將 flight、fm、delve 等分類詞限制為僅顯示當前地區的結果。取消勾選則顯示所有地區，當前地區優先。"
 L["ALIAS_CATEGORY_LABEL"] = "%s（分類）"
 L["CALC_PASTE_HINT"]                    = "現在按 Ctrl+V 貼上"
 L["CALC_BACKSPACE"]                     = "退格"

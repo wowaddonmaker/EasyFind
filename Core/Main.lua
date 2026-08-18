@@ -274,7 +274,9 @@ local DB_DEFAULTS = {
     mapTabAutocomplete = true,
     showAppsButton = true,
     showFilterButton = true,
-    mapLocalCategoryBoost = true,
+    -- Breadth of the category-word boost: "all" pins your zone's results
+    -- above the world list; "local" shows only your zone's for that category.
+    mapCategoryScope = "all",
 }
 -- Exposed so option resets restore from the same table first-run uses;
 -- keeping a second copy in OptionsPanel let the two drift apart.

@@ -7,8 +7,8 @@ All notable changes to EasyFind will be documented in this file.
 ## [2.4.2] - 2026-08-18
 
 ### Added
-- **Category words show nearby results first**: typing a category word like "flight", "fm", "fp", "tp", "delve" or "bank" now puts the closest results of that category at the top of the list, no setup needed. A new toggle in the filter menu's Map Search flyout turns it off
-- **Whole-category aliases**: the Add alias dialog on map results gains a checkbox that binds your trigger to the whole category ("Flight Paths", "Portals") instead of one spot. Category aliases always reach their category, even with map filters off
+- **Category words show your zone's results first**: typing a category word like "flight", "fm", "fp", "tp", "delve" or "bank" now puts your current zone's results of that category at the top of the list, no setup needed. A "This zone only" checkbox in the filter menu's Map Search flyout narrows category words to just your zone, hiding that category's other-zone results entirely
+- **Whole-category aliases**: the Add alias dialog on map results gains a checkbox that binds your trigger to the whole category ("Flight Paths", "Portals") instead of one spot; the dialog title follows the choice. Category aliases always reach their category, even with map filters off
 
 ### Fixed
 - **Duplicate map rows**: a map result boosted to the top by an alias no longer appears a second time further down the list

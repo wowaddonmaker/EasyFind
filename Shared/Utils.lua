@@ -3344,6 +3344,18 @@ function ns.ShowThemedDialog(opts)
         f.accept:SetScript("OnClick", accept)
         f.third:SetScript("OnClick", third)
         f.cancel:SetScript("OnClick", cancel)
+        -- When the prompt has an alternate message for the checked state
+        -- (opts.textChecked), toggling the checkbox re-shows the dialog with
+        -- the matching text. Re-showing (rather than SetText in place) reruns
+        -- the layout, since the two messages can wrap to different heights;
+        -- typed input and the checkbox state survive the round trip.
+        f.check:SetScript("OnClick", function(self)
+            local o = f._opts
+            if not (o and o.textChecked) then return end
+            o.editBoxDefault = f._hasEditBox and f.editBox:GetText() or o.editBoxDefault
+            o.checkDefault = self:GetChecked() and true or false
+            ns.ShowThemedDialog(o)
+        end)
         eb:SetScript("OnEnterPressed", accept)
         eb:SetScript("OnEscapePressed", cancel)
         -- ESC closes via the taint-free override-bind path (never
@@ -3357,8 +3369,10 @@ function ns.ShowThemedDialog(opts)
     f._onAccept = opts.onAccept
     f._onThird = opts.onThird
     f._hasEditBox = opts.hasEditBox and true or false
+    f._opts = opts
 
-    f.message:SetText(opts.text or "")
+    local shownText = (opts.checkDefault and opts.textChecked) or opts.text
+    f.message:SetText(shownText or "")
     -- Title-style prompts (alias/shortkey/Wowhead family) go gold;
     -- plain confirmations keep the primary text color. On light themes
     -- gold is unreadable, so it wears the theme's hue-dark accent.

@@ -339,17 +339,27 @@ function Search:OnSearchTextChanged(text, force)
     end
 
     -- Default local-category boost (GitHub #21): a query that IS a category
-    -- keyword ("flight", "fm", "delve") surfaces the nearest results of that
-    -- category with no setup. Skipped under a quick filter, when the map
-    -- bucket is off, or when the flyout toggle disabled it; rows an alias
-    -- already injected are not repeated.
-    if EasyFind.db.mapLocalCategoryBoost ~= false and not quickFilter
+    -- keyword ("flight", "fm", "delve") surfaces that category with your
+    -- current zone's results first, no setup. Always on for category words
+    -- (the ambiguous-word exclusions in KEYWORD_TO_CATEGORY are the hijack
+    -- guard); the flyout scope decides breadth: "all" pins up to 3 rows,
+    -- zone-local first, above the normal world list; "local" injects only
+    -- the current zone's rows and suppresses the category's other-zone rows
+    -- from the list below (a deliberate "just what's around me" mode).
+    -- Skipped under a quick filter, when the map bucket is off, or for
+    -- calculator queries; rows an alias already injected are not repeated.
+    local suppressMapCategory
+    if not quickFilter
        and (not filters or filters.map ~= false)
        and not calculatorData and not calculatorLauncher then
         local boostCat = ns.MapSearchData and ns.MapSearchData.KEYWORD_TO_CATEGORY
             and ns.MapSearchData.KEYWORD_TO_CATEGORY[slower(text)]
+        local localScope = boostCat and EasyFind.db.mapCategoryScope == "local"
         local catRows = boostCat and ns.MapSearch and ns.MapSearch.GetCategoryResultsForUI
-            and ns.MapSearch:GetCategoryResultsForUI(boostCat, 3, true)
+            and ns.MapSearch:GetCategoryResultsForUI(boostCat, localScope and 8 or 3, true, localScope)
+        if localScope then
+            suppressMapCategory = boostCat
+        end
         if catRows then
             for j = #catRows, 1, -1 do
                 local src = catRows[j]
@@ -533,11 +543,15 @@ function Search:OnSearchTextChanged(text, force)
     end
     if mapResults then
         -- Skip POIs a boost already put on top (alias or local-category);
-        -- the same place twice in one list reads as a bug.
+        -- the same place twice in one list reads as a bug. In "this zone
+        -- only" scope, also drop the boosted category's rows from other
+        -- zones: the injection above holds the complete local set, so
+        -- anything of that category left here is by definition elsewhere.
         local boostedMapRows = SCRATCH.mapBoostSeen
         for ri = 1, #mapResults do
             local r = mapResults[ri]
-            if not (r.data and boostedMapRows[MapRowKey(r.data)]) then
+            if not (r.data and (boostedMapRows[MapRowKey(r.data)]
+                    or (suppressMapCategory and r.data.category == suppressMapCategory))) then
                 combined[#combined + 1] = r
             end
         end

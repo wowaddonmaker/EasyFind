@@ -256,9 +256,9 @@ L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 �
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff분류 단어 검색 시 가까운 결과가 먼저 표시됩니다|r\n" ..
-    "    |cff999999-|r flight, fm, tp, delve 등을 입력하면 가장 가까운 결과가 맨 위에 옵니다\n" ..
-    "    |cff999999-|r 필터 메뉴의 지도 검색에서 끌 수 있습니다\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff분류 단어 검색 시 현재 지역 결과가 먼저 표시됩니다|r\n" ..
+    "    |cff999999-|r flight, fm, tp, delve 등을 입력하면 현재 지역의 결과가 맨 위에 옵니다\n" ..
+    "    |cff999999-|r 필터 메뉴의 지도 검색에 있는 '현재 지역만' 체크박스로 범위를 좁힐 수 있습니다\n" ..
     "|cffFFD100\226\128\162|r |cffffffff별칭이 이제 분류 전체를 포괄할 수 있습니다|r\n" ..
     "    |cff999999-|r 지도 결과에 별칭을 추가할 때 새 체크박스를 선택하세요"
 
@@ -322,6 +322,7 @@ L["CTX_HIDE_XP_BAR"]                    = "경험치 막대 숨기기"
 
 -- Prompts and confirmations
 L["PROMPT_ALIAS_FOR"]                   = "%s의 별칭:"
+L["PROMPT_ALIAS_FOR_CATEGORY"]          = "%s 분류 전체 별칭:"
 L["PROMPT_RESET_SEARCH_BAR"]            = "검색창의 위치, 글꼴, 크기를 초기화할까요?"
 L["PROMPT_RELEASE_PET"]                 = "이 애완동물을 영구히 풀어주시겠습니까? 되돌릴 수 없습니다."
 L["PROMPT_RENAME_PET"]                  = "이 애완동물의 새 이름:"
@@ -433,7 +434,8 @@ L["ALIAS_THIS_ENTRY"]                   = "이 항목"
 L["ALIAS_ADDED_MSG"]                    = "새 별칭: %s -> %s. 옵션 메뉴의 별칭 탭에서 이 별칭과 기존 별칭을 확인할 수 있습니다."
 L["ALIAS_WHOLE_CATEGORY_CHECK"] = "분류 전체에 별칭: %s"
 L["ALIAS_WHOLE_CATEGORY_GENERIC"] = "분류 전체에 별칭 (가까운 결과)"
-L["FILTER_MAP_NEARBY_FIRST"] = "분류 단어 검색 시 가까운 결과 우선"
+L["FILTER_MAP_SCOPE_LOCAL"] = "현재 지역만"
+L["FILTER_MAP_SCOPE_LOCAL_TT"] = "flight, fm, delve 같은 분류 단어를 현재 지역의 결과로 제한합니다. 해제하면 모든 지역이 표시되며 현재 지역이 먼저 옵니다."
 L["ALIAS_CATEGORY_LABEL"] = "%s (분류)"
 L["CALC_PASTE_HINT"]                    = "이제 Ctrl+V로 붙여넣기"
 L["CALC_BACKSPACE"]                     = "뒤로"

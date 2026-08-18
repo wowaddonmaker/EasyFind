@@ -564,7 +564,7 @@ end
 -- rule row aliases follow); the default keyword boost passes respectFilters
 -- so the user's map buckets still apply. Returned rows are the pooled
 -- search tables; callers must copy before retaining them.
-function MapSearch:GetCategoryResultsForUI(category, maxN, respectFilters)
+function MapSearch:GetCategoryResultsForUI(category, maxN, respectFilters, localOnly)
     if not category then return nil end
     local catDef = ns.MapSearchData and ns.MapSearchData.CATEGORIES
         and ns.MapSearchData.CATEGORIES[category]
@@ -579,14 +579,35 @@ function MapSearch:GetCategoryResultsForUI(category, maxN, respectFilters)
         EasyFind.db.uiMapFilters = savedFilters
     end
     if not rows then return nil end
-    local out
+    -- Categories fed by the global instance cache (delves, dungeons, raids)
+    -- match the canonical keyword identically world-wide, so score order
+    -- degrades to name length / alphabetical. Partition current-zone rows to
+    -- the front (stable within each half) so "your zone's first" holds for
+    -- every category, not just the ones whose sources are local-only.
+    -- Zone equality is by the row's mapID; parent/child zone nesting is not
+    -- walked -- a subzone row and its parent zone count as different maps.
+    local playerMapID = GetBestMapForUnit("player")
+    local out, away
     for i = 1, #rows do
         local d = rows[i].data
         if d and d.category == category then
-            out = out or {}
-            out[#out + 1] = d
-            if #out >= (maxN or 3) then break end
+            if playerMapID and d.mapID == playerMapID then
+                out = out or {}
+                out[#out + 1] = d
+            elseif not localOnly then
+                away = away or {}
+                away[#away + 1] = d
+            end
         end
     end
+    if away then
+        out = out or {}
+        for i = 1, #away do
+            if #out >= (maxN or 3) then break end
+            out[#out + 1] = away[i]
+        end
+    end
+    if not out then return nil end
+    for i = #out, (maxN or 3) + 1, -1 do out[i] = nil end
     return out
 end

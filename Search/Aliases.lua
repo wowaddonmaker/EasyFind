@@ -26,6 +26,11 @@ function Handlers:PromptForAlias(data)
     end
     ns.ShowThemedDialog({
         text = (L["PROMPT_ALIAS_FOR"]):format(label),
+        -- With the category checkbox ticked, the header must name the
+        -- category, not the row that opened the dialog -- the alias no
+        -- longer targets that one spot.
+        textChecked = canCategory
+            and (L["PROMPT_ALIAS_FOR_CATEGORY"]):format(catLabel or data.category) or nil,
         messageColor = ns.GOLD_COLOR,
         hasEditBox = true,
         maxLetters = 64,

@@ -783,33 +783,58 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             -- Behavior checkbox at the bottom of a flyout, below the bucket
             -- toggles. Collections: "Hide tooltips" (per-group
             -- EasyFind.db.hideTooltips the OnEnter handlers consult). Map:
-            -- the local-category boost toggle (category words surface the
-            -- nearest results first; GitHub #21).
+            -- "This zone only" narrows category words (GitHub #21) to the
+            -- current zone; unchecked default is all zones, this zone's
+            -- first. The boost itself is always on for category words --
+            -- the checkbox is breadth, not on/off.
             local extraRows = 0
             local behaviorRow
-            if opt.key == "collections" or opt.key == "map" then
-                local isMapRow = opt.key == "map"
-                behaviorRow = CreateFrame("CheckButton", nil, popup)
-                behaviorRow:SetSize(SUB_POPUP_WIDTH - SUB_PAD * 2, SUB_ROW_H)
-                behaviorRow:SetHitRectInsets(0, 0, 0, 0)
-                behaviorRow:SetPoint("TOPLEFT", popup, "TOPLEFT",
-                    SUB_PAD, -(SUB_PAD + (#opt.flyoutSubFilters + toggleAllOffset) * SUB_ROW_H))
-                Utils.SetCheckboxTextures(behaviorRow, CHK)
-                local lbl = behaviorRow:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
-                lbl:SetPoint("LEFT", behaviorRow:GetNormalTexture(), "RIGHT", 4, 0)
-                lbl:SetText(isMapRow and L["FILTER_MAP_NEARBY_FIRST"] or L["FILTER_HIDE_TOOLTIPS"])
-                behaviorRow._label = lbl
-                InstallMenuRowHighlight(behaviorRow)
+            local function MakeBehaviorRow(labelText, slot)
+                local r = CreateFrame("CheckButton", nil, popup)
+                r:SetSize(SUB_POPUP_WIDTH - SUB_PAD * 2, SUB_ROW_H)
+                r:SetHitRectInsets(0, 0, 0, 0)
+                r:SetPoint("TOPLEFT", popup, "TOPLEFT",
+                    SUB_PAD, -(SUB_PAD + (#opt.flyoutSubFilters + toggleAllOffset + slot) * SUB_ROW_H))
+                Utils.SetCheckboxTextures(r, CHK)
+                local lbl = r:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+                lbl:SetPoint("LEFT", r:GetNormalTexture(), "RIGHT", 4, 0)
+                lbl:SetText(labelText)
+                r._label = lbl
+                InstallMenuRowHighlight(r)
+                return r
+            end
+            if opt.key == "map" then
+                behaviorRow = MakeBehaviorRow(L["FILTER_MAP_SCOPE_LOCAL"], 0)
+                behaviorRow._isMapScope = true
                 behaviorRow:SetScript("OnClick", function(self)
-                    if isMapRow then
-                        EasyFind.db.mapLocalCategoryBoost = self:GetChecked() and true or false
-                        Filters:RerunActiveSearch()
-                    else
-                        EasyFind.db.hideTooltips = EasyFind.db.hideTooltips or {}
-                        EasyFind.db.hideTooltips.collections = self:GetChecked() and true or false
-                    end
+                    EasyFind.db.mapCategoryScope = self:GetChecked() and "local" or "all"
+                    Filters:RerunActiveSearch()
                 end)
-                row.hideTooltipsRow = not isMapRow and behaviorRow or nil
+                -- Delayed hover tooltip carries the explanation the short
+                -- label can't: what "this zone only" limits, and that the
+                -- unchecked default is all zones with this zone's first.
+                behaviorRow:HookScript("OnEnter", function(self)
+                    local token = (self._tipToken or 0) + 1
+                    self._tipToken = token
+                    Utils.SafeAfter(ns.TOOLTIP_HOVER_DELAY, function()
+                        if self._tipToken ~= token or not self:IsMouseOver() then return end
+                        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                        GameTooltip:SetText(L["FILTER_MAP_SCOPE_LOCAL_TT"], 1, 1, 1, 1, true)
+                        GameTooltip:Show()
+                    end)
+                end)
+                behaviorRow:HookScript("OnLeave", function(self)
+                    self._tipToken = (self._tipToken or 0) + 1
+                    GameTooltip:Hide()
+                end)
+                extraRows = 1
+            elseif opt.key == "collections" then
+                behaviorRow = MakeBehaviorRow(L["FILTER_HIDE_TOOLTIPS"], 0)
+                behaviorRow:SetScript("OnClick", function(self)
+                    EasyFind.db.hideTooltips = EasyFind.db.hideTooltips or {}
+                    EasyFind.db.hideTooltips.collections = self:GetChecked() and true or false
+                end)
+                row.hideTooltipsRow = behaviorRow
                 extraRows = 1
             end
             -- Sync sub-row checked state from current DB values.
@@ -825,8 +850,8 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                     end
                 end
                 if behaviorRow then
-                    if opt.key == "map" then
-                        behaviorRow:SetChecked(EasyFind.db.mapLocalCategoryBoost ~= false)
+                    if behaviorRow._isMapScope then
+                        behaviorRow:SetChecked(EasyFind.db.mapCategoryScope == "local")
                     else
                         local ht = EasyFind.db.hideTooltips
                         behaviorRow:SetChecked(ht and ht.collections == true)

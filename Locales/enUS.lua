@@ -279,9 +279,9 @@ L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffCategory words now show nearby results first|r\n" ..
-    "    |cff999999-|r Typing flight, fm, tp, delve etc. puts the closest ones on top\n" ..
-    "    |cff999999-|r Toggle it in the filter menu under Map Search\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffCategory words now show your zone's results first|r\n" ..
+    "    |cff999999-|r Typing flight, fm, tp, delve etc. puts your current zone's on top\n" ..
+    "    |cff999999-|r The 'This zone only' checkbox in the filter menu under Map Search narrows them\n" ..
     "|cffFFD100\226\128\162|r |cffffffffAliases can now cover a whole category|r\n" ..
     "    |cff999999-|r Tick the new checkbox when adding an alias to a map result"
 
@@ -349,6 +349,7 @@ L["CTX_HIDE_XP_BAR"]                    = "Hide XP bar"
 -- Search prompts and confirmations
 -- =============================================================================
 L["PROMPT_ALIAS_FOR"]                   = "Alias for %s:"
+L["PROMPT_ALIAS_FOR_CATEGORY"]          = "Alias for all %s:"
 L["PROMPT_RESET_SEARCH_BAR"]            = "Reset the search bar position, fonts, and size?"
 L["PROMPT_RELEASE_PET"]                 = "Are you sure you want to permanently release this pet? This cannot be undone."
 L["PROMPT_RENAME_PET"]                  = "New name for this pet:"
@@ -474,7 +475,8 @@ L["ALIAS_THIS_ENTRY"]                   = "this entry"
 L["ALIAS_ADDED_MSG"]                    = "New alias: %s -> %s. View this and any other existing aliases in the Aliases tab of the options menu."
 L["ALIAS_WHOLE_CATEGORY_CHECK"] = "Alias the whole category: %s"
 L["ALIAS_WHOLE_CATEGORY_GENERIC"] = "Alias the whole category (nearest results)"
-L["FILTER_MAP_NEARBY_FIRST"] = "Nearby results first for category words"
+L["FILTER_MAP_SCOPE_LOCAL"] = "This zone only"
+L["FILTER_MAP_SCOPE_LOCAL_TT"] = "Limits category words like flight, fm or delve to your current zone's results. Unchecked, every zone's results show, with this zone's first."
 L["ALIAS_CATEGORY_LABEL"] = "%s (category)"
 L["CALC_PASTE_HINT"]                    = "Now Ctrl+V to paste"
 L["CALC_BACKSPACE"]                     = "Back"
