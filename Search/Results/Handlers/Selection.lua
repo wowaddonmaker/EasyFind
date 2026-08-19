@@ -218,12 +218,14 @@ function Handlers:SelectResult(data, forceGuide)
     if InCombatLockdown() then return end
     local useFast = not forceGuide
 
-    -- Learn the pick before any branch can clear the typed query. Filters
-    -- and lookup-style rows (catalog inspection, quick filters, command
-    -- suggestions) are browsing, not a destination, so they don't teach;
-    -- unkeyable rows (answers, calculator) no-op inside RecordPick.
-    if ns.Learned and not data.quickFilterDef and not data.catalogItem
-       and not data.searchCommand and not Handlers:IsLookupRow(data) then
+    -- Learn the pick before any branch can clear the typed query. EVERY
+    -- destination row teaches, catalog, bank, and command rows included.
+    -- The only exclusions are mechanical: noPin marks the transient rows
+    -- that already rank above everything (inline answers, calculator) so
+    -- learning them would only inject duplicates, and quick-filter chips
+    -- are mode switches whose copies would not survive as working rows.
+    -- Unkeyable rows no-op inside RecordPick.
+    if ns.Learned and not data.quickFilterDef and not data.noPin then
         ns.Learned:RecordPick(data, Search.GetTypedQuery and Search:GetTypedQuery() or "")
     end
 
