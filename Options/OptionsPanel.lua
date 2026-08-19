@@ -1597,7 +1597,7 @@ end
 
 local function BuildSearchTab(ctx)
     local CreateTab, SELECTOR_ROW_W, SELECTOR_BTN_W = ctx.CreateTab, ctx.SELECTOR_ROW_W, ctx.SELECTOR_BTN_W
-    local CreateFlyoutPresetRow, RESET_BTN_W = ctx.CreateFlyoutPresetRow, ctx.RESET_BTN_W
+    local CreateFlyoutPresetRow = ctx.CreateFlyoutPresetRow
     local sec1 = CreateTab(L["OPT_TAB_SEARCH"])
     -- The four toggle rows at the tab's bottom sit in a 2x2 grid (compact
     -- half-width cells) -- stacked full rows no longer fit the panel.
@@ -2121,8 +2121,11 @@ local function BuildSearchTab(ctx)
     end
     optionsFrame.RefreshUIPresetRows = RefreshUIPresetRows
 
+    -- Three buttons on this row (the other tabs keep two at RESET_BTN_W):
+    -- 16 + 3*104 + 2*8 + right margin fits the 366px content width.
+    local SEARCH_RESET_BTN_W = 104
     local resetUIBtn = CreateModernButton(sec1)
-    resetUIBtn:SetSize(RESET_BTN_W, 20)
+    resetUIBtn:SetSize(SEARCH_RESET_BTN_W, 20)
     resetUIBtn:SetPoint("LEFT", sec1, "LEFT", 16, 0)
     -- Bottom rides the panel inset the sidebar uses (10), so the reset
     -- row's bottom lines up with the sidebar's bottom edge.
@@ -2133,11 +2136,32 @@ local function BuildSearchTab(ctx)
     end)
 
     local resetUIPosBtn = CreateModernButton(sec1)
-    resetUIPosBtn:SetSize(RESET_BTN_W, 20)
+    resetUIPosBtn:SetSize(SEARCH_RESET_BTN_W, 20)
     resetUIPosBtn:SetPoint("LEFT", resetUIBtn, "RIGHT", 8, 0)
     resetUIPosBtn:SetText(L["OPT_RESET_POSITIONS"])
     resetUIPosBtn:SetScript("OnClick", function()
         ShowResetConfirm(L["POPUP_RESET_UI_SEARCH_POSITIONS"], function() Options:DoResetUIPositions() end)
+    end)
+
+    -- Wipes ONLY the learned-picks store (Alfred's "Clear Knowledge"
+    -- equivalent); aliases, shortkeys, and every other setting survive.
+    -- Deliberately a button + strong confirm, not a context-menu action.
+    local forgetLearnedBtn = CreateModernButton(sec1)
+    forgetLearnedBtn:SetSize(SEARCH_RESET_BTN_W, 20)
+    forgetLearnedBtn:SetPoint("LEFT", resetUIPosBtn, "RIGHT", 8, 0)
+    forgetLearnedBtn:SetText(L["OPT_FORGET_LEARNED"])
+    forgetLearnedBtn:SetScript("OnClick", function()
+        ns.ShowThemedDialog({
+            text = L["POPUP_FORGET_LEARNED"],
+            messageColor = ns.GOLD_COLOR,
+            acceptText = _G["DELETE"] or "Delete",
+            onAccept = function()
+                if ns.Learned then ns.Learned:ClearAll() end
+            end,
+        })
+    end)
+    Utils.AttachDelayedTooltip(forgetLearnedBtn, "ANCHOR_TOP", function()
+        return L["OPT_FORGET_LEARNED"], L["OPT_FORGET_LEARNED_TT"]
     end)
 
 end
@@ -3565,7 +3589,9 @@ function Options:Initialize()
     optionsFrame.closeBtn = closeBtn
 
     local contentBorder = CreateFrame("Frame", nil, optionsFrame)
-    contentBorder:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", SIDEBAR_W + 32, -46)
+    -- Every tab's content fills this frame, so this TOP offset IS the shared
+    -- starting y for all options rows (was -46; raised a touch per review).
+    contentBorder:SetPoint("TOPLEFT", optionsFrame, "TOPLEFT", SIDEBAR_W + 32, -42)
     contentBorder:SetPoint("BOTTOMRIGHT", optionsFrame, "BOTTOMRIGHT", -14, 14)
     optionsFrame.contentBorder = contentBorder
 
