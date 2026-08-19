@@ -4,6 +4,13 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [2.4.3] - 2026-08-18
+
+### Added
+- **Search learns from your picks**: choosing a result after typing a query teaches EasyFind, and the next time you type that exact query your previous pick appears at the top, just below any alias you set yourself. Browsing rows (filters, catalog lookups, command suggestions) don't teach. A "Learn from picks" toggle in Options > Search turns it off, which also stops already-learned boosts
+
+---
+
 ## [2.4.2] - 2026-08-18
 
 ### Added
