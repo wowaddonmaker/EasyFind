@@ -467,8 +467,13 @@ end
 ---Returns the entry learned for this (already-normalized) query, or nil.
 ---Exact match wins; otherwise a prefix relation in either direction counts
 ---("glad mo" surfaces the pick learned under "glad mount", and typing past
----it to "glad mounts" keeps it). The longest learned query wins ties, and
----1-character queries only ever match exactly, mirroring the alias gate.
+---it to "glad mounts" keeps it). The longest learned query wins ties.
+---Typing LESS than a learned query only counts from 4 characters: shorter
+---fragments ("gl") are on the way to too many things for one taught habit
+---to own them, and the natural ranking should win there. Typing past a
+---learned query has no such floor -- it is always at least as specific as
+---what was taught.
+local LEARN_PREFIX_MIN = 4
 function Learned:GetBoost(queryLower)
     if not (EasyFind and EasyFind.db) then return nil end
     if EasyFind.db.learnFromPicks == false then return nil end
@@ -479,7 +484,7 @@ function Learned:GetBoost(queryLower)
         local bestLen = 0
         for learnedQuery, learnedRec in pairs(store) do
             local ll, ql = #learnedQuery, #queryLower
-            if ll > bestLen and ll ~= ql then
+            if ll > bestLen and ll ~= ql and (ql > ll or ql >= LEARN_PREFIX_MIN) then
                 local shorter = ll < ql and ll or ql
                 if ssub(learnedQuery, 1, shorter) == ssub(queryLower, 1, shorter) then
                     bestLen = ll
