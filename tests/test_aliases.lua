@@ -327,7 +327,7 @@ function tests.learned_recordAndBoost()
     H.assertNotNil(rec, "pick was not recorded")
     H.assertEq(rec.key, "toy:110560")
     H.assertEq(ns.Learned:GetBoost("gar"), toyEntry)
-    H.assertNil(ns.Learned:GetBoost("garr"), "only the exact query is learned")
+    H.assertEq(ns.Learned:GetBoost("garr"), toyEntry, "typed-past query keeps the pick")
     ns.Database.uiSearchData = nil
 end
 
@@ -382,6 +382,38 @@ end
 function tests.getMatches_nilQueryReturnsNil()
     H.assertNil(Aliases:GetMatches(nil))
     H.assertNil(Aliases:GetMatches(""))
+end
+
+
+function tests.learned_prefixFallback()
+    env.EasyFind.db.queryLearn = {}
+    env.EasyFind.db.learnFromPicks = true
+    local toyEntry = { toyItemID = 110560, name = "Garrison Hearthstone" }
+    local mountEntry = { mountID = 71, name = "Grand Gryphon" }
+    Aliases:InvalidateKeyIndex()
+    ns.Database.uiSearchData = { toyEntry, mountEntry }
+    ns.Learned:RecordPick(toyEntry, "glad mount")
+    H.assertEq(ns.Learned:GetBoost("glad mo"), toyEntry, "shorter typing must still surface the pick")
+    H.assertEq(ns.Learned:GetBoost("glad mounts"), toyEntry, "typing past must still surface the pick")
+    H.assertNil(ns.Learned:GetBoost("g"), "1-char queries stay exact-only")
+    -- Exact beats prefix: a different pick learned under the short form wins there.
+    ns.Learned:RecordPick(mountEntry, "glad mo")
+    H.assertEq(ns.Learned:GetBoost("glad mo"), mountEntry, "exact record must beat prefix fallback")
+    H.assertEq(ns.Learned:GetBoost("glad mount"), toyEntry, "longer exact record unaffected")
+    ns.Database.uiSearchData = nil
+end
+
+function tests.learned_prefixPrefersLongestQuery()
+    env.EasyFind.db.queryLearn = {}
+    env.EasyFind.db.learnFromPicks = true
+    local toyEntry = { toyItemID = 110560, name = "Garrison Hearthstone" }
+    local mountEntry = { mountID = 71, name = "Grand Gryphon" }
+    Aliases:InvalidateKeyIndex()
+    ns.Database.uiSearchData = { toyEntry, mountEntry }
+    ns.Learned:RecordPick(mountEntry, "glad")
+    ns.Learned:RecordPick(toyEntry, "glad mount")
+    H.assertEq(ns.Learned:GetBoost("glad mo"), toyEntry, "longest learned query must win")
+    ns.Database.uiSearchData = nil
 end
 
 local pass, fail, failures = H.runSuite("Aliases", tests)

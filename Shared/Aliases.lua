@@ -15,6 +15,7 @@ local SearchText = ns.SearchText
 local strtrim = strtrim
 local sformat = string.format
 local mfloor = Utils.mfloor
+local ssub = Utils.ssub
 local tinsert = Utils.tinsert
 local tsort = Utils.tsort
 local time = time
@@ -464,11 +465,29 @@ function Learned:RecordPick(data, typedQuery)
 end
 
 ---Returns the entry learned for this (already-normalized) query, or nil.
+---Exact match wins; otherwise a prefix relation in either direction counts
+---("glad mo" surfaces the pick learned under "glad mount", and typing past
+---it to "glad mounts" keeps it). The longest learned query wins ties, and
+---1-character queries only ever match exactly, mirroring the alias gate.
 function Learned:GetBoost(queryLower)
     if not (EasyFind and EasyFind.db) then return nil end
     if EasyFind.db.learnFromPicks == false then return nil end
     local store = EasyFind.db.queryLearn
-    local rec = type(store) == "table" and store[queryLower]
+    if type(store) ~= "table" then return nil end
+    local rec = store[queryLower]
+    if not rec and #queryLower >= 2 then
+        local bestLen = 0
+        for learnedQuery, learnedRec in pairs(store) do
+            local ll, ql = #learnedQuery, #queryLower
+            if ll > bestLen and ll ~= ql then
+                local shorter = ll < ql and ll or ql
+                if ssub(learnedQuery, 1, shorter) == ssub(queryLower, 1, shorter) then
+                    bestLen = ll
+                    rec = learnedRec
+                end
+            end
+        end
+    end
     if not rec or not rec.key then return nil end
     local entry = Aliases:FindEntryByKey(rec.key)
     if not entry then entry = rec.snapshot end
