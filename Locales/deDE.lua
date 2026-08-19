@@ -259,7 +259,7 @@ L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vollständiges Änderungsprotokoll"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffDie Suche lernt jetzt aus deinen Auswahlen|r\n" ..
-    "    |cff999999-|r Wähle ein Ergebnis und es steht beim nächsten Mal oben, auch bei kürzerer Eingabe\n" ..
+    "    |cff999999-|r Wähle ein Ergebnis und es steht beim nächsten Mal oben\n" ..
     "    |cff999999-|r Deine eigenen Aliase stehen weiter über gelernten Treffern\n" ..
     "    |cff999999-|r Abschalten oder alles Gelernte vergessen: Optionen > Suche"
 

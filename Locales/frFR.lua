@@ -257,7 +257,7 @@ L["WHATSNEW_CHAT_HERE"]                 = "ici"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Voir le journal des modifications complet"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffLa recherche apprend désormais de vos choix|r\n" ..
-    "    |cff999999-|r Choisissez un résultat et il apparaîtra en haut la prochaine fois, même en tapant une version plus courte\n" ..
+    "    |cff999999-|r Choisissez un résultat et il apparaîtra en haut la prochaine fois\n" ..
     "    |cff999999-|r Vos propres alias restent au-dessus des choix appris\n" ..
     "    |cff999999-|r Désactivez, ou oubliez tout l'appris, dans Options > Recherche"
 

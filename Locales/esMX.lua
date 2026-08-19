@@ -257,7 +257,7 @@ L["WHATSNEW_CHAT_HERE"]                 = "aquí"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver el registro de cambios completo"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffLa búsqueda ahora aprende de tus elecciones|r\n" ..
-    "    |cff999999-|r Elige un resultado y aparecerá arriba la próxima vez, incluso escribiendo una versión más corta\n" ..
+    "    |cff999999-|r Elige un resultado y aparecerá arriba la próxima vez\n" ..
     "    |cff999999-|r Tus propios alias siguen por encima de lo aprendido\n" ..
     "    |cff999999-|r Desactívalo u olvida todo lo aprendido en Opciones > Búsqueda"
 

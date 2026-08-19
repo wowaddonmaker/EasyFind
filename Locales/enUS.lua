@@ -280,7 +280,7 @@ L["WHATSNEW_CHAT_HERE"]                 = "here"
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
 L["WHATSNEW_BODY"]                      =
     "|cffFFD100\226\128\162|r |cffffffffSearch now learns from your picks|r\n" ..
-    "    |cff999999-|r Pick a result and it appears on top next time you type that search, even a lazier version of it\n" ..
+    "    |cff999999-|r Pick a result and it appears on top next time you type that search\n" ..
     "    |cff999999-|r Your own aliases still outrank learned picks\n" ..
     "    |cff999999-|r Turn it off, or forget everything learned, in Options > Search"
 
