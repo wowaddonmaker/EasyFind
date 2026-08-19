@@ -279,11 +279,10 @@ L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffCategory words now show your zone's results first|r\n" ..
-    "    |cff999999-|r Typing flight, fm, tp, delve etc. puts your current zone's on top\n" ..
-    "    |cff999999-|r The 'This zone only' checkbox in the filter menu under Map Search narrows them\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffAliases can now cover a whole category|r\n" ..
-    "    |cff999999-|r Tick the new checkbox when adding an alias to a map result"
+    "|cffFFD100\226\128\162|r |cffffffffSearch now learns from your picks|r\n" ..
+    "    |cff999999-|r Pick a result and it appears on top next time you type that search, even a lazier version of it\n" ..
+    "    |cff999999-|r Your own aliases still outrank learned picks\n" ..
+    "    |cff999999-|r Turn it off, or forget everything learned, in Options > Search"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels

@@ -258,11 +258,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "Willkommen bei |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vollständiges Änderungsprotokoll"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffKategoriewörter zeigen jetzt die Ergebnisse deiner Zone zuerst|r\n" ..
-    "    |cff999999-|r flight, fm, tp, delve usw. setzen die Treffer deiner aktuellen Zone nach oben\n" ..
-    "    |cff999999-|r Das Häkchen 'Nur diese Zone' im Filtermenü unter Kartensuche grenzt sie ein\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffAliase können jetzt eine ganze Kategorie abdecken|r\n" ..
-    "    |cff999999-|r Setzt beim Anlegen eines Alias auf ein Kartenergebnis das neue Häkchen"
+    "|cffFFD100\226\128\162|r |cffffffffDie Suche lernt jetzt aus deinen Auswahlen|r\n" ..
+    "    |cff999999-|r Wähle ein Ergebnis und es steht beim nächsten Mal oben, auch bei kürzerer Eingabe\n" ..
+    "    |cff999999-|r Deine eigenen Aliase stehen weiter über gelernten Treffern\n" ..
+    "    |cff999999-|r Abschalten oder alles Gelernte vergessen: Optionen > Suche"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"

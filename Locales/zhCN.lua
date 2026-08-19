@@ -256,11 +256,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "欢迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "这里"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日志"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff分类词现在优先显示当前地区的结果|r\n" ..
-    "    |cff999999-|r 输入 flight、fm、tp、delve 等会把当前地区的结果排在最前\n" ..
-    "    |cff999999-|r 可在筛选菜单的地图搜索中勾选“仅当前地区”缩小范围\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff别名现在可以覆盖整个分类|r\n" ..
-    "    |cff999999-|r 为地图结果添加别名时勾选新的选项即可"
+    "|cffFFD100\226\128\162|r |cffffffff搜索现在会学习你的选择|r\n" ..
+    "    |cff999999-|r 选择一个结果后，下次输入该搜索词（更短也可以）它会排在最前\n" ..
+    "    |cff999999-|r 你自己设置的别名始终优先于学习结果\n" ..
+    "    |cff999999-|r 可在选项 > 搜索中关闭或清除学习记录"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "添加别名"

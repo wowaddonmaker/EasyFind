@@ -256,11 +256,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "¡Bienvenido a |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "aquí"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver el registro de cambios completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffLas palabras de categoría muestran primero los resultados de tu zona|r\n" ..
-    "    |cff999999-|r Escribir flight, fm, tp, delve, etc. pone los de tu zona actual arriba\n" ..
-    "    |cff999999-|r La casilla 'Solo esta zona' en el menú de filtros, en búsqueda de mapa, los limita\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffLos alias ahora pueden cubrir toda una categoría|r\n" ..
-    "    |cff999999-|r Marca la nueva casilla al añadir un alias a un resultado del mapa"
+    "|cffFFD100\226\128\162|r |cffffffffLa búsqueda ahora aprende de tus elecciones|r\n" ..
+    "    |cff999999-|r Elige un resultado y aparecerá arriba la próxima vez, incluso escribiendo una versión más corta\n" ..
+    "    |cff999999-|r Tus propios alias siguen por encima de lo aprendido\n" ..
+    "    |cff999999-|r Desactívalo u olvida todo lo aprendido en Opciones > Búsqueda"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Añadir alias"

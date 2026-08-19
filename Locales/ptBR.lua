@@ -256,11 +256,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bem-vindo ao |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "aqui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver o changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffPalavras de categoria mostram primeiro os resultados da sua zona|r\n" ..
-    "    |cff999999-|r Digitar flight, fm, tp, delve etc. coloca os da sua zona atual no topo\n" ..
-    "    |cff999999-|r A caixa 'Apenas esta zona' no menu de filtros, em busca no mapa, os restringe\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffApelidos agora podem cobrir uma categoria inteira|r\n" ..
-    "    |cff999999-|r Marque a nova caixa ao adicionar um apelido a um resultado do mapa"
+    "|cffFFD100\226\128\162|r |cffffffffA busca agora aprende com suas escolhas|r\n" ..
+    "    |cff999999-|r Escolha um resultado e ele aparecerá no topo na próxima vez, mesmo digitando uma versão mais curta\n" ..
+    "    |cff999999-|r Seus próprios apelidos continuam acima do aprendido\n" ..
+    "    |cff999999-|r Desligue, ou esqueça tudo o aprendido, em Opções > Busca"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Adicionar apelido"

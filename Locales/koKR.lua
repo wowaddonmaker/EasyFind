@@ -256,11 +256,10 @@ L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 �
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff분류 단어 검색 시 현재 지역 결과가 먼저 표시됩니다|r\n" ..
-    "    |cff999999-|r flight, fm, tp, delve 등을 입력하면 현재 지역의 결과가 맨 위에 옵니다\n" ..
-    "    |cff999999-|r 필터 메뉴의 지도 검색에 있는 '현재 지역만' 체크박스로 범위를 좁힐 수 있습니다\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff별칭이 이제 분류 전체를 포괄할 수 있습니다|r\n" ..
-    "    |cff999999-|r 지도 결과에 별칭을 추가할 때 새 체크박스를 선택하세요"
+    "|cffFFD100\226\128\162|r |cffffffff이제 검색이 당신의 선택을 학습합니다|r\n" ..
+    "    |cff999999-|r 결과를 선택하면 다음에 같은 검색어(더 짧게 입력해도)에서 맨 위에 표시됩니다\n" ..
+    "    |cff999999-|r 직접 만든 별칭은 학습된 결과보다 항상 우선합니다\n" ..
+    "    |cff999999-|r 옵션 > 검색에서 끄거나 학습 내용을 삭제할 수 있습니다"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"
