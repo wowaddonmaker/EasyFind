@@ -256,10 +256,9 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bienvenue dans |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "ici"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Voir le journal des modifications complet"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffLa recherche apprend désormais de vos choix|r\n" ..
-    "    |cff999999-|r Choisissez un résultat et il apparaîtra en haut la prochaine fois\n" ..
-    "    |cff999999-|r Vos propres alias restent au-dessus des choix appris\n" ..
-    "    |cff999999-|r Désactivez, ou oubliez tout l'appris, dans Options > Recherche"
+    "|cffFFD100\226\128\162|r |cffffffffCorrigé : onglets de carte des autres addons|r\n" ..
+    "    |cff999999-|r Passer de notre onglet de carte aux leurs n'affiche plus un panneau vide au premier clic\n" ..
+    "    |cff999999-|r Fermer la carte depuis un onglet tiers la rouvre correctement"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Ajouter un alias"

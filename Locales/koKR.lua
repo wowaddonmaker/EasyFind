@@ -256,10 +256,9 @@ L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 �
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff이제 검색이 당신의 선택을 학습합니다|r\n" ..
-    "    |cff999999-|r 결과를 선택하면 다음에 같은 검색어에서 맨 위에 표시됩니다\n" ..
-    "    |cff999999-|r 직접 만든 별칭은 학습된 결과보다 항상 우선합니다\n" ..
-    "    |cff999999-|r 옵션 > 검색에서 끄거나 학습 내용을 삭제할 수 있습니다"
+    "|cffFFD100\226\128\162|r |cffffffff수정: 다른 애드온의 세계 지도 탭|r\n" ..
+    "    |cff999999-|r 우리 지도 탭에서 다른 탭으로 전환할 때 첫 클릭에 빈 화면이 나오지 않습니다\n" ..
+    "    |cff999999-|r 다른 애드온 탭에서 지도를 닫아도 다시 정상적으로 열립니다"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"

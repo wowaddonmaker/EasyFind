@@ -256,10 +256,9 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bem-vindo ao |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "aqui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver o changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffA busca agora aprende com suas escolhas|r\n" ..
-    "    |cff999999-|r Escolha um resultado e ele aparecerá no topo na próxima vez\n" ..
-    "    |cff999999-|r Seus próprios apelidos continuam acima do aprendido\n" ..
-    "    |cff999999-|r Desligue, ou esqueça tudo o aprendido, em Opções > Busca"
+    "|cffFFD100\226\128\162|r |cffffffffCorrigido: abas de mapa de outros addons|r\n" ..
+    "    |cff999999-|r Trocar da nossa aba de mapa para as deles não mostra mais um painel em branco no primeiro clique\n" ..
+    "    |cff999999-|r Fechar o mapa em uma aba de outro addon reabre corretamente"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Adicionar apelido"

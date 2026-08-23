@@ -256,10 +256,9 @@ L["WHATSNEW_CHAT_HELLO"]                = "¡Bienvenido a |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "aquí"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver el registro de cambios completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffLa búsqueda ahora aprende de tus elecciones|r\n" ..
-    "    |cff999999-|r Elige un resultado y aparecerá arriba la próxima vez\n" ..
-    "    |cff999999-|r Tus propios alias siguen por encima de lo aprendido\n" ..
-    "    |cff999999-|r Desactívalo u olvida todo lo aprendido en Opciones > Búsqueda"
+    "|cffFFD100\226\128\162|r |cffffffffCorregido: pestañas del mapa de otros accesorios|r\n" ..
+    "    |cff999999-|r Cambiar de nuestra pestaña del mapa a las suyas ya no muestra un panel en blanco al primer clic\n" ..
+    "    |cff999999-|r Cerrar el mapa desde una pestaña ajena vuelve a abrirse correctamente"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Añadir alias"

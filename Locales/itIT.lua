@@ -256,10 +256,9 @@ L["WHATSNEW_CHAT_HELLO"]                = "Benvenuto in |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "qui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vedi il changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffLa ricerca ora impara dalle tue scelte|r\n" ..
-    "    |cff999999-|r Scegli un risultato e comparirà in cima la prossima volta\n" ..
-    "    |cff999999-|r I tuoi alias restano sopra le scelte apprese\n" ..
-    "    |cff999999-|r Disattiva, o dimentica tutto l'appreso, in Opzioni > Ricerca"
+    "|cffFFD100\226\128\162|r |cffffffffCorretto: schede mappa di altri addon|r\n" ..
+    "    |cff999999-|r Passare dalla nostra scheda mappa alle loro non mostra più un pannello vuoto al primo clic\n" ..
+    "    |cff999999-|r Chiudere la mappa da una scheda esterna la riapre correttamente"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Aggiungi alias"

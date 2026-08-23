@@ -279,10 +279,9 @@ L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffSearch now learns from your picks|r\n" ..
-    "    |cff999999-|r Pick a result and it appears on top next time you type that search\n" ..
-    "    |cff999999-|r Your own aliases still outrank learned picks\n" ..
-    "    |cff999999-|r Turn it off, or forget everything learned, in Options > Search"
+    "|cffFFD100\226\128\162|r |cffffffffFixed: other addons' World Map tabs|r\n" ..
+    "    |cff999999-|r Switching from our map tab to theirs no longer blanks on the first click\n" ..
+    "    |cff999999-|r Closing the map from another addon's tab reopens correctly"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels

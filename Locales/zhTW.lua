@@ -256,10 +256,9 @@ L["WHATSNEW_CHAT_HELLO"]                = "歡迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "這裡"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日誌"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff搜尋現在會學習你的選擇|r\n" ..
-    "    |cff999999-|r 選擇一個結果後，下次輸入該搜尋詞它會排在最前\n" ..
-    "    |cff999999-|r 你自己設定的別名始終優先於學習結果\n" ..
-    "    |cff999999-|r 可在選項 > 搜尋中關閉或清除學習記錄"
+    "|cffFFD100\226\128\162|r |cffffffff修復：其他插件的世界地圖分頁|r\n" ..
+    "    |cff999999-|r 從我們的地圖分頁切換到它們的分頁時，第一次點擊不再顯示空白面板\n" ..
+    "    |cff999999-|r 在其他插件分頁關閉地圖後能正常重新開啟"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "新增別名"
