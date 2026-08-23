@@ -272,18 +272,23 @@ local function ShowOurPanel()
     MapTab:RunSearch(sb and (sb.GetTypedText and sb:GetTypedText() or sb:GetText()) or "")
 end
 
-local function HideOurPanel()
+-- restoreBlizzardMode: true only when our panel is going away with no
+-- successor tab (map closed, maximized, or map search disabled) -- then
+-- Blizzard's sidebar must get its mode back or it reopens blank. Tab
+-- switches pass false: a third-party framework tab also leaves
+-- qmf.displayMode nil, and restoring Blizzard's mode over it made the
+-- framework clear its fresh selection -- the first click on such a tab
+-- showed a blank gray panel until a second click (GitHub #24).
+local function HideOurPanel(restoreBlizzardMode)
     if not selectedIsOurs then return end
     selectedIsOurs = false
     if panel then
         if panel.outer then panel.outer:Hide() else panel:Hide() end
         if panel.searchBox then panel.searchBox:ClearFocus() end
     end
-    -- Only restore when displayMode is nil (map closed while our panel
-    -- was active). If a Blizzard tab was clicked, qmf.displayMode is
-    -- already non-nil; leave it alone.
     local qmf = _G["QuestMapFrame"]
-    if qmf and qmf.SetDisplayMode and qmf.displayMode == nil then
+    if restoreBlizzardMode
+       and qmf and qmf.SetDisplayMode and qmf.displayMode == nil then
         local restore = prevBlizzardDisplayMode or qmf.QuestsFrame
         if restore then
             restoringBlizzardDisplayMode = true
@@ -2504,7 +2509,7 @@ function MapTab:Initialize()
                 if not restoringBlizzardDisplayMode then
                     lastSelectedWasOurs = false
                 end
-                if selectedIsOurs then HideOurPanel() end
+                if selectedIsOurs then HideOurPanel(false) end
             end
         end)
     end
@@ -2516,7 +2521,7 @@ function MapTab:Initialize()
                     if not restoringBlizzardDisplayMode then
                         lastSelectedWasOurs = false
                     end
-                    if selectedIsOurs then HideOurPanel() end
+                    if selectedIsOurs then HideOurPanel(false) end
                 end
             end)
         end
@@ -2603,7 +2608,7 @@ function MapTab:Initialize()
         WorldMapFrame:HookScript("OnHide", function()
             if selectedIsOurs then
                 lastSelectedWasOurs = true
-                HideOurPanel()
+                HideOurPanel(true)
             elseif ReleaseMapTabMemory then
                 ReleaseMapTabMemory(true)
             end
@@ -2614,12 +2619,12 @@ function MapTab:Initialize()
         local function UpdateTabVisibility()
             if not tabFrame then return end
             if not IsMapSearchEnabled() then
-                HideOurPanel()
+                HideOurPanel(true)
                 tabFrame:Hide()
                 return
             end
             if WorldMapFrame:IsMaximized() then
-                HideOurPanel()
+                HideOurPanel(true)
                 tabFrame:Hide()
             else
                 tabFrame:Show()
