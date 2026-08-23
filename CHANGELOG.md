@@ -4,6 +4,13 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [2.4.4] - 2026-08-23
+
+### Fixed
+- **World Map tab compatibility**: switching from EasyFind's map tab to another addon's map tab no longer shows a blank gray panel on the first click, and closing the map from such a tab reopens correctly. EasyFind now only restores Blizzard's sidebar when its own panel closes with no successor tab
+
+---
+
 ## [2.4.3] - 2026-08-18
 
 ### Added
