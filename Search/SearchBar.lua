@@ -643,11 +643,11 @@ function Search:CreateSearchFrame()
             -- can fire before the results frame is hidden.  Without the delay the
             -- parent frame hides and the child button never receives its OnClick.
             Utils.SafeAfter(0, function()
-                -- The focus-stealing click landed on a guarded surface (the
-                -- copy box, a popup): those handle their own dismissal, and
-                -- hiding here would kill the results before an up-click
-                -- handler ever fires (this deferred hide lands a frame
-                -- after mouse-down, well before a human mouse-up).
+                -- The focus-stealing click landed on a guarded surface (a grid
+                -- cell, the copy box, a popup): rows/cells handle their own
+                -- dismissal, and hiding here would kill the results before an
+                -- up-click cell handler ever fires (the deferred hide lands a
+                -- frame after mouse-down, well before a human mouse-up).
                 if onGuard then return end
                 if selectingResult then return end
                 if searchFrame.editBox:HasFocus() then return end
@@ -1224,14 +1224,15 @@ function Search:CreateSearchFrame()
         local shortcutIndex = Shortcuts:GetResultShortcutIndex(key)
         if shortcutIndex then
             -- Alt+digit still inserts the digit character into the focused
-            -- editbox (propagate only governs the game side). A snapshot
-            -- repair cannot cover this: shortcut activation may rewrite the
-            -- text (apply a quick filter, clear the box) before the char
-            -- event lands. Swallow the char itself at OnChar, keyed by the
-            -- digit CHAR: shortcutIndex is that digit for both spellings of
-            -- the key ("4" and "NUMPAD4"). The navFrame copy of this block
-            -- needs none of this: in keyboard-nav mode the editbox is
-            -- unfocused, so no character can insert.
+            -- editbox (propagate only governs the game side). The snapshot
+            -- repair the Alt+J/K nav keys use cannot cover this: shortcut
+            -- activation may rewrite the text (apply a quick filter, clear
+            -- the box) before the char event lands, invalidating the
+            -- snapshot. Swallow the char itself at OnChar instead, keyed by
+            -- the digit CHAR: shortcutIndex is that digit for both
+            -- spellings of the key ("4" and "NUMPAD4"). The navFrame copy
+            -- of this block needs none of this: in keyboard-nav mode the
+            -- editbox is unfocused, so no character can insert.
             Utils.SwallowNextCharInsert(self, tostring(shortcutIndex))
             local shortcutResult = Shortcuts:ActivateVisibleResultShortcut(shortcutIndex)
             if shortcutResult then

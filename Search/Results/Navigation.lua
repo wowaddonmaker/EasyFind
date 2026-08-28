@@ -245,6 +245,10 @@ function Results:HideResults()
     Search:StopActiveKeybindCapture()
     self:ClearCalculatorCopyHighlight()
     self:ReleaseCalculatorCopyBox()
+    if self.HideIconGrid then
+        self:HideIconGrid()
+        self:ReleaseIconGridMemory()
+    end
     -- Don't kill an active nav-repeat ticker from inside HideResults.
     -- History:IsPreservingNavRepeat covers the synchronous
     -- NavigateSearchHistory window. The IsAltNavRepeatKey check covers the

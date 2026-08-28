@@ -77,6 +77,7 @@ local UI_DEFAULTS = {
     showAppsButton = true,
     showFilterButton = true,
     learnFromPicks = true,
+    macroPickerSearch = true,
     lockPosition = false,
     uiResultsAbove = false,
     showResultShortcutHints = true,
@@ -265,6 +266,7 @@ local function SyncOptionControls()
     if optionsFrame.showAppsButtonCheckbox then optionsFrame.showAppsButtonCheckbox:SetChecked(EasyFind.db.showAppsButton ~= false) end
     if optionsFrame.showFilterButtonCheckbox then optionsFrame.showFilterButtonCheckbox:SetChecked(EasyFind.db.showFilterButton ~= false) end
     if optionsFrame.learnPicksCheckbox then optionsFrame.learnPicksCheckbox:SetChecked(EasyFind.db.learnFromPicks ~= false) end
+    if optionsFrame.macroPickerSearchCheckbox then optionsFrame.macroPickerSearchCheckbox:SetChecked(EasyFind.db.macroPickerSearch ~= false) end
     if optionsFrame.UpdateFocusBindEnabled then optionsFrame.UpdateFocusBindEnabled() end
     if optionsFrame.minimapBtnCheckbox then optionsFrame.minimapBtnCheckbox:SetChecked(EasyFind.db.showMinimapButton ~= false) end
     if optionsFrame.rareTrackCheckbox then optionsFrame.rareTrackCheckbox:SetChecked(EasyFind.db.alwaysShowRares or false) end
@@ -1926,6 +1928,18 @@ local function BuildSearchTab(ctx)
     end)
     optionsFrame.learnPicksCheckbox = learnPicksCheckbox
 
+    local macroPickerSearchCheckbox = CreateCheckbox(sec1, "MacroPickerSearch",
+        L["OPT_MACRO_PICKER_SEARCH"], L["OPT_MACRO_PICKER_SEARCH_TT"], true, CHECK_COL_W)
+    macroPickerSearchCheckbox:SetChecked(EasyFind.db.macroPickerSearch ~= false)
+    macroPickerSearchCheckbox:SetScript("OnClick", function(self)
+        EasyFind.db.macroPickerSearch = self:GetChecked() and true or false
+        if self.RefreshVisual then self:RefreshVisual() end
+        if ns.IconPickerSearch and ns.IconPickerSearch.Refresh then
+            ns.IconPickerSearch:Refresh()
+        end
+    end)
+    optionsFrame.macroPickerSearchCheckbox = macroPickerSearchCheckbox
+
     local iconVisChoices = {
         { label = L["OPT_ICONS_ALL"],      value = "all" },
         { label = L["OPT_ICONS_GENERAL"],  value = "general" },
@@ -2104,7 +2118,8 @@ local function BuildSearchTab(ctx)
 
     lockPositionCheckbox:ClearAllPoints()
     -- Two-column toggle grid: lock + alt hints, borders + inline
-    -- autocomplete, app + filter button visibility, learned picks.
+    -- autocomplete, app + filter button visibility, learned picks +
+    -- macro picker search.
     lockPositionCheckbox:SetPoint("TOPLEFT", searchOpacityRow, "BOTTOMLEFT", 0, -4)
     resultShortcutHintsCheckbox:ClearAllPoints()
     resultShortcutHintsCheckbox:SetPoint("TOPLEFT", lockPositionCheckbox, "TOPRIGHT", CHECK_COL_GAP, 0)
@@ -2113,6 +2128,7 @@ local function BuildSearchTab(ctx)
     showAppsButtonCheckbox:SetPoint("TOPLEFT", windowBorderCheckbox, "BOTTOMLEFT", 0, -2)
     showFilterButtonCheckbox:SetPoint("TOPLEFT", showAppsButtonCheckbox, "TOPRIGHT", CHECK_COL_GAP, 0)
     learnPicksCheckbox:SetPoint("TOPLEFT", showAppsButtonCheckbox, "BOTTOMLEFT", 0, -2)
+    macroPickerSearchCheckbox:SetPoint("TOPLEFT", learnPicksCheckbox, "TOPRIGHT", CHECK_COL_GAP, 0)
 
     local function RefreshUIPresetRows()
         if optionsFrame.uiFontPresetRow then

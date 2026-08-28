@@ -89,7 +89,7 @@ end
 function Text:GetFlatSubtext(data)
     if not data then return "" end
     if data.calculatorResult then return L["SUBTEXT_EXPRESSION"] end
-    if data.calculatorLauncher then return "" end
+    if data.calculatorLauncher or data.iconSearchLauncher then return L["SUBTEXT_APP"] end
     if data.searchCommandDesc then return data.searchCommandDesc end
     if data.quickFilterAliasText then return data.quickFilterAliasText end
     if data.quickFilterDef then return data.quickFilterDef.label or L["QUICK_FILTER"] end

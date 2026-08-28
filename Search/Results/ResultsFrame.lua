@@ -110,6 +110,9 @@ function Results:CreateResultsFrame()
     local resizeTimer
     resultsFrame:SetScript("OnSizeChanged", function()
         if not resultsFrame:IsShown() or not Results._cachedHierarchical then return end  -- luacheck: ignore 113
+        -- The icon grid owns the panel; re-rendering cached rows here would
+        -- tear it down 0.02s after it opened.
+        if Results.IsIconGridShown and Results:IsIconGridShown() then return end
         if resizeTimer then resizeTimer:Cancel() end
         resizeTimer = C_Timer.NewTimer(0.02, function()
             resizeTimer = nil

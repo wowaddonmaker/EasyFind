@@ -57,6 +57,73 @@ function Render:RestoreHoveredRow()
     end
 end
 
+-- Open the dropdown to fit `totalContentHeight` of content (viewport capped
+-- at maxVisibleHeight), wire the scroll machinery, and wrap the rounded
+-- container around bar + dropdown in either orientation. ONE owner for the
+-- open-the-dropdown geometry: the row renderer and the icon grid both end
+-- their layout here, so the silhouette cannot drift between them.
+function Render:ApplyResultsFrameLayout(resultsFrame, totalContentHeight,
+        maxVisibleHeight, padT, padB, scrollInset, preserveScroll)
+    local hasScroll = totalContentHeight > maxVisibleHeight
+    local visibleHeight = hasScroll and maxVisibleHeight or totalContentHeight
+
+    resultsFrame:SetHeight(padT + padB + visibleHeight)
+    resultsFrame.scrollChild:SetWidth(resultsFrame:GetWidth() - scrollInset)
+    resultsFrame.scrollChild:SetHeight(totalContentHeight)
+
+    resultsFrame.scrollFrame:ClearAllPoints()
+    resultsFrame.scrollFrame:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 0, -padT)
+    resultsFrame.scrollFrame:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", 0, padB)
+
+    if not preserveScroll then
+        resultsFrame.scrollFrame:SetVerticalScroll(0)
+    end
+
+    if resultsFrame.scrollBar then
+        resultsFrame.scrollBar:SetShown(hasScroll)
+        if hasScroll then
+            resultsFrame.scrollBar:UpdateThumb(totalContentHeight, visibleHeight)
+        end
+    end
+
+    -- Anchor results above or below based on setting. The rounded
+    -- container wraps the bar and dropdown in either orientation.
+    local belowMode = not EasyFind.db.uiResultsAbove
+    local roundedTheme = Results:GetActiveTheme().searchBarRounded
+    resultsFrame:ClearAllPoints()
+    if belowMode then
+        resultsFrame:SetPoint("TOP", Search:GetSearchFrame(), "BOTTOM", 0, 0)
+    else
+        resultsFrame:SetPoint("BOTTOM", Search:GetSearchFrame(), "TOP", 0, 0)
+    end
+
+    -- In rounded mode the resultsFrame backdrop is owned by the
+    -- container; clear its own and hide any bg atlas so the unified
+    -- silhouette reads as one shape.
+    if roundedTheme then
+        resultsFrame:SetBackdrop(nil)
+        if resultsFrame.bgAtlasTex then resultsFrame.bgAtlasTex:Hide() end
+        if Search:GetContainerFrame() then
+            Search:GetContainerFrame():ClearAllPoints()
+            if belowMode then
+                Search:GetContainerFrame():SetPoint("TOPLEFT",     Search:GetSearchFrame(),  "TOPLEFT",     0, 0)
+                Search:GetContainerFrame():SetPoint("TOPRIGHT",    Search:GetSearchFrame(),  "TOPRIGHT",    0, 0)
+                Search:GetContainerFrame():SetPoint("BOTTOMLEFT",  resultsFrame, "BOTTOMLEFT",  0, 0)
+                Search:GetContainerFrame():SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", 0, 0)
+                ns.SetRoundedRectDivider(Search:GetContainerFrame(), Search:GetSearchFrame():GetHeight(), true)
+            else
+                Search:GetContainerFrame():SetPoint("TOPLEFT",     resultsFrame, "TOPLEFT",     0, 0)
+                Search:GetContainerFrame():SetPoint("TOPRIGHT",    resultsFrame, "TOPRIGHT",    0, 0)
+                Search:GetContainerFrame():SetPoint("BOTTOMLEFT",  Search:GetSearchFrame(),  "BOTTOMLEFT",  0, 0)
+                Search:GetContainerFrame():SetPoint("BOTTOMRIGHT", Search:GetSearchFrame(),  "BOTTOMRIGHT", 0, 0)
+                ns.SetRoundedRectDivider(Search:GetContainerFrame(), resultsFrame:GetHeight(), true)
+            end
+        end
+    end
+
+    resultsFrame:Show()
+end
+
 function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
     if not hierarchical or #hierarchical == 0 then
         self:HideResults()
@@ -64,6 +131,14 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
     end
     local resultsFrame = Search:GetResultsFrame()
     if not resultsFrame then return end
+
+    -- Leaving the @icons grid: it hid the row pool, so the render-skip
+    -- signature must be busted or an "identical" list would early-return
+    -- with every row still hidden under a now-hidden grid.
+    if Results.IsIconGridShown and Results:IsIconGridShown() then
+        Results:HideIconGrid()
+        self._lastRenderSig = nil
+    end
 
     -- Rows hidden or repurposed by a re-render never fire OnLeave (a
     -- frame hidden under the cursor doesn't), which strands the unearned
@@ -542,65 +617,8 @@ function Render:ShowHierarchicalResults(hierarchical, preserveScroll)
         end
     end
 
-    local totalContentHeight = yOffset
-    local hasScroll = totalContentHeight > maxVisibleHeight
-    local visibleHeight = hasScroll and maxVisibleHeight or totalContentHeight
-
-    resultsFrame:SetHeight(padT + padB + visibleHeight)
-    resultsFrame.scrollChild:SetWidth(resultsFrame:GetWidth() - scrollInset)
-    resultsFrame.scrollChild:SetHeight(totalContentHeight)
-
-    resultsFrame.scrollFrame:ClearAllPoints()
-    resultsFrame.scrollFrame:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 0, -padT)
-    resultsFrame.scrollFrame:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", 0, padB)
-
-    if not preserveScroll then
-        resultsFrame.scrollFrame:SetVerticalScroll(0)
-    end
-
-    if resultsFrame.scrollBar then
-        resultsFrame.scrollBar:SetShown(hasScroll)
-        if hasScroll then
-            resultsFrame.scrollBar:UpdateThumb(totalContentHeight, visibleHeight)
-        end
-    end
-
-    -- Anchor results above or below based on setting. The rounded
-    -- container wraps the bar and dropdown in either orientation.
-    local belowMode = not EasyFind.db.uiResultsAbove
-    local roundedTheme = Results:GetActiveTheme().searchBarRounded
-    resultsFrame:ClearAllPoints()
-    if belowMode then
-        resultsFrame:SetPoint("TOP", Search:GetSearchFrame(), "BOTTOM", 0, 0)
-    else
-        resultsFrame:SetPoint("BOTTOM", Search:GetSearchFrame(), "TOP", 0, 0)
-    end
-
-    -- In rounded mode the resultsFrame backdrop is owned by the
-    -- container; clear its own and hide any bg atlas so the unified
-    -- silhouette reads as one shape.
-    if roundedTheme then
-        resultsFrame:SetBackdrop(nil)
-        if resultsFrame.bgAtlasTex then resultsFrame.bgAtlasTex:Hide() end
-        if Search:GetContainerFrame() then
-            Search:GetContainerFrame():ClearAllPoints()
-            if belowMode then
-                Search:GetContainerFrame():SetPoint("TOPLEFT",     Search:GetSearchFrame(),  "TOPLEFT",     0, 0)
-                Search:GetContainerFrame():SetPoint("TOPRIGHT",    Search:GetSearchFrame(),  "TOPRIGHT",    0, 0)
-                Search:GetContainerFrame():SetPoint("BOTTOMLEFT",  resultsFrame, "BOTTOMLEFT",  0, 0)
-                Search:GetContainerFrame():SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", 0, 0)
-                ns.SetRoundedRectDivider(Search:GetContainerFrame(), Search:GetSearchFrame():GetHeight(), true)
-            else
-                Search:GetContainerFrame():SetPoint("TOPLEFT",     resultsFrame, "TOPLEFT",     0, 0)
-                Search:GetContainerFrame():SetPoint("TOPRIGHT",    resultsFrame, "TOPRIGHT",    0, 0)
-                Search:GetContainerFrame():SetPoint("BOTTOMLEFT",  Search:GetSearchFrame(),  "BOTTOMLEFT",  0, 0)
-                Search:GetContainerFrame():SetPoint("BOTTOMRIGHT", Search:GetSearchFrame(),  "BOTTOMRIGHT", 0, 0)
-                ns.SetRoundedRectDivider(Search:GetContainerFrame(), resultsFrame:GetHeight(), true)
-            end
-        end
-    end
-
-    resultsFrame:Show()
+    Render:ApplyResultsFrameLayout(resultsFrame, yOffset, maxVisibleHeight,
+        padT, padB, scrollInset, preserveScroll)
     self:UpdateVisibleResultShortcuts()
 
     -- If any rep bar row is in side-by-side mode, schedule one deferred re-render so

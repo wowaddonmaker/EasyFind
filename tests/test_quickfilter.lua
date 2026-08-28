@@ -135,8 +135,8 @@ end
 
 -- ApplyQuickFilter is the ONE gate every accept path funnels through; the
 -- typed @token must never survive into the applied query text, no matter
--- how a caller composed remainingText (ghost accept + auto-accept can
--- compose "@token @partial").
+-- how a caller composed remainingText (ghost accept + auto-accept built
+-- "@icons @ico" at one point).
 local function applyAndCaptureQuery(def, remaining)
     local captured
     local orig = Filters.OnSearchTextChanged
@@ -148,17 +148,17 @@ local function applyAndCaptureQuery(def, remaining)
 end
 
 function tests.apply_stripsOwnLeadingToken()
-    local def = Filters.quickFilterByAlias.mounts
-    H.assertEq(applyAndCaptureQuery(def, "@mounts sword"), "sword")
-    H.assertEq(applyAndCaptureQuery(def, "@mounts @mo"), "")
-    H.assertEq(applyAndCaptureQuery(def, "@mo"), "")
+    local def = Filters.quickFilterByAlias.icons
+    H.assertEq(applyAndCaptureQuery(def, "@icons sword"), "sword")
+    H.assertEq(applyAndCaptureQuery(def, "@icons @ico"), "")
+    H.assertEq(applyAndCaptureQuery(def, "@ico"), "")
 end
 
 function tests.apply_keepsForeignTokenAndPlainText()
-    local def = Filters.quickFilterByAlias.mounts
+    local def = Filters.quickFilterByAlias.icons
     H.assertEq(applyAndCaptureQuery(def, "sword"), "sword")
-    -- "@p" is the pets token: a DIFFERENT def's token is not ours to eat.
-    H.assertEq(applyAndCaptureQuery(def, "@p sword"), "@p sword")
+    -- "@m" is the mounts token: a DIFFERENT def's token is not ours to eat.
+    H.assertEq(applyAndCaptureQuery(def, "@m sword"), "@m sword")
 end
 
 local pass, fail, failures = H.runSuite("QuickFilter", tests)

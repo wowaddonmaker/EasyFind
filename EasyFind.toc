@@ -78,6 +78,9 @@ Search/Filters/GearOptions.lua
 Database/ProfessionData.lua
 Database/ItemData.lua
 Search/ItemSearch.lua
+Database/IconData.lua
+Search/IconSearch.lua
+Search/IconPickerSearch.lua
 Search/Filters/HousingOptions.lua
 Search/Filters/ProfessionOptions.lua
 Search/Filters/Dropdown.lua
@@ -105,6 +108,7 @@ Search/Results/Render/Reputation.lua
 Search/Results/Render/Layout.lua
 Search/Results/Render/RowContent.lua
 Search/Results/Render/Core.lua
+Search/Results/IconGrid.lua
 Search/Results/Rows/OutfitState.lua
 Search/Results/Rows/Settings.lua
 Search/Results/Rows/ResultContextMenu.lua

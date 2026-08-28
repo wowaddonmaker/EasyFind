@@ -23,6 +23,19 @@ function ns.BuildApplicationEntries()
     if calculator and calculator.LAUNCHER then
         apps[#apps + 1] = calculator.LAUNCHER
     end
+    -- Icon Search (GitHub #22): opens the @icons grid, same entry point as
+    -- the searchable launcher row. iconSearchLauncher picks its own glyph in
+    -- GetFlatCategoryIcon; without it, nativeRun lands on the command icon.
+    apps[#apps + 1] = {
+        name = ns.L["ICON_SEARCH_APP"],
+        iconSearchLauncher = true,
+        noPin = true,
+        nativeRun = function()
+            if ns.Results and ns.Results.OpenIconSearch then
+                ns.Results:OpenIconSearch()
+            end
+        end,
+    }
     return apps
 end
 
@@ -99,7 +112,11 @@ local function BuildRows(dropdown)
         row.app = app
         row:SetPoint("TOPLEFT", dropdown, "TOPLEFT", PAD, -PAD - (i - 1) * ROW_H)
 
-        local iconDef = ns.ResultIcons and ns.ResultIcons:GetFlatCategoryIcon(app)
+        -- The app's own glyph, not GetFlatCategoryIcon: launcher data resolves
+        -- to the apps waffle there (result rows), which says nothing in a menu
+        -- where every row is an app.
+        local iconDef = ns.ResultIcons and (ns.ResultIcons:GetAppGlyphIcon(app)
+            or ns.ResultIcons:GetFlatCategoryIcon(app))
         local tex = (iconDef and iconDef.tex) or app.icon
         if tex then
             row.icon:SetTexture(tex)

@@ -278,6 +278,7 @@ local DB_DEFAULTS = {
     -- above the world list; "local" shows only your zone's for that category.
     mapCategoryScope = "all",
     learnFromPicks = true,
+    macroPickerSearch = true,
     queryLearn = {},
 }
 -- Exposed so option resets restore from the same table first-run uses;
@@ -899,6 +900,7 @@ local function OnPlayerLogin()
     end
     SafeInit(ns.Search,        "UI")
     SafeInit(ns.Highlight, "Highlight")
+    SafeInit(ns.IconPickerSearch, "IconPickerSearch")
     if ns.Options and ns.Options.RegisterWithBlizzardOptions then
         local ok, err = xpcall(ns.Options.RegisterWithBlizzardOptions, ErrorHandler, ns.Options)
         if not ok then

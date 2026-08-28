@@ -36,6 +36,7 @@ Filters.quickFilterOptions = {
     { key = "statistics",     canonical = "statistics",      label = _G["STATISTICS"] or "Statistics",      categories = { "Statistic", "Statistics" }, aliases = { "s", "stat", "stats", "statistic", "statistics" } },
     { key = "items",          canonical = "items",           label = _G["ITEMS"] or "Items",          categories = { "Item", "Bag", "Bank", "Warband" }, aliases = { "i", "item", "items" } },
     { key = "catalog",        canonical = "gen",             label = L["FILTER_GENERAL_CATALOG"],      categories = { "Item" }, aliases = { "cat", "catalog", "general" } },
+    { key = "icons",          canonical = "icons",           label = L["FILTER_ICONS"],       categories = { "Icon" }, aliases = { "ic", "icon", "icons", "texture", "textures" } },
     { key = "bags",           canonical = "bags",            label = _G["BAGS"] or "Bags",            categories = { "Bag" }, aliases = { "b", "bag", "bags" } },
     { key = "bank",           canonical = "bank",            label = _G["BANK"] or "Bank",            categories = { "Bank" }, aliases = { "bank", "banked" } },
     -- The warband bank is a separate place from a character's own bank, so it
@@ -510,7 +511,7 @@ function Filters:ApplyQuickFilter(def, remainingText)
     if not def then return false end
     local editBox = Search:GetSearchFrame() and Search:GetSearchFrame().editBox
     -- Kill any inline ghost BEFORE touching text: a live candidate (e.g.
-    -- "@moun" ghosted over a typed "@mo") left armed here can be
+    -- "@icons" ghosted over a typed "@ico") left armed here can be
     -- re-accepted by the editbox's own deferred Tab dispatch and resurrect
     -- the token as query text.
     if editBox and editBox.StripAutocomplete then editBox:StripAutocomplete() end
@@ -581,8 +582,49 @@ function Filters:TryAcceptQuickFilterToken(editBox, includeWhitespace)
     return self:ApplyQuickFilter(def, remaining)
 end
 
+-- True when token is exactly one of def's aliases (or its canonical) AND not
+-- a proper prefix of a longer one, i.e. typing cannot be mid-word ("ic" and
+-- "icon" are prefixes of "icons", so they suggest; "icons" is complete).
+local function IsCompleteToken(def, token)
+    token = slower(token)
+    local exact = slower(def.canonical) == token
+    if not exact and def.aliases then
+        for i = 1, #def.aliases do
+            if slower(def.aliases[i]) == token then
+                exact = true
+                break
+            end
+        end
+    end
+    if not exact then return false end
+    local canonical = slower(def.canonical)
+    if #canonical > #token and sfind(canonical, token, 1, true) == 1 then return false end
+    if def.aliases then
+        for i = 1, #def.aliases do
+            local alias = slower(def.aliases[i])
+            if #alias > #token and sfind(alias, token, 1, true) == 1 then return false end
+        end
+    end
+    return true
+end
+
 function Filters:HandleQuickFilterTextChanged(editBox)
     if self:TryAcceptQuickFilterToken(editBox, true) then return true end
+    -- @icons opens on the bare token, no trailing space needed: whenever a
+    -- complete icons token is present, the grid shows. The grid is a view,
+    -- not a narrowing filter, so there is nothing to wait for. (Other
+    -- filters keep the space/Tab handshake: applying them changes what a
+    -- continued query means.)
+    if not Filters._quickFilter and editBox then
+        local text = editBox:GetText() or ""
+        local bareToken = text:match("^%s*@([%w_%-:]+)%s*$")
+        if bareToken then
+            local def = self:ResolveQuickFilterToken(bareToken)
+            if def and def.key == "icons" and IsCompleteToken(def, bareToken) then
+                return self:ApplyQuickFilter(def, "")
+            end
+        end
+    end
     if self:UpdateQuickFilterSuggestions(editBox) then
         if editBox and editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
         if editBox and editBox.UpdateAutocomplete then

@@ -201,6 +201,12 @@ function Search:OnSearchTextChanged(text, force)
     if text then text = strtrim(text) end
     Tooltips:ClearResultTooltips()
     local quickFilter = self:GetQuickFilter()
+    -- @icons owns the whole dropdown: the icon grid renders instead of the
+    -- row pipeline, filtered live by whatever follows the token.
+    if quickFilter and quickFilter.key == "icons" then
+        Results:ShowIconGrid(text or "")
+        return
+    end
     if (not text or text == "") and not quickFilter then
         if ns.Database and ns.Database.CancelDynamicWarmup then
             ns.Database:CancelDynamicWarmup()
@@ -599,6 +605,17 @@ function Search:OnSearchTextChanged(text, force)
         end)
         if itemHits then
             for ii = 1, #itemHits do combined[#combined + 1] = itemHits[ii] end
+        end
+    end
+
+    -- Icon Search launcher row (GitHub #22): typing "icons" / "icon search"
+    -- offers the row that opens the @icons grid. Scored into the band above
+    -- natural matches but below aliases and learned picks.
+    if not quickFilter and not calculatorData and not calculatorLauncher
+       and Results.GetIconSearchLauncherMatch then
+        local iconLauncher = Results:GetIconSearchLauncherMatch(text)
+        if iconLauncher then
+            combined[#combined + 1] = { data = iconLauncher, score = 2e6 }
         end
     end
     if #combined > 1 then tsort(combined, FlatNameLess) end

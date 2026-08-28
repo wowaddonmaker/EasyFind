@@ -451,6 +451,30 @@ function Render.RowContent(owner, resultRow, entry, state, isInertRow)
         Render.SetClippedText(resultRow.text, entry.name)
         iconSet = true
 
+    -- App launcher rows (calculator, icon search). LEFT: the apps-button
+    -- waffle (set by the flat renderer via GetFlatCategoryIcon). RIGHT: the
+    -- app's own glyph, desaturated and chrome-tinted like the apps menu.
+    elseif not iconSet and data and (data.calculatorLauncher or data.iconSearchLauncher) then
+        local appGlyph = Icons:GetAppGlyphIcon(data)
+        if appGlyph then
+            resultRow.icon:SetTexture(nil)
+            resultRow.icon:SetTexCoord(0, 1, 0, 1)
+            resultRow.icon:SetTexture(appGlyph.tex)
+            local gc = ns.ChromeGlyphColor()
+            resultRow.icon:SetDesaturated(true)
+            resultRow.icon:SetVertexColor(gc[1], gc[2], gc[3], 1)
+            resultRow.icon:SetSize(rowIconSize, rowIconSize)
+            resultRow.icon:ClearAllPoints()
+            resultRow.icon:SetPoint("RIGHT", resultRow, "RIGHT", -5, 0)
+            resultRow.icon:Show()
+            Icons.ClearRowIconLeafIDs(resultRow.icon)
+            resultRow.amountText:ClearAllPoints()
+            resultRow.amountText:SetPoint("RIGHT", resultRow.icon, "LEFT", -3, 0)
+        else
+            Icons:SetRowIcon(resultRow, "hidden", nil, rowIconSize)
+        end
+        iconSet = true
+
     -- Catalog items (the full game item DB). LEFT: the Item category glyph.
     -- RIGHT: the item's own icon. Middle: quality-colored name. Icon and name
     -- resolve live from the itemID (the shipped blob stores neither).

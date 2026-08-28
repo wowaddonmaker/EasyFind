@@ -5,6 +5,8 @@ local Handlers = ns.ResultHandlers
 local Utils = ns.Utils
 
 local CALCULATOR_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\calculator-icon"
+local APPS_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\apps-icon"
+local ICON_SEARCH_ICON_TEX = "Interface\\AddOns\\EasyFind\\textures\\icon-search-icon"
 
 local BUTTON_ICON_REGIONS = {"Icon", "icon", "NormalTexture", "normalTexture"}
 local buttonIconCache = {}
@@ -177,6 +179,11 @@ local FLAT_CATEGORY_ICONS = {
     -- chromeTint: white line art tinted with the theme's chrome-glyph color
     -- at render time, so this icon matches the apps menu and popup glyphs.
     calculator    = { tex = CALCULATOR_ICON_TEX, chromeTint = true },
+    -- App rows' general glyph: the same 3x3 waffle as the bar's apps button.
+    apps          = { tex = APPS_ICON_TEX, chromeTint = true },
+    -- Icon Search's own glyph: rounded action-slot square with a lens,
+    -- same custom line-art family as the calculator.
+    iconSearch    = { tex = ICON_SEARCH_ICON_TEX, chromeTint = true },
     -- Equipment Manager sidebar tab icon (PaperDollSidebarTab3 ARTWORK
     -- region of the PaperDollSidebarTabs sheet, same sheet as `title`).
     gearSet       = { tex = 514608, coords = { 0.01562, 0.53125, 0.46875, 0.60547 } },
@@ -185,6 +192,15 @@ local FLAT_CATEGORY_ICONS = {
 }
 
 local BOSS_PORTRAIT_TEXCOORD = { 0.22, 0.78, 0, 1 }
+
+-- The app's OWN glyph for app rows: the launcher row's right-side icon and
+-- the apps menu row icon (where the shared waffle would say nothing).
+function Icons:GetAppGlyphIcon(data)
+    if not data then return nil end
+    if data.calculatorLauncher or data.calculatorResult then return FLAT_CATEGORY_ICONS.calculator end
+    if data.iconSearchLauncher then return FLAT_CATEGORY_ICONS.iconSearch end
+    return nil
+end
 
 function Icons:IsBossResultData(data)
     return data and data.encounterID and data.category == "Boss"
@@ -202,7 +218,10 @@ local REP_FACTION_ICONS = {
 
 function Icons:GetFlatCategoryIcon(data)
     if not data then return nil end
-    if data.calculatorResult or data.calculatorLauncher then return FLAT_CATEGORY_ICONS.calculator end
+    if data.calculatorResult then return FLAT_CATEGORY_ICONS.calculator end
+    -- App launcher rows wear the apps-button waffle as their general glyph;
+    -- the app's own glyph renders on the row's right via GetAppGlyphIcon.
+    if data.calculatorLauncher or data.iconSearchLauncher then return FLAT_CATEGORY_ICONS.apps end
     if data.searchCommand or data.nativeRun then return FLAT_CATEGORY_ICONS.command end
     if data.quickFilterDef then
         local key = data.quickFilterDef.key
@@ -308,6 +327,9 @@ function Icons:SetRowIcon(btn, kind, value, iconSize)
     btn.icon:SetTexture(nil)
     btn.icon:SetTexCoord(0, 1, 0, 1)
     btn.icon:SetVertexColor(1, 1, 1, 1)
+    -- App launcher rows render this icon desaturated + chrome-tinted; a
+    -- pooled row reused for anything else must not inherit that.
+    btn.icon:SetDesaturated(false)
     -- Clear mount/toy/pet tooltip data and cooldown from previous render
     ClearRowIconLeafIDs(btn.icon)
     if btn.iconCooldown then btn.iconCooldown:Hide() end
