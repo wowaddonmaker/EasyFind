@@ -258,11 +258,15 @@ L["WHATSNEW_CHAT_HELLO"]                = "Willkommen bei |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "hier"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vollständiges Änderungsprotokoll"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffTaschenrechner: Gold, Silber und Kupfer|r\n" ..
-    "    |cff999999-|r 4g / 5 eingeben und 80s erhalten; 450s wird zu 4g 50s umgerechnet\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffFlüssigere Menüs und Tastatur|r\n" ..
-    "    |cff999999-|r ESC verlässt Filtermenüs Ebene für Ebene\n" ..
-    "    |cff999999-|r Das Apps-Menü lässt sich komplett per Tastatur bedienen (Tab, Eingabe, Pfeile), wie der Rest der Suchleiste"
+    "|cffFFD100\226\128\162|r |cffffffffSymbolsuche, eine neue App (weitere spannende folgen!)|r\n" ..
+    "    |cff999999-|r Durchstöbere und filtere alle Spielsymbole in einem Raster; Linksklick öffnet ein Fenster zum Kopieren der Symbol-ID, Rechtsklick erstellt ein Makro damit und mehr\n" ..
+    "    |cff999999-|r 3 Wege hinein:\n" ..
+    "        |cff9999991.|r Über das Apps-Menü öffnen |TInterface\\AddOns\\EasyFind\\textures\\apps-icon:12:12:0:-2|t\n" ..
+    "        |cff9999992.|r Einfach nach \"Symbolsuche\" suchen\n" ..
+    "        |cff9999993.|r Den Schnellfilter @icons in der Suche eingeben\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffSuche in der Makro-Symbolauswahl|r\n" ..
+    "    |cff999999-|r Beim Makro-Erstellen hat die Symbolauswahl des Spiels jetzt eine Suchleiste\n" ..
+    "    |cff999999-|r Nutzt du dafür ein anderes Addon? Deaktiviere sie unter Optionen > Suche"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Alias hinzufügen"
@@ -371,6 +375,7 @@ L["CTX_CREATE_MACRO_ICON_TT"] = "Makro mit Symbol + #showtooltip erstellen"
 L["ICON_SEARCH_APP"] = "Symbolsuche"
 L["ICON_COPY_HINT"] = "Drückt Strg+C, um die FileDataID von\n\"%s\" zu kopieren:"
 L["ICON_GRID_RCLICK_HINT"] = "Rechtsklick auf ein Symbol für Optionen"
+L["ICON_MODULE_DISABLED"] = "Symbolsuche nicht verfügbar: Aktiviere das Addon \"EasyFind [Icon Search]\" in deiner Addon-Liste."
 L["CTX_COPY_ICON_NAME"] = "Symbolnamen kopieren"
 L["CTX_COPY_ICON_PATH"] = "Texturpfad kopieren"
 L["FILTER_EXTRA"]                       = "Extra"

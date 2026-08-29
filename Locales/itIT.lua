@@ -256,11 +256,15 @@ L["WHATSNEW_CHAT_HELLO"]                = "Benvenuto in |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "qui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vedi il changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffCalcolatrice: oro, argento e rame|r\n" ..
-    "    |cff999999-|r Scrivi 4g / 5 e ottieni 80s; 450s si converte in 4g 50s\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffMenu e tastiera più fluidi|r\n" ..
-    "    |cff999999-|r ESC esce dai menu dei filtri un livello alla volta\n" ..
-    "    |cff999999-|r Il menu delle app può essere usato interamente da tastiera (Tab, Invio, frecce), come il resto della barra di ricerca"
+    "|cffFFD100\226\128\162|r |cffffffffRicerca icone, una nuova app (e altre in arrivo!)|r\n" ..
+    "    |cff999999-|r Sfoglia e filtra tutte le icone di gioco in una griglia; clic sinistro apre una finestra per copiare l'ID dell'icona, clic destro crea una macro con essa e altro\n" ..
+    "    |cff999999-|r 3 modi per entrare:\n" ..
+    "        |cff9999991.|r Aprila dal menu delle app |TInterface\\AddOns\\EasyFind\\textures\\apps-icon:12:12:0:-2|t\n" ..
+    "        |cff9999992.|r Cerca semplicemente \"Ricerca icone\"\n" ..
+    "        |cff9999993.|r Scrivi il filtro rapido @icons nella ricerca\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffRicerca nel selettore di icone delle macro|r\n" ..
+    "    |cff999999-|r Stai creando una macro? Il selettore di icone del gioco ora ha una barra di ricerca\n" ..
+    "    |cff999999-|r Usi un altro addon per quello? Disattivala in Opzioni > Ricerca"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Aggiungi alias"
@@ -369,6 +373,7 @@ L["CTX_CREATE_MACRO_ICON_TT"] = "Crea una macro con icona + #showtooltip"
 L["ICON_SEARCH_APP"] = "Ricerca icone"
 L["ICON_COPY_HINT"] = "Premi Ctrl+C per copiare il FileDataID di\n\"%s\":"
 L["ICON_GRID_RCLICK_HINT"] = "Clic destro su un'icona per le opzioni"
+L["ICON_MODULE_DISABLED"] = "Ricerca icone non disponibile: attiva l'addon \"EasyFind [Icon Search]\" nella lista degli addon."
 L["CTX_COPY_ICON_NAME"] = "Copia nome dell'icona"
 L["CTX_COPY_ICON_PATH"] = "Copia percorso della texture"
 L["FILTER_EXTRA"]                       = "Extra"

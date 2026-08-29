@@ -1,12 +1,15 @@
 ## Interface: 120100, 120007, 120001, 120000
-## Title: EasyFind [Calculator]
-## Notes: Inline and popup calculator companion for EasyFind
+## Title: EasyFind [Icon Search]
+## Notes: Icon Search app companion for EasyFind, loaded on first use
 ## Author: justawower
 ## Version: 3.0.0
 ## IconTexture: Interface\AddOns\EasyFind\textures\SpyglassMinimap
 ## Category: UI
 ## RequiredDeps: EasyFind
+## LoadOnDemand: 1
 ## DefaultState: enabled
 
-Core.lua
-Popup.lua
+Data.lua
+IconSearch.lua
+IconGrid.lua
+IconPickerSearch.lua

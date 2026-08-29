@@ -1935,6 +1935,12 @@ local function BuildSearchTab(ctx)
     macroPickerSearchCheckbox:SetScript("OnClick", function(self)
         EasyFind.db.macroPickerSearch = self:GetChecked() and true or false
         if self.RefreshVisual then self:RefreshVisual() end
+        -- Enabling with the LoadOnDemand companion not yet in pulls it in
+        -- so the picker bar can attach; the loaded module then refreshes.
+        if not ns.IconPickerSearch and EasyFind.db.macroPickerSearch
+           and ns.RequestIconSearch then
+            ns.RequestIconSearch()
+        end
         if ns.IconPickerSearch and ns.IconPickerSearch.Refresh then
             ns.IconPickerSearch:Refresh()
         end

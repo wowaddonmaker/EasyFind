@@ -1,11 +1,14 @@
--- Tests for Search/IconSearch.lua (the @icons grid data layer) against the
+-- Tests for Apps/Icons/IconSearch.lua (the @icons grid data layer) against the
 -- real generated blob.
 
 local H = require("Harness")
 local env = H.newEnv()
 local ns = H.newNs(env)
-H.loadModule("Database/IconData.lua", env, ns)
-local IconSearch = H.loadModule("Search/IconSearch.lua", env, ns)
+-- The whole module ships as the EasyFind_Icons companion, which reads
+-- the parent addon's ns via the EasyFind._ns handshake.
+env.EasyFind._ns = ns
+H.loadModule("Apps/Icons/Data.lua", env, ns)
+local IconSearch = H.loadModule("Apps/Icons/IconSearch.lua", env, ns)
 
 local tests = {}
 local scratch = {}
@@ -100,11 +103,25 @@ function tests.filter_bareNumberIsFileDataID()
     H.assertEq(name, "inv_sword_04")
 end
 
-function tests.filter_hashIsExactID()
-    H.assertEq(IconSearch:Filter("#135274", scratch), 1)
+function tests.filter_idPrefixNarrows()
+    -- Typing digits sweeps every FileDataID starting with them, and each
+    -- further digit narrows the sweep (never widens it).
+    local n13 = IconSearch:Filter("#13", scratch)
+    local n135 = IconSearch:Filter("#135", scratch)
+    local n1352 = IconSearch:Filter("#1352", scratch)
+    H.assertTrue(n13 > n135 and n135 > n1352 and n1352 >= 1,
+        ("expected narrowing, got %d -> %d -> %d"):format(n13, n135, n1352))
+    for i = 1, n1352 do
+        local _, id = IconSearch:GetIcon(scratch[i])
+        H.assertTrue(tostring(id):sub(1, 4) == "1352", "non-prefix id: " .. id)
+    end
+end
+
+function tests.filter_hashExactListsFirst()
+    local n = IconSearch:Filter("#135274", scratch)
+    H.assertTrue(n >= 1)
     local _, id = IconSearch:GetIcon(scratch[1])
     H.assertEq(id, 135274)
-    H.assertEq(IconSearch:Filter("#1", scratch), 0)
     -- spell:/item:/achievement: need live APIs; absent here they degrade to 0
     H.assertEq(IconSearch:Filter("spell:133", scratch), 0)
 end

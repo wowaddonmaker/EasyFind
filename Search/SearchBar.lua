@@ -951,7 +951,10 @@ function Search:CreateSearchFrame()
 
     local filterArrow = filterBtn:CreateTexture(nil, "OVERLAY")
     filterArrow:SetSize(11, 11)
-    filterArrow:SetPoint("CENTER")
+    -- 1px down: a downward triangle's optical center (centroid, a third up
+    -- from the base) sits above its bounding-box center, so a box-centered
+    -- arrow reads high against the round glow, tip at the glow's middle.
+    filterArrow:SetPoint("CENTER", 0, -1)
     -- Custom flat triangle (textures/filter-arrow.tga) rather than a cropped
     -- Blizzard texture, so it stays crisp at higher search scales.
     filterArrow:SetTexture(ns.FILTER_ARROW_TEX)

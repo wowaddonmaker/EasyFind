@@ -256,11 +256,15 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bem-vindo ao |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "aqui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver o changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffCalculadora: ouro, prata e cobre|r\n" ..
-    "    |cff999999-|r Digite 4g / 5 e receba 80s; 450s converte para 4g 50s\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffMenus e teclado mais fluidos|r\n" ..
-    "    |cff999999-|r ESC sai dos menus de filtros um nível por vez\n" ..
-    "    |cff999999-|r O menu de aplicativos pode ser usado todo pelo teclado (Tab, Enter, setas), como o resto da barra de busca"
+    "|cffFFD100\226\128\162|r |cffffffffBusca de ícones, um novo aplicativo (e vêm mais por aí!)|r\n" ..
+    "    |cff999999-|r Navegue e filtre todos os ícones do jogo em uma grade; clique esquerdo abre uma janela para copiar o ID do ícone, clique direito cria um macro com ele e mais\n" ..
+    "    |cff999999-|r 3 formas de entrar:\n" ..
+    "        |cff9999991.|r Abra pelo menu de aplicativos |TInterface\\AddOns\\EasyFind\\textures\\apps-icon:12:12:0:-2|t\n" ..
+    "        |cff9999992.|r Simplesmente busque \"Busca de ícones\"\n" ..
+    "        |cff9999993.|r Digite o filtro rápido @icons na busca\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffBusca no seletor de ícones de macros|r\n" ..
+    "    |cff999999-|r Criando um macro? O seletor de ícones do jogo agora tem barra de busca\n" ..
+    "    |cff999999-|r Usa outro addon para isso? Desative-a em Opções > Busca"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Adicionar apelido"
@@ -369,6 +373,7 @@ L["CTX_CREATE_MACRO_ICON_TT"] = "Criar macro com ícone + #showtooltip"
 L["ICON_SEARCH_APP"] = "Busca de ícones"
 L["ICON_COPY_HINT"] = "Pressione Ctrl+C para copiar o FileDataID de\n\"%s\":"
 L["ICON_GRID_RCLICK_HINT"] = "Clique com o botão direito em qualquer ícone para opções"
+L["ICON_MODULE_DISABLED"] = "Busca de ícones indisponível: ative o addon \"EasyFind [Icon Search]\" na sua lista de addons."
 L["CTX_COPY_ICON_NAME"] = "Copiar nome do ícone"
 L["CTX_COPY_ICON_PATH"] = "Copiar caminho da textura"
 L["FILTER_EXTRA"]                       = "Extra"

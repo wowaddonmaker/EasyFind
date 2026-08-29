@@ -4,6 +4,26 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [3.0.0] - 2026-08-29
+
+### Added
+- **Icon Search, a new app**: type `@icons` (or open it from the apps menu, or search "Icon Search") to browse all game icons in a live-filtered grid. Left click opens a window to copy the icon's FileDataID; right click offers copy ID/name/path and creating a macro with that icon, blank-titled, plain or with a `#showtooltip` first line. Search understands words with plural matching (`swords`), alternatives (`sword/axe`, or comma-separated queries), exclusion (`-inv`), wildcards (`inv_sword_*`), IDs (`135274`, `#135274`), and the game's own link forms (`spell:133`, `item:6948`) including shift-clicked chat links
+- **Search inside the macro icon picker**: the game's own icon picker (macro creation, and anywhere else it appears) gains an EasyFind search bar running the same engine. It steps aside automatically if another icon-picker addon is present, and can be turned off in Options > Search
+- The entire Icon Search module (data, grid, picker bar) ships as the `EasyFind_Icons` companion addon, loaded on demand: it costs nothing at login and nothing ever until the first time icon search is actually used, and can be disabled entirely from the AddOns list
+- **Fully keyboard-driven grid**: Down enters, arrows and Alt+HJKL move, Enter copies, Tab opens the icon's menu, ESC steps back out — same conventions as the rest of the search bar
+
+### Changed
+- **New default look**: fresh installs start on the Midnight theme with window borders off; existing setups keep their saved choices
+- **Filter button hover** drops the gold ring; the glow alone is the hover and focus look, matching the apps button
+- **Tutorial texts condensed** so slides no longer overflow the wizard window
+
+### Fixed
+- An active quick filter's view (including the icon grid) no longer gets replaced by pinned items when focus bounces off menus or popups
+- Keyboard-focused menu rows show the normal themed highlight instead of a gold overlay
+- Several tutorial slides and POI labels shipped untranslated in most locales; all translated, and a new CI check now blocks untranslated locale values from ever shipping again
+
+---
+
 ## [2.4.5] - 2026-08-24
 
 ### Added

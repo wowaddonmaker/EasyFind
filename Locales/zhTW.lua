@@ -256,11 +256,15 @@ L["WHATSNEW_CHAT_HELLO"]                = "歡迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "這裡"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日誌"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff計算機：金幣、銀幣、銅幣|r\n" ..
-    "    |cff999999-|r 輸入 4g / 5 得到 80s；450s 換算為 4g 50s\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff更順暢的選單與鍵盤操作|r\n" ..
-    "    |cff999999-|r ESC 逐層退出篩選選單\n" ..
-    "    |cff999999-|r 應用程式選單與搜尋列的其他部分一樣，可完全用鍵盤操作（Tab、Enter、方向鍵）"
+    "|cffFFD100\226\128\162|r |cffffffff圖示搜尋，全新應用程式（更多精彩應用即將到來！）|r\n" ..
+    "    |cff999999-|r 在網格中瀏覽並篩選所有遊戲圖示；左鍵開啟可複製圖示 ID 的視窗，右鍵可用該圖示建立巨集等\n" ..
+    "    |cff999999-|r 3 種開啟方式：\n" ..
+    "        |cff9999991.|r 從應用程式選單開啟 |TInterface\\AddOns\\EasyFind\\textures\\apps-icon:12:12:0:-2|t\n" ..
+    "        |cff9999992.|r 直接搜尋「圖示搜尋」\n" ..
+    "        |cff9999993.|r 在搜尋列輸入 @icons 快速篩選\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff巨集圖示選擇視窗內的搜尋|r\n" ..
+    "    |cff999999-|r 建立巨集時，遊戲內建的圖示選擇視窗現在有了搜尋列\n" ..
+    "    |cff999999-|r 已經用其他插件實現？可在 選項 > 搜尋 中關閉"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "新增別名"
@@ -369,6 +373,7 @@ L["CTX_CREATE_MACRO_ICON_TT"] = "用此圖示建立含 #showtooltip 的巨集"
 L["ICON_SEARCH_APP"] = "圖示搜尋"
 L["ICON_COPY_HINT"] = "按 Ctrl+C 複製\n\"%s\" 的 FileDataID："
 L["ICON_GRID_RCLICK_HINT"] = "右鍵點擊任意圖示查看選項"
+L["ICON_MODULE_DISABLED"] = "圖示搜尋無法使用：請在插件列表中啟用 \"EasyFind [Icon Search]\" 插件。"
 L["CTX_COPY_ICON_NAME"] = "複製圖示名稱"
 L["CTX_COPY_ICON_PATH"] = "複製材質路徑"
 L["FILTER_EXTRA"]                       = "額外"

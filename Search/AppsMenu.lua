@@ -31,7 +31,7 @@ function ns.BuildApplicationEntries()
         iconSearchLauncher = true,
         noPin = true,
         nativeRun = function()
-            if ns.Results and ns.Results.OpenIconSearch then
+            if ns.RequestIconSearch and ns.RequestIconSearch() then
                 ns.Results:OpenIconSearch()
             end
         end,
@@ -178,8 +178,10 @@ function AppsMenu:Create(searchFrame, filterBtn)
     -- Immediately left of the filter button, so the bar's right-hand controls
     -- read as one cluster. A slightly narrower button pulls the whole control
     -- (glyph AND its hover glow together) closer to the filter button, instead
-    -- of nudging just the glyph, which left the glow offset.
-    btn:SetPoint("RIGHT", filterBtn, "LEFT", 0, 0)
+    -- of nudging just the glyph, which left the glow offset. The +4 tucks it
+    -- into the filter button's inner glow margin: with the old gold ring gone
+    -- the visible gap between the two glyphs read too wide.
+    btn:SetPoint("RIGHT", filterBtn, "LEFT", 4, 0)
     btn:SetWidth(searchFrame:GetHeight() - 6)
     btn:SetFrameLevel(searchFrame:GetFrameLevel() + 50)
 

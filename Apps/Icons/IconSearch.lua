@@ -1,4 +1,8 @@
-local _, ns = ...
+-- Part of the EasyFind_Icons LoadOnDemand companion: loaded on first
+-- icon-search use via ns.RequestIconSearch(), never at login.
+local EasyFind = EasyFind
+local ns = EasyFind and EasyFind._ns
+if not ns then return end
 
 -- Icon search data layer (GitHub #22): parses the packed icon blob
 -- (Database/IconData.lua, ~33k icons) into two parallel arrays once, on the
@@ -15,7 +19,8 @@ local _, ns = ...
 --   axe, mace 2h       comma splits whole alternative queries
 --   -word              the word must NOT match
 --   inv_sword_*        * and ? make the word a whole-name wildcard match
---   135274 or #135274  a FileDataID (# forces the ID-only reading)
+--   135274 or #135274  FileDataIDs by prefix, narrowing per digit; the
+--                      full ID lists first (# = IDs only, no name hits)
 --   spell:133 item:6948 achievement:12   the game's own hyperlink types:
 --                      the icon that spell/item/achievement uses
 --                      (shift-clicking a chat link types these for you)
@@ -36,6 +41,9 @@ local idToIndex
 
 local function EnsureIndex()
     if names then return total end
+    -- Data.lua runs earlier in this same LoadOnDemand companion, so the
+    -- blob is guaranteed present here; ns.RequestIconSearch (core) is
+    -- what gates whether any of this loads at all.
     local blob = ns.ICON_SEARCH_BLOB
     if type(blob) ~= "string" then return 0 end
     names, ids, total = {}, {}, 0
@@ -54,6 +62,10 @@ local function EnsureIndex()
         end
         pos = nl + 1
     end
+    -- The arrays are self-sufficient (Lua substrings are copies), so the
+    -- raw 1.2MB blob has no readers left; release it. The parsed index is
+    -- what stays for the session, keeping every later grid open instant.
+    ns.ICON_SEARCH_BLOB = nil
     return total
 end
 
@@ -109,6 +121,49 @@ local function GlobToPattern(word)
     local pat = word:gsub("[%^%$%(%)%%%.%[%]%+%-]", "%%%0")
     pat = pat:gsub("%*", ".*"):gsub("%?", ".")
     return "^" .. pat .. "$"
+end
+
+-- ID digits as strings, built lazily on the first numeric query so the
+-- per-keystroke prefix scan does no tostring churn.
+local idStrs
+
+local function EnsureIDStrings()
+    if idStrs then return end
+    idStrs = {}
+    for i = 1, EnsureIndex() do
+        idStrs[i] = tostring(ids[i])
+    end
+end
+
+-- Indices already emitted by the numeric prefix pass this Filter call, so
+-- the name loop doesn't list them twice.
+local numericSeen = {}
+
+-- Fill `out` with every icon whose FileDataID STARTS with the typed
+-- digits ("12" -> 125..., 129...; each further digit narrows). An exact
+-- full-ID match lists first. Deliberately prefix-only: digits have an
+-- order, unlike fuzzy text.
+local function CollectIDPrefix(digits, out, seen)
+    EnsureIDStrings()
+    local qlen = #digits
+    local m = 0
+    local exactIdx = IndexOfFileID(tonumber(digits))
+    if exactIdx then
+        m = 1
+        out[1] = exactIdx
+        if seen then seen[exactIdx] = true end
+    end
+    for i = 1, #idStrs do
+        if i ~= exactIdx then
+            local s = idStrs[i]
+            if #s > qlen and ssub(s, 1, qlen) == digits then
+                m = m + 1
+                out[m] = i
+                if seen then seen[i] = true end
+            end
+        end
+    end
+    return m
 end
 
 -- Parsed query scratch, module-level (this runs per keystroke). Three
@@ -208,33 +263,27 @@ function IconSearch:Filter(query, out)
         return 0
     end
 
-    -- #ID: explicitly a FileDataID, nothing else.
+    -- #ID: FileDataIDs only, narrowing by prefix as digits are typed
+    -- ("#13" sweeps every ID starting 13; the full ID lands on that one
+    -- icon, listed first).
     local hashID = query:match("^#(%d+)$")
     if hashID then
-        local idx = IndexOfFileID(tonumber(hashID))
-        if idx then
-            out[1] = idx
-            return 1
-        end
-        return 0
+        return CollectIDPrefix(hashID, out, nil)
     end
 
     local branchN = PrepareQuery(query)
     local m = 0
 
-    -- A whole-number query is first a FileDataID lookup; any name-substring
-    -- matches (icon names carry digit runs: _04, 2h, ...) follow it.
-    local numericIdx
+    -- A whole-number query filters FileDataIDs by prefix (exact match
+    -- first), then any name-substring matches (icon names carry digit
+    -- runs: _04, 2h, ...) follow.
+    wipe(numericSeen)
     if query:match("^%d+$") then
-        numericIdx = IndexOfFileID(tonumber(query))
-        if numericIdx then
-            m = 1
-            out[1] = numericIdx
-        end
+        m = CollectIDPrefix(query, out, numericSeen)
     end
 
     if branchN == 0 then
-        if numericIdx then return m end
+        if m > 0 then return m end
         for i = 1, count do out[i] = i end
         return count
     end
@@ -259,7 +308,7 @@ function IconSearch:Filter(query, out)
             end
             termStart = branchEnd[b] + 1
         end
-        if matched and i ~= numericIdx then
+        if matched and not numericSeen[i] then
             m = m + 1
             out[m] = i
         end

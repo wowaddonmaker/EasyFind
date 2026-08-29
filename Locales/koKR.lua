@@ -256,11 +256,15 @@ L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 �
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff계산기: 골드, 실버, 코퍼|r\n" ..
-    "    |cff999999-|r 4g / 5를 입력하면 80s가 나오고, 450s는 4g 50s로 변환됩니다\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff더 매끄러운 메뉴와 키보드|r\n" ..
-    "    |cff999999-|r ESC가 필터 메뉴를 한 단계씩 닫습니다\n" ..
-    "    |cff999999-|r 검색창의 다른 요소처럼 앱 메뉴도 키보드만으로 사용할 수 있습니다(Tab, Enter, 방향키)"
+    "|cffFFD100\226\128\162|r |cffffffff아이콘 검색, 새로운 앱 (더 멋진 앱들이 올 예정!)|r\n" ..
+    "    |cff999999-|r 모든 게임 아이콘을 격자에서 살펴보고 필터링하세요. 좌클릭은 아이콘 ID를 복사할 수 있는 창을 열고, 우클릭은 그 아이콘으로 매크로 만들기 등을 제공합니다\n" ..
+    "    |cff999999-|r 3가지 진입 방법:\n" ..
+    "        |cff9999991.|r 앱 메뉴에서 열기 |TInterface\\AddOns\\EasyFind\\textures\\apps-icon:12:12:0:-2|t\n" ..
+    "        |cff9999992.|r \"아이콘 검색\"을 그냥 검색\n" ..
+    "        |cff9999993.|r 검색창에 @icons 빠른 필터 입력\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff매크로 아이콘 선택 창의 검색|r\n" ..
+    "    |cff999999-|r 매크로를 만들 때 게임의 아이콘 선택 창에 검색창이 생겼습니다\n" ..
+    "    |cff999999-|r 다른 애드온을 쓰고 있다면 옵션 > 검색에서 끌 수 있습니다"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"
@@ -369,6 +373,7 @@ L["CTX_CREATE_MACRO_ICON_TT"] = "아이콘 + #showtooltip으로 매크로 만들
 L["ICON_SEARCH_APP"] = "아이콘 검색"
 L["ICON_COPY_HINT"] = "Ctrl+C를 눌러\n\"%s\"의 FileDataID를 복사하세요:"
 L["ICON_GRID_RCLICK_HINT"] = "아이콘을 우클릭하면 옵션이 표시됩니다"
+L["ICON_MODULE_DISABLED"] = "아이콘 검색을 사용할 수 없습니다. 애드온 목록에서 \"EasyFind [Icon Search]\" 애드온을 활성화하세요."
 L["CTX_COPY_ICON_NAME"] = "아이콘 이름 복사"
 L["CTX_COPY_ICON_PATH"] = "텍스처 경로 복사"
 L["FILTER_EXTRA"]                       = "추가"

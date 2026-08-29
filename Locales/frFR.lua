@@ -256,11 +256,15 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bienvenue dans |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "ici"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Voir le journal des modifications complet"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffCalculatrice : or, argent et cuivre|r\n" ..
-    "    |cff999999-|r Tapez 4g / 5 et obtenez 80s ; 450s se convertit en 4g 50s\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffMenus et clavier plus fluides|r\n" ..
-    "    |cff999999-|r Échap quitte les menus de filtres niveau par niveau\n" ..
-    "    |cff999999-|r Le menu des applications peut se piloter entièrement au clavier (Tab, Entrée, flèches), comme le reste de la barre de recherche"
+    "|cffFFD100\226\128\162|r |cffffffffRecherche d'icônes, une nouvelle application (d'autres arrivent !)|r\n" ..
+    "    |cff999999-|r Parcourez et filtrez toutes les icônes du jeu dans une grille ; clic gauche ouvre une fenêtre pour copier l'ID de l'icône, clic droit crée une macro avec elle et plus\n" ..
+    "    |cff999999-|r 3 façons d'y accéder :\n" ..
+    "        |cff9999991.|r Ouvrez-la depuis le menu des applications |TInterface\\AddOns\\EasyFind\\textures\\apps-icon:12:12:0:-2|t\n" ..
+    "        |cff9999992.|r Cherchez simplement \"Recherche d'icônes\"\n" ..
+    "        |cff9999993.|r Tapez le filtre rapide @icons dans la recherche\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffRecherche dans le sélecteur d'icônes de macros|r\n" ..
+    "    |cff999999-|r Vous créez une macro ? Le sélecteur d'icônes du jeu a désormais une barre de recherche\n" ..
+    "    |cff999999-|r Un autre addon s'en charge déjà ? Désactivez-la dans Options > Recherche"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Ajouter un alias"
@@ -369,6 +373,7 @@ L["CTX_CREATE_MACRO_ICON_TT"] = "Créer une macro avec icône + #showtooltip"
 L["ICON_SEARCH_APP"] = "Recherche d'icônes"
 L["ICON_COPY_HINT"] = "Appuyez sur Ctrl+C pour copier le FileDataID de\n\"%s\" :"
 L["ICON_GRID_RCLICK_HINT"] = "Clic droit sur une icône pour les options"
+L["ICON_MODULE_DISABLED"] = "Recherche d'icônes indisponible : activez l'addon \"EasyFind [Icon Search]\" dans votre liste d'addons."
 L["CTX_COPY_ICON_NAME"] = "Copier le nom de l'icône"
 L["CTX_COPY_ICON_PATH"] = "Copier le chemin de la texture"
 L["FILTER_EXTRA"]                       = "Extra"

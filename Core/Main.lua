@@ -279,6 +279,7 @@ local DB_DEFAULTS = {
     mapCategoryScope = "all",
     learnFromPicks = true,
     macroPickerSearch = true,
+    spotlightsDone = {},
     queryLearn = {},
 }
 -- Exposed so option resets restore from the same table first-run uses;
@@ -558,7 +559,7 @@ local SUGGESTED_KEYBINDS = {
 -- The version whose features the What's New popup currently describes. Bump
 -- ONLY when the popup content is rewritten; patch releases that keep the same
 -- content must not re-announce it to users who already saw it.
-local WHATSNEW_CONTENT_VERSION = "2.4.5"
+local WHATSNEW_CONTENT_VERSION = "3.0.0"
 
 local WHATSNEW_LINK_PREFIX = "easyfind:whatsnew:"
 local whatsNewHookInstalled = false
@@ -900,7 +901,7 @@ local function OnPlayerLogin()
     end
     SafeInit(ns.Search,        "UI")
     SafeInit(ns.Highlight, "Highlight")
-    SafeInit(ns.IconPickerSearch, "IconPickerSearch")
+    SafeInit(ns.FeatureSpotlight, "FeatureSpotlight")
     if ns.Options and ns.Options.RegisterWithBlizzardOptions then
         local ok, err = xpcall(ns.Options.RegisterWithBlizzardOptions, ErrorHandler, ns.Options)
         if not ok then

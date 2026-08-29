@@ -216,3 +216,34 @@ duplicateKeyChecker:SetScript("OnEvent", function(self)
         end
     end
 end)
+
+-- Icon Search ships as the LoadOnDemand EasyFind_Icons companion (data,
+-- grid, picker bar). This is the ONE load funnel: every entry point (the
+-- apps row, the @icons quick filter, the macro-UI watcher below) routes
+-- here, loads the companion on first use, and reports whether the module
+-- is available. Disabled companion = one explanatory chat line per
+-- session, then quiet no-ops.
+local iconModuleWarned = false
+function ns.RequestIconSearch()
+    if ns.Results.ShowIconGrid then return true end
+    if InCombatLockdown() then return false end
+    if C_AddOns and C_AddOns.LoadAddOn then
+        pcall(C_AddOns.LoadAddOn, "EasyFind_Icons")
+    end
+    if ns.Results.ShowIconGrid then return true end
+    if not iconModuleWarned then
+        iconModuleWarned = true
+        EasyFind:Print(ns.L["ICON_MODULE_DISABLED"])
+    end
+    return false
+end
+
+-- The macro icon picker's search bar lives in the companion too, so the
+-- game's macro UI loading is itself a use: pull the companion in (unless
+-- the user turned the picker bar off) so the bar can attach.
+if EventUtil and EventUtil.ContinueOnAddOnLoaded then
+    EventUtil.ContinueOnAddOnLoaded("Blizzard_MacroUI", function()
+        if EasyFind.db and EasyFind.db.macroPickerSearch == false then return end
+        ns.RequestIconSearch()
+    end)
+end

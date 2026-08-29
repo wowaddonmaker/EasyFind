@@ -1,4 +1,8 @@
-local _, ns = ...
+-- Part of the EasyFind_Icons LoadOnDemand companion: loaded on first
+-- icon-search use via ns.RequestIconSearch(), never at login.
+local EasyFind = EasyFind
+local ns = EasyFind and EasyFind._ns
+if not ns then return end
 
 -- The @icons grid (GitHub #22): the results dropdown becomes a fixed grid of
 -- icon cells, macro-picker style, filtered live by whatever follows @icons.
@@ -308,6 +312,10 @@ function Results:ShowIconGrid(query)
     -- OnSizeChanged re-render fires 0.02s after the grid's own resize and
     -- repaints those rows over the grid (the open-then-instantly-close flash).
     Results._cachedHierarchical = nil
+
+    -- Reaching the grid AT ALL (menu row, launcher row, typed @icons)
+    -- retires the new-feature spotlight; the user found it.
+    if ns.FeatureSpotlight then ns.FeatureSpotlight:Complete("iconSearch30") end
 
     query = query or ""
     local sameQuery = query == lastQuery

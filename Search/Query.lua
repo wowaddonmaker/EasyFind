@@ -202,9 +202,12 @@ function Search:OnSearchTextChanged(text, force)
     Tooltips:ClearResultTooltips()
     local quickFilter = self:GetQuickFilter()
     -- @icons owns the whole dropdown: the icon grid renders instead of the
-    -- row pipeline, filtered live by whatever follows the token.
+    -- row pipeline, filtered live by whatever follows the token. The grid
+    -- lives in the LoadOnDemand companion; first use pulls it in here.
     if quickFilter and quickFilter.key == "icons" then
-        Results:ShowIconGrid(text or "")
+        if ns.RequestIconSearch and ns.RequestIconSearch() then
+            Results:ShowIconGrid(text or "")
+        end
         return
     end
     if (not text or text == "") and not quickFilter then

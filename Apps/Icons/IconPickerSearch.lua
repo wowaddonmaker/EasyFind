@@ -1,4 +1,8 @@
-local _, ns = ...
+-- Part of the EasyFind_Icons LoadOnDemand companion: loaded on first
+-- icon-search use via ns.RequestIconSearch(), never at login.
+local EasyFind = EasyFind
+local ns = EasyFind and EasyFind._ns
+if not ns then return end
 
 -- A search bar inside the game's own macro icon picker (GitHub #22): the
 -- @icons grid covers finding an icon first, this covers the player already
@@ -210,6 +214,13 @@ function IconPickerSearch:Refresh()
         AuditCoexistence(popup)
         popup.IconSelector:UpdateSelections()
     end
+end
+
+-- The companion loads mid-session (no Core SafeInit pass runs for it);
+-- self-initialize with the same error containment core init gets.
+local initOk, initErr = pcall(function() IconPickerSearch:Initialize() end)
+if not initOk then
+    ns.Utils.DebugPrint("IconPickerSearch init failed: " .. tostring(initErr))
 end
 
 return IconPickerSearch

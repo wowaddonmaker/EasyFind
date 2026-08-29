@@ -256,11 +256,15 @@ L["WHATSNEW_CHAT_HELLO"]                = "¡Bienvenido a |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "aquí"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver el registro de cambios completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffCalculadora: oro, plata y cobre|r\n" ..
-    "    |cff999999-|r Escribe 4g / 5 y obtén 80s; 450s se convierte en 4g 50s\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffMenús y teclado más fluidos|r\n" ..
-    "    |cff999999-|r ESC sale de los menús de filtros nivel a nivel\n" ..
-    "    |cff999999-|r El menú de aplicaciones puede manejarse por completo con el teclado (Tab, Intro, flechas), como el resto de la barra de búsqueda"
+    "|cffFFD100\226\128\162|r |cffffffffBúsqueda de iconos, una nueva aplicación (¡y vienen más!)|r\n" ..
+    "    |cff999999-|r Explora y filtra todos los iconos del juego en una cuadrícula; clic izquierdo abre una ventana para copiar el ID del icono, clic derecho crea un macro con él y más\n" ..
+    "    |cff999999-|r 3 formas de entrar:\n" ..
+    "        |cff9999991.|r Ábrela desde el menú de aplicaciones |TInterface\\AddOns\\EasyFind\\textures\\apps-icon:12:12:0:-2|t\n" ..
+    "        |cff9999992.|r Simplemente busca \"Búsqueda de iconos\"\n" ..
+    "        |cff9999993.|r Escribe el filtro rápido @icons en la búsqueda\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffBúsqueda en el selector de iconos de macros|r\n" ..
+    "    |cff999999-|r ¿Creando un macro? El selector de iconos del juego ahora tiene barra de búsqueda\n" ..
+    "    |cff999999-|r ¿Usas otro accesorio para eso? Desactívala en Opciones > Búsqueda"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Añadir alias"
@@ -369,6 +373,7 @@ L["CTX_CREATE_MACRO_ICON_TT"] = "Crear macro con icono + #showtooltip"
 L["ICON_SEARCH_APP"] = "Búsqueda de iconos"
 L["ICON_COPY_HINT"] = "Pulsa Ctrl+C para copiar el FileDataID de\n\"%s\":"
 L["ICON_GRID_RCLICK_HINT"] = "Haz clic derecho en cualquier icono para ver opciones"
+L["ICON_MODULE_DISABLED"] = "Búsqueda de iconos no disponible: activa el accesorio \"EasyFind [Icon Search]\" en tu lista de accesorios."
 L["CTX_COPY_ICON_NAME"] = "Copiar nombre del icono"
 L["CTX_COPY_ICON_PATH"] = "Copiar ruta de la textura"
 L["FILTER_EXTRA"]                       = "Extra"

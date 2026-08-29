@@ -256,11 +256,15 @@ L["WHATSNEW_CHAT_HELLO"]                = "欢迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "这里"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日志"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff计算器：金币、银币、铜币|r\n" ..
-    "    |cff999999-|r 输入 4g / 5 得到 80s；450s 换算为 4g 50s\n" ..
-    "|cffFFD100\226\128\162|r |cffffffff更顺畅的菜单与键盘操作|r\n" ..
-    "    |cff999999-|r ESC 逐层退出筛选菜单\n" ..
-    "    |cff999999-|r 应用菜单与搜索栏的其他部分一样，可完全用键盘操作（Tab、回车、方向键）"
+    "|cffFFD100\226\128\162|r |cffffffff图标搜索，全新应用（更多精彩应用即将到来！）|r\n" ..
+    "    |cff999999-|r 在网格中浏览并筛选所有游戏图标；左键打开可复制图标 ID 的窗口，右键可用该图标创建宏等\n" ..
+    "    |cff999999-|r 3 种打开方式：\n" ..
+    "        |cff9999991.|r 从应用菜单打开 |TInterface\\AddOns\\EasyFind\\textures\\apps-icon:12:12:0:-2|t\n" ..
+    "        |cff9999992.|r 直接搜索“图标搜索”\n" ..
+    "        |cff9999993.|r 在搜索栏输入 @icons 快速筛选\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff宏图标选择窗口内的搜索|r\n" ..
+    "    |cff999999-|r 创建宏时，游戏自带的图标选择窗口现在有了搜索栏\n" ..
+    "    |cff999999-|r 已经用其他插件实现？可在 选项 > 搜索 中关闭"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "添加别名"
@@ -369,6 +373,7 @@ L["CTX_CREATE_MACRO_ICON_TT"] = "用此图标创建含 #showtooltip 的宏"
 L["ICON_SEARCH_APP"] = "图标搜索"
 L["ICON_COPY_HINT"] = "按 Ctrl+C 复制\n\"%s\" 的 FileDataID："
 L["ICON_GRID_RCLICK_HINT"] = "右键单击任意图标查看选项"
+L["ICON_MODULE_DISABLED"] = "图标搜索不可用：请在插件列表中启用 \"EasyFind [Icon Search]\" 插件。"
 L["CTX_COPY_ICON_NAME"] = "复制图标名称"
 L["CTX_COPY_ICON_PATH"] = "复制材质路径"
 L["FILTER_EXTRA"]                       = "额外"

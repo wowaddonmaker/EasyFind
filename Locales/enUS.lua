@@ -279,11 +279,15 @@ L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffCalculator: gold, silver and copper|r\n" ..
-    "    |cff999999-|r Type 4g / 5 and get 80s; 450s converts to 4g 50s\n" ..
-    "|cffFFD100\226\128\162|r |cffffffffSmoother menus and keyboard|r\n" ..
-    "    |cff999999-|r ESC steps out of filter menus one level at a time\n" ..
-    "    |cff999999-|r The apps menu can be used entirely from the keyboard (Tab, Enter, arrows), just like the rest of the search bar"
+    "|cffFFD100\226\128\162|r |cffffffffIcon Search, a new app (with more exciting ones to come!)|r\n" ..
+    "    |cff999999-|r Browse and filter all game icons in a grid; left click opens a window to copy the icon's ID, right click creates a macro with it and more\n" ..
+    "    |cff999999-|r 3 entry points:\n" ..
+    "        |cff9999991.|r Open it from the apps menu |TInterface\\AddOns\\EasyFind\\textures\\apps-icon:12:12:0:-2|t\n" ..
+    "        |cff9999992.|r Simply search \"Icon Search\"\n" ..
+    "        |cff9999993.|r Type the @icons quick filter in search\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffSearch inside the macro icon picker|r\n" ..
+    "    |cff999999-|r Making a macro? The game's own icon picker now has a search bar\n" ..
+    "    |cff999999-|r Using another addon for that? Turn it off in Options > Search"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels
@@ -400,6 +404,7 @@ L["CTX_CREATE_MACRO_ICON_TT"] = "Create macro with icon + #showtooltip"
 L["ICON_SEARCH_APP"] = "Icon Search"
 L["ICON_COPY_HINT"] = "Press Ctrl+C to copy the FileDataID of\n\"%s\":"
 L["ICON_GRID_RCLICK_HINT"] = "Right click any icon for options"
+L["ICON_MODULE_DISABLED"] = "Icon Search is unavailable: enable the \"EasyFind [Icon Search]\" addon in your AddOns list."
 L["CTX_COPY_ICON_NAME"] = "Copy icon name"
 L["CTX_COPY_ICON_PATH"] = "Copy texture path"
 L["FILTER_EXTRA"]                       = "Extra"
