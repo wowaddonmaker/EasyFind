@@ -26,7 +26,42 @@ function ns.BuildApplicationEntries()
     -- Icon Search (GitHub #22): opens the @icons grid, same entry point as
     -- the searchable launcher row. iconSearchLauncher picks its own glyph in
     -- GetFlatCategoryIcon; without it, nativeRun lands on the command icon.
-    apps[#apps + 1] = {
+    -- Hidden when its LoadOnDemand companion is disabled in the AddOns list.
+    if not (ns.IsCompanionLoadable and not ns.IsCompanionLoadable("EasyFind_Icons")) then
+        apps[#apps + 1] = {
+            name = ns.L["ICON_SEARCH_APP"],
+            iconSearchLauncher = true,
+            noPin = true,
+            nativeRun = function()
+                if ns.RequestIconSearch and ns.RequestIconSearch() then
+                    ns.Results:OpenIconSearch()
+                end
+            end,
+        }
+    end
+    return apps
+end
+
+-- The searchable launcher row: typing "icons" / "icon search" (or the
+-- localized app name) offers a row that opens the icon grid. CORE-owned:
+-- it is an entry point to the LoadOnDemand companion, so it must exist
+-- before the companion has ever loaded (and hide when the companion is
+-- disabled outright).
+local iconLauncherRow
+function ns.Results:GetIconSearchLauncherMatch(text)
+    if not text or #text < 3 then return nil end
+    if ns.IsCompanionLoadable and not ns.IsCompanionLoadable("EasyFind_Icons") then
+        return nil
+    end
+    local q = text:lower()
+    local target = (ns.L["ICON_SEARCH_APP"] or ""):lower()
+    local sfind = ns.Utils.sfind
+    if not (sfind(target, q, 1, true)
+            or sfind("icon search", q, 1, true)
+            or sfind("icons", q, 1, true)) then
+        return nil
+    end
+    iconLauncherRow = iconLauncherRow or {
         name = ns.L["ICON_SEARCH_APP"],
         iconSearchLauncher = true,
         noPin = true,
@@ -36,7 +71,7 @@ function ns.BuildApplicationEntries()
             end
         end,
     }
-    return apps
+    return iconLauncherRow
 end
 
 -- The waffle: 3x3 round dots, drawn rather than shipped so it tints with the
@@ -208,15 +243,23 @@ function AppsMenu:Create(searchFrame, filterBtn)
     dropdown:Hide()
     ns.StyleMenuPanel(dropdown)
 
-    -- Same outside-click close the filter dropdown uses: a menu that will not
-    -- go away when you click past it is worse than no menu.
-    dropdown:SetScript("OnUpdate", function(self)
-        local inside = Utils.IsFrameVisiblyMouseOver(self) or Utils.IsFrameVisiblyMouseOver(btn)
-        if not inside and not self._mouseWasInside
-           and (IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton")) then
+    -- Outside-click close, EVENT-driven like AttachOutsideClickClose: the
+    -- event registers only while the menu is shown and fires only on actual
+    -- clicks, so an open menu costs nothing per frame. (This replaced an
+    -- every-frame OnUpdate poll that showed up as constant CPU whenever the
+    -- menu was open.) GLOBAL_MOUSE_DOWN dispatches before click handlers
+    -- run, so a click on a row still reads as inside.
+    dropdown:HookScript("OnShow", function(self)
+        self:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    end)
+    dropdown:HookScript("OnHide", function(self)
+        self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+    end)
+    dropdown:SetScript("OnEvent", function(self, event)
+        if event ~= "GLOBAL_MOUSE_DOWN" then return end
+        if not (Utils.IsFrameVisiblyMouseOver(self) or Utils.IsFrameVisiblyMouseOver(btn)) then
             self:Hide()
         end
-        self._mouseWasInside = inside
     end)
 
     -- Keyboard nav, armed only when the menu is OPENED from the keyboard

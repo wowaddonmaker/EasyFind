@@ -11,6 +11,8 @@ local L = ns.L
 
 local CreateFrame = CreateFrame
 local C_Timer = C_Timer
+local GetTime = GetTime
+local mfloor = Utils.mfloor
 
 local GOLD_COLOR = ns.GOLD_COLOR
 local RESULT_SHORTCUT = Shortcuts.RESULT_SHORTCUT
@@ -140,9 +142,30 @@ function Results:CreateResultsFrame()
 
     -- Minimal retail-style scrollbar (overlays right edge, no content squish)
     resultsFrame.scrollBar = ns.Utils.CreateMinimalScrollBar(scrollFrame, resultsFrame)
-    scrollFrame:HookScript("OnVerticalScroll", function()
-        Shortcuts:UpdateVisibleResultShortcuts()
+    -- Shortcut badges change only when the visible ROW SET changes, but the
+    -- eased scroll fires OnVerticalScroll every frame at sub-pixel steps;
+    -- recomputing per fire was most of the scroll-spam CPU. 12px buckets:
+    -- comfortably under the shortest row height, so no boundary crossing
+    -- can be missed, while a lerp frame moves nothing.
+    local lastShortcutBucket
+    scrollFrame:HookScript("OnVerticalScroll", function(_, offset)
+        local bucket = mfloor((offset or 0) / 12)
+        if bucket ~= lastShortcutBucket then
+            lastShortcutBucket = bucket
+            Shortcuts:UpdateVisibleResultShortcuts()
+        end
     end)
+
+    -- Is the results list mid-scroll (eased glide in flight, or wheel/drag
+    -- activity in the last quarter second)? Deferred repaints (the item
+    -- catalog's name-refresh) hold off while this is true so they never
+    -- rebuild the list under an active scroll.
+    function Results:IsResultsScrollBusy()
+        local bar = resultsFrame and resultsFrame.scrollBar
+        if not bar then return false end
+        if bar._scrollTarget then return true end
+        return (GetTime() - (bar._lastActivity or 0)) < 0.25
+    end
 
     -- Override-binding owners are SECURE show/hide handlers parented to the
     -- results frame: the _onhide snippet clears their bindings in secure

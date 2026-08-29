@@ -531,23 +531,5 @@ function Results:OpenIconSearch()
     end
 end
 
--- The searchable launcher row: typing "icons" / "icon search" (or the
--- localized app name) offers a row that just runs OpenIconSearch.
-local launcherRow
-function Results:GetIconSearchLauncherMatch(text)
-    if not text or #text < 3 then return nil end
-    local q = text:lower()
-    local target = (L["ICON_SEARCH_APP"] or ""):lower()
-    if not (Utils.sfind(target, q, 1, true)
-            or Utils.sfind("icon search", q, 1, true)
-            or Utils.sfind("icons", q, 1, true)) then
-        return nil
-    end
-    launcherRow = launcherRow or {
-        name = L["ICON_SEARCH_APP"],
-        iconSearchLauncher = true,
-        noPin = true,
-        nativeRun = function() Results:OpenIconSearch() end,
-    }
-    return launcherRow
-end
+-- The searchable launcher row lives in CORE (Search/AppsMenu.lua): it is
+-- an entry point and must exist before this companion has ever loaded.

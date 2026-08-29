@@ -421,7 +421,13 @@ function Filters:BuildClassSpecSelector(opts)
         -- Auto-hide the class flyout 0.2s after the cursor leaves it (unless
         -- it returns to the flyout or the "Class" row). Keyboard mode keeps
         -- it open until an explicit close.
-        Utils.SafeOnUpdate(classFlyout, function(self)
+        -- Throttled to 20Hz: leave-detection feeding a 0.2s grace timer
+        -- gains nothing from frame-rate polling.
+        local hoverAccum = 0
+        Utils.SafeOnUpdate(classFlyout, function(self, elapsed)
+            hoverAccum = hoverAccum + (elapsed or 0)
+            if hoverAccum < 0.05 then return end
+            hoverAccum = 0
             if self:IsKeyboardEnabled() then return end
             if not self:IsMouseOver() and not specPopup:IsMouseOver() then
                 if not self._leaveTimer then

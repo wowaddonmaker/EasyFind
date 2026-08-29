@@ -1125,9 +1125,22 @@ function ns.StyleMenuPanel(frame)
     if not frame._efMenuHighlightRefreshHooked then
         frame._efMenuHighlightRefreshHooked = true
         frame:HookScript("OnShow", function(self)
-            -- Re-fill on every open: menus are created once and would
-            -- otherwise keep the fill of whatever theme was active at
-            -- creation time. Steps are pcall-isolated: one failure must
+            -- Re-fill on open, but ONLY when the theme generation or the
+            -- window alpha changed since this panel's last refill:
+            -- hover-cascade flyouts open dozens of times a minute, and
+            -- running the full restyle pipeline on every open was the
+            -- filter menu's entire hover-spam CPU cost. A theme flip
+            -- while the panel is OPEN restyles through the registry
+            -- (RestyleShownMenuPanels); the stale stamp after one costs
+            -- a single redundant refill on the next open, nothing more.
+            local alpha = ns.GetSearchWindowAlpha()
+            if self._efMenuStyleGen == ns.uiThemeGeneration
+               and self._efMenuStyleAlpha == alpha then
+                return
+            end
+            self._efMenuStyleGen = ns.uiThemeGeneration
+            self._efMenuStyleAlpha = alpha
+            -- Steps are pcall-isolated: one failure must
             -- not strand the menu wearing the previous theme.
             pcall(ns.ApplyThemeFill, self)
             pcall(ns.SetRoundedRectBorderBgAlpha, self, ns.GetSearchWindowAlpha())

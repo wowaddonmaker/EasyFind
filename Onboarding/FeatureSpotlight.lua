@@ -129,6 +129,10 @@ function Spotlight:Initialize()
         id = "iconSearch30",
         steps = {
             function()
+                -- Never point at a feature whose companion can't load.
+                if ns.IsCompanionLoadable and not ns.IsCompanionLoadable("EasyFind_Icons") then
+                    return nil
+                end
                 local sf = ns.Search and ns.Search.GetSearchFrame and ns.Search:GetSearchFrame()
                 return sf and sf.appsBtn
             end,

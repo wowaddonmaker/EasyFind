@@ -267,3 +267,15 @@ function ns.RequestItemCatalog(announce)
     end
     return false
 end
+
+-- Can a LoadOnDemand companion load (or is it already in)? Entry-point UI
+-- (filter rows, quick filter suggestions, app rows, launchers) hides when
+-- the companion is disabled in the AddOns list, instead of advertising a
+-- feature that can only answer with an error notice.
+function ns.IsCompanionLoadable(name)
+    if name == "EasyFind_Items" and ns.ItemSearch then return true end
+    if name == "EasyFind_Icons" and ns.Results.ShowIconGrid then return true end
+    if not (C_AddOns and C_AddOns.GetAddOnEnableState) then return true end
+    local ok, state = pcall(C_AddOns.GetAddOnEnableState, name)
+    return ok and (tonumber(state) or 0) > 0
+end

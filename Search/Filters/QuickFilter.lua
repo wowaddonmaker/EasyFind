@@ -22,6 +22,7 @@ local L = ns.L
 
 local sfind, slower = Utils.sfind, Utils.slower
 local tsort = Utils.tsort
+local tremove = Utils.tremove
 local mmax = Utils.mmax
 local mceil = math.ceil
 local wipe = wipe
@@ -35,8 +36,8 @@ Filters.quickFilterOptions = {
     { key = "achievements",   canonical = "achievements",    label = _G["ACHIEVEMENTS"] or "Achievements",    categories = { "Achievement", "Achievements", "Achievement Category", "Guild Achievements" }, aliases = { "a", "ach", "achievement", "achievements" } },
     { key = "statistics",     canonical = "statistics",      label = _G["STATISTICS"] or "Statistics",      categories = { "Statistic", "Statistics" }, aliases = { "s", "stat", "stats", "statistic", "statistics" } },
     { key = "items",          canonical = "items",           label = _G["ITEMS"] or "Items",          categories = { "Item", "Bag", "Bank", "Warband" }, aliases = { "i", "item", "items" } },
-    { key = "catalog",        canonical = "gen",             label = L["FILTER_GENERAL_CATALOG"],      categories = { "Item" }, aliases = { "cat", "catalog", "general" } },
-    { key = "icons",          canonical = "icons",           label = L["FILTER_ICONS"],       categories = { "Icon" }, aliases = { "ic", "icon", "icons", "texture", "textures" } },
+    { key = "catalog",        canonical = "gen",             label = L["FILTER_GENERAL_CATALOG"],      categories = { "Item" }, aliases = { "cat", "catalog", "general" }, companion = "EasyFind_Items" },
+    { key = "icons",          canonical = "icons",           label = L["FILTER_ICONS"],       categories = { "Icon" }, aliases = { "ic", "icon", "icons", "texture", "textures" }, companion = "EasyFind_Icons" },
     { key = "bags",           canonical = "bags",            label = _G["BAGS"] or "Bags",            categories = { "Bag" }, aliases = { "b", "bag", "bags" } },
     { key = "bank",           canonical = "bank",            label = _G["BANK"] or "Bank",            categories = { "Bank" }, aliases = { "bank", "banked" } },
     -- The warband bank is a separate place from a character's own bank, so it
@@ -73,6 +74,17 @@ Filters.quickFilterOptions = {
 }
 
 Filters.quickFilterByAlias = {}
+
+-- Prune quick filters whose LoadOnDemand companion is disabled in the
+-- AddOns list (enable state is constant per session): their tokens then
+-- behave like any unknown @text instead of advertising a dead feature.
+for i = #Filters.quickFilterOptions, 1, -1 do
+    local def = Filters.quickFilterOptions[i]
+    if def.companion and ns.IsCompanionLoadable
+       and not ns.IsCompanionLoadable(def.companion) then
+        tremove(Filters.quickFilterOptions, i)
+    end
+end
 
 for i = 1, #Filters.quickFilterOptions do
     local def = Filters.quickFilterOptions[i]

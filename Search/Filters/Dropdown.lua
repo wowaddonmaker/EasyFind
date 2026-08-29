@@ -15,6 +15,17 @@ local UI_FILTER_OPTIONS = Filters.UI_FILTER_OPTIONS
 local SetFlyoutRowEnabled = Utils.SetFlyoutRowEnabled
 
 function Filters:RerunActiveSearch()
+    -- A filter change can be the moment the item catalog becomes eligible
+    -- (General Catalog re-checked, Items parent re-checked): load its
+    -- LoadOnDemand companion BEFORE re-running, so results include it now
+    -- instead of after a reload. Every filter-change path funnels through
+    -- here, whichever menu the checkbox lives in.
+    if ns.RequestItemCatalog and not ns.ItemSearch and ns.CategoryMap then
+        local uiFilters = EasyFind.db and EasyFind.db.uiSearchFilters
+        if not (uiFilters and ns.CategoryMap.IsProviderFilterOff(uiFilters, "catalog")) then
+            ns.RequestItemCatalog(false)
+        end
+    end
     local typed = Search.GetTypedQuery and Search:GetTypedQuery() or ""
     if typed ~= "" then
         Search:OnSearchTextChanged(typed)
@@ -1484,23 +1495,25 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
         end
     end)
 
-    -- Close when clicking outside (but not when interacting with sub-filter popups).
-    -- Both LeftButton AND RightButton trigger close: without the right-button
-    -- check, right-clicking outside dismisses the search bar (whose handler
-    -- listens for GLOBAL_MOUSE_DOWN regardless of button) but leaves the
-    -- filter dropdown stuck open.
-    -- One-frame grace: an in-menu selection hides its sub-popup synchronously, so
-    -- without this the poll would see the guard gone + cursor over empty space and
-    -- close the whole menu. Requiring "outside" for two consecutive polls keeps the
-    -- menu open through that frame while a genuine outside click still closes it.
-    Utils.SafeOnUpdate(dropdown, function(self)
-        if not self:IsShown() then self._mouseWasInside = nil; return end
-        local inside = Filters.IsMouseInFilterChain()
-        if not inside and not self._mouseWasInside
-           and (IsMouseButtonDown("LeftButton") or IsMouseButtonDown("RightButton")) then
-            self:Hide()
-        end
-        self._mouseWasInside = inside
+    -- Close when clicking outside (but not when interacting with sub-filter
+    -- popups). EVENT-driven like AttachOutsideClickClose: registered only
+    -- while shown, evaluated only on actual clicks, so the open menu costs
+    -- nothing per frame (the old every-frame poll of IsMouseInFilterChain
+    -- was constant CPU the whole time the menu was open). Any button
+    -- closes; GLOBAL_MOUSE_DOWN dispatches before click handlers run, so a
+    -- click on a row or sub-popup still reads as inside the chain -- the
+    -- popup a selection is about to close synchronously is still shown at
+    -- event time, which is the race the old poll needed its one-frame
+    -- grace for.
+    dropdown:HookScript("OnShow", function(self)
+        self:RegisterEvent("GLOBAL_MOUSE_DOWN")
+    end)
+    dropdown:HookScript("OnHide", function(self)
+        self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+    end)
+    dropdown:SetScript("OnEvent", function(self, event)
+        if event ~= "GLOBAL_MOUSE_DOWN" then return end
+        if not Filters.IsMouseInFilterChain() then self:Hide() end
     end)
 
     toggleBtn:SetScript("OnClick", function()

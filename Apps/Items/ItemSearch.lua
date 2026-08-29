@@ -78,11 +78,21 @@ end
 -- re-render the open query so the proper name replaces the fallback. Debounced
 -- so a burst of loads triggers a single re-render.
 local pendingLoads, attemptedLoads, loadListener, refreshTimer
+local pendingCount = 0
 
 local function ScheduleCatalogRefresh()
     if refreshTimer then return end
     refreshTimer = Utils.SafeAfter(0.15, function()
         refreshTimer = nil
+        -- Names streaming in WHILE the user scrolls must not each trigger a
+        -- full re-search + re-render mid-scroll (six full rebuilds in one
+        -- 6s scroll spam, measured): hold the refresh until the scroll
+        -- settles, then one rebuild paints every name that arrived.
+        if ns.Results and ns.Results.IsResultsScrollBusy
+           and ns.Results:IsResultsScrollBusy() then
+            ScheduleCatalogRefresh()
+            return
+        end
         local Search = ns.Search
         local sf = Search and Search.GetSearchFrame and Search:GetSearchFrame()
         local eb = sf and sf.editBox
@@ -118,17 +128,31 @@ function ItemSearch:NoteUncachedItem(itemID)
     attemptedLoads[itemID] = true
     pendingLoads = pendingLoads or {}
     pendingLoads[itemID] = true
+    -- ITEM_DATA_LOAD_RESULT fires for EVERY item-data load game-wide
+    -- (bags, tooltips, vendors, loot), so the listener is registered ONLY
+    -- while our own requests are in flight and unregistered the moment the
+    -- last one lands. Left registered, its handler ran on all that game
+    -- traffic forever: a measurable continuous CPU tick for a listener
+    -- with nothing to hear.
+    pendingCount = pendingCount + 1
     if not loadListener then
         loadListener = CreateFrame("Frame")
-        loadListener:RegisterEvent("ITEM_DATA_LOAD_RESULT")
         loadListener:SetScript("OnEvent", function(_, _, loadedID, success)
             if pendingLoads and pendingLoads[loadedID] then
                 pendingLoads[loadedID] = nil
+                pendingCount = pendingCount - 1
+                if pendingCount <= 0 then
+                    pendingCount = 0
+                    loadListener:UnregisterEvent("ITEM_DATA_LOAD_RESULT")
+                end
                 -- A failed load cannot change what renders; refreshing on it
                 -- is a re-render that shows the same fallback name again.
                 if success ~= false then ScheduleCatalogRefresh() end
             end
         end)
+    end
+    if pendingCount == 1 then
+        loadListener:RegisterEvent("ITEM_DATA_LOAD_RESULT")
     end
     if C_Item and C_Item.RequestLoadItemDataByID then
         C_Item.RequestLoadItemDataByID(itemID)

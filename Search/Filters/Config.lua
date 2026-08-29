@@ -67,7 +67,7 @@ local UI_FILTER_OPTIONS = {
       iconTex = ns.ITEMS_CATEGORY_ICON_TEX, iconCoords = ns.ITEMS_CATEGORY_ICON_COORDS,
       iconAspect = ns.ITEMS_CATEGORY_ICON_ASPECT,
       flyoutSubFilters = {
-          { key = "catalog", label = L["FILTER_GENERAL_CATALOG"], iconTex = ns.ITEMS_CATEGORY_ICON_TEX, iconCoords = ns.ITEMS_CATEGORY_ICON_COORDS, iconAspect = ns.ITEMS_CATEGORY_ICON_ASPECT, hasOptions = true },
+          { key = "catalog", label = L["FILTER_GENERAL_CATALOG"], iconTex = ns.ITEMS_CATEGORY_ICON_TEX, iconCoords = ns.ITEMS_CATEGORY_ICON_COORDS, iconAspect = ns.ITEMS_CATEGORY_ICON_ASPECT, hasOptions = true, companion = "EasyFind_Items" },
           { key = "bags", label = _G["BAGSLOT"] or _G["BAGS"] or "Bags", iconAtlas = "bag-main", hasOptions = true },
           { key = "bank", label = _G["BANK"] or "Bank", iconTex = ns.BANK_CATEGORY_ICON_TEX, iconCoords = ns.BANK_CATEGORY_ICON_COORDS, hasOptions = true },
       } },
@@ -419,6 +419,23 @@ function Filters.MapCategoryFilterLabel(category)
     local sub = ns.MapSearch and ns.MapSearch.GetSubBucket
         and ns.MapSearch.GetSubBucket(probe, bucket)
     return (sub and mapFilterLabels[sub]) or (bucket and mapFilterLabels[bucket]) or nil
+end
+
+-- Prune sub-filters whose LoadOnDemand companion is disabled in the
+-- AddOns list: a filter row for a module that can never load only
+-- advertises an error. Enable state is constant for the session (changing
+-- it requires a reload), so pruning once at load is exact. ONE owner:
+-- every consumer of the options table sees the pruned truth.
+for i = 1, #UI_FILTER_OPTIONS do
+    local subs = UI_FILTER_OPTIONS[i].flyoutSubFilters
+    if subs then
+        for si = #subs, 1, -1 do
+            if subs[si].companion and ns.IsCompanionLoadable
+               and not ns.IsCompanionLoadable(subs[si].companion) then
+                tremove(subs, si)
+            end
+        end
+    end
 end
 
 Filters.UI_FILTER_OPTIONS = UI_FILTER_OPTIONS
