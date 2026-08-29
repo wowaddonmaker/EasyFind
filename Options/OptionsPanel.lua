@@ -73,7 +73,7 @@ local UI_DEFAULTS = {
     combatHide = true,
     combatDim = false,
     moveDim = false,
-    windowBorder = true,
+    windowBorder = false,
     showAppsButton = true,
     showFilterButton = true,
     learnFromPicks = true,
@@ -1270,10 +1270,11 @@ local function BuildGeneralBindsTab(ctx)
     local themeRow, themeLabel = CreateSelectorRow(minimapBtnCheckbox, L["OPT_UI_THEME"])
     local themeChoices = ns.UI_THEME_ORDER or { "Midnight" }
     local themeBtnFrame, themeBtnText = CreateFlyoutSelector(
-        themeRow, "EasyFindTheme", SELECTOR_BTN_W, themeLabel, EasyFind.db.uiTheme or "Black"
+        themeRow, "EasyFindTheme", SELECTOR_BTN_W, themeLabel,
+        EasyFind.db.uiTheme or (ns.DB_DEFAULTS and ns.DB_DEFAULTS.uiTheme) or "Midnight"
     )
     optionsFrame.themeBtnText = themeBtnText
-    local defaultTheme = (ns.DB_DEFAULTS and ns.DB_DEFAULTS.uiTheme) or "Black"
+    local defaultTheme = (ns.DB_DEFAULTS and ns.DB_DEFAULTS.uiTheme) or "Midnight"
     -- Theme names are product names (like the indicator style names) and
     -- deliberately stay untranslated.
     local function ThemeFlyoutLabel(name)
@@ -3507,7 +3508,10 @@ function Options:Initialize()
         if self.RestyleTutorialLink then pcall(self.RestyleTutorialLink) end
         if self.UpdateHomeVersion then pcall(self.UpdateHomeVersion) end
         if self.RestyleMapSep then pcall(self.RestyleMapSep) end
-        if self.themeBtnText then self.themeBtnText:SetText(EasyFind.db.uiTheme or "Black") end
+        if self.themeBtnText then
+            self.themeBtnText:SetText(EasyFind.db.uiTheme
+                or (ns.DB_DEFAULTS and ns.DB_DEFAULTS.uiTheme) or "Midnight")
+        end
         -- Segmented rows (results direction, icon size) recolor their
         -- selected node from the new theme's leaf color via SetValue, which
         -- the generic text walker above cannot do; run it last so it wins.

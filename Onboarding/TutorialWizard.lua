@@ -1275,7 +1275,8 @@ local function BuildPageTheme(parent)
 
     local swatches = {}
     local function RefreshSelection()
-        local current = (EasyFind.db and EasyFind.db.uiTheme) or "Black"
+        local current = (EasyFind.db and EasyFind.db.uiTheme)
+            or (ns.DB_DEFAULTS and ns.DB_DEFAULTS.uiTheme) or "Midnight"
         for i = 1, #swatches do
             local swatch = swatches[i]
             swatch.selRing:SetShown(swatch._themeName == current)
