@@ -157,3 +157,5 @@ jobs:
 
           if [[ $EXIT_CODE -eq 0 ]]; then echo "Localization OK: all locales match enUS and all L[] keys are defined."; fi
           exit $EXIT_CODE
+      - name: Verify no untranslated locale values
+        run: python3 tests/check_locale_values.py
