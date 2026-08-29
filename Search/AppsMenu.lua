@@ -200,6 +200,56 @@ function AppsMenu:Create(searchFrame, filterBtn)
         self._mouseWasInside = inside
     end)
 
+    -- Keyboard nav, armed only when the menu is OPENED from the keyboard
+    -- (Tab to the apps button, Enter): same row-focus pattern as the filter
+    -- popups. ESC/LEFT close just this menu and hand the keys back to the
+    -- toolbar ring, so the apps button stays focused for the next press.
+    -- Capturing keys here is also half the peer-exclusion fix: Tab cycles
+    -- rows instead of walking on to the filter button while this is open.
+    local appsFocus = 0
+    local function SetAppsFocus(idx)
+        local rows = dropdown.rows or {}
+        local prev = rows[appsFocus]
+        if prev and prev.SetMenuHighlightFocused then prev:SetMenuHighlightFocused(false) end
+        appsFocus = idx
+        local target = rows[idx]
+        if target and target.SetMenuHighlightFocused then target:SetMenuHighlightFocused(true) end
+    end
+    local function VisibleAppRows()
+        local rows = dropdown.rows or {}
+        local n = 0
+        for i = 1, #rows do
+            if rows[i]:IsShown() then n = n + 1 end
+        end
+        return n
+    end
+    Utils.SafeCallMethod(dropdown, "EnableKeyboard", false)
+    Utils.SafeCallMethod(dropdown, "SetPropagateKeyboardInput", false)
+    dropdown:SetScript("OnKeyDown", function(self, key)
+        Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", false)
+        local count = VisibleAppRows()
+        if (key == "DOWN" or key == "TAB") and count > 0 then
+            SetAppsFocus(appsFocus % count + 1)
+        elseif key == "UP" and count > 0 then
+            SetAppsFocus((appsFocus - 2) % count + 1)
+        elseif key == "ENTER" then
+            local row = dropdown.rows and dropdown.rows[appsFocus]
+            if row then row:Click() end
+        elseif key == "ESCAPE" or key == "LEFT" then
+            self:Hide()
+        else
+            Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
+        end
+    end)
+    dropdown:HookScript("OnHide", function(self)
+        SetAppsFocus(0)
+        Utils.SafeCallMethod(self, "EnableKeyboard", false)
+        local nav = ns.Search and ns.Search.GetNavFrame and ns.Search:GetNavFrame()
+        if nav and btn.keyboardFocused then
+            Utils.SafeCallMethod(nav, "EnableKeyboard", true)
+        end
+    end)
+
     btn:SetScript("OnClick", function()
         if dropdown:IsShown() then
             dropdown:Hide()
@@ -222,12 +272,26 @@ function AppsMenu:Create(searchFrame, filterBtn)
             dropdown:SetPoint("TOPLEFT", UIParent, "BOTTOMLEFT", left, searchFrame:GetBottom() * scale)
         end
         dropdown:Show()
+        -- Opened from the toolbar ring (Tab + Enter): move keys from the
+        -- nav frame into the menu and focus the first app.
+        if btn.keyboardFocused then
+            local nav = ns.Search and ns.Search.GetNavFrame and ns.Search:GetNavFrame()
+            if nav then Utils.SafeCallMethod(nav, "EnableKeyboard", false) end
+            Utils.SafeCallMethod(dropdown, "EnableKeyboard", true)
+            SetAppsFocus(1)
+        end
     end)
 
     -- The apps button stays engaged (its highlight locked) while its menu is
     -- open, like every other menu-owner button.
     dropdown:HookScript("OnShow", function() btn:LockHighlight() end)
-    dropdown:HookScript("OnHide", function() btn:UnlockHighlight() end)
+    dropdown:HookScript("OnHide", function()
+        -- The locked highlight doubles as the toolbar-ring focus visual.
+        -- After a keyboard close (ESC back to the button) the ring still
+        -- owns this button, so the light must stay on; unlocking here was
+        -- why focus survived "under the hood" but showed nothing.
+        if not btn.keyboardFocused then btn:UnlockHighlight() end
+    end)
 
     -- Hover-reveal when "Show app button" is off: clickable at alpha 0 until
     -- its spot is hovered, focused, or this menu is open.

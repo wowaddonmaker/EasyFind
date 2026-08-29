@@ -508,12 +508,28 @@ end
 
 function Filters:ApplyQuickFilter(def, remainingText)
     if not def then return false end
+    local editBox = Search:GetSearchFrame() and Search:GetSearchFrame().editBox
+    -- Kill any inline ghost BEFORE touching text: a live candidate (e.g.
+    -- "@moun" ghosted over a typed "@mo") left armed here can be
+    -- re-accepted by the editbox's own deferred Tab dispatch and resurrect
+    -- the token as query text.
+    if editBox and editBox.StripAutocomplete then editBox:StripAutocomplete() end
+    remainingText = remainingText or ""
+    -- One owner for one guarantee: applying a quick filter REPLACES the
+    -- typed @token; it never survives as query text. Every accept path
+    -- (Tab, Space, Enter, ghost accept, suggestion click, app launchers)
+    -- funnels through here, so leading tokens that resolve to THIS def are
+    -- stripped at the gate instead of every caller sanitizing its own
+    -- composition. Tokens of a DIFFERENT def are left alone.
+    while true do
+        local token, rest = remainingText:match("^%s*@([%w_%-:]+)%s*(.*)$")
+        if not token or self:ResolveQuickFilterToken(token) ~= def then break end
+        remainingText = rest
+    end
     Filters._quickFilter = def
     self:HideQuickFilterSuggestions()
     self:UpdateQuickFilterPill()
 
-    local editBox = Search:GetSearchFrame() and Search:GetSearchFrame().editBox
-    remainingText = remainingText or ""
     if editBox then
         if editBox and editBox.ResetPendingSearch then editBox:ResetPendingSearch() end
         editBox:SetText(remainingText)
@@ -633,12 +649,14 @@ function Filters:HandleQuickFilterKeyDown(editBox, key)
     end
 
     if Filters._quickFilterSuggestionsActive and key == "TAB" then
-        if editBox and editBox.HasAutocomplete and editBox:HasAutocomplete()
-           and editBox.AcceptAutocomplete
-           and editBox:AcceptAutocomplete("tab") then
-            return self:TryAcceptQuickFilterToken(editBox, false) or true
-        end
-        return self:AcceptQuickFilterSuggestion()
+        -- Straight to the suggested def. The old path accepted the ghost
+        -- text and re-parsed it back into a def, and any hiccup in that
+        -- roundtrip ate the keypress with nothing applied. With suggestions
+        -- on screen, Tab's intent IS the suggestion; apply the def object
+        -- directly, no text roundtrip (ApplyQuickFilter owns ghost cleanup
+        -- and token stripping at the gate). `or true` still consumes Tab on
+        -- a dead token so focus doesn't jump to the toolbar mid-@.
+        return self:AcceptQuickFilterSuggestion() or true
     end
     if Filters._quickFilterSuggestionsActive and key == "ENTER" then
         return self:AcceptQuickFilterSuggestion()

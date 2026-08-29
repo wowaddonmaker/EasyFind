@@ -236,12 +236,37 @@ function Calculator._calculator.ApplyFunction(name, args)
     return nil
 end
 
+-- Money literal units (xcalc-style): a number directly followed by g/s/c
+-- or gold/silver/copper. Returns copper multiplier, rank (gold highest,
+-- so compound literals chain strictly downward), and the index after the
+-- unit; nil when the letters at `i` are not a unit. Single letters only
+-- count when they are the WHOLE letter run ("4g5s" yes, "4gs" no).
+local MONEY_WORD_UNITS = {
+    gold = { 10000, 3 }, silver = { 100, 2 }, copper = { 1, 1 },
+    g = { 10000, 3 }, s = { 100, 2 }, c = { 1, 1 },
+}
+
+local function MatchMoneyUnit(text, i)
+    local run = text:match("^%a+", i)
+    if not run then return nil end
+    local unit = MONEY_WORD_UNITS[slower(run)]
+    if not unit then return nil end
+    return unit[1], unit[2], i + #run
+end
+
 function Calculator._calculator.LooksLikeInput(raw)
     local text = raw and strtrim(raw) or ""
     if text == "" or #text > 96 then return false end
 
     local lower = slower(text)
     if lower == "pi" or lower == "tau" then return true end
+
+    -- Money makes an expression on its own: "450s" converts ("4g 50s"),
+    -- "4g / 5" divides. No operator required.
+    if sfind(lower, "%d[gsc]%f[%A]") or sfind(lower, "%dgold%f[%A]")
+        or sfind(lower, "%dsilver%f[%A]") or sfind(lower, "%dcopper%f[%A]") then
+        return true
+    end
 
     local hasNumber = sfind(lower, "%d") ~= nil
     local hasConstant = sfind(lower, "%f[%a]pi%f[%A]") ~= nil
@@ -327,7 +352,34 @@ function Calculator._calculator.Tokenize(text)
 
             local value = tonumber(tconcat(parts))
             if not value then return nil end
-            tokens[#tokens + 1] = { type = "number", value = value }
+            -- Money literal: the number is directly followed by a unit
+            -- (4g, 80s, 1.5gold). The whole literal -- including chained
+            -- lower-denomination segments like "4g50s" or "4g 50s" --
+            -- collapses into ONE number token holding total copper, and
+            -- the token list is flagged so the result formats as money.
+            -- Chaining strictly downward (g > s > c) is what bounds the
+            -- literal without eating the next expression.
+            local unitMult, unitRank, afterUnit = MatchMoneyUnit(text, i)
+            if unitMult then
+                local total = value * unitMult
+                local lastRank = unitRank
+                i = afterUnit
+                while lastRank > 1 do
+                    local j = i
+                    while j <= n and text:sub(j, j):match("%s") do j = j + 1 end
+                    local numStr = text:match("^%d+%.?%d*", j)
+                    if not numStr then break end
+                    local segMult, segRank, segAfter = MatchMoneyUnit(text, j + #numStr)
+                    if not segMult or segRank >= lastRank then break end
+                    total = total + tonumber(numStr) * segMult
+                    lastRank = segRank
+                    i = segAfter
+                end
+                tokens.money = true
+                tokens[#tokens + 1] = { type = "number", value = total }
+            else
+                tokens[#tokens + 1] = { type = "number", value = value }
+            end
         elseif ch:match("%a") then
             local start = i
             repeat
@@ -531,6 +583,37 @@ function Calculator._calculator.Format(value)
     return sformat("%.12g", value)
 end
 
+-- Copper total -> "4g 50s" style money string. Zero parts drop out
+-- ("80s", not "0g 80s 0c"); an all-zero result is "0c". Fractional copper
+-- rounds: money is integral. The unit letters come from the client's own
+-- localized denomination symbols; input parsing stays on the English
+-- g/s/c keys, per the store-English-display-localized convention.
+function Calculator._calculator.FormatMoney(value)
+    local c = Calculator._calculator
+    local sign = value < 0 and "-" or ""
+    local copper = c.Round(math.abs(value))
+    local gold = math.floor(copper / 10000)
+    local silver = math.floor((copper % 10000) / 100)
+    local copperPart = copper % 100
+    local gSym = _G["GOLD_AMOUNT_SYMBOL"] or "g"
+    local sSym = _G["SILVER_AMOUNT_SYMBOL"] or "s"
+    local cSym = _G["COPPER_AMOUNT_SYMBOL"] or "c"
+    local parts = {}
+    if gold > 0 then
+        -- Thousands grouping like the game's own money strings, with the
+        -- client's localized separator. Only gold can grow that large;
+        -- silver/copper stay below 100 by construction.
+        local sep = _G["LARGE_NUMBER_SEPERATOR"] or ","
+        local goldStr = tostring(gold)
+        local grouped = goldStr:reverse():gsub("(%d%d%d)", "%1" .. sep):reverse()
+        grouped = grouped:gsub("^" .. sep:gsub("%p", "%%%0"), "")
+        parts[#parts + 1] = grouped .. gSym
+    end
+    if silver > 0 then parts[#parts + 1] = silver .. sSym end
+    if copperPart > 0 or #parts == 0 then parts[#parts + 1] = copperPart .. cSym end
+    return sign .. tconcat(parts, " ")
+end
+
 function Calculator:EvaluateCalculatorExpression(raw)
     local c = Calculator._calculator
     if not c.LooksLikeInput(raw) then return nil end
@@ -541,7 +624,7 @@ function Calculator:EvaluateCalculatorExpression(raw)
     local ok, value = pcall(c.Parse, tokens)
     if not ok or not c.IsFinite(value) then return nil end
 
-    local result = c.Format(value)
+    local result = tokens.money and c.FormatMoney(value) or c.Format(value)
     return {
         name = expression,
         nameLower = slower(expression),
@@ -551,6 +634,7 @@ function Calculator:EvaluateCalculatorExpression(raw)
         calculatorExpression = expression,
         calculatorResult = result,
         calculatorValue = value,
+        calculatorMoney = tokens.money or nil,
     }
 end
 

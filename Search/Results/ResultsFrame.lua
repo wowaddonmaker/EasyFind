@@ -17,25 +17,6 @@ local RESULT_SHORTCUT = Shortcuts.RESULT_SHORTCUT
 local resultsFrame
 local resultShortcutFrame
 
--- Frames whose mouse-over must not count as an "outside" click for the
--- results panel. Blizzard's StaticPopup slots are here so clicks on our
--- unapplied-settings popup buttons (Apply / Exit / Cancel) don't trigger
--- an extra RequestHideResults that closes the panel.
-local OUTSIDE_GUARD_NAMES = {
-    "EasyFindUIFilterDropdown",
-    "EasyFindUIAppsDropdown",
-    "EasyFindUIAppsButton",
-    "EasyFindPinPopup",
-    "EasyFindAsOptionsPopup",
-    "EasyFindAsClassPopup",
-    "EasyFindLootOptionsPopup",
-    "EasyFindDiffPopup",
-    "EasyFindSpecPopup",
-    "EasyFindSpecFlyout",
-    "EasyFindCalculatorFrame",
-    "StaticPopup1", "StaticPopup2", "StaticPopup3", "StaticPopup4",
-}
-
 function Results:EnsureResultButton(index)
     local row = Search:GetResultButtons()[index]
     if not row then
@@ -115,15 +96,14 @@ function Results:CreateResultsFrame()
         if OptionsSurface:IsOptionsSurfaceMouseOver() then return end
         -- Any active cursor menu and its flyout cascade (pin/right-click menu,
         -- the Send-link channel submenu) count as inside: those submenus are
-        -- separate pooled frames, not children of the pin popup below.
+        -- separate pooled frames, not children of the pin popup.
         if Utils.IsCursorMenuMouseOver() then return end
-        -- Resolved per check, by NAME: a frame that does not exist yet
-        -- (calculator popup before first open, with the companion, or
-        -- never without it) must not leave a nil hole that truncates
-        -- ipairs and silently drops the guards after it.
-        for i = 1, #OUTSIDE_GUARD_NAMES do
-            if Utils.IsFrameOrChildMouseOver(_G[OUTSIDE_GUARD_NAMES[i]]) then return end
-        end
+        -- Every floating EasyFind window (copy box, pin popup, calculator,
+        -- StaticPopup slots, ...) lives in the shared click-guard registry.
+        if Utils.IsClickGuardMouseOver() then return end
+        -- The filter dropdown and every popup it spawns; IsMouseInFilterChain
+        -- owns that union via dropdown.guardFrames.
+        if ns.Filters and ns.Filters.IsMouseInFilterChain() then return end
         Results:RequestHideResults()
     end)
 

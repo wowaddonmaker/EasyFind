@@ -133,5 +133,33 @@ function tests.needsHeavyData_lootAndBosses()
     H.assertFalse(Filters:QuickFilterNeedsHeavyData(nil))
 end
 
+-- ApplyQuickFilter is the ONE gate every accept path funnels through; the
+-- typed @token must never survive into the applied query text, no matter
+-- how a caller composed remainingText (ghost accept + auto-accept can
+-- compose "@token @partial").
+local function applyAndCaptureQuery(def, remaining)
+    local captured
+    local orig = Filters.OnSearchTextChanged
+    Filters.OnSearchTextChanged = function(_, text) captured = text end
+    Filters:ApplyQuickFilter(def, remaining)
+    Filters.OnSearchTextChanged = orig
+    Filters._quickFilter = nil
+    return captured
+end
+
+function tests.apply_stripsOwnLeadingToken()
+    local def = Filters.quickFilterByAlias.mounts
+    H.assertEq(applyAndCaptureQuery(def, "@mounts sword"), "sword")
+    H.assertEq(applyAndCaptureQuery(def, "@mounts @mo"), "")
+    H.assertEq(applyAndCaptureQuery(def, "@mo"), "")
+end
+
+function tests.apply_keepsForeignTokenAndPlainText()
+    local def = Filters.quickFilterByAlias.mounts
+    H.assertEq(applyAndCaptureQuery(def, "sword"), "sword")
+    -- "@p" is the pets token: a DIFFERENT def's token is not ours to eat.
+    H.assertEq(applyAndCaptureQuery(def, "@p sword"), "@p sword")
+end
+
 local pass, fail, failures = H.runSuite("QuickFilter", tests)
 return { pass = pass, fail = fail, failures = failures }

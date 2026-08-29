@@ -256,9 +256,11 @@ L["WHATSNEW_CHAT_HELLO"]                = "¡Bienvenido a |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "aquí"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver el registro de cambios completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffCorregido: pestañas del mapa de otros accesorios|r\n" ..
-    "    |cff999999-|r Cambiar de nuestra pestaña del mapa a las suyas ya no muestra un panel en blanco al primer clic\n" ..
-    "    |cff999999-|r Cerrar el mapa desde una pestaña ajena vuelve a abrirse correctamente"
+    "|cffFFD100\226\128\162|r |cffffffffCalculadora: oro, plata y cobre|r\n" ..
+    "    |cff999999-|r Escribe 4g / 5 y obtén 80s; 450s se convierte en 4g 50s\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffMenús y teclado más fluidos|r\n" ..
+    "    |cff999999-|r ESC sale de los menús de filtros nivel a nivel\n" ..
+    "    |cff999999-|r El menú de aplicaciones puede manejarse por completo con el teclado (Tab, Intro, flechas), como el resto de la barra de búsqueda"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Añadir alias"

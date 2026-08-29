@@ -13,7 +13,6 @@ local Shortcuts = ns.ResultShortcuts
 local L = ns.L
 
 local Utils = ns.Utils
-local ipairs = Utils.ipairs
 local slower = Utils.slower
 local mmin, mmax = Utils.mmin, Utils.mmax
 
@@ -627,27 +626,8 @@ function Search:CreateSearchFrame()
         local onGuard = false
         if resultsFrame and resultsFrame:IsMouseOver() then onGuard = true end
         if not onGuard and OptionsSurface:IsOptionsSurfaceMouseOver() then onGuard = true end
-        if not onGuard then
-            local guards = {
-                _G["EasyFindUIFilterDropdown"],
-                _G["EasyFindUIFilterButton"],
-                _G["EasyFindUIAppsButton"],
-                _G["EasyFindUIAppsDropdown"],
-                _G["EasyFindPinPopup"],
-                _G["EasyFindAsOptionsPopup"],
-                _G["EasyFindAsClassPopup"],
-                _G["EasyFindLootOptionsPopup"],
-                _G["EasyFindDiffPopup"],
-                _G["EasyFindSpecPopup"],
-                _G["EasyFindSpecFlyout"],
-            }
-            for _, g in ipairs(guards) do
-                if Utils.IsFrameOrChildMouseOver(g) then
-                    onGuard = true
-                    break
-                end
-            end
-        end
+        if not onGuard and Filters.IsMouseInFilterChain() then onGuard = true end
+        if not onGuard and Utils.IsClickGuardMouseOver() then onGuard = true end
         if not onGuard and resultsFrame and resultsFrame:IsShown() then
             Results:HideResults()
         end
@@ -663,6 +643,12 @@ function Search:CreateSearchFrame()
             -- can fire before the results frame is hidden.  Without the delay the
             -- parent frame hides and the child button never receives its OnClick.
             Utils.SafeAfter(0, function()
+                -- The focus-stealing click landed on a guarded surface (the
+                -- copy box, a popup): those handle their own dismissal, and
+                -- hiding here would kill the results before an up-click
+                -- handler ever fires (this deferred hide lands a frame
+                -- after mouse-down, well before a human mouse-up).
+                if onGuard then return end
                 if selectingResult then return end
                 if searchFrame.editBox:HasFocus() then return end
                 if navFrame and navFrame:IsKeyboardEnabled() then return end
@@ -1237,6 +1223,16 @@ function Search:CreateSearchFrame()
 
         local shortcutIndex = Shortcuts:GetResultShortcutIndex(key)
         if shortcutIndex then
+            -- Alt+digit still inserts the digit character into the focused
+            -- editbox (propagate only governs the game side). A snapshot
+            -- repair cannot cover this: shortcut activation may rewrite the
+            -- text (apply a quick filter, clear the box) before the char
+            -- event lands. Swallow the char itself at OnChar, keyed by the
+            -- digit CHAR: shortcutIndex is that digit for both spellings of
+            -- the key ("4" and "NUMPAD4"). The navFrame copy of this block
+            -- needs none of this: in keyboard-nav mode the editbox is
+            -- unfocused, so no character can insert.
+            Utils.SwallowNextCharInsert(self, tostring(shortcutIndex))
             local shortcutResult = Shortcuts:ActivateVisibleResultShortcut(shortcutIndex)
             if shortcutResult then
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", shortcutResult == "binding")
@@ -1955,29 +1951,12 @@ function Search:CreateSearchFrame()
         -- separate pooled frames on UIParent, not children of the pin popup.
         if Utils.IsCursorMenuMouseOver() then return end
         if activeKeybindBtn then return end
-        local dropdown = self.filterDropdown
-        if Utils.IsFrameVisiblyMouseOver(dropdown) then return end
-        -- Every sub-popup the filter dropdown spawns (flyout sub-filters,
-        -- options popups, spec/class flyouts, etc.) registers itself in
-        -- dropdown.guardFrames. Walk that list so a click inside any of
-        -- them never dismisses the search bar.
-        if dropdown and dropdown.guardFrames then
-            for i = 1, #dropdown.guardFrames do
-                if Utils.IsFrameOrChildMouseOver(dropdown.guardFrames[i]) then return end
-            end
-        end
-        local extras = {
-            _G["EasyFindPinPopup"],
-            _G["EasyFindUIWizard"],
-            -- The apps button and its dropdown live on UIParent, not inside the
-            -- search frame, so a click on either read as "outside" and hid the
-            -- whole bar (a right-click on an app row closed everything).
-            _G["EasyFindUIAppsButton"],
-            _G["EasyFindUIAppsDropdown"],
-        }
-        for _, g in ipairs(extras) do
-            if Utils.IsFrameOrChildMouseOver(g) then return end
-        end
+        -- The filter dropdown and every popup it spawns; IsMouseInFilterChain
+        -- owns that union via dropdown.guardFrames.
+        if Filters.IsMouseInFilterChain() then return end
+        -- Every floating EasyFind window (apps menu, pin popup, copy box,
+        -- wizard, ...) lives in the shared click-guard registry.
+        if Utils.IsClickGuardMouseOver() then return end
         Search:Hide()
     end)
 
@@ -2121,11 +2100,15 @@ function Search:HandleEscape(fromUnfocused)
         end)
     end
     self._escClosingMenus = true
-    local closedAny = self:CloseFilterDropdownIfOpen()
-    -- The apps dropdown closes on ESC too, like the filter dropdown, instead of
-    -- leaving it open while ESC dismisses the bar.
+    -- One layer per ESC press: the deepest open filter popup first, then
+    -- its parent, then the dropdown itself; only then does ESC move on to
+    -- text-clear / bar-hide. CloseTopFilterLayer owns the depth order.
+    local closedAny = Filters.CloseTopFilterLayer and Filters.CloseTopFilterLayer() or false
+    -- The apps dropdown is its own single layer, closed only when no
+    -- filter layer consumed this press.
     local escSearchFrame = self:GetSearchFrame()
-    if escSearchFrame and escSearchFrame.appsDropdown and escSearchFrame.appsDropdown:IsShown() then
+    if not closedAny and escSearchFrame and escSearchFrame.appsDropdown
+       and escSearchFrame.appsDropdown:IsShown() then
         escSearchFrame.appsDropdown:Hide()
         closedAny = true
     end

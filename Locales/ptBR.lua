@@ -256,9 +256,11 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bem-vindo ao |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "aqui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Ver o changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffCorrigido: abas de mapa de outros addons|r\n" ..
-    "    |cff999999-|r Trocar da nossa aba de mapa para as deles não mostra mais um painel em branco no primeiro clique\n" ..
-    "    |cff999999-|r Fechar o mapa em uma aba de outro addon reabre corretamente"
+    "|cffFFD100\226\128\162|r |cffffffffCalculadora: ouro, prata e cobre|r\n" ..
+    "    |cff999999-|r Digite 4g / 5 e receba 80s; 450s converte para 4g 50s\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffMenus e teclado mais fluidos|r\n" ..
+    "    |cff999999-|r ESC sai dos menus de filtros um nível por vez\n" ..
+    "    |cff999999-|r O menu de aplicativos pode ser usado todo pelo teclado (Tab, Enter, setas), como o resto da barra de busca"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Adicionar apelido"

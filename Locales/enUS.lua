@@ -279,9 +279,11 @@ L["WHATSNEW_CHAT_HERE"]                 = "here"
 -- The body is rewritten per release. Edit this single string each version.
 L["WHATSNEW_CHANGELOG_LINK"]            = "See full changelog"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffFixed: other addons' World Map tabs|r\n" ..
-    "    |cff999999-|r Switching from our map tab to theirs no longer blanks on the first click\n" ..
-    "    |cff999999-|r Closing the map from another addon's tab reopens correctly"
+    "|cffFFD100\226\128\162|r |cffffffffCalculator: gold, silver and copper|r\n" ..
+    "    |cff999999-|r Type 4g / 5 and get 80s; 450s converts to 4g 50s\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffSmoother menus and keyboard|r\n" ..
+    "    |cff999999-|r ESC steps out of filter menus one level at a time\n" ..
+    "    |cff999999-|r The apps menu can be used entirely from the keyboard (Tab, Enter, arrows), just like the rest of the search bar"
 
 -- =============================================================================
 -- Shared/Utils.lua  --  context menu labels

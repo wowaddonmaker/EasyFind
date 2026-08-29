@@ -219,11 +219,11 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             elseif key == "LEFT" then
                 self:Hide()
             elseif key == "ESCAPE" then
-                -- Route through HandleEscape: closes the parent dropdown
-                -- and any sibling popups together, refocuses editbox.
-                -- Bare self:Hide() only hits this popup and leaves the
-                -- main dropdown / nested popups behind.
-                Search:HandleEscape()
+                -- One layer per press: only this popup closes; its OnHide
+                -- returns keyboard to the parent menu, and the next ESC
+                -- closes that. (The old route through HandleEscape tore the
+                -- whole chain down at once.)
+                self:Hide()
             else
                 Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
             end
@@ -1315,10 +1315,16 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             end
         elseif key == "ESCAPE" then
             self._escapedViaKeyboard = true
-            -- Route through HandleEscape so flyouts/popups close together
-            -- and the editbox refocuses, instead of just self:Hide() which
-            -- only hits the main dropdown.
-            Search:HandleEscape()
+            if dropdownKeyboardMode then
+                -- Keyboard flow: ESC closes just this menu and reselects
+                -- the filter button (mirrors the apps menu), so the next
+                -- Enter reopens and Tab moves on.
+                self:Hide()
+            else
+                -- Mouse flow: close and hand focus back to the editbox so
+                -- the user can keep typing.
+                Search:HandleEscape()
+            end
         else
             Utils.SafeCallMethod(self, "SetPropagateKeyboardInput", true)
         end
@@ -1445,9 +1451,11 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
             dropdownKeyboardMode = false
             -- Hand keys back to the nav frame only when it has a live nav
             -- context; a blind enable here is the stray that left the nav
-            -- frame eating a fresh session's first keys.
+            -- frame eating a fresh session's first keys. A still-focused
+            -- filter button IS a live context: ESC just reselected it.
+            local fb = Search:GetSearchFrame().filterBtn
             Utils.SafeCallMethod(Search:GetNavFrame(), "EnableKeyboard",
-                Search:GetSelectedIndex() > 0)
+                Search:GetSelectedIndex() > 0 or (fb and fb.keyboardFocused) or false)
         else
             dropdownKeyboardMode = false
             if Search:GetSearchFrame().ClearToolbarFocus then Search:GetSearchFrame().ClearToolbarFocus() end
@@ -1527,6 +1535,14 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
     dropdown:HookScript("OnShow", function()
         local btn = searchFrame.filterBtn
         if btn and btn.SetMenuEngaged then btn:SetMenuEngaged(true) end
+        -- Peers, both directions: the apps menu closes this dropdown when it
+        -- opens; this dropdown must equally close the apps menu. Riding
+        -- OnShow covers every open path -- keyboard opens (Tab+Enter) never
+        -- fire the mouse-down closers, which is how the two menus ended up
+        -- stacked on screen together.
+        if searchFrame.appsDropdown and searchFrame.appsDropdown:IsShown() then
+            searchFrame.appsDropdown:Hide()
+        end
     end)
     dropdown:HookScript("OnHide", function()
         local btn = searchFrame.filterBtn

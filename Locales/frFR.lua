@@ -256,9 +256,11 @@ L["WHATSNEW_CHAT_HELLO"]                = "Bienvenue dans |cFF00FF00EasyFind v%s
 L["WHATSNEW_CHAT_HERE"]                 = "ici"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Voir le journal des modifications complet"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffCorrigé : onglets de carte des autres addons|r\n" ..
-    "    |cff999999-|r Passer de notre onglet de carte aux leurs n'affiche plus un panneau vide au premier clic\n" ..
-    "    |cff999999-|r Fermer la carte depuis un onglet tiers la rouvre correctement"
+    "|cffFFD100\226\128\162|r |cffffffffCalculatrice : or, argent et cuivre|r\n" ..
+    "    |cff999999-|r Tapez 4g / 5 et obtenez 80s ; 450s se convertit en 4g 50s\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffMenus et clavier plus fluides|r\n" ..
+    "    |cff999999-|r Échap quitte les menus de filtres niveau par niveau\n" ..
+    "    |cff999999-|r Le menu des applications peut se piloter entièrement au clavier (Tab, Entrée, flèches), comme le reste de la barre de recherche"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Ajouter un alias"

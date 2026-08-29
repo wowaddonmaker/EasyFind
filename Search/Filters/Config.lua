@@ -6,6 +6,7 @@ local Utils = ns.Utils
 local L = ns.L
 
 local ipairs = Utils.ipairs
+local tremove = Utils.tremove
 
 local ACHIEVEMENT_FILTER_LABELS = {
     all = _G["ALL"] or "All",
@@ -315,19 +316,63 @@ end
 -- already carry OnShow/OnHide hooks (e.g. from Utils.AttachHoverPopup) that
 -- SetScript would silently wipe. opts.onHide runs extra cleanup (hiding
 -- nested flyouts, clearing the active-flyout tracker) after the unregister.
+-- The show/hide hooks double as the layer bookkeeping for CloseTopFilterLayer:
+-- show order IS depth order (a child popup always shows after its parent).
+local openPopupStack = {}
+
+local function RemoveFromPopupStack(popup)
+    for i = #openPopupStack, 1, -1 do
+        if openPopupStack[i] == popup then
+            tremove(openPopupStack, i)
+            return
+        end
+    end
+end
+
 function Filters.AttachOutsideClickClose(popup, opts)
     local onHide = opts and opts.onHide
     popup:HookScript("OnShow", function(self)
         self:RegisterEvent("GLOBAL_MOUSE_DOWN")
+        RemoveFromPopupStack(self)
+        openPopupStack[#openPopupStack + 1] = self
     end)
     popup:HookScript("OnHide", function(self)
         self:UnregisterEvent("GLOBAL_MOUSE_DOWN")
+        RemoveFromPopupStack(self)
         if onHide then onHide(self) end
     end)
     popup:HookScript("OnEvent", function(self, event)
         if event ~= "GLOBAL_MOUSE_DOWN" then return end
         if not Filters.IsMouseInFilterChain() then self:Hide() end
     end)
+end
+
+-- ESC closes ONE layer of the filter chain, deepest first: an open cursor
+-- menu, then the newest popup, then the dropdown itself. Returns true when
+-- a layer closed. The final dropdown close goes through
+-- CloseFilterDropdownIfOpen so stragglers the stack never saw (the class
+-- popup hides by name there) cannot survive it.
+function Filters.CloseTopFilterLayer()
+    if Utils.HideCursorMenus and Utils.HideCursorMenus() then return true end
+    for i = #openPopupStack, 1, -1 do
+        local popup = openPopupStack[i]
+        if popup and popup:IsShown() then
+            popup:Hide()
+            return true
+        end
+        tremove(openPopupStack, i)
+    end
+    local searchFrame = Search.GetSearchFrame and Search:GetSearchFrame()
+    local dropdown = searchFrame and searchFrame.filterDropdown
+    if dropdown and dropdown:IsShown() then
+        if ns.Results and ns.Results.CloseFilterDropdownIfOpen then
+            ns.Results:CloseFilterDropdownIfOpen()
+        else
+            dropdown:Hide()
+        end
+        return true
+    end
+    return false
 end
 
 -- Re-run the checked/graying sync of every option popup currently visible.

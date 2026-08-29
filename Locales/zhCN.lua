@@ -256,9 +256,11 @@ L["WHATSNEW_CHAT_HELLO"]                = "欢迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "这里"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日志"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff修复：其他插件的世界地图标签页|r\n" ..
-    "    |cff999999-|r 从我们的地图标签切换到它们的标签时，第一次点击不再显示空白面板\n" ..
-    "    |cff999999-|r 在其他插件标签页关闭地图后能正常重新打开"
+    "|cffFFD100\226\128\162|r |cffffffff计算器：金币、银币、铜币|r\n" ..
+    "    |cff999999-|r 输入 4g / 5 得到 80s；450s 换算为 4g 50s\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff更顺畅的菜单与键盘操作|r\n" ..
+    "    |cff999999-|r ESC 逐层退出筛选菜单\n" ..
+    "    |cff999999-|r 应用菜单与搜索栏的其他部分一样，可完全用键盘操作（Tab、回车、方向键）"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "添加别名"

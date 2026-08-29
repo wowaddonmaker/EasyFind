@@ -256,9 +256,11 @@ L["WHATSNEW_CHAT_HELLO"]                = "歡迎使用|cFF00FF00EasyFind v%s|r�
 L["WHATSNEW_CHAT_HERE"]                 = "這裡"
 L["WHATSNEW_CHANGELOG_LINK"]            = "查看完整更新日誌"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff修復：其他插件的世界地圖分頁|r\n" ..
-    "    |cff999999-|r 從我們的地圖分頁切換到它們的分頁時，第一次點擊不再顯示空白面板\n" ..
-    "    |cff999999-|r 在其他插件分頁關閉地圖後能正常重新開啟"
+    "|cffFFD100\226\128\162|r |cffffffff計算機：金幣、銀幣、銅幣|r\n" ..
+    "    |cff999999-|r 輸入 4g / 5 得到 80s；450s 換算為 4g 50s\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff更順暢的選單與鍵盤操作|r\n" ..
+    "    |cff999999-|r ESC 逐層退出篩選選單\n" ..
+    "    |cff999999-|r 應用程式選單與搜尋列的其他部分一樣，可完全用鍵盤操作（Tab、Enter、方向鍵）"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "新增別名"

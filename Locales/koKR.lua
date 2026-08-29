@@ -256,9 +256,11 @@ L["WHATSNEW_CHAT_HELLO"]                = "|cFF00FF00EasyFind v%s|r에 오신 �
 L["WHATSNEW_CHAT_HERE"]                 = "여기"
 L["WHATSNEW_CHANGELOG_LINK"]            = "전체 변경 사항 보기"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffff수정: 다른 애드온의 세계 지도 탭|r\n" ..
-    "    |cff999999-|r 우리 지도 탭에서 다른 탭으로 전환할 때 첫 클릭에 빈 화면이 나오지 않습니다\n" ..
-    "    |cff999999-|r 다른 애드온 탭에서 지도를 닫아도 다시 정상적으로 열립니다"
+    "|cffFFD100\226\128\162|r |cffffffff계산기: 골드, 실버, 코퍼|r\n" ..
+    "    |cff999999-|r 4g / 5를 입력하면 80s가 나오고, 450s는 4g 50s로 변환됩니다\n" ..
+    "|cffFFD100\226\128\162|r |cffffffff더 매끄러운 메뉴와 키보드|r\n" ..
+    "    |cff999999-|r ESC가 필터 메뉴를 한 단계씩 닫습니다\n" ..
+    "    |cff999999-|r 검색창의 다른 요소처럼 앱 메뉴도 키보드만으로 사용할 수 있습니다(Tab, Enter, 방향키)"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "별칭 추가"

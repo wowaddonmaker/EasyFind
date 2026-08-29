@@ -4,6 +4,22 @@ All notable changes to EasyFind will be documented in this file.
 
 ---
 
+## [2.4.5] - 2026-08-24
+
+### Added
+- **Calculator money math**: gold/silver/copper amounts work in any expression. `4g / 5` gives `80s`, `4g50s * 2` gives `9g`, and a lone amount like `450s` converts (`4g 50s`). Accepts `g`/`s`/`c` and `gold`/`silver`/`copper`, compounds like `4g 50s`, and decimals like `1.5g`. Gold results group thousands the way the game does (`25,000g`)
+
+### Fixed
+- **Keyboard menu navigation**: Tab to the apps button and Enter now opens a keyboard-navigable apps menu (arrows, Enter to launch, ESC back to the button); previously Enter opened a menu you couldn't drive
+- **ESC in filter menus** closes one level at a time (submenu, then parent, then the menu) instead of tearing the whole chain down at once; ESC out of a keyboard-opened menu visibly reselects its toolbar button, so Enter reopens it and Tab moves on
+- **Apps menu and filter menu** can no longer be open at the same time; opening one closes the other on every open path, including keyboard opens
+- **Alt+number result shortcuts** no longer type the digit into the search box while activating the result
+- **Tab-completing a filter token** (like `@mo` for Mounts) no longer re-appends the partially typed token to the search text
+- **Copy window clicks**: closing the copy/link window no longer also closes the results list; clicks on EasyFind's own floating windows are no longer treated as clicks outside the search UI
+- **Calculator icon** brightened to match the rest of the interface icons across all themes
+
+---
+
 ## [2.4.4] - 2026-08-23
 
 ### Fixed

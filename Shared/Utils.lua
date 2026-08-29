@@ -520,6 +520,34 @@ function Utils.ConsumeSuppressedAltNavChar(box)
     return true, restoreText
 end
 
+-- One-shot character swallow at the OnChar boundary. Unlike the snapshot
+-- repair above, this works even when the keypress's handler REWRITES the
+-- editbox text before the char event lands (a result shortcut applying a
+-- quick filter and clearing the box): OnChar fires right after the client
+-- inserts the character, so stripping the byte at the cursor removes the
+-- leaked char no matter what the text has become in between.
+function Utils.SwallowNextCharInsert(box, char)
+    if not (box and char and char ~= "") then return end
+    box._efSwallowChar = { char = char:lower(), expires = GetTime() + 0.6 }
+    if box._efSwallowCharHooked then return end
+    box._efSwallowCharHooked = true
+    box:HookScript("OnChar", function(self, typedChar)
+        local armed = self._efSwallowChar
+        if not armed then return end
+        if GetTime() > armed.expires then
+            self._efSwallowChar = nil
+            return
+        end
+        if not typedChar or typedChar:lower() ~= armed.char then return end
+        self._efSwallowChar = nil
+        local cursor = self:GetCursorPosition() or 0
+        if cursor < 1 then return end
+        local text = self:GetText() or ""
+        self:SetText(text:sub(1, cursor - 1) .. text:sub(cursor + 1))
+        self:SetCursorPosition(cursor - 1)
+    end)
+end
+
 function Utils.AttachAltNavCharSuppressor(editBox, onRestored)
     if not editBox or editBox._easyFindAltNavSuppressHooked then return end
     editBox._easyFindAltNavSuppressHooked = true
@@ -4248,6 +4276,53 @@ function Utils.IsFrameVisiblyMouseOver(frame)
     if type(frame) ~= "table" or not frame.IsMouseOver then return false end
     if frame.IsShown and not frame:IsShown() then return false end
     return frame:IsMouseOver()
+end
+
+-- Click-guard registry: the ONE list of floating EasyFind windows whose
+-- clicks must never read as "outside" to the persistent-surface closers
+-- (results panel outside-click, search bar auto-hide). Register a frame,
+-- or a global name for frames created lazily or owned by a companion
+-- addon; names resolve per check so a frame that does not exist yet
+-- leaves no nil hole. Registration only stops clicks from dismissing the
+-- surfaces BENEATH a window; a transient menu registered here still
+-- closes itself through its own closer.
+local clickGuards = {}
+
+function Utils.RegisterClickGuard(target)
+    clickGuards[#clickGuards + 1] = target
+end
+
+function Utils.IsClickGuardMouseOver()
+    for i = 1, #clickGuards do
+        local guard = clickGuards[i]
+        if type(guard) == "string" then guard = _G[guard] end
+        if guard and Utils.IsFrameOrChildMouseOver(guard) then return true end
+    end
+    return false
+end
+
+-- Windows that predate the registry, plus the Blizzard StaticPopup slots
+-- our confirm flows use (their Apply/Exit/Cancel buttons must not dismiss
+-- the panel that spawned them).
+local PREREGISTERED_GUARDS = {
+    "EasyFindUIFilterDropdown",
+    "EasyFindUIAppsDropdown",
+    "EasyFindUIAppsButton",
+    "EasyFindUIWizard",
+    "EasyFindPinPopup",
+    "EasyFindCopyBox",
+    "EasyFindThemedDialog",
+    "EasyFindAsOptionsPopup",
+    "EasyFindAsClassPopup",
+    "EasyFindLootOptionsPopup",
+    "EasyFindDiffPopup",
+    "EasyFindSpecPopup",
+    "EasyFindSpecFlyout",
+    "EasyFindCalculatorFrame",
+    "StaticPopup1", "StaticPopup2", "StaticPopup3", "StaticPopup4",
+}
+for i = 1, #PREREGISTERED_GUARDS do
+    Utils.RegisterClickGuard(PREREGISTERED_GUARDS[i])
 end
 
 -- Position a cascading flyout to the right of its anchor, flipping to the left

@@ -256,9 +256,11 @@ L["WHATSNEW_CHAT_HELLO"]                = "Benvenuto in |cFF00FF00EasyFind v%s|r
 L["WHATSNEW_CHAT_HERE"]                 = "qui"
 L["WHATSNEW_CHANGELOG_LINK"]            = "Vedi il changelog completo"
 L["WHATSNEW_BODY"]                      =
-    "|cffFFD100\226\128\162|r |cffffffffCorretto: schede mappa di altri addon|r\n" ..
-    "    |cff999999-|r Passare dalla nostra scheda mappa alle loro non mostra più un pannello vuoto al primo clic\n" ..
-    "    |cff999999-|r Chiudere la mappa da una scheda esterna la riapre correttamente"
+    "|cffFFD100\226\128\162|r |cffffffffCalcolatrice: oro, argento e rame|r\n" ..
+    "    |cff999999-|r Scrivi 4g / 5 e ottieni 80s; 450s si converte in 4g 50s\n" ..
+    "|cffFFD100\226\128\162|r |cffffffffMenu e tastiera più fluidi|r\n" ..
+    "    |cff999999-|r ESC esce dai menu dei filtri un livello alla volta\n" ..
+    "    |cff999999-|r Il menu delle app può essere usato interamente da tastiera (Tab, Invio, frecce), come il resto della barra di ricerca"
 
 -- Context menu
 L["CTX_ADD_ALIAS"]                      = "Aggiungi alias"
