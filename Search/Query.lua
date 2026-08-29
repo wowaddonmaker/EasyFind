@@ -636,7 +636,8 @@ function Search:OnSearchTextChanged(text, force)
     local kept = 0
     for ri = 1, #combined do
         local d = combined[ri].data
-        if not (d and d.catalogItem and not ns.ItemSearch:IsResolvable(d.itemID)) then
+        if not (d and d.catalogItem and ns.ItemSearch
+                and not ns.ItemSearch:IsResolvable(d.itemID)) then
             kept = kept + 1
             combined[kept] = combined[ri]
             if kept >= TOP_N then break end

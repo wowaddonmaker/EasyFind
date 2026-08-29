@@ -509,6 +509,12 @@ end
 
 function Filters:ApplyQuickFilter(def, remainingText)
     if not def then return false end
+    -- Explicitly asking for the catalog (@gen / @items) is the moment to
+    -- pull in its LoadOnDemand companion; a discrete action absorbs the
+    -- one-time load where a keystroke could not.
+    if (def.key == "items" or def.key == "catalog") and ns.RequestItemCatalog then
+        ns.RequestItemCatalog(true)
+    end
     local editBox = Search:GetSearchFrame() and Search:GetSearchFrame().editBox
     -- Kill any inline ghost BEFORE touching text: a live candidate (e.g.
     -- "@icons" ghosted over a typed "@ico") left armed here can be

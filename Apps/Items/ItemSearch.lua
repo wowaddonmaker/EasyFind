@@ -1,4 +1,8 @@
-local _, ns = ...
+-- Part of the EasyFind_Items LoadOnDemand companion: loaded on demand
+-- via ns.RequestItemCatalog(), never at login.
+local EasyFind = EasyFind
+local ns = EasyFind and EasyFind._ns
+if not ns then return end
 
 -- Catalog item search: scans the packed item blob (Database/ItemData.lua,
 -- ~175k items). The blob is ONE string, one record per

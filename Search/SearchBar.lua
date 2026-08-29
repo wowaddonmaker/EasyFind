@@ -175,6 +175,15 @@ function Search:Initialize()
     elseif ns.Database and ns.Database.WarmSearchHotPath then
         ns.Database:WarmSearchHotPath()
     end
+    -- Search intent shown: pull in the item catalog's LoadOnDemand
+    -- companion now, off the keystroke path, but ONLY if its filter is
+    -- on -- with the General Catalog unchecked it never loads at all.
+    if ns.RequestItemCatalog and ns.CategoryMap then
+        local uiFilters = EasyFind.db and EasyFind.db.uiSearchFilters
+        if not (uiFilters and ns.CategoryMap.IsProviderFilterOff(uiFilters, "catalog")) then
+            ns.RequestItemCatalog(false)
+        end
+    end
     if ns.BlizzOptionsSearch and ns.BlizzOptionsSearch.EnsureFastGameOptions then
         ns.BlizzOptionsSearch:EnsureFastGameOptions()
     end

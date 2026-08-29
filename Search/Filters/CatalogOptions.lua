@@ -63,6 +63,11 @@ function Filters:BuildCatalogOptionsPopup(StylePopup, CHECK_SIZE, dropdownGuardF
     end
 
     local function ApplyCatalog()
+        -- Turning the catalog ON is a load trigger for its LoadOnDemand
+        -- companion (a filter click absorbs the one-time load).
+        if ChainEnabled() and ns.RequestItemCatalog then
+            ns.RequestItemCatalog(true)
+        end
         if ns.ItemSearch and ns.ItemSearch.RefreshFilters then
             ns.ItemSearch:RefreshFilters()
         end

@@ -247,3 +247,23 @@ if EventUtil and EventUtil.ContinueOnAddOnLoaded then
         ns.RequestIconSearch()
     end)
 end
+
+-- Item catalog: same LoadOnDemand companion pattern (EasyFind_Items).
+-- Triggers: bar-open warm when the General Catalog filter is on, turning
+-- that filter on, or applying @gen/@items -- never a keystroke (a 7MB
+-- compile mid-typing would hitch). announce=true on the explicit paths
+-- so a disabled companion explains itself once per session.
+local itemModuleWarned = false
+function ns.RequestItemCatalog(announce)
+    if ns.ItemSearch then return true end
+    if InCombatLockdown() then return false end
+    if C_AddOns and C_AddOns.LoadAddOn then
+        pcall(C_AddOns.LoadAddOn, "EasyFind_Items")
+    end
+    if ns.ItemSearch then return true end
+    if announce and not itemModuleWarned then
+        itemModuleWarned = true
+        EasyFind:Print(ns.L["ITEMS_MODULE_DISABLED"])
+    end
+    return false
+end

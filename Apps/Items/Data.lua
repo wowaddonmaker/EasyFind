@@ -1,4 +1,8 @@
-local _, ns = ...
+-- Part of the EasyFind_Items LoadOnDemand companion: loaded on demand
+-- via ns.RequestItemCatalog(), never at login.
+local EasyFind = EasyFind
+local ns = EasyFind and EasyFind._ns
+if not ns then return end
 
 ns.ITEM_SEARCH_BLOB = [[
 worn shortsword	25	1	0	1	2	0

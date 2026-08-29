@@ -1,0 +1,13 @@
+## Interface: 120100, 120007, 120001, 120000
+## Title: EasyFind [Item Catalog]
+## Notes: Item catalog search companion for EasyFind, loaded on first use
+## Author: justawower
+## Version: 3.0.0
+## IconTexture: Interface\AddOns\EasyFind\textures\SpyglassMinimap
+## Category: UI
+## RequiredDeps: EasyFind
+## LoadOnDemand: 1
+## DefaultState: enabled
+
+Data.lua
+ItemSearch.lua
