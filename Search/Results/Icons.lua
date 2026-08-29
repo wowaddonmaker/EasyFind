@@ -231,6 +231,7 @@ function Icons:GetFlatCategoryIcon(data)
         if key == "bags" then return FLAT_CATEGORY_ICONS.bag end
         if key == "bank" then return FLAT_CATEGORY_ICONS.bank end
         if key == "bosses" then return FLAT_CATEGORY_ICONS.boss end
+        if key == "icons" then return FLAT_CATEGORY_ICONS.iconSearch end
         if key == "macros" then return FLAT_CATEGORY_ICONS.macro end
         if key == "collections" then return FLAT_CATEGORY_ICONS.mount end
         if key == "appearanceSets" then return FLAT_CATEGORY_ICONS.appearanceSet end

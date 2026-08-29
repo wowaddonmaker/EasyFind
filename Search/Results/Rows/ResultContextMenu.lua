@@ -131,7 +131,7 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
             local text = editBox and editBox:GetText() or ""
             if text == "" then
                 Results:KeepPinnedResultsOpenBriefly()
-                Results:ShowPinnedItems()
+                Results:ShowEmptyQueryView()
             else
                 Search:OnSearchTextChanged(text, true)
             end
@@ -183,7 +183,7 @@ function Rows:ShowResultContextMenu(row, keyboardMode)
         local text = editBox and editBox:GetText() or ""
         if text == "" then
             local pinsRemain = Results:KeepPinnedResultsOpenBriefly()
-            Results:ShowPinnedItems()
+            Results:ShowEmptyQueryView()
             if pinsRemain and editBox
                and not (Search:GetNavFrame() and Search:GetNavFrame():IsKeyboardEnabled()) then
                 editBox.blockFocus = nil

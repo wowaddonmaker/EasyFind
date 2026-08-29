@@ -579,7 +579,11 @@ function Search:CreateSearchFrame()
         if searchFrame.ClearToolbarFocus then searchFrame.ClearToolbarFocus() end
         local text = self:GetText() or ""
         if text == "" then
-            Results:ShowPinnedItems()
+            -- ShowEmptyQueryView, never ShowPinnedItems directly: an active
+            -- quick filter owns the empty-text view (@icons renders the
+            -- grid). Focus bounces off the filter menu and back were
+            -- killing the icon grid here.
+            Results:ShowEmptyQueryView()
         else
             -- Refocus with leftover text: select all so the user can
             -- start typing fresh (overwrites) or hit Right Arrow /
@@ -617,8 +621,10 @@ function Search:CreateSearchFrame()
         -- Entering keyboard-nav mode (Enter / DOWN from the search bar)
         -- programmatically yanks focus so navFrame can take the keys.
         -- Don't treat that as a click-outside; the click-outside path
-        -- is handled by resultsFrame's GLOBAL_MOUSE_DOWN handler.
+        -- is handled by resultsFrame's GLOBAL_MOUSE_DOWN handler. Grid
+        -- nav is the same yank (its focus index is set before ClearFocus).
         if selectedIndex > 0 then return end
+        if Results.IsIconGridNavActive and Results:IsIconGridNavActive() then return end
         -- Click on a guard frame (results, dropdown, popups) keeps
         -- the results visible. Anywhere else (including empty world)
         -- hides them in one click instead of needing a second click
@@ -654,7 +660,7 @@ function Search:CreateSearchFrame()
                 if navFrame and navFrame:IsKeyboardEnabled() then return end
                 if strtrim(searchFrame.editBox:GetText()) ~= "" then return end
                 if Results:ConsumeKeepPinnedResultsOpen() and Results:HasPinnedItems() then
-                    Results:ShowPinnedItems()
+                    Results:ShowEmptyQueryView()
                     if searchFrame.editBox.blockFocus then
                         searchFrame.editBox.blockFocus = nil
                     end
@@ -795,6 +801,13 @@ function Search:CreateSearchFrame()
         end
         SearchHistory:ResetSearchHistory()
 
+        -- Enter with the icon grid open: focus the first visible cell,
+        -- the grid's equivalent of "focus the first result".
+        if Results.IsIconGridShown and Results:IsIconGridShown()
+           and not (Results.IsIconGridNavActive and Results:IsIconGridNavActive()) then
+            Results:MoveIconGridFocus(0, 1)
+            return
+        end
         -- Enter on the search bar: focus the first result. Prefer the
         -- first non-pinned row so a fresh search jumps past leftover
         -- pinned shortcuts; fall back to the first pinned row when
@@ -958,22 +971,17 @@ function Search:CreateSearchFrame()
     -- textures into a circle that fits inside the bar's right-cap
     -- silhouette. AddMaskTexture preserves the originals' colors
     -- (dark hover bg, blue ADD highlight) and just clips the shape.
-    if theme.searchBarRounded and filterBtn.CreateMaskTexture then
-        local CIRCLE_TEX = "Interface\\AddOns\\EasyFind\\textures\\FilterButtonCircle"
-        -- Inner circle radius (matches the gold ring's inner edge). Used to
-        -- mask the ring's black inner disc so the ring sits flush around it.
-        local innerInset = 6
-        local circleMask = filterBtn:CreateMaskTexture(nil, "ARTWORK")
-        circleMask:SetTexture(CIRCLE_TEX, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        circleMask:SetPoint("TOPLEFT",     filterBtn, "TOPLEFT",      innerInset, -innerInset)
-        circleMask:SetPoint("BOTTOMRIGHT", filterBtn, "BOTTOMRIGHT", -innerInset,  innerInset)
+    if theme.searchBarRounded then
         -- Round blue hover glow. Blizzard's hover bg (796424) and highlight
         -- (130757) are FILE textures that ignore AddMaskTexture here (square). So
         -- drive btnBg with our own glow texture: a radial blue->navy gradient that
         -- fades to transparent corners (round on its own, no mask) with a deep-blue
         -- shadow rim instead of a hard fade to black. Colors are baked in, so a
-        -- plain white tint, normal-alpha blended (~90% opaque), sized to the inner
-        -- circle inside the ring.
+        -- plain white tint, normal-alpha blended (~90% opaque), inset to sit
+        -- inside the bar's right-cap silhouette. The glow is the whole hover
+        -- and focus look; the old gold perimeter ring on top of it read as
+        -- redundant next to the apps button's plain glow.
+        local innerInset = 6
         filterBtnBg:SetTexture("Interface\\AddOns\\EasyFind\\textures\\filter-glow")
         filterBtnBg:SetVertexColor(1, 1, 1)
         filterBtnBg:SetBlendMode("BLEND")
@@ -982,46 +990,11 @@ function Search:CreateSearchFrame()
         filterBtnBg:SetPoint("BOTTOMRIGHT", filterBtn, "BOTTOMRIGHT", -innerInset,  innerInset)
         local hl = filterBtn:GetHighlightTexture()
         if hl then hl:SetTexture(nil) end
-
-        -- Gold perimeter ring: outer gold disc + black inner disc layered
-        -- on top so only a thin annulus of gold shows around the inner
-        -- circle. Hidden by default and revealed alongside the hover bg
-        -- in OnEnter / keyboard focus, so the resting state matches the
-        -- pre-ring look. ringInset is just 1px outside the inner circle
-        -- to keep the ring stroke thin.
-        local ringInset = innerInset - 1
-        local ringMask = filterBtn:CreateMaskTexture(nil, "BACKGROUND")
-        ringMask:SetTexture(CIRCLE_TEX, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        ringMask:SetPoint("TOPLEFT",     filterBtn, "TOPLEFT",      ringInset, -ringInset)
-        ringMask:SetPoint("BOTTOMRIGHT", filterBtn, "BOTTOMRIGHT", -ringInset,  ringInset)
-
-        local ringDisc = filterBtn:CreateTexture(nil, "BACKGROUND", nil, 1)
-        ringDisc:SetColorTexture(1.0, 0.82, 0.0, 1)
-        ringDisc:SetPoint("TOPLEFT",     filterBtn, "TOPLEFT",      ringInset, -ringInset)
-        ringDisc:SetPoint("BOTTOMRIGHT", filterBtn, "BOTTOMRIGHT", -ringInset,  ringInset)
-        ringDisc:AddMaskTexture(ringMask)
-        ringDisc:Hide()
-
-        local ringInner = filterBtn:CreateTexture(nil, "BACKGROUND", nil, 2)
-        ringInner:SetColorTexture(0, 0, 0, 1)
-        ringInner:SetPoint("TOPLEFT",     filterBtn, "TOPLEFT",      innerInset, -innerInset)
-        ringInner:SetPoint("BOTTOMRIGHT", filterBtn, "BOTTOMRIGHT", -innerInset,  innerInset)
-        ringInner:AddMaskTexture(circleMask)
-        ringInner:Hide()
-
-        filterBtn.ringDisc = ringDisc
-        filterBtn.ringInner = ringInner
-    end
-
-    local function SetRingShown(self, shown)
-        if self.ringDisc then self.ringDisc:SetShown(shown) end
-        if self.ringInner then self.ringInner:SetShown(shown) end
     end
 
     local FILTER_TOOLTIP_DELAY = ns.TOOLTIP_HOVER_DELAY
     filterBtn:SetScript("OnEnter", function(self)
         self.btnBg:Show()
-        SetRingShown(self, true)
         local token = (self._tooltipToken or 0) + 1
         self._tooltipToken = token
         Utils.SafeAfter(FILTER_TOOLTIP_DELAY, function()
@@ -1041,7 +1014,6 @@ function Search:CreateSearchFrame()
         local dd = searchFrame.filterDropdown
         if not self.keyboardFocused and not (dd and dd:IsShown()) then
             self.btnBg:Hide()
-            SetRingShown(self, false)
         end
         GameTooltip_Hide()
     end)
@@ -1050,10 +1022,8 @@ function Search:CreateSearchFrame()
     filterBtn.SetMenuEngaged = function(self, engaged)
         if engaged then
             self.btnBg:Show()
-            SetRingShown(self, true)
         elseif not self:IsMouseOver() and not self.keyboardFocused then
             self.btnBg:Hide()
-            SetRingShown(self, false)
         end
     end
     searchFrame.filterBtn = filterBtn
@@ -1096,13 +1066,19 @@ function Search:CreateSearchFrame()
     local function MoveDown1() Results:MoveSelection(1) end
     local function MoveDown5() Results:MoveSelection(5) end
     local function MoveUp5() Results:MoveSelection(-5) end
+    local function GridFocusLeft() Results:MoveIconGridFocus(-1, 0) end
+    local function GridFocusRight() Results:MoveIconGridFocus(1, 0) end
     -- Results-above mode: UP from the editbox should land on the LAST row
     -- (visually closest to the search bar), then step up from there as the
     -- key continues to be held. Asymmetric with the below-mode case, which
     -- can use MoveDown1 directly since MoveSelection(1) lands on row 1 from
     -- selectedIndex==0 and steps from there.
     local function EnterAboveOrStepUp()
-        if selectedIndex == 0 then
+        -- Grid nav active counts as "already entered" even though
+        -- selectedIndex stays 0: keep stepping instead of re-jumping to
+        -- the end on every held tick.
+        if selectedIndex == 0
+           and not (Results.IsIconGridNavActive and Results:IsIconGridNavActive()) then
             Results:JumpToEnd()
         else
             Results:MoveSelection(-1, true, true)
@@ -1119,6 +1095,11 @@ function Search:CreateSearchFrame()
 
     local function RefocusEditBoxAfterNav()
         if selectedIndex ~= 0 then return end
+        -- Grid nav keeps selectedIndex at 0 while it owns the keys; a key
+        -- RELEASE must not snap focus back to the editbox mid-navigation
+        -- (that refocus was why every key after the first Down landed in
+        -- the editbox: UP walked history, LEFT/RIGHT moved the caret).
+        if Results.IsIconGridNavActive and Results:IsIconGridNavActive() then return end
         if not searchFrame or not searchFrame:IsShown() then return end
         if not editBox then return end
         -- Restore the original MaxLetters that the alt-nav lock saved
@@ -1172,7 +1153,10 @@ function Search:CreateSearchFrame()
     end
 
     local function StepAltK()
-        if selectedIndex > 0 then
+        -- Grid nav keeps selectedIndex at 0 (it has its own focus index);
+        -- without this check UP inside the grid fell through to history.
+        if selectedIndex > 0
+           or (Results.IsIconGridNavActive and Results:IsIconGridNavActive()) then
             return Results:MoveSelection(-1, true, true)
         end
         RefocusEditBoxForHistoryNav()
@@ -1394,8 +1378,6 @@ function Search:CreateSearchFrame()
         if prevTarget then
             prevTarget.keyboardFocused = nil
             if prevTarget.btnBg then prevTarget.btnBg:Hide() end
-            if prevTarget.ringDisc then prevTarget.ringDisc:Hide() end
-            if prevTarget.ringInner then prevTarget.ringInner:Hide() end
             if prevTarget.UnlockHighlight then prevTarget:UnlockHighlight() end
             if prevTarget.RefreshReveal then prevTarget.RefreshReveal() end
         end
@@ -1407,8 +1389,6 @@ function Search:CreateSearchFrame()
             if target.RefreshReveal then target.RefreshReveal() end
             if target.btnBg then
                 target.btnBg:Show()
-                if target.ringDisc then target.ringDisc:Show() end
-                if target.ringInner then target.ringInner:Show() end
                 if target.LockHighlight then target:LockHighlight() end
                 toolbarHighlight:Hide()
             elseif target.LockHighlight and target:GetHighlightTexture() then
@@ -1433,8 +1413,6 @@ function Search:CreateSearchFrame()
         if prevTarget then
             prevTarget.keyboardFocused = nil
             if prevTarget.btnBg then prevTarget.btnBg:Hide() end
-            if prevTarget.ringDisc then prevTarget.ringDisc:Hide() end
-            if prevTarget.ringInner then prevTarget.ringInner:Hide() end
             if prevTarget.UnlockHighlight then prevTarget:UnlockHighlight() end
             if prevTarget.RefreshReveal then prevTarget.RefreshReveal() end
         end
@@ -1521,10 +1499,26 @@ function Search:CreateSearchFrame()
             end
             return
         elseif alt and key == "L" then
-            CycleFocus(false)
+            -- On the grid, H/L are horizontal moves (vim left/right);
+            -- everywhere else they cycle focus like Tab/Shift+Tab.
+            if Results.IsIconGridNavActive and Results:IsIconGridNavActive() then
+                Results:MoveIconGridFocus(1, 0)
+            else
+                CycleFocus(false)
+            end
             return
         elseif alt and key == "H" then
-            CycleFocus(true)
+            if Results.IsIconGridNavActive and Results:IsIconGridNavActive() then
+                Results:MoveIconGridFocus(-1, 0)
+            else
+                CycleFocus(true)
+            end
+            return
+        end
+
+        if (key == "LEFT" or key == "RIGHT")
+           and Results.IsIconGridNavActive and Results:IsIconGridNavActive() then
+            StartKeyRepeat(key, key == "LEFT" and GridFocusLeft or GridFocusRight)
             return
         end
 
@@ -1614,6 +1608,14 @@ function Search:CreateSearchFrame()
             if Filters:IsQuickFilterSuggestionsActive() and Filters:AcceptQuickFilterSuggestion() then
                 return
             end
+            -- Tab on the grid's focused cell = its context menu, exactly
+            -- like Tab on a focused result row.
+            if not shift and Results.IsIconGridNavActive and Results:IsIconGridNavActive() then
+                if Results:OpenIconGridFocusMenu() then
+                    if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
+                    return
+                end
+            end
             if not shift and selectedIndex > 0 and not toggleFocused then
                 local row = resultButtons[selectedIndex]
                 if row and Rows.ShowResultContextMenu and Rows:ShowResultContextMenu(row, true) then
@@ -1645,13 +1647,17 @@ function Search:CreateSearchFrame()
                 toggleFocused = false
                 Results:UpdateSelectionHighlight(true)
             end
+            if Results.IsIconGridNavActive and Results:IsIconGridNavActive() then
+                Results:ExitIconGridNav(false)
+            end
             Utils.SafeCallMethod(navFrame, "EnableKeyboard", false)
             if searchFrame.StopKeyRepeat then searchFrame.StopKeyRepeat() end
             Search:HandleEscape()
         else
             -- If no selection and editbox isn't focused, let the key propagate
             -- to the game (e.g. WASD movement) instead of typing into the bar.
-            if selectedIndex == 0 and not searchFrame.editBox:HasFocus() then
+            if selectedIndex == 0 and not searchFrame.editBox:HasFocus()
+               and not (Results.IsIconGridNavActive and Results:IsIconGridNavActive()) then
                 Utils.SafeCallMethod(navFrame, "SetPropagateKeyboardInput", true)
                 return
             end
@@ -1726,6 +1732,11 @@ function Search:CreateSearchFrame()
         if key == "DOWN" or key == "UP" or key == "PAGEDOWN" or key == "PAGEUP"
             or key == "HOME" or key == "END" or key == "TAB" or key == "ENTER"
             or key == "ESCAPE" then
+            consume = true
+        elseif (key == "LEFT" or key == "RIGHT")
+            and Results.IsIconGridNavActive and Results:IsIconGridNavActive() then
+            -- Horizontal moves only exist on the icon grid; everywhere else
+            -- LEFT/RIGHT stay game keys (turning).
             consume = true
         elseif Calculator:IsCalculatorCopyKey(key) then
             consume = true
@@ -2334,7 +2345,7 @@ function Search:RebuildOpenResults()
     if text and text ~= "" then
         self:OnSearchTextChanged(text)
     else
-        self:ShowPinnedItems()
+        Results:ShowEmptyQueryView()
     end
 end
 
@@ -2541,31 +2552,20 @@ function Search:UpdateFontSize()
                 tbTex:SetVertexColor(Utils.RGB(GOLD_COLOR, 0.5))
             end
         end
-        -- Filter-button hover chrome: the perimeter ring follows the
-        -- palette accent (classic gold on Black), the inner disc the live
-        -- window fill, and the hover glow swaps its baked blue art for a
-        -- lightened fill disc on light themes (vertex tint can only
-        -- darken, never lighten, the baked blue).
-        if filterBtn and filterBtn.ringDisc then
-            -- Dark themes keep the classic gold ring as shipped; the
-            -- palette accent only replaces it on light themes (Black's
-            -- accent is a muted amber tuned for indents, not chrome).
-            local pal = ns.ACTIVE_UI_PALETTE
-            local accent = (pal and pal.light and pal.accent) or GOLD_COLOR
-            filterBtn.ringDisc:SetColorTexture(accent[1], accent[2], accent[3], 1)
-            local windowFill = ns.SEARCH_WINDOW_FILL_COLOR
-            filterBtn.ringInner:SetColorTexture(windowFill[1], windowFill[2], windowFill[3], 1)
-            if filterBtn.btnBg then
-                if theme.lightTheme then
-                    filterBtn.btnBg:SetTexture("Interface\\AddOns\\EasyFind\\textures\\FilterButtonCircle")
-                    filterBtn.btnBg:SetVertexColor(
-                        mmin(1, windowFill[1] * 1.12),
-                        mmin(1, windowFill[2] * 1.12),
-                        mmin(1, windowFill[3] * 1.12), 0.95)
-                else
-                    filterBtn.btnBg:SetTexture("Interface\\AddOns\\EasyFind\\textures\\filter-glow")
-                    filterBtn.btnBg:SetVertexColor(1, 1, 1, 1)
-                end
+        -- Filter-button hover glow: the baked blue art reads wrong on light
+        -- themes and vertex tint can only darken, never lighten, so light
+        -- palettes swap it for a lightened fill disc instead.
+        if filterBtn and filterBtn.btnBg and theme.searchBarRounded then
+            if theme.lightTheme then
+                local windowFill = ns.SEARCH_WINDOW_FILL_COLOR
+                filterBtn.btnBg:SetTexture("Interface\\AddOns\\EasyFind\\textures\\FilterButtonCircle")
+                filterBtn.btnBg:SetVertexColor(
+                    mmin(1, windowFill[1] * 1.12),
+                    mmin(1, windowFill[2] * 1.12),
+                    mmin(1, windowFill[3] * 1.12), 0.95)
+            else
+                filterBtn.btnBg:SetTexture("Interface\\AddOns\\EasyFind\\textures\\filter-glow")
+                filterBtn.btnBg:SetVertexColor(1, 1, 1, 1)
             end
         end
     end

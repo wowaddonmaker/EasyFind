@@ -1470,8 +1470,6 @@ function Filters:CreateUIFilterDropdown(toggleBtn, anchorFrame, searchEditBox)
                 -- the cursor leaves and comes back.
                 if not fb:IsMouseOver() then
                     if fb.btnBg then fb.btnBg:Hide() end
-                    if fb.ringDisc then fb.ringDisc:Hide() end
-                    if fb.ringInner then fb.ringInner:Hide() end
                     if fb.UnlockHighlight then fb:UnlockHighlight() end
                 end
             end

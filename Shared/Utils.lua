@@ -2367,7 +2367,7 @@ function Utils.RefreshMenuRowHighlights(parent, orderedRows)
     -- hover is the SAME rounded pill the search result rows wear
     -- (Utils.UpdateRoundedRowWash) -- uniform on every row, no positional
     -- corner masks.
-    local washR, washG, washB = ns.RowWashColor()
+    local washR = ns.RowWashColor()
     for i = 1, #rows do
         local row = rows[i]
         row._efWashActive = washR and true or nil
@@ -2379,18 +2379,6 @@ function Utils.RefreshMenuRowHighlights(parent, orderedRows)
             hlTex:SetAlpha(1)
             hlTex:SetBlendMode("ADD")
             hlTex:SetVertexColor(1, 1, 1, 1)
-        end
-        local kb = row.keyboardOverlay
-        if kb then
-            if washR then
-                kb:SetDrawLayer("BACKGROUND", 2)
-                kb:SetBlendMode("BLEND")
-                kb:SetVertexColor(washR, washG, washB, 1)
-            else
-                kb:SetDrawLayer("OVERLAY", 0)
-                kb:SetBlendMode("ADD")
-                kb:SetVertexColor(1, 1, 1, 1)
-            end
         end
         UpdateMenuRowWash(row)
     end
@@ -2598,7 +2586,6 @@ function Utils.InstallMenuRowHighlight(row)
         self._efWashFocused = nil
         self._efWashHover = nil
         if self.UnlockHighlight then self:UnlockHighlight() end
-        if self.keyboardOverlay then self.keyboardOverlay:Hide() end
         UpdateMenuRowWash(self)
     end
     return row.SetMenuHighlightFocused
@@ -5170,14 +5157,15 @@ local function CursorMenuIsSelectableRow(row)
     return row and row:IsShown() and not row.isSeparator and not row.disabled
 end
 
+-- The locked highlight IS the keyboard-focus visual: the same themed pill
+-- (or additive glow on Black) hover shows, uniform with result rows, grid
+-- cells and the apps menu. No extra overlay: the old gold QuestTitle slab
+-- painted ON TOP of the pill read as an off-theme double highlight.
 local function CursorMenuPaintKeyboardSelection(self)
     if not self.rows then return end
     for i = 1, #self.rows do
         local row = self.rows[i]
         if row and row.UnlockHighlight then row:UnlockHighlight() end
-        if row and row.keyboardOverlay then
-            row.keyboardOverlay:SetShown(self.keyboardIndex == i)
-        end
     end
     local row = self.rows[self.keyboardIndex or 0]
     if row and row.LockHighlight then row:LockHighlight() end
@@ -5568,12 +5556,6 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
                 row.sep:SetPoint("LEFT", row, "LEFT", 6, 0)
                 row.sep:SetPoint("RIGHT", row, "RIGHT", -6, 0)
                 row.sep:Hide()
-                row.keyboardOverlay = row:CreateTexture(nil, "OVERLAY")
-                row.keyboardOverlay:SetAllPoints()
-                row.keyboardOverlay:SetTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight")
-                row.keyboardOverlay:SetBlendMode("ADD")
-                row.keyboardOverlay:SetAlpha(0.85)
-                row.keyboardOverlay:Hide()
                 menu.rows[shown] = row
             end
             local isSep = def.isSeparator
@@ -5818,7 +5800,6 @@ function Utils.ShowCursorMenu(globalName, rows, opts)
             row.disabled = nil
             row.onClick = nil
             row._submenuRows = nil
-            if row.keyboardOverlay then row.keyboardOverlay:Hide() end
             row:SetScript("OnClick", nil)
             row:SetScript("OnMouseDown", nil)
         end

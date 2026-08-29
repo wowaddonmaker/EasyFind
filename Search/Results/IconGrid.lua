@@ -22,6 +22,12 @@ local GameTooltip = GameTooltip
 local hooksecurefunc = hooksecurefunc
 
 local CELL_GAP = 4
+-- Left/right inset of the grid inside the results frame; the corner hint
+-- shares it so its text aligns with the first icon column.
+local SIDE_PAD = 10
+-- Extra bottom reserve past the theme's own padB for the hint/counter
+-- strip; the texts center vertically in padB + this.
+local TEXT_STRIP_EXTRA = 14
 local host, page, cells
 local gridCols, gridRows = 0, 0
 local rowH = 1
@@ -32,6 +38,12 @@ local rowOffset = 0
 -- The cell whose cursor menu is open; its highlight is locked for the
 -- menu's lifetime.
 local menuCell
+-- Keyboard focus: absolute position in `filtered` (0 = keyboard nav off).
+-- The grid plugs into the bar's ONE nav system (navFrame): MoveSelection,
+-- ActivateSelected, the Tab/ESC branches and the vim aliases all route
+-- here while the grid owns the panel, so every mouse-free convention the
+-- row list has works identically on cells.
+local navIndex = 0
 
 local function IconTooltip(cellBtn)
     if not cellBtn.iconName then return end
@@ -53,19 +65,26 @@ local function CreateMacroWithIcon(iconID, withTooltip)
         pcall(C_AddOns.LoadAddOn, "Blizzard_MacroUI")
     end
     if not CreateMacro then return end
-    -- Name stays blank, like the macro UI's own New button: only the icon
-    -- is preset, the user titles it. Account tab first; a full account tab
-    -- (nil return) falls back to the character tab.
     -- withTooltip presets a bare "#showtooltip" first line: the tooltip
     -- then follows the macro's first /cast or /use, resolved live on
     -- whatever character/spec runs it. Never a spell argument: a named
     -- spell pins the tooltip and breaks on characters without it. The
     -- chosen icon stays either way; only the "?" icon would go dynamic.
     local body = withTooltip and "#showtooltip\n" or ""
-    local idx = CreateMacro("", iconID, body, nil)
-    if not idx then
-        idx = CreateMacro("", iconID, body, true)
+    -- The client REFUSES an empty macro name ("CreateMacro() failed, no
+    -- name specified" -- a hard error, hence the pcalls). A lone space is
+    -- the closest legal thing to the blank title the user renames anyway;
+    -- if a client build rejects that too, fall back to the localized word
+    -- for Macro. Account tab first; a full tab (nil) tries the character
+    -- tab.
+    local function TryCreateMacro(name)
+        local ok, idx = pcall(CreateMacro, name, iconID, body, nil)
+        if ok and idx then return idx end
+        ok, idx = pcall(CreateMacro, name, iconID, body, true)
+        if ok and idx then return idx end
+        return nil
     end
+    local idx = TryCreateMacro(" ") or TryCreateMacro(_G["MACRO"] or "Macro")
     if ns.ResultHandlers and ns.ResultHandlers.FinishResultSelection then
         ns.ResultHandlers:FinishResultSelection()
     end
@@ -83,7 +102,7 @@ local function CreateMacroWithIcon(iconID, withTooltip)
     end
 end
 
-local function ShowCellMenu(cellBtn)
+local function ShowCellMenu(cellBtn, keyboardMode)
     local iconID, iconName = cellBtn.iconID, cellBtn.iconName
     if not iconID then return end
     local rows = {
@@ -108,8 +127,13 @@ local function ShowCellMenu(cellBtn)
     -- the life of the menu.
     menuCell = cellBtn
     cellBtn:LockHighlight()
+    -- Keyboard-opened (Tab on the focused cell): anchor beside the CELL
+    -- instead of the cursor, and hand the menu keyboard focus, exactly like
+    -- a row's Tab context menu.
     Utils.ShowCursorMenu("EasyFindIconCellMenu", rows, {
         scale = EasyFind.db.uiSearchScale or 1.0,
+        anchorFrame = keyboardMode and cellBtn or nil,
+        keyboardMode = keyboardMode or nil,
         onHide = function()
             if menuCell then
                 menuCell:UnlockHighlight()
@@ -150,15 +174,33 @@ local function Repaint()
             cellBtn.iconName, cellBtn.iconID = nil, nil
             cellBtn:Hide()
         end
+        -- The keyboard-focused cell wears the locked highlight (same light
+        -- the mouse hover shows); the menu's cell keeps its own lock.
+        if cellBtn ~= menuCell then
+            if navIndex > 0 and base + i == navIndex then
+                cellBtn:LockHighlight()
+            else
+                cellBtn:UnlockHighlight()
+            end
+        end
     end
     if host.countText then
         host.countText:SetText(sformat("%d/%d", filteredN, IconSearch:GetTotal()))
+        -- With no matches there is nothing to right-click; the hint slot
+        -- carries the no-results message instead (Blizzard's own string).
+        if filteredN == 0 then
+            host.hintText:SetText(_G["BROWSE_NO_RESULTS"] or "No results found.")
+        else
+            host.hintText:SetText(L["ICON_GRID_RCLICK_HINT"])
+        end
         -- Same muted tone the renderer's inert amount text wears.
         local theme = Results.GetActiveTheme and Results:GetActiveTheme()
         if theme and theme.lightTheme and theme.textFaint then
             host.countText:SetTextColor(theme.textFaint[1], theme.textFaint[2], theme.textFaint[3], 1)
+            host.hintText:SetTextColor(theme.textFaint[1], theme.textFaint[2], theme.textFaint[3], 1)
         else
             host.countText:SetTextColor(0.6, 0.6, 0.6, 0.9)
+            host.hintText:SetTextColor(0.6, 0.6, 0.6, 0.9)
         end
     end
 end
@@ -201,10 +243,16 @@ local function EnsureHost(resultsFrame)
     page:SetSize(1, 1)
     -- Shown/filtered counter. On the results frame, not the scroll content:
     -- it must neither scroll away nor be clipped by the scrollFrame.
+    -- Anchors are set per ShowIconGrid: their vertical center sits at half
+    -- the bottom text strip, whose height varies with theme and font scale.
     host.countText = resultsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-    host.countText:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", -10, 4)
     host.countText._efOwnColor = true
     host.countText:Hide()
+    -- Right-click hint, bottom-left twin of the counter (swaps to the
+    -- no-results message when the filter matches nothing).
+    host.hintText = resultsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    host.hintText._efOwnColor = true
+    host.hintText:Hide()
     resultsFrame.scrollFrame:HookScript("OnVerticalScroll", function(_, offset)
         if not host:IsShown() then return end
         local newOffset = mmax(0, mfloor((offset or 0) / rowH))
@@ -299,7 +347,6 @@ function Results:ShowIconGrid(query)
     -- Cell size from the user's row-height unit; columns fill the width.
     local unit = Results:GetRowUnitHeight()
     local cellSize = mmax(24, unit - CELL_GAP)
-    local SIDE_PAD = 10
     local width = resultsFrame:GetWidth() - SIDE_PAD * 2
     gridCols = mmax(1, mfloor((width + CELL_GAP) / (cellSize + CELL_GAP)))
     gridRows = mmax(1, EasyFind.db.uiResultsRows or 6)
@@ -318,12 +365,28 @@ function Results:ShowIconGrid(query)
     host:SetSize(width, virtualH)
     host:Show()
     host.countText:Show()
+    host.hintText:Show()
 
-    -- padB grows to hold the counter under the cells. preserveScroll only
-    -- for a same-query re-render (theme/scale): a fresh open or a changed
-    -- query resets to the top, and a previous ROW render's leftover scroll
-    -- must never carry into the grid.
-    Render:ApplyResultsFrameLayout(resultsFrame, virtualH, gridH, padT, padB + 14,
+    -- The bottom strip holds the hint and counter: padB plus the extra
+    -- text reserve. Anchoring the texts' vertical CENTER at half the strip
+    -- keeps them perfectly centered between the last icon row and the
+    -- window bottom at every theme padding and font scale.
+    local stripH = padB + TEXT_STRIP_EXTRA
+    -- The columns rarely fill the width exactly (integer column count), so
+    -- the counter aligns to the LAST COLUMN's right edge, not the frame's:
+    -- the hint tracks the first column, the count the last, and the strip
+    -- reads as part of the grid.
+    local gridRight = SIDE_PAD + gridCols * (cellSize + CELL_GAP) - CELL_GAP
+    host.hintText:ClearAllPoints()
+    host.hintText:SetPoint("LEFT", resultsFrame, "BOTTOMLEFT", SIDE_PAD, stripH / 2)
+    host.countText:ClearAllPoints()
+    host.countText:SetPoint("RIGHT", resultsFrame, "BOTTOMLEFT", gridRight, stripH / 2)
+
+    -- padB grows to hold the text strip under the cells. preserveScroll
+    -- only for a same-query re-render (theme/scale): a fresh open or a
+    -- changed query resets to the top, and a previous ROW render's
+    -- leftover scroll must never carry into the grid.
+    Render:ApplyResultsFrameLayout(resultsFrame, virtualH, gridH, padT, stripH,
         0, wasShown and sameQuery)
     rowOffset = mmax(0, mfloor(resultsFrame.scrollFrame:GetVerticalScroll() / rowH))
     Repaint()
@@ -333,8 +396,10 @@ function Results:HideIconGrid()
     if host and host:IsShown() then
         host:Hide()
         host.countText:Hide()
+        host.hintText:Hide()
         lastQuery = nil
         rowOffset = 0
+        navIndex = 0
     end
 end
 
@@ -348,6 +413,93 @@ function Results:ReleaseIconGridMemory()
     wipe(filtered)
     filteredN = 0
     lastQuery = nil
+end
+
+-- ==== Keyboard navigation (the bar's nav system routes here) ============
+
+function Results:IsIconGridNavActive()
+    return navIndex > 0 and host ~= nil and host:IsShown()
+end
+
+local function GridNavShow()
+    -- Keep the focused cell's row on screen: scrolling retextures the page
+    -- (the OnVerticalScroll hook repaints), then the lock lands on the new
+    -- cell because focus is an absolute index.
+    local focusRow = mfloor((navIndex - 1) / gridCols)
+    local scrollFrame = Search:GetResultsFrame().scrollFrame
+    if focusRow < rowOffset then
+        scrollFrame:SetVerticalScroll(focusRow * rowH)
+    elseif focusRow > rowOffset + gridRows - 1 then
+        scrollFrame:SetVerticalScroll((focusRow - gridRows + 1) * rowH)
+    end
+    Repaint()
+end
+
+function Results:ExitIconGridNav(refocus)
+    if navIndex == 0 then return end
+    navIndex = 0
+    if host and host:IsShown() then Repaint() end
+    Utils.SafeCallMethod(Search:GetNavFrame(), "EnableKeyboard", false)
+    if refocus then
+        local editBox = Search:GetSearchFrame() and Search:GetSearchFrame().editBox
+        if editBox and not editBox:HasFocus() then
+            editBox.blockFocus = nil
+            editBox:SetFocus()
+        end
+    end
+end
+
+-- dCol/dRow move the focus; entering (nav off) lands on the first visible
+-- cell. Moving up past the top row exits back to the editbox, mirroring
+-- the row list's boundary behavior. Returns true when focus moved.
+function Results:MoveIconGridFocus(dCol, dRow)
+    if filteredN == 0 then return false end
+    if navIndex == 0 then
+        -- Set BEFORE ClearFocus: the editbox focus-lost handler treats an
+        -- active nav (like selectedIndex > 0) as "not a click-outside".
+        navIndex = rowOffset * gridCols + 1
+        if navIndex > filteredN then navIndex = filteredN end
+        local editBox = Search:GetSearchFrame() and Search:GetSearchFrame().editBox
+        if editBox and editBox:HasFocus() then editBox:ClearFocus() end
+        Utils.SafeCallMethod(Search:GetNavFrame(), "EnableKeyboard", true)
+        GridNavShow()
+        return true
+    end
+    local target = navIndex + dCol + dRow * gridCols
+    if dRow < 0 and target < 1 then
+        self:ExitIconGridNav(true)
+        return true
+    end
+    if target < 1 then target = 1 end
+    if target > filteredN then target = filteredN end
+    if target == navIndex then return false end
+    navIndex = target
+    GridNavShow()
+    return true
+end
+
+function Results:JumpIconGridFocus(toEnd)
+    if filteredN == 0 then return end
+    navIndex = toEnd and filteredN or 1
+    GridNavShow()
+end
+
+function Results:ActivateIconGridFocus()
+    if not self:IsIconGridNavActive() then return false end
+    local fIdx = filtered[navIndex]
+    if not fIdx then return false end
+    local name, id = IconSearch:GetIcon(fIdx)
+    if id then ShowIconCopyBox(id, name) end
+    return true
+end
+
+function Results:OpenIconGridFocusMenu()
+    if not self:IsIconGridNavActive() then return false end
+    local base = rowOffset * gridCols
+    local cellBtn = cells and cells[navIndex - base]
+    if not (cellBtn and cellBtn.iconID) then return false end
+    ShowCellMenu(cellBtn, true)
+    return true
 end
 
 -- ONE entry point for every "open icon search" surface (the apps menu slot

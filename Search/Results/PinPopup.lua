@@ -43,7 +43,7 @@ function Results:KeepPinnedResultsOpenBriefly()
     local searchFrame = Search:GetSearchFrame()
     if searchFrame and searchFrame.editBox
        and strtrim(searchFrame.editBox:GetText() or "") == "" then
-        Results:ShowPinnedItems()
+        Results:ShowEmptyQueryView()
     end
     return true
 end

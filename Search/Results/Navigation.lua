@@ -233,6 +233,20 @@ function Results:ShowUnappliedSettingsPopup()
     return true
 end
 
+-- The ONE owner of "what does an empty query show": an active quick
+-- filter's view (the @icons grid, a category list) or, with no filter,
+-- the pinned items. Every caller that reacts to an emptied/refocused box
+-- or a pin/blacklist action routes here; calling ShowPinnedItems directly
+-- stomps a live filter view (that exact bug killed the icon grid from
+-- OnEditFocusGained).
+function Results:ShowEmptyQueryView()
+    if ns.Filters and ns.Filters.GetQuickFilter and ns.Filters:GetQuickFilter() then
+        Search:OnSearchTextChanged("", true)
+    else
+        self:ShowPinnedItems()
+    end
+end
+
 function Results:RequestHideResults()
     if ResultsFrame() and ResultsFrame():IsShown() and self:ShowUnappliedSettingsPopup() then
         return
@@ -401,6 +415,11 @@ function Results:MoveSelection(delta, skipRefocus, keepRepeat)
     -- shown, so a leftover row from a prior search would let Alt+J
     -- yank focus into nothing on an empty bar. Gate on the frame.
     if not ResultsFrame() or not ResultsFrame():IsShown() then return false end
+    -- The icon grid owns the panel: every vertical-motion caller (DOWN/UP,
+    -- Alt+J/K, PageUp/Down, held repeats) becomes a row move on the grid.
+    if self.IsIconGridShown and self:IsIconGridShown() then
+        return self:MoveIconGridFocus(0, delta)
+    end
     local visibleCount = self:CountVisibleResults()
     if visibleCount == 0 then return false end
 
@@ -423,6 +442,9 @@ function Results:MoveSelection(delta, skipRefocus, keepRepeat)
 end
 
 function Results:JumpToStart()
+    if self.IsIconGridNavActive and self:IsIconGridNavActive() then
+        return self:JumpIconGridFocus(false)
+    end
     if self:CountVisibleResults() > 0 then
         Search:SetSelectedIndex(1)
         Search:SetToggleFocused(false)
@@ -431,6 +453,9 @@ function Results:JumpToStart()
 end
 
 function Results:JumpToEnd()
+    if self.IsIconGridNavActive and self:IsIconGridNavActive() then
+        return self:JumpIconGridFocus(true)
+    end
     local visibleCount = self:CountVisibleResults()
     if visibleCount > 0 then
         Search:SetSelectedIndex(visibleCount)
@@ -440,6 +465,10 @@ function Results:JumpToEnd()
 end
 
 function Results:JumpToNextSection(direction)
+    -- No sections on the icon grid; the closest jump is a page.
+    if self.IsIconGridNavActive and self:IsIconGridNavActive() then
+        return self:MoveIconGridFocus(0, direction * 5)
+    end
     local visibleCount = self:CountVisibleResults()
     if visibleCount == 0 then return end
 
@@ -603,6 +632,10 @@ function Results:ActivateResultRow(resultRow, source)
 end
 
 function Results:ActivateSelected(source)
+    -- Enter on the grid's focused cell = the left-click action (copy box).
+    if self.IsIconGridNavActive and self:IsIconGridNavActive() then
+        if self:ActivateIconGridFocus() then return end
+    end
     if Search:GetSelectedIndex() > 0 and Search:GetSelectedIndex() <= MAX_BUTTON_POOL then
         local resultRow = Search:GetResultButtons()[Search:GetSelectedIndex()]
         if resultRow and resultRow:IsShown() then
