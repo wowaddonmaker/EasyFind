@@ -390,6 +390,10 @@ function Database:LoadEagerDynamicProviders()
             index = index + 1
             if provider.eager and not (provider.loaded and not provider.dirty) then
                 RunDynamicProvider(self, provider, function()
+                    -- Bounded GC step per provider: keeps the warm's peak
+                    -- allocation from stacking every provider's build
+                    -- garbage before the end-of-chain full collect.
+                    collectgarbage("step", 400)
                     Utils.SafeAfter(0, step)
                 end)
                 return
@@ -415,6 +419,10 @@ function Database:LoadDeferredSyncProvidersStaggered()
             if not provider.asyncFn
                and not (provider.loaded and not provider.dirty) then
                 RunDynamicProvider(self, provider, function()
+                    -- Bounded GC step per provider: keeps the warm's peak
+                    -- allocation from stacking every provider's build
+                    -- garbage before the end-of-chain full collect.
+                    collectgarbage("step", 400)
                     Utils.SafeAfter(0, step)
                 end)
                 return

@@ -254,7 +254,10 @@ function Search:UpdateStackStrata()
 end
 
 function Search:WarmSearchHotPath()
-    for i = 1, MAX_BUTTON_POOL do
+    -- Warm only what a render can show at once; the pool grows on demand
+    -- (EnsureResultButton) for the rare deep container browse. Building
+    -- all 100 rows here was over a MB of frames nothing ever displayed.
+    for i = 1, 20 do
         Results:EnsureResultButton(i):Hide()
     end
 end

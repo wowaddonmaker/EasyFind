@@ -108,7 +108,16 @@ local function PostAppend(strMap, tailMap, key, sid)
             n = n + 1
             freezeBuf[n] = schar(band(v, 255), band(rshift(v, 8), 255), band(rshift(v, 16), 255))
         end
-        strMap[key] = (strMap[key] or "") .. tconcat(freezeBuf, "", 1, n)
+        -- Chunk LIST during build, one concat on first read: the rolling
+        -- string concat this replaces was O(n^2) copying on frequent
+        -- grams and produced most of the index build's garbage (a 5000-
+        -- posting bucket re-copied its whole string ~78 times).
+        local bucket = strMap[key]
+        if type(bucket) ~= "table" then
+            bucket = { bucket }
+            strMap[key] = bucket
+        end
+        bucket[#bucket + 1] = tconcat(freezeBuf, "", 1, n)
         wipe(tail)
     end
 end
@@ -118,6 +127,12 @@ end
 local function DecodePostings(strMap, tailMap, key)
     local n = 0
     local str = strMap[key]
+    if type(str) == "table" then
+        -- Finalize the build-time chunk list into the packed string once.
+        if str[1] == nil then table.remove(str, 1) end
+        str = tconcat(str)
+        strMap[key] = str
+    end
     if str then
         local len = #str
         local p = 1
