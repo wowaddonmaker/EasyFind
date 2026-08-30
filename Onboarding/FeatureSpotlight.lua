@@ -59,6 +59,53 @@ local function GetPulse(id)
     return pulse
 end
 
+-- The "NEW" tag: white text, cyan shadow, pulsing cyan glow behind it
+-- (only the glow animates). One per spotlight, repositioned per step by
+-- the step's tagPlace. Non-interactive on purpose: both targets carry
+-- their own hover behavior, and the tag must never steal it.
+local tagFrames = {}
+
+local function GetTag(id)
+    local tag = tagFrames[id]
+    if tag then return tag end
+    tag = CreateFrame("Frame", nil, UIParent)
+    tag:SetFrameStrata("TOOLTIP")
+    tag:EnableMouse(false)
+    local text = tag:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    text:SetPoint("CENTER")
+    text:SetText(_G["NEW"] or "New")
+    text:SetTextColor(1, 1, 1)
+    text:SetShadowColor(0.3, 0.9, 1.0, 1)
+    text:SetShadowOffset(1, -1)
+    tag:SetSize(text:GetStringWidth() + 4, 14)
+    local glow = tag:CreateTexture(nil, "BACKGROUND")
+    glow:SetPoint("CENTER")
+    glow:SetSize(text:GetStringWidth() + 28, 24)
+    glow:SetAtlas("collections-newglow")
+    glow:SetVertexColor(0.3, 0.85, 1.0, 0.5)
+    glow:SetBlendMode("ADD")
+    local anim = glow:CreateAnimationGroup()
+    anim:SetLooping("BOUNCE")
+    local alpha = anim:CreateAnimation("Alpha")
+    alpha:SetFromAlpha(0.8)
+    alpha:SetToAlpha(0.1)
+    alpha:SetDuration(1.5)
+    tag.anim = anim
+    tag:Hide()
+    tagFrames[id] = tag
+    return tag
+end
+
+local function HideTag(id)
+    local tag = tagFrames[id]
+    if tag then
+        tag.anim:Stop()
+        tag:Hide()
+        tag:SetParent(UIParent)
+        tag:ClearAllPoints()
+    end
+end
+
 local function ShowPulseOn(id, target)
     local pulse = GetPulse(id)
     pulse:SetParent(target)
@@ -72,6 +119,17 @@ local function ShowPulseOn(id, target)
     pulse.anim:Play()
 end
 
+local function ShowTagOn(id, target, place)
+    if not place then HideTag(id) return end
+    local tag = GetTag(id)
+    tag:SetParent(target)
+    tag:SetFrameLevel((target:GetFrameLevel() or 1) + 6)
+    tag:ClearAllPoints()
+    place(tag, target)
+    tag:Show()
+    tag.anim:Play()
+end
+
 local function HidePulse(id)
     local pulse = pulseFrames[id]
     if pulse then
@@ -80,6 +138,7 @@ local function HidePulse(id)
         pulse:SetParent(UIParent)
         pulse:ClearAllPoints()
     end
+    HideTag(id)
 end
 
 function Spotlight:Register(def)
@@ -95,15 +154,17 @@ function Spotlight:Refresh()
         if IsDone(id) then
             HidePulse(id)
         else
-            local target
+            local target, place
             for i = 1, #def.steps do
                 local ok, frame = pcall(def.steps[i])
                 if ok and frame and frame.IsVisible and frame:IsVisible() then
                     target = frame
+                    place = def.tagPlace and def.tagPlace[i] or nil
                 end
             end
             if target then
                 ShowPulseOn(id, target)
+                ShowTagOn(id, target, place)
             else
                 HidePulse(id)
             end
@@ -145,6 +206,24 @@ function Spotlight:Initialize()
                     if row:IsShown() and row.app and row.app.iconSearchLauncher then
                         return row
                     end
+                end
+            end,
+        },
+        tagPlace = {
+            -- Step 1, the apps button: the tag floats just above it so a
+            -- compact bar never clips it.
+            function(tag, target)
+                tag:SetPoint("BOTTOM", target, "TOP", 0, -3)
+            end,
+            -- Step 2, the Icon Search row: right after the label TEXT
+            -- (the label region stretches across the row, so anchor by
+            -- rendered string width, per the new-feature-label spec).
+            function(tag, target)
+                local label = target.label
+                if label then
+                    tag:SetPoint("LEFT", label, "LEFT", label:GetStringWidth() + 4, 0)
+                else
+                    tag:SetPoint("RIGHT", target, "RIGHT", -4, 0)
                 end
             end,
         },
