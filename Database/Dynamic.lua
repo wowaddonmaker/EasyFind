@@ -427,6 +427,16 @@ function Database:LoadDeferredSyncProvidersStaggered()
         if self.WarmSearchHotPath then self:WarmSearchHotPath() end
         -- Entries the shortkeys point at may have only just loaded; rebind now.
         if ns.Shortkeys and ns.Shortkeys.ApplyAll then ns.Shortkeys:ApplyAll() end
+        -- The warm allocates ~20MB of build TRANSIENTS the incremental GC
+        -- would otherwise sit on for minutes, parading in every memory
+        -- meter as EasyFind usage (audited: shown 16.6MB vs 8.2MB live).
+        -- Collect two frames out so the sweep never shares a frame with
+        -- the warm's last step.
+        if ns.Utils and ns.Utils.SafeAfter then
+            ns.Utils.SafeAfter(0.05, function()
+                collectgarbage("collect")
+            end)
+        end
     end
     step()
 end
