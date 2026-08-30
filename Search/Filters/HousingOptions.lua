@@ -26,7 +26,16 @@ end
 -- streamed data, so the last-seen structure persists in the DB: later sessions
 -- build the complete menu instantly, live data refreshes the cache whenever it
 -- is present, and only the first-ever session waits for the stream.
+-- Memoized per session after the first LIVE answer: the C call returns
+-- freshly allocated tables and we deep-copy them into the DB cache, so
+-- re-querying on every menu open was the largest recurring allocator in
+-- the warm-session Perfy trace. Tag group STRUCTURE only changes with a
+-- catalog stream, which within one session means "practically never";
+-- the DB cache still refreshes once per session for the next login.
+local liveTagGroups
+
 local function FilterTagGroups()
+    if liveTagGroups then return liveTagGroups end
     local db = EasyFind and EasyFind.db
     if C_HousingCatalog and C_HousingCatalog.GetAllFilterTagGroups then
         local ok, groups = pcall(C_HousingCatalog.GetAllFilterTagGroups)
@@ -49,6 +58,7 @@ local function FilterTagGroups()
                 end
                 db.housingTagGroupsCache = cached
             end
+            liveTagGroups = groups
             return groups
         end
     end
