@@ -39,7 +39,7 @@ local _, ns = ...
 -- per entry, so the caller bypasses the index for those.
 --
 -- Maintenance: appends index incrementally (provider loads). Postings are
--- keyed by entry REFERENCE, so removals cost one liveness flag each
+-- keyed by index-time SERIAL, so removals cost one liveness flag each
 -- (NoteRemoved) and never a synchronous rebuild; dead postings purge in a
 -- deferred compaction that runs only while the search bar is closed.
 
@@ -59,21 +59,25 @@ local ALL_CHARS_MASK = lshift(1, 26) - 1
 
 local dirty = true
 local builtCount = 0
--- Postings are keyed by ENTRY REFERENCE, not uiSearchData position, so a
--- removal's array compaction invalidates nothing: dead entries just stop
--- being alive and filter out of candidates, and the postings purge in ONE
--- idle compaction instead of a full synchronous rebuild on the next
--- keystroke. (Position-keyed postings forced that rebuild -- ~250ms and
--- ~10MB of allocation -- every time a provider repopulated mid-typing;
--- the housing stream did it repeatedly per session.)
-local gramPost = {}   -- "ab" -> array of entry refs containing bigram
-local wordPost = {}   -- word-leading bigram -> array of entry refs
-local initPost = {}   -- first two initials of a multi-word text -> refs
-local entryMask = {}  -- entry ref -> a-z char mask over name+keywords
-local lootIdx = {}    -- refs of loot entries (always candidates)
-local indexedEntries = {} -- dense array of every indexed ref (fuzzy sweep)
-local serials = {}    -- entry ref -> index-time serial (stable sort order)
-local alive = {}      -- entry ref -> true while still in uiSearchData
+-- Postings are keyed by index-time SERIAL, not uiSearchData position, so
+-- a removal's array compaction invalidates nothing: dead entries just
+-- stop being alive and filter out of candidates, and the postings purge
+-- in ONE idle compaction instead of a full synchronous rebuild on the
+-- next keystroke. (Position-keyed postings forced that rebuild -- ~250ms
+-- and ~10MB of allocation -- every time a provider repopulated
+-- mid-typing; the housing stream did it repeatedly per session.)
+-- Serials are dense monotonic integers, so every hot table keeps Lua's
+-- array part and the candidate sort needs no comparator (ref keys here
+-- measurably LOST to the full scan: pointer hashing on every posting
+-- hit). slotEntry maps a serial back to its entry at the very end.
+local gramPost = {}   -- "ab" -> array of serials containing bigram
+local wordPost = {}   -- word-leading bigram -> array of serials
+local initPost = {}   -- first two initials of a multi-word text -> serials
+local entryMask = {}  -- serial -> a-z char mask over name+keywords
+local lootIdx = {}    -- serials of loot entries (always candidates)
+local slotEntry = {}  -- serial -> entry ref
+local serials = {}    -- entry ref -> serial
+local alive = {}      -- serial -> true while still in uiSearchData
 local nextSerial = 0
 local deadCount = 0
 local compactScheduled = false
@@ -151,18 +155,20 @@ local function IndexEntry(data)
     -- Idempotent: after a removal compacts uiSearchData, already-indexed
     -- entries shift into the "new" position range; re-adding them would
     -- duplicate postings.
-    if serials[data] then
-        alive[data] = true
+    local sid = serials[data]
+    if sid then
+        alive[sid] = true
         return
     end
     nextSerial = nextSerial + 1
-    serials[data] = nextSerial
-    alive[data] = true
-    indexedEntries[#indexedEntries + 1] = data
+    sid = nextSerial
+    serials[data] = sid
+    slotEntry[sid] = data
+    alive[sid] = true
     if data.lootEntry then
-        lootIdx[#lootIdx + 1] = data
+        lootIdx[#lootIdx + 1] = sid
         -- Full mask so the sweep classes never reject loot either.
-        entryMask[data] = ALL_CHARS_MASK
+        entryMask[sid] = ALL_CHARS_MASK
         return
     end
     wipe(seenGrams)
@@ -170,7 +176,7 @@ local function IndexEntry(data)
     local nameLower = data.nameLower
     if nameLower then
         m = maskOf(nameLower, m)
-        IndexText(data, nameLower)
+        IndexText(sid, nameLower)
     end
     local kws = data.keywordsLower or data.keywords
     if kws then
@@ -178,11 +184,11 @@ local function IndexEntry(data)
             local kw = kws[k]
             if kw then
                 m = maskOf(kw, m)
-                IndexText(data, kw)
+                IndexText(sid, kw)
             end
         end
     end
-    entryMask[data] = m
+    entryMask[sid] = m
 end
 
 local function Rebuild()
@@ -191,7 +197,7 @@ local function Rebuild()
     wipe(initPost)
     wipe(entryMask)
     wipe(lootIdx)
-    wipe(indexedEntries)
+    wipe(slotEntry)
     wipe(serials)
     wipe(alive)
     nextSerial = 0
@@ -245,8 +251,9 @@ local function TryCompact()
 end
 
 function SearchIndex:NoteRemoved(entry)
-    if not alive[entry] then return end
-    alive[entry] = nil
+    local sid = serials[entry]
+    if not sid or not alive[sid] then return end
+    alive[sid] = nil
     deadCount = deadCount + 1
     if not compactScheduled and ns.Utils and ns.Utils.SafeAfter then
         compactScheduled = true
@@ -338,10 +345,10 @@ local function CollectWord(qw)
         elseif L >= FUZZY_EDIT1_LEN then
             allowed = 1
         end
-        for i = 1, #indexedEntries do
-            local e = indexedEntries[i]
-            if not wordSet[e] and MissingWithin(qm, entryMask[e], allowed) then
-                wordSet[e] = true
+        for sid = 1, nextSerial do
+            if alive[sid] and not wordSet[sid]
+               and MissingWithin(qm, entryMask[sid], allowed) then
+                wordSet[sid] = true
             end
         end
     end
@@ -354,10 +361,6 @@ end
 -- index cannot serve the query (no usable word). Candidates come out in
 -- ascending uiSearchData position -- the same iteration order as the full
 -- scan -- so the result cap keeps the exact same tie subset the scan would.
-local function SerialLess(a, b)
-    return serials[a] < serials[b]
-end
-
 function SearchIndex:Candidates(queryWords)
     Ensure()
     if builtCount == 0 then return nil end
@@ -385,10 +388,10 @@ function SearchIndex:Candidates(queryWords)
     end
     if usable == 0 then return nil end
     local n = 0
-    for e in pairs(resultSet) do
-        if alive[e] then
+    for sid in pairs(resultSet) do
+        if alive[sid] then
             n = n + 1
-            candBuf[n] = e
+            candBuf[n] = sid
         end
     end
     for i = n + 1, #candBuf do
@@ -396,6 +399,9 @@ function SearchIndex:Candidates(queryWords)
     end
     -- Serial order == index-time order == uiSearchData append order, so
     -- ties resolve exactly as the full scan's iteration would.
-    tsort(candBuf, SerialLess)
+    tsort(candBuf)
+    for i = 1, n do
+        candBuf[i] = slotEntry[candBuf[i]]
+    end
     return candBuf, n
 end
