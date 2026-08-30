@@ -4,9 +4,12 @@ local EasyFind = EasyFind
 local ns = EasyFind and EasyFind._ns
 if not ns then return end
 
--- Icon search data layer (GitHub #22): parses the packed icon blob
--- (Database/IconData.lua, ~33k icons) into two parallel arrays once, on the
--- first @icons use, and filters them per keystroke for the icon grid.
+-- Icon search data layer (GitHub #22): scans the packed icon blob IN
+-- PLACE (the ItemSearch model). The blob stays resident as ONE string;
+-- the only built structures are two integer arrays (record name-start
+-- and tab positions), so the whole 33k-icon index costs ~1.7MB instead
+-- of the ~4MB the old parsed name/id/idString arrays held. Names and
+-- IDs decode on demand for the handful of records actually displayed.
 --
 -- Matching is word-wise so file-name vocabulary meets human vocabulary:
 -- every query word must appear in the icon name, and each word also tries
@@ -31,62 +34,69 @@ ns.IconSearch = IconSearch
 local Utils = ns.Utils
 local sfind, ssub = Utils.sfind, Utils.ssub
 local slower = Utils.slower or string.lower
+local mfloor = Utils.mfloor
 local tonumber = tonumber
 local wipe = wipe
 
--- Parallel arrays: names[i] / ids[i]. Built lazily; ~33k entries each.
-local names, ids, total
--- FileDataID -> master index. Built lazily on the first ID-form query.
-local idToIndex
+-- The resident corpus: the blob string plus two parallel int arrays.
+-- offsets[i] = byte position of record i's name; tabs[i] = its tab.
+-- Every record ends with "\n" (generator guarantee).
+local blob, blobLen
+local offsets, tabs = {}, {}
+local total = 0
 
 local function EnsureIndex()
-    if names then return total end
-    -- Data.lua runs earlier in this same LoadOnDemand companion, so the
-    -- blob is guaranteed present here; ns.RequestIconSearch (core) is
-    -- what gates whether any of this loads at all.
-    local blob = ns.ICON_SEARCH_BLOB
-    if type(blob) ~= "string" then return 0 end
-    names, ids, total = {}, {}, 0
-    local blobLen = #blob
+    if blob then return total end
+    local b = ns.ICON_SEARCH_BLOB
+    if type(b) ~= "string" then return 0 end
+    blob = b
+    blobLen = #b
+    -- The blob is retained (it IS the database); the SV field ref clears
+    -- so nothing double-roots it.
+    ns.ICON_SEARCH_BLOB = nil
     local pos = 1
     while pos <= blobLen do
         local nl = sfind(blob, "\n", pos, true) or (blobLen + 1)
         local tab = sfind(blob, "\t", pos, true)
         if tab and tab < nl then
-            local id = tonumber(ssub(blob, tab + 1, nl - 1))
-            if id then
-                total = total + 1
-                names[total] = ssub(blob, pos, tab - 1)
-                ids[total] = id
-            end
+            total = total + 1
+            offsets[total] = pos
+            tabs[total] = tab
         end
         pos = nl + 1
     end
-    -- The arrays are self-sufficient (Lua substrings are copies), so the
-    -- raw 1.2MB blob has no readers left; release it. The parsed index is
-    -- what stays for the session, keeping every later grid open instant.
-    ns.ICON_SEARCH_BLOB = nil
     return total
 end
 
-local function IndexOfFileID(fdid)
-    if not fdid then return nil end
-    if not idToIndex then
-        idToIndex = {}
-        for i = 1, EnsureIndex() do
-            idToIndex[ids[i]] = i
-        end
-    end
-    return idToIndex[fdid]
-end
-
 function IconSearch:GetIcon(index)
-    if not names then return nil end
-    return names[index], ids[index]
+    if not blob or not offsets[index] then return nil end
+    local name = ssub(blob, offsets[index], tabs[index] - 1)
+    local recEnd = (offsets[index + 1] or (blobLen + 2)) - 2
+    local id = tonumber(ssub(blob, tabs[index] + 1, recEnd))
+    return name, id
 end
 
 function IconSearch:GetTotal()
     return EnsureIndex()
+end
+
+-- Record containing byte position p (binary search; ascending scans use
+-- moving pointers instead).
+local function RecordOf(p)
+    local lo, hi = 1, total
+    while lo < hi do
+        local mid = mfloor((lo + hi + 1) / 2)
+        if offsets[mid] <= p then lo = mid else hi = mid - 1 end
+    end
+    return lo
+end
+
+-- FileDataID -> record index, via the blob itself ("\t<id>\n" is unique).
+local function IndexOfFileID(fdid)
+    if not fdid or not blob then return nil end
+    local p = sfind(blob, "\t" .. fdid .. "\n", 1, true)
+    if not p then return nil end
+    return RecordOf(p)
 end
 
 -- spell:/item:/achievement: -> the FileDataID that thing renders with.
@@ -115,24 +125,13 @@ local function ResolveRefID(kind, refID)
     return nil
 end
 
--- A word carrying * or ? becomes an anchored whole-name wildcard. Lua magic
--- characters are neutralized first, then the wildcards expand.
-local function GlobToPattern(word)
-    local pat = word:gsub("[%^%$%(%)%%%.%[%]%+%-]", "%%%0")
-    pat = pat:gsub("%*", ".*"):gsub("%?", ".")
-    return "^" .. pat .. "$"
-end
-
--- ID digits as strings, built lazily on the first numeric query so the
--- per-keystroke prefix scan does no tostring churn.
-local idStrs
-
-local function EnsureIDStrings()
-    if idStrs then return end
-    idStrs = {}
-    for i = 1, EnsureIndex() do
-        idStrs[i] = tostring(ids[i])
-    end
+-- A word carrying * or ? becomes an anchored whole-name wildcard. Blob
+-- form: the name sits between "\n" (or blob start) and "\t", so the
+-- anchors become those delimiters and the wildcards exclude them.
+local function GlobToBlobPattern(word)
+    local body = word:gsub("[%^%$%(%)%%%.%[%]%+%-]", "%%%0")
+    body = body:gsub("%*", "[^\t\n]*"):gsub("%?", "[^\t\n]")
+    return "\n" .. body .. "\t", "^" .. body .. "\t"
 end
 
 -- Indices already emitted by the numeric prefix pass this Filter call, so
@@ -142,10 +141,11 @@ local numericSeen = {}
 -- Fill `out` with every icon whose FileDataID STARTS with the typed
 -- digits ("12" -> 125..., 129...; each further digit narrows). An exact
 -- full-ID match lists first. Deliberately prefix-only: digits have an
--- order, unlike fuzzy text.
+-- order, unlike fuzzy text. Works straight off the blob: an ID starts
+-- right after its record's tab, so "\t<digits>" enumerates prefixes.
 local function CollectIDPrefix(digits, out, seen)
-    EnsureIDStrings()
-    local qlen = #digits
+    EnsureIndex()
+    if not blob then return 0 end
     local m = 0
     local exactIdx = IndexOfFileID(tonumber(digits))
     if exactIdx then
@@ -153,15 +153,17 @@ local function CollectIDPrefix(digits, out, seen)
         out[1] = exactIdx
         if seen then seen[exactIdx] = true end
     end
-    for i = 1, #idStrs do
-        if i ~= exactIdx then
-            local s = idStrs[i]
-            if #s > qlen and ssub(s, 1, qlen) == digits then
-                m = m + 1
-                out[m] = i
-                if seen then seen[i] = true end
-            end
+    local needle = "\t" .. digits
+    local rec = 1
+    local p = sfind(blob, needle, 1, true)
+    while p do
+        while rec < total and offsets[rec + 1] <= p do rec = rec + 1 end
+        if rec ~= exactIdx then
+            m = m + 1
+            out[m] = rec
+            if seen then seen[rec] = true end
         end
+        p = sfind(blob, needle, p + 1, true)
     end
     return m
 end
@@ -171,7 +173,8 @@ end
 --   branches (comma) OR'd -> terms (space) AND'd -> alternates (/) OR'd
 -- branch b owns terms branchEnd[b-1]+1 .. branchEnd[b]; term t owns
 -- alternates termEnd[t-1]+1 .. termEnd[t].
-local altText, altPlural, altIsPat = {}, {}, {}
+local altText, altPlural, altPat1 = {}, {}, {}
+local altIsPat = {}
 local termEnd, termNeg = {}, {}
 local branchEnd = {}
 
@@ -185,11 +188,14 @@ local function AddTerm(termN, altN, word)
     for alt in word:gmatch("[^/]+") do
         altN = altN + 1
         if sfind(alt, "[%*%?]") then
-            altText[altN] = GlobToPattern(alt)
+            local pat, pat1 = GlobToBlobPattern(alt)
+            altText[altN] = pat
+            altPat1[altN] = pat1
             altIsPat[altN] = true
             altPlural[altN] = nil
         else
             altText[altN] = alt
+            altPat1[altN] = nil
             altIsPat[altN] = false
             -- "swords" -> "sword"; positive plain alternates only, and only
             -- when the singular is still a word.
@@ -225,22 +231,66 @@ local function PrepareQuery(query)
     return branchN
 end
 
-local function NameMatchesTerm(name, t, altStart)
-    local hit = false
-    for a = altStart, termEnd[t] do
-        if altIsPat[a] then
-            if sfind(name, altText[a]) then
-                hit = true
-                break
+-- Per-keystroke evaluation scratch: generation-stamped so nothing wipes.
+-- mark[rec] == markBase + t  means rec passed terms 1..t of the branch
+-- under evaluation; hitStamp[rec] == hitGen dedupes within one term;
+-- matched[rec] == matchGen marks a completed branch.
+local mark, hitStamp, matched = {}, {}, {}
+local markBase, hitGen, matchGen = 0, 0, 0
+
+-- Scan the blob for one PLAIN alternate. Ascending occurrences drive a
+-- moving record pointer; a settled record skips ahead to the next, so
+-- the loop is bounded by the record count, not the occurrence count.
+-- An occurrence inside the id digits fails the tab guard and is skipped.
+-- presenceOnly (negated terms): just stamp hits, no mark advance.
+local function StampWord(word, t, firstTerm, presenceOnly)
+    local wl = #word
+    local rec = 1
+    local p = sfind(blob, word, 1, true)
+    while p do
+        while rec < total and offsets[rec + 1] <= p do rec = rec + 1 end
+        local nextInit = p + 1
+        if p + wl - 1 < tabs[rec] then
+            if presenceOnly then
+                hitStamp[rec] = hitGen
+            elseif hitStamp[rec] ~= hitGen
+               and (firstTerm or mark[rec] == markBase + (t - 1)) then
+                hitStamp[rec] = hitGen
+                mark[rec] = markBase + t
             end
-        elseif sfind(name, altText[a], 1, true)
-            or (altPlural[a] and sfind(name, altPlural[a], 1, true)) then
-            hit = true
-            break
+            nextInit = (offsets[rec + 1] or (blobLen + 1))
+        end
+        if nextInit > blobLen then break end
+        p = sfind(blob, word, nextInit, true)
+    end
+end
+
+-- Same for a wildcard alternate: anchored blob patterns ("\n<pat>\t",
+-- plus a "^" form for record 1).
+local function StampPattern(pat, pat1, t, firstTerm, presenceOnly)
+    if blob:find(pat1) then
+        if presenceOnly then
+            hitStamp[1] = hitGen
+        elseif hitStamp[1] ~= hitGen and (firstTerm or mark[1] == markBase + (t - 1)) then
+            hitStamp[1] = hitGen
+            mark[1] = markBase + t
         end
     end
-    if termNeg[t] then return not hit end
-    return hit
+    local rec = 1
+    local p = blob:find(pat)
+    while p do
+        -- p sits on the "\n" BEFORE the record; the record starts at p+1.
+        while rec < total and offsets[rec + 1] <= p + 1 do rec = rec + 1 end
+        if presenceOnly then
+            hitStamp[rec] = hitGen
+        elseif hitStamp[rec] ~= hitGen and (firstTerm or mark[rec] == markBase + (t - 1)) then
+            hitStamp[rec] = hitGen
+            mark[rec] = markBase + t
+        end
+        local nextInit = (offsets[rec + 1] or (blobLen + 2)) - 1
+        if nextInit <= p then nextInit = p + 1 end
+        p = blob:find(pat, nextInit)
+    end
 end
 
 -- Fills `out` (wiped) with master indices of icons matching the query.
@@ -263,9 +313,7 @@ function IconSearch:Filter(query, out)
         return 0
     end
 
-    -- #ID: FileDataIDs only, narrowing by prefix as digits are typed
-    -- ("#13" sweeps every ID starting 13; the full ID lands on that one
-    -- icon, listed first).
+    -- #ID: FileDataIDs only, narrowing by prefix as digits are typed.
     local hashID = query:match("^#(%d+)$")
     if hashID then
         return CollectIDPrefix(hashID, out, nil)
@@ -288,38 +336,67 @@ function IconSearch:Filter(query, out)
         return count
     end
 
-    for i = 1, count do
-        local name = names[i]
-        local matched = false
-        local termStart = 1
-        for b = 1, branchN do
-            local allOk = true
-            local altStart = termStart > 1 and (termEnd[termStart - 1] + 1) or 1
-            for t = termStart, branchEnd[b] do
-                if not NameMatchesTerm(name, t, altStart) then
-                    allOk = false
-                    break
+    -- Term-by-term blob scans stamp records forward through each branch;
+    -- a record completing every term of any branch gets the match stamp.
+    matchGen = matchGen + 1
+    local termStart = 1
+    for b = 1, branchN do
+        local nTerms = branchEnd[b] - termStart + 1
+        markBase = markBase + nTerms + 1
+        local altStart = termStart > 1 and (termEnd[termStart - 1] + 1) or 1
+        for t = 1, nTerms do
+            local termIdx = termStart + t - 1
+            hitGen = hitGen + 1
+            if termNeg[termIdx] then
+                -- Stamp raw hits, then advance every UN-hit record.
+                for a = altStart, termEnd[termIdx] do
+                    if altIsPat[a] then
+                        StampPattern(altText[a], altPat1[a], t, false, true)
+                    else
+                        StampWord(altText[a], t, false, true)
+                    end
                 end
-                altStart = termEnd[t] + 1
+                for rec = 1, count do
+                    if hitStamp[rec] ~= hitGen
+                       and (t == 1 or mark[rec] == markBase + (t - 1)) then
+                        mark[rec] = markBase + t
+                    end
+                end
+            else
+                for a = altStart, termEnd[termIdx] do
+                    if altIsPat[a] then
+                        StampPattern(altText[a], altPat1[a], t, t == 1, false)
+                    else
+                        StampWord(altText[a], t, t == 1, false)
+                        if altPlural[a] then
+                            StampWord(altPlural[a], t, t == 1, false)
+                        end
+                    end
+                end
             end
-            if allOk then
-                matched = true
-                break
-            end
-            termStart = branchEnd[b] + 1
+            altStart = termEnd[termIdx] + 1
         end
-        if matched and not numericSeen[i] then
+        for rec = 1, count do
+            if mark[rec] == markBase + nTerms then
+                matched[rec] = matchGen
+            end
+        end
+        termStart = branchEnd[b] + 1
+    end
+
+    for rec = 1, count do
+        if matched[rec] == matchGen and not numericSeen[rec] then
             m = m + 1
-            out[m] = i
+            out[m] = rec
         end
     end
     return m
 end
 
--- Dev-tool peek (EasyFindDev memory audit): the parsed icon index lives
--- in file-locals invisible to ns walks. Shared references; do not mutate.
+-- Dev-tool peek (EasyFindDev memory audit): file-locals invisible to ns
+-- walks. Shared references; do not mutate.
 function IconSearch:_DebugPeek()
-    return { names = names, ids = ids, idToIndex = idToIndex, idStrs = idStrs }
+    return { blob = blob, offsets = offsets, tabs = tabs }
 end
 
 return IconSearch
