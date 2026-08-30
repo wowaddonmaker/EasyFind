@@ -4728,6 +4728,13 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
         self._lastActivity = GetTime()
         self._fadingOut = false
         if self:IsShown() then self:SetAlpha(1) end
+        -- Self-disarming driver: every activity path lands here, so this
+        -- is the ONE arm point. The driver removes itself once there is
+        -- nothing left to do (no drag, no ease, fade complete), so an
+        -- idle results list runs no per-frame scrollbar code at all --
+        -- profiled as a constant per-frame cost whenever results were
+        -- open before this.
+        if not self._driverArmed and self.ArmDriver then self:ArmDriver() end
     end
 
     local function ScrollByDelta(delta)
@@ -4757,7 +4764,7 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
         bar:NudgeVisible()
     end)
 
-    Utils.SafeOnUpdate(bar, function(self)
+    local function ScrollBarDriver(self)
         if self.isDragging then
             if not IsMouseButtonDown("LeftButton") then
                 self.isDragging = false
@@ -4794,7 +4801,13 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
             self:NudgeVisible()
         end
 
-        if self:GetAlpha() <= 0 then return end
+        if self:GetAlpha() <= 0 then
+            -- Nothing left to animate: fade finished (or never started)
+            -- with no drag and no ease in flight. Disarm entirely.
+            self._driverArmed = false
+            self:SetScript("OnUpdate", nil)
+            return
+        end
         local idle = GetTime() - self._lastActivity
         if idle < FADE_HOLD then return end
         if not self._fadingOut then
@@ -4805,10 +4818,17 @@ function Utils.CreateMinimalScrollBar(scrollFrame, parent)
         if t >= 1 then
             self:SetAlpha(0)
             self._fadingOut = false
+            self._driverArmed = false
+            self:SetScript("OnUpdate", nil)
         else
             self:SetAlpha(1 - t)
         end
-    end)
+    end
+
+    function bar:ArmDriver()
+        self._driverArmed = true
+        Utils.SafeOnUpdate(self, ScrollBarDriver)
+    end
 
     track:EnableMouse(true)
     track:SetScript("OnMouseDown", function(self, button)

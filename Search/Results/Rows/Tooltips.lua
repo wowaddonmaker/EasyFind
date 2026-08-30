@@ -43,6 +43,12 @@ function Rows.InstallTooltips(resultRow)
         Results._hoverRow = self
         self._efHlHover = true
         Results:UpdateRowWash(self)
+        -- Mid-scroll, rows slide under a STATIONARY cursor and fire this
+        -- for every row that passes -- the single largest cost of a scroll
+        -- spam (Perfy flamegraph). The wash above still tracks; tooltips
+        -- and hints wait for a hover the user actually meant, i.e. the
+        -- first enter after the scroll settles.
+        if Results.IsResultsScrollBusy and Results:IsResultsScrollBusy() then return end
         -- Hover-based action hint (mirrors keyboard selection hint).
         Handlers:ApplyActionHint(self)
         -- Housing decor: quality-colored name, owned/placed/stored counts
