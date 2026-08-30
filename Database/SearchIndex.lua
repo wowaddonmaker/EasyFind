@@ -48,7 +48,7 @@ local SearchIndex = {}
 ns.SearchIndex = SearchIndex
 
 local sbyte, ssub = string.byte, string.sub
-local band, bor, lshift = bit.band, bit.bor, bit.lshift
+local band, bor, lshift, rshift = bit.band, bit.bor, bit.lshift, bit.rshift
 local wipe = wipe
 local pairs = pairs
 local tsort = table.sort
@@ -70,9 +70,16 @@ local builtCount = 0
 -- array part and the candidate sort needs no comparator (ref keys here
 -- measurably LOST to the full scan: pointer hashing on every posting
 -- hit). slotEntry maps a serial back to its entry at the very end.
-local gramPost = {}   -- "ab" -> array of serials containing bigram
-local wordPost = {}   -- word-leading bigram -> array of serials
-local initPost = {}   -- first two initials of a multi-word text -> serials
+-- Posting lists are COMPRESSED: each serial packs to 3 little-endian
+-- bytes in a frozen string (vs ~17 bytes per Lua array slot), with a
+-- small pending-tail array per key that freezes into the string in
+-- batches. Reads decode a whole bucket into one shared scratch array,
+-- so the hot counting loops stay plain array iteration. Standard
+-- compressed-posting-list design, sized for the measured reality that
+-- the postings were the largest resident structure in the addon.
+local gramStr, gramTail = {}, {}   -- "ab" -> packed serials + pending
+local wordStr, wordTail = {}, {}   -- word-leading bigram -> same
+local initStr, initTail = {}, {}   -- leading-initials pair -> same
 local entryMask = {}  -- serial -> a-z char mask over name+keywords
 local lootIdx = {}    -- serials of loot entries (always candidates)
 local slotEntry = {}  -- serial -> entry ref
@@ -81,6 +88,55 @@ local alive = {}      -- serial -> true while still in uiSearchData
 local nextSerial = 0
 local deadCount = 0
 local compactScheduled = false
+
+local FREEZE_AT = 64
+local schar = string.char
+local tconcat = table.concat
+local postScratch = {}   -- shared decode buffer (one bucket at a time)
+local freezeBuf = {}     -- shared encode buffer
+
+-- Append serial to the bucket for key, freezing the tail into the
+-- packed string once it grows past FREEZE_AT.
+local function PostAppend(strMap, tailMap, key, sid)
+    local tail = tailMap[key]
+    if not tail then tail = {}; tailMap[key] = tail end
+    tail[#tail + 1] = sid
+    if #tail >= FREEZE_AT then
+        local n = 0
+        for i = 1, #tail do
+            local v = tail[i]
+            n = n + 1
+            freezeBuf[n] = schar(band(v, 255), band(rshift(v, 8), 255), band(rshift(v, 16), 255))
+        end
+        strMap[key] = (strMap[key] or "") .. tconcat(freezeBuf, "", 1, n)
+        wipe(tail)
+    end
+end
+
+-- Decode the whole bucket for key into postScratch; returns count
+-- (0 = no such bucket). Callers loop postScratch 1..count.
+local function DecodePostings(strMap, tailMap, key)
+    local n = 0
+    local str = strMap[key]
+    if str then
+        local len = #str
+        local p = 1
+        while p + 2 <= len do
+            n = n + 1
+            local b1, b2, b3 = sbyte(str, p, p + 2)
+            postScratch[n] = b1 + b2 * 256 + b3 * 65536
+            p = p + 3
+        end
+    end
+    local tail = tailMap[key]
+    if tail then
+        for i = 1, #tail do
+            n = n + 1
+            postScratch[n] = tail[i]
+        end
+    end
+    return n
+end
 
 local seenGrams = {}
 local counts = {}
@@ -122,17 +178,13 @@ local function IndexText(e, text)
                 local leadKey = "\1" .. lead
                 if not seenGrams[leadKey] then
                     seenGrams[leadKey] = true
-                    local post = wordPost[lead]
-                    if not post then post = {}; wordPost[lead] = post end
-                    post[#post + 1] = e
+                    PostAppend(wordStr, wordTail, lead, e)
                 end
                 for g = wordStart, p - 2 do
                     local gram = ssub(text, g, g + 1)
                     if not seenGrams[gram] then
                         seenGrams[gram] = true
-                        local post = gramPost[gram]
-                        if not post then post = {}; gramPost[gram] = post end
-                        post[#post + 1] = e
+                        PostAppend(gramStr, gramTail, gram, e)
                     end
                 end
             end
@@ -144,9 +196,7 @@ local function IndexText(e, text)
         local initKey = "\2" .. key
         if not seenGrams[initKey] then
             seenGrams[initKey] = true
-            local post = initPost[key]
-            if not post then post = {}; initPost[key] = post end
-            post[#post + 1] = e
+            PostAppend(initStr, initTail, key, e)
         end
     end
 end
@@ -192,9 +242,9 @@ local function IndexEntry(data)
 end
 
 local function Rebuild()
-    wipe(gramPost)
-    wipe(wordPost)
-    wipe(initPost)
+    wipe(gramStr); wipe(gramTail)
+    wipe(wordStr); wipe(wordTail)
+    wipe(initStr); wipe(initTail)
     wipe(entryMask)
     wipe(lootIdx)
     wipe(slotEntry)
@@ -291,10 +341,10 @@ local function AddContiguous(w)
     end
     wipe(counts)
     for gi = 1, nGrams do
-        local post = gramPost[queryGramsBuf[gi]]
-        if not post then return end
-        for pi = 1, #post do
-            local e = post[pi]
+        local pn = DecodePostings(gramStr, gramTail, queryGramsBuf[gi])
+        if pn == 0 then return end
+        for pi = 1, pn do
+            local e = postScratch[pi]
             local c = (counts[e] or 0) + 1
             counts[e] = c
             if c == nGrams then wordSet[e] = true end
@@ -314,11 +364,11 @@ local function CollectWord(qw)
     -- first two chars equal the text's first two initials; the mask trims
     -- texts that lack qw's remaining letters.
     do
-        local post = initPost[ssub(qw, 1, 2)]
-        if post then
+        local pn = DecodePostings(initStr, initTail, ssub(qw, 1, 2))
+        if pn > 0 then
             local qm = maskOf(qw, 0)
-            for pi = 1, #post do
-                local e = post[pi]
+            for pi = 1, pn do
+                local e = postScratch[pi]
                 if not wordSet[e] and band(qm, entryMask[e]) == qm then
                     wordSet[e] = true
                 end
@@ -326,11 +376,11 @@ local function CollectWord(qw)
         end
     end
     if L >= 4 then
-        local post = wordPost[ssub(qw, 1, 2)]
-        if post then
+        local pn = DecodePostings(wordStr, wordTail, ssub(qw, 1, 2))
+        if pn > 0 then
             local qm = maskOf(qw, 0)
-            for pi = 1, #post do
-                local e = post[pi]
+            for pi = 1, pn do
+                local e = postScratch[pi]
                 if not wordSet[e] and band(qm, entryMask[e]) == qm then
                     wordSet[e] = true
                 end
@@ -411,7 +461,8 @@ end
 -- internals. Returns shared references; callers must not mutate.
 function SearchIndex:_DebugPeek()
     return {
-        gramPost = gramPost, wordPost = wordPost, initPost = initPost,
+        gramStr = gramStr, gramTail = gramTail, wordStr = wordStr,
+        wordTail = wordTail, initStr = initStr, initTail = initTail,
         entryMask = entryMask, lootIdx = lootIdx, slotEntry = slotEntry,
         serials = serials, alive = alive,
     }
